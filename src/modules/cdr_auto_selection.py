@@ -10,7 +10,8 @@ ones; every campaign when the Campaign filter is not restricted.
 The Campaign filter of a saved definition (a Dashboard, a Reporting Job entry) also accepts
 choices made again each time they are used, so they follow the campaigns that arrive later:
 **Latest campaign**, **Latest 2 campaigns**, **Latest 3 campaigns**, **Latest 4 campaigns**, **Previous
-campaign** (the one before the latest) and **All available campaigns**.
+campaign** (the one before the latest) and **All available campaigns**. Network Insights analyses one campaign: only
+Latest campaign, Previous campaign or one campaign (see ``one_campaign``).
 """
 
 from __future__ import annotations
@@ -41,6 +42,8 @@ CAMPAIGN_PRESETS = {LATEST_CAMPAIGN: (0, 1), LATEST_TWO_CAMPAIGNS: (0, 2), LATES
 CAMPAIGN_PRESET_LABELS = {LATEST_CAMPAIGN: 'Latest campaign', LATEST_TWO_CAMPAIGNS: 'Latest 2 campaigns',
                           LATEST_THREE_CAMPAIGNS: 'Latest 3 campaigns', LATEST_FOUR_CAMPAIGNS: 'Latest 4 campaigns',
                           PREVIOUS_CAMPAIGN: 'Previous campaign', ALL_CAMPAIGNS: 'All available campaigns'}
+# The choices of a Campaign filter of one campaign (Network Insights), in the order it offers them.
+SINGLE_CAMPAIGN_PRESETS = (LATEST_CAMPAIGN, PREVIOUS_CAMPAIGN)
 # What a choice stands for when it chooses no campaign although there are some (Previous campaign with only one
 # campaign): no campaign matches it, so no CDR is used (an empty Campaign filter would be every campaign).
 NO_PREVIOUS_CAMPAIGN = '@no-previous-campaign'
@@ -61,6 +64,18 @@ def is_campaign_preset(value: object) -> bool:
 def campaign_presets(values: Iterable[object] | None) -> list[str]:
     """The automatic choices among some Campaign filter values."""
     return [str(value).strip() for value in values or [] if is_campaign_preset(value)]
+
+
+def one_campaign(values: Iterable[object] | None) -> list[str]:
+    """A Campaign filter of one campaign, as Network Insights analyses it: Latest campaign and Previous campaign as they
+    are, the newest of the campaigns checked (with every spelling of it), and Latest campaign for any other choice (none,
+    or one of several campaigns saved before, such as Latest 2 campaigns or All available campaigns)."""
+    selected = [str(value).strip() for value in values or [] if str(value or '').strip()]
+    presets = campaign_presets(selected)
+    if presets:
+        return [PREVIOUS_CAMPAIGN] if set(presets) == {PREVIOUS_CAMPAIGN} else [LATEST_CAMPAIGN]
+    groups = campaign_groups(selected)
+    return groups[0] if groups else [LATEST_CAMPAIGN]
 
 
 def campaign_identity(value: object) -> str:

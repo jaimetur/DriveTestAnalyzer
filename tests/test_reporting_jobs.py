@@ -591,6 +591,15 @@ def test_network_insights_entries_keep_their_own_selection_and_read_single_selec
     assert report_tasks._remap_dataset_ids(legacy, {5: 9})['network_insights'][0]['selection']['datasets'] == {'data': [9]}
     with pytest.raises(ValueError):
         normalize_definition({'network_insights': {'enabled': False, 'selection': {}}})
+    # Network Insights analyses one campaign: an entry with automatic CDRs keeps Latest campaign without one and the
+    # newest one of several; CDRs chosen by hand without campaigns keep every campaign of them.
+    def campaigns(selection, auto_cdrs=True):
+        entry = normalize_definition({'network_insights': [{'auto_cdrs': auto_cdrs, 'selection': selection}]})['network_insights'][0]
+        return entry['selection']['campaigns']
+    assert campaigns({}) == campaigns({'campaigns': ['@latest-3-campaigns']}) == ['@latest-campaign']
+    assert campaigns({'campaigns': ['2026-Q1', '2026-Q3', '2026-Q2']}) == ['2026-Q3']
+    assert campaigns({'campaigns': ['@previous-campaign']}) == ['@previous-campaign']
+    assert campaigns({'datasets': {'data': [5]}}, auto_cdrs=False) == []
 
 
 def test_every_artifact_with_cdrs_offers_the_two_automatic_choices():

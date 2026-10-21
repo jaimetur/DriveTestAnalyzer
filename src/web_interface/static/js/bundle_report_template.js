@@ -154,18 +154,35 @@
   // What follows the NR Mode of the common filters in the sections shown now (cleared when they are drawn again).
   let nrModeHandlers = [];
 
+  // One campaign (Network Insights): Latest campaign (the default), Previous campaign or one campaign. A section saved
+  // with several keeps the newest one, and one saved with Latest 2, 3 or 4 campaigns or All available campaigns Latest
+  // campaign.
+  const singleCampaignField = (values, selected, presets) => {
+    const listed = [...presets.map(([key]) => key), ...values];
+    const chosen = presets.find(([key]) => selected.includes(key))?.[0]
+      ?? values.filter((value) => selected.includes(value)).at(-1) ?? presets[0]?.[0] ?? '';
+    const label = (value) => pickers().campaignLabel?.(value) ?? value;
+    const field = selectField('Campaign', listed.map((value) => [value, presets.find(([key]) => key === value)?.[1] ?? label(value)]), chosen);
+    field.input.addEventListener('change', changed);
+    field.getValue = () => (field.input.value ? [field.input.value] : []);
+    return field;
+  };
+
   // The Campaigns of a section, which choose its CDRs: first Latest campaign, Latest 2, 3 and 4 campaigns, Previous campaign and All available campaigns,
   // which follow the newest campaigns at each export and stand alone, then the campaigns of
-  // the NR Mode of the common filters (listed again when it changes, keeping a Latest choice).
-  function scopeFields(saved, modeOf = nrMode) {
+  // the NR Mode of the common filters (listed again when it changes, keeping a Latest choice). With ``single`` (Network
+  // Insights), one Campaign.
+  function scopeFields(saved, modeOf = nrMode, {single = false} = {}) {
     const row = node('div', undefined, 'brt-scope');
-    const presets = Object.entries(options.campaign_presets || {});
+    const presets = single ? (options.single_campaign_presets || []).map((key) => [key, options.campaign_presets?.[key] || key])
+      : Object.entries(options.campaign_presets || {});
     const campaignValues = () => [...(options.campaigns?.[modeOf()] || [])]
       .sort((left, right) => (pickers().campaignCompare ? pickers().campaignCompare(left, right) : 0));
     let campaigns = null;
     // (Beside the Campaigns, the GAP reference of Scoring & GAP Analysis.)
     const renderCampaigns = (selected) => {
-      const field = multiField('Campaigns', campaignValues(), selected, {exclusive: presets});
+      const field = single ? singleCampaignField(campaignValues(), selected, presets)
+        : multiField('Campaigns', campaignValues(), selected, {exclusive: presets});
       field.classList.add('brt-campaigns-field');
       // (Replaced in its row even before the section is on the page: Scoring lists its own NR Mode as it is drawn.)
       if (campaigns?.parentNode) campaigns.replaceWith(field);
@@ -500,7 +517,7 @@
     if (!allowed) body.append(node('p', 'Your account cannot use this module: it is left out.', 'form-note'));
     // (The Scoring section can compare NSA vs SA: its campaigns follow its own NR Mode then.)
     let sectionMode = nrMode;
-    const scope = scopeFields(saved.options || {}, () => sectionMode());
+    const scope = scopeFields(saved.options || {}, () => sectionMode(), {single: saved.key === 'network_insights'});
     body.append(scope);
     const list = node('ol', undefined, 'brt-items');
     list.setAttribute('aria-label', `Sub-modules of ${title}`);

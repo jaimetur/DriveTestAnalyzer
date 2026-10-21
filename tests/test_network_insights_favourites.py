@@ -28,6 +28,17 @@ def test_selections_keep_the_controls_and_filters_of_the_page():
     }
 
 
+def test_a_favourite_keeps_one_campaign():
+    # Network Insights analyses one campaign: a favourite saved with several keeps the newest one, and one saved with
+    # every campaign, Latest 2 campaigns or All available campaigns, Latest campaign.
+    def campaigns(values):
+        return favourites.normalize_selection({'filters': {'ni-campaigns': values}})['filters']['ni-campaigns']
+    assert campaigns(['UK_Q1_2026', 'UK_Q3_2026', 'UK_Q2_2026']) == ['UK_Q3_2026']
+    assert campaigns([]) == campaigns(['@latest-2-campaigns']) == campaigns(['@all-campaigns']) == ['@latest-campaign']
+    assert campaigns(['@previous-campaign']) == ['@previous-campaign']
+    assert 'ni-campaigns' not in favourites.normalize_selection({'filters': {'ni-operators': ['VF']}})['filters']
+
+
 def test_favourites_are_saved_opened_and_deleted_with_app_events(client):
     login(client)
     created = client.post('/api/network-insights/favourites', json={'name': 'SA NR latest', 'selection': SELECTION})

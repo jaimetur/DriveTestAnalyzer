@@ -63,8 +63,15 @@ def test_definitions_keep_the_order_and_options_of_every_section():
     assert [section['key'] for section in defaults['sections']] == list(bundle_report_templates.SECTION_KEYS)
     assert defaults['filters'] == {'nr_mode': 'NSA', 'operators': [], 'operator_vendors': [], 'vendor_operators': [], 'vendors': [],
                                    'regions': [], 'clusters': [], 'cities': [], 'main_cities': False}
-    # Each section has its own Campaigns.
-    assert all(section['options']['campaigns'] == [] and 'nr_mode' not in section['options'] for section in defaults['sections'])
+    # Each section has its own Campaigns; Network Insights one campaign, Latest campaign by default.
+    assert all(section['options']['campaigns'] == (['@latest-campaign'] if section['key'] == 'network_insights' else [])
+               and 'nr_mode' not in section['options'] for section in defaults['sections'])
+    # A Network Insights section saved with several campaigns keeps the newest one; with Latest 2 campaigns or All
+    # available campaigns, Latest campaign.
+    for saved, kept in ((['2026-Q1', '2026-Q3', '2026-Q2'], ['2026-Q3']), (['@latest-2-campaigns'], ['@latest-campaign']),
+                        (['@all-campaigns'], ['@latest-campaign']), (['@previous-campaign'], ['@previous-campaign'])):
+        section = bundle_report_templates.normalize_definition({'sections': [{'key': 'network_insights', 'options': {'campaigns': saved}}]})
+        assert section['sections'][0]['options']['campaigns'] == kept
     scoring = next(section for section in defaults['sections'] if section['key'] == 'scoring')
     assert [item['key'] for item in scoring['items']] == ['summary', 'charts', 'tables', 'geographical_areas', 'trends', 'gap', 'points']
     assert all(all(item['components'].values()) for item in scoring['items'])

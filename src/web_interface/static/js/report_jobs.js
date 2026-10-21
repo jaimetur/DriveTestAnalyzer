@@ -356,9 +356,13 @@
   // alone, then the campaigns (every campaign when all or none are checked). `compact` lists each campaign once, as
   // the Campaign Maps show it, and `complete` leaves out the campaigns without Data, Voice and Speech CDRs (Scoring).
   // The CDRs used now are listed.
-  function campaignPicker(nrModeOf, saved = [], {compact = false, complete = false, onChange = null} = {}) {
+  // With `single` (Network Insights), one Campaign: Latest campaign (the default), Previous campaign or one campaign; an
+  // entry saved with several keeps the newest one, and one saved with Latest 2, 3 or 4 campaigns or All available
+  // campaigns Latest campaign.
+  function campaignPicker(nrModeOf, saved = [], {compact = false, complete = false, single = false, onChange = null} = {}) {
     const wrapper = node('div', undefined, 'rj-campaign-picker');
-    const presets = Object.entries(options.campaign_presets || {});
+    const presets = single ? (options.single_campaign_presets || []).map((key) => [key, options.campaign_presets?.[key] || key])
+      : Object.entries(options.campaign_presets || {});
     const isPreset = (value) => presets.some(([key]) => key === value);
     const pickerHost = node('div', undefined, 'rj-campaign-values');
     // The CDRs used now, by type, as the modules list them.
@@ -390,9 +394,25 @@
         if (request === previewRequest) previewCaption.textContent = `CDRs used now: ${error.message}`;
       }
     };
+    const singlePicker = (values, selected) => {
+      const choice = presets.find(([key]) => selected.includes(key))?.[0]
+        ?? values.filter((item) => selected.includes(item)).at(-1) ?? presets[0]?.[0] ?? '';
+      const control = node('select');
+      for (const [key, text] of [...presets, ...values.map((item) => [item, campaignLabel(item)])]) {
+        const option = node('option', text);
+        option.value = key;
+        option.selected = key === choice;
+        control.append(option);
+      }
+      control.addEventListener('change', () => { void refreshPreview(); onChange?.(); });
+      const chooser = field('Campaign', control);
+      chooser.getValue = () => (control.value ? [control.value] : []);
+      return chooser;
+    };
     const render = () => {
       if (picker) chosen = picker.getValue();
-      picker = multiPicker('Campaigns', listed(), chosen, {exclusive: presets, onChange: () => { void refreshPreview(); onChange?.(); }});
+      picker = single ? singlePicker(listed(), chosen)
+        : multiPicker('Campaigns', listed(), chosen, {exclusive: presets, onChange: () => { void refreshPreview(); onChange?.(); }});
       pickerHost.replaceChildren(picker);
     };
     wrapper.append(pickerHost, preview);
@@ -871,7 +891,7 @@
     const remove = node('button', '×', 'danger-button icon-action'); remove.type = 'button'; remove.title = 'Remove this Network Insights artifact';
     remove.addEventListener('click', () => card.remove());
     // The Campaigns choose the CDRs: they follow NR Mode in its row and the CDRs they choose are listed below.
-    const campaigns = campaignPicker(() => nrMode.value, selection.campaigns || [], {compact: true});
+    const campaigns = campaignPicker(() => nrMode.value, selection.campaigns || [], {compact: true, single: true});
     const head = node('div', undefined, 'rj-grid rj-one-row');
     head.append(field('NR Mode', nrMode), campaigns.field, field('Technology', technology), field('Name in the email', label),
       ...thresholds.map((item) => item.wrapper), remove);

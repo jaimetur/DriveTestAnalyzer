@@ -32,7 +32,7 @@ from typing import Any, Callable
 from src.branding import canonical_format
 from src.modules.value_maps import ValueMapper
 from src.modules.cdr_auto_selection import (
-    ALL_CAMPAIGNS, CAMPAIGN_PRESET_LABELS, LATEST_CAMPAIGN, campaign_presets, campaign_values, cdr_campaigns, complete_campaign_cdrs, describe_cdrs,
+    ALL_CAMPAIGNS, CAMPAIGN_PRESET_LABELS, LATEST_CAMPAIGN, SINGLE_CAMPAIGN_PRESETS, campaign_presets, one_campaign, campaign_values, cdr_campaigns, complete_campaign_cdrs, describe_cdrs,
     resolve_campaign_filter, resolve_cdrs, sort_campaigns,
 )
 from src.modules.column_names import compact_campaign_value
@@ -256,6 +256,11 @@ def _network_entries(value: Any) -> list[dict[str, Any]]:
 def _network_entry(entry: dict[str, Any]) -> dict[str, Any]:
     selection = entry.get('selection') if isinstance(entry.get('selection'), dict) else {}
     auto_cdrs = bool(entry.get('auto_cdrs'))
+    campaigns = _strings(selection.get('campaigns'))
+    # Network Insights analyses one campaign (Latest campaign without one, the newest one of several); CDRs chosen by
+    # hand without campaigns keep every campaign of them.
+    if auto_cdrs or campaigns:
+        campaigns = one_campaign(campaigns)
     return {
         'label': str(entry.get('label') or '').strip()[:120],
         'formats': _formats(entry.get('formats')),
@@ -269,6 +274,7 @@ def _network_entry(entry: dict[str, Any]) -> dict[str, Any]:
             'technology': selection.get('technology') if selection.get('technology') in {'lte', 'nr', 'lte_nr'} else 'lte',
             'group': _network_groups(selection.get('group')),
             **{field: _strings(selection.get(field)) for field in NETWORK_FILTER_FIELDS},
+            'campaigns': campaigns,
             **_network_thresholds(selection),
             'grid_metres': float(selection.get('grid_metres', 250) or 250),
         },
@@ -2075,6 +2081,8 @@ def install_report_task_routes(core: Any) -> None:
             # The campaigns of the CDRs of each NR Mode, and the choices that follow the newest ones.
             'campaigns': {nr_mode: campaign_values(task_repository, nr_mode) for nr_mode in ('NSA', 'SA', NSA_VS_SA)},
             'campaign_presets': CAMPAIGN_PRESET_LABELS,
+            # Those of a Campaigns of one campaign (Network Insights), in their order.
+            'single_campaign_presets': list(SINGLE_CAMPAIGN_PRESETS),
             # NSA vs SA: how a Scoring artifact shows each NR Mode, as the results of the Scoring & GAP Analysis page.
             'nr_layouts': list(NR_LAYOUT_LABELS.items()), 'nr_charts': list(NR_CHARTS_LABELS.items()),
             'values': mapped(catalogue),

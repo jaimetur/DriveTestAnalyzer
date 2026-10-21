@@ -10,6 +10,8 @@ import sqlite3
 from datetime import datetime
 from typing import Any, Callable
 
+from src.modules.cdr_auto_selection import one_campaign
+
 FAVOURITES_TABLE = 'network_insights_favourites'
 FAVOURITES_FORMAT = 'drivetest-analyzer-network-insights-favourites'
 MAX_FAVOURITES = 200
@@ -43,10 +45,15 @@ def normalize_selection(raw: Any) -> dict[str, Any]:
 
     controls = raw.get('controls') if isinstance(raw.get('controls'), dict) else {}
     filters = raw.get('filters') if isinstance(raw.get('filters'), dict) else {}
+    filters = {str(key)[:80]: [str(entry)[:200] for entry in item][:2000] for key, item in filters.items()
+               if str(key).startswith('ni-') and isinstance(item, list)}
+    # Network Insights analyses one campaign: a favourite saved with several (or with Latest 2 campaigns…) keeps the
+    # newest one (Latest campaign).
+    if 'ni-campaigns' in filters:
+        filters['ni-campaigns'] = one_campaign(filters['ni-campaigns'])
     return {
         'controls': {str(key)[:80]: value(item) for key, item in controls.items() if str(key).startswith('ni-')},
-        'filters': {str(key)[:80]: [str(entry)[:200] for entry in item][:2000] for key, item in filters.items()
-                    if str(key).startswith('ni-') and isinstance(item, list)},
+        'filters': filters,
         'map_group': str(raw.get('map_group') or '')[:200],
     }
 

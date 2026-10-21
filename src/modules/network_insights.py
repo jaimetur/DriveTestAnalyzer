@@ -30,7 +30,8 @@ from src.modules.column_names import campaign_sort_key, column_identity, compact
 from src.modules.mapping_order import swap_operator_vendor, swap_vendor_operator
 from src.modules.value_maps import ValueMapper, field_kind
 from src.modules.cdr_auto_selection import (
-    CAMPAIGN_PRESET_LABELS, campaign_presets, candidate_cdrs, describe_cdrs, resolve_campaign_filter, resolve_cdrs,
+    CAMPAIGN_PRESET_LABELS, SINGLE_CAMPAIGN_PRESETS, campaign_presets, candidate_cdrs, describe_cdrs, one_campaign,
+    resolve_campaign_filter, resolve_cdrs,
 )
 from src.modules.cdr_environments import ENVIRONMENTS, environment_class, environment_order
 from src.modules.cdr_facets import cascading_options, stored_facets
@@ -1668,8 +1669,12 @@ def install_network_insights_routes(core: Any) -> None:
         return request.model_copy(update={'datasets': chosen})
 
     def with_latest_campaigns(task_repository, request):
-        """The selection with Latest campaign and Latest 2 campaigns replaced by the newest campaigns of its NR Mode now,
-        as the samples show them (2026-Q2); every campaign when the NR Mode has none."""
+        """The selection with its one campaign (``one_campaign``: Latest campaign without one, the newest one of several)
+        and Latest campaign or Previous campaign replaced by that campaign of its NR Mode now, as the samples show it
+        (2026-Q2); every campaign when the NR Mode has none. A selection that names its own CDRs, without campaigns,
+        keeps every campaign of them."""
+        if request.campaigns or not any(request.datasets.get(kind) for kind in NETWORK_INSIGHTS_KINDS):
+            request = request.model_copy(update={'campaigns': one_campaign(request.campaigns)})
         if not campaign_presets(request.campaigns):
             return request
         campaigns = resolve_campaign_filter(task_repository, request.nr_mode, request.campaigns, NETWORK_INSIGHTS_KINDS)
@@ -1867,9 +1872,9 @@ def install_network_insights_routes(core: Any) -> None:
                 # The Analysis Selections saved as favourites in this workspace, and whether this account saves them.
                 'favourites': ni_favourites.list_favourites(task_repository),
                 'can_edit': user.role in {'user-editor', 'admin', 'super-admin'},
-                # Latest campaign and Latest 2 campaigns, first in Campaigns: the newest campaigns of the NR Mode each time.
+                # Latest campaign and Previous campaign, first in Campaigns (one campaign): those of the NR Mode each time.
                 # [value, label] pairs in their order (the page JSON sorts object keys).
-                'campaign_presets': [[value, label] for value, label in CAMPAIGN_PRESET_LABELS.items()],
+                'campaign_presets': [[value, CAMPAIGN_PRESET_LABELS[value]] for value in SINGLE_CAMPAIGN_PRESETS],
                 'datasets': ready_cdrs(task_repository),
                 'inventories': inventory_datasets(task_repository),
                 # Every inventory is a snapshot of the network on its date (see network_inventory).

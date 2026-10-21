@@ -436,6 +436,15 @@ def test_network_insights_page_and_analysis(client, tmp_path) -> None:
     assert empty.status_code == 400
     # Without CDRs of its own, an analysis uses the CDRs of its NR Mode and Campaigns; Campaigns no CDR holds choose none.
     assert client.post('/api/network-insights/analysis', json={'datasets': {}}).status_code == 200
+    # It analyses one campaign: Latest campaign without one, and the newest one of several (or of Latest 2 campaigns);
+    # the page offers only Latest campaign and Previous campaign besides the campaigns.
+    assert config['campaign_presets'] == [['@latest-campaign', 'Latest campaign'], ['@previous-campaign', 'Previous campaign']]
+    assert '<option value="@latest-campaign" selected>Latest campaign</option>' in page.text
+    for campaigns, analysed in (([], ['2026-Q2']), (['2026-Q1', '2026-Q2'], ['2026-Q2']), (['@latest-2-campaigns'], ['2026-Q2']),
+                                (['@all-campaigns'], ['2026-Q2']), (['@previous-campaign'], ['2026-Q1']), (['2026-Q1'], ['2026-Q1'])):
+        single = client.post('/api/network-insights/analysis', json={'datasets': {}, 'technology': 'lte', 'campaigns': campaigns})
+        assert single.status_code == 200, single.text
+        assert single.json()['options']['campaigns'] == analysed, campaigns
     assert client.post('/api/network-insights/analysis', json={'datasets': {}, 'campaigns': ['2030-Q1']}).status_code == 400
 
 

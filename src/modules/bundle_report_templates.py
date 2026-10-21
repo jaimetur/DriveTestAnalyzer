@@ -33,7 +33,8 @@ from typing import Any, Callable
 
 from src.modules import pptx_compose as compose, report_structure
 from src.modules.cdr_auto_selection import (
-    ALL_CAMPAIGNS, CAMPAIGN_PRESET_LABELS, campaign_presets, complete_campaign_cdrs, resolve_campaign_filter, sort_campaigns,
+    ALL_CAMPAIGNS, CAMPAIGN_PRESET_LABELS, campaign_presets, complete_campaign_cdrs, one_campaign, resolve_campaign_filter,
+    sort_campaigns,
 )
 from src.modules.column_names import compact_campaign_value, format_campaign
 from src.modules.nr_mode import NSA_VS_SA, SAME_OPERATOR_NSA, SAME_OPERATOR_NSA_LABEL, nr_mode_label
@@ -210,6 +211,9 @@ def _normalize_options(section: str, raw: Any, legacy_campaigns: Any = None) -> 
     raw = raw if isinstance(raw, dict) else {}
     options = default_options(section)
     options['campaigns'] = _strings(raw['campaigns'] if 'campaigns' in raw else legacy_campaigns)
+    if section == 'network_insights':
+        # Network Insights analyses one campaign (the newest one of a section saved with several).
+        options['campaigns'] = one_campaign(options['campaigns'])
     if section == 'scoring':
         scorings = [key for key, _label in SCORINGS if key in _strings(raw.get('scorings'))]
         environments = _strings(raw.get('environments')) if 'environments' in raw else options['environments']

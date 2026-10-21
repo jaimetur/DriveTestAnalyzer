@@ -447,6 +447,10 @@
 .bundle-report-template-panel .brt-campaigns-field .rj-multi-label { color: #8a5a00; font-weight: 800; }
 .bundle-report-template-panel .brt-campaigns-field .rj-multi > summary { border-color: #e0a526; background: #fff6dc; color: #4a3500; font-weight: 700; box-shadow: inset 4px 0 0 #e0a526; }
 .bundle-report-template-panel .brt-campaigns-field .rj-multi > summary:hover, .bundle-report-template-panel .brt-campaigns-field .rj-multi[open] > summary { background: #ffeec0; }
+/* The Campaign of one campaign (Network Insights) stands out as the Campaigns of the other sections. */
+.bundle-report-template-panel label.brt-campaigns-field { color: #8a5a00; font-weight: 800; }
+.bundle-report-template-panel label.brt-campaigns-field select { border-color: #e0a526; background-color: #fff6dc; color: #4a3500; font-weight: 700; box-shadow: inset 4px 0 0 #e0a526; }
+.bundle-report-template-panel label.brt-campaigns-field select:hover { background-color: #ffeec0; }
 /* Without favourite Bundle Report Templates, the tip of the Job Editor stands out in blue. */
 .report-jobs .rj-favourite-tip { margin: .2rem 0 .6rem; padding: .8rem 1rem; border: 1px solid #8fbbe3; border-left: 6px solid #2f7fc1; border-radius: 12px; background: #eaf3fc; color: #17426b; font-size: .92rem; font-weight: 600; line-height: 1.45; }
 /* The Theme of a Bundle Report Template and of a Reporting Job stands out in violet. */
