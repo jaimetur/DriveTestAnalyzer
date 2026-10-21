@@ -25,6 +25,7 @@
 
 #### 🐛 Bug fixes:
 - **Incoming transfer contents in lower case:** the window that asks to accept an incoming transfer names Ticket Center, Users & Access and the Application database with their titles, as it does the other elements, instead of in lower case.
+- **Progress of the Reporting Jobs of a Bundle Report Template:** while a Reporting Job generates a favourite Bundle Report Template, its run moves its progress and says what the report is doing (for example `Generating Bundle Report Template (1/1): Composing the PowerPoint`), instead of staying at 1% until it finishes.
 
 #### 📚 Documentation:
 

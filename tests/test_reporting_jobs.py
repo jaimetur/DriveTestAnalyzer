@@ -1218,3 +1218,36 @@ def test_bundle_report_files_of_reporting_jobs_are_named_dt_analyzer_bundle_repo
     assert "artifact_path(folder, stamp, BUNDLE_REPORT_FILE_PREFIX, favourite['name'], suffix)" in source
     assert artifact_path(Path('/nonexistent'), '20261021_050000', 'DT Analyzer Bundle Report', 'Complete Report', '.pptx').name \
         == '20261021_050000 - DT Analyzer Bundle Report - Complete Report.pptx'
+
+
+def test_a_long_step_moves_the_progress_of_its_run(client):
+    release = __import__('threading').Event()
+
+    def generate(config, folder, stamp, user):
+        report_tasks.report_step_progress(50, 'Composing the PowerPoint')
+        release.wait(10)
+        path = folder / f'{stamp} - Slow report.pptx'
+        path.write_bytes(b'slow')
+        return [{'module': 'slow', 'title': 'Slow report', 'file_name': path.name, 'size': 4, 'status': 'ready', 'details': []}]
+
+    register_report_artifact_provider('slow', 'Slow module', 'datasets-analysis', generate)
+    try:
+        login(client)
+        task = client.post('/api/reporting/tasks', json={
+            'name': 'Progress check', 'definition': {'modules': {'slow': {'enabled': True}}},
+            'schedule': {'mode': 'manual'}, 'enabled': True,
+        }).json()['task']
+        run_id = client.post(f"/api/reporting/tasks/{task['id']}/run").json()['run_id']
+        # Halfway through its only step, the run is at 45% and says what the step is doing.
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline and (run_row(run_id)['progress'] or 0) < 45:
+            time.sleep(0.1)
+        row = run_row(run_id)
+        assert row['progress'] == 45 and row['message'] == 'Generating Slow module (1/1): Composing the PowerPoint'
+        release.set()
+        assert wait_for_run(client, run_id)['status'] == 'completed'
+        # Outside a run it does nothing.
+        report_tasks.report_step_progress(50, 'Nothing')
+    finally:
+        release.set()
+        report_tasks.ARTIFACT_PROVIDERS.pop('slow', None)

@@ -1102,6 +1102,18 @@ def check_run_stopped(at_once: bool = False) -> None:
         raise RunStopped()
 
 
+def report_step_progress(percent: float, message: str = '') -> None:
+    """Move the progress of the Reporting Job run of this thread within the share of the step it is on (``percent`` of
+    the step, 0 to 100) and say what the step is doing; nothing elsewhere. It writes the run at most once a second."""
+    current = getattr(_RUN_CONTEXT, 'run', None)
+    if current is None or not current.get('step') or time.monotonic() - current.get('reported', 0.0) < 1:
+        return
+    current['reported'] = time.monotonic()
+    start, share, label = current['step']
+    update_run(current['repository'], current['run_id'], message=f'{label}: {message}' if message else label,
+               progress=max(1, min(94, round(start + share * max(0.0, min(100.0, float(percent))) / 100))))
+
+
 # ---------------------------------------------------------------------------
 # Transfer (export/import, workspace transfers, backup/restore)
 # ---------------------------------------------------------------------------
@@ -1808,8 +1820,10 @@ def install_report_task_routes(core: Any) -> None:
                 if index < done:
                     continue
                 check_run_stopped(at_once=True)
-                update_run(task_repository, run_id, message=f'Generating {label} ({index + 1}/{len(steps)})',
-                           progress=max(1, round(index * 90 / max(len(steps), 1))))
+                message = f'Generating {label} ({index + 1}/{len(steps)})'
+                update_run(task_repository, run_id, message=message, progress=max(1, round(index * 90 / max(len(steps), 1))))
+                # A long step moves the progress within its share (report_step_progress).
+                _RUN_CONTEXT.run['step'] = (index * 90 / max(len(steps), 1), 90 / max(len(steps), 1), message)
                 artifacts.extend(step())
                 done = index + 1
                 update_run_control(task_repository, run_id, artifacts=artifacts, done=done)

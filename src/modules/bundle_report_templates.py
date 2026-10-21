@@ -2221,7 +2221,7 @@ def _register_reporting_artifact(core: Any) -> None:
         return {'favourites': [[str(item['id']), item['name']] for item in list_favourites(repository_of(user))]}
 
     def generate(config: dict[str, Any], folder: Path, stamp: str, user) -> list[dict[str, Any]]:
-        from src.modules.report_tasks import artifact_path, check_run_stopped
+        from src.modules.report_tasks import artifact_path, check_run_stopped, report_step_progress
 
         repository = repository_of(user)
         chosen = {str(value) for value in ((config.get('options') or {}).get('filters') or {}).get('favourites') or []}
@@ -2232,16 +2232,21 @@ def _register_reporting_artifact(core: Any) -> None:
         artifacts = []
         # The theme of a Reporting Job generating them replaces the theme of each favourite.
         theme = str(config.get('theme') or '').strip()
-        for favourite in favourites:
+        for position, favourite in enumerate(favourites):
             if theme:
                 favourite = {**favourite, 'definition': normalize_definition({**favourite['definition'], 'theme': theme})}
             work = folder / f".bundle-report-template-{favourite['id']}"
             work.mkdir(parents=True, exist_ok=True)
             formats = [value for value in config.get('formats') or ['powerpoint'] if value in FORMATS] or ['powerpoint']
             try:
-                # (A Reporting Job run stopped by a user stops at the next step of the report.)
+                # (A Reporting Job run stopped by a user stops at the next step of the report, and the run shows how far the
+                # report has got and what it is doing.)
+                def progress(percent: int, message: str, position: int = position) -> None:
+                    check_run_stopped()
+                    report_step_progress((position + percent / 100) * 100 / len(favourites), message)
+
                 result = build_report(core, repository, user, favourite['definition'], 'word' if 'word' in formats else 'powerpoint',
-                                      work, name=favourite['name'], progress=lambda _percent, _message: check_run_stopped(),
+                                      work, name=favourite['name'], progress=progress,
                                       cache_root=module_output_dir(core.settings.output_dir, BUNDLE_REPORTS_FOLDER) / SECTION_CACHE_FOLDER)
                 for export_format in formats:
                     suffix = '.docx' if export_format == 'word' else '.pptx'
