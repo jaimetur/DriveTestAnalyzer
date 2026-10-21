@@ -48,6 +48,16 @@ select[multiple] { min-height: 10rem; border-radius: 18px; padding-right: 0.55re
 .multiselect-search { min-width: 0; padding: 0.58rem 0.72rem; border-radius: 10px; font-size: 0.82rem; }
 .multiselect-action { display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; width: 100%; padding: 0.72rem 0.85rem; border: 0; border-radius: 12px; background: rgba(11, 122, 117, 0.08); color: var(--brand); font-weight: 700; cursor: pointer; }
 .multiselect-option { display: flex; align-items: center; gap: 0.7rem; padding: 0.4rem 0.75rem; border-radius: 10px; color: var(--text); cursor: pointer; }
+/* Include or Exclude: what the ticked values of a list that can leave values out do (data-multiselect-exclude). */
+.multiselect-mode { display: grid; grid-template-columns: 1fr 1fr; gap: .2rem; padding: .2rem; border-radius: 12px; background: #edf1f3; }
+.multiselect-mode button { padding: .38rem .7rem; border-radius: 9px; background: transparent; color: var(--muted); font-size: .8rem; font-weight: 700; box-shadow: none; }
+.multiselect-mode button:hover { color: var(--text); }
+.multiselect-mode button[aria-pressed="true"] { background: #fff; color: var(--brand); box-shadow: 0 1px 4px rgba(18, 32, 43, .14); }
+.multiselect-mode button[data-multiselect-mode="exclude"][aria-pressed="true"] { color: #b42318; }
+/* In Exclude, the ticked values are crossed out in red, and the button of a list that leaves values out reads in red. */
+.multiselect-menu.is-excluding .multiselect-option input { accent-color: #b42318; }
+.multiselect-menu.is-excluding .multiselect-option:has(> input:checked) > span:not(.user-choice-tag) { color: #b42318; text-decoration: line-through; }
+.multiselect-trigger.is-excluding .multiselect-trigger-label { color: #b42318; }
 .multiselect-option[hidden], .multiselect-group-label[hidden], .multiselect-subgroup-label[hidden] { display: none !important; }
 .multiselect-group-label { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; }
 .multiselect-group-action { flex: 0 0 auto; padding: 0.16rem 0.55rem; border: 1px solid rgba(139, 29, 36, 0.24); border-radius: 999px; background: #fff; color: #7d2731; font-size: 0.7rem; font-weight: 700; letter-spacing: 0; text-transform: none; cursor: pointer; }
@@ -2356,14 +2366,15 @@ th { color: var(--muted); font-weight: 600; position: sticky; top: 0; background
   right: auto; gap: .1rem; max-height: min(70vh, 720px); }
 /* A list wider than the room to the right of its button lines up with the button's right edge (see app.js). */
 .app-logs-filters .multiselect-menu.aligns-right { left: auto; right: 0; }
-/* App Events lists are tall, with their values close together; the search and Select All / None stay at the top
-   while the values scroll, and a list opens upwards when the window has more room there (see app.js). */
+/* App Events lists are tall, with their values close together; the search, Include / Exclude and Select All / None
+   stay at the top while the values scroll, and a list opens upwards when the window has more room there (see app.js). */
 .app-logs-filters .multiselect-menu.opens-upwards { top: auto; bottom: calc(100% + 0.45rem); }
-.app-logs-filters .multiselect-menu > .multiselect-search, .app-logs-filters .multiselect-menu > .multiselect-action {
-  position: sticky; z-index: 2; }
+.app-logs-filters .multiselect-menu > .multiselect-search, .app-logs-filters .multiselect-menu > .multiselect-mode,
+.app-logs-filters .multiselect-menu > .multiselect-action { position: sticky; z-index: 2; }
 /* Opaque, with a margin of the menu's colour around them, so the values scroll out of sight beneath. */
 .app-logs-filters .multiselect-menu > .multiselect-search { top: 0; background-color: #fff; box-shadow: 0 0 0 0.65rem #fffdfa; }
-.app-logs-filters .multiselect-menu > .multiselect-action { top: var(--app-log-list-search-height, 2.4rem); margin-bottom: .2rem;
+.app-logs-filters .multiselect-menu > .multiselect-mode { top: var(--app-log-list-search-height, 2.4rem); box-shadow: 0 0 0 0.3rem #fffdfa; }
+.app-logs-filters .multiselect-menu > .multiselect-action { top: calc(var(--app-log-list-search-height, 2.4rem) + var(--app-log-list-mode-height, 0px)); margin-bottom: .2rem;
   background: linear-gradient(rgba(11, 122, 117, 0.08), rgba(11, 122, 117, 0.08)), #fffdfa; box-shadow: 0 0 0 0.3rem #fffdfa; }
 .app-logs-filters .multiselect-option { padding: 0.36rem 0.65rem; line-height: 1.25; }
 .app-logs-clear-button { min-height: 2.7rem; padding: 0.55rem 0.85rem; background: linear-gradient(145deg, #fff0aa, #f3cc4e); border-color: rgba(174, 124, 14, 0.52); color: #684707; box-shadow: 0 8px 18px rgba(190, 140, 17, 0.16); white-space: nowrap; }

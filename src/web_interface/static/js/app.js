@@ -5786,6 +5786,31 @@ function setupCustomMultiSelects() {
       });
     }
 
+    // A list that can leave values out (data-multiselect-exclude) chooses what its ticked values do: Include keeps only
+    // them, Exclude keeps every value but them (also the values that appear later). The mode stays on the select.
+    const takesExclusion = !singleChoice && 'multiselectExclude' in select.dataset;
+    const excluding = () => takesExclusion && select.dataset.multiselectExcluding === 'true';
+    const modeSwitch = takesExclusion ? document.createElement('div') : null;
+    if (modeSwitch) {
+      modeSwitch.className = 'multiselect-mode';
+      modeSwitch.setAttribute('role', 'group');
+      modeSwitch.setAttribute('aria-label', 'What the ticked values do');
+      [['include', 'Include', 'Keep only the ticked values'], ['exclude', 'Exclude', 'Keep every value except the ticked ones']]
+        .forEach(([mode, label, title]) => {
+          const button = Object.assign(document.createElement('button'), {type: 'button', textContent: label, title});
+          button.dataset.multiselectMode = mode;
+          button.addEventListener('click', () => {
+            cancelAutoClose();
+            if (excluding() === (mode === 'exclude')) return;
+            if (mode === 'exclude') select.dataset.multiselectExcluding = 'true';
+            else delete select.dataset.multiselectExcluding;
+            dispatchNativeChange();
+          });
+          modeSwitch.appendChild(button);
+        });
+      menu.appendChild(modeSwitch);
+    }
+
     const actionButton = document.createElement('button');
     actionButton.type = 'button';
     actionButton.className = 'multiselect-action';
@@ -5813,6 +5838,13 @@ function setupCustomMultiSelects() {
 
     const syncTrigger = () => {
       syncGroupActions();
+      if (modeSwitch) {
+        modeSwitch.querySelectorAll('[data-multiselect-mode]').forEach((button) => {
+          button.setAttribute('aria-pressed', String((button.dataset.multiselectMode === 'exclude') === excluding()));
+        });
+        menu.classList.toggle('is-excluding', excluding());
+        trigger.classList.toggle('is-excluding', excluding() && select.selectedOptions.length > 0);
+      }
       // A choice that stands alone (Latest campaign, Main Cities) is shown by its name and is not counted among the values.
       const isStandalone = (option) => option.dataset.campaignPreset === 'true' || option.dataset.standaloneChoice === 'true';
       const standaloneChoice = Array.from(select.options).find((option) => isStandalone(option) && option.selected);
@@ -5829,6 +5861,10 @@ function setupCustomMultiSelects() {
         triggerLabel.textContent = select.dataset.multiselectNoValuesLabel || 'No values';
       } else if (selectedOptions.length === 0) {
         triggerLabel.textContent = select.dataset.multiselectEmptyLabel || 'None Selected';
+      } else if (excluding()) {
+        // The ticked values are left out.
+        triggerLabel.textContent = selectedOptions.length === 1 ? `All except ${selectedOptions[0]}`
+          : selectedOptions.length === totalEnabled ? 'All excluded' : `${selectedOptions.length}/${totalEnabled} excluded`;
       } else if (dynamicAll && selectedOptions.length === totalEnabled) {
         triggerLabel.textContent = 'All values';
       } else if (selectedOptions.length === 1) {
@@ -10819,6 +10855,8 @@ if (appLogsPanel) {
   // Every filter chooses several values (a multi-select list); none chosen shows every event.
   const appLogFilters = {user: userFilter, executor: executorFilter, date: dateFilter, type: typeFilter, action: actionFilter};
   const chosenValues = (control) => (control ? Array.from(control.selectedOptions).map((option) => option.value) : []);
+  // A filter in Exclude mode shows every event except those of its ticked values.
+  const excludingFilter = (control) => control?.dataset.multiselectExcluding === 'true';
   const restoreSelectValues = (control, saved) => {
     if (!control || saved === undefined || saved === null) return;
     // Filters saved before held one value ('all' for every value): it applies as a one-value selection.
@@ -10827,7 +10865,11 @@ if (appLogsPanel) {
   };
   try {
     const savedFilters = JSON.parse(window.localStorage.getItem(appLogFiltersStorageKey) || '{}');
-    Object.entries(appLogFilters).forEach(([name, control]) => restoreSelectValues(control, savedFilters[name]));
+    const excludedFilters = new Set(Array.isArray(savedFilters.excluded) ? savedFilters.excluded : []);
+    Object.entries(appLogFilters).forEach(([name, control]) => {
+      restoreSelectValues(control, savedFilters[name]);
+      if (control && excludedFilters.has(name)) control.dataset.multiselectExcluding = 'true';
+    });
   } catch (_error) {
     // The log view remains fully usable when browser storage is unavailable.
   }
@@ -10835,8 +10877,10 @@ if (appLogsPanel) {
   Object.values(appLogFilters).filter(Boolean).forEach((control) => control.dispatchEvent(new Event('change')));
   const persistAppLogFilters = () => {
     try {
-      window.localStorage.setItem(appLogFiltersStorageKey, JSON.stringify(Object.fromEntries(
-        Object.entries(appLogFilters).map(([name, control]) => [name, chosenValues(control)]))));
+      window.localStorage.setItem(appLogFiltersStorageKey, JSON.stringify({
+        ...Object.fromEntries(Object.entries(appLogFilters).map(([name, control]) => [name, chosenValues(control)])),
+        excluded: Object.keys(appLogFilters).filter((name) => excludingFilter(appLogFilters[name])),
+      }));
     } catch (_error) {
       // Persistence is a convenience and must not block filtering.
     }
@@ -10878,6 +10922,8 @@ if (appLogsPanel) {
     menu.style.maxHeight = `${Math.max(160, Math.min(window.innerHeight * 0.7, upwards ? above : below))}px`;
     const search = menu.querySelector(':scope > .multiselect-search');
     if (search) menu.style.setProperty('--app-log-list-search-height', `${search.offsetHeight + 4}px`);
+    const mode = menu.querySelector(':scope > .multiselect-mode');
+    if (mode) menu.style.setProperty('--app-log-list-mode-height', `${mode.offsetHeight + 4}px`);
     // As wide as its values need (each name and its tag on one line), inside the window.
     menu.classList.remove('aligns-right');
     if (menu.getBoundingClientRect().right > window.innerWidth - 8) menu.classList.add('aligns-right');
@@ -11016,7 +11062,11 @@ if (appLogsPanel) {
     if (!body || (refresh && (refreshInProgress || (!manual && document.hidden)))) return;
     const request = ++appLogsRequest;
     const query = new URLSearchParams({page: String(page)});
-    Object.entries(appLogFilters).forEach(([name, control]) => chosenValues(control).forEach((value) => query.append(name, value)));
+    Object.entries(appLogFilters).forEach(([name, control]) => {
+      const values = chosenValues(control);
+      values.forEach((value) => query.append(name, value));
+      if (values.length && excludingFilter(control)) query.append('exclude', name);
+    });
     if (refresh && !manual && appLogsSignature) query.set('known', appLogsSignature);
     if (refresh) refreshInProgress = true;
     // Background polling must be visually silent: only a manual refresh disables its button.
@@ -11042,6 +11092,7 @@ if (appLogsPanel) {
   clearFilters?.addEventListener('click', () => {
     Object.values(appLogFilters).filter(Boolean).forEach((control) => {
       Array.from(control.options).forEach((option) => { option.selected = false; });
+      delete control.dataset.multiselectExcluding;
       control.dispatchEvent(new Event('multiselect:options-updated'));
     });
     try { window.localStorage.removeItem(appLogFiltersStorageKey); } catch (_error) { /* Ignore unavailable browser storage. */ }

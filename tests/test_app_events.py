@@ -359,6 +359,36 @@ def test_app_events_are_filtered_and_paged_on_the_server(client) -> None:
     assert '>251 entries</span>' in page and 'data-app-log-pager' in page and 'Page 1 of 3' in page
 
 
+def test_app_events_filters_exclude_their_values(client) -> None:
+    login(client)
+    with core.repository.connection() as conn:
+        conn.execute('DELETE FROM audit_logs')
+        conn.executemany('INSERT INTO audit_logs (username, action, details, created_at) VALUES (?, ?, ?, ?)', [
+            ('admin' if index % 2 else 'system', 'login' if index % 3 else 'logout', '{}', f'2026-10-{10 + index % 5}T10:{index % 60:02d}:00.000000+02:00')
+            for index in range(60)] + [('admin', 'change_password', '{}', '2026-10-15T10:00:00.000000+02:00')])
+    # Every App Events filter offers Include / Exclude.
+    page = client.get('/app-logs').text
+    for name in ('date', 'user', 'executor', 'type', 'action'):
+        assert 'data-multiselect-exclude aria-label=' in page.split(f'<select data-app-log-{name}-filter', 1)[1].split('>', 1)[0]
+    # An excluded filter shows every event but those of its values; the others still choose theirs.
+    no_logout = client.get('/api/app-logs?action=logout&exclude=action').json()
+    assert no_logout['filtered'] and no_logout['matching'] == 41
+    assert {log['action'] for log in no_logout['logs']} == {'login', 'change_password'}
+    no_system = client.get('/api/app-logs?user=SYSTEM&exclude=user&action=logout').json()
+    assert no_system['matching'] == 10 and {(log['username'], log['action']) for log in no_system['logs']} == {('admin', 'logout')}
+    # Several values left out, and an unknown filter name changes nothing.
+    assert client.get('/api/app-logs?action=logout&action=login&exclude=action').json()['matching'] == 1
+    assert client.get('/api/app-logs?action=logout&exclude=nonsense').json()['matching'] == 20
+    assert client.get('/api/app-logs?exclude=action').json()['matching'] == 61
+    # The values a filter leaves out stay in its list while an event has them, whatever the other filters (only admin
+    # changed a password); included values follow the other filters as before.
+    system = client.get('/api/app-logs?user=system&action=change_password').json()
+    assert system['matching'] == 0 and system['facets']['action'] == ['login', 'logout']
+    kept = client.get('/api/app-logs?user=system&action=change_password&exclude=action').json()
+    assert kept['matching'] == 30 and kept['facets']['action'] == ['change_password', 'login', 'logout']
+    assert client.get('/api/app-logs?user=system&action=missing&exclude=action').json()['facets']['action'] == ['login', 'logout']
+
+
 def test_executed_by_tells_where_each_event_ran(client) -> None:
     import io
     import zipfile

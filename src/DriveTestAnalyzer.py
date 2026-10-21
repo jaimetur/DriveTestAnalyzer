@@ -13075,21 +13075,31 @@ def cached_app_logs() -> tuple[str, list[dict[str, Any]]]:
     return _APP_EVENTS_CACHE[key]
 
 
-def app_events_view(filters: dict[str, Iterable[str]] | None = None, page: int = 1) -> dict[str, Any]:
+def app_events_view(filters: dict[str, Iterable[str]] | None = None, page: int = 1,
+                    excluded: Iterable[str] = ()) -> dict[str, Any]:
     """One page of the App Events that match the filters (each a list of values; none chosen matches every event),
     with the values each filter offers among the events the other filters leave (its facet); the Date filter offers
-    every date, whatever the other filters."""
+    every date, whatever the other filters. The filters named in ``excluded`` match every event except those of
+    their values."""
     signature, logs = cached_app_logs()
     chosen = {name: {str(value).casefold() if name == 'user' else str(value)
                      for value in (filters or {}).get(name) or [] if str(value).strip() and value != 'all'}
               for name in APP_EVENT_FILTER_FIELDS}
+    leaving_out = set(excluded or ())
 
     def matches(log: dict[str, Any], skipped: str = '') -> bool:
-        return all(not values or APP_EVENT_FILTER_FIELDS[name](log) in values for name, values in chosen.items() if name != skipped)
+        return all(not values or (APP_EVENT_FILTER_FIELDS[name](log) in values) != (name in leaving_out)
+                   for name, values in chosen.items() if name != skipped)
+
+    def facet(name: str, field: Callable[[dict[str, Any]], str]) -> list[str]:
+        values = {field(log) for log in logs if name == 'date' or matches(log, name)}
+        if name in leaving_out:
+            # The values a filter leaves out stay in its list while an event has them, whatever the other filters.
+            values |= chosen[name] & {field(log) for log in logs}
+        return sorted(values - {''}, key=str.casefold, reverse=name == 'date')
 
     matching = [log for log in logs if matches(log)]
-    facets = {name: sorted({field(log) for log in logs if name == 'date' or matches(log, name)} - {''}, key=str.casefold,
-                           reverse=name == 'date') for name, field in APP_EVENT_FILTER_FIELDS.items()}
+    facets = {name: facet(name, field) for name, field in APP_EVENT_FILTER_FIELDS.items()}
     pages = max(1, math.ceil(len(matching) / APP_EVENTS_PAGE_SIZE))
     page = min(max(1, int(page or 1)), pages)
     # The places of the Executed by filter: the server first, then other servers, public pages and the modules in
@@ -16353,12 +16363,14 @@ def app_logs_data(
     request: Request, page: int = 1, known: str = '', user: SessionUser = Depends(current_user),
 ) -> JSONResponse:
     """One page of the App Events matching the filters of the query (user, executor, date, type and action, each
-    repeated for several values). A refresh that sends the signature it knows gets ``unchanged`` while no event changed."""
+    repeated for several values; ``exclude`` names the filters whose values are left out). A refresh that sends the
+    signature it knows gets ``unchanged`` while no event changed."""
     execution_logs = execution_log_entries()
     if known and active_workspace and known == repository.logs_signature():
         return JSONResponse({'unchanged': True, 'signature': known, 'execution_logs': execution_logs})
     filters = {name: request.query_params.getlist(name) for name in APP_EVENT_FILTER_FIELDS}
-    return JSONResponse({**app_events_view(filters, page), 'execution_logs': execution_logs})
+    excluded = [name for name in request.query_params.getlist('exclude') if name in APP_EVENT_FILTER_FIELDS]
+    return JSONResponse({**app_events_view(filters, page, excluded), 'execution_logs': execution_logs})
 
 
 @app.get('/api/app-logs/execution-stream')

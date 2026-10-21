@@ -27,31 +27,31 @@
     {# The users by name, the default ones first (user_choices): the User and Executed by filters show them so. #}
     <script type="application/json" data-app-log-user-choices>{{ user_choices() | tojson }}</script>
     <div class="app-logs-filters" aria-label="App Log filters">
-      {# Every filter chooses several values; none chosen shows every event. #}
+      {# Every filter chooses several values to include, or to exclude (every event but theirs); none chosen shows every event. #}
       <label>Date
-        <select data-app-log-date-filter multiple size="1" data-multiselect-empty-label="All dates" data-multiselect-no-values-label="No dates" aria-label="Date">
+        <select data-app-log-date-filter multiple size="1" data-multiselect-empty-label="All dates" data-multiselect-no-values-label="No dates" data-multiselect-exclude aria-label="Date">
           {% for date in log_dates %}<option value="{{ date }}">{{ date }}</option>{% endfor %}
         </select>
       </label>
       <label>Triggered by
-        <select data-app-log-user-filter multiple size="1" data-multiselect-empty-label="All users" data-multiselect-no-values-label="No users" aria-label="Triggered by">
+        <select data-app-log-user-filter multiple size="1" data-multiselect-empty-label="All users" data-multiselect-no-values-label="No users" data-multiselect-exclude aria-label="Triggered by">
           {% for entry in user_choices(log_users) %}<option value="{{ entry.username | lower }}" data-name="{{ entry.name }}"{% if entry.divider %} data-divider-before="true"{% endif %}{% if entry.is_default %} data-default-user="true" data-tag="default user"{% endif %}{% if entry.is_system %} data-system-user="true" data-tag="application" data-tag-class="user-choice-tag-system" data-option-class="is-system-user"{% endif %}>{{ entry.label }}</option>{% endfor %}
         </select>
       </label>
       <label>Executed by
-        <select data-app-log-executor-filter multiple size="1" data-multiselect-empty-label="All executors" data-multiselect-no-values-label="No executors" aria-label="Executed by">
+        <select data-app-log-executor-filter multiple size="1" data-multiselect-empty-label="All executors" data-multiselect-no-values-label="No executors" data-multiselect-exclude aria-label="Executed by">
           {# Where the events ran: the server, other servers, public pages and the modules, a line between the groups. #}
           {% set place_groups = ('server', 'remote', 'public', 'module') %}
           {% for entry in view.executor_choices %}<option value="{{ entry.value }}" data-name="{{ entry.name }}"{% if entry.divider %} data-divider-before="true"{% endif %} data-tag="{{ entry.tag }}" data-tag-class="user-choice-tag-origin user-choice-tag-origin-{{ place_groups[entry.group] }}">{{ entry.name }} · {{ entry.tag }}</option>{% endfor %}
         </select>
       </label>
       <label>Type
-        <select data-app-log-type-filter multiple size="1" data-multiselect-empty-label="All events" data-multiselect-no-values-label="No events" aria-label="Type">
+        <select data-app-log-type-filter multiple size="1" data-multiselect-empty-label="All events" data-multiselect-no-values-label="No events" data-multiselect-exclude aria-label="Type">
           {% for log_type in log_types %}<option value="{{ log_type }}">{{ log_type }}</option>{% endfor %}
         </select>
       </label>
       <label>Action
-        <select data-app-log-action-filter multiple size="1" data-multiselect-empty-label="All actions" data-multiselect-no-values-label="No actions" aria-label="Action">
+        <select data-app-log-action-filter multiple size="1" data-multiselect-empty-label="All actions" data-multiselect-no-values-label="No actions" data-multiselect-exclude aria-label="Action">
           {% for action in log_actions %}<option value="{{ action }}">{{ action }}</option>{% endfor %}
         </select>
       </label>
