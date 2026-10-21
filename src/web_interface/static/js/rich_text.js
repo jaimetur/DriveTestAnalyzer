@@ -1738,6 +1738,7 @@
       closePopover();
       if (!opening) return;
       popover.replaceChildren(...content);
+      popover.classList.toggle('is-help', button === buttons.help);
       popover.hidden = false;
       button.setAttribute('aria-expanded', 'true');
       popover.style.left = `${Math.max(0, Math.min(button.offsetLeft, toolbar.clientWidth - popover.offsetWidth))}px`;

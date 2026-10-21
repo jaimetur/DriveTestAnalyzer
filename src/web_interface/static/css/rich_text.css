@@ -120,8 +120,8 @@
 .rt-separator { width: 1px; height: 1.2rem; margin: 0 .2rem; background: #d3dde5; }
 .rt-spacer { flex: 1; }
 .rt-popover {
-  position: absolute; top: calc(100% + .3rem); z-index: 40; display: grid; gap: .15rem; min-width: 11rem; max-width: min(36rem, 92vw);
-  padding: .35rem; border: 1px solid #d3dde5; border-radius: 10px; background: #fff; box-shadow: 0 14px 30px rgba(16, 33, 49, .16);
+  position: absolute; top: calc(100% + .3rem); z-index: 40; display: grid; gap: .15rem; box-sizing: border-box; min-width: 11rem;
+  max-width: min(36rem, 100%); padding: .35rem; border: 1px solid #d3dde5; border-radius: 10px; background: #fff; box-shadow: 0 14px 30px rgba(16, 33, 49, .16);
   color: #23394a; font-size: .8rem; font-weight: 500;
 }
 .rt-editor .rt-popover .rt-menu-item {
@@ -146,7 +146,11 @@
 .rt-editor .rt-link-form button { min-height: 0; padding: .38rem .7rem; border: 0; border-radius: 7px; box-shadow: none; font: 700 .78rem/1 inherit; cursor: pointer; }
 .rt-editor .rt-link-form .rt-link-apply { background: #1e61a3; color: #fff; }
 .rt-editor .rt-link-form .rt-link-remove { background: #f3f5f7; color: #b42318; }
-.rt-help { border-collapse: collapse; }
-.rt-help td { padding: .28rem .45rem; border-top: 1px solid #eef2f5; vertical-align: top; }
-.rt-help code { color: #9f1d4b; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .76rem; white-space: nowrap; }
+/* How to write it: as wide as the editor allows, its lines wrapped within it. */
+.rt-popover.is-help { width: min(36rem, 100%); grid-template-columns: minmax(0, 1fr); }
+/* Not as wide as the tables of the pages (app.css). */
+.rt-help { width: 100%; min-width: 0; border-collapse: collapse; table-layout: fixed; }
+.rt-help td { padding: .28rem .45rem; border-top: 1px solid #eef2f5; vertical-align: top; overflow-wrap: anywhere; }
+.rt-help td:first-child { width: 45%; }
+.rt-help code { color: #9f1d4b; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .76rem; }
 .rt-help-note { margin: .1rem .45rem .35rem; color: #607585; }
