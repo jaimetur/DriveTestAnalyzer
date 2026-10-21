@@ -26,7 +26,7 @@ The top of the page sums up every ticket; each count, bar and cell lists its tic
 
 - **Tiles**: the **Open** tickets (New, In Progress and Waiting for Info), each of those three statuses, those **Resolved** or closed in the last 30 days and, signed in, **My open** tickets. A tile pressed again lists the open tickets.
 - **Tickets by type and status**: a row per type and a column per status, with the totals of each row and column; click a count to list those tickets.
-- **Created vs resolved per week**: the tickets opened and those resolved or closed in each of the last 12 weeks (from Monday, the current week last), and the **age of the oldest open ticket**, with a link to it.
+- **Created vs resolved**: the tickets opened and those resolved or closed in each period chosen at its top right, the current one last: **Daily** (the last 30 days), **Weekly** (the last 12 weeks from Monday, by default), **Monthly** (the last 12 months), **Quarterly** (the last 8 quarters) or **Yearly** (the last 5 years). The browser remembers the period chosen. Below the chart, the **age of the oldest open ticket**, with a link to it.
 - **A card per type**: its open tickets out of all of them, a bar with its tickets by status, and its open tickets by priority (P1 to P5).
 - **Open tickets per module**: the open tickets of each module, the module with most first.
 

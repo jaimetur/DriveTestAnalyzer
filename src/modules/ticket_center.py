@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import re
 import uuid
-from datetime import date, timedelta
+from datetime import date
 from pathlib import PurePosixPath
 from typing import Any, Iterable
 
@@ -59,9 +59,14 @@ MANAGER_FIELDS = frozenset({'status', 'ticket_type', 'assigned_to', 'created_by'
 EXPORT_FORMAT = 'drivetest-analyzer-ticket-center'
 EXPORT_VERSION = 1
 ATTACHMENTS_ARCHIVE_DIR = 'ticket-center/attachments'
-# The dashboard: tickets resolved in these last days, and created and resolved per week in these last weeks.
+# The dashboard: tickets resolved in these last days, and created and resolved per period (Weekly by default) in its
+# last periods: the name of its choice, its unit, how many it shows, and every how many of them the axis has a label.
 RECENT_RESOLVED_DAYS = 30
-DASHBOARD_WEEKS = 12
+TREND_PERIODS: dict[str, tuple[str, str, int, int]] = {
+    'day': ('Daily', 'day', 30, 7), 'week': ('Weekly', 'week', 12, 3), 'month': ('Monthly', 'month', 12, 3),
+    'quarter': ('Quarterly', 'quarter', 8, 2), 'year': ('Yearly', 'year', 5, 1),
+}
+DEFAULT_TREND_PERIOD = 'week'
 
 
 _BULLET = re.compile(r'^[-*·•]\s+')
@@ -250,11 +255,79 @@ def recently_resolved(ticket: dict[str, Any], today: date) -> bool:
     return str(ticket.get('status')) in DONE_STATUSES and resolved is not None and (today - resolved).days < RECENT_RESOLVED_DAYS
 
 
+def _period_index(period: str, day: date) -> int:
+    """The number of the period of ``TREND_PERIODS`` a day falls in; consecutive periods have consecutive numbers."""
+    if period == 'day':
+        return day.toordinal()
+    if period == 'week':
+        return (day.toordinal() - 1) // 7  # Weeks from Monday: the first day of the calendar is a Monday.
+    if period == 'month':
+        return day.year * 12 + day.month - 1
+    if period == 'quarter':
+        return day.year * 4 + (day.month - 1) // 3
+    return day.year
+
+
+def _period_start(period: str, index: int) -> date:
+    """The first day of the period numbered ``index`` by ``_period_index``."""
+    if period == 'day':
+        return date.fromordinal(index)
+    if period == 'week':
+        return date.fromordinal(index * 7 + 1)
+    if period == 'month':
+        return date(index // 12, index % 12 + 1, 1)
+    if period == 'quarter':
+        return date(index // 4, index % 4 * 3 + 1, 1)
+    return date(index, 1, 1)
+
+
+def _period_names(period: str, start: date) -> tuple[str, str]:
+    """The label of a period under its bars, and what its tooltip calls it."""
+    day = f"{start.day} {start.strftime('%b')}"
+    if period == 'day':
+        return day, f"{start.strftime('%a')} {day}"
+    if period == 'week':
+        return day, f'Week of {day}'
+    if period == 'month':
+        return f"{start.strftime('%b')} {start.year}", f"{start.strftime('%B')} {start.year}"
+    if period == 'quarter':
+        label = f'Q{(start.month - 1) // 3 + 1} {start.year}'
+        return label, label
+    return str(start.year), str(start.year)
+
+
+def ticket_trend(tickets: list[dict[str, Any]], today: date, period: str = DEFAULT_TREND_PERIOD) -> dict[str, Any]:
+    """The tickets created and those resolved (or closed) in each of the last periods of ``period`` (a key of
+    ``TREND_PERIODS``), the current one last, with the height of their bars and which of them the axis labels."""
+    choice, unit, count, step = TREND_PERIODS[period]
+    last = _period_index(period, today)
+    periods = []
+    for index in range(last - count + 1, last + 1):
+        start = _period_start(period, index)
+        label, name = _period_names(period, start)
+        periods.append({'start': start, 'label': label, 'name': name, 'axis': (last - index) % step == 0, 'created': 0, 'resolved': 0})
+    for ticket in tickets:
+        for key, day in (('created', _day(ticket.get('created_at'))),
+                         ('resolved', _day(ticket.get('resolved_at')) if ticket['status'] in DONE_STATUSES else None)):
+            position = _period_index(period, day) - last + count - 1 if day is not None and day <= today else -1
+            if position >= 0:
+                periods[position][key] += 1
+    peak = max([1, *(max(entry['created'], entry['resolved']) for entry in periods)])
+    for entry in periods:
+        entry['created_height'] = round(100 * entry['created'] / peak, 2)
+        entry['resolved_height'] = round(100 * entry['resolved'] / peak, 2)
+    return {
+        'period': period, 'choice': choice, 'title': f'Created vs resolved per {unit}', 'note': f'Last {count} {unit}s',
+        'periods': periods, 'peak': peak,
+        'created': sum(entry['created'] for entry in periods), 'resolved': sum(entry['resolved'] for entry in periods),
+    }
+
+
 def ticket_dashboard(tickets: list[dict[str, Any]], *, username: str | None = None, today: date | None = None) -> dict[str, Any]:
     """What the dashboard of Ticket Center counts from the tickets of the list (with their ``module_title`` and
     ``module_color``): the open ones by status, those resolved lately and those of ``username``; every ticket by type
     and status; the open ones of each type by priority and of each module; the tickets created and resolved in each of
-    the last weeks (from Monday); and the oldest open ticket."""
+    the last days, weeks (from Monday), months, quarters and years; and the oldest open ticket."""
     today = today or local_today()
     open_tickets = [ticket for ticket in tickets if ticket['status'] in OPEN_STATUSES]
     mine = (username or '').casefold()
@@ -287,27 +360,14 @@ def ticket_dashboard(tickets: list[dict[str, Any]], *, username: str | None = No
                                          'color': ticket.get('module_color') or '#5A6773', 'count': 0})
         entry['count'] += 1
     module_rows = sorted(modules.values(), key=lambda entry: (-entry['count'], str(entry['title']).casefold()))
-    first_week = today - timedelta(days=today.weekday() + 7 * (DASHBOARD_WEEKS - 1))
-    weeks = [{'start': first_week + timedelta(days=7 * index), 'created': 0, 'resolved': 0} for index in range(DASHBOARD_WEEKS)]
-    for ticket in tickets:
-        for key, day in (('created', _day(ticket.get('created_at'))),
-                         ('resolved', _day(ticket.get('resolved_at')) if ticket['status'] in DONE_STATUSES else None)):
-            if day is not None and first_week <= day <= today:
-                weeks[(day - first_week).days // 7][key] += 1
-    peak = max([1, *(max(week['created'], week['resolved']) for week in weeks)])
-    for week in weeks:
-        week['label'] = f"{week['start'].day} {week['start'].strftime('%b')}"
-        week['created_height'] = round(100 * week['created'] / peak, 2)
-        week['resolved_height'] = round(100 * week['resolved'] / peak, 2)
-    oldest = min(open_tickets, key=lambda ticket: (str(ticket['created_at']), int(ticket['id'])), default=None)
+    oldest =min(open_tickets, key=lambda ticket: (str(ticket['created_at']), int(ticket['id'])), default=None)
     oldest_day = _day(oldest['created_at']) if oldest else None
     return {
         'kpis': kpis, 'types': types,
         'statuses': [(status, STATUSES[status]) for status in DASHBOARD_STATUSES],
         'status_totals': {status: sum(entry['counts'][status] for entry in types) for status in DASHBOARD_STATUSES},
         'total': len(tickets), 'modules': module_rows, 'max_module': max([1, *(entry['count'] for entry in module_rows)]),
-        'weeks': weeks, 'week_peak': peak,
-        'weeks_created': sum(week['created'] for week in weeks), 'weeks_resolved': sum(week['resolved'] for week in weeks),
+        'trends': [ticket_trend(tickets, today, period) for period in TREND_PERIODS], 'trend_period': DEFAULT_TREND_PERIOD,
         'oldest_open': {'id': oldest['id'], 'title': oldest['title'], 'ticket_type': oldest.get('ticket_type') or DEFAULT_TICKET_TYPE,
                         'days': (today - oldest_day).days if oldest_day else 0,
                         'created_date': str(oldest['created_at'])[:10]} if oldest else None,

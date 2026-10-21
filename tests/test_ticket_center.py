@@ -309,10 +309,10 @@ def test_the_addresses_of_bugs_report_lead_to_ticket_center(client):
     assert client.get('/bugs-report', follow_redirects=False).headers['location'] == '/tickets'
 
 
-def test_the_dashboard_counts_tickets_by_type_status_priority_module_and_week():
+def test_the_dashboard_counts_tickets_by_type_status_priority_module_and_period():
     from datetime import date
 
-    from src.modules.ticket_center import recently_resolved, ticket_dashboard
+    from src.modules.ticket_center import TREND_PERIODS, recently_resolved, ticket_dashboard
 
     def ticket(number, ticket_type, status, priority='P3', module='', created='2026-10-05', resolved='', created_by='ana'):
         return {'id': number, 'title': f'T{number}', 'ticket_type': ticket_type, 'status': status, 'priority': priority, 'module': module,
@@ -341,11 +341,28 @@ def test_the_dashboard_counts_tickets_by_type_status_priority_module_and_week():
     assert [segment['status'] for segment in rows['bug']['segments']] == ['new', 'in_progress', 'resolved']
     assert board['status_totals'] == {'new': 1, 'in_progress': 1, 'waiting_info': 1, 'resolved': 1, 'closed': 1, 'rejected': 1}
     assert [(module['key'], module['count']) for module in board['modules']] == [('scoring', 2), ('reporting', 1)]
-    # Twelve weeks from Monday, the current one last: what was created and resolved (not rejected) in each.
-    weeks = board['weeks']
+    # A chart per period, Weekly by default: twelve weeks from Monday, the current one last, with what was created and
+    # resolved (not rejected) in each and a label every three weeks.
+    trends = {trend['period']: trend for trend in board['trends']}
+    assert list(trends) == list(TREND_PERIODS) and board['trend_period'] == 'week'
+    weeks = trends['week']['periods']
     assert len(weeks) == 12 and weeks[0]['start'] == date(2026, 8, 3) and weeks[-1]['start'] == today
     assert [(week['created'], week['resolved']) for week in weeks[-3:]] == [(2, 0), (1, 1), (1, 0)]
-    assert (board['weeks_created'], board['weeks_resolved'], board['week_peak']) == (4, 2, 2)
+    assert (trends['week']['created'], trends['week']['resolved'], trends['week']['peak']) == (4, 2, 2)
+    assert [index for index, week in enumerate(weeks) if week['axis']] == [2, 5, 8, 11]
+    assert (weeks[-1]['label'], weeks[-1]['name'], trends['week']['title'], trends['week']['note']) == (
+        '19 Oct', 'Week of 19 Oct', 'Created vs resolved per week', 'Last 12 weeks')
+    # The last 30 days, 12 months, 8 quarters and 5 years, each the current one last.
+    days, months, quarters, years = (trends[period]['periods'] for period in ('day', 'month', 'quarter', 'year'))
+    assert (len(days), days[0]['start'], days[-1]['start'], days[-1]['name']) == (30, date(2026, 9, 20), today, 'Mon 19 Oct')
+    assert (trends['day']['created'], trends['day']['resolved'], trends['day']['peak']) == (4, 1, 2)
+    assert (len(months), months[0]['label'], months[-1]['name']) == (12, 'Nov 2025', 'October 2026')
+    assert [(month['created'], month['resolved']) for month in months[-3:]] == [(1, 0), (0, 1), (4, 1)]
+    assert (len(quarters), quarters[0]['label'], [(quarter['created'], quarter['resolved']) for quarter in quarters[-2:]]) == (
+        8, 'Q1 2025', [(2, 1), (4, 1)])
+    assert [(year['label'], year['created'], year['resolved']) for year in years] == [
+        ('2022', 0, 0), ('2023', 0, 0), ('2024', 0, 0), ('2025', 0, 0), ('2026', 6, 2)]
+    assert (trends['year']['title'], trends['year']['note']) == ('Created vs resolved per year', 'Last 5 years')
     assert board['oldest_open'] == {'id': 1, 'title': 'T1', 'ticket_type': 'bug', 'days': 79, 'created_date': '2026-08-01'}
     assert ticket_dashboard([], today=today)['oldest_open'] is None
 

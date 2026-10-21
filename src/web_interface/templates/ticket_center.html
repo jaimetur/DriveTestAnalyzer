@@ -47,21 +47,34 @@
         </div>
       </section>
 
-      <section class="tickets-card tickets-trend-card" aria-labelledby="tickets-trend-title">
-        <header class="tickets-card-head"><h3 id="tickets-trend-title">Created vs resolved per week</h3><span class="tickets-card-note">Last {{ board.weeks | length }} weeks</span></header>
-        <ul class="tickets-legend">
-          <li><span class="tickets-swatch" data-series="created" aria-hidden="true"></span>Created <strong>{{ board.weeks_created }}</strong></li>
-          <li><span class="tickets-swatch" data-series="resolved" aria-hidden="true"></span>Resolved <strong>{{ board.weeks_resolved }}</strong></li>
-        </ul>
-        <div class="tickets-weeks" role="img" aria-label="{{ board.weeks_created }} tickets created and {{ board.weeks_resolved }} resolved in the last {{ board.weeks | length }} weeks">
-          <span class="tickets-weeks-peak" aria-hidden="true">{{ board.week_peak }}</span>
-          {% for week in board.weeks %}
-          <div class="tickets-week" data-tip="Week of {{ week.label }}: {{ week.created }} created, {{ week.resolved }} resolved">
-            <div class="tickets-week-bars"><span class="tickets-bar" data-series="created" style="height: {{ week.created_height }}%"></span><span class="tickets-bar" data-series="resolved" style="height: {{ week.resolved_height }}%"></span></div>
-            <span class="tickets-week-label">{% if loop.index0 % 3 == 2 or loop.last %}{{ week.label }}{% endif %}</span>
+      {# A chart per period; the choice shows one of them, Weekly by default (ticket_center.js). #}
+      <section class="tickets-card tickets-trend-card" aria-labelledby="tickets-trend-title" data-tickets-trend>
+        <header class="tickets-card-head">
+          <h3 id="tickets-trend-title" data-trend-title>{{ (board.trends | selectattr('period', 'equalto', board.trend_period) | first).title }}</h3>
+          <div class="tickets-period-choice" role="group" aria-label="Period of the chart">
+            {% for trend in board.trends %}<button type="button" class="tickets-period-option" data-trend-choice="{{ trend.period }}" data-title="{{ trend.title }}" aria-pressed="{{ 'true' if trend.period == board.trend_period else 'false' }}">{{ trend.choice }}</button>{% endfor %}
           </div>
-          {% endfor %}
+        </header>
+        {% for trend in board.trends %}
+        <div class="tickets-trend" data-trend-period="{{ trend.period }}"{% if trend.period != board.trend_period %} hidden{% endif %}>
+          <div class="tickets-trend-head">
+            <ul class="tickets-legend">
+              <li><span class="tickets-swatch" data-series="created" aria-hidden="true"></span>Created <strong>{{ trend.created }}</strong></li>
+              <li><span class="tickets-swatch" data-series="resolved" aria-hidden="true"></span>Resolved <strong>{{ trend.resolved }}</strong></li>
+            </ul>
+            <span class="tickets-card-note">{{ trend.note }}</span>
+          </div>
+          <div class="tickets-periods" style="--trend-periods: {{ trend.periods | length }}" role="img" aria-label="{{ trend.created }} tickets created and {{ trend.resolved }} resolved in the {{ trend.note | lower }}">
+            <span class="tickets-periods-peak" aria-hidden="true">{{ trend.peak }}</span>
+            {% for entry in trend.periods %}
+            <div class="tickets-period" data-tip="{{ entry.name }}: {{ entry.created }} created, {{ entry.resolved }} resolved">
+              <div class="tickets-period-bars"><span class="tickets-bar" data-series="created" style="height: {{ entry.created_height }}%"></span><span class="tickets-bar" data-series="resolved" style="height: {{ entry.resolved_height }}%"></span></div>
+              <span class="tickets-period-label">{% if entry.axis %}{{ entry.label }}{% endif %}</span>
+            </div>
+            {% endfor %}
+          </div>
         </div>
+        {% endfor %}
         <div class="tickets-oldest">
           {% if board.oldest_open %}
           <span class="tickets-oldest-age"><strong>{{ board.oldest_open.days }}</strong> day{{ '' if board.oldest_open.days == 1 else 's' }}</span>

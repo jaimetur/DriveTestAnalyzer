@@ -230,7 +230,27 @@
     apply();
   }
 
-  // The dashboard tells what each count, bar and week is, over it (data-tip), with the mouse or the keyboard.
+  // The chart of the tickets created and resolved shows the period chosen, Weekly by default; this browser remembers it.
+  const trend = document.querySelector('[data-tickets-trend]');
+  if (trend) {
+    const choices = [...trend.querySelectorAll('[data-trend-choice]')];
+    const title = trend.querySelector('[data-trend-title]');
+    const trendKey = 'ticket-center:trend-period';
+    const choose = (period) => {
+      const chosen = choices.find((button) => button.dataset.trendChoice === period);
+      if (!chosen) return;
+      choices.forEach((button) => button.setAttribute('aria-pressed', String(button === chosen)));
+      trend.querySelectorAll('[data-trend-period]').forEach((chart) => { chart.hidden = chart.dataset.trendPeriod !== period; });
+      title.textContent = chosen.dataset.title;
+    };
+    try { choose(window.localStorage.getItem(trendKey)); } catch (_) { /* Weekly. */ }
+    choices.forEach((button) => button.addEventListener('click', () => {
+      choose(button.dataset.trendChoice);
+      try { window.localStorage.setItem(trendKey, button.dataset.trendChoice); } catch (_) { /* Not remembered. */ }
+    }));
+  }
+
+  // The dashboard tells what each count, bar and period is, over it (data-tip), with the mouse or the keyboard.
   const tip = document.querySelector('[data-board-tip]');
   if (tip) {
     const board = tip.parentElement;

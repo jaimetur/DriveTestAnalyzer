@@ -817,7 +817,7 @@ async function ticketCenter(pres) {
     shape(slide, pres.shapes.ROUNDED_RECTANGLE, { x: 7.03, y, w: 5.45 * share, h: 0.3, rectRadius: 0.08, fill: { color }, line: { color, width: 0 } });
     text(slide, label, { x: 7.15, y, w: 2.2, h: 0.3, fontSize: 11, bold: true, color: color === 'FAD22D' ? K.ink : K.white, valign: 'middle' });
   }
-  const chips = [['TbLayoutGrid', 'Open, resolved & mine tiles'], ['TbCalendarStats', 'Created vs resolved per week'], ['TbHourglass', 'Age of the oldest open ticket'],
+  const chips = [['TbLayoutGrid', 'Open, resolved & mine tiles'], ['TbCalendarStats', 'Created vs resolved per period'], ['TbHourglass', 'Age of the oldest open ticket'],
     ['TbHistory', 'Timeline of comments & changes'], ['TbPhoto', 'Screenshots in every ticket'], ['TbTag', 'Version it was opened with']];
   for (const [index, [name, label]] of chips.entries()) {
     const x = 0.6 + (index % 3) * 4.09; const y = 5.6 + Math.floor(index / 3) * 0.6;
@@ -827,7 +827,7 @@ async function ticketCenter(pres) {
   }
   slide.addNotes('The Ticket Center collects the bugs, improvements and new features of the users, with their screenshots and '
     + 'the version they were opened with, from New to Resolved, Closed or Rejected, each with its priority from P1 to P5 and a '
-    + 'timeline of comments and changes; its dashboard counts the open tickets, those created and resolved every week and the '
+    + 'timeline of comments and changes; its dashboard counts the open tickets, those created and resolved every day, week, month, quarter or year and the '
     + 'age of the oldest one.');
 }
 
