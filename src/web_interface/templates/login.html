@@ -315,7 +315,9 @@
   dialog.querySelector('[data-access-request-mail]').addEventListener('click', () => {
     if (!email) return;
     const encode = (text) => encodeURIComponent(text.replace(/\r?\n/g, '\r\n'));
-    const cc = (email.cc || []).map(encodeURIComponent).join(',');
+    // Outlook desktop only splits recipients on semicolons: with commas (or an encoded @) it resolves the whole CC to a
+    // wrong address book entry. The addresses are left as they are, as in the To.
+    const cc = (email.cc || []).join(';');
     window.location.href = `mailto:${email.to}?${cc ? `cc=${cc}&` : ''}subject=${encode(email.subject)}&body=${encode(email.body)}`;
   });
 })();

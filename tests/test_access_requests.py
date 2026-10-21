@@ -30,6 +30,8 @@ def test_access_request_creates_an_inactive_editor_with_the_chosen_access(client
     core.repository.save_workspace_group(None, 'Empty', '', [])
     page = client.get('/login').text
     assert 'data-access-request-open' in page and '>Request Access</button>' in page
+    # The email copies the approvers separated by semicolons, the only separator Outlook desktop takes.
+    assert "const cc = (email.cc || []).join(';');" in page
     assert 'name="first_name"' in page and 'name="last_name"' in page
     options = client.get('/api/access-requests/options').json()
     # Only the groups that open a workspace are offered.
