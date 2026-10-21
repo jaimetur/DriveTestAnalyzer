@@ -5278,6 +5278,8 @@ body:has(> .unassigned-values-card:not([hidden], .is-collapsed)) { padding-botto
 .backup-stat { display: grid; gap: .2rem; padding: .75rem .9rem; border: 1px solid rgba(16, 49, 74, .1); border-radius: 14px; background: #fff; }
 .backup-stat dt { color: #7b8994; font-size: .68rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
 .backup-stat dd { margin: 0; color: #10314a; font-size: 1.05rem; font-weight: 800; overflow-wrap: anywhere; }
+.backup-stat dd.backup-stat-detail { color: #5b6b78; font-size: .8rem; font-weight: 700; }
+.backup-stat dd.backup-stat-detail:empty { display: none; }
 .admin-stack .backup-protection .database-backup-form { gap: 1rem; }
 .backup-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
 .admin-stack .backup-protection .backup-card { --backup-accent: #0b7a75; display: flex; flex-direction: column; gap: .85rem; min-width: 0; padding: 1rem 1.05rem; border: 1px solid rgba(16, 49, 74, .12); border-radius: 16px; background: #fff; box-shadow: inset 0 4px 0 var(--backup-accent), 0 10px 26px rgba(16, 33, 49, .06); }

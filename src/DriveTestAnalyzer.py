@@ -6940,12 +6940,28 @@ def recurring_backup_status(config: dict[str, Any]) -> dict[str, str | int]:
     files = sorted(backup_zip_files(root), key=lambda item: item.stat().st_mtime)
     total = sum(item.stat().st_size for item in files)
     last = backup_started_at_label(files[-1]) if files else 'No successful backup yet'
+    # How many backups, and how much space, are full and light; the level of the last backup and of the next one.
+    counts = {'full': 0, 'light': 0}
+    sizes = {'full': 0, 'light': 0}
+    for item in files:
+        level = backup_file_info(item)['level']
+        counts[level] += 1
+        sizes[level] += _file_size(item)
+    next_run = recurring_backup_next_run(config)
+    try:
+        next_level = scheduled_backup_level(config, datetime.strptime(next_run, '%Y-%m-%d %H:%M')) if config.get('enabled') else ''
+    except ValueError:
+        next_level = ''
     # The size of the latest scheduled full and light backups, for the panel to estimate the space the backups kept take.
     latest_sizes = {'full': 0, 'light': 0}
     for item, info in _scheduled_backups(root):
         if not info['incomplete'] and not latest_sizes[info['level']]:
             latest_sizes[info['level']] = _file_size(item)
-    return {'count': len(files), 'size': format_workspace_size(total), 'last_success': last, 'next_run': recurring_backup_next_run(config),
+    return {'count': len(files), 'size': format_workspace_size(total), 'last_success': last, 'next_run': next_run,
+            'count_detail': f"{counts['full']} full · {counts['light']} light",
+            'size_detail': f"{format_workspace_size(sizes['full'])} full · {format_workspace_size(sizes['light'])} light",
+            'last_level': f"{backup_file_info(files[-1])['level'].capitalize()} backup" if files else '',
+            'next_level': f'{next_level.capitalize()} backup' if next_level else '',
             'problem': recurring_backup_problem(), 'latest_sizes': latest_sizes}
 
 

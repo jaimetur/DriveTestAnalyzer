@@ -253,3 +253,22 @@ def test_earlier_backups_move_into_the_full_folder(client):
     [event] = [row for row in core.repository.list_logs(limit=20) if row['action'] == 'move_earlier_backups_to_full_folder']
     assert json.loads(event['details'])['moved'] == moved
     assert core.move_earlier_backups_to_full_folder() == []
+
+
+def test_the_tiles_tell_full_from_light_backups(client):
+    login_super(client)
+    root = core.application_data_dir / 'test-tiles'
+    full = _backup(root / 'full', '20261018-050000')
+    light = _backup(root / 'light', '20261020-050000', level='light')
+    light.write_bytes(light.read_bytes() + b'x' * 2048)
+    config = core.recurring_backup_settings() | {
+        'enabled': True, 'backup_path': str(root), 'recurrence': 'daily', 'light_backups': True, 'full_backup_day': 6,
+        'components': ['app_database', 'workspace_database'],
+    }
+    status = core.recurring_backup_status(config)
+    assert status['count'] == 2 and status['count_detail'] == '1 full · 1 light'
+    assert status['size_detail'] == f"{core.format_workspace_size(full.stat().st_size)} full · {core.format_workspace_size(light.stat().st_size)} light"
+    # The newest by time is the light one; the next backup is full only on Sunday or once the latest full is a week old.
+    assert status['last_level'] == 'Light backup'
+    assert status['next_level'] in {'Full backup', 'Light backup'}
+    assert core.recurring_backup_status(config | {'enabled': False})['next_level'] == ''

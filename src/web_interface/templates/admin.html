@@ -834,10 +834,10 @@
           </div>
         </header>
         <dl class="backup-stats" data-backup-status>
-          <div class="backup-stat"><dt>Stored backups</dt><dd data-backup-status-count>{{ recurring_backup_status.count }}</dd></div>
-          <div class="backup-stat"><dt>Total size</dt><dd data-backup-status-size>{{ recurring_backup_status.size }}</dd></div>
-          <div class="backup-stat"><dt>Last successful backup</dt><dd data-backup-status-last>{{ recurring_backup_status.last_success }}</dd></div>
-          <div class="backup-stat"><dt>Next backup</dt><dd data-backup-status-next>{{ recurring_backup_status.next_run }}</dd></div>
+          <div class="backup-stat"><dt>Stored backups</dt><dd data-backup-status-count>{{ recurring_backup_status.count }}</dd><dd class="backup-stat-detail" data-backup-status-count-detail>{{ recurring_backup_status.count_detail }}</dd></div>
+          <div class="backup-stat"><dt>Total size</dt><dd data-backup-status-size>{{ recurring_backup_status.size }}</dd><dd class="backup-stat-detail" data-backup-status-size-detail>{{ recurring_backup_status.size_detail }}</dd></div>
+          <div class="backup-stat"><dt>Last successful backup</dt><dd data-backup-status-last>{{ recurring_backup_status.last_success }}</dd><dd class="backup-stat-detail" data-backup-status-last-level>{{ recurring_backup_status.last_level }}</dd></div>
+          <div class="backup-stat"><dt>Next backup</dt><dd data-backup-status-next>{{ recurring_backup_status.next_run }}</dd><dd class="backup-stat-detail" data-backup-status-next-level>{{ recurring_backup_status.next_level }}</dd></div>
         </dl>
         <div class="alert backup-problem" data-backup-status-problem role="status" {% if not recurring_backup_status.problem %}hidden{% endif %}>{{ recurring_backup_status.problem }}</div>
         {% if backup_notice %}<div class="alert backup-notice">{{ backup_notice }}</div>{% endif %}
@@ -1391,6 +1391,11 @@
       if (statusSize) statusSize.textContent = String(payload.size ?? '0 B');
       if (statusLast) statusLast.textContent = String(payload.last_success ?? 'No successful backup yet');
       if (statusNext) statusNext.textContent = String(payload.next_run ?? 'Disabled');
+      // How many backups, and how much space, are full and light, and the level of the last and of the next backup.
+      for (const [key, selector] of [['count_detail', 'count-detail'], ['size_detail', 'size-detail'], ['last_level', 'last-level'], ['next_level', 'next-level']]) {
+        const detail = document.querySelector(`[data-backup-status-${selector}]`);
+        if (detail) detail.textContent = String(payload[key] || '');
+      }
       if (statusProblem) { statusProblem.textContent = String(payload.problem || ''); statusProblem.hidden = !payload.problem; }
       if (retentionMaximum && payload.latest_sizes) {
         const changed = String(payload.latest_sizes.full || 0) !== retentionMaximum.dataset.fullBytes || String(payload.latest_sizes.light || 0) !== retentionMaximum.dataset.lightBytes;
