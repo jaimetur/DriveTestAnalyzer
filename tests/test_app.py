@@ -9546,6 +9546,11 @@ def test_admin_stores_multiple_named_report_catalogues_and_can_activate_one(clie
     assert 'data-catalogue-editor-options' in embedded_editor.text
     assert 'data-catalogue-editor-kpi-aggregation' in embedded_editor.text
     assert '<option value="COUNTD">COUNTD</option>' in embedded_editor.text
+    # Cell Assistance applies what is chosen and closes from its bottom; only the Filter Builder waits for Apply filter.
+    assert 'Apply selected values' not in embedded_editor.text
+    builder = embedded_editor.text[embedded_editor.text.index('data-catalogue-filter-builder'):]
+    assert builder.index('data-catalogue-editor-apply>Apply filter</button>') < builder.index('</section>')
+    assert 'data-catalogue-editor-helper-done>Close</button>' in embedded_editor.text
     assert '<th class="catalogue-slide-actions-heading">Slide Actions</th>' in embedded_editor.text
     assert '<th class="catalogue-chart-actions-heading">Chart Actions</th>' in embedded_editor.text
     assert 'data-catalogue-slide-actions' in embedded_editor.text
@@ -9562,6 +9567,11 @@ def test_admin_stores_multiple_named_report_catalogues_and_can_activate_one(clie
 
     app_script = (app_module.PROJECT_ROOT / 'src/web_interface/static/js/app.js').read_text(encoding='utf-8')
     assert "fetch(editor.dataset.calculatedDimensionsUrl, {credentials: 'same-origin', cache: 'no-store'})" in app_script
+    assert "options.addEventListener('change', applyAssistanceValues);" in app_script
+    assert "kpiAggregation?.addEventListener('change', applyAssistanceValues);" in app_script
+    assert "apply.addEventListener('click', syncFilterCell);" in app_script
+    # The KPI operation list opens outside Cell Assistance without closing it.
+    assert "const assistanceFocused = inAssistance(focused);" in app_script
     assert 'window.top.location.origin === window.location.origin' in app_script
     assert 'managerDocument.body.append(overlay)' in app_script
     assert "expressionLabel.textContent = 'IF expression'" in app_script

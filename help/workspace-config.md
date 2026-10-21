@@ -81,7 +81,7 @@ The row Export action downloads that individual CSV; portable ZIP export is avai
 ### Validation
 
 - Manual cell edits are validated after a short pause and when leaving the cell. Save revalidates the complete grid and stops if a row or filter is malformed.
-- Filter errors identify `Slide: n - Chart: n`.
+- Every row error names the row as the editor shows it: `Slide: n - Chart: n` (the chart is the place of the row among the rows of its slide), or `Slide: n` for a Title, Transition or End Slide, followed by what to correct.
 - Fixing the invalid cell clears the error message.
 - Filter conditions render on separate lines with visual bullets; bullets are not stored in the cell.
 - CSV filter cells retain one condition per line.
@@ -90,7 +90,8 @@ The row Export action downloads that individual CSV; portable ZIP export is avai
 
 - Searchable single-select assistance for layouts, chart types, fields and positions.
 - Ordered multi-select assistance for Rows, Columns and Legend.
-- Shared Filter Builder with parsed-expression display.
+- Cell Assistance writes a value to the cell as soon as it is chosen (and the KPI operation as soon as it is picked); the values of Rows, Columns and Legend follow what is ticked. **Close**, at its bottom, closes it.
+- Shared Filter Builder with parsed-expression display. Its conditions reach the Filters cell when **Apply filter** is pressed, once the filter is complete.
 - Chart Data Preview opens the full filtered dataset directly.
 - Chart Preview reuses the shared Interactive Preview.
 - **Update Template** applies preview values to the in-memory row; it does not save to disk.
@@ -137,6 +138,8 @@ Use one row without `Source Dataset` or KPI fields. A structural row cannot shar
 
 - `Title Slide` normally uses `Title Page` and fills title/subtitle placeholders.
 - `Transition Slide` normally uses `Title Only` and creates a section divider.
+- `End Slide` uses `Black logo end slide` and adds the closing slide of the template as it is, without title, subtitle or counter; its `Slide Tittle` is optional and only names the slide in the PPT Dashboards viewer.
+- A row without `Source Dataset` or `Chart type` takes the structural type of its layout: `Title Page` is a Title Slide, `Transition` and `Title Only` a Transition Slide and `Black logo end slide` an End Slide. A row on `Black logo end slide` is an End Slide also when it still says `Title Slide` or `Transition Slide` (for example a transition moved to the closing layout). Saving the template writes that `Chart type` in the row.
 - Title and Transition subtitles use the template's yellow accent (theme accent 4) in exported presentations, whatever layout hosts them.
 - Every Title or Transition slide after the cover is a transition with its counter (01, 02…) above its title, with the sizes and places of every transition of the reports.
 - In PPT Dashboards, a Title Slide that opens the Dashboard also lists the Scope, Regions and Cities below its subtitle and decorative line, in the viewer and in the exported PPT.
@@ -154,6 +157,12 @@ Slide: 6
 Slide Tittle: Voice service analysis
 Layout: Title Only
 Chart type: Transition Slide
+```
+
+```text
+Slide: 18
+Layout: Black logo end slide
+Chart type: End Slide
 ```
 
 ### Supported chart types

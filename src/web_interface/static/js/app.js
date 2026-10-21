@@ -2586,6 +2586,7 @@ document.querySelectorAll('[data-catalogue-editor]').forEach((editor) => {
   const apply = editor.querySelector('[data-catalogue-editor-apply]');
   const helper = editor.querySelector('.catalogue-editor-helper');
   const helperClose = editor.querySelector('[data-catalogue-editor-helper-close]');
+  const helperDone = editor.querySelector('[data-catalogue-editor-helper-done]');
   const filterBuilder = editor.querySelector('[data-catalogue-filter-builder]');
   const filterConditions = editor.querySelector('[data-catalogue-filter-conditions]');
   const addFilter = editor.querySelector('[data-catalogue-filter-add]');
@@ -3054,10 +3055,9 @@ document.querySelectorAll('[data-catalogue-editor]').forEach((editor) => {
       const error = value ? filterValidationError(value) : '';
       if (!error) continue;
       const slide = rowValue(row, 'Slide') || '?';
+      // As the server names it: the place of the row among the rows of its slide.
       const chart = rows.filter((candidate) => (
-        rowValue(candidate, 'Slide') === slide
-        && rowValue(candidate, 'Source Dataset')
-        && rows.indexOf(candidate) <= rows.indexOf(row)
+        rowValue(candidate, 'Slide') === slide && rows.indexOf(candidate) <= rows.indexOf(row)
       )).length || 1;
       invalid = `Slide: ${slide} - Chart: ${chart} -> ${error}`;
       break;
@@ -3189,10 +3189,9 @@ document.querySelectorAll('[data-catalogue-editor]').forEach((editor) => {
     updateValues();
     const remove = document.createElement('button');
     remove.type = 'button'; remove.className = 'catalogue-filter-remove'; remove.textContent = '−'; remove.title = 'Remove condition'; remove.setAttribute('aria-label', 'Remove filter condition');
-    field.addEventListener('change', () => { updateValues(); syncFilterCell(); });
-    operator.addEventListener('change', syncFilterCell);
-    value.addEventListener('input', syncFilterCell);
-    remove.addEventListener('click', () => { row.remove(); syncFilterCell(); });
+    // The conditions reach the cell with Apply filter, once the filter is complete.
+    field.addEventListener('change', updateValues);
+    remove.addEventListener('click', () => row.remove());
     row.append(field, operator, value, remove, list);
     filterConditions.append(row);
     setupSearchableSingleSelects();
@@ -3363,10 +3362,8 @@ document.querySelectorAll('[data-catalogue-editor]').forEach((editor) => {
       options.options[0].disabled = true;
     }
     optionsLabel.hidden = ['Label Format', 'Legend Format'].includes(field);
-    apply.hidden = values.length === 0;
     if (field === 'Filters') {
       optionsLabel.hidden = true;
-      apply.hidden = true;
       populateFilterBuilder(cell);
     } else if (filterBuilder) {
       filterBuilder.hidden = true;
@@ -4172,8 +4169,11 @@ document.querySelectorAll('[data-catalogue-editor]').forEach((editor) => {
     if (cell?.dataset.catalogueField === 'Filters') refreshFilterValidationAlert();
     if (cell) scheduleCatalogueValidation();
   });
+  // The list of a select of Cell Assistance (KPI operation) opens outside it, as the lists of every select do.
+  const inAssistance = (node) => helper.contains(node)
+    || Boolean(node?.closest?.('.native-select-menu') && helper.querySelector('select[aria-expanded="true"]'));
   document.addEventListener('pointerdown', (event) => {
-    if (!selectedCellFromEvent(event) && !helper.contains(event.target)) hideCellAssistance();
+    if (!selectedCellFromEvent(event) && !inAssistance(event.target)) hideCellAssistance();
   });
   document.addEventListener('keydown', (event) => {
     if (event.key !== 'Escape' || helper.hidden) return;
@@ -4183,6 +4183,7 @@ document.querySelectorAll('[data-catalogue-editor]').forEach((editor) => {
   });
   table.closest('.table-wrap')?.addEventListener('scroll', hideCellAssistance, {passive: true});
   helperClose?.addEventListener('click', hideCellAssistance);
+  helperDone?.addEventListener('click', hideCellAssistance);
   helper.addEventListener('focusin', (event) => window.requestAnimationFrame(() => placeAssistanceMenu(event.target)));
   helper.addEventListener('click', (event) => window.requestAnimationFrame(() => placeAssistanceMenu(event.target)));
   table.addEventListener('focusout', (event) => {
@@ -4196,7 +4197,7 @@ document.querySelectorAll('[data-catalogue-editor]').forEach((editor) => {
     }
     window.requestAnimationFrame(() => {
       const focused = document.activeElement;
-      const assistanceFocused = helper.contains(focused);
+      const assistanceFocused = inAssistance(focused);
       if (editedCell?.dataset.catalogueField === 'Source Dataset' && !assistanceFocused) normaliseCatalogueRows();
       if (!focused?.closest?.('[data-catalogue-field]') && !assistanceFocused) hideCellAssistance();
     });
@@ -4213,11 +4214,15 @@ document.querySelectorAll('[data-catalogue-editor]').forEach((editor) => {
     word.toLocaleLowerCase() === 'cdf'
       ? 'CDF' : `${word.charAt(0).toLocaleUpperCase()}${word.slice(1).toLocaleLowerCase()}`
   ));
-  apply.addEventListener('click', () => {
+  // A value chosen in Cell Assistance (and the KPI operation) is written to the cell at once; the several values of
+  // Rows Split, Columns Split and Legend follow what is ticked. Only Filters waits for Apply filter.
+  const applyAssistanceValues = () => {
     if (!activeCell) return;
     const field = activeCell.dataset.catalogueField || '';
+    if (field === 'Filters') return;
     const selected = Array.from(options.selectedOptions).map((option) => option.value);
-    if (!selected.length || (!['Legend Position', 'Legend Format', 'Label Position', 'Label Format', 'Exclude Null/Empty', 'Exclude Zero', 'Dynamic Rows Field', 'Dynamic Columns Field'].includes(field) && !selected.some(Boolean))) return;
+    const multiple = fieldColumns.has(field);
+    if (!multiple && (!selected.length || (!['Legend Position', 'Legend Format', 'Label Position', 'Label Format', 'Exclude Null/Empty', 'Exclude Zero', 'Dynamic Rows Field', 'Dynamic Columns Field'].includes(field) && !selected.some(Boolean)))) return;
     const current = activeCell.textContent.trim();
     if (field === 'KPI') {
       const operation = kpiAggregation?.value || '';
@@ -4226,28 +4231,25 @@ document.querySelectorAll('[data-catalogue-editor]').forEach((editor) => {
       activeCell.textContent = selected[0];
     } else if (field === 'Chart type') {
       activeCell.textContent = displayChartType(selected[0]);
-    } else if (field === 'Filters') {
-      const clauses = selected.map((value) => `${value} = `).join('; ');
-      renderFilterCell(activeCell, current ? `${current}; ${clauses}` : clauses);
     } else if (field === 'Legend') {
-      activeCell.textContent = selected.join(', ');
+      activeCell.textContent = selected.filter(Boolean).join(', ');
     } else {
       const currentOrder = current.split(/(?:\s*×\s*|\s+[xX]\s+)/).map((value) => value.trim()).filter(Boolean);
       const retained = currentOrder.filter((value) => selected.includes(value));
-      const additions = selected.filter((value) => !currentOrder.includes(value));
+      const additions = selected.filter((value) => value && !currentOrder.includes(value));
       activeCell.textContent = [...retained, ...additions].join(' × ');
     }
     refreshCellEditedState(activeCell);
     if (field === 'Chart type') syncConditionalVisualCells(activeCell.closest('tr'));
     if (activeCell.classList.contains('is-edited')) {
       const value = rowValue(activeCell.closest('tr'), field);
-      if (field === 'Filters') renderFilterCell(activeCell, value, activeCell.dataset.originalValue || '');
-      else { activeCell.replaceChildren(); renderAddedText(activeCell, value, activeCell.dataset.originalValue || ''); }
+      activeCell.replaceChildren(); renderAddedText(activeCell, value, activeCell.dataset.originalValue || '');
     }
-    if (field === 'Filters') refreshFilterValidationAlert();
     scheduleCatalogueValidation();
-    activeCell.focus();
-  });
+  };
+  options.addEventListener('change', applyAssistanceValues);
+  kpiAggregation?.addEventListener('change', applyAssistanceValues);
+  apply.addEventListener('click', syncFilterCell);
   // Find & Replace searches every editable template cell. Replacements are
   // ordinary unsaved edits: they are highlighted and saved with the template.
   const findBar = editor.querySelector('[data-catalogue-find-bar]');
@@ -5774,6 +5776,11 @@ function setupCustomMultiSelects() {
           select.add(option, select.options[0] || null);
         }
         option.selected = true;
+        // A pattern chooses on its own: every value ticked (All) gives way to it, so -Three is every value but Three.
+        const valueOptions = Array.from(select.options).filter((item) => !item.disabled && !valuePatterns.isPattern(item.value)
+          && item.dataset.campaignPreset !== 'true' && item.dataset.standaloneChoice !== 'true');
+        if (valueOptions.length && valueOptions.every((item) => item.selected)) valueOptions.forEach((item) => { item.selected = false; });
+        delete select.dataset.multiselectDynamicAllSelected;
         search.value = '';
         select.dispatchEvent(new Event('change', {bubbles: true}));
         select.dispatchEvent(new Event('multiselect:options-updated'));
@@ -5854,9 +5861,22 @@ function setupCustomMultiSelects() {
         trigger.setAttribute('aria-expanded', String(!menu.hidden));
         return;
       }
-      const enabledOptions = Array.from(select.options).filter((option) => !isStandalone(option)
+      const listedOptions = Array.from(select.options).filter((option) => !isStandalone(option)
         && (!option.disabled || (select.dataset.multiselectCountLocked === 'true' && option.selected)));
+      // The patterns (VF*, -Three) are not values: they say what they take, and an exclusion alone is "All except".
+      const isPatternOption = (option) => Boolean(patternButton) && valuePatterns.isPattern(option.value);
+      const enabledOptions = listedOptions.filter((option) => !isPatternOption(option));
       const selectedOptions = enabledOptions.filter((option) => option.selected).map((option) => option.textContent?.trim()).filter(Boolean);
+      const chosenPatterns = listedOptions.filter((option) => isPatternOption(option) && option.selected).map((option) => option.value.trim());
+      if (chosenPatterns.length && !excluding()) {
+        const leftOut = chosenPatterns.filter(valuePatterns.isExclusion);
+        const shown = [...chosenPatterns, ...selectedOptions];
+        triggerLabel.textContent = leftOut.length === shown.length
+          ? `All except ${leftOut.map((value) => value.replace(VALUE_EXCLUSION, '').trim()).join(', ')}`
+          : shown.length <= 3 ? shown.join(', ') : `${shown.slice(0, 2).join(', ')} +${shown.length - 2}`;
+        trigger.setAttribute('aria-expanded', String(!menu.hidden));
+        return;
+      }
       const totalEnabled = enabledOptions.length;
       if (totalEnabled === 0) {
         triggerLabel.textContent = select.dataset.multiselectNoValuesLabel || 'No values';

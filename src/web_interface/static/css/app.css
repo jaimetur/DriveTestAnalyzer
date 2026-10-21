@@ -1328,6 +1328,9 @@ body [data-section-bar].is-compact > a.section-bar-top { padding: .45rem .55rem;
 .catalogue-editor-helper[data-catalogue-assistance-field="Chart type"] { height: auto; max-height: min(580px, calc(100vh - 24px)); overflow: visible; align-content: start; }
 .catalogue-editor-helper[data-catalogue-assistance-field="Chart type"] .searchable-select-menu { max-height: min(440px, calc(100vh - 180px)); }
 .catalogue-editor-helper [data-catalogue-editor-apply] { width: auto; min-height: 0; padding: 0.55rem 0.9rem; justify-self: start; font-size: 0.84rem; line-height: 1.2; }
+/* Close at the bottom of Cell Assistance, grey as the Close of the editor. */
+.catalogue-editor-helper .catalogue-editor-helper-done { width: auto; min-height: 0; margin: 0; padding: 0.55rem 1.1rem; justify-self: end; border-color: #626b75; background: linear-gradient(135deg, #8b949e, #6e7781); color: #fff; font-size: 0.84rem; line-height: 1.2; box-shadow: none; }
+.catalogue-editor-helper .catalogue-editor-helper-done:hover:not(:disabled) { border-color: #4f5862; background: linear-gradient(135deg, #747d87, #57606a); color: #fff; box-shadow: none; }
 .catalogue-editor-helper[hidden] { display: none !important; }
 .catalogue-editor-helper.catalogue-editor-menu-open { overflow: visible; }
 .catalogue-editor-helper.catalogue-editor-menu-open .searchable-select-menu, .catalogue-editor-helper.catalogue-editor-menu-open .multiselect-menu { z-index: 3100; }

@@ -69,7 +69,7 @@ The Scope, date settings, other filters, custom fields and comments are preserve
 
 The browser remembers the last open Dashboard and page position during the authenticated session. The main filter panel starts collapsed for a new session; its open/closed state is remembered while that session remains active.
 
-Leaving with unsaved Scope, date or filter changes requires **Save Filters**, **Discard** or **Cancel**; after **Save Filters** nothing is left unsaved or unapplied, so leaving asks nothing. Management-only name, NR Mode and Template inputs do not trigger false filter warnings.
+Leaving with unsaved Scope, date or filter changes requires **Save Filters**, **Discard** or **Cancel**; after **Save Filters** nothing is left unsaved or unapplied, also while the saved filters are still being applied (the Dashboard is prepared), so closing the filters, opening the viewer or leaving asks nothing. Management-only name, NR Mode and Template inputs do not trigger false filter warnings.
 
 Logging out clears temporary open-Dashboard, preview and scroll state. Saved definitions remain in the workspace.
 
@@ -180,6 +180,8 @@ Auto-calculated Fields apply to their declared CDR types. They are materialized 
 | **Clear Filters** | Removes every restriction but the Campaign, which returns to its default (Latest 2 campaigns) | No |
 | **Reload Saved Filters** | Restores the saved Scope, dates and filters | No |
 
+**Apply Filters** and **Save Filters** are enabled as soon as a filter changes, also while the Dashboard is being prepared (when it opens, after its NR Mode changes or while other filters are applied): the new preparation replaces the one running.
+
 > [!NOTE]
 > **Apply is temporary; Save changes the Dashboard defaults.** You can preview or export an applied selection without saving it. Returning to an equivalent prepared selection reuses its cached charts.
 
@@ -275,7 +277,7 @@ Campaign labels are compact, such as **2026-Q2**, **2026-Q2-NSA** or **2026-Q2-S
 
 Changing Scope renders the charts again with the Dashboard filters (a Campaign that still has the default of the former Scope takes the default of the new one). Multivendor is unavailable when the workspace has fewer than two Vendors.
 
-Title and Transition slides preserve the template text and look as in the exported PPT: the Vodafone-Three red with the Ericsson mark, the Vodafone-Three and Ericsson logos at the top right, light titles with the room of two lines and the yellow subtitle below them. A title cover shows Campaigns above its decorative divider, with Scope, Regions and Cities beneath it, in white with bold labels; each Title or Transition slide after it shows its counter (01, 02…), as in the PPT. Chart rows preserve template order and placeholder geometry.
+Title and Transition slides preserve the template text and look as in the exported PPT: the Vodafone-Three red with the Ericsson mark, the Vodafone-Three and Ericsson logos at the top right, light titles with the room of two lines and the yellow subtitle below them. A title cover shows Campaigns above its decorative divider, with Scope, Regions and Cities beneath it, in white with bold labels; each Title or Transition slide after it shows its counter (01, 02…), as in the PPT. An End Slide shows the Ericsson mark and name centred on white, as the closing slide of the PPT, without counter. Chart rows preserve template order and placeholder geometry.
 
 In grids with three or more rows or four or more columns, each chart's title appears as text above the chart, in the viewer and in the PPT, so it stays readable in small cells. Dynamic grids show the row or column value (for example the Operator) in bold before the title, such as **EE** · LTE RSRP histogram.
 

@@ -20,9 +20,9 @@
   const eventTimeFilteringDisabled = Boolean(config.ignore_event_time_filtering);
   const eventTimeFilteringDisabledReason = 'Date filters are disabled because Ignore event time filtering is enabled in Config.';
   const filterAliases = config.filter_aliases || {};
-  let dashboards = {}, activeId = '', definition = null, savedDefinition = '', appliedFilterState = '', appliedSelectionState = '', appliedDashboardDefinition = null, prepared = null, slideIndex = 0;
+  let dashboards = {}, activeId = '', definition = null, savedDefinition = '', appliedFilterState = '', appliedSelectionState = '', appliedDashboardDefinition = null, applyingDashboardDefinition = null, prepared = null, slideIndex = 0;
   let dashboardFiltersOpen = false;
-  let sequence = 0, cacheLookupSequence = 0, timer, controller, preparing = null, preparingFilterState = '', preparationProgressTimer = 0, dirty = false, filterActionBusy = false, dataToken = '', dataEndpoint = '';
+  let sequence = 0, cacheLookupSequence = 0, timer, controller, preparing = null, preparingFilterState = '', preparationProgressTimer = 0, dirty = false, filterActionBusy = false, preparationRunning = false, dataToken = '', dataEndpoint = '';
   let presentationTimer = 0;
   const presentation = {active: false, running: false, delay: 5000, transitionDuration: 1, effect: 'flip', showComments: true};
   let presentationCommentsWasOpen = false;
@@ -258,7 +258,9 @@
     catch (_error) { return {}; }
   };
   const sameFilterValues = (left, right) => JSON.stringify([...(left || [])].sort()) === JSON.stringify([...(right || [])].sort());
-  const appliedDefinition = () => appliedDashboardDefinition || savedDashboardDefinition();
+  // The filters being applied (their preparation is running, such as after Save Filters) count as applied: they are
+  // neither flagged nor asked about while the Dashboard is prepared. A failed preparation leaves them unapplied again.
+  const appliedDefinition = () => applyingDashboardDefinition || appliedDashboardDefinition || savedDashboardDefinition();
   const filterControlState = (current, applied, saved, equal = sameFilterValues) => {
     if (!equal(current, applied)) return 'unapplied';
     return equal(applied, saved) ? '' : 'applied-unsaved';
@@ -2269,8 +2271,10 @@
         }
         const next = [...values.selectedOptions].map(item => item.value).filter(value => value && value !== MAIN_CITIES);
         const current = (hasStoredSelection ? selected : available).filter(value => value && value !== MAIN_CITIES);
-        const selectable = [...values.options].filter(item => !item.disabled && item.value && item.value !== MAIN_CITIES);
-        if (values.dataset.multiselectDynamicAllSelected === 'true' || (selectable.length > 0 && next.length === selectable.length)) {
+        // A pattern (VF*, -Three) is not a value: with one chosen the filter is never every value.
+        const isPattern = value => Boolean(globalThis.valuePatterns?.isPattern(value));
+        const selectable = [...values.options].filter(item => !item.disabled && item.value && item.value !== MAIN_CITIES && !isPattern(item.value));
+        if (values.dataset.multiselectDynamicAllSelected === 'true' || (selectable.length > 0 && !next.some(isPattern) && next.length === selectable.length)) {
           delete values.dataset.multiselectDynamicAllSelected;
           if (!hasStoredSelection) return;
           delete definition.filters[field];
@@ -2440,6 +2444,19 @@
   }
   async function prepare() {
     if (!definition) return null;
+    const refreshFilterControls = () => { sources(); if (hasOpenFacetMenu()) refreshFacetsAfterMenusClose(); else facets(); };
+    const applying = applyingDashboardDefinition = structuredClone(definition);
+    updateDirtyState(); refreshFilterControls();
+    try { return await prepareDefinition(); }
+    finally {
+      if (applyingDashboardDefinition === applying) {
+        applyingDashboardDefinition = null;
+        updateDirtyState();
+        if (hasUnappliedFilterChanges()) refreshFilterControls();
+      }
+    }
+  }
+  async function prepareDefinition() {
     const requestedFilterState = preparationStateFingerprint(definition);
     // Universe changes need fresh filtered rows; Scope also changes how the
     // resulting charts group those rows by Operator or Vendor.
@@ -2490,7 +2507,8 @@
       preparationToken,
     );
     setDashboardStatus(dashboardIdAtStart, needsDataPreparation ? 'loading-data' : 'rendering', needsDataPreparation ? 'Loading data' : 'Rendering');
-    filterActionBusy = true; updateFilterActionState();
+    // Apply and Save stay available while the Dashboard is prepared: a new preparation replaces this one.
+    preparationRunning = true; updateFilterActionState();
     facetsLoading = true;
     if (!hasOpenFacetMenu()) facets();
     setViewEnabled(false);
@@ -2524,7 +2542,7 @@
       if (backgroundPreparationToken === preparationToken) dismissPreparationStatus();
       if (preparing === pending) { preparing = null; preparingFilterState = ''; }
       if (dashboardPreparationTokens.get(dashboardIdAtStart) === requestSequence) dashboardPreparationTokens.delete(dashboardIdAtStart);
-      filterActionBusy = false; updateFilterActionState();
+      preparationRunning = false; updateFilterActionState();
       syncDashboardPptActions();
       void refreshDashboardStatuses();
     }
@@ -2534,7 +2552,7 @@
     dismissPreparationStatus();
     clearTimeout(timer); ++sequence; ++backgroundChartPreloadRequest; controller?.abort(); preparing = null;
     stopPresentation();
-    activeId = id; dashboardFiltersOpen = showFilters; rememberFiltersOpen(showFilters); $('ds-viewer-export-ppt').dataset.dashboardPptId = id; definition = runtimeDashboardDefinition(dashboards[id], id); savedDefinition = definitionFingerprint(savedRuntimeDashboardDefinition(dashboards[id])); dirty = false; prepared = null; appliedFilterState = ''; appliedSelectionState = ''; appliedDashboardDefinition = null; facetOptions = {}; availableFields = []; facetOptionRequests.clear(); slideIndex = 0; setViewEnabled(false); rememberOpen(id);
+    activeId = id; dashboardFiltersOpen = showFilters; rememberFiltersOpen(showFilters); $('ds-viewer-export-ppt').dataset.dashboardPptId = id; definition = runtimeDashboardDefinition(dashboards[id], id); savedDefinition = definitionFingerprint(savedRuntimeDashboardDefinition(dashboards[id])); dirty = false; prepared = null; appliedFilterState = ''; appliedSelectionState = ''; appliedDashboardDefinition = null; applyingDashboardDefinition = null; facetOptions = {}; availableFields = []; facetOptionRequests.clear(); slideIndex = 0; setViewEnabled(false); rememberOpen(id);
     resetViewerForDashboard();
     $('ds-name').value = definition.name; setNrMode(definition.technology || definition.template_technology, definition.template);
     $('ds-filter-panel').hidden = !dashboardFiltersOpen; document.dispatchEvent(new CustomEvent('page-panel-navigation:update')); setActiveDashboardHeading(definition.name); sources(); facets(); library(); status(''); await prepare();
@@ -2566,8 +2584,9 @@
     if (!activeId || !definition || !hasUnsavedFilterChanges()) return;
     if (!$('ds-filter-overlay').hidden) await closeFilters();
     filterActionBusy = true; updateFilterActionState();
+    const dashboardId = activeId;
     try {
-      const dashboardId = activeId, draft = definition;
+      const draft = definition;
       const item = copyDefinitionFields(canonicalDashboardDefinition(savedDashboardDefinition()), draft, filterDefinitionFields);
       item.name = $('ds-name').value.trim(); const result = await api(`/${dashboardId}`,'PUT',item);
       dashboards[dashboardId] = structuredClone(result.definition);
@@ -2579,11 +2598,13 @@
         copyDefinitionFields(definition, canonicalDashboardDefinition(result.definition), filterDefinitionFields);
       }
       updateDirtyState(); sources(); facets();
-      if (hasUnappliedFilterChanges()) await preparePart();
-      status(`Saved and applied the filters of “${definition.name}”.`);
     } finally {
+      // Only the save itself holds the buttons: filters changed while the saved ones are applied can be saved at once.
       filterActionBusy = false; updateFilterActionState();
     }
+    if (dashboardId !== activeId) return;
+    if (hasUnappliedFilterChanges()) await preparePart();
+    if (definition && dashboardId === activeId) status(`Saved and applied the filters of “${definition.name}”.`);
   }
   const save = () => savePart('filters');
   const confirmDiscard = async (ignoredFields = []) => !hasUnsavedDashboardChanges(ignoredFields) || await window.showConfirmDialog('Discard unsaved Dashboard changes?', {title:'Unsaved changes',confirmLabel:'Discard'});
@@ -2612,7 +2633,7 @@
     if (!control) return;
     const viewer = appliedDashboardDefinition || definition;
     control.value = viewer?.scope || 'single';
-    control.disabled = !definition || Boolean(pptDashboardViewer) || filterActionBusy;
+    control.disabled = !definition || Boolean(pptDashboardViewer) || filterActionBusy || preparationRunning;
     const vendorControl = $('ds-viewer-vendor-comparison');
     $('ds-viewer-vendor-control').hidden = control.value !== 'multivendor';
     vendorControl.value = viewer?.vendor_comparison || 'vendor_only';
@@ -2666,7 +2687,7 @@
   }
   bind('ds-import',() => $('ds-import-file').click());
   $('ds-import-file').onchange = safe(async () => { const file = $('ds-import-file').files[0]; if (!file) return; const payload = JSON.parse(await file.text()); const format = String(payload.format || '').replace(/^dashboard-analytic-/, 'drivetest-analyzer-'); const legacy = format === 'drivetest-analyzer-dashboard-set' && payload.version === 1; if (!legacy && (format !== 'drivetest-analyzer-dashboard' || payload.version !== 2)) throw new Error('Unsupported Dashboard file.'); if (!await confirmDiscard()) return; payload.definition.name = nextName(payload.definition.name, dashboardNrMode(payload.definition)); if (!payload.definition.auto_cdrs) delete payload.definition.datasets; /* CDRs of another workspace: its newest campaigns are used. */ const id = dashboardId(), result = await api(`/${id}`,'PUT',payload.definition); dashboards[id] = result.definition; await openDashboard(id); $('ds-import-file').value = ''; });
-  function closeDashboard() { delete $('ds-viewer-export-ppt').dataset.dashboardPptId; $('ds-viewer-export-ppt').disabled = true; clearTimeout(facetsRefreshTimer); dismissPreparationStatus(); stopPresentation(); rememberOpen(''); rememberFiltersOpen(false); ++sequence; clearTimeout(timer); controller?.abort(); preparing = null; activeId = ''; dashboardFiltersOpen = false; definition = null; savedDefinition = ''; appliedFilterState = ''; appliedSelectionState = ''; appliedDashboardDefinition = null; prepared = null; dirty = false; updateUnsavedFiltersBadge(); setViewEnabled(false); setPreparationState('hidden'); $('ds-filter-panel').hidden = true; document.dispatchEvent(new CustomEvent('page-panel-navigation:update')); setActiveDashboardHeading(''); $('ds-name').value = ''; setNrMode('nsa'); syncNewDashboardNameFromTemplate(); library(); status('Dashboard closed.'); }
+  function closeDashboard() { delete $('ds-viewer-export-ppt').dataset.dashboardPptId; $('ds-viewer-export-ppt').disabled = true; clearTimeout(facetsRefreshTimer); dismissPreparationStatus(); stopPresentation(); rememberOpen(''); rememberFiltersOpen(false); ++sequence; clearTimeout(timer); controller?.abort(); preparing = null; activeId = ''; dashboardFiltersOpen = false; definition = null; savedDefinition = ''; appliedFilterState = ''; appliedSelectionState = ''; appliedDashboardDefinition = null; applyingDashboardDefinition = null; prepared = null; dirty = false; updateUnsavedFiltersBadge(); setViewEnabled(false); setPreparationState('hidden'); $('ds-filter-panel').hidden = true; document.dispatchEvent(new CustomEvent('page-panel-navigation:update')); setActiveDashboardHeading(''); $('ds-name').value = ''; setNrMode('nsa'); syncNewDashboardNameFromTemplate(); library(); status('Dashboard closed.'); }
   $('ds-name').oninput = () => { if (definition) { definition.name = $('ds-name').value; updateDirtyState(); } };
   $('ds-nr-mode').onchange = () => {
     const selected = setNrMode($('ds-nr-mode').value);
@@ -3234,7 +3255,20 @@
     else line.textContent = text;
     return line;
   };
+  const isEndSlide = slide => String(slide?.structural_type || '').toLowerCase() === 'end slide';
+  // The name of a slide in the viewer: an End Slide needs no title.
+  const slideName = (slide, fallback = 'Dashboard') => slide.title || (isEndSlide(slide) ? 'End Slide' : fallback);
+  // The End Slide, as the closing slide of the PPT (Black logo end slide): the Ericsson mark and name centred on white.
+  function endDashboard(stage, slide) {
+    const end = node('section', undefined, 'ds-structural-slide ds-structural-end');
+    end.setAttribute('aria-label', `End dashboard: ${slideName(slide)}`);
+    const mark = structuralWatermark();
+    mark.setAttribute('class', 'ds-structural-end-mark');
+    end.append(mark, node('p', 'ERICSSON', 'ds-structural-end-name'));
+    stage.append(end);
+  }
   function structuralDashboard(stage, slide) {
+    if (isEndSlide(slide)) { endDashboard(stage, slide); return; }
     const kind = String(slide.structural_type || '').toLowerCase().includes('transition') ? 'transition' : 'title';
     const slides = prepared?.slides || [slide];
     const firstSlideNumber = Math.min(...slides.map(item => Number(item.number)));
@@ -3244,7 +3278,7 @@
     const content = node('div', undefined, 'ds-structural-content');
     if (!isCover) {
       // The counter of the transition: its place among the title and transition slides after the cover.
-      const transitions = slides.filter(item => item.structural_type && !(Number(item.number) === firstSlideNumber
+      const transitions = slides.filter(item => item.structural_type && !isEndSlide(item) && !(Number(item.number) === firstSlideNumber
         && !String(item.structural_type).toLowerCase().includes('transition')));
       const index = transitions.findIndex(item => Number(item.number) === Number(slide.number));
       content.append(node('p', String(Math.max(1, index + 1)).padStart(2, '0'), 'ds-structural-number'));
@@ -4188,12 +4222,12 @@
     const preloadToken = prepared.token;
     const preloadOrigin = slideIndex;
     const visibleLoads = [];
-    setSlideTitle(slide.title || `Dashboard ${slide.number}`); $('ds-subtitle').textContent = slide.subtitle;
+    setSlideTitle(slideName(slide, `Dashboard ${slide.number}`)); $('ds-subtitle').textContent = slide.subtitle;
     renderViewerContext();
     const viewer = viewerDefinition();
     $('ds-position').textContent = `${dashboardNrMode(viewer)} · ${viewer?.name || 'Dashboard'} · Slide ${slideIndex+1} / ${prepared.slides.length}`;
     $('ds-slide').replaceChildren(...prepared.slides.map((item, index) => {
-      const title = item.title || 'Dashboard';
+      const title = slideName(item);
       const subtitle = String(item.subtitle || '').trim();
       const choice = option(String(index), `${item.number} · ${title}${subtitle ? ` ● ${subtitle}` : ''}`);
       choice.dataset.slideNumber = String(item.number);

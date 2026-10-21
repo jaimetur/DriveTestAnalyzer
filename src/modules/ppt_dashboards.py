@@ -51,7 +51,7 @@ from pptx.util import Inches, Pt
 from starlette.background import BackgroundTask
 
 from src.modules.cdr_reporting import (
-    _catalog_spec, _clear_commentary, _layout_chart_frames, _legend_dimensions, _named_slide_layout,
+    _catalog_spec, _clear_commentary, _clear_end_slide, _layout_chart_frames, _legend_dimensions, _named_slide_layout,
     _remove_all_slides, _remove_template_chart_placeholders, _render_dashboard_payload,
     _set_commentary, _set_slide_header, _set_structural_slide_text, catalog_chart_payload,
     catalog_kpi_fields, expand_dynamic_layouts, entry_dynamic_fields, dynamic_chart_title, _normalise_operator_label, _normalise_vendor, prepare_multivendor_catalog_entry,
@@ -1257,6 +1257,9 @@ def install_dashboard_routes(core):
                     if layout is None:
                         raise ValueError(f"Slide {slide_number}: layout '{header.layout}' is unavailable.")
                     slide = presentation.slides.add_slide(layout)
+                    if header.structural_type == 'end slide':
+                        _clear_end_slide(slide)
+                        continue
                     is_cover = header.structural_type == 'title slide' and slide_number == min(grouped)
                     _set_structural_slide_text(slide, header.slide_title, header.slide_subtitle)
                     if is_cover:
@@ -2671,11 +2674,13 @@ def install_dashboard_routes(core):
             task_repository.set_workspace_state(STATE_KEY, json.dumps(dashboards))
             if created:
                 record_creator(task_repository, PPT_DASHBOARDS, dashboard_id, user.username)
+            creator = creator_of(task_repository, PPT_DASHBOARDS, dashboard_id)
             task_repository.add_log(user.username, 'save_dashboard', json.dumps({'id': dashboard_id, 'name': definition.name}))
         # Saving a Dashboard may change template filters, so refresh its three
         # canonical automatic universes even when it was warmed previously.
         schedule_dashboard_warmup(workspace, dashboard_id, saved_definition, user.username, force=True)
-        return {'id': dashboard_id, 'definition': saved_definition}
+        # As the list gives it, with who created it: the page compares it with the Dashboard it has open.
+        return {'id': dashboard_id, 'definition': {**saved_definition, 'created_by': creator}}
 
     @app.patch('/api/ppt-dashboards/{dashboard_id}/name')
     def rename_dashboard(dashboard_id: str, payload: DashboardName, user=Depends(dashboard_editor_user)):

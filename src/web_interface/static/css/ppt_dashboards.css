@@ -1893,6 +1893,11 @@
 .ds-structural-slide .ds-structural-geography { display:grid; gap:.5cqh; font-size:min(1.46cqw,2.6cqh); line-height:1.25; }
 .ds-structural-slide .ds-structural-geography p { margin:0; overflow:hidden; color:#fff; text-overflow:ellipsis; white-space:nowrap; }
 .ds-structural-slide b { font-weight:700; }
+/* The End Slide, as the closing slide of the template: the Ericsson mark and name centred on white. */
+.ds-structural-slide.ds-structural-end { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3.5cqh; background:#fff; color:#000; }
+.ds-structural-end-mark { height:17cqh; width:auto; overflow:visible; fill:#000; pointer-events:none; }
+.ds-structural-slide p.ds-structural-end-name { margin:0; color:#000; font-size:min(3.4cqw,6cqh); font-weight:800; letter-spacing:.02em; line-height:1; }
+.ds-chart-stage.ds-structural-stage:has(> .ds-structural-end) { border-color:#e9e3f1; background:#fff; }
 
 /* The colour theme of the viewer (dashboard_viewer_tokens), changed at once with the theme: the slide title and
    subtitle take the fonts and colours of the theme's slide titles, the part that tells the slide apart in its focus

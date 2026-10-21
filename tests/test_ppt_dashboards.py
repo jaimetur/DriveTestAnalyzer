@@ -397,8 +397,10 @@ def test_dashboard_export_uses_the_admin_import_archive_format(client):
         assert manifest['workspace_components'] == ['dashboards']
         document = json.loads(archive.read(manifest['archive_path']))
     assert document['format'] == 'drivetest-analyzer-dashboards'
-    # The Dashboard travels as saved: its CDRs follow its NR Mode and Campaign, they are not part of it.
-    assert document['dashboards'] == {dashboard_id: saved.json()['definition']}
+    # The Dashboard travels as saved: its CDRs follow its NR Mode and Campaign, they are not part of it. Who created
+    # it is kept apart from the definition (the save answers with it, as the list does).
+    stored = {key: value for key, value in saved.json()['definition'].items() if key != 'created_by'}
+    assert document['dashboards'] == {dashboard_id: stored}
     assert 'datasets' not in document['dashboards'][dashboard_id]
     assert document['dashboards'][dashboard_id]['auto_cdrs'] is True
 
@@ -1006,6 +1008,7 @@ def test_dashboard_ppt_cover_uses_scope_and_catalogue_geography(client):
     core.repository.add_report_template('nsa', 'Structural dashboard', (
         'Slide,Slide tittle,Slide Subtittle,Layout,Chart Tittle,CDR source,KPI,Chart type,Filters,Rows Split,Columns Split,Legend,Legend Position\n'
         '1,Quarterly review,Template subtitle,Title Page,,,,Title Slide,,,,,Top\n'
+        '2,,,Black logo end slide,,,,,,,,,\n'
     ).encode(), is_default=False)
     payload['template'] = 'Structural dashboard'
     dashboard_id = 'structural-ppt-cover'
@@ -1042,7 +1045,10 @@ def test_dashboard_ppt_cover_uses_scope_and_catalogue_geography(client):
     assert legacy['filters'].index('Vendor: All Vendors') < legacy['filters'].index('Region: All Regions')
     with core.repository.connection() as connection:
         row = connection.execute('SELECT output_path FROM dashboard_ppt_jobs WHERE id = ?', (job_id,)).fetchone()
-    slide = Presentation(row['output_path']).slides[0]
+    slide, end = Presentation(row['output_path']).slides
+    # The End Slide is the closing slide of the template as it is, without a counter.
+    assert end.slide_layout.name == 'Black logo end slide'
+    assert not any(shape.has_text_frame and shape.text_frame.text.strip() for shape in end.shapes)
     placeholders = {shape.placeholder_format.type: shape for shape in slide.placeholders}
     title = placeholders.get(1) or placeholders[3]
     assert title.text == 'Quarterly review'
@@ -2066,6 +2072,12 @@ def test_dashboards_lifecycle_and_layout(client, ppt_reporting_old):
     assert saved.json()['definition']['slide_comments'] == {}
     listed = client.get('/api/ppt-dashboards')
     assert listed.json()['test']['name'] == 'Comparison'
+    # The saved Dashboard comes back as the list gives it, so the page does not take it for an unsaved change.
+    assert saved.json()['definition'] == listed.json()['test']
+    assert "const appliedDefinition = () => applyingDashboardDefinition || appliedDashboardDefinition || savedDashboardDefinition();" in dashboard_script
+    # A running preparation does not hold Apply and Save Filters: a new preparation replaces it.
+    preparation = dashboard_script[dashboard_script.index('  async function prepareDefinition() {'):dashboard_script.index('  async function openDashboard(')]
+    assert 'filterActionBusy' not in preparation and 'preparationRunning = true; updateFilterActionState();' in preparation
     assert listed.headers['cache-control'] == 'no-store, max-age=0, must-revalidate'
     renamed = client.patch('/api/ppt-dashboards/test/name', json={'name': 'Renamed comparison'})
     assert renamed.status_code == 200
@@ -2675,6 +2687,7 @@ def test_dashboard_preview_identifies_title_and_transition_slides(client):
         'Slide,Slide tittle,Slide Subtittle,Layout,Chart Tittle,CDR source,KPI,Chart type,Filters,Rows Split,Columns Split,Legend,Legend Position\n'
         '1,Quarterly review,Network results,Title Page,,,,Title Slide,,,,,Top\n'
         '2,Voice performance,,Title Only,,,,Transition Slide,,,,,Top\n'
+        '3,,,Black logo end slide,,,,,,,,,\n'
     ).encode(), is_default=False)
     payload['template'] = 'Structural dashboard'
 
@@ -2685,6 +2698,7 @@ def test_dashboard_preview_identifies_title_and_transition_slides(client):
     assert [(slide['title'], slide['structural_type'], slide['charts']) for slide in slides] == [
         ('Quarterly review', 'title slide', []),
         ('Voice performance', 'transition slide', []),
+        ('', 'end slide', []),
     ]
 
 

@@ -640,14 +640,15 @@
             <option value="MEDIAN">MEDIAN</option>
           </select>
         </label>
-        <button type="button" data-catalogue-editor-apply hidden>Apply selected values</button>
         <section class="catalogue-filter-builder" data-catalogue-filter-builder hidden>
           <p class="eyebrow">Filter builder</p>
           <div class="catalogue-filter-conditions" data-catalogue-filter-conditions></div>
           <button type="button" data-catalogue-filter-add>+ Add condition</button>
-          <p class="table-help">Each row is an AND condition. Select a field and operator, then choose or type a value. For <code>IN</code>, <code>NOT IN</code>, <code>CONTAINS</code> or <code>NOT CONTAINS</code>, comma-separated values are treated as a list.</p>
+          <p class="table-help">Each row is an AND condition. Select a field and operator, then choose or type a value. For <code>IN</code>, <code>NOT IN</code>, <code>CONTAINS</code> or <code>NOT CONTAINS</code>, comma-separated values are treated as a list. The conditions are written to the cell when you press <strong>Apply filter</strong>.</p>
+          <button type="button" data-catalogue-editor-apply>Apply filter</button>
         </section>
-        <p class="table-help">You can always type any value directly into the selected cell. For Filters, complete the proposed column with an operator and value, for example <code>Operator IN (EE, 3)</code>.</p>
+        <p class="table-help">A value chosen here is written to the selected cell at once. You can always type any value directly into the cell, for example <code>Operator IN (EE, 3)</code> in Filters.</p>
+        <button type="button" class="catalogue-editor-helper-done" data-catalogue-editor-helper-done>Close</button>
       </aside>
       <div class="confirm-overlay catalogue-chart-preview-overlay" data-catalogue-chart-preview hidden>
         <section class="confirm-panel catalogue-chart-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="catalogue-chart-preview-title">

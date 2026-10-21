@@ -87,7 +87,13 @@ BAR_CHART_TYPES = {
     "distribution stacked vertical bars", "threshold stacked vertical bars",
     "average vertical bars", "median vertical bars",
 }
-STRUCTURAL_SLIDE_TYPES = {"title slide", "transition slide"}
+STRUCTURAL_SLIDE_TYPES = {"title slide", "transition slide", "end slide"}
+END_SLIDE_LAYOUT = "Black logo end slide"
+# The structural layouts of the template: a row on one of them without Chart type or Source Dataset is that slide.
+STRUCTURAL_LAYOUT_TYPES = {
+    "title page": "Title Slide", "transition": "Transition Slide", "title only": "Transition Slide",
+    END_SLIDE_LAYOUT.casefold(): "End Slide",
+}
 PRESERVED_CHART_TYPES = {"not automated (preserve)"}
 FILTER_OPERATORS = ("CONTAINS", "NOT CONTAINS", "IN", "NOT IN", ">=", "<=", "!=", "=", ">", "<")
 # The rendered CDF is 1,165 pixels wide. More than one hit-test vertex per
@@ -494,12 +500,12 @@ def validate_dynamic_slide(rows: list[CatalogEntry]) -> None:
     row_field, column_field = entry_dynamic_fields(header)
     if (dynamic_rows and not row_field) or (dynamic_columns and not column_field):
         required = 'Dynamic Rows Field and Dynamic Columns Field' if dynamic_rows and dynamic_columns else 'Dynamic Rows Field' if dynamic_rows else 'Dynamic Columns Field'
-        raise ValueError(f"Slide {header.slide}: this layout requires {required}.")
+        raise ValueError(f"Slide: {header.slide} -> This layout requires {required}.")
     count = 1 if dynamic_rows and dynamic_columns else 2
     if len(rows) != count or len({(row.layout, entry_dynamic_fields(row)) for row in rows}) != 1:
-        raise ValueError(f"Slide {header.slide}: this dynamic layout needs {count} chart definition(s) with the same Layout and dynamic fields.")
+        raise ValueError(f"Slide: {header.slide} -> This dynamic layout needs {count} chart definition(s) with the same Layout and dynamic fields.")
     if dynamic_rows and dynamic_columns and column_identity(row_field) == column_identity(column_field):
-        raise ValueError(f"Slide {header.slide}: dynamic row and column fields must be different.")
+        raise ValueError(f"Slide: {header.slide} -> Dynamic row and column fields must be different.")
 
 
 def expand_dynamic_layouts(
@@ -1238,57 +1244,46 @@ def parse_catalog_csv(content: bytes | str, technology: str, *, validate_filters
     if frozenset(canonical_headers) not in accepted_schemas:
         raise ValueError("The report template must use these columns in any order: " + ", ".join(CATALOG_HEADERS))
     entries: list[CatalogEntry] = []
-    chart_positions: defaultdict[int, int] = defaultdict(int)
-    for line_number, row in enumerate(reader, start=2):
-        if None in row:
-            raise ValueError(f"Catalog row {line_number} has more values than the template header.")
+    # Errors name a row as the editor shows it: its slide and its place (chart) among the rows of that slide.
+    slide_rows: defaultdict[int, int] = defaultdict(int)
+    for row in reader:
+        extra_values = None in row
         row = {
             CATALOG_HEADER_ALIASES.get(_catalogue_header_key(key), key): value
-            for key, value in row.items()
+            for key, value in row.items() if key is not None
         }
+        raw_slide = (row.get("Slide") or "").strip()
         try:
-            slide = int((row.get("Slide") or "").strip())
+            slide = int(raw_slide)
         except ValueError as exc:
-            raise ValueError(f"Catalog row {line_number} has an invalid Slide value.") from exc
+            after = f" (after Slide: {entries[-1].slide})" if entries else ""
+            raise ValueError(f"Slide: {raw_slide or 'empty'}{after} -> The Slide value must be a positive whole number.") from exc
         if slide < 1:
-            raise ValueError(f"Catalog row {line_number} must use a positive slide number.")
+            raise ValueError(f"Slide: {slide} -> The Slide value must be a positive whole number.")
+        slide_rows[slide] += 1
+        location = f"Slide: {slide} - Chart: {slide_rows[slide]}"
+        if extra_values:
+            raise ValueError(f"{location} -> The row has more values than the template header.")
         legacy_grouping = (row.get("Grouping") or "").strip()
         legacy_dimensions = parse_catalog_grouping(legacy_grouping).dimensions
-        entry = CatalogEntry(
-            slide=slide,
-            slide_title=(row.get("Slide Tittle") or "").strip().replace("\\n", "\n"),
-            slide_subtitle=(row.get("Slide Subtittle") or "").strip().replace("\\n", "\n"),
-            layout=canonical_layout_name(row.get("Layout") or ""),
-            chart_title=(row.get("Chart Tittle") or "").strip().replace("\\n", "\n"),
-            cdr_source=(row.get("Source Dataset") or "").strip(),
-            kpi=(row.get("KPI") or "").strip(),
-            chart_type=(row.get("Chart type") or "").strip(),
-            legend=(row.get("Legend") or "").strip(),
-            # Keep an intentionally empty editor cell empty. Renderers still
-            # interpret it as their default position if a legend exists.
-            legend_position=(row.get("Legend Position") or "").strip().casefold(),
-            legend_format=parse_label_format(row.get("Legend Format") or ""),
-            filters=normalize_vendor_filter_names((row.get("Filters") or "").strip()),
-            rows_split=((row.get("Rows Split") or row.get("Grouping_Rows") or "").strip() or " × ".join(legacy_dimensions[:1])),
-            columns_split=((row.get("Columns Split") or row.get("Grouping_Columns") or "").strip() or " × ".join(legacy_dimensions[1:])),
-            axis_x_range=(row.get("Axis X Range") or "").strip(),
-            axis_y_range=(row.get("Axis Y Range") or "").strip(),
-            label_position=parse_label_position(row.get("Label Position") or ""),
-            label_format=parse_label_format(row.get("Label Format") or ""),
-            exclude_null_empty=parse_template_boolean(row.get("Exclude Null/Empty") or "", "Exclude Null/Empty"),
-            exclude_zero=parse_template_boolean(row.get("Exclude Zero") or "", "Exclude Zero"),
-            dynamic_rows_field=(row.get("Dynamic Rows Field") or "").strip(),
-            dynamic_columns_field=(row.get("Dynamic Columns Field") or "").strip(),
-            dynamic_field=(row.get("Dynamic Field") or "").strip(),
-        )
-        if entry.source_kind:
-            chart_positions[entry.slide] += 1
-        editor_location = f"Slide: {entry.slide} - Chart: {chart_positions[entry.slide]}" if entry.source_kind else f"Slide: {entry.slide}"
+        layout = canonical_layout_name(row.get("Layout") or "")
+        chart_type = (row.get("Chart type") or "").strip()
+        if not (row.get("Source Dataset") or "").strip():
+            structural_type = STRUCTURAL_LAYOUT_TYPES.get(layout.casefold(), "")
+            # The closing layout is always an End Slide, whatever structural type the row had on another layout.
+            if not chart_type or (structural_type == "End Slide" and chart_type.casefold() in STRUCTURAL_SLIDE_TYPES):
+                chart_type = structural_type or chart_type
+        try:
+            entry = _catalog_entry_from_row(row, slide, layout, chart_type, legacy_dimensions)
+        except ValueError as exc:
+            raise ValueError(f"{location} -> {exc}") from exc
         if entry.structural_type:
-            if not entry.slide_title:
-                raise ValueError(f"Catalog row {line_number} requires Slide Tittle for a structural slide.")
+            location = f"Slide: {slide}"
+            # An End Slide is the closing slide of the template as it is, without a title.
+            if not entry.slide_title and entry.structural_type != "end slide":
+                raise ValueError(f"{location} -> Slide Tittle is required for a {entry.chart_type}.")
             if not entry.layout:
-                raise ValueError(f"Catalog row {line_number} requires Layout for a structural slide.")
+                raise ValueError(f"{location} -> Layout is required for a {entry.chart_type}.")
             structural_chart_fields = (
                 entry.chart_title, entry.cdr_source, entry.kpi, entry.legend,
                 entry.filters, entry.rows_split, entry.columns_split,
@@ -1296,25 +1291,25 @@ def parse_catalog_csv(content: bytes | str, technology: str, *, validate_filters
             )
             if any(value.strip() for value in structural_chart_fields) or entry.exclude_null_empty or entry.exclude_zero:
                 raise ValueError(
-                    f"Catalog row {line_number} is a {entry.chart_type} and cannot define chart, CDR, KPI, "
-                    "legend, filter or grouping values."
+                    f"{location} -> A {entry.chart_type} cannot define chart, CDR, KPI, legend, filter or grouping values."
                 )
         if entry.source_kind and not entry.slide_title:
-            raise ValueError(f"Catalog row {line_number} requires Slide Tittle for a Source Dataset.")
+            raise ValueError(f"{location} -> Slide Tittle is required for a chart with a Source Dataset.")
         if entry.source_kind and not entry.layout:
-            raise ValueError(f"Catalog row {line_number} requires Layout for a Source Dataset.")
+            raise ValueError(f"{location} -> Layout is required for a chart with a Source Dataset.")
         if entry.cdr_source and entry.cdr_source.casefold() not in CATALOG_SOURCE_KINDS:
-            raise ValueError(f"Catalog row {line_number} has unsupported Source Dataset '{entry.cdr_source}'.")
+            raise ValueError(f"{location} -> Source Dataset '{entry.cdr_source}' is not supported.")
         if not entry.source_kind and not entry.structural_type and entry.chart_type.casefold() not in PRESERVED_CHART_TYPES:
             raise ValueError(
-                f"Catalog row {line_number} must define a supported CDR chart, Title Slide or Transition Slide."
+                f"{location} -> The row must define a supported CDR chart (Source Dataset, KPI and Chart type), "
+                "a Title Slide, a Transition Slide or an End Slide."
             )
         if entry.source_kind and (not entry.kpi or not entry.chart_type):
-            raise ValueError(f"Catalog row {line_number} requires KPI and Chart type for a Source Dataset.")
+            raise ValueError(f"{location} -> KPI and Chart type are required for a chart with a Source Dataset.")
         if entry.source_kind and entry.chart_type.casefold() not in CHART_TYPES:
-            raise ValueError(f"Catalog row {line_number} has unsupported Chart type '{entry.chart_type}'.")
+            raise ValueError(f"{location} -> Chart type '{entry.chart_type}' is not supported.")
         if entry.source_kind and not (entry.rows_split or entry.columns_split):
-            raise ValueError(f"Catalog row {line_number} requires Rows Split or Columns Split for a Source Dataset.")
+            raise ValueError(f"{location} -> Rows Split or Columns Split is required for a chart with a Source Dataset.")
         try:
             if validate_filters:
                 parse_catalog_filters(entry.filters)
@@ -1327,7 +1322,7 @@ def parse_catalog_csv(content: bytes | str, technology: str, *, validate_filters
             parse_axis_range(entry.axis_x_range, "x")
             parse_axis_range(entry.axis_y_range, "y")
         except ValueError as exc:
-            raise ValueError(f"{editor_location} -> {exc}") from exc
+            raise ValueError(f"{location} -> {exc}") from exc
         entries.append(entry)
     if not entries:
         raise ValueError("The report template does not contain any rows.")
@@ -1340,9 +1335,41 @@ def parse_catalog_csv(content: bytes | str, technology: str, *, validate_filters
         structural_entries = [entry for entry in slide_entries if entry.structural_type]
         if structural_entries and len(slide_entries) != 1:
             raise ValueError(
-                f"Slide {slide_number} cannot combine a structural Title/Transition row with chart rows."
+                f"Slide: {slide_number} -> A Title, Transition or End Slide cannot share its slide with chart rows."
             )
     return entries
+
+
+def _catalog_entry_from_row(row: Mapping[str, str | None], slide: int, layout: str, chart_type: str,
+                            legacy_dimensions: tuple[str, ...]) -> CatalogEntry:
+    """One template row as a CatalogEntry; a malformed format or Yes/No value raises ValueError."""
+    return CatalogEntry(
+        slide=slide,
+        slide_title=(row.get("Slide Tittle") or "").strip().replace("\\n", "\n"),
+        slide_subtitle=(row.get("Slide Subtittle") or "").strip().replace("\\n", "\n"),
+        layout=layout,
+        chart_title=(row.get("Chart Tittle") or "").strip().replace("\\n", "\n"),
+        cdr_source=(row.get("Source Dataset") or "").strip(),
+        kpi=(row.get("KPI") or "").strip(),
+        chart_type=chart_type,
+        legend=(row.get("Legend") or "").strip(),
+        # Keep an intentionally empty editor cell empty. Renderers still
+        # interpret it as their default position if a legend exists.
+        legend_position=(row.get("Legend Position") or "").strip().casefold(),
+        legend_format=parse_label_format(row.get("Legend Format") or ""),
+        filters=normalize_vendor_filter_names((row.get("Filters") or "").strip()),
+        rows_split=((row.get("Rows Split") or row.get("Grouping_Rows") or "").strip() or " × ".join(legacy_dimensions[:1])),
+        columns_split=((row.get("Columns Split") or row.get("Grouping_Columns") or "").strip() or " × ".join(legacy_dimensions[1:])),
+        axis_x_range=(row.get("Axis X Range") or "").strip(),
+        axis_y_range=(row.get("Axis Y Range") or "").strip(),
+        label_position=parse_label_position(row.get("Label Position") or ""),
+        label_format=parse_label_format(row.get("Label Format") or ""),
+        exclude_null_empty=parse_template_boolean(row.get("Exclude Null/Empty") or "", "Exclude Null/Empty"),
+        exclude_zero=parse_template_boolean(row.get("Exclude Zero") or "", "Exclude Zero"),
+        dynamic_rows_field=(row.get("Dynamic Rows Field") or "").strip(),
+        dynamic_columns_field=(row.get("Dynamic Columns Field") or "").strip(),
+        dynamic_field=(row.get("Dynamic Field") or "").strip(),
+    )
 
 
 def convert_catalog_csv(content: bytes | str, technology: str) -> bytes:
@@ -7471,6 +7498,13 @@ def _set_slide_header(slide, title: str, subtitle: str) -> None:
         existing_subtitle._element.getparent().remove(existing_subtitle._element)
 
 
+def _clear_end_slide(slide) -> None:
+    """An End Slide is the closing slide of the template as it is, like that of the other reports: no empty
+    placeholders."""
+    for placeholder in list(slide.placeholders):
+        placeholder.element.getparent().remove(placeholder.element)
+
+
 def _set_structural_slide_text(slide, title: str, subtitle: str) -> None:
     """Populate a title/transition layout without creating extra text boxes."""
     title_shape = next(
@@ -7817,11 +7851,14 @@ def render_cdr_report(destination: Path, template: Path, frames: dict[str, pd.Da
                 structural = "title slide" if number == min(catalogue_slides) else "transition slide"
 
         if structural:
-            layout_name = header.layout or ("Title Page" if structural == "title slide" else "Title Only")
+            layout_name = header.layout or {"title slide": "Title Page", "end slide": END_SLIDE_LAYOUT}.get(structural, "Title Only")
             layout = _named_slide_layout(presentation, layout_name)
             if layout is None:
                 raise ValueError(f"Slide {number}: layout '{layout_name}' does not exist in the selected template.")
             slide = presentation.slides.add_slide(layout)
+            if structural == "end slide":
+                _clear_end_slide(slide)
+                continue
             _set_structural_slide_text(slide, header.slide_title, header.slide_subtitle)
             if number != min(catalogue_slides):
                 # The title and transition rows after the cover open the parts of the report: 01, 02…
@@ -7831,7 +7868,7 @@ def render_cdr_report(destination: Path, template: Path, frames: dict[str, pd.Da
         chart_entries = [entry for entry in slide_entries if entry.source_kind]
         if not chart_entries:
             raise ValueError(
-                f"Slide {number} does not define an automated chart, a Title Slide or a Transition Slide."
+                f"Slide {number} does not define an automated chart, a Title Slide, a Transition Slide or an End Slide."
             )
         layouts = {entry.layout for entry in chart_entries}
         if len(layouts) != 1:

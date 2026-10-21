@@ -108,7 +108,7 @@ Every **Operator** filter (Scoring & GAP Analysis, CDR Analysis, PPT Dashboards,
 - `-` or `NOT` (followed by a space) before a value leaves it out: `-Lebara` or `NOT Lebara` is every operator but Lebara, `NOT Leb*` every operator but those that start with Leb, and several exclusions leave out each one;
 - values and exclusions together take the values but the excluded ones: `VF*` with `-VF SM` is every VF variant but VF SM.
 
-Patterns come first in their list, tagged **pattern** or **except**, and an operator of the Operator Maps is taken or left out with the spellings of the CDRs it stands for. An operator that every filter must leave out needs no pattern: give it the **Exclude** role in [Operator Maps](workspace-config.md#operator-maps).
+Patterns come first in their list, tagged **pattern** or **except**, and an operator of the Operator Maps is taken or left out with the spellings of the CDRs it stands for. A pattern added while every operator is ticked chooses on its own (the operators are unticked), and the list shows what it takes: `-Three` alone shows **All except Three**. An operator that every filter must leave out needs no pattern: give it the **Exclude** role in [Operator Maps](workspace-config.md#operator-maps).
 
 ## Filter Builder
 
