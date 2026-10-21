@@ -2054,11 +2054,15 @@
     [...columns.children].forEach((column, index) => { column.style.width = `${widths[index]}px`; });
     table.style.setProperty('--rj-head-height', `${table.tHead.getBoundingClientRect().height}px`);
   }
+  // (The filters are kept in this browser for each workspace and user, so they stay after a reload, after working in
+  // another workspace or signing out, and after a restart of the server.)
+  const filtersScope = `${$('report-jobs').dataset.workspaceId || ''}:${document.body.dataset.authenticatedUser || ''}`;
   for (const [kind, syncButtons] of [['tasks', () => syncBulk()], ['runs', () => syncRunsBulk()]]) {
     const {head, table} = filteredTables[kind];
     head.append(table.tHead);
     window.enableExcelColumnFilters?.(table, {
       head: head.tHead, rowSelector: kind === 'tasks' ? 'tr[data-task-id]' : 'tr[data-run-id]', menuClass: 'rj-column-filter-menu',
+      persistKey: `drivetest-analyzer:reporting:column-filters:${kind}:${filtersScope}`,
       onChange: () => { applyColumnFilters(kind); syncButtons(); syncTableHeight(kind); },
     });
     const copy = head.tHead.cloneNode(true);

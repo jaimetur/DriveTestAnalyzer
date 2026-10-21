@@ -12537,12 +12537,21 @@ document.querySelectorAll('[data-configuration-timezone-picker]').forEach((picke
 /* Reusable Excel-style value filters for compact job tables. A cell filters by its data-filter-value, or by each value
    of the JSON list in its data-filter-values (the row matches when one of them is accepted), else by its text; a cell
    with a data-filter-date (its day, YYYY-MM-DD) filters by that day, listed by year and month as in Excel. With
-   rowSelector only the rows it matches (not empty or editor rows) are filtered, menuClass styles the menus, and head
-   holds the filters when the header is drawn apart from the table (its <thead> by default). */
-window.enableExcelColumnFilters = (table, {onChange, excludeLastColumn = true, rowSelector = '', menuClass = '', head = null} = {}) => {
+   rowSelector only the rows it matches (not empty or editor rows) are filtered, menuClass styles the menus, head
+   holds the filters when the header is drawn apart from the table (its <thead> by default), and with persistKey the
+   filters are kept in this browser under that key, by the name of their column, and come back with the page. */
+window.enableExcelColumnFilters = (table, {onChange, excludeLastColumn = true, rowSelector = '', menuClass = '', head = null, persistKey = ''} = {}) => {
   if (!table || table._excelColumnFilters) return table?._excelColumnFilters || null;
   const headers = Array.from((head || table.tHead)?.rows[0]?.cells || []);
+  const labels = headers.map((header) => header.textContent.trim());
   const selectedByColumn = new Map();
+  const saveFilters = () => {
+    if (!persistKey) return;
+    try {
+      if (selectedByColumn.size) window.localStorage.setItem(persistKey, JSON.stringify(Object.fromEntries([...selectedByColumn].map(([index, accepted]) => [labels[index], [...accepted]]))));
+      else window.localStorage.removeItem(persistKey);
+    } catch (_error) { /* Storage is optional. */ }
+  };
   let openMenu = null;
   const valueFor = (row, index) => String(row.cells[index]?.dataset.filterValue ?? row.cells[index]?.textContent ?? '').trim();
   const valuesFor = (row, index) => {
@@ -12696,11 +12705,23 @@ window.enableExcelColumnFilters = (table, {onChange, excludeLastColumn = true, r
       confirm.addEventListener('click', () => {
         const accepted = new Set([...options.querySelectorAll('input:checked:not([data-filter-group])')].map((input) => input.value));
         if (accepted.size === values.length) selectedByColumn.delete(index); else selectedByColumn.set(index, accepted);
-        header.classList.toggle('has-excel-column-filter', selectedByColumn.has(index)); apply(); closeMenu();
+        header.classList.toggle('has-excel-column-filter', selectedByColumn.has(index)); saveFilters(); apply(); closeMenu();
       });
       menu.addEventListener('click', (menuEvent) => menuEvent.stopPropagation()); requestAnimationFrame(() => search.focus());
     });
   });
+  // (The filters kept for this table come back, on the columns that still have their name.)
+  if (persistKey) {
+    try {
+      const kept = JSON.parse(window.localStorage.getItem(persistKey) || '{}');
+      headers.forEach((header, index) => {
+        const values = kept?.[labels[index]];
+        if ((excludeLastColumn && index === headers.length - 1) || !Array.isArray(values)) return;
+        selectedByColumn.set(index, new Set(values.map((value) => String(value ?? ''))));
+        header.classList.add('has-excel-column-filter');
+      });
+    } catch (_error) { /* Storage is optional. */ }
+  }
   document.addEventListener('click', closeMenu);
   document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeMenu(); });
   document.addEventListener('scroll', (event) => { if (openMenu && !openMenu.menu.contains(event.target)) openMenu.place?.(); }, {capture: true, passive: true});

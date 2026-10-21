@@ -940,6 +940,10 @@ def test_reporting_tables_filter_by_column_show_ten_rows_and_keep_their_bar_and_
     assert script.count('.dataset.filterDate = dayKey(') == 2
     assert "options.append(dateTree([...dates].sort(), selected));" in helper
     assert "const accepted = new Set([...options.querySelectorAll('input:checked:not([data-filter-group])')].map((input) => input.value));" in helper
+    # The filters are kept in the browser for each workspace and user, by the name of their column.
+    assert "persistKey: `drivetest-analyzer:reporting:column-filters:${kind}:${filtersScope}`," in script
+    assert 'data-workspace-id="{{ active_workspace.id if active_workspace else \'\' }}"' in page
+    assert "const values = kept?.[labels[index]];" in helper and "saveFilters(); apply(); closeMenu();" in helper
     # Dates missing are listed as (Blank), last, lined up with the years.
     assert "if (!value) cell.dataset.filterValue = '';" in script
     assert "(dates.size ? [...others.filter(Boolean), ...others.filter((value) => !value)] : others).forEach((value) => {" in helper
