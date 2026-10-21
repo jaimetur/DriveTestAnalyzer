@@ -394,9 +394,10 @@ def test_result_tabs_stay_at_the_top_while_the_results_are_scrolled():
     assert 'if (start < top) window.scrollBy({top: start - top, behavior: \'auto\'});' in script
     # The button that downloads a chart as an image stays below it, in light blue.
     assert 'tabs?.height ? tabs.bottom + 3 : 0);' in script
-    assert 'background: #e3f0fc; color: #1f5f9e;' in template.split('.scoring-image-download {', 1)[1].split('}', 1)[0]
+    styles = (SCORING_TEMPLATE.parents[1] / 'static/css/app.css').read_text(encoding='utf-8')
+    assert 'background: #e3f0fc; color: #1f5f9e;' in styles.split('.element-image-button {', 1)[1].split('}', 1)[0]
     # The one of the whole card in a more intense blue.
-    assert '.scoring-image-download[data-image-level="card"] { border-color: #1f6fc0; background: #2f86dc; color: #fff; }' in template
+    assert '.element-image-button[data-image-level="card"] { border-color: #1f6fc0; background: #2f86dc; color: #fff; }' in styles
 
 
 def test_cdrs_used_show_four_cdrs_of_each_type_before_they_scroll():

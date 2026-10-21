@@ -22,6 +22,7 @@ The UI uses a shared header, module tabs, panels, dialogs and tables. Read [Prod
 | Dialogs and progress | [Open section](#dialogs-and-progress) |
 | Floating background-task cards | [Open section](#floating-background-task-cards) |
 | Unassigned values card | [Open section](#unassigned-values-card) |
+| Images of charts and tables | [Open section](#images-of-charts-and-tables) |
 | Small screens | [Open section](#small-screens) |
 | Dashboard navigation and overlays | [Open section](#dashboard-navigation-and-overlays) |
 
@@ -155,6 +156,17 @@ A stopped duplication removes its partial workspace; stopped exports remove temp
 ## Unassigned values card
 
 While the ready CDRs of the open workspace have Operators, Vendors or Campaigns that no Operator, Vendor or Campaign Map assigns, a red card at the lower right of every page lists them until they are assigned. Editors open the assignment table from its buttons; the user-viewer role is asked to inform an administrator. See [Unassigned values warning](workspace-config.md#unassigned-values-warning).
+
+## Images of charts and tables
+
+The charts, maps and tables of [Scoring & GAP Analysis](scoring-gap-analysis.md#results-tabs), [Network Insights](network-insights.md), [Non-Qualified Calls](non-qualified-calls.md), [Chart Builder](chart-builder.md#interactive-preview) and [PPT Dashboards](ppt-dashboards.md#live-and-expanded-chart-controls) download as an image, or copy to the clipboard as a screenshot, from two floating buttons at their top right corner, shown while the pointer is over them (on touch screens, a tap shows them for a few seconds, until a tap elsewhere):
+
+| Button | What it does |
+| --- | --- |
+| Download (an arrow) | Saves a PNG image of what is shown: the theme, the choices of the section and the zoom of a chart or map, without the buttons of the page; a table that scrolls sideways or downwards, or a card taller than the window, is saved whole. A browser that does not let a page save what it draws saves an SVG image instead |
+| Screenshot (a camera), on the left | Copies the same image to the clipboard, to paste it elsewhere (a presentation, an email or a chat); it turns green a moment once copied. The browser lets a page copy images only at a secure address (https, or the application opened on this computer): elsewhere the image opens in a window, to copy it from its menu (right-click it, or keep it pressed, and choose **Copy Image**) or download it |
+
+The buttons of a whole card (a panel, a slide) are blue and stand on its top edge, at its right; in a card that holds several charts or tables, the one under the pointer shows buttons of its own in light blue, at its own top right corner. They keep clear of the buttons of the page (zoom, Collapse, the controls of a Dashboard chart), stay at the top of their card, chart or table, and show only while it is in sight, below the floating bars. The larger view of a chart, map or table (a double-click) has them in its corner. The file is named after the title of what it shows, and App Events records each download or copy, with `destination: clipboard` for a copy or `copy-dialog` when it opened in the window, or the reason it failed.
 
 ## Small screens
 

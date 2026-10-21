@@ -20151,6 +20151,53 @@ def scoring_image_export(payload: ScoringImageExportRequest, user: SessionUser =
     return {'recorded': True}
 
 
+# The modules whose charts, maps, tables and panels download as images or copy as screenshots (image_buttons.js), with
+# the action App Events records for each (Scoring & GAP Analysis records its own, with its Saved Filter).
+IMAGE_EXPORT_ACTIONS = {
+    'network-insights': 'export_network_insights_image', 'non-qualified-calls': 'export_nq_calls_image',
+    'builders': 'export_chart_builder_image', 'ppt-dashboards': 'export_dashboard_image',
+}
+
+
+class ImageExportRequest(BaseModel):
+    module: str
+    section: str = ''
+    kind: str = ''
+    title: str = ''
+    file_name: str = ''
+    format: str = ''
+    width: int | None = None
+    height: int | None = None
+    error: str = ''
+    # Saved as a file (download), copied to the clipboard (a screenshot of it) or shown to copy from it (copy-dialog).
+    destination: str = 'download'
+    # What the page showed with it, such as the Dashboard and slide of a chart or the theme ({name: value}).
+    context: dict[str, str | int | None] = {}
+
+
+@app.post('/api/image-export')
+def image_export(payload: ImageExportRequest, user: SessionUser = Depends(current_user)) -> dict[str, Any]:
+    """Record a chart, map, table or panel of a module downloaded as an image or copied to the clipboard as one (the browser
+    draws it), or why it could not be."""
+    action = IMAGE_EXPORT_ACTIONS.get(payload.module)
+    if not action:
+        raise HTTPException(status_code=400, detail='The images of this module are not recorded.')
+    if not user_has_feature(user, payload.module):
+        raise HTTPException(status_code=403, detail='This module is not activated for your account.')
+    if not active_workspace:
+        raise HTTPException(status_code=409, detail='Open a workspace before downloading images.')
+    require_workspace_access(user, active_workspace.id)
+    context = {str(name)[:40]: value[:200] if isinstance(value, str) else value
+               for name, value in list(payload.context.items())[:12] if value not in (None, '')}
+    repository.try_add_log(user.username, f'{action}_failed' if payload.error else action, json.dumps({
+        'section': payload.section[:200], 'kind': payload.kind[:20], 'title': payload.title[:300], **context,
+        'file_name': payload.file_name[:200], 'format': payload.format[:10], 'width': payload.width, 'height': payload.height,
+        **({'destination': payload.destination[:20]} if payload.destination and payload.destination != 'download' else {}),
+        **({'error': payload.error[:500]} if payload.error else {}),
+    }, ensure_ascii=False))
+    return {'recorded': True}
+
+
 @app.get('/scoring/saved-filters/{filter_id}/export/{export_kind}')
 def scoring_saved_filter_export(
     filter_id: int,

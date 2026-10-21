@@ -537,5 +537,7 @@
     <footer><button type="button" class="nq-secondary-action" id="nq-rule-default">Default Rule</button><span class="nq-rule-spacer"></span><button type="button" class="nq-secondary-action" id="nq-rule-cancel">Cancel</button><button type="submit" class="nq-primary-action" id="nq-rule-save">Save</button></footer>
   </form>
 </dialog>
+<script defer src="{{ static_path('js/element_image.js') }}?v={{ asset_version('js/element_image.js') }}"></script>
+<script defer src="{{ static_path('js/image_buttons.js') }}?v={{ asset_version('js/image_buttons.js') }}"></script>
 <script defer src="{{ static_path('js/non_qualified_calls.js') }}?v={{ asset_version('js/non_qualified_calls.js') }}"></script>
 {% endblock %}

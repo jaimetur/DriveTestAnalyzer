@@ -1456,6 +1456,32 @@
       content.append(wrap);
     }, scopeOf(table));
   });
+  // Floating buttons over each panel and over its charts, maps and tables (on touch screens, a tap shows them) download it
+  // as a PNG image, as it is shown, or copy it to the clipboard as a screenshot, also in the larger view of a chart, map or
+  // table (image_buttons.js); App Events records each one.
+  const imageTables = '.ni-table-wrap:not(.ni-percentiles)';
+  const imageCharts = '.ni-chart-card, .ni-map-card, .ni-ladder, .ni-percentiles, .ni-finding, .ni-operator-card, .ni-interactivity-card, .ni-kpi-grid';
+  const imageHeading = heading => heading?.dataset?.title || heading?.textContent?.replace(/\s+/g, ' ').trim() || '';
+  window.attachImageButtons?.({
+    root: $('network-insights'), targets: `details.ni-panel, ${imageTables}, ${imageCharts}, .ni-expand-content`,
+    tables: `${imageTables}, .ni-expand-content.is-table`, charts: `${imageCharts}, .ni-expand-content`,
+    exclude: '.ni-chart-zoom, .ni-column-filter', obstacles: '.ni-chart-zoom, summary .summary-inline-actions',
+    module: 'network-insights', fallbackName: 'Network Insights',
+    // The title of its panel, then its own: the heading of a map or ladder, the name of a chart, the title above a table.
+    title: target => {
+      if (target.matches('.ni-expand-content')) return $('ni-expand-title')?.firstChild?.textContent?.trim();
+      const own = target.matches('details') ? ''
+        : target.matches('.ni-ladder') ? imageHeading(target.querySelector('.ni-ladder-title'))
+          : imageHeading(target.querySelector(':scope > :is(h3, h4), :scope > header :is(h3, h4)'))
+            || imageHeading(target.closest('.ni-map-card')?.querySelector(':scope > :is(h3, h4)'))
+            || target.querySelector(':scope > canvas')?.getAttribute('aria-label') || (target.matches(imageTables) ? headingBefore(target) : '');
+      return [...new Set([panelTitle(target), own].filter(Boolean))].join(' — ');
+    },
+    details: target => ({
+      section: target.closest('.ni-expand-dialog') ? 'Larger view' : panelTitle(target),
+      context: {theme: $('ni-theme')?.value || ''},
+    }),
+  });
   $('ni-expand-close')?.addEventListener('click', () => expandDialog.close());
   expandDialog?.addEventListener('click', event => { if (event.target === expandDialog) expandDialog.close(); });
   // The close event arrives after the dialog closed: a view opened meanwhile keeps its content.

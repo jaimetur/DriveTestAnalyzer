@@ -300,6 +300,8 @@ Hiding a value applies to the whole Dashboard. Every series, bar, stacked segmen
 
 The legend state lasts for the browser session and also applies in the expanded viewer. **Generate PPT** exports the charts as you see them, and the PPT job's viewer shows the same state. Relaunching a PPT job keeps the state it was created with. In Network Insights, clicking a legend entry hides or shows it in that chart only.
 
+The slide of the viewer, each of its charts and the chart of the expanded viewer download as a PNG image or copy to the clipboard as a screenshot from the floating buttons at their top right corner, beside the controls of the chart (see [Images of charts and tables](web-interface.md#images-of-charts-and-tables)); so do the Charts Panel and each of its thumbnails. App Events records each one as `export_dashboard_image`, with the slide or the Dashboard and date of the PowerPoint job.
+
 The expanded viewer retains Dashboard filters, chart navigation and a red Close control. Compact portrait/landscape layouts fit navigation and the chart to the viewport; the Comments drawer stays accessible at the bottom.
 
 ### Edit a chart definition

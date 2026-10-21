@@ -46,7 +46,7 @@ The Source Dataset selector is filtered by CDR Type and shows only processed dat
 
 Rows and Columns preserve checkbox order. Selecting `Operator` then `Campaign` produces `Operator × Campaign`.
 
-The embedded viewer provides the same Canvas rendering, semantic hover details, zoom, panning and refresh behaviour as an individual PPT Dashboard chart.
+The embedded viewer provides the same Canvas rendering, semantic hover details, zoom, panning and refresh behaviour as an individual PPT Dashboard chart. Its chart downloads as a PNG image or copies to the clipboard as a screenshot from the floating buttons at the top right corner of its card (see [Images of charts and tables](web-interface.md#images-of-charts-and-tables)); App Events records each one as `export_chart_builder_image`, with the CDR type and CDRs used.
 
 ## Example
 

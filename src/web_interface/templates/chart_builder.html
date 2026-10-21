@@ -133,9 +133,22 @@
   // Delegate both events so every visible editor change reaches this preview.
   fields.addEventListener('input', queue);
   fields.addEventListener('change', queue);
+  // The chart downloads as a PNG image, as it is shown, or copies to the clipboard as a screenshot from the floating
+  // buttons of its card (image_buttons.js, loaded after this script); App Events records each one.
+  document.addEventListener('DOMContentLoaded', () => window.attachImageButtons?.({
+    root: canvasShell.closest('.panel') || document.body, targets: '[data-chart-builder-viewer]', charts: '[data-chart-builder-viewer]',
+    module: 'builders', fallbackName: 'Chart Builder', obstacles: '[data-chart-builder-refresh]',
+    exclude: '[data-chart-builder-refresh], [data-chart-builder-pan], .ds-chart-controls',
+    title: () => title?.textContent.trim(),
+    details: () => ({section: 'Chart Builder', context: {
+      cdr_type: type.value, cdrs: Array.from(sources.selectedOptions).map((option) => option.textContent.trim()).join(', '),
+    }}),
+  }));
   filterSources();
   render();
 })();
 </script>
 <script defer src="{{ static_path('js/dashboard_charts.js') }}?v={{ asset_version('js/dashboard_charts.js') }}"></script>
+<script defer src="{{ static_path('js/element_image.js') }}?v={{ asset_version('js/element_image.js') }}"></script>
+<script defer src="{{ static_path('js/image_buttons.js') }}?v={{ asset_version('js/image_buttons.js') }}"></script>
 {% endblock %}

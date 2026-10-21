@@ -1902,3 +1902,9 @@
 #ds-viewer[data-ds-theme] #ds-title .ds-title-focus { color:var(--ds-title-focus-color); font-family:var(--ds-title-focus-font); font-weight:var(--ds-title-focus-weight); font-style:var(--ds-title-focus-style); }
 #ds-viewer[data-ds-theme] #ds-subtitle { color:var(--ds-subtitle-color); font-family:var(--ds-subtitle-font); font-weight:var(--ds-subtitle-weight); font-style:var(--ds-subtitle-style); }
 #ds-viewer[data-ds-theme] .ds-chart { border-color:var(--ds-card-line); }
+/* The image buttons (app.css) keep their colours over the buttons of the Dashboard viewer. */
+.ppt-dashboards .element-image-button{border-color:#a8cbea;background:#e3f0fc;color:#1f5f9e}
+.ppt-dashboards .element-image-button:hover{border-color:#7fb0de;background:#cfe4f8;color:#174d82}
+.ppt-dashboards .element-image-button[data-image-level="card"]{border-color:#1f6fc0;background:#2f86dc;color:#fff}
+.ppt-dashboards .element-image-button[data-image-level="card"]:hover{border-color:#175a9e;background:#1f6fc0;color:#fff}
+.ppt-dashboards .element-image-button.element-image-copy.is-copied{border-color:#23804a;background:#2e9d5a;color:#fff}

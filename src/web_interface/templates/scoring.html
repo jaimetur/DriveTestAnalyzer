@@ -689,27 +689,6 @@
   .scoring-map-zoom button:hover { background: #eef4f9; transform: none; box-shadow: none; }
   .scoring-map-zoom-rect { fill: rgba(31, 111, 209, .12); stroke: #1f6fd1; stroke-width: 1.5; stroke-dasharray: 5 4; vector-effect: non-scaling-stroke; }
   .scoring-map-zoom-rect.is-selecting { fill: rgba(232, 65, 79, .1); stroke: #c8102e; }
-  /* In light blue. */
-  .scoring-image-download { position: fixed; z-index: 25; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; width: 2.6rem; height: 2.6rem; min-height: 0; padding: 0; border: 1px solid #a8cbea; border-radius: 10px; background: #e3f0fc; color: #1f5f9e; box-shadow: 0 6px 16px rgba(18, 31, 43, .18); cursor: pointer; }
-  .scoring-image-download[hidden] { display: none; }
-  .scoring-image-download:hover { border-color: #7fb0de; background: #cfe4f8; color: #174d82; transform: none; box-shadow: 0 6px 16px rgba(18, 31, 43, .22); }
-  /* The button of the whole card in a more intense blue than the one of its charts and tables. */
-  .scoring-image-download[data-image-level="card"] { border-color: #1f6fc0; background: #2f86dc; color: #fff; }
-  .scoring-image-download[data-image-level="card"]:hover { border-color: #175a9e; background: #1f6fc0; color: #fff; }
-  .scoring-image-download[data-image-level="card"] svg { width: 1.45rem; height: 1.45rem; }
-  /* The screenshot (copy to the clipboard) beside each download, a moment in green once copied. */
-  .scoring-image-download.scoring-image-copy.is-copied { border-color: #23804a; background: #2e9d5a; color: #fff; }
-  /* The screenshot to copy by hand, where the browser does not let the page copy images. */
-  .scoring-image-copy-dialog { box-sizing: border-box; overflow: auto; overscroll-behavior: contain; width: min(56rem, calc(100vw - 2rem)); max-height: calc(100vh - 2rem); padding: 1.2rem 1.4rem; border: 1px solid #d7e0e7; border-radius: 16px; background: #fffdf9; color: #1d2b36; box-shadow: 0 24px 60px rgba(18, 31, 43, .3); }
-  .scoring-image-copy-dialog::backdrop { background: rgba(18, 31, 43, .45); }
-  .scoring-image-copy-dialog h3 { margin: .1rem 0 .4rem; }
-  .scoring-image-copy-dialog p:not(.eyebrow) { margin: 0 0 .8rem; color: #4b5d6a; font-size: .9rem; line-height: 1.45; }
-  /* The image at the width of the window, which scrolls when it is taller. */
-  .scoring-image-copy-dialog img { display: block; width: 100%; height: auto; margin: 0 auto; border: 1px solid #e3e9ee; border-radius: 8px; }
-  .scoring-image-copy-actions { display: flex; justify-content: flex-end; gap: .6rem; margin-top: .9rem; }
-  .scoring-image-copy-actions a { display: inline-flex; align-items: center; padding: .5rem 1rem; border: 1px solid #a8cbea; border-radius: 999px; background: #e3f0fc; color: #1f5f9e; font-weight: 800; text-decoration: none; }
-  .scoring-image-download svg { width: 1.2rem; height: 1.2rem; }
-  .scoring-image-download.is-busy { cursor: progress; opacity: .55; }
   /* The operator of each Points Lost column, and the rows or areas chosen to show alone. */
   .scoring-loss-map-operator { margin: 0 0 .35rem; font-size: 1.45rem; font-weight: 800; line-height: 1.2; color: #17232d; }
   .scoring-loss-environment { color: #4a5b65; font-size: .78rem; }
@@ -1118,7 +1097,7 @@
     background-color: color-mix(in srgb, var(--operator-color) 18%, #0f1726) !important; color: color-mix(in srgb, var(--operator-color) 45%, #ffffff) !important;
     border-color: color-mix(in srgb, var(--operator-color) 60%, #ffffff) !important; }
   [data-scoring-workspace][data-scoring-theme="midnight"] [data-result-pane] .scoring-map-zoom { background: rgba(15, 23, 38, .94) !important; border-color: #2a3b58 !important; }
-  [data-scoring-workspace][data-scoring-theme="midnight"] .scoring-image-download { border-color: #8fbbe3; box-shadow: 0 6px 16px rgba(0, 0, 0, .45); }
+  [data-scoring-workspace][data-scoring-theme="midnight"] .element-image-button { border-color: #8fbbe3; box-shadow: 0 6px 16px rgba(0, 0, 0, .45); }
 
   /* Paper: panels between a double and a single black rule. */
   [data-scoring-workspace][data-scoring-theme="paper"] :is([data-result-pane], .scoring-nr-mode-body) > :is(.scoring-table-mode-section, .scoring-best-network-layout, .scoring-chart-card, .scoring-insight-section, .scoring-result-card) {
@@ -1849,7 +1828,7 @@
       <div class="saved-filter-list" data-saved-filter-list aria-label="Saved Filters" aria-live="polite"><div class="scoring-empty">Loading Saved Filters…</div></div>
     </article>
   </section>
-  <div class="scoring-chart-overlay" data-scoring-chart-overlay hidden>
+  <div class="scoring-chart-overlay" data-scoring-chart-overlay data-image-buttons-host hidden>
     <section class="scoring-chart-expanded-dialog" role="dialog" aria-modal="true" aria-labelledby="scoring-chart-expanded-title" tabindex="-1" data-scoring-chart-dialog>
       <header class="scoring-chart-expanded-header">
         <div><p class="eyebrow" data-scoring-chart-kind>Scoring chart</p><h3 id="scoring-chart-expanded-title" data-scoring-chart-title>Expanded scoring chart</h3><p data-scoring-chart-meta></p></div>
@@ -1878,6 +1857,7 @@
 {% endblock %}
 {% block extra_scripts %}
 <script src="{{ static_path('js/element_image.js') }}?v={{ asset_version('js/element_image.js') }}"></script>
+<script src="{{ static_path('js/image_buttons.js') }}?v={{ asset_version('js/image_buttons.js') }}"></script>
 <script src="{{ static_path('js/scoring_report_editor.js') }}?v={{ asset_version('js/scoring_report_editor.js') }}"></script>
 <script src="{{ static_path('js/scoring.js') }}?v={{ asset_version('js/scoring.js') }}"></script>
 <script src="{{ static_path('js/scoring_exclusions.js') }}?v={{ asset_version('js/scoring_exclusions.js') }}"></script>

@@ -5612,3 +5612,24 @@ body:has(> .unassigned-values-card:not([hidden], .is-collapsed)) { padding-botto
 .bulk-toolbar .bulk-action-rerun { --bulk-action: #1f7a4d; --bulk-action-tint: #e3f3e9; --bulk-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15.6 10.2a5.6 5.6 0 1 1-1.7-4.1'/%3E%3Cpath d='M15.4 3.6v3.6h-3.6'/%3E%3C/svg%3E"); }
 .bulk-toolbar .bulk-action-newer { --bulk-action: #8a5300; --bulk-action-tint: #fff3d6; --bulk-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15.6 10.2a5.6 5.6 0 1 1-1.7-4.1'/%3E%3Cpath d='M15.4 3.6v3.6h-3.6'/%3E%3Cpath d='M10 7.6v2.8l1.8 1.1'/%3E%3C/svg%3E"); }
 .bulk-toolbar .bulk-action-delete { --bulk-action: #b42318; --bulk-action-tint: #fdecec; --bulk-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5.6 5.6 8.8 8.8M14.4 5.6l-8.8 8.8' stroke-width='2.5'/%3E%3C/svg%3E"); }
+/* The floating buttons that download a chart, map, table or panel as an image or copy it as a screenshot (image_buttons.js), in light blue. */
+.element-image-button { position: fixed; z-index: 25; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; width: 2.6rem; height: 2.6rem; min-height: 0; padding: 0; border: 1px solid #a8cbea; border-radius: 10px; background: #e3f0fc; color: #1f5f9e; box-shadow: 0 6px 16px rgba(18, 31, 43, .18); cursor: pointer; }
+.element-image-button[hidden] { display: none; }
+.element-image-button:hover { border-color: #7fb0de; background: #cfe4f8; color: #174d82; transform: none; box-shadow: 0 6px 16px rgba(18, 31, 43, .22); }
+.element-image-button svg { width: 1.2rem; height: 1.2rem; }
+.element-image-button.is-busy { cursor: progress; opacity: .55; }
+/* The buttons of the whole card in a more intense blue than those of its charts and tables. */
+.element-image-button[data-image-level="card"] { border-color: #1f6fc0; background: #2f86dc; color: #fff; }
+.element-image-button[data-image-level="card"]:hover { border-color: #175a9e; background: #1f6fc0; color: #fff; }
+.element-image-button[data-image-level="card"] svg { width: 1.45rem; height: 1.45rem; }
+/* The screenshot (copy to the clipboard) beside each download, a moment in green once copied. */
+.element-image-button.element-image-copy.is-copied { border-color: #23804a; background: #2e9d5a; color: #fff; }
+/* The screenshot to copy by hand, where the browser does not let the page copy images. */
+.element-image-copy-dialog { box-sizing: border-box; overflow: auto; overscroll-behavior: contain; width: min(56rem, calc(100vw - 2rem)); max-height: calc(100vh - 2rem); padding: 1.2rem 1.4rem; border: 1px solid #d7e0e7; border-radius: 16px; background: #fffdf9; color: #1d2b36; box-shadow: 0 24px 60px rgba(18, 31, 43, .3); }
+.element-image-copy-dialog::backdrop { background: rgba(18, 31, 43, .45); }
+.element-image-copy-dialog h3 { margin: .1rem 0 .4rem; }
+.element-image-copy-dialog p:not(.eyebrow) { margin: 0 0 .8rem; color: #4b5d6a; font-size: .9rem; line-height: 1.45; }
+/* The image at the width of the window, which scrolls when it is taller. */
+.element-image-copy-dialog img { display: block; width: 100%; height: auto; margin: 0 auto; border: 1px solid #e3e9ee; border-radius: 8px; }
+.element-image-copy-actions { display: flex; justify-content: flex-end; gap: .6rem; margin-top: .9rem; }
+.element-image-copy-actions a { display: inline-flex; align-items: center; padding: .5rem 1rem; border: 1px solid #a8cbea; border-radius: 999px; background: #e3f0fc; color: #1f5f9e; font-weight: 800; text-decoration: none; }

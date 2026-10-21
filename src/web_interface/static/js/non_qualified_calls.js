@@ -6344,5 +6344,28 @@
     if (state.detail && !composerBody.value.trim() && !drawer.querySelector('.nq-comment-editor')) openDetail(state.detail.call.call_key, {keepTab: true});
   }, REFRESH_INTERVAL_MS);
 
+  // Floating buttons over each panel and over its charts and tables (on touch screens, a tap shows them) download it as a
+  // PNG image, as it is shown, or copy it to the clipboard as a screenshot (image_buttons.js); App Events records each one.
+  // A table with its title (a failure card, a progress section) is one image; the tables without one are on their own.
+  const imageTables = '.nq-failure-card, .nq-progress-section:has(.nq-table-wrap), .nq-table-wrap:not(.nq-failure-card *, .nq-progress-section *)';
+  const imageCharts = '.nq-pie, .nq-root-donut-group, .nq-progress-section';
+  window.attachImageButtons?.({
+    root: $('non-qualified-calls'), fallbackName: 'Non-Qualified Calls', module: 'non-qualified-calls',
+    targets: `details.panel.collapsible-panel, ${imageTables}, ${imageCharts}, .nq-kpis, .nq-rate-overview, .nq-phase-cards, .nq-failure-section`,
+    tables: imageTables, charts: imageCharts, exclude: '.nq-chart-tooltip', obstacles: 'summary .summary-inline-actions',
+    // The title of its panel, then its own: that of its section (with the operator of a failure card) or its heading.
+    title: target => {
+      const text = element => window.imageHeadingText(element);
+      const section = target.closest('.nq-failure-section, .nq-progress-section');
+      const own = target.matches('details') ? ''
+        : target.matches('.nq-failure-card')
+          ? [text(section?.querySelector(':scope > h3')), text(target.querySelector('.nq-failure-operator'))].filter(Boolean).join(' · ')
+          : text(target.querySelector(':scope > :is(h3, h4), :scope > :is(header, .nq-matrix-head) :is(h3, h4)'))
+            || text(section?.querySelector(':scope > :is(h3, h4)'));
+      return [...new Set([text(target.closest('details.panel')?.querySelector('summary h2')), own].filter(Boolean))].join(' — ');
+    },
+    details: target => ({section: window.imageHeadingText(target.closest('details.panel')?.querySelector('summary h2'))}),
+  });
+
   loadState().then(openCenterFromHash);
 })();

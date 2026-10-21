@@ -14,6 +14,7 @@ The module is in development, so its main tab can show a red **ALPHA** label (se
 | Know which calls are listed and how they are indexed | [Which calls are Non-Qualified](#which-calls-are-non-qualified) |
 | Understand Daily, cumulative and Final CDRs of the same call | [Daily and Final CDRs](#daily-and-final-cdrs) |
 | Choose the calls I work with | [Filters](#filters) |
+| Download or copy a panel, chart or table as an image | [Images of the panels](#images-of-the-panels) |
 | Go to each panel | [Sections bar](#sections-bar) |
 | See how many calls fail and where they concentrate | [Summary](#summary) |
 | Compare the NQ rate of campaigns and operators | [NQ Rate by Campaign and Operator](#nq-rate-by-campaign-and-operator) |
@@ -96,6 +97,10 @@ Selecting every value of a filter, or none, applies no restriction (**Select All
 
 > [!IMPORTANT]
 > **The selection is shared.** It is saved in the workspace, so every user finds the last filters applied, in any session and on any device. **Assigned to me** always refers to the user viewing the page. An Operator or Vendor saved with a name the [Operator Maps](workspace-config.md#operator-maps) now show differently keeps selecting its calls with the new name (Vodafone SM selects VF SM once it is mapped to it), as do the NetCheck RCA values saved with another spelling.
+
+## Images of the panels
+
+Every panel, and its KPIs, charts and tables (a table with its title, such as a failure card or a section of Progress View, is one image), downloads as a PNG image or copies to the clipboard as a screenshot from the floating buttons at its top right corner (see [Images of charts and tables](web-interface.md#images-of-charts-and-tables)); App Events records each one as `export_nq_calls_image`.
 
 ## Sections bar
 

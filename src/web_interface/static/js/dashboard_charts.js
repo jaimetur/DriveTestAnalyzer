@@ -119,10 +119,21 @@
     const image = new Image();
     const record = {image, status: 'loading'};
     record.promise = new Promise(resolve => {
-      image.addEventListener('load', () => { record.status = 'ready'; resolve(record); }, {once: true});
-      image.addEventListener('error', () => { record.status = 'error'; resolve(record); }, {once: true});
+      image.addEventListener('load', () => { record.status = 'ready'; resolve(record); });
+      image.addEventListener('error', () => {
+        // A tile server that does not allow it is asked again plainly: the map shows, but cannot be saved as an image.
+        if (image.crossOrigin) {
+          image.removeAttribute('crossorigin');
+          image.src = url;
+          return;
+        }
+        record.status = 'error';
+        resolve(record);
+      });
     });
     image.decoding = 'async';
+    // Asked for with CORS, so a map drawn with its tiles can still be saved as an image (see element_image.js).
+    image.crossOrigin = 'anonymous';
     image.src = url;
     mapTiles.set(url, record);
     return record;

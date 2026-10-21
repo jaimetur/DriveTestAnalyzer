@@ -9297,305 +9297,54 @@
 
   // Floating buttons at the top right corner of the chart, map, table or panel of the results under the pointer (on
   // touch screens, of the one tapped) download it as a PNG image, as it is shown, or copy it to the clipboard as a
-  // screenshot (the button on the left of the download); App Events records each one. Two pairs of buttons for the page:
-  // one over the whole card (the outermost of them), which stays in its place while the pointer moves over the card, and
-  // one over the chart or table of the card under the pointer, when the card holds them; the results drawn again need
-  // nothing of their own.
+  // screenshot (image_buttons.js): those of the whole card and, when it holds several, those of the chart or table under
+  // the pointer; also in the larger view of a chart, map or table. App Events records each one with the Saved Filter.
   // (The tables beside the map of a route have no wrapper of their own, and its map is in a frame.)
   const IMAGE_TABLES = '.scoring-insight-table-wrap, .scoring-matrix-wrap, .scoring-table-wrap, .scoring-position, .scoring-route-side > .scoring-insight-table';
   const IMAGE_CHARTS = '.scoring-chart-card, .scoring-loss-map-card, .scoring-expandable-part, .scoring-route-map-frame';
   // (The panels of the results tabs, as the themes frame them, are cards too.)
   const IMAGE_TARGETS = `${IMAGE_TABLES}, ${IMAGE_CHARTS}, .scoring-result-card, .scoring-table-mode-section,
-    .scoring-best-network-layout, .scoring-insight-section`;
+    .scoring-best-network-layout, .scoring-insight-section, .scoring-expanded-holder`;
   const IMAGE_TITLES = ':scope > :is(h4, h5, .scoring-insight-banner, .scoring-position-title, figcaption)';
   // The zoom buttons are left out of the image.
   const IMAGE_EXCLUDED = '.scoring-map-zoom, .scoring-map-zoom-rect, .scoring-content-zoom-rect';
-  const imageButtons = ['card', 'part'].map(level => {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'scoring-image-download';
-    button.dataset.imageLevel = level;
-    button.hidden = true;
-    // The card: a panel with its title bar and the arrow inside it; a chart or table: the arrow into a tray.
-    button.innerHTML = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" '
-      + 'stroke-linejoin="round" aria-hidden="true" focusable="false">'
-      + (level === 'card'
-        ? '<rect x="2" y="2" width="16" height="16" rx="2.5"/><path d="M2 6.3h16"/>'
-          + '<path d="M10 8.8v6.2"/><path d="m7 12.2 3 3 3-3"/>'
-        : '<path d="M10 3v9"/><path d="m6.5 8.5 3.5 3.5 3.5-3.5"/><path d="M3.5 13v2.5A1.5 1.5 0 0 0 5 17h10a1.5 1.5 0 0 0 1.5-1.5V13"/>')
-      + '</svg>';
-    // The screenshot: a camera.
-    const copy = document.createElement('button');
-    copy.type = 'button';
-    copy.className = 'scoring-image-download scoring-image-copy';
-    copy.dataset.imageLevel = level;
-    copy.hidden = true;
-    copy.innerHTML = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" '
-      + 'stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2.5 7A1.5 1.5 0 0 1 4 5.5h2.2l1.3-2h5l1.3 2H16'
-      + 'A1.5 1.5 0 0 1 17.5 7v8A1.5 1.5 0 0 1 16 16.5H4A1.5 1.5 0 0 1 2.5 15z"/><circle cx="10" cy="10.8" r="3.1"/></svg>';
-    root.append(button, copy);
-    return {level, button, copy, target: null, hideTimer: 0, inSight: false};
-  });
-  const [cardImageButton] = imageButtons;
-  let imagePlaceFrame = 0;
-  const isImageButton = node => imageButtons.some(slot => slot.button.contains(node) || slot.copy.contains(node));
-
-  // The card under a node (the outermost chart, map, table or panel) and the chart or table of the card under it.
-  function imageTargetsAt(node) {
-    const part = node?.closest?.(IMAGE_TARGETS);
-    if (!part?.closest('[data-result-pane]') || !root.contains(part)) return {card: null, part: null};
-    let card = part;
-    for (let outer = card.parentElement?.closest(IMAGE_TARGETS); outer; outer = outer.parentElement?.closest(IMAGE_TARGETS)) {
-      card = outer;
-    }
-    // A card that holds a single chart or table has the buttons of the card only.
-    const parts = [...card.querySelectorAll(IMAGE_TARGETS)].filter(item => item.parentElement.closest(IMAGE_TARGETS) === card);
-    return {card, part: part === card || parts.length < 2 ? null : part};
-  }
-
-  function imageKind(target) {
-    return target.matches(IMAGE_TABLES) ? 'table' : target.matches(IMAGE_CHARTS) ? 'chart' : 'panel';
-  }
 
   // Its own title, after the title of the card it is part of (``Points Lost Map — EE``); a table beside the map of a route
-  // has its title just above it.
+  // has its title just above it, and the larger view the title of its header.
   function imageTitle(target) {
+    if (target.matches('.scoring-expanded-holder')) {
+      return [...(expandedChartTitle?.childNodes || [])].filter(node => node.nodeType === Node.TEXT_NODE)
+        .map(node => node.textContent).join('').trim();
+    }
     const caption = target.previousElementSibling?.matches('.scoring-route-table-title') ? target.previousElementSibling : null;
     const titleOf = element => (element === target && caption
       ? caption.textContent.trim() : titleWithoutScope(element?.querySelector(IMAGE_TITLES)));
     const card = target.parentElement?.closest('.scoring-chart-card, .scoring-result-card, .scoring-table-mode-section');
     // (A panel of several charts without a title of its own: the first title inside it.)
     const inner = titleWithoutScope(target.querySelector(':is(h4, h5, figcaption)'));
-    return [...new Set([card ? titleOf(card) : '', titleOf(target)].filter(Boolean))].join(' — ') || inner || 'Scoring';
+    return [...new Set([card ? titleOf(card) : '', titleOf(target)].filter(Boolean))].join(' — ') || inner;
   }
 
-  function imageFileName(parts) {
-    const name = parts.filter(Boolean).join(' - ').replace(/[\\/:*?"<>|\u0000-\u001f]+/g, ' ').replace(/\s+/g, ' ')
-      .trim().slice(0, 150).trim();
-    return `${name || 'Scoring'}.png`;
-  }
-
-  // The buttons of a card stand on its top edge, at its right; those of a chart or table in its top right corner, beside
-  // its zoom buttons, the screenshot on the left of the download. They stay at the top of their card, chart or table and
-  // show only while it is in sight (below the floating section bar and the tab bar of the results): they do not follow
-  // the scroll down it.
-  function placeImageButton(slot) {
-    const {button, target} = slot;
-    if (!target?.isConnected || target.closest('[hidden]')) {
-      hideImageButton(slot);
-      return;
-    }
-    button.hidden = false;
-    slot.copy.hidden = false;
-    const bounds = target.getBoundingClientRect();
-    const size = button.getBoundingClientRect();
-    const tabs = root.querySelector('.scoring-result-tabs')?.getBoundingClientRect();
-    const barBottom = Math.max(0, document.querySelector('.section-bar')?.getBoundingClientRect().bottom || 0,
-      tabs?.height ? tabs.bottom + 3 : 0);
-    const card = slot === cardImageButton;
-    let top = card ? bounds.top - size.height / 2 : bounds.top + 8;
-    let right = bounds.right - 8;
-    if (!card && cardImageButton.inSight) {
-      // The buttons of a chart or table at the right side of its card have the right edge of those of the card (below
-      // them where they would meet); the others stay in the corner of their chart or table.
-      const cardButton = cardImageButton.button.getBoundingClientRect();
-      if (cardButton.right - right < 48) {
-        right = cardButton.right;
-        if (top < cardButton.bottom + 6 && top + size.height > cardButton.top - 6) top = cardButton.bottom + 6;
-      }
-    }
-    for (const obstacle of target.querySelectorAll('.scoring-map-zoom')) {
-      const box = obstacle.getBoundingClientRect();
-      if (box.width && box.left < right && box.right > right - size.width && box.top < top + size.height && box.bottom > top) {
-        right = box.left - 6;
-      }
-    }
-    slot.inSight = top >= barBottom + 4 && top + size.height <= window.innerHeight;
-    for (const [element, left] of [[button, right - size.width], [slot.copy, right - size.width * 2 - 6]]) {
-      element.style.visibility = slot.inSight ? '' : 'hidden';
-      element.style.left = `${Math.round(left)}px`;
-      element.style.top = `${Math.round(top)}px`;
-    }
-  }
-
-  const imageBusy = slot => slot.button.classList.contains('is-busy') || slot.copy.classList.contains('is-busy');
-
-  function showImageButton(slot, target) {
-    if (imageBusy(slot)) return;
-    window.clearTimeout(slot.hideTimer);
-    if (target !== slot.target) {
-      slot.target = target;
-      const kind = imageKind(target);
-      for (const [button, label] of [[slot.button, `Download this ${kind} as an image (PNG)`],
-        [slot.copy, `Copy this ${kind} to the clipboard as a screenshot, to paste it elsewhere`]]) {
-        button.title = label;
-        button.setAttribute('aria-label', label);
-      }
-    }
-    placeImageButton(slot);
-  }
-
-  function hideImageButton(slot) {
-    if (imageBusy(slot)) return;
-    window.clearTimeout(slot.hideTimer);
-    slot.target = null;
-    slot.inSight = false;
-    slot.button.hidden = true;
-    slot.copy.hidden = true;
-  }
-
-  // The button of the card and, when the node is in one of its charts or tables, the button of that one (the card first,
-  // so the other one keeps clear of it).
-  function showImageButtons(node, {hideAfter = 0} = {}) {
-    const targets = imageTargetsAt(node);
-    for (const slot of imageButtons) {
-      if (!targets[slot.level]) {
-        hideImageButton(slot);
-        continue;
-      }
-      showImageButton(slot, targets[slot.level]);
-      if (hideAfter) slot.hideTimer = window.setTimeout(() => hideImageButton(slot), hideAfter);
-    }
-  }
-
-  // With a mouse the buttons show while the pointer is over a chart or table (or over a button).
-  root.addEventListener('pointerover', event => {
-    if (event.pointerType !== 'mouse' || isImageButton(event.target)) return;
-    showImageButtons(event.target);
+  window.attachImageButtons?.({
+    root, targets: IMAGE_TARGETS, within: '[data-result-pane], [data-scoring-chart-overlay]',
+    tables: `${IMAGE_TABLES}, .scoring-expanded-holder:has(table)`, charts: `${IMAGE_CHARTS}, .scoring-expanded-holder`,
+    exclude: IMAGE_EXCLUDED, obstacles: '.scoring-map-zoom', title: imageTitle, fallbackName: 'Scoring',
+    // Below the floating section bar and the tab bar of the results.
+    topInset: () => {
+      const tabs = root.querySelector('.scoring-result-tabs')?.getBoundingClientRect();
+      return Math.max(0, document.querySelector('.section-bar')?.getBoundingClientRect().bottom || 0, tabs?.height ? tabs.bottom + 3 : 0);
+    },
+    fileName: (target, title) => window.imageFileName([title, selectedEnvironment ? environmentLabel(selectedEnvironment) : ''], 'Scoring'),
+    details: target => {
+      const tab = root.querySelector(`[data-result-tab="${activeResultTab}"]`)?.textContent.trim() || activeResultTab || '';
+      return {
+        saved_filter_id: Number(currentResultsSavedFilterId) || null,
+        tab: target.matches('.scoring-expanded-holder') ? `${tab} (larger view)` : tab,
+        environment: selectedEnvironment ? environmentLabel(selectedEnvironment) : '', theme: activeTheme?.id || '',
+      };
+    },
+    record: details => window.recordImageExport('/api/scoring/image-export', details),
   });
-  root.addEventListener('pointerout', event => {
-    if (event.pointerType !== 'mouse') return;
-    const next = event.relatedTarget;
-    if (!(next && (isImageButton(next) || imageTargetsAt(next).card))) imageButtons.forEach(hideImageButton);
-  });
-  // On touch screens a tap shows them for a few seconds, until a tap elsewhere.
-  root.addEventListener('pointerup', event => {
-    if (event.pointerType === 'mouse' || isImageButton(event.target) || !imageTargetsAt(event.target).card) return;
-    showImageButtons(event.target, {hideAfter: 5000});
-  });
-  document.addEventListener('pointerdown', event => {
-    if (event.pointerType === 'mouse') return;
-    for (const slot of imageButtons) {
-      if (!slot.button.hidden && !slot.button.contains(event.target) && !slot.copy.contains(event.target)
-        && !slot.target?.contains(event.target)) hideImageButton(slot);
-    }
-  });
-  // While the page scrolls they stay at the top of their card, chart or table (hidden while it is out of sight).
-  const followImageTarget = () => {
-    if (imageButtons.every(slot => !slot.target) || imagePlaceFrame) return;
-    imagePlaceFrame = window.requestAnimationFrame(() => {
-      imagePlaceFrame = 0;
-      imageButtons.filter(slot => slot.target).forEach(placeImageButton);
-    });
-  };
-  window.addEventListener('scroll', followImageTarget, {passive: true, capture: true});
-  window.addEventListener('resize', followImageTarget);
-
-  function recordImageDownload(details) {
-    fetch('/api/scoring/image-export', {
-      method: 'POST', credentials: 'same-origin', keepalive: true,
-      headers: {Accept: 'application/json', 'Content-Type': 'application/json'}, body: JSON.stringify(details),
-    }).catch(() => {});
-  }
-
-  // Where the browser does not let the page copy images (an address that is not secure), the screenshot shows in a dialog,
-  // to copy it with the menu of the image (a right click, or keeping it pressed) or to download it.
-  function showImageToCopy(blob, fileName) {
-    const address = URL.createObjectURL(blob);
-    const dialog = document.createElement('dialog');
-    dialog.className = 'scoring-image-copy-dialog';
-    const eyebrow = document.createElement('p');
-    eyebrow.className = 'eyebrow';
-    eyebrow.textContent = 'Screenshot';
-    const heading = document.createElement('h3');
-    heading.textContent = 'Copy the image';
-    const note = document.createElement('p');
-    note.append('This browser lets the page copy images only at a secure address (https, or the application opened on this '
-      + 'computer): right-click the image (or keep it pressed) and choose ', insightStrong('Copy Image'), '.');
-    const image = document.createElement('img');
-    image.src = address;
-    image.alt = fileName.replace(/\.(png|svg)$/i, '');
-    const actions = document.createElement('div');
-    actions.className = 'scoring-image-copy-actions';
-    const download = document.createElement('a');
-    download.href = address;
-    download.download = fileName;
-    download.textContent = 'Download';
-    const close = document.createElement('button');
-    close.type = 'button';
-    close.textContent = 'Close';
-    close.addEventListener('click', () => dialog.close());
-    actions.append(download, close);
-    dialog.append(eyebrow, heading, note, image, actions);
-    // The page behind does not scroll while it is open.
-    const pageOverflow = document.documentElement.style.overflow;
-    document.documentElement.style.overflow = 'hidden';
-    dialog.addEventListener('close', () => {
-      document.documentElement.style.overflow = pageOverflow;
-      dialog.remove();
-      URL.revokeObjectURL(address);
-    });
-    document.body.append(dialog);
-    dialog.showModal();
-  }
-
-  // Downloads the target of the slot as a PNG, or copies it to the clipboard (as a screenshot): the copy starts within the
-  // click, as the clipboard requires; where the browser does not let the page copy images, it shows to copy from it.
-  async function exportImage(slot, button, copy) {
-    const {target} = slot;
-    const clipboard = copy && window.isSecureContext && Boolean(navigator.clipboard?.write) && typeof ClipboardItem === 'function';
-    const draw = !copy ? window.downloadElementImage : clipboard ? window.copyElementImage : window.drawElementImage;
-    if (!target?.isConnected || imageBusy(slot) || typeof draw !== 'function') return;
-    const title = imageTitle(target);
-    const environment = selectedEnvironment ? environmentLabel(selectedEnvironment) : '';
-    const fileName = imageFileName([title, environment]);
-    const details = {
-      saved_filter_id: Number(currentResultsSavedFilterId) || null,
-      tab: root.querySelector(`[data-result-tab="${activeResultTab}"]`)?.textContent.trim() || activeResultTab || '',
-      kind: imageKind(target), title, environment, theme: activeTheme?.id || '',
-      ...(copy ? {destination: clipboard ? 'clipboard' : 'copy-dialog'} : {}),
-    };
-    button.classList.add('is-busy');
-    button.setAttribute('aria-busy', 'true');
-    try {
-      const image = copy ? await draw(target, {exclude: IMAGE_EXCLUDED}) : await draw(target, fileName, {exclude: IMAGE_EXCLUDED});
-      const format = image.format || (image.blob ? 'png' : 'svg');
-      recordImageDownload({...details, file_name: image.fileName || fileName, format, width: image.width, height: image.height});
-      if (copy && !clipboard) {
-        showImageToCopy(image.blob || new Blob([image.svg], {type: 'image/svg+xml'}), fileName.replace(/\.png$/i, `.${format}`));
-      } else if (copy) {
-        // A moment in green, saying it is in the clipboard.
-        button.classList.add('is-copied');
-        button.title = 'Copied to the clipboard';
-        window.setTimeout(() => {
-          button.classList.remove('is-copied');
-          button.title = button.getAttribute('aria-label') || '';
-        }, 1600);
-      }
-    } catch (error) {
-      const reason = error?.message || String(error);
-      recordImageDownload({...details, file_name: fileName, error: reason});
-      const message = `The ${details.kind} could not be ${copy ? 'copied to the clipboard' : 'downloaded'} as an image: ${reason}`;
-      if (typeof showInfoDialog === 'function') {
-        showInfoDialog(message, {tone: 'error', title: copy ? 'Image not copied' : 'Image not downloaded'});
-      } else window.alert(message);
-    } finally {
-      button.classList.remove('is-busy');
-      button.removeAttribute('aria-busy');
-      // The pointer may have left while the image was drawn.
-      if (!slot.button.matches(':hover') && !slot.copy.matches(':hover') && !target.matches(':hover')) hideImageButton(slot);
-    }
-  }
-  for (const slot of imageButtons) {
-    slot.button.addEventListener('click', event => {
-      event.stopPropagation();
-      exportImage(slot, slot.button, false);
-    });
-    slot.copy.addEventListener('click', event => {
-      event.stopPropagation();
-      exportImage(slot, slot.copy, true);
-    });
-  }
 
   // Zoom for content that is not one SVG (such as the location cards): the content is scaled inside
   // its box, which keeps its size; a dragged rectangle or the floating buttons zoom it.

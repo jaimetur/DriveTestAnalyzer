@@ -4461,6 +4461,34 @@
   }, true);
   window.addEventListener('beforeunload',event=>{ if (dirty) { event.preventDefault(); event.returnValue = ''; } });
   window.addEventListener('auto-calculated-field-job-status',event=>{ const job = event.detail; if (definition && job?.id && ['ready','completed'].includes(job.status) && !completedFieldJobs.has(job.id)) { completedFieldJobs.add(job.id); changed(); } });
+  // Floating buttons over the slide of the Dashboard viewer and over each of its charts, over the Charts Panel and each of
+  // its thumbnails, and over the larger view of a chart (on touch screens, a tap shows them) download it as a PNG image,
+  // as it is shown, or copy it to the clipboard as a screenshot (image_buttons.js); App Events records each one.
+  const imageText = id => window.imageHeadingText?.($(id)) || '';
+  window.attachImageButtons?.({
+    // (The larger view of a chart opens at the end of the page, outside its main part.)
+    root: document.body, module: 'ppt-dashboards', fallbackName: 'Dashboard',
+    targets: '#ds-charts, #ds-charts > .ds-chart, #ds-ppt-charts-panel, #ds-ppt-charts-body > .report-chart-card, .ds-chart-expanded-canvas',
+    charts: '#ds-charts > .ds-chart, #ds-ppt-charts-body > .report-chart-card, .ds-chart-expanded-canvas',
+    exclude: '.ds-chart-controls, .ds-chart-definition-toggle, .ds-chart-pan-button, .ds-chart-expanded-pan, .ds-chart-filter-panel',
+    obstacles: '.ds-chart-controls, .ds-chart-definition-toggle, .ds-chart-brand, summary .summary-inline-actions',
+    // The slide, then its chart; the Charts Panel of its Dashboard, then a thumbnail; the chart of the larger view.
+    title: target => {
+      if (target.matches('.ds-chart-expanded-canvas')) return imageText('ds-chart-expanded-title');
+      if (target.matches('#ds-ppt-charts-panel')) return ['Charts Panel', imageText('ds-ppt-charts-dashboard')].filter(Boolean).join(' — ');
+      if (target.matches('.report-chart-card')) return window.imageHeadingText(target.querySelector('h3'));
+      return [...new Set([imageText('ds-title'), target.matches('.ds-chart') ? target.getAttribute('aria-label') : ''].filter(Boolean))].join(' — ');
+    },
+    details: target => {
+      const theme = $('ds-viewer')?.dataset.dsTheme || '';
+      if (target.closest('.ds-chart-expanded-overlay')) {
+        return {section: 'Larger view', context: {chart: imageText('ds-chart-expanded-position'), meta: imageText('ds-chart-expanded-meta'), theme}};
+      }
+      return target.closest('#ds-viewer')
+        ? {section: 'Dashboard viewer', context: {slide: imageText('ds-position'), theme}}
+        : {section: 'Charts Panel', context: {dashboard: imageText('ds-ppt-charts-dashboard'), date: imageText('ds-ppt-charts-date')}};
+    },
+  });
   safe(async ()=>{
     let last = '';
     try {
