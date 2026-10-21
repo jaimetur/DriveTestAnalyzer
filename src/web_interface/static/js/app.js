@@ -4873,6 +4873,7 @@ const catalogueInsertCancel = document.getElementById('catalogue-insert-cancel')
 const infoOverlay = document.getElementById('info-overlay');
 const infoTitle = document.getElementById('info-title');
 const infoCopy = document.getElementById('info-copy');
+const infoContent = document.getElementById('info-content');
 const infoClose = document.getElementById('info-close');
 const infoEyebrow = document.getElementById('info-eyebrow');
 const infoIcon = document.getElementById('info-icon');
@@ -7478,7 +7479,15 @@ document.querySelectorAll('[data-import-package-form]').forEach((form) => {
         if (!statusResponse.ok) throw new Error(status.detail || 'The import status could not be read.');
         if (status.status === 'ready') {
           if (isBackgroundFieldImport) {
-            showInfoDialog(status.notice || 'Auto-calculated Fields imported successfully.', {title: 'Import complete'});
+            showImportSummary(status.notice || 'Auto-calculated Fields imported successfully.', status.notice_details, {title: 'Import complete'});
+          } else if ((status.notice_details?.sections || []).length || (status.notice_details?.packages || []).length > 1) {
+            // The summary first; the page then opens again with its headline.
+            hideLoadingOverlay();
+            const headline = status.notice_details.headline || 'Package imported successfully.';
+            showImportSummary(status.notice, status.notice_details, {
+              title: 'Import complete',
+              onClose: () => window.location.assign(`/admin?${new URLSearchParams({import_export_notice: headline})}`),
+            });
           } else {
             window.location.assign(`/admin?${new URLSearchParams({import_export_notice: status.notice || 'Package imported successfully.'})}`);
           }
@@ -7775,7 +7784,7 @@ function followServerTransfer(initialState) {
     }
     if (transfer.status === 'ready') {
       finish();
-      showInfoDialog(transfer.notice || 'The destination server received and imported the package successfully.', {title: 'Server Transfer Complete', tone: 'info'});
+      showImportSummary(transfer.notice || 'The destination server received and imported the package successfully.', transfer.notice_details, {title: 'Server Transfer Complete', tone: 'info'});
       return;
     }
     if (transfer.status === 'failed') {
@@ -8069,7 +8078,7 @@ document.querySelectorAll('[data-export-package-form]').forEach((form) => {
       }
       if (offer.status === 'ready') {
         finish();
-        showInfoDialog(offer.notice || 'The incoming transfer was imported successfully.', {title: 'Incoming Transfer Complete', tone: 'info'});
+        showImportSummary(offer.notice || 'The incoming transfer was imported successfully.', offer.notice_details, {title: 'Incoming Transfer Complete', tone: 'info'});
         return;
       }
       if (['failed', 'rejected', 'expired', 'cancelled'].includes(offer.status)) {
@@ -8739,6 +8748,71 @@ function showCatalogueInsertChoice(slide) {
   });
 }
 
+// The summary of an import or transfer: what it imported, and for each element the items it renamed (before and after).
+function importSummaryContent(details) {
+  const content = document.createElement('div');
+  content.className = 'import-summary';
+  const element = (tag, className, text) => {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text !== undefined) node.textContent = text;
+    return node;
+  };
+  const packages = details.packages || [];
+  if (packages.length) {
+    const section = element('section', 'import-summary-section');
+    const heading = element('h4');
+    heading.append(element('span', '', 'Imported'), element('span', 'import-summary-count', packages.length === 1 ? '1 package' : `${packages.length} packages`));
+    const list = element('ul', 'import-summary-packages');
+    packages.forEach((line) => list.append(element('li', '', line)));
+    section.append(heading, list);
+    content.append(section);
+  }
+  (details.sections || []).forEach((entry) => {
+    const items = entry.items || [];
+    const changes = items.filter((item) => item.from !== undefined);
+    const notes = items.filter((item) => item.from === undefined);
+    const section = element('section', 'import-summary-section');
+    const heading = element('h4');
+    const renamed = changes.filter((item) => !item.note).length;
+    const another = changes.length - renamed;
+    const count = [renamed ? `${renamed} renamed` : '', another ? `${another} imported with another name` : ''].filter(Boolean).join(' · ');
+    heading.append(element('span', '', entry.title || 'Notes'), element('span', 'import-summary-count', count));
+    section.append(heading);
+    if (changes.length) {
+      const withKind = changes.some((item) => item.label);
+      const table = element('table', 'import-summary-table');
+      const head = element('tr');
+      if (withKind) head.append(element('th', '', 'Kind'));
+      head.append(element('th', '', 'Before'), element('th', 'import-summary-arrow', ''), element('th', '', 'After'));
+      table.append(element('thead'));
+      table.tHead.append(head);
+      const body = element('tbody');
+      changes.forEach((item) => {
+        const row = element('tr');
+        if (withKind) row.append(element('td', 'import-summary-kind', item.label ? item.label.charAt(0).toUpperCase() + item.label.slice(1) : ''));
+        const after = element('td', '', item.to);
+        if (item.note) after.append(element('small', '', `Imported with another name: ${item.note}`));
+        row.append(element('td', '', item.from), element('td', 'import-summary-arrow', '→'), after);
+        body.append(row);
+      });
+      table.append(body);
+      section.append(table);
+    }
+    notes.forEach((item) => section.append(element('p', 'import-summary-note', item.text)));
+    content.append(section);
+  });
+  return content;
+}
+
+function showImportSummary(notice, details, options = {}) {
+  if (!details || !((details.sections || []).length || (details.packages || []).length > 1)) {
+    showInfoDialog(notice, options);
+    return;
+  }
+  showInfoDialog(details.headline || notice, {...options, wide: true, content: importSummaryContent(details)});
+}
+
 function showInfoDialog(message, options = {}) {
   if (!infoOverlay || !infoTitle || !infoCopy || !infoClose) {
     window.alert(message || 'Update complete');
@@ -8753,11 +8827,19 @@ function showInfoDialog(message, options = {}) {
   if (infoIcon) infoIcon.textContent = toneIcons[tone];
   infoTitle.textContent = options.title || toneLabels[tone];
   infoCopy.textContent = message || '';
+  // Content laid out below the message (the summary of an import), in a wider dialog.
+  if (infoContent) {
+    infoContent.replaceChildren(...(options.content ? [options.content] : []));
+    infoContent.hidden = !options.content;
+  }
+  infoOverlay.classList.toggle('info-wide', Boolean(options.wide));
   infoOverlay.hidden = false;
   document.body.classList.add('loading-active');
   const close = () => {
     infoOverlay.hidden = true;
     delete infoOverlay.dataset.tone;
+    infoOverlay.classList.remove('info-wide');
+    if (infoContent) { infoContent.replaceChildren(); infoContent.hidden = true; }
     document.body.classList.remove('loading-active');
     infoClose.removeEventListener('click', close);
     infoOverlay.removeEventListener('click', handleBackdrop);

@@ -94,6 +94,11 @@ def test_dashboards_are_replaced_by_identity_or_name_and_the_others_kept(client,
     stored = _dashboards(destination_repo)
     assert {key: item['name'] for key, item in stored.items()} == {'local': 'Local only', 'x9': 'Speed v2', 'd1': 'Coverage v2'}
     assert '"Coverage" renamed "Coverage v2"' in notice
+    # The summary window gets the message in parts: its headline and a table of the renamed items of each element.
+    details = core.import_notice_details(notice)
+    [section] = [item for item in details['sections'] if item['title'] == f'Dashboards of "{destination.name}"']
+    assert {'label': '', 'from': 'Coverage', 'to': 'Coverage v2'} in section['items']
+    assert details['headline'] and details['headline'] in notice
 
     # A Reporting Job that names the Dashboard by its ID on the source finds the one it replaced.
     assert brt.dashboard_aliases(destination_repo) == {'d2': 'x9'}
@@ -434,3 +439,27 @@ def test_an_export_tells_which_part_it_is_archiving(client, tmp_path):
     phases = []
     core.build_export_archive_file(['dashboards', 'ppt-templates'], tmp_path / 'selection.zip', phase_callback=phases.append)
     assert phases == ['Dashboards (1 of 2)', 'PPT Templates (2 of 2)']
+
+
+def test_import_summaries_come_in_parts_for_the_summary_window():
+    line = core.summary_section('Bundle Report Template Favourites of "UK"', [
+        '"Weekly · NSA" renamed "Weekly report · NSA"', '"Daily" kept as "Daily (2)" because another item has its name',
+        'user "ana" renamed "ana2"', 'user "bob" left out because another user has that username'])
+    assert line == ('Bundle Report Template Favourites of "UK": "Weekly · NSA" renamed "Weekly report · NSA"; "Daily" kept as '
+                    '"Daily (2)" because another item has its name; user "ana" renamed "ana2"; user "bob" left out because '
+                    'another user has that username.')
+    assert line.section['items'] == [
+        {'label': '', 'from': 'Weekly · NSA', 'to': 'Weekly report · NSA'},
+        {'label': '', 'from': 'Daily', 'to': 'Daily (2)', 'note': 'another item has its name'},
+        {'label': 'user', 'from': 'ana', 'to': 'ana2'},
+        {'text': 'user "bob" left out because another user has that username'},
+    ]
+    notice = core.import_notice('Import selection completed (2 packages). ' + line, 'Import selection completed (2 packages).',
+                                [line], ['Imported 3 Dashboards into 1 workspaces.', 'PPT Templates imported successfully.'])
+    assert json.loads(json.dumps({'notice': notice, 'details': core.import_notice_details(notice)}))['details']['packages'][1] == 'PPT Templates imported successfully.'
+    assert core.import_notice_details('Plain message.') is None
+    # The incoming and outgoing transfers and the imports open it in a wide window.
+    script = (Path(__file__).parents[1] / 'src/web_interface/static/js/app.js').read_text(encoding='utf-8')
+    assert "showImportSummary(offer.notice || 'The incoming transfer was imported successfully.', offer.notice_details" in script
+    assert "showImportSummary(transfer.notice || 'The destination server received and imported the package successfully.', transfer.notice_details" in script
+    assert 'function importSummaryContent(details) {' in script and "infoOverlay.classList.toggle('info-wide', Boolean(options.wide));" in script

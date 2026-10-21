@@ -87,9 +87,16 @@
       </div>
       <div class="rj-bulk" id="rj-bulk" hidden>
         <label class="rj-select-all"><input type="checkbox" id="rj-select-all"> Select all</label>
-        <button type="button" class="rj-bulk-move" data-rj-move="up" disabled title="Move the selected Reporting Jobs one place up in the table">Move Up</button>
-        <button type="button" class="rj-bulk-move" data-rj-move="down" disabled title="Move the selected Reporting Jobs one place down in the table">Move Down</button>
-        <button type="button" class="rj-bulk-delete" id="rj-delete-selected" disabled title="Delete the selected Reporting Jobs with their runs and artifacts">Delete</button>
+        <div class="bulk-toolbar" role="toolbar" aria-label="Selected Reporting Jobs">
+          <button type="button" class="bulk-action bulk-action-up" data-rj-move="up" disabled title="Move the selected Reporting Jobs one place up in the table">Move Up</button>
+          <button type="button" class="bulk-action bulk-action-down" data-rj-move="down" disabled title="Move the selected Reporting Jobs one place down in the table">Move Down</button>
+          <span class="bulk-toolbar-separator" aria-hidden="true"></span>
+          <button type="button" class="bulk-action bulk-action-run" id="rj-run-selected" disabled title="Run the selected Reporting Jobs now">Run</button>
+          <button type="button" class="bulk-action bulk-action-stop" id="rj-stop-tasks-selected" disabled title="Stop the queued or running runs of the selected Reporting Jobs (each of them must have one)">Stop</button>
+          <button type="button" class="bulk-action bulk-action-download" id="rj-download-selected" disabled title="Download the artifacts of the last run of the selected Reporting Jobs in one ZIP (each of them must have some)">Download</button>
+          <span class="bulk-toolbar-separator" aria-hidden="true"></span>
+          <button type="button" class="bulk-action bulk-action-delete" id="rj-delete-selected" disabled title="Delete the selected Reporting Jobs with their runs and artifacts">Delete</button>
+        </div>
       </div>
       <div class="table-wrap">
         <table class="reporting-jobs-table" id="rj-tasks" data-phone-cards>
@@ -198,9 +205,13 @@
     <div class="collapsible-panel-body">
       <div class="rj-bulk rj-runs-bulk" id="rj-runs-bulk" hidden>
         <label class="rj-select-all"><input type="checkbox" id="rj-runs-select-all"> Select all</label>
-        <button type="button" class="rj-bulk-move" id="rj-rerun-selected" disabled title="Run the selected failed or stopped runs again from the beginning">Rerun</button>
-        <button type="button" class="rj-bulk-move rj-bulk-stop" id="rj-stop-selected" disabled title="Stop the selected queued or running runs">Stop</button>
-        <button type="button" class="rj-bulk-delete" id="rj-delete-runs-selected" disabled title="Delete the selected runs with their artifacts">Delete</button>
+        <div class="bulk-toolbar" role="toolbar" aria-label="Selected runs">
+          <button type="button" class="bulk-action bulk-action-rerun" id="rj-rerun-selected" disabled title="Run the selected runs again from the beginning (each of them must have failed or been stopped)">Rerun</button>
+          <button type="button" class="bulk-action bulk-action-stop" id="rj-stop-selected" disabled title="Stop the selected runs (each of them must be queued or running)">Stop</button>
+          <button type="button" class="bulk-action bulk-action-download" id="rj-download-runs-selected" disabled title="Download the artifacts of the selected runs in one ZIP (each of them must have some)">Download</button>
+          <span class="bulk-toolbar-separator" aria-hidden="true"></span>
+          <button type="button" class="bulk-action bulk-action-delete" id="rj-delete-runs-selected" disabled title="Delete the selected runs with their artifacts (none of them may be queued or running)">Delete</button>
+        </div>
         <p class="form-note" id="rj-runs-status" role="status"></p>
       </div>
       <div class="table-wrap">

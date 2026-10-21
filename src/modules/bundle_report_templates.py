@@ -63,6 +63,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_bundle_report_templates_name ON {BUNDLE_RE
 """
 MAX_FAVOURITES = 100
 DEFAULT_TITLE = 'Drive Test Analyzer Report'
+# What the files of the favourite Bundle Report Templates of a Reporting Job are named after, between their time and their name.
+BUNDLE_REPORT_FILE_PREFIX = 'DT Analyzer Bundle Report'
 FORMATS = ('powerpoint', 'word')
 FORMAT_SUFFIXES = {'powerpoint': 'pptx', 'word': 'docx'}
 FORMAT_LABELS = {'powerpoint': 'PowerPoint', 'word': 'Word'}
@@ -2243,7 +2245,7 @@ def _register_reporting_artifact(core: Any) -> None:
                                       cache_root=module_output_dir(core.settings.output_dir, BUNDLE_REPORTS_FOLDER) / SECTION_CACHE_FOLDER)
                 for export_format in formats:
                     suffix = '.docx' if export_format == 'word' else '.pptx'
-                    destination = artifact_path(folder, stamp, 'Bundle Report Template', favourite['name'], suffix)
+                    destination = artifact_path(folder, stamp, BUNDLE_REPORT_FILE_PREFIX, favourite['name'], suffix)
                     destination.write_bytes(result.word if export_format == 'word' and result.word else result.powerpoint)
                     label = 'Word' if export_format == 'word' else 'PPT'
                     details = [*filter_lines(favourite['definition']),

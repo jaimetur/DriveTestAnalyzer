@@ -2098,6 +2098,8 @@
       const step = button.dataset.savedFiltersMove === 'up' ? -1 : 1;
       button.disabled = deletingCheckedSavedFilters || movedSavedFilterOrder(order, step).join() === order.join();
     }
+    // (Readers only have Use newer CDRs, without the separators around it.)
+    savedFiltersBulk.querySelectorAll('.bulk-toolbar-separator').forEach(separator => { separator.hidden = !canReorderSavedFilters; });
     const withNewer = savedFiltersWithNewerCdrs();
     savedFiltersUseNewer.textContent = withNewer.length ? `Use newer CDRs (${withNewer.length})` : 'Use newer CDRs';
     savedFiltersUseNewer.disabled = updatingSavedFiltersCdrs || !withNewer.length;

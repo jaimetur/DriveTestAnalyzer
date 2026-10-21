@@ -1,5 +1,7 @@
+import io
 import json
 import time
+import zipfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -890,7 +892,8 @@ def test_jobs_name_their_modules_abbreviated_and_move_or_delete_several_at_once(
     assert "const actions = node('div', undefined, 'table-actions rj-task-actions');" in script
     assert '.report-jobs :is(#rj-tasks, #rj-runs) .rj-task-actions .rj-download { --rj-icon: url("data:image/svg+xml,' in styles
     assert all(f'.report-jobs #rj-runs .rj-task-actions {selector} {{ --rj-action:' in styles
-               for selector in ('.rj-rerun', '.rj-stop', '.rj-run-delete'))
+               for selector in ('.rj-rerun', '.rj-run-delete'))
+    assert '.report-jobs :is(#rj-tasks, #rj-runs) .rj-task-actions .rj-stop { --rj-action:' in styles
     assert "const lastCell = timeCell(last ? last.started_at || last.created_at : '');" in script
     assert "task.enabled ? timeCell(task.next_run_at) : node('td', 'Disabled')" in script
     assert '.report-jobs #rj-tasks th:nth-child(2) { width: 38%; }' in styles
@@ -904,7 +907,8 @@ def test_jobs_name_their_modules_abbreviated_and_move_or_delete_several_at_once(
     # another user.
     assert "await api('/api/reporting/tasks/delete', {method: 'POST', body: JSON.stringify({ids: targets.map((task) => task.id)})});" in script
     assert "const refused = targets.filter((task) => !(window.canDeleteShared?.(task.created_by) ?? true));" in script
-    assert "deleteCheckedTasks.textContent = checkedTaskIds.size ? `Delete (${checkedTaskIds.size})` : 'Delete';" in script
+    assert "syncBulkButton(deleteCheckedTasks, 'Delete', checked, (task) => window.canDeleteShared?.(task.created_by) ?? true, deletingCheckedTasks);" in script
+    assert "button.textContent = on ? `${label} (${items.length})` : label;" in script
 
 
 def test_reporting_page_keeps_its_scroll_position_when_reloaded():
@@ -1160,3 +1164,57 @@ def test_the_jobs_table_enables_and_disables_a_job_with_its_switch(client):
     assert "const switchLabel = node('label', undefined, 'rj-enabled-switch rj-table-switch');" in script
     assert 'lastCell, statusCell, cellWith(switchLabel), cellWith(actions),' in script
     assert "'Disable the schedule'" not in script and "emptyRow(body, 'No Reporting Jobs yet.', 10);" in script
+
+
+def test_checked_jobs_and_runs_run_stop_download_and_delete_from_a_toolbar(client):
+    login(client)
+    page = client.get('/reporting').text
+    for button in ('data-rj-move="up"', 'id="rj-run-selected"', 'id="rj-stop-tasks-selected"', 'id="rj-download-selected"',
+                   'id="rj-delete-selected"', 'id="rj-rerun-selected"', 'id="rj-stop-selected"', 'id="rj-download-runs-selected"',
+                   'id="rj-delete-runs-selected"'):
+        assert button in page
+    assert page.count('class="bulk-toolbar" role="toolbar"') == 2
+    script = (Path(__file__).parents[1] / 'src/web_interface/static/js/report_jobs.js').read_text(encoding='utf-8')
+    # Each button acts only when every checked job or run has that button on in its row.
+    assert 'const on = !busy && items.length > 0 && items.every(test);' in script
+    assert "syncBulkButton(stopCheckedTasks, 'Stop', checked, (task) => taskStoppableRuns(task).length > 0, deletingCheckedTasks);" in script
+    assert "syncBulkButton(downloadCheckedRuns, 'Download', checked, runDownloadable, actingOnCheckedRuns);" in script
+    assert "actionButton('■', 'Stop its queued or running run', () => stopRuns(taskStoppableRuns(task)), 'icon-action rj-stop')" in script
+    styles = (Path(__file__).parents[1] / 'src/web_interface/static/css/app.css').read_text(encoding='utf-8')
+    assert all(f'.bulk-toolbar .bulk-action-{name} {{' in styles for name in ('up', 'down', 'run', 'stop', 'download', 'rerun', 'newer', 'delete'))
+
+
+def test_several_runs_download_in_one_zip_with_a_folder_each(client):
+    def generate(config, folder, stamp, user):
+        path = folder / f'{stamp} - Fake report.pptx'
+        path.write_bytes(b'fake')
+        return [{'module': 'fake', 'title': 'Fake report', 'file_name': path.name, 'size': 4, 'status': 'ready', 'details': []}]
+
+    register_report_artifact_provider('fake', 'Fake module', 'datasets-analysis', generate)
+    try:
+        login(client)
+        task = client.post('/api/reporting/tasks', json={
+            'name': 'Zip check', 'definition': {'modules': {'fake': {'enabled': True}}},
+            'schedule': {'mode': 'manual'}, 'enabled': True,
+        }).json()['task']
+        runs = [wait_for_run(client, client.post(f"/api/reporting/tasks/{task['id']}/run").json()['run_id']) for _ in range(2)]
+        response = client.get('/api/reporting/runs/download', params=[('ids', run['id']) for run in runs])
+        assert response.status_code == 200 and 'Reporting - 2 runs.zip' in response.headers['content-disposition']
+        with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
+            folders = {name.split('/')[0] for name in archive.namelist()}
+        assert len(folders) == 2 and all('Zip check' in folder for folder in folders)
+        assert any(row['action'] == 'download_reporting_job_runs' for row in core.repository.list_logs(limit=20))
+        assert client.get('/api/reporting/runs/download', params={'ids': 999999}).status_code == 404
+    finally:
+        report_tasks.ARTIFACT_PROVIDERS.pop('fake', None)
+
+
+def test_bundle_report_files_of_reporting_jobs_are_named_dt_analyzer_bundle_report():
+    from src.modules import bundle_report_templates
+    from src.modules.report_tasks import artifact_path
+
+    assert bundle_report_templates.BUNDLE_REPORT_FILE_PREFIX == 'DT Analyzer Bundle Report'
+    source = (Path(__file__).parents[1] / 'src/modules/bundle_report_templates.py').read_text(encoding='utf-8')
+    assert "artifact_path(folder, stamp, BUNDLE_REPORT_FILE_PREFIX, favourite['name'], suffix)" in source
+    assert artifact_path(Path('/nonexistent'), '20261021_050000', 'DT Analyzer Bundle Report', 'Complete Report', '.pptx').name \
+        == '20261021_050000 - DT Analyzer Bundle Report - Complete Report.pptx'

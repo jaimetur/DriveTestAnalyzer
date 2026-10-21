@@ -1286,6 +1286,21 @@
     }
     return button;
   };
+  // The runs of a job that are queued or running (its Stop), and whether its last run has artifacts (its Download).
+  const taskStoppableRuns = (task) => state.runs.filter((run) => run.task_id === task.id && STOPPABLE_RUN_STATUSES.includes(run.status));
+  const taskDownloadable = (task) => Boolean(task.last_run && task.last_run.artifacts.some((item) => item.status === 'ready'));
+  // A button of the bars above the tables: on, with the number of checked items it acts on, only when every checked
+  // item has that button of its own row on.
+  const syncBulkButton = (button, label, items, test, busy = false) => {
+    const on = !busy && items.length > 0 && items.every(test);
+    button.textContent = on ? `${label} (${items.length})` : label;
+    button.disabled = !on;
+  };
+  // The artifacts of runs in one ZIP: one run as its own Download, several in a folder each.
+  const downloadRuns = (runs) => {
+    window.location.assign(runs.length === 1 ? `/api/reporting/runs/${runs[0].id}/download`
+      : `/api/reporting/runs/download?${new URLSearchParams(runs.map((run) => ['ids', String(run.id)]))}`);
+  };
   const actionButton = (label, title, handler, className = 'icon-action') => {
     const button = node('button', label, className);
     button.type = 'button'; button.title = title; button.setAttribute('aria-label', title);
@@ -1409,7 +1424,7 @@
   // cards of the Favourites Filters of Scoring & GAP Analysis.
   function taskCheck(task) {
     const holder = node('label', undefined, 'rj-task-check-box');
-    holder.title = 'Select this job to move or delete it with the buttons above the table';
+    holder.title = 'Select this job to move, run, stop, download or delete it with the buttons above the table';
     const box = node('input', undefined, 'rj-task-check');
     box.type = 'checkbox';
     box.dataset.taskCheck = task.id;
@@ -1513,7 +1528,10 @@
           status(`${task.name} started.`, 'done'); await refresh();
         }));
       }
-      if (last && last.artifacts.some((item) => item.status === 'ready')) actions.append(downloadLink(last));
+      if (state.can_edit && taskStoppableRuns(task).length) {
+        actions.append(actionButton('■', 'Stop its queued or running run', () => stopRuns(taskStoppableRuns(task)), 'icon-action rj-stop'));
+      }
+      if (taskDownloadable(task)) actions.append(downloadLink(last));
       if (state.can_edit) {
         actions.append(
           actionButton('✎', 'Edit', async () => { if (!await confirmDiscard()) return; await ensureOptions(); fillEditor(task); }),
@@ -1582,13 +1600,16 @@
   }
 
   // -- several jobs at once ---------------------------------------------------
-  // Editors check jobs (or Select all) to move them one place up or down together, as dragging them would, or to delete
-  // them together, as the Favourites Filters of Scoring & GAP Analysis.
+  // Editors check jobs (or Select all) to move them one place up or down together, as dragging them would, or to run,
+  // stop, download or delete them together, each when every checked job has that button on in its row.
   const checkedTaskIds = new Set();
   let deletingCheckedTasks = false;
   const selectAllTasks = $('rj-select-all');
   const moveTaskButtons = [...document.querySelectorAll('[data-rj-move]')];
   const deleteCheckedTasks = $('rj-delete-selected');
+  const runCheckedTasks = $('rj-run-selected');
+  const stopCheckedTasks = $('rj-stop-tasks-selected');
+  const downloadCheckedTasks = $('rj-download-selected');
   // The order of the jobs with each checked one a place up (step -1) or down (step 1): a checked one trades places with
   // the unchecked one next to it, so checked ones side by side move together and stop at the end.
   function movedTaskOrder(order, step) {
@@ -1612,9 +1633,34 @@
       const step = button.dataset.rjMove === 'up' ? -1 : 1;
       button.disabled = deletingCheckedTasks || movedTaskOrder(ids, step).join() === ids.join();
     }
-    deleteCheckedTasks.textContent = checkedTaskIds.size ? `Delete (${checkedTaskIds.size})` : 'Delete';
-    deleteCheckedTasks.disabled = deletingCheckedTasks || !checkedTaskIds.size;
+    // Run, Stop, Download and Delete act on the checked jobs when each of them has that button on in its row.
+    const checked = state.tasks.filter((task) => checkedTaskIds.has(task.id));
+    syncBulkButton(runCheckedTasks, 'Run', checked, () => true, deletingCheckedTasks);
+    syncBulkButton(stopCheckedTasks, 'Stop', checked, (task) => taskStoppableRuns(task).length > 0, deletingCheckedTasks);
+    syncBulkButton(downloadCheckedTasks, 'Download', checked, taskDownloadable, deletingCheckedTasks);
+    syncBulkButton(deleteCheckedTasks, 'Delete', checked, (task) => window.canDeleteShared?.(task.created_by) ?? true, deletingCheckedTasks);
   }
+  runCheckedTasks.addEventListener('click', async () => {
+    const targets = state.tasks.filter((task) => checkedTaskIds.has(task.id));
+    if (!targets.length) return;
+    runCheckedTasks.disabled = true;
+    try {
+      for (const task of targets) await api(`/api/reporting/tasks/${task.id}/run`, {method: 'POST'});
+      status(targets.length === 1 ? `${targets[0].name} started.` : `${targets.length} Reporting Jobs started.`, 'done');
+    } catch (error) {
+      status(error.message, 'error');
+    }
+    await refresh();
+  });
+  stopCheckedTasks.addEventListener('click', async () => {
+    const runs = state.tasks.filter((task) => checkedTaskIds.has(task.id)).flatMap(taskStoppableRuns);
+    if (!runs.length) return;
+    try { await stopRuns(runs); } catch (error) { status(error.message, 'error'); }
+  });
+  downloadCheckedTasks.addEventListener('click', () => {
+    const runs = state.tasks.filter((task) => checkedTaskIds.has(task.id) && taskDownloadable(task)).map((task) => task.last_run);
+    if (runs.length) downloadRuns(runs);
+  });
   // The bar is held at the top while the table is scrolled; then a band behind it hides the page above it.
   const syncBulkStuck = () => {
     const bar = $('rj-bulk');
@@ -1789,8 +1835,8 @@
   }
 
   // -- several runs at once -------------------------------------------------------
-  // Editors check runs (or Select all) to run again those that failed or were stopped, stop those queued or running,
-  // or delete those that are not, together; each button counts the checked runs it acts on.
+  // Editors check runs (or Select all) to run them again, stop, download or delete them together, each when every checked
+  // run has that button on in its row; each button counts the checked runs it acts on.
   const checkedRunIds = new Set();
   let actingOnCheckedRuns = false;
   const runsBody = $('rj-runs').tBodies[0];
@@ -1798,9 +1844,11 @@
   const rerunCheckedRuns = $('rj-rerun-selected');
   const stopCheckedRuns = $('rj-stop-selected');
   const deleteCheckedRuns = $('rj-delete-runs-selected');
+  const downloadCheckedRuns = $('rj-download-runs-selected');
+  const runDownloadable = (run) => run.artifacts.some((item) => item.status === 'ready' && item.available !== false);
   function runCheck(run) {
     const holder = node('label', undefined, 'rj-run-check');
-    holder.title = 'Select this run to rerun, stop or delete it with the buttons above the table';
+    holder.title = 'Select this run to rerun, stop, download or delete it with the buttons above the table';
     const box = node('input');
     box.type = 'checkbox';
     box.dataset.runCheck = run.id;
@@ -1816,16 +1864,19 @@
     $('rj-runs-bulk').hidden = !state.can_edit || !ids.length;
     selectAllRuns.checked = ids.length > 0 && checkedRunIds.size === ids.length;
     selectAllRuns.indeterminate = checkedRunIds.size > 0 && checkedRunIds.size < ids.length;
+    // Each button acts on the checked runs when every one of them has that button on in its row.
+    const checked = state.runs.filter((run) => checkedRunIds.has(run.id));
     for (const [button, label, statuses] of [
       [rerunCheckedRuns, 'Rerun', (value) => RERUN_STATUSES.includes(value)],
       [stopCheckedRuns, 'Stop', (value) => STOPPABLE_RUN_STATUSES.includes(value)],
       [deleteCheckedRuns, 'Delete', (value) => !ACTIVE_RUN_STATUSES.includes(value)],
-    ]) {
-      const count = checkedRuns(statuses).length;
-      button.textContent = count ? `${label} (${count})` : label;
-      button.disabled = actingOnCheckedRuns || !count;
-    }
+    ]) syncBulkButton(button, label, checked, (run) => statuses(run.status), actingOnCheckedRuns);
+    syncBulkButton(downloadCheckedRuns, 'Download', checked, runDownloadable, actingOnCheckedRuns);
   }
+  downloadCheckedRuns.addEventListener('click', () => {
+    const runs = state.runs.filter((run) => checkedRunIds.has(run.id) && runDownloadable(run));
+    if (runs.length) downloadRuns(runs);
+  });
   runsBody.addEventListener('change', (event) => {
     const box = event.target.closest('[data-run-check]');
     if (!box) return;

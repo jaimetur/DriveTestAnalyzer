@@ -19,6 +19,7 @@ import math
 import re
 import shutil
 import sqlite3
+import tempfile
 import time
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
@@ -1325,11 +1326,31 @@ def zip_artifacts(run: dict[str, Any]) -> BytesIO:
     return buffer
 
 
+def zip_runs_artifacts(runs: list[dict[str, Any]]) -> Any:
+    """The artifacts of several runs in one ZIP, each run in a folder named after its time and its job; written to a
+    temporary file (rewound), as large as the artifacts are."""
+    output = tempfile.TemporaryFile()
+    folders: set[str] = set()
+    with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED) as archive:
+        for run in runs:
+            folder_name = safe_file_name(f"{run_stamp(run)} - {run['task_name']}")
+            if folder_name in folders:
+                folder_name = f"{folder_name} (run {run['id']})"
+            folders.add(folder_name)
+            folder = Path(run['output_dir'])
+            for item in run['artifacts']:
+                path = folder / str(item.get('file_name') or '')
+                if item.get('status') == 'ready' and path.is_file():
+                    archive.write(path, f'{folder_name}/{path.name}')
+    output.seek(0)
+    return output
+
+
 # ---------------------------------------------------------------------------
 # Execution and routes
 # ---------------------------------------------------------------------------
 def install_report_task_routes(core: Any) -> None:
-    from fastapi import Depends, HTTPException, Request
+    from fastapi import Depends, HTTPException, Query, Request
     from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
     from pydantic import BaseModel, Field
 
@@ -2294,6 +2315,28 @@ def install_report_task_routes(core: Any) -> None:
         if run is None:
             raise HTTPException(404, 'Reporting run not found.')
         return run
+
+    @app.get('/api/reporting/runs/download')
+    def reporting_jobs_download_runs(ids: list[int] = Query(default=[]), user=Depends(reporting_user)):
+        """The artifacts of the checked runs in one ZIP, each run in its folder (the Download of the checked jobs or runs)."""
+        task_repository = reporting_repository(user)
+        runs = [run for run in (get_run(task_repository, run_id) for run_id in dict.fromkeys(ids)) if run is not None and any(
+            item.get('status') == 'ready' and (Path(run['output_dir']) / str(item.get('file_name') or '')).is_file()
+            for item in run['artifacts'])]
+        if not runs:
+            raise HTTPException(404, 'The selected runs have no artifacts to download.')
+        output = zip_runs_artifacts(runs)
+        task_repository.try_add_log(user.username, 'download_reporting_job_runs', json.dumps({
+            'run_ids': [run['id'] for run in runs], 'names': [run['task_name'] for run in runs],
+        }, ensure_ascii=False))
+
+        def chunks():
+            with output:
+                while chunk := output.read(1024 * 1024):
+                    yield chunk
+        name = safe_file_name(f"{datetime.now().strftime('%Y%m%d_%H%M%S')} - Reporting - {len(runs)} runs")
+        return StreamingResponse(chunks(), media_type='application/zip',
+                                 headers={'Content-Disposition': f'attachment; filename="{name}.zip"'})
 
     @app.get('/api/reporting/runs/{run_id}/download')
     def reporting_jobs_download_run(run_id: int, user=Depends(reporting_user)):

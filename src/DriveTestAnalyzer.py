@@ -8696,7 +8696,7 @@ def _import_workspace_scoring_report_templates(
             return definition
         rename_definition_values(task_repository, renamed_reports)
     if summary is not None and matcher.summary():
-        summary.append(f'Scoring & GAP Report Templates of "{workspace.name}": ' + '; '.join(matcher.summary()) + '.')
+        summary.append(summary_section(f'Scoring & GAP Report Templates of "{workspace.name}"', matcher.summary()))
     return len(incoming)
 
 
@@ -8768,7 +8768,7 @@ def _restore_workspace_scoring_excluded_calls(
     except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
         raise ValueError(f'Scoring Excluded Calls for "{workspace.name}" are invalid: {exc}') from exc
     if summary is not None and renamed:
-        summary.append(f'Scoring Excluded Calls of "{workspace.name}": ' + '; '.join(renamed) + '.')
+        summary.append(summary_section(f'Scoring Excluded Calls of "{workspace.name}"', renamed))
     if count:
         queue_scoring_history(task_repository)
     return count
@@ -8871,7 +8871,7 @@ def _import_workspace_scoring_configuration(
     for profile_id, owner in owners.items():
         set_creator(task_repository, SCORING_METHODOLOGIES, profile_id, owner)
     if summary is not None and matcher.summary():
-        summary.append(f'Scoring & GAP Analysis Methodologies of "{workspace.name}": ' + '; '.join(matcher.summary()) + '.')
+        summary.append(summary_section(f'Scoring & GAP Analysis Methodologies of "{workspace.name}"', matcher.summary()))
 
 
 def _dashboard_archive_payload(workspace: Workspace) -> bytes:
@@ -9082,7 +9082,7 @@ def _restore_workspace_query_builder_queries(
         imported_uids[str(target)] = str(item.get('uid') or '')
     set_identities(task_repository, QUERY_BUILDER_QUERIES, imported_uids)
     if summary is not None and matcher.summary():
-        summary.append(f'Query Builder Queries of "{workspace.name}": ' + '; '.join(matcher.summary()) + '.')
+        summary.append(summary_section(f'Query Builder Queries of "{workspace.name}"', matcher.summary()))
     return len(valid_queries)
 
 
@@ -9120,7 +9120,7 @@ def _restore_workspace_network_insights_favourites(
         count = import_document(task_repository, payload, importing_user, summary=renamed,
                                 creator=lambda package, local: transfer_creator(package, local, importing_user))
         if summary is not None and renamed:
-            summary.append(f'Network Insights Favourites of "{workspace.name}": ' + '; '.join(renamed) + '.')
+            summary.append(summary_section(f'Network Insights Favourites of "{workspace.name}"', renamed))
         return count
     except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
         raise ValueError(f'Network Insights Favourites for "{workspace.name}" are invalid: {exc}') from exc
@@ -9164,7 +9164,7 @@ def _restore_workspace_bundle_report_template_favourites(
         count = import_favourites_document(task_repository, payload, importing_user, summary=renamed,
                                            creator=lambda package, local: transfer_creator(package, local, importing_user))
         if summary is not None and renamed:
-            summary.append(f'Bundle Report Template Favourites of "{workspace.name}": ' + '; '.join(renamed) + '.')
+            summary.append(summary_section(f'Bundle Report Template Favourites of "{workspace.name}"', renamed))
         return count
     except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
         raise ValueError(f'Bundle Report Template Favourites for "{workspace.name}" are invalid: {exc}') from exc
@@ -9240,7 +9240,7 @@ def _restore_workspace_reporting_jobs(
                                       parse_recipients=parse_recipients, invalid_recipients=invalid_recipients,
                                       user_exists=active_user_exists)
         if summary is not None and renamed:
-            summary.append(f'Reporting Jobs of "{workspace.name}": ' + '; '.join(renamed) + '.')
+            summary.append(summary_section(f'Reporting Jobs of "{workspace.name}"', renamed))
         return count
     except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
         raise ValueError(f'Reporting Jobs for "{workspace.name}" are invalid: {exc}') from exc
@@ -10689,7 +10689,8 @@ def _rename_replaced_workspace(workspace: Workspace, requested_name: str, summar
         return workspace
     if any(other.id != workspace.id and other.name.casefold() == requested_name.casefold() for other in workspace_registry.list()):
         if summary is not None:
-            summary.append(f'Workspace "{workspace.name}" keeps its name because another workspace is named "{requested_name}".')
+            summary.append(summary_section('Workspaces', [f'"{workspace.name}" keeps its name because another workspace is named "{requested_name}"'],
+                                           f'Workspace "{workspace.name}" keeps its name because another workspace is named "{requested_name}".'))
         return workspace
     previous = workspace.name
     try:
@@ -10697,12 +10698,12 @@ def _rename_replaced_workspace(workspace: Workspace, requested_name: str, summar
     except ValueError as exc:
         # The import is done: only the name stays as it was.
         if summary is not None:
-            summary.append(f'Workspace "{workspace.name}" keeps its name: {exc}')
+            summary.append(summary_section('Workspaces', [f'"{workspace.name}" keeps its name: {exc}'], f'Workspace "{workspace.name}" keeps its name: {exc}'))
         return workspace
     if active_workspace and active_workspace.id == renamed.id:
         activate_workspace(renamed.id)
     if summary is not None:
-        summary.append(f'Workspace "{previous}" renamed "{renamed.name}".')
+        summary.append(summary_section('Workspaces', [f'"{previous}" renamed "{renamed.name}"'], f'Workspace "{previous}" renamed "{renamed.name}".'))
     return renamed
 
 
@@ -10848,7 +10849,7 @@ def import_slides_templates_archive(
         protected = set() if includes_dashboards else _dashboard_template_references(target_repository)
         renamed = _merge_report_templates(target_repository, incoming, metadata, protected, importing_user)
         if summary is not None and renamed:
-            summary.append(f'PPT Templates of "{workspace.name}": ' + '; '.join(renamed) + '.')
+            summary.append(summary_section(f'PPT Templates of "{workspace.name}"', renamed))
         shutil.rmtree(workspace.database_path.parent / 'slides-templates', ignore_errors=True)
     _clear_chart_preview_caches()
     return len(destinations)
@@ -10961,13 +10962,17 @@ def import_users_access(content: bytes, manifest: dict[str, Any], importing_user
         source_workspace_uids=source_uids,
     )
     invalidate_module_access_cache()
-    message = (f"Users & Access imported: {summary['users_created']} new and {summary['users_updated']} updated users, "
-               f"{summary['modules_profiles']} Modules Profiles and {summary['workspace_groups']} Workspace Groups.")
+    headline = (f"Users & Access imported: {summary['users_created']} new and {summary['users_updated']} updated users, "
+                f"{summary['modules_profiles']} Modules Profiles and {summary['workspace_groups']} Workspace Groups.")
+    message = headline
+    lines = [summary_section('Users & Access', summary['renamed'])] if summary['renamed'] else []
     if summary['renamed']:
         message += ' ' + '; '.join(summary['renamed']) + '.'
     if summary['missing_workspaces']:
-        message += f" Workspaces this server does not have were left out: {', '.join(summary['missing_workspaces'])}."
-    return message
+        missing = f" Workspaces this server does not have were left out: {', '.join(summary['missing_workspaces'])}."
+        message += missing
+        headline += missing
+    return import_notice(message, headline, lines)
 
 
 def _ticket_center_archive_files() -> dict[str, bytes]:
@@ -11190,13 +11195,66 @@ def import_auto_calculated_fields(
         for key, creator in field_creators.items():
             set_creator(task_repository, AUTO_CALCULATED_FIELDS, key, creator)
         if summary is not None and matcher.summary():
-            summary.append(f'Auto-calculated Fields of "{workspace.name}": ' + '; '.join(matcher.summary()) + '.')
+            summary.append(summary_section(f'Auto-calculated Fields of "{workspace.name}"', matcher.summary()))
         if progress_callback:
             progress_callback(
                 f'updating workspace {index + 1} of {len(selected_ids)}',
                 88.0 + ((index + 1) * 12.0 / len(selected_ids)),
             )
     return len(imported), len(selected_ids)
+
+
+class ImportSummaryLine(str):
+    """A line of the completion message of an import (the items of an element it renamed), with its title and items
+    in parts for the summary dialog."""
+    section: dict[str, Any]
+
+
+class ImportNotice(str):
+    """The completion message of an import, with its headline, the packages it imported and its summary lines in parts
+    for the summary dialog (``details``), and those lines (``lines``) for the bundle that imported it."""
+    details: dict[str, Any]
+    lines: list[str]
+
+
+_RENAMED_SUMMARY_ITEM = re.compile(r'(?P<label>[^"]*?)\s*"(?P<old>.*)" renamed "(?P<new>.*)"')
+_KEPT_SUMMARY_ITEM = re.compile(r'(?P<label>[^"]*?)\s*"(?P<old>.*)" kept as "(?P<new>.*)" because another item has its name')
+
+
+def _summary_item(item: str) -> dict[str, str]:
+    """An item of a summary line in parts: what it is (a user, a Modules Profile…), its name before and after."""
+    if match := _RENAMED_SUMMARY_ITEM.fullmatch(item):
+        return {'label': match['label'], 'from': match['old'], 'to': match['new']}
+    if match := _KEPT_SUMMARY_ITEM.fullmatch(item):
+        return {'label': match['label'], 'from': match['old'], 'to': match['new'], 'note': 'another item has its name'}
+    return {'text': item}
+
+
+def summary_section(title: str, items: Iterable[str], text: str | None = None) -> ImportSummaryLine:
+    """A line of the completion message of an import: ``title: item; item.`` unless ``text`` says it otherwise."""
+    items = [str(item) for item in items]
+    line = ImportSummaryLine(text if text is not None else f'{title}: ' + '; '.join(items) + '.')
+    line.section = {'title': title, 'items': [_summary_item(item) for item in items]}
+    return line
+
+
+def import_notice(text: str, headline: str, lines: Iterable[str] = (), packages: Iterable[str] = ()) -> ImportNotice:
+    """The completion message of an import, ``text``, with its parts."""
+    notice = ImportNotice(text)
+    lines = list(lines)
+    notice.lines = lines
+    notice.details = {
+        'headline': headline,
+        'packages': [str(item) for item in packages],
+        'sections': [line.section if isinstance(line, ImportSummaryLine) else {'title': '', 'items': [{'text': str(line)}]}
+                     for line in lines],
+    }
+    return notice
+
+
+def import_notice_details(notice: Any) -> dict[str, Any] | None:
+    """The parts of a completion message for the summary dialog, when it has them."""
+    return getattr(notice, 'details', None)
 
 
 def _apply_import_archive(
@@ -11217,7 +11275,7 @@ def _apply_import_archive(
         if details is not None:
             details.extend(changes)
             return notice
-        return ' '.join([notice, *changes])
+        return import_notice(' '.join([notice, *changes]), notice, changes)
 
     with zipfile.ZipFile(package_path) as archive, tempfile.TemporaryDirectory(prefix='drivetest-analyzer-import-') as temporary_dir:
         staging_root = Path(temporary_dir)
@@ -11293,7 +11351,11 @@ def _apply_import_archive(
                 start_job()
             if progress_callback:
                 progress_callback('finalising', 100.0)
-            return ' '.join([f'Import selection completed ({len(notices)} packages).', *bundle_details])
+            # A package that tells its renamed items itself (Users & Access) adds them to those of the others.
+            lines = [*bundle_details, *(line for notice in notices for line in getattr(notice, 'lines', ()))]
+            headline = f'Import selection completed ({len(notices)} packages).'
+            return import_notice(' '.join([headline, *lines]), headline, lines,
+                                 [(import_notice_details(notice) or {}).get('headline', notice) for notice in notices])
         if kind == 'database-backup':
             components = _backup_archive_components(package_path)
             if progress_callback:
@@ -11380,7 +11442,7 @@ def _apply_import_archive(
             for workspace in destinations:
                 changes = _import_workspace_dashboards(workspace, payload, importing_user)
                 if changes:
-                    renamed.append(f'Dashboards of "{workspace.name}": ' + '; '.join(changes) + '.')
+                    renamed.append(summary_section(f'Dashboards of "{workspace.name}"', changes))
             return told(f'Imported Dashboards into {len(destinations)} workspaces.', renamed)
         if kind == 'mappings-reference-data':
             member = str(manifest.get('archive_path') or '')
@@ -11698,7 +11760,8 @@ def _run_import_job(job_id: str) -> None:
             importing_user=str(job.get('owner') or 'import'),
         )
         with IMPORT_JOBS_LOCK:
-            job.update({'status': 'ready', 'progress': 100.0, 'notice': notice, 'finished_at': datetime.now(timezone.utc).timestamp()})
+            job.update({'status': 'ready', 'progress': 100.0, 'notice': notice, 'notice_details': import_notice_details(notice),
+                        'finished_at': datetime.now(timezone.utc).timestamp()})
         repository.try_add_log(job['owner'], 'import_package_completed', json.dumps({
             'job_id': job_id, 'kind': manifest.get('kind'), 'notice': notice}))
     except InterruptedError as exc:
@@ -12034,7 +12097,8 @@ def _import_received_transfer(offer_id: str) -> None:
             importing_user=str(offer.get('accepted_by') or 'import'),
         )
         with TRANSFER_LOCK:
-            offer.update({'status': 'ready', 'phase': 'complete', 'progress': 100.0, 'notice': notice, 'finished_at': datetime.now(timezone.utc).timestamp()})
+            offer.update({'status': 'ready', 'phase': 'complete', 'progress': 100.0, 'notice': notice,
+                          'notice_details': import_notice_details(notice), 'finished_at': datetime.now(timezone.utc).timestamp()})
             _save_transfer_offer(offer)
         repository.try_add_log('system', 'incoming_transfer_import_completed', json.dumps({
             'offer_id': offer_id, 'content': offer.get('content'), 'notice': notice}))
@@ -12339,7 +12403,8 @@ def _run_transfer_job(job_id: str) -> None:
                     job.update({'remote_phase': remote_payload.get('phase') or '', 'progress': float(remote_payload.get('progress') or 0)})
                 if remote_status == 'ready':
                     with TRANSFER_LOCK:
-                        job.update({'status': 'ready', 'progress': 100.0, 'notice': remote_payload.get('notice') or 'Transfer imported successfully.', 'finished_at': datetime.now(timezone.utc).timestamp()})
+                        job.update({'status': 'ready', 'progress': 100.0, 'notice': remote_payload.get('notice') or 'Transfer imported successfully.',
+                                    'notice_details': remote_payload.get('notice_details'), 'finished_at': datetime.now(timezone.utc).timestamp()})
                     repository.try_add_log(str(job['owner']), 'outgoing_server_transfer_completed', json.dumps({
                         'job_id': job_id, 'destination': destination, 'targets': targets, 'executed_by': 'system',
                     }))
@@ -23749,7 +23814,7 @@ def get_transfer_offer_status(offer_id: str, request: Request) -> JSONResponse:
         _close_abandoned_transfer_import(offer_id)
     with TRANSFER_LOCK:
         offer = TRANSFER_OFFERS.get(offer_id) or offer
-        payload = {key: offer.get(key) for key in ('status', 'phase', 'progress', 'notice', 'error') if offer.get(key) is not None}
+        payload = {key: offer.get(key) for key in ('status', 'phase', 'progress', 'notice', 'notice_details', 'error') if offer.get(key) is not None}
     return JSONResponse(payload)
 
 
@@ -24011,7 +24076,7 @@ def get_admin_transfer_offer(offer_id: str, user: SessionUser = Depends(super_ad
         offer = TRANSFER_OFFERS.get(offer_id) or offer
         return JSONResponse({
             key: offer.get(key)
-            for key in ('id', 'source', 'kind', 'content', 'status', 'phase', 'progress', 'size', 'bytes_received', 'notice', 'error')
+            for key in ('id', 'source', 'kind', 'content', 'status', 'phase', 'progress', 'size', 'bytes_received', 'notice', 'notice_details', 'error')
             if offer.get(key) is not None
         })
 
