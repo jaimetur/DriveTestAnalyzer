@@ -839,18 +839,20 @@
           <div class="backup-stat"><dt>Last successful backup</dt><dd data-backup-status-last>{{ recurring_backup_status.last_success }}</dd></div>
           <div class="backup-stat"><dt>Next backup</dt><dd data-backup-status-next>{{ recurring_backup_status.next_run }}</dd></div>
         </dl>
+        <div class="alert backup-problem" data-backup-status-problem role="status" {% if not recurring_backup_status.problem %}hidden{% endif %}>{{ recurring_backup_status.problem }}</div>
         {% if backup_notice %}<div class="alert backup-notice">{{ backup_notice }}</div>{% endif %}
         <form class="database-backup-form" action="/admin/database/backups" method="post">
           <div class="backup-cards">
             <section class="backup-card backup-card-now database-backup-operation-panel">
               <header class="backup-card-head">
                 <span class="backup-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="5" rx="1.5"/><path d="M5 9v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9M10 13h4"/></svg></span>
-                <div><h4>Back up now</h4><p>One ZIP with the selected content, in the chosen folder. Both are kept for the next backups, scheduled ones included.</p></div>
+                <div><h4>Back up now</h4><p>One ZIP with the selected content, in the chosen folder: Backup Now asks whether it is full or light, without the workspace databases, Input and Output. The content and folder are kept for the next backups, scheduled ones included.</p></div>
               </header>
               <label class="database-backup-components">Backup content
                 <select name="components" multiple data-backup-components data-multiselect-groups="true" data-multiselect-auto-close="1000"><optgroup label="Configuration Content"><option value="app_database" {% if 'app_database' in recurring_backup.components %}selected{% endif %}>Application database</option><option value="users_access" {% if 'users_access' in recurring_backup.components %}selected{% endif %}>Users &amp; Access</option><option value="ticket_center" {% if 'ticket_center' in recurring_backup.components %}selected{% endif %}>Ticket Center</option></optgroup>{% if backup_workspaces %}<optgroup label="Workspaces">{% for workspace in backup_workspaces %}<option value="workspace:{{ workspace.id }}" {% if workspace.id in recurring_backup.workspace_ids or not recurring_backup_saved %}selected{% endif %}>{{ workspace.name }}</option>{% endfor %}</optgroup>{% endif %}<optgroup label="Workspace Content" data-group-note="of the selected workspaces">{% for entry in backup_workspace_content %}<option{% if entry.subgroup %} data-subgroup="{{ entry.subgroup }}"{% endif %} value="{{ entry.value }}" {% if entry.value in recurring_backup.components %}selected{% endif %}>{{ entry.label }}</option>{% endfor %}</optgroup></select>
               </label>
               <label class="database-backup-path">Backup folder<div class="database-backup-path-picker"><input type="text" name="backup_path" value="{{ recurring_backup.backup_path }}" readonly required data-backup-path-input><button type="button" data-backup-path-browse>Browse</button></div></label>
+              <input type="hidden" name="backup_level" value="full" data-backup-now-level>
               <p class="backup-selection-summary" data-backup-selection-summary role="status"></p>
               <p class="backup-selection-warning" data-backup-selection-warning role="status"></p>
               <div class="backup-card-actions"><span class="backup-selection-saved" data-backup-selection-saved role="status" aria-live="polite"></span><button type="submit" class="database-backup-now" formaction="/admin/database/backups/run">Backup Now</button></div>
@@ -858,9 +860,10 @@
             <section class="backup-card backup-card-restore database-backup-operation-panel" data-backup-restore-panel>
               <header class="backup-card-head">
                 <span class="backup-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/></svg></span>
-                <div><h4>Restore</h4><p>Choose a backup of a folder; the parts to restore are chosen next.</p></div>
+                <div><h4>Restore</h4><p>Choose a full or light backup of a folder; the parts to restore are chosen next.</p></div>
               </header>
               <label class="database-backup-path">Backup folder<div class="database-backup-path-picker"><input type="text" readonly value="{{ recurring_backup.backup_path }}" required data-backup-restore-path><button type="button" data-backup-restore-browse>Browse</button></div></label>
+              <label class="database-backup-file">Backup type<select data-backup-restore-type><option value="full">Full backups</option><option value="light">Light backups</option></select></label>
               <label class="database-backup-file">Backup file<select data-backup-restore-file><option value="">Select a backup file</option></select></label>
               <div class="backup-card-actions"><button type="button" class="database-backup-restore" data-backup-restore>Restore backup</button></div>
             </section>
@@ -868,22 +871,36 @@
           <section class="backup-card backup-card-schedule database-backup-scheduled">
             <header class="backup-card-head">
               <span class="backup-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg></span>
-              <div><h4>Scheduled backups</h4><p>Recurring backups of the content selected in Back up now, keeping the latest ones.</p></div>
+              <div><h4>Scheduled backups</h4><p>Recurring backups of the content selected in Back up now, kept as explained below the settings; backups made with Backup Now are never deleted.</p></div>
               <label class="backup-schedule-switch"><span>Enable recurring backups</span><span class="toggle-switch"><input type="checkbox" name="enabled" value="true" {% if recurring_backup.enabled %}checked{% endif %}><span class="toggle-slider"></span></span></label>
             </header>
             <div class="database-backup-settings" {% if not recurring_backup.enabled %}hidden{% endif %} data-backup-settings>
             <div class="database-backup-schedule">
-              <label>Recurrence<select name="recurrence" data-backup-recurrence><option value="hourly" {% if recurring_backup.recurrence == 'hourly' %}selected{% endif %}>Hourly</option><option value="daily" {% if recurring_backup.recurrence == 'daily' %}selected{% endif %}>Daily</option><option value="weekly" {% if recurring_backup.recurrence == 'weekly' %}selected{% endif %}>Weekly</option><option value="monthly" {% if recurring_backup.recurrence == 'monthly' %}selected{% endif %}>Monthly</option></select></label>
+              <label>Recurrence<select name="recurrence" data-backup-recurrence><option value="hourly" {% if recurring_backup.recurrence == 'hourly' %}selected{% endif %}>Hourly</option><option value="every_4_hours" {% if recurring_backup.recurrence == 'every_4_hours' %}selected{% endif %}>Every 4 hours</option><option value="daily" {% if recurring_backup.recurrence == 'daily' %}selected{% endif %}>Daily</option><option value="weekly" {% if recurring_backup.recurrence == 'weekly' %}selected{% endif %}>Weekly</option><option value="monthly" {% if recurring_backup.recurrence == 'monthly' %}selected{% endif %}>Monthly</option></select></label>
               <label data-backup-weekday {% if recurring_backup.recurrence != 'weekly' %}hidden{% endif %}>Day of week<select name="weekly_day">{% for value, label in [(0, 'Monday'), (1, 'Tuesday'), (2, 'Wednesday'), (3, 'Thursday'), (4, 'Friday'), (5, 'Saturday'), (6, 'Sunday')] %}<option value="{{ value }}" {% if recurring_backup.weekly_day == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
               <label data-backup-monthday {% if recurring_backup.recurrence != 'monthly' %}hidden{% endif %}>Day of month<input type="number" name="monthly_day" min="1" max="31" value="{{ recurring_backup.monthly_day }}" required></label>
               <label>Execution time<input type="time" name="execution_time" value="{{ recurring_backup.execution_time }}" required></label>
-              <label>Retention backups<input type="number" name="max_backups" min="1" max="1000" value="{{ recurring_backup.max_backups }}" required></label>
+              <label data-backup-light {% if recurring_backup.recurrence not in ['hourly', 'every_4_hours', 'daily'] %}hidden{% endif %}>Light backups<select name="light_backups" data-backup-light-select><option value="false" {% if not recurring_backup.light_backups %}selected{% endif %}>Off: all full</option><option value="true" {% if recurring_backup.light_backups %}selected{% endif %}>On: full weekly</option></select></label>
+              <label data-backup-full-day {% if recurring_backup.recurrence not in ['hourly', 'every_4_hours', 'daily'] or not recurring_backup.light_backups %}hidden{% endif %}>Full backup day<select name="full_backup_day">{% for value, label in [(0, 'Monday'), (1, 'Tuesday'), (2, 'Wednesday'), (3, 'Thursday'), (4, 'Friday'), (5, 'Saturday'), (6, 'Sunday')] %}<option value="{{ value }}" {% if recurring_backup.full_backup_day == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+              <label>Days to keep<input type="number" name="keep_days" min="1" max="3650" value="{{ recurring_backup.keep_days }}" required></label>
+              <label>Weeks to keep<input type="number" name="keep_weeks" min="0" max="520" value="{{ recurring_backup.keep_weeks }}" required></label>
+              <label>Months to keep<input type="number" name="keep_months" min="0" max="240" value="{{ recurring_backup.keep_months }}" required></label>
               <button type="submit" class="backup-schedule-save">Save scheduler settings</button>
             </div>
+            <ul class="backup-retention-help" data-backup-retention-help>
+              <li data-keep="keep_days"><strong>Days to keep:</strong> all the backups made in the last {{ recurring_backup.keep_days }} days are kept.</li>
+              <li data-keep="keep_weeks"><strong>Weeks to keep:</strong> one backup per week is kept for the last {{ recurring_backup.keep_weeks }} weeks.</li>
+              <li data-keep="keep_months"><strong>Months to keep:</strong> one backup per month is kept for the last {{ recurring_backup.keep_months }} months.</li>
+              <li>Every other scheduled backup is deleted, except the newest full one. Backups made with Backup Now are never deleted.</li>
+            </ul>
+            <p class="backup-retention-summary" data-backup-retention-summary role="status"></p>
+            <p class="backup-retention-summary" data-backup-retention-maximum data-full-bytes="{{ recurring_backup_status.latest_sizes.full }}" data-light-bytes="{{ recurring_backup_status.latest_sizes.light }}" role="status"></p>
+            <p class="form-note backup-schedule-note">Light backups leave the workspace databases, Input and Output out of the backups between the full ones; a full backup missed is made at the next backup. Full backups go to the <code>full</code> folder of the backup folder and light ones to its <code>light</code> folder. Backups stay in the chosen folder of this server, so its disk needs room for the backups kept and, while one is made, for the snapshot of the largest database: a backup without room is not started, and the reason shows above.</p>
             </div>
           </section>
         </form>
         <dialog class="database-backup-path-dialog" data-backup-path-dialog><div><p class="eyebrow">Application data directory</p><h3>Select backup directory</h3><div class="database-backup-path-navigation"><button type="button" data-backup-path-home title="Go to data" aria-label="Go to data"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1Z"/></svg><span>Home</span></button><button type="button" data-backup-path-parent title="Go up one folder" aria-label="Go up one folder"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h5l2 2h7a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1Z"/><path d="m12 16 0-6m0 0-3 3m3-3 3 3"/></svg><span>Up</span></button></div><p data-backup-path-current></p><div class="database-backup-new-directory"><input type="text" placeholder="New folder name" data-backup-path-new-name><button type="button" data-backup-path-new>Create folder</button></div><div class="database-backup-directory-list" data-backup-path-list></div><div class="confirm-actions"><button type="button" class="ghost-link" data-backup-path-cancel>Cancel</button><button type="button" data-backup-path-select>Select this directory</button></div></div></dialog>
+        <dialog class="confirm-dialog database-backup-level-dialog" data-backup-now-dialog><div><p class="eyebrow">Back up now</p><h3>Full or light backup?</h3><p>Both keep the content selected in Back up now, in the chosen folder.</p><div class="backup-level-choices"><button type="button" class="backup-level-choice" data-backup-now-choice="full"><strong>Full backup</strong><span data-backup-now-note="full"></span></button><button type="button" class="backup-level-choice" data-backup-now-choice="light"><strong>Light backup</strong><span data-backup-now-note="light"></span></button></div><div class="confirm-actions"><button type="button" class="ghost-link" data-backup-now-cancel>Cancel</button></div></div></dialog>
         <dialog class="confirm-dialog database-backup-restore-dialog" data-backup-restore-dialog><div><div class="database-backup-restore-dialog-head"><p class="eyebrow">Overwrite confirmation</p><h3>Restore backup</h3><p>Choose the workspaces and the parts of the backup to restore. The selected data will overwrite existing data.</p></div><section class="database-backup-restore-selection"><strong>Backup content</strong><div class="restore-component-options" data-backup-restore-components></div></section><div class="confirm-actions"><button type="button" class="ghost-link" data-backup-restore-cancel>Cancel</button><button type="button" class="danger-button" data-backup-restore-confirm>Restore selected data</button></div></div></dialog>
       </section>
       <section class="database-view-subpanel database-viewer" data-database-view>
@@ -1191,6 +1208,11 @@
   const restorePath = document.querySelector('[data-backup-restore-path]');
   const restoreBrowse = document.querySelector('[data-backup-restore-browse]');
   const restoreFile = document.querySelector('[data-backup-restore-file]');
+  const restoreType = document.querySelector('[data-backup-restore-type]');
+  const lightBackups = document.querySelector('[data-backup-light]');
+  const lightBackupsSelect = document.querySelector('[data-backup-light-select]');
+  const fullBackupDay = document.querySelector('[data-backup-full-day]');
+  const statusProblem = document.querySelector('[data-backup-status-problem]');
   const restore = document.querySelector('[data-backup-restore]');
   const restoreDialog = document.querySelector('[data-backup-restore-dialog]');
   const restoreComponents = document.querySelector('[data-backup-restore-components]');
@@ -1203,6 +1225,7 @@
   const refresh = () => { settings.hidden = !enabled.checked; };
   // One line per selected workspace with what the backup keeps of it.
   const backupSummary = document.querySelector('[data-backup-selection-summary]');
+  const backupNowLevel = document.querySelector('[data-backup-now-level]');
   const backupWarning = document.querySelector('[data-backup-selection-warning]');
   const WORKSPACE_PARTS = ['workspace_database', 'dashboards', 'report_templates', 'main_cities', 'mappings_reference_data', 'scoring_configuration', 'auto_calculated_fields', 'query_builder_queries', 'network_insights_favourites', 'bundle_report_template_favourites', 'scoring_favourites_filters', 'scoring_report_templates', 'scoring_export_panels', 'scoring_excluded_calls', 'reporting_jobs', 'nq_call_tracking', 'nq_calls_configuration', 'app_events', 'output', 'input'];
   const refreshBackupSummary = () => {
@@ -1226,10 +1249,138 @@
           : '';
     }
   };
+  // What the Days, Weeks and Months to keep keep, in words and with the dates of today, as the scheduler counts them.
+  const retentionHelp = document.querySelector('[data-backup-retention-help]');
+  const retentionSummary = document.querySelector('[data-backup-retention-summary]');
+  const refreshRetentionSummary = () => {
+    if (!retentionSummary || !retentionHelp) return;
+    const value = (name) => Math.max(0, parseInt(form.querySelector(`[name="${name}"]`)?.value || '0', 10) || 0);
+    const last = (number, unit) => (number === 1 ? `the last ${unit}` : `the last ${number} ${unit}s`);
+    const days = Math.max(1, value('keep_days'));
+    const weeks = value('keep_weeks');
+    const months = value('keep_months');
+    // As the schedule is set: with Light backups on, the full backups are the weekly ones; otherwise every backup is full.
+    const light = !lightBackups?.hidden && lightBackupsSelect?.value === 'true';
+    const fullDaySelect = form.querySelector('[name="full_backup_day"]');
+    const fullDay = fullDaySelect?.selectedOptions[0]?.textContent.trim() || 'Sunday';
+    const perDay = {hourly: 24, every_4_hours: 6, daily: 1}[recurrence?.value];
+    const about = perDay ? ` (about ${days * perDay})` : '';
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const day = (date) => date.toLocaleDateString('en-GB', {weekday: 'short', day: 'numeric', month: 'short', year: 'numeric'});
+    const firstDay = new Date(today);
+    firstDay.setDate(today.getDate() - days + 1);
+    // The full-backup days among the days kept (the selector counts Monday as 0, Date counts Sunday as 0).
+    const fullWeekday = (parseInt(fullDaySelect?.value || '6', 10) + 1) % 7;
+    const fullDates = [];
+    for (let date = new Date(firstDay); date <= today; date.setDate(date.getDate() + 1)) {
+      if (date.getDay() === fullWeekday) fullDates.push(new Date(date));
+    }
+    const shortDay = (date) => date.toLocaleDateString('en-GB', {weekday: 'short', day: 'numeric', month: 'short'});
+    const fullInDays = !fullDates.length ? `only light ones, since no ${fullDay} falls in those days (the full backups are kept by Weeks to keep and Months to keep)`
+      : fullDates.length === 1 ? `the light ones and the full one of ${shortDay(fullDates[0])}`
+        : fullDates.length <= 3 ? `the light ones and the ${fullDates.length} full ones of ${fullDates.slice(0, -1).map(shortDay).join(', ')} and ${shortDay(fullDates.at(-1))}`
+          : `the light ones and the ${fullDates.length} full ones of the ${fullDay}s among them`;
+    const explain = light ? {
+      keep_days: `all the backups made in ${last(days, 'day')} are kept${about}: ${fullInDays}.`,
+      keep_weeks: weeks ? `one full backup per week is kept, normally the one of ${fullDay}, for ${last(weeks, 'week')}.` : 'no backup is kept per week.',
+      keep_months: months ? `one full backup per month is kept, the last weekly full backup of each month, for ${last(months, 'month')}.` : 'no backup is kept per month.',
+    } : {
+      keep_days: `all the backups made in ${last(days, 'day')} are kept${about}; ${lightBackups?.hidden ? 'this' : 'with Light backups off, this'} schedule makes only full backups.`,
+      keep_weeks: weeks ? `one backup per week is kept, the last of each week, for ${last(weeks, 'week')}.` : 'no backup is kept per week.',
+      keep_months: months ? `one backup per month is kept, the last of each month, for ${last(months, 'month')}.` : 'no backup is kept per month.',
+    };
+    const kind = light ? 'full backup' : 'backup';
+    retentionHelp.querySelectorAll('[data-keep]').forEach((item) => {
+      const label = item.querySelector('strong');
+      item.replaceChildren(label, ` ${explain[item.dataset.keep]}`);
+    });
+    const kept = [`all the backups since ${day(firstDay)}`];
+    if (weeks) {
+      const firstWeek = new Date(today);
+      firstWeek.setDate(today.getDate() - ((today.getDay() + 6) % 7) - 7 * (weeks - 1));
+      kept.push(`one ${kind} per week since ${day(firstWeek)}`);
+    }
+    if (months) {
+      const firstMonth = new Date(today.getFullYear(), today.getMonth() - months + 1, 1);
+      kept.push(`one ${kind} per month since ${firstMonth.toLocaleDateString('en-GB', {month: 'long', year: 'numeric'})}`);
+    }
+    retentionSummary.textContent = `Today this keeps ${kept.length > 1 ? `${kept.slice(0, -1).join(', ')} and ${kept.at(-1)}` : kept[0]}.`;
+    refreshRetentionMaximum({days, weeks, months, light, fullWeekday, perDay});
+  };
+  // The most light and full backups kept at the same time over the next year as the schedule runs (without missed
+  // backups), and the space they take from the size of the latest ones, to tell how much room the backups need.
+  const retentionMaximum = document.querySelector('[data-backup-retention-maximum]');
+  const addDays = (date, count) => new Date(date.getFullYear(), date.getMonth(), date.getDate() + count);
+  const formatBytes = (bytes) => {
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let value = bytes;
+    let unit = 0;
+    while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit += 1; }
+    return `${value >= 100 || unit === 0 ? Math.round(value) : value.toFixed(1)} ${units[unit]}`;
+  };
+  const backupsKeptAtMost = ({days, weeks, months, light, fullWeekday, perDay}) => {
+    const weeklyDay = (parseInt(form.querySelector('[name="weekly_day"]')?.value || '0', 10) + 1) % 7;
+    const monthlyDay = parseInt(form.querySelector('[name="monthly_day"]')?.value || '1', 10) || 1;
+    // How many backups a day makes, and whether its newest one is full.
+    const backupsOn = (date) => (recurrence?.value === 'weekly' ? Number(date.getDay() === weeklyDay)
+      : recurrence?.value === 'monthly' ? Number(date.getDate() === Math.min(monthlyDay, new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate()))
+        : perDay || 1);
+    const fullOn = (date) => (light ? date.getDay() === fullWeekday : backupsOn(date) > 0);
+    const newestFull = (from, to) => {
+      for (let date = to; date >= from; date = addDays(date, -1)) if (fullOn(date)) return date;
+      return null;
+    };
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    let most = {light: 0, full: 0};
+    for (let offset = 0; offset < 371; offset += 1) {
+      const end = addDays(today, offset);
+      const first = addDays(end, 1 - days);
+      let lights = 0;
+      let fulls = 0;
+      for (let date = first; date <= end; date = addDays(date, 1)) {
+        const count = backupsOn(date);
+        const full = light ? Number(fullOn(date)) : count;
+        fulls += full;
+        lights += light ? count - full : 0;
+      }
+      // The newest full backup of each week and month kept, when the days kept no longer hold it.
+      const older = new Set();
+      const keep = (date) => { if (date && date < first) older.add(date.getTime()); };
+      const monday = addDays(end, -((end.getDay() + 6) % 7));
+      for (let week = 0; week < weeks; week += 1) {
+        const start = addDays(monday, -7 * week);
+        keep(newestFull(start, week ? addDays(start, 6) : end));
+      }
+      for (let month = 0; month < months; month += 1) {
+        const start = new Date(end.getFullYear(), end.getMonth() - month, 1);
+        keep(newestFull(start, month ? new Date(end.getFullYear(), end.getMonth() - month + 1, 0) : end));
+      }
+      if (!fulls) keep(newestFull(addDays(end, -400), end));
+      most = {light: Math.max(most.light, lights), full: Math.max(most.full, fulls + older.size)};
+    }
+    return most;
+  };
+  const refreshRetentionMaximum = (settings) => {
+    if (!retentionMaximum) return;
+    const most = backupsKeptAtMost(settings);
+    const fullBytes = Number(retentionMaximum.dataset.fullBytes) || 0;
+    const lightBytes = Number(retentionMaximum.dataset.lightBytes) || 0;
+    const space = (count, bytes, kind) => (bytes ? `about ${formatBytes(count * bytes)} for the ${kind} ones (the latest is ${formatBytes(bytes)})` : `the size of the ${kind} ones is known once one is made`);
+    retentionMaximum.textContent = settings.light
+      ? `At most ${most.light} light and ${most.full} full backups are kept at the same time: ${space(most.light, lightBytes, 'light')} and ${space(most.full, fullBytes, 'full')}.`
+      : `At most ${most.full} backups are kept at the same time, all full: ${space(most.full, fullBytes, 'full')}.`;
+  };
   const refreshRecurrence = () => {
     if (!recurrence) return;
     if (weekday) weekday.hidden = recurrence.value !== 'weekly';
     if (monthday) monthday.hidden = recurrence.value !== 'monthly';
+    // Light backups are made between the full ones of hourly, every 4 hours and daily schedules only.
+    const canBeLight = ['hourly', 'every_4_hours', 'daily'].includes(recurrence.value);
+    if (lightBackups) lightBackups.hidden = !canBeLight;
+    if (fullBackupDay) fullBackupDay.hidden = !canBeLight || lightBackupsSelect?.value !== 'true';
+    refreshRetentionSummary();
   };
   const refreshBackupStatus = async () => {
     try {
@@ -1240,6 +1391,13 @@
       if (statusSize) statusSize.textContent = String(payload.size ?? '0 B');
       if (statusLast) statusLast.textContent = String(payload.last_success ?? 'No successful backup yet');
       if (statusNext) statusNext.textContent = String(payload.next_run ?? 'Disabled');
+      if (statusProblem) { statusProblem.textContent = String(payload.problem || ''); statusProblem.hidden = !payload.problem; }
+      if (retentionMaximum && payload.latest_sizes) {
+        const changed = String(payload.latest_sizes.full || 0) !== retentionMaximum.dataset.fullBytes || String(payload.latest_sizes.light || 0) !== retentionMaximum.dataset.lightBytes;
+        retentionMaximum.dataset.fullBytes = String(payload.latest_sizes.full || 0);
+        retentionMaximum.dataset.lightBytes = String(payload.latest_sizes.light || 0);
+        if (changed) refreshRetentionSummary();
+      }
     } catch (_) { /* A later poll will retry. */ }
   };
   // The content and folder chosen are saved as they change, for the next backups, scheduled ones included.
@@ -1274,7 +1432,9 @@
     if (!response.ok) throw new Error(payload.detail || 'Unable to list backup files.');
     // The list is refreshed every few seconds: the chosen file stays chosen.
     const chosen = restoreFile.value;
-    restoreFile.innerHTML = '<option value="">Select a backup file</option>' + (payload.files || []).map((file) => `<option value="${file.name}"${file.incomplete ? ' disabled' : ''}>${file.name} · ${file.modified} · ${file.size}${file.incomplete ? ' · incomplete, cannot be restored' : ''}</option>`).join('');
+    // Only the backups of the chosen type, full or light.
+    const files = (payload.files || []).filter((file) => (file.level || 'full') === (restoreType?.value || 'full'));
+    restoreFile.innerHTML = `<option value="">${files.length ? 'Select a backup file' : `No ${restoreType?.value || 'full'} backups in this folder`}</option>` + files.map((file) => `<option value="${file.path || file.name}"${file.incomplete ? ' disabled' : ''}>${file.name} · ${file.modified} · ${file.size}${file.origin === 'manual' ? ' · Backup Now' : ''}${file.incomplete ? ' · incomplete, cannot be restored' : ''}</option>`).join('');
     if ([...restoreFile.options].some((option) => option.value === chosen && !option.disabled)) restoreFile.value = chosen;
   };
   const loadDirectories = async (path = '') => {
@@ -1318,6 +1478,7 @@
   dialog?.querySelector('[data-backup-path-cancel]')?.addEventListener('click', () => dialog.close());
   dialog?.querySelector('[data-backup-path-select]')?.addEventListener('click', () => { if (pathTarget) pathTarget.value = selectedPath; dialog.close(); if (pathTarget === restorePath) loadBackupFiles().catch((error) => showInfoDialog(error.message, {title: 'Restore', tone: 'error'})); else persistBackupSelection(); });
   restorePath?.addEventListener('change', () => loadBackupFiles().catch(() => {}));
+  restoreType?.addEventListener('change', () => loadBackupFiles().catch(() => {}));
   loadBackupFiles().catch(() => {});
   window.setInterval(() => loadBackupFiles().catch(() => {}), 10000);
   window.setInterval(refreshBackupStatus, 5000);
@@ -1379,11 +1540,39 @@
       restoreDialog.close(); showInfoDialog(payload.message, {title: 'Restore started'}); window.dispatchEvent(new Event('focus'));
     } catch (error) { showInfoDialog(error.message || 'Unable to start the restore.', {title: 'Restore', tone: 'error'}); }
   });
-  form.addEventListener('submit', async (event) => {
+  // Backup Now asks whether the backup is full or light, saying what each keeps and how large the latest one was.
+  const backupNowDialog = document.querySelector('[data-backup-now-dialog]');
+  let backupNowSubmitter = null;
+  const askBackupLevel = (submitter) => {
+    if (!backupNowDialog || !backupNowLevel) return sendBackupForm(submitter);
+    backupNowSubmitter = submitter;
+    const selected = [...(backupComponents?.selectedOptions || [])].map((option) => option.value);
+    const lightContent = selected.filter((value) => !value.startsWith('workspace:') && !['workspace_database', 'input', 'output'].includes(value));
+    const latest = (level) => Number(retentionMaximum?.dataset[`${level}Bytes`]) || 0;
+    const size = (level) => (latest(level) ? ` The latest scheduled ${level} backup took ${formatBytes(latest(level))}.` : '');
+    backupNowDialog.querySelector('[data-backup-now-note="full"]').textContent = `Everything selected, the workspace databases, Input and Output included. It goes to the full folder.${size('full')}`;
+    const lightChoice = backupNowDialog.querySelector('[data-backup-now-choice="light"]');
+    lightChoice.disabled = !lightContent.length;
+    backupNowDialog.querySelector('[data-backup-now-note="light"]').textContent = lightContent.length
+      ? `The content selected without the workspace databases, Input and Output. It goes to the light folder.${size('light')}`
+      : 'Only the workspace databases, Input or Output are selected, which a light backup leaves out.';
+    backupNowDialog.showModal();
+  };
+  backupNowDialog?.querySelectorAll('[data-backup-now-choice]').forEach((button) => button.addEventListener('click', () => {
+    backupNowLevel.value = button.dataset.backupNowChoice;
+    backupNowDialog.close();
+    if (backupNowSubmitter) sendBackupForm(backupNowSubmitter);
+  }));
+  backupNowDialog?.querySelector('[data-backup-now-cancel]')?.addEventListener('click', () => backupNowDialog.close());
+  form.addEventListener('submit', (event) => {
     event.preventDefault();
     if (!form.reportValidity()) return;
     const submitter = event.submitter instanceof HTMLButtonElement ? event.submitter : form.querySelector('button[type="submit"]');
     if (!(submitter instanceof HTMLButtonElement)) return;
+    if (submitter.classList.contains('database-backup-now')) askBackupLevel(submitter);
+    else sendBackupForm(submitter);
+  });
+  const sendBackupForm = async (submitter) => {
     const isManualBackup = submitter.classList.contains('database-backup-now');
     submitter.disabled = true;
     try {
@@ -1405,13 +1594,18 @@
         showInfoDialog(payload.message || 'Scheduler settings saved.', {title: 'Scheduler settings'});
       }
     } catch (error) {
-      showInfoDialog(error.message || 'Unable to save scheduler settings.', {title: 'Scheduler settings', tone: 'error'});
+      showInfoDialog(error.message || 'Unable to save scheduler settings.', {title: isManualBackup ? 'Back up now' : 'Scheduler settings', tone: 'error'});
     } finally {
       submitter.disabled = false;
+      if (backupNowLevel) backupNowLevel.value = 'full';
     }
-  });
+  };
   enabled.addEventListener('change', () => { refresh(); persistBackupSelection(); });
   recurrence?.addEventListener('change', refreshRecurrence);
+  lightBackupsSelect?.addEventListener('change', refreshRecurrence);
+  form.querySelectorAll('[name="keep_days"], [name="keep_weeks"], [name="keep_months"]').forEach((input) => input.addEventListener('input', refreshRetentionSummary));
+  form.querySelector('[name="full_backup_day"]')?.addEventListener('change', refreshRetentionSummary);
+  refreshRetentionSummary();
   backupComponents?.addEventListener('change', () => { refreshBackupSummary(); persistBackupSelection(); });
   refresh();
   refreshRecurrence();

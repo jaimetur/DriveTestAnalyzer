@@ -131,6 +131,8 @@ APP_DATA_DIR/
 │               └── reports-charts-old/
 ├── transfer-packages/
 ├── scheduled-backups/
+│   ├── full/
+│   └── light/
 └── .map-tiles-cache/
     └── openstreetmap/
 ```
@@ -179,7 +181,7 @@ Report Templates become CSV files only inside portable export, transfer and back
 
 Workspaces, backups and transfer packages created with the former layout (module folders directly below `output/` and loose documents in `output/reports/`) are moved to these folders the first time the workspace is opened, and the job paths stored in the workspace database follow them.
 
-`transfer-packages/` holds temporary or recoverable portable packages. `scheduled-backups/` is the default Super Admin backup destination. `.map-tiles-cache/openstreetmap/` is a shared regenerable tile cache outside individual workspaces.
+`transfer-packages/` holds temporary or recoverable portable packages. `scheduled-backups/` is the default Super Admin backup destination, with the full backups in `full/` and the light ones in `light/`. `.map-tiles-cache/openstreetmap/` is a shared regenerable tile cache outside individual workspaces.
 
 ## Bundled assets
 

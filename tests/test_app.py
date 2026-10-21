@@ -3569,7 +3569,7 @@ def test_outgoing_server_transfer_waits_for_acceptance_and_streams_package(clien
             state['uploaded'] = True
             return FakeResponse({'status': 'received'})
 
-    def fake_export(target, destination, workspace_ids=None, progress_callback=None, include_generated_outputs=True, include_input_files=True):
+    def fake_export(target, destination, workspace_ids=None, progress_callback=None, include_generated_outputs=True, include_input_files=True, phase_callback=None):
         destination.write_bytes(b'streamed-transfer-package')
         if progress_callback:
             progress_callback(len(b'streamed-transfer-package'))
@@ -3699,6 +3699,9 @@ def test_transfer_offer_warns_about_unsent_files_the_destination_does_not_hold(c
         'Unknown workspace': {'input': {'held.xlsx': 4}},
     })
     assert check == {workspace.name.upper(): {'input': True, 'output': False}, 'Unknown workspace': {'input': False}}
+    # Named otherwise on the source server, the workspace is the one with its identity, as the import replaces it.
+    assert app_module.unsent_folder_check({'Old name': {'input': {'held.xlsx': 4}}}, {'Old name': workspace.uid}) == {
+        'Old name': {'input': True}}
     # The message names the Input files, the Output files, or both.
     assert app_module.unsent_folder_warnings({'UK': ['input']}) == [
         'Workspace "UK": the Input files of the source server were not found on the destination server and were not '
@@ -3871,7 +3874,7 @@ def test_outgoing_transfer_reports_the_destination_reason_and_can_cancel_during_
             state['delete_reasons'].append((kwargs.get('json') or {}).get('reason', ''))
             return FakeResponse({'cancelled': True})
 
-    def fake_export(target, destination, workspace_ids=None, progress_callback=None, include_generated_outputs=True, include_input_files=True):
+    def fake_export(target, destination, workspace_ids=None, progress_callback=None, include_generated_outputs=True, include_input_files=True, phase_callback=None):
         destination.write_bytes(b'transfer-package')
         return 'transfer.zip'
 
@@ -7044,7 +7047,7 @@ def test_admin_recurring_backup_settings_are_persisted(client) -> None:
     saved = client.post('/admin/database/backups', data={
         'enabled': 'true', 'components': ['app_database', 'report_templates'],
         'workspace_ids': ['default'],
-        'recurrence': 'weekly', 'execution_time': '03:15', 'weekly_day': '4', 'monthly_day': '14', 'max_backups': '12',
+        'recurrence': 'weekly', 'execution_time': '03:15', 'weekly_day': '4', 'monthly_day': '14', 'keep_days': '12',
         'backup_path': 'scheduled-backups',
     }, follow_redirects=False)
 
@@ -7056,7 +7059,7 @@ def test_admin_recurring_backup_settings_are_persisted(client) -> None:
     assert config['execution_time'] == '03:15'
     assert config['weekly_day'] == 4
     assert config['monthly_day'] == 14
-    assert config['max_backups'] == 12
+    assert config['keep_days'] == 12
     assert config['backup_path'].endswith('scheduled-backups')
     assert any(
         row['action'] == 'save_scheduled_backup_settings'
@@ -7065,9 +7068,9 @@ def test_admin_recurring_backup_settings_are_persisted(client) -> None:
     page = client.get('/super-admin')
     assert 'Backup Protection' in page.text
     assert 'database-view-subpanel' in page.text
-    assert 'Retention backups' in page.text
+    assert 'Days to keep' in page.text
     assert '<dt>Stored backups</dt>' in page.text
-    assert 'Retention backups' in page.text
+    assert 'Days to keep' in page.text
     directories = client.get('/api/admin/backup-directories')
     assert directories.status_code == 200
     assert directories.json()['path']
@@ -7096,7 +7099,7 @@ def test_scheduled_backup_records_automatic_lifecycle_in_app_logs(client, monkey
         callback(*args)
 
     monkeypatch.setattr(app_module, 'recurring_backup_settings', lambda: dict(config))
-    monkeypatch.setattr(app_module, 'create_recurring_database_backup', lambda *_args: destination)
+    monkeypatch.setattr(app_module, 'create_recurring_database_backup', lambda *_args, **_kwargs: destination)
     monkeypatch.setattr(app_module, 'submit_background_task', run_immediately)
     app_module.RECURRING_BACKUP_RUNNING = False
 
@@ -7114,16 +7117,16 @@ def test_manual_database_backup_uses_current_form_selection_without_enabling_sch
     captured: dict[str, object] = {}
     schedule_enabled_before = app_module.recurring_backup_settings()['enabled']
 
-    def capture_backup(config, username):
+    def capture_backup(config, username, level='full'):
         captured['config'] = config
         captured['username'] = username
+        captured['level'] = level
         return {'id': 'manual-backup'}
 
     monkeypatch.setattr(app_module, 'start_manual_database_backup', capture_backup)
     response = client.post('/admin/database/backups/run', data={
         'components': ['app_database', 'auto_calculated_fields'],
         'workspace_ids': ['default'],
-        'max_backups': '7',
         'backup_path': 'scheduled-backups/manual',
     }, headers={'X-Requested-With': 'XMLHttpRequest'}, follow_redirects=False)
 
@@ -7131,9 +7134,9 @@ def test_manual_database_backup_uses_current_form_selection_without_enabling_sch
     assert response.json()['job_id'] == 'manual-backup'
     config = captured['config']
     assert config['components'] == ['app_database', 'auto_calculated_fields']
-    assert config['max_backups'] == 7
     assert config['backup_path'].endswith('scheduled-backups/manual')
     assert config['workspace_ids'] == ['default']
+    assert captured['level'] == 'full'
     assert app_module.recurring_backup_settings()['enabled'] is schedule_enabled_before
 
 
@@ -10836,6 +10839,36 @@ def test_startup_page_answers_while_the_active_workspace_is_opened(client) -> No
         app_module.STARTUP_READY.set()
     assert client.get('/api/startup-status').json()['ready'] is True
     assert client.get('/login').status_code == 200
+
+
+def test_startup_page_says_what_it_does_and_mentions_upgrades_only_for_a_new_version(client, monkeypatch) -> None:
+    import src.DriveTestAnalyzer as app_module
+
+    seen: list[tuple[str, str]] = []
+    real_initialize = app_module.repository.initialize
+
+    def initialize() -> None:
+        seen.append((app_module.STARTUP_STATUS['message'], client.get('/login').text))
+        real_initialize()
+
+    monkeypatch.setattr(app_module.repository, 'initialize', initialize)
+    monkeypatch.setitem(app_module.STARTUP_STATUS, 'note', '')
+    app_module.INITIALIZED_WORKSPACE_DATABASES.clear()
+    # The first start of another version upgrades the database, and says so.
+    app_module.repository.set_application_state(app_module.LAST_STARTED_VERSION_STATE_KEY, '0.0.1')
+    app_module.STARTUP_READY.clear()
+    app_module._prepare_active_workspace(0.0)
+    assert seen[-1][0].startswith('Upgrading the database of workspace')
+    assert 'can take a few minutes' in seen[-1][1]
+    assert app_module.repository.get_application_state(app_module.LAST_STARTED_VERSION_STATE_KEY) == app_module.__version__
+    # The next starts only check it.
+    monkeypatch.setitem(app_module.STARTUP_STATUS, 'note', '')
+    app_module.INITIALIZED_WORKSPACE_DATABASES.clear()
+    app_module.STARTUP_READY.clear()
+    app_module._prepare_active_workspace(0.0)
+    assert seen[-1][0].startswith('Checking the database of workspace')
+    assert 'can take a few minutes' not in seen[-1][1]
+    assert app_module.STARTUP_READY.is_set()
 
 
 def test_workspaces_record_the_cdr_type_they_handle(client) -> None:

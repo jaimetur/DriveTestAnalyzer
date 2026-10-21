@@ -322,6 +322,8 @@ CONTAINER_NAME=drivetest-analyzer
 │   └── application.db
 └── data/
     ├── scheduled-backups/
+    │   ├── full/
+    │   └── light/
     ├── transfer-packages/
     └── workspaces/
         ├── workspace-registry.db

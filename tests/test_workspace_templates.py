@@ -238,9 +238,10 @@ def test_template_and_dashboard_bundle_replaces_referenced_template(client, tmp_
         progress_callback=lambda phase, _progress: phases.append(phase),
         destination_workspace_ids=[destination.id],
     )
-    # The progress names each package being imported.
-    assert [phase for phase in phases if phase.startswith('importing package')] == [
+    # The progress names each package being imported, and what each one is doing within its share of the bar.
+    assert [phase for phase in phases if phase.startswith('importing package') and ':' not in phase] == [
         'importing package 1 of 2 (PPT Templates)', 'importing package 2 of 2 (Dashboards)']
+    assert 'importing package 1 of 2 (PPT Templates): importing PPT Templates' in phases
     rows = [row for row in destination_repo.list_report_templates('nsa') if str(row['name']) == 'Bundle Used']
     assert len(rows) == 1
     assert bytes(rows[0]['content']) == b'imported'

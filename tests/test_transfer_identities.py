@@ -392,3 +392,45 @@ def test_users_profiles_and_groups_are_found_by_their_identity(client):
         item['username'] = 'super-renamed' if item['username'] == 'super' else item['username']
     repo.merge_users_access(payload, {workspace.name: workspace.id}, protected_username='super')
     assert 'super' in [row['username'] for row in repo.list_users()]
+
+
+def test_an_imported_workspace_keeps_the_hashes_of_the_cdr_files_it_placed(client, tmp_path):
+    from src.modules.scoring_history import HISTORY_FILES_TABLE, ensure_history_tables, file_sha256
+
+    workspace, repo = _workspace('Hashes')
+    placed = workspace.input_dir / 'cdr.xlsx'
+    placed.parent.mkdir(parents=True, exist_ok=True)
+    placed.write_bytes(b'cdr content')
+    dataset_id, _created = repo.add_dataset('cdr.xlsx', str(placed), 'super')
+    ensure_history_tables(repo)
+    # The hash the package's database knew, of the same file at another place and time.
+    with repo.connection() as connection:
+        connection.execute(f'INSERT OR REPLACE INTO {HISTORY_FILES_TABLE} (dataset_id, stored_path, file_size, file_mtime, file_sha256) '
+                           'VALUES (?, ?, ?, ?, ?)', (dataset_id, '/source/server/cdr.xlsx', placed.stat().st_size, 1.0, 'known-hash'))
+    core._carry_cdr_file_hashes(workspace)
+    row = next(item for item in repo.list_datasets() if int(item['id']) == dataset_id)
+    assert file_sha256(repo, row) == 'known-hash'
+
+
+def test_an_export_tells_which_part_it_is_archiving(client, tmp_path):
+    workspace = core.workspace_registry.create('Phases')
+    workspace.input_dir.mkdir(parents=True, exist_ok=True)
+    (workspace.input_dir / 'cdr.xlsx').write_bytes(b'cdr')
+    events: list[tuple[str, object]] = []
+    core.build_export_archive_file('full-environment', tmp_path / 'environment.zip', [workspace.id],
+                                   lambda written: events.append(('bytes', written)),
+                                   phase_callback=lambda phase: events.append(('phase', phase)))
+    phases = [value for kind, value in events if kind == 'phase']
+    assert phases[0].startswith('copying the application database (')
+    assert any(phase.startswith('workspace 1 of 1 "Phases": copying its database (') for phase in phases)
+    assert 'workspace 1 of 1 "Phases": adding its settings and saved items' in phases
+    assert any(phase.startswith('workspace 1 of 1 "Phases": adding its Input files (') for phase in phases)
+    # The copy of the database counts in the progress once it is made, and then its archiving.
+    start = next(index for index, (kind, value) in enumerate(events) if kind == 'phase' and 'copying its database' in str(value))
+    end = events.index(('phase', 'workspace 1 of 1 "Phases": adding its settings and saved items'))
+    assert len([kind for kind, _value in events[start:end] if kind == 'bytes']) >= 2
+
+    # A selection of several elements names each one by its position.
+    phases = []
+    core.build_export_archive_file(['dashboards', 'ppt-templates'], tmp_path / 'selection.zip', phase_callback=phases.append)
+    assert phases == ['Dashboards (1 of 2)', 'PPT Templates (2 of 2)']

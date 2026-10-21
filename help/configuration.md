@@ -116,6 +116,8 @@ APP_DATA_DIR/
 │   └── <workspace>/
 ├── transfer-packages/
 ├── scheduled-backups/
+│   ├── full/
+│   └── light/
 └── .map-tiles-cache/
 
 APP_ASSETS_DIR/

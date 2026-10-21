@@ -7705,7 +7705,7 @@ function followServerTransfer(initialState) {
       queued: 'Preparing the connection to the destination server.',
       connecting: 'Connecting to the destination server and creating the transfer request.',
       awaiting_acceptance: 'Waiting for a super-admin on the destination server to accept the transfer.',
-      exporting: `The destination accepted the transfer. Creating the selected export package${progress}.`,
+      exporting: `The destination accepted the transfer. Creating the selected export package${transfer.phase ? `: ${transfer.phase}` : ''}${progress}.`,
       transferring: `Sending the package to the destination server${progress}.`,
       remote_importing: `The destination server is importing the package${transfer.remote_phase ? `: ${transfer.remote_phase}` : ''}${progress}.`,
       cancelling: 'Cancelling the server transfer.',
@@ -7931,9 +7931,11 @@ document.querySelectorAll('[data-export-package-form]').forEach((form) => {
         }
         if (status.status === 'failed') throw new Error(status.error || 'The export package could not be created.');
         setLoadingProgress(status.progress);
+        // What the package is being made of now (such as the database of a workspace), and how far it got.
+        const phase = status.phase ? `: ${status.phase}` : '';
         if (loadingCopy) loadingCopy.textContent = status.progress > 0
-          ? `Preparing the export package on the server — approximately ${status.progress}% of source data archived.`
-          : 'Preparing the export package on the server. Large workspaces can take several minutes; you may keep this page open.';
+          ? `Preparing the export package on the server${phase} — approximately ${status.progress}% of source data archived.`
+          : `Preparing the export package on the server${phase}. Large workspaces can take several minutes; you may keep this page open.`;
         window.setTimeout(() => { pollExport().catch(handleExportError); }, 1200);
       };
       const handleExportError = (error) => {

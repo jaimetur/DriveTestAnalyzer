@@ -825,7 +825,7 @@ body [data-section-bar].is-compact > a.section-bar-top { padding: .45rem .55rem;
 .database-backup-path-picker button { flex: 0 0 auto; padding: 0.58rem 0.75rem; background: #f3e5e4; border-color: rgba(139, 29, 36, 0.28); color: #7d2731; box-shadow: none; }
 .admin-stack .database-backup-path-picker button:hover:not(:disabled), .admin-stack .database-backup-path-picker button:focus-visible { background: #e8c9c7; border-color: rgba(110, 24, 36, 0.62); color: #591820; box-shadow: 0 0 0 3px rgba(139, 29, 36, 0.12); }
 .database-backup-now { justify-self: start; background: linear-gradient(135deg, #8f2932, #c24a4d); border-color: rgba(125, 39, 49, 0.72); color: #fff; }
-.backup-notice { margin: 0; }
+.backup-notice, .backup-problem { margin: 0; }
 .database-backup-path-dialog { width: min(94vw, 980px); height: min(88dvh, 760px); border: 0; border-radius: 16px; padding: 0; color: #4a3033; box-shadow: 0 24px 60px rgba(65,18,27,0.3); overflow: hidden; }
 .database-backup-path-dialog::backdrop { background: rgba(18, 32, 43, 0.42); }
 .database-backup-path-dialog > div { display: grid; grid-template-rows: auto auto auto auto auto minmax(0, 1fr) auto; gap: 0.85rem; box-sizing: border-box; height: 100%; min-height: 0; padding: 1.2rem; overflow: hidden; }
@@ -5311,9 +5311,18 @@ body:has(> .unassigned-values-card:not([hidden], .is-collapsed)) { padding-botto
 .admin-stack .backup-protection .backup-schedule-switch > span:first-child { color: #34495a; font-size: .82rem; font-weight: 700; }
 .admin-stack .backup-protection .backup-schedule-switch .toggle-slider { background: #cfd8de; box-shadow: none; }
 .admin-stack .backup-protection .backup-schedule-switch .toggle-switch input:checked + .toggle-slider { background: #1f9d6b; }
-.admin-stack .backup-protection .database-backup-schedule { display: grid; grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr)); align-items: end; gap: .75rem; }
-.admin-stack .backup-protection .database-backup-schedule label { display: grid; gap: .32rem; }
-.admin-stack .backup-protection .database-backup-schedule .backup-schedule-save { justify-self: end; white-space: nowrap; }
+/* The fields and Save scheduler settings on one line, wrapping when they do not fit, with the button at the end. */
+.admin-stack .backup-protection .database-backup-schedule { display: flex; flex-wrap: wrap; align-items: end; gap: .75rem; }
+.admin-stack .backup-protection .database-backup-schedule label { display: grid; gap: .32rem; flex: 1 1 8.5rem; min-width: 0; max-width: 14rem; }
+.admin-stack .backup-protection .database-backup-schedule .backup-schedule-save { flex: 0 0 auto; margin-left: auto; white-space: nowrap; }
+.admin-stack .backup-protection .backup-retention-help { display: grid; gap: .2rem; margin: .9rem 0 0; padding-left: 1.1rem; color: var(--muted); font-size: .88rem; }
+.admin-stack .backup-protection .backup-retention-help strong { color: #10314a; }
+.admin-stack .backup-protection .backup-retention-summary { margin: .55rem 0 0; color: #10314a; font-size: .88rem; font-weight: 700; }
+.backup-level-choices { display: grid; gap: .6rem; margin-top: 1rem; }
+.admin-stack .backup-level-choice { display: grid; gap: .25rem; padding: .85rem 1rem; border: 1px solid rgba(16, 49, 74, .16); border-radius: 13px; background: #fff; color: #10314a; text-align: left; box-shadow: none; transform: none; cursor: pointer; }
+.admin-stack .backup-level-choice:hover:not(:disabled), .admin-stack .backup-level-choice:focus-visible { border-color: #1e61a3; background: #f3f8fd; color: #10314a; box-shadow: 0 0 0 3px rgba(30, 97, 163, .14); transform: none; }
+.admin-stack .backup-level-choice span { color: #5b6b78; font-size: .86rem; font-weight: 500; line-height: 1.4; }
+.admin-stack .backup-level-choice:disabled { opacity: .55; cursor: not-allowed; }
 @media (max-width: 760px) {
   .backup-cards { grid-template-columns: minmax(0, 1fr); }
   .backup-card-head { flex-wrap: wrap; }

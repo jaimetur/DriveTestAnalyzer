@@ -570,3 +570,51 @@ def test_an_imported_favourites_filter_replaces_the_name_and_creator_of_the_same
     saved_filters.import_saved_filters(target, document, creator=lambda package, _local: package or 'importer')
     [kept] = saved_filters.list_saved_filters(target)
     assert kept['name'] == 'Unstarred there' and kept['pinned'] and kept['created_by'] == 'bob'
+
+
+def test_an_import_prepares_only_its_favourites_filters_and_tells_its_progress(tmp_path):
+    source = _workspace(tmp_path, 'source')
+    ids = _three_cdrs(source, tmp_path / 'source')
+    for levels in (['Operator'], ['Operator', 'Region']):
+        used, _ = saved_filters.save_saved_filter(source, ids, levels, 'NSA')
+        saved_filters.update_saved_filter(source, used['id'], pinned=True, username='ana')
+    document = json.loads(json.dumps(saved_filters.saved_filters_document(source, favourites_only=True)))
+    target = _workspace(tmp_path, 'target')
+    # A Saved Filter of an earlier import still waits for CDRs this workspace does not have.
+    waiting = {**document['saved_filters'][0], 'cdrs': [{'sha256': 'f' * 64, 'name': 'Elsewhere.xlsx', 'kind': 'data'}]}
+    saved_filters.import_saved_filters(target, {**document, 'saved_filters': [waiting]})
+    _three_cdrs(target, tmp_path / 'target')
+
+    phases: list[tuple[str, float]] = []
+    assert saved_filters.import_saved_filters(target, document, progress=lambda phase, share: phases.append((phase, share))) == 2
+    # The CDRs are identified by their files once, and only the two Saved Filters of the package are prepared.
+    assert [phase for phase, _share in phases if phase.startswith('preparing')] == [
+        'preparing Saved Filter 1 of 2', 'preparing Saved Filter 2 of 2']
+    assert any(phase.startswith('identifying CDR 1 of 3') for phase, _share in phases)
+    assert [share for _phase, share in phases] == sorted(share for _phase, share in phases)
+    assert sum(bool(item['dataset_ids']) for item in saved_filters.list_saved_filters(target)) == 2
+
+
+def test_a_cdr_file_that_only_moved_keeps_its_hash(tmp_path):
+    import os
+
+    from src.modules.scoring_history import HISTORY_FILES_TABLE, ensure_history_tables, file_sha256
+
+    repository = _workspace(tmp_path, 'workspace')
+    [dataset_id, *_rest] = _three_cdrs(repository, tmp_path / 'workspace')
+    ensure_history_tables(repository)
+    row = next(item for item in repository.list_datasets() if int(item['id']) == dataset_id)
+    known = file_sha256(repository, row)
+    # Moved (a renamed workspace), with its size and modification time: it is not read again.
+    moved = tmp_path / 'moved.xlsx'
+    os.rename(row['stored_path'], moved)
+    stat = moved.stat()
+    moved.write_text('X' * stat.st_size, encoding='utf-8')
+    os.utime(moved, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+    with repository.connection() as connection:
+        connection.execute('UPDATE datasets SET stored_path = ? WHERE id = ?', (str(moved), dataset_id))
+    row = next(item for item in repository.list_datasets() if int(item['id']) == dataset_id)
+    assert file_sha256(repository, row) == known
+    with repository.connection() as connection:
+        assert connection.execute(f'SELECT stored_path FROM {HISTORY_FILES_TABLE} WHERE dataset_id = ?',
+                                  (dataset_id,)).fetchone()[0] == str(moved)

@@ -169,7 +169,7 @@ data/workspaces/<workspace>/
 
 Admin Import / Export / Transfer provides portable backups, but infrastructure-level backups are still recommended.
 
-On-demand and scheduled backups configured in Super Admin are written below the mounted `data/` directory by default, at `data/scheduled-backups`. The directory picker and Restore ZIP list expose only paths visible inside the container and restricted to that `data/` tree. Ensure the data volume has enough free space for the selected retention count and the selected workspace content.
+On-demand and scheduled backups configured in Super Admin are written below the mounted `data/` directory by default, at `data/scheduled-backups`. The directory picker and Restore ZIP list expose only paths visible inside the container and restricted to that `data/` tree. Ensure the data volume has enough free space for the backups kept (those of the days kept and the full ones of the weeks and months kept) and, while a backup is made, for the snapshot of its largest database: a backup without room is not started.
 
 See [Deployment Configuration](configuration.md) for the complete variable reference.
 

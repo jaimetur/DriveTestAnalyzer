@@ -135,7 +135,7 @@ from src.modules.runtime_config import IGNORE_EVENT_TIME_FILTERING_ENV, env_flag
 from src.modules.query_builder import MAX_PREVIEW_ROWS, execute_query, iter_query_csv, query_column_values, validate_query
 from src.runtime_logs import execution_log_entries
 from src.modules.workspaces import Workspace, WorkspaceRegistry
-from src.branding import BACKUP_FILE_PATTERNS, BACKUP_SCRATCH_PATTERNS, canonical_format
+from src.branding import APP_SLUG, BACKUP_FILE_PATTERNS, BACKUP_SCRATCH_PATTERNS, LEGACY_APP_SLUG, canonical_format
 from src.modules.mapping_renames import count_saved_filters, rename_saved_filters
 from src.modules.module_labels import (
     ICONS as MODULE_LABEL_ICONS, MAIN_MODULES, MAX_LABEL_LENGTH as MAX_MODULE_LABEL_LENGTH, MAX_SHORT_TITLE_LENGTH,
@@ -214,8 +214,16 @@ WORKSPACE_DUPLICATION_STOP_REQUESTS_LOCK = Lock()
 BULK_REPORT_DELETION_JOBS: dict[str, dict[str, Any]] = {}
 BULK_REPORT_DELETION_JOBS_LOCK = Lock()
 RECURRING_BACKUP_STATE_KEY = 'recurring_database_backup'
+# Why the last scheduled backup was skipped, failed or made light instead of full, until one succeeds.
+RECURRING_BACKUP_PROBLEM_STATE_KEY = 'recurring_database_backup_problem'
 RECURRING_BACKUP_LOCK = Lock()
 RECURRING_BACKUP_RUNNING = False
+# What a light scheduled backup leaves out of the selection: the workspace databases and the Input and Output folders.
+LIGHT_BACKUP_EXCLUDED_COMPONENTS = frozenset({'workspace_database', 'input', 'output'})
+# The schedules that can make light backups between the weekly full ones.
+LIGHT_BACKUP_RECURRENCES = frozenset({'hourly', 'every_4_hours', 'daily'})
+# The folders of a backup folder the full and the light backups go to (those made before stay in the folder itself).
+BACKUP_LEVEL_FOLDERS = ('full', 'light')
 # The largest backups take under half an hour, so an older snapshot folder is no longer in use.
 STALE_BACKUP_SCRATCH_SECONDS = 6 * 60 * 60
 BACKUP_PARTIAL_SUFFIX = '.partial'
@@ -2675,11 +2683,14 @@ def activate_workspace(workspace_id: str, *, initialize: bool = True) -> Workspa
         if initialize:
             first_initialization = database_key not in INITIALIZED_WORKSPACE_DATABASES
             if first_initialization:
+                _startup_step(f'{"Upgrading" if STARTUP_STATUS["note"] else "Checking"} the database of workspace "{workspace.name}"…')
                 # A workspace restored or transferred from a server with the former module names.
                 from src.modules.ppt_naming import migrate_workspace_database
                 migrate_workspace_database(workspace.database_path)
                 repository.initialize()
+                _startup_step(f'Checking the Output folder of workspace "{workspace.name}"…')
                 migrate_output_layout(workspace.output_dir, workspace.database_path)
+                _startup_step('Recovering the Scoring calculations the last run left unfinished…')
                 recovered_scoring_ids = recover_interrupted_saved_filters(repository)
                 if recovered_scoring_ids:
                     repository.try_add_log('system', 'recover_interrupted_saved_filters', json.dumps({
@@ -2702,10 +2713,12 @@ def activate_workspace(workspace_id: str, *, initialize: bool = True) -> Workspa
             # every ready CDR here can take minutes and make opening the copied
             # workspace look like a server failure.  Reporting materialises the
             # exact columns it needs lazily in ``_combined_reporting_frame``.
+            _startup_step('Checking the PPT Templates…')
             for technology in TEMPLATE_NAMES:
                 synchronize_template_file_names(technology)
             # A new workspace (and every existing one, once) starts with the shipped methodology, Report
             # Templates, Dashboards and Auto-calculated Fields it does not have yet.
+            _startup_step('Checking the starter content and the creators of the shared items…')
             try:
                 from src.modules.starter_content import seed_starter_content
                 seed_starter_content(repository)
@@ -2720,6 +2733,7 @@ def activate_workspace(workspace_id: str, *, initialize: bool = True) -> Workspa
                         {'owner': UNKNOWN_CREATOR_OWNER, 'items': assigned}))
             except Exception as exc:  # noqa: BLE001 - never blocks opening a workspace
                 repository.try_add_log('system', 'assign_unknown_creators_failed', json.dumps({'error': str(exc)}))
+        _startup_step('Checking the CDRs and resuming their processing…')
         inconsistent_ids = repository.fail_inconsistent_ready_datasets()
         if inconsistent_ids:
             repository.try_add_log('system', 'recover_inconsistent_datasets', json.dumps({'dataset_ids': inconsistent_ids}))
@@ -3017,7 +3031,16 @@ STARTUP_READY = Event()
 STARTUP_GRACE_SECONDS = 3.0
 DEPLOYMENT_STORAGE_PATH_NAMES = ('database_path', 'input_dir', 'output_dir', 'export_dir', 'slides_templates_dir')
 DEPLOYMENT_STORAGE_PATHS: dict[str, Path] = {}
-STARTUP_STATUS: dict[str, str] = {'message': 'Starting DriveTest Analyzer…', 'error': ''}
+# What the startup page says the application is doing, and its note while a new version upgrades the databases.
+STARTUP_STATUS: dict[str, str] = {'message': 'Starting DriveTest Analyzer…', 'error': '', 'note': ''}
+# The version of the last start that opened its workspace, to tell the first start of another version.
+LAST_STARTED_VERSION_STATE_KEY = 'last_started_version'
+
+
+def _startup_step(message: str) -> None:
+    """Say on the startup page what the application is doing, while it starts."""
+    if not STARTUP_READY.is_set():
+        STARTUP_STATUS['message'] = message
 
 
 def _application_start_details(started_at: float, workspace_name: str = '', workspace_id: str = '') -> dict[str, Any]:
@@ -3060,11 +3083,22 @@ def _prepare_active_workspace(started_at: float) -> None:
             workspace = workspace_registry.get(workspace_id)
             name = workspace.name if workspace else workspace_id
             active_name, active_id = name, workspace_id
+            # Only the first start of another version upgrades the workspace database, which can take minutes.
+            if repository.get_application_state(LAST_STARTED_VERSION_STATE_KEY) != __version__:
+                STARTUP_STATUS['note'] = (f'First start of version {__version__}: the workspace database is upgraded, '
+                                          'which can take a few minutes.')
             STARTUP_STATUS['message'] = f'Opening workspace "{name}"…'
             activate_workspace(workspace_id)
+            repository.set_application_state(LAST_STARTED_VERSION_STATE_KEY, __version__)
             # The workspace opened has the start before what its opening recovers; the others once the application is ready.
             start_details = _application_start_details(started_at, name, workspace_id)
             repository.try_add_log('system', 'application_started', json.dumps(start_details), timeout_seconds=5)
+            _startup_step('Moving the backups made before into the full folder…')
+            try:
+                move_earlier_backups_to_full_folder()
+            except Exception as exc:  # The backups stay where they are, and Restore still finds them.
+                print(f'Unable to move the earlier backups into the full folder: {exc}', file=sys.stderr, flush=True)
+            _startup_step('Recovering the jobs the last run left unfinished…')
             interrupted_datasets, interrupted_reports = repository.fail_interrupted_background_jobs(fail_datasets=False)
             interrupted_chart_jobs = repository.fail_interrupted_report_chart_jobs()
             if interrupted_datasets or interrupted_reports or interrupted_chart_jobs:
@@ -3260,7 +3294,8 @@ STARTUP_PAGE = """<!doctype html>
   <div class="spinner" aria-hidden="true"></div>
   <h1>DriveTest Analyzer is starting</h1>
   <p><strong id="startup-message">__MESSAGE__</strong></p>
-  <p>The first start after an update can take a few minutes while the workspace database is upgraded. This page opens the application as soon as it is ready.</p>
+  <p id="startup-note"__NOTE_HIDDEN__>__NOTE__</p>
+  <p>This page opens the application as soon as it is ready.</p>
 </main>
 <script>
   const poll = async () => {
@@ -3269,6 +3304,9 @@ STARTUP_PAGE = """<!doctype html>
       const status = await response.json();
       if (status.ready) { window.location.reload(); return; }
       document.getElementById('startup-message').textContent = status.message;
+      const note = document.getElementById('startup-note');
+      note.textContent = status.note || '';
+      note.hidden = !status.note;
     } catch (error) { /* The server is restarting: try again. */ }
     window.setTimeout(poll, 1500);
   };
@@ -3283,12 +3321,14 @@ async def wait_for_startup(request: Request, call_next):
     if STARTUP_READY.is_set() or path.startswith('/static/') or path == '/favicon.ico':
         return await call_next(request)
     if path == '/api/startup-status':
-        return JSONResponse({'ready': False, 'message': STARTUP_STATUS['message']}, headers={'Cache-Control': 'no-store'})
+        return JSONResponse({'ready': False, 'message': STARTUP_STATUS['message'], 'note': STARTUP_STATUS['note']},
+                            headers={'Cache-Control': 'no-store'})
     headers = {'Retry-After': '5', 'Cache-Control': 'no-store'}
     if path.startswith('/api/') or request.method != 'GET':
         detail = f"DriveTest Analyzer is starting: {STARTUP_STATUS['message']} Try again in a moment."
         return JSONResponse({'detail': detail}, status_code=status.HTTP_503_SERVICE_UNAVAILABLE, headers=headers)
-    page = STARTUP_PAGE.replace('__MESSAGE__', html.escape(STARTUP_STATUS['message']))
+    page = (STARTUP_PAGE.replace('__MESSAGE__', html.escape(STARTUP_STATUS['message']))
+            .replace('__NOTE_HIDDEN__', '' if STARTUP_STATUS['note'] else ' hidden').replace('__NOTE__', html.escape(STARTUP_STATUS['note'])))
     return HTMLResponse(page, status_code=status.HTTP_503_SERVICE_UNAVAILABLE, headers=headers)
 
 
@@ -6750,8 +6790,11 @@ def _archive_database(
     progress_callback: Callable[[int], None] | None = None,
     cancel_callback: Callable[[], None] | None = None,
     exclude_tables: tuple[str, ...] = (),
+    snapshot_callback: Callable[[int], None] | None = None,
 ) -> None:
-    """Add a consistent SQLite snapshot, compacting databases with substantial free space."""
+    """Add a consistent SQLite snapshot, compacting databases with substantial free space. ``snapshot_callback``
+    receives the size of the database once its snapshot is made (in one step, which a database written meanwhile does
+    not restart), before the snapshot is archived with ``progress_callback``."""
     if not database_path.exists():
         return
     with tempfile.TemporaryDirectory(prefix='drivetest-analyzer-export-', dir=scratch_dir) as temporary_dir:
@@ -6767,6 +6810,8 @@ def _archive_database(
             else:
                 with closing(sqlite3.connect(snapshot)) as target, target:
                     source.backup(target)
+        if snapshot_callback:
+            snapshot_callback(_file_size(database_path))
         if exclude_tables:
             with closing(sqlite3.connect(snapshot)) as target, target:
                 existing = {row[0] for row in target.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
@@ -6820,7 +6865,10 @@ def recurring_backup_settings() -> dict[str, Any]:
             'scoring_excluded_calls',
         ],
         'workspace_ids': [],
-        'recurrence': 'daily', 'execution_time': '02:00', 'weekly_day': 0, 'monthly_day': 1, 'max_backups': 30,
+        'recurrence': 'daily', 'execution_time': '02:00', 'weekly_day': 0, 'monthly_day': 1,
+        # Light backups between the full ones (hourly, every 4 hours and daily schedules), and the days whose backups
+        # are all kept and the weeks and months whose newest full backup is kept.
+        'light_backups': False, 'full_backup_day': 6, 'keep_days': 7, 'keep_weeks': 4, 'keep_months': 6,
         'backup_path': str(application_data_dir / 'scheduled-backups'), 'last_run_period': '',
     }
     raw = repository.get_application_state(RECURRING_BACKUP_STATE_KEY)
@@ -6831,6 +6879,11 @@ def recurring_backup_settings() -> dict[str, Any]:
     if not isinstance(saved, dict):
         saved = {}
     config = defaults | {key: saved[key] for key in defaults if key in saved}
+    if 'max_backups' in saved and 'keep_days' not in saved:
+        # Schedules kept a number of backups before: the days those backups covered.
+        per_day = {'hourly': 24, 'every_4_hours': 6, 'daily': 1}.get(str(config['recurrence']))
+        count = max(1, int(saved.get('max_backups') or 1))
+        config['keep_days'] = (-(-count // per_day) if per_day else count * (7 if config['recurrence'] == 'weekly' else 31))
     if saved and 'components' not in saved:
         config['components'] = [name for name, legacy_key in (
             ('app_database', 'include_database'), ('slides_templates', 'include_slides_templates'),
@@ -6884,18 +6937,138 @@ def ensure_backup_path_is_within_config(path: Path) -> Path:
 
 def recurring_backup_status(config: dict[str, Any]) -> dict[str, str | int]:
     root = recurring_backup_path(config)
-    files = sorted((item for pattern in BACKUP_FILE_PATTERNS for item in root.glob(pattern)), key=lambda item: item.stat().st_mtime) if root.is_dir() else []
+    files = sorted(backup_zip_files(root), key=lambda item: item.stat().st_mtime)
     total = sum(item.stat().st_size for item in files)
     last = backup_started_at_label(files[-1]) if files else 'No successful backup yet'
-    return {'count': len(files), 'size': format_workspace_size(total), 'last_success': last, 'next_run': recurring_backup_next_run(config)}
+    # The size of the latest scheduled full and light backups, for the panel to estimate the space the backups kept take.
+    latest_sizes = {'full': 0, 'light': 0}
+    for item, info in _scheduled_backups(root):
+        if not info['incomplete'] and not latest_sizes[info['level']]:
+            latest_sizes[info['level']] = _file_size(item)
+    return {'count': len(files), 'size': format_workspace_size(total), 'last_success': last, 'next_run': recurring_backup_next_run(config),
+            'problem': recurring_backup_problem(), 'latest_sizes': latest_sizes}
+
+
+def backup_level_folder(backup_root: Path, level: str) -> Path:
+    """The folder of a backup folder the backups of a level (full or light) go to."""
+    return backup_root / ('light' if level == 'light' else 'full')
+
+
+def backup_folders(backup_root: Path) -> list[Path]:
+    """The folders of a backup folder that hold backups: its full and light folders, and itself for those made before."""
+    return [backup_root, *(backup_root / name for name in BACKUP_LEVEL_FOLDERS)]
+
+
+def backup_zip_files(backup_root: Path) -> list[Path]:
+    """The backup ZIPs of a backup folder, in its full and light folders and in itself."""
+    return [item for folder in backup_folders(backup_root) if folder.is_dir()
+            for pattern in BACKUP_FILE_PATTERNS for item in folder.glob(pattern)]
+
+
+def move_earlier_backups_to_full_folder() -> list[str]:
+    """Move the backups made before full and light backups had their own folders, all of them full, from the backup
+    folder of the schedule and the default one into their ``full`` folder; returns the files moved, recorded in App
+    Events. A file of the same name already there is left where it is."""
+    moved: list[str] = []
+    roots = {recurring_backup_path(recurring_backup_settings()).resolve(), (application_data_dir / 'scheduled-backups').resolve()}
+    for root in (item for item in roots if item.is_dir()):
+        for item in {path for pattern in BACKUP_FILE_PATTERNS for path in root.glob(pattern)}:
+            target = backup_level_folder(root, 'full') / item.name
+            if not item.is_file() or target.exists():
+                continue
+            try:
+                target.parent.mkdir(exist_ok=True)
+                item.rename(target)
+            except OSError:
+                continue
+            moved.append(str(target))
+    if moved:
+        repository.try_add_log('system', 'move_earlier_backups_to_full_folder', json.dumps({'moved': sorted(moved)}, ensure_ascii=False))
+    return moved
+
+
+def backup_started_at(path: Path) -> datetime:
+    """The start time embedded in a DriveTest Analyzer backup filename, else the time the file last changed."""
+    match = re.fullmatch(r'(?:drivetest-analyzer|dashboard-analytic)-backup-(\d{8}-\d{6})\.zip', path.name)
+    if match:
+        return datetime.strptime(match.group(1), '%Y%m%d-%H%M%S')
+    return datetime.fromtimestamp(path.stat().st_mtime)
 
 
 def backup_started_at_label(path: Path) -> str:
     """Read the start timestamp embedded in a DriveTest Analyzer backup filename."""
-    match = re.fullmatch(r'(?:drivetest-analyzer|dashboard-analytic)-backup-(\d{8}-\d{6})\.zip', path.name)
-    if match:
-        return datetime.strptime(match.group(1), '%Y%m%d-%H%M%S').strftime('%Y-%m-%d %H:%M')
-    return datetime.fromtimestamp(path.stat().st_mtime).astimezone().strftime('%Y-%m-%d %H:%M')
+    return backup_started_at(path).strftime('%Y-%m-%d %H:%M')
+
+
+# The origin and level of each backup ZIP read so far, by path, with the size and time of the file they were read from.
+BACKUP_FILE_INFO_CACHE: dict[str, tuple[tuple[int, float], dict[str, Any]]] = {}
+
+
+def backup_file_info(path: Path) -> dict[str, Any]:
+    """Whether a backup ZIP was made by the schedule or on demand (``origin``), whether it is a light one, without the
+    workspace databases, Input and Output (``level``), and whether it was cut short (``incomplete``), from its manifest.
+    Backups made before these were recorded count as scheduled full ones, as the retention treated them."""
+    stat = path.stat()
+    key = (stat.st_size, stat.st_mtime)
+    cached = BACKUP_FILE_INFO_CACHE.get(str(path))
+    if cached and cached[0] == key:
+        return cached[1]
+    info: dict[str, Any] = {'origin': 'scheduled', 'level': 'full', 'incomplete': False}
+    manifest: Any = {}
+    try:
+        with zipfile.ZipFile(path) as archive:
+            try:
+                manifest = json.loads(archive.read('manifest.json').decode('utf-8'))
+            except (KeyError, UnicodeDecodeError, json.JSONDecodeError):
+                manifest = {}
+    except (zipfile.BadZipFile, OSError):
+        # A ZIP without its central directory was cut short (for example by a backup interrupted before backups
+        # were written under a temporary name) and cannot be restored.
+        info['incomplete'] = True
+    if isinstance(manifest, dict):
+        workspaces = manifest.get('workspaces') if isinstance(manifest.get('workspaces'), list) else []
+        info['content'] = backup_content_signature(
+            archive_manifest_components(manifest), archive_workspace_components(manifest),
+            [str(item.get('name')) for item in workspaces if isinstance(item, dict)])
+        if manifest.get('backup_origin') in {'scheduled', 'manual'}:
+            info['origin'] = manifest['backup_origin']
+        if manifest.get('backup_level') in {'full', 'light'}:
+            info['level'] = manifest['backup_level']
+    BACKUP_FILE_INFO_CACHE[str(path)] = (key, info)
+    return info
+
+
+class BackupSpaceError(RuntimeError):
+    """The backup folder has no room for the snapshot of the largest database and the ZIP of a backup."""
+
+    def __init__(self, needed: int, free: int, folder: Path) -> None:
+        super().__init__(
+            f'Not enough free space in {folder} for the backup: it needs about {format_workspace_size(needed)} '
+            f'(the snapshot of the largest database and the ZIP) and {format_workspace_size(free)} are free.'
+        )
+        self.needed = needed
+        self.free = free
+
+
+def recurring_backup_problem() -> str:
+    """Why the last scheduled backup was skipped, failed or made light instead of full; empty once one succeeds."""
+    raw = repository.get_application_state(RECURRING_BACKUP_PROBLEM_STATE_KEY)
+    try:
+        problem = json.loads(raw) if raw else {}
+    except (TypeError, json.JSONDecodeError):
+        return ''
+    if not isinstance(problem, dict) or not problem.get('message'):
+        return ''
+    return f"{problem.get('at') or ''} · {problem['message']}".strip(' ·')
+
+
+def set_recurring_backup_problem(message: str) -> None:
+    if not message:
+        repository.delete_application_state(RECURRING_BACKUP_PROBLEM_STATE_KEY)
+        return
+    repository.set_application_state(RECURRING_BACKUP_PROBLEM_STATE_KEY, json.dumps({
+        'message': message, 'at': datetime.now().astimezone().strftime('%Y-%m-%d %H:%M'),
+    }))
 
 
 def recurring_backup_next_run(config: dict[str, Any]) -> str:
@@ -6907,6 +7080,11 @@ def recurring_backup_next_run(config: dict[str, Any]) -> str:
     if recurrence == 'hourly':
         candidate = now.replace(minute=minute)
         if candidate <= now: candidate += timedelta(hours=1)
+    elif recurrence == 'every_4_hours':
+        # Every 4 hours from the hour of the execution time.
+        candidate = now.replace(minute=minute)
+        while candidate <= now or candidate.hour % 4 != hour % 4:
+            candidate += timedelta(hours=1)
     elif recurrence == 'daily':
         candidate = now.replace(hour=hour, minute=minute)
         if candidate <= now: candidate += timedelta(days=1)
@@ -6925,17 +7103,23 @@ def recurring_backup_next_run(config: dict[str, Any]) -> str:
 
 def create_recurring_database_backup(
     config: dict[str, Any], progress_callback: Callable[[str, float], None] | None = None,
-    cancel_callback: Callable[[], None] | None = None,
+    cancel_callback: Callable[[], None] | None = None, *, origin: str = 'manual', level: str = 'full',
 ) -> Path:
-    """Write one consistent ZIP backup for the enabled recurring-backup parts."""
+    """Write one consistent ZIP backup for the enabled recurring-backup parts; a ``light`` one leaves the workspace
+    databases, Input and Output out. Raises ``BackupSpaceError`` before writing anything when the folder has no room for
+    it. The manifest records whether the schedule made it (``origin``) and its ``level``, whose folder of the backup
+    folder it goes to (``full`` or ``light``)."""
     timestamp = datetime.now().astimezone().strftime('%Y%m%d-%H%M%S')
     backup_root = recurring_backup_path(config)
-    backup_root.mkdir(parents=True, exist_ok=True)
-    destination = backup_root / f'drivetest-analyzer-backup-{timestamp}.zip'
+    backup_dir = backup_level_folder(backup_root, level)
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    # What an interrupted backup left (its snapshot can be as large as the databases) goes before this one needs room.
+    _log_removed_leftovers(remove_stale_backup_scratch(backup_root))
+    destination = backup_dir / f'drivetest-analyzer-backup-{timestamp}.zip'
     # The ZIP is written under a hidden temporary name and gets its backup name
     # only once complete, so a backup killed mid-write is never listed, restored
     # or counted as one.
-    partial = backup_root / f'.{destination.name}{BACKUP_PARTIAL_SUFFIX}'
+    partial = backup_dir / f'.{destination.name}{BACKUP_PARTIAL_SUFFIX}'
     def ensure_not_cancelled() -> None:
         if cancel_callback:
             cancel_callback()
@@ -6955,6 +7139,8 @@ def create_recurring_database_backup(
         and (allowed_workspace_ids is None or workspace.id in allowed_workspace_ids)
     ]
     components = set(config['components'])
+    if level == 'light':
+        components -= LIGHT_BACKUP_EXCLUDED_COMPONENTS
     workspace_manifest_components = [
         component for component in (
             'workspace_database', 'dashboards', 'input', 'output', 'report_templates',
@@ -6980,6 +7166,7 @@ def create_recurring_database_backup(
                 total += path.stat().st_size
         return total
     total_bytes = (repository.global_db_path.stat().st_size if 'app_database' in components and repository.global_db_path.exists() else 0)
+    database_sizes = [total_bytes] if total_bytes else []
     users_access = _users_access_archive_payload() if 'users_access' in components else b''
     total_bytes += len(users_access)
     ticket_center_files = _ticket_center_archive_files() if 'ticket_center' in components else {}
@@ -6987,6 +7174,7 @@ def create_recurring_database_backup(
     for workspace in workspaces:
         if 'workspace_database' in components:
             total_bytes += workspace.database_path.stat().st_size
+            database_sizes.append(workspace.database_path.stat().st_size)
         if 'report_templates' in components:
             template_repository = Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path)
             template_repository.initialize()
@@ -7036,6 +7224,9 @@ def create_recurring_database_backup(
     manifest_components = [component for component in APPLICATION_BACKUP_COMPONENTS if component in components]
     if workspace_manifest_components:
         manifest_components.append('workspace_components')
+    content = backup_content_signature(
+        manifest_components, workspace_manifest_components, [workspace.name for workspace in workspaces] if workspace_manifest_components else [])
+    ensure_backup_space(backup_root, max(database_sizes, default=0), sum(database_sizes), total_bytes, content)
     try:
         with zipfile.ZipFile(partial, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
             manifest = archive_manifest(
@@ -7043,10 +7234,11 @@ def create_recurring_database_backup(
                 workspace_components=workspace_manifest_components,
                 created_at=datetime.now().astimezone().isoformat(timespec='seconds'),
                 workspaces=[], source_workspaces=source_workspaces_manifest(),
+                backup_origin='scheduled' if origin == 'scheduled' else 'manual', backup_level='light' if level == 'light' else 'full',
             )
             if 'app_database' in components:
                 report_progress('Creating application database snapshot', 5.0)
-                _archive_database(archive, repository.global_db_path, 'application/application.db', backup_root, archived_bytes, cancel_callback=ensure_not_cancelled)
+                _archive_database(archive, repository.global_db_path, 'application/application.db', backup_dir, archived_bytes, cancel_callback=ensure_not_cancelled)
             if 'users_access' in components:
                 report_progress('Exporting Users & Access', 5.0)
                 archive.writestr(USERS_ACCESS_ARCHIVE_PATH, users_access)
@@ -7066,7 +7258,7 @@ def create_recurring_database_backup(
                 archive_workspace_root = f'workspaces/{workspace.name}'
                 if 'workspace_database' in components:
                     report_progress(f'Creating workspace database snapshot for {workspace.name}', max(5.0, completed_bytes * 96.0 / max(total_bytes, 1)))
-                    _archive_database(archive, workspace.database_path, f'{archive_workspace_root}/database.sqlite', backup_root, archived_bytes, cancel_callback=ensure_not_cancelled)
+                    _archive_database(archive, workspace.database_path, f'{archive_workspace_root}/database.sqlite', backup_dir, archived_bytes, cancel_callback=ensure_not_cancelled)
                 if 'dashboards' in components:
                     report_progress(f'Exporting Dashboards for {workspace.name}', max(5.0, completed_bytes * 96.0 / max(total_bytes, 1)))
                     _archive_workspace_dashboards(archive, workspace, archive_workspace_root, archived_bytes)
@@ -7140,36 +7332,230 @@ def create_recurring_database_backup(
         partial.unlink(missing_ok=True)
         raise
     report_progress('Finalising backup ZIP', 98.0)
-    backups = sorted((item for pattern in BACKUP_FILE_PATTERNS for item in backup_root.glob(pattern)), key=lambda item: item.stat().st_mtime, reverse=True)
-    for stale in backups[max(1, int(config['max_backups'])):]:
-        stale.unlink(missing_ok=True)
     remove_stale_backup_scratch(backup_root)
     return destination
 
 
-def remove_stale_backup_scratch(backup_root: Path) -> None:
-    """Delete snapshot folders and partial ZIPs left behind when a backup process was killed mid-write.
+def backup_content_signature(components: Iterable[str], workspace_components: Iterable[str], workspaces: Iterable[str]) -> str:
+    """What a backup holds, to estimate the size of the next one with the same content from it."""
+    return json.dumps([sorted(components), sorted(workspace_components), sorted(workspaces)])
+
+
+def ensure_backup_space(backup_root: Path, largest_database: int, database_bytes: int, total_bytes: int, content: str) -> None:
+    """Raise ``BackupSpaceError`` when the backup folder has no room for the snapshot of the largest database (made
+    there, one database at a time) and the ZIP, with a 5% margin. The ZIP is estimated from the latest backup of the
+    same content in the folder, else as a quarter of the databases (they compress about six times) plus the rest."""
+    previous = [
+        item for item in backup_zip_files(backup_root)
+        if not (info := backup_file_info(item))['incomplete'] and info.get('content') == content
+    ]
+    archive = (max(previous, key=backup_started_at).stat().st_size if previous
+               else database_bytes // 4 + total_bytes - database_bytes)
+    needed = int((largest_database + archive) * 1.05)
+    free = available_disk_space(backup_root)
+    if needed > free:
+        raise BackupSpaceError(needed, free, backup_root)
+
+
+# Asks macOS for the space available for important writes, which counts what it frees on demand.
+MACOS_IMPORTANT_CAPACITY_SCRIPT = (
+    'function run(argv) { ObjC.import("Foundation"); const value = Ref(); '
+    '$.NSURL.fileURLWithPath(argv[0]).getResourceValueForKeyError(value, $.NSURLVolumeAvailableCapacityForImportantUsageKey, null); '
+    'return String(ObjC.unwrap(value[0])); }'
+)
+
+
+def available_disk_space(path: Path) -> int:
+    """The bytes a backup can use in ``path``: on macOS also what the system frees on demand (local Time Machine
+    snapshots, caches), as its storage settings show it; elsewhere what the file system reports free."""
+    free = shutil.disk_usage(path).free
+    if sys.platform == 'darwin':
+        try:
+            result = subprocess.run(['/usr/bin/osascript', '-l', 'JavaScript', '-e', MACOS_IMPORTANT_CAPACITY_SCRIPT, str(path)],
+                                    capture_output=True, text=True, timeout=15, check=True)
+            return max(free, int(float(result.stdout.strip())))
+        except (OSError, ValueError, subprocess.SubprocessError):
+            pass
+    return free
+
+
+def remove_stale_backup_scratch(backup_root: Path) -> list[tuple[str, int]]:
+    """Delete snapshot folders and partial ZIPs left behind when a backup process was killed mid-write, in a backup
+    folder and its full and light folders; returns what was removed, each with its size.
 
     A finished, failed or cancelled backup removes its own snapshot folder, so a
     folder survives only when the process died. Folders changed within
     ``STALE_BACKUP_SCRATCH_SECONDS`` are kept because another backup may still own them.
     """
     cutoff = time_module.time() - STALE_BACKUP_SCRATCH_SECONDS
-    for folder in (item for pattern in BACKUP_SCRATCH_PATTERNS for item in backup_root.glob(pattern)):
-        try:
-            if not folder.is_dir():
+    removed: list[tuple[str, int]] = []
+    for backup_dir in (item for item in backup_folders(backup_root) if item.is_dir()):
+        for folder in (item for pattern in BACKUP_SCRATCH_PATTERNS for item in backup_dir.glob(pattern)):
+            try:
+                if not folder.is_dir():
+                    continue
+                last_change = max([folder.stat().st_mtime, *(item.stat().st_mtime for item in folder.iterdir())])
+            except OSError:
                 continue
-            last_change = max([folder.stat().st_mtime, *(item.stat().st_mtime for item in folder.iterdir())])
-        except OSError:
-            continue
-        if last_change < cutoff:
-            shutil.rmtree(folder, ignore_errors=True)
-    for partial in backup_root.glob(f'.*{BACKUP_PARTIAL_SUFFIX}'):
-        try:
-            if partial.is_file() and partial.stat().st_mtime < cutoff:
-                partial.unlink()
-        except OSError:
-            continue
+            if last_change < cutoff:
+                removed.append(_remove_leftover(folder))
+        for partial in backup_dir.glob(f'.*{BACKUP_PARTIAL_SUFFIX}'):
+            try:
+                if partial.is_file() and partial.stat().st_mtime < cutoff:
+                    removed.append(_remove_leftover(partial))
+            except OSError:
+                continue
+    return removed
+
+
+# What interrupted work left behind (remove_stale_leftovers) is removed once a night, between these hours, after this
+# long without anyone using the application and with no work running; when two days pass without a cleanup (a server
+# off or busy every night), at its next idle moment. When it last ran is kept under this application state key.
+LEFTOVER_CLEANUP_NIGHT_HOURS = (0, 7)
+LEFTOVER_CLEANUP_IDLE_SECONDS = 15 * 60
+LEFTOVER_CLEANUP_OVERDUE = timedelta(days=2)
+LEFTOVER_CLEANUP_STATE_KEY = 'leftover_cleanup_last_run'
+# The temporary folders and files of imports, exports, transfers, restores and Dashboard downloads, in the temporary
+# folder of the system and the transfer packages folder.
+TEMPORARY_LEFTOVER_PATTERNS = (f'{APP_SLUG}-*', f'{LEGACY_APP_SLUG}-*', 'dashboard-export-*.zip', 'dashboard-ppt-charts-*.zip')
+
+
+def _remove_leftover(path: Path) -> tuple[str, int]:
+    """Delete a leftover file or folder; returns its path and the bytes it freed."""
+    size = _tree_size(path) if path.is_dir() else _file_size(path)
+    if path.is_dir():
+        shutil.rmtree(path, ignore_errors=True)
+    else:
+        path.unlink(missing_ok=True)
+    return str(path), size
+
+
+def _last_change(path: Path) -> float:
+    """When a file, or anything inside a folder, last changed."""
+    latest = path.stat().st_mtime
+    if path.is_dir():
+        for folder, _folders, files in os.walk(path):
+            for name in files:
+                try:
+                    latest = max(latest, (Path(folder) / name).stat().st_mtime)
+                except OSError:
+                    continue
+    return latest
+
+
+def _long_work_running() -> bool:
+    """Whether an import, export, transfer, backup or restore of this server is running (it may be using a temporary
+    folder that has not changed for a while)."""
+    with EXPORT_JOBS_LOCK:
+        if any(job.get('status') in {'queued', 'processing'} for job in EXPORT_JOBS.values()):
+            return True
+    with IMPORT_JOBS_LOCK:
+        if any(job.get('status') in {'queued', 'processing'} for job in IMPORT_JOBS.values()):
+            return True
+    with TRANSFER_LOCK:
+        if ACTIVE_TRANSFER_IMPORTS or ACTIVE_TRANSFER_RECEIVES or any(
+                job.get('status') not in {'ready', 'failed', 'cancelled'} for job in TRANSFER_JOBS.values()):
+            return True
+    for lock, jobs in ((MANUAL_BACKUP_JOBS_LOCK, MANUAL_BACKUP_JOBS), (SCHEDULED_BACKUP_JOBS_LOCK, SCHEDULED_BACKUP_JOBS),
+                       (MANUAL_RESTORE_JOBS_LOCK, MANUAL_RESTORE_JOBS)):
+        with lock:
+            if any(job.get('status') in {'queued', 'processing'} for job in jobs.values()):
+                return True
+    return RECURRING_BACKUP_RUNNING
+
+
+def remove_stale_leftovers() -> list[tuple[str, int]]:
+    """Delete what interrupted work left behind and nothing uses any more, untouched for ``STALE_BACKUP_SCRATCH_SECONDS``:
+    the snapshots and partial ZIPs of backups (in their folder and the default one), the temporary folders of imports,
+    exports, transfers and restores (the transfer packages folder and the temporary folder of the system, only while
+    none is running), the uploads of CDRs never finished (after a week, when they can no longer resume) and the
+    temporary files of the caches of each workspace (never in its Input folder). The ``-import-backup-`` folders a
+    workspace replacement keeps are left, since they may hold the only copy of the replaced workspace. Returns what was
+    removed, each with its size, recorded in App Events."""
+    from src.modules.upload_sessions import cleanup_stale, sessions_root
+
+    cutoff = time_module.time() - STALE_BACKUP_SCRATCH_SECONDS
+    removed: list[tuple[str, int]] = []
+    backup_roots = {recurring_backup_path(recurring_backup_settings()).resolve(), (application_data_dir / 'scheduled-backups').resolve()}
+    for backup_root in backup_roots:
+        removed += remove_stale_backup_scratch(backup_root)
+    if not _long_work_running():
+        package_dir = export_package_dir()
+        for folder in (package_dir, Path(tempfile.gettempdir())):
+            for candidate in {item for pattern in TEMPORARY_LEFTOVER_PATTERNS for item in folder.glob(pattern)} if folder.is_dir() else ():
+                if folder == package_dir and candidate.is_file():
+                    continue  # The files of the transfer packages folder expire on their own (_cleanup_expired_export_packages).
+                try:
+                    if _last_change(candidate) < cutoff:
+                        removed.append(_remove_leftover(candidate))
+                except OSError:
+                    continue
+        _cleanup_expired_export_packages()
+    for workspace in workspace_registry.list():
+        workspace_root = workspace.database_path.parent
+        sessions = sessions_root(workspace_root)
+        before = {str(item): _tree_size(item) for item in sessions.iterdir()} if sessions.is_dir() else {}
+        cleanup_stale(sessions)
+        removed += [(name, size) for name, size in before.items() if not Path(name).exists()]
+        for leftover in workspace_root.rglob('*.tmp') if workspace_root.is_dir() else ():
+            try:
+                if (leftover.is_file() and workspace.input_dir not in leftover.parents
+                        and leftover.stat().st_mtime < cutoff):
+                    removed.append(_remove_leftover(leftover))
+            except OSError:
+                continue
+    _log_removed_leftovers(removed)
+    return removed
+
+
+def _log_removed_leftovers(removed: list[tuple[str, int]]) -> None:
+    if removed:
+        repository.try_add_log('system', 'remove_stale_leftovers', json.dumps({
+            'removed': [{'path': path, 'size': format_workspace_size(size)} for path, size in removed],
+            'freed': format_workspace_size(sum(size for _path, size in removed)),
+        }, ensure_ascii=False))
+
+
+def _server_busy() -> bool:
+    """Whether any long work is running: an import, export, transfer, backup or restore, or the processing of CDRs."""
+    with ACTIVE_DATASET_PROCESSING_LOCK:
+        if ACTIVE_DATASET_PROCESSING:
+            return True
+    return _long_work_running()
+
+
+def run_leftover_cleanup_if_due(now: datetime | None = None) -> bool:
+    """Remove the leftovers of interrupted work once a night (``LEFTOVER_CLEANUP_NIGHT_HOURS``) or, once
+    ``LEFTOVER_CLEANUP_OVERDUE`` has passed without a cleanup, at any hour; never while long work is running. The idle
+    monitor calls it only after ``LEFTOVER_CLEANUP_IDLE_SECONDS`` without anyone using the application. Returns whether
+    it ran."""
+    now = (now or datetime.now().astimezone()).replace(tzinfo=None)
+    try:
+        last_run = datetime.fromisoformat(repository.get_application_state(LEFTOVER_CLEANUP_STATE_KEY) or '')
+    except ValueError:
+        last_run = None
+    start, end = LEFTOVER_CLEANUP_NIGHT_HOURS
+    tonight = now.replace(hour=start, minute=0, second=0, microsecond=0)
+    if start <= now.hour < end:
+        due = last_run is None or last_run < tonight
+    elif last_run is None:
+        # The two days without a cleanup are counted from the first time the application looked.
+        repository.set_application_state(LEFTOVER_CLEANUP_STATE_KEY, now.isoformat(timespec='seconds'))
+        return False
+    else:
+        due = now - last_run >= LEFTOVER_CLEANUP_OVERDUE
+    if not due or _server_busy():
+        return False
+    repository.set_application_state(LEFTOVER_CLEANUP_STATE_KEY, now.isoformat(timespec='seconds'))
+    remove_stale_leftovers()
+    return True
+
+
+def _remove_leftovers_when_idle() -> None:
+    run_leftover_cleanup_if_due()
+
+
+register_idle_task(_remove_leftovers_when_idle, LEFTOVER_CLEANUP_IDLE_SECONDS)
 
 
 def _recurring_backup_period(config: dict[str, Any], now: datetime) -> str | None:
@@ -7182,7 +7568,7 @@ def _recurring_backup_period(config: dict[str, Any], now: datetime) -> str | Non
     if not (0 <= hour <= 23 and 0 <= minute <= 59) or now.minute != minute:
         return None
     recurrence = str(config.get('recurrence') or 'daily')
-    if recurrence == 'hourly':
+    if recurrence == 'hourly' or (recurrence == 'every_4_hours' and now.hour % 4 == hour % 4):
         return now.strftime('%Y%m%d%H')
     if now.hour != hour:
         return None
@@ -7193,6 +7579,61 @@ def _recurring_backup_period(config: dict[str, Any], now: datetime) -> str | Non
     if recurrence == 'monthly' and now.day == min(max(1, min(31, int(config.get('monthly_day') or 1))), calendar.monthrange(now.year, now.month)[1]):
         return now.strftime('%Y%m')
     return None
+
+
+def _scheduled_backups(backup_root: Path) -> list[tuple[Path, dict[str, Any]]]:
+    """The backups of a folder the schedule made (and those made before backups recorded it), newest first."""
+    backups = []
+    for item in backup_zip_files(backup_root):
+        try:
+            info = backup_file_info(item)
+        except OSError:
+            continue
+        if info['origin'] == 'scheduled':
+            backups.append((item, info))
+    return sorted(backups, key=lambda entry: backup_started_at(entry[0]), reverse=True)
+
+
+def scheduled_backup_level(config: dict[str, Any], now: datetime) -> str:
+    """``light`` for the hourly, every 4 hours and daily backups between the full ones when light backups are on: a backup is full on
+    the full-backup day (its first one that day) and whenever the latest full scheduled backup is a week old or more,
+    so a full one missed (the server was off, or had no room) is made at the next backup."""
+    if (not config.get('light_backups') or config.get('recurrence') not in LIGHT_BACKUP_RECURRENCES
+            or not set(config.get('components') or ()) & LIGHT_BACKUP_EXCLUDED_COMPONENTS):
+        return 'full'
+    local_now = now.replace(tzinfo=None)
+    latest_full = next((backup_started_at(item) for item, info in _scheduled_backups(recurring_backup_path(config))
+                        if info['level'] == 'full' and not info['incomplete']), None)
+    if latest_full is None or local_now - latest_full >= timedelta(days=7):
+        return 'full'
+    if local_now.weekday() == int(config.get('full_backup_day', 6)) and latest_full.date() != local_now.date():
+        return 'full'
+    return 'light'
+
+
+def apply_scheduled_backup_retention(config: dict[str, Any], now: datetime | None = None) -> list[tuple[str, int]]:
+    """Delete the scheduled backups no longer kept: every one started in the last ``keep_days`` days, and of the full
+    ones the newest and the newest of each of the last ``keep_weeks`` weeks and ``keep_months`` months (today, this week
+    and this month included). Backups made on demand are never deleted. Returns what was removed, each with its size."""
+    today = (now or datetime.now().astimezone()).replace(tzinfo=None).date()
+    backups = _scheduled_backups(recurring_backup_path(config))
+    first_day = today - timedelta(days=max(1, int(config.get('keep_days') or 1)) - 1)
+    kept = {item for item, _info in backups if backup_started_at(item).date() >= first_day}
+    full = [item for item, info in backups if info['level'] == 'full' and not info['incomplete']]
+    kept.update(full[:1])
+    first_week = today - timedelta(days=today.weekday() + 7 * (int(config.get('keep_weeks') or 0) - 1))
+    month_index = today.year * 12 + today.month - 1
+    first_month = month_index - int(config.get('keep_months') or 0) + 1
+    for in_range, period in (
+            (lambda moment: moment.date() >= first_week, lambda moment: moment.isocalendar()[:2]),
+            (lambda moment: moment.year * 12 + moment.month - 1 >= first_month, lambda moment: (moment.year, moment.month))):
+        periods: set[Any] = set()
+        for item in full:
+            started = backup_started_at(item)
+            if in_range(started) and period(started) not in periods:
+                periods.add(period(started))
+                kept.add(item)
+    return [_remove_leftover(item) for item, _info in backups if item not in kept]
 
 
 def run_recurring_backup_scheduler() -> None:
@@ -7208,6 +7649,7 @@ def run_recurring_backup_scheduler() -> None:
         RECURRING_BACKUP_RUNNING = True
     config['last_run_period'] = period
     repository.set_application_state(RECURRING_BACKUP_STATE_KEY, json.dumps(config))
+    level = scheduled_backup_level(config, datetime.now().astimezone())
     job_id = uuid4().hex
     job = {
         'id': job_id, 'status': 'queued', 'message': 'Waiting to create scheduled backup', 'progress': 0,
@@ -7225,11 +7667,13 @@ def run_recurring_backup_scheduler() -> None:
     )
     if audit_repository:
         audit_repository.try_add_log('system', 'scheduled_database_backup_started', json.dumps({
-            'job_id': job_id, 'period': period, 'components': config.get('components', []),
+            'job_id': job_id, 'period': period, 'level': level, 'components': config.get('components', []),
             'workspace_ids': config.get('workspace_ids', []), 'executed_by': 'system',
         }))
     def run() -> None:
         global RECURRING_BACKUP_RUNNING
+        nonlocal level
+        problem = ''
         try:
             with SCHEDULED_BACKUP_JOBS_LOCK:
                 job.update(
@@ -7246,7 +7690,20 @@ def run_recurring_backup_scheduler() -> None:
                     current = SCHEDULED_BACKUP_JOBS.get(job_id)
                     if current and current.get('status') == 'processing':
                         current.update(message=message, progress=max(1, min(98, round(progress))))
-            destination = create_recurring_database_backup(config, update_progress, stop_if_cancelled)
+            try:
+                destination = create_recurring_database_backup(config, update_progress, stop_if_cancelled, origin='scheduled', level=level)
+            except BackupSpaceError as exc:
+                # Without room for a full backup, a light one still keeps the configuration of the day.
+                if level != 'full' or not config.get('light_backups') or config.get('recurrence') not in LIGHT_BACKUP_RECURRENCES:
+                    raise
+                problem = f'Full backup made light: {exc}'
+                if audit_repository:
+                    audit_repository.try_add_log('system', 'scheduled_full_backup_made_light', json.dumps({
+                        'job_id': job_id, 'period': period, 'needed': format_workspace_size(exc.needed),
+                        'free': format_workspace_size(exc.free), 'error': str(exc), 'executed_by': 'system',
+                    }))
+                level = 'light'
+                destination = create_recurring_database_backup(config, update_progress, stop_if_cancelled, origin='scheduled', level=level)
             with SCHEDULED_BACKUP_JOBS_LOCK:
                 if job.get('cancel_requested'):
                     destination.unlink(missing_ok=True)
@@ -7257,13 +7714,30 @@ def run_recurring_backup_scheduler() -> None:
                             'job_id': job_id, 'period': period, 'executed_by': 'system',
                         }))
                     return
-                job.update(status='ready', message=f'Backup created: {destination.name}', progress=100,
+                job.update(status='ready', message=f'{level.capitalize()} backup created: {destination.name}', progress=100,
                            finished_at=datetime.now(timezone.utc).timestamp())
+            set_recurring_backup_problem(problem)
             if audit_repository:
                 audit_repository.try_add_log('system', 'scheduled_database_backup_completed', json.dumps({
-                    'job_id': job_id, 'period': period, 'file': destination.name,
+                    'job_id': job_id, 'period': period, 'file': destination.name, 'level': level,
                     'executed_by': 'system',
                 }))
+            try:
+                removed = apply_scheduled_backup_retention(config)
+            except OSError as exc:
+                removed = []
+                if audit_repository:
+                    audit_repository.try_add_log('system', 'scheduled_backup_retention_failed', json.dumps({
+                        'job_id': job_id, 'error': str(exc), 'executed_by': 'system',
+                    }))
+            if removed and audit_repository:
+                audit_repository.try_add_log('system', 'scheduled_backup_retention', json.dumps({
+                    'job_id': job_id,
+                    'removed': [{'file': Path(name).name, 'size': format_workspace_size(size)} for name, size in removed],
+                    'freed': format_workspace_size(sum(size for _name, size in removed)),
+                    'kept': {key: config.get(key) for key in ('keep_days', 'keep_weeks', 'keep_months')},
+                    'executed_by': 'system',
+                }, ensure_ascii=False))
         except InterruptedError as exc:
             with SCHEDULED_BACKUP_JOBS_LOCK:
                 job.update(status='cancelled', message='Scheduled backup stopped and incomplete ZIP removed', error=str(exc), progress=100,
@@ -7276,9 +7750,13 @@ def run_recurring_backup_scheduler() -> None:
             with SCHEDULED_BACKUP_JOBS_LOCK:
                 job.update(status='failed', message=f'Backup failed: {exc}', progress=100,
                            finished_at=datetime.now(timezone.utc).timestamp())
+            set_recurring_backup_problem(f'{level.capitalize()} backup not made: {exc}' if isinstance(exc, BackupSpaceError)
+                                         else f'{level.capitalize()} backup failed: {exc}')
             if audit_repository:
                 audit_repository.try_add_log('system', 'scheduled_database_backup_failed', json.dumps({
-                    'job_id': job_id, 'period': period, 'error': str(exc), 'executed_by': 'system',
+                    'job_id': job_id, 'period': period, 'level': level, 'error': str(exc), 'executed_by': 'system',
+                    **({'needed': format_workspace_size(exc.needed), 'free': format_workspace_size(exc.free)}
+                       if isinstance(exc, BackupSpaceError) else {}),
                 }))
         finally:
             with RECURRING_BACKUP_LOCK:
@@ -7286,8 +7764,9 @@ def run_recurring_backup_scheduler() -> None:
     submit_background_task(run)
 
 
-def start_manual_database_backup(config: dict[str, Any], username: str) -> dict[str, Any]:
-    """Create a tracked on-demand backup without changing the schedule."""
+def start_manual_database_backup(config: dict[str, Any], username: str, level: str = 'full') -> dict[str, Any]:
+    """Create a tracked on-demand backup without changing the schedule; a ``light`` one leaves the workspace databases,
+    Input and Output out."""
     job_id = uuid4().hex
     job = {
         'id': job_id,
@@ -7345,7 +7824,7 @@ def start_manual_database_backup(config: dict[str, Any], username: str) -> dict[
                     if job.get('cancel_requested'):
                         raise InterruptedError('Backup stopped by user.')
 
-            destination = create_recurring_database_backup(config, update_progress, stop_if_cancelled)
+            destination = create_recurring_database_backup(config, update_progress, stop_if_cancelled, level=level)
             with MANUAL_BACKUP_JOBS_LOCK:
                 if job.get('cancel_requested'):
                     destination.unlink(missing_ok=True)
@@ -7364,7 +7843,7 @@ def start_manual_database_backup(config: dict[str, Any], username: str) -> dict[
                 )
             if audit_repository:
                 audit_repository.try_add_log(username, 'manual_database_backup_completed', json.dumps({
-                    'job_id': job_id, 'file': destination.name, 'executed_by': 'system',
+                    'job_id': job_id, 'file': destination.name, 'level': level, 'executed_by': 'system',
                 }))
         except InterruptedError as exc:
             with MANUAL_BACKUP_JOBS_LOCK:
@@ -7484,9 +7963,11 @@ def _backup_archive_workspaces(archive_path: Path) -> list[str]:
 
 
 def _backup_archive_file(backup_path: str, filename: str) -> Path:
+    """A backup ZIP of a backup folder, by its name or its path in the folder (``full/<name>`` or ``light/<name>``)."""
     root = ensure_backup_path_is_within_config(recurring_backup_path({'backup_path': backup_path}))
-    candidate = root / Path(filename).name
-    if candidate.suffix.casefold() != '.zip' or not candidate.is_file() or candidate.parent != root:
+    parts = Path(filename).parts
+    candidate = root / parts[0] / parts[1] if len(parts) == 2 and parts[0] in BACKUP_LEVEL_FOLDERS else root / Path(filename).name
+    if candidate.suffix.casefold() != '.zip' or not candidate.is_file() or candidate.parent not in backup_folders(root):
         raise ValueError('Select a backup ZIP from the selected backup path.')
     return candidate
 
@@ -7859,16 +8340,20 @@ def _holds_folder_files(workspace: Workspace | None, folder: str, files: dict[st
     return all(local.get(str(path)) == size for path, size in files.items())
 
 
-def unsent_folder_check(folder_files: Any) -> dict[str, dict[str, bool]]:
-    """Per workspace name, whether this server already holds the Input and Output files the source did not send."""
+def unsent_folder_check(folder_files: Any, workspace_uids: Any = None) -> dict[str, dict[str, bool]]:
+    """Per workspace name, whether this server already holds the Input and Output files the source did not send, in
+    the workspace the import replaces: the one with its identity (``workspace_uids``, by name), or else its name."""
     if not isinstance(folder_files, dict):
         return {}
-    local = {workspace.name.casefold(): workspace for workspace in workspace_registry.list()}
+    workspaces_here = workspace_registry.list()
+    local = {workspace.name.casefold(): workspace for workspace in workspaces_here}
+    by_uid = {workspace.uid: workspace for workspace in workspaces_here if workspace.uid}
+    uids = workspace_uids if isinstance(workspace_uids, dict) else {}
     check: dict[str, dict[str, bool]] = {}
     for name, folders in folder_files.items():
         if not isinstance(folders, dict):
             continue
-        workspace = local.get(str(name).casefold())
+        workspace = by_uid.get(str(uids.get(name) or '')) or local.get(str(name).casefold())
         check[str(name)[:160]] = {
             folder: _holds_folder_files(workspace, folder, files)
             for folder, files in folders.items() if folder in {'input', 'output'} and isinstance(files, dict)
@@ -8690,15 +9175,18 @@ def _archive_workspace_favourites_filters(
         progress_callback(len(payload))
 
 
-def _restore_workspace_favourites_filters(workspace: Workspace, payload: bytes, importing_user: str = 'import') -> int:
+def _restore_workspace_favourites_filters(
+    workspace: Workspace, payload: bytes, importing_user: str = 'import',
+    progress: Callable[[str, float], None] | None = None,
+) -> int:
     """Add the Favourites Filters of a package to a workspace (they find their CDRs there by file), each belonging to its
     creator when that user is active here (otherwise to ``importing_user``); one the workspace already has is replaced
-    by the imported one. Returns how many were added."""
+    by the imported one, and ``progress(phase, share done)`` follows them. Returns how many were added."""
     from src.modules.saved_filters import import_saved_filters
 
     task_repository = Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path)
     try:
-        return import_saved_filters(task_repository, json.loads(payload.decode('utf-8')),
+        return import_saved_filters(task_repository, json.loads(payload.decode('utf-8')), progress=progress,
                                     creator=lambda package, local: transfer_creator(package, local, importing_user))
     except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
         raise ValueError(f'Scoring & GAP Favourites Filters for "{workspace.name}" are invalid: {exc}') from exc
@@ -8903,19 +9391,29 @@ def _upgrade_workspace_database_for_export(workspace: Workspace, task_repository
 def _archive_workspace(
     archive: zipfile.ZipFile, workspace: Workspace, archive_prefix: str, scratch_dir: Path | None = None,
     progress_callback: Callable[[int], None] | None = None, include_generated_outputs: bool = True,
-    include_input_files: bool = True,
+    include_input_files: bool = True, phase_callback: Callable[[str], None] | None = None, label: str = '',
 ) -> None:
+    """Archive a complete workspace; ``phase_callback`` receives the part being archived (``label`` names the
+    workspace, by default with its name)."""
+    name = label or f'workspace "{workspace.name}"'
+
+    def phase(text: str) -> None:
+        if phase_callback:
+            phase_callback(f'{name}: {text}')
+
     task_repository = Repository(
         workspace.database_path,
         global_db_path=repository.global_db_path,
         workspace_registry_db_path=workspace_registry.registry_path,
     )
     _upgrade_workspace_database_for_export(workspace, task_repository)
+    phase(f'copying its database ({format_workspace_size(_file_size(workspace.database_path))})')
     _archive_database(
         archive, workspace.database_path, f'{archive_prefix}/database.sqlite', scratch_dir, progress_callback,
         # The history of generated files travels without them too: the destination keeps it when it holds the files.
-        exclude_tables=(),
+        exclude_tables=(), snapshot_callback=progress_callback,
     )
+    phase('adding its settings and saved items')
     _archive_workspace_dashboards(archive, workspace, archive_prefix, progress_callback)
     _archive_workspace_report_templates(archive, workspace, f'{archive_prefix}/report-templates', progress_callback)
     _archive_workspace_mappings_reference_data(archive, workspace, archive_prefix, progress_callback)
@@ -8935,8 +9433,10 @@ def _archive_workspace(
     _archive_workspace_reporting_jobs(archive, workspace, archive_prefix, progress_callback)
     _archive_workspace_nq_call_tracking(archive, workspace, archive_prefix, progress_callback)
     if include_input_files:
+        phase(f'adding its Input files ({format_workspace_size(_tree_size(workspace.input_dir))})')
         _archive_tree(archive, workspace.input_dir, f'{archive_prefix}/input', progress_callback=progress_callback)
     if include_generated_outputs:
+        phase(f'adding its Output files ({format_workspace_size(_tree_size(workspace.output_dir))})')
         _archive_tree(archive, workspace.output_dir, f'{archive_prefix}/output', progress_callback=progress_callback)
 
 
@@ -9033,9 +9533,10 @@ def _selected_export_workspaces(workspace_ids: Iterable[str] | None) -> list[Wor
 def _build_single_export_archive_file(
     target: str, destination: Path, workspace_ids: Iterable[str] | None = None,
     progress_callback: Callable[[int], None] | None = None, include_generated_outputs: bool = True,
-    include_input_files: bool = True,
+    include_input_files: bool = True, phase_callback: Callable[[str], None] | None = None,
 ) -> str:
-    """Create a portable archive on disk, keeping large exports out of RAM."""
+    """Create a portable archive on disk, keeping large exports out of RAM; ``phase_callback`` receives the part being
+    archived (the application database, each part of each workspace)."""
     filename = export_archive_filename(target)
     destination.parent.mkdir(parents=True, exist_ok=True)
     # ``settings.database_path`` changes with the active workspace and the
@@ -9053,9 +9554,11 @@ def _build_single_export_archive_file(
             raise FileNotFoundError('The application configuration database was not found.')
         # Transfer handshakes are local runtime state and must never be copied
         # into the destination as part of a configuration/full export.
+        if phase_callback:
+            phase_callback(f'copying the application database ({format_workspace_size(_file_size(application_database))})')
         _archive_database(
             archive, application_database, 'config/application.db', destination.parent,
-            progress_callback, exclude_tables=('transfer_offers',),
+            progress_callback, exclude_tables=('transfer_offers',), snapshot_callback=progress_callback,
         )
         for path in config_root.iterdir():
             if (
@@ -9300,6 +9803,7 @@ def _build_single_export_archive_file(
             _archive_workspace(
                 archive, workspace, archive_path, destination.parent, progress_callback,
                 include_generated_outputs=include_generated_outputs, include_input_files=include_input_files,
+                phase_callback=phase_callback,
             )
         elif target == 'full-environment':
             workspaces = _selected_export_workspaces(workspace_ids)
@@ -9318,10 +9822,11 @@ def _build_single_export_archive_file(
             )
             archive.writestr('manifest.json', json.dumps(manifest, indent=2, sort_keys=True))
             archive_configuration(archive, include_templates=False)
-            for entry, workspace in zip(manifest['workspaces'], workspaces, strict=True):
+            for position, (entry, workspace) in enumerate(zip(manifest['workspaces'], workspaces, strict=True), start=1):
                 _archive_workspace(
                     archive, workspace, str(entry['archive_path']), destination.parent, progress_callback,
-                    include_generated_outputs=include_generated_outputs,
+                    include_generated_outputs=include_generated_outputs, phase_callback=phase_callback,
+                    label=f'workspace {position} of {len(workspaces)} "{workspace.name}"',
                 )
         else:
             raise ValueError('Select a valid export option.')
@@ -9331,14 +9836,16 @@ def _build_single_export_archive_file(
 def build_export_archive_file(
     target: str | Iterable[str], destination: Path, workspace_ids: Iterable[str] | None = None,
     progress_callback: Callable[[int], None] | None = None, include_generated_outputs: bool = True,
-    include_input_files: bool = True,
+    include_input_files: bool = True, phase_callback: Callable[[str], None] | None = None,
 ) -> str:
-    """Create one export archive, wrapping multiple selections in an importable bundle."""
+    """Create one export archive, wrapping multiple selections in an importable bundle; ``phase_callback`` receives
+    the part being archived (each selection of a bundle by its position and content)."""
     targets = normalize_export_targets(target)
     if len(targets) == 1:
         return _build_single_export_archive_file(
             targets[0], destination, workspace_ids, progress_callback,
             include_generated_outputs=include_generated_outputs, include_input_files=include_input_files,
+            phase_callback=phase_callback,
         )
 
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -9354,9 +9861,17 @@ def build_export_archive_file(
             package_workspace_ids = workspace_ids
             if selected_target in WORKSPACE_ELEMENT_EXPORT_TARGETS and active_workspace:
                 package_workspace_ids = [active_workspace.id]
+            package_phase = None
+            if phase_callback:
+                selection = f'{_transfer_content_label(selected_target)} ({index} of {len(targets)})'
+                phase_callback(selection)
+
+                def package_phase(text: str, selection: str = selection) -> None:
+                    phase_callback(f'{selection}, {text}')
             nested_filename = _build_single_export_archive_file(
                 selected_target, package_path, package_workspace_ids, progress_callback,
                 include_generated_outputs=include_generated_outputs, include_input_files=include_input_files,
+                phase_callback=package_phase,
             )
             nested_manifest = read_import_manifest(package_path)
             archive_path = f'packages/{index:03d}-{Path(nested_filename).name}'
@@ -9430,8 +9945,9 @@ def estimate_export_bytes(
         )
     target = targets[0]
     total = 0
+    # Each database is copied (a consistent snapshot) and then archived: it counts twice.
     if target in {'config', 'config-with-templates', 'full-environment'}:
-        total = _file_size(application_config_dir / 'application.db')
+        total = 2 * _file_size(application_config_dir / 'application.db')
         for path in application_config_dir.iterdir():
             if path.is_file() and path.name not in {'application.db', workspace_registry.registry_path.name} and not path.name.endswith(('-wal', '-shm')):
                 total += _file_size(path)
@@ -9488,14 +10004,14 @@ def estimate_export_bytes(
     elif target.startswith('workspace:'):
         workspace = workspace_registry.get(target.removeprefix('workspace:'))
         if workspace:
-            total = _file_size(workspace.database_path) + _tree_size(workspace.slides_templates_dir)
+            total = 2 * _file_size(workspace.database_path) + _tree_size(workspace.slides_templates_dir)
             if include_input_files:
                 total += _tree_size(workspace.input_dir)
             if include_generated_outputs:
                 total += _tree_size(workspace.output_dir)
     if target == 'full-environment':
         total += sum(
-            _file_size(workspace.database_path) + _tree_size(workspace.input_dir) + _tree_size(workspace.slides_templates_dir)
+            2 * _file_size(workspace.database_path) + _tree_size(workspace.input_dir) + _tree_size(workspace.slides_templates_dir)
             + (_tree_size(workspace.output_dir) if include_generated_outputs else 0)
             for workspace in _selected_export_workspaces(workspace_ids)
         )
@@ -9753,11 +10269,17 @@ def _run_export_job(
         with EXPORT_JOBS_LOCK:
             job.update({'bytes_done': bytes_done, 'progress': min(99, round(bytes_done * 100 / bytes_total, 1))})
 
+    def phase_callback(phase: str) -> None:
+        stop_if_cancelled()
+        with EXPORT_JOBS_LOCK:
+            job['phase'] = phase
+
     try:
         stop_if_cancelled()
         filename = build_export_archive_file(
             targets, partial_path, workspace_ids, progress_callback,
             include_generated_outputs=include_generated_outputs, include_input_files=include_input_files,
+            phase_callback=phase_callback,
         )
         stop_if_cancelled()
         partial_path.replace(destination)
@@ -10114,7 +10636,35 @@ def import_workspace_archive(
         workspace = _rename_replaced_workspace(workspace, requested_name, summary)
     # It keeps the identity it came with, so a later import finds it again after a rename.
     workspace_registry.set_uid(workspace.id, source_uid)
-    return workspace_registry.get(workspace.id) or workspace
+    workspace = workspace_registry.get(workspace.id) or workspace
+    _carry_cdr_file_hashes(workspace)
+    return workspace
+
+
+def _carry_cdr_file_hashes(workspace: Workspace) -> None:
+    """The CDR files an import placed in a workspace (or kept, holding the same files) keep the hash their workspace
+    database already knows (scoring_history.file_sha256), instead of being read again for it: only their place and
+    their modification time are new."""
+    from src.modules.scoring_history import HISTORY_FILES_TABLE
+
+    try:
+        with closing(sqlite3.connect(workspace.database_path)) as connection, connection:
+            if not connection.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (HISTORY_FILES_TABLE,)).fetchone():
+                return
+            rows = connection.execute(
+                f'SELECT h.dataset_id, h.file_size, h.stored_path, h.file_mtime, d.stored_path AS current_path '
+                f'FROM {HISTORY_FILES_TABLE} h JOIN datasets d ON d.id = h.dataset_id WHERE h.file_sha256 <> \'\''
+            ).fetchall()
+            for dataset_id, file_size, cached_path, cached_mtime, current_path in rows:
+                try:
+                    stat = Path(str(current_path or '')).stat()
+                except OSError:
+                    continue
+                if int(file_size) == stat.st_size and (str(cached_path) != str(current_path) or float(cached_mtime) != stat.st_mtime):
+                    connection.execute(f'UPDATE {HISTORY_FILES_TABLE} SET stored_path = ?, file_mtime = ? WHERE dataset_id = ?',
+                                       (str(current_path), stat.st_mtime, dataset_id))
+    except sqlite3.Error:
+        pass
 
 
 def _rename_replaced_workspace(workspace: Workspace, requested_name: str, summary: list[str] | None) -> Workspace:
@@ -10698,6 +11248,7 @@ def _apply_import_archive(
                     or export_target_archive_kind(entry_target) != entry_kind
                 ):
                     raise ValueError('A package in the selected bundle does not match its manifest.')
+                package_progress = None
                 if progress_callback:
                     # The package by its content (Dashboards, PPT Templates…), so a long one can be told apart.
                     try:
@@ -10708,8 +11259,13 @@ def _apply_import_archive(
                         f'importing package {index + 1} of {len(packages)} ({package_label})',
                         5.0 + (index * 90.0 / len(packages)),
                     )
+
+                    def package_progress(phase: str, progress: float, index: int = index, label: str = package_label) -> None:
+                        # A package moves the bar through its own share of the bundle, saying what it is doing.
+                        progress_callback(f'importing package {index + 1} of {len(packages)} ({label}): {phase}',
+                                          5.0 + (index + min(max(progress, 0.0), 100.0) / 100.0) * 90.0 / len(packages))
                 notices.append(_apply_import_archive(
-                    nested_path, nested_manifest, None,
+                    nested_path, nested_manifest, package_progress,
                     destination_workspace_ids=destination_workspace_ids,
                     parent_task_id=parent_task_id,
                     includes_dashboards=bundle_includes_dashboards,
@@ -10958,13 +11514,21 @@ def _apply_import_archive(
                 raise ValueError('Select at least one destination workspace.')
             payload = archive.read(member)
             renamed: list[str] = []
+
+            def workspace_progress(position: int) -> Callable[[str, float], None] | None:
+                """The progress of the workspace at ``position``: its share of the package, saying what it is doing."""
+                if not progress_callback:
+                    return None
+                return lambda phase, share: progress_callback(
+                    f'{label} of "{destinations[position].name}": {phase}', 5.0 + 90.0 * (position + share) / len(destinations))
             imported_count = sum(
                 _restore_workspace_bundle_report_template_favourites(workspace, payload, importing_user, renamed) if favourites
-                else _restore_workspace_favourites_filters(workspace, payload, importing_user) if kind == 'scoring-favourites-filters'
+                else _restore_workspace_favourites_filters(workspace, payload, importing_user, workspace_progress(position))
+                if kind == 'scoring-favourites-filters'
                 else _restore_workspace_scoring_export_panels(workspace, payload) if kind == 'scoring-export-panels'
                 else _restore_workspace_scoring_excluded_calls(workspace, payload, importing_user, renamed) if kind == 'scoring-excluded-calls'
                 else _import_workspace_scoring_report_templates(workspace, payload, importing_user, renamed)
-                for workspace in destinations)
+                for position, workspace in enumerate(destinations))
             if kind == 'scoring-export-panels':
                 return f'Imported the {label} into {len(destinations)} workspaces.'
             if kind == 'scoring-excluded-calls':
@@ -11507,8 +12071,10 @@ def _report_source_transfer_progress(
 
 def _transfer_unsent_files(
     targets: list[str], workspace_ids: list[str] | None, include_generated_outputs: bool, include_input_files: bool,
+    workspace_uids: dict[str, str] | None = None,
 ) -> dict[str, dict[str, dict[str, int]]]:
-    """Per workspace name, the Input and Output files a transfer does not send."""
+    """Per workspace name, the Input and Output files a transfer does not send; ``workspace_uids`` receives the
+    identity of each of those workspaces, by name, for the destination to find the workspace it replaces."""
     unsent: dict[str, dict[str, dict[str, int]]] = {}
     for target in targets:
         if target.startswith('workspace:'):
@@ -11525,6 +12091,8 @@ def _transfer_unsent_files(
             files = unsent_folder_files(workspace, include_input_files=include_input, include_generated_outputs=include_generated_outputs)
             if files:
                 unsent[workspace.name] = files
+                if workspace_uids is not None and workspace.uid:
+                    workspace_uids[workspace.name] = workspace.uid
     return unsent
 
 
@@ -11592,6 +12160,7 @@ def _run_transfer_job(job_id: str) -> None:
                 archive_kind, components=offered_components,
                 workspace_components=offered_workspace_components, targets=targets,
             )
+            unsent_workspace_uids: dict[str, str] = {}
             offer_payload = {
                 'source': __app_name__,
                 'archive_version': ARCHIVE_VERSION,
@@ -11602,8 +12171,11 @@ def _run_transfer_job(job_id: str) -> None:
                 'content': _transfer_content_label(targets),
                 'workspaces': _transfer_offer_workspace_names(targets, workspace_ids),
                 'requires_destination_workspaces': manifest_requires_destination_workspaces(offer_manifest),
-                # The Input and Output files not sent, for the destination to tell whether it already holds them.
-                'unsent_files': _transfer_unsent_files(targets, workspace_ids, include_generated_outputs, include_input_files),
+                # The Input and Output files not sent, for the destination to tell whether it already holds them in the
+                # workspace with their workspace's identity (or else name).
+                'unsent_files': _transfer_unsent_files(targets, workspace_ids, include_generated_outputs, include_input_files,
+                                                       unsent_workspace_uids),
+                'unsent_workspace_uids': unsent_workspace_uids,
             }
             # Retry a transient first connection (for example while a remote
             # container wakes up). The offer endpoint is idempotent for this
@@ -11664,6 +12236,7 @@ def _run_transfer_job(job_id: str) -> None:
                     'export_total': estimate_export_bytes(targets, workspace_ids, include_generated_outputs, include_input_files),
                     'exported_bytes': 0,
                     'progress': 0.0,
+                    'phase': '',
                 })
             Thread(
                 target=_report_source_transfer_progress,
@@ -11680,13 +12253,21 @@ def _run_transfer_job(job_id: str) -> None:
                     total = max(int(job.get('export_total') or 1), 1)
                     job['progress'] = round(min(100.0, job['exported_bytes'] * 100.0 / total), 1)
 
+            def update_export_phase(phase: str) -> None:
+                # What the package is being made of now, for the dialog.
+                stop_if_cancelled()
+                with TRANSFER_LOCK:
+                    job['phase'] = phase
+
             filename = build_export_archive_file(
                 targets, package_path, workspace_ids, update_export_progress,
                 include_generated_outputs=include_generated_outputs, include_input_files=include_input_files,
+                phase_callback=update_export_phase,
             )
             package_size = package_path.stat().st_size
             with TRANSFER_LOCK:
-                job.update({'status': 'transferring', 'filename': filename, 'size': package_size, 'bytes_sent': 0, 'progress': 0.0})
+                job.update({'status': 'transferring', 'filename': filename, 'size': package_size, 'bytes_sent': 0, 'progress': 0.0,
+                            'phase': ''})
 
             def package_chunks() -> Iterable[bytes]:
                 sent = 0
@@ -22707,12 +23288,16 @@ def save_recurring_backup_settings(
     execution_time: str = Form('02:00'),
     weekly_day: int = Form(0),
     monthly_day: int = Form(1),
-    max_backups: int = Form(30),
+    light_backups: bool = Form(False),
+    full_backup_day: int = Form(6),
+    keep_days: int = Form(7),
+    keep_weeks: int = Form(4),
+    keep_months: int = Form(6),
     backup_path: str = Form(''),
     user: SessionUser = Depends(super_admin_user),
 ) -> Response:
     recurrence = recurrence.strip().lower()
-    if recurrence not in {'hourly', 'daily', 'weekly', 'monthly'}:
+    if recurrence not in {'hourly', 'every_4_hours', 'daily', 'weekly', 'monthly'}:
         raise HTTPException(status_code=400, detail='Choose a valid backup recurrence.')
     if not re.fullmatch(r'(?:[01]\d|2[0-3]):[0-5]\d', execution_time):
         raise HTTPException(status_code=400, detail='Choose a valid backup execution time.')
@@ -22723,10 +23308,10 @@ def save_recurring_backup_settings(
         raise HTTPException(status_code=400, detail='Select at least one accessible workspace for the selected backup content.')
     if enabled and not selected_components:
         raise HTTPException(status_code=400, detail='Select at least one backup component.')
-    if not 1 <= max_backups <= 1000:
-        raise HTTPException(status_code=400, detail='Choose a maximum between 1 and 1000 backups.')
-    if not 0 <= weekly_day <= 6 or not 1 <= monthly_day <= 31:
+    if not 0 <= weekly_day <= 6 or not 1 <= monthly_day <= 31 or not 0 <= full_backup_day <= 6:
         raise HTTPException(status_code=400, detail='Choose a valid scheduled day.')
+    if not 1 <= keep_days <= 3650 or not 0 <= keep_weeks <= 520 or not 0 <= keep_months <= 240:
+        raise HTTPException(status_code=400, detail='Keep between 1 and 3650 days, 0 and 520 weeks and 0 and 240 months of backups.')
     storage_path = recurring_backup_path({'backup_path': backup_path.strip() or str(application_data_dir / 'scheduled-backups')})
     try:
         storage_path = ensure_backup_path_is_within_config(storage_path)
@@ -22737,18 +23322,21 @@ def save_recurring_backup_settings(
     config = previous | {
         'enabled': enabled, 'components': selected_components, 'recurrence': recurrence,
         'execution_time': execution_time, 'weekly_day': weekly_day, 'monthly_day': monthly_day,
-        'max_backups': max_backups,
+        'light_backups': light_backups, 'full_backup_day': full_backup_day,
+        'keep_days': keep_days, 'keep_weeks': keep_weeks, 'keep_months': keep_months,
         'workspace_ids': selected_workspace_ids,
         'backup_path': str(storage_path), 'last_run_period': '',
     }
     repository.set_application_state(RECURRING_BACKUP_STATE_KEY, json.dumps(config))
     logged = ('enabled', 'components', 'workspace_ids', 'recurrence', 'execution_time', 'weekly_day', 'monthly_day',
-              'max_backups', 'backup_path')
+              'light_backups', 'full_backup_day', 'keep_days', 'keep_weeks', 'keep_months', 'backup_path')
     repository.try_add_log(user.username, 'save_scheduled_backup_settings', json.dumps({
         'enabled': enabled, 'components': selected_components,
         'workspace_ids': selected_workspace_ids, 'recurrence': recurrence,
         'execution_time': execution_time, 'weekly_day': weekly_day,
-        'monthly_day': monthly_day, 'max_backups': max_backups,
+        'monthly_day': monthly_day,
+        'light_backups': light_backups, 'full_backup_day': full_backup_day,
+        'keep_days': keep_days, 'keep_weeks': keep_weeks, 'keep_months': keep_months,
         'changes': changed_values({key: previous.get(key) for key in logged}, {key: config.get(key) for key in logged}),
     }))
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
@@ -22800,11 +23388,12 @@ def run_manual_database_backup(
     request: Request,
     components: list[str] = Form(default=[]),
     workspace_ids: list[str] = Form(default=[]),
-    max_backups: int = Form(30),
     backup_path: str = Form(''),
+    backup_level: str = Form('full'),
     user: SessionUser = Depends(super_admin_user),
 ) -> Response:
-    """Queue an immediate backup using the current form selection and path."""
+    """Queue an immediate full or light backup using the current form selection and path."""
+    level = 'light' if backup_level == 'light' else 'full'
     selected_components = backup_components(components)
     allowed_workspace_ids = {workspace.id for workspace in accessible_workspaces(user)}
     selected_workspace_ids = list(dict.fromkeys(item for item in backup_workspace_ids(components, workspace_ids) if item in allowed_workspace_ids))
@@ -22812,8 +23401,8 @@ def run_manual_database_backup(
         raise HTTPException(status_code=400, detail='Select at least one accessible workspace for the selected backup content.')
     if not selected_components:
         raise HTTPException(status_code=400, detail='Select at least one backup component.')
-    if not 1 <= max_backups <= 1000:
-        raise HTTPException(status_code=400, detail='Choose a maximum between 1 and 1000 backups.')
+    if level == 'light' and not set(selected_components) - LIGHT_BACKUP_EXCLUDED_COMPONENTS:
+        raise HTTPException(status_code=400, detail='A light backup leaves the workspace databases, Input and Output out: select other content too, or make a full backup.')
     storage_path = recurring_backup_path({'backup_path': backup_path.strip() or str(application_data_dir / 'scheduled-backups')})
     try:
         storage_path = ensure_backup_path_is_within_config(storage_path)
@@ -22822,14 +23411,13 @@ def run_manual_database_backup(
         raise HTTPException(status_code=400, detail=f'Unable to use the backup path: {exc}') from exc
     config = recurring_backup_settings() | {
         'components': selected_components,
-        'max_backups': max_backups,
         'backup_path': str(storage_path),
         'workspace_ids': selected_workspace_ids,
     }
     repository.set_application_state(RECURRING_BACKUP_STATE_KEY, json.dumps(config))
-    job = start_manual_database_backup(config, user.username)
+    job = start_manual_database_backup(config, user.username, level)
     repository.add_log(user.username, 'start_manual_database_backup', json.dumps({
-        'job_id': job['id'], 'components': selected_components, 'backup_path': str(storage_path),
+        'job_id': job['id'], 'level': level, 'components': selected_components, 'backup_path': str(storage_path),
     }))
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
         return JSONResponse({
@@ -22845,12 +23433,16 @@ def backup_files(backup_path: str = Query(default=''), user: SessionUser = Depen
     root = ensure_backup_path_is_within_config(recurring_backup_path({'backup_path': backup_path}))
     files = []
     if root.is_dir():
-        for item in sorted(root.glob('*.zip'), key=lambda value: value.stat().st_mtime, reverse=True):
+        zips = [item for folder in backup_folders(root) if folder.is_dir() for item in folder.glob('*.zip')]
+        for item in sorted(zips, key=lambda value: value.stat().st_mtime, reverse=True):
             try:
                 # A ZIP without its central directory was cut short (for example by
                 # a backup interrupted before this version) and cannot be restored.
-                files.append({'name': item.name, 'size': format_workspace_size(item.stat().st_size),
-                              'modified': backup_started_at_label(item), 'incomplete': not zipfile.is_zipfile(item)})
+                info = backup_file_info(item)
+                files.append({'name': item.name, 'path': item.relative_to(root).as_posix(),
+                              'size': format_workspace_size(item.stat().st_size),
+                              'modified': backup_started_at_label(item), 'incomplete': info['incomplete'],
+                              'level': info['level'], 'origin': info['origin']})
             except OSError:
                 continue
     return JSONResponse({'files': files})
@@ -23034,7 +23626,7 @@ async def receive_transfer_offer(request: Request) -> JSONResponse:
         raise HTTPException(status_code=400, detail='The transfer offer has incompatible content components.')
     source_address = request.client.host if request.client else 'unknown'
     # Whether this server already holds the Input and Output files the source does not send.
-    folder_check = unsent_folder_check(payload.get('unsent_files'))
+    folder_check = unsent_folder_check(payload.get('unsent_files'), payload.get('unsent_workspace_uids'))
     folder_warnings = unsent_folder_warnings({
         name: [folder for folder, held in checks.items() if not held] for name, checks in folder_check.items()
     })

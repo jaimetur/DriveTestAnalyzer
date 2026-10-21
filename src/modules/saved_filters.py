@@ -4,6 +4,7 @@ its CDRs, methodology or Operator Maps change."""
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import importlib
 import inspect
@@ -771,6 +772,16 @@ def _row_to_saved_filter(
     return saved_filter
 
 
+def _shared(cache: dict[Any, Any] | None, key: Any, compute: Callable[[], Any]) -> Any:
+    """``compute()``, done once for all the Saved Filters prepared together (``cache``: those of one import or listing),
+    each one with its own copy of the result."""
+    if cache is None:
+        return compute()
+    if key not in cache:
+        cache[key] = compute()
+    return copy.deepcopy(cache[key])
+
+
 def _prepare_saved_filter(
     repository: Repository,
     dataset_ids: list[int],
@@ -781,12 +792,14 @@ def _prepare_saved_filter(
     context_filters: dict[str, list[str]] | None = None,
     scoring_profile_id: str | None = None,
     area_summary: dict[str, Any] | None = None,
+    cache: dict[Any, Any] | None = None,
 ) -> dict[str, Any]:
     """The identity of a selection and of its result today, with the snapshot its calculation uses.
 
     A Campaign filter with an automatic choice (Latest campaign, Previous campaign, Latest 2 campaigns or All available
     campaigns) is kept as such: the selection is that choice, and its campaigns and CDRs are those it stands for now,
-    so the Saved Filter follows the campaigns and CDRs that arrive later.
+    so the Saved Filter follows the campaigns and CDRs that arrive later. Saved Filters prepared together share
+    ``cache``, where what they read alike (methodologies, CDRs, catalogues, campaigns, Operator Maps) is read once.
     """
     normalized_context_filters = _normalize_context_filters(context_filters)
     campaign_choice = (campaign_presets(normalized_context_filters['Campaign']) or [''])[0]
@@ -795,15 +808,17 @@ def _prepare_saved_filter(
         from src.modules.scoring_selection import auto_scoring_cdr_ids, expand_scoring_campaigns
         mode = normalize_scoring_nr_mode(nr_mode) or 'NSA'
         normalized_context_filters['Campaign'] = [campaign_choice]
-        calculation_filters['Campaign'] = expand_scoring_campaigns(repository, mode, [campaign_choice])
-        dataset_ids = auto_scoring_cdr_ids(repository, mode, [campaign_choice])
+        calculation_filters['Campaign'], dataset_ids = _shared(cache, ('campaign choice', mode, campaign_choice), lambda: (
+            expand_scoring_campaigns(repository, mode, [campaign_choice]), auto_scoring_cdr_ids(repository, mode, [campaign_choice])))
         if not dataset_ids:
             raise ValueError(f'{CAMPAIGN_PRESET_LABELS[campaign_choice]} stands for no campaign with Data, Voice and Speech '
                              f'CDRs of {nr_mode_label(mode)} now.')
     normalized_ids = list(dict.fromkeys(int(dataset_id) for dataset_id in dataset_ids))
     normalized_area_summary = normalize_area_summary_request(area_summary, normalized_context_filters)
-    vendor_catalogues = repository.cdr_catalogues_by_dataset(normalized_ids)
-    vendor_operators = scoring_vendor_operators(vendor_catalogues, repository.list_operator_mapping_groups())
+    vendor_catalogues = _shared(cache, ('catalogues', tuple(normalized_ids)),
+                                lambda: repository.cdr_catalogues_by_dataset(normalized_ids))
+    vendor_operators = scoring_vendor_operators(vendor_catalogues, _shared(
+        cache, ('operator mapping groups',), repository.list_operator_mapping_groups))
     normalized_context_filters['Vendor'] = calculation_filters['Vendor'] = sorted({
         scoring_vendor_name(value, vendor_operators) for value in normalized_context_filters['Vendor']
     }, key=str.casefold)
@@ -812,10 +827,10 @@ def _prepare_saved_filter(
     from src.modules.scoring_methodologies import (
         BY_CAMPAIGN, display_configuration, methodology_groups, methodology_label,
     )
-    sources, _campaigns, source_fingerprint = _source_snapshot(
+    sources, _campaigns, source_fingerprint = _shared(cache, ('sources', tuple(normalized_ids), nr_mode), lambda: _source_snapshot(
         repository, normalized_ids, expected_nr_mode=nr_mode,
-    )
-    aggregation_hierarchy = load_aggregation_hierarchy(repository)
+    ))
+    aggregation_hierarchy = _shared(cache, ('aggregation hierarchy',), lambda: load_aggregation_hierarchy(repository))
     both_modes = normalize_scoring_nr_mode(nr_mode) == NSA_VS_SA
     if both_modes:
         # NSA vs SA compares the campaigns of each NR Mode: it is always split by Campaign.
@@ -829,26 +844,29 @@ def _prepare_saved_filter(
         wanted = {value.casefold() for value in calculation_filters.get('Campaign') or []}
         campaigns = [campaign for source in sources for campaign in source['metadata'].get('campaigns') or []
                      if not wanted or campaign.casefold() in wanted]
-        groups = methodology_groups(repository.get_scoring_profiles(), campaigns or [''])
+        groups = methodology_groups(_shared(cache, ('profiles',), repository.get_scoring_profiles), campaigns or [''])
         if len(groups) > 1 and 'Campaign' not in normalized_levels:
             raise ValueError('Scoring By campaign with campaigns of different methodologies needs Campaign in the Split by.')
-        configuration = validate_scoring_configuration(
-            groups[0]['configuration'] if len(groups) == 1 else display_configuration(groups))
+        configuration_key = ('by campaign', tuple((group['profile_id'], tuple(group['campaigns'])) for group in groups))
+        configuration = _shared(cache, configuration_key, lambda: validate_scoring_configuration(
+            groups[0]['configuration'] if len(groups) == 1 else display_configuration(groups)))
         scoring_profile = {'id': BY_CAMPAIGN, 'name': methodology_label(groups)}
     elif callable(profile_getter):
         if scoring_profile_id is None or (
             isinstance(scoring_profile_id, str) and not scoring_profile_id.strip()
         ):
-            scoring_profile = profile_getter()
+            scoring_profile = _shared(cache, ('profile', ''), profile_getter)
         else:
             if not isinstance(scoring_profile_id, str):
                 raise ValueError('Scoring methodology ID must be a non-empty identifier.')
-            scoring_profile = profile_getter(scoring_profile_id.strip())
-        configuration = validate_scoring_configuration(scoring_profile['configuration'])
+            scoring_profile = _shared(cache, ('profile', scoring_profile_id.strip()), lambda: profile_getter(scoring_profile_id.strip()))
+        configuration_key = ('configuration', str(scoring_profile.get('id') or ''))
+        configuration = _shared(cache, configuration_key, lambda: validate_scoring_configuration(scoring_profile['configuration']))
     else:
         if scoring_profile_id is not None:
             raise ValueError('This workspace does not support selecting scoring methodologies.')
-        configuration = _workspace_scoring_configuration(repository)
+        configuration_key = ('workspace configuration',)
+        configuration = _shared(cache, configuration_key, lambda: _workspace_scoring_configuration(repository))
         scoring_profile = {'id': '', 'name': ''}
     selected_mode = normalize_scoring_nr_mode(nr_mode) if nr_mode else str(sources[0]['metadata']['nr_mode'])
     if selected_mode not in SCORING_NR_MODES:
@@ -858,24 +876,26 @@ def _prepare_saved_filter(
         raise ValueError('Select a comparison baseline operator.')
     if baseline == SAME_OPERATOR_NSA and not both_modes:
         raise ValueError(f'The GAP reference {SAME_OPERATOR_NSA_LABEL} compares NSA vs SA: choose NSA vs SA in NR Mode.')
-    baseline_aliases = _baseline_aliases(repository, baseline)
+    baseline_aliases = _shared(cache, ('baseline aliases', baseline), lambda: _baseline_aliases(repository, baseline))
     mapping_getter = getattr(repository, 'list_operator_mappings', None)
-    raw_operator_mappings = mapping_getter() if callable(mapping_getter) else {}
+    raw_operator_mappings = _shared(cache, ('operator mappings',), mapping_getter) if callable(mapping_getter) else {}
     operator_mappings = {
         str(alias).strip().casefold(): str(canonical).strip()
         for alias, canonical in raw_operator_mappings.items()
         if str(alias).strip() and str(canonical).strip()
     } if isinstance(raw_operator_mappings, dict) else {}
-    config_hash = configuration_hash(configuration)
+    config_hash = _shared(cache, ('hash', configuration_key), lambda: configuration_hash(configuration))
     if len(groups) > 1:
         # The result changes with the methodology of any of its campaigns.
         config_hash = hashlib.sha256(json.dumps(
             [[group['profile_id'], configuration_hash(group['configuration']), group['campaigns']] for group in groups],
             sort_keys=True).encode('utf-8')).hexdigest()
-    version = _method_version(configuration)
+    version = _shared(cache, ('version', configuration_key), lambda: _method_version(configuration))
     profile_id = str(scoring_profile.get('id') or '')
     profile_name = str(scoring_profile.get('name') or '')
-    area_trends = _area_trends(repository, selected_mode, normalized_area_summary, scoring_profile_id)
+    area_trends = _shared(cache, ('trends', selected_mode, json.dumps(normalized_area_summary, sort_keys=True, default=str),
+                                  scoring_profile_id), lambda: _area_trends(repository, selected_mode, normalized_area_summary,
+                                                                            scoring_profile_id))
     # The result changes with the CDRs and methodologies of the campaigns of the trends too.
     key_area_summary = normalized_area_summary if area_trends is None else {**normalized_area_summary, 'trends': {
         'campaigns': area_trends['campaigns'], 'source_fingerprint': area_trends['source_fingerprint'],
@@ -884,7 +904,7 @@ def _prepare_saved_filter(
     # are calculated again; with Main Cities, the result changes with the Main Cities of the workspace.
     key_area_summary = {**key_area_summary, 'geographical_version': GEOGRAPHICAL_AREAS_VERSION}
     if normalized_area_summary.get('main_cities'):
-        key_area_summary['main_cities'] = _workspace_main_cities(repository)
+        key_area_summary['main_cities'] = _shared(cache, ('main cities',), lambda: _workspace_main_cities(repository))
     result_key, _canonical = _result_key(
         normalized_levels, selected_mode, baseline, version, source_fingerprint, config_hash, baseline_aliases,
         normalized_context_filters, resolved_context_filters, operator_mappings, profile_id, profile_name,
@@ -1574,17 +1594,20 @@ def saved_filters_document(repository: Repository, *, favourites_only: bool = Fa
 
 
 def import_saved_filters(repository: Repository, document: Any,
-                         creator: Callable[[Any, str], str] | None = None) -> int:
+                         creator: Callable[[Any, str], str] | None = None,
+                         progress: Callable[[str, float], None] | None = None) -> int:
     """Add the Saved Filters of a document to the workspace. Their CDRs are found by file, except for those with a
     Campaign choice (Latest campaign…), which take the CDRs it stands for here and need none in the document; until
     they are processed here, they wait for them. One the workspace already has (the same selection) takes the name and
     the creator of the document, and its star if the document has it, without losing its own star (see
     _resolve_imported_filters). ``creator(creator in the document, '')`` decides who each one belongs to (without it,
-    the application). Returns how many were added."""
+    the application), and ``progress(phase, share done)`` follows the Saved Filters of the document, the only ones it
+    prepares. Returns how many were added."""
     if (not isinstance(document, dict) or document.get('format') != SAVED_FILTERS_FORMAT
             or document.get('version') != SAVED_FILTERS_VERSION or not isinstance(document.get('saved_filters'), list)):
         raise ValueError('The Saved Filters are invalid.')
     added = 0
+    package_keys: list[str] = []
     now = local_now_iso()
     # The starred ones follow those of the workspace, in the order of the document.
     with repository.connection() as connection:
@@ -1618,6 +1641,7 @@ def import_saved_filters(repository: Repository, document: Any,
         pending_key = 'pending:' + hashlib.sha256(json.dumps(
             {**selection, 'cdrs': sorted(ref['sha256'] for ref in refs)}, ensure_ascii=False, sort_keys=True,
             separators=(',', ':')).encode('utf-8')).hexdigest()
+        package_keys.append(pending_key)
         snapshot = {'sources': [{'name': ref['name'], 'kind': ref['kind']} for ref in refs],
                     'scoring_profile_id': selection['scoring_profile_id'], 'context_filters': context_filters,
                     'resolved_context_filters': context_filters}
@@ -1645,42 +1669,59 @@ def import_saved_filters(repository: Repository, document: Any,
         added += 1
         if entry.get('pinned'):
             next_position += 1
-    _resolve_imported_filters(repository)
+    _resolve_imported_filters(repository, package_keys, progress)
     return added
 
 
-def _ready_cdr_hashes(repository: Repository) -> dict[str, int]:
-    """The processed CDRs of the workspace by the SHA-256 of their file."""
+def _ready_cdr_hashes(repository: Repository, progress: Callable[[int, int], None] | None = None) -> dict[str, int]:
+    """The processed CDRs of the workspace by the SHA-256 of their file (read once and kept, see file_sha256);
+    ``progress(done, count)`` follows them."""
     from src.modules.scoring_history import ensure_history_tables, file_sha256
     by_hash: dict[str, int] = {}
-    for row in repository.list_datasets():
-        if str(row['status'] or '').casefold() != 'ready' or str(row['dataset_kind'] or '').casefold() not in CDR_DATASET_KINDS:
-            continue
+    rows = [row for row in repository.list_datasets()
+            if str(row['status'] or '').casefold() == 'ready' and str(row['dataset_kind'] or '').casefold() in CDR_DATASET_KINDS]
+    if rows:
         ensure_history_tables(repository)
+    for index, row in enumerate(rows):
+        if progress:
+            progress(index, len(rows))
         sha = file_sha256(repository, row)
         if sha:
             by_hash.setdefault(sha, int(row['id']))
     return by_hash
 
 
-def _resolve_imported_filters(repository: Repository) -> None:
+def _resolve_imported_filters(repository: Repository, selection_keys: Iterable[str] | None = None,
+                              progress: Callable[[str, float], None] | None = None) -> None:
     """Give the imported Saved Filters their CDRs once every one of them is in the workspace (found by file); those
     with a Campaign choice (Latest campaign…) take the CDRs it stands for here once the workspace has them. One that
-    matches a Saved Filter of the workspace joins it."""
+    matches a Saved Filter of the workspace joins it. ``selection_keys`` keeps to some of them (those of an import),
+    and ``progress(phase, share done)`` follows them; what they read alike is read once."""
+    query = f"SELECT * FROM {SAVED_FILTERS_TABLE} WHERE dataset_ids_json = '[]' AND cdr_refs_json <> '[]'"
+    keys = list(dict.fromkeys(selection_keys)) if selection_keys is not None else None
+    if keys is not None and not keys:
+        return
     with repository.connection() as connection:
-        pending = connection.execute(
-            f"SELECT * FROM {SAVED_FILTERS_TABLE} WHERE dataset_ids_json = '[]' AND cdr_refs_json <> '[]'"
-        ).fetchall()
+        pending = connection.execute(query, ()).fetchall()
+    if keys is not None:
+        wanted = set(keys)
+        pending = [row for row in pending if row['selection_key'] in wanted]
     if not pending:
         return
-    by_hash: dict[str, int] | None = None
-    for row in pending:
-        saved_filter = _row_to_saved_filter(row, include_snapshot=False)
-        if campaign_presets(saved_filter['context_filters'].get('Campaign') or []):
+    items = [(row, _row_to_saved_filter(row, include_snapshot=False)) for row in pending]
+    by_file = [not campaign_presets(saved_filter['context_filters'].get('Campaign') or []) for _row, saved_filter in items]
+    # The CDRs are found by the hash of their files first (most of the time when they are read for the first time).
+    share = 0.5 if any(by_file) else 0.0
+    by_hash: dict[str, int] = _ready_cdr_hashes(repository, (lambda done, count: progress(
+        f'identifying CDR {done + 1} of {count} by its file', share * done / count)) if progress else None) if any(by_file) else {}
+    cache: dict[Any, Any] = {}
+    for index, ((row, saved_filter), needs_files) in enumerate(zip(items, by_file)):
+        if progress:
+            progress(f'preparing Saved Filter {index + 1} of {len(items)}', share + (1 - share) * index / len(items))
+        if not needs_files:
             # Chosen when it is prepared, from the CDRs of this workspace.
             dataset_ids = []
         else:
-            by_hash = _ready_cdr_hashes(repository) if by_hash is None else by_hash
             refs = _decode_json(row['cdr_refs_json'], [])
             dataset_ids = [by_hash.get(str(ref.get('sha256') or '')) for ref in refs if isinstance(ref, dict)]
             if not dataset_ids or not all(dataset_ids):
@@ -1690,6 +1731,7 @@ def _resolve_imported_filters(repository: Repository) -> None:
                 repository, dataset_ids, saved_filter['levels'], saved_filter['nr_mode'],
                 baseline_operator=saved_filter['baseline_operator'], context_filters=saved_filter['context_filters'],
                 scoring_profile_id=saved_filter['scoring_profile_id'] or None, area_summary=saved_filter['area_summary'],
+                cache=cache,
             )
         except ValueError:
             continue

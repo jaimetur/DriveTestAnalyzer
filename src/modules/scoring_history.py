@@ -358,7 +358,8 @@ def metric_value(components: dict[str, Any] | None, metric: dict[str, Any]) -> t
 # Indexing the CDRs
 
 def file_sha256(repository: Any, row: Any) -> str:
-    """The SHA-256 of the whole source file of a CDR (about half a second per GB), kept until the file changes."""
+    """The SHA-256 of the whole source file of a CDR (about half a second per GB), kept until the file changes. A file
+    that only moved (a renamed or duplicated workspace), with the same size and modification time, keeps its hash."""
     dataset_id = int(row['id'])
     path = Path(str(row['stored_path'] or ''))
     try:
@@ -367,8 +368,11 @@ def file_sha256(repository: Any, row: Any) -> str:
         return ''
     with repository.connection() as connection:
         cached = connection.execute(f'SELECT * FROM {HISTORY_FILES_TABLE} WHERE dataset_id = ?', (dataset_id,)).fetchone()
-    if (cached and cached['stored_path'] == str(path) and int(cached['file_size']) == stat.st_size
+    if (cached and int(cached['file_size']) == stat.st_size
             and float(cached['file_mtime']) == stat.st_mtime and cached['file_sha256']):
+        if cached['stored_path'] != str(path):
+            with repository.connection() as connection:
+                connection.execute(f'UPDATE {HISTORY_FILES_TABLE} SET stored_path = ? WHERE dataset_id = ?', (str(path), dataset_id))
         return str(cached['file_sha256'])
     digest = hashlib.sha256()
     with path.open('rb') as handle:
