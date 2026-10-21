@@ -7597,6 +7597,7 @@ def test_workspace_preview_and_cdr_dashboard_action(client) -> None:
     assert 'data-embedded-dataset-preview' in embedded_preview.text
     assert 'class="topbar"' not in embedded_preview.text
     assert 'class="module-tabs"' not in embedded_preview.text
+    assert 'data-mobile-menu' not in embedded_preview.text
     assert 'id="background-task-panels"' not in embedded_preview.text
     assert 'Back to Workspace' not in embedded_preview.text
     assert 'data-url="/workspace/preview/1?embedded=1"' in embedded_preview.text
@@ -9250,6 +9251,8 @@ def test_collapsed_side_navigators_reveal_near_viewport_edges() -> None:
 
     assert 'function setupEdgeNavigatorReveal() {' in app_script
     assert "'.page-panel-navigator, .help-navigator, .release-navigator'" in app_script
+    # Each drawer reveals at the edge its styles place it on.
+    assert "return bounds.left + bounds.width / 2 > window.innerWidth / 2 ? 'right' : 'left';" in app_script
     assert "event.pointerType && event.pointerType !== 'mouse'" in app_script
     assert "window.addEventListener('pointermove', revealNearEdge, {capture: true, passive: true});" in app_script
     assert "window.addEventListener('pointerover', revealNearEdge, {capture: true, passive: true});" in app_script
@@ -9265,17 +9268,63 @@ def test_collapsed_side_navigators_reveal_near_viewport_edges() -> None:
     assert 'setupEdgeNavigatorReveal();' in app_script
     assert ':not(.is-edge-revealed):not(:has(:focus-visible)):not(:hover) .page-panel-navigator-tab {' in app_styles
     assert 'max-height:min(96dvh,84rem)' in app_styles
-    # One drawer at the left edge, Modules & Sections.
+    # One drawer at the right edge, Modules & Sections.
     assert base_template.count('class="edge-navigator-hover-target"') == 1
     # The documentation pages have no drawers of their own at the right edge: Modules & Sections covers them.
     assert doc_template.count('class="edge-navigator-hover-target"') == 0 and 'data-help-navigator' not in doc_template
-    assert '.page-panel-navigator .edge-navigator-hover-target { left:100%; }' in app_styles
+    assert '.page-panel-navigator .edge-navigator-hover-target { right:100%; }' in app_styles
+    assert '.module-navigator{top:50%;left:auto;right:0;transform:translate(calc(100% - 1px),-50%)}' in app_styles
+    assert 'transform: translateX(calc(100% - 1px)); pointer-events: none; }' in app_styles
     assert ':is(.help-navigator,.release-navigator) .edge-navigator-hover-target { right:100%; }' in app_styles
-    assert 'transform:translate(calc(-100% + .32rem),-50%);' in app_styles
+    assert 'transform:translate(calc(-100% + .32rem),-50%);' not in app_styles
     assert 'transform:translate(calc(100% - .32rem),-50%);' in app_styles
     assert ':not(:hover) .page-panel-navigator-tab {\n  opacity:.52;\n  pointer-events:none;\n  transform:' in app_styles
     assert '.is-edge-revealed :is(.page-panel-navigator-tab,.help-navigator-tab,.release-navigator-tab)' in app_styles
     assert ':has(:focus-visible) :is(.page-panel-navigator-tab,.help-navigator-tab,.release-navigator-tab)' in app_styles
+
+
+def test_small_screens_have_a_menu_bar_instead_of_the_tab_rows(client) -> None:
+    root = Path(__file__).parents[1]
+    app_script = (root / 'src/web_interface/static/js/app.js').read_text(encoding='utf-8')
+    app_styles = (root / 'src/web_interface/static/css/app.css').read_text(encoding='utf-8')
+
+    login(client)
+    page = client.get('/scoring').text
+    # The bar with the module open and the button of the menu, before the rows of tabs.
+    assert page.index('data-mobile-menu-bar') < page.index('class="module-tabs"')
+    assert 'data-mobile-menu-toggle aria-haspopup="dialog" aria-expanded="false" aria-controls="mobile-menu"' in page
+    # The menu: the tree of Modules & Sections with its own ids, and About.
+    menu = page.split('id="mobile-menu"', 1)[1].split('data-mobile-menu-close', 1)[1]
+    assert 'role="dialog" aria-modal="true" aria-labelledby="mobile-menu-title" data-mobile-menu hidden' in page
+    assert 'id="mobile-menu-main-title">Main Modules</h4>' in menu and 'id="module-navigator-main-title">Main Modules</h4>' in page
+    assert menu.count('class="module-tree-module"') >= 10 and 'href="/scoring#scoring-results-points-lost"' in menu
+    assert 'href="/scoring" class="is-active" aria-current="page"' in menu
+    assert 'class="module-tree-about" data-about-open>' in menu
+    drawer = page.split('id="page-panel-navigator"', 1)[1].split('</aside>', 1)[0]
+    assert 'data-about-open' not in drawer
+    # Small screens hide the rows of tabs and show the bar, which stays at the top with the sticky bars below it.
+    small = app_styles[app_styles.index('.mobile-menu-bar, .mobile-menu { display: none; }'):]
+    assert '@media (max-width: 640px), (orientation: landscape) and (max-width: 1024px) and (max-height: 600px) {' in small
+    assert 'main > .module-tabs { display: none; }' in small
+    assert "const MOBILE_MENU_SCREENS = '(max-width: 640px), (orientation: landscape) and (max-width: 1024px) and (max-height: 600px)';" in app_script
+    sticky = app_script[app_script.index('function setupStickyModuleTabs() {'):app_script.index('\nsetupStickyModuleTabs();')]
+    assert "const shown = () => (menuBar && getComputedStyle(menuBar).display !== 'none' ? menuBar : tabs);" in sticky
+    assert 'setupPagePanelNavigator();\nsetupMobileMenu();' in app_script
+    assert "menu.querySelectorAll('a[href], [data-about-open]').forEach((item) => item.addEventListener('click', () => setOpen(false)));" in app_script
+
+
+def test_floating_cards_stand_at_the_left_with_modules_and_sections_at_the_right() -> None:
+    root = Path(__file__).parents[1]
+    app_styles = (root / 'src/web_interface/static/css/app.css').read_text(encoding='utf-8')
+    nq_styles = (root / 'src/web_interface/static/css/non_qualified_calls.css').read_text(encoding='utf-8')
+
+    assert '.background-task-dock-active { left: 4.6rem; max-width: calc(100vw - 5.6rem); }' in app_styles
+    assert '.background-task-dock-other { right: 3.25rem; max-width: calc(100vw - 4.25rem); }' in app_styles
+    assert '.unassigned-values-card { position: fixed; left: 4.6rem; bottom: 1rem;' in app_styles
+    assert '.incoming-transfer-reminder { position: fixed; left: 4.6rem; bottom: 1rem;' in app_styles
+    assert '.nq-drawer { position: fixed; top: 0; left: 0; bottom: 0;' in nq_styles and 'transform: translateX(-105%);' in nq_styles
+    assert '.nq-toast { position: fixed; left: 4.6rem; bottom: 24px;' in nq_styles
+    assert 'body:has(.nq-drawer.is-open) .back-to-top { visibility: hidden; }' in nq_styles
 
 
 def test_non_admin_navigation_hides_admin_tab(client) -> None:

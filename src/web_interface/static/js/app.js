@@ -6306,9 +6306,11 @@ function setupEdgeNavigatorReveal() {
   const closeTimers = new WeakMap();
   let lastInteraction = 'mouse';
 
-  const sideOf = (navigator) => (
-    navigator.matches('.help-navigator, .release-navigator') ? 'right' : 'left'
-  );
+  // The edge of the window each drawer stands on, from where its styles place it.
+  const sideOf = (navigator) => {
+    const bounds = navigator.getBoundingClientRect();
+    return bounds.left + bounds.width / 2 > window.innerWidth / 2 ? 'right' : 'left';
+  };
   const collapsedOn = (side) => navigators.filter((navigator) => (
     sideOf(navigator) === side && !navigator.classList.contains('is-open')
   ));
@@ -7137,30 +7139,85 @@ function setupDropdownAlignment() {
 
 // The tabs of the modules stay at the top of the screen while a page scrolls (sticky, app.css): --module-tabs-offset,
 // their height, keeps the bars and panels that stick to the top of the page below them. Tabs that would take more than
-// a third of a small screen do not stay.
+// a third of a small screen do not stay. On small screens the bar of the menu stands in for the tabs (app.css).
 function moduleTabsOffset() {
   return parseFloat(document.documentElement.style.getPropertyValue('--module-tabs-offset')) || 0;
 }
 function setupStickyModuleTabs() {
   const tabs = document.querySelector('main > .module-tabs');
   if (!tabs) return;
+  const menuBar = document.querySelector('main > .mobile-menu-bar');
   const root = document.documentElement;
   let frame = 0;
+  const shown = () => (menuBar && getComputedStyle(menuBar).display !== 'none' ? menuBar : tabs);
   const measure = () => {
-    const height = Math.ceil(tabs.getBoundingClientRect().height);
+    const bar = shown();
+    const height = Math.ceil(bar.getBoundingClientRect().height);
     const tall = height > window.innerHeight / 3;
-    tabs.classList.toggle('is-tall', tall);
+    bar.classList.toggle('is-tall', tall);
     root.style.setProperty('--module-tabs-offset', `${tall ? 0 : height}px`);
   };
   const sync = () => {
     frame = 0;
-    tabs.classList.toggle('is-stuck', !tabs.classList.contains('is-tall') && window.scrollY > 0 && tabs.getBoundingClientRect().top <= 0.5);
+    const bar = shown();
+    bar.classList.toggle('is-stuck', !bar.classList.contains('is-tall') && window.scrollY > 0 && bar.getBoundingClientRect().top <= 0.5);
   };
   window.addEventListener('scroll', () => { if (!frame) frame = window.requestAnimationFrame(sync); }, {passive: true});
   window.addEventListener('resize', () => { measure(); sync(); });
-  if (typeof ResizeObserver === 'function') new ResizeObserver(measure).observe(tabs);
+  if (typeof ResizeObserver === 'function') [tabs, menuBar].filter(Boolean).forEach((bar) => new ResizeObserver(measure).observe(bar));
   measure();
   sync();
+}
+
+// Small screens: the bar at the top of the page shows the module open and opens the menu, the tree of Modules & Sections
+// on the whole screen (base.html). The menu closes with its button, Escape, a link or About, and when the screen grows.
+const MOBILE_MENU_SCREENS = '(max-width: 640px), (orientation: landscape) and (max-width: 1024px) and (max-height: 600px)';
+function setupMobileMenu() {
+  const bar = document.querySelector('[data-mobile-menu-bar]');
+  const menu = document.querySelector('[data-mobile-menu]');
+  if (!bar || !menu || menu.dataset.ready === '1') return;
+  menu.dataset.ready = '1';
+  const toggle = bar.querySelector('[data-mobile-menu-toggle]');
+  const close = menu.querySelector('[data-mobile-menu-close]');
+  if (!(toggle instanceof HTMLButtonElement) || !(close instanceof HTMLButtonElement)) return;
+
+  // The colours of the module open: those of its tab, or of the theme of Modules & Sections in the other pages.
+  const drawer = document.getElementById('page-panel-navigator');
+  menu.dataset.theme = drawer?.dataset.theme || 'utility';
+  const activeTab = document.querySelector('.module-tabs .module-tab.active');
+  const accent = (activeTab && getComputedStyle(activeTab).getPropertyValue('--tab-accent').trim())
+    || (drawer && getComputedStyle(drawer).getPropertyValue('--panel-nav-border').trim());
+  if (accent) [bar, menu].forEach((element) => element.style.setProperty('--mobile-menu-accent', accent));
+  const active = menu.querySelector('.module-navigator-category a.is-active');
+  if (active) {
+    const label = document.createElement('span');
+    label.textContent = active.textContent.trim();
+    const icon = active.querySelector('svg')?.cloneNode(true);
+    bar.querySelector('[data-mobile-menu-current]')?.replaceChildren(...(icon ? [icon] : []), label);
+  }
+
+  const setOpen = (open) => {
+    menu.hidden = !open;
+    toggle.setAttribute('aria-expanded', String(open));
+    document.documentElement.classList.toggle('has-mobile-menu-open', open);
+    if (open) close.focus();
+  };
+  toggle.addEventListener('click', () => setOpen(true));
+  close.addEventListener('click', () => {
+    setOpen(false);
+    toggle.focus();
+  });
+  menu.querySelectorAll('a[href], [data-about-open]').forEach((item) => item.addEventListener('click', () => setOpen(false)));
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !menu.hidden) {
+      setOpen(false);
+      toggle.focus();
+    }
+  });
+  const smallScreen = window.matchMedia(MOBILE_MENU_SCREENS);
+  smallScreen.addEventListener('change', () => {
+    if (!smallScreen.matches && !menu.hidden) setOpen(false);
+  });
 }
 
 setupStickyModuleTabs();
@@ -7172,6 +7229,7 @@ setupCustomMultiSelects();
 setupNativeSelectMenus();
 setupMainCitiesTransfer();
 setupPagePanelNavigator();
+setupMobileMenu();
 setupEdgeNavigatorReveal();
 setupSearchableSingleSelects();
 

@@ -200,8 +200,10 @@
 /* Call drawer */
 .nq-drawer-backdrop { position: fixed; inset: 0; z-index: 80; background: rgba(40, 8, 20, .28); }
 .nq-drawer-backdrop[hidden] { display: none; }
-.nq-drawer { position: fixed; top: 0; right: 0; bottom: 0; z-index: 81; display: grid; grid-template-rows: auto auto auto minmax(0, 1fr); width: min(620px, 100vw); background: #fff; box-shadow: -18px 0 40px rgba(60, 10, 30, .22); transform: translateX(105%); transition: transform .22s ease; visibility: hidden; }
+.nq-drawer { position: fixed; top: 0; left: 0; bottom: 0; z-index: 81; display: grid; grid-template-rows: auto auto auto minmax(0, 1fr); width: min(620px, 100vw); background: #fff; box-shadow: 18px 0 40px rgba(60, 10, 30, .22); transform: translateX(-105%); transition: transform .22s ease; visibility: hidden; }
 .nq-drawer.is-open { transform: none; visibility: visible; }
+/* The drawer opens from the left edge: the button back to the top, at the bottom left, does not cover it. */
+body:has(.nq-drawer.is-open) .back-to-top { visibility: hidden; }
 .nq-drawer-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; padding: 1.1rem 1.2rem .9rem; background: linear-gradient(125deg, #7d1238, #e0507a); color: #fff; }
 .nq-drawer-head .eyebrow { display: flex; gap: .35rem; margin: 0 0 .35rem; }
 .nq-drawer-head h2 { margin: 0; color: #fff; font-size: 1.25rem; }
@@ -305,7 +307,7 @@
 .nq-members-option input { width: auto; margin: 0; accent-color: var(--nq-color); }
 
 /* Notifications */
-.nq-toast { position: fixed; right: 24px; bottom: 24px; z-index: 120; max-width: min(420px, calc(100vw - 32px)); padding: .75rem 1rem; border-radius: 12px; background: #2e8b57; color: #fff; font-weight: 750; box-shadow: 0 14px 32px rgba(20, 30, 25, .28); transition: opacity .35s, transform .35s; }
+.nq-toast { position: fixed; left: 4.6rem; bottom: 24px; z-index: 120; max-width: min(420px, calc(100vw - 5.6rem)); padding: .75rem 1rem; border-radius: 12px; background: #2e8b57; color: #fff; font-weight: 750; box-shadow: 0 14px 32px rgba(20, 30, 25, .28); transition: opacity .35s, transform .35s; }
 .nq-toast.is-error { background: #a3263a; }
 .nq-toast.is-leaving { opacity: 0; transform: translateY(8px); }
 
