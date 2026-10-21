@@ -128,9 +128,10 @@ def test_reporting_artifacts_choose_their_cdrs_by_campaign():
     assert "head.append(field('NR Mode', nrMode), campaignSlot, field('Dashboard', dashboard)" in script
     assert "head.append(field('NR Mode', nrMode), campaigns.field, field('GAP reference operator', baseline)" in script
     assert "head.append(field('NR Mode', nrMode), campaigns.field, field('Technology', technology)" in script
-    assert "picker = multiPicker('Campaigns', listed(), chosen, {exclusive: presets," in script
+    # (Network Insights chooses one Campaign; the other entries several, with the Latest choices first.)
+    assert "picker = single ? singlePicker(listed(), chosen)\n        : multiPicker('Campaigns', listed(), chosen, {exclusive: presets," in script
     assert "const campaigns = campaignPicker(() => nrMode.value, entry.campaigns || [], {complete: true});" in script
-    assert "const campaigns = campaignPicker(() => nrMode.value, selection.campaigns || [], {compact: true});" in script
+    assert "const campaigns = campaignPicker(() => nrMode.value, selection.campaigns || [], {compact: true, single: true});" in script
     # CDR Analysis, the entries of Dashboards, Scoring and Network Insights, and the Dashboard whose filter values are loaded.
     assert script.count('auto_cdrs: true') == 5
     assert 'function datasetsByKind(' not in script
