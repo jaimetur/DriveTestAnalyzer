@@ -1,0 +1,125 @@
+{
+  "presentations": [
+    {
+      "id": "overview",
+      "title": "DriveTest Analyzer — Overview",
+      "file": "overview.pptx",
+      "download": "DriveTest Analyzer - Overview.pptx",
+      "description": "The tool, a slide per module in the order of the tool, the teams it serves, its platform and its roadmap, closing with the one-slider.",
+      "sections": [
+        {
+          "title": "Introduction",
+          "slides": [
+            "DriveTest Analyzer",
+            "One platform, from CDRs to decisions"
+          ]
+        },
+        {
+          "title": "Modules",
+          "slides": [
+            "Eight modules, one shared workspace",
+            "CDR Analysis",
+            "PPT Dashboards",
+            "Scoring & GAP Analysis — who wins",
+            "Scoring & GAP Analysis — where to win the points back",
+            "Network Insights",
+            "NQ Calls",
+            "Reporting",
+            "Builders",
+            "Ticket Center"
+          ]
+        },
+        {
+          "title": "Teams",
+          "slides": [
+            "Built for every team"
+          ]
+        },
+        {
+          "title": "Platform",
+          "slides": [
+            "Enterprise-ready"
+          ]
+        },
+        {
+          "title": "Roadmap",
+          "slides": [
+            "Roadmap"
+          ]
+        },
+        {
+          "title": "In one slide",
+          "slides": [
+            "DriveTest Analyzer in one slide"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "one-slider",
+      "title": "DriveTest Analyzer — One-slider",
+      "file": "one-slider.pptx",
+      "download": "DriveTest Analyzer - One-slider.pptx",
+      "description": "The most important of the tool in a single slide: figures, modules, teams, platform and what comes next.",
+      "sections": [
+        {
+          "title": "In one slide",
+          "slides": [
+            "DriveTest Analyzer in one slide"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "roadmap",
+      "title": "DriveTest Analyzer — Roadmap",
+      "file": "roadmap.pptx",
+      "download": "DriveTest Analyzer - Roadmap.pptx",
+      "description": "What comes next: Umlaut CDRs, the Active Tests community, scale-out and speed on AWS, PostgreSQL and health monitoring.",
+      "sections": [
+        {
+          "title": "Roadmap",
+          "slides": [
+            "Roadmap — what comes next"
+          ]
+        }
+      ]
+    }
+  ],
+  "figures": {
+    "workspaces": [
+      "UK"
+    ],
+    "month": "October 2026",
+    "cdr_rows": 7549867,
+    "cdrs": 27,
+    "campaigns": 9,
+    "inventory_rows": 519133,
+    "mapping_rows": 1095986,
+    "nq_calls": 48138,
+    "nq_calls_total": 4032603,
+    "nq_followed": 2357,
+    "nq_rca": 2129,
+    "nq_comments": 3371,
+    "users": 16,
+    "roles": {
+      "super-admin": 2,
+      "admin": 1,
+      "user-editor": 12,
+      "user-viewer": 1
+    },
+    "help_chapters": 25,
+    "tests": 1895,
+    "releases": 24,
+    "workspace_list": [
+      {
+        "name": "UK",
+        "campaigns": 9
+      },
+      {
+        "name": "DE",
+        "campaigns": 1
+      }
+    ]
+  }
+}

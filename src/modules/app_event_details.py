@@ -336,7 +336,8 @@ _SERVER_ACTIONS = {
                    'vendor_mapping_skipped', 'clear_dataset_vendors', 'clear_dataset_vendors_failed', 'chart_set_rendering_completed',
                    'chart_set_rendering_warning', 'chart_set_published', 'chart_set_generation_failed', 'export_dashboard_ppt_failed',
                    'export_dashboard_ppt_warning', 'export_netcheck_cdr_report_failed', 'scoring_calculation_failed',
-                   'sync_combined_cdr_tables_completed', 'sync_combined_cdr_tables_failed', 'reporting_job_run'},
+                   'sync_combined_cdr_tables_completed', 'sync_combined_cdr_tables_failed', 'reporting_job_run',
+                   'generate_presentations', 'generate_presentations_failed'},
 }
 _SERVER_ACTION_PREFIXES = (('scheduled_database_backup_', 'scheduler'),)
 _REMOTE_ACTION_PREFIXES = ('incoming_server_transfer_', 'incoming_transfer_import_')

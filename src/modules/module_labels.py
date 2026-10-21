@@ -413,7 +413,7 @@ MODULE_SECTIONS: dict[str, list[tuple[Any, ...] | None]] = {
               ('Datasets Management', 'Datasets Management', 'table')],
     'super-admin': [('Users', 'Users', 'users'), ('Modules Profiles', 'Modules Profiles', 'toggle'),
                     ('Workspace Groups', 'Workspace Groups', 'folder'), ('Interface Settings', 'Interface Settings', 'sliders'),
-                    ('Database Management', 'Database Management', 'database')],
+                    ('Presentations', 'Presentations', 'presentation'), ('Database Management', 'Database Management', 'database')],
 }
 
 

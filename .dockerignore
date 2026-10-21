@@ -33,3 +33,5 @@ dist/
 tests/
 .idea/
 
+# Packages of the generator of the Help presentations: the image installs its own (npm ci).
+tools/presentations/node_modules/

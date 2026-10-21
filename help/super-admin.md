@@ -12,6 +12,7 @@ Super Admin centralises the users and their access, the tabs and labels of the m
 | Workspace Groups | [Open section](#workspace-groups) |
 | Access Requests | [Open section](#access-requests) |
 | Interface Settings | [Open section](#interface-settings) |
+| Presentations | [Open section](#presentations) |
 | Database Management | [Open section](#database-management) |
 | Reset Application | [Open section](#reset-application) |
 | Operational checklist | [Open section](#operational-checklist) |
@@ -104,6 +105,12 @@ After signing in, and while signed in on any page (the pages check every few sec
 - The **Label** in the corner of the tab (for example ALPHA, BETA or NEW, or empty for none), its colour, and an optional icon with its own colour. By default the modules in development are labelled (ALPHA, BETA or NEW) and the stable ones (Workspace, CDR Analysis and PPT Dashboards) have an empty label. Phones and other small screens never show the labels on the tabs.
 
 The Preview column draws each tab as it looks when it is not selected. Colours show their hexadecimal value below them to copy or paste it. The **Module labels** switch (**Show a label on the tab of each main module**), off on a new deployment, shows or hides every label at once, and **Reset tabs and labels to defaults** restores the default order, titles, icons, colours and labels. Interface Settings belong to the application configuration, so they travel with **App Config** in Import / Export, transfers to another server, Full Environment packages and backups.
+
+## Presentations
+
+**Presentations**, below Interface Settings, chooses the workspaces whose figures the [presentations of the Help](help.md#presentations) show (Overview, one-slider and roadmap): check one or several and **Save Presentations**. Their figures are added up: the CDRs (and their rows and campaigns), the Network Inventories, the Vendor Mappings and the Non-Qualified Calls with their follow-up, Ericsson RCA results and comments; the users and their roles, the workspaces of the server with their campaigns and the Help, tests and releases of the application complete them. With none checked, they show those of the workspace with the most CDR rows.
+
+When those figures, or the presentations of a new version, change, the server generates them again in the background, in a few seconds, into the `presentations` folder of the data directory, the first time a signed-in user opens them in the Help (and when this setting is saved); until then the Help shows the last ones. The label of the panel says when they were generated, or that the Help shows the copies kept with the application. Generating them needs Node.js and the packages of `tools/presentations`, which the Docker image includes; where they are missing the panel says so and the Help keeps those copies. App Events records every change of the setting (`save_presentation_figures`) and every generation, or why it failed (`generate_presentations`, `generate_presentations_failed`).
 
 ## Database Management
 

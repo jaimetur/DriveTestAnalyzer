@@ -1,0 +1,124 @@
+/* Presentations of the Help: their cards and the slide viewer, as the preview of a Bundle Report Template, in the colours
+   of the Help. */
+.presentation-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 17rem), 1fr)); gap: 1rem; margin: 1rem 0 1.4rem; }
+.presentation-card { display: grid; grid-template-rows: minmax(0, 1fr) auto; overflow: hidden; border: 1px solid var(--line); border-radius: 16px; background: #fff; box-shadow: 0 10px 26px rgba(16, 49, 74, .08); }
+.presentation-card-open { position: relative; display: grid; grid-template-rows: auto minmax(0, 1fr); align-content: start; gap: 0; width: 100%; padding: 0; overflow: hidden; border: 0; border-radius: 0; background: transparent; box-shadow: none; color: var(--text); font: inherit; font-weight: 400; text-align: left; cursor: zoom-in; }
+.presentation-card-open:hover .presentation-card-cover, .presentation-card-open:focus-visible .presentation-card-cover { transform: scale(1.03); }
+.presentation-card-open:focus-visible { outline: 3px solid color-mix(in srgb, var(--brand) 55%, transparent); outline-offset: -3px; }
+.doc-markdown .presentation-card-cover { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; margin: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: #e8eef2; transition: transform .25s ease; }
+.presentation-card-badge { position: absolute; top: .6rem; right: .6rem; padding: .18rem .55rem; border-radius: 999px; background: rgba(16, 49, 74, .82); color: #fff; font-size: .74rem; font-weight: 800; }
+.presentation-card-body { display: grid; gap: .25rem; padding: .8rem 1rem .4rem; }
+.presentation-card-title { color: var(--brand-3); font-size: 1rem; line-height: 1.3; }
+.presentation-card-description { color: var(--muted); font-size: .85rem; line-height: 1.45; }
+.doc-markdown .presentation-card-download { justify-self: start; margin: .4rem 1rem .9rem; padding: .35rem .85rem; border: 1px solid color-mix(in srgb, var(--brand) 45%, transparent); border-radius: 999px; color: var(--brand); font-size: .82rem; font-weight: 800; text-decoration: none; }
+.doc-markdown .presentation-card-download:hover, .doc-markdown .presentation-card-download:focus-visible { background: color-mix(in srgb, var(--brand) 10%, #fff); }
+.presentation-error { color: var(--danger); font-weight: 700; }
+.presentation-updating { margin: .6rem 0 0; color: var(--muted); font-size: .86rem; font-style: italic; }
+
+.presentation-dialog { width: 98vw; height: 96vh; max-width: none; max-height: none; padding: 0; border: 0; border-radius: 18px; box-shadow: 0 30px 70px rgba(10, 25, 40, .35); overflow: hidden; }
+.presentation-dialog[open] { display: flex; flex-direction: column; }
+.presentation-dialog[open] > * { flex: none; }
+.presentation-dialog[open] > .presentation-preview { flex: 1 1 auto; }
+.presentation-dialog::backdrop { background: rgba(10, 25, 40, .55); }
+.presentation-dialog-head { display: flex; justify-content: space-between; align-items: start; gap: 1rem; padding: 1rem 1.2rem .8rem; background: linear-gradient(135deg, var(--brand-3), var(--brand)); color: #fff; }
+.presentation-dialog-head .eyebrow { margin: 0; color: rgba(255, 255, 255, .85); }
+.presentation-dialog-head h2 { margin: .1rem 0 0; font-size: 1.25rem; }
+.presentation-dialog-close { width: 2.2rem; height: 2.2rem; padding: 0; border: 0; border-radius: 999px; background: rgba(255, 255, 255, .18); color: inherit; font-size: 1.4rem; line-height: 1; cursor: pointer; }
+.presentation-dialog-close:hover, .presentation-dialog-close:focus-visible { background: rgba(255, 255, 255, .3); }
+.presentation-preview { display: grid; grid-template-columns: minmax(14rem, 19rem) minmax(0, 1fr); min-height: 0; border-top: 1px solid var(--line); }
+.presentation-nav { overflow: auto; min-height: 0; padding: .6rem .5rem .8rem .8rem; border-right: 1px solid var(--line); background: #f3f7f8; }
+.presentation-nav-section { display: grid; gap: .25rem; margin-bottom: .7rem; }
+.presentation-nav-heading { justify-self: stretch; padding: .35rem .5rem; border: 0; border-radius: 8px; background: transparent; color: var(--brand-3); font: inherit; font-size: .86rem; font-weight: 800; text-align: left; cursor: pointer; }
+.presentation-nav-heading:hover, .presentation-nav-heading:focus-visible { background: color-mix(in srgb, var(--brand) 12%, #fff); }
+.presentation-nav-slides { display: grid; gap: .35rem; margin: 0; padding: 0; list-style: none; }
+.presentation-nav-slide { display: grid; gap: .3rem; width: 100%; padding: .35rem; border: 2px solid transparent; border-radius: 10px; background: transparent; box-shadow: none; color: var(--text); font: inherit; font-size: .8rem; text-align: left; cursor: pointer; }
+.presentation-nav-slide:hover, .presentation-nav-slide:focus-visible { background: color-mix(in srgb, var(--brand) 8%, #fff); }
+.presentation-nav-slide.is-current { border-color: var(--brand); background: color-mix(in srgb, var(--brand) 12%, #fff); }
+.presentation-nav-thumb { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+.presentation-nav-caption { display: grid; grid-template-columns: 1.6rem minmax(0, 1fr); align-items: baseline; gap: .3rem; }
+.presentation-nav-number { color: var(--muted); font-variant-numeric: tabular-nums; font-weight: 700; text-align: right; }
+.presentation-nav-slide.is-current .presentation-nav-number { color: var(--brand); }
+.presentation-nav-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.presentation-view { display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; min-height: 0; }
+.presentation-tools { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; padding: .45rem .8rem; border-bottom: 1px solid var(--line); background: #fff; }
+.presentation-tools button { min-width: 2.1rem; height: 2.1rem; padding: 0 .55rem; border: 1px solid color-mix(in srgb, var(--brand) 30%, transparent); border-radius: 999px; background: #fff; color: var(--brand-3); font: inherit; font-size: 1.1rem; font-weight: 800; line-height: 1; cursor: pointer; }
+.presentation-tools button:hover, .presentation-tools button:focus-visible { background: color-mix(in srgb, var(--brand) 10%, #fff); }
+.presentation-page-label { min-width: 7.5rem; font-weight: 700; font-variant-numeric: tabular-nums; text-align: center; }
+.presentation-separator { width: 1px; height: 1.4rem; margin: 0 .25rem; background: var(--line); }
+.presentation-hint { margin-left: auto; color: var(--muted); font-size: .76rem; }
+.presentation-stage { position: relative; min-height: 0; overflow: hidden; background: #dde5ea; cursor: crosshair; touch-action: none; user-select: none; }
+.presentation-stage.is-panning { cursor: grabbing; }
+.presentation-stage.is-loading::after { content: 'Loading the slide…'; position: absolute; inset: 0; display: grid; place-items: center; background: rgba(221, 229, 234, .7); color: var(--brand-3); font-weight: 700; }
+.presentation-stage img { position: absolute; top: 0; left: 0; max-width: none; transform-origin: 0 0; background: #fff; box-shadow: 0 6px 24px rgba(18, 32, 43, .25); }
+.presentation-stage img:not([src]) { display: none; }
+.presentation-viewer-rect { position: absolute; border: 2px dashed var(--brand); background: color-mix(in srgb, var(--brand) 15%, transparent); pointer-events: none; }
+.presentation-dialog-actions { display: flex; justify-content: flex-end; gap: .6rem; padding: .8rem 1.2rem; border-top: 1px solid var(--line); background: #fff; }
+.presentation-secondary { padding: .55rem 1rem; border: 1px solid color-mix(in srgb, var(--brand) 45%, transparent); border-radius: 999px; background: #fff; color: var(--brand-3); font: inherit; font-weight: 700; cursor: pointer; }
+.presentation-secondary:hover, .presentation-secondary:focus-visible { background: color-mix(in srgb, var(--brand) 10%, #fff); }
+.presentation-download { display: inline-flex; align-items: center; padding: .6rem 1.2rem; border-radius: 999px; background: var(--brand); color: #fff; font-weight: 800; text-decoration: none; }
+.presentation-download:hover, .presentation-download:focus-visible { background: #075d59; }
+/* The slideshow: its settings below its button, and the slides full screen on black, each entering over the one it
+   replaces with the transition of the presentation mode of PPT Dashboards. */
+.presentation-show-menu { position: relative; }
+.presentation-tools .presentation-show-button { padding: 0 .9rem; border-color: var(--brand); background: var(--brand); color: #fff; font-size: .9rem; }
+.presentation-tools .presentation-show-button:hover, .presentation-tools .presentation-show-button:focus-visible { background: #075d59; }
+.presentation-show-settings { position: absolute; z-index: 5; top: calc(100% + .45rem); left: 0; display: grid; gap: .65rem; width: 17rem; padding: .9rem 1rem; border: 1px solid var(--line); border-radius: 14px; background: #fff; box-shadow: 0 18px 42px rgba(16, 49, 74, .22); }
+.presentation-show-settings[hidden] { display: none; }
+.presentation-show-heading { margin: 0; color: var(--brand-3); font-size: .78rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.presentation-show-settings label { display: grid; gap: .25rem; color: var(--text); font-size: .82rem; font-weight: 700; }
+.presentation-show-settings input:not([type="checkbox"]), .presentation-show-settings select { width: 100%; min-height: 2.1rem; padding: .3rem .6rem; border: 1px solid var(--line-strong); border-radius: 10px; background: #fff; font: inherit; font-weight: 500; }
+.presentation-show-settings .presentation-show-check { display: flex; align-items: center; gap: .45rem; font-weight: 600; }
+.presentation-show-settings .presentation-show-check input { flex: none; width: 1rem; min-width: 0; height: 1rem; margin: 0; }
+.presentation-show-actions { display: flex; justify-content: flex-end; gap: .5rem; }
+.presentation-show-actions button { min-width: 0; height: auto; padding: .45rem .9rem; font-size: .85rem; }
+.presentation-tools .presentation-show-start { border-color: var(--brand); background: var(--brand); color: #fff; font-weight: 800; }
+.presentation-show { position: fixed; z-index: 10; inset: 0; overflow: hidden; background: #000; cursor: pointer; outline: none; }
+.presentation-show[hidden] { display: none; }
+.presentation-show img { position: absolute; inset: 0; width: 100%; height: 100%; max-width: none; object-fit: contain; }
+.presentation-show img:not([src]) { visibility: hidden; }
+.presentation-show-front.is-entering { animation: presentation-show-fade var(--presentation-transition, 1s) ease both; }
+.presentation-show-front.is-entering[data-effect="slide"] { animation-name: presentation-show-enter; }
+.presentation-show-front.is-entering[data-effect="slide-left"] { animation-name: presentation-show-enter-left; }
+.presentation-show-front.is-entering[data-effect="zoom"] { animation-name: presentation-show-zoom; }
+.presentation-show-front.is-entering[data-effect="rise"] { animation-name: presentation-show-rise; }
+.presentation-show-front.is-entering[data-effect="blur"] { animation-name: presentation-show-blur; }
+.presentation-show-front.is-entering[data-effect="rotate"] { animation-name: presentation-show-rotate; }
+.presentation-show-front.is-entering[data-effect="flip"] { animation-name: presentation-show-flip; transform-origin: center; }
+.presentation-show-front.is-entering[data-effect="bounce"] { animation-name: presentation-show-bounce; }
+.presentation-show-front.is-entering[data-effect="wipe"] { animation-name: presentation-show-wipe; }
+.presentation-show-front.is-entering[data-effect="mosaic"] { animation-name: presentation-show-mosaic; animation-timing-function: steps(7, end); }
+.presentation-show-front.is-entering[data-effect="curtain"] { animation-name: presentation-show-curtain; }
+.presentation-show-front.is-entering[data-effect="blinds"] { animation-name: presentation-show-blinds; animation-timing-function: steps(9, end); }
+.presentation-show-front.is-entering[data-effect="none"] { animation: none; }
+@keyframes presentation-show-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes presentation-show-enter { from { opacity: 0; transform: translateX(6%); } to { opacity: 1; transform: translateX(0); } }
+@keyframes presentation-show-enter-left { from { opacity: 0; transform: translateX(-6%); } to { opacity: 1; transform: translateX(0); } }
+@keyframes presentation-show-zoom { from { opacity: 0; transform: scale(.9); } to { opacity: 1; transform: scale(1); } }
+@keyframes presentation-show-rise { from { opacity: 0; transform: translateY(6%); } to { opacity: 1; transform: translateY(0); } }
+@keyframes presentation-show-blur { from { opacity: 0; filter: blur(14px); } to { opacity: 1; filter: blur(0); } }
+@keyframes presentation-show-rotate { from { opacity: 0; transform: scale(.92) rotate(-3deg); } to { opacity: 1; transform: scale(1) rotate(0); } }
+@keyframes presentation-show-flip { from { opacity: 0; transform: perspective(1600px) rotateY(-28deg) scale(.95); } to { opacity: 1; transform: perspective(1600px) rotateY(0) scale(1); } }
+@keyframes presentation-show-bounce { 0% { opacity: 0; transform: scale(.88); } 65% { opacity: 1; transform: scale(1.03); } 100% { opacity: 1; transform: scale(1); } }
+@keyframes presentation-show-wipe { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+@keyframes presentation-show-mosaic { 0% { opacity: 0; filter: blur(22px) saturate(.35); transform: scale(1.08); } 55% { opacity: .75; filter: blur(8px) saturate(.7); transform: scale(1.025); } 100% { opacity: 1; filter: blur(0) saturate(1); transform: scale(1); } }
+@keyframes presentation-show-curtain { from { clip-path: inset(0 50% 0 50%); } to { clip-path: inset(0 0 0 0); } }
+@keyframes presentation-show-blinds { from { clip-path: inset(0 0 100% 0); filter: brightness(1.35); } to { clip-path: inset(0 0 0 0); filter: brightness(1); } }
+.presentation-show-progress { position: absolute; right: 0; bottom: 0; left: 0; height: 4px; background: rgba(255, 255, 255, .12); }
+.presentation-show-progress span { display: block; width: 0; height: 100%; background: var(--brand); }
+.presentation-show-progress span.is-running { animation: presentation-show-progress linear both; }
+@keyframes presentation-show-progress { from { width: 0; } to { width: 100%; } }
+.presentation-show-controls { position: absolute; bottom: 1.4rem; left: 50%; display: flex; align-items: center; gap: .4rem; padding: .4rem .55rem; border-radius: 999px; background: rgba(20, 24, 28, .78); box-shadow: 0 10px 30px rgba(0, 0, 0, .35); opacity: 0; transform: translate(-50%, .6rem); transition: opacity .25s ease, transform .25s ease; cursor: default; }
+.presentation-show.is-pointer .presentation-show-controls, .presentation-show-controls:focus-within { opacity: 1; transform: translate(-50%, 0); }
+.presentation-show-controls button { min-width: 2.4rem; height: 2.4rem; padding: 0 .6rem; border: 0; border-radius: 999px; background: rgba(255, 255, 255, .1); box-shadow: none; color: #fff; font: inherit; font-size: 1.15rem; font-weight: 800; line-height: 1; cursor: pointer; }
+.presentation-show-controls button:hover, .presentation-show-controls button:focus-visible { background: rgba(255, 255, 255, .24); }
+.presentation-show-counter { min-width: 4.2rem; color: #fff; font-variant-numeric: tabular-nums; font-weight: 700; text-align: center; }
+@media (prefers-reduced-motion: reduce) {
+  .presentation-show-front.is-entering { animation-duration: .01s; }
+}
+@media (max-width: 760px) {
+  .presentation-dialog { width: 100vw; height: 100vh; border-radius: 0; }
+  .presentation-preview { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 28vh) minmax(0, 1fr); }
+  .presentation-nav { border-right: 0; border-bottom: 1px solid var(--line); }
+  .presentation-nav-slides { grid-auto-flow: column; grid-auto-columns: 9rem; overflow-x: auto; }
+  .presentation-hint { display: none; }
+}

@@ -20,5 +20,8 @@ htmlcov/
 # Local methodology reference; import explicitly into a workspace.
 /assets/scoring/netcheck_2026.json
 
+# Packages of the generator of the Help presentations (npm install in tools/presentations)
+/tools/presentations/node_modules/
+
 # Local preview configuration of the Claude desktop app (not part of the project)
 .claude/launch.json

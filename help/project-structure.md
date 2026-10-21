@@ -81,6 +81,7 @@ Runtime `config/` and `data/` directories use project-local defaults but are exc
 - `src/modules/network_insights_findings.py` and `network_insights_findings_slides.py`: the Key Findings of Network Insights (six benchmark views of the Data tests with their headlines) and their slides drawn with shapes in the colours of the theme; `static/js/network_insights_findings.js` draws them on the page.
 - `src/modules/starter_content.py`: the starter content of every workspace (methodologies, Report Templates, Dashboards and Auto-calculated Fields from `assets`).
 - `src/modules/map_areas.py`: Map Areas of a workspace (`map_area_layers`): the countries of the tests, the geoBoundaries levels and downloads, imported layers and the area of each test used by the Scoring points-lost map.
+- `src/modules/presentations.py`: the presentations of the Help with live figures: the figures of the workspaces chosen in Super Admin (read without changing their databases), their generation in the background with `tools/presentations` when they change, into `presentations/current` of the data directory, and `/api/presentations` and `/presentations/files/…`, which serve the last ones (those of `static/presentations` until then).
 - `src/modules/report_tasks.py`: Reporting Jobs (`report_tasks`, `report_task_runs`), schedules, artifact generation, email bodies, the scheduler and the artifact provider registry for other modules.
 - `src/modules/email_delivery.py`: SMTP settings (Application Config → Email Delivery) and sending.
 - `src/modules/non_qualified_calls.py`: Non-Qualified Calls: indexing of the NQ calls of every CDR (`nq_calls`, `nq_call_sources`), their follow-up (`nq_call_tracking`, `nq_call_comments`, `nq_call_history`, `nq_call_options`), the Analysis Center catalog in the workspace (`nq_analysis_fields`, `nq_root_catalog`, `nq_rca_results`), the automatic statuses, the summary, lifecycle, RCA insights and drill-down queries, the Excel export, the NQ Call Tracking portability document and its routes.
@@ -99,6 +100,7 @@ Runtime `config/` and `data/` directories use project-local defaults but are exc
 - `src/web_interface/static/css/`: application and module-specific styles.
 - `src/web_interface/static/markdown_renderer.js`: in-app README, Changelog and Help rendering, including cross-document heading anchors.
 - `src/web_interface/static/img/`: brand and interface images.
+- `src/web_interface/static/presentations/`: the presentations of the Help kept with the application, shown until the server generates them with live figures (`presentations.json` lists each one with its PowerPoint, the title of each slide by section and its figures, and `<id>/slide-NN.png` and `thumb-NN.png` are its slides); `static/js/presentation_viewer.js` shows a `presentations` code block of a Help chapter (their ids, one per line) as their cards and opens them in the slide viewer.
 
 ## Persistent data layout
 
@@ -212,6 +214,7 @@ The Help navigation order and labels are curated in `src/DriveTestAnalyzer.py`. 
 - `tests/test_cdr_reporting.py`: template, filter, chart and classic Reporting contracts.
 - Other test modules cover analytics, exports, Query Builder, workspaces and workspace template isolation.
 - `tests/conftest.py`: the `client` fixture. Dataset sources are parsed by isolated background workers, so after upload, retry, reprocess and mapping requests the fixture waits for those workers and the combined CDR rebuilds they start; `wait_for_background_dataset_work()` does the same for work queued by other requests.
+- `tools/presentations/`: the generator of the presentations of the Help, in Ericsson style (Node.js: `build.js`, `art.js`, and `package.json` with its `package-lock.json`). The server runs it with the figures of `src/modules/presentations.py`; `npm install` and `node build.js` there write the copies of `static/presentations/` with the figures written in `build.js`, and `python tools/presentations/render.py`, from the project root, renders their slides with LibreOffice as the previews of the Bundle Report Templates.
 - `tools/CreateUpdateRelease.py`: release helper that updates `src/version.py`, the `pyproject.toml` project version and the current `CHANGELOG.md` release, and can create and push a release branch.
 - `pyproject.toml`: package metadata and runtime dependencies (kept in sync with `requirements.txt`) plus the pytest configuration.
 - `.github/workflows/`: automated tests, Docker publishing and source packaging.

@@ -498,6 +498,32 @@
     </form>
   </details>
   {% endif %}
+  {% if user.role == 'super-admin' and admin_page == 'super-admin' and presentations %}
+  <details id="presentations" class="panel collapsible-panel" open data-panel-state-key="admin:presentations">
+    <summary class="collapsible-summary">
+      <div>
+        <p class="eyebrow">Help</p>
+        <h2>Presentations</h2>
+        <p class="summary-description">The workspaces whose figures the presentations of the Help show. Only super-admins can change them.</p>
+      </div>
+      <span class="pill presentations-status">{% if presentations.status.running %}Generating…{% elif presentations.status.generated_at %}Generated {{ presentations.status.generated_at[:16] | replace('T', ' ') }}{% else %}Copies of the application{% endif %}</span>
+      <span class="collapse-chip">Collapse</span>
+    </summary>
+    <form class="presentations-form" action="/super-admin/presentations" method="post">
+      <p class="table-help">The presentations of the Help (Overview, one-slider and roadmap) show the figures of the workspaces checked, added up, and are generated again when those figures change. With none checked, they show those of the workspace with the most CDR rows.</p>
+      <div class="presentations-workspaces">
+        {% for workspace in presentations.workspaces %}
+        <label class="presentations-workspace"><input type="checkbox" name="workspace_ids" value="{{ workspace.id }}" {% if workspace.chosen %}checked{% endif %}><span>{{ workspace.name }}</span></label>
+        {% else %}
+        <p class="table-help">There is no workspace yet.</p>
+        {% endfor %}
+      </div>
+      {% if presentations.status.unavailable %}<p class="alert">{{ presentations.status.unavailable }} The Help shows the presentations kept with the application.</p>
+      {% elif presentations.status.error %}<p class="alert">The last generation failed: {{ presentations.status.error }}</p>{% endif %}
+      <div class="form-actions"><a class="ghost-link" href="/documents/view/help#presentations">Open the presentations</a><button type="submit">Save Presentations</button></div>
+    </form>
+  </details>
+  {% endif %}
   {% endif %}
   {% endif %}
   {% if embedded_template_editor %}

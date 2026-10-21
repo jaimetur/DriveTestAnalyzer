@@ -230,6 +230,15 @@ a.topnav-link-logout { background: linear-gradient(135deg, #ffd8d8, #ffc6c6); bo
 .module-label-preview-tab .module-label-preview-badge { top: -.56rem; right: .45rem; height: 1.06rem; }
 /* Interface Settings: room between the option and its save button. */
 .interface-settings-form { display: grid; gap: 1rem; }
+/* Super Admin → Presentations: the workspaces whose figures the presentations of the Help show. */
+.presentations-form { display: grid; gap: .9rem; }
+.presentations-form .table-help { margin: 0; }
+.presentations-workspaces { display: flex; flex-wrap: wrap; gap: .55rem; }
+.presentations-workspace { display: inline-flex; align-items: center; gap: .5rem; padding: .5rem .85rem; border: 1px solid var(--line); border-radius: 999px; background: #fff; font-weight: 700; cursor: pointer; }
+.presentations-workspace:has(input:checked) { border-color: var(--brand); background: color-mix(in srgb, var(--brand) 10%, #fff); color: #075d59; }
+.presentations-workspace input { width: 1rem; height: 1rem; margin: 0; }
+.presentations-form .form-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: .8rem; }
+.presentations-status { margin-left: auto; }
 .interface-settings-form .form-actions { margin: 0; display: flex; flex-wrap: wrap; gap: 0.8rem; }
 /* Every colour picker shows its value in hexadecimal beside it, easy to copy or paste. */
 .color-hex-field { display: inline-flex; align-items: center; gap: 0.4rem; }

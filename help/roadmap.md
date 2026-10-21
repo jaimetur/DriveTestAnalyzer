@@ -4,9 +4,18 @@
 
 | Task or topic | Go to |
 | --- | --- |
+| Roadmap presentation | [Open section](#roadmap-presentation) |
 | Available now | [Open section](#available-now) |
 | Planned product work | [Open section](#planned-product-work) |
 | Architecture considerations | [Open section](#architecture-considerations) |
+
+## Roadmap presentation
+
+The roadmap is also a slide of its own, in the Overview deck (before the one-slider) and alone, in [Presentations](help.md#presentations): select it to open it in the slide viewer or download its PowerPoint.
+
+```presentations
+roadmap
+```
 
 ## Available now
 
@@ -28,10 +37,15 @@
 - App Logs with user/system execution identity.
 - Portable and server-to-server environment transfer.
 - Responsive layouts for compact mobile screens.
+- Network Insights, Non-Qualified Calls (Alpha) and the Ticket Center.
+- Bundle Report Templates and scheduled Reporting Jobs, with their Run History.
+- Users, Modules Profiles, Workspace Groups and scheduled backups.
 
 ## Planned product work
 
-- Non-Qualified Calls: confirm the NQ definition (currently every result other than Completed) and add its reports to Reporting Jobs.
+- Umlaut CDRs: ingest, score and report them next to the NetCheck CDRs.
+- Active Tests community: build with the tool the KPI and Scoring reports it generates today.
+- Non-Qualified Calls: confirm the NQ definition (currently every result other than Completed) and take the module out of Alpha.
 - Configuration datasets ingestion to enrich CDR dataset and combine them to extract combined info using SQL Queries or Report Templates.
 - Additional validated KPI/chart contracts.
 - Smart Orchestrator Logs Reports.
@@ -40,9 +54,9 @@
 
 Potential future scaling work:
 
-- external background-worker queue;
+- scale-out on AWS with an external background-worker queue;
 - durable analytical caches;
-- database/storage options for heavier concurrency;
+- PostgreSQL instead of SQLite, a database for hundreds of concurrent users;
 - stronger observability for long-running processing;
 - automated end-to-end deployment verification.
 

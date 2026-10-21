@@ -18,11 +18,16 @@ RUN pip install --no-cache-dir -r requirements.txt
 # LibreOffice Impress renders PowerPoint slides for the Word versions of the reports and the previews of the
 # PowerPoint ones; Writer renders the previews of the Word ones.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends chromium nodejs node-ws tzdata fonts-liberation libreoffice-impress-nogui \
+    && apt-get install -y --no-install-recommends chromium nodejs node-ws npm tzdata fonts-liberation libreoffice-impress-nogui \
        libreoffice-writer-nogui \
     && ln -snf /usr/share/zoneinfo/${TZ} /etc/localtime \
     && echo ${TZ} > /etc/timezone \
     && rm -rf /var/lib/apt/lists/*
+
+# The generator of the presentations of the Help draws them again with live figures (src/modules/presentations.py): its
+# packages are installed from their lock file, in a layer of their own.
+COPY tools/presentations/package.json tools/presentations/package-lock.json ./tools/presentations/
+RUN npm ci --prefix tools/presentations --omit=dev --no-audit --no-fund && npm cache clean --force
 
 # Keep dependency layers cacheable, but make every application layer belong to
 # one exact Git commit. This also leaves a directly inspectable revision inside
@@ -32,6 +37,7 @@ LABEL org.opencontainers.image.revision="${SOURCE_REVISION}"
 RUN printf '%s\n' "${SOURCE_REVISION}" > /app/.source-revision
 
 COPY src ./src
+COPY tools/presentations/build.js tools/presentations/art.js ./tools/presentations/
 COPY assets ./assets
 COPY help ./help
 COPY README.md ./README.md

@@ -16,6 +16,7 @@ Help Navigation groups chapters under General, Main Modules, Administrative Modu
 | Task or topic | Go to |
 | --- | --- |
 | Choose where to start | [Open section](#choose-where-to-start) |
+| Presentations | [Open section](#presentations) |
 | Documentation map | [Open section](#documentation-map) |
 | Fast troubleshooting | [Open section](#fast-troubleshooting) |
 
@@ -40,6 +41,17 @@ Help Navigation groups chapters under General, Main Modules, Administrative Modu
 | Changing application-wide runtime settings | [Application Config](app-config.md) |
 | Managing templates and chart mappings for a workspace | [Workspace Config](workspace-config.md) |
 | Reviewing application and workspace activity | [App Logs](app-logs.md) |
+| Presenting the tool to an audience | [Presentations](#presentations) |
+
+## Presentations
+
+Present DriveTest Analyzer with its presentations, in the Ericsson style: the **Overview** deck (the tool, its eight modules with a slide for each one, two for Scoring & GAP Analysis, in the order of their tabs, the teams it serves, its platform and its roadmap, closing with the one-slider), the **one-slider**, with the most important of the tool on a single slide, and the **roadmap**. Select a presentation to open it in the slide viewer: its sections and slides on the left and the chosen slide on the right, which zooms with the wheel (towards the pointer), by dragging a rectangle over it or with **+**, **−** and **⤢** (the whole slide, also with a double click), and moves with Shift+drag or the middle button; **‹ ›**, the arrow keys, Page Up and Page Down go through the slides, and Escape closes the viewer. **▶ Slideshow**, in the tools of the viewer, plays the presentation full screen from the slide shown, as the presentation mode of [PPT Dashboards](ppt-dashboards.md): choose the seconds per slide, the duration and the effect of the transition (one of thirteen, Random or None) and whether it starts again after the last slide; each slide enters over the previous one, a line at the bottom shows the time left on it, Space pauses and resumes it, the arrow keys or a click move through the slides, and Escape ends it (without Start again it pauses on the last slide). **Download PowerPoint**, on each presentation and in the viewer, downloads it. Their figures are live: those of the workspaces chosen in [Super Admin → Presentations](super-admin.md#presentations), and when they change (or a new version of the application draws them otherwise) the presentations are generated again in the background, in a few seconds, the first time a signed-in user opens them; meanwhile the Help shows the last ones, saying so above them.
+
+```presentations
+overview
+one-slider
+roadmap
+```
 
 ## Documentation map
 
@@ -63,7 +75,7 @@ Help Navigation groups chapters under General, Main Modules, Administrative Modu
 - [Administrator Config](administrator-config.md) — portability and datasets.
 - [Super Admin](super-admin.md) — users and their access, Interface Settings and databases.
 - [Project Structure](project-structure.md) — source/browser layers, database ownership, persistent storage, caches and generated output.
-- [Roadmap](roadmap.md) — current limitations and planned work.
+- [Roadmap](roadmap.md) — current limitations and planned work, also as a presentation.
 
 ## Fast troubleshooting
 

@@ -322,10 +322,10 @@ def _convert_to_pdf(soffice: str, content: bytes, suffix: str, slides: int) -> b
         return pdf.read_bytes() if pdf.is_file() else None
 
 
-def document_pdf(content: bytes, suffix: str) -> bytes | None:
+def document_pdf(content: bytes, suffix: str, whole: bool = False) -> bytes | None:
     """A PowerPoint (``pptx``) or Word (``docx``) document as PDF, converted by LibreOffice, or None when LibreOffice
     is unavailable. A long deck is shared among several conversions that run at once (see libreoffice_workers), whose
-    PDFs are joined in order."""
+    PDFs are joined in order, unless ``whole`` (one conversion, so that the slide numbers run through the deck)."""
     import importlib.util
 
     soffice = _soffice()
@@ -336,7 +336,7 @@ def document_pdf(content: bytes, suffix: str) -> bytes | None:
         content = without_unused_layouts(content)
     content = with_installed_fonts(content)
     slides = _slide_count(content) if suffix == 'pptx' else 0
-    parts = min(libreoffice_workers(), slides // SLIDES_PER_CONVERSION) if suffix == 'pptx' else 1
+    parts = min(libreoffice_workers(), slides // SLIDES_PER_CONVERSION) if suffix == 'pptx' and not whole else 1
     if parts <= 1:
         return _convert_to_pdf(soffice, content, suffix, slides or 20)
     decks = _deck_parts(content, parts)

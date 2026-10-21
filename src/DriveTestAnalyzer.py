@@ -12593,6 +12593,7 @@ def render_admin_template(
 ) -> HTMLResponse:
     """Admin (Import / Export / Transfer and Datasets Management), Super Admin (users, profiles, groups, interface
     settings and databases) or the Workspace Config page."""
+    from src.modules.presentations import presentation_settings
     embedded_template_editor = request.query_params.get('embedded_template_editor') == '1'
     selected_technology = request.query_params.get('catalogue_technology') or None
     selected_catalogue = request.query_params.get('catalogue_id') or None
@@ -12798,6 +12799,8 @@ def render_admin_template(
             'workspace_config_page': workspace_config_page,
             'admin_page': admin_page,
             'embedded_template_editor': embedded_template_editor,
+            # (The figures of the presentations of the Help, in Super Admin.)
+            'presentations': presentation_settings(sys.modules[__name__]) if admin_page == 'super-admin' else None,
             'users': admin_users,
             'modules_profiles': repository.list_modules_profiles(),
             'workspace_groups': repository.list_workspace_groups(),
@@ -26956,3 +26959,6 @@ from src.modules.report_tasks import install_report_task_routes
 install_report_task_routes(sys.modules[__name__])
 from src.modules.bundle_report_templates import install_bundle_report_template_routes
 install_bundle_report_template_routes(sys.modules[__name__])
+# The presentations of the Help, generated again with the live figures of the workspaces chosen in Super Admin.
+from src.modules.presentations import install_presentation_routes
+install_presentation_routes(sys.modules[__name__])
