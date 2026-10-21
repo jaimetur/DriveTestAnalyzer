@@ -463,3 +463,15 @@ def test_import_summaries_come_in_parts_for_the_summary_window():
     assert "showImportSummary(offer.notice || 'The incoming transfer was imported successfully.', offer.notice_details" in script
     assert "showImportSummary(transfer.notice || 'The destination server received and imported the package successfully.', transfer.notice_details" in script
     assert 'function importSummaryContent(details) {' in script and "infoOverlay.classList.toggle('info-wide', Boolean(options.wide));" in script
+
+
+def test_the_incoming_transfer_dialog_names_every_element_with_its_title():
+    import re
+
+    script = (Path(__file__).parents[1] / 'src/web_interface/static/js/app.js').read_text(encoding='utf-8')
+    start = script.index('const transferContentLabels = {')
+    labels = set(re.findall(r"^\s*'?([a-z_-]+)'?\s*:", script[start:script.index('};', start)], re.M))
+    elements = {*core.STATIC_EXPORT_TARGETS, *core.WORKSPACE_ELEMENT_EXPORT_TARGETS, *core.WORKSPACE_ARCHIVE_COMPONENTS,
+                *core.APPLICATION_BACKUP_COMPONENTS}
+    assert sorted(element for element in elements if element not in labels) == []
+    assert "'ticket-center': 'Ticket Center'," in script and "users_access: 'Users & Access'," in script

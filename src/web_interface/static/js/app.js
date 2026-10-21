@@ -8161,6 +8161,11 @@ document.querySelectorAll('[data-export-package-form]').forEach((form) => {
       const transferContentLabels = {
         config: 'Application Config',
         'config-with-templates': 'Application Config and PPT Templates',
+        'users-access': 'Users & Access',
+        users_access: 'Users & Access',
+        'ticket-center': 'Ticket Center',
+        ticket_center: 'Ticket Center',
+        app_database: 'Application database',
         workspace: 'Full Workspace',
         'full-environment': 'Full Environment',
         dashboards: 'Dashboards',
@@ -8201,7 +8206,9 @@ document.querySelectorAll('[data-export-package-form]').forEach((form) => {
         app_events: 'App Events',
       };
       const escapeHtml = (value) => String(value ?? '').replace(/[&<>'"]/g, (character) => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[character]));
-      const describeTransferItem = (item) => transferContentLabels[String(item)] || String(item).replaceAll('-', ' ').replaceAll('_', ' ');
+      // (An element without a label here is named from its key, each word with its capital.)
+      const describeTransferItem = (item) => transferContentLabels[String(item)]
+        || String(item).replaceAll('-', ' ').replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
       const targetLabels = [...new Set((Array.isArray(offer.targets) && offer.targets.length ? offer.targets : [offer.kind]).map(describeTransferItem))];
       // Workspace parts already listed as their own target are not repeated.
       const componentLabels = [...new Set((Array.isArray(offer.workspace_components) ? offer.workspace_components : []).map(describeTransferItem))]

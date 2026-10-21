@@ -24,6 +24,7 @@
 - **What the application does while it starts:** the startup page says the step being done while the active workspace opens (checking its database, its Output folder, the Scoring calculations and jobs left unfinished, the PPT Templates, the starter content and the creators, and the CDRs), and says that the workspace database is upgraded, which can take a few minutes, only at the first start of another version.
 
 #### 🐛 Bug fixes:
+- **Incoming transfer contents in lower case:** the window that asks to accept an incoming transfer names Ticket Center, Users & Access and the Application database with their titles, as it does the other elements, instead of in lower case.
 
 #### 📚 Documentation:
 
