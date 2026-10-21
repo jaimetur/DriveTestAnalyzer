@@ -72,13 +72,20 @@
     const parsed = new Date(value);
     return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toLocaleString(undefined, {dateStyle: 'medium', timeStyle: 'short'});
   };
+  // The day of a date (YYYY-MM-DD, local time), by which the date columns filter as in Excel: by year, month and day.
+  const dayKey = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
   // A cell with a date and its time on the line below, which keeps the Next Run and Last Run columns of the jobs narrow.
   const timeCell = (value) => {
     const parsed = value ? new Date(value) : null;
-    if (!parsed || Number.isNaN(parsed.getTime())) return node('td', value ? String(value) : '—');
+    if (!parsed || Number.isNaN(parsed.getTime())) {
+      const cell = node('td', value ? String(value) : '—');
+      // (Without a date, the filter of the column lists it as (Blank), as Excel does.)
+      if (!value) cell.dataset.filterValue = '';
+      return cell;
+    }
     const cell = node('td', undefined, 'rj-time-cell');
     cell.title = localTime(value);
-    cell.dataset.filterValue = cell.title;
+    cell.dataset.filterDate = dayKey(parsed);
     cell.append(node('span', parsed.toLocaleDateString(undefined, {dateStyle: 'medium'})),
       node('span', parsed.toLocaleTimeString(undefined, {timeStyle: 'short'})));
     return cell;
@@ -1409,7 +1416,7 @@
       // (The table scrolls on its own when it shows more than 10 jobs.)
       const wrapper = tasksBody.closest('.table-wrap');
       const frame = wrapper.getBoundingClientRect();
-      if (moveEvent.clientY < headBottom($('rj-tasks')) + 40) wrapper.scrollTop -= 14;
+      if (moveEvent.clientY < rowsTop('tasks') + 40) wrapper.scrollTop -= 14;
       else if (moveEvent.clientY > frame.top + wrapper.clientHeight - 40) wrapper.scrollTop += 14;
       const rows = taskRows().filter((element) => !element.hidden);
       const next = rows.filter((element) => element !== row).find((element) => {
@@ -1731,8 +1738,8 @@
     const leading = step < 0 ? lit[0] : lit[lit.length - 1];
     if (leading) {
       revealInTable(leading);
-      const bar = $('rj-bulk');
-      const clear = (parseFloat(getComputedStyle(bar).top) || 0) + bar.offsetHeight + $('rj-tasks').tHead.offsetHeight + 12;
+      const sticky = $('rj-tasks-sticky');
+      const clear = (parseFloat(getComputedStyle(sticky).top) || 0) + sticky.offsetHeight + 12;
       const box = leading.getBoundingClientRect();
       if (box.top < clear) window.scrollBy({top: box.top - clear, behavior: 'auto'});
       else if (box.bottom > window.innerHeight - 12) window.scrollBy({top: box.bottom - window.innerHeight + 12, behavior: 'auto'});
@@ -1856,8 +1863,11 @@
       const runCell = node('td', undefined, 'rj-run-id');
       if (state.can_edit) runCell.append(runCheck(run));
       runCell.append(String(run.id));
+      const started = node('td', localTime(run.started_at || run.created_at));
+      const startedAt = new Date(run.started_at || run.created_at || '');
+      if (!Number.isNaN(startedAt.getTime())) started.dataset.filterDate = dayKey(startedAt);
       const cells = [runCell, jobCell, node('td', run.trigger === 'schedule' ? 'Schedule' : `Manual · ${run.requested_by}`),
-        node('td', localTime(run.started_at || run.created_at)), statusCell, node('td', run.send_email ? (run.email_status || 'Pending') : 'No email')];
+        started, statusCell, node('td', run.send_email ? (run.email_status || 'Pending') : 'No email')];
       // What all the artifacts of the run take on disk.
       const size = node('td', run.artifacts_size ? formatSize(run.artifacts_size) : '—', 'rj-size');
       size.title = 'Size of all the artifacts of this run';
@@ -1990,15 +2000,16 @@
 
   // -- column filters, rows shown and headers held at the top -----------------------------
   // Each column of the Reporting Jobs and of the Run History but Actions filters the rows as in Excel: the arrow of its
-  // header lists its values to check. A row the filters hide is unchecked, so the buttons of the bar act on rows shown.
+  // header lists its values to check (the dates by year, month and day). A row the filters hide is unchecked, so the
+  // buttons of the bar act on rows shown.
   const runRows = () => [...runsBody.querySelectorAll('tr[data-run-id]')];
   const visibleTaskIds = () => taskRows().filter((row) => !row.hidden).map((row) => Number(row.dataset.taskId));
   const visibleRunIds = () => runRows().filter((row) => !row.hidden).map((row) => Number(row.dataset.runId));
   const filteredTables = {
-    tasks: {bar: $('rj-bulk'), table: $('rj-tasks'), rows: taskRows, id: 'taskId', check: '[data-task-check]', checked: checkedTaskIds,
-      empty: 'No Reporting Jobs match the column filters.'},
-    runs: {bar: $('rj-runs-bulk'), table: $('rj-runs'), rows: runRows, id: 'runId', check: '[data-run-check]', checked: checkedRunIds,
-      empty: 'No runs match the column filters.'},
+    tasks: {sticky: $('rj-tasks-sticky'), head: $('rj-tasks-head'), table: $('rj-tasks'), rows: taskRows, id: 'taskId',
+      check: '[data-task-check]', checked: checkedTaskIds, empty: 'No Reporting Jobs match the column filters.'},
+    runs: {sticky: $('rj-runs-sticky'), head: $('rj-runs-head'), table: $('rj-runs'), rows: runRows, id: 'runId',
+      check: '[data-run-check]', checked: checkedRunIds, empty: 'No runs match the column filters.'},
   };
   function applyColumnFilters(kind) {
     const {table, rows, id, check, checked, empty} = filteredTables[kind];
@@ -2021,11 +2032,44 @@
       table.tBodies[0].append(note);
     } else if (!none) note?.remove();
   }
+
+  // While the page scrolls, the bar of the buttons of each table and the header of the table stay at the top together
+  // (below the bar of the sections), as one block held by the browser, until the table leaves the window; held at the top,
+  // a band behind them hides the page above. The header is drawn in that block with the widths of the columns of the
+  // table, whose own header (a copy kept for those widths) is hidden above its rows.
+  const headWidths = new ResizeObserver((entries) => {
+    const kinds = new Set(entries.map((entry) => entry.target.closest('table').dataset.rjKind));
+    kinds.forEach((kind) => syncHeadWidths(kind));
+  });
+  function syncHeadWidths(kind) {
+    const {head, table} = filteredTables[kind];
+    const widths = [...table.tHead.rows[0].cells].map((cell) => cell.getBoundingClientRect().width);
+    let columns = head.querySelector('colgroup');
+    if (!columns) {
+      columns = node('colgroup');
+      widths.forEach(() => columns.append(node('col')));
+      head.prepend(columns);
+    }
+    head.style.width = `${table.getBoundingClientRect().width}px`;
+    [...columns.children].forEach((column, index) => { column.style.width = `${widths[index]}px`; });
+    table.style.setProperty('--rj-head-height', `${table.tHead.getBoundingClientRect().height}px`);
+  }
   for (const [kind, syncButtons] of [['tasks', () => syncBulk()], ['runs', () => syncRunsBulk()]]) {
-    window.enableExcelColumnFilters?.(filteredTables[kind].table, {
-      rowSelector: kind === 'tasks' ? 'tr[data-task-id]' : 'tr[data-run-id]', menuClass: 'rj-column-filter-menu',
+    const {head, table} = filteredTables[kind];
+    head.append(table.tHead);
+    window.enableExcelColumnFilters?.(table, {
+      head: head.tHead, rowSelector: kind === 'tasks' ? 'tr[data-task-id]' : 'tr[data-run-id]', menuClass: 'rj-column-filter-menu',
       onChange: () => { applyColumnFilters(kind); syncButtons(); syncTableHeight(kind); },
     });
+    const copy = head.tHead.cloneNode(true);
+    copy.inert = true;
+    copy.setAttribute('aria-hidden', 'true');
+    table.prepend(copy);
+    table.dataset.rjKind = kind;
+    [table, ...copy.rows[0].cells].forEach((element) => headWidths.observe(element));
+    // (The header follows the table when it is scrolled sideways.)
+    const wrapper = table.closest('.table-wrap');
+    wrapper.addEventListener('scroll', () => { head.parentElement.scrollLeft = wrapper.scrollLeft; }, {passive: true});
   }
 
   // Each table shows up to 10 rows, the others are reached by scrolling it (the Reporting Jobs show every row while the
@@ -2045,44 +2089,34 @@
         const rowsHeight = shown.slice(0, VISIBLE_ROWS).reduce((height, row) => height + row.getBoundingClientRect().height, 0);
         // (Borders and a horizontal scrollbar are kept out of the rows.)
         const frame = wrapper.offsetHeight - wrapper.clientHeight;
-        wrapper.style.maxHeight = `${Math.ceil(table.tHead.getBoundingClientRect().height + rowsHeight + frame)}px`;
+        wrapper.style.maxHeight = `${Math.ceil(rowsHeight + frame)}px`;
       }
-      queueStickyHeads();
+      syncStuck();
     });
   }
-  // (Where the header of a table is shown: it is held at the top of the table or of the window.)
-  const headBottom = (table) => table.tHead.rows[0].cells[0].getBoundingClientRect().bottom;
+  // Where the rows of a table start to show: below the block held at the top, or at the top of the table.
+  const rowsTop = (kind) => Math.max(filteredTables[kind].table.closest('.table-wrap').getBoundingClientRect().top,
+    filteredTables[kind].sticky.getBoundingClientRect().bottom);
   // A row moved with the keyboard or Move Up and Move Down is scrolled into its table, below the header.
   function revealInTable(row) {
     const wrapper = row.closest('.table-wrap');
-    const head = headBottom(row.closest('table'));
+    const top = rowsTop(row.closest('table').dataset.rjKind);
     const box = row.getBoundingClientRect();
     const bottom = wrapper.getBoundingClientRect().top + wrapper.clientHeight;
-    if (box.top < head) wrapper.scrollTop -= head - box.top;
+    if (box.top < top) wrapper.scrollTop -= top - box.top;
     else if (box.bottom > bottom) wrapper.scrollTop += box.bottom - bottom;
   }
-
-  // While the page scrolls, the bar of the buttons of each table stays at the top (below the bar of the sections) and the
-  // header of the table right below it, until the table leaves the window; held at the top, a band behind the bar hides
-  // the page above it. A table scrolled on its own keeps its header at its top.
-  let stickyFrame = 0;
-  function syncStickyHeads() {
-    stickyFrame = 0;
-    const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
-    for (const {bar, table} of Object.values(filteredTables)) {
-      const style = getComputedStyle(table);
-      const top = (parseFloat(style.getPropertyValue('--module-tabs-offset')) || 0) + (parseFloat(style.getPropertyValue('--section-top-offset')) || 0);
-      const frame = table.closest('.table-wrap').getBoundingClientRect();
-      const barBox = bar.getBoundingClientRect();
-      const stuck = !bar.hidden && barBox.top <= top + 1 && frame.top < top + bar.offsetHeight;
-      bar.classList.toggle('is-stuck', stuck);
-      // (Below the band of the bar, which reaches .45rem under it.)
-      const line = stuck ? barBox.bottom + 0.45 * rem : top;
-      table.style.setProperty('--rj-head-offset', `${Math.max(0, line - frame.top)}px`);
+  // (Only the band behind a block held at the top follows the scroll: the block itself is held by the browser.)
+  let stuckFrame = 0;
+  function syncStuck() {
+    stuckFrame = 0;
+    for (const {sticky, table} of Object.values(filteredTables)) {
+      const top = parseFloat(getComputedStyle(sticky).top) || 0;
+      const box = sticky.getBoundingClientRect();
+      sticky.classList.toggle('is-stuck', box.top <= top + 1 && table.closest('.table-wrap').getBoundingClientRect().top < box.bottom - 1);
     }
   }
-  const queueStickyHeads = () => { if (!stickyFrame) stickyFrame = requestAnimationFrame(syncStickyHeads); };
-  window.addEventListener('scroll', queueStickyHeads, {passive: true});
+  window.addEventListener('scroll', () => { if (!stuckFrame) stuckFrame = requestAnimationFrame(syncStuck); }, {passive: true});
   for (const kind of Object.keys(filteredTables)) {
     filteredTables[kind].table.closest('details').addEventListener('toggle', () => syncTableHeight(kind));
   }

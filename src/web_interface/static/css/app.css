@@ -3468,6 +3468,17 @@ body:has(.release-navigator) .help-navigator{top:37%}
 .excel-column-filter-options label { display: flex; align-items: center; gap: .55rem; padding: .42rem .48rem; border-radius: 7px; color: #38255a; font-size: .82rem; font-weight: 600; cursor: pointer; }
 .excel-column-filter-options label[hidden] { display: none; }.excel-column-filter-options label:hover { background: #f0eafa; }.excel-column-filter-options input { flex: 0 0 auto; width: 1rem; height: 1rem; margin: 0; accent-color: #6d46a8; }.excel-column-filter-options span { min-width: 0; overflow-wrap: anywhere; }
 .excel-column-filter-footer { justify-content: flex-end; padding-top: .1rem; }.excel-column-filter-footer button { padding: .55rem .9rem; border-radius: 999px; font-size: .8rem; font-weight: 800; }.excel-column-filter-footer button:first-child { border: 1px solid rgba(75, 32, 138, .22); background: #f0eafa; color: #56338d; box-shadow: none; }.excel-column-filter-footer button:last-child { border: 1px solid rgba(95, 59, 145, .42); background: linear-gradient(135deg,#6d46a8,#9870d0); color: #fff; }
+/* Date columns list their days by year and month, as Excel does. */
+.excel-column-filter-node[hidden], .excel-column-filter-children[hidden] { display: none; }
+.excel-column-filter-branch { display: flex; align-items: center; gap: .1rem; }
+.excel-column-filter-branch > label { flex: 1 1 auto; min-width: 0; }
+.excel-column-filter-menu .excel-column-filter-toggle { flex: 0 0 1.4rem; width: 1.4rem; height: 1.4rem; min-height: 0; padding: 0; border: 0; border-radius: 6px; background: transparent; color: inherit; font-size: .72rem; line-height: 1; box-shadow: none; cursor: pointer; }
+.excel-column-filter-menu .excel-column-filter-toggle:hover, .excel-column-filter-menu .excel-column-filter-toggle:focus-visible { background: #f0eafa; color: inherit; box-shadow: none; }
+.excel-column-filter-children { padding-left: 1.1rem; }
+.excel-column-filter-children > .excel-column-filter-day { margin-left: 1.5rem; }
+.excel-column-filter-extras { margin: .3rem 0 0 1.5rem; padding-top: .3rem; border-top: 1px solid rgba(75, 32, 138, .14); }
+.excel-column-filter-extras[hidden] { display: none; }
+.excel-column-filter-options label.is-blank span { color: #6b5a86; font-style: italic; }
 
 /* Keep Dashboard PPT and Reporting job headers visually aligned. */
 .ds-ppt-jobs-table thead th, .reporting-jobs-table-wrap .report-jobs-table thead th { background: #e8def5 !important; color: #4c3277; }

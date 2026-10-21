@@ -85,6 +85,7 @@
         <button type="button" id="rj-new" hidden>New Reporting Job</button>
         <p class="form-note" id="rj-status" role="status"></p>
       </div>
+      <div class="rj-sticky-head" id="rj-tasks-sticky">
       <div class="rj-bulk" id="rj-bulk" hidden>
         <label class="rj-select-all"><input type="checkbox" id="rj-select-all"> Select all</label>
         <div class="bulk-toolbar" role="toolbar" aria-label="Selected Reporting Jobs">
@@ -97,6 +98,8 @@
           <span class="bulk-toolbar-separator" aria-hidden="true"></span>
           <button type="button" class="bulk-action bulk-action-delete" id="rj-delete-selected" disabled title="Delete the selected Reporting Jobs with their runs and artifacts">Delete</button>
         </div>
+      </div>
+      <div class="table-wrap rj-head-wrap"><table class="reporting-jobs-table rj-head-table" id="rj-tasks-head"></table></div>
       </div>
       <div class="table-wrap">
         <table class="reporting-jobs-table" id="rj-tasks" data-phone-cards>
@@ -203,6 +206,7 @@
   <details class="panel collapsible-panel" open data-panel-state-key="reporting:runs">
     <summary class="collapsible-summary"><div><p class="eyebrow">Executions</p><h2>Run History</h2></div><span class="collapse-chip">Collapse</span></summary>
     <div class="collapsible-panel-body">
+      <div class="rj-sticky-head" id="rj-runs-sticky">
       <div class="rj-bulk rj-runs-bulk" id="rj-runs-bulk" hidden>
         <label class="rj-select-all"><input type="checkbox" id="rj-runs-select-all"> Select all</label>
         <div class="bulk-toolbar" role="toolbar" aria-label="Selected runs">
@@ -213,6 +217,8 @@
           <button type="button" class="bulk-action bulk-action-delete" id="rj-delete-runs-selected" disabled title="Delete the selected runs with their artifacts (none of them may be queued or running)">Delete</button>
         </div>
         <p class="form-note" id="rj-runs-status" role="status"></p>
+      </div>
+      <div class="table-wrap rj-head-wrap"><table class="reporting-jobs-table rj-head-table" id="rj-runs-head"></table></div>
       </div>
       <div class="table-wrap">
         <table class="reporting-jobs-table" id="rj-runs" data-phone-cards>

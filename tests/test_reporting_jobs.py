@@ -917,8 +917,8 @@ def test_jobs_name_their_modules_abbreviated_and_move_or_delete_several_at_once(
     assert '<input type="checkbox" id="rj-select-all"> Select all' in page
     assert 'data-rj-move="up"' in page and 'data-rj-move="down"' in page and 'id="rj-delete-selected"' in page
     assert 'function movedTaskOrder(order, step) {' in script and 'void saveOrder();' in script
-    assert '.report-jobs .rj-bulk { position: sticky;' in styles and '.report-jobs .rj-bulk.is-stuck::before {' in styles
-    assert '.report-jobs details.collapsible-panel:has(> .collapsible-panel-body > .rj-bulk) { overflow: clip; }' in styles
+    assert '.report-jobs .rj-sticky-head { position: sticky;' in styles and '.report-jobs .rj-sticky-head.is-stuck::before {' in styles
+    assert '.report-jobs details.collapsible-panel:has(> .collapsible-panel-body > .rj-sticky-head) { overflow: clip; }' in styles
     # The checked jobs are deleted together after one confirmation that names them, none of them while one belongs to
     # another user.
     assert "await api('/api/reporting/tasks/delete', {method: 'POST', body: JSON.stringify({ids: targets.map((task) => task.id)})});" in script
@@ -928,22 +928,34 @@ def test_jobs_name_their_modules_abbreviated_and_move_or_delete_several_at_once(
 
 
 def test_reporting_tables_filter_by_column_show_ten_rows_and_keep_their_bar_and_header_in_view():
+    page = (core.PROJECT_ROOT / 'src/web_interface/templates/report_jobs.html').read_text(encoding='utf-8')
     script = (core.PROJECT_ROOT / 'src/web_interface/static/js/report_jobs.js').read_text(encoding='utf-8')
     styles = (core.PROJECT_ROOT / 'src/web_interface/static/css/report_jobs.css').read_text(encoding='utf-8')
     helper = (core.PROJECT_ROOT / 'src/web_interface/static/js/app.js').read_text(encoding='utf-8')
-    # Every column of the Reporting Jobs and of the Run History but Actions filters as in Excel, Artifacts by module.
-    assert "rowSelector: kind === 'tasks' ? 'tr[data-task-id]' : 'tr[data-run-id]', menuClass: 'rj-column-filter-menu'," in script
+    # Every column of the Reporting Jobs and of the Run History but Actions filters as in Excel, Artifacts by module and
+    # the dates by year, month and day, whatever their time.
+    assert "head: head.tHead, rowSelector: kind === 'tasks' ? 'tr[data-task-id]' : 'tr[data-run-id]', menuClass: 'rj-column-filter-menu'," in script
     assert "artifactsCell.dataset.filterValues = JSON.stringify([...byModule.keys()]);" in script
     assert "valuesFor(row, index).some((value) => accepted.has(value))" in helper
+    assert script.count('.dataset.filterDate = dayKey(') == 2
+    assert "options.append(dateTree([...dates].sort(), selected));" in helper
+    assert "const accepted = new Set([...options.querySelectorAll('input:checked:not([data-filter-group])')].map((input) => input.value));" in helper
+    # Dates missing are listed as (Blank), last, lined up with the years.
+    assert "if (!value) cell.dataset.filterValue = '';" in script
+    assert "(dates.size ? [...others.filter(Boolean), ...others.filter((value) => !value)] : others).forEach((value) => {" in helper
     # Select all, Move Up and Move Down act on the rows shown; the rows the filters hide are unchecked.
     assert "if (selectAllTasks.checked) visibleTaskIds().forEach((id) => checkedTaskIds.add(id));" in script
     assert "if (selectAllRuns.checked) visibleRunIds().forEach((id) => checkedRunIds.add(id));" in script
     assert "const shown = new Set(visibleTaskIds());" in script.split('function movedTaskOrder(order, step) {', 1)[1]
-    # Up to 10 rows each; while the page scrolls, the bars of both tables and their headers stay at the top.
+    # Up to 10 rows each; while the page scrolls, the bar of each table and its header stay at the top in one block held by
+    # the browser (no position follows the scroll), the header taking the widths of the columns of the table.
     assert 'const VISIBLE_ROWS = 10;' in script
-    assert "table.style.setProperty('--rj-head-offset', `${Math.max(0, line - frame.top)}px`);" in script
-    assert '.reporting-jobs-table th { position: sticky; top: var(--rj-head-offset, 0px); z-index: 3;' in styles
-    assert '.rj-runs-bulk { position: static; }' not in styles
+    assert page.count('<div class="rj-sticky-head" id="rj-') == 2 and 'id="rj-tasks-head"' in page and 'id="rj-runs-head"' in page
+    assert "[table, ...copy.rows[0].cells].forEach((element) => headWidths.observe(element));" in script
+    assert '.report-jobs :is(#rj-tasks, #rj-runs) > thead th { position: static; visibility: hidden; }' in styles
+    assert '--rj-head-offset' not in script + styles and '.rj-runs-bulk { position: static; }' not in styles
+    # Actions, without a filter, is centred on the height of the other headers.
+    assert '.report-jobs .reporting-jobs-table.excel-filter-table thead th:last-child { padding: .55rem .6rem; vertical-align: middle; }' in styles
 
 def test_reporting_page_keeps_its_scroll_position_when_reloaded():
     script = (core.PROJECT_ROOT / 'src/web_interface/static/js/report_jobs.js').read_text(encoding='utf-8')

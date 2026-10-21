@@ -12504,15 +12504,19 @@ document.querySelectorAll('[data-configuration-timezone-picker]').forEach((picke
 });
 
 /* Reusable Excel-style value filters for compact job tables. A cell filters by its data-filter-value, or by each value
-   of the JSON list in its data-filter-values (the row matches when one of them is accepted), else by its text; with
-   rowSelector only the rows it matches (not empty or editor rows) are filtered, and menuClass styles the menus. */
-window.enableExcelColumnFilters = (table, {onChange, excludeLastColumn = true, rowSelector = '', menuClass = ''} = {}) => {
+   of the JSON list in its data-filter-values (the row matches when one of them is accepted), else by its text; a cell
+   with a data-filter-date (its day, YYYY-MM-DD) filters by that day, listed by year and month as in Excel. With
+   rowSelector only the rows it matches (not empty or editor rows) are filtered, menuClass styles the menus, and head
+   holds the filters when the header is drawn apart from the table (its <thead> by default). */
+window.enableExcelColumnFilters = (table, {onChange, excludeLastColumn = true, rowSelector = '', menuClass = '', head = null} = {}) => {
   if (!table || table._excelColumnFilters) return table?._excelColumnFilters || null;
-  const headers = Array.from(table.tHead?.rows[0]?.cells || []);
+  const headers = Array.from((head || table.tHead)?.rows[0]?.cells || []);
   const selectedByColumn = new Map();
   let openMenu = null;
   const valueFor = (row, index) => String(row.cells[index]?.dataset.filterValue ?? row.cells[index]?.textContent ?? '').trim();
   const valuesFor = (row, index) => {
+    // (A date filters by its day, whatever its time.)
+    if (row.cells[index]?.dataset.filterDate) return [row.cells[index].dataset.filterDate];
     const list = row.cells[index]?.dataset.filterValues;
     if (list === undefined) return [valueFor(row, index)];
     try {
@@ -12531,9 +12535,64 @@ window.enableExcelColumnFilters = (table, {onChange, excludeLastColumn = true, r
     openMenu.trigger.setAttribute('aria-expanded', 'false');
     openMenu.menu.remove(); openMenu = null;
   };
+  // The days of a date column are listed as Excel lists them: each year holds its months and each month its days; checking a
+  // year or a month checks every day in it, and it shows partly checked when only some of them are.
+  const syncDateGroups = (options) => options.querySelectorAll('input[data-filter-group]').forEach((group) => {
+    const days = [...group.closest('.excel-column-filter-node').querySelectorAll('input:not([data-filter-group])')];
+    const checked = days.filter((day) => day.checked).length;
+    group.checked = checked === days.length;
+    group.indeterminate = checked > 0 && checked < days.length;
+  });
+  const expandDateGroup = (node, open) => {
+    const toggle = node.querySelector(':scope > .excel-column-filter-branch > .excel-column-filter-toggle');
+    toggle.setAttribute('aria-expanded', String(open)); toggle.textContent = open ? '▾' : '▸';
+    node.querySelector(':scope > .excel-column-filter-children').hidden = !open;
+  };
+  const dateTree = (days, selected) => {
+    const branch = (text, level) => {
+      const node = document.createElement('div'); node.className = 'excel-column-filter-node'; node.dataset.level = level;
+      const head = document.createElement('div'); head.className = 'excel-column-filter-branch';
+      const toggle = document.createElement('button'); toggle.type = 'button'; toggle.className = 'excel-column-filter-toggle'; toggle.setAttribute('aria-label', `Show ${text}`);
+      const option = document.createElement('label'); const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.dataset.filterGroup = level;
+      const caption = document.createElement('span'); caption.textContent = text; option.append(checkbox, caption);
+      const children = document.createElement('div'); children.className = 'excel-column-filter-children';
+      head.append(toggle, option); node.append(head, children); expandDateGroup(node, false);
+      return {node, children};
+    };
+    const years = new Map();
+    days.forEach((key) => {
+      const [year, month] = key.split('-');
+      if (!years.has(year)) years.set(year, new Map());
+      if (!years.get(year).has(month)) years.get(year).set(month, []);
+      years.get(year).get(month).push(key);
+    });
+    const tree = document.createDocumentFragment();
+    for (const [year, months] of years) {
+      const yearBranch = branch(year, 'year');
+      for (const [month, keys] of months) {
+        const name = new Date(Number(year), Number(month) - 1, 1).toLocaleDateString(undefined, {month: 'long'});
+        const monthName = name.charAt(0).toLocaleUpperCase() + name.slice(1);
+        const monthBranch = branch(monthName, 'month');
+        keys.forEach((key) => {
+          const date = new Date(Number(year), Number(month) - 1, Number(key.slice(8)));
+          const option = document.createElement('label'); option.className = 'excel-column-filter-day';
+          option.dataset.search = `${year} ${monthName} ${date.getDate()} ${date.toLocaleDateString(undefined, {dateStyle: 'medium'})} ${key}`.toLocaleLowerCase();
+          const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.value = key; checkbox.checked = selected.has(key);
+          const text = document.createElement('span'); text.textContent = String(date.getDate()); option.append(checkbox, text);
+          monthBranch.children.append(option);
+        });
+        yearBranch.children.append(monthBranch.node);
+      }
+      tree.append(yearBranch.node);
+    }
+    // (A single year opens on its months.)
+    if (years.size === 1) expandDateGroup(tree.firstElementChild, true);
+    return tree;
+  };
   const controller = {matches, apply};
   table._excelColumnFilters = controller;
   table.classList.add('excel-filter-table');
+  head?.closest('table')?.classList.add('excel-filter-table');
   headers.forEach((header, index) => {
     if (excludeLastColumn && index === headers.length - 1) return;
     const label = header.textContent.trim();
@@ -12556,10 +12615,16 @@ window.enableExcelColumnFilters = (table, {onChange, excludeLastColumn = true, r
       const selectAll = document.createElement('button'); selectAll.type = 'button'; selectAll.textContent = 'Select all';
       const clear = document.createElement('button'); clear.type = 'button'; clear.textContent = 'Clear'; toolbar.append(selectAll, clear);
       const options = document.createElement('div'); options.className = 'excel-column-filter-options';
-      values.forEach((value) => {
+      const dates = new Set(rows().map((row) => row.cells[index]?.dataset.filterDate).filter(Boolean));
+      // (In a date column, the values without a date follow the years, lined up with them, and the blank ones last.)
+      const extras = dates.size ? document.createElement('div') : options;
+      if (dates.size) { extras.className = 'excel-column-filter-extras'; options.append(dateTree([...dates].sort(), selected)); }
+      const others = values.filter((value) => !dates.has(value));
+      (dates.size ? [...others.filter(Boolean), ...others.filter((value) => !value)] : others).forEach((value) => {
         const option = document.createElement('label'); const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.value = value; checkbox.checked = selected.has(value);
-        const text = document.createElement('span'); text.textContent = value || '(Blank)'; option.append(checkbox, text); options.append(option);
+        const text = document.createElement('span'); text.textContent = value || '(Blank)'; option.classList.toggle('is-blank', dates.size > 0 && !value); option.append(checkbox, text); extras.append(option);
       });
+      if (extras !== options && extras.childElementCount) options.append(extras);
       const footer = document.createElement('div'); footer.className = 'excel-column-filter-footer';
       const cancel = document.createElement('button'); cancel.type = 'button'; cancel.textContent = 'Cancel';
       const confirm = document.createElement('button'); confirm.type = 'button'; confirm.textContent = 'Apply'; footer.append(cancel, confirm);
@@ -12573,12 +12638,32 @@ window.enableExcelColumnFilters = (table, {onChange, excludeLastColumn = true, r
         menu.style.top = `${below + height <= window.innerHeight - 10 ? below : Math.max(10, bounds.top - height - 5)}px`;
       };
       openMenu = {menu, trigger, place}; place(); trigger.setAttribute('aria-expanded', 'true');
-      search.addEventListener('input', () => { const term = search.value.trim().toLocaleLowerCase(); options.querySelectorAll('label').forEach((option) => { option.hidden = Boolean(term) && !option.textContent.toLocaleLowerCase().includes(term); }); });
-      selectAll.addEventListener('click', () => options.querySelectorAll('input').forEach((input) => { input.checked = true; }));
-      clear.addEventListener('click', () => options.querySelectorAll('input').forEach((input) => { input.checked = false; }));
+      search.addEventListener('input', () => {
+        const term = search.value.trim().toLocaleLowerCase();
+        options.querySelectorAll(':scope > label, .excel-column-filter-extras > label').forEach((option) => { option.hidden = Boolean(term) && !option.textContent.toLocaleLowerCase().includes(term); });
+        options.querySelectorAll('.excel-column-filter-extras').forEach((extras) => { extras.hidden = !extras.querySelector('label:not([hidden])'); });
+        // (Days match by their date in any form; the years and months with a day found open on it.)
+        options.querySelectorAll('.excel-column-filter-day').forEach((option) => { option.hidden = Boolean(term) && !option.dataset.search.includes(term); });
+        options.querySelectorAll('.excel-column-filter-node').forEach((node) => {
+          node.hidden = !node.querySelector('.excel-column-filter-day:not([hidden])');
+          if (term && !node.hidden) expandDateGroup(node, true);
+        });
+      });
+      syncDateGroups(options);
+      options.addEventListener('click', (optionEvent) => {
+        const toggle = optionEvent.target.closest('.excel-column-filter-toggle');
+        if (toggle) expandDateGroup(toggle.closest('.excel-column-filter-node'), toggle.getAttribute('aria-expanded') !== 'true');
+      });
+      options.addEventListener('change', (optionEvent) => {
+        const group = optionEvent.target.dataset.filterGroup ? optionEvent.target : null;
+        if (group) group.closest('.excel-column-filter-node').querySelectorAll('input').forEach((input) => { input.checked = group.checked; });
+        syncDateGroups(options);
+      });
+      selectAll.addEventListener('click', () => { options.querySelectorAll('input').forEach((input) => { input.checked = true; }); syncDateGroups(options); });
+      clear.addEventListener('click', () => { options.querySelectorAll('input').forEach((input) => { input.checked = false; }); syncDateGroups(options); });
       cancel.addEventListener('click', closeMenu);
       confirm.addEventListener('click', () => {
-        const accepted = new Set([...options.querySelectorAll('input:checked')].map((input) => input.value));
+        const accepted = new Set([...options.querySelectorAll('input:checked:not([data-filter-group])')].map((input) => input.value));
         if (accepted.size === values.length) selectedByColumn.delete(index); else selectedByColumn.set(index, accepted);
         header.classList.toggle('has-excel-column-filter', selectedByColumn.has(index)); apply(); closeMenu();
       });
