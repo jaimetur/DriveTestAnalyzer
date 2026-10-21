@@ -1119,9 +1119,10 @@ def test_favourite_elements_are_exported_and_imported_on_their_own(client):
     from src.modules.scoring_reports import load_report_state
 
     configurations = [item['name'] for item in load_report_state(core.repository)['configurations']]
-    for target, label in (('bundle-report-template-favourites', 'Bundle Report Template Favourites'),
-                          ('scoring-favourites-filters', 'Scoring & GAP Favourites Filters'),
-                          ('scoring-report-templates', 'Scoring & GAP Report Templates')):
+    # The message names one item or several (``1 Bundle Report Template Favourite``, ``2 … Favourites``).
+    for target, label in (('bundle-report-template-favourites', 'Bundle Report Template Favourite'),
+                          ('scoring-favourites-filters', 'Scoring & GAP Favourites Filter'),
+                          ('scoring-report-templates', 'Scoring & GAP Report Template')):
         exported = client.get(f'/admin/import-export/export?export_target={target}')
         assert exported.status_code == 200, exported.text
         with zipfile.ZipFile(BytesIO(exported.content)) as archive:
