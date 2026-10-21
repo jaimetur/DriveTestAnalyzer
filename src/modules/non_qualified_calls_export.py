@@ -1,5 +1,6 @@
-"""Non-Qualified Calls report: Executive Summary, Progress Status and Root Cause Analysis in PowerPoint; its Word
-version and its section of a Bundle Report Template are composed from it (see bundle_report_templates.module_document)."""
+"""Non-Qualified Calls report: Executive Summary, NQ Prioritization, Progress Status and Root Cause Analysis in PowerPoint;
+its Word version and its section of a Bundle Report Template are composed from it (see
+bundle_report_templates.module_document)."""
 
 from datetime import datetime
 from pathlib import Path
@@ -24,7 +25,8 @@ FILTER_LABELS = (
     ('root_category', 'Root Category'), ('root_cause', 'Root Cause'), ('call_type', 'Call Type'), ('period', 'Period'),
     ('age', 'Age of Open Calls'), ('root_pair', 'Root Domain · Cause'),
     ('effective_domain', 'Root Domain (with suggestions)'), ('effective_cause', 'Root Domain · Cause (with suggestions)'),
-    ('node', 'eNB / gNB'), ('state', 'Follow-up'), ('rca_state', 'Root Cause'), ('version', 'CDR Version'),
+    ('node', 'eNB / gNB'), ('place', 'Repetition Place'), ('state', 'Follow-up'), ('rca_state', 'Root Cause'),
+    ('version', 'CDR Version'),
 )
 STATE_LABELS = {
     'closed': 'Closed', 'attended': 'Attended', 'not_attended': 'Not attended', 'with_team': 'With team',
@@ -270,6 +272,8 @@ def classified_root_stats(stats: dict[str, Any]) -> dict[str, Any]:
 # chooses them (see bundle_report_templates): (panel key, panel title, ((component key, label), ...)).
 REPORT_PANELS: tuple[tuple[str, str, tuple[tuple[str, str], ...]], ...] = (
     ('summary', 'Summary', (('executive', 'Executive Summary'),)),
+    ('prioritization', 'NQ Prioritization', (('rules', 'Prioritization Rules'), ('kpis', 'Scoring points lost by KPI'),
+                                             ('issues', 'Repeated issues'), ('queue', 'Next to analyse'))),
     ('rates', 'NQ Rate by Campaign and Operator', (('rates', 'NQ rate of each campaign and operator'),)),
     ('failures', 'Failures by Type, Technology & Serving Cell', (
         ('types', 'Failure types of each service'), ('technology', 'Technology and classification'),
@@ -342,24 +346,69 @@ def keyed_report_panels(summary: dict[str, Any], breakdowns: list[dict[str, Any]
         failures.extend(('failures', _failure_component(subtitle),
                          SlideTitle(FAILURES_TITLE, '', subtitle + (f' · {number}/{len(pages)}' if len(pages) > 1 else '')), image)
                         for number, (_title, image) in enumerate(pages, start=1))
+    # The NQ Prioritization, each table on its own panels with what it shows in the subtitle.
+    prioritization = []
+    for component, subtitle, columns, rows, numeric in prioritization_tables(options.get('prioritization') or {}):
+        pages = table_panels(subtitle, columns, rows, numeric=numeric)
+        prioritization.extend(('prioritization', component,
+                               SlideTitle(PRIORITIZATION_TITLE, '', subtitle + (f' · {number}/{len(pages)}' if len(pages) > 1 else '')), image)
+                              for number, (_title, image) in enumerate(pages, start=1))
     life = options.get('lifecycle')
     if life and not options.get('show_empty'):
         life = {**life, 'phases': [{**phase, 'empty': 0} for phase in life.get('phases') or []]}
     lifecycle = [('lifecycle', _lifecycle_component(title), title, image)
                  for title, image in (lifecycle_panels(life, options.get('sections')) if life else [])]
-    return [*[('summary', 'executive', *panel) for panel in executive_summary_panels(summary, breakdowns, options)], *rates,
-            *failures, *sources, *analysis, *lifecycle,
+    return [*[('summary', 'executive', *panel) for panel in executive_summary_panels(summary, breakdowns, options)],
+            *prioritization, *rates, *failures, *sources, *analysis, *lifecycle,
             *[('progress', _progress_component(title), title, image) for title, image in progress_view_panels(progress, options, label)],
             *tables]
 
 
 def report_panels(summary: dict[str, Any], breakdowns: list[dict[str, Any]], progress: dict[str, Any],
                   options: dict[str, Any]) -> list[tuple[str, Any]]:
-    """The Executive Summary, NQ rates, Root Cause Sources and Analysis, Lifecycle and Progress View drawn like the page, as panels."""
+    """The Executive Summary, NQ Prioritization, NQ rates, Root Cause Sources and Analysis, Lifecycle and Progress View
+    drawn like the page, as panels."""
     return [(title, image) for _panel, _component, title, image in keyed_report_panels(summary, breakdowns, progress, options)]
 
 
 FAILURES_TITLE = 'Failures by Type, Technology & Serving Cell'
+PRIORITIZATION_TITLE = 'NQ Prioritization'
+
+
+def _points(value: Any) -> str:
+    return '—' if value is None else f'{float(value):.2f}'
+
+
+def prioritization_tables(data: dict[str, Any]) -> list[tuple[str, str, list[str], list[list[str]], set[int]]]:
+    """The NQ Prioritization as on the page: the calls of each rule, the KPIs whose points they lose, the repeated
+    issues and the calls to analyse next ((component, subtitle, columns, rows, numeric columns))."""
+    tables = []
+    rules = [[row['name'] or 'No rule', row['conditions'], row['criterion'] or '—',
+              ' / '.join(value for value in (row['priority'], row['track_priority']) if value) or '—',
+              f"{row['calls']:,}", f"{row['prioritized']:,}", f"{row['tracked']:,}", _points(row['points']),
+              f"{row['open']:,}", f"{row['attended']:,}"] for row in data.get('rules') or [] if row['calls'] or row['name']]
+    if rules:
+        tables.append(('rules', 'Prioritization Rules',
+                       ['Rule', 'Takes', 'Prioritizes', 'Priority', 'Calls', 'Prioritized', 'Track only', 'Points lost', 'Open',
+                        'Attended'], rules, {4, 5, 6, 7, 8, 9}))
+    kpis = [[row['kpi'], row.get('category') or '—', row['environment'], f"{row['calls']:,}", _points(row['points'])]
+            for row in data.get('kpis') or []]
+    if kpis:
+        tables.append(('kpis', 'Scoring points lost by KPI', ['KPI', 'Category', 'Environment', 'Calls', 'Points lost'], kpis, {3, 4}))
+    issues = [[row['operator'], row['place'], f"{row['calls']:,}", f"{row['campaigns']:,}",
+               ', '.join(f'{name} {count}' for name, count in row['services'].items()),
+               ', '.join(f'{name} {count}' for name, count in row['nr_modes'].items()), _points(row['points']),
+               f"{row['open']:,}", row['category'] or '—'] for row in data.get('issues') or []]
+    if issues:
+        tables.append(('issues', 'Repeated issues', ['Operator', 'Place', 'Calls', 'Campaigns', 'Services', 'NR Mode',
+                                                     'Points lost', 'Open', 'Main Root Category'], issues, {2, 3, 6, 7}))
+    queue = [[row['join_id'] or '—', row['operator'], row['service'], row['nr_mode'] or '—', row['campaign'] or '—',
+              row['result'] or '—', row['rule'] or '—', row['priority'] or '—', _points(row['points']),
+              '—' if row['repetitions'] is None else f"{row['repetitions']:,}", row['place'] or '—'] for row in data.get('queue') or []]
+    if queue:
+        tables.append(('queue', 'Next to analyse', ['JOIN_ID', 'Operator', 'Service', 'NR Mode', 'Campaign', 'Result', 'Rule',
+                                                    'Priority', 'Points lost', 'Repetitions', 'Place'], queue, {8, 9}))
+    return tables
 
 
 def failure_tables(failures: dict[str, Any]) -> list[tuple[str, list[str], list[list[str]]]]:

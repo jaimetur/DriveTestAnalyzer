@@ -1282,3 +1282,26 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 /* The buttons the page hides (Save of a configuration the role cannot change, Save for the workspace, Default column
    order…) stay hidden despite their display. */
 :is(.non-qualified-calls, .nq-drawer, .nq-options-dialog) :is(.nq-primary-action, .nq-secondary-action, .nq-link-action)[hidden] { display: none; }
+/* NQ Prioritization: the panel and its rules. */
+.nq-priority { display: grid; gap: 1.1rem; }
+.nq-priority .nq-failure-card { align-content: start; }
+/* The levels beside the wider table of the points lost by KPI, one below the other on narrow screens. */
+.nq-priority .nq-failure-grid { grid-template-columns: minmax(14rem, 1fr) minmax(0, 2.6fr); }
+.nq-priority-note { margin: 0; padding: .45rem .7rem; border-left: 4px solid #e08a1e; border-radius: 8px; background: #fff8e8; color: #7a4a00; }
+.nq-failure-table td.nq-priority-level { border-left: 4px solid var(--nq-chip, var(--nq-border)); }
+.nq-priority-dialog { width: min(980px, calc(100vw - 32px)); }
+.nq-priority-levels { display: grid; gap: .5rem; padding: .7rem .85rem; border: 1px solid var(--nq-border); border-radius: 12px; background: var(--nq-soft); }
+.nq-priority-levels h3 { margin: 0; color: var(--nq-dark); font-size: .92rem; }
+.nq-priority-settings { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr)); gap: .45rem .9rem; font-size: .8rem; font-weight: 700; }
+/* Each setting reads as a sentence with its number inside it. */
+.nq-priority-settings label:not(.nq-toggle) { display: block; line-height: 2.2; }
+.nq-priority-settings input[type="number"] { display: inline-block; width: 4.6rem; min-height: 1.9rem; margin: 0 .2rem; vertical-align: middle; }
+.nq-priority-settings .nq-toggle { justify-self: start; }
+.nq-priority-rule-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 26rem), 1fr)); gap: .45rem .9rem; margin-left: 2.2rem; }
+.nq-priority-rule-grid .nq-field-setting { grid-template-columns: 10rem minmax(0, 1fr); }
+.nq-priority-checks { display: flex; flex-wrap: wrap; gap: .3rem; }
+@media (max-width: 720px) {
+  .nq-priority .nq-failure-grid { grid-template-columns: minmax(0, 1fr); }
+  .nq-priority-rule-grid { margin-left: 0; }
+  .nq-priority-rule-grid .nq-field-setting { grid-template-columns: minmax(0, 1fr); }
+}

@@ -10,7 +10,9 @@ value from one source:
 - ``cdr``: an indexed call field or a CDR column (read only);
 - ``rca``: the Ericsson RCA results imported by JOIN_ID (read only);
 - ``derived``: a list value derived from call fields by keywords (for example the Session Type
-  summary CALL / MULTI-RAB / WhatsApp).
+  summary CALL / MULTI-RAB / WhatsApp);
+- ``priority``: a value of the NQ Prioritization (see ``nq_prioritization``): the scoring impact, the
+  repetitions and the prioritization rule of the call (read only).
 
 The root cause catalog groups the Root Categories and the Root Causes of the analysts under the
 technical Domains (RF, RAN, Core, IMS/E2E…): categories and causes are chosen independently, and
@@ -61,7 +63,7 @@ FIELD_TYPES = {
 }
 FIELD_SOURCES = {
     'user': 'Entered by the analysts', 'tracking': 'Follow-up of the call', 'cdr': 'From the CDR',
-    'rca': 'From the Ericsson RCA', 'derived': 'Derived from the call',
+    'rca': 'From the Ericsson RCA', 'derived': 'Derived from the call', 'priority': 'From the NQ Prioritization',
 }
 # Follow-up values a tracking field shows.
 TRACKING_REFS = {
@@ -75,6 +77,32 @@ RCA_REFS = {
     'rca_initial_category': 'Ericsson RCA Initial Category', 'rca_initial_cause': 'Ericsson RCA Initial Subcategory',
     'rca_category': 'Ericsson RCA Suggested Category', 'rca_cause': 'Ericsson RCA Suggested Cause', 'rca_evidence': 'Ericsson RCA Evidence',
 }
+# Values of the NQ Prioritization (see nq_prioritization): their name and type, and the values of its lists.
+PRIORITY_REFS = {
+    'impact_level': 'Scoring Impact', 'impact_points': 'Scoring Points Lost', 'impact_kpis': 'Scoring KPIs Lost',
+    'repeated': 'Repeated Issue', 'repetitions': 'Repetitions', 'repeated_campaigns': 'Repeated Campaigns',
+    'place_label': 'Repetition Place', 'prioritization': 'Prioritization', 'priority_rule': 'Prioritization Rule',
+}
+PRIORITY_TYPES = {
+    'impact_level': 'list', 'impact_points': 'number', 'impact_kpis': 'text', 'repeated': 'yes_no', 'repetitions': 'number',
+    'repeated_campaigns': 'number', 'place_label': 'text', 'prioritization': 'list', 'priority_rule': 'list',
+}
+PRIORITY_NUMBERS = frozenset(ref for ref, kind in PRIORITY_TYPES.items() if kind == 'number')
+IMPACT_HIGH, IMPACT_MEDIUM, IMPACT_LOW = 'High', 'Medium', 'Low'
+IMPACT_NONE, IMPACT_NOT_SCORED, IMPACT_EXCLUDED = 'No impact', 'Not scored', 'Excluded from Scoring'
+IMPACT_LEVELS = ((IMPACT_HIGH, '#c8102e'), (IMPACT_MEDIUM, '#e08a1e'), (IMPACT_LOW, '#3a7fc1'), (IMPACT_NONE, '#9aa5ad'),
+                 (IMPACT_NOT_SCORED, '#c4ccd2'), (IMPACT_EXCLUDED, '#7b8790'))
+PRIORITIZED, TRACK_ONLY, NO_RULE = 'Prioritized', 'Track only', 'No rule'
+PRIORITIZATION_VALUES = ((PRIORITIZED, '#2e8b57'), (TRACK_ONLY, '#9aa5ad'), (NO_RULE, '#c4ccd2'))
+
+
+def priority_options(ref: str, rule_names: list[str] = ()) -> list[dict[str, Any]]:
+    """The values of a list of the NQ Prioritization: the impact levels, the prioritizations or the rules."""
+    values = {'impact_level': IMPACT_LEVELS, 'prioritization': PRIORITIZATION_VALUES,
+              'priority_rule': tuple((name, '') for name in rule_names)}.get(ref, ())
+    return [{'name': name, 'color': color, 'keywords': []} for name, color in values]
+
+
 MAX_FIELDS = 120
 MAX_FIELD_TEXT = 2000
 MAX_LONG_TEXT = 20000
@@ -158,6 +186,28 @@ DEFAULT_FIELDS = (
            description='Set by the status rules from the phase fields, or by hand.'),
     _field('priority', 'Priority', 'general', 'list', options=tuple(_option(f'P{number}') for number in range(1, 6)),
            description='How urgent the analysis of the call is; shown after the NQ Call Status at the top of the call.'),
+    _field('prioritization', 'Prioritization', 'general', 'list', 'priority', 'prioritization', in_table=True, in_summary=True,
+           description='Prioritized or Track only, by the first Prioritization Rule whose conditions the call meets.'),
+    _field('prioritization_rule', 'Prioritization Rule', 'general', 'list', 'priority', 'priority_rule',
+           description='The Prioritization Rule that decides the prioritization and the priority of the call.'),
+    _field('scoring_impact', 'Scoring Impact', 'general', 'list', 'priority', 'impact_level', in_table=True, in_summary=True,
+           description='High, Medium or Low: the share of the scoring points its campaign, operator and service lose that the '
+                       'call holds (the calls that hold the first half of the points are High).'),
+    _field('scoring_points_lost', 'Scoring Points Lost', 'general', 'number', 'priority', 'impact_points', in_table=True,
+           description='The points of the scoring of its campaign the call loses, in every KPI it misses.'),
+    _field('scoring_kpis_lost', 'Scoring KPIs Lost', 'general', 'text', 'priority', 'impact_kpis',
+           description='The KPIs and environments in which the call loses its points, the most first.'),
+    _field('repeated_issue', 'Repeated Issue', 'general', 'yes_no', 'priority', 'repeated', in_table=True, in_summary=True,
+           description='Yes when other Non-Qualified Calls of the operator failed at the same place in the quarter of the call or '
+                       'the quarter before it.'),
+    _field('repetitions', 'Repetitions', 'general', 'number', 'priority', 'repetitions',
+           description='The Non-Qualified Calls of the operator at the same place in the quarter of the call and the quarters '
+                       'before it (the call included), whatever their service and NR Mode.'),
+    _field('repeated_campaigns', 'Repeated Campaigns', 'general', 'number', 'priority', 'repeated_campaigns',
+           description='The campaigns those calls belong to.'),
+    _field('repetition_place', 'Repetition Place', 'general', 'text', 'priority', 'place_label',
+           description='Where the repetitions are counted: the site of the cell where the call ended, the site that served its '
+                       'start, its eNB / gNB or the spot where it started.'),
     _field('team_responsible', 'Team Responsible', 'general', 'list', 'tracking', 'team', in_table=True),
     _field('assignee', 'Asignee', 'general', 'list', 'tracking', 'assignee', in_table=True,
            description='A member of the responsible team (any user of the workspace when the team has no members).'),
@@ -501,6 +551,10 @@ def normalize_fields(items: Any, existing: dict[str, dict[str, Any]], call_field
             if not ref:
                 raise ValueError(f'Choose the call values "{label}" is derived from.')
             field_type = 'list'
+        elif source == 'priority':
+            if ref not in PRIORITY_REFS:
+                raise ValueError(f'"{label}" shows an unknown value of the NQ Prioritization.')
+            field_type = PRIORITY_TYPES[ref]
         options: list[dict[str, Any]] = []
         if field_type == 'list' and source in {'user', 'derived'}:
             options = normalize_options(item.get('options'), label, with_keywords=source == 'derived')

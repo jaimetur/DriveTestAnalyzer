@@ -63,10 +63,11 @@ def test_new_workspaces_get_the_catalog_of_the_meeting_workbook(client, tmp_path
     state = client.get('/api/non-qualified-calls/state').json()
     fields = state['fields']
     # The 37 fields of the meeting workbook, with the Auto RCA fields, the Last Cell ID and Failure Comment of the CDR and
-    # the fields of the analyses of the previous tool, each next to the field it goes with in the Excel export.
-    assert len(fields) == 53
+    # the fields of the analyses of the previous tool and of the NQ Prioritization, each next to the field it goes with in the
+    # Excel export.
+    assert len(fields) == 62
     keys = [field['key'] for field in fields]
-    for before, after in (('nq_call_status', 'priority'), ('assignee', 'analyst'), ('analyst', 'reviewer'),
+    for before, after in (('nq_call_status', 'priority'), ('priority', 'prioritization'), ('assignee', 'analyst'), ('analyst', 'reviewer'),
                           ('planned_date', 'planned_fy'), ('implementation_status', 'implementation_team'),
                           ('initial_root_category', 'initial_root_cause'),
                           ('vendor_when_failure', 'vendor_2_when_failure'), ('reviewer', 'unique_id'),
@@ -89,7 +90,8 @@ def test_new_workspaces_get_the_catalog_of_the_meeting_workbook(client, tmp_path
     # The suggested causes are columns only when chosen in Columns; every column shows the colour of its group,
     # the call columns that of the call, as in the Excel export.
     assert not by_key['rca_suggested_cause']['in_table'] and not by_key['netcheck_suggested_cause']['in_table']
-    assert [field['key'] for field in fields if field['in_table'] and field['source'] != 'tracking'] == ['analysis_status', 'implementation_status']
+    assert [field['key'] for field in fields if field['in_table'] and field['source'] != 'tracking'] == [
+        'prioritization', 'scoring_impact', 'scoring_points_lost', 'repeated_issue', 'analysis_status', 'implementation_status']
     assert state['call_section'] == nq.CALL_SECTION
     assert by_key['selected_root_category']['source'] == 'tracking' and by_key['nq_call_status']['section'] == 'general'
     assert by_key['analysis_status']['section'] == 'analysis'
@@ -600,7 +602,7 @@ def test_catalog_workbook_round_trip_and_the_meeting_layout(client, tmp_path):
     assert imported.status_code == 200, imported.text
     route = next(field for field in imported.json()['fields'] if field['label'] == 'Drive Route')
     assert [option['name'] for option in route['options']] == ['M25', 'A1'] and route['section'] == 'analysis' and route['in_table']
-    assert len(imported.json()['fields']) == 54
+    assert len(imported.json()['fields']) == 63
     # The workbook of the meeting: sections in the first row, fields in the second, values below.
     meeting = Workbook()
     sheet = meeting.active
@@ -704,7 +706,7 @@ def test_first_version_workspaces_move_to_the_analysis_center(client, tmp_path):
     assert [item['name'] for item in nq.list_options(repository)['statuses']][0] == 'Not Attended'
     # The workspace's field keeps its key and values and takes its place in the catalog.
     findings = next(field for field in nq.list_fields(repository) if field['label'] == 'Findings')
-    assert findings['key'] == 'findings' and findings['section'] == 'analysis' and len(nq.list_fields(repository)) == 53
+    assert findings['key'] == 'findings' and findings['section'] == 'analysis' and len(nq.list_fields(repository)) == 62
 
 
 def test_recommendation_engine_maps_each_source_onto_the_catalog():

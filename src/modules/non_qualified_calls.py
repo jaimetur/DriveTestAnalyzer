@@ -61,7 +61,7 @@ from src.modules.nq_catalog import (
     ATTENDED_FIELD, FIELD_TYPES, MAX_LONG_TEXT, YES_NO, evaluate_status, keyword_found, keywords as _keywords,
     normalized_text as _normalized_text,
 )
-from src.modules import nq_analyses, nq_analyses_rules, nq_rca
+from src.modules import nq_analyses, nq_analyses_rules, nq_prioritization, nq_rca
 from src.modules.non_qualified_calls_visuals import series_colours
 
 NQ_CALLS_TABLE = 'nq_calls'
@@ -96,6 +96,7 @@ NQ_TABLE_TITLES = {
     NQ_FIELDS_TABLE: 'NQ Analysis Fields',
     NQ_FIELD_VALUES_TABLE: 'NQ Analysis Field Values',
     NQ_USER_LAYOUTS_TABLE: 'NQ User Table Layouts',
+    **nq_prioritization.TABLE_TITLES,
 }
 SERVICES = ('voice', 'speech', 'data')
 SERVICE_LABELS = {'voice': 'Voice', 'speech': 'Speech', 'data': 'Data'}
@@ -207,9 +208,13 @@ V15_FORMER_LABELS = (
 # The Implementation Proposals (in plural, as a call can take one of many), once: (key, former label).
 ANALYSIS_CENTER_V22_STATE_KEY = 'nq_analysis_center_v22'
 V22_FORMER_LABELS = (('implementation_proposal', 'Implementation Proposal'),)
+# The fields of the NQ Prioritization (scoring impact, repetitions and prioritization), once, after the Priority.
+ANALYSIS_CENTER_V23_STATE_KEY = 'nq_analysis_center_v23'
+V23_FIELD_KEYS = {'prioritization', 'prioritization_rule', 'scoring_impact', 'scoring_points_lost', 'scoring_kpis_lost',
+                  'repeated_issue', 'repetitions', 'repeated_campaigns', 'repetition_place'}
 # Set once the tables and columns of this version exist, so the requests check the schema without writing.
 SCHEMA_STATE_KEY = 'nq_calls_schema'
-SCHEMA_VERSION = '2026-10-20.1'
+SCHEMA_VERSION = '2026-10-21.1'
 # Indexed call fields that the suggestion rule can read, with their labels.
 RULE_FIELDS = {
     'failure_classification': 'Failure Classification', 'failure_category': 'Failure Category',
@@ -289,11 +294,12 @@ TRACKING_FIELDS = ('status', 'team', 'assignee', 'root_domain', 'root_category',
 # Filters set by clicking the Progress View and Root Cause Analysis: NR mode, call type
 # (Classic, WhatsApp, Data), a timeline period ("month:2026-07"), the age of open calls,
 # a labelled root cause ("RF||Coverage"), the root domain or cause counting the suggested
-# ones, and the eNB/gNB of the last cell ("EE||eNB 525176").
+# ones, the eNB/gNB of the last cell ("EE||eNB 525176") and the place of the repeated issues of the NQ Prioritization
+# ("EE||Site S1").
 # The indicator cards filter by follow-up state (closed, attended, with team...) and the
 # Suggested card by the calls without a root cause that have a suggestion.
 EXTRA_FILTERS = ('nr_mode', 'call_type', 'period', 'age', 'root_pair', 'effective_domain', 'effective_cause', 'node',
-                 'state', 'rca_state')
+                 'state', 'rca_state', 'place')
 KEY_FILTERS = ('effective_domain', 'effective_cause', 'node', 'rca_state', 'netcheck_domain', 'netcheck_category',
                'netcheck_cause', 'script_domain', 'script_category', 'script_cause')
 # The sources the Root Cause Analysis counts the calls with: the decision of the analysts, or the NetCheck RCA of the
@@ -561,7 +567,7 @@ def _schema_ready(task_repository: Any) -> bool:
                 ANALYSIS_CENTER_V13_STATE_KEY, ANALYSIS_CENTER_V14_STATE_KEY, ANALYSIS_CENTER_V15_STATE_KEY,
                 ANALYSIS_CENTER_V16_STATE_KEY, ANALYSIS_CENTER_V17_STATE_KEY, ANALYSIS_CENTER_V18_STATE_KEY,
                 ANALYSIS_CENTER_V19_STATE_KEY, ANALYSIS_CENTER_V20_STATE_KEY, ANALYSIS_CENTER_V21_STATE_KEY,
-                ANALYSIS_CENTER_V22_STATE_KEY)
+                ANALYSIS_CENTER_V22_STATE_KEY, ANALYSIS_CENTER_V23_STATE_KEY)
         states = {str(row[0]): str(row[1]) for row in connection.execute(
             f"SELECT key, value FROM workspace_state WHERE key IN ({', '.join('?' for _ in keys)})", keys)}
     return states.get(SCHEMA_STATE_KEY) == SCHEMA_VERSION and all(states.get(key) for key in keys[1:])
@@ -624,6 +630,7 @@ def ensure_nq_tables(task_repository: Any) -> None:
             connection.execute(f'DROP TABLE {NQ_CALL_LATEST_TABLE}')
             connection.execute('DELETE FROM workspace_state WHERE key = ?', (LATEST_STATE_KEY,))
         connection.executescript(SCHEMA)
+        connection.executescript(nq_prioritization.SCHEMA)
         if not existed:
             connection.executemany(
                 f"INSERT OR IGNORE INTO {NQ_CALL_OPTIONS_TABLE} (kind, name, color, position, is_closed) VALUES ('status', ?, ?, ?, ?)",
@@ -679,6 +686,12 @@ def ensure_nq_tables(task_repository: Any) -> None:
     if not task_repository.get_workspace_state(ANALYSIS_CENTER_V22_STATE_KEY):
         _rename_default_labels(task_repository, V22_FORMER_LABELS)
         task_repository.set_workspace_state(ANALYSIS_CENTER_V22_STATE_KEY, '1')
+    if not task_repository.get_workspace_state(ANALYSIS_CENTER_V23_STATE_KEY):
+        fields = list_fields(task_repository)
+        if _add_default_fields(fields, V23_FIELD_KEYS):
+            _store_fields(task_repository, nq_catalog.normalize_fields(fields, {field['key']: field for field in list_fields(task_repository)},
+                                                                       CATALOG_CALL_FIELDS))
+        task_repository.set_workspace_state(ANALYSIS_CENTER_V23_STATE_KEY, '1')
     task_repository.set_workspace_state(SCHEMA_STATE_KEY, SCHEMA_VERSION)
 
 
@@ -2082,6 +2095,8 @@ def sync_nq_calls(task_repository: Any, *, force: bool = False) -> dict[str, Any
 # Indexing in the background: new, changed or removed CDRs are indexed once the server has been idle for a while
 # (or at once the first time, and on Reindex), never while a page waits for its calls.
 NQ_INDEX_IDLE_SECONDS = 2 * 60
+# The NQ Prioritization is calculated after the indexing (see nq_prioritization).
+NQ_PRIORITIZATION_IDLE_SECONDS = 3 * 60
 _index_jobs: dict[str, dict[str, Any]] = {}
 _index_jobs_guard = Lock()
 
@@ -2325,6 +2340,13 @@ def list_fields(task_repository: Any) -> list[dict[str, Any]]:
             'in_export': bool(row['in_export'] if 'in_export' in keys else 1),
             'suggest_from': str(row['suggest_from'] if 'suggest_from' in keys else '') or '',
         })
+    # The lists of the NQ Prioritization take their values from it (the rules are the values of Prioritization Rule).
+    priority = [field for field in fields if field['source'] == 'priority']
+    if priority:
+        names = nq_prioritization.rule_names(task_repository) if any(field['source_ref'] == 'priority_rule' for field in priority) else []
+        for field in priority:
+            field['type'] = nq_catalog.PRIORITY_TYPES.get(field['source_ref'], field['type'])
+            field['options'] = nq_catalog.priority_options(field['source_ref'], names)
     return fields
 
 
@@ -2550,6 +2572,11 @@ def catalog_value(field: dict[str, Any], call: Any, rca: dict[str, str] | None =
         return (rca or {}).get(ref, '')
     if source == 'derived':
         return derived_value(field, call)
+    if source == 'priority':
+        value = _call_value(call, ref)
+        if ref == 'impact_points' and isinstance(value, (int, float)):
+            return round(float(value), 2)
+        return '' if value is None else value
     return ''
 
 
@@ -2569,6 +2596,9 @@ def field_sql(field: dict[str, Any]) -> str:
     if source == 'rca':
         name = ref.replace('"', '').replace("'", '')
         return f"COALESCE(json_extract(rca_json, '$.\"{name}\"'), '')"
+    if source == 'priority':
+        # The numbers stay numbers, so they sort as such.
+        return f"COALESCE({ref}, '')" if ref in nq_catalog.PRIORITY_REFS else "''"
     if source == 'derived':
         names = [name.strip() for name in ref.split(',') if name.strip() in CALL_FIELDS]
         if not names:
@@ -3370,6 +3400,17 @@ def _latest_ready(task_repository: Any, maps: dict[str, str]) -> bool:
     return True
 
 
+# The NQ Prioritization of each call (a Speech sample shows that of its call): its scoring impact, repetitions and rule.
+PRIORITY_COLUMNS_SQL = (
+    "p.impact_points AS impact_points, COALESCE(p.impact_level, '') AS impact_level, "
+    "COALESCE(p.impact_state, '') AS impact_state, COALESCE(p.impact_kpis, '') AS impact_kpis, "
+    "COALESCE(p.impact_json, '[]') AS impact_json, COALESCE(p.place_label, '') AS place_label, "
+    "p.repetitions AS repetitions, p.repeated_campaigns AS repeated_campaigns, COALESCE(p.repeated, '') AS repeated, "
+    "COALESCE(p.prioritization, '') AS prioritization, COALESCE(p.priority_rule, '') AS priority_rule, "
+    "COALESCE(p.suggested_priority, '') AS suggested_priority"
+)
+
+
 def _base_sql(default: str, task_repository: Any, dataset_ids: list[int] | None = None) -> tuple[str, list[Any]]:
     """One row per call with its follow-up: the version of the most recent CDR among the chosen ones.
 
@@ -3399,9 +3440,11 @@ def _base_sql(default: str, task_repository: Any, dataset_ids: list[int] | None 
                (SELECT json_group_object(f.field_key, f.value) FROM {NQ_FIELD_VALUES_TABLE} f
                 WHERE f.call_key = s.call_key AND f.value <> '') AS field_values_json,
                COALESCE((SELECT r.values_json FROM {NQ_RCA_RESULTS_TABLE} r
-                         WHERE s.join_id <> '' AND r.join_id = lower(s.join_id)), '{{}}') AS rca_json
+                         WHERE s.join_id <> '' AND r.join_id = lower(s.join_id)), '{{}}') AS rca_json,
+               {PRIORITY_COLUMNS_SQL}
         FROM {source} s
         LEFT JOIN {NQ_CALL_TRACKING_TABLE} t ON t.call_key = s.call_key
+        LEFT JOIN {nq_prioritization.PRIORITY_TABLE} p ON p.call_key = s.call_key
     """
     # Placeholders in order: the default status (select list), then those of the latest versions (maps and CDRs).
     return sql, [default, *source_params]
@@ -3429,10 +3472,12 @@ def _sample_sql(default: str, task_repository: Any) -> tuple[str, list[Any]]:
                (SELECT json_group_object(f.field_key, f.value) FROM {NQ_FIELD_VALUES_TABLE} f
                 WHERE f.call_key = c.sample_key AND f.value <> '') AS field_values_json,
                COALESCE((SELECT r.values_json FROM {NQ_RCA_RESULTS_TABLE} r
-                         WHERE c.join_id <> '' AND r.join_id = lower(c.join_id)), '{{}}') AS rca_json
+                         WHERE c.join_id <> '' AND r.join_id = lower(c.join_id)), '{{}}') AS rca_json,
+               {PRIORITY_COLUMNS_SQL}
         FROM {NQ_CALLS_TABLE} c
         JOIN {NQ_CALL_SOURCES_TABLE} s ON s.dataset_id = c.dataset_id
         LEFT JOIN {NQ_CALL_TRACKING_TABLE} t ON t.call_key = c.sample_key
+        LEFT JOIN {nq_prioritization.PRIORITY_TABLE} p ON p.call_key = c.call_key
         WHERE c.sample_key <> ''
     """
     return sql, [*params, default]
@@ -3760,6 +3805,10 @@ def _filter_sql(filters: dict[str, Any], username: str, closed_statuses: list[st
     if pairs:
         clauses.append(f"(root_domain || '||' || root_cause) IN ({', '.join('?' for _ in pairs)})")
         params.extend('||' if value == UNASSIGNED else value for value in pairs)
+    places = _strings(filters.get('place'))
+    if places:
+        clauses.append(f"(COALESCE(operator, '') || '||' || place_label) IN ({', '.join('?' for _ in places)})")
+        params.extend(places)
     if '_call_keys' in filters:
         clauses.append('call_key IN (SELECT value FROM json_each(?))')
         params.append(json.dumps(list(filters['_call_keys'])))
@@ -3874,7 +3923,7 @@ def query_calls(task_repository: Any, request: dict[str, Any], username: str) ->
             breakdowns.append({'field': field, 'label': label, 'items': items})
         # The catalog fields shown in the Summary, as one more breakdown each.
         for definition in [field for field in definitions if with_breakdowns and field['in_summary']
-                           and field['source'] in {'user', 'derived', 'cdr', 'rca'}]:
+                           and field['source'] in {'user', 'derived', 'cdr', 'rca', 'priority'}]:
             values = connection.execute(
                 f"SELECT {field_sql(definition)} AS value, COUNT(*) AS count "
                 f"FROM ({filtered}) GROUP BY value ORDER BY count DESC, value LIMIT 12", all_params,
@@ -3965,7 +4014,7 @@ def _filter_expressions(task_repository: Any, definitions: list[dict[str, Any]])
     expressions = {field: field for field in (*FIELD_FILTERS, *TRACKING_FILTERS)}
     expressions['nr_mode'] = 'nr_mode'
     for definition in definitions:
-        if definition['source'] in {'user', 'derived'} and (definition['type'] in {'list', 'yes_no'} or definition['key'] in VALUE_FILTER_FIELDS):
+        if definition['source'] in {'user', 'derived', 'priority'} and (definition['type'] in {'list', 'yes_no'} or definition['key'] in VALUE_FILTER_FIELDS):
             expressions[f"field:{definition['key']}"] = field_sql(definition)
     # Every optional and indexed CDR column, as the table layout of each user may show it.
     for key in [*COLUMN_FILTER_SQL, *(f'cdr:{name}' for name in indexed_cdr_columns(task_repository))]:
@@ -6895,6 +6944,7 @@ def _configuration(task_repository: Any) -> dict[str, Any]:
         'status_rules': status_rules(task_repository), 'table_columns': table_columns(task_repository),
         'column_order': workspace_layout(task_repository)['order'], 'user_layouts': user_layouts(task_repository),
         'analyses_equivalences': workspace_equivalences(task_repository),
+        'prioritization': nq_prioritization.load_settings(task_repository),
     }
 
 
@@ -6937,7 +6987,8 @@ def _incoming_root_catalog(document: dict[str, Any]) -> dict[str, list[dict[str,
 def _merge_configuration(task_repository: Any, document: dict[str, Any]) -> None:
     """Add the missing statuses, teams, fields, list values and root cause catalog entries of a document and take its
     sections, status rules, field settings (section, order, Table column, Excel and Summary breakdown), table layouts (that
-    of the workspace and those of the users, by username), suggestion rule and Require setting."""
+    of the workspace and those of the users, by username), suggestion rule, Require setting and NQ Prioritization
+    settings."""
     options = document.get('options') if isinstance(document.get('options'), dict) else {}
     # Missing fields are added (in their section) and the values of the list fields are merged.
     incoming_fields = [item for item in document.get('fields') or [] if isinstance(item, dict) and item.get('key') and item.get('label')]
@@ -7018,6 +7069,10 @@ def _merge_configuration(task_repository: Any, document: dict[str, Any]) -> None
     if 'require_to_close' in root_causes:
         task_repository.set_workspace_state(ROOT_CAUSE_SETTINGS_STATE_KEY,
                                             json.dumps({'require_to_close': bool(root_causes['require_to_close'])}))
+    if isinstance(document.get('prioritization'), dict):
+        # The Prioritization settings of the package replace those of the workspace (applied at the next calculation).
+        task_repository.set_workspace_state(nq_prioritization.SETTINGS_STATE_KEY, json.dumps(
+            nq_prioritization.normalize_settings(document['prioritization']), ensure_ascii=False))
     if isinstance(document.get('status_rules'), list):
         try:
             rules = nq_catalog.normalize_status_rules(document['status_rules'], [item['name'] for item in list_options(task_repository)['statuses']],
@@ -7187,8 +7242,41 @@ def install_non_qualified_calls_routes(core: Any) -> None:
             'queued_at': job['queued_at'], 'started_at': job['started_at'], 'completed_at': job['finished_at'],
         }]
 
+    def prioritize_when_idle() -> None:
+        """Calculate the NQ Prioritization of the active workspace once the server is idle, after the indexing of the
+        calls and the Scoring History, when what it depends on changed."""
+        workspace = core.active_workspace
+        if not workspace:
+            return
+        repository = core.Repository(workspace.database_path, global_db_path=core.repository.global_db_path,
+                                     workspace_registry_db_path=core.workspace_registry.registry_path)
+        with repository.connection() as connection:
+            if not connection.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+                                      (nq_prioritization.PRIORITY_TABLE,)).fetchone():
+                return
+        from src.modules.scoring_history import history_job
+        running = [nq_index_job(repository.db_path), history_job(repository.db_path), nq_prioritization.job(repository.db_path)]
+        if any(item and item['status'] in {'queued', 'processing'} for item in running) or nq_index_status(repository)['pending']:
+            return
+        if nq_prioritization.needs_calculation(repository):
+            nq_prioritization.start(repository, core.submit_background_task)
+
+    def prioritization_tasks(workspace: Any) -> list[dict[str, Any]]:
+        job = nq_prioritization.job(workspace.database_path)
+        if not job or (job['status'] in {'ready', 'failed'} and time.time() - (job['finished_at'] or 0) > 5):
+            return []
+        detail = job['error'] or (f"Calculating {job['current']} ({job['done'] + 1} of {job['total']})" if job['current']
+                                  else 'Calculating the scoring impact, repetitions and priorities of the calls')
+        return [{
+            'id': f'nq-prioritization:{workspace.id}', 'label': 'NQ Prioritization', 'detail': detail, 'status': job['status'],
+            'progress': round(job['done'] / job['total'] * 100) if job['total'] else None,
+            'queued_at': job['queued_at'], 'started_at': job['started_at'], 'completed_at': job['finished_at'],
+        }]
+
     core.register_idle_task(index_when_idle, NQ_INDEX_IDLE_SECONDS)
+    core.register_idle_task(prioritize_when_idle, NQ_PRIORITIZATION_IDLE_SECONDS)
     core.BACKGROUND_TASK_PROVIDERS.append(index_tasks)
+    core.BACKGROUND_TASK_PROVIDERS.append(prioritization_tasks)
     from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
     from pydantic import BaseModel, Field
 
@@ -7241,6 +7329,11 @@ def install_non_qualified_calls_routes(core: Any) -> None:
 
     class StatusRulesPayload(BaseModel):
         rules: list[dict[str, Any]] = Field(default_factory=list)
+
+    class PrioritizationPayload(BaseModel):
+        settings: dict[str, Any] = Field(default_factory=dict)
+        # Saved after Default Rules: App Events says so.
+        defaults: bool = False
 
     class RootCauseRulePayload(BaseModel):
         rule: dict[str, Any] | None = None
@@ -7423,6 +7516,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
                                    for source in ('netcheck', 'script', 'analysts')],
                    'rates': nq_rates(repository, filters),
                    'failures': failure_breakdowns(repository, filters, username),
+                   'prioritization': nq_prioritization.panel(repository, filters, username),
                    'lifecycle': lifecycle_stats(repository, filters, username),
                    'rca_insights': rca_insights(repository, filters, username),
                    'sections': list_sections(repository)}
@@ -7558,6 +7652,10 @@ def install_non_qualified_calls_routes(core: Any) -> None:
             'table_columns': table_columns(repository), 'table_layout': layouts, 'optional_columns': OPTIONAL_COLUMNS,
             'cdr_columns': available_cdr_columns(repository), 'max_cdr_columns': MAX_CDR_COLUMNS,
             'version_labels': VERSION_LABELS,
+            'priority_refs': nq_catalog.PRIORITY_REFS, 'priority_types': nq_catalog.PRIORITY_TYPES,
+            'prioritization': nq_prioritization.load_settings(repository),
+            'default_prioritization': nq_prioritization.default_settings(), 'prioritization_criteria': nq_prioritization.CRITERIA,
+            'priority_options': nq_prioritization.priority_options(repository),
         })
 
     @core.app.post('/api/non-qualified-calls/reindex')
@@ -7602,6 +7700,43 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         """The names and colours of the six sections (user-editor and above)."""
         repository = workspace_repository(user)
         return JSONResponse({'sections': save_sections(repository, payload.sections, user.username, defaults=payload.defaults)})
+
+    @core.app.post('/api/non-qualified-calls/prioritization')
+    def nq_prioritization_panel(payload: ExportPayload, user=Depends(core.current_user)) -> JSONResponse:
+        """The NQ Prioritization of the filtered calls; the first time, it is calculated at once in the background."""
+        repository = workspace_repository(user)
+        current = nq_prioritization.job(repository.db_path)
+        if (not repository.get_workspace_state(nq_prioritization.SUMMARY_STATE_KEY) and not nq_index_status(repository)['indexing']
+                and not (current and current['status'] in {'queued', 'processing'}) and nq_prioritization.needs_calculation(repository)):
+            nq_prioritization.start(repository, core.submit_background_task)
+        return JSONResponse(nq_prioritization.panel(repository, payload.filters, user.username))
+
+    @core.app.post('/api/non-qualified-calls/prioritization/recalculate')
+    def nq_prioritization_recalculate(user=Depends(editor_user)) -> JSONResponse:
+        """Calculate the scoring impact, repetitions and priorities of every call again, in the background."""
+        repository = workspace_repository(user)
+        job = nq_prioritization.start(repository, core.submit_background_task)
+        log_action(repository, user, 'nq_prioritization_recalculate', {})
+        return JSONResponse({'job': {key: job[key] for key in ('status', 'error')}, 'status': nq_prioritization.status(repository)})
+
+    @core.app.get('/api/non-qualified-calls/prioritization/settings')
+    def nq_prioritization_settings(user=Depends(core.current_user)) -> JSONResponse:
+        repository = workspace_repository(user)
+        return JSONResponse({'settings': nq_prioritization.load_settings(repository), 'defaults': nq_prioritization.default_settings(),
+                             'criteria': nq_prioritization.CRITERIA, 'priority_options': nq_prioritization.priority_options(repository)})
+
+    @core.app.put('/api/non-qualified-calls/prioritization/settings')
+    def nq_save_prioritization_settings(payload: PrioritizationPayload, user=Depends(config_user)) -> JSONResponse:
+        """The Prioritization Rules and the levels of the impact and the repetitions: the rules apply at once; a change of
+        the levels is calculated again in the background."""
+        repository = workspace_repository(user)
+        before = nq_prioritization.fingerprint(repository)
+        settings = translate(lambda: nq_prioritization.save_settings(repository, payload.settings, user.username))
+        if payload.defaults:
+            log_action(repository, user, 'nq_prioritization_defaults', {'rules': [rule['name'] for rule in settings['rules']]})
+        if nq_prioritization.fingerprint(repository, settings) != before:
+            nq_prioritization.start(repository, core.submit_background_task)
+        return JSONResponse({'settings': settings, 'status': nq_prioritization.status(repository)})
 
     @core.app.put('/api/non-qualified-calls/status-rules')
     def nq_save_status_rules(payload: StatusRulesPayload, user=Depends(config_user)) -> JSONResponse:

@@ -421,7 +421,7 @@ def test_teams_members_progress_shared_filters_and_reporting_artifact(client, tm
     result = query(client)
     assert [item['field'] for item in result['breakdowns']] == [
         'service', 'result', 'status', 'team', 'root_domain', 'root_category', 'root_cause', 'failure_classification', 'campaign',
-        'operator', 'vendor', 'region', 'cluster', 'city',
+        'operator', 'vendor', 'region', 'cluster', 'city', 'field:prioritization', 'field:scoring_impact', 'field:repeated_issue',
         'field:session_type', 'field:analysis_status', 'field:implementation_status', 'field:planned_status']
     by_campaign = next(item for item in result['breakdowns'] if item['field'] == 'campaign')
     assert by_campaign['label'] == 'By Campaign' and by_campaign['items'] == [{'value': 'UK_Q1_2026', 'count': 4}]

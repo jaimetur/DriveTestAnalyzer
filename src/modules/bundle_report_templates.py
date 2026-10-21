@@ -303,6 +303,9 @@ def _normalize_items(section: str, raw: Any) -> list[dict[str, Any]]:
     if section == 'network_insights' and 'overview' in order and 'findings' not in saved:
         # Reports saved before the Key Findings have them after the Overview.
         order.insert(order.index('overview') + 1, 'findings')
+    if section == 'non_qualified_calls' and 'summary' in order and 'prioritization' not in saved:
+        # Reports saved before the NQ Prioritization have it after the Summary.
+        order.insert(order.index('summary') + 1, 'prioritization')
     order += [key for key in catalogue if key not in order]
     items = []
     for key in order:

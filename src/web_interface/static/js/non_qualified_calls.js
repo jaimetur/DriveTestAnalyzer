@@ -21,7 +21,8 @@
     root_domain: 'Root Domain', root_category: 'Root Category', root_cause: 'Root Cause', status_mode: 'Status Set',
     nr_mode: 'NR Mode', call_type: 'Call Type', period: 'Period',
     age: 'Age of Open Calls', root_pair: 'Root Domain · Cause', effective_domain: 'Root Domain (with suggestions)',
-    effective_cause: 'Root Domain · Cause (with suggestions)', node: 'eNB / gNB', state: 'Follow-up', rca_state: 'Root Cause',
+    effective_cause: 'Root Domain · Cause (with suggestions)', node: 'eNB / gNB', place: 'Repetition Place', state: 'Follow-up',
+    rca_state: 'Root Cause',
     netcheck_domain: 'Root Domain (NetCheck RCA)', netcheck_category: 'Root Domain · Category (NetCheck RCA)',
     netcheck_cause: 'Root Domain · Cause (NetCheck RCA)', script_domain: 'Root Domain (Ericsson RCA)',
     script_category: 'Root Domain · Category (Ericsson RCA)', script_cause: 'Root Domain · Cause (Ericsson RCA)',
@@ -40,7 +41,7 @@
   // Filters set by clicking the Progress View and the Root Cause Analysis; they have no select of their own.
   // NR Mode has its own filter, the first of the General Filters.
   const EXTRA_FILTERS = ['call_type', 'period', 'age', 'root_pair', 'effective_domain', 'effective_cause', 'node',
-    'netcheck_domain', 'netcheck_category', 'netcheck_cause', 'script_domain', 'script_category', 'script_cause', 'rca_state'];
+    'netcheck_domain', 'netcheck_category', 'netcheck_cause', 'script_domain', 'script_category', 'script_cause', 'rca_state', 'place'];
   // The values of the Follow-up filter (also set by the indicator cards), in their order.
   const FOLLOW_UP_STATES = ['attended', 'not_attended', 'open', 'stalled', 'closed', 'with_team', 'assigned', 'commented', 'labelled',
     'identified', 'not_identified'];
@@ -238,10 +239,10 @@
     && (state.user.can_moderate || comment.created_by.toLowerCase() === state.user.username.toLowerCase());
 
   // -- filters --------------------------------------------------------------
-  // The list and Yes / No fields chosen among their values: entered by the analysts or derived from the call; and the
-  // people of the calls (Analyst, Reviewer), chosen among the names they hold.
+  // The list and Yes / No fields chosen among their values: entered by the analysts, derived from the call or given by the
+  // NQ Prioritization; and the people of the calls (Analyst, Reviewer), chosen among the names they hold.
   const filterableFields = () => state.fields.filter((field) => (['list', 'yes_no'].includes(field.type)
-    || (state.valueFilterFields || []).includes(field.key)) && ['user', 'derived'].includes(field.source));
+    || (state.valueFilterFields || []).includes(field.key)) && ['user', 'derived', 'priority'].includes(field.source));
   const filterSelects = () => [...root.querySelectorAll('[data-nq-filter]')];
   // The filters of the CDR and the follow-up that are fields of the catalog (source:reference), among its fields.
   const CATALOG_FILTERS = {
@@ -288,7 +289,8 @@
     });
     filterable.forEach((field) => {
       const name = `field:${field.key}`;
-      const choices = {yes_no: ['Yes', 'No'], list: (field.options || []).map((option) => option.name)}[field.type] || values[name] || [];
+      const listed = (field.options || []).map((option) => option.name);
+      const choices = {yes_no: ['Yes', 'No'], list: listed.length ? listed : null}[field.type] || values[name] || [];
       entries[name] = [[state.unassigned, 'Empty'], ...choices.map((value) => [value, value])];
       if (fieldHost.querySelector(`[data-nq-filter="${CSS.escape(name)}"]`)) return;
       const label = node('label', field.label);
@@ -1785,7 +1787,8 @@
       hidePanelLoading(panel);
     }
   };
-  const PANEL_LOADERS = Object.fromEntries(Object.entries({rates: loadRates, failures: loadFailures, progress: loadProgress, lifecycle: loadLifecycle, root: loadRootCauses, sources: loadSources})
+  const PANEL_LOADERS = Object.fromEntries(Object.entries({prioritization: loadPrioritization, rates: loadRates, failures: loadFailures,
+    progress: loadProgress, lifecycle: loadLifecycle, root: loadRootCauses, sources: loadSources})
     .map(([name, load]) => [name, withLoadingBar(name, load)]));
   const panelShown = (name) => {
     const panel = panelOf(name);
@@ -2812,6 +2815,12 @@
       state.fieldSources = payload.field_sources || {};
       state.trackingRefs = payload.tracking_refs || {};
       state.rcaRefs = payload.rca_refs || {};
+      state.priorityRefs = payload.priority_refs || {};
+      state.priorityTypes = payload.priority_types || {};
+      state.prioritization = payload.prioritization || null;
+      state.defaultPrioritization = payload.default_prioritization || null;
+      state.prioritizationCriteria = payload.prioritization_criteria || {};
+      state.priorityOptions = payload.priority_options || [];
       state.callFields = payload.call_fields || [];
       state.sections = payload.sections || [];
       state.defaultSections = payload.default_sections || [];
@@ -2999,12 +3008,16 @@
       for (const cell of cells) {
         const item = cell && typeof cell === 'object' ? cell : {text: cell};
         const td = node('td', undefined, item.className || '');
-        const content = item.pairs ? node('button', item.text, 'nq-failure-drill') : node('span', item.text);
+        const content = item.pairs || item.action ? node('button', item.text, 'nq-failure-drill') : node('span', item.text);
         if (item.pairs) {
           content.type = 'button';
           content.classList.toggle('is-active', isDrilled(item.pairs));
           content.addEventListener('click', () => drill(item.pairs));
+        } else if (item.action) {
+          content.type = 'button';
+          content.addEventListener('click', item.action);
         }
+        if (item.color) td.style.setProperty('--nq-chip', item.color);
         if (item.heat && item.heat[1]) {
           const [fill, ink] = heat(item.heat[0], item.heat[1]);
           td.style.background = fill;
@@ -3129,6 +3142,136 @@
       }
     }
   }
+
+  // -- NQ Prioritization ----------------------------------------------------------------
+  // The field of the catalog that shows a value of the NQ Prioritization, to drill down into the calls of one of its values.
+  const priorityPairs = (ref, value) => {
+    const field = filterableFields().find((item) => item.source === 'priority' && item.source_ref === ref);
+    return field ? [[`field:${field.key}`, value]] : null;
+  };
+  const points = (value) => (value === null || value === undefined ? '—' : Number(value).toFixed(2));
+  const renderPrioritization = (data) => {
+    const {totals} = data;
+    const status = data.status || {};
+    const summary = status.summary || {};
+    const waiting = (status.campaigns || []).filter((item) => item.state !== 'scored');
+    $('nq-priority-status').textContent = status.running ? 'Calculating…'
+      : summary.calculated_at ? `Calculated ${relativeTime(summary.calculated_at)}` : 'Not calculated yet';
+    $('nq-priority-status').title = [summary.calculated_at ? `Calculated ${exactTime(summary.calculated_at)}` : '',
+      ...waiting.map((item) => `${item.campaign || 'No campaign'} ${item.nr_mode}: ${item.detail}`),
+      status.error ? `The last calculation failed: ${status.error}` : ''].filter(Boolean).join('\n');
+    $('nq-priority-recalculate').disabled = Boolean(status.running) || !state.user.can_edit;
+    if (status.running) watchPrioritization();
+    else if (priorityRunning) {
+      // The calculation has ended: the calls show their new values.
+      loadCalls({quiet: true});
+    }
+    priorityRunning = Boolean(status.running);
+    const share = (count) => (totals.calls ? `${((count / totals.calls) * 100).toFixed(1)}% of the filtered calls` : 'No calls');
+    const cards = [
+      [kpiCard('Prioritized', number(totals.prioritized), share(totals.prioritized)), priorityPairs('prioritization', 'Prioritized')],
+      [kpiCard('Track only', number(totals.tracked), share(totals.tracked)), priorityPairs('prioritization', 'Track only')],
+      [kpiCard('High Scoring Impact', number(totals.high), `${Number(totals.points || 0).toFixed(1)} scoring points lost by the filtered calls`),
+        priorityPairs('impact_level', 'High')],
+      [kpiCard('Repeated Issues', number(totals.repeated), `${number(totals.places)} places with repeated failures`), priorityPairs('repeated', 'Yes')],
+      [kpiCard('Next to analyse', number(totals.next), 'Prioritized, open and not attended yet'), null],
+    ];
+    $('nq-priority-kpis').replaceChildren(...cards.map(([card, pairs]) => (pairs ? drillCard(card, {pairs}) : card)));
+    const sections = [];
+    const section = (title, note, ...content) => {
+      const box = node('section', undefined, 'nq-failure-section');
+      box.append(node('h3', title, 'nq-failure-title'), ...(note ? [node('p', note, 'nq-hint')] : []), ...content);
+      sections.push(box);
+    };
+    const notes = [];
+    if (totals.waiting) notes.push(`${number(totals.waiting)} of these calls are waiting for their prioritization: it is calculated in the background once the server is idle, or now with Recalculate.`);
+    if (waiting.length) notes.push(`Not scored yet: ${waiting.map((item) => `${item.campaign || 'No campaign'} ${item.nr_mode} (${item.detail.replace(/\.$/, '')})`).join('; ')}.`);
+    const ruleRows = data.rules.map((rule) => {
+      const name = rule.name || 'No rule';
+      const rulePairs = rule.name ? priorityPairs('priority_rule', rule.name) : null;
+      return [{text: name, className: 'nq-failure-name', pairs: rulePairs, title: rule.conditions}, rule.conditions, rule.criterion || '—',
+        [rule.priority, rule.track_priority].filter(Boolean).join(' / ') || '—', number(rule.calls),
+        rule.prioritized && rulePairs ? {text: number(rule.prioritized), pairs: [...rulePairs, ...(priorityPairs('prioritization', 'Prioritized') || [])]} : number(rule.prioritized),
+        number(rule.tracked), points(rule.points), number(rule.open), number(rule.attended)];
+    });
+    section('Prioritization Rules', 'The filtered calls each rule takes (the first rule whose conditions a call meets), how many it prioritizes or only tracks, the priority it gives (prioritized / tracked) and the scoring points those calls lose.',
+      ...notes.map((text) => node('p', text, 'nq-hint nq-priority-note')),
+      failureTable(['Rule', 'Takes', 'Prioritizes', 'Priority', 'Calls', 'Prioritized', 'Track only', 'Points lost', 'Open', 'Attended'], ruleRows));
+    const grid = node('div', undefined, 'nq-failure-grid');
+    const levelsCard = node('div', undefined, 'nq-failure-card');
+    levelsCard.append(node('strong', 'Scoring Impact', 'nq-failure-operator'), failureTable(['Scoring Impact', 'Calls'], data.levels.map((item) => [
+      {text: item.value, className: 'nq-failure-name nq-priority-level', color: item.color, pairs: item.value === 'Waiting' ? null : priorityPairs('impact_level', item.value)},
+      number(item.count)])));
+    const kpiCardBox = node('div', undefined, 'nq-failure-card');
+    kpiCardBox.append(node('strong', 'Scoring points lost by KPI', 'nq-failure-operator'), data.kpis.length
+      ? failureTable(['KPI', 'Category', 'Environment', 'Calls', 'Points lost'], data.kpis.map((item) => [
+        {text: item.kpi, className: 'nq-failure-name', title: item.code}, item.category || '—', item.environment, number(item.calls),
+        points(item.points)]))
+      : node('p', 'The filtered calls lose no points of a scored campaign.', 'nq-muted'));
+    grid.append(levelsCard, kpiCardBox);
+    section('Scoring Impact', `The points of the scoring of its campaign each call loses: in every KPI that counts tests it misses, the points the operator loses in the environment of the call shared among the tests that miss the KPI. High: the calls that hold the first ${data.settings.high_share}% of the points their campaign, operator and service lose; Medium: up to ${data.settings.medium_share}%.`, grid);
+    const issueNote = `Places where at least ${data.settings.min_calls} Non-Qualified Calls of the operator failed in the quarter of the call${data.settings.previous_quarters ? ` or the ${data.settings.previous_quarters === 1 ? 'quarter' : `${data.settings.previous_quarters} quarters`} before it` : ''}, in any service and NR Mode (the site of the cell where the call ended, else the site that served its start, its eNB / gNB or a spot): the filtered calls of each one${data.issue_count > data.issues.length ? `, the ${data.issues.length} with the most calls of ${number(data.issue_count)}` : ''}.`;
+    section('Repeated issues', issueNote, data.issues.length
+      ? failureTable(['Operator', 'Place', 'Calls', 'Campaigns', 'Services', 'NR Mode', 'Points lost', 'Open', 'Main Root Category'], data.issues.map((item) => [
+        {text: item.operator || 'Unassigned', className: 'nq-failure-name'},
+        {text: item.place, pairs: [['place', `${item.operator}||${item.place}`]], title: `Up to ${number(item.repetitions)} repetitions in the window of a call`},
+        number(item.calls), number(item.campaigns), Object.entries(item.services).map(([name, count]) => `${name} ${number(count)}`).join(', '),
+        Object.entries(item.nr_modes).map(([name, count]) => `${name} ${number(count)}`).join(', '), points(item.points), number(item.open),
+        item.category || '—']))
+      : node('p', 'No repeated issue among the filtered calls.', 'nq-muted'));
+    section('Next to analyse', `The first ${data.settings.capacity} prioritized calls that are open and not attended yet: in the order of their rule, the most scoring points lost first, then the most repetitions. Click a call to open it.`,
+      data.queue.length
+        ? failureTable(['JOIN_ID', 'Operator', 'Service', 'NR Mode', 'Campaign', 'Result', 'Rule', 'Priority', 'Points lost', 'Scoring Impact', 'Repetitions', 'Place'],
+          data.queue.map((item) => [{text: item.join_id || item.call_key, className: 'nq-failure-name', action: () => openDetail(item.call_key)},
+            item.operator || '—', item.service, item.nr_mode || '—', item.campaign || '—', item.result || '—', item.rule || '—', item.priority || '—',
+            points(item.points), item.level || '—', item.repetitions === null || item.repetitions === undefined ? '—' : number(item.repetitions), item.place || '—']))
+        : node('p', 'No prioritized call is waiting for its analysis.', 'nq-muted'));
+    $('nq-priority').replaceChildren(...sections);
+  };
+  let priorityToken = 0;
+  let priorityKey = '';
+  let priorityRunning = false;
+  let priorityWatch = null;
+  // While the prioritization is calculated, the panel follows it.
+  const watchPrioritization = () => {
+    if (priorityWatch) return;
+    priorityWatch = window.setTimeout(() => {
+      priorityWatch = null;
+      priorityKey = '';
+      if (panelShown('prioritization')) void loadPrioritization();
+    }, 5000);
+  };
+  async function loadPrioritization() {
+    const filters = currentFilters();
+    // The follow-up of the calls (the Summary of the calls query) changes what waits for its analysis.
+    const key = JSON.stringify([filters, state.result?.sync?.synced_at || '', state.result?.summary || null]);
+    if (key === priorityKey) return;
+    priorityKey = key;
+    const token = ++priorityToken;
+    try {
+      const data = await api('/api/non-qualified-calls/prioritization', {method: 'POST', body: JSON.stringify({filters})});
+      if (token === priorityToken) renderPrioritization(data);
+    } catch (error) {
+      if (token === priorityToken) {
+        priorityKey = '';
+        $('nq-priority').replaceChildren(node('p', error.message, 'nq-muted'));
+      }
+    }
+  }
+  $('nq-priority-recalculate')?.addEventListener('click', async () => {
+    const button = $('nq-priority-recalculate');
+    button.disabled = true;
+    try {
+      await api('/api/non-qualified-calls/prioritization/recalculate', {method: 'POST'});
+      toast('The prioritization of the calls is calculated again in the background.');
+      priorityKey = '';
+      priorityRunning = true;
+      await loadPrioritization();
+    } catch (error) {
+      toast(error.message, 'error');
+      button.disabled = false;
+    }
+  });
 
   // -- call detail drawer -------------------------------------------------------
   const drawer = $('nq-drawer');
@@ -4957,8 +5100,9 @@
   };
   // Where a field of each source reads its value: call fields, CDR columns or Ericsson RCA columns.
   const refChoices = (source) => (source === 'rca' ? Object.entries(state.rcaRefs)
-    : source === 'cdr' ? [...state.callFields.map((name) => [name, name]), ...state.cdrColumns.map((name) => [`column:${name}`, `CDR column ${name}`])]
-      : source === 'derived' ? state.callFields.map((name) => [name, name]) : []);
+    : source === 'priority' ? Object.entries(state.priorityRefs)
+      : source === 'cdr' ? [...state.callFields.map((name) => [name, name]), ...state.cdrColumns.map((name) => [`column:${name}`, `CDR column ${name}`])]
+        : source === 'derived' ? state.callFields.map((name) => [name, name]) : []);
   const fieldDefinition = (field = {key: '', label: '', type: 'list', source: 'user', source_ref: '', section: fieldSection || 'analysis',
     options: [], in_table: false, in_export: true, in_summary: false, required_to_close: false, suggest_from: '', description: ''}) => {
     const block = node('li', undefined, 'nq-root-domain nq-field-def');
@@ -5022,9 +5166,12 @@
     const sync = () => {
       const kind = source.value;
       if (kind === 'derived') type.value = 'list';
-      type.disabled = tracking || kind === 'derived';
+      // A value of the NQ Prioritization has its own type.
+      if (kind === 'priority' && state.priorityTypes[refInput.value.trim()]) type.value = state.priorityTypes[refInput.value.trim()];
+      type.disabled = tracking || ['derived', 'priority'].includes(kind);
       ref.hidden = tracking || kind === 'user';
-      ref.querySelector('span').textContent = kind === 'derived' ? 'Call values read (comma separated)' : kind === 'rca' ? 'Ericsson RCA column' : 'CDR value';
+      ref.querySelector('span').textContent = kind === 'derived' ? 'Call values read (comma separated)' : kind === 'rca' ? 'Ericsson RCA column'
+        : kind === 'priority' ? 'NQ Prioritization value' : 'CDR value';
       datalist.replaceChildren(...refChoices(kind).map(([value, text]) => {
         const option = node('option', text);
         option.value = value;
@@ -5059,7 +5206,7 @@
       block.dataset.source = kind;
     };
     list.append(...(field.options || []).map((option) => fieldValueRow(option, field.source === 'derived')));
-    [type, source, section].forEach((control) => control.addEventListener('change', () => { sync(); filterFieldDefs(); }));
+    [type, source, section, refInput].forEach((control) => control.addEventListener('change', () => { sync(); filterFieldDefs(); }));
     list.addEventListener('click', () => window.requestAnimationFrame(sync));
     add.addEventListener('click', () => window.requestAnimationFrame(sync));
     sync();
@@ -5672,6 +5819,112 @@
       } catch (error) {
         $('nq-status-rules-error').style.color = '';
         $('nq-status-rules-error').textContent = error.message;
+      } finally {
+        save.disabled = false;
+      }
+    });
+  }
+
+  // -- Prioritization Rules dialog (admins and super-admins change them) ---------------------------------
+  const priorityDialog = $('nq-priority-dialog');
+  const PRIORITY_SERVICES = [['voice', 'Voice'], ['speech', 'Speech'], ['data', 'Data']];
+  const PRIORITY_NR_MODES = [['NSA', 'NSA'], ['SA', 'SA']];
+  // A group of checkboxes (services, NR Modes) of a rule; none chosen takes every value.
+  const checkGroup = (className, entries, chosen) => {
+    const group = node('div', undefined, `nq-priority-checks ${className}`);
+    group.append(...entries.map(([value, label]) => {
+      const wrapper = node('label', undefined, 'nq-toggle nq-condition-value');
+      const box = node('input');
+      box.type = 'checkbox';
+      box.value = value;
+      box.checked = (chosen || []).includes(value);
+      wrapper.append(box, ` ${label}`);
+      return wrapper;
+    }));
+    return group;
+  };
+  const priorityRuleBlock = (rule = {name: '', services: [], nr_modes: [], operators: [], regions: [], cities: [], criterion: 'all',
+    priority: '', track_priority: ''}) => {
+    const block = node('li', undefined, 'nq-root-domain nq-status-rule nq-priority-rule');
+    const head = node('div', undefined, 'nq-option-row');
+    head.append(textInput(rule.name, 'Rule name', 'nq-root-name nq-priority-name'));
+    iconButtons(head, block, () => block.remove());
+    const setting = (label, control) => {
+      const wrapper = node('label', undefined, 'nq-field-setting');
+      wrapper.append(node('span', label), control);
+      return wrapper;
+    };
+    const priorities = [['', 'Do not fill'], ...state.priorityOptions.map((name) => [name, name])];
+    [rule.priority, rule.track_priority].filter((name) => name && !state.priorityOptions.includes(name)).forEach((name) => priorities.push([name, name]));
+    const grid = node('div', undefined, 'nq-priority-rule-grid');
+    grid.append(
+      setting('Services', checkGroup('nq-priority-services', PRIORITY_SERVICES, rule.services)),
+      setting('NR Mode', checkGroup('nq-priority-modes', PRIORITY_NR_MODES, rule.nr_modes)),
+      setting('Operators', textInput((rule.operators || []).join(', '), 'Every operator (VF*, -Lebara…)', 'nq-priority-operators')),
+      setting('Regions', textInput((rule.regions || []).join(', '), 'Every region', 'nq-priority-regions')),
+      setting('Cities', textInput((rule.cities || []).join(', '), 'Every city', 'nq-priority-cities')),
+      setting('Prioritizes', selectOf('nq-priority-criterion', 'Calls the rule prioritizes', Object.entries(state.prioritizationCriteria), rule.criterion || 'all')),
+      setting('Priority of the prioritized calls', selectOf('nq-priority-value', 'Priority of the prioritized calls', priorities, rule.priority || '')),
+      setting('Priority of the tracked calls', selectOf('nq-priority-track', 'Priority of the tracked calls', priorities, rule.track_priority || '')),
+    );
+    block.append(head, grid);
+    return block;
+  };
+  const listValues = (input) => input.value.split(',').map((value) => value.trim()).filter(Boolean);
+  const collectPriorityRules = () => [...$('nq-priority-rules').children].map((block) => ({
+    name: block.querySelector('.nq-priority-name').value.trim(),
+    services: [...block.querySelectorAll('.nq-priority-services input:checked')].map((box) => box.value),
+    nr_modes: [...block.querySelectorAll('.nq-priority-modes input:checked')].map((box) => box.value),
+    operators: listValues(block.querySelector('.nq-priority-operators')), regions: listValues(block.querySelector('.nq-priority-regions')),
+    cities: listValues(block.querySelector('.nq-priority-cities')), criterion: block.querySelector('.nq-priority-criterion').value,
+    priority: block.querySelector('.nq-priority-value').value, track_priority: block.querySelector('.nq-priority-track').value,
+  }));
+  const PRIORITY_INPUTS = {high_share: 'nq-priority-high', medium_share: 'nq-priority-medium', min_calls: 'nq-priority-min-calls',
+    previous_quarters: 'nq-priority-quarters', spot_meters: 'nq-priority-spot', capacity: 'nq-priority-capacity'};
+  const fillPriorityDialog = (settings) => {
+    Object.entries(PRIORITY_INPUTS).forEach(([key, id]) => { $(id).value = settings[key]; });
+    $('nq-priority-fill').checked = Boolean(settings.fill_priority);
+    $('nq-priority-rules').replaceChildren(...settings.rules.map((rule) => priorityRuleBlock(rule)));
+  };
+  let priorityDefaults = false;
+  if (priorityDialog) {
+    document.querySelectorAll('[data-nq-prioritization-open]').forEach((button) => button.addEventListener('click', () => {
+      if (!state.prioritization) return;
+      priorityDefaults = false;
+      fillPriorityDialog(state.prioritization);
+      $('nq-priority-error').textContent = '';
+      priorityDialog.showModal();
+    }));
+    $('nq-priority-cancel').addEventListener('click', () => priorityDialog.close());
+    $('nq-priority-add').addEventListener('click', () => {
+      const block = priorityRuleBlock();
+      $('nq-priority-rules').append(block);
+      block.querySelector('input').focus();
+    });
+    $('nq-priority-default').addEventListener('click', () => {
+      fillPriorityDialog(state.defaultPrioritization);
+      priorityDefaults = true;
+      $('nq-priority-error').style.color = 'var(--nq-muted)';
+      $('nq-priority-error').textContent = 'The default rules and levels are shown: review them and Save.';
+    });
+    $('nq-priority-form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const save = $('nq-priority-save');
+      save.disabled = true;
+      try {
+        const settings = {...Object.fromEntries(Object.entries(PRIORITY_INPUTS).map(([key, id]) => [key, Number($(id).value)])),
+          fill_priority: $('nq-priority-fill').checked, rules: collectPriorityRules()};
+        if (settings.rules.some((rule) => !rule.name)) throw new Error('Give every rule a name.');
+        const result = await api('/api/non-qualified-calls/prioritization/settings', {method: 'PUT', body: JSON.stringify({settings, defaults: priorityDefaults})});
+        state.prioritization = result.settings;
+        priorityKey = '';
+        priorityDialog.close();
+        toast('Prioritization Rules saved: the calls follow them.');
+        await loadState();
+        if (state.detail) openDetail(state.detail.call.call_key, {keepTab: true});
+      } catch (error) {
+        $('nq-priority-error').style.color = '';
+        $('nq-priority-error').textContent = error.message;
       } finally {
         save.disabled = false;
       }
@@ -6315,7 +6568,7 @@
   // page has its state).
   const CENTER_HASHES = {
     'section-nq-analysis-configuration': 'nq-config-toggle', 'fields-and-sections': 'nq-fields-open', 'statuses-and-teams': 'nq-options-open',
-    'status-rules': 'nq-status-rules-open', 'root-cause-catalog': 'nq-root-open',
+    'status-rules': 'nq-status-rules-open', 'prioritization-rules': 'nq-prioritization-open', 'root-cause-catalog': 'nq-root-open',
     'import-ericsson-rca-results': 'nq-rca-open', 'import-previous-nq-analyses': 'nq-analyses-open',
     'analysts-reviewers-to-asignees': 'nq-assign-analysts-open',
   };
