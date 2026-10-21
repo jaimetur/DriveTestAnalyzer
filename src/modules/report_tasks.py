@@ -593,67 +593,69 @@ def artifact_groups(definition: dict[str, Any], dashboard_names: dict[str, str] 
     return groups
 
 
-# The fields of the label of a job, as those of the Favourites Filters of Scoring & GAP Analysis, with the names each
-# artifact gives them (Network Insights, CDR Analysis and Bundle Report Templates; Scoring and PPT Dashboards; modules).
-SCOPE_FIELDS = (('Region', ('regions', 'Region', 'region')), ('Cluster', ('clusters', 'Cluster', 'cluster')),
-                ('City', ('cities', 'City', 'city')), ('Operator', ('operators', 'Operator', 'operator')),
-                ('Vendor', ('vendors', 'Vendor', 'vendor')))
+# The fields of the labels of a job, in the colours of those of the Favourites Filters of Scoring & GAP Analysis, with the
+# names each artifact gives them (Network Insights, CDR Analysis and Bundle Report Templates; Scoring and PPT Dashboards;
+# modules): first its areas, then the operators or vendors it filters.
+AREA_FIELDS = (('Region', ('regions', 'Region', 'region')), ('Cluster', ('clusters', 'Cluster', 'cluster')),
+               ('City', ('cities', 'City', 'city')))
+PARTY_FIELDS = (('Operator', ('operators', 'Operator', 'operator')), ('Vendor', ('vendors', 'Vendor', 'vendor')))
 
 
-def _artifact_scope(filters: Any, main_cities: bool = False) -> tuple[str, tuple[str, ...]] | None:
-    """The only label field an artifact filters with its values, ('', ()) when it filters none, None when several."""
+def _filtered(filters: Any, fields: tuple[tuple[str, tuple[str, ...]], ...], main_cities: bool = False) -> list[tuple[str, tuple[str, ...]]]:
+    """The fields of ``fields`` an artifact filters, with their values (Main Cities a City)."""
     filters = filters if isinstance(filters, dict) else {}
     chosen = []
-    for field, names in SCOPE_FIELDS:
+    for field, names in fields:
         values = list(dict.fromkeys(value for name in names for value in _strings(filters.get(name))))
         if field == 'City' and main_cities:
             values = ['Main Cities', *values]
         if values:
             chosen.append((field, tuple(values)))
-    if len(chosen) > 1:
-        return None
-    return chosen[0] if chosen else ('', ())
+    return chosen
 
 
 def job_scope(definition: dict[str, Any], favourite_filters: dict[str, dict[str, Any]] | None = None) -> dict[str, Any]:
-    """The labels of a job in the jobs table, as the Favourites Filters of Scoring & GAP Analysis show theirs: 'scopes',
-    the only Region, Cluster, City, Operator or Vendor each of its artifacts (or Scoring scenario) filters, once each
-    ({'dimension', 'text', 'title'}; All for those that filter none of them, none for those that filter several), and
+    """The labels of a job in the jobs table, in the colours of those of the Favourites Filters of Scoring & GAP Analysis:
+    'scopes', first the Region, Cluster or City each of its artifacts (or Scoring scenario) filters (Nationwide for those
+    that filter none of them), then the Operator or Vendor they filter, once each ({'dimension', 'text', 'title'}), and
     'nr_modes', the NR Modes of its artifacts (NSA, SA and NSA+SA, NSA vs SA). A job that generates favourite Bundle
     Report Templates takes their common filters (``favourite_filters`` by favourite ID)."""
-    scopes: list[tuple[str, tuple[str, ...]] | None] = []
+    scopes: list[tuple[Any, bool]] = []
     modes: list[Any] = []
     analysis = definition.get('dataset_analysis') or {}
     if analysis.get('enabled'):
-        scopes.append(_artifact_scope(analysis.get('filters')))
+        scopes.append((analysis.get('filters'), False))
         modes.append(analysis.get('nr_mode'))
     for entry in definition.get('network_insights') or []:
         selection = entry.get('selection') or {}
-        scopes.append(_artifact_scope(selection))
+        scopes.append((selection, False))
         modes.append(selection.get('nr_mode'))
     for entry in definition.get('dashboards') or []:
-        scopes.append(_artifact_scope(entry.get('filters')))
+        scopes.append((entry.get('filters'), False))
     for entry in definition.get('scoring') or []:
         modes.append(entry.get('nr_mode'))
         for scenario in (entry.get('report') or {}).get('scenarios') or [{}]:
-            scopes.append(_artifact_scope(scenario.get('context_filters'), bool(scenario.get('main_cities'))))
+            scopes.append((scenario.get('context_filters'), bool(scenario.get('main_cities'))))
     for key, config in (definition.get('modules') or {}).items():
         filters = (config.get('options') or {}).get('filters') or {}
         if key == 'bundle_report_template':
             for value in _chosen_favourites(definition) or list(favourite_filters or {}):
                 if (common := (favourite_filters or {}).get(value)) is not None:
-                    scopes.append(_artifact_scope(common, bool(common.get('main_cities'))))
+                    scopes.append((common, bool(common.get('main_cities'))))
                     modes.append(common.get('nr_mode'))
             continue
-        scopes.append(_artifact_scope(filters))
+        scopes.append((filters, False))
         modes.extend(_strings(filters.get('nr_mode')))
-    labels: dict[tuple[str, frozenset[str]], dict[str, str]] = {}
-    for field, values in (item for item in scopes if item is not None):
-        labels.setdefault((field, frozenset(value.casefold() for value in values)), {
-            'dimension': field.lower(), 'text': ', '.join(values), 'title': f"{field}: {', '.join(values)}",
-        } if field else {'dimension': 'all', 'text': 'Nationwide', 'title': 'No Region, Cluster, City, Operator or Vendor is filtered'})
+    areas: dict[tuple[str, frozenset[str]], dict[str, str]] = {}
+    parties: dict[tuple[str, frozenset[str]], dict[str, str]] = {}
+    for filters, main_cities in scopes:
+        for labels, chosen in ((areas, _filtered(filters, AREA_FIELDS, main_cities) or [('', ())]), (parties, _filtered(filters, PARTY_FIELDS))):
+            for field, values in chosen:
+                labels.setdefault((field, frozenset(value.casefold() for value in values)), {
+                    'dimension': field.lower(), 'text': ', '.join(values), 'title': f"{field}: {', '.join(values)}",
+                } if field else {'dimension': 'all', 'text': 'Nationwide', 'title': 'No Region, Cluster or City is filtered'})
     found = {normalize_scoring_nr_mode(value) for value in modes}
-    return {'scopes': list(labels.values()), 'nr_modes': [mode for mode in ('NSA', 'SA', NSA_VS_SA) if mode in found]}
+    return {'scopes': [*areas.values(), *parties.values()], 'nr_modes': [mode for mode in ('NSA', 'SA', NSA_VS_SA) if mode in found]}
 
 
 # The modules of the labels of a job, in the order of the sections of the Bundle Report Templates (CDR Analysis last).

@@ -1927,17 +1927,16 @@
     return savedFilterCardTitleSegments(savedFilter).map(segment => segment.value).join(' ● ');
   }
 
-  // The label on top of the card of a Saved Filter that filters a single field (Region, Cluster, City, Operator or
-  // Vendor; its Campaign and NR Mode aside): its values, in the colour of the field, or All when it filters none of them.
-  // A Saved Filter that filters several fields has none.
-  function savedFilterScope(savedFilter) {
-    const filtered = ['Region', 'Cluster', 'City', 'Operator', 'Vendor']
-      .map(level => ({level, values: savedSavedFilterValues(savedFilter, level)}))
-      .filter(item => item.values.length);
-    if (!filtered.length) return {dimension: 'all', text: 'Nationwide', title: 'No Region, Cluster, City, Operator or Vendor is filtered'};
-    if (filtered.length > 1) return null;
-    const [{level, values}] = filtered;
-    return {dimension: level.toLowerCase(), text: values.join(', '), title: `${level}: ${values.join(', ')}`};
+  // The labels on top of the card of a Saved Filter, each with the values of a field in its colour: first the Region,
+  // Cluster or City it filters (Nationwide when it filters none of them), then the Operator or Vendor it filters (its
+  // Campaign and NR Mode aside).
+  function savedFilterScopes(savedFilter) {
+    const filtered = levels => levels.map(level => ({level, values: savedSavedFilterValues(savedFilter, level)}))
+      .filter(item => item.values.length)
+      .map(({level, values}) => ({dimension: level.toLowerCase(), text: values.join(', '), title: `${level}: ${values.join(', ')}`}));
+    const areas = filtered(['Region', 'Cluster', 'City']);
+    return [...(areas.length ? areas : [{dimension: 'all', text: 'Nationwide', title: 'No Region, Cluster or City is filtered'}]),
+      ...filtered(['Operator', 'Vendor'])];
   }
 
   function campaignLabels(value) {
@@ -2657,11 +2656,10 @@
         use.title = 'Open the Scoring of this Saved Filter: it becomes the Saved Filter selected at the top of the module';
         use.setAttribute('aria-label', `Use Saved Filter ${id}`);
       }
-      // On top of its card: the only field it filters (or All) and its NR Mode.
+      // On top of its card: the areas it filters (or Nationwide), then the operators or vendors, and its NR Mode.
       const tabs = document.createElement('span');
       tabs.className = 'saved-filter-tabs';
-      const scope = savedFilterScope(savedFilter);
-      if (scope) {
+      for (const scope of savedFilterScopes(savedFilter)) {
         const scopeLabel = document.createElement('span');
         scopeLabel.className = 'saved-filter-scope';
         scopeLabel.dataset.dimension = scope.dimension;

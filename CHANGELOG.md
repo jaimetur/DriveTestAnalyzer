@@ -10,6 +10,7 @@
 #### 🌟 New Features:
 
 #### 🚀 Enhancements:
+- **Area and operator labels:** the labels of the Reporting Jobs and of the cards of the Favourites Filters of Scoring & GAP Analysis show first the Region, Cluster or City they filter, or **Nationwide** when none, then the Operator or Vendor (for example **London** and **-Three**, every operator but Three), also when they filter several of these fields.
 
 #### 🐛 Bug fixes:
 

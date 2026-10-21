@@ -823,7 +823,8 @@ def test_jobs_are_labelled_with_the_area_and_nr_modes_of_their_artifacts(client)
     assert [scope['text'] for scope in every['scopes']] == ['London', 'Vendor A, VMO2 North', 'Nationwide']
     assert every['nr_modes'] == ['NSA', 'SA']
     # Manual artifacts: each Network Insights entry, Dashboard, Scoring scenario (Main Cities a City) and module gives its
-    # area once (whatever the case), none when it filters several fields, and the NR Modes of the job (NSA vs SA too).
+    # area once (whatever the case), the operators or vendors it filters after every area, and the NR Modes of the job
+    # (NSA vs SA too).
     manual = {'network_insights': [{'selection': {'nr_mode': 'SA', 'cities': ['London']}}],
               'dashboards': [{'filters': {'Campaign': ['@latest-campaign']}}],
               'scoring': [{'nr_mode': 'NSA+SA', 'report': {'scenarios': [
@@ -832,7 +833,13 @@ def test_jobs_are_labelled_with_the_area_and_nr_modes_of_their_artifacts(client)
               'modules': {'non_qualified_calls': {'enabled': True, 'options': {'filters': {'nr_mode': ['NSA'], 'region': ['Vendor B']}}}}}
     result = report_tasks.job_scope(manual)
     assert [(scope['dimension'], scope['text']) for scope in result['scopes']] == [
-        ('city', 'London'), ('all', 'Nationwide'), ('city', 'Main Cities'), ('region', 'Vendor B')]
+        ('city', 'London'), ('all', 'Nationwide'), ('city', 'Main Cities'), ('city', 'Leeds'), ('region', 'Vendor B'),
+        ('operator', 'EE')]
+    # A favourite that filters an area and an operator (every operator but Three) shows both, the area first.
+    both = report_tasks.job_scope(london, {'7': {'nr_mode': 'SA', 'cities': ['London'], 'operators': ['-Three']}})
+    assert [(scope['dimension'], scope['text']) for scope in both['scopes']] == [('city', 'London'), ('operator', '-Three')]
+    nationwide = report_tasks.job_scope(london, {'7': {'nr_mode': 'SA', 'operators': ['-Three']}})
+    assert [scope['text'] for scope in nationwide['scopes']] == ['Nationwide', '-Three']
     assert result['nr_modes'] == ['NSA', 'SA', 'NSA+SA']
     # The jobs table receives them with each job and shows them on top of its name.
     login(client)

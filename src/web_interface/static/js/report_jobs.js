@@ -1486,9 +1486,9 @@
     return line;
   }
 
-  // The first line of the name of a job, as the labels of the cards of the Favourites Filters of Scoring & GAP Analysis:
-  // the only Region, Cluster, City, Operator or Vendor each of its artifacts filters (Nationwide when none), once each,
-  // in the colour of the field (see job_scope).
+  // The first line of the name of a job, in the colours of the labels of the cards of the Favourites Filters of Scoring &
+  // GAP Analysis: first the Region, Cluster or City each of its artifacts filters (Nationwide when none), then the
+  // Operator or Vendor they filter, once each (see job_scope).
   function scopeTabs(task) {
     const tabs = node('div', undefined, 'rj-task-tabs');
     (task.scopes || []).forEach((scope) => {

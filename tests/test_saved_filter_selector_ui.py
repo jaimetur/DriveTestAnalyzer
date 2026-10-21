@@ -92,7 +92,7 @@ const savedFilterIdOf = savedFilter => savedFilter.id;
 const normalizeStatus = savedFilter => savedFilter.status;
 const savedFilterCardTitleSegments = savedFilter => [{dimension: 'neutral', value: savedFilter.label}];
 const savedFilterCardTitle = savedFilter => savedFilter.label;
-const savedFilterScope = savedFilter => savedFilter.scope || null;
+const savedFilterScopes = savedFilter => (savedFilter.scope ? [savedFilter.scope] : []);
 const valueOf = (savedFilter, keys, fallback) => keys.map(key => savedFilter[key]).find(value => value !== undefined) ?? fallback;
 const savedFilterLevels = () => 'Operator';
 const savedFilterCdrNames = () => ['Example CDR.xlsx'];
@@ -216,7 +216,7 @@ def test_card_label_names_the_only_field_a_saved_filter_filters():
         _function_source(script, 'scoringVendorName'),
         _function_source(script, 'firstValue'),
         _function_source(script, 'savedSavedFilterValues'),
-        _function_source(script, 'savedFilterScope'),
+        _function_source(script, 'savedFilterScopes'),
     ]
     program = r"""
 const vm = require('node:vm');
@@ -227,21 +227,26 @@ vm.createContext(context);
 vm.runInContext(payload.snippets.join('\n') + `
   const empty = {Region: [], Cluster: [], City: [], Operator: [], Vendor: [], Campaign: ['@latest-campaign']};
   globalThis.scopes = [
-    savedFilterScope({context_filters: empty}),
-    savedFilterScope({context_filters: {...empty, City: ['London']}}),
-    savedFilterScope({context_filters: {...empty, Region: ['Vendor A']}}),
-    savedFilterScope({context_filters: {...empty, City: ['Leeds', 'London']}}),
-    savedFilterScope({context_filters: {...empty, Region: ['Vendor A'], City: ['London']}}),
+    savedFilterScopes({context_filters: empty}),
+    savedFilterScopes({context_filters: {...empty, City: ['London']}}),
+    savedFilterScopes({context_filters: {...empty, Region: ['Vendor A']}}),
+    savedFilterScopes({context_filters: {...empty, City: ['Leeds', 'London']}}),
+    savedFilterScopes({context_filters: {...empty, Region: ['Vendor A'], City: ['London']}}),
     // Every Region of its CDRs is no filter.
-    savedFilterScope({dataset_ids: [1], context_filters: {...empty, Region: ['Vendor A', 'Vendor B']}}),
+    savedFilterScopes({dataset_ids: [1], context_filters: {...empty, Region: ['Vendor A', 'Vendor B']}}),
+    // The operators or vendors after the areas (Nationwide without them).
+    savedFilterScopes({context_filters: {...empty, Operator: ['-Three']}}),
+    savedFilterScopes({context_filters: {...empty, Operator: ['-Three'], City: ['London']}}),
   ];`, context);
 process.stdout.write(JSON.stringify(context.scopes));
 """
     scopes = _run_node_json(program, {'snippets': snippets})
-    assert [scope and [scope['dimension'], scope['text']] for scope in scopes] == [
-        ['all', 'Nationwide'], ['city', 'London'], ['region', 'Vendor A'], ['city', 'Leeds, London'], None, ['all', 'Nationwide'],
+    assert [[[scope['dimension'], scope['text']] for scope in labels] for labels in scopes] == [
+        [['all', 'Nationwide']], [['city', 'London']], [['region', 'Vendor A']], [['city', 'Leeds, London']],
+        [['region', 'Vendor A'], ['city', 'London']], [['all', 'Nationwide']],
+        [['all', 'Nationwide'], ['operator', '-Three']], [['city', 'London'], ['operator', '-Three']],
     ]
-    assert scopes[2]['title'] == 'Region: Vendor A'
+    assert scopes[2][0]['title'] == 'Region: Vendor A'
     template = SCORING_TEMPLATE.read_text(encoding='utf-8')
     for dimension in ('all', 'region', 'cluster', 'city', 'operator', 'vendor'):
         assert f'.saved-filter-scope[data-dimension="{dimension}"]' in template
