@@ -345,3 +345,33 @@ def test_lists_of_users_show_names_with_the_default_users_first(client):
     assert '<span>Ana García</span><span class="sr-only">EZZZZZZ</span>' in admin and '<span class="user-choice-tag">default user</span>' in admin
     workspace = client.get('/workspace').text
     assert '<span>Ana García</span><span class="sr-only">EZZZZZZ</span>' in workspace
+
+
+def test_users_access_import_counts_as_updated_only_what_really_changed(client):
+    login(client)
+    core.repository.create_user('ana', 'secret123', 'user-editor', first_name='Ana')
+    _content, manifest, payload = users_access_package(client)
+    users, profiles, groups = len(payload['users']), len(payload['modules_profiles']), len(payload['workspace_groups'])
+
+    def counted(count, name):
+        return f'{count} {name if count == 1 else name + "s"}'
+
+    def part(count, name, detail):
+        return counted(count, name) + (f' ({detail})' if count else '')
+
+    # The same accounts, profiles and groups: nothing is updated.
+    notice = core.import_users_access(json.dumps(payload).encode('utf-8'), manifest, 'super')
+    assert notice == (f'Imported Users & Access: {part(users, "user", f"{users} unchanged")}, '
+                      f'{part(profiles, "Modules Profile", f"{profiles} unchanged")} and '
+                      f'{part(groups, "Workspace Group", f"{groups} unchanged")}.')
+    assert core.import_notice_details(notice)['sections'] == []
+
+    # A changed value updates the account, and the message tells what changed.
+    ana = next(item for item in payload['users'] if item['username'] == 'ana')
+    ana.update(first_name='Anna', role='user-viewer')
+    notice = core.import_users_access(json.dumps(payload).encode('utf-8'), manifest, 'super')
+    others = users - 1
+    assert notice.startswith(f'Imported Users & Access: {users} users (1 updated' + (f' and {others} unchanged)' if others else ')'))
+    [section] = core.import_notice_details(notice)['sections']
+    assert section == {'title': 'Updated users', 'items': [
+        {'name': 'ana', 'changes': ['First Name: Ana → Anna', 'Role: user-editor → user-viewer']}]}

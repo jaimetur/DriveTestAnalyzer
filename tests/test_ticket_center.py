@@ -153,9 +153,9 @@ def test_ticket_center_exports_imports_and_backs_up_on_its_own(client):
     assert inspected.status_code == 200 and inspected.json()['kind'] == 'ticket-center'
     with zipfile.ZipFile(io.BytesIO(package)) as archive:
         notice = core.import_ticket_center(archive)
-        assert notice.startswith('Ticket Center imported: 1 new and 0 updated tickets, 1 comments and 2 screenshots')
-        # Imported again, nothing is duplicated.
-        assert core.import_ticket_center(archive).startswith('Ticket Center imported: 0 new and 0 updated tickets, 0 comments and 0 screenshots')
+        assert notice == 'Imported Ticket Center: 1 ticket (1 new), 1 new comment and 2 new screenshots.'
+        # Imported again, nothing is duplicated nor counted as updated.
+        assert core.import_ticket_center(archive) == 'Imported Ticket Center: 1 ticket (1 unchanged), 0 new comments and 0 new screenshots.'
     tickets = list_tickets(core.repository)
     assert [(ticket['title'], ticket['comment_count'], ticket['attachment_count']) for ticket in tickets] == [('Export fails', 1, 2)]
 

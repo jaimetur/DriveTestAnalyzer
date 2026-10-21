@@ -317,7 +317,7 @@ def test_the_lists_travel_with_import_export_transfers_and_backups(client, tmp_p
     package.write_bytes(exported.content)
     message = app_module._apply_import_archive(package, app_module.read_import_manifest(package),
                                                destination_workspace_ids=[workspace.id])
-    assert message == 'Imported 1 lists of Scoring Excluded Calls into 1 workspaces.'
+    assert message == 'Imported 1 list of Scoring Excluded Calls into 1 workspace: 1 new.'
     assert restored() == expected
     backup_path = app_module.create_recurring_database_backup({
         'components': ['scoring_excluded_calls'], 'workspace_ids': [workspace.id], 'backup_path': str(tmp_path), 'max_backups': 5})

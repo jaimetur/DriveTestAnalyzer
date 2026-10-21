@@ -77,10 +77,19 @@ def test_dashboards_are_replaced_by_identity_or_name_and_the_others_kept(client,
         'x9': {'name': 'Speed', 'technology': 'nsa', 'template': 'Old'},
     }))
 
-    _transfer('dashboards', source, destination, tmp_path)
+    notice = _transfer('dashboards', source, destination, tmp_path)
     stored = _dashboards(destination_repo)
     # Speed replaces the Dashboard of that name, keeping its ID; the Dashboards only the destination has stay.
     assert set(stored) == {'local', 'x9', 'd1'}
+    # The message counts the Dashboards of the package and tells what changed in the updated ones.
+    assert notice.startswith('Imported 2 Dashboards into 1 workspace: 1 new and 1 updated.')
+    [section] = [item for item in core.import_notice_details(notice)['sections']
+                 if item['title'] == f'Updated Dashboards of "{destination.name}"']
+    assert section['items'] == [{'name': 'Speed', 'changes': ['Template: Old → T', 'Creator: (empty) → super']}]
+    # Imported again, nothing changes and nothing is counted as updated.
+    again = _transfer('dashboards', source, destination, tmp_path)
+    assert again == 'Imported 2 Dashboards into 1 workspace: 2 unchanged.'
+    assert core.import_notice_details(again)['sections'] == []
     assert stored['x9']['template'] == 'T' and stored['local']['name'] == 'Local only'
     known = creators(destination_repo, PPT_DASHBOARDS)
     assert known['d1'] == 'analyst' and known['x9'] == 'super'
@@ -94,6 +103,7 @@ def test_dashboards_are_replaced_by_identity_or_name_and_the_others_kept(client,
     stored = _dashboards(destination_repo)
     assert {key: item['name'] for key, item in stored.items()} == {'local': 'Local only', 'x9': 'Speed v2', 'd1': 'Coverage v2'}
     assert '"Coverage" renamed "Coverage v2"' in notice
+    assert notice.startswith('Imported 2 Dashboards into 1 workspace: 2 updated.')
     # The summary window gets the message in parts: its headline and a table of the renamed items of each element.
     details = core.import_notice_details(notice)
     [section] = [item for item in details['sections'] if item['title'] == f'Dashboards of "{destination.name}"']
@@ -475,3 +485,21 @@ def test_the_incoming_transfer_dialog_names_every_element_with_its_title():
                 *core.APPLICATION_BACKUP_COMPONENTS}
     assert sorted(element for element in elements if element not in labels) == []
     assert "'ticket-center': 'Ticket Center'," in script and "users_access: 'Users & Access'," in script
+
+
+def test_ppt_templates_tell_what_their_import_changed_like_the_other_elements(client, tmp_path):
+    source, source_repo = _workspace('Templates source')
+    destination, destination_repo = _workspace('Templates destination')
+    source_repo.add_report_template('nsa', 'Weekly', b'weekly')
+    source_repo.add_report_template('nsa', 'Daily', b'daily')
+    destination_repo.add_report_template('nsa', 'Daily', b'older daily')
+    destination_repo.add_report_template('nsa', 'Local', b'local')
+
+    notice = _transfer('ppt-templates', source, destination, tmp_path)
+    # Like the other elements: the templates of the package, new and updated (with what changed).
+    assert notice.startswith('Imported 2 PPT Templates into 1 workspace: 1 new and 1 updated.')
+    [section] = [item for item in core.import_notice_details(notice)['sections']
+                 if item['title'] == f'Updated PPT Templates of "{destination.name}"']
+    assert section['items'] == [{'name': 'Daily (NSA)', 'changes': ['Content', 'Creator: (empty) → super']}]
+    assert bytes(destination_repo.report_template_content('nsa', 'Local')) == b'local'
+    assert _transfer('ppt-templates', source, destination, tmp_path) == 'Imported 2 PPT Templates into 1 workspace: 2 unchanged.'

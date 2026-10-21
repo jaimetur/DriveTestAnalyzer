@@ -460,14 +460,15 @@ def _attachment_archive_path(attachment: dict[str, Any]) -> str:
     return f"{ATTACHMENTS_ARCHIVE_DIR}/{attachment['uid']}{IMAGE_EXTENSIONS.get(str(attachment['content_type']), '')}"
 
 
-def ticket_center_payload(repository: Repository) -> tuple[dict[str, Any], dict[str, bytes]]:
+def ticket_center_payload(repository: Repository, *, screenshots: bool = True) -> tuple[dict[str, Any], dict[str, bytes]]:
     """The Ticket Center package: every ticket with its type and timeline in one JSON document, and each screenshot as
-    a file (its archive path → its content)."""
+    a file (its archive path → its content; none without ``screenshots``, which only the document needs)."""
     files: dict[str, bytes] = {}
+    columns = '*' if screenshots else 'id, uid, ticket_id, comment_id, file_name, content_type, size, uploaded_by, created_at'
     with repository.global_connection() as conn:
         rows = [dict(row) for row in conn.execute('SELECT * FROM tickets ORDER BY id').fetchall()]
         comments = [dict(row) for row in conn.execute('SELECT * FROM ticket_comments ORDER BY id').fetchall()]
-        attachments = [dict(row) for row in conn.execute('SELECT * FROM ticket_attachments ORDER BY id').fetchall()]
+        attachments = [dict(row) for row in conn.execute(f'SELECT {columns} FROM ticket_attachments ORDER BY id').fetchall()]
     comment_uids = {comment['id']: comment['uid'] for comment in comments}
     tickets = {}
     for row in rows:
@@ -488,7 +489,8 @@ def ticket_center_payload(repository: Repository) -> tuple[dict[str, Any], dict[
         if ticket is None:
             continue
         path = _attachment_archive_path(attachment)
-        files[path] = bytes(attachment['content'])
+        if screenshots:
+            files[path] = bytes(attachment['content'])
         ticket['attachments'].append({
             'uid': attachment['uid'], 'comment_uid': comment_uids.get(attachment['comment_id']) if attachment['comment_id'] else None,
             'file_name': attachment['file_name'], 'content_type': attachment['content_type'], 'size': attachment['size'],

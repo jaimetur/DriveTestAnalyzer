@@ -2709,6 +2709,8 @@ body[data-embedded-dataset-preview] > .shell > main { width: 100%; max-width: no
 .import-summary-table .import-summary-arrow { width: 1.6rem; color: #08736d; font-weight: 800; text-align: center; }
 .import-summary-table .import-summary-kind { color: #5b6b78; font-weight: 700; white-space: nowrap; }
 .import-summary-table small { display: block; margin-top: .1rem; color: #7b8994; font-size: .76rem; }
+.import-summary-table .import-summary-item { width: 32%; color: #33495a; font-weight: 700; }
+.import-summary-changes div + div { margin-top: .15rem; }
 .import-summary-note { margin: .3rem 0 0; color: #33495a; font-size: .88rem; }
 .confirm-overlay.incoming-transfer-offer .confirm-panel #confirm-copy { max-height: min(64vh, 600px); }
 .confirm-panel #confirm-copy > ul.incoming-transfer-contents { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.2rem 1.6rem; }

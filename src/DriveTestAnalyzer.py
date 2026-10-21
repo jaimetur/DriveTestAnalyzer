@@ -10961,7 +10961,10 @@ def import_users_access(content: bytes, manifest: dict[str, Any], importing_user
     source = manifest.get('source_workspaces')
     source_names = [str(entry.get('name') or '') for entry in source if isinstance(entry, dict)] if isinstance(source, list) else None
     source_uids = [str(entry.get('uid') or '') for entry in source if isinstance(entry, dict)] if isinstance(source, list) else None
+    from src.modules.import_changes import breakdown, compare, counted, joined, users_access_items
+
     workspaces = workspace_registry.list()
+    before = users_access_items(json.loads(_users_access_archive_payload()))
     summary = repository.merge_users_access(
         payload, {workspace.name: workspace.id for workspace in workspaces},
         source_workspace_names=source_names, protected_username=importing_user,
@@ -10969,17 +10972,19 @@ def import_users_access(content: bytes, manifest: dict[str, Any], importing_user
         source_workspace_uids=source_uids,
     )
     invalidate_module_access_cache()
-    headline = (f"Users & Access imported: {summary['users_created']} new and {summary['users_updated']} updated users, "
-                f"{summary['modules_profiles']} Modules Profiles and {summary['workspace_groups']} Workspace Groups.")
-    message = headline
+    after, package = users_access_items(json.loads(_users_access_archive_payload())), users_access_items(payload)
+    # Each kind of item: what it is called (one, several) and what the import did to those of the package.
+    kinds = [(key, singular, plural, compare(package[key], before[key], after[key]))
+             for key, singular, plural in (('users', 'user', 'users'), ('modules_profiles', 'Modules Profile', 'Modules Profiles'),
+                                           ('workspace_groups', 'Workspace Group', 'Workspace Groups'))]
+    headline = 'Imported Users & Access: ' + joined([
+        counted(changes.count, singular, plural) + (f' ({breakdown(changes)})' if changes.count else '')
+        for _key, singular, plural, changes in kinds]) + '.'
     lines = [summary_section('Users & Access', summary['renamed'])] if summary['renamed'] else []
-    if summary['renamed']:
-        message += ' ' + '; '.join(summary['renamed']) + '.'
+    lines += [changes_section(f'Updated {plural}', changes.updated) for _key, _singular, plural, changes in kinds if changes.updated]
     if summary['missing_workspaces']:
-        missing = f" Workspaces this server does not have were left out: {', '.join(summary['missing_workspaces'])}."
-        message += missing
-        headline += missing
-    return import_notice(message, headline, lines)
+        headline += f" Workspaces this server does not have were left out: {', '.join(summary['missing_workspaces'])}."
+    return import_notice(' '.join([headline, *lines]), headline, lines)
 
 
 def _ticket_center_archive_files() -> dict[str, bytes]:
@@ -10992,16 +10997,22 @@ def _ticket_center_archive_files() -> dict[str, bytes]:
 
 def import_ticket_center(archive: zipfile.ZipFile) -> str:
     """Merge the Ticket Center of a package into this server; returns its completion message."""
-    from src.modules.ticket_center import ATTACHMENTS_ARCHIVE_DIR, merge_ticket_center
+    from src.modules.ticket_center import ATTACHMENTS_ARCHIVE_DIR, merge_ticket_center, ticket_center_payload
 
     try:
         payload = json.loads(archive.read(TICKET_CENTER_ARCHIVE_PATH).decode('utf-8'))
     except (KeyError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ValueError('The Ticket Center file is not valid.') from exc
+    from src.modules.import_changes import breakdown, compare, counted, ticket_items
+
     files = {name: archive.read(name) for name in archive.namelist() if name.startswith(f'{ATTACHMENTS_ARCHIVE_DIR}/') and not name.endswith('/')}
+    before = ticket_items(ticket_center_payload(repository, screenshots=False)[0])
     summary = merge_ticket_center(repository, payload, files)
-    return (f"Ticket Center imported: {summary['created']} new and {summary['updated']} updated tickets, "
-            f"{summary['comments']} comments and {summary['screenshots']} screenshots.")
+    changes = compare(ticket_items(payload), before, ticket_items(ticket_center_payload(repository, screenshots=False)[0]))
+    headline = (f"Imported Ticket Center: {counted(changes.count, 'ticket')}" + (f' ({breakdown(changes)})' if changes.count else '')
+                + f", {counted(summary['comments'], 'new comment')} and {counted(summary['screenshots'], 'new screenshot')}.")
+    lines = [changes_section('Updated tickets', changes.updated)] if changes.updated else []
+    return import_notice(' '.join([headline, *lines]), headline, lines)
 
 
 def _source_workspace_ids(source_workspaces: object) -> dict[str, str | None]:
@@ -11264,6 +11275,138 @@ def import_notice_details(notice: Any) -> dict[str, Any] | None:
     return getattr(notice, 'details', None)
 
 
+def changes_section(title: str, updated: Iterable[tuple[str, list[str]]]) -> ImportSummaryLine:
+    """A line of the completion message that tells what changed in the updated items of an element:
+    ``title: item (change; change); item (change).``"""
+    updated = [(str(name), [str(change) for change in changes]) for name, changes in updated]
+    line = ImportSummaryLine(f'{title}: ' + '; '.join(f'{name} ({"; ".join(changes)})' for name, changes in updated) + '.')
+    line.section = {'title': title, 'items': [{'name': name, 'changes': changes} for name, changes in updated]}
+    return line
+
+
+def _report_template_rows(workspace: Workspace) -> list[dict[str, Any]]:
+    """The PPT Templates of a workspace as an import compares them: each with its identity, the SHA-256 of its
+    content, whether it is the default of its NR Mode and its creator."""
+    task_repository = Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path)
+    task_repository.initialize_template_registry()
+    return [{'technology': technology, 'name': str(row['name']), 'uid': str(row['uid'] or ''),
+             'content': hashlib.sha256(bytes(row['content'] or b'')).hexdigest(), 'is_default': bool(row['is_default']),
+             'created_by': str(row['created_by'] or '')}
+            for technology in TEMPLATE_NAMES for row in task_repository.list_report_templates(technology)]
+
+
+def _package_report_template_rows(templates_root: Path, manifest: dict[str, Any]) -> list[dict[str, Any]]:
+    """The PPT Templates of a package (extracted in ``templates_root``) with their identity, to find them after the
+    import."""
+    metadata = {(str(item.get('technology') or ''), str(item.get('name') or '').casefold()): item
+                for item in manifest.get('report_templates') or [] if isinstance(item, dict)}
+    rows: dict[tuple[str, str], dict[str, Any]] = {}
+    templates = templates_root / 'report-templates'
+    for path in sorted(templates.rglob('*.csv')) if templates.is_dir() else []:
+        relative = path.relative_to(templates)
+        if len(relative.parts) != 3:
+            continue
+        technology, name = relative.parts[1], catalogue_registry_key(path.stem)
+        rows.setdefault((technology, name.casefold()), {
+            'technology': technology, 'name': name, 'uid': str(metadata.get((technology, name.casefold()), {}).get('uid') or '')})
+    return list(rows.values())
+
+
+# The export document of each element of a workspace, which an import reads before and after it to tell what it
+# changed (see import_changes).
+ELEMENT_DOCUMENTS: dict[str, Callable[[Workspace], Any]] = {
+    'dashboards': _dashboard_archive_payload,
+    'ppt-templates': _report_template_rows,
+    'mappings-reference-data': _mappings_reference_data_archive_payload,
+    'main-cities': _main_cities_archive_payload,
+    'scoring-configuration': _scoring_configuration_archive_payload,
+    'auto-calculated-fields': _exported_calculated_dimensions,
+    'query-builder-queries': _query_builder_queries_payload,
+    'network-insights-favourites': _network_insights_favourites_payload,
+    'bundle-report-template-favourites': _bundle_report_template_favourites_payload,
+    'scoring-favourites-filters': _favourites_filters_payload,
+    'scoring-report-templates': _scoring_report_templates_archive_payload,
+    'scoring-export-panels': _scoring_export_panels_archive_payload,
+    'scoring-excluded-calls': _scoring_excluded_calls_archive_payload,
+    'reporting-jobs': _reporting_jobs_payload,
+    'nq-call-tracking': _nq_call_tracking_payload,
+    'nq-calls-configuration': _nq_calls_configuration_payload,
+}
+
+
+def _json_document(value: Any) -> Any:
+    """A document as a payload function gives it (JSON bytes, or already read), read; ``None`` when it is not valid."""
+    if isinstance(value, (bytes, str)):
+        try:
+            return json.loads(value)
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return None
+    return value
+
+
+def _element_documents(kind: str, destinations: Iterable[Workspace]) -> dict[str, Any] | None:
+    """The export document of an element in each destination workspace, or ``None`` when one cannot be read: the
+    import then does not tell what it changed (telling it never stops an import)."""
+    try:
+        return {workspace.id: _json_document(ELEMENT_DOCUMENTS[kind](workspace)) for workspace in destinations}
+    except Exception as exc:  # noqa: BLE001 - any failure only leaves the changes untold
+        print(f'The changes of the {kind} import could not be told: {exc}', file=sys.stderr, flush=True)
+        return None
+
+
+def _element_changes(kind: str, destinations: list[Workspace], before: dict[str, Any] | None, package: Any) -> dict[str, Any] | None:
+    """What the import of an element did in each destination workspace (see import_changes), from its documents before
+    and after the import and that of the package; ``None`` when they could not be read."""
+    from src.modules.import_changes import (
+        ELEMENT_LABELS, SETTINGS_ELEMENTS, compare, compare_settings, element_items, settings_values,
+    )
+
+    after = _element_documents(kind, destinations) if before is not None else None
+    if after is None:
+        return None
+    if kind == 'scoring-export-panels':
+        from src.modules.scoring_export_panels import export_panel_changes
+        return {workspace.id: compare_settings('', {}, {}, described=export_panel_changes(
+            (before[workspace.id] or {}).get('panels'), (after[workspace.id] or {}).get('panels'))) for workspace in destinations}
+    if kind in SETTINGS_ELEMENTS:
+        labels = SETTINGS_ELEMENTS[kind][2]
+        return {workspace.id: compare_settings('', settings_values(before[workspace.id]), settings_values(after[workspace.id]), labels)
+                for workspace in destinations}
+    items = element_items(kind, package)
+    return {workspace.id: compare(items, element_items(kind, before[workspace.id]), element_items(kind, after[workspace.id]),
+                                  ELEMENT_LABELS.get(kind)) for workspace in destinations}
+
+
+def _element_notice(kind: str, destinations: list[Workspace], changes: dict[str, Any] | None,
+                    count: int = 0) -> tuple[str, list[str]]:
+    """The completion message of an element imported into the destination workspaces, ``Imported 32 Reporting Jobs into
+    1 workspace: 2 new, 1 updated and 29 unchanged.`` (the ``count`` items it had when what changed could not be told),
+    and the lines that tell what changed in the updated items of each workspace."""
+    from src.modules.import_changes import (
+        ELEMENT_NAMES, SETTINGS_ELEMENTS, Changes, breakdown, counted, settings_breakdown,
+    )
+
+    workspaces = counted(len(destinations), 'workspace')
+    total = Changes()
+    for workspace_changes in (changes or {}).values():
+        total.add(workspace_changes)
+    if kind in SETTINGS_ELEMENTS:
+        name, title, _labels = SETTINGS_ELEMENTS[kind]
+        if changes is None:
+            return f'Imported {name} into {workspaces}.', []
+        lines = [summary_section(f'Updated {title} of "{workspace.name}"',
+                                 [change for _item, described in changes[workspace.id].updated for change in described])
+                 for workspace in destinations if changes[workspace.id].updated]
+        return f'Imported {name} into {workspaces}: {settings_breakdown(total)}.', lines
+    singular, plural, prefix = ELEMENT_NAMES[kind]
+    if changes is None:
+        return f'Imported {prefix}{counted(count, singular, plural)} into {workspaces}.', []
+    lines = [changes_section(f'Updated {plural} of "{workspace.name}"', changes[workspace.id].updated)
+             for workspace in destinations if changes[workspace.id].updated]
+    detail = breakdown(total)
+    return f'Imported {prefix}{counted(total.count, singular, plural)} into {workspaces}' + (f': {detail}.' if detail else '.'), lines
+
+
 def _apply_import_archive(
     package_path: Path,
     manifest: dict[str, Any],
@@ -11423,14 +11566,20 @@ def _apply_import_archive(
             if progress_callback:
                 progress_callback('importing PPT Templates', 90.0)
             renamed: list[str] = []
+            templates_root = staging_root if archive_path == 'report-templates' else staging_root / Path(archive_path).parent
+            destinations = [workspace_registry.get(workspace_id) for workspace_id in
+                            list(dict.fromkeys(destination_workspace_ids)) or matching_template_workspaces(manifest, workspace_registry.list())]
+            destinations = [workspace for workspace in destinations if workspace]
+            before = _element_documents(kind, destinations)
             import_slides_templates_archive(
-                staging_root if archive_path == 'report-templates' else staging_root / Path(archive_path).parent,
-                destination_workspace_ids, manifest, includes_dashboards=includes_dashboards,
+                templates_root, destination_workspace_ids, manifest, includes_dashboards=includes_dashboards,
                 importing_user=importing_user, summary=renamed,
             )
             if progress_callback:
                 progress_callback('finalising', 100.0)
-            return told('PPT Templates imported successfully.', renamed)
+            message, lines = _element_notice(kind, destinations, _element_changes(
+                kind, destinations, before, _package_report_template_rows(templates_root, manifest)))
+            return told(message, [*renamed, *lines])
         if kind == 'dashboards':
             member = str(manifest.get('archive_path') or '')
             if member not in archive.namelist() or not re.fullmatch(r'workspaces/[^/]+/dashboards/dashboards\.json', member):
@@ -11446,11 +11595,13 @@ def _apply_import_archive(
                 raise ValueError('Select at least one destination workspace.')
             payload = archive.read(member)
             renamed = []
+            before = _element_documents(kind, destinations)
             for workspace in destinations:
                 changes = _import_workspace_dashboards(workspace, payload, importing_user)
                 if changes:
                     renamed.append(summary_section(f'Dashboards of "{workspace.name}"', changes))
-            return told(f'Imported Dashboards into {len(destinations)} workspaces.', renamed)
+            message, lines = _element_notice(kind, destinations, _element_changes(kind, destinations, before, _json_document(payload)))
+            return told(message, [*renamed, *lines])
         if kind == 'mappings-reference-data':
             member = str(manifest.get('archive_path') or '')
             if (
@@ -11468,9 +11619,10 @@ def _apply_import_archive(
             if not destinations:
                 raise ValueError('Select at least one destination workspace.')
             payload = archive.read(member)
+            before = _element_documents(kind, destinations)
             for workspace in destinations:
                 _restore_workspace_mappings_reference_data(workspace, payload)
-            return f'Imported Mappings & Reference Data into {len(destinations)} workspaces.'
+            return told(*_element_notice(kind, destinations, _element_changes(kind, destinations, before, None)))
         if kind == 'main-cities':
             member = str(manifest.get('archive_path') or '')
             if (
@@ -11488,9 +11640,10 @@ def _apply_import_archive(
             if not destinations:
                 raise ValueError('Select at least one destination workspace.')
             payload = archive.read(member)
+            before = _element_documents(kind, destinations)
             for workspace in destinations:
                 _restore_workspace_main_cities(workspace, payload)
-            return f'Imported Main Cities into {len(destinations)} workspaces.'
+            return told(*_element_notice(kind, destinations, _element_changes(kind, destinations, before, None)))
         if kind == 'scoring-configuration':
             member = str(manifest.get('archive_path') or '')
             if (
@@ -11511,9 +11664,11 @@ def _apply_import_archive(
             # The report configurations and Saved Filters that packages of earlier versions carried are left out: they
             # travel as elements of their own (backups of earlier versions still restore them).
             renamed: list[str] = []
+            before = _element_documents(kind, destinations)
             for workspace in destinations:
                 _import_workspace_scoring_configuration(workspace, payload, importing_user, renamed)
-            return told(f'Imported Scoring & GAP Analysis Methodologies into {len(destinations)} workspaces.', renamed)
+            message, lines = _element_notice(kind, destinations, _element_changes(kind, destinations, before, _json_document(payload)))
+            return told(message, [*renamed, *lines])
         if kind == 'auto-calculated-fields':
             try:
                 member = next((candidate for candidate in (
@@ -11528,11 +11683,16 @@ def _apply_import_archive(
             except (KeyError, UnicodeDecodeError, json.JSONDecodeError) as exc:
                 raise ValueError('The package does not contain valid auto-calculated fields.') from exc
             renamed: list[str] = []
-            imported_count, workspace_count = import_auto_calculated_fields(
+            destinations = [workspace_registry.get(str(workspace_id)) for workspace_id in dict.fromkeys(destination_workspace_ids)]
+            destinations = [workspace for workspace in destinations if workspace]
+            before = _element_documents(kind, destinations)
+            imported_count, _workspace_count = import_auto_calculated_fields(
                 definitions, destination_workspace_ids, progress_callback, parent_task_id, deferred_jobs,
                 importing_user=importing_user, summary=renamed,
             )
-            return told(f'Imported {imported_count} auto-calculated fields into {workspace_count} workspaces.', renamed)
+            message, lines = _element_notice(kind, destinations, _element_changes(kind, destinations, before, definitions),
+                                             imported_count)
+            return told(message, [*renamed, *lines])
         if kind == 'query-builder-queries':
             member = str(manifest.get('archive_path') or '')
             if (
@@ -11551,9 +11711,12 @@ def _apply_import_archive(
                 raise ValueError('Select at least one destination workspace.')
             payload = archive.read(member)
             renamed: list[str] = []
+            before = _element_documents(kind, destinations)
             imported_count = sum(_restore_workspace_query_builder_queries(workspace, payload, importing_user, renamed)
                                  for workspace in destinations)
-            return told(f'Imported {imported_count} Query Builder queries into {len(destinations)} workspaces.', renamed)
+            message, lines = _element_notice(kind, destinations, _element_changes(kind, destinations, before, _json_document(payload)),
+                                             imported_count)
+            return told(message, [*renamed, *lines])
         if kind == 'network-insights-favourites':
             member = str(manifest.get('archive_path') or '')
             if member not in archive.namelist() or not re.fullmatch(
@@ -11570,9 +11733,12 @@ def _apply_import_archive(
                 raise ValueError('Select at least one destination workspace.')
             payload = archive.read(member)
             renamed: list[str] = []
+            before = _element_documents(kind, destinations)
             imported_count = sum(_restore_workspace_network_insights_favourites(workspace, payload, importing_user, renamed)
                                  for workspace in destinations)
-            return told(f'Imported {imported_count} Network Insights Favourites into {len(destinations)} workspaces.', renamed)
+            message, lines = _element_notice(kind, destinations, _element_changes(kind, destinations, before, _json_document(payload)),
+                                             imported_count)
+            return told(message, [*renamed, *lines])
         if kind in {'bundle-report-template-favourites', 'scoring-favourites-filters', 'scoring-report-templates', 'scoring-export-panels',
                        'scoring-excluded-calls'}:
             favourites = kind == 'bundle-report-template-favourites'
@@ -11599,6 +11765,7 @@ def _apply_import_archive(
                 raise ValueError('Select at least one destination workspace.')
             payload = archive.read(member)
             renamed: list[str] = []
+            before = _element_documents(kind, destinations)
 
             def workspace_progress(position: int) -> Callable[[str, float], None] | None:
                 """The progress of the workspace at ``position``: its share of the package, saying what it is doing."""
@@ -11614,11 +11781,9 @@ def _apply_import_archive(
                 else _restore_workspace_scoring_excluded_calls(workspace, payload, importing_user, renamed) if kind == 'scoring-excluded-calls'
                 else _import_workspace_scoring_report_templates(workspace, payload, importing_user, renamed)
                 for position, workspace in enumerate(destinations))
-            if kind == 'scoring-export-panels':
-                return f'Imported the {label} into {len(destinations)} workspaces.'
-            if kind == 'scoring-excluded-calls':
-                return told(f'Imported {imported_count} lists of {label} into {len(destinations)} workspaces.', renamed)
-            return told(f'Imported {imported_count} {label} into {len(destinations)} workspaces.', renamed)
+            message, lines = _element_notice(kind, destinations, _element_changes(kind, destinations, before, _json_document(payload)),
+                                             imported_count)
+            return told(message, [*renamed, *lines])
         if kind == 'reporting-jobs':
             member = str(manifest.get('archive_path') or '')
             if (
@@ -11637,9 +11802,12 @@ def _apply_import_archive(
                 raise ValueError('Select at least one destination workspace.')
             payload = archive.read(member)
             renamed: list[str] = []
+            before = _element_documents(kind, destinations)
             imported_count = sum(_restore_workspace_reporting_jobs(workspace, payload, importing_user, renamed)
                                  for workspace in destinations)
-            return told(f'Imported {imported_count} Reporting Jobs into {len(destinations)} workspaces.', renamed)
+            message, lines = _element_notice(kind, destinations, _element_changes(kind, destinations, before, _json_document(payload)),
+                                             imported_count)
+            return told(message, [*renamed, *lines])
         if kind == 'nq-call-tracking':
             member = str(manifest.get('archive_path') or '')
             if (
@@ -11657,8 +11825,10 @@ def _apply_import_archive(
             if not destinations:
                 raise ValueError('Select at least one destination workspace.')
             payload = archive.read(member)
+            before = _element_documents(kind, destinations)
             imported_count = sum(_restore_workspace_nq_call_tracking(workspace, payload) for workspace in destinations)
-            return f'Imported the follow-up of {imported_count} Non-Qualified Calls into {len(destinations)} workspaces.'
+            return told(*_element_notice(kind, destinations, _element_changes(kind, destinations, before, _json_document(payload)),
+                                         imported_count))
         if kind == 'nq-calls-configuration':
             member = str(manifest.get('archive_path') or '')
             if (
@@ -11676,9 +11846,10 @@ def _apply_import_archive(
             if not destinations:
                 raise ValueError('Select at least one destination workspace.')
             payload = archive.read(member)
+            before = _element_documents(kind, destinations)
             for workspace in destinations:
                 _restore_workspace_nq_calls_configuration(workspace, payload)
-            return f'Imported the NQ Calls Configuration into {len(destinations)} workspaces.'
+            return told(*_element_notice(kind, destinations, _element_changes(kind, destinations, before, None)))
         if kind == 'app-events':
             member = str(manifest.get('archive_path') or '')
             if member not in archive.namelist() or not re.fullmatch(rf'workspaces/[^/]+/{re.escape(APP_EVENTS_ARCHIVE_NAME)}', member):
@@ -11694,7 +11865,11 @@ def _apply_import_archive(
                 raise ValueError('Select at least one destination workspace.')
             payload = archive.read(member)
             added = sum(_restore_workspace_app_events(workspace, payload) for workspace in destinations)
-            return f'Imported {added} App Events into {len(destinations)} workspaces; the events they already had were kept.'
+            from src.modules.import_changes import Changes, breakdown, counted
+            events = len((_json_document(payload) or {}).get('events') or []) * len(destinations)
+            changes = Changes(new=[''] * added, unchanged=max(events - added, 0))
+            return (f'Imported {counted(changes.count, "App Event")} into {counted(len(destinations), "workspace")}'
+                    + (f': {breakdown(changes)}' if changes.count else '') + '; the events they already had were kept.')
         if kind == 'full-environment':
             _safe_extract_archive_prefix(archive, staging_root, 'config', extracted)
             if progress_callback:

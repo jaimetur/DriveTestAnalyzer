@@ -8893,14 +8893,34 @@ function importSummaryContent(details) {
   (details.sections || []).forEach((entry) => {
     const items = entry.items || [];
     const changes = items.filter((item) => item.from !== undefined);
-    const notes = items.filter((item) => item.from === undefined);
+    // The updated items of an element, each with what changed in it.
+    const updated = items.filter((item) => Array.isArray(item.changes));
+    const notes = items.filter((item) => item.from === undefined && !Array.isArray(item.changes));
     const section = element('section', 'import-summary-section');
     const heading = element('h4');
     const renamed = changes.filter((item) => !item.note).length;
     const another = changes.length - renamed;
-    const count = [renamed ? `${renamed} renamed` : '', another ? `${another} imported with another name` : ''].filter(Boolean).join(' · ');
+    const count = [renamed ? `${renamed} renamed` : '', another ? `${another} imported with another name` : '',
+      updated.length ? `${updated.length} updated` : ''].filter(Boolean).join(' · ');
     heading.append(element('span', '', entry.title || 'Notes'), element('span', 'import-summary-count', count));
     section.append(heading);
+    if (updated.length) {
+      const table = element('table', 'import-summary-table');
+      const head = element('tr');
+      head.append(element('th', '', 'Item'), element('th', '', 'What changed'));
+      table.append(element('thead'));
+      table.tHead.append(head);
+      const body = element('tbody');
+      updated.forEach((item) => {
+        const row = element('tr');
+        const what = element('td', 'import-summary-changes');
+        item.changes.forEach((change) => what.append(element('div', '', change)));
+        row.append(element('td', 'import-summary-item', item.name || ''), what);
+        body.append(row);
+      });
+      table.append(body);
+      section.append(table);
+    }
     if (changes.length) {
       const withKind = changes.some((item) => item.label);
       const table = element('table', 'import-summary-table');
