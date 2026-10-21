@@ -15,6 +15,7 @@
 - **Primary bandwidth in Network Insights:** the bandwidth ladders, the spread of the bandwidth and the location strips of the Key Findings and the Spectrum (on the page and in PowerPoint and Word) are titled and labelled **Primary bandwidth** instead of total bandwidth, and say that the CDRs report only the NR primary cell, so NR carrier aggregation is not included.
 - **Exclusions on the covers of Bundle Report Templates:** a common filter that only leaves values out, such as Operators `-Three`, shows as *All except Three* on the covers.
 - **Area and operator labels:** the labels of the Reporting Jobs and of the cards of the Favourites Filters of Scoring & GAP Analysis show first the Region, Cluster or City they filter, or **Nationwide** when none, then the Operator or Vendor (for example **London** and **-Three**, every operator but Three), also when they filter several of these fields.
+- **Column filters, 10 rows and fixed headers in Reporting Jobs and Run History:** every column of both tables but Actions filters its rows as in Excel (Artifacts by module), with **Select all**, **Move Up** and **Move Down** acting on the rows shown; each table shows up to 10 rows and scrolls for the rest, and while the page scrolls the bar of its buttons and its header stay at the top.
 
 #### 🐛 Bug fixes:
 

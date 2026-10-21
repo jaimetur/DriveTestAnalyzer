@@ -78,6 +78,7 @@
     if (!parsed || Number.isNaN(parsed.getTime())) return node('td', value ? String(value) : '—');
     const cell = node('td', undefined, 'rj-time-cell');
     cell.title = localTime(value);
+    cell.dataset.filterValue = cell.title;
     cell.append(node('span', parsed.toLocaleDateString(undefined, {dateStyle: 'medium'})),
       node('span', parsed.toLocaleTimeString(undefined, {timeStyle: 'short'})));
     return cell;
@@ -1240,6 +1241,7 @@
     let row = document.getElementById('rj-editor-row');
     if (!editorOpen) {
       if (row) { editorHome.after(editor); row.remove(); }
+      syncTableHeight('tasks');
       return;
     }
     if (!row) {
@@ -1250,6 +1252,7 @@
     row.cells[0].append(editor);
     const edited = editingId !== null ? body.querySelector(`tr[data-task-id="${editingId}"]`) : null;
     if (edited) edited.after(row); else body.prepend(row);
+    syncTableHeight('tasks');
   }
   function openEditor(taskId) {
     const editor = editorElement;
@@ -1403,16 +1406,19 @@
     const move = (moveEvent) => {
       if (moveEvent.clientY < 70) window.scrollBy(0, -14);
       else if (moveEvent.clientY > window.innerHeight - 70) window.scrollBy(0, 14);
-      const next = taskRows().filter((element) => element !== row).find((element) => {
+      // (The table scrolls on its own when it shows more than 10 jobs.)
+      const wrapper = tasksBody.closest('.table-wrap');
+      const frame = wrapper.getBoundingClientRect();
+      if (moveEvent.clientY < headBottom($('rj-tasks')) + 40) wrapper.scrollTop -= 14;
+      else if (moveEvent.clientY > frame.top + wrapper.clientHeight - 40) wrapper.scrollTop += 14;
+      const rows = taskRows().filter((element) => !element.hidden);
+      const next = rows.filter((element) => element !== row).find((element) => {
         const box = element.getBoundingClientRect();
         return moveEvent.clientY < box.top + box.height / 2;
       });
       if (next) {
         if (row.nextElementSibling !== next) next.before(row);
-      } else {
-        const rows = taskRows();
-        if (rows[rows.length - 1] !== row) rows[rows.length - 1].after(row);
-      }
+      } else if (rows[rows.length - 1] !== row) rows[rows.length - 1].after(row);
     };
     const stop = () => {
       window.removeEventListener('pointermove', move);
@@ -1431,11 +1437,12 @@
     const row = handle?.closest('tr[data-task-id]');
     if (!row || !['ArrowUp', 'ArrowDown'].includes(event.key)) return;
     event.preventDefault();
-    const rows = taskRows();
+    const rows = taskRows().filter((element) => !element.hidden);
     const target = rows[rows.indexOf(row) + (event.key === 'ArrowUp' ? -1 : 1)];
     if (!target) return;
     orderBefore = JSON.stringify(currentOrder());
     if (event.key === 'ArrowUp') target.before(row); else target.after(row);
+    revealInTable(row);
     handle.focus();
     void saveOrder();
   });
@@ -1541,6 +1548,7 @@
       const lastCell = timeCell(last ? last.started_at || last.created_at : '');
       const statusCell = node('td');
       statusCell.append(statusBadge(last));
+      statusCell.dataset.filterValue = last ? STATUS_LABELS[last.status] || last.status : 'Never run';
       const actions = node('div', undefined, 'table-actions rj-task-actions');
       if (state.can_edit) {
         actions.append(actionButton('▶', 'Run now', async () => {
@@ -1606,8 +1614,12 @@
       const campaigns = campaignTags(task);
       if (campaigns) nameCell.append(campaigns);
       nameCell.append(node('span', task.name, 'rj-task-name'));
+      nameCell.dataset.filterValue = task.name;
+      // (The Artifacts column filters by module.)
+      const artifactsCell = cellWith(artifacts);
+      artifactsCell.dataset.filterValues = JSON.stringify(task.artifact_groups ? task.artifact_groups.map((group) => group.module) : task.artifacts);
       row.append(
-        nameCell, cellWith(artifacts), basedOn,
+        nameCell, artifactsCell, basedOn,
         node('td', task.recurrence), task.enabled ? timeCell(task.next_run_at) : node('td', 'Disabled'),
         node('td', task.send_email ? `Yes · ${task.recipients.length} recipient${task.recipients.length === 1 ? '' : 's'}` : 'No'),
         lastCell, statusCell, cellWith(switchLabel), cellWith(actions),
@@ -1615,6 +1627,7 @@
       row.cells[5].title = task.recipients.join(', ');
       return row;
     }));
+    applyColumnFilters('tasks');
     placeEditor();
     syncBulk();
   }
@@ -1632,22 +1645,29 @@
   const downloadCheckedTasks = $('rj-download-selected');
   // The order of the jobs with each checked one a place up (step -1) or down (step 1): a checked one trades places with
   // the unchecked one next to it, so checked ones side by side move together and stop at the end.
+  // With column filters, the jobs shown move among themselves and the hidden ones keep their places.
   function movedTaskOrder(order, step) {
-    const moved = [...order];
-    const indexes = moved.map((_, index) => index);
+    const shown = new Set(visibleTaskIds());
+    const slots = order.flatMap((id, index) => (shown.has(id) ? [index] : []));
+    const visible = slots.map((index) => order[index]);
+    const indexes = visible.map((_, index) => index);
     for (const index of step < 0 ? indexes.slice(1) : indexes.slice(0, -1).reverse()) {
-      if (checkedTaskIds.has(moved[index]) && !checkedTaskIds.has(moved[index + step])) {
-        [moved[index], moved[index + step]] = [moved[index + step], moved[index]];
+      if (checkedTaskIds.has(visible[index]) && !checkedTaskIds.has(visible[index + step])) {
+        [visible[index], visible[index + step]] = [visible[index + step], visible[index]];
       }
     }
+    const moved = [...order];
+    slots.forEach((slot, position) => { moved[slot] = visible[position]; });
     return moved;
   }
   function syncBulk() {
     const ids = state.tasks.map((task) => task.id);
     for (const id of [...checkedTaskIds]) if (!ids.includes(id)) checkedTaskIds.delete(id);
     $('rj-bulk').hidden = !state.can_edit || !ids.length;
-    selectAllTasks.checked = ids.length > 0 && checkedTaskIds.size === ids.length;
-    selectAllTasks.indeterminate = checkedTaskIds.size > 0 && checkedTaskIds.size < ids.length;
+    // (Select all checks the jobs the column filters show; those they hide are unchecked.)
+    const shown = visibleTaskIds().length;
+    selectAllTasks.checked = shown > 0 && checkedTaskIds.size === shown;
+    selectAllTasks.indeterminate = checkedTaskIds.size > 0 && checkedTaskIds.size < shown;
     // A button is off when no checked job can move that way.
     for (const button of moveTaskButtons) {
       const step = button.dataset.rjMove === 'up' ? -1 : 1;
@@ -1681,15 +1701,6 @@
     const runs = state.tasks.filter((task) => checkedTaskIds.has(task.id) && taskDownloadable(task)).map((task) => task.last_run);
     if (runs.length) downloadRuns(runs);
   });
-  // The bar is held at the top while the table is scrolled; then a band behind it hides the page above it.
-  const syncBulkStuck = () => {
-    const bar = $('rj-bulk');
-    const top = parseFloat(getComputedStyle(bar).top) || 0;
-    bar.classList.toggle('is-stuck', !bar.hidden && bar.getBoundingClientRect().top <= top + 1
-      && $('rj-tasks').getBoundingClientRect().top < top + bar.offsetHeight);
-  };
-  window.addEventListener('scroll', syncBulkStuck, {passive: true});
-  window.addEventListener('resize', syncBulkStuck);
   tasksBody.addEventListener('change', (event) => {
     const box = event.target.closest('[data-task-check]');
     if (!box) return;
@@ -1699,7 +1710,7 @@
   });
   selectAllTasks.addEventListener('change', () => {
     checkedTaskIds.clear();
-    if (selectAllTasks.checked) state.tasks.forEach((task) => checkedTaskIds.add(task.id));
+    if (selectAllTasks.checked) visibleTaskIds().forEach((id) => checkedTaskIds.add(id));
     tasksBody.querySelectorAll('[data-task-check]').forEach((box) => { box.checked = checkedTaskIds.has(Number(box.dataset.taskCheck)); });
     syncBulk();
   });
@@ -1719,8 +1730,9 @@
     lit.forEach((row) => { row.classList.remove('rj-moved'); void row.offsetWidth; row.classList.add('rj-moved'); });
     const leading = step < 0 ? lit[0] : lit[lit.length - 1];
     if (leading) {
+      revealInTable(leading);
       const bar = $('rj-bulk');
-      const clear = (parseFloat(getComputedStyle(bar).top) || 0) + bar.offsetHeight + 12;
+      const clear = (parseFloat(getComputedStyle(bar).top) || 0) + bar.offsetHeight + $('rj-tasks').tHead.offsetHeight + 12;
       const box = leading.getBoundingClientRect();
       if (box.top < clear) window.scrollBy({top: box.top - clear, behavior: 'auto'});
       else if (box.bottom > window.innerHeight - 12) window.scrollBy({top: box.bottom - window.innerHeight + 12, behavior: 'auto'});
@@ -1766,7 +1778,7 @@
     const body = $('rj-runs').tBodies[0];
     if (!state.runs.length) {
       emptyRow(body, 'No runs yet.', 9);
-      syncRunsHeight();
+      syncTableHeight('runs');
       syncRunsBulk();
       return;
     }
@@ -1775,6 +1787,7 @@
       row.dataset.runId = run.id;
       const statusCell = node('td');
       statusCell.append(statusBadge(run));
+      statusCell.dataset.filterValue = STATUS_LABELS[run.status] || run.status;
       const duration = runDuration(run);
       const active = ACTIVE_RUN_STATUSES.includes(run.status);
       if (active) statusCell.append(node('small', ` ${run.progress}% · ${run.message}`));
@@ -1839,6 +1852,7 @@
       const jobCell = node('td', undefined, 'rj-run-job');
       for (const labels of task ? [scopeTabs(task), moduleLine(task), campaignTags(task)] : []) if (labels) jobCell.append(labels);
       jobCell.append(node('span', run.task_name, 'rj-task-name'));
+      jobCell.dataset.filterValue = run.task_name;
       const runCell = node('td', undefined, 'rj-run-id');
       if (state.can_edit) runCell.append(runCheck(run));
       runCell.append(String(run.id));
@@ -1847,10 +1861,14 @@
       // What all the artifacts of the run take on disk.
       const size = node('td', run.artifacts_size ? formatSize(run.artifacts_size) : '—', 'rj-size');
       size.title = 'Size of all the artifacts of this run';
-      row.append(...cells, cellWith(artifacts), size, actions.childElementCount ? cellWith(actions) : node('td'));
+      // (The Artifacts column filters by module.)
+      const artifactsCell = cellWith(artifacts);
+      artifactsCell.dataset.filterValues = JSON.stringify([...byModule.keys()]);
+      row.append(...cells, artifactsCell, size, actions.childElementCount ? cellWith(actions) : node('td'));
       return row;
     }));
-    syncRunsHeight();
+    applyColumnFilters('runs');
+    syncTableHeight('runs');
     syncRunsBulk();
   }
 
@@ -1882,8 +1900,10 @@
     const ids = state.runs.map((run) => run.id);
     for (const id of [...checkedRunIds]) if (!ids.includes(id)) checkedRunIds.delete(id);
     $('rj-runs-bulk').hidden = !state.can_edit || !ids.length;
-    selectAllRuns.checked = ids.length > 0 && checkedRunIds.size === ids.length;
-    selectAllRuns.indeterminate = checkedRunIds.size > 0 && checkedRunIds.size < ids.length;
+    // (Select all checks the runs the column filters show; those they hide are unchecked.)
+    const shown = visibleRunIds().length;
+    selectAllRuns.checked = shown > 0 && checkedRunIds.size === shown;
+    selectAllRuns.indeterminate = checkedRunIds.size > 0 && checkedRunIds.size < shown;
     // Each button acts on the checked runs when every one of them has that button on in its row.
     const checked = state.runs.filter((run) => checkedRunIds.has(run.id));
     for (const [button, label, statuses] of [
@@ -1906,7 +1926,7 @@
   });
   selectAllRuns.addEventListener('change', () => {
     checkedRunIds.clear();
-    if (selectAllRuns.checked) state.runs.forEach((run) => checkedRunIds.add(run.id));
+    if (selectAllRuns.checked) visibleRunIds().forEach((id) => checkedRunIds.add(id));
     runsBody.querySelectorAll('[data-run-check]').forEach((box) => { box.checked = checkedRunIds.has(Number(box.dataset.runCheck)); });
     syncRunsBulk();
   });
@@ -1968,28 +1988,105 @@
     });
   }
 
-  // Run History shows the latest 10 runs; the older ones are reached by scrolling its table.
-  const RUN_HISTORY_ROWS = 10;
-  function syncRunsHeight() {
-    const table = $('rj-runs');
+  // -- column filters, rows shown and headers held at the top -----------------------------
+  // Each column of the Reporting Jobs and of the Run History but Actions filters the rows as in Excel: the arrow of its
+  // header lists its values to check. A row the filters hide is unchecked, so the buttons of the bar act on rows shown.
+  const runRows = () => [...runsBody.querySelectorAll('tr[data-run-id]')];
+  const visibleTaskIds = () => taskRows().filter((row) => !row.hidden).map((row) => Number(row.dataset.taskId));
+  const visibleRunIds = () => runRows().filter((row) => !row.hidden).map((row) => Number(row.dataset.runId));
+  const filteredTables = {
+    tasks: {bar: $('rj-bulk'), table: $('rj-tasks'), rows: taskRows, id: 'taskId', check: '[data-task-check]', checked: checkedTaskIds,
+      empty: 'No Reporting Jobs match the column filters.'},
+    runs: {bar: $('rj-runs-bulk'), table: $('rj-runs'), rows: runRows, id: 'runId', check: '[data-run-check]', checked: checkedRunIds,
+      empty: 'No runs match the column filters.'},
+  };
+  function applyColumnFilters(kind) {
+    const {table, rows, id, check, checked, empty} = filteredTables[kind];
+    const all = rows();
+    all.forEach((row) => {
+      row.hidden = !(table._excelColumnFilters?.matches(row) ?? true);
+      if (!row.hidden) return;
+      checked.delete(Number(row.dataset[id]));
+      const box = row.querySelector(check);
+      if (box) box.checked = false;
+    });
+    // (A row says so when the filters hide every row.)
+    let note = table.tBodies[0].querySelector('tr.rj-filter-empty');
+    const none = all.length > 0 && all.every((row) => row.hidden);
+    if (none && !note) {
+      note = node('tr', undefined, 'rj-filter-empty');
+      const cell = node('td', empty, 'form-note');
+      cell.colSpan = table.tHead.rows[0].cells.length;
+      note.append(cell);
+      table.tBodies[0].append(note);
+    } else if (!none) note?.remove();
+  }
+  for (const [kind, syncButtons] of [['tasks', () => syncBulk()], ['runs', () => syncRunsBulk()]]) {
+    window.enableExcelColumnFilters?.(filteredTables[kind].table, {
+      rowSelector: kind === 'tasks' ? 'tr[data-task-id]' : 'tr[data-run-id]', menuClass: 'rj-column-filter-menu',
+      onChange: () => { applyColumnFilters(kind); syncButtons(); syncTableHeight(kind); },
+    });
+  }
+
+  // Each table shows up to 10 rows, the others are reached by scrolling it (the Reporting Jobs show every row while the
+  // Job Editor, which unfolds inside the table, is open).
+  const VISIBLE_ROWS = 10;
+  function syncTableHeight(kind) {
+    const {table, rows} = filteredTables[kind];
     const wrapper = table.closest('.table-wrap');
     requestAnimationFrame(() => {
       // (A collapsed panel has nothing to measure: it is measured again when opened.)
       if (!wrapper.offsetParent) return;
-      const rows = Array.from(table.tBodies[0].rows);
-      // (Phones show each run as a card, one under the other.)
-      if (rows.length <= RUN_HISTORY_ROWS || window.matchMedia('(max-width: 640px)').matches) {
+      const shown = rows().filter((row) => !row.hidden);
+      // (Phones show each row as a card, one under the other.)
+      if ((kind === 'tasks' && editorOpen) || shown.length <= VISIBLE_ROWS || window.matchMedia('(max-width: 640px)').matches) {
         wrapper.style.maxHeight = '';
-        return;
+      } else {
+        const rowsHeight = shown.slice(0, VISIBLE_ROWS).reduce((height, row) => height + row.getBoundingClientRect().height, 0);
+        // (Borders and a horizontal scrollbar are kept out of the rows.)
+        const frame = wrapper.offsetHeight - wrapper.clientHeight;
+        wrapper.style.maxHeight = `${Math.ceil(table.tHead.getBoundingClientRect().height + rowsHeight + frame)}px`;
       }
-      const rowsHeight = rows.slice(0, RUN_HISTORY_ROWS).reduce((height, row) => height + row.getBoundingClientRect().height, 0);
-      // (Borders and a horizontal scrollbar are kept out of the rows.)
-      const frame = wrapper.offsetHeight - wrapper.clientHeight;
-      wrapper.style.maxHeight = `${Math.ceil(table.tHead.getBoundingClientRect().height + rowsHeight + frame)}px`;
+      queueStickyHeads();
     });
   }
-  $('rj-runs').closest('details').addEventListener('toggle', syncRunsHeight);
-  window.addEventListener('resize', syncRunsHeight);
+  // (Where the header of a table is shown: it is held at the top of the table or of the window.)
+  const headBottom = (table) => table.tHead.rows[0].cells[0].getBoundingClientRect().bottom;
+  // A row moved with the keyboard or Move Up and Move Down is scrolled into its table, below the header.
+  function revealInTable(row) {
+    const wrapper = row.closest('.table-wrap');
+    const head = headBottom(row.closest('table'));
+    const box = row.getBoundingClientRect();
+    const bottom = wrapper.getBoundingClientRect().top + wrapper.clientHeight;
+    if (box.top < head) wrapper.scrollTop -= head - box.top;
+    else if (box.bottom > bottom) wrapper.scrollTop += box.bottom - bottom;
+  }
+
+  // While the page scrolls, the bar of the buttons of each table stays at the top (below the bar of the sections) and the
+  // header of the table right below it, until the table leaves the window; held at the top, a band behind the bar hides
+  // the page above it. A table scrolled on its own keeps its header at its top.
+  let stickyFrame = 0;
+  function syncStickyHeads() {
+    stickyFrame = 0;
+    const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+    for (const {bar, table} of Object.values(filteredTables)) {
+      const style = getComputedStyle(table);
+      const top = (parseFloat(style.getPropertyValue('--module-tabs-offset')) || 0) + (parseFloat(style.getPropertyValue('--section-top-offset')) || 0);
+      const frame = table.closest('.table-wrap').getBoundingClientRect();
+      const barBox = bar.getBoundingClientRect();
+      const stuck = !bar.hidden && barBox.top <= top + 1 && frame.top < top + bar.offsetHeight;
+      bar.classList.toggle('is-stuck', stuck);
+      // (Below the band of the bar, which reaches .45rem under it.)
+      const line = stuck ? barBox.bottom + 0.45 * rem : top;
+      table.style.setProperty('--rj-head-offset', `${Math.max(0, line - frame.top)}px`);
+    }
+  }
+  const queueStickyHeads = () => { if (!stickyFrame) stickyFrame = requestAnimationFrame(syncStickyHeads); };
+  window.addEventListener('scroll', queueStickyHeads, {passive: true});
+  for (const kind of Object.keys(filteredTables)) {
+    filteredTables[kind].table.closest('details').addEventListener('toggle', () => syncTableHeight(kind));
+  }
+  window.addEventListener('resize', () => { syncTableHeight('tasks'); syncTableHeight('runs'); });
 
   const formatSize = (bytes) => {
     const units = ['B', 'KB', 'MB', 'GB'];

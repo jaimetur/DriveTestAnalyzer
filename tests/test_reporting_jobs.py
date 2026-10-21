@@ -927,6 +927,24 @@ def test_jobs_name_their_modules_abbreviated_and_move_or_delete_several_at_once(
     assert "button.textContent = on ? `${label} (${items.length})` : label;" in script
 
 
+def test_reporting_tables_filter_by_column_show_ten_rows_and_keep_their_bar_and_header_in_view():
+    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/report_jobs.js').read_text(encoding='utf-8')
+    styles = (core.PROJECT_ROOT / 'src/web_interface/static/css/report_jobs.css').read_text(encoding='utf-8')
+    helper = (core.PROJECT_ROOT / 'src/web_interface/static/js/app.js').read_text(encoding='utf-8')
+    # Every column of the Reporting Jobs and of the Run History but Actions filters as in Excel, Artifacts by module.
+    assert "rowSelector: kind === 'tasks' ? 'tr[data-task-id]' : 'tr[data-run-id]', menuClass: 'rj-column-filter-menu'," in script
+    assert "artifactsCell.dataset.filterValues = JSON.stringify([...byModule.keys()]);" in script
+    assert "valuesFor(row, index).some((value) => accepted.has(value))" in helper
+    # Select all, Move Up and Move Down act on the rows shown; the rows the filters hide are unchecked.
+    assert "if (selectAllTasks.checked) visibleTaskIds().forEach((id) => checkedTaskIds.add(id));" in script
+    assert "if (selectAllRuns.checked) visibleRunIds().forEach((id) => checkedRunIds.add(id));" in script
+    assert "const shown = new Set(visibleTaskIds());" in script.split('function movedTaskOrder(order, step) {', 1)[1]
+    # Up to 10 rows each; while the page scrolls, the bars of both tables and their headers stay at the top.
+    assert 'const VISIBLE_ROWS = 10;' in script
+    assert "table.style.setProperty('--rj-head-offset', `${Math.max(0, line - frame.top)}px`);" in script
+    assert '.reporting-jobs-table th { position: sticky; top: var(--rj-head-offset, 0px); z-index: 3;' in styles
+    assert '.rj-runs-bulk { position: static; }' not in styles
+
 def test_reporting_page_keeps_its_scroll_position_when_reloaded():
     script = (core.PROJECT_ROOT / 'src/web_interface/static/js/report_jobs.js').read_text(encoding='utf-8')
     assert "const SCROLL_KEY = 'drivetest-analyzer:/reporting:scroll';" in script

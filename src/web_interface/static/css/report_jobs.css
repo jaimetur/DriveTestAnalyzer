@@ -6,7 +6,9 @@
 .report-jobs-toolbar [data-tone="done"] { color: #1f6b44; font-weight: 700; }
 .reporting-jobs-table { width: 100%; border-collapse: collapse; }
 .reporting-jobs-table th, .reporting-jobs-table td { padding: .55rem .6rem; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
-.reporting-jobs-table th { position: sticky; top: 0; background: #2f6e4b; color: #fff; font-size: .82rem; }
+/* (The header stays at the top of its table, or of the window below the bar of its buttons while the page scrolls:
+   report_jobs.js sets --rj-head-offset.) */
+.reporting-jobs-table th { position: sticky; top: var(--rj-head-offset, 0px); z-index: 3; background: #2f6e4b; color: #fff; font-size: .82rem; }
 .reporting-jobs-table tr.rj-disabled td:not(:last-child) { opacity: .6; }
 .reporting-jobs-table small { color: var(--muted); }
 .rj-artifacts { margin: 0; padding-left: 1rem; display: grid; gap: .15rem; font-size: .86rem; }
@@ -332,8 +334,6 @@
    is scrolled. */
 .report-jobs .rj-bulk { position: sticky; top: calc(var(--module-tabs-offset, 0px) + var(--section-top-offset, 0px)); z-index: 4; display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; margin: 0 0 .6rem; padding: .4rem 0; background: #fbf9f4; }
 .report-jobs .rj-bulk[hidden] { display: none; }
-/* (The bar of the Run History stays above its table, which scrolls on its own.) */
-.report-jobs .rj-runs-bulk { position: static; }
 .report-jobs .rj-runs-bulk .form-note { margin: 0; }
 .report-jobs .rj-runs-bulk [data-tone="error"] { color: #b42318; font-weight: 700; }
 .report-jobs .rj-runs-bulk [data-tone="done"] { color: #1f6b44; font-weight: 700; }
@@ -604,3 +604,18 @@
 .rj-favourite-card { display: grid; gap: .6rem; }
 .rj-favourite-card[hidden], [data-rj-source][hidden] { display: none !important; }
 .rj-card[data-rj-source-hidden] { display: none !important; }
+/* Excel-style column filters of the Reporting Jobs and the Run History: white on the green header, the columns filtered
+   underlined, and their menus in the greens of Reporting. */
+.report-jobs .reporting-jobs-table .excel-column-filter-trigger { color: #fff; }
+.report-jobs .reporting-jobs-table .excel-column-filter-trigger:hover, .report-jobs .reporting-jobs-table .excel-column-filter-trigger:focus-visible { background: rgba(255, 255, 255, .14); color: #fff; box-shadow: inset 0 -3px rgba(255, 255, 255, .7); }
+.report-jobs .reporting-jobs-table .excel-column-filter-icon { border-color: rgba(255, 255, 255, .6); background: rgba(255, 255, 255, .14); color: #fff; }
+.report-jobs .reporting-jobs-table th.has-excel-column-filter .excel-column-filter-trigger { background: #1f5a3a; box-shadow: inset 0 -3px #9fe0b9; }
+.report-jobs .reporting-jobs-table th.has-excel-column-filter .excel-column-filter-icon { border-color: #fff; background: #fff; color: #1f5f3a; }
+.rj-column-filter-menu { border-color: rgba(31, 95, 58, .3); color: #1f3b2b; box-shadow: 0 18px 48px rgba(18, 52, 33, .28); }
+.rj-column-filter-menu input[type="search"] { border-color: rgba(31, 95, 58, .3); background: #f6fbf8; color: #1f3b2b; }
+.rj-column-filter-menu .excel-column-filter-toolbar button, .rj-column-filter-menu .excel-column-filter-footer button:first-child { border-color: rgba(31, 95, 58, .25); background: #e3f3e9; color: #1f5f3a; }
+.rj-column-filter-menu .excel-column-filter-options { border-color: rgba(31, 95, 58, .16); background: #fbfdfb; }
+.rj-column-filter-menu .excel-column-filter-options label { color: #1f3b2b; }
+.rj-column-filter-menu .excel-column-filter-options label:hover { background: #e3f3e9; }
+.rj-column-filter-menu .excel-column-filter-options input { accent-color: #2f8a57; }
+.rj-column-filter-menu .excel-column-filter-footer button:last-child { border-color: rgba(31, 95, 58, .45); background: linear-gradient(135deg, #1f5f3a, #4fb37a); color: #fff; }

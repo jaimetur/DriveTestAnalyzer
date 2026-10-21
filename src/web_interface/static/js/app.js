@@ -52,7 +52,8 @@ window.sharedDeleteRefusal = (label) => `Only admins and super-admins, or the us
 // with the name of its column, again whenever the rows of the table change.
 (() => {
   const label = (table) => {
-    const names = [...(table.tHead?.rows[0]?.cells || [])].map((cell) => cell.textContent.trim());
+    // (A header with a column filter is named by its caption, without the arrow of the filter.)
+    const names = [...(table.tHead?.rows[0]?.cells || [])].map((cell) => (cell.querySelector('.excel-column-filter-caption') || cell).textContent.trim());
     [...table.tBodies].forEach((body) => [...body.rows].forEach((row) => {
       if (row.cells.length !== names.length) return;
       [...row.cells].forEach((cell, index) => { if (names[index]) cell.dataset.label = names[index]; });
@@ -12444,15 +12445,25 @@ document.querySelectorAll('[data-configuration-timezone-picker]').forEach((picke
   });
 });
 
-/* Reusable Excel-style value filters for compact job tables. */
-window.enableExcelColumnFilters = (table, {onChange, excludeLastColumn = true} = {}) => {
+/* Reusable Excel-style value filters for compact job tables. A cell filters by its data-filter-value, or by each value
+   of the JSON list in its data-filter-values (the row matches when one of them is accepted), else by its text; with
+   rowSelector only the rows it matches (not empty or editor rows) are filtered, and menuClass styles the menus. */
+window.enableExcelColumnFilters = (table, {onChange, excludeLastColumn = true, rowSelector = '', menuClass = ''} = {}) => {
   if (!table || table._excelColumnFilters) return table?._excelColumnFilters || null;
   const headers = Array.from(table.tHead?.rows[0]?.cells || []);
   const selectedByColumn = new Map();
   let openMenu = null;
   const valueFor = (row, index) => String(row.cells[index]?.dataset.filterValue ?? row.cells[index]?.textContent ?? '').trim();
-  const rows = () => Array.from(table.tBodies[0]?.rows || []);
-  const matches = (row) => [...selectedByColumn].every(([index, accepted]) => accepted.has(valueFor(row, index)));
+  const valuesFor = (row, index) => {
+    const list = row.cells[index]?.dataset.filterValues;
+    if (list === undefined) return [valueFor(row, index)];
+    try {
+      const values = JSON.parse(list).map((value) => String(value ?? '').trim());
+      return values.length ? values : [''];
+    } catch (_error) { return [valueFor(row, index)]; }
+  };
+  const rows = () => Array.from(table.tBodies[0]?.rows || []).filter((row) => !rowSelector || row.matches(rowSelector));
+  const matches = (row) => [...selectedByColumn].every(([index, accepted]) => valuesFor(row, index).some((value) => accepted.has(value)));
   const apply = () => {
     if (onChange) { onChange(); return; }
     rows().forEach((row) => { row.hidden = !matches(row); });
@@ -12479,9 +12490,9 @@ window.enableExcelColumnFilters = (table, {onChange, excludeLastColumn = true} =
       event.stopPropagation();
       if (openMenu?.trigger === trigger) { closeMenu(); return; }
       closeMenu();
-      const values = [...new Set(rows().map((row) => valueFor(row, index)))].sort((left, right) => left.localeCompare(right, undefined, {numeric: true, sensitivity: 'base'}));
+      const values = [...new Set(rows().flatMap((row) => valuesFor(row, index)))].sort((left, right) => left.localeCompare(right, undefined, {numeric: true, sensitivity: 'base'}));
       const selected = new Set(selectedByColumn.get(index) || values);
-      const menu = document.createElement('section'); menu.className = 'excel-column-filter-menu'; menu.setAttribute('role', 'dialog'); menu.setAttribute('aria-label', `Filter ${label}`);
+      const menu = document.createElement('section'); menu.className = `excel-column-filter-menu ${menuClass}`.trim(); menu.setAttribute('role', 'dialog'); menu.setAttribute('aria-label', `Filter ${label}`);
       const search = document.createElement('input'); search.type = 'search'; search.placeholder = 'Search values'; search.autocomplete = 'off'; search.setAttribute('aria-label', `Search ${label} values`);
       const toolbar = document.createElement('div'); toolbar.className = 'excel-column-filter-toolbar';
       const selectAll = document.createElement('button'); selectAll.type = 'button'; selectAll.textContent = 'Select all';
