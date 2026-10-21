@@ -21,6 +21,7 @@
 - **Rich texts written as they read:** the descriptions and comments of Ticket Center and the long texts and comments of Non-Qualified Calls are written in Markdown and read the same in their editor as on the page: headings (`#` to `######`), bullets and numbered lists at any level (`1.`, `a)`, `1.1.`), tasks, bold, italic, strikethrough, highlight, code, links, cards of Notes, Tips, Warnings, Errors and the like (`> [!TIP]`), quotes, code blocks and dividers, and a short line followed by a list is a title, as one ending with a colon. The editor has a toolbar with its keys, gives the Markdown its format as it is typed, goes on with a list at its level on Enter (Tab and Shift+Tab change the level), pastes and copies Markdown, undoes and redoes, and can edit the Markdown itself; the Comments column of Non-Qualified Calls shows the latest comment without its Markdown.
 
 #### 🐛 Bug fixes:
+- **Bundle Reports generated again after an update:** the sections of the Bundle Report Templates, in the exports and in the Reporting Jobs, are no longer reused from an export made with an earlier version of the application, which kept the slides it generated (such as those of Scoring & GAP Analysis) for up to a day after an update; the run of a Reporting Job lists in its details the sections it reused from an earlier export.
 
 #### 📚 Documentation:
 

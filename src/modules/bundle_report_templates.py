@@ -1480,11 +1480,35 @@ DOCUMENT_CACHE_FOLDER = 'documents'
 DOCUMENT_CACHE_VERSION = 7
 _section_locks: dict[str, Lock] = {}
 _section_locks_guard = Lock()
+# The version and the code of the application (see code_identity), read once per process.
+_code_identity: str | None = None
 
 
 def _json_hash(value: Any) -> str:
     import hashlib
     return hashlib.sha256(json.dumps(value, sort_keys=True, default=str).encode('utf-8')).hexdigest()
+
+
+def code_identity() -> str:
+    """The version of the application and a digest of the code that generates the sections (its Python modules, the
+    scripts that draw the charts and the pages), so an update generates them again instead of reusing those generated
+    by the version before it."""
+    global _code_identity
+    if _code_identity is None:
+        import hashlib
+        from src.version import __version__
+
+        source = Path(__file__).resolve().parents[1]
+        digest = hashlib.sha256(__version__.encode('utf-8'))
+        for path in sorted(path for pattern in ('*.py', '*.js', '*.html') for path in source.rglob(pattern)
+                           if '__pycache__' not in path.parts):
+            digest.update(path.relative_to(source).as_posix().encode('utf-8'))
+            try:
+                digest.update(path.read_bytes())
+            except OSError:
+                continue
+        _code_identity = digest.hexdigest()
+    return _code_identity
 
 
 def _calls_signature(repository: Any) -> list[Any]:
@@ -1517,12 +1541,13 @@ def _saved_filters_signature(repository: Any) -> list[Any]:
 
 def section_fingerprint(core: Any, repository: Any, definition: dict[str, Any], section: dict[str, Any],
                         generator: 'SectionGenerator') -> str:
-    """Identity of a generated section: its options and the common filters, and every input its module reads (the
-    CDRs, the Operator and Vendor Maps, the Main Cities and, per module, the Dashboards, the methodologies and the Saved
-    Filters calculated, the inventory of the analysis, the follow-up of the calls or the CDRs of CDR Analysis). The same
-    identity means the same document; a change of any input generates it again."""
+    """Identity of a generated section: the version and code of the application, its options and the common filters,
+    and every input its module reads (the CDRs, the Operator and Vendor Maps, the Main Cities and, per module, the
+    Dashboards, the methodologies and the Saved Filters calculated, the inventory of the analysis, the follow-up of the
+    calls or the CDRs of CDR Analysis). The same identity means the same document; a change of any input, or an update
+    of the application, generates it again."""
     inputs: dict[str, Any] = {
-        'version': SECTION_CACHE_VERSION, 'section': section, 'filters': definition['filters'],
+        'version': SECTION_CACHE_VERSION, 'code': code_identity(), 'section': section, 'filters': definition['filters'],
         # The theme of the report colours every section that supports themes.
         'theme': definition.get('theme'),
         'datasets': [dict(row) for row in repository.list_datasets()],
@@ -2271,6 +2296,9 @@ def _register_reporting_artifact(core: Any) -> None:
                     label = 'Word' if export_format == 'word' else 'PPT'
                     details = [*filter_lines(favourite['definition']),
                                'Sections: ' + ', '.join(SECTION_TITLES[section['key']] for section in enabled_sections(favourite['definition'])),
+                               # The sections taken from those generated before (same version, options and data).
+                               *(['Reused from an earlier export: ' + ', '.join(SECTION_TITLES.get(key, key) for key in result.reused)]
+                                 if result.reused else []),
                                *[f'Skipped: {warning}' for warning in result.warnings]]
                     artifacts.append({'module': 'bundle_report_template', 'title': f"Bundle Report Template · {favourite['name']} ({label})",
                                       'file_name': destination.name, 'size': destination.stat().st_size, 'status': 'ready',

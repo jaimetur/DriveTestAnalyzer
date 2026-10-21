@@ -1079,6 +1079,21 @@ def test_the_scoring_section_is_generated_again_when_a_saved_filter_is_calculate
     assert before != after
 
 
+def test_an_update_of_the_application_generates_the_sections_again(client, monkeypatch):
+    login(client)
+    definition = bundle_report_templates.normalize_definition({})
+    scoring = next(section for section in definition['sections'] if section['key'] == 'scoring')
+    # The code is read once per process: the same code keeps the identity, other code (or version) changes it.
+    assert bundle_report_templates.code_identity() == bundle_report_templates.code_identity()
+    before = bundle_report_templates.section_fingerprint(core, core.repository, definition, scoring, None)
+    assert bundle_report_templates.section_fingerprint(core, core.repository, definition, scoring, None) == before
+    monkeypatch.setattr(bundle_report_templates, '_code_identity', 'another version of the code')
+    assert bundle_report_templates.section_fingerprint(core, core.repository, definition, scoring, None) != before
+    # The runs of the Reporting Jobs name the sections taken from an earlier export.
+    source = Path(bundle_report_templates.__file__).read_text(encoding='utf-8')
+    assert "['Reused from an earlier export: ' + ', '.join(SECTION_TITLES.get(key, key) for key in result.reused)]" in source
+
+
 def test_a_saved_filter_of_the_same_cdrs_and_filters_is_used_whatever_its_split_by(monkeypatch):
     def item(**changes):
         return {'id': 1, 'status': 'completed', 'dataset_ids': [3, 1, 2], 'nr_mode': 'NSA', 'baseline_operator': 'EE',
