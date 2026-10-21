@@ -263,8 +263,9 @@ Campaign labels are compact, such as **2026-Q2**, **2026-Q2-NSA** or **2026-Q2-S
 | Control | Use |
 | --- | --- |
 | Slide selector | Jump to a template slide; searchable choices show the number, a purple title and a teal subtitle separated by a bold ● |
-| **First / Previous / Next / Last** | Move through slides |
-| Left / Right Arrow | Navigate when focus is outside editable controls |
+| Slides at the left | Every slide in small, as in the presentations of the [Help](help.md#presentations): the covers and transitions as in the viewer and the charts of the others once calculated, with their number and title; the slide shown is marked, and choosing one shows it (on wide screens; phones keep the slide selector) |
+| **Presentation**, **First / Previous / Next / Last** | Below the slide and its comments: play the slides or move through them |
+| Keyboard and wheel | ← ↑ Page Up go back and → ↓ Page Down (or Space) go forward, Home and End go to the first and last slide, when focus is outside editable controls; the wheel over the slide goes to the previous or next slide, one per turn |
 | **Scope** | Switch Operator/Multivendor after confirmation |
 | **Dashboard Filters** | Edit the live selection in a floating panel |
 | **Generate PPT** | Export the selection |
@@ -290,6 +291,7 @@ Hover or focus a chart for **Dataset**, **Expand**, **Refresh**, **Zoom** and **
 | --- | --- |
 | **Expand** or double-click | Open the focused chart in the expanded viewer |
 | **− / + / 1:1** | Zoom between 100% and 400%, or reset |
+| Ctrl/Cmd + wheel (or a pinch of the touchpad) | Zoom the chart under the pointer, at the pointer |
 | Drag a rectangle at 100% | Zoom into the selected plot area |
 | Drag when zoomed | Pan the chart |
 | Direction arrows when zoomed | Move the camera; arrows disable at boundaries |

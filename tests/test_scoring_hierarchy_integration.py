@@ -92,6 +92,6 @@ def test_reporting_follows_scoring_in_module_and_help_navigation(scoring_api):
     # PPT Reporting (old) follows PPT Dashboards, as in the main tabs.
     assert paths.index('ppt-reporting-old.md') == paths.index('ppt-dashboards.md') + 1
     assert paths.index('scoring-gap-analysis.md') == paths.index('ppt-reporting-old.md') + 1
-    help_page = client.get('/documents/view/help')
-    group_function = help_page.text.split('function helpDocumentGroup(relativePath) {', 1)[1].split("return 'Main Modules';", 1)[0]
-    assert "'scoring-gap-analysis.md'" in group_function
+    # The Help navigation takes the group of each chapter from the server.
+    groups = {document['relative_path']: document['group'] for document in documents}
+    assert groups['scoring-gap-analysis.md'] == groups['reporting.md'] == 'Main Modules'

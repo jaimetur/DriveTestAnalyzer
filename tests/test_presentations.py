@@ -120,3 +120,26 @@ def test_the_help_shows_the_presentations_of_the_application_until_they_are_gene
     # A visitor who has not signed in sees them without starting a generation.
     client.cookies.clear()
     assert client.get('/api/presentations').status_code == 200
+
+
+def test_the_slide_viewer_goes_through_the_slides_from_its_footer_the_wheel_and_the_arrows():
+    root = Path(__file__).resolve().parents[1]
+    script = (root / 'src/web_interface/static/js/presentation_viewer.js').read_text(encoding='utf-8')
+    styles = (root / 'src/web_interface/static/css/presentation_viewer.css').read_text(encoding='utf-8')
+    # Every control stands in the footer: the zoom buttons and Slideshow, then the previous and next slide (arrows in two
+    # colours), then Close and Download PowerPoint.
+    footer = script[script.index('<footer class="presentation-dialog-actions">'):script.index('</footer>')]
+    assert footer.index('data-presentation-viewer="zoom-in"') < footer.index('data-presentation-show-open') < footer.index('presentation-step-previous')
+    assert 'class="presentation-step presentation-step-previous" data-presentation-viewer="previous" title="Previous slide (← or ↑)" aria-label="Previous slide"><svg' in footer
+    assert 'class="presentation-step presentation-step-next" data-presentation-viewer="next" title="Next slide (→ or ↓)" aria-label="Next slide"><svg' in footer
+    assert '.presentation-show-settings { position: absolute; z-index: 5; bottom: calc(100% + .45rem);' in styles
+    assert '.presentation-stage { grid-row: 2;' in styles
+    assert '<span class="presentation-page-label" aria-live="polite">' in footer and 'data-presentation-close>Close</button>' in footer
+    assert 'data-presentation-viewer="previous"' not in script[:script.index('<footer class="presentation-dialog-actions">')]
+    assert '.presentation-step-previous { background: #5b6b80; }' in styles and '.presentation-step-next { background: #1f6fbf; }' in styles
+    # The up and down arrows and the wheel change slide; Ctrl/Cmd+wheel zooms.
+    assert "if (['ArrowLeft', 'ArrowUp', 'PageUp'].includes(event.key)) showSlide(viewerIndex - 1);" in script
+    assert "else if (['ArrowRight', 'ArrowDown', 'PageDown', ' '].includes(event.key)) showSlide(viewerIndex + 1);" in script
+    assert "if (['ArrowLeft', 'ArrowUp', 'PageUp'].includes(event.key)) moveShow(-1);" in script
+    assert 'if (event.ctrlKey || event.metaKey) {' in script and 'showSlide(viewerIndex + Math.sign(wheelTravel));' in script
+

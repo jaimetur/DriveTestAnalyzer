@@ -3844,3 +3844,32 @@ def test_dashboard_closed_during_its_cache_lookup_is_not_prepared():
     assert 'defaultHost.replaceChildren(); additionalHost.replaceChildren();\n' in script
     facets = script[script.index('  function facets() {'):script.index('    definition.hidden_filters ||= [];')]
     assert 'if (!definition) return;' in facets
+
+
+def test_view_dashboard_lists_its_slides_at_the_left_with_the_navigation_below_the_comments():
+    root = Path(__file__).parents[1]
+    template = (root / 'src/web_interface/templates/ppt_dashboards.html').read_text(encoding='utf-8')
+    script = (root / 'src/web_interface/static/js/ppt_dashboards.js').read_text(encoding='utf-8')
+    styles = (root / 'src/web_interface/static/css/ppt_dashboards.css').read_text(encoding='utf-8')
+    # The slides at the left of the slide, and Presentation with First / Previous / Next / Last below its comments.
+    assert '<div class="ds-viewer-body"><nav class="ds-slide-thumbnails" id="ds-slide-thumbnails" aria-label="Slides of the Dashboard"></nav>' in template
+    viewer = template[template.index('<div class="ds-viewer-body">'):template.index('<div class="ds-chart-expanded-overlay"')]
+    assert viewer.index('id="ds-charts"') < viewer.index('</details>') < viewer.index('<footer class="ds-viewer-navigation-footer">')
+    assert viewer.index('<footer class="ds-viewer-navigation-footer">') < viewer.index('id="ds-presentation"') < viewer.index('id="ds-last"')
+    # Each slide in small: the covers and transitions as in the viewer, the charts once calculated, only those in sight.
+    assert "if (!slide.charts.length) { structuralDashboard(frame, slide); return; }" in script
+    assert "loadChartPayload(chart, 'low').then(payload => {" in script and "thumbnailObserver.observe(item)" in script
+    assert "item.onclick = () => { stopPresentation(); slideIndex = index; renderSlide(); };" in script
+    assert "    renderComments();\n    renderSlideThumbnails();\n" in script
+    assert '#ds-viewer:not(.ds-presentation-active) .ds-slide-thumbnails { display:flex;' in styles
+    assert '.ds-viewer-body { display:contents; }\n.ds-slide-thumbnails { display:none; }' in styles
+    # The keys of the presentations of the Help.
+    assert "const backKey = ['ArrowLeft', 'ArrowUp', 'PageUp'].includes(event.key);" in script
+    assert "const forwardKey = ['ArrowRight', 'ArrowDown', 'PageDown'].includes(event.key)" in script
+    assert "slideIndex = event.key === 'Home' ? 0 : prepared.slides.length - 1;" in script
+    # The wheel over the slide changes slide, Ctrl/Cmd+wheel zooms the chart under the pointer, and the focus follows the slide.
+    assert "$('ds-charts').addEventListener('wheel', event => {" in script
+    assert "globalThis.zoomDashboardChartAt(canvas, (globalThis.getDashboardChartZoom?.(canvas) || 1) * Math.exp(-event.deltaY * 0.0015), event.clientX, event.clientY);" in script
+    assert "nav.querySelector('.is-current')?.focus({preventScroll: true});" in script
+    charts = (root / 'src/web_interface/static/js/dashboard_charts.js').read_text(encoding='utf-8')
+    assert 'function zoomChartAt(canvas, requestedZoom, clientX, clientY) {' in charts and 'globalThis.zoomDashboardChartAt = zoomChartAt;' in charts

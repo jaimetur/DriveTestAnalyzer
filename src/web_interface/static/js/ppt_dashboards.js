@@ -4076,6 +4076,8 @@
     stage.replaceChildren(node('div', 'Loading available Dashboard charts…', 'ds-empty'));
     $('ds-comments-list').replaceChildren();
     $('ds-comments-status').textContent = '';
+    $('ds-slide-thumbnails').replaceChildren();
+    thumbnailsToken = null;
   }
   // The title of the slide in the viewer as on the content slides of the Dashboard PPTs (theme_titles.split_focus): what
   // follows the first " — ", " · " or ": " (or the start of " per ") tells it apart from the next ones and takes the
@@ -4103,6 +4105,79 @@
       focusPart.className = 'ds-title-focus';
       focusPart.textContent = focus;
       $('ds-title').append(focusPart);
+    }
+  }
+  // The slides of the Dashboard at the left of the viewer, as in the presentations of the Help: each slide in small, its
+  // charts drawn once calculated and only when in sight (the covers and transitions as in the viewer), with its number and
+  // title; the slide shown is marked and choosing one shows it.
+  let thumbnailsToken = null;
+  const thumbnailObserver = 'IntersectionObserver' in window ? new IntersectionObserver(entries => entries.forEach(entry => {
+    if (!entry.isIntersecting) return;
+    thumbnailObserver.unobserve(entry.target);
+    drawSlideThumbnail(entry.target);
+  }), {root: $('ds-slide-thumbnails'), rootMargin: '240px 0px'}) : null;
+  function drawSlideThumbnail(item) {
+    const slide = prepared?.slides[Number(item.dataset.slideIndex)];
+    if (!slide) return;
+    const token = prepared.token;
+    const frame = item.querySelector('.ds-slide-thumbnail-frame');
+    frame.replaceChildren();
+    if (!slide.charts.length) { structuralDashboard(frame, slide); return; }
+    const {cards, layout} = slideCards(slide);
+    const gridSize = /^Title \+ (\d+) rows \+ (\d+) columns/i.exec(layout);
+    const compactTitles = Boolean(gridSize && (Number(gridSize[1]) >= 3 || Number(gridSize[2]) >= 4));
+    const columns = Math.max(1, Math.ceil(Math.sqrt(cards.length))), rows = Math.max(1, Math.ceil(cards.length / columns));
+    cards.forEach(({chart, position}, index) => {
+      // Cards without a place in the template share the slide in a grid.
+      const [left, top, width, height] = position || [(index % columns) * 100 / columns + 1, Math.floor(index / columns) * 100 / rows + 1, 100 / columns - 2, 100 / rows - 2];
+      const box = node('span', undefined, 'ds-slide-thumbnail-chart');
+      Object.assign(box.style, {left: `${left}%`, top: `${top}%`, width: `${width}%`, height: `${height}%`});
+      frame.append(box);
+      if (!chart.available) return;
+      loadChartPayload(chart, 'low').then(payload => {
+        if (!box.isConnected || prepared?.token !== token) return;
+        const canvas = document.createElement('canvas');
+        canvas.setAttribute('aria-hidden', 'true');
+        box.append(canvas);
+        requestAnimationFrame(() => {
+          try { globalThis.renderDashboardChart(canvas, {...withLegendState(chart, payload), ...(compactTitles ? {hide_title: true} : {})}); }
+          catch (_error) { canvas.remove(); }
+        });
+      }).catch(() => undefined);
+    });
+  }
+  function renderSlideThumbnails() {
+    const nav = $('ds-slide-thumbnails');
+    if (!nav) return;
+    if (!prepared?.slides.length) { nav.replaceChildren(); thumbnailsToken = null; return; }
+    if (thumbnailsToken !== prepared.token || nav.childElementCount !== prepared.slides.length) {
+      thumbnailsToken = prepared.token;
+      nav.replaceChildren(...prepared.slides.map((slide, index) => {
+        const item = node('button', undefined, 'ds-slide-thumbnail');
+        item.type = 'button';
+        item.dataset.slideIndex = String(index);
+        item.title = `Slide ${slide.number}: ${slideName(slide)}`;
+        const caption = node('span', undefined, 'ds-slide-thumbnail-caption');
+        caption.append(node('b', String(slide.number)), document.createTextNode(slideName(slide)));
+        item.append(node('span', undefined, 'ds-slide-thumbnail-frame'), caption);
+        item.onclick = () => { stopPresentation(); slideIndex = index; renderSlide(); };
+        if (thumbnailObserver) thumbnailObserver.observe(item); else drawSlideThumbnail(item);
+        return item;
+      }));
+    }
+    nav.querySelectorAll('.ds-slide-thumbnail').forEach(item => {
+      const current = Number(item.dataset.slideIndex) === slideIndex;
+      item.classList.toggle('is-current', current);
+      if (current) item.setAttribute('aria-current', 'true'); else item.removeAttribute('aria-current');
+    });
+    // The focus of the keyboard follows the slide shown, so no other slide of the list looks chosen.
+    if (nav.contains(document.activeElement) && !document.activeElement.classList.contains('is-current')) nav.querySelector('.is-current')?.focus({preventScroll: true});
+    // The slide shown stays in sight in the list, which scrolls by itself only.
+    const current = nav.querySelector('.is-current');
+    if (current && nav.clientHeight) {
+      const box = current.getBoundingClientRect(), view = nav.getBoundingClientRect();
+      if (box.top < view.top) nav.scrollTop -= view.top - box.top;
+      else if (box.bottom > view.bottom) nav.scrollTop += box.bottom - view.bottom;
     }
   }
   function renderSlide() {
@@ -4243,8 +4318,35 @@
     }
     if (presentation.active) { stage.dataset.presentationEffect = presentationTransitionEffect(); void stage.offsetWidth; stage.classList.add('ds-slide-transition'); }
     renderComments();
+    renderSlideThumbnails();
     scheduleNearbySlidePreload(preloadToken, preloadOrigin, visibleLoads);
   }
+  // As in the presentations of the Help, the wheel over the slide goes through the slides, one per turn of the wheel or
+  // swipe of the touchpad; with Ctrl or Cmd (or a pinch of the touchpad, which comes with Ctrl) it zooms the chart under
+  // the pointer, at the pointer.
+  let wheelTravel = 0;
+  let wheelTurnedAt = 0;
+  $('ds-charts').addEventListener('wheel', event => {
+    if (!prepared?.slides.length) return;
+    event.preventDefault();
+    if (event.ctrlKey || event.metaKey) {
+      const canvas = event.target.closest?.('.ds-chart')?.querySelector('canvas:not([hidden])');
+      if (canvas && globalThis.zoomDashboardChartAt) {
+        globalThis.zoomDashboardChartAt(canvas, (globalThis.getDashboardChartZoom?.(canvas) || 1) * Math.exp(-event.deltaY * 0.0015), event.clientX, event.clientY);
+      }
+      return;
+    }
+    const now = Date.now();
+    if (now - wheelTurnedAt < 350) return;
+    wheelTravel = Math.sign(wheelTravel) === Math.sign(event.deltaY) ? wheelTravel + event.deltaY : event.deltaY;
+    if (Math.abs(wheelTravel) < 40) return;
+    const step = Math.sign(wheelTravel);
+    wheelTravel = 0;
+    wheelTurnedAt = now;
+    if (step < 0 ? slideIndex <= 0 : slideIndex >= prepared.slides.length - 1) return;
+    if (presentation.active) navigatePresentationSlide(step);
+    else { slideIndex += step; renderSlide(); }
+  }, {passive: false});
   bind('ds-first',()=>{ stopPresentation(); slideIndex = 0; renderSlide(); });
   bind('ds-prev',()=>{ stopPresentation(); slideIndex--; renderSlide(); });
   bind('ds-next',()=>{ stopPresentation(); slideIndex++; renderSlide(); });
@@ -4392,8 +4494,19 @@
       navigatePresentationSlide(1);
       return;
     }
-    if (visible === 'ds-viewer' && !editing && event.key === 'ArrowLeft' && slideIndex > 0) { event.preventDefault(); if (presentation.active) navigatePresentationSlide(-1); else { slideIndex -= 1; renderSlide(); } return; }
-    if (visible === 'ds-viewer' && !editing && event.key === 'ArrowRight' && slideIndex < (prepared?.slides.length || 1) - 1) { event.preventDefault(); if (presentation.active) navigatePresentationSlide(1); else { slideIndex += 1; renderSlide(); } return; }
+    // As in the presentations of the Help: ← ↑ Page Up go back, → ↓ Page Down (and Space, out of the presentation mode) go
+    // forward, Home and End go to the first and last slide.
+    const backKey = ['ArrowLeft', 'ArrowUp', 'PageUp'].includes(event.key);
+    const forwardKey = ['ArrowRight', 'ArrowDown', 'PageDown'].includes(event.key)
+      || (event.key === ' ' && !presentation.active && !event.target.closest?.('button,summary,a'));
+    if (visible === 'ds-viewer' && !editing && backKey && slideIndex > 0) { event.preventDefault(); if (presentation.active) navigatePresentationSlide(-1); else { slideIndex -= 1; renderSlide(); } return; }
+    if (visible === 'ds-viewer' && !editing && forwardKey && slideIndex < (prepared?.slides.length || 1) - 1) { event.preventDefault(); if (presentation.active) navigatePresentationSlide(1); else { slideIndex += 1; renderSlide(); } return; }
+    if (visible === 'ds-viewer' && !editing && !presentation.active && prepared?.slides.length && (event.key === 'Home' || event.key === 'End')) {
+      event.preventDefault();
+      slideIndex = event.key === 'Home' ? 0 : prepared.slides.length - 1;
+      renderSlide();
+      return;
+    }
     if (visible === 'ds-viewer' && !editing && presentation.active && (event.code === 'Space' || event.key === ' ')) {
       event.preventDefault();
       if (presentation.running) pausePresentation(); else resumePresentation();

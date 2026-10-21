@@ -1,8 +1,9 @@
 /* Presentations of the Help: a ```presentations block of a Help chapter lists the presentations (by id, one per line) of
    static/presentations/presentations.json. Each one shows as a card that opens it in a slide viewer, as the preview of a
-   Bundle Report Template: its sections and slides on the left, the chosen slide on the right (zoomed with the wheel, a
-   rectangle or the buttons) and its PowerPoint to download. Slideshow plays it full screen, slide after slide with a
-   transition, as the presentation mode of PPT Dashboards. */
+   Bundle Report Template: its sections and slides on the left, the chosen slide on the right (the wheel and the arrow keys
+   go through the slides; Ctrl/Cmd+wheel, a rectangle or the buttons zoom it), the slides gone through below it, and its
+   PowerPoint to download. Slideshow plays it full screen, slide after slide with a transition, as the presentation mode
+   of PPT Dashboards. */
 (function () {
   // The server tells where the presentations are (generated with live figures, or those kept with the application) and
   // whether new figures are being drawn.
@@ -104,31 +105,7 @@
       <div class="presentation-preview">
         <nav class="presentation-nav" aria-label="Sections and slides of the presentation"></nav>
         <section class="presentation-view" aria-label="Slide">
-          <div class="presentation-tools">
-            <button type="button" data-presentation-viewer="previous" title="Previous slide (←)" aria-label="Previous slide">‹</button>
-            <span class="presentation-page-label" aria-live="polite">1 / 1</span>
-            <button type="button" data-presentation-viewer="next" title="Next slide (→)" aria-label="Next slide">›</button>
-            <span class="presentation-separator" aria-hidden="true"></span>
-            <button type="button" data-presentation-viewer="zoom-in" title="Zoom in (+)" aria-label="Zoom in">+</button>
-            <button type="button" data-presentation-viewer="zoom-out" title="Zoom out (−)" aria-label="Zoom out">−</button>
-            <button type="button" data-presentation-viewer="reset" title="Whole slide (0 or double-click)" aria-label="Whole slide">⤢</button>
-            <span class="presentation-separator" aria-hidden="true"></span>
-            <div class="presentation-show-menu">
-              <button type="button" class="presentation-show-button" data-presentation-show-open aria-expanded="false" title="Present the slides full screen, one after the other, with a transition">▶ Slideshow</button>
-              <form class="presentation-show-settings" data-presentation-show-settings hidden aria-label="Slideshow settings">
-                <p class="presentation-show-heading">Automatic slide show</p>
-                <label>Seconds per slide<input name="delay" type="number" min="1" max="300" step="1" value="8" inputmode="numeric"></label>
-                <label>Transition duration (seconds)<input name="duration" type="number" min="0.1" max="10" step="0.1" value="1" inputmode="decimal"></label>
-                <label>Transition effect<select name="effect">${EFFECTS.map(([value, label]) => `<option value="${value}"${value === 'flip' ? ' selected' : ''}>${label}</option>`).join('')}</select></label>
-                <label class="presentation-show-check"><input name="loop" type="checkbox"> Start again after the last slide</label>
-                <div class="presentation-show-actions">
-                  <button type="button" class="presentation-secondary" data-presentation-show-cancel>Cancel</button>
-                  <button type="submit" class="presentation-show-start">Start slideshow</button>
-                </div>
-              </form>
-            </div>
-            <span class="presentation-hint">Wheel to zoom at the pointer · drag a rectangle to zoom into it · Shift+drag or the middle button to move · double-click for the whole slide</span>
-          </div>
+          <p class="presentation-hint">Wheel or ↑ ↓ to change slide · Ctrl/Cmd+wheel to zoom at the pointer · drag a rectangle to zoom into it · Shift+drag or the middle button to move · double-click for the whole slide</p>
           <div class="presentation-stage"><img alt="" draggable="false"></div>
         </section>
       </div>
@@ -137,16 +114,43 @@
         <img class="presentation-show-front" alt="" draggable="false">
         <div class="presentation-show-progress" aria-hidden="true"><span></span></div>
         <div class="presentation-show-controls" role="group" aria-label="Slideshow">
-          <button type="button" data-presentation-show="previous" title="Previous slide (←)" aria-label="Previous slide">‹</button>
+          <button type="button" data-presentation-show="previous" title="Previous slide (← or ↑)" aria-label="Previous slide">‹</button>
           <button type="button" data-presentation-show="toggle" title="Pause (Space)" aria-label="Pause">❚❚</button>
-          <button type="button" data-presentation-show="next" title="Next slide (→)" aria-label="Next slide">›</button>
+          <button type="button" data-presentation-show="next" title="Next slide (→ or ↓)" aria-label="Next slide">›</button>
           <span class="presentation-show-counter" aria-live="polite"></span>
           <button type="button" data-presentation-show="stop" title="Stop the slideshow (Esc)" aria-label="Stop the slideshow">✕</button>
         </div>
       </div>
       <footer class="presentation-dialog-actions">
-        <button type="button" class="presentation-secondary" data-presentation-close>Close</button>
-        <a class="presentation-download" href="#" download>Download PowerPoint</a>
+        <div class="presentation-tools">
+          <button type="button" data-presentation-viewer="zoom-in" title="Zoom in (+)" aria-label="Zoom in">+</button>
+          <button type="button" data-presentation-viewer="zoom-out" title="Zoom out (−)" aria-label="Zoom out">−</button>
+          <button type="button" data-presentation-viewer="reset" title="Whole slide (0 or double-click)" aria-label="Whole slide">⤢</button>
+          <span class="presentation-separator" aria-hidden="true"></span>
+          <div class="presentation-show-menu">
+            <button type="button" class="presentation-show-button" data-presentation-show-open aria-expanded="false" title="Present the slides full screen, one after the other, with a transition">▶ Slideshow</button>
+            <form class="presentation-show-settings" data-presentation-show-settings hidden aria-label="Slideshow settings">
+              <p class="presentation-show-heading">Automatic slide show</p>
+              <label>Seconds per slide<input name="delay" type="number" min="1" max="300" step="1" value="8" inputmode="numeric"></label>
+              <label>Transition duration (seconds)<input name="duration" type="number" min="0.1" max="10" step="0.1" value="1" inputmode="decimal"></label>
+              <label>Transition effect<select name="effect">${EFFECTS.map(([value, label]) => `<option value="${value}"${value === 'flip' ? ' selected' : ''}>${label}</option>`).join('')}</select></label>
+              <label class="presentation-show-check"><input name="loop" type="checkbox"> Start again after the last slide</label>
+              <div class="presentation-show-actions">
+                <button type="button" class="presentation-secondary" data-presentation-show-cancel>Cancel</button>
+                <button type="submit" class="presentation-show-start">Start slideshow</button>
+              </div>
+            </form>
+          </div>
+        </div>
+        <div class="presentation-steps" role="group" aria-label="Slides">
+          <button type="button" class="presentation-step presentation-step-previous" data-presentation-viewer="previous" title="Previous slide (← or ↑)" aria-label="Previous slide"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19 12H5"/><path d="m11 18-6-6 6-6"/></svg></button>
+          <span class="presentation-page-label" aria-live="polite">1 / 1</span>
+          <button type="button" class="presentation-step presentation-step-next" data-presentation-viewer="next" title="Next slide (→ or ↓)" aria-label="Next slide"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg></button>
+        </div>
+        <div class="presentation-dialog-buttons">
+          <button type="button" class="presentation-secondary" data-presentation-close>Close</button>
+          <a class="presentation-download" href="#" download>Download PowerPoint</a>
+        </div>
       </footer>`;
     document.body.append(dialog);
     elements = {
@@ -401,11 +405,25 @@
       const bounds = stage.getBoundingClientRect();
       return {x: event.clientX - bounds.left, y: event.clientY - bounds.top};
     };
+    // The wheel goes through the slides, one per turn of the wheel or swipe of the touchpad; with Ctrl or Cmd (or a pinch of
+    // the touchpad, which comes with Ctrl) it zooms at the pointer.
+    let wheelTravel = 0;
+    let wheelTurnedAt = 0;
     stage.addEventListener('wheel', (event) => {
       if (!image.naturalWidth) return;
       event.preventDefault();
-      const point = local(event);
-      zoomView(Math.exp(-event.deltaY * 0.0015), point.x, point.y);
+      if (event.ctrlKey || event.metaKey) {
+        const point = local(event);
+        zoomView(Math.exp(-event.deltaY * 0.0015), point.x, point.y);
+        return;
+      }
+      const now = Date.now();
+      if (now - wheelTurnedAt < 350) return;
+      wheelTravel = Math.sign(wheelTravel) === Math.sign(event.deltaY) ? wheelTravel + event.deltaY : event.deltaY;
+      if (Math.abs(wheelTravel) < 40) return;
+      showSlide(viewerIndex + Math.sign(wheelTravel));
+      wheelTravel = 0;
+      wheelTurnedAt = now;
     }, {passive: false});
     let drag = null;
     stage.addEventListener('pointerdown', (event) => {
@@ -460,8 +478,8 @@
     dialog.addEventListener('keydown', (event) => {
       if (event.target.closest?.('input, select, textarea')) return;
       if (show.active) {
-        if (event.key === 'ArrowLeft' || event.key === 'PageUp') moveShow(-1);
-        else if (event.key === 'ArrowRight' || event.key === 'PageDown' || event.key === 'Enter') moveShow(1);
+        if (['ArrowLeft', 'ArrowUp', 'PageUp'].includes(event.key)) moveShow(-1);
+        else if (['ArrowRight', 'ArrowDown', 'PageDown', 'Enter'].includes(event.key)) moveShow(1);
         else if (event.key === ' ' || event.key === 'k') toggleShow();
         else if (event.key === 'Home') moveShow(-Number.MAX_SAFE_INTEGER);
         else if (event.key === 'End') moveShow(Number.MAX_SAFE_INTEGER);
@@ -470,8 +488,8 @@
         event.preventDefault();
         return;
       }
-      if (event.key === 'ArrowLeft' || event.key === 'PageUp') showSlide(viewerIndex - 1);
-      else if (event.key === 'ArrowRight' || event.key === 'PageDown' || event.key === ' ') showSlide(viewerIndex + 1);
+      if (['ArrowLeft', 'ArrowUp', 'PageUp'].includes(event.key)) showSlide(viewerIndex - 1);
+      else if (['ArrowRight', 'ArrowDown', 'PageDown', ' '].includes(event.key)) showSlide(viewerIndex + 1);
       else if (event.key === 'Home') showSlide(0);
       else if (event.key === 'End') showSlide(Number.MAX_SAFE_INTEGER);
       else if (event.key === '+' || event.key === '=') zoomView(1.4);

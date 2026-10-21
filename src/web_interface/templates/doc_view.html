@@ -218,14 +218,6 @@
     return fileName.replace(/\.md$/i, '').replace(/[-_]+/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
   }
 
-  function helpDocumentGroup(relativePath) {
-    const fileName = String(relativePath || '').split('/').pop();
-    if (['workspace-management.md', 'datasets-analysis.md', 'network-insights.md', 'ppt-dashboards.md', 'scoring-gap-analysis.md', 'non-qualified-calls.md', 'reporting.md', 'ppt-reporting-old.md', 'chart-builder.md', 'query-builder.md'].includes(fileName)) return 'Main Modules';
-    if (['app-logs.md', 'app-config.md', 'workspace-config.md', 'administrator-config.md'].includes(fileName)) return 'Administrative Modules';
-    if (['project-structure.md', 'roadmap.md'].includes(fileName)) return 'Reference';
-    return 'General';
-  }
-
   if (helpNavLists.length) {
     fetch('/api/documents/help-index')
       .then(async (response) => ({response, data: await response.json()}))
@@ -252,7 +244,8 @@
           let groupList = navList;
           data.documents.forEach((helpDocument, position) => {
             if (position > 0) {
-              const group = helpDocumentGroup(helpDocument.relative_path);
+              // The group of the chapter comes from the server, as in the Help menu of the tabs.
+              const group = helpDocument.group || 'General';
               if (group !== currentGroup) {
                 const groupItem = document.createElement('li');
                 groupItem.className = 'help-nav-group';

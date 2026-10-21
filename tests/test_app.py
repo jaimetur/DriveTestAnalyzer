@@ -9313,18 +9313,36 @@ def test_small_screens_have_a_menu_bar_instead_of_the_tab_rows(client) -> None:
     assert "menu.querySelectorAll('a[href], [data-about-open]').forEach((item) => item.addEventListener('click', () => setOpen(false)));" in app_script
 
 
-def test_floating_cards_stand_at_the_left_with_modules_and_sections_at_the_right() -> None:
+def test_the_red_card_stands_at_the_left_above_the_task_cards_and_below_the_open_drawer() -> None:
     root = Path(__file__).parents[1]
     app_styles = (root / 'src/web_interface/static/css/app.css').read_text(encoding='utf-8')
+    app_script = (root / 'src/web_interface/static/js/app.js').read_text(encoding='utf-8')
     nq_styles = (root / 'src/web_interface/static/css/non_qualified_calls.css').read_text(encoding='utf-8')
 
-    assert '.background-task-dock-active { left: 4.6rem; max-width: calc(100vw - 5.6rem); }' in app_styles
-    assert '.background-task-dock-other { right: 3.25rem; max-width: calc(100vw - 4.25rem); }' in app_styles
-    assert '.unassigned-values-card { position: fixed; left: 4.6rem; bottom: 1rem;' in app_styles
-    assert '.incoming-transfer-reminder { position: fixed; left: 4.6rem; bottom: 1rem;' in app_styles
-    assert '.nq-drawer { position: fixed; top: 0; left: 0; bottom: 0;' in nq_styles and 'transform: translateX(-105%);' in nq_styles
-    assert '.nq-toast { position: fixed; left: 4.6rem; bottom: 24px;' in nq_styles
-    assert 'body:has(.nq-drawer.is-open) .back-to-top { visibility: hidden; }' in nq_styles
+    # The task cards keep their sides: the open workspace at the right, the other workspaces at the left.
+    assert '.background-task-dock-active { right: 3.25rem; max-width: calc(100vw - 4.25rem); }' in app_styles
+    assert '.background-task-dock-other { left: 4.6rem; max-width: calc(100vw - 5.6rem); }' in app_styles
+    assert '.background-task-panels.has-both-sides .background-task-dock { width: min(360px, calc((100vw - 8.5rem) / 2)); }' in app_styles
+    assert '.incoming-transfer-reminder { position: fixed; right: 1rem; bottom: 1rem;' in app_styles
+    assert '.nq-drawer { position: fixed; top: 0; right: 0; bottom: 0;' in nq_styles and '.nq-toast { position: fixed; right: 24px;' in nq_styles
+    # The red card moves to the bottom centre, as wide as the task cards, and stands above the task cards it would meet.
+    assert ('.unassigned-values-card { position: fixed; left: 50%; bottom: var(--unassigned-values-card-bottom, 1rem); z-index: 10001; '
+            'box-sizing: border-box; width: min(360px, calc(100vw - 2rem)); transform: translateX(-50%);') in app_styles
+    assert '  .unassigned-values-card { bottom: var(--unassigned-values-card-bottom, .5rem); width: min(320px, calc(100vw - 1rem)); }' in app_styles
+    assert '.unassigned-values-card.is-collapsed { padding: .5rem .7rem; }' in app_styles
+    # With task cards on screen, they and the red card share one row, all as wide; it stands above the system task cards.
+    assert '.background-task-panels[data-with-unassigned-card] .background-task-dock { width: min(360px, calc((100vw - 9.15rem) / 3)); }' in app_styles
+    assert '.unassigned-values-card[data-in-task-row] { left: calc(50% + .675rem); width: min(360px, calc((100vw - 9.15rem) / 3)); }' in app_styles
+    assert '  .unassigned-values-card[data-in-task-row] { left: 50%; width: calc((100vw - 1.8rem) / 3); padding: .5rem .55rem; }' in app_styles
+    assert "panels?.toggleAttribute('data-with-unassigned-card', inRow);" in app_script
+    assert "lift('--unassigned-values-card-bottom', inRow && shown(systemDock) ? [systemDock.getBoundingClientRect().top] : []);" in app_script
+    # The button back to the top rises above a card that would cover it.
+    assert '.back-to-top { --back-to-top-accent: var(--back-to-top, #08736d); position: fixed; bottom: var(--back-to-top-bottom, 1.1rem);' in app_styles
+    # Open, Modules & Sections and the menu of small screens stand above every floating card, below the dialogs.
+    assert '#page-panel-navigator.modules-sections-navigator.is-open { z-index: 10004; }' in app_styles
+    assert '.mobile-menu:not([hidden]) { position: fixed; inset: 0; z-index: 10004;' in app_styles
+    assert '.incoming-transfer-reminder { position: fixed; right: 1rem; bottom: 1rem; z-index: 10003;' in app_styles
+    assert '#confirm-overlay { z-index: 10005; }' in app_styles
 
 
 def test_non_admin_navigation_hides_admin_tab(client) -> None:
@@ -9990,21 +10008,20 @@ def test_ppt_reporting_old_help_follows_its_feature(client) -> None:
         assert '- [Chart Builder](chart-builder.md)' in home
         assert 'ppt-reporting-old.md' in client.get('/api/documents/readme').json()['content']
 
-def test_help_navigation_groups_unnumbered_documents() -> None:
-    node_binary = shutil.which('node')
-    if node_binary is None:
-        pytest.skip('Node.js is required to exercise Help navigation grouping.')
-
-    template = (Path(__file__).resolve().parents[1] / 'src/web_interface/templates/doc_view.html').read_text(encoding='utf-8')
-    start = template.index('  function helpDocumentGroup(relativePath) {')
-    end = template.index('\n  if (helpNavLists.length)', start)
-    script = template[start:end] + "\nconsole.log(JSON.stringify(['overview.md', 'configuration.md', 'docker-deployment.md', 'workspace-management.md', 'reporting.md', 'scoring-gap-analysis.md', 'network-insights.md', 'query-builder.md', 'administrator-config.md', 'app-config.md', 'workspace-config.md', 'app-logs.md', 'project-structure.md'].map(helpDocumentGroup)));"
-    result = subprocess.run([node_binary, '-e', script], text=True, capture_output=True, check=True)
-    assert json.loads(result.stdout) == [
-        'General', 'General', 'General', 'Main Modules', 'Main Modules', 'Main Modules', 'Main Modules', 'Main Modules',
-        'Administrative Modules', 'Administrative Modules', 'Administrative Modules',
-        'Administrative Modules', 'Reference',
+def test_help_navigation_groups_unnumbered_documents(client) -> None:
+    # The Help navigation takes the group of each chapter from the server, as the Help menu of the tabs.
+    login(client)
+    groups = {item['relative_path']: item['group'] for item in client.get('/api/documents/help-index').json()['documents']}
+    documents = ['overview.md', 'configuration.md', 'docker-deployment.md', 'workspace-management.md', 'reporting.md', 'scoring-gap-analysis.md',
+                 'network-insights.md', 'query-builder.md', 'ticket-center.md', 'administrator-config.md', 'app-config.md', 'workspace-config.md',
+                 'app-logs.md', 'super-admin.md', 'project-structure.md']
+    assert groups['help.md'] == '' and [groups[document] for document in documents] == [
+        'General', 'General', 'General', 'Main Modules', 'Main Modules', 'Main Modules', 'Main Modules', 'Main Modules', 'Main Modules',
+        'Administrative Modules', 'Administrative Modules', 'Administrative Modules', 'Administrative Modules', 'Administrative Modules',
+        'Reference',
     ]
+    template = (Path(__file__).resolve().parents[1] / 'src/web_interface/templates/doc_view.html').read_text(encoding='utf-8')
+    assert "const group = helpDocument.group || 'General';" in template and 'function helpDocumentGroup(' not in template
     assert "groupItem.className = 'help-nav-group'" in template
     assert "groupList.className = 'help-nav-sublist'" in template
     assert "link.textContent = position === 0 ? `${label} 🏠` : label;" in template

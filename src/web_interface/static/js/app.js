@@ -10467,6 +10467,37 @@ document.addEventListener('click', (event) => {
   document.addEventListener('mapping-assignments-changed', refresh);
   document.addEventListener('visibilitychange', refresh);
   window.setInterval(refresh, 60000);
+
+  // With task cards on screen, the card takes the middle of their row, between those of other workspaces and of the open
+  // workspace and as wide as them, or stands above the cards of the system when they hold that middle; alone, it stands
+  // at the bottom centre. The button back to the top rises above a card that would cover it (app.css).
+  const root = document.documentElement;
+  const panels = document.getElementById('background-task-panels');
+  const docks = [...document.querySelectorAll('[data-background-task-dock]')];
+  const systemDock = docks.find((dock) => dock.dataset.backgroundTaskDock === 'system');
+  const backToTop = document.querySelector('[data-back-to-top]');
+  const shown = (element) => Boolean(element && element.children.length && element.getBoundingClientRect().width);
+  const lift = (name, tops) => {
+    const gap = 0.65 * parseFloat(getComputedStyle(root).fontSize);
+    if (tops.length) root.style.setProperty(name, `${Math.ceil(window.innerHeight - Math.min(...tops) + gap)}px`);
+    else root.style.removeProperty(name);
+  };
+  const placeCard = () => {
+    const inRow = !card.hidden && docks.some(shown);
+    panels?.toggleAttribute('data-with-unassigned-card', inRow);
+    card.toggleAttribute('data-in-task-row', inRow);
+    lift('--unassigned-values-card-bottom', inRow && shown(systemDock) ? [systemDock.getBoundingClientRect().top] : []);
+    if (!backToTop) return;
+    const button = backToTop.getBoundingClientRect();
+    lift('--back-to-top-bottom', [...docks.filter(shown), ...(card.hidden ? [] : [card])].map((element) => element.getBoundingClientRect())
+      .filter((bounds) => bounds.width && bounds.left < button.right && bounds.right > button.left).map((bounds) => bounds.top));
+  };
+  if (typeof ResizeObserver === 'function') [card, ...docks].forEach((element) => new ResizeObserver(placeCard).observe(element));
+  const changes = new MutationObserver(placeCard);
+  changes.observe(card, {attributes: true, attributeFilter: ['hidden', 'class'], childList: true});
+  docks.forEach((dock) => changes.observe(dock, {childList: true}));
+  window.addEventListener('resize', placeCard);
+  placeCard();
 })();
 // Leaving through a link of the application asks with the application's own dialog.
 // Reloading, closing the tab or going back can only show the browser's dialog.

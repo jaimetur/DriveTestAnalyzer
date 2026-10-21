@@ -509,6 +509,16 @@ def help_document_label(relative_path: str) -> str:
     return stem.replace('-', ' ').replace('_', ' ').title()
 
 
+def help_document_group(relative_path: str) -> str:
+    """The group of a Help chapter in the Help navigation and in the Help menu of the tabs: the chapters of the main
+    modules, then those of the administrative modules, the reference and the others (General)."""
+    if relative_path in {document for tab in MODULE_TABS.values() for document in tab['docs']}:
+        return 'Main Modules'
+    if relative_path in {'app-logs.md', 'app-config.md', 'workspace-config.md', 'administrator-config.md', 'super-admin.md'}:
+        return 'Administrative Modules'
+    return 'Reference' if relative_path in {'project-structure.md', 'roadmap.md'} else 'General'
+
+
 # Main modules, each shown to the accounts whose Modules Profile has it (super-admins see
 # every one), listed in the order of the main navigation tabs. ``pages`` match exactly and
 # ``paths`` also match their sub-paths; shared actions (workspace switching, dataset uploads
@@ -5841,7 +5851,6 @@ def document_tab_sections(user: Any, module_settings: dict[str, dict[str, Any]])
                               for version in releases[:8]]
     renamed = renamed_help_chapters(module_settings)
     icons = help_chapter_icons(module_settings)
-    module_documents = {document for tab in MODULE_TABS.values() for document in tab['docs']}
     groups: dict[str, list[tuple[str, str, str, str]]] = {
         '': [], 'General': [], 'Main Modules': [], 'Administrative Modules': [], 'Reference': [
             ('/documents/view/readme', 'Readme', ADMINISTRATIVE_ICONS['readme']['d'], ADMINISTRATIVE_ICONS['readme']['color']),
@@ -5855,9 +5864,7 @@ def document_tab_sections(user: Any, module_settings: dict[str, dict[str, Any]])
         if relative_path == HELP_HOME_DOCUMENT:
             groups[''].append(('/documents/view/help', 'Help Home', SECTION_ICONS['home'], ADMINISTRATIVE_ICONS['help']['color']))
             continue
-        group = ('Main Modules' if relative_path in module_documents
-                 else 'Administrative Modules' if relative_path in {'app-logs.md', 'app-config.md', 'workspace-config.md', 'administrator-config.md', 'super-admin.md'}
-                 else 'Reference' if relative_path in {'project-structure.md', 'roadmap.md'} else 'General')
+        group = help_document_group(relative_path)
         label = renamed.get(relative_path) or HELP_DOCUMENT_LABELS.get(relative_path, help_document_label(relative_path))
         icon = icons.get(relative_path, {})
         groups[group].append((f'/documents/view/help/{relative_path}', label, icon.get('icon') or SECTION_ICONS['book'],
@@ -13748,6 +13755,7 @@ def get_help_documents_index(user: SessionUser | None = Depends(optional_user)) 
                 help_document_label(relative_path),
             ),
             'url': '/documents/view/help' if relative_path == HELP_HOME_DOCUMENT else f'/documents/view/help/{relative_path}',
+            'group': '' if relative_path == HELP_HOME_DOCUMENT else help_document_group(relative_path),
             **icons.get(relative_path, {}),
         })
     return {'root': str(help_root), 'documents': documents,

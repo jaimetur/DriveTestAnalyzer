@@ -40,29 +40,40 @@
 .presentation-nav-slide.is-current .presentation-nav-number { color: var(--brand); }
 .presentation-nav-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 .presentation-view { display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; min-height: 0; }
-.presentation-tools { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; padding: .45rem .8rem; border-bottom: 1px solid var(--line); background: #fff; }
-.presentation-tools button { min-width: 2.1rem; height: 2.1rem; padding: 0 .55rem; border: 1px solid color-mix(in srgb, var(--brand) 30%, transparent); border-radius: 999px; background: #fff; color: var(--brand-3); font: inherit; font-size: 1.1rem; font-weight: 800; line-height: 1; cursor: pointer; }
+/* The tools of the slide (zoom and Slideshow) open the row below it, before the slides gone through and Close and Download PowerPoint. */
+.presentation-tools { grid-column: 1; display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; }
+.presentation-tools button { min-width: 2.45rem; height: 2.45rem; padding: 0 .55rem; border: 1px solid color-mix(in srgb, var(--brand) 30%, transparent); border-radius: 999px; background: #fff; color: var(--brand-3); font: inherit; font-size: 1.1rem; font-weight: 800; line-height: 1; cursor: pointer; }
 .presentation-tools button:hover, .presentation-tools button:focus-visible { background: color-mix(in srgb, var(--brand) 10%, #fff); }
 .presentation-page-label { min-width: 7.5rem; font-weight: 700; font-variant-numeric: tabular-nums; text-align: center; }
 .presentation-separator { width: 1px; height: 1.4rem; margin: 0 .25rem; background: var(--line); }
-.presentation-hint { margin-left: auto; color: var(--muted); font-size: .76rem; }
-.presentation-stage { position: relative; min-height: 0; overflow: hidden; background: #dde5ea; cursor: crosshair; touch-action: none; user-select: none; }
+.presentation-hint { margin: 0; padding: .4rem .8rem; border-bottom: 1px solid var(--line); background: #fff; color: var(--muted); font-size: .76rem; text-align: right; }
+.presentation-stage { grid-row: 2; position: relative; min-height: 0; overflow: hidden; background: #dde5ea; cursor: crosshair; touch-action: none; user-select: none; }
 .presentation-stage.is-panning { cursor: grabbing; }
 .presentation-stage.is-loading::after { content: 'Loading the slide…'; position: absolute; inset: 0; display: grid; place-items: center; background: rgba(221, 229, 234, .7); color: var(--brand-3); font-weight: 700; }
 .presentation-stage img { position: absolute; top: 0; left: 0; max-width: none; transform-origin: 0 0; background: #fff; box-shadow: 0 6px 24px rgba(18, 32, 43, .25); }
 .presentation-stage img:not([src]) { display: none; }
 .presentation-viewer-rect { position: absolute; border: 2px dashed var(--brand); background: color-mix(in srgb, var(--brand) 15%, transparent); pointer-events: none; }
-.presentation-dialog-actions { display: flex; justify-content: flex-end; gap: .6rem; padding: .8rem 1.2rem; border-top: 1px solid var(--line); background: #fff; }
+.presentation-dialog-actions { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: .6rem; padding: .8rem 1.2rem; border-top: 1px solid var(--line); background: #fff; }
+/* The slides are gone through in the middle of the row of Close and Download PowerPoint, with buttons as large as theirs: back
+   in slate and forward in blue. */
+.presentation-steps { grid-column: 2; display: flex; align-items: center; gap: .6rem; }
+.presentation-step { display: inline-grid; place-items: center; min-width: 4rem; height: 2.45rem; padding: 0 1.2rem; border: 0; border-radius: 999px; color: #fff; cursor: pointer; }
+.presentation-step svg { width: 1.35rem; height: 1.35rem; fill: none; stroke: currentColor; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+.presentation-step-previous { background: #5b6b80; }
+.presentation-step-previous:hover, .presentation-step-previous:focus-visible { background: #45536a; }
+.presentation-step-next { background: #1f6fbf; }
+.presentation-step-next:hover, .presentation-step-next:focus-visible { background: #17589a; }
+.presentation-dialog-buttons { grid-column: 3; display: flex; justify-content: flex-end; gap: .6rem; }
 .presentation-secondary { padding: .55rem 1rem; border: 1px solid color-mix(in srgb, var(--brand) 45%, transparent); border-radius: 999px; background: #fff; color: var(--brand-3); font: inherit; font-weight: 700; cursor: pointer; }
 .presentation-secondary:hover, .presentation-secondary:focus-visible { background: color-mix(in srgb, var(--brand) 10%, #fff); }
 .presentation-download { display: inline-flex; align-items: center; padding: .6rem 1.2rem; border-radius: 999px; background: var(--brand); color: #fff; font-weight: 800; text-decoration: none; }
 .presentation-download:hover, .presentation-download:focus-visible { background: #075d59; }
-/* The slideshow: its settings below its button, and the slides full screen on black, each entering over the one it
+/* The slideshow: its settings above its button, and the slides full screen on black, each entering over the one it
    replaces with the transition of the presentation mode of PPT Dashboards. */
 .presentation-show-menu { position: relative; }
-.presentation-tools .presentation-show-button { padding: 0 .9rem; border-color: var(--brand); background: var(--brand); color: #fff; font-size: .9rem; }
+.presentation-tools .presentation-show-button { padding: 0 1.1rem; border-color: var(--brand); background: var(--brand); color: #fff; font-size: .95rem; }
 .presentation-tools .presentation-show-button:hover, .presentation-tools .presentation-show-button:focus-visible { background: #075d59; }
-.presentation-show-settings { position: absolute; z-index: 5; top: calc(100% + .45rem); left: 0; display: grid; gap: .65rem; width: 17rem; padding: .9rem 1rem; border: 1px solid var(--line); border-radius: 14px; background: #fff; box-shadow: 0 18px 42px rgba(16, 49, 74, .22); }
+.presentation-show-settings { position: absolute; z-index: 5; bottom: calc(100% + .45rem); left: 0; display: grid; gap: .65rem; width: 17rem; padding: .9rem 1rem; border: 1px solid var(--line); border-radius: 14px; background: #fff; box-shadow: 0 18px 42px rgba(16, 49, 74, .22); }
 .presentation-show-settings[hidden] { display: none; }
 .presentation-show-heading { margin: 0; color: var(--brand-3); font-size: .78rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
 .presentation-show-settings label { display: grid; gap: .25rem; color: var(--text); font-size: .82rem; font-weight: 700; }
@@ -115,10 +126,20 @@
 @media (prefers-reduced-motion: reduce) {
   .presentation-show-front.is-entering { animation-duration: .01s; }
 }
+/* Narrower windows: the tools and Close / Download PowerPoint on one row, the slides gone through centred below them. */
+@media (max-width: 940px) {
+  .presentation-dialog-actions { grid-template-columns: minmax(0, 1fr) auto; }
+  .presentation-tools { grid-row: 1; }
+  .presentation-dialog-buttons { grid-column: 2; grid-row: 1; }
+  .presentation-steps { grid-column: 1 / -1; grid-row: 2; justify-self: center; }
+}
 @media (max-width: 760px) {
   .presentation-dialog { width: 100vw; height: 100vh; border-radius: 0; }
   .presentation-preview { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 28vh) minmax(0, 1fr); }
   .presentation-nav { border-right: 0; border-bottom: 1px solid var(--line); }
   .presentation-nav-slides { grid-auto-flow: column; grid-auto-columns: 9rem; overflow-x: auto; }
   .presentation-hint { display: none; }
+  .presentation-dialog-actions { grid-template-columns: minmax(0, 1fr); justify-items: center; }
+  .presentation-tools, .presentation-steps, .presentation-dialog-buttons { grid-column: 1; grid-row: auto; justify-self: center; }
+  .presentation-page-label { min-width: 0; }
 }

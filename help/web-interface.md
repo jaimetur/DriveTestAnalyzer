@@ -67,11 +67,11 @@ Open **Builders** to choose **Chart Builder** or **Query Builder**, each with th
 
 Move the pointer near the right edge to reveal the collapsed Modules & Sections tab (on a touch screen, touch that edge). An invisible hover area beside the tab responds even while background tasks are running; task cards leave that edge clear. The tab recedes when the pointer leaves, and keyboard focus also reveals it.
 
-**Modules & Sections**, the tab at the right edge, opens the whole tree of the modules: Main Modules, Administrative Modules and Documentation, each module with its sections and their parts (as the lists of the tabs; Help with its chapters in their groups and, in a chapter, the headings of the document being read). The module of the page is open and marked; the other modules open with their arrow, and choosing a module or a section goes there and closes the drawer. It uses nearly the full height of the window and scrolls if the window is too short for every entry.
+**Modules & Sections**, the tab at the right edge, opens the whole tree of the modules: Main Modules, Administrative Modules and Documentation, each module with its sections and their parts (as the lists of the tabs; Help with its chapters in their groups and, in a chapter, the headings of the document being read). The module of the page is open and marked; the other modules open with their arrow, and choosing a module or a section goes there and closes the drawer. It uses nearly the full height of the window, scrolls if the window is too short for every entry and, open, stands above every floating card.
 
 Open **Config** and choose **Application Config** for application-wide runtime settings or **Workspace Config** for PPT Templates Management, Operator Mappings, Vendor Mappings, Spectrum Holdings, Serving Networks, Main Cities and the Scoring hierarchy/KPI/GAP settings in the active workspace. The **Modules & Sections** tab at the right edge jumps between the panels of Workspace Config. Hovering **Application Config** or **Workspace Config** in the menu opens the list of their sections (Application Runtime and Email Delivery; PPT Templates Management, Main Cities, Mappings & Reference Data with its Operator, Vendor and Campaign Maps, Map Areas and Spectrum Holdings, and Scoring & GAP Analysis Setup): choosing one opens that page at that section, unfolding it when it was folded.
 
-Help Navigation lists unnumbered documents under General, Main Modules, Administrative Modules and Reference. Main Modules follow the order of the main tabs, by default: [Workspace Management](workspace-management.md), CDR Analysis, PPT Dashboards, PPT Reporting (old), Scoring & GAP Analysis, Network Insights, Non-Qualified Calls, [Reporting](reporting.md), Chart Builder and Query Builder. Docker Deployment follows Deployment Configuration in General. App Logs is the first administrative document and Administrator Config is the last. Readme and Changelog open Reference before Project Structure and Roadmap.
+Help Navigation lists unnumbered documents under General, Main Modules, Administrative Modules and Reference. Main Modules follow the order of the main tabs, by default: [Workspace Management](workspace-management.md), CDR Analysis, PPT Dashboards, PPT Reporting (old), Scoring & GAP Analysis, Network Insights, Non-Qualified Calls, [Reporting](reporting.md), Chart Builder, Query Builder and Ticket Center. Docker Deployment follows Deployment Configuration in General. App Logs is the first administrative document and Super Admin the last, after Administrator Config. Readme and Changelog open Reference before Project Structure and Roadmap.
 
 The Help Home link stays above the groups. Every chapter is available to every reader except PPT Reporting (old), which only users with that feature see.
 
@@ -143,7 +143,7 @@ After signing in and while signed in, a super-admin is told in the same style as
 
 ## Floating background-task cards
 
-Every authenticated page polls active background work (every 2 seconds while work runs, every 8 seconds otherwise and every 30 seconds in a hidden tab) and shows compact floating cards until it finishes. Work for the open workspace appears at the lower left, beside the button back to the top. Work for one or more other accessible workspaces appears in differently coloured lower-right cards, grouped by workspace name; changing the active workspace moves each running task to the appropriate side.
+Every authenticated page polls active background work (every 2 seconds while work runs, every 8 seconds otherwise and every 30 seconds in a hidden tab) and shows compact floating cards until it finishes. Work for the open workspace appears at the lower right. Work for one or more other accessible workspaces appears in differently coloured lower-left cards, grouped by workspace name; changing the active workspace moves each running task to the appropriate side.
 
 Each card preserves its expanded or minimized state when moving between modules or reloading the page.
 
@@ -155,7 +155,7 @@ A stopped duplication removes its partial workspace; stopped exports remove temp
 
 ## Unassigned values card
 
-While the ready CDRs of the open workspace have Operators, Vendors or Campaigns that no Operator, Vendor or Campaign Map assigns, a red card at the lower left of every page lists them until they are assigned. Editors open the assignment table from its buttons; the user-viewer role is asked to inform an administrator. See [Unassigned values warning](workspace-config.md#unassigned-values-warning).
+While the ready CDRs of the open workspace have Operators, Vendors or Campaigns that no Operator, Vendor or Campaign Map assigns, a red card at the bottom centre of every page lists them until they are assigned. With task cards on screen it takes the middle of their row, between those of other workspaces and of the open workspace and as wide as them, and stands above the system task cards when there are any; on a phone the row takes the whole width of the screen and the button back to the top rises above it. Editors open the assignment table from its buttons; the user-viewer role is asked to inform an administrator. See [Unassigned values warning](workspace-config.md#unassigned-values-warning).
 
 ## Images of charts and tables
 

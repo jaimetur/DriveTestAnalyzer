@@ -986,7 +986,7 @@
   .ds-slide-content.ds-comments-right {
     display:grid;
     grid-template-columns:minmax(0,1fr) auto;
-    grid-template-rows:auto auto minmax(0,1fr);
+    grid-template-rows:auto minmax(0,1fr) auto;
     column-gap:16px;
     row-gap:0;
   }
@@ -1000,11 +1000,11 @@
   }
   .ds-slide-content.ds-comments-right .ds-viewer-navigation-footer {
     grid-column:1 / -1;
-    grid-row:2;
+    grid-row:3;
   }
   .ds-slide-content.ds-comments-right .ds-chart-stage {
     grid-column:1;
-    grid-row:3;
+    grid-row:2;
     width:100%;
     height:100%;
     min-width:0;
@@ -1012,7 +1012,7 @@
   }
   .ds-slide-content.ds-comments-right>.ds-slide-comments {
     grid-column:2;
-    grid-row:3;
+    grid-row:2;
     align-self:stretch;
     width:auto;
     height:auto;
@@ -1908,3 +1908,26 @@
 .ppt-dashboards .element-image-button[data-image-level="card"]{border-color:#1f6fc0;background:#2f86dc;color:#fff}
 .ppt-dashboards .element-image-button[data-image-level="card"]:hover{border-color:#175a9e;background:#1f6fc0;color:#fff}
 .ppt-dashboards .element-image-button.element-image-copy.is-copied{border-color:#23804a;background:#2e9d5a;color:#fff}
+
+/* The slides of the Dashboard at the left of the viewer, as in the presentations of the Help: each slide in small with its
+   number and title, the slide shown marked (ppt_dashboards.js, renderSlideThumbnails). On wide screens only: phones keep
+   the list of slides above the slide, and the presentation mode shows the slide alone. */
+.ds-viewer-body { display:contents; }
+.ds-slide-thumbnails { display:none; }
+@media (min-width:901px) {
+  #ds-viewer:not(.ds-presentation-active) .ds-viewer-body { display:flex; flex:1 1 auto; min-height:0; gap:16px; margin-top:22px; }
+  #ds-viewer:not(.ds-presentation-active) .ds-viewer-body>.ds-slide-content { flex:1 1 auto; min-width:0; margin-top:0; }
+  #ds-viewer:not(.ds-presentation-active) .ds-slide-thumbnails { display:flex; flex:0 0 clamp(10.5rem,14vw,15rem); flex-direction:column; gap:.5rem;
+    min-height:0; padding:.15rem .45rem .5rem .15rem; overflow-y:auto; overscroll-behavior:contain; border-right:1px solid var(--ds-border); }
+}
+.ppt-dashboards .ds-slide-thumbnail { display:grid; flex:0 0 auto; gap:.3rem; box-sizing:border-box; width:100%; min-width:0; min-height:0; padding:.35rem; border:2px solid transparent;
+  border-radius:12px; background:transparent; color:#3f3152; font:inherit; text-align:left; box-shadow:none; cursor:pointer; }
+.ppt-dashboards .ds-slide-thumbnail:hover { background:color-mix(in srgb, var(--ds-soft) 55%, transparent); }
+.ppt-dashboards .ds-slide-thumbnail:focus-visible { outline:2px solid color-mix(in srgb, var(--ds-color) 45%, transparent); outline-offset:1px; }
+.ppt-dashboards .ds-slide-thumbnail.is-current { border-color:var(--ds-color); background:var(--ds-soft); }
+.ds-slide-thumbnail-frame { position:relative; display:block; aspect-ratio:16 / 9; overflow:hidden; border:1px solid var(--ds-border); border-radius:6px; background:#fff; }
+.ds-slide-thumbnail-chart { position:absolute; box-sizing:border-box; overflow:hidden; border:1px solid #e9e3f1; border-radius:2px; background:#fff; }
+.ds-slide-thumbnail-chart canvas { display:block; width:100%; height:100%; pointer-events:none; }
+.ds-slide-thumbnail-caption { display:-webkit-box; overflow:hidden; font-size:.74rem; font-weight:650; line-height:1.25; -webkit-box-orient:vertical; -webkit-line-clamp:2; }
+.ds-slide-thumbnail-caption b { margin-right:.35rem; color:var(--ds-color); font-weight:850; }
+

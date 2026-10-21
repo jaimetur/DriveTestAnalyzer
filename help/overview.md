@@ -8,10 +8,27 @@ DriveTest Analyzer turns processed CDR datasets into interactive KPI analysis, r
 > [!TIP]
 > **Choose an analysis workflow.** Use CDR Analysis for one CDR, Builders for ad-hoc exploration, PPT Dashboards for a complete template, Scoring & GAP Analysis for scoring comparisons and Network Insights for radio quality, sites and spectrum.
 
+## Presentations
+
+Present DriveTest Analyzer with its presentations:
+
+- **Overview**, the complete deck: the tool, the teams it serves and its platform, a slide for each module in the order of their tabs (two for Scoring & GAP Analysis) and the roadmap, closing with the one-slider.
+- **One-slider**, on a single slide: the most important of the tool, with its figures, modules, teams, platform and what comes next.
+- **Roadmap**, on a single slide: what comes next, such as Umlaut CDRs, the Active Tests community, scale-out and speed on AWS, PostgreSQL and health monitoring.
+
+Select a presentation to open it in the slide viewer (its slides on the left and, below the slide, the zoom buttons and **▶ Slideshow**, the arrows of the previous and next slide, **Close** and **Download PowerPoint**; the wheel and the arrow keys also change slide, Ctrl/Cmd+wheel zooms and Escape closes it), play it full screen with **▶ Slideshow**, choosing the seconds per slide and the transition, or download it with **Download PowerPoint**. Their figures are live: those of the workspaces chosen in [Super Admin → Presentations](super-admin.md#presentations), generated again in the background when they change.
+
+```presentations
+overview
+one-slider
+roadmap
+```
+
 ## In this guide
 
 | Task or topic | Go to |
 | --- | --- |
+| Presentations | [Open section](#presentations) |
 | End-to-end workflow | [Open section](#end-to-end-workflow) |
 | Header and navigation | [Open section](#header-and-navigation) |
 | Application and workspace configuration | [Open section](#application-and-workspace-configuration) |

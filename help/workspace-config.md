@@ -458,7 +458,7 @@ The **Preview** lists the campaigns of the ready CDRs of the workspace with the 
 
 ### Unassigned values warning
 
-While the ready CDRs of the workspace have Operators, Vendors or Campaigns that no map assigns, every page shows a red card at its lower left with the number of unassigned values and, for each kind, the first values (hover them to see all). It appears as soon as a processed CDR brings a new value and stays until every value is assigned; **−** minimizes it for the rest of the browser session. The user-editor, admin and super-admin roles have an **Assign Operators**, **Assign Vendors** or **Assign Campaigns** button that opens the names found in the CDRs of the matching map (or the Campaign Maps) in Workspace Config; the user-viewer role sees the card without the buttons and is asked to inform an administrator.
+While the ready CDRs of the workspace have Operators, Vendors or Campaigns that no map assigns, every page shows a red card at its bottom centre with the number of unassigned values and, for each kind, the first values (hover them to see all). It appears as soon as a processed CDR brings a new value and stays until every value is assigned; **−** minimizes it for the rest of the browser session. The user-editor, admin and super-admin roles have an **Assign Operators**, **Assign Vendors** or **Assign Campaigns** button that opens the names found in the CDRs of the matching map (or the Campaign Maps) in Workspace Config; the user-viewer role sees the card without the buttons and is asked to inform an administrator.
 
 ### Map Areas
 

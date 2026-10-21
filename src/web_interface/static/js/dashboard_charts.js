@@ -1725,6 +1725,19 @@
     return camera.zoom;
   }
 
+  // Zoom keeping the point under the pointer in its place (Ctrl/Cmd+wheel in the viewer of PPT Dashboards).
+  function zoomChartAt(canvas, requestedZoom, clientX, clientY) {
+    const camera = constrainCamera(cameraFor(canvas)), bounds = canvas.getBoundingClientRect();
+    if (!bounds.width || !bounds.height) return setChartZoom(canvas, requestedZoom);
+    const screenX = (clientX - bounds.left) / bounds.width * LOGICAL_WIDTH, screenY = (clientY - bounds.top) / bounds.height * LOGICAL_HEIGHT;
+    const pointX = (screenX - (1 - camera.zoom) * LOGICAL_WIDTH / 2 - camera.panX) / camera.zoom;
+    const pointY = (screenY - (1 - camera.zoom) * LOGICAL_HEIGHT / 2 - camera.panY) / camera.zoom;
+    const zoom = clamp(Number(requestedZoom) || 1, 1, 4);
+    camera.panX = screenX - zoom * pointX - (1 - zoom) * LOGICAL_WIDTH / 2;
+    camera.panY = screenY - zoom * pointY - (1 - zoom) * LOGICAL_HEIGHT / 2;
+    return setChartZoom(canvas, zoom);
+  }
+
   function chartPanState(canvas) {
     const camera = constrainCamera(cameraFor(canvas));
     const maximumX = LOGICAL_WIDTH * (camera.zoom - 1) / 2;
@@ -1997,6 +2010,7 @@
   globalThis.getDashboardChartLegendLabels = legendLabels;
   globalThis.setDashboardChartZoom = setChartZoom;
   globalThis.getDashboardChartZoom = canvas => cameraFor(canvas).zoom;
+  globalThis.zoomDashboardChartAt = zoomChartAt;
   globalThis.panDashboardChart = panChart;
   globalThis.getDashboardChartPanState = chartPanState;
   // The plot of the last drawn map and the canvas scale, to turn a pointer position into a place.
