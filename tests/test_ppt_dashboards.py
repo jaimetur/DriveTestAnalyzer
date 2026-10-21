@@ -1856,7 +1856,7 @@ def test_dashboards_lifecycle_and_layout(client, ppt_reporting_old):
     selection_key_source = dashboard_module[dashboard_module.index('def persistent_selection_key'):dashboard_module.index('def selected_date_bounds')]
     assert "'scope': definition.scope," not in selection_key_source
     assert "'schema': DASHBOARD_SELECTION_CACHE_VERSION," in selection_key_source
-    assert 'DASHBOARD_SELECTION_CACHE_VERSION = 17' in dashboard_module
+    assert 'DASHBOARD_SELECTION_CACHE_VERSION = 18' in dashboard_module
     assert "kind: sorted([" in selection_key_source
     assert "kind: sorted(set(dataset_ids))" in selection_key_source
     assert "field: sorted(set(values))" in selection_key_source
@@ -1866,7 +1866,7 @@ def test_dashboards_lifecycle_and_layout(client, ppt_reporting_old):
     assert 'use_profile_options=False, known_full_row_counts=None, progress=None,' in dashboard_module
     assert 'use_profile_options=use_profile_options,' in dashboard_module
     assert 'DASHBOARD_CHART_RENDER_WORKERS = max(1, min(2, (os.cpu_count() or 2) - 1))' in dashboard_module
-    assert 'DASHBOARD_PREVIEW_MANIFEST_VERSION = 8' in dashboard_module
+    assert 'DASHBOARD_PREVIEW_MANIFEST_VERSION = 9' in dashboard_module
     assert "thread_name_prefix='ppt-dashboard-chart'," not in dashboard_module
     assert 'def schedule_next_prefetch() -> None:' not in dashboard_module
     assert 'def enqueue_prefetch(' not in dashboard_module
@@ -3050,6 +3050,18 @@ def test_dashboard_operator_facets_show_and_filter_the_mapped_operators(client):
     filtered = client.post('/api/ppt-dashboards/prepare', json={**payload, 'filters': {'Operator': ['Alpha']}})
     assert filtered.status_code == 200, filtered.text
     assert sum(filtered.json()['rows'].values()) > 0
+
+
+def test_dashboard_operator_patterns_take_the_rows_of_the_spellings_they_match(client):
+    payload = setup_dashboard(client)
+    core.repository.replace_operator_mapping_group(None, 'Alpha', ['A'])
+
+    # Two rows of A (Alpha in the Operator Maps) and one of B. An exclusion of the label also leaves out its spelling.
+    for patterns, rows in ((['-Alpha'], 1), (['-A'], 1), (['NOT Alp*'], 1), (['Al*'], 2), (['B*'], 1), (['Z*'], 0)):
+        prepared = client.post('/api/ppt-dashboards/prepare', json={**payload, 'filters': {'Operator': patterns}})
+        assert prepared.status_code == 200, prepared.text
+        assert prepared.json()['rows']['data'] == rows, patterns
+        assert client.get(f"/api/ppt-dashboards/data/{prepared.json()['token']}/0").json()['total'] == rows, patterns
 
 
 def test_dashboard_reuses_normalized_snapshot_for_every_chart(client, monkeypatch):

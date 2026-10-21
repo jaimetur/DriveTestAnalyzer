@@ -71,7 +71,7 @@ from src.modules.repository import Repository
 from src.modules.cdr_report_filenames import build_cdr_report_filename
 from src.modules.runtime_config import ignore_event_time_filtering
 from src.modules.ingestion import apply_operator_mappings
-from src.modules.value_patterns import ValueSet
+from src.modules.value_patterns import ValueSet, is_pattern
 from src.modules.operator_roles import drop_excluded_operators, excluded_operators
 
 KINDS = ('data', 'voice', 'speech')
@@ -290,12 +290,18 @@ FILTER_COLUMNS = {
     'RAT': ('RAT_A', 'RAT', 'Sample_RAT_A'),
     'Call Status': ('Call_Status', 'call_status', 'status'),
 }
+# The CDR catalogue (repository.cdr_catalogue_values) whose spellings a pattern of a filter is matched against.
+PATTERN_CATALOGUE_FIELDS = {
+    identity('Operator'): 'operators', identity('Vendor'): 'vendors_only', identity('Operator_Vendor'): 'vendors',
+    identity('Vendor_Operator'): 'vendor_operators', identity('Region'): 'regions', identity('Cluster'): 'clusters',
+    identity('City'): 'cities', identity('Campaign'): 'campaigns',
+}
 ADAPTATIVE_FILTER_FIELDS = (
     'Operator', 'Operator_Vendor', 'Vendor_Operator', 'Vendor', 'Market', 'Region', 'Cluster', 'City', 'Campaign', 'RAT',
     'Session Type', 'Call Status',
 )
 DASHBOARD_RENDER_CACHE_VERSION = 22
-DASHBOARD_SELECTION_CACHE_VERSION = 17
+DASHBOARD_SELECTION_CACHE_VERSION = 18
 # Pre-cached universes: every CDR plus the latest 1..N CDRs of each type.
 DASHBOARD_WARMUP_LATEST_COUNTS = 4
 # Only the most recently used Dashboard snapshots keep their chart frames in
@@ -321,7 +327,7 @@ DASHBOARD_PROFILE_SELECTION_THRESHOLD = 100_000
 DASHBOARD_CHART_MODEL_CACHE_VERSION = 19
 DASHBOARD_CHART_MODEL_DISK_LIMIT = 500
 DASHBOARD_CHART_RENDER_WORKERS = max(1, min(2, (os.cpu_count() or 2) - 1))
-DASHBOARD_PREVIEW_MANIFEST_VERSION = 8
+DASHBOARD_PREVIEW_MANIFEST_VERSION = 9
 DASHBOARD_DATE_BOUNDS_CACHE_VERSION = 1
 
 
@@ -2868,6 +2874,19 @@ def install_dashboard_routes(core):
         value_expression = filter_sql_value_expression(task_repository, columns, field)
         return f"LOWER(TRIM({value_expression}))" if value_expression is not None else None
 
+    def pattern_filter_values(task_repository, mapper, field_name, values, catalogue):
+        """The CDR spellings a filter with patterns (VF*, -Three) takes: those of the CDR catalogues whose spelling or
+        Operator / Vendor Maps label it accepts (see value_patterns), so -Three also leaves out the 3 of the CDRs. A
+        filter whose patterns take no known spelling keeps them: it then takes no value instead of every value."""
+        field = vendor_filter_column(field_name)
+        source = PATTERN_CATALOGUE_FIELDS.get(identity(field))
+        kind = field_kind(field)
+        if source and catalogue.get(source) is None:
+            catalogue[source] = task_repository.cdr_catalogue_values().get(source, [])
+        chosen = ValueSet(values)
+        taken = [value for value in catalogue.get(source) or [] if chosen.accepts([value, mapper.map(kind, value)])]
+        return taken or [value for value in values if is_pattern(value)]
+
     def selection_filter_terms(task_repository, columns, definition, exclude=None):
         """Return each user-selected Dashboard filter as (normalized SQL or None, values).
 
@@ -2877,7 +2896,11 @@ def install_dashboard_routes(core):
         terms = []
         excluded = identity(exclude) if exclude else ''
         mapper = ValueMapper.from_repository(task_repository)
+        catalogue = {}
         for field_name, values in definition.filters.items():
+            # Patterns (VF*, -Three) become the spellings they take: these terms compare values as they are.
+            if any(is_pattern(value) for value in values or []):
+                values = pattern_filter_values(task_repository, mapper, field_name, values, catalogue)
             if identity(vendor_filter_column(field_name)) in {'vendor', 'operatorvendor'}:
                 values = vendor_match_values(field_name, values, task_repository.list_operator_mappings())
             # Operators and Vendors are chosen with their mapped labels: match every source spelling.
