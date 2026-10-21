@@ -6489,14 +6489,14 @@ WORKSPACE_ELEMENT_EXPORT_TARGETS = frozenset({
     'reporting-jobs', 'nq-call-tracking', 'nq-calls-configuration', 'app-events', 'main-cities', 'scoring-configuration',
     'network-insights-favourites', 'bundle-report-template-favourites', 'scoring-favourites-filters', 'scoring-report-templates', 'scoring-export-panels', 'scoring-excluded-calls',
 })
-# The module of each Workspace Content element (Export / Transfer and backups), where the content is managed: the
-# subgroups of Workspace Content start with Workspace Config (the Config pages and the Workspace module together) and
-# follow the menu (App Logs, then the main modules in tab order).
+# The module of each Workspace Content element (Export / Transfer and backups), where the content is managed or used
+# (PPT Templates with the PPT Dashboards that use them): the subgroups of Workspace Content start with Workspace Config
+# (the Config pages and the Workspace module together) and follow the menu (App Logs, then the main modules in tab order).
 WORKSPACE_ELEMENT_MODULES = {
     'app-events': 'app-logs',
     'auto-calculated-fields': 'workspace-config', 'main-cities': 'workspace-config',
-    'mappings-reference-data': 'workspace-config', 'ppt-templates': 'workspace-config',
-    'dashboards': 'ppt-dashboards',
+    'mappings-reference-data': 'workspace-config',
+    'dashboards': 'ppt-dashboards', 'ppt-templates': 'ppt-dashboards',
     'scoring-configuration': 'scoring', 'scoring-report-templates': 'scoring', 'scoring-favourites-filters': 'scoring',
     'scoring-export-panels': 'scoring', 'scoring-excluded-calls': 'scoring',
     'network-insights-favourites': 'network-insights',

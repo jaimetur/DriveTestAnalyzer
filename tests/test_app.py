@@ -2494,12 +2494,12 @@ def test_workspace_content_of_exports_and_backups_is_grouped_by_module_in_menu_o
         return text[:text.index('</optgroup>')]
 
     # Workspace Config first (the Config pages and the Workspace module), then the modules in the order of the menu
-    # (App Logs, then the main tabs), their contents alphabetically.
+    # (App Logs, then the main tabs), their contents alphabetically; the PPT Templates go with the PPT Dashboards.
     modules = [
         ('auto-calculated-fields', 'Workspace Config'), ('main-cities', 'Workspace Config'),
-        ('mappings-reference-data', 'Workspace Config'), ('ppt-templates', 'Workspace Config'),
+        ('mappings-reference-data', 'Workspace Config'),
         ('app-events', 'App Logs'),
-        ('dashboards', 'PPT Dashboards'),
+        ('dashboards', 'PPT Dashboards'), ('ppt-templates', 'PPT Dashboards'),
         ('scoring-configuration', 'Benchmark'), ('scoring-favourites-filters', 'Benchmark'), ('scoring-report-templates', 'Benchmark'),
         ('scoring-excluded-calls', 'Benchmark'), ('scoring-export-panels', 'Benchmark'),
         ('network-insights-favourites', 'Network Insights'),
