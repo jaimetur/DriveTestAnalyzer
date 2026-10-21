@@ -13631,7 +13631,12 @@ def create_access_request(request: Request, payload: AccessRequestPayload) -> JS
         '',
         opening,
         '',
+        # A mailto body is plain text: the approvers' part is framed in capitals to stand out.
+        '========================================',
+        'APPROVAL NEEDED',
         f"{', '.join(approvers[:-1])} or {approvers[-1]}: please review the request and approve it by replying to all.",
+        '========================================',
+        '',
         f"{administrator}: once one of them has approved it, please {'activate my user again' if record else 'activate my user'} "
         'in Super Admin › Users.',
         '',

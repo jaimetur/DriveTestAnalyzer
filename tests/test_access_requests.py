@@ -61,8 +61,9 @@ def test_access_request_creates_an_inactive_editor_with_the_chosen_access(client
                                      'alfonso.j.alvarez@ericsson.com']
     body = result['email']['body']
     assert body.startswith('Hello Jaime, Kleber, Angelo, Mohammadreza and Alfonso,')
-    assert 'Kleber, Angelo, Mohammadreza or Alfonso: please review the request and approve it by replying to all.' in body
-    assert 'Jaime: once one of them has approved it, please activate my user in Super Admin › Users.' in body
+    # The approvers' part is framed in capitals, and the administrator's line comes apart below it.
+    assert ('APPROVAL NEEDED\nKleber, Angelo, Mohammadreza or Alfonso: please review the request and approve it by replying to all.\n'
+            '========================================\n\nJaime: once one of them has approved it, please activate my user in Super Admin › Users.') in body
     assert 'User: EABCDEF' in body and 'Name: Ana García' in body and f'Workspaces: UK ({core.active_workspace.name})' in body
     record = core.repository.get_user('eabcdef')
     assert (record.username, record.role, record.active) == ('EABCDEF', 'user-editor', False)
