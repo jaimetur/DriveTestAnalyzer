@@ -529,6 +529,17 @@
   // The Saved Filter selectors of the module, on top of the Calculation panel and of Scoring & GAP Results: the selected
   // card of the first one is drawn and the others are its copies.
   const savedFilterSelectors = [...root.querySelectorAll('[data-saved-filter-selector]')];
+  // The Filter Navigator: the Favourites Filters as a tree (Area → NR Mode → Campaign) with a search, opened from the
+  // Favourites Filters panel and from the button of each selector. The branches opened stay open while the page is open;
+  // while searching, every branch with a match is open but the ones closed meanwhile.
+  const navigatorDialog = root.querySelector('[data-saved-filter-navigator]');
+  const navigatorTree = navigatorDialog?.querySelector('[data-saved-filter-navigator-tree]') || null;
+  const navigatorSearch = navigatorDialog?.querySelector('[data-saved-filter-navigator-search]') || null;
+  const navigatorCount = navigatorDialog?.querySelector('[data-saved-filter-navigator-count]') || null;
+  const navigatorExpanded = new Set();
+  const navigatorSearchCollapsed = new Set();
+  // The selector the Filter Navigator was opened from (null: the Favourites Filters panel).
+  let navigatorOrigin = null;
   const selectedSavedFilterCards = [...root.querySelectorAll('[data-selected-saved-filter-card]')];
   const selectedSavedFilterCard = selectedSavedFilterCards[0];
   const resultsTabbed = root.querySelector('.scoring-results-tabbed');
@@ -2725,6 +2736,8 @@
     // Close Scoring closes the Saved Filter shown, when there is one.
     if (closeScoringButton) closeScoringButton.disabled = scoringClosed || !selectedSavedFilterId;
     syncSavedFilterLists();
+    // An open Filter Navigator follows the Favourites Filters (their status, a new one, one deleted).
+    if (navigatorDialog?.open) renderSavedFilterNavigator();
   }
 
   async function requestJson(url, options = {}) {
@@ -11142,6 +11155,13 @@
     if (!button) return;
     const savedFilter = savedFilters.find(record => savedFilterIdOf(record) === button.dataset.savedFilterUse);
     if (!savedFilter) return;
+    await useSavedFilter(savedFilter, {fromDropdown: savedFilterSelectors.find(selector => selector.contains(button))});
+  });
+
+  // Use Filter: the Saved Filter becomes the one of the module, its selection goes to the Calculation panel and its result
+  // is loaded. Used from a selector (``fromDropdown``) the page stays there; otherwise it goes to its results. ``source``
+  // tells App Events where it was chosen (navigator: the Filter Navigator).
+  async function useSavedFilter(savedFilter, {fromDropdown = null, source = ''} = {}) {
     if (editingSavedFilter) stopSavedFilterEdit();
     userSelectedSavedFilter = true;
     selectedSavedFilterId = savedFilterIdOf(savedFilter);
@@ -11150,10 +11170,10 @@
     showUnmatchedSelection(false);
     reopenScoring();
     // Opening it with Use Filter counts as a use.
-    requestJson(`${savedFiltersUrl}/${encodeURIComponent(selectedSavedFilterId)}/use`, {method: 'POST'})
+    requestJson(`${savedFiltersUrl}/${encodeURIComponent(selectedSavedFilterId)}/use${source ? `?source=${encodeURIComponent(source)}` : ''}`,
+      {method: 'POST'})
       .then(() => refreshSavedFilters())
       .catch(() => { /* The count is not essential to open it. */ });
-    const fromDropdown = savedFilterSelectors.find(selector => selector.contains(button));
     for (const selector of savedFilterSelectors) selector.open = false;
     // A Saved Filter opened from the Saved Filters panel takes the page to its results at once, and again once they are
     // drawn (they change the height of the page).
@@ -11167,7 +11187,431 @@
     persistScoringViewState();
     await loadSavedFilter(savedFilter, true);
     if (!fromDropdown && selectedSavedFilterId === savedFilterIdOf(savedFilter)) showResults();
+  }
+
+  // The words of a text as the search of the Filter Navigator compares them: in lower case, without accents, split at
+  // anything but letters and digits.
+  function savedFilterNavigatorWords(text) {
+    return String(text ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase()
+      .split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+  }
+
+  // Whether a word typed finds a word of a Saved Filter: the start of it, but a number of one or two digits is the whole
+  // word (2 finds Latest 2 campaigns, not 2026-Q3).
+  function savedFilterNavigatorWordMatches(word, typed) {
+    return /^\p{N}{1,2}$/u.test(typed) ? word === typed : word.startsWith(typed);
+  }
+
+  // Whether the words of a Saved Filter hold every word typed, in any order.
+  function savedFilterNavigatorMatches(words, query) {
+    return savedFilterNavigatorWords(query).every(typed => words.some(word => savedFilterNavigatorWordMatches(word, typed)));
+  }
+
+  // The Favourites Filters the search finds: those with every word typed, where two words typed one after the other stay
+  // together when some of them hold them one after the other in one of their texts (latest camp finds Latest campaign,
+  // not Latest 2 campaigns); words that no Favourites Filter holds together are found anywhere.
+  function savedFilterNavigatorFound(entries, query) {
+    const typed = savedFilterNavigatorWords(query);
+    let found = entries.filter(entry => savedFilterNavigatorMatches(entry.words, query));
+    for (let index = 0; index + 1 < typed.length; index += 1) {
+      const together = entry => entry.phrases.some(words => words.some((word, at) => at + 1 < words.length
+        && savedFilterNavigatorWordMatches(word, typed[index]) && savedFilterNavigatorWordMatches(words[at + 1], typed[index + 1])));
+      if (found.some(together)) found = found.filter(together);
+    }
+    return found;
+  }
+
+  // What the Filter Navigator shows of a Favourites Filter, from its filters (not from its name): its branches (the areas
+  // it filters, or Nationwide, then its NR Mode), its leaf (its Campaign: the automatic choice with the campaigns it stood
+  // for last time, or its campaigns), the Operator and Vendor it filters, and its other fields, which tell it apart from
+  // another one on the same leaf. Its words are those the search looks in.
+  function savedFilterNavigatorEntry(savedFilter) {
+    const id = savedFilterIdOf(savedFilter);
+    const scopes = savedFilterScopes(savedFilter);
+    const areas = scopes.filter(scope => ['all', 'region', 'cluster', 'city'].includes(scope.dimension));
+    const filtered = scopes.filter(scope => !areas.includes(scope));
+    const mode = String(valueOf(savedFilter, ['nr_mode'], '') || '');
+    const modeLabel = mode === 'NSA+SA' ? 'NSA vs SA' : (mode || 'All NR Modes');
+    const display = values => [...new Set(values.map(value => hierarchyDisplayValue({level: 'Campaign', value})))]
+      .sort((left, right) => insightCampaignKey(left) - insightCampaignKey(right) || left.localeCompare(right));
+    const campaignFilter = savedSavedFilterValues(savedFilter, 'Campaign');
+    const choice = campaignFilter.find(isCampaignPreset);
+    const campaigns = choice ? display(Array.isArray(savedFilter?.resolved_campaigns) ? savedFilter.resolved_campaigns : [])
+      : display(campaignFilter.length ? campaignFilter : savedFilterCampaigns(savedFilter).filter(value => value !== 'Unspecified'));
+    const campaign = choice ? campaignPresetLabels[choice] : (campaigns.join(', ') || 'All Campaigns');
+    const filteredValue = dimension => filtered.find(scope => scope.dimension === dimension)?.text;
+    const baseline = valueOf(savedFilter, ['baseline_operator'], 'EE');
+    const reference = baseline === '@same-operator-nsa' ? 'Same operator in NSA' : baseline;
+    const methodology = valueOf(savedFilter, ['scoring_profile_name', 'profile_name'], '') || 'Default';
+    const details = [
+      ['operator', 'Operator', filteredValue('operator') || 'All Operators'],
+      ['vendor', 'Vendor', filteredValue('vendor') || 'All Vendors'],
+      ['', 'Split by', savedFilterLevels(savedFilter)],
+      ['', 'GAP Reference', reference],
+      ['', 'Scoring Methodology', methodology],
+      ['', 'Geographical Areas', savedFilterAreaSummaryParts(savedFilter).map(([, label, value]) => `${label}: ${value}`).join(' · ')],
+      ['', 'Scoring Trends', `${savedFilterTrendCampaigns(savedFilter)} · Time split: ${savedFilterTimeSplit(savedFilter)}`],
+      ['', 'CDRs', savedFilterCdrNames(savedFilter).join(', ') || savedFilterCdrSummary(savedFilter)],
+    ];
+    const areaKey = areas.map(scope => `${scope.dimension}:${scope.text}`).join('|');
+    // Each text apart, to find words typed together; all their words, to find words typed anywhere.
+    const phrases = [savedFilter.name, ...areas.map(scope => scope.text), ...filtered.map(scope => scope.text), modeLabel,
+      campaign, campaigns.join(' '), reference, methodology, `Filter ID ${id}`].map(savedFilterNavigatorWords);
+    return {
+      id, name: savedFilter.name || '', status: normalizeStatus(savedFilter), areas, areaKey, mode, modeLabel,
+      modeKey: `${areaKey}#${mode}`, campaign, campaigns: choice ? campaigns : [], filtered, details, distinct: [],
+      phrases, words: phrases.flat(),
+    };
+  }
+
+  // The tree of the Filter Navigator from its entries (in the order of the list): each area in the order of its first
+  // Favourites Filter, its NR Modes (NSA, SA, NSA vs SA) and their Favourites Filters. Those that would read alike on a
+  // leaf get, in ``distinct``, the fields that tell them apart (their Filter ID when nothing does).
+  function savedFilterNavigatorTree(entries) {
+    const modeOrder = mode => (index => (index < 0 ? 3 : index))(['NSA', 'SA', 'NSA+SA'].indexOf(mode));
+    const areas = [];
+    for (const entry of entries) {
+      let area = areas.find(item => item.key === entry.areaKey);
+      if (!area) areas.push(area = {key: entry.areaKey, areas: entry.areas, modes: []});
+      let mode = area.modes.find(item => item.mode === entry.mode);
+      if (!mode) area.modes.push(mode = {key: entry.modeKey, mode: entry.mode, label: entry.modeLabel, entries: []});
+      mode.entries.push(entry);
+    }
+    for (const area of areas) {
+      area.modes.sort((left, right) => modeOrder(left.mode) - modeOrder(right.mode));
+      for (const mode of area.modes) {
+        const leaves = new Map();
+        for (const entry of mode.entries) {
+          const key = [entry.campaign, ...entry.campaigns].join('|');
+          leaves.set(key, [...(leaves.get(key) || []), entry]);
+        }
+        for (const alike of leaves.values()) {
+          const differing = alike.length < 2 ? [] : alike[0].details.map((_detail, index) => index)
+            .filter(index => new Set(alike.map(entry => entry.details[index][2])).size > 1);
+          for (const entry of alike) {
+            entry.distinct = differing.map(index => entry.details[index]);
+            if (alike.length > 1 && !differing.length) entry.distinct = [['', 'Filter ID', entry.id]];
+          }
+        }
+      }
+    }
+    return areas;
+  }
+
+  // A text with the starts of its words that the search found marked.
+  function savedFilterNavigatorHighlight(text, query) {
+    const value = String(text ?? '');
+    const typed = savedFilterNavigatorWords(query);
+    if (!typed.length) return [value];
+    const nodes = [];
+    let last = 0;
+    for (const match of value.matchAll(/[\p{L}\p{N}]+/gu)) {
+      const word = savedFilterNavigatorWords(match[0])[0] || '';
+      const length = Math.max(0, ...typed.filter(token => savedFilterNavigatorWordMatches(word, token)).map(token => token.length));
+      if (!length) continue;
+      const mark = document.createElement('mark');
+      mark.textContent = value.slice(match.index, match.index + length);
+      nodes.push(value.slice(last, match.index), mark);
+      last = match.index + length;
+    }
+    nodes.push(value.slice(last));
+    return nodes.filter(node => node !== '');
+  }
+
+  // A branch of the tree (an area or an NR Mode), with the number of its Favourites Filters, and the group of its children.
+  function savedFilterNavigatorBranch(key, level, content, count, open) {
+    const item = document.createElement('div');
+    item.setAttribute('role', 'treeitem');
+    item.setAttribute('aria-level', String(level));
+    item.setAttribute('aria-expanded', String(open));
+    item.tabIndex = -1;
+    item.className = `saved-filter-navigator-branch is-level-${level}`;
+    item.dataset.navigatorKey = key;
+    const label = document.createElement('div');
+    label.className = 'saved-filter-navigator-label';
+    const chevron = document.createElement('span');
+    chevron.className = 'saved-filter-navigator-chevron';
+    chevron.setAttribute('aria-hidden', 'true');
+    chevron.textContent = '▶';
+    const badge = document.createElement('span');
+    badge.className = 'saved-filter-navigator-count';
+    badge.textContent = String(count);
+    badge.title = `${count} Favourites Filter${count === 1 ? '' : 's'}`;
+    label.append(chevron, ...content, badge);
+    const group = document.createElement('div');
+    group.setAttribute('role', 'group');
+    group.className = 'saved-filter-navigator-group';
+    group.hidden = !open;
+    item.append(label, group);
+    return {item, group};
+  }
+
+  // A Favourites Filter on its leaf: its Campaign, the campaigns it stands for, what it filters and what tells it apart,
+  // its status when it is not calculated, In Use for the one in use, and its name below.
+  function savedFilterNavigatorLeaf(entry, query, inUse) {
+    const item = document.createElement('div');
+    item.setAttribute('role', 'treeitem');
+    item.setAttribute('aria-level', '3');
+    item.setAttribute('aria-selected', String(inUse));
+    item.tabIndex = -1;
+    item.className = 'saved-filter-navigator-leaf';
+    item.dataset.navigatorKey = `filter:${entry.id}`;
+    item.dataset.savedFilterNavigatorUse = entry.id;
+    item.title = inUse ? 'This Saved Filter is the one in use' : `Use this Saved Filter: ${entry.name || `Filter ID: ${entry.id}`}`;
+    const label = document.createElement('div');
+    label.className = 'saved-filter-navigator-label';
+    const text = document.createElement('span');
+    text.className = 'saved-filter-navigator-leaf-text';
+    const main = document.createElement('span');
+    main.className = 'saved-filter-navigator-leaf-main';
+    const campaign = document.createElement('span');
+    campaign.className = 'saved-filter-navigator-campaign';
+    campaign.append(...savedFilterNavigatorHighlight(entry.campaign, query));
+    main.append(campaign);
+    if (entry.campaigns.length) {
+      const campaigns = document.createElement('span');
+      campaigns.className = 'saved-filter-navigator-campaigns';
+      campaigns.append(...savedFilterNavigatorHighlight(entry.campaigns.join(' · '), query));
+      main.append(campaigns);
+    }
+    const chips = [...entry.filtered.map(scope => [scope.dimension, scope.title, scope.text]),
+      ...entry.distinct.filter(([dimension]) => !entry.filtered.some(scope => scope.dimension === dimension && dimension))
+        .map(([dimension, name, value]) => [dimension, `${name}: ${value}`, dimension ? value : `${name}: ${value}`])];
+    for (const [dimension, title, value] of chips) {
+      const chip = document.createElement('span');
+      chip.className = 'saved-filter-navigator-chip';
+      if (dimension) chip.dataset.dimension = dimension;
+      chip.title = title;
+      chip.append(...savedFilterNavigatorHighlight(value, query));
+      main.append(chip);
+    }
+    if (entry.status !== 'completed') {
+      const status = document.createElement('span');
+      status.className = 'scoring-status';
+      status.dataset.status = entry.status;
+      status.textContent = entry.status === 'saved' ? 'not calculated' : entry.status;
+      main.append(status);
+    }
+    if (inUse) {
+      const badge = document.createElement('span');
+      badge.className = 'saved-filter-navigator-in-use';
+      badge.textContent = 'In Use';
+      main.append(badge);
+    }
+    text.append(main);
+    if (entry.name) {
+      const name = document.createElement('span');
+      name.className = 'saved-filter-navigator-name';
+      name.append(...savedFilterNavigatorHighlight(entry.name, query));
+      text.append(name);
+    }
+    label.append(text);
+    item.append(label);
+    return item;
+  }
+
+  function renderSavedFilterNavigator() {
+    if (!navigatorTree) return;
+    const query = navigatorSearch?.value || '';
+    const searching = savedFilterNavigatorWords(query).length > 0;
+    const entries = sortedSavedFilters(savedFilters).filter(savedFilter => savedFilter.pinned).map(savedFilterNavigatorEntry);
+    // What tells two Favourites Filters apart is found among all of them, so it does not change while searching.
+    const tree = savedFilterNavigatorTree(entries);
+    const found = new Set(savedFilterNavigatorFound(entries, query).map(entry => entry.id));
+    const inUseId = selectedSavedFilterId && !selectionUnmatched && !scoringClosed ? selectedSavedFilterId : '';
+    const focusedKey = navigatorTree.contains(document.activeElement) ? document.activeElement.dataset?.navigatorKey : '';
+    const isOpen = key => (searching ? !navigatorSearchCollapsed.has(key) : navigatorExpanded.has(key));
+    const items = [];
+    for (const area of tree) {
+      const areaCount = area.modes.reduce((total, mode) => total + mode.entries.filter(entry => found.has(entry.id)).length, 0);
+      if (!areaCount) continue;
+      const areaLabels = area.areas.map(scope => {
+        const label = document.createElement('span');
+        label.className = 'saved-filter-navigator-area';
+        label.dataset.dimension = scope.dimension;
+        label.title = scope.title;
+        label.append(...savedFilterNavigatorHighlight(scope.text, query));
+        return label;
+      });
+      const areaBranch = savedFilterNavigatorBranch(area.key, 1, areaLabels, areaCount, isOpen(area.key));
+      for (const mode of area.modes) {
+        const shown = mode.entries.filter(entry => found.has(entry.id));
+        if (!shown.length) continue;
+        const modeLabel = document.createElement('span');
+        modeLabel.className = 'saved-filter-navigator-mode';
+        modeLabel.dataset.nrMode = mode.mode === 'NSA+SA' ? 'nsa-vs-sa' : mode.mode.toLowerCase();
+        modeLabel.title = `NR Mode: ${mode.label}`;
+        if (mode.mode === 'NSA+SA') {
+          for (const [part, kind] of [['NSA', 'nsa'], [' vs ', ''], ['SA', 'sa']]) {
+            const piece = document.createElement('span');
+            if (kind) piece.dataset.nrMode = kind;
+            piece.append(...savedFilterNavigatorHighlight(part, query));
+            modeLabel.append(piece);
+          }
+        } else modeLabel.append(...savedFilterNavigatorHighlight(mode.label, query));
+        const modeBranch = savedFilterNavigatorBranch(mode.key, 2, [modeLabel], shown.length, isOpen(mode.key));
+        modeBranch.group.append(...shown.map(entry => savedFilterNavigatorLeaf(entry, query, entry.id === inUseId)));
+        areaBranch.group.append(modeBranch.item);
+      }
+      items.push(areaBranch.item);
+    }
+    if (!items.length) {
+      const empty = document.createElement('div');
+      empty.className = 'saved-filter-navigator-empty';
+      empty.textContent = entries.length ? 'No Favourites Filter has every word typed.'
+        : 'No Favourites Filters yet: star (☆) a scoring to keep its filters here.';
+      items.push(empty);
+    }
+    navigatorTree.replaceChildren(...items);
+    if (navigatorCount) {
+      navigatorCount.textContent = searching ? `${found.size} of ${entries.length} Favourites Filters`
+        : `${entries.length} Favourites Filter${entries.length === 1 ? '' : 's'}`;
+    }
+    // The tree is one stop of Tab: on the item focused before, else the one in use, else the first one.
+    const visible = visibleNavigatorItems();
+    const current = visible.find(item => item.dataset.navigatorKey === focusedKey)
+      || visible.find(item => item.getAttribute('aria-selected') === 'true') || visible[0];
+    if (current) {
+      current.tabIndex = 0;
+      if (focusedKey) current.focus();
+    }
+  }
+
+  function visibleNavigatorItems() {
+    return navigatorTree ? [...navigatorTree.querySelectorAll('[role="treeitem"]')]
+      .filter(item => !item.parentElement?.closest('[role="group"][hidden]')) : [];
+  }
+
+  function focusNavigatorItem(item) {
+    for (const other of navigatorTree.querySelectorAll('[role="treeitem"]')) other.tabIndex = -1;
+    item.tabIndex = 0;
+    item.focus();
+    item.querySelector('.saved-filter-navigator-label')?.scrollIntoView({block: 'nearest'});
+  }
+
+  function toggleNavigatorBranch(item, open) {
+    const key = item.dataset.navigatorKey;
+    item.setAttribute('aria-expanded', String(open));
+    const group = item.querySelector(':scope > [role="group"]');
+    if (group) group.hidden = !open;
+    if (savedFilterNavigatorWords(navigatorSearch?.value).length) {
+      if (open) navigatorSearchCollapsed.delete(key);
+      else navigatorSearchCollapsed.add(key);
+    } else if (open) navigatorExpanded.add(key);
+    else navigatorExpanded.delete(key);
+  }
+
+  function openSavedFilterNavigator(origin = null) {
+    if (!navigatorDialog || navigatorDialog.open) return;
+    navigatorOrigin = origin;
+    for (const selector of savedFilterSelectors) selector.open = false;
+    if (navigatorSearch) navigatorSearch.value = '';
+    navigatorSearchCollapsed.clear();
+    // The branches of the Saved Filter in use open with it.
+    const inUse = savedFilters.find(record => record.pinned && savedFilterIdOf(record) === selectedSavedFilterId);
+    if (inUse) {
+      const entry = savedFilterNavigatorEntry(inUse);
+      navigatorExpanded.add(entry.areaKey);
+      navigatorExpanded.add(entry.modeKey);
+    }
+    renderSavedFilterNavigator();
+    // With a mouse the search is ready to type in; on a touch screen its keyboard would cover the tree, so the dialog
+    // takes the focus (the search is out of reach while it opens, or the dialog would give it the focus).
+    const typing = Boolean(window.matchMedia?.('(pointer: fine)').matches);
+    if (navigatorSearch && !typing) navigatorSearch.disabled = true;
+    navigatorDialog.showModal();
+    if (navigatorSearch) navigatorSearch.disabled = false;
+    navigatorTree.querySelector('[aria-selected="true"] > .saved-filter-navigator-label')?.scrollIntoView({block: 'center'});
+    if (typing) navigatorSearch?.focus();
+    else navigatorDialog.focus();
+  }
+
+  // Choosing a Favourites Filter in the Filter Navigator uses it, as Use Filter on its card (the one in use only closes it).
+  function useNavigatorFilter(id) {
+    const savedFilter = savedFilters.find(record => savedFilterIdOf(record) === String(id));
+    if (!savedFilter) return;
+    const origin = navigatorOrigin;
+    navigatorDialog.close();
+    if (String(id) === selectedSavedFilterId && !selectionUnmatched && !scoringClosed) return;
+    useSavedFilter(savedFilter, {fromDropdown: origin, source: 'navigator'});
+  }
+
+  root.addEventListener('click', event => {
+    const opener = event.target.closest('[data-saved-filter-navigator-open]');
+    if (!opener) return;
+    // Inside the selector, the button does not open its list.
+    event.preventDefault();
+    openSavedFilterNavigator(savedFilterSelectors.find(selector => selector.contains(opener)) || null);
   });
+  navigatorDialog?.querySelector('[data-saved-filter-navigator-close]')?.addEventListener('click', () => navigatorDialog.close());
+  navigatorSearch?.addEventListener('input', () => {
+    navigatorSearchCollapsed.clear();
+    renderSavedFilterNavigator();
+  });
+  navigatorSearch?.addEventListener('keydown', event => {
+    if (event.key === 'ArrowDown') {
+      const first = visibleNavigatorItems()[0];
+      if (!first) return;
+      event.preventDefault();
+      focusNavigatorItem(first);
+    } else if (event.key === 'Enter') {
+      // Enter uses the Favourites Filter found when the words typed find only one.
+      event.preventDefault();
+      const leaves = [...navigatorTree.querySelectorAll('[data-saved-filter-navigator-use]')];
+      if (leaves.length === 1) useNavigatorFilter(leaves[0].dataset.savedFilterNavigatorUse);
+    } else if (event.key === 'Escape' && navigatorSearch.value) {
+      // Escape clears the search first; with nothing typed it closes the Filter Navigator.
+      event.preventDefault();
+      navigatorSearch.value = '';
+      navigatorSearchCollapsed.clear();
+      renderSavedFilterNavigator();
+    }
+  });
+  navigatorTree?.addEventListener('click', event => {
+    const leaf = event.target.closest('[data-saved-filter-navigator-use]');
+    if (leaf) {
+      useNavigatorFilter(leaf.dataset.savedFilterNavigatorUse);
+      return;
+    }
+    const item = event.target.closest('.saved-filter-navigator-label')?.parentElement;
+    if (!item?.hasAttribute('aria-expanded')) return;
+    toggleNavigatorBranch(item, item.getAttribute('aria-expanded') !== 'true');
+    focusNavigatorItem(item);
+  });
+  // The keys of a tree: ↑ ↓ Home End move, → opens a branch (or goes into it), ← closes it (or goes to its parent),
+  // Enter or Space opens and closes a branch and uses a Favourites Filter.
+  navigatorTree?.addEventListener('keydown', event => {
+    const item = event.target.closest?.('[role="treeitem"]');
+    if (!item) return;
+    const items = visibleNavigatorItems();
+    const index = items.indexOf(item);
+    const branch = item.hasAttribute('aria-expanded');
+    const open = item.getAttribute('aria-expanded') === 'true';
+    let next = null;
+    if (event.key === 'ArrowDown') next = items[index + 1];
+    else if (event.key === 'ArrowUp') {
+      if (!index) {
+        event.preventDefault();
+        navigatorSearch?.focus();
+        return;
+      }
+      next = items[index - 1];
+    } else if (event.key === 'Home') next = items[0];
+    else if (event.key === 'End') next = items[items.length - 1];
+    else if (event.key === 'ArrowRight') {
+      if (branch && !open) toggleNavigatorBranch(item, true);
+      else if (branch) next = items[index + 1];
+    } else if (event.key === 'ArrowLeft') {
+      if (branch && open) toggleNavigatorBranch(item, false);
+      else next = item.parentElement?.closest('[role="treeitem"]');
+    } else if (event.key === 'Enter' || event.key === ' ') {
+      if (branch) toggleNavigatorBranch(item, !open);
+      else useNavigatorFilter(item.dataset.savedFilterNavigatorUse);
+    } else return;
+    event.preventDefault();
+    if (next) focusNavigatorItem(next);
+  });
+
   root.addEventListener('click', event => {
     // Details folds or unfolds the selected card of every selector, without opening the dropdown.
     const details = event.target.closest('[data-saved-filter-details]');

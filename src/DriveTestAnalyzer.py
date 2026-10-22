@@ -20143,8 +20143,10 @@ def _prioritize_saved_filter(task_repository: Repository, filter_id: int, *, onl
 
 
 @app.post('/api/scoring/saved-filters/{filter_id}/use')
-def scoring_saved_filters_use(filter_id: int, user: SessionUser = Depends(current_user)) -> dict[str, Any]:
-    """Count the opening of a Saved Filter from its card as a use."""
+def scoring_saved_filters_use(filter_id: int, source: str = '',
+                              user: SessionUser = Depends(current_user)) -> dict[str, Any]:
+    """Count the opening of a Saved Filter from its card (or, with ``source=navigator``, from the Filter Navigator) as a
+    use."""
     task_repository = scoring_repository(user)
     saved_filter = mark_saved_filter_used(task_repository, filter_id)
     if saved_filter is None:
@@ -20152,6 +20154,7 @@ def scoring_saved_filters_use(filter_id: int, user: SessionUser = Depends(curren
     task_repository.try_add_log(user.username, 'open_saved_filter', json.dumps({
         'saved_filter_id': filter_id, 'name': saved_filter.get('name') or '', 'starred': bool(saved_filter.get('pinned')),
         'status': saved_filter.get('status'), 'use_count': saved_filter.get('use_count'),
+        **({'source': 'Filter Navigator'} if source == 'navigator' else {}),
     }, ensure_ascii=False))
     prune_unpinned_saved_filters(task_repository, filter_id, user.username)
     return {'saved_filter': saved_filter}

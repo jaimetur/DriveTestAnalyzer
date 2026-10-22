@@ -12,6 +12,7 @@ Each calculation gives the NetCheck **Best Network** scoring, which rates every 
 | I want to… | Go to |
 | --- | --- |
 | Calculate or recalculate a comparison | [Calculate and review](#calculate-and-review) |
+| Find a Favourites Filter among many | [Filter Navigator](#filter-navigator) |
 | Understand filters and Split by | [Filters and Split by](#filters-and-split-by) |
 | Leave calls out of every scoring | [Excluded Calls](#excluded-calls) |
 | Read scores, GAPs and coverage warnings | [Results and workspace settings](#results-and-workspace-settings) |
@@ -111,6 +112,20 @@ A Saved Filter calculated with **Latest campaign**, **Latest 2 campaigns**, **La
 **⧉** duplicates a Saved Filter to save a variant of it as a new one (for example the same filters with Latest 3 campaigns): it asks for the name of the copy (its own name followed by *(copy)*, shown above the filters of the Saved Filter) and **Edit Filters of the Copy** opens the Calculation panel in the same dialog with its selection, under a **Duplicating Saved Filter** notice. Change what the copy needs; **Save as New Filter** (enabled once the selection is no Saved Filter yet) saves it as a new Favourites Filter with that name, right after the one copied (first when that one is not starred), and calculates it, while the Saved Filter copied stays as it was. **Cancel Editing** or **Escape** closes the dialog without a copy.
 
 Deleting a Saved Filter removes it and its saved result after confirmation; its CDRs and the Scoring History stay. A running calculation stops at a processing checkpoint or discards its pending result. Viewers can open Saved Filters but not name, edit, pin or delete them, and editors delete only the Saved Filters they starred, or those not starred that they calculated last (admins and super-admins delete any); deleting several at once deletes none when one of them belongs to another user. Only admins, super-admins and the user who starred a Saved Filter unstar it (its star is locked for the others), since an unstarred Saved Filter goes once another one is calculated or opened.
+
+#### Filter Navigator
+
+With many Favourites Filters, **Filter Navigator** finds one without reading every card. It opens from the button beside the title of the **Favourites Filters** panel and from the tree button of both Saved Filter dropdowns (on top of the Calculation panel and in **Scoring Results**; on a phone it shows its icon only). It shows the Favourites Filters as a tree built from their filters, not from their names:
+
+- **Area**: the Region, Cluster or City they filter, in the colour of their field, or **Nationwide**, in the order of the list;
+- **NR Mode**: **NSA**, **SA** and **NSA vs SA**, outlined in their colours;
+- **Campaign**: each Favourites Filter, with its Campaign (an automatic choice such as **Latest 2 campaigns** with the campaigns it stood for when it was last calculated, or its campaigns), the Operator or Vendor it filters, its status when it is not calculated, **In Use** for the one in use and its name below. Two Favourites Filters that would read alike on a leaf each show the fields that tell them apart (for example **GAP Reference: EE** and **GAP Reference: BT**), or their Filter ID when nothing does.
+
+Each branch gives how many Favourites Filters it holds; the branches of the one in use open with it, and those you open stay open while the page is open. Choosing a Favourites Filter uses it, as **Use Filter** on its card (choosing the one in use only closes the dialog): from a dropdown the page stays there, from the panel it goes to its results, and App Events record that it was opened from the Filter Navigator.
+
+The search above the tree keeps, as you type, the Favourites Filters that have every word typed, in any order and at the start of a word, whatever their capitals and accents: in their name, areas, operators and vendors, NR Mode, Campaign and its campaigns, GAP reference, methodology or Filter ID. It marks the words found and the count beside the title gives how many are found. For example, `man sa lat 2` finds the *Latest 2 campaigns* of SA (and of NSA vs SA) in Manchester. A number of one or two digits is a whole word (`2` finds *Latest 2 campaigns*, not 2026-Q3), and words typed one after the other stay together when a Favourites Filter has them together (`latest camp` finds *Latest campaign*, not *Latest 2 campaigns*).
+
+With the keyboard, **↓** goes from the search to the tree, **↑ ↓ Home End** move in it, **→** and **←** open and close a branch (or go into it and back to its parent), **Enter** uses the Favourites Filter focused (in the search, the only one found), and **Escape** clears the search first and then closes the dialog, as **Close** does. With a mouse the search is ready to type in when it opens; on a phone the dialog takes the whole screen and the keyboard waits until you tap the search.
 
 ### What is remembered?
 

@@ -290,6 +290,21 @@ def test_opening_and_closing_a_saved_filter_are_recorded_in_app_events(client, m
     assert {'saved_filter_id': 5, 'name': '', 'starred': False, 'found': False} in events['close_saved_filter']
 
 
+def test_a_saved_filter_opened_from_the_filter_navigator_says_so_in_app_events(client, monkeypatch):
+    client.post('/login', data={'username': 'super', 'password': 'super123'}, follow_redirects=False)
+    record = {'id': 9, 'name': 'Q3 London SA', 'pinned': True, 'status': 'saved', 'use_count': 2}
+    monkeypatch.setattr(app_module, 'mark_saved_filter_used', lambda _repository, filter_id: record if filter_id == 9 else None)
+    monkeypatch.setattr(app_module, 'prune_unpinned_saved_filters', lambda *_args: None)
+
+    assert client.post('/api/scoring/saved-filters/9/use?source=navigator').status_code == 200
+    assert client.post('/api/scoring/saved-filters/9/use?source=other').status_code == 200
+
+    events = [json.loads(row['details']) for row in app_module.repository.list_logs(limit=20) if row['action'] == 'open_saved_filter']
+    assert {'saved_filter_id': 9, 'name': 'Q3 London SA', 'starred': True, 'status': 'saved', 'use_count': 2,
+            'source': 'Filter Navigator'} in events
+    assert {'saved_filter_id': 9, 'name': 'Q3 London SA', 'starred': True, 'status': 'saved', 'use_count': 2} in events
+
+
 def test_favourites_filters_travel_with_their_own_backup_element(client, tmp_path: Path) -> None:
     response = client.post('/login', data={'username': 'admin', 'password': 'admin123'}, follow_redirects=False)
     assert response.status_code == 303

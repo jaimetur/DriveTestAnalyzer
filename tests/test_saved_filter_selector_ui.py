@@ -103,6 +103,8 @@ const deletingSavedFilterIds = new Set();
 const syncSavedFiltersBulk = () => {};
 let selectionUnmatched = false, scoringClosed = false;
 const closeScoringButton = {disabled: true};
+// No Filter Navigator is open.
+const navigatorDialog = null;
 const unfoldedSavedFilters = new Map();
 let selectedSavedFilterUnfolded = false;
 ''' + _function_source(script, 'unfoldedSavedFilterIds') + _function_source(script, 'savedFilterTrendCampaigns') + _function_source(script, 'savedFilterAreaSummaryParts') + _function_source(script, 'savedFilterTimeSplit') + _function_source(script, 'savedFilterDurationText') + _function_source(script, 'syncSavedFilterLists') + _function_source(script, 'renderSavedFilters') + _function_source(script, 'unmatchedSelectionNotice') + r'''
@@ -446,3 +448,107 @@ process.stdout.write(JSON.stringify(context.orders));
         # The first one cannot go up and the last one cannot go down; the others still move.
         ['1', '3', '2', '4', '5'], ['1', '2', '3', '4', '5'], ['1', '3', '2', '5', '4'],
     ]
+
+
+def test_filter_navigator_opens_from_the_favourites_panel_and_both_selectors():
+    template = SCORING_TEMPLATE.read_text(encoding='utf-8')
+    # The tree button of each selector sits in its summary, beside the selected card; the panel has it beside its title.
+    for selector in template.split('<details class="saved-filter-selector" data-saved-filter-selector>')[1:]:
+        summary = selector.split('</summary>', 1)[0]
+        assert 'data-selected-saved-filter-card' in summary and 'data-saved-filter-navigator-open' in summary
+    panel = template.split('<article class="panel saved-filters-panel">', 1)[1].split('data-saved-filters-bulk', 1)[0]
+    assert 'data-saved-filter-navigator-open' in panel and 'Filter Navigator' in panel
+    assert template.count('data-saved-filter-navigator-open') == 3
+    dialog = template.split('<dialog class="saved-filter-navigator"', 1)[1].split('</dialog>', 1)[0]
+    for marker in ('data-saved-filter-navigator-search', 'role="tree"', 'data-saved-filter-navigator-tree',
+                   'data-saved-filter-navigator-count', 'data-saved-filter-navigator-close'):
+        assert marker in dialog
+    assert '.saved-filter-selector > summary { display: grid; grid-template-columns: minmax(0,1fr) auto auto;' in template
+    script = SCORING_SCRIPT.read_text(encoding='utf-8')
+    # Choosing a Favourites Filter uses it as Use Filter on its card does, and App Events say where it was chosen.
+    assert "useSavedFilter(savedFilter, {fromDropdown: origin, source: 'navigator'});" in script
+    assert "await useSavedFilter(savedFilter, {fromDropdown: savedFilterSelectors.find(selector => selector.contains(button))});" in script
+
+
+def test_filter_navigator_search_finds_every_word_and_keeps_words_typed_together():
+    script = SCORING_SCRIPT.read_text(encoding='utf-8')
+    program = r"""
+const vm = require('node:vm');
+const payload = JSON.parse(require('node:fs').readFileSync(0, 'utf8'));
+const context = {};
+vm.createContext(context);
+vm.runInContext(payload.snippets.join('\n') + `
+  const entry = (id, texts) => { const phrases = texts.map(savedFilterNavigatorWords); return {id, phrases, words: phrases.flat()}; };
+  const entries = [
+    entry('1', ['Latest Campaign - London', 'London', 'NSA', 'Latest campaign', '2026-Q3']),
+    entry('2', ['Latest 2 Campaigns - SA - London', 'London', 'SA', 'Latest 2 campaigns', '2026-Q2 2026-Q3']),
+    entry('3', ['Latest Campaign - SA - Manchester', 'Manchester', 'SA', 'Latest campaign', '2026-Q3']),
+    entry('4', ['Latest 2 Campaigns - NSA vs SA - Manchester', 'Manchester', 'NSA vs SA', 'Latest 2 campaigns', '2026-Q2']),
+    entry('5', ['Prévisión São Paulo', 'Nationwide', 'NSA', 'Previous campaign', '2026-Q2']),
+  ];
+  const find = query => savedFilterNavigatorFound(entries, query).map(item => item.id);
+  globalThis.results = {
+    words: savedFilterNavigatorWords('Latest 2 Campaigns - NSA vs SA (São Paulo)'),
+    latestCamp: find('latest camp'), latestCam: find('latest cam'), latest: find('LATEST'), latest2: find('latest 2'),
+    scattered: find('man sa lat 2'), reversed: find('camp latest'), sa: find('sa'), nsa: find('nsa'),
+    year: find('2026'), number: find('20'), accents: find('sao prevision'), none: find('glasgow'), empty: find(''),
+  };`, context);
+process.stdout.write(JSON.stringify(context.results));
+"""
+    names = ('savedFilterNavigatorWords', 'savedFilterNavigatorWordMatches', 'savedFilterNavigatorMatches',
+             'savedFilterNavigatorFound')
+    results = _run_node_json(program, {'snippets': [_function_source(script, name) for name in names]})
+    assert results['words'] == ['latest', '2', 'campaigns', 'nsa', 'vs', 'sa', 'sao', 'paulo']
+    # Words typed together stay together when a Favourites Filter has them together; otherwise they are found anywhere.
+    assert results['latestCamp'] == results['latestCam'] == ['1', '3']
+    assert results['latest'] == ['1', '2', '3', '4'] and results['latest2'] == ['2', '4']
+    assert results['scattered'] == ['4'] and results['reversed'] == ['1', '2', '3', '4']
+    # A word typed is the start of a word (sa is not NSA, but São without its accent), a number of one or two digits a
+    # whole word.
+    assert results['sa'] == ['2', '3', '4', '5'] and results['nsa'] == ['1', '4', '5']
+    assert results['year'] == ['1', '2', '3', '4', '5'] and results['number'] == []
+    assert results['accents'] == ['5'] and results['none'] == [] and len(results['empty']) == 5
+
+
+def test_filter_navigator_tree_groups_by_area_and_nr_mode_and_tells_alike_leaves_apart():
+    script = SCORING_SCRIPT.read_text(encoding='utf-8')
+    program = r"""
+const vm = require('node:vm');
+const payload = JSON.parse(require('node:fs').readFileSync(0, 'utf8'));
+const context = {};
+vm.createContext(context);
+vm.runInContext(payload.snippets.join('\n') + `
+  const details = (operator, reference) => [['operator', 'Operator', operator], ['vendor', 'Vendor', 'All Vendors'],
+    ['', 'GAP Reference', reference], ['', 'CDRs', 'Q3 CDRs']];
+  const entry = (id, area, mode, campaign, campaigns, operator = 'All Operators', reference = 'EE') => ({
+    id, areaKey: area, areas: [{text: area}], mode, modeLabel: mode === 'NSA+SA' ? 'NSA vs SA' : mode,
+    modeKey: area + '#' + mode, campaign, campaigns, details: details(operator, reference), distinct: []});
+  const entries = [
+    entry('1', 'London', 'SA', 'Latest campaign', ['2026-Q3']),
+    entry('2', 'Nationwide', 'NSA', 'Latest campaign', ['2026-Q3']),
+    entry('3', 'London', 'NSA+SA', 'Latest campaign', ['2026-Q3']),
+    entry('4', 'London', 'NSA', 'Latest campaign', ['2026-Q3']),
+    entry('5', 'London', 'NSA', 'Latest campaign', ['2026-Q3'], 'EE'),
+    entry('6', 'London', 'NSA', 'Latest campaign', ['2026-Q3'], 'All Operators', 'BT'),
+    entry('7', 'London', 'NSA', 'Latest 2 campaigns', ['2026-Q2', '2026-Q3']),
+    entry('8', 'London', 'NSA', 'Latest campaign', ['2026-Q2']),
+    entry('9', 'Nationwide', 'NSA', 'Latest campaign', ['2026-Q3']),
+  ];
+  const tree = savedFilterNavigatorTree(entries);
+  globalThis.results = {
+    areas: tree.map(area => area.key),
+    modes: tree.map(area => area.modes.map(mode => mode.mode + ':' + mode.entries.map(item => item.id).join(','))),
+    distinct: Object.fromEntries(entries.map(item => [item.id, item.distinct.map(detail => detail[1] + ': ' + detail[2])])),
+  };`, context);
+process.stdout.write(JSON.stringify(context.results));
+"""
+    results = _run_node_json(program, {'snippets': [_function_source(script, 'savedFilterNavigatorTree')]})
+    # Areas in the order of the list, NR Modes NSA, SA, NSA vs SA, Favourites Filters in the order of the list.
+    assert results['areas'] == ['London', 'Nationwide']
+    assert results['modes'] == [['NSA:4,5,6,7,8', 'SA:1', 'NSA+SA:3'], ['NSA:2,9']]
+    # Alike leaves show what tells them apart (their Filter ID when nothing does); the others show nothing.
+    assert results['distinct'] == {
+        '1': [], '3': [], '7': [], '8': [],
+        '4': ['Operator: All Operators', 'GAP Reference: EE'], '5': ['Operator: EE', 'GAP Reference: EE'],
+        '6': ['Operator: All Operators', 'GAP Reference: BT'], '2': ['Filter ID: 2'], '9': ['Filter ID: 9'],
+    }
