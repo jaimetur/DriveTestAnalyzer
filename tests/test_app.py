@@ -3807,6 +3807,14 @@ def test_admin_pages_during_reception_keep_the_package_being_received(client, mo
         assert seen['still_present'] is True
         recovered = [item for item_id, item in app_module.TRANSFER_OFFERS.items() if item_id not in existing_offer_ids]
         assert recovered == []
+        # The package waits with its preview, and an Admin page opened meanwhile keeps it.
+        for _ in range(200):
+            if (app_module.TRANSFER_OFFERS.get(offer_id) or {}).get('preview'):
+                break
+            time.sleep(0.01)
+        app_module._recover_unimported_transfer_packages()
+        assert Path(app_module.TRANSFER_OFFERS[offer_id]['path']).is_file()
+        assert client.post(f'/admin/import-export/transfers/offers/{offer_id}/preview/import', json={'packages': [0]}).status_code == 200
         payload = {}
         for _ in range(100):
             payload = client.get(f'/api/import-export/transfers/offers/{offer_id}', headers=headers).json()
