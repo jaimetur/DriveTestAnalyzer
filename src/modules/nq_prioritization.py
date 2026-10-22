@@ -122,9 +122,12 @@ AREA_TAKES = {'city': ' in cities', 'roads': ' on connecting roads and highways'
 LEGACY_CALL_TYPES = {'voice_cities': ('voice', 'city'), 'voice_roads': ('voice', 'roads')}
 # The conditions of a step, chosen one by one, each joined to the one before by AND or OR, AND first: "Consecutive
 # failures AND Clusters OR High impact" takes the consecutive failures of a cluster and the calls with a High impact
-# (Every call alone takes every call). Consecutive failures: the test right before or after it in the drive failed too.
+# (Every call alone takes every call). AND ( and OR ( start a group, one level of parentheses: "(High impact OR Medium
+# impact) AND Repeated". Consecutive failures: the test right before or after it in the drive failed too.
 EVERY_CALL = 'all'
-JOINS = {'and': 'AND', 'or': 'OR'}
+JOINS = {'and': 'AND', 'or': 'OR', 'and_group': 'AND (', 'or_group': 'OR ('}
+GROUP_JOINS = {'and_group': 'and', 'or_group': 'or'}
+JOIN_WORDS = {'and': 'and', 'or': 'or'}
 MAX_CONDITIONS = 6
 CONDITION_LABELS = {EVERY_CALL: 'Every call', 'consecutive': 'Consecutive failures', 'cluster': 'Clusters', 'high': 'High impact',
                     'medium': 'Medium impact', 'low': 'Low impact', 'repeated': 'Repeated'}
@@ -460,13 +463,37 @@ def joins_of(conditions: list[str], joins: Any = None) -> list[str]:
     return [given[index] if index < len(given) and given[index] in JOINS else 'or' for index in range(max(len(conditions) - 1, 0))]
 
 
+def condition_groups(conditions: list[str], joins: Any = None) -> tuple[list[tuple[list[str], list[str]]], list[str]]:
+    """The groups of the conditions of a step, each started by AND ( or OR (, with the operators (and, or) inside each
+    group, and the operators between the groups."""
+    groups: list[tuple[list[str], list[str]]] = [([conditions[0]], [])] if conditions else []
+    between: list[str] = []
+    for join, key in zip(joins_of(conditions, joins), conditions[1:]):
+        if join in GROUP_JOINS:
+            between.append(GROUP_JOINS[join])
+            groups.append(([key], []))
+        else:
+            groups[-1][0].append(key)
+            groups[-1][1].append(join)
+    return groups, between
+
+
+def _expression(conditions: list[str], joins: Any, words: dict[str, str], join_words: dict[str, str]) -> str:
+    """The conditions of a step written with ``words`` and ``join_words``, the groups of several in parentheses when
+    there are more groups."""
+    groups, between = condition_groups(conditions, joins)
+    parts = [words[keys[0]] + ''.join(f' {join_words[join]} {words[key]}' for join, key in zip(inner, keys[1:])) for keys, inner in groups]
+    if len(parts) > 1:
+        parts = [f'({part})' if len(keys) > 1 else part for part, (keys, _) in zip(parts, groups)]
+    return parts[0] + ''.join(f' {join_words[join]} {part}' for join, part in zip(between, parts[1:]))
+
+
 def step_conditions_text(conditions: list[str], joins: Any = None) -> str:
-    """The conditions of a step in words: Every call, or each joined to the one before by its operator (Consecutive
-    failures AND Clusters OR High impact)."""
+    """The conditions of a step in words: Every call, or each joined to the one before by its operator, the groups in
+    parentheses ((High impact OR Medium impact) AND Repeated)."""
     if not conditions or EVERY_CALL in conditions:
         return CONDITION_LABELS[EVERY_CALL]
-    return CONDITION_LABELS[conditions[0]] + ''.join(f' {JOINS[join]} {CONDITION_LABELS[key]}'
-                                                     for join, key in zip(joins_of(conditions, joins), conditions[1:]))
+    return _expression(conditions, joins, CONDITION_LABELS, JOINS)
 
 
 def clean_conditions(values: Any, allowed: dict[str, str], joins: Any = None) -> tuple[list[str], list[str]] | None:
@@ -545,8 +572,7 @@ def strategy_steps(strategy: str, configured: dict[str, Any] | None = None) -> l
                 step['takes'] = 'The calls no step takes: the other data failures, the Ping tests and the Excluded Calls'
             else:
                 step['takes'] = (f"{mode}{CALL_TYPE_TAKES[step['call_type']]}{AREA_TAKES[step['area']]}: "
-                                 + CONDITION_TAKES[step['conditions'][0]]
-                                 + ''.join(f' {join} {CONDITION_TAKES[key]}' for join, key in zip(step['joins'], step['conditions'][1:]))
+                                 + _expression(step['conditions'], step['joins'], CONDITION_TAKES, JOIN_WORDS)
                                  + ('' if step['queue'] else ', only tracked'))
             steps.append(step)
     return steps
@@ -642,9 +668,20 @@ def type_matches(step: dict[str, Any], call: dict[str, Any]) -> bool:
     return step['call_type'] in {'any', call['kind']} and step['area'] in {'any', call.get('area')}
 
 
+def _joined(values: list[bool], joins: list[str]) -> bool:
+    """Values joined by and / or, AND first: true when every value of one of the runs between the ORs is."""
+    held, run = False, values[0]
+    for join, value in zip(joins, values[1:]):
+        if join == 'and':
+            run = run and value
+        else:
+            held, run = held or run, value
+    return held or run
+
+
 def condition_holds(conditions: list[str], call: dict[str, Any], joins: Any = None) -> bool:
-    """Whether a call meets the conditions of a step joined by their operators (or when not given), AND first: it meets
-    every condition of one of the groups between the ORs (Every call: every call). A failure is consecutive when the test
+    """Whether a call meets the conditions of a step joined by their operators (or when not given), AND first, inside
+    each group (in parentheses) and between the groups (Every call: every call). A failure is consecutive when the test
     right before or after it in the drive failed too (unknown when its CDR does not give the order of its tests)."""
     if not conditions:
         return False
@@ -652,13 +689,8 @@ def condition_holds(conditions: list[str], call: dict[str, Any], joins: Any = No
     high, medium = level == IMPACT_HIGH, level == nq_catalog.IMPACT_MEDIUM
     met = {EVERY_CALL: True, 'consecutive': call.get('consecutive') == 'Yes', 'cluster': (call.get('cluster_size') or 0) >= 2,
            'high': high, 'medium': medium, 'low': not (high or medium), 'repeated': bool(call.get('repeated'))}
-    held, group = False, met.get(conditions[0], False)
-    for join, key in zip(joins_of(conditions, joins), conditions[1:]):
-        if join == 'and':
-            group = group and met.get(key, False)
-        else:
-            held, group = held or group, met.get(key, False)
-    return held or group
+    groups, between = condition_groups(conditions, joins)
+    return _joined([_joined([met.get(key, False) for key in keys], inner) for keys, inner in groups], between)
 
 
 def strategy_decision(strategy: str, call: dict[str, Any], steps: list[dict[str, Any]] | None = None,

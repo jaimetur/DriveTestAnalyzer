@@ -6005,9 +6005,11 @@
   const stepConditions = (list, callType) => Object.entries((state.prioritizationFields.conditions || {})[list] || {})
     .filter(([key]) => !DATA_CONDITIONS.includes(key) || ['data', 'any'].includes(callType));
   const MAX_CONDITIONS = 6;
+  // AND ( and OR ( start a group of conditions: one level of parentheses.
+  const CONDITION_JOINS = [['and', 'AND'], ['or', 'OR'], ['and_group', 'AND ('], ['or_group', 'OR (']];
   // The conditions of a step, one per line, each joined to the one before by AND or OR (AND first: "Consecutive failures
-  // AND Clusters OR High impact" takes the consecutive failures of a cluster and the calls with a High impact). Every call
-  // stands alone: chosen first, it clears the others.
+  // AND Clusters OR High impact" takes the consecutive failures of a cluster and the calls with a High impact), the
+  // groups opened by AND ( or OR ( marked by a bracket. Every call stands alone: chosen first, it clears the others.
   const stepConditionEditor = (list, chosen, rule) => {
     const box = node('div', undefined, 'nq-priority-conditions');
     const entries = stepConditions(list, chosen.call_type);
@@ -6021,16 +6023,30 @@
     };
     const draw = () => {
       chosen.joins = chosen.conditions.slice(1).map((_, index) => (chosen.joins || [])[index] || 'or');
+      // The group of each line; with several groups, each group of several lines takes a bracket.
+      const groupOf = chosen.conditions.map((_, index) => chosen.joins.slice(0, index).filter((join) => join.endsWith('_group')).length);
+      const groups = groupOf[groupOf.length - 1] + 1;
       box.replaceChildren(...chosen.conditions.map((key, index) => {
         const line = node('div', undefined, 'nq-priority-condition');
+        const size = groupOf.filter((group) => group === groupOf[index]).length;
+        if (groups > 1 && size > 1) {
+          line.classList.add('is-grouped');
+          if (groupOf[index - 1] !== groupOf[index]) line.classList.add('is-group-first');
+          if (groupOf[index + 1] !== groupOf[index]) line.classList.add('is-group-last');
+        }
         // The first condition lines up with the others, which start with their operator.
         if (!index && chosen.conditions.length > 1) line.append(node('span', undefined, 'nq-priority-condition-first'));
         if (index) {
-          const join = selectOf('nq-priority-condition-join', `Operator before condition ${index + 1} of ${rule}`, [['and', 'AND'], ['or', 'OR']],
+          const join = selectOf('nq-priority-condition-join', `Operator before condition ${index + 1} of ${rule}`, CONDITION_JOINS,
             chosen.joins[index - 1]);
-          join.addEventListener('change', () => { chosen.joins[index - 1] = join.value; });
+          join.title = 'AND ( and OR ( start a group: the conditions from here to the next group go in parentheses';
+          join.addEventListener('change', () => {
+            chosen.joins[index - 1] = join.value;
+            draw();
+          });
           line.append(join);
         }
+        line.append(node('span', undefined, 'nq-priority-condition-bracket'));
         const select = selectOf('nq-priority-condition-key', `Condition ${index + 1} of ${rule}`,
           index ? entries.filter(([value]) => value !== EVERY_CALL) : entries, key);
         select.addEventListener('change', () => {

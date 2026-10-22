@@ -1369,8 +1369,15 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 .nq-priority-steps-table tr.nq-priority-step-empty > td.nq-priority-step-group { font-style: normal; font-weight: 800; }
 /* The conditions of a step, one per line: the operator that joins each one to the one before, the condition, and the
    buttons that remove it or add another. */
-.nq-priority-conditions { display: grid; gap: .25rem; }
-.nq-priority-condition { display: flex; align-items: center; gap: .3rem; }
+.nq-priority-conditions { display: grid; }
+.nq-priority-condition { display: flex; align-items: center; gap: .3rem; padding-block: .12rem; }
+/* A group opened by AND ( or OR (: a bracket beside the conditions of a group of several lines. */
+.nq-priority-condition-bracket { flex: 0 0 .4rem; align-self: stretch; margin-right: -.1rem; }
+.nq-priority-condition.is-grouped .nq-priority-condition-bracket { border-left: 2px solid var(--nq-color); }
+.nq-priority-condition.is-group-first .nq-priority-condition-bracket { margin-top: .45rem; border-top: 2px solid var(--nq-color);
+  border-top-left-radius: 4px; }
+.nq-priority-condition.is-group-last .nq-priority-condition-bracket { margin-bottom: .45rem; border-bottom: 2px solid var(--nq-color);
+  border-bottom-left-radius: 4px; }
 .nq-priority-condition-first { flex: 0 0 5.4rem; }
 .nq-priority-steps-table .nq-priority-condition .nq-priority-condition-join { flex: 0 0 5.4rem; width: 5.4rem; padding-left: .55rem;
   font-weight: 800; color: var(--nq-color); }

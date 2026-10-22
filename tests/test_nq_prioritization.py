@@ -193,6 +193,20 @@ def test_strategies_give_each_call_its_step_queue_and_priority():
     assert decide(cities, high_data, steps)[2] == 'P8'
     assert decide(cities, {**high_data, 'repeated': True}, steps)[1:3] == ('Final 2 · SA Data · High impact AND Repeated OR Consecutive failures', 'P2')
     assert decide(cities, {**single, 'final': True, 'consecutive': 'Yes'}, steps)[2] == 'P2'
+    # AND ( and OR ( start a group: one level of parentheses, AND first inside each group and between the groups.
+    chosen = nq_prioritization.normalize_steps({'cities_first': {
+        'final-1': {'conditions': ['high', 'medium', 'repeated'], 'joins': ['or', 'and_group']},
+        'final-2': {'conditions': ['consecutive', 'high', 'repeated'], 'joins': ['and_group', 'or']}}}, strict=True)['cities_first']
+    steps = nq_prioritization.strategy_steps(cities, chosen)
+    voice = strategy_call(final=True)
+    assert decide(cities, {**voice, 'level': 'Medium', 'repeated': True}, steps)[1:3] == (
+        'Final 1 · SA Voice · (High impact OR Medium impact) AND Repeated', 'P1')
+    assert decide(cities, {**voice, 'level': 'High'}, steps)[2] != 'P1'
+    data = {**single, 'final': True, 'consecutive': 'Yes'}
+    assert decide(cities, {**data, 'repeated': True}, steps)[1:3] == ('Final 2 · SA Data · Consecutive failures AND (High impact OR Repeated)', 'P2')
+    assert decide(cities, data, steps)[2] != 'P2'
+    assert nq_prioritization.step_conditions_text(['consecutive', 'cluster', 'high', 'repeated'], ['or', 'and_group', 'or']) == (
+        '(Consecutive failures OR Clusters) AND (High impact OR Repeated)')
     # List 2, once the Final CDR of the campaign is scored: the same in both strategies, by real impact.
     final = strategy_call(final=True)
     for strategy in (cities, roads):
