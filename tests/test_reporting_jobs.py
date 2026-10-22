@@ -939,11 +939,19 @@ def test_reporting_tables_filter_by_column_show_ten_rows_and_keep_their_bar_and_
     assert "valuesFor(row, index).some((value) => accepted.has(value))" in helper
     assert script.count('.dataset.filterDate = dayKey(') == 2
     assert "options.append(dateTree([...dates].sort(), selected));" in helper
-    assert "const accepted = new Set([...options.querySelectorAll('input:checked:not([data-filter-group])')].map((input) => input.value));" in helper
+    assert "new Set([...options.querySelectorAll('input:checked:not([data-filter-group])')].filter((input) => !searchedOut(input)).map((input) => input.value));" in helper
     # The filters are kept in the browser for each workspace and user, by the name of their column.
     assert "persistKey: `drivetest-analyzer:reporting:column-filters:${kind}:${filtersScope}`," in script
     assert 'data-workspace-id="{{ active_workspace.id if active_workspace else \'\' }}"' in page
     assert "const values = kept?.[labels[index]];" in helper and "saveFilters(); apply(); closeMenu();" in helper
+    # The menu counts the rows the values checked or found leave as you type (a search takes only the values found, as in
+    # Excel), the bar counts the rows shown while filters are on, and an arrow floats while rows are hidden below.
+    assert "count.textContent = `${shown} of ${candidates.length} row${candidates.length === 1 ? '' : 's'}`;" in helper
+    assert "const accepted = chosen();" in helper
+    assert "count.textContent = `Showing ${all.filter((row) => !row.hidden).length} of ${all.length} ${noun}`;" in script
+    assert "filteredTables[kind].more.hidden = wrapper.scrollTop + wrapper.clientHeight >= wrapper.scrollHeight - 2;" in script
+    assert page.count('class="rj-more-rows"') == 2 and page.count('class="rj-filter-count"') == 2
+    assert '.report-jobs .rj-more-rows { position: sticky; bottom: 1.1rem;' in styles
     # Dates missing are listed as (Blank), last, lined up with the years.
     assert "if (!value) cell.dataset.filterValue = '';" in script
     assert "(dates.size ? [...others.filter(Boolean), ...others.filter((value) => !value)] : others).forEach((value) => {" in helper

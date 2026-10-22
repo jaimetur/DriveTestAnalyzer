@@ -12695,7 +12695,7 @@ window.enableExcelColumnFilters = (table, {onChange, excludeLastColumn = true, r
     if (years.size === 1) expandDateGroup(tree.firstElementChild, true);
     return tree;
   };
-  const controller = {matches, apply};
+  const controller = {matches, apply, activeCount: () => selectedByColumn.size};
   table._excelColumnFilters = controller;
   table.classList.add('excel-filter-table');
   head?.closest('table')?.classList.add('excel-filter-table');
@@ -12717,6 +12717,7 @@ window.enableExcelColumnFilters = (table, {onChange, excludeLastColumn = true, r
       const selected = new Set(selectedByColumn.get(index) || values);
       const menu = document.createElement('section'); menu.className = `excel-column-filter-menu ${menuClass}`.trim(); menu.setAttribute('role', 'dialog'); menu.setAttribute('aria-label', `Filter ${label}`);
       const search = document.createElement('input'); search.type = 'search'; search.placeholder = 'Search values'; search.autocomplete = 'off'; search.setAttribute('aria-label', `Search ${label} values`);
+      const count = document.createElement('p'); count.className = 'excel-column-filter-count'; count.setAttribute('role', 'status');
       const toolbar = document.createElement('div'); toolbar.className = 'excel-column-filter-toolbar';
       const selectAll = document.createElement('button'); selectAll.type = 'button'; selectAll.textContent = 'Select all';
       const clear = document.createElement('button'); clear.type = 'button'; clear.textContent = 'Clear'; toolbar.append(selectAll, clear);
@@ -12734,7 +12735,17 @@ window.enableExcelColumnFilters = (table, {onChange, excludeLastColumn = true, r
       const footer = document.createElement('div'); footer.className = 'excel-column-filter-footer';
       const cancel = document.createElement('button'); cancel.type = 'button'; cancel.textContent = 'Cancel';
       const confirm = document.createElement('button'); confirm.type = 'button'; confirm.textContent = 'Apply'; footer.append(cancel, confirm);
-      menu.append(search, toolbar, options, footer); document.body.append(menu);
+      menu.append(search, count, toolbar, options, footer); document.body.append(menu);
+      // With a search, only the values found are taken, as in Excel. The rows they leave, under the filters of the other
+      // columns, are counted while typing and checking.
+      const searchedOut = (input) => Boolean(input.closest('label')?.hidden || input.closest('.excel-column-filter-node[hidden], .excel-column-filter-extras[hidden]'));
+      const chosen = () => new Set([...options.querySelectorAll('input:checked:not([data-filter-group])')].filter((input) => !searchedOut(input)).map((input) => input.value));
+      const candidates = rows().filter((row) => [...selectedByColumn].every(([column, accepted]) => column === index || valuesFor(row, column).some((value) => accepted.has(value))));
+      const countRows = () => {
+        const accepted = chosen();
+        const shown = candidates.filter((row) => valuesFor(row, index).some((value) => accepted.has(value))).length;
+        count.textContent = `${shown} of ${candidates.length} row${candidates.length === 1 ? '' : 's'}`;
+      };
       // The menu is fixed to the viewport: place it under its column again on every scroll.
       const place = () => {
         const bounds = trigger.getBoundingClientRect(), width = Math.min(300, window.innerWidth - 20);
@@ -12754,8 +12765,10 @@ window.enableExcelColumnFilters = (table, {onChange, excludeLastColumn = true, r
           node.hidden = !node.querySelector('.excel-column-filter-day:not([hidden])');
           if (term && !node.hidden) expandDateGroup(node, true);
         });
+        countRows();
       });
       syncDateGroups(options);
+      countRows();
       options.addEventListener('click', (optionEvent) => {
         const toggle = optionEvent.target.closest('.excel-column-filter-toggle');
         if (toggle) expandDateGroup(toggle.closest('.excel-column-filter-node'), toggle.getAttribute('aria-expanded') !== 'true');
@@ -12764,12 +12777,13 @@ window.enableExcelColumnFilters = (table, {onChange, excludeLastColumn = true, r
         const group = optionEvent.target.dataset.filterGroup ? optionEvent.target : null;
         if (group) group.closest('.excel-column-filter-node').querySelectorAll('input').forEach((input) => { input.checked = group.checked; });
         syncDateGroups(options);
+        countRows();
       });
-      selectAll.addEventListener('click', () => { options.querySelectorAll('input').forEach((input) => { input.checked = true; }); syncDateGroups(options); });
-      clear.addEventListener('click', () => { options.querySelectorAll('input').forEach((input) => { input.checked = false; }); syncDateGroups(options); });
+      selectAll.addEventListener('click', () => { options.querySelectorAll('input').forEach((input) => { input.checked = true; }); syncDateGroups(options); countRows(); });
+      clear.addEventListener('click', () => { options.querySelectorAll('input').forEach((input) => { input.checked = false; }); syncDateGroups(options); countRows(); });
       cancel.addEventListener('click', closeMenu);
       confirm.addEventListener('click', () => {
-        const accepted = new Set([...options.querySelectorAll('input:checked:not([data-filter-group])')].map((input) => input.value));
+        const accepted = chosen();
         if (accepted.size === values.length) selectedByColumn.delete(index); else selectedByColumn.set(index, accepted);
         header.classList.toggle('has-excel-column-filter', selectedByColumn.has(index)); saveFilters(); apply(); closeMenu();
       });

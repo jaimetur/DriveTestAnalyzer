@@ -2007,12 +2007,14 @@
   const visibleRunIds = () => runRows().filter((row) => !row.hidden).map((row) => Number(row.dataset.runId));
   const filteredTables = {
     tasks: {sticky: $('rj-tasks-sticky'), head: $('rj-tasks-head'), table: $('rj-tasks'), rows: taskRows, id: 'taskId',
-      check: '[data-task-check]', checked: checkedTaskIds, empty: 'No Reporting Jobs match the column filters.'},
+      check: '[data-task-check]', checked: checkedTaskIds, empty: 'No Reporting Jobs match the column filters.',
+      count: $('rj-tasks-count'), more: $('rj-tasks-more'), noun: 'Reporting Jobs'},
     runs: {sticky: $('rj-runs-sticky'), head: $('rj-runs-head'), table: $('rj-runs'), rows: runRows, id: 'runId',
-      check: '[data-run-check]', checked: checkedRunIds, empty: 'No runs match the column filters.'},
+      check: '[data-run-check]', checked: checkedRunIds, empty: 'No runs match the column filters.',
+      count: $('rj-runs-count'), more: $('rj-runs-more'), noun: 'runs'},
   };
   function applyColumnFilters(kind) {
-    const {table, rows, id, check, checked, empty} = filteredTables[kind];
+    const {table, rows, id, check, checked, empty, count, noun} = filteredTables[kind];
     const all = rows();
     all.forEach((row) => {
       row.hidden = !(table._excelColumnFilters?.matches(row) ?? true);
@@ -2031,6 +2033,9 @@
       note.append(cell);
       table.tBodies[0].append(note);
     } else if (!none) note?.remove();
+    // (While filters are on, the block at the top counts the rows they show.)
+    count.hidden = !table._excelColumnFilters?.activeCount();
+    count.textContent = `Showing ${all.filter((row) => !row.hidden).length} of ${all.length} ${noun}`;
   }
 
   // While the page scrolls, the bar of the buttons of each table and the header of the table stay at the top together
@@ -2073,7 +2078,21 @@
     [table, ...copy.rows[0].cells].forEach((element) => headWidths.observe(element));
     // (The header follows the table when it is scrolled sideways.)
     const wrapper = table.closest('.table-wrap');
-    wrapper.addEventListener('scroll', () => { head.parentElement.scrollLeft = wrapper.scrollLeft; }, {passive: true});
+    wrapper.addEventListener('scroll', () => { head.parentElement.scrollLeft = wrapper.scrollLeft; syncMoreRows(kind); }, {passive: true});
+    // The arrow of the rows hidden below moves the table up by most of what shows of it in the window, or brings the
+    // table into the window when it is still below it.
+    filteredTables[kind].more.addEventListener('click', () => {
+      const {sticky} = filteredTables[kind];
+      const frame = wrapper.getBoundingClientRect();
+      const shown = Math.min(frame.top + wrapper.clientHeight, window.innerHeight) - rowsTop(kind);
+      if (shown > 80) wrapper.scrollBy({top: shown * 0.85, behavior: 'smooth'});
+      else window.scrollBy({top: frame.top - (parseFloat(getComputedStyle(sticky).top) || 0) - sticky.offsetHeight, behavior: 'smooth'});
+    });
+  }
+  // A table with rows hidden below its scroll shows a floating arrow at its bottom, held in the window while the table is in it.
+  function syncMoreRows(kind) {
+    const wrapper = filteredTables[kind].table.closest('.table-wrap');
+    filteredTables[kind].more.hidden = wrapper.scrollTop + wrapper.clientHeight >= wrapper.scrollHeight - 2;
   }
 
   // Each table shows up to 10 rows, the others are reached by scrolling it (the Reporting Jobs show every row while the
@@ -2095,6 +2114,7 @@
         const frame = wrapper.offsetHeight - wrapper.clientHeight;
         wrapper.style.maxHeight = `${Math.ceil(rowsHeight + frame)}px`;
       }
+      syncMoreRows(kind);
       syncStuck();
     });
   }

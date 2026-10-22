@@ -3491,6 +3491,8 @@ body:has(.release-navigator) .help-navigator{top:37%}
 .excel-column-filter-extras { margin: .3rem 0 0 1.5rem; padding-top: .3rem; border-top: 1px solid rgba(75, 32, 138, .14); }
 .excel-column-filter-extras[hidden] { display: none; }
 .excel-column-filter-options label.is-blank span { color: #6b5a86; font-style: italic; }
+/* (How many rows the values checked, or found while searching, leave.) */
+.excel-column-filter-count { margin: -.3rem 0 0; color: #6b5a86; font-size: .76rem; font-weight: 700; }
 
 /* Keep Dashboard PPT and Reporting job headers visually aligned. */
 .ds-ppt-jobs-table thead th, .reporting-jobs-table-wrap .report-jobs-table thead th { background: #e8def5 !important; color: #4c3277; }

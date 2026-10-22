@@ -99,6 +99,7 @@
           <button type="button" class="bulk-action bulk-action-delete" id="rj-delete-selected" disabled title="Delete the selected Reporting Jobs with their runs and artifacts">Delete</button>
         </div>
       </div>
+      <p class="rj-filter-count" id="rj-tasks-count" role="status" hidden></p>
       <div class="table-wrap rj-head-wrap"><table class="reporting-jobs-table rj-head-table" id="rj-tasks-head"></table></div>
       </div>
       <div class="table-wrap">
@@ -107,6 +108,7 @@
           <tbody><tr><td colspan="9" class="form-note">Loading Reporting Jobs…</td></tr></tbody>
         </table>
       </div>
+      <button type="button" class="rj-more-rows" id="rj-tasks-more" hidden title="More Reporting Jobs below: show them" aria-label="Show more Reporting Jobs"></button>
       <section class="rj-editor-subpanel report-jobs-editor" id="rj-editor" hidden aria-labelledby="rj-editor-title">
         <div class="rj-editor-head"><p class="eyebrow">Job Editor</p><h3 id="rj-editor-title">New Reporting Job</h3></div>
         <button type="button" class="rj-editor-close" id="rj-editor-close" title="Close without saving" aria-label="Close the editor without saving"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 4H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3M12 6.5 15.5 10 12 13.5M15.5 10H8"/></svg><span>Close</span></button>
@@ -218,6 +220,7 @@
         </div>
         <p class="form-note" id="rj-runs-status" role="status"></p>
       </div>
+      <p class="rj-filter-count" id="rj-runs-count" role="status" hidden></p>
       <div class="table-wrap rj-head-wrap"><table class="reporting-jobs-table rj-head-table" id="rj-runs-head"></table></div>
       </div>
       <div class="table-wrap">
@@ -226,6 +229,7 @@
           <tbody><tr><td colspan="8" class="form-note">No runs yet.</td></tr></tbody>
         </table>
       </div>
+      <button type="button" class="rj-more-rows" id="rj-runs-more" hidden title="More runs below: show them" aria-label="Show more runs"></button>
     </div>
   </details>
 </section>
