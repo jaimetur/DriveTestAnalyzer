@@ -380,17 +380,20 @@ def _points(value: Any) -> str:
 
 
 def prioritization_tables(data: dict[str, Any]) -> list[tuple[str, str, list[str], list[list[str]], set[int]]]:
-    """The NQ Prioritization as on the page: the calls of each rule, the KPIs whose points they lose, the repeated
-    issues and the calls to analyse next ((component, subtitle, columns, rows, numeric columns))."""
+    """The NQ Prioritization as on the page: the calls of each step of its strategy (or of each Custom rule), the KPIs
+    whose points they lose, the repeated issues and the calls to analyse next, in the queue of each team with the Dual
+    Queue strategies ((component, subtitle, columns, rows, numeric columns))."""
     tables = []
+    strategy = data.get('strategy') or {}
+    custom = strategy.get('key', 'custom') == 'custom'
     rules = [[row['name'] or 'No rule', row['conditions'], row['criterion'] or '—',
               ' / '.join(value for value in (row['priority'], row['track_priority']) if value) or '—',
               f"{row['calls']:,}", f"{row['prioritized']:,}", f"{row['tracked']:,}", _points(row['points']),
               f"{row['open']:,}", f"{row['attended']:,}"] for row in data.get('rules') or [] if row['calls'] or row['name']]
     if rules:
-        tables.append(('rules', 'Prioritization Rules',
-                       ['Rule', 'Takes', 'Prioritizes', 'Priority', 'Calls', 'Prioritized', 'Track only', 'Points lost', 'Open',
-                        'Attended'], rules, {4, 5, 6, 7, 8, 9}))
+        tables.append(('rules', 'Prioritization Rules' if custom else f"{strategy.get('label') or 'Strategy'} · Steps",
+                       ['Rule' if custom else 'Step', 'Takes', 'Prioritizes' if custom else 'Queue', 'Priority', 'Calls',
+                        'Prioritized', 'Track only', 'Points lost', 'Open', 'Attended'], rules, {4, 5, 6, 7, 8, 9}))
     kpis = [[row['kpi'], row.get('category') or '—', row['environment'], f"{row['calls']:,}", _points(row['points'])]
             for row in data.get('kpis') or []]
     if kpis:
@@ -408,6 +411,14 @@ def prioritization_tables(data: dict[str, Any]) -> list[tuple[str, str, list[str
     if queue:
         tables.append(('queue', 'Next to analyse', ['JOIN_ID', 'Operator', 'Service', 'NR Mode', 'Campaign', 'Result', 'Rule',
                                                     'Priority', 'Points lost', 'Repetitions', 'Place'], queue, {8, 9}))
+    for item in data.get('queues') or []:
+        rows = [[f"{row['position']:,}", row['join_id'] or '—', row['operator'], row['service'], row['nr_mode'] or '—',
+                 row['campaign'] or '—', row['rule'] or '—', row['priority'] or '—', _points(row.get('gain')),
+                 _points(row['points']), row['level'] or '—'] for row in item.get('rows') or []]
+        if rows:
+            tables.append(('queue', f"Next to analyse · {item['name']} queue",
+                           ['#', 'JOIN_ID', 'Operator', 'Service', 'NR Mode', 'Campaign', 'Step', 'Priority', 'Expected Gain',
+                            'Points lost', 'Scoring Impact'], rows, {0, 8, 9}))
     return tables
 
 

@@ -548,8 +548,8 @@ span.nq-root-suggestion { cursor: default; }
 
 /* NQ rate by campaign and operator: a heat map for management. */
 .nq-rate-tabs { display: inline-flex; flex-wrap: wrap; gap: .35rem; padding: .25rem; border: 1px solid var(--nq-border); border-radius: 999px; background: var(--nq-softer); }
-.non-qualified-calls .nq-rate-tab { min-height: 0; padding: .35rem .9rem; border: 0; border-radius: 999px; background: transparent; color: var(--nq-dark); font-size: .82rem; font-weight: 850; box-shadow: none; }
-.non-qualified-calls .nq-rate-tab.is-active { background: linear-gradient(135deg, #7d1238, #c8365f); color: #fff; box-shadow: 0 6px 14px rgba(125, 18, 56, .25); }
+.non-qualified-calls .nq-rate-tab, .nq-options-dialog .nq-rate-tab { min-height: 0; padding: .35rem .9rem; border: 0; border-radius: 999px; background: transparent; color: var(--nq-dark); font-size: .82rem; font-weight: 850; box-shadow: none; }
+.non-qualified-calls .nq-rate-tab.is-active, .nq-options-dialog .nq-rate-tab.is-active { background: linear-gradient(135deg, #7d1238, #c8365f); color: #fff; box-shadow: 0 6px 14px rgba(125, 18, 56, .25); }
 .nq-rate-overview { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin: 12px 0 16px; }
 .nq-rate-card { display: grid; gap: .25rem; padding: 14px 16px; border: 1px solid var(--nq-border); border-radius: 14px; background: #fff; box-shadow: 0 6px 16px rgba(125, 18, 56, .07); }
 .nq-rate-card strong { color: var(--nq-dark); font-size: 1.75rem; line-height: 1.1; }
@@ -1296,14 +1296,100 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 .nq-priority .nq-failure-grid { grid-template-columns: minmax(14rem, 1fr) minmax(0, 2.6fr); }
 .nq-priority-note { margin: 0; padding: .45rem .7rem; border-left: 4px solid #e08a1e; border-radius: 8px; background: #fff8e8; color: #7a4a00; }
 .nq-failure-table td.nq-priority-level { border-left: 4px solid var(--nq-chip, var(--nq-border)); }
-.nq-priority-dialog { width: min(980px, calc(100vw - 32px)); }
-.nq-priority-levels { display: grid; gap: .5rem; padding: .7rem .85rem; border: 1px solid var(--nq-border); border-radius: 12px; background: var(--nq-soft); }
-.nq-priority-levels h3 { margin: 0; color: var(--nq-dark); font-size: .92rem; }
-.nq-priority-settings { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr)); gap: .45rem .9rem; font-size: .8rem; font-weight: 700; }
-/* Each setting reads as a sentence with its number inside it. */
-.nq-priority-settings label:not(.nq-toggle) { display: block; line-height: 2.2; }
-.nq-priority-settings input[type="number"] { display: inline-block; width: 4.6rem; min-height: 1.9rem; margin: 0 .2rem; vertical-align: middle; }
-.nq-priority-settings .nq-toggle { justify-self: start; }
+/* The Prioritization Rules: the header and the buttons stay in sight, only the settings between them scroll. */
+.nq-priority-dialog { width: min(1800px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); }
+.nq-priority-dialog[open] { display: flex; flex-direction: column; overflow: hidden; }
+.nq-priority-dialog .nq-options-form { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; gap: .8rem; }
+.nq-priority-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; margin: 0 -.3rem; padding: 0 .3rem .2rem; }
+.nq-priority-dialog footer { padding-top: .8rem; border-top: 1px solid var(--nq-border); }
+.nq-priority-dialog .nq-options-error:empty { display: none; }
+/* The levels on the left, in sight while the steps scroll; the strategy and its steps on the right. */
+.nq-priority-layout { display: grid; grid-template-columns: 17.5rem minmax(0, 1fr); gap: 1rem; align-items: start; }
+.nq-priority-layout > .nq-priority-levels { position: sticky; top: 0; }
+.nq-priority-main { display: grid; gap: .9rem; min-width: 0; }
+@media (max-width: 1100px) {
+  .nq-priority-layout { grid-template-columns: minmax(0, 1fr); }
+  .nq-priority-layout > .nq-priority-levels { position: static; }
+}
+:is(.nq-priority-levels, .nq-priority-custom) { display: grid; gap: .6rem; padding: .8rem .9rem; border: 1px solid var(--nq-border); border-radius: 12px; background: var(--nq-soft); }
+:is(.nq-priority-levels, .nq-priority-custom) h3 { margin: 0; color: var(--nq-dark); font-size: .9rem; }
+.nq-priority-strategy { display: grid; gap: .9rem; }
+:is(.nq-priority-strategy, .nq-priority-custom)[hidden] { display: none; }
+/* The strategy and the actions of the dialog in one line above the lists. */
+.nq-priority-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .6rem 1rem; }
+.nq-priority-strategy-field { display: flex; align-items: center; gap: .6rem; color: var(--nq-dark); font-size: .9rem; font-weight: 800; }
+.nq-priority-strategy-field select { width: 17rem; }
+.nq-priority-toolbar-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+.nq-priority-toolbar-actions [hidden] { display: none; }
+/* How the strategies work, folded under the lists. */
+.nq-priority-about { color: var(--nq-muted); font-size: .8rem; line-height: 1.45; }
+.nq-priority-about summary { cursor: pointer; color: var(--nq-dark); font-weight: 800; }
+.nq-priority-about p { margin: .45rem 0 0; }
+.nq-priority-about p[hidden] { display: none; }
+/* The steps of the two lists of the strategy, one below the other. */
+.nq-priority-steps { display: grid; grid-template-columns: minmax(0, 1fr); gap: .9rem; }
+.nq-priority-steps[hidden] { display: none; }
+/* Each list in its own card, so list 1 and list 2 read apart. */
+.nq-priority-steps-list { display: grid; gap: .4rem; font-size: .8rem; padding: .7rem .8rem .5rem; overflow-x: auto;
+  border: 1px solid var(--nq-border); border-radius: 12px; background: #fff; box-shadow: 0 1px 3px rgba(15, 30, 54, .06); }
+/* The switch between list 1 (Weekly CDRs) and list 2 (Final CDRs) and what the list shown does, above its table. */
+.nq-priority-steps-head { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .9rem; padding-bottom: .45rem;
+  border-bottom: 2px solid var(--nq-color); }
+.nq-priority-steps-head > strong { color: var(--nq-dark); font-size: .84rem; }
+/* The steps the admins change: the same columns in both lists, every field a control as wide as its column, the steps
+   of one Priority grouped under it and their queue as a tag. */
+.nq-priority-steps-table { table-layout: fixed; width: 100%; min-width: 64rem; }
+.nq-priority-steps-table .nq-step-col-priority { width: 5.4rem; }
+.nq-priority-steps-table .nq-step-col-move { width: 2.2rem; }
+.nq-priority-steps-table .nq-step-col-mode { width: 6.4rem; }
+.nq-priority-steps-table .nq-step-col-type { width: 8.4rem; }
+.nq-priority-steps-table .nq-step-col-area { width: 10.6rem; }
+.nq-priority-steps-table .nq-step-col-queue { width: 7.4rem; }
+.nq-priority-steps-table :is(th, td) { vertical-align: middle; padding: .3rem .35rem; text-align: left; }
+.nq-priority-steps-table tbody td { border-bottom: 1px solid color-mix(in srgb, var(--nq-border) 55%, white); }
+.nq-priority-steps-table td.nq-priority-step-group { text-align: center; border-right: 1px solid var(--nq-border);
+  background: color-mix(in srgb, var(--nq-soft) 70%, white); }
+.nq-priority-steps-table tr.is-group-start > td { border-top: 2px solid var(--nq-border); }
+.nq-priority-steps-table select:not([multiple]) { width: 100%; min-height: 1.9rem; padding-block: 0; font-size: .78rem; }
+.nq-priority-steps-table td.nq-priority-step-group .nq-priority-step-priority { font-weight: 800; color: var(--nq-dark); }
+/* Each step moves by its handle: dragged (or with the arrow keys) before or after another step, which gives it that
+   step's Priority, or onto a Priority without steps, shown while a step is dragged. */
+.nq-priority-steps-table td.nq-priority-step-move { padding-inline: 0; text-align: center; }
+.nq-priority-step-handle { padding: .15rem .3rem; border: 0; border-radius: 6px; background: none; color: var(--nq-muted); font-size: 1rem;
+  line-height: 1; cursor: grab; box-shadow: none; }
+.nq-priority-step-handle:is(:hover, :focus-visible) { background: var(--nq-soft); color: var(--nq-dark); }
+.nq-priority-steps-table tr.is-dragging { opacity: .45; }
+.nq-priority-steps-table tr.is-drop-before > td:not(.nq-priority-step-group) { box-shadow: inset 0 3px 0 var(--nq-color); }
+.nq-priority-steps-table tr.is-drop-after > td:not(.nq-priority-step-group) { box-shadow: inset 0 -3px 0 var(--nq-color); }
+.nq-priority-steps-table :is(td.is-drop-into, tr.is-drop-into > td) { background: color-mix(in srgb, var(--nq-color) 14%, white); }
+.nq-priority-steps-table tr.nq-priority-step-empty { display: none; }
+.nq-priority-steps-table.is-dragging tr.nq-priority-step-empty { display: table-row; }
+.nq-priority-steps-table tr.nq-priority-step-empty > td { height: 2.4rem; border-top: 1px dashed var(--nq-border); color: var(--nq-muted); font-style: italic; }
+.nq-priority-steps-table tr.nq-priority-step-empty > td.nq-priority-step-group { font-style: normal; font-weight: 800; }
+.nq-priority-steps-table .multiselect-shell { width: 100%; min-width: 0; }
+.nq-priority-steps-table .multiselect-trigger { min-height: 1.9rem; font-size: .78rem; }
+.nq-priority-steps-table .multiselect-trigger-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nq-priority-queue-tag { display: inline-block; padding: .12rem .6rem; border-radius: 999px; font-size: .72rem; font-weight: 700; }
+.nq-priority-queue-tag.is-voice, .nq-priority-step-queue-select.is-voice { background-color: #e1ecfb; color: #0f56b3; }
+.nq-priority-queue-tag.is-data, .nq-priority-step-queue-select.is-data { background-color: #ddf1ee; color: #0a6f63; }
+.nq-priority-queue-tag.is-tracked, .nq-priority-step-queue-select.is-tracked { background-color: #eceef2; color: #56606f; }
+/* The queue of a step: a select that reads as the tag of its queue. */
+.nq-priority-steps-table .nq-priority-step-queue-select { border-color: transparent; border-radius: 999px; font-size: .74rem; font-weight: 700; }
+/* The Voice and Data queues of the panel, one beside the other on wide screens. */
+.nq-priority-queues { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 44rem), 1fr)); gap: .9rem; }
+/* The levels: one setting per row, its name and value, and what it means below them. */
+.nq-priority-levels-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: .65rem; font-size: .8rem; }
+.nq-priority-level { display: grid; grid-template-columns: minmax(0, 1fr) max-content; align-items: center; gap: .15rem .5rem; }
+.nq-priority-level > label { font-weight: 700; color: var(--nq-dark); }
+.nq-priority-level .nq-priority-help { grid-column: 1 / -1; font-size: .75rem; }
+.nq-priority-value { display: inline-flex; align-items: center; gap: .3rem; font-weight: 700; white-space: nowrap; }
+.nq-priority-value input[type="number"] { width: 4.6rem; min-height: 1.9rem; height: 1.9rem; padding-block: 0; }
+.nq-priority-help { color: var(--nq-muted); line-height: 1.35; }
+/* Filling the Priority: a plain checkbox below the levels. */
+.nq-priority-levels > .nq-toggle { display: flex; align-items: flex-start; gap: .45rem; margin: 0; padding: .6rem 0 0; border: 0;
+  border-top: 1px solid var(--nq-border); border-radius: 0; background: none; box-shadow: none; color: var(--nq-dark); font-size: .78rem;
+  font-weight: 700; line-height: 1.35; }
+.nq-priority-levels > .nq-toggle input { margin-top: .1rem; }
 .nq-priority-rule-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 26rem), 1fr)); gap: .45rem .9rem; margin-left: 2.2rem; }
 .nq-priority-rule-grid .nq-field-setting { grid-template-columns: 10rem minmax(0, 1fr); }
 .nq-priority-checks { display: flex; flex-wrap: wrap; gap: .3rem; }

@@ -54,7 +54,7 @@ from src.modules.cell_identity import nr_cell_bits
 from src.modules.column_names import campaign_sort_key, column_identity
 from src.modules.value_maps import ValueMapper, field_kind
 from src.modules.value_patterns import ValueSet, is_pattern, sql_condition
-from src.modules.operator_roles import excluded_operators
+from src.modules.operator_roles import FOCUS, excluded_operators, labels_with_role
 from src.modules.mapping_order import dimension_order_key, mapping_group
 from src.modules import nq_catalog
 from src.modules.nq_catalog import (
@@ -212,9 +212,12 @@ V22_FORMER_LABELS = (('implementation_proposal', 'Implementation Proposal'),)
 ANALYSIS_CENTER_V23_STATE_KEY = 'nq_analysis_center_v23'
 V23_FIELD_KEYS = {'prioritization', 'prioritization_rule', 'scoring_impact', 'scoring_points_lost', 'scoring_kpis_lost',
                   'repeated_issue', 'repetitions', 'repeated_campaigns', 'repetition_place'}
+# The fields of the strategies of the NQ Prioritization (the queue and the Expected Gain of a call), once.
+ANALYSIS_CENTER_V24_STATE_KEY = 'nq_analysis_center_v24'
+V24_FIELD_KEYS = {'prioritization_queue', 'expected_gain'}
 # Set once the tables and columns of this version exist, so the requests check the schema without writing.
 SCHEMA_STATE_KEY = 'nq_calls_schema'
-SCHEMA_VERSION = '2026-10-21.1'
+SCHEMA_VERSION = '2026-10-22.1'
 # Indexed call fields that the suggestion rule can read, with their labels.
 RULE_FIELDS = {
     'failure_classification': 'Failure Classification', 'failure_category': 'Failure Category',
@@ -567,7 +570,7 @@ def _schema_ready(task_repository: Any) -> bool:
                 ANALYSIS_CENTER_V13_STATE_KEY, ANALYSIS_CENTER_V14_STATE_KEY, ANALYSIS_CENTER_V15_STATE_KEY,
                 ANALYSIS_CENTER_V16_STATE_KEY, ANALYSIS_CENTER_V17_STATE_KEY, ANALYSIS_CENTER_V18_STATE_KEY,
                 ANALYSIS_CENTER_V19_STATE_KEY, ANALYSIS_CENTER_V20_STATE_KEY, ANALYSIS_CENTER_V21_STATE_KEY,
-                ANALYSIS_CENTER_V22_STATE_KEY, ANALYSIS_CENTER_V23_STATE_KEY)
+                ANALYSIS_CENTER_V22_STATE_KEY, ANALYSIS_CENTER_V23_STATE_KEY, ANALYSIS_CENTER_V24_STATE_KEY)
         states = {str(row[0]): str(row[1]) for row in connection.execute(
             f"SELECT key, value FROM workspace_state WHERE key IN ({', '.join('?' for _ in keys)})", keys)}
     return states.get(SCHEMA_STATE_KEY) == SCHEMA_VERSION and all(states.get(key) for key in keys[1:])
@@ -630,7 +633,7 @@ def ensure_nq_tables(task_repository: Any) -> None:
             connection.execute(f'DROP TABLE {NQ_CALL_LATEST_TABLE}')
             connection.execute('DELETE FROM workspace_state WHERE key = ?', (LATEST_STATE_KEY,))
         connection.executescript(SCHEMA)
-        connection.executescript(nq_prioritization.SCHEMA)
+        nq_prioritization.ensure_columns(connection)
         if not existed:
             connection.executemany(
                 f"INSERT OR IGNORE INTO {NQ_CALL_OPTIONS_TABLE} (kind, name, color, position, is_closed) VALUES ('status', ?, ?, ?, ?)",
@@ -692,6 +695,17 @@ def ensure_nq_tables(task_repository: Any) -> None:
             _store_fields(task_repository, nq_catalog.normalize_fields(fields, {field['key']: field for field in list_fields(task_repository)},
                                                                        CATALOG_CALL_FIELDS))
         task_repository.set_workspace_state(ANALYSIS_CENTER_V23_STATE_KEY, '1')
+    if not task_repository.get_workspace_state(ANALYSIS_CENTER_V24_STATE_KEY):
+        fields = list_fields(task_repository)
+        priority = next((field for field in fields if field['key'] == 'priority'), None)
+        # The strategies give priorities up to P8: a Priority list that still has the default P1 to P5 takes P6 to P8.
+        grown = priority is not None and [option['name'] for option in priority['options']] == [f'P{number}' for number in range(1, 6)]
+        if grown:
+            priority['options'].extend({'name': f'P{number}', 'color': ''} for number in range(6, 9))
+        if _add_default_fields(fields, V24_FIELD_KEYS) or grown:
+            _store_fields(task_repository, nq_catalog.normalize_fields(fields, {field['key']: field for field in list_fields(task_repository)},
+                                                                       CATALOG_CALL_FIELDS))
+        task_repository.set_workspace_state(ANALYSIS_CENTER_V24_STATE_KEY, '1')
     task_repository.set_workspace_state(SCHEMA_STATE_KEY, SCHEMA_VERSION)
 
 
@@ -2574,7 +2588,7 @@ def catalog_value(field: dict[str, Any], call: Any, rca: dict[str, str] | None =
         return derived_value(field, call)
     if source == 'priority':
         value = _call_value(call, ref)
-        if ref == 'impact_points' and isinstance(value, (int, float)):
+        if ref in {'impact_points', 'expected_points'} and isinstance(value, (int, float)):
             return round(float(value), 2)
         return '' if value is None else value
     return ''
@@ -3407,7 +3421,9 @@ PRIORITY_COLUMNS_SQL = (
     "COALESCE(p.impact_json, '[]') AS impact_json, COALESCE(p.place_label, '') AS place_label, "
     "p.repetitions AS repetitions, p.repeated_campaigns AS repeated_campaigns, COALESCE(p.repeated, '') AS repeated, "
     "COALESCE(p.prioritization, '') AS prioritization, COALESCE(p.priority_rule, '') AS priority_rule, "
-    "COALESCE(p.suggested_priority, '') AS suggested_priority"
+    "COALESCE(p.suggested_priority, '') AS suggested_priority, COALESCE(p.queue, '') AS queue, p.queue_step AS queue_step, "
+    "COALESCE(p.queue_list, '') AS queue_list, p.expected_points AS expected_points, "
+    "COALESCE(p.expected_campaign, '') AS expected_campaign"
 )
 
 
@@ -7717,6 +7733,16 @@ def install_non_qualified_calls_routes(core: Any) -> None:
             'priority_refs': nq_catalog.PRIORITY_REFS, 'priority_types': nq_catalog.PRIORITY_TYPES,
             'prioritization': nq_prioritization.load_settings(repository),
             'default_prioritization': nq_prioritization.default_settings(), 'prioritization_criteria': nq_prioritization.CRITERIA,
+            'prioritization_strategies': nq_prioritization.STRATEGIES,
+            'focus_operators': labels_with_role(repository, FOCUS),
+            'prioritization_operators': nq_prioritization.operator_choices(repository),
+            'prioritization_fields': {'nr_modes': nq_prioritization.STEP_NR_MODES, 'call_types': nq_prioritization.CALL_TYPES,
+                                      'areas': nq_prioritization.STEP_AREAS,
+                                      'conditions': {nq_prioritization.CAMPAIGN_LIST: nq_prioritization.CAMPAIGN_CONDITIONS,
+                                                     nq_prioritization.FINAL_LIST: nq_prioritization.FINAL_CONDITIONS},
+                                      'queues': nq_prioritization.STEP_QUEUES},
+            'prioritization_steps': {key: nq_prioritization.strategy_steps(key) for key in nq_prioritization.STRATEGIES
+                                     if key != nq_prioritization.CUSTOM},
             'priority_options': nq_prioritization.priority_options(repository),
         })
 
@@ -7765,10 +7791,11 @@ def install_non_qualified_calls_routes(core: Any) -> None:
 
     @core.app.post('/api/non-qualified-calls/prioritization')
     def nq_prioritization_panel(payload: ExportPayload, user=Depends(core.current_user)) -> JSONResponse:
-        """The NQ Prioritization of the filtered calls; the first time, it is calculated at once in the background."""
+        """The NQ Prioritization of the filtered calls; the first time (and after an update of its calculation), it is
+        calculated at once in the background."""
         repository = workspace_repository(user)
         current = nq_prioritization.job(repository.db_path)
-        if (not repository.get_workspace_state(nq_prioritization.SUMMARY_STATE_KEY) and not nq_index_status(repository)['indexing']
+        if (nq_prioritization.outdated(repository) and not nq_index_status(repository)['indexing']
                 and not (current and current['status'] in {'queued', 'processing'}) and nq_prioritization.needs_calculation(repository)):
             nq_prioritization.start(repository, core.submit_background_task)
         return JSONResponse(nq_prioritization.panel(repository, payload.filters, user.username))
@@ -7785,7 +7812,8 @@ def install_non_qualified_calls_routes(core: Any) -> None:
     def nq_prioritization_settings(user=Depends(core.current_user)) -> JSONResponse:
         repository = workspace_repository(user)
         return JSONResponse({'settings': nq_prioritization.load_settings(repository), 'defaults': nq_prioritization.default_settings(),
-                             'criteria': nq_prioritization.CRITERIA, 'priority_options': nq_prioritization.priority_options(repository)})
+                             'criteria': nq_prioritization.CRITERIA, 'strategies': nq_prioritization.STRATEGIES,
+                             'priority_options': nq_prioritization.priority_options(repository)})
 
     @core.app.put('/api/non-qualified-calls/prioritization/settings')
     def nq_save_prioritization_settings(payload: PrioritizationPayload, user=Depends(config_user)) -> JSONResponse:

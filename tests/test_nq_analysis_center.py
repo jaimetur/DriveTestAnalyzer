@@ -65,7 +65,7 @@ def test_new_workspaces_get_the_catalog_of_the_meeting_workbook(client, tmp_path
     # The 37 fields of the meeting workbook, with the Auto RCA fields, the Last Cell ID and Failure Comment of the CDR and
     # the fields of the analyses of the previous tool and of the NQ Prioritization, each next to the field it goes with in the
     # Excel export.
-    assert len(fields) == 62
+    assert len(fields) == 64
     keys = [field['key'] for field in fields]
     for before, after in (('nq_call_status', 'priority'), ('priority', 'prioritization'), ('assignee', 'analyst'), ('analyst', 'reviewer'),
                           ('planned_date', 'planned_fy'), ('implementation_status', 'implementation_team'),
@@ -602,7 +602,7 @@ def test_catalog_workbook_round_trip_and_the_meeting_layout(client, tmp_path):
     assert imported.status_code == 200, imported.text
     route = next(field for field in imported.json()['fields'] if field['label'] == 'Drive Route')
     assert [option['name'] for option in route['options']] == ['M25', 'A1'] and route['section'] == 'analysis' and route['in_table']
-    assert len(imported.json()['fields']) == 63
+    assert len(imported.json()['fields']) == 65
     # The workbook of the meeting: sections in the first row, fields in the second, values below.
     meeting = Workbook()
     sheet = meeting.active
@@ -706,7 +706,7 @@ def test_first_version_workspaces_move_to_the_analysis_center(client, tmp_path):
     assert [item['name'] for item in nq.list_options(repository)['statuses']][0] == 'Not Attended'
     # The workspace's field keeps its key and values and takes its place in the catalog.
     findings = next(field for field in nq.list_fields(repository) if field['label'] == 'Findings')
-    assert findings['key'] == 'findings' and findings['section'] == 'analysis' and len(nq.list_fields(repository)) == 62
+    assert findings['key'] == 'findings' and findings['section'] == 'analysis' and len(nq.list_fields(repository)) == 64
 
 
 def test_recommendation_engine_maps_each_source_onto_the_catalog():
@@ -1896,7 +1896,7 @@ def test_successful_call_excluded_is_no_longer_a_team_and_its_calls_go_to_no_tea
     stream['key'], stream['label'] = 'implementation_stream', 'Implementation Stream'
     stream['options'].append({'name': 'Successful Call-Excluded', 'color': ''})
     priority = next(field for field in fields if field['key'] == 'priority')
-    assert [option['name'] for option in priority['options']] == ['P1', 'P2', 'P3', 'P4', 'P5']
+    assert [option['name'] for option in priority['options']] == [f'P{number}' for number in range(1, 9)]
     priority['options'] = priority['options'][:4]
     nq._store_fields(repository, fields)
     with repository.connection() as connection:

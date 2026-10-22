@@ -40,7 +40,7 @@
       <button type="button" role="menuitem" id="nq-fields-open"><svg class="nq-menu-icon" viewBox="0 0 24 24" aria-hidden="true">{{ section_icons['tag'] | safe }}</svg><strong>Fields &amp; Sections</strong><span>The fields of every section, their lists and Excel order</span></button>
       <button type="button" role="menuitem" id="nq-options-open"><svg class="nq-menu-icon" viewBox="0 0 24 24" aria-hidden="true">{{ section_icons['users'] | safe }}</svg><strong>Statuses &amp; Teams</strong><span>The NQ Call Statuses and the responsible teams with their members</span></button>
       <button type="button" role="menuitem" id="nq-status-rules-open" data-nq-status-rules-open><svg class="nq-menu-icon" viewBox="0 0 24 24" aria-hidden="true">{{ section_icons['function'] | safe }}</svg><strong>Status Rules</strong><span>How the status follows the Analysis, Implementation and Planning fields</span></button>
-      <button type="button" role="menuitem" id="nq-prioritization-open" data-nq-prioritization-open><svg class="nq-menu-icon" viewBox="0 0 24 24" aria-hidden="true">{{ section_icons['gauge'] | safe }}</svg><strong>Prioritization Rules</strong><span>Which calls are analysed first: rules by service, NR Mode and operator on the scoring impact and the repeated issues</span></button>
+      <button type="button" role="menuitem" id="nq-prioritization-open" data-nq-prioritization-open><svg class="nq-menu-icon" viewBox="0 0 24 24" aria-hidden="true">{{ section_icons['gauge'] | safe }}</svg><strong>Prioritization Rules</strong><span>Which calls are analysed first: the strategy (Dual Queue Cities first or Roads first, or Custom rules), its queues and priorities</span></button>
       <button type="button" role="menuitem" id="nq-root-open"><svg class="nq-menu-icon" viewBox="0 0 24 24" aria-hidden="true">{{ section_icons['book'] | safe }}</svg><strong>Root Cause Catalog</strong><span>Domains, Root Categories and Root Causes, with their keywords</span></button>
       {# The imports of root causes: the Ericsson RCA results, and the analyses of the previous tool (shown to every
          editor; only admins and super-admins can use it). #}
@@ -175,7 +175,7 @@
     <div class="collapsible-panel-body">
       <div class="nq-active-filters" data-nq-active-filters hidden></div>
       <div class="nq-progress-head">
-        <p class="nq-hint">Which filtered calls to analyse first. <strong>Scoring Impact</strong>: the points of the scoring each call loses in the KPIs it misses (High for the calls that hold the first half of the points their campaign, operator and service lose). <strong>Repeated Issue</strong>: other Non-Qualified Calls of its operator failed at the same place recently, in any service and NR Mode. The <strong>Prioritization Rules</strong> decide, by service and NR Mode, which calls are prioritized or only tracked and the Priority they take. Click a card, a rule or an issue to drill down into its calls.</p>
+        <p class="nq-hint">Which filtered calls to analyse first. <strong>Scoring Impact</strong>: the points of the scoring each call loses in the KPIs it misses (High for the calls that hold the first half of the points their campaign, operator and service lose). <strong>Repeated Issue</strong>: other Non-Qualified Calls of its operator failed at the same place recently, in any service and NR Mode. The <strong>Strategy</strong> of the Prioritization Rules (Dual Queue (Cities first), Dual Queue (Roads first) or Custom rules) decides which calls are prioritized or only tracked, the Priority they take and, except Custom rules, the queue of the team that analyses them. Click a card, a rule or an issue to drill down into its calls.</p>
         <span class="nq-root-head-actions"><span class="nq-muted" id="nq-priority-status"></span><button type="button" class="nq-secondary-action" id="nq-priority-recalculate" title="Calculate the scoring impact, repetitions and priorities of every call again">Recalculate</button><button type="button" class="nq-secondary-action" data-nq-prioritization-open>Prioritization Rules</button></span>
       </div>
       <div class="nq-kpis" id="nq-priority-kpis"></div>
@@ -448,24 +448,49 @@
 </dialog>
 <dialog class="nq-options-dialog nq-priority-dialog" id="nq-priority-dialog" aria-labelledby="nq-priority-title">
   <form method="dialog" class="nq-options-form" id="nq-priority-form">
-    <header><h2 id="nq-priority-title">Prioritization Rules</h2><p class="form-note">Which Non-Qualified Calls are analysed first. The rules are tried from top to bottom: the first one whose conditions a call meets decides. The call is <strong>Prioritized</strong> when it meets the rule's criterion (every call, a repeated issue, a high impact on the scoring…), else it is only tracked (<strong>Track only</strong>), and it takes the priority of the rule. Saving applies the rules to every call at once; the Priority of the open calls is filled while nobody chose another one by hand.</p></header>
+    <header><h2 id="nq-priority-title">Prioritization Rules</h2><p class="form-note">Which Non-Qualified Calls are analysed first, and by which team. Saving applies the strategy to every call at once; the Priority of an open call is filled while nobody chose another one by hand, and never changes once its analysis has started.</p></header>
     {% if not nq_can_configure %}{{ role_warning('the Prioritization Rules') }}{% endif %}
+    <div class="nq-priority-scroll">
     <fieldset class="nq-config-fieldset"{{ config_lock }}>
-      <section class="nq-priority-levels"><h3>Scoring Impact and Repeated Issues</h3>
-        <div class="nq-priority-settings">
-          <label>High impact: the calls that hold the first <input type="number" id="nq-priority-high" min="5" max="95" step="1"> % of the points lost by their campaign, operator and service</label>
-          <label>Medium impact: those up to <input type="number" id="nq-priority-medium" min="6" max="100" step="1"> % of them</label>
-          <label>A repeated issue has at least <input type="number" id="nq-priority-min-calls" min="2" max="50" step="1"> Non-Qualified Calls of the operator at the same place</label>
-          <label>in the quarter of the call and the <input type="number" id="nq-priority-quarters" min="0" max="8" step="1"> quarters before it</label>
-          <label>Spot of the calls without a cell: <input type="number" id="nq-priority-spot" min="25" max="2000" step="5"> m</label>
-          <label>Next to analyse: the first <input type="number" id="nq-priority-capacity" min="1" max="500" step="1"> prioritized calls</label>
-          <label class="nq-toggle"><input type="checkbox" id="nq-priority-fill"> Fill the Priority of the open calls with the priority of their rule</label>
+      {# The levels on the left, in sight while the steps scroll; the strategy and its steps (or the Custom rules) on the right. #}
+      <div class="nq-priority-layout">
+        <section class="nq-priority-levels"><h3>Scoring Impact and Repeated Issues</h3>
+          <div class="nq-priority-levels-grid">
+            <div class="nq-priority-level"><label for="nq-priority-high">High impact</label><span class="nq-priority-value"><input type="number" id="nq-priority-high" min="5" max="95" step="1"> %</span>
+              <span class="nq-priority-help">The calls that hold this first share of the points lost by their campaign, operator and service</span></div>
+            <div class="nq-priority-level"><label for="nq-priority-medium">Medium impact</label><span class="nq-priority-value"><input type="number" id="nq-priority-medium" min="6" max="100" step="1"> %</span>
+              <span class="nq-priority-help">The next calls, up to this share of the points (the others are Low)</span></div>
+            <div class="nq-priority-level"><label for="nq-priority-min-calls">Repeated issue</label><span class="nq-priority-value"><input type="number" id="nq-priority-min-calls" min="2" max="50" step="1"> calls</span>
+              <span class="nq-priority-help">At least these Non-Qualified Calls of the operator failed at the same place</span></div>
+            <div class="nq-priority-level"><label for="nq-priority-quarters">Repetition period</label><span class="nq-priority-value"><input type="number" id="nq-priority-quarters" min="0" max="8" step="1"> quarters</span>
+              <span class="nq-priority-help">Before the quarter of the call, which always counts</span></div>
+            <div class="nq-priority-level"><label for="nq-priority-spot">Spot without a cell</label><span class="nq-priority-value"><input type="number" id="nq-priority-spot" min="25" max="2000" step="5"> m</span>
+              <span class="nq-priority-help">Where a call without a cell failed, to compare it with the others</span></div>
+            <div class="nq-priority-level"><label for="nq-priority-capacity">Next to analyse</label><span class="nq-priority-value"><input type="number" id="nq-priority-capacity" min="1" max="500" step="1"> calls</span>
+              <span class="nq-priority-help">The first prioritized calls the panel lists (of each queue)</span></div>
+          </div>
+          <label class="nq-toggle"><input type="checkbox" id="nq-priority-fill"> Fill the Priority of the open calls with the priority of their step or rule</label>
+        </section>
+        <div class="nq-priority-main">
+          <section class="nq-priority-strategy">
+            <div class="nq-priority-toolbar">
+              <label class="nq-priority-strategy-field">Strategy <select id="nq-priority-strategy" aria-label="Strategy of the NQ Prioritization"></select></label>
+              <span class="nq-priority-toolbar-actions"><button type="button" class="nq-secondary-action" id="nq-priority-add">Add Rule</button>
+                <button type="button" class="nq-secondary-action" id="nq-priority-default" title="The Dual Queue (Cities first) strategy, and the default Custom rules: SA before NSA and Voice before Data">Default Rules</button></span>
+            </div>
+            <div class="nq-priority-steps" id="nq-priority-steps" data-nq-strategy-only></div>
+          </section>
+          <section class="nq-priority-custom" id="nq-priority-custom"><h3>Custom rules</h3>
+            <ol class="nq-status-rules nq-priority-rules" id="nq-priority-rules"></ol>
+          </section>
+          <details class="nq-priority-about"><summary>How the strategies work</summary>
+            <p>The <strong>Strategy</strong> gives every call its step, its queue and its Priority. <strong>Dual Queue (Cities first)</strong> and <strong>Dual Queue (Roads first)</strong> give every call a step of two lists (list 1 during the campaign, list 2 once its Final CDR is scored) and put it in one of two queues, Voice and Data, whose analysts take the top call; <strong>Custom rules</strong> use the rules of the workspace, tried from top to bottom (the first one whose conditions a call meets decides: <strong>Prioritized</strong> when the call meets its criterion, else <strong>Track only</strong>).</p>
+            <p data-nq-strategy-only>Every field of a step can change. By default, each step has its own Priority, from P1 to P8, and takes the Focused Operators (the Focus operators of the Operator Maps). The steps of one Priority are grouped under it and tried in their order: drag a step by its handle (or move it with the arrow keys) to change its place or Priority. A call meets a step when it meets any of its conditions (Every call and Focused Operators stand alone). A call of an SA campaign takes its SA step when the step takes its operator, else its NSA step (an operator without SA, such as Three); a call no step takes is tracked when a Tracked step takes it. Inside a step, the calls with the highest Expected Gain go first (the points their failure lost in the Final CDR of the latest campaign, or their own once the Final CDR of their campaign is scored), then the oldest. Each queue takes its calls by Priority, the newest campaign first.</p>
+          </details>
         </div>
-      </section>
-      <ol class="nq-status-rules nq-priority-rules" id="nq-priority-rules"></ol>
-      <div class="nq-root-actions"><span><button type="button" class="nq-secondary-action" id="nq-priority-add">Add Rule</button>
-        <button type="button" class="nq-secondary-action" id="nq-priority-default" title="SA before NSA and Voice before Data: every Voice call, and the Data calls with a repeated issue or a high impact">Default Rules</button></span></div>
+      </div>
     </fieldset>
+    </div>
     <p class="nq-options-error" id="nq-priority-error" role="alert"></p>
     <footer><button type="button" class="nq-secondary-action" id="nq-priority-cancel">{{ 'Cancel' if nq_can_configure else 'Close' }}</button><button type="submit" class="nq-primary-action" id="nq-priority-save"{% if not nq_can_configure %} hidden{% endif %}>Save</button></footer>
   </form>

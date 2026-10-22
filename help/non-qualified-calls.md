@@ -1,6 +1,6 @@
 # Non-Qualified Calls
 
-Follow up every call and test that did not complete. Non-Qualified Calls brings the CDR Drive Test follow-up into DriveTest Analyzer as an **NQ Analysis Center**: an executive summary of every Non-Qualified call, a drill-down table of those calls, and a shared follow-up of each one that every user of the workspace sees. Each call is followed through six sections — **General**, **RCA**, **Failure Details**, **Analysis**, **Implementation** and **Planning** — with a Root Category and Root Cause decided from three sources (the NetCheck RCA of the CDR, the Ericsson RCA and the analysts), an NQ Call Status that follows the phases by rules or is set by hand, a responsible team, an assignee and a comment thread. Its panels show which calls to analyse first (the points of the scoring each one loses, the repeated issues and the Prioritization Rules), the lifecycle of the calls, their phases, where they fail and how the root cause sources agree.
+Follow up every call and test that did not complete. Non-Qualified Calls brings the CDR Drive Test follow-up into DriveTest Analyzer as an **NQ Analysis Center**: an executive summary of every Non-Qualified call, a drill-down table of those calls, and a shared follow-up of each one that every user of the workspace sees. Each call is followed through six sections — **General**, **RCA**, **Failure Details**, **Analysis**, **Implementation** and **Planning** — with a Root Category and Root Cause decided from three sources (the NetCheck RCA of the CDR, the Ericsson RCA and the analysts), an NQ Call Status that follows the phases by rules or is set by hand, a responsible team, an assignee and a comment thread. Its panels show which calls to analyse first (the points of the scoring each one loses, the repeated issues and the strategy that fills their Priority and their Voice and Data queues), the lifecycle of the calls, their phases, where they fail and how the root cause sources agree.
 
 > [!NOTE]
 > **The calls need no extra input.** Every ready Voice, Speech and Data CDR of the workspace is indexed in the background, and each call keeps its follow-up by its NetCheck `JOIN_ID`. The Ericsson RCA results and the analyses of the previous tool are optional imports that complete the root causes and the follow-up.
@@ -17,7 +17,8 @@ The module is in development, so its main tab can show a red **ALPHA** label (se
 | Download or copy a panel, chart or table as an image | [Images of the panels](#images-of-the-panels) |
 | Go to each panel | [Sections bar](#sections-bar) |
 | See how many calls fail and where they concentrate | [Summary](#summary) |
-| Know which calls to analyse first: the scoring points they lose, the repeated issues and the calls prioritized by the rules | [NQ Prioritization](#nq-prioritization) |
+| Know which calls to analyse first: the scoring points they lose, the repeated issues and the Voice and Data queues of the teams | [NQ Prioritization](#nq-prioritization) |
+| Choose the strategy of the workspace: Dual Queue (Cities first), Dual Queue (Roads first) or Custom rules | [Strategies](#strategies) |
 | Choose which calls are prioritized, by service, NR Mode and operator, and the Priority they take | [Prioritization Rules](#prioritization-rules) |
 | Compare the NQ rate of campaigns and operators | [NQ Rate by Campaign and Operator](#nq-rate-by-campaign-and-operator) |
 | See how and where the calls fail: result, technology, serving Vendor and sites | [Failures by Type, Technology & Serving Cell](#failures-by-type-technology--serving-cell) |
@@ -85,7 +86,7 @@ The **Filters** panel restricts the summary, the panels, the table and the expor
 | Group | Filters |
 | --- | --- |
 | **General Filters** | **NR Mode** (NSA or SA, first: with Campaign it says which CDRs the calls come from), **Campaign**, **Operator**, **Operator_Vendor**, **Vendor_Operator**, **Vendor**, **Region**, **Cluster**, **City**, **Service**, **Technology**, **Test Name** and **Result**, from the indexed calls, and **CDR Version** (see [Daily and Final CDRs](#daily-and-final-cdrs)). |
-| **NQ Analysis Fields Filters** | The fields of [Fields & Sections](#fields-and-sections) in their order: **Failure Classification** and **Failure Category** (the NetCheck RCA of the CDR), **Root Domain**, **Root Category** and **Root Cause**, **Global Status**, **Status Set** (**Automatic** when the status follows the [Status Rules](#status-rules), **By hand** when an analyst chose it) and **Follow-up** (Attended, Not attended, Open, Stalled, Closed, With team, Assigned, Commented, With a root cause, RCA identified and RCA not identified: the calls in any of the chosen, also set by the indicator cards of the panels), **Team** and **Assignee** from the follow-up, every list and Yes / No field entered by the analysts or derived from the call (for example Session Type, Analysis Status or Planned Status), the **Prioritization**, **Prioritization Rule**, **Scoring Impact** and **Repeated Issue** of the [NQ Prioritization](#nq-prioritization), and **Analyst** and **Reviewer** with every name the calls hold. |
+| **NQ Analysis Fields Filters** | The fields of [Fields & Sections](#fields-and-sections) in their order: **Failure Classification** and **Failure Category** (the NetCheck RCA of the CDR), **Root Domain**, **Root Category** and **Root Cause**, **Global Status**, **Status Set** (**Automatic** when the status follows the [Status Rules](#status-rules), **By hand** when an analyst chose it) and **Follow-up** (Attended, Not attended, Open, Stalled, Closed, With team, Assigned, Commented, With a root cause, RCA identified and RCA not identified: the calls in any of the chosen, also set by the indicator cards of the panels), **Team** and **Assignee** from the follow-up, every list and Yes / No field entered by the analysts or derived from the call (for example Session Type, Analysis Status or Planned Status), the **Prioritization**, **Prioritization Rule**, **Prioritization Queue**, **Scoring Impact** and **Repeated Issue** of the [NQ Prioritization](#nq-prioritization), and **Analyst** and **Reviewer** with every name the calls hold. |
 | **Additional Columns Filters** | The optional columns of the table (see [Columns](#columns)). |
 | **Search** | Text in the call fields (Operator, Vendor, Campaign, Region, City, Technology, test, result, failure fields, cell, `JOIN_ID` and the CDR columns of the table), in the fields entered by the analysts and in the comments. |
 | **Flags** | **Open calls only**, **Assigned to me** and **Without comments**. |
@@ -119,21 +120,22 @@ Click any bar to drill down: the table shows only that value. Click the same bar
 
 ## NQ Prioritization
 
-The **NQ Prioritization** panel, below the Summary, tells which of the filtered calls to analyse first, as the teams plan their analyses by service and NR Mode (for example every SA Voice call, and only the SA Data calls with a repeated issue or a high impact on the scoring). Every Non-Qualified call gets three values, also shown as fields of the call, columns of the table, filters and breakdowns of the Summary (see [Fields and sections](#fields-and-sections)):
+The **NQ Prioritization** panel, below the Summary, tells which of the filtered calls to analyse first, as the teams plan their analyses by service and NR Mode (for example every SA Voice call, and only the SA Data calls with a repeated issue or a high impact on the scoring). Every Non-Qualified call gets these values, also shown as fields of the call, columns of the table, filters and breakdowns of the Summary (see [Fields and sections](#fields-and-sections)):
 
 | Value | What it says |
 | --- | --- |
 | **Scoring Impact** and **Scoring Points Lost** | The points of the scoring of its campaign the call loses, and its level: **High**, **Medium**, **Low** or **No impact**; **Not scored** when its campaign cannot be scored yet, **Excluded from Scoring** when it is in a list of [Scoring Excluded Calls](scoring-gap-analysis.md#excluded-calls). **Scoring KPIs Lost** lists the KPIs and environments it loses them in, the most first. |
 | **Repeated Issue**, **Repetitions** and **Repeated Campaigns** | Whether other Non-Qualified Calls of its operator failed at the same place (**Repetition Place**) recently, how many (the call included) and of how many campaigns. |
-| **Prioritization** and **Prioritization Rule** | **Prioritized** or **Track only**, by the first [Prioritization Rule](#prioritization-rules) whose conditions the call meets (**No rule** when none does), which also gives its **Priority**. |
+| **Prioritization**, **Prioritization Rule** and **Prioritization Queue** | **Prioritized** or **Track only** by the [strategy](#strategies) of the workspace: the step of its lists (such as *Campaign 1 · SA Voice · Cities*) or the first [Custom rule](#prioritization-rules) whose conditions the call meets (**No rule** when none does, or when its operator is not one of the operators of the steps), which also gives its **Priority**; with a Dual Queue strategy, the **Voice** or **Data** queue of the team that analyses it. |
+| **Expected Gain** | The scoring points the analysis of the call is expected to recover, which orders the calls of the same step: its Scoring Points Lost once the Final CDR of its campaign is scored, else the points its failure lost in the latest campaign of its NR Mode with a Final CDR (empty when there is none: the oldest call then goes first). |
 
 The panel shows, for the filtered calls:
 
-- Cards with the **Prioritized** and **Track only** calls, the calls with a **High Scoring Impact** (and the points the filtered calls lose), the **Repeated Issues** (and their places) and the calls **Next to analyse**. A click on a card shows only those calls; a second click removes the filter.
-- **Prioritization Rules**: for each rule, in its order, what it takes, what it prioritizes and its priorities, and its calls, prioritized, tracked, open and attended calls and the scoring points they lose; a click on a rule shows its calls. A note tells the calls waiting for their prioritization and the campaigns not scored yet, with the reason (the badge at the top right gives it on hover too).
+- Cards with the **Prioritized** and **Track only** calls, the calls with a **High Scoring Impact** (and the points the filtered calls lose), the **Repeated Issues** (and their places) and the calls **Next to analyse** (in each queue with a Dual Queue strategy). A click on a card shows only those calls; a second click removes the filter.
+- **Strategy** (**Prioritization Rules** with Custom rules): for each step of the two lists of the strategy (or each rule), in its order, what it takes, its queue (or what it prioritizes) and its priority, and its calls, prioritized, tracked, open and attended calls and the scoring points they lose; a click on a step or rule shows its calls. A note tells the calls waiting for their prioritization and the campaigns not scored yet, with the reason (the badge at the top right gives it on hover too).
 - **Scoring Impact**: the calls of each level, and the scoring points the calls lose in each KPI and environment.
 - **Repeated issues**: the places where the filtered calls repeat (up to 25, the most calls first), with their operator, calls, campaigns, services, NR Modes, scoring points lost, open calls and main root category; a click on a place shows its calls (the **Repetition Place** filter).
-- **Next to analyse**: the first prioritized calls that are open and not attended yet (20 by default, the weekly capacity set in the rules), in the order of their rule, the most scoring points lost first and then the most repetitions; a click on a call opens it.
+- **Next to analyse**: with a Dual Queue strategy, the **Voice queue** and the **Data queue** side by side, the first calls of each one that are open and not attended yet (20 by default, set in the rules) in the order its analysts take them (see [Strategies](#strategies)), with their position, step, Priority, Expected Gain and Scoring Impact; with Custom rules, the first prioritized calls in the order of their rule, the most scoring points lost first and then the most repetitions. A click on a call opens it.
 
 **Recalculate** (`user-editor` and above) calculates every value again in the background; **Prioritization Rules** opens the rules.
 
@@ -151,9 +153,61 @@ Within its campaign, operator and service, the calls that hold the first half of
 
 A call is a **Repeated Issue** when at least two Non-Qualified Calls of its operator (the number is set in the rules) failed at the same place in the quarter of the call and the quarter before it, whatever their service (a Voice and a Data failure at the same site count) and their NR Mode (NSA and SA count together). The place of a call is the site of the cell where it ended (its eNB or gNB in the cell mappings of the workspace), else the site that served its start (the serving-cell [Vendor Mapping](workspace-management.md#vendor-mapping), with its host network), else the eNB or gNB of its last cell, else a spot of about 100 m around where it started. Calls without a date count in every period of their place.
 
+### Strategies
+
+**Prioritization Rules** (in the NQ Analysis Configuration menu and the NQ Prioritization panel) sets the **Strategy** of the workspace; only admins and super-admins change it. **Dual Queue (Cities first)** is the default; **Dual Queue (Roads first)** differs from it in two rules; **Custom rules** uses the [rules](#prioritization-rules) below.
+
+Every call takes a step of one of two lists and a queue: Voice and WhatsApp calls go to the **Voice queue**, Data calls to the **Data queue**, and each analyst takes the top call of the queue of their team. Admins and super-admins change every field of each step of both strategies, in the columns of the dialog, which shows one list at a time: the switch above the table chooses **Weekly CDRs** (list 1) or **Final CDRs** (list 2).
+
+| Column | What it sets |
+| --- | --- |
+| **Priority** | P1 to P8; by default the step is the Priority, as in the tables below. The steps of one Priority are grouped under it, in the order they are tried: changing it moves every step of the group. |
+| ⠿ | The handle of the step: drag it before or after another step (or move it one row with the arrow keys) to change its place, and its Priority when the other step has another one; while a step is dragged, the Priorities without steps show to drop it there. The place of a step gives the number of its Prioritization Rule (such as *Campaign 1 · SA Voice · Cities*). |
+| **NR Mode** | **SA**, **NSA** or **Any**. |
+| **Call Type** | **Voice**, **WhatsApp**, **Data** or **Any** (Ping tests too). |
+| **Area** | Where the calls failed, from their environment: **Cities**, **Connecting Roads** (roads and highways) or **Any**. |
+| **Condition** | The conditions the calls meet, chosen one by one: during the campaign **Consecutive failures** and **Clusters**; with the Final CDR also **High impact**, **Medium impact**, **Low impact** (or none) and **Repeated**. A call meets the step when it meets any of them, and they show joined with ` & ` (such as *High impact & Repeated*). **Every call** stands alone: while it is chosen, the others are cleared and cannot be chosen. Consecutive failures and Clusters are only offered with the Data and Any types. |
+| **Operators** | **Focused Operators** first (the Focus operators of the [Operator Maps](workspace-config.md#operator-maps), the default), then the operators of the workspace. Focused Operators stands alone: while it is chosen, the other operators are cleared and cannot be chosen; several operators show joined with ` & `. |
+| **Queue** | **Voice**, **Data** or **Tracked** (its calls are only tracked), shown as a tag of its colour. |
+
+The steps of a list are tried by Priority and in their order. A call of an SA campaign takes its SA step when the step takes its operator; else, as the calls of an operator without SA such as Three, its NSA step when that one takes it; a call that no step takes is tracked when a Tracked step takes it, and enters no queue otherwise (for example, SA steps with `VF` only and NSA steps with `VF & Three`). App Events records each change of a step with its fields before and after.
+
+**List 1** orders the calls of a campaign while its Final CDR is not scored, by what each call says about itself, which never changes as new Daily or Weekly CDRs arrive: its NR Mode, whether it is a Voice, WhatsApp or Data call, and where it failed (Connecting Roads and highways, else Cities, from its environment).
+
+| Priority (default) | Dual Queue (Cities first) | Dual Queue (Roads first) | Queue |
+| --- | --- | --- | --- |
+| P1 | SA Voice in Cities | SA Voice on Connecting Roads | Voice |
+| P2 | SA Data: Consecutive failures & Clusters (a consecutive failure or a failure of a cluster) | SA Data: Clusters | Data |
+| P3 | SA Voice on Connecting Roads | SA Voice in Cities | Voice |
+| P4 | SA WhatsApp | SA WhatsApp | Voice |
+| P5 | NSA Data: Consecutive failures & Clusters | NSA Data: Clusters | Data |
+| P6 | NSA Voice | NSA Voice | Voice |
+| P7 | NSA WhatsApp | NSA WhatsApp | Voice |
+| P8 | Tracked: the other data failures (not taken by a Data step), Ping tests and Excluded Calls | Tracked: the other data failures (not taken by a Data step), Ping tests and Excluded Calls | — |
+
+A **cluster** is a spot where 2 or more data tests of the same operator, NR Mode and campaign failed in one drive: each at most 15 minutes after the previous one, the same day, at most 300 m from it or at the same site. A data failure is **consecutive** when the test right before or after it in the drive failed too (the previous or next `Sequence_ID_per_File` of the same `File_ID` of the CDR; when the CDR does not give them, no failure of it is consecutive).
+
+**List 2** orders the calls of a campaign once its Final CDR (a Final CDR of its type in the combined CDR tables, see [CDR Stage](workspace-management.md#cdr-stage-final-weekly-and-daily)) is scored, by their real impact, the same in both strategies:
+
+| Priority (default) | Steps |
+| --- | --- |
+| P1 | 1 · SA Voice with a High Scoring Impact |
+| P2 | 2 · SA Data with a High Scoring Impact or a Repeated Issue |
+| P3 | 3 · SA Voice with a Medium Scoring Impact · 4 · the other SA Voice calls |
+| P4 | 5 · SA WhatsApp with a High or Medium Scoring Impact · 6 · the other SA WhatsApp calls |
+| P5 | 7 · NSA Data with a High Scoring Impact or a Repeated Issue |
+| P6 | 8 · NSA Voice |
+| P7 | 9 · NSA WhatsApp |
+| P8 | Tracked: the other data failures (not taken by a Data step), Ping tests and Excluded Calls |
+
+> [!IMPORTANT]
+> **Inside a step, the calls with the highest Expected Gain go first, then the oldest.** The Expected Gain of a call of list 1 is what its failure lost in the Final CDR of the latest campaign of its NR Mode (without one, the oldest call goes first); that of a call of list 2, its own Scoring Points Lost. Each queue takes its calls by Priority, the newest campaign first, then the step.
+
+The Priority of the open calls is filled as with the rules (see below) and never changes once the analysis of the call has started (its NQ Call Status is no longer the first one): a new strategy, or the Final CDR of its campaign, only re-orders the calls nobody has started. Changing the strategy is recorded in App Events with the one before and the new one.
+
 ### Prioritization Rules
 
-**Prioritization Rules** (in the NQ Analysis Configuration menu and the NQ Prioritization panel; admins and super-admins change them) lists the rules in order. Each rule takes the calls of some **Services**, **NR Modes**, **Operators**, **Regions** and **Cities** (an empty condition takes every value; operators, regions and cities take patterns such as `VF*` or `-Lebara`) and prioritizes **Every call**, the **Repeated or high impact** calls, the **Repeated and high impact** calls, the **Repeated issues only**, the **High impact only** calls, or none (**Track only**).
+With the **Custom rules** strategy, **Prioritization Rules** (admins and super-admins change them) lists the rules in order. Each rule takes the calls of some **Services**, **NR Modes**, **Operators**, **Regions** and **Cities** (an empty condition takes every value; operators, regions and cities take patterns such as `VF*` or `-Lebara`) and prioritizes **Every call**, the **Repeated or high impact** calls, the **Repeated and high impact** calls, the **Repeated issues only**, the **High impact only** calls, or none (**Track only**).
 
 > [!IMPORTANT]
 > **The first rule whose conditions a call meets decides.** The call is **Prioritized** when it meets the rule's criterion, else **Track only**, and takes the priority the rule gives each case.
@@ -165,11 +219,11 @@ The default rules follow the prioritization of SA before NSA and Voice before Da
 3. **NSA Voice** (Voice and Speech, NSA): every call, P3.
 4. **NSA Data** (Data, NSA): the repeated or high impact calls, P4; the others are tracked, P5.
 
-The dialog also sets the High and Medium shares of the Scoring Impact, the calls and the previous quarters of a repeated issue, the size of the spot of the calls without a cell and how many calls **Next to analyse** lists. With **Fill the Priority of the open calls** (on by default), the [Priority](#default-catalog) of each open call is filled with the priority of its rule while it is empty or still the one the rules gave: once someone changes or clears it by hand, the rules no longer change it; the history records each change. **Default Rules** shows the default rules and levels again, and **Save** applies the rules to every call at once (a change of the levels is calculated again in the background).
+On the left, under **Scoring Impact and Repeated Issues**, the dialog also sets the High and Medium shares of the Scoring Impact, the calls and the previous quarters of a repeated issue, the size of the spot of the calls without a cell and how many calls **Next to analyse** lists (of each queue). With **Fill the Priority of the open calls** (on by default), the [Priority](#default-catalog) of each open call is filled with the priority of its step or rule while it is empty or still the one they gave: once someone changes or clears it by hand, they no longer change it, and once its analysis has started it keeps it; the history records each change. **Default Rules** shows the default strategy (Dual Queue (Cities first)), the default fields of the steps, the rules and the levels again, and **Save** applies them to every call at once (a change of the levels is calculated again in the background).
 
 ### When it is calculated
 
-The values are calculated in the background once the server is idle (after the indexing of the calls and the Scoring History), whenever what they depend on changes: the calls or CDRs indexed, the Scoring History, the methodologies, the Operator Maps, the Scoring Excluded Calls, the NR Mode of the CDRs or the levels; the first time the panel opens they are calculated at once. The floating background tasks card shows the calculation, App Events records it, and the calls indexed since show their values once it ends.
+The values are calculated in the background once the server is idle (after the indexing of the calls and the Scoring History), whenever what they depend on changes: the calls or CDRs indexed, the Scoring History, the methodologies, the Operator Maps, the Scoring Excluded Calls, the NR Mode and the stage of the CDRs (a new Final CDR) or the levels; the first time the panel opens they are calculated at once. The floating background tasks card shows the calculation, App Events records it, and the calls indexed since show their values once it ends.
 
 ## NQ Rate by Campaign and Operator
 
@@ -371,7 +425,7 @@ Admins and super-admins can delete the history: the **×** of a change deletes t
 | [Fields & Sections](#fields-and-sections) | The fields every call is followed up with, their lists and Excel order. |
 | [Statuses & Teams](#statuses-and-teams) | The NQ Call Statuses and the responsible teams with their members. |
 | [Status Rules](#status-rules) | How the status follows the Analysis, Implementation and Planning fields. |
-| [Prioritization Rules](#prioritization-rules) | Which calls are analysed first: rules by service, NR Mode and operator on the Scoring Impact and the repeated issues, and the Priority they give. |
+| [Prioritization Rules](#prioritization-rules) | Which calls are analysed first: the [strategy](#strategies) of the workspace (Dual Queue (Cities first), Dual Queue (Roads first) or Custom rules by service, NR Mode and operator on the Scoring Impact and the repeated issues), the queue and the Priority it gives. |
 | [Root Cause Catalog](#root-cause-catalog) | Domains, Root Categories and Root Causes, with their keywords, and the suggestion rule. |
 | **Import Ericsson RCA Results** | The results of the Ericsson RCA, by `JOIN_ID` (see [Ericsson RCA results](#ericsson-rca-results)). |
 | **Import Previous NQ Analyses** | The analyses made with the previous tool, by `JOIN_ID`: admins and super-admins import them, and the other accounts open it read-only (see [Previous NQ Analyses](#previous-nq-analyses)). |
@@ -395,7 +449,7 @@ Each field has a name, a **section**, a **source** and a **type**:
 | **From the CDR** | A call field, the last cell of the Cell ID chain (`last_cell_id`) or a CDR column (`column:<name>`, indexed automatically), read only (for example the NetCheck RCA Failure Classification, Suggested Category and Suggested Cause, the Last Cell ID and the Failure Comment). |
 | **From the Ericsson RCA** | A column of the [Ericsson RCA results](#ericsson-rca-results), read only (Ericsson RCA Category A … Ericsson RCA Evidence). |
 | **Derived from the call** | A list whose values have keywords looked for in some call fields; the first value whose keywords appear is the value of the call (Session Type: WhatsApp, MULTI-RAB, CALL, HTTP Transfer, Browsing & Streaming and Interactivity & Ping from the CDR `Session_Type` and Test Name). |
-| **From the NQ Prioritization** | A value of the [NQ Prioritization](#nq-prioritization), read only, with its own type: Scoring Impact, Scoring Points Lost, Scoring KPIs Lost, Repeated Issue, Repetitions, Repeated Campaigns, Repetition Place, Prioritization and Prioritization Rule (whose values are the rules). |
+| **From the NQ Prioritization** | A value of the [NQ Prioritization](#nq-prioritization), read only, with its own type: Scoring Impact, Scoring Points Lost, Scoring KPIs Lost, Repeated Issue, Repetitions, Repeated Campaigns, Repetition Place, Prioritization, Prioritization Rule (whose values are the steps of the strategy or the rules), Prioritization Queue and Expected Gain. |
 
 Each field can be a **Summary breakdown** (lists and Yes / No) and, when the analysts enter it, be **Required to close**: a call cannot be closed, by hand or by a change of its fields, while a required field is empty. A description is shown when hovering the field. The order of the list (↑ ↓) is the order of the fields in their section and in the Excel export; whether a field is a column of the table and of the Excel is chosen in [Columns](#columns), in the [table layout](#table-layouts) of each user and, with **Save for the workspace**, in that of the workspace (a new field goes to the Excel and not to the table).
 
@@ -411,7 +465,7 @@ The default catalog is the 37 fields of the meeting workbook and those of the an
 | Section | Fields |
 | --- | --- |
 | **RCA** | The fields of each source named after it: NetCheck RCA Failure Classification, NetCheck RCA Suggested Category, NetCheck RCA Suggested Cause, Ericsson RCA Category A, Ericsson RCA Subcategory A, Ericsson RCA Category B, Ericsson RCA Subcategory B, Ericsson RCA Initial Category, Ericsson RCA Initial Subcategory, Ericsson RCA Suggested Category, Ericsson RCA Suggested Cause, Ericsson RCA Evidence; then Initial Root Category, Initial Root Cause, Selected Root Category, Selected Root Cause. |
-| **General** | NQ Call Status, Priority (P1 to P5, shown after the NQ Call Status at the top of the call, filled by the [Prioritization Rules](#prioritization-rules) while nobody chooses it), the values of the [NQ Prioritization](#nq-prioritization) (Prioritization, Prioritization Rule, Scoring Impact, Scoring Points Lost, Scoring KPIs Lost, Repeated Issue, Repetitions, Repeated Campaigns and Repetition Place; Prioritization, Scoring Impact, Scoring Points Lost and Repeated Issue are columns of the table, and Prioritization, Scoring Impact and Repeated Issue breakdowns of the Summary), Team Responsible, Asignee, Analyst, Reviewer, Unique ID, Date last modification, Comments. |
+| **General** | NQ Call Status, Priority (P1 to P8, shown after the NQ Call Status at the top of the call, filled by the [strategy](#strategies) while nobody chooses it), the values of the [NQ Prioritization](#nq-prioritization) (Prioritization, Prioritization Rule, Prioritization Queue, Expected Gain, Scoring Impact, Scoring Points Lost, Scoring KPIs Lost, Repeated Issue, Repetitions, Repeated Campaigns and Repetition Place; Prioritization, Scoring Impact, Scoring Points Lost and Repeated Issue are columns of the table, and Prioritization, Scoring Impact and Repeated Issue breakdowns of the Summary), Team Responsible, Asignee, Analyst, Reviewer, Unique ID, Date last modification, Comments. |
 | **Failure Details** | Session Type, Failed Party (MOC/MTC) (UE1/UE2), Host Network when Failure, Last Cell ID, Serving Cell when Failure (proposing the Last Cell ID), Band when Failure, Vendor 1 when Failure, Vendor 2 when Failure (the second vendor when the failure involves two), Failure Comment. |
 | **Analysis** | Analysis Status, Tunnel Failure, Needed Technology, Failure Latitude, Failure Longitude, Problem Location, Solution Location, Polygon Area, Description, Findings, Proposed Measure. |
 | **Implementation** | Implementation Status (Not yet evaluated in red, Under evaluation, Evaluated, Implemented and Not Applicable), Implementation Team, Implementation Proposals, Implementation Site, Notice to VF3. |
@@ -653,7 +707,7 @@ The module stores its data in the workspace database, visible in [Super Admin �
 | NQ Root Catalog | The domains, root categories and root causes with the domains chosen for them, the root category of each cause, colours and keywords. |
 | NQ RCA Results | The imported Ericsson RCA results, by `JOIN_ID`, with their file, date and user. |
 | NQ User Table Layouts | The [table layout](#table-layouts) of each user: their columns, Excel and column order, and whether they see it or the workspace layout. |
-| NQ Call Priority | The [NQ Prioritization](#nq-prioritization) of each call: its scoring points lost with their KPIs and level, its place, repetitions and campaigns, its prioritization, rule and priority, and the priority the rules filled (calculated again automatically). |
+| NQ Call Priority | The [NQ Prioritization](#nq-prioritization) of each call: its scoring points lost with their KPIs and level, its place, repetitions and campaigns, its data cluster and whether its failure is consecutive, whether its campaign has its Final CDR scored, its Expected Gain, its prioritization, step or rule, queue and priority, and the priority filled (calculated again automatically). |
 | NQ Priority Campaigns | Each campaign and NR Mode of the calls, whether it could be scored (and why not), its methodology, calls and scoring points lost. |
 
 The section names and colours, the Status Rules, the Prioritization Rules, the columns and column order of the workspace [layout](#table-layouts) and the reviewed equivalences of the [Previous NQ Analyses](#previous-nq-analyses) are kept in the workspace settings.
@@ -686,6 +740,7 @@ Workspaces of earlier layouts are completed once:
 - Open is no longer a status but the group of the phase statuses: the rule of the attended calls gives Under Analysis, the calls set to Open by hand are Under Analysis, and the statuses follow the rules again. No_Vendor_B and No_JoinID Missing of the Analysis Status become Invalidated, and Status Rules still equal to the defaults of before take the new defaults, numbered from the end of the pipeline (they give every call the same status).
 - The fields of the NetCheck RCA and of the Ericsson RCA take the name of their source (Netcheck Suggested Cause becomes NetCheck RCA Suggested Cause, Auto_RCA_Category_A Ericsson RCA Category A and RCA Category Ericsson RCA Initial Category), unless they were renamed.
 - Workspaces created before the [NQ Prioritization](#nq-prioritization) get its fields after the Priority (Prioritization, Scoring Impact, Scoring Points Lost and Repeated Issue as columns of the table) and the default Prioritization Rules; their open calls without a Priority take that of their rule once the prioritization is first calculated.
+- Workspaces created before the [strategies](#strategies) get the **Prioritization Queue** and **Expected Gain** fields after the Prioritization Rule, P6, P7 and P8 in a Priority list that still has P1 to P5, and the default strategy Dual Queue (Cities first), unless they had changed the Prioritization Rules (they keep them as Custom rules).
 
 ## On phones
 
@@ -714,4 +769,4 @@ The page stays quick with tens of thousands of calls: the latest version of ever
 | An imported analysis does not appear on a call | The CDR of the call is not loaded yet: the analysis waits with the identity the call will have and appears when the CDR is indexed. |
 | The NetCheck RCA values differ from the CDR | Spellings of one value are shown as one (see [NetCheck RCA values](#netcheck-rca-values)); the CDR keeps them as written. |
 | The Scoring Impact of a call is Not scored | Hover the badge of the NQ Prioritization panel: its campaign waits for the Scoring History, has no CDR in the combined CDR tables, or the workspace has no methodology. It is scored once the reason is solved (or now with **Recalculate**). |
-| The Priority of a call is not filled by its rule | The call is closed, someone chose or cleared its Priority by hand (the rules then keep it), the rule gives no priority, or **Fill the Priority of the open calls** is off in the [Prioritization Rules](#prioritization-rules). |
+| The Priority of a call is not filled by its rule | The call is closed, someone chose or cleared its Priority by hand (the rules then keep it), its analysis started with another Priority, no step of the [strategy](#strategies) takes its operator, the rule gives no priority, the Priority list lacks the value, or **Fill the Priority of the open calls** is off in the [Prioritization Rules](#prioritization-rules). |

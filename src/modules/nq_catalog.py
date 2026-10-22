@@ -82,10 +82,12 @@ PRIORITY_REFS = {
     'impact_level': 'Scoring Impact', 'impact_points': 'Scoring Points Lost', 'impact_kpis': 'Scoring KPIs Lost',
     'repeated': 'Repeated Issue', 'repetitions': 'Repetitions', 'repeated_campaigns': 'Repeated Campaigns',
     'place_label': 'Repetition Place', 'prioritization': 'Prioritization', 'priority_rule': 'Prioritization Rule',
+    'queue': 'Prioritization Queue', 'expected_points': 'Expected Gain',
 }
 PRIORITY_TYPES = {
     'impact_level': 'list', 'impact_points': 'number', 'impact_kpis': 'text', 'repeated': 'yes_no', 'repetitions': 'number',
     'repeated_campaigns': 'number', 'place_label': 'text', 'prioritization': 'list', 'priority_rule': 'list',
+    'queue': 'list', 'expected_points': 'number',
 }
 PRIORITY_NUMBERS = frozenset(ref for ref, kind in PRIORITY_TYPES.items() if kind == 'number')
 IMPACT_HIGH, IMPACT_MEDIUM, IMPACT_LOW = 'High', 'Medium', 'Low'
@@ -94,11 +96,14 @@ IMPACT_LEVELS = ((IMPACT_HIGH, '#c8102e'), (IMPACT_MEDIUM, '#e08a1e'), (IMPACT_L
                  (IMPACT_NOT_SCORED, '#c4ccd2'), (IMPACT_EXCLUDED, '#7b8790'))
 PRIORITIZED, TRACK_ONLY, NO_RULE = 'Prioritized', 'Track only', 'No rule'
 PRIORITIZATION_VALUES = ((PRIORITIZED, '#2e8b57'), (TRACK_ONLY, '#9aa5ad'), (NO_RULE, '#c4ccd2'))
+# The queues of the teams with the Dual Queue strategies.
+QUEUE_VALUES = (('Voice', '#1366d6'), ('Data', '#0b8a7a'))
 
 
 def priority_options(ref: str, rule_names: list[str] = ()) -> list[dict[str, Any]]:
-    """The values of a list of the NQ Prioritization: the impact levels, the prioritizations or the rules."""
-    values = {'impact_level': IMPACT_LEVELS, 'prioritization': PRIORITIZATION_VALUES,
+    """The values of a list of the NQ Prioritization: the impact levels, the prioritizations, the queues or the steps and
+    rules."""
+    values = {'impact_level': IMPACT_LEVELS, 'prioritization': PRIORITIZATION_VALUES, 'queue': QUEUE_VALUES,
               'priority_rule': tuple((name, '') for name in rule_names)}.get(ref, ())
     return [{'name': name, 'color': color, 'keywords': []} for name, color in values]
 
@@ -184,12 +189,21 @@ DEFAULT_FIELDS = (
            description='Final root cause of the call, from the Root Causes of the root cause catalog.'),
     _field('nq_call_status', 'NQ Call Status', 'general', 'list', 'tracking', 'status', in_table=True,
            description='Set by the status rules from the phase fields, or by hand.'),
-    _field('priority', 'Priority', 'general', 'list', options=tuple(_option(f'P{number}') for number in range(1, 6)),
+    _field('priority', 'Priority', 'general', 'list', options=tuple(_option(f'P{number}') for number in range(1, 9)),
            description='How urgent the analysis of the call is; shown after the NQ Call Status at the top of the call.'),
     _field('prioritization', 'Prioritization', 'general', 'list', 'priority', 'prioritization', in_table=True, in_summary=True,
-           description='Prioritized or Track only, by the first Prioritization Rule whose conditions the call meets.'),
+           description='Prioritized or Track only, by the strategy of the NQ Prioritization: the step of its lists, or the first '
+                       'Custom rule whose conditions the call meets.'),
     _field('prioritization_rule', 'Prioritization Rule', 'general', 'list', 'priority', 'priority_rule',
-           description='The Prioritization Rule that decides the prioritization and the priority of the call.'),
+           description='The step of the strategy (Campaign 1 · SA Voice · Connecting Roads...) or the Custom rule that decides the '
+                       'prioritization and the priority of the call.'),
+    _field('prioritization_queue', 'Prioritization Queue', 'general', 'list', 'priority', 'queue',
+           description='Voice or Data: the queue of the team that analyses the call with a Dual Queue strategy (empty when '
+                       'the call is only tracked or out of the queues).'),
+    _field('expected_gain', 'Expected Gain', 'general', 'number', 'priority', 'expected_points',
+           description='The scoring points the analysis of the call is expected to recover, which orders the calls of the same '
+                       'step: its Scoring Points Lost once the Final CDR of its campaign is scored, else the points its failure '
+                       'lost in the latest campaign of its NR Mode with a Final CDR.'),
     _field('scoring_impact', 'Scoring Impact', 'general', 'list', 'priority', 'impact_level', in_table=True, in_summary=True,
            description='High, Medium or Low: the share of the scoring points its campaign, operator and service lose that the '
                        'call holds (the calls that hold the first half of the points are High).'),

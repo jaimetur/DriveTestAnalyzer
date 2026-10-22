@@ -2822,6 +2822,11 @@
       state.prioritization = payload.prioritization || null;
       state.defaultPrioritization = payload.default_prioritization || null;
       state.prioritizationCriteria = payload.prioritization_criteria || {};
+      state.prioritizationStrategies = payload.prioritization_strategies || {};
+      state.prioritizationSteps = payload.prioritization_steps || {};
+      state.prioritizationFields = payload.prioritization_fields || {};
+      state.focusOperators = payload.focus_operators || [];
+      state.prioritizationOperators = payload.prioritization_operators || [];
       state.priorityOptions = payload.priority_options || [];
       state.callFields = payload.call_fields || [];
       state.sections = payload.sections || [];
@@ -3176,7 +3181,8 @@
       [kpiCard('High Scoring Impact', number(totals.high), `${Number(totals.points || 0).toFixed(1)} scoring points lost by the filtered calls`),
         priorityPairs('impact_level', 'High')],
       [kpiCard('Repeated Issues', number(totals.repeated), `${number(totals.places)} places with repeated failures`), priorityPairs('repeated', 'Yes')],
-      [kpiCard('Next to analyse', number(totals.next), 'Prioritized, open and not attended yet'), null],
+      [kpiCard('Next to analyse', number(totals.next), (data.queues || []).length
+        ? data.queues.map((item) => `${item.name} ${number(item.total)}`).join(' · ') : 'Prioritized, open and not attended yet'), null],
     ];
     $('nq-priority-kpis').replaceChildren(...cards.map(([card, pairs]) => (pairs ? drillCard(card, {pairs}) : card)));
     const sections = [];
@@ -3196,9 +3202,12 @@
         rule.prioritized && rulePairs ? {text: number(rule.prioritized), pairs: [...rulePairs, ...(priorityPairs('prioritization', 'Prioritized') || [])]} : number(rule.prioritized),
         number(rule.tracked), points(rule.points), number(rule.open), number(rule.attended)];
     });
-    section('Prioritization Rules', 'The filtered calls each rule takes (the first rule whose conditions a call meets), how many it prioritizes or only tracks, the priority it gives (prioritized / tracked) and the scoring points those calls lose.',
+    const custom = !data.strategy || data.strategy.key === 'custom';
+    section(custom ? 'Prioritization Rules' : `Strategy: ${data.strategy.label}`, custom
+      ? 'The filtered calls each rule takes (the first rule whose conditions a call meets), how many it prioritizes or only tracks, the priority it gives (prioritized / tracked) and the scoring points those calls lose.'
+      : 'The filtered calls of each step of the two lists (Campaign: list 1, while the Final CDR of their campaign is not scored; Final: list 2, by real impact), the queue and priority it gives and the scoring points those calls lose.',
       ...notes.map((text) => node('p', text, 'nq-hint nq-priority-note')),
-      failureTable(['Rule', 'Takes', 'Prioritizes', 'Priority', 'Calls', 'Prioritized', 'Track only', 'Points lost', 'Open', 'Attended'], ruleRows));
+      failureTable([custom ? 'Rule' : 'Step', 'Takes', custom ? 'Prioritizes' : 'Queue', 'Priority', 'Calls', 'Prioritized', 'Track only', 'Points lost', 'Open', 'Attended'], ruleRows));
     const grid = node('div', undefined, 'nq-failure-grid');
     const levelsCard = node('div', undefined, 'nq-failure-card');
     levelsCard.append(node('strong', 'Scoring Impact', 'nq-failure-operator'), failureTable(['Scoring Impact', 'Calls'], data.levels.map((item) => [
@@ -3221,7 +3230,22 @@
         Object.entries(item.nr_modes).map(([name, count]) => `${name} ${number(count)}`).join(', '), points(item.points), number(item.open),
         item.category || '—']))
       : node('p', 'No repeated issue among the filtered calls.', 'nq-muted'));
-    section('Next to analyse', `The first ${data.settings.capacity} prioritized calls that are open and not attended yet: in the order of their rule, the most scoring points lost first, then the most repetitions. Click a call to open it.`,
+    // The step tells the NR Mode and the kind of call, so the queue keeps to the columns that tell the calls apart.
+    const queueTable = (rows) => failureTable(['#', 'JOIN_ID', 'Operator', 'Campaign', 'Step', 'Priority', 'Expected Gain', 'Scoring Impact'],
+      rows.map((item) => [number(item.position), {text: item.join_id || item.call_key, className: 'nq-failure-name', action: () => openDetail(item.call_key)},
+        item.operator || '—', item.campaign || '—', item.rule || '—', item.priority || '—',
+        {text: points(item.gain), title: item.gain_campaign ? `From the Final CDR of ${item.gain_campaign}` : 'No campaign with a Final CDR to tell it: the oldest first'},
+        item.level || '—']));
+    if (!custom) {
+      const queues = node('div', undefined, 'nq-priority-queues');
+      queues.append(...(data.queues || []).map((item) => {
+        const box = node('div', undefined, 'nq-failure-card');
+        box.append(node('strong', `${item.name} queue · ${number(item.total)} waiting`, 'nq-failure-operator'),
+          item.rows.length ? queueTable(item.rows) : node('p', 'No call is waiting in this queue.', 'nq-muted'));
+        return box;
+      }));
+      section('Next to analyse', `The first ${data.settings.capacity} calls of each queue that are open and not attended yet, in the order the analysts of its team take them: Priority, the newest campaign first, the step of its list, the highest Expected Gain, then the oldest. Click a call to open it.`, queues);
+    } else section('Next to analyse', `The first ${data.settings.capacity} prioritized calls that are open and not attended yet: in the order of their rule, the most scoring points lost first, then the most repetitions. Click a call to open it.`,
       data.queue.length
         ? failureTable(['JOIN_ID', 'Operator', 'Service', 'NR Mode', 'Campaign', 'Result', 'Rule', 'Priority', 'Points lost', 'Scoring Impact', 'Repetitions', 'Place'],
           data.queue.map((item) => [{text: item.join_id || item.call_key, className: 'nq-failure-name', action: () => openDetail(item.call_key)},
@@ -5924,10 +5948,302 @@
   }));
   const PRIORITY_INPUTS = {high_share: 'nq-priority-high', medium_share: 'nq-priority-medium', min_calls: 'nq-priority-min-calls',
     previous_quarters: 'nq-priority-quarters', spot_meters: 'nq-priority-spot', capacity: 'nq-priority-capacity'};
+  // Every field of the steps of each Dual Queue strategy while the dialog is open (admins change them).
+  let strategySteps = {};
+  const FOCUSED = '@focused';
+  const EVERY_CALL = 'all';
+  const STEP_PRIORITIES = ['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8'];
+  // The step whose handle takes the focus again once a step moved with the arrow keys is drawn in its new place.
+  let focusedStep = '';
+  // The list of steps the dialog shows: list 1 (Weekly CDRs, during the campaign) or list 2 (once the Final CDR is scored).
+  let stepList = 'campaign';
+  const STEP_LISTS = {campaign: ['Weekly CDRs', 'List 1 · during the campaign, by what each call says about itself'],
+    final: ['Final CDRs', 'List 2 · once the Final CDR of the campaign is scored, by the real impact of each call']};
+  // The conditions only the data tests meet (the failures of a cluster, the consecutive failures).
+  const DATA_CONDITIONS = ['consecutive', 'cluster'];
+  // A multi-select whose first value stands alone (Every call, Focused Operators): while it is chosen, the other values are
+  // cleared and cannot be chosen; else every value chosen shows, joined with &.
+  const aloneFirstSelect = (className, label, entries, chosen, emptyLabel, onChange) => {
+    const select = node('select', undefined, className);
+    select.multiple = true;
+    select.setAttribute('aria-label', label);
+    select.dataset.multiselectEmptyLabel = emptyLabel;
+    select.dataset.multiselectJoiner = ' & ';
+    select.append(...entries.map(([value, text, title]) => {
+      const option = node('option', text);
+      option.value = value;
+      option.selected = chosen.includes(value);
+      if (title) option.title = title;
+      return option;
+    }));
+    const sync = () => {
+      const alone = select.options[0].selected;
+      [...select.options].slice(1).forEach((option) => {
+        option.disabled = alone;
+        if (alone) option.selected = false;
+      });
+      onChange([...select.selectedOptions].map((option) => option.value));
+    };
+    sync();
+    select.addEventListener('change', () => {
+      sync();
+      select.dispatchEvent(new Event('multiselect:options-updated'));
+    });
+    return select;
+  };
+  // The operators a step takes: Focused Operators first, then the operators of the workspace (a chosen one the workspace
+  // no longer has stays).
+  const stepOperators = (chosen, rule) => {
+    const focus = state.focusOperators.length ? state.focusOperators.join(', ') : 'every operator, as the workspace has no Focus operator';
+    const values = [FOCUSED, ...state.prioritizationOperators, ...chosen.operators.filter((value) => value !== FOCUSED
+      && !state.prioritizationOperators.includes(value))];
+    return aloneFirstSelect('nq-priority-step-operators', `Operators of ${rule}`,
+      values.map((value) => (value === FOCUSED ? [value, 'Focused Operators', `The Focus operators of the Operator Maps: ${focus}`] : [value, value])),
+      chosen.operators, 'No operator', (operators) => { chosen.operators = operators; });
+  };
+  // The conditions a step of a list can take: those of the data tests only with a Call Type that takes them.
+  const stepConditions = (list, callType) => Object.entries((state.prioritizationFields.conditions || {})[list] || {})
+    .filter(([key]) => !DATA_CONDITIONS.includes(key) || ['data', 'any'].includes(callType));
+  const renderStrategySteps = (strategy) => {
+    const fields = state.prioritizationFields;
+    const steps = state.prioritizationSteps[strategy] || [];
+    const rank = (name) => STEP_PRIORITIES.indexOf(name);
+    const rerender = () => renderStrategySteps(strategy);
+    const table = (list) => {
+      const box = node('div', undefined, 'nq-priority-steps-list');
+      const grid = node('table', undefined, 'nq-failure-table nq-priority-steps-table');
+      const names = ['priority', 'move', 'mode', 'type', 'area', 'condition', 'operators', 'queue'];
+      const columns = node('colgroup');
+      columns.append(...names.map((name) => node('col', undefined, `nq-step-col-${name}`)));
+      const head = node('tr');
+      head.append(...['Priority', '', 'NR Mode', 'Call Type', 'Area', 'Condition', 'Operators', 'Queue'].map((text) => node('th', text)));
+      const body = node('tbody');
+      // The steps by Priority, then by number: the steps of one Priority are grouped under it, in the order they are tried.
+      const rows = steps.filter((step) => step.list === list).map((step) => ({step, chosen: strategySteps[strategy][step.id]}));
+      const byId = new Map(rows.map((item) => [item.step.id, item]));
+      const sorted = () => [...rows].sort((a, b) => rank(a.chosen.priority) - rank(b.chosen.priority) || a.chosen.number - b.chosen.number);
+      const ordered = sorted();
+      // The order of the rows is the order of the steps: they take their numbers from it.
+      const renumber = (items) => items.forEach((item, index) => { item.chosen.number = index + 1; });
+      // A step moved before or after another takes its Priority and its place; moved onto a Priority without steps, that
+      // Priority after the steps of the Priorities before it.
+      const place = (moved, target, after, priority) => {
+        const items = ordered.filter((item) => item !== moved);
+        if (target) {
+          items.splice(items.indexOf(target) + (after ? 1 : 0), 0, moved);
+          moved.chosen.priority = target.chosen.priority;
+        } else {
+          moved.chosen.priority = priority;
+          const index = items.findIndex((item) => rank(item.chosen.priority) > rank(priority));
+          items.splice(index === -1 ? items.length : index, 0, moved);
+        }
+        renumber(items);
+        rerender();
+      };
+      let dragging = null;
+      const clearMarks = () => body.querySelectorAll('.is-drop-before, .is-drop-after, .is-drop-into')
+        .forEach((element) => element.classList.remove('is-drop-before', 'is-drop-after', 'is-drop-into'));
+      // Where a dragged step would go: before or after the row under the pointer, at the end of the group whose Priority
+      // is under it, or onto a Priority without steps.
+      const dropTarget = (event) => {
+        const groupCell = event.target.closest('td.nq-priority-step-group');
+        const row = event.target.closest('tr');
+        if (!row || !body.contains(row)) return null;
+        if (row.dataset.empty) return {mark: row, priority: row.dataset.priority};
+        if (groupCell) {
+          const group = ordered.filter((item) => item.chosen.priority === groupCell.dataset.priority);
+          return {mark: groupCell, target: group[group.length - 1], after: true};
+        }
+        const {top, height} = row.getBoundingClientRect();
+        const after = event.clientY > top + height / 2;
+        return {mark: row, className: after ? 'is-drop-after' : 'is-drop-before', target: byId.get(row.dataset.step), after};
+      };
+      body.addEventListener('dragover', (event) => {
+        const found = dragging && dropTarget(event);
+        if (!found) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'move';
+        clearMarks();
+        found.mark.classList.add(found.className || 'is-drop-into');
+      });
+      body.addEventListener('dragleave', (event) => {
+        if (!body.contains(event.relatedTarget)) clearMarks();
+      });
+      body.addEventListener('drop', (event) => {
+        const found = dragging && dropTarget(event);
+        if (!found) return;
+        event.preventDefault();
+        const moved = dragging;
+        dragging = null;
+        clearMarks();
+        if (found.target !== moved) place(moved, found.target, found.after, found.priority);
+      });
+      STEP_PRIORITIES.forEach((name) => {
+        const group = ordered.filter((item) => item.chosen.priority === name);
+        // A Priority without steps takes a dragged step.
+        if (!group.length) {
+          const empty = node('tr', undefined, 'nq-priority-step-empty');
+          Object.assign(empty.dataset, {empty: 'true', priority: name});
+          const hint = node('td', `Drop a step here to give it ${name}`);
+          hint.colSpan = names.length - 1;
+          empty.append(node('td', name, 'nq-priority-step-group'), hint);
+          body.append(empty);
+          return;
+        }
+        group.forEach((item, index) => {
+          const {step, chosen} = item;
+          const row = node('tr');
+          row.dataset.step = step.id;
+          const rule = `${list === 'campaign' ? 'Campaign' : 'Final'} ${chosen.number}`;
+          // The Priority of a group moves every step of it.
+          if (!index) {
+            const cell = node('td', undefined, 'nq-priority-step-group');
+            cell.rowSpan = group.length;
+            cell.dataset.priority = name;
+            const priority = selectOf('nq-priority-step-priority', `Priority of the steps of ${name}`, STEP_PRIORITIES.map((value) => [value, value]), name);
+            priority.addEventListener('change', () => {
+              group.forEach((member) => { member.chosen.priority = priority.value; });
+              renumber(sorted());
+              rerender();
+            });
+            cell.append(priority);
+            row.classList.add('is-group-start');
+            row.append(cell);
+          }
+          // The handle moves the step: dragged, or one row up or down with the arrow keys (into the next Priority at its
+          // edge).
+          const move = node('td', undefined, 'nq-priority-step-move');
+          const handle = node('button', '⠿', 'nq-priority-step-handle');
+          handle.type = 'button';
+          handle.title = 'Drag to move this step, or use the arrow keys';
+          handle.setAttribute('aria-label', `Move ${rule}: drag it, or use the arrow keys`);
+          handle.addEventListener('pointerdown', () => {
+            row.draggable = true;
+            document.addEventListener('pointerup', () => { if (!dragging) row.draggable = false; }, {once: true});
+          });
+          handle.addEventListener('keydown', (event) => {
+            if (!['ArrowUp', 'ArrowDown'].includes(event.key)) return;
+            event.preventDefault();
+            const up = event.key === 'ArrowUp';
+            const neighbour = ordered[ordered.indexOf(item) + (up ? -1 : 1)];
+            if (!neighbour) return;
+            focusedStep = step.id;
+            const sameGroup = neighbour.chosen.priority === chosen.priority;
+            place(item, neighbour, sameGroup ? !up : up);
+          });
+          move.append(handle);
+          row.addEventListener('dragstart', (event) => {
+            if (!row.draggable) return;
+            dragging = item;
+            event.dataTransfer.effectAllowed = 'move';
+            event.dataTransfer.setData('text/plain', step.id);
+            row.classList.add('is-dragging');
+            // The Priorities without steps show once the drag has started.
+            setTimeout(() => grid.classList.add('is-dragging'));
+          });
+          row.addEventListener('dragend', () => {
+            dragging = null;
+            row.draggable = false;
+            row.classList.remove('is-dragging');
+            grid.classList.remove('is-dragging');
+            clearMarks();
+          });
+          const mode = node('td');
+          const nrMode = selectOf('nq-priority-step-mode', `NR Mode of ${rule}`, Object.entries(fields.nr_modes || {}), chosen.nr_mode);
+          nrMode.addEventListener('change', () => { chosen.nr_mode = nrMode.value; });
+          mode.append(nrMode);
+          // A new Call Type keeps the conditions it can take (Every call when none is left).
+          const type = node('td');
+          const callType = selectOf('nq-priority-step-type', `Call Type of ${rule}`, Object.entries(fields.call_types || {}), chosen.call_type);
+          callType.addEventListener('change', () => {
+            chosen.call_type = callType.value;
+            const allowed = stepConditions(list, chosen.call_type).map(([key]) => key);
+            chosen.conditions = chosen.conditions.filter((key) => allowed.includes(key));
+            if (!chosen.conditions.length) chosen.conditions = [EVERY_CALL];
+            rerender();
+          });
+          type.append(callType);
+          // Where the calls failed: Connecting Roads and highways, else Cities (from their environment).
+          const area = node('td');
+          const areaSelect = selectOf('nq-priority-step-area', `Area of ${rule}`, Object.entries(fields.areas || {}), chosen.area);
+          areaSelect.addEventListener('change', () => { chosen.area = areaSelect.value; });
+          area.append(areaSelect);
+          // The conditions, chosen one by one: a call meets the step when it meets any of them.
+          const condition = node('td', undefined, 'nq-priority-step-conditions-cell');
+          condition.append(aloneFirstSelect('nq-priority-step-conditions', `Condition of ${rule}`, stepConditions(list, chosen.call_type),
+            chosen.conditions, 'Every call', (conditions) => { chosen.conditions = conditions.length ? conditions : [EVERY_CALL]; }));
+          const operators = node('td', undefined, 'nq-priority-step-operators-cell');
+          operators.append(stepOperators(chosen, rule));
+          // The queue as a tag of its colour; Tracked: the calls of the step stay out of the queues.
+          const queue = node('td', undefined, 'nq-priority-step-queue');
+          const queueSelect = selectOf('nq-priority-step-queue-select', `Queue of ${rule}`, Object.entries(fields.queues || {}), chosen.queue);
+          const paint = () => {
+            queueSelect.className = `nq-priority-step-queue-select is-${(fields.queues[chosen.queue] || 'Tracked').toLowerCase()}`;
+          };
+          queueSelect.addEventListener('change', () => {
+            chosen.queue = queueSelect.value;
+            paint();
+          });
+          paint();
+          queue.append(queueSelect);
+          row.append(move, mode, type, area, condition, operators, queue);
+          body.append(row);
+        });
+      });
+      const thead = node('thead');
+      thead.append(head);
+      grid.append(columns, thead, body);
+      // The switch between the two lists, above the table.
+      const listHead = node('div', undefined, 'nq-priority-steps-head');
+      const switcher = node('span', undefined, 'nq-rate-tabs');
+      switcher.setAttribute('role', 'tablist');
+      switcher.setAttribute('aria-label', 'List of steps');
+      switcher.append(...Object.entries(STEP_LISTS).map(([key, [label, text]]) => {
+        const button = node('button', label, `nq-rate-tab${key === list ? ' is-active' : ''}`);
+        button.type = 'button';
+        button.title = text;
+        button.setAttribute('role', 'tab');
+        button.setAttribute('aria-selected', String(key === list));
+        button.addEventListener('click', () => {
+          if (stepList === key) return;
+          stepList = key;
+          rerender();
+        });
+        return button;
+      }));
+      listHead.append(switcher, node('strong', STEP_LISTS[list][1]));
+      box.append(listHead, grid);
+      return box;
+    };
+    $('nq-priority-steps').replaceChildren(table(stepList));
+    // The conditions and operators get the checkbox list of every multi-select of the page.
+    if (typeof globalThis.setupCustomMultiSelects === 'function') globalThis.setupCustomMultiSelects();
+    if (focusedStep) {
+      $('nq-priority-steps').querySelector(`tr[data-step="${focusedStep}"] .nq-priority-step-handle`)?.focus();
+      focusedStep = '';
+    }
+  };
+  const showStrategy = (strategy) => {
+    const custom = strategy === 'custom';
+    priorityDialog.querySelectorAll('[data-nq-strategy-only]').forEach((element) => { element.hidden = custom; });
+    $('nq-priority-custom').hidden = !custom;
+    $('nq-priority-add').hidden = !custom;
+    if (!custom) renderStrategySteps(strategy);
+  };
   const fillPriorityDialog = (settings) => {
+    const select = $('nq-priority-strategy');
+    select.replaceChildren(...Object.entries(state.prioritizationStrategies).map(([key, label]) => {
+      const option = node('option', label);
+      option.value = key;
+      return option;
+    }));
+    select.value = settings.strategy || 'cities_first';
+    strategySteps = JSON.parse(JSON.stringify(settings.steps || state.defaultPrioritization.steps || {}));
+    stepList = 'campaign';
     Object.entries(PRIORITY_INPUTS).forEach(([key, id]) => { $(id).value = settings[key]; });
     $('nq-priority-fill').checked = Boolean(settings.fill_priority);
     $('nq-priority-rules').replaceChildren(...settings.rules.map((rule) => priorityRuleBlock(rule)));
+    showStrategy(select.value);
   };
   let priorityDefaults = false;
   if (priorityDialog) {
@@ -5939,6 +6255,7 @@
       priorityDialog.showModal();
     }));
     $('nq-priority-cancel').addEventListener('click', () => priorityDialog.close());
+    $('nq-priority-strategy').addEventListener('change', (event) => showStrategy(event.target.value));
     $('nq-priority-add').addEventListener('click', () => {
       const block = priorityRuleBlock();
       $('nq-priority-rules').append(block);
@@ -5948,7 +6265,7 @@
       fillPriorityDialog(state.defaultPrioritization);
       priorityDefaults = true;
       $('nq-priority-error').style.color = 'var(--nq-muted)';
-      $('nq-priority-error').textContent = 'The default rules and levels are shown: review them and Save.';
+      $('nq-priority-error').textContent = 'The default strategy, rules and levels are shown: review them and Save.';
     });
     $('nq-priority-form').addEventListener('submit', async (event) => {
       event.preventDefault();
@@ -5956,13 +6273,15 @@
       save.disabled = true;
       try {
         const settings = {...Object.fromEntries(Object.entries(PRIORITY_INPUTS).map(([key, id]) => [key, Number($(id).value)])),
-          fill_priority: $('nq-priority-fill').checked, rules: collectPriorityRules()};
+          strategy: $('nq-priority-strategy').value, steps: strategySteps, fill_priority: $('nq-priority-fill').checked,
+          rules: collectPriorityRules()};
         if (settings.rules.some((rule) => !rule.name)) throw new Error('Give every rule a name.');
         const result = await api('/api/non-qualified-calls/prioritization/settings', {method: 'PUT', body: JSON.stringify({settings, defaults: priorityDefaults})});
         state.prioritization = result.settings;
         priorityKey = '';
         priorityDialog.close();
-        toast('Prioritization Rules saved: the calls follow them.');
+        toast(settings.strategy === 'custom' ? 'Prioritization Rules saved: the calls follow them.'
+          : `${state.prioritizationStrategies[settings.strategy]} saved: the calls follow it.`);
         await loadState();
         if (state.detail) openDetail(state.detail.call.call_key, {keepTab: true});
       } catch (error) {

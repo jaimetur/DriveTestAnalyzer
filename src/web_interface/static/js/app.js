@@ -5886,6 +5886,9 @@ function setupCustomMultiSelects() {
         // The ticked values are left out.
         triggerLabel.textContent = selectedOptions.length === 1 ? `All except ${selectedOptions[0]}`
           : selectedOptions.length === totalEnabled ? 'All excluded' : `${selectedOptions.length}/${totalEnabled} excluded`;
+      } else if (select.dataset.multiselectJoiner) {
+        // A select that shows every value chosen, joined (High impact & Repeated).
+        triggerLabel.textContent = selectedOptions.join(select.dataset.multiselectJoiner);
       } else if (dynamicAll && selectedOptions.length === totalEnabled) {
         triggerLabel.textContent = 'All values';
       } else if (selectedOptions.length === 1) {
