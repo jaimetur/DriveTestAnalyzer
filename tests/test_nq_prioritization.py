@@ -111,6 +111,48 @@ def test_settings_are_validated():
         'cities_first']['campaign-1']['operators'] == ['@focused']
 
 
+def test_the_steps_take_the_focus_operators_by_name_the_sa_steps_those_with_sa():
+    # An operator uses SA when at least 10 % of its calls of the SA campaigns ran on NR SA (Three drives them on LTE).
+    rows = [('VF', 'NR SA', 40), ('Vodafone UK', 'LTE', 60), ('Three', 'LTE', 95), ('Three', 'NR SA', 3), ('Three UK', 'EN-DC', 2),
+            ('O2', 'NE-DC', 30), ('O2', 'LTE', 70)]
+    aliases = {'vf': {'vf', 'vodafone uk'}, 'vodafone uk': {'vf', 'vodafone uk'}, 'three': {'three', 'three uk'}, 'three uk': {'three', 'three uk'}}
+    assert nq_prioritization.operators_with_sa(rows, aliases) == {'vf', 'vodafone uk', 'o2'}
+    assert nq_prioritization.operators_with_sa([('VF', ''), ('Three', None)]) is None
+
+    class Repository:
+        def __init__(self, groups, calls):
+            self.groups, self.calls = groups, calls
+
+        def list_operator_mapping_groups(self):
+            return self.groups
+
+        def connection(self):
+            import contextlib
+            import sqlite3
+            connection = sqlite3.connect(':memory:')
+            connection.execute('CREATE TABLE nq_call_latest (operator TEXT, technology TEXT, nr_mode TEXT)')
+            connection.executemany('INSERT INTO nq_call_latest VALUES (?, ?, ?)', self.calls)
+            return contextlib.closing(connection)
+    groups = [{'canonical': 'VF', 'aliases': ['Vodafone UK'], 'role': 'focus'}, {'canonical': 'VF SM', 'aliases': [], 'role': 'focus'},
+              {'canonical': 'Three', 'aliases': ['Three UK'], 'role': 'focus'}, {'canonical': 'EE', 'aliases': [], 'role': ''}]
+    calls = [('VF', 'NR SA', 'SA'), ('Vodafone UK', 'LTE', 'SA'), ('Three', 'LTE', 'SA'), ('Three UK', 'EN-DC', 'SA'), ('VF', 'LTE', 'NSA'),
+             ('Three', 'LTE', 'NSA'), ('EE', 'NR SA', 'SA')]
+    # VF SM has no call: the NSA and tracked steps take VF and Three, the SA steps VF.
+    operators = nq_prioritization.default_step_operators(Repository(groups, calls))
+    assert operators == {'SA': ['VF'], 'NSA': ['VF', 'Three'], 'any': ['VF', 'Three']}
+    steps = nq_prioritization.normalize_settings({}, operators=operators)['steps']
+    for strategy in ('cities_first', 'roads_first'):
+        assert {key: step['operators'] for key, step in steps[strategy].items() if key in {'campaign-1', 'campaign-5', 'campaign-tracked', 'final-4', 'final-7'}} == {
+            'campaign-1': ['VF'], 'campaign-5': ['VF', 'Three'], 'campaign-tracked': ['VF', 'Three'], 'final-4': ['VF'], 'final-7': ['VF', 'Three']}
+    # A Three call of an SA campaign takes its NSA step, as the SA steps take VF only.
+    takes = lambda chosen, operator: operator in chosen
+    decided = nq_prioritization.strategy_decision('cities_first', strategy_call(operator='Three'),
+                                                  nq_prioritization.strategy_steps('cities_first', steps['cities_first']), takes)
+    assert decided[1:5] == ('Campaign 6 · NSA Voice', 'P6', 'Voice', 6)
+    # Without Focus operators, Focused Operators (every operator).
+    assert nq_prioritization.default_step_operators(Repository([], calls))['SA'] == ['@focused']
+
+
 def test_the_operators_of_a_step_take_the_names_of_their_labels_and_the_focus_operators(client):
     takes = nq_prioritization.operator_takes(core.repository)
     assert takes(['VF'], 'VF') and takes(['vf'], 'VF') and not takes(['VF'], 'Three') and not takes([], 'VF')

@@ -7150,7 +7150,8 @@ def _merge_configuration(task_repository: Any, document: dict[str, Any]) -> None
     if isinstance(document.get('prioritization'), dict):
         # The Prioritization settings of the package replace those of the workspace (applied at the next calculation).
         task_repository.set_workspace_state(nq_prioritization.SETTINGS_STATE_KEY, json.dumps(
-            nq_prioritization.normalize_settings(document['prioritization']), ensure_ascii=False))
+            nq_prioritization.normalize_settings(document['prioritization'], operators=nq_prioritization.default_step_operators(task_repository)),
+            ensure_ascii=False))
     if isinstance(document.get('status_rules'), list):
         try:
             rules = nq_catalog.normalize_status_rules(document['status_rules'], [item['name'] for item in list_options(task_repository)['statuses']],
@@ -7705,6 +7706,8 @@ def install_non_qualified_calls_routes(core: Any) -> None:
             start_nq_index(repository, core.submit_background_task)
             sync = nq_index_status(repository)
         layouts = table_layouts(repository, user.username)
+        # The operators the steps of the strategies take by default: the Focus operators by name (the SA steps those with SA).
+        step_operators = nq_prioritization.default_step_operators(repository)
         return JSONResponse({
             'sync': sync, 'options': list_options(repository), 'filter_options': filter_options(repository, layouts['effective']),
             'datasets': indexed_datasets(repository), 'users': workspace_users(), 'user_names': user_names(),
@@ -7732,7 +7735,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
             'version_labels': VERSION_LABELS,
             'priority_refs': nq_catalog.PRIORITY_REFS, 'priority_types': nq_catalog.PRIORITY_TYPES,
             'prioritization': nq_prioritization.load_settings(repository),
-            'default_prioritization': nq_prioritization.default_settings(), 'prioritization_criteria': nq_prioritization.CRITERIA,
+            'default_prioritization': nq_prioritization.default_settings(step_operators), 'prioritization_criteria': nq_prioritization.CRITERIA,
             'prioritization_strategies': nq_prioritization.STRATEGIES,
             'focus_operators': labels_with_role(repository, FOCUS),
             'prioritization_operators': nq_prioritization.operator_choices(repository),
@@ -7741,7 +7744,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
                                       'conditions': {nq_prioritization.CAMPAIGN_LIST: nq_prioritization.CAMPAIGN_CONDITIONS,
                                                      nq_prioritization.FINAL_LIST: nq_prioritization.FINAL_CONDITIONS},
                                       'queues': nq_prioritization.STEP_QUEUES},
-            'prioritization_steps': {key: nq_prioritization.strategy_steps(key) for key in nq_prioritization.STRATEGIES
+            'prioritization_steps': {key: nq_prioritization.strategy_steps(key, None, step_operators) for key in nq_prioritization.STRATEGIES
                                      if key != nq_prioritization.CUSTOM},
             'priority_options': nq_prioritization.priority_options(repository),
         })
@@ -7811,7 +7814,8 @@ def install_non_qualified_calls_routes(core: Any) -> None:
     @core.app.get('/api/non-qualified-calls/prioritization/settings')
     def nq_prioritization_settings(user=Depends(core.current_user)) -> JSONResponse:
         repository = workspace_repository(user)
-        return JSONResponse({'settings': nq_prioritization.load_settings(repository), 'defaults': nq_prioritization.default_settings(),
+        return JSONResponse({'settings': nq_prioritization.load_settings(repository),
+                             'defaults': nq_prioritization.default_settings(nq_prioritization.default_step_operators(repository)),
                              'criteria': nq_prioritization.CRITERIA, 'strategies': nq_prioritization.STRATEGIES,
                              'priority_options': nq_prioritization.priority_options(repository)})
 

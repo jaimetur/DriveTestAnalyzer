@@ -67,7 +67,7 @@ FINGERPRINT_STATE_KEY = 'nq_prioritization_fingerprint'
 FAILED_STATE_KEY = 'nq_prioritization_failed'
 SUMMARY_STATE_KEY = 'nq_prioritization_summary'
 # Bumped when the calculation changes: every value is calculated again.
-IMPACT_VERSION = 4
+IMPACT_VERSION = 5
 # The scoring of every campaign is split by campaign and operator, as the points of the scoring are national.
 LEVELS = ('Campaign', 'Operator')
 SERVICES = ('voice', 'speech', 'data')
@@ -141,9 +141,14 @@ CONDITION_TAKES = {
 }
 STEP_QUEUES = {VOICE_QUEUE: 'Voice', DATA_QUEUE: 'Data', '': 'Tracked'}
 MAX_STEP_NUMBER = 20
-# The operators of a step that stand for the Focus operators of the Operator Maps.
+# The operators of a step that stand for the Focus operators of the Operator Maps (alone). By default the steps take the
+# Focus operators by name: the SA steps those that use SA, the others those with calls. An operator uses SA when at least
+# SA_SHARE of its Non-Qualified Calls of the SA campaigns ran on NR SA (an operator without SA, such as Three, drives them
+# on LTE and EN-DC).
 FOCUSED_OPERATORS = '@focused'
 FOCUSED_LABEL = 'Focused Operators'
+SA_TECHNOLOGY = re.compile(r'(?<![A-Z])SA(?![A-Z])|NE-DC', re.IGNORECASE)
+SA_SHARE = 0.10
 
 SCHEMA = f"""
 CREATE TABLE IF NOT EXISTS {PRIORITY_TABLE} (
@@ -217,8 +222,9 @@ def default_rules() -> list[dict[str, Any]]:
             rule('NSA Data', ['data'], 'NSA', 'repeated_or_high', 'P4')]
 
 
-def default_settings() -> dict[str, Any]:
-    return {'strategy': DEFAULT_STRATEGY, 'steps': default_steps(), 'high_share': 50,
+def default_settings(operators: dict[str, list[str]] | None = None) -> dict[str, Any]:
+    """The default settings; ``operators`` gives the operators of the steps by NR Mode (``default_step_operators``)."""
+    return {'strategy': DEFAULT_STRATEGY, 'steps': default_steps(operators), 'high_share': 50,
             'medium_share': 80, 'min_calls': 2, 'previous_quarters': 1, 'spot_meters': 100, 'capacity': 20,
             'fill_priority': True, 'rules': default_rules()}
 
@@ -254,10 +260,11 @@ def _values(items: Any, allowed: Iterable[str] | None = None) -> list[str]:
     return list(values.values())[:MAX_RULE_VALUES]
 
 
-def normalize_settings(value: Any, *, strict: bool = False) -> dict[str, Any]:
-    """Valid settings (the defaults for what is missing); ``strict`` refuses invalid values instead of fixing them."""
+def normalize_settings(value: Any, *, strict: bool = False, operators: dict[str, list[str]] | None = None) -> dict[str, Any]:
+    """Valid settings (the defaults for what is missing, the operators of the steps from ``operators``); ``strict`` refuses
+    invalid values instead of fixing them."""
     value = value if isinstance(value, dict) else {}
-    defaults = default_settings()
+    defaults = default_settings(operators)
     high = _whole(value.get('high_share', defaults['high_share']), defaults['high_share'], 5, 95, 'The High share', strict)
     medium = _whole(value.get('medium_share', defaults['medium_share']), defaults['medium_share'], 5, 100,
                     'The Medium share', strict)
@@ -306,7 +313,7 @@ def normalize_settings(value: Any, *, strict: bool = False) -> dict[str, Any]:
             raise ValueError('Choose the strategy of the NQ Prioritization.')
         strategy = DEFAULT_STRATEGY
     return {
-        'strategy': strategy, 'steps': normalize_steps(value.get('steps'), strict),
+        'strategy': strategy, 'steps': normalize_steps(value.get('steps'), strict, operators),
         'high_share': high, 'medium_share': medium,
         'min_calls': _whole(value.get('min_calls', defaults['min_calls']), defaults['min_calls'], 2, 50,
                             'The calls of a repeated issue', strict),
@@ -326,7 +333,8 @@ def load_settings(repository: Any) -> dict[str, Any]:
         stored = json.loads(repository.get_workspace_state(SETTINGS_STATE_KEY) or 'null')
     except (TypeError, ValueError):
         stored = None
-    return normalize_settings(stored) if isinstance(stored, dict) else default_settings()
+    operators = default_step_operators(repository)
+    return normalize_settings(stored, operators=operators) if isinstance(stored, dict) else default_settings(operators)
 
 
 def priority_options(repository: Any) -> list[str]:
@@ -350,7 +358,7 @@ def rule_names(repository: Any) -> list[str]:
 def save_settings(repository: Any, payload: Any, username: str) -> dict[str, Any]:
     """Save the settings and apply the rules again at once; the impact and the repetitions are calculated again in the
     background when their settings change."""
-    settings = normalize_settings(payload, strict=True)
+    settings = normalize_settings(payload, strict=True, operators=default_step_operators(repository))
     options = {name.casefold(): name for name in priority_options(repository)}
     for rule in settings['rules']:
         for key in ('priority', 'track_priority'):
@@ -536,7 +544,8 @@ def _current_step(chosen: dict[str, Any]) -> dict[str, Any]:
     return {**chosen, 'call_type': call_type, 'area': chosen.get('area') or area}
 
 
-def strategy_steps(strategy: str, configured: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+def strategy_steps(strategy: str, configured: dict[str, Any] | None = None,
+                   operators: dict[str, list[str]] | None = None) -> list[dict[str, Any]]:
     """The steps of the two lists of a strategy, in the order of their rows: key, list, number, Priority, NR Mode, call
     type, area, condition, queue and operators, as the admins chose them in ``configured`` (the steps of that strategy in the
     settings), else by default (Focused Operators), with their label, the value of the Prioritization Rule field and what
@@ -549,7 +558,7 @@ def strategy_steps(strategy: str, configured: dict[str, Any] | None = None) -> l
             chosen = _current_step(configured[key]) if isinstance(configured.get(key), dict) else {}
             step = {'id': key, 'list': list_name, 'number': index, 'priority': priority, 'nr_mode': nr_mode, 'call_type': call_type,
                     'area': area, 'conditions': list(conditions), 'joins': joins_of(list(conditions)), 'queue': queue,
-                    'operators': [FOCUSED_OPERATORS]}
+                    'operators': list((operators or {}).get(nr_mode) or [FOCUSED_OPERATORS])}
             step['default'] = {name: step[name] for name in ('number', 'priority', 'nr_mode', 'call_type', 'area', 'conditions', 'joins',
                                                              'queue')}
             for name, allowed in (('priority', STRATEGY_PRIORITY_NAMES), ('nr_mode', STEP_NR_MODES), ('call_type', CALL_TYPES),
@@ -595,19 +604,20 @@ def step_field_text(step: dict[str, Any], key: str) -> str:
             'queue': lambda: STEP_QUEUES[value]}.get(key, lambda: str(value))()
 
 
-def default_steps() -> dict[str, dict[str, dict[str, Any]]]:
-    """Every field of every step of the Dual Queue strategies by default."""
+def default_steps(operators: dict[str, list[str]] | None = None) -> dict[str, dict[str, dict[str, Any]]]:
+    """Every field of every step of the Dual Queue strategies by default (the operators by NR Mode from ``operators``,
+    else Focused Operators)."""
     return {strategy: {step['id']: {name: step[name] for name in ('number', 'priority', 'nr_mode', 'call_type', 'area',
                                                                   'conditions', 'joins', 'queue', 'operators')}
-                       for step in strategy_steps(strategy)} for strategy in (CITIES_FIRST, ROADS_FIRST)}
+                       for step in strategy_steps(strategy, None, operators)} for strategy in (CITIES_FIRST, ROADS_FIRST)}
 
 
-def normalize_steps(value: Any, strict: bool = False) -> dict[str, dict[str, dict[str, Any]]]:
+def normalize_steps(value: Any, strict: bool = False, operators: dict[str, list[str]] | None = None) -> dict[str, dict[str, dict[str, Any]]]:
     """Every field of every step of the Dual Queue strategies: its number (1 to 20), Priority (P1 to P8), NR Mode, call
     type, area, condition (of its list), queue and operators (operator names, or Focused Operators alone); ``strict`` refuses
     an invalid value instead of keeping the default one."""
     value = value if isinstance(value, dict) else {}
-    steps = default_steps()
+    steps = default_steps(operators)
     for strategy, defaults in steps.items():
         given = value.get(strategy) if isinstance(value.get(strategy), dict) else {}
         for key, step in defaults.items():
@@ -1433,13 +1443,8 @@ def calculate(repository: Any, progress: Callable[[int, int, str], None] | None 
     return summary
 
 
-def operator_takes(repository: Any) -> Callable[[list[str], str], bool]:
-    """Whether the operators of a step take an operator: the operators chosen (with every name of the CDRs each label of
-    the Operator Maps stands for) and, with Focused Operators, the Focus operators of the Operator Maps (every operator
-    when the workspace has none)."""
-    from src.modules.operator_roles import FOCUS, names_with_role
-
-    focus = {name.casefold() for name in names_with_role(repository, FOCUS)}
+def _operator_aliases(repository: Any) -> dict[str, set[str]]:
+    """Every name (casefolded) of the Operator Maps with every name of its label."""
     try:
         groups = repository.list_operator_mapping_groups()
     except Exception:  # noqa: BLE001 - without Operator Maps, a label only stands for itself.
@@ -1450,6 +1455,67 @@ def operator_takes(repository: Any) -> Callable[[list[str], str], bool]:
         names.discard('')
         for name in names:
             aliases.setdefault(name, set()).update(names)
+    return aliases
+
+
+def operators_with_sa(rows: Iterable[tuple[Any, ...]], aliases: dict[str, set[str]] | None = None,
+                      share: float = SA_SHARE) -> set[str] | None:
+    """The names (casefolded, with every name of their label) of the operators that use SA, from the (operator,
+    technology[, calls]) of the Non-Qualified Calls of the SA campaigns: at least ``share`` of the calls of the label ran on
+    NR SA (NR SA, NE-DC). None when no call gives its technology (every operator then counts)."""
+    aliases = aliases or {}
+    counts: dict[frozenset[str], list[int]] = {}
+    known = False
+    for operator, technology, *calls in rows:
+        name = str(operator or '').strip().casefold()
+        if not name:
+            continue
+        text = str(technology or '').strip()
+        known = known or bool(text)
+        weight = int(calls[0]) if calls else 1
+        item = counts.setdefault(frozenset(aliases.get(name, {name})), [0, 0])
+        item[0] += weight
+        item[1] += weight if SA_TECHNOLOGY.search(text) else 0
+    if not known:
+        return None
+    return {name for names, (total, sa) in counts.items() if sa >= share * total for name in names}
+
+
+def default_step_operators(repository: Any) -> dict[str, list[str]]:
+    """The operators each step takes by default, by its NR Mode, by name: the NSA and tracked steps the Focus operators of
+    the Operator Maps with Non-Qualified Calls (VF & Three), the SA steps those of them that use SA (VF). Focused Operators
+    when the workspace has no Focus operator."""
+    from src.modules import non_qualified_calls as nq
+    from src.modules.operator_roles import FOCUS, labels_with_role
+
+    labels = labels_with_role(repository, FOCUS)
+    if not labels:
+        return {mode: [FOCUSED_OPERATORS] for mode in STEP_NR_MODES}
+    aliases = _operator_aliases(repository)
+    with repository.connection() as connection:
+        try:
+            rows = connection.execute(f'SELECT operator, technology, nr_mode, COUNT(*) FROM {nq.NQ_CALL_LATEST_TABLE} '
+                                      'GROUP BY operator, technology, nr_mode').fetchall()
+        except Exception:  # noqa: BLE001 - before the calls are indexed.
+            rows = []
+
+    def names(label: str) -> set[str]:
+        return aliases.get(label.casefold(), {label.casefold()})
+    present = {str(row[0] or '').strip().casefold() for row in rows}
+    called = [label for label in labels if names(label) & present] or labels
+    with_sa = operators_with_sa([(row[0], row[1], row[3]) for row in rows if str(row[2] or '').upper() == 'SA'], aliases)
+    sa = called if with_sa is None else [label for label in called if names(label) & with_sa]
+    return {'SA': sa, 'NSA': called, 'any': called}
+
+
+def operator_takes(repository: Any) -> Callable[[list[str], str], bool]:
+    """Whether the operators of a step take an operator: the operators chosen (with every name of the CDRs each label of
+    the Operator Maps stands for) and, with Focused Operators, the Focus operators of the Operator Maps (every operator
+    when the workspace has none)."""
+    from src.modules.operator_roles import FOCUS, names_with_role
+
+    focus = {name.casefold() for name in names_with_role(repository, FOCUS)}
+    aliases = _operator_aliases(repository)
     cache: dict[tuple[str, ...], set[str] | None] = {}
 
     def takes(operators: list[str], operator: str) -> bool:
