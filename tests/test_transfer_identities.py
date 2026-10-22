@@ -508,3 +508,68 @@ def test_ppt_templates_tell_what_their_import_changed_like_the_other_elements(cl
     assert section['items'] == [{'name': 'Daily (NSA)', 'changes': ['Content', 'Creator: (empty) → super']}]
     assert bytes(destination_repo.report_template_content('nsa', 'Local')) == b'local'
     assert _transfer('ppt-templates', source, destination, tmp_path) == 'Imported 2 PPT Templates into 1 workspace: 2 unchanged.'
+
+
+def test_importing_the_same_map_areas_and_nq_layouts_again_changes_nothing(client, tmp_path, monkeypatch):
+    from src.modules import map_areas, non_qualified_calls
+    from src.modules.import_changes import describe_changes
+
+    workspace = core.active_workspace
+    map_areas.save_layer(core.repository, country_code='GBR', level='region', level_label='Region', origin='Imported',
+                         source='', license_text='', attribution='', boundaries={'London': [[[0, 0], [0, 1], [1, 1], [0, 0]]]},
+                         username='super')
+    non_qualified_calls.ensure_nq_tables(core.repository)
+    non_qualified_calls._store_user_layout(core.repository, 'super', None, 'workspace')
+    for kind in ('mappings-reference-data', 'nq-calls-configuration'):
+        package = tmp_path / f'{kind}.zip'
+        core.build_export_archive_file(kind, package, [workspace.id])
+        core._apply_import_archive(package, core.read_import_manifest(package), destination_workspace_ids=[workspace.id], importing_user='super')
+        # A later import saves the Map Areas and the layouts again with that time: still nothing changed.
+        monkeypatch.setattr(map_areas, '_now', lambda: '2099-01-01T00:00:00')
+        monkeypatch.setattr(non_qualified_calls, 'now_iso', lambda: '2099-01-01T00:00:00')
+        notice = core._apply_import_archive(package, core.read_import_manifest(package), destination_workspace_ids=[workspace.id],
+                                            importing_user='super')
+        assert 'unchanged' in notice and 'Updated' not in notice, notice
+    # The times inside the rows of a list are left out of the comparison; their values are not.
+    assert describe_changes({'rows': [{'name': 'A', 'updated_at': '1'}]}, {'rows': [{'name': 'A', 'updated_at': '2'}]}) == []
+    assert describe_changes({'rows': [{'name': 'A'}]}, {'rows': [{'name': 'B'}]})
+
+
+def test_the_preview_tells_what_an_import_would_do_and_only_the_chosen_packages_are_imported(client, tmp_path):
+    workspace = core.active_workspace
+    repository = core.repository
+    package = tmp_path / 'bundle.zip'
+    core.build_export_archive_file(['query-builder-queries', 'reporting-jobs'], package, [workspace.id])
+    manifest = core.read_import_manifest(package)
+    # After the export, a query is changed here and another one is deleted.
+    with repository.connection() as connection:
+        rows = connection.execute('SELECT id, name FROM saved_query_builder_queries ORDER BY id').fetchall()
+        connection.execute("UPDATE saved_query_builder_queries SET query_sql = 'SELECT 42' WHERE id = ?", (rows[0]['id'],))
+        connection.execute('DELETE FROM saved_query_builder_queries WHERE id = ?', (rows[1]['id'],))
+    preview = core.preview_import_archive(package, manifest, [workspace.id])
+    queries, jobs = preview['packages']
+    assert (queries['index'], queries['label'], jobs['label']) == (0, 'Query Builder Queries', 'Reporting Jobs')
+    assert '1 new, 1 updated' in queries['message'] and queries['message'].startswith('Imports ')
+    [section] = queries['sections']
+    assert section['title'].startswith('Updates Query Builder queries') and section['items'][0]['name'] == rows[0]['name']
+    # Nothing was imported by the preview.
+    with repository.connection() as connection:
+        assert connection.execute('SELECT query_sql FROM saved_query_builder_queries WHERE id = ?', (rows[0]['id'],)).fetchone()[0] == 'SELECT 42'
+    # Importing only the Reporting Jobs leaves the queries as they are.
+    notice = core._apply_import_archive(package, manifest, destination_workspace_ids=[workspace.id], importing_user='super',
+                                        selected_packages=[1])
+    [imported] = core.import_notice_details(notice)['packages']
+    assert 'Reporting Jobs' in imported and 'Query Builder' not in notice
+    with repository.connection() as connection:
+        assert connection.execute('SELECT query_sql FROM saved_query_builder_queries WHERE id = ?', (rows[0]['id'],)).fetchone()[0] == 'SELECT 42'
+    try:
+        core._apply_import_archive(package, manifest, destination_workspace_ids=[workspace.id], importing_user='super', selected_packages=[])
+    except ValueError as exc:
+        assert 'at least one package' in str(exc)
+    else:
+        raise AssertionError('A bundle with no package chosen was imported.')
+    # The preview window is the step before an Import ZIP and a received transfer.
+    script = (Path(__file__).parents[1] / 'src/web_interface/static/js/app.js').read_text(encoding='utf-8')
+    assert 'function showImportPreview(preview, options = {}) {' in script
+    assert "await fetch('/admin/import-export/import/preview', {" in script
+    assert "/preview/${chosen ? 'import' : 'reject'}" in script

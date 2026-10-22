@@ -7544,21 +7544,30 @@ document.querySelectorAll('[data-import-package-form]').forEach((form) => {
       if (loadingCopy) loadingCopy.textContent = 'Upload complete. Inspecting the package…';
       const warning = importWarningDetails(payload);
       hideLoadingOverlay();
-      const accepted = await showConfirmDialog(`${warning.message}\n\n${importPackageContents(payload)}`, {
-        title: warning.title,
-        confirmLabel: 'Import and overwrite',
-      });
-      if (!accepted) {
-        await fetch(`/admin/import-export/import/uploads/${encodeURIComponent(uploadId)}`, {
-          method: 'DELETE',
-          credentials: 'same-origin',
-        }).catch(() => {});
-        return;
-      }
       const destinationWorkspaceIds = payload.requires_destination_workspaces
         ? await selectAutoCalculatedFieldWorkspaces(payload.destination_workspaces, payload.kind, payload.selected_workspace_ids || [])
         : [];
       if (payload.requires_destination_workspaces && !destinationWorkspaceIds) {
+        await fetch(`/admin/import-export/import/uploads/${encodeURIComponent(uploadId)}`, {
+          method: 'DELETE', credentials: 'same-origin',
+        }).catch(() => {});
+        return;
+      }
+      // What the import would do in each package, before importing anything: the checked packages are imported.
+      showLoadingOverlay('Preparing the preview', 'Comparing the package with the data of this server; nothing is imported yet.');
+      const previewData = new FormData();
+      previewData.set('upload_id', uploadId);
+      destinationWorkspaceIds.forEach((workspaceId) => previewData.append('workspace_ids', workspaceId));
+      const previewResponse = await fetch('/admin/import-export/import/preview', {
+        method: 'POST', body: previewData, credentials: 'same-origin', headers: {Accept: 'application/json'},
+      });
+      const preview = await previewResponse.json().catch(() => ({}));
+      hideLoadingOverlay();
+      if (!previewResponse.ok) throw new Error(preview.detail || 'The preview of the package could not be prepared.');
+      const chosenPackages = await showImportPreview(preview, {
+        title: warning.title, intro: warning.message, confirmLabel: 'Import selected', cancelLabel: 'Cancel',
+      });
+      if (!chosenPackages) {
         await fetch(`/admin/import-export/import/uploads/${encodeURIComponent(uploadId)}`, {
           method: 'DELETE', credentials: 'same-origin',
         }).catch(() => {});
@@ -7570,6 +7579,7 @@ document.querySelectorAll('[data-import-package-form]').forEach((form) => {
       importData.set('upload_id', uploadId);
       importData.set('confirmed_import', 'true');
       destinationWorkspaceIds.forEach((workspaceId) => importData.append('workspace_ids', workspaceId));
+      chosenPackages.forEach((index) => importData.append('packages', String(index)));
       const importResponse = await fetch('/admin/import-export/import/jobs', {
         method: 'POST',
         body: importData,
@@ -8140,6 +8150,7 @@ document.querySelectorAll('[data-export-package-form]').forEach((form) => {
     let dialogShown = false;
     let blocking = false;
     let rejectedRequests = 0;
+    let reviewing = false;
     const closeDialog = () => {
       if (dialogShown) hideLoadingOverlay();
       dialogShown = false;
@@ -8201,6 +8212,27 @@ document.querySelectorAll('[data-export-package-form]').forEach((form) => {
         showInfoDialog(offer.error || 'The incoming transfer could not be completed.', {title: 'Incoming Transfer Error', tone: 'error'});
         return;
       }
+      if (offer.status === 'review' && offer.preview && !reviewing) {
+        // The package arrived: nothing is imported until the packages to import are chosen in its preview.
+        reviewing = true;
+        closeDialog();
+        const chosen = await showImportPreview(offer.preview, {
+          eyebrow: 'Incoming transfer preview', title: offer.content || 'Incoming server transfer',
+          intro: `${offer.source || 'The source server'} sent this package. Choose what to import, or reject the transfer.`,
+          confirmLabel: 'Import selected', cancelLabel: 'Reject transfer', reject: true,
+        });
+        const decision = await fetch(`/admin/import-export/transfers/offers/${encodeURIComponent(offerId)}/preview/${chosen ? 'import' : 'reject'}`, {
+          method: 'POST', credentials: 'same-origin',
+          headers: {Accept: 'application/json', 'Content-Type': 'application/json'},
+          body: JSON.stringify({packages: chosen || []}),
+        }).catch(() => null);
+        const result = decision ? await decision.json().catch(() => ({})) : {};
+        // (Another page may have answered first: the transfer then goes on as it was decided there.)
+        if (decision && !decision.ok && decision.status !== 409) showInfoDialog(result.detail || 'The decision could not be saved.', {title: 'Incoming server transfer', tone: 'error'});
+        reviewing = false;
+        window.setTimeout(() => { void poll(); }, 300);
+        return;
+      }
       const importing = offer.status === 'received' || offer.status === 'importing';
       if (importing && state.block) {
         if (!blocking) {
@@ -8234,6 +8266,7 @@ document.querySelectorAll('[data-export-package-form]').forEach((form) => {
             accepted: sourcePhases[offer.phase] || 'Waiting for the source server to start sending the package',
             receiving: 'Receiving the package from the source server',
             received: 'Package received. Starting the import',
+            review: 'Package received. Preparing the preview of what it would import',
             importing: `Importing the received package${offer.phase ? `: ${offer.phase}` : ''}`,
             cancelling: 'Cancelling the incoming transfer',
           };
@@ -8266,6 +8299,9 @@ document.querySelectorAll('[data-export-package-form]').forEach((form) => {
       const activeImport = (Array.isArray(payload.active_imports) ? payload.active_imports : [])
         .find((item) => item?.id && item.kind !== 'auto-calculated-fields');
       if (activeImport) followIncomingTransfer(String(activeImport.id), {block: true});
+      // A received transfer waits for a super-admin to confirm its preview, on whichever page is open.
+      const review = (Array.isArray(payload.reviews) ? payload.reviews : []).find((item) => item?.id);
+      if (review && !activeImport) followIncomingTransfer(String(review.id), {block: false});
       const offers = Array.isArray(payload.offers) ? payload.offers : [];
       const offer = offers.find((candidate) => String(candidate?.id || '') === String(preferredOfferId)) || offers[0] || null;
       if (!offer) { hidePendingOfferReminder(); return; }
@@ -8969,6 +9005,85 @@ function importSummaryContent(details) {
     content.append(section);
   });
   return content;
+}
+
+// What importing a package would do, before importing it (an Import ZIP, or a received transfer): a box for each of its
+// packages, checked, with what its import would do and, unfolded, the items it would update with what would change.
+// Resolves to the positions of the packages checked, or to null when cancelled (or rejected).
+function showImportPreview(preview, options = {}) {
+  const packages = Array.isArray(preview?.packages) ? preview.packages : [];
+  const element = (tag, className, text) => {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text !== undefined) node.textContent = text;
+    return node;
+  };
+  const overlay = element('div', 'confirm-overlay import-preview-overlay');
+  const panel = element('section', 'confirm-panel import-preview-panel');
+  panel.setAttribute('role', 'dialog');
+  panel.setAttribute('aria-modal', 'true');
+  panel.append(element('p', 'eyebrow', options.eyebrow || 'Preview'), element('h3', '', options.title || 'Import preview'));
+  if (options.intro) panel.append(element('p', 'import-preview-intro', options.intro));
+  panel.append(element('p', 'import-preview-note', packages.length > 1
+    ? 'Nothing has been imported yet. Uncheck the packages to leave out; the checked ones are imported.'
+    : 'Nothing has been imported yet.'));
+  if (preview?.error) panel.append(element('p', 'import-preview-error', `The preview could not be prepared: ${preview.error}`));
+  const list = element('div', 'import-preview-list');
+  const boxes = packages.map((item) => {
+    const card = element('div', `import-preview-package${item.error ? ' has-error' : ''}`);
+    const head = element('label', 'import-preview-package-head');
+    const box = element('input');
+    box.type = 'checkbox';
+    box.checked = true;
+    box.value = String(item.index);
+    const text = element('span', 'import-preview-package-text');
+    const message = element('span', 'import-preview-package-message');
+    message.append(...importCountsNodes(item.message || ''));
+    text.append(element('strong', '', item.label || item.kind || 'Package'), message);
+    if (item.error) text.append(element('span', 'import-preview-package-error', item.error));
+    head.append(box, text);
+    card.append(head);
+    const sections = Array.isArray(item.sections) ? item.sections : [];
+    if (sections.length) {
+      const details = element('details', 'import-preview-details');
+      const changed = sections.reduce((total, section) => total + (section.items || []).length, 0);
+      details.append(element('summary', '', `What would change (${changed})`), importSummaryContent({sections}));
+      card.append(details);
+    }
+    list.append(card);
+    return box;
+  });
+  const toolbar = element('div', 'import-preview-toolbar');
+  const selectAll = element('button', 'ghost-link', 'Select all');
+  const selectNone = element('button', 'ghost-link', 'Select none');
+  selectAll.type = 'button';
+  selectNone.type = 'button';
+  if (boxes.length > 1) toolbar.append(selectAll, selectNone);
+  const actions = element('div', 'confirm-actions');
+  const cancel = element('button', `ghost-link confirm-cancel${options.reject ? ' import-preview-reject' : ''}`, options.cancelLabel || 'Cancel');
+  const accept = element('button', '', '');
+  cancel.type = 'button';
+  accept.type = 'button';
+  actions.append(cancel, accept);
+  panel.append(toolbar, list, actions);
+  overlay.append(panel);
+  document.body.append(overlay);
+  document.body.classList.add('loading-active');
+  const sync = () => {
+    const checked = boxes.filter((box) => box.checked).length;
+    accept.textContent = boxes.length > 1 ? `${options.confirmLabel || 'Import selected'} (${checked} of ${boxes.length})` : (options.confirmLabel || 'Import');
+    accept.disabled = boxes.length > 0 && !checked;
+  };
+  sync();
+  return new Promise((resolve) => {
+    const close = (value) => { overlay.remove(); document.body.classList.remove('loading-active'); resolve(value); };
+    boxes.forEach((box) => box.addEventListener('change', sync));
+    selectAll.addEventListener('click', () => { boxes.forEach((box) => { box.checked = true; }); sync(); });
+    selectNone.addEventListener('click', () => { boxes.forEach((box) => { box.checked = false; }); sync(); });
+    cancel.addEventListener('click', () => close(null));
+    accept.addEventListener('click', () => close(boxes.filter((box) => box.checked).map((box) => Number(box.value))));
+    accept.focus();
+  });
 }
 
 function showImportSummary(notice, details, options = {}) {

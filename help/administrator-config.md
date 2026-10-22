@@ -78,13 +78,12 @@ Exports run as disk-backed jobs and show estimated progress. The ZIP download st
 > **Only super-admins import packages.** For admins the **Import** card says so instead of offering the file; they export and transfer as before.
 
 > [!WARNING]
-> **Review replacement scope.** Import and Restore can replace existing data. Review the detected components and affected workspaces in the overwrite confirmation.
+> **Review replacement scope.** Import and Restore can replace existing data. Review in the preview what each package would add, update or leave as it is before importing it.
 
 1. Drop a DriveTest Analyzer ZIP or Scoring & GAP Analysis Methodologies JSON on the **Import** card, or click it to choose one (the card names the file and its size), press **Import ZIP / JSON** and wait for its upload.
-2. Review the manifest-detected content, affected workspaces and overwrite warnings.
-3. For Dashboard, PPT Template, Main Cities, Mappings & Reference Data, Scoring & GAP Analysis Methodologies or Auto-calculated Field packages, choose one or more accessible destination workspaces; a matching source name is preselected when available.
-4. Confirm import.
-5. Follow the background import in the floating task card.
+2. For Dashboard, PPT Template, Main Cities, Mappings & Reference Data, Scoring & GAP Analysis Methodologies or Auto-calculated Field packages, choose one or more accessible destination workspaces; a matching source name is preselected when available.
+3. Review the preview, which compares the package with the data of this server without importing anything: below the overwrite warning, a box for each package of the selection (checked) says what its import would do, in the words of the completion message (for example `Imports 32 Reporting Jobs into 1 workspace: 2 new, 1 updated and 29 unchanged.`, the counts of new and updated items in green and amber), and **What would change** unfolds the items it would update with what would change in each. Uncheck the packages to leave out (**Select all** / **Select none**), then press **Import selected**; **Cancel** imports nothing and discards the upload. A package whose preview cannot be prepared says so and can still be imported.
+4. Follow the background import in the floating task card.
 
 Workspace replacement is automatic: the application closes the target when required, imports the replacement, and removes obsolete old files only after success.
 
@@ -95,7 +94,7 @@ Workspace replacement is automatic: the application closes the target when requi
 3. Press Enter or select **Connect and request approval**.
 4. A destination super-admin accepts or rejects the offer.
 5. Follow export creation and transmission at source.
-6. Follow reception and automatic import at destination.
+6. When the package has arrived, the destination prepares its preview (as that of an import, see above) and nothing is imported until a super-admin chooses what to import: **Import selected** imports the checked packages and **Reject transfer** imports nothing, deletes the package and tells the source. The preview opens on every Admin page of a super-admin, also after a reload or a restart, and the source waits for the decision (its dialog says it is waiting for the import to be confirmed).
 
 The dialog remembers the last destination. Active state is restored after page reload and resumable reception tolerates temporary connection cuts; each retry is received into its own file. If either server stops the transfer because of an error, the other one shows its reason.
 

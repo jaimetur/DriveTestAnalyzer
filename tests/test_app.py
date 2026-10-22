@@ -3351,6 +3351,8 @@ def test_auto_calculated_field_transfer_requires_destination_workspaces(client) 
 
 
 def test_incoming_server_transfer_requires_acceptance_and_imports_after_upload(client) -> None:
+    import src.DriveTestAnalyzer as app_module
+
     secret = 'server-transfer-test-secret-that-is-long-enough'
     headers = {'X-Dashboard-Transfer-Secret': secret}
     offer = client.post(
@@ -3394,7 +3396,22 @@ def test_incoming_server_transfer_requires_acceptance_and_imports_after_upload(c
         headers={**headers, 'Content-Type': 'application/zip'},
         content=exported.content,
     )
-    assert uploaded.status_code == 200
+    assert uploaded.status_code == 200 and uploaded.json()['status'] == 'review'
+    # Nothing is imported until the preview is confirmed; the source keeps waiting meanwhile.
+    review = {}
+    for _ in range(200):
+        review = client.get(f'/admin/import-export/transfers/offers/{offer_id}').json()
+        if review.get('preview'):
+            break
+        time.sleep(0.01)
+    assert review['status'] == 'review' and review['phase'] == 'waiting for the import to be confirmed'
+    assert [item['message'] for item in review['preview']['packages']] == [
+        'Replaces the Application Config of this server; its server settings and local workspaces are kept.']
+    assert client.get(f'/api/import-export/transfers/offers/{offer_id}', headers=headers).json()['status'] == 'review'
+    assert [item['id'] for item in client.get('/admin/import-export/transfers/offers').json()['reviews']] == [offer_id]
+    assert client.post(f'/admin/import-export/transfers/offers/{offer_id}/preview/import', json={'packages': []}).status_code == 400
+    confirmed = client.post(f'/admin/import-export/transfers/offers/{offer_id}/preview/import', json={'packages': [0]})
+    assert confirmed.status_code == 200
     payload = {}
     for _ in range(100):
         payload = client.get(f'/api/import-export/transfers/offers/{offer_id}', headers=headers).json()
@@ -3403,6 +3420,29 @@ def test_incoming_server_transfer_requires_acceptance_and_imports_after_upload(c
         time.sleep(0.01)
     assert payload['status'] == 'ready'
     assert 'Configuration imported successfully' in payload['notice']
+    assert any(row['action'] == 'import_previewed_transfer' for row in app_module.repository.list_logs(limit=50))
+
+
+def test_a_received_transfer_can_be_rejected_after_its_preview(client) -> None:
+    import src.DriveTestAnalyzer as app_module
+
+    secret = 'server-transfer-test-secret-that-is-long-enough'
+    headers = {'X-Dashboard-Transfer-Secret': secret}
+    offer_id = client.post('/api/import-export/transfers/offers', headers=headers, json={
+        'source': 'Test source', 'archive_version': 1, 'kind': 'config', 'content': 'config', 'workspaces': []}).json()['offer_id']
+    login_super(client)
+    exported = client.get('/admin/import-export/export?export_target=config')
+    assert client.post(f'/admin/import-export/transfers/offers/{offer_id}/accept').status_code == 200
+    assert client.put(f'/api/import-export/transfers/offers/{offer_id}/package', headers={**headers, 'Content-Type': 'application/zip'},
+                      content=exported.content).status_code == 200
+    package = Path(app_module.TRANSFER_OFFERS[offer_id]['path'])
+    rejected = client.post(f'/admin/import-export/transfers/offers/{offer_id}/preview/reject')
+    assert rejected.status_code == 200
+    payload = client.get(f'/api/import-export/transfers/offers/{offer_id}', headers=headers).json()
+    assert payload['status'] == 'rejected' and 'after its preview' in payload['error']
+    assert not package.exists()
+    assert client.post(f'/admin/import-export/transfers/offers/{offer_id}/preview/import', json={'packages': [0]}).status_code == 409
+    assert any(row['action'] == 'reject_previewed_transfer' for row in app_module.repository.list_logs(limit=50))
 
 
 def test_server_transfer_listener_keeps_a_persistent_pending_offer_reminder() -> None:

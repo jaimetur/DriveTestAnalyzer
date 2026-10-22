@@ -19,6 +19,9 @@ from typing import Any, Iterable
 # Values that say when, by whom or in which order an item was saved (or how often it was used), not what it is.
 IGNORED_FIELDS = frozenset({'uid', 'id', 'created_at', 'updated_at', 'updated_by', 'position', 'use_count', 'last_used_at',
                             'version'})
+# Values inside the values of an item (the rows of a list, the entries of a section) that only say when or by whom
+# they were saved, which an import writes again when it saves them (the Map Areas, the personal NQ table layouts).
+NESTED_IGNORED_FIELDS = frozenset({'created_at', 'updated_at', 'updated_by', 'last_used_at', 'use_count'})
 # Values told as changed without telling them.
 SENSITIVE_FIELDS = frozenset({'password_hash'})
 FIELD_LABELS = {
@@ -93,8 +96,17 @@ def _short(value: Any) -> str | None:
     return None
 
 
+def _comparable(value: Any) -> Any:
+    """A value without the values inside it that only say when or by whom they were saved."""
+    if isinstance(value, dict):
+        return {key: _comparable(item) for key, item in value.items() if key not in NESTED_IGNORED_FIELDS}
+    if isinstance(value, list):
+        return [_comparable(item) for item in value]
+    return value
+
+
 def _canonical(value: Any) -> str:
-    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(',', ':'), default=str)
+    return json.dumps(_comparable(value), ensure_ascii=False, sort_keys=True, separators=(',', ':'), default=str)
 
 
 def _list_change(label: str, old: list[Any], new: list[Any]) -> str:
