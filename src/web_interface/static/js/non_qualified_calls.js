@@ -3314,18 +3314,29 @@
   const buildDrawerTabs = () => {
     const tabs = $('nq-drawer-tabs');
     const active = tabs.querySelector('.is-active')?.dataset.nqTab || 'general';
-    const tab = (key, label, color) => {
-      const button = node('button', undefined, 'nq-drawer-tab');
+    // The tabs of the sections are the numbered steps of the analysis; the call details are only a reference.
+    const tab = (key, label, color, step) => {
+      const button = node('button', undefined, `nq-drawer-tab ${step ? 'is-step' : 'is-reference'}`);
       button.type = 'button';
       button.setAttribute('role', 'tab');
       button.dataset.nqTab = key;
-      if (color) button.style.setProperty('--nq-section', color);
-      button.append(node('span', label), node('small', '', 'nq-tab-badge'));
-      button.addEventListener('click', () => selectTab(key));
+      button.title = step ? `Step ${step}: ${label}` : `${label} (reference)`;
+      if (color) {
+        button.style.setProperty('--nq-section', color);
+        button.style.setProperty('--nq-section-text', contrastText(color));
+      }
+      const marker = node('span', step ? String(step) : 'i', 'nq-tab-step');
+      marker.setAttribute('aria-hidden', 'true');
+      button.dataset.label = label;
+      button.append(marker, node('span', label), node('small', '', 'nq-tab-badge'));
+      button.addEventListener('click', () => chooseTab(key));
       return button;
     };
     const groups = state.sections.length ? drawerTabs() : [{key: 'general', label: 'Activity', color: '', sections: []}];
-    tabs.replaceChildren(...groups.map((group) => tab(group.key, group.label, group.color)), tab('details', 'Call Details', CALL_DETAILS_COLOR));
+    const separator = node('span', undefined, 'nq-drawer-tabs-separator');
+    separator.setAttribute('aria-hidden', 'true');
+    tabs.replaceChildren(...groups.map((group, index) => tab(group.key, group.label, group.color, index + 1)),
+      separator, tab('details', 'Call Details', CALL_DETAILS_COLOR));
     $('nq-section-panels').replaceChildren(...groups.filter((group) => group.key !== 'general').map((group) => {
       const panel = node('section', undefined, 'nq-section-panel');
       panel.dataset.nqPanel = group.key;
@@ -3455,19 +3466,27 @@
     // Edited as it reads (rich_text.js); Ctrl+Enter saves it.
     window.RichText.attach(area, {docClass: 'nq-comment-body', onSubmit: () => editor.requestSubmit()});
     area.focus();
-    cancel.addEventListener('click', () => { editor.replaceWith(body); actions.hidden = false; });
-    editor.addEventListener('submit', async (event) => {
-      event.preventDefault();
+    // The prompt for changes not saved yet saves or discards the edit too.
+    editor.isChanged = () => area.value !== comment.body;
+    editor.discard = () => { editor.replaceWith(body); actions.hidden = false; };
+    editor.save = async () => {
       save.disabled = true;
       try {
         await api(`/api/non-qualified-calls/comments/${comment.id}`, {method: 'PATCH', body: JSON.stringify({body: area.value})});
         toast('Comment updated.');
         await openDetail(commentCallKey(), {keepTab: true});
         loadCalls({quiet: true});
+        return true;
       } catch (error) {
         toast(error.message, 'error');
         save.disabled = false;
+        return false;
       }
+    };
+    cancel.addEventListener('click', editor.discard);
+    editor.addEventListener('submit', (event) => {
+      event.preventDefault();
+      editor.save();
     });
   };
   const commentCallKey = () => state.detail?.call.call_key;
@@ -3683,13 +3702,79 @@
     }
     return box;
   };
-  const changedFields = () => {
+  const changedFields = (scope = drawer) => {
     const changes = {};
-    drawer.querySelectorAll('[data-field-key]').forEach((control) => {
+    scope.querySelectorAll('[data-field-key]').forEach((control) => {
       if (control.value !== control.dataset.original) changes[control.dataset.fieldKey] = control.value;
     });
     return changes;
   };
+  // What a tab (or the whole call panel) has not saved yet: its edited fields and, in the Activity tab, the comment
+  // being written and the comments being edited.
+  const pendingChanges = (scope = drawer) => {
+    const composerDraft = $('nq-comment-body');
+    return {
+      fields: Object.keys(changedFields(scope)).length,
+      comment: scope.contains(composerDraft) && Boolean(composerDraft.value.trim()),
+      edits: [...scope.querySelectorAll('.nq-comment-editor')].filter((editor) => editor.isChanged?.()),
+    };
+  };
+  const describeChanges = ({fields, comment, edits}) => {
+    const parts = [
+      fields ? `${fields} field change${fields === 1 ? '' : 's'} not saved` : '',
+      comment ? 'a comment not posted' : '',
+      edits.length ? `${edits.length === 1 ? 'a comment edit' : `${edits.length} comment edits`} not saved` : '',
+    ].filter(Boolean);
+    return parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}` : parts[0] || '';
+  };
+  const saveChanges = async (pending) => {
+    const call = state.detail?.call;
+    if (!call) return false;
+    if (pending.fields && !(await saveFields(call))) return false;
+    for (const editor of pending.edits) {
+      if (!(await editor.save())) return false;
+    }
+    return !pending.comment || await postComment();
+  };
+  const discardChanges = (pending) => {
+    pending.edits.forEach((editor) => editor.discard());
+    if (pending.comment) $('nq-comment-body').value = '';
+    if (pending.fields && state.detail) renderSections(state.detail);
+  };
+  // Leaving a tab, the call or the panel with changes not saved yet asks first: save them, discard them or continue
+  // editing (also Escape). True when the panel may go on.
+  let settling = false;
+  const settleChanges = async (scope, where) => {
+    const pending = pendingChanges(scope);
+    if (!pending.fields && !pending.comment && !pending.edits.length) return true;
+    if (settling) return false;
+    settling = true;
+    try {
+      const message = `${where} has ${describeChanges(pending)}.`;
+      const choice = typeof window.showConfirmDialog === 'function'
+        ? await window.showConfirmDialog(message, {title: 'Unsaved changes', confirmLabel: 'Save', secondaryLabel: 'Discard', cancelLabel: 'Continue Editing'})
+        : (window.confirm(`${message} Discard them?`) ? 'secondary' : null);
+      if (choice === 'secondary') {
+        discardChanges(pending);
+        return true;
+      }
+      return choice === 'confirm' && await saveChanges(pending);
+    } finally {
+      settling = false;
+    }
+  };
+  const chooseTab = async (name) => {
+    const current = drawer.querySelector('[data-nq-tab].is-active');
+    const panel = current && current.dataset.nqTab !== name
+      ? drawer.querySelector(`[data-nq-panel="${CSS.escape(current.dataset.nqTab)}"]`) : null;
+    if (panel && !(await settleChanges(panel, current.dataset.label || 'This tab'))) return;
+    selectTab(name);
+  };
+  const requestClose = async () => {
+    if (await settleChanges(drawer, 'This call')) closeDrawer();
+  };
+  // Another call opens in the panel once the changes of this one are saved or discarded.
+  const leaveDetail = () => settleChanges(drawer, 'This call');
   // Every section tells how many of the fields of the call are still unsaved.
   const syncUnsaved = () => {
     const count = Object.keys(changedFields()).length;
@@ -3734,10 +3819,11 @@
     }
     return wrapper;
   };
+  // True once the fields are saved.
   const saveFields = async (call, button) => {
     const changes = changedFields();
-    if (!Object.keys(changes).length) { toast('Nothing to save.'); return; }
-    button.disabled = true;
+    if (!Object.keys(changes).length) { toast('Nothing to save.'); return true; }
+    if (button) button.disabled = true;
     try {
       const updated = await api(`/api/non-qualified-calls/calls/${encodeURIComponent(call.call_key)}`, {
         method: 'PATCH', body: JSON.stringify({changes: {fields: changes}, version: call.version}),
@@ -3745,10 +3831,12 @@
       renderDetail(updated);
       toast('Fields saved.');
       loadCalls({quiet: true});
+      return true;
     } catch (error) {
       toast(error.message, 'error');
+      return false;
     } finally {
-      button.disabled = false;
+      if (button) button.disabled = false;
     }
   };
   // The Root Cause Decision of the RCA section: the selected Root Category and Cause, the recommendation
@@ -3916,7 +4004,7 @@
       tracking.append(pill('status', sample.status), node('span', rootLabel(sample.root_category, sample.root_cause), 'nq-muted'),
         node('span', `${number(sample.comment_count)} comments`, 'nq-muted'));
       button.append(head, failure, tracking);
-      button.addEventListener('click', () => openDetail(sample.call_key, {keepTab: false}));
+      button.addEventListener('click', async () => { if (await leaveDetail()) openDetail(sample.call_key, {keepTab: false}); });
       item.append(button);
       return item;
     }));
@@ -3945,7 +4033,7 @@
       // A Speech sample: back to its call.
       const back = node('button', '‹ Back to the call', 'nq-link-action nq-back-to-call');
       back.type = 'button';
-      back.addEventListener('click', () => { openDetail(call.parent_key, {keepTab: false}); });
+      back.addEventListener('click', async () => { if (await leaveDetail()) openDetail(call.parent_key, {keepTab: false}); });
       eyebrow.push(' ', node('span', `Sample ${call.sample_id || ''}`.trim(), 'nq-samples-badge'), ' ', back);
     }
     const badge = versionBadge(call);
@@ -4026,12 +4114,6 @@
     where.title = index < 0 ? 'The call is not on the page of the list shown: the arrows go through the calls of the list'
       : 'Position of the call in the list of the filters';
   }
-  const leaveDetail = async () => {
-    if (!Object.keys(changedFields()).length) return true;
-    const message = 'This call has changes not saved yet. Leave them?';
-    return typeof window.showConfirmDialog === 'function'
-      ? window.showConfirmDialog(message, {title: 'Unsaved changes', confirmLabel: 'Leave them'}) : window.confirm(message);
-  };
   const stepDetail = async (offset) => {
     let {calls, index} = detailPlace();
     if (index < 0 || !(await leaveDetail())) return;
@@ -4448,7 +4530,7 @@
       button.textContent = label;
     }
   });
-  $('nq-drawer-close').addEventListener('click', closeDrawer);
+  $('nq-drawer-close').addEventListener('click', requestClose);
   // Copies a text, also where the page is not a secure context (served by address on the network), which has no
   // clipboard API, or where the browser refuses it: a hidden field is selected and copied instead.
   const copyText = async (text) => {
@@ -4482,20 +4564,24 @@
       toast(error.message, 'error');
     }
   });
-  backdrop.addEventListener('click', closeDrawer);
+  backdrop.addEventListener('click', requestClose);
+  // Escape closes the panel, unless a dialog or the prompt for changes not saved yet is open (Escape closes that one).
+  // The prompt opens once this key press is over, or the same Escape would close it.
   document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && drawer.classList.contains('is-open') && !document.querySelector('dialog[open]')) closeDrawer();
+    if (event.key === 'Escape' && drawer.classList.contains('is-open') && !document.querySelector('dialog[open]')
+      && $('confirm-overlay')?.hidden !== false) window.setTimeout(requestClose);
   });
-  drawer.querySelectorAll('[data-nq-tab]').forEach((tab) => tab.addEventListener('click', () => selectTab(tab.dataset.nqTab)));
+  drawer.querySelectorAll('[data-nq-tab]').forEach((tab) => tab.addEventListener('click', () => chooseTab(tab.dataset.nqTab)));
   ['input', 'change'].forEach((type) => drawer.addEventListener(type, (event) => {
     if (event.target.matches?.('[data-field-key]')) syncUnsaved();
   }));
   $('nq-field-search').addEventListener('input', renderFields);
   const composer = $('nq-composer');
   const composerBody = $('nq-comment-body');
+  // True once the comment is posted.
   const postComment = async () => {
     const callKey = state.detail?.call.call_key;
-    if (!callKey || !composerBody.value.trim()) return;
+    if (!callKey || !composerBody.value.trim()) return false;
     const submit = composer.querySelector('button[type="submit"]');
     submit.disabled = true;
     try {
@@ -4508,8 +4594,10 @@
       const body = drawer.querySelector('.nq-drawer-body');
       body.scrollTop = body.scrollHeight;
       loadCalls({quiet: true});
+      return true;
     } catch (error) {
       toast(error.message, 'error');
+      return false;
     } finally {
       submit.disabled = false;
     }
