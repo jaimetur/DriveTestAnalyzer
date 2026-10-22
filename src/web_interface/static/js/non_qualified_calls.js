@@ -5969,11 +5969,12 @@
     select.setAttribute('aria-label', label);
     select.dataset.multiselectEmptyLabel = emptyLabel;
     select.dataset.multiselectJoiner = ' & ';
-    select.append(...entries.map(([value, text, title]) => {
+    select.append(...entries.map(([value, text, title, shortLabel]) => {
       const option = node('option', text);
       option.value = value;
       option.selected = chosen.includes(value);
       if (title) option.title = title;
+      if (shortLabel) option.dataset.shortLabel = shortLabel;
       return option;
     }));
     const sync = () => {
@@ -5998,13 +5999,23 @@
     const values = [FOCUSED, ...state.prioritizationOperators, ...chosen.operators.filter((value) => value !== FOCUSED
       && !state.prioritizationOperators.includes(value))];
     return aloneFirstSelect('nq-priority-step-operators', `Operators of ${rule}`,
-      values.map((value) => (value === FOCUSED ? [value, 'Focused Operators', `The Focus operators of the Operator Maps: ${focus}`] : [value, value])),
+      values.map((value) => (value === FOCUSED ? [value, 'Focused Operators', `The Focus operators of the Operator Maps: ${focus}`, 'Focused'] : [value, value])),
       chosen.operators, 'No operator', (operators) => { chosen.operators = operators; });
   };
   // The conditions a step of a list can take: those of the data tests only with a Call Type that takes them.
   const stepConditions = (list, callType) => Object.entries((state.prioritizationFields.conditions || {})[list] || {})
     .filter(([key]) => !DATA_CONDITIONS.includes(key) || ['data', 'any'].includes(callType));
   const MAX_CONDITIONS = 6;
+  const fitCanvas = document.createElement('canvas').getContext('2d');
+  // A select as wide as its chosen value (with its padding and the arrow of the browser, about 24 px), so the conditions
+  // of a step share a line.
+  const SELECT_ARROW = 24;
+  const fitSelect = (select) => {
+    const style = getComputedStyle(select);
+    fitCanvas.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+    const edges = ['paddingLeft', 'paddingRight', 'borderLeftWidth', 'borderRightWidth'].reduce((sum, name) => sum + (parseFloat(style[name]) || 0), 0);
+    select.style.width = `${Math.ceil(fitCanvas.measureText(select.selectedOptions[0]?.textContent || '').width + edges + SELECT_ARROW)}px`;
+  };
   // AND ( and OR ( start a group of conditions: one level of parentheses.
   const CONDITION_JOINS = [['and', 'AND'], ['or', 'OR'], ['and_group', 'AND ('], ['or_group', 'OR (']];
   // The conditions of a step, one per line, each joined to the one before by AND or OR (AND first: "Consecutive failures
@@ -6023,19 +6034,14 @@
     };
     const draw = () => {
       chosen.joins = chosen.conditions.slice(1).map((_, index) => (chosen.joins || [])[index] || 'or');
-      // The group of each line; with several groups, each group of several lines takes a bracket.
+      // The group of each condition; with several groups, each group of several conditions goes in parentheses.
       const groupOf = chosen.conditions.map((_, index) => chosen.joins.slice(0, index).filter((join) => join.endsWith('_group')).length);
       const groups = groupOf[groupOf.length - 1] + 1;
+      const paren = (text) => node('span', text, 'nq-priority-condition-paren');
+      // Each condition with the operator before it, on one line while they fit in the cell.
       box.replaceChildren(...chosen.conditions.map((key, index) => {
-        const line = node('div', undefined, 'nq-priority-condition');
-        const size = groupOf.filter((group) => group === groupOf[index]).length;
-        if (groups > 1 && size > 1) {
-          line.classList.add('is-grouped');
-          if (groupOf[index - 1] !== groupOf[index]) line.classList.add('is-group-first');
-          if (groupOf[index + 1] !== groupOf[index]) line.classList.add('is-group-last');
-        }
-        // The first condition lines up with the others, which start with their operator.
-        if (!index && chosen.conditions.length > 1) line.append(node('span', undefined, 'nq-priority-condition-first'));
+        const term = node('span', undefined, 'nq-priority-condition');
+        const grouped = groups > 1 && groupOf.filter((group) => group === groupOf[index]).length > 1;
         if (index) {
           const join = selectOf('nq-priority-condition-join', `Operator before condition ${index + 1} of ${rule}`, CONDITION_JOINS,
             chosen.joins[index - 1]);
@@ -6044,9 +6050,9 @@
             chosen.joins[index - 1] = join.value;
             draw();
           });
-          line.append(join);
+          term.append(join);
         }
-        line.append(node('span', undefined, 'nq-priority-condition-bracket'));
+        if (grouped && groupOf[index - 1] !== groupOf[index]) term.append(paren('('));
         const select = selectOf('nq-priority-condition-key', `Condition ${index + 1} of ${rule}`,
           index ? entries.filter(([value]) => value !== EVERY_CALL) : entries, key);
         select.addEventListener('change', () => {
@@ -6054,9 +6060,10 @@
           if (select.value === EVERY_CALL) chosen.conditions = [EVERY_CALL];
           draw();
         });
-        line.append(select);
+        term.append(select);
+        if (grouped && groupOf[index + 1] !== groupOf[index]) term.append(paren(')'));
         if (chosen.conditions.length > 1) {
-          line.append(iconButton('×', 'is-remove', 'Remove this condition', () => {
+          term.append(iconButton('×', 'is-remove', 'Remove this condition', () => {
             chosen.conditions.splice(index, 1);
             chosen.joins.splice(index ? index - 1 : 0, 1);
             draw();
@@ -6065,14 +6072,15 @@
         // Another condition not chosen yet, joined by OR until another operator is chosen.
         const next = entries.find(([value]) => value !== EVERY_CALL && !chosen.conditions.includes(value));
         if (index === chosen.conditions.length - 1 && chosen.conditions[0] !== EVERY_CALL && next && chosen.conditions.length < MAX_CONDITIONS) {
-          line.append(iconButton('+', 'is-add', 'Add a condition', () => {
+          term.append(iconButton('+', 'is-add', 'Add a condition', () => {
             chosen.conditions.push(next[0]);
             chosen.joins.push('or');
             draw();
           }));
         }
-        return line;
+        return term;
       }));
+      if (box.isConnected) box.querySelectorAll('select').forEach(fitSelect);
     };
     draw();
     return box;
@@ -6085,11 +6093,11 @@
     const table = (list) => {
       const box = node('div', undefined, 'nq-priority-steps-list');
       const grid = node('table', undefined, 'nq-failure-table nq-priority-steps-table');
-      const names = ['priority', 'move', 'mode', 'type', 'area', 'condition', 'operators', 'queue'];
+      const names = ['priority', 'move', 'operators', 'mode', 'type', 'area', 'condition', 'queue'];
       const columns = node('colgroup');
       columns.append(...names.map((name) => node('col', undefined, `nq-step-col-${name}`)));
       const head = node('tr');
-      head.append(...['Priority', '', 'NR Mode', 'Call Type', 'Area', 'Condition', 'Operators', 'Queue'].map((text) => node('th', text)));
+      head.append(...['Priority', '', 'Operators', 'NR Mode', 'Call Type', 'Area', 'Condition', 'Queue'].map((text) => node('th', text)));
       const body = node('tbody');
       // The steps by Priority, then by number: the steps of one Priority are grouped under it, in the order they are tried.
       const rows = steps.filter((step) => step.list === list).map((step) => ({step, chosen: strategySteps[strategy][step.id]}));
@@ -6260,7 +6268,7 @@
           });
           paint();
           queue.append(queueSelect);
-          row.append(move, mode, type, area, condition, operators, queue);
+          row.append(move, operators, mode, type, area, condition, queue);
           body.append(row);
         });
       });
@@ -6290,6 +6298,7 @@
       return box;
     };
     $('nq-priority-steps').replaceChildren(table(stepList));
+    $('nq-priority-steps').querySelectorAll('.nq-priority-conditions select').forEach(fitSelect);
     // The conditions and operators get the checkbox list of every multi-select of the page.
     if (typeof globalThis.setupCustomMultiSelects === 'function') globalThis.setupCustomMultiSelects();
     if (focusedStep) {

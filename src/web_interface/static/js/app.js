@@ -5887,8 +5887,11 @@ function setupCustomMultiSelects() {
         triggerLabel.textContent = selectedOptions.length === 1 ? `All except ${selectedOptions[0]}`
           : selectedOptions.length === totalEnabled ? 'All excluded' : `${selectedOptions.length}/${totalEnabled} excluded`;
       } else if (select.dataset.multiselectJoiner) {
-        // A select that shows every value chosen, joined (High impact & Repeated).
-        triggerLabel.textContent = selectedOptions.join(select.dataset.multiselectJoiner);
+        // A select that shows every value chosen, joined (VF & Three), by its short label when it has one (data-short-label),
+        // with the full values on hover.
+        const chosen = enabledOptions.filter((option) => option.selected);
+        triggerLabel.textContent = chosen.map((option) => option.dataset.shortLabel || option.textContent.trim()).join(select.dataset.multiselectJoiner);
+        trigger.title = selectedOptions.join(select.dataset.multiselectJoiner);
       } else if (dynamicAll && selectedOptions.length === totalEnabled) {
         triggerLabel.textContent = 'All values';
       } else if (selectedOptions.length === 1) {

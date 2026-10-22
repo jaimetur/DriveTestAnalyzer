@@ -1341,14 +1341,16 @@ body:has(dialog.nq-priority-dialog[open]) { overflow: hidden; }
 .nq-priority-steps-head > strong { color: var(--nq-dark); font-size: .84rem; }
 /* The steps the admins change: the same columns in both lists, every field a control as wide as its column, the steps
    of one Priority grouped under it and their queue as a tag. */
-.nq-priority-steps-table { table-layout: fixed; width: 100%; min-width: 72rem; }
+.nq-priority-steps-table { table-layout: fixed; width: 100%; min-width: 70rem; }
 .nq-priority-steps-table .nq-step-col-priority { width: 5.4rem; }
 .nq-priority-steps-table .nq-step-col-move { width: 2.2rem; }
 .nq-priority-steps-table .nq-step-col-mode { width: 5.6rem; }
 .nq-priority-steps-table .nq-step-col-type { width: 7.6rem; }
 .nq-priority-steps-table .nq-step-col-area { width: 10.6rem; }
 .nq-priority-steps-table .nq-step-col-queue { width: 7.4rem; }
-.nq-priority-steps-table .nq-step-col-condition { width: 19.9rem; }
+.nq-priority-steps-table .nq-step-col-operators { width: 8rem; }
+/* The operators in half the width: Focused Operators reads Focused, the full values show on hover. */
+.nq-priority-step-operators-cell .multiselect-trigger { padding-inline: .6rem .45rem; gap: .35rem; }
 .nq-priority-steps-table :is(th, td) { vertical-align: middle; padding: .3rem .35rem; text-align: left; }
 .nq-priority-steps-table tbody td { border-bottom: 1px solid color-mix(in srgb, var(--nq-border) 55%, white); }
 .nq-priority-steps-table td.nq-priority-step-group { text-align: center; border-right: 1px solid var(--nq-border);
@@ -1372,19 +1374,12 @@ body:has(dialog.nq-priority-dialog[open]) { overflow: hidden; }
 .nq-priority-steps-table tr.nq-priority-step-empty > td.nq-priority-step-group { font-style: normal; font-weight: 800; }
 /* The conditions of a step, one per line: the operator that joins each one to the one before, the condition, and the
    buttons that remove it or add another. */
-.nq-priority-conditions { display: grid; }
-.nq-priority-condition { display: flex; align-items: center; gap: .3rem; padding-block: .12rem; }
-/* A group opened by AND ( or OR (: a bracket beside the conditions of a group of several lines. */
-.nq-priority-condition-bracket { flex: 0 0 .4rem; align-self: stretch; margin-right: -.1rem; }
-.nq-priority-condition.is-grouped .nq-priority-condition-bracket { border-left: 2px solid var(--nq-color); }
-.nq-priority-condition.is-group-first .nq-priority-condition-bracket { margin-top: .45rem; border-top: 2px solid var(--nq-color);
-  border-top-left-radius: 4px; }
-.nq-priority-condition.is-group-last .nq-priority-condition-bracket { margin-bottom: .45rem; border-bottom: 2px solid var(--nq-color);
-  border-bottom-left-radius: 4px; }
-.nq-priority-condition-first { flex: 0 0 5.4rem; }
-.nq-priority-steps-table .nq-priority-condition .nq-priority-condition-join { flex: 0 0 5.4rem; width: 5.4rem; padding-left: .55rem;
-  font-weight: 800; color: var(--nq-color); }
-.nq-priority-steps-table .nq-priority-condition .nq-priority-condition-key { flex: 1 1 auto; min-width: 0; width: auto; }
+.nq-priority-conditions { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .45rem; }
+.nq-priority-condition { display: inline-flex; align-items: center; gap: .25rem; white-space: nowrap; }
+.nq-priority-steps-table .nq-priority-condition select { flex: none; padding-left: .55rem; padding-right: .3rem; }
+.nq-priority-steps-table .nq-priority-condition .nq-priority-condition-join { font-weight: 800; color: var(--nq-color); }
+/* The parentheses of a group opened by AND ( or OR (. */
+.nq-priority-condition-paren { color: var(--nq-color); font-size: 1.15rem; font-weight: 800; line-height: 1; }
 .nq-priority-condition-button { flex: 0 0 1.7rem; width: 1.7rem; height: 1.7rem; min-height: 0; padding: 0; border: 1px solid var(--nq-border);
   border-radius: 999px; background: #fff; color: var(--nq-dark); font-size: .95rem; font-weight: 800; line-height: 1; box-shadow: none; }
 .nq-priority-condition-button:is(:hover, :focus-visible) { background: var(--nq-soft); }
