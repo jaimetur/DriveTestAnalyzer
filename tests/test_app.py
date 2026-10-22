@@ -2540,6 +2540,11 @@ def test_admin_import_export_packages_detect_configuration_and_workspaces(client
     assert '<optgroup label="Full Environment">' in admin_response.text
     assert admin_response.text.index('<optgroup label="Full Workspace"') < admin_response.text.index('<optgroup label="Full Environment">')
     assert 'Config</option>' in admin_response.text
+    # The content whose import replaces a whole database carries a warning tag.
+    assert ('<option value="config" data-name="Application Config" data-tag="Whole application database" '
+            'data-tag-class="user-choice-tag-database"') in admin_response.text
+    assert 'data-tag="Whole workspace database" data-tag-class="user-choice-tag-database"' in admin_response.text
+    assert 'data-tag="Whole application and workspace databases"' in admin_response.text
     assert 'Main Cities (from active workspace)</option>' in admin_response.text
     assert 'Mappings &amp; Reference Data (from active workspace)</option>' in admin_response.text
     assert admin_response.text.index('Main Cities (from active workspace)</option>') < admin_response.text.index('Mappings &amp; Reference Data (from active workspace)</option>')

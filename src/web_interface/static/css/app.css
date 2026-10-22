@@ -2748,14 +2748,18 @@ body[data-embedded-dataset-preview] > .shell > main { width: 100%; max-width: no
 /* What an import added (green) and updated (amber), highlighted in its messages and in the sections of the updated items. */
 mark.import-count-new, mark.import-count-updated { padding: .02rem .42rem; border: 1px solid; border-radius: 999px; font-weight: 800; white-space: nowrap; }
 mark.import-count-new { border-color: #8fd0a2; background: #dcf3e3; color: #17663a; }
+mark.import-count-removed { padding: .02rem .42rem; border: 1px solid #f3b4ae; border-radius: 999px; background: #fdecea; color: #9f1d14; font-weight: 800; white-space: nowrap; }
 mark.import-count-updated { border-color: #efc26b; background: #fff0cf; color: #8a4b00; }
 .import-summary-updated h4 { border-bottom-color: rgba(214, 140, 20, .5); color: #8a4b00; }
 .import-summary-updated .import-summary-count { color: #8a4b00; }
 .import-summary-updated .import-summary-table .import-summary-item { color: #8a4b00; }
 .import-summary-new h4 { border-bottom-color: rgba(31, 138, 76, .45); color: #1f6b44; }
 .import-summary-new .import-summary-count { color: #1f6b44; }
-.import-summary-new-items { display: flex; flex-wrap: wrap; gap: .3rem .4rem; margin: .45rem 0 0; padding: 0; list-style: none; }
-.import-summary-new-items .import-summary-item { padding: .12rem .55rem; border: 1px solid rgba(31, 138, 76, .3); border-radius: 999px; background: #eef8f1; color: #1f6b44; font-size: .8rem; font-weight: 700; }
+.import-summary-removed h4 { border-bottom-color: rgba(180, 35, 24, .4); color: #9f1d14; }
+.import-summary-removed .import-summary-count { color: #9f1d14; }
+.import-summary-chips { display: flex; flex-wrap: wrap; gap: .3rem .4rem; margin: .45rem 0 0; padding: 0; list-style: none; }
+.import-summary-chips .import-summary-item { padding: .12rem .55rem; border: 1px solid rgba(31, 138, 76, .3); border-radius: 999px; background: #eef8f1; color: #1f6b44; font-size: .8rem; font-weight: 700; }
+.import-summary-removed .import-summary-chips .import-summary-item { border-color: rgba(180, 35, 24, .3); background: #fdecea; color: #9f1d14; }
 .confirm-overlay.incoming-transfer-offer .confirm-panel #confirm-copy { max-height: min(64vh, 600px); }
 .confirm-panel #confirm-copy > ul.incoming-transfer-contents { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.2rem 1.6rem; }
 /* The admin notices of the super-admins: the look of an incoming transfer, below any other dialog shown over it. */
@@ -5623,6 +5627,9 @@ body:has(.confirm-overlay:not([hidden]), .ds-overlay:not([hidden]), .dataset-pre
 .user-choice-tag.user-choice-tag-time { border-color: #a8dccf; background: #e3f4f0; color: #0b6b66; letter-spacing: .02em; font-variant-numeric: tabular-nums; }
 /* A pattern of a choice of values (VF*), which takes every value it matches. */
 .user-choice-tag.user-choice-tag-pattern { border-color: #c9c3ef; background: #efedfb; color: #4b3fa0; }
+/* Content whose import replaces a whole database (the Export / Transfer selector). */
+.user-choice-tag.user-choice-tag-database { display: inline-flex; align-items: center; gap: .25rem; border-color: #efc26b; background: #fff0cf; color: #8a4b00; }
+.user-choice-tag.user-choice-tag-database::before { content: '\26A0'; font-size: .8rem; line-height: 1; }
 .multiselect-pattern-add, .rj-multi-pattern-add { display: block; width: 100%; margin: .25rem 0; padding: .45rem .7rem; border: 1px dashed #b9b2e6; border-radius: 10px; background: #f6f4fd; color: #4b3fa0; font-size: .78rem; font-weight: 700; text-align: left; box-shadow: none; }
 .multiselect-pattern-add[hidden], .rj-multi-pattern-add[hidden] { display: none; }
 .multiselect-pattern-help { margin: .2rem .15rem .35rem; color: var(--muted); font-size: .72rem; line-height: 1.35; white-space: normal; max-width: 22rem; }

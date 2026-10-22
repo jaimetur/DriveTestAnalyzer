@@ -578,6 +578,7 @@ def test_the_preview_tells_what_an_import_would_do_and_only_the_chosen_packages_
     assert "await fetch('/admin/import-export/import/preview', {" in script
     assert "/preview/${chosen ? 'import' : 'reject'}" in script
     assert 'box.checked = item.changed !== false;' in script and "'Invert selection'" in script
+    assert "match[3] ? 'import-count-removed'" in script and "`import-summary-section import-summary-${entry.kind}`" in script
 
 
 def test_the_preview_counts_the_app_events_an_import_would_add(client, tmp_path):
@@ -597,6 +598,29 @@ def test_the_preview_counts_the_app_events_an_import_would_add(client, tmp_path)
     core._apply_import_archive(package, manifest, destination_workspace_ids=[workspace.id], importing_user='super')
     with core.repository.connection() as connection:
         assert connection.execute("SELECT COUNT(*) FROM audit_logs WHERE action = 'preview_check'").fetchone()[0] == 2
+
+
+def test_the_preview_of_an_application_config_tells_what_replacing_the_application_database_would_do(client, tmp_path):
+    package = tmp_path / 'config.zip'
+    core.build_export_archive_file('config', package)
+    manifest = core.read_import_manifest(package)
+    [config] = core.preview_import_archive(package, manifest)['packages']
+    assert config['message'].startswith('Replaces the whole application database of this server: ') and config['changed'] is False, config
+    assert config['sections'] == [] and 'Its Scheduled Backups and Application Runtime settings' in config['message']
+    # After the export, an account is added here (the import would remove it) and another one is changed.
+    core.repository.create_user('only_here', 'secret123', 'user-viewer')
+    with core.repository.global_connection() as connection:
+        connection.execute("UPDATE users SET first_name = 'Changed' WHERE username = 'demo'")
+    [config] = core.preview_import_archive(package, manifest)['packages']
+    assert config['changed'] is True and '1 removed' in config['message'] and '1 updated' in config['message'], config
+    sections = {section['kind']: section for section in config['sections']}
+    assert sections['removed']['title'] == 'Removes users' and [item['name'] for item in sections['removed']['items']] == ['only_here']
+    assert sections['updated']['title'] == 'Updates users' and sections['updated']['items'][0]['name'] == 'demo'
+    assert any('First Name' in change for change in sections['updated']['items'][0]['changes'])
+    # The preview replaced a copy: the application database of this server is as it was.
+    assert core.repository.get_user('only_here') is not None
+    with core.repository.global_connection() as connection:
+        assert connection.execute("SELECT first_name FROM users WHERE username = 'demo'").fetchone()[0] == 'Changed'
 
 
 def test_the_preview_predicts_each_element_as_its_import_saves_it(client, tmp_path, monkeypatch):

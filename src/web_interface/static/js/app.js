@@ -8910,7 +8910,7 @@ function showCatalogueInsertChoice(slide) {
 // The summary of an import or transfer: what it imported, and for each element the items it renamed (before and after).
 // The counts of an import message that say what it added (``2 new``, ``1 new comment``) and what it updated (``3 updated``,
 // ``updated``, ``updated in 1``), highlighted each in its colour; the other text stays as it is.
-const IMPORT_COUNTS = /(\b[1-9]\d* new(?: (?:comments?|screenshots?))?\b)|(\b[1-9]\d* updated\b|\bupdated in [1-9]\d*\b|(?<=: )updated\b)/g;
+const IMPORT_COUNTS = /(\b[1-9]\d* new(?: (?:comments?|screenshots?))?\b)|(\b[1-9]\d* updated\b|\bupdated in [1-9]\d*\b|(?<=: |\()updated\b)|(\b[1-9]\d* removed\b)/g;
 
 function importCountsNodes(text) {
   const nodes = [];
@@ -8918,7 +8918,7 @@ function importCountsNodes(text) {
   for (const match of String(text || '').matchAll(IMPORT_COUNTS)) {
     if (match.index > last) nodes.push(document.createTextNode(text.slice(last, match.index)));
     const mark = document.createElement('mark');
-    mark.className = match[1] ? 'import-count-new' : 'import-count-updated';
+    mark.className = match[1] ? 'import-count-new' : match[3] ? 'import-count-removed' : 'import-count-updated';
     mark.textContent = match[0];
     nodes.push(mark);
     last = match.index + match[0].length;
@@ -8956,20 +8956,20 @@ function importSummaryContent(details) {
     // The updated items of an element, each with what changed in it.
     const updated = items.filter((item) => Array.isArray(item.changes));
     const notes = items.filter((item) => item.from === undefined && !Array.isArray(item.changes));
-    // The sections of the new items (in a preview) take the colour of the new counts, those of the updated items the
-    // colour of the updated counts.
-    const added = entry.kind === 'new';
-    const section = element('section', added ? 'import-summary-section import-summary-new'
+    // The sections of the items a preview would add or remove (only listed) take the colour of the new or removed
+    // counts, those of the updated items the colour of the updated counts.
+    const listed = entry.kind === 'new' || entry.kind === 'removed';
+    const section = element('section', listed ? `import-summary-section import-summary-${entry.kind}`
       : updated.length || entry.kind === 'updated' ? 'import-summary-section import-summary-updated' : 'import-summary-section');
     const heading = element('h4');
     const renamed = changes.filter((item) => !item.note).length;
     const another = changes.length - renamed;
     const count = [renamed ? `${renamed} renamed` : '', another ? `${another} imported with another name` : '',
-      updated.length ? `${updated.length} ${added ? 'new' : 'updated'}` : ''].filter(Boolean).join(' · ');
+      updated.length ? `${updated.length} ${listed ? entry.kind : 'updated'}` : ''].filter(Boolean).join(' · ');
     heading.append(element('span', '', entry.title || 'Notes'), element('span', 'import-summary-count', count));
     section.append(heading);
-    if (added && updated.length) {
-      const list = element('ul', 'import-summary-new-items');
+    if (listed && updated.length) {
+      const list = element('ul', 'import-summary-chips');
       updated.forEach((item) => list.append(element('li', 'import-summary-item', item.name || '')));
       section.append(list);
     } else if (updated.length) {
@@ -9017,7 +9017,7 @@ function importSummaryContent(details) {
 
 // What importing a package would do, before importing it (an Import ZIP, or a received transfer): a box for each of its
 // packages, checked when its import would change something, with what its import would do and, unfolded, the items it
-// would add and those it would update with what would change.
+// would add, remove (an Application Config replaces the whole application database) and update with what would change.
 // Resolves to the positions of the packages checked, or to null when cancelled (or rejected).
 function showImportPreview(preview, options = {}) {
   const packages = Array.isArray(preview?.packages) ? preview.packages : [];

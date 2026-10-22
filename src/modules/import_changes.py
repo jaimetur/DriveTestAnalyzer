@@ -216,6 +216,13 @@ def predict(package: list[Item], before: list[Item], labels: dict[str, str] | No
     return changes
 
 
+def removed(before: list[Item], after: list[Item]) -> list[str]:
+    """The names of the items of ``before`` that are not ``after`` (found by their key, their identity, then their
+    name): those an import that replaces the whole element would remove."""
+    kept = set(_pairs(after, before, ('key', 'uid', 'match')).values())
+    return [item.name for position, item in enumerate(before) if position not in kept]
+
+
 def compare_settings(name: str, before: dict[str, Any], after: dict[str, Any], labels: dict[str, str] | None = None,
                      described: list[str] | None = None) -> Changes:
     """What the import did to the settings of an element (``described`` tells their changes when given)."""

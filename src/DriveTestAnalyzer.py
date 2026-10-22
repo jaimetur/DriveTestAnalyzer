@@ -11030,32 +11030,34 @@ def _source_workspace_ids(source_workspaces: object) -> dict[str, str | None]:
     return mapping
 
 
-def replace_application_database_from_server(snapshot: Path, source_workspaces: object) -> None:
-    """Replace application.db with one written by this or another server.
+def replace_application_database_from_server(snapshot: Path, source_workspaces: object, target: Repository | None = None) -> None:
+    """Replace application.db with one written by this or another server (that of ``target``, the application
+    database of this server unless given: the preview replaces a copy).
 
     Workspace ids differ between servers, so grants and access rules are translated
     by workspace identity (or else name) when the package lists its workspaces, those of
     workspaces unknown here are dropped, and those of workspaces only this server has are kept.
     The backup and runtime settings of this server are kept as well.
     """
+    target = target or repository
     source_ids = _source_workspace_ids(source_workspaces)
-    server_state = {key: repository.get_application_state(key) for key in SERVER_APPLICATION_STATE_KEYS}
+    server_state = {key: target.get_application_state(key) for key in SERVER_APPLICATION_STATE_KEYS}
     local_only_ids = [workspace.id for workspace in workspace_registry.list() if workspace.id not in set(source_ids.values())]
-    local_only_access = repository.workspace_access_snapshot(local_only_ids) if source_ids else {}
+    local_only_access = target.workspace_access_snapshot(local_only_ids) if source_ids else {}
 
-    repository.replace_global_database_snapshot(snapshot)
+    target.replace_global_database_snapshot(snapshot)
 
     for key, value in server_state.items():
         if value is None:
-            repository.delete_application_state(key)
+            target.delete_application_state(key)
         else:
-            repository.set_application_state(key, value)
+            target.set_application_state(key, value)
     if source_ids:
-        repository.remap_workspace_access(
+        target.remap_workspace_access(
             {source_id: local_id for source_id, local_id in source_ids.items() if local_id},
             drop=[source_id for source_id, local_id in source_ids.items() if not local_id],
         )
-        repository.restore_workspace_access(local_only_access)
+        target.restore_workspace_access(local_only_access)
 
 
 def import_config_archive(staging_root: Path, manifest: dict[str, Any], *, keep_server_settings: bool = False) -> None:
@@ -11479,11 +11481,74 @@ def _predicted_settings(kind: str, before: Any, package: Any) -> Any:
     return package
 
 
-def _new_items_section(title: str, names: Iterable[str]) -> ImportSummaryLine:
-    """A line of a preview that lists the items an import would add."""
-    line = changes_section(title, [(name, ['New']) for name in names])
-    line.section['kind'] = 'new'
+def _new_items_section(title: str, names: Iterable[str], kind: str = 'new') -> ImportSummaryLine:
+    """A line of a preview that lists the items an import would add (or, with ``kind`` ``removed``, remove)."""
+    line = changes_section(title, [(name, [kind.title()]) for name in names])
+    line.section['kind'] = kind
     return line
+
+
+def _application_settings_items(target: Repository) -> dict[str, list[Any]]:
+    """What an Application Config import replaces in the application database of ``target`` besides the users, their
+    Modules Profiles and Workspace Groups: the tickets, the Interface Settings (each module and the stage labels) and
+    the Scoring Aggregation Hierarchy, as items of a preview."""
+    from src.modules.import_changes import Item, ticket_items
+    from src.modules.module_labels import load_module_labels
+    from src.modules.scoring_config import load_aggregation_hierarchy
+    from src.modules.ticket_center import ticket_center_payload
+
+    # The order of a module is told (its position is not compared in other elements).
+    modules = [Item(name=label['title'], values={**{key: value for key, value in label.items() if key != 'position'}, 'order': label['position'] + 1},
+                    uid=module, key=module) for module, label in load_module_labels(target).items()]
+    stage_labels = Item(name='Stage Labels', values={'visible': target.get_application_state(MODULE_STAGE_LABELS_STATE_KEY) == '1'},
+                        uid='stage-labels', key='stage-labels')
+    hierarchy = Item(name='Scoring Aggregation Hierarchy', values={'levels': load_aggregation_hierarchy(target)},
+                     uid='scoring-aggregation-hierarchy', key='scoring-aggregation-hierarchy')
+    return {'tickets': ticket_items(ticket_center_payload(target, screenshots=False)[0]), 'interface_settings': [*modules, stage_labels],
+            'scoring_aggregation_hierarchy': [hierarchy]}
+
+
+def _preview_application_config(archive: zipfile.ZipFile, manifest: dict[str, Any], staging_root: Path) -> tuple[str, list[str], bool]:
+    """What importing an Application Config would do: it replaces the whole application database of this server, so
+    the import is made on a copy of it and the copy is compared with it (the users, Modules Profiles, Workspace Groups,
+    tickets, Interface Settings and Scoring Aggregation Hierarchy it would add, update and remove)."""
+    from src.modules.import_changes import Changes, compare, counted, joined, removed, users_access_items
+
+    member = 'config/application.db'
+    if member not in archive.namelist():
+        return 'The package does not contain the application database.', [], True
+    folder = staging_root / 'application-config'
+    folder.mkdir(parents=True, exist_ok=True)
+    package_database, predicted_database = folder / 'package.db', folder / 'application.db'
+    with archive.open(member) as source, package_database.open('wb') as output:
+        shutil.copyfileobj(source, output, length=4 * 1024 * 1024)
+    with closing(sqlite3.connect(repository.global_db_path)) as current, closing(sqlite3.connect(predicted_database)) as copy:
+        current.backup(copy)
+    predicted = Repository(predicted_database, predicted_database, workspace_registry.registry_path)
+    replace_application_database_from_server(package_database, manifest.get('source_workspaces'), predicted)
+    workspaces = workspace_registry.list()
+    names, uids = {workspace.id: workspace.name for workspace in workspaces}, {workspace.id: workspace.uid for workspace in workspaces}
+    before = {**users_access_items(repository.users_access_payload(names, uids)), **_application_settings_items(repository)}
+    after = {**users_access_items(predicted.users_access_payload(names, uids)), **_application_settings_items(predicted)}
+    told, lines, changed = [], [], False
+    for key, singular, plural in (('users', 'user', 'users'), ('modules_profiles', 'Modules Profile', 'Modules Profiles'),
+                                  ('workspace_groups', 'Workspace Group', 'Workspace Groups'), ('tickets', 'ticket', 'tickets'),
+                                  ('interface_settings', '', 'Interface Settings'),
+                                  ('scoring_aggregation_hierarchy', '', 'Scoring Aggregation Hierarchy')):
+        changes: Changes = compare(after[key], before[key], after[key])
+        gone = removed(before[key], after[key])
+        if len(after[key]) == 1 and not singular:
+            detail = 'updated' if changes.updated else 'unchanged'
+        else:
+            detail = joined([f'{len(changes.new)} new' if changes.new else '', f'{len(changes.updated)} updated' if changes.updated else '',
+                             f'{len(gone)} removed' if gone else '', f'{changes.unchanged} unchanged' if changes.unchanged else ''])
+        told.append(f'no {plural}' if not detail else f'{counted(changes.count, singular, plural)} ({detail})' if singular else f'{plural} ({detail})')
+        lines += [_new_items_section(f'Adds {plural}', changes.new)] if changes.new else []
+        lines += [_new_items_section(f'Removes {plural}', gone, 'removed')] if gone else []
+        lines += [changes_section(f'Updates {plural}', changes.updated)] if changes.updated else []
+        changed = changed or bool(changes.new or changes.updated or gone)
+    return ('Replaces the whole application database of this server: ' + joined(told) + '. Its Scheduled Backups and '
+            'Application Runtime settings, its transfers and its workspaces are kept.'), lines, changed
 
 
 def _preview_package(archive: zipfile.ZipFile, manifest: dict[str, Any], destination_workspace_ids: Iterable[str],
@@ -11563,11 +11628,11 @@ def _preview_package(archive: zipfile.ZipFile, manifest: dict[str, Any], destina
             name, uid = str(entry['name']), str(entry.get('uid') or '')
             match = next((workspace for workspace in local if uid and workspace.uid == uid), None) \
                 or next((workspace for workspace in local if workspace.name.casefold() == name.casefold()), None)
-            told.append(f'"{name}" replaces the workspace "{match.name}" of this server' if match else f'"{name}" is added')
+            told.append(f'"{name}" replaces the whole database of the workspace "{match.name}" of this server' if match else f'"{name}" is added')
         what = 'Imports the workspace' if kind == 'workspace' else 'Replaces the Application Config and imports the workspaces'
         return f'{what}: {joined(told) or "none"}.', [], True
     if kind == 'config':
-        return 'Replaces the Application Config of this server; its server settings and local workspaces are kept.', [], True
+        return _preview_application_config(archive, manifest, staging_root)
     if kind == 'app-events':
         # The import adds the events a workspace does not have (the same user, action, details and time).
         member = str(manifest.get('archive_path') or '')
@@ -13208,8 +13273,9 @@ def render_admin_template(
             table['type'], table['color'] = database_table_type(table['name'], kind)
         order = [name for name, _color in DATABASE_TABLE_TYPES]
         tables.sort(key=lambda table: (order.index(table['type']), -int(table.get('dataset_id', 0)), str(table['label']).casefold()))
+    # Content whose import replaces a whole database carries a warning tag in the selector.
     export_options = [
-        {'value': 'config', 'label': 'Application Config'},
+        {'value': 'config', 'label': 'Application Config', 'tag': 'Whole application database', 'tag_class': 'user-choice-tag-database'},
         {'value': 'users-access', 'label': 'Users & Access'},
         {'value': 'ticket-center', 'label': 'Ticket Center'},
         {'value': 'dashboards', 'label': 'Dashboards (from active workspace)', 'disabled': not active_workspace},
@@ -13229,9 +13295,11 @@ def render_admin_template(
         {'value': 'nq-call-tracking', 'label': 'NQ Call Tracking (from active workspace)', 'disabled': not active_workspace},
         {'value': 'nq-calls-configuration', 'label': 'NQ Calls Configuration (from active workspace)', 'disabled': not active_workspace},
         {'value': 'app-events', 'label': 'App Events (from active workspace)', 'disabled': not active_workspace},
-        {'value': 'full-environment', 'label': 'Full Environment (Application Config + Dashboards + PPT Templates + Main Cities + Mappings & Reference Data + Scoring & GAP Analysis Methodologies + Auto-calculated Fields + Query Builder Queries + Network Insights Favourites + Bundle Report Template Favourites + Scoring & GAP Favourites Filters + Scoring & GAP Report Templates + Scoring Export Panels + Scoring Excluded Calls + Reporting Jobs + NQ Call Tracking + Selected Workspaces)'},
+        {'value': 'full-environment', 'label': 'Full Environment (Application Config + Dashboards + PPT Templates + Main Cities + Mappings & Reference Data + Scoring & GAP Analysis Methodologies + Auto-calculated Fields + Query Builder Queries + Network Insights Favourites + Bundle Report Template Favourites + Scoring & GAP Favourites Filters + Scoring & GAP Report Templates + Scoring Export Panels + Scoring Excluded Calls + Reporting Jobs + NQ Call Tracking + Selected Workspaces)',
+         'tag': 'Whole application and workspace databases', 'tag_class': 'user-choice-tag-database'},
         *[
-            {'value': f'workspace:{workspace.id}', 'label': f'Full Workspace: {workspace.name}'}
+            {'value': f'workspace:{workspace.id}', 'label': f'Full Workspace: {workspace.name}', 'tag': 'Whole workspace database',
+             'tag_class': 'user-choice-tag-database'}
             for workspace in accessible_workspaces(user)
         ],
     ]
