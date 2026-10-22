@@ -373,5 +373,5 @@ def test_users_access_import_counts_as_updated_only_what_really_changed(client):
     others = users - 1
     assert notice.startswith(f'Imported Users & Access: {users} users (1 updated' + (f' and {others} unchanged)' if others else ')'))
     [section] = core.import_notice_details(notice)['sections']
-    assert section == {'title': 'Updated users', 'items': [
+    assert section == {'title': 'Updated users', 'kind': 'updated', 'items': [
         {'name': 'ana', 'changes': ['First Name: Ana → Anna', 'Role: user-editor → user-viewer']}]}

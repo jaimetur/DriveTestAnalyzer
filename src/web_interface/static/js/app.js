@@ -8871,6 +8871,25 @@ function showCatalogueInsertChoice(slide) {
 }
 
 // The summary of an import or transfer: what it imported, and for each element the items it renamed (before and after).
+// The counts of an import message that say what it added (``2 new``, ``1 new comment``) and what it updated (``3 updated``,
+// ``updated``, ``updated in 1``), highlighted each in its colour; the other text stays as it is.
+const IMPORT_COUNTS = /(\b[1-9]\d* new(?: (?:comments?|screenshots?))?\b)|(\b[1-9]\d* updated\b|\bupdated in [1-9]\d*\b|(?<=: )updated\b)/g;
+
+function importCountsNodes(text) {
+  const nodes = [];
+  let last = 0;
+  for (const match of String(text || '').matchAll(IMPORT_COUNTS)) {
+    if (match.index > last) nodes.push(document.createTextNode(text.slice(last, match.index)));
+    const mark = document.createElement('mark');
+    mark.className = match[1] ? 'import-count-new' : 'import-count-updated';
+    mark.textContent = match[0];
+    nodes.push(mark);
+    last = match.index + match[0].length;
+  }
+  if (last < String(text || '').length) nodes.push(document.createTextNode(String(text).slice(last)));
+  return nodes;
+}
+
 function importSummaryContent(details) {
   const content = document.createElement('div');
   content.className = 'import-summary';
@@ -8886,7 +8905,11 @@ function importSummaryContent(details) {
     const heading = element('h4');
     heading.append(element('span', '', 'Imported'), element('span', 'import-summary-count', packages.length === 1 ? '1 package' : `${packages.length} packages`));
     const list = element('ul', 'import-summary-packages');
-    packages.forEach((line) => list.append(element('li', '', line)));
+    packages.forEach((line) => {
+      const item = element('li');
+      item.append(...importCountsNodes(line));
+      list.append(item);
+    });
     section.append(heading, list);
     content.append(section);
   }
@@ -8896,7 +8919,8 @@ function importSummaryContent(details) {
     // The updated items of an element, each with what changed in it.
     const updated = items.filter((item) => Array.isArray(item.changes));
     const notes = items.filter((item) => item.from === undefined && !Array.isArray(item.changes));
-    const section = element('section', 'import-summary-section');
+    // The sections of the updated items take the colour of the updated counts.
+    const section = element('section', updated.length || entry.kind === 'updated' ? 'import-summary-section import-summary-updated' : 'import-summary-section');
     const heading = element('h4');
     const renamed = changes.filter((item) => !item.note).length;
     const another = changes.length - renamed;
@@ -8950,9 +8974,11 @@ function importSummaryContent(details) {
 function showImportSummary(notice, details, options = {}) {
   if (!details || !((details.sections || []).length || (details.packages || []).length > 1)) {
     showInfoDialog(notice, options);
-    return;
+  } else {
+    showInfoDialog(details.headline || notice, {...options, wide: true, content: importSummaryContent(details)});
   }
-  showInfoDialog(details.headline || notice, {...options, wide: true, content: importSummaryContent(details)});
+  // The message of one package says itself what it added and updated.
+  if (infoCopy) infoCopy.replaceChildren(...importCountsNodes(infoCopy.textContent));
 }
 
 function showInfoDialog(message, options = {}) {

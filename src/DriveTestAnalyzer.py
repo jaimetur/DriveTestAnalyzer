@@ -11280,7 +11280,7 @@ def changes_section(title: str, updated: Iterable[tuple[str, list[str]]]) -> Imp
     ``title: item (change; change); item (change).``"""
     updated = [(str(name), [str(change) for change in changes]) for name, changes in updated]
     line = ImportSummaryLine(f'{title}: ' + '; '.join(f'{name} ({"; ".join(changes)})' for name, changes in updated) + '.')
-    line.section = {'title': title, 'items': [{'name': name, 'changes': changes} for name, changes in updated]}
+    line.section = {'title': title, 'kind': 'updated', 'items': [{'name': name, 'changes': changes} for name, changes in updated]}
     return line
 
 
@@ -11397,6 +11397,8 @@ def _element_notice(kind: str, destinations: list[Workspace], changes: dict[str,
         lines = [summary_section(f'Updated {title} of "{workspace.name}"',
                                  [change for _item, described in changes[workspace.id].updated for change in described])
                  for workspace in destinations if changes[workspace.id].updated]
+        for line in lines:
+            line.section['kind'] = 'updated'
         return f'Imported {name} into {workspaces}: {settings_breakdown(total)}.', lines
     singular, plural, prefix = ELEMENT_NAMES[kind]
     if changes is None:

@@ -473,6 +473,11 @@ def test_import_summaries_come_in_parts_for_the_summary_window():
     assert "showImportSummary(offer.notice || 'The incoming transfer was imported successfully.', offer.notice_details" in script
     assert "showImportSummary(transfer.notice || 'The destination server received and imported the package successfully.', transfer.notice_details" in script
     assert 'function importSummaryContent(details) {' in script and "infoOverlay.classList.toggle('info-wide', Boolean(options.wide));" in script
+    # What an import added and updated stands out, each in its colour, also in the sections of the updated items.
+    assert "mark.className = match[1] ? 'import-count-new' : 'import-count-updated';" in script
+    assert "entry.kind === 'updated' ? 'import-summary-section import-summary-updated'" in script
+    css = (Path(__file__).parents[1] / 'src/web_interface/static/css/app.css').read_text(encoding='utf-8')
+    assert 'mark.import-count-new {' in css and 'mark.import-count-updated {' in css and '.import-summary-updated h4 {' in css
 
 
 def test_the_incoming_transfer_dialog_names_every_element_with_its_title():
