@@ -231,6 +231,8 @@ let restoringSelection = false, selectionLoaded = true, selectionDirty = false, 
 const isCampaignPreset = value => String(value).startsWith('@');
 let selectionSaveTimer = null;
 const applySavedCalculationSelection = selection => {applied = selection;};
+let kept = null;
+const keepRestoredContextValues = filters => {kept = filters;};
 const scheduleAutoCdrRefresh = options => {autoRefresh = options;};
 const persistCalculationSelection = () => {persisted = true;};
 const window = {
@@ -243,7 +245,7 @@ restoreCalculationSelectionFromSavedFilter({
   nr_mode: 'NR', baseline_operator: 'EE', scoring_profile_id: 'profile-7',
   context_filters: {Region: ['North'], City: [], Operator: ['EE'], Vendor: [], Campaign: ['Spring']},
 });
-const queued = {applied, selectionDirty, selectionSaveTimer, timeoutDelay, pinnedCdrs, autoRefresh};
+const queued = {applied, selectionDirty, selectionSaveTimer, timeoutDelay, pinnedCdrs, autoRefresh, kept};
 timeoutCallback();
 process.stdout.write(JSON.stringify({queued, persisted}));
 '''
@@ -263,6 +265,8 @@ process.stdout.write(JSON.stringify({queued, persisted}));
     # The panel shows the CDRs of the Saved Filter, and the lists of its filters follow for its NR Mode and filters.
     assert result['queued']['pinnedCdrs'] is True
     assert result['queued']['autoRefresh'] == {'delay': 0}
+    # Its filters stay in the lists until those of its NR Mode and filters arrive.
+    assert result['queued']['kept'] == {'Region': ['North'], 'City': [], 'Operator': ['EE'], 'Vendor': [], 'Campaign': ['Spring']}
     assert result['persisted'] is True
 
 
@@ -272,6 +276,7 @@ def test_job_selection_restoration_uses_legacy_levels_field():
     program = r'''
 let applied, pinnedCdrs = false;
 const applySavedCalculationSelection = selection => {applied = selection;};
+const keepRestoredContextValues = () => {};
 const scheduleSelectionSave = () => {};
 const scheduleAutoCdrRefresh = () => {};
 ''' + restore + r'''
@@ -290,6 +295,7 @@ def test_job_selection_restoration_clears_filters_on_actual_controls():
     restore = _function_source(script, 'restoreCalculationSelectionFromSavedFilter')
     program = r'''
 let restoringSelection = false, message = '', pinnedCdrs = false;
+const keepRestoredContextValues = () => {};
 const scheduleAutoCdrRefresh = () => {};
 const areaSummaryTimeSplit = null, areaSummaryBreakdown = null, areaSummaryCities = null, comparedOperatorsSelect = null;
 const syncAreaSummary = () => {}, refreshAreaSummaryCities = () => {}, applyTrendCampaigns = () => {};
@@ -352,6 +358,7 @@ def test_context_filters_keep_all_values_and_remembered_values_when_the_cdrs_cha
     program = r'''
 let selectedIds = ['sa'];
 let autoCdrs = {options: null};
+let restoredContextValues = null;
 const datasetCatalogues = new Map([
   ['sa', {operators: ['VF', 'EE', 'VF-SA']}], ['nsa', {operators: ['VF', 'EE', 'VF-VoNR']}],
 ]);
@@ -420,3 +427,64 @@ def test_a_saved_filter_opened_from_the_saved_filters_panel_shows_its_results():
     assert "if (resultsPanel && typeof showSectionAtTop === 'function') showSectionAtTop(resultsPanel);" in script
     assert '    else showResults();' in script
     assert 'if (!fromDropdown && selectedSavedFilterId === savedFilterIdOf(savedFilter)) showResults();' in script
+
+
+def test_a_restored_selection_keeps_its_filters_until_the_lists_of_its_nr_mode_arrive():
+    script = SCORING_SCRIPT.read_text(encoding='utf-8')
+    functions = '\n'.join(_function_source(script, name) for name in ('refreshContextFilterOptions', 'selectedContextFilters'))
+    program = r"""
+let selectedIds = [];
+// The lists of the selection before: empty, as in a workspace whose filter catalogues are not ready yet.
+let autoCdrs = {options: {Campaign: [], City: []}, presets: {}};
+let restoredContextValues = null;
+const datasetCatalogues = new Map();
+const selectedDatasetIds = () => selectedIds;
+const contextFilterDefinitions = [{key: 'Campaign', catalogueKey: 'campaigns'}, {key: 'City', catalogueKey: 'cities'}];
+const uniqueCatalogueValues = values => [...new Set((values || []).map(String))];
+const contextFilterOptions = (key, values) => values.map(value => ({value, label: value, color: ''}));
+const scoringVendorName = value => value;
+const mainCityIdentities = new Set();
+const decorateOperatorOptions = () => {};
+const refreshAreaSummaryCities = () => {}, refreshTrendCampaigns = () => {};
+const campaignPresetLabels = {'@latest-campaign': 'Latest campaign', '@latest-2-campaigns': 'Latest 2 campaigns'};
+const isCampaignPreset = value => Object.prototype.hasOwnProperty.call(campaignPresetLabels, value);
+const chosenCampaignPreset = select => [...(select?.selectedOptions || [])].map(option => option.value).find(isCampaignPreset) || '';
+const document = {createElement: () => ({value: '', textContent: '', selected: false, disabled: false, dataset: {}, style: {}})};
+const Event = class {constructor(type) {this.type = type;}};
+const makeSelect = () => ({
+  options: [], dataset: {},
+  get selectedOptions() { return this.options.filter(option => option.selected); },
+  replaceChildren() { this.options = []; },
+  append(option) { this.options.push(option); },
+  dispatchEvent() {},
+});
+const contextFilterSelects = new Map([['Campaign', makeSelect()], ['City', makeSelect()]]);
+""" + functions + r"""
+const state = () => Object.fromEntries([...contextFilterSelects].map(([key, select]) => [key,
+  select.options.map(option => (option.value || option.textContent) + (option.selected ? '*' : '')).join(' ')]));
+const filters = () => JSON.stringify(selectedContextFilters({keepPresets: true}));
+refreshContextFilterOptions();
+const log = [{lists: state(), filters: filters()}];
+// A Saved Filter is used: its values stay while the lists are still those of the selection before.
+restoredContextValues = new Map([['Campaign', ['@latest-2-campaigns']], ['City', ['Manchester']]]);
+for (const [key, values] of restoredContextValues) {
+  const select = contextFilterSelects.get(key);
+  select.options = values.map(value => ({value, textContent: value, selected: true, disabled: false, dataset: {}, style: {}}));
+  delete select.dataset.scoringCatalogueSignature;
+}
+refreshContextFilterOptions();
+log.push({lists: state(), filters: filters()});
+// The lists of its NR Mode and filters arrive.
+restoredContextValues = null;
+autoCdrs = {options: {Campaign: ['Q2', 'Q3'], City: ['London', 'Manchester']}, presets: {}};
+refreshContextFilterOptions();
+log.push({lists: state(), filters: filters()});
+process.stdout.write(JSON.stringify(log));
+"""
+    empty, restoring, arrived = _run_node_json(program, {})
+    assert empty == {'lists': {'Campaign': 'No values', 'City': 'No values'}, 'filters': '{"Campaign":[],"City":[]}'}
+    # Its automatic Campaign choice and its City stay chosen, and the City it holds alone is still a filter.
+    assert restoring == {'lists': {'Campaign': '@latest-campaign @latest-2-campaigns*', 'City': 'Manchester*'},
+                         'filters': '{"Campaign":["@latest-2-campaigns"],"City":["Manchester"]}'}
+    assert arrived == {'lists': {'Campaign': '@latest-campaign @latest-2-campaigns* Q2 Q3', 'City': 'London Manchester*'},
+                       'filters': '{"Campaign":["@latest-2-campaigns"],"City":["Manchester"]}'}

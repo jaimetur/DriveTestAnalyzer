@@ -415,6 +415,10 @@
     if (typeof ResizeObserver === 'function') new ResizeObserver(fitAutoCdrLists).observe(autoCdrGroups);
   }
   let autoCdrs = {options: null, incomplete: []};
+  // The filter values of a selection restored (a Saved Filter used or edited, or an edit cancelled), kept in the lists until
+  // the CDRs and the lists of its NR Mode and filters arrive: until then the lists still belong to the selection before
+  // it (or are empty), and its values, its automatic Campaign choice included, would be lost and saved without them.
+  let restoredContextValues = null;
   let pinnedCdrs = false;
   let autoCdrRevision = 0;
   let autoCdrTimer = null;
@@ -764,15 +768,22 @@
       const select = contextFilterSelects.get(key);
       if (!select) continue;
       const identity = value => key === 'Vendor' ? scoringVendorName(value) : value;
-      const preset = key === 'Campaign' ? chosenCampaignPreset(select) : '';
+      const restored = restoredContextValues?.get(key) || [];
+      const restoredValues = restored.filter(value => !isCampaignPreset(value));
+      const preset = key === 'Campaign' ? (chosenCampaignPreset(select) || restored.find(isCampaignPreset) || '') : '';
       const selectedValues = new Set([...select.selectedOptions].map(option => identity(option.value)).filter(value => value && !isCampaignPreset(value)));
+      restoredValues.forEach(value => selectedValues.add(identity(value)));
       // Values chosen while they were in the CDRs (another NR Mode or CDR choice) come back with them.
       let remembered = [];
       try { remembered = JSON.parse(select.dataset.scoringRememberedValues || '[]'); } catch (_error) { remembered = []; }
       remembered.forEach(value => selectedValues.add(value));
-      // Every value checked (All values) keeps every value checked, also the values the new CDRs add.
+      // Every value checked (All values) keeps every value checked, also the values the new CDRs add; a list made with the
+      // values of a restored selection holds only them, so they are not every value.
       const enabledBefore = [...select.options].filter(option => !option.disabled && option.value && !isCampaignPreset(option.value));
-      const allSelected = !preset && enabledBefore.length > 0 && enabledBefore.every(option => option.selected);
+      const allSelected = !preset && !restored.length && !select.dataset.scoringRestoredList && enabledBefore.length > 0
+        && enabledBefore.every(option => option.selected);
+      if (restored.length) select.dataset.scoringRestoredList = 'true';
+      else delete select.dataset.scoringRestoredList;
       const rawValues = [];
       if (autoCdrs.options && Array.isArray(autoCdrs.options[key])) {
         rawValues.push(...uniqueCatalogueValues(autoCdrs.options[key]));
@@ -782,7 +793,7 @@
           rawValues.push(...uniqueCatalogueValues(values));
         }
       }
-      const nextOptions = contextFilterOptions(key, [...new Set(rawValues)]);
+      const nextOptions = contextFilterOptions(key, [...new Set([...rawValues, ...restoredValues])]);
       const presetCities = key === 'City'
         ? nextOptions.filter(option => mainCityIdentities.has(option.value.trim().toLocaleLowerCase())).map(option => option.value) : [];
       const signature = JSON.stringify({
@@ -796,7 +807,7 @@
         select.dataset.multiselectPresetValues = presetCities.join('|');
       }
       select.replaceChildren();
-      if (!nextOptions.length) {
+      if (!nextOptions.length && !(preset && restored.length)) {
         const empty = document.createElement('option');
         empty.value = '';
         empty.disabled = true;
@@ -1049,7 +1060,9 @@
         .filter(option => !option.disabled && option.value && !isCampaignPreset(option.value))
         .map(option => String(option.value)) : [];
       const available = select ? [...select.options].filter(option => !option.disabled && option.value && !isCampaignPreset(option.value)) : [];
-      return [key, key !== 'Vendor' && available.length && values.length === available.length ? [] : values];
+      // Every value checked is no restriction, but for a list made with the values of a restored selection.
+      return [key, key !== 'Vendor' && available.length && values.length === available.length && !select.dataset.scoringRestoredList
+        ? [] : values];
     }));
   }
 
@@ -1304,11 +1317,22 @@
 
   // The panel shows the CDRs of the Saved Filter (or, with automaticCdrs, those of its NR Mode and Campaign); the lists
   // of its filters follow for its NR Mode and filters.
+  // The filter values of a selection about to be restored, kept in the lists until those of its NR Mode and filters
+  // arrive (see restoredContextValues).
+  function keepRestoredContextValues(contextFilters) {
+    const filters = contextFilters && typeof contextFilters === 'object' ? contextFilters : {};
+    restoredContextValues = new Map([...contextFilterSelects.keys()].map(key => {
+      const requested = filters[key] ?? filters[key.toLowerCase()] ?? [];
+      return [key, uniqueCatalogueValues(Array.isArray(requested) ? requested : [requested])];
+    }));
+  }
+
   function restoreCalculationSelectionFromSavedFilter(savedFilter, {automaticCdrs = false} = {}) {
     // A Saved Filter with an automatic Campaign choice follows the campaigns and CDRs it stands for now.
     const campaignChoice = Object.entries(savedFilter.context_filters || {})
       .some(([key, values]) => key.toLowerCase() === 'campaign' && (Array.isArray(values) ? values : [values]).some(isCampaignPreset));
     pinnedCdrs = !automaticCdrs && !campaignChoice;
+    keepRestoredContextValues(savedFilter.context_filters);
     applySavedCalculationSelection({
       dataset_ids: savedFilter.dataset_ids || [],
       aggregation_levels: savedFilter.aggregation_levels || savedFilter.levels || [],
@@ -1336,8 +1360,8 @@
       if (preset) { filters[key] = [preset]; continue; }
       const enabled = [...select.options].filter(option => !option.disabled && option.value && !isCampaignPreset(option.value));
       const values = enabled.filter(option => option.selected).map(option => String(option.value));
-      // Every value checked is no restriction.
-      filters[key] = values.length && values.length === enabled.length ? [] : values;
+      // Every value checked is no restriction, but for a list made with the values of a restored selection.
+      filters[key] = values.length && values.length === enabled.length && !select.dataset.scoringRestoredList ? [] : values;
     }
     return filters;
   }
@@ -1384,6 +1408,8 @@
         const body = await requestAutoCdrs(String(nrFilter?.value || 'NSA'), filters, {defaultCampaign});
         if (revision !== autoCdrRevision) return;
         applyAutoCdrResponse(body);
+        // The lists of the restored selection have arrived.
+        restoredContextValues = null;
         if (defaultCampaign) {
           refreshContextFilterOptions();
           setFilterValues('Campaign', body.campaign_selection || []);
@@ -11016,6 +11042,7 @@
     syncSavedFilterEditing();
     if (restore && before) {
       pinnedCdrs = before.pinned;
+      keepRestoredContextValues(before.selection?.context_filters);
       applySavedCalculationSelection(before.selection);
       scheduleSelectionSave();
       scheduleAutoCdrRefresh({delay: 0});
