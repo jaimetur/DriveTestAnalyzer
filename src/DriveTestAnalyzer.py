@@ -11479,13 +11479,21 @@ def _predicted_settings(kind: str, before: Any, package: Any) -> Any:
     return package
 
 
+def _new_items_section(title: str, names: Iterable[str]) -> ImportSummaryLine:
+    """A line of a preview that lists the items an import would add."""
+    line = changes_section(title, [(name, ['New']) for name in names])
+    line.section['kind'] = 'new'
+    return line
+
+
 def _preview_package(archive: zipfile.ZipFile, manifest: dict[str, Any], destination_workspace_ids: Iterable[str],
-                     staging_root: Path, importing_user: str = 'import') -> tuple[str, list[str]]:
-    """What the import of one package would do, told as its completion message and its lines, without importing it
+                     staging_root: Path, importing_user: str = 'import') -> tuple[str, list[str], bool]:
+    """What the import of one package would do, without importing it: its completion message, its lines (the items it
+    would add, and those it would update with what would change) and whether it would change anything
     (``importing_user`` owns the items whose creator is not on this server, as the import gives them)."""
     from src.modules.import_changes import (
-        ELEMENT_LABELS, SETTINGS_ELEMENTS, breakdown, compare, compare_settings, counted, element_items, joined, predict,
-        settings_values, ticket_items, users_access_items,
+        ELEMENT_LABELS, ELEMENT_NAMES, SETTINGS_ELEMENTS, breakdown, compare, compare_settings, counted, element_items,
+        joined, predict, settings_values, ticket_items, users_access_items,
     )
     from src.modules.transfer_identities import imported_creator
 
@@ -11493,11 +11501,11 @@ def _preview_package(archive: zipfile.ZipFile, manifest: dict[str, Any], destina
     if kind in ELEMENT_DOCUMENTS:
         destinations = _preview_destinations(kind, manifest, destination_workspace_ids)
         if not destinations:
-            return 'Its destination workspace is not on this server: choose one, or it is not imported.', []
+            return 'Its destination workspace is not on this server: choose one, or it is not imported.', [], False
         package = _preview_element_document(kind, manifest, archive, staging_root)
         before = _element_documents(kind, destinations)
         if package is None or before is None:
-            return _preview_wording(_element_notice(kind, destinations, None)[0]), []
+            return _preview_wording(_element_notice(kind, destinations, None)[0]), [], True
         if kind == 'scoring-export-panels':
             from src.modules.scoring_export_panels import export_panel_changes
             changes = {workspace.id: compare_settings('', {}, {}, described=export_panel_changes(
@@ -11516,10 +11524,13 @@ def _preview_package(archive: zipfile.ZipFile, manifest: dict[str, Any], destina
                                              element_items(kind, before[workspace.id]), ELEMENT_LABELS.get(kind), creators)
                        for workspace in destinations}
         message, lines = _element_notice(kind, destinations, changes)
-        return _preview_wording(message), lines
+        plural = ELEMENT_NAMES[kind][1] if kind in ELEMENT_NAMES else ''
+        added = [_new_items_section(f'Adds {plural} to "{workspace.name}"', changes[workspace.id].new)
+                 for workspace in destinations if plural and changes[workspace.id].new]
+        return _preview_wording(message), [*added, *lines], any(item.new or item.updated for item in changes.values())
     if kind == 'users-access':
         if USERS_ACCESS_ARCHIVE_PATH not in archive.namelist():
-            return 'The package does not contain Users & Access.', []
+            return 'The package does not contain Users & Access.', [], True
         package, before = users_access_items(_json_document(archive.read(USERS_ACCESS_ARCHIVE_PATH))), users_access_items(
             json.loads(_users_access_archive_payload()))
         kinds = [(singular, plural, compare(package[key], before[key], package[key]))
@@ -11527,17 +11538,21 @@ def _preview_package(archive: zipfile.ZipFile, manifest: dict[str, Any], destina
                                                ('workspace_groups', 'Workspace Group', 'Workspace Groups'))]
         message = 'Imports Users & Access: ' + joined([counted(changes.count, singular, plural) + (f' ({breakdown(changes)})' if changes.count else '')
                                                       for singular, plural, changes in kinds]) + '.'
-        return message, [changes_section(f'Updates {plural}', changes.updated) for _singular, plural, changes in kinds if changes.updated]
+        lines = [_new_items_section(f'Adds {plural}', changes.new) for _singular, plural, changes in kinds if changes.new]
+        lines += [changes_section(f'Updates {plural}', changes.updated) for _singular, plural, changes in kinds if changes.updated]
+        return message, lines, any(changes.new or changes.updated for _singular, _plural, changes in kinds)
     if kind == 'ticket-center':
         from src.modules.ticket_center import ticket_center_payload
 
         if TICKET_CENTER_ARCHIVE_PATH not in archive.namelist():
-            return 'The package does not contain Ticket Center.', []
+            return 'The package does not contain Ticket Center.', [], True
         package = ticket_items(_json_document(archive.read(TICKET_CENTER_ARCHIVE_PATH)))
         changes = compare(package, ticket_items(ticket_center_payload(repository, screenshots=False)[0]), package)
         detail = breakdown(changes)
-        return f'Imports {counted(changes.count, "ticket")} into {ticket_center_title()}' + (f': {detail}.' if detail else '.'), \
-            [changes_section('Updates tickets', changes.updated)] if changes.updated else []
+        lines = [_new_items_section('Adds tickets', changes.new)] if changes.new else []
+        lines += [changes_section('Updates tickets', changes.updated)] if changes.updated else []
+        return f'Imports {counted(changes.count, "ticket")} into {ticket_center_title()}' + (f': {detail}.' if detail else '.'), lines, \
+            bool(changes.new or changes.updated)
     if kind in {'workspace', 'full-environment'}:
         entries = [manifest.get('workspace')] if kind == 'workspace' else manifest.get('workspaces')
         local = workspace_registry.list()
@@ -11550,12 +11565,24 @@ def _preview_package(archive: zipfile.ZipFile, manifest: dict[str, Any], destina
                 or next((workspace for workspace in local if workspace.name.casefold() == name.casefold()), None)
             told.append(f'"{name}" replaces the workspace "{match.name}" of this server' if match else f'"{name}" is added')
         what = 'Imports the workspace' if kind == 'workspace' else 'Replaces the Application Config and imports the workspaces'
-        return f'{what}: {joined(told) or "none"}.', []
+        return f'{what}: {joined(told) or "none"}.', [], True
     if kind == 'config':
-        return 'Replaces the Application Config of this server; its server settings and local workspaces are kept.', []
+        return 'Replaces the Application Config of this server; its server settings and local workspaces are kept.', [], True
     if kind == 'app-events':
-        return 'Adds the App Events of the package that the destination workspace does not have.', []
-    return 'Imports the package.', []
+        # The import adds the events a workspace does not have (the same user, action, details and time).
+        member = str(manifest.get('archive_path') or '')
+        destinations = _preview_destinations(kind, manifest, destination_workspace_ids)
+        document = _json_document(archive.read(member)) if member in archive.namelist() else None
+        if not destinations or not isinstance(document, dict) or not isinstance(document.get('events'), list):
+            return 'Adds the App Events of the package that the destination workspace does not have.', [], True
+        from src.modules.import_changes import Changes
+
+        added = sum(Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path)
+                    .count_new_logs(document['events']) for workspace in destinations)
+        changes = Changes(new=[''] * added, unchanged=max(len(document['events']) * len(destinations) - added, 0))
+        return (f'Imports {counted(changes.count, "App Event")} into {counted(len(destinations), "workspace")}'
+                + (f': {breakdown(changes)}' if changes.count else '') + '; the events they already have are kept.'), [], bool(added)
+    return 'Imports the package.', [], True
 
 
 def _preview_sections(lines: list[str]) -> list[dict[str, Any]]:
@@ -11566,9 +11593,9 @@ def _preview_sections(lines: list[str]) -> list[dict[str, Any]]:
 def preview_import_archive(package_path: Path, manifest: dict[str, Any], destination_workspace_ids: Iterable[str] = (),
                            importing_user: str = 'import') -> dict[str, Any]:
     """What importing a package would do in each of its packages (one for a package that is not a bundle), without
-    importing anything: its position (what the import of chosen packages names), its content, its completion message
-    and its lines (the items it would update, with what would change). A package whose preview fails says so and can
-    still be imported."""
+    importing anything: its position (what the import of chosen packages names), its content, its completion message,
+    its lines (the items it would add, and those it would update with what would change) and whether it would change
+    anything. A package whose preview fails says so and can still be imported."""
     destination_workspace_ids = list(destination_workspace_ids)
     entries = []
     with zipfile.ZipFile(package_path) as archive, tempfile.TemporaryDirectory(prefix='drivetest-analyzer-preview-') as temporary_dir:
@@ -11592,12 +11619,12 @@ def preview_import_archive(package_path: Path, manifest: dict[str, Any], destina
                 nested_root = staging_root / f'bundle-{position + 1}'
                 nested_root.mkdir()
                 with zipfile.ZipFile(nested_path) as nested:
-                    message, lines = _preview_package(nested, read_import_manifest(nested_path), destination_workspace_ids, nested_root,
-                                                      importing_user)
+                    message, lines, changed = _preview_package(nested, read_import_manifest(nested_path), destination_workspace_ids,
+                                                               nested_root, importing_user)
                 nested_path.unlink(missing_ok=True)
-                item.update(message=message, sections=_preview_sections(lines))
+                item.update(message=message, sections=_preview_sections(lines), changed=changed)
             except Exception as exc:  # noqa: BLE001 - a preview that fails never keeps a package from being imported
-                item.update(message='', sections=[], error=f'Its preview could not be prepared: {exc}')
+                item.update(message='', sections=[], changed=True, error=f'Its preview could not be prepared: {exc}')
             entries.append(item)
         if packages is None:
             try:
@@ -11606,10 +11633,10 @@ def preview_import_archive(package_path: Path, manifest: dict[str, Any], destina
                 label = str(manifest.get('kind') or 'Package')
             item = {'index': 0, 'kind': str(manifest.get('kind') or ''), 'label': label}
             try:
-                message, lines = _preview_package(archive, manifest, destination_workspace_ids, staging_root, importing_user)
-                item.update(message=message, sections=_preview_sections(lines))
+                message, lines, changed = _preview_package(archive, manifest, destination_workspace_ids, staging_root, importing_user)
+                item.update(message=message, sections=_preview_sections(lines), changed=changed)
             except Exception as exc:  # noqa: BLE001
-                item.update(message='', sections=[], error=f'Its preview could not be prepared: {exc}')
+                item.update(message='', sections=[], changed=True, error=f'Its preview could not be prepared: {exc}')
             entries.append(item)
     return {'headline': f'{len(entries)} package{"s" if len(entries) != 1 else ""} to import', 'packages': entries}
 

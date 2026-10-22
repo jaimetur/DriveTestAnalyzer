@@ -5547,6 +5547,23 @@ class Repository:
                 'SELECT COUNT(*), MAX(id), TOTAL(id), TOTAL(LENGTH(details)) FROM audit_logs').fetchone()
         return f'{count}:{last_id or 0}:{int(ids)}:{int(sizes)}'
 
+    @staticmethod
+    def _merged_log_key(event: Any) -> tuple[str, ...] | None:
+        """The identity of an App Event of a package as the workspace keeps it (events of a process, such as
+        ``import``, as ``system``'s), or None for an event that is not merged."""
+        if not isinstance(event, dict):
+            return None
+        key = tuple(str(event.get(field) or '') for field in ('username', 'action', 'details', 'created_at'))
+        if key[:2] in PROCESS_EVENT_DETAILS:
+            key = ('system', key[1], PROCESS_EVENT_DETAILS[key[:2]], key[3])
+        return key if key[0] and key[1] and key[3] else None
+
+    def count_new_logs(self, events: Iterable[dict[str, Any]]) -> int:
+        """How many App Events of a package ``merge_logs`` would add (without adding them)."""
+        with self.connection() as conn:
+            existing = {tuple(row) for row in conn.execute('SELECT username, action, details, created_at FROM audit_logs').fetchall()}
+        return len({key for key in map(self._merged_log_key, events) if key and key not in existing})
+
     def merge_logs(self, events: Iterable[dict[str, Any]]) -> int:
         """Add the App Events of a package that the workspace does not have (the same user, action, details and time);
         returns how many were added. Nothing is replaced or deleted. Events of a process (such as ``import``) come in
@@ -5555,12 +5572,8 @@ class Repository:
         with self.connection() as conn:
             existing = {tuple(row) for row in conn.execute('SELECT username, action, details, created_at FROM audit_logs').fetchall()}
             for event in events:
-                if not isinstance(event, dict):
-                    continue
-                key = tuple(str(event.get(field) or '') for field in ('username', 'action', 'details', 'created_at'))
-                if key[:2] in PROCESS_EVENT_DETAILS:
-                    key = ('system', key[1], PROCESS_EVENT_DETAILS[key[:2]], key[3])
-                if not key[0] or not key[1] or not key[3] or key in existing:
+                key = self._merged_log_key(event)
+                if not key or key in existing:
                     continue
                 # Where it ran, when the package records it (packages of earlier versions do not).
                 conn.execute('INSERT INTO audit_logs (username, action, details, created_at, origin) VALUES (?, ?, ?, ?, ?)',

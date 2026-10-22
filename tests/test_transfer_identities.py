@@ -550,8 +550,12 @@ def test_the_preview_tells_what_an_import_would_do_and_only_the_chosen_packages_
     queries, jobs = preview['packages']
     assert (queries['index'], queries['label'], jobs['label']) == (0, 'Query Builder Queries', 'Reporting Jobs')
     assert '1 new, 1 updated' in queries['message'] and queries['message'].startswith('Imports ')
-    [section] = queries['sections']
+    # The items it would add, then those it would update with what would change; only a package that would change
+    # something comes checked.
+    added, section = queries['sections']
+    assert added['kind'] == 'new' and added['title'].startswith('Adds ') and [item['name'] for item in added['items']] == [rows[1]['name']]
     assert section['title'].startswith('Updates Query Builder queries') and section['items'][0]['name'] == rows[0]['name']
+    assert (queries['changed'], jobs['changed'], jobs['sections']) == (True, False, [])
     # Nothing was imported by the preview.
     with repository.connection() as connection:
         assert connection.execute('SELECT query_sql FROM saved_query_builder_queries WHERE id = ?', (rows[0]['id'],)).fetchone()[0] == 'SELECT 42'
@@ -573,6 +577,26 @@ def test_the_preview_tells_what_an_import_would_do_and_only_the_chosen_packages_
     assert 'function showImportPreview(preview, options = {}) {' in script
     assert "await fetch('/admin/import-export/import/preview', {" in script
     assert "/preview/${chosen ? 'import' : 'reject'}" in script
+    assert 'box.checked = item.changed !== false;' in script and "'Invert selection'" in script
+
+
+def test_the_preview_counts_the_app_events_an_import_would_add(client, tmp_path):
+    workspace = core.active_workspace
+    core.repository.add_log('super', 'preview_check', 'First event')
+    core.repository.add_log('super', 'preview_check', 'Second event')
+    package = tmp_path / 'events.zip'
+    core.build_export_archive_file('app-events', package, [workspace.id])
+    manifest = core.read_import_manifest(package)
+    [events] = core.preview_import_archive(package, manifest, [workspace.id])['packages']
+    assert events['changed'] is False and 'new' not in events['message'] and events['message'].startswith('Imports '), events
+    with core.repository.connection() as connection:
+        connection.execute("DELETE FROM audit_logs WHERE action = 'preview_check' AND details = 'Second event'")
+    [events] = core.preview_import_archive(package, manifest, [workspace.id])['packages']
+    assert events['changed'] is True and '1 new' in events['message'], events
+    # The import adds the one the preview counted.
+    core._apply_import_archive(package, manifest, destination_workspace_ids=[workspace.id], importing_user='super')
+    with core.repository.connection() as connection:
+        assert connection.execute("SELECT COUNT(*) FROM audit_logs WHERE action = 'preview_check'").fetchone()[0] == 2
 
 
 def test_the_preview_predicts_each_element_as_its_import_saves_it(client, tmp_path, monkeypatch):
@@ -584,7 +608,7 @@ def test_the_preview_predicts_each_element_as_its_import_saves_it(client, tmp_pa
     package = tmp_path / 'templates.zip'
     core.build_export_archive_file('ppt-templates', package, [workspace.id])
     [templates] = core.preview_import_archive(package, core.read_import_manifest(package), [workspace.id], 'super')['packages']
-    assert 'updated' not in templates['message'] and templates['sections'] == [], templates
+    assert 'updated' not in templates['message'] and templates['sections'] == [] and templates['changed'] is False, templates
 
     # NQ Calls Configuration: what only the workspace has stays (the import adds what it lacks).
     non_qualified_calls.ensure_nq_tables(core.repository)

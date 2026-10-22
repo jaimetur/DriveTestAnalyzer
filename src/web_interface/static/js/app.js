@@ -8956,16 +8956,23 @@ function importSummaryContent(details) {
     // The updated items of an element, each with what changed in it.
     const updated = items.filter((item) => Array.isArray(item.changes));
     const notes = items.filter((item) => item.from === undefined && !Array.isArray(item.changes));
-    // The sections of the updated items take the colour of the updated counts.
-    const section = element('section', updated.length || entry.kind === 'updated' ? 'import-summary-section import-summary-updated' : 'import-summary-section');
+    // The sections of the new items (in a preview) take the colour of the new counts, those of the updated items the
+    // colour of the updated counts.
+    const added = entry.kind === 'new';
+    const section = element('section', added ? 'import-summary-section import-summary-new'
+      : updated.length || entry.kind === 'updated' ? 'import-summary-section import-summary-updated' : 'import-summary-section');
     const heading = element('h4');
     const renamed = changes.filter((item) => !item.note).length;
     const another = changes.length - renamed;
     const count = [renamed ? `${renamed} renamed` : '', another ? `${another} imported with another name` : '',
-      updated.length ? `${updated.length} updated` : ''].filter(Boolean).join(' · ');
+      updated.length ? `${updated.length} ${added ? 'new' : 'updated'}` : ''].filter(Boolean).join(' · ');
     heading.append(element('span', '', entry.title || 'Notes'), element('span', 'import-summary-count', count));
     section.append(heading);
-    if (updated.length) {
+    if (added && updated.length) {
+      const list = element('ul', 'import-summary-new-items');
+      updated.forEach((item) => list.append(element('li', 'import-summary-item', item.name || '')));
+      section.append(list);
+    } else if (updated.length) {
       const table = element('table', 'import-summary-table');
       const head = element('tr');
       head.append(element('th', '', 'Item'), element('th', '', 'What changed'));
@@ -9009,7 +9016,8 @@ function importSummaryContent(details) {
 }
 
 // What importing a package would do, before importing it (an Import ZIP, or a received transfer): a box for each of its
-// packages, checked, with what its import would do and, unfolded, the items it would update with what would change.
+// packages, checked when its import would change something, with what its import would do and, unfolded, the items it
+// would add and those it would update with what would change.
 // Resolves to the positions of the packages checked, or to null when cancelled (or rejected).
 function showImportPreview(preview, options = {}) {
   const packages = Array.isArray(preview?.packages) ? preview.packages : [];
@@ -9026,7 +9034,7 @@ function showImportPreview(preview, options = {}) {
   panel.append(element('p', 'eyebrow', options.eyebrow || 'Preview'), element('h3', '', options.title || 'Import preview'));
   if (options.intro) panel.append(element('p', 'import-preview-intro', options.intro));
   panel.append(element('p', 'import-preview-note', packages.length > 1
-    ? 'Nothing has been imported yet. Uncheck the packages to leave out; the checked ones are imported.'
+    ? 'Nothing has been imported yet. The packages that would change something are checked; the checked ones are imported.'
     : 'Nothing has been imported yet.'));
   if (preview?.error) panel.append(element('p', 'import-preview-error', `The preview could not be prepared: ${preview.error}`));
   const list = element('div', 'import-preview-list');
@@ -9035,7 +9043,7 @@ function showImportPreview(preview, options = {}) {
     const head = element('label', 'import-preview-package-head');
     const box = element('input');
     box.type = 'checkbox';
-    box.checked = true;
+    box.checked = item.changed !== false;
     box.value = String(item.index);
     const text = element('span', 'import-preview-package-text');
     const message = element('span', 'import-preview-package-message');
@@ -9057,9 +9065,11 @@ function showImportPreview(preview, options = {}) {
   const toolbar = element('div', 'import-preview-toolbar');
   const selectAll = element('button', 'ghost-link', 'Select all');
   const selectNone = element('button', 'ghost-link', 'Select none');
+  const invert = element('button', 'ghost-link', 'Invert selection');
   selectAll.type = 'button';
   selectNone.type = 'button';
-  if (boxes.length > 1) toolbar.append(selectAll, selectNone);
+  invert.type = 'button';
+  if (boxes.length > 1) toolbar.append(selectAll, selectNone, invert);
   const actions = element('div', 'confirm-actions');
   const cancel = element('button', `ghost-link confirm-cancel${options.reject ? ' import-preview-reject' : ''}`, options.cancelLabel || 'Cancel');
   const accept = element('button', '', '');
@@ -9081,6 +9091,7 @@ function showImportPreview(preview, options = {}) {
     boxes.forEach((box) => box.addEventListener('change', sync));
     selectAll.addEventListener('click', () => { boxes.forEach((box) => { box.checked = true; }); sync(); });
     selectNone.addEventListener('click', () => { boxes.forEach((box) => { box.checked = false; }); sync(); });
+    invert.addEventListener('click', () => { boxes.forEach((box) => { box.checked = !box.checked; }); sync(); });
     cancel.addEventListener('click', () => close(null));
     accept.addEventListener('click', () => close(boxes.filter((box) => box.checked).map((box) => Number(box.value))));
     accept.focus();

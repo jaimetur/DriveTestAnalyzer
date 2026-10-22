@@ -2752,6 +2752,10 @@ mark.import-count-updated { border-color: #efc26b; background: #fff0cf; color: #
 .import-summary-updated h4 { border-bottom-color: rgba(214, 140, 20, .5); color: #8a4b00; }
 .import-summary-updated .import-summary-count { color: #8a4b00; }
 .import-summary-updated .import-summary-table .import-summary-item { color: #8a4b00; }
+.import-summary-new h4 { border-bottom-color: rgba(31, 138, 76, .45); color: #1f6b44; }
+.import-summary-new .import-summary-count { color: #1f6b44; }
+.import-summary-new-items { display: flex; flex-wrap: wrap; gap: .3rem .4rem; margin: .45rem 0 0; padding: 0; list-style: none; }
+.import-summary-new-items .import-summary-item { padding: .12rem .55rem; border: 1px solid rgba(31, 138, 76, .3); border-radius: 999px; background: #eef8f1; color: #1f6b44; font-size: .8rem; font-weight: 700; }
 .confirm-overlay.incoming-transfer-offer .confirm-panel #confirm-copy { max-height: min(64vh, 600px); }
 .confirm-panel #confirm-copy > ul.incoming-transfer-contents { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.2rem 1.6rem; }
 /* The admin notices of the super-admins: the look of an incoming transfer, below any other dialog shown over it. */
