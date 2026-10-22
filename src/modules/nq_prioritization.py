@@ -22,12 +22,13 @@ Every Non-Qualified Call (the latest version of each call, as the calls table li
     SA and NSA steps (the Focus operators by default; the calls of SA campaigns of an operator without SA count as NSA)
     with two lists, their steps giving the Priority from P1 to P8. During a
     campaign, list 1 takes each call by what it says about itself, which never changes: P1 SA Voice in Cities (on
-    Connecting Roads with Roads first), P2 the SA Data clusters (2+ failed data tests at one spot of a drive; Cities
-    first takes only the failures that are consecutive tests), P3 SA Voice on Connecting Roads (in Cities), P4 SA
-    WhatsApp, P5 the NSA Data clusters, P6 NSA Voice, P7 NSA WhatsApp and P8 the tracked calls. Once the Final CDR of the
-    campaign is scored, list 2 orders its calls by their real impact. Voice and WhatsApp calls go to the Voice queue,
-    Data calls to the Data queue; inside a step the calls with the highest Expected Gain go first (from the Final CDR of
-    the latest campaign), then the oldest.
+    Connecting Roads with Roads first), P2 SA Data (the consecutive failures or the failures of a cluster, 2+ failed data
+    tests at one spot of a drive, with Cities first; only those of a cluster with Roads first), P3 SA Voice on
+    Connecting Roads (in Cities), P4 SA WhatsApp, P5 NSA Data, P6 NSA Voice, P7 NSA WhatsApp and P8 the tracked calls.
+    Once the Final CDR of the campaign is scored, list 2 orders its calls by their real impact. Admins change every field
+    of the steps, their conditions joined by AND or OR. Voice and WhatsApp calls go to the Voice queue, Data calls to the
+    Data queue; inside a step the calls with the highest Expected Gain go first (from the Final CDR of the latest
+    campaign), then the oldest.
   - **Custom rules**: ordered rules on Service, NR Mode, Operator, Region and City. The first rule whose conditions a call
     meets decides: Prioritized when the call meets its criterion (every call, repeated or high impact...), else Track
     only.
@@ -66,7 +67,7 @@ FINGERPRINT_STATE_KEY = 'nq_prioritization_fingerprint'
 FAILED_STATE_KEY = 'nq_prioritization_failed'
 SUMMARY_STATE_KEY = 'nq_prioritization_summary'
 # Bumped when the calculation changes: every value is calculated again.
-IMPACT_VERSION = 3
+IMPACT_VERSION = 4
 # The scoring of every campaign is split by campaign and operator, as the points of the scoring are national.
 LEVELS = ('Campaign', 'Operator')
 SERVICES = ('voice', 'speech', 'data')
@@ -119,9 +120,12 @@ STEP_AREAS = {'city': 'Cities', 'roads': 'Connecting Roads', 'any': 'Any'}
 AREA_TAKES = {'city': ' in cities', 'roads': ' on connecting roads and highways', 'any': ''}
 # The Call Types of the first version of the steps, which also gave the area.
 LEGACY_CALL_TYPES = {'voice_cities': ('voice', 'city'), 'voice_roads': ('voice', 'roads')}
-# The conditions of a step, chosen one by one: a call meets the step when it meets any of them (Every call alone takes
-# every call). Consecutive failures: the test right before or after it in the drive failed too.
+# The conditions of a step, chosen one by one, each joined to the one before by AND or OR, AND first: "Consecutive
+# failures AND Clusters OR High impact" takes the consecutive failures of a cluster and the calls with a High impact
+# (Every call alone takes every call). Consecutive failures: the test right before or after it in the drive failed too.
 EVERY_CALL = 'all'
+JOINS = {'and': 'AND', 'or': 'OR'}
+MAX_CONDITIONS = 6
 CONDITION_LABELS = {EVERY_CALL: 'Every call', 'consecutive': 'Consecutive failures', 'cluster': 'Clusters', 'high': 'High impact',
                     'medium': 'Medium impact', 'low': 'Low impact', 'repeated': 'Repeated'}
 CAMPAIGN_CONDITIONS = {key: CONDITION_LABELS[key] for key in (EVERY_CALL, 'consecutive', 'cluster')}
@@ -366,7 +370,7 @@ def save_settings(repository: Any, payload: Any, username: str) -> dict[str, Any
             for step in strategy_steps(strategy, settings['steps'].get(strategy)):
                 previous = old_steps[step['id']]
                 changes = [f'{label} {step_field_text(previous, key)} → {step_field_text(step, key)}'
-                           for key, label in STEP_FIELD_LABELS.items() if step[key] != previous[key]]
+                           for key, label in STEP_FIELD_LABELS.items() if step_field_value(step, key) != step_field_value(previous, key)]
                 if changes:
                     steps_changed.append(f"{STRATEGIES[strategy]} · {previous['rule']}: {'; '.join(changes)}")
         repository.try_add_log(username, 'nq_prioritization_settings', json.dumps({
@@ -449,22 +453,34 @@ def conditions_of(list_name: str) -> dict[str, str]:
     return CAMPAIGN_CONDITIONS if list_name == CAMPAIGN_LIST else FINAL_CONDITIONS
 
 
-def step_conditions_text(conditions: list[str]) -> str:
-    """The conditions of a step in words: Every call, or those chosen joined with & (High impact & Repeated)."""
+def joins_of(conditions: list[str], joins: Any = None) -> list[str]:
+    """The operator before each condition of a step after the first: the one given (and, or), else or (the steps saved
+    before the operators could be chosen took the calls that met any of their conditions)."""
+    given = [str(value).lower() for value in joins] if isinstance(joins, list) else []
+    return [given[index] if index < len(given) and given[index] in JOINS else 'or' for index in range(max(len(conditions) - 1, 0))]
+
+
+def step_conditions_text(conditions: list[str], joins: Any = None) -> str:
+    """The conditions of a step in words: Every call, or each joined to the one before by its operator (Consecutive
+    failures AND Clusters OR High impact)."""
     if not conditions or EVERY_CALL in conditions:
         return CONDITION_LABELS[EVERY_CALL]
-    return ' & '.join(CONDITION_LABELS[key] for key in conditions)
+    return CONDITION_LABELS[conditions[0]] + ''.join(f' {JOINS[join]} {CONDITION_LABELS[key]}'
+                                                     for join, key in zip(joins_of(conditions, joins), conditions[1:]))
 
 
-def clean_conditions(values: Any, allowed: dict[str, str]) -> list[str] | None:
-    """The conditions of a step of a list, once each in their order of the list (Every call alone takes every call);
-    None when one is not a condition of the list."""
+def clean_conditions(values: Any, allowed: dict[str, str], joins: Any = None) -> tuple[list[str], list[str]] | None:
+    """The conditions of a step of a list in the order chosen, with the operator before each one after the first (Every
+    call alone takes every call); None when one is not a condition of the list, an operator is not AND or OR, or there
+    are more than MAX_CONDITIONS."""
     chosen = [str(value) for value in values or []]
-    if any(value not in allowed for value in chosen):
+    if any(value not in allowed for value in chosen) or len(chosen) > MAX_CONDITIONS:
         return None
     if not chosen or EVERY_CALL in chosen:
-        return [EVERY_CALL]
-    return [key for key in allowed if key in chosen]
+        return [EVERY_CALL], []
+    if isinstance(joins, list) and any(str(value).lower() not in JOINS for value in joins):
+        return None
+    return chosen, joins_of(chosen, joins)
 
 
 def _step_rule(list_name: str, number: int | None, label: str) -> str:
@@ -473,13 +489,13 @@ def _step_rule(list_name: str, number: int | None, label: str) -> str:
 
 
 def step_label(step: dict[str, Any]) -> str:
-    """What a step takes, in short: SA Voice · Cities, SA Data · Consecutive failures & Clusters, Tracked."""
+    """What a step takes, in short: SA Voice · Cities, SA Data · Consecutive failures OR Clusters, Tracked."""
     parts = [STEP_NR_MODES[step['nr_mode']] if step['nr_mode'] != 'any' else '',
              CALL_TYPES[step['call_type']] if step['call_type'] != 'any' else '']
     base = ' '.join(part for part in parts if part) or 'Every call'
     if step['area'] != 'any':
         base = f"{base} · {STEP_AREAS[step['area']]}"
-    label = base if step['conditions'] == [EVERY_CALL] else f"{base} · {step_conditions_text(step['conditions'])}"
+    label = base if step['conditions'] == [EVERY_CALL] else f"{base} · {step_conditions_text(step['conditions'], step['joins'])}"
     if not step['queue']:
         return 'Tracked' if label == 'Every call' else f'Tracked · {label}'
     return label
@@ -505,14 +521,18 @@ def strategy_steps(strategy: str, configured: dict[str, Any] | None = None) -> l
             key = step_id(list_name, index, len(rows))
             chosen = _current_step(configured[key]) if isinstance(configured.get(key), dict) else {}
             step = {'id': key, 'list': list_name, 'number': index, 'priority': priority, 'nr_mode': nr_mode, 'call_type': call_type,
-                    'area': area, 'conditions': list(conditions), 'queue': queue, 'operators': [FOCUSED_OPERATORS]}
-            step['default'] = {name: step[name] for name in ('number', 'priority', 'nr_mode', 'call_type', 'area', 'conditions', 'queue')}
+                    'area': area, 'conditions': list(conditions), 'joins': joins_of(list(conditions)), 'queue': queue,
+                    'operators': [FOCUSED_OPERATORS]}
+            step['default'] = {name: step[name] for name in ('number', 'priority', 'nr_mode', 'call_type', 'area', 'conditions', 'joins',
+                                                             'queue')}
             for name, allowed in (('priority', STRATEGY_PRIORITY_NAMES), ('nr_mode', STEP_NR_MODES), ('call_type', CALL_TYPES),
                                   ('area', STEP_AREAS), ('queue', STEP_QUEUES)):
                 if chosen.get(name) in allowed:
                     step[name] = chosen[name]
             if isinstance(chosen.get('conditions'), list):
-                step['conditions'] = clean_conditions(chosen['conditions'], conditions_of(list_name)) or step['conditions']
+                cleaned = clean_conditions(chosen['conditions'], conditions_of(list_name), chosen.get('joins'))
+                if cleaned:
+                    step['conditions'], step['joins'] = cleaned
             if isinstance(chosen.get('number'), int) and 1 <= chosen['number'] <= MAX_STEP_NUMBER:
                 step['number'] = chosen['number']
             if isinstance(chosen.get('operators'), list):
@@ -525,7 +545,9 @@ def strategy_steps(strategy: str, configured: dict[str, Any] | None = None) -> l
                 step['takes'] = 'The calls no step takes: the other data failures, the Ping tests and the Excluded Calls'
             else:
                 step['takes'] = (f"{mode}{CALL_TYPE_TAKES[step['call_type']]}{AREA_TAKES[step['area']]}: "
-                                 + ' or '.join(CONDITION_TAKES[key] for key in step['conditions']) + ('' if step['queue'] else ', only tracked'))
+                                 + CONDITION_TAKES[step['conditions'][0]]
+                                 + ''.join(f' {join} {CONDITION_TAKES[key]}' for join, key in zip(step['joins'], step['conditions'][1:]))
+                                 + ('' if step['queue'] else ', only tracked'))
             steps.append(step)
     return steps
 
@@ -534,18 +556,23 @@ STEP_FIELD_LABELS = {'priority': 'Priority', 'number': 'Step', 'nr_mode': 'NR Mo
                      'conditions': 'Condition', 'operators': 'Operators', 'queue': 'Queue'}
 
 
+def step_field_value(step: dict[str, Any], key: str) -> Any:
+    """A field of a step as compared to tell a change: the Condition with the operators between its conditions."""
+    return (step['conditions'], step['joins']) if key == 'conditions' else step[key]
+
+
 def step_field_text(step: dict[str, Any], key: str) -> str:
     """A field of a step in words, as the dialog shows it."""
     value = step[key]
     return {'nr_mode': lambda: STEP_NR_MODES[value], 'call_type': lambda: CALL_TYPES[value], 'area': lambda: STEP_AREAS[value],
-            'conditions': lambda: step_conditions_text(value), 'operators': lambda: operators_text(value),
+            'conditions': lambda: step_conditions_text(value, step['joins']), 'operators': lambda: operators_text(value),
             'queue': lambda: STEP_QUEUES[value]}.get(key, lambda: str(value))()
 
 
 def default_steps() -> dict[str, dict[str, dict[str, Any]]]:
     """Every field of every step of the Dual Queue strategies by default."""
     return {strategy: {step['id']: {name: step[name] for name in ('number', 'priority', 'nr_mode', 'call_type', 'area',
-                                                                  'conditions', 'queue', 'operators')}
+                                                                  'conditions', 'joins', 'queue', 'operators')}
                        for step in strategy_steps(strategy)} for strategy in (CITIES_FIRST, ROADS_FIRST)}
 
 
@@ -575,11 +602,11 @@ def normalize_steps(value: Any, strict: bool = False) -> dict[str, dict[str, dic
                 elif strict:
                     raise ValueError(f'{message} ({STRATEGIES[strategy]}).')
             if isinstance(chosen.get('conditions'), list):
-                conditions = clean_conditions(chosen['conditions'], conditions_of(list_name))
-                if conditions is not None:
-                    step['conditions'] = conditions
+                cleaned = clean_conditions(chosen['conditions'], conditions_of(list_name), chosen.get('joins'))
+                if cleaned is not None:
+                    step['conditions'], step['joins'] = cleaned
                 elif strict:
-                    raise ValueError(f'Choose the conditions of each step ({STRATEGIES[strategy]}).')
+                    raise ValueError(f'Choose the conditions of each step, joined by AND or OR ({STRATEGIES[strategy]}).')
             if 'number' in chosen:
                 try:
                     number = int(chosen['number'])
@@ -615,15 +642,23 @@ def type_matches(step: dict[str, Any], call: dict[str, Any]) -> bool:
     return step['call_type'] in {'any', call['kind']} and step['area'] in {'any', call.get('area')}
 
 
-def condition_holds(conditions: list[str], call: dict[str, Any]) -> bool:
-    """Whether a call meets the conditions of a step: any of them (Every call: every call). A failure is consecutive when
-    the test right before or after it in the drive failed too (unknown when its CDR does not give the order of its
-    tests)."""
+def condition_holds(conditions: list[str], call: dict[str, Any], joins: Any = None) -> bool:
+    """Whether a call meets the conditions of a step joined by their operators (or when not given), AND first: it meets
+    every condition of one of the groups between the ORs (Every call: every call). A failure is consecutive when the test
+    right before or after it in the drive failed too (unknown when its CDR does not give the order of its tests)."""
+    if not conditions:
+        return False
     level = call.get('level')
     high, medium = level == IMPACT_HIGH, level == nq_catalog.IMPACT_MEDIUM
     met = {EVERY_CALL: True, 'consecutive': call.get('consecutive') == 'Yes', 'cluster': (call.get('cluster_size') or 0) >= 2,
            'high': high, 'medium': medium, 'low': not (high or medium), 'repeated': bool(call.get('repeated'))}
-    return any(met.get(key, False) for key in conditions)
+    held, group = False, met.get(conditions[0], False)
+    for join, key in zip(joins_of(conditions, joins), conditions[1:]):
+        if join == 'and':
+            group = group and met.get(key, False)
+        else:
+            held, group = held or group, met.get(key, False)
+    return held or group
 
 
 def strategy_decision(strategy: str, call: dict[str, Any], steps: list[dict[str, Any]] | None = None,
@@ -653,13 +688,13 @@ def strategy_decision(strategy: str, call: dict[str, Any], steps: list[dict[str,
             if not candidates:
                 continue
             for step in candidates:
-                if condition_holds(step['conditions'], call):
+                if condition_holds(step['conditions'], call, step['joins']):
                     return PRIORITIZED, step['rule'], step['priority'], step['queue'], step['number'], list_name
             modes = [mode]
             break
     for step in ordered:
         if (not step['queue'] and (step['nr_mode'] == 'any' or step['nr_mode'] in modes) and type_matches(step, call)
-                and takes(step['operators'], operator) and condition_holds(step['conditions'], call)):
+                and takes(step['operators'], operator) and condition_holds(step['conditions'], call, step['joins'])):
             return TRACK_ONLY, step['rule'], step['priority'], '', step['number'], list_name
     return NO_RULE, '', '', '', None, ''
 

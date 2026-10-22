@@ -6004,6 +6004,63 @@
   // The conditions a step of a list can take: those of the data tests only with a Call Type that takes them.
   const stepConditions = (list, callType) => Object.entries((state.prioritizationFields.conditions || {})[list] || {})
     .filter(([key]) => !DATA_CONDITIONS.includes(key) || ['data', 'any'].includes(callType));
+  const MAX_CONDITIONS = 6;
+  // The conditions of a step, one per line, each joined to the one before by AND or OR (AND first: "Consecutive failures
+  // AND Clusters OR High impact" takes the consecutive failures of a cluster and the calls with a High impact). Every call
+  // stands alone: chosen first, it clears the others.
+  const stepConditionEditor = (list, chosen, rule) => {
+    const box = node('div', undefined, 'nq-priority-conditions');
+    const entries = stepConditions(list, chosen.call_type);
+    const iconButton = (text, className, title, action) => {
+      const button = node('button', text, `nq-priority-condition-button ${className}`);
+      button.type = 'button';
+      button.title = title;
+      button.setAttribute('aria-label', `${title} (${rule})`);
+      button.addEventListener('click', action);
+      return button;
+    };
+    const draw = () => {
+      chosen.joins = chosen.conditions.slice(1).map((_, index) => (chosen.joins || [])[index] || 'or');
+      box.replaceChildren(...chosen.conditions.map((key, index) => {
+        const line = node('div', undefined, 'nq-priority-condition');
+        // The first condition lines up with the others, which start with their operator.
+        if (!index && chosen.conditions.length > 1) line.append(node('span', undefined, 'nq-priority-condition-first'));
+        if (index) {
+          const join = selectOf('nq-priority-condition-join', `Operator before condition ${index + 1} of ${rule}`, [['and', 'AND'], ['or', 'OR']],
+            chosen.joins[index - 1]);
+          join.addEventListener('change', () => { chosen.joins[index - 1] = join.value; });
+          line.append(join);
+        }
+        const select = selectOf('nq-priority-condition-key', `Condition ${index + 1} of ${rule}`,
+          index ? entries.filter(([value]) => value !== EVERY_CALL) : entries, key);
+        select.addEventListener('change', () => {
+          chosen.conditions[index] = select.value;
+          if (select.value === EVERY_CALL) chosen.conditions = [EVERY_CALL];
+          draw();
+        });
+        line.append(select);
+        if (chosen.conditions.length > 1) {
+          line.append(iconButton('×', 'is-remove', 'Remove this condition', () => {
+            chosen.conditions.splice(index, 1);
+            chosen.joins.splice(index ? index - 1 : 0, 1);
+            draw();
+          }));
+        }
+        // Another condition not chosen yet, joined by OR until another operator is chosen.
+        const next = entries.find(([value]) => value !== EVERY_CALL && !chosen.conditions.includes(value));
+        if (index === chosen.conditions.length - 1 && chosen.conditions[0] !== EVERY_CALL && next && chosen.conditions.length < MAX_CONDITIONS) {
+          line.append(iconButton('+', 'is-add', 'Add a condition', () => {
+            chosen.conditions.push(next[0]);
+            chosen.joins.push('or');
+            draw();
+          }));
+        }
+        return line;
+      }));
+    };
+    draw();
+    return box;
+  };
   const renderStrategySteps = (strategy) => {
     const fields = state.prioritizationFields;
     const steps = state.prioritizationSteps[strategy] || [];
@@ -6152,14 +6209,16 @@
           const nrMode = selectOf('nq-priority-step-mode', `NR Mode of ${rule}`, Object.entries(fields.nr_modes || {}), chosen.nr_mode);
           nrMode.addEventListener('change', () => { chosen.nr_mode = nrMode.value; });
           mode.append(nrMode);
-          // A new Call Type keeps the conditions it can take (Every call when none is left).
+          // A new Call Type keeps the conditions it can take with their operators (Every call when none is left).
           const type = node('td');
           const callType = selectOf('nq-priority-step-type', `Call Type of ${rule}`, Object.entries(fields.call_types || {}), chosen.call_type);
           callType.addEventListener('change', () => {
             chosen.call_type = callType.value;
             const allowed = stepConditions(list, chosen.call_type).map(([key]) => key);
-            chosen.conditions = chosen.conditions.filter((key) => allowed.includes(key));
-            if (!chosen.conditions.length) chosen.conditions = [EVERY_CALL];
+            const terms = chosen.conditions.map((key, index) => [index ? (chosen.joins || [])[index - 1] || 'or' : '', key])
+              .filter(([, key]) => allowed.includes(key));
+            chosen.conditions = terms.length ? terms.map(([, key]) => key) : [EVERY_CALL];
+            chosen.joins = terms.slice(1).map(([join]) => join || 'or');
             rerender();
           });
           type.append(callType);
@@ -6168,10 +6227,9 @@
           const areaSelect = selectOf('nq-priority-step-area', `Area of ${rule}`, Object.entries(fields.areas || {}), chosen.area);
           areaSelect.addEventListener('change', () => { chosen.area = areaSelect.value; });
           area.append(areaSelect);
-          // The conditions, chosen one by one: a call meets the step when it meets any of them.
+          // The conditions, joined by AND or OR.
           const condition = node('td', undefined, 'nq-priority-step-conditions-cell');
-          condition.append(aloneFirstSelect('nq-priority-step-conditions', `Condition of ${rule}`, stepConditions(list, chosen.call_type),
-            chosen.conditions, 'Every call', (conditions) => { chosen.conditions = conditions.length ? conditions : [EVERY_CALL]; }));
+          condition.append(stepConditionEditor(list, chosen, rule));
           const operators = node('td', undefined, 'nq-priority-step-operators-cell');
           operators.append(stepOperators(chosen, rule));
           // The queue as a tag of its colour; Tracked: the calls of the step stay out of the queues.

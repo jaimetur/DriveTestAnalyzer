@@ -83,21 +83,25 @@ def test_settings_are_validated():
     steps = nq_prioritization.normalize_settings({'strategy': 'roads_first', 'steps': {'roads_first': {
         'campaign-6': {'priority': 'p2', 'operators': [' VF ', 'Three', 'three']}}}})['steps']
     assert steps['roads_first']['campaign-6'] == {'number': 6, 'priority': 'P2', 'nr_mode': 'NSA', 'call_type': 'voice', 'area': 'any',
-                                                  'conditions': ['all'], 'queue': 'Voice', 'operators': ['VF', 'Three']}
+                                                  'conditions': ['all'], 'joins': [], 'queue': 'Voice', 'operators': ['VF', 'Three']}
     assert steps['roads_first']['final-tracked'] == {'number': 10, 'priority': 'P8', 'nr_mode': 'any', 'call_type': 'any', 'area': 'any',
-                                                     'conditions': ['all'], 'queue': '', 'operators': ['@focused']}
+                                                     'conditions': ['all'], 'joins': [], 'queue': '', 'operators': ['@focused']}
     assert (steps['roads_first']['campaign-1']['call_type'], steps['roads_first']['campaign-1']['area']) == ('voice', 'roads')
     # A Call Type of the first version of the steps (Voice · Cities) gives its type and area apart.
     legacy = nq_prioritization.normalize_steps({'cities_first': {'campaign-3': {'call_type': 'voice_cities'}}}, strict=True)
     assert (legacy['cities_first']['campaign-3']['call_type'], legacy['cities_first']['campaign-3']['area']) == ('voice', 'city')
-    assert steps['cities_first']['campaign-2']['conditions'] == ['consecutive', 'cluster']
+    assert (steps['cities_first']['campaign-2']['conditions'], steps['cities_first']['campaign-2']['joins']) == (['consecutive', 'cluster'], ['or'])
     assert steps['roads_first']['campaign-2']['conditions'] == ['cluster']
-    # The conditions keep the order of their list, and Every call stands alone.
-    chosen = nq_prioritization.normalize_steps({'cities_first': {'final-2': {'conditions': ['repeated', 'high', 'repeated']},
-                                                                 'final-1': {'conditions': ['high', 'all']}}})['cities_first']
-    assert (chosen['final-2']['conditions'], chosen['final-1']['conditions']) == (['high', 'repeated'], ['all'])
+    # The conditions keep the order chosen with the operator before each one (OR when not given, as the steps saved before
+    # the operators), and Every call stands alone.
+    chosen = nq_prioritization.normalize_steps({'cities_first': {
+        'final-2': {'conditions': ['repeated', 'high', 'consecutive'], 'joins': ['AND']}, 'final-1': {'conditions': ['high', 'all'], 'joins': ['and']},
+        'final-7': {'conditions': ['high', 'repeated']}}}, strict=True)['cities_first']
+    assert (chosen['final-2']['conditions'], chosen['final-2']['joins']) == (['repeated', 'high', 'consecutive'], ['and', 'or'])
+    assert (chosen['final-1']['conditions'], chosen['final-1']['joins']) == (['all'], [])
+    assert chosen['final-7']['joins'] == ['or']
     for step, message in (({'nr_mode': '5G'}, 'NR Mode'), ({'call_type': 'video'}, 'Call Type'), ({'area': 'rural'}, 'Area'),
-                          ({'queue': 'Ping'}, 'queue'),
+                          ({'queue': 'Ping'}, 'queue'), ({'conditions': ['cluster', 'consecutive'], 'joins': ['xor']}, 'AND or OR'),
                           ({'conditions': ['high']}, 'conditions'), ({'number': 21}, 'from 1 to 20')):
         # High impact is not a condition during the campaign (list 1).
         with pytest.raises(ValueError, match=message):
@@ -137,7 +141,7 @@ def test_strategies_give_each_call_its_step_queue_and_priority():
     # Data: the clusters go to the Data queue; Cities first takes only their consecutive failures.
     cluster = strategy_call(kind='data', cluster_size=3, consecutive='No')
     assert decide(roads, cluster)[1:5] == ('Campaign 2 · SA Data · Clusters', 'P2', 'Data', 2)
-    assert decide(cities, cluster)[1:5] == ('Campaign 2 · SA Data · Consecutive failures & Clusters', 'P2', 'Data', 2)
+    assert decide(cities, cluster)[1:5] == ('Campaign 2 · SA Data · Consecutive failures OR Clusters', 'P2', 'Data', 2)
     # A step takes the calls that meet any of its conditions: Cities first also takes a consecutive failure out of a cluster.
     single = strategy_call(kind='data', cluster_size=1)
     assert decide(cities, {**single, 'consecutive': 'Yes'})[2:5] == ('P2', 'Data', 2)
@@ -176,6 +180,19 @@ def test_strategies_give_each_call_its_step_queue_and_priority():
     whatsapp = strategy_call(kind='whatsapp', final=True)
     assert decide(cities, {**whatsapp, 'area': 'roads'}, steps)[1:5] == ('Final 6 · SA WhatsApp · Connecting Roads · Low impact', 'P4', 'Voice', 6)
     assert decide(cities, whatsapp, steps)[1:5] == ('Final 10 · Tracked', 'P8', '', 10)
+    # AND and OR mix, AND first: the consecutive failures of a cluster during the campaign; once the Final CDR is scored, the
+    # data failures with a High impact and a Repeated Issue, or consecutive.
+    chosen = nq_prioritization.normalize_steps({'cities_first': {
+        'campaign-2': {'conditions': ['consecutive', 'cluster'], 'joins': ['and']},
+        'final-2': {'conditions': ['high', 'repeated', 'consecutive'], 'joins': ['and', 'or']}}})['cities_first']
+    steps = nq_prioritization.strategy_steps(cities, chosen)
+    assert decide(cities, cluster, steps)[1:3] == ('Campaign 8 · Tracked', 'P8')
+    assert decide(cities, {**cluster, 'consecutive': 'Yes'}, steps)[1:3] == ('Campaign 2 · SA Data · Consecutive failures AND Clusters', 'P2')
+    assert decide(cities, {**single, 'consecutive': 'Yes'}, steps)[2] == 'P8'
+    high_data = {**single, 'final': True, 'level': 'High'}
+    assert decide(cities, high_data, steps)[2] == 'P8'
+    assert decide(cities, {**high_data, 'repeated': True}, steps)[1:3] == ('Final 2 · SA Data · High impact AND Repeated OR Consecutive failures', 'P2')
+    assert decide(cities, {**single, 'final': True, 'consecutive': 'Yes'}, steps)[2] == 'P2'
     # List 2, once the Final CDR of the campaign is scored: the same in both strategies, by real impact.
     final = strategy_call(final=True)
     for strategy in (cities, roads):
@@ -626,6 +643,7 @@ def test_admins_change_the_priority_and_operators_of_each_step(strategized):
     # NSA Voice takes no operator: its calls are tracked, as the Tracked step takes the Focused Operators.
     settings['steps']['cities_first']['final-8'] = {'priority': 'P6', 'operators': []}
     settings['steps']['cities_first']['final-2']['conditions'] = ['repeated']
+    settings['steps']['cities_first']['campaign-2']['joins'] = ['and']
     response = client.put('/api/non-qualified-calls/prioritization/settings', json={'settings': settings})
     assert response.status_code == 200, response.text
     rows = priority_rows()
@@ -641,4 +659,6 @@ def test_admins_change_the_priority_and_operators_of_each_step(strategized):
     changed = json.loads(log['details'])['steps_changed']
     assert 'Dual Queue (Cities first) · Final 1 · SA Voice · High impact: Priority P1 → P3' in changed
     assert 'Dual Queue (Cities first) · Final 8 · NSA Voice: Operators Focused Operators → No operator' in changed
-    assert 'Dual Queue (Cities first) · Final 2 · SA Data · High impact & Repeated: Condition High impact & Repeated → Repeated' in changed
+    assert 'Dual Queue (Cities first) · Final 2 · SA Data · High impact OR Repeated: Condition High impact OR Repeated → Repeated' in changed
+    assert ('Dual Queue (Cities first) · Campaign 2 · SA Data · Consecutive failures OR Clusters: Condition Consecutive failures OR Clusters → '
+            'Consecutive failures AND Clusters') in changed

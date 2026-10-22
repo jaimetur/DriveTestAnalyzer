@@ -166,7 +166,7 @@ Every call takes a step of one of two lists and a queue: Voice and WhatsApp call
 | **NR Mode** | **SA**, **NSA** or **Any**. |
 | **Call Type** | **Voice**, **WhatsApp**, **Data** or **Any** (Ping tests too). |
 | **Area** | Where the calls failed, from their environment: **Cities**, **Connecting Roads** (roads and highways) or **Any**. |
-| **Condition** | The conditions the calls meet, chosen one by one: during the campaign **Consecutive failures** and **Clusters**; with the Final CDR also **High impact**, **Medium impact**, **Low impact** (or none) and **Repeated**. A call meets the step when it meets any of them, and they show joined with ` & ` (such as *High impact & Repeated*). **Every call** stands alone: while it is chosen, the others are cleared and cannot be chosen. Consecutive failures and Clusters are only offered with the Data and Any types. |
+| **Condition** | The conditions the calls meet, chosen one by one: during the campaign **Consecutive failures** and **Clusters**; with the Final CDR also **High impact**, **Medium impact**, **Low impact** (or none) and **Repeated**. Each condition goes on its own line, joined to the one before by **AND** or **OR** (**+** adds one, joined by OR until you choose AND; **×** removes it). AND goes first: *Consecutive failures AND Clusters OR High impact* takes the consecutive failures of a cluster and the calls with a High impact. **Every call** stands alone: chosen, it clears the other conditions. Consecutive failures and Clusters are only offered with the Data and Any types. |
 | **Operators** | **Focused Operators** first (the Focus operators of the [Operator Maps](workspace-config.md#operator-maps), the default), then the operators of the workspace. Focused Operators stands alone: while it is chosen, the other operators are cleared and cannot be chosen; several operators show joined with ` & `. |
 | **Queue** | **Voice**, **Data** or **Tracked** (its calls are only tracked), shown as a tag of its colour. |
 
@@ -177,10 +177,10 @@ The steps of a list are tried by Priority and in their order. A call of an SA ca
 | Priority (default) | Dual Queue (Cities first) | Dual Queue (Roads first) | Queue |
 | --- | --- | --- | --- |
 | P1 | SA Voice in Cities | SA Voice on Connecting Roads | Voice |
-| P2 | SA Data: Consecutive failures & Clusters (a consecutive failure or a failure of a cluster) | SA Data: Clusters | Data |
+| P2 | SA Data: Consecutive failures OR Clusters (a consecutive failure or a failure of a cluster) | SA Data: Clusters | Data |
 | P3 | SA Voice on Connecting Roads | SA Voice in Cities | Voice |
 | P4 | SA WhatsApp | SA WhatsApp | Voice |
-| P5 | NSA Data: Consecutive failures & Clusters | NSA Data: Clusters | Data |
+| P5 | NSA Data: Consecutive failures OR Clusters | NSA Data: Clusters | Data |
 | P6 | NSA Voice | NSA Voice | Voice |
 | P7 | NSA WhatsApp | NSA WhatsApp | Voice |
 | P8 | Tracked: the other data failures (not taken by a Data step), Ping tests and Excluded Calls | Tracked: the other data failures (not taken by a Data step), Ping tests and Excluded Calls | — |
