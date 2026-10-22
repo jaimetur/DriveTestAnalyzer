@@ -3410,8 +3410,9 @@ def test_incoming_server_transfer_requires_acceptance_and_imports_after_upload(c
             break
         time.sleep(0.01)
     assert review['status'] == 'review' and review['phase'] == 'waiting for the import to be confirmed'
-    assert [item['message'] for item in review['preview']['packages']] == [
-        'Replaces the Application Config of this server; its server settings and local workspaces are kept.']
+    [config_preview] = review['preview']['packages']
+    assert config_preview['message'].startswith('Replaces the whole application database of this server: '), config_preview
+    assert config_preview['message'].endswith('Its Scheduled Backups and Application Runtime settings, its transfers and its workspaces are kept.')
     assert client.get(f'/api/import-export/transfers/offers/{offer_id}', headers=headers).json()['status'] == 'review'
     assert [item['id'] for item in client.get('/admin/import-export/transfers/offers').json()['reviews']] == [offer_id]
     assert client.post(f'/admin/import-export/transfers/offers/{offer_id}/preview/import', json={'packages': []}).status_code == 400
