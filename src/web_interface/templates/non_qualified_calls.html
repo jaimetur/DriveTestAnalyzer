@@ -452,7 +452,13 @@
     {% if not nq_can_configure %}{{ role_warning('the Prioritization Rules') }}{% endif %}
     <div class="nq-priority-scroll">
     <fieldset class="nq-config-fieldset"{{ config_lock }}>
-      {# The levels on the left, in sight while the steps scroll; the strategy and its steps (or the Custom rules) on the right. #}
+      {# The strategy and the actions above; the levels on the left and the steps (or the Custom rules) on the right, at the
+         same height, the levels in sight while the steps scroll. #}
+      <div class="nq-priority-toolbar">
+        <label class="nq-priority-strategy-field">Strategy <select id="nq-priority-strategy" aria-label="Strategy of the NQ Prioritization"></select></label>
+        <span class="nq-priority-toolbar-actions"><button type="button" class="nq-secondary-action" id="nq-priority-add">Add Rule</button>
+          <button type="button" class="nq-secondary-action" id="nq-priority-default" title="The Dual Queue (Cities first) strategy, and the default Custom rules: SA before NSA and Voice before Data">Default Rules</button></span>
+      </div>
       <div class="nq-priority-layout">
         <section class="nq-priority-levels"><h3>Scoring Impact and Repeated Issues</h3>
           <div class="nq-priority-levels-grid">
@@ -472,12 +478,7 @@
           <label class="nq-toggle"><input type="checkbox" id="nq-priority-fill"> Fill the Priority of the open calls with the priority of their step or rule</label>
         </section>
         <div class="nq-priority-main">
-          <section class="nq-priority-strategy">
-            <div class="nq-priority-toolbar">
-              <label class="nq-priority-strategy-field">Strategy <select id="nq-priority-strategy" aria-label="Strategy of the NQ Prioritization"></select></label>
-              <span class="nq-priority-toolbar-actions"><button type="button" class="nq-secondary-action" id="nq-priority-add">Add Rule</button>
-                <button type="button" class="nq-secondary-action" id="nq-priority-default" title="The Dual Queue (Cities first) strategy, and the default Custom rules: SA before NSA and Voice before Data">Default Rules</button></span>
-            </div>
+          <section class="nq-priority-strategy" data-nq-strategy-only>
             <div class="nq-priority-steps" id="nq-priority-steps" data-nq-strategy-only></div>
           </section>
           <section class="nq-priority-custom" id="nq-priority-custom"><h3>Custom rules</h3>

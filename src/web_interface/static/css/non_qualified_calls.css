@@ -1300,7 +1300,9 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 .nq-priority-dialog { width: min(1800px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); }
 .nq-priority-dialog[open] { display: flex; flex-direction: column; overflow: hidden; }
 .nq-priority-dialog .nq-options-form { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; gap: .8rem; }
-.nq-priority-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; margin: 0 -.3rem; padding: 0 .3rem .2rem; }
+.nq-priority-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; margin: 0 -.3rem; padding: 0 .3rem .2rem; }
+/* The page behind the dialog does not scroll while it is open. */
+body:has(dialog.nq-priority-dialog[open]) { overflow: hidden; }
 .nq-priority-dialog footer { padding-top: .8rem; border-top: 1px solid var(--nq-border); }
 .nq-priority-dialog .nq-options-error:empty { display: none; }
 /* The levels on the left, in sight while the steps scroll; the strategy and its steps on the right. */
@@ -1315,8 +1317,9 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 :is(.nq-priority-levels, .nq-priority-custom) h3 { margin: 0; color: var(--nq-dark); font-size: .9rem; }
 .nq-priority-strategy { display: grid; gap: .9rem; }
 :is(.nq-priority-strategy, .nq-priority-custom)[hidden] { display: none; }
-/* The strategy and the actions of the dialog in one line above the lists. */
-.nq-priority-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .6rem 1rem; }
+/* The strategy and the actions of the dialog in one line above the levels and the lists. */
+.nq-priority-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .6rem 1rem;
+  margin-bottom: .9rem; }
 .nq-priority-strategy-field { display: flex; align-items: center; gap: .6rem; color: var(--nq-dark); font-size: .9rem; font-weight: 800; }
 .nq-priority-strategy-field select { width: 17rem; }
 .nq-priority-toolbar-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
@@ -1343,9 +1346,9 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 .nq-priority-steps-table .nq-step-col-move { width: 2.2rem; }
 .nq-priority-steps-table .nq-step-col-mode { width: 5.6rem; }
 .nq-priority-steps-table .nq-step-col-type { width: 7.6rem; }
-.nq-priority-steps-table .nq-step-col-area { width: 9.6rem; }
-.nq-priority-steps-table .nq-step-col-queue { width: 6.8rem; }
-.nq-priority-steps-table .nq-step-col-condition { width: 21.5rem; }
+.nq-priority-steps-table .nq-step-col-area { width: 10.6rem; }
+.nq-priority-steps-table .nq-step-col-queue { width: 7.4rem; }
+.nq-priority-steps-table .nq-step-col-condition { width: 19.9rem; }
 .nq-priority-steps-table :is(th, td) { vertical-align: middle; padding: .3rem .35rem; text-align: left; }
 .nq-priority-steps-table tbody td { border-bottom: 1px solid color-mix(in srgb, var(--nq-border) 55%, white); }
 .nq-priority-steps-table td.nq-priority-step-group { text-align: center; border-right: 1px solid var(--nq-border);
