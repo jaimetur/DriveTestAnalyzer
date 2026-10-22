@@ -1193,6 +1193,41 @@ def _remap_favourites(definition: dict[str, Any], source_names: dict[str, str], 
     return definition
 
 
+def imported_jobs(task_repository: Any, document: dict[str, Any]) -> list[tuple[int, dict[str, Any], dict[str, Any], dict[str, Any]]]:
+    """The Reporting Jobs of an exported document as this workspace saves them (also for the preview of an import):
+    each with its position in the document, its item, its definition pointing at the datasets (by file name),
+    favourite Bundle Report Templates (by name) and Dashboards of this workspace, and its schedule (a past single
+    execution becomes manual)."""
+    # Datasets are matched by file name, since IDs differ between workspaces.
+    source_names = {int(key): str(value) for key, value in (document.get('dataset_names') or {}).items() if str(key).isdigit()}
+    destination = {}
+    for row in task_repository.list_datasets():
+        destination.setdefault(str(row['file_name']).casefold(), int(row['id']))
+    mapping = {source_id: destination[name.casefold()] for source_id, name in source_names.items() if name.casefold() in destination}
+    # Favourite Bundle Report Templates are matched by name too (they are imported before the jobs, as their own element).
+    from src.modules.bundle_report_templates import dashboard_aliases, list_favourites, workspace_dashboards
+    favourite_names = {str(key): str(value) for key, value in (document.get('favourite_names') or {}).items()}
+    favourites_here = {item['name'].casefold(): str(item['id']) for item in list_favourites(task_repository)}
+    dashboards_here = workspace_dashboards(task_repository)
+    dashboard_aliases_here = {alias: key for alias, key in dashboard_aliases(task_repository).items() if alias not in dashboards_here}
+    jobs = []
+    for index, item in enumerate(document.get('reporting_jobs') or []):
+        if not isinstance(item, dict):
+            continue
+        schedule = dict(item.get('schedule') or {})
+        if schedule.get('mode') == 'once' and next_run_after(normalize_schedule(schedule), now_local()) is None:
+            schedule['mode'] = 'manual'  # A past single execution cannot be scheduled again.
+        definition = json.loads(json.dumps(item.get('definition') or {}))
+        _current_provider_keys(definition)  # Jobs exported when Bundle Report Templates had a former name.
+        definition = _remap_favourites(_remap_dataset_ids(definition, mapping), favourite_names, favourites_here)
+        for entry in definition.get('dashboards') or []:
+            # A Dashboard an import gave another ID here is found by the ID it had there.
+            if isinstance(entry, dict) and str(entry.get('dashboard_id') or '') in dashboard_aliases_here:
+                entry['dashboard_id'] = dashboard_aliases_here[str(entry['dashboard_id'])]
+        jobs.append((index, item, definition, schedule))
+    return jobs
+
+
 def import_tasks_document(
     task_repository: Any, content: bytes | str, username: str, *, parse_recipients, invalid_recipients,
     user_exists: Callable[[str], bool] = lambda _name: False, summary: list[str] | None = None,
@@ -1208,37 +1243,13 @@ def import_tasks_document(
     document = json.loads(content)
     if not isinstance(document, dict) or canonical_format(document.get('format')) != 'drivetest-analyzer-reporting-jobs':
         raise ValueError('The file is not a DriveTest Analyzer Reporting Jobs export.')
-    # Datasets are matched by file name, since IDs differ between workspaces.
-    source_names = {int(key): str(value) for key, value in (document.get('dataset_names') or {}).items() if str(key).isdigit()}
-    destination = {}
-    for row in task_repository.list_datasets():
-        destination.setdefault(str(row['file_name']).casefold(), int(row['id']))
-    mapping = {source_id: destination[name.casefold()] for source_id, name in source_names.items() if name.casefold() in destination}
     from src.modules.transfer_identities import REPORTING_JOBS, ItemMatcher, identities, set_identities
     local_uids = identities(task_repository, REPORTING_JOBS)
     matcher = ItemMatcher([(task['id'], task['name'], local_uids.get(str(task['id']), '')) for task in list_tasks(task_repository)],
                           max_length=160)
     imported_uids: dict[str, str] = {}
-    # Favourite Bundle Report Templates are matched by name too (they are imported before the jobs, as their own element).
-    from src.modules.bundle_report_templates import dashboard_aliases, list_favourites, workspace_dashboards
-    favourite_names = {str(key): str(value) for key, value in (document.get('favourite_names') or {}).items()}
-    favourites_here = {item['name'].casefold(): str(item['id']) for item in list_favourites(task_repository)}
-    dashboards_here = workspace_dashboards(task_repository)
-    dashboard_aliases_here = {alias: key for alias, key in dashboard_aliases(task_repository).items() if alias not in dashboards_here}
     imported, ordered = 0, []
-    for index, item in enumerate(document.get('reporting_jobs') or []):
-        if not isinstance(item, dict):
-            continue
-        schedule = dict(item.get('schedule') or {})
-        if schedule.get('mode') == 'once' and next_run_after(normalize_schedule(schedule), now_local()) is None:
-            schedule['mode'] = 'manual'  # A past single execution cannot be scheduled again.
-        definition = json.loads(json.dumps(item.get('definition') or {}))
-        _current_provider_keys(definition)  # Jobs exported when Bundle Report Templates had a former name.
-        definition = _remap_favourites(_remap_dataset_ids(definition, mapping), favourite_names, favourites_here)
-        for entry in definition.get('dashboards') or []:
-            # A Dashboard an import gave another ID here is found by the ID it had there.
-            if isinstance(entry, dict) and str(entry.get('dashboard_id') or '') in dashboard_aliases_here:
-                entry['dashboard_id'] = dashboard_aliases_here[str(entry['dashboard_id'])]
+    for index, item, definition, schedule in imported_jobs(task_repository, document):
         source_owner = str(item.get('created_by') or '').strip()
         owner = source_owner if source_owner and user_exists(source_owner) else username
         target, name = matcher.match(item.get('uid'), str(item.get('name') or '').strip())

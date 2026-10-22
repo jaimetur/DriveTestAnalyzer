@@ -195,6 +195,27 @@ def compare(package: list[Item], before: list[Item], after: list[Item], labels: 
     return changes
 
 
+def predict(package: list[Item], before: list[Item], labels: dict[str, str] | None = None, adjust=None) -> Changes:
+    """What importing the ``package`` items would do to the items of a workspace (``before``), for the preview of an
+    import: each item replaces the one it finds (by its identity, then its name) with the values it carries, keeping
+    those it does not carry, or is added. ``adjust(values, previous)`` gives the values of an item as the import would
+    save them over the values it had (``{}`` for a new one)."""
+    pairs = _pairs(package, before, ('uid', 'match'))
+    changes = Changes()
+    for position, item in enumerate(package):
+        if position not in pairs:
+            changes.new.append(item.name)
+            continue
+        previous = before[pairs[position]].values
+        values = {**previous, **(adjust(dict(item.values), previous) if adjust else item.values)}
+        described = describe_changes(previous, values, labels)
+        if described:
+            changes.updated.append((item.name, described))
+        else:
+            changes.unchanged += 1
+    return changes
+
+
 def compare_settings(name: str, before: dict[str, Any], after: dict[str, Any], labels: dict[str, str] | None = None,
                      described: list[str] | None = None) -> Changes:
     """What the import did to the settings of an element (``described`` tells their changes when given)."""

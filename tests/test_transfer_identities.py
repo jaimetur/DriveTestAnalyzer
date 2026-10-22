@@ -573,3 +573,38 @@ def test_the_preview_tells_what_an_import_would_do_and_only_the_chosen_packages_
     assert 'function showImportPreview(preview, options = {}) {' in script
     assert "await fetch('/admin/import-export/import/preview', {" in script
     assert "/preview/${chosen ? 'import' : 'reject'}" in script
+
+
+def test_the_preview_predicts_each_element_as_its_import_saves_it(client, tmp_path, monkeypatch):
+    from src.modules import non_qualified_calls
+    from src.modules.import_changes import describe_changes, element_items, predict, settings_values
+
+    workspace = core.active_workspace
+    # PPT Templates: their content, not their default (an import keeps that of the workspace), and their creator.
+    package = tmp_path / 'templates.zip'
+    core.build_export_archive_file('ppt-templates', package, [workspace.id])
+    [templates] = core.preview_import_archive(package, core.read_import_manifest(package), [workspace.id], 'super')['packages']
+    assert 'updated' not in templates['message'] and templates['sections'] == [], templates
+
+    # NQ Calls Configuration: what only the workspace has stays (the import adds what it lacks).
+    non_qualified_calls.ensure_nq_tables(core.repository)
+    package = tmp_path / 'nq.zip'
+    core.build_export_archive_file('nq-calls-configuration', package, [workspace.id])
+    with core.repository.connection() as connection:
+        connection.execute("INSERT INTO nq_call_options (kind, name, color, position, is_closed) VALUES ('status', 'Only here', '#123456', 99, 0)")
+    [nq] = core.preview_import_archive(package, core.read_import_manifest(package), [workspace.id], 'super')['packages']
+    assert nq['message'].endswith('unchanged.'), nq
+    before = json.loads(non_qualified_calls.export_configuration_document(core.repository))
+    incoming = {**before, 'options': {'statuses': [{'name': 'New status', 'color': '#ff0000', 'closed': False}], 'teams': []}}
+    assert describe_changes(settings_values(before), settings_values(non_qualified_calls.predicted_configuration(before, incoming))) == ['Options']
+
+    # Reporting Jobs: a definition points at the datasets of this workspace (by file name), as the import saves it.
+    monkeypatch.setattr(core.Repository, 'list_datasets', lambda self: [{'id': 5, 'file_name': 'drive.csv'}])
+    job = {'name': 'Daily', 'uid': 'u-daily', 'created_by': 'super', 'send_email': False, 'recipients': [], 'enabled': True,
+           'schedule': {'mode': 'manual'}, 'definition': {'dataset_analysis': {'enabled': True, 'dataset_ids': [101]}}}
+    document = {'format': 'drivetest-analyzer-reporting-jobs', 'version': 1, 'dataset_names': {'101': 'drive.csv'}, 'reporting_jobs': [job]}
+    [predicted] = core._predicted_document('reporting-jobs', workspace, document)['reporting_jobs']
+    assert predicted['definition']['dataset_analysis']['dataset_ids'] == [5]
+    here = {**job, 'definition': predicted['definition'], 'schedule': predicted['schedule']}
+    changes = predict(element_items('reporting-jobs', {'reporting_jobs': [predicted]}), element_items('reporting-jobs', {'reporting_jobs': [here]}))
+    assert (changes.updated, changes.unchanged) == ([], 1)

@@ -11297,7 +11297,8 @@ def _report_template_rows(workspace: Workspace) -> list[dict[str, Any]]:
 
 def _package_report_template_rows(templates_root: Path, manifest: dict[str, Any]) -> list[dict[str, Any]]:
     """The PPT Templates of a package (extracted in ``templates_root``) with their identity, to find them after the
-    import."""
+    import, and the SHA-256 of their content and their creator, for the preview of the import (not whether they are the
+    default of their NR Mode: an import keeps the default of the workspace)."""
     metadata = {(str(item.get('technology') or ''), str(item.get('name') or '').casefold()): item
                 for item in manifest.get('report_templates') or [] if isinstance(item, dict)}
     rows: dict[tuple[str, str], dict[str, Any]] = {}
@@ -11307,8 +11308,12 @@ def _package_report_template_rows(templates_root: Path, manifest: dict[str, Any]
         if len(relative.parts) != 3:
             continue
         technology, name = relative.parts[1], catalogue_registry_key(path.stem)
-        rows.setdefault((technology, name.casefold()), {
-            'technology': technology, 'name': name, 'uid': str(metadata.get((technology, name.casefold()), {}).get('uid') or '')})
+        known = metadata.get((technology, name.casefold()), {})
+        row = {'technology': technology, 'name': name, 'uid': str(known.get('uid') or ''),
+               'content': hashlib.sha256(path.read_bytes()).hexdigest()}
+        if str(known.get('created_by') or '').strip():
+            row['created_by'] = str(known['created_by'])
+        rows.setdefault((technology, name.casefold()), row)
     return list(rows.values())
 
 
@@ -11446,13 +11451,43 @@ def _preview_element_document(kind: str, manifest: dict[str, Any], archive: zipf
     return _json_document(archive.read(member)) if member else None
 
 
+def _predicted_document(kind: str, workspace: Workspace, package: Any) -> Any:
+    """The export document of an element package as its import saves it in a workspace (the Reporting Jobs pointing at
+    its datasets, favourites and Dashboards), for the preview of the import."""
+    if kind != 'reporting-jobs' or not isinstance(package, dict):
+        return package
+    from src.modules.report_tasks import imported_jobs, normalize_definition, normalize_schedule
+
+    def normalized(normalize: Callable[[Any], Any], value: Any) -> Any:
+        try:
+            return normalize(value)
+        except ValueError:  # The import refuses it then; the preview shows it as the package has it.
+            return value
+
+    task_repository = Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path)
+    return {**package, 'reporting_jobs': [
+        {**item, 'definition': normalized(normalize_definition, definition), 'schedule': normalized(normalize_schedule, schedule)}
+        for _index, item, definition, schedule in imported_jobs(task_repository, package)]}
+
+
+def _predicted_settings(kind: str, before: Any, package: Any) -> Any:
+    """The export document of a settings element after importing a package, as its import merges it (the NQ Calls
+    Configuration adds what the workspace lacks), for the preview of the import; the others replace it."""
+    if kind == 'nq-calls-configuration' and isinstance(before, dict) and isinstance(package, dict):
+        from src.modules.non_qualified_calls import predicted_configuration
+        return predicted_configuration(before, package)
+    return package
+
+
 def _preview_package(archive: zipfile.ZipFile, manifest: dict[str, Any], destination_workspace_ids: Iterable[str],
-                     staging_root: Path) -> tuple[str, list[str]]:
-    """What the import of one package would do, told as its completion message and its lines, without importing it."""
+                     staging_root: Path, importing_user: str = 'import') -> tuple[str, list[str]]:
+    """What the import of one package would do, told as its completion message and its lines, without importing it
+    (``importing_user`` owns the items whose creator is not on this server, as the import gives them)."""
     from src.modules.import_changes import (
-        ELEMENT_LABELS, SETTINGS_ELEMENTS, breakdown, compare, compare_settings, counted, element_items, joined,
+        ELEMENT_LABELS, SETTINGS_ELEMENTS, breakdown, compare, compare_settings, counted, element_items, joined, predict,
         settings_values, ticket_items, users_access_items,
     )
+    from src.modules.transfer_identities import imported_creator
 
     kind = str(manifest.get('kind') or '')
     if kind in ELEMENT_DOCUMENTS:
@@ -11468,12 +11503,17 @@ def _preview_package(archive: zipfile.ZipFile, manifest: dict[str, Any], destina
             changes = {workspace.id: compare_settings('', {}, {}, described=export_panel_changes(
                 (before[workspace.id] or {}).get('panels'), (package or {}).get('panels'))) for workspace in destinations}
         elif kind in SETTINGS_ELEMENTS:
-            changes = {workspace.id: compare_settings('', settings_values(before[workspace.id]), settings_values(package),
-                                                      SETTINGS_ELEMENTS[kind][2]) for workspace in destinations}
+            changes = {workspace.id: compare_settings('', settings_values(before[workspace.id]), settings_values(
+                _predicted_settings(kind, before[workspace.id], package)), SETTINGS_ELEMENTS[kind][2]) for workspace in destinations}
         else:
-            # Each item of the package replaces the one it finds (by its identity, then its name) or is added.
-            items = element_items(kind, package)
-            changes = {workspace.id: compare(items, element_items(kind, before[workspace.id]), items, ELEMENT_LABELS.get(kind))
+            # Each item of the package replaces the one it finds (by its identity, then its name) with the values it
+            # carries, as the import saves them in that workspace, or is added.
+            def creators(values: dict[str, Any], previous: dict[str, Any]) -> dict[str, Any]:
+                if 'created_by' in values:
+                    values['created_by'] = imported_creator(values['created_by'], previous.get('created_by'), importing_user, active_user_exists)
+                return values
+            changes = {workspace.id: predict(element_items(kind, _predicted_document(kind, workspace, package)),
+                                             element_items(kind, before[workspace.id]), ELEMENT_LABELS.get(kind), creators)
                        for workspace in destinations}
         message, lines = _element_notice(kind, destinations, changes)
         return _preview_wording(message), lines
@@ -11523,7 +11563,8 @@ def _preview_sections(lines: list[str]) -> list[dict[str, Any]]:
     return [{**section, 'title': _preview_wording(section['title'])} for section in import_notice('', '', lines).details['sections']]
 
 
-def preview_import_archive(package_path: Path, manifest: dict[str, Any], destination_workspace_ids: Iterable[str] = ()) -> dict[str, Any]:
+def preview_import_archive(package_path: Path, manifest: dict[str, Any], destination_workspace_ids: Iterable[str] = (),
+                           importing_user: str = 'import') -> dict[str, Any]:
     """What importing a package would do in each of its packages (one for a package that is not a bundle), without
     importing anything: its position (what the import of chosen packages names), its content, its completion message
     and its lines (the items it would update, with what would change). A package whose preview fails says so and can
@@ -11551,7 +11592,8 @@ def preview_import_archive(package_path: Path, manifest: dict[str, Any], destina
                 nested_root = staging_root / f'bundle-{position + 1}'
                 nested_root.mkdir()
                 with zipfile.ZipFile(nested_path) as nested:
-                    message, lines = _preview_package(nested, read_import_manifest(nested_path), destination_workspace_ids, nested_root)
+                    message, lines = _preview_package(nested, read_import_manifest(nested_path), destination_workspace_ids, nested_root,
+                                                      importing_user)
                 nested_path.unlink(missing_ok=True)
                 item.update(message=message, sections=_preview_sections(lines))
             except Exception as exc:  # noqa: BLE001 - a preview that fails never keeps a package from being imported
@@ -11564,7 +11606,7 @@ def preview_import_archive(package_path: Path, manifest: dict[str, Any], destina
                 label = str(manifest.get('kind') or 'Package')
             item = {'index': 0, 'kind': str(manifest.get('kind') or ''), 'label': label}
             try:
-                message, lines = _preview_package(archive, manifest, destination_workspace_ids, staging_root)
+                message, lines = _preview_package(archive, manifest, destination_workspace_ids, staging_root, importing_user)
                 item.update(message=message, sections=_preview_sections(lines))
             except Exception as exc:  # noqa: BLE001
                 item.update(message='', sections=[], error=f'Its preview could not be prepared: {exc}')
@@ -12422,8 +12464,9 @@ def _prepare_transfer_preview(offer_id: str) -> None:
                 return
             package_path, manifest = Path(str(offer['path'])), dict(offer['manifest'])
             destinations = list(offer.get('destination_workspace_ids') or ())
+            importing_user = str(offer.get('accepted_by') or 'import')
         try:
-            preview = preview_import_archive(package_path, manifest, destinations)
+            preview = preview_import_archive(package_path, manifest, destinations, importing_user)
         except Exception as exc:  # noqa: BLE001 - without a preview the package can still be imported or rejected
             preview = {'headline': 'The preview could not be prepared', 'packages': [], 'error': str(exc)}
         with TRANSFER_LOCK:
@@ -25043,7 +25086,7 @@ def preview_admin_import(
             raise HTTPException(status_code=404, detail='The uploaded package is no longer available. Select it again.')
         package_path, manifest = Path(str(upload['path'])), dict(upload['manifest'])
     require_import_manifest_permission(user, manifest)
-    preview = preview_import_archive(package_path, manifest, list(dict.fromkeys(workspace_ids or [])))
+    preview = preview_import_archive(package_path, manifest, list(dict.fromkeys(workspace_ids or [])), user.username)
     repository.try_add_log(user.username, 'preview_import_package', json.dumps({
         'kind': manifest.get('kind'),
         'packages': [f"{item.get('label')}: {item.get('message') or item.get('error') or ''}" for item in preview['packages']],

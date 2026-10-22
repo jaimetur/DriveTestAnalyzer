@@ -6984,6 +6984,88 @@ def _incoming_root_catalog(document: dict[str, Any]) -> dict[str, list[dict[str,
     return {'domains': catalog['domains'], 'categories': stored['categories'], 'causes': stored['causes']}
 
 
+def _merged_fields(current_fields: list[dict[str, Any]], incoming_fields: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The fields of a workspace with those of a document merged: its missing fields added (in their section) and the
+    values of its list fields merged, with the settings of the document (section, Table column, Excel and Summary
+    breakdown), in the order of the document, then those only the workspace has."""
+    labels = {field['label'].casefold() for field in current_fields}
+    refs = {field['source_ref'] for field in current_fields if field['source'] == 'tracking'}
+    merged = [dict(field) for field in current_fields]
+    for item in incoming_fields:
+        target = next((field for field in merged if field['key'] == item['key']), None)
+        if target is None:
+            if (str(item['label']).casefold() in labels or str(item.get('type')) not in FIELD_TYPES
+                    or (item.get('source') == 'tracking' and item.get('source_ref') in refs)):
+                continue
+            merged.append({**item, 'options': [option for option in item.get('options') or [] if isinstance(option, dict)]})
+            continue
+        if target['type'] == 'list' and str(item.get('type')) == 'list' and target['source'] in {'user', 'derived'}:
+            names = {option['name'].casefold() for option in target['options']}
+            target['options'] = [*target['options'], *(
+                option for option in item.get('options') or []
+                if isinstance(option, dict) and str(option.get('name') or '').casefold() not in names)]
+        # The settings of the package: its section, Table column, Excel and Summary breakdown.
+        target.update({key: item[key] for key in ('section', 'in_table', 'in_export', 'in_summary') if key in item})
+    # The fields of the package in its order, then those only the workspace has, in theirs.
+    order = {str(item['key']): index for index, item in enumerate(incoming_fields)}
+    merged.sort(key=lambda field: order.get(field['key'], len(order)))
+    return merged
+
+
+def predicted_configuration(current: dict[str, Any], incoming: dict[str, Any]) -> dict[str, Any]:
+    """The configuration document of a workspace (``current``, as export_configuration_document gives it) after
+    importing ``incoming``, as _merge_configuration merges it, for the preview of an import (nothing is written): the
+    missing statuses, teams (and the members of the teams), root cause catalog entries, fields and list values are
+    added and the equivalences the workspace has not reviewed, and the sections, status rules, field settings, table
+    columns and order, personal layouts (by username), root cause rule and settings and NQ Prioritization of the
+    document are taken."""
+    predicted = json.loads(json.dumps(current))
+
+    def merged_by_name(current_items: Any, incoming_items: Any, members: bool = False) -> list[dict[str, Any]]:
+        merged = [dict(item) for item in current_items or [] if isinstance(item, dict)]
+        found = {str(item.get('name') or '').casefold(): item for item in merged}
+        for item in incoming_items or []:
+            if not isinstance(item, dict) or not str(item.get('name') or '').strip():
+                continue
+            target = found.get(str(item['name']).casefold())
+            if target is None:
+                merged.append(dict(item))
+                found[str(item['name']).casefold()] = merged[-1]
+            elif members:
+                names = {str(name).casefold(): name for name in [*(target.get('members') or []), *(item.get('members') or [])]}
+                target['members'] = sorted(names.values(), key=lambda name: str(name).casefold())
+        return merged
+
+    options, incoming_options = predicted.get('options') or {}, incoming.get('options') or {}
+    if isinstance(options, dict) and isinstance(incoming_options, dict):
+        options['statuses'] = merged_by_name(options.get('statuses'), incoming_options.get('statuses'))
+        options['teams'] = merged_by_name(options.get('teams'), incoming_options.get('teams'), members=True)
+        predicted['options'] = options
+    roots, incoming_roots = predicted.get('root_causes') or {}, incoming.get('root_causes') or {}
+    if isinstance(roots, dict) and isinstance(incoming_roots, dict):
+        for plural in ('domains', 'categories', 'causes'):
+            roots[plural] = merged_by_name(roots.get(plural), incoming_roots.get(plural))
+        roots.update({key: incoming_roots[key] for key in ('rule', 'require_to_close') if key in incoming_roots})
+        predicted['root_causes'] = roots
+    incoming_fields = [item for item in incoming.get('fields') or [] if isinstance(item, dict) and item.get('key') and item.get('label')]
+    if incoming_fields and isinstance(predicted.get('fields'), list):
+        predicted['fields'] = _merged_fields(predicted['fields'], incoming_fields)
+    for key, kind in (('sections', list), ('status_rules', list), ('table_columns', dict), ('column_order', list), ('prioritization', dict)):
+        if isinstance(incoming.get(key), kind):
+            predicted[key] = incoming[key]
+    layouts = {str(item.get('username') or '').casefold(): item for item in predicted.get('user_layouts') or [] if isinstance(item, dict)}
+    for item in incoming.get('user_layouts') or []:
+        if isinstance(item, dict) and str(item.get('username') or '').strip():
+            layouts[str(item['username']).strip().casefold()] = {**layouts.get(str(item['username']).strip().casefold(), {}), **item}
+    predicted['user_layouts'] = list(layouts.values())
+    equivalences = predicted.get('analyses_equivalences') if isinstance(predicted.get('analyses_equivalences'), dict) else {}
+    for target, values in _normalize_equivalences(incoming.get('analyses_equivalences')).items():
+        for key, item in values.items():
+            equivalences.setdefault(target, {}).setdefault(key, item)
+    predicted['analyses_equivalences'] = equivalences
+    return predicted
+
+
 def _merge_configuration(task_repository: Any, document: dict[str, Any]) -> None:
     """Add the missing statuses, teams, fields, list values and root cause catalog entries of a document and take its
     sections, status rules, field settings (section, order, Table column, Excel and Summary breakdown), table layouts (that
@@ -6995,27 +7077,7 @@ def _merge_configuration(task_repository: Any, document: dict[str, Any]) -> None
     if incoming_fields:
         current_fields = list_fields(task_repository)
         by_key = {field['key']: field for field in current_fields}
-        labels = {field['label'].casefold() for field in current_fields}
-        refs = {field['source_ref'] for field in current_fields if field['source'] == 'tracking'}
-        merged = [dict(field) for field in current_fields]
-        for item in incoming_fields:
-            target = next((field for field in merged if field['key'] == item['key']), None)
-            if target is None:
-                if (str(item['label']).casefold() in labels or str(item.get('type')) not in FIELD_TYPES
-                        or (item.get('source') == 'tracking' and item.get('source_ref') in refs)):
-                    continue
-                merged.append({**item, 'options': [option for option in item.get('options') or [] if isinstance(option, dict)]})
-                continue
-            if target['type'] == 'list' and str(item.get('type')) == 'list' and target['source'] in {'user', 'derived'}:
-                names = {option['name'].casefold() for option in target['options']}
-                target['options'] = [*target['options'], *(
-                    option for option in item.get('options') or []
-                    if isinstance(option, dict) and str(option.get('name') or '').casefold() not in names)]
-            # The settings of the package: its section, Table column, Excel and Summary breakdown.
-            target.update({key: item[key] for key in ('section', 'in_table', 'in_export', 'in_summary') if key in item})
-        # The fields of the package in its order, then those only the workspace has, in theirs.
-        order = {str(item['key']): index for index, item in enumerate(incoming_fields)}
-        merged.sort(key=lambda field: order.get(field['key'], len(order)))
+        merged = _merged_fields(current_fields, incoming_fields)
         if merged != current_fields:
             _store_fields(task_repository, nq_catalog.normalize_fields(merged, by_key, CATALOG_CALL_FIELDS))
     if isinstance(document.get('sections'), list):

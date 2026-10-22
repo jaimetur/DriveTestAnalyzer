@@ -8217,7 +8217,8 @@ document.querySelectorAll('[data-export-package-form]').forEach((form) => {
         reviewing = true;
         closeDialog();
         const chosen = await showImportPreview(offer.preview, {
-          eyebrow: 'Incoming transfer preview', title: offer.content || 'Incoming server transfer',
+          // (The packages are listed below, so the title does not repeat them.)
+          eyebrow: 'Incoming transfer preview', title: 'Incoming server transfer',
           intro: `${offer.source || 'The source server'} sent this package. Choose what to import, or reject the transfer.`,
           confirmLabel: 'Import selected', cancelLabel: 'Reject transfer', reject: true,
         });

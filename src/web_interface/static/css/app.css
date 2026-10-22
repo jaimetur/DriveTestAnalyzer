@@ -2714,7 +2714,7 @@ body[data-embedded-dataset-preview] > .shell > main { width: 100%; max-width: no
 .import-summary-note { margin: .3rem 0 0; color: #33495a; font-size: .88rem; }
 /* The preview of an import or of a received transfer: a box for each package, what it would do and, unfolded, what
    would change in its items. */
-.confirm-overlay .import-preview-panel { width: min(94vw, 1040px); max-width: none; max-height: calc(100dvh - 2rem); display: flex; flex-direction: column; }
+.confirm-overlay .import-preview-panel { width: min(97vw, 1680px); max-width: none; max-height: calc(100dvh - 1rem); display: flex; flex-direction: column; padding-block: 1.2rem; }
 .import-preview-intro, .import-preview-note { margin: .35rem 0 0; color: #33495a; }
 .import-preview-note { color: #5b6b78; font-size: .86rem; }
 .import-preview-error { margin: .5rem 0 0; color: #b42318; font-weight: 700; }
@@ -2722,17 +2722,29 @@ body[data-embedded-dataset-preview] > .shell > main { width: 100%; max-width: no
 .import-preview-toolbar .ghost-link { min-height: 1.7rem; padding: .2rem .7rem; border: 1px solid #c9d6de; border-radius: 999px; background: #f4f8fa; color: #23404f; font-size: .78rem; font-weight: 800; box-shadow: none; }
 .import-preview-toolbar .ghost-link:hover { border-color: #8fa9b8; background: #e8f0f4; color: #10314a; transform: none; }
 .import-preview-list { flex: 1 1 auto; min-height: 0; max-height: min(60vh, 42rem); overflow: auto; display: grid; grid-template-columns: minmax(0, 1fr); gap: .55rem; margin: .4rem 0; padding-right: .3rem; }
-.import-preview-package { min-width: 0; padding: .65rem .8rem; border: 1px solid rgba(16, 49, 74, .14); border-radius: 12px; background: #fff; }
+.import-preview-package { min-width: 0; padding: .45rem .7rem; border: 1px solid rgba(16, 49, 74, .14); border-radius: 10px; background: #fff; }
 .import-preview-package.has-error { border-color: #f1b0a8; background: #fff8f7; }
 .import-preview-package-head { display: flex; align-items: flex-start; gap: .65rem; cursor: pointer; }
 .import-preview-package-head input { flex: 0 0 auto; width: 1.05rem; height: 1.05rem; margin: .15rem 0 0; }
-.import-preview-package-text { display: grid; gap: .15rem; color: #10314a; text-align: left; }
+.import-preview-package-text { display: grid; gap: .05rem; color: #10314a; line-height: 1.3; text-align: left; }
 .import-preview-package-message { color: #33495a; font-size: .88rem; }
 .import-preview-package-error { color: #b42318; font-size: .84rem; font-weight: 700; }
 .import-preview-details { min-width: 0; margin: .45rem 0 0 1.7rem; overflow-x: auto; }
 .import-preview-details > summary { color: #1e61a3; font-size: .84rem; font-weight: 800; cursor: pointer; }
 .import-preview-details > .import-summary { margin-top: .5rem; }
 .confirm-actions .import-preview-reject { color: #b42318; }
+.confirm-overlay .import-preview-panel > h3 { font-size: 1.3rem; line-height: 1.25; }
+/* Wide screens: the packages in two columns (each kept whole), the window scrolled as one with its buttons at hand. */
+@media (min-width: 1000px) {
+  .confirm-overlay .import-preview-panel { overflow-y: auto; }
+  .import-preview-list { flex: 0 0 auto; display: block; column-count: 2; column-gap: .65rem; max-height: none; overflow: visible; padding-right: 0; }
+  .import-preview-list > .import-preview-package { break-inside: avoid; margin: 0 0 .45rem; }
+  .import-preview-panel > .confirm-actions { position: sticky; bottom: -1.2rem; margin: 0 -1.65rem -1.2rem; padding: .7rem 1.65rem 1.2rem; background: linear-gradient(rgba(250, 243, 240, 0), rgb(250, 243, 240) 35%); }
+}
+/* Very wide screens: three columns, so every package of a full transfer fits in the window. */
+@media (min-width: 1400px) {
+  .import-preview-list { column-count: 3; }
+}
 /* What an import added (green) and updated (amber), highlighted in its messages and in the sections of the updated items. */
 mark.import-count-new, mark.import-count-updated { padding: .02rem .42rem; border: 1px solid; border-radius: 999px; font-weight: 800; white-space: nowrap; }
 mark.import-count-new { border-color: #8fd0a2; background: #dcf3e3; color: #17663a; }
