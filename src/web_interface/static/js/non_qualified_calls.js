@@ -1505,9 +1505,6 @@
       body.replaceChildren(row);
       return;
     }
-    // Each cell knows the name of its column: on phones the rows are cards that show it above the value.
-    const labels = [...$('nq-table').tHead.rows[0].cells].map((cell) => [...cell.querySelectorAll('[data-sort]')]
-      .map((item) => item.textContent.trim()).filter(Boolean).join(' · '));
     body.replaceChildren(...result.calls.map((call) => {
       const row = node('tr');
       row.dataset.callKey = call.call_key;
@@ -1624,15 +1621,12 @@
         tracking('team', 'assignee'), comments,
       );
       orderRowCells(row);
-      [...row.cells].forEach((cell, index) => { if (labels[index]) cell.dataset.label = labels[index]; });
       row.addEventListener('click', (event) => {
         if (event.target.closest('select, input, a')) return;
         openDetail(call.call_key);
       });
       return row;
     }));
-    showCard({scroll: state.cardScroll});
-    state.cardScroll = false;
   };
   const renderSortHeaders = () => {
     $('nq-table').querySelectorAll('[data-sort]').forEach((header) => {
@@ -1641,17 +1635,6 @@
       header.dataset.direction = active ? state.direction : '';
       header.setAttribute('aria-sort', active ? (state.direction === 'asc' ? 'ascending' : 'descending') : 'none');
     });
-  };
-  // On phones the calls are cards shown one at a time, with the pager of every card list of the application; the
-  // card moves to the next or previous page of calls by itself.
-  const phoneCards = window.matchMedia('(max-width: 640px)');
-  const callRows = () => [...$('nq-rows').rows].filter((row) => row.dataset.callKey);
-  const showCard = ({scroll = false} = {}) => {
-    const rows = callRows();
-    rows.forEach((row, index) => row.classList.toggle('mobile-card-page-hidden', phoneCards.matches && index !== state.card));
-    if (scroll && phoneCards.matches && rows[state.card] && rows[state.card].getBoundingClientRect().top < 0) {
-      rows[state.card].scrollIntoView({block: 'start'});
-    }
   };
   const pagerArrow = (name, path, disabled, onClick) => {
     const element = node('button');
@@ -1665,35 +1648,7 @@
   };
   const ARROWS = {First: 'M5 5v14M18 6l-6 6 6 6M12 6l-6 6 6 6', Previous: 'M15 6l-6 6 6 6', Next: 'M9 6l6 6-6 6',
     Last: 'M19 5v14M6 6l6 6-6 6M12 6l6 6-6 6'};
-  const renderCardPager = (result) => {
-    const host = $('nq-pagination');
-    const rows = result.calls.length;
-    if (result.total <= 1 || !rows) { host.replaceChildren(); return; }
-    const position = (result.page - 1) * result.page_size + state.card + 1;
-    const go = (page, card) => {
-      if (page === result.page) {
-        state.card = card === 'last' ? rows - 1 : card;
-        showCard({scroll: true});
-        renderCardPager(result);
-        return;
-      }
-      state.page = page;
-      state.card = card === 'last' ? 0 : card;
-      state.cardLast = card === 'last';
-      state.cardScroll = true;
-      loadCalls();
-    };
-    const atStart = position <= 1;
-    const atEnd = position >= result.total;
-    host.replaceChildren(
-      pagerArrow('First', ARROWS.First, atStart, () => go(1, 0)),
-      pagerArrow('Previous', ARROWS.Previous, atStart, () => (state.card > 0 ? go(result.page, state.card - 1) : go(result.page - 1, 'last'))),
-      node('span', `Call ${number(position)} of ${number(result.total)}`, 'nq-card-status'),
-      pagerArrow('Next', ARROWS.Next, atEnd, () => (state.card < rows - 1 ? go(result.page, state.card + 1) : go(result.page + 1, 0))),
-      pagerArrow('Last', ARROWS.Last, atEnd, () => go(result.pages, 'last')));
-  };
   const renderPagination = (result) => {
-    if (phoneCards.matches) { renderCardPager(result); return; }
     const host = $('nq-pagination');
     if (result.pages <= 1) { host.replaceChildren(); return; }
     const button = (label, page, disabled = false, current = false) => {
@@ -1718,11 +1673,6 @@
       pagerArrow('Last', ARROWS.Last, result.page >= result.pages, go(result.pages)));
     host.replaceChildren(...items);
   };
-  phoneCards.addEventListener('change', () => {
-    if (!state.result) return;
-    showCard();
-    renderPagination(state.result);
-  });
   // The actions of the selected calls cover the toolbar right above the table, so the table
   // does not move, and stay at the top of the window while the table is scrolled.
   const placeBulk = () => {
@@ -1922,7 +1872,6 @@
   async function loadCalls({quiet = false} = {}) {
     const token = ++state.requestToken;
     const filters = currentFilters();
-    const signature = JSON.stringify([filters, state.sort, state.direction, state.pageSize]);
     if (state.filtersRestored) saveFilters(filters);
     loadAvailable(filters, quiet);
     // The filters are shown on every panel at once, before their data arrives.
@@ -1946,11 +1895,6 @@
       if (token !== state.requestToken) return;
       state.result = result;
       state.page = result.page;
-      // The card shown on phones: the first one of a new query, the last one when coming back from the next page,
-      // the same one when the calls are only refreshed.
-      if (signature !== state.cardSignature) { state.card = 0; state.cardSignature = signature; }
-      if (state.cardLast) { state.card = result.calls.length - 1; state.cardLast = false; }
-      state.card = Math.min(Math.max(0, state.card || 0), Math.max(0, result.calls.length - 1));
       renderSync(result.sync);
       renderActiveFilters(filters);
       renderColumnFilters();

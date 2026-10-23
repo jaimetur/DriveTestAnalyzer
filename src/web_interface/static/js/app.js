@@ -1019,7 +1019,6 @@ function limitSeriesCollectionByX(seriesCollection, xMaxOverride) {
   const selector = [
     'table.queue-table', 'table.catalogue-workspace-table',
     'table.report-jobs-table', 'table.workspace-library-table', 'table.recovered-transfer-table',
-    'table.admin-datasets-table', 'table.database-editor-table',
     'table.operator-mappings-table', 'table.ds-dashboards-table',
     '.report-charts-grid', '.workspace-calculated-dimensions-list',
   ].join(', ');

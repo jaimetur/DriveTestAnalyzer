@@ -2105,8 +2105,7 @@
       // (A collapsed panel has nothing to measure: it is measured again when opened.)
       if (!wrapper.offsetParent) return;
       const shown = rows().filter((row) => !row.hidden);
-      // (Phones show each row as a card, one under the other.)
-      if ((kind === 'tasks' && editorOpen) || shown.length <= VISIBLE_ROWS || window.matchMedia('(max-width: 640px)').matches) {
+      if ((kind === 'tasks' && editorOpen) || shown.length <= VISIBLE_ROWS) {
         wrapper.style.maxHeight = '';
       } else {
         const rowsHeight = shown.slice(0, VISIBLE_ROWS).reduce((height, row) => height + row.getBoundingClientRect().height, 0);

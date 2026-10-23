@@ -757,7 +757,7 @@ Workspaces of earlier layouts are completed once:
 On a phone the page fits the width of the screen:
 
 - The [Sections bar](#sections-bar) stays on one row (scrolling sideways), the filters and the indicators go two per row, the tabs of the NQ Rate, the Root Cause Sources and the call scroll sideways, and the tables of the Dashboards keep their first column in view while they scroll.
-- Each call of the table is a card with the name of every value above it, its start time and service at the top and its select box in the corner; the header of the table stays above the cards as a row of chips that sort and filter, and the cards are shown one at a time with the pager of every card list of the application (first, previous, next and last, and *Call N of total*), which moves to the next or previous page of calls by itself and keeps its card when the calls are refreshed after a change.
+- The table of the calls stays a table, scrolled sideways, with its header and its pages as on a larger screen, so a call is found at a glance.
 - The call details fill the screen and scroll as a whole with their tabs at the top (the chosen tab comes into view), the phases two per row and the names and values of the call in two equal columns, and the dialogs of the NQ Analysis Configuration fill the screen with their rows wrapped.
 
 ## Speed with large workspaces

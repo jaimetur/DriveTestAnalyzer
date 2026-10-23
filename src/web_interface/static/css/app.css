@@ -3353,7 +3353,8 @@ body:has(.release-navigator) .help-navigator{top:37%}
   .operator-mappings-table .table-actions { justify-content: flex-start; gap: 0.35rem; }
   .operator-mapping-create button { min-height: 2.45rem; padding: 0.52rem 0.7rem; font-size: 0.78rem; }
 
-  /* The users of Admin and the App Events stay tables, scrolled sideways, so a user or an event is found at a glance. */
+  /* The users of Super Admin, the App Events, Datasets Management, the Database Viewer, the Reporting Jobs and the
+     Non-Qualified Calls stay tables, scrolled sideways, so a row is found at a glance. */
   .catalogue-workspace-table, .report-jobs-table, .workspace-library-table,
   .recovered-transfer-table {
     display: block; width: 100%; min-width: 0; table-layout: auto;
@@ -3429,14 +3430,12 @@ body:has(.release-navigator) .help-navigator{top:37%}
   .reporting-stack .report-jobs-table td:nth-child(6) { grid-column: span 2; }
   .catalogue-workspace-table .catalogue-workspace-actions,
   .report-jobs-table .report-job-actions, .recovered-transfer-table .table-actions,
-  .workspace-library-table .workspace-row-actions, .admin-datasets-table .admin-dataset-actions,
-  .database-editor-table .database-editor-actions {
+  .workspace-library-table .workspace-row-actions {
     max-width: none; flex-wrap: nowrap; justify-content: flex-start; gap: 0.3rem; white-space: nowrap;
   }
   .catalogue-workspace-table td:nth-child(7),
   .report-jobs-table td:nth-child(13), .workspace-library-table td[data-label="Actions"],
-  .recovered-transfer-table td:nth-child(5), .admin-datasets-table td[data-label="Actions"],
-  .database-editor-table td[data-label="Actions"] { grid-column: 1 / -1; }
+  .recovered-transfer-table td:nth-child(5) { grid-column: 1 / -1; }
   .catalogue-workspace-table td:nth-child(7) { grid-column: span 1; }
   .catalogue-workspace-table input,
   .catalogue-workspace-table select { width: 100%; }
@@ -3454,36 +3453,9 @@ body:has(.release-navigator) .help-navigator{top:37%}
   .import-export-grid button { min-height: 2.3rem; padding: 0.42rem 0.55rem; font-size: 0.74rem; }
   .recovered-transfer-packages { margin-top: 0.2rem; padding-top: 0.55rem; }
 
-  .admin-datasets-table { display: block; width: 100%; table-layout: auto; }
-  .admin-datasets-table thead { display: none; }
-  .admin-datasets-table tbody { display: grid; gap: 0.65rem; }
-  .admin-datasets-table tbody tr { display: grid; grid-template-columns: repeat(auto-fit, minmax(6.5rem, 1fr)); border: 1px solid rgba(16, 49, 74, 0.16); border-radius: 11px; background: #fff; overflow: hidden; }
-  .admin-datasets-table tbody td { display: flex; flex-direction: column; align-items: stretch; gap: 0.22rem; width: auto !important; min-width: 0 !important; padding: 0.48rem 0.55rem; border: 0; border-bottom: 1px solid rgba(16, 49, 74, 0.09); overflow-wrap: anywhere; }
-  .admin-datasets-table tbody td::before { content: attr(data-label); color: #58707e; font-size: 0.66rem; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; }
-  .admin-datasets-table tbody td:nth-child(2), .admin-datasets-table tbody td:nth-child(3), .admin-datasets-table tbody td:nth-child(4), .admin-datasets-table tbody td:nth-child(8) { grid-column: 1 / -1; }
-  .admin-datasets-table tbody td:nth-child(5) { grid-column: 1 / -1; }
-  .admin-datasets-table tbody td:nth-child(8) { border-bottom: 0; }
-  .admin-datasets-table tbody td.admin-dataset-empty { grid-column: 1 / -1; }
-  .admin-datasets-table .admin-dataset-order-actions { justify-content: flex-start; }
-  .admin-datasets-table .admin-dataset-actions { display: flex; align-items: center; justify-content: flex-start; gap: 0.3rem; flex-wrap: nowrap; }
-  .admin-datasets-table .admin-dataset-actions form { display: inline-flex; }
   .catalogue-workspace-actions { gap: 0.3rem; flex-wrap: nowrap; }
   .catalogue-workspace-actions .icon-action { width: 2rem; min-width: 2rem; height: 2rem; min-height: 2rem; padding: 0.15rem !important; font-size: 1rem !important; }
   .database-editor-actions { white-space: nowrap; }
-  .database-editor-wrap { max-height: 620px; overflow-x: hidden; overflow-y: auto; border: 0; }
-  .database-editor-table { display: block; width: 100%; min-width: 0; table-layout: auto; }
-  .database-editor-table thead { display: none; }
-  .database-editor-table tbody { display: grid; gap: 0.7rem; }
-  .database-editor-table tbody tr { display: grid; grid-template-columns: repeat(auto-fit, minmax(6.5rem, 1fr)); overflow: hidden; border: 1px solid rgba(139, 29, 36, 0.18); border-radius: 11px; background: #fff; }
-  .database-editor-table tbody td { display: flex; flex-direction: column; align-items: stretch; gap: 0.24rem; box-sizing: border-box; width: auto !important; min-width: 0 !important; max-width: none !important; padding: 0.52rem 0.58rem; border: 0; border-bottom: 1px solid rgba(139, 29, 36, 0.10); background: #fff; }
-  .database-editor-table tbody td[data-label="ID" i], .database-editor-table tbody td.database-editor-actions,
-  .database-editor-table tbody tr.database-empty-row td { grid-column: 1 / -1; }
-  .database-editor-table tbody td.database-editor-actions, .database-editor-table tbody tr.database-empty-row td { border-bottom: 0; }
-  .database-card-field-heading { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 0.35rem; color: #71242b; font-size: 0.68rem; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; }
-  .database-card-field-heading span { min-width: 0; overflow-wrap: anywhere; }
-  .database-card-field-heading .database-column-filter { flex: 0 0 auto; }
-  .database-editor-table .database-editor-cell { width: 100%; min-width: 0; }
-  .database-editor-table .database-editor-actions { flex-direction: row; align-items: center; gap: 0.3rem; }
 }
 
 /* Template-driven dashboards use a muted violet distinct from Reporting. */
