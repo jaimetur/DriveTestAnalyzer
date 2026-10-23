@@ -3140,7 +3140,6 @@ body:has(.release-navigator) .help-navigator{top:37%}
     display: block; width: 100%; max-width: 100%; overflow-x: auto; overscroll-behavior-inline: contain;
     -webkit-overflow-scrolling: touch;
   }
-  .queue-table-wrap { overflow: visible; border: 0; }
   /* Tables marked data-phone-cards: each row is a card, each cell under the name of its column (labelled by app.js). */
   .table-wrap:has(> table[data-phone-cards]) { overflow: visible; border: 0; }
   table[data-phone-cards] { display: block; width: 100%; min-width: 0 !important; }
@@ -3151,29 +3150,6 @@ body:has(.release-navigator) .help-navigator{top:37%}
   table[data-phone-cards] tbody td[data-label]::before { content: attr(data-label); display: block; margin-bottom: 0.15rem; color: #5b6b7a; font-size: 0.64rem; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; }
   table[data-phone-cards] tbody td:first-child, table[data-phone-cards] tbody td:last-child, table[data-phone-cards] tbody td[colspan] { grid-column: 1 / -1; }
   table[data-phone-cards] tbody td:last-child { border-bottom: 0; }
-  .queue-table { display: block; min-width: 0; width: 100%; }
-  .queue-table thead { display: none; }
-  .queue-table tbody { display: grid; gap: 0.65rem; }
-  .queue-table tbody tr[data-dataset-row] {
-    display: grid; grid-template-columns: repeat(auto-fit, minmax(6.5rem, 1fr));
-    gap: 0; overflow: hidden; border: 1px solid rgba(16, 49, 74, 0.16); border-radius: 11px; background: #fff;
-  }
-  .queue-table tbody tr[data-dataset-row] > td {
-    display: flex; flex-direction: column; align-items: stretch; gap: 0.22rem;
-    width: auto !important; min-width: 0 !important; padding: 0.48rem 0.55rem; border: 0; border-bottom: 1px solid rgba(16, 49, 74, 0.09);
-    white-space: normal;
-  }
-  .queue-table tbody tr[data-dataset-row] > td::before {
-    content: attr(data-label); color: #58707e; font-size: 0.68rem; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase;
-  }
-  .queue-table tbody tr[data-dataset-row] > td[data-label="ID"],
-  .queue-table tbody tr[data-dataset-row] > td[data-label="Dataset"],
-  .queue-table tbody tr[data-dataset-row] > td[data-label="Progress"],
-  .queue-table tbody tr[data-dataset-row] > td[data-label="Actions"] { grid-column: 1 / -1; }
-  .queue-table tbody tr[data-dataset-row] > td[data-label="Actions"] { border-bottom: 0; }
-  .queue-table tbody tr.combined-dataset-section-row { display: block; }
-  .queue-table tbody tr.combined-dataset-section-row > td { display: block; box-sizing: border-box; width: 100% !important; padding: 0.85rem; }
-  .queue-table tbody tr.combined-dataset-columns-header { display: none; }
   .queue-card > .datasets-materialization-status { margin: -0.35rem 1rem 1rem; }
   .queue-table .queue-dataset-path { font-size: 0.7rem; }
   .queue-table .queue-actions { min-width: 0; flex-wrap: nowrap; justify-content: flex-start; gap: 0.3rem; white-space: nowrap; }
@@ -3353,8 +3329,8 @@ body:has(.release-navigator) .help-navigator{top:37%}
   .operator-mappings-table .table-actions { justify-content: flex-start; gap: 0.35rem; }
   .operator-mapping-create button { min-height: 2.45rem; padding: 0.52rem 0.7rem; font-size: 0.78rem; }
 
-  /* The users of Super Admin, the App Events, Datasets Management, the Database Viewer, the Reporting Jobs and the
-     Non-Qualified Calls stay tables, scrolled sideways, so a row is found at a glance. */
+  /* The users of Super Admin, the App Events, the Datasets of Workspace Management and of Datasets Management, the Database
+     Viewer, the Reporting Jobs and the Non-Qualified Calls stay tables, scrolled sideways, so a row is found at a glance. */
   .catalogue-workspace-table, .report-jobs-table, .workspace-library-table,
   .recovered-transfer-table {
     display: block; width: 100%; min-width: 0; table-layout: auto;
@@ -4935,8 +4911,6 @@ body:has(dialog.vendor-mapping-dialog[open]) { overflow: hidden; }
 .dataset-card-cdr .queue-table th:nth-child(12), .dataset-card-cdr .queue-table td:nth-child(12) { width: 152px; }
 .dataset-card-cdr .queue-table th:nth-child(13), .dataset-card-cdr .queue-table td:nth-child(13) { width: 124px; }
 .dataset-card-cdr .queue-table .queue-actions { display: grid; grid-template-columns: repeat(3, 2rem); gap: 0.3rem; min-width: 0; }
-/* On phones the CDRs are cards (see the compact-screen contract), not a table of fixed columns. */
-@media (max-width: 640px) { .dataset-card-cdr .queue-table { min-width: 0; table-layout: auto; } }
 .dataset-card-cdr .queue-progress-cell { min-width: 0; }
 .dataset-card-cdr .queue-progress-cell .progress-shell { width: 100%; min-width: 0; }
 .dataset-card-cdr .queue-status-pill { padding: 0.28rem 0.55rem; font-size: 0.74rem; white-space: nowrap; }
@@ -4985,10 +4959,8 @@ body:has(dialog.vendor-mapping-dialog[open]) { overflow: hidden; }
 .queue-campaign-group-count { margin-left: 0.55rem; color: #51616c; font-size: 0.74rem; font-weight: 700; }
 .queue-campaign-group-size { margin-left: 0.55rem; padding-left: 0.55rem; border-left: 1px solid #c9d6e0; color: #51616c; font-size: 0.74rem; font-weight: 700; font-variant-numeric: tabular-nums; }
 .dataset-card-cdr .queue-table tbody tr.queue-campaign-group-row > td { width: auto !important; }
-/* On phones the band spans the card list and the Campaign field its card. */
+/* On phones the Campaign field is narrower. */
 @media (max-width: 640px) {
-  .queue-table tbody tr.queue-campaign-group-row, .queue-table tbody tr.queue-campaign-group-row > td { display: block; }
-  .queue-table tbody tr[data-dataset-row] > td[data-label="Campaign"] { grid-column: 1 / -1; }
   .queue-campaign-input { width: 8rem; }
 }
 .queue-cdr-type-badge[data-kind="data"], .queue-cdr-type-select:has(option[value="data"]:checked) { --pill-color: #e8590c; }
