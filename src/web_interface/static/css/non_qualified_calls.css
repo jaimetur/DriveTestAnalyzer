@@ -1406,7 +1406,7 @@ body:has(dialog.nq-priority-dialog[open]) { overflow: hidden; }
 /* The steps the admins change: the same columns in both lists, every field a control as wide as its column, the steps
    of one Priority grouped under it and their queue as a tag. */
 .nq-priority-steps-table { table-layout: fixed; width: 100%; min-width: 72rem; }
-.nq-priority-steps-table .nq-step-col-priority { width: 5.4rem; }
+.nq-priority-steps-table .nq-step-col-priority { width: 6.6rem; }
 .nq-priority-steps-table .nq-step-col-move { width: 4.6rem; }
 .nq-priority-steps-table .nq-priority-step-number, .nq-step-number > button { display: inline-block; min-width: 1.3rem; text-align: center; font-weight: 800; color: var(--nq-dark);
   font-variant-numeric: tabular-nums; }
@@ -1447,6 +1447,11 @@ body:has(dialog.nq-priority-dialog[open]) { overflow: hidden; }
   line-height: 1; cursor: grab; box-shadow: none; }
 .nq-priority-step-handle:is(:hover, :focus-visible) { background: var(--nq-soft); color: var(--nq-dark); }
 .nq-priority-steps-table tr.is-dragging { opacity: .45; }
+/* Each Priority moves as a block by the handle before it: dragged onto another Priority (its rows marked), or with the
+   arrow keys onto the one above or below, the two swap. */
+.nq-priority-group-control { display: flex; align-items: center; gap: .1rem; }
+.nq-priority-group-control > select { flex: 1 1 auto; min-width: 0; }
+.nq-priority-steps-table td.nq-priority-step-group { padding-inline: .2rem; }
 .nq-priority-steps-table tr.is-drop-before > td:not(.nq-priority-step-group) { box-shadow: inset 0 3px 0 var(--nq-color); }
 .nq-priority-steps-table tr.is-drop-after > td:not(.nq-priority-step-group) { box-shadow: inset 0 -3px 0 var(--nq-color); }
 .nq-priority-steps-table :is(td.is-drop-into, tr.is-drop-into > td) { background: color-mix(in srgb, var(--nq-color) 14%, white); }

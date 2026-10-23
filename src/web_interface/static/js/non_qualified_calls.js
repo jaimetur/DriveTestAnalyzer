@@ -6057,6 +6057,8 @@
   const STEP_PRIORITIES = ['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8'];
   // The step whose handle takes the focus again once a step moved with the arrow keys is drawn in its new place.
   let focusedStep = '';
+  // The Priority whose handle takes the focus once the steps are drawn again (after it moved with the arrow keys).
+  let focusedGroup = '';
   // The list of steps the dialog shows: list 1 (Weekly CDRs, during the campaign) or list 2 (once the Final CDR is scored).
   let stepList = 'campaign';
   // Whether each strategy applies its list 2 once the Final CDR is scored, while the dialog is open.
@@ -6374,8 +6376,29 @@
         rerender();
       };
       let dragging = null;
+      // The Priority dragged as a block by the handle before it.
+      let draggingGroup = '';
       const clearMarks = () => body.querySelectorAll('.is-drop-before, .is-drop-after, .is-drop-into')
         .forEach((element) => element.classList.remove('is-drop-before', 'is-drop-after', 'is-drop-into'));
+      // A Priority moved onto another swaps with it: its steps take that Priority and those of the other one take its own
+      // (onto a Priority without steps, its steps just take it); the steps keep their order inside each Priority.
+      const swapPriorities = (from, to) => {
+        if (!to || from === to) return;
+        rows.forEach((item) => {
+          if (item.chosen.priority === from) item.chosen.priority = to;
+          else if (item.chosen.priority === to) item.chosen.priority = from;
+        });
+        renumber(sorted());
+        rerender();
+      };
+      // The Priority a dragged Priority would swap with: that of the step or of the Priority without steps under the
+      // pointer, its whole block marked.
+      const groupTarget = (event) => {
+        const row = event.target.closest('tr');
+        const priority = row && body.contains(row) ? row.dataset.priority : '';
+        if (!priority || priority === draggingGroup) return null;
+        return {priority, marks: [...body.querySelectorAll(`tr[data-priority="${priority}"]`)]};
+      };
       // Where a dragged step would go: before or after the row under the pointer, at the end of the group whose Priority
       // is under it, or onto a Priority without steps.
       const dropTarget = (event) => {
@@ -6392,20 +6415,27 @@
         return {mark: row, className: after ? 'is-drop-after' : 'is-drop-before', target: byId.get(row.dataset.step), after};
       };
       body.addEventListener('dragover', (event) => {
-        const found = dragging && dropTarget(event);
+        const found = dragging ? dropTarget(event) : draggingGroup ? groupTarget(event) : null;
         if (!found) return;
         event.preventDefault();
         event.dataTransfer.dropEffect = 'move';
         clearMarks();
-        found.mark.classList.add(found.className || 'is-drop-into');
+        (found.marks || [found.mark]).forEach((element) => element.classList.add(found.className || 'is-drop-into'));
       });
       body.addEventListener('dragleave', (event) => {
         if (!body.contains(event.relatedTarget)) clearMarks();
       });
       body.addEventListener('drop', (event) => {
-        const found = dragging && dropTarget(event);
+        const found = dragging ? dropTarget(event) : draggingGroup ? groupTarget(event) : null;
         if (!found) return;
         event.preventDefault();
+        if (draggingGroup) {
+          const from = draggingGroup;
+          draggingGroup = '';
+          clearMarks();
+          swapPriorities(from, found.priority);
+          return;
+        }
         const moved = dragging;
         dragging = null;
         clearMarks();
@@ -6427,6 +6457,7 @@
           const {step, chosen} = item;
           const row = node('tr');
           row.dataset.step = step.id;
+          row.dataset.priority = name;
           const rule = `${list === 'campaign' ? 'Campaign' : 'Final'} ${chosen.number}`;
           // The Priority of a group moves every step of it.
           if (!index) {
@@ -6441,7 +6472,43 @@
               renumber(sorted());
               rerender();
             });
-            cell.append(priority);
+            // The handle before the Priority moves the whole block: dragged onto another Priority, or with the arrow keys
+            // onto the one above or below, the two swap.
+            const blockHandle = node('button', '⠿', 'nq-priority-step-handle nq-priority-group-handle');
+            blockHandle.type = 'button';
+            blockHandle.title = `Drag ${name} onto another Priority to swap them (its steps take that Priority and those of the other one take ${name}), or use the arrow keys`;
+            blockHandle.setAttribute('aria-label', `Move the steps of ${name}: drag them onto another Priority, or use the arrow keys`);
+            blockHandle.addEventListener('pointerdown', () => {
+              cell.draggable = true;
+              document.addEventListener('pointerup', () => { if (!draggingGroup) cell.draggable = false; }, {once: true});
+            });
+            blockHandle.addEventListener('keydown', (event) => {
+              if (!['ArrowUp', 'ArrowDown'].includes(event.key)) return;
+              event.preventDefault();
+              const next = STEP_PRIORITIES[STEP_PRIORITIES.indexOf(name) + (event.key === 'ArrowUp' ? -1 : 1)];
+              if (!next) return;
+              focusedGroup = next;
+              swapPriorities(name, next);
+            });
+            cell.addEventListener('dragstart', (event) => {
+              if (!cell.draggable) return;
+              draggingGroup = name;
+              event.dataTransfer.effectAllowed = 'move';
+              event.dataTransfer.setData('text/plain', name);
+              body.querySelectorAll(`tr[data-priority="${name}"]`).forEach((member) => member.classList.add('is-dragging'));
+              // The Priorities without steps show once the drag has started.
+              setTimeout(() => grid.classList.add('is-dragging'));
+            });
+            cell.addEventListener('dragend', () => {
+              draggingGroup = '';
+              cell.draggable = false;
+              body.querySelectorAll('tr.is-dragging').forEach((member) => member.classList.remove('is-dragging'));
+              grid.classList.remove('is-dragging');
+              clearMarks();
+            });
+            const control = node('span', undefined, 'nq-priority-group-control');
+            control.append(blockHandle, priority);
+            cell.append(control);
             row.classList.add('is-group-start');
             row.append(cell);
           }
@@ -6614,6 +6681,10 @@
     // The conditions and operators get the checkbox list of every multi-select of the page.
     if (typeof globalThis.setupCustomMultiSelects === 'function') globalThis.setupCustomMultiSelects();
     scheduleStepCounts(strategy);
+    if (focusedGroup) {
+      $('nq-priority-steps').querySelector(`td.nq-priority-step-group[data-priority="${focusedGroup}"] .nq-priority-group-handle`)?.focus();
+      focusedGroup = '';
+    }
     if (focusedStep) {
       $('nq-priority-steps').querySelector(`tr[data-step="${focusedStep}"] .nq-priority-step-handle`)?.focus();
       focusedStep = '';
