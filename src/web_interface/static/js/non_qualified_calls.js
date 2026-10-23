@@ -3753,6 +3753,8 @@
     && !(field.key === 'priority' && field.source === 'user' && field.type === 'list'));
   // Shown in the header beside the JOIN_ID: the identifier of the analysis in the workbooks of the previous tool.
   const HEADER_FIELDS = ['unique_id'];
+  // The values of the NQ Prioritization about the repeated issue of a call, on a row of their own in Prioritization Info.
+  const REPETITION_REFS = ['repeated', 'repetitions', 'repeated_campaigns', 'place_label'];
   const phaseFields = () => PHASE_SECTIONS.map((key) => state.fields.find((field) => field.section === key && field.type === 'list'
     && ['user', 'derived'].includes(field.source))).filter(Boolean);
   const renderTracking = (call) => {
@@ -3844,16 +3846,22 @@
     const infoFields = state.fields.filter((item) => item.source === 'priority');
     const infoPanel = node('section', undefined, 'nq-phase-panel nq-call-info-panel');
     infoPanel.setAttribute('aria-label', 'Prioritization information');
-    const infoGrid = node('div', undefined, 'nq-call-info-grid');
-    infoGrid.append(...infoFields.map((item) => {
+    const infoCard = (item) => {
       // A long value (the step, the KPIs lost) takes two cards' width.
       const value = call.values?.[item.key];
       const cell = node('div', undefined, `nq-call-info-item${String(value ?? '').length > 20 ? ' is-wide' : ''}`);
       if (item.description) cell.title = item.description;
       cell.append(node('span', item.label, 'nq-call-info-label'), readonlyValue(item, value));
       return cell;
-    }));
-    infoPanel.append(node('span', 'Prioritization Info', 'nq-phase-panel-title'), infoGrid);
+    };
+    // The repeated issue of the call (Repeated Issue, Repetitions, Repeated Campaigns, Repetition Place) together on a row of
+    // its own, below the other values.
+    const repeats = infoFields.filter((item) => REPETITION_REFS.includes(item.source_ref));
+    const infoGrid = node('div', undefined, 'nq-call-info-grid');
+    infoGrid.append(...infoFields.filter((item) => !repeats.includes(item)).map(infoCard));
+    const repeatGrid = node('div', undefined, 'nq-call-info-grid nq-call-info-repeats');
+    repeatGrid.append(...repeats.map(infoCard));
+    infoPanel.append(node('span', 'Prioritization Info', 'nq-phase-panel-title'), ...[infoGrid, repeatGrid].filter((grid) => grid.childElementCount));
     // The fields of the analysts of General (Analyst, Reviewer…) follow the Assignee, saved as soon as they change like it.
     const generalFields = analystFieldsOf('general').filter((item) => !HEADER_FIELDS.includes(item.key)).map((item) => {
       const block = fieldBlock(item, call);
