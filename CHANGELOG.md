@@ -14,6 +14,7 @@
 - **Modules & Sections at the left edge on large screens:** the **Modules & Sections** tab and its drawer stand at the left edge of the window on large screens (1200 px wide and more), and stay at the right edge on smaller ones.
 
 #### 🐛 Bug fixes:
+- **Repeated issues of one site only:** the place of a Non-Qualified Call (its **Repetition Place**, the **Cluster** condition and the **Repeated issues**) and the site of each eNB / gNB of the Root Cause Analysis took the first row of the cell mappings with the number of the eNB or gNB of its last cell, though that number repeats across networks, so calls of distant places shared a site of another network (such as *Site ENB0 (ENB0)*, the placeholder of the H3G rows of the VFUK mapping). The site now comes from the Network Inventories and cell mappings of the workspace, in a network that serves the operator of the call (its own first, as the **Serving Networks** say) and within their maximum distance of it, from the newest snapshot that lists the node; it reads as its site ID and host network, as the site that served the start of a call (*Site 47258 (Vodafone)*), so both are the same place, and the NQ Prioritization is calculated again, also when the inventories or the Serving Networks change.
 
 #### 📚 Documentation:
 

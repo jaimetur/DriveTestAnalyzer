@@ -498,7 +498,7 @@ Comma, semicolon and tab separators are accepted, so rows can be pasted from a s
 
 ### Serving Networks
 
-Serving Networks tell the [Vendor mapping](workspace-management.md#vendor-mapping) which networks' cells can serve the samples of each Operator, in order of preference. An Operator's samples are often served by cells it does not own: Vodafone and Three share their RAN through eMOCN, and an MVNO such as Lebara uses its host network.
+Serving Networks tell the [Vendor mapping](workspace-management.md#vendor-mapping) which networks' cells can serve the samples of each Operator, in order of preference. The [Non-Qualified Calls](non-qualified-calls.md#repeated-issues) find the site of the cell where each call ended with them too, for its repeated issues and the eNB / gNB of the Root Cause Analysis. An Operator's samples are often served by cells it does not own: Vodafone and Three share their RAN through eMOCN, and an MVNO such as Lebara uses its host network.
 
 Nothing has to be typed or filled in: the table lists every Operator of the Operator Maps with the networks that serve it, and every Operator starts with the defaults — Vodafone and 3 serve each other, Lebara is served by Vodafone and 3, and every other Operator by its own network. The inventories say which network owns each cell and which one hosts its site, but not which Operators' subscribers the cell serves (eMOCN and MVNO agreements), so these relations are not read from them. Change them only when they differ:
 

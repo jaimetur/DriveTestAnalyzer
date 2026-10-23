@@ -363,16 +363,70 @@ def test_repetitions_count_the_calls_of_the_operator_at_the_place_in_the_quarter
 
 
 def test_place_of_a_call_falls_back_from_the_site_of_its_last_cell_to_a_spot():
-    def lookup(operator, node):
-        return {'site': 'LON001', 'host': 'OSS1'} if node == ('eNB', 1000) else None
+    def lookup(call, node):
+        return {'site': '47258', 'host': 'Vodafone'} if node == ('eNB', 1000) and call['operator'] == 'VF' else None
     assert nq_prioritization.place_of({'cell_id': str(1000 * 256 + 1), 'operator': 'VF', 'site_id': 'S9'}, lookup, 100) == (
-        'site:oss1|lon001', 'Site LON001 (OSS1)')
+        'site:vodafone|47258', 'Site 47258 (Vodafone)')
+    # The site that served its start is the same place as that of the cell where another call ended.
+    assert nq_prioritization.place_of({'cell_id': str(2000 * 256 + 1), 'operator': 'VF', 'site_id': '47258',
+                                       'host_network': 'Vodafone'}, lookup, 100) == ('site:vodafone|47258', 'Site 47258 (Vodafone)')
     assert nq_prioritization.place_of({'cell_id': str(2000 * 256 + 1), 'operator': 'VF', 'site_id': 'S9', 'host_network': 'H3G'},
                                       lookup, 100) == ('site:h3g|s9', 'Site S9 (H3G)')
     assert nq_prioritization.place_of({'cell_id': str(2000 * 256 + 1), 'operator': 'VF'}, lookup, 100) == ('node:eNB 2000', 'eNB 2000')
     near = nq_prioritization.place_of({'latitude': 51.50001, 'longitude': -0.12001}, lookup, 100)
     assert near[0].startswith('spot:') and near == nq_prioritization.place_of({'latitude': 51.50002, 'longitude': -0.12002}, lookup, 100)
     assert nq_prioritization.place_of({}, lookup, 100) == ('', '')
+
+
+def test_the_site_of_a_node_is_that_of_a_network_serving_the_operator_near_the_call(client, tmp_path):
+    """Ticket #9: node numbers are only unique within a network. The eNB 4643 of a Vodafone site in Cardiff and of an H3G
+    site near Hull (named ENB0, the placeholder of the H3G rows of the VFUK mapping) never put the calls of both at one
+    site: each call takes the node of a network that serves its operator (its own first) within the Serving Networks
+    distance of it, and a node takes the sites of the newest snapshot that lists it."""
+    from src.modules import network_inventory
+
+    cardiff, hull, london = (51.4857, -3.2041), (53.8031, -0.5652), (51.5072, -0.1276)
+
+    def add_inventory(name, kind, rows, snapshot_date):
+        dataset_id = add_cdr(tmp_path, name, kind, pd.DataFrame(rows), '')
+        core.repository.update_dataset_profile(dataset_id, snapshot_date=snapshot_date)
+
+    add_inventory('Multivendor_Mapping_VFUK.csv', 'mapping_vodafone', [
+        {'Network': 'Vodafone', 'Host Network': 'Vodafone', 'Site ID': 47258, 'eNodeB': 'V0001320H047258', 'eNodeB ID': 4643,
+         'Cell ID': 1, 'Latitude': cardiff[0], 'Longitude': cardiff[1], 'Vendor': 'Ericsson'},
+        {'Network': 'H3G', 'Host Network': 'H3G', 'Site ID': 43880, 'eNodeB': 'ENB0', 'OssName': 'ENB0', 'eNodeB ID': 4643,
+         'Cell ID': 1, 'Latitude': hull[0], 'Longitude': hull[1], 'Vendor': 'Samsung'},
+        {'Network': 'Telefonica', 'Host Network': 'Vodafone', 'Site ID': 18890, 'eNodeB ID': 5306, 'Cell ID': 1,
+         'Latitude': hull[0], 'Longitude': hull[1], 'Vendor': 'Ericsson'},
+    ], '2026-08-20')
+    network_inventory.ensure_inventory_cells(core.repository)
+    lookup = nq.node_site_lookup(core.repository)
+
+    def site(operator, node, position=None):
+        found = lookup({'operator': operator, 'latitude': position and position[0], 'longitude': position and position[1]}, ('eNB', node))
+        return found and (found['site'], found['host'])
+
+    assert site('VF', 4643, (51.49, -3.21)) == ('47258', 'Vodafone')
+    # Its own Vodafone node is too far: the H3G node near it serves Vodafone through eMOCN.
+    assert site('VF', 4643, (53.84, -0.47)) == ('43880', 'H3G')
+    assert site('3', 4643, (53.84, -0.47)) == ('43880', 'H3G') and site('3', 4643, (51.49, -3.21)) == ('47258', 'Vodafone')
+    # Without a position its own network first; no node of its networks near it, no site.
+    assert site('VF', 4643) == ('47258', 'Vodafone') and site('VF', 4643, london) is None
+    # The Telefonica nodes serve O2, never Vodafone.
+    assert site('O2', 5306, hull) == ('18890', 'Vodafone') and site('VF', 5306, hull) is None
+    # Each call of the eNB is at its own site: the start site of a call at the same site is the same place.
+    places = {nq_prioritization.place_of({'operator': 'VF', 'cell_id': str(4643 * 256 + 1), 'latitude': lat, 'longitude': lon},
+                                         lookup, 250)[1] for lat, lon in ((51.49, -3.21), (53.84, -0.47))}
+    assert places == {'Site 47258 (Vodafone)', 'Site 43880 (H3G)'}
+    assert nq_prioritization.place_of({'operator': 'VF', 'cell_id': '1', 'site_id': '47258', 'host_network': 'Vodafone'},
+                                      lookup, 250)[1] == 'Site 47258 (Vodafone)'
+    # A newer snapshot that lists the node gives its sites.
+    add_inventory('260917_Cell_Config_LTE_NR_KMZ.csv', 'network_inventory', [
+        {'Network': 'H3G', 'Host Network': 'H3G', 'Site ID': 'H43880', 'eNodeB ID': 4643, 'Cell ID': 1,
+         'Latitude': hull[0], 'Longitude': hull[1], 'Vendor': 'Samsung'}], '2026-09-17')
+    network_inventory.ensure_inventory_cells(core.repository)
+    lookup = nq.node_site_lookup(core.repository)
+    assert site('VF', 4643, (53.84, -0.47)) == ('H43880', 'H3G') and site('VF', 4643, (51.49, -3.21)) == ('47258', 'Vodafone')
 
 
 # -- in a workspace -----------------------------------------------------------------------------------

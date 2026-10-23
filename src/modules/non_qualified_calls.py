@@ -4341,18 +4341,10 @@ MAX_ECI = 268_435_455  # 28-bit E-UTRAN Cell Identity; larger identities are NR 
 MAX_NODES = 25
 MAX_RATS = 12
 _CELL_NUMBERS = re.compile(r'\d+')
-NODE_MAPPING_COLUMNS = {
-    'eci': ('CId___ECI', 'ECI', 'ECGI'),
-    'enb': ('eNBId', 'eNodeB ID', 'eNodeB_ID', 'ENodeBFunctionId'),
-    'gnb': ('gNodeB ID', 'gNodeB_ID', 'gNBId', 'GNBDUFunctionId'),
-    'site': ('Site_Name', 'Site Name', 'eNodeB', 'gNodeB', 'Site_ID', 'Site ID'),
-    'host': ('Host OSS', 'OSS Name', 'OssName', 'Host Network'),
-    'vendor': ('Vendor_Only', 'OP_Vendor', 'OP/ Vendor', 'Vendor'),
-}
-# Cell mapping datasets and the operators they describe.
-MAPPING_OPERATORS = {'mapping_vodafone': re.compile(r'^(vf|vodafone)(?![a-z0-9])', re.I),
-                     'mapping_three': re.compile(r'^(3|three|h3g)(?![a-z0-9])', re.I)}
-_node_mapping_cache: dict[tuple[str, int, str], dict[tuple[str, int], dict[str, str]]] = {}
+NODE_TECHNOLOGIES = {'eNB': 'LTE', 'gNB': 'NR'}
+# Node (eNB / gNB, number, owner network family) -> its sites: (site ID, host network, vendor, latitude, longitude).
+NodeSites = dict[tuple[str, int, str], list[tuple[str, str, str, float | None, float | None]]]
+_node_sites_cache: dict[str, tuple[str, NodeSites]] = {}
 
 
 def call_type(service: str, test_name: str) -> str:
@@ -4376,35 +4368,101 @@ def serving_node(cell_id: Any) -> tuple[str, int] | None:
     return 'Cell', value
 
 
-def _node_mappings(connection: Any, dataset: Any) -> dict[tuple[str, int], dict[str, str]]:
-    """eNB and gNB of a cell mapping dataset with their site, host and vendor (cached per revision)."""
-    key = (str(dataset['stored_path'] or ''), int(dataset['id']), str(dataset['updated_at'] or dataset['processed_at'] or ''))
-    if key in _node_mapping_cache:
-        return _node_mapping_cache[key]
-    table = f"dataset_rows_{int(dataset['id'])}"
-    columns = [str(row[1]) for row in connection.execute(f'PRAGMA table_info({_quote(table)})').fetchall()]
-    resolved = {field: _resolve_columns(columns, candidates) for field, candidates in NODE_MAPPING_COLUMNS.items()}
-    selected = list(dict.fromkeys(column for items in resolved.values() for column in items))
-    nodes: dict[tuple[str, int], dict[str, str]] = {}
-    if selected and (resolved['eci'] or resolved['enb'] or resolved['gnb']):
-        for row in connection.execute(f"SELECT {', '.join(_quote(column) for column in selected)} FROM {_quote(table)}"):
-            values = dict(zip(selected, row))
+def node_sites(repository: Any) -> NodeSites:
+    """The sites of every eNB and gNB of the inventory cells of the workspace (its Network Inventories and cell mappings),
+    by node number and owner network family, as node numbers are only unique within a network: each with its site ID,
+    host network, vendor and position, from the newest snapshot that lists the node in that network (cached until the
+    snapshots change)."""
+    from src.modules.network_inventory import INVENTORY_CELLS_TABLE, INVENTORY_SNAPSHOTS_TABLE, list_inventory_snapshots
 
-            def first(field: str) -> str:
-                return next((text for column in resolved[field] if (text := _text(values.get(column)))), '')
+    snapshots = list_inventory_snapshots(repository)
+    with repository.connection() as connection:
+        built = [tuple(row) for row in connection.execute(
+            f'SELECT dataset_id, version, revision, built_at FROM {INVENTORY_SNAPSHOTS_TABLE} ORDER BY dataset_id')]
+    workspace = str(Path(str(repository.db_path)).resolve())
+    stamp = json.dumps([built, [item['dataset_id'] for item in snapshots]], default=str)
+    cached = _node_sites_cache.get(workspace)
+    if cached and cached[0] == stamp:
+        return cached[1]
+    ranks = {item['dataset_id']: rank for rank, item in enumerate(snapshots)}
+    kinds = {technology: kind for kind, technology in NODE_TECHNOLOGIES.items()}
+    found: dict[tuple[str, int, str], tuple[int, list[tuple[int, str, str, str, float | None, float | None]]]] = {}
+    with repository.connection() as connection:
+        rows = connection.execute(
+            f'SELECT dataset_id, technology, node_id, network_family, host_network, site_id, MAX(vendor), AVG(latitude), '
+            f'AVG(longitude), COUNT(*) FROM {INVENTORY_CELLS_TABLE} '
+            f"WHERE technology IN ('LTE', 'NR') AND node_id > 0 AND site_id <> '' AND network_family <> '' "
+            'GROUP BY dataset_id, technology, node_id, network_family, host_network, site_id')
+        for dataset_id, technology, node_id, family, host, site, vendor, latitude, longitude, cells in rows:
+            if int(dataset_id) not in ranks:
+                continue
+            key = (kinds[str(technology)], int(node_id), str(family))
+            rank = ranks[int(dataset_id)]
+            entry = found.get(key)
+            if entry is None or rank < entry[0]:
+                entry = found[key] = (rank, [])
+            if rank == entry[0]:
+                entry[1].append((-int(cells), str(site), str(host or ''), str(vendor or ''), latitude, longitude))
+    # The site with the most cells of the node first (a node of one network is almost always on one site).
+    sites: NodeSites = {key: [item[1:] for item in sorted(values)] for key, (_rank, values) in found.items()}
+    _node_sites_cache[workspace] = (stamp, sites)
+    return sites
 
-            details = {'site': first('site'), 'host': first('host'), 'vendor': first('vendor')}
-            for kind, field in (('eNB', 'enb'), ('gNB', 'gnb')):
-                number = _number(first(field))
-                if number is not None and number >= 0:
-                    nodes.setdefault((kind, int(number)), details)
-            eci = _number(first('eci'))
-            if eci is not None and 65535 < eci <= MAX_ECI:
-                nodes.setdefault(('eNB', int(eci) >> 8), details)
-    if len(_node_mapping_cache) > 16:
-        _node_mapping_cache.clear()
-    _node_mapping_cache[key] = nodes
-    return nodes
+
+def _distance_km(latitude: float, longitude: float, other_latitude: float, other_longitude: float) -> float:
+    lat1, lon1, lat2, lon2 = map(math.radians, (latitude, longitude, other_latitude, other_longitude))
+    value = math.sin((lat2 - lat1) / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin((lon2 - lon1) / 2) ** 2
+    return 6371.0088 * 2 * math.asin(min(1.0, math.sqrt(value)))
+
+
+def node_site(sites: NodeSites, families: tuple[str, ...], node: tuple[str, int], latitude: Any, longitude: Any,
+              max_distance_km: float) -> dict[str, str] | None:
+    """The site of the eNB or gNB of a call, as the serving-cell Vendor Mapping chooses a cell: in the first network
+    allowed to serve the call's operator (its own first) with a node of that number within ``max_distance_km`` of the call
+    (any when the call or the site has no position), the nearest one; None when no network has it."""
+    lat, lon = _number(latitude), _number(longitude)
+    located = lat is not None and lon is not None and not (lat == 0 and lon == 0)
+    for family in families:
+        best: tuple[float, dict[str, str]] | None = None
+        for site, host, vendor, site_lat, site_lon in sites.get((node[0], node[1], family), ()):
+            distance = _distance_km(lat, lon, site_lat, site_lon) if located and site_lat is not None and site_lon is not None else None
+            if distance is not None and distance > max_distance_km:
+                continue
+            rank = math.inf if distance is None else distance
+            if best is None or rank < best[0]:
+                best = (rank, {'site': site, 'host': host, 'vendor': vendor})
+        if best is not None:
+            return best[1]
+    return None
+
+
+def node_site_lookup(repository: Any) -> Callable[[Any, tuple[str, int]], dict[str, str] | None]:
+    """The site, host network and vendor of the eNB or gNB of a call (its operator, latitude and longitude) from the
+    inventory cells of the workspace, with its Serving Networks and their maximum distance (see ``node_site``)."""
+    from src.modules.serving_cells import load_serving_networks, serving_families
+
+    try:
+        sites = node_sites(repository)
+    except Exception:  # noqa: BLE001 - unreadable inventory cells only leave the nodes without a site.
+        sites = {}
+    config = load_serving_networks(repository)
+    families: dict[str, tuple[str, ...]] = {}
+
+    def value(call: Any, key: str) -> Any:
+        try:
+            return call[key]
+        except (KeyError, IndexError):
+            return None
+
+    def lookup(call: Any, node: tuple[str, int]) -> dict[str, str] | None:
+        if not sites or node[0] not in NODE_TECHNOLOGIES:
+            return None
+        operator = str(value(call, 'operator') or '').strip()
+        if operator not in families:
+            families[operator] = serving_families(operator, config)
+        return node_site(sites, families[operator], node, value(call, 'latitude'), value(call, 'longitude'),
+                         float(config['max_distance_km']))
+    return lookup
 
 
 def source_root(call: Any, source: str, taxonomy: dict[str, Any]) -> dict[str, str]:
@@ -4433,9 +4491,9 @@ def root_cause_stats(task_repository: Any, filters: dict[str, Any], username: st
     """Root Cause Analysis of the calls matching the filters.
 
     Calls are counted per root domain, category and cause, Classic/WhatsApp/Data call type, NR
-    mode (NSA or SA), technology and the eNB/gNB of their last cell, with its site,
-    host and vendor from the workspace cell mappings. With the ``analysts`` source the calls count with the root
-    cause the analysts chose, and those without one with their suggested one when ``include_suggestions`` is set; the
+    mode (NSA or SA), technology and the eNB/gNB of their last cell, with the site, host network and vendor most of
+    its calls have in the inventory cells of the workspace (``node_site_lookup``). With the ``analysts`` source the
+    calls count with the root cause the analysts chose, and those without one with their suggested one when ``include_suggestions`` is set; the
     ``netcheck`` and ``script`` sources count every call with what that source gives it on the catalog.
     """
     source = source if source in ROOT_SOURCES else 'analysts'
@@ -4449,15 +4507,8 @@ def root_cause_stats(task_repository: Any, filters: dict[str, Any], username: st
         calls = connection.execute(f'WITH calls AS ({base}) SELECT * FROM calls{where}', [*base_params, *params]).fetchall()
         notes = _comment_texts(connection, [str(call['call_key']) for call in calls if not call['root_domain']]) \
             if include_suggestions else {}
-        mappings = {}
-        for dataset in task_repository.list_datasets():
-            kind = str(dataset['dataset_kind'] or '')
-            if kind in MAPPING_OPERATORS and str(dataset['status'] or '') == 'ready':
-                try:
-                    mappings.setdefault(kind, {}).update(_node_mappings(connection, dataset))
-                except Exception:  # noqa: BLE001 - an unreadable mapping only leaves its nodes without details.
-                    continue
-    colors = {domain['name']: domain['color'] for domain in taxonomy['domains']}
+    site_of = node_site_lookup(task_repository)
+    colors ={domain['name']: domain['color'] for domain in taxonomy['domains']}
     order = [domain['name'] for domain in taxonomy['domains']]
     counts = {'labelled': 0, 'suggested': 0, 'unclassified': 0}
     domains: dict[str, int] = {}
@@ -4493,15 +4544,18 @@ def root_cause_stats(task_repository: Any, filters: dict[str, Any], username: st
         operator = str(call['operator'] or '')
         entry = nodes.setdefault((operator, *node), {
             'operator': operator, 'type': node[0], 'id': node[1], 'calls': 0, 'domains': {},
-            'vendor': str(call['vendor'] or ''), 'site': '', 'host': '',
+            'vendor': str(call['vendor'] or ''), 'site': '', 'host': '', 'sites': Counter(),
         })
         entry['calls'] += 1
         entry['domains'][domain] = entry['domains'].get(domain, 0) + 1
+        if details := site_of(call, node):
+            entry['sites'][(details['site'], details['host'], details['vendor'])] += 1
     for entry in nodes.values():
-        kind = next((name for name, pattern in MAPPING_OPERATORS.items() if pattern.match(entry['operator'].strip())), None)
-        details = mappings.get(kind, {}).get((entry['type'], entry['id'])) if kind else None
-        if details:
-            entry.update({key: value for key, value in details.items() if value})
+        # The site of the node where most of its calls were (the same number can be a node of another network elsewhere).
+        sites = entry.pop('sites')
+        if sites:
+            site, host, vendor = max(sites, key=lambda item: (sites[item], item))
+            entry.update({key: value for key, value in (('site', site), ('host', host), ('vendor', vendor)) if value})
 
     def domain_key(name: str) -> tuple[int, int, str]:
         return (order.index(name) if name in order else len(order), -domains.get(name, 0), name.casefold())

@@ -12,7 +12,8 @@ Every Non-Qualified Call (the latest version of each call, as the calls table li
   (50 % by default) are High, those up to the second share (80 %) Medium and the others Low.
 - **Repetition**: how many Non-Qualified Calls of the same operator failed at the same place in the quarter of the call
   and the quarters before it (one by default), whatever their service and NR Mode. The place is the site of the cell
-  where the call ended (its eNB or gNB in the cell mappings of the workspace), else the site that served its start
+  where the call ended (the site ID and host network of its eNB or gNB in the inventory cells of the workspace, in the
+  networks that serve its operator and within their distance of the call), else the site that served its start
   (serving-cell Vendor Mapping), else the eNB or gNB of its last cell, else a spot of about 250 m around where it
   started.
 - **Prioritization**: the strategy of the workspace (admins choose it) gives every call its step, its queue and its
@@ -69,7 +70,7 @@ FINGERPRINT_STATE_KEY = 'nq_prioritization_fingerprint'
 FAILED_STATE_KEY = 'nq_prioritization_failed'
 SUMMARY_STATE_KEY = 'nq_prioritization_summary'
 # Bumped when the calculation changes: every value is calculated again.
-IMPACT_VERSION = 9
+IMPACT_VERSION = 11
 # The scoring of every campaign is split by campaign and operator, as the points of the scoring are national.
 LEVELS = ('Campaign', 'Operator')
 SERVICES = ('voice', 'speech', 'data')
@@ -1309,20 +1310,19 @@ def spot_of(latitude: Any, longitude: Any, meters: float) -> tuple[str, str] | N
     return f'spot:{meters:g}:{row}:{column}', f'Spot {centre:.4f}, {column * step_east:.4f}'
 
 
-def place_of(call: dict[str, Any], node_details: Callable[[str, tuple[str, int]], dict[str, str] | None],
+def place_of(call: dict[str, Any], node_details: Callable[[dict[str, Any], tuple[str, int]], dict[str, str] | None],
              spot_meters: float) -> tuple[str, str]:
-    """Where a call failed, to compare it with the others (key and label): the site of the cell where it ended, else the
-    site that served its start, else the eNB or gNB of its last cell, else the spot where it started."""
+    """Where a call failed, to compare it with the others (key and label): the site of the cell where it ended (the site ID
+    and host network of its eNB or gNB, ``node_details``), else the site that served its start, else the eNB or gNB of its
+    last cell, else the spot where it started. A site is the same place whichever of the two gives it."""
     from src.modules.non_qualified_calls import serving_node
 
     node = serving_node(call.get('cell_id'))
-    details = node_details(str(call.get('operator') or ''), node) if node else None
-    if details and details.get('site'):
-        host = str(details.get('host') or '').strip()
-        return f"site:{host.casefold()}|{details['site'].strip().casefold()}", f"Site {details['site'].strip()}" + (f' ({host})' if host else '')
-    site = str(call.get('site_id') or '').strip()
+    details = node_details(call, node) if node else None
+    site, host = ((details['site'], details.get('host')) if details and details.get('site')
+                  else (call.get('site_id'), call.get('host_network')))
+    site, host = str(site or '').strip(), str(host or '').strip()
     if site:
-        host = str(call.get('host_network') or '').strip()
         return f'site:{host.casefold()}|{site.casefold()}', f'Site {site}' + (f' ({host})' if host else '')
     if node:
         return f'node:{node[0]} {node[1]}', f'{node[0]} {node[1]}'
@@ -1562,10 +1562,12 @@ def ensure_tables(repository: Any) -> None:
 
 def fingerprint(repository: Any) -> str:
     """What the impact and the repetitions depend on: the calls and CDRs indexed, the Scoring History, the methodologies,
-    the Operator Maps, the Excluded Calls and the cell mappings (the levels of the impact and the settings of the clusters
-    and the hotspots apply at once, see ``refresh_levels`` and ``refresh_places``)."""
+    the Operator Maps, the Excluded Calls, the cell mappings and inventory cells with the Serving Networks (the levels of
+    the impact and the settings of the clusters and the hotspots apply at once, see ``refresh_levels`` and
+    ``refresh_places``)."""
     from src.modules import non_qualified_calls as nq
     from src.modules.repository import SCORING_CONFIGURATION_STATE_KEY
+    from src.modules.serving_cells import SERVING_NETWORKS_STATE_KEY
 
     with repository.connection() as connection:
         tables = {str(row[0]) for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
@@ -1577,6 +1579,8 @@ def fingerprint(repository: Any) -> str:
         lists = rows('SELECT id, enabled, content_hash, cdrs_json FROM scoring_exclusion_lists ORDER BY id', 'scoring_exclusion_lists')
         matches = rows('SELECT list_id, dataset_id, revision, keys_hash FROM scoring_exclusion_matches ORDER BY list_id, dataset_id',
                        'scoring_exclusion_matches')
+        # The sites of the eNB and gNB come from the inventory cells, in the networks that serve each operator.
+        inventories = rows('SELECT dataset_id, version, revision FROM inventory_snapshots ORDER BY dataset_id', 'inventory_snapshots')
     def field(row: Any, key: str) -> str:
         try:
             return str(row[key] or '')
@@ -1587,7 +1591,8 @@ def fingerprint(repository: Any) -> str:
                        str(row['processed_at'] or ''), str(row['updated_at'] or ''), field(row, 'cdr_stage'),
                        field(row, 'in_combined')) for row in repository.list_datasets())
     payload = [IMPACT_VERSION, repository.get_workspace_state(nq.LATEST_STATE_KEY), history, lists, matches, datasets,
-               repository.get_workspace_state(SCORING_CONFIGURATION_STATE_KEY), repository.list_operator_mappings()]
+               repository.get_workspace_state(SCORING_CONFIGURATION_STATE_KEY), repository.list_operator_mappings(),
+               inventories, repository.get_workspace_state(SERVING_NETWORKS_STATE_KEY)]
     return hashlib.sha1(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()
 
 
@@ -1634,24 +1639,12 @@ def _exclusions(repository: Any) -> Callable[[int, str], bool]:
     return excluded
 
 
-def _node_lookup(repository: Any) -> Callable[[str, tuple[str, int]], dict[str, str] | None]:
-    """The site, host and vendor of an eNB or gNB of an operator, from the cell mappings of the workspace."""
+def _node_lookup(repository: Any) -> Callable[[dict[str, Any], tuple[str, int]], dict[str, str] | None]:
+    """The site, host network and vendor of the eNB or gNB of a call, from the inventory cells of the workspace: in the
+    networks allowed to serve its operator, within the maximum serving distance of the call."""
     from src.modules import non_qualified_calls as nq
 
-    mappings: dict[str, dict[tuple[str, int], dict[str, str]]] = {}
-    with repository.connection() as connection:
-        for dataset in repository.list_datasets():
-            kind = str(dataset['dataset_kind'] or '')
-            if kind in nq.MAPPING_OPERATORS and str(dataset['status'] or '') == 'ready':
-                try:
-                    mappings.setdefault(kind, {}).update(nq._node_mappings(connection, dataset))
-                except Exception:  # noqa: BLE001 - an unreadable mapping only leaves its nodes without a site.
-                    continue
-
-    def details(operator: str, node: tuple[str, int]) -> dict[str, str] | None:
-        kind = next((name for name, pattern in nq.MAPPING_OPERATORS.items() if pattern.match(operator.strip())), None)
-        return mappings.get(kind, {}).get(node) if kind else None
-    return details
+    return nq.node_site_lookup(repository)
 
 
 def calculate(repository: Any, progress: Callable[[int, int, str], None] | None = None, *,
