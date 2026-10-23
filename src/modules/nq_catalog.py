@@ -210,7 +210,8 @@ DEFAULT_FIELDS = (
                        'lost in the latest campaign of its NR Mode with a Final CDR.'),
     _field('scoring_impact', 'Scoring Impact', 'general', 'list', 'priority', 'impact_level', in_table=True, in_summary=True,
            description='High, Medium or Low: the share of the scoring points its campaign, operator and service lose that the '
-                       'call holds (the calls that hold the first half of the points are High).'),
+                       'call holds (the calls that hold the first half of the points are High), the calls in scope compared '
+                       'only with each other and those out of scope apart.'),
     _field('scoring_points_lost', 'Scoring Points Lost', 'general', 'number', 'priority', 'impact_points', in_table=True,
            description='The points of the scoring of its campaign the call loses, in every KPI it misses.'),
     _field('scoring_kpis_lost', 'Scoring KPIs Lost', 'general', 'text', 'priority', 'impact_kpis',

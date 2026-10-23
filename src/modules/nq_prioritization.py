@@ -8,8 +8,9 @@ Every Non-Qualified Call (the latest version of each call, as the calls table li
   shared equally among the tests that miss it, as the Points Lost Map shares them (see ``scoring_points_loss``); a call
   holds the share of every KPI it misses. The scoring of each campaign and NR Mode is calculated from the Scoring
   History over the CDRs the combined CDR tables include, with the methodology that applies to the campaign. The level is
-  a Pareto within the campaign, operator and service of the call: the calls that hold the first share of the points lost
-  (50 % by default) are High, those up to the second share (80 %) Medium and the others Low.
+  a Pareto within the campaign, operator and service of the call, the calls in scope compared only with each other: the
+  calls that hold the first share of the points lost (50 % by default) are High, those up to the second share (80 %)
+  Medium and the others Low.
 - **Repetition**: how many Non-Qualified Calls of the same operator failed at the same place in the quarter of the call
   and the quarters before it (one by default), whatever their service and NR Mode. The place is the site of the cell
   where the call ended (the site ID and host network of its eNB or gNB in the inventory cells of the workspace, in the
@@ -179,8 +180,8 @@ CONDITION_HELP = {
                'previous one, the same day, within the Hotspot distance of it or at the same site.',
     'repeated': 'The operator failed at the same place (its site, else a spot of the Cluster distance) in at least Cluster size '
                 'calls of the quarter and the Cluster period before it, in any drive.',
-    'high': 'Within the first High share of the Expected Gain of its campaign, operator and service: during the campaign what '
-            'its failure lost in the latest Final CDR of its NR Mode, then its own points.',
+    'high': 'Within the first High share of the Expected Gain of the calls in scope of its campaign, operator and service: during '
+            'the campaign what its failure lost in the latest Final CDR of its NR Mode, then its own points.',
     'medium': 'The next calls by Expected Gain, up to the Medium share.',
     'low': 'The rest by Expected Gain, or no Expected Gain.',
     'drop': 'The call dropped, or the data test was cut off, once established.',
@@ -431,7 +432,8 @@ def save_settings(repository: Any, payload: Any, username: str) -> dict[str, Any
     repository.set_workspace_state(SETTINGS_STATE_KEY, json.dumps(settings, ensure_ascii=False))
     if any(settings[name] != before[name] for name in PLACE_SETTINGS):
         refresh_places(repository, settings)
-    if any(settings[name] != before[name] for name in ('high_share', 'medium_share')):
+    # The levels compare the calls in scope with each other: the shares and the scope change them at once.
+    if any(settings[name] != before[name] for name in ('high_share', 'medium_share', 'excluded_regions', 'excluded_modes')):
         refresh_levels(repository, settings)
     applied = apply_rules(repository, username, settings)
     if hasattr(repository, 'try_add_log'):
@@ -1056,15 +1058,28 @@ def impact_levels(points: dict[str, float], high_share: float, medium_share: flo
     return levels
 
 
-def scored_levels(rows: Iterable[dict[str, Any]], high_share: float, medium_share: float) -> dict[str, str]:
-    """The Scoring Impact level of every scored call of ``rows`` (call_key, campaign_key, operator, service, impact_state and
-    impact_points, as stored): ``impact_levels`` within its campaign, operator and service. It needs no new calculation of
-    the scoring, so a change of the High or Medium share applies at once."""
-    pareto: dict[tuple[str, str, str], dict[str, float]] = {}
+def level_group(row: Any, out_of_scope: Callable[[Any], bool] | None = None) -> tuple[str, str, str, bool]:
+    """The calls whose points the level of a call compares it with: those of its campaign, operator and service, the calls
+    within the scope of the team apart from those out of it (which never change the levels of the calls in scope)."""
+    return (str(row['campaign_key'] or ''), str(row['operator'] or '').casefold(), str(row['service'] or ''),
+            bool(out_of_scope(row)) if out_of_scope else False)
+
+
+def scope_test(repository: Any, settings: dict[str, Any]) -> Callable[[Any], bool]:
+    """Whether a call (its region, NR Mode and operator) is out of scope, to keep it apart in the levels."""
+    reason = scope_of(repository, settings)
+    return lambda row: bool(reason(row['region'], row['nr_mode'], row['operator'])[0])
+
+
+def scored_levels(rows: Iterable[dict[str, Any]], high_share: float, medium_share: float,
+                  out_of_scope: Callable[[Any], bool] | None = None) -> dict[str, str]:
+    """The Scoring Impact level of every scored call of ``rows`` (call_key, campaign_key, operator, service, region, nr_mode,
+    impact_state and impact_points, as stored): ``impact_levels`` within its ``level_group``. It needs no new calculation
+    of the scoring, so a change of the High or Medium share or of the scope applies at once."""
+    pareto: dict[tuple[str, str, str, bool], dict[str, float]] = {}
     for row in rows:
         if row['impact_state'] == SCORED and row['impact_points'] is not None:
-            key = (str(row['campaign_key'] or ''), str(row['operator'] or '').casefold(), str(row['service'] or ''))
-            pareto.setdefault(key, {})[row['call_key']] = float(row['impact_points'])
+            pareto.setdefault(level_group(row, out_of_scope), {})[row['call_key']] = float(row['impact_points'])
     levels: dict[str, str] = {}
     for points in pareto.values():
         levels.update(impact_levels(points, high_share, medium_share))
@@ -1078,9 +1093,9 @@ def refresh_levels(repository: Any, settings: dict[str, Any]) -> int:
 
     with repository.connection() as connection:
         rows = [dict(row) for row in connection.execute(
-            f'SELECT p.call_key, p.campaign_key, p.impact_state, p.impact_points, p.impact_level, l.operator, l.service '
-            f'FROM {PRIORITY_TABLE} p JOIN {nq.NQ_CALL_LATEST_TABLE} l ON l.call_key = p.call_key')]
-        levels = scored_levels(rows, settings['high_share'], settings['medium_share'])
+            f'SELECT p.call_key, p.campaign_key, p.impact_state, p.impact_points, p.impact_level, l.operator, l.service, '
+            f'l.region, l.nr_mode FROM {PRIORITY_TABLE} p JOIN {nq.NQ_CALL_LATEST_TABLE} l ON l.call_key = p.call_key')]
+        levels = scored_levels(rows, settings['high_share'], settings['medium_share'], scope_test(repository, settings))
         changes = [(levels[row['call_key']], row['call_key']) for row in rows
                    if row['call_key'] in levels and levels[row['call_key']] != row['impact_level']]
         connection.executemany(f'UPDATE {PRIORITY_TABLE} SET impact_level = ? WHERE call_key = ?', changes)
@@ -1698,16 +1713,12 @@ def calculate(repository: Any, progress: Callable[[int, int, str], None] | None 
         scored = [impacts[key] for key in group['keys'] if impacts[key]['state'] == SCORED]
         campaigns.append((campaign_key, nr_mode, group['campaign'], outcome['state'], outcome['detail'], outcome['methodology'],
                           len(group['keys']), round(sum(item['points'] for item in scored), 4), now))
-    # The level of each call within its campaign, operator and service.
+    # The level of each call within its campaign, operator and service, the calls in scope apart from those out of it.
     by_call = {call['call_key']: call for call in calls}
-    pareto: dict[tuple[str, str, str], dict[str, float]] = {}
-    for key, impact in impacts.items():
-        if impact['state'] == SCORED:
-            call = by_call[key]
-            pareto.setdefault((impact['campaign_key'], str(call['operator'] or '').casefold(), str(call['service'])), {})[key] = impact['points']
-    levels: dict[str, str] = {}
-    for points in pareto.values():
-        levels.update(impact_levels(points, settings['high_share'], settings['medium_share']))
+    levels = scored_levels(({'call_key': key, 'campaign_key': impact['campaign_key'], 'impact_state': impact['state'],
+                             'impact_points': impact['points'], **{name: by_call[key][name] for name in ('operator', 'service', 'region', 'nr_mode')}}
+                            for key, impact in impacts.items()), settings['high_share'], settings['medium_share'],
+                           scope_test(repository, settings))
     # Where each call failed, and the calls of its operator at the same place.
     if progress:
         progress(len(groups), len(groups) + 1, 'the repetitions of the calls')
@@ -2060,18 +2071,18 @@ def operator_choices(repository: Any) -> list[str]:
             return []
 
 
-def expected_levels(rows: Iterable[Any], high_share: float, medium_share: float) -> dict[str, str]:
+def expected_levels(rows: Iterable[Any], high_share: float, medium_share: float,
+                    out_of_scope: Callable[[Any], bool] | None = None) -> dict[str, str]:
     """The impact level the conditions of the strategies read for every call of ``rows`` (call_key, campaign_key, operator,
-    service, impact_state and expected_points): ``impact_levels`` of the Expected Gain of the calls of its campaign,
-    operator and service. During a campaign the Expected Gain is what the failure lost in the latest Final CDR of its NR
-    Mode; once the Final CDR of its campaign is scored, its own points. The Excluded Calls and the calls without Expected
-    Gain have no level."""
-    pareto: dict[tuple[str, str, str], dict[str, float]] = {}
+    service, region, nr_mode, impact_state and expected_points): ``impact_levels`` of the Expected Gain of the calls of its
+    ``level_group``. During a campaign the Expected Gain is what the failure lost in the latest Final CDR of its NR Mode;
+    once the Final CDR of its campaign is scored, its own points. The Excluded Calls and the calls without Expected Gain
+    have no level."""
+    pareto: dict[tuple[str, str, str, bool], dict[str, float]] = {}
     for row in rows:
         value = row['expected_points']
         if value is not None and row['impact_state'] != EXCLUDED:
-            key = (str(row['campaign_key'] or ''), str(row['operator'] or '').casefold(), str(row['service'] or ''))
-            pareto.setdefault(key, {})[str(row['call_key'])] = float(value)
+            pareto.setdefault(level_group(row, out_of_scope), {})[str(row['call_key'])] = float(value)
     levels: dict[str, str] = {}
     for points in pareto.values():
         levels.update(impact_levels(points, high_share, medium_share))
@@ -2114,7 +2125,9 @@ def apply_rules(repository: Any, username: str, settings: dict[str, Any] | None 
         # The calls of the operators excluded in the Operator Maps count nowhere (the calculation gives them no values).
         excluded_operators = excluded_names(repository)
         rows = [row for row in rows if str(row['operator'] or '').strip().casefold() not in excluded_operators]
-        levels = expected_levels(rows, settings['high_share'], settings['medium_share'])
+        # The levels of the calls in scope compare them with each other only, as the #Calls of the rules.
+        levels = expected_levels(rows, settings['high_share'], settings['medium_share'],
+                                 lambda row: bool(scope_reason(row['region'], row['nr_mode'], row['operator'])[0]))
         for row in rows:
             # The calls out of scope stay out of the queues whatever the strategy.
             scope = scope_reason(row['region'], row['nr_mode'], row['operator'])[0]
