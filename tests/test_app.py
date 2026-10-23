@@ -11311,11 +11311,17 @@ def test_a_section_chosen_in_a_menu_opens_at_the_top_of_its_page():
     assert 'stopKeepingSection?.();' in app_script and 'observer.observe(document.body, {childList: true, subtree: true});' in app_script
     # Choosing again the section being shown opens it again.
     assert "window.setTimeout(() => window.dispatchEvent(new HashChangeEvent('hashchange')));" in app_script
-    # The pages that return to their earlier position do not when they open at a section, also once the address no
-    # longer has it.
-    assert ("if (target <= 0 || window.location.hash || (typeof sectionKeptInView === 'function' && sectionKeptInView())"
-            in (root / 'non_qualified_calls.js').read_text(encoding='utf-8'))
+    # The pages that return to their earlier position do not when they open at a section (page_restore.js decides it
+    # while the address still has it).
+    assert 'const reloaded = () => !window.location.hash' in (root / 'page_restore.js').read_text(encoding='utf-8')
+    assert 'restoreTarget = window.PageRestore.reloaded() &&' in (root / 'non_qualified_calls.js').read_text(encoding='utf-8')
     assert 'function sectionKeptInView() {' in app_script
+    # A page whose panels take longer than a minute (Non-Qualified Calls in a large workspace) keeps it there until they
+    # are all drawn, for five minutes at most (Safari has no scroll anchoring to keep it otherwise).
+    assert "typeof window.pageSectionBusy === 'function' && Boolean(window.pageSectionBusy())" in app_script
+    assert 'timer = window.setTimeout(check, SECTION_KEPT_MS);' in app_script and 'const SECTION_KEPT_BUSY_MS = 300000;' in app_script
+    assert ("window.pageSectionBusy = () => root.classList.contains('is-loading') || panelsLoading.size > 0;"
+            in (root / 'non_qualified_calls.js').read_text(encoding='utf-8'))
     # The section of the address opens after the deferred scripts of the page, which read it (Non-Qualified Calls
     # shows the view of the panel), and panels above it that change size keep it at the top too.
     assert "document.addEventListener('DOMContentLoaded', openAddressSection, {once: true});" in app_script

@@ -342,7 +342,11 @@
       <p class="eyebrow" id="nq-drawer-eyebrow">Call</p>
       <h2 id="nq-drawer-title">Call details</h2>
       <p class="nq-drawer-meta" id="nq-drawer-meta"></p>
-      <p class="nq-drawer-join" id="nq-drawer-join" hidden><span>JOIN_ID</span><code id="nq-drawer-join-id"></code><button type="button" class="nq-copy-button" id="nq-drawer-join-copy" title="Copy the JOIN_ID" aria-label="Copy the JOIN_ID"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button></p>
+      <div class="nq-drawer-ids">
+        <p class="nq-drawer-join" id="nq-drawer-join" hidden><span>JOIN_ID</span><code id="nq-drawer-join-id"></code><button type="button" class="nq-copy-button" id="nq-drawer-join-copy" title="Copy the JOIN_ID" aria-label="Copy the JOIN_ID"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button></p>
+        {# The identifier of the analysis in the workbooks of the previous tool (Previous NQ Analyses), when the call has one. #}
+        <p class="nq-drawer-join nq-drawer-unique" id="nq-drawer-unique" title="The identifier of the analysis in the workbooks of the previous tool" hidden><span id="nq-drawer-unique-label">Unique ID</span><code id="nq-drawer-unique-id"></code></p>
+      </div>
     </div>
     {# The calls of the list one after another, and any call found by its JOIN_ID. #}
     <div class="nq-drawer-tools">
@@ -351,6 +355,8 @@
         <span class="nq-drawer-position" id="nq-drawer-position" aria-live="polite"></span>
         <button type="button" class="nq-drawer-step" id="nq-drawer-next" aria-label="Next call" title="Next call of the list">&rsaquo;</button>
       </div>
+      {# The map of the area where the call failed (nq_call_map.js). #}
+      <button type="button" class="nq-drawer-map" id="nq-drawer-map" aria-pressed="false" title="See the map of the area where the call failed: its cells and sites, the sites and Non-Qualified Calls around and the RSRP and SINR of the tests around"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.4"/></svg><span>Map</span></button>
       <form class="nq-drawer-find" id="nq-drawer-find" role="search"><input type="search" id="nq-drawer-find-input" placeholder="Go to a JOIN_ID…" autocomplete="off" aria-label="Go to the call of a JOIN_ID" title="Paste a JOIN_ID and press Enter to open its call"></form>
       <button type="button" class="nq-drawer-close" id="nq-drawer-close" aria-label="Close the call details">&times;</button>
     </div>
@@ -364,7 +370,7 @@
   <div class="nq-drawer-body">
     <section data-nq-panel="general">
       <div class="nq-section-fields" id="nq-general-fields"></div>
-      <div class="nq-history-actions" id="nq-history-actions" hidden><button type="button" class="nq-link-action is-danger" id="nq-history-clear" title="Delete every history entry of this call; its follow-up and comments stay">Clear history</button></div>
+      <header class="nq-activity-head"><h3>Call Activity Log</h3><div class="nq-history-actions" id="nq-history-actions" hidden><button type="button" class="nq-link-action is-danger" id="nq-history-clear" title="Delete every history entry of this call; its follow-up and comments stay">Clear history</button></div></header>
       <ol class="nq-timeline" id="nq-timeline"></ol>
       <form class="nq-composer" id="nq-composer"{% if not nq_can_edit %} hidden{% endif %}>
         <textarea id="nq-comment-body" rows="3" maxlength="5000" placeholder="Add a comment for every user of this workspace… (Ctrl+Enter to post)"></textarea>
@@ -372,7 +378,9 @@
       </form>
     </section>
     <div id="nq-section-panels"></div>
+    <section class="nq-map-panel" data-nq-panel="map" id="nq-map-panel" hidden></section>
     <section data-nq-panel="details" hidden>
+      <div id="nq-call-details-map"></div>
       <section class="nq-samples" id="nq-samples" hidden>
         <h3>Speech Samples</h3>
         <p class="form-note">Each Non-Qualified sample of the call keeps its own follow-up: open it to set its status, root cause and fields or to comment on it.</p>
@@ -387,6 +395,14 @@
       <table class="nq-fields-table"><tbody id="nq-fields"></tbody></table>
     </section>
   </div>
+  {# The map of the call, larger (a double-click on it). #}
+  <dialog class="nq-map-expand" id="nq-map-expand" aria-labelledby="nq-map-expand-title">
+    <header class="nq-map-expand-header">
+      <div><p class="eyebrow">Map</p><h3 id="nq-map-expand-title" data-nq-map-expand-title></h3><p class="form-note" data-nq-map-expand-meta></p></div>
+      <button type="button" class="nq-map-expand-close" data-nq-map-expand-close aria-label="Close the enlarged map" title="Close">&times;</button>
+    </header>
+    <div class="nq-map-expand-content" data-nq-map-expand-content></div>
+  </dialog>
 </aside>
 
 <dialog class="nq-options-dialog" id="nq-options-dialog" aria-labelledby="nq-options-title">
@@ -730,5 +746,6 @@
 <script defer src="{{ static_path('js/element_image.js') }}?v={{ asset_version('js/element_image.js') }}"></script>
 <script defer src="{{ static_path('js/image_buttons.js') }}?v={{ asset_version('js/image_buttons.js') }}"></script>
 <script defer src="{{ static_path('js/rich_text.js') }}?v={{ asset_version('js/rich_text.js') }}"></script>
+<script defer src="{{ static_path('js/nq_call_map.js') }}?v={{ asset_version('js/nq_call_map.js') }}"></script>
 <script defer src="{{ static_path('js/non_qualified_calls.js') }}?v={{ asset_version('js/non_qualified_calls.js') }}"></script>
 {% endblock %}

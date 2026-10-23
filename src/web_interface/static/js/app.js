@@ -10188,8 +10188,14 @@ function showSectionAtTop(target) {
 }
 
 // Pages that fill or show their panels once their data arrives (Non-Qualified Calls, Scoring…) grow above the
-// section opened from a menu: it is kept at the top while the page settles, until the user scrolls or for a minute.
+// section opened from a menu: it is kept at the top while the page settles, until the user scrolls or for a minute. A page
+// whose panels can take longer (Non-Qualified Calls in a large workspace) says while it is still reading them
+// (window.pageSectionBusy): its section is kept until they are all drawn, for five minutes at most; browsers without
+// scroll anchoring (Safari) would otherwise move it as the panels above it fill.
 let stopKeepingSection = null;
+const SECTION_KEPT_MS = 60000;
+const SECTION_KEPT_BUSY_MS = 300000;
+const SECTION_SETTLE_MS = 3000;
 // Whether a section chosen in a menu is being kept at the top (pages then leave their own scroll position alone).
 function sectionKeptInView() {
   return Boolean(stopKeepingSection);
@@ -10208,9 +10214,11 @@ function keepSectionInView(target, find = null) {
     });
   });
   const events = ['wheel', 'touchstart', 'keydown', 'pointerdown'];
+  let timer = 0;
   const stop = () => {
     observer.disconnect();
     window.cancelAnimationFrame(frame);
+    window.clearTimeout(timer);
     events.forEach((name) => window.removeEventListener(name, stop, true));
     if (stopKeepingSection === stop) stopKeepingSection = null;
   };
@@ -10222,7 +10230,19 @@ function keepSectionInView(target, find = null) {
   for (let element = target; element && element !== document.body; element = element.parentElement) {
     for (let sibling = element.previousElementSibling; sibling; sibling = sibling.previousElementSibling) observer.observe(sibling);
   }
-  window.setTimeout(stop, 60000);
+  // After a minute, kept while the page still reads its panels and a moment after the last one is drawn.
+  const started = Date.now();
+  let idleSince = 0;
+  const check = () => {
+    const busy = typeof window.pageSectionBusy === 'function' && Boolean(window.pageSectionBusy());
+    idleSince = busy ? 0 : idleSince || Date.now();
+    if (Date.now() - started < SECTION_KEPT_BUSY_MS && (busy || Date.now() - idleSince < SECTION_SETTLE_MS)) {
+      timer = window.setTimeout(check, 1000);
+      return;
+    }
+    stop();
+  };
+  timer = window.setTimeout(check, SECTION_KEPT_MS);
 }
 window.addEventListener('hashchange', openMappingHashTarget);
 // The section of the address is opened once the deferred scripts of the page have run: they read it to prepare the

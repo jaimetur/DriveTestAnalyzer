@@ -8,12 +8,18 @@
 #### ⚠️ Breaking Changes:
 
 #### 🌟 New Features:
+- **Non-Qualified Calls — Failure Map:** a new step of the call between RCA and Failure Details (also the **Map** button of its header, and **Map of the call** in Failure Details and Call Details, which opens it larger), with Failure Map and Failure Details as phases of the call and a wider call panel that keeps every step and phase on one line and five fields per row, shows on OpenStreetMap the area where the call failed: where it started and failed, the cells of its Cell ID trace at their inventory sites (start, handovers, end and the NR leg of NSA calls by PCI), the inventory sites of the networks that serve its operator with their sectors, bands, PCI and states (cells with the PCI and channel of a cell of the call flagged), its repetitions at the same site, its hotspot and the other Non-Qualified Calls around, and RSRP / SINR samples of the tests around (from its CDR or every CDR of its campaign, shown or hidden with their own button). It navigates like the Network Insights maps (Ctrl/Cmd+wheel zoom in the call, the wheel alone in the larger view, rectangle zoom, distance tool, double-click to enlarge), shows the details of each element on hover and click, lists below it the radio of the call and its cells, the calls around, Diagnosis hints (coverage, interference, serving distance, PCI collisions, cells out of service, the other operators, repetition and handovers), the root causes decided at its place (with Use for the call), its drive in the 15 minutes around it, the NQ rate of its serving site per campaign and the radio per operator, downloads or copies as an image with the panel of the element chosen, and App Events records each map opened.
 
 #### 🚀 Enhancements:
+- **Non-Qualified Calls:** while a call is open the mouse wheel scrolls only its details, never the page below them.
+- **Non-Qualified Calls:** in the RCA tab of a call, the values of each RCA source (NetCheck, Ericsson RCA, the analysts) start a row of their own, four per row so each pair of the Ericsson RCA keeps to one row.
+- **Non-Qualified Calls:** in an open call, Analyst and Reviewer sit beside the Assignee (saved as soon as they change), the Unique ID of the previous tool beside the JOIN_ID, and the Activity tab is titled Call Activity Log with a comment box that reaches the bottom of the panel.
 
 #### 🐛 Bug fixes:
+- **Non-Qualified Calls:** a section opened from the menu of the tab or from Modules & Sections stays at the top of the page until every panel above it is drawn, also when they take more than a minute in a large workspace (in Safari it moved down as they filled).
 
 #### 📚 Documentation:
+- **Non-Qualified Calls:** the Help explains the Map of the call, its layers and controls, and its troubleshooting.
 
 ---
 

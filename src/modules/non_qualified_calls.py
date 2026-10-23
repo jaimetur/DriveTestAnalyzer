@@ -61,7 +61,7 @@ from src.modules.nq_catalog import (
     ATTENDED_FIELD, FIELD_TYPES, MAX_LONG_TEXT, YES_NO, evaluate_status, keyword_found, keywords as _keywords,
     normalized_text as _normalized_text,
 )
-from src.modules import nq_analyses, nq_analyses_rules, nq_prioritization, nq_rca
+from src.modules import nq_analyses, nq_analyses_rules, nq_call_map, nq_prioritization, nq_rca
 from src.modules.non_qualified_calls_visuals import series_colours
 
 NQ_CALLS_TABLE = 'nq_calls'
@@ -222,7 +222,7 @@ ANALYSIS_CENTER_V26_STATE_KEY = 'nq_analysis_center_v26'
 V26_SHOWN_COLUMNS = ('priority',)
 # Set once the tables and columns of this version exist, so the requests check the schema without writing.
 SCHEMA_STATE_KEY = 'nq_calls_schema'
-SCHEMA_VERSION = '2026-10-23.2'
+SCHEMA_VERSION = '2026-10-23.3'
 # Indexed call fields that the suggestion rule can read, with their labels.
 RULE_FIELDS = {
     'failure_classification': 'Failure Classification', 'failure_category': 'Failure Category',
@@ -392,6 +392,8 @@ CREATE INDEX IF NOT EXISTS idx_{NQ_CALL_POPULATION_TABLE}_latest ON {NQ_CALL_POP
 -- Covers the NQ rate of the latest version of every call, read from the index alone.
 CREATE INDEX IF NOT EXISTS idx_{NQ_CALL_POPULATION_TABLE}_rates
     ON {NQ_CALL_POPULATION_TABLE}(is_latest, service, campaign, operator, nr_mode, is_nq);
+-- The calls served by a site, for the Serving site health of the map of a call (nq_call_map).
+CREATE INDEX IF NOT EXISTS idx_{NQ_CALL_POPULATION_TABLE}_site ON {NQ_CALL_POPULATION_TABLE}(site_id, host_network);
 CREATE TABLE IF NOT EXISTS {NQ_CALL_VERSIONS_TABLE} (
     call_key TEXT PRIMARY KEY,
     latest_dataset_id INTEGER NOT NULL,
@@ -8358,6 +8360,34 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         if detail is None:
             raise HTTPException(404, 'The call is no longer available. Refresh the list.')
         return JSONResponse(detail)
+
+    @core.app.get('/api/non-qualified-calls/calls/{call_key}/map')
+    def nq_call_map_route(call_key: str, radius_km: float = nq_call_map.DEFAULT_RADIUS_KM, tests: str = nq_call_map.DEFAULT_TEST_SCOPE,
+                          user=Depends(core.current_user)) -> JSONResponse:
+        """The map of the area where a call failed: its cells and sites, the sites around, the other Non-Qualified Calls
+        and the radio levels of the tests around it (see nq_call_map). App Events records each map opened."""
+        repository = workspace_repository(user)
+        started = time.monotonic()
+        details = {'call_key': call_key, 'radius_km': nq_call_map.normalise_radius(radius_km), 'tests': tests}
+        try:
+            payload = nq_call_map.call_map(repository, call_key, radius_km=radius_km, tests=tests)
+        except ValueError as error:
+            log_action(repository, user, 'nq_call_map_failed', {**details, 'error': str(error)})
+            raise HTTPException(422, str(error)) from error
+        except Exception as error:  # noqa: BLE001 - App Events keeps what failed for its troubleshooting.
+            log_action(repository, user, 'nq_call_map_failed', {**details, 'error': f'{type(error).__name__}: {error}'[:500]})
+            raise HTTPException(500, 'The map of the call could not be prepared. App Events keeps the error.') from error
+        if payload is None:
+            raise HTTPException(404, 'The call is no longer available. Refresh the list.')
+        log_action(repository, user, 'nq_call_map', {
+            **details, 'join_id': payload['call']['join_id'], 'operator': payload['call']['operator'],
+            'sites': len(payload['sites']), 'cells_of_the_call': len(payload['trace']), 'nq_calls_around': len(payload['failures']),
+            'tests_around': payload['tests']['total'], 'tests_shown': len(payload['tests']['rows']),
+            # What its Diagnosis hints flagged, for the troubleshooting of the call.
+            'to_check': [check['key'] for check in payload['diagnosis'] if check['level'] == 'bad'],
+            'worth_a_look': [check['key'] for check in payload['diagnosis'] if check['level'] == 'warn'],
+            'seconds': round(time.monotonic() - started, 2)})
+        return JSONResponse(payload)
 
     @core.app.patch('/api/non-qualified-calls/calls/{call_key}')
     def nq_update_call(call_key: str, payload: TrackingPayload, user=Depends(editor_user)) -> JSONResponse:

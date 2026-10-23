@@ -1272,6 +1272,8 @@ def test_workspaces_indexed_before_get_the_serving_cell_columns(client, tmp_path
     # A workspace of the previous version: no serving-cell columns in the population of the calls, which were indexed
     # by the previous index version.
     with repository.connection() as connection:
+        # Nor the index of the serving sites of later versions, which reads two of those columns.
+        connection.execute(f'DROP INDEX IF EXISTS idx_{nq.NQ_CALL_POPULATION_TABLE}_site')
         for column in nq.POPULATION_FIELDS:
             connection.execute(f'ALTER TABLE {nq.NQ_CALL_POPULATION_TABLE} DROP COLUMN {column}')
         connection.execute(f"UPDATE {nq.NQ_CALL_SOURCES_TABLE} SET revision = replace(revision, '|v{nq.INDEX_VERSION}|', '|v4|')")

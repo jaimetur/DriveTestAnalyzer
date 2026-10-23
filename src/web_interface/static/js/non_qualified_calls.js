@@ -3487,14 +3487,35 @@
   // -- call detail drawer -------------------------------------------------------
   const drawer = $('nq-drawer');
   const backdrop = $('nq-drawer-backdrop');
+  // The map of the area where the call failed, shown instead of the tabs with the Map button of the header.
+  const callMap = window.NqCallMap?.mount({
+    panel: $('nq-map-panel'), expandDialog: $('nq-map-expand'), api, toast, campaignLabel, cdrTime, number,
+    openCall: async (callKey) => { if (callKey !== state.detail?.call.call_key && await leaveDetail()) openDetail(callKey, {keepTab: true}); },
+    // Decisions at its place: the Root Category and Cause of other calls there, given to this one.
+    canEdit: () => Boolean(state.user?.can_edit),
+    useRootCause: (category, cause) => {
+      if (state.detail) patchCall(state.detail.call, {root_category: category, root_cause: cause}, null, 'Root cause taken from the decisions at its place.');
+    },
+  });
   const closeDrawer = () => {
     drawer.classList.remove('is-open');
     drawer.setAttribute('aria-hidden', 'true');
     backdrop.hidden = true;
     state.detail = null;
+    callMap?.hide();
   };
+  // The tab the Map button of the header returns to.
+  let tabBeforeMap = 'general';
   const selectTab = (name) => {
-    if (!drawer.querySelector(`[data-nq-tab="${CSS.escape(name)}"]`)) name = 'general';
+    if (!drawer.querySelector(`[data-nq-tab="${CSS.escape(name)}"]`) && !(name === 'map' && callMap)) name = 'general';
+    if (name !== 'map') tabBeforeMap = name;
+    const mapButton = $('nq-drawer-map');
+    mapButton.classList.toggle('is-active', name === 'map');
+    mapButton.setAttribute('aria-pressed', String(name === 'map'));
+    // The map takes the height of the follow-up fields, which show again with any tab.
+    drawer.classList.toggle('is-map', name === 'map');
+    if (name === 'map') callMap.show(state.detail?.call.call_key);
+    else callMap?.hide();
     drawer.querySelectorAll('[data-nq-tab]').forEach((tab) => {
       const active = tab.dataset.nqTab === name;
       tab.classList.toggle('is-active', active);
@@ -3512,13 +3533,21 @@
   const TAB_GROUPS = [['general'], ['rca'], ['failure_event'], ['analysis'], ['implementation', 'planning']];
   // The call details close the tabs, in grey.
   const CALL_DETAILS_COLOR = '#9aa5ad';
+  // The Failure Map (the map of the area where the call failed, nq_call_map.js): a step of its own, without fields, between
+  // RCA and Failure Details.
+  const FAILURE_MAP = {key: 'map', label: 'Failure Map', color: '#0B7285', sections: []};
   const drawerTabs = () => {
     const known = new Set(state.sections.map((section) => section.key));
     const grouped = new Set(TAB_GROUPS.flat());
-    return [...TAB_GROUPS, ...state.sections.filter((section) => !grouped.has(section.key)).map((section) => [section.key])]
+    const groups = [...TAB_GROUPS, ...state.sections.filter((section) => !grouped.has(section.key)).map((section) => [section.key])]
       .map((keys) => keys.filter((key) => known.has(key))).filter((keys) => keys.length)
       .map((keys) => ({key: keys[0], sections: keys.map(sectionOf), color: sectionOf(keys[0]).color,
         label: keys[0] === 'general' ? 'Activity' : keys.map((key) => sectionOf(key).label).join(' & ')}));
+    if (!callMap) return groups;
+    const details = groups.findIndex((group) => group.key === 'failure_event');
+    const rca = groups.findIndex((group) => group.key === 'rca');
+    const at = details >= 0 ? details : rca >= 0 ? rca + 1 : Math.min(1, groups.length);
+    return [...groups.slice(0, at), FAILURE_MAP, ...groups.slice(at)];
   };
   const buildDrawerTabs = () => {
     const tabs = $('nq-drawer-tabs');
@@ -3546,7 +3575,8 @@
     separator.setAttribute('aria-hidden', 'true');
     tabs.replaceChildren(...groups.map((group, index) => tab(group.key, group.label, group.color, index + 1)),
       separator, tab('details', 'Call Details', CALL_DETAILS_COLOR));
-    $('nq-section-panels').replaceChildren(...groups.filter((group) => group.key !== 'general').map((group) => {
+    // The Failure Map shows the map panel of the call; the other steps their fields.
+    $('nq-section-panels').replaceChildren(...groups.filter((group) => !['general', FAILURE_MAP.key].includes(group.key)).map((group) => {
       const panel = node('section', undefined, 'nq-section-panel');
       panel.dataset.nqPanel = group.key;
       panel.hidden = true;
@@ -3717,6 +3747,12 @@
   // The tab that shows a section.
   const tabOf = (sectionKey) => drawerTabs().find((group) => group.sections.some((section) => section.key === sectionKey))
     || {key: 'general', label: 'Activity'};
+  // The fields of the analysts of a section: neither those of the follow-up or the NQ Prioritization nor the Priority, shown at
+  // the top of the call.
+  const analystFieldsOf = (key) => state.fields.filter((field) => field.section === key && !['tracking', 'priority'].includes(field.source)
+    && !(field.key === 'priority' && field.source === 'user' && field.type === 'list'));
+  // Shown in the header beside the JOIN_ID: the identifier of the analysis in the workbooks of the previous tool.
+  const HEADER_FIELDS = ['unique_id'];
   const phaseFields = () => PHASE_SECTIONS.map((key) => state.fields.find((field) => field.section === key && field.type === 'list'
     && ['user', 'derived'].includes(field.source))).filter(Boolean);
   const renderTracking = (call) => {
@@ -3760,25 +3796,41 @@
     // The phases of the call, each in the colour of its section; a click opens its tab. The first one, RCA
     // Identification, is done once a root category or cause is selected.
     const phases = node('div', undefined, 'nq-phase-strip');
-    const phaseStep = (sectionKey, name, value, color, title, empty = 'Not started') => {
-      const section = sectionOf(sectionKey);
+    const phaseCard = (tab, sectionColor, name, value, color, title, empty) => {
       if (phases.childElementCount) phases.append(node('span', '›', 'nq-phase-arrow'));
       const step = node('button', undefined, `nq-phase-step${value ? '' : ' is-empty'}`);
       step.type = 'button';
-      step.style.setProperty('--nq-section', section.color);
+      step.style.setProperty('--nq-section', sectionColor);
       const valuePill = node('span', value || empty, 'nq-pill');
       paintPill(valuePill, color);
       if (!value) valuePill.classList.add('is-empty');
       step.append(node('span', name, 'nq-phase-name'), valuePill);
-      step.title = `${title}: ${value || empty} — open ${tabOf(sectionKey).label}`;
-      step.addEventListener('click', () => selectTab(tabOf(sectionKey).key));
+      step.title = `${title}: ${value || empty} — open ${tab.label}`;
+      step.addEventListener('click', () => selectTab(tab.key));
       phases.append(step);
     };
+    const phaseStep = (sectionKey, name, value, color, title, empty = 'Not started') => (
+      phaseCard(tabOf(sectionKey), sectionOf(sectionKey).color, name, value, color, title, empty));
     if (state.sections.some((section) => section.key === 'rca')) {
       const identified = call.root_category || call.root_cause;
       const recommended = !identified && recommendationOf(call);
       phaseStep('rca', 'RCA Identification', identified, optionColor('root_category', call.root_category) || optionColor('root_cause', call.root_cause),
         'RCA Identification', recommended ? 'Recommended' : 'Not started');
+    }
+    // The Failure Map tells where the call failed (its place and the NQ calls there); Failure Details how many of its
+    // fields are filled in.
+    if (callMap) {
+      const located = call.latitude !== null && call.latitude !== undefined;
+      const repeated = Number(call.repetitions) > 1 ? ` (${number(call.repetitions)} Non-Qualified Calls of its operator there)` : '';
+      phaseCard(FAILURE_MAP, FAILURE_MAP.color, FAILURE_MAP.label, call.place_label || (located ? 'Located' : ''), FAILURE_MAP.color,
+        `Where the call failed${repeated}`, 'No position');
+    }
+    const detailFields = state.fields.filter((item) => item.section === 'failure_event' && item.source === 'user');
+    if (detailFields.length && state.sections.some((section) => section.key === 'failure_event')) {
+      const filled = detailFields.filter((item) => call.fields?.[item.key]).length;
+      const progress = !filled ? '' : filled < detailFields.length ? `In progress · ${filled}/${detailFields.length}` : `Completed · ${filled}/${filled}`;
+      phaseStep('failure_event', sectionOf('failure_event').label, progress, !filled ? '' : filled < detailFields.length ? '#F08A24' : '#2E8B57',
+        `${filled} of the ${detailFields.length} fields of ${sectionOf('failure_event').label} filled in`);
     }
     phaseFields().forEach((phase) => {
       const value = String(call.values?.[phase.key] || '');
@@ -3802,7 +3854,18 @@
       return cell;
     }));
     infoPanel.append(node('span', 'Prioritization Info', 'nq-phase-panel-title'), infoGrid);
-    host.replaceChildren(status, ...(priority ? [priority] : []), field('team', 'Team'), field('assignee', 'Assignee'), rootField,
+    // The fields of the analysts of General (Analyst, Reviewer…) follow the Assignee, saved as soon as they change like it.
+    const generalFields = analystFieldsOf('general').filter((item) => !HEADER_FIELDS.includes(item.key)).map((item) => {
+      const block = fieldBlock(item, call);
+      block.classList.add('nq-tracking-field', 'nq-tracking-general');
+      block.addEventListener('change', (event) => {
+        const control = event.target.closest('[data-field-key]');
+        if (!control || !state.user.can_edit || control.value === control.dataset.original) return;
+        patchCall(call, {fields: {[control.dataset.fieldKey]: control.value}}, null, `${item.label} updated.`);
+      });
+      return block;
+    });
+    host.replaceChildren(status, ...(priority ? [priority] : []), field('team', 'Team'), field('assignee', 'Assignee'), ...generalFields, rootField,
       ...(infoFields.length ? [infoPanel] : []), ...(phases.childElementCount ? [phasePanel] : []), updated);
   };
   const DETAIL_FIELDS = [
@@ -4012,7 +4075,11 @@
     const editable = field.source === 'user';
     // A long text is edited in place: a label would send its clicks to the hidden text area.
     const wrapper = node(editable && field.type !== 'long_text' ? 'label' : 'div', undefined, `nq-analysis-field is-${field.type}${editable ? '' : ' is-readonly'}`);
-    const title = node('span', field.label, 'nq-field-title');
+    // The name and its tags on one line (a long name is shortened, whole on hover), so every value of a row lines up.
+    const title = node('span', undefined, 'nq-field-title');
+    const name = node('span', field.label, 'nq-field-name');
+    name.title = field.label;
+    title.append(name);
     if (!editable) title.append(node('small', SOURCE_TAGS[field.source] || field.source, `nq-source-tag is-${field.source}`));
     if (field.required_to_close) title.append(node('small', 'required to close', 'nq-required-tag'));
     if (field.description) wrapper.title = field.description;
@@ -4148,6 +4215,18 @@
     card.append(node('h4', 'Other Ericsson RCA columns'), list);
     return card;
   };
+  // The bar of Failure Details and Call Details that opens the larger map of the call (as the Map button of the header).
+  const mapOpenBar = () => {
+    const bar = node('div', undefined, 'nq-map-open-bar');
+    const button = node('button', undefined, 'nq-secondary-action nq-map-open');
+    button.type = 'button';
+    button.dataset.nqMapOpen = '';
+    button.title = 'Open the larger map of the area where the call failed';
+    button.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.4"/></svg>';
+    button.append(node('span', 'Map of the call'));
+    bar.append(button, node('span', 'Its cells and sites, the sites and Non-Qualified Calls around and the RSRP / SINR of the tests around', 'form-note'));
+    return bar;
+  };
   // The fields of every section, each one in its tab; the tabs count the fields filled in.
   // The fields of every tab; a tab of several sections (Implementation & Planning) shows each one in its own subpanel.
   // The tabs count the fields filled in.
@@ -4157,8 +4236,8 @@
       const host = group.key === 'general' ? $('nq-general-fields')
         : drawer.querySelector(`[data-nq-panel="${CSS.escape(group.key)}"] .nq-section-fields`);
       if (!host) return;
-      const ofSection = (key) => state.fields.filter((field) => field.section === key && !['tracking', 'priority'].includes(field.source)
-        && !(field.key === 'priority' && field.source === 'user' && field.type === 'list'));
+      // The fields of General show at the top of the call, beside the follow-up (see renderTracking).
+      const ofSection = (key) => (key === 'general' ? [] : analystFieldsOf(key));
       const fields = group.sections.flatMap((section) => ofSection(section.key));
       const editable = fields.filter((field) => field.source === 'user');
       const parts = group.key === 'rca' ? [rootDecisionCard(call)] : [];
@@ -4168,6 +4247,20 @@
         group.sections.forEach((section) => {
           const sectionFields = ofSection(section.key);
           if (!sectionFields.length) return;
+          if (group.key === 'rca') {
+            // The values of each RCA source (NetCheck, the Ericsson RCA, the analysts) start a row of their own.
+            const runs = [];
+            sectionFields.forEach((field) => {
+              if (runs.at(-1)?.[0].source !== field.source) runs.push([]);
+              runs.at(-1).push(field);
+            });
+            runs.forEach((run) => {
+              const grid = node('div', undefined, 'nq-analysis-grid nq-rca-source-grid');
+              grid.append(...run.map((field) => fieldBlock(field, call)));
+              form.append(grid);
+            });
+            return;
+          }
           const grid = node('div', undefined, 'nq-analysis-grid');
           grid.append(...sectionFields.map((field) => fieldBlock(field, call)));
           if (group.sections.length === 1) { form.append(grid); return; }
@@ -4181,7 +4274,14 @@
           const save = node('button', `Save ${group.key === 'general' ? 'Fields' : group.label}`, 'nq-primary-action');
           save.type = 'submit';
           actions.append(node('span', '', 'nq-composer-note'), save);
-          form.append(actions);
+          // In the RCA tab, Save closes the last row of values when it has room (beside the Initial Root Category and Cause).
+          const lastRow = group.key === 'rca' ? [...form.querySelectorAll(':scope > .nq-rca-source-grid')].at(-1) : null;
+          if (lastRow && lastRow.children.length % 4) {
+            actions.classList.add('nq-rca-save');
+            lastRow.append(actions);
+          } else {
+            form.append(actions);
+          }
           form.onsubmit = (event) => { event.preventDefault(); saveFields(call, save); };
         }
         parts.push(form);
@@ -4190,6 +4290,8 @@
           : 'No fields in this section.', 'form-note'));
       }
       if (group.key === 'rca') parts.push(rcaExtrasCard(call));
+      // Failure Details opens the larger map of the area where the call failed.
+      if (group.key === 'failure_event' && callMap) parts.unshift(mapOpenBar());
       host.replaceChildren(...parts.filter(Boolean));
       const badge = drawer.querySelector(`[data-nq-tab="${CSS.escape(group.key)}"] .nq-tab-badge`);
       if (!badge) return;
@@ -4268,6 +4370,13 @@
     $('nq-drawer-meta').textContent = [cdrTime(call.start_time), call.city, call.technology, call.test_name].filter((value) => value && value !== '—').join(' · ');
     $('nq-drawer-join-id').textContent = call.join_id || '';
     $('nq-drawer-join').hidden = !call.join_id;
+    // The Unique ID of the analysis in the workbooks of the previous tool, always beside the JOIN_ID that identifies the call
+    // (— when it has none).
+    const uniqueField = state.fields.find((item) => item.key === 'unique_id' && item.section === 'general');
+    const uniqueId = uniqueField ? String(call.fields?.unique_id || call.values?.unique_id || '') : '';
+    $('nq-drawer-unique-label').textContent = uniqueField?.label || 'Unique ID';
+    $('nq-drawer-unique-id').textContent = uniqueId || '—';
+    $('nq-drawer-unique').hidden = !uniqueField;
     renderDetailNav();
     renderTracking(call);
     renderSections(detail);
@@ -4298,6 +4407,8 @@
       grid.append(node('dt', 'Location'), value);
     }
     renderFields();
+    // The map shown follows the call (the arrows, a JOIN_ID or a call opened from the map).
+    if ($('nq-drawer-map').classList.contains('is-active')) callMap?.show(call.call_key);
   }
   async function openDetail(callKey, {focusComposer = false, keepTab = false} = {}) {
     if (!callKey) return;
@@ -4353,6 +4464,19 @@
     }
     if (calls[target]) await openDetail(calls[target].call_key, {keepTab: true});
   };
+  // The Map button shows the map of the call (the Failure Map step), and again the tab shown before it.
+  $('nq-drawer-map').hidden = !callMap;
+  if (callMap) $('nq-call-details-map').replaceChildren(mapOpenBar());
+  drawer.addEventListener('click', (event) => {
+    if (event.target.closest('[data-nq-map-open]') && state.detail) callMap?.openLarge(state.detail.call.call_key);
+  });
+  $('nq-drawer-map').addEventListener('click', () => {
+    if ($('nq-drawer-map').classList.contains('is-active')) {
+      chooseTab(tabBeforeMap);
+      return;
+    }
+    chooseTab('map').then(() => { drawer.querySelector('.nq-drawer-body').scrollTop = 0; });
+  });
   $('nq-drawer-prev').addEventListener('click', () => stepDetail(-1));
   $('nq-drawer-next').addEventListener('click', () => stepDetail(1));
   $('nq-drawer-find').addEventListener('submit', async (event) => {
@@ -4576,11 +4700,14 @@
     rememberScroll();
     window.PageRestore.keepSnapshot(VIEW_STORAGE, restoring);
   });
+  // Whether the calls or a panel are still being read: a section opened from a menu is kept at the top until they are all
+  // drawn (app.js keepSectionInView), as a reload is held at its position (restoreScroll).
+  window.pageSectionBusy = () => root.classList.contains('is-loading') || panelsLoading.size > 0;
   // The calls and then each panel on screen fill in, in any order: the page is held at the position until they are all
   // drawn and it stops growing.
   const restoreScroll = () => {
     if (!restoring) return;
-    window.PageRestore.follow(restoreTarget, {busy: () => root.classList.contains('is-loading') || panelsLoading.size > 0, onDone: () => {
+    window.PageRestore.follow(restoreTarget, {busy: window.pageSectionBusy, onDone: () => {
       restoring = false;
       rememberScroll();
     }});
@@ -7764,6 +7891,19 @@
     },
     details: target => ({section: window.imageHeadingText(target.closest('details.panel')?.querySelector('summary h2'))}),
   });
+
+  // The map of a call downloads as a PNG image or copies as a screenshot too, in the panel and larger.
+  if (callMap) {
+    window.attachImageButtons?.({
+      root: drawer, targets: '.nq-map-wrap, .nq-map-expand-wrap', charts: '.nq-map-wrap, .nq-map-expand-wrap',
+      // The open panels (the element chosen) show in the images; the buttons of the map and of the panels do not.
+      exclude: '.nq-map-zoom, .nq-map-samples, .nq-map-wheel-hint, .nq-map-tooltip, .nq-map-waiting, .nq-map-info-close, .nq-map-selected-content > button',
+      obstacles: '.nq-map-zoom', cardOnEdge: false,
+      // Below the header and the tabs of the call panel, which its body scrolls under.
+      topInset: () => drawer.querySelector('.nq-drawer-body').getBoundingClientRect().top,
+      module: 'non-qualified-calls', fallbackName: 'Call Area Map', title: () => callMap.title(), details: () => callMap.details(),
+    });
+  }
 
   loadState().then(openCenterFromHash).finally(restoreScroll);
 })();
