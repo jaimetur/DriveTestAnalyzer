@@ -1435,9 +1435,12 @@
     paintPill(label, optionColorOf(field, value));
     element.append(label);
     if (match) {
+      // The list and the step of the rule together, always below it.
       const list = match[1] === 'Final' ? 'final' : 'weekly';
-      element.append(node('span', list === 'final' ? 'Final' : 'Weekly', `nq-rule-tag is-${list}`));
-      if (match[2]) element.append(node('span', `Step ${match[2]}`, 'nq-rule-tag is-step'));
+      const tags = node('span', undefined, 'nq-rule-tags');
+      tags.append(node('span', list === 'final' ? 'Final' : 'Weekly', `nq-rule-tag is-${list}`));
+      if (match[2]) tags.append(node('span', `Step ${match[2]}`, 'nq-rule-tag is-step'));
+      element.append(tags);
     }
     element.title = value;
     return element;

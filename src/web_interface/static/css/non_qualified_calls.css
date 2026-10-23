@@ -1073,9 +1073,11 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 .nq-drawer .nq-phase-panel .nq-phase-step { flex: 1 1 0; flex-direction: column; align-items: flex-start; justify-content: center; gap: .3rem; padding: .45rem .6rem; background: var(--nq-softer); }
 .nq-drawer .nq-phase-panel .nq-phase-step .nq-pill { max-width: 100%; overflow: visible; font-size: .78rem; line-height: 1.25; white-space: normal; text-overflow: clip; overflow-wrap: anywhere; }
 .nq-phase-panel .nq-phase-arrow { align-self: center; }
-/* The Prioritization Rule: what its step takes, then the list of the step (Weekly blue, Final purple, as the queues) and
+/* The Prioritization Rule: what its step takes, then below it the list of the step (Weekly blue, Final purple, as the queues) and
    its number in tags of their own. */
-.nq-rule-value { display: inline-flex; flex-wrap: wrap; align-items: center; gap: .25rem; max-width: 100%; }
+.nq-rule-value { display: inline-flex; flex-direction: column; align-items: flex-start; gap: .25rem; max-width: 100%; }
+/* The list (Weekly or Final) and the step of a rule on one line below it. */
+.nq-rule-tags { display: inline-flex; flex-wrap: nowrap; align-items: center; gap: .25rem; }
 .nq-rule-tag { display: inline-block; padding: .05rem .4rem; border-radius: 5px; font-size: .64rem; font-weight: 850; letter-spacing: .04em;
   line-height: 1.4; text-transform: uppercase; white-space: nowrap; }
 .nq-rule-tag.is-weekly { background: #e6f0ff; color: #0f56b3; }
