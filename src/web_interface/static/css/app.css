@@ -5786,3 +5786,12 @@ body:has(.confirm-overlay:not([hidden]), .ds-overlay:not([hidden]), .dataset-pre
 }
 @keyframes mobile-menu-in { from { opacity: 0; transform: translateY(-.75rem); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .mobile-menu:not([hidden]) { animation: none; } }
+/* While a reload returns to where a page was being read (page_restore.js), what was in view shows dimmed under a gradient,
+   with a notice in the middle of the window in the colours of the page (green by default, as Scoring & GAP Analysis). */
+.page-restore-overlay { --page-restore-line: #b5d9c3; --page-restore-accent: #226849; --page-restore-soft: #edf8f0; --page-restore-text: #1f4d36; --page-restore-tint: rgba(226, 238, 232, .82); position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; padding: 1rem; }
+.page-restore-snapshot { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; opacity: 0; pointer-events: none; }
+.page-restore-snapshot.is-ready { opacity: 1; }
+.page-restore-overlay::before { content: ''; position: absolute; inset: 0; z-index: 1; background: linear-gradient(180deg, rgba(247, 249, 251, .4), var(--page-restore-tint)); backdrop-filter: blur(1.5px); }
+.page-restore-notice { position: relative; z-index: 2; display: inline-flex; align-items: center; gap: .65rem; box-sizing: border-box; max-width: calc(100vw - 2rem); padding: .8rem 1.15rem; border: 1px solid var(--page-restore-line); border-left: 5px solid var(--page-restore-accent); border-radius: 12px; background: var(--page-restore-soft); color: var(--page-restore-text); font-size: .9rem; font-weight: 750; box-shadow: 0 12px 30px rgba(16, 49, 74, .18); }
+.page-restore-notice::before { content: ''; flex: 0 0 auto; width: 1.1rem; height: 1.1rem; box-sizing: border-box; border: 2.5px solid var(--page-restore-line); border-top-color: var(--page-restore-accent); border-radius: 50%; animation: page-restore-spin .8s linear infinite; }
+@keyframes page-restore-spin { to { transform: rotate(360deg); } }

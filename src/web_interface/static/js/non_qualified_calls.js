@@ -4605,39 +4605,42 @@
   // Every page shows the rows of Rows, also the value a browser restores on reload.
   state.pageSize = Number($('nq-page-size').value) || state.pageSize;
   $('nq-page-size').addEventListener('change', (event) => { state.pageSize = Number(event.target.value) || 10; state.page = 1; loadCalls(); });
-  // -- scroll position: a reload returns to where the page was, while its panels load ------------
-  const SCROLL_STORAGE = `nq-scroll:${window.location.pathname}`;
+  // -- scroll position: a reload returns to where the page was being read (page_restore.js) -------------
+  const VIEW_STORAGE = window.PageRestore.keyOf('nq-view', $('nq-table')?.dataset.workspace || '');
+  let restoreTarget = 0;
+  try {
+    const stored = JSON.parse(window.sessionStorage.getItem(VIEW_STORAGE) || 'null');
+    restoreTarget = window.PageRestore.reloaded() && stored && Number.isFinite(stored.scroll_y) ? stored.scroll_y : 0;
+  } catch (_error) {
+    restoreTarget = 0;
+  }
+  // While the page returns to the saved position, that position is kept as it is.
+  let restoring = restoreTarget > 0;
   const rememberScroll = () => {
     try {
-      window.sessionStorage.setItem(SCROLL_STORAGE, String(Math.round(window.scrollY)));
+      window.sessionStorage.setItem(VIEW_STORAGE, JSON.stringify({scroll_y: restoring ? restoreTarget : Math.round(window.scrollY)}));
     } catch (_error) {
       // Without session storage a reload opens the page at its top.
     }
   };
-  window.addEventListener('pagehide', rememberScroll);
-  (() => {
-    let target = 0;
-    try {
-      target = Number(window.sessionStorage.getItem(SCROLL_STORAGE)) || 0;
-    } catch (_error) {
-      target = 0;
-    }
-    // A section chosen in a menu (#section-…) opens the page there instead.
-    if (target <= 0 || window.location.hash || (typeof sectionKeptInView === 'function' && sectionKeptInView())
-        || !('ResizeObserver' in window)) return;
-    if ('scrollRestoration' in window.history) window.history.scrollRestoration = 'manual';
-    // The panels fill in after the page opens, so the position is applied again as the page grows,
-    // until the reader scrolls or the page has settled.
-    const observer = new ResizeObserver(() => window.scrollTo({top: target, behavior: 'auto'}));
-    const stop = () => {
-      observer.disconnect();
-      ['wheel', 'touchstart', 'keydown', 'mousedown'].forEach((type) => window.removeEventListener(type, stop));
-    };
-    ['wheel', 'touchstart', 'keydown', 'mousedown'].forEach((type) => window.addEventListener(type, stop, {passive: true}));
-    observer.observe(document.body);
-    window.scrollTo({top: target, behavior: 'auto'});
-    window.setTimeout(stop, 10000);
-  })();
+  let scrollSaveTimer = null;
+  window.addEventListener('scroll', () => {
+    window.clearTimeout(scrollSaveTimer);
+    scrollSaveTimer = window.setTimeout(rememberScroll, 120);
+  }, {passive: true});
+  window.addEventListener('pagehide', () => {
+    rememberScroll();
+    window.PageRestore.keepSnapshot(VIEW_STORAGE, restoring);
+  });
+  // The calls and then each panel on screen fill in, in any order: the page is held at the position until they are all
+  // drawn and it stops growing.
+  const restoreScroll = () => {
+    if (!restoring) return;
+    window.PageRestore.follow(restoreTarget, {busy: () => root.classList.contains('is-loading') || panelsLoading.size > 0, onDone: () => {
+      restoring = false;
+      rememberScroll();
+    }});
+  };
   $('nq-column-order-reset').addEventListener('click', async () => {
     if (!await saveColumnOrder(defaultColumnOrder())) return;
     applyColumnOrder();
@@ -7818,5 +7821,5 @@
     details: target => ({section: window.imageHeadingText(target.closest('details.panel')?.querySelector('summary h2'))}),
   });
 
-  loadState().then(openCenterFromHash);
+  loadState().then(openCenterFromHash).finally(restoreScroll);
 })();

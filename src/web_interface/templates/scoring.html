@@ -1,61 +1,12 @@
 {% extends 'base.html' %}
 {% block content %}
 {# A reload (or Back and Forward) returns to where the page was being read; opening the module starts at its top. Before
-   the page is drawn, it is made as tall as that position needs and opened there, with what was in view when the page was
-   left (kept by scoring.js) shown as it was, dimmed under a gradient with a notice in the middle while the page fills;
-   scoring.js keeps it there (see restoreScoringViewScroll), shows it once its content reaches the position and then gives
-   the page back its height. #}
+   the page is drawn, it is opened at that position with what was in view when the page was left shown dimmed under a
+   notice (page_restore.js); scoring.js keeps it there (see restoreScoringViewScroll) until its content reaches it. #}
+<script src="{{ static_path('js/page_restore.js') }}?v={{ asset_version('js/page_restore.js') }}"></script>
 <script>
-  (() => {
-    try {
-      const navigation = window.performance.getEntriesByType?.('navigation')?.[0]?.type;
-      if (window.location.hash || !['reload', 'back_forward'].includes(navigation)) return;
-      const key = ['drivetest-analyzer', 'scoring-view', encodeURIComponent(document.body.dataset.authenticatedUser || 'anonymous'),
-        encodeURIComponent({{ (active_workspace.id if active_workspace else '') | tojson }} || 'unknown')].join(':');
-      const stored = JSON.parse(window.sessionStorage.getItem(key) || 'null');
-      const snapshot = JSON.parse(window.sessionStorage.getItem(`${key}:snapshot`) || 'null');
-      window.sessionStorage.removeItem(`${key}:snapshot`);
-      const top = stored && Number.isFinite(stored.scroll_y) && stored.scroll_y > 0 ? stored.scroll_y : 0;
-      if (!top) return;
-      if ('scrollRestoration' in window.history) window.history.scrollRestoration = 'manual';
-      document.documentElement.style.overflowAnchor = 'none';
-      document.documentElement.style.minHeight = `${top + window.innerHeight}px`;
-      window.scrollTo(0, top);
-      const overlay = document.createElement('div');
-      overlay.className = 'scoring-restore-overlay';
-      overlay.dataset.scoringRestoreNotice = '';
-      if (snapshot && typeof snapshot.html === 'string' && snapshot.width === window.innerWidth) {
-        // The copy of what was in view, without scripts, scrolled to where it was.
-        const frame = document.createElement('iframe');
-        frame.className = 'scoring-restore-snapshot';
-        frame.setAttribute('aria-hidden', 'true');
-        frame.setAttribute('sandbox', 'allow-same-origin');
-        frame.tabIndex = -1;
-        frame.addEventListener('load', () => {
-          try {
-            frame.contentWindow.scrollTo(0, snapshot.scroll_y);
-            frame.contentDocument.querySelectorAll('[data-snapshot-scroll-top]').forEach((element) => {
-              element.scrollTop = Number(element.dataset.snapshotScrollTop) || 0;
-            });
-            frame.classList.add('is-ready');
-          } catch (_error) {
-            // Without it, the gradient alone.
-          }
-        }, {once: true});
-        frame.srcdoc = snapshot.html;
-        overlay.append(frame);
-      }
-      const notice = document.createElement('div');
-      notice.className = 'scoring-restore-notice';
-      notice.setAttribute('role', 'status');
-      notice.textContent = 'Loading Scoring & GAP Analysis where you left it…';
-      overlay.append(notice);
-      document.body.append(overlay);
-      window.setTimeout(() => overlay.remove(), 25000);
-    } catch (_error) {
-      // Optional: without the session storage the page opens at its top.
-    }
-  })();
+  window.PageRestore.begin({key: window.PageRestore.keyOf('scoring-view', {{ (active_workspace.id if active_workspace else '') | tojson }}),
+    notice: 'Loading Scoring & GAP Analysis where you left it…'});
 </script>
 <style>
   /* The colour theme of the charts and tables: NetCheck here, the chosen one set by the page (see scoring_themes.py). */
@@ -91,15 +42,6 @@
   .scoring-start-tip-title { display: flex; align-items: center; gap: .45rem; color: #245a96; font-size: .8rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
   .scoring-start-tip-title::before { content: '✓'; display: inline-flex; align-items: center; justify-content: center; width: 1.2rem; height: 1.2rem; border: 2px solid currentColor; border-radius: 50%; font-size: .7rem; }
   .scoring-start-tip p { margin: .35rem 0 0; }
-  /* While a reload returns to where the page was being read, what was in view shows dimmed under a gradient, with a
-     green notice in the middle of the window. */
-  .scoring-restore-overlay { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; padding: 1rem; }
-  .scoring-restore-snapshot { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; opacity: 0; pointer-events: none; }
-  .scoring-restore-snapshot.is-ready { opacity: 1; }
-  .scoring-restore-overlay::before { content: ''; position: absolute; inset: 0; z-index: 1; background: linear-gradient(180deg, rgba(247, 249, 251, .4), rgba(226, 238, 232, .82)); backdrop-filter: blur(1.5px); }
-  .scoring-restore-notice { position: relative; z-index: 2; display: inline-flex; align-items: center; gap: .65rem; box-sizing: border-box; max-width: calc(100vw - 2rem); padding: .8rem 1.15rem; border: 1px solid #b5d9c3; border-left: 5px solid #226849; border-radius: 12px; background: #edf8f0; color: #1f4d36; font-size: .9rem; font-weight: 750; box-shadow: 0 12px 30px rgba(16, 49, 74, .18); }
-  .scoring-restore-notice::before { content: ''; flex: 0 0 auto; width: 1.1rem; height: 1.1rem; box-sizing: border-box; border: 2.5px solid #b5d9c3; border-top-color: #226849; border-radius: 50%; animation: scoring-restore-spin .8s linear infinite; }
-  @keyframes scoring-restore-spin { to { transform: rotate(360deg); } }
   /* (Neither while a Saved Filter is edited in the dialog.) */
   .scoring-controls.is-editing-saved-filter .scoring-controls-head .saved-filter-selector,
   .scoring-controls.is-editing-saved-filter .scoring-start-tip { display: none; }

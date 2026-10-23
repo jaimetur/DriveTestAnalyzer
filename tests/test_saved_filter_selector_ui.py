@@ -364,31 +364,35 @@ process.stdout.write(JSON.stringify({unavailable, available, reset, unmatched}))
 def test_reload_opens_scoring_dimmed_at_the_saved_position_until_it_is_drawn():
     template = SCORING_TEMPLATE.read_text(encoding='utf-8')
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
+    restore = (SCORING_SCRIPT.parent / 'page_restore.js').read_text(encoding='utf-8')
+    styles = (SCORING_SCRIPT.parent.parent / 'css' / 'app.css').read_text(encoding='utf-8')
     # Before the page is drawn, with the same key as scoring.js: the page dimmed under a gradient with a notice.
     early = template.split('{% block content %}', 1)[1].split('<style>', 1)[0]
-    assert "'drivetest-analyzer', 'scoring-view'" in early and "window.history.scrollRestoration = 'manual';" in early
+    assert "js/page_restore.js" in early and "window.PageRestore.keyOf('scoring-view'," in early
+    assert "notice: 'Loading Scoring & GAP Analysis where you left it…'" in early
     assert "'drivetest-analyzer', 'scoring-view',\n    encodeURIComponent(document.body.dataset.authenticatedUser || 'anonymous')," in script
-    assert "overlay.className = 'scoring-restore-overlay';" in early
+    assert "const keyOf = (view, workspaceId) => ['drivetest-analyzer', view," in restore
+    assert "window.history.scrollRestoration = 'manual';" in restore and "overlay.className = `page-restore-overlay" in restore
     # Opened at the saved position, as tall as it needs, until the content reaches it.
-    assert 'document.documentElement.style.minHeight = `${top + window.innerHeight}px`;' in early and 'window.scrollTo(0, top);' in early
-    assert "notice.textContent = 'Loading Scoring & GAP Analysis where you left it…';" in early
-    assert '.scoring-restore-overlay { position: fixed; inset: 0;' in template
-    assert 'linear-gradient(' in template.split('.scoring-restore-overlay::before {', 1)[1].split('}', 1)[0]
+    assert 'document.documentElement.style.minHeight = `${top + window.innerHeight}px`;' in restore and 'window.scrollTo(0, top);' in restore
+    assert '.page-restore-overlay {' in styles and 'position: fixed; inset: 0;' in styles.split('.page-restore-overlay {', 1)[1].split('}', 1)[0]
+    assert 'linear-gradient(' in styles.split('.page-restore-overlay::before {', 1)[1].split('}', 1)[0]
     # It goes once the page is at the position (or the user takes over), and at the end of the restoration.
-    restore = script.split('  function restoreScoringViewScroll() {', 1)[1].split('\n  }\n', 1)[0]
-    assert "if (maximum >= target || interacted) document.querySelector('[data-scoring-restore-notice]')?.remove();" in restore
-    assert 'const pageHeight = document.body.scrollHeight;' in restore and "document.documentElement.style.minHeight = '';" in restore
+    follow = restore.split('  function follow(', 1)[1].split('\n  }\n', 1)[0]
+    assert 'if ((maximum >= target && !reading) || interacted) document.querySelector(NOTICE)?.remove();' in follow
+    assert 'const pageHeight = document.body.scrollHeight;' in follow and "document.documentElement.style.minHeight = '';" in follow
+    assert 'window.PageRestore.follow(target, {onDone: () => {' in script
     # Only a reload (or Back and Forward) returns there: opening the module starts at its top.
-    assert "if (window.location.hash || !['reload', 'back_forward'].includes(navigation)) return;" in early
+    assert "&& ['reload', 'back_forward'].includes(window.performance.getEntriesByType?.('navigation')?.[0]?.type);" in restore
     assert "&& ['reload', 'back_forward'].includes(window.performance.getEntriesByType?.('navigation')?.[0]?.type);" in script
     # What was in view when the page was left shows as it was, in a frame without scripts, under the gradient.
-    assert "window.sessionStorage.getItem(`${key}:snapshot`)" in early and "frame.setAttribute('sandbox', 'allow-same-origin');" in early
-    assert 'frame.contentWindow.scrollTo(0, snapshot.scroll_y);' in early
-    capture = script.split('  function scoringPageSnapshot() {', 1)[1].split("\n  window.addEventListener('pagehide'", 1)[0]
+    assert "window.sessionStorage.getItem(`${key}:snapshot`)" in restore and "frame.setAttribute('sandbox', 'allow-same-origin');" in restore
+    assert 'frame.contentWindow.scrollTo(0, snapshot.scroll_y);' in restore
+    capture = restore.split('  function snapshot() {', 1)[1].split('\n  function keepSnapshot(', 1)[0]
     assert "['SCRIPT', 'NOSCRIPT', 'TEMPLATE', 'IFRAME'].includes(tag)" in capture and 'if (box.bottom < 0 || box.top > viewportHeight) {' in capture
-    assert "window.sessionStorage.setItem(key, JSON.stringify({scroll_y: Math.round(window.scrollY), width: window.innerWidth, html}));" in script
-    assert '.scoring-restore-notice { position: relative; z-index: 2;' in template and 'border-left: 5px solid #226849;' in template
-
+    assert "window.sessionStorage.setItem(snapshotKey, JSON.stringify({scroll_y: Math.round(window.scrollY), width: window.innerWidth, html}));" in restore
+    assert "window.PageRestore.keepSnapshot(scoringViewStorageKey," in script
+    assert '--page-restore-accent: #226849;' in styles and 'border-left: 5px solid var(--page-restore-accent);' in styles
 
 def test_result_tabs_stay_at_the_top_while_the_results_are_scrolled():
     template = SCORING_TEMPLATE.read_text(encoding='utf-8')

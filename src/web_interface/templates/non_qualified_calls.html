@@ -10,6 +10,14 @@
 {% set priority_lock = '' if nq_can_prioritize else ' disabled' %}
 <link rel="stylesheet" href="{{ static_path('css/rich_text.css') }}?v={{ asset_version('css/rich_text.css') }}">
 <link rel="stylesheet" href="{{ static_path('css/non_qualified_calls.css') }}?v={{ asset_version('css/non_qualified_calls.css') }}">
+{# A reload (or Back and Forward) returns to where the page was being read; opening the module starts at its top. Before
+   the page is drawn, it is opened at that position with what was in view when the page was left shown dimmed under a
+   notice (page_restore.js); non_qualified_calls.js keeps it there until the calls and every panel on screen are drawn. #}
+<script src="{{ static_path('js/page_restore.js') }}?v={{ asset_version('js/page_restore.js') }}"></script>
+<script>
+  window.PageRestore.begin({key: window.PageRestore.keyOf('nq-view', {{ (active_workspace.id if active_workspace else '') | tojson }}),
+    notice: 'Loading Non-Qualified Calls where you left it…', theme: 'nq'});
+</script>
 <section class="dashboard-stack spacious-stack non-qualified-calls" id="non-qualified-calls" data-nq-can-edit="{{ 'true' if nq_can_edit else 'false' }}">
   <article class="panel module-hero nq-hero">
     <div class="nq-hero-copy">

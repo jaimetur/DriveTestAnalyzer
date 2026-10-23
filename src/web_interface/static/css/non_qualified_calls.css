@@ -40,6 +40,8 @@
 .nq-scope-switch input:focus-visible + .nq-scope-track { outline: 2px solid var(--nq-color); outline-offset: 2px; }
 .nq-scope-summary { flex: 1 1 16rem; min-width: 0; color: var(--nq-muted); font-size: .85rem; }
 /* The lists of its selects open over the page, below the dialog when they need the room (it does not clip them). */
+/* The notice of a reload that returns to where the page was being read (page_restore.js), in the colours of the module. */
+.page-restore-overlay.is-nq { --page-restore-line: #f0c4d3; --page-restore-accent: #b0234f; --page-restore-soft: #fcedf2; --page-restore-text: #7d1238; --page-restore-tint: rgba(252, 237, 242, .82); }
 .nq-scope-dialog { width: min(680px, calc(100vw - 32px)); overflow: visible; }
 .nq-scope-dialog .nq-scope-fields { display: grid; gap: .9rem; min-width: 0; margin: 0; padding: 0; border: 0; }
 .nq-scope-dialog .multiselect-menu { z-index: 60; }

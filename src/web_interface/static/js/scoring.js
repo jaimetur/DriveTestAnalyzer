@@ -240,45 +240,11 @@
     scoringViewScrollRestorePending = false;
     const target = restoredScoringViewState.scrollY;
     scoringViewScrollRestoring = true;
-    // The maps are drawn a moment after the results: follow the page as it grows, until the saved
-    // position is reached, the user scrolls or twenty seconds pass.
-    let interacted = false;
-    const stop = () => { interacted = true; };
-    const interactions = ['wheel', 'touchstart', 'keydown', 'pointerdown'];
-    interactions.forEach(type => window.addEventListener(type, stop, {passive: true}));
-    const deadline = window.performance.now() + 20000;
-    // The browser would keep the content in view as the page grows above it; the saved position
-    // already refers to the complete page, so it is kept until the page stops growing.
-    document.documentElement.style.overflowAnchor = 'none';
-    let height = -1;
-    let stableSince = window.performance.now();
-    const step = () => {
-      const now = window.performance.now();
-      // The height of the content: meanwhile the page keeps the height the saved position needs (scoring.html), so it
-      // stays there instead of going up while it fills.
-      const pageHeight = document.body.scrollHeight;
-      if (pageHeight !== height) {
-        height = pageHeight;
-        stableSince = now;
-      }
-      const maximum = Math.max(0, pageHeight - window.innerHeight);
-      if (!interacted) window.scrollTo({left: window.scrollX, top: target, behavior: 'auto'});
-      // The dimmed page of the reload (scoring.html) shows again once its content reaches the position, or the user
-      // takes over.
-      if (maximum >= target || interacted) document.querySelector('[data-scoring-restore-notice]')?.remove();
-      // Until the content reaches the position and stops growing; content that stays shorter is waited for a while.
-      if (!interacted && now < deadline && now - stableSince < (maximum < target ? 4000 : 1200)) {
-        window.setTimeout(step, 120);
-        return;
-      }
-      interactions.forEach(type => window.removeEventListener(type, stop));
-      document.documentElement.style.overflowAnchor = '';
-      document.documentElement.style.minHeight = '';
-      document.querySelector('[data-scoring-restore-notice]')?.remove();
+    // The maps are drawn a moment after the results: the page is followed as it grows (page_restore.js).
+    window.PageRestore.follow(target, {onDone: () => {
       scoringViewScrollRestoring = false;
       persistScoringViewState();
-    };
-    window.requestAnimationFrame(() => window.requestAnimationFrame(step));
+    }});
   }
   window.addEventListener('scroll', () => {
     if (scoringViewSaveTimer !== null) window.clearTimeout(scoringViewSaveTimer);
@@ -307,80 +273,10 @@
     if (!resultTabsFrame) resultTabsFrame = window.requestAnimationFrame(syncResultTabsStuck);
   }, {passive: true});
 
-  // What is in view when the page is left, shown dimmed while a reload returns there (scoring.html): a copy of the page
-  // without its scripts, with only the parts in view (the others keep their place, empty), its fields as they are, the
-  // scroll of its lists and its canvases as images.
-  function scoringPageSnapshot() {
-    const viewportHeight = window.innerHeight;
-    const copyOf = (node) => {
-      if (node.nodeType === Node.TEXT_NODE) return node.cloneNode(false);
-      if (node.nodeType !== Node.ELEMENT_NODE) return null;
-      const tag = node.tagName.toUpperCase();
-      if (['SCRIPT', 'NOSCRIPT', 'TEMPLATE', 'IFRAME'].includes(tag) || node.matches('[data-scoring-restore-notice]')) return null;
-      // Styles, drawings and lists of options whole.
-      if (['STYLE', 'LINK', 'SVG', 'SELECT'].includes(tag)) {
-        const copy = node.cloneNode(true);
-        if (tag === 'SELECT') [...node.options].forEach((option, index) => copy.options[index]?.toggleAttribute('selected', option.selected));
-        return copy;
-      }
-      const copy = node.cloneNode(false);
-      const box = node.getBoundingClientRect();
-      if (!box.width && !box.height && getComputedStyle(node).display !== 'contents') return copy;
-      if (box.bottom < 0 || box.top > viewportHeight) {
-        copy.style.height = `${box.height}px`;
-        copy.style.minHeight = '0';
-        copy.style.boxSizing = 'border-box';
-        copy.style.overflow = 'hidden';
-        return copy;
-      }
-      if (tag === 'CANVAS') {
-        try {
-          const image = document.createElement('img');
-          image.src = node.toDataURL();
-          image.className = node.className;
-          image.style.cssText = node.style.cssText;
-          image.style.width = `${box.width}px`;
-          image.style.height = `${box.height}px`;
-          return image;
-        } catch (_error) {
-          return copy;
-        }
-      }
-      if (tag === 'INPUT') {
-        if (['checkbox', 'radio'].includes(node.type)) copy.toggleAttribute('checked', node.checked);
-        else copy.setAttribute('value', node.value);
-      }
-      if (tag === 'TEXTAREA') {
-        copy.textContent = node.value;
-        return copy;
-      }
-      if (node.scrollTop) copy.dataset.snapshotScrollTop = String(Math.round(node.scrollTop));
-      node.childNodes.forEach((child) => {
-        const childCopy = copyOf(child);
-        if (childCopy) copy.append(childCopy);
-      });
-      return copy;
-    };
-    const attributes = (element) => [...element.attributes].filter(attribute => attribute.name !== 'style')
-      .map(attribute => ` ${attribute.name}="${attribute.value.replace(/&/g, '&amp;').replace(/"/g, '&quot;')}"`).join('');
-    const head = [...document.head.children].filter(element => element.matches('meta[charset], link[rel="stylesheet"], style'))
-      .map(element => element.outerHTML).join('');
-    return `<!doctype html><html${attributes(document.documentElement)}><head>${head}</head>${copyOf(document.body).outerHTML}</html>`;
-  }
-  window.addEventListener('pagehide', () => {
-    const key = `${scoringViewStorageKey}:snapshot`;
-    try {
-      window.sessionStorage.removeItem(key);
-      // Not while the page is still returning to a saved position (what is in view is not the page yet).
-      if (scoringViewScrollRestorePending || scoringViewScrollRestoring || !window.scrollY) return;
-      const html = scoringPageSnapshot();
-      if (html.length > 3000000) return;
-      window.sessionStorage.setItem(key, JSON.stringify({scroll_y: Math.round(window.scrollY), width: window.innerWidth, html}));
-    } catch (_error) {
-      // Optional (too large for the session storage…): the reload shows the gradient alone.
-      try { window.sessionStorage.removeItem(key); } catch (_ignored) { /* Nothing to remove. */ }
-    }
-  });
+  // What is in view when the page is left, shown dimmed while a reload returns there (page_restore.js); not while the page
+  // is still returning to a saved position.
+  window.addEventListener('pagehide', () => window.PageRestore.keepSnapshot(scoringViewStorageKey,
+    scoringViewScrollRestorePending || scoringViewScrollRestoring));
   const nrFilter = root.querySelector('[data-nr-filter]');
   // The NR Mode that scores the NSA and SA CDRs side by side.
   const nsaVsSa = 'NSA+SA';
