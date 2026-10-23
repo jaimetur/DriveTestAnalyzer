@@ -769,7 +769,8 @@
           if (columnFilter?.dataset.field === label.dataset.filter) { closeColumnFilter(); return; }
           openColumnFilter(button, label.dataset.filter);
         });
-        label.after(button);
+        // A word joiner keeps the funnel on the line of the end of the name.
+        label.after('\u2060', button);
       }
       const active = Boolean(filterValues(filters, label.dataset.filter));
       button.classList.toggle('is-active', active);
@@ -1161,6 +1162,18 @@
     const shown = new Set(state.layout.fields);
     return state.fields.filter((field) => shown.has(field.key) && field.source !== 'tracking');
   };
+  // Two fields share a column when both are shown, the first above the second: the Prioritization (Prioritized or Track
+  // only) above the Priority of the call.
+  const PAIRED_FIELDS = {prioritization: 'priority'};
+  // The field columns, each with the field shown below it in the same column (or none).
+  const fieldColumnGroups = () => {
+    const fields = fieldColumns();
+    const byKey = new Map(fields.map((field) => [field.key, field]));
+    const below = new Map(Object.entries(PAIRED_FIELDS).filter(([main, second]) => byKey.has(main) && byKey.has(second))
+      .map(([main, second]) => [main, byKey.get(second)]));
+    const paired = new Set([...below.values()].map((field) => field.key));
+    return fields.filter((field) => !paired.has(field.key)).map((field) => ({field, below: below.get(field.key) || null}));
+  };
   // The filter of each optional column: CDR filters by the CDRs (the CDR filter of the Additional Columns Filters,
   // shown with the column), the others by their own values. The CDRs of the calls follow NR Mode and Campaign.
   const OWN_COLUMN_FILTERS = {cdr: 'datasets'};
@@ -1180,29 +1193,34 @@
     header.addEventListener('click', sort);
     header.addEventListener('keydown', (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); sort(); } });
   };
-  const headerCell = (label, sortKey, filterKey = '', section = null) => {
-    const cell = node('th', undefined, 'nq-sort-pair nq-dynamic-col');
+  // A name of a header that sorts by its column (and filters by it with a filter key).
+  const headerItem = (label, sortKey, filterKey = '') => {
     const item = node('span', undefined, 'nq-header-item');
     const name = node('span', label);
     name.dataset.sort = sortKey;
     if (filterKey) name.dataset.filter = filterKey;
     item.append(name);
-    cell.append(item);
+    bindSort(name);
+    return item;
+  };
+  const headerCell = (label, sortKey, filterKey = '', section = null) => {
+    const cell = node('th', undefined, 'nq-sort-pair nq-dynamic-col');
+    cell.append(headerItem(label, sortKey, filterKey));
     // A column shows the colour of its group above its name (the section of its field, or the call).
     if (section) {
       cell.classList.add('nq-section-col');
       cell.style.setProperty('--nq-section', section.color);
       cell.title = `${section.label} · ${label}`;
     }
-    bindSort(name);
     return cell;
   };
   // -- column order: a header dragged onto another moves its column, in the layout of the user ----------------
   const STATIC_HEADERS = [...($('nq-table')?.tHead.rows[0].cells || [])];
   // Where each browser kept the order before the layouts: it becomes the order of the user's own layout, once.
   const LEGACY_ORDER_STORAGE = `nq-column-order:${$('nq-table')?.dataset.workspace || ''}`;
-  // Optional columns shown by default before a fixed column instead of after Result / Failure.
-  const DEFAULT_COLUMN_PLACES = {session_type: 'test_name'};
+  // Columns shown by default before another one: Session Type (CDR) before Test / Technology instead of after Result /
+  // Failure, and the Repeated Issue before the Scoring Points Lost.
+  const DEFAULT_COLUMN_PLACES = {session_type: 'test_name', 'field:repeated_issue': 'field:scoring_points_lost'};
   // The column keys in the order the rows are built, and in the order they are shown.
   let naturalColumns = [];
   let shownColumns = [];
@@ -1385,9 +1403,14 @@
     const rootHeader = after('root_category');
     const filterable = new Set(filterableFields().map((field) => field.key));
     anchor = rootHeader;
-    fieldColumns().forEach((field) => {
+    fieldColumnGroups().forEach(({field, below}) => {
       const cell = headerCell(field.label, `field:${field.key}`, filterable.has(field.key) ? `field:${field.key}` : '', sectionOf(field.section));
-      if (['list', 'yes_no'].includes(field.type)) cell.classList.add('nq-choice-col');
+      // The field shown below, in the same column, sorts and filters by its own name.
+      if (below) {
+        cell.append(headerItem(below.label, `field:${below.key}`, filterable.has(below.key) ? `field:${below.key}` : ''));
+        cell.title = `${cell.title} · ${below.label}`;
+      }
+      if ([field, below].some((item) => item && ['list', 'yes_no'].includes(item.type))) cell.classList.add('nq-choice-col');
       if (field.section === 'rca') rootHeader.before(cell);
       else { anchor.after(cell); anchor = cell; }
     });
@@ -1506,10 +1529,14 @@
       }
       // Start time with the service below it.
       const start = node('td', undefined, 'nq-start-cell');
-      // The minute is enough in the row; the whole time shows on hover.
-      const startTime = node('span', cdrTime(call.start_time).replace(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}):\d{2}$/, '$1'), 'nq-nowrap');
-      startTime.title = cdrTime(call.start_time);
-      start.append(startTime, node('span', call.service_label, `nq-service nq-service-${call.service}`));
+      // The minute is enough in the row, below the date so the column stays narrow; the whole time shows on hover.
+      const [day, ...clock] = cdrTime(call.start_time).replace(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}):\d{2}$/, '$1').split(' ');
+      [day, clock.join(' ')].filter(Boolean).forEach((text) => {
+        const part = node('span', text, 'nq-nowrap');
+        part.title = cdrTime(call.start_time);
+        start.append(part);
+      });
+      start.append(node('span', call.service_label, `nq-service nq-service-${call.service}`));
       if (call.service === 'speech' && Number(call.nq_samples) > 1) {
         const samples = node('span', `${number(call.nq_samples)} NQ samples`, 'nq-samples-badge');
         samples.title = 'Non-Qualified samples of this Speech call: open the call to follow each one up';
@@ -1552,7 +1579,8 @@
         commentButton.append(preview);
         commentButton.title = `${call.last_comment.created_by} · ${exactTime(call.last_comment.created_at)}\n${words}`;
       } else {
-        commentButton.append(node('span', state.user.can_edit ? 'Add a comment' : 'No comments', 'nq-comment-preview nq-muted'));
+        // Without comments, the count alone keeps the column narrow; what a click does shows on hover.
+        commentButton.title = state.user.can_edit ? 'Add a comment' : 'No comments';
       }
       commentButton.addEventListener('click', (event) => {
         event.stopPropagation();
@@ -1574,11 +1602,25 @@
       };
       const root = node('td', undefined, 'nq-tracking-cell');
       root.append(rootCauseControl(call));
+      // A pair of fields shares a cell: the first above the second.
+      const fieldGroupCell = ({field, below}) => {
+        const cell = fieldCell(call, field);
+        if (!below) return cell;
+        const top = node('div');
+        top.append(...cell.childNodes);
+        const bottom = node('div');
+        bottom.append(...fieldCell(call, below).childNodes);
+        const pair = node('div', undefined, 'nq-field-pair');
+        pair.append(top, bottom);
+        cell.append(pair);
+        return cell;
+      };
+      const groups = fieldColumnGroups();
       row.append(
         start, stacked(call.operator, call.vendor), stacked(call.region, call.cluster), stacked(call.city, campaignLabel(call.campaign)),
         stacked(call.test_name, call.technology), failure, ...optionalColumns().map((column) => optionalCell(call, column)),
-        ...fieldColumns().filter((field) => field.section === 'rca').map((field) => fieldCell(call, field)),
-        root, ...fieldColumns().filter((field) => field.section !== 'rca').map((field) => fieldCell(call, field)), status,
+        ...groups.filter((group) => group.field.section === 'rca').map(fieldGroupCell),
+        root, ...groups.filter((group) => group.field.section !== 'rca').map(fieldGroupCell), status,
         tracking('team', 'assignee'), comments,
       );
       orderRowCells(row);

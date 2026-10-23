@@ -194,6 +194,7 @@ DEFAULT_FIELDS = (
     _field('nq_call_status', 'NQ Call Status', 'general', 'list', 'tracking', 'status', in_table=True,
            description='Set by the status rules from the phase fields, or by hand.'),
     _field('priority', 'Priority', 'general', 'list', options=tuple(_option(f'P{number}', color) for number, color in enumerate(PRIORITY_COLORS, start=1)),
+           in_table=True,
            description='How urgent the analysis of the call is; shown after the NQ Call Status at the top of the call.'),
     _field('prioritization', 'Prioritization', 'general', 'list', 'priority', 'prioritization', in_table=True, in_summary=True,
            description='Prioritized or Track only, by the strategy of the NQ Prioritization: the step of its lists whose '
@@ -208,7 +209,7 @@ DEFAULT_FIELDS = (
            description='The scoring points the analysis of the call is expected to recover, which orders the calls of the same '
                        'step: its Scoring Points Lost once the Final CDR of its campaign is scored, else the points its failure '
                        'lost in the latest campaign of its NR Mode with a Final CDR.'),
-    _field('scoring_impact', 'Scoring Impact', 'general', 'list', 'priority', 'impact_level', in_table=True, in_summary=True,
+    _field('scoring_impact', 'Scoring Impact', 'general', 'list', 'priority', 'impact_level', in_summary=True,
            description='High, Medium or Low: the share of the scoring points its campaign, operator and service lose that the '
                        'call holds (the calls that hold the first half of the points are High), the calls in scope compared '
                        'only with each other and those out of scope apart.'),

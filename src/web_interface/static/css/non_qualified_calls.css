@@ -497,11 +497,10 @@ span.nq-root-suggestion { cursor: default; }
 .nq-event-change:hover .nq-history-delete, .nq-drawer .nq-history-delete:focus-visible { opacity: 1; }
 .nq-drawer .nq-history-delete:hover { border-color: var(--nq-border); background: #fff1f3; color: #a3263a; }
 .nq-event-change p { padding-right: 1.8rem; }
-/* The latest comment is previewed on wide screens; elsewhere its count (and its text as a tooltip) keeps the table within the panel. */
-@media (max-width: 1599px) {
-  .nq-table .nq-comment-preview { display: none; }
-  .non-qualified-calls .nq-table .nq-comment-button { width: auto; }
-}
+/* The count of the comments (the latest one as a tooltip) keeps the table within the panel; the cards of phones show the
+   latest comment. */
+.nq-table .nq-comment-preview { display: none; }
+.non-qualified-calls .nq-table .nq-comment-button { width: auto; }
 /* Root cause suggestion rule. */
 .nq-rule-summary { display: flex; align-items: flex-start; gap: .8rem; margin-top: .4rem; }
 .nq-rule-summary p { flex: 1 1 auto; margin: 0; }
@@ -1000,30 +999,28 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 .nq-view-count:empty { display: none; }
 /* The default columns fit the panel: field values wrap on two lines and the selects are narrower. */
 .nq-table th.nq-dynamic-col span[data-sort] { white-space: normal; }
-.nq-table td.nq-field-cell { max-width: 8.5rem; }
+.nq-table td.nq-field-cell { max-width: 7.5rem; }
 /* A list column is as narrow as its picker: a two-word name (Analysis Status) goes on two lines, with its sort and filter. */
 .nq-table th.nq-choice-col { width: 6.2rem; }
 .non-qualified-calls .nq-table td.nq-field-cell .nq-pill-select { min-width: 6rem; }
 .nq-table .nq-field-cell .nq-field-text { display: -webkit-box; overflow: hidden; white-space: normal; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-height: 1.25; }
 /* A cause column showing the category of its source when the source gives no cause. */
 .nq-field-cell .nq-field-fallback { font-style: italic; }
+/* Two fields in one column (the Prioritization above the Priority). */
+.nq-field-pair { display: grid; gap: .3rem; justify-items: start; }
 .nq-field-fallback-label { display: block; margin-top: .1rem; color: var(--nq-muted); font-size: .62rem; font-weight: 800; letter-spacing: .03em; text-transform: uppercase; }
-.non-qualified-calls .nq-table .nq-pill-select, .non-qualified-calls .nq-table .nq-pill-assignee { min-width: 7rem; max-width: 9.5rem; }
-.non-qualified-calls .nq-table .nq-root-select { min-width: 7.5rem; max-width: 9.5rem; }
-.non-qualified-calls .nq-table .nq-comment-button { max-width: 9.5rem; }
-.nq-table th, .nq-table td { padding-left: 5px; padding-right: 5px; }
+/* The panel is never wider than the app (1680 px): the default columns fit it with narrower selects, values, cell paddings
+   and header names at every width. */
+.non-qualified-calls .nq-table .nq-pill-select, .non-qualified-calls .nq-table .nq-pill-assignee { min-width: 6.2rem; max-width: 8rem; }
+.non-qualified-calls .nq-table .nq-root-select { min-width: 6.8rem; max-width: 9.5rem; }
+.nq-table th, .nq-table td { padding-left: 4px; padding-right: 4px; }
 .non-qualified-calls .nq-table .nq-comment-button { max-width: 8rem; }
-.nq-table td.nq-stacked { max-width: 6.2rem; }
+.nq-table td.nq-stacked { max-width: 5.6rem; }
+.nq-table td.nq-failure { max-width: 7.5rem; }
+.nq-table th { font-size: .66rem; }
 @media (max-width: 1599px) {
-  /* The default columns fit 1440 px: narrower selects, field values and cell paddings. */
-  .non-qualified-calls .nq-table .nq-pill-select, .non-qualified-calls .nq-table .nq-pill-assignee { min-width: 6.2rem; max-width: 8rem; }
-  .nq-table td.nq-field-cell { max-width: 7.5rem; }
-  .nq-table th, .nq-table td { padding-left: 4px; padding-right: 4px; }
-  .non-qualified-calls .nq-table .nq-root-select { min-width: 6.8rem; }
-  .nq-table td.nq-failure { max-width: 7.5rem; }
-  .nq-table td.nq-stacked { max-width: 5.6rem; }
+  /* And a smaller text below 1600 px. */
   .nq-table { font-size: .78rem; }
-  .nq-table th { font-size: .66rem; }
 }
 /* Every tab of the call on one line: a wider panel and tighter tabs. */
 .nq-drawer { width: min(880px, 100vw); }

@@ -881,7 +881,7 @@ def test_workspaces_of_earlier_versions_get_the_tables_and_fields(client, tmp_pa
     order = [field['key'] for field in nq.list_fields(core.repository)]
     assert keys <= set(order) and order.index('prioritization') == order.index('priority') + 1
     shown = {field['key'] for field in nq.list_fields(core.repository) if field['in_table']}
-    assert {'prioritization', 'scoring_impact', 'scoring_points_lost', 'repeated_issue'} <= shown
+    assert {'prioritization', 'scoring_points_lost', 'repeated_issue'} <= shown and 'scoring_impact' not in shown
 
 
 def test_workspaces_of_earlier_versions_get_the_strategy_fields_and_priorities(client, tmp_path):

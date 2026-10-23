@@ -1646,6 +1646,25 @@ def test_workspaces_before_hide_the_suggested_causes_and_show_the_implementation
     assert upgraded['implementation_status']['in_table']
 
 
+def test_the_default_columns_of_the_workspace_layout_and_the_priority_in_workspaces_before(client, tmp_path):
+    setup_calls(client, tmp_path)
+    repository = core.repository
+    assert {field['key']: field['in_table'] for field in nq.list_fields(repository)}['priority'] is True
+    # A new workspace: the Prioritization with the Priority, Repeated Issue, Scoring Points Lost and the phase statuses.
+    assert nq.workspace_layout(repository)['fields'] == [
+        'priority', 'prioritization', 'scoring_points_lost', 'repeated_issue', 'analysis_status', 'implementation_status']
+    # A workspace of before, without the Priority in its table, takes it once.
+    fields = nq.list_fields(repository)
+    nq._store_fields(repository, [{**field, 'in_table': False} if field['key'] in nq.V26_SHOWN_COLUMNS else field for field in fields])
+    repository.set_workspace_state(nq.ANALYSIS_CENTER_V26_STATE_KEY, '')
+    nq.ensure_nq_tables(repository)
+    assert {'priority', 'prioritization'} <= set(nq.workspace_layout(repository)['fields'])
+    # Taken once: hidden again by hand, it stays hidden.
+    nq._store_fields(repository, [{**field, 'in_table': False} if field['key'] == 'priority' else field for field in nq.list_fields(repository)])
+    nq.ensure_nq_tables(repository)
+    assert 'priority' not in nq.workspace_layout(repository)['fields']
+
+
 def test_workspaces_before_name_the_rca_fields_after_their_source(client, tmp_path):
     setup_calls(client, tmp_path)
     repository = core.repository

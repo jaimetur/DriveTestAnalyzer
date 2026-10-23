@@ -217,6 +217,9 @@ ANALYSIS_CENTER_V24_STATE_KEY = 'nq_analysis_center_v24'
 V24_FIELD_KEYS = {'prioritization_queue', 'expected_gain'}
 # The priorities P1 to P8 without a colour take those of the queues and steps of the NQ Prioritization, once.
 ANALYSIS_CENTER_V25_STATE_KEY = 'nq_analysis_center_v25'
+# The Priority is a column of the table in the workspace layout, once.
+ANALYSIS_CENTER_V26_STATE_KEY = 'nq_analysis_center_v26'
+V26_SHOWN_COLUMNS = ('priority',)
 # Set once the tables and columns of this version exist, so the requests check the schema without writing.
 SCHEMA_STATE_KEY = 'nq_calls_schema'
 SCHEMA_VERSION = '2026-10-23.2'
@@ -572,7 +575,8 @@ def _schema_ready(task_repository: Any) -> bool:
                 ANALYSIS_CENTER_V13_STATE_KEY, ANALYSIS_CENTER_V14_STATE_KEY, ANALYSIS_CENTER_V15_STATE_KEY,
                 ANALYSIS_CENTER_V16_STATE_KEY, ANALYSIS_CENTER_V17_STATE_KEY, ANALYSIS_CENTER_V18_STATE_KEY,
                 ANALYSIS_CENTER_V19_STATE_KEY, ANALYSIS_CENTER_V20_STATE_KEY, ANALYSIS_CENTER_V21_STATE_KEY,
-                ANALYSIS_CENTER_V22_STATE_KEY, ANALYSIS_CENTER_V23_STATE_KEY, ANALYSIS_CENTER_V24_STATE_KEY, ANALYSIS_CENTER_V25_STATE_KEY)
+                ANALYSIS_CENTER_V22_STATE_KEY, ANALYSIS_CENTER_V23_STATE_KEY, ANALYSIS_CENTER_V24_STATE_KEY, ANALYSIS_CENTER_V25_STATE_KEY,
+                ANALYSIS_CENTER_V26_STATE_KEY)
         states = {str(row[0]): str(row[1]) for row in connection.execute(
             f"SELECT key, value FROM workspace_state WHERE key IN ({', '.join('?' for _ in keys)})", keys)}
     return states.get(SCHEMA_STATE_KEY) == SCHEMA_VERSION and all(states.get(key) for key in keys[1:])
@@ -720,6 +724,15 @@ def ensure_nq_tables(task_repository: Any) -> None:
             _store_fields(task_repository, nq_catalog.normalize_fields(fields, {field['key']: field for field in list_fields(task_repository)},
                                                                        CATALOG_CALL_FIELDS))
         task_repository.set_workspace_state(ANALYSIS_CENTER_V25_STATE_KEY, '1')
+    if not task_repository.get_workspace_state(ANALYSIS_CENTER_V26_STATE_KEY):
+        fields = list_fields(task_repository)
+        shown = [field for field in fields if field['key'] in V26_SHOWN_COLUMNS and not field['in_table']]
+        for field in shown:
+            field['in_table'] = True
+        if shown:
+            _store_fields(task_repository, nq_catalog.normalize_fields(fields, {field['key']: field for field in list_fields(task_repository)},
+                                                                       CATALOG_CALL_FIELDS))
+        task_repository.set_workspace_state(ANALYSIS_CENTER_V26_STATE_KEY, '1')
     task_repository.set_workspace_state(SCHEMA_STATE_KEY, SCHEMA_VERSION)
 
 
