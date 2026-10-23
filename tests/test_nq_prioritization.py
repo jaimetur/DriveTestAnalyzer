@@ -149,6 +149,13 @@ def test_settings_are_validated():
                           'joins': [], 'queue': ''}
     vodafone = [step for step in nq_prioritization.strategy_steps('vodafone_proposal', own) if step['list'] == 'campaign']
     assert [(step['priority'], step['queue']) for step in vodafone].count(('P5', 'Unique')) == 1 and len(vodafone) == 8
+    # The same once loaded and saved again: the new default step stays deleted, it does not come back with every Save.
+    loaded = nq_prioritization.normalize_steps({'vodafone_proposal': own})
+    for steps in (loaded, nq_prioritization.normalize_steps(loaded)):
+        assert steps['vodafone_proposal']['campaign-7'] == {'deleted': True}
+        vodafone = [step for step in nq_prioritization.strategy_steps('vodafone_proposal', steps['vodafone_proposal'])
+                    if step['list'] == 'campaign']
+        assert [(step['priority'], step['queue']) for step in vodafone].count(('P5', 'Unique')) == 1 and len(vodafone) == 8
     # Focused Operators stands alone.
     assert nq_prioritization.normalize_steps({'cities_first': {'campaign-1': {'operators': ['VF', '@focused']}}})[
         'cities_first']['campaign-1']['operators'] == ['@focused']

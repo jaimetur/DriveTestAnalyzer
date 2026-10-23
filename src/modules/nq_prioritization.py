@@ -907,6 +907,20 @@ def normalize_steps(value: Any, strict: bool = False, operators: dict[str, list[
             if key in defaults or not ADDED_STEP.match(str(key)) or not isinstance(chosen, dict) or chosen.get('deleted'):
                 continue
             result[key] = _valid_step(base, _current_step(chosen), key.split('-')[0], strict, label)
+        # A step added to the defaults after a list was saved (its key is not in the saved list) is kept as deleted when the
+        # list already has the same step under another key, so that it does not come back with every load and Save.
+        def fields(key: str) -> tuple[Any, ...]:
+            step = result[key]
+            return (step['priority'], step['nr_mode'], step['call_type'], step['area'], tuple(step['conditions']), tuple(step['joins']),
+                    step['queue'])
+        for list_name in (CAMPAIGN_LIST, FINAL_LIST):
+            own = [key for key in result if key.startswith(f'{list_name}-') and key in given and not result[key].get('deleted')]
+            if not own:
+                continue
+            saved = {fields(key) for key in own}
+            for key in defaults:
+                if key.startswith(f'{list_name}-') and key not in given and not result[key].get('deleted') and fields(key) in saved:
+                    result[key] = {'deleted': True}
         for list_name in (CAMPAIGN_LIST, FINAL_LIST):
             live = [key for key, step in result.items() if key.startswith(f'{list_name}-') and not step.get('deleted')]
             if len(live) > MAX_LIST_STEPS:
