@@ -1,5 +1,5 @@
-"""NQ Prioritization: the scoring impact, the repeated issues, the strategies (Dual Queue Cities first and Roads first) and
-the Prioritization Rules of the Non-Qualified Calls."""
+"""NQ Prioritization: the scoring impact, the repeated issues, the strategies (Dual Queue Cities first and Roads first,
+Points Lost Based and Vodafone Proposal) and the Prioritization Rules of the Non-Qualified Calls."""
 import io
 import json
 from pathlib import Path
@@ -40,66 +40,85 @@ def test_bad_tests_follow_the_direction_of_the_kpi():
     assert nq_prioritization.bad_tests(polqa, 2.5, 200) == 5
 
 
-def test_the_first_rule_whose_conditions_a_call_meets_decides():
-    rules = nq_prioritization.compile_rules(nq_prioritization.normalize_settings({'rules': [
+def test_the_rules_of_the_first_version_become_the_steps_of_points_lost_based():
+    # Rules of their own saved before the strategies: Points Lost Based takes them as the steps of its only list, one per
+    # rule and Call Type, and a last tracked step with the Priority the rules gave their tracked calls.
+    custom = nq_prioritization.CUSTOM
+    settings = nq_prioritization.normalize_settings({'rules': [
         {'name': 'London Voice', 'services': ['voice'], 'nr_modes': ['NSA'], 'cities': ['London'], 'criterion': 'all', 'priority': 'P1'},
-        {'name': 'VF Data', 'services': ['data'], 'operators': ['VF*', '-VF SM'], 'criterion': 'repeated_or_high',
+        {'name': 'VF Data', 'services': ['data'], 'operators': ['VF', '-VF SM'], 'criterion': 'repeated_or_high',
          'priority': 'P2', 'track_priority': 'P5'},
-        {'name': 'Both', 'services': ['data'], 'criterion': 'repeated_and_high', 'priority': 'P3'},
-    ]})['rules'])
-    voice = {'service': 'voice', 'nr_mode': 'NSA', 'operator': 'EE', 'region': '', 'city': 'London'}
-    assert nq_prioritization.decide(rules, voice, False, False) == ('Prioritized', 'London Voice', 'P1')
-    assert nq_prioritization.decide(rules, {**voice, 'city': 'Leeds'}, False, False) == ('No rule', '', '')
-    data = {'service': 'data', 'nr_mode': 'SA', 'operator': 'VF UK', 'region': '', 'city': 'Leeds'}
-    assert nq_prioritization.decide(rules, data, True, False) == ('Prioritized', 'VF Data', 'P2')
-    # Not repeated nor high impact: tracked with the tracked priority of its rule, not passed to the next rule.
-    assert nq_prioritization.decide(rules, data, False, False) == ('Track only', 'VF Data', 'P5')
-    # The patterns of the operators: VF SM is left out, so the next rule decides.
-    assert nq_prioritization.decide(rules, {**data, 'operator': 'VF SM'}, True, False) == ('Track only', 'Both', '')
-    assert nq_prioritization.decide(rules, {**data, 'operator': 'VF SM'}, True, True) == ('Prioritized', 'Both', 'P3')
+    ]})
+    assert settings['strategy'] == custom and settings['final_lists'][custom] is False
+    steps = nq_prioritization.strategy_steps(custom, settings['steps'][custom])
+    assert [(step['priority'], step['nr_mode'], step['call_type'], step['conditions'], step['joins'], step['queue'], step['operators'])
+            for step in steps if step['list'] == 'campaign'] == [
+        ('P1', 'NSA', 'voice', ['all'], [], 'Voice', ['@focused']), ('P1', 'NSA', 'whatsapp', ['all'], [], 'Voice', ['@focused']),
+        ('P2', 'any', 'data', ['repeated', 'high'], ['or'], 'Data', ['VF']), ('P5', 'any', 'any', ['all'], [], '', ['@focused'])]
+    takes = lambda operators, operator: '@focused' in operators or operator in operators
+    data = strategy_call(kind='data')
+    assert nq_prioritization.strategy_decision(custom, {**data, 'repeated': True}, steps, takes, False)[:4] == (
+        'Prioritized', 'Campaign 3 · Data · Cluster OR High impact', 'P2', 'Data')
+    assert nq_prioritization.strategy_decision(custom, data, steps, takes, False)[:3] == ('Track only', 'Campaign 4 · Tracked', 'P5')
+    # The default rules of the first version give way to the default strategy.
+    assert nq_prioritization.normalize_settings({'rules': nq_prioritization.default_rules()})['strategy'] == nq_prioritization.DEFAULT_STRATEGY
 
 
 def test_settings_are_validated():
     defaults = nq_prioritization.normalize_settings(None)
-    assert [rule['name'] for rule in defaults['rules']] == ['SA Voice', 'SA Data', 'NSA Voice', 'NSA Data']
-    assert (defaults['high_share'], defaults['medium_share'], defaults['min_calls'], defaults['previous_quarters']) == (50, 80, 2, 1)
-    for settings, message in (({'high_share': 60, 'medium_share': 50}, 'above the High share'),
-                              ({'rules': [{'name': 'A'}, {'name': 'a'}]}, 'repeated'),
-                              ({'rules': [{'name': ''}]}, 'needs a name'),
-                              ({'min_calls': 1}, 'goes from 2'),
-                              ({'rules': [{'name': 'A', 'criterion': 'some'}]}, 'Choose the calls')):
+    assert nq_prioritization.STRATEGIES == {'cities_first': 'Dual Queue (Cities first)', 'roads_first': 'Dual Queue (Roads first)',
+                                            'custom': 'Points Lost Based', 'vodafone_proposal': 'Vodafone Proposal'}
+    assert defaults['strategy'] == 'cities_first'
+    assert tuple(defaults[key] for key in ('high_share', 'medium_share', 'min_calls', 'previous_quarters', 'spot_meters', 'hotspot_meters',
+                                           'hotspot_minutes', 'capacity')) == (50, 80, 2, 1, 250, 250, 15, 20)
+    # Points Lost Based and Vodafone Proposal use their list 1 alone; the Dual Queue strategies take list 2 once the Final CDR is scored.
+    assert defaults['final_lists'] == {'cities_first': True, 'roads_first': True, 'custom': False, 'vodafone_proposal': False}
+    assert defaults['excluded_regions'] == ['Vendor B']
+    for settings, message in (({'high_share': 60, 'medium_share': 50}, 'above the High share'), ({'min_calls': 1}, 'goes from 2'),
+                              ({'hotspot_minutes': 0}, 'Hotspot time'), ({'spot_meters': 10}, 'Cluster distance'),
+                              ({'excluded_modes': [{'nr_mode': '5G', 'operator': 'VF'}]}, 'pair out of scope')):
         with pytest.raises(ValueError, match=message):
             nq_prioritization.normalize_settings(settings, strict=True)
-    # Unknown services and NR Modes are left out, the others take their spelling.
-    rule = nq_prioritization.normalize_settings({'rules': [{'name': 'A', 'services': ['VOICE', 'fax'], 'nr_modes': ['sa']}]})['rules'][0]
-    assert (rule['services'], rule['nr_modes']) == (['voice'], ['SA'])
-    # The strategy: Dual Queue (Cities first) by default; settings saved before the strategies keep their own rules.
-    assert defaults['strategy'] == 'cities_first' and nq_prioritization.STRATEGIES['cities_first'] == 'Dual Queue (Cities first)'
+    assert nq_prioritization.normalize_settings({'excluded_modes': [{'nr_mode': 'sa', 'operator': ' Three '}, {'nr_mode': 'SA', 'operator': 'three'}]})[
+        'excluded_modes'] == [{'nr_mode': 'SA', 'operator': 'Three'}]
     assert nq_prioritization.normalize_settings({'high_share': 40})['strategy'] == 'cities_first'
-    assert nq_prioritization.normalize_settings({'rules': [{'name': 'Mine'}]})['strategy'] == 'custom'
     with pytest.raises(ValueError, match='Choose the strategy'):
         nq_prioritization.normalize_settings({'strategy': 'fifo'}, strict=True)
-    # Every field of every step of both strategies: by default its own Priority and the Focused Operators.
+    # Every field of every step of the strategies: by default its own Priority and the Focused Operators.
     steps = nq_prioritization.normalize_settings({'strategy': 'roads_first', 'steps': {'roads_first': {
         'campaign-6': {'priority': 'p2', 'operators': [' VF ', 'Three', 'three']}}}})['steps']
     assert steps['roads_first']['campaign-6'] == {'number': 6, 'priority': 'P2', 'nr_mode': 'NSA', 'call_type': 'voice', 'area': 'any',
                                                   'conditions': ['all'], 'joins': [], 'queue': 'Voice', 'operators': ['VF', 'Three']}
-    assert steps['roads_first']['final-tracked'] == {'number': 10, 'priority': 'P8', 'nr_mode': 'any', 'call_type': 'any', 'area': 'any',
+    assert steps['roads_first']['final-tracked'] == {'number': 11, 'priority': 'P8', 'nr_mode': 'any', 'call_type': 'any', 'area': 'any',
                                                      'conditions': ['all'], 'joins': [], 'queue': '', 'operators': ['@focused']}
     assert (steps['roads_first']['campaign-1']['call_type'], steps['roads_first']['campaign-1']['area']) == ('voice', 'roads')
+    # The Data steps of list 1 of both Dual Queue strategies take the consecutive failures of a cluster.
+    for strategy in ('cities_first', 'roads_first'):
+        assert (steps[strategy]['campaign-2']['conditions'], steps[strategy]['campaign-2']['joins']) == (['consecutive', 'repeated'], ['and'])
+    # Points Lost Based uses list 2 of the Dual Queue strategies as its list 1; Vodafone Proposal takes every SA, then NSA, Voice
+    # and WhatsApp call and the Data calls of a cluster.
+    assert [steps['custom'][key]['priority'] for key in sorted(steps['custom'], key=lambda key: steps['custom'][key]['number'])
+            if key.startswith('campaign-')] == ['P1', 'P2', 'P3', 'P3', 'P4', 'P4', 'P4', 'P5', 'P6', 'P7', 'P8']
+    vodafone = [steps['vodafone_proposal'][key] for key in sorted(steps['vodafone_proposal'], key=lambda key: steps['vodafone_proposal'][key]['number'])
+                if key.startswith('campaign-')]
+    assert [(step['priority'], step['nr_mode'], step['call_type'], step['conditions'], step['queue']) for step in vodafone] == [
+        ('P1', 'SA', 'voice', ['all'], 'Voice'), ('P1', 'SA', 'whatsapp', ['all'], 'Voice'), ('P2', 'SA', 'data', ['repeated'], 'Data'),
+        ('P3', 'NSA', 'voice', ['all'], 'Voice'), ('P3', 'NSA', 'whatsapp', ['all'], 'Voice'), ('P4', 'NSA', 'data', ['repeated'], 'Data'),
+        ('P5', 'any', 'any', ['all'], '')]
     # A Call Type of the first version of the steps (Voice · Cities) gives its type and area apart.
     legacy = nq_prioritization.normalize_steps({'cities_first': {'campaign-3': {'call_type': 'voice_cities'}}}, strict=True)
     assert (legacy['cities_first']['campaign-3']['call_type'], legacy['cities_first']['campaign-3']['area']) == ('voice', 'city')
-    assert (steps['cities_first']['campaign-2']['conditions'], steps['cities_first']['campaign-2']['joins']) == (['consecutive', 'cluster'], ['or'])
-    assert steps['roads_first']['campaign-2']['conditions'] == ['cluster']
+    # Biggest impact, a condition of the first steps, is the High impact now.
+    assert nq_prioritization.normalize_steps({'cities_first': {'final-1': {'conditions': ['biggest']}}})['cities_first']['final-1'][
+        'conditions'] == ['high']
     # The conditions keep the order chosen with the operator before each one (OR when not given, as the steps saved before
     # the operators), and Every call stands alone.
     chosen = nq_prioritization.normalize_steps({'cities_first': {
         'final-2': {'conditions': ['repeated', 'high', 'consecutive'], 'joins': ['AND']}, 'final-1': {'conditions': ['high', 'all'], 'joins': ['and']},
-        'final-7': {'conditions': ['high', 'repeated']}}}, strict=True)['cities_first']
+        'final-8': {'conditions': ['high', 'repeated']}}}, strict=True)['cities_first']
     assert (chosen['final-2']['conditions'], chosen['final-2']['joins']) == (['repeated', 'high', 'consecutive'], ['and', 'or'])
     assert (chosen['final-1']['conditions'], chosen['final-1']['joins']) == (['all'], [])
-    assert chosen['final-7']['joins'] == ['or']
+    assert chosen['final-8']['joins'] == ['or']
     for step, message in (({'nr_mode': '5G'}, 'NR Mode'), ({'call_type': 'video'}, 'Call Type'), ({'area': 'rural'}, 'Area'),
                           ({'queue': 'Ping'}, 'queue'), ({'conditions': ['cluster', 'consecutive'], 'joins': ['xor']}, 'AND or OR'),
                           ({'conditions': ['fast']}, 'conditions'), ({'number': 21}, 'from 1 to 20')):
@@ -108,6 +127,12 @@ def test_settings_are_validated():
     # Focused Operators stands alone.
     assert nq_prioritization.normalize_steps({'cities_first': {'campaign-1': {'operators': ['VF', '@focused']}}})[
         'cities_first']['campaign-1']['operators'] == ['@focused']
+    # A list saved exactly as the former default steps takes the current ones (every Save keeps every step).
+    former = {f'final-{"tracked" if index == 10 else index}': {'priority': row[0], 'nr_mode': row[1], 'call_type': row[2], 'area': row[3],
+                                                               'conditions': list(row[4]),
+                                                               'joins': nq_prioritization.joins_of(list(row[4]), None), 'queue': row[5]}
+              for index, row in enumerate(nq_prioritization._former_rows('cities_first', 'final')[0], start=1)}
+    assert nq_prioritization.normalize_steps({'cities_first': former})['cities_first']['final-tracked']['number'] == 11
 
 
 def test_the_steps_take_the_focus_operators_by_name_the_sa_steps_those_with_sa():
@@ -141,8 +166,10 @@ def test_the_steps_take_the_focus_operators_by_name_the_sa_steps_those_with_sa()
     assert operators == {'SA': ['VF'], 'NSA': ['VF', 'Three'], 'any': ['VF', 'Three']}
     steps = nq_prioritization.normalize_settings({}, operators=operators)['steps']
     for strategy in ('cities_first', 'roads_first'):
-        assert {key: step['operators'] for key, step in steps[strategy].items() if key in {'campaign-1', 'campaign-5', 'campaign-tracked', 'final-4', 'final-7'}} == {
-            'campaign-1': ['VF'], 'campaign-5': ['VF', 'Three'], 'campaign-tracked': ['VF', 'Three'], 'final-4': ['VF'], 'final-7': ['VF', 'Three']}
+        assert {key: step['operators'] for key, step in steps[strategy].items()
+                if key in {'campaign-1', 'campaign-5', 'campaign-tracked', 'final-4', 'final-7', 'final-8', 'final-tracked'}} == {
+            'campaign-1': ['VF'], 'campaign-5': ['VF', 'Three'], 'campaign-tracked': ['VF', 'Three'], 'final-4': ['VF'], 'final-7': ['VF'],
+            'final-8': ['VF', 'Three'], 'final-tracked': ['VF', 'Three']}
     # A Three call of an SA campaign takes its NSA step, as the SA steps take VF only.
     takes = lambda chosen, operator: operator in chosen
     decided = nq_prioritization.strategy_decision('cities_first', strategy_call(operator='Three'),
@@ -153,42 +180,50 @@ def test_the_steps_take_the_focus_operators_by_name_the_sa_steps_those_with_sa()
 
 
 def test_every_call_type_takes_every_condition():
-    # Hotspots, consecutive failures, drops and setup failures are conditions of every call type, during the campaign too.
+    # Clusters, hotspots, consecutive failures, the impact levels, drops and setup failures are conditions of every call type
+    # and both lists.
     assert set(nq_prioritization.CAMPAIGN_CONDITIONS) == set(nq_prioritization.FINAL_CONDITIONS) == {
-        'all', 'consecutive', 'cluster', 'repeated', 'biggest', 'high', 'medium', 'low', 'drop', 'setup'}
-    assert nq_prioritization.CONDITION_LABELS['cluster'] == 'Hotspots'
+        'all', 'consecutive', 'repeated', 'cluster', 'high', 'medium', 'low', 'drop', 'setup'}
+    assert (nq_prioritization.CONDITION_LABELS['repeated'], nq_prioritization.CONDITION_LABELS['cluster']) == ('Cluster', 'Hotspots')
     holds = nq_prioritization.condition_holds
-    voice = {'kind': 'voice', 'cluster_size': 2, 'consecutive': 'Yes', 'result': 'Dropped', 'biggest': False}
+    voice = {'kind': 'voice', 'cluster_size': 2, 'consecutive': 'Yes', 'result': 'Dropped', 'repeated': True, 'level': 'Medium'}
     assert holds(['cluster'], voice) and holds(['consecutive'], voice) and holds(['drop'], voice) and not holds(['setup'], voice)
-    assert holds(['drop'], {'result': 'Cutoff'}) and holds(['setup'], {'result': 'Failed'}) and not holds(['biggest'], voice)
-    # Biggest impact: the first High share of the points of each campaign, operator and call type (the Expected Gain until
-    # the Final CDR is scored, then their own points).
-    def row(key, points, final=0, expected=None, operator='VF', service='voice', test=''):
-        return {'call_key': key, 'impact_points': points, 'expected_points': expected, 'final_list': final, 'campaign_key': 'q3',
-                'operator': operator, 'service': service, 'test_name': test, 'session_type': ''}
-    rows = [row('a', 9, expected=6), row('b', 0, expected=3), row('c', 0, expected=1), row('d', 5, final=1), row('e', 1, final=1),
-            row('f', 0, expected=2, service='data', test='HTTP DL')]
-    # q3 VF Voice is one Pareto of 6 + 5 + 3 + 1 + 1 points (a, b and c by their Expected Gain, d and e, in list 2, by their own
-    # points): a and d make up its first half; f is alone in VF Data.
-    assert nq_prioritization.biggest_impact(rows, 50) == {'a', 'd', 'f'}
+    assert holds(['repeated'], voice) and holds(['medium'], voice) and not holds(['high'], voice) and not holds(['low'], voice)
+    assert holds(['drop'], {'result': 'Cutoff'}) and holds(['setup'], {'result': 'Failed'}) and holds(['low'], {'level': ''})
+    # The impact levels the conditions read: a Pareto of the Expected Gain of each campaign, operator and service, the calls in
+    # scope compared only with each other (a call out of scope never moves their levels), the Excluded Calls without level.
+    def row(key, points, region='Vendor A', state='scored', service='voice'):
+        return {'call_key': key, 'campaign_key': 'SA|2026-q3', 'operator': 'VF', 'service': service, 'region': region, 'nr_mode': 'SA',
+                'impact_state': state, 'expected_points': points}
+    rows = [row('a', 6), row('b', 3), row('c', 1), row('far', 10, region='Vendor B'), row('x', 9, state='excluded'), row('d', 2, service='data')]
+    assert nq_prioritization.expected_levels(rows, 50, 80) == {'far': 'High', 'a': 'Medium', 'b': 'Low', 'c': 'Low', 'd': 'High'}
+    out = lambda item: item['region'] == 'Vendor B'
+    assert nq_prioritization.expected_levels(rows, 50, 80, out) == {'a': 'High', 'b': 'Medium', 'c': 'Low', 'far': 'High', 'd': 'High'}
+    # The Scoring Impact of the calls follows the same groups.
+    scored = [{**item, 'impact_points': item['expected_points']} for item in rows]
+    assert nq_prioritization.scored_levels(scored, 50, 80, out) == {'a': 'High', 'b': 'Medium', 'c': 'Low', 'far': 'High', 'd': 'High'}
 
 
-def test_the_calls_out_of_scope_stay_out_of_the_queues(strategized):
-    # The calls of the regions out of the scope of the team, and those of the SA campaigns of an operator without SA.
-    assert nq_prioritization.out_of_scope('Vendor B', 'NSA', 'VF', {'vendor b'}, {'vf'}) == 'Out of scope · Vendor B'
-    assert nq_prioritization.out_of_scope('Vendor A', 'SA', 'Three', set(), {'vf'}) == 'Out of scope · SA campaign of an operator without SA'
-    assert nq_prioritization.out_of_scope('Vendor A', 'SA', 'VF', set(), {'vf'}) == ''
-    # Without the technology of the calls, every operator uses SA.
-    assert nq_prioritization.out_of_scope('', 'SA', 'Three', set(), None) == ''
+def test_the_calls_out_of_scope_stay_out_of_the_queues(strategized, monkeypatch):
+    # The calls of the regions out of the scope of the team, those of the NR Mode · operator pairs chosen (SA · Three) and,
+    # always, those of the operators that are not Focus operators of the Operator Maps.
+    settings = {**nq_prioritization.default_settings(), 'excluded_regions': ['Vendor B'], 'excluded_modes': [{'nr_mode': 'SA', 'operator': 'Three'}]}
+    scope = nq_prioritization.scope_of(core.repository, settings)
+    assert scope('Vendor B', 'NSA', 'VF') == ('Out of scope · Vendor B', 'region')
+    assert scope('Vendor A', 'SA', 'Three') == ('Out of scope · SA · Three', 'mode')
+    assert scope('Vendor A', 'NSA', 'Three') == scope('Vendor A', 'SA', 'VF') == ('', '')
+    with monkeypatch.context() as patch:
+        patch.setattr(nq_prioritization, 'focus_names', lambda repository: {'vf', 'three'})
+        assert nq_prioritization.scope_of(core.repository, settings)('Vendor A', 'NSA', 'EE') == ('Out of scope · NSA · EE', 'operator')
     assert nq_prioritization.strategy_decision('cities_first', {**strategy_call(), 'scope': 'Out of scope · Vendor B'}) == (
         'No rule', 'Out of scope · Vendor B', '', '', None, '')
     client = strategized['client']
-    # A third of the calls in a region out of scope.
+    # A third of the calls in a region, first in scope, then out of it.
     region = 'Vendor B'
     with core.repository.connection() as connection:
         connection.execute(f"UPDATE {nq.NQ_CALL_LATEST_TABLE} SET region = CASE WHEN rowid % 3 = 0 THEN ? ELSE 'Vendor A' END", (region,))
     assert nq_prioritization.region_choices(core.repository) == ['Vendor A', 'Vendor B']
-    settings = nq_prioritization.load_settings(core.repository)
+    settings = nq_prioritization.save_settings(core.repository, {**nq_prioritization.load_settings(core.repository), 'excluded_regions': []}, 'super')
     response = client.put('/api/non-qualified-calls/prioritization/settings', json={'settings': {**settings, 'excluded_regions': [region]}})
     assert response.status_code == 200, response.text
     with core.repository.connection() as connection:
@@ -200,7 +235,11 @@ def test_the_calls_out_of_scope_stay_out_of_the_queues(strategized):
     panel = nq_prioritization.panel(core.repository, {}, 'super')
     assert next(entry for entry in panel['rules'] if entry['name'] == 'Out of scope')['calls'] == len(out)
     log = next(row for row in core.repository.list_logs(limit=50) if row['action'] == 'nq_prioritization_settings')
-    assert 'excluded_regions' in json.loads(log['details'])['changed']
+    details = json.loads(log['details'])
+    assert 'excluded_regions' in details['changed'] and details['excluded_regions'] == [region]
+    # The #Calls of the steps leave them out too.
+    counts = nq_prioritization.step_counts(core.repository, nq_prioritization.load_settings(core.repository))
+    assert counts['out_of_scope'] and counts['scope']['regions'][0][0] == region
 
 
 def test_the_operators_of_a_step_take_the_names_of_their_labels_and_the_focus_operators(client):
@@ -230,15 +269,14 @@ def test_strategies_give_each_call_its_step_queue_and_priority():
     assert decide(cities, strategy_call(kind='whatsapp', area='roads'))[2:5] == ('P4', 'Voice', 4)
     assert decide(cities, strategy_call(nr_mode='NSA'))[2:5] == ('P6', 'Voice', 6)
     assert decide(cities, strategy_call(nr_mode='NSA', kind='whatsapp'))[2:5] == ('P7', 'Voice', 7)
-    # Data: the clusters go to the Data queue; Cities first takes only their consecutive failures.
-    cluster = strategy_call(kind='data', cluster_size=3, consecutive='No')
-    assert decide(roads, cluster)[1:5] == ('Campaign 2 · SA Data · Hotspots', 'P2', 'Data', 2)
-    assert decide(cities, cluster)[1:5] == ('Campaign 2 · SA Data · Consecutive failures OR Hotspots', 'P2', 'Data', 2)
-    # A step takes the calls that meet any of its conditions: Cities first also takes a consecutive failure out of a cluster.
+    # Data, in both strategies: the consecutive failures of a cluster go to the Data queue, the other failures are tracked.
+    cluster = strategy_call(kind='data', repeated=True, consecutive='Yes')
+    for strategy in (cities, roads):
+        assert decide(strategy, cluster)[1:5] == ('Campaign 2 · SA Data · Consecutive failures AND Cluster', 'P2', 'Data', 2)
+        assert decide(strategy, {**cluster, 'consecutive': 'No'})[:4] == ('Track only', 'Campaign 8 · Tracked', 'P8', '')
+        assert decide(strategy, {**cluster, 'repeated': False})[:3] == ('Track only', 'Campaign 8 · Tracked', 'P8')
+        assert decide(strategy, {**cluster, 'nr_mode': 'NSA'})[2:5] == ('P5', 'Data', 5)
     single = strategy_call(kind='data', cluster_size=1)
-    assert decide(cities, {**single, 'consecutive': 'Yes'})[2:5] == ('P2', 'Data', 2)
-    assert decide(roads, {**single, 'consecutive': 'Yes'})[:4] == ('Track only', 'Campaign 8 · Tracked', 'P8', '')
-    assert decide(cities, {**cluster, 'nr_mode': 'NSA'})[2:5] == ('P5', 'Data', 5)
     for call in (single, strategy_call(kind='ping', cluster_size=4), strategy_call(excluded=True)):
         assert decide(roads, call)[:3] == ('Track only', 'Campaign 8 · Tracked', 'P8')
     # The operators of the steps: Three has no SA, so its SA calls take the NSA steps; an operator of no step is out of the
@@ -253,7 +291,7 @@ def test_strategies_give_each_call_its_step_queue_and_priority():
     assert decide(cities, strategy_call(operator='Three', kind='ping'), steps, takes)[:3] == ('Track only', 'Campaign 8 · Tracked', 'P8')
     assert decide(cities, strategy_call(operator='EE'), steps, takes) == ('No rule', '', '', '', None, '')
     assert decide(cities, strategy_call(), steps, takes)[2] == 'P1'
-    # Every field of a step changes what it takes: every data failure, only the repeated ones once the Final CDR is scored,
+    # Every field of a step changes what it takes: every data failure, only those of a cluster once the Final CDR is scored,
     # another NR Mode, Call Type or queue, and its step orders it inside its Priority.
     chosen = nq_prioritization.normalize_steps({'cities_first': {
         'campaign-2': {'conditions': ['all']}, 'final-2': {'conditions': ['repeated']},
@@ -262,28 +300,29 @@ def test_strategies_give_each_call_its_step_queue_and_priority():
         'final-6': {'area': 'roads'}}})['cities_first']
     steps = nq_prioritization.strategy_steps(cities, chosen)
     assert decide(cities, single, steps)[1:3] == ('Campaign 2 · SA Data', 'P2')
-    assert decide(cities, {**single, 'final': True, 'level': 'High'}, steps)[:3] == ('Track only', 'Final 10 · Tracked', 'P8')
-    assert decide(cities, {**single, 'final': True, 'repeated': True}, steps)[1] == 'Final 2 · SA Data · Repeated'
+    assert decide(cities, {**single, 'final': True, 'level': 'High'}, steps)[:3] == ('Track only', 'Final 11 · Tracked', 'P8')
+    assert decide(cities, {**single, 'final': True, 'repeated': True}, steps)[1] == 'Final 2 · SA Data · Cluster'
     assert decide(cities, strategy_call(kind='whatsapp'), steps)[:5] == ('Track only', 'Campaign 3 · Tracked · NSA WhatsApp', 'P4', '', 3)
     assert decide(cities, {**single, 'nr_mode': 'NSA', 'consecutive': 'Yes'}, steps)[1:5] == (
         'Campaign 5 · Data · Consecutive failures', 'P5', 'Voice', 5)
-    # The Area of a step takes the calls of any type that failed there: a low impact WhatsApp call in a city is no longer
+    # The Area of a step takes the calls of any type that failed there: a medium impact WhatsApp call in a city is no longer
     # taken by step 6 of list 2, which takes those on Connecting Roads, and is tracked.
-    whatsapp = strategy_call(kind='whatsapp', final=True)
-    assert decide(cities, {**whatsapp, 'area': 'roads'}, steps)[1:5] == ('Final 6 · SA WhatsApp · Connecting Roads · Low impact', 'P4', 'Voice', 6)
-    assert decide(cities, whatsapp, steps)[1:5] == ('Final 10 · Tracked', 'P8', '', 10)
-    # AND and OR mix, AND first: the consecutive failures of a cluster during the campaign; once the Final CDR is scored, the
-    # data failures with a High impact and a Repeated Issue, or consecutive.
+    whatsapp = strategy_call(kind='whatsapp', final=True, level='Medium')
+    assert decide(cities, {**whatsapp, 'area': 'roads'}, steps)[1:5] == ('Final 6 · SA WhatsApp · Connecting Roads · Medium impact', 'P4', 'Voice', 6)
+    assert decide(cities, whatsapp, steps)[1:5] == ('Final 11 · Tracked', 'P8', '', 11)
+    # AND and OR mix, AND first: the consecutive failures of a hotspot during the campaign; once the Final CDR is scored, the
+    # data failures with a High impact and of a cluster, or consecutive.
     chosen = nq_prioritization.normalize_steps({'cities_first': {
         'campaign-2': {'conditions': ['consecutive', 'cluster'], 'joins': ['and']},
         'final-2': {'conditions': ['high', 'repeated', 'consecutive'], 'joins': ['and', 'or']}}})['cities_first']
     steps = nq_prioritization.strategy_steps(cities, chosen)
-    assert decide(cities, cluster, steps)[1:3] == ('Campaign 8 · Tracked', 'P8')
-    assert decide(cities, {**cluster, 'consecutive': 'Yes'}, steps)[1:3] == ('Campaign 2 · SA Data · Consecutive failures AND Hotspots', 'P2')
+    hotspot = strategy_call(kind='data', cluster_size=3, consecutive='No')
+    assert decide(cities, hotspot, steps)[1:3] == ('Campaign 8 · Tracked', 'P8')
+    assert decide(cities, {**hotspot, 'consecutive': 'Yes'}, steps)[1:3] == ('Campaign 2 · SA Data · Consecutive failures AND Hotspots', 'P2')
     assert decide(cities, {**single, 'consecutive': 'Yes'}, steps)[2] == 'P8'
     high_data = {**single, 'final': True, 'level': 'High'}
     assert decide(cities, high_data, steps)[2] == 'P8'
-    assert decide(cities, {**high_data, 'repeated': True}, steps)[1:3] == ('Final 2 · SA Data · High impact AND Repeated OR Consecutive failures', 'P2')
+    assert decide(cities, {**high_data, 'repeated': True}, steps)[1:3] == ('Final 2 · SA Data · High impact AND Cluster OR Consecutive failures', 'P2')
     assert decide(cities, {**single, 'final': True, 'consecutive': 'Yes'}, steps)[2] == 'P2'
     # AND ( and OR ( start a group: one level of parentheses, AND first inside each group and between the groups.
     chosen = nq_prioritization.normalize_steps({'cities_first': {
@@ -292,24 +331,37 @@ def test_strategies_give_each_call_its_step_queue_and_priority():
     steps = nq_prioritization.strategy_steps(cities, chosen)
     voice = strategy_call(final=True)
     assert decide(cities, {**voice, 'level': 'Medium', 'repeated': True}, steps)[1:3] == (
-        'Final 1 · SA Voice · (High impact OR Medium impact) AND Repeated', 'P1')
+        'Final 1 · SA Voice · (High impact OR Medium impact) AND Cluster', 'P1')
     assert decide(cities, {**voice, 'level': 'High'}, steps)[2] != 'P1'
     data = {**single, 'final': True, 'consecutive': 'Yes'}
-    assert decide(cities, {**data, 'repeated': True}, steps)[1:3] == ('Final 2 · SA Data · Consecutive failures AND (High impact OR Repeated)', 'P2')
+    assert decide(cities, {**data, 'repeated': True}, steps)[1:3] == ('Final 2 · SA Data · Consecutive failures AND (High impact OR Cluster)', 'P2')
     assert decide(cities, data, steps)[2] != 'P2'
     assert nq_prioritization.step_conditions_text(['consecutive', 'cluster', 'high', 'repeated'], ['or', 'and_group', 'or']) == (
-        '(Consecutive failures OR Hotspots) AND (High impact OR Repeated)')
-    # List 2, once the Final CDR of the campaign is scored: the same in both strategies, by real impact.
+        '(Consecutive failures OR Hotspots) AND (High impact OR Cluster)')
+    # List 2, once the Final CDR of the campaign is scored: the same in both strategies, by the impact levels.
     final = strategy_call(final=True)
     for strategy in (cities, roads):
         assert decide(strategy, {**final, 'level': 'High'})[1:6] == ('Final 1 · SA Voice · High impact', 'P1', 'Voice', 1, 'final')
-        assert decide(strategy, {**final, 'kind': 'data', 'repeated': True})[2:5] == ('P2', 'Data', 2)
+        assert decide(strategy, {**final, 'kind': 'data', 'level': 'High'})[2:5] == ('P2', 'Data', 2)
         assert decide(strategy, {**final, 'level': 'Medium'})[2:5] == ('P3', 'Voice', 3)
         assert decide(strategy, final)[2:5] == ('P3', 'Voice', 4)
-        assert decide(strategy, {**final, 'kind': 'whatsapp', 'level': 'Medium'})[2:5] == ('P4', 'Voice', 5)
-        assert decide(strategy, {**final, 'nr_mode': 'NSA', 'kind': 'data', 'level': 'High'})[2:5] == ('P5', 'Data', 7)
-        assert decide(strategy, {**final, 'nr_mode': 'NSA'})[2:5] == ('P6', 'Voice', 8)
-        assert decide(strategy, {**final, 'kind': 'data'})[:3] == ('Track only', 'Final 10 · Tracked', 'P8')
+        assert [decide(strategy, {**final, 'kind': 'whatsapp', 'level': level})[2:5] for level in ('High', 'Medium', 'Low')] == [
+            ('P4', 'Voice', 5), ('P4', 'Voice', 6), ('P4', 'Voice', 7)]
+        assert decide(strategy, {**final, 'nr_mode': 'NSA', 'kind': 'data', 'level': 'High'})[2:5] == ('P5', 'Data', 8)
+        assert decide(strategy, {**final, 'nr_mode': 'NSA'})[2:5] == ('P6', 'Voice', 9)
+        assert decide(strategy, {**final, 'nr_mode': 'NSA', 'kind': 'whatsapp'})[2:5] == ('P7', 'Voice', 10)
+        assert decide(strategy, {**final, 'kind': 'data', 'repeated': True})[:3] == ('Track only', 'Final 11 · Tracked', 'P8')
+    # Points Lost Based uses list 2 as its only list, also once the Final CDR is scored; Vodafone Proposal takes every SA, then
+    # NSA, Voice and WhatsApp call and the Data calls of a cluster, and tracks the others with P5.
+    custom, vodafone = nq_prioritization.CUSTOM, nq_prioritization.VODAFONE_PROPOSAL
+    assert decide(custom, {**final, 'level': 'High'}, final_list=False)[1:6] == ('Campaign 1 · SA Voice · High impact', 'P1', 'Voice', 1, 'campaign')
+    assert decide(custom, {**final, 'nr_mode': 'NSA', 'kind': 'data', 'level': 'High'}, final_list=False)[2:5] == ('P5', 'Data', 8)
+    assert decide(vodafone, final, final_list=False)[1:6] == ('Campaign 1 · SA Voice', 'P1', 'Voice', 1, 'campaign')
+    assert decide(vodafone, strategy_call(kind='whatsapp'))[2:5] == ('P1', 'Voice', 2)
+    assert decide(vodafone, {**single, 'repeated': True})[1:5] == ('Campaign 3 · SA Data · Cluster', 'P2', 'Data', 3)
+    assert decide(vodafone, strategy_call(nr_mode='NSA', kind='whatsapp'))[2:5] == ('P3', 'Voice', 5)
+    assert decide(vodafone, {**single, 'nr_mode': 'NSA', 'repeated': True})[2:5] == ('P4', 'Data', 6)
+    assert decide(vodafone, single)[:3] == ('Track only', 'Campaign 7 · Tracked', 'P5')
 
 
 def test_data_clusters_chain_the_failures_of_a_drive():
@@ -531,43 +583,46 @@ def test_every_call_holds_its_share_of_the_points_its_kpis_lose(prioritized):
         assert all(points == 0 for points in group.get('No impact', []))
 
 
-def test_rules_prioritize_the_calls_and_fill_their_priority_until_it_is_chosen_by_hand(prioritized):
+def test_steps_prioritize_the_calls_and_fill_their_priority_until_it_is_chosen_by_hand(prioritized):
+    # Points Lost Based: its only list orders every call, also those of a campaign with its Final CDR, by its impact level.
     rows = priority_rows()
-    sa_voice = [row for row in rows.values() if row['nr_mode'] == 'SA' and row['service'] in {'voice', 'speech'}]
-    assert sa_voice and {(row['prioritization'], row['priority_rule'], row['suggested_priority']) for row in sa_voice} == {
-        ('Prioritized', 'SA Voice', 'P1')}
+    steps = {step['rule']: step for step in nq_prioritization.strategy_steps(nq_prioritization.CUSTOM) if step['list'] == 'campaign'}
+    prioritized_rows = [row for row in rows.values() if row['prioritization'] == 'Prioritized']
+    assert prioritized_rows and {row['queue_list'] for row in prioritized_rows} == {'campaign'}
+    for row in prioritized_rows:
+        step = steps[row['priority_rule']]
+        assert (row['suggested_priority'], row['queue'], row['queue_step']) == (step['priority'], step['queue'], step['number'])
     nsa_data = [row for row in rows.values() if row['nr_mode'] == 'NSA' and row['service'] == 'data']
-    for row in nsa_data:
-        expected = 'Prioritized' if row['repeated'] == 'Yes' or row['impact_level'] == 'High' else 'Track only'
-        assert (row['prioritization'], row['priority_rule']) == (expected, 'NSA Data')
-        assert row['suggested_priority'] == ('P4' if expected == 'Prioritized' else 'P5')
-    # The Priority of every open call is the one of its rule, recorded in its history.
+    assert nsa_data and {row['priority_rule'] for row in nsa_data} <= {'Campaign 8 · NSA Data · High impact', 'Campaign 11 · Tracked'}
+    sa_voice = [row for row in rows.values() if row['priority_rule'] == 'Campaign 1 · SA Voice · High impact']
+    assert sa_voice and {row['suggested_priority'] for row in sa_voice} == {'P1'}
+    # The Priority of every open call is the one of its step, recorded in its history.
     key = sa_voice[0]['call_key']
     with core.repository.connection() as connection:
         values = dict(connection.execute("SELECT call_key, value FROM nq_analysis_field_values WHERE field_key = 'priority'").fetchall())
         history = connection.execute("SELECT new_value, changed_by FROM nq_call_history WHERE call_key = ? AND field = 'field:priority'",
                                      (key,)).fetchall()
-    assert len(values) == len(rows) and values[key] == 'P1'
+    assert values[key] == 'P1' and len(values) == sum(1 for row in rows.values() if row['suggested_priority'])
     assert [tuple(row) for row in history] == [('P1', 'system')]
-    # Chosen by hand: the rules keep it, also when they change.
+    # Chosen by hand: the steps keep it, also when they change.
     client = prioritized['client']
     call = client.get(f'/api/non-qualified-calls/calls/{key}').json()
     response = client.patch(f'/api/non-qualified-calls/calls/{key}', json={'changes': {'fields': {'priority': 'P3'}},
                                                                            'version': call['call']['version']})
     assert response.status_code == 200, response.text
     settings = nq_prioritization.load_settings(core.repository)
-    settings['rules'][0]['priority'] = 'P2'
+    settings['steps']['custom']['campaign-1']['priority'] = 'P2'
     response = client.put('/api/non-qualified-calls/prioritization/settings', json={'settings': settings})
     assert response.status_code == 200, response.text
     with core.repository.connection() as connection:
         values = dict(connection.execute("SELECT call_key, value FROM nq_analysis_field_values WHERE field_key = 'priority'").fetchall())
     assert values[key] == 'P3'
-    assert {values[row['call_key']] for row in sa_voice if row['call_key'] != key} == {'P2'}
+    assert {values[row['call_key']] for row in sa_voice if row['call_key'] != key} <= {'P2'}
     assert priority_rows()[key]['priority_filled'] == nq_prioritization.BY_HAND
-    # A priority the Priority field does not have is refused.
-    settings['rules'][0]['priority'] = 'Urgent'
+    # A step takes a Priority from P1 to P8.
+    settings['steps']['custom']['campaign-1']['priority'] = 'P9'
     response = client.put('/api/non-qualified-calls/prioritization/settings', json={'settings': settings})
-    assert response.status_code == 400 and 'not a value of the Priority field' in response.json()['detail']
+    assert response.status_code == 400 and 'from P1 to P8' in response.json()['detail']
 
 
 def test_repeated_issues_count_every_service_and_nr_mode_of_the_operator(prioritized):
@@ -590,18 +645,29 @@ def test_repeated_issues_count_every_service_and_nr_mode_of_the_operator(priorit
 def test_panel_filters_and_exports_show_the_prioritization(prioritized):
     from pptx import Presentation
 
+    from src.modules import non_qualified_calls_export
+
     client = prioritized['client']
     panel = client.post('/api/non-qualified-calls/prioritization', json={'filters': {}}).json()
     rows = priority_rows()
     assert panel['totals']['calls'] == len(rows)
     assert panel['totals']['prioritized'] == sum(row['prioritization'] == 'Prioritized' for row in rows.values())
-    assert [rule['name'] for rule in panel['rules']] == ['SA Voice', 'SA Data', 'NSA Voice', 'NSA Data']
-    assert panel['queue'] and len(panel['queue']) <= 20 and panel['queue'][0]['rule'] == 'SA Voice'
+    # Points Lost Based has one list: its steps, then the calls out of scope, each with its fields and its calls.
+    steps = [step for step in nq_prioritization.strategy_steps(nq_prioritization.CUSTOM) if step['list'] == 'campaign']
+    assert [rule['name'] for rule in panel['rules'][:len(steps)]] == [step['rule'] for step in steps]
+    first = panel['rules'][0]
+    assert (first['kind'], first['number'], first['list'], first['priority'], first['nr_mode'], first['call_type'], first['condition'],
+            first['queue']) == ('step', 1, 'campaign', 'P1', 'SA', 'Voice', 'High impact', 'Voice')
+    assert all(rule['waiting'] <= rule['open'] <= rule['calls'] for rule in panel['rules'])
+    assert panel['rules'][len(steps)]['kind'] == 'out_of_scope'
+    assert [item['name'] for item in panel['queues']] == ['Voice', 'Data'] and not panel['queue']
+    voice = panel['queues'][0]
+    assert voice['rows'] and len(voice['rows']) <= 20 and voice['rows'][0]['rule'] in {step['rule'] for step in steps}
     assert panel['issues'] and panel['kpis']
     # Its values are fields of the calls: columns, filters and breakdowns of the Summary.
     fields = {field['source_ref']: field for field in nq.list_fields(core.repository) if field['source'] == 'priority'}
     assert set(fields) == set(nq_catalog.PRIORITY_REFS)
-    assert [option['name'] for option in fields['priority_rule']['options']] == ['SA Voice', 'SA Data', 'NSA Voice', 'NSA Data']
+    assert [option['name'] for option in fields['priority_rule']['options']] == nq_prioritization.rule_names(core.repository)
     filtered = client.post('/api/non-qualified-calls/calls', json={
         'filters': {'fields': {fields['prioritization']['key']: ['Track only']}}, 'page_size': 100}).json()
     assert filtered['total'] == panel['totals']['tracked']
@@ -615,10 +681,18 @@ def test_panel_filters_and_exports_show_the_prioritization(prioritized):
     issue = panel['issues'][0]
     place = client.post('/api/non-qualified-calls/calls', json={'filters': {'place': [f"{issue['operator']}||{issue['place']}"]}}).json()
     assert place['total'] == issue['calls']
-    # In the PowerPoint, each table on its slides.
+    # The exports follow the order of the page: the queues, the steps (a table per list, then the calls outside the lists),
+    # the KPIs and the repeated issues.
+    tables = non_qualified_calls_export.prioritization_tables(panel)
+    order = [component for component, *_rest in tables]
+    assert order.index('queue') < order.index('rules') < order.index('kpis') < order.index('issues')
+    subtitles = [subtitle for component, subtitle, *_rest in tables if component == 'rules']
+    assert subtitles == ['Points Lost Based · List 1 · Weekly & Final CDRs', 'Points Lost Based · Outside the lists']
+    columns = next(columns for component, _subtitle, columns, *_rest in tables if component == 'rules')
+    assert columns == ['Priority', 'Step', 'NR Mode', 'Operators', 'Call Type', 'Area', 'Condition', 'Calls', 'Open', 'Waiting', 'Points lost', 'Queue']
     deck = client.post('/api/non-qualified-calls/export/powerpoint', json={'filters': {}})
     titles = [slide.shapes.title.text_frame.text for slide in Presentation(io.BytesIO(deck.content)).slides if slide.shapes.title is not None]
-    assert any(title.startswith('NQ Prioritization') for title in titles)
+    assert any(title.startswith('NQ Prioritization & Queues') for title in titles)
 
 
 def test_excluded_calls_lose_no_points(prioritized):
@@ -656,21 +730,28 @@ def test_only_admins_change_the_rules_and_editors_recalculate(prioritized):
     assert client.put('/api/non-qualified-calls/prioritization/settings', json={'settings': settings}).status_code == 403
     response = client.post('/api/non-qualified-calls/prioritization/recalculate')
     assert response.status_code == 200, response.text
-    assert client.get('/api/non-qualified-calls/prioritization/settings').json()['settings']['rules'][0]['name'] == 'SA Voice'
+    assert client.get('/api/non-qualified-calls/prioritization/settings').json()['settings']['strategy'] == nq_prioritization.CUSTOM
     assert 'nq_prioritization_recalculate' in [row['action'] for row in core.repository.list_logs(limit=50)]
+    # For now EDANREC changes the Prioritization Rules too, without being an admin.
+    workspace_user('EDANREC', 'user-editor')
+    login(client, 'EDANREC', 'EDANREC123')
+    assert client.put('/api/non-qualified-calls/prioritization/settings', json={'settings': settings}).status_code == 200
 
 
-def test_rules_travel_with_the_configuration(prioritized):
+def test_strategies_travel_with_the_configuration(prioritized):
     settings = nq_prioritization.load_settings(core.repository)
-    settings['rules'] = settings['rules'][:2]
-    settings['high_share'] = 40
+    settings['steps']['custom']['campaign-1']['priority'] = 'P2'
+    settings.update(high_share=40, strategy=nq_prioritization.VODAFONE_PROPOSAL, strategy_names={'custom': 'Impact first'},
+                    excluded_modes=[{'nr_mode': 'SA', 'operator': 'Three'}])
     nq_prioritization.save_settings(core.repository, settings, 'super')
     document = nq.export_configuration_document(core.repository)
     assert json.loads(document)['prioritization']['high_share'] == 40
     core.repository.set_workspace_state(nq_prioritization.SETTINGS_STATE_KEY, json.dumps(nq_prioritization.default_settings()))
     nq.import_configuration_document(core.repository, document)
     restored = nq_prioritization.load_settings(core.repository)
-    assert [rule['name'] for rule in restored['rules']] == ['SA Voice', 'SA Data'] and restored['high_share'] == 40
+    assert (restored['high_share'], restored['strategy'], restored['strategy_names'], restored['excluded_modes']) == (
+        40, nq_prioritization.VODAFONE_PROPOSAL, {'custom': 'Impact first'}, [{'nr_mode': 'SA', 'operator': 'Three'}])
+    assert restored['steps']['custom']['campaign-1']['priority'] == 'P2'
 
 
 def test_workspaces_of_earlier_versions_get_the_tables_and_fields(client, tmp_path):
@@ -696,13 +777,15 @@ def test_workspaces_of_earlier_versions_get_the_strategy_fields_and_priorities(c
     nq.ensure_nq_tables(core.repository)
     fields = [field for field in nq.list_fields(core.repository) if field['key'] not in nq.V24_FIELD_KEYS]
     priority = next(field for field in fields if field['key'] == 'priority')
-    priority['options'] = [{'name': f'P{number}', 'color': ''} for number in range(1, 6)]
+    # P1 has a colour of its own, the others none.
+    priority['options'] = [{'name': f'P{number}', 'color': '#123456' if number == 1 else ''} for number in range(1, 6)]
     nq._store_fields(core.repository, fields)
     with core.repository.connection() as connection:
         # The table of the previous version, without the columns of the strategies.
         connection.execute(f'DROP TABLE {nq_prioritization.PRIORITY_TABLE}')
         connection.execute(f'CREATE TABLE {nq_prioritization.PRIORITY_TABLE} (call_key TEXT PRIMARY KEY, campaign_key TEXT NOT NULL DEFAULT \'\')')
-        connection.execute("DELETE FROM workspace_state WHERE key IN (?, ?)", (nq.ANALYSIS_CENTER_V24_STATE_KEY, nq.SCHEMA_STATE_KEY))
+        connection.execute("DELETE FROM workspace_state WHERE key IN (?, ?, ?)",
+                           (nq.ANALYSIS_CENTER_V24_STATE_KEY, nq.ANALYSIS_CENTER_V25_STATE_KEY, nq.SCHEMA_STATE_KEY))
     nq.ensure_nq_tables(core.repository)
     with core.repository.connection() as connection:
         columns = {str(row[1]) for row in connection.execute(f'PRAGMA table_info({nq_prioritization.PRIORITY_TABLE})')}
@@ -712,6 +795,8 @@ def test_workspaces_of_earlier_versions_get_the_strategy_fields_and_priorities(c
     assert order.index('expected_gain') == order.index('prioritization_queue') + 1
     priority = next(field for field in nq.list_fields(core.repository) if field['key'] == 'priority')
     assert [option['name'] for option in priority['options']] == [f'P{number}' for number in range(1, 9)]
+    # The priorities without a colour take those of the queues and steps; a colour chosen stays.
+    assert [option['color'] for option in priority['options']] == ['#123456', *nq_catalog.PRIORITY_COLORS[1:]]
 
 
 def test_the_default_strategy_fills_the_queues_and_priorities_by_step(strategized):
@@ -757,16 +842,16 @@ def test_admins_switch_the_strategy_at_once_and_calls_in_analysis_keep_their_pri
                             json={'changes': {'status': 'Under Analysis'}, 'version': call['call']['version']})
     assert response.status_code == 200, response.text
     before = started['suggested_priority']
-    # Custom rules give every SA Voice call P1 at once; the call in analysis keeps the Priority it had.
-    settings = {**nq_prioritization.load_settings(core.repository), 'strategy': 'custom'}
+    # Vodafone Proposal gives every SA Voice call P1 at once; the call in analysis keeps the Priority it had.
+    settings = {**nq_prioritization.load_settings(core.repository), 'strategy': nq_prioritization.VODAFONE_PROPOSAL}
     response = client.put('/api/non-qualified-calls/prioritization/settings', json={'settings': settings})
     assert response.status_code == 200, response.text
     with core.repository.connection() as connection:
         values = dict(connection.execute("SELECT call_key, value FROM nq_analysis_field_values WHERE field_key = 'priority'").fetchall())
     assert values[started['call_key']] == before
-    assert all(values[row['call_key']] == 'P1' for row in medium if row['call_key'] != started['call_key'])
+    assert medium and all(values[row['call_key']] == 'P1' for row in medium if row['call_key'] != started['call_key'])
     log = next(row for row in core.repository.list_logs(limit=50) if row['action'] == 'nq_prioritization_strategy')
-    assert json.loads(log['details'])['from'] == 'Dual Queue (Cities first)' and json.loads(log['details'])['to'] == 'Custom rules'
+    assert json.loads(log['details'])['from'] == 'Dual Queue (Cities first)' and json.loads(log['details'])['to'] == 'Vodafone Proposal'
     # Only admins and super-admins choose it.
     workspace_user('editor', 'user-editor')
     login(client, 'editor', 'editor123')
@@ -801,24 +886,24 @@ def test_admins_change_the_priority_and_operators_of_each_step(strategized):
     settings = nq_prioritization.load_settings(core.repository)
     settings['steps']['cities_first']['final-1'] = {'priority': 'P3', 'operators': ['@focused']}
     # NSA Voice takes no operator: its calls are tracked, as the Tracked step takes the Focused Operators.
-    settings['steps']['cities_first']['final-8'] = {'priority': 'P6', 'operators': []}
+    settings['steps']['cities_first']['final-9'] = {'priority': 'P6', 'operators': []}
     settings['steps']['cities_first']['final-2']['conditions'] = ['repeated']
-    settings['steps']['cities_first']['campaign-2']['joins'] = ['and']
+    settings['steps']['cities_first']['campaign-2']['joins'] = ['or']
     response = client.put('/api/non-qualified-calls/prioritization/settings', json={'settings': settings})
     assert response.status_code == 200, response.text
     rows = priority_rows()
     high = [row for row in rows.values() if row['priority_rule'] == 'Final 1 · SA Voice · High impact']
     assert high and {row['suggested_priority'] for row in high} == {'P3'}
-    assert not any(row['priority_rule'] == 'Final 8 · NSA Voice' for row in rows.values())
+    assert not any(row['priority_rule'] == 'Final 9 · NSA Voice' for row in rows.values())
     nsa_voice = [row for row in rows.values() if row['nr_mode'] == 'NSA' and row['service'] == 'voice' and row['final_list']]
     # WhatsApp calls are Voice calls too, and keep their step.
     assert nsa_voice and {(row['prioritization'], row['priority_rule']) for row in nsa_voice} <= {
-        ('Track only', 'Final 10 · Tracked'), ('Prioritized', 'Final 9 · NSA WhatsApp')}
+        ('Track only', 'Final 11 · Tracked'), ('Prioritized', 'Final 10 · NSA WhatsApp')}
     assert any(row['prioritization'] == 'Track only' for row in nsa_voice)
     log = next(row for row in core.repository.list_logs(limit=50) if row['action'] == 'nq_prioritization_settings')
     changed = json.loads(log['details'])['steps_changed']
     assert 'Dual Queue (Cities first) · Final 1 · SA Voice · High impact: Priority P1 → P3' in changed
-    assert 'Dual Queue (Cities first) · Final 8 · NSA Voice: Operators Focused Operators → No operator' in changed
-    assert 'Dual Queue (Cities first) · Final 2 · SA Data · High impact OR Repeated: Condition High impact OR Repeated → Repeated' in changed
-    assert ('Dual Queue (Cities first) · Campaign 2 · SA Data · Consecutive failures OR Hotspots: Condition Consecutive failures OR Hotspots → '
-            'Consecutive failures AND Hotspots') in changed
+    assert 'Dual Queue (Cities first) · Final 9 · NSA Voice: Operators Focused Operators → No operator' in changed
+    assert 'Dual Queue (Cities first) · Final 2 · SA Data · High impact: Condition High impact → Cluster' in changed
+    assert ('Dual Queue (Cities first) · Campaign 2 · SA Data · Consecutive failures AND Cluster: Condition Consecutive failures AND Cluster → '
+            'Consecutive failures OR Cluster') in changed
