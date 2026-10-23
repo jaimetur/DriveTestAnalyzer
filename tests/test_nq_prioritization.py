@@ -135,6 +135,20 @@ def test_settings_are_validated():
                           ({'conditions': ['fast']}, 'conditions'), ({'number': 21}, 'from 1 to 20')):
         with pytest.raises(ValueError, match=message):
             nq_prioritization.normalize_steps({'cities_first': {'campaign-2': step}}, strict=True)
+    # A list saved before a step joined the defaults keeps its own steps: the new default step is not added when the list
+    # already has the same step under another key (it would show twice).
+    every = ['all']
+    own = {f'campaign-{number}': {'number': number, 'priority': priority, 'nr_mode': mode, 'call_type': kind, 'area': 'any',
+                                  'conditions': conditions, 'joins': [], 'queue': 'Unique'}
+           for number, priority, mode, kind, conditions in ((1, 'P1', 'SA', 'voice', every), (2, 'P1', 'SA', 'whatsapp', every),
+                                                           (3, 'P2', 'SA', 'data', ['repeated']), (4, 'P3', 'NSA', 'voice', every),
+                                                           (5, 'P3', 'NSA', 'whatsapp', every), (6, 'P4', 'NSA', 'data', ['repeated']))}
+    own['campaign-tracked'] = {'number': 7, 'priority': 'P5', 'nr_mode': 'any', 'call_type': 'any', 'area': 'any', 'conditions': every,
+                               'joins': [], 'queue': 'Unique'}
+    own['campaign-s1'] = {'number': 8, 'priority': 'P8', 'nr_mode': 'any', 'call_type': 'any', 'area': 'any', 'conditions': every,
+                          'joins': [], 'queue': ''}
+    vodafone = [step for step in nq_prioritization.strategy_steps('vodafone_proposal', own) if step['list'] == 'campaign']
+    assert [(step['priority'], step['queue']) for step in vodafone].count(('P5', 'Unique')) == 1 and len(vodafone) == 8
     # Focused Operators stands alone.
     assert nq_prioritization.normalize_steps({'cities_first': {'campaign-1': {'operators': ['VF', '@focused']}}})[
         'cities_first']['campaign-1']['operators'] == ['@focused']

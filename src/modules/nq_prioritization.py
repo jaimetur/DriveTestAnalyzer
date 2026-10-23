@@ -804,7 +804,13 @@ def strategy_steps(strategy: str, configured: dict[str, Any] | None = None,
                                  + _expression(step['conditions'], step['joins'], CONDITION_TAKES, JOIN_WORDS)
                                  + ('' if step['queue'] else ', only tracked'))
             steps.append(step)
-    return steps
+    # A default step that a list saved before it was a default does not have (added to the defaults later) is left out when
+    # the list already has the same step under another key, so that it never shows twice.
+    def fields(step: dict[str, Any]) -> tuple[Any, ...]:
+        return (step['list'], step['priority'], step['nr_mode'], step['call_type'], step['area'], tuple(step['conditions']),
+                tuple(step['joins']), step['queue'])
+    saved = {fields(step) for step in steps if step['id'] in configured}
+    return [step for step in steps if step['id'] in configured or not configured or fields(step) not in saved]
 
 
 STEP_FIELD_LABELS = {'priority': 'Priority', 'number': 'Step', 'nr_mode': 'NR Mode', 'call_type': 'Call Type', 'area': 'Area',
