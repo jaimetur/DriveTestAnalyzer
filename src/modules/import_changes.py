@@ -37,6 +37,11 @@ _ACRONYMS = {'sql', 'nr', 'cdr', 'cdrs', 'id', 'ids', 'ppt', 'nq', 'url', 'ni', 
 SHORT_VALUE_LENGTH = 60
 # The values added to or removed from a list are told by name up to this many.
 LISTED_VALUES = 6
+# The elements whose updated items also tell each value before and after (the follow-up of the Non-Qualified Calls), how
+# long a value they tell and how many items they tell so (the summary of a large import stays light).
+DETAILED_ELEMENTS = frozenset({'nq-call-tracking'})
+DETAIL_LENGTH = 2000
+DETAILED_ITEMS = 300
 
 
 @dataclass
@@ -57,10 +62,12 @@ class Item:
 @dataclass
 class Changes:
     """What an import did to the items of the package: the names of the new ones, the name and changes of the updated
-    ones and how many were left as they were."""
+    ones (with, for the elements told in detail, each value before and after, in ``details`` beside them) and how many were
+    left as they were."""
     new: list[str] = field(default_factory=list)
     updated: list[tuple[str, list[str]]] = field(default_factory=list)
     unchanged: int = 0
+    details: list[list[dict[str, str]]] = field(default_factory=list)
 
     @property
     def count(self) -> int:
@@ -70,7 +77,13 @@ class Changes:
         self.new += other.new
         self.updated += other.updated
         self.unchanged += other.unchanged
+        self.details += other.details
         return self
+
+    def update(self, name: str, described: list[str], details: list[dict[str, str]] | None = None) -> None:
+        """An updated item with its changes (and its details, when told)."""
+        self.updated.append((name, described))
+        self.details.append(details or [])
 
 
 def field_label(key: str, labels: dict[str, str] | None = None) -> str:
@@ -109,7 +122,7 @@ def _canonical(value: Any) -> str:
     return json.dumps(_comparable(value), ensure_ascii=False, sort_keys=True, separators=(',', ':'), default=str)
 
 
-def _list_change(label: str, old: list[Any], new: list[Any]) -> str:
+def list_change(label: str, old: list[Any], new: list[Any]) -> str:
     """What changed in a list: its items with an identity new, edited or removed, or else the values added and removed."""
     def by_uid(items: list[Any]) -> dict[str, Any] | None:
         if not all(isinstance(item, dict) and str(item.get('uid') or '') for item in items):
@@ -151,10 +164,51 @@ def describe_changes(before: dict[str, Any], after: dict[str, Any], labels: dict
         elif old_text is not None and new_text is not None:
             changes.append(f'{label}: {old_text} → {new_text}')
         elif isinstance(old if old is not None else [], list) and isinstance(new if new is not None else [], list):
-            changes.append(_list_change(label, old or [], new or []))
+            changes.append(list_change(label, old or [], new or []))
         else:
             changes.append(label)
     return changes
+
+
+def _detail_text(value: Any) -> str:
+    """A value as the details of a change tell it, whole up to a length (a comment as its author and text)."""
+    if value is None or value == '' or value == []:
+        return ''
+    if isinstance(value, bool):
+        return 'Yes' if value else 'No'
+    if isinstance(value, dict) and 'body' in value:
+        author = str(value.get('created_by') or '')
+        value = f"{author}: {value.get('body') or ''}" if author else str(value.get('body') or '')
+    elif not isinstance(value, str):
+        value = json.dumps(_comparable(value), ensure_ascii=False, sort_keys=True, default=str)
+    return value if len(value) <= DETAIL_LENGTH else value[:DETAIL_LENGTH] + '…'
+
+
+def describe_details(before: dict[str, Any], after: dict[str, Any], labels: dict[str, str] | None = None) -> list[dict[str, str]]:
+    """The values of an item that differ after the import, each as ``{label, before, after}`` with the whole values (the
+    entries of a list with an identity, such as the comments, one by one: new, edited or removed)."""
+    details = []
+    for key in dict.fromkeys([*before, *after]):
+        if key in IGNORED_FIELDS:
+            continue
+        old, new = before.get(key), after.get(key)
+        if _canonical(old if old is not None else '') == _canonical(new if new is not None else ''):
+            continue
+        label = field_label(key, labels)
+        if key in SENSITIVE_FIELDS:
+            details.append({'label': label, 'before': '', 'after': 'Changed'})
+            continue
+        entries = lambda value: ({str(item['uid']): item for item in value}  # noqa: E731
+                                 if isinstance(value, list) and all(isinstance(item, dict) and item.get('uid') for item in value) else None)
+        was, now = entries(old or []), entries(new or [])
+        if was is not None and now is not None:
+            details += [{'label': f'{label} · new', 'before': '', 'after': _detail_text(item)} for uid, item in now.items() if uid not in was]
+            details += [{'label': f'{label} · edited', 'before': _detail_text(was[uid]), 'after': _detail_text(item)}
+                        for uid, item in now.items() if uid in was and _canonical(was[uid]) != _canonical(item)]
+            details += [{'label': f'{label} · removed', 'before': _detail_text(item), 'after': ''} for uid, item in was.items() if uid not in now]
+            continue
+        details.append({'label': label, 'before': _detail_text(old), 'after': _detail_text(new)})
+    return details
 
 
 def _pairs(left: list[Item], right: list[Item], attributes: Iterable[str]) -> dict[int, int]:
@@ -177,8 +231,10 @@ def _pairs(left: list[Item], right: list[Item], attributes: Iterable[str]) -> di
     return pairs
 
 
-def compare(package: list[Item], before: list[Item], after: list[Item], labels: dict[str, str] | None = None) -> Changes:
-    """What the import of the ``package`` items did, from the items of the element before and after it."""
+def compare(package: list[Item], before: list[Item], after: list[Item], labels: dict[str, str] | None = None,
+            detailed: bool = False) -> Changes:
+    """What the import of the ``package`` items did, from the items of the element before and after it (``detailed``: with
+    each value of the updated items before and after)."""
     touched = _pairs(package, after, ('uid', 'match'))
     previous = _pairs(after, before, ('key', 'uid', 'match'))
     changes = Changes()
@@ -189,13 +245,15 @@ def compare(package: list[Item], before: list[Item], after: list[Item], labels: 
             continue
         described = describe_changes(before[previous[position]].values, item.values, labels)
         if described:
-            changes.updated.append((item.name, described))
+            changes.update(item.name, described, describe_details(before[previous[position]].values, item.values, labels)
+                           if detailed and len(changes.updated) < DETAILED_ITEMS else None)
         else:
             changes.unchanged += 1
     return changes
 
 
-def predict(package: list[Item], before: list[Item], labels: dict[str, str] | None = None, adjust=None) -> Changes:
+def predict(package: list[Item], before: list[Item], labels: dict[str, str] | None = None, adjust=None,
+            detailed: bool = False) -> Changes:
     """What importing the ``package`` items would do to the items of a workspace (``before``), for the preview of an
     import: each item replaces the one it finds (by its identity, then its name) with the values it carries, keeping
     those it does not carry, or is added. ``adjust(values, previous)`` gives the values of an item as the import would
@@ -210,7 +268,8 @@ def predict(package: list[Item], before: list[Item], labels: dict[str, str] | No
         values = {**previous, **(adjust(dict(item.values), previous) if adjust else item.values)}
         described = describe_changes(previous, values, labels)
         if described:
-            changes.updated.append((item.name, described))
+            changes.update(item.name, described, describe_details(previous, values, labels)
+                           if detailed and len(changes.updated) < DETAILED_ITEMS else None)
         else:
             changes.unchanged += 1
     return changes
@@ -227,7 +286,7 @@ def compare_settings(name: str, before: dict[str, Any], after: dict[str, Any], l
                      described: list[str] | None = None) -> Changes:
     """What the import did to the settings of an element (``described`` tells their changes when given)."""
     described = describe_changes(before, after, labels) if described is None else described
-    return Changes(updated=[(name, described)]) if described else Changes(unchanged=1)
+    return Changes(updated=[(name, described)], details=[[]]) if described else Changes(unchanged=1)
 
 
 def counted(count: int, singular: str, plural: str | None = None) -> str:

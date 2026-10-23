@@ -7186,6 +7186,140 @@ def predicted_configuration(current: dict[str, Any], incoming: dict[str, Any]) -
     return predicted
 
 
+# The settings of a field of the catalog and of the other entries of the configuration, as an import tells their changes.
+CONFIGURATION_LABELS = {
+    'label': 'Label', 'section': 'Section', 'type': 'Type', 'in_table': 'Table column', 'in_export': 'Excel',
+    'in_summary': 'Summary breakdown', 'required_to_close': 'Required to close', 'suggest_from': 'Suggested from',
+    'description': 'Description', 'color': 'Colour', 'closed': 'Closed', 'members': 'Members', 'keywords': 'Keywords',
+    'domain': 'Domain', 'category': 'Category',
+}
+
+
+def configuration_changes(before: Any, after: Any) -> list[str]:
+    """What changed in the NQ Calls Configuration of a workspace, from its export documents before and after an import (or
+    as the import would leave it), a line each: the statuses and teams, the sections, the fields of the catalog and their
+    values, the Status Rules, the root cause catalog and its suggestion rule, the layout of the workspace and those of the
+    users, the equivalences of the Previous NQ Analyses and the NQ Prioritization."""
+    from src.modules.import_changes import describe_changes, field_label, list_change
+
+    old = before if isinstance(before, dict) else {}
+    new = after if isinstance(after, dict) else {}
+    lines: list[str] = []
+    dicts = lambda value: [item for item in value or [] if isinstance(item, dict)] if isinstance(value, list) else []  # noqa: E731
+    section = lambda document, key: document.get(key) if isinstance(document.get(key), dict) else {}  # noqa: E731
+
+    def entries(title: str, singular: str, old_items: Any, new_items: Any, attributes: tuple[str, ...], key: str = 'name',
+                name: Any = None) -> None:
+        """The entries of a list found by ``key``: those added and removed, then what changed in each of the others."""
+        name = name or (lambda item: str(item.get(key)))
+        was = {str(item.get(key) or '').casefold(): item for item in dicts(old_items) if str(item.get(key) or '').strip()}
+        now = {str(item.get(key) or '').casefold(): item for item in dicts(new_items) if str(item.get(key) or '').strip()}
+        if set(was) != set(now):
+            lines.append(list_change(title, [name(item) for item in was.values()], [name(item) for item in now.values()]))
+        for found, item in now.items():
+            if found not in was:
+                continue
+            values = lambda entry: {attribute: entry.get(attribute) for attribute in attributes}  # noqa: E731
+            described = describe_changes(values(was[found]), values(item), CONFIGURATION_LABELS)
+            if item.get('type') == 'list' and was[found].get('type') == 'list':
+                # The values of a list field by name, then those whose colour changed.
+                options = lambda entry: {str(option.get('name')): option for option in dicts(entry.get('options'))}  # noqa: E731
+                previous, current = options(was[found]), options(item)
+                if set(previous) != set(current):
+                    described.append(list_change('Values', list(previous), list(current)))
+                recoloured = [value for value in current if value in previous and current[value].get('color') != previous[value].get('color')]
+                if recoloured:
+                    described.append(f"Colour of {', '.join(recoloured)}")
+            if described:
+                lines.append(f'{singular} {name(item)}: {"; ".join(described)}')
+
+    options, new_options = section(old, 'options'), section(new, 'options')
+    entries('Statuses', 'Status', options.get('statuses'), new_options.get('statuses'), ('color', 'closed'))
+    entries('Teams', 'Team', options.get('teams'), new_options.get('teams'), ('color', 'members'))
+    entries('Sections', 'Section', old.get('sections'), new.get('sections'), ('label', 'color'), key='key',
+            name=lambda item: str(item.get('label') or item.get('key')))
+    entries('Fields', 'Field', old.get('fields'), new.get('fields'),
+            ('label', 'section', 'type', 'in_table', 'in_export', 'in_summary', 'required_to_close', 'suggest_from', 'description'),
+            key='key', name=lambda item: str(item.get('label') or item.get('key')))
+    # The Status Rules by the status they set, then their order (the first rule a call meets sets its status).
+    rules = lambda document: [item for item in dicts(document.get('status_rules')) if str(item.get('status') or '').strip()]  # noqa: E731
+    by_status = lambda items: {str(item['status']): [other for other in items if other['status'] == item['status']] for item in items}  # noqa: E731
+    was_rules, now_rules = by_status(rules(old)), by_status(rules(new))
+    if set(was_rules) != set(now_rules):
+        lines.append(list_change('Status Rules', list(was_rules), list(now_rules)))
+    changed_rules = [status for status in now_rules if status in was_rules and json.dumps(now_rules[status], sort_keys=True) != json.dumps(was_rules[status], sort_keys=True)]
+    if changed_rules:
+        lines.append(f"Status Rules changed: {', '.join(changed_rules)}")
+    elif set(was_rules) == set(now_rules) and [item['status'] for item in rules(old)] != [item['status'] for item in rules(new)]:
+        lines.append('Status Rules: new order')
+    roots, new_roots = section(old, 'root_causes'), section(new, 'root_causes')
+    entries('Root Domains', 'Root Domain', roots.get('domains'), new_roots.get('domains'), ('color', 'keywords'))
+    entries('Root Categories', 'Root Category', roots.get('categories'), new_roots.get('categories'), ('domain', 'color', 'keywords'))
+    entries('Root Causes', 'Root Cause', roots.get('causes'), new_roots.get('causes'), ('domain', 'category', 'color', 'keywords'))
+    rule = describe_changes(section(roots, 'rule'), section(new_roots, 'rule'))
+    if rule:
+        lines.append(f"Root Cause Suggestion Rule: {'; '.join(rule)}")
+    if bool(roots.get('require_to_close')) != bool(new_roots.get('require_to_close')):
+        lines.append(f"Root Cause required to close: {'Yes' if new_roots.get('require_to_close') else 'No'}")
+    # The layout of the workspace (the Table column and Excel of the fields are told with the fields) and those of the users.
+    labels = {**{f"field:{item.get('key')}": str(item.get('label')) for item in dicts(new.get('fields'))}, **OPTIONAL_COLUMNS}
+    field_names = {str(item.get('key')): str(item.get('label')) for item in dicts(new.get('fields'))}
+
+    def layout_changes(was: dict[str, Any], now: dict[str, Any]) -> list[str]:
+        named = lambda values, names: [names.get(str(value), str(value)) for value in values or []]  # noqa: E731
+        parts = []
+        for key, title, names in (('fields', 'Columns', field_names), ('excel_fields', 'Excel', field_names),
+                                  ('builtin', 'Additional Columns', OPTIONAL_COLUMNS), ('cdr', 'CDR Columns', {}),
+                                  ('export_cdr', 'CDR Columns for Excel only', {})):
+            if key in was or key in now:
+                if sorted(map(str, was.get(key) or [])) != sorted(map(str, now.get(key) or [])):
+                    parts.append(list_change(title, named(was.get(key), names), named(now.get(key), names)))
+        if (was.get('order') or []) != (now.get('order') or []):
+            parts.append('Column order: default' if not now.get('order') else 'Column order: ' + ', '.join(
+                labels.get(str(key), field_label(str(key))) for key in now['order'][:8]) + ('…' if len(now['order']) > 8 else ''))
+        return parts
+
+    workspace = layout_changes({**section(old, 'table_columns'), 'order': old.get('column_order') or []},
+                               {**section(new, 'table_columns'), 'order': new.get('column_order') or []})
+    if workspace:
+        lines.append(f"Workspace layout: {'; '.join(workspace)}")
+    was_layouts = {str(item.get('username') or '').casefold(): item for item in dicts(old.get('user_layouts')) if item.get('username')}
+    now_layouts = {str(item.get('username') or '').casefold(): item for item in dicts(new.get('user_layouts')) if item.get('username')}
+    if set(was_layouts) != set(now_layouts):
+        lines.append(list_change('Layouts of the users', [str(item['username']) for item in was_layouts.values()],
+                                 [str(item['username']) for item in now_layouts.values()]))
+    for found, item in now_layouts.items():
+        if found not in was_layouts:
+            continue
+        previous = was_layouts[found]
+        parts = layout_changes(previous.get('layout') if isinstance(previous.get('layout'), dict) else {},
+                               item.get('layout') if isinstance(item.get('layout'), dict) else {})
+        if str(previous.get('view') or '') != str(item.get('view') or ''):
+            parts.append(f"Shown: {str(item.get('view') or '').title()}")
+        if parts:
+            lines.append(f"Layout of {item['username']}: {'; '.join(parts)}")
+    # The equivalences of the Previous NQ Analyses, by the field (or follow-up value) they map to.
+    was_equivalences, now_equivalences = section(old, 'analyses_equivalences'), section(new, 'analyses_equivalences')
+    for target in dict.fromkeys([*now_equivalences, *was_equivalences]):
+        previous = was_equivalences.get(target) if isinstance(was_equivalences.get(target), dict) else {}
+        current = now_equivalences.get(target) if isinstance(now_equivalences.get(target), dict) else {}
+        counts = [(sum(key not in previous for key in current), 'new'),
+                  (sum(key in previous and json.dumps(previous[key], sort_keys=True) != json.dumps(value, sort_keys=True)
+                       for key, value in current.items()), 'changed'),
+                  (sum(key not in current for key in previous), 'removed')]
+        parts = [f'{count} {word}' for count, word in counts if count]
+        if parts:
+            name = field_names.get(target[6:], target[6:]) if str(target).startswith('field:') else field_label(str(target))
+            lines.append(f"Equivalences of the Previous NQ Analyses · {name}: {', '.join(parts)}")
+    if json.dumps(old.get('prioritization'), sort_keys=True) != json.dumps(new.get('prioritization'), sort_keys=True):
+        try:
+            prioritization = nq_prioritization.settings_changes(old.get('prioritization'), new.get('prioritization'))
+        except (AttributeError, KeyError, TypeError, ValueError):
+            prioritization = []
+        lines += [f'NQ Prioritization · {line}' for line in prioritization] or ['NQ Prioritization']
+    return lines
+
+
 def _merge_configuration(task_repository: Any, document: dict[str, Any]) -> None:
     """Add the missing statuses, teams, fields, list values and root cause catalog entries of a document and take its
     sections, status rules, field settings (section, order, Table column, Excel and Summary breakdown), table layouts (that

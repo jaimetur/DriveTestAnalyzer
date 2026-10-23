@@ -8995,6 +8995,22 @@ function importSummaryContent(details) {
         const row = element('tr');
         const what = element('td', 'import-summary-changes');
         item.changes.forEach((change) => what.append(element('div', '', change)));
+        // The items told in detail (the follow-up of a Non-Qualified Call) unfold each value before and after.
+        if (Array.isArray(item.details) && item.details.length) {
+          const more = element('details', 'import-summary-details');
+          more.append(element('summary', '', 'Details'));
+          item.details.forEach((detail) => {
+            const entry = element('div', 'import-summary-detail');
+            entry.append(element('strong', '', detail.label || ''));
+            const values = element('div', 'import-summary-detail-values');
+            values.append(element('div', `import-summary-detail-before${detail.before ? '' : ' is-empty'}`, detail.before || '(empty)'),
+              element('span', 'import-summary-arrow', '→'),
+              element('div', `import-summary-detail-after${detail.after ? '' : ' is-empty'}`, detail.after || '(empty)'));
+            entry.append(values);
+            more.append(entry);
+          });
+          what.append(more);
+        }
         row.append(element('td', 'import-summary-item', item.name || ''), what);
         body.append(row);
       });

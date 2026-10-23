@@ -2717,6 +2717,17 @@ body[data-embedded-dataset-preview] > .shell > main { width: 100%; max-width: no
 .import-summary-table small { display: block; margin-top: .1rem; color: #7b8994; font-size: .76rem; }
 .import-summary-table .import-summary-item { width: 32%; color: #33495a; font-weight: 700; }
 .import-summary-changes div + div { margin-top: .15rem; }
+/* The details of an updated item (the follow-up of a Non-Qualified Call), unfolded under its changes: each value before
+   and after, whole. */
+.import-summary-details { margin-top: .35rem; }
+.import-summary-details > summary { width: max-content; color: #1e61a3; font-size: .76rem; font-weight: 800; cursor: pointer; }
+.import-summary-detail { margin-top: .45rem; padding: .4rem .5rem; border: 1px solid rgba(16, 49, 74, .1); border-radius: 8px; background: #fff; }
+.import-summary-detail > strong { display: block; color: #33495a; font-size: .74rem; }
+.import-summary-detail-values { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: .4rem; align-items: start; margin-top: .25rem; }
+.import-summary-detail-values > div { max-height: 12rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: .8rem; }
+.import-summary-detail-before { color: #8a3b2b; }
+.import-summary-detail-after { color: #1f5f3a; }
+.import-summary-detail-values > .is-empty { color: #9aa5ad; font-style: italic; }
 .import-summary-note { margin: .3rem 0 0; color: #33495a; font-size: .88rem; }
 /* The preview of an import or of a received transfer: a box for each package, what it would do and, unfolded, what
    would change in its items. */

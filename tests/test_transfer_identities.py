@@ -623,6 +623,53 @@ def test_the_preview_of_an_application_config_tells_what_replacing_the_applicati
         assert connection.execute("SELECT first_name FROM users WHERE username = 'demo'").fetchone()[0] == 'Changed'
 
 
+def test_the_nq_calls_configuration_and_the_follow_up_of_the_calls_tell_what_changed_in_detail(client):
+    import copy
+
+    from src.modules import non_qualified_calls
+    from src.modules.import_changes import DETAILED_ELEMENTS, compare, element_items, predict
+
+    non_qualified_calls.ensure_nq_tables(core.repository)
+    before = json.loads(non_qualified_calls.export_configuration_document(core.repository))
+    after = copy.deepcopy(before)
+    next(field for field in after['fields'] if field['key'] == 'scoring_impact')['in_table'] = True
+    after['table_columns']['builtin'] = ['join_id']
+    before['user_layouts'] = [{'username': 'ana', 'view': 'workspace', 'layout': {'fields': ['priority', 'scoring_impact'], 'order': []}}]
+    after['user_layouts'] = [{'username': 'ana', 'view': 'mine', 'layout': {'fields': ['priority', 'prioritization'], 'order': []}},
+                             {'username': 'luis', 'view': 'mine', 'layout': {'fields': [], 'order': []}}]
+    after['prioritization'] = {**after['prioritization'], 'high_share': 40, 'excluded_regions': ['London']}
+    lines = non_qualified_calls.configuration_changes(before, after)
+    assert 'Field Scoring Impact: Table column: No → Yes' in lines and 'Workspace layout: Additional Columns: +JOIN_ID' in lines
+    assert 'Layouts of the users: +luis' in lines
+    assert 'Layout of ana: Columns: +Prioritization, −Scoring Impact; Shown: Mine' in lines
+    assert 'NQ Prioritization · High impact (%): 50 → 40' in lines
+    assert any(line.startswith('NQ Prioritization · Regions out of scope: +London') for line in lines)
+    assert non_qualified_calls.configuration_changes(before, copy.deepcopy(before)) == []
+
+    # Each updated call of the follow-up tells every value before and after, and its comments one by one.
+    tracking = {'calls': [{'call_key': 'k1', 'join_id': '0xA1', 'service': 'voice'}],
+                'tracking': [{'call_key': 'k1', 'status': 'Not Attended', 'team': ''}], 'field_values': [], 'rca_results': [],
+                'fields': [{'key': 'description', 'label': 'Description'}],
+                'comments': [{'uid': 'c1', 'call_key': 'k1', 'body': 'First look', 'created_by': 'ana'}]}
+    updated = copy.deepcopy(tracking)
+    updated['tracking'][0]['status'] = 'Under Analysis'
+    updated['field_values'] = [{'call_key': 'k1', 'field_key': 'description', 'value': 'The neighbour list misses the target cell.'}]
+    updated['comments'].append({'uid': 'c2', 'call_key': 'k1', 'body': 'A missing neighbour.', 'created_by': 'luis'})
+    package = element_items('nq-call-tracking', updated)
+    assert 'nq-call-tracking' in DETAILED_ELEMENTS
+    changes = compare(package, element_items('nq-call-tracking', tracking), package, detailed=True)
+    assert changes.updated == [('0xA1 (voice)', ['Status: Not Attended → Under Analysis', 'Comments: 1 new', 'Description'])]
+    assert changes.details == [[{'label': 'Status', 'before': 'Not Attended', 'after': 'Under Analysis'},
+                                {'label': 'Comments · new', 'before': '', 'after': 'luis: A missing neighbour.'},
+                                {'label': 'Description', 'before': '', 'after': 'The neighbour list misses the target cell.'}]]
+    assert predict(package, element_items('nq-call-tracking', tracking), detailed=True).details == changes.details
+    # The summary unfolds them from the row of the call; the other elements tell no details.
+    section = core.changes_section('Updated Non-Qualified Calls', changes.updated, changes.details).section
+    assert section['items'][0]['details'] == changes.details[0]
+    assert 'details' not in core.changes_section('Updated', changes.updated).section['items'][0]
+    assert compare(package, element_items('nq-call-tracking', tracking), package).details == [[]]
+
+
 def test_the_preview_predicts_each_element_as_its_import_saves_it(client, tmp_path, monkeypatch):
     from src.modules import non_qualified_calls
     from src.modules.import_changes import describe_changes, element_items, predict, settings_values
@@ -645,6 +692,9 @@ def test_the_preview_predicts_each_element_as_its_import_saves_it(client, tmp_pa
     before = json.loads(non_qualified_calls.export_configuration_document(core.repository))
     incoming = {**before, 'options': {'statuses': [{'name': 'New status', 'color': '#ff0000', 'closed': False}], 'teams': []}}
     assert describe_changes(settings_values(before), settings_values(non_qualified_calls.predicted_configuration(before, incoming))) == ['Options']
+    # The NQ Calls Configuration tells each change: here the status the package adds.
+    assert non_qualified_calls.configuration_changes(before, non_qualified_calls.predicted_configuration(before, incoming)) == [
+        'Statuses: +New status']
 
     # Reporting Jobs: a definition points at the datasets of this workspace (by file name), as the import saves it.
     monkeypatch.setattr(core.Repository, 'list_datasets', lambda self: [{'id': 5, 'file_name': 'drive.csv'}])

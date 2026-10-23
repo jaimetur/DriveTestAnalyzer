@@ -11277,12 +11277,18 @@ def import_notice_details(notice: Any) -> dict[str, Any] | None:
     return getattr(notice, 'details', None)
 
 
-def changes_section(title: str, updated: Iterable[tuple[str, list[str]]]) -> ImportSummaryLine:
+def changes_section(title: str, updated: Iterable[tuple[str, list[str]]],
+                    details: list[list[dict[str, str]]] | None = None) -> ImportSummaryLine:
     """A line of the completion message that tells what changed in the updated items of an element:
-    ``title: item (change; change); item (change).``"""
+    ``title: item (change; change); item (change).``, with each value before and after of the items told in ``details``
+    (unfolded from their row in the summary)."""
     updated = [(str(name), [str(change) for change in changes]) for name, changes in updated]
     line = ImportSummaryLine(f'{title}: ' + '; '.join(f'{name} ({"; ".join(changes)})' for name, changes in updated) + '.')
-    line.section = {'title': title, 'kind': 'updated', 'items': [{'name': name, 'changes': changes} for name, changes in updated]}
+    items = [{'name': name, 'changes': changes} for name, changes in updated]
+    for item, told in zip(items, details or []):
+        if told:
+            item['details'] = told
+    line.section = {'title': title, 'kind': 'updated', 'items': items}
     return line
 
 
@@ -11365,7 +11371,7 @@ def _element_changes(kind: str, destinations: list[Workspace], before: dict[str,
     """What the import of an element did in each destination workspace (see import_changes), from its documents before
     and after the import and that of the package; ``None`` when they could not be read."""
     from src.modules.import_changes import (
-        ELEMENT_LABELS, SETTINGS_ELEMENTS, compare, compare_settings, element_items, settings_values,
+        DETAILED_ELEMENTS, ELEMENT_LABELS, SETTINGS_ELEMENTS, compare, compare_settings, element_items, settings_values,
     )
 
     after = _element_documents(kind, destinations) if before is not None else None
@@ -11375,13 +11381,17 @@ def _element_changes(kind: str, destinations: list[Workspace], before: dict[str,
         from src.modules.scoring_export_panels import export_panel_changes
         return {workspace.id: compare_settings('', {}, {}, described=export_panel_changes(
             (before[workspace.id] or {}).get('panels'), (after[workspace.id] or {}).get('panels'))) for workspace in destinations}
+    if kind == 'nq-calls-configuration':
+        from src.modules.non_qualified_calls import configuration_changes
+        return {workspace.id: compare_settings('', {}, {}, described=configuration_changes(before[workspace.id], after[workspace.id]))
+                for workspace in destinations}
     if kind in SETTINGS_ELEMENTS:
         labels = SETTINGS_ELEMENTS[kind][2]
         return {workspace.id: compare_settings('', settings_values(before[workspace.id]), settings_values(after[workspace.id]), labels)
                 for workspace in destinations}
     items = element_items(kind, package)
     return {workspace.id: compare(items, element_items(kind, before[workspace.id]), element_items(kind, after[workspace.id]),
-                                  ELEMENT_LABELS.get(kind)) for workspace in destinations}
+                                  ELEMENT_LABELS.get(kind), detailed=kind in DETAILED_ELEMENTS) for workspace in destinations}
 
 
 def _element_notice(kind: str, destinations: list[Workspace], changes: dict[str, Any] | None,
@@ -11410,7 +11420,7 @@ def _element_notice(kind: str, destinations: list[Workspace], changes: dict[str,
     singular, plural, prefix = ELEMENT_NAMES[kind]
     if changes is None:
         return f'Imported {prefix}{counted(count, singular, plural)} into {workspaces}.', []
-    lines = [changes_section(f'Updated {plural} of "{workspace.name}"', changes[workspace.id].updated)
+    lines = [changes_section(f'Updated {plural} of "{workspace.name}"', changes[workspace.id].updated, changes[workspace.id].details)
              for workspace in destinations if changes[workspace.id].updated]
     detail = breakdown(total)
     return f'Imported {prefix}{counted(total.count, singular, plural)} into {workspaces}' + (f': {detail}.' if detail else '.'), lines
@@ -11557,8 +11567,8 @@ def _preview_package(archive: zipfile.ZipFile, manifest: dict[str, Any], destina
     would add, and those it would update with what would change) and whether it would change anything
     (``importing_user`` owns the items whose creator is not on this server, as the import gives them)."""
     from src.modules.import_changes import (
-        ELEMENT_LABELS, ELEMENT_NAMES, SETTINGS_ELEMENTS, breakdown, compare, compare_settings, counted, element_items,
-        joined, predict, settings_values, ticket_items, users_access_items,
+        DETAILED_ELEMENTS, ELEMENT_LABELS, ELEMENT_NAMES, SETTINGS_ELEMENTS, breakdown, compare, compare_settings, counted,
+        element_items, joined, predict, settings_values, ticket_items, users_access_items,
     )
     from src.modules.transfer_identities import imported_creator
 
@@ -11575,6 +11585,10 @@ def _preview_package(archive: zipfile.ZipFile, manifest: dict[str, Any], destina
             from src.modules.scoring_export_panels import export_panel_changes
             changes = {workspace.id: compare_settings('', {}, {}, described=export_panel_changes(
                 (before[workspace.id] or {}).get('panels'), (package or {}).get('panels'))) for workspace in destinations}
+        elif kind == 'nq-calls-configuration':
+            from src.modules.non_qualified_calls import configuration_changes
+            changes = {workspace.id: compare_settings('', {}, {}, described=configuration_changes(
+                before[workspace.id], _predicted_settings(kind, before[workspace.id], package))) for workspace in destinations}
         elif kind in SETTINGS_ELEMENTS:
             changes = {workspace.id: compare_settings('', settings_values(before[workspace.id]), settings_values(
                 _predicted_settings(kind, before[workspace.id], package)), SETTINGS_ELEMENTS[kind][2]) for workspace in destinations}
@@ -11586,7 +11600,8 @@ def _preview_package(archive: zipfile.ZipFile, manifest: dict[str, Any], destina
                     values['created_by'] = imported_creator(values['created_by'], previous.get('created_by'), importing_user, active_user_exists)
                 return values
             changes = {workspace.id: predict(element_items(kind, _predicted_document(kind, workspace, package)),
-                                             element_items(kind, before[workspace.id]), ELEMENT_LABELS.get(kind), creators)
+                                             element_items(kind, before[workspace.id]), ELEMENT_LABELS.get(kind), creators,
+                                             detailed=kind in DETAILED_ELEMENTS)
                        for workspace in destinations}
         message, lines = _element_notice(kind, destinations, changes)
         plural = ELEMENT_NAMES[kind][1] if kind in ELEMENT_NAMES else ''

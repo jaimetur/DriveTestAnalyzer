@@ -446,26 +446,8 @@ def save_settings(repository: Any, payload: Any, username: str) -> dict[str, Any
             repository.try_add_log(username, 'nq_prioritization_strategy', json.dumps({
                 'from': before_labels.get(before['strategy'], before['strategy']), 'to': labels[settings['strategy']], **applied},
                 ensure_ascii=False))
-        # The steps whose fields changed, as "Dual Queue (Cities first) · Campaign 1 · SA Voice · Cities: Priority P1 → P3;
-        # Operators Focused Operators → VF", and those added or deleted.
-        steps_changed = []
-        for strategy, label in labels.items():
-            if strategy not in before_labels:
-                continue
-            old_steps = {step['id']: step for step in strategy_steps(strategy, before['steps'].get(strategy))}
-            new_steps = {step['id']: step for step in strategy_steps(strategy, settings['steps'].get(strategy))}
-            for key, step in new_steps.items():
-                previous = old_steps.get(key)
-                if previous is None:
-                    steps_changed.append(f"{label} · Added step {step['rule']}")
-                    continue
-                changes = [f'{name} {step_field_text(previous, field)} → {step_field_text(step, field)}'
-                           for field, name in STEP_FIELD_LABELS.items() if step_field_value(step, field) != step_field_value(previous, field)]
-                if changes:
-                    steps_changed.append(f"{label} · {previous['rule']}: {'; '.join(changes)}")
-            steps_changed += [f"{label} · Deleted step {step['rule']}" for key, step in old_steps.items() if key not in new_steps]
         repository.try_add_log(username, 'nq_prioritization_settings', json.dumps({
-            'strategy': labels[settings['strategy']], 'steps_changed': steps_changed,
+            'strategy': labels[settings['strategy']], 'steps_changed': steps_changed(before, settings),
             'strategies_added': [labels[key] for key in labels if key not in before_labels],
             'strategies_deleted': [before_labels[key] for key in before_labels if key not in labels],
             'strategies_renamed': [f'{before_labels[key]} → {labels[key]}' for key in labels
@@ -474,6 +456,64 @@ def save_settings(repository: Any, payload: Any, username: str) -> dict[str, Any
             'excluded_modes': [f"{item['nr_mode']} · {item['operator']}" for item in settings['excluded_modes']],
             'changed': sorted(key for key in settings if settings[key] != before.get(key)), **applied}, ensure_ascii=False))
     return settings
+
+
+def steps_changed(before: dict[str, Any], settings: dict[str, Any]) -> list[str]:
+    """The steps whose fields changed between two settings, as "Dual Queue (Cities first) · Campaign 1 · SA Voice · Cities:
+    Priority P1 → P3; Operators Focused Operators → VF", and those added or deleted (in the strategies both have)."""
+    labels, before_labels = strategy_labels(settings), strategy_labels(before)
+    changed = []
+    for strategy, label in labels.items():
+        if strategy not in before_labels:
+            continue
+        old_steps = {step['id']: step for step in strategy_steps(strategy, before['steps'].get(strategy))}
+        new_steps = {step['id']: step for step in strategy_steps(strategy, settings['steps'].get(strategy))}
+        for key, step in new_steps.items():
+            previous = old_steps.get(key)
+            if previous is None:
+                changed.append(f"{label} · Added step {step['rule']}")
+                continue
+            changes = [f'{name} {step_field_text(previous, field)} → {step_field_text(step, field)}'
+                       for field, name in STEP_FIELD_LABELS.items() if step_field_value(step, field) != step_field_value(previous, field)]
+            if changes:
+                changed.append(f"{label} · {previous['rule']}: {'; '.join(changes)}")
+        changed += [f"{label} · Deleted step {step['rule']}" for key, step in old_steps.items() if key not in new_steps]
+    return changed
+
+
+# The settings of the levels, the clusters and the hotspots, and Fill the Priority, as the Prioritization Rules name them.
+SETTING_LABELS = {'high_share': 'High impact (%)', 'medium_share': 'Medium impact (%)', 'min_calls': 'Cluster size',
+                  'previous_quarters': 'Cluster period', 'spot_meters': 'Cluster distance (m)',
+                  'hotspot_meters': 'Hotspot distance (m)', 'hotspot_minutes': 'Hotspot time (min)', 'capacity': 'Next to analyse',
+                  'fill_priority': 'Fill the Priority'}
+
+
+def settings_changes(before: Any, settings: Any) -> list[str]:
+    """What changed between two settings of the NQ Prioritization (as an import of a package tells it), a line each: the
+    strategy, the strategies added, deleted and renamed, their steps, List 2 of each strategy, the Regions and the
+    operators out of scope, and the levels."""
+    from src.modules.import_changes import list_change
+
+    before, settings = normalize_settings(before), normalize_settings(settings)
+    labels, before_labels = strategy_labels(settings), strategy_labels(before)
+    lines = []
+    if settings['strategy'] != before['strategy']:
+        lines.append(f"Strategy: {before_labels.get(before['strategy'], before['strategy'])} → {labels.get(settings['strategy'], settings['strategy'])}")
+    lines += [f'Strategy added: {labels[key]}' for key in labels if key not in before_labels]
+    lines += [f'Strategy deleted: {before_labels[key]}' for key in before_labels if key not in labels]
+    lines += [f'Strategy renamed: {before_labels[key]} → {labels[key]}' for key in labels if key in before_labels and before_labels[key] != labels[key]]
+    lines += steps_changed(before, settings)
+    lines += [f"{label} · List 2: {'On' if settings['final_lists'].get(key) else 'Off'}" for key, label in labels.items()
+              if key in before_labels and bool(settings['final_lists'].get(key)) != bool(before['final_lists'].get(key))]
+    if settings['excluded_regions'] != before['excluded_regions']:
+        lines.append(list_change('Regions out of scope', before['excluded_regions'], settings['excluded_regions']))
+    pairs = lambda items: [f"{item['nr_mode']} · {item['operator']}" for item in items]  # noqa: E731
+    if pairs(settings['excluded_modes']) != pairs(before['excluded_modes']):
+        lines.append(list_change('Operators out of scope', pairs(before['excluded_modes']), pairs(settings['excluded_modes'])))
+    text = lambda value: ('Yes' if value else 'No') if isinstance(value, bool) else str(value)  # noqa: E731
+    lines += [f'{label}: {text(before.get(key))} → {text(settings.get(key))}' for key, label in SETTING_LABELS.items()
+              if settings.get(key) != before.get(key)]
+    return lines
 
 
 # ---------------------------------------------------------------------------
