@@ -3195,6 +3195,17 @@
       ...waiting.map((item) => `${item.campaign || 'No campaign'} ${item.nr_mode}: ${item.detail}`),
       status.error ? `The last calculation failed: ${status.error}` : ''].filter(Boolean).join('\n');
     $('nq-priority-recalculate').disabled = Boolean(status.running) || !state.user.can_edit;
+    // The strategy the module uses, by its name (also the strategies of the admins); left alone while it is being chosen.
+    const strategySelect = $('nq-priority-panel-strategy');
+    if (strategySelect && document.activeElement !== strategySelect) {
+      strategySelect.replaceChildren(...Object.entries(data.strategies || {}).map(([key, label]) => {
+        const option = node('option', label);
+        option.value = key;
+        return option;
+      }));
+      strategySelect.value = data.strategy.key;
+      strategySelect.dataset.current = data.strategy.key;
+    }
     if (status.running) watchPrioritization();
     else if (priorityRunning) {
       // The calculation has ended: the calls show their new values.
@@ -3228,11 +3239,15 @@
     // most calls.
     const finalList = data.rules.some((rule) => rule.list === 'final');
     const groupOf = (rule) => (rule.kind === 'step' ? rule.list : 'outside');
-    // The conditions of a step with AND, OR and the parentheses in the colour of the module, as the Prioritization Rules.
+    // The conditions of a step as the Prioritization Rules show them: each in its colour, AND, OR and the parentheses in the
+    // colour of the module.
+    const conditionKeys = Object.fromEntries(Object.values(state.prioritizationFields?.conditions || {})
+      .flatMap((conditions) => Object.entries(conditions).map(([key, label]) => [label, key])));
     const conditionNode = (text) => {
       const element = node('span', undefined, 'nq-step-condition-text');
       String(text || '').split(/(\bAND\b|\bOR\b|[()])/).map((part) => part.trim()).filter(Boolean)
-        .forEach((part) => element.append(['AND', 'OR', '(', ')'].includes(part) ? node('strong', part, 'nq-step-join') : node('span', part)));
+        .forEach((part) => element.append(['AND', 'OR', '(', ')'].includes(part) ? node('strong', part, 'nq-step-join')
+          : node('span', part, conditionKeys[part] ? `nq-condition-value is-cond-${conditionKeys[part]}` : '')));
       return element;
     };
     // The follow-up of the calls of a step in a stacked bar over its own calls: waiting (open and not attended yet), in
@@ -3421,6 +3436,36 @@
       }
     }
   }
+  // Another strategy for the module, from the panel: every call takes its step, queue and Priority at once, as when the
+  // Prioritization Rules are saved (the calls in analysis keep their Priority).
+  $('nq-priority-panel-strategy')?.addEventListener('change', async (event) => {
+    const select = event.target;
+    const previous = select.dataset.current || '';
+    const label = select.selectedOptions[0]?.textContent || select.value;
+    const message = `Use ${label} for the NQ Prioritization? Every call takes its step, queue and Priority at once; the calls in analysis keep their Priority.`;
+    const accepted = typeof window.showConfirmDialog === 'function'
+      ? await window.showConfirmDialog(message, {title: 'Change the strategy', confirmLabel: 'Change'})
+      : window.confirm(message);
+    if (!accepted) {
+      select.value = previous;
+      return;
+    }
+    select.disabled = true;
+    try {
+      const result = await api('/api/non-qualified-calls/prioritization/strategy', {method: 'PUT', body: JSON.stringify({strategy: select.value})});
+      state.prioritization = result.settings;
+      select.dataset.current = select.value;
+      toast(`The NQ Prioritization uses ${label}.`);
+      priorityKey = '';
+      await loadPrioritization();
+      loadCalls({quiet: true});
+    } catch (error) {
+      select.value = previous;
+      toast(error.message, 'error');
+    } finally {
+      select.disabled = false;
+    }
+  });
   $('nq-priority-recalculate')?.addEventListener('click', async () => {
     const button = $('nq-priority-recalculate');
     button.disabled = true;
@@ -6167,6 +6212,8 @@
         if (grouped && groupOf[index - 1] !== groupOf[index]) term.append(paren('('));
         const select = selectOf('nq-priority-condition-key', `Condition ${index + 1} of ${rule}`,
           index ? entries.filter(([value]) => value !== EVERY_CALL) : entries, key);
+        // Each condition in its colour (see the list of Conditions).
+        select.classList.add('nq-condition-value', `is-cond-${key}`);
         // What the condition means, on hover (the list of Conditions beside the table explains them all), and what it is
         // based on, as a tag in its list.
         const help = state.prioritizationFields.condition_help || {};
@@ -6221,8 +6268,9 @@
   const stepCountsTitle = () => (stepCounts.campaigns.length
     ? `Estimate for information: the calls each step would take in ${stepCounts.campaigns.join(' and ')}, the latest campaigns with their Final CDR; ${Number(stepCounts.out_of_scope || 0).toLocaleString()} more are out of scope`
     : 'Estimate for information: the calls each step would take in the latest campaign with its Final CDR');
-  // Calls per Queue: a column per Priority of the Voice and Data queues (those of their steps in the list shown), with the
-  // calls their steps take from their #Calls, grouped above the queue and its total (the tracked calls only in the note).
+  // Calls per Queue: a column per Priority of the Voice and Data queues, or of the Unique queue of a strategy of one queue
+  // (those of their steps in the list shown), with the calls their steps take from their #Calls, grouped above the queue
+  // and its total (the tracked calls only in the note).
   const renderQueueChart = (strategy) => {
     const queues = state.prioritizationFields.queues || {};
     const steps = Object.entries(strategySteps[strategy] || {})
@@ -6260,9 +6308,9 @@
     const notes = [stepList === 'final' ? 'List 2 · once Final CDR is scored' : 'List 1 · as during the campaign'];
     if (stepCounts.campaigns.length) notes.push(`estimate on the latest closed campaign${stepCounts.campaigns.length > 1 ? 's' : ''}: ${stepCounts.campaigns.join(' and ')}`);
     $('nq-priority-queue-chart-note').textContent = notes.join(' · ');
-    // The calls of both queues together, in bold.
-    $('nq-priority-queue-chart-total').textContent = counted
-      ? `Voice + Data: ${shown.reduce((calls, [key]) => calls + sum(totals[key]), 0).toLocaleString()} calls` : '';
+    // The calls of every queue together, in bold (Voice + Data, or the Unique queue of a strategy of one queue).
+    $('nq-priority-queue-chart-total').textContent = counted && shown.length
+      ? `${shown.map(([, label]) => label).join(' + ')}: ${shown.reduce((calls, [key]) => calls + sum(totals[key]), 0).toLocaleString()} calls` : '';
     renderQueueOutside(counted);
   };
   // The calls outside the Voice and Data queues, in a folded note below the chart (it keeps its state as the counts change):
@@ -6664,13 +6712,16 @@
       box.append(listHead, grid, add);
       return box;
     };
+    // A strategy without list 2 (or with it turned off) shows its list 1, which orders every call.
+    if (strategyFinalLists[strategy] === false) stepList = 'campaign';
     $('nq-priority-steps').replaceChildren(table(stepList));
     // What each condition means, in the order of the lists.
     const help = fields.condition_help || {};
     const kinds = fields.condition_kinds || {};
     $('nq-priority-glossary').replaceChildren(...stepConditions(stepList).map(([key, label]) => {
       const item = node('div');
-      const term = node('dt', label);
+      const term = node('dt');
+      term.append(node('span', label, `nq-condition-value is-cond-${key}`));
       const [tag, kind] = kinds[key] || [];
       if (tag) term.append(node('span', tag, `nq-condition-tag is-${kind}`));
       item.append(term, node('dd', help[key] || ''));

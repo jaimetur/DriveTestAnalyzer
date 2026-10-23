@@ -38,7 +38,7 @@
     <button type="button" class="nq-center-toggle nq-menu-toggle" id="nq-config-toggle" aria-haspopup="menu" aria-expanded="false" aria-controls="nq-config-menu" aria-label="NQ Analysis Configuration" title="Configure the analysis of the Non-Qualified Calls of this workspace"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg><span>NQ Analysis Configuration</span></button>
     <div class="nq-menu" id="nq-config-menu" role="menu" hidden>
       {% if not nq_can_configure %}{{ role_warning('the NQ Analysis Configuration') }}{% endif %}
-      <button type="button" role="menuitem" id="nq-prioritization-open" data-nq-prioritization-open><svg class="nq-menu-icon" viewBox="0 0 24 24" aria-hidden="true">{{ section_icons['rules'] | safe }}</svg><strong>Prioritization Rules</strong><span>Which calls are analysed first: the strategy (Vodafone Proposal, Points Lost Based, Dual Queue Cities first or Roads first, or your own strategies), its steps, queues and priorities</span></button>
+      <button type="button" role="menuitem" id="nq-prioritization-open" data-nq-prioritization-open><svg class="nq-menu-icon" viewBox="0 0 24 24" aria-hidden="true">{{ section_icons['rules'] | safe }}</svg><strong>Prioritization Rules</strong><span>Which calls are analysed first: the strategy (Vodafone Proposal, Dual Queue Scoring Based, Cities first or Roads first, or your own strategies), its steps, queues and priorities</span></button>
       <button type="button" role="menuitem" id="nq-fields-open"><svg class="nq-menu-icon" viewBox="0 0 24 24" aria-hidden="true">{{ section_icons['tag'] | safe }}</svg><strong>Fields &amp; Sections</strong><span>The fields of every section, their lists and Excel order</span></button>
       <button type="button" role="menuitem" id="nq-options-open"><svg class="nq-menu-icon" viewBox="0 0 24 24" aria-hidden="true">{{ section_icons['users'] | safe }}</svg><strong>Statuses &amp; Teams</strong><span>The NQ Call Statuses and the responsible teams with their members</span></button>
       <button type="button" role="menuitem" id="nq-status-rules-open" data-nq-status-rules-open><svg class="nq-menu-icon" viewBox="0 0 24 24" aria-hidden="true">{{ section_icons['function'] | safe }}</svg><strong>Status Rules</strong><span>How the status follows the Analysis, Implementation and Planning fields</span></button>
@@ -124,8 +124,12 @@
     <div class="collapsible-panel-body">
       <div class="nq-active-filters" data-nq-active-filters hidden></div>
       <div class="nq-progress-head">
-        <p class="nq-hint">Which filtered calls to analyse first. <strong>Scoring Impact</strong>: the points of the scoring each call loses in the KPIs it misses (High for the calls that hold the first half of the points their campaign, operator and service lose). <strong>Repeated Issue</strong>: other Non-Qualified Calls of its operator failed at the same place recently, in any service and NR Mode. The <strong>Strategy</strong> of the Prioritization Rules (Dual Queue (Cities first), Dual Queue (Roads first), Points Lost Based or one of your own) decides which calls are prioritized or only tracked, the Priority they take and the queue of the team that analyses them. Click a card, a step or an issue to drill down into its calls.</p>
-        <span class="nq-root-head-actions"><span class="nq-muted" id="nq-priority-status"></span><button type="button" class="nq-secondary-action" id="nq-priority-recalculate" title="Calculate the scoring impact, repetitions and priorities of every call again">Recalculate</button><button type="button" class="nq-secondary-action" data-nq-prioritization-open>Prioritization Rules</button></span>
+        <p class="nq-hint">Which filtered calls to analyse first. <strong>Scoring Impact</strong>: the points of the scoring each call loses in the KPIs it misses (High for the calls that hold the first half of the points their campaign, operator and service lose). <strong>Repeated Issue</strong>: other Non-Qualified Calls of its operator failed at the same place recently, in any service and NR Mode. The <strong>Strategy</strong> of the Prioritization Rules (Dual Queue (Cities first), Dual Queue (Roads first), Dual Queue (Scoring Based), Vodafone Proposal or one of your own) decides which calls are prioritized or only tracked, the Priority they take and the queue of the team that analyses them (Voice and Data, or one Unique queue). Click a card, a step or an issue to drill down into its calls.</p>
+        {# The strategy the module uses, above its buttons: changed by those who change the Prioritization Rules. #}
+        <div class="nq-priority-head-controls">
+          <label class="nq-priority-strategy-field nq-priority-panel-strategy" title="{{ 'The strategy of the NQ Prioritization: every call takes its step, queue and Priority at once' if nq_can_prioritize else 'Only admins and super-admins can change the strategy' }}">Strategy <select id="nq-priority-panel-strategy" aria-label="Strategy of the NQ Prioritization"{{ '' if nq_can_prioritize else ' disabled' }}></select></label>
+          <span class="nq-root-head-actions"><span class="nq-muted" id="nq-priority-status"></span><button type="button" class="nq-secondary-action" id="nq-priority-recalculate" title="Calculate the scoring impact, repetitions and priorities of every call again">Recalculate</button><button type="button" class="nq-secondary-action" data-nq-prioritization-open>Prioritization Rules</button></span>
+        </div>
       </div>
       <div class="nq-kpis" id="nq-priority-kpis"></div>
       <div class="nq-priority" id="nq-priority"></div>
@@ -465,14 +469,14 @@
               <section><h4>Strategies</h4><ul>
                 <li>A strategy gives every call a <strong>step</strong>, which sets its <strong>Priority</strong> (P1 to P8) and its <strong>queue</strong>.</li>
                 <li><strong>Dual Queue (Cities first / Roads first)</strong>: during the campaign by what the call says about itself; once the Final CDR is scored by its real impact. They differ only in the place of SA Voice (Cities or Connecting Roads first).</li>
-                <li><strong>Points Lost Based</strong>: by the impact levels (the list 2 of the Dual Queue strategies), list 1 alone.</li>
-                <li><strong>Vodafone Proposal</strong>: SA before NSA and Voice before Data; every Voice and WhatsApp call, and the Data calls of a cluster; list 1 alone.</li>
+                <li><strong>Dual Queue (Scoring Based)</strong>: every call by its impact level (list 2 of every strategy), list 1 alone.</li>
+                <li><strong>Vodafone Proposal</strong>: SA before NSA and Voice before Data; every Voice and WhatsApp call, the Data calls of a cluster, then every other call (P5); one <strong>Unique queue</strong>, list 1 alone.</li>
                 <li><strong>New Strategy</strong> copies the one shown; <strong>Rename Strategy</strong> renames any; <strong>Delete Strategy</strong> deletes your own. Save applies the strategy shown.</li>
               </ul></section>
               <section><h4>Lists and queues</h4><ul>
                 <li><strong>List 1</strong> (Weekly CDRs): while the Final CDR of the campaign is not scored.</li>
                 <li><strong>List 2</strong> (Final CDRs): once it is scored, if the strategy uses it (Use List 2 for Final CDRs); else list 1 goes on.</li>
-                <li><strong>Voice queue</strong>: Voice and WhatsApp calls. <strong>Data queue</strong>: Data tests. <strong>Tracked</strong>: in no queue.</li>
+                <li><strong>Voice queue</strong>: Voice and WhatsApp calls. <strong>Data queue</strong>: Data tests. <strong>Unique queue</strong>: every call of a strategy of one queue. <strong>Tracked</strong>: in no queue.</li>
               </ul></section>
               <section><h4>Steps</h4><ul>
                 <li>A call takes the <strong>first step</strong> it meets, by Priority and then by row (the upper row first).</li>
@@ -526,7 +530,8 @@
           <section class="nq-priority-strategy">
             <div class="nq-priority-steps" id="nq-priority-steps"></div>
           </section>
-          <section class="nq-priority-order"><h3>Queue order</h3>
+          {# Queue order and Conditions explain the rules: folded by default, an info icon before their title. #}
+          <details class="nq-priority-order nq-priority-info"><summary><svg class="nq-info-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg><h3>Queue order</h3></summary>
             <ol class="nq-priority-order-flow"><li>Priority</li><li>Newest campaign</li><li>Step (the row above first)</li><li>Highest Expected Gain</li><li>Oldest call</li></ol>
             <ul>
               <li>Same Priority and campaign: the upper step first.</li>
@@ -534,8 +539,8 @@
               <li>A call meeting two steps takes the upper one.</li>
               <li>Drag ⠿ (or use the arrow keys) to reorder.</li>
             </ul>
-          </section>
-          <section class="nq-priority-glossary"><h3>Conditions</h3><dl id="nq-priority-glossary"></dl></section>
+          </details>
+          <details class="nq-priority-glossary nq-priority-info"><summary><svg class="nq-info-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg><h3>Conditions</h3></summary><dl id="nq-priority-glossary"></dl></details>
         </div>
         <div class="nq-priority-side">
           <section class="nq-priority-queue-chart"><h3>Calls per Queue</h3>

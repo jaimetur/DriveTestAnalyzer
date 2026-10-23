@@ -97,7 +97,7 @@ IMPACT_LEVELS = ((IMPACT_HIGH, '#c8102e'), (IMPACT_MEDIUM, '#e08a1e'), (IMPACT_L
 PRIORITIZED, TRACK_ONLY, NO_RULE = 'Prioritized', 'Track only', 'No rule'
 PRIORITIZATION_VALUES = ((PRIORITIZED, '#2e8b57'), (TRACK_ONLY, '#9aa5ad'), (NO_RULE, '#c4ccd2'))
 # The queues of the teams of the strategies.
-QUEUE_VALUES = (('Voice', '#1366d6'), ('Data', '#0b8a7a'))
+QUEUE_VALUES = (('Voice', '#1366d6'), ('Data', '#0b8a7a'), ('Unique', '#b0234f'))
 
 
 def priority_options(ref: str, rule_names: list[str] = ()) -> list[dict[str, Any]]:
@@ -202,8 +202,8 @@ DEFAULT_FIELDS = (
            description='The step of the strategy (Campaign 1 · SA Voice · Connecting Roads...) that decides the prioritization '
                        'and the priority of the call.'),
     _field('prioritization_queue', 'Prioritization Queue', 'general', 'list', 'priority', 'queue',
-           description='Voice or Data: the queue of the team that analyses the call (empty when the call is only tracked or '
-                       'out of the queues).'),
+           description='Voice or Data: the queue of the team that analyses the call, or Unique for a strategy of one queue such as '
+                       'Vodafone Proposal (empty when the call is only tracked or out of the queues).'),
     _field('expected_gain', 'Expected Gain', 'general', 'number', 'priority', 'expected_points',
            description='The scoring points the analysis of the call is expected to recover, which orders the calls of the same '
                        'step: its Scoring Points Lost once the Final CDR of its campaign is scored, else the points its failure '

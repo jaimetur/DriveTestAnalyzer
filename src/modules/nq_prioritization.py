@@ -27,14 +27,16 @@ Every Non-Qualified Call (the latest version of each call, as the calls table li
     campaign, list 1 takes each call by what it says about itself, which never changes: P1 SA Voice in Cities (on
     Connecting Roads with Roads first), P2 SA Data (the consecutive failures of a hotspot, 2+ failed data tests at one
     spot of a drive), P3 SA Voice on
-    Connecting Roads (in Cities), P4 SA WhatsApp, P5 NSA Data, P6 NSA Voice, P7 NSA WhatsApp and P8 the tracked calls.
-    Once the Final CDR of the campaign is scored, list 2 orders its calls by their real impact. Admins change every field
-    of the steps, their conditions joined by AND or OR. Voice and WhatsApp calls go to the Voice queue, Data calls to the
-    Data queue; inside a step the calls with the highest Expected Gain go first (from the Final CDR of the latest
-    campaign), then the oldest.
-  - **Points Lost Based** (the Custom rules of the first version, whose rules become its steps): SA before NSA and Voice
-    before Data, every Voice and WhatsApp call and the Data calls of a cluster with a high impact (the others are
-    tracked with P5), with list 1 for every call until the admins turn its list 2 on.
+    Connecting Roads (in Cities), P4 SA WhatsApp, P5 NSA Voice, P6 NSA Data, P7 NSA WhatsApp and P8 the tracked calls.
+    Once the Final CDR of the campaign is scored, list 2 orders its calls by their real impact (the same in every
+    strategy). Admins change every field of the steps, their conditions joined by AND or OR. Voice and WhatsApp calls go
+    to the Voice queue, Data calls to the Data queue; inside a step the calls with the highest Expected Gain go first
+    (from the Final CDR of the latest campaign), then the oldest.
+  - **Dual Queue (Scoring Based)** (Points Lost Based before, the Custom rules of the first version, whose rules become
+    its steps): every call by its impact level, list 2 as its only list.
+  - **Vodafone Proposal**: SA before NSA and Voice before Data, every Voice and WhatsApp call, the Data calls of a cluster
+    and then every other call with P5, in one Unique queue (the Ping tests and Excluded Calls tracked with P8), list 1
+    alone.
   - Strategies of the admins: steps like the others, created as a copy of one of them.
 
   Admins can rename every strategy. The Priority of the open calls is filled with the priority of their step while
@@ -71,7 +73,7 @@ FINGERPRINT_STATE_KEY = 'nq_prioritization_fingerprint'
 FAILED_STATE_KEY = 'nq_prioritization_failed'
 SUMMARY_STATE_KEY = 'nq_prioritization_summary'
 # Bumped when the calculation changes: every value is calculated again.
-IMPACT_VERSION = 11
+IMPACT_VERSION = 12
 # The scoring of every campaign is split by campaign and operator, as the points of the scoring are national.
 LEVELS = ('Campaign', 'Operator')
 SERVICES = ('voice', 'speech', 'data')
@@ -94,7 +96,7 @@ MAX_KPIS_TEXT = 3
 METERS_PER_DEGREE = 111_320.0
 # The strategies that give every call its step, queue and Priority.
 CITIES_FIRST, ROADS_FIRST, CUSTOM, VODAFONE_PROPOSAL = 'cities_first', 'roads_first', 'custom', 'vodafone_proposal'
-STRATEGIES = {CITIES_FIRST: 'Dual Queue (Cities first)', ROADS_FIRST: 'Dual Queue (Roads first)', CUSTOM: 'Points Lost Based',
+STRATEGIES = {CITIES_FIRST: 'Dual Queue (Cities first)', ROADS_FIRST: 'Dual Queue (Roads first)', CUSTOM: 'Dual Queue (Scoring Based)',
               VODAFONE_PROPOSAL: 'Vodafone Proposal'}
 # The strategies of the application that use list 1 alone by default (every call, also once its Final CDR is scored).
 LIST_1_ONLY = (CUSTOM, VODAFONE_PROPOSAL)
@@ -104,7 +106,9 @@ ADDED_STEP = re.compile(r'^(campaign|final)-s[0-9]{1,6}$')
 MAX_STRATEGIES = 20
 MAX_LIST_STEPS = 20
 DEFAULT_STRATEGY = CITIES_FIRST
-VOICE_QUEUE, DATA_QUEUE = 'Voice', 'Data'
+# The Voice and Data queues of the teams, or the Unique queue of a strategy of one queue (Vodafone Proposal).
+VOICE_QUEUE, DATA_QUEUE, UNIQUE_QUEUE = 'Voice', 'Data', 'Unique'
+QUEUE_ORDER = (VOICE_QUEUE, DATA_QUEUE, UNIQUE_QUEUE)
 # List 1 orders the calls of a campaign until its Final CDR is scored; list 2 orders them after.
 CAMPAIGN_LIST, FINAL_LIST = 'campaign', 'final'
 LIST_LABELS = {CAMPAIGN_LIST: 'Campaign', FINAL_LIST: 'Final'}
@@ -187,7 +191,7 @@ CONDITION_HELP = {
     'drop': 'The call dropped, or the data test was cut off, once established.',
     'setup': 'The call or the data test failed before being established.',
 }
-STEP_QUEUES = {VOICE_QUEUE: 'Voice', DATA_QUEUE: 'Data', '': 'Tracked'}
+STEP_QUEUES = {VOICE_QUEUE: 'Voice', DATA_QUEUE: 'Data', UNIQUE_QUEUE: 'Unique', '': 'Tracked'}
 MAX_STEP_NUMBER = 20
 # The operators of a step that stand for the Focus operators of the Operator Maps (alone). By default the steps take the
 # Focus operators by name: the SA steps those that use SA, the others those with calls. An operator uses SA when at least
@@ -374,7 +378,7 @@ def normalize_settings(value: Any, *, strict: bool = False, operators: dict[str,
         'excluded_modes': (normalize_modes(value['excluded_modes'], strict) if isinstance(value.get('excluded_modes'), list)
                            else defaults['excluded_modes']),
         # Whether each strategy applies its list 2 once the Final CDR of a campaign is scored (else list 1 goes on): all but
-        # Points Lost Based and Vodafone Proposal by default.
+        # Dual Queue (Scoring Based) and Vodafone Proposal by default.
         'final_lists': {key: bool(final_lists.get(key, key not in LIST_1_ONLY)) for key in labels},
     }
 
@@ -532,32 +536,34 @@ def steps_from_rules(rules: list[dict[str, Any]], operators: dict[str, list[str]
 
 
 # ---------------------------------------------------------------------------
-# Strategies: Dual Queue (Cities first), Dual Queue (Roads first) and Points Lost Based
+# Strategies: Dual Queue (Cities first), Dual Queue (Roads first), Dual Queue (Scoring Based) and Vodafone Proposal
 # ---------------------------------------------------------------------------
 def _default_rows(strategy: str) -> dict[str, list[tuple[Any, ...]]]:
     """The steps of the two lists of a strategy by default, in order: (Priority, NR Mode, call type, area, conditions, queue)
     and the operators between the conditions when they are not OR. List 1 of the Dual Queue strategies differs only in the
     place of SA Voice: in Cities first (P1, Connecting Roads P3) with Cities first, on Connecting Roads first with Roads
-    first; their data steps take the consecutive failures of a cluster (Consecutive failures AND Cluster). List 2 is the
-    same in every strategy of the application, by the impact levels: SA Voice High P1, SA Data High P2, SA Voice Medium and
-    Low P3, SA WhatsApp High, Medium and Low P4, NSA Data High P5, NSA Voice P6, NSA WhatsApp P7 and the tracked calls P8.
-    Points Lost Based uses it as its list 1 (alone). Vodafone Proposal (list 1 alone) puts SA before NSA and Voice before
-    Data: every Voice and WhatsApp call, and the Data calls of a cluster (the others are tracked with P5)."""
+    first; their data steps take the consecutive failures of a cluster (Consecutive failures AND Cluster), and NSA Voice
+    (P5) goes before NSA Data (P6), as in list 2. List 2 is the
+    same in every strategy of the application, by the impact levels: SA Voice High P1, SA Data High P2, SA WhatsApp High
+    P3, SA Voice and WhatsApp Medium then every other one P4, NSA Voice P5, NSA Data High P6, NSA WhatsApp P7 and the
+    tracked calls P8. Dual Queue (Scoring Based) uses it as its list 1 (alone). Vodafone Proposal (list 1 alone, in its
+    Unique queue) puts SA before NSA and Voice before Data: every Voice and WhatsApp call, the Data calls of a cluster, then
+    every other call with P5; the Ping tests and the Excluded Calls, which no queue takes, are tracked with P8."""
     every = (EVERY_CALL,)
     final = [('P1', 'SA', 'voice', 'any', ('high',), VOICE_QUEUE), ('P2', 'SA', 'data', 'any', ('high',), DATA_QUEUE),
-             ('P3', 'SA', 'voice', 'any', ('medium',), VOICE_QUEUE), ('P3', 'SA', 'voice', 'any', ('low',), VOICE_QUEUE),
-             ('P4', 'SA', 'whatsapp', 'any', ('high',), VOICE_QUEUE), ('P4', 'SA', 'whatsapp', 'any', ('medium',), VOICE_QUEUE),
-             ('P4', 'SA', 'whatsapp', 'any', ('low',), VOICE_QUEUE), ('P5', 'NSA', 'data', 'any', ('high',), DATA_QUEUE),
-             ('P6', 'NSA', 'voice', 'any', every, VOICE_QUEUE), ('P7', 'NSA', 'whatsapp', 'any', every, VOICE_QUEUE),
+             ('P3', 'SA', 'whatsapp', 'any', ('high',), VOICE_QUEUE), ('P4', 'SA', 'voice', 'any', ('medium',), VOICE_QUEUE),
+             ('P4', 'SA', 'whatsapp', 'any', ('medium',), VOICE_QUEUE), ('P4', 'SA', 'voice', 'any', every, VOICE_QUEUE),
+             ('P4', 'SA', 'whatsapp', 'any', every, VOICE_QUEUE), ('P5', 'NSA', 'voice', 'any', every, VOICE_QUEUE),
+             ('P6', 'NSA', 'data', 'any', ('high',), DATA_QUEUE), ('P7', 'NSA', 'whatsapp', 'any', every, VOICE_QUEUE),
              (TRACKED_PRIORITY, 'any', 'any', 'any', every, '')]
     if strategy == CUSTOM:
         return {CAMPAIGN_LIST: list(final), FINAL_LIST: final}
     if strategy == VODAFONE_PROPOSAL:
         cluster = ('repeated',)
-        return {CAMPAIGN_LIST: [('P1', 'SA', 'voice', 'any', every, VOICE_QUEUE), ('P1', 'SA', 'whatsapp', 'any', every, VOICE_QUEUE),
-                                ('P2', 'SA', 'data', 'any', cluster, DATA_QUEUE), ('P3', 'NSA', 'voice', 'any', every, VOICE_QUEUE),
-                                ('P3', 'NSA', 'whatsapp', 'any', every, VOICE_QUEUE), ('P4', 'NSA', 'data', 'any', cluster, DATA_QUEUE),
-                                ('P5', 'any', 'any', 'any', every, '')],
+        return {CAMPAIGN_LIST: [('P1', 'SA', 'voice', 'any', every, UNIQUE_QUEUE), ('P1', 'SA', 'whatsapp', 'any', every, UNIQUE_QUEUE),
+                                ('P2', 'SA', 'data', 'any', cluster, UNIQUE_QUEUE), ('P3', 'NSA', 'voice', 'any', every, UNIQUE_QUEUE),
+                                ('P3', 'NSA', 'whatsapp', 'any', every, UNIQUE_QUEUE), ('P4', 'NSA', 'data', 'any', cluster, UNIQUE_QUEUE),
+                                ('P5', 'any', 'any', 'any', every, UNIQUE_QUEUE), (TRACKED_PRIORITY, 'any', 'any', 'any', every, '')],
                 FINAL_LIST: final}
     if strategy not in (CITIES_FIRST, ROADS_FIRST):
         # A strategy of the admins has only the steps they gave it.
@@ -567,7 +573,7 @@ def _default_rows(strategy: str) -> dict[str, list[tuple[Any, ...]]]:
     return {
         CAMPAIGN_LIST: [('P1', 'SA', 'voice', first, every, VOICE_QUEUE), ('P2', 'SA', 'data', 'any', data, DATA_QUEUE, both),
                         ('P3', 'SA', 'voice', third, every, VOICE_QUEUE), ('P4', 'SA', 'whatsapp', 'any', every, VOICE_QUEUE),
-                        ('P5', 'NSA', 'data', 'any', data, DATA_QUEUE, both), ('P6', 'NSA', 'voice', 'any', every, VOICE_QUEUE),
+                        ('P5', 'NSA', 'voice', 'any', every, VOICE_QUEUE), ('P6', 'NSA', 'data', 'any', data, DATA_QUEUE, both),
                         ('P7', 'NSA', 'whatsapp', 'any', every, VOICE_QUEUE), (TRACKED_PRIORITY, 'any', 'any', 'any', every, '')],
         FINAL_LIST: final,
     }
@@ -575,14 +581,24 @@ def _default_rows(strategy: str) -> dict[str, list[tuple[Any, ...]]]:
 
 def _former_rows(strategy: str, list_name: str) -> list[list[tuple[Any, ...]]]:
     """The default steps of a list of a strategy of the application before the current ones (a list saved exactly as one of
-    them takes the current defaults, see ``normalize_steps``). List 1 of the Dual Queue strategies: its Data steps took
-    Consecutive failures AND Hotspots, and before Consecutive failures OR Hotspots (Cities first) or Hotspots (Roads
-    first). List 1 of Points Lost Based: SA before NSA and Voice before Data, its Data steps Cluster OR / AND High impact.
-    List 2: ten steps, one for SA WhatsApp High OR Medium impact, and before them the Data steps of the Dual Queue
-    strategies took High impact OR Cluster; Points Lost Based copied its list 1 (Cluster OR / AND High impact)."""
+    them takes the current defaults, see ``normalize_steps``). List 1 of the Dual Queue strategies: NSA Data (P5) before NSA
+    Voice (P6), its Data steps Consecutive failures AND Cluster, before Consecutive failures AND Hotspots, and before
+    Consecutive failures OR Hotspots (Cities first) or Hotspots (Roads first). List 1 of Vodafone Proposal: the other calls tracked with P5 (no P8 step), in the Unique queue or before in the
+    Voice and Data queues. List 1 of Dual Queue (Scoring
+    Based), then Points Lost Based: the former list 2, and before SA before NSA and Voice before Data, its Data steps
+    Cluster OR / AND High impact. List 2: eleven steps with SA Voice Medium and Low P3, SA WhatsApp High, Medium and Low P4,
+    NSA Data High P5, NSA Voice P6; before them ten, one for SA WhatsApp High OR Medium impact, and before them the Data
+    steps of the Dual Queue strategies took High impact OR Cluster; Points Lost Based copied its list 1 (Cluster OR / AND
+    High impact)."""
     every = (EVERY_CALL,)
-    if strategy not in STRATEGIES or strategy == VODAFONE_PROPOSAL:
+    if strategy not in STRATEGIES:
         return []
+    eleven = [('P1', 'SA', 'voice', 'any', ('high',), VOICE_QUEUE), ('P2', 'SA', 'data', 'any', ('high',), DATA_QUEUE),
+              ('P3', 'SA', 'voice', 'any', ('medium',), VOICE_QUEUE), ('P3', 'SA', 'voice', 'any', ('low',), VOICE_QUEUE),
+              ('P4', 'SA', 'whatsapp', 'any', ('high',), VOICE_QUEUE), ('P4', 'SA', 'whatsapp', 'any', ('medium',), VOICE_QUEUE),
+              ('P4', 'SA', 'whatsapp', 'any', ('low',), VOICE_QUEUE), ('P5', 'NSA', 'data', 'any', ('high',), DATA_QUEUE),
+              ('P6', 'NSA', 'voice', 'any', every, VOICE_QUEUE), ('P7', 'NSA', 'whatsapp', 'any', every, VOICE_QUEUE),
+              (TRACKED_PRIORITY, 'any', 'any', 'any', every, '')]
     points_lost = [('P1', 'SA', 'voice', 'any', every, VOICE_QUEUE), ('P1', 'SA', 'whatsapp', 'any', every, VOICE_QUEUE),
                    ('P2', 'SA', 'data', 'any', ('repeated', 'high'), DATA_QUEUE), ('P3', 'NSA', 'voice', 'any', every, VOICE_QUEUE),
                    ('P3', 'NSA', 'whatsapp', 'any', every, VOICE_QUEUE), ('P4', 'NSA', 'data', 'any', ('repeated', 'high'), DATA_QUEUE),
@@ -590,10 +606,21 @@ def _former_rows(strategy: str, list_name: str) -> list[list[tuple[Any, ...]]]:
     points_lost_and = [(*row, ('and',)) if row[4] == ('repeated', 'high') else row for row in points_lost]
     if list_name == CAMPAIGN_LIST:
         if strategy == CUSTOM:
-            return [points_lost, points_lost_and]
+            return [eleven, points_lost, points_lost_and]
+        if strategy == VODAFONE_PROPOSAL:
+            unique = [('P1', 'SA', 'voice', 'any', every, UNIQUE_QUEUE), ('P1', 'SA', 'whatsapp', 'any', every, UNIQUE_QUEUE),
+                      ('P2', 'SA', 'data', 'any', ('repeated',), UNIQUE_QUEUE), ('P3', 'NSA', 'voice', 'any', every, UNIQUE_QUEUE),
+                      ('P3', 'NSA', 'whatsapp', 'any', every, UNIQUE_QUEUE), ('P4', 'NSA', 'data', 'any', ('repeated',), UNIQUE_QUEUE),
+                      ('P5', 'any', 'any', 'any', every, '')]
+            # The same steps with the Voice and Data queues.
+            return [unique, [(*row[:5], (DATA_QUEUE if row[2] == 'data' else VOICE_QUEUE) if row[5] else '') for row in unique]]
+        # NSA Data (P5) before NSA Voice (P6), with the Data conditions of each former version.
         current = _default_rows(strategy)[CAMPAIGN_LIST]
-        variants = [(('consecutive', 'cluster'), ('and',)), (('consecutive', 'cluster'), None), (('cluster',), None)]
-        return [[(*row[:4], data, row[5], *([joins] if joins else [])) if row[2] == 'data' else row for row in current]
+        nsa_data, nsa_voice = current[5], current[4]
+        swapped = [*current[:4], ('P5', *nsa_data[1:]), ('P6', *nsa_voice[1:]), *current[6:]]
+        variants = [(('consecutive', 'repeated'), ('and',)), (('consecutive', 'cluster'), ('and',)), (('consecutive', 'cluster'), None),
+                    (('cluster',), None)]
+        return [[(*row[:4], data, row[5], *([joins] if joins else [])) if row[2] == 'data' else row for row in swapped]
                 for data, joins in variants]
 
     def ten(data: tuple[str, ...]) -> list[tuple[Any, ...]]:
@@ -602,9 +629,11 @@ def _former_rows(strategy: str, list_name: str) -> list[list[tuple[Any, ...]]]:
                 ('P4', 'SA', 'whatsapp', 'any', ('high', 'medium'), VOICE_QUEUE), ('P4', 'SA', 'whatsapp', 'any', ('low',), VOICE_QUEUE),
                 ('P5', 'NSA', 'data', 'any', data, DATA_QUEUE), ('P6', 'NSA', 'voice', 'any', every, VOICE_QUEUE),
                 ('P7', 'NSA', 'whatsapp', 'any', every, VOICE_QUEUE), (TRACKED_PRIORITY, 'any', 'any', 'any', every, '')]
-    former = [ten(('high',))]
+    former = [eleven, ten(('high',))]
     if strategy in (CITIES_FIRST, ROADS_FIRST):
         return [*former, ten(('high', 'repeated'))]
+    if strategy == VODAFONE_PROPOSAL:
+        return former
     return [*former, points_lost, points_lost_and]
 
 
@@ -2485,7 +2514,9 @@ def panel(repository: Any, filters: Any, username: str) -> dict[str, Any]:
     # A queue per team, in the order the analysts take its calls.
     queues = []
     names = priority_options(repository) or list(STRATEGY_PRIORITY_NAMES)
-    for name in (VOICE_QUEUE, DATA_QUEUE):
+    # The queues of the steps of the strategy: Voice and Data, or the Unique queue of a strategy of one queue.
+    used = {entry.get('queue') for entry in entries if entry.get('kind') == 'step'} | {row['queue'] for row in queue}
+    for name in [name for name in QUEUE_ORDER if name in used] or [VOICE_QUEUE, DATA_QUEUE]:
         members = [{**row, 'priority': priority_of(row)} for row in queue if row['queue'] == name]
         queues.append({'name': name, 'total': len(members), 'rows': order_queue(members, names)})
     queue = []
@@ -2511,6 +2542,8 @@ def panel(repository: Any, filters: Any, username: str) -> dict[str, Any]:
     return {
         'status': status(repository),
         'strategy': {'key': strategy, 'label': strategy_labels(settings)[strategy]},
+        # Every strategy by its name, for the selector of the panel.
+        'strategies': strategy_labels(settings),
         'settings': {key: settings[key] for key in ('high_share', 'medium_share', 'min_calls', 'previous_quarters', 'capacity')},
         'totals': {
             'calls': len(rows), 'prioritized': sum(row['prioritization'] == PRIORITIZED for row in rows),

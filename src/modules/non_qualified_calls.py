@@ -7485,6 +7485,9 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         # Saved after Default Rules: App Events says so.
         defaults: bool = False
 
+    class StrategyPayload(BaseModel):
+        strategy: str = ''
+
     class RootCauseRulePayload(BaseModel):
         rule: dict[str, Any] | None = None
 
@@ -7916,6 +7919,17 @@ def install_non_qualified_calls_routes(core: Any) -> None:
             log_action(repository, user, 'nq_prioritization_defaults', {'strategy': nq_prioritization.strategy_labels(settings)[settings['strategy']]})
         if nq_prioritization.fingerprint(repository) != before:
             nq_prioritization.start(repository, core.submit_background_task)
+        return JSONResponse({'settings': settings, 'status': nq_prioritization.status(repository)})
+
+    @core.app.put('/api/non-qualified-calls/prioritization/strategy')
+    def nq_save_prioritization_strategy(payload: StrategyPayload, user=Depends(prioritization_user)) -> JSONResponse:
+        """The strategy the module uses, chosen in the NQ Prioritization & Queues panel (as in the Prioritization Rules): the
+        other settings stay as saved, and every call takes its step, queue and Priority at once."""
+        repository = workspace_repository(user)
+        settings = nq_prioritization.load_settings(repository)
+        if payload.strategy not in nq_prioritization.strategy_labels(settings):
+            raise HTTPException(400, 'Choose the strategy of the NQ Prioritization.')
+        settings = translate(lambda: nq_prioritization.save_settings(repository, {**settings, 'strategy': payload.strategy}, user.username))
         return JSONResponse({'settings': settings, 'status': nq_prioritization.status(repository)})
 
     @core.app.post('/api/non-qualified-calls/prioritization/step-counts')

@@ -496,6 +496,12 @@ span.nq-root-suggestion { cursor: default; }
 .nq-table .nq-comments-cell { width: 1%; white-space: nowrap; }
 .nq-root-cell .nq-pill + .nq-pill { margin-top: .25rem; }
 .nq-root-head-actions { display: inline-flex; flex-wrap: wrap; align-items: center; gap: .6rem; }
+/* The strategy of the panel above its buttons, in the neutral colours of the panel: its name in the colour of the text of
+   the module, a white list with the border of the other controls. */
+.nq-priority-head-controls { display: grid; justify-items: end; gap: .5rem; }
+.nq-priority-panel-strategy select { width: 15rem; min-height: 2.2rem; border: 1px solid var(--nq-border); border-radius: 999px; background-color: #fff;
+  color: var(--nq-text); font-weight: 700; }
+.nq-priority-panel-strategy select:disabled { cursor: not-allowed; background-color: var(--nq-softer); color: var(--nq-muted); }
 .nq-rule-readonly { color: #a3263a; font-weight: 750; }
 .nq-rule-dialog [hidden] { display: none !important; }
 .nq-status-updated { display: block; width: 0; min-width: 100%; overflow: hidden; color: var(--nq-muted); font-size: .7rem; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
@@ -1487,6 +1493,8 @@ body:has(dialog.nq-priority-dialog[open]) { overflow: hidden; }
 :is(.nq-priority-steps-table :is(.nq-priority-step-queue-select, .nq-priority-step-type), .nq-priority-queue-group-name).is-voice, :is(.nq-step-type, .nq-step-queue).is-voice > span { background-color: #1366d6; }
 :is(.nq-priority-steps-table :is(.nq-priority-step-queue-select, .nq-priority-step-type), .nq-priority-queue-group-name).is-data, :is(.nq-step-type, .nq-step-queue).is-data > span { background-color: #0b8a7a; }
 :is(.nq-priority-steps-table :is(.nq-priority-step-queue-select, .nq-priority-step-type), .nq-priority-queue-group-name).is-tracked, :is(.nq-step-type, .nq-step-queue).is-tracked > span { background-color: #5f6b7a; }
+/* The Unique queue of a strategy of one queue (Vodafone Proposal), in the colour of the module. */
+:is(.nq-priority-steps-table :is(.nq-priority-step-queue-select, .nq-priority-step-type), .nq-priority-queue-group-name).is-unique, :is(.nq-step-type, .nq-step-queue).is-unique > span { background-color: #b0234f; }
 /* The calls of the queues of the panel: the position muted, the JOIN_ID in a monospace font, the Priority in the colour of
    the Priorities and the step in a pill (list 1, Weekly, blue; list 2, Final, purple), the numbers on the right. */
 .nq-queue-position > span { color: var(--nq-muted); font-variant-numeric: tabular-nums; }
@@ -1525,6 +1533,22 @@ body:has(dialog.nq-priority-dialog[open]) { overflow: hidden; }
 .nq-step-type > span { border-radius: 6px; }
 .nq-step-condition-text { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: .1rem .3rem; }
 .nq-step-join { color: var(--nq-color); font-weight: 800; }
+/* Every condition in a colour of its own, in the steps of the Prioritization Rules, their list of Conditions and the steps of
+   the panel: the impact levels as the Scoring Impact (High red, Medium orange, Low blue), Every call green, Cluster grape,
+   Hotspots pink, Consecutive failures cyan, Drops brown and Setup failures slate. */
+.nq-condition-value { --nq-cond: #5f6b7a; }
+.nq-condition-value.is-cond-all { --nq-cond: #2b8a3e; }
+.nq-condition-value.is-cond-high { --nq-cond: #c8102e; }
+.nq-condition-value.is-cond-medium { --nq-cond: #e08a1e; }
+.nq-condition-value.is-cond-low { --nq-cond: #3a7fc1; }
+.nq-condition-value.is-cond-repeated { --nq-cond: #862e9c; }
+.nq-condition-value.is-cond-cluster { --nq-cond: #d6336c; }
+.nq-condition-value.is-cond-consecutive { --nq-cond: #0b7285; }
+.nq-condition-value.is-cond-drop { --nq-cond: #8d5524; }
+.nq-condition-value.is-cond-setup { --nq-cond: #495057; }
+.nq-priority-steps-table select.nq-condition-value, span.nq-condition-value { border: 1px solid color-mix(in srgb, var(--nq-cond) 40%, white);
+  background-color: color-mix(in srgb, var(--nq-cond) 13%, white); color: color-mix(in srgb, var(--nq-cond) 80%, black); font-weight: 700; }
+span.nq-condition-value { display: inline-block; padding: .05rem .45rem; border-radius: 999px; font-size: .74rem; line-height: 1.35; }
 /* The follow-up of the calls of each step over its own calls (waiting in the colour of the module, in progress amber, closed
    green) and the points they lose in blue bars against the step that loses the most in the tab, the number beside them. */
 .nq-priority-steps-summary td.nq-step-bar-cell { min-width: 7.5rem; text-align: left; }
@@ -1616,6 +1640,16 @@ td.nq-queue-number { text-align: right; font-variant-numeric: tabular-nums; }
 .nq-priority-order ul li::before { content: '•'; margin-right: .4rem; color: var(--nq-color); }
 /* What each condition means, under the steps: its name and one line, in columns. */
 .nq-priority-glossary[hidden] { display: none; }
+/* Queue order and Conditions explain the rules: folded by default, an info icon before their title and an arrow that turns
+   when they open. */
+details.nq-priority-info > summary { display: flex; align-items: center; gap: .45rem; list-style: none; cursor: pointer; }
+details.nq-priority-info > summary::-webkit-details-marker { display: none; }
+details.nq-priority-info > summary::after { content: '\203A'; margin-left: auto; color: var(--nq-color); font-size: 1.15rem; font-weight: 800;
+  line-height: 1; transition: transform .15s ease; }
+details.nq-priority-info[open] > summary::after { transform: rotate(90deg); }
+details.nq-priority-info:not([open]) { padding-block: .55rem; }
+.nq-info-icon { flex: 0 0 auto; width: 1.05rem; height: 1.05rem; fill: none; stroke: var(--nq-color); stroke-width: 2; stroke-linecap: round;
+  stroke-linejoin: round; }
 .nq-priority-glossary dl { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 16rem), 1fr)); gap: .45rem 1.2rem; margin: 0;
   font-size: .74rem; line-height: 1.35; }
 .nq-priority-glossary dt { display: flex; align-items: center; flex-wrap: wrap; gap: .35rem; color: var(--nq-dark); font-weight: 800; }
