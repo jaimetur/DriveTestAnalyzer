@@ -7038,7 +7038,14 @@ function setupNativeSelectMenus() {
       item.setAttribute('aria-selected', String(option.selected));
       if (option.disabled || group?.disabled) item.setAttribute('aria-disabled', 'true');
       item.textContent = optionText(option) || ' ';
-      item.title = optionText(option);
+      // A tag beside the value (data-tag, coloured by data-tag-class), and its own explanation on hover (title).
+      if (option.dataset.tag) {
+        const tag = document.createElement('span');
+        tag.className = `native-select-option-tag ${option.dataset.tagClass || ''}`.trim();
+        tag.textContent = option.dataset.tag;
+        item.append(tag);
+      }
+      item.title = option.title || optionText(option);
       item.nativeOption = option;
       item.groupLabel = group ? groups.at(-1) : null;
       items.push(item);

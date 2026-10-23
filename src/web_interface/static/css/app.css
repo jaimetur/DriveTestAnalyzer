@@ -75,6 +75,8 @@ select[multiple] { min-height: 10rem; border-radius: 18px; padding-right: 0.55re
 .native-select-option { display: flex; align-items: baseline; gap: .45rem; padding: .38rem .8rem .38rem .55rem; border-radius: 10px; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .native-select-option::before { content: ''; flex: 0 0 .9rem; color: var(--brand); font-weight: 900; text-align: center; }
 .native-select-option[aria-selected="true"] { color: var(--brand); font-weight: 800; }
+.native-select-option-tag { margin-left: auto; padding: .05rem .5rem; border-radius: 999px; background: var(--surface-muted, #eef1f5); color: #56606f;
+  font-size: .68rem; font-weight: 800; }
 .native-select-option[aria-selected="true"]::before { content: '✓'; }
 .native-select-option.is-active { background: rgba(11, 122, 117, .1); }
 .native-select-option[aria-disabled="true"] { color: var(--muted); cursor: default; opacity: .55; }
@@ -3867,6 +3869,19 @@ body:has(.release-navigator) .help-navigator{top:37%}
   letter-spacing: .07em; text-transform: uppercase; opacity: .7; }
 @media (max-width: 700px) {
   #page-panel-navigator.modules-sections-navigator .page-panel-navigator-tab { height: 9.5rem; min-height: 9.5rem; }
+}
+/* On large screens Modules & Sections stands at the left edge instead, its tab reading upwards. */
+@media (min-width: 1200px) {
+  #page-panel-navigator.modules-sections-navigator { left: 0; right: auto; transform: translateX(calc(-100% + 1px)); }
+  #page-panel-navigator.modules-sections-navigator.is-open { transform: translateX(0); }
+  #page-panel-navigator.modules-sections-navigator .page-panel-navigator-drawer { border-left: 0;
+    border-right: 1px solid color-mix(in srgb, var(--panel-nav-border) 42%, #fff); border-radius: 0 14px 14px 0; box-shadow: 6px 8px 18px var(--panel-nav-shadow); }
+  #page-panel-navigator.modules-sections-navigator .page-panel-navigator-tab { left: 100%; right: auto; border-left: 0; border-right: 1px solid var(--panel-nav-border);
+    border-radius: 0 12px 12px 0; box-shadow: 6px 8px 18px var(--panel-nav-shadow); }
+  #page-panel-navigator.modules-sections-navigator .page-panel-navigator-tab span { transform: rotate(180deg); }
+  #page-panel-navigator.modules-sections-navigator .edge-navigator-hover-target { left: 100%; right: auto; }
+  #page-panel-navigator.modules-sections-navigator:not(.is-open):not(.is-edge-revealed):not(:has(:focus-visible)):not(:hover) .page-panel-navigator-tab {
+    transform: translate(calc(-100% + .32rem), -50%); }
 }
 
 /* Final narrow-viewport guard. Keep this block last so component-specific

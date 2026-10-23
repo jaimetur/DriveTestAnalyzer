@@ -1399,6 +1399,24 @@
   // The cause columns of the RCA sources show, for a call whose source gives a category without a cause (most results
   // of the Ericsson RCA), that category, marked as such.
   const CAUSE_FALLBACKS = {rca_suggested_cause: 'rca_suggested_category', netcheck_suggested_cause: 'netcheck_suggested_category'};
+  // A value of the Prioritization Rule field (Final 3 · SA Voice · Medium impact) shown as what its step takes, then the
+  // list of the step (Weekly for list 1, Final for list 2) and its number in tags of their own; the whole value on hover.
+  const STEP_RULE = /^(Campaign|Final)(?: (\d+))? · (.+)$/;
+  const isRuleField = (field) => field.source === 'priority' && field.source_ref === 'priority_rule';
+  const ruleValue = (field, value) => {
+    const element = node('span', undefined, 'nq-rule-value');
+    const match = STEP_RULE.exec(value);
+    const label = node('span', match ? match[3] : value, 'nq-pill');
+    paintPill(label, optionColorOf(field, value));
+    element.append(label);
+    if (match) {
+      const list = match[1] === 'Final' ? 'final' : 'weekly';
+      element.append(node('span', list === 'final' ? 'Final' : 'Weekly', `nq-rule-tag is-${list}`));
+      if (match[2]) element.append(node('span', `Step ${match[2]}`, 'nq-rule-tag is-step'));
+    }
+    element.title = value;
+    return element;
+  };
   const fieldCell = (call, field) => {
     const cell = node('td', undefined, 'nq-tracking-cell nq-field-cell');
     const value = String((field.source === 'user' ? call.fields?.[field.key] : call.values?.[field.key]) ?? '');
@@ -1409,7 +1427,9 @@
       cell.append(picker);
       return cell;
     }
-    if (['list', 'yes_no'].includes(field.type) && value) {
+    if (isRuleField(field) && value) {
+      cell.append(ruleValue(field, value));
+    } else if (['list', 'yes_no'].includes(field.type) && value) {
       const element = node('span', value, 'nq-pill');
       paintPill(element, field.type === 'yes_no' ? YES_NO_COLORS[value] || '' : optionColorOf(field, value));
       cell.append(element);
@@ -2821,12 +2841,15 @@
       state.priorityTypes = payload.priority_types || {};
       state.prioritization = payload.prioritization || null;
       state.defaultPrioritization = payload.default_prioritization || null;
-      state.prioritizationCriteria = payload.prioritization_criteria || {};
       state.prioritizationStrategies = payload.prioritization_strategies || {};
       state.prioritizationSteps = payload.prioritization_steps || {};
+      state.prioritizationStepOperators = payload.prioritization_step_operators || {};
       state.prioritizationFields = payload.prioritization_fields || {};
       state.focusOperators = payload.focus_operators || [];
       state.prioritizationOperators = payload.prioritization_operators || [];
+      state.prioritizationFixedModes = payload.prioritization_fixed_modes || [];
+      state.prioritizationFixedReason = payload.prioritization_fixed_reason || '';
+      state.prioritizationRegions = payload.prioritization_regions || [];
       state.priorityOptions = payload.priority_options || [];
       state.callFields = payload.call_fields || [];
       state.sections = payload.sections || [];
@@ -3015,7 +3038,7 @@
       for (const cell of cells) {
         const item = cell && typeof cell === 'object' ? cell : {text: cell};
         const td = node('td', undefined, item.className || '');
-        const content = item.pairs || item.action ? node('button', item.text, 'nq-failure-drill') : node('span', item.text);
+        const content = item.node || (item.pairs || item.action ? node('button', item.text, 'nq-failure-drill') : node('span', item.text));
         if (item.pairs) {
           content.type = 'button';
           content.classList.toggle('is-active', isDrilled(item.pairs));
@@ -3157,6 +3180,10 @@
     return field ? [[`field:${field.key}`, value]] : null;
   };
   const points = (value) => (value === null || value === undefined ? '—' : Number(value).toFixed(2));
+  // Whether the Tracked queue of the panel is unfolded (folded by default).
+  let trackedQueueOpen = false;
+  // The list whose steps the Strategy subpanel shows (campaign, final or outside; the list with the most calls at first).
+  let stepsTab = '';
   const renderPrioritization = (data) => {
     const {totals} = data;
     const status = data.status || {};
@@ -3185,29 +3212,129 @@
         ? data.queues.map((item) => `${item.name} ${number(item.total)}`).join(' · ') : 'Prioritized, open and not attended yet'), null],
     ];
     $('nq-priority-kpis').replaceChildren(...cards.map(([card, pairs]) => (pairs ? drillCard(card, {pairs}) : card)));
-    const sections = [];
-    const section = (title, note, ...content) => {
-      const box = node('section', undefined, 'nq-failure-section');
+    // Each part of the panel in a subpanel of its own, in this order: the queues, the steps of the strategy, the Scoring
+    // Impact and the repeated issues.
+    const sections = {};
+    const section = (key, title, note, ...content) => {
+      const box = node('section', undefined, 'nq-failure-section nq-progress-section nq-priority-subpanel');
       box.append(node('h3', title, 'nq-failure-title'), ...(note ? [node('p', note, 'nq-hint')] : []), ...content);
-      sections.push(box);
+      sections[key] = box;
     };
     const notes = [];
     if (totals.waiting) notes.push(`${number(totals.waiting)} of these calls are waiting for their prioritization: it is calculated in the background once the server is idle, or now with Recalculate.`);
     if (waiting.length) notes.push(`Not scored yet: ${waiting.map((item) => `${item.campaign || 'No campaign'} ${item.nr_mode} (${item.detail.replace(/\.$/, '')})`).join('; ')}.`);
-    const ruleRows = data.rules.map((rule) => {
-      const name = rule.name || 'No rule';
+    // The steps of each list in a tab of their own (list 1 blue, list 2 purple, as the queues) and the calls out of scope and
+    // those no step takes in a third. The tab chosen stays as the panel is drawn again; the first time, the list with the
+    // most calls.
+    const finalList = data.rules.some((rule) => rule.list === 'final');
+    const groupOf = (rule) => (rule.kind === 'step' ? rule.list : 'outside');
+    // The conditions of a step with AND, OR and the parentheses in the colour of the module, as the Prioritization Rules.
+    const conditionNode = (text) => {
+      const element = node('span', undefined, 'nq-step-condition-text');
+      String(text || '').split(/(\bAND\b|\bOR\b|[()])/).map((part) => part.trim()).filter(Boolean)
+        .forEach((part) => element.append(['AND', 'OR', '(', ')'].includes(part) ? node('strong', part, 'nq-step-join') : node('span', part)));
+      return element;
+    };
+    // The follow-up of the calls of a step in a stacked bar over its own calls: waiting (open and not attended yet), in
+    // progress (attended, still open) and closed, the calls waiting beside it.
+    const followUpBar = (rule) => {
+      const progress = Math.max(0, rule.open - rule.waiting);
+      const closed = Math.max(0, rule.calls - rule.open);
+      const element = node('span', undefined, 'nq-step-bar');
+      const track = node('span', undefined, 'nq-step-bar-track');
+      const bar = node('span', undefined, 'nq-step-flow');
+      bar.style.width = rule.calls ? '100%' : '0';
+      [['waiting', rule.waiting], ['progress', progress], ['closed', closed]].forEach(([kind, count]) => {
+        if (!count) return;
+        const part = node('span', undefined, `is-${kind}`);
+        part.style.flexGrow = String(count);
+        bar.append(part);
+      });
+      track.append(bar);
+      element.append(track, node('span', number(rule.waiting), `nq-step-bar-value${rule.waiting ? ' is-waiting' : ''}`));
+      element.title = `${number(rule.calls)} calls: ${number(rule.waiting)} waiting, ${number(progress)} in progress and ${number(closed)} closed`;
+      return element;
+    };
+    // The scoring points the calls of a step lose, in a bar against the step that loses the most in the tab.
+    const pointsBar = (value, most) => {
+      const element = node('span', undefined, 'nq-step-bar');
+      const track = node('span', undefined, 'nq-step-bar-track');
+      const bar = node('span', undefined, 'nq-step-points');
+      bar.style.width = most && value ? `${Math.max(3, (value / most) * 100)}%` : '0';
+      track.append(bar);
+      element.append(track, node('span', points(value), 'nq-step-bar-value'));
+      return element;
+    };
+    // Each step as the table of the Prioritization Rules shows it, in its colours (what it takes in full on hover), its filtered
+    // calls in the place of #Calls, their follow-up and the points they lose in bars, and its queue last.
+    const stepRow = (rule, most) => {
       const rulePairs = rule.name ? priorityPairs('priority_rule', rule.name) : null;
-      return [{text: name, className: 'nq-failure-name', pairs: rulePairs, title: rule.conditions}, rule.conditions, rule.criterion || '—',
-        [rule.priority, rule.track_priority].filter(Boolean).join(' / ') || '—', number(rule.calls),
-        rule.prioritized && rulePairs ? {text: number(rule.prioritized), pairs: [...rulePairs, ...(priorityPairs('prioritization', 'Prioritized') || [])]} : number(rule.prioritized),
-        number(rule.tracked), points(rule.points), number(rule.open), number(rule.attended)];
-    });
-    const custom = !data.strategy || data.strategy.key === 'custom';
-    section(custom ? 'Prioritization Rules' : `Strategy: ${data.strategy.label}`, custom
-      ? 'The filtered calls each rule takes (the first rule whose conditions a call meets), how many it prioritizes or only tracks, the priority it gives (prioritized / tracked) and the scoring points those calls lose.'
-      : 'The filtered calls of each step of the two lists (Campaign: list 1, while the Final CDR of their campaign is not scored; Final: list 2, by real impact), the queue and priority it gives and the scoring points those calls lose.',
-      ...notes.map((text) => node('p', text, 'nq-hint nq-priority-note')),
-      failureTable([custom ? 'Rule' : 'Step', 'Takes', custom ? 'Prioritizes' : 'Queue', 'Priority', 'Calls', 'Prioritized', 'Track only', 'Points lost', 'Open', 'Attended'], ruleRows));
+      const bars = [{node: followUpBar(rule), className: 'nq-step-bar-cell'},
+        {node: pointsBar(rule.points, most.points), className: 'nq-step-bar-cell'}];
+      if (rule.kind !== 'step') {
+        return ['—', {text: rule.kind === 'out_of_scope' ? 'Out of scope' : 'No step', className: 'nq-failure-name', pairs: rulePairs, title: rule.label},
+          '—', '—', '—', '—', {text: rule.label, className: 'nq-step-condition', title: rule.conditions}, number(rule.calls),
+          ...bars, rule.criterion || '—'];
+      }
+      const queue = String(rule.queue || 'Tracked').toLowerCase();
+      return [{text: rule.priority, className: `nq-queue-priority is-${String(rule.priority).toLowerCase()}`},
+        {text: String(rule.number), className: 'nq-step-number', pairs: rulePairs, title: rule.name},
+        {text: rule.nr_mode === 'any' ? 'Any' : rule.nr_mode, className: `nq-step-mode is-${String(rule.nr_mode).toLowerCase()}`},
+        rule.operators || '—', {text: rule.call_type, className: `nq-step-type is-${queue}`}, rule.area,
+        {node: conditionNode(rule.condition), className: 'nq-step-condition', title: rule.conditions}, number(rule.calls),
+        ...bars, {text: rule.queue, className: `nq-step-queue is-${queue}`}];
+    };
+    const columns = ['Priority', 'Step', 'NR Mode', 'Operators', 'Call Type', 'Area', 'Condition', 'Calls', 'Follow-up', 'Points lost', 'Queue'];
+    const tabs = [
+      ['campaign', finalList ? 'List 1 · Weekly CDRs' : 'List 1 · Weekly & Final CDRs',
+        finalList ? 'While the Final CDR of the campaign is not scored.' : 'The only list of the strategy: before and after the Final CDR of the campaign is scored.'],
+      ['final', 'List 2 · Final CDRs', 'Once the Final CDR of the campaign is scored.'],
+      ['outside', 'Outside the lists', 'The calls out of scope and those no step takes: no queue and not tracked.'],
+    ].filter(([key]) => data.rules.some((rule) => groupOf(rule) === key));
+    const callsOf = (key) => data.rules.filter((rule) => groupOf(rule) === key).reduce((sum, rule) => sum + Number(rule.calls || 0), 0);
+    if (!tabs.some(([key]) => key === stepsTab)) {
+      const lists = tabs.filter(([key]) => key !== 'outside');
+      stepsTab = (lists.reduce((best, tab) => (callsOf(tab[0]) > callsOf(best[0]) ? tab : best), lists[0] || tabs[0]) || [''])[0];
+    }
+    const tabBar = node('div', undefined, 'nq-rate-tabs nq-step-tabs');
+    tabBar.setAttribute('role', 'tablist');
+    tabBar.setAttribute('aria-label', 'Lists of the strategy');
+    const tabPanel = node('div', undefined, 'nq-step-tab-panel');
+    const showTab = (key) => {
+      stepsTab = key;
+      tabBar.querySelectorAll('.nq-rate-tab').forEach((tab) => {
+        tab.classList.toggle('is-active', tab.dataset.list === key);
+        tab.setAttribute('aria-selected', String(tab.dataset.list === key));
+      });
+      const rows = data.rules.filter((rule) => groupOf(rule) === key);
+      const most = {points: Math.max(0, ...rows.map((rule) => Number(rule.points || 0)))};
+      const table = failureTable(columns, rows.map((rule) => stepRow(rule, most)));
+      table.classList.add('nq-priority-steps-summary');
+      table.querySelector('th:nth-child(9)').title = 'The calls of the step: waiting (open and not attended yet), in progress (attended, still open) and closed, over the calls of the step; the number tells those waiting';
+      const legend = node('p', undefined, 'nq-step-legend');
+      legend.append(...[['waiting', 'Waiting'], ['progress', 'In progress'], ['closed', 'Closed']].map(([kind, text]) => {
+        const item = node('span', undefined, 'nq-step-legend-item');
+        item.append(node('i', '', `is-${kind}`), text);
+        return item;
+      }));
+      const head = node('div', undefined, 'nq-step-tab-head');
+      head.append(node('p', tabs.find(([item]) => item === key)?.[2] || '', 'nq-hint nq-step-tab-note'), legend);
+      tabPanel.replaceChildren(head, table);
+    };
+    tabBar.append(...tabs.map(([key, label]) => {
+      const tab = node('button', label, `nq-rate-tab is-${key}`);
+      tab.type = 'button';
+      tab.dataset.list = key;
+      tab.setAttribute('role', 'tab');
+      tab.append(node('span', number(callsOf(key)), 'nq-step-tab-count'));
+      tab.title = `${number(callsOf(key))} filtered calls`;
+      tab.addEventListener('click', () => showTab(key));
+      return tab;
+    }));
+    if (tabs.length) showTab(stepsTab);
+    section('steps', `Strategy: ${data.strategy.label}`,
+      'The filtered calls each step took, a tab per list, with their follow-up (Waiting: open and not attended yet, as in the queues) and the points they lose. Hover a step for what it takes; click it for its calls.',
+      ...notes.map((text) => node('p', text, 'nq-hint nq-priority-note')), tabBar, tabPanel);
     const grid = node('div', undefined, 'nq-failure-grid');
     const levelsCard = node('div', undefined, 'nq-failure-card');
     levelsCard.append(node('strong', 'Scoring Impact', 'nq-failure-operator'), failureTable(['Scoring Impact', 'Calls'], data.levels.map((item) => [
@@ -3220,9 +3347,9 @@
         points(item.points)]))
       : node('p', 'The filtered calls lose no points of a scored campaign.', 'nq-muted'));
     grid.append(levelsCard, kpiCardBox);
-    section('Scoring Impact', `The points of the scoring of its campaign each call loses: in every KPI that counts tests it misses, the points the operator loses in the environment of the call shared among the tests that miss the KPI. High: the calls that hold the first ${data.settings.high_share}% of the points their campaign, operator and service lose; Medium: up to ${data.settings.medium_share}%.`, grid);
+    section('impact', 'Scoring Impact', `The points of the scoring of its campaign each call loses: in every KPI that counts tests it misses, the points the operator loses in the environment of the call shared among the tests that miss the KPI. High: the calls that hold the first ${data.settings.high_share}% of the points their campaign, operator and service lose; Medium: up to ${data.settings.medium_share}%.`, grid);
     const issueNote = `Places where at least ${data.settings.min_calls} Non-Qualified Calls of the operator failed in the quarter of the call${data.settings.previous_quarters ? ` or the ${data.settings.previous_quarters === 1 ? 'quarter' : `${data.settings.previous_quarters} quarters`} before it` : ''}, in any service and NR Mode (the site of the cell where the call ended, else the site that served its start, its eNB / gNB or a spot): the filtered calls of each one${data.issue_count > data.issues.length ? `, the ${data.issues.length} with the most calls of ${number(data.issue_count)}` : ''}.`;
-    section('Repeated issues', issueNote, data.issues.length
+    section('issues', 'Repeated issues', issueNote, data.issues.length
       ? failureTable(['Operator', 'Place', 'Calls', 'Campaigns', 'Services', 'NR Mode', 'Points lost', 'Open', 'Main Root Category'], data.issues.map((item) => [
         {text: item.operator || 'Unassigned', className: 'nq-failure-name'},
         {text: item.place, pairs: [['place', `${item.operator}||${item.place}`]], title: `Up to ${number(item.repetitions)} repetitions in the window of a call`},
@@ -3230,29 +3357,39 @@
         Object.entries(item.nr_modes).map(([name, count]) => `${name} ${number(count)}`).join(', '), points(item.points), number(item.open),
         item.category || '—']))
       : node('p', 'No repeated issue among the filtered calls.', 'nq-muted'));
-    // The step tells the NR Mode and the kind of call, so the queue keeps to the columns that tell the calls apart.
-    const queueTable = (rows) => failureTable(['#', 'JOIN_ID', 'Operator', 'Campaign', 'Step', 'Priority', 'Expected Gain', 'Scoring Impact'],
-      rows.map((item) => [number(item.position), {text: item.join_id || item.call_key, className: 'nq-failure-name', action: () => openDetail(item.call_key)},
-        item.operator || '—', item.campaign || '—', item.rule || '—', item.priority || '—',
-        {text: points(item.gain), title: item.gain_campaign ? `From the Final CDR of ${item.gain_campaign}` : 'No campaign with a Final CDR to tell it: the oldest first'},
-        item.level || '—']));
-    if (!custom) {
-      const queues = node('div', undefined, 'nq-priority-queues');
-      queues.append(...(data.queues || []).map((item) => {
-        const box = node('div', undefined, 'nq-failure-card');
-        box.append(node('strong', `${item.name} queue · ${number(item.total)} waiting`, 'nq-failure-operator'),
-          item.rows.length ? queueTable(item.rows) : node('p', 'No call is waiting in this queue.', 'nq-muted'));
-        return box;
-      }));
-      section('Next to analyse', `The first ${data.settings.capacity} calls of each queue that are open and not attended yet, in the order the analysts of its team take them: Priority, the newest campaign first, the step of its list, the highest Expected Gain, then the oldest. Click a call to open it.`, queues);
-    } else section('Next to analyse', `The first ${data.settings.capacity} prioritized calls that are open and not attended yet: in the order of their rule, the most scoring points lost first, then the most repetitions. Click a call to open it.`,
-      data.queue.length
-        ? failureTable(['JOIN_ID', 'Operator', 'Service', 'NR Mode', 'Campaign', 'Result', 'Rule', 'Priority', 'Points lost', 'Scoring Impact', 'Repetitions', 'Place'],
-          data.queue.map((item) => [{text: item.join_id || item.call_key, className: 'nq-failure-name', action: () => openDetail(item.call_key)},
-            item.operator || '—', item.service, item.nr_mode || '—', item.campaign || '—', item.result || '—', item.rule || '—', item.priority || '—',
-            points(item.points), item.level || '—', item.repetitions === null || item.repetitions === undefined ? '—' : number(item.repetitions), item.place || '—']))
-        : node('p', 'No prioritized call is waiting for its analysis.', 'nq-muted'));
-    $('nq-priority').replaceChildren(...sections);
+    // The step tells the NR Mode and the kind of call, so the queue keeps to the columns that tell the calls apart: the
+    // Priority and the step in pills (the step of list 1, Weekly, or list 2, Final; what it takes on hover), the campaign
+    // as the Campaign Maps name it and the Scoring Impact in its colour.
+    const levelColors = Object.fromEntries((data.levels || []).map((item) => [item.value, item.color]));
+    const queueTable = (rows) => failureTable(['#', 'JOIN_ID', 'Priority', 'Operator', 'Campaign', 'Step', 'Expected Gain', 'Scoring Impact'],
+      rows.map((item) => [{text: number(item.position), className: 'nq-queue-position'},
+        {text: item.join_id || item.call_key, className: 'nq-failure-name nq-queue-join', action: () => openDetail(item.call_key)},
+        {text: item.priority || '—', className: `nq-queue-priority is-${String(item.priority || '').toLowerCase()}`},
+        item.operator || '—', item.campaign || '—',
+        {text: item.step ? `Step ${item.step} · ${item.list === 'final' ? 'Final' : 'Weekly'}` : '—', title: item.rule || '',
+          className: `nq-queue-step is-${item.list === 'final' ? 'final' : 'weekly'}`},
+        {text: points(item.gain), className: 'nq-queue-number',
+          title: item.gain_campaign ? `From the Final CDR of ${item.gain_campaign}` : 'No campaign with a Final CDR to tell it: the oldest first'},
+        item.level ? {text: item.level, className: 'nq-failure-name nq-priority-level', color: levelColors[item.level]} : '—']));
+    const queues = node('div', undefined, 'nq-priority-queues');
+    queues.append(...(data.queues || []).map((item) => {
+      const box = node('div', undefined, 'nq-failure-card');
+      box.append(node('strong', `${item.name} queue · ${number(item.total)} waiting`, 'nq-failure-operator'),
+        item.rows.length ? queueTable(item.rows) : node('p', 'No call is waiting in this queue.', 'nq-muted'));
+      return box;
+    }));
+    // The tracked calls, which no team takes, folded below the queues (they stay open or folded as the panel is drawn again).
+    const content = [queues];
+    if (data.tracked) {
+      const tracked = node('details', undefined, 'nq-priority-tracked');
+      tracked.open = trackedQueueOpen;
+      tracked.addEventListener('toggle', () => { trackedQueueOpen = tracked.open; });
+      tracked.append(node('summary', `Tracked · ${number(data.tracked.total)} waiting (no team queue: only tracked)`),
+        data.tracked.rows.length ? queueTable(data.tracked.rows) : node('p', 'No tracked call is waiting.', 'nq-muted'));
+      content.push(tracked);
+    }
+    section('queues', 'Next to analyse', `The first ${data.settings.capacity} calls of each queue that are open and not attended yet, in the order the analysts of its team take them: Priority, the newest campaign first, the step of its list, the highest Expected Gain, then the oldest; the tracked calls, in no team queue, are folded below them. Click a call to open it.`, ...content);
+    $('nq-priority').replaceChildren(...['queues', 'steps', 'impact', 'issues'].map((key) => sections[key]).filter(Boolean));
   };
   let priorityToken = 0;
   let priorityKey = '';
@@ -3603,8 +3740,22 @@
     const phasePanel = node('section', undefined, 'nq-phase-panel');
     phasePanel.setAttribute('aria-label', 'Phases of the call');
     phasePanel.append(node('span', 'Phases', 'nq-phase-panel-title'), phases);
+    // The values of the NQ Prioritization of the call, read only, in a Prioritization Info subpanel above the phases (not in their tab).
+    const infoFields = state.fields.filter((item) => item.source === 'priority');
+    const infoPanel = node('section', undefined, 'nq-phase-panel nq-call-info-panel');
+    infoPanel.setAttribute('aria-label', 'Prioritization information');
+    const infoGrid = node('div', undefined, 'nq-call-info-grid');
+    infoGrid.append(...infoFields.map((item) => {
+      // A long value (the step, the KPIs lost) takes two cards' width.
+      const value = call.values?.[item.key];
+      const cell = node('div', undefined, `nq-call-info-item${String(value ?? '').length > 20 ? ' is-wide' : ''}`);
+      if (item.description) cell.title = item.description;
+      cell.append(node('span', item.label, 'nq-call-info-label'), readonlyValue(item, value));
+      return cell;
+    }));
+    infoPanel.append(node('span', 'Prioritization Info', 'nq-phase-panel-title'), infoGrid);
     host.replaceChildren(status, ...(priority ? [priority] : []), field('team', 'Team'), field('assignee', 'Assignee'), rootField,
-      ...(phases.childElementCount ? [phasePanel] : []), updated);
+      ...(infoFields.length ? [infoPanel] : []), ...(phases.childElementCount ? [phasePanel] : []), updated);
   };
   const DETAIL_FIELDS = [
     ['Service', 'service_label'], ['Result', 'result'], ['Operator', 'operator'], ['Vendor', 'vendor'], ['Campaign', 'campaign'],
@@ -3715,7 +3866,9 @@
   const readonlyValue = (field, value) => {
     const box = node('div', undefined, 'nq-readonly-value');
     const text = value === null || value === undefined ? '' : String(value);
-    if (['list', 'yes_no'].includes(field.type) && text) {
+    if (isRuleField(field) && text) {
+      box.append(ruleValue(field, text));
+    } else if (['list', 'yes_no'].includes(field.type) && text) {
       const element = node('span', text, 'nq-pill');
       paintPill(element, field.type === 'yes_no' ? YES_NO_COLORS[text] || '' : optionColorOf(field, text));
       box.append(element);
@@ -3956,7 +4109,7 @@
       const host = group.key === 'general' ? $('nq-general-fields')
         : drawer.querySelector(`[data-nq-panel="${CSS.escape(group.key)}"] .nq-section-fields`);
       if (!host) return;
-      const ofSection = (key) => state.fields.filter((field) => field.section === key && field.source !== 'tracking'
+      const ofSection = (key) => state.fields.filter((field) => field.section === key && !['tracking', 'priority'].includes(field.source)
         && !(field.key === 'priority' && field.source === 'user' && field.type === 'list'));
       const fields = group.sections.flatMap((section) => ofSection(section.key));
       const editable = fields.filter((field) => field.source === 'user');
@@ -5894,61 +6047,10 @@
 
   // -- Prioritization Rules dialog (admins and super-admins change them) ---------------------------------
   const priorityDialog = $('nq-priority-dialog');
-  const PRIORITY_SERVICES = [['voice', 'Voice'], ['speech', 'Speech'], ['data', 'Data']];
-  const PRIORITY_NR_MODES = [['NSA', 'NSA'], ['SA', 'SA']];
-  // A group of checkboxes (services, NR Modes) of a rule; none chosen takes every value.
-  const checkGroup = (className, entries, chosen) => {
-    const group = node('div', undefined, `nq-priority-checks ${className}`);
-    group.append(...entries.map(([value, label]) => {
-      const wrapper = node('label', undefined, 'nq-toggle nq-condition-value');
-      const box = node('input');
-      box.type = 'checkbox';
-      box.value = value;
-      box.checked = (chosen || []).includes(value);
-      wrapper.append(box, ` ${label}`);
-      return wrapper;
-    }));
-    return group;
-  };
-  const priorityRuleBlock = (rule = {name: '', services: [], nr_modes: [], operators: [], regions: [], cities: [], criterion: 'all',
-    priority: '', track_priority: ''}) => {
-    const block = node('li', undefined, 'nq-root-domain nq-status-rule nq-priority-rule');
-    const head = node('div', undefined, 'nq-option-row');
-    head.append(textInput(rule.name, 'Rule name', 'nq-root-name nq-priority-name'));
-    iconButtons(head, block, () => block.remove());
-    const setting = (label, control) => {
-      const wrapper = node('label', undefined, 'nq-field-setting');
-      wrapper.append(node('span', label), control);
-      return wrapper;
-    };
-    const priorities = [['', 'Do not fill'], ...state.priorityOptions.map((name) => [name, name])];
-    [rule.priority, rule.track_priority].filter((name) => name && !state.priorityOptions.includes(name)).forEach((name) => priorities.push([name, name]));
-    const grid = node('div', undefined, 'nq-priority-rule-grid');
-    grid.append(
-      setting('Services', checkGroup('nq-priority-services', PRIORITY_SERVICES, rule.services)),
-      setting('NR Mode', checkGroup('nq-priority-modes', PRIORITY_NR_MODES, rule.nr_modes)),
-      setting('Operators', textInput((rule.operators || []).join(', '), 'Every operator (VF*, -Lebara…)', 'nq-priority-operators')),
-      setting('Regions', textInput((rule.regions || []).join(', '), 'Every region', 'nq-priority-regions')),
-      setting('Cities', textInput((rule.cities || []).join(', '), 'Every city', 'nq-priority-cities')),
-      setting('Prioritizes', selectOf('nq-priority-criterion', 'Calls the rule prioritizes', Object.entries(state.prioritizationCriteria), rule.criterion || 'all')),
-      setting('Priority of the prioritized calls', selectOf('nq-priority-value', 'Priority of the prioritized calls', priorities, rule.priority || '')),
-      setting('Priority of the tracked calls', selectOf('nq-priority-track', 'Priority of the tracked calls', priorities, rule.track_priority || '')),
-    );
-    block.append(head, grid);
-    return block;
-  };
-  const listValues = (input) => input.value.split(',').map((value) => value.trim()).filter(Boolean);
-  const collectPriorityRules = () => [...$('nq-priority-rules').children].map((block) => ({
-    name: block.querySelector('.nq-priority-name').value.trim(),
-    services: [...block.querySelectorAll('.nq-priority-services input:checked')].map((box) => box.value),
-    nr_modes: [...block.querySelectorAll('.nq-priority-modes input:checked')].map((box) => box.value),
-    operators: listValues(block.querySelector('.nq-priority-operators')), regions: listValues(block.querySelector('.nq-priority-regions')),
-    cities: listValues(block.querySelector('.nq-priority-cities')), criterion: block.querySelector('.nq-priority-criterion').value,
-    priority: block.querySelector('.nq-priority-value').value, track_priority: block.querySelector('.nq-priority-track').value,
-  }));
   const PRIORITY_INPUTS = {high_share: 'nq-priority-high', medium_share: 'nq-priority-medium', min_calls: 'nq-priority-min-calls',
-    previous_quarters: 'nq-priority-quarters', spot_meters: 'nq-priority-spot', capacity: 'nq-priority-capacity'};
-  // Every field of the steps of each Dual Queue strategy while the dialog is open (admins change them).
+    previous_quarters: 'nq-priority-quarters', spot_meters: 'nq-priority-spot', hotspot_meters: 'nq-priority-hotspot-meters',
+    hotspot_minutes: 'nq-priority-hotspot-minutes', capacity: 'nq-priority-capacity'};
+  // Every field of the steps of each strategy while the dialog is open (admins change them).
   let strategySteps = {};
   const FOCUSED = '@focused';
   const EVERY_CALL = 'all';
@@ -5957,10 +6059,15 @@
   let focusedStep = '';
   // The list of steps the dialog shows: list 1 (Weekly CDRs, during the campaign) or list 2 (once the Final CDR is scored).
   let stepList = 'campaign';
-  const STEP_LISTS = {campaign: ['Weekly CDRs', 'List 1 · during the campaign, by what each call says about itself'],
-    final: ['Final CDRs', 'List 2 · once the Final CDR of the campaign is scored, by the real impact of each call']};
-  // The conditions only the data tests meet (the failures of a cluster, the consecutive failures).
-  const DATA_CONDITIONS = ['consecutive', 'cluster'];
+  // Whether each strategy applies its list 2 once the Final CDR is scored, while the dialog is open.
+  let strategyFinalLists = {};
+  // The strategies of the admins (key and name), and the names they gave those of the application, while the dialog is open.
+  let ownStrategies = [];
+  let strategyNames = {};
+  const ADDED_STEP = /^(campaign|final)-s\d+$/;
+  const MAX_LIST_STEPS = 20;
+  const STEP_LISTS = {campaign: ['Weekly CDRs', 'List 1 · during the campaign (scoring-based conditions are not stable during the campaign and are not recommended)'],
+    final: ['Final CDRs', 'List 2 · once Final CDR of the campaign is scored, the real impact of each call can be measured, so scoring-based conditions are recommended']};
   // A multi-select whose first value stands alone (Every call, Focused Operators): while it is chosen, the other values are
   // cleared and cannot be chosen; else every value chosen shows, joined with &.
   const aloneFirstSelect = (className, label, entries, chosen, emptyLabel, onChange) => {
@@ -6002,9 +6109,8 @@
       values.map((value) => (value === FOCUSED ? [value, 'Focused Operators', `The Focus operators of the Operator Maps: ${focus}`, 'Focused'] : [value, value])),
       chosen.operators, 'No operator', (operators) => { chosen.operators = operators; });
   };
-  // The conditions a step of a list can take: those of the data tests only with a Call Type that takes them.
-  const stepConditions = (list, callType) => Object.entries((state.prioritizationFields.conditions || {})[list] || {})
-    .filter(([key]) => !DATA_CONDITIONS.includes(key) || ['data', 'any'].includes(callType));
+  // The conditions a step of a list can take, whatever its Call Type.
+  const stepConditions = (list) => Object.entries((state.prioritizationFields.conditions || {})[list] || {});
   const MAX_CONDITIONS = 6;
   const fitCanvas = document.createElement('canvas').getContext('2d');
   // A select as wide as its chosen value (with its padding and the arrow of the browser, about 24 px), so the conditions
@@ -6019,17 +6125,21 @@
   // AND ( and OR ( start a group of conditions: one level of parentheses.
   const CONDITION_JOINS = [['and', 'AND'], ['or', 'OR'], ['and_group', 'AND ('], ['or_group', 'OR (']];
   // The conditions of a step, one per line, each joined to the one before by AND or OR (AND first: "Consecutive failures
-  // AND Clusters OR High impact" takes the consecutive failures of a cluster and the calls with a High impact), the
+  // AND Hotspots OR High impact" takes the consecutive failures of a hotspot and the calls with a High impact), the
   // groups opened by AND ( or OR ( marked by a bracket. Every call stands alone: chosen first, it clears the others.
   const stepConditionEditor = (list, chosen, rule) => {
     const box = node('div', undefined, 'nq-priority-conditions');
-    const entries = stepConditions(list, chosen.call_type);
+    const entries = stepConditions(list);
+    // A condition added or removed tells the dialog, as a select does when it changes (the #Calls are counted again).
     const iconButton = (text, className, title, action) => {
       const button = node('button', text, `nq-priority-condition-button ${className}`);
       button.type = 'button';
       button.title = title;
       button.setAttribute('aria-label', `${title} (${rule})`);
-      button.addEventListener('click', action);
+      button.addEventListener('click', () => {
+        action();
+        box.dispatchEvent(new Event('change', {bubbles: true}));
+      });
       return button;
     };
     const draw = () => {
@@ -6055,6 +6165,16 @@
         if (grouped && groupOf[index - 1] !== groupOf[index]) term.append(paren('('));
         const select = selectOf('nq-priority-condition-key', `Condition ${index + 1} of ${rule}`,
           index ? entries.filter(([value]) => value !== EVERY_CALL) : entries, key);
+        // What the condition means, on hover (the list of Conditions beside the table explains them all), and what it is
+        // based on, as a tag in its list.
+        const help = state.prioritizationFields.condition_help || {};
+        const kinds = state.prioritizationFields.condition_kinds || {};
+        select.title = help[key] || '';
+        [...select.options].forEach((option) => {
+          option.title = help[option.value] || '';
+          const [tag, kind] = kinds[option.value] || [];
+          if (tag) Object.assign(option.dataset, {tag, tagClass: `nq-condition-tag is-${kind}`});
+        });
         select.addEventListener('change', () => {
           chosen.conditions[index] = select.value;
           if (select.value === EVERY_CALL) chosen.conditions = [EVERY_CALL];
@@ -6085,19 +6205,151 @@
     draw();
     return box;
   };
+  // The NR Mode · operator pairs out of scope chosen in the dialog.
+  const excludedModes = () => [...$('nq-priority-modes-out').selectedOptions].filter((option) => !option.disabled).map((option) => {
+    const [nrMode, ...operator] = option.value.split('|');
+    return {nr_mode: nrMode, operator: operator.join('|')};
+  });
+  // #Calls: how many calls each step takes in the latest campaigns with their Final CDR, as the steps are edited.
+  let stepCounts = {counts: {}, campaigns: []};
+  let stepCountsTimer = null;
+  let stepCountsRequest = 0;
+  const stepCountText = (id) => (id in stepCounts.counts ? Number(stepCounts.counts[id]).toLocaleString() : '…');
+  // An estimate for information, to design the steps and the Voice and Data queues: the calls of the latest closed campaigns.
+  const stepCountsTitle = () => (stepCounts.campaigns.length
+    ? `Estimate for information: the calls each step would take in ${stepCounts.campaigns.join(' and ')}, the latest campaigns with their Final CDR; ${Number(stepCounts.out_of_scope || 0).toLocaleString()} more are out of scope`
+    : 'Estimate for information: the calls each step would take in the latest campaign with its Final CDR');
+  // Calls per Queue: a column per Priority of the Voice and Data queues (those of their steps in the list shown), with the
+  // calls their steps take from their #Calls, grouped above the queue and its total (the tracked calls only in the note).
+  const renderQueueChart = (strategy) => {
+    const queues = state.prioritizationFields.queues || {};
+    const steps = Object.entries(strategySteps[strategy] || {})
+      .filter(([id, step]) => !step.deleted && (id.startsWith('final') ? 'final' : 'campaign') === stepList);
+    const counted = steps.every(([id]) => id in stepCounts.counts);
+    const totals = Object.fromEntries(Object.keys(queues).map((key) => [key, {}]));
+    steps.forEach(([id, step]) => {
+      const byPriority = totals[step.queue in totals ? step.queue : ''] || {};
+      byPriority[step.priority] = (byPriority[step.priority] || 0) + Number(stepCounts.counts[id] || 0);
+    });
+    const sum = (byPriority) => Object.values(byPriority).reduce((total, calls) => total + calls, 0);
+    const shown = Object.entries(queues).filter(([key]) => key && Object.keys(totals[key]).length);
+    const largest = Math.max(1, ...shown.flatMap(([key]) => Object.values(totals[key])));
+    $('nq-priority-queue-bars').replaceChildren(...shown.map(([key, label]) => {
+      const priorities = STEP_PRIORITIES.filter((priority) => priority in totals[key]);
+      const group = node('div', undefined, 'nq-priority-queue-group');
+      // The groups share the width by their columns, so that every column is as wide.
+      group.style.flexGrow = String(priorities.length);
+      const columns = node('div', undefined, 'nq-priority-queue-columns');
+      const names = node('div', undefined, 'nq-priority-queue-columns nq-priority-queue-names');
+      priorities.forEach((priority) => {
+        const calls = totals[key][priority];
+        const column = node('span', undefined, 'nq-priority-queue-column');
+        column.title = `${label} · ${priority}: ${calls.toLocaleString()} calls`;
+        const bar = node('span', undefined, `nq-priority-queue-column-bar is-${priority.toLowerCase()}`);
+        bar.style.height = `calc((100% - 1.1rem) * ${calls / largest})`;
+        column.append(node('strong', counted ? calls.toLocaleString() : '…', 'nq-priority-queue-column-value'), bar);
+        columns.append(column);
+        names.append(node('span', priority, 'nq-priority-queue-column-name'));
+      });
+      group.append(columns, names, node('span', label, `nq-priority-queue-group-name is-${label.toLowerCase()}`),
+        node('strong', counted ? sum(totals[key]).toLocaleString() : '…', 'nq-priority-queue-group-total'));
+      return group;
+    }));
+    const notes = [stepList === 'final' ? 'List 2 · once Final CDR is scored' : 'List 1 · as during the campaign'];
+    if (stepCounts.campaigns.length) notes.push(`estimate on the latest closed campaign${stepCounts.campaigns.length > 1 ? 's' : ''}: ${stepCounts.campaigns.join(' and ')}`);
+    $('nq-priority-queue-chart-note').textContent = notes.join(' · ');
+    // The calls of both queues together, in bold.
+    $('nq-priority-queue-chart-total').textContent = counted
+      ? `Voice + Data: ${shown.reduce((calls, [key]) => calls + sum(totals[key]), 0).toLocaleString()} calls` : '';
+    renderQueueOutside(counted);
+  };
+  // The calls outside the Voice and Data queues, in a folded note below the chart (it keeps its state as the counts change):
+  // the tracked ones by kind, those no step takes by operator and those out of scope by region or operator without SA.
+  const renderQueueOutside = (counted) => {
+    const outside = $('nq-priority-queue-outside');
+    const detail = (stepCounts.lists || {})[stepList];
+    outside.hidden = !counted || !detail;
+    if (outside.hidden) return;
+    const total = (items) => items.reduce((calls, [, count]) => calls + count, 0);
+    // A bullet with its names and calls below it ([name, calls] pairs, or [name, null, pairs] for a group of them).
+    const entryList = (entries) => {
+      const sub = node('ul');
+      sub.append(...entries.map(([name, count, children]) => {
+        const entry = node('li', count === null ? name : `${name}: ${count.toLocaleString()}`);
+        if (children?.length) entry.append(entryList(children));
+        return entry;
+      }));
+      return sub;
+    };
+    const item = (title, calls, note, entries) => {
+      const line = node('li');
+      line.append(node('strong', `${title} · ${calls.toLocaleString()}`), document.createTextNode(note ? ` — ${note}` : ''));
+      if (entries.length) line.append(entryList(entries));
+      return line;
+    };
+    const scope = stepCounts.scope || {regions: [], operators: [], modes: []};
+    const lines = [];
+    // The tracked calls by kind, then by operator with the NR Mode of their campaigns (Three NSA).
+    if (detail.tracked.length) {
+      lines.push(item('Tracked', total(detail.tracked), 'only a Tracked step takes them', [...detail.tracked,
+        ['By operator', null, detail.tracked_operators]]));
+    }
+    if (detail.untaken.length) lines.push(item('Taken by no step', total(detail.untaken), 'no step takes their operator', detail.untaken));
+    if (stepCounts.out_of_scope) {
+      lines.push(item('Out of scope', Number(stepCounts.out_of_scope), 'in no queue and not tracked', [
+        ...scope.regions.map(([name, count]) => [`Region ${name} (every operator)`, count]),
+        ...(scope.operators || []).map(([name, count]) => [`${name} (not a Focus operator)`, count]),
+        ...(scope.modes || []).map(([name, count]) => [name, count])]));
+    }
+    const calls = lines.length ? total(detail.tracked) + total(detail.untaken) + Number(stepCounts.out_of_scope || 0) : 0;
+    outside.querySelector('summary').textContent = `Calls outside the Voice and Data queues · ${calls.toLocaleString()}`;
+    outside.querySelector('ul').replaceChildren(...lines);
+    outside.hidden = !lines.length;
+  };
+  const scheduleStepCounts = (strategy) => {
+    clearTimeout(stepCountsTimer);
+    stepCountsTimer = setTimeout(async () => {
+      const request = ++stepCountsRequest;
+      try {
+        // The levels too: the clusters and hotspots are counted again with those being edited.
+        const settings = {strategy, steps: strategySteps, strategies: ownStrategies, final_lists: strategyFinalLists,
+          excluded_regions: [...$('nq-priority-regions-out').selectedOptions].map((option) => option.value),
+          excluded_modes: excludedModes(),
+          ...Object.fromEntries(Object.entries(PRIORITY_INPUTS).map(([key, id]) => [key, Number($(id).value)]))};
+        const result = await api('/api/non-qualified-calls/prioritization/step-counts', {method: 'POST', body: JSON.stringify({settings})});
+        if (request !== stepCountsRequest) return;
+        stepCounts = result;
+        $('nq-priority-steps').querySelectorAll('tr[data-step]').forEach((row) => {
+          const cell = row.querySelector('.nq-priority-step-calls');
+          if (cell) cell.textContent = stepCountText(row.dataset.step);
+        });
+        const head = $('nq-priority-steps').querySelector('th.nq-priority-step-calls');
+        if (head) head.title = stepCountsTitle();
+        renderQueueChart(strategy);
+      } catch (error) {
+        // Without the counts the column keeps its dots.
+      }
+    }, 350);
+  };
   const renderStrategySteps = (strategy) => {
     const fields = state.prioritizationFields;
-    const steps = state.prioritizationSteps[strategy] || [];
+    // The steps of the strategy as the dialog holds them: the default ones but those deleted, and those added.
+    const steps = Object.keys(strategySteps[strategy] || {}).filter((id) => !strategySteps[strategy][id].deleted)
+      .map((id) => ({id, list: id.startsWith('final') ? 'final' : 'campaign'}));
     const rank = (name) => STEP_PRIORITIES.indexOf(name);
     const rerender = () => renderStrategySteps(strategy);
     const table = (list) => {
       const box = node('div', undefined, 'nq-priority-steps-list');
       const grid = node('table', undefined, 'nq-failure-table nq-priority-steps-table');
-      const names = ['priority', 'move', 'operators', 'mode', 'type', 'area', 'condition', 'queue'];
+      const names = ['priority', 'move', 'mode', 'operators', 'type', 'area', 'condition', 'calls', 'queue'];
       const columns = node('colgroup');
       columns.append(...names.map((name) => node('col', undefined, `nq-step-col-${name}`)));
       const head = node('tr');
-      head.append(...['Priority', '', 'Operators', 'NR Mode', 'Call Type', 'Area', 'Condition', 'Queue'].map((text) => node('th', text)));
+      head.append(...['Priority', 'Step', 'NR Mode', 'Operators', 'Call Type', 'Area', 'Condition', '#Calls', 'Queue'].map((text) => node('th', text)));
+      head.children[1].title = 'The place of the step in its list, from the order of the rows (it names its Prioritization Rule): drag it by ⠿, delete it with ×';
+      const callsHead = head.children[7];
+      callsHead.className = 'nq-priority-step-calls';
+      callsHead.title = stepCountsTitle();
       const body = node('tbody');
       // The steps by Priority, then by number: the steps of one Priority are grouped under it, in the order they are tried.
       const rows = steps.filter((step) => step.list === list).map((step) => ({step, chosen: strategySteps[strategy][step.id]}));
@@ -6182,6 +6434,8 @@
             cell.rowSpan = group.length;
             cell.dataset.priority = name;
             const priority = selectOf('nq-priority-step-priority', `Priority of the steps of ${name}`, STEP_PRIORITIES.map((value) => [value, value]), name);
+            // Each Priority in its colour, from red (P1) to grey (P8).
+            priority.classList.add(`is-${name.toLowerCase()}`);
             priority.addEventListener('change', () => {
               group.forEach((member) => { member.chosen.priority = priority.value; });
               renumber(sorted());
@@ -6212,7 +6466,19 @@
             const sameGroup = neighbour.chosen.priority === chosen.priority;
             place(item, neighbour, sameGroup ? !up : up);
           });
-          move.append(handle);
+          // Delete the step (a default step comes back with Default Rules).
+          const remove = node('button', '×', 'nq-priority-step-delete');
+          remove.type = 'button';
+          remove.title = 'Delete this step';
+          remove.setAttribute('aria-label', `Delete ${rule}`);
+          remove.addEventListener('click', () => {
+            if (ADDED_STEP.test(step.id)) delete strategySteps[strategy][step.id];
+            else strategySteps[strategy][step.id] = {deleted: true};
+            renumber(ordered.filter((other) => other !== item));
+            rerender();
+          });
+          // The step: its place in the list, filled from the order of the rows, between its handle and its ×.
+          move.append(handle, node('span', String(chosen.number), 'nq-priority-step-number'), remove);
           row.addEventListener('dragstart', (event) => {
             if (!row.draggable) return;
             dragging = item;
@@ -6231,20 +6497,23 @@
           });
           const mode = node('td');
           const nrMode = selectOf('nq-priority-step-mode', `NR Mode of ${rule}`, Object.entries(fields.nr_modes || {}), chosen.nr_mode);
-          nrMode.addEventListener('change', () => { chosen.nr_mode = nrMode.value; });
+          // Each NR Mode in its colour: SA purple, NSA green, Any grey.
+          const paintMode = () => { nrMode.className = `nq-priority-step-mode is-${String(chosen.nr_mode).toLowerCase()}`; };
+          nrMode.addEventListener('change', () => {
+            chosen.nr_mode = nrMode.value;
+            paintMode();
+          });
+          paintMode();
           mode.append(nrMode);
-          // A new Call Type keeps the conditions it can take with their operators (Every call when none is left).
           const type = node('td');
           const callType = selectOf('nq-priority-step-type', `Call Type of ${rule}`, Object.entries(fields.call_types || {}), chosen.call_type);
+          // The Call Type in the colour of the queue of its step: Voice blue, Data teal, Tracked grey.
+          const paintType = () => { callType.className = `nq-priority-step-type is-${(fields.queues[chosen.queue] || 'Tracked').toLowerCase()}`; };
           callType.addEventListener('change', () => {
             chosen.call_type = callType.value;
-            const allowed = stepConditions(list, chosen.call_type).map(([key]) => key);
-            const terms = chosen.conditions.map((key, index) => [index ? (chosen.joins || [])[index - 1] || 'or' : '', key])
-              .filter(([, key]) => allowed.includes(key));
-            chosen.conditions = terms.length ? terms.map(([, key]) => key) : [EVERY_CALL];
-            chosen.joins = terms.slice(1).map(([join]) => join || 'or');
-            rerender();
+            paintType();
           });
+          paintType();
           type.append(callType);
           // Where the calls failed: Connecting Roads and highways, else Cities (from their environment).
           const area = node('td');
@@ -6265,10 +6534,13 @@
           queueSelect.addEventListener('change', () => {
             chosen.queue = queueSelect.value;
             paint();
+            paintType();
           });
           paint();
           queue.append(queueSelect);
-          row.append(move, operators, mode, type, area, condition, queue);
+          // The calls the step takes in the latest campaigns with their Final CDR (counted on the server as the steps change).
+          const calls = node('td', stepCountText(step.id), 'nq-priority-step-calls');
+          row.append(move, mode, operators, type, area, condition, calls, queue);
           body.append(row);
         });
       });
@@ -6280,10 +6552,13 @@
       const switcher = node('span', undefined, 'nq-rate-tabs');
       switcher.setAttribute('role', 'tablist');
       switcher.setAttribute('aria-label', 'List of steps');
+      const finalList = strategyFinalLists[strategy] !== false;
       switcher.append(...Object.entries(STEP_LISTS).map(([key, [label, text]]) => {
         const button = node('button', label, `nq-rate-tab${key === list ? ' is-active' : ''}`);
         button.type = 'button';
         button.title = text;
+        // Without list 2, list 1 takes every call: the Final CDRs list is not used.
+        button.disabled = key === 'final' && !finalList;
         button.setAttribute('role', 'tab');
         button.setAttribute('aria-selected', String(key === list));
         button.addEventListener('click', () => {
@@ -6293,42 +6568,199 @@
         });
         return button;
       }));
-      listHead.append(switcher, node('strong', STEP_LISTS[list][1]));
-      box.append(listHead, grid);
+      // Whether the strategy applies list 2 once the Final CDR of a campaign is scored.
+      const toggle = node('label', undefined, 'nq-toggle nq-priority-final-toggle');
+      const box2 = node('input');
+      box2.type = 'checkbox';
+      box2.checked = finalList;
+      box2.addEventListener('change', () => {
+        strategyFinalLists[strategy] = box2.checked;
+        if (!box2.checked) stepList = 'campaign';
+        rerender();
+      });
+      toggle.title = 'Off: list 1 orders every call, also once the Final CDR of its campaign is scored';
+      toggle.append(box2, document.createTextNode(' Use List 2 for Final CDRs'));
+      listHead.append(switcher, node('strong', list === 'campaign' && !finalList
+        ? 'List 1 · used for both (weekly & final) CDRs' : STEP_LISTS[list][1]), toggle);
+      // Another step at the end of the list: tracked, every call, until the admins change it.
+      const add = node('button', '+ Add step', 'nq-link-action nq-priority-add-step');
+      add.type = 'button';
+      add.disabled = ordered.length >= MAX_LIST_STEPS;
+      add.title = add.disabled ? `A list has at most ${MAX_LIST_STEPS} steps` : 'Add a step at the end of this list';
+      add.addEventListener('click', () => {
+        const numbers = Object.keys(strategySteps[strategy]).filter((id) => id.startsWith(`${list}-s`)).map((id) => Number(id.split('-s')[1]) || 0);
+        strategySteps[strategy][`${list}-s${Math.max(0, ...numbers) + 1}`] = {
+          number: ordered.length + 1, priority: 'P8', nr_mode: 'any', call_type: 'any', area: 'any', conditions: [EVERY_CALL], joins: [],
+          queue: '', operators: [...(state.prioritizationStepOperators.any || [FOCUSED])]};
+        rerender();
+      });
+      box.append(listHead, grid, add);
       return box;
     };
     $('nq-priority-steps').replaceChildren(table(stepList));
+    // What each condition means, in the order of the lists.
+    const help = fields.condition_help || {};
+    const kinds = fields.condition_kinds || {};
+    $('nq-priority-glossary').replaceChildren(...stepConditions(stepList).map(([key, label]) => {
+      const item = node('div');
+      const term = node('dt', label);
+      const [tag, kind] = kinds[key] || [];
+      if (tag) term.append(node('span', tag, `nq-condition-tag is-${kind}`));
+      item.append(term, node('dd', help[key] || ''));
+      return item;
+    }));
     $('nq-priority-steps').querySelectorAll('.nq-priority-conditions select').forEach(fitSelect);
+    renderQueueChart(strategy);
     // The conditions and operators get the checkbox list of every multi-select of the page.
     if (typeof globalThis.setupCustomMultiSelects === 'function') globalThis.setupCustomMultiSelects();
+    scheduleStepCounts(strategy);
     if (focusedStep) {
       $('nq-priority-steps').querySelector(`tr[data-step="${focusedStep}"] .nq-priority-step-handle`)?.focus();
       focusedStep = '';
     }
   };
+  const ownStrategy = (key) => ownStrategies.find((item) => item.key === key);
+  // The name of a strategy as the dialog holds it.
+  const strategyName = (key) => ownStrategy(key)?.name ?? (strategyNames[key] || state.prioritizationStrategies[key] || key);
+  // Rename Strategy shows the name of the strategy shown, to change it; the name hides again with another strategy.
+  const renameStrategy = () => {
+    $('nq-priority-strategy-name-field').hidden = false;
+    $('nq-priority-strategy-name').value = strategyName($('nq-priority-strategy').value);
+    $('nq-priority-strategy-name').select();
+  };
   const showStrategy = (strategy) => {
-    const custom = strategy === 'custom';
-    priorityDialog.querySelectorAll('[data-nq-strategy-only]').forEach((element) => { element.hidden = custom; });
-    $('nq-priority-custom').hidden = !custom;
-    $('nq-priority-add').hidden = !custom;
-    if (!custom) renderStrategySteps(strategy);
+    // Only the strategies of the admins can be deleted.
+    $('nq-priority-strategy-name-field').hidden = true;
+    $('nq-priority-strategy-delete').hidden = !ownStrategy(strategy);
+    renderStrategySteps(strategy);
+  };
+  // The strategies of the application, then those of the admins.
+  const fillStrategies = (value) => {
+    const select = $('nq-priority-strategy');
+    select.replaceChildren(...[...Object.keys(state.prioritizationStrategies), ...ownStrategies.map((item) => item.key)].map((key) => [key, strategyName(key)])
+      .map(([key, label]) => {
+        const option = node('option', label);
+        option.value = key;
+        return option;
+      }));
+    select.value = value;
   };
   const fillPriorityDialog = (settings) => {
+    ownStrategies = JSON.parse(JSON.stringify(settings.strategies || []));
+    strategyNames = {...(settings.strategy_names || {})};
+    fillStrategies(settings.strategy || 'cities_first');
     const select = $('nq-priority-strategy');
-    select.replaceChildren(...Object.entries(state.prioritizationStrategies).map(([key, label]) => {
-      const option = node('option', label);
-      option.value = key;
-      return option;
-    }));
-    select.value = settings.strategy || 'cities_first';
     strategySteps = JSON.parse(JSON.stringify(settings.steps || state.defaultPrioritization.steps || {}));
     stepList = 'campaign';
+    strategyFinalLists = {...(settings.final_lists || {})};
+    // The regions out of the scope of the team: those of the calls, and those chosen before that no call has now.
+    const regions = $('nq-priority-regions-out');
+    const excluded = settings.excluded_regions || [];
+    regions.replaceChildren(...[...state.prioritizationRegions, ...excluded.filter((name) => !state.prioritizationRegions.includes(name))].map((name) => {
+      const option = node('option', name);
+      option.value = name;
+      option.selected = excluded.includes(name);
+      return option;
+    }));
+    regions.dispatchEvent(new Event('multiselect:options-updated'));
+    // The NR Mode · operator pairs out of scope: SA and NSA with every operator of the Operator Maps, the Focus operators
+    // first; those of the other operators are always out of scope, chosen and grey with the reason on hover.
+    const modes = $('nq-priority-modes-out');
+    const chosenModes = (settings.excluded_modes || []).map((item) => `${item.nr_mode}|${item.operator}`);
+    const fixedModes = state.prioritizationFixedModes.map((item) => `${item.nr_mode}|${item.operator}`);
+    const pairs = ['SA', 'NSA'].flatMap((mode) => state.prioritizationOperators.map((name) => `${mode}|${name}`));
+    // Only the operators of the list (the Operator Maps but those excluded there), and those always out of scope.
+    const known = new Set([...pairs, ...fixedModes]);
+    const modeValues = [...new Set([...pairs.filter((value) => !fixedModes.includes(value)), ...chosenModes.filter((value) => known.has(value)), ...fixedModes])];
+    modes.replaceChildren(...modeValues.map((value) => {
+      const option = node('option', value.replace('|', ' · '));
+      option.value = value;
+      option.disabled = fixedModes.includes(value);
+      option.selected = option.disabled || chosenModes.includes(value);
+      if (option.disabled) option.dataset.disabledReason = state.prioritizationFixedReason;
+      return option;
+    }));
+    modes.dispatchEvent(new Event('multiselect:options-updated'));
     Object.entries(PRIORITY_INPUTS).forEach(([key, id]) => { $(id).value = settings[key]; });
     $('nq-priority-fill').checked = Boolean(settings.fill_priority);
-    $('nq-priority-rules').replaceChildren(...settings.rules.map((rule) => priorityRuleBlock(rule)));
     showStrategy(select.value);
   };
   let priorityDefaults = false;
+  // The settings as the dialog holds them, as they are saved.
+  const prioritySettings = () => ({...Object.fromEntries(Object.entries(PRIORITY_INPUTS).map(([key, id]) => [key, Number($(id).value)])),
+    strategy: $('nq-priority-strategy').value, steps: strategySteps, fill_priority: $('nq-priority-fill').checked,
+    excluded_regions: [...$('nq-priority-regions-out').selectedOptions].map((option) => option.value),
+    excluded_modes: excludedModes(), final_lists: strategyFinalLists, strategies: ownStrategies, strategy_names: strategyNames});
+  // The settings saved (as the dialog showed them once opened or saved): the line below the dialog tells whether the
+  // dialog holds changes not saved yet.
+  let prioritySaved = '';
+  const priorityChanged = () => Boolean(prioritySaved) && JSON.stringify(prioritySettings()) !== prioritySaved;
+  // How the strategies work tells the levels as they are set in the dialog.
+  const showAboutValues = () => {
+    priorityDialog.querySelectorAll('[data-nq-about]').forEach((value) => {
+      const input = $(PRIORITY_INPUTS[value.dataset.nqAbout]);
+      value.textContent = input ? input.value : '';
+    });
+  };
+  const showSaveState = () => {
+    showAboutValues();
+    const line = $('nq-priority-save-state');
+    if (!line) return;
+    const changed = priorityChanged();
+    line.textContent = changed ? 'Unsaved changes: Save applies them, with the strategy shown.' : 'The current configuration is saved.';
+    line.classList.toggle('is-changed', changed);
+  };
+  // After the handler of the edit has changed the dialog.
+  let saveStateTimer = 0;
+  const scheduleSaveState = () => {
+    clearTimeout(saveStateTimer);
+    saveStateTimer = setTimeout(showSaveState, 0);
+  };
+  const markPrioritySaved = () => {
+    prioritySaved = JSON.stringify(prioritySettings());
+    showSaveState();
+  };
+  // Save the settings and keep the dialog open, on the strategy and the list shown; true once saved.
+  const savePriority = async () => {
+    const save = $('nq-priority-save');
+    save.disabled = true;
+    try {
+      const settings = prioritySettings();
+      const result = await api('/api/non-qualified-calls/prioritization/settings', {method: 'PUT', body: JSON.stringify({settings, defaults: priorityDefaults})});
+      state.prioritization = result.settings;
+      priorityKey = '';
+      const list = stepList;
+      fillPriorityDialog(result.settings);
+      if (list === 'final' && strategyFinalLists[result.settings.strategy] !== false) {
+        stepList = list;
+        showStrategy(result.settings.strategy);
+      }
+      priorityDefaults = false;
+      $('nq-priority-error').textContent = '';
+      markPrioritySaved();
+      await loadState();
+      if (state.detail) openDetail(state.detail.call.call_key, {keepTab: true});
+      return true;
+    } catch (error) {
+      $('nq-priority-error').style.color = '';
+      $('nq-priority-error').textContent = error.message;
+      return false;
+    } finally {
+      save.disabled = false;
+    }
+  };
+  // Closing the dialog with changes not saved asks first: save them, discard them or continue editing.
+  const requestPriorityClose = async () => {
+    if (!priorityChanged() || $('nq-priority-save').hidden) {
+      priorityDialog.close();
+      return;
+    }
+    const choice = typeof window.showConfirmDialog === 'function'
+      ? await window.showConfirmDialog('The Prioritization Rules have changes not saved yet.', {title: 'Unsaved changes', confirmLabel: 'Save',
+        secondaryLabel: 'Discard', cancelLabel: 'Continue Editing'})
+      : (window.confirm('The Prioritization Rules have changes not saved yet. Discard them?') ? 'secondary' : null);
+    if (choice === 'secondary' || (choice === 'confirm' && await savePriority())) priorityDialog.close();
+  };
   if (priorityDialog) {
     document.querySelectorAll('[data-nq-prioritization-open]').forEach((button) => button.addEventListener('click', () => {
       if (!state.prioritization) return;
@@ -6336,43 +6768,93 @@
       fillPriorityDialog(state.prioritization);
       $('nq-priority-error').textContent = '';
       priorityDialog.showModal();
+      markPrioritySaved();
     }));
-    $('nq-priority-cancel').addEventListener('click', () => priorityDialog.close());
+    $('nq-priority-cancel').addEventListener('click', requestPriorityClose);
+    // Escape asks as Cancel does.
+    priorityDialog.addEventListener('cancel', (event) => {
+      event.preventDefault();
+      void requestPriorityClose();
+    });
+    // The ⓘ of Out of Scope unfolds (or folds) what the card does, below its row (by click, Enter or Space).
+    const scopeInfo = priorityDialog.querySelector('.nq-priority-scope-info');
+    const toggleScopeAbout = () => {
+      const about = $('nq-priority-scope-about');
+      about.hidden = !about.hidden;
+      scopeInfo.setAttribute('aria-expanded', String(!about.hidden));
+    };
+    scopeInfo?.addEventListener('click', toggleScopeAbout);
+    scopeInfo?.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        toggleScopeAbout();
+      }
+    });
+    // Every edit tells again whether the dialog holds changes not saved.
+    ['input', 'change', 'click', 'drop', 'keyup'].forEach((type) => priorityDialog.addEventListener(type, scheduleSaveState));
     $('nq-priority-strategy').addEventListener('change', (event) => showStrategy(event.target.value));
-    $('nq-priority-add').addEventListener('click', () => {
-      const block = priorityRuleBlock();
-      $('nq-priority-rules').append(block);
-      block.querySelector('input').focus();
+    priorityDialog.addEventListener('change', (event) => {
+      const strategy = $('nq-priority-strategy').value;
+      if (!['nq-priority-strategy', 'nq-priority-strategy-name'].includes(event.target.id)) scheduleStepCounts(strategy);
+    });
+    // A new strategy starts as a copy of the strategy shown.
+    $('nq-priority-strategy-new').addEventListener('click', () => {
+      const source = $('nq-priority-strategy').value;
+      const key = `strategy-${Date.now().toString(36)}`;
+      const names = new Set([...Object.keys(state.prioritizationStrategies), ...ownStrategies.map((item) => item.key)].map((name) => strategyName(name).toLowerCase()));
+      let index = 1;
+      while (names.has(`new strategy ${index}`)) index += 1;
+      ownStrategies.push({key, name: `New strategy ${index}`});
+      const copy = {};
+      ['campaign', 'final'].forEach((list) => {
+        Object.entries(strategySteps[source] || {}).filter(([id, chosen]) => !chosen.deleted && id.startsWith(list))
+          .sort(([, a], [, b]) => STEP_PRIORITIES.indexOf(a.priority) - STEP_PRIORITIES.indexOf(b.priority) || a.number - b.number)
+          .forEach(([, chosen], position) => { copy[`${list}-s${position + 1}`] = JSON.parse(JSON.stringify(chosen)); });
+      });
+      strategySteps[key] = copy;
+      strategyFinalLists[key] = strategyFinalLists[source] !== false;
+      fillStrategies(key);
+      showStrategy(key);
+      renameStrategy();
+    });
+    $('nq-priority-strategy-rename').addEventListener('click', renameStrategy);
+    $('nq-priority-strategy-name').addEventListener('input', (event) => {
+      const key = $('nq-priority-strategy').value;
+      const own = ownStrategy(key);
+      if (own) own.name = event.target.value;
+      // A strategy of the application without a name of its own keeps its default name.
+      else if (event.target.value.trim()) strategyNames[key] = event.target.value;
+      else delete strategyNames[key];
+      $('nq-priority-strategy').selectedOptions[0].textContent = strategyName(key).trim() || 'Strategy without a name';
+    });
+    $('nq-priority-strategy-delete').addEventListener('click', async () => {
+      const own = ownStrategy($('nq-priority-strategy').value);
+      if (!own) return;
+      const message = `Delete the strategy ${own.name}? It goes once you save the Prioritization Rules.`;
+      const accepted = typeof window.showConfirmDialog === 'function'
+        ? await window.showConfirmDialog(message, {title: 'Delete strategy', confirmLabel: 'Delete'}) : window.confirm(message);
+      if (!accepted) return;
+      ownStrategies = ownStrategies.filter((item) => item !== own);
+      delete strategySteps[own.key];
+      delete strategyFinalLists[own.key];
+      fillStrategies('cities_first');
+      showStrategy('cities_first');
     });
     $('nq-priority-default').addEventListener('click', () => {
-      fillPriorityDialog(state.defaultPrioritization);
+      // The strategies of the admins and the names of the strategies stay as they are: Default Rules gives back the steps of
+      // those of the application.
+      const own = ownStrategies.map((item) => item.key);
+      fillPriorityDialog({...state.defaultPrioritization, strategies: ownStrategies, strategy_names: strategyNames,
+        steps: {...state.defaultPrioritization.steps, ...Object.fromEntries(own.map((key) => [key, strategySteps[key]]))},
+        final_lists: {...state.defaultPrioritization.final_lists, ...Object.fromEntries(own.map((key) => [key, strategyFinalLists[key] !== false]))}});
       priorityDefaults = true;
       $('nq-priority-error').style.color = 'var(--nq-muted)';
-      $('nq-priority-error').textContent = 'The default strategy, rules and levels are shown: review them and Save.';
+      $('nq-priority-error').textContent = 'The default strategy, steps and levels are shown: review them and Save.';
     });
-    $('nq-priority-form').addEventListener('submit', async (event) => {
+    // Save keeps the dialog open: the line below it tells the configuration is saved.
+    $('nq-priority-form').addEventListener('submit', (event) => {
       event.preventDefault();
-      const save = $('nq-priority-save');
-      save.disabled = true;
-      try {
-        const settings = {...Object.fromEntries(Object.entries(PRIORITY_INPUTS).map(([key, id]) => [key, Number($(id).value)])),
-          strategy: $('nq-priority-strategy').value, steps: strategySteps, fill_priority: $('nq-priority-fill').checked,
-          rules: collectPriorityRules()};
-        if (settings.rules.some((rule) => !rule.name)) throw new Error('Give every rule a name.');
-        const result = await api('/api/non-qualified-calls/prioritization/settings', {method: 'PUT', body: JSON.stringify({settings, defaults: priorityDefaults})});
-        state.prioritization = result.settings;
-        priorityKey = '';
-        priorityDialog.close();
-        toast(settings.strategy === 'custom' ? 'Prioritization Rules saved: the calls follow them.'
-          : `${state.prioritizationStrategies[settings.strategy]} saved: the calls follow it.`);
-        await loadState();
-        if (state.detail) openDetail(state.detail.call.call_key, {keepTab: true});
-      } catch (error) {
-        $('nq-priority-error').style.color = '';
-        $('nq-priority-error').textContent = error.message;
-      } finally {
-        save.disabled = false;
-      }
+      void savePriority();
     });
   }
 

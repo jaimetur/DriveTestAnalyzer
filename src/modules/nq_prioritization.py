@@ -13,31 +13,33 @@ Every Non-Qualified Call (the latest version of each call, as the calls table li
 - **Repetition**: how many Non-Qualified Calls of the same operator failed at the same place in the quarter of the call
   and the quarters before it (one by default), whatever their service and NR Mode. The place is the site of the cell
   where the call ended (its eNB or gNB in the cell mappings of the workspace), else the site that served its start
-  (serving-cell Vendor Mapping), else the eNB or gNB of its last cell, else a spot of about 100 m around where it
+  (serving-cell Vendor Mapping), else the eNB or gNB of its last cell, else a spot of about 250 m around where it
   started.
 - **Prioritization**: the strategy of the workspace (admins choose it) gives every call its step, its queue and its
   Priority:
 
   - **Dual Queue (Cities first)** (the default) and **Dual Queue (Roads first)** order the calls of the operators of their
-    SA and NSA steps (the Focus operators by default; the calls of SA campaigns of an operator without SA count as NSA)
-    with two lists, their steps giving the Priority from P1 to P8. During a
+    SA and NSA steps (the Focus operators by name by default, the SA steps those that use SA; the calls of the regions
+    out of scope and of the SA campaigns of an operator without SA stay out) with two lists, their steps giving the
+    Priority from P1 to P8. During a
     campaign, list 1 takes each call by what it says about itself, which never changes: P1 SA Voice in Cities (on
-    Connecting Roads with Roads first), P2 SA Data (the consecutive failures or the failures of a cluster, 2+ failed data
-    tests at one spot of a drive, with Cities first; only those of a cluster with Roads first), P3 SA Voice on
+    Connecting Roads with Roads first), P2 SA Data (the consecutive failures of a hotspot, 2+ failed data tests at one
+    spot of a drive), P3 SA Voice on
     Connecting Roads (in Cities), P4 SA WhatsApp, P5 NSA Data, P6 NSA Voice, P7 NSA WhatsApp and P8 the tracked calls.
     Once the Final CDR of the campaign is scored, list 2 orders its calls by their real impact. Admins change every field
     of the steps, their conditions joined by AND or OR. Voice and WhatsApp calls go to the Voice queue, Data calls to the
     Data queue; inside a step the calls with the highest Expected Gain go first (from the Final CDR of the latest
     campaign), then the oldest.
-  - **Custom rules**: ordered rules on Service, NR Mode, Operator, Region and City. The first rule whose conditions a call
-    meets decides: Prioritized when the call meets its criterion (every call, repeated or high impact...), else Track
-    only.
+  - **Points Lost Based** (the Custom rules of the first version, whose rules become its steps): SA before NSA and Voice
+    before Data, every Voice and WhatsApp call and the Data calls of a cluster with a high impact (the others are
+    tracked with P5), with list 1 for every call until the admins turn its list 2 on.
+  - Strategies of the admins: steps like the others, created as a copy of one of them.
 
-  The Priority of the open calls is filled with the priority of their step or rule while nobody has chosen another one
-  by hand, and never changes once the analysis of the call has started.
+  Admins can rename every strategy. The Priority of the open calls is filled with the priority of their step while
+  nobody has chosen another one by hand, and never changes once the analysis of the call has started.
 
 The values are calculated in the background when the server is idle, after the indexing of the calls and the Scoring
-History, whenever what they depend on changes; the strategy and the rules apply again as soon as they are saved.
+History, whenever what they depend on changes; the strategy and its steps apply again as soon as they are saved.
 
 This module reads the NQ tables of ``non_qualified_calls`` (imported where it is needed, as that module imports this one).
 """
@@ -67,7 +69,7 @@ FINGERPRINT_STATE_KEY = 'nq_prioritization_fingerprint'
 FAILED_STATE_KEY = 'nq_prioritization_failed'
 SUMMARY_STATE_KEY = 'nq_prioritization_summary'
 # Bumped when the calculation changes: every value is calculated again.
-IMPACT_VERSION = 5
+IMPACT_VERSION = 9
 # The scoring of every campaign is split by campaign and operator, as the points of the scoring are national.
 LEVELS = ('Campaign', 'Operator')
 SERVICES = ('voice', 'speech', 'data')
@@ -89,27 +91,40 @@ SYSTEM_USER = 'system'
 MAX_KPIS_TEXT = 3
 METERS_PER_DEGREE = 111_320.0
 # The strategies that give every call its step, queue and Priority.
-CITIES_FIRST, ROADS_FIRST, CUSTOM = 'cities_first', 'roads_first', 'custom'
-STRATEGIES = {CITIES_FIRST: 'Dual Queue (Cities first)', ROADS_FIRST: 'Dual Queue (Roads first)', CUSTOM: 'Custom rules'}
+CITIES_FIRST, ROADS_FIRST, CUSTOM, VODAFONE_PROPOSAL = 'cities_first', 'roads_first', 'custom', 'vodafone_proposal'
+STRATEGIES = {CITIES_FIRST: 'Dual Queue (Cities first)', ROADS_FIRST: 'Dual Queue (Roads first)', CUSTOM: 'Points Lost Based',
+              VODAFONE_PROPOSAL: 'Vodafone Proposal'}
+# The strategies of the application that use list 1 alone by default (every call, also once its Final CDR is scored).
+LIST_1_ONLY = (CUSTOM, VODAFONE_PROPOSAL)
+# The strategies admins create beside them (steps like the Dual Queue strategies), and the steps they add to any strategy.
+USER_STRATEGY = re.compile(r'^strategy-[a-z0-9]{3,24}$')
+ADDED_STEP = re.compile(r'^(campaign|final)-s[0-9]{1,6}$')
+MAX_STRATEGIES = 20
+MAX_LIST_STEPS = 20
 DEFAULT_STRATEGY = CITIES_FIRST
 VOICE_QUEUE, DATA_QUEUE = 'Voice', 'Data'
 # List 1 orders the calls of a campaign until its Final CDR is scored; list 2 orders them after.
 CAMPAIGN_LIST, FINAL_LIST = 'campaign', 'final'
 LIST_LABELS = {CAMPAIGN_LIST: 'Campaign', FINAL_LIST: 'Final'}
-# A data cluster: failed data tests of one drive, each at most 15 minutes after the previous one, the same day, at most
-# 300 m from it or at the same site.
+# A hotspot by default: failures of one call type in one drive, each at most 15 minutes after the previous one, the same
+# day, at most 250 m from it or at the same site (the Hotspot time and distance of the settings; the distance is the
+# Cluster distance by default too).
 CLUSTER_MINUTES = 15
-CLUSTER_METERS = 300.0
+CLUSTER_METERS = 250.0
+# The settings of the clusters and the hotspots, applied at once when they change (the places, repetitions and hotspots
+# of the calls are calculated again from their stored values, without the scoring impact).
+PLACE_SETTINGS = ('min_calls', 'previous_quarters', 'spot_meters', 'hotspot_meters', 'hotspot_minutes')
 # The columns of a data CDR that give the order of its tests in the drive (two failures are consecutive tests when their
 # sequence numbers follow each other in the same file).
-FILE_COLUMN, SEQUENCE_COLUMN = 'File_ID', 'Sequence_ID_per_File'
+# The columns that give the order of the tests of a drive: those of the data CDRs, else those of the voice CDRs.
+FILE_COLUMNS, SEQUENCE_COLUMNS = ('File_ID', 'File_ID_A'), ('Sequence_ID_per_File', 'Sequence_ID_A')
 # The kinds of call the strategies tell apart.
 VOICE, WHATSAPP, DATA, PING = 'voice', 'whatsapp', 'data', 'ping'
 KIND_LABELS = {VOICE: 'Voice', WHATSAPP: 'WhatsApp', DATA: 'Data', PING: 'Ping'}
 # The Priority of the calls the strategies only track (the steps give P1 to P7).
 TRACKED_PRIORITY = 'P8'
 STRATEGY_PRIORITY_NAMES = tuple(f'P{number}' for number in range(1, 9))
-# The fields of a step of the Dual Queue strategies, which admins change: the NR Mode, the type and the area of the calls it
+# The fields of a step of a strategy, which admins change: the NR Mode, the type and the area of the calls it
 # takes (where they failed: Connecting Roads and highways, else Cities, from their environment), the condition they meet (during the campaign, list 1, only what a call says about itself; once the Final CDR of the
 # campaign is scored, list 2, also its impact and repetitions) and its queue (none: the step only tracks its calls). A
 # cluster is 2+ failed data tests at one spot of a drive.
@@ -121,7 +136,7 @@ AREA_TAKES = {'city': ' in cities', 'roads': ' on connecting roads and highways'
 # The Call Types of the first version of the steps, which also gave the area.
 LEGACY_CALL_TYPES = {'voice_cities': ('voice', 'city'), 'voice_roads': ('voice', 'roads')}
 # The conditions of a step, chosen one by one, each joined to the one before by AND or OR, AND first: "Consecutive
-# failures AND Clusters OR High impact" takes the consecutive failures of a cluster and the calls with a High impact
+# failures AND Hotspots OR High impact" takes the consecutive failures of a hotspot and the calls with a High impact
 # (Every call alone takes every call). AND ( and OR ( start a group, one level of parentheses: "(High impact OR Medium
 # impact) AND Repeated". Consecutive failures: the test right before or after it in the drive failed too.
 EVERY_CALL = 'all'
@@ -129,15 +144,46 @@ JOINS = {'and': 'AND', 'or': 'OR', 'and_group': 'AND (', 'or_group': 'OR ('}
 GROUP_JOINS = {'and_group': 'and', 'or_group': 'or'}
 JOIN_WORDS = {'and': 'and', 'or': 'or'}
 MAX_CONDITIONS = 6
-CONDITION_LABELS = {EVERY_CALL: 'Every call', 'consecutive': 'Consecutive failures', 'cluster': 'Clusters', 'high': 'High impact',
-                    'medium': 'Medium impact', 'low': 'Low impact', 'repeated': 'Repeated'}
-CAMPAIGN_CONDITIONS = {key: CONDITION_LABELS[key] for key in (EVERY_CALL, 'consecutive', 'cluster')}
-FINAL_CONDITIONS = {key: CONDITION_LABELS[key] for key in (EVERY_CALL, 'high', 'medium', 'low', 'repeated', 'consecutive', 'cluster')}
+CONDITION_LABELS = {EVERY_CALL: 'Every call', 'consecutive': 'Consecutive failures', 'cluster': 'Hotspots', 'drop': 'Drops', 'setup': 'Setup failures', 'high': 'High impact', 'medium': 'Medium impact', 'low': 'Low impact',
+                    'repeated': 'Cluster'}
+# Every call type and both lists take every condition (the impact levels by the Expected Gain of the call, see
+# ``expected_levels``: during the campaign from the latest Final CDR of its NR Mode, then its own points).
+CONDITIONS = {key: CONDITION_LABELS[key] for key in (EVERY_CALL, 'consecutive', 'repeated', 'cluster', 'high', 'medium', 'low',
+                                                     'drop', 'setup')}
+# The conditions of the first versions, and those that stand for them (Biggest impact was the High impact of the Expected
+# Gain, as the impact levels are now).
+FORMER_CONDITIONS = {'biggest': 'high'}
+CAMPAIGN_CONDITIONS = FINAL_CONDITIONS = CONDITIONS
 CONDITION_TAKES = {
     EVERY_CALL: 'every one', 'consecutive': 'the consecutive failures (the test right before or after failed too)',
-    'cluster': 'the failures of a cluster (2+ failed tests at one spot of a drive)', 'high': 'those with a High Scoring Impact',
-    'medium': 'those with a Medium Scoring Impact', 'low': 'those with a Low Scoring Impact (or none)',
-    'repeated': 'those with a Repeated Issue',
+    'cluster': 'the failures of a hotspot (2+ failures of the same call type at one spot of a drive)',
+    'drop': 'the drops (calls dropped and data tests cut off once established)',
+    'setup': 'the setup failures (calls and data tests that failed before being established)',
+    'high': 'those with a High impact (by Expected Gain)',
+    'medium': 'those with a Medium impact (by Expected Gain)', 'low': 'those with a Low impact (or none, by Expected Gain)',
+    'repeated': 'those of a cluster (a Repeated Issue: the operator failed at the same place in several calls)',
+}
+# What each condition is based on, as a tag beside it: the scoring (unstable during the campaign), the place, the place
+# and the time, the order of the tests of the drive, or the result of the call itself.
+CONDITION_KINDS = {
+    'consecutive': ('Sequence-based', 'sequence'), 'cluster': ('Position & time', 'position'), 'repeated': ('Position-based', 'position'),
+    'high': ('Scoring-based', 'scoring'), 'medium': ('Scoring-based', 'scoring'),
+    'low': ('Scoring-based', 'scoring'), 'drop': ('Result-based', 'result'), 'setup': ('Result-based', 'result'),
+}
+# What each condition means, as the Prioritization Rules dialog explains it.
+CONDITION_HELP = {
+    EVERY_CALL: 'Every call of the step.',
+    'consecutive': 'The test right before or after it in the same drive failed too.',
+    'cluster': 'Two or more failures of the same call type at one spot of one drive: each within the Hotspot time of the '
+               'previous one, the same day, within the Hotspot distance of it or at the same site.',
+    'repeated': 'The operator failed at the same place (its site, else a spot of the Cluster distance) in at least Cluster size '
+                'calls of the quarter and the Cluster period before it, in any drive.',
+    'high': 'Within the first High share of the Expected Gain of its campaign, operator and service: during the campaign what '
+            'its failure lost in the latest Final CDR of its NR Mode, then its own points.',
+    'medium': 'The next calls by Expected Gain, up to the Medium share.',
+    'low': 'The rest by Expected Gain, or no Expected Gain.',
+    'drop': 'The call dropped, or the data test was cut off, once established.',
+    'setup': 'The call or the data test failed before being established.',
 }
 STEP_QUEUES = {VOICE_QUEUE: 'Voice', DATA_QUEUE: 'Data', '': 'Tracked'}
 MAX_STEP_NUMBER = 20
@@ -147,6 +193,14 @@ MAX_STEP_NUMBER = 20
 # on LTE and EN-DC).
 FOCUSED_OPERATORS = '@focused'
 FOCUSED_LABEL = 'Focused Operators'
+# The calls the strategies leave out of the queues: those of the regions and of the NR Mode and operator pairs out of the
+# scope of the team (chosen by the admins; SA · Three by default, the SA campaigns of an operator without SA, whose calls
+# there are NSA calls its NSA campaigns already have).
+OUT_OF_SCOPE = 'Out of scope'
+OUT_OF_SCOPE_KIND = 'out_of_scope'
+# The regions out of scope until the admins choose others: Vendor B, the region of the other vendor, which is not the
+# responsibility of the team.
+DEFAULT_EXCLUDED_REGIONS = ('Vendor B',)
 SA_TECHNOLOGY = re.compile(r'(?<![A-Z])SA(?![A-Z])|NE-DC', re.IGNORECASE)
 SA_SHARE = 0.10
 
@@ -222,11 +276,15 @@ def default_rules() -> list[dict[str, Any]]:
             rule('NSA Data', ['data'], 'NSA', 'repeated_or_high', 'P4')]
 
 
-def default_settings(operators: dict[str, list[str]] | None = None) -> dict[str, Any]:
-    """The default settings; ``operators`` gives the operators of the steps by NR Mode (``default_step_operators``)."""
+def default_settings(operators: dict[str, list[str]] | None = None, modes: list[dict[str, str]] | None = None) -> dict[str, Any]:
+    """The default settings; ``operators`` gives the operators of the steps by NR Mode (``default_step_operators``) and
+    ``modes`` the NR Mode and operator pairs out of scope (``default_excluded_modes``)."""
     return {'strategy': DEFAULT_STRATEGY, 'steps': default_steps(operators), 'high_share': 50,
-            'medium_share': 80, 'min_calls': 2, 'previous_quarters': 1, 'spot_meters': 100, 'capacity': 20,
-            'fill_priority': True, 'rules': default_rules()}
+            'medium_share': 80, 'min_calls': 2, 'previous_quarters': 1, 'spot_meters': int(CLUSTER_METERS), 'hotspot_meters': int(CLUSTER_METERS),
+            'hotspot_minutes': CLUSTER_MINUTES, 'capacity': 20,
+            'fill_priority': True, 'excluded_regions': list(DEFAULT_EXCLUDED_REGIONS),
+            'excluded_modes': [dict(item) for item in modes or []], 'strategies': [], 'strategy_names': {},
+            'final_lists': {key: key not in LIST_1_ONLY for key in STRATEGIES}}
 
 
 def _whole(value: Any, default: int, low: int, high: int, label: str, strict: bool) -> int:
@@ -260,11 +318,13 @@ def _values(items: Any, allowed: Iterable[str] | None = None) -> list[str]:
     return list(values.values())[:MAX_RULE_VALUES]
 
 
-def normalize_settings(value: Any, *, strict: bool = False, operators: dict[str, list[str]] | None = None) -> dict[str, Any]:
-    """Valid settings (the defaults for what is missing, the operators of the steps from ``operators``); ``strict`` refuses
-    invalid values instead of fixing them."""
+def normalize_settings(value: Any, *, strict: bool = False, operators: dict[str, list[str]] | None = None,
+                       modes: list[dict[str, str]] | None = None) -> dict[str, Any]:
+    """Valid settings (the defaults for what is missing, the operators of the steps from ``operators``, the NR Mode and
+    operator pairs out of scope from ``modes`` until they are chosen); ``strict`` refuses invalid values instead of fixing
+    them."""
     value = value if isinstance(value, dict) else {}
-    defaults = default_settings(operators)
+    defaults = default_settings(operators, modes)
     high = _whole(value.get('high_share', defaults['high_share']), defaults['high_share'], 5, 95, 'The High share', strict)
     medium = _whole(value.get('medium_share', defaults['medium_share']), defaults['medium_share'], 5, 100,
                     'The Medium share', strict)
@@ -272,60 +332,64 @@ def normalize_settings(value: Any, *, strict: bool = False, operators: dict[str,
         if strict:
             raise ValueError('The Medium share must be above the High share.')
         medium = min(100, high + 1)
-    rules = value.get('rules') if isinstance(value.get('rules'), list) else (defaults['rules'] if 'rules' not in value else [])
-    if strict and len(rules) > MAX_RULES:
-        raise ValueError(f'Keep at most {MAX_RULES} Prioritization Rules.')
-    normalized: list[dict[str, Any]] = []
-    names: set[str] = set()
-    for rule in rules[:MAX_RULES]:
-        if not isinstance(rule, dict):
-            if strict:
-                raise ValueError('A Prioritization Rule is invalid.')
-            continue
-        name = re.sub(r'\s+', ' ', str(rule.get('name') or '')).strip()[:60]
-        if not name:
-            if strict:
-                raise ValueError('Every Prioritization Rule needs a name.')
-            continue
-        if name.casefold() in names:
-            if strict:
-                raise ValueError(f'The Prioritization Rule "{name}" is repeated.')
-            continue
-        names.add(name.casefold())
-        criterion = str(rule.get('criterion') or 'all')
-        if criterion not in CRITERIA:
-            if strict:
-                raise ValueError(f'Choose the calls the rule "{name}" prioritizes.')
-            criterion = 'all'
-        normalized.append({
-            'name': name, 'services': _values(rule.get('services'), SERVICES), 'nr_modes': _values(rule.get('nr_modes'), NR_MODES),
-            'operators': _values(rule.get('operators')), 'regions': _values(rule.get('regions')), 'cities': _values(rule.get('cities')),
-            'criterion': criterion, 'priority': str(rule.get('priority') or '').strip()[:40],
-            'track_priority': str(rule.get('track_priority') or '').strip()[:40],
-        })
+    # The rules of Points Lost Based of the first version become its steps, unless it has steps already.
+    legacy = legacy_rules(value['rules']) if isinstance(value.get('rules'), list) else None
+    given_steps = value.get('steps') if isinstance(value.get('steps'), dict) else {}
+    final_lists = value.get('final_lists') if isinstance(value.get('final_lists'), dict) else {}
+    if legacy is not None and legacy != default_rules() and CUSTOM not in given_steps:
+        given_steps = {**given_steps, CUSTOM: steps_from_rules(legacy, operators)}
+        final_lists = {**final_lists, CUSTOM: False}
+    names = normalize_strategy_names(value.get('strategy_names'), strict)
+    own = normalize_strategies(value.get('strategies'), strict, {**STRATEGIES, **names}.values())
+    labels = strategy_labels({'strategies': own, 'strategy_names': names})
     strategy = value.get('strategy')
     if strategy is None:
-        # Settings saved before the strategies: rules of their own stay in use, the default ones give way to the default
-        # strategy.
-        strategy = CUSTOM if value and normalized != default_rules() else DEFAULT_STRATEGY
-    elif strategy not in STRATEGIES:
+        # Settings saved before the strategies: rules of their own stay in use (as the steps of Points Lost Based), the
+        # default ones give way to the default strategy.
+        strategy = CUSTOM if value and legacy is not None and legacy != default_rules() else DEFAULT_STRATEGY
+    elif strategy not in labels:
         if strict:
             raise ValueError('Choose the strategy of the NQ Prioritization.')
         strategy = DEFAULT_STRATEGY
     return {
-        'strategy': strategy, 'steps': normalize_steps(value.get('steps'), strict, operators),
+        'strategy': strategy, 'strategies': own, 'strategy_names': names,
+        'steps': normalize_steps(given_steps, strict, operators, labels),
         'high_share': high, 'medium_share': medium,
         'min_calls': _whole(value.get('min_calls', defaults['min_calls']), defaults['min_calls'], 2, 50,
-                            'The calls of a repeated issue', strict),
+                            'The Cluster size', strict),
         'previous_quarters': _whole(value.get('previous_quarters', defaults['previous_quarters']), defaults['previous_quarters'],
-                                    0, 8, 'The previous quarters', strict),
+                                    0, 8, 'The Cluster period', strict),
         'spot_meters': _whole(value.get('spot_meters', defaults['spot_meters']), defaults['spot_meters'], 25, 2000,
-                              'The size of a spot', strict),
+                              'The Cluster distance', strict),
+        'hotspot_meters': _whole(value.get('hotspot_meters', defaults['hotspot_meters']), defaults['hotspot_meters'], 25, 5000,
+                                 'The Hotspot distance', strict),
+        'hotspot_minutes': _whole(value.get('hotspot_minutes', defaults['hotspot_minutes']), defaults['hotspot_minutes'], 1, 240,
+                                  'The Hotspot time', strict),
         'capacity': _whole(value.get('capacity', defaults['capacity']), defaults['capacity'], 1, 500,
                            'The calls to analyse next', strict),
         'fill_priority': bool(value.get('fill_priority', defaults['fill_priority'])),
-        'rules': normalized,
+        'excluded_regions': _values(value['excluded_regions']) if isinstance(value.get('excluded_regions'), list) else list(DEFAULT_EXCLUDED_REGIONS),
+        'excluded_modes': (normalize_modes(value['excluded_modes'], strict) if isinstance(value.get('excluded_modes'), list)
+                           else defaults['excluded_modes']),
+        # Whether each strategy applies its list 2 once the Final CDR of a campaign is scored (else list 1 goes on): all but
+        # Points Lost Based and Vodafone Proposal by default.
+        'final_lists': {key: bool(final_lists.get(key, key not in LIST_1_ONLY)) for key in labels},
     }
+
+
+def normalize_modes(value: list[Any], strict: bool = False) -> list[dict[str, str]]:
+    """The NR Mode (SA or NSA) and operator pairs out of scope, once each."""
+    modes: list[dict[str, str]] = []
+    for item in value[:MAX_RULE_VALUES]:
+        mode = str((item or {}).get('nr_mode') or '').upper() if isinstance(item, dict) else ''
+        operator = re.sub(r'\s+', ' ', str((item or {}).get('operator') or '') if isinstance(item, dict) else '').strip()[:80]
+        if mode not in NR_MODES or not operator:
+            if strict:
+                raise ValueError('Choose the NR Mode and the operator of every pair out of scope.')
+            continue
+        if not any(known['nr_mode'] == mode and known['operator'].casefold() == operator.casefold() for known in modes):
+            modes.append({'nr_mode': mode, 'operator': operator})
+    return modes
 
 
 def load_settings(repository: Any) -> dict[str, Any]:
@@ -333,8 +397,12 @@ def load_settings(repository: Any) -> dict[str, Any]:
         stored = json.loads(repository.get_workspace_state(SETTINGS_STATE_KEY) or 'null')
     except (TypeError, ValueError):
         stored = None
-    operators = default_step_operators(repository)
-    return normalize_settings(stored, operators=operators) if isinstance(stored, dict) else default_settings(operators)
+    operators, modes = default_step_operators(repository), default_excluded_modes(repository)
+    settings = normalize_settings(stored, operators=operators, modes=modes) if isinstance(stored, dict) else default_settings(operators, modes)
+    # The operators excluded in the Operator Maps are left out everywhere, also of the pairs out of scope saved before.
+    excluded = excluded_names(repository)
+    settings['excluded_modes'] = [item for item in settings['excluded_modes'] if item['operator'].casefold() not in excluded]
+    return settings
 
 
 def priority_options(repository: Any) -> list[str]:
@@ -348,111 +416,214 @@ def priority_options(repository: Any) -> list[str]:
 
 
 def rule_names(repository: Any) -> list[str]:
-    """The values of the Prioritization Rule field: the steps of the strategy, or the names of the Custom rules."""
+    """The values of the Prioritization Rule field: the steps of the strategy."""
     settings = load_settings(repository)
-    if settings['strategy'] == CUSTOM:
-        return [rule['name'] for rule in settings['rules']]
     return [step['rule'] for step in strategy_steps(settings['strategy'], settings['steps'].get(settings['strategy']))]
 
 
 def save_settings(repository: Any, payload: Any, username: str) -> dict[str, Any]:
     """Save the settings and apply the rules again at once; the impact and the repetitions are calculated again in the
     background when their settings change."""
-    settings = normalize_settings(payload, strict=True, operators=default_step_operators(repository))
-    options = {name.casefold(): name for name in priority_options(repository)}
-    for rule in settings['rules']:
-        for key in ('priority', 'track_priority'):
-            if rule[key]:
-                if options and rule[key].casefold() not in options:
-                    raise ValueError(f'The priority {rule[key]} of the rule "{rule["name"]}" is not a value of the Priority field.')
-                rule[key] = options.get(rule[key].casefold(), rule[key])
+    settings = normalize_settings(payload, strict=True, operators=default_step_operators(repository),
+                                  modes=default_excluded_modes(repository))
     before = load_settings(repository)
     repository.set_workspace_state(SETTINGS_STATE_KEY, json.dumps(settings, ensure_ascii=False))
+    if any(settings[name] != before[name] for name in PLACE_SETTINGS):
+        refresh_places(repository, settings)
+    if any(settings[name] != before[name] for name in ('high_share', 'medium_share')):
+        refresh_levels(repository, settings)
     applied = apply_rules(repository, username, settings)
     if hasattr(repository, 'try_add_log'):
+        labels, before_labels = strategy_labels(settings), strategy_labels(before)
         if settings['strategy'] != before['strategy']:
             repository.try_add_log(username, 'nq_prioritization_strategy', json.dumps({
-                'from': STRATEGIES[before['strategy']], 'to': STRATEGIES[settings['strategy']], **applied}, ensure_ascii=False))
+                'from': before_labels.get(before['strategy'], before['strategy']), 'to': labels[settings['strategy']], **applied},
+                ensure_ascii=False))
         # The steps whose fields changed, as "Dual Queue (Cities first) · Campaign 1 · SA Voice · Cities: Priority P1 → P3;
-        # Operators Focused Operators → VF".
+        # Operators Focused Operators → VF", and those added or deleted.
         steps_changed = []
-        for strategy in (CITIES_FIRST, ROADS_FIRST):
+        for strategy, label in labels.items():
+            if strategy not in before_labels:
+                continue
             old_steps = {step['id']: step for step in strategy_steps(strategy, before['steps'].get(strategy))}
-            for step in strategy_steps(strategy, settings['steps'].get(strategy)):
-                previous = old_steps[step['id']]
-                changes = [f'{label} {step_field_text(previous, key)} → {step_field_text(step, key)}'
-                           for key, label in STEP_FIELD_LABELS.items() if step_field_value(step, key) != step_field_value(previous, key)]
+            new_steps = {step['id']: step for step in strategy_steps(strategy, settings['steps'].get(strategy))}
+            for key, step in new_steps.items():
+                previous = old_steps.get(key)
+                if previous is None:
+                    steps_changed.append(f"{label} · Added step {step['rule']}")
+                    continue
+                changes = [f'{name} {step_field_text(previous, field)} → {step_field_text(step, field)}'
+                           for field, name in STEP_FIELD_LABELS.items() if step_field_value(step, field) != step_field_value(previous, field)]
                 if changes:
-                    steps_changed.append(f"{STRATEGIES[strategy]} · {previous['rule']}: {'; '.join(changes)}")
+                    steps_changed.append(f"{label} · {previous['rule']}: {'; '.join(changes)}")
+            steps_changed += [f"{label} · Deleted step {step['rule']}" for key, step in old_steps.items() if key not in new_steps]
         repository.try_add_log(username, 'nq_prioritization_settings', json.dumps({
-            'strategy': STRATEGIES[settings['strategy']], 'steps_changed': steps_changed, 'rules': [rule['name'] for rule in settings['rules']],
-            'changed': sorted(key for key in settings if key != 'rules' and settings[key] != before.get(key)),
-            'rules_changed': settings['rules'] != before.get('rules'), **applied}, ensure_ascii=False))
+            'strategy': labels[settings['strategy']], 'steps_changed': steps_changed,
+            'strategies_added': [labels[key] for key in labels if key not in before_labels],
+            'strategies_deleted': [before_labels[key] for key in before_labels if key not in labels],
+            'strategies_renamed': [f'{before_labels[key]} → {labels[key]}' for key in labels
+                                   if key in before_labels and before_labels[key] != labels[key]],
+            'excluded_regions': settings['excluded_regions'],
+            'excluded_modes': [f"{item['nr_mode']} · {item['operator']}" for item in settings['excluded_modes']],
+            'changed': sorted(key for key in settings if settings[key] != before.get(key)), **applied}, ensure_ascii=False))
     return settings
 
 
 # ---------------------------------------------------------------------------
-# Rules
+# Rules of the first version (Points Lost Based before it had steps)
 # ---------------------------------------------------------------------------
-def compile_rules(rules: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """The rules with their Operator, Region and City conditions ready to compare (patterns such as VF* or -Lebara)."""
-    from src.modules.value_patterns import ValueSet
-    return [{**rule, '_sets': {key: ValueSet(rule[key]) for key in ('operators', 'regions', 'cities') if rule[key]}} for rule in rules]
+def legacy_rules(rules: list[Any]) -> list[dict[str, Any]]:
+    """The valid rules of Points Lost Based of the first version (named once each), as saved before it had steps."""
+    normalized: list[dict[str, Any]] = []
+    names: set[str] = set()
+    for rule in rules[:MAX_RULES]:
+        if not isinstance(rule, dict):
+            continue
+        name = re.sub(r'\s+', ' ', str(rule.get('name') or '')).strip()[:60]
+        if not name or name.casefold() in names:
+            continue
+        names.add(name.casefold())
+        normalized.append({
+            'name': name, 'services': _values(rule.get('services'), SERVICES), 'nr_modes': _values(rule.get('nr_modes'), NR_MODES),
+            'operators': _values(rule.get('operators')), 'regions': _values(rule.get('regions')), 'cities': _values(rule.get('cities')),
+            'criterion': str(rule.get('criterion') or 'all') if rule.get('criterion') in CRITERIA else 'all',
+            'priority': str(rule.get('priority') or '').strip()[:40], 'track_priority': str(rule.get('track_priority') or '').strip()[:40],
+        })
+    return normalized
 
 
-def rule_matches(rule: dict[str, Any], call: Any) -> bool:
-    """Whether a call meets the conditions of a rule (of ``compile_rules``): an empty condition takes every value."""
-    def value(key: str) -> str:
-        try:
-            return str(call[key] or '')
-        except (KeyError, IndexError):
-            return ''
-    sets = rule.get('_sets') or {}
-    return ((not rule['services'] or value('service') in rule['services'])
-            and (not rule['nr_modes'] or value('nr_mode').upper() in rule['nr_modes'])
-            and all(value(field) in sets[key] for key, field in (('operators', 'operator'), ('regions', 'region'),
-                                                                   ('cities', 'city')) if key in sets))
+# The conditions of a step that stand for the criterion of a rule of the first version.
+CRITERION_CONDITIONS = {'all': ([EVERY_CALL], []), 'repeated_or_high': (['repeated', 'high'], ['or']),
+                        'repeated_and_high': (['repeated', 'high'], ['and']), 'repeated': (['repeated'], []), 'high': (['high'], []),
+                        'track': ([EVERY_CALL], [])}
 
 
-def criterion_holds(criterion: str, repeated: bool, high: bool) -> bool:
-    return {'all': True, 'repeated_or_high': repeated or high, 'repeated_and_high': repeated and high,
-            'repeated': repeated, 'high': high, 'track': False}.get(criterion, False)
-
-
-def decide(rules: list[dict[str, Any]], call: Any, repeated: bool, high: bool) -> tuple[str, str, str]:
-    """(prioritization, rule, priority) of a call: the first rule (of ``compile_rules``) whose conditions it meets
-    decides."""
+def steps_from_rules(rules: list[dict[str, Any]], operators: dict[str, list[str]] | None = None) -> dict[str, dict[str, Any]]:
+    """The steps of list 1 of Points Lost Based from the rules of the first version (of ``legacy_rules``), in their order:
+    one per rule and Call Type (Voice and WhatsApp for the Voice and Speech services, Data, or Any), with its NR Mode, its
+    operators (by name; the default ones of the NR Mode when it took every operator or patterns), its criterion as
+    conditions, the Priority of its prioritized calls and the queue of its calls (Tracked for Track only); a last tracked
+    step takes the calls they leave, with the Priority the rules gave their tracked calls. The default steps are deleted;
+    a Region or City of a rule has no step field (the Regions out of scope stand for them)."""
+    known = {name.casefold(): name for name in STRATEGY_PRIORITY_NAMES}
+    steps: dict[str, dict[str, Any]] = {step['id']: {'deleted': True} for step in strategy_steps(CUSTOM) if step['list'] == CAMPAIGN_LIST}
+    rows = []
     for rule in rules:
-        if rule_matches(rule, call):
-            if criterion_holds(rule['criterion'], repeated, high):
-                return PRIORITIZED, rule['name'], rule['priority']
-            return TRACK_ONLY, rule['name'], rule['track_priority']
-    return NO_RULE, '', ''
+        services = set(rule['services'])
+        voice, data = bool(services & {'voice', 'speech'}), 'data' in services
+        kinds = ['voice', WHATSAPP] if voice and not data else ['data'] if data and not voice else ['any']
+        nr_mode = rule['nr_modes'][0] if len(rule['nr_modes']) == 1 else 'any'
+        names = [value for value in rule['operators'] if not value.startswith('-') and not re.search(r'[*?]', value)]
+        conditions, joins = CRITERION_CONDITIONS[rule['criterion']]
+        queue = '' if rule['criterion'] == 'track' else DATA_QUEUE if kinds == ['data'] else VOICE_QUEUE
+        priority = known.get(rule['priority'].casefold(), TRACKED_PRIORITY)
+        rows += [(priority, nr_mode, kind, list(conditions), list(joins), queue,
+                  names or list((operators or {}).get(nr_mode) or [FOCUSED_OPERATORS])) for kind in kinds]
+    tracked = [known[rule['track_priority'].casefold()] for rule in rules if rule['track_priority'].casefold() in known]
+    rows.append((max(set(tracked), key=tracked.count) if tracked else TRACKED_PRIORITY, 'any', 'any', [EVERY_CALL], [], '',
+                 list((operators or {}).get('any') or [FOCUSED_OPERATORS])))
+    for index, (priority, nr_mode, kind, conditions, joins, queue, names) in enumerate(rows[:MAX_LIST_STEPS], start=1):
+        steps[f'{CAMPAIGN_LIST}-s{index}'] = {'number': index, 'priority': priority, 'nr_mode': nr_mode, 'call_type': kind, 'area': 'any',
+                                              'conditions': conditions, 'joins': joins, 'queue': queue, 'operators': names}
+    return steps
 
 
 # ---------------------------------------------------------------------------
-# Strategies: Dual Queue (Cities first) and Dual Queue (Roads first)
+# Strategies: Dual Queue (Cities first), Dual Queue (Roads first) and Points Lost Based
 # ---------------------------------------------------------------------------
-def _default_rows(strategy: str) -> dict[str, list[tuple[str, str, str, str, tuple[str, ...], str]]]:
-    """The steps of the two lists of a strategy by default, in order: (Priority, NR Mode, call type, area, conditions, queue).
-    List 1 differs between the strategies: SA Voice in Cities first (P1) and the consecutive failures of the data clusters
-    with Cities first, SA Voice on Connecting Roads first and every failure of a cluster with Roads first. List 2 is the
-    same in both."""
-    first, third = ('city', 'roads') if strategy == CITIES_FIRST else ('roads', 'city')
-    data = ('consecutive', 'cluster') if strategy == CITIES_FIRST else ('cluster',)
+def _default_rows(strategy: str) -> dict[str, list[tuple[Any, ...]]]:
+    """The steps of the two lists of a strategy by default, in order: (Priority, NR Mode, call type, area, conditions, queue)
+    and the operators between the conditions when they are not OR. List 1 of the Dual Queue strategies differs only in the
+    place of SA Voice: in Cities first (P1, Connecting Roads P3) with Cities first, on Connecting Roads first with Roads
+    first; their data steps take the consecutive failures of a cluster (Consecutive failures AND Cluster). List 2 is the
+    same in every strategy of the application, by the impact levels: SA Voice High P1, SA Data High P2, SA Voice Medium and
+    Low P3, SA WhatsApp High, Medium and Low P4, NSA Data High P5, NSA Voice P6, NSA WhatsApp P7 and the tracked calls P8.
+    Points Lost Based uses it as its list 1 (alone). Vodafone Proposal (list 1 alone) puts SA before NSA and Voice before
+    Data: every Voice and WhatsApp call, and the Data calls of a cluster (the others are tracked with P5)."""
     every = (EVERY_CALL,)
+    final = [('P1', 'SA', 'voice', 'any', ('high',), VOICE_QUEUE), ('P2', 'SA', 'data', 'any', ('high',), DATA_QUEUE),
+             ('P3', 'SA', 'voice', 'any', ('medium',), VOICE_QUEUE), ('P3', 'SA', 'voice', 'any', ('low',), VOICE_QUEUE),
+             ('P4', 'SA', 'whatsapp', 'any', ('high',), VOICE_QUEUE), ('P4', 'SA', 'whatsapp', 'any', ('medium',), VOICE_QUEUE),
+             ('P4', 'SA', 'whatsapp', 'any', ('low',), VOICE_QUEUE), ('P5', 'NSA', 'data', 'any', ('high',), DATA_QUEUE),
+             ('P6', 'NSA', 'voice', 'any', every, VOICE_QUEUE), ('P7', 'NSA', 'whatsapp', 'any', every, VOICE_QUEUE),
+             (TRACKED_PRIORITY, 'any', 'any', 'any', every, '')]
+    if strategy == CUSTOM:
+        return {CAMPAIGN_LIST: list(final), FINAL_LIST: final}
+    if strategy == VODAFONE_PROPOSAL:
+        cluster = ('repeated',)
+        return {CAMPAIGN_LIST: [('P1', 'SA', 'voice', 'any', every, VOICE_QUEUE), ('P1', 'SA', 'whatsapp', 'any', every, VOICE_QUEUE),
+                                ('P2', 'SA', 'data', 'any', cluster, DATA_QUEUE), ('P3', 'NSA', 'voice', 'any', every, VOICE_QUEUE),
+                                ('P3', 'NSA', 'whatsapp', 'any', every, VOICE_QUEUE), ('P4', 'NSA', 'data', 'any', cluster, DATA_QUEUE),
+                                ('P5', 'any', 'any', 'any', every, '')],
+                FINAL_LIST: final}
+    if strategy not in (CITIES_FIRST, ROADS_FIRST):
+        # A strategy of the admins has only the steps they gave it.
+        return {CAMPAIGN_LIST: [], FINAL_LIST: []}
+    first, third = ('city', 'roads') if strategy == CITIES_FIRST else ('roads', 'city')
+    data, both = ('consecutive', 'repeated'), ('and',)
     return {
-        CAMPAIGN_LIST: [('P1', 'SA', 'voice', first, every, VOICE_QUEUE), ('P2', 'SA', 'data', 'any', data, DATA_QUEUE),
+        CAMPAIGN_LIST: [('P1', 'SA', 'voice', first, every, VOICE_QUEUE), ('P2', 'SA', 'data', 'any', data, DATA_QUEUE, both),
                         ('P3', 'SA', 'voice', third, every, VOICE_QUEUE), ('P4', 'SA', 'whatsapp', 'any', every, VOICE_QUEUE),
-                        ('P5', 'NSA', 'data', 'any', data, DATA_QUEUE), ('P6', 'NSA', 'voice', 'any', every, VOICE_QUEUE),
+                        ('P5', 'NSA', 'data', 'any', data, DATA_QUEUE, both), ('P6', 'NSA', 'voice', 'any', every, VOICE_QUEUE),
                         ('P7', 'NSA', 'whatsapp', 'any', every, VOICE_QUEUE), (TRACKED_PRIORITY, 'any', 'any', 'any', every, '')],
-        FINAL_LIST: [('P1', 'SA', 'voice', 'any', ('high',), VOICE_QUEUE), ('P2', 'SA', 'data', 'any', ('high', 'repeated'), DATA_QUEUE),
-                     ('P3', 'SA', 'voice', 'any', ('medium',), VOICE_QUEUE), ('P3', 'SA', 'voice', 'any', ('low',), VOICE_QUEUE),
-                     ('P4', 'SA', 'whatsapp', 'any', ('high', 'medium'), VOICE_QUEUE),
-                     ('P4', 'SA', 'whatsapp', 'any', ('low',), VOICE_QUEUE),
-                     ('P5', 'NSA', 'data', 'any', ('high', 'repeated'), DATA_QUEUE), ('P6', 'NSA', 'voice', 'any', every, VOICE_QUEUE),
-                     ('P7', 'NSA', 'whatsapp', 'any', every, VOICE_QUEUE), (TRACKED_PRIORITY, 'any', 'any', 'any', every, '')],
+        FINAL_LIST: final,
     }
+
+
+def _former_rows(strategy: str, list_name: str) -> list[list[tuple[Any, ...]]]:
+    """The default steps of a list of a strategy of the application before the current ones (a list saved exactly as one of
+    them takes the current defaults, see ``normalize_steps``). List 1 of the Dual Queue strategies: its Data steps took
+    Consecutive failures AND Hotspots, and before Consecutive failures OR Hotspots (Cities first) or Hotspots (Roads
+    first). List 1 of Points Lost Based: SA before NSA and Voice before Data, its Data steps Cluster OR / AND High impact.
+    List 2: ten steps, one for SA WhatsApp High OR Medium impact, and before them the Data steps of the Dual Queue
+    strategies took High impact OR Cluster; Points Lost Based copied its list 1 (Cluster OR / AND High impact)."""
+    every = (EVERY_CALL,)
+    if strategy not in STRATEGIES or strategy == VODAFONE_PROPOSAL:
+        return []
+    points_lost = [('P1', 'SA', 'voice', 'any', every, VOICE_QUEUE), ('P1', 'SA', 'whatsapp', 'any', every, VOICE_QUEUE),
+                   ('P2', 'SA', 'data', 'any', ('repeated', 'high'), DATA_QUEUE), ('P3', 'NSA', 'voice', 'any', every, VOICE_QUEUE),
+                   ('P3', 'NSA', 'whatsapp', 'any', every, VOICE_QUEUE), ('P4', 'NSA', 'data', 'any', ('repeated', 'high'), DATA_QUEUE),
+                   ('P5', 'any', 'any', 'any', every, '')]
+    points_lost_and = [(*row, ('and',)) if row[4] == ('repeated', 'high') else row for row in points_lost]
+    if list_name == CAMPAIGN_LIST:
+        if strategy == CUSTOM:
+            return [points_lost, points_lost_and]
+        current = _default_rows(strategy)[CAMPAIGN_LIST]
+        variants = [(('consecutive', 'cluster'), ('and',)), (('consecutive', 'cluster'), None), (('cluster',), None)]
+        return [[(*row[:4], data, row[5], *([joins] if joins else [])) if row[2] == 'data' else row for row in current]
+                for data, joins in variants]
+
+    def ten(data: tuple[str, ...]) -> list[tuple[Any, ...]]:
+        return [('P1', 'SA', 'voice', 'any', ('high',), VOICE_QUEUE), ('P2', 'SA', 'data', 'any', data, DATA_QUEUE),
+                ('P3', 'SA', 'voice', 'any', ('medium',), VOICE_QUEUE), ('P3', 'SA', 'voice', 'any', ('low',), VOICE_QUEUE),
+                ('P4', 'SA', 'whatsapp', 'any', ('high', 'medium'), VOICE_QUEUE), ('P4', 'SA', 'whatsapp', 'any', ('low',), VOICE_QUEUE),
+                ('P5', 'NSA', 'data', 'any', data, DATA_QUEUE), ('P6', 'NSA', 'voice', 'any', every, VOICE_QUEUE),
+                ('P7', 'NSA', 'whatsapp', 'any', every, VOICE_QUEUE), (TRACKED_PRIORITY, 'any', 'any', 'any', every, '')]
+    former = [ten(('high',))]
+    if strategy in (CITIES_FIRST, ROADS_FIRST):
+        return [*former, ten(('high', 'repeated'))]
+    return [*former, points_lost, points_lost_and]
+
+
+def _saved_as_former(given: dict[str, Any], strategy: str, list_name: str) -> bool:
+    """Whether the steps of a list of a strategy were saved exactly as its former defaults (``_former_rows``), no step
+    deleted or added: every Save keeps every step of every strategy, so only those still follow the defaults."""
+    saved = {key: step for key, step in given.items() if str(key).startswith(f'{list_name}-')}
+    for rows in _former_rows(strategy, list_name):
+        keys = {step_id(list_name, index, len(rows)): row for index, row in enumerate(rows, start=1)}
+        if set(saved) != set(keys):
+            continue
+        if all(isinstance(saved[key], dict) and not saved[key].get('deleted')
+               and (saved[key].get('priority'), saved[key].get('nr_mode'), saved[key].get('call_type'), saved[key].get('area'),
+                    list(saved[key].get('conditions') or []), list(saved[key].get('joins') or []), saved[key].get('queue') or '')
+               == (row[0], row[1], row[2], row[3], list(row[4]), joins_of(list(row[4]), list(row[6]) if len(row) > 6 else None), row[5])
+               for key, row in keys.items()):
+            return True
+    return False
+
+
+# The fields of a step the admins add, before they change them: tracked, every call.
+NEW_STEP = (TRACKED_PRIORITY, 'any', 'any', 'any', (EVERY_CALL,), '')
 
 
 def step_id(list_name: str, index: int, count: int) -> str:
@@ -509,6 +680,16 @@ def clean_conditions(values: Any, allowed: dict[str, str], joins: Any = None) ->
     call alone takes every call); None when one is not a condition of the list, an operator is not AND or OR, or there
     are more than MAX_CONDITIONS."""
     chosen = [str(value) for value in values or []]
+    joins = list(joins) if isinstance(joins, list) else joins
+    # A condition of the first versions takes the one that stands for it, once (with the operator before it).
+    for index in range(len(chosen) - 1, -1, -1):
+        current = FORMER_CONDITIONS.get(chosen[index], chosen[index])
+        if current != chosen[index] and current in chosen:
+            del chosen[index]
+            if isinstance(joins, list) and joins:
+                del joins[max(index - 1, 0)]
+        else:
+            chosen[index] = current
     if any(value not in allowed for value in chosen) or len(chosen) > MAX_CONDITIONS:
         return None
     if not chosen or EVERY_CALL in chosen:
@@ -524,7 +705,7 @@ def _step_rule(list_name: str, number: int | None, label: str) -> str:
 
 
 def step_label(step: dict[str, Any]) -> str:
-    """What a step takes, in short: SA Voice · Cities, SA Data · Consecutive failures OR Clusters, Tracked."""
+    """What a step takes, in short: SA Voice · Cities, SA Data · Consecutive failures OR Hotspots, Tracked."""
     parts = [STEP_NR_MODES[step['nr_mode']] if step['nr_mode'] != 'any' else '',
              CALL_TYPES[step['call_type']] if step['call_type'] != 'any' else '']
     base = ' '.join(part for part in parts if part) or 'Every call'
@@ -553,14 +734,21 @@ def strategy_steps(strategy: str, configured: dict[str, Any] | None = None,
     configured = configured if isinstance(configured, dict) else {}
     steps = []
     for list_name, rows in _default_rows(strategy).items():
-        for index, (priority, nr_mode, call_type, area, conditions, queue) in enumerate(rows, start=1):
-            key = step_id(list_name, index, len(rows))
+        # The default steps, then those the admins added (keys campaign-s1, final-s2...), at the end of the list.
+        keyed = [(step_id(list_name, index, len(rows)), index, row) for index, row in enumerate(rows, start=1)]
+        added = sorted((key for key in configured if ADDED_STEP.match(key) and key.startswith(f'{list_name}-')),
+                       key=lambda key: int(key.rsplit('-s', 1)[1]))
+        keyed += [(key, len(rows) + offset, NEW_STEP) for offset, key in enumerate(added, start=1)]
+        for key, index, (priority, nr_mode, call_type, area, conditions, queue, *joins) in keyed:
             chosen = _current_step(configured[key]) if isinstance(configured.get(key), dict) else {}
+            if chosen.get('deleted'):
+                continue
             step = {'id': key, 'list': list_name, 'number': index, 'priority': priority, 'nr_mode': nr_mode, 'call_type': call_type,
-                    'area': area, 'conditions': list(conditions), 'joins': joins_of(list(conditions)), 'queue': queue,
-                    'operators': list((operators or {}).get(nr_mode) or [FOCUSED_OPERATORS])}
+                    'area': area, 'conditions': list(conditions), 'joins': joins_of(list(conditions), list(joins[0]) if joins else None),
+                    'queue': queue, 'operators': list((operators or {}).get(nr_mode) or [FOCUSED_OPERATORS])}
             step['default'] = {name: step[name] for name in ('number', 'priority', 'nr_mode', 'call_type', 'area', 'conditions', 'joins',
                                                              'queue')}
+            step['added'] = bool(ADDED_STEP.match(key))
             for name, allowed in (('priority', STRATEGY_PRIORITY_NAMES), ('nr_mode', STEP_NR_MODES), ('call_type', CALL_TYPES),
                                   ('area', STEP_AREAS), ('queue', STEP_QUEUES)):
                 if chosen.get(name) in allowed:
@@ -604,59 +792,139 @@ def step_field_text(step: dict[str, Any], key: str) -> str:
             'queue': lambda: STEP_QUEUES[value]}.get(key, lambda: str(value))()
 
 
+STEP_FIELDS = ('number', 'priority', 'nr_mode', 'call_type', 'area', 'conditions', 'joins', 'queue', 'operators')
+
+
 def default_steps(operators: dict[str, list[str]] | None = None) -> dict[str, dict[str, dict[str, Any]]]:
-    """Every field of every step of the Dual Queue strategies by default (the operators by NR Mode from ``operators``,
-    else Focused Operators)."""
-    return {strategy: {step['id']: {name: step[name] for name in ('number', 'priority', 'nr_mode', 'call_type', 'area',
-                                                                  'conditions', 'joins', 'queue', 'operators')}
-                       for step in strategy_steps(strategy, None, operators)} for strategy in (CITIES_FIRST, ROADS_FIRST)}
+    """Every field of every step of the strategies of the application by default (the operators by NR Mode from
+    ``operators``, else Focused Operators)."""
+    return {strategy: {step['id']: {name: step[name] for name in STEP_FIELDS} for step in strategy_steps(strategy, None, operators)}
+            for strategy in STRATEGIES}
 
 
-def normalize_steps(value: Any, strict: bool = False, operators: dict[str, list[str]] | None = None) -> dict[str, dict[str, dict[str, Any]]]:
-    """Every field of every step of the Dual Queue strategies: its number (1 to 20), Priority (P1 to P8), NR Mode, call
-    type, area, condition (of its list), queue and operators (operator names, or Focused Operators alone); ``strict`` refuses
-    an invalid value instead of keeping the default one."""
+def _valid_step(step: dict[str, Any], chosen: dict[str, Any], list_name: str, strict: bool, label: str) -> dict[str, Any]:
+    """The fields of a step from those chosen, valid (the given ``step`` keeps the others); ``strict`` refuses an invalid
+    value."""
+    step = dict(step)
+    if 'priority' in chosen and str(chosen['priority'] or '').strip().upper() in STRATEGY_PRIORITY_NAMES:
+        chosen = {**chosen, 'priority': str(chosen['priority']).strip().upper()}
+    for name, allowed, message in (
+            ('priority', STRATEGY_PRIORITY_NAMES, 'The priority of a step goes from P1 to P8'),
+            ('nr_mode', STEP_NR_MODES, 'Choose the NR Mode of each step'),
+            ('call_type', CALL_TYPES, 'Choose the Call Type of each step'),
+            ('area', STEP_AREAS, 'Choose the Area of each step'),
+            ('queue', STEP_QUEUES, 'Choose the queue of each step')):
+        if name not in chosen or chosen[name] is None:
+            continue
+        if chosen[name] in allowed:
+            step[name] = chosen[name]
+        elif strict:
+            raise ValueError(f'{message} ({label}).')
+    if isinstance(chosen.get('conditions'), list):
+        cleaned = clean_conditions(chosen['conditions'], conditions_of(list_name), chosen.get('joins'))
+        if cleaned is not None:
+            step['conditions'], step['joins'] = cleaned
+        elif strict:
+            raise ValueError(f'Choose the conditions of each step, joined by AND or OR ({label}).')
+    if 'number' in chosen:
+        try:
+            number = int(chosen['number'])
+        except (TypeError, ValueError):
+            number = 0
+        if 1 <= number <= MAX_STEP_NUMBER:
+            step['number'] = number
+        elif strict:
+            raise ValueError(f'The step of a row goes from 1 to {MAX_STEP_NUMBER} ({label}).')
+    if isinstance(chosen.get('operators'), list):
+        values = _values(chosen['operators'])
+        # Focused Operators stands alone: the other operators chosen with it are left out.
+        step['operators'] = [FOCUSED_OPERATORS] if FOCUSED_OPERATORS in values else values
+    return step
+
+
+def normalize_steps(value: Any, strict: bool = False, operators: dict[str, list[str]] | None = None,
+                    strategies: dict[str, str] | None = None) -> dict[str, dict[str, dict[str, Any]]]:
+    """Every field of every step of the strategies (those of the application and those of the admins, with their labels in
+    ``strategies``): its number (1 to 20), Priority (P1 to P8), NR Mode, call type, area, condition (of its list),
+    queue and operators (operator names, or Focused Operators alone). A default step the admins deleted stays as deleted;
+    the steps they added (campaign-s1, final-s2...) follow, at most MAX_LIST_STEPS per list. ``strict`` refuses an invalid
+    value instead of keeping the default one."""
     value = value if isinstance(value, dict) else {}
-    steps = default_steps(operators)
-    for strategy, defaults in steps.items():
+    strategies = strategies or dict(STRATEGIES)
+    steps: dict[str, dict[str, dict[str, Any]]] = {}
+    for strategy, label in strategies.items():
         given = value.get(strategy) if isinstance(value.get(strategy), dict) else {}
+        # A list saved exactly as its former defaults takes the current ones.
+        for list_name in (CAMPAIGN_LIST, FINAL_LIST):
+            if _saved_as_former(given, strategy, list_name):
+                given = {key: step for key, step in given.items() if not str(key).startswith(f'{list_name}-')}
+        defaults = {step['id']: {name: step[name] for name in STEP_FIELDS} for step in strategy_steps(strategy, None, operators)}
+        result: dict[str, dict[str, Any]] = {}
         for key, step in defaults.items():
             chosen = _current_step(given[key]) if isinstance(given.get(key), dict) else {}
-            list_name = CAMPAIGN_LIST if key.startswith(CAMPAIGN_LIST) else FINAL_LIST
-            if 'priority' in chosen and str(chosen['priority'] or '').strip().upper() in STRATEGY_PRIORITY_NAMES:
-                chosen = {**chosen, 'priority': str(chosen['priority']).strip().upper()}
-            for name, allowed, message in (
-                    ('priority', STRATEGY_PRIORITY_NAMES, 'The priority of a step goes from P1 to P8'),
-                    ('nr_mode', STEP_NR_MODES, 'Choose the NR Mode of each step'),
-                    ('call_type', CALL_TYPES, 'Choose the Call Type of each step'),
-                    ('area', STEP_AREAS, 'Choose the Area of each step'),
-                    ('queue', STEP_QUEUES, 'Choose the queue of each step')):
-                if name not in chosen or chosen[name] is None:
-                    continue
-                if chosen[name] in allowed:
-                    step[name] = chosen[name]
-                elif strict:
-                    raise ValueError(f'{message} ({STRATEGIES[strategy]}).')
-            if isinstance(chosen.get('conditions'), list):
-                cleaned = clean_conditions(chosen['conditions'], conditions_of(list_name), chosen.get('joins'))
-                if cleaned is not None:
-                    step['conditions'], step['joins'] = cleaned
-                elif strict:
-                    raise ValueError(f'Choose the conditions of each step, joined by AND or OR ({STRATEGIES[strategy]}).')
-            if 'number' in chosen:
-                try:
-                    number = int(chosen['number'])
-                except (TypeError, ValueError):
-                    number = 0
-                if 1 <= number <= MAX_STEP_NUMBER:
-                    step['number'] = number
-                elif strict:
-                    raise ValueError(f'The step of a row goes from 1 to {MAX_STEP_NUMBER} ({STRATEGIES[strategy]}).')
-            if isinstance(chosen.get('operators'), list):
-                operators = _values(chosen['operators'])
-                # Focused Operators stands alone: the other operators chosen with it are left out.
-                step['operators'] = [FOCUSED_OPERATORS] if FOCUSED_OPERATORS in operators else operators
+            result[key] = {'deleted': True} if chosen.get('deleted') else _valid_step(step, chosen, key.split('-')[0], strict, label)
+        base = dict(zip(('priority', 'nr_mode', 'call_type', 'area', 'conditions', 'queue'), NEW_STEP))
+        base.update(number=1, conditions=[EVERY_CALL], joins=[], operators=list((operators or {}).get('any') or [FOCUSED_OPERATORS]))
+        for key, chosen in given.items():
+            if key in defaults or not ADDED_STEP.match(str(key)) or not isinstance(chosen, dict) or chosen.get('deleted'):
+                continue
+            result[key] = _valid_step(base, _current_step(chosen), key.split('-')[0], strict, label)
+        for list_name in (CAMPAIGN_LIST, FINAL_LIST):
+            live = [key for key, step in result.items() if key.startswith(f'{list_name}-') and not step.get('deleted')]
+            if len(live) > MAX_LIST_STEPS:
+                if strict:
+                    raise ValueError(f'A list has at most {MAX_LIST_STEPS} steps ({label}).')
+                for key in live[MAX_LIST_STEPS:]:
+                    result.pop(key)
+        steps[strategy] = result
     return steps
+
+
+def normalize_strategy_names(value: Any, strict: bool = False) -> dict[str, str]:
+    """The names the admins gave the strategies of the application, those that differ from the default one, each strategy
+    with a name of its own."""
+    items = value if isinstance(value, dict) else {}
+    chosen = {key: re.sub(r'\s+', ' ', str(items.get(key) or '')).strip()[:60] or default for key, default in STRATEGIES.items()}
+    while True:
+        seen: dict[str, str] = {}
+        clash = next((key for key, name in chosen.items() if seen.setdefault(name.casefold(), key) != key), None)
+        if clash is None:
+            break
+        if strict:
+            raise ValueError(f'Give every strategy a name of its own ({chosen[clash]}).')
+        # Of two strategies with one name, the renamed one takes its default name back.
+        renamed = clash if chosen[clash] != STRATEGIES[clash] else seen[chosen[clash].casefold()]
+        chosen[renamed] = STRATEGIES[renamed]
+    return {key: name for key, name in chosen.items() if name != STRATEGIES[key]}
+
+
+def normalize_strategies(value: Any, strict: bool = False, reserved: Iterable[str] = STRATEGIES.values()) -> list[dict[str, str]]:
+    """The strategies the admins created: key (strategy-...) and name, once each and none with a name of ``reserved`` (the
+    names of the strategies of the application), at most MAX_STRATEGIES."""
+    items = value if isinstance(value, list) else []
+    names = {label.casefold() for label in reserved}
+    strategies: list[dict[str, str]] = []
+    for item in items:
+        key = str((item or {}).get('key') or '') if isinstance(item, dict) else ''
+        name = re.sub(r'\s+', ' ', str((item or {}).get('name') or '') if isinstance(item, dict) else '').strip()[:60]
+        if not USER_STRATEGY.match(key) or any(strategy['key'] == key for strategy in strategies):
+            continue
+        if not name or name.casefold() in names:
+            if strict:
+                raise ValueError(f'Give every strategy a name of its own ({name or "no name"}).')
+            continue
+        names.add(name.casefold())
+        strategies.append({'key': key, 'name': name})
+    if len(strategies) > MAX_STRATEGIES:
+        if strict:
+            raise ValueError(f'At most {MAX_STRATEGIES} strategies of your own.')
+        strategies = strategies[:MAX_STRATEGIES]
+    return strategies
+
+
+def strategy_labels(settings: dict[str, Any]) -> dict[str, str]:
+    """The name of every strategy: the three of the application (as the admins renamed them), then those of the admins."""
+    return {**STRATEGIES, **(settings.get('strategy_names') or {}), **{item['key']: item['name'] for item in settings.get('strategies') or []}}
 
 
 def call_kind(service: Any, test_name: Any = '', session_type: Any = '') -> str:
@@ -697,28 +965,36 @@ def condition_holds(conditions: list[str], call: dict[str, Any], joins: Any = No
         return False
     level = call.get('level')
     high, medium = level == IMPACT_HIGH, level == nq_catalog.IMPACT_MEDIUM
+    result = str(call.get('result') or '').casefold()
     met = {EVERY_CALL: True, 'consecutive': call.get('consecutive') == 'Yes', 'cluster': (call.get('cluster_size') or 0) >= 2,
+           'drop': 'drop' in result or 'cutoff' in result, 'setup': result == 'failed',
            'high': high, 'medium': medium, 'low': not (high or medium), 'repeated': bool(call.get('repeated'))}
     groups, between = condition_groups(conditions, joins)
     return _joined([_joined([met.get(key, False) for key in keys], inner) for keys, inner in groups], between)
 
 
 def strategy_decision(strategy: str, call: dict[str, Any], steps: list[dict[str, Any]] | None = None,
-                      takes: Callable[[list[str], str], bool] | None = None) -> tuple[str, str, str, str, int | None, str]:
+                      takes: Callable[[list[str], str], bool] | None = None,
+                      final_list: bool = True) -> tuple[str, str, str, str, int | None, str]:
     """(prioritization, Prioritization Rule, Priority, queue, step, list) of a call with a strategy whose ``steps`` (of
     ``strategy_steps``, the defaults when not given) have their fields; ``takes(operators, operator)`` tells whether the
     operators of a step take the operator of the call (every operator when not given). The call gives ``operator``,
     ``nr_mode`` (of its campaign), ``kind``, ``area``, ``excluded``, ``final`` (its campaign has its Final CDR scored),
-    ``level``, ``repeated``, ``cluster_size`` and ``consecutive`` (Yes, No or '' when unknown).
+    ``level`` (by its Expected Gain, see ``expected_levels``), ``repeated``, ``cluster_size``, ``consecutive`` (Yes, No or ''
+    when unknown) and ``result`` (Failed, Dropped, Cutoff).
 
-    The steps of its list are tried by Priority and step number. A call of an SA campaign takes the steps of SA (or Any)
+    A call out of scope (``scope``, its reason) is out of the queues. A call takes list 2 once the Final CDR of its campaign
+    is scored when the strategy applies it (``final_list``), else list 1. The steps of its list are tried by Priority and
+    step number. A call of an SA campaign takes the steps of SA (or Any)
     whose Call Type, Area and operators take it; when none takes its operator (an operator without SA, such as Three), those of
     NSA. The first of them whose condition the call meets decides; a call none decides, a Ping test or an Excluded Call is
     tracked by the first tracked step (without queue) that takes it, and is out of the queues otherwise."""
+    if call.get('scope'):
+        return NO_RULE, call['scope'], '', '', None, ''
     steps = steps or strategy_steps(strategy)
     takes = takes or (lambda operators, operator: True)
     operator = str(call.get('operator') or '')
-    list_name = FINAL_LIST if call['final'] else CAMPAIGN_LIST
+    list_name = FINAL_LIST if call['final'] and final_list else CAMPAIGN_LIST
     rank = {name: index for index, name in enumerate(STRATEGY_PRIORITY_NAMES)}
     ordered = sorted((step for step in steps if step['list'] == list_name),
                      key=lambda step: (rank.get(step['priority'], len(rank)), step['number']))
@@ -777,6 +1053,37 @@ def impact_levels(points: dict[str, float], high_share: float, medium_share: flo
         levels.update({key: level for key in keys})
         before += max(0.0, value) * len(keys)
     return levels
+
+
+def scored_levels(rows: Iterable[dict[str, Any]], high_share: float, medium_share: float) -> dict[str, str]:
+    """The Scoring Impact level of every scored call of ``rows`` (call_key, campaign_key, operator, service, impact_state and
+    impact_points, as stored): ``impact_levels`` within its campaign, operator and service. It needs no new calculation of
+    the scoring, so a change of the High or Medium share applies at once."""
+    pareto: dict[tuple[str, str, str], dict[str, float]] = {}
+    for row in rows:
+        if row['impact_state'] == SCORED and row['impact_points'] is not None:
+            key = (str(row['campaign_key'] or ''), str(row['operator'] or '').casefold(), str(row['service'] or ''))
+            pareto.setdefault(key, {})[row['call_key']] = float(row['impact_points'])
+    levels: dict[str, str] = {}
+    for points in pareto.values():
+        levels.update(impact_levels(points, high_share, medium_share))
+    return levels
+
+
+def refresh_levels(repository: Any, settings: dict[str, Any]) -> int:
+    """Write the Scoring Impact levels of ``scored_levels`` (the High and Medium shares of ``settings``) into the calculated
+    calls (how many changed)."""
+    from src.modules import non_qualified_calls as nq
+
+    with repository.connection() as connection:
+        rows = [dict(row) for row in connection.execute(
+            f'SELECT p.call_key, p.campaign_key, p.impact_state, p.impact_points, p.impact_level, l.operator, l.service '
+            f'FROM {PRIORITY_TABLE} p JOIN {nq.NQ_CALL_LATEST_TABLE} l ON l.call_key = p.call_key')]
+        levels = scored_levels(rows, settings['high_share'], settings['medium_share'])
+        changes = [(levels[row['call_key']], row['call_key']) for row in rows
+                   if row['call_key'] in levels and levels[row['call_key']] != row['impact_level']]
+        connection.executemany(f'UPDATE {PRIORITY_TABLE} SET impact_level = ? WHERE call_key = ?', changes)
+    return len(changes)
 
 
 def bad_tests(metric: dict[str, Any], value: float, count: int) -> int:
@@ -1073,8 +1380,8 @@ def _meters(first: dict[str, Any], second: dict[str, Any]) -> float:
 
 def data_clusters(calls: list[dict[str, Any]], minutes: float = CLUSTER_MINUTES,
                   meters: float = CLUSTER_METERS) -> dict[str, tuple[str, int]]:
-    """For every failed data test (``call_key``, ``operator``, ``nr_mode``, ``campaign``, ``start_time``, ``latitude``,
-    ``longitude``, ``site_id``): its cluster and how many failed tests it has. A test joins the cluster of the same
+    """For every failure of one call type (``call_key``, ``operator``, ``nr_mode``, ``campaign``, ``start_time``, ``latitude``,
+    ``longitude``, ``site_id``): its hotspot (cluster) and how many failures it has. A test joins the cluster of the same
     operator, NR Mode and campaign whose last test failed the same day at most ``minutes`` before it, at most ``meters``
     away or at the same site; else it starts one (a test without a date stays alone)."""
     from src.modules.cdr_auto_selection import campaign_identity
@@ -1106,10 +1413,70 @@ def data_clusters(calls: list[dict[str, Any]], minutes: float = CLUSTER_MINUTES,
     return found
 
 
+_places_cache: dict[str, tuple[Any, dict[str, dict[str, Any]]]] = {}
+
+
+def place_values(repository: Any, settings: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """The place, repetitions and hotspot of every calculated call with the cluster and hotspot settings given, from the
+    stored values: the stored place of a call with a site or an eNB / gNB, else its spot of the Cluster distance
+    (``spot_meters``); the calls of its operator at its place in its quarter and the ``previous_quarters`` before it (a
+    cluster, Repeated Issue, from ``min_calls``); its hotspot of ``hotspot_minutes`` and ``hotspot_meters`` among the
+    failures of its call type. The latest result is kept for each workspace until the settings or the calculation change."""
+    from src.modules import non_qualified_calls as nq
+
+    ensure_tables(repository)
+    key = (tuple(settings[name] for name in PLACE_SETTINGS), repository.get_workspace_state(SUMMARY_STATE_KEY),
+           repository.get_workspace_state(nq.LATEST_STATE_KEY))
+    workspace = _workspace_key(repository.db_path)
+    cached = _places_cache.get(workspace)
+    if cached and cached[0] == key:
+        return cached[1]
+    with repository.connection() as connection:
+        calls = [dict(row) for row in connection.execute(
+            f'SELECT l.call_key, l.service, l.nr_mode, l.campaign, l.operator, l.site_id, l.latitude, l.longitude, l.start_time, '
+            f'l.test_name, l.session_type, p.place_key, p.place_label FROM {PRIORITY_TABLE} p '
+            f'JOIN {nq.NQ_CALL_LATEST_TABLE} l ON l.call_key = p.call_key')]
+    for call in calls:
+        # Only the place of a call without a site or a node depends on the settings.
+        if not call['place_key'] or str(call['place_key']).startswith('spot:'):
+            call['place_key'], call['place_label'] = spot_of(call['latitude'], call['longitude'], settings['spot_meters']) or ('', '')
+        call['quarter'] = quarter_of(call['start_time'], call['campaign'])
+        call['campaign_label'] = f"{call['campaign']}|{call['nr_mode']}"
+    repeated = repetitions(calls, settings['previous_quarters'])
+    kinds_of = {call['call_key']: call_kind(call['service'], call.get('test_name'), call.get('session_type')) for call in calls}
+    clusters: dict[str, tuple[str, int]] = {}
+    for kind in (VOICE, WHATSAPP, DATA):
+        clusters.update(data_clusters([call for call in calls if kinds_of[call['call_key']] == kind], settings['hotspot_minutes'],
+                                      settings['hotspot_meters']))
+    values = {}
+    for call in calls:
+        count, campaigns_count = repeated.get(call['call_key'], (None, None))
+        cluster_key, cluster_size = clusters.get(call['call_key'], ('', None))
+        values[call['call_key']] = {
+            'place_key': call['place_key'], 'place_label': call['place_label'], 'repetitions': count, 'repeated_campaigns': campaigns_count,
+            'repeated': 'Yes' if count is not None and count >= settings['min_calls'] else 'No',
+            'cluster_key': cluster_key, 'cluster_size': cluster_size}
+    _places_cache[workspace] = (key, values)
+    return values
+
+
+def refresh_places(repository: Any, settings: dict[str, Any]) -> int:
+    """Write the places, repetitions and hotspots of ``place_values`` into the calculated calls (how many changed)."""
+    values = place_values(repository, settings)
+    fields = ('place_key', 'place_label', 'repetitions', 'repeated_campaigns', 'repeated', 'cluster_key', 'cluster_size')
+    with repository.connection() as connection:
+        stored = {row['call_key']: tuple(row[name] for name in fields) for row in connection.execute(
+            f"SELECT call_key, {', '.join(fields)} FROM {PRIORITY_TABLE}")}
+        changes = [(*(value[name] for name in fields), key) for key, value in values.items()
+                   if key in stored and stored[key] != tuple(value[name] for name in fields)]
+        connection.executemany(f"UPDATE {PRIORITY_TABLE} SET {', '.join(f'{name} = ?' for name in fields)} WHERE call_key = ?", changes)
+    return len(changes)
+
+
 def consecutive_failures(repository: Any, calls: list[dict[str, Any]]) -> dict[str, str]:
-    """For every failed data test (Ping tests too): Yes when the test right before or after it in the drive failed too (the
-    previous or next sequence number of the same file of its CDR is another of these failures), No when neither did, ''
-    when its CDR does not give the order of its tests."""
+    """For every failure (calls and data tests, Ping tests too): Yes when the test right before or after it in the drive
+    failed too (the previous or next sequence number of the same file of its CDR is another of these failures), No when
+    neither did, '' when its CDR does not give the order of its tests."""
     from src.modules.column_names import resolve_column_name
 
     positions: dict[str, tuple[int, str, int]] = {}
@@ -1121,7 +1488,8 @@ def consecutive_failures(repository: Any, calls: list[dict[str, Any]]) -> dict[s
             available = repository.list_dataset_row_columns(dataset_id)
         except Exception:  # noqa: BLE001 - a CDR that cannot be read gives no order.
             continue
-        file_column, sequence_column = resolve_column_name(available, FILE_COLUMN), resolve_column_name(available, SEQUENCE_COLUMN)
+        file_column = next((name for name in (resolve_column_name(available, column) for column in FILE_COLUMNS) if name), None)
+        sequence_column = next((name for name in (resolve_column_name(available, column) for column in SEQUENCE_COLUMNS) if name), None)
         if not file_column or not sequence_column:
             continue
         table = repository.dataset_rows_table_name(dataset_id)
@@ -1192,13 +1560,13 @@ def ensure_tables(repository: Any) -> None:
         ensure_columns(connection)
 
 
-def fingerprint(repository: Any, settings: dict[str, Any] | None = None) -> str:
+def fingerprint(repository: Any) -> str:
     """What the impact and the repetitions depend on: the calls and CDRs indexed, the Scoring History, the methodologies,
-    the Operator Maps, the Excluded Calls, the cell mappings and the settings."""
+    the Operator Maps, the Excluded Calls and the cell mappings (the levels of the impact and the settings of the clusters
+    and the hotspots apply at once, see ``refresh_levels`` and ``refresh_places``)."""
     from src.modules import non_qualified_calls as nq
     from src.modules.repository import SCORING_CONFIGURATION_STATE_KEY
 
-    settings = settings or load_settings(repository)
     with repository.connection() as connection:
         tables = {str(row[0]) for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
 
@@ -1218,9 +1586,7 @@ def fingerprint(repository: Any, settings: dict[str, Any] | None = None) -> str:
     datasets = sorted((int(row['id']), str(row['dataset_kind'] or ''), str(row['status'] or ''), str(row['nr_mode'] or ''),
                        str(row['processed_at'] or ''), str(row['updated_at'] or ''), field(row, 'cdr_stage'),
                        field(row, 'in_combined')) for row in repository.list_datasets())
-    payload = [IMPACT_VERSION, {key: settings[key] for key in ('high_share', 'medium_share', 'min_calls', 'previous_quarters',
-                                                               'spot_meters')},
-               repository.get_workspace_state(nq.LATEST_STATE_KEY), history, lists, matches, datasets,
+    payload = [IMPACT_VERSION, repository.get_workspace_state(nq.LATEST_STATE_KEY), history, lists, matches, datasets,
                repository.get_workspace_state(SCORING_CONFIGURATION_STATE_KEY), repository.list_operator_mappings()]
     return hashlib.sha1(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()
 
@@ -1298,9 +1664,12 @@ def calculate(repository: Any, progress: Callable[[int, int, str], None] | None 
     nq.ensure_nq_tables(repository)
     nq.refresh_latest_calls(repository)
     settings = load_settings(repository)
-    stamp = fingerprint(repository, settings)
-    calls = _latest_calls(repository)
-    rows = _call_rows(repository)
+    stamp = fingerprint(repository)
+    # The operators excluded in the Operator Maps are left out of every count: their calls get no values.
+    excluded_operators = excluded_names(repository)
+    calls = [call for call in _latest_calls(repository) if str(call['operator'] or '').strip().casefold() not in excluded_operators]
+    kept = {call['call_key'] for call in calls}
+    rows = [row for row in _call_rows(repository) if row['call_key'] in kept]
     try:
         profiles = repository.get_scoring_profiles()
     except ValueError:
@@ -1355,12 +1724,15 @@ def calculate(repository: Any, progress: Callable[[int, int, str], None] | None 
         call['quarter'] = quarter_of(call['start_time'], call['campaign'])
         call['campaign_label'] = f"{call['campaign']}|{call['nr_mode']}"
     repeated = repetitions(calls, settings['previous_quarters'])
-    # The data clusters, and the failed data tests whose test right before or after failed too.
+    # The hotspots of each call type, and the failures whose test right before or after failed too.
     if progress:
-        progress(len(groups), len(groups) + 1, 'the data clusters and the expected gain of the calls')
+        progress(len(groups), len(groups) + 1, 'the hotspots and the expected gain of the calls')
     kinds_of = {call['call_key']: call_kind(call['service'], call.get('test_name'), call.get('session_type')) for call in calls}
-    clusters = data_clusters([call for call in calls if kinds_of[call['call_key']] == DATA])
-    consecutive = consecutive_failures(repository, [call for call in calls if kinds_of[call['call_key']] in {DATA, PING}])
+    clusters: dict[str, tuple[str, int]] = {}
+    for kind in (VOICE, WHATSAPP, DATA):
+        clusters.update(data_clusters([call for call in calls if kinds_of[call['call_key']] == kind], settings['hotspot_minutes'],
+                                      settings['hotspot_meters']))
+    consecutive = consecutive_failures(repository, calls)
     # Whether the Final CDR of the campaign of each call is scored (list 2 then orders it), and its Expected Gain: its
     # own points then, else what its failure lost in the latest campaign of its NR Mode with a Final CDR.
     finals = final_campaigns(repository)
@@ -1481,29 +1853,160 @@ def operators_with_sa(rows: Iterable[tuple[Any, ...]], aliases: dict[str, set[st
     return {name for names, (total, sa) in counts.items() if sa >= share * total for name in names}
 
 
+def _operator_counts(repository: Any) -> list[tuple[Any, ...]]:
+    """(operator, technology, NR Mode, calls) of the Non-Qualified Calls, but those of the operators excluded in the
+    Operator Maps."""
+    from src.modules import non_qualified_calls as nq
+
+    excluded = excluded_names(repository)
+    with repository.connection() as connection:
+        try:
+            rows = [tuple(row) for row in connection.execute(f'SELECT operator, technology, nr_mode, COUNT(*) FROM {nq.NQ_CALL_LATEST_TABLE} '
+                                                             'GROUP BY operator, technology, nr_mode')]
+        except Exception:  # noqa: BLE001 - before the calls are indexed.
+            return []
+    return [row for row in rows if str(row[0] or '').strip().casefold() not in excluded]
+
+
+def operators_using_sa(repository: Any, rows: list[tuple[Any, ...]] | None = None) -> set[str] | None:
+    """The names (casefolded) of the operators that use SA (``operators_with_sa`` on the calls of the SA campaigns of the
+    workspace); None when the calls do not give their technology."""
+    rows = _operator_counts(repository) if rows is None else rows
+    return operators_with_sa([(row[0], row[1], row[3]) for row in rows if str(row[2] or '').upper() == 'SA'], _operator_aliases(repository))
+
+
+def operator_label(repository: Any) -> Callable[[Any], str]:
+    """The label of the Operator Maps that a name of the CDRs stands for (the name itself when it has none)."""
+    try:
+        groups = repository.list_operator_mapping_groups()
+    except Exception:  # noqa: BLE001 - without Operator Maps, a name stands for itself.
+        groups = []
+    labels: dict[str, str] = {}
+    for group in groups or []:
+        canonical = str(group.get('canonical') or '').strip()
+        for name in [canonical, *(group.get('aliases') or [])] if canonical else []:
+            if str(name or '').strip():
+                labels.setdefault(str(name).strip().casefold(), canonical)
+    return lambda name: labels.get(str(name or '').strip().casefold(), str(name or '').strip())
+
+
+def excluded_names(repository: Any) -> set[str]:
+    """Every name (casefolded) of the operators excluded in the Operator Maps (left out everywhere)."""
+    from src.modules.operator_roles import EXCLUDE, names_with_role
+
+    return {name.casefold() for name in names_with_role(repository, EXCLUDE)}
+
+
+def focus_names(repository: Any) -> set[str] | None:
+    """Every name (casefolded) of the Focus operators of the Operator Maps; None when the workspace has none."""
+    from src.modules.operator_roles import FOCUS, names_with_role
+
+    return {name.casefold() for name in names_with_role(repository, FOCUS)} or None
+
+
+# Why the pairs of an operator that is not a Focus operator are out of scope, as the dialog tells it.
+NOT_FOCUS_REASON = 'Not a Focus operator of the Operator Maps: its calls of both NR Modes are always out of scope'
+
+
+def fixed_excluded_modes(repository: Any) -> list[dict[str, str]]:
+    """The NR Mode and operator pairs always out of scope, in every strategy: SA and NSA with every operator that is not a
+    Focus operator of the Operator Maps (by its label, or its name in the CDRs when it has none); none when the workspace
+    has no Focus operator; the operators excluded in the Operator Maps are left out."""
+    focus = focus_names(repository)
+    if focus is None:
+        return []
+    label = operator_label(repository)
+    excluded = excluded_names(repository)
+    names: dict[str, str] = {}
+    for name in [*operator_choices(repository), *(row[0] for row in _operator_counts(repository))]:
+        text = str(name or '').strip()
+        if text and text.casefold() not in excluded and text.casefold() not in focus:
+            names.setdefault(label(text).casefold(), label(text))
+    return [{'nr_mode': mode, 'operator': name} for name in sorted(names.values(), key=str.casefold) for mode in ('SA', 'NSA')]
+
+
+def default_excluded_modes(repository: Any) -> list[dict[str, str]]:
+    """The NR Mode and operator pairs out of scope until the admins choose others: SA with each Focus operator of the SA
+    campaigns that does not use SA (Three: its calls there are NSA calls, which its NSA campaigns already have), by its
+    label in the Operator Maps (the other operators are always out of scope, see ``fixed_excluded_modes``, and those excluded
+    in the Operator Maps are left out)."""
+    rows = _operator_counts(repository)
+    with_sa = operators_using_sa(repository, rows)
+    if with_sa is None:
+        return []
+    focus = focus_names(repository)
+    label = operator_label(repository)
+    excluded = excluded_names(repository)
+    found: dict[str, str] = {}
+    for operator, _technology, nr_mode, _calls in rows:
+        name = str(operator or '').strip()
+        if (str(nr_mode or '').upper() != 'SA' or not name or name.casefold() in with_sa or name.casefold() in excluded
+                or (focus is not None and name.casefold() not in focus)):
+            continue
+        found.setdefault(label(name).casefold(), label(name))
+    return [{'nr_mode': 'SA', 'operator': name} for name in sorted(found.values(), key=str.casefold)]
+
+
+def excluded_modes_of(repository: Any, settings: dict[str, Any]) -> dict[tuple[str, str], str]:
+    """The NR Mode and operator pairs out of scope chosen by the admins, by NR Mode and every name of the operator in the
+    Operator Maps (casefolded): their label (SA · Three)."""
+    aliases = _operator_aliases(repository)
+    return {(item['nr_mode'], name): f"{item['nr_mode']} · {item['operator']}" for item in settings['excluded_modes']
+            for name in aliases.get(item['operator'].casefold(), {item['operator'].casefold()})}
+
+
+def scope_of(repository: Any, settings: dict[str, Any]) -> Callable[[Any, Any, Any], tuple[str, str]]:
+    """Why a call (region, NR Mode, operator) is out of the queues of every strategy, and its kind (('', '') when it is in
+    scope): its region (Vendor B, 'region'), its operator, not a Focus operator of the Operator Maps (both NR Modes,
+    always, 'operator'), or its NR Mode and operator chosen by the admins (SA · Three, 'mode')."""
+    regions = {name.casefold() for name in settings['excluded_regions']}
+    chosen = excluded_modes_of(repository, settings)
+    focus = focus_names(repository)
+    label = operator_label(repository)
+
+    def reason(region: Any, nr_mode: Any, operator: Any) -> tuple[str, str]:
+        if str(region or '').strip().casefold() in regions:
+            return f'{OUT_OF_SCOPE} · {str(region).strip()}', 'region'
+        mode, name = str(nr_mode or '').upper(), str(operator or '').strip()
+        if focus is not None and name.casefold() not in focus:
+            return ' · '.join(part for part in (OUT_OF_SCOPE, mode, label(name)) if part), 'operator'
+        found = chosen.get((mode, name.casefold()))
+        return (f'{OUT_OF_SCOPE} · {found}', 'mode') if found else ('', '')
+    return reason
+
+
+def region_choices(repository: Any) -> list[str]:
+    """The regions of the Non-Qualified Calls (but those of the operators excluded in the Operator Maps), for the regions
+    out of scope."""
+    from src.modules import non_qualified_calls as nq
+
+    excluded = excluded_names(repository)
+    with repository.connection() as connection:
+        try:
+            rows = connection.execute(f"SELECT DISTINCT region, operator FROM {nq.NQ_CALL_LATEST_TABLE} WHERE region <> ''").fetchall()
+        except Exception:  # noqa: BLE001 - before the calls are indexed.
+            return []
+    regions = {str(row[0]) for row in rows if str(row[1] or '').strip().casefold() not in excluded}
+    return sorted(regions, key=str.casefold)
+
+
 def default_step_operators(repository: Any) -> dict[str, list[str]]:
     """The operators each step takes by default, by its NR Mode, by name: the NSA and tracked steps the Focus operators of
     the Operator Maps with Non-Qualified Calls (VF & Three), the SA steps those of them that use SA (VF). Focused Operators
     when the workspace has no Focus operator."""
-    from src.modules import non_qualified_calls as nq
     from src.modules.operator_roles import FOCUS, labels_with_role
 
     labels = labels_with_role(repository, FOCUS)
     if not labels:
         return {mode: [FOCUSED_OPERATORS] for mode in STEP_NR_MODES}
     aliases = _operator_aliases(repository)
-    with repository.connection() as connection:
-        try:
-            rows = connection.execute(f'SELECT operator, technology, nr_mode, COUNT(*) FROM {nq.NQ_CALL_LATEST_TABLE} '
-                                      'GROUP BY operator, technology, nr_mode').fetchall()
-        except Exception:  # noqa: BLE001 - before the calls are indexed.
-            rows = []
+    rows = _operator_counts(repository)
 
     def names(label: str) -> set[str]:
         return aliases.get(label.casefold(), {label.casefold()})
     present = {str(row[0] or '').strip().casefold() for row in rows}
     called = [label for label in labels if names(label) & present] or labels
-    with_sa = operators_with_sa([(row[0], row[1], row[3]) for row in rows if str(row[2] or '').upper() == 'SA'], aliases)
+    with_sa = operators_using_sa(repository, rows)
     sa = called if with_sa is None else [label for label in called if names(label) & with_sa]
     return {'SA': sa, 'NSA': called, 'any': called}
 
@@ -1564,10 +2067,28 @@ def operator_choices(repository: Any) -> list[str]:
             return []
 
 
+def expected_levels(rows: Iterable[Any], high_share: float, medium_share: float) -> dict[str, str]:
+    """The impact level the conditions of the strategies read for every call of ``rows`` (call_key, campaign_key, operator,
+    service, impact_state and expected_points): ``impact_levels`` of the Expected Gain of the calls of its campaign,
+    operator and service. During a campaign the Expected Gain is what the failure lost in the latest Final CDR of its NR
+    Mode; once the Final CDR of its campaign is scored, its own points. The Excluded Calls and the calls without Expected
+    Gain have no level."""
+    pareto: dict[tuple[str, str, str], dict[str, float]] = {}
+    for row in rows:
+        value = row['expected_points']
+        if value is not None and row['impact_state'] != EXCLUDED:
+            key = (str(row['campaign_key'] or ''), str(row['operator'] or '').casefold(), str(row['service'] or ''))
+            pareto.setdefault(key, {})[str(row['call_key'])] = float(value)
+    levels: dict[str, str] = {}
+    for points in pareto.values():
+        levels.update(impact_levels(points, high_share, medium_share))
+    return levels
+
+
 def apply_rules(repository: Any, username: str, settings: dict[str, Any] | None = None) -> dict[str, int]:
-    """Apply the strategy (its steps, or the Custom rules) to every calculated call and fill the Priority of the open
-    calls with the priority of their step or rule while it is empty or still the one they gave (a priority chosen by hand
-    stays, and they stop changing it); the Priority of a call whose analysis started never changes."""
+    """Apply the strategy (its steps) to every calculated call and fill the Priority of the open calls with the priority of
+    their step while it is empty or still the one they gave (a priority chosen by hand stays, and they stop changing it);
+    the Priority of a call whose analysis started never changes."""
     from src.modules import non_qualified_calls as nq
 
     settings = settings or load_settings(repository)
@@ -1578,34 +2099,43 @@ def apply_rules(repository: Any, username: str, settings: dict[str, Any] | None 
     priorities = {name.casefold(): name for name in priority_options(repository)}
     fill = bool(settings['fill_priority'] and priorities)
     strategy = settings['strategy']
-    rules = compile_rules(settings['rules'])
     takes = operator_takes(repository)
-    steps = strategy_steps(strategy, settings['steps'].get(strategy)) if strategy != CUSTOM else []
+    steps = strategy_steps(strategy, settings['steps'].get(strategy))
+    final_list = settings['final_lists'].get(strategy, True)
+    scope_reason = scope_of(repository, settings)
     when = nq.now_iso()
-    counts = {'prioritized': 0, 'tracked': 0, 'no_rule': 0, 'priorities_set': 0}
+    counts = {'prioritized': 0, 'tracked': 0, 'no_rule': 0, 'out_of_scope': 0, 'priorities_set': 0}
     changed_keys = []
     with repository.connection() as connection:
         rows = connection.execute(
             f"SELECT p.call_key, p.impact_level, p.impact_state, p.repeated, p.prioritization, p.priority_rule, "
             f"p.suggested_priority, p.priority_filled, p.cluster_size, p.consecutive, p.final_list, p.queue, p.queue_step, "
-            f"p.queue_list, l.service, l.nr_mode, l.operator, l.region, l.city, l.environment, l.test_name, l.session_type, "
+            f"p.queue_list, p.campaign_key, p.impact_points, p.expected_points, l.service, l.nr_mode, l.operator, l.region, l.city, "
+            f"l.environment, l.test_name, l.session_type, l.result, "
             f"COALESCE(NULLIF(t.status, ''), ?) AS status, COALESCE(f.value, '') AS priority "
             f'FROM {PRIORITY_TABLE} p JOIN {nq.NQ_CALL_LATEST_TABLE} l ON l.call_key = p.call_key '
             f'LEFT JOIN {nq.NQ_CALL_TRACKING_TABLE} t ON t.call_key = p.call_key '
             f'LEFT JOIN {nq.NQ_FIELD_VALUES_TABLE} f ON f.call_key = p.call_key AND f.field_key = ?',
             (default, PRIORITY_FIELD)).fetchall()
         updates = []
+        # The calls of the operators excluded in the Operator Maps count nowhere (the calculation gives them no values).
+        excluded_operators = excluded_names(repository)
+        rows = [row for row in rows if str(row['operator'] or '').strip().casefold() not in excluded_operators]
+        levels = expected_levels(rows, settings['high_share'], settings['medium_share'])
         for row in rows:
-            if strategy == CUSTOM:
-                decision, rule, suggestion = decide(rules, row, row['repeated'] == 'Yes', row['impact_level'] == IMPACT_HIGH)
-                queue, step, list_name = '', None, ''
+            # The calls out of scope stay out of the queues whatever the strategy.
+            scope = scope_reason(row['region'], row['nr_mode'], row['operator'])[0]
+            counts['out_of_scope'] += bool(scope)
+            if scope:
+                decision, rule, suggestion, queue, step, list_name = NO_RULE, scope, '', '', None, ''
             else:
                 decision, rule, suggestion, queue, step, list_name = strategy_decision(strategy, {
-                    'operator': str(row['operator'] or ''), 'nr_mode': str(row['nr_mode'] or ''),
+                    'scope': scope, 'operator': str(row['operator'] or ''), 'nr_mode': str(row['nr_mode'] or ''),
                     'kind': call_kind(row['service'], row['test_name'], row['session_type']), 'area': call_area(row['environment']),
-                    'excluded': row['impact_state'] == EXCLUDED, 'final': bool(row['final_list']), 'level': row['impact_level'],
-                    'repeated': row['repeated'] == 'Yes', 'cluster_size': row['cluster_size'], 'consecutive': row['consecutive'] or ''},
-                    steps, takes)
+                    'excluded': row['impact_state'] == EXCLUDED, 'final': bool(row['final_list']), 'level': levels.get(row['call_key'], ''),
+                    'repeated': row['repeated'] == 'Yes', 'cluster_size': row['cluster_size'], 'consecutive': row['consecutive'] or '',
+                    'result': row['result'] or ''},
+                    steps, takes, final_list)
             counts[{PRIORITIZED: 'prioritized', TRACK_ONLY: 'tracked'}.get(decision, 'no_rule')] += 1
             suggestion = priorities.get(suggestion.casefold(), '') if suggestion else ''
             filled = str(row['priority_filled'] or '')
@@ -1648,6 +2178,101 @@ def apply_rules(repository: Any, username: str, settings: dict[str, Any] | None 
 # ---------------------------------------------------------------------------
 _jobs: dict[str, dict[str, Any]] = {}
 _jobs_guard = Lock()
+
+
+def step_counts(repository: Any, settings: dict[str, Any]) -> dict[str, Any]:
+    """How many calls each step of the strategy of ``settings`` takes in the latest campaign with its Final CDR scored of
+    each NR Mode: list 1 as during the campaign, list 2 (when the strategy applies it) as once its Final CDR is scored. The
+    calls outside the queues count apart, as [name, calls] pairs, the most calls first: those out of scope (``scope``: by
+    region, by NR Mode and operator not Focus, SA · EE, and by NR Mode and operator chosen, SA · Three) and, in each list
+    (``lists``), the tracked ones
+    (by kind, and by operator and NR Mode) and those no step takes (by operator and NR Mode)."""
+    from src.modules import non_qualified_calls as nq
+    from src.modules.column_names import campaign_sort_key, compact_campaign_value
+
+    def pairs(counts: dict[str, int]) -> list[list[Any]]:
+        return [[name, calls] for name, calls in sorted(counts.items(), key=lambda item: (-item[1], item[0]))]
+
+    strategy = settings['strategy']
+    result: dict[str, Any] = {'counts': {}, 'campaigns': [], 'out_of_scope': 0, 'calls': 0,
+                              'scope': {'regions': [], 'operators': [], 'modes': []},
+                              'lists': {}}
+    ensure_tables(repository)
+    with repository.connection() as connection:
+        rows = [dict(row) for row in connection.execute(
+            f"SELECT p.call_key, p.campaign_key, p.impact_level, p.impact_state, p.impact_points, p.expected_points, p.repeated, "
+            f"p.cluster_size, p.consecutive, l.service, l.nr_mode, l.campaign, l.operator, l.region, l.environment, l.test_name, "
+            f"l.session_type, l.result FROM {PRIORITY_TABLE} p JOIN {nq.NQ_CALL_LATEST_TABLE} l ON l.call_key = p.call_key "
+            "WHERE p.final_list = 1")]
+    # The latest campaign with its Final CDR of each NR Mode.
+    latest: dict[str, str] = {}
+    for row in rows:
+        mode, campaign = str(row['nr_mode'] or '').upper(), str(row['campaign'] or '')
+        if mode not in latest or campaign_sort_key(campaign) > campaign_sort_key(latest[mode]):
+            latest[mode] = campaign
+    rows = [row for row in rows if latest.get(str(row['nr_mode'] or '').upper()) == str(row['campaign'] or '')]
+    # The calls of the operators excluded in the Operator Maps count nowhere.
+    excluded_operators = excluded_names(repository)
+    rows = [row for row in rows if str(row['operator'] or '').strip().casefold() not in excluded_operators]
+    # The campaigns as the Campaign Maps name them (2026-Q3-SA).
+    result['campaigns'] = [compact_campaign_value(name) or name for name in sorted(set(latest.values()), key=campaign_sort_key)]
+    scope_reason = scope_of(repository, settings)
+    label = operator_label(repository)
+    takes = operator_takes(repository)
+    steps = strategy_steps(strategy, settings['steps'].get(strategy))
+    lists = [CAMPAIGN_LIST] + ([FINAL_LIST] if settings['final_lists'].get(strategy, True) else [])
+    # The clusters and hotspots of the settings being edited, at once (the impact levels follow them in each list).
+    places = place_values(repository, settings)
+    for row in rows:
+        place = places.get(row['call_key'])
+        if place:
+            row['repeated'], row['cluster_size'] = place['repeated'], place['cluster_size']
+    in_scope = []
+    found: dict[str, dict[str, int]] = {'region': {}, 'operator': {}, 'mode': {}}
+    for row in rows:
+        reason, kind = scope_reason(row['region'], row['nr_mode'], row['operator'])
+        if not reason:
+            in_scope.append(row)
+            continue
+        result['out_of_scope'] += 1
+        # The region (Vendor B), the operator that is not a Focus operator (SA · EE) or the pair chosen (SA · Three).
+        name = reason.split(' · ', 1)[1]
+        found[kind][name] = found[kind].get(name, 0) + 1
+    result['calls'] = len(in_scope)
+    result['scope'] = {'regions': pairs(found['region']), 'operators': pairs(found['operator']), 'modes': pairs(found['mode'])}
+    for list_name in lists:
+        final = list_name == FINAL_LIST
+        by_rule = {step['rule']: step['id'] for step in steps if step['list'] == list_name}
+        result['counts'].update({step_id_: 0 for step_id_ in by_rule.values()})
+        # The impact levels by the Expected Gain: the calls of a campaign with its Final CDR have their own points, in both
+        # lists (during a campaign, its calls take the estimate from the Final CDR before it).
+        levels = expected_levels(in_scope, settings['high_share'], settings['medium_share'])
+        tracked_kinds: dict[str, int] = {}
+        tracked_operators: dict[str, int] = {}
+        untaken: dict[str, int] = {}
+        for row in in_scope:
+            call = {'operator': str(row['operator'] or ''), 'nr_mode': str(row['nr_mode'] or ''),
+                    'kind': call_kind(row['service'], row['test_name'], row['session_type']), 'area': call_area(row['environment']),
+                    'excluded': row['impact_state'] == EXCLUDED, 'final': final, 'level': levels.get(row['call_key'], ''),
+                    'repeated': row['repeated'] == 'Yes', 'cluster_size': row['cluster_size'], 'consecutive': row['consecutive'] or '',
+                    'result': row['result'] or ''}
+            decision = strategy_decision(strategy, call, steps, takes, True)
+            if decision[1] in by_rule:
+                result['counts'][by_rule[decision[1]]] += 1
+            # The operator with the NR Mode of its campaign (Three NSA), so that no SA call of an operator without SA seems taken.
+            operator = f"{label(call['operator']) or 'No operator'} {call['nr_mode'].upper()}".strip()
+            if decision[0] == TRACK_ONLY:
+                # The Excluded Calls and the Ping tests never enter a queue; the others met no step of a queue.
+                call_type = CALL_TYPES[call['kind']] if call['kind'] in CALL_TYPES else ''
+                kind = ('Excluded Calls' if call['excluded'] else 'Ping tests' if call['kind'] == PING
+                        else f'{call_type} calls no {call_type} step takes')
+                tracked_kinds[kind] = tracked_kinds.get(kind, 0) + 1
+                tracked_operators[operator] = tracked_operators.get(operator, 0) + 1
+            elif decision[0] == NO_RULE:
+                untaken[operator] = untaken.get(operator, 0) + 1
+        result['lists'][list_name] = {'tracked': pairs(tracked_kinds), 'tracked_operators': pairs(tracked_operators),
+                                      'untaken': pairs(untaken)}
+    return result
 
 
 def _workspace_key(path: Any) -> str:
@@ -1740,19 +2365,12 @@ MAX_ISSUES = 25
 MAX_PANEL_KPIS = 12
 
 
-def conditions_text(rule: dict[str, Any]) -> str:
-    """What a rule takes, in words: Voice, Speech · SA · VF* (Every call when it has no condition)."""
-    from src.modules.non_qualified_calls import SERVICE_LABELS
-
-    parts = [', '.join(SERVICE_LABELS.get(value, value) for value in rule['services']), ', '.join(rule['nr_modes']),
-             *(', '.join(rule[key]) for key in ('operators', 'regions', 'cities'))]
-    return ' · '.join(part for part in parts if part) or 'Every call'
-
-
 def panel(repository: Any, filters: Any, username: str) -> dict[str, Any]:
-    """The NQ Prioritization of the filtered calls: the calls of each rule, the KPIs whose points they lose, the
-    repeated issues and the calls to analyse next (prioritized, open and not attended yet)."""
+    """The NQ Prioritization of the filtered calls: the calls of each step, the KPIs whose points they lose, the
+    repeated issues and the calls to analyse next (prioritized, open and not attended yet) in each queue, and the tracked
+    ones apart."""
     from src.modules import non_qualified_calls as nq
+    from src.modules.column_names import compact_campaign_value
 
     settings = load_settings(repository)
     options = nq.list_options(repository)
@@ -1773,34 +2391,51 @@ def panel(repository: Any, filters: Any, username: str) -> dict[str, Any]:
     is_open = [str(row['status'] or '').casefold() not in closed_names for row in rows]
     attended = [bool(row['updated_at']) or int(row['comment_count'] or 0) > 0 for row in rows]
     strategy = settings['strategy']
-    # The calls of each step of the strategy (or of each rule), in their order, then those none takes.
-    if strategy == CUSTOM:
-        entries = [{'name': rule['name'], 'conditions': conditions_text(rule), 'criterion': CRITERIA[rule['criterion']],
-                    'priority': rule['priority'], 'track_priority': rule['track_priority']} for rule in settings['rules']]
-        unruled_text = 'The calls no rule takes'
-    else:
-        entries = [{'name': step['rule'], 'conditions': step['takes'], 'criterion': f"{step['queue']} queue" if step['queue'] else 'Tracked',
-                    'priority': step['priority'], 'track_priority': '', 'list': step['list'],
-                    'operators': operators_text(step['operators'])}
-                   for step in strategy_steps(strategy, settings['steps'].get(strategy))]
-        unruled_text = 'The calls of the operators no step takes'
+    # The calls of each step of the strategy, in their order, then those none takes.
+    # Each step with its number and list, its fields as the Prioritization Rules show them (NR Mode, Call Type, Area,
+    # Condition and queue, with their keys for their colours) and what it takes in short and in full.
+    entries = [{'kind': 'step', 'name': step['rule'], 'number': step['number'], 'label': step['label'], 'conditions': step['takes'],
+                'criterion': f"{step['queue']} queue" if step['queue'] else 'Tracked',
+                'priority': step['priority'], 'track_priority': '', 'list': step['list'],
+                'operators': operators_text(step['operators']), 'nr_mode': step['nr_mode'], 'call_type': CALL_TYPES[step['call_type']],
+                'area': STEP_AREAS[step['area']], 'condition': step_conditions_text(step['conditions'], step['joins']),
+                'queue': STEP_QUEUES[step['queue']]}
+               for step in strategy_steps(strategy, settings['steps'].get(strategy))
+               if step['list'] == CAMPAIGN_LIST or settings['final_lists'].get(strategy, True)]
+    unruled_text = 'The calls of the operators no step takes'
+    # The calls out of scope, one entry whatever their reason.
+    modes = [f"{item['nr_mode']} · {item['operator']}" for item in settings['excluded_modes']]
+    entries.append({'kind': OUT_OF_SCOPE_KIND, 'name': OUT_OF_SCOPE, 'number': None, 'list': '',
+                    'label': 'Regions, operators and NR Mode · operator pairs out of scope', 'conditions': 'The calls of the regions'
+                    + (f" ({', '.join(settings['excluded_regions'])})" if settings['excluded_regions'] else '')
+                    + ', of the operators that are not Focus operators and of the NR Mode · operator pairs'
+                    + (f" ({', '.join(modes)})" if modes else '') + ' out of scope',
+                    'criterion': 'Out of the queues',
+                    'priority': '', 'track_priority': '', 'operators': ''})
     order = {entry['name']: index for index, entry in enumerate(entries)}
-    rules = [{**entry, 'calls': 0, 'prioritized': 0, 'tracked': 0, 'points': 0.0, 'open': 0, 'attended': 0} for entry in entries]
-    unruled = {'name': '', 'conditions': unruled_text, 'criterion': '', 'priority': '', 'track_priority': '',
-               'calls': 0, 'prioritized': 0, 'tracked': 0, 'points': 0.0, 'open': 0, 'attended': 0}
+    # Waiting: open and not attended yet, as the queues count their calls.
+    rules = [{**entry, 'calls': 0, 'prioritized': 0, 'tracked': 0, 'points': 0.0, 'open': 0, 'attended': 0, 'waiting': 0}
+             for entry in entries]
+    unruled = {'kind': 'none', 'name': '', 'number': None, 'list': '', 'label': unruled_text, 'conditions': unruled_text,
+               'criterion': '', 'priority': '', 'track_priority': '', 'operators': '',
+               'calls': 0, 'prioritized': 0, 'tracked': 0, 'points': 0.0, 'open': 0, 'attended': 0, 'waiting': 0}
     levels: dict[str, int] = {}
     kpis: dict[tuple[str, str, str], dict[str, Any]] = {}
     issues: dict[tuple[str, str], dict[str, Any]] = {}
-    queue = []
+    queue: list[dict[str, Any]] = []
+    # The open calls nobody attended yet that only a tracked step takes, in no team queue.
+    tracked: list[dict[str, Any]] = []
     for row, opened, followed in zip(rows, is_open, attended):
         points = float(row['impact_points'] or 0)
-        entry = rules[order[row['priority_rule']]] if row['priority_rule'] in order else unruled
+        name = OUT_OF_SCOPE if str(row['priority_rule'] or '').startswith(OUT_OF_SCOPE) else row['priority_rule']
+        entry = rules[order[name]] if name in order else unruled
         entry['calls'] += 1
         entry['prioritized'] += row['prioritization'] == PRIORITIZED
         entry['tracked'] += row['prioritization'] == TRACK_ONLY
         entry['points'] += points
         entry['open'] += opened
         entry['attended'] += followed
+        entry['waiting'] += opened and not followed
         level = row['impact_level'] or 'Waiting'
         levels[level] = levels.get(level, 0) + 1
         try:
@@ -1829,8 +2464,11 @@ def panel(repository: Any, filters: Any, username: str) -> dict[str, Any]:
             issue['repetitions'] = max(issue['repetitions'], int(row['repetitions'] or 0))
             if row['root_category']:
                 issue['categories'][row['root_category']] = issue['categories'].get(row['root_category'], 0) + 1
-        if row['prioritization'] == PRIORITIZED and opened and not followed:
-            queue.append(row)
+        if opened and not followed:
+            if row['prioritization'] == PRIORITIZED:
+                queue.append(row)
+            elif row['prioritization'] == TRACK_ONLY:
+                tracked.append(row)
 
     def priority_of(row: dict[str, Any]) -> str:
         try:
@@ -1838,19 +2476,14 @@ def panel(repository: Any, filters: Any, username: str) -> dict[str, Any]:
         except (TypeError, ValueError):
             values = {}
         return str(values.get(PRIORITY_FIELD) or row['suggested_priority'] or '')
+    # A queue per team, in the order the analysts take its calls.
     queues = []
-    if strategy == CUSTOM:
-        # The calls to analyse next: by the order of their rule, the points they lose, their repetitions, the newest first.
-        queue.sort(key=lambda row: str(row['start_time'] or ''), reverse=True)
-        queue.sort(key=lambda row: (order.get(row['priority_rule'], len(order)), -float(row['impact_points'] or 0),
-                                    -int(row['repetitions'] or 0)))
-    else:
-        # A queue per team, in the order the analysts take its calls.
-        names = priority_options(repository) or list(STRATEGY_PRIORITY_NAMES)
-        for name in (VOICE_QUEUE, DATA_QUEUE):
-            members = [{**row, 'priority': priority_of(row)} for row in queue if row['queue'] == name]
-            queues.append({'name': name, 'total': len(members), 'rows': order_queue(members, names)})
-        queue = []
+    names = priority_options(repository) or list(STRATEGY_PRIORITY_NAMES)
+    for name in (VOICE_QUEUE, DATA_QUEUE):
+        members = [{**row, 'priority': priority_of(row)} for row in queue if row['queue'] == name]
+        queues.append({'name': name, 'total': len(members), 'rows': order_queue(members, names)})
+    queue = []
+    tracked = order_queue([{**row, 'priority': priority_of(row)} for row in tracked], names)
     issue_rows = sorted(issues.values(), key=lambda item: (-item['calls'], -item['points'], item['operator'].casefold(), item['place']))
     for item in issue_rows:
         item['campaigns'] = len(item['campaigns'])
@@ -1863,15 +2496,15 @@ def panel(repository: Any, filters: Any, username: str) -> dict[str, Any]:
     def queue_row(row: dict[str, Any], position: int) -> dict[str, Any]:
         return {'position': position, 'call_key': row['call_key'], 'join_id': row['join_id'], 'operator': row['operator'],
                 'service': nq.SERVICE_LABELS.get(str(row['service']), str(row['service'])), 'nr_mode': row['nr_mode'],
-                'campaign': row['campaign'], 'result': row['result'], 'start_time': row['start_time'],
-                'rule': row['priority_rule'], 'priority': priority_of(row),
+                'campaign': compact_campaign_value(row['campaign']) or row['campaign'], 'result': row['result'],
+                'start_time': row['start_time'], 'rule': row['priority_rule'], 'priority': priority_of(row), 'step': row.get('queue_step'),
                 'points': None if row['impact_points'] is None else round(float(row['impact_points']), 2),
                 'gain': None if row.get('expected_points') is None else round(float(row['expected_points']), 2),
                 'gain_campaign': row.get('expected_campaign') or '', 'list': row.get('queue_list') or '',
                 'level': row['impact_level'], 'repetitions': row['repetitions'], 'place': row['place_label']}
     return {
         'status': status(repository),
-        'strategy': {'key': strategy, 'label': STRATEGIES[strategy]},
+        'strategy': {'key': strategy, 'label': strategy_labels(settings)[strategy]},
         'settings': {key: settings[key] for key in ('high_share', 'medium_share', 'min_calls', 'previous_quarters', 'capacity')},
         'totals': {
             'calls': len(rows), 'prioritized': sum(row['prioritization'] == PRIORITIZED for row in rows),
@@ -1892,4 +2525,7 @@ def panel(repository: Any, filters: Any, username: str) -> dict[str, Any]:
         'queues': [{'name': item['name'], 'total': item['total'],
                     'rows': [queue_row(row, position) for position, row in enumerate(item['rows'][:settings['capacity']], start=1)]}
                    for item in queues],
+        # The tracked calls, which no team takes, in the same order (the panel folds them below the queues).
+        'tracked': {'name': 'Tracked', 'total': len(tracked),
+                    'rows': [queue_row(row, position) for position, row in enumerate(tracked[:settings['capacity']], start=1)]},
     }

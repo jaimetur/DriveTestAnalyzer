@@ -313,6 +313,9 @@ SECTION_ICONS: dict[str, str] = {
     'summary': '<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1M9 10h6M9 14h6M9 18h4"/>',
     'chart': '<path d="M4 20V4M4 20h16"/><path d="M8 16v-4M12 16V8M16 16v-6"/>',
     'gauge': '<path d="M4 16a8 8 0 1 1 16 0"/><path d="m12 16 4-5"/><circle cx="12" cy="16" r="1.2"/>',
+    # Two queues of calls moving on (the Voice and Data queues of the NQ Prioritization), and rules in their order.
+    'queues': '<path d="M3 5h4v4H3zM9 5h4v4H9zM3 15h4v4H3zM9 15h4v4H9z"/><path d="M15 7h6m-2-2 2 2-2 2M15 17h6m-2-2 2 2-2 2"/>',
+    'rules': '<path d="M3 4h4v4H3zM3 10h4v4H3zM3 16h4v4H3z"/><path d="M10 6h11M10 12h8M10 18h5"/>',
     'jobs': '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
     'map': '<path d="m3 6 6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/>',
     'antenna': '<path d="M12 10v11M8 21h8"/><circle cx="12" cy="8" r="2"/><path d="M7.5 3.5a6.5 6.5 0 0 0 0 9M16.5 3.5a6.5 6.5 0 0 1 0 9"/>',
@@ -386,8 +389,8 @@ MODULE_SECTIONS: dict[str, list[tuple[Any, ...] | None]] = {
                              ('section-network-snapshot', 'Network Snapshot', 'database'),
                              ('section-network-deployment', 'Network Deployment', 'antenna'),
                              ('section-cluster-sites-density', 'Cluster Sites Density', 'pin'), ('section-spectrum', 'Spectrum', 'spectrum')])],
-    'non-qualified-calls': [('Filters', 'Filters', 'filter'), ('Non-Qualified Calls', 'Non-Qualified Calls', 'phone'),
-                            ('Summary', 'Summary', 'summary'), ('NQ Prioritization', 'NQ Prioritization', 'gauge'),
+    'non-qualified-calls': [('Filters', 'Filters', 'filter'), ('NQ Prioritization & Queues', 'NQ Prioritization & Queues', 'queues'),
+                            ('Non-Qualified Calls', 'Non-Qualified Calls', 'phone'), ('Summary', 'Summary', 'summary'),
                             ('NQ Rate by Campaign and Operator', 'NQ Rate by Campaign and Operator', 'chart'),
                             ('Failures by Type, Technology & Serving Cell', 'Failures by Type, Technology & Serving Cell', 'antenna'),
                             ('Root Cause Sources', 'Root Cause Sources', 'database'),
@@ -395,10 +398,10 @@ MODULE_SECTIONS: dict[str, list[tuple[Any, ...] | None]] = {
                             ('Lifecycle & Phases', 'Lifecycle & Phases', 'activity'), ('Progress View', 'Progress View', 'trend'),
                             # Not a panel: the page opens its menu, and its options their dialogs (non_qualified_calls.js).
                             None, ('NQ Analysis Configuration', 'NQ Analysis Configuration', 'sliders', [
+                                ('prioritization-rules', 'Prioritization Rules', 'rules'),
                                 ('fields-and-sections', 'Fields & Sections', 'tag'),
                                 ('statuses-and-teams', 'Statuses & Teams', 'users'),
                                 ('status-rules', 'Status Rules', 'function'),
-                                ('prioritization-rules', 'Prioritization Rules', 'gauge'),
                                 ('root-cause-catalog', 'Root Cause Catalog', 'book'), None,
                                 ('import-ericsson-rca-results', 'Import Ericsson RCA Results', 'upload'),
                                 ('import-previous-nq-analyses', 'Import Previous NQ Analyses', 'upload'),

@@ -998,6 +998,21 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 .nq-drawer .nq-phase-panel .nq-phase-step { flex: 1 1 0; flex-direction: column; align-items: flex-start; justify-content: center; gap: .3rem; padding: .45rem .6rem; background: var(--nq-softer); }
 .nq-drawer .nq-phase-panel .nq-phase-step .nq-pill { max-width: 100%; overflow: visible; font-size: .78rem; line-height: 1.25; white-space: normal; text-overflow: clip; overflow-wrap: anywhere; }
 .nq-phase-panel .nq-phase-arrow { align-self: center; }
+/* The Prioritization Rule: what its step takes, then the list of the step (Weekly blue, Final purple, as the queues) and
+   its number in tags of their own. */
+.nq-rule-value { display: inline-flex; flex-wrap: wrap; align-items: center; gap: .25rem; max-width: 100%; }
+.nq-rule-tag { display: inline-block; padding: .05rem .4rem; border-radius: 5px; font-size: .64rem; font-weight: 850; letter-spacing: .04em;
+  line-height: 1.4; text-transform: uppercase; white-space: nowrap; }
+.nq-rule-tag.is-weekly { background: #e6f0ff; color: #0f56b3; }
+.nq-rule-tag.is-final { background: #efe7fb; color: #5f3dc4; }
+.nq-rule-tag.is-step { background: #e9ecef; color: #343a40; }
+/* Prioritization Info: the values of the NQ Prioritization of the call, read only, in small cards above the phases. */
+.nq-call-info-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr)); gap: .35rem; }
+.nq-call-info-item { display: grid; align-content: start; gap: .2rem; min-width: 0; padding: .4rem .55rem; border-radius: 9px; background: var(--nq-softer); }
+.nq-call-info-item.is-wide { grid-column: span 2; }
+.nq-call-info-label { color: var(--nq-muted); font-size: .64rem; font-weight: 850; letter-spacing: .04em; text-transform: uppercase; }
+.nq-call-info-item .nq-readonly-value { min-height: 0; padding: 0; border: 0; background: none; font-size: .82rem; line-height: 1.3; }
+.nq-call-info-item .nq-pill { max-width: 100%; font-size: .76rem; line-height: 1.25; white-space: normal; overflow-wrap: anywhere; }
 /* The Markdown of a long text (Edit the Markdown, in its toolbar) is tall from the start, framed like the other fields. */
 .nq-drawer .nq-analysis-field textarea { min-height: 11rem; padding: .6rem .75rem; border: 1px solid var(--nq-border); border-radius: 12px; line-height: 1.4; resize: vertical; }
 /* The Description and the Findings, the longest, are taller; the Proposed Measure is two lines. */
@@ -1141,6 +1156,7 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
   .nq-drawer .nq-drawer-find input { width: 100%; }
   /* The call fills the screen: its phases go two per row and the floating page controls stay hidden behind it. */
   .nq-drawer-tracking .nq-phase-panel .nq-phase-strip { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .3rem; }
+  .nq-call-info-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .nq-drawer .nq-phase-step { flex-direction: column; align-items: flex-start; gap: .15rem; }
   .nq-drawer .nq-phase-step .nq-pill { max-width: 100%; }
   .nq-drawer-tracking .nq-phase-arrow { display: none; }
@@ -1291,6 +1307,9 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 :is(.non-qualified-calls, .nq-drawer, .nq-options-dialog) :is(.nq-primary-action, .nq-secondary-action, .nq-link-action)[hidden] { display: none; }
 /* NQ Prioritization: the panel and its rules. */
 .nq-priority { display: grid; gap: 1.1rem; }
+/* The queues, the steps, the Scoring Impact and the repeated issues, each in a subpanel as those of Lifecycle & Phases. */
+.nq-priority > .nq-priority-subpanel { margin-top: 0; }
+.nq-priority .nq-priority-subpanel > .nq-failure-title { margin: 0; }
 .nq-priority .nq-failure-card { align-content: start; }
 /* The levels beside the wider table of the points lost by KPI, one below the other on narrow screens. */
 .nq-priority .nq-failure-grid { grid-template-columns: minmax(14rem, 1fr) minmax(0, 2.6fr); }
@@ -1305,30 +1324,72 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 body:has(dialog.nq-priority-dialog[open]) { overflow: hidden; }
 .nq-priority-dialog footer { padding-top: .8rem; border-top: 1px solid var(--nq-border); }
 .nq-priority-dialog .nq-options-error:empty { display: none; }
-/* The levels on the left, in sight while the steps scroll; the strategy and its steps on the right. */
-.nq-priority-layout { display: grid; grid-template-columns: 17.5rem minmax(0, 1fr); gap: 1rem; align-items: start; }
-.nq-priority-layout > .nq-priority-levels { position: sticky; top: 0; }
+/* The strategy and its actions in one line across the dialog; its steps below on the left; the levels on the right, at the
+   height of the steps and in sight while they scroll. */
+.nq-priority-layout { display: grid; grid-template-columns: minmax(0, 1fr) 21rem; gap: .9rem 1rem; align-items: start; }
+.nq-priority-layout > .nq-priority-toolbar { grid-column: 1 / -1; grid-row: 1; }
+.nq-priority-layout > .nq-priority-main { grid-column: 1; grid-row: 2; }
+.nq-priority-layout > .nq-priority-side { grid-column: 2; grid-row: 2; display: grid; gap: .9rem; align-content: start; }
 .nq-priority-main { display: grid; gap: .9rem; min-width: 0; }
 @media (max-width: 1100px) {
   .nq-priority-layout { grid-template-columns: minmax(0, 1fr); }
-  .nq-priority-layout > .nq-priority-levels { position: static; }
+  .nq-priority-layout > :is(.nq-priority-toolbar, .nq-priority-main, .nq-priority-side) { grid-column: 1; grid-row: auto; }
 }
-:is(.nq-priority-levels, .nq-priority-custom) { display: grid; gap: .6rem; padding: .8rem .9rem; border: 1px solid var(--nq-border); border-radius: 12px; background: var(--nq-soft); }
-:is(.nq-priority-levels, .nq-priority-custom) h3 { margin: 0; color: var(--nq-dark); font-size: .9rem; }
+:is(.nq-priority-levels, .nq-priority-glossary, .nq-priority-order, .nq-priority-queue-chart, .nq-priority-scope) { display: grid; gap: .6rem; padding: .8rem .9rem; border: 1px solid var(--nq-border); border-radius: 12px; background: var(--nq-soft); }
+:is(.nq-priority-levels, .nq-priority-glossary, .nq-priority-order, .nq-priority-queue-chart, .nq-priority-scope) h3 { margin: 0; color: var(--nq-dark); font-size: .9rem; }
 .nq-priority-strategy { display: grid; gap: .9rem; }
-:is(.nq-priority-strategy, .nq-priority-custom)[hidden] { display: none; }
-/* The strategy and the actions of the dialog in one line above the levels and the lists. */
-.nq-priority-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .6rem 1rem;
-  margin-bottom: .9rem; }
+/* The strategy and the actions of the dialog in one line above the lists. */
+.nq-priority-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .6rem 1rem; }
 .nq-priority-strategy-field { display: flex; align-items: center; gap: .6rem; color: var(--nq-dark); font-size: .9rem; font-weight: 800; }
 .nq-priority-strategy-field select { width: 17rem; }
-.nq-priority-toolbar-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+/* The strategy in a box of the colours of the module that stands out (the burgundy of the sections bar, the name in white)
+   and is as tall as its select was: the select, a translucent white over the burgundy with its value and arrow in white
+   (as the selects of the section bar), is a little lower inside it. */
+.nq-priority-strategy-box { padding: .2rem .25rem .2rem .75rem; border: 1px solid var(--nq-dark); border-radius: 14px; color: #fff;
+  background: linear-gradient(135deg, var(--nq-color), var(--nq-dark)); box-shadow: 0 2px 8px rgba(125, 18, 56, .22); }
+.nq-priority-strategy-box select { -webkit-appearance: none; appearance: none; min-height: 2.05rem; padding: 0 2rem 0 .9rem;
+  border: 1px solid rgba(255, 255, 255, .35); color: #fff; font-weight: 800; cursor: pointer;
+  background: rgba(255, 255, 255, .16) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right .75rem center / .75rem; }
+.nq-priority-strategy-box select:is(:hover, :focus-visible) { background-color: rgba(255, 255, 255, .26); }
+.nq-priority-strategy-box select option { color: var(--nq-text); background: #fff; }
+/* The fields of the toolbar side by side, the regions out of scope in a compact list. */
+.nq-priority-toolbar-fields { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem 1.4rem; }
+.nq-priority-toolbar-fields [hidden] { display: none; }
+.nq-priority-toolbar-fields .nq-priority-fill { color: var(--nq-dark); font-size: .82rem; font-weight: 700; }
+/* The levels are shared by every strategy, as a label on the top border of their card says (no line of its own). */
+.nq-priority-levels { position: relative; }
+.nq-priority-shared { position: absolute; top: -.6rem; right: .8rem; padding: .08rem .5rem; border: 1px solid var(--nq-border); border-radius: 999px;
+  background: #fff; color: var(--nq-dark); font-size: .66rem; font-weight: 700; white-space: nowrap; }
+/* Whether the dialog holds changes not saved yet, at the left of its buttons. */
+#nq-priority-form > footer { align-items: center; }
+.nq-priority-save-state { margin: 0 auto 0 0; color: #2b8a3e; font-size: .8rem; font-weight: 700; }
+.nq-priority-save-state.is-changed { color: #c2410c; }
+.nq-priority-strategy-field .multiselect-shell { width: 14rem; }
+/* The actions of the strategies in one line at the right, never split. */
+.nq-priority-toolbar-actions { display: flex; flex-wrap: nowrap; gap: .5rem; margin-left: auto; white-space: nowrap; }
 .nq-priority-toolbar-actions [hidden] { display: none; }
+.nq-priority-strategy-field input[type="text"] { width: 14rem; min-height: 2.1rem; }
+/* A step deleted from its row, and the step added at the end of the list. */
+.nq-priority-steps-table td.nq-priority-step-move { white-space: nowrap; }
+/* The × that deletes a step in red, to tell it is a button. */
+.nq-priority-step-delete { padding: .1rem .25rem; border: 0; border-radius: 6px; background: none; color: #e03131; font-size: 1.05rem;
+  font-weight: 800; line-height: 1; box-shadow: none; cursor: pointer; }
+.nq-priority-step-delete:is(:hover, :focus-visible) { background: #fde8e8; color: #c92a2a; }
+.nq-priority-steps-list > .nq-priority-add-step { justify-self: start; }
 /* How the strategies work, folded under the lists. */
+/* How the strategies work, beside the strategy: its text opens below the row of the strategy, across it, over the dialog. */
+.nq-priority-toolbar { position: relative; }
 .nq-priority-about { color: var(--nq-muted); font-size: .8rem; line-height: 1.45; }
-.nq-priority-about summary { cursor: pointer; color: var(--nq-dark); font-weight: 800; }
-.nq-priority-about p { margin: .45rem 0 0; }
-.nq-priority-about p[hidden] { display: none; }
+.nq-priority-about summary { cursor: pointer; color: var(--nq-dark); font-size: .82rem; font-weight: 800; white-space: nowrap; }
+/* Its sections in columns, each a title and short bullets, the values of the levels shown as they are set. */
+.nq-priority-about-body { position: absolute; z-index: 30; top: calc(100% + .45rem); left: 0; right: 0; display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 19rem), 1fr)); gap: .5rem 1.4rem; max-height: min(70vh, 34rem); overflow: auto;
+  padding: .7rem 1rem .9rem; border: 1px solid var(--nq-border); border-radius: 12px; background: #fff; box-shadow: 0 14px 34px rgba(16, 24, 40, .18);
+  color: var(--nq-text); white-space: normal; }
+.nq-priority-about-body h4 { margin: 0 0 .2rem; color: var(--nq-dark); font-size: .82rem; }
+.nq-priority-about-body :is(ul, ol) { display: grid; gap: .15rem; margin: 0; padding-left: 1.05rem; font-size: .76rem; line-height: 1.4; }
+.nq-priority-about-body ol { padding-left: 1.2rem; }
+.nq-priority-about-body [data-nq-about] { color: var(--nq-color); }
 /* The steps of the two lists of the strategy, one below the other. */
 .nq-priority-steps { display: grid; grid-template-columns: minmax(0, 1fr); gap: .9rem; }
 .nq-priority-steps[hidden] { display: none; }
@@ -1339,16 +1400,24 @@ body:has(dialog.nq-priority-dialog[open]) { overflow: hidden; }
 .nq-priority-steps-head { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .9rem; padding-bottom: .45rem;
   border-bottom: 2px solid var(--nq-color); }
 .nq-priority-steps-head > strong { color: var(--nq-dark); font-size: .84rem; }
+/* Applying list 2: a plain checkbox at the end of the header. */
+.nq-priority-steps-head > .nq-priority-final-toggle { margin-left: auto; padding: .3rem .7rem; font-size: .78rem; }
+.nq-options-dialog .nq-rate-tab:disabled { opacity: .45; cursor: not-allowed; }
 /* The steps the admins change: the same columns in both lists, every field a control as wide as its column, the steps
    of one Priority grouped under it and their queue as a tag. */
-.nq-priority-steps-table { table-layout: fixed; width: 100%; min-width: 70rem; }
+.nq-priority-steps-table { table-layout: fixed; width: 100%; min-width: 72rem; }
 .nq-priority-steps-table .nq-step-col-priority { width: 5.4rem; }
-.nq-priority-steps-table .nq-step-col-move { width: 2.2rem; }
+.nq-priority-steps-table .nq-step-col-move { width: 4.6rem; }
+.nq-priority-steps-table .nq-priority-step-number, .nq-step-number > button { display: inline-block; min-width: 1.3rem; text-align: center; font-weight: 800; color: var(--nq-dark);
+  font-variant-numeric: tabular-nums; }
 .nq-priority-steps-table .nq-step-col-mode { width: 5.6rem; }
-.nq-priority-steps-table .nq-step-col-type { width: 7.6rem; }
+.nq-priority-steps-table .nq-step-col-type { width: 8.6rem; }
 .nq-priority-steps-table .nq-step-col-area { width: 10.6rem; }
 .nq-priority-steps-table .nq-step-col-queue { width: 7.4rem; }
 .nq-priority-steps-table .nq-step-col-operators { width: 8rem; }
+.nq-priority-steps-table .nq-step-col-calls { width: 4.4rem; }
+/* The calls each step takes in the latest campaigns with their Final CDR. */
+.nq-priority-steps-table .nq-priority-step-calls { text-align: right; font-variant-numeric: tabular-nums; font-weight: 800; color: var(--nq-dark); }
 /* The operators in half the width: Focused Operators reads Focused, the full values show on hover. */
 .nq-priority-step-operators-cell .multiselect-trigger { padding-inline: .6rem .45rem; gap: .35rem; }
 .nq-priority-steps-table :is(th, td) { vertical-align: middle; padding: .3rem .35rem; text-align: left; }
@@ -1357,7 +1426,20 @@ body:has(dialog.nq-priority-dialog[open]) { overflow: hidden; }
   background: color-mix(in srgb, var(--nq-soft) 70%, white); }
 .nq-priority-steps-table tr.is-group-start > td { border-top: 2px solid var(--nq-border); }
 .nq-priority-steps-table select:not([multiple]) { width: 100%; min-height: 1.9rem; padding-block: 0; font-size: .78rem; }
-.nq-priority-steps-table td.nq-priority-step-group .nq-priority-step-priority { font-weight: 800; color: var(--nq-dark); }
+/* The Priority of a group and the NR Mode of a step in solid colours, white text: P1 red to P8 grey; SA purple, NSA green,
+   Any grey. */
+.nq-priority-steps-table :is(.nq-priority-step-priority, .nq-priority-step-mode) { border-color: transparent; color: #fff; font-weight: 800; }
+:is(.nq-priority-steps-table .nq-priority-step-priority, .nq-priority-queue-column-bar).is-p1, .nq-queue-priority.is-p1 > span { background-color: #c92a2a; }
+:is(.nq-priority-steps-table .nq-priority-step-priority, .nq-priority-queue-column-bar).is-p2, .nq-queue-priority.is-p2 > span { background-color: #e8590c; }
+:is(.nq-priority-steps-table .nq-priority-step-priority, .nq-priority-queue-column-bar).is-p3, .nq-queue-priority.is-p3 > span { background-color: #d97706; }
+:is(.nq-priority-steps-table .nq-priority-step-priority, .nq-priority-queue-column-bar).is-p4, .nq-queue-priority.is-p4 > span { background-color: #5c940d; }
+:is(.nq-priority-steps-table .nq-priority-step-priority, .nq-priority-queue-column-bar).is-p5, .nq-queue-priority.is-p5 > span { background-color: #0c8599; }
+:is(.nq-priority-steps-table .nq-priority-step-priority, .nq-priority-queue-column-bar).is-p6, .nq-queue-priority.is-p6 > span { background-color: #1971c2; }
+:is(.nq-priority-steps-table .nq-priority-step-priority, .nq-priority-queue-column-bar).is-p7, .nq-queue-priority.is-p7 > span { background-color: #6741d9; }
+:is(.nq-priority-steps-table .nq-priority-step-priority, .nq-priority-queue-column-bar).is-p8, .nq-queue-priority.is-p8 > span { background-color: #5f6b7a; }
+.nq-priority-steps-table .nq-priority-step-mode.is-sa, .nq-step-mode.is-sa > span { background-color: #9c36b5; }
+.nq-priority-steps-table .nq-priority-step-mode.is-nsa, .nq-step-mode.is-nsa > span { background-color: #2f9e44; }
+.nq-priority-steps-table .nq-priority-step-mode.is-any, .nq-step-mode.is-any > span { background-color: #5f6b7a; }
 /* Each step moves by its handle: dragged (or with the arrow keys) before or after another step, which gives it that
    step's Priority, or onto a Priority without steps, shown while a step is dragged. */
 .nq-priority-steps-table td.nq-priority-step-move { padding-inline: 0; text-align: center; }
@@ -1383,36 +1465,163 @@ body:has(dialog.nq-priority-dialog[open]) { overflow: hidden; }
 .nq-priority-condition-button { flex: 0 0 1.7rem; width: 1.7rem; height: 1.7rem; min-height: 0; padding: 0; border: 1px solid var(--nq-border);
   border-radius: 999px; background: #fff; color: var(--nq-dark); font-size: .95rem; font-weight: 800; line-height: 1; box-shadow: none; }
 .nq-priority-condition-button:is(:hover, :focus-visible) { background: var(--nq-soft); }
-.nq-priority-condition-button.is-remove { color: var(--nq-muted); }
+/* The × that removes a condition, red as the one that deletes a step. */
+.nq-priority-condition-button.is-remove { border-color: transparent; border-radius: 6px; background: none; color: #e03131; font-size: 1.05rem; }
+.nq-priority-condition-button.is-remove:is(:hover, :focus-visible) { background: #fde8e8; color: #c92a2a; }
 .nq-priority-steps-table .multiselect-shell { width: 100%; min-width: 0; }
 .nq-priority-steps-table .multiselect-trigger { min-height: 1.9rem; font-size: .78rem; }
 .nq-priority-steps-table .multiselect-trigger-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nq-priority-queue-tag { display: inline-block; padding: .12rem .6rem; border-radius: 999px; font-size: .72rem; font-weight: 700; }
-.nq-priority-queue-tag.is-voice, .nq-priority-step-queue-select.is-voice { background-color: #e1ecfb; color: #0f56b3; }
-.nq-priority-queue-tag.is-data, .nq-priority-step-queue-select.is-data { background-color: #ddf1ee; color: #0a6f63; }
-.nq-priority-queue-tag.is-tracked, .nq-priority-step-queue-select.is-tracked { background-color: #eceef2; color: #56606f; }
-/* The queue of a step: a select that reads as the tag of its queue. */
-.nq-priority-steps-table .nq-priority-step-queue-select { border-color: transparent; border-radius: 999px; font-size: .74rem; font-weight: 700; }
+.nq-priority-queue-tag.is-voice { background-color: #e1ecfb; color: #0f56b3; }
+.nq-priority-queue-tag.is-data { background-color: #ddf1ee; color: #0a6f63; }
+.nq-priority-queue-tag.is-tracked { background-color: #eceef2; color: #56606f; }
+/* The queue and the Call Type of a step: selects in the solid colour of the queue of the step (Voice blue, Data teal,
+   Tracked grey), white text. */
+.nq-priority-steps-table :is(.nq-priority-step-queue-select, .nq-priority-step-type) { border-color: transparent; font-weight: 700; color: #fff; }
+.nq-priority-steps-table .nq-priority-step-queue-select { border-radius: 999px; font-size: .74rem; }
+:is(.nq-priority-steps-table :is(.nq-priority-step-queue-select, .nq-priority-step-type), .nq-priority-queue-group-name).is-voice, :is(.nq-step-type, .nq-step-queue).is-voice > span { background-color: #1366d6; }
+:is(.nq-priority-steps-table :is(.nq-priority-step-queue-select, .nq-priority-step-type), .nq-priority-queue-group-name).is-data, :is(.nq-step-type, .nq-step-queue).is-data > span { background-color: #0b8a7a; }
+:is(.nq-priority-steps-table :is(.nq-priority-step-queue-select, .nq-priority-step-type), .nq-priority-queue-group-name).is-tracked, :is(.nq-step-type, .nq-step-queue).is-tracked > span { background-color: #5f6b7a; }
+/* The calls of the queues of the panel: the position muted, the JOIN_ID in a monospace font, the Priority in the colour of
+   the Priorities and the step in a pill (list 1, Weekly, blue; list 2, Final, purple), the numbers on the right. */
+.nq-queue-position > span { color: var(--nq-muted); font-variant-numeric: tabular-nums; }
+.nq-queue-join .nq-failure-drill { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .74rem; }
+:is(.nq-queue-priority, .nq-queue-step) > :is(span, button) { display: inline-block; padding: .1rem .55rem; border-radius: 999px; font-size: .72rem;
+  font-weight: 800; white-space: nowrap; }
+.nq-queue-priority > span { background: #5f6b7a; color: #fff; }
+.nq-queue-step > :is(span, button) { background: #e6f0ff; color: #0f56b3; }
+.nq-queue-step.is-final > :is(span, button) { background: #efe7fb; color: #5f3dc4; }
+/* The steps of the strategy, a tab per list (list 1 blue, list 2 purple, the calls outside the lists grey) with its calls in a
+   badge; what each step takes wraps, so the table fits the panel without scrolling sideways. */
+.nq-step-tabs { justify-self: start; }
+.non-qualified-calls .nq-step-tabs .nq-rate-tab { display: inline-flex; align-items: center; gap: .4rem; }
+.nq-step-tab-count { padding: .05rem .45rem; border-radius: 999px; background: rgba(0, 0, 0, .07); font-size: .7rem; font-variant-numeric: tabular-nums; }
+.non-qualified-calls .nq-step-tabs .nq-rate-tab.is-campaign.is-active { background: linear-gradient(135deg, #0f56b3, #4c8fe0); box-shadow: 0 6px 14px rgba(15, 86, 179, .25); }
+.non-qualified-calls .nq-step-tabs .nq-rate-tab.is-final.is-active { background: linear-gradient(135deg, #5f3dc4, #9775fa); box-shadow: 0 6px 14px rgba(95, 61, 196, .25); }
+.non-qualified-calls .nq-step-tabs .nq-rate-tab.is-outside.is-active { background: linear-gradient(135deg, #495057, #868e96); box-shadow: 0 6px 14px rgba(73, 80, 87, .25); }
+.nq-step-tabs .nq-rate-tab.is-active .nq-step-tab-count { background: rgba(255, 255, 255, .25); }
+.nq-step-tab-panel { display: grid; gap: .35rem; }
+.nq-step-tab-note { margin: 0; }
+/* Its fields as the Prioritization Rules show them, in their colours: the NR Mode (SA purple, NSA green, Any grey), the Call
+   Type and the queue in the colour of the queue (Voice blue, Data teal, Tracked grey), AND, OR and the parentheses of the
+   Condition in the colour of the module; the Operators, Area and Condition wrap, so the table fits the panel. */
+.nq-priority-steps-summary th { white-space: normal; }
+.nq-priority-steps-summary :is(th, td) { padding-inline: .4rem; }
+.nq-priority-steps-summary :is(th, td):is(:nth-child(-n+7), :nth-child(n+9)) { text-align: left; }
+/* The Step as the rules show it: its number, centred (a click shows its calls), close to the Priority: both columns as
+   narrow as their content, the rest of the width for the others. */
+.nq-priority-steps-summary :is(th:nth-child(2), td.nq-step-number) { text-align: center; }
+.nq-priority-steps-summary :is(th, td):is(:nth-child(1), :nth-child(2)) { width: 1%; white-space: nowrap; }
+.nq-priority-steps-summary td:is(:nth-child(4), :nth-child(6), .nq-step-condition) { white-space: normal; }
+.nq-priority-steps-summary td.nq-step-condition { min-width: 9rem; }
+:is(.nq-step-mode, .nq-step-type, .nq-step-queue) > span { display: inline-block; padding: .1rem .5rem; color: #fff; font-size: .72rem;
+  font-weight: 800; white-space: nowrap; }
+:is(.nq-step-mode, .nq-step-queue) > span { border-radius: 999px; }
+.nq-step-type > span { border-radius: 6px; }
+.nq-step-condition-text { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: .1rem .3rem; }
+.nq-step-join { color: var(--nq-color); font-weight: 800; }
+/* The follow-up of the calls of each step over its own calls (waiting in the colour of the module, in progress amber, closed
+   green) and the points they lose in blue bars against the step that loses the most in the tab, the number beside them. */
+.nq-priority-steps-summary td.nq-step-bar-cell { min-width: 7.5rem; text-align: left; }
+.nq-step-bar { display: flex; align-items: center; gap: .4rem; }
+.nq-step-bar-track { flex: 1 1 auto; height: .6rem; overflow: hidden; border-radius: 999px; background: rgba(0, 0, 0, .06); }
+.nq-step-flow { display: flex; height: 100%; overflow: hidden; border-radius: 999px; }
+.nq-step-flow > span { flex: 1 1 0; min-width: 2px; }
+:is(.nq-step-flow, .nq-step-legend-item) .is-waiting { background: var(--nq-color); }
+:is(.nq-step-flow, .nq-step-legend-item) .is-progress { background: #e08a1e; }
+:is(.nq-step-flow, .nq-step-legend-item) .is-closed { background: #2e8b57; }
+.nq-step-points { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #74c0fc, #1864ab); }
+.nq-step-bar-value { flex: 0 0 2.6rem; color: var(--nq-muted); font-size: .74rem; text-align: right; font-variant-numeric: tabular-nums; }
+.nq-step-bar-value.is-waiting { color: var(--nq-color); font-weight: 800; }
+.nq-step-tab-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .3rem 1rem; }
+.nq-step-legend { display: flex; flex-wrap: wrap; gap: .3rem .8rem; margin: 0; color: var(--nq-muted); font-size: .74rem; font-weight: 700; }
+.nq-step-legend-item { display: inline-flex; align-items: center; gap: .3rem; }
+.nq-step-legend-item > i { display: inline-block; width: .7rem; height: .7rem; border-radius: 3px; }
+td.nq-queue-number { text-align: right; font-variant-numeric: tabular-nums; }
+/* The tracked calls, folded below the queues. */
+.nq-priority-tracked { margin-top: .9rem; }
+.nq-priority-tracked > summary { color: var(--nq-dark); font-weight: 800; cursor: pointer; }
+.nq-priority-tracked > :not(summary) { margin-top: .5rem; }
 /* The Voice and Data queues of the panel, one beside the other on wide screens. */
 .nq-priority-queues { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 44rem), 1fr)); gap: .9rem; }
 /* The levels: one setting per row, its name and value, and what it means below them. */
 .nq-priority-levels-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: .65rem; font-size: .8rem; }
 .nq-priority-level { display: grid; grid-template-columns: minmax(0, 1fr) max-content; align-items: center; gap: .15rem .5rem; }
-.nq-priority-level > label { font-weight: 700; color: var(--nq-dark); }
+.nq-priority-level > label { display: block; font-weight: 700; color: var(--nq-dark); white-space: nowrap; }
+.nq-priority-level > label strong { display: inline; }
 .nq-priority-level .nq-priority-help { grid-column: 1 / -1; font-size: .75rem; }
 .nq-priority-value { display: inline-flex; align-items: center; gap: .3rem; font-weight: 700; white-space: nowrap; }
-.nq-priority-value input[type="number"] { width: 4.6rem; min-height: 1.9rem; height: 1.9rem; padding-block: 0; }
+/* The unit goes with the name of the level, so every value lines up on the right. */
+.nq-priority-level .nq-priority-value { justify-self: end; }
+.nq-priority-value input[type="number"] { width: 4.9rem; min-height: 1.9rem; height: 1.9rem; padding-block: 0; }
 .nq-priority-help { color: var(--nq-muted); line-height: 1.35; }
 /* Filling the Priority: a plain checkbox below the levels. */
 .nq-priority-levels > .nq-toggle { display: flex; align-items: flex-start; gap: .45rem; margin: 0; padding: .6rem 0 0; border: 0;
   border-top: 1px solid var(--nq-border); border-radius: 0; background: none; box-shadow: none; color: var(--nq-dark); font-size: .78rem;
   font-weight: 700; line-height: 1.35; }
 .nq-priority-levels > .nq-toggle input { margin-top: .1rem; }
-.nq-priority-rule-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 26rem), 1fr)); gap: .45rem .9rem; margin-left: 2.2rem; }
-.nq-priority-rule-grid .nq-field-setting { grid-template-columns: 10rem minmax(0, 1fr); }
-.nq-priority-checks { display: flex; flex-wrap: wrap; gap: .3rem; }
+/* The order in which a queue takes its calls: the keys in a row of chips, then what they mean. */
+/* Calls per Queue: a column per Priority of each queue, in the colour of the Priority with its calls on top, grouped
+   above the queue in its colour and its total. */
+.nq-priority-queue-chart-note { margin: -.25rem 0 0; color: var(--nq-muted); font-size: .72rem; font-weight: 600; line-height: 1.35; }
+.nq-priority-queue-chart-total { margin: 0; color: var(--nq-dark); font-size: .8rem; font-weight: 800; }
+.nq-priority-queue-chart-total:empty { display: none; }
+.nq-priority-queue-bars { display: flex; gap: .55rem; }
+.nq-priority-queue-group { display: grid; flex: 1 1 0; gap: .25rem; min-width: 3.6rem; }
+.nq-priority-queue-columns { display: flex; gap: 3px; }
+.nq-priority-queue-columns:not(.nq-priority-queue-names) { height: 11rem; border-bottom: 1px solid var(--nq-border); }
+.nq-priority-queue-column { display: flex; flex: 1 1 0; flex-direction: column; align-items: center; justify-content: flex-end; min-width: 0; }
+.nq-priority-queue-column-value { font-size: .68rem; line-height: 1.1rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.nq-priority-queue-column-bar { width: 100%; min-height: 2px; border-radius: 4px 4px 0 0; }
+.nq-priority-queue-column-name { flex: 1 1 0; min-width: 0; color: var(--nq-dark); font-size: .66rem; font-weight: 800; text-align: center; }
+.nq-priority-queue-group-name { padding: .16rem .3rem; overflow: hidden; border-radius: 999px; color: #fff; font-size: .68rem; font-weight: 700;
+  text-align: center; text-overflow: ellipsis; white-space: nowrap; }
+.nq-priority-queue-group-total { font-size: .76rem; text-align: center; font-variant-numeric: tabular-nums; }
+/* The regions and the NR Mode · operator pairs out of scope above the steps, in one row: the title (its ⓘ unfolds what they
+   do), a short note, then each name beside its list (the pairs wider, many of them are chosen). */
+.nq-priority-scope { display: flex; flex-wrap: wrap; align-items: center; gap: .45rem 1.4rem; padding-block: .5rem; }
+.nq-priority-scope > h3 { flex: none; }
+.nq-priority-scope-info { display: inline-grid; place-items: center; width: 1.25rem; height: 1.25rem; margin-left: .1rem; border-radius: 50%;
+  color: var(--nq-color); font-size: .95rem; font-weight: 700; cursor: pointer; }
+.nq-priority-scope-info:is(:hover, :focus-visible, [aria-expanded="true"]) { background: #fff; color: var(--nq-dark); outline: none; }
+/* What the card does, unfolded below its row by the ⓘ of its title. */
+.nq-priority-scope-about { flex: 1 0 100%; padding: .45rem .75rem; border-radius: 8px; background: #fff; color: var(--nq-text); font-size: .78rem;
+  line-height: 1.45; }
+.nq-priority-scope-about[hidden] { display: none; }
+.nq-priority-scope-about p { margin: .15rem 0; }
+.nq-priority-scope > .nq-priority-help { flex: 0 1 9rem; min-width: 7rem; color: var(--nq-muted); font-size: .72rem; line-height: 1.3; }
+.nq-priority-scope-field { display: flex; align-items: center; gap: .6rem; color: var(--nq-dark); font-size: .82rem; font-weight: 800;
+  white-space: nowrap; }
+.nq-priority-scope-field .multiselect-shell { width: 15rem; max-width: 100%; }
+.nq-priority-scope-field:has(#nq-priority-modes-out) .multiselect-shell { width: 22rem; }
+/* The calls outside the queues, folded below the chart: one bullet per reason, its names and calls below it. */
+.nq-priority-queue-outside { font-size: .72rem; line-height: 1.4; }
+.nq-priority-queue-outside[hidden] { display: none; }
+.nq-priority-queue-outside > summary { color: var(--nq-dark); font-weight: 800; cursor: pointer; }
+.nq-priority-queue-outside ul { display: grid; gap: .3rem; margin: .4rem 0 0; padding-left: 1rem; }
+.nq-priority-queue-outside ul ul { gap: .1rem; margin-top: .15rem; color: var(--nq-muted); }
+.nq-priority-order-flow { display: flex; flex-wrap: wrap; gap: .35rem; margin: 0; padding: 0; list-style: none; counter-reset: order; }
+.nq-priority-order-flow li { counter-increment: order; padding: .22rem .65rem; border-radius: 999px; background: #fff; border: 1px solid var(--nq-border);
+  color: var(--nq-dark); font-size: .76rem; font-weight: 800; }
+.nq-priority-order-flow li::before { content: counter(order) '. '; color: var(--nq-color); }
+/* The rules of the order in one row: each bullet takes its width, and wraps its own text only when the row is narrow. */
+.nq-priority-order ul { display: flex; gap: .2rem 1.2rem; margin: 0; padding: 0; list-style: none; color: var(--nq-muted); font-size: .74rem;
+  line-height: 1.35; }
+.nq-priority-order ul li { flex: 0 1 auto; min-width: 0; }
+.nq-priority-order ul li::before { content: '•'; margin-right: .4rem; color: var(--nq-color); }
+/* What each condition means, under the steps: its name and one line, in columns. */
+.nq-priority-glossary[hidden] { display: none; }
+.nq-priority-glossary dl { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 16rem), 1fr)); gap: .45rem 1.2rem; margin: 0;
+  font-size: .74rem; line-height: 1.35; }
+.nq-priority-glossary dt { display: flex; align-items: center; flex-wrap: wrap; gap: .35rem; color: var(--nq-dark); font-weight: 800; }
+/* What a condition is based on: the scoring (amber, unstable during the campaign), the place, the order of the tests, the
+   result of the call. In the lists of the conditions too, which open at the end of the page. */
+.nq-condition-tag { padding: .05rem .5rem; border-radius: 999px; font-size: .66rem; font-weight: 800; }
+.nq-condition-tag.is-scoring { background: #fff1d6; color: #8a5300; }
+.nq-condition-tag.is-position { background: #e6f0ff; color: #0f56b3; }
+.nq-condition-tag.is-sequence { background: #efe7fb; color: #5f3dc4; }
+.nq-condition-tag.is-result { background: #e3f6ec; color: #1e7a46; }
+.nq-priority-glossary dd { margin: .05rem 0 0; color: var(--nq-muted); }
 @media (max-width: 720px) {
   .nq-priority .nq-failure-grid { grid-template-columns: minmax(0, 1fr); }
-  .nq-priority-rule-grid { margin-left: 0; }
-  .nq-priority-rule-grid .nq-field-setting { grid-template-columns: minmax(0, 1fr); }
 }

@@ -272,8 +272,8 @@ def classified_root_stats(stats: dict[str, Any]) -> dict[str, Any]:
 # chooses them (see bundle_report_templates): (panel key, panel title, ((component key, label), ...)).
 REPORT_PANELS: tuple[tuple[str, str, tuple[tuple[str, str], ...]], ...] = (
     ('summary', 'Summary', (('executive', 'Executive Summary'),)),
-    ('prioritization', 'NQ Prioritization', (('rules', 'Prioritization Rules'), ('kpis', 'Scoring points lost by KPI'),
-                                             ('issues', 'Repeated issues'), ('queue', 'Next to analyse'))),
+    ('prioritization', 'NQ Prioritization & Queues', (('queue', 'Next to analyse'), ('rules', 'Prioritization Rules'),
+                                                      ('kpis', 'Scoring points lost by KPI'), ('issues', 'Repeated issues'))),
     ('rates', 'NQ Rate by Campaign and Operator', (('rates', 'NQ rate of each campaign and operator'),)),
     ('failures', 'Failures by Type, Technology & Serving Cell', (
         ('types', 'Failure types of each service'), ('technology', 'Technology and classification'),
@@ -372,7 +372,7 @@ def report_panels(summary: dict[str, Any], breakdowns: list[dict[str, Any]], pro
 
 
 FAILURES_TITLE = 'Failures by Type, Technology & Serving Cell'
-PRIORITIZATION_TITLE = 'NQ Prioritization'
+PRIORITIZATION_TITLE = 'NQ Prioritization & Queues'
 
 
 def _points(value: Any) -> str:
@@ -380,20 +380,38 @@ def _points(value: Any) -> str:
 
 
 def prioritization_tables(data: dict[str, Any]) -> list[tuple[str, str, list[str], list[list[str]], set[int]]]:
-    """The NQ Prioritization as on the page: the calls of each step of its strategy (or of each Custom rule), the KPIs
-    whose points they lose, the repeated issues and the calls to analyse next, in the queue of each team with the Dual
-    Queue strategies ((component, subtitle, columns, rows, numeric columns))."""
+    """The NQ Prioritization as on the page: the calls to analyse next in the queue of each team, the calls of each step of
+    its strategy, the KPIs whose points the calls lose and the repeated issues ((component, subtitle, columns, rows, numeric
+    columns))."""
     tables = []
     strategy = data.get('strategy') or {}
-    custom = strategy.get('key', 'custom') == 'custom'
-    rules = [[row['name'] or 'No rule', row['conditions'], row['criterion'] or '—',
-              ' / '.join(value for value in (row['priority'], row['track_priority']) if value) or '—',
-              f"{row['calls']:,}", f"{row['prioritized']:,}", f"{row['tracked']:,}", _points(row['points']),
-              f"{row['open']:,}", f"{row['attended']:,}"] for row in data.get('rules') or [] if row['calls'] or row['name']]
-    if rules:
-        tables.append(('rules', 'Prioritization Rules' if custom else f"{strategy.get('label') or 'Strategy'} · Steps",
-                       ['Rule' if custom else 'Step', 'Takes', 'Prioritizes' if custom else 'Queue', 'Priority', 'Calls',
-                        'Prioritized', 'Track only', 'Points lost', 'Open', 'Attended'], rules, {4, 5, 6, 7, 8, 9}))
+    queue = [[row['join_id'] or '—', row['operator'], row['service'], row['nr_mode'] or '—', row['campaign'] or '—',
+              row['result'] or '—', row['rule'] or '—', row['priority'] or '—', _points(row['points']),
+              '—' if row['repetitions'] is None else f"{row['repetitions']:,}", row['place'] or '—'] for row in data.get('queue') or []]
+    if queue:
+        tables.append(('queue', 'Next to analyse', ['JOIN_ID', 'Operator', 'Service', 'NR Mode', 'Campaign', 'Result', 'Rule',
+                                                    'Priority', 'Points lost', 'Repetitions', 'Place'], queue, {8, 9}))
+    for item in data.get('queues') or []:
+        rows = [[f"{row['position']:,}", row['join_id'] or '—', row['priority'] or '—', row['operator'], row['service'],
+                 row['nr_mode'] or '—', row['campaign'] or '—', row['rule'] or '—', _points(row.get('gain')),
+                 _points(row['points']), row['level'] or '—'] for row in item.get('rows') or []]
+        if rows:
+            tables.append(('queue', f"Next to analyse · {item['name']} queue",
+                           ['#', 'JOIN_ID', 'Priority', 'Operator', 'Service', 'NR Mode', 'Campaign', 'Step', 'Expected Gain',
+                            'Points lost', 'Scoring Impact'], rows, {0, 8, 9}))
+    # The steps of each list in a table of its own and the calls out of scope and those no step takes in a third, as the
+    # tabs of the page.
+    shown = [row for row in data.get('rules') or [] if row['calls'] or row['name']]
+    final_list = any(row.get('list') == 'final' for row in shown)
+    groups = (('campaign', 'List 1 · Weekly CDRs' if final_list else 'List 1 · Weekly & Final CDRs'), ('final', 'List 2 · Final CDRs'),
+              ('outside', 'Outside the lists'))
+    for key, title in groups:
+        rows = [row for row in shown if (row.get('list') if row.get('kind') == 'step' else 'outside') == key]
+        if rows:
+            tables.append(('rules', f"{strategy.get('label') or 'Strategy'} · {title}",
+                           ['Priority', 'Step', 'NR Mode', 'Operators', 'Call Type', 'Area', 'Condition', 'Calls', 'Open', 'Waiting',
+                            'Points lost', 'Queue'], [[*_step_fields(row)[:7], f"{row['calls']:,}", f"{row['open']:,}", f"{row.get('waiting', 0):,}",
+                                                      _points(row['points']), _step_fields(row)[7]] for row in rows], {7, 8, 9, 10}))
     kpis = [[row['kpi'], row.get('category') or '—', row['environment'], f"{row['calls']:,}", _points(row['points'])]
             for row in data.get('kpis') or []]
     if kpis:
@@ -405,21 +423,27 @@ def prioritization_tables(data: dict[str, Any]) -> list[tuple[str, str, list[str
     if issues:
         tables.append(('issues', 'Repeated issues', ['Operator', 'Place', 'Calls', 'Campaigns', 'Services', 'NR Mode',
                                                      'Points lost', 'Open', 'Main Root Category'], issues, {2, 3, 6, 7}))
-    queue = [[row['join_id'] or '—', row['operator'], row['service'], row['nr_mode'] or '—', row['campaign'] or '—',
-              row['result'] or '—', row['rule'] or '—', row['priority'] or '—', _points(row['points']),
-              '—' if row['repetitions'] is None else f"{row['repetitions']:,}", row['place'] or '—'] for row in data.get('queue') or []]
-    if queue:
-        tables.append(('queue', 'Next to analyse', ['JOIN_ID', 'Operator', 'Service', 'NR Mode', 'Campaign', 'Result', 'Rule',
-                                                    'Priority', 'Points lost', 'Repetitions', 'Place'], queue, {8, 9}))
-    for item in data.get('queues') or []:
-        rows = [[f"{row['position']:,}", row['join_id'] or '—', row['operator'], row['service'], row['nr_mode'] or '—',
-                 row['campaign'] or '—', row['rule'] or '—', row['priority'] or '—', _points(row.get('gain')),
-                 _points(row['points']), row['level'] or '—'] for row in item.get('rows') or []]
-        if rows:
-            tables.append(('queue', f"Next to analyse · {item['name']} queue",
-                           ['#', 'JOIN_ID', 'Operator', 'Service', 'NR Mode', 'Campaign', 'Step', 'Priority', 'Expected Gain',
-                            'Points lost', 'Scoring Impact'], rows, {0, 8, 9}))
     return tables
+
+
+def _step_fields(row: dict[str, Any]) -> list[str]:
+    """The fields of a step as the Prioritization Rules show them (Priority, Step, NR Mode, Operators, Call Type, Area,
+    Condition and Queue, the calls and the points going before the Queue); the calls out of scope and those no step takes say
+    so in the Condition."""
+    if row.get('kind') != 'step':
+        return ['—', _step_name(row), '—', '—', '—', '—', row.get('label') or row['conditions'], row['criterion'] or '—']
+    return [row.get('priority') or '—', _step_name(row), 'Any' if row.get('nr_mode') == 'any' else row.get('nr_mode') or '—',
+            row.get('operators') or '—', row.get('call_type') or '—', row.get('area') or '—', row.get('condition') or '—',
+            row.get('queue') or '—']
+
+
+def _step_name(row: dict[str, Any]) -> str:
+    """A row of the steps of the strategy as the page names it: its number (in the table of its list), Out of scope or No step."""
+    if row.get('kind') == 'step' and row.get('number'):
+        return str(row['number'])
+    if row.get('kind') == 'out_of_scope':
+        return 'Out of scope'
+    return row.get('name') or 'No step'
 
 
 def failure_tables(failures: dict[str, Any]) -> list[tuple[str, list[str], list[list[str]]]]:

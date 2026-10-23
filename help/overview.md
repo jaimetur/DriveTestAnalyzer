@@ -324,7 +324,7 @@ The **Super Admin** tab, for the `super-admin` role only, manages the users and 
 ### Workspace Config
 
 - Manage workspace Report Templates, Main Cities, Mappings & Reference Data and scoring methodologies on the dedicated Workspace Config page.
-- Use the **Modules & Sections** tab at the right edge, the **Menu** on small screens or the floating section bar to reach the required configuration panel.
+- Use the **Modules & Sections** tab at the edge of the window (left on large screens, right on smaller ones), the **Menu** on small screens or the floating section bar to reach the required configuration panel.
 - Open a workspace to manage its templates and chart mappings.
 
 See [Workspace Config](workspace-config.md) for panel operations and portability.
