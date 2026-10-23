@@ -67,6 +67,13 @@
           <button type="button" class="document-export-action document-export-word" data-nq-document-export="word" title="Executive Summary and Progress Status of the filtered calls"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M8.5 12l1.2 5 1.8-4 1.8 4 1.2-5"/></svg>Export Word</button>
         </div>
       </div>
+      {# NQ Calls in Scope Only, above the filters: every panel, chart, count and share of the module takes only the calls in
+         scope, as the Out of Scope settings (shared with the Prioritization Rules) tell them apart. #}
+      <div class="nq-scope-bar">
+        <label class="nq-scope-switch" title="Only the calls in the scope of the team, in every panel, chart, count and share of the module: the calls of the regions, operators and NR Mode · Operator pairs out of scope count nowhere"><input type="checkbox" role="switch" data-nq-flag="in_scope"><span class="nq-scope-track" aria-hidden="true"><span class="nq-scope-knob"></span></span><span class="nq-scope-label">NQ Calls in Scope Only</span></label>
+        <button type="button" class="nq-secondary-action nq-scope-open" id="nq-scope-open" title="{{ 'The regions, operators and NR Mode · Operator pairs out of the scope of the team' if nq_can_prioritize else 'See what is out of scope (only admins and super-admins change it)' }}">Out of Scope</button>
+        <span class="nq-scope-summary" id="nq-scope-summary"></span>
+      </div>
       {# Each group of filters in a card of its own. #}
       <section class="nq-filter-card">
       <p class="nq-filter-group-title">General Filters:</p>
@@ -575,6 +582,27 @@
     </div>
     <p class="nq-options-error" id="nq-priority-error" role="alert"></p>
     <footer><p class="nq-priority-save-state" id="nq-priority-save-state" role="status"{% if not nq_can_prioritize %} hidden{% endif %}></p><button type="button" class="nq-secondary-action" id="nq-priority-cancel">Close</button><button type="submit" class="nq-primary-action" id="nq-priority-save"{% if not nq_can_prioritize %} hidden{% endif %}>Save</button></footer>
+  </form>
+</dialog>
+{# Out of Scope, from the button beside NQ Calls in Scope Only: the same settings as the Out of Scope card of the Prioritization
+   Rules (saved with them, the rules apply at once). #}
+<dialog class="nq-options-dialog nq-scope-dialog" id="nq-scope-dialog" aria-labelledby="nq-scope-title">
+  <form method="dialog" class="nq-options-form" id="nq-scope-form">
+    <header><h2 id="nq-scope-title">Out of Scope</h2><p class="form-note">The calls out of the scope of the team: no queue and not tracked in every strategy, and left out of every panel, chart, count and share while <strong>NQ Calls in Scope Only</strong> is on. The same settings as the Out of Scope card of the Prioritization Rules.</p></header>
+    {% if not nq_can_prioritize %}{{ role_warning('the scope') }}{% endif %}
+    <fieldset class="nq-config-fieldset nq-scope-fields"{{ priority_lock }}>
+      <label class="nq-priority-scope-field" title="The regions out of the responsibility of the team (Vendor B by default)">Regions
+        <select id="nq-scope-regions" multiple aria-label="Regions out of the scope of the team" data-multiselect-empty-label="None" data-multiselect-joiner=", "></select></label>
+      <label class="nq-priority-scope-field" title="The NR Mode and operator pairs out of scope: by default SA with each Focus operator without SA (such as Three, whose calls in the SA campaigns are NSA calls its NSA campaigns already have); the pairs of the other operators are always out of scope (grey)">NR Mode · Operator
+        <select id="nq-scope-modes" multiple aria-label="NR Mode and operator pairs out of scope" data-multiselect-empty-label="None" data-multiselect-joiner=", " data-multiselect-count-locked="true"></select></label>
+      <div class="nq-scope-about">
+        <p><strong>Regions</strong>: the regions out of the responsibility of the team, Vendor B until you choose others.</p>
+        <p><strong>NR Mode · Operator</strong>: the operators that are not Focus operators of the Operator Maps are always out of scope, in both NR Modes (grey, they cannot be changed). Of the Focus operators, SA with each one without SA is out of scope by default: its calls of the SA campaigns, such as those of Three, are not real SA calls but NSA calls its NSA campaigns already have. Choose any other pair to leave it out too, such as NSA · Three, or both pairs of an operator to leave the operator out. The operators excluded in the Operator Maps are not in the list: their calls count nowhere.</p>
+        <p>With <strong>NQ Calls in Scope Only</strong> on, the calls out of scope count nowhere in the module: not in the lists, panels, charts, counts and shares, nor in the values the filters offer.</p>
+      </div>
+    </fieldset>
+    <p class="nq-options-error" id="nq-scope-error" role="alert"></p>
+    <footer><button type="button" class="nq-secondary-action" id="nq-scope-cancel">{{ 'Cancel' if nq_can_prioritize else 'Close' }}</button><button type="submit" class="nq-primary-action" id="nq-scope-save"{% if not nq_can_prioritize %} hidden{% endif %}>Save</button></footer>
   </form>
 </dialog>
 <dialog class="nq-options-dialog nq-rca-dialog" id="nq-rca-dialog" aria-labelledby="nq-rca-title">

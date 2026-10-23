@@ -102,7 +102,7 @@ SERVICES = ('voice', 'speech', 'data')
 SERVICE_LABELS = {'voice': 'Voice', 'speech': 'Speech', 'data': 'Data'}
 QUALIFIED_RESULT = 'completed'
 # Bump when the indexed fields or the call key change so every CDR is indexed again.
-INDEX_VERSION = 5
+INDEX_VERSION = 6
 # The call key of version 3: the JOIN_ID first, and Speech calls (not samples).
 KEY_SCHEME = '3'
 KEY_SCHEME_STATE_KEY = 'nq_calls_key_scheme'
@@ -219,7 +219,7 @@ V24_FIELD_KEYS = {'prioritization_queue', 'expected_gain'}
 ANALYSIS_CENTER_V25_STATE_KEY = 'nq_analysis_center_v25'
 # Set once the tables and columns of this version exist, so the requests check the schema without writing.
 SCHEMA_STATE_KEY = 'nq_calls_schema'
-SCHEMA_VERSION = '2026-10-23.1'
+SCHEMA_VERSION = '2026-10-23.2'
 # Indexed call fields that the suggestion rule can read, with their labels.
 RULE_FIELDS = {
     'failure_classification': 'Failure Classification', 'failure_category': 'Failure Category',
@@ -267,7 +267,7 @@ FIELD_SOURCES: dict[str, tuple[str, ...]] = {
 }
 CALL_FIELDS = tuple(FIELD_SOURCES)
 # The fields of every call (qualified or not) kept for the rates per Vendor, host network, site and environment.
-POPULATION_FIELDS = ('vendor', 'host_network', 'site_id', 'environment', 'session_type', 'city')
+POPULATION_FIELDS = ('vendor', 'host_network', 'site_id', 'environment', 'session_type', 'city', 'region')
 # The values a catalog field can read from the call: the indexed fields and the last cell of the Cell ID chain.
 CATALOG_CALL_FIELDS = (*CALL_FIELDS, 'last_cell_id')
 
@@ -619,7 +619,7 @@ def ensure_nq_tables(task_repository: Any) -> None:
         catalog_columns = _columns_of(connection, NQ_ROOT_CATALOG_TABLE)
         if catalog_columns and 'category' not in catalog_columns:
             connection.execute(f"ALTER TABLE {NQ_ROOT_CATALOG_TABLE} ADD COLUMN category TEXT NOT NULL DEFAULT ''")
-        # The serving cell, environment, session and City of every call (indexed again with INDEX_VERSION).
+        # The serving cell, environment, session, City and Region of every call (indexed again with INDEX_VERSION).
         population = _columns_of(connection, NQ_CALL_POPULATION_TABLE)
         for column in POPULATION_FIELDS:
             if population and column not in population:
@@ -3525,7 +3525,9 @@ def _strings(values: Any) -> list[str]:
 
 # The Filters panel is shared: every user of the workspace finds the last selection, in any session.
 SAVED_FILTERS_STATE_KEY = 'nq_calls_filters'
-FLAG_FILTERS = ('open_only', 'mine', 'without_comments')
+# NQ Calls in Scope Only (in_scope): only the calls in the scope of the team, as the Out of Scope settings of the NQ
+# Prioritization tell them apart, in every list, panel, chart, count and share.
+FLAG_FILTERS = ('open_only', 'mine', 'without_comments', 'in_scope')
 
 
 def normalize_saved_filters(filters: Any) -> dict[str, Any]:
@@ -3631,6 +3633,9 @@ def _resolve_key_filters(task_repository: Any, filters: dict[str, Any]) -> dict[
     if excluded:
         # The operators the Operator Maps exclude are left out of every list, count and export.
         filters = {**filters, '_excluded_operators': excluded}
+    if filters.get('in_scope') is True:
+        # NQ Calls in Scope Only: the calls out of scope (their region, operator or NR Mode · operator pair) count nowhere.
+        filters = {**filters, '_scope_sql': nq_prioritization.scope_sql(task_repository)}
     states = _strings(filters.get('state'))
     if 'open' in states:
         # Open: the attended calls not closed, in neither the first status nor a closed one.
@@ -3746,6 +3751,10 @@ def _filter_sql(filters: dict[str, Any], username: str, closed_statuses: list[st
     if excluded:
         clauses.append(f"lower(COALESCE(operator, '')) NOT IN ({', '.join('?' for _ in excluded)})")
         params.extend(excluded)
+    if isinstance(filters.get('_scope_sql'), tuple):
+        scope_clause, scope_params = filters['_scope_sql']
+        clauses.append(scope_clause)
+        params.extend(scope_params)
     # The JOIN_IDs typed in their filter, whatever their case.
     join_ids = [value.casefold() for value in _strings(filters.get('join_id'))]
     if join_ids:
@@ -4612,6 +4621,9 @@ def nq_rates(task_repository: Any, filters: dict[str, Any]) -> dict[str, Any]:
     # are left out.)
     operators = ValueSet([*(str(mapper.map(field_kind('operator'), value)) for value in _strings(filters.get('operator'))),
                           *(f'-{name}' for name in sorted(mapper.excluded_operators))])
+    # NQ Calls in Scope Only: the calls out of scope (also the qualified ones) count neither as calls nor as NQ calls.
+    in_scope = filters.get('in_scope') is True
+    columns = ['service', 'campaign', 'operator', 'nr_mode', *(['region'] if in_scope else [])]
     where, params = [], []
     if services:
         where.append(f"p.service IN ({', '.join('?' for _ in services)})")
@@ -4620,33 +4632,35 @@ def nq_rates(task_repository: Any, filters: dict[str, Any]) -> dict[str, Any]:
         where.append(f"p.dataset_id IN ({', '.join('?' for _ in scope)})")
         params.extend(scope)
         source = f"""
-            SELECT service, campaign, operator, nr_mode, COUNT(*) AS total, SUM(is_nq) AS nq FROM (
-                SELECT p.service, p.campaign, p.operator, p.nr_mode, p.is_nq, ROW_NUMBER() OVER (
+            SELECT {', '.join(columns)}, COUNT(*) AS total, SUM(is_nq) AS nq FROM (
+                SELECT {', '.join(f'p.{column}' for column in columns)}, p.is_nq, ROW_NUMBER() OVER (
                     PARTITION BY p.call_key ORDER BY s.combined_rank DESC, s.stage_rank DESC, s.data_date DESC,
                                                      p.dataset_id DESC) AS rn
                 FROM {NQ_CALL_POPULATION_TABLE} p JOIN {NQ_CALL_SOURCES_TABLE} s ON s.dataset_id = p.dataset_id
                 WHERE {' AND '.join(where)}
-            ) WHERE rn = 1 GROUP BY service, campaign, operator, nr_mode"""
+            ) WHERE rn = 1 GROUP BY {', '.join(columns)}"""
     else:
         where.append('p.is_latest = 1')
         source = f"""
-            SELECT p.service, p.campaign, p.operator, p.nr_mode, COUNT(*) AS total, SUM(p.is_nq) AS nq
+            SELECT {', '.join(f'p.{column}' for column in columns)}, COUNT(*) AS total, SUM(p.is_nq) AS nq
             FROM {NQ_CALL_POPULATION_TABLE} p WHERE {' AND '.join(where)}
-            GROUP BY p.service, p.campaign, p.operator, p.nr_mode"""
+            GROUP BY {', '.join(f'p.{column}' for column in columns)}"""
     with task_repository.connection() as connection:
         # The counts change only when the indexed CDRs do, so the same sources and scope reuse them.
         sources = tuple(tuple(row) for row in connection.execute(
             f'SELECT dataset_id, revision, synced_at FROM {NQ_CALL_SOURCES_TABLE} ORDER BY dataset_id').fetchall())
-        key = (str(task_repository.db_path), sources, tuple(sorted(scope or ())), tuple(sorted(services)))
+        key = (str(task_repository.db_path), sources, tuple(sorted(scope or ())), tuple(sorted(services)), in_scope)
         with _rate_counts_guard:
             rows = _rate_counts_cache.get(key)
         if rows is None:
-            rows = [(row['service'], row['campaign'], row['operator'], row['nr_mode'], row['total'], row['nq'])
-                    for row in connection.execute(source, params).fetchall()]
+            rows = [tuple(row) for row in connection.execute(source, params).fetchall()]
             with _rate_counts_guard:
                 if len(_rate_counts_cache) >= RATE_COUNTS_CACHE_SIZE:
                     _rate_counts_cache.pop(next(iter(_rate_counts_cache)))
                 _rate_counts_cache[key] = rows
+    if in_scope:
+        reason = nq_prioritization.scope_of(task_repository, nq_prioritization.load_settings(task_repository))
+        rows = [row[:4] + row[5:] for row in rows if not reason(row[4], row[3], row[2])[0]]
     groups: dict[str, dict[tuple[str, str], list[int]]] = {}
     for row_service, row_campaign, row_operator, row_nr_mode, row_total, row_nq in rows:
         campaign, operator = str(row_campaign or ''), str(mapper.map(field_kind('operator'), row_operator or '') or '')
@@ -4712,7 +4726,9 @@ def _population_counts(task_repository: Any, filters: dict[str, Any], fields: tu
     # are left out.)
     operators = ValueSet([*(str(mapper.map(field_kind('operator'), value)) for value in _strings(filters.get('operator'))),
                           *(f'-{name}' for name in sorted(mapper.excluded_operators))])
-    columns = ['service', 'campaign', 'operator', 'nr_mode', *fields]
+    # NQ Calls in Scope Only: the calls out of scope (also the qualified ones) count nowhere.
+    in_scope = filters.get('in_scope') is True
+    columns = ['service', 'campaign', 'operator', 'nr_mode', *fields, *(['region'] if in_scope and 'region' not in fields else [])]
     where, params = [], []
     if services:
         where.append(f"p.service IN ({', '.join('?' for _ in services)})")
@@ -4736,7 +4752,7 @@ def _population_counts(task_repository: Any, filters: dict[str, Any], fields: tu
     with task_repository.connection() as connection:
         sources = tuple(tuple(row) for row in connection.execute(
             f'SELECT dataset_id, revision, synced_at FROM {NQ_CALL_SOURCES_TABLE} ORDER BY dataset_id').fetchall())
-        key = (str(task_repository.db_path), sources, tuple(sorted(scope or ())), tuple(sorted(services)), fields)
+        key = (str(task_repository.db_path), sources, tuple(sorted(scope or ())), tuple(sorted(services)), fields, in_scope)
         with _rate_counts_guard:
             rows = _rate_counts_cache.get(key)
         if rows is None:
@@ -4745,9 +4761,14 @@ def _population_counts(task_repository: Any, filters: dict[str, Any], fields: tu
                 if len(_rate_counts_cache) >= RATE_COUNTS_CACHE_SIZE:
                     _rate_counts_cache.pop(next(iter(_rate_counts_cache)))
                 _rate_counts_cache[key] = rows
+    reason = nq_prioritization.scope_of(task_repository, nq_prioritization.load_settings(task_repository)) if in_scope else None
     counts = []
     for row in rows:
         entry = dict(zip([*columns, 'total', 'nq'], row))
+        if reason is not None and reason(entry['region'], entry['nr_mode'], entry['operator'])[0]:
+            continue
+        if 'region' not in fields:
+            entry.pop('region', None)
         entry['operator'] = str(mapper.map(field_kind('operator'), entry['operator'] or '') or '')
         if campaigns and str(entry['campaign'] or '') not in campaigns:
             continue
@@ -8165,7 +8186,13 @@ def install_non_qualified_calls_routes(core: Any) -> None:
 
     @core.app.put('/api/non-qualified-calls/filters')
     def nq_save_filters(payload: QueryPayload, user=Depends(core.current_user)) -> JSONResponse:
-        return JSONResponse({'filters': save_filters(workspace_repository(user), payload.filters)})
+        repository = workspace_repository(user)
+        before = saved_filters(repository).get('in_scope') is True
+        filters = save_filters(repository, payload.filters)
+        if (filters.get('in_scope') is True) != before:
+            # NQ Calls in Scope Only, switched on or off: every panel of the module counts other calls.
+            log_action(repository, user, 'nq_calls_scope_only', {'in_scope': filters.get('in_scope') is True})
+        return JSONResponse({'filters': filters})
 
     @core.app.post('/api/non-qualified-calls/filters/values')
     def nq_filter_values(payload: QueryPayload, user=Depends(core.current_user)) -> JSONResponse:

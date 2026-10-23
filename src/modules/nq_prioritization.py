@@ -2028,6 +2028,28 @@ def scope_of(repository: Any, settings: dict[str, Any]) -> Callable[[Any, Any, A
     return reason
 
 
+def scope_sql(repository: Any, settings: dict[str, Any] | None = None) -> tuple[str, list[Any]]:
+    """The calls in scope as an SQL condition on their region, nr_mode and operator columns, as ``scope_of`` tells them
+    apart (NQ Calls in Scope Only): not of a region out of scope, of a Focus operator of the Operator Maps (when the
+    workspace has any), and not of an NR Mode · operator pair out of scope."""
+    settings = settings or load_settings(repository)
+    operator = "lower(trim(COALESCE(operator, '')))"
+    clauses: list[str] = []
+    params: list[Any] = []
+    regions = sorted({name.casefold() for name in settings['excluded_regions']})
+    if regions:
+        clauses.append(f"lower(trim(COALESCE(region, ''))) NOT IN ({', '.join('?' for _ in regions)})")
+        params.extend(regions)
+    focus = focus_names(repository)
+    if focus is not None:
+        clauses.append(f"{operator} IN ({', '.join('?' for _ in focus)})")
+        params.extend(sorted(focus))
+    for mode, name in sorted(excluded_modes_of(repository, settings)):
+        clauses.append(f"NOT (upper(COALESCE(nr_mode, '')) = ? AND {operator} = ?)")
+        params.extend([mode, name])
+    return ('(' + ' AND '.join(clauses) + ')' if clauses else '1', params)
+
+
 def region_choices(repository: Any) -> list[str]:
     """The regions of the Non-Qualified Calls (but those of the operators excluded in the Operator Maps), for the regions
     out of scope."""

@@ -549,7 +549,7 @@
   // The filters applied, as chips that remove them, at the top of every panel; the NQ Rate panel dims those it ignores.
   const renderActiveFilters = (filters) => {
     const chips = [];
-    const flagLabels = {open_only: 'Open calls only', mine: 'Assigned to me', without_comments: 'Without comments'};
+    const flagLabels = {open_only: 'Open calls only', mine: 'Assigned to me', without_comments: 'Without comments', in_scope: 'NQ Calls in Scope Only'};
     const entries = Object.entries(filters).filter(([field]) => !['fields', 'columns'].includes(field));
     Object.entries(filters.fields || {}).forEach(([key, values]) => entries.push([`field:${key}`, values]));
     Object.entries(filters.columns || {}).forEach(([key, values]) => entries.push([`column:${key}`, values]));
@@ -566,7 +566,8 @@
           : field.startsWith('column:') ? (select?.getAttribute('aria-label') || field.slice(7)) : (FIELD_LABELS[field] || field);
         text = `${name}: ${labels.length > 3 ? `${labels.slice(0, 3).join(', ')} +${labels.length - 3}` : labels.join(', ')}`;
       }
-      chips.push({field, text});
+      // NQ Calls in Scope Only always leads the chips, as its switch stands above the filters.
+      chips[field === 'in_scope' ? 'unshift' : 'push']({field, text});
     });
     root.querySelectorAll('[data-nq-active-filters]').forEach((host) => {
       const rates = host.dataset.nqActiveFilters === 'rates';
@@ -575,6 +576,7 @@
         chip.type = 'button';
         const ignored = rates && !RATE_FILTER_KEYS.includes(field);
         chip.classList.toggle('is-ignored', ignored);
+        chip.classList.toggle('is-scope', field === 'in_scope');
         chip.title = ignored ? 'This panel does not use this filter\nClick to remove it' : 'Remove this filter';
         chip.append(node('span', '×', 'nq-filter-chip-x'));
         chip.addEventListener('click', () => clearFilter(field));
@@ -2816,6 +2818,17 @@
     }
   }
 
+  // What is out of scope, beside NQ Calls in Scope Only: the regions, the NR Mode · Operator pairs chosen and the operators
+  // that are not Focus operators.
+  function renderScopeSummary() {
+    const summary = $('nq-scope-summary');
+    if (!summary) return;
+    const settings = state.prioritization || {};
+    const fixed = [...new Set((state.prioritizationFixedModes || []).map((item) => item.operator))];
+    const parts = [...(settings.excluded_regions || []), ...(settings.excluded_modes || []).map((item) => `${item.nr_mode} · ${item.operator}`),
+      ...(fixed.length ? [`not Focus: ${fixed.join(', ')}`] : [])];
+    summary.textContent = parts.length ? `Out of scope: ${parts.join(' · ')}` : 'Nothing is out of scope';
+  }
   async function loadState() {
     try {
       const payload = await api('/api/non-qualified-calls/state');
@@ -2850,6 +2863,7 @@
       state.prioritizationFixedModes = payload.prioritization_fixed_modes || [];
       state.prioritizationFixedReason = payload.prioritization_fixed_reason || '';
       state.prioritizationRegions = payload.prioritization_regions || [];
+      renderScopeSummary();
       state.priorityOptions = payload.priority_options || [];
       state.callFields = payload.call_fields || [];
       state.sections = payload.sections || [];
@@ -4524,7 +4538,8 @@
   });
   $('nq-reset').addEventListener('click', () => {
     filterSelects().forEach((select) => { [...select.options].forEach((option) => { option.selected = false; }); select.dispatchEvent(new Event('change')); });
-    root.querySelectorAll('[data-nq-flag]').forEach((box) => { box.checked = false; });
+    // NQ Calls in Scope Only stays as it is: it chooses the calls of the module, above the filters.
+    root.querySelectorAll('[data-nq-flag]:not([data-nq-flag="in_scope"])').forEach((box) => { box.checked = false; });
     root.querySelectorAll('[data-nq-typed-filter]').forEach((input) => { input.value = ''; });
     state.extraFilters = {};
     $('nq-search').value = '';
@@ -6254,11 +6269,13 @@
     draw();
     return box;
   };
-  // The NR Mode · operator pairs out of scope chosen in the dialog.
-  const excludedModes = () => [...$('nq-priority-modes-out').selectedOptions].filter((option) => !option.disabled).map((option) => {
+  // The NR Mode · operator pairs out of scope chosen in a select (the grey ones are always out of scope).
+  const excludedModesOf = (select) => [...select.selectedOptions].filter((option) => !option.disabled).map((option) => {
     const [nrMode, ...operator] = option.value.split('|');
     return {nr_mode: nrMode, operator: operator.join('|')};
   });
+  // The NR Mode · operator pairs out of scope chosen in the dialog.
+  const excludedModes = () => excludedModesOf($('nq-priority-modes-out'));
   // #Calls: how many calls each step takes in the latest campaigns with their Final CDR, as the steps are edited.
   let stepCounts = {counts: {}, campaigns: []};
   let stepCountsTimer = null;
@@ -6767,16 +6784,9 @@
       }));
     select.value = value;
   };
-  const fillPriorityDialog = (settings) => {
-    ownStrategies = JSON.parse(JSON.stringify(settings.strategies || []));
-    strategyNames = {...(settings.strategy_names || {})};
-    fillStrategies(settings.strategy || 'cities_first');
-    const select = $('nq-priority-strategy');
-    strategySteps = JSON.parse(JSON.stringify(settings.steps || state.defaultPrioritization.steps || {}));
-    stepList = 'campaign';
-    strategyFinalLists = {...(settings.final_lists || {})};
+  // The Out of Scope selects (of the Prioritization Rules and of the Out of Scope dialog) as the settings choose them.
+  const fillScopeSelects = (regions, modes, settings) => {
     // The regions out of the scope of the team: those of the calls, and those chosen before that no call has now.
-    const regions = $('nq-priority-regions-out');
     const excluded = settings.excluded_regions || [];
     regions.replaceChildren(...[...state.prioritizationRegions, ...excluded.filter((name) => !state.prioritizationRegions.includes(name))].map((name) => {
       const option = node('option', name);
@@ -6787,7 +6797,6 @@
     regions.dispatchEvent(new Event('multiselect:options-updated'));
     // The NR Mode · operator pairs out of scope: SA and NSA with every operator of the Operator Maps, the Focus operators
     // first; those of the other operators are always out of scope, chosen and grey with the reason on hover.
-    const modes = $('nq-priority-modes-out');
     const chosenModes = (settings.excluded_modes || []).map((item) => `${item.nr_mode}|${item.operator}`);
     const fixedModes = state.prioritizationFixedModes.map((item) => `${item.nr_mode}|${item.operator}`);
     const pairs = ['SA', 'NSA'].flatMap((mode) => state.prioritizationOperators.map((name) => `${mode}|${name}`));
@@ -6803,6 +6812,16 @@
       return option;
     }));
     modes.dispatchEvent(new Event('multiselect:options-updated'));
+  };
+  const fillPriorityDialog = (settings) => {
+    ownStrategies = JSON.parse(JSON.stringify(settings.strategies || []));
+    strategyNames = {...(settings.strategy_names || {})};
+    fillStrategies(settings.strategy || 'cities_first');
+    const select = $('nq-priority-strategy');
+    strategySteps = JSON.parse(JSON.stringify(settings.steps || state.defaultPrioritization.steps || {}));
+    stepList = 'campaign';
+    strategyFinalLists = {...(settings.final_lists || {})};
+    fillScopeSelects($('nq-priority-regions-out'), $('nq-priority-modes-out'), settings);
     Object.entries(PRIORITY_INPUTS).forEach(([key, id]) => { $(id).value = settings[key]; });
     $('nq-priority-fill').checked = Boolean(settings.fill_priority);
     showStrategy(select.value);
@@ -6893,6 +6912,45 @@
       markPrioritySaved();
     }));
     $('nq-priority-cancel').addEventListener('click', requestPriorityClose);
+    // Out of Scope, from the button beside NQ Calls in Scope Only: the same regions and NR Mode · Operator pairs as the Out
+    // of Scope card above; Save keeps every other setting as it is saved now, and the rules apply at once.
+    const scopeDialog = $('nq-scope-dialog');
+    const scopeChoice = () => JSON.stringify({regions: [...$('nq-scope-regions').selectedOptions].map((option) => option.value),
+      modes: excludedModesOf($('nq-scope-modes'))});
+    let scopeSaved = '';
+    $('nq-scope-open')?.addEventListener('click', () => {
+      if (!state.prioritization || !scopeDialog) return;
+      fillScopeSelects($('nq-scope-regions'), $('nq-scope-modes'), state.prioritization);
+      $('nq-scope-error').textContent = '';
+      scopeDialog.showModal();
+      scopeSaved = scopeChoice();
+    });
+    $('nq-scope-cancel')?.addEventListener('click', () => scopeDialog.close());
+    $('nq-scope-form')?.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if ($('nq-scope-save').hidden || scopeChoice() === scopeSaved) {
+        scopeDialog.close();
+        return;
+      }
+      const save = $('nq-scope-save');
+      save.disabled = true;
+      try {
+        // The other settings as they are saved now (someone may have changed them since the page loaded).
+        const current = (await api('/api/non-qualified-calls/prioritization/settings')).settings;
+        const settings = {...current, excluded_regions: [...$('nq-scope-regions').selectedOptions].map((option) => option.value),
+          excluded_modes: excludedModesOf($('nq-scope-modes'))};
+        const result = await api('/api/non-qualified-calls/prioritization/settings', {method: 'PUT', body: JSON.stringify({settings})});
+        state.prioritization = result.settings;
+        priorityKey = '';
+        scopeDialog.close();
+        toast('The scope is saved: every call takes it at once.');
+        await loadState();
+      } catch (error) {
+        $('nq-scope-error').textContent = error.message;
+      } finally {
+        save.disabled = false;
+      }
+    });
     // Escape asks as Cancel does.
     priorityDialog.addEventListener('cancel', (event) => {
       event.preventDefault();

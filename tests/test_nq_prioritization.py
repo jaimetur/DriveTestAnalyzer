@@ -280,6 +280,51 @@ def test_the_calls_out_of_scope_stay_out_of_the_queues(strategized, monkeypatch)
     assert counts['out_of_scope'] and counts['scope']['regions'][0][0] == region
 
 
+def test_nq_calls_in_scope_only_leaves_the_calls_out_of_scope_out_of_the_module(strategized, monkeypatch):
+    client = strategized['client']
+    region = 'Vendor B'
+    with core.repository.connection() as connection:
+        connection.execute(f"UPDATE {nq.NQ_CALL_LATEST_TABLE} SET region = CASE WHEN rowid % 3 = 0 THEN ? ELSE 'Vendor A' END", (region,))
+        latest = [dict(row) for row in connection.execute(f'SELECT call_key, region, nr_mode, operator FROM {nq.NQ_CALL_LATEST_TABLE}')]
+    settings = {**nq_prioritization.load_settings(core.repository), 'excluded_regions': [region],
+                'excluded_modes': [{'nr_mode': 'NSA', 'operator': 'Three'}]}
+    nq_prioritization.save_settings(core.repository, settings, 'super')
+    # The SQL condition takes the calls scope_of leaves in scope, also with Focus operators.
+    for focus in (None, {'vf'}):
+        with monkeypatch.context() as patch:
+            patch.setattr(nq_prioritization, 'focus_names', lambda repository, focus=focus: focus)
+            reason = nq_prioritization.scope_of(core.repository, nq_prioritization.load_settings(core.repository))
+            clause, params = nq_prioritization.scope_sql(core.repository)
+            with core.repository.connection() as connection:
+                kept = {row[0] for row in connection.execute(f'SELECT call_key FROM {nq.NQ_CALL_LATEST_TABLE} WHERE {clause}', params)}
+            assert kept == {row['call_key'] for row in latest if not reason(row['region'], row['nr_mode'], row['operator'])[0]}
+    reason = nq_prioritization.scope_of(core.repository, nq_prioritization.load_settings(core.repository))
+    in_scope = [row for row in latest if not reason(row['region'], row['nr_mode'], row['operator'])[0]]
+    assert 0 < len(in_scope) < len(latest)
+    # The table, the panels and the values of the filters take only the calls in scope.
+    every = client.post('/api/non-qualified-calls/calls', json={'filters': {}}).json()['total']
+    scoped = client.post('/api/non-qualified-calls/calls', json={'filters': {'in_scope': True}}).json()['total']
+    assert every == len(latest) and scoped == len(in_scope)
+    panel = nq_prioritization.panel(core.repository, {'in_scope': True}, 'super')
+    assert panel['totals']['calls'] == len(in_scope)
+    assert next(entry for entry in panel['rules'] if entry['name'] == 'Out of scope')['calls'] == 0
+    values = client.post('/api/non-qualified-calls/filters/values', json={'filters': {'in_scope': True}}).json()['values']
+    assert region not in values['region']
+    # The NQ rates count the calls in scope only once the Region of every call is indexed.
+    with core.repository.connection() as connection:
+        connection.execute(f"UPDATE {nq.NQ_CALL_POPULATION_TABLE} SET region = (SELECT l.region FROM {nq.NQ_CALL_LATEST_TABLE} l "
+                           f"WHERE l.call_key = {nq.NQ_CALL_POPULATION_TABLE}.call_key)")
+    nq._rate_counts_cache.clear()
+    every_rate = sum(item['total']['nq'] for item in nq.nq_rates(core.repository, {})['matrices'] if item['service'] != 'all')
+    scoped_rate = sum(item['total']['nq'] for item in nq.nq_rates(core.repository, {'in_scope': True})['matrices'] if item['service'] != 'all')
+    assert scoped_rate < every_rate
+    # The switch is kept with the filters (Reset Filters leaves it), and App Events records each change.
+    response = client.put('/api/non-qualified-calls/filters', json={'filters': {'in_scope': True}})
+    assert response.status_code == 200 and response.json()['filters'] == {'in_scope': True}
+    log = next(row for row in core.repository.list_logs(limit=20) if row['action'] == 'nq_calls_scope_only')
+    assert json.loads(log['details']) == {'in_scope': True}
+
+
 def test_the_operators_of_a_step_take_the_names_of_their_labels_and_the_focus_operators(client):
     takes = nq_prioritization.operator_takes(core.repository)
     assert takes(['VF'], 'VF') and takes(['vf'], 'VF') and not takes(['VF'], 'Three') and not takes([], 'VF')

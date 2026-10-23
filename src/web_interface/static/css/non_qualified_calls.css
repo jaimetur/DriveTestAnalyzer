@@ -29,6 +29,24 @@
 /* The General Filters, the NQ Analysis Fields Filters and the filters of the Additional Columns, each in a card under
    its title. */
 .nq-filter-card { margin-top: 14px; padding: 12px 14px 14px; border: 1px solid var(--nq-border); border-radius: 12px; background: var(--nq-softer); }
+/* NQ Calls in Scope Only, above the filters: a switch, the Out of Scope button and what is out of scope. */
+.nq-scope-bar { display: flex; flex-wrap: wrap; align-items: center; gap: .55rem .9rem; padding: 10px 14px; border: 1px solid var(--nq-border); border-radius: 12px; background: var(--nq-soft); }
+.nq-scope-switch { position: relative; display: inline-flex; align-items: center; gap: .6rem; cursor: pointer; color: var(--nq-dark); font-weight: 850; }
+.nq-scope-switch input { position: absolute; width: 1px; height: 1px; margin: 0; opacity: 0; }
+.nq-scope-track { position: relative; flex: 0 0 auto; width: 2.7rem; height: 1.5rem; border-radius: 999px; background: #c9ced4; box-shadow: inset 0 1px 3px rgba(60, 10, 30, .25); transition: background .18s ease; }
+.nq-scope-knob { position: absolute; top: .2rem; left: .2rem; width: 1.1rem; height: 1.1rem; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(60, 10, 30, .35); transition: transform .18s ease; }
+.nq-scope-switch input:checked + .nq-scope-track { background: linear-gradient(135deg, var(--nq-dark), var(--nq-color)); }
+.nq-scope-switch input:checked + .nq-scope-track .nq-scope-knob { transform: translateX(1.2rem); }
+.nq-scope-switch input:focus-visible + .nq-scope-track { outline: 2px solid var(--nq-color); outline-offset: 2px; }
+.nq-scope-summary { flex: 1 1 16rem; min-width: 0; color: var(--nq-muted); font-size: .85rem; }
+/* The lists of its selects open over the page, below the dialog when they need the room (it does not clip them). */
+.nq-scope-dialog { width: min(680px, calc(100vw - 32px)); overflow: visible; }
+.nq-scope-dialog .nq-scope-fields { display: grid; gap: .9rem; min-width: 0; margin: 0; padding: 0; border: 0; }
+.nq-scope-dialog .multiselect-menu { z-index: 60; }
+.nq-scope-dialog .nq-priority-scope-field { display: grid; gap: .35rem; }
+.nq-scope-dialog .nq-priority-scope-field .multiselect-shell { width: 100%; }
+.nq-scope-about { display: grid; gap: .45rem; color: var(--nq-muted); font-size: .85rem; }
+.nq-scope-about p { margin: 0; }
 .nq-filter-card[hidden] { display: none; }
 .nq-filter-group-title { margin: 0 0 10px; color: var(--nq-dark, #7d1238); font-size: 0.76rem; font-weight: 850; letter-spacing: 0.04em; text-transform: uppercase; }
 .nq-filter-group-title[hidden] { display: none; }
@@ -100,6 +118,9 @@
 .non-qualified-calls .nq-filter-chip { display: inline-flex; align-items: center; gap: .4rem; min-height: 0; padding: .3rem .4rem .3rem .75rem; border: 1px solid var(--nq-color); border-radius: 999px; background: var(--nq-soft); color: var(--nq-dark); font-size: .8rem; font-weight: 750; box-shadow: none; }
 .nq-filter-chip-x { display: inline-grid; place-items: center; width: 1.2rem; height: 1.2rem; border-radius: 50%; background: var(--nq-color); color: #fff; font-size: .8rem; line-height: 1; }
 .non-qualified-calls .nq-filter-chip.is-ignored { border-style: dashed; opacity: .55; }
+/* NQ Calls in Scope Only, darker than the other filters, in the colours of its switch. */
+.non-qualified-calls .nq-filter-chip.is-scope { border-color: var(--nq-dark); background: linear-gradient(135deg, var(--nq-dark), var(--nq-color)); color: #fff; }
+.non-qualified-calls .nq-filter-chip.is-scope .nq-filter-chip-x { background: #fff; color: var(--nq-dark); }
 .nq-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: .8rem 1rem; margin-bottom: .8rem; }
 .nq-count { flex: 1 1 auto; margin: 0; color: var(--nq-text); font-weight: 750; }
 /* The actions of the selected calls cover the toolbar above the table (placed by the script),
