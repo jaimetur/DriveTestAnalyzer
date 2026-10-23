@@ -17,6 +17,7 @@
 
 #### 🐛 Bug fixes:
 - **Non-Qualified Calls:** a section opened from the menu of the tab or from Modules & Sections stays at the top of the page until every panel above it is drawn, also when they take more than a minute in a large workspace (in Safari it moved down as they filled).
+- **Sections bar of Non-Qualified Calls on phones:** the sections bar of Non-Qualified Calls stays at the top of the screen below the Menu bar while the page scrolls, as in the other modules, instead of hiding behind it.
 
 #### 📚 Documentation:
 - **Non-Qualified Calls:** the Help explains the Map of the call, its layers and controls, and its troubleshooting.

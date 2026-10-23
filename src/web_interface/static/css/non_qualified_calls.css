@@ -1161,8 +1161,9 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
   .non-qualified-calls .nq-filter-grid .multiselect-trigger { min-height: 2.4rem; padding: .45rem .55rem; font-size: .8rem; }
   .nq-filter-row { gap: 8px; }
   .nq-search { flex-basis: 100%; }
-  .nq-view-switch { top: 4px; width: 100%; box-sizing: border-box; flex-wrap: nowrap; }
-  .nq-view-dock { top: 4px; gap: .35rem; }
+  /* Below the bar of the menu, as the bars of the sections of the other modules. */
+  .nq-view-switch { top: calc(var(--module-tabs-offset, 0px) + 4px); width: 100%; box-sizing: border-box; flex-wrap: nowrap; }
+  .nq-view-dock { top: calc(var(--module-tabs-offset, 0px) + 4px); gap: .35rem; }
   .nq-view-dock .nq-view-switch { flex: 1 1 auto; width: auto; }
   /* Only its icon on a phone, so the bar keeps its room. */
   .non-qualified-calls .nq-center-toggle { padding: .7rem; }
