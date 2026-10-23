@@ -2818,14 +2818,17 @@
     }
   }
 
-  // What is out of scope, beside NQ Calls in Scope Only: the regions, the NR Mode · Operator pairs chosen and the operators
-  // that are not Focus operators.
+  // What is out of scope, beside NQ Calls in Scope Only: the regions, the operators chosen with their NR Mode and the
+  // operators that are not Focus operators.
   function renderScopeSummary() {
     const summary = $('nq-scope-summary');
     if (!summary) return;
     const settings = state.prioritization || {};
     const fixed = [...new Set((state.prioritizationFixedModes || []).map((item) => item.operator))];
-    const parts = [...(settings.excluded_regions || []), ...(settings.excluded_modes || []).map((item) => `${item.nr_mode} · ${item.operator}`),
+    // Each operator out of scope with its NR Mode, or alone when both are.
+    const modes = new Map();
+    (settings.excluded_modes || []).forEach((item) => modes.set(item.operator, [...(modes.get(item.operator) || []), item.nr_mode]));
+    const parts = [...(settings.excluded_regions || []), ...[...modes].map(([name, nrModes]) => (nrModes.length > 1 ? name : `${name} (${nrModes[0]})`)),
       ...(fixed.length ? [`not Focus: ${fixed.join(', ')}`] : [])];
     summary.textContent = parts.length ? `Out of scope: ${parts.join(' · ')}` : 'Nothing is out of scope';
   }
@@ -6269,11 +6272,54 @@
     draw();
     return box;
   };
-  // The NR Mode · operator pairs out of scope chosen in a select (the grey ones are always out of scope).
-  const excludedModesOf = (select) => [...select.selectedOptions].filter((option) => !option.disabled).map((option) => {
-    const [nrMode, ...operator] = option.value.split('|');
-    return {nr_mode: nrMode, operator: operator.join('|')};
-  });
+  // The NR Mode out of scope of each operator chosen in an Out of Scope select of operators: SA, NSA or ALL (both).
+  const scopeOperatorModes = new WeakMap();
+  const SCOPE_MODES = [['SA', 'SA'], ['NSA', 'NSA'], ['ALL', 'All']];
+  // Under the select, each operator chosen with its NR Mode to choose; those that are not Focus operators always take All,
+  // grey, with a note that tells why.
+  const renderScopeOperatorModes = (select) => {
+    const host = document.querySelector(`[data-nq-scope-modes="${select.id}"]`);
+    if (!host) return;
+    const modes = scopeOperatorModes.get(select) || new Map();
+    scopeOperatorModes.set(select, modes);
+    const chosen = [...select.selectedOptions];
+    host.replaceChildren(...chosen.map((option) => {
+      const name = option.value;
+      const row = node('span', undefined, 'nq-scope-operator-mode');
+      row.classList.toggle('is-fixed', option.disabled);
+      row.title = option.disabled ? state.prioritizationFixedReason : `The NR Mode of the calls of ${name} out of scope (All: both)`;
+      const choice = node('span', undefined, 'nq-scope-mode-choice');
+      choice.setAttribute('role', 'radiogroup');
+      choice.setAttribute('aria-label', `NR Mode of ${name} out of scope`);
+      const current = option.disabled ? 'ALL' : modes.get(name) || 'ALL';
+      choice.append(...SCOPE_MODES.map(([value, label]) => {
+        const item = node('label');
+        const input = node('input');
+        input.type = 'radio';
+        input.name = `${select.id}:${name}`;
+        input.value = value;
+        input.checked = value === current;
+        input.disabled = option.disabled;
+        input.addEventListener('change', () => modes.set(name, value));
+        item.append(input, label);
+        return item;
+      }));
+      row.append(node('span', name, 'nq-scope-operator-name'), choice);
+      return row;
+    }));
+    if (chosen.some((option) => option.disabled)) {
+      host.append(node('p', 'The operators that are not Focus operators of the Operator Maps are always out of scope, in both SA and NSA.', 'nq-scope-fixed-note'));
+    }
+    host.hidden = !host.children.length;
+  };
+  // The NR Mode · operator pairs out of scope chosen with a select of operators (the grey ones are always out of scope).
+  const excludedModesOf = (select) => {
+    const modes = scopeOperatorModes.get(select) || new Map();
+    return [...select.selectedOptions].filter((option) => !option.disabled).flatMap((option) => {
+      const mode = modes.get(option.value) || 'ALL';
+      return (mode === 'ALL' ? ['SA', 'NSA'] : [mode]).map((nrMode) => ({nr_mode: nrMode, operator: option.value}));
+    });
+  };
   // The NR Mode · operator pairs out of scope chosen in the dialog.
   const excludedModes = () => excludedModesOf($('nq-priority-modes-out'));
   // #Calls: how many calls each step takes in the latest campaigns with their Final CDR, as the steps are edited.
@@ -6795,24 +6841,27 @@
       return option;
     }));
     regions.dispatchEvent(new Event('multiselect:options-updated'));
-    // The NR Mode · operator pairs out of scope: SA and NSA with every operator of the Operator Maps, the Focus operators
-    // first; those of the other operators are always out of scope, chosen and grey with the reason on hover.
-    const chosenModes = (settings.excluded_modes || []).map((item) => `${item.nr_mode}|${item.operator}`);
-    const fixedModes = state.prioritizationFixedModes.map((item) => `${item.nr_mode}|${item.operator}`);
-    const pairs = ['SA', 'NSA'].flatMap((mode) => state.prioritizationOperators.map((name) => `${mode}|${name}`));
+    // The operators out of scope, each with its NR Mode (SA, NSA or All): every operator of the Operator Maps, the Focus
+    // operators first; the other operators are always out of scope in both NR Modes, chosen and grey with the reason on hover.
+    const fixed = [...new Set(state.prioritizationFixedModes.map((item) => item.operator))];
     // Only the operators of the list (the Operator Maps but those excluded there), and those always out of scope.
-    const known = new Set([...pairs, ...fixedModes]);
-    const modeValues = [...new Set([...pairs.filter((value) => !fixedModes.includes(value)), ...chosenModes.filter((value) => known.has(value)), ...fixedModes])];
-    modes.replaceChildren(...modeValues.map((value) => {
-      const option = node('option', value.replace('|', ' · '));
-      option.value = value;
-      option.disabled = fixedModes.includes(value);
-      option.selected = option.disabled || chosenModes.includes(value);
+    const operators = [...new Set([...state.prioritizationOperators.filter((name) => !fixed.includes(name)), ...fixed])];
+    const chosen = new Map();
+    (settings.excluded_modes || []).filter((item) => operators.includes(item.operator) && !fixed.includes(item.operator))
+      .forEach((item) => chosen.set(item.operator, [...(chosen.get(item.operator) || []), item.nr_mode]));
+    scopeOperatorModes.set(modes, new Map([...chosen].map(([name, nrModes]) => [name, nrModes.includes('SA') && nrModes.includes('NSA') ? 'ALL' : nrModes[0]])));
+    modes.replaceChildren(...operators.map((name) => {
+      const option = node('option', name);
+      option.value = name;
+      option.disabled = fixed.includes(name);
+      option.selected = option.disabled || chosen.has(name);
       if (option.disabled) option.dataset.disabledReason = state.prioritizationFixedReason;
       return option;
     }));
     modes.dispatchEvent(new Event('multiselect:options-updated'));
+    renderScopeOperatorModes(modes);
   };
+  ['nq-priority-modes-out', 'nq-scope-modes'].forEach((id) => $(id)?.addEventListener('change', () => renderScopeOperatorModes($(id))));
   const fillPriorityDialog = (settings) => {
     ownStrategies = JSON.parse(JSON.stringify(settings.strategies || []));
     strategyNames = {...(settings.strategy_names || {})};

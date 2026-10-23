@@ -47,6 +47,23 @@
 .nq-scope-dialog .nq-priority-scope-field .multiselect-shell { width: 100%; }
 .nq-scope-about { display: grid; gap: .45rem; color: var(--nq-muted); font-size: .85rem; }
 .nq-scope-about p { margin: 0; }
+/* The link to the Operator Maps (Focus operators), in the colour of the module so it stands out from the text. */
+.nq-scope-focus-link { color: var(--nq-color); font-weight: 800; text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 2px; }
+.nq-scope-focus-link:is(:hover, :focus-visible) { color: var(--nq-dark); }
+/* Each operator out of scope with its NR Mode (SA, NSA or All), under its select; those always out of scope in grey, with a
+   note below. */
+.nq-scope-operator-modes { display: flex; flex-wrap: wrap; gap: .4rem; }
+.nq-scope-operator-modes[hidden] { display: none; }
+.nq-scope-operator-mode { display: inline-flex; align-items: center; gap: .45rem; padding: .2rem .2rem .2rem .65rem; border: 1px solid var(--nq-color); border-radius: 999px; background: #fff; color: var(--nq-dark); font-size: .78rem; font-weight: 800; }
+.nq-scope-mode-choice { display: inline-flex; gap: 2px; padding: 2px; border-radius: 999px; background: var(--nq-soft); }
+.nq-scope-mode-choice label { position: relative; padding: .12rem .55rem; border-radius: 999px; color: var(--nq-muted); font-weight: 750; cursor: pointer; }
+.nq-scope-mode-choice input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: inherit; }
+.nq-scope-mode-choice label:has(input:checked) { background: var(--nq-color); color: #fff; }
+.nq-scope-mode-choice label:has(input:focus-visible) { outline: 2px solid var(--nq-dark); outline-offset: 1px; }
+.nq-scope-operator-mode.is-fixed { border-color: var(--nq-border); color: var(--nq-muted); }
+.nq-scope-operator-mode.is-fixed .nq-scope-mode-choice label { cursor: default; }
+.nq-scope-operator-mode.is-fixed .nq-scope-mode-choice label:has(input:checked) { background: #9aa3ad; }
+.nq-scope-fixed-note { flex: 1 0 100%; margin: 0; color: var(--nq-muted); font-size: .75rem; font-weight: 600; }
 .nq-filter-card[hidden] { display: none; }
 .nq-filter-group-title { margin: 0 0 10px; color: var(--nq-dark, #7d1238); font-size: 0.76rem; font-weight: 850; letter-spacing: 0.04em; text-transform: uppercase; }
 .nq-filter-group-title[hidden] { display: none; }

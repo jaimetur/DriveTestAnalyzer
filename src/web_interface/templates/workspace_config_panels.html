@@ -58,7 +58,7 @@
   {% else %}<p class="form-note">The ready CDRs of this workspace have no {{ title }} names yet.</p>{% endif %}
   </div>
 </details>
-<details class="mapping-subpanel mapping-labels-view" open data-panel-state-key="workspace-config:{{ kind }}-labels">
+<details class="mapping-subpanel mapping-labels-view" id="{{ kind }}-labels" open data-panel-state-key="workspace-config:{{ kind }}-labels">
   {{ mapping_subpanel_summary(2, title ~ ' labels', 'The labels shown for the ' ~ title ~ 's: their order and colour in charts, and the possible names each label can appear with in different CDRs from different campaigns.') }}
   <div class="mapping-subpanel-body">
   {% if kind == 'operator' %}
