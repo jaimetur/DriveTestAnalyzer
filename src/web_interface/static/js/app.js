@@ -1017,9 +1017,9 @@ function limitSeriesCollectionByX(seriesCollection, xMaxOverride) {
 // card presentation of the rows already available to the page.
 (() => {
   const selector = [
-    'table.queue-table', 'table.users-table', 'table.catalogue-workspace-table',
+    'table.queue-table', 'table.catalogue-workspace-table',
     'table.report-jobs-table', 'table.workspace-library-table', 'table.recovered-transfer-table',
-    'table.app-logs-table', 'table.admin-datasets-table', 'table.database-editor-table',
+    'table.admin-datasets-table', 'table.database-editor-table',
     'table.operator-mappings-table', 'table.ds-dashboards-table',
     '.report-charts-grid', '.workspace-calculated-dimensions-list',
   ].join(', ');
