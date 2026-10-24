@@ -69,7 +69,7 @@
       "image": "slide-10.png",
       "section": "Multi-provider architecture",
       "title": "From the base to P3, in seven phases",
-      "notes": "Phase 1 is done. Phases 2 to 6 bring Umlaut to every module, starting with reading its files and continuing with the priority modules: Scoring, PPT Dashboards and NQ Calls. P3 comes last with the same model, as soon as we have a sample."
+      "notes": "Phases 1 and 2 are done in version 0.9.0: the multi-provider base and the Umlaut reader, profile and upload. Phases 3 to 6 bring Umlaut to the priority modules, Scoring, PPT Dashboards and NQ Calls, and to Network Insights. P3 comes last with the same model, as soon as there is a sample."
     },
     {
       "id": "phase1",
@@ -93,67 +93,81 @@
       "notes": "File by file: a new module with the profiles; the CDR type registry with P3 and the lock; and the modules that read CDR columns, which now take them from the workspace’s profile instead of their own NetCheck lists. The app passes the profile when it processes a CDR. There is no database migration, so restarting the application changes nothing in existing workspaces. The second commit only updates two NQ tests that already failed before phase 1."
     },
     {
-      "id": "internal",
+      "id": "phase2",
       "image": "slide-14.png",
+      "section": "Multi-provider architecture",
+      "title": "Umlaut CDRs read with their own names",
+      "notes": "Phase 2 reads Umlaut CDRs with their own names. The Umlaut reader takes every service workbook as a CDR, ignores the Statistics sheet, reads one operator per client sheet and keeps the headers of the second side of a call apart; All_Data and All_Voice are summaries, not CDRs. The Umlaut profile keeps the native names, reads SUCCESS, FAILED and DROPPED as Completed, Failed and Dropped, converts kbit/s to Mbit/s and measures call setup up to Alerting by default (Option D through the dictionary). Derived columns add the Campaign from the benchmark of the file name, a Test_Key for the data tests and the ECI of the serving cell. On upload each file takes its type from its service name, as a Final CDR. In Non-Qualified Calls a call or test is NQ when its qualifier says NOT QUALIFIED, with the DT Analyzer RCA. The CDR Field Dictionary of Workspace Config shows and edits the 211 fields per workspace. Umlaut CDR stays coming soon until a multi-operator export validates it."
+    },
+    {
+      "id": "phase2-validation",
+      "image": "slide-15.png",
+      "section": "Multi-provider architecture",
+      "title": "A real Umlaut export, NetCheck untouched",
+      "notes": "Phase 2 was validated in three ways. The same real NetCheck CDRs give exactly the same results before and after the change (90 of 90 outputs). The automated tests pass (894). And the real WindTre Round 1 Umlaut export was processed in a test workspace: 478 NQ (52 Voice calls, 26 Speech calls with 285 samples, 3 File DL and 397 Interactivity tests), classified by the DT Analyzer RCA. Ping and DNS have no qualifier, so they have no NQ."
+    },
+    {
+      "id": "internal",
+      "image": "slide-16.png",
       "section": "Internal architecture",
       "title": "How the tool is built",
       "notes": "A single FastAPI application serves the web interface (Jinja2 templates and JavaScript) and the API. Each analysis module is a Python module that reads the CDRs materialised in the workspace’s SQLite database. Heavy work, such as processing a CDR or generating a report, runs in the background: a scheduler with priorities per workspace and isolated workers, so the interface stays responsive. Exports use python-pptx and python-docx, LibreOffice for previews and Chromium with Node.js to draw the charts."
     },
     {
       "id": "lifecycle",
-      "image": "slide-15.png",
+      "image": "slide-17.png",
       "section": "Internal architecture",
       "title": "From the uploaded file to the report",
       "notes": "This is how the tool walks a CDR. It is uploaded and its type, NR Mode and stage are confirmed. The provider’s reader decides what is CDR. The profile fills the internal layer the modules use. Then the mappings are applied and the CDR is materialised in per-CDR and combined tables, which the modules read with their indexes and caches."
     },
     {
       "id": "storage",
-      "image": "slide-16.png",
+      "image": "slide-18.png",
       "section": "Internal architecture",
       "title": "Every workspace is self-contained",
       "notes": "Global configuration lives in APP_CONFIG_DIR and everything that belongs to a workspace in its own folder under APP_DATA_DIR: its database, uploaded files, generated output and caches. That is why a workspace can be transferred to another server or restored on its own, and why the CDR type of a workspace travels with it."
     },
     {
       "id": "container",
-      "image": "slide-17.png",
+      "image": "slide-19.png",
       "section": "Cloud deployment",
       "title": "One container with everything inside",
       "notes": "The production image is built from python:3.12-slim with the Python packages, then the tools the exports need (Chromium and Node.js to draw charts, LibreOffice for previews), the Help presentations generator and finally the application code, stamped with its Git revision. Compose publishes port 7278, checks /healthz every 30 seconds, restarts the container unless it is stopped and mounts the config and data volumes, which is where all state lives."
     },
     {
       "id": "aws",
-      "image": "slide-18.png",
+      "image": "slide-20.png",
       "section": "Cloud deployment",
       "title": "Deployment on AWS",
       "notes": "A proposed AWS layout. Users reach a load balancer with an HTTPS certificate; the container runs on an EC2 instance in a private subnet and keeps all its state on an EBS volume mounted as /app/config and /app/data. Because the tool uses SQLite, its databases need block storage (EBS) rather than a network file system such as EFS, and today it runs as a single instance that is scaled up. Around it: the image in ECR, the secret key in Secrets Manager, logs and alarms in CloudWatch, backup copies in S3 or AWS Backup snapshots, and email through SES."
     },
     {
       "id": "ericsson",
-      "image": "slide-19.png",
+      "image": "slide-21.png",
       "section": "Cloud deployment",
       "title": "Deployment in the Ericsson cloud",
       "notes": "Inside the Ericsson cloud the same image runs on a virtual machine or as a single Kubernetes replica with a read-write-once block volume, behind the corporate reverse proxy with its TLS certificate and, if required, single sign-on. The image can be mirrored in an internal registry, email goes through the corporate SMTP relay, backup copies go to object storage, and workspaces can be moved between servers with the transfer feature, for example between an AWS and an Ericsson instance."
     },
     {
       "id": "operations",
-      "image": "slide-20.png",
+      "image": "slide-22.png",
       "section": "Cloud deployment",
       "title": "Running it day to day",
       "notes": "Operating the tool needs little: scheduled backups written below the data volume, upgrades by pulling and recreating the container (database migrations run at startup), the /healthz endpoint for the platform and App Logs and App Events for traceability, and transfers to move workspaces between servers."
     },
     {
       "id": "scale",
-      "image": "slide-21.png",
+      "image": "slide-23.png",
       "section": "Cloud deployment",
       "title": "From one server to the cloud at scale",
       "notes": "Today the tool scales up: one container per server, one SQLite database per workspace and the background work inside the container. The roadmap of the tool already plans PostgreSQL, scale-out and speed on AWS, and health monitoring; the multi-provider model adds providers without new copies of the modules."
     },
     {
       "id": "next",
-      "image": "slide-22.png",
+      "image": "slide-24.png",
       "section": "Next step",
       "title": "What we need to continue",
-      "notes": "To move from phase 1 to Umlaut in every module we need four things: a representative multi-operator Umlaut export (ideally with NR SA and walk or train tests), a P3 sample, the Umlaut Scoring methodology, and the output format of the Ericsson RCA so it can be imported with a call key other than the NetCheck JOIN_ID."
+      "notes": "To continue from phase 3 we need a representative multi-operator Umlaut export (ideally with NR SA and walk or train tests), which also validates the Umlaut reader so that Umlaut CDR stops being coming soon; a sample of P3 CDRs; the Umlaut Scoring methodology; and answers to the open questions: whether Call Setup Time is measured up to Alerting or up to Option D, whether the Conversational App is WhatsApp, and how Umlaut names its campaigns."
     }
   ]
 }

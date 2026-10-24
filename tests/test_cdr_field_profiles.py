@@ -45,7 +45,8 @@ def test_the_netcheck_profile_holds_the_columns_every_module_reads():
 
 def test_a_cdr_type_without_its_own_profile_reads_as_netcheck():
     assert field_profile('netcheck') is NETCHECK_PROFILE
-    assert field_profile('umlaut') is NETCHECK_PROFILE and field_profile('') is NETCHECK_PROFILE
+    assert field_profile('p3') is NETCHECK_PROFILE and field_profile('') is NETCHECK_PROFILE
+    assert field_profile('umlaut').cdr_type == 'umlaut'
     assert [option['value'] for option in cdr_types.cdr_type_options()] == ['netcheck', 'umlaut', 'p3']
     assert not cdr_types.CDR_TYPES['p3']['supported']
 

@@ -178,10 +178,10 @@
       </div>
     </summary>
     <div class="upload-panel-content">
-      <p class="lede">Bring the source files that feed every product workflow into one managed workspace: NetCheck CDR workbooks (Data, Voice and Speech), Smart Orchestrator Logs, and Vodafone UK (VFUK) or Three UK (3UK) Multivendor Mappings. Workspace proposes a type from each filename, lets you confirm it per file and, for CDRs, can apply an existing mapping or one uploaded in the same batch. Batch mappings are processed before their selected CDRs.</p>
+      <p class="lede">Bring the source files that feed every product workflow into one managed workspace: {{ (upload_cdr_profile | default({})).label | default('NetCheck CDR', true) }} workbooks (Data, Voice and Speech), Smart Orchestrator Logs, and Vodafone UK (VFUK) or Three UK (3UK) Multivendor Mappings. Workspace proposes a type from each filename, lets you confirm it per file and, for CDRs, can apply an existing mapping or one uploaded in the same batch. Batch mappings are processed before their selected CDRs.</p>
       {% if user.role not in ['user-editor', 'admin', 'super-admin'] %}<p class="form-note workspace-read-only-note">The user-viewer role can explore the workspace datasets and generate jobs, but cannot delete, reprocess or map datasets.</p>{% endif %}
       {% if user.role in ['admin', 'super-admin'] %}
-      <form class="upload-dropzone" action="/datasets-analysis/upload" method="post" enctype="multipart/form-data" data-background-upload data-workspace-id="{{ active_workspace.id }}" data-workspace-name="{{ active_workspace.name }}" data-upload-type-form data-vodafone-mapping-options='{{ vodafone_mapping_datasets | default([]) | tojson }}' data-three-mapping-options='{{ three_mapping_datasets | default([]) | tojson }}' data-region-mapping-options='{{ region_mapping_datasets | default([]) | tojson }}' data-cluster-mapping-options='{{ cluster_mapping_datasets | default([]) | tojson }}' data-vendor-polygon-options='{{ vendor_polygon_datasets | default([]) | tojson }}' data-network-inventory-count="{{ network_inventory_datasets | default([]) | length }}" data-vendor-source-operators='{{ vendor_source_operators | default({}) | tojson }}' data-operator-options='{{ operator_options | default([]) | tojson }}'{% if datasets | rejectattr('dataset_kind', 'in', ['data', 'voice', 'speech', 'mapping_vodafone', 'mapping_three', 'network_inventory', 'regions', 'clusters', 'vendors', 'smart_orchestrator_logs']) | list %} data-other-datasets{% endif %}>
+      <form class="upload-dropzone" action="/datasets-analysis/upload" method="post" enctype="multipart/form-data" data-background-upload data-workspace-id="{{ active_workspace.id }}" data-workspace-name="{{ active_workspace.name }}" data-upload-type-form data-vodafone-mapping-options='{{ vodafone_mapping_datasets | default([]) | tojson }}' data-three-mapping-options='{{ three_mapping_datasets | default([]) | tojson }}' data-region-mapping-options='{{ region_mapping_datasets | default([]) | tojson }}' data-cluster-mapping-options='{{ cluster_mapping_datasets | default([]) | tojson }}' data-vendor-polygon-options='{{ vendor_polygon_datasets | default([]) | tojson }}' data-network-inventory-count="{{ network_inventory_datasets | default([]) | length }}" data-vendor-source-operators='{{ vendor_source_operators | default({}) | tojson }}' data-operator-options='{{ operator_options | default([]) | tojson }}' data-cdr-profile='{{ upload_cdr_profile | default({}) | tojson }}'{% if datasets | rejectattr('dataset_kind', 'in', ['data', 'voice', 'speech', 'mapping_vodafone', 'mapping_three', 'network_inventory', 'regions', 'clusters', 'vendors', 'smart_orchestrator_logs']) | list %} data-other-datasets{% endif %}>
       <label class="dropzone-field" data-upload-dropzone>
         <span class="dropzone-title">Drop workbooks or browse</span>
         <span class="dropzone-copy">Accepted: CSV, XLS, XLSX, XLSM, GeoJSON, JSON, ZIP (shapefile or KMZ package), KMZ, KML</span>
@@ -808,7 +808,7 @@
       method="post"
       action="/workspace/map-mappings"
     >
-      <p class="eyebrow">NetCheck CDR</p>
+      <p class="eyebrow">{{ (upload_cdr_profile | default({})).label | default('NetCheck CDR', true) }}</p>
       <h3 id="vendor-mapping-title">Map CDR fields</h3>
       <p class="lede">Choose one or more processed CDRs and the Vendor, Region and/or Cluster Mappings to apply in the background. Mapping a CDR again replaces its previous mapping without clearing it first; a mapping set to "No … mapping" keeps its previous result.</p>
       <fieldset class="vendor-mapping-cdr-list vendor-mapping-cdr-groups">
@@ -982,7 +982,7 @@
 
   <dialog class="vendor-mapping-dialog" data-vendor-clearing-dialog aria-labelledby="vendor-clearing-title">
     <form method="post" action="/workspace/clear-mappings">
-      <p class="eyebrow">NetCheck CDR</p>
+      <p class="eyebrow">{{ (upload_cdr_profile | default({})).label | default('NetCheck CDR', true) }}</p>
       <h3 id="vendor-clearing-title">Clear Mappings</h3>
       <p class="lede">Choose one or more mapped CDRs. Clearing restores each selected CDR to its processed source data without tool-applied Vendor, Region or Cluster values.</p>
       <fieldset class="vendor-mapping-cdr-list vendor-mapping-cdr-groups">
@@ -1083,10 +1083,16 @@
   const copy = form?.querySelector('[data-upload-type-copy]');
   if (!form || !picker || !list || !items || !title || !copy) return;
 
+  // The CDRs of the workspace's provider: their label, the service words of their file names and the summary
+  // workbooks that are not CDRs (see cdr_field_profiles).
+  const cdrProfile = (() => {
+    try { return JSON.parse(form.dataset.cdrProfile || '{}') || {}; } catch (_error) { return {}; }
+  })();
+  const cdrLabel = cdrProfile.label || 'NetCheck CDR';
   const types = [
-    ['data', 'NetCheck CDR — Data'],
-    ['voice', 'NetCheck CDR — Voice'],
-    ['speech', 'NetCheck CDR — Speech'],
+    ['data', `${cdrLabel} — Data`],
+    ['voice', `${cdrLabel} — Voice`],
+    ['speech', `${cdrLabel} — Speech`],
     ['smart_orchestrator_logs', 'Smart Orchestrator Logs'],
     ['mapping_vodafone', 'Multivendor Mapping — Vodafone UK (VFUK)'],
     ['mapping_three', 'Multivendor Mapping — Three UK (3UK)'],
@@ -1155,8 +1161,16 @@
   }
   let uploadInProgress = false;
 
+  // The words of a file name, for the service words of the provider's CDRs.
+  const nameWords = (fileName) => ` ${String(fileName || '').replace(/\.[^.]+$/, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ')} `;
+  const isSummaryFile = (fileName) => (cdrProfile.summary_words || []).some((word) => nameWords(fileName).includes(` ${word} `));
+
   function inferType(fileName) {
     const normalized = String(fileName || '').toLowerCase().replace(/[_-]+/g, ' ');
+    // A provider other than NetCheck names each CDR after its service (Voice_M2M_Calls, HTTP_File_DL...).
+    if (isSummaryFile(fileName)) return '';
+    const service = (cdrProfile.kind_words || []).find(([word]) => nameWords(fileName).includes(` ${word} `));
+    if (service) return service[1];
     // Cell Configuration KMZ/KML files, alone or in a ZIP package, are Network Inventories.
     if (/\.(kmz|kml)$/.test(normalized) || (/\.zip$/.test(normalized) && /(kmz|kml|cell config)/.test(normalized))) return 'network_inventory';
     if (normalized.includes('cluster') && /\.(geojson|json|zip)$/.test(normalized)) return 'clusters';
@@ -1184,8 +1198,11 @@
 
   // Mirrors src/modules/cdr_stage.py: "final" in the name, then weekly and daily words, then dates
   // (a range is a Final CDR; a single date after the start of the name is a Daily CDR).
+  // The export stamp that ends the CDRs of a provider other than NetCheck (..._2025-07-30_16-05-07) is not a
+  // measurement date.
   function inferCdrStage(fileName) {
-    const stem = String(fileName || '').replace(/\.[^.]+$/, '');
+    let stem = String(fileName || '').replace(/\.[^.]+$/, '');
+    if ((cdrProfile.kind_words || []).length) stem = stem.replace(/[_-]20\d{2}-\d{2}-\d{2}[_-]\d{2}-\d{2}-\d{2}$/, '');
     const words = ` ${stem.replace(/([a-z])(?=[A-Z])/g, '$1 ').toLowerCase().replace(/[^a-z0-9]+/g, ' ')} `;
     if (/[^a-z]final[^a-z]/.test(words)) return 'final';
     if (/[^a-z](weekly|week|semanal|semana|wk)[^a-z]/.test(words)) return 'weekly';
@@ -1412,6 +1429,25 @@
       typeField.className = 'upload-nr-mode-field upload-file-type-field';
       typeField.textContent = 'File type';
       typeField.append(select);
+      if (isSummaryFile(file.name)) {
+        // The summary workbooks repeat the rows of the service workbooks: they ask for a type, or Leave out removes them.
+        const summaryNote = document.createElement('small');
+        summaryNote.className = 'upload-field-note';
+        summaryNote.textContent = `A summary of the other ${cdrLabel} workbooks, not a CDR. `;
+        const leaveOut = document.createElement('button');
+        leaveOut.type = 'button';
+        leaveOut.className = 'upload-leave-out';
+        leaveOut.textContent = 'Leave out';
+        leaveOut.setAttribute('aria-label', `Leave ${file.name} out of the upload`);
+        leaveOut.addEventListener('click', () => {
+          const kept = new DataTransfer();
+          Array.from(picker.files || []).forEach((candidate, position) => { if (position !== index) kept.items.add(candidate); });
+          picker.files = kept.files;
+          picker.dispatchEvent(new Event('change', {bubbles: true}));
+        });
+        summaryNote.append(leaveOut);
+        typeField.append(summaryNote);
+      }
       const fields = document.createElement('div');
       fields.className = 'upload-type-fields';
       fields.append(typeField, nrModeField, stageField, operatorField, snapshotField);

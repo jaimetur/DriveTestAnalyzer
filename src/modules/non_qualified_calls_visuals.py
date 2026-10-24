@@ -606,10 +606,22 @@ class SlideTitle:
         return ' · '.join(part for part in (self.heading, self.subtitle) if part)
 
 
+def _provider(stats: dict[str, Any]) -> tuple[str, str]:
+    """The provider of the CDRs and its RCA (NetCheck and the NetCheck RCA unless the statistics name another)."""
+    provider = stats.get('provider') or {}
+    return str(provider.get('name') or 'NetCheck'), str(provider.get('rca') or ROOT_SOURCE_TITLES['netcheck'])
+
+
+def source_title(stats: dict[str, Any], default: str = '') -> str:
+    """The title of the root cause source of the statistics, the RCA of the CDR named after its provider."""
+    source = str(stats.get('source') or '')
+    return _provider(stats)[1] if source == 'netcheck' else ROOT_SOURCE_TITLES.get(source, default)
+
+
 def root_cause_title(stats: dict[str, Any], subtitle: str = '') -> SlideTitle:
-    """The title of the Root Cause Analysis of one source (NetCheck RCA, Ericsson RCA, DT Analyzer RCA or the
-    analysts), in bold."""
-    return SlideTitle('Root Cause Analysis', ROOT_SOURCE_TITLES.get(str(stats.get('source') or ''), 'Analysts'), subtitle)
+    """The title of the Root Cause Analysis of one source (the RCA of the CDR, such as the NetCheck RCA, the Ericsson
+    RCA, the DT Analyzer RCA or the analysts), in bold."""
+    return SlideTitle('Root Cause Analysis', source_title(stats, 'Analysts'), subtitle)
 
 
 def root_cause_panels(stats: dict[str, Any]) -> list[tuple[SlideTitle, BytesIO]]:
@@ -617,7 +629,7 @@ def root_cause_panels(stats: dict[str, Any]) -> list[tuple[SlideTitle, BytesIO]]
     summary = stats.get('summary') or {}
     total = int(summary.get('total') or 0)
     title = root_cause_title(stats)
-    source = ROOT_SOURCE_TITLES.get(str(stats.get('source') or ''), '')
+    source = source_title(stats)
     if source and stats.get('source') != 'analysts':
         cards = [
             ('Calls', _number(total), 'Selected Non-Qualified Calls', 'total'),
@@ -1221,6 +1233,7 @@ def rca_insight_panels(insights: dict[str, Any]) -> list[tuple[str | SlideTitle,
     if not total:
         return []
     agreement = insights.get('agreement') or {}
+    provider, provider_rca = _provider(insights)
 
     def rate(name: str) -> tuple[str, str]:
         item = agreement.get(name) or {}
@@ -1230,15 +1243,15 @@ def rca_insight_panels(insights: dict[str, Any]) -> list[tuple[str | SlideTitle,
     def indicators() -> Panel:
         panel = Panel()
         _kpi_row(panel, [
-            ('NetCheck RCA', _number(coverage.get('netcheck')), f"{_share(int(coverage.get('netcheck') or 0), total)} of the calls",
+            (provider_rca, _number(coverage.get('netcheck')), f"{_share(int(coverage.get('netcheck') or 0), total)} of the calls",
              'attended'),
             ('Ericsson RCA', _number(coverage.get('script')), f"{_share(int(coverage.get('script') or 0), total)} of the calls", 'team'),
             ('DT Analyzer RCA', _number(coverage.get('dta')), f"{_share(int(coverage.get('dta') or 0), total)} of the calls", '#8e24aa'),
             ('Selected', _number(coverage.get('selected')), f"{_share(int(coverage.get('selected') or 0), total)} of the calls", 'closed'),
-            ('Selected = NetCheck', *rate('selected_netcheck'), 'open'),
+            (f'Selected = {provider}', *rate('selected_netcheck'), 'open'),
             ('Selected = Ericsson', *rate('selected_script'), 'commented'),
             ('Selected = DT Analyzer', *rate('selected_dta'), 'commented'),
-            ('NetCheck = Ericsson', *rate('netcheck_script'), 'total'),
+            (f'{provider} = Ericsson', *rate('netcheck_script'), 'total'),
         ], 0, 0.75, compact=True)
         return panel
 
@@ -1255,7 +1268,7 @@ def rca_insight_panels(insights: dict[str, Any]) -> list[tuple[str | SlideTitle,
     longest = max([len(domains.get(source) or []) for source in ('netcheck', 'script', 'dta', 'selected')] + [1])
     middle = top + COMPACT_HEAD + COMPACT_ROW * longest + 0.05
     for index, (name, source, unnamed, notes) in enumerate((
-            ('NetCheck RCA', 'netcheck', 'No catalog category',
+            (provider_rca, 'netcheck', 'No catalog category',
              ('Its categories translated onto the root domains of the catalog', 'Its categories translated onto the Root Cause Catalog')),
             ('Ericsson RCA', 'script', 'No catalog category',
              ('Its categories translated onto the root domains of the catalog', 'Its categories translated onto the Root Cause Catalog')),
@@ -1273,7 +1286,7 @@ def rca_insight_panels(insights: dict[str, Any]) -> list[tuple[str | SlideTitle,
         _bar_section(catalog, left, middle + 0.08, width, catalog.height - 0.04, f'{name}{arrow}Root Category', notes[1],
                      _category_lines(mapped.get(source) or [], unnamed), compact=True)
     sources = indicators()
-    for index, (title, note, source) in enumerate((('NetCheck RCA', 'Failure Category → Subcategory of the CDR', 'netcheck'),
+    for index, (title, note, source) in enumerate(((provider_rca, 'Failure Category → Subcategory of the CDR', 'netcheck'),
                                                    ('Ericsson RCA', 'Suggested Category → Cause of the Ericsson RCA', 'script'),
                                                    ('DT Analyzer RCA', 'Root Category → Root Cause it finds', 'dta'),
                                                    ('Selected by the Analysts', 'Root Category → Root Cause', 'selected'))):

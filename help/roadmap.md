@@ -41,6 +41,7 @@ roadmap
 - Bundle Report Templates and scheduled Reporting Jobs, with their Run History.
 - Users, Modules Profiles, Workspace Groups and scheduled backups.
 - The DT Analyzer RCA of Non-Qualified Calls, in every workspace, with rules each workspace can change.
+- The CDR Field Dictionary of Workspace Config, and the Umlaut reader and field profile (Umlaut CDR stays coming soon until a multi-operator export validates it).
 
 ## Planned product work
 

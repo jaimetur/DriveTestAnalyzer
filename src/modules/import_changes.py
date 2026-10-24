@@ -497,7 +497,7 @@ ELEMENT_NAMES = {
 # The settings elements: as the completion message names them, as the title of their changes names them, and the
 # labels of their sections.
 SETTINGS_ELEMENTS = {
-    'mappings-reference-data': ('Mappings & Reference Data', 'Mappings & Reference Data', {}),
+    'mappings-reference-data': ('Mappings & Reference Data', 'Mappings & Reference Data', {'cdr_field_dictionary': 'CDR Field Dictionary'}),
     'main-cities': ('Main Cities', 'Main Cities', {'cities': 'Main Cities'}),
     'scoring-export-panels': ('the Scoring Export Panels', 'Scoring Export Panels', {}),
     'nq-calls-configuration': ('the NQ Calls Configuration', 'NQ Calls Configuration', {}),

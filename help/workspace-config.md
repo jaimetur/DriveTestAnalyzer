@@ -1,6 +1,6 @@
 # Workspace Config
 
-Workspace Config is a dedicated page for settings owned by the active workspace: PPT Templates Management, Main Cities, Mappings & Reference Data (Operator, Vendor and Campaign Maps, Map Areas, Spectrum Holdings and Serving Networks) and Scoring & GAP Analysis Setup. These settings remain workspace-scoped and are included in the applicable import, export, transfer, backup and restore workflows.
+Workspace Config is a dedicated page for settings owned by the active workspace: PPT Templates Management, Main Cities, Mappings & Reference Data (Operator, Vendor and Campaign Maps, Map Areas, Spectrum Holdings, Serving Networks and the CDR Field Dictionary) and Scoring & GAP Analysis Setup. These settings remain workspace-scoped and are included in the applicable import, export, transfer, backup and restore workflows.
 
 > [!IMPORTANT]
 > **Workspace settings.** Every edit on this page belongs to the active workspace. Application Config controls shared runtime settings.
@@ -24,6 +24,7 @@ Open **Config → Workspace Config** from the main navigation at `/workspace-con
 | Map Areas | [Open section](#map-areas) |
 | Spectrum Holdings | [Open section](#spectrum-holdings) |
 | Serving Networks | [Open section](#serving-networks) |
+| CDR Field Dictionary | [Open section](#cdr-field-dictionary) |
 | CDR type | [Open section](#cdr-type) |
 | Main Cities | [Open section](#main-cities) |
 | Portable operations | [Open section](#portable-operations) |
@@ -414,7 +415,7 @@ Operator and Vendor aliases resolve to the canonical values configured in Worksp
 
 ## Mappings & Reference Data
 
-The Mappings & Reference Data panel contains Operator Maps, Vendor Maps, Campaign Maps, Map Areas, Spectrum Holdings and Serving Networks as independently collapsible subpanels. Their light blue headers distinguish them from the dark parent header. Existing mapping controls and saved expansion states remain available inside each subpanel.
+The Mappings & Reference Data panel contains Operator Maps, Vendor Maps, Campaign Maps, Map Areas, Spectrum Holdings, Serving Networks and the CDR Field Dictionary as independently collapsible subpanels. Their light blue headers distinguish them from the dark parent header. Existing mapping controls and saved expansion states remain available inside each subpanel.
 
 ### Operator Maps
 
@@ -508,6 +509,21 @@ Nothing has to be typed or filled in: the table lists every Operator of the Oper
 
 **Save Serving Networks** stores the Operators that differ from the defaults (the others keep following them) and records the change in App Events. The mapped CDRs are then marked **Vendor mapping outdated** in the Map dialog until they are mapped again. The Serving Networks travel with Mappings & Reference Data in import, export, transfer, backup and restore.
 
+### CDR Field Dictionary
+
+The CDR Field Dictionary shows, for every field the modules read, the columns of the workspace's CDR files that can hold it, in order of preference: a CDR gives each field the first of its columns it has. The columns come from the field profile of the workspace's [CDR type](#cdr-type), so NetCheck CDRs and Umlaut CDRs keep their own column names. The fields are grouped by what reads them:
+
+- **Processing**: the fields every CDR row gains when it is processed, such as its result, start and end times, setup time, throughput and latency.
+- **CDR-Main fields**: the main fields added to every CDR (Campaign, Operator, Test Name, Technology, Session Type, Call Status...).
+- **Non-Qualified Calls**: the fields of every call, the qualification that makes a call Non-Qualified, the identifier of a call or test (which keeps its follow-up) and the Speech sample inside its call.
+- **DT Analyzer RCA**: the values of every call that the [DT Analyzer RCA](non-qualified-calls.md#dt-analyzer-rca) rules read.
+- **Network Insights**: the radio, position and test fields of each CDR type (Data, Voice and Speech) and the dimensions the analyses are split by.
+- **Vendor Mapping**: the serving cells of every sample and when it was measured.
+
+**In the CDRs** names the column the processed CDRs of the workspace have for each field (*Not in the CDRs* when they have none of its columns). Change the columns of a field when the CDRs carry it in another column, separated by semicolons: for example, an Umlaut workspace that measures the call setup up to Option D instead of the alerting puts `Call Setup Duration (OptionD) [s]` first in **Setup time (s)**. **Find a field or column** filters the fields, **Changed fields only** shows the changed ones, which are highlighted, and **Use default** returns a field to its default columns; a field left empty returns to its default too.
+
+**Save CDR Field Dictionary** stores only the changed fields and records them in App Events. Non-Qualified Calls (whose calls are indexed again, each keeping its follow-up also when its identifier changes), the DT Analyzer RCA, Network Insights and the Vendor Mapping read the changed columns at once; the Processing and CDR-Main fields are filled when the CDRs are processed, so [reprocess the CDRs](workspace-management.md) to apply those. The dictionary travels with Mappings & Reference Data in import, export, transfer, backup and restore; a dictionary made for another CDR type is left out on import.
+
 ## CDR type
 
 The **Workspace Configuration** panel at the top chooses the **CDR type** of the workspace: the provider of the CDR files it processes. Every workspace handles the CDRs of one provider, with its own field names, values and methodologies, so the CDRs of two providers are never mixed. **NetCheck CDR** is the default and the only type supported today; **Umlaut CDR** and **P3 CDR** files keep their own field names and appear as *coming soon* until they are supported. The type is also chosen when a workspace is created and can be changed from the workspaces table of [Workspace Management](workspace-management.md) while the workspace has no Data, Voice or Speech CDRs; once it has CDRs it keeps their type. It is stored in the workspace database, so it travels with the workspace in transfers, Full Workspace packages and backups. [Benchmarking Providers](benchmarking-providers.md) describes the status of the adaptation to Umlaut and P3 CDRs.
@@ -520,7 +536,7 @@ Every City selector — Dashboard filters, the PowerPoint export, Scoring, Netwo
 
 ## Portable operations
 
-Administrators use Admin's **Import / Export / Transfer** and Super Admin's **Backup Protection** controls to move or restore workspace settings. Main Cities is a portable component alongside Report Templates and Mappings & Reference Data; full-workspace packages and database backups also retain the setting. The Mappings & Reference Data package (`mappings-reference-data/mappings-reference-data.json`) contains the Operator and Vendor Maps, Spectrum Holdings and Campaign Maps, and importing it replaces all of them in the destination workspace.
+Administrators use Admin's **Import / Export / Transfer** and Super Admin's **Backup Protection** controls to move or restore workspace settings. Main Cities is a portable component alongside Report Templates and Mappings & Reference Data; full-workspace packages and database backups also retain the setting. The Mappings & Reference Data package (`mappings-reference-data/mappings-reference-data.json`) contains the Operator and Vendor Maps, Spectrum Holdings, Serving Networks, the CDR Field Dictionary, Campaign Maps and Map Areas, and importing it replaces all of them in the destination workspace.
 
 For global runtime settings, see [Application Config](app-config.md). Super Admin's [Database Viewer](super-admin.md#database-viewer) documents the underlying Operator and Vendor mapping tables.
 

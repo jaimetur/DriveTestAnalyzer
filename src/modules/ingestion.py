@@ -329,10 +329,17 @@ def _sheet_has_only_empty_values(values: tuple[object, ...]) -> bool:
     return all(value is None or str(value).strip() == '' for value in values)
 
 
-def _make_unique_headers(headers: Iterable[object]) -> list[str]:
-    """Return stable, unique column labels while preserving the first occurrence."""
+def _make_unique_headers(headers: Iterable[object], side_pattern: str = '') -> list[str]:
+    """Return stable, unique column labels while preserving the first occurrence.
+
+    With a side pattern (see CdrFieldProfile.side_header_pattern), a repeated header takes the side of the nearest
+    header before it that matches the pattern: the second Sequence of a call is "Side2 Sequence".
+    """
+    side_header = re.compile(side_pattern, re.IGNORECASE) if side_pattern else None
     counts: dict[str, int] = {}
     unique_headers: list[str] = []
+    used: set[str] = set()
+    side = ''
     for index, value in enumerate(headers, start=1):
         base_name = clean_column_name(value) if value is not None and str(value).strip() else ''
         if not base_name:
@@ -340,7 +347,14 @@ def _make_unique_headers(headers: Iterable[object]) -> list[str]:
         identity = base_name.casefold()
         counts[identity] = counts.get(identity, 0) + 1
         occurrence = counts[identity]
-        unique_headers.append(base_name if occurrence == 1 else f'{base_name}_Duplicate_{occurrence}')
+        name = base_name
+        if occurrence > 1:
+            sided = f'{side} {base_name}' if side else ''
+            name = sided if sided and sided.casefold() not in used else f'{base_name}_Duplicate_{occurrence}'
+        if side_header and (match := side_header.match(base_name)):
+            side = re.sub(r'\s+', '', match.group(0)).capitalize()
+        used.add(name.casefold())
+        unique_headers.append(name)
     return unique_headers
 
 
@@ -430,7 +444,7 @@ def _cached_dataset_source_columns(
                     values = tuple(row or ())
                     if _sheet_has_only_empty_values(values):
                         continue
-                    for column in _make_unique_headers(values):
+                    for column in _make_unique_headers(values, profile.side_header_pattern):
                         if column not in columns:
                             columns.append(column)
                     break
@@ -442,7 +456,10 @@ def _cached_dataset_source_columns(
     return ()
 
 
-def _read_openxml_sheet(worksheet, progress_callback: Callable[[int], None] | None, progress_state: dict[str, int], total_rows: int) -> pd.DataFrame:
+def _read_openxml_sheet(
+    worksheet, progress_callback: Callable[[int], None] | None, progress_state: dict[str, int], total_rows: int,
+    side_pattern: str = '',
+) -> pd.DataFrame:
     rows_iter = worksheet.iter_rows(values_only=True)
     header: list[str] | None = None
     records: list[dict[str, object]] = []
@@ -463,7 +480,7 @@ def _read_openxml_sheet(worksheet, progress_callback: Callable[[int], None] | No
         values = tuple(row or ())
         if _sheet_has_only_empty_values(values):
             continue
-        header = _make_unique_headers(values)
+        header = _make_unique_headers(values, side_pattern)
         break
 
     if not header:
@@ -505,6 +522,8 @@ def _normalise_dataset(df: pd.DataFrame, file_path: Path, profile: CdrFieldProfi
     sources = profile.normalised_sources
     dataset = df.copy()
     dataset.columns = [clean_column_name(column) for column in dataset.columns]
+    if profile.derive_columns is not None:
+        dataset = profile.derive_columns(dataset, file_path.name)
     source_vendor = resolve_column_name(dataset.columns, OPERATOR_VENDOR_FIELD) or resolve_column_name(dataset.columns, VENDOR_FIELD)
     # Whether the source CDR brings a Vendor for every row; mapped Vendors replace it.
     vendor_values_complete = bool(
@@ -527,6 +546,11 @@ def _normalise_dataset(df: pd.DataFrame, file_path: Path, profile: CdrFieldProfi
 
     for field in ('operator', 'session_type', 'test_name', 'direction', 'region', 'city', 'status'):
         dataset[field] = _first_available_series(dataset, sources[field])
+    if profile.status_values:
+        # The provider's results in the tool's words (SUCCESS is Completed); any other result is kept.
+        status_text = dataset['status'].astype(str).str.strip().str.casefold()
+        converted = status_text.map(profile.status_values)
+        dataset['status'] = converted.where(converted.notna(), dataset['status'])
 
     dataset['disturbed'] = _first_available_series(dataset, sources['disturbed']).astype(str).str.lower().eq('yes')
     dataset['impaired'] = _first_available_series(dataset, sources['impaired']).astype(str).str.lower().eq('yes')
@@ -553,6 +577,8 @@ def _normalise_dataset(df: pd.DataFrame, file_path: Path, profile: CdrFieldProfi
 
     for field in ('setup_time_seconds', 'duration_seconds', 'quality_score', 'throughput_mbps', 'latency_ms'):
         dataset[field] = pd.to_numeric(_first_available_series(dataset, sources[field]), errors='coerce')
+        if field in profile.normalised_scales:
+            dataset[field] = dataset[field] * profile.normalised_scales[field]
     for field, columns in profile.averaged_sources.items():
         dataset[field] = _average_columns(dataset, columns)
     dataset['handovers'] = _first_available_series(dataset, sources['handovers']).map(_count_items)
@@ -600,7 +626,7 @@ def _load_excel_dataset(
     data_frames: list[pd.DataFrame] = []
     progress_state = {'processed_rows': 0, 'last_progress': 14}
     for sheet_name in candidate_sheets:
-        sheet = _read_openxml_sheet(workbook[sheet_name], progress_callback, progress_state, total_rows)
+        sheet = _read_openxml_sheet(workbook[sheet_name], progress_callback, progress_state, total_rows, profile.side_header_pattern)
         _capture_source_columns(source_columns, sheet.columns)
         sheet = sheet.dropna(axis=0, how='all').dropna(axis=1, how='all')
         if sheet.empty:

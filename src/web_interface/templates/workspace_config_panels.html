@@ -424,6 +424,53 @@
     </div>
   </details>
 
+  <details id="cdr-field-dictionary" class="panel collapsible-panel operator-mappings-panel cdr-field-dictionary-panel" open data-panel-state-key="workspace-config:cdr-field-dictionary">
+    <summary class="collapsible-summary">
+      <div><p class="eyebrow">CDR fields</p><h2>CDR Field Dictionary</h2></div>
+      <span class="collapse-chip">Collapse</span>
+    </summary>
+    <div class="collapsible-panel-body">
+      {% if active_workspace and cdr_field_dictionary %}
+      <p class="lede">The columns of the {{ cdr_type_label }} files that each module of <strong>"{{ active_workspace.name }}"</strong> reads for every field, in order of preference: a CDR gives each field the first of its columns it has. Change the columns of a field when the CDRs carry it in another column, separated by semicolons.</p>
+      {% if cdr_field_dictionary_notice %}<div class="alert alert-success">{{ cdr_field_dictionary_notice }}</div>{% endif %}
+      {% if cdr_field_dictionary_error %}<div class="alert alert-error">{{ cdr_field_dictionary_error }}</div>{% endif %}
+      <form class="cdr-field-dictionary-form" action="/workspace-config/cdr-field-dictionary/save" method="post" data-cdr-field-dictionary-form>
+        <div class="cdr-field-dictionary-tools">
+          <label>Find a field or column<input type="search" data-cdr-field-dictionary-filter placeholder="RSRP, Qualifier, Sequence…"></label>
+          <label class="cdr-field-dictionary-toggle"><input type="checkbox" data-cdr-field-dictionary-changed> Changed fields only ({{ cdr_field_dictionary.changed }})</label>
+        </div>
+        {% for section in cdr_field_dictionary.sections %}
+        <section class="cdr-field-dictionary-section" data-cdr-field-dictionary-section>
+          <h3>{{ section.title }}</h3>
+          <p class="form-note">{{ section.descriptions | join(' ') }}</p>
+          <div class="table-wrap operator-mappings-table-wrap">
+            <table class="operator-mappings-table cdr-field-dictionary-table">
+              <thead><tr><th>Field</th><th>Columns read</th><th>In the CDRs</th><th><span class="sr-only">Default</span></th></tr></thead>
+              <tbody>
+              {% for row in section.rows %}
+                <tr data-cdr-field-row data-search="{{ (row.label ~ ' ' ~ row.kind ~ ' ' ~ row.key ~ ' ' ~ (row.columns | join(' ')) ~ ' ' ~ (row.defaults | join(' '))) | lower }}">
+                  <th scope="row">{{ row.label }}{% if row.kind %} <small>{{ row.kind }}</small>{% endif %}</th>
+                  <td><input type="text" name="field:{{ row.key }}" value="{{ row.columns | join('; ') }}" data-default="{{ row.defaults | join('; ') }}" aria-label="Columns of {{ row.label }}{% if row.kind %} ({{ row.kind }}){% endif %}" placeholder="Not read"></td>
+                  <td>{% if row.found %}<span class="cdr-field-found" title="The column the CDRs of the workspace have">{{ row.found }}</span>{% elif cdr_field_dictionary.has_cdrs and row.columns %}<span class="cdr-field-missing">Not in the CDRs</span>{% else %}—{% endif %}</td>
+                  <td><button type="button" class="cdr-field-default" data-cdr-field-default>Use default</button></td>
+                </tr>
+              {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </section>
+        {% endfor %}
+        <div class="serving-networks-actions">
+          <button type="submit">Save CDR Field Dictionary</button>
+          <p class="form-note" data-cdr-field-dictionary-status role="status" aria-live="polite"></p>
+        </div>
+      </form>
+      <p class="form-note">Only the changed fields are saved: a field left empty, or with its default columns, returns to the default (<strong>Use default</strong>). Non-Qualified Calls, the DT Analyzer RCA, Network Insights and the Vendor Mapping read the changed columns at once (the NQ calls are indexed again); the Processing and CDR-Main fields are filled when the CDRs are processed, so reprocess them to apply those. The dictionary travels with the Mappings &amp; Reference Data of the workspace.</p>
+      <script defer src="{{ static_path('js/cdr_field_dictionary.js') }}?v={{ asset_version('js/cdr_field_dictionary.js') }}"></script>
+      {% else %}<p class="form-note">Open a workspace before managing the CDR Field Dictionary.</p>{% endif %}
+    </div>
+  </details>
+
       </div>
     </div>
   </details>

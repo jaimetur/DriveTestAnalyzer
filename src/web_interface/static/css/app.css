@@ -741,6 +741,29 @@ body [data-section-bar].is-compact > a.section-bar-top { padding: .45rem .55rem;
 .serving-networks-actions { display: flex; flex-wrap: wrap; align-items: end; gap: 0.8rem; padding: 1rem; border: 1px solid rgba(11, 79, 92, 0.22); border-radius: 0.9rem; background: rgba(255, 255, 255, 0.72); }
 .serving-networks-actions label { display: grid; gap: 0.35rem; }
 .serving-networks-actions .form-note { margin: 0; align-self: center; color: #8a5a00; font-weight: 600; }
+.cdr-field-dictionary-form { display: grid; gap: 1rem; }
+.cdr-field-dictionary-tools { display: flex; flex-wrap: wrap; align-items: end; gap: 1rem; }
+.cdr-field-dictionary-tools label { display: grid; gap: 0.35rem; font-weight: 600; }
+.cdr-field-dictionary-tools input[type="search"] { min-width: min(22rem, 100%); }
+.cdr-field-dictionary-tools .cdr-field-dictionary-toggle { display: flex; align-items: center; gap: 0.45rem; white-space: nowrap; }
+.cdr-field-dictionary-section { display: grid; gap: 0.45rem; }
+.cdr-field-dictionary-section[hidden] { display: none; }
+.cdr-field-dictionary-section h3 { margin: 0; }
+.cdr-field-dictionary-section .form-note { margin: 0; }
+.cdr-field-dictionary-table { table-layout: fixed; width: 100%; min-width: 0; }
+.cdr-field-dictionary-table thead th:nth-child(1) { width: 22%; }
+.cdr-field-dictionary-table thead th:nth-child(2) { width: 46%; }
+.cdr-field-dictionary-table thead th:nth-child(3) { width: 18%; }
+.cdr-field-dictionary-table thead th:nth-child(4) { width: 14%; }
+.cdr-field-dictionary-table tbody tr[hidden] { display: none; }
+.cdr-field-dictionary-table th[scope="row"] { font-weight: 600; overflow-wrap: anywhere; }
+.cdr-field-dictionary-table th[scope="row"] small { color: #6b7f8c; font-weight: 600; }
+.cdr-field-dictionary-table td input { width: 100%; box-sizing: border-box; }
+.cdr-field-dictionary-table button.cdr-field-default { padding: 0.2rem 0.55rem; border: 1px solid rgba(11, 102, 100, 0.35); border-radius: 999px; background: #fff; color: #0b6664; font-size: 0.78rem; font-weight: 600; white-space: nowrap; }
+.cdr-field-dictionary-table button.cdr-field-default[hidden] { display: none; }
+.cdr-field-dictionary-table tr.is-changed th, .cdr-field-dictionary-table tr.is-changed td { background: #fff8e1; }
+.cdr-field-found { color: #0b6664; font-weight: 600; overflow-wrap: anywhere; }
+.cdr-field-missing { color: #8a5a00; font-weight: 600; }
 .serving-network-order, .serving-network-options { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; }
 .serving-network-options { margin-top: 0.45rem; }
 .serving-networks-form button.serving-network-chip { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.25rem 0.65rem; border: 1px dashed rgba(11, 102, 100, 0.45); border-radius: 999px; background: #fff; color: #0b6664; font-size: 0.84rem; font-weight: 600; line-height: 1.3; }
@@ -1761,6 +1784,7 @@ body[data-embedded-template-editor] .slides-templates-editor-table-wrap .form-ac
 .upload-nr-mode-field input[type="date"]:hover { border-color: var(--kind); }
 .upload-nr-mode-field input[type="date"]:focus-visible { outline: none; border-color: var(--kind); box-shadow: 0 0 0 3px var(--kind-soft); }
 .upload-field-note { color: #6b7f8c; font-size: 0.68rem; font-weight: 600; letter-spacing: 0; text-transform: none; }
+.upload-leave-out { border: 0; background: none; padding: 0; color: #0b6fa4; font: inherit; text-decoration: underline; cursor: pointer; }
 .upload-nr-mode-field { display: grid; gap: 0.25rem; color: #5b6f7c; font-size: 0.68rem; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
 .upload-nr-mode-field[hidden] { display: none; }
 .upload-nr-mode-field select, .upload-vendor-mapping-selectors select { min-width: 0; padding: 0.52rem 0.75rem; border: 1px solid rgba(16, 49, 74, 0.12); border-radius: 12px; background: #fff; color: #10314a; font-size: 0.8rem; font-weight: 700; letter-spacing: normal; text-transform: none; transition: border-color .15s ease, box-shadow .15s ease; }

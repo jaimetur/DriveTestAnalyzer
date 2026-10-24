@@ -80,7 +80,7 @@ from src.modules.operator_roles import drop_excluded_operators, excluded_operato
 from src.modules.cdr_types import (
     CDR_TYPES, DEFAULT_CDR_TYPE, cdr_type_options, normalize_cdr_type, set_workspace_cdr_type, workspace_cdr_type,
 )
-from src.modules.cdr_field_profiles import workspace_field_profile
+from src.modules.cdr_field_profiles import NETCHECK_PROFILE, workspace_field_profile
 from src.modules.column_names import DEFAULT_CAMPAIGN_MAP, MAIN_CDR_FIELDS, compact_campaign_value, PREVIEW_METADATA_FIELDS, VENDOR_FIELD_IDENTITIES, clean_column_name, normalize_campaign_map, set_campaign_map_resolver, column_identity, resolve_column_name, sort_vendor_values, vendor_filter_column, vendor_filter_value, vendor_filter_values, vendor_match_values
 from src.modules.mapping_order import swap_operator_vendor
 from src.modules.value_maps import ValueMapper, field_kind
@@ -4753,7 +4753,9 @@ def rebuild_dataset_artifacts(
         if progress_callback:
             progress_callback(55)
     else:
-        df = load_dataset(dataset_path, progress_callback=progress_callback, source_columns=source_columns, profile=field_profile)
+        # Only CDRs follow the field profile of the workspace's provider; mappings and inventories are read as always.
+        read_profile = field_profile if not forced_dataset_kind or forced_dataset_kind in CDR_DATASET_KINDS else NETCHECK_PROFILE
+        df = load_dataset(dataset_path, progress_callback=progress_callback, source_columns=source_columns, profile=read_profile)
     task_repository.update_dataset_profile(dataset_id, processing_step='Registering source columns')
     task_repository.replace_dataset_source_columns(dataset_id, source_columns)
     if forced_dataset_kind in UPLOAD_DATASET_KINDS:
@@ -5735,6 +5737,27 @@ def serving_networks_context(request: Request) -> dict[str, Any]:
         'serving_networks_distance': config['max_distance_km'],
         'serving_networks_notice': request.query_params.get('serving_networks_notice') or None,
         'serving_networks_error': request.query_params.get('serving_networks_error') or None,
+    }
+
+
+def cdr_field_dictionary_context(request: Request) -> dict[str, Any]:
+    """The CDR Field Dictionary of the active workspace: the CDR columns each module reads for every field."""
+    from src.modules import cdr_field_dictionary
+    from src.modules.cdr_field_profiles import field_profile
+
+    if not active_workspace:
+        return {'cdr_field_dictionary': {}}
+    # The columns of the processed CDRs (their own, those the tool derives and its internal fields).
+    columns: list[str] = []
+    for dataset in repository.list_datasets():
+        if str(dataset['dataset_kind'] or '') in CDR_DATASET_KINDS and repository.dataset_rows_table_exists(int(dataset['id'])):
+            columns.extend(repository.list_dataset_row_columns(int(dataset['id'])))
+    profile = field_profile(workspace_cdr_type(repository))
+    return {
+        'cdr_field_dictionary': cdr_field_dictionary.editor(repository, profile, list(dict.fromkeys(columns))),
+        'cdr_type_label': CDR_TYPES[workspace_cdr_type(repository)]['label'],
+        'cdr_field_dictionary_notice': request.query_params.get('cdr_field_dictionary_notice') or None,
+        'cdr_field_dictionary_error': request.query_params.get('cdr_field_dictionary_error') or None,
     }
 
 
@@ -8445,7 +8468,8 @@ DASHBOARD_STATE_KEY = 'ppt_dashboards_v2'
 
 
 def _mappings_reference_data_archive_payload(workspace: Workspace) -> bytes:
-    """Serialize complete Operator and Vendor chart mappings (with the comments of the Operator names), Spectrum Holdings, Serving Networks, the Campaign Map and the Map Areas."""
+    """Serialize complete Operator and Vendor chart mappings (with the comments of the Operator names), Spectrum Holdings, Serving Networks, the CDR Field Dictionary, the Campaign Map and the Map Areas."""
+    from src.modules import cdr_field_dictionary
     from src.modules.campaign_maps import load_campaign_map
     from src.modules.map_areas import layers_document
     from src.modules.mapping_assignments import load_name_comments
@@ -8464,6 +8488,7 @@ def _mappings_reference_data_archive_payload(workspace: Workspace) -> bytes:
         'vendor_mappings': task_repository.list_vendor_mapping_groups(),
         'spectrum_holdings': load_spectrum_holdings(task_repository),
         'serving_networks': load_serving_networks(task_repository),
+        'cdr_field_dictionary': cdr_field_dictionary.document(task_repository),
         'campaign_map': load_campaign_map(task_repository),
         'map_areas': map_areas,
     }
@@ -8498,7 +8523,7 @@ def transfer_creator(package_creator: Any, local_creator: Any, importing_user: s
 
 
 def _restore_workspace_mappings_reference_data(workspace: Workspace, payload: bytes) -> None:
-    """Replace the Operator and Vendor Maps (with the comments of the Operator names), Spectrum Holdings, Serving Networks, the Campaign Map and the Map Areas of the workspace."""
+    """Replace the Operator and Vendor Maps (with the comments of the Operator names), Spectrum Holdings, Serving Networks, the CDR Field Dictionary, the Campaign Map and the Map Areas of the workspace."""
     try:
         document = json.loads(payload.decode('utf-8'))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -8538,6 +8563,13 @@ def _restore_workspace_mappings_reference_data(workspace: Workspace, payload: by
         # Packages exported before the Serving Networks keep the workspace's own.
         from src.modules.serving_cells import save_serving_networks
         save_serving_networks(task_repository, document['serving_networks'])
+    if isinstance(document.get('cdr_field_dictionary'), dict):
+        # Packages exported before the CDR Field Dictionary, or for another CDR type, keep the workspace's own.
+        from src.modules import cdr_field_dictionary
+        try:
+            cdr_field_dictionary.restore_document(task_repository, document['cdr_field_dictionary'])
+        except ValueError as exc:
+            raise ValueError(f'The CDR Field Dictionary for "{workspace.name}" is invalid: {exc}') from exc
     save_campaign_map(task_repository, campaign_map)
     if isinstance(document.get('map_areas'), dict):
         from src.modules.map_areas import import_layers_document
@@ -13410,6 +13442,7 @@ def render_admin_template(
             'vendor_mapping_error': request.query_params.get('vendor_mapping_error') or None,
             **spectrum_holdings_context(request),
             **serving_networks_context(request),
+            **cdr_field_dictionary_context(request),
             'recurring_backup': recurring_backup_settings(),
             'backup_workspace_content': backup_workspace_content(load_module_labels(repository)),
             # Until a selection is saved, every workspace is offered selected.
@@ -14519,6 +14552,7 @@ def workspace(
             'vendor_source_operators': vendor_source_operators(
                 vodafone_mapping_datasets, three_mapping_datasets, network_inventory_datasets, vendor_polygon_datasets),
             'operator_options': operator_options(),
+            'upload_cdr_profile': upload_cdr_profile(repository),
             'mappable_cdr_datasets': mappable_cdr_datasets,
             'clearable_cdr_datasets': clearable_cdr_datasets,
             'mappable_region_cdr_datasets': mappable_region_cdr_datasets,
@@ -15648,6 +15682,17 @@ def admin_user_rows() -> list[dict[str, Any]]:
         'modules_profile_id': profile_of.get(int(row['id'])),
         'workspace_group_ids': [group['id'] for group in groups if int(row['id']) in group['member_ids']],
     } for row in repository.list_users()]
+
+
+def upload_cdr_profile(task_repository: Repository) -> dict[str, Any]:
+    """How the upload panel names the CDRs of the workspace's provider and recognises its service and summary
+    workbooks; NetCheck CDRs keep the words the panel has always used."""
+    cdr_type = workspace_cdr_type(task_repository)
+    profile = workspace_field_profile(task_repository)
+    native = cdr_type != DEFAULT_CDR_TYPE
+    return {'type': cdr_type, 'label': CDR_TYPES[cdr_type]['label'],
+            'kind_words': [list(item) for item in profile.kind_name_words] if native else [],
+            'summary_words': list(profile.summary_name_words)}
 
 
 def workspace_cdr_types(workspaces: list[Workspace]) -> dict[str, str]:
@@ -22547,6 +22592,38 @@ def workspace_serving_networks_save(
     saved = save_serving_networks(repository, {'rows': rows, 'max_distance_km': distance})
     repository.try_add_log(user.username, 'network_serving_networks_saved', json.dumps(saved, ensure_ascii=False))
     return redirect('serving_networks_notice', f"Serving Networks saved ({len(saved['rows'])} rows, {saved['max_distance_km']:g} km). Map the CDRs again to apply them.")
+
+
+@app.post('/workspace-config/cdr-field-dictionary/save')
+async def workspace_cdr_field_dictionary_save(request: Request, user: SessionUser = Depends(config_editor_user)) -> RedirectResponse:
+    """Save the CDR columns the fields of the CDR Field Dictionary read; a field left empty or with its default columns
+    returns to the default."""
+    from src.modules import cdr_field_dictionary
+    from src.modules.cdr_field_profiles import field_profile
+
+    def redirect(key: str, message: str) -> RedirectResponse:
+        return RedirectResponse(f'/workspace-config?{urlencode({key: message})}#cdr-field-dictionary', status_code=status.HTTP_303_SEE_OTHER)
+
+    if not active_workspace:
+        return redirect('cdr_field_dictionary_error', 'Open a workspace before editing the CDR Field Dictionary.')
+    require_workspace_access(user, active_workspace.id)
+    form = await request.form()
+    fields = {str(name)[len('field:'):]: str(value) for name, value in form.multi_items() if str(name).startswith('field:')}
+    profile = field_profile(workspace_cdr_type(repository))
+    previous = cdr_field_dictionary.load_overrides(repository)
+    try:
+        saved = cdr_field_dictionary.save_overrides(repository, {**previous, **fields}, profile)
+    except ValueError as exc:
+        return redirect('cdr_field_dictionary_error', str(exc))
+    changes = {key: {'before': previous.get(key, 'default'), 'after': saved.get(key, 'default')}
+               for key in sorted({*previous, *saved}) if previous.get(key) != saved.get(key)}
+    repository.try_add_log(user.username, 'cdr_field_dictionary_saved', json.dumps({
+        'workspace': active_workspace.name, 'cdr_type': profile.cdr_type, 'changed_fields': len(saved), 'changes': changes,
+    }, ensure_ascii=False))
+    if not changes:
+        return redirect('cdr_field_dictionary_notice', 'The CDR Field Dictionary has no changes.')
+    return redirect('cdr_field_dictionary_notice', f"CDR Field Dictionary saved ({len(changes)} field{'s' if len(changes) != 1 else ''} "
+                    f"changed, {len(saved)} not default). Reprocess the CDRs to apply the Processing and CDR-Main fields.")
 
 
 class DatasetSnapshotDateUpdate(BaseModel):

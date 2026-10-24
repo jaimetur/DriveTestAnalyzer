@@ -6,14 +6,16 @@ field profile of that provider, so the CDRs of every provider keep their own col
 
 A profile lists, for each logical field, its candidate source columns in order of preference; column names are
 matched regardless of case and separators (see column_names.resolve_column_name). The NetCheck profile holds the
-columns the modules have always read. Providers without a profile yet read as NetCheck, as every workspace did before
-the profiles existed.
+columns the modules have always read; the Umlaut profile reads the service workbooks of Umlaut (see umlaut_cdr).
+Providers without a profile yet read as NetCheck, as every workspace did before the profiles existed.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from typing import Any
 
+from src.modules import umlaut_cdr
 from src.modules.cdr_types import DEFAULT_CDR_TYPE, workspace_cdr_type
 
 Sources = tuple[str, ...]
@@ -70,6 +72,23 @@ class CdrFieldProfile:
     area_fields: dict[str, Sources]
     coordinate_sources: dict[str, CoordinatePairs]
     environment_columns: Sources
+    # -- reading the provider's workbooks (NetCheck needs none of these) --------------------------------------------
+    # A repeated header takes the side of the nearest header before it that matches this pattern ("Side2 Sequence");
+    # without a pattern, or a side, it is "<header>_Duplicate_<n>".
+    side_header_pattern: str = ''
+    # The columns the provider's CDRs gain before they are read: (rows, file name) -> rows.
+    derive_columns: Callable[[Any, str], Any] | None = None
+    # The factor a normalised number is multiplied by to reach the unit of the tool (kbit/s to Mbit/s).
+    normalised_scales: dict[str, float] = field(default_factory=dict)
+    # The tool's result for each result of the provider (SUCCESS is Completed), regardless of case.
+    status_values: dict[str, str] = field(default_factory=dict)
+    # The words in a file name of the workbooks that summarise the others and are not CDRs.
+    summary_name_words: tuple[str, ...] = ()
+    # The DT Analyzer RCA inputs a Voice call takes from the mean of its Speech samples, when its CDR has the radio of
+    # a moment of the call only (its setup).
+    nq_call_radio_from_samples: Sources = ()
+    # Which calls are Non-Qualified, as Non-Qualified Calls says it ("Every call ... whose result is not Completed").
+    nq_definition: str = 'whose result is not Completed (Failed, Dropped, Cutoff…)'
 
 
 _NETCHECK_STATUS = ('status', 'Call_Status', 'Test_Result', 'Test_Status')
@@ -388,7 +407,253 @@ NETCHECK_PROFILE = CdrFieldProfile(
     environment_columns=('G_Level_1', 'G_Level_2', 'G_Level_3'),
 )
 
-FIELD_PROFILES: dict[str, CdrFieldProfile] = {'netcheck': NETCHECK_PROFILE}
+# Each Umlaut service names its result, start, position and cells its own way: the candidates list one per service.
+_UMLAUT_STATUS = ('Sequence Status Overall', 'Overall Session Status', 'Transfer Status', 'Ping Status', 'DNS Status',
+                  'Qualifier', 'YouTube Qualifier')
+_UMLAUT_QUALIFIERS = ('Qualifier', 'Browsing Qualifier', 'Datastream Qualifier', 'File Transfer Qualifier', 'YouTube Qualifier')
+_UMLAUT_END_TIME = ('Session TA End', 'Ping TA End', 'Playout TA End', 'DNS TA End')
+_UMLAUT_FAILURE = ('Failure Indication', 'Overall Failure Indication', 'Sequence Detailed Status Overall')
+_UMLAUT_TECHNOLOGY = ('Technology', 'Side1 Call Technology', 'Side1 Sample Technology')
+_UMLAUT_LATITUDE = ('Side1 Call Setup LAT', 'Side1 Sample Start LAT', 'Network Access LAT', 'Ping LAT Start', 'DNS LAT Start')
+_UMLAUT_LONGITUDE = ('Side1 Call Setup LON', 'Side1 Sample Start LON', 'Network Access LON', 'Ping LON Start', 'DNS LON Start')
+_UMLAUT_DATA_POSITIONS = (('Network Access LON', 'Network Access LAT'), ('Ping LON Start', 'Ping LAT Start'),
+                          ('DNS LON Start', 'DNS LAT Start'))
+
+
+def _by_kind(data: Sources = (), voice: Sources = (), speech: Sources = ()) -> dict[str, Sources]:
+    return {'data': data, 'voice': voice, 'speech': speech}
+
+
+UMLAUT_PROFILE = CdrFieldProfile(
+    cdr_type='umlaut',
+    ignored_sheets=frozenset({'Statistics'}),
+    # Every visible sheet but Statistics holds the rows of one operator (client<N>_<Operator>).
+    operator_sheets_after='',
+    # The service in the file name: the samples of a call, the calls, then the data services.
+    kind_name_words=(
+        ('sq samples', 'speech'), ('samples', 'speech'), ('calls', 'voice'), ('voice', 'voice'), ('http', 'data'),
+        ('interactivity', 'data'), ('youtube', 'data'), ('ping', 'data'), ('dns', 'data'), ('data', 'data'),
+    ),
+    kind_markers={
+        'voice': frozenset({'Sequence Status Overall', 'Call Setup Status', 'Call Completion Status', 'Call Setup Duration (Alerting) [s]'}),
+        'speech': frozenset({'POLQA Value Overall', 'POLQA Sample TA Start', 'Sample Technology Both', 'Side1 Sample Technology'}),
+        'data': frozenset({'Task Name', 'Network Access Status', 'Transfer Status', 'Ping Status', 'DNS Status', 'Service'}),
+    },
+    normalised_sources={
+        'campaign': ('Campaign',),
+        'market': ('Market',),
+        'period': ('Period',),
+        'operator': ('Operator',),
+        'session_type': ('Service', 'Side1 Call Type'),
+        'test_name': ('Task Name', 'Side1 Call Type'),
+        'direction': ('Direction',),
+        'region': ('Region',),
+        'city': ('City',),
+        'status': _UMLAUT_STATUS,
+        'disturbed': (),
+        'impaired': (),
+        'event_start_time': umlaut_cdr.START_TIME_COLUMNS,
+        'event_end_time': _UMLAUT_END_TIME,
+        # The call setup up to the alerting; Call Setup Duration (OptionD) [s] is the alternative.
+        'setup_time_seconds': ('Call Setup Duration (Alerting) [s]', 'Service Access Duration [s]', 'Video Start Time [s]'),
+        'duration_seconds': ('Session Duration [s]', 'Transfer Duration [s]', 'Video Display Duration [s]'),
+        'quality_score': ('POLQA Value Overall',),
+        'throughput_mbps': ('Transfer Throughput [kbit/s]', 'Transfer Datarate [kbit/s]', 'Transfer User Datarate [kbit/s]'),
+        'latency_ms': ('Ping Duration [ms]', 'TWAMP RTT Median', 'DNS Duration [ms]', 'HTTP RTT First [ms]'),
+        'handovers': (),
+        'technology_primary': _UMLAUT_TECHNOLOGY,
+        'technology_secondary': ('Technology List', 'Side2 Call Technology', 'Side2 Sample Technology'),
+    },
+    averaged_sources={
+        'packet_loss_pct': ('TWAMP Packet Loss (%)',),
+        'jitter_ms': ('TWAMP Packet Delay Variation Median',),
+    },
+    dropped_flag='',
+    unsustainable_flag='',
+    fixed_sources={
+        'Campaign': ('Campaign',),
+        'Benchmark': ('Benchmark',),
+        'Campaign_Year': ('Campaign_Year',),
+        'Campaign_Quarter': ('Campaign_Quarter',),
+        'Period': ('Period',),
+        'Market': ('Market',),
+        'Region': ('Region',),
+        'Zone': ('Zone',),
+        'City': ('City',),
+        'Operator': ('Operator',),
+        'Subscriber': ('Subscriber',),
+        'Test_Name': ('Task Name', 'Side1 Call Type'),
+    },
+    fixed_groups=(
+        (('Technology',), _UMLAUT_TECHNOLOGY),
+        (('Session_Type',), ('Service', 'Side1 Call Type')),
+        (('Call_Status',), ('status',)),
+    ),
+    nq_field_sources={
+        'campaign': ('Campaign',),
+        'operator': ('Operator',),
+        'operator_vendor': ('Operator_Vendor',),
+        'vendor': ('Vendor',),
+        'region': ('Region',),
+        'cluster': ('Cluster',),
+        'city': ('City',),
+        'technology': ('Technology', 'technology_primary'),
+        'test_name': ('Task Name', 'Side1 Call Type', 'Test_Name'),
+        'session_type': ('Service', 'Session_Type'),
+        'direction': ('Direction',),
+        'result': ('Call_Status', 'status'),
+        'start_time': ('event_start_time',),
+        'end_time': ('event_end_time',),
+        # Umlaut gives no failure hierarchy: the failure it reports is the comment of the call.
+        'failure_phase': (),
+        'failure_technology': (),
+        'failure_classification': (),
+        'failure_category': (),
+        'failure_subcategory': (),
+        'failure_comment': _UMLAUT_FAILURE,
+        'host_network': ('Serving_Host_Network',),
+        'site_id': ('Serving_Site_ID',),
+        'environment': ('umlaut Scoring Infrastructure Type', 'Infrastructure Type Fine'),
+        'latitude': _UMLAUT_LATITUDE,
+        'longitude': _UMLAUT_LONGITUDE,
+        'cell_id': ('ECI',),
+    },
+    nq_join_sources=(),
+    # A data test is its Test_Key; the calls and their speech samples share the Sequence of the call.
+    nq_identifier_sources={'data': ('Test_Key',), 'voice': ('Sequence',), 'speech': ('Sequence',)},
+    nq_sample_sources=('POLQA Sample TA Start',),
+    nq_subscriber_sources=('Subscriber',),
+    # An Umlaut call or test is Non-Qualified when its qualifier is NOT QUALIFIED (Ping and DNS have no qualifier).
+    nq_qualification_sources=_UMLAUT_QUALIFIERS,
+    nq_qualified_value='qualified',
+    pci_columns=_by_kind(('Service Access SC/PCI Start',), ('Side1 Call Setup latest available PCI/SC',), ('Side1 Sample Start PCI/SC',)),
+    # The averages of a data test, the radio at the setup of the A side of a call (the B side is Side2; the mean of the
+    # speech samples of the call replaces it, see nq_call_radio_from_samples) and at the start of a speech sample.
+    nq_rca_sources={
+        'failure_side': (),
+        'failure_events': (),
+        'scg_failures': (),
+        'lte_rsrp': ('LTE RSRP Avg', 'Side1 Sample Start RSRP (dBm)', 'Side1 Call Setup latest available RSRP (dBm)'),
+        'lte_rsrp_min': ('LTE RSRP Min',),
+        'lte_rsrq': ('LTE RSRQ Avg',),
+        'lte_sinr': ('LTE SINR Avg', 'Side1 Sample Start SINR (dB)', 'Side1 Call Setup latest available SINR (dB)'),
+        'lte_sinr_min': ('LTE SINR Min',),
+        'lte_tx_power': ('LTE Tx Power Max',),
+        'lte_bler': (),
+        'nr_rsrp': ('NR PCell SSB Serving Beam RSRP Avg', 'Side1 Sample Start NR PCell SSB RSRP (dBm)',
+                    'Side1 Call Setup latest available NR PCell SSB RSRP (dBm)'),
+        'nr_rsrp_min': ('NR PCell SSB Serving Beam RSRP Min',),
+        'nr_rsrq': ('NR PCell SSB Serving Beam RSRQ Avg',),
+        'nr_sinr': ('NR PCell SSB Serving Beam SINR Avg', 'Side1 Sample Start NR PCell SSB SINR (dB)',
+                    'Side1 Call Setup latest available NR PCell SSB SINR (dB)'),
+        'nr_sinr_min': ('NR PCell SSB Serving Beam SINR Min',),
+        'nr_tx_power': (),
+        'nr_bler': (),
+        'b_lte_rsrp': ('Side2 Sample Start RSRP (dBm)', 'Side2 Call Setup latest available RSRP (dBm)'),
+        'b_lte_sinr': ('Side2 Sample Start SINR (dB)', 'Side2 Call Setup latest available SINR (dB)'),
+        'b_nr_rsrp': ('Side2 Sample Start NR PCell SSB RSRP (dBm)', 'Side2 Call Setup latest available NR PCell SSB RSRP (dBm)'),
+        'b_nr_sinr': ('Side2 Sample Start NR PCell SSB SINR (dB)', 'Side2 Call Setup latest available NR PCell SSB SINR (dB)'),
+        'rat': _UMLAUT_TECHNOLOGY,
+        'rat_timeline': ('Technology List', 'Side1 Sequence Technology'),
+        'handovers': (),
+        'handovers_info': (),
+        'throughput': ('throughput_mbps',),
+        'access_time': ('Service Access Duration [s]',),
+        'dns_time': ('DNS Duration [ms]',),
+        'dns_success': (),
+        'tcp_rtt': ('HTTP RTT First [ms]',),
+        'packet_loss': ('TWAMP Packet Loss (%)',),
+        'rtt': ('TWAMP RTT Median', 'Ping Duration [ms]'),
+        'setup_time': ('setup_time_seconds',),
+        'duration': ('duration_seconds',),
+        'mos': ('POLQA Value Overall',),
+        'rtp_packet_loss': (),
+        'jitter': ('jitter_ms',),
+    },
+    nq_rca_scales={},
+    rf_field_aliases={
+        'latitude': _by_kind(('Network Access LAT', 'Ping LAT Start', 'DNS LAT Start'), ('Side1 Call Setup LAT',),
+                             ('Side1 Sample Start LAT', 'Side2 Sample Start LAT')),
+        'longitude': _by_kind(('Network Access LON', 'Ping LON Start', 'DNS LON Start'), ('Side1 Call Setup LON',),
+                              ('Side1 Sample Start LON', 'Side2 Sample Start LON')),
+        'lte_rsrp': _by_kind(('LTE RSRP Avg',), ('Side1 Call Setup latest available RSRP (dBm)',),
+                             ('Side1 Sample Start RSRP (dBm)', 'Side2 Sample Start RSRP (dBm)')),
+        'nr_rsrp': _by_kind(('NR PCell SSB Serving Beam RSRP Avg',), ('Side1 Call Setup latest available NR PCell SSB RSRP (dBm)',),
+                            ('Side1 Sample Start NR PCell SSB RSRP (dBm)', 'Side2 Sample Start NR PCell SSB RSRP (dBm)')),
+        'lte_sinr': _by_kind(('LTE SINR Avg',), ('Side1 Call Setup latest available SINR (dB)',),
+                             ('Side1 Sample Start SINR (dB)', 'Side2 Sample Start SINR (dB)')),
+        'nr_sinr': _by_kind(('NR PCell SSB Serving Beam SINR Avg',), ('Side1 Call Setup latest available NR PCell SSB SINR (dB)',),
+                            ('Side1 Sample Start NR PCell SSB SINR (dB)', 'Side2 Sample Start NR PCell SSB SINR (dB)')),
+        'cell_trace': _by_kind(),
+        'cell_ids': _by_kind(('ECI',), ('ECI',), ('ECI',)),
+        'enodeb_id': _by_kind(),
+        'earfcn': _by_kind((), ('Side1 Call Setup latest available Carrier',), ('Side1 Sample Start Carrier',)),
+        'nr_band': _by_kind(('NR PCell Service Band DL Most',)),
+        'lte_bandwidth': _by_kind(),
+        'nr_bandwidth': _by_kind(('NR PCell Bandwidth DL Most', 'NR PCell Bandwidth Most')),
+        'lte_aggregated_bandwidth': _by_kind(),
+        'test_name': _by_kind(('Task Name',)),
+        'nr_time': _by_kind(),
+        'test_duration': _by_kind(('Session Duration [s]', 'Transfer Duration [s]')),
+        'nr_pci': _by_kind(('NR PCell Service PCI Most',)),
+        'nr_arfcn': _by_kind(('NR PCell Service SSB ARFCN Most',)),
+        'lte_rank': _by_kind(),
+        'nr_rank': _by_kind(),
+        'nr_layers': _by_kind(),
+        'test_result': _by_kind(('Call_Status',)),
+        'type_of_test': _by_kind(('Service',)),
+        'mean_data_rate': _by_kind(('throughput_mbps',)),
+        'rtt_median': _by_kind(('TWAMP RTT Median', 'Ping Duration [ms]')),
+        'packets_lost': _by_kind(),
+        'packets_sent': _by_kind(),
+        'jitter': _by_kind(('TWAMP Packet Delay Variation Median', 'jitter_ms')),
+        'serving_network': _by_kind(('Serving_Network',), ('Serving_Network',), ('Serving_Network',)),
+        'serving_host': _by_kind(('Serving_Host_Network',), ('Serving_Host_Network',), ('Serving_Host_Network',)),
+        'serving_scenario': _by_kind(('Serving_eMOCN_Scenario',), ('Serving_eMOCN_Scenario',), ('Serving_eMOCN_Scenario',)),
+    },
+    dimension_aliases={
+        'operator': ('Operator',),
+        'operator_vendor': ('Operator_Vendor',),
+        'vendor': ('Vendor',),
+        'campaign': ('Campaign', 'Period'),
+        'region': ('Region',),
+        'cluster': ('Cluster',),
+        'city': ('City',),
+        # The umlaut scoring environment (cities, towns, roads) and the finer one of the route.
+        'environment': ('umlaut Scoring Infrastructure Type',),
+        'environment_route': ('Infrastructure Type Fine',),
+        'mode': ('Mobility',),
+        'source_sheet': ('source_sheet',),
+    },
+    cell_columns=('ECI',),
+    start_coordinates={
+        'data': _UMLAUT_DATA_POSITIONS,
+        'voice': (('Side1 Call Setup LON', 'Side1 Call Setup LAT'),),
+        'speech': (('Side1 Sample Start LON', 'Side1 Sample Start LAT'), ('Side2 Sample Start LON', 'Side2 Sample Start LAT')),
+    },
+    end_coordinates={
+        'data': (('Session LON End', 'Session LAT End'), ('Video Session LON End', 'Video Session LAT End')),
+        'voice': (('Side1 Call End LON', 'Side1 Call End LAT'),),
+    },
+    time_columns=(*umlaut_cdr.START_TIME_COLUMNS, 'event_start_time', 'Date'),
+    area_fields={'City': ('City',), 'Region': ('Region',), 'Cluster': ('Cluster',)},
+    coordinate_sources={
+        'data': tuple((latitude, longitude) for longitude, latitude in _UMLAUT_DATA_POSITIONS),
+        'voice': (('Side1 Call Setup LAT', 'Side1 Call Setup LON'),),
+        'speech': (('Side1 Sample Start LAT', 'Side1 Sample Start LON'), ('Side2 Sample Start LAT', 'Side2 Sample Start LON')),
+    },
+    environment_columns=('Mobility', 'umlaut Scoring Infrastructure Type', 'Infrastructure Type Fine'),
+    side_header_pattern=umlaut_cdr.SIDE_HEADER_PATTERN,
+    derive_columns=umlaut_cdr.derive_columns,
+    normalised_scales={'throughput_mbps': 0.001},
+    status_values={'success': 'Completed', 'failed': 'Failed', 'dropped': 'Dropped',
+                   'qualified': 'Completed', 'not qualified': 'Failed'},
+    summary_name_words=umlaut_cdr.SUMMARY_NAME_WORDS,
+    nq_call_radio_from_samples=('lte_rsrp', 'lte_sinr', 'nr_rsrp', 'nr_sinr', 'b_lte_rsrp', 'b_lte_sinr', 'b_nr_rsrp', 'b_nr_sinr'),
+    nq_definition='whose Umlaut qualifier is NOT QUALIFIED (failed, dropped or below the quality thresholds of Umlaut)',
+)
+
+FIELD_PROFILES: dict[str, CdrFieldProfile] = {'netcheck': NETCHECK_PROFILE, 'umlaut': UMLAUT_PROFILE}
 
 
 def field_profile(cdr_type: object = DEFAULT_CDR_TYPE) -> CdrFieldProfile:
@@ -398,5 +663,8 @@ def field_profile(cdr_type: object = DEFAULT_CDR_TYPE) -> CdrFieldProfile:
 
 
 def workspace_field_profile(repository: Any) -> CdrFieldProfile:
-    """The field profile of the CDR type of a workspace."""
-    return field_profile(workspace_cdr_type(repository))
+    """The field profile of the CDR type of a workspace, with the fields its CDR Field Dictionary changes."""
+    from src.modules import cdr_field_dictionary
+
+    return cdr_field_dictionary.apply_overrides(field_profile(workspace_cdr_type(repository)),
+                                                cdr_field_dictionary.load_overrides(repository))

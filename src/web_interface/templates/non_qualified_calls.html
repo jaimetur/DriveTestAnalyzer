@@ -18,12 +18,13 @@
   window.PageRestore.begin({key: window.PageRestore.keyOf('nq-view', {{ (active_workspace.id if active_workspace else '') | tojson }}),
     notice: 'Loading Non-Qualified Calls where you left it…', theme: 'nq'});
 </script>
-<section class="dashboard-stack spacious-stack non-qualified-calls" id="non-qualified-calls" data-nq-can-edit="{{ 'true' if nq_can_edit else 'false' }}">
+{% set provider = nq_provider | default({}, true) %}
+<section class="dashboard-stack spacious-stack non-qualified-calls" id="non-qualified-calls" data-nq-can-edit="{{ 'true' if nq_can_edit else 'false' }}" data-nq-provider='{{ provider | tojson }}'>
   <article class="panel module-hero nq-hero">
     <div class="nq-hero-copy">
       <p class="eyebrow">Non-Qualified Calls · Analysis Center</p>
       <h2>Follow up every call and test that did not complete</h2>
-      <p class="lede">Every Voice and Speech call and every Data test whose result is not Completed (Failed, Dropped, Cutoff…) in the ready CDRs of this workspace. Review the overall health, drill down from the summary into the calls, and follow each one through the sections of the Analysis Center: its root cause decided from NetCheck, the Ericsson RCA, the DT Analyzer RCA and the analysts, its failure event, and its analysis, implementation and planning phases, with a status set by rules, a responsible team, an assignee and a shared comment thread.</p>
+      <p class="lede">Every Voice and Speech call and every Data test {{ provider.definition | default('whose result is not Completed (Failed, Dropped, Cutoff…)', true) }} in the ready CDRs of this workspace. Review the overall health, drill down from the summary into the calls, and follow each one through the sections of the Analysis Center: its root cause decided from {{ provider.name | default('NetCheck', true) }}, the Ericsson RCA, the DT Analyzer RCA and the analysts, its failure event, and its analysis, implementation and planning phases, with a status set by rules, a responsible team, an assignee and a shared comment thread.</p>
     </div>
   </article>
 
@@ -156,7 +157,7 @@
   </details>
 
   <details class="panel collapsible-panel nq-calls-panel" data-nq-view-panel="calls" data-nq-loader="calls" open data-panel-state-key="non-qualified-calls:calls">
-    <summary class="collapsible-summary"><div><p class="eyebrow">Drill-down</p><h2>Non-Qualified Calls</h2></div>{# Finds calls by their JOIN_ID (one or more, typed or pasted), centred beside the title. #}<label class="nq-join-search" data-nq-join-search><span>Join ID</span><input type="search" data-nq-typed-filter="join_id" placeholder="Find calls by one or more JOIN_IDs…" autocomplete="off" aria-label="Join ID" title="Paste one or more JOIN_IDs, separated by commas, spaces or lines"></label><span class="collapse-chip">Collapse</span></summary>
+    <summary class="collapsible-summary"><div><p class="eyebrow">Drill-down</p><h2>Non-Qualified Calls</h2></div>{# Finds calls by their JOIN_ID (one or more, typed or pasted), centred beside the title; CDRs without a JOIN_ID (Umlaut) have none. #}<label class="nq-join-search" data-nq-join-search{% if provider and not provider.join_id %} hidden{% endif %}><span>Join ID</span><input type="search" data-nq-typed-filter="join_id" placeholder="Find calls by one or more JOIN_IDs…" autocomplete="off" aria-label="Join ID" title="Paste one or more JOIN_IDs, separated by commas, spaces or lines"></label><span class="collapse-chip">Collapse</span></summary>
     <div class="collapsible-panel-body">
       <div class="nq-active-filters" data-nq-active-filters hidden></div>
       <div class="nq-toolbar">
@@ -226,7 +227,7 @@
     <div class="collapsible-panel-body">
       <div class="nq-active-filters" data-nq-active-filters="failures" hidden></div>
       <div class="nq-progress-head">
-        <p class="nq-hint">How and where the filtered calls fail: their result (Failed, Dropped, Cutoff…) per environment as a share of every call, the technology at the failure against the NetCheck failure classification, the Vendor and host network of the cell that served them and the sites with the most Non-Qualified Calls. The shares and rates divide by every call of the CDRs, Service, Campaign, Operator and NR Mode filters. Click a cell to drill down into its calls.</p>
+        <p class="nq-hint">How and where the filtered calls fail: their result (Failed, Dropped, Cutoff…) per environment as a share of every call, the technology at the failure against the {{ provider.name | default('NetCheck', true) }} failure classification, the Vendor and host network of the cell that served them and the sites with the most Non-Qualified Calls. The shares and rates divide by every call of the CDRs, Service, Campaign, Operator and NR Mode filters. Click a cell to drill down into its calls.</p>
         <div class="nq-rate-tabs" id="nq-failure-tabs" role="tablist" aria-label="Service"></div>
       </div>
       <div class="nq-failures" id="nq-failures"></div>
@@ -238,7 +239,7 @@
     <div class="collapsible-panel-body">
       <div class="nq-active-filters" data-nq-active-filters hidden></div>
       <div class="nq-progress-head">
-        <p class="nq-hint">The root cause sources of the filtered calls side by side: the NetCheck RCA of the CDR, the Ericsson RCA results imported by JOIN_ID, the DT Analyzer RCA, which finds the root cause of every call from the data of its CDR with the rules of the workspace, and the Root Category and Cause selected by the analysts. See how many calls each one covers, how often they agree and how the analysts' choices relate to each RCA.</p>
+        <p class="nq-hint">The root cause sources of the filtered calls side by side: the {{ provider.rca | default('NetCheck RCA', true) }} of the CDR{% if provider and not provider.rca_hierarchy %} ({{ provider.name }} CDRs bring no RCA of their own, only the failure of each call){% endif %}, the Ericsson RCA results imported by JOIN_ID, the DT Analyzer RCA, which finds the root cause of every call from the data of its CDR with the rules of the workspace, and the Root Category and Cause selected by the analysts. See how many calls each one covers, how often they agree and how the analysts' choices relate to each RCA.</p>
         <span class="nq-root-head-actions"><span class="nq-muted" id="nq-sources-results"></span></span>
       </div>
       <div class="nq-kpi-lines" id="nq-sources-kpis"></div>
@@ -257,7 +258,7 @@
       <div class="nq-active-filters" data-nq-active-filters hidden></div>
       <div class="nq-progress-head">
         <p class="nq-hint">Where the filtered calls fail: their root cause domain and cause, Classic and WhatsApp calls, NSA and SA, each technology and the eNB/gNB of the last cell of the call, with its site, host network and vendor from the network inventories of the workspace.</p>
-        <span class="nq-root-head-actions"><span class="nq-rate-tabs" id="nq-root-source" role="tablist" aria-label="Root causes counted"><button type="button" role="tab" class="nq-rate-tab is-active" aria-selected="true" data-nq-root-source="netcheck" title="The NetCheck RCA of the CDR (Failure Classification, Category and Subcategory) mapped onto the Root Cause Catalog">NetCheck RCA</button><button type="button" role="tab" class="nq-rate-tab" aria-selected="false" data-nq-root-source="script" title="The imported results of the Ericsson RCA mapped onto the Root Cause Catalog">Ericsson RCA</button><button type="button" role="tab" class="nq-rate-tab" aria-selected="false" data-nq-root-source="dta" title="The Root Category and Root Cause the DT Analyzer RCA finds from the data of the CDR, with the rules of the workspace">DT Analyzer RCA</button><button type="button" role="tab" class="nq-rate-tab" aria-selected="false" data-nq-root-source="analysts" title="The Root Category and Root Cause the analysts chose">Analysts</button></span>
+        <span class="nq-root-head-actions"><span class="nq-rate-tabs" id="nq-root-source" role="tablist" aria-label="Root causes counted"><button type="button" role="tab" class="nq-rate-tab is-active" aria-selected="true" data-nq-root-source="netcheck" title="The {{ provider.rca | default('NetCheck RCA', true) }} of the CDR (Failure Classification, Category and Subcategory) mapped onto the Root Cause Catalog">{{ provider.rca | default('NetCheck RCA', true) }}</button><button type="button" role="tab" class="nq-rate-tab" aria-selected="false" data-nq-root-source="script" title="The imported results of the Ericsson RCA mapped onto the Root Cause Catalog">Ericsson RCA</button><button type="button" role="tab" class="nq-rate-tab" aria-selected="false" data-nq-root-source="dta" title="The Root Category and Root Cause the DT Analyzer RCA finds from the data of the CDR, with the rules of the workspace">DT Analyzer RCA</button><button type="button" role="tab" class="nq-rate-tab" aria-selected="false" data-nq-root-source="analysts" title="The Root Category and Root Cause the analysts chose">Analysts</button></span>
         <button type="button" class="nq-secondary-action" data-nq-rule-open title="See how root causes are suggested; admins and super-admins change it">Suggestion Rule</button></span>
       </div>
       <div class="nq-kpis" id="nq-root-kpis"></div>
@@ -358,7 +359,7 @@
       </div>
       {# The map of the area where the call failed (nq_call_map.js). #}
       <button type="button" class="nq-drawer-map" id="nq-drawer-map" aria-pressed="false" title="See the map of the area where the call failed: its cells and sites, the sites and Non-Qualified Calls around and the RSRP and SINR of the tests around"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.4"/></svg><span>Map</span></button>
-      <form class="nq-drawer-find" id="nq-drawer-find" role="search"><input type="search" id="nq-drawer-find-input" placeholder="Go to a JOIN_ID…" autocomplete="off" aria-label="Go to the call of a JOIN_ID" title="Paste a JOIN_ID and press Enter to open its call"></form>
+      <form class="nq-drawer-find" id="nq-drawer-find" role="search"{% if provider and not provider.join_id %} hidden{% endif %}><input type="search" id="nq-drawer-find-input" placeholder="Go to a JOIN_ID…" autocomplete="off" aria-label="Go to the call of a JOIN_ID" title="Paste a JOIN_ID and press Enter to open its call"></form>
       <button type="button" class="nq-drawer-close" id="nq-drawer-close" aria-label="Close the call details">&times;</button>
     </div>
   </header>
@@ -429,7 +430,7 @@
 </dialog>
 <dialog class="nq-options-dialog nq-root-dialog" id="nq-root-dialog" aria-labelledby="nq-root-title">
   <form method="dialog" class="nq-options-form" id="nq-root-form">
-    <header><h2 id="nq-root-title">Root Cause Catalog</h2><p class="form-note">Shared by every user of this workspace. Each call gets a Root Category and a Root Cause; a cause can be mapped to its root category, which a call without root category takes when the cause is chosen. The technical Domain of each one (chosen by hand, or Auto: for a cause that of its root category, else the domain whose keywords appear in its name or keywords) gives its colour, groups the lists (the causes of the chosen category, then those of its domain, come first) and the domain of the call. The keywords map the NetCheck and Ericsson RCA values and the comments onto the catalog. Renaming a value updates every call; a value in use cannot be removed.</p>
+    <header><h2 id="nq-root-title">Root Cause Catalog</h2><p class="form-note">Shared by every user of this workspace. Each call gets a Root Category and a Root Cause; a cause can be mapped to its root category, which a call without root category takes when the cause is chosen. The technical Domain of each one (chosen by hand, or Auto: for a cause that of its root category, else the domain whose keywords appear in its name or keywords) gives its colour, groups the lists (the causes of the chosen category, then those of its domain, come first) and the domain of the call. The keywords map the {{ provider.name | default('NetCheck', true) }} and Ericsson RCA values and the comments onto the catalog. Renaming a value updates every call; a value in use cannot be removed.</p>
       <div class="nq-rule-summary"><p class="form-note" id="nq-root-rule-text"></p><button type="button" class="nq-secondary-action" id="nq-rule-open" data-nq-rule-open title="See how root causes are suggested; admins and super-admins change it">Suggestion Rule</button></div></header>
     {% if not nq_can_configure %}{{ role_warning('the root cause catalog') }}{% endif %}
     <div class="nq-catalog-tabs" role="tablist" aria-label="Root cause catalog">

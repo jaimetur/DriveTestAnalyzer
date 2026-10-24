@@ -75,6 +75,7 @@ Runtime `config/` and `data/` directories use project-local defaults but are exc
 - `src/modules/output_layout.py`: module folders below `output/reports/` and the one-time move of documents written with the former layout.
 - `src/modules/upload_sessions.py`: resumable dataset uploads (chunks kept in `.upload-sessions` of the workspace until the upload ends); `static/js/background_uploads.js` sends and resumes them on every page.
 - `src/modules/ingestion.py`: workbook/CSV ingestion, CDR classification helpers and derived input fields.
+- `src/modules/cdr_types.py` and `cdr_field_profiles.py`: the CDR type of each workspace (NetCheck, Umlaut, P3) and the field profile of each type, the CDR columns every module reads; `umlaut_cdr.py` reads the Umlaut service workbooks (their sides and the columns the tool derives) and `cdr_field_dictionary.py` keeps the fields a workspace changes in its CDR Field Dictionary (`static/js/cdr_field_dictionary.js` in Workspace Config).
 - `src/modules/analytics.py`: single-dataset analytical calculations.
 - `src/modules/exports.py`: CDR Analysis Word and PowerPoint output, including the multi-dataset Summary CDR Analysis.
 - `src/modules/network_insights_export.py`: Summary Network Insights PowerPoint and Word output.

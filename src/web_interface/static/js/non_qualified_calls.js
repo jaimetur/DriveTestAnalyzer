@@ -6,6 +6,13 @@
   if (!root || !document.getElementById('nq-table')) return;
 
   const $ = (id) => document.getElementById(id);
+  // The provider of the CDRs of the workspace and its RCA, the source of the CDR (NetCheck and the NetCheck RCA in a
+  // NetCheck workspace).
+  const PROVIDER = (() => {
+    try { return JSON.parse(root.dataset.nqProvider || '{}') || {}; } catch (_error) { return {}; }
+  })();
+  const PROVIDER_NAME = PROVIDER.name || 'NetCheck';
+  const PROVIDER_RCA = PROVIDER.rca || 'NetCheck RCA';
   const node = (tag, text, className) => {
     const element = document.createElement(tag);
     if (text !== undefined && text !== null) element.textContent = text;
@@ -23,8 +30,8 @@
     age: 'Age of Open Calls', root_pair: 'Root Domain · Cause', effective_domain: 'Root Domain (with suggestions)',
     effective_cause: 'Root Domain · Cause (with suggestions)', node: 'eNB / gNB', place: 'Repetition Place', state: 'Follow-up',
     rca_state: 'Root Cause',
-    netcheck_domain: 'Root Domain (NetCheck RCA)', netcheck_category: 'Root Domain · Category (NetCheck RCA)',
-    netcheck_cause: 'Root Domain · Cause (NetCheck RCA)', script_domain: 'Root Domain (Ericsson RCA)',
+    netcheck_domain: `Root Domain (${PROVIDER_RCA})`, netcheck_category: `Root Domain · Category (${PROVIDER_RCA})`,
+    netcheck_cause: `Root Domain · Cause (${PROVIDER_RCA})`, script_domain: 'Root Domain (Ericsson RCA)',
     script_category: 'Root Domain · Category (Ericsson RCA)', script_cause: 'Root Domain · Cause (Ericsson RCA)',
     dta_domain: 'Root Domain (DT Analyzer RCA)', dta_category: 'Root Domain · Category (DT Analyzer RCA)',
     dta_cause: 'Root Domain · Cause (DT Analyzer RCA)',
@@ -2229,7 +2236,7 @@
   // that source.
   // The panel opens on its first tab, the NetCheck RCA.
   state.rootSource = 'netcheck';
-  const ROOT_SOURCE_NAMES = {analysts: 'the analysts', netcheck: 'the NetCheck RCA', script: 'the Ericsson RCA',
+  const ROOT_SOURCE_NAMES = {analysts: 'the analysts', netcheck: `the ${PROVIDER_RCA}`, script: 'the Ericsson RCA',
     dta: 'the DT Analyzer RCA'};
   const domainPair = (domain) => [state.rootSource === 'analysts' ? 'root_domain' : `${state.rootSource}_domain`,
     domain === NOT_CLASSIFIED ? state.unassigned : domain];
@@ -2700,7 +2707,7 @@
     return row;
   };
   // How the categories one RCA source maps to relate to the Root Categories the analysts selected.
-  const MATRIX_SOURCES = {netcheck: 'NetCheck RCA', script: 'Ericsson RCA', dta: 'DT Analyzer RCA'};
+  const MATRIX_SOURCES = {netcheck: PROVIDER_RCA, script: 'Ericsson RCA', dta: 'DT Analyzer RCA'};
   const renderMatrix = (insights) => {
     const matrix = insights.confusion[state.matrixSource] || {rows: [], columns: [], cells: []};
     const tabs = $('nq-sources-matrix-tabs');
@@ -2716,7 +2723,7 @@
     const table = $('nq-sources-matrix');
     const head = node('thead');
     const headRow = node('tr');
-    headRow.append(node('th', `${MATRIX_SOURCES[state.matrixSource] || 'NetCheck RCA'} ↓ · Selected →`));
+    headRow.append(node('th', `${MATRIX_SOURCES[state.matrixSource] || PROVIDER_RCA} ↓ · Selected →`));
     matrix.columns.forEach((column) => headRow.append(node('th', column)));
     head.append(headRow);
     const body = node('tbody');
@@ -2757,21 +2764,21 @@
     };
     $('nq-sources-kpis').replaceChildren(line(
       kpiCard('Calls', number(coverage.total), 'Selected Non-Qualified Calls', 'total'),
-      kpiCard('NetCheck RCA', number(coverage.netcheck), `${percent(coverage.netcheck, coverage.total)} classified by NetCheck`, 'team'),
+      kpiCard(PROVIDER_RCA, number(coverage.netcheck), `${percent(coverage.netcheck, coverage.total)} classified by ${PROVIDER_NAME}`, 'team'),
       kpiCard('Ericsson RCA', number(coverage.script), `${percent(coverage.script, coverage.total)} have Ericsson RCA results`, 'attended'),
       kpiCard('DT Analyzer RCA', number(coverage.dta), `${percent(coverage.dta, coverage.total)} calculated from the data of the CDR`, 'dta'),
     ), line(
       kpiCard('Selected', number(coverage.selected), `${percent(coverage.selected, coverage.total)} have a root category or cause`, 'closed'),
-      kpiCard('NetCheck ↔ Selected', rate(agreement.selected_netcheck), `${number(agreement.selected_netcheck.agree)} of ${number(agreement.selected_netcheck.compared)} calls agree`, 'commented'),
+      kpiCard(`${PROVIDER_NAME} ↔ Selected`, rate(agreement.selected_netcheck), `${number(agreement.selected_netcheck.agree)} of ${number(agreement.selected_netcheck.compared)} calls agree`, 'commented'),
       kpiCard('Ericsson RCA ↔ Selected', rate(agreement.selected_script), `${number(agreement.selected_script.agree)} of ${number(agreement.selected_script.compared)} calls agree`, 'commented'),
       kpiCard('DT Analyzer RCA ↔ Selected', rate(agreement.selected_dta), `${number(agreement.selected_dta.agree)} of ${number(agreement.selected_dta.compared)} calls agree`, 'commented'),
     ), line(
-      kpiCard('NetCheck ↔ Ericsson RCA', rate(agreement.netcheck_script), `${number(agreement.netcheck_script.agree)} of ${number(agreement.netcheck_script.compared)} calls agree`, 'open'),
-      kpiCard('NetCheck ↔ DT Analyzer RCA', rate(agreement.netcheck_dta), `${number(agreement.netcheck_dta.agree)} of ${number(agreement.netcheck_dta.compared)} calls agree`, 'open'),
+      kpiCard(`${PROVIDER_NAME} ↔ Ericsson RCA`, rate(agreement.netcheck_script), `${number(agreement.netcheck_script.agree)} of ${number(agreement.netcheck_script.compared)} calls agree`, 'open'),
+      kpiCard(`${PROVIDER_NAME} ↔ DT Analyzer RCA`, rate(agreement.netcheck_dta), `${number(agreement.netcheck_dta.agree)} of ${number(agreement.netcheck_dta.compared)} calls agree`, 'open'),
       kpiCard('Ericsson RCA ↔ DT Analyzer RCA', rate(agreement.script_dta), `${number(agreement.script_dta.agree)} of ${number(agreement.script_dta.compared)} calls agree`, 'open'),
     ));
     $('nq-sources-hierarchies').replaceChildren(
-      hierarchyCard('NetCheck RCA', 'Failure Category → Subcategory of the CDR', insights.hierarchies.netcheck, false),
+      hierarchyCard(PROVIDER_RCA, 'Failure Category → Subcategory of the CDR', insights.hierarchies.netcheck, false),
       hierarchyCard('Ericsson RCA', 'Suggested Category → Cause of the Ericsson RCA', insights.hierarchies.script, false),
       hierarchyCard('DT Analyzer RCA', 'Root Category → Root Cause it finds from the data of the CDR', insights.hierarchies.dta, false),
       hierarchyCard('Selected by the Analysts', 'Root Category → Root Cause; click to drill down', insights.hierarchies.selected, true),
@@ -2794,7 +2801,7 @@
       return card;
     };
     $('nq-sources-catalog').replaceChildren(
-      catalogCard('NetCheck RCA → Root Category', 'Its categories translated onto the Root Cause Catalog', 'netcheck', 'netcheck_category'),
+      catalogCard(`${PROVIDER_RCA} → Root Category`, 'Its categories translated onto the Root Cause Catalog', 'netcheck', 'netcheck_category'),
       catalogCard('Ericsson RCA → Root Category', 'Its categories translated onto the Root Cause Catalog', 'script', 'script_category'),
       catalogCard('DT Analyzer RCA → Root Category', 'The Root Category it finds from the data of the CDR', 'dta', 'dta_category'),
       catalogCard('Selected Root Category', 'The Root Category the analysts chose', 'selected', 'root_category'),
@@ -2811,7 +2818,7 @@
       return card;
     };
     $('nq-sources-domains').replaceChildren(
-      domainCard('NetCheck RCA → Root Domain', 'Its categories translated onto the root domains of the catalog', 'netcheck', 'netcheck_domain'),
+      domainCard(`${PROVIDER_RCA} → Root Domain`, 'Its categories translated onto the root domains of the catalog', 'netcheck', 'netcheck_domain'),
       domainCard('Ericsson RCA → Root Domain', 'Its categories translated onto the root domains of the catalog', 'script', 'script_domain'),
       domainCard('DT Analyzer RCA → Root Domain', 'The root domain it finds from the data of the CDR', 'dta', 'dta_domain'),
       domainCard('Selected Root Domain', 'The root domain of the category the analysts chose', 'selected', 'root_domain'),
@@ -3152,7 +3159,7 @@
           })));
         cards.append(card);
       }
-      section('Technology at the failure and failure classification', 'The Non-Qualified Calls by the technology at their failure (else of the call) and their NetCheck failure classification (the most frequent ones).', cards);
+      section('Technology at the failure and failure classification', `The Non-Qualified Calls by the technology at their failure (else of the call) and their ${PROVIDER_NAME} failure classification (the most frequent ones).`, cards);
     }
     const serving = data.serving.find((item) => item.service === service);
     if (serving) {
@@ -4212,7 +4219,9 @@
     sources.forEach((source) => {
       const item = node('article', undefined, `nq-source-card is-${source.source}`);
       const title = node('header');
-      title.append(node('strong', source.label || state.rcaSources[source.source] || source.source));
+      // The names of the workspace (the RCA of the CDR after its provider) before those of the recommendation.
+      const label = state.rcaSources[source.source] || source.label || source.source;
+      title.append(node('strong', label));
       if (source.count) title.append(node('span', `${number(source.count)} earlier calls`, 'nq-muted'));
       item.append(title);
       if (source.source === 'dta') {
@@ -4239,7 +4248,7 @@
         const use = node('button', 'Use', 'nq-secondary-action');
         use.type = 'button';
         use.title = `Set ${Object.values(changes).join(' · ')}`;
-        use.addEventListener('click', () => patchCall(call, changes, use, `${source.label} applied.`));
+        use.addEventListener('click', () => patchCall(call, changes, use, `${label} applied.`));
         item.append(use);
       }
       cards.append(item);

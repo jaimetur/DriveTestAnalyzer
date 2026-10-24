@@ -49,6 +49,7 @@ from io import BytesIO
 from threading import Lock
 from typing import Any, Callable
 
+from src.modules import cdr_field_dictionary
 from src.modules.cdr_field_profiles import NETCHECK_PROFILE, CdrFieldProfile, workspace_field_profile
 from src.modules.cdr_stage import CDR_STAGE_LABELS, combined_inclusion, dataset_cdr_stage
 from src.modules.cell_identity import nr_cell_bits
@@ -1906,15 +1907,75 @@ def _time_text(value: Any) -> str:
     return _text(value).replace('T', ' ')[:19]
 
 
+def source_labels(task_repository: Any) -> dict[str, str]:
+    """The names of the root cause sources, the RCA of the CDR named after the provider of the workspace's CDRs."""
+    return {**nq_rca.SOURCE_LABELS, 'netcheck': provider_texts(task_repository)['rca']}
+
+
+def provider_field_labels(fields: list[dict[str, Any]], task_repository: Any) -> list[dict[str, Any]]:
+    """The fields of the catalog as the page and the exports show them: the NetCheck RCA of their default names and
+    descriptions is the RCA of the provider of the workspace's CDRs (the Umlaut RCA in an Umlaut workspace)."""
+    provider = provider_texts(task_repository)
+    if provider['name'] == 'NetCheck':
+        return fields
+    renamed = []
+    for field in fields:
+        texts = {key: str(field[key]).replace('NetCheck RCA', provider['rca']).replace('NetCheck', provider['name'])
+                 for key in ('label', 'description') if isinstance(field.get(key), str) and 'NetCheck' in field[key]}
+        renamed.append({**field, **texts} if texts else field)
+    return renamed
+
+
+def provider_texts(task_repository: Any) -> dict[str, Any]:
+    """How Non-Qualified Calls names the provider of the workspace's CDRs: its name, its RCA source (the NetCheck RCA
+    in a NetCheck workspace), which calls are NQ and whether its CDRs bring an RCA of their own and a JOIN_ID (the
+    calls are found by it)."""
+    from src.modules.cdr_types import CDR_TYPES, workspace_cdr_type
+
+    profile = workspace_field_profile(task_repository)
+    name = CDR_TYPES[workspace_cdr_type(task_repository)]['provider']
+    hierarchy = any(profile.nq_field_sources.get(field) for field in ('failure_classification', 'failure_category', 'failure_subcategory'))
+    return {'name': name, 'rca': f'{name} RCA', 'definition': profile.nq_definition, 'rca_hierarchy': hierarchy,
+            'join_id': bool(profile.nq_join_sources)}
+
+
+def _sample_radio(connection: Any, datasets: Any, profile: CdrFieldProfile) -> dict[tuple[str, str, str], dict[str, float]]:
+    """The mean radio of the Speech samples of every call (its Operator, Campaign and identifier), for the Voice calls
+    whose CDR has the radio of their setup only (see CdrFieldProfile.nq_call_radio_from_samples)."""
+    radio: dict[tuple[str, str, str], dict[str, float]] = {}
+    for dataset in datasets:
+        if not profile.nq_call_radio_from_samples or str(dataset['dataset_kind']) != 'speech':
+            continue
+        table = f'dataset_rows_{int(dataset["id"])}'
+        columns = [str(row[1]) for row in connection.execute(f'PRAGMA table_info({_quote(table)})').fetchall()]
+        keys = [_resolve_column(columns, sources) for sources in (
+            profile.nq_field_sources['operator'], profile.nq_field_sources['campaign'], profile.nq_identifier_sources['speech'])]
+        inputs = {name: column for name in profile.nq_call_radio_from_samples
+                  if (column := _resolve_column(columns, profile.nq_rca_sources.get(name, ())))}
+        if not keys[2] or not inputs:
+            continue
+        key_sql = [f'{_quote(column)}' if column else "''" for column in keys]
+        means = ', '.join(f"AVG(CASE WHEN TRIM(CAST({_quote(column)} AS TEXT)) <> '' THEN CAST({_quote(column)} AS REAL) END)"
+                          for column in inputs.values())
+        for row in connection.execute(f"SELECT {', '.join(key_sql)}, {means} FROM {_quote(table)} GROUP BY {', '.join(key_sql)}"):
+            key = (_text(row[0]).casefold(), _text(row[1]).casefold(), _text(row[2]))
+            values = {name: round(float(value), 4) for name, value in zip(inputs, tuple(row)[3:], strict=True) if value is not None}
+            if key[2] and values:
+                radio.setdefault(key, values)
+    return radio
+
+
 def _dataset_calls(connection: Any, dataset: Any, cdr_columns: tuple[str, ...] = (),
-                   profile: CdrFieldProfile = NETCHECK_PROFILE) -> dict[str, Any]:
+                   profile: CdrFieldProfile = NETCHECK_PROFILE,
+                   sample_radio: dict[tuple[str, str, str], dict[str, float]] | None = None) -> dict[str, Any]:
     """The NQ rows of one CDR, ready to insert into ``nq_calls``, and every call of it for ``nq_call_population``.
 
     Speech CDRs list one row per sample: their samples share the call key of their call (the
     JOIN_ID or the A-side session) and each one has its own ``sample_key``. The columns are those of
     the field profile of the CDR type, and a call is Non-Qualified when its qualification column does
     not hold the profile's qualified value. Each row keeps the values the DT Analyzer RCA reads
-    (``rca_inputs_json``, see nq_dta_rca), the numbers in its units.
+    (``rca_inputs_json``, see nq_dta_rca), the numbers in its units; a Voice call takes the mean radio
+    of its Speech samples from ``sample_radio`` (see _sample_radio).
     """
     dataset_id = int(dataset['id'])
     service = str(dataset['dataset_kind'])
@@ -2009,6 +2070,9 @@ def _dataset_calls(connection: Any, dataset: Any, cdr_columns: tuple[str, ...] =
                     inputs[name] = round(number * profile.nq_rca_scales.get(name, 1.0), 4)
             elif text := next((text for column in candidates if (text := _text(row[aliases[column]]))), ''):
                 inputs[name] = text[:300]
+        if sample_radio and service == 'voice' and identifier_column:
+            inputs.update(sample_radio.get((values['operator'].casefold(), values['campaign'].casefold(),
+                                            _text(row[aliases[identifier_column]])), {}))
         calls.append((dataset_id, int(row['source_row_id']), key, service, nr_mode, *(values[field] for field in CALL_FIELDS),
                       join_id, sample_key, sample_id, json.dumps(extras, ensure_ascii=False), json.dumps(inputs, ensure_ascii=False)))
     return {'calls': calls, 'population': list(population.values()), 'data_date': data_date}
@@ -2132,6 +2196,9 @@ def _index_changes(task_repository: Any, force: bool = False) -> tuple[list[str]
     """The indexed CDR columns and their signature, the CDRs, the indexed CDRs now removed and the CDRs to index."""
     cdr_columns = indexed_cdr_columns(task_repository)
     signature = _columns_signature(cdr_columns)
+    # Fields changed in the CDR Field Dictionary change the columns the calls are read from.
+    if dictionary := cdr_field_dictionary.fingerprint(cdr_field_dictionary.load_overrides(task_repository)):
+        signature = f'{signature}:{dictionary}'
     datasets = {int(row['id']): row for row in _cdr_datasets(task_repository)}
     with task_repository.connection() as connection:
         indexed = {
@@ -2150,14 +2217,25 @@ def sync_nq_calls(task_repository: Any, *, force: bool = False) -> dict[str, Any
     ensure_nq_tables(task_repository)
     with _sync_lock(task_repository):
         cdr_columns, signature, datasets, removed, changed = _index_changes(task_repository, force)
-        migrating = str(task_repository.get_workspace_state(KEY_SCHEME_STATE_KEY) or '') != KEY_SCHEME
+        profile = workspace_field_profile(task_repository)
+        if profile.nq_call_radio_from_samples and (removed or any(str(row['dataset_kind']) == 'speech' for row in changed)):
+            # The Voice calls take the radio of their Speech samples: new samples index them again.
+            indexed = {int(row['id']) for row in changed}
+            changed = [*changed, *(row for dataset_id, row in datasets.items()
+                                   if str(row['dataset_kind']) == 'voice' and dataset_id not in indexed)]
+        # The key scheme, and the CDR Field Dictionary that can change the identifiers of the calls: when either
+        # changes, the follow-up of every call moves to its new call key.
+        dictionary = cdr_field_dictionary.fingerprint(cdr_field_dictionary.load_overrides(task_repository))
+        key_scheme = f'{KEY_SCHEME}:{dictionary}' if dictionary else KEY_SCHEME
+        stored_scheme = str(task_repository.get_workspace_state(KEY_SCHEME_STATE_KEY) or '')
+        migrating = stored_scheme != key_scheme
         moved = 0
         ranks = _combined_ranks(task_repository)
         if removed or changed:
             # Read every changed CDR before taking the write transaction.
             with task_repository.connection() as connection:
-                profile = workspace_field_profile(task_repository)
-                fresh = {int(row['id']): _dataset_calls(connection, row, tuple(cdr_columns), profile) for row in changed}
+                sample_radio = _sample_radio(connection, datasets.values(), profile) if profile.nq_call_radio_from_samples else None
+                fresh = {int(row['id']): _dataset_calls(connection, row, tuple(cdr_columns), profile, sample_radio) for row in changed}
                 touched = [*removed, *fresh]
                 marks = ', '.join('?' for _ in touched)
                 affected = {str(row[0]) for row in connection.execute(
@@ -2205,10 +2283,12 @@ def sync_nq_calls(task_repository: Any, *, force: bool = False) -> dict[str, Any
                 _rebuild_versions(connection, {str(row[0]) for row in connection.execute(
                     f'SELECT DISTINCT call_key FROM {NQ_CALL_POPULATION_TABLE} WHERE dataset_id IN ({marks})', list(reranked))})
         if migrating:
-            task_repository.set_workspace_state(KEY_SCHEME_STATE_KEY, KEY_SCHEME)
+            task_repository.set_workspace_state(KEY_SCHEME_STATE_KEY, key_scheme)
             if moved and hasattr(task_repository, 'try_add_log'):
+                reason = ('their JOIN_ID call keys' if stored_scheme.partition(':')[0] != KEY_SCHEME
+                          else 'their call keys of the changed CDR Field Dictionary')
                 task_repository.try_add_log('system', 'nq_call_keys_upgraded',
-                                            f'Non-Qualified Calls follow-up of {moved} calls moved to their JOIN_ID call keys.')
+                                            f'Non-Qualified Calls follow-up of {moved} calls moved to {reason}.')
         # The latest versions of the calls and the DT Analyzer RCA of the new ones are calculated here, in the
         # background, rather than by the next page.
         refresh_latest_calls(task_repository)
@@ -4883,7 +4963,7 @@ def root_cause_stats(task_repository: Any, filters: dict[str, Any], username: st
         entry['top_domain'] = max(entry['domains'], key=lambda name: (entry['domains'][name], name)) if entry['domains'] else ''
         entry['node'] = f"{entry['type']} {entry['id']}"
     return {
-        'include_suggestions': include_suggestions, 'source': source,
+        'include_suggestions': include_suggestions, 'source': source, 'provider': provider_texts(task_repository),
         'summary': {'total': len(calls), **counts},
         'domains': [{'value': name, 'count': domains[name], 'color': colors.get(name, '#b8c0c6')} for name in columns],
         'categories': [{'domain': domain, 'category': category or 'No category', 'value': category, 'count': count,
@@ -6997,6 +7077,7 @@ def rca_insights(task_repository: Any, filters: dict[str, Any], username: str) -
                 'rate': round(target['agree'] * 100 / target['compared'], 1) if target['compared'] else None}
 
     return {
+        'provider': provider_texts(task_repository),
         'coverage': {key: coverage.get(key, 0) for key in ('total', 'netcheck', 'script', 'dta', 'selected')},
         'agreement': {name: rate(name) for name in agreement},
         'hierarchies': {name: hierarchy(name) for name in hierarchies},
@@ -7082,7 +7163,7 @@ def export_workbook(task_repository: Any, filters: dict[str, Any], username: str
     from openpyxl.utils import get_column_letter
 
     options = list_options(task_repository)
-    definitions = list_fields(task_repository)
+    definitions = provider_field_labels(list_fields(task_repository), task_repository)
     layouts = table_layouts(task_repository, username)
     layout = layouts['workspace'] if workspace_layout_only else layouts['effective']
     excel = set(layout['excel_fields'])
@@ -7124,6 +7205,7 @@ def export_workbook(task_repository: Any, filters: dict[str, Any], username: str
     by_key = {call['call_key']: call for call in calls}
     by_key.update({sample['call_key']: sample for sample in samples})
     taxonomy = list_root_causes(task_repository)
+    labels = source_labels(task_repository)
     per_call: dict[str, list[Any]] = {}
     for row in comments:
         per_call.setdefault(str(row['call_key']), []).append(row)
@@ -7135,7 +7217,7 @@ def export_workbook(task_repository: Any, filters: dict[str, Any], username: str
         call['status_set'] = 'By hand' if call.get('status_mode') == 'manual' else 'Automatic'
         call['recommended_category'] = recommendation.get('category', '')
         call['recommended_cause'] = recommendation.get('cause', '')
-        call['recommendation_sources'] = ', '.join(nq_rca.SOURCE_LABELS.get(name, name) for name in recommendation.get('sources') or [])
+        call['recommendation_sources'] = ', '.join(labels.get(name, name) for name in recommendation.get('sources') or [])
         call['dataset_name'] = names.get(int(call['dataset_id']), '')
         call['latest_dataset_name'] = names.get(int(call.get('latest_dataset_id') or call['dataset_id']), '')
         call['version_label'] = VERSION_LABELS.get(call.get('version_state') or 'current', '')
@@ -8282,6 +8364,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         return core.render_template(request, 'non_qualified_calls.html', {
             'user': user, 'nq_can_edit': can_edit(user), 'nq_can_configure': can_configure(user), 'nq_can_prioritize': can_prioritize(user),
             'nq_can_import_analyses': can_moderate(user), 'nq_page_sizes': PAGE_SIZES, 'nq_default_page_size': DEFAULT_PAGE_SIZE,
+            'nq_provider': provider_texts(core.repository) if core.active_workspace else {},
         })
 
     @core.app.get('/api/non-qualified-calls/state')
@@ -8308,7 +8391,8 @@ def install_non_qualified_calls_routes(core: Any) -> None:
             'saved_filters': _mapped_filters(repository, saved_filters(repository)),
             'root_causes': list_root_causes(repository), 'root_cause_defaults': nq_catalog.default_root_catalog(),
             'root_cause_rule_fields': RULE_FIELDS, 'default_root_cause_rule': DEFAULT_ROOT_CAUSE_RULE,
-            'fields': list_fields(repository), 'default_fields': nq_catalog.default_fields(), 'field_types': FIELD_TYPES,
+            'fields': provider_field_labels(list_fields(repository), repository),
+            'default_fields': provider_field_labels(nq_catalog.default_fields(), repository), 'field_types': FIELD_TYPES,
             'field_sources': nq_catalog.FIELD_SOURCES,
             'tracking_refs': nq_catalog.TRACKING_REFS, 'rca_refs': nq_catalog.RCA_REFS, 'call_fields': list(CATALOG_CALL_FIELDS),
             'sections': list_sections(repository), 'default_sections': nq_catalog.default_sections(), 'call_section': CALL_SECTION,
@@ -8317,7 +8401,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
             'default_options': {'statuses': [{'name': name, 'color': color, 'closed': closed} for name, color, closed in DEFAULT_STATUSES],
                                 'teams': [{'name': name, 'color': color, 'members': []} for name, color in DEFAULT_TEAMS]},
             'rule_operators': nq_catalog.RULE_OPERATORS, 'condition_fields': nq_catalog.condition_fields(list_fields(repository)),
-            'rca_results': rca_results_summary(repository), 'rca_sources': nq_rca.SOURCE_LABELS,
+            'rca_results': rca_results_summary(repository), 'rca_sources': source_labels(repository),
             'dta_refs': nq_catalog.DTA_REFS,
             'dta_rca': {'inputs': nq_dta_rca.inputs_catalog(), 'operators': nq_dta_rca.OPERATORS,
                         'kind_operators': nq_dta_rca.KIND_OPERATORS, 'services': nq_dta_rca.SERVICES,

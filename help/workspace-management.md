@@ -48,7 +48,7 @@ Workspace accepts `CSV`, `XLS`, `XLSX` and `XLSM` for tabular datasets, `KMZ` an
 
 1. Open the target workspace (as an admin or super-admin).
 2. Select one or more files in **Data Ingestion**.
-3. Review the proposed type for every file.
+3. Review the proposed type for every file. The CDR types carry the CDR type of the workspace (*NetCheck CDR — Data*, *Umlaut CDR — Voice*...). In an Umlaut workspace each service workbook is proposed its type from its service (SQ_Samples workbooks are Speech, Calls workbooks Voice and the data services Data), and the All_Data and All_Voice workbooks, which summarise the others, ask for a type and offer **Leave out**, which removes them from the batch.
 4. For CDRs, review the proposed **NR Mode** (NSA or SA) and **CDR Stage** (Final, Weekly or Daily) and optionally choose the Vendor source and the ready VFUK/3UK, Regions and Clusters mappings. For Vendor polygons and Network Inventories, review their **Operator** (proposed from the file name).
 5. Confirm the batch with **Upload and process**. The files upload in the background, in chunks, to the workspace where the upload started: you can keep working, change page or module or open another workspace, and the upload continues from where it was (the floating background task card shows its progress) and its datasets are processed in that workspace. The mappings, polygons and inventories upload first, and each file starts processing as soon as it is uploaded, while the next ones upload; up to **Maximum simultaneous tasks** ([Application Config](app-config.md)) files are processed in parallel, and the CDRs wait for the mappings of their batch. The upload starts at once while the browser keeps a copy of the chosen files until the upload ends, so an upload interrupted by closing the browser continues the next time the application is opened; when the browser cannot keep them (for example a very large batch over its storage quota), the card asks you to keep the page open and leaving the page asks first; **Stop** on its card cancels it.
 6. Follow every item in **Queue and Status**.
@@ -119,7 +119,7 @@ Every CDR is a **Final** CDR, delivered after its measurement campaign, or a **W
 - `Weekly`, `Week`, `Semanal`, `Semana` or `Wk` in the name → Weekly.
 - `Daily`, `Diario`, `Day`, `Incremental` or `Cumulative` in the name → Daily.
 - A date range (two different dates, for example `20250903-20251011`) → Final.
-- A single date that is not the export date at the start of the name (`UK_Voice_CDR_20260921.xlsx`) → Daily; `20260921_UK_Voice.xlsx` → Final.
+- A single date that is not the export date at the start of the name (`UK_Voice_CDR_20260921.xlsx`) → Daily; `20260921_UK_Voice.xlsx` → Final. In an Umlaut workspace the export stamp that ends the name (`…_2025-07-30_16-05-07`) is not a measurement date either.
 - Anything else → Final. The CDRs uploaded before Daily CDRs existed are Final CDRs.
 
 The **CDR Stage** selector of the Final, Weekly and Daily CDR tables (Final in teal, Weekly in violet, Daily in orange) changes it without reprocessing the CDR, moves the CDR to the table of its stage and is recorded in App Logs. The CDRs used that Scoring & GAP Analysis, Network Insights and PPT Dashboards list highlight the Weekly (violet) and Daily (orange) CDRs with a dashed outline, as the upload does.

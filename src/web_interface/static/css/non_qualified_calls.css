@@ -279,6 +279,7 @@
 .nq-drawer .nq-drawer-step:disabled { opacity: .4; cursor: default; }
 .nq-drawer-position { min-width: 5.5rem; color: #ffe6ee; font-size: .78rem; font-weight: 800; text-align: center; white-space: nowrap; }
 .nq-drawer-find { margin: 0; }
+.nq-drawer-find[hidden], .nq-join-search[hidden] { display: none; }
 .nq-drawer .nq-drawer-find input { box-sizing: border-box; width: 13.5rem; min-height: 2.2rem; padding: .4rem .75rem; border: 1px solid rgba(255, 255, 255, .5); border-radius: 999px; background: rgba(255, 255, 255, .15); color: #fff; font: inherit; font-size: .82rem; font-weight: 700; }
 .nq-drawer .nq-drawer-find input::placeholder { color: rgba(255, 230, 238, .85); }
 .nq-drawer .nq-drawer-find input:focus { border-color: #fff; background: rgba(255, 255, 255, .25); outline: none; }

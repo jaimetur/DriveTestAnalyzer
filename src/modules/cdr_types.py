@@ -13,9 +13,9 @@ from typing import Any
 CDR_TYPE_STATE_KEY = 'cdr_file_type'
 DEFAULT_CDR_TYPE = 'netcheck'
 CDR_TYPES: dict[str, dict[str, Any]] = {
-    'netcheck': {'label': 'NetCheck CDR', 'supported': True},
-    'umlaut': {'label': 'Umlaut CDR', 'supported': False},
-    'p3': {'label': 'P3 CDR', 'supported': False},
+    'netcheck': {'label': 'NetCheck CDR', 'provider': 'NetCheck', 'supported': True},
+    'umlaut': {'label': 'Umlaut CDR', 'provider': 'Umlaut', 'supported': False},
+    'p3': {'label': 'P3 CDR', 'provider': 'P3', 'supported': False},
 }
 CDR_DATASET_KINDS = frozenset({'data', 'voice', 'speech'})
 

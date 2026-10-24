@@ -127,7 +127,7 @@ def test_the_benchmarking_providers_deck_keeps_a_picture_and_the_notes_of_each_s
     root = Path(__file__).resolve().parents[1]
     deck = root / 'tools/presentations/benchmarking-providers'
     slides = json.loads((deck / 'slides.json').read_text(encoding='utf-8'))['slides']
-    assert len(slides) == 22 and all((deck / slide['image']).is_file() and slide['title'] and slide['notes'] for slide in slides)
+    assert len(slides) == 24 and all((deck / slide['image']).is_file() and slide['title'] and slide['notes'] for slide in slides)
     # The Help lists its slides by section, in the order of the deck, with their rendered pictures.
     manifest = json.loads((presentations.STATIC_PRESENTATIONS / presentations.MANIFEST).read_text(encoding='utf-8'))
     entry = next(item for item in manifest['presentations'] if item['id'] == 'benchmarking-providers')
