@@ -1,0 +1,318 @@
+"""DT Analyzer RCA of Non-Qualified Calls: the engine and its default rules, the inputs read from the CDR while
+indexing, the results in every place the RCA sources are listed, the editable rules and their transfer."""
+
+import json
+
+import pandas as pd
+import pytest
+
+import src.DriveTestAnalyzer as core
+from src.modules import non_qualified_calls as nq
+from src.modules import nq_catalog, nq_dta_rca
+from tests.test_non_qualified_calls import add_cdr, enable_module, login, query, workspace_user
+
+
+@pytest.fixture(autouse=True)
+def indexing_runs_at_once(monkeypatch):
+    monkeypatch.setattr(core, 'submit_background_task', lambda callback, *args: callback(*args))
+
+
+def evaluate(call: dict, inputs: dict, rules=None):
+    compiled = nq_dta_rca.compile_rules(rules or nq_dta_rca.default_rules(), nq_catalog.default_root_catalog())
+    return nq_dta_rca.evaluate(compiled, {'service': 'data', 'result': 'Failed', **call}, inputs)
+
+
+def test_every_default_rule_is_valid_and_gives_a_domain_of_the_default_catalog():
+    rules = nq_dta_rca.default_rules()
+    assert nq_dta_rca.normalize_rules(rules, strict=True) == rules
+    compiled = nq_dta_rca.compile_rules(rules, nq_catalog.default_root_catalog())
+    assert all(entry['result']['domain'] for entry in compiled), [entry['rule']['name'] for entry in compiled if not entry['result']['domain']]
+    # The last rule takes every call the others leave.
+    assert rules[-1]['name'] == 'Not identified' and not rules[-1]['conditions']
+
+
+def test_the_first_rule_that_holds_gives_the_root_cause_with_its_evidence():
+    # The radio comes before the service: a DNS failure in poor coverage is a coverage problem.
+    dns = {'failure_classification': 'Protocol Problems', 'failure_category': 'DNS', 'failure_subcategory': 'No response from DNS'}
+    result = evaluate(dns, {'lte_rsrp': -118.4, 'lte_sinr': 4})
+    assert (result['rule'], result['category'], result['cause'], result['domain']) == ('Poor LTE coverage', 'Poor Coverage LTE', 'Coverage', 'RF')
+    assert result['evidence'] == 'LTE RSRP (average) −118.4 dBm (< −110 dBm)'
+    result = evaluate(dns, {'lte_rsrp': -85, 'lte_sinr': 12})
+    assert (result['rule'], result['cause'], result['domain']) == ('DNS', 'DNS', 'Protocol')
+    assert 'No response from DNS' in result['evidence']
+    # What the provider reports outside the radio comes first, also in poor coverage.
+    voice = evaluate({'service': 'voice', 'failure_subcategory': 'No QCI1 bearer activation'}, {'lte_rsrp': -120})
+    assert voice['cause'] == 'No QCI1 established'
+    # A Voice failure with good radio and nothing else is a potential E2E issue; a Data one is not identified.
+    assert evaluate({'service': 'voice', 'result': 'Dropped'}, {'lte_rsrp': -80, 'lte_sinr': 15})['cause'] == 'Potential E2E Issue'
+    assert evaluate({'test_name': 'Ping 40'}, {'lte_rsrp': -80})['rule'] == 'Not identified'
+    # Any condition: a packet loss above 5 % holds without a failure description.
+    assert evaluate({}, {'packet_loss': 12.5})['rule'] == 'Packet loss'
+    # A Cutoff test with good radio has a low throughput.
+    assert evaluate({'result': 'Cutoff'}, {'lte_rsrp': -80, 'lte_sinr': 15})['cause'] == 'Low throughput'
+
+
+def test_good_radio_needs_the_radio_measured_and_reported_radio_takes_the_category_of_its_technology():
+    # Without radio values, a Cutoff test or a Voice failure says nothing about the radio.
+    assert evaluate({'result': 'Cutoff'}, {})['rule'] == 'Not identified'
+    assert evaluate({'service': 'voice', 'result': 'Dropped'}, {})['rule'] == 'Not identified'
+    assert evaluate({'service': 'voice', 'result': 'Dropped'}, {'nr_sinr': 12})['cause'] == 'Potential E2E Issue'
+    interference = {'failure_classification': 'RF Problems', 'failure_category': 'Interference problem',
+                    'failure_subcategory': 'DL interference problems'}
+    for technology, category in (('5G', 'DL Interference NR'), ('5G/4G', 'DL Interference LTE'), ('2G', 'DL Interference 2G/3G'),
+                                 ('', 'DL Interference LTE')):
+        assert evaluate({**interference, 'failure_technology': technology}, {})['category'] == category, technology
+    # Without a Failure Technology, the technology of the call decides.
+    assert evaluate({**interference, 'technology': 'NR SA'}, {})['category'] == 'DL Interference NR'
+    coverage = {'failure_category': 'Coverage gaps (PLMN lost)', 'failure_technology': '5G SA'}
+    assert (evaluate(coverage, {})['category'], evaluate(coverage, {})['cause']) == ('Poor Coverage NR', 'Coverage')
+    uplink = evaluate({'failure_subcategory': 'UL interference problems', 'failure_technology': '4G'}, {})
+    assert (uplink['category'], uplink['cause']) == ('UL Interference LTE', 'UL interference')
+
+
+def test_rules_keep_to_their_services_and_disabled_rules_are_skipped():
+    rules = nq_dta_rca.default_rules()
+    voice_only = [dict(rule, services=['voice']) if rule['key'] == 'lte-coverage' else rule for rule in rules]
+    assert evaluate({}, {'lte_rsrp': -120}, voice_only)['rule'] != 'Poor LTE coverage'
+    disabled = [dict(rule, enabled=False) if rule['key'] == 'lte-coverage' else rule for rule in rules]
+    assert evaluate({}, {'lte_rsrp': -120}, disabled)['rule'] != 'Poor LTE coverage'
+    assert nq_dta_rca.compile_rules(disabled, nq_catalog.default_root_catalog())[0]['rule']['key'] == rules[0]['key']
+
+
+def test_invalid_rules_say_what_is_wrong():
+    rule = {'name': 'Weak', 'services': ['data'], 'match': 'all', 'category': 'Poor Coverage LTE', 'cause': '',
+            'conditions': [{'input': 'lte_rsrp', 'op': 'lt', 'value': '-100'}]}
+    assert nq_dta_rca.normalize_rules([rule], strict=True)[0]['conditions'][0]['value'] == -100
+    for change, message in (({'conditions': [{'input': 'unknown', 'op': 'lt', 'value': 1}]}, 'choose the value'),
+                            ({'conditions': [{'input': 'lte_rsrp', 'op': 'contains', 'value': 'x'}]}, 'how LTE RSRP'),
+                            ({'conditions': [{'input': 'lte_rsrp', 'op': 'lt', 'value': 'weak'}]}, 'with a number'),
+                            ({'conditions': [{'input': 'failure_text', 'op': 'contains', 'value': ' , '}]}, 'write the words'),
+                            ({'category': '', 'cause': ''}, 'Root Category or the Root Cause')):
+        with pytest.raises(ValueError, match=message):
+            nq_dta_rca.normalize_rules([{**rule, **change}], strict=True)
+    with pytest.raises(ValueError, match='repeated'):
+        nq_dta_rca.normalize_rules([rule, rule], strict=True)
+    with pytest.raises(ValueError, match='at least one rule'):
+        nq_dta_rca.normalize_rules([], strict=True)
+
+
+def voice_frame() -> pd.DataFrame:
+    """Three Non-Qualified Voice calls: one in poor LTE coverage, one with a VoLTE core failure in good radio, one with good
+    radio and no failure description; and a completed call."""
+    return pd.DataFrame({
+        'JOIN_ID': ['0xA1', '0xB2', '0xC3', '0xD4'],
+        'Session_ID_A': [1, 2, 3, 4],
+        'Operator': ['EE'] * 4,
+        'Campaign': ['UK_Q3_2026'] * 4,
+        'Session_Type': ['CALL'] * 4,
+        'Call_Status': ['Failed', 'Failed', 'Dropped', 'Completed'],
+        'status': ['Failed', 'Failed', 'Dropped', 'Completed'],
+        'Call_Start_Time': ['2026-09-01 10:00:00', '2026-09-02 11:00:00', '2026-09-03 12:00:00', '2026-09-03 13:00:00'],
+        'Technology': ['LTE'] * 4,
+        'Failure_Classification': ['', 'VoLTE Problems', '', ''],
+        'Failure_Category': ['', 'VoLTE Core', '', ''],
+        'Failure_Subcategory': ['', 'VoLTE Core Failure', '', ''],
+        '4G_RSRP_Avg_A': [-121.5, -80.0, -82.0, -75.0],
+        '4G_SINR_Avg_A': [2.0, 15.0, 14.0, 20.0],
+        'Cell_ID_A': ['123456', '123457', '123458', '1'],
+    })
+
+
+def setup_calls(client, tmp_path) -> dict[str, dict]:
+    enable_module()
+    add_cdr(tmp_path, 'UK_Voice_Q3.xlsx', 'voice', voice_frame())
+    login(client)
+    return {call['join_id']: call for call in query(client)['calls']}
+
+
+def detail(client, call) -> dict:
+    response = client.get(f"/api/non-qualified-calls/calls/{call['call_key']}")
+    assert response.status_code == 200, response.text
+    return response.json()['call']
+
+
+def test_every_call_gets_the_dta_rca_in_its_fields_recommendation_and_panels(client, tmp_path):
+    calls = setup_calls(client, tmp_path)
+    assert set(calls) == {'0xA1', '0xB2', '0xC3'}
+    # The inputs of the RCA are read from the CDR while indexing, in the units of the RCA.
+    with core.repository.connection() as connection:
+        inputs = {str(row['join_id']): json.loads(row['rca_inputs_json']) for row in connection.execute(
+            'SELECT join_id, rca_inputs_json FROM nq_calls')}
+    assert inputs['0xA1']['lte_rsrp'] == -121.5 and inputs['0xA1']['lte_sinr'] == 2.0
+    coverage, core_failure, good = (detail(client, calls[key]) for key in ('0xA1', '0xB2', '0xC3'))
+    # Its five fields follow those of the Ericsson RCA in the RCA section.
+    state = client.get('/api/non-qualified-calls/state').json()
+    keys = [field['key'] for field in state['fields']]
+    assert keys[keys.index('rca_evidence') + 1:keys.index('rca_evidence') + 6] == [
+        'dta_rca_domain', 'dta_rca_category', 'dta_rca_cause', 'dta_rca_rule', 'dta_rca_evidence']
+    assert state['dta_refs'] == nq_catalog.DTA_REFS and state['rca_sources']['dta'] == 'DT Analyzer RCA'
+    assert (coverage['values']['dta_rca_domain'], coverage['values']['dta_rca_category'], coverage['values']['dta_rca_cause']) == (
+        'RF', 'Poor Coverage LTE', 'Coverage')
+    assert coverage['values']['dta_rca_rule'] == 'Poor LTE coverage'
+    assert '−121.5 dBm' in coverage['values']['dta_rca_evidence']
+    assert core_failure['values']['dta_rca_cause'] == 'VoLTE core'
+    assert (good['values']['dta_rca_category'], good['values']['dta_rca_cause']) == ('E2E', 'Potential E2E Issue')
+    # The recommendation has its card after the NetCheck RCA, with the rule and the evidence.
+    sources = {source['source']: source for source in coverage['rca_recommendation']['sources']}
+    assert sources['dta']['label'] == 'DT Analyzer RCA' and sources['dta']['raw_category'] == 'Poor LTE coverage'
+    assert sources['dta']['evidence'] and coverage['rca_recommendation']['recommendation']['category'] == 'Poor Coverage LTE'
+    # The Root Cause Analysis counts the calls with it, and its root domain filters them.
+    response = client.post('/api/non-qualified-calls/root-causes/stats', json={'filters': {}, 'source': 'dta'})
+    assert response.status_code == 200, response.text
+    stats = response.json()
+    assert stats['source'] == 'dta' and stats['summary']['labelled'] == 3
+    assert {item['value']: item['count'] for item in stats['domains']} == {'RF': 1, 'IMS/E2E': 2}
+    filtered = query(client, filters={'dta_domain': ['RF']})['calls']
+    assert [call['join_id'] for call in filtered] == ['0xA1']
+    # RCA Insights compares it with the other sources.
+    insights = client.post('/api/non-qualified-calls/rca/insights', json={'filters': {}}).json()
+    assert insights['coverage']['dta'] == 3
+    assert {item['domain'] for item in insights['domains']['dta']} == {'RF', 'IMS/E2E'}
+    assert {'selected_dta', 'netcheck_dta', 'script_dta'} <= set(insights['agreement']) and 'dta' in insights['confusion']
+    # The table column of a field of the RCA reads it in the query, and the Excel export has it.
+    columns = nq.field_sql({'source': 'dta', 'source_ref': 'dta_cause', 'key': 'dta_rca_cause'})
+    assert 'dta_json' in columns
+
+
+def test_admins_change_the_rules_and_every_call_follows_them(client, tmp_path):
+    calls = setup_calls(client, tmp_path)
+    payload = client.get('/api/non-qualified-calls/dta-rca/rules').json()
+    assert payload['rules'] == nq_dta_rca.default_rules() and payload['counts']['Poor LTE coverage'] == 1
+    # A stricter coverage threshold leaves the call to the Voice rule of good radio.
+    rules = [dict(rule, conditions=[{'input': 'lte_rsrp', 'op': 'lt', 'value': -125}]) if rule['key'] == 'lte-coverage' else rule
+             for rule in payload['rules']]
+    response = client.put('/api/non-qualified-calls/dta-rca/rules', json={'rules': rules})
+    assert response.status_code == 200, response.text
+    assert response.json()['calculated'] == 3 and 'Poor LTE coverage' not in response.json()['counts']
+    assert detail(client, calls['0xA1'])['values']['dta_rca_cause'] == 'Potential E2E Issue'
+    log = next(row for row in core.repository.list_logs(limit=50) if row['action'] == 'nq_dta_rca_rules')
+    details = json.loads(log['details'])
+    assert details['message'] == 'DT Analyzer RCA rules updated.'
+    assert any(line.startswith('Rule changed: Poor LTE coverage') and '−125 dBm' in line for line in details['changes'])
+    # A rule the editor cannot save tells why.
+    response = client.put('/api/non-qualified-calls/dta-rca/rules',
+                          json={'rules': [{'name': 'Broken', 'conditions': [], 'category': '', 'cause': ''}]})
+    assert response.status_code == 400 and 'Root Category or the Root Cause' in response.json()['detail']
+    # Default Rules brings the default rules back.
+    response = client.put('/api/non-qualified-calls/dta-rca/rules', json={'rules': [], 'defaults': True})
+    assert response.status_code == 200 and response.json()['rules'] == nq_dta_rca.default_rules()
+    assert detail(client, calls['0xA1'])['values']['dta_rca_cause'] == 'Coverage'
+    # Only admins and super-admins change them; every user reads them.
+    workspace_user('analyst', 'user-editor')
+    login(client, 'analyst', 'analyst123')
+    assert client.get('/api/non-qualified-calls/dta-rca/rules').status_code == 200
+    assert client.put('/api/non-qualified-calls/dta-rca/rules', json={'rules': rules}).status_code == 403
+
+
+def test_the_rules_travel_with_the_nq_calls_configuration(client, tmp_path):
+    setup_calls(client, tmp_path)
+    rules = [dict(rule, enabled=False) if rule['key'] == 'voice-e2e' else rule for rule in nq_dta_rca.default_rules()]
+    nq_dta_rca.save_rules(core.repository, rules, 'super')
+    document = json.loads(nq.export_configuration_document(core.repository))
+    assert document['dta_rca_rules'] == rules
+    current = json.loads(nq.export_configuration_document(core.repository))
+    changed = dict(document, dta_rca_rules=nq_dta_rca.default_rules())
+    lines = nq.configuration_changes(current, nq.predicted_configuration(current, changed))
+    assert any(line.startswith('DT Analyzer RCA rules · Rule changed: Voice failure with good radio') for line in lines)
+    nq.import_configuration_document(core.repository, json.dumps(changed))
+    assert nq_dta_rca.load_rules(core.repository) == nq_dta_rca.default_rules()
+    # The results follow the imported rules as soon as the calls are read.
+    calls = {call['join_id']: call for call in query(client)['calls']}
+    assert detail(client, calls['0xC3'])['values']['dta_rca_cause'] == 'Potential E2E Issue'
+
+
+def test_a_change_of_the_catalog_calculates_the_calls_again(client, tmp_path):
+    calls = setup_calls(client, tmp_path)
+    catalog = nq.list_root_causes(core.repository)
+    for item in catalog['categories']:
+        if item['name'] == 'Poor Coverage LTE':
+            item.update(previous='Poor Coverage LTE', name='LTE Coverage')
+    nq.save_root_causes(core.repository, catalog, False, 'super')
+    # The rule names Poor Coverage LTE: the renamed category is found by its keywords.
+    assert detail(client, calls['0xA1'])['values']['dta_rca_category'] == 'LTE Coverage'
+    with core.repository.connection() as connection:
+        tables = {str(row[0]) for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    assert nq_dta_rca.RESULTS_TABLE in tables and nq.NQ_TABLE_TITLES[nq_dta_rca.RESULTS_TABLE] == 'NQ DT Analyzer RCA Results'
+
+
+def test_workspaces_with_the_former_name_of_its_fields_take_the_short_name(client, tmp_path):
+    setup_calls(client, tmp_path)
+    fields = nq.list_fields(core.repository)
+    for field in fields:
+        if field['key'] in nq.V27_FIELD_KEYS:
+            field['label'] = field['label'].replace('DT Analyzer RCA', 'DriveTest Analyzer RCA')
+            field['description'] = field['description'].replace('DT Analyzer RCA', 'DriveTest Analyzer RCA')
+    nq._store_fields(core.repository, fields)
+    core.repository.set_workspace_state(nq.ANALYSIS_CENTER_V28_STATE_KEY, '')
+    core.repository.set_workspace_state(nq.SCHEMA_STATE_KEY, '')
+    nq.ensure_nq_tables(core.repository)
+    renamed = {field['key']: field for field in nq.list_fields(core.repository) if field['key'] in nq.V27_FIELD_KEYS}
+    assert renamed['dta_rca_category']['label'] == 'DT Analyzer RCA Root Category'
+    assert all('DriveTest Analyzer RCA' not in field['label'] + field['description'] for field in renamed.values())
+
+
+def test_every_rule_gives_a_root_category_and_workspaces_get_its_categories(client, tmp_path):
+    compiled = nq_dta_rca.compile_rules(nq_dta_rca.default_rules(), nq_catalog.normalize_root_catalog(nq_catalog.default_root_catalog()))
+    assert all(entry['result']['category'] for entry in compiled), [entry['rule']['name'] for entry in compiled if not entry['result']['category']]
+    setup_calls(client, tmp_path)
+    # A catalog of before, without the categories of the DT Analyzer RCA and with DNS mapped to no category.
+    catalog = nq.list_root_causes(core.repository)
+    catalog['categories'] = [item for item in catalog['categories'] if item['name'] not in nq_catalog.DTA_CATEGORIES]
+    for item in catalog['causes']:
+        if item['name'] in nq_catalog.DEFAULT_CAUSE_CATEGORIES:
+            item['category'] = ''
+    nq.save_root_causes(core.repository, catalog, False, 'super')
+    core.repository.set_workspace_state(nq.ANALYSIS_CENTER_V29_STATE_KEY, '')
+    core.repository.set_workspace_state(nq.SCHEMA_STATE_KEY, '')
+    nq.ensure_nq_tables(core.repository)
+    root = nq.list_root_causes(core.repository)
+    assert set(nq_catalog.DTA_CATEGORIES) <= {item['name'] for item in root['categories']}
+    causes = {item['name']: item for item in root['causes']}
+    assert causes['DNS']['category'] == 'Protocol / Server' and causes['DNS']['domain'] == 'Protocol'
+    assert causes['Low throughput']['category'] == 'RAN Performance'
+    log = next(row for row in core.repository.list_logs(limit=50) if row['action'] == 'nq_root_causes' and 'DT Analyzer' in row['details'])
+    assert json.loads(log['details'])['causes_mapped'] == len(nq_catalog.DEFAULT_CAUSE_CATEGORIES)
+
+
+def test_it_learns_from_the_decisions_of_the_analysts_when_asked(client, tmp_path):
+    enable_module()
+    frame = pd.DataFrame({
+        'JOIN_ID': [f'0xE{index}' for index in range(4)], 'Session_ID_A': [1, 2, 3, 4], 'Operator': ['EE'] * 4,
+        'Campaign': ['UK_Q3_2026'] * 4, 'Session_Type': ['CALL'] * 4, 'Call_Status': ['Dropped'] * 4, 'status': ['Dropped'] * 4,
+        'Call_Start_Time': [f'2026-09-0{index + 1} 10:00:00' for index in range(4)], 'Technology': ['LTE'] * 4,
+        '4G_RSRP_Avg_A': [-80.0] * 4, '4G_SINR_Avg_A': [15.0] * 4, 'Cell_ID_A': ['1', '2', '3', '4'],
+    })
+    add_cdr(tmp_path, 'UK_Voice_Q3.xlsx', 'voice', frame)
+    login(client)
+    calls = {call['join_id']: call for call in query(client)['calls']}
+    for key in ('0xE0', '0xE1', '0xE2'):
+        response = client.patch(f"/api/non-qualified-calls/calls/{calls[key]['call_key']}",
+                                json={'changes': {'root_category': 'Poor Coverage LTE', 'root_cause': 'LOS but weak signal'}})
+        assert response.status_code == 200, response.text
+    # Off by default: the rule gives every call its root cause.
+    assert detail(client, calls['0xE3'])['values']['dta_rca_cause'] == 'Potential E2E Issue'
+    payload = client.get('/api/non-qualified-calls/dta-rca/rules').json()
+    assert payload['settings'] == {'learn': False} and payload['learned'] == 0
+    response = client.put('/api/non-qualified-calls/dta-rca/rules', json={'rules': payload['rules'], 'learn': True})
+    assert response.status_code == 200 and response.json()['settings'] == {'learn': True}
+    # The undecided call takes what the analysts gave the three others of its pattern; a decided one learns from the
+    # two others only (its own decision never counts).
+    learned = detail(client, calls['0xE3'])
+    assert (learned['values']['dta_rca_category'], learned['values']['dta_rca_cause'], learned['values']['dta_rca_domain']) == (
+        'Poor Coverage LTE', 'LOS but weak signal', 'RF')
+    assert learned['values']['dta_rca_rule'] == 'Voice failure with good radio'
+    assert learned['values']['dta_rca_evidence'].startswith('Learned from the analysts: 3 of the 3 other calls')
+    source = next(item for item in learned['rca_recommendation']['sources'] if item['source'] == 'dta')
+    assert source['learned'] and source['category'] == 'Poor Coverage LTE'
+    assert detail(client, calls['0xE0'])['values']['dta_rca_evidence'].startswith('Learned from the analysts: 2 of the 2 other calls')
+    assert client.get('/api/non-qualified-calls/dta-rca/rules').json()['learned'] == 4
+    log = next(row for row in core.repository.list_logs(limit=50) if row['action'] == 'nq_dta_rca_learning')
+    assert json.loads(log['details'])['learn'] is True
+    # A decision less leaves two others for the undecided call, and one for each decided call: they go back to the rule.
+    client.patch(f"/api/non-qualified-calls/calls/{calls['0xE2']['call_key']}", json={'changes': {'root_category': '', 'root_cause': ''}})
+    assert detail(client, calls['0xE3'])['values']['dta_rca_cause'] == 'LOS but weak signal'
+    assert detail(client, calls['0xE0'])['values']['dta_rca_cause'] == 'Potential E2E Issue'
+    # The setting travels with the configuration; off again, every call takes its rule.
+    assert json.loads(nq.export_configuration_document(core.repository))['dta_rca_settings'] == {'learn': True}
+    client.put('/api/non-qualified-calls/dta-rca/rules', json={'rules': payload['rules'], 'learn': False})
+    assert detail(client, calls['0xE3'])['values']['dta_rca_cause'] == 'Potential E2E Issue'

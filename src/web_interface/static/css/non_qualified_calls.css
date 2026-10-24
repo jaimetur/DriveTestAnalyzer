@@ -112,6 +112,8 @@
 .nq-kpi-attended { border-top-color: #e08a1e; }
 .nq-kpi-team { border-top-color: #0f6f7d; }
 .nq-kpi-commented { border-top-color: #6a63c9; }
+.nq-kpi-dta { border-top-color: #8e24aa; }
+.nq-kpi-lines { display: grid; gap: 14px; }
 .nq-hint { margin: 14px 0 8px; color: var(--nq-muted); font-size: .82rem; }
 /* Six breakdowns per row, as in the one-slide Executive Summary of the PowerPoint and Word. */
 .nq-breakdowns { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; }
@@ -769,6 +771,7 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 .nq-field-title > small { flex: 0 0 auto; white-space: nowrap; }
 .nq-source-tag, .nq-required-tag { padding: 0 .4rem; border-radius: 999px; background: #eceff1; color: #4b5a63; font-size: .64rem; font-weight: 800; }
 .nq-source-tag.is-rca { background: #fff2cc; color: #7a5a06; }
+.nq-source-tag.is-dta { background: #f3e5f5; color: #6a1b9a; }
 .nq-source-tag.is-cdr { background: #e2edf9; color: #1f4f86; }
 .nq-source-tag.is-derived { background: #e7e4fb; color: #43379e; }
 .nq-required-tag { background: #fde3e7; color: #a3263a; }
@@ -798,6 +801,8 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 .nq-source-card.is-netcheck { border-left-color: #0070c0; }
 .nq-source-card.is-comments { border-left-color: #6a63c9; }
 .nq-source-card.is-learned { border-left-color: #2e8b57; }
+.nq-source-card.is-dta { border-left-color: #8e24aa; }
+.nq-source-evidence { margin: 0; font-size: .76rem; line-height: 1.35; }
 .nq-source-card header { display: flex; justify-content: space-between; gap: .4rem; font-size: .84rem; }
 .nq-source-card header strong { color: var(--nq-dark); }
 .nq-source-raw { margin: 0; color: var(--nq-text); font-size: .8rem; font-weight: 650; }
@@ -862,8 +867,9 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 .nq-phase-card.is-wide .nq-phase-value { width: 100%; break-inside: avoid; }
 
 /* Root Cause Sources panel. */
-.nq-hierarchies { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-top: 14px; }
-@media (max-width: 1200px) { .nq-hierarchies { grid-template-columns: minmax(0, 1fr); } }
+.nq-hierarchies { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-top: 14px; }
+@media (max-width: 1500px) { .nq-hierarchies { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 900px) { .nq-hierarchies { grid-template-columns: minmax(0, 1fr); } }
 .nq-hierarchy-note { margin: -.3rem 0 .4rem; font-size: .76rem; }
 .non-qualified-calls .nq-hierarchy-row.is-category { font-weight: 800; }
 .non-qualified-calls .nq-hierarchy-row.is-cause { padding-left: 1.2rem; color: var(--nq-muted); font-size: .76rem; }
@@ -957,6 +963,22 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 .nq-condition-values[hidden] { display: none; }
 .nq-condition-value { padding: .25rem .6rem; border-left: 4px solid var(--nq-chip, var(--nq-border)); font-size: .76rem; }
 .nq-status-rule > .nq-link-action { justify-self: start; margin-left: 2.2rem; }
+/* DT Analyzer RCA Rules: the services and the result of a rule under its name, a condition per row. */
+.nq-dta-rules-dialog { width: min(1180px, calc(100vw - 32px)); }
+.nq-dta-rules-summary { margin: 0; font-size: .82rem; }
+.nq-dta-learning { display: grid; gap: .25rem; padding: .6rem .8rem; border: 1px solid var(--nq-border); border-radius: 10px; background: var(--nq-softer); }
+.nq-dta-learning .form-note { margin: 0; }
+.nq-dta-rule > :is(.nq-dta-scope, .nq-dta-result) { flex-wrap: wrap; margin-left: 2.2rem; }
+.nq-dta-rule > :is(.nq-dta-scope, .nq-dta-result)::before { content: none; display: none; }
+.nq-dta-rule .nq-dta-name { flex: 1 1 16rem; min-width: 0; }
+.nq-dta-rule .nq-dta-enabled { flex: 0 0 auto; width: 1.05rem; height: 1.05rem; }
+.nq-dta-count { flex: 0 0 auto; font-size: .78rem; font-weight: 750; white-space: nowrap; }
+.nq-dta-service { padding: .2rem .55rem; font-size: .78rem; }
+.nq-dta-scope .nq-dta-match { flex: 0 0 auto; width: auto; min-width: 11rem; }
+.nq-dta-result select { flex: 0 1 16rem; min-width: 0; }
+.nq-dta-condition { grid-template-columns: minmax(14rem, 1fr) 10rem minmax(8rem, 14rem) auto; }
+.nq-dta-condition .nq-dta-value { min-height: 2rem; min-width: 0; }
+.nq-dta-condition .nq-dta-value[hidden] { display: none; }
 /* Ericsson RCA Results. */
 .nq-rca-dialog { width: min(900px, calc(100vw - 32px)); }
 .nq-assign-analysts-dialog { width: min(1100px, calc(100vw - 32px)); }
@@ -1235,7 +1257,8 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
   .nq-options-dialog :is(.nq-status-rule, .nq-field-def, .nq-root-domain) { grid-template-columns: minmax(0, 1fr); min-width: 0; }
   .nq-status-rule .nq-rule-status { flex: 1 1 9rem; min-width: 0; }
   .nq-conditions { margin-left: 0; }
-  .nq-status-rule > .nq-link-action, .nq-rule-missing { margin-left: 0; }
+  .nq-status-rule > .nq-link-action, .nq-rule-missing, .nq-dta-rule > :is(.nq-dta-scope, .nq-dta-result) { margin-left: 0; }
+  .nq-dta-condition { grid-template-columns: minmax(0, 1fr); }
   .nq-field-def > .nq-option-row .nq-root-name { min-width: 0; }
 }
 /* The export buttons: larger icons, all of one size, and one height for both. */

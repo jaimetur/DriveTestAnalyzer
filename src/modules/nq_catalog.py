@@ -63,7 +63,8 @@ FIELD_TYPES = {
 }
 FIELD_SOURCES = {
     'user': 'Entered by the analysts', 'tracking': 'Follow-up of the call', 'cdr': 'From the CDR',
-    'rca': 'From the Ericsson RCA', 'derived': 'Derived from the call', 'priority': 'From the NQ Prioritization',
+    'rca': 'From the Ericsson RCA', 'dta': 'From the DT Analyzer RCA', 'derived': 'Derived from the call',
+    'priority': 'From the NQ Prioritization',
 }
 # Follow-up values a tracking field shows.
 TRACKING_REFS = {
@@ -76,6 +77,12 @@ RCA_REFS = {
     'auto_rca_category_b': 'Ericsson RCA Category B', 'auto_rca_subcategory_b': 'Ericsson RCA Subcategory B',
     'rca_initial_category': 'Ericsson RCA Initial Category', 'rca_initial_cause': 'Ericsson RCA Initial Subcategory',
     'rca_category': 'Ericsson RCA Suggested Category', 'rca_cause': 'Ericsson RCA Suggested Cause', 'rca_evidence': 'Ericsson RCA Evidence',
+}
+# Values of the DT Analyzer RCA (see nq_dta_rca): what it finds on the root cause catalog, the rule and the evidence.
+DTA_REFS = {
+    'dta_domain': 'DT Analyzer RCA Root Domain', 'dta_category': 'DT Analyzer RCA Root Category',
+    'dta_cause': 'DT Analyzer RCA Root Cause', 'dta_rule': 'DT Analyzer RCA Rule',
+    'dta_evidence': 'DT Analyzer RCA Evidence',
 }
 # Values of the NQ Prioritization (see nq_prioritization): their name and type, and the values of its lists.
 PRIORITY_REFS = {
@@ -155,7 +162,8 @@ DEFAULT_TEAMS = (
 # The 37 fields of the meeting workbook and those its analyses add (the initial root category and cause, the priority,
 # analyst and reviewer, a description, the implementation team and the planned fiscal year), in its order (the order
 # of the table and of the Excel export) but with the NetCheck RCA before the Ericsson RCA, with the initial category and
-# subcategory of the script before its suggestion and its evidence after it, the Last Cell ID and Failure Comment of
+# subcategory of the script before its suggestion and its evidence after it, then the DT Analyzer RCA, the Last
+# Cell ID and Failure Comment of
 # the CDR in Failure Details and the Analysis fields in the order of the call panel: the long texts (Description,
 # Findings, Proposed Measure) last.
 DEFAULT_FIELDS = (
@@ -183,6 +191,16 @@ DEFAULT_FIELDS = (
            description='Root cause suggested by the Ericsson RCA (Final_RCA_Subcategory of its Auto RCA output).'),
     _field('rca_evidence', 'Ericsson RCA Evidence', 'rca', 'long_text', 'rca', 'rca_evidence',
            description='Why the Ericsson RCA chose its category: the measurements and the condition that matched.'),
+    _field('dta_rca_domain', 'DT Analyzer RCA Root Domain', 'rca', 'text', 'dta', 'dta_domain',
+           description='Root domain the DT Analyzer RCA finds from the data of the CDR (that of its category, else of its cause).'),
+    _field('dta_rca_category', 'DT Analyzer RCA Root Category', 'rca', 'text', 'dta', 'dta_category',
+           description='Root Category of the catalog the DT Analyzer RCA finds from the data of the CDR.'),
+    _field('dta_rca_cause', 'DT Analyzer RCA Root Cause', 'rca', 'text', 'dta', 'dta_cause',
+           description='Root Cause of the catalog the DT Analyzer RCA finds from the data of the CDR.'),
+    _field('dta_rca_rule', 'DT Analyzer RCA Rule', 'rca', 'text', 'dta', 'dta_rule',
+           description='The rule of the DT Analyzer RCA that explains the failure (the first one whose conditions hold).'),
+    _field('dta_rca_evidence', 'DT Analyzer RCA Evidence', 'rca', 'long_text', 'dta', 'dta_evidence',
+           description='Why the DT Analyzer RCA chose its root cause: the values of the call that met the rule.'),
     _field('initial_root_category', 'Initial Root Category', 'rca', 'text',
            description='The first root category the analysts gave the call, before the selected one.'),
     _field('initial_root_cause', 'Initial Root Cause', 'rca', 'text',
@@ -362,7 +380,28 @@ DEFAULT_CATEGORIES = (
     ('No Failure/ Drop', 'Operational', ()),
     ('IMSI Issue', 'Core', ('imsi',)),
     ('VONR not Enabled in Source/Neighbor Site', 'IMS/E2E', ('vonr',)),
+    # The categories of the causes the DT Analyzer RCA finds outside the radio coverage and interference (nq_dta_rca).
+    ('Protocol / Server', 'Protocol', ()),
+    ('RAN Performance', 'RAN', ()),
+    ('Core Network', 'Core', ()),
+    ('Authentication & Registration', 'AAA', ()),
+    ('IMS / VoLTE', 'IMS/E2E', ()),
+    ('EPS Fallback', 'Core EPSFB', ()),
+    ('BLER LTE', 'RF', ()),
+    ('BLER NR', 'RF', ()),
 )
+# The Root Category of the default causes of the DT Analyzer RCA categories.
+DEFAULT_CAUSE_CATEGORIES = {
+    **{cause: 'Protocol / Server' for cause in ('DNS', 'HTTP', 'TCP connection errors', 'Packet loss', 'Latency', 'Data transfer timeout',
+                                                'No DL packets')},
+    **{cause: 'RAN Performance' for cause in ('Low throughput', 'RRC layer', 'Paging', 'Inter-RAT transition')},
+    **{cause: 'Core Network' for cause in ('TAU reject', 'EPS bearer deactivation', 'NAS mobility management', 'WhatsApp session in GSM')},
+    'Authentication/Authorization': 'Authentication & Registration',
+    'No QCI1 established': 'IMS / VoLTE', 'VoLTE core': 'IMS / VoLTE',
+    'EPS fallback failure': 'EPS Fallback',
+}
+DTA_CATEGORIES = ('Protocol / Server', 'RAN Performance', 'Core Network', 'Authentication & Registration', 'IMS / VoLTE', 'EPS Fallback',
+                  'BLER LTE', 'BLER NR')
 # Root Causes: those of the meeting workbook, then the causes of the first catalog, each in its domain.
 DEFAULT_CAUSES = (
     ('NLOS due to clutter or terrain profile', 'RF', ('nlos', 'clutter', 'terrain')),
@@ -422,7 +461,8 @@ def default_root_catalog() -> dict[str, list[dict[str, Any]]]:
     return {
         'domains': [{'name': name, 'color': color, 'keywords': list(keywords)} for name, color, keywords in DEFAULT_DOMAINS],
         'categories': [{'name': name, 'domain': domain, 'keywords': list(keywords)} for name, domain, keywords in DEFAULT_CATEGORIES],
-        'causes': [{'name': name, 'domain': domain, 'keywords': list(keywords)} for name, domain, keywords in DEFAULT_CAUSES],
+        'causes': [{'name': name, 'domain': domain, 'keywords': list(keywords), 'category': DEFAULT_CAUSE_CATEGORIES.get(name, '')}
+                   for name, domain, keywords in DEFAULT_CAUSES],
     }
 
 
@@ -562,6 +602,8 @@ def normalize_fields(items: Any, existing: dict[str, dict[str, Any]], call_field
             tracking_refs.add(ref)
         elif source == 'rca' and not ref:
             raise ValueError(f'Choose the Ericsson RCA column of "{label}".')
+        elif source == 'dta' and ref not in DTA_REFS:
+            raise ValueError(f'"{label}" shows an unknown value of the DT Analyzer RCA.')
         elif source == 'cdr':
             if not ref:
                 raise ValueError(f'Choose the CDR value of "{label}".')

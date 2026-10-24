@@ -63,9 +63,9 @@ def test_new_workspaces_get_the_catalog_of_the_meeting_workbook(client, tmp_path
     state = client.get('/api/non-qualified-calls/state').json()
     fields = state['fields']
     # The 37 fields of the meeting workbook, with the Auto RCA fields, the Last Cell ID and Failure Comment of the CDR and
-    # the fields of the analyses of the previous tool and of the NQ Prioritization, each next to the field it goes with in the
-    # Excel export.
-    assert len(fields) == 64
+    # the fields of the analyses of the previous tool, of the DT Analyzer RCA and of the NQ Prioritization, each next to the
+    # field it goes with in the Excel export.
+    assert len(fields) == 69
     keys = [field['key'] for field in fields]
     for before, after in (('nq_call_status', 'priority'), ('priority', 'prioritization'), ('assignee', 'analyst'), ('analyst', 'reviewer'),
                           ('planned_date', 'planned_fy'), ('implementation_status', 'implementation_team'),
@@ -457,7 +457,7 @@ def test_lifecycle_and_rca_insights_compare_the_three_sources(client, tmp_path):
     patch(client, calls['0xA1'], {'root_category': 'Poor Coverage LTE', 'root_cause': 'LOS but weak signal'})
     patch(client, calls['0xB2'], {'root_category': 'DL Interference LTE', 'fields': {'analysis_status': 'Ongoing'}})
     insights = client.post('/api/non-qualified-calls/rca/insights', json={'filters': {}}).json()
-    assert insights['coverage'] == {'total': 3, 'script': 2, 'netcheck': 3, 'selected': 2}
+    assert insights['coverage'] == {'total': 3, 'script': 2, 'netcheck': 3, 'dta': 3, 'selected': 2}
     assert insights['agreement']['selected_script'] == {'agree': 1, 'compared': 2, 'rate': 50.0}
     assert insights['agreement']['selected_netcheck']['agree'] == 2
     assert insights['confusion']['script']['rows'] and insights['domains']['selected'][0]['domain'] == 'RF'
@@ -602,7 +602,7 @@ def test_catalog_workbook_round_trip_and_the_meeting_layout(client, tmp_path):
     assert imported.status_code == 200, imported.text
     route = next(field for field in imported.json()['fields'] if field['label'] == 'Drive Route')
     assert [option['name'] for option in route['options']] == ['M25', 'A1'] and route['section'] == 'analysis' and route['in_table']
-    assert len(imported.json()['fields']) == 65
+    assert len(imported.json()['fields']) == 70
     # The workbook of the meeting: sections in the first row, fields in the second, values below.
     meeting = Workbook()
     sheet = meeting.active
@@ -706,7 +706,7 @@ def test_first_version_workspaces_move_to_the_analysis_center(client, tmp_path):
     assert [item['name'] for item in nq.list_options(repository)['statuses']][0] == 'Not Attended'
     # The workspace's field keeps its key and values and takes its place in the catalog.
     findings = next(field for field in nq.list_fields(repository) if field['label'] == 'Findings')
-    assert findings['key'] == 'findings' and findings['section'] == 'analysis' and len(nq.list_fields(repository)) == 64
+    assert findings['key'] == 'findings' and findings['section'] == 'analysis' and len(nq.list_fields(repository)) == 69
 
 
 def test_recommendation_engine_maps_each_source_onto_the_catalog():
@@ -1454,8 +1454,8 @@ def test_reviewed_domains_change_the_catalog_and_new_causes_take_the_domain_of_t
 
 def test_calls_with_a_cause_and_no_category_take_the_category_of_their_cause_on_demand(client, tmp_path):
     calls = setup_calls(client, tmp_path)
-    patch(client, calls['0xA1'], {'root_cause': 'Paging'})
-    patch(client, calls['0xB2'], {'root_category': 'E2E', 'root_cause': 'Paging'})
+    patch(client, calls['0xA1'], {'root_cause': 'Handover failure'})
+    patch(client, calls['0xB2'], {'root_category': 'E2E', 'root_cause': 'Handover failure'})
     apply = lambda preview: client.post('/api/non-qualified-calls/root-causes/apply-categories', json={'preview': preview}).json()['calls']
     assert apply(True) == 0
     root = client.get('/api/non-qualified-calls/root-causes').json()
@@ -1463,7 +1463,7 @@ def test_calls_with_a_cause_and_no_category_take_the_category_of_their_cause_on_
                'categories': [{'name': item['name'], 'previous': item['name'], 'domain': item['manual_domain'], 'keywords': item['keywords']}
                               for item in root['categories']],
                'causes': [{'name': item['name'], 'previous': item['name'], 'domain': item['manual_domain'], 'keywords': item['keywords'],
-                           'category': 'Mobility LTE' if item['name'] == 'Paging' else ''} for item in root['causes']]}
+                           'category': 'Mobility LTE' if item['name'] == 'Handover failure' else ''} for item in root['causes']]}
     assert client.put('/api/non-qualified-calls/root-causes', json=payload).status_code == 200
     # Only the call without root category takes it; the preview changes nothing.
     assert apply(True) == 1 and apply(True) == 1

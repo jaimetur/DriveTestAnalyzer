@@ -513,15 +513,16 @@ def test_root_causes_are_suggested_labelled_required_and_analysed(client, tmp_pa
     assert query(client, filters={'root_category': ['E2E']})['total'] == 1
     assert query(client, filters={'root_domain': [nq.UNASSIGNED]})['total'] == 3
 
-    # Bulk: the recommendations label the calls without a root cause and keep the labelled ones; calls without
-    # a recommendation are left as they are.
+    # Bulk: the recommendations label the calls without a root cause and keep the labelled ones (the DT Analyzer RCA
+    # recommends the interference the CDR reports); calls without a recommendation (Not identified by the DT Analyzer RCA)
+    # are left as they are.
     keys = [call['call_key'] for call in calls.values()]
     changed = client.post('/api/non-qualified-calls/calls/bulk', json={'call_keys': keys, 'changes': {'apply_recommendation': True}})
-    assert changed.json()['changed'] == 1
+    assert changed.json()['changed'] == 2
     labelled = labelled_calls(client)
     assert labelled['voice', 'Dropped'] == ('IMS/E2E', 'E2E', 'No QCI1 established')
-    assert labelled['voice', 'Failed'] == ('RF', '', 'Coverage')
-    assert labelled['data', 'Cutoff'] == ('', '', '') and labelled['data', 'Failed'] == ('', '', '')
+    assert labelled['voice', 'Failed'] == ('RF', 'Poor Coverage LTE', 'Coverage')
+    assert labelled['data', 'Cutoff'] == ('RF', 'DL Interference LTE', 'DL interference') and labelled['data', 'Failed'] == ('', '', '')
 
     # Renaming follows on every call; a cause in use cannot be removed.
     taxonomy = client.get('/api/non-qualified-calls/root-causes').json()
@@ -531,7 +532,7 @@ def test_root_causes_are_suggested_labelled_required_and_analysed(client, tmp_pa
     next(item for item in taxonomy['domains'] if item['name'] == 'RF')['name'] = 'Radio'
     saved = client.put('/api/non-qualified-calls/root-causes', json={**taxonomy, 'require_to_close': True})
     assert saved.status_code == 200, saved.text
-    assert labelled_calls(client)['voice', 'Failed'] == ('Radio', '', 'Coverage')
+    assert labelled_calls(client)['voice', 'Failed'] == ('Radio', 'Poor Coverage LTE', 'Coverage')
     current = saved.json()
     current['causes'] = [cause for cause in current['causes'] if cause['name'] != 'Coverage']
     refused = client.put('/api/non-qualified-calls/root-causes', json={**current, 'require_to_close': True})
@@ -545,8 +546,8 @@ def test_root_causes_are_suggested_labelled_required_and_analysed(client, tmp_pa
     assert client.patch(f'/api/non-qualified-calls/calls/{key}', json={'changes': {'status': 'Closed'}}).status_code == 200
 
     stats = client.post('/api/non-qualified-calls/root-causes/stats', json={'filters': {}, 'include_suggestions': False}).json()
-    assert stats['summary'] == {'total': 4, 'labelled': 2, 'suggested': 0, 'unclassified': 2}
-    assert {item['value']: item['count'] for item in stats['domains']} == {'Radio': 1, 'Operational': 1, 'Not classified': 2}
+    assert stats['summary'] == {'total': 4, 'labelled': 3, 'suggested': 0, 'unclassified': 1}
+    assert {item['value']: item['count'] for item in stats['domains']} == {'Radio': 2, 'Operational': 1, 'Not classified': 1}
     assert {row['name']: row['total'] for row in stats['call_types']} == {'Classic': 1, 'WhatsApp': 1, 'Data': 2}
     assert {row['name'] for row in stats['nr_modes']} == {'NSA'}
     # The last cell of the chain gives the eNB (ECI / 256); small identities are 2G/3G cells.
@@ -604,7 +605,8 @@ def test_root_cause_taxonomy_imports_with_the_tracking_and_shows_in_exports(clie
     # The Root Cause Sources, then the Root Cause Analysis of every source with its tables, between the NQ rates and the Lifecycle:
     # the source in bold in the title, and what each slide shows in its subtitle.
     assert list(dict.fromkeys(title for title in titles if title.startswith('Root Cause Analysis'))) == [
-        'Root Cause Analysis · NetCheck RCA', 'Root Cause Analysis · Ericsson RCA', 'Root Cause Analysis · Analysts']
+        'Root Cause Analysis · NetCheck RCA', 'Root Cause Analysis · Ericsson RCA', 'Root Cause Analysis · DT Analyzer RCA',
+        'Root Cause Analysis · Analysts']
     subtitles = {(paragraphs[0].text, paragraphs[1].text) for paragraphs in headers if len(paragraphs) > 1}
     assert {('Root Cause Analysis · NetCheck RCA', 'Root Domains by Call Type and NSA vs SA'),
             ('Root Cause Analysis · Ericsson RCA', 'Root Domains by Technology'),

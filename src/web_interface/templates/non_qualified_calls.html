@@ -23,7 +23,7 @@
     <div class="nq-hero-copy">
       <p class="eyebrow">Non-Qualified Calls · Analysis Center</p>
       <h2>Follow up every call and test that did not complete</h2>
-      <p class="lede">Every Voice and Speech call and every Data test whose result is not Completed (Failed, Dropped, Cutoff…) in the ready CDRs of this workspace. Review the overall health, drill down from the summary into the calls, and follow each one through the sections of the Analysis Center: its root cause decided from NetCheck, the Ericsson RCA and the analysts, its failure event, and its analysis, implementation and planning phases, with a status set by rules, a responsible team, an assignee and a shared comment thread.</p>
+      <p class="lede">Every Voice and Speech call and every Data test whose result is not Completed (Failed, Dropped, Cutoff…) in the ready CDRs of this workspace. Review the overall health, drill down from the summary into the calls, and follow each one through the sections of the Analysis Center: its root cause decided from NetCheck, the Ericsson RCA, the DT Analyzer RCA and the analysts, its failure event, and its analysis, implementation and planning phases, with a status set by rules, a responsible team, an assignee and a shared comment thread.</p>
     </div>
   </article>
 
@@ -54,6 +54,7 @@
       <button type="button" role="menuitem" id="nq-options-open"><svg class="nq-menu-icon" viewBox="0 0 24 24" aria-hidden="true">{{ section_icons['users'] | safe }}</svg><strong>Statuses &amp; Teams</strong><span>The NQ Call Statuses and the responsible teams with their members</span></button>
       <button type="button" role="menuitem" id="nq-status-rules-open" data-nq-status-rules-open><svg class="nq-menu-icon" viewBox="0 0 24 24" aria-hidden="true">{{ section_icons['function'] | safe }}</svg><strong>Status Rules</strong><span>How the status follows the Analysis, Implementation and Planning fields</span></button>
       <button type="button" role="menuitem" id="nq-root-open"><svg class="nq-menu-icon" viewBox="0 0 24 24" aria-hidden="true">{{ section_icons['book'] | safe }}</svg><strong>Root Cause Catalog</strong><span>Domains, Root Categories and Root Causes, with their keywords</span></button>
+      <button type="button" role="menuitem" id="nq-dta-rules-open" data-nq-dta-rules-open><svg class="nq-menu-icon" viewBox="0 0 24 24" aria-hidden="true">{{ section_icons['function'] | safe }}</svg><strong>DT Analyzer RCA Rules</strong><span>How the DT Analyzer RCA finds the root cause of every call from the data of its CDR</span></button>
       {# The imports of root causes: the Ericsson RCA results, and the analyses of the previous tool (shown to every
          editor; only admins and super-admins can use it). #}
       <div class="nq-menu-separator" role="separator"></div>
@@ -237,10 +238,10 @@
     <div class="collapsible-panel-body">
       <div class="nq-active-filters" data-nq-active-filters hidden></div>
       <div class="nq-progress-head">
-        <p class="nq-hint">The three root cause sources of the filtered calls side by side: the NetCheck RCA of the CDR, the Ericsson RCA results imported by JOIN_ID and the Root Category and Cause selected by the analysts. See how many calls each one covers, how often they agree and how the analysts' choices relate to each RCA.</p>
+        <p class="nq-hint">The root cause sources of the filtered calls side by side: the NetCheck RCA of the CDR, the Ericsson RCA results imported by JOIN_ID, the DT Analyzer RCA, which finds the root cause of every call from the data of its CDR with the rules of the workspace, and the Root Category and Cause selected by the analysts. See how many calls each one covers, how often they agree and how the analysts' choices relate to each RCA.</p>
         <span class="nq-root-head-actions"><span class="nq-muted" id="nq-sources-results"></span></span>
       </div>
-      <div class="nq-kpis" id="nq-sources-kpis"></div>
+      <div class="nq-kpi-lines" id="nq-sources-kpis"></div>
       <div class="nq-hierarchies" id="nq-sources-domains"></div>
       <div class="nq-hierarchies" id="nq-sources-catalog"></div>
       <div class="nq-hierarchies" id="nq-sources-hierarchies"></div>
@@ -256,7 +257,7 @@
       <div class="nq-active-filters" data-nq-active-filters hidden></div>
       <div class="nq-progress-head">
         <p class="nq-hint">Where the filtered calls fail: their root cause domain and cause, Classic and WhatsApp calls, NSA and SA, each technology and the eNB/gNB of the last cell of the call, with its site, host network and vendor from the network inventories of the workspace.</p>
-        <span class="nq-root-head-actions"><span class="nq-rate-tabs" id="nq-root-source" role="tablist" aria-label="Root causes counted"><button type="button" role="tab" class="nq-rate-tab is-active" aria-selected="true" data-nq-root-source="netcheck" title="The NetCheck RCA of the CDR (Failure Classification, Category and Subcategory) mapped onto the Root Cause Catalog">NetCheck RCA</button><button type="button" role="tab" class="nq-rate-tab" aria-selected="false" data-nq-root-source="script" title="The imported results of the Ericsson RCA mapped onto the Root Cause Catalog">Ericsson RCA</button><button type="button" role="tab" class="nq-rate-tab" aria-selected="false" data-nq-root-source="analysts" title="The Root Category and Root Cause the analysts chose">Analysts</button></span>
+        <span class="nq-root-head-actions"><span class="nq-rate-tabs" id="nq-root-source" role="tablist" aria-label="Root causes counted"><button type="button" role="tab" class="nq-rate-tab is-active" aria-selected="true" data-nq-root-source="netcheck" title="The NetCheck RCA of the CDR (Failure Classification, Category and Subcategory) mapped onto the Root Cause Catalog">NetCheck RCA</button><button type="button" role="tab" class="nq-rate-tab" aria-selected="false" data-nq-root-source="script" title="The imported results of the Ericsson RCA mapped onto the Root Cause Catalog">Ericsson RCA</button><button type="button" role="tab" class="nq-rate-tab" aria-selected="false" data-nq-root-source="dta" title="The Root Category and Root Cause the DT Analyzer RCA finds from the data of the CDR, with the rules of the workspace">DT Analyzer RCA</button><button type="button" role="tab" class="nq-rate-tab" aria-selected="false" data-nq-root-source="analysts" title="The Root Category and Root Cause the analysts chose">Analysts</button></span>
         <button type="button" class="nq-secondary-action" data-nq-rule-open title="See how root causes are suggested; admins and super-admins change it">Suggestion Rule</button></span>
       </div>
       <div class="nq-kpis" id="nq-root-kpis"></div>
@@ -483,6 +484,22 @@
       <button type="button" class="nq-secondary-action" id="nq-status-rules-default" title="The rules of a new workspace, for its default fields and statuses">Default Rules</button></span></div></fieldset>
     <p class="nq-options-error" id="nq-status-rules-error" role="alert"></p>
     <footer><button type="button" class="nq-secondary-action" id="nq-status-rules-cancel">{{ 'Cancel' if nq_can_configure else 'Close' }}</button><button type="submit" class="nq-primary-action" id="nq-status-rules-save"{% if not nq_can_configure %} hidden{% endif %}>Save</button></footer>
+  </form>
+</dialog>
+<dialog class="nq-options-dialog nq-status-rules-dialog nq-dta-rules-dialog" id="nq-dta-rules-dialog" aria-labelledby="nq-dta-rules-title">
+  <form method="dialog" class="nq-options-form" id="nq-dta-rules-form">
+    <header><h2 id="nq-dta-rules-title">DT Analyzer RCA Rules</h2><p class="form-note">How the DT Analyzer RCA finds the Root Category and Root Cause of every Non-Qualified Call from the data of its CDR (its failure, the LTE and NR radio of both sides, its mobility and its KPIs), in every workspace whatever its CDR type. The rules are tried from top to bottom: the first enabled rule of the service of the call whose conditions hold (all of them, or any of them) gives its Root Category and Root Cause on the Root Cause Catalog, and their domain. A rule without conditions takes every call of its services that reaches it; a text condition holds when the text contains one of its words (separated by commas; "a+b" needs both). Saving calculates every call again.</p></header>
+    {% if not nq_can_configure %}{{ role_warning('the DT Analyzer RCA Rules') }}{% endif %}
+    <div class="nq-rules-warning" role="note"><svg class="nq-rules-warning-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10.3 4.5a2 2 0 0 1 3.4 0l8 13.5a2 2 0 0 1-1.7 3H4a2 2 0 0 1-1.7-3z"/><path d="M12 9v4m0 4h.01"/></svg>
+      <p><strong>Change these rules with care.</strong> Their order matters: a rule takes the calls the rules above it leave, so a broad rule high in the list hides the rules below it. On Save, every call takes the root cause the new rules give it.</p></div>
+    <fieldset class="nq-config-fieldset nq-dta-learning"{{ config_lock }}><label class="nq-toggle nq-dta-learn"><input type="checkbox" id="nq-dta-learn"> <strong>Learn from the decisions of the analysts</strong></label>
+      <p class="form-note">A call takes the Root Category and Root Cause the analysts gave most of the other calls of its pattern (the same rule, service and failure of the provider), when at least <span id="nq-dta-learn-min">2</span> of them and more than half agree; the rules give the others. It also learns for the calls the rules leave Not identified.</p></fieldset>
+    <p class="nq-muted nq-dta-rules-summary" id="nq-dta-rules-summary"></p>
+    <fieldset class="nq-config-fieldset"{{ config_lock }}><ol class="nq-status-rules nq-dta-rules" id="nq-dta-rules"></ol>
+    <div class="nq-root-actions"><span><button type="button" class="nq-secondary-action" id="nq-dta-rules-add">Add Rule</button>
+      <button type="button" class="nq-secondary-action" id="nq-dta-rules-default" title="The rules every workspace starts with; Save applies them">Default Rules</button></span></div></fieldset>
+    <p class="nq-options-error" id="nq-dta-rules-error" role="alert"></p>
+    <footer><button type="button" class="nq-secondary-action" id="nq-dta-rules-cancel">{{ 'Cancel' if nq_can_configure else 'Close' }}</button><button type="submit" class="nq-primary-action" id="nq-dta-rules-save"{% if not nq_can_configure %} hidden{% endif %}>Save</button></footer>
   </form>
 </dialog>
 <dialog class="nq-options-dialog nq-priority-dialog" id="nq-priority-dialog" aria-labelledby="nq-priority-title">

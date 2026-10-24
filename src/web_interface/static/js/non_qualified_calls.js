@@ -26,6 +26,8 @@
     netcheck_domain: 'Root Domain (NetCheck RCA)', netcheck_category: 'Root Domain · Category (NetCheck RCA)',
     netcheck_cause: 'Root Domain · Cause (NetCheck RCA)', script_domain: 'Root Domain (Ericsson RCA)',
     script_category: 'Root Domain · Category (Ericsson RCA)', script_cause: 'Root Domain · Cause (Ericsson RCA)',
+    dta_domain: 'Root Domain (DT Analyzer RCA)', dta_category: 'Root Domain · Category (DT Analyzer RCA)',
+    dta_cause: 'Root Domain · Cause (DT Analyzer RCA)',
     version: 'CDR Version',
   };
   // How the CDRs see a call; "current" is the latest version with nothing to tell.
@@ -41,7 +43,8 @@
   // Filters set by clicking the Progress View and the Root Cause Analysis; they have no select of their own.
   // NR Mode has its own filter, the first of the General Filters.
   const EXTRA_FILTERS = ['call_type', 'period', 'age', 'root_pair', 'effective_domain', 'effective_cause', 'node',
-    'netcheck_domain', 'netcheck_category', 'netcheck_cause', 'script_domain', 'script_category', 'script_cause', 'rca_state', 'place'];
+    'netcheck_domain', 'netcheck_category', 'netcheck_cause', 'script_domain', 'script_category', 'script_cause',
+    'dta_domain', 'dta_category', 'dta_cause', 'rca_state', 'place'];
   // The values of the Follow-up filter (also set by the indicator cards), in their order.
   const FOLLOW_UP_STATES = ['attended', 'not_attended', 'open', 'stalled', 'closed', 'with_team', 'assigned', 'commented', 'labelled',
     'identified', 'not_identified'];
@@ -57,7 +60,7 @@
   // The status selects offer this value to give the status back to the Status Rules.
   const AUTO_STATUS = '__auto__';
   // Where a catalog field takes its value from, as a short tag.
-  const SOURCE_TAGS = {user: 'Analyst', tracking: 'Follow-up', cdr: 'CDR', rca: 'Ericsson RCA', derived: 'Derived'};
+  const SOURCE_TAGS = {user: 'Analyst', tracking: 'Follow-up', cdr: 'CDR', rca: 'Ericsson RCA', dta: 'DT Analyzer RCA', derived: 'Derived'};
   const CONFIDENCE_LABELS = {high: 'High confidence', medium: 'Medium confidence', low: 'Low confidence'};
   // The sections whose first list field is a phase of the follow-up.
   const PHASE_SECTIONS = ['analysis', 'implementation', 'planning'];
@@ -77,7 +80,7 @@
     // The table layouts: that of the workspace, that of the user and which one they see; ``layout`` is the one shown.
     layouts: null, layout: {builtin: [], cdr: [], export_cdr: [], fields: [], excel_fields: [], known_fields: [], order: []},
     rateService: '', failureService: '', sections: [], statusRules: [], conditionFields: {}, ruleOperators: {}, fieldSources: {}, trackingRefs: {},
-    rcaRefs: {}, callFields: [], rcaResults: {}, rcaSources: {}, matrixSource: 'netcheck',
+    rcaRefs: {}, dtaRefs: {}, dtaRca: {}, callFields: [], rcaResults: {}, rcaSources: {}, matrixSource: 'netcheck',
     // The values each filter offers among the calls of the other filters (null until known: every value).
     available: null, availableSignature: '',
   };
@@ -2221,11 +2224,13 @@
     });
     return card;
   };
-  // The root causes the panel counts: those the analysts chose, or what the NetCheck RCA or the Ericsson RCA gives each
-  // call on the catalog; a domain, domain·category or domain·cause filters the calls of that source.
+  // The root causes the panel counts: those the analysts chose, or what the NetCheck RCA, the Ericsson RCA or the
+  // DT Analyzer RCA gives each call on the catalog; a domain, domain·category or domain·cause filters the calls of
+  // that source.
   // The panel opens on its first tab, the NetCheck RCA.
   state.rootSource = 'netcheck';
-  const ROOT_SOURCE_NAMES = {analysts: 'the analysts', netcheck: 'the NetCheck RCA', script: 'the Ericsson RCA'};
+  const ROOT_SOURCE_NAMES = {analysts: 'the analysts', netcheck: 'the NetCheck RCA', script: 'the Ericsson RCA',
+    dta: 'the DT Analyzer RCA'};
   const domainPair = (domain) => [state.rootSource === 'analysts' ? 'root_domain' : `${state.rootSource}_domain`,
     domain === NOT_CLASSIFIED ? state.unassigned : domain];
   const causePair = (domain, cause) => [state.rootSource === 'analysts' ? 'root_pair' : `${state.rootSource}_cause`, `${domain}||${cause}`];
@@ -2695,10 +2700,11 @@
     return row;
   };
   // How the categories one RCA source maps to relate to the Root Categories the analysts selected.
+  const MATRIX_SOURCES = {netcheck: 'NetCheck RCA', script: 'Ericsson RCA', dta: 'DT Analyzer RCA'};
   const renderMatrix = (insights) => {
     const matrix = insights.confusion[state.matrixSource] || {rows: [], columns: [], cells: []};
     const tabs = $('nq-sources-matrix-tabs');
-    tabs.replaceChildren(...[['netcheck', 'NetCheck RCA'], ['script', 'Ericsson RCA']].map(([source, label]) => {
+    tabs.replaceChildren(...Object.entries(MATRIX_SOURCES).map(([source, label]) => {
       const tab = node('button', label, 'nq-rate-tab');
       tab.type = 'button';
       tab.setAttribute('role', 'tab');
@@ -2710,7 +2716,7 @@
     const table = $('nq-sources-matrix');
     const head = node('thead');
     const headRow = node('tr');
-    headRow.append(node('th', `${state.matrixSource === 'script' ? 'Ericsson RCA' : 'NetCheck RCA'} ↓ · Selected →`));
+    headRow.append(node('th', `${MATRIX_SOURCES[state.matrixSource] || 'NetCheck RCA'} ↓ · Selected →`));
     matrix.columns.forEach((column) => headRow.append(node('th', column)));
     head.append(headRow);
     const body = node('tbody');
@@ -2742,18 +2748,32 @@
     $('nq-sources-results').textContent = results.total
       ? `${number(results.total)} Ericsson RCA results · ${number(results.matched)} match calls` : 'No Ericsson RCA results imported yet';
     const rate = (item) => (item.rate === null ? '—' : `${item.rate.toFixed(1)}%`);
-    $('nq-sources-kpis').replaceChildren(
+    // Three lines: the calls each source covers, the analysts' choices and how each RCA agrees with them, and how each pair of
+    // RCAs agrees.
+    const line = (...cards) => {
+      const row = node('div', undefined, 'nq-kpis');
+      row.append(...cards);
+      return row;
+    };
+    $('nq-sources-kpis').replaceChildren(line(
       kpiCard('Calls', number(coverage.total), 'Selected Non-Qualified Calls', 'total'),
       kpiCard('NetCheck RCA', number(coverage.netcheck), `${percent(coverage.netcheck, coverage.total)} classified by NetCheck`, 'team'),
       kpiCard('Ericsson RCA', number(coverage.script), `${percent(coverage.script, coverage.total)} have Ericsson RCA results`, 'attended'),
+      kpiCard('DT Analyzer RCA', number(coverage.dta), `${percent(coverage.dta, coverage.total)} calculated from the data of the CDR`, 'dta'),
+    ), line(
       kpiCard('Selected', number(coverage.selected), `${percent(coverage.selected, coverage.total)} have a root category or cause`, 'closed'),
       kpiCard('NetCheck ↔ Selected', rate(agreement.selected_netcheck), `${number(agreement.selected_netcheck.agree)} of ${number(agreement.selected_netcheck.compared)} calls agree`, 'commented'),
       kpiCard('Ericsson RCA ↔ Selected', rate(agreement.selected_script), `${number(agreement.selected_script.agree)} of ${number(agreement.selected_script.compared)} calls agree`, 'commented'),
+      kpiCard('DT Analyzer RCA ↔ Selected', rate(agreement.selected_dta), `${number(agreement.selected_dta.agree)} of ${number(agreement.selected_dta.compared)} calls agree`, 'commented'),
+    ), line(
       kpiCard('NetCheck ↔ Ericsson RCA', rate(agreement.netcheck_script), `${number(agreement.netcheck_script.agree)} of ${number(agreement.netcheck_script.compared)} calls agree`, 'open'),
-    );
+      kpiCard('NetCheck ↔ DT Analyzer RCA', rate(agreement.netcheck_dta), `${number(agreement.netcheck_dta.agree)} of ${number(agreement.netcheck_dta.compared)} calls agree`, 'open'),
+      kpiCard('Ericsson RCA ↔ DT Analyzer RCA', rate(agreement.script_dta), `${number(agreement.script_dta.agree)} of ${number(agreement.script_dta.compared)} calls agree`, 'open'),
+    ));
     $('nq-sources-hierarchies').replaceChildren(
       hierarchyCard('NetCheck RCA', 'Failure Category → Subcategory of the CDR', insights.hierarchies.netcheck, false),
       hierarchyCard('Ericsson RCA', 'Suggested Category → Cause of the Ericsson RCA', insights.hierarchies.script, false),
+      hierarchyCard('DT Analyzer RCA', 'Root Category → Root Cause it finds from the data of the CDR', insights.hierarchies.dta, false),
       hierarchyCard('Selected by the Analysts', 'Root Category → Root Cause; click to drill down', insights.hierarchies.selected, true),
     );
     // What each source proposes translated onto the Root Cause Catalog; a category shows the calls the source puts in it.
@@ -2776,6 +2796,7 @@
     $('nq-sources-catalog').replaceChildren(
       catalogCard('NetCheck RCA → Root Category', 'Its categories translated onto the Root Cause Catalog', 'netcheck', 'netcheck_category'),
       catalogCard('Ericsson RCA → Root Category', 'Its categories translated onto the Root Cause Catalog', 'script', 'script_category'),
+      catalogCard('DT Analyzer RCA → Root Category', 'The Root Category it finds from the data of the CDR', 'dta', 'dta_category'),
       catalogCard('Selected Root Category', 'The Root Category the analysts chose', 'selected', 'root_category'),
     );
     // The root domains of each source above its hierarchy: a domain shows the calls the source puts in it. The values of
@@ -2792,6 +2813,7 @@
     $('nq-sources-domains').replaceChildren(
       domainCard('NetCheck RCA → Root Domain', 'Its categories translated onto the root domains of the catalog', 'netcheck', 'netcheck_domain'),
       domainCard('Ericsson RCA → Root Domain', 'Its categories translated onto the root domains of the catalog', 'script', 'script_domain'),
+      domainCard('DT Analyzer RCA → Root Domain', 'The root domain it finds from the data of the CDR', 'dta', 'dta_domain'),
       domainCard('Selected Root Domain', 'The root domain of the category the analysts chose', 'selected', 'root_domain'),
     );
     renderMatrix(insights);
@@ -2842,6 +2864,8 @@
       state.fieldSources = payload.field_sources || {};
       state.trackingRefs = payload.tracking_refs || {};
       state.rcaRefs = payload.rca_refs || {};
+      state.dtaRefs = payload.dta_refs || {};
+      state.dtaRca = payload.dta_rca || {};
       state.priorityRefs = payload.priority_refs || {};
       state.priorityTypes = payload.priority_types || {};
       state.prioritization = payload.prioritization || null;
@@ -4088,7 +4112,9 @@
     const wrapper = node(editable && field.type !== 'long_text' ? 'label' : 'div', undefined, `nq-analysis-field is-${field.type}${editable ? '' : ' is-readonly'}`);
     // The name and its tags on one line (a long name is shortened, whole on hover), so every value of a row lines up.
     const title = node('span', undefined, 'nq-field-title');
-    const name = node('span', field.label, 'nq-field-name');
+    // The fields of the DT Analyzer RCA show their name without the source, which their tag names.
+    const prefix = field.source === 'dta' ? `${SOURCE_TAGS.dta} ` : '';
+    const name = node('span', prefix && field.label.startsWith(prefix) ? field.label.slice(prefix.length) : field.label, 'nq-field-name');
     name.title = field.label;
     title.append(name);
     if (!editable) title.append(node('small', SOURCE_TAGS[field.source] || field.source, `nq-source-tag is-${field.source}`));
@@ -4143,7 +4169,8 @@
     }
   };
   // The Root Cause Decision of the RCA section: the selected Root Category and Cause, the recommendation
-  // merged from every source, and what each source (NetCheck, Ericsson RCA, comments, previous decisions) proposes.
+  // merged from every source, and what each source (NetCheck, Ericsson RCA, DT Analyzer RCA, comments, previous
+  // decisions) proposes.
   const rootDecisionCard = (call) => {
     const card = node('section', undefined, 'nq-decision');
     const head = node('header');
@@ -4188,7 +4215,12 @@
       title.append(node('strong', source.label || state.rcaSources[source.source] || source.source));
       if (source.count) title.append(node('span', `${number(source.count)} earlier calls`, 'nq-muted'));
       item.append(title);
-      if (source.raw_category || source.raw_cause) {
+      if (source.source === 'dta') {
+        // Its values are those of the catalog: the rule that found them (or what the analysts decided for its pattern) and why.
+        if (source.learned) title.append(node('span', 'Learned from the analysts', 'nq-muted'));
+        if (source.raw_category) item.append(node('p', `Rule: ${source.raw_category}`, 'nq-source-raw'));
+        if (source.evidence) item.append(node('p', source.evidence, 'nq-source-evidence nq-muted'));
+      } else if (source.raw_category || source.raw_cause) {
         item.append(node('p', [source.raw_category, source.raw_cause].filter(Boolean).join(' → '), 'nq-source-raw'));
       }
       const mapped = node('p', undefined, 'nq-source-mapped');
@@ -5508,8 +5540,10 @@
     wrapper.append(box, ` ${label}`);
     return wrapper;
   };
-  // Where a field of each source reads its value: call fields, CDR columns or Ericsson RCA columns.
+  // Where a field of each source reads its value: call fields, CDR columns, Ericsson RCA columns or the values of the
+  // DT Analyzer RCA.
   const refChoices = (source) => (source === 'rca' ? Object.entries(state.rcaRefs)
+    : source === 'dta' ? Object.entries(state.dtaRefs)
     : source === 'priority' ? Object.entries(state.priorityRefs)
       : source === 'cdr' ? [...state.callFields.map((name) => [name, name]), ...state.cdrColumns.map((name) => [`column:${name}`, `CDR column ${name}`])]
         : source === 'derived' ? state.callFields.map((name) => [name, name]) : []);
@@ -5581,7 +5615,7 @@
       type.disabled = tracking || ['derived', 'priority'].includes(kind);
       ref.hidden = tracking || kind === 'user';
       ref.querySelector('span').textContent = kind === 'derived' ? 'Call values read (comma separated)' : kind === 'rca' ? 'Ericsson RCA column'
-        : kind === 'priority' ? 'NQ Prioritization value' : 'CDR value';
+        : kind === 'dta' ? 'DT Analyzer RCA value' : kind === 'priority' ? 'NQ Prioritization value' : 'CDR value';
       datalist.replaceChildren(...refChoices(kind).map(([value, text]) => {
         const option = node('option', text);
         option.value = value;
@@ -6229,6 +6263,176 @@
       } catch (error) {
         $('nq-status-rules-error').style.color = '';
         $('nq-status-rules-error').textContent = error.message;
+      } finally {
+        save.disabled = false;
+      }
+    });
+  }
+
+  // -- DT Analyzer RCA Rules dialog (admins and super-admins change them) ----------------------------
+  const dtaRulesDialog = $('nq-dta-rules-dialog');
+  // The rules the dialog opened with, the default ones and the Non-Qualified Calls each rule explains (by its name).
+  let dtaRules = {rules: [], defaults: [], counts: {}, pending: false};
+  // Whether the rules shown are the default ones, untouched since Default Rules (App Events says so).
+  let dtaDefaultsShown = false;
+  const DTA_VALUELESS = ['empty', 'not_empty'];
+  const dtaInput = (key) => (state.dtaRca.inputs || []).find((item) => item.key === key) || {key, label: key, kind: 'text', unit: '', group: ''};
+  const dtaConditionRow = (condition = {input: 'failure_text', op: 'contains', value: ''}) => {
+    const row = node('li', undefined, 'nq-condition nq-dta-condition');
+    const input = selectOf('nq-dta-input', 'Value of the call', (state.dtaRca.inputs || []).map((item) => [item.key,
+      `${item.group} · ${item.label}${item.unit ? ` (${item.unit})` : ''}`]), condition.input);
+    const op = node('select', undefined, 'nq-dta-op');
+    op.setAttribute('aria-label', 'Comparison');
+    const value = node('input', undefined, 'nq-dta-value');
+    value.setAttribute('aria-label', 'Value it is compared with');
+    // The comparisons of the kind of the value (numbers or texts), and a number or text box for what it is compared with.
+    const fillOperators = (chosen) => {
+      const item = dtaInput(input.value);
+      const allowed = (state.dtaRca.kind_operators || {})[item.kind] || [];
+      op.replaceChildren(...allowed.map((key) => {
+        const option = node('option', (state.dtaRca.operators || {})[key] || key);
+        option.value = key;
+        return option;
+      }));
+      op.value = allowed.includes(chosen) ? chosen : allowed[0];
+      value.type = item.kind === 'number' ? 'number' : 'text';
+      value.step = 'any';
+      value.placeholder = item.kind === 'number' ? (item.unit || 'Number') : 'Words, separated by commas';
+      value.hidden = DTA_VALUELESS.includes(op.value);
+    };
+    input.addEventListener('change', () => fillOperators(op.value));
+    op.addEventListener('change', () => { value.hidden = DTA_VALUELESS.includes(op.value); });
+    fillOperators(condition.op);
+    value.value = condition.value ?? '';
+    const remove = node('button', '×', 'nq-icon-action');
+    remove.type = 'button';
+    remove.title = 'Remove this condition';
+    remove.setAttribute('aria-label', remove.title);
+    remove.addEventListener('click', () => row.remove());
+    row.append(input, op, value, remove);
+    return row;
+  };
+  // The Root Categories or Root Causes of the catalog, and the value of a rule the catalog does not have (marked).
+  const dtaCatalogEntries = (plural, value, none) => {
+    const names = (state.rootCauses[plural] || []).map((item) => item.name);
+    const entries = [['', none], ...names.map((name) => [name, name])];
+    if (value && !names.includes(value)) entries.push([value, `${value} (not in the catalog)`]);
+    return entries;
+  };
+  const dtaRuleBlock = (rule = {key: '', name: '', enabled: true, services: [], match: 'all', conditions: [{}], category: '', cause: ''}) => {
+    const block = node('li', undefined, 'nq-root-domain nq-status-rule nq-dta-rule');
+    block.dataset.key = rule.key || '';
+    const head = node('div', undefined, 'nq-option-row');
+    const enabled = node('input', undefined, 'nq-dta-enabled');
+    enabled.type = 'checkbox';
+    enabled.checked = rule.enabled !== false;
+    enabled.title = 'Whether the rule is used (a disabled rule is skipped)';
+    enabled.setAttribute('aria-label', enabled.title);
+    const name = textInput(rule.name, 'Rule name', 'nq-root-name nq-dta-name');
+    const count = node('span', rule.key ? `${number(dtaRules.counts[rule.name] || 0)} calls` : '', 'nq-dta-count nq-muted');
+    count.title = 'The Non-Qualified Calls this rule explains now';
+    head.append(enabled, name, count);
+    iconButtons(head, block, () => block.remove());
+    const scope = node('div', undefined, 'nq-option-row nq-dta-scope');
+    scope.append(node('span', 'For', 'nq-rule-word'));
+    Object.entries(state.dtaRca.services || {}).forEach(([key, label]) => {
+      const toggle = node('label', undefined, 'nq-toggle nq-dta-service');
+      const box = node('input');
+      box.type = 'checkbox';
+      box.value = key;
+      box.checked = (rule.services || []).includes(key);
+      toggle.append(box, ` ${label}`);
+      scope.append(toggle);
+    });
+    scope.append(node('span', '(none: every service), when', 'nq-rule-word'),
+      selectOf('nq-dta-match', 'Conditions that must hold', Object.entries(state.dtaRca.matches || {}), rule.match || 'all'),
+      node('span', 'hold', 'nq-rule-word'));
+    const conditions = node('ul', undefined, 'nq-conditions');
+    conditions.append(...(rule.conditions || []).map((condition) => dtaConditionRow(condition?.input ? condition : undefined)));
+    const add = node('button', 'Add Condition', 'nq-link-action');
+    add.type = 'button';
+    add.addEventListener('click', () => conditions.append(dtaConditionRow()));
+    const result = node('div', undefined, 'nq-option-row nq-dta-result');
+    const category = selectOf('nq-dta-category nq-pill-select', 'Root Category', dtaCatalogEntries('categories', rule.category, 'No category'), rule.category || '');
+    const cause = selectOf('nq-dta-cause nq-pill-select', 'Root Cause', dtaCatalogEntries('causes', rule.cause, 'No cause'), rule.cause || '');
+    const paint = () => {
+      paintPill(category, optionColor('root_category', category.value));
+      paintPill(cause, optionColor('root_cause', cause.value));
+    };
+    category.addEventListener('change', paint);
+    cause.addEventListener('change', paint);
+    result.append(node('span', 'gives the Root Category', 'nq-rule-word'), category, node('span', 'and the Root Cause', 'nq-rule-word'), cause);
+    block.append(head, scope, conditions, add, result);
+    paint();
+    return block;
+  };
+  const collectDtaRules = () => [...$('nq-dta-rules').children].filter((block) => block.matches('.nq-dta-rule')).map((block) => ({
+    key: block.dataset.key || '', name: block.querySelector('.nq-dta-name').value.trim(),
+    enabled: block.querySelector('.nq-dta-enabled').checked,
+    services: [...block.querySelectorAll('.nq-dta-service input:checked')].map((box) => box.value),
+    match: block.querySelector('.nq-dta-match').value,
+    conditions: [...block.querySelectorAll('.nq-dta-condition')].map((row) => ({
+      input: row.querySelector('.nq-dta-input').value, op: row.querySelector('.nq-dta-op').value, value: row.querySelector('.nq-dta-value').value,
+    })),
+    category: block.querySelector('.nq-dta-category').value, cause: block.querySelector('.nq-dta-cause').value,
+  }));
+  const fillDtaRules = (rules) => {
+    $('nq-dta-rules').replaceChildren(...rules.map((rule) => dtaRuleBlock(rule)));
+    const enabled = rules.filter((rule) => rule.enabled !== false).length;
+    // The calls of the last rule (Not identified) apart: no rule explains them.
+    const last = (dtaRules.rules || []).find((rule) => rule.key === 'not-identified');
+    const unexplained = last ? (dtaRules.counts[last.name] || 0) : 0;
+    const total = Object.values(dtaRules.counts || {}).reduce((sum, value) => sum + value, 0);
+    $('nq-dta-rules-summary').textContent = `${number(rules.length)} rules, ${number(enabled)} enabled · ${number(total - unexplained)} Non-Qualified Calls `
+      + `with a root cause found from their CDR, ${number(unexplained)} not identified`
+      + `${dtaRules.settings?.learn ? ` · ${number(dtaRules.learned || 0)} learned from the analysts` : ''}`
+      + `${dtaRules.pending ? ' · the calls take the rules when the indexing of the CDRs ends' : ''}.`;
+  };
+  if (dtaRulesDialog) {
+    document.querySelectorAll('[data-nq-dta-rules-open]').forEach((button) => button.addEventListener('click', async () => {
+      $('nq-dta-rules-error').textContent = '';
+      try {
+        dtaRules = await api('/api/non-qualified-calls/dta-rca/rules');
+      } catch (error) {
+        toast(error.message, 'error');
+        return;
+      }
+      dtaDefaultsShown = false;
+      $('nq-dta-learn').checked = Boolean(dtaRules.settings?.learn);
+      $('nq-dta-learn-min').textContent = String(dtaRules.learning_min_decisions || 2);
+      fillDtaRules(dtaRules.rules);
+      dtaRulesDialog.showModal();
+    }));
+    $('nq-dta-rules').addEventListener('input', () => { dtaDefaultsShown = false; });
+    $('nq-dta-rules').addEventListener('click', (event) => { if (event.target.closest('button')) dtaDefaultsShown = false; });
+    $('nq-dta-rules-cancel').addEventListener('click', () => dtaRulesDialog.close());
+    $('nq-dta-rules-add').addEventListener('click', () => {
+      const block = dtaRuleBlock();
+      $('nq-dta-rules').append(block);
+      block.querySelector('.nq-dta-name').focus();
+    });
+    $('nq-dta-rules-default').addEventListener('click', () => {
+      fillDtaRules(dtaRules.defaults || []);
+      dtaDefaultsShown = true;
+      $('nq-dta-rules-error').style.color = 'var(--nq-muted)';
+      $('nq-dta-rules-error').textContent = 'The default rules are shown: review them and Save.';
+    });
+    $('nq-dta-rules-form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const save = $('nq-dta-rules-save');
+      save.disabled = true;
+      try {
+        const saved = await api('/api/non-qualified-calls/dta-rca/rules', {method: 'PUT',
+          body: JSON.stringify({rules: collectDtaRules(), defaults: dtaDefaultsShown, learn: $('nq-dta-learn').checked})});
+        dtaRulesDialog.close();
+        toast(saved.calculated === null || saved.calculated === undefined
+          ? 'DT Analyzer RCA Rules saved: the calls take them when the indexing of the CDRs ends.'
+          : `DT Analyzer RCA Rules saved: ${number(saved.calculated)} calls calculated again.`);
+        await loadState();
+        if (state.detail) openDetail(state.detail.call.call_key, {keepTab: true});
+      } catch (error) {
+        $('nq-dta-rules-error').style.color = '';
+        $('nq-dta-rules-error').textContent = error.message;
       } finally {
         save.disabled = false;
       }

@@ -32,7 +32,7 @@ The adaptation is planned in seven phases. The durations are indicative: they de
 | 2. Umlaut reader, profile and upload | The Umlaut reader (files per service, the Statistics sheet, Side1/Side2 headers, samples joined to their call), the Umlaut profile with its native names, campaign and operator detection confirmed on upload, derived columns (call key, ECI, mean radio of the call) and a CDR Field Dictionary panel. | Planned · 2–3 weeks |
 | 3. Scoring ready for Umlaut | Formulas with native names and a field picker, percentiles other than P90 and environments by the Umlaut scoring category; the Umlaut methodology is loaded when it is available. | Planned · 1 week |
 | 4. Umlaut PPT templates | PPT Dashboards templates per service and Auto-calculated Fields with Umlaut values. | Planned · 1 week |
-| 5. Non-Qualified Calls and RCA | NQ = Qualifier NOT QUALIFIED, an Umlaut call key, the DriveTest Analyzer RCA with its catalogue and the Ericsson RCA by the provider's call key. | Planned · 1.5–2 weeks |
+| 5. Non-Qualified Calls and RCA | NQ = Qualifier NOT QUALIFIED, an Umlaut call key, the Umlaut values of the DT Analyzer RCA (available in every workspace) and the Ericsson RCA by the provider's call key. | Planned · 1.5–2 weeks |
 | 6. Umlaut Network Insights | The radio of the calls from their samples, NR cells by PCI + ARFCN + distance, MIMO rank and bandwidths. | Planned · 1–1.5 weeks |
 | 7. P3 | The P3 reader, profile and content, with the same model. | Once a P3 sample is available |
 
@@ -42,6 +42,8 @@ Phase 1 is available now and changes nothing for NetCheck workspaces:
 - **Field profiles.** Every CDR type has a field profile that holds the CDR columns the tool reads: the sheets and fields of ingestion, the sources of Non-Qualified Calls (its index, the import of previous analyses and the Failure Map), the radio and dimension columns of Network Insights, the serving cells of the Vendor Mapping and the coordinates of Map Areas. The NetCheck profile holds exactly the columns read before.
 - **Validated.** The same real NetCheck CDRs processed before and after the change gave the same results (89 of 89 outputs).
 
+The common engine of phase 5, the [DT Analyzer RCA](non-qualified-calls.md#dt-analyzer-rca), is available too: it finds the root cause of every Non-Qualified Call from the data of its CDR, read through the field profile of the workspace, with rules each workspace can change.
+
 ## The multi-provider model
 
 ### Decisions
@@ -50,7 +52,7 @@ Phase 1 is available now and changes nothing for NetCheck workspaces:
 - **Native names.** Every CDR keeps its original columns, and users see the field names, values and files of their provider. Whatever the tool needs and the provider does not bring is added as a derived column, marked as such.
 - **Each provider's Scoring.** The NetCheck methodology is not adapted: the Umlaut methodology is implemented when it is available, written with the Umlaut fields.
 - **NQ by provider.** In NetCheck CDRs a call or test is NQ when its result is not Completed; in Umlaut CDRs, when its own Qualifier column says NOT QUALIFIED.
-- **A DriveTest Analyzer RCA.** When the provider brings an RCA it is one more source. A DriveTest Analyzer RCA is the common engine for every provider, and the Ericsson RCA is imported by the call key of each provider.
+- **A DT Analyzer RCA.** When the provider brings an RCA it is one more source. A DT Analyzer RCA is the common engine for every provider, and the Ericsson RCA is imported by the call key of each provider.
 
 ### Three layers per provider
 
@@ -78,9 +80,9 @@ The modules keep a single logic: they read the data through the profile of the w
 ### RCA
 
 - The **NetCheck RCA** source of Non-Qualified Calls suggests a domain and a cause with keywords on Failure_Classification, Failure_Category, Failure_SubCategory and Failure_Comment. Its rule engine is generic; what is specific to NetCheck are its fields and its catalogue.
-- The **DriveTest Analyzer RCA** uses the failure fields of each provider's profile and adds conditions on the phase that fails and the radio at the time of the failure (for example RSRP below −110 dBm → coverage, SINR below 0 dB → interference, a DNS or service access failure → core or server).
+- The [DT Analyzer RCA](non-qualified-calls.md#dt-analyzer-rca), available in every workspace, reads the failure fields, the radio and the KPIs of each call through the profile of its provider, and editable rules give its root category and cause (for example RSRP below −110 dBm → coverage, SINR below 0 dB → interference, a DNS or service access failure → protocol or core).
 - For Umlaut it reads Failure Indication, Sequence Detailed Status Overall, the status of each phase (network access, DNS, connection, service access, TTFB, transfer) and the radio at the start and the end.
-- In NetCheck workspaces the NetCheck RCA stays as one more source, like the Ericsson RCA, which is imported by the provider's call key instead of the NetCheck JOIN_ID.
+- In NetCheck workspaces the NetCheck RCA stays as one more source, like the Ericsson RCA and the DT Analyzer RCA; the Ericsson RCA will be imported by the provider's call key instead of the NetCheck JOIN_ID.
 
 ## Compatibility reports
 

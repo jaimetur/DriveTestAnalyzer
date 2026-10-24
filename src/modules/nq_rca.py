@@ -1,17 +1,20 @@
 """Root Cause Analysis of the NQ Analysis Center: the Ericsson RCA results and the recommendation.
 
-Three sources describe the root cause of a Non-Qualified Call:
+Four sources describe the root cause of a Non-Qualified Call:
 
 - the **NetCheck RCA** of the CDR (Failure Classification, Category and Subcategory);
 - the **Ericsson RCA** (a Python script of the team) writes, for each JOIN_ID, the categories and
   subcategories of both sides and a suggested category and cause; its CSV or Excel files are
   imported and linked to the calls by JOIN_ID;
+- the **DT Analyzer RCA** (nq_dta_rca) finds the Root Category and Root Cause of the catalog
+  from the data of the CDR with the rules of the workspace, in every workspace whatever its CDR type;
 - the **analysts**, who choose the Selected Root Category and Root Cause.
 
-Both RCAs keep their own category → cause hierarchy. The recommendation maps each one onto the
-root cause catalog of the workspace (names first, then the keywords of the domains, categories
-and causes), adds the keyword reading of the comments and what the analysts chose before for the
-same RCA values, and proposes the category and cause most sources agree on.
+The NetCheck and Ericsson RCAs keep their own category → cause hierarchy. The recommendation maps
+each one onto the root cause catalog of the workspace (names first, then the keywords of the
+domains, categories and causes), adds the DT Analyzer RCA, the keyword reading of the comments
+and what the analysts chose before for the same RCA values, and proposes the category and cause most
+sources agree on.
 """
 
 from __future__ import annotations
@@ -24,6 +27,7 @@ from threading import Lock
 from typing import Any
 
 from src.modules.nq_catalog import RCA_REFS, keyword_found, normalized_text
+from src.modules.nq_dta_rca import NOT_IDENTIFIED_KEY
 
 RCA_FILE_FORMAT_HELP = (
     'A CSV (comma, semicolon or tab separated) or Excel file with a JOIN_ID column and the RCA columns '
@@ -62,8 +66,9 @@ _NO_RESULT = re.compile(r'^(unknown)?$', re.IGNORECASE)
 _DOMAIN_HINTS = (('unknown', ''), ('unclear', ''), ('mobility', 'RAN'), ('handover', 'RAN'), ('coverage', 'RF'),
                  ('interference', 'RF'))
 _TECHNOLOGY = re.compile(r'\b(lte|nr|gsm|umts|wcdma|2g|3g|4g|5g)\b', re.IGNORECASE)
-SOURCE_LABELS = {'netcheck': 'NetCheck RCA', 'script': 'Ericsson RCA', 'comments': 'Comments', 'learned': 'Previous decisions'}
-SOURCE_WEIGHTS = {'netcheck': 3, 'learned': 3, 'script': 2, 'comments': 1}
+SOURCE_LABELS = {'netcheck': 'NetCheck RCA', 'script': 'Ericsson RCA', 'dta': 'DT Analyzer RCA', 'comments': 'Comments',
+                 'learned': 'Previous decisions'}
+SOURCE_WEIGHTS = {'netcheck': 3, 'learned': 3, 'script': 2, 'dta': 2, 'comments': 1}
 
 
 def _identity(value: Any) -> str:
@@ -367,12 +372,14 @@ def learned_key(source: str, category: str, cause: str) -> tuple[str, str, str]:
 
 
 def recommend(call: Any, rca: dict[str, str], root: dict[str, list[dict[str, Any]]], rule: dict[str, Any],
-              comments: str = '', learned: dict[tuple[str, str, str], dict[tuple[str, str], set[str]]] | None = None) -> dict[str, Any]:
+              comments: str = '', learned: dict[tuple[str, str, str], dict[tuple[str, str], set[str]]] | None = None,
+              dta: dict[str, str] | None = None) -> dict[str, Any]:
     """The root cause each source proposes for a call and the recommended Selected Root Category and Cause.
 
-    ``rca`` holds the imported script values of the call; ``learned`` holds, for the RCA values of
-    the calls already decided, the calls that chose each category and cause. Each other call with
-    the same script or NetCheck values counts once.
+    ``rca`` holds the imported script values of the call and ``dta`` the result of the DriveTest Analyzer
+    RCA (its ``dta_category``, ``dta_cause``, ``dta_domain``, ``dta_rule`` and ``dta_evidence``); ``learned``
+    holds, for the RCA values of the calls already decided, the calls that chose each category and cause.
+    Each other call with the same script, NetCheck or DT Analyzer RCA values counts once.
     """
     match = rule.get('match', 'words')
     learned = learned or {}
@@ -390,12 +397,25 @@ def recommend(call: Any, rca: dict[str, str], root: dict[str, list[dict[str, Any
     if script_category or script_cause:
         mapped = map_to_catalog(script_category, script_cause, root, match)
         sources.append({'source': 'script', 'raw_category': script_category, 'raw_cause': script_cause, **mapped})
+    dta = dta or {}
+    dta_category, dta_cause = str(dta.get('dta_category') or ''), str(dta.get('dta_cause') or '')
+    # Its last rule (Not identified) explains nothing: it proposes no root cause, unless it learned one from the analysts.
+    if dta.get('dta_rule_key') == NOT_IDENTIFIED_KEY and not dta.get('dta_learned'):
+        dta_category = dta_cause = ''
+    if dta_category or dta_cause:
+        # Already values of the catalog: the rule that found them stands for the raw values.
+        sources.append({'source': 'dta', 'raw_category': str(dta.get('dta_rule') or ''), 'raw_cause': '',
+                        'evidence': str(dta.get('dta_evidence') or ''), 'learned': bool(dta.get('dta_learned')),
+                        'domain': str(dta.get('dta_domain') or ''),
+                        'category': dta_category if _by_name(root['categories'], dta_category) else '',
+                        'cause': dta_cause if _by_name(root['causes'], dta_cause) else ''})
     if suggestion and suggestion['source'] == 'comments':
         sources.append({'source': 'comments', 'raw_category': '', 'raw_cause': '', 'domain': suggestion['domain'],
                         'category': suggestion['category'], 'cause': suggestion['cause']})
     voters: dict[tuple[str, str], set[str]] = {}
     own = _value(call, 'call_key')
-    for source, category, cause in (('netcheck', netcheck_category, netcheck_cause), ('script', script_category, script_cause)):
+    for source, category, cause in (('netcheck', netcheck_category, netcheck_cause), ('script', script_category, script_cause),
+                                    ('dta', dta_category, dta_cause)):
         if category or cause:
             for choice, keys in learned.get(learned_key(source, category, cause), {}).items():
                 voters.setdefault(choice, set()).update(keys - {own})
@@ -439,7 +459,7 @@ def _consensus(sources: list[dict[str, Any]], root: dict[str, list[dict[str, Any
                 if (best_category and source['category'] == best_category) or (not best_category and source['cause'] == best_cause)]
     if len(agreeing) >= 2:
         confidence = 'high'
-    elif agreeing and agreeing[0] in {'netcheck', 'learned'}:
+    elif agreeing and agreeing[0] in {'netcheck', 'learned', 'dta'}:
         confidence = 'medium'
     else:
         confidence = 'low'

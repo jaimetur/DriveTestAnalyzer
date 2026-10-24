@@ -54,6 +54,10 @@ class CdrFieldProfile:
     nq_qualified_value: str
     # The LTE PCIs of the cells of a call, for its Map.
     pci_columns: dict[str, Sources]
+    # The values of every call the DT Analyzer RCA reads (see nq_dta_rca.INPUTS), and the factor a number is
+    # multiplied by to reach the unit of the RCA (Mbit/s, %, ms...).
+    nq_rca_sources: dict[str, Sources]
+    nq_rca_scales: dict[str, float]
     # -- Network Insights ----------------------------------------------------------------------------------------
     rf_field_aliases: dict[str, dict[str, Sources]]
     dimension_aliases: dict[str, Sources]
@@ -198,6 +202,49 @@ NETCHECK_PROFILE = CdrFieldProfile(
     nq_qualification_sources=_NETCHECK_STATUS,
     nq_qualified_value='completed',
     pci_columns={'voice': ('PCI_A',), 'data': ('LTE_DL_PCell_PCI_Info_List', 'PCI'), 'speech': ('PCI_A',)},
+    # The columns of Data tests (LTE_PCell_, NR_PCell_), of the A side of Voice calls (_A) and of the playing side of
+    # Speech samples (Playing_); the B side is the B side of the call and the recording side of the sample.
+    nq_rca_sources={
+        'failure_side': ('Failure_Side',),
+        'failure_events': ('Failure_Events', 'Failure_Events_A', 'Failure_Events_B'),
+        'scg_failures': ('SCG_Failures_A', 'SCG_Failures'),
+        'lte_rsrp': ('LTE_PCell_RSRP_Avg', '4G_RSRP_Avg_A', 'Playing_RSRP_Avg'),
+        'lte_rsrp_min': ('LTE_PCell_RSRP_Min', '4G_RSRP_Min_A', 'Playing_RSRP_Min'),
+        'lte_rsrq': ('LTE_PCell_RSRQ_Avg', '4G_RSRQ_Avg_A', 'Playing_RSRQ_Avg'),
+        'lte_sinr': ('LTE_PCell_SINR_Avg', '4G_SINR_Avg_A', 'Playing_SINR_Avg'),
+        'lte_sinr_min': ('LTE_PCell_SINR_Min', '4G_SINR_Min_A', 'Playing_SINR_Min'),
+        'lte_tx_power': ('LTE_PCell_TxPower_Max', '4G_TxPower_Max_A', 'Playing_TxPower_4G_Max'),
+        'lte_bler': ('LTE_PCell_BLER', 'Playing_DL_LTE_BLER_Avg'),
+        'nr_rsrp': ('NR_PCell_RSRP_Avg', 'NR_RSRP_Avg_A', 'Playing_RSRP_NR_Avg'),
+        'nr_rsrp_min': ('NR_PCell_RSRP_Min', 'NR_RSRP_Min_A', 'Playing_RSRP_NR_Min'),
+        'nr_rsrq': ('NR_PCell_RSRQ_Avg', 'NR_RSRQ_Avg_A', 'Playing_RSRQ_NR_Avg'),
+        'nr_sinr': ('NR_PCell_SINR_Avg', 'NR_SINR_Avg_A', 'Playing_SINR_NR_Avg'),
+        'nr_sinr_min': ('NR_PCell_SINR_Min', 'NR_SINR_Min_A', 'Playing_SINR_NR_Min'),
+        'nr_tx_power': ('NR_PCell_TxPower_Max', 'NR_TxPower_Max_A', 'Playing_TxPower_NR_Max'),
+        'nr_bler': ('NR_DL_BLER', 'Playing_NR_BLER_Avg'),
+        'b_lte_rsrp': ('4G_RSRP_Avg_B', 'Recording_RSRP_Avg'),
+        'b_lte_sinr': ('4G_SINR_Avg_B', 'Recording_SINR_Avg'),
+        'b_nr_rsrp': ('NR_RSRP_Avg_B', 'Recording_RSRP_NR_Avg'),
+        'b_nr_sinr': ('NR_SINR_Avg_B', 'Recording_SINR_NR_Avg'),
+        'rat': ('RAT', 'RAT_A'),
+        'rat_timeline': ('RAT_Timeline', 'RAT_Timeline_A', 'PCell_RAT_Timeline'),
+        'handovers': ('handovers',),
+        'handovers_info': ('Handovers_Info', 'Handovers_Info_A', 'Playing_Handovers'),
+        'throughput': ('throughput_mbps', 'Mean_Data_Rate'),
+        'access_time': ('Transfer_Access_Duration', 'http_Browser_Access_Duration'),
+        'dns_time': ('DNS_Service_Access_Delay',),
+        'dns_success': ('DNS_Resolution_Success_Ratio',),
+        'tcp_rtt': ('TCP_RTT_Service_Access_Delay',),
+        'packet_loss': ('Packet_Error_Ratio',),
+        'rtt': ('Interactivity_RTT_Median', 'ICMP_Ping_RTT_Mean'),
+        'setup_time': ('setup_time_seconds', 'Call_Setup_Time'),
+        'duration': ('duration_seconds', 'Test_Duration', 'Call_Duration'),
+        'mos': ('POLQA_LQ_Avg', 'LQ'),
+        'rtp_packet_loss': ('RTP_Packet_Loss_A',),
+        'jitter': ('jitter_ms', 'RTP_Jitter_Avg_A'),
+    },
+    # NetCheck gives the RTP packet loss as a share (0 to 1).
+    nq_rca_scales={'rtp_packet_loss': 100.0},
     # Each logical radio field lists, per CDR type, the source columns that carry it in priority order. Voice uses
     # the measuring (A) side.
     rf_field_aliases={
