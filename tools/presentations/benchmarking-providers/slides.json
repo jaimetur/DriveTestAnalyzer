@@ -13,7 +13,7 @@
       "image": "slide-02.png",
       "section": "Introduction",
       "title": "A complete platform, built for NetCheck",
-      "notes": "Today the tool is complete, but everything is written in NetCheck names and values: ingestion, the Scoring formulas, the PPT templates, the NQ definition and the radio tables of Network Insights. The figures come from the repository (branch 0.8.7) and the UK workspace."
+      "notes": "Today the tool is complete, but everything is written in NetCheck names and values: ingestion, the Scoring formulas, the PPT templates, the NQ definition and the radio tables of Network Insights. The figures come from the repository (branch 0.9.0) and the UK workspace."
     },
     {
       "id": "providers",

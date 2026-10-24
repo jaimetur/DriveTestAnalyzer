@@ -3,7 +3,7 @@
 
 ---
 
-## Release: v0.8.7
+## Release: v0.9.0
 ### Release Date: 2026-10-26
 #### ⚠️ Breaking Changes:
 

@@ -28,7 +28,7 @@ The adaptation is planned in seven phases. The durations are indicative: they de
 
 | Phase | Scope | Status |
 | --- | --- | --- |
-| 1. Multi-provider base | The CDR types of the providers and a field profile per CDR type; the modules read the CDR columns through the profile of the workspace. | **Done** in version 0.8.7 |
+| 1. Multi-provider base | The CDR types of the providers and a field profile per CDR type; the modules read the CDR columns through the profile of the workspace. | **Done** in version 0.9.0 |
 | 2. Umlaut reader, profile and upload | The Umlaut reader (files per service, the Statistics sheet, Side1/Side2 headers, samples joined to their call), the Umlaut profile with its native names, campaign and operator detection confirmed on upload, derived columns (call key, ECI, mean radio of the call) and a CDR Field Dictionary panel. | Planned · 2–3 weeks |
 | 3. Scoring ready for Umlaut | Formulas with native names and a field picker, percentiles other than P90 and environments by the Umlaut scoring category; the Umlaut methodology is loaded when it is available. | Planned · 1 week |
 | 4. Umlaut PPT templates | PPT Dashboards templates per service and Auto-calculated Fields with Umlaut values. | Planned · 1 week |
