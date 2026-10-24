@@ -34,6 +34,7 @@ from src.modules.cdr_auto_selection import (
     resolve_campaign_filter, resolve_cdrs,
 )
 from src.modules.cdr_environments import ENVIRONMENTS, environment_class, environment_order
+from src.modules.cdr_field_profiles import NETCHECK_PROFILE, CdrFieldProfile, workspace_field_profile
 from src.modules.cdr_facets import cascading_options, stored_facets
 from src.modules.value_patterns import ValueSet, is_pattern
 from src.modules.operator_roles import drop_excluded_operators, excluded_operators
@@ -66,128 +67,10 @@ SPECTRUM_HOLDINGS_STATE_KEY = 'network_spectrum_holdings'
 # The colour theme each user chose here is kept apart from that of Scoring (see scoring_themes.load_user_theme).
 THEME_MODULE = 'network_insights'
 
-# Each logical radio field lists, per CDR type, the source columns that carry
-# it in priority order. Voice uses the measuring (A) side.
-RF_FIELD_ALIASES: dict[str, dict[str, tuple[str, ...]]] = {
-    'latitude': {
-        'data': ('Test_Start_Latitude',), 'voice': ('Call_Start_Latitude_A',), 'speech': ('Playing_Latitude', 'Recording_Latitude'),
-    },
-    'longitude': {
-        'data': ('Test_Start_Longitude',), 'voice': ('Call_Start_Longitude_A',), 'speech': ('Playing_Longitude', 'Recording_Longitude'),
-    },
-    'lte_rsrp': {
-        'data': ('LTE_PCell_RSRP_Avg',), 'voice': ('4G_RSRP_Avg_A',), 'speech': ('Playing_RSRP_Avg', 'Recording_RSRP_Avg'),
-    },
-    'nr_rsrp': {
-        'data': ('NR_PCell_RSRP_Avg',), 'voice': ('NR_RSRP_Avg_A',), 'speech': ('Playing_RSRP_NR_Avg', 'Recording_RSRP_NR_Avg'),
-    },
-    'lte_sinr': {
-        'data': ('LTE_PCell_SINR_Avg',), 'voice': ('4G_SINR_Avg_A',), 'speech': ('Playing_SINR_Avg', 'Recording_SINR_Avg'),
-    },
-    'nr_sinr': {
-        'data': ('NR_PCell_SINR_Avg',), 'voice': ('NR_SINR_Avg_A',), 'speech': ('Playing_SINR_NR_Avg', 'Recording_SINR_NR_Avg'),
-    },
-    'cell_trace': {
-        'data': ('LAC_CID_xARFCN',), 'voice': ('LAC_CID_xARFCN_A',), 'speech': (),
-    },
-    'cell_ids': {
-        'data': ('Cell_ID',), 'voice': ('Cell_ID_A',), 'speech': ('Cell_IDs_A',),
-    },
-    'enodeb_id': {
-        'data': (), 'voice': (), 'speech': ('Playing_eNodeBId', 'Recording_eNodeBId'),
-    },
-    'earfcn': {
-        'data': ('LTE_PCC_EARFCN',), 'voice': ('E/U/ARFCN_A',), 'speech': ('ARFCN_A',),
-    },
-    'nr_band': {
-        'data': ('NR_DL_PCell_Band',), 'voice': ('NR_BAND_A',), 'speech': (),
-    },
-    'lte_bandwidth': {
-        'data': ('LTE_DL_PCell_Bandwidth',), 'voice': (), 'speech': (),
-    },
-    'nr_bandwidth': {
-        'data': ('NR_DL_PCell_Bandwidth',), 'voice': (), 'speech': (),
-    },
-    # The mean LTE bandwidth of a test over every aggregated carrier, and the test (download tests carry "DL").
-    'lte_aggregated_bandwidth': {
-        'data': ('LTE_DL_Test_Bandwidth_Avg',), 'voice': (), 'speech': (),
-    },
-    'test_name': {
-        'data': ('Test_Name',), 'voice': (), 'speech': (),
-    },
-    # The time of a test on NR and its duration (s), for the share of the tests that used 5G (Key Findings).
-    'nr_time': {
-        'data': ('NR_Total_Time',), 'voice': (), 'speech': (),
-    },
-    'test_duration': {
-        'data': ('Test_Duration',), 'voice': (), 'speech': (),
-    },
-    # The NR leg of NSA samples (its PCI and SSB NR-ARFCN) and the MIMO rank and layers the device reported.
-    'nr_pci': {
-        'data': ('NR_DL_PCell_PCI_Info_List',), 'voice': (), 'speech': (),
-    },
-    'nr_arfcn': {
-        'data': ('NR_DL_PCell_ARFCN',), 'voice': (), 'speech': (),
-    },
-    'lte_rank': {
-        'data': ('LTE_DL_Rank_Index',), 'voice': (), 'speech': (),
-    },
-    'nr_rank': {
-        'data': ('NR_DL_Rank_Index',), 'voice': (), 'speech': (),
-    },
-    'nr_layers': {
-        'data': ('NR_DL_Max_MIMO_Layers',), 'voice': (), 'speech': (),
-    },
-    # The result, speed and interactivity of the CDR Data tests, for the download tests by location and Latency &
-    # Interactivity.
-    'test_result': {
-        'data': ('Test_Result',), 'voice': (), 'speech': (),
-    },
-    'type_of_test': {
-        'data': ('Type_of_Test',), 'voice': (), 'speech': (),
-    },
-    'mean_data_rate': {
-        'data': ('Mean_Data_Rate',), 'voice': (), 'speech': (),
-    },
-    'rtt_median': {
-        'data': ('Interactivity_RTT_Median',), 'voice': (), 'speech': (),
-    },
-    'packets_lost': {
-        'data': ('Packets_Lost',), 'voice': (), 'speech': (),
-    },
-    'packets_sent': {
-        'data': ('Packets_Sent',), 'voice': (), 'speech': (),
-    },
-    'jitter': {
-        'data': ('Packet_Delay_Variation_Median', 'jitter_ms'), 'voice': (), 'speech': (),
-    },
-    # The network, host network and eMOCN scenario of the cell that served the start of each sample (the serving-cell
-    # Vendor Mapping), for the kind of serving site.
-    'serving_network': {
-        'data': ('Serving_Network',), 'voice': ('Serving_Network',), 'speech': ('Serving_Network',),
-    },
-    'serving_host': {
-        'data': ('Serving_Host_Network',), 'voice': ('Serving_Host_Network',), 'speech': ('Serving_Host_Network',),
-    },
-    'serving_scenario': {
-        'data': ('Serving_eMOCN_Scenario',), 'voice': ('Serving_eMOCN_Scenario',), 'speech': ('Serving_eMOCN_Scenario',),
-    },
-}
-DIMENSION_ALIASES = {
-    'operator': ('Operator',),
-    'operator_vendor': ('Operator_Vendor',),
-    'vendor': ('Vendor',),
-    'campaign': ('Campaign', 'Period'),
-    'region': ('Region', 'G_Level_2'),
-    'cluster': ('Cluster',),
-    'city': ('City', 'G_Level_4'),
-    # The test environment (see cdr_environments): the most detailed level, else the route level.
-    'environment': ('G_Level_3',),
-    'environment_route': ('G_Level_2',),
-    # Drive or Walk (see network_insights_findings.mode_of_test).
-    'mode': ('G_Level_1',),
-    'source_sheet': ('source_sheet',),
-}
+# Each logical radio field lists, per CDR type, the source columns that carry it in priority order (those of NetCheck
+# CDRs; every CDR type lists its own, see cdr_field_profiles). Voice uses the measuring (A) side.
+RF_FIELD_ALIASES: dict[str, dict[str, tuple[str, ...]]] = NETCHECK_PROFILE.rf_field_aliases
+DIMENSION_ALIASES = NETCHECK_PROFILE.dimension_aliases
 GROUPINGS = {'operator': 'Operator', 'vendor': 'Vendor', 'region': 'Region', 'cluster': 'Cluster', 'city': 'City',
              'environment': 'Environment', 'kind': 'CDR type', 'technology': 'Technology', 'campaign': 'Campaign'}
 TECHNOLOGIES = {'lte': 'LTE', 'nr': 'NR', 'lte_nr': 'LTE+NR'}
@@ -353,15 +236,15 @@ def classify(value: float, classes: tuple[tuple[str, float, str], ...]) -> tuple
     return classes[-1][0], classes[-1][2]
 
 
-def resolve_source_columns(available: Iterable[str], kind: str) -> dict[str, str]:
-    """Pick, for one CDR type, the source column carrying each logical field."""
+def resolve_source_columns(available: Iterable[str], kind: str, profile: CdrFieldProfile = NETCHECK_PROFILE) -> dict[str, str]:
+    """Pick, for one CDR type, the source column carrying each logical field (the columns of the field profile)."""
     lookup = {column_identity(column): str(column) for column in available}
     resolved: dict[str, str] = {}
-    for field, aliases in DIMENSION_ALIASES.items():
+    for field, aliases in profile.dimension_aliases.items():
         column = next((lookup[column_identity(alias)] for alias in aliases if column_identity(alias) in lookup), None)
         if column:
             resolved[field] = column
-    for field, by_kind in RF_FIELD_ALIASES.items():
+    for field, by_kind in profile.rf_field_aliases.items():
         column = next((lookup[column_identity(alias)] for alias in by_kind.get(kind, ()) if column_identity(alias) in lookup), None)
         if column:
             resolved[field] = column
@@ -1770,13 +1653,14 @@ def install_network_insights_routes(core: Any) -> None:
     def read_samples(task_repository, selected: dict[str, list[int]]) -> pd.DataFrame:
         frames = []
         mapping_settings = task_repository.chart_mapping_settings()
+        profile = workspace_field_profile(task_repository)
         for kind, ids in selected.items():
             if not ids:
                 continue
             source_columns: set[str] = set()
             for dataset_id in ids:
                 source_columns.update(task_repository.list_dataset_row_columns(dataset_id))
-            columns = resolve_source_columns(source_columns, kind)
+            columns = resolve_source_columns(source_columns, kind, profile)
             requested = list(dict.fromkeys(columns.values()))
             for dataset_id in ids:
                 task_repository.copy_dataset_rows_to_reporting(dataset_id, kind, requested)

@@ -49,6 +49,7 @@ from io import BytesIO
 from threading import Lock
 from typing import Any, Callable
 
+from src.modules.cdr_field_profiles import NETCHECK_PROFILE, CdrFieldProfile, workspace_field_profile
 from src.modules.cdr_stage import CDR_STAGE_LABELS, combined_inclusion, dataset_cdr_stage
 from src.modules.cell_identity import nr_cell_bits
 from src.modules.column_names import campaign_sort_key, column_identity
@@ -100,7 +101,8 @@ NQ_TABLE_TITLES = {
 }
 SERVICES = ('voice', 'speech', 'data')
 SERVICE_LABELS = {'voice': 'Voice', 'speech': 'Speech', 'data': 'Data'}
-QUALIFIED_RESULT = 'completed'
+# The result of a qualified NetCheck call (each CDR type tells its own, see cdr_field_profiles).
+QUALIFIED_RESULT = NETCHECK_PROFILE.nq_qualified_value
 # Bump when the indexed fields or the call key change so every CDR is indexed again.
 INDEX_VERSION = 6
 # The call key of version 3: the JOIN_ID first, and Speech calls (not samples).
@@ -238,36 +240,9 @@ DEFAULT_ROOT_CAUSE_RULE = {
 }
 NOT_CLASSIFIED = 'Not classified'
 
-# Indexed field -> CDR columns, in order of preference.
-FIELD_SOURCES: dict[str, tuple[str, ...]] = {
-    'campaign': ('Campaign',),
-    'operator': ('Operator', 'Operator_A', 'Home_Operator_A', 'Home_Operator'),
-    'operator_vendor': ('Operator_Vendor',),
-    'vendor': ('Vendor',),
-    'region': ('region', 'Region'),
-    'cluster': ('Cluster',),
-    'city': ('city', 'City'),
-    'technology': ('Technology', 'technology_primary', 'RAT_A', 'RAT'),
-    'test_name': ('Test_Name', 'Type_Of_Test', 'Session_Type', 'Test_Type'),
-    'session_type': ('Session_Type',),
-    'direction': ('Direction', 'Call_Direction'),
-    'result': ('status', 'Call_Status', 'Test_Result', 'Test_Status'),
-    'start_time': ('event_start_time', 'Call_Start_Time', 'Test_Start_Time'),
-    'end_time': ('event_end_time', 'Call_End_Time', 'Test_End_Time'),
-    'failure_phase': ('Failure_Phase',),
-    'failure_technology': ('Failure_Technology',),
-    'failure_classification': ('Failure_Classification',),
-    'failure_category': ('Failure_Category',),
-    'failure_subcategory': ('Failure_Subcategory',),
-    'failure_comment': ('Failure_Comment',),
-    # The cell that served the call (the serving-cell Vendor Mapping) and where it ran (City or Connecting Roads).
-    'host_network': ('Serving_Host_Network',),
-    'site_id': ('Serving_Site_ID',),
-    'environment': ('G_Level_2',),
-    'latitude': ('Call_Start_Latitude_A', 'Test_Start_Latitude', 'Playing_Latitude', 'Recording_Latitude'),
-    'longitude': ('Call_Start_Longitude_A', 'Test_Start_Longitude', 'Playing_Longitude', 'Recording_Longitude'),
-    'cell_id': ('Cell_ID_A', 'Cell_ID', 'Cell_IDs_A', 'LAC_CID_xARFCN_A', 'LAC_CID_xARFCN'),
-}
+# Indexed field -> CDR columns, in order of preference: those of NetCheck CDRs (every CDR type lists its own columns
+# for the same fields, see cdr_field_profiles).
+FIELD_SOURCES: dict[str, tuple[str, ...]] = NETCHECK_PROFILE.nq_field_sources
 CALL_FIELDS = tuple(FIELD_SOURCES)
 # The fields of every call (qualified or not) kept for the rates per Vendor, host network, site and environment.
 POPULATION_FIELDS = ('vendor', 'host_network', 'site_id', 'environment', 'session_type', 'city', 'region')
@@ -280,16 +255,12 @@ def last_cell_sql(column: str) -> str:
     return f"trim(substr({column}, length(rtrim({column}, replace({column}, '>', ''))) + 1), '[] ')"
 NUMERIC_FIELDS = frozenset({'latitude', 'longitude'})
 # NetCheck's identifier of each voice call and data test, the same in the Daily and Final CDRs.
-JOIN_SOURCES = ('JOIN_ID',)
+JOIN_SOURCES = NETCHECK_PROFILE.nq_join_sources
 # Without a JOIN_ID: the test of a Data CDR, the session (the call) of a Voice or Speech CDR.
-IDENTIFIER_SOURCES = {
-    'data': ('Test_ID', 'Session_id'),
-    'voice': ('Session_ID_A', 'Session_id', 'Test_ID'),
-    'speech': ('Session_ID_A', 'Session_id'),
-}
+IDENTIFIER_SOURCES = NETCHECK_PROFILE.nq_identifier_sources
 # A Speech sample inside its call.
-SAMPLE_SOURCES = ('Test_ID', 'Sample_ID', 'Sequence_ID_per_File_ID')
-SUBSCRIBER_SOURCES = ('Subscriber',)
+SAMPLE_SOURCES = NETCHECK_PROFILE.nq_sample_sources
+SUBSCRIBER_SOURCES = NETCHECK_PROFILE.nq_subscriber_sources
 # Filters on indexed fields; the tracking filters are handled separately.
 FIELD_FILTERS = (
     'service', 'campaign', 'operator', 'operator_vendor', 'vendor_operator', 'vendor', 'region', 'cluster', 'city',
@@ -1841,11 +1812,14 @@ def _time_text(value: Any) -> str:
     return _text(value).replace('T', ' ')[:19]
 
 
-def _dataset_calls(connection: Any, dataset: Any, cdr_columns: tuple[str, ...] = ()) -> dict[str, Any]:
+def _dataset_calls(connection: Any, dataset: Any, cdr_columns: tuple[str, ...] = (),
+                   profile: CdrFieldProfile = NETCHECK_PROFILE) -> dict[str, Any]:
     """The NQ rows of one CDR, ready to insert into ``nq_calls``, and every call of it for ``nq_call_population``.
 
     Speech CDRs list one row per sample: their samples share the call key of their call (the
-    JOIN_ID or the A-side session) and each one has its own ``sample_key``.
+    JOIN_ID or the A-side session) and each one has its own ``sample_key``. The columns are those of
+    the field profile of the CDR type, and a call is Non-Qualified when its qualification column does
+    not hold the profile's qualified value.
     """
     dataset_id = int(dataset['id'])
     service = str(dataset['dataset_kind'])
@@ -1854,14 +1828,17 @@ def _dataset_calls(connection: Any, dataset: Any, cdr_columns: tuple[str, ...] =
     columns = [str(row[1]) for row in connection.execute(f'PRAGMA table_info({_quote(table)})').fetchall()]
     if not columns:
         return empty
-    resolved = {field: _resolve_columns(columns, candidates) for field, candidates in FIELD_SOURCES.items()}
-    if not resolved['result']:
+    resolved = {field: _resolve_columns(columns, candidates) for field, candidates in profile.nq_field_sources.items()}
+    qualification = _resolve_columns(columns, profile.nq_qualification_sources)
+    if not qualification:
         return empty
-    result_column = resolved['result'][0]
-    join_column = _resolve_column(columns, JOIN_SOURCES)
-    identifier_column = _resolve_column(columns, IDENTIFIER_SOURCES.get(service, IDENTIFIER_SOURCES['data']))
-    subscriber_column = _resolve_column(columns, SUBSCRIBER_SOURCES)
-    sample_column = _resolve_column(columns, SAMPLE_SOURCES) if service == 'speech' else None
+    result_column = qualification[0]
+    qualified = profile.nq_qualified_value
+    identifiers = profile.nq_identifier_sources
+    join_column = _resolve_column(columns, profile.nq_join_sources)
+    identifier_column = _resolve_column(columns, identifiers.get(service, identifiers['data']))
+    subscriber_column = _resolve_column(columns, profile.nq_subscriber_sources)
+    sample_column = _resolve_column(columns, profile.nq_sample_sources) if service == 'speech' else None
     extra = {name: column for name in cdr_columns if (column := _resolve_column(columns, (name,)))}
     nr_mode = _text(dataset['nr_mode'])
 
@@ -1887,7 +1864,7 @@ def _dataset_calls(connection: Any, dataset: Any, cdr_columns: tuple[str, ...] =
         values = {field: next((text for column in resolved[field] if (text := _text(row[key_aliases[column]]))), '')
                   for field in (*_KEY_FIELDS, *POPULATION_FIELDS)}
         key, _join_id = identity(row, key_aliases, values)
-        is_nq = int(result != QUALIFIED_RESULT)
+        is_nq = int(result != qualified)
         entry = population.get(key)
         if entry is None:
             population[key] = [dataset_id, key, service, values['campaign'], values['operator'], nr_mode, is_nq,
@@ -1911,7 +1888,7 @@ def _dataset_calls(connection: Any, dataset: Any, cdr_columns: tuple[str, ...] =
         f"FROM {_quote(table)} WHERE {normalized} > ? OR ({normalized} < ? AND {normalized} > '')"
     )
     calls = []
-    for row in connection.execute(query, (QUALIFIED_RESULT, QUALIFIED_RESULT)).fetchall():
+    for row in connection.execute(query, (qualified, qualified)).fetchall():
         values: dict[str, Any] = {}
         for field, candidates in resolved.items():
             # The first candidate column with a value wins.
@@ -2075,7 +2052,8 @@ def sync_nq_calls(task_repository: Any, *, force: bool = False) -> dict[str, Any
         if removed or changed:
             # Read every changed CDR before taking the write transaction.
             with task_repository.connection() as connection:
-                fresh = {int(row['id']): _dataset_calls(connection, row, tuple(cdr_columns)) for row in changed}
+                profile = workspace_field_profile(task_repository)
+                fresh = {int(row['id']): _dataset_calls(connection, row, tuple(cdr_columns), profile) for row in changed}
                 touched = [*removed, *fresh]
                 marks = ', '.join('?' for _ in touched)
                 affected = {str(row[0]) for row in connection.execute(
@@ -5661,16 +5639,17 @@ class _AnalysesTranslator:
 BUILTIN_ANALYSES_VALUES = nq_analyses.BUILTIN_VALUES
 
 
-def _session_columns(header: list[str]) -> dict[str, Any]:
+def _session_columns(header: list[str], profile: CdrFieldProfile = NETCHECK_PROFILE) -> dict[str, Any]:
     """Where a sheet that repeats the CDR keeps what identifies a call without JOIN_ID, as the CDR index reads it: the
     Operator and Campaign columns and the test or session identifier of each service."""
     def first(columns: list[str]) -> list[int]:
         return [header.index(column) for column in columns]
 
-    return {'operator': first(_resolve_columns(header, FIELD_SOURCES['operator'])),
-            'campaign': first(_resolve_columns(header, FIELD_SOURCES['campaign'])),
-            'ids': {service: header.index(column) for service, sources in IDENTIFIER_SOURCES.items()
-                    if (column := _resolve_column(header, sources))}}
+    sources = profile.nq_field_sources
+    return {'operator': first(_resolve_columns(header, sources['operator'])),
+            'campaign': first(_resolve_columns(header, sources['campaign'])),
+            'ids': {service: header.index(column) for service, candidates in profile.nq_identifier_sources.items()
+                    if (column := _resolve_column(header, candidates))}}
 
 
 def _analyses_session(columns: dict[str, Any], cells: list[str]) -> dict[str, Any] | None:
@@ -5691,7 +5670,8 @@ def _session_keys(session: dict[str, Any]) -> dict[str, str]:
             for service, identifier in session['ids'].items()}
 
 
-def read_analyses(content: bytes, file_name: str, definitions: list[dict[str, Any]], on_sheet: Any = None) -> dict[str, Any]:
+def read_analyses(content: bytes, file_name: str, definitions: list[dict[str, Any]], on_sheet: Any = None,
+                  profile: CdrFieldProfile = NETCHECK_PROFILE) -> dict[str, Any]:
     """The analyses of a file by call: every visible sheet with a JOIN_ID (or Call Key) column, each row giving the
     values of its call (an analysis of several calls gives them to each one), its comments and its import note. A row
     without JOIN_ID is its call by the Operator, Campaign and session of the CDR it repeats, as the CDR index names
@@ -5716,8 +5696,8 @@ def read_analyses(content: bytes, file_name: str, definitions: list[dict[str, An
         read_only += [name for name in layout.read_only if name not in read_only]
         noted += [table.header[index] for index in layout.notes if table.header[index] not in noted]
         cdr = max(cdr, len(layout.cdr))
-        session_columns = _session_columns(table.header)
-        start_column = next((table.header.index(column) for column in _resolve_columns(table.header, FIELD_SOURCES['start_time'])), None)
+        session_columns = _session_columns(table.header, profile)
+        start_column = next((table.header.index(column) for column in _resolve_columns(table.header, profile.nq_field_sources['start_time'])), None)
         for number, cells in table.rows:
             def cell(index: int | None) -> str:
                 return cells[index] if index is not None and index < len(cells) else ''
@@ -5869,7 +5849,7 @@ def import_analyses(task_repository: Any, content: bytes, file_name: str, userna
     definitions = list_fields(task_repository)
     report('Reading the file', 0.02)
     parsed = read_analyses(content, file_name, definitions, lambda name, index, count: report(
-        f'Reading the sheet {name}', 0.02 + 0.33 * index / max(count, 1)))
+        f'Reading the sheet {name}', 0.02 + 0.33 * index / max(count, 1)), workspace_field_profile(task_repository))
     report('Finding the calls in the workspace', 0.36)
     translator = _AnalysesTranslator(task_repository, users)
     # Every way a name of an analyst or a reviewer is written becomes its most used spelling.
@@ -6237,7 +6217,7 @@ def _sorted_equivalence_rows(rows: list[tuple[Any, ...]], definitions: list[dict
 def _file_equivalence_rows(task_repository: Any, content: bytes, file_name: str, translator: _AnalysesTranslator,
                            definitions: list[dict[str, Any]]) -> list[tuple[Any, ...]]:
     """One row per value of the follow-up and list columns of an analyses file, with what it becomes and why."""
-    parsed = read_analyses(content, file_name, definitions)
+    parsed = read_analyses(content, file_name, definitions, profile=workspace_field_profile(task_repository))
     translator.names = nq_analyses.canonical_names([value for entry in parsed['entries'] for (kind, ref), value in entry['values'].items()
                                                    if (kind, ref) in {('field', 'analyst'), ('field', 'reviewer')}])
     reviewable = {('tracking', ref) for ref in ANALYSES_TRACKING} | {

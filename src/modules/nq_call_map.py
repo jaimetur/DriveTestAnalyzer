@@ -27,6 +27,8 @@ from typing import Any, Callable
 import numpy as np
 import pandas as pd
 
+from src.modules.cdr_field_profiles import NETCHECK_PROFILE, CdrFieldProfile, workspace_field_profile
+
 RADII_KM = (0.5, 1.0, 2.0, 5.0, 10.0)
 DEFAULT_RADIUS_KM = 2.0
 TEST_SCOPES = {'cdr': 'This CDR', 'campaign': 'Every CDR of its campaign'}
@@ -46,9 +48,10 @@ RADIO_COLUMN = re.compile(
 RADIO_STATISTIC = re.compile(r'^(?P<base>.+?)_(?P<statistic>Min|Avg|Max|Median)(?P<side>_[AB])?$', re.I)
 MAX_RADIO_ROWS = 80
 # The cell trace and the PCI of each cell of it, per CDR type (Voice uses the measuring A side).
-PCI_COLUMNS = {'voice': ('PCI_A',), 'data': ('LTE_DL_PCell_PCI_Info_List', 'PCI'), 'speech': ('PCI_A',)}
-NR_PCI_COLUMNS = {'data': ('NR_DL_PCell_PCI_Info_List',), 'voice': (), 'speech': ()}
-NR_CHANNEL_COLUMNS = {'data': ('NR_DL_PCell_ARFCN',), 'voice': (), 'speech': ()}
+# The PCIs and NR channel of the cells of a NetCheck call (every CDR type lists its own, see cdr_field_profiles).
+PCI_COLUMNS = NETCHECK_PROFILE.pci_columns
+NR_PCI_COLUMNS = NETCHECK_PROFILE.rf_field_aliases['nr_pci']
+NR_CHANNEL_COLUMNS = NETCHECK_PROFILE.rf_field_aliases['nr_arfcn']
 CELL_ROLES = {'start': 'Served the start', 'handover': 'Handover', 'end': 'Served the end', 'both': 'Served the whole call',
               'nr_leg': 'NR leg (by PCI)'}
 # The diagnosis: a cell this far serves from too far away (the overshooting distance of Network Insights); one this far
@@ -162,10 +165,9 @@ def _sequence_numbers(value: Any) -> list[str]:
 # ---------------------------------------------------------------------------
 # The call: its places, radio values and cells
 # ---------------------------------------------------------------------------
-def call_positions(service: str, row: dict[str, Any], columns: list[str]) -> dict[str, Any]:
+def call_positions(service: str, row: dict[str, Any], columns: list[str],
+                   profile: CdrFieldProfile = NETCHECK_PROFILE) -> dict[str, Any]:
     """Where the call started and ended (Voice records both; the other CDR types where the test or sample started)."""
-    from src.modules.serving_cells import END_COORDINATES, START_COORDINATES
-
     def first(pairs):
         for longitude, latitude in pairs:
             _column, lon = _first_value(row, columns, (longitude,))
@@ -175,8 +177,8 @@ def call_positions(service: str, row: dict[str, Any], columns: list[str]) -> dic
                 return found
         return None
 
-    start = first(START_COORDINATES.get(service, ()))
-    end = first(END_COORDINATES.get(service, ()))
+    start = first(profile.start_coordinates.get(service, ()))
+    end = first(profile.end_coordinates.get(service, ()))
     return {'start': start, 'end': end}
 
 
@@ -202,18 +204,19 @@ def radio_values(row: dict[str, Any], columns: list[str]) -> list[dict[str, Any]
     return rows[:MAX_RADIO_ROWS]
 
 
-def cell_trace(service: str, row: dict[str, Any], columns: list[str], cell_id: Any) -> list[dict[str, str]]:
+def cell_trace(service: str, row: dict[str, Any], columns: list[str], cell_id: Any,
+               profile: CdrFieldProfile = NETCHECK_PROFILE) -> list[dict[str, str]]:
     """The cells the call went through, in order: technology, band, cell identity, channel and PCI."""
-    from src.modules.network_insights import RF_FIELD_ALIASES, parse_cell_trace
+    from src.modules.network_insights import parse_cell_trace
     from src.modules.non_qualified_calls import MAX_ECI
 
-    _column, trace = _first_value(row, columns, RF_FIELD_ALIASES['cell_trace'].get(service, ()))
+    _column, trace = _first_value(row, columns, profile.rf_field_aliases['cell_trace'].get(service, ()))
     cells = [cell for cell in parse_cell_trace(trace) if re.fullmatch(r'\d+', cell['cell'])]
     if not cells:
         for value in _sequence_numbers(cell_id):
             if value:
                 cells.append({'technology': 'NR' if int(value) > MAX_ECI else 'LTE', 'band': '', 'cell': value, 'channel': ''})
-    _column, pcis = _first_value(row, columns, PCI_COLUMNS.get(service, ()))
+    _column, pcis = _first_value(row, columns, profile.pci_columns.get(service, ()))
     pci_values = _sequence_numbers(pcis)
     for index, cell in enumerate(cells):
         cell['pci'] = pci_values[index] if len(pci_values) == len(cells) else (pci_values[-1] if index == len(cells) - 1 and pci_values else '')
@@ -278,14 +281,15 @@ def resolve_trace(trace: list[dict[str, str]], cells: pd.DataFrame, families: tu
 
 
 def nr_leg(service: str, row: dict[str, Any], columns: list[str], cells: pd.DataFrame, families: tuple[str, ...],
-           point: tuple[float, float] | None, anchor_site: str, colours: dict[str, str]) -> dict[str, Any] | None:
+           point: tuple[float, float] | None, anchor_site: str, colours: dict[str, str],
+           profile: CdrFieldProfile = NETCHECK_PROFILE) -> dict[str, Any] | None:
     """The NR cell of an NSA call where it failed, from its NR PCI (and NR-ARFCN when the CDR has it): on the site of its
     LTE anchor when one of its NR cells has that PCI, else the nearest within NR_LEG_KM."""
-    _column, pcis = _first_value(row, columns, NR_PCI_COLUMNS.get(service, ()))
+    _column, pcis = _first_value(row, columns, profile.rf_field_aliases['nr_pci'].get(service, ()))
     pci = next((value for value in reversed(_sequence_numbers(pcis)) if value), '')
     if not pci or cells.empty or point is None:
         return None
-    _column, channels = _first_value(row, columns, NR_CHANNEL_COLUMNS.get(service, ()))
+    _column, channels = _first_value(row, columns, profile.rf_field_aliases['nr_arfcn'].get(service, ()))
     channel = next((value for value in reversed(_sequence_numbers(channels)) if value), '')
     found = cells.loc[(cells['technology'] == 'NR') & cells['network_family'].isin(families)
                       & (cells['pci'].astype(str).str.removesuffix('.0') == pci)]
@@ -462,7 +466,6 @@ def nearby_failures(repository: Any, call: dict[str, Any], centre: tuple[float, 
 def _dataset_tests(repository: Any, dataset_id: int) -> dict[str, Any] | None:
     """The located tests of a CDR: position, operator, result, test name and LTE / NR RSRP and SINR (kept in memory)."""
     from src.modules import non_qualified_calls as nq
-    from src.modules.network_insights import RF_FIELD_ALIASES
 
     with repository.connection() as connection:
         profile = connection.execute('SELECT dataset_kind FROM dataset_profiles WHERE dataset_id = ?', (dataset_id,)).fetchone()
@@ -482,6 +485,7 @@ def _dataset_tests(repository: Any, dataset_id: int) -> dict[str, Any] | None:
             if key in _tests_cache:
                 return _tests_cache[key]
         table = f'dataset_rows_{int(dataset_id)}'
+        fields_profile = workspace_field_profile(repository)
         with repository.connection() as connection:
             columns = [str(row[1]) for row in connection.execute(f'PRAGMA table_info({nq._quote(table)})').fetchall()]
 
@@ -492,13 +496,14 @@ def _dataset_tests(repository: Any, dataset_id: int) -> dict[str, Any] | None:
                 quoted = [nq._quote(column) for column in found]
                 return quoted[0] if len(quoted) == 1 else f"COALESCE({', '.join(quoted)})"
 
-            latitude = pick(RF_FIELD_ALIASES['latitude'].get(kind, ()))
-            longitude = pick(RF_FIELD_ALIASES['longitude'].get(kind, ()))
+            aliases, sources = fields_profile.rf_field_aliases, fields_profile.nq_field_sources
+            latitude = pick(aliases['latitude'].get(kind, ()))
+            longitude = pick(aliases['longitude'].get(kind, ()))
             if latitude == 'NULL' or longitude == 'NULL':
                 return None
-            fields = {'operator': pick(nq.FIELD_SOURCES['operator']), 'result': pick(nq.FIELD_SOURCES['result']),
-                      'test': pick(nq.FIELD_SOURCES['test_name']), 'start': pick(nq.FIELD_SOURCES['start_time']),
-                      **{name: pick(RF_FIELD_ALIASES[name].get(kind, ())) for name in ('lte_rsrp', 'lte_sinr', 'nr_rsrp', 'nr_sinr')}}
+            fields = {'operator': pick(sources['operator']), 'result': pick(fields_profile.nq_qualification_sources),
+                      'test': pick(sources['test_name']), 'start': pick(sources['start_time']),
+                      **{name: pick(aliases[name].get(kind, ())) for name in ('lte_rsrp', 'lte_sinr', 'nr_rsrp', 'nr_sinr')}}
             frame = pd.read_sql_query(
                 f"SELECT {latitude} AS latitude, {longitude} AS longitude, "
                 f"{', '.join(f'{expression} AS {name}' for name, expression in fields.items())} "
@@ -518,7 +523,7 @@ def _dataset_tests(repository: Any, dataset_id: int) -> dict[str, Any] | None:
             'kind': kind, 'latitude': latitudes[valid].to_numpy(dtype=float), 'longitude': longitudes[valid].to_numpy(dtype=float),
             'operators': [str(value) for value in operators], 'operator': operator_codes.astype(np.int32),
             'tests': [str(value) for value in tests], 'test': test_codes.astype(np.int32),
-            'failed': (results.ne(nq.QUALIFIED_RESULT) & results.ne('')).to_numpy(dtype=bool),
+            'failed': (results.ne(fields_profile.nq_qualified_value) & results.ne('')).to_numpy(dtype=bool),
             'start': frame['start'].fillna('').astype(str).str.slice(0, 19).to_numpy(dtype=object),
             'moment': _seconds(frame['start']),
             **metrics,
@@ -605,13 +610,12 @@ def nearby_tests(repository: Any, dataset_ids: list[int], centre: tuple[float, f
 # ---------------------------------------------------------------------------
 # What the map suggests, the decisions at its place, its drive and its serving site
 # ---------------------------------------------------------------------------
-def call_radio(service: str, row: dict[str, Any], columns: list[str]) -> dict[str, float | None]:
+def call_radio(service: str, row: dict[str, Any], columns: list[str],
+               profile: CdrFieldProfile = NETCHECK_PROFILE) -> dict[str, float | None]:
     """The average LTE and NR RSRP and SINR of the call in its CDR row (None without a valid value)."""
-    from src.modules.network_insights import RF_FIELD_ALIASES
-
     values: dict[str, float | None] = {}
     for name, low, high in (('lte_rsrp', -160, -20), ('nr_rsrp', -160, -20), ('lte_sinr', -30, 50), ('nr_sinr', -30, 50)):
-        _column, value = _first_value(row, columns, RF_FIELD_ALIASES[name].get(service, ()))
+        _column, value = _first_value(row, columns, profile.rf_field_aliases[name].get(service, ()))
         number = _number(value)
         values[name] = number if number is not None and low <= number <= high else None
     return values
@@ -924,7 +928,8 @@ def call_map(repository: Any, call_key: str, *, radius_km: Any = DEFAULT_RADIUS_
     row = {key: source[key] for key in source.keys()} if source is not None else {}
     columns = list(row)
     service = _text(call.get('service'))
-    positions = call_positions(service, row, columns) if row else {'start': None, 'end': None}
+    fields_profile = workspace_field_profile(repository)
+    positions = call_positions(service, row, columns, fields_profile) if row else {'start': None, 'end': None}
     if not positions['start']:
         positions['start'] = _position(call.get('latitude'), call.get('longitude'))
     notes = []
@@ -932,7 +937,7 @@ def call_map(repository: Any, call_key: str, *, radius_km: Any = DEFAULT_RADIUS_
     families = tuple(serving_families(call.get('operator'), config))
     cells, snapshots = inventory_cells(repository, families)
     colours = configured_vendor_colours(repository.list_vendor_mapping_groups())
-    trace = resolve_trace(cell_trace(service, row, columns, call.get('cell_id')), cells, families, positions,
+    trace = resolve_trace(cell_trace(service, row, columns, call.get('cell_id'), fields_profile), cells, families, positions,
                           float(config.get('max_distance_km') or 30.0), colours)
     point = positions['end'] or positions['start']
     if point is None:
@@ -943,7 +948,8 @@ def call_map(repository: Any, call_key: str, *, radius_km: Any = DEFAULT_RADIUS_
         point = (located['latitude'], located['longitude'])
         notes.append('The CDR does not give the position of this call: the map is centred on the site of its last cell.')
     anchor = next((step['site'] for step in reversed(trace) if step.get('site') and step.get('technology') == 'LTE'), '')
-    leg = nr_leg(service, row, columns, cells, families, point, anchor, colours) if _text(call.get('nr_mode')).upper() != 'SA' else None
+    leg = (nr_leg(service, row, columns, cells, families, point, anchor, colours, fields_profile)
+           if _text(call.get('nr_mode')).upper() != 'SA' else None)
     if leg:
         trace.append(leg)
     keep = {step['site'] for step in trace if step.get('site')}
@@ -971,7 +977,7 @@ def call_map(repository: Any, call_key: str, *, radius_km: Any = DEFAULT_RADIUS_
     from src.modules.nq_prioritization import load_settings as prioritization_settings
 
     label = lambda value: mapper.map(field_kind('operator'), value)  # noqa: E731 - the label of an Operator in the Operator Maps.
-    checks = diagnosis(call, call_radio(service, row, columns), trace, sites, failures, test_points, radius,
+    checks = diagnosis(call, call_radio(service, row, columns, fields_profile), trace, sites, failures, test_points, radius,
                        int(prioritization_settings(repository).get('min_calls') or 2))
     drive = drive_context(repository, test_datasets(repository, call, scope), call, point, label, positions['start'])
     health = site_health(repository, call, serving_site, _text(row.get('Serving_Host_Network')) or _text(call.get('host_network')), label)

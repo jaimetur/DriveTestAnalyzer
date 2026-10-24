@@ -80,6 +80,7 @@ from src.modules.operator_roles import drop_excluded_operators, excluded_operato
 from src.modules.cdr_types import (
     CDR_TYPES, DEFAULT_CDR_TYPE, cdr_type_options, normalize_cdr_type, set_workspace_cdr_type, workspace_cdr_type,
 )
+from src.modules.cdr_field_profiles import workspace_field_profile
 from src.modules.column_names import DEFAULT_CAMPAIGN_MAP, MAIN_CDR_FIELDS, compact_campaign_value, PREVIEW_METADATA_FIELDS, VENDOR_FIELD_IDENTITIES, clean_column_name, normalize_campaign_map, set_campaign_map_resolver, column_identity, resolve_column_name, sort_vendor_values, vendor_filter_column, vendor_filter_value, vendor_filter_values, vendor_match_values
 from src.modules.mapping_order import swap_operator_vendor
 from src.modules.value_maps import ValueMapper, field_kind
@@ -4713,6 +4714,7 @@ def rebuild_dataset_artifacts(
     cluster_mapping_dataset_id: int | None = None,
 ) -> dict[str, Any]:
     task_repository = task_repository or repository
+    field_profile = workspace_field_profile(task_repository)
     if cluster_mapping_dataset_id is None:
         # Cluster polygons are chosen with the CDR's other mappings and kept in
         # its processing options, so every processing path applies them.
@@ -4736,7 +4738,7 @@ def rebuild_dataset_artifacts(
         if progress_callback:
             progress_callback(55)
     else:
-        df = load_dataset(dataset_path, progress_callback=progress_callback, source_columns=source_columns)
+        df = load_dataset(dataset_path, progress_callback=progress_callback, source_columns=source_columns, profile=field_profile)
     task_repository.update_dataset_profile(dataset_id, processing_step='Registering source columns')
     task_repository.replace_dataset_source_columns(dataset_id, source_columns)
     if forced_dataset_kind in UPLOAD_DATASET_KINDS:
@@ -4758,7 +4760,7 @@ def rebuild_dataset_artifacts(
             operators = [value for group in task_repository.list_operator_mapping_groups() for value in [group.get('canonical'), *(group.get('aliases') or [])] if value]
             labels = {value: vendor_filter_value(value, operators) for value in raw_vendor.dropna().unique()}
             df['Vendor'] = raw_vendor.map(labels).fillna('')
-    dataset_kind = df['dataset_kind'].iloc[0] if 'dataset_kind' in df.columns and not df.empty else (forced_dataset_kind or infer_dataset_kind(df, dataset_path.name))
+    dataset_kind = df['dataset_kind'].iloc[0] if 'dataset_kind' in df.columns and not df.empty else (forced_dataset_kind or infer_dataset_kind(df, dataset_path.name, field_profile))
     auto_vendor_mapping_applied = False
     auto_vendor_mapping_error: str | None = None
     inventory_vendor_signature: str | None = None
@@ -5074,7 +5076,7 @@ def persist_mapped_cdr_frame(
     task_repository = task_repository or repository
     dataset_id = int(dataset['id'])
     if str(dataset.get('dataset_kind') or '').casefold() in CDR_DATASET_KINDS:
-        frame = ensure_fixed_cdr_fields(frame)
+        frame = ensure_fixed_cdr_fields(frame, workspace_field_profile(task_repository))
         frame = materialize_cdr_derived_columns(frame, str(dataset.get('dataset_kind') or '').casefold())
     dataset_kind = str(dataset.get('dataset_kind') or '').casefold()
     with workspace_write_lock(task_repository.db_path):
@@ -5518,9 +5520,10 @@ def refresh_selected_dataset_if_stale(
     elif task_repository.dataset_rows_table_exists(dataset_id) and dataset_kind in CDR_DATASET_KINDS:
         columns = task_repository.list_dataset_row_columns(dataset_id)
         frame = task_repository.load_dataset_rows(dataset_id, columns, {})
+        field_profile = workspace_field_profile(task_repository)
         source_columns: set[str] = set()
         try:
-            source_columns.update(get_dataset_source_columns(dataset_path))
+            source_columns.update(get_dataset_source_columns(dataset_path, field_profile))
         except (OSError, ValueError, KeyError):
             pass
         base_lookup = {
@@ -5554,7 +5557,7 @@ def refresh_selected_dataset_if_stale(
             else:
                 frame['Operator_Vendor'] = frame[legacy_report_vendor]
             frame = frame.drop(columns=[legacy_report_vendor])
-        frame = ensure_fixed_cdr_fields(frame)
+        frame = ensure_fixed_cdr_fields(frame, field_profile)
         frame = ensure_vendor_group(frame)
         frame = materialize_cdr_derived_columns(frame, dataset_kind)
         task_repository.replace_dataset_rows(dataset_id, frame)
@@ -16168,7 +16171,7 @@ def _preview_source_columns(
         if readable_path is None:
             continue
         try:
-            file_columns = get_dataset_source_columns(readable_path)
+            file_columns = get_dataset_source_columns(readable_path, workspace_field_profile(catalog_repository))
             source_columns.update(file_columns)
             if dataset_id is not None:
                 catalog_repository.replace_dataset_source_columns(dataset_id, file_columns)
@@ -16591,7 +16594,7 @@ def preview_dataset(
                     column_identity(column) for column in get_excel_sheet_columns(Path(dataset['stored_path']), preview_source_sheet)
                 }
                 all_source_identities = {
-                    column_identity(column) for column in get_dataset_source_columns(Path(dataset['stored_path']))
+                    column_identity(column) for column in get_dataset_source_columns(Path(dataset['stored_path']), workspace_field_profile(repository))
                 }
                 fixed_identities = {column_identity(column) for column in MAIN_CDR_FIELDS}
                 available_columns = [

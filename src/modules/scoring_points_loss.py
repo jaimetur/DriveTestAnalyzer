@@ -27,13 +27,11 @@ from typing import Any, Callable
 
 import pandas as pd
 
+from src.modules.cdr_field_profiles import NETCHECK_PROFILE
 
-AREA_FIELDS = {'City': ('City', 'G_Level_4'), 'Region': ('Region',), 'Cluster': ('Cluster',)}
-COORDINATE_SOURCES = {
-    'data': (('Test_Start_Latitude', 'Test_Start_Longitude'),),
-    'voice': (('Call_Start_Latitude_A', 'Call_Start_Longitude_A'),),
-    'speech': (('Recording_Latitude', 'Recording_Longitude'), ('Playing_Latitude', 'Playing_Longitude')),
-}
+# The areas and positions of a NetCheck test (every CDR type lists its own, see cdr_field_profiles).
+AREA_FIELDS = NETCHECK_PROFILE.area_fields
+COORDINATE_SOURCES = NETCHECK_PROFILE.coordinate_sources
 # The map areas of every country (the ITL3 areas in the UK) and the losses of each City in each one.
 AREA = 'Area'
 CITY_AREA = 'City|Area'

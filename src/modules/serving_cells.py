@@ -24,6 +24,7 @@ from typing import Any, Iterable
 import numpy as np
 import pandas as pd
 
+from src.modules.cdr_field_profiles import NETCHECK_PROFILE, CdrFieldProfile, workspace_field_profile
 from src.modules.cdr_reporting import (
     VENDOR_UNKNOWN, _first_existing, _normalise_operator, _split_global_cells, _vendor_from_ends, _vendor_prefix, _with_vendor_columns,
 )
@@ -41,18 +42,11 @@ DEFAULT_MAX_DISTANCE_KM = 30.0
 DEFAULT_SERVING_FAMILIES: dict[str, tuple[str, ...]] = {
     'vodafone': ('vodafone', 'three'), 'three': ('three', 'vodafone'), 'lebara': ('vodafone', 'three'),
 }
-CDR_CELL_COLUMNS = (
-    'Cell_ID_A', 'Cell_IDs_A', 'Cell_ID', 'Cell ID A', 'Cell IDs A', 'Global_Cell_ID_A', 'Global_Cell_ID',
-    'Global CI', 'Global_CI', 'GCID', 'GCI', 'CGI', 'ECI', 'Serving_Cell_ID',
-)
-START_COORDINATES = {
-    'data': (('Test_Start_Longitude', 'Test_Start_Latitude'),),
-    'voice': (('Call_Start_Longitude_A', 'Call_Start_Latitude_A'),),
-    'speech': (('Playing_Longitude', 'Playing_Latitude'), ('Recording_Longitude', 'Recording_Latitude')),
-}
-END_COORDINATES = {'voice': (('Call_End_Longitude_A', 'Call_End_Latitude_A'),)}
-TIME_COLUMNS = ('Test_Start_Time', 'Call_Start_Time_A', 'Call_Start_Time', 'Playing_Start_Time', 'Recording_Start_Time',
-                'event_start_time', 'Start_Time', 'Date')
+# The cell chain, positions and time of a NetCheck sample (every CDR type lists its own, see cdr_field_profiles).
+CDR_CELL_COLUMNS = NETCHECK_PROFILE.cell_columns
+START_COORDINATES = NETCHECK_PROFILE.start_coordinates
+END_COORDINATES = NETCHECK_PROFILE.end_coordinates
+TIME_COLUMNS = NETCHECK_PROFILE.time_columns
 SERVING_FIELDS = ('Serving_Network', 'Serving_Host_Network', 'Serving_Site_ID', 'Serving_eMOCN_Scenario',
                   'Serving_Distance_km', 'Serving_Inventory_Snapshot')
 
@@ -177,9 +171,9 @@ def serving_networks_editor(config: dict[str, Any], operators: Iterable[str],
 # ---------------------------------------------------------------------------
 # Mapping
 # ---------------------------------------------------------------------------
-def cdr_reference_date(frame: pd.DataFrame, file_name: str = '') -> date | None:
+def cdr_reference_date(frame: pd.DataFrame, file_name: str = '', profile: CdrFieldProfile = NETCHECK_PROFILE) -> date | None:
     """When a CDR was measured: the median date of its samples, else the date in its file name."""
-    column = _first_existing(frame, TIME_COLUMNS)
+    column = _first_existing(frame, profile.time_columns)
     if column is not None:
         sample = frame[column].dropna()
         sample = sample.iloc[:: max(1, len(sample) // 5000)]
@@ -242,16 +236,16 @@ def _candidate_cells(repository: Any, dataset_ids: list[int], families: list[str
     return frame
 
 
-def serving_endpoints(frame: pd.DataFrame, dataset_kind: str) -> pd.DataFrame:
+def serving_endpoints(frame: pd.DataFrame, dataset_kind: str, profile: CdrFieldProfile = NETCHECK_PROFILE) -> pd.DataFrame:
     """The first and last serving cell of every sample, with the position where each was measured."""
-    cell_column = _first_existing(frame, CDR_CELL_COLUMNS)
+    cell_column = _first_existing(frame, profile.cell_columns)
     if not cell_column:
         raise ValueError('The selected CDR must contain a Cell ID field. Supported names include Cell_ID_A, Cell_IDs_A, Cell_ID, Global CI, GCID, GCI, CGI or ECI.')
     values = frame[cell_column].astype(object)
     parsed = {value: _split_global_cells(value) for value in pd.unique(values)}
     cells = values.map(parsed)
-    start_lon, start_lat = _coordinates(frame, START_COORDINATES.get(dataset_kind, ()))
-    end_lon, end_lat = _coordinates(frame, END_COORDINATES.get(dataset_kind, ()))
+    start_lon, start_lat = _coordinates(frame, profile.start_coordinates.get(dataset_kind, ()))
+    end_lon, end_lat = _coordinates(frame, profile.end_coordinates.get(dataset_kind, ()))
     end_lon, end_lat = end_lon.where(end_lon.notna(), start_lon), end_lat.where(end_lat.notna(), start_lat)
     positions = np.arange(len(frame))
     first = pd.DataFrame({'row': positions, 'end': 'first', 'cell': cells.map(lambda items: items[0] if items else '').to_numpy(),
@@ -302,15 +296,16 @@ def assign_serving_vendors(
     if not operator_column:
         raise ValueError('The CDR must contain Operator to map Vendors.')
     config = config if config is not None else load_serving_networks(repository)
+    profile = workspace_field_profile(repository)
     selected = {int(value) for value in inventory_dataset_ids}
     snapshots = [item for item in ensure_inventory_cells(repository) if item['dataset_id'] in selected]
-    ranks = rank_snapshots(snapshots, cdr_reference_date(frame, file_name))
+    ranks = rank_snapshots(snapshots, cdr_reference_date(frame, file_name, profile))
     dates = {item['dataset_id']: item['snapshot_date'] for item in snapshots}
     available = {family for item in snapshots for family in item['families']}
     result = frame.reset_index(drop=True).copy()
     operators = result[operator_column].fillna('').astype(str).str.strip()
     families = {operator: serving_families(operator, config) for operator in pd.unique(operators)}
-    endpoints = serving_endpoints(result, dataset_kind)
+    endpoints = serving_endpoints(result, dataset_kind, profile)
     wanted = sorted({family for values in families.values() for family in values} & available)
     candidates = _candidate_cells(repository, list(ranks), wanted, sorted(set(endpoints['cell'])))
     matches = match_serving_cells(endpoints, operators, candidates, ranks, dates, config, float(config.get('max_distance_km') or DEFAULT_MAX_DISTANCE_KM))

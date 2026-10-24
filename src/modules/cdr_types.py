@@ -1,8 +1,10 @@
 """The CDR file type a workspace handles.
 
-Each workspace processes the CDRs of one provider. NetCheck CDR is supported;
-Umlaut CDR files are similar but rename some columns and are listed as
-upcoming until their column mapping is available.
+Each workspace processes the CDRs of one provider and keeps it once it has
+CDRs, so its modules never mix the field names, values and methodologies of
+two providers. NetCheck CDR is supported; Umlaut CDR and P3 CDR files keep
+their own field names and are listed as upcoming until their readers and
+field profiles (see cdr_field_profiles) are available.
 """
 from __future__ import annotations
 
@@ -13,7 +15,9 @@ DEFAULT_CDR_TYPE = 'netcheck'
 CDR_TYPES: dict[str, dict[str, Any]] = {
     'netcheck': {'label': 'NetCheck CDR', 'supported': True},
     'umlaut': {'label': 'Umlaut CDR', 'supported': False},
+    'p3': {'label': 'P3 CDR', 'supported': False},
 }
+CDR_DATASET_KINDS = frozenset({'data', 'voice', 'speech'})
 
 
 def cdr_type_options() -> list[dict[str, Any]]:
@@ -37,7 +41,16 @@ def workspace_cdr_type(repository: Any) -> str:
     return stored if stored in CDR_TYPES else DEFAULT_CDR_TYPE
 
 
+def workspace_has_cdrs(repository: Any) -> bool:
+    """Whether the workspace holds Data, Voice or Speech CDRs."""
+    return any(str(dataset['dataset_kind'] or '').strip().casefold() in CDR_DATASET_KINDS for dataset in repository.list_datasets())
+
+
 def set_workspace_cdr_type(repository: Any, value: object) -> str:
+    """Save the CDR type of a workspace; a workspace with CDRs keeps the type of its CDRs."""
     cdr_type = normalize_cdr_type(value)
+    current = workspace_cdr_type(repository)
+    if cdr_type != current and workspace_has_cdrs(repository):
+        raise ValueError(f"This workspace already has {CDR_TYPES[current]['label']} files, so its CDR type cannot change.")
     repository.set_workspace_state(CDR_TYPE_STATE_KEY, cdr_type)
     return cdr_type

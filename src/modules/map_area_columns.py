@@ -17,6 +17,7 @@ from typing import Any, Callable
 
 import pandas as pd
 
+from src.modules.cdr_field_profiles import NETCHECK_PROFILE, CdrFieldProfile, workspace_field_profile
 from src.modules.column_names import resolve_column_name
 
 MAP_AREA_COLUMN = 'Map_Area'
@@ -70,10 +71,9 @@ def stale_datasets(repository: Any) -> list[tuple[int, str]]:
     return sorted(((dataset_id, kind) for dataset_id, kind in ready.items() if dataset_id not in current), reverse=True)
 
 
-def _coordinate_columns(available: list[str], kind: str) -> tuple[str, str] | None:
-    from src.modules.scoring_points_loss import COORDINATE_SOURCES
-
-    for latitude_name, longitude_name in COORDINATE_SOURCES.get(kind, ()):
+def _coordinate_columns(available: list[str], kind: str, profile: CdrFieldProfile = NETCHECK_PROFILE) -> tuple[str, str] | None:
+    """The latitude and longitude columns of a test, those of the CDR type's field profile."""
+    for latitude_name, longitude_name in profile.coordinate_sources.get(kind, ()):
         latitude, longitude = resolve_column_name(available, latitude_name), resolve_column_name(available, longitude_name)
         if latitude is not None and longitude is not None:
             return latitude, longitude
@@ -96,7 +96,7 @@ def fill_dataset(repository: Any, dataset_id: int, kind: str, should_stop: Calla
     table = repository.dataset_rows_table_name(dataset_id)
     quoted = repository._quote_identifier(table)
     available = repository.list_dataset_row_columns(dataset_id)
-    coordinates = _coordinate_columns(available, kind)
+    coordinates = _coordinate_columns(available, kind, workspace_field_profile(repository))
     with repository.connection() as connection:
         if coordinates is None:
             frame = pd.DataFrame({'rid': pd.Series(dtype='int64')})

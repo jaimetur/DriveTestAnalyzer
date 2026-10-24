@@ -14,6 +14,7 @@
 - **Non-Qualified Calls:** while a call is open the mouse wheel scrolls only its details, never the page below them.
 - **Non-Qualified Calls:** in the RCA tab of a call, the values of each RCA source (NetCheck, Ericsson RCA, the analysts) start a row of their own, four per row so each pair of the Ericsson RCA keeps to one row.
 - **Non-Qualified Calls:** in an open call, Analyst and Reviewer sit beside the Assignee (saved as soon as they change), the Unique ID of the previous tool beside the JOIN_ID, the values of its repeated issue on a row of their own in Prioritization Info, and the Activity tab is titled Call Activity Log with a comment box that reaches the bottom of the panel.
+- **CDR types (providers):** a workspace keeps the CDR type of its CDRs once it has Data, Voice or Speech CDRs, and P3 CDR joins Umlaut CDR as coming soon. Ingestion, Non-Qualified Calls (index, analyses import and Failure Map), Network Insights, the serving-cell Vendor Mapping and Map Areas read the CDR columns through the field profile of the workspace's CDR type (`cdr_field_profiles`), so each provider keeps its own field names; NetCheck CDRs are read as before.
 
 #### 🐛 Bug fixes:
 - **Non-Qualified Calls:** a section opened from the menu of the tab or from Modules & Sections stays at the top of the page until every panel above it is drawn, also when they take more than a minute in a large workspace (in Safari it moved down as they filled).
@@ -21,6 +22,7 @@
 
 #### 📚 Documentation:
 - **Non-Qualified Calls:** the Help explains the Map of the call, its layers and controls, and its troubleshooting.
+- **CDR type:** Workspace Config, Workspace Management and the Roadmap explain that a workspace keeps the CDR type of its CDRs, and the plan for Umlaut and P3 CDRs.
 
 ---
 

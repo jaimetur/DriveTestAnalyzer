@@ -14,23 +14,15 @@ try:
 except ImportError:  # pragma: no cover - packaged installations include it.
     pycountry = None
 
+from src.modules.cdr_field_profiles import NETCHECK_PROFILE, CdrFieldProfile, field_profile
 from src.modules.column_names import (
     OPERATOR_VENDOR_FIELD, VENDOR_FIELD, campaign_parts, clean_column_name, column_identity, mapped_vendor_only_value,
     operator_vendor_value, resolve_column_name,
 )
 
 
-CDR_IGNORED_SHEETS = {
-    'MASTER',
-    'KPI Definition',
-    'KPI Definition_OLD',
-    'RANKING',
-    'RANKING OnDemand',
-    'RANKING 5G',
-    'Lists',
-    'SetupEnviroment',
-    'TMP_CLIPBOARD',
-}
+# The worksheets of NetCheck workbooks that never hold CDR rows (each CDR type lists its own, see cdr_field_profiles).
+CDR_IGNORED_SHEETS = NETCHECK_PROFILE.ignored_sheets
 CDR_IGNORED_SHEET_KEYS = frozenset(name.strip().casefold() for name in CDR_IGNORED_SHEETS)
 
 # XLSX parsing is implemented largely in Python by openpyxl.  A short pause at
@@ -224,12 +216,14 @@ def ensure_vendor_fields(dataset: pd.DataFrame, operator_column: str) -> pd.Data
     return dataset
 
 
-def ensure_fixed_cdr_fields(dataset: pd.DataFrame) -> pd.DataFrame:
+def ensure_fixed_cdr_fields(dataset: pd.DataFrame, profile: CdrFieldProfile = NETCHECK_PROFILE) -> pd.DataFrame:
+    """Add the CDR-Main fields to every row, each from the columns of the CDR type's field profile."""
+    sources = profile.fixed_sources
     legacy_report_columns = [column for column in dataset.columns if column_identity(column) == 'reportvendor']
     if legacy_report_columns:
         dataset = dataset.drop(columns=legacy_report_columns)
-    campaign = _ensure_dataset_field(dataset, 'Campaign', ('Campaign',))
-    benchmark = _ensure_dataset_field(dataset, 'Benchmark', ('Benchmark', campaign))
+    campaign = _ensure_dataset_field(dataset, 'Campaign', sources['Campaign'])
+    benchmark = _ensure_dataset_field(dataset, 'Benchmark', (*sources['Benchmark'], campaign))
     campaign_values = dataset[campaign]
     benchmark_values = dataset[benchmark]
 
@@ -238,43 +232,41 @@ def ensure_fixed_cdr_fields(dataset: pd.DataFrame) -> pd.DataFrame:
         fallback = benchmark_values.map({value: _parse_campaign_dimension(value, part) for value in pd.unique(benchmark_values)})
         return primary.where(primary.notna(), fallback)
 
-    year = _ensure_dataset_field(dataset, 'Campaign_Year', ('Campaign_Year',))
-    quarter = _ensure_dataset_field(dataset, 'Campaign_Quarter', ('Campaign_Quarter',))
+    year = _ensure_dataset_field(dataset, 'Campaign_Year', sources['Campaign_Year'])
+    quarter = _ensure_dataset_field(dataset, 'Campaign_Quarter', sources['Campaign_Quarter'])
     existing_year = dataset[year].copy()
     existing_quarter = dataset[quarter].copy()
     parsed_year = extracted('year')
     parsed_quarter = extracted('quarter')
     dataset[year] = parsed_year.where(parsed_year.notna(), existing_year)
     dataset[quarter] = parsed_quarter.where(parsed_quarter.notna(), existing_quarter)
-    period = _ensure_dataset_field(dataset, 'Period', ('Period',))
+    period = _ensure_dataset_field(dataset, 'Period', sources['Period'])
     existing_period = dataset[period].copy()
     dataset[period] = [
         f'{year_value}-{quarter_value}' if pd.notna(year_value) and pd.notna(quarter_value) else previous
         for year_value, quarter_value, previous in zip(dataset[year], dataset[quarter], existing_period, strict=False)
     ]
-    market = _ensure_dataset_field(dataset, 'Market', ('Market',))
+    market = _ensure_dataset_field(dataset, 'Market', sources['Market'])
     existing_market = dataset[market].copy()
     # Campaign labels repeat on every row: derive each distinct label once.
     primary_market = campaign_values.map({value: _campaign_market(value) for value in pd.unique(campaign_values)})
     fallback_market = benchmark_values.map({value: _campaign_market(value) for value in pd.unique(benchmark_values)})
     parsed_market = primary_market.where(primary_market.notna(), fallback_market)
     dataset[market] = parsed_market.where(parsed_market.notna(), existing_market)
-    _ensure_dataset_field(dataset, 'Region', ('Region',))
-    _ensure_dataset_field(dataset, 'Zone', ('Zone', 'G_Level_3'))
-    _ensure_dataset_field(dataset, 'City', ('City', 'G_Level_4'))
-    operator = _ensure_dataset_field(dataset, 'Operator', ('Operator', 'Operator_A', 'Home_Operator_A', 'Home_Operator'))
-    _ensure_dataset_field(dataset, 'Subscriber', ('Subscriber', 'Suscriber', operator))
+    _ensure_dataset_field(dataset, 'Region', sources['Region'])
+    _ensure_dataset_field(dataset, 'Zone', sources['Zone'])
+    _ensure_dataset_field(dataset, 'City', sources['City'])
+    operator = _ensure_dataset_field(dataset, 'Operator', sources['Operator'])
+    _ensure_dataset_field(dataset, 'Subscriber', (*sources['Subscriber'], operator))
     dataset = ensure_vendor_fields(dataset, operator)
-    technology_fields = ('Technology', 'RAT', 'RAT_A', 'L2_Call_Mode_A', 'Playing_Technology')
-    for field in technology_fields:
-        _ensure_dataset_field(dataset, field, technology_fields)
-    session_fields = ('Session_Type', 'Type_Of_Test')
-    for field in session_fields:
-        _ensure_dataset_field(dataset, field, session_fields)
-    _ensure_dataset_field(dataset, 'Test_Name', ('Test_Name',))
-    status_fields = ('Call_Status', 'Status', 'Result', 'Test_Result')
-    for field in status_fields:
-        _ensure_dataset_field(dataset, field, status_fields)
+    technology_fields, session_fields, status_fields = profile.fixed_groups
+    for fields, candidates in (technology_fields, session_fields):
+        for field in fields:
+            _ensure_dataset_field(dataset, field, candidates)
+    _ensure_dataset_field(dataset, 'Test_Name', sources['Test_Name'])
+    fields, candidates = status_fields
+    for field in fields:
+        _ensure_dataset_field(dataset, field, candidates)
     return dataset
 
 
@@ -352,32 +344,35 @@ def _make_unique_headers(headers: Iterable[object]) -> list[str]:
     return unique_headers
 
 
-def _operator_sheet_names(workbook) -> list[str]:
+def _operator_sheet_names(workbook, profile: CdrFieldProfile = NETCHECK_PROFILE) -> list[str]:
     """Return the contiguous operator-sheet block following KPI Definition.
 
     NetCheck CDR workbooks place their operator extracts immediately after the
-    KPI Definition worksheet.  Later worksheets are helper material and must
-    never become CDR rows.  Every operator sheet in that block is imported,
-    including technology-specific ones such as ``Vodafone VoNR``.
+    KPI Definition worksheet (the sheet of the CDR type's field profile).
+    Later worksheets are helper material and must never become CDR rows.
+    Every operator sheet in that block is imported, including
+    technology-specific ones such as ``Vodafone VoNR``.
     """
+    ignored = frozenset(name.strip().casefold() for name in profile.ignored_sheets)
+    anchor = profile.operator_sheets_after.strip().casefold()
     worksheets = list(workbook.worksheets)
     definition_index = next(
         (
             index for index, sheet in enumerate(worksheets)
-            if sheet.title.strip().casefold() == 'kpi definition'
+            if anchor and sheet.title.strip().casefold() == anchor
         ),
         None,
     )
     if definition_index is None:
         return [
             sheet.title for sheet in worksheets
-            if sheet.sheet_state == 'visible' and sheet.title.strip().casefold() not in CDR_IGNORED_SHEET_KEYS
+            if sheet.sheet_state == 'visible' and sheet.title.strip().casefold() not in ignored
         ]
 
     candidates: list[str] = []
     for sheet in worksheets[definition_index + 1:]:
         key = sheet.title.strip().casefold()
-        if sheet.sheet_state != 'visible' or key in CDR_IGNORED_SHEET_KEYS:
+        if sheet.sheet_state != 'visible' or key in ignored:
             # Ranking/helper sheets commonly sit between KPI Definition and
             # the first operator export. Skip that leading metadata, then stop
             # at the first helper sheet after the operator block has started.
@@ -402,19 +397,20 @@ def get_excel_sheet_columns(file_path: Path, sheet_name: str) -> list[str]:
     return []
 
 
-def get_dataset_source_columns(file_path: Path) -> list[str]:
+def get_dataset_source_columns(file_path: Path, profile: CdrFieldProfile = NETCHECK_PROFILE) -> list[str]:
     """Return every physical source header using the same names as ingestion."""
     file_path = file_path.resolve()
     stat = file_path.stat()
-    return list(_cached_dataset_source_columns(str(file_path), stat.st_mtime_ns, stat.st_size))
+    return list(_cached_dataset_source_columns(str(file_path), stat.st_mtime_ns, stat.st_size, profile.cdr_type))
 
 
 @lru_cache(maxsize=128)
 def _cached_dataset_source_columns(
-    file_path_value: str, modified_ns: int, file_size: int,
+    file_path_value: str, modified_ns: int, file_size: int, cdr_type: str = NETCHECK_PROFILE.cdr_type,
 ) -> tuple[str, ...]:
     """Cache source headers without retaining source data in memory."""
     del modified_ns, file_size
+    profile = field_profile(cdr_type)
     file_path = Path(file_path_value)
     suffix = file_path.suffix.lower()
     if suffix == '.csv':
@@ -428,7 +424,7 @@ def _cached_dataset_source_columns(
         workbook = load_workbook(filename=file_path, read_only=True, data_only=True)
         try:
             columns: list[str] = []
-            for sheet_name in _operator_sheet_names(workbook):
+            for sheet_name in _operator_sheet_names(workbook, profile):
                 worksheet = workbook[sheet_name]
                 for row in worksheet.iter_rows(values_only=True):
                     values = tuple(row or ())
@@ -488,46 +484,25 @@ def _read_openxml_sheet(worksheet, progress_callback: Callable[[int], None] | No
     return pd.DataFrame.from_records(records, columns=header)
 
 
-def infer_dataset_kind(df: pd.DataFrame, file_name: str = '') -> str:
+def infer_dataset_kind(df: pd.DataFrame, file_name: str = '', profile: CdrFieldProfile = NETCHECK_PROFILE) -> str:
+    """The CDR type of a file: a word of its name, else the columns of the CDR type's field profile it has most."""
     lower_name = file_name.lower()
     normalized_name = lower_name.replace('_', ' ').replace('-', ' ')
     if 'mapping' in normalized_name:
         return 'mapping'
-    if 'speech' in normalized_name:
-        return 'speech'
-    if 'voice' in normalized_name:
-        return 'voice'
-    if 'data' in normalized_name:
-        return 'data'
+    for word, kind in profile.kind_name_words:
+        if word in normalized_name:
+            return kind
     columns = set(df.columns)
-    voice_markers = {
-        'POLQA_LQ_Avg', 'Call_Setup_Time', 'Call_Duration', 'Call_Status',
-        'Dropped_in_first_70s', 'Disturbed_Call', 'Impaired_Call',
-    }
-    speech_markers = {
-        'LQ', 'RTP_Jitter_Avg_A', 'RTP_Jitter_Avg_B', 'RTP_Packet_Loss_A',
-        'RTP_Packet_Loss_B', 'Receive_Delay', 'Listening_Technology',
-        'Recording_Technology', 'Playing_Handovers',
-    }
-    data_markers = {
-        'Mean_Data_Rate', 'TCP_Throughput', 'Data_Throughput', 'Test_Result',
-        'Transfer_Access_Duration', 'Transfer_Duration',
-        'TCP_RTT_Service_Access_Delay', 'DNS_Service_Access_Delay',
-        'VideoStream_Time_To_Start_Buffering', 'VideoStream_Video_Stream_Duration',
-        'http_Browser_Access_Duration',
-    }
-    scores = {
-        'voice': len(columns & voice_markers),
-        'speech': len(columns & speech_markers),
-        'data': len(columns & data_markers),
-    }
+    scores = {kind: len(columns & markers) for kind, markers in profile.kind_markers.items()}
     best_kind = max(scores, key=scores.get)
     if scores[best_kind] > 0:
         return best_kind
     return 'generic'
 
 
-def _normalise_dataset(df: pd.DataFrame, file_path: Path) -> pd.DataFrame:
+def _normalise_dataset(df: pd.DataFrame, file_path: Path, profile: CdrFieldProfile = NETCHECK_PROFILE) -> pd.DataFrame:
+    sources = profile.normalised_sources
     dataset = df.copy()
     dataset.columns = [clean_column_name(column) for column in dataset.columns]
     source_vendor = resolve_column_name(dataset.columns, OPERATOR_VENDOR_FIELD) or resolve_column_name(dataset.columns, VENDOR_FIELD)
@@ -536,35 +511,30 @@ def _normalise_dataset(df: pd.DataFrame, file_path: Path) -> pd.DataFrame:
         source_vendor and not dataset.empty
         and dataset[source_vendor].fillna('').astype(str).str.strip().ne('').all()
     )
-    dataset_kind = infer_dataset_kind(dataset, file_path.name)
+    dataset_kind = infer_dataset_kind(dataset, file_path.name, profile)
     dataset['dataset_kind'] = dataset_kind
     dataset['source_file'] = file_path.name
 
-    dataset['campaign'] = _first_available_series(dataset, ['Campaign'])
+    dataset['campaign'] = _first_available_series(dataset, sources['campaign'])
     derived_market = dataset['campaign'].map(lambda value: _parse_campaign_dimension(value, 'market'))
     derived_period = dataset['campaign'].map(lambda value: _parse_campaign_dimension(value, 'period'))
-    existing_market = _first_available_series(dataset, ['market', 'Market'])
-    existing_period = _first_available_series(dataset, ['period', 'Period'])
+    existing_market = _first_available_series(dataset, sources['market'])
+    existing_period = _first_available_series(dataset, sources['period'])
     dataset['market'] = existing_market.where(existing_market.notna(), derived_market)
     dataset['period'] = existing_period.where(existing_period.notna(), derived_period)
     dataset['campaign_year'] = dataset['campaign'].map(lambda value: _parse_campaign_dimension(value, 'year'))
     dataset['campaign_quarter'] = dataset['campaign'].map(lambda value: _parse_campaign_dimension(value, 'quarter'))
 
-    dataset['operator'] = _first_available_series(dataset, ['operator', 'Operator_A', 'Operator', 'Home_Operator_A', 'Home_Operator'])
-    dataset['session_type'] = _first_available_series(dataset, ['session_type', 'Session_Type_A', 'Session_Type', 'Type_of_Test', 'type_of_test'])
-    dataset['test_name'] = _first_available_series(dataset, ['test_name', 'Test_Name'])
-    dataset['direction'] = _first_available_series(dataset, ['direction', 'Direction_A', 'Direction', 'Call_Direction', 'call_direction'])
-    dataset['region'] = _first_available_series(dataset, ['region', 'Region'])
-    dataset['city'] = _first_available_series(dataset, ['city', 'City'])
-    dataset['status'] = _first_available_series(dataset, ['status', 'Call_Status_A', 'Call_Status', 'Test_Result', 'Test_Status'])
+    for field in ('operator', 'session_type', 'test_name', 'direction', 'region', 'city', 'status'):
+        dataset[field] = _first_available_series(dataset, sources[field])
 
-    dataset['disturbed'] = _first_available_series(dataset, ['Disturbed_Call']).astype(str).str.lower().eq('yes')
-    dataset['impaired'] = _first_available_series(dataset, ['Impaired_Call']).astype(str).str.lower().eq('yes')
+    dataset['disturbed'] = _first_available_series(dataset, sources['disturbed']).astype(str).str.lower().eq('yes')
+    dataset['impaired'] = _first_available_series(dataset, sources['impaired']).astype(str).str.lower().eq('yes')
     dataset['dropped'] = dataset['status'].astype(str).str.contains('drop', case=False, na=False)
-    if 'Dropped_in_first_70s' in dataset.columns:
-        dataset['dropped'] = dataset['dropped'] | dataset['Dropped_in_first_70s'].astype(str).str.lower().eq('yes')
-    if 'Unsustainable_Call' in dataset.columns:
-        dataset['unsustainable_call'] = dataset['Unsustainable_Call'].astype(str).str.lower().eq('yes')
+    if profile.dropped_flag in dataset.columns:
+        dataset['dropped'] = dataset['dropped'] | dataset[profile.dropped_flag].astype(str).str.lower().eq('yes')
+    if profile.unsustainable_flag in dataset.columns:
+        dataset['unsustainable_call'] = dataset[profile.unsustainable_flag].astype(str).str.lower().eq('yes')
     else:
         dataset['unsustainable_call'] = False
 
@@ -573,61 +543,23 @@ def _normalise_dataset(df: pd.DataFrame, file_path: Path) -> pd.DataFrame:
     dataset['failure'] = dataset['status'].notna() & ~dataset['success']
 
     dataset['event_start_time'] = pd.to_datetime(
-        _first_available_series(
-            dataset,
-            ['Call_Start_Time', 'Call Start Time', 'Test_Start_Time', 'Test Start Time', 'Data_Start_Time', 'Data Start Time'],
-        ),
-        errors='coerce', format='mixed',
+        _first_available_series(dataset, sources['event_start_time']), errors='coerce', format='mixed',
     )
     dataset['event_end_time'] = pd.to_datetime(
-        _first_available_series(
-            dataset,
-            ['Call_End_Time', 'Call End Time', 'Test_End_Time', 'Test End Time', 'Data_End_Time', 'Data End Time'],
-        ),
-        errors='coerce', format='mixed',
+        _first_available_series(dataset, sources['event_end_time']), errors='coerce', format='mixed',
     )
     dataset['hour_bucket'] = dataset['event_start_time'].dt.hour
     dataset['day_bucket'] = dataset['event_start_time'].dt.day
 
-    dataset['setup_time_seconds'] = pd.to_numeric(
-        _first_available_series(
-            dataset,
-            ['Call_Setup_Time', 'Transfer_Access_Duration', 'http_Browser_Access_Duration', 'VideoStream_Time_To_Start_Buffering'],
-        ),
-        errors='coerce',
-    )
-    dataset['duration_seconds'] = pd.to_numeric(
-        _first_available_series(
-            dataset,
-            ['Call_Duration', 'Test_Duration', 'Data_Test_Duration', 'Transfer_Duration', 'VideoStream_Video_Stream_Duration'],
-        ),
-        errors='coerce',
-    )
-    dataset['quality_score'] = pd.to_numeric(
-        _first_available_series(dataset, ['POLQA_LQ_Avg', 'LQ', 'Mean_Data_Rate']),
-        errors='coerce',
-    )
-    dataset['throughput_mbps'] = pd.to_numeric(
-        _first_available_series(dataset, ['Mean_Data_Rate', 'TCP_Throughput', 'Data_Throughput']),
-        errors='coerce',
-    )
-    dataset['latency_ms'] = pd.to_numeric(
-        _first_available_series(dataset, ['Receive_Delay', 'TCP_RTT_Service_Access_Delay', 'DNS_Service_Access_Delay']),
-        errors='coerce',
-    )
-    dataset['packet_loss_pct'] = _average_columns(dataset, ['RTP_Packet_Loss_A', 'RTP_Packet_Loss_B', 'Packet_Loss_Score'])
-    dataset['jitter_ms'] = _average_columns(dataset, ['RTP_Jitter_Avg_A', 'RTP_Jitter_Avg_B'])
-    dataset['handovers'] = _first_available_series(dataset, ['Handovers_Info', 'Handovers_Info_A', 'Playing_Handovers']).map(_count_items)
-    dataset['technology_primary'] = _first_available_series(
-        dataset,
-        ['RAT', 'RAT_A', 'L2_call_Mode_A', 'Playing_Technology'],
-    )
-    dataset['technology_secondary'] = _first_available_series(
-        dataset,
-        ['L2_call_Mode_B', 'RAT_B', 'Recording_Technology', 'RAT_Timeline'],
-    )
+    for field in ('setup_time_seconds', 'duration_seconds', 'quality_score', 'throughput_mbps', 'latency_ms'):
+        dataset[field] = pd.to_numeric(_first_available_series(dataset, sources[field]), errors='coerce')
+    for field, columns in profile.averaged_sources.items():
+        dataset[field] = _average_columns(dataset, columns)
+    dataset['handovers'] = _first_available_series(dataset, sources['handovers']).map(_count_items)
+    dataset['technology_primary'] = _first_available_series(dataset, sources['technology_primary'])
+    dataset['technology_secondary'] = _first_available_series(dataset, sources['technology_secondary'])
 
-    dataset = ensure_fixed_cdr_fields(dataset)
+    dataset = ensure_fixed_cdr_fields(dataset, profile)
     dataset.attrs['vendor_values_complete'] = vendor_values_complete
     start_column = resolve_column_name(dataset.columns, 'Event_Start_Time') or 'event_start_time'
     end_column = resolve_column_name(dataset.columns, 'Event_End_Time') or 'event_end_time'
@@ -656,9 +588,10 @@ def _load_excel_dataset(
     file_path: Path,
     progress_callback: Callable[[int], None] | None = None,
     source_columns: list[str] | None = None,
+    profile: CdrFieldProfile = NETCHECK_PROFILE,
 ) -> pd.DataFrame:
     workbook = load_workbook(filename=file_path, read_only=True, data_only=True)
-    candidate_sheets = _operator_sheet_names(workbook)
+    candidate_sheets = _operator_sheet_names(workbook, profile)
     total_rows = sum(max(workbook[sheet_name].max_row or 0, 1) for sheet_name in candidate_sheets) or 1
 
     if progress_callback:
@@ -685,13 +618,13 @@ def _load_excel_dataset(
         return df
 
     if len(data_frames) == 1 and data_frames[0]['source_sheet'].nunique() == 1:
-        dataset = _normalise_dataset(data_frames[0], file_path)
+        dataset = _normalise_dataset(data_frames[0], file_path, profile)
         if progress_callback:
             progress_callback(55)
         return dataset
 
     combined = pd.concat(data_frames, ignore_index=True, sort=False)
-    dataset = _normalise_dataset(combined, file_path)
+    dataset = _normalise_dataset(combined, file_path, profile)
     if progress_callback:
         progress_callback(55)
     return dataset
@@ -714,23 +647,24 @@ def load_dataset(
     file_path: Path,
     progress_callback: Callable[[int], None] | None = None,
     source_columns: list[str] | None = None,
+    profile: CdrFieldProfile = NETCHECK_PROFILE,
 ) -> pd.DataFrame:
     suffix = file_path.suffix.lower()
     if suffix == '.csv':
         source = _read_csv_dataset(file_path)
         _capture_source_columns(source_columns, source.columns)
-        df = _normalise_dataset(source, file_path)
+        df = _normalise_dataset(source, file_path, profile)
         if progress_callback:
             progress_callback(55)
         return df
     if suffix in {'.xlsx', '.xlsm'}:
         return _load_excel_dataset(
-            file_path, progress_callback=progress_callback, source_columns=source_columns,
+            file_path, progress_callback=progress_callback, source_columns=source_columns, profile=profile,
         )
     if suffix == '.xls':
         source = pd.read_excel(file_path)
         _capture_source_columns(source_columns, source.columns)
-        df = _normalise_dataset(source, file_path)
+        df = _normalise_dataset(source, file_path, profile)
         if progress_callback:
             progress_callback(55)
         return df
@@ -740,7 +674,7 @@ def load_dataset(
         # Cell Configuration KMZ/KML files, alone or in a ZIP package: one row per cell Placemark.
         source = read_cell_configuration(file_path, progress_callback=progress_callback)
         _capture_source_columns(source_columns, source.columns)
-        df = _normalise_dataset(source, file_path)
+        df = _normalise_dataset(source, file_path, profile)
         if progress_callback:
             progress_callback(55)
         return df
