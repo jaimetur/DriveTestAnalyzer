@@ -310,10 +310,11 @@ def test_nq_calls_in_scope_only_leaves_the_calls_out_of_scope_out_of_the_module(
     assert next(entry for entry in panel['rules'] if entry['name'] == 'Out of scope')['calls'] == 0
     values = client.post('/api/non-qualified-calls/filters/values', json={'filters': {'in_scope': True}}).json()['values']
     assert region not in values['region']
-    # The NQ rates count the calls in scope only once the Region of every call is indexed.
+    # The NQ rates count the calls in scope only once the Region of every call is indexed (the qualified calls, which are
+    # not in the latest calls, keep the Region they were indexed with).
     with core.repository.connection() as connection:
-        connection.execute(f"UPDATE {nq.NQ_CALL_POPULATION_TABLE} SET region = (SELECT l.region FROM {nq.NQ_CALL_LATEST_TABLE} l "
-                           f"WHERE l.call_key = {nq.NQ_CALL_POPULATION_TABLE}.call_key)")
+        connection.execute(f"UPDATE {nq.NQ_CALL_POPULATION_TABLE} SET region = COALESCE((SELECT l.region FROM {nq.NQ_CALL_LATEST_TABLE} l "
+                           f"WHERE l.call_key = {nq.NQ_CALL_POPULATION_TABLE}.call_key), region)")
     nq._rate_counts_cache.clear()
     every_rate = sum(item['total']['nq'] for item in nq.nq_rates(core.repository, {})['matrices'] if item['service'] != 'all')
     scoped_rate = sum(item['total']['nq'] for item in nq.nq_rates(core.repository, {'in_scope': True})['matrices'] if item['service'] != 'all')

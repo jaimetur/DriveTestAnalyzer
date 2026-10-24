@@ -91,7 +91,7 @@ def test_new_workspaces_get_the_catalog_of_the_meeting_workbook(client, tmp_path
     # the call columns that of the call, as in the Excel export.
     assert not by_key['rca_suggested_cause']['in_table'] and not by_key['netcheck_suggested_cause']['in_table']
     assert [field['key'] for field in fields if field['in_table'] and field['source'] != 'tracking'] == [
-        'prioritization', 'scoring_impact', 'scoring_points_lost', 'repeated_issue', 'analysis_status', 'implementation_status']
+        'priority', 'prioritization', 'scoring_points_lost', 'repeated_issue', 'analysis_status', 'implementation_status']
     assert state['call_section'] == nq.CALL_SECTION
     assert by_key['selected_root_category']['source'] == 'tracking' and by_key['nq_call_status']['section'] == 'general'
     assert by_key['analysis_status']['section'] == 'analysis'
