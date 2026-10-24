@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>P3 CDR Compatibility</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<style>
+/* Layout: a field engineer's report — a narrow reading column with a sticky contents rail on wide screens, status chips as the visual code. */
+:root {
+  --bg: #f4f6f8; --surface: #ffffff; --ink: #16202b; --muted: #5b6876; --line: #d9dfe6; --soft: #eef2f6;
+  --accent: #0d5a85; --accent-soft: #e2eef6;
+  --ok: #1b7446; --ok-bg: #e0f2e7; --conv: #1f5ea6; --conv-bg: #e3ecf8; --der: #6b4fa0; --der-bg: #eee8f7;
+  --apx: #8f5a00; --apx-bg: #faedd4; --miss: #b02a22; --miss-bg: #f9e2df;
+  --font-body: "IBM Plex Sans", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-head: "IBM Plex Sans Condensed", "Arial Narrow", "IBM Plex Sans", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0f151c; --surface: #161e27; --ink: #e3e9ef; --muted: #98a6b4; --line: #2a3542; --soft: #1c2631;
+  --accent: #6db7e3; --accent-soft: #15324a;
+  --ok: #6fd39b; --ok-bg: #12301f; --conv: #8ab8f2; --conv-bg: #172a45; --der: #c3a8f0; --der-bg: #2a2140;
+  --apx: #f0c06a; --apx-bg: #3a2c10; --miss: #f19189; --miss-bg: #3d1a17; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0f151c; --surface: #161e27; --ink: #e3e9ef; --muted: #98a6b4; --line: #2a3542; --soft: #1c2631;
+  --accent: #6db7e3; --accent-soft: #15324a;
+  --ok: #6fd39b; --ok-bg: #12301f; --conv: #8ab8f2; --conv-bg: #172a45; --der: #c3a8f0; --der-bg: #2a2140;
+  --apx: #f0c06a; --apx-bg: #3a2c10; --miss: #f19189; --miss-bg: #3d1a17; color-scheme: dark }
+* { box-sizing: border-box }
+body { background: var(--bg); color: var(--ink); font: 15px/1.6 var(--font-body); }
+.wrap { max-width: 1240px; margin: 0 auto; padding-block: 28px 64px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 40px; }
+nav.toc { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 20px); align-self: start; font-size: 13px; }
+nav.toc p { font: 600 11px/1 var(--font-head); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px }
+nav.toc ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; border-left: 2px solid var(--line) }
+nav.toc a { display: block; padding: 4px 10px; color: var(--muted); text-decoration: none; margin-left: -2px; border-left: 2px solid transparent }
+nav.toc a:hover, nav.toc a:focus-visible { color: var(--accent); border-left-color: var(--accent); outline: none }
+main { min-width: 0; display: grid; gap: 48px }
+h1, h2, h3, h4 { font-family: var(--font-head); text-wrap: balance; margin: 0; line-height: 1.2 }
+h1 { font-size: clamp(30px, 4.4vw, 44px); font-weight: 700; letter-spacing: -.01em }
+h2 { font-size: 26px; font-weight: 700; margin-bottom: 14px; padding-top: 6px; border-top: 3px solid var(--ink); }
+h3 { font-size: 19px; font-weight: 600 }
+h4 { font-size: 13px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted) }
+p { margin: 0; max-width: 72ch }
+section > p + p, section > p + .scroll, section > .scroll + p { margin-top: 12px }
+.eyebrow { font: 600 12px/1 var(--font-head); letter-spacing: .1em; text-transform: uppercase; color: var(--accent) }
+.hero { display: grid; gap: 14px }
+.hero .lede { font-size: 17px; color: var(--ink); max-width: 68ch }
+.meta { display: flex; flex-wrap: wrap; gap: 8px 18px; color: var(--muted); font-size: 13px }
+.verdict { background: var(--surface); border: 1px solid var(--line); border-left: 6px solid var(--accent); border-radius: 4px; padding: 18px 20px; display: grid; gap: 10px }
+.verdict strong { color: var(--accent) }
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px }
+.stat { background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 14px 16px; display: grid; gap: 4px; align-content: start }
+.stat b { font: 600 28px/1.1 var(--font-head); font-variant-numeric: tabular-nums }
+.stat span { font-size: 13px; color: var(--muted) }
+.prio-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 28px }
+.prio { display: grid; gap: 6px; min-width: 0 }
+.prio-name { font: 600 15px/1.2 var(--font-head) }
+.bar { display: flex; height: 12px; border-radius: 2px; overflow: hidden; background: var(--soft); gap: 2px }
+.seg.ok { background: var(--ok) } .seg.conv { background: var(--conv) } .seg.der { background: var(--der) } .seg.apx { background: var(--apx) } .seg.miss { background: var(--miss) }
+.bar-legend { font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums }
+.muted { color: var(--muted) }
+.chip { display: inline-block; font: 600 11.5px/1 var(--font-body); padding: 4px 8px; border-radius: 3px; white-space: nowrap; letter-spacing: .01em }
+.chip.ok { color: var(--ok); background: var(--ok-bg) } .chip.conv { color: var(--conv); background: var(--conv-bg) }
+.chip.der { color: var(--der); background: var(--der-bg) } .chip.apx { color: var(--apx); background: var(--apx-bg) } .chip.miss { color: var(--miss); background: var(--miss-bg) }
+.legend { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 8px }
+.legend li { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 12px; align-items: baseline; font-size: 14px }
+.scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 4px; background: var(--surface) }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px }
+th, td { text-align: left; vertical-align: top; padding: 9px 12px; border-bottom: 1px solid var(--line) }
+thead th { font: 600 12px/1.3 var(--font-head); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); background: var(--soft); position: sticky; top: 0 }
+tbody tr:last-child > * { border-bottom: 0 }
+td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap }
+code { font: 12.5px/1.4 var(--font-mono); background: var(--soft); padding: 1px 5px; border-radius: 3px; overflow-wrap: anywhere }
+table.map td.f { min-width: 190px } table.map td.f code { display: inline-block; margin: 0 4px 4px 0 }
+table.map td.u { min-width: 220px; font-family: var(--font-mono); font-size: 12.5px }
+table.map td.n, table.kpi td.n { min-width: 220px; color: var(--muted) }
+table.kpi td.u { min-width: 230px; font-family: var(--font-mono); font-size: 12.5px }
+table.kpi td.k { font: 600 13px/1.4 var(--font-mono); white-space: nowrap }
+table.struct th { width: 130px; font: 600 14px/1.4 var(--font-head); background: transparent; position: static; text-transform: none; letter-spacing: 0; color: var(--ink) }
+.mod { display: inline-block; font-size: 11.5px; line-height: 1; padding: 3px 6px; margin: 0 4px 4px 0; border: 1px solid var(--line); border-radius: 3px; color: var(--muted); white-space: nowrap }
+.kind { display: grid; gap: 14px; padding-top: 6px }
+.kind + .kind { border-top: 1px solid var(--line); padding-top: 26px; margin-top: 26px }
+.two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px }
+.only { background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 14px 16px; min-width: 0 }
+.only ul { margin: 8px 0 0; padding-left: 18px; display: grid; gap: 5px; font-size: 14px }
+.only.nc h4 { color: var(--accent) } .only.um h4 { color: var(--der) }
+details { display: grid; gap: 10px }
+summary { cursor: pointer; font: 600 15px/1.4 var(--font-head); color: var(--accent); padding: 4px 0 }
+summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px }
+details[open] summary { margin-bottom: 10px }
+.modules { display: grid; gap: 14px }
+.module { background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 16px 18px; display: grid; gap: 10px; border-top: 4px solid var(--line) }
+.module.direct { border-top-color: var(--ok) } .module.near { border-top-color: var(--conv) } .module.moderate { border-top-color: var(--apx) } .module.major { border-top-color: var(--miss) }
+.module header { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 16px; align-items: baseline }
+.level { font: 600 12px/1 var(--font-head); letter-spacing: .06em; text-transform: uppercase; padding: 5px 8px; border-radius: 3px }
+.level.direct { color: var(--ok); background: var(--ok-bg) } .level.near { color: var(--conv); background: var(--conv-bg) }
+.level.moderate { color: var(--apx); background: var(--apx-bg) } .level.major { color: var(--miss); background: var(--miss-bg) }
+.module .uses { font-size: 13.5px; color: var(--muted); max-width: none }
+.module ul, .plain { margin: 0; padding-left: 18px; display: grid; gap: 6px }
+.arch { background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 18px; overflow-x: auto }
+.arch-flow { display: grid; grid-template-columns: repeat(4, minmax(150px, 1fr)); gap: 12px; min-width: 640px; align-items: stretch }
+.arch-box { border: 1px solid var(--line); border-radius: 4px; padding: 12px; background: var(--soft); display: grid; gap: 6px; align-content: start; position: relative }
+.arch-box b { font: 600 14px/1.2 var(--font-head) }
+.arch-box em { font: 600 11px/1.2 var(--font-head); font-style: normal; letter-spacing: .06em; text-transform: uppercase; color: var(--accent) }
+.arch-box span { font-size: 12.5px; color: var(--muted) }
+.arch-box.key { background: var(--accent-soft); border-color: var(--accent) }
+.arch-box:not(:last-child)::after { content: "→"; position: absolute; right: -11px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 16px }
+ol.phases { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; counter-reset: ph }
+.phase { background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 14px 18px; counter-increment: ph }
+.ph-head { display: flex; flex-wrap: wrap; gap: 6px 14px; justify-content: space-between; align-items: baseline; margin-bottom: 8px }
+.ph-name { font: 600 16px/1.3 var(--font-head) }
+.ph-name::before { content: "Phase " counter(ph, decimal) " · "; color: var(--accent) }
+.ph-time { font: 500 13px/1 var(--font-mono); color: var(--muted) }
+.phase ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; font-size: 14px }
+.note { font-size: 13.5px; color: var(--muted) }
+ol.questions { margin: 0; padding-left: 22px; display: grid; gap: 8px; max-width: 80ch }
+footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line); padding-top: 16px }
+@media (max-width: 980px) {
+  .wrap { grid-template-columns: minmax(0, 1fr); gap: 28px }
+  nav.toc { position: static }
+  nav.toc ol { border-left: 0; display: flex; flex-wrap: wrap; gap: 6px }
+  nav.toc a { border: 1px solid var(--line); border-radius: 3px; margin: 0; padding: 4px 9px }
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)) }
+}
+@media (max-width: 640px) {
+  .prio-grid, .two { grid-template-columns: minmax(0, 1fr) }
+  .legend li { grid-template-columns: minmax(0, 1fr); gap: 4px }
+  table.struct th { width: 96px }
+}
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important } }
+</style>
+</head>
+<body>
+<div class="wrap">
+<nav class="toc" aria-label="Contents">
+  <p>Contents</p>
+  <ol>
+    <li><a href="#summary">Summary</a></li>
+    <li><a href="#known">What is known</a></li>
+    <li><a href="#scope">What the analysis will cover</a></li>
+    <li><a href="#plan">Plan</a></li>
+    <li><a href="#questions">What is needed</a></li>
+  </ol>
+</nav>
+<main>
+<header class="hero" id="summary">
+  <span class="eyebrow">DriveTest Analyzer · CDR compatibility report</span>
+  <h1>Compatibility of P3 CDRs with DriveTest Analyzer</h1>
+  <p class="lede">The comparison of P3 CDRs with the NetCheck CDRs the tool is built for, as the Umlaut CDR Compatibility report does for Umlaut: which fields each module uses, what each would have with P3, and how to adapt the tool without losing features.</p>
+  <div class="meta"><span>Pending a P3 sample · 24 October 2026</span><span>Branch 0.8.7</span><span>NetCheck reference: UK Q3 2026 SA and NSA CDRs</span></div>
+</header>
+
+<section class="verdict" aria-label="Status">
+  <p><strong>Not analysed yet:</strong> there is no sample of P3 CDRs, so their files, fields and values cannot be compared with NetCheck yet.</p>
+  <p><strong>The base is ready.</strong> P3 CDR is listed as a coming-soon CDR type, and every module reads the CDR columns through the field profile of the workspace’s CDR type (phase 1, done in version 0.8.7). P3 needs its reader, its profile and its content, with the same model as Umlaut.</p>
+  <p><strong>Same model:</strong> one provider per workspace, with the P3 names and values visible to its users; its own Scoring methodology, PPT templates and NQ rules; the DT Analyzer RCA, available in every workspace, as the common engine.</p>
+</section>
+
+<section id="known">
+  <h2>What is known</h2>
+  <ul class="plain">
+    <li>The Umlaut files of the sample link to a P3 path (<code>p3path:\\aws-fs.p3-aws.com</code>), so the P3 format may be similar to the Umlaut one.</li>
+    <li>Like every provider, P3 will be read with its native names: nothing is translated into NetCheck names.</li>
+  </ul>
+</section>
+
+<section id="scope">
+  <h2>What the analysis will cover</h2>
+  <p>The same sections as the Umlaut CDR Compatibility report, as soon as a sample is available.</p>
+  <ul class="plain" style="margin-top:12px">
+    <li><strong>Material analysed:</strong> the files of the sample, their CDR type, rows and columns.</li>
+    <li><strong>Format differences:</strong> organisation of the files, granularity, call identity, campaign, environment, statuses, units, sides of the call, radio, failures and names.</li>
+    <li><strong>Fields per CDR type:</strong> what each provider has that the other does not, and every NetCheck field the tool uses with its P3 equivalent: Direct, Conversion, Derivable, Approximate or Missing.</li>
+    <li><strong>Compatibility per module:</strong> what ingestion, Builders, CDR Analysis, Reporting, Scoring &amp; GAP Analysis, PPT Dashboards, Non-Qualified Calls, Network Insights and the Workspace Config mappings need with P3.</li>
+    <li><strong>Scoring KPIs:</strong> which KPIs have equivalent data in P3, until P3 has its own methodology.</li>
+    <li><strong>Limits of 100%:</strong> the data P3 does not bring, the definitions that change and what P3 adds.</li>
+  </ul>
+</section>
+
+<section id="plan">
+  <h2>Plan</h2>
+  <ol class="phases"><li class="phase"><div class="ph-head"><span class="ph-name">P3: reader, profile and content</span><span class="ph-time">once a sample is in</span></div><ul><li>Compatibility analysis of the sample, as for Umlaut.</li><li>P3 reader and P3 profile with the native names, derived columns where the tool needs them, and P3 CDR enabled as a CDR type.</li><li>P3 content: Scoring methodology, PPT templates and NQ rules written with the P3 fields.</li></ul></li></ol>
+</section>
+
+<section id="questions">
+  <h2>What is needed</h2>
+  <ol class="questions" style="margin-top:12px"><li>A sample of P3 CDRs (Data, Voice and Speech), ideally multi-operator and, if possible, with NR SA and walk or train tests.</li><li>The P3 Scoring methodology (KPIs, thresholds, weights and categories), if P3 workspaces will be scored with it.</li><li>Whether P3 delivers any RCA or failure classification besides the CDRs.</li></ol>
+</section>
+
+<footer>Pending a sample of P3 CDRs. The analysis will follow the Umlaut CDR Compatibility report, also listed under Benchmarking Providers in the Help.</footer>
+</main>
+</div>
+</body>
+</html>

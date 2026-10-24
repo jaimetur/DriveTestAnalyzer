@@ -18,7 +18,13 @@
         <p>Browse the available documentation.</p>
         <nav><ul id="help-nav-list" class="help-nav-list" data-help-nav-list></ul></nav>
       </aside>
+      {% if report_file %}
+      <article id="doc-content" class="doc-report">
+        <iframe class="doc-report-frame" src="{{ static_path(report_file) }}" title="{{ doc_name }}"></iframe>
+      </article>
+      {% else %}
       <article id="doc-content" class="doc-markdown markdown-viewer"></article>
+      {% endif %}
     </div>
     {% elif changelog_navigation %}
     <div class="doc-layout">
@@ -180,7 +186,17 @@
     });
   }
 
-  fetch({{ doc_api_url | tojson }})
+  // A report keeps its own page and design: the Help shows it in a frame, in the light colours of the tool.
+  const reportFrame = contentEl.querySelector('.doc-report-frame');
+  if (reportFrame) {
+    pathEl.textContent = new URL(reportFrame.src, window.location.href).pathname;
+    const lightReport = () => {
+      const root = reportFrame.contentDocument?.documentElement;
+      if (root) root.dataset.theme = 'light';
+    };
+    reportFrame.addEventListener('load', lightReport);
+    lightReport();
+  } else fetch({{ doc_api_url | tojson }})
     .then(async (response) => {
       const data = await response.json();
       if (!response.ok) {
@@ -278,6 +294,21 @@
             addIcon(link, helpDocument.icon, helpDocument.icon_color);
             if (link.pathname === window.location.pathname) link.classList.add('active');
             item.appendChild(link);
+            // The reports of a chapter are listed below it.
+            if (Array.isArray(helpDocument.children) && helpDocument.children.length) {
+              const children = document.createElement('ul');
+              children.className = 'help-nav-children';
+              helpDocument.children.forEach((child) => {
+                const childItem = document.createElement('li');
+                const childLink = document.createElement('a');
+                childLink.href = child.url;
+                childLink.textContent = child.label;
+                if (childLink.pathname === window.location.pathname) childLink.classList.add('active');
+                childItem.appendChild(childLink);
+                children.appendChild(childItem);
+              });
+              item.appendChild(children);
+            }
             groupList.appendChild(item);
           });
         });

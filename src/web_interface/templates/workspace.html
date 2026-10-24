@@ -75,9 +75,9 @@
             <thead>
               <tr>
                 <th class="workspace-name-column">Workspace</th>
-                {% if user.role == 'super-admin' %}<th class="workspace-access-column">Access</th>{% endif %}
                 <th class="workspace-cdr-type-column">CDR Type</th>
                 <th class="workspace-country-column">Country</th>
+                {% if user.role == 'super-admin' %}<th class="workspace-access-column">Access</th>{% endif %}
                 <th>Size</th>
                 <th>Cache Size</th>
                 <th>Status</th>
@@ -93,6 +93,19 @@
                     <input type="hidden" name="workspace_id" value="{{ item.id }}">
                   </form>
                   <input form="workspace-save-{{ item.id }}" aria-label="Workspace name: {{ item.name }}" name="name" required maxlength="100" value="{{ item.name }}" data-workspace-name-input {% if not workspace_access.get(item.id, false) %}disabled{% endif %}>
+                </td>
+                <td class="workspace-cdr-type-column" data-label="CDR Type">
+                  {% set item_cdr_type = (workspace_cdr_types | default({}, true)).get(item.id, 'netcheck') %}
+                  <select form="workspace-save-{{ item.id }}" name="cdr_type" aria-label="CDR type of {{ item.name }}" {% if not workspace_access.get(item.id, false) %}disabled{% endif %}>
+                    {% for option in cdr_type_options %}<option value="{{ option.value }}"{% if not option.supported %} disabled{% endif %}{% if option.value == item_cdr_type %} selected{% endif %}>{{ option.label }}{% if not option.supported %} (coming soon){% endif %}</option>{% endfor %}
+                  </select>
+                </td>
+                <td class="workspace-country-column" data-label="Country">
+                  {% set item_country = (workspace_countries | default({}, true)).get(item.id, '') %}
+                  <select form="workspace-save-{{ item.id }}" name="country" aria-label="Country of {{ item.name }}" title="Choosing a country adds its operators that the Operator Maps do not have yet" {% if not workspace_access.get(item.id, false) %}disabled{% endif %}>
+                    <option value="">None</option>
+                    {% for option in country_options | default([], true) %}<option value="{{ option.value }}"{% if option.value == item_country %} selected{% endif %}>{{ option.label }}</option>{% endfor %}
+                  </select>
                 </td>
                 {% if user.role == 'super-admin' %}<td class="workspace-access-column" data-label="Access">
                   <div class="workspace-access-editor">
@@ -110,19 +123,6 @@
                     </details>
                   </div>
                 </td>{% endif %}
-                <td class="workspace-cdr-type-column" data-label="CDR Type">
-                  {% set item_cdr_type = (workspace_cdr_types | default({}, true)).get(item.id, 'netcheck') %}
-                  <select form="workspace-save-{{ item.id }}" name="cdr_type" aria-label="CDR type of {{ item.name }}" {% if not workspace_access.get(item.id, false) %}disabled{% endif %}>
-                    {% for option in cdr_type_options %}<option value="{{ option.value }}"{% if not option.supported %} disabled{% endif %}{% if option.value == item_cdr_type %} selected{% endif %}>{{ option.label }}{% if not option.supported %} (coming soon){% endif %}</option>{% endfor %}
-                  </select>
-                </td>
-                <td class="workspace-country-column" data-label="Country">
-                  {% set item_country = (workspace_countries | default({}, true)).get(item.id, '') %}
-                  <select form="workspace-save-{{ item.id }}" name="country" aria-label="Country of {{ item.name }}" title="Choosing a country adds its operators that the Operator Maps do not have yet" {% if not workspace_access.get(item.id, false) %}disabled{% endif %}>
-                    <option value="">None</option>
-                    {% for option in country_options | default([], true) %}<option value="{{ option.value }}"{% if option.value == item_country %} selected{% endif %}>{{ option.label }}</option>{% endfor %}
-                  </select>
-                </td>
                 <td data-label="Size"><span class="workspace-size" data-workspace-size data-workspace-id="{{ item.id }}">{{ workspace_sizes.get(item.id, '0 MB') }}</span></td>
                 <td data-label="Cache Size"><span class="workspace-size" data-workspace-cache-size data-workspace-id="{{ item.id }}">{{ workspace_cache_sizes.get(item.id, '0 B') }}</span></td>
                 <td data-label="Status"><span class="workspace-status-pill workspace-status-{{ workspace_status.status }}" data-workspace-status data-workspace-id="{{ item.id }}">{{ workspace_status.status_label }}</span></td>

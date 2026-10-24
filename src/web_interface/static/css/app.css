@@ -2980,6 +2980,12 @@ body:has(.release-navigator) .help-navigator{top:37%}
 .module-navigator-category nav a.is-active .module-navigator-icon { stroke: currentColor !important; }
 .help-nav-group h4 { margin: 0 0 .35rem; color: var(--muted); font-size: .75rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
 .help-nav-sublist { display: grid; gap: .2rem; margin: 0; padding: 0 0 0 .45rem; list-style: none; }
+/* The reports of a chapter, below it in Help Navigation. */
+.help-nav-children { display: grid; gap: .15rem; margin: .15rem 0 .2rem 1.1rem; padding: 0 0 0 .55rem; list-style: none; border-left: 2px solid rgba(11, 122, 117, 0.2); }
+.help-nav-list .help-nav-children a { padding: .32rem .5rem; font-size: .84rem; }
+/* A report keeps its own page and design, in a frame as tall as the window. */
+.doc-report { min-width: 0; max-width: 100%; overflow: hidden; border: 1px solid var(--line); border-radius: 20px; background: #fff; }
+.doc-report-frame { display: block; width: 100%; height: max(36rem, calc(100vh - 12rem)); border: 0; }
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 @keyframes progress-slide { 0% { transform: translateX(-110%); } 100% { transform: translateX(290%); } }
 @media (max-width: 1260px) {

@@ -1,8 +1,9 @@
 // The presentations of DriveTest Analyzer shown in the Help, in Ericsson style: the overview deck (which closes with the
-// one-slider), the one-slider and the roadmap. The server generates them with the live figures of the workspaces chosen in
-// Super Admin (src/modules/presentations.py); `node build.js` writes them with the figures below into
-// static/presentations, the copies the Help shows until then, and `python tools/presentations/render.py` renders their
-// slides (see help/project-structure.md).
+// one-slider), the one-slider and the roadmap, plus the status of the adaptation to other benchmarking providers in the
+// design of its own deck. The server generates them with the live figures of the workspaces chosen in Super Admin
+// (src/modules/presentations.py); `node build.js` writes them with the figures below into static/presentations, the
+// copies the Help shows until then, and `python tools/presentations/render.py` renders their slides (see
+// help/project-structure.md).
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -1108,6 +1109,32 @@ async function applyTheme(file, theme) {
   fs.writeFileSync(file, await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' }));
 }
 
+// ------------------------------------------------------------------------------------- benchmarking providers deck
+// The adaptation of the tool to the CDRs of benchmarking providers other than NetCheck (Umlaut first, then P3), in the
+// design of its own deck: benchmarking-providers/ holds a picture of each slide, with the Ericsson logo at the top right,
+// and slides.json their order, section, title and speaker notes.
+const PROVIDERS_DECK = path.join(__dirname, 'benchmarking-providers');
+const PROVIDERS_SLIDES = JSON.parse(fs.readFileSync(path.join(PROVIDERS_DECK, 'slides.json'), 'utf8'));
+
+function providersSections() {
+  const sections = [];
+  for (const slide of PROVIDERS_SLIDES.slides) {
+    if (sections.at(-1)?.title !== slide.section) sections.push({ title: slide.section, slides: [] });
+    sections.at(-1).slides.push(slide.title);
+  }
+  return sections;
+}
+
+function providersDeck(pres) {
+  let section;
+  for (const slide of PROVIDERS_SLIDES.slides) {
+    if (slide.section !== section) { pres.addSection({ title: slide.section }); section = slide.section; }
+    const page = pres.addSlide({ sectionTitle: slide.section });
+    page.addImage({ path: path.join(PROVIDERS_DECK, slide.image), x: 0, y: 0, w: '100%', h: '100%', objectName: slide.title });
+    if (slide.notes) page.addNotes(slide.notes);
+  }
+}
+
 // The presentations as the Help lists them (static/presentations/presentations.json): their file and the title of each
 // slide by section, which the slide viewer shows on its left.
 const PRESENTATIONS = [
@@ -1128,6 +1155,10 @@ const PRESENTATIONS = [
   { id: 'roadmap', title: 'DriveTest Analyzer — Roadmap', file: 'roadmap.pptx', download: 'DriveTest Analyzer - Roadmap.pptx',
     description: 'What comes next: Umlaut CDRs, the Active Tests community, scale-out and speed on AWS, PostgreSQL and health monitoring.',
     sections: [{ title: 'Roadmap', slides: ['Roadmap — what comes next'] }] },
+  { id: 'benchmarking-providers', title: PROVIDERS_SLIDES.title, file: 'benchmarking-providers.pptx',
+    download: 'DriveTest Analyzer - Benchmarking Providers Roadmap.pptx',
+    description: 'How the tool is being adapted to Umlaut and P3 CDRs and the status of each phase, how it is built inside and how it is deployed in the cloud.',
+    sections: providersSections() },
 ];
 
 async function main() {
@@ -1193,9 +1224,18 @@ async function main() {
   const planFile = path.join(OUT, 'roadmap.pptx');
   await plan.writeFile({ fileName: planFile });
   await applyTheme(planFile, THEME);
+
+  const providers = new pptxgen();
+  providers.author = 'DriveTest Analyzer'; providers.title = PROVIDERS_SLIDES.title;
+  providers.subject = 'Adaptation of DriveTest Analyzer to other benchmarking providers';
+  providers.layout = 'LAYOUT_WIDE';
+  providersDeck(providers);
+  const providersFile = path.join(OUT, 'benchmarking-providers.pptx');
+  await providers.writeFile({ fileName: providersFile });
+  await applyTheme(providersFile, THEME);
   fs.writeFileSync(path.join(OUT, 'presentations.json'), `${JSON.stringify({ presentations: PRESENTATIONS, figures: FIGURES }, null, 2)}\n`);
   fs.rmSync(work, { recursive: true, force: true });
-  console.log(deckFile); console.log(singleFile); console.log(planFile);
+  console.log(deckFile); console.log(singleFile); console.log(planFile); console.log(providersFile);
 }
 
 main().catch((error) => { console.error(error); process.exit(1); });

@@ -9,7 +9,7 @@
 
 Use this Help centre for detailed workflows, examples and technical rules. For a shorter introduction and deployment quick start, open the **Readme** tab.
 
-Help Navigation groups chapters under General, Main Modules, Administrative Modules and Reference. Help is available without signing in; only the PPT Reporting (old) chapter requires that feature.
+Help Navigation groups chapters under General, Main Modules, Administrative Modules and Reference; a chapter can list reports of its own below it, such as the compatibility reports of Benchmarking Providers, each shown in its own design. Help is available without signing in; only the PPT Reporting (old) chapter requires that feature.
 
 ## Presentations
 
@@ -18,13 +18,15 @@ Present DriveTest Analyzer with its presentations:
 - **Overview**, the complete deck: the tool, the teams it serves and its platform, a slide for each module in the order of their tabs (two for Scoring & GAP Analysis) and the roadmap, closing with the one-slider.
 - **One-slider**, on a single slide: the most important of the tool, with its figures, modules, teams, platform and what comes next.
 - **Roadmap**, on a single slide: what comes next, such as Umlaut CDRs, the Active Tests community, scale-out and speed on AWS, PostgreSQL and health monitoring.
+- **Benchmarking Providers Roadmap**, in the design of its own deck: how the tool is being adapted to Umlaut and P3 CDRs and the status of each phase, how it is built inside and how it is deployed in the cloud (see [Benchmarking Providers](benchmarking-providers.md)).
 
-Select a presentation to open it in the slide viewer (its slides on the left and, below the slide, the zoom buttons and **▶ Slideshow**, the arrows of the previous and next slide, **Close** and **Download PowerPoint**; the wheel and the arrow keys also change slide, Ctrl/Cmd+wheel zooms and Escape closes it), play it full screen with **▶ Slideshow**, choosing the seconds per slide and the transition, or download it with **Download PowerPoint**. Their figures are live: those of the workspaces chosen in [Super Admin → Presentations](super-admin.md#presentations), generated again in the background when they change.
+Select a presentation to open it in the slide viewer (its slides on the left and, below the slide, the zoom buttons and **▶ Slideshow**, the arrows of the previous and next slide, **Close** and **Download PowerPoint**; the wheel and the arrow keys also change slide, Ctrl/Cmd+wheel zooms and Escape closes it), play it full screen with **▶ Slideshow**, choosing the seconds per slide and the transition, or download it with **Download PowerPoint**. The figures of the first three are live: those of the workspaces chosen in [Super Admin → Presentations](super-admin.md#presentations), generated again in the background when they change.
 
 ```presentations
 overview
 one-slider
 roadmap
+benchmarking-providers
 ```
 
 ## In this guide
@@ -58,6 +60,7 @@ roadmap
 | Managing templates and chart mappings for a workspace | [Workspace Config](workspace-config.md) |
 | Reviewing application and workspace activity | [App Logs](app-logs.md) |
 | Presenting the tool to an audience | [Presentations](#presentations) |
+| Following the adaptation to Umlaut and P3 CDRs | [Benchmarking Providers](benchmarking-providers.md) |
 
 ## Documentation map
 
@@ -82,6 +85,7 @@ roadmap
 - [Super Admin](super-admin.md) — users and their access, Interface Settings and databases.
 - [Project Structure](project-structure.md) — source/browser layers, database ownership, persistent storage, caches and generated output.
 - [Roadmap](roadmap.md) — current limitations and planned work, also as a presentation.
+- [Benchmarking Providers](benchmarking-providers.md) — the adaptation to Umlaut and P3 CDRs: its status and the multi-provider model, also as a presentation, with the Umlaut CDR Compatibility and P3 CDR Compatibility reports below it.
 
 ## Fast troubleshooting
 

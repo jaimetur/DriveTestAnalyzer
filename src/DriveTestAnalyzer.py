@@ -482,6 +482,7 @@ HELP_NAVIGATION_DOCUMENTS = (
     'super-admin.md',
     'project-structure.md',
     'roadmap.md',
+    'benchmarking-providers.md',
 )
 HELP_DOCUMENT_LABELS = {
     'overview.md': 'Product Overview',
@@ -502,7 +503,21 @@ HELP_DOCUMENT_LABELS = {
     'app-config.md': 'Application Config',
     'workspace-config.md': 'Workspace Config',
     'app-logs.md': 'App Logs',
+    'benchmarking-providers.md': 'Benchmarking Providers',
 }
+# Reports kept as pages of their own (static/reports), in their own design, listed in Help Navigation below their chapter.
+HELP_REPORTS = {
+    'umlaut-cdr-compatibility': {'label': 'Umlaut CDR Compatibility', 'file': 'reports/umlaut-cdr-compatibility.html',
+                                 'chapter': 'benchmarking-providers.md'},
+    'p3-cdr-compatibility': {'label': 'P3 CDR Compatibility', 'file': 'reports/p3-cdr-compatibility.html',
+                             'chapter': 'benchmarking-providers.md'},
+}
+
+
+def help_report_links(relative_path: str) -> list[dict[str, str]]:
+    """The reports of a Help chapter, as Help Navigation lists them below it."""
+    return [{'label': report['label'], 'url': f'/documents/reports/{report_id}'}
+            for report_id, report in HELP_REPORTS.items() if report['chapter'] == relative_path]
 
 
 def help_document_label(relative_path: str) -> str:
@@ -517,7 +532,7 @@ def help_document_group(relative_path: str) -> str:
         return 'Main Modules'
     if relative_path in {'app-logs.md', 'app-config.md', 'workspace-config.md', 'administrator-config.md', 'super-admin.md'}:
         return 'Administrative Modules'
-    return 'Reference' if relative_path in {'project-structure.md', 'roadmap.md'} else 'General'
+    return 'Reference' if relative_path in {'project-structure.md', 'roadmap.md', 'benchmarking-providers.md'} else 'General'
 
 
 # Main modules, each shown to the accounts whose Modules Profile has it (super-admins see
@@ -14280,6 +14295,25 @@ def help_document_view(request: Request, doc_file: str, user: SessionUser | None
     )
 
 
+@app.get('/documents/reports/{report_id}', response_class=HTMLResponse)
+def help_report_view(request: Request, report_id: str, user: SessionUser | None = Depends(optional_user)) -> HTMLResponse:
+    report = HELP_REPORTS.get(report_id)
+    if report is None:
+        raise HTTPException(status_code=404, detail='Report not found')
+    return render_template(
+        request,
+        'doc_view.html',
+        {
+            'user': user,
+            'doc_name': report['label'],
+            'back_label': 'Documentation',
+            'doc_api_url': '',
+            'help_navigation': True,
+            'report_file': report['file'],
+        },
+    )
+
+
 @app.get('/api/documents/help-index')
 def get_help_documents_index(user: SessionUser | None = Depends(optional_user)) -> dict[str, Any]:
     help_root = (PROJECT_ROOT / 'help').resolve()
@@ -14303,6 +14337,7 @@ def get_help_documents_index(user: SessionUser | None = Depends(optional_user)) 
             ),
             'url': '/documents/view/help' if relative_path == HELP_HOME_DOCUMENT else f'/documents/view/help/{relative_path}',
             'group': '' if relative_path == HELP_HOME_DOCUMENT else help_document_group(relative_path),
+            'children': help_report_links(relative_path),
             **icons.get(relative_path, {}),
         })
     return {'root': str(help_root), 'documents': documents,

@@ -43,7 +43,7 @@ roadmap
 
 ## Planned product work
 
-- Umlaut and P3 CDRs: workspaces of each provider that keep its field names and values, with its own Scoring methodologies, PPT templates and Non-Qualified Calls rules.
+- Umlaut and P3 CDRs: workspaces of each provider that keep its field names and values, with its own Scoring methodologies, PPT templates and Non-Qualified Calls rules. [Benchmarking Providers](benchmarking-providers.md) describes the status of each phase and what each module will have with Umlaut CDRs.
 - Active Tests community: build with the tool the KPI and Scoring reports it generates today.
 - Non-Qualified Calls: confirm the NQ definition (currently every result other than Completed in NetCheck CDRs; in Umlaut CDRs, the calls and tests marked NOT QUALIFIED), a DriveTest Analyzer RCA for every provider, and take the module out of Alpha.
 - Configuration datasets ingestion to enrich CDR dataset and combine them to extract combined info using SQL Queries or Report Templates.

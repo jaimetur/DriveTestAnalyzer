@@ -165,6 +165,10 @@ def generator_signature() -> str:
     for name in ('build.js', 'art.js', 'package.json'):
         path = GENERATOR / name
         digest.update(path.read_bytes() if path.is_file() else b'')
+    # The pictures and notes of the slides kept as files, such as those of the benchmarking providers deck.
+    for path in sorted(GENERATOR.glob('*/slides.json')):
+        for part in sorted(path.parent.iterdir()):
+            digest.update(part.name.encode() + part.read_bytes())
     return digest.hexdigest()
 
 

@@ -15,13 +15,15 @@ Present DriveTest Analyzer with its presentations:
 - **Overview**, the complete deck: the tool, the teams it serves and its platform, a slide for each module in the order of their tabs (two for Scoring & GAP Analysis) and the roadmap, closing with the one-slider.
 - **One-slider**, on a single slide: the most important of the tool, with its figures, modules, teams, platform and what comes next.
 - **Roadmap**, on a single slide: what comes next, such as Umlaut CDRs, the Active Tests community, scale-out and speed on AWS, PostgreSQL and health monitoring.
+- **Benchmarking Providers Roadmap**, in the design of its own deck: how the tool is being adapted to Umlaut and P3 CDRs and the status of each phase, how it is built inside and how it is deployed in the cloud (see [Benchmarking Providers](benchmarking-providers.md)).
 
-Select a presentation to open it in the slide viewer (its slides on the left and, below the slide, the zoom buttons and **▶ Slideshow**, the arrows of the previous and next slide, **Close** and **Download PowerPoint**; the wheel and the arrow keys also change slide, Ctrl/Cmd+wheel zooms and Escape closes it), play it full screen with **▶ Slideshow**, choosing the seconds per slide and the transition, or download it with **Download PowerPoint**. Their figures are live: those of the workspaces chosen in [Super Admin → Presentations](super-admin.md#presentations), generated again in the background when they change.
+Select a presentation to open it in the slide viewer (its slides on the left and, below the slide, the zoom buttons and **▶ Slideshow**, the arrows of the previous and next slide, **Close** and **Download PowerPoint**; the wheel and the arrow keys also change slide, Ctrl/Cmd+wheel zooms and Escape closes it), play it full screen with **▶ Slideshow**, choosing the seconds per slide and the transition, or download it with **Download PowerPoint**. The figures of the first three are live: those of the workspaces chosen in [Super Admin → Presentations](super-admin.md#presentations), generated again in the background when they change.
 
 ```presentations
 overview
 one-slider
 roadmap
+benchmarking-providers
 ```
 
 ## In this guide

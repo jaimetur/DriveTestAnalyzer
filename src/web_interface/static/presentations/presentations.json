@@ -84,6 +84,62 @@
           ]
         }
       ]
+    },
+    {
+      "id": "benchmarking-providers",
+      "title": "DriveTest Analyzer — Benchmarking Providers Roadmap",
+      "file": "benchmarking-providers.pptx",
+      "download": "DriveTest Analyzer - Benchmarking Providers Roadmap.pptx",
+      "description": "How the tool is being adapted to Umlaut and P3 CDRs and the status of each phase, how it is built inside and how it is deployed in the cloud.",
+      "sections": [
+        {
+          "title": "Introduction",
+          "slides": [
+            "One tool. Three providers.",
+            "A complete platform, built for NetCheck",
+            "Three providers, three languages",
+            "One workspace, one provider.",
+            "Five rules of the multi-provider model"
+          ]
+        },
+        {
+          "title": "Multi-provider architecture",
+          "slides": [
+            "Three layers per provider",
+            "One concept, each provider’s name",
+            "What Umlaut changes in each module",
+            "One RCA of our own for every provider",
+            "From the base to P3, in seven phases",
+            "The multi-provider base, NetCheck untouched",
+            "From columns inside each module to one profile",
+            "What changed in the code"
+          ]
+        },
+        {
+          "title": "Internal architecture",
+          "slides": [
+            "How the tool is built",
+            "From the uploaded file to the report",
+            "Every workspace is self-contained"
+          ]
+        },
+        {
+          "title": "Cloud deployment",
+          "slides": [
+            "One container with everything inside",
+            "Deployment on AWS",
+            "Deployment in the Ericsson cloud",
+            "Running it day to day",
+            "From one server to the cloud at scale"
+          ]
+        },
+        {
+          "title": "Next step",
+          "slides": [
+            "What we need to continue"
+          ]
+        }
+      ]
     }
   ],
   "figures": {

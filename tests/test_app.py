@@ -5161,7 +5161,11 @@ def test_workspace_management_reports_every_supported_row_status(client, tmp_pat
 
     page = client.get('/workspace')
     header = page.text.split('<table class="workspace-library-table">', 1)[1].split('</thead>', 1)[0]
-    assert header.index('>Workspace</th>') < header.index('>Access</th>') < header.index('>CDR Type</th>') < header.index('<th>Size</th>')
+    # CDR Type and Country follow the name, before Access and Size.
+    assert (header.index('>Workspace</th>') < header.index('>CDR Type</th>') < header.index('>Country</th>') < header.index('>Access</th>')
+            < header.index('<th>Size</th>'))
+    first_cells = page.text.split('<tr class="workspace-library-row', 1)[1].split('</tr>', 1)[0]
+    assert first_cells.index('workspace-cdr-type-column') < first_cells.index('workspace-country-column') < first_cells.index('workspace-access-column')
     assert header.index('<th>Cache Size</th>') < header.index('<th>Status</th>') < header.index('<th>Actions</th>')
     assert 'workspace-status-active' in page.text
     first_row = page.text.split('<tr class="workspace-library-row', 1)[1].split('</tr>', 1)[0]
@@ -10005,6 +10009,7 @@ def test_docs_routes_expose_readme_changelog_and_help(client) -> None:
         'super-admin.md',
         'project-structure.md',
         'roadmap.md',
+        'benchmarking-providers.md',
     ]
     assert any(item['relative_path'] == 'administrator-config.md' and item['label'] == 'Administrator Config' for item in help_documents)
     assert client.get('/documents/view/help/administrator-config.md').status_code == 200
@@ -10090,6 +10095,29 @@ def test_help_navigation_groups_unnumbered_documents(client) -> None:
     assert "groupList.className = 'help-nav-sublist'" in template
     assert "link.textContent = position === 0 ? `${label} 🏠` : label;" in template
     assert "if (group === 'Reference') relatedDocuments.forEach" in template
+
+
+def test_help_lists_the_compatibility_reports_below_benchmarking_providers(client) -> None:
+    # Each provider's compatibility report is a page of its own, listed below its chapter and shown in a frame of the Help.
+    documents = {item['relative_path']: item for item in client.get('/api/documents/help-index').json()['documents']}
+    assert documents['benchmarking-providers.md']['children'] == [
+        {'label': 'Umlaut CDR Compatibility', 'url': '/documents/reports/umlaut-cdr-compatibility'},
+        {'label': 'P3 CDR Compatibility', 'url': '/documents/reports/p3-cdr-compatibility'},
+    ]
+    assert documents['roadmap.md']['children'] == []
+    page = client.get('/documents/reports/umlaut-cdr-compatibility')
+    assert page.status_code == 200
+    assert '<iframe class="doc-report-frame" src="/static/reports/umlaut-cdr-compatibility.html" title="Umlaut CDR Compatibility">' in page.text
+    assert 'id="help-nav-list"' in page.text
+    assert client.get('/documents/reports/unknown').status_code == 404
+    for report in ('umlaut-cdr-compatibility', 'p3-cdr-compatibility'):
+        html = client.get(f'/static/reports/{report}.html')
+        assert html.status_code == 200 and html.text.startswith('<!doctype html>')
+    chapter = (Path(__file__).resolve().parents[1] / 'help/benchmarking-providers.md').read_text(encoding='utf-8')
+    assert '[Umlaut CDR Compatibility](/documents/reports/umlaut-cdr-compatibility)' in chapter
+    assert '[P3 CDR Compatibility](/documents/reports/p3-cdr-compatibility)' in chapter
+    template = (Path(__file__).resolve().parents[1] / 'src/web_interface/templates/doc_view.html').read_text(encoding='utf-8')
+    assert "children.className = 'help-nav-children'" in template
 
 
 def test_dashboard_analysis_reuses_cached_result_on_reload(client, monkeypatch) -> None:
@@ -11201,7 +11229,7 @@ def test_module_tabs_take_order_title_icon_and_colour_from_interface_settings(cl
     assert reporting.startswith('# Scheduled Reporting') and 'Use **Scheduled Reporting**' in reporting
     index = client.get('/api/documents/help-index').json()
     assert {'readme', 'changelog'} <= set(index['icons'])
-    assert all(item.get('icon') for item in index['documents'] if item['relative_path'] in {'reporting.md', 'app-logs.md', 'chart-builder.md', 'overview.md', 'docker-deployment.md', 'roadmap.md'})
+    assert all(item.get('icon') for item in index['documents'] if item['relative_path'] in {'reporting.md', 'app-logs.md', 'chart-builder.md', 'overview.md', 'docker-deployment.md', 'roadmap.md', 'benchmarking-providers.md'})
     # The module chips of every Modules Profile follow the order of the tabs.
     admin_page = client.get('/super-admin').text
     first_profile = re.search(r'form="(modules-profile-\d+)"', admin_page).group(1)

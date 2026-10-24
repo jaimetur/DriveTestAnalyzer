@@ -437,3 +437,4 @@ DriveTestAnalyzer/
 - [Super Admin](help/super-admin.md)
 - [Project structure](help/project-structure.md)
 - [Roadmap](help/roadmap.md)
+- [Benchmarking Providers](help/benchmarking-providers.md)

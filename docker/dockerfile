@@ -38,6 +38,7 @@ RUN printf '%s\n' "${SOURCE_REVISION}" > /app/.source-revision
 
 COPY src ./src
 COPY tools/presentations/build.js tools/presentations/art.js ./tools/presentations/
+COPY tools/presentations/benchmarking-providers ./tools/presentations/benchmarking-providers
 COPY assets ./assets
 COPY help ./help
 COPY README.md ./README.md

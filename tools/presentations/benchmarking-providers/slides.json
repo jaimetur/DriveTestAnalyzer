@@ -1,0 +1,159 @@
+{
+  "title": "DriveTest Analyzer — Benchmarking Providers Roadmap",
+  "slides": [
+    {
+      "id": "cover",
+      "image": "slide-01.png",
+      "section": "Introduction",
+      "title": "One tool. Three providers.",
+      "notes": "DriveTest Analyzer is no longer a tool for NetCheck CDRs only. This deck covers the multi-provider model (NetCheck, Umlaut and later P3), how the tool is built inside, and how it is deployed as a Docker container in the cloud, on AWS or in the Ericsson cloud."
+    },
+    {
+      "id": "today",
+      "image": "slide-02.png",
+      "section": "Introduction",
+      "title": "A complete platform, built for NetCheck",
+      "notes": "Today the tool is complete, but everything is written in NetCheck names and values: ingestion, the Scoring formulas, the PPT templates, the NQ definition and the radio tables of Network Insights. The figures come from the repository (branch 0.8.7) and the UK workspace."
+    },
+    {
+      "id": "providers",
+      "image": "slide-03.png",
+      "section": "Introduction",
+      "title": "Three providers, three languages",
+      "notes": "Each provider delivers its CDRs differently. NetCheck groups them by CDR type and operator; Umlaut splits them by service and by side of the call, and adds its own Qualifier. We have no P3 sample yet; the Umlaut files themselves link to a P3 path, which suggests the formats may be related."
+    },
+    {
+      "id": "statement",
+      "image": "slide-04.png",
+      "section": "Introduction",
+      "title": "One workspace, one provider.",
+      "notes": "Decision made: the CDRs of different providers are never mixed in one workspace. Every module therefore works with a single vocabulary, one Scoring methodology and one set of templates, and people who know Umlaut recognise its fields and files."
+    },
+    {
+      "id": "decisions",
+      "image": "slide-05.png",
+      "section": "Introduction",
+      "title": "Five rules of the multi-provider model",
+      "notes": "The five agreed rules: one provider per workspace, native names visible, Scoring with each provider’s methodology, each provider’s NQ definition, and the DT Analyzer RCA as the common engine, available in every workspace beside the NetCheck and Ericsson RCAs."
+    },
+    {
+      "id": "layers",
+      "image": "slide-06.png",
+      "section": "Multi-provider architecture",
+      "title": "Three layers per provider",
+      "notes": "The reader understands the structure of each provider’s export. The profile tells every module where each piece of data is and how to read it. The content is the provider’s own methodologies, templates and rules. The modules are not duplicated: the same logic serves the three providers."
+    },
+    {
+      "id": "profile",
+      "image": "slide-07.png",
+      "section": "Multi-provider architecture",
+      "title": "One concept, each provider’s name",
+      "notes": "The profile is the central piece. For each provider, every concept a module needs has its native column, its conversion (for example kbit/s to Mbit/s) and the meaning of its values (SUCCESS stands for Completed). Users keep seeing the native column; the module reads the concept. The 84 of 109 figure comes from the compatibility analysis."
+    },
+    {
+      "id": "modules",
+      "image": "slide-08.png",
+      "section": "Multi-provider architecture",
+      "title": "What Umlaut changes in each module",
+      "notes": "Builders work as soon as the CDR can be loaded. CDR Analysis and Reporting barely change. Scoring, PPT Dashboards and NQ Calls need their Umlaut content. The major changes are in ingestion (the Umlaut reader) and Network Insights, because Umlaut only gives the radio of a call at its start and end and has no identity for NR cells."
+    },
+    {
+      "id": "rca",
+      "image": "slide-09.png",
+      "section": "Multi-provider architecture",
+      "title": "One RCA of our own for every provider",
+      "notes": "Today the NetCheck RCA section suggests a domain and a cause with keywords on the NetCheck failure classification. The DT Analyzer RCA, available in every workspace with rules that can be edited, combines the failure description with the phase that fails and the radio at the time of the failure; Umlaut, which only brings a failure text, and P3 still need their own inputs. The rules shown are examples of the kind of condition, not a closed catalogue."
+    },
+    {
+      "id": "roadmap",
+      "image": "slide-10.png",
+      "section": "Multi-provider architecture",
+      "title": "From the base to P3, in seven phases",
+      "notes": "Phase 1 is done. Phases 2 to 6 bring Umlaut to every module, starting with reading its files and continuing with the priority modules: Scoring, PPT Dashboards and NQ Calls. P3 comes last with the same model, as soon as we have a sample."
+    },
+    {
+      "id": "phase1",
+      "image": "slide-11.png",
+      "section": "Multi-provider architecture",
+      "title": "The multi-provider base, NetCheck untouched",
+      "notes": "Phase 1 prepares the tool without changing anything for NetCheck users. The modules no longer hold NetCheck names inside; they ask the workspace’s profile for them. The NetCheck profile reproduces exactly the previous columns, and the validation proved it: processing the same real NetCheck CDRs before and after the change gave 89 of 89 identical outputs, and every related test passes."
+    },
+    {
+      "id": "phase1-map",
+      "image": "slide-12.png",
+      "section": "Multi-provider architecture",
+      "title": "From columns inside each module to one profile",
+      "notes": "Before phase 1, each module carried its own lists of NetCheck column names. Now they all live in one field profile per CDR type, in cdr_field_profiles.py, and every module asks for the profile of its workspace. For NetCheck the profile holds exactly the previous columns, so the same CDRs give the same results: 89 of 89 outputs were identical on a real sample of the UK workspace. A workspace with CDRs can no longer change its CDR type, and P3 now appears beside Umlaut as coming soon."
+    },
+    {
+      "id": "phase1-files",
+      "image": "slide-13.png",
+      "section": "Multi-provider architecture",
+      "title": "What changed in the code",
+      "notes": "File by file: a new module with the profiles; the CDR type registry with P3 and the lock; and the modules that read CDR columns, which now take them from the workspace’s profile instead of their own NetCheck lists. The app passes the profile when it processes a CDR. There is no database migration, so restarting the application changes nothing in existing workspaces. The second commit only updates two NQ tests that already failed before phase 1."
+    },
+    {
+      "id": "internal",
+      "image": "slide-14.png",
+      "section": "Internal architecture",
+      "title": "How the tool is built",
+      "notes": "A single FastAPI application serves the web interface (Jinja2 templates and JavaScript) and the API. Each analysis module is a Python module that reads the CDRs materialised in the workspace’s SQLite database. Heavy work, such as processing a CDR or generating a report, runs in the background: a scheduler with priorities per workspace and isolated workers, so the interface stays responsive. Exports use python-pptx and python-docx, LibreOffice for previews and Chromium with Node.js to draw the charts."
+    },
+    {
+      "id": "lifecycle",
+      "image": "slide-15.png",
+      "section": "Internal architecture",
+      "title": "From the uploaded file to the report",
+      "notes": "This is how the tool walks a CDR. It is uploaded and its type, NR Mode and stage are confirmed. The provider’s reader decides what is CDR. The profile fills the internal layer the modules use. Then the mappings are applied and the CDR is materialised in per-CDR and combined tables, which the modules read with their indexes and caches."
+    },
+    {
+      "id": "storage",
+      "image": "slide-16.png",
+      "section": "Internal architecture",
+      "title": "Every workspace is self-contained",
+      "notes": "Global configuration lives in APP_CONFIG_DIR and everything that belongs to a workspace in its own folder under APP_DATA_DIR: its database, uploaded files, generated output and caches. That is why a workspace can be transferred to another server or restored on its own, and why the CDR type of a workspace travels with it."
+    },
+    {
+      "id": "container",
+      "image": "slide-17.png",
+      "section": "Cloud deployment",
+      "title": "One container with everything inside",
+      "notes": "The production image is built from python:3.12-slim with the Python packages, then the tools the exports need (Chromium and Node.js to draw charts, LibreOffice for previews), the Help presentations generator and finally the application code, stamped with its Git revision. Compose publishes port 7278, checks /healthz every 30 seconds, restarts the container unless it is stopped and mounts the config and data volumes, which is where all state lives."
+    },
+    {
+      "id": "aws",
+      "image": "slide-18.png",
+      "section": "Cloud deployment",
+      "title": "Deployment on AWS",
+      "notes": "A proposed AWS layout. Users reach a load balancer with an HTTPS certificate; the container runs on an EC2 instance in a private subnet and keeps all its state on an EBS volume mounted as /app/config and /app/data. Because the tool uses SQLite, its databases need block storage (EBS) rather than a network file system such as EFS, and today it runs as a single instance that is scaled up. Around it: the image in ECR, the secret key in Secrets Manager, logs and alarms in CloudWatch, backup copies in S3 or AWS Backup snapshots, and email through SES."
+    },
+    {
+      "id": "ericsson",
+      "image": "slide-19.png",
+      "section": "Cloud deployment",
+      "title": "Deployment in the Ericsson cloud",
+      "notes": "Inside the Ericsson cloud the same image runs on a virtual machine or as a single Kubernetes replica with a read-write-once block volume, behind the corporate reverse proxy with its TLS certificate and, if required, single sign-on. The image can be mirrored in an internal registry, email goes through the corporate SMTP relay, backup copies go to object storage, and workspaces can be moved between servers with the transfer feature, for example between an AWS and an Ericsson instance."
+    },
+    {
+      "id": "operations",
+      "image": "slide-20.png",
+      "section": "Cloud deployment",
+      "title": "Running it day to day",
+      "notes": "Operating the tool needs little: scheduled backups written below the data volume, upgrades by pulling and recreating the container (database migrations run at startup), the /healthz endpoint for the platform and App Logs and App Events for traceability, and transfers to move workspaces between servers."
+    },
+    {
+      "id": "scale",
+      "image": "slide-21.png",
+      "section": "Cloud deployment",
+      "title": "From one server to the cloud at scale",
+      "notes": "Today the tool scales up: one container per server, one SQLite database per workspace and the background work inside the container. The roadmap of the tool already plans PostgreSQL, scale-out and speed on AWS, and health monitoring; the multi-provider model adds providers without new copies of the modules."
+    },
+    {
+      "id": "next",
+      "image": "slide-22.png",
+      "section": "Next step",
+      "title": "What we need to continue",
+      "notes": "To move from phase 1 to Umlaut in every module we need four things: a representative multi-operator Umlaut export (ideally with NR SA and walk or train tests), a P3 sample, the Umlaut Scoring methodology, and the output format of the Ericsson RCA so it can be imported with a call key other than the NetCheck JOIN_ID."
+    }
+  ]
+}

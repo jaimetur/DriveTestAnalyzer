@@ -137,6 +137,7 @@ DOCUMENT_HELP_ICONS: dict[str, str] = {
     'web-interface.md': '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>',
     'project-structure.md': '<path d="M4 3v15h7M4 8h7"/><rect x="11" y="5" width="9" height="6" rx="1.5"/><rect x="11" y="15" width="9" height="6" rx="1.5"/>',
     'roadmap.md': '<path d="m9 4-6 2v14l6-2 6 2 6-2V4l-6 2z"/><path d="M9 4v14M15 6v14"/>',
+    'benchmarking-providers.md': '<path d="m12 3 9 4.5-9 4.5-9-4.5z"/><path d="m3 12 9 4.5 9-4.5M3 16.5 12 21l9-4.5"/>',
 }
 
 STAGE_COLOURS = {'alpha': '#D7263D', 'beta': '#FFD60A', 'new': '#2563EB', 'stable': '#1F8A4C'}

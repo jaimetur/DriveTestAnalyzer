@@ -15,6 +15,7 @@
 - **Non-Qualified Calls:** in the RCA tab of a call, the values of each RCA source (NetCheck, Ericsson RCA, the analysts) start a row of their own, four per row so each pair of the Ericsson RCA keeps to one row.
 - **Non-Qualified Calls:** in an open call, Analyst and Reviewer sit beside the Assignee (saved as soon as they change), the Unique ID of the previous tool beside the JOIN_ID, the values of its repeated issue on a row of their own in Prioritization Info, and the Activity tab is titled Call Activity Log with a comment box that reaches the bottom of the panel.
 - **Ready for more benchmarking providers (Umlaut and P3 coming soon):** the tool is prepared to analyse the CDRs of benchmarking providers other than NetCheck, such as Umlaut and P3, each with its own field names, values and methodologies. Every workspace handles the CDRs of one provider, its CDR type, which it keeps once it has Data, Voice or Speech CDRs, and P3 CDR joins Umlaut CDR as coming soon. Ingestion, Non-Qualified Calls (index, analyses import and Failure Map), Network Insights, the serving-cell Vendor Mapping and Map Areas read the CDR columns through the field profile of the workspace's CDR type (`cdr_field_profiles`); NetCheck CDRs are read as before.
+- **Workspaces table:** the workspaces table of Workspace Management shows the CDR Type and the Country of each workspace right after its name, before Access and Size.
 
 #### 🐛 Bug fixes:
 - **Non-Qualified Calls:** a section opened from the menu of the tab or from Modules & Sections stays at the top of the page until every panel above it is drawn, also when they take more than a minute in a large workspace (in Safari it moved down as they filled).
@@ -23,6 +24,7 @@
 #### 📚 Documentation:
 - **Non-Qualified Calls:** the Help explains the Map of the call, its layers and controls, and its troubleshooting.
 - **CDR type:** Workspace Config, Workspace Management and the Roadmap explain that a workspace keeps the CDR type of its CDRs, and the plan for Umlaut and P3 CDRs.
+- **Benchmarking Providers:** a new Help chapter describes the adaptation to Umlaut and P3 CDRs: the status of each phase and the multi-provider model. Below it in Help Navigation, **Umlaut CDR Compatibility** and **P3 CDR Compatibility** open the compatibility report of each provider in its own design (the Umlaut one compares every NetCheck field the tool uses with its Umlaut equivalent and tells what each module will have; the P3 one waits for a sample of P3 CDRs). Its presentation, **Benchmarking Providers Roadmap**, joins the presentations of the Help Home and Product Overview in the design of its own deck.
 
 ---
 

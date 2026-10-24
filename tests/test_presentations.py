@@ -112,7 +112,7 @@ def test_the_help_shows_the_presentations_of_the_application_until_they_are_gene
     monkeypatch.setattr(presentations.PresentationGenerator, 'unavailable', staticmethod(lambda: 'Node.js is not installed on this server.'))
     login(client)
     manifest = client.get('/api/presentations').json()
-    assert [item['id'] for item in manifest['presentations']] == ['overview', 'one-slider', 'roadmap']
+    assert [item['id'] for item in manifest['presentations']] == ['overview', 'one-slider', 'roadmap', 'benchmarking-providers']
     assert not manifest['updating']
     assert client.get('/presentations/files/roadmap/slide-01.png').headers['content-type'] == 'image/png'
     # Super Admin tells why they are not generated.
@@ -120,6 +120,31 @@ def test_the_help_shows_the_presentations_of_the_application_until_they_are_gene
     # A visitor who has not signed in sees them without starting a generation.
     client.cookies.clear()
     assert client.get('/api/presentations').status_code == 200
+
+
+
+def test_the_benchmarking_providers_deck_keeps_a_picture_and_the_notes_of_each_slide(tmp_path, monkeypatch):
+    root = Path(__file__).resolve().parents[1]
+    deck = root / 'tools/presentations/benchmarking-providers'
+    slides = json.loads((deck / 'slides.json').read_text(encoding='utf-8'))['slides']
+    assert len(slides) == 22 and all((deck / slide['image']).is_file() and slide['title'] and slide['notes'] for slide in slides)
+    # The Help lists its slides by section, in the order of the deck, with their rendered pictures.
+    manifest = json.loads((presentations.STATIC_PRESENTATIONS / presentations.MANIFEST).read_text(encoding='utf-8'))
+    entry = next(item for item in manifest['presentations'] if item['id'] == 'benchmarking-providers')
+    assert [title for section in entry['sections'] for title in section['slides']] == [slide['title'] for slide in slides]
+    assert [section['title'] for section in entry['sections']] == list(dict.fromkeys(slide['section'] for slide in slides))
+    assert (presentations.STATIC_PRESENTATIONS / entry['file']).is_file()
+    assert len(list((presentations.STATIC_PRESENTATIONS / 'benchmarking-providers').glob('slide-*.png'))) == len(slides)
+    # A new picture of a slide generates the presentations again.
+    generator = tmp_path / 'presentations'
+    (generator / 'benchmarking-providers').mkdir(parents=True)
+    (generator / 'build.js').write_text('// generator', encoding='utf-8')
+    (generator / 'benchmarking-providers' / 'slides.json').write_text('{}', encoding='utf-8')
+    (generator / 'benchmarking-providers' / 'slide-01.png').write_bytes(b'first')
+    monkeypatch.setattr(presentations, 'GENERATOR', generator)
+    before = presentations.generator_signature()
+    (generator / 'benchmarking-providers' / 'slide-01.png').write_bytes(b'second')
+    assert presentations.generator_signature() != before
 
 
 def test_the_slide_viewer_goes_through_the_slides_from_its_footer_the_wheel_and_the_arrows():
