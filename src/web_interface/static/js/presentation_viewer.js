@@ -78,12 +78,12 @@
   };
   // The link copied by a button, which says so for a moment; where the browser refuses it, the link is shown to copy.
   const copyLink = async (button, link) => {
-    const label = button.textContent;
+    const label = button.innerHTML;
     try {
       await copyText(link);
       button.textContent = 'Link copied';
       button.classList.add('is-copied');
-      window.setTimeout(() => { button.textContent = label; button.classList.remove('is-copied'); }, 1600);
+      window.setTimeout(() => { button.innerHTML = label; button.classList.remove('is-copied'); }, 1600);
     } catch (_error) {
       window.prompt('Copy the link of the presentation:', link);
     }
@@ -237,7 +237,7 @@
           <button type="button" data-presentation-viewer="reset" title="Whole slide (0 or double-click)" aria-label="Whole slide">⤢</button>
           <span class="presentation-separator" aria-hidden="true"></span>
           <div class="presentation-show-menu">
-            <button type="button" class="presentation-show-button" data-presentation-show-open aria-expanded="false" title="Present the slides full screen, one after the other, with a transition">▶ Slideshow</button>
+            <button type="button" class="presentation-show-button" data-presentation-show-open aria-expanded="false" title="Present the slides full screen, one after the other, with a transition" aria-label="Slideshow">▶<span class="presentation-word"> Slideshow</span></button>
             <form class="presentation-show-settings" data-presentation-show-settings hidden aria-label="Slideshow settings">
               <p class="presentation-show-heading">Automatic slide show</p>
               <label>Seconds per slide<input name="delay" type="number" min="1" max="300" step="1" value="8" inputmode="numeric"></label>
@@ -257,7 +257,7 @@
           <button type="button" class="presentation-step presentation-step-next" data-presentation-viewer="next" title="Next slide (→ or ↓)" aria-label="Next slide"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg></button>
         </div>
         <div class="presentation-dialog-buttons">
-          <button type="button" class="presentation-secondary" data-presentation-link title="Copy the direct link of this slide: it opens the presentation in the slide viewer">Copy link</button>
+          <button type="button" class="presentation-secondary" data-presentation-link title="Copy the direct link of this slide: it opens the presentation in the slide viewer" aria-label="Copy link"><span class="presentation-word">Copy </span>link</button>
           <button type="button" class="presentation-secondary" data-presentation-close>Close</button>
           <a class="presentation-download" href="#" download title="Download PowerPoint" aria-label="Download PowerPoint">Download<span class="presentation-download-format">PowerPoint</span></a>
         </div>

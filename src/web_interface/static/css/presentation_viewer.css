@@ -159,17 +159,31 @@
 @media (max-width: 760px) and (pointer: coarse), (max-width: 960px) and (max-height: 520px) and (pointer: coarse) {
   .presentation-tools [data-presentation-viewer] { display: none; }
 }
-/* Phones held sideways: the tools and buttons beside the slides gone through, on one row. */
+/* Phones held sideways, also the narrow ones the rules of phones above reach: the tools, the slides gone through and the
+   buttons on one compact row (Close among them, as the header is hidden), within the safe area of the screen. */
 @media (max-width: 960px) and (max-height: 520px) {
   .presentation-dialog { width: 100vw; height: 100vh; height: 100dvh; max-height: 100dvh; border-radius: 0; }
   .presentation-dialog-head, .presentation-hint { display: none; }
-  .presentation-preview { grid-template-columns: minmax(8rem, 11rem) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
-  .presentation-dialog-actions { grid-template-columns: auto auto auto; justify-content: space-between; gap: .4rem; padding: .35rem .6rem calc(.35rem + env(safe-area-inset-bottom)); }
+  .presentation-preview { grid-template-columns: minmax(7rem, 10rem) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+  .presentation-nav-slides { grid-auto-flow: row; grid-auto-columns: auto; overflow-x: visible; }
+  .presentation-nav { border-right: 1px solid var(--line); border-bottom: 0; }
+  .presentation-dialog-actions { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; justify-content: stretch; align-items: center; gap: .4rem;
+    padding: .3rem max(.5rem, env(safe-area-inset-right)) calc(.3rem + env(safe-area-inset-bottom)) max(.5rem, env(safe-area-inset-left)); }
   .presentation-tools { grid-column: 1; grid-row: 1; flex-wrap: nowrap; }
-  .presentation-steps { grid-column: 2; grid-row: 1; }
-  .presentation-dialog-buttons { grid-column: 3; grid-row: 1; }
+  .presentation-steps { order: 0; flex: none; grid-column: 2; grid-row: 1; justify-self: center; justify-content: center; gap: .4rem; }
+  .presentation-dialog-buttons { grid-column: 3; grid-row: 1; flex-wrap: nowrap; gap: .35rem; }
+  .presentation-dialog-buttons [data-presentation-close] { display: inline-block; }
   .presentation-download-format, .presentation-separator { display: none; }
-  .presentation-tools button, .presentation-step { height: 2.2rem; }
-  .presentation-page-label { min-width: 0; }
+  .presentation-tools button, .presentation-step { height: 2.1rem; }
+  .presentation-step { min-width: 3.2rem; padding: 0 .7rem; }
+  .presentation-show-button, .presentation-secondary, .presentation-download { padding: .3rem .65rem; font-size: .82rem; }
+  .presentation-page-label { min-width: 0; font-size: .9rem; }
   .presentation-page-label, .presentation-show-button { white-space: nowrap; }
+}
+/* The narrowest phones held sideways: Slideshow is its ▶ and Copy link its Link. */
+@media (max-width: 640px) and (max-height: 520px) {
+  .presentation-show-button .presentation-word, [data-presentation-link] .presentation-word { display: none; }
+  [data-presentation-link] { text-transform: capitalize; }
+  .presentation-dialog-actions { gap: .3rem; }
+  .presentation-step { min-width: 2.8rem; padding: 0 .55rem; }
 }
