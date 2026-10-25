@@ -93,6 +93,14 @@
     ['fade', 'Fade'], ['flip', 'Flip'], ['mosaic', 'Mosaic'], ['rise', 'Rise'], ['slide-left', 'Slide from left'], ['slide', 'Slide from right'],
     ['rotate', 'Soft rotate'], ['wipe', 'Wipe'], ['zoom', 'Zoom']];
   const RANDOM_EFFECTS = EFFECTS.map(([value]) => value).filter((value) => !['none', 'random'].includes(value));
+  // The icons of the slideshow, drawn the same on every device (the ▶ character is an emoji on some phones).
+  const ICONS = {
+    play: '<svg class="presentation-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 5.14v13.72a1 1 0 0 0 1.52.85l11.1-6.86a1 1 0 0 0 0-1.7L9.52 4.29A1 1 0 0 0 8 5.14Z" fill="currentColor"/></svg>',
+    pause: '<svg class="presentation-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="6" y="4.5" width="4.2" height="15" rx="1.4" fill="currentColor"/><rect x="13.8" y="4.5" width="4.2" height="15" rx="1.4" fill="currentColor"/></svg>',
+    previous: '<svg class="presentation-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m14.5 6-6 6 6 6" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    next: '<svg class="presentation-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m9.5 6 6 6-6 6" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    stop: '<svg class="presentation-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 7l10 10M17 7 7 17" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>',
+  };
 
   function card(presentation) {
     const total = slidesOf(presentation).length;
@@ -223,11 +231,11 @@
         <img class="presentation-show-front" alt="" draggable="false">
         <div class="presentation-show-progress" aria-hidden="true"><span></span></div>
         <div class="presentation-show-controls" role="group" aria-label="Slideshow">
-          <button type="button" data-presentation-show="previous" title="Previous slide (← or ↑)" aria-label="Previous slide">‹</button>
-          <button type="button" data-presentation-show="toggle" title="Pause (Space)" aria-label="Pause">❚❚</button>
-          <button type="button" data-presentation-show="next" title="Next slide (→ or ↓)" aria-label="Next slide">›</button>
+          <button type="button" data-presentation-show="previous" title="Previous slide (← or ↑)" aria-label="Previous slide">${ICONS.previous}</button>
+          <button type="button" data-presentation-show="toggle" title="Pause (Space)" aria-label="Pause">${ICONS.pause}</button>
+          <button type="button" data-presentation-show="next" title="Next slide (→ or ↓)" aria-label="Next slide">${ICONS.next}</button>
           <span class="presentation-show-counter" aria-live="polite"></span>
-          <button type="button" data-presentation-show="stop" title="Stop the slideshow (Esc)" aria-label="Stop the slideshow">✕</button>
+          <button type="button" data-presentation-show="stop" title="Stop the slideshow (Esc)" aria-label="Stop the slideshow">${ICONS.stop}</button>
         </div>
       </div>
       <footer class="presentation-dialog-actions">
@@ -237,7 +245,7 @@
           <button type="button" data-presentation-viewer="reset" title="Whole slide (0 or double-click)" aria-label="Whole slide">⤢</button>
           <span class="presentation-separator" aria-hidden="true"></span>
           <div class="presentation-show-menu">
-            <button type="button" class="presentation-show-button" data-presentation-show-open aria-expanded="false" title="Present the slides full screen, one after the other, with a transition" aria-label="Slideshow">▶<span class="presentation-word"> Slideshow</span></button>
+            <button type="button" class="presentation-show-button" data-presentation-show-open aria-expanded="false" title="Present the slides full screen, one after the other, with a transition" aria-label="Slideshow">${ICONS.play}<span class="presentation-word">Slideshow</span></button>
             <form class="presentation-show-settings" data-presentation-show-settings hidden aria-label="Slideshow settings">
               <p class="presentation-show-heading">Automatic slide show</p>
               <label>Seconds per slide<input name="delay" type="number" min="1" max="300" step="1" value="8" inputmode="numeric"></label>
@@ -246,7 +254,7 @@
               <label class="presentation-show-check"><input name="loop" type="checkbox"> Start again after the last slide</label>
               <div class="presentation-show-actions">
                 <button type="button" class="presentation-secondary" data-presentation-show-cancel>Cancel</button>
-                <button type="submit" class="presentation-show-start">Start slideshow</button>
+                <button type="submit" class="presentation-show-start">${ICONS.play}Start slideshow</button>
               </div>
             </form>
           </div>
@@ -390,7 +398,7 @@
     const url = slideUrl(current, viewerIndex);
     showSlide(viewerIndex);
     counter.textContent = `${viewerIndex + 1} / ${total}`;
-    toggle.textContent = show.running ? '❚❚' : '▶';
+    toggle.innerHTML = show.running ? ICONS.pause : ICONS.play;
     toggle.title = show.running ? 'Pause (Space)' : 'Play (Space)';
     toggle.setAttribute('aria-label', show.running ? 'Pause' : 'Play');
     if (front.getAttribute('src') !== url) {
