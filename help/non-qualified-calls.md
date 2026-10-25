@@ -487,7 +487,7 @@ Admins and super-admins can delete the history: the **×** of a change deletes t
 The imports and Analysts / Reviewers → Asignees come after a line. The sections menu of the Non-Qualified Calls tab lists the **NQ Analysis Configuration** too, after a line, with every option: choosing one opens it on the page.
 
 > [!TIP]
-> **Every configuration can go back to the values of a new workspace:** **Default Fields & Sections**, **Default Statuses** and **Default Teams**, **Default Rules** (Status Rules, DT Analyzer RCA Rules and Prioritization Rules), **Default Catalog** and **Default Rule** (Root Cause Catalog and its Suggestion Rule), **Default Columns** (Columns of the table) and **Default Equivalences** (Previous NQ Analyses). Each one fills its dialog and **Save** applies it, except Default Equivalences, which applies once confirmed; values still used by a call are never removed.
+> **Every configuration can go back to the values of a new workspace:** **Default Fields & Sections**, **Default Statuses** and **Default Teams**, **Default Rules** (Status Rules, DT Analyzer RCA Rules and Prioritization Rules), **Default Catalog** and **Default Rule** (Root Cause Catalog and its Suggestion Rule), **Default Columns** (Columns of the table) and **Default Equivalences** (Previous NQ Analyses). Each one fills its dialog and **Save** applies it, except Default Equivalences, which applies once confirmed; values still used by a call are never removed, nor the catalog values a DT Analyzer RCA rule gives.
 
 ## Fields and sections
 
@@ -594,7 +594,7 @@ Each root cause can be mapped to its root category: choosing a cause for a call 
 > [!TIP]
 > Each value has **keywords**, separated by commas, that map the NetCheck and Ericsson RCA values and the comments onto the catalog; `a+b` needs both words (`coverage+lte` matches *DL coverage problems* of an LTE call, not of an NR one).
 
-Values are tried from top to bottom, so their order (↑ ↓) sets the priority when several match. **Add missing defaults** adds the default domains, categories and causes that are not in the catalog and keeps the existing ones with their keywords. **Default Catalog** leaves only the default domains, categories and causes, with their keywords and colours, and clears **Require a root category to close a call**; **Save** applies it (a value with the same name keeps its calls). Renaming a value updates every call that uses it; a value still used by a call cannot be removed.
+Values are tried from top to bottom, so their order (↑ ↓) sets the priority when several match. **Add missing defaults** adds the default domains, categories and causes that are not in the catalog and keeps the existing ones with their keywords. **Default Catalog** leaves only the default domains, categories and causes, with their keywords and colours, and clears **Require a root category to close a call**; **Save** applies it (a value with the same name keeps its calls). Renaming a value updates every call that uses it; a value still used by a call cannot be removed. A value a [DT Analyzer RCA rule](#dt-analyzer-rca-rules) gives, enabled or not, shows **DT** in place of its remove button (pointing at it names the rules): it cannot be removed, nor a root category or cause renamed (its name is read-only), until no rule gives it; such a domain can still be renamed, as its categories and causes follow it.
 
 > [!WARNING]
 > **Require a root category to close a call** refuses closing a call while it has no root category, whether its status is chosen by hand or a change of its fields makes the rules close it.
@@ -626,7 +626,7 @@ The category with most weight wins (NetCheck goes first when it ties with the pr
 
 ## DT Analyzer RCA
 
-The **DT Analyzer RCA** finds the Root Category, the Root Cause and the root domain of every Non-Qualified Call, test and Speech sample from the data of its CDR. It works in every workspace, whatever its CDR type, also when the provider brings an RCA of its own such as the NetCheck RCA, and it comes after the Ericsson RCA wherever the RCA sources are listed: the [Root Cause Sources](#root-cause-sources) and [Root Cause Analysis](#root-cause-analysis) panels and their filters, the RCA tab of the call, the [recommendation](#root-cause-recommendation), the fields of the catalog and the exports.
+The **DT Analyzer RCA** finds the Root Category, the Root Cause and the root domain of every Non-Qualified Call, test and Speech sample from the data of its CDR. It works in every workspace, whatever its CDR type, also when the provider brings an RCA of its own such as the NetCheck RCA, and it comes first, before the NetCheck RCA and the Ericsson RCA, wherever the RCA sources are listed: the [Root Cause Sources](#root-cause-sources) and [Root Cause Analysis](#root-cause-analysis) panels and their filters, the RCA tab of the call, the [recommendation](#root-cause-recommendation), the fields of the catalog and the exports.
 
 It reads every call through the field profile of the CDR type of the workspace:
 
@@ -650,6 +650,8 @@ The default rules, the same in every workspace, are, in this order:
 2. The radio of the call: poor LTE and NR coverage (average RSRP below −110 dBm), the LTE uplink at its maximum power (23 dBm, with an RSRP below −100 dBm), LTE and NR downlink interference (average SINR below 0 dB), no dominant LTE cell (RSRQ below −15 dB), the coverage and interference of the B side, fallbacks to 2G or 3G, a high BLER (above 10 %), handover and radio link failures, inter-RAT transitions, and the coverage and interference (downlink or uplink) the provider reports, in the category of the technology at the failure (LTE, the anchor, unless it is NR alone or 2G or 3G alone).
 3. The service, once the radio is not the cause: DNS, HTTP or server errors, TCP, no downlink packets, packet loss (above 5 %), high latency (above 150 ms), data transfer timeouts, the low throughput the provider reports and that of the Cutoff tests with good radio, the RTP loss of Speech samples, the Voice failures with good radio (a potential E2E issue) and the end-to-end traces the provider asks for. Good radio means that the radio was measured and no radio rule took the call: without radio values neither the Cutoff tests nor the Voice failures are given a cause.
 4. **Not identified** (Unclear) for the calls none of them explains.
+
+The values the rules give stay in the [Root Cause Catalog](#root-cause-catalog), which refuses to remove them, or to rename those root categories and causes, until no rule gives them.
 
 **Default Rules** fills the dialog with them and **Save** applies them. Saving calculates every call again at once (while the CDRs are being indexed, when the indexing ends), and App Events records what changed in the rules. The rules travel with the NQ Calls configuration (export, import, transfers and backups).
 

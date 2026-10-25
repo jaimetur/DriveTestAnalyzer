@@ -224,15 +224,62 @@ def test_the_rules_travel_with_the_nq_calls_configuration(client, tmp_path):
 def test_a_change_of_the_catalog_calculates_the_calls_again(client, tmp_path):
     calls = setup_calls(client, tmp_path)
     catalog = nq.list_root_causes(core.repository)
-    for item in catalog['categories']:
-        if item['name'] == 'Poor Coverage LTE':
-            item.update(previous='Poor Coverage LTE', name='LTE Coverage')
+    for item in catalog['domains']:
+        item['previous'] = item['name']
+        if item['name'] == 'RF':
+            item['name'] = 'Radio'
     nq.save_root_causes(core.repository, catalog, False, 'super')
-    # The rule names Poor Coverage LTE: the renamed category is found by its keywords.
-    assert detail(client, calls['0xA1'])['values']['dta_rca_category'] == 'LTE Coverage'
+    # The rule gives Poor Coverage LTE, whose domain is renamed.
+    values = detail(client, calls['0xA1'])['values']
+    assert (values['dta_rca_category'], values['dta_rca_domain']) == ('Poor Coverage LTE', 'Radio')
     with core.repository.connection() as connection:
         tables = {str(row[0]) for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
     assert nq_dta_rca.RESULTS_TABLE in tables and nq.NQ_TABLE_TITLES[nq_dta_rca.RESULTS_TABLE] == 'NQ DT Analyzer RCA Results'
+
+
+def test_the_catalog_keeps_the_values_the_rules_give(client, tmp_path):
+    setup_calls(client, tmp_path)
+    payload = client.get('/api/non-qualified-calls/root-causes').json()
+    given = payload['dta_rules']
+    assert given['categories']['Poor Coverage LTE'][:2] == ['Poor LTE coverage', 'LTE uplink at maximum power']
+    assert 'Device or test setup' in given['causes']['Device or test setup'] and 'AAA' in given['domains']
+    assert 'Procedure Overlap' not in given['categories']
+    base = {kind: [{**item, 'previous': item['name']} for item in payload[kind]] for kind in ('domains', 'categories', 'causes')}
+
+    def put(**changes):
+        return client.put('/api/non-qualified-calls/root-causes', json={**base, 'require_to_close': False, **changes})
+
+    def renamed(kind, name, new_name):
+        return [dict(item, name=new_name) if item['name'] == name else item for item in base[kind]]
+
+    # A category or cause a rule gives can be neither renamed nor removed, and a domain it gives cannot be removed.
+    refused = put(categories=renamed('categories', 'Poor Coverage LTE', 'LTE Coverage'))
+    assert refused.status_code == 400
+    assert refused.json()['detail'] == ('The Root Category "Poor Coverage LTE" is given by the DT Analyzer RCA rules "Poor LTE '
+                                        'coverage", "LTE uplink at maximum power", "Poor LTE coverage of the B side" and 1 more; '
+                                        'change those rules first to rename it.')
+    refused = put(domains=[item for item in base['domains'] if item['name'] != 'AAA'])
+    assert refused.status_code == 400 and refused.json()['detail'].startswith('The domain "AAA" is given by the DT Analyzer RCA rule ')
+    # Also when the rule is disabled.
+    nq_dta_rca.save_rules(core.repository, [dict(rule, enabled=rule['key'] != 'device') for rule in nq_dta_rca.load_rules(core.repository)], 'super')
+    refused = put(causes=[item for item in base['causes'] if item['name'] != 'Device or test setup'])
+    assert refused.status_code == 400 and refused.json()['detail'].endswith('"Device or test setup"; change the rule first to remove it.')
+    # Nothing changed; a change of case keeps the name the rules read, a domain is renamed with its categories and
+    # causes, and a value no rule gives is renamed.
+    assert nq.list_root_causes(core.repository)['domains'] == payload['domains']
+    saved = put(domains=renamed('domains', 'RF', 'Radio'), categories=renamed('categories', 'Procedure Overlap', 'Overlapping Procedures'),
+                causes=renamed('causes', 'Device or test setup', 'Device or Test Setup'))
+    assert saved.status_code == 200, saved.text
+    assert saved.json()['dta_rules']['categories']['Poor Coverage LTE'] == given['categories']['Poor Coverage LTE']
+    assert {item['name']: item['domain'] for item in saved.json()['categories']}['Poor Coverage LTE'] == 'Radio'
+    # Once no rule gives it, it can go.
+    rules = [dict(rule, category='Poor Coverage NR') if rule['category'] == 'Poor Coverage LTE' else rule
+             for rule in nq_dta_rca.load_rules(core.repository)]
+    nq_dta_rca.save_rules(core.repository, rules, 'super')
+    payload = client.get('/api/non-qualified-calls/root-causes').json()
+    assert 'Poor Coverage LTE' not in payload['dta_rules']['categories']
+    categories = [{**item, 'previous': item['name']} for item in payload['categories'] if item['name'] != 'Poor Coverage LTE']
+    assert client.put('/api/non-qualified-calls/root-causes', json={**payload, 'categories': categories}).status_code == 200
 
 
 def test_workspaces_with_the_former_name_of_its_fields_take_the_short_name(client, tmp_path):
@@ -261,7 +308,9 @@ def test_every_rule_gives_a_root_category_and_workspaces_get_its_categories(clie
     for item in catalog['causes']:
         if item['name'] in nq_catalog.DEFAULT_CAUSE_CATEGORIES:
             item['category'] = ''
-    nq.save_root_causes(core.repository, catalog, False, 'super')
+    # Stored as it was then: today the catalog keeps the categories the rules give.
+    with core.repository.connection() as connection:
+        nq._write_root_catalog(connection, nq_catalog.normalize_root_catalog(catalog))
     core.repository.set_workspace_state(nq.ANALYSIS_CENTER_V29_STATE_KEY, '')
     core.repository.set_workspace_state(nq.SCHEMA_STATE_KEY, '')
     nq.ensure_nq_tables(core.repository)

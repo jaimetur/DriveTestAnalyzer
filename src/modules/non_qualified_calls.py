@@ -3096,11 +3096,43 @@ def domain_of(catalog: dict[str, Any], category: str, cause: str) -> str:
     return ''
 
 
+def dta_rule_values(task_repository: Any, catalog: dict[str, Any] | None = None) -> dict[str, dict[str, list[str]]]:
+    """The domains, Root Categories and Root Causes of the catalog the DT Analyzer RCA rules give (enabled or not), each
+    with the names of its rules: the catalog cannot remove them, nor rename the categories and causes, as the rules name
+    them."""
+    catalog = catalog or list_root_causes(task_repository)
+    kinds = (('domains', 'domain'), ('categories', 'category'), ('causes', 'cause'))
+    known = {plural: {item['name'].casefold(): item['name'] for item in catalog.get(plural) or []} for plural, _key in kinds}
+    used: dict[str, dict[str, list[str]]] = {plural: {} for plural, _key in kinds}
+    for rule in nq_dta_rca.load_rules(task_repository):
+        result = nq_dta_rca.resolve_result(rule['category'], rule['cause'], catalog)
+        for plural, key in kinds:
+            name = known[plural].get(result[key].casefold())
+            if name and rule['name'] not in used[plural].setdefault(name, []):
+                used[plural][name].append(rule['name'])
+    return used
+
+
+def root_catalog_payload(task_repository: Any, catalog: dict[str, Any] | None = None) -> dict[str, Any]:
+    """The root cause catalog for the page, with the values the DT Analyzer RCA rules give (``dta_rules``)."""
+    catalog = catalog or list_root_causes(task_repository)
+    return {**catalog, 'dta_rules': dta_rule_values(task_repository, catalog)}
+
+
+def _dta_rules_refusal(title: str, name: str, rules: list[str], action: str) -> str:
+    """Why a value the DT Analyzer RCA rules give cannot be removed or renamed."""
+    listed = ', '.join(f'"{rule}"' for rule in rules[:3]) + (f' and {len(rules) - 3} more' if len(rules) > 3 else '')
+    return (f'The {title} "{name}" is given by the DT Analyzer RCA rule{"s" if len(rules) > 1 else ""} {listed}; '
+            f'change {"those rules" if len(rules) > 1 else "the rule"} first to {action} it.')
+
+
 def save_root_causes(task_repository: Any, catalog: Any, require_to_close: bool, username: str, *,
                      defaults: bool = False) -> dict[str, Any]:
-    """Replace the root cause catalog; renamed values follow on every call, removed ones must be unused."""
+    """Replace the root cause catalog; renamed values follow on every call, removed ones must be unused, and the values
+    the DT Analyzer RCA rules give stay."""
     current = list_root_causes(task_repository)
     normalized = nq_catalog.normalize_root_catalog(catalog)
+    used = dta_rule_values(task_repository, current)
     columns = {'domains': 'root_domain', 'categories': 'root_category', 'causes': 'root_cause'}
     titles = {'domains': 'domain', 'categories': 'Root Category', 'causes': 'Root Cause'}
     with task_repository.connection() as connection:
@@ -3115,6 +3147,15 @@ def save_root_causes(task_repository: Any, catalog: Any, require_to_close: bool,
                 if connection.execute(f'SELECT COUNT(*) FROM {NQ_CALL_TRACKING_TABLE} WHERE {column} = ? COLLATE NOCASE',
                                       (name,)).fetchone()[0]:
                     raise ValueError(f'The {titles[plural]} "{name}" is in use; rename it or change the root cause of its calls first.')
+            # The values the DT Analyzer RCA rules give stay, and so do the names of their categories and causes (the
+            # categories and causes of a renamed domain follow it).
+            names = {item['name'].casefold() for item in normalized[plural]}
+            for name, rules in used[plural].items():
+                key = name.casefold()
+                if key in names or (key in renamed and (plural == 'domains' or nq_catalog.normalized_text(renamed[key])
+                                                        == nq_catalog.normalized_text(name))):
+                    continue
+                raise ValueError(_dta_rules_refusal(titles[plural], name, rules, 'rename' if key in renamed else 'remove'))
             for key, name in renamed.items():
                 if existing[key] != name:
                     connection.execute(f'UPDATE {NQ_CALL_TRACKING_TABLE} SET {column} = ? WHERE {column} = ? COLLATE NOCASE',
@@ -8435,7 +8476,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
             'main_cities': list(repository.list_main_cities()),
             # The page chooses the saved values in its lists, which hold them as they are shown.
             'saved_filters': _mapped_filters(repository, saved_filters(repository)),
-            'root_causes': list_root_causes(repository), 'root_cause_defaults': nq_catalog.default_root_catalog(),
+            'root_causes': root_catalog_payload(repository), 'root_cause_defaults': nq_catalog.default_root_catalog(),
             'root_cause_rule_fields': RULE_FIELDS, 'default_root_cause_rule': DEFAULT_ROOT_CAUSE_RULE,
             'fields': provider_field_labels(list_fields(repository), repository),
             'default_fields': provider_field_labels(nq_catalog.default_fields(), repository), 'field_types': FIELD_TYPES,
@@ -8925,14 +8966,14 @@ def install_non_qualified_calls_routes(core: Any) -> None:
 
     @core.app.get('/api/non-qualified-calls/root-causes')
     def nq_root_causes(user=Depends(core.current_user)) -> JSONResponse:
-        return JSONResponse(list_root_causes(workspace_repository(user)))
+        return JSONResponse(root_catalog_payload(workspace_repository(user)))
 
     @core.app.put('/api/non-qualified-calls/root-causes')
     def nq_save_root_causes(payload: RootCausesPayload, user=Depends(config_user)) -> JSONResponse:
         repository = workspace_repository(user)
         catalog = {'domains': payload.domains, 'categories': payload.categories, 'causes': payload.causes}
-        return JSONResponse(translate(lambda: save_root_causes(repository, catalog, payload.require_to_close, user.username,
-                                                               defaults=payload.defaults)))
+        return JSONResponse(root_catalog_payload(repository, translate(lambda: save_root_causes(
+            repository, catalog, payload.require_to_close, user.username, defaults=payload.defaults))))
 
     @core.app.get('/api/non-qualified-calls/analysts')
     def nq_analysts(user=Depends(core.current_user)) -> JSONResponse:

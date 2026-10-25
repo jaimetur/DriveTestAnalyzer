@@ -383,19 +383,19 @@ def test_transfers_take_the_layouts_and_settings_of_the_package(client, tmp_path
 
 def test_root_category_and_cause_are_independent_and_set_the_domain(client, tmp_path):
     call = setup_calls(client, tmp_path)['0xA1']
-    updated = patch(client, call, {'root_category': 'Poor Coverage LTE', 'root_cause': 'Tunnel Issue'})
-    assert (updated['root_category'], updated['root_cause'], updated['root_domain']) == ('Poor Coverage LTE', 'Tunnel Issue', 'RF')
+    updated = patch(client, call, {'root_category': 'UL Interference 2G/3G', 'root_cause': 'Tunnel Issue'})
+    assert (updated['root_category'], updated['root_cause'], updated['root_domain']) == ('UL Interference 2G/3G', 'Tunnel Issue', 'RF')
     assert client.patch(f"/api/non-qualified-calls/calls/{call['call_key']}", json={'changes': {'root_cause': 'Unknown cause'}}).status_code == 400
-    # Renamed catalog values follow on the calls; values in use cannot be removed.
+    # Renamed catalog values follow on the calls (a value no DT Analyzer RCA rule gives); values in use cannot be removed.
     root = client.get('/api/non-qualified-calls/root-causes').json()
     for item in root['categories']:
         item['previous'] = item['name']
-        if item['name'] == 'Poor Coverage LTE':
-            item['name'], item['domain'] = 'LTE Coverage', 'RAN'
+        if item['name'] == 'UL Interference 2G/3G':
+            item['name'], item['domain'] = '2G/3G UL Interference', 'RAN'
     response = client.put('/api/non-qualified-calls/root-causes', json=root)
     assert response.status_code == 200, response.text
     updated = client.get(f"/api/non-qualified-calls/calls/{call['call_key']}").json()['call']
-    assert (updated['root_category'], updated['root_domain']) == ('LTE Coverage', 'RAN')
+    assert (updated['root_category'], updated['root_domain']) == ('2G/3G UL Interference', 'RAN')
     root = client.get('/api/non-qualified-calls/root-causes').json()
     root['causes'] = [item for item in root['causes'] if item['name'] != 'Tunnel Issue']
     assert client.put('/api/non-qualified-calls/root-causes', json=root).status_code == 400
@@ -1416,47 +1416,47 @@ def test_root_causes_map_to_their_category_and_take_their_domain_by_hand_or_auto
     assert all(item['domain_from'] == 'manual' for item in root['categories'] + root['causes'])
     payload = {'domains': root['domains'], 'require_to_close': False,
                'categories': [{'name': item['name'], 'previous': item['name'], 'keywords': item['keywords'],
-                               'domain': '' if item['name'] in {'E2E', 'Mobility LTE'} else item['manual_domain']} for item in root['categories']],
+                               'domain': '' if item['name'] in {'E2E', 'Procedure Overlap'} else item['manual_domain']} for item in root['categories']],
                'causes': [{'name': item['name'], 'previous': item['name'], 'keywords': item['keywords'],
                            'domain': '' if item['name'] in {'Tunnel Issue', 'Paging'} else item['manual_domain'],
-                           'category': 'Mobility LTE' if item['name'] == 'Tunnel Issue' else ''} for item in root['causes']]}
+                           'category': 'Procedure Overlap' if item['name'] == 'Tunnel Issue' else ''} for item in root['causes']]}
     saved = client.put('/api/non-qualified-calls/root-causes', json=payload)
     assert saved.status_code == 200, saved.text
     catalog = saved.json()
     categories = {item['name']: item for item in catalog['categories']}
     causes = {item['name']: item for item in catalog['causes']}
-    # E2E has no domain keyword in its name or keywords; Mobility LTE neither: they have no domain.
+    # E2E has no domain keyword in its name or keywords; Procedure Overlap neither: they have no domain.
     assert (categories['E2E']['domain'], categories['E2E']['domain_from']) == ('', '')
     # A cause takes the domain of its root category, else the keywords of the domains (paging is a RAN keyword).
-    assert (causes['Tunnel Issue']['category'], causes['Tunnel Issue']['domain_from']) == ('Mobility LTE', '')
+    assert (causes['Tunnel Issue']['category'], causes['Tunnel Issue']['domain_from']) == ('Procedure Overlap', '')
     assert (causes['Paging']['domain'], causes['Paging']['domain_from']) == ('RAN', 'keywords')
-    payload['categories'] = [dict(item, domain='RAN' if item['name'] == 'Mobility LTE' else item['domain']) for item in payload['categories']]
+    payload['categories'] = [dict(item, domain='RAN' if item['name'] == 'Procedure Overlap' else item['domain']) for item in payload['categories']]
     causes = {item['name']: item for item in client.put('/api/non-qualified-calls/root-causes', json=payload).json()['causes']}
     assert (causes['Tunnel Issue']['domain'], causes['Tunnel Issue']['domain_from']) == ('RAN', 'category')
     # Choosing a cause for a call without root category gives it the category of the cause, never over a chosen one.
     updated = patch(client, calls['0xA1'], {'root_cause': 'Tunnel Issue'})
-    assert (updated['root_category'], updated['root_cause'], updated['root_domain']) == ('Mobility LTE', 'Tunnel Issue', 'RAN')
+    assert (updated['root_category'], updated['root_cause'], updated['root_domain']) == ('Procedure Overlap', 'Tunnel Issue', 'RAN')
     updated = patch(client, calls['0xB2'], {'root_category': 'Poor Coverage LTE'})
     assert patch(client, updated, {'root_cause': 'Tunnel Issue'})['root_category'] == 'Poor Coverage LTE'
     # A category renamed or given another domain carries its causes and the domain of their calls.
-    payload['categories'] = [dict(item, name='LTE Mobility', domain='Core') if item['name'] == 'Mobility LTE' else item
+    payload['categories'] = [dict(item, name='Overlapping Procedures', domain='Core') if item['name'] == 'Procedure Overlap' else item
                              for item in payload['categories']]
     causes = {item['name']: item for item in client.put('/api/non-qualified-calls/root-causes', json=payload).json()['causes']}
-    assert (causes['Tunnel Issue']['category'], causes['Tunnel Issue']['domain']) == ('LTE Mobility', 'Core')
+    assert (causes['Tunnel Issue']['category'], causes['Tunnel Issue']['domain']) == ('Overlapping Procedures', 'Core')
     call = client.get(f"/api/non-qualified-calls/calls/{calls['0xA1']['call_key']}").json()['call']
-    assert (call['root_category'], call['root_domain']) == ('LTE Mobility', 'Core')
+    assert (call['root_category'], call['root_domain']) == ('Overlapping Procedures', 'Core')
     # The catalog workbook and the configuration carry the category of each cause and only the domains chosen by hand.
     workbook = load_workbook(io.BytesIO(client.get('/api/non-qualified-calls/catalog/export').content))
     rows = {row[1]: row for row in workbook['Root Catalog'].iter_rows(min_row=2, values_only=True)}
     assert [cell.value for cell in workbook['Root Catalog'][1]][:4] == ['Kind', 'Name', 'Root Category', 'Domain']
-    assert rows['Tunnel Issue'][2:4] == ('LTE Mobility', None) and rows['Paging'][3] is None
+    assert rows['Tunnel Issue'][2:4] == ('Overlapping Procedures', None) and rows['Paging'][3] is None
     document = json.loads(nq.export_configuration_document(core.repository))
     with core.repository.connection() as connection:
         connection.execute(f'DELETE FROM {nq.NQ_ROOT_CATALOG_TABLE}')
     nq.import_configuration_document(core.repository, json.dumps(document))
     causes = {item['name']: item for item in nq.list_root_causes(core.repository)['causes']}
     assert (causes['Paging']['domain_from'], causes['Tunnel Issue']['domain_from'], causes['Tunnel Issue']['category']) == (
-        'keywords', 'category', 'LTE Mobility')
+        'keywords', 'category', 'Overlapping Procedures')
 
 
 def test_reviewed_domains_change_the_catalog_and_new_causes_take_the_domain_of_the_keywords(client, tmp_path):

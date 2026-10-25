@@ -908,6 +908,9 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 .nq-catalog-row .nq-root-name { flex: 1 1 12rem; font-weight: 800; }
 .nq-catalog-row .nq-domain-select { flex: 0 0 11rem; max-width: 11rem; }
 .nq-catalog-row .nq-category-select { flex: 0 0 12rem; max-width: 12rem; }
+/* A value the DT Analyzer RCA rules give shows the DT tag in place of its remove button, as large as it. */
+.nq-catalog-row .nq-dta-lock { display: inline-grid; flex: 0 0 1.9rem; place-items: center; height: 1.9rem; padding: 0; border-radius: 8px; font-size: .7rem; cursor: help; }
+.nq-catalog-row .nq-root-name[readonly] { background: var(--nq-softer); cursor: not-allowed; }
 /* Mapping: every root cause with its root category and domain, then every root category with its domain. */
 .nq-root-mapping { display: grid; gap: .8rem; max-height: min(60vh, 640px); overflow-y: auto; }
 .nq-root-mapping .form-note { margin: 0; }

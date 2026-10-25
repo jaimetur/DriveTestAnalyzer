@@ -5240,6 +5240,24 @@
     rootDialog.querySelectorAll('.nq-category-select').forEach((select) => select.refresh());
     rootDialog.querySelectorAll('.nq-domain-select').forEach((select) => select.refresh());
   };
+  // A value the DT Analyzer RCA rules give (state.rootCauses.dta_rules) cannot be removed, nor a root category or cause
+  // renamed, until the rules change: the DT tag that replaces its remove button says which rules give it.
+  const lockByDtaRules = (row, kind, name) => {
+    const key = String(name || '').trim().toLowerCase();
+    const rules = Object.entries(state.rootCauses?.dta_rules?.[kind] || {}).find(([value]) => key && value.toLowerCase() === key)?.[1] || [];
+    if (!rules.length) return;
+    const given = `Given by the DT Analyzer RCA rule${rules.length > 1 ? 's' : ''} ${rules.join(', ')}: change `
+      + `${rules.length > 1 ? 'those rules' : 'the rule'} in DT Analyzer RCA Rules to ${kind === 'domains' ? 'remove' : 'rename or remove'} it.`;
+    if (kind !== 'domains') {
+      const input = row.querySelector('.nq-root-name');
+      input.readOnly = true;
+      input.title = given;
+    }
+    const tag = node('span', 'DT', 'nq-source-tag is-dta nq-dta-lock');
+    tag.title = given;
+    tag.setAttribute('aria-label', given);
+    row.querySelector('.nq-icon-action[aria-label="Remove"]').replaceWith(tag);
+  };
   const domainRow = (domain = {name: '', color: '#6a63c9', keywords: []}) => {
     const row = node('li', undefined, 'nq-option-row nq-catalog-row');
     row.dataset.previous = domain.name || '';
@@ -5260,6 +5278,7 @@
     color.addEventListener('input', refreshDomainSelects);
     row.append(color, name, textInput((domain.keywords || []).join(', '), 'Keywords', 'nq-root-keywords'));
     iconButtons(row, row, () => { row.remove(); refreshDomainSelects(); countCatalog(); });
+    lockByDtaRules(row, 'domains', domain.name);
     return row;
   };
   // A root category or cause: its name, its domain (Auto, or chosen by hand) and its keywords; a cause also the root
@@ -5287,6 +5306,7 @@
     }
     row.append(textInput((item.keywords || []).join(', '), 'Keywords', 'nq-root-keywords'));
     iconButtons(row, row, () => { row.remove(); refreshDomainSelects(); countCatalog(); });
+    lockByDtaRules(row, kind, item.name);
     return row;
   };
   // Whether Default Catalog was used since the dialog opened (App Events says so).
