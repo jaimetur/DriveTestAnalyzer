@@ -32,7 +32,7 @@ dt-analyzer-rca
 | Choose which calls are prioritized, by service, NR Mode and operator, and the Priority they take | [Prioritization Rules](#prioritization-rules) |
 | Compare the NQ rate of campaigns and operators | [NQ Rate by Campaign and Operator](#nq-rate-by-campaign-and-operator) |
 | See how and where the calls fail: result, technology, serving Vendor and sites | [Failures by Type, Technology & Serving Cell](#failures-by-type-technology--serving-cell) |
-| Compare the NetCheck RCA, the Ericsson RCA, the DT Analyzer RCA and the analysts | [Root Cause Sources](#root-cause-sources) |
+| Compare the DT Analyzer RCA, the NetCheck RCA, the Ericsson RCA and the analysts | [Root Cause Sources](#root-cause-sources) |
 | See where the calls fail by root domain, category and cause | [Root Cause Analysis](#root-cause-analysis) |
 | Follow the calls through their statuses and phases | [Lifecycle & Phases](#lifecycle-phases) |
 | Track the follow-up over time, by team and by assignee | [Progress View](#progress-view) |

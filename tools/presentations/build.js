@@ -467,19 +467,21 @@ async function nqCalls(pres) {
     text(slide, value, { x: x + 0.25, y: 1.88, w: 2.4, h: 0.62, fontSize: 34, bold: true, color: index === 0 ? M.nq.color : K.deep });
     text(slide, label, { x: x + 0.25, y: 2.52, w: 2.45, h: 0.38, fontSize: 12, color: K.grey });
   }
-  const sources = [['TbFileAnalytics', 'NetCheck RCA'], ['TbBuildingBroadcastTower', 'Ericsson RCA'], ['TbUsersGroup', 'Analysts']];
+  // The four sources of the root cause, the DT Analyzer RCA first as in the NQ Analysis Center.
+  const sources = [['TbBrain', 'DT Analyzer RCA'], ['TbFileAnalytics', 'NetCheck RCA'], ['TbBuildingBroadcastTower', 'Ericsson RCA'],
+    ['TbUsersGroup', 'Analysts']];
   for (const [index, [name, label]] of sources.entries()) {
-    const y = 3.4 + index * 0.65;
-    shape(slide, pres.shapes.ROUNDED_RECTANGLE, { x: 0.6, y, w: 2.3, h: 0.52, rectRadius: 0.26, fill: { color: K.white }, line: { color: K.line, width: 1 } });
-    slide.addImage({ data: await icon(name, K.deep), x: 0.78, y: y + 0.11, w: 0.3, h: 0.3, objectName: named('icon') });
-    text(slide, label, { x: 1.18, y, w: 1.65, h: 0.52, fontSize: 13, bold: true, valign: 'middle' });
-    lineBetween(slide, pres, 2.9, y + 0.26, 3.6, 4.31, { color: K.grey2, width: 1.5, endArrowType: 'triangle' });
+    const y = 3.3 + index * 0.53;
+    shape(slide, pres.shapes.ROUNDED_RECTANGLE, { x: 0.6, y, w: 2.4, h: 0.44, rectRadius: 0.22, fill: { color: K.white }, line: { color: K.line, width: 1 } });
+    slide.addImage({ data: await icon(name, K.deep), x: 0.78, y: y + 0.08, w: 0.28, h: 0.28, objectName: named('icon') });
+    text(slide, label, { x: 1.16, y, w: 1.8, h: 0.44, fontSize: 12.5, bold: true, valign: 'middle' });
+    lineBetween(slide, pres, 3.0, y + 0.22, 3.6, 4.31, { color: K.grey2, width: 1.5, endArrowType: 'triangle' });
   }
   shape(slide, pres.shapes.ROUNDED_RECTANGLE, { x: 3.62, y: 3.68, w: 2.3, h: 1.25, rectRadius: 0.12, fill: { color: K.deep }, line: { color: K.deep, width: 0 } });
   text(slide, [
     { text: 'Root Category', options: { fontSize: 15, bold: true, breakLine: true } },
     { text: '+ Root Cause', options: { fontSize: 15, bold: true, breakLine: true } },
-    { text: 'decided from three sources', options: { fontSize: 11, color: 'CFE6FC' } },
+    { text: 'decided from four sources', options: { fontSize: 11, color: 'CFE6FC' } },
   ], { x: 3.8, y: 3.68, w: 2.0, h: 1.25, color: K.white, valign: 'middle' });
   shape(slide, pres.shapes.LINE, { x: 5.95, y: 4.305, w: 0.4, h: 0, line: { color: K.grey2, width: 1.5, endArrowType: 'triangle' } });
   shape(slide, pres.shapes.ROUNDED_RECTANGLE, { x: 6.4, y: 3.68, w: 2.3, h: 1.25, rectRadius: 0.12, fill: { color: K.tint }, line: { color: K.tint, width: 0 } });
@@ -506,7 +508,7 @@ async function nqCalls(pres) {
   slide.addNotes(`Every Voice, Speech and Data CDR is indexed in the background: ${STATS.nqExact} Non-Qualified calls in `
     + `${plural(FIGURES.campaigns, 'campaign')} of ${STATS.where}, out of ${compact(FIGURES.nq_calls_total)} calls and tests. Each call`
     + ' keeps its follow-up by its NetCheck JOIN_ID through six sections; the root cause comes from '
-    + 'the NetCheck RCA, the Ericsson RCA and the analysts; status, team and assignee follow rules or are set by hand.');
+    + 'the DT Analyzer RCA, the NetCheck RCA, the Ericsson RCA and the analysts; status, team and assignee follow rules or are set by hand.');
 }
 
 async function networkInsights(pres, files) {

@@ -103,7 +103,7 @@ full-presentation
 - [CDR Analysis](datasets-analysis.md) — interactive single-dataset analysis and exports.
 - [PPT Dashboards](ppt-dashboards.md) — saved Dashboards, synchronized filters and slide layouts.
 - [PPT Reporting (old)](ppt-reporting-old.md) — classic Reports, Chart Sets, interactive previews and jobs.
-- [Non-Qualified Calls](non-qualified-calls.md) — the NQ Analysis Center: summary, NQ rate by campaign and operator, lifecycle and phases, root cause analysis and sources, drill-down and shared follow-up (status set by rules or by hand, team, assignee, root category and cause recommended from NetCheck, the Ericsson RCA and previous decisions, fields by section and comments) of every call and test that did not complete, across Daily and Final CDRs.
+- [Non-Qualified Calls](non-qualified-calls.md) — the NQ Analysis Center: summary, NQ rate by campaign and operator, lifecycle and phases, root cause analysis and sources, drill-down and shared follow-up (status set by rules or by hand, team, assignee, root category and cause recommended from the DT Analyzer RCA, NetCheck, the Ericsson RCA and previous decisions, fields by section and comments) of every call and test that did not complete, across Daily and Final CDRs.
 - [Reporting](reporting.md) — bundle reports with parts of several modules (Bundle Report Templates), and scheduled Reporting Jobs that email CDR Analysis, Network Insights, Dashboard and Scoring artifacts.
 - [Chart Builder](chart-builder.md) — temporary ad-hoc chart construction.
 - [Query Builder](query-builder.md) — guided query design, SQL editing, execution and saved queries.
