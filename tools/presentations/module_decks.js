@@ -16,16 +16,16 @@ const React = require('react');
 const ReactDOMServer = require('react-dom/server');
 const tb = require('react-icons/tb');
 
-// The decks in the order of the tabs of the tool (PPT Reporting (old) has none), Workspace Config after Workspace, and
-// those drawn from a slides.html.
+// The decks in the order of the tabs of the tool (PPT Reporting (old) has none), Workspace Config after Workspace and the
+// administration (Admin and Super Admin) after them, and those drawn from a slides.html.
 const DECKS = ['workspace', 'workspace-config', 'cdr-analysis', 'ppt-dashboards', 'scoring-gap-analysis', 'network-insights', 'non-qualified-calls', 'reporting',
-  'builders', 'ticket-center'];
+  'builders', 'ticket-center', 'administration'];
 const DRAWN = [...DECKS, 'dt-analyzer-rca'];
 // The colour of each module, that of its tab (module_labels.MODULE_TABS), for the chips naming the other modules.
 const MODULES = {
   'Workspace': '#08736D', 'Workspace Config': '#0369A1', 'CDR Analysis': '#1F6FBF', 'PPT Dashboards': '#7751B9',
   'Scoring & GAP Analysis': '#176E77', 'Network Insights': '#4F46E5', 'Non-Qualified Calls': '#B0234F', 'Reporting': '#2E8C58',
-  'Builders': '#B85B20', 'Ticket Center': '#DC2626', 'DT Analyzer RCA': '#7C3AED', 'Admin': '#475569',
+  'Builders': '#B85B20', 'Ticket Center': '#DC2626', 'DT Analyzer RCA': '#7C3AED', 'Admin': '#B84343',
 };
 // The Ericsson logo at the top right of every slide, as in the other decks of the Help.
 const LOGO = `data:image/png;base64,${fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'web_interface', 'static', 'img', 'ericsson-logo-white.png')).toString('base64')}`;
@@ -478,6 +478,89 @@ const VISUALS = {
     out += `<rect x="540" y="0" width="280" height="270" rx="16" fill="#16213a" stroke="#2a3a5c" stroke-width="2"/>${donut(680, 120, 0.68, p.accent)}<text x="680" y="130" text-anchor="middle" font-size="30" font-weight="800" fill="#ffffff">68%</text><text x="680" y="236" text-anchor="middle" font-size="21" font-weight="700" fill="#c9d4e6">5G availability</text>`;
     out += `<rect x="540" y="290" width="280" height="120" rx="16" fill="#16213a" stroke="#2a3a5c" stroke-width="2"/><text x="562" y="336" font-size="20" fill="#9fb0cc">NR cell · MIMO</text><text x="562" y="384" font-size="34" font-weight="800" fill="#ffffff">n78 · 4×4</text>`;
     out += `<rect x="540" y="430" width="280" height="130" rx="16" fill="#16213a" stroke="#2a3a5c" stroke-width="2"/><text x="562" y="474" font-size="20" fill="#9fb0cc">Host network</text><rect x="562" y="494" width="110" height="40" rx="20" fill="#E60000"/><text x="617" y="521" text-anchor="middle" font-size="20" font-weight="700" fill="#ffffff">VF</text><rect x="684" y="494" width="110" height="40" rx="20" fill="#2D8AE6"/><text x="739" y="521" text-anchor="middle" font-size="20" font-weight="700" fill="#ffffff">3</text>`;
+    return out;
+  },
+  // What an account can do, see and open: its role, its Modules Profile and its workspaces.
+  access(p) {
+    let out = `<rect x="20" y="20" width="780" height="120" rx="18" fill="#16213a" stroke="#2a3a5c" stroke-width="2"/><text x="44" y="58" font-size="20" fill="#9fb0cc">Role · what it does</text>`;
+    [['user-viewer', '#3a4d75'], ['user-editor', p.deep], ['admin', p.light], ['super-admin', p.accent]].forEach(([role, colour], index) => {
+      out += `<rect x="${44 + index * 186}" y="76" width="172" height="44" rx="22" fill="${colour}"${index === 2 ? ' stroke="#ffffff" stroke-width="3"' : ''}/><text x="${130 + index * 186}" y="105" text-anchor="middle" font-size="19" font-weight="700" fill="#ffffff">${role}</text>`;
+    });
+    out += `<rect x="20" y="156" width="780" height="140" rx="18" fill="#16213a" stroke="#2a3a5c" stroke-width="2"/><text x="44" y="194" font-size="20" fill="#9fb0cc">Modules Profile · what it sees</text>`;
+    [['Workspace', '#08736D'], ['Scoring & GAP', '#176E77'], ['Network Insights', '#4F46E5'], ['NQ Calls', '#B0234F'], ['Reporting', '#2E8C58'], ['Builders', '#B85B20']].forEach(([name, colour], index) => {
+      const x = 44 + (index % 3) * 250; const y = 212 + Math.floor(index / 3) * 40;
+      out += `<rect x="${x}" y="${y}" width="236" height="32" rx="10" fill="${colour}"/><text x="${x + 118}" y="${y + 22}" text-anchor="middle" font-size="17" font-weight="700" fill="#ffffff">${name}</text>`;
+    });
+    out += `<rect x="20" y="312" width="780" height="120" rx="18" fill="#16213a" stroke="#2a3a5c" stroke-width="2"/><text x="44" y="350" font-size="20" fill="#9fb0cc">Workspaces · what it opens</text>`;
+    out += `<rect x="44" y="368" width="300" height="44" rx="12" fill="${p.accent}"/><text x="64" y="397" font-size="19" font-weight="700" fill="#ffffff">Group UK: UK · UK-SA</text>`;
+    out += `<text x="362" y="398" font-size="28" font-weight="800" fill="${p.light}">+</text><rect x="392" y="368" width="200" height="44" rx="12" fill="#22304f" stroke="${p.light}" stroke-width="2"/><text x="412" y="397" font-size="19" font-weight="700" fill="#ffffff">Individual: DE</text>`;
+    out += `<rect x="20" y="452" width="780" height="88" rx="18" fill="#2a2a1d" stroke="#e0a020" stroke-width="2" stroke-dasharray="8 6"/><g transform="translate(42 476)">${icon('TbUserPlus', '#f0c040', 40)}</g>`
+      + `<text x="98" y="490" font-size="22" font-weight="800" fill="#ffffff">Access request · EABCDEF</text><text x="98" y="520" font-size="19" fill="#c9d4e6">Inactive until a super-admin activates it</text>`;
+    return out;
+  },
+  // A week of scheduled backups, light and full, their folders and what is kept.
+  backups(p) {
+    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    let out = `<rect x="20" y="20" width="780" height="210" rx="18" fill="#16213a" stroke="#2a3a5c" stroke-width="2"/><text x="44" y="58" font-size="20" fill="#9fb0cc">Every 4 hours · light, and full on Sunday</text>`;
+    days.forEach((day, index) => {
+      const x = 60 + index * 104;
+      out += `<text x="${x + 30}" y="210" text-anchor="middle" font-size="18" fill="#9fb0cc">${day}</text>`;
+      for (let slot = 0; slot < 6; slot += 1) {
+        const full = index === 6 && slot === 0;
+        out += `<rect x="${x + (slot % 3) * 22}" y="${80 + Math.floor(slot / 3) * 50}" width="${full ? 64 : 16}" height="${full ? 90 : 40}" rx="5" fill="${full ? p.accent : p.light}" opacity="${full ? 1 : 0.6}"/>`;
+        if (full) break;
+      }
+    });
+    [['full/', p.accent, 'Full backups', 'databases, Input, Output'], ['light/', p.light, 'Light backups', 'without the databases']].forEach(([folder, colour, title, text], index) => {
+      const x = 20 + index * 396;
+      out += `<rect x="${x}" y="250" width="384" height="130" rx="18" fill="#16213a" stroke="#2a3a5c" stroke-width="2"/><g transform="translate(${x + 22} 272)">${icon('TbFolderFilled', colour, 52)}</g>`
+        + `<text x="${x + 88}" y="300" font-size="24" font-weight="800" fill="#ffffff">${title}</text><text x="${x + 88}" y="330" font-size="19" fill="#c9d4e6">${folder} · ${text}</text>`
+        + `<text x="${x + 88}" y="362" font-size="18" fill="#9fb0cc" class="mono">backup_2026-10-25.zip</text>`;
+    });
+    out += `<rect x="20" y="400" width="780" height="140" rx="18" fill="#16213a" stroke="#2a3a5c" stroke-width="2"/><text x="44" y="438" font-size="20" fill="#9fb0cc">Kept</text>`;
+    [['7 days', 0.35], ['4 weeks', 0.6], ['6 months', 1]].forEach(([label, share], index) => {
+      out += `<rect x="44" y="${456 + index * 26}" width="${560 * share}" height="16" rx="8" fill="${index === 2 ? p.accent : p.light}"/><text x="${56 + 560 * share}" y="${470 + index * 26}" font-size="18" font-weight="700" fill="#ffffff">${label}</text>`;
+    });
+    out += `<g transform="translate(700 436)">${icon('TbRestore', p.light, 64)}</g>`;
+    return out;
+  },
+  // A package from one server to another, previewed before it is imported.
+  servers(p) {
+    const server = (x, title) => `<rect x="${x}" y="40" width="200" height="250" rx="18" fill="#16213a" stroke="#2a3a5c" stroke-width="2"/>`
+      + [0, 1, 2].map((row) => `<rect x="${x + 22}" y="${70 + row * 62}" width="156" height="44" rx="10" fill="#22304f"/><circle cx="${x + 44}" cy="${92 + row * 62}" r="7" fill="${row === 0 ? '#5fbf3f' : p.light}"/><rect x="${x + 62}" y="${86 + row * 62}" width="92" height="12" rx="6" fill="#3a4d75"/>`).join('')
+      + `<text x="${x + 100}" y="320" text-anchor="middle" font-size="21" font-weight="700" fill="#ffffff">${title}</text>`;
+    let out = server(20, 'This server') + server(600, 'Another server');
+    out += `<path d="M232 150 H588" stroke="${p.light}" stroke-width="5" stroke-dasharray="12 9"/><path d="M576 138 l14 12 l-14 12" fill="none" stroke="${p.light}" stroke-width="5"/>`;
+    out += `<rect x="306" y="104" width="208" height="92" rx="14" fill="${p.accent}"/><g transform="translate(324 124)">${icon('TbFileZip', '#ffffff', 44)}</g><text x="380" y="146" font-size="20" font-weight="800" fill="#ffffff">Package</text><text x="380" y="174" font-size="17" fill="#ffffff">Workspace UK</text>`;
+    out += `<text x="410" y="236" text-anchor="middle" font-size="18" fill="#9fb0cc">Super-admins approve it</text>`;
+    out += `<rect x="20" y="350" width="780" height="190" rx="18" fill="#16213a" stroke="#2a3a5c" stroke-width="2"/><text x="44" y="388" font-size="20" fill="#9fb0cc">Preview before Import</text>`;
+    [['Dashboards', '3 added · 2 changed', '#1f9d55'], ['PPT Templates', '1 changed', '#f0a830'], ['NQ Call Tracking', 'unchanged', '#7d8aa3']].forEach(([name, change, colour], index) => {
+      const y = 404 + index * 42;
+      out += `<rect x="44" y="${y}" width="732" height="34" rx="10" fill="#22304f"/><circle cx="64" cy="${y + 17}" r="7" fill="${colour}"/><text x="82" y="${y + 23}" font-size="18" font-weight="700" fill="#ffffff">${name}</text><text x="756" y="${y + 23}" text-anchor="end" font-size="17" fill="#c9d4e6">${change}</text>`;
+    });
+    return out;
+  },
+  // App Events: who did what, from where, and the details of each change, with their filters.
+  events(p) {
+    let out = '';
+    [['Date: Today', p.deep], ['Type: Info · Error', p.deep], ['Action: exclude sign-in', '#22304f']].forEach(([label, colour], index) => {
+      out += `<rect x="${20 + index * 262}" y="20" width="250" height="44" rx="22" fill="${colour}" stroke="${p.light}" stroke-width="2"/><text x="${145 + index * 262}" y="48" text-anchor="middle" font-size="18" font-weight="700" fill="#ffffff">${label}</text>`;
+    });
+    const rows = [
+      ['14:02', 'super', p.accent, 'Super Admin', 'save_user', 'User ELUILEY: role user-viewer → user-editor; Groups +UK', false],
+      ['13:55', 'System', '#e0533d', 'Scheduler', 'scheduled_database_backup', 'Light backup of 3 workspaces, 2.1 GB in 48 s', false],
+      ['13:40', 'jaime', p.accent, 'NQ Calls', 'nq_call_map', 'Map of 0x4F21A: 2 hints to check, prepared in 1.2 s', false],
+      ['13:31', 'System', '#e0533d', 'Background job', 'process_dataset_failed', 'CDR Voice Q3: the column Call_Status is missing', true],
+    ];
+    rows.forEach(([time, user, colour, module, action, details, error], index) => {
+      const y = 84 + index * 116;
+      out += `<rect x="20" y="${y}" width="780" height="102" rx="16" fill="${error ? '#2a1d22' : '#16213a'}" stroke="${error ? '#e0533d' : '#2a3a5c'}" stroke-width="2"/>`;
+      out += `<text x="42" y="${y + 38}" font-size="20" font-weight="700" fill="#9fb0cc">${time}</text>`;
+      out += `<rect x="108" y="${y + 16}" width="${user.length * 12 + 34}" height="32" rx="16" fill="${colour}"/><text x="${125 + user.length * 6}" y="${y + 38}" text-anchor="middle" font-size="17" font-weight="800" fill="#ffffff">${user}</text>`;
+      out += `<rect x="${154 + user.length * 12}" y="${y + 16}" width="${module.length * 11 + 30}" height="32" rx="10" fill="#22304f"/><text x="${169 + user.length * 12}" y="${y + 38}" font-size="17" font-weight="700" fill="#c9d4e6">${module}</text>`;
+      out += `<text x="776" y="${y + 38}" text-anchor="end" font-size="16" fill="${error ? '#ff8a80' : p.light}" class="mono">${action}</text>`;
+      out += `<text x="42" y="${y + 80}" font-size="19" fill="#ffffff">${escape(details)}</text>`;
+    });
     return out;
   },
   // The follow-up over the weeks, and the NQ rate of each operator.

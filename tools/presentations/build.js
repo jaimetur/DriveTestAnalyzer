@@ -1215,7 +1215,7 @@ function presentationsOf(decks) {
   ];
   presentations.push({ id: 'full-presentation', title: 'DriveTest Analyzer — Full Presentation', file: 'full-presentation.pptx',
     download: 'DriveTest Analyzer - Full Presentation.pptx',
-    description: 'Every presentation in one: the Overview, the presentation of every main module and of Workspace Config, the DT Analyzer RCA, the Benchmarking Providers Roadmap and the Roadmap.',
+    description: 'Every presentation in one: the Overview, the presentation of every main module, of Workspace Config and of Administration, the DT Analyzer RCA, the Benchmarking Providers Roadmap and the Roadmap.',
     sections: FULL_PARTS.map((id) => {
       const part = presentations.find((item) => item.id === id);
       return { title: part.title.replace('DriveTest Analyzer — ', ''), presentation: id, slides: part.sections.flatMap((section) => section.slides) };

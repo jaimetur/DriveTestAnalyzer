@@ -8,6 +8,14 @@ Application Config stores application-wide runtime overrides. It is separate fro
 > [!TIP]
 > **Choose the right configuration page.** Use Workspace Config for templates, Main Cities, chart mappings and scoring methodologies.
 
+## Presentation
+
+The presentation **Administration** sums up Admin and Super Admin: who sees and does what (roles, Modules Profiles, Workspace Groups and Access Requests), the scheduled backups and their restore, the packages and transfers between servers, and the configuration of the application at every level (Application Config, Admin Config, Super Admin Config and Workspace Config). Select it to open it in the slide viewer, play it full screen or download its PowerPoint; every presentation is also in [Presentations](help.md#presentations).
+
+```presentations
+administration
+```
+
 ## Access and location
 
 Open **Config → Application Config** from the main navigation at `/application-config`. The page is available to `user-editor`, `admin` and `super-admin` roles. `user-viewer` accounts do not have access. Application Config applies across workspaces; it does not change workspace-owned templates or mapping groups.

@@ -2,10 +2,19 @@
 
 Super Admin centralises the users and their access, the tabs and labels of the modules and the databases of the application. Only visible for the `super-admin` role: portable packages and datasets are in [Administrator Config](administrator-config.md), the **Admin** tab, which admins open too.
 
+## Presentation
+
+The presentation **Administration** sums up Admin and Super Admin: who sees and does what (roles, Modules Profiles, Workspace Groups and Access Requests), the scheduled backups and their restore, the packages and transfers between servers, and the configuration of the application at every level (Application Config, Admin Config, Super Admin Config and Workspace Config). Select it to open it in the slide viewer, play it full screen or download its PowerPoint; every presentation is also in [Presentations](help.md#presentations).
+
+```presentations
+administration
+```
+
 ## In this guide
 
 | Task or topic | Go to |
 | --- | --- |
+| Presentation | [Open section](#presentation) |
 | Roles | [Open section](#roles) |
 | Users | [Open section](#users) |
 | Modules Profiles | [Open section](#modules-profiles) |
