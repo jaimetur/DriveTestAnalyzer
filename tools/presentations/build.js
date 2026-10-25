@@ -1175,9 +1175,12 @@ async function writeImageDeck(deck, id, subject) {
 // of Non-Qualified Calls, and the full presentation last.
 const IDS = ['overview', 'one-slider', 'roadmap', 'benchmarking-providers',
   ...MODULE_DECK_IDS.flatMap((id) => (id === 'non-qualified-calls' ? [id, 'dt-analyzer-rca'] : [id])), 'full-presentation'];
-// The parts of the full presentation: the Overview, the deck of every main module, the DT Analyzer RCA, the Benchmarking
-// Providers Roadmap and the Roadmap one after the other, with the slides they have.
-const FULL_PARTS = ['overview', ...MODULE_DECK_IDS, 'dt-analyzer-rca', 'benchmarking-providers', 'roadmap'];
+// The parts of the full presentation, in the order of the cards of the Help: the Overview, the Benchmarking Providers
+// Roadmap, the deck of every main module (Network Insights after CDR Analysis), the DT Analyzer RCA and the Roadmap one
+// after the other, with the slides they have.
+const FULL_MODULE_IDS = MODULE_DECK_IDS.filter((id) => id !== 'network-insights')
+  .flatMap((id) => (id === 'cdr-analysis' ? [id, 'network-insights'] : [id]));
+const FULL_PARTS = ['overview', 'benchmarking-providers', ...FULL_MODULE_IDS, 'dt-analyzer-rca', 'roadmap'];
 
 // The presentations as the Help lists them (presentations.json): their file and the title of each slide by section, which
 // the slide viewer shows on its left (`drawn` those whose pictures build.js writes); `decks` are the decks of their own
@@ -1217,7 +1220,7 @@ function presentationsOf(decks) {
   ];
   presentations.push({ id: 'full-presentation', title: 'DriveTest Analyzer — Full Presentation', file: 'full-presentation.pptx',
     download: 'DriveTest Analyzer - Full Presentation.pptx',
-    description: 'Every presentation in one: the Overview, the presentation of every main module, of Workspace Config and of Administration, the DT Analyzer RCA, the Benchmarking Providers Roadmap and the Roadmap.',
+    description: 'Every presentation in one: the Overview, the Benchmarking Providers Roadmap, the presentation of every main module, of Workspace Config and of Administration, the DT Analyzer RCA and the Roadmap.',
     sections: FULL_PARTS.map((id) => {
       const part = presentations.find((item) => item.id === id);
       return { title: part.title.replace('DriveTest Analyzer — ', ''), presentation: id, slides: part.sections.flatMap((section) => section.slides) };

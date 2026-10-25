@@ -41,7 +41,7 @@ administration
 
 ## Full presentation
 
-The **Full Presentation** joins every presentation in one deck, with their slides as they are, each in a section named after it: the Overview, the presentation of every main module (with Workspace Config after Workspace) and of Administration, the DT Analyzer RCA, the Benchmarking Providers Roadmap and the Roadmap. It opens in the same slide viewer and downloads as PowerPoint.
+The **Full Presentation** joins every presentation in one deck, with their slides as they are, each in a section named after it: the Overview, the Benchmarking Providers Roadmap, the presentation of every main module (with Workspace Config after Workspace and Network Insights after CDR Analysis) and of Administration, the DT Analyzer RCA and the Roadmap. It opens in the same slide viewer and downloads as PowerPoint.
 
 ```presentations
 full-presentation

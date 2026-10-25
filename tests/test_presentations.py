@@ -299,8 +299,8 @@ def test_the_server_generates_every_presentation_with_the_pictures_of_their_slid
     # rendered: the slide viewer shows the pictures of the slides in the presentation of their section.
     full = by_id['full-presentation']
     assert [section['presentation'] for section in full['sections']] == [
-        'overview', 'workspace', 'workspace-config', 'cdr-analysis', 'ppt-dashboards', 'scoring-gap-analysis', 'network-insights',
-        'non-qualified-calls', 'reporting', 'builders', 'ticket-center', 'administration', 'dt-analyzer-rca', 'benchmarking-providers', 'roadmap']
+        'overview', 'benchmarking-providers', 'workspace', 'workspace-config', 'cdr-analysis', 'network-insights', 'ppt-dashboards',
+        'scoring-gap-analysis', 'non-qualified-calls', 'reporting', 'builders', 'ticket-center', 'administration', 'dt-analyzer-rca', 'roadmap']
     for section in full['sections']:
         part = by_id[section['presentation']]
         assert section['title'] == part['title'].removeprefix('DriveTest Analyzer — ')
