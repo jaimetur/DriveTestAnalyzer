@@ -2,10 +2,10 @@
 
 The server generates every one of them with tools/presentations (build.js, which draws the pictures of the decks of their
 own design with module_decks.js), with the figures of the workspaces chosen in Super Admin, into
-APP_DATA_DIR/presentations: none is kept with the application. At startup it generates them before opening when one is
-missing (the startup page says so); when their figures, or the generator, change, it generates them again in the
-background, meanwhile showing the last ones; and Super Admin → Presentations generates them again on demand. Generating
-them needs Node.js with the packages of the generator, a Chromium browser and LibreOffice.
+APP_DATA_DIR/presentations: none is kept with the application. Always in the background, so the application never waits
+for them: at startup when one is missing or when their figures, or the generator, changed (meanwhile the Help shows the
+last ones and says which are coming), and on demand from Super Admin → Presentations. Generating them needs Node.js with
+the packages of the generator, a Chromium browser and LibreOffice (only for the decks of native slides).
 """
 from __future__ import annotations
 
@@ -203,8 +203,9 @@ def render_slides(folder: Path, manifest: dict[str, Any]) -> None:
     from src.modules.pptx_to_docx import document_pdf, pdf_page_images
 
     for presentation in manifest['presentations']:
-        # The full presentation is made of the others: the Help shows the pictures of their slides.
-        if any(section.get('presentation') for section in presentation['sections']):
+        # The decks of their own design have the pictures build.js drew, and the full presentation is made of the others:
+        # the Help shows the pictures of their slides.
+        if presentation.get('drawn') or any(section.get('presentation') for section in presentation['sections']):
             continue
         pdf = document_pdf((folder / presentation['file']).read_bytes(), 'pptx', whole=True)
         if pdf is None:
@@ -368,25 +369,30 @@ class PresentationGenerator:
 _GENERATOR: PresentationGenerator | None = None
 
 
-def generate_at_startup(core: Any, step: Any) -> None:
-    """At startup, generate the presentations before the application opens when one is missing, saying so with ``step``
-    on the startup page; else again in the background when their figures or generator changed."""
+def generate_at_startup(core: Any) -> threading.Thread | None:
+    """Once the application is open, generate the presentations in the background when one is missing, or again when
+    their figures or generator changed: the startup never waits for them, and the Help says which ones are coming."""
     if not GENERATE_AT_STARTUP or _GENERATOR is None:
-        return
-    try:
-        if (unavailable := _GENERATOR.unavailable()):
+        return None
+
+    def generate() -> None:
+        try:
+            if (unavailable := _GENERATOR.unavailable()):
+                core.repository.try_add_log('system', 'generate_presentations_failed', json.dumps(
+                    {'error': unavailable, 'requested_by': 'system', 'reason': 'startup'}, ensure_ascii=False))
+                return
+            figures = presentation_figures(core)
+            if (missing := _GENERATOR.missing()):
+                _GENERATOR.ensure(figures, 'system', force=True, reason=f"missing at startup: {', '.join(missing)}")
+            else:
+                _GENERATOR.ensure(figures, 'system')
+        except Exception as exc:  # noqa: BLE001 - the Help keeps the last presentations, and App Events tells why.
             core.repository.try_add_log('system', 'generate_presentations_failed', json.dumps(
-                {'error': unavailable, 'requested_by': 'system', 'reason': 'startup'}, ensure_ascii=False))
-            return
-        figures = presentation_figures(core)
-        if (missing := _GENERATOR.missing()):
-            step('Generating the presentations of the Help…')
-            _GENERATOR.ensure(figures, 'system', force=True, reason=f"missing at startup: {', '.join(missing)}", wait=True)
-        else:
-            _GENERATOR.ensure(figures, 'system')
-    except Exception as exc:  # noqa: BLE001 - the application opens anyway, and App Events tells why.
-        core.repository.try_add_log('system', 'generate_presentations_failed', json.dumps(
-            {'error': str(exc), 'requested_by': 'system', 'reason': 'startup'}, ensure_ascii=False))
+                {'error': str(exc), 'requested_by': 'system', 'reason': 'startup'}, ensure_ascii=False))
+
+    thread = threading.Thread(target=generate, name='presentations-startup', daemon=True)
+    thread.start()
+    return thread
 
 
 def presentation_settings(core: Any) -> dict[str, Any]:

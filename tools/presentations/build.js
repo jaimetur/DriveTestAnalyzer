@@ -1144,14 +1144,28 @@ function imageSlides(pres, deck, sectionTitle = '') {
   }
 }
 
-async function writeImageDeck(deck, file, subject) {
+// The PowerPoint of a deck of its own design and, in its folder, the pictures of its slides and their thumbnails that the
+// Help shows (as src/modules/presentations.py renders those of the other decks: 1920 × 1080 and 600 × 338), so LibreOffice
+// does not render them again.
+async function writeImageDeck(deck, id, subject) {
   const pres = new pptxgen();
   pres.author = 'DriveTest Analyzer'; pres.title = deck.title; pres.subject = subject;
   pres.layout = 'LAYOUT_WIDE';
   imageSlides(pres, deck);
-  const target = path.join(OUT, file);
+  const target = path.join(OUT, `${id}.pptx`);
   await pres.writeFile({ fileName: target });
   await applyTheme(target, THEME);
+  const pictures = path.join(OUT, id);
+  fs.mkdirSync(pictures, { recursive: true });
+  for (const [index, slide] of deck.slides.entries()) {
+    const number = String(index + 1).padStart(2, '0');
+    const file = path.join(deck.dir, slide.image);
+    const source = sharp(file);
+    const { width, height } = await source.metadata();
+    if (width === 1920 && height === 1080) fs.copyFileSync(file, path.join(pictures, `slide-${number}.png`));
+    else await source.clone().resize(1920, 1080, { fit: 'fill' }).png().toFile(path.join(pictures, `slide-${number}.png`));
+    await source.clone().resize(600, 338, { fit: 'fill' }).png().toFile(path.join(pictures, `thumb-${number}.png`));
+  }
   return target;
 }
 
@@ -1164,7 +1178,8 @@ const IDS = ['overview', 'one-slider', 'roadmap', 'benchmarking-providers',
 const FULL_PARTS = ['overview', ...MODULE_DECK_IDS, 'dt-analyzer-rca', 'benchmarking-providers', 'roadmap'];
 
 // The presentations as the Help lists them (presentations.json): their file and the title of each slide by section, which
-// the slide viewer shows on its left; `decks` are the decks of their own design by id. The sections of the full
+// the slide viewer shows on its left (`drawn` those whose pictures build.js writes); `decks` are the decks of their own
+// design by id. The sections of the full
 // presentation are its parts, each titled after it and naming it (the Help shows the pictures of its slides).
 function presentationsOf(decks) {
   const presentations = [
@@ -1185,15 +1200,15 @@ function presentationsOf(decks) {
     { id: 'roadmap', title: 'DriveTest Analyzer — Roadmap', file: 'roadmap.pptx', download: 'DriveTest Analyzer - Roadmap.pptx',
       description: 'What comes next: Umlaut CDRs, the Active Tests community, scale-out and speed on AWS, PostgreSQL and health monitoring.',
       sections: [{ title: 'Roadmap', slides: ['Roadmap — what comes next'] }] },
-    { id: 'benchmarking-providers', title: decks['benchmarking-providers'].title, file: 'benchmarking-providers.pptx',
+    { id: 'benchmarking-providers', title: decks['benchmarking-providers'].title, file: 'benchmarking-providers.pptx', drawn: true,
       download: 'DriveTest Analyzer - Benchmarking Providers Roadmap.pptx',
       description: 'How the tool is being adapted to Umlaut and P3 CDRs and the status of each phase, how it is built inside and how it is deployed in the cloud.',
       sections: imageSections(decks['benchmarking-providers']) },
     ...MODULE_DECK_IDS.flatMap((id) => [
-      { id, title: decks[id].title, file: `${id}.pptx`, download: `DriveTest Analyzer - ${decks[id].name}.pptx`, description: decks[id].description,
-        sections: imageSections(decks[id]) },
+      { id, title: decks[id].title, file: `${id}.pptx`, drawn: true, download: `DriveTest Analyzer - ${decks[id].name}.pptx`,
+        description: decks[id].description, sections: imageSections(decks[id]) },
       ...(id === 'non-qualified-calls' ? [{ id: 'dt-analyzer-rca', title: decks['dt-analyzer-rca'].title, file: 'dt-analyzer-rca.pptx',
-        download: 'DriveTest Analyzer - DT Analyzer RCA.pptx',
+        drawn: true, download: 'DriveTest Analyzer - DT Analyzer RCA.pptx',
         description: 'How the DT Analyzer RCA finds the root cause of every Non-Qualified Call: what it reads, its rules, the lack of resources, the network around the call and the evidence it gives.',
         sections: imageSections(decks['dt-analyzer-rca']) }] : []),
     ]),
@@ -1293,11 +1308,11 @@ async function main() {
   await plan.writeFile({ fileName: planFile });
   await applyTheme(planFile, THEME);
 
-  const providersFile = await writeImageDeck(decks['benchmarking-providers'], 'benchmarking-providers.pptx',
+  const providersFile = await writeImageDeck(decks['benchmarking-providers'], 'benchmarking-providers',
     'Adaptation of DriveTest Analyzer to other benchmarking providers');
-  const dtaFile = await writeImageDeck(decks['dt-analyzer-rca'], 'dt-analyzer-rca.pptx', 'The DT Analyzer RCA of Non-Qualified Calls');
+  const dtaFile = await writeImageDeck(decks['dt-analyzer-rca'], 'dt-analyzer-rca', 'The DT Analyzer RCA of Non-Qualified Calls');
   const moduleFiles = [];
-  for (const id of MODULE_DECK_IDS) moduleFiles.push(await writeImageDeck(decks[id], `${id}.pptx`, `The ${decks[id].name} module of DriveTest Analyzer`));
+  for (const id of MODULE_DECK_IDS) moduleFiles.push(await writeImageDeck(decks[id], id, `The ${decks[id].name} module of DriveTest Analyzer`));
 
   const full = new pptxgen();
   full.author = 'DriveTest Analyzer'; full.title = FULL_PRESENTATION.title; full.subject = 'Every presentation of DriveTest Analyzer in one';

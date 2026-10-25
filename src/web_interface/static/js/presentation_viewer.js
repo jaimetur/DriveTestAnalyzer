@@ -69,6 +69,45 @@
     return item;
   }
 
+  // The cards of the presentations `ids` and, while the server generates them, a note for those not there yet.
+  function gallery(ids, data) {
+    const block = node('div', undefined, 'presentation-block');
+    block.dataset.presentationIds = ids.join(' ');
+    const found = ids.map((id) => (data.presentations || []).find((item) => item.id === id)).filter(Boolean);
+    const missing = ids.length - found.length;
+    if (found.length) {
+      const cards = node('div', undefined, 'presentation-gallery');
+      found.forEach((presentation) => cards.append(card(presentation)));
+      block.append(cards);
+    }
+    if (!found.length) {
+      const why = data.updating ? 'The server is generating the presentations: they show here in a minute.'
+        : data.unavailable ? `The presentations cannot be generated on this server: ${data.unavailable}` : 'The presentations have not been generated yet.';
+      block.append(node('p', why, data.unavailable && !data.updating ? 'presentation-error' : 'presentation-updating'));
+    } else if (missing && data.updating) {
+      block.append(node('p', `The server is generating ${missing === 1 ? 'one more presentation' : `${missing} more presentations`}: ${missing === 1 ? 'it shows' : 'they show'} here in a minute.`, 'presentation-updating'));
+    }
+    return block;
+  }
+
+  // While the server generates them, the cards follow once they are ready.
+  function follow(container) {
+    const timer = setInterval(async () => {
+      manifest = null;
+      let data;
+      try {
+        data = await load();
+      } catch (error) {
+        clearInterval(timer);
+        return;
+      }
+      if (data.updating) return;
+      clearInterval(timer);
+      container.querySelectorAll('[data-presentations-updating]').forEach((note) => note.remove());
+      container.querySelectorAll('[data-presentation-ids]').forEach((block) => block.replaceWith(gallery(block.dataset.presentationIds.split(' '), data)));
+    }, 10000);
+  }
+
   // Each ```presentations block of the chapter becomes the cards of its presentations.
   async function enhance(container) {
     const blocks = [...container.querySelectorAll('pre > code.language-presentations')];
@@ -82,21 +121,14 @@
     }
     blocks.forEach((code, position) => {
       // (While they are generated again, the last presentations show.)
-      if (data.updating && position === 0 && (data.presentations || []).length) code.parentElement.before(node('p', 'Updating the presentations: they show the last ones until then.', 'presentation-updating'));
-      const gallery = node('div', undefined, 'presentation-gallery');
-      code.textContent.split(/\s+/).filter(Boolean).forEach((id) => {
-        const presentation = (data.presentations || []).find((item) => item.id === id);
-        if (presentation) gallery.append(card(presentation));
-      });
-      // (None yet: the server generates them at its start, or says why it cannot.)
-      if (!gallery.children.length) {
-        const why = data.updating ? 'The server is generating the presentations: they show here in a minute or two.'
-          : data.unavailable ? `The presentations cannot be generated on this server: ${data.unavailable}` : 'The presentations have not been generated yet.';
-        code.parentElement.replaceWith(node('p', why, data.unavailable && !data.updating ? 'presentation-error' : 'presentation-updating'));
-        return;
+      if (data.updating && position === 0 && (data.presentations || []).length) {
+        const note = node('p', 'Updating the presentations: they show the last ones until then.', 'presentation-updating');
+        note.dataset.presentationsUpdating = '';
+        code.parentElement.before(note);
       }
-      code.parentElement.replaceWith(gallery);
+      code.parentElement.replaceWith(gallery(code.textContent.split(/\s+/).filter(Boolean), data));
     });
+    if (data.updating) follow(container);
   }
 
   // -- the viewer --------------------------------------------------------------------------------------------------

@@ -142,18 +142,17 @@ def test_no_presentation_is_kept_with_the_application_and_the_help_says_why_unti
     assert 'The presentations cannot be generated on this server: ${data.unavailable}' in script
 
 
-def test_the_server_generates_them_at_startup_when_one_is_missing(client, monkeypatch):
-    calls, steps = [], []
+def test_the_server_generates_them_in_the_background_at_startup_when_one_is_missing(client, monkeypatch):
+    calls = []
     generator = presentations._GENERATOR
     monkeypatch.setattr(presentations, 'GENERATE_AT_STARTUP', True)
     monkeypatch.setattr(presentations.PresentationGenerator, 'unavailable', staticmethod(lambda: ''))
     monkeypatch.setattr(presentations, 'expected_ids', lambda: ['overview', 'workspace', 'full-presentation'])
     monkeypatch.setattr(presentations.PresentationGenerator, 'ensure', lambda self, figures, requested_by='system', **options: calls.append(options) or True)
-    # None generated yet: all of them before the application opens, saying so on the startup page.
+    # None generated yet: all of them, in the background, without the startup waiting for them.
     assert generator.missing() == ['overview', 'workspace', 'full-presentation']
-    presentations.generate_at_startup(core, steps.append)
-    assert steps == ['Generating the presentations of the Help…']
-    assert calls[-1] == {'force': True, 'reason': 'missing at startup: overview, workspace, full-presentation', 'wait': True}
+    presentations.generate_at_startup(core).join(timeout=20)
+    assert calls[-1] == {'force': True, 'reason': 'missing at startup: overview, workspace, full-presentation'}
     # One missing (or without the pictures of its slides): generated again at startup too.
     current = generator.root / 'current'
     (current / 'overview').mkdir(parents=True)
@@ -166,16 +165,15 @@ def test_the_server_generates_them_at_startup_when_one_is_missing(client, monkey
         {'id': 'full-presentation', 'file': 'full-presentation.pptx', 'sections': [{'title': 'Overview', 'presentation': 'overview', 'slides': ['Cover']}]},
     ]}), encoding='utf-8')
     assert generator.missing() == ['workspace']
-    # Every one there: only in the background, when their figures or generator changed.
+    # Every one there: only when their figures or generator changed.
     (current / 'workspace').mkdir()
     (current / 'workspace' / 'slide-01.png').write_bytes(b'png')
     assert generator.missing() == []
-    steps.clear()
-    presentations.generate_at_startup(core, steps.append)
-    assert steps == [] and calls[-1] == {}
+    presentations.generate_at_startup(core).join(timeout=20)
+    assert calls[-1] == {}
     # Where they cannot be generated, App Events says why.
     monkeypatch.setattr(presentations.PresentationGenerator, 'unavailable', staticmethod(lambda: 'Node.js is not installed on this server.'))
-    presentations.generate_at_startup(core, steps.append)
+    presentations.generate_at_startup(core).join(timeout=20)
     log = next(row for row in core.repository.list_logs(limit=50) if row['action'] == 'generate_presentations_failed')
     assert json.loads(log['details'])['error'] == 'Node.js is not installed on this server.'
 
@@ -262,8 +260,13 @@ def test_every_main_module_has_its_presentation_at_the_start_of_its_chapter():
 
 
 @pytest.mark.skipif(bool(presentations.PresentationGenerator.unavailable()), reason='Node.js, its packages, Chromium and LibreOffice are needed.')
-def test_the_server_generates_every_presentation_with_the_pictures_of_their_slides(tmp_path):
-    logs = []
+def test_the_server_generates_every_presentation_with_the_pictures_of_their_slides(tmp_path, monkeypatch):
+    from PIL import Image
+    from src.modules import pptx_to_docx
+
+    logs, rendered = [], []
+    document_pdf = pptx_to_docx.document_pdf
+    monkeypatch.setattr(pptx_to_docx, 'document_pdf', lambda content, *args, **kwargs: rendered.append(len(content)) or document_pdf(content, *args, **kwargs))
     generator = presentations.PresentationGenerator(lambda: tmp_path, lambda *event: logs.append(event))
     figures = {**presentations.product_figures(), 'workspaces': ['UK'], 'month': 'October 2026'}
     assert generator.missing() == presentations.expected_ids()
@@ -277,7 +280,11 @@ def test_the_server_generates_every_presentation_with_the_pictures_of_their_slid
         assert (current / item['file']).is_file(), item['id']
         if item['id'] != 'full-presentation':
             count = sum(len(section['slides']) for section in item['sections'])
-            assert len(list((current / item['id']).glob('slide-*.png'))) == count, item['id']
+            assert len(list((current / item['id']).glob('slide-*.png'))) == len(list((current / item['id']).glob('thumb-*.png'))) == count, item['id']
+    # LibreOffice renders only the decks of native slides: build.js writes the pictures of the others, as large.
+    assert len(rendered) == 3 and [item['id'] for item in manifest['presentations'] if not item.get('drawn')] == ['overview', 'one-slider', 'roadmap', 'full-presentation']
+    assert Image.open(current / 'workspace-config' / 'slide-01.png').size == (1920, 1080)
+    assert Image.open(current / 'workspace-config' / 'thumb-01.png').size == (600, 338)
     # The decks drawn by module_decks.js have their slides by section, as in their content.js.
     assert [slide for section in by_id['dt-analyzer-rca']['sections'] for slide in section['slides']] == [
         slide['title'] for slide in json.loads((GENERATOR_FOLDER / 'dt-analyzer-rca' / 'slides.json').read_text(encoding='utf-8'))['slides']]

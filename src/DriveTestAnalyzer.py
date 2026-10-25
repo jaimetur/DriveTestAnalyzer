@@ -3141,11 +3141,11 @@ def _prepare_active_workspace(started_at: float) -> None:
         STARTUP_STATUS['error'] = f'The active workspace could not be opened: {exc}'
         print(f'Unable to open the active workspace at startup: {exc}', file=sys.stderr, flush=True)
     finally:
-        # The presentations of the Help: generated before the application opens when one is missing.
-        from src.modules.presentations import generate_at_startup
-        generate_at_startup(sys.modules[__name__], _startup_step)
         STARTUP_STATUS['message'] = 'Ready.'
         STARTUP_READY.set()
+    # The presentations of the Help, generated in the background when one is missing or they changed.
+    from src.modules.presentations import generate_at_startup
+    generate_at_startup(sys.modules[__name__])
     # In a thread of its own: the server waits for this one at startup, and never for the other workspaces.
     Thread(
         target=_record_application_start,

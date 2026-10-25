@@ -3,8 +3,9 @@
 // into slides.html, takes a picture of each slide (1920 × 1080) with a headless Chromium browser (Chrome, Chromium, Brave
 // or Edge, the one of DRIVETEST_ANALYZER_CHROMIUM first) and writes slides.json (order, sections, titles and notes of the
 // slides, and the title and description of the deck) into a folder of its own; it pictures the hand-written slides.html of
-// the DT Analyzer RCA the same way. build.js draws them all so when the server generates the presentations, and turns
-// them into the PowerPoints the Help shows. To look at them:
+// the DT Analyzer RCA the same way. build.js draws them all when the server generates the presentations, and turns them
+// into the PowerPoints the Help shows. To look at them, warned of what goes past the footer, out of its box or under the
+// logo:
 //   node module_decks.js <folder>             every deck, into <folder>/<id>/
 //   node module_decks.js <folder> reporting   only the decks named
 const fs = require('fs');
@@ -495,8 +496,9 @@ function browser() {
 const imageName = (index) => `slide-${String(index + 1).padStart(2, '0')}.png`;
 
 // The deck `id` drawn into the folder `out`: slides.html (for the decks of content.js), a picture of each slide and
-// slides.json. Gives what slides.json holds and the folder.
-async function draw(id, out) {
+// slides.json; with `check`, it warns of what goes past the footer, out of its box or under the logo. Gives what
+// slides.json holds and the folder.
+async function draw(id, out, { check = false } = {}) {
   const folder = path.join(__dirname, id);
   fs.mkdirSync(out, { recursive: true });
   let page;
@@ -530,7 +532,7 @@ async function draw(id, out) {
     }
     fs.unlinkSync(picture);
   }
-  if (fs.existsSync(source)) {
+  if (check && fs.existsSync(source)) {
     const report = run(['--window-size=1920,1080', '--virtual-time-budget=3000', '--dump-dom', `file://${page}?check=1`], { encoding: 'utf8' });
     const found = /<pre id="check">(.*?)<\/pre>/s.exec(report);
     const problems = found ? JSON.parse(found[1].replace(/&quot;/g, '"').replace(/&gt;/g, '>').replace(/&lt;/g, '<').replace(/&amp;/g, '&')) : ['the check did not run'];
@@ -547,7 +549,7 @@ if (require.main === module) {
     process.exit(1);
   }
   (async () => {
-    for (const id of wanted.length ? wanted : DRAWN) console.log(`${id}: ${(await draw(id, path.resolve(target, id))).slides.length} slides`);
+    for (const id of wanted.length ? wanted : DRAWN) console.log(`${id}: ${(await draw(id, path.resolve(target, id), { check: true })).slides.length} slides`);
   })().catch((error) => { console.error(error); process.exit(1); });
 }
 
