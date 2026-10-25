@@ -9,10 +9,9 @@ module.exports = {
       lead: 'Isolated workspaces with their CDRs, network inventories and maps: the data every module analyses, processed in the background.',
       tags: ['One workspace per team or country', 'NetCheck CDRs · Umlaut and P3 coming soon', 'Processed in the background'],
       notes: 'Workspace is the first operational module. It keeps isolated workspaces, each with its own database, files and output, ingests every dataset the other modules read and processes it in the background.' },
-    { id: 'lifecycle', type: 'cards', section: 'Introduction', footer: 'Workspace lifecycle', kicker: 'Workspace lifecycle',
-      title: 'One workspace, one isolated world',
-      lead: 'Create, open, close, rename, duplicate and delete workspaces; each one keeps its own database, uploaded files and generated output.',
-      cards: [
+    { id: 'lifecycle', type: 'hub', section: 'Introduction', footer: 'Workspace lifecycle', kicker: 'Workspace lifecycle', title: 'One workspace, one isolated world',
+      center: { icon: 'TbFolders', title: 'Workspace' },
+      items: [
         { icon: 'TbSquarePlus', title: 'Create and open', text: 'Its name, CDR type, Country and, for super-admins, its Access, all in one row.' },
         { icon: 'TbWorld', title: 'Country', text: 'A workspace of one of the 50 listed countries starts with the Operator Maps of its mobile operators.' },
         { icon: 'TbLock', title: 'Isolated', text: 'Databases, uploaded files and generated output stay inside their workspace.' },
@@ -38,20 +37,19 @@ module.exports = {
       highlight: 3,
       note: 'A detected type and a completed upload do not mean that a dataset is ready: wait for its Processed status before analysing it.',
       notes: 'An upload proposes the type, NR Mode, Campaign and Stage of each file; once confirmed, the dataset is processed in the background. Only processed datasets can be used by the other modules.' },
-    { id: 'cdr-tables', type: 'cards', section: 'Datasets', footer: 'NetCheck CDR support', kicker: 'NetCheck CDR support', title: 'CDR tables built for analysis',
-      cards: [
+    { id: 'cdr-tables', type: 'split', section: 'Datasets', footer: 'NetCheck CDR support', kicker: 'NetCheck CDR support', title: 'CDR tables built for analysis', visual: 'tables',
+      points: [
         { icon: 'TbTable', title: 'Combined CDR tables', text: 'CDR-Data, CDR-Voice and CDR-Speech (combined) join the CDRs of each type for every module.' },
         { icon: 'TbListDetails', title: 'Fixed and derived fields', text: 'Every fixed field exists even when it is empty, and the derived analysis fields are added at ingestion.' },
         { icon: 'TbCalendarStats', title: 'Final, Weekly, Daily', text: 'Weekly and Daily CDRs, incremental or cumulative, follow a campaign while it runs, until its Final CDR.' },
         { icon: 'TbProgress', title: 'CDR Tables Updates', text: 'The background jobs that rewrite the CDR tables show their own progress.' },
       ],
       notes: 'Every dataset keeps one CDR type. The processor materialises every fixed field and adds the derived analysis fields, and the combined CDR tables join the CDRs of each type. Weekly and Daily CDRs follow a campaign while it runs.' },
-    { id: 'inspection', type: 'cards', section: 'Datasets', footer: 'Inspection and enrichment', kicker: 'Dataset inspection and enrichment',
-      title: 'See every row, enrich every CDR', columns: 3,
-      cards: [
-        { icon: 'TbEye', title: 'Dataset Preview', text: 'The persisted rows of a dataset in their own view, page by page.' },
-        { icon: 'TbMathFunction', title: 'Auto-calculated Fields', text: 'Fields calculated for the CDRs of the workspace, which every module reads.' },
-        { icon: 'TbArrowsShuffle', title: 'Vendor Mapping', text: 'Needed only for the Vendor Comparison: the vendor of the serving cell of every row.' },
+    { id: 'inspection', type: 'tiles', section: 'Datasets', footer: 'Inspection and enrichment', kicker: 'Dataset inspection and enrichment', title: 'See every row, enrich every CDR', columns: 3,
+      tiles: [
+        { mini: 'table', title: 'Dataset Preview', text: 'The persisted rows of a dataset in their own view, page by page.' },
+        { mini: 'formula', title: 'Auto-calculated Fields', text: 'Fields calculated for the CDRs of the workspace, which every module reads.' },
+        { mini: 'vendor', title: 'Vendor Mapping', text: 'Needed only for the Vendor Comparison: the vendor of the serving cell of every row.' },
       ],
       notes: 'Preview opens the persisted rows of a dataset. Auto-calculated Fields add fields to the CDRs of the workspace, and Vendor Mapping gives the vendor of every row for the Vendor Comparison.' },
     { id: 'summary', type: 'closing', section: 'Summary', footer: 'Summary', kicker: 'Summary', title: 'Everything starts here',

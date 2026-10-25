@@ -35,18 +35,18 @@ module.exports = {
         { icon: 'TbTable', title: 'Processed Metrics', text: 'The calculated records of the request, with two decimals.' },
       ],
       notes: 'The summary cards, the percentile scorecards and the Processed Metrics table give the figures behind the charts, grouped in the order of the Operator and Vendor Maps of the workspace.' },
-    { id: 'metrics', type: 'cards', section: 'Analysis', footer: 'Metrics', kicker: 'Analysis controls', title: 'Only the metrics that matter', columns: 3,
-      cards: [
-        { icon: 'TbGauge', title: 'Service KPIs', text: 'POLQA LQ, Mean Data Rate, call setup time, delays, RTT, throughput, jitter and packet loss.' },
-        { icon: 'TbAntennaBars5', title: 'Radio', text: 'RSRP, RSRQ, SINR, CQI, MCS, BLER, transmit power and throughput averages.' },
-        { icon: 'TbBan', title: 'No noise', text: 'Identifiers, phone numbers, IMEI, IMSI, timestamps and coordinates are never offered as KPIs.' },
+    { id: 'metrics', type: 'tiles', section: 'Analysis', footer: 'Metrics', kicker: 'Analysis controls', title: 'Only the metrics that matter', columns: 3,
+      tiles: [
+        { mini: 'kpi', title: 'Service KPIs', text: 'POLQA LQ, Mean Data Rate, call setup time, delays, RTT, throughput, jitter and packet loss.' },
+        { mini: 'wave', title: 'Radio', text: 'RSRP, RSRQ, SINR, CQI, MCS, BLER, transmit power and throughput averages.' },
+        { mini: 'funnel', title: 'No noise', text: 'Identifiers, phone numbers, IMEI, IMSI, timestamps and coordinates are never offered as KPIs.' },
       ],
       notes: 'The controls adapt to the CDR: the service KPIs first, then the radio and service measurements. Identifiers and coordinates are never offered as KPIs, and the filters follow a fixed order.' },
-    { id: 'export', type: 'cards', section: 'Results', footer: 'Preview and export', kicker: 'Preview and export', title: 'Inspect, export, schedule', columns: 3,
-      cards: [
-        { icon: 'TbEye', title: 'Preview Dataset', text: 'The stored fields of the CDR in pages of 100 rows.' },
-        { icon: 'TbFileTypePpt', title: 'PowerPoint and Word', text: 'One dialog exports the analysis to both documents.' },
-        { icon: 'TbReportAnalytics', title: 'Reporting', text: 'The same analysis as a Reporting Job artifact or a section of a Bundle Report Template.', chips: ['Reporting'] },
+    { id: 'export', type: 'tiles', section: 'Results', footer: 'Preview and export', kicker: 'Preview and export', title: 'Inspect, export, schedule', columns: 3,
+      tiles: [
+        { mini: 'table', title: 'Preview Dataset', text: 'The stored fields of the CDR in pages of 100 rows.' },
+        { mini: 'docs', title: 'PowerPoint and Word', text: 'One dialog exports the analysis to both documents.' },
+        { mini: 'calendar', title: 'Reporting', text: 'The same analysis as a Reporting Job artifact or a section of a Bundle Report Template.' },
       ],
       notes: 'Preview Dataset shows the stored rows; Export PowerPoint and Export Word open one dialog. Reporting includes the same analysis in its jobs and bundle reports.' },
     { id: 'summary', type: 'closing', section: 'Summary', footer: 'Summary', kicker: 'Summary', title: 'One CDR, answered fast',

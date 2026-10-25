@@ -346,6 +346,243 @@ const VISUALS = {
         + `<text x="116" y="${y + 60}" font-size="26" font-weight="700" fill="#ffffff">${name}</text><rect x="600" y="${y + 28}" width="170" height="44" rx="22" fill="${colour}"/><text x="685" y="${y + 58}" text-anchor="middle" font-size="22" font-weight="700" fill="#ffffff">${status}</text>`;
     }).join('');
   },
+  // CDR files of every kind into one combined table, with its fixed and derived fields.
+  tables(p) {
+    let out = '';
+    [['Final', 0], ['Weekly', 1], ['Daily', 2]].forEach(([name, index]) => {
+      const y = 40 + index * 150;
+      out += `<rect x="20" y="${y}" width="200" height="120" rx="16" fill="#16213a" stroke="#2a3a5c" stroke-width="2"/><text x="44" y="${y + 40}" font-size="22" font-weight="700" fill="#ffffff">${name}</text>`;
+      for (let row = 0; row < 3; row += 1) out += `<rect x="44" y="${y + 58 + row * 18}" width="${140 - row * 24}" height="10" rx="5" fill="#3a4d75"/>`;
+      out += `<path d="M228 ${y + 60} C 270 ${y + 60}, 270 280, 300 280" fill="none" stroke="${p.light}" stroke-width="4" opacity=".75"/>`;
+    });
+    out += `<rect x="300" y="60" width="500" height="440" rx="20" fill="#16213a" stroke="${p.accent}" stroke-width="3"/>`;
+    out += `<text x="330" y="104" font-size="24" font-weight="800" fill="#ffffff">Combined CDR table</text>`;
+    const columns = [['Campaign', false], ['Operator', false], ['RSRP', false], ['Region', true], ['Vendor', true]];
+    columns.forEach(([name, derived], index) => {
+      const x = 322 + index * 94;
+      out += `<rect x="${x}" y="126" width="86" height="40" rx="8" fill="${derived ? p.accent : p.deep}"/><text x="${x + 43}" y="152" text-anchor="middle" font-size="16" font-weight="700" fill="#ffffff">${name}</text>`;
+      for (let row = 0; row < 7; row += 1) out += `<rect x="${x + 8}" y="${182 + row * 36}" width="${70 - ((row + index) % 3) * 14}" height="14" rx="7" fill="${derived ? p.light : '#3a4d75'}" opacity="${derived ? 0.75 : 1}"/>`;
+    });
+    out += `<rect x="560" y="450" width="220" height="38" rx="19" fill="${p.accent}"/><text x="670" y="476" text-anchor="middle" font-size="18" font-weight="700" fill="#ffffff">Derived fields</text>`;
+    return out;
+  },
+  // Campaign names into their labels, and the vendors in their colours and order.
+  campaigns(p) {
+    const rows = [['UK_Q1_2026', '2026-Q1', 'Assigned'], ['UK_Q2_SA_2026', '2026-Q2-SA', 'Assigned'], ['UK_Q3_2026', '2026-Q3', 'Assigned'],
+      ['Drive_Extra_Leeds', 'Leeds Extra', 'Exception']];
+    let out = `<text x="30" y="44" font-size="20" fill="#9fb0cc">In the CDRs</text><text x="470" y="44" font-size="20" fill="#9fb0cc">Label</text>`;
+    rows.forEach(([name, label, status], index) => {
+      const y = 64 + index * 78;
+      out += `<rect x="20" y="${y}" width="330" height="58" rx="14" fill="#16213a" stroke="#2a3a5c" stroke-width="2"/><text x="44" y="${y + 37}" font-size="22" fill="#c9d4e6" class="mono">${name}</text>`;
+      out += `<path d="M360 ${y + 29} H440" stroke="${p.light}" stroke-width="4"/><path d="M432 ${y + 20} l12 9 l-12 9" fill="none" stroke="${p.light}" stroke-width="4"/>`;
+      out += `<rect x="460" y="${y}" width="200" height="58" rx="14" fill="${status === 'Exception' ? '#e0a020' : p.accent}"/><text x="560" y="${y + 37}" text-anchor="middle" font-size="22" font-weight="800" fill="#ffffff">${label}</text>`;
+    });
+    out += `<text x="30" y="420" font-size="20" fill="#9fb0cc">Vendors, in their order</text>`;
+    [['Ericsson', '#0255AD'], ['Nokia', '#8C00FF'], ['Huawei', '#FBBD00'], ['Samsung', '#008521']].forEach(([name, colour], index) => {
+      const x = 20 + index * 196;
+      out += `<rect x="${x}" y="440" width="182" height="96" rx="16" fill="#16213a" stroke="#2a3a5c" stroke-width="2"/><rect x="${x + 18}" y="458" width="40" height="40" rx="10" fill="${colour}"/>`
+        + `<text x="${x + 72}" y="486" font-size="22" font-weight="700" fill="#ffffff">${name}</text><text x="${x + 18}" y="522" font-size="18" fill="#9fb0cc">#${index + 1} in every chart</text>`;
+    });
+    return out;
+  },
+  // The universes pre-cached in the background, each ready to open at once.
+  cache(p) {
+    const rows = [['Every campaign', 1], ['Newest campaign', 1], ['Newest 2 campaigns', 1], ['Newest 3 campaigns', 0.7], ['Newest 4 campaigns', 0.35]];
+    let out = `<g transform="translate(30 28)">${icon('TbBolt', p.light, 40)}</g><text x="82" y="58" font-size="24" font-weight="800" fill="#ffffff">Pre-cached in the background</text>`;
+    rows.forEach(([name, share], index) => {
+      const y = 92 + index * 76;
+      out += `<rect x="20" y="${y}" width="780" height="60" rx="14" fill="#16213a" stroke="#2a3a5c" stroke-width="2"/><text x="44" y="${y + 38}" font-size="22" fill="#c9d4e6">${name}</text>`;
+      out += `<rect x="330" y="${y + 22}" width="360" height="16" rx="8" fill="#22304f"/><rect x="330" y="${y + 22}" width="${360 * share}" height="16" rx="8" fill="${share === 1 ? p.accent : p.light}"/>`;
+      out += share === 1 ? `<g transform="translate(724 ${y + 14})">${icon('TbCircleCheckFilled', '#5fbf3f', 32)}</g>` : `<text x="740" y="${y + 38}" text-anchor="middle" font-size="20" font-weight="700" fill="${p.light}">${Math.round(share * 100)}%</text>`;
+    });
+    out += `<rect x="20" y="482" width="370" height="56" rx="28" fill="#22304f"/><g transform="translate(44 494)">${icon('TbTrash', '#c9d4e6', 32)}</g><text x="92" y="518" font-size="21" font-weight="700" fill="#c9d4e6">Clear cache: results only</text>`;
+    out += `<rect x="410" y="482" width="390" height="56" rx="28" fill="${p.accent}"/><g transform="translate(434 494)">${icon('TbPlayerPlayFilled', '#ffffff', 32)}</g><text x="482" y="518" font-size="21" font-weight="700" fill="#ffffff">Presentation mode</text>`;
+    return out;
+  },
+  // A PowerPoint and a Word, fanned, with the job that builds them.
+  exports(p, { files = [['TbFileTypePpt', '#d35230', 'PowerPoint'], ['TbFileTypeDocx', '#2b579a', 'Word']], job = 'Generation job', note = 'Template slides, comments and charts kept' } = {}) {
+    let out = '';
+    const first = (820 - (300 + 210 * (files.length - 1))) / 2;
+    files.forEach(([name, colour, label], index) => {
+      const x = first + index * 210; const y = 40 + (files.length - 1 - index) * 26; const tilt = (index - (files.length - 1) / 2) * 6;
+      out += `<g transform="rotate(${tilt} ${x + 150} ${y + 190})"><rect x="${x}" y="${y}" width="300" height="380" rx="18" fill="#f4f6fb" stroke="#2a3a5c" stroke-width="2"/>`
+        + `<rect x="${x}" y="${y}" width="300" height="70" rx="18" fill="${colour}"/><rect x="${x}" y="${y + 50}" width="300" height="20" fill="${colour}"/>`
+        + `<g transform="translate(${x + 20} ${y + 14})">${icon(name, '#ffffff', 42)}</g><text x="${x + 74}" y="${y + 46}" font-size="22" font-weight="800" fill="#ffffff">${label}</text>`;
+      for (let row = 0; row < 4; row += 1) {
+        const top = y + 96 + row * 66;
+        out += `<rect x="${x + 22}" y="${top}" width="110" height="52" rx="8" fill="#dfe5ef"/><rect x="${x + 146}" y="${top + 6}" width="${120 - row * 18}" height="12" rx="6" fill="#b8c3d6"/><rect x="${x + 146}" y="${top + 28}" width="${90 - row * 10}" height="10" rx="5" fill="#cfd7e4"/>`;
+        out += `<rect x="${x + 30}" y="${top + 30}" width="14" height="16" fill="${colour}"/><rect x="${x + 50}" y="${top + 20}" width="14" height="26" fill="${colour}" opacity=".7"/><rect x="${x + 70}" y="${top + 12}" width="14" height="34" fill="${colour}" opacity=".5"/>`;
+      }
+      out += '</g>';
+    });
+    out += `<rect x="20" y="452" width="780" height="88" rx="18" fill="#16213a" stroke="#2a3a5c" stroke-width="2"/><text x="44" y="488" font-size="22" font-weight="700" fill="#ffffff">${escape(job)}</text>`
+      + `<text x="776" y="488" text-anchor="end" font-size="19" fill="#9fb0cc">${escape(note)}</text>`
+      + `<rect x="44" y="506" width="732" height="14" rx="7" fill="#22304f"/><rect x="44" y="506" width="540" height="14" rx="7" fill="${p.accent}"/>`;
+    return out;
+  },
+  // A methodology: the weight of each KPI in each environment, and the calls it leaves out.
+  weights(p) {
+    const environments = ['City', 'Towns', 'Roads'];
+    const kpis = [['Call success', [30, 26, 22]], ['Setup time', [12, 14, 10]], ['DL throughput', [24, 20, 16]], ['Video MOS', [14, 12, 18]], ['Browsing', [20, 28, 34]]];
+    let out = `<rect x="20" y="20" width="250" height="50" rx="25" fill="${p.accent}"/><text x="145" y="53" text-anchor="middle" font-size="22" font-weight="800" fill="#ffffff">NetCheck 2026</text>`;
+    environments.forEach((name, index) => { out += `<text x="${400 + index * 140}" y="104" text-anchor="middle" font-size="20" font-weight="700" fill="#9fb0cc">${name}</text>`; });
+    kpis.forEach(([name, values], row) => {
+      const y = 124 + row * 64;
+      out += `<rect x="20" y="${y}" width="780" height="52" rx="12" fill="#16213a"/><text x="40" y="${y + 33}" font-size="21" fill="#c9d4e6">${name}</text>`;
+      values.forEach((value, index) => {
+        const x = 340 + index * 140;
+        out += `<rect x="${x}" y="${y + 18}" width="120" height="16" rx="8" fill="#22304f"/><rect x="${x}" y="${y + 18}" width="${value * 3.4}" height="16" rx="8" fill="${index === 0 ? p.accent : p.light}"/>`;
+      });
+    });
+    out += `<rect x="20" y="460" width="780" height="80" rx="16" fill="#2a1d2a" stroke="#e0533d" stroke-width="2" stroke-dasharray="8 6"/>`
+      + `<g transform="translate(40 482)">${icon('TbCircleOff', '#ff8a80', 36)}</g><text x="92" y="508" font-size="22" font-weight="700" fill="#ff8a80">Excluded calls</text>`
+      + `<text x="290" y="508" font-size="20" fill="#c9d4e6" class="mono">0x4F21A · 0x8C13E · 0x19B07</text>`;
+    return out;
+  },
+  // The same chart in three themes, and the pills of the GAP.
+  themes(p) {
+    const themes = [['Ericsson', '#0b1220', ['#0082F0', '#0068BF', '#7DB8F0']], ['NetCheck', '#f4f6fb', ['#00A3AD', '#E4002B', '#7d8aa3']], ['Midnight', '#141a2e', ['#b46be8', '#5fbf3f', '#f0a830']]];
+    let out = '';
+    themes.forEach(([name, background, colours], index) => {
+      const x = 20 + index * 268;
+      out += `<rect x="${x}" y="20" width="248" height="300" rx="18" fill="${background}" stroke="#2a3a5c" stroke-width="2"/><text x="${x + 22}" y="58" font-size="22" font-weight="800" fill="${background === '#f4f6fb' ? '#1b2234' : '#ffffff'}">${name}</text>`;
+      [120, 170, 90, 200].forEach((height, bar) => { out += `<rect x="${x + 30 + bar * 52}" y="${290 - height}" width="36" height="${height}" rx="6" fill="${colours[bar % 3]}"/>`; });
+    });
+    out += `<text x="20" y="372" font-size="20" fill="#9fb0cc">GAP pills</text>`;
+    [['+3.2', '#1f9d55'], ['−1.4', '#e0533d'], ['+0.6', '#5fbf3f'], ['−4.8', '#c0392b']].forEach(([value, colour], index) => {
+      out += `<rect x="${20 + index * 150}" y="392" width="130" height="54" rx="27" fill="${colour}"/><text x="${85 + index * 150}" y="428" text-anchor="middle" font-size="24" font-weight="800" fill="#ffffff">${value}</text>`;
+    });
+    out += `<rect x="620" y="392" width="180" height="54" rx="27" fill="#22304f"/><g transform="translate(640 403)">${icon('TbStarFilled', '#f0c040', 32)}</g><text x="682" y="428" font-size="21" font-weight="700" fill="#ffffff">Favourites</text>`;
+    out += `<rect x="20" y="470" width="780" height="70" rx="16" fill="#16213a" stroke="#2a3a5c" stroke-width="2"/><g transform="translate(40 488)">${icon('TbReportAnalytics', p.light, 36)}</g><text x="92" y="514" font-size="22" font-weight="700" fill="#ffffff">Report scenarios: one click, every export</text>`;
+    return out;
+  },
+  // A serving site, how far it served, and the 5G of its tests.
+  serving(p) {
+    let out = '<rect x="0" y="0" width="520" height="560" rx="16" fill="#101a2e"/>';
+    [220, 150, 80].forEach((radius, index) => { out += `<circle cx="250" cy="300" r="${radius}" fill="none" stroke="#2a3a5c" stroke-width="2" stroke-dasharray="${index ? '8 8' : '0'}"/>`; });
+    [['1 km', 80], ['3 km', 150], ['5 km', 220]].forEach(([label, radius]) => { out += `<text x="${250 + radius * 0.72}" y="${300 - radius * 0.72}" font-size="18" fill="#9fb0cc">${label}</text>`; });
+    [[0, p.accent], [120, p.light], [240, p.series[2]]].forEach(([angle, colour]) => {
+      const start = ((angle - 30) * Math.PI) / 180; const end = ((angle + 30) * Math.PI) / 180;
+      out += `<path d="M250 300 L${(250 + 210 * Math.cos(start)).toFixed(1)} ${(300 + 210 * Math.sin(start)).toFixed(1)} A210 210 0 0 1 ${(250 + 210 * Math.cos(end)).toFixed(1)} ${(300 + 210 * Math.sin(end)).toFixed(1)} Z" fill="${colour}" opacity=".22"/>`;
+    });
+    for (let index = 0; index < 34; index += 1) {
+      const angle = index * 2.4; const distance = 40 + ((index * 53) % 190);
+      const colour = distance < 90 ? '#1f9d55' : distance < 160 ? '#c8d23a' : '#e0533d';
+      out += `<circle cx="${(250 + distance * Math.cos(angle)).toFixed(1)}" cy="${(300 + distance * Math.sin(angle)).toFixed(1)}" r="7" fill="${colour}"/>`;
+    }
+    out += `<path d="M250 272 L268 314 L232 314 Z" fill="#ffffff" stroke="${INK}" stroke-width="3"/>`;
+    const donut = (cx, cy, share, colour) => {
+      const angle = share * 2 * Math.PI - Math.PI / 2;
+      return `<circle cx="${cx}" cy="${cy}" r="62" fill="none" stroke="#22304f" stroke-width="22"/><path d="M${cx} ${cy - 62} A62 62 0 ${share > 0.5 ? 1 : 0} 1 ${(cx + 62 * Math.cos(angle)).toFixed(1)} ${(cy + 62 * Math.sin(angle)).toFixed(1)}" fill="none" stroke="${colour}" stroke-width="22" stroke-linecap="round"/>`;
+    };
+    out += `<rect x="540" y="0" width="280" height="270" rx="16" fill="#16213a" stroke="#2a3a5c" stroke-width="2"/>${donut(680, 120, 0.68, p.accent)}<text x="680" y="130" text-anchor="middle" font-size="30" font-weight="800" fill="#ffffff">68%</text><text x="680" y="236" text-anchor="middle" font-size="21" font-weight="700" fill="#c9d4e6">5G availability</text>`;
+    out += `<rect x="540" y="290" width="280" height="120" rx="16" fill="#16213a" stroke="#2a3a5c" stroke-width="2"/><text x="562" y="336" font-size="20" fill="#9fb0cc">NR cell · MIMO</text><text x="562" y="384" font-size="34" font-weight="800" fill="#ffffff">n78 · 4×4</text>`;
+    out += `<rect x="540" y="430" width="280" height="130" rx="16" fill="#16213a" stroke="#2a3a5c" stroke-width="2"/><text x="562" y="474" font-size="20" fill="#9fb0cc">Host network</text><rect x="562" y="494" width="110" height="40" rx="20" fill="#E60000"/><text x="617" y="521" text-anchor="middle" font-size="20" font-weight="700" fill="#ffffff">VF</text><rect x="684" y="494" width="110" height="40" rx="20" fill="#2D8AE6"/><text x="739" y="521" text-anchor="middle" font-size="20" font-weight="700" fill="#ffffff">3</text>`;
+    return out;
+  },
+  // The follow-up over the weeks, and the NQ rate of each operator.
+  trend(p) {
+    const weeks = ['W1', 'W2', 'W3', 'W4', 'W5', 'W6', 'W7', 'W8'];
+    const series = [['New', '#e0533d', [60, 52, 44, 40, 30, 24, 18, 12]], ['In progress', '#f0a830', [20, 34, 40, 38, 36, 30, 24, 18]], ['Closed', '#1f9d55', [4, 10, 22, 36, 52, 66, 80, 94]]];
+    let out = `<rect x="20" y="20" width="780" height="330" rx="18" fill="#16213a" stroke="#2a3a5c" stroke-width="2"/>`;
+    weeks.forEach((week, index) => { out += `<text x="${80 + index * 92}" y="336" text-anchor="middle" font-size="18" fill="#9fb0cc">${week}</text>`; });
+    series.forEach(([name, colour, values], index) => {
+      out += `<polyline points="${values.map((value, x) => `${80 + x * 92},${310 - value * 2.6}`).join(' ')}" fill="none" stroke="${colour}" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>`;
+      out += `<circle cx="${80 + 7 * 92}" cy="${310 - values[7] * 2.6}" r="9" fill="${colour}"/><rect x="${44 + index * 200}" y="40" width="20" height="20" rx="5" fill="${colour}"/><text x="${72 + index * 200}" y="57" font-size="20" fill="#c9d4e6">${name}</text>`;
+    });
+    out += `<text x="20" y="396" font-size="20" fill="#9fb0cc">NQ rate per operator</text>`;
+    [['A', 2.1], ['B', 3.4], ['C', 1.6], ['D', 4.2]].forEach(([name, rate], index) => {
+      const x = 20 + index * 198;
+      out += `<rect x="${x}" y="414" width="180" height="126" rx="16" fill="#16213a" stroke="#2a3a5c" stroke-width="2"/><text x="${x + 20}" y="452" font-size="20" fill="#9fb0cc">Operator ${name}</text>`
+        + `<text x="${x + 20}" y="502" font-size="36" font-weight="800" fill="${rate > 3 ? '#ff8a80' : '#ffffff'}">${rate.toFixed(1)}%</text><rect x="${x + 20}" y="516" width="140" height="10" rx="5" fill="#22304f"/><rect x="${x + 20}" y="516" width="${rate * 30}" height="10" rx="5" fill="${rate > 3 ? '#e0533d' : p.accent}"/>`;
+    });
+    return out;
+  },
+};
+
+// Small pictures of the tiles (360 × 150), one per idea, in the colours of the deck.
+const MINIS = {
+  table: (p) => {
+    let out = `<rect x="40" y="16" width="280" height="118" rx="12" fill="#101a2e"/><rect x="40" y="16" width="280" height="28" rx="12" fill="${p.accent}"/><rect x="40" y="32" width="280" height="12" fill="${p.accent}"/>`;
+    for (let row = 0; row < 3; row += 1) for (let col = 0; col < 4; col += 1) out += `<rect x="${54 + col * 66}" y="${56 + row * 26}" width="${48 - ((row + col) % 2) * 14}" height="12" rx="6" fill="${row === 1 && col === 2 ? p.light : '#3a4d75'}"/>`;
+    return out;
+  },
+  formula: (p) => `<rect x="40" y="30" width="120" height="90" rx="16" fill="${p.accent}"/><text x="100" y="92" text-anchor="middle" font-size="46" font-weight="800" font-style="italic" fill="#ffffff">fx</text>`
+    + `<path d="M172 75 H206" stroke="${p.light}" stroke-width="5"/><path d="M198 64 l12 11 l-12 11" fill="none" stroke="${p.light}" stroke-width="5"/>`
+    + `<rect x="222" y="20" width="98" height="110" rx="12" fill="#101a2e"/>${[0, 1, 2, 3].map((row) => `<rect x="236" y="${34 + row * 24}" width="${70 - row * 8}" height="12" rx="6" fill="${p.light}"/>`).join('')}`,
+  vendor: (p) => `<path d="M90 30 L110 120 H70 Z" fill="none" stroke="#ffffff" stroke-width="5" stroke-linejoin="round"/><path d="M78 74 H102" stroke="#ffffff" stroke-width="4"/><circle cx="90" cy="28" r="8" fill="${p.light}"/>`
+    + [['Ericsson', '#0255AD'], ['Nokia', '#8C00FF'], ['Huawei', '#FBBD00']].map(([name, colour], index) => `<rect x="150" y="${24 + index * 38}" width="170" height="30" rx="15" fill="${colour}"/><text x="235" y="${45 + index * 38}" text-anchor="middle" font-size="17" font-weight="700" fill="#ffffff">${name}</text>`).join(''),
+  polygons: (p) => `<path d="M40 40 L130 22 L150 80 L90 112 L50 96 Z" fill="${p.accent}" opacity=".9"/><path d="M130 22 L230 30 L240 90 L150 80 Z" fill="${p.light}" opacity=".7"/><path d="M150 80 L240 90 L250 130 L120 130 L90 112 Z" fill="${p.deep}"/><path d="M230 30 L320 44 L314 120 L250 130 L240 90 Z" fill="${p.accent}" opacity=".55"/>`
+    + `<path d="M40 40 L130 22 L230 30 L320 44 L314 120 L250 130 L120 130 L50 96 Z" fill="none" stroke="#ffffff" stroke-width="2.5" opacity=".8"/>`,
+  pins: (p) => `<path d="M30 110 C 100 80, 160 130, 230 90 S 320 60, 340 80" fill="none" stroke="#2a3a5c" stroke-width="8"/>`
+    + [[90, 70, p.accent], [190, 50, p.light], [280, 84, p.accent]].map(([x, y, colour]) => `<path d="M${x} ${y + 34} c-12 -16 -20 -26 -20 -36 a20 20 0 1 1 40 0 c0 10 -8 20 -20 36 Z" fill="${colour}" stroke="#ffffff" stroke-width="3"/><circle cx="${x}" cy="${y - 2}" r="7" fill="#ffffff"/>`).join(''),
+  serving: (p) => [[70, '#E60000'], [290, '#2D8AE6']].map(([x, colour]) => `<path d="M${x} 30 L${x + 18} 110 H${x - 18} Z" fill="none" stroke="${colour}" stroke-width="5" stroke-linejoin="round"/><circle cx="${x}" cy="28" r="8" fill="${colour}"/>`).join('')
+    + `<rect x="160" y="60" width="40" height="70" rx="8" fill="#ffffff"/><rect x="168" y="70" width="24" height="44" rx="3" fill="${p.deep}"/>`
+    + `<path d="M96 60 C 130 54, 140 70, 154 84" fill="none" stroke="${p.light}" stroke-width="4" stroke-dasharray="7 6"/><path d="M264 60 C 230 54, 220 70, 206 84" fill="none" stroke="${p.light}" stroke-width="4" stroke-dasharray="7 6"/>`,
+  bands: (p) => [['Low', 0.45], ['Mid', 0.75], ['High (TDD)', 1]].map(([name, share], index) => `<text x="40" y="${48 + index * 40}" font-size="18" fill="#c9d4e6">${name}</text><rect x="140" y="${33 + index * 40}" width="180" height="20" rx="10" fill="#22304f"/><rect x="140" y="${33 + index * 40}" width="${180 * share}" height="20" rx="10" fill="${index === 2 ? p.accent : p.light}"/>`).join(''),
+  gauge: (p) => `<path d="M90 120 A90 90 0 0 1 270 120" fill="none" stroke="#22304f" stroke-width="22"/><path d="M90 120 A90 90 0 0 1 238 56" fill="none" stroke="${p.accent}" stroke-width="22" stroke-linecap="round"/>`
+    + `<path d="M180 120 L232 66" stroke="#ffffff" stroke-width="6" stroke-linecap="round"/><circle cx="180" cy="120" r="12" fill="#ffffff"/><text x="180" y="100" text-anchor="middle" font-size="24" font-weight="800" fill="#ffffff">887</text>`,
+  grid: (p) => {
+    let out = '';
+    for (let row = 0; row < 4; row += 1) for (let col = 0; col < 4; col += 1) {
+      const edited = row === 2 && col === 2;
+      out += `<rect x="${50 + col * 68}" y="${16 + row * 30}" width="62" height="24" rx="6" fill="${row === 0 ? p.accent : edited ? '#fff3b0' : '#16213a'}" stroke="${edited ? '#e8c547' : '#2a3a5c'}" stroke-width="2"/>`;
+    }
+    return out;
+  },
+  dictionary: (p) => [['Setup time', 'Call Setup Duration'], ['Throughput', 'DL App Throughput'], ['RSRP', 'LTE RSRP Avg']].map(([field, column], index) => `<rect x="24" y="${18 + index * 40}" width="130" height="30" rx="15" fill="${p.accent}"/><text x="89" y="${39 + index * 40}" text-anchor="middle" font-size="16" font-weight="700" fill="#ffffff">${field}</text>`
+    + `<path d="M162 ${33 + index * 40} H186" stroke="${p.light}" stroke-width="3"/><rect x="192" y="${18 + index * 40}" width="148" height="30" rx="8" fill="#101a2e"/><text x="202" y="${38 + index * 40}" font-size="14" fill="#c9d4e6" class="mono">${column}</text>`).join(''),
+  kpi: (p) => `<text x="40" y="78" font-size="52" font-weight="800" fill="#ffffff">98.6%</text><text x="44" y="110" font-size="18" fill="#9fb0cc">Call success</text>`
+    + `<polyline points="230,110 254,96 278,102 302,76 326,58" fill="none" stroke="${p.light}" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="326" cy="58" r="8" fill="${p.accent}"/>`,
+  wave: (p) => [0.3, 0.5, 0.7, 0.9, 0.6, 0.8, 0.45].map((share, index) => `<rect x="${44 + index * 42}" y="${126 - share * 100}" width="28" height="${share * 100}" rx="6" fill="${share > 0.75 ? p.accent : share > 0.5 ? p.light : '#e0533d'}"/>`).join('')
+    + `<text x="40" y="30" font-size="18" fill="#9fb0cc">RSRP · SINR</text>`,
+  funnel: (p) => [[70, 14, '#7d8aa3'], [110, 24, '#e0533d'], [150, 12, p.light], [196, 22, '#7d8aa3'], [238, 14, '#f0a830'], [282, 24, '#7d8aa3']].map(([x, y, colour]) => `<circle cx="${x}" cy="${y}" r="8" fill="${colour}"/>`).join('')
+    + `<path d="M60 40 H300 L214 96 V118 H146 V96 Z" fill="${p.deep}" stroke="${p.light}" stroke-width="3" stroke-linejoin="round"/>`
+    + `<circle cx="166" cy="138" r="9" fill="${p.accent}"/><circle cx="194" cy="138" r="9" fill="${p.accent}"/>`
+    + `<path d="M318 30 L344 56 M344 30 L318 56" stroke="#e0533d" stroke-width="5" stroke-linecap="round"/>`,
+  docs: () => [['PPT', '#d35230', 40], ['DOCX', '#2b579a', 140], ['XLSX', '#1f7246', 240]].map(([label, colour, x]) => `<rect x="${x}" y="20" width="84" height="110" rx="10" fill="#f4f6fb"/><path d="M${x + 60} 20 L${x + 84} 44 H${x + 60} Z" fill="#cfd7e4"/><rect x="${x}" y="84" width="84" height="30" fill="${colour}"/><text x="${x + 42}" y="105" text-anchor="middle" font-size="16" font-weight="800" fill="#ffffff">${label}</text>`).join(''),
+  calendar: (p) => {
+    let out = `<rect x="40" y="18" width="190" height="116" rx="12" fill="#101a2e"/><rect x="40" y="18" width="190" height="26" rx="12" fill="${p.accent}"/><rect x="40" y="32" width="190" height="12" fill="${p.accent}"/>`;
+    for (let row = 0; row < 3; row += 1) for (let col = 0; col < 6; col += 1) out += `<rect x="${52 + col * 29}" y="${54 + row * 26}" width="20" height="18" rx="4" fill="${(row * 6 + col) % 7 === 3 ? p.light : '#2a3a5c'}"/>`;
+    return out + `<circle cx="290" cy="76" r="44" fill="none" stroke="#ffffff" stroke-width="6"/><path d="M290 76 V48 M290 76 L310 88" stroke="${p.light}" stroke-width="6" stroke-linecap="round"/>`;
+  },
+  csv: (p) => `<rect x="110" y="14" width="140" height="122" rx="12" fill="#f4f6fb"/><path d="M214 14 L250 50 H214 Z" fill="#cfd7e4"/>`
+    + [0, 1, 2, 3].map((row) => `<text x="126" y="${72 + row * 18}" font-size="15" fill="#3a4d75" class="mono">a,b,c,d</text>`).join('') + `<rect x="110" y="24" width="64" height="26" rx="6" fill="${p.accent}"/><text x="142" y="43" text-anchor="middle" font-size="15" font-weight="800" fill="#ffffff">CSV</text>`,
+  sliders: (p) => [0.3, 0.7, 0.5].map((share, index) => `<rect x="60" y="${34 + index * 38}" width="240" height="10" rx="5" fill="#22304f"/><rect x="60" y="${34 + index * 38}" width="${240 * share}" height="10" rx="5" fill="${p.accent}"/><circle cx="${60 + 240 * share}" cy="${39 + index * 38}" r="13" fill="#ffffff" stroke="${p.accent}" stroke-width="4"/>`).join(''),
+  import: (p) => `<rect x="50" y="20" width="96" height="112" rx="10" fill="#f4f6fb"/><rect x="50" y="88" width="96" height="28" fill="#1f7246"/><text x="98" y="108" text-anchor="middle" font-size="15" font-weight="800" fill="#ffffff">XLSX</text>`
+    + `<path d="M160 76 H214" stroke="${p.light}" stroke-width="6"/><path d="M204 62 l14 14 l-14 14" fill="none" stroke="${p.light}" stroke-width="6"/>`
+    + `<rect x="230" y="34" width="90" height="84" rx="14" fill="${p.accent}"/><path d="M252 76 l14 14 l26 -30" fill="none" stroke="#ffffff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>`,
+  transfer: (p) => [60, 240].map((x) => `<rect x="${x}" y="30" width="70" height="92" rx="10" fill="#101a2e" stroke="#ffffff" stroke-width="3"/>${[0, 1, 2].map((row) => `<rect x="${x + 12}" y="${44 + row * 24}" width="46" height="12" rx="5" fill="${p.light}"/>`).join('')}`).join('')
+    + `<path d="M140 62 H226" stroke="${p.accent}" stroke-width="6"/><path d="M216 50 l12 12 l-12 12" fill="none" stroke="${p.accent}" stroke-width="6"/><path d="M226 96 H140" stroke="${p.light}" stroke-width="6"/><path d="M150 84 l-12 12 l12 12" fill="none" stroke="${p.light}" stroke-width="6"/>`,
+  lock: (p) => `<rect x="70" y="64" width="90" height="70" rx="12" fill="${p.accent}"/><path d="M88 64 V46 a27 27 0 0 1 54 0 V64" fill="none" stroke="#ffffff" stroke-width="9"/><circle cx="115" cy="98" r="10" fill="#ffffff"/>`
+    + [[220, p.light], [270, '#ffffff'], [320, p.series[2]]].map(([x, colour]) => `<circle cx="${x}" cy="62" r="18" fill="${colour}"/><path d="M${x - 28} 128 a28 28 0 0 1 56 0 Z" fill="${colour}"/>`).join(''),
+  backup: (p) => `<circle cx="120" cy="76" r="50" fill="none" stroke="#ffffff" stroke-width="7"/><path d="M120 76 V44 M120 76 L144 90" stroke="${p.light}" stroke-width="7" stroke-linecap="round"/><path d="M62 54 l8 22 l20 -10" fill="none" stroke="${p.accent}" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>`
+    + [0, 1, 2].map((index) => `<ellipse cx="270" cy="${46 + index * 30}" rx="56" ry="14" fill="${index === 0 ? p.accent : p.deep}" stroke="#ffffff" stroke-width="2"/>`).join(''),
+  hints: () => [['To check', '#e0533d', 'Coverage hole'], ['Worth a look', '#f0a830', 'Overshooting'], ['Fine', '#1f9d55', 'PCI']].map(([label, colour, text], index) => `<circle cx="52" cy="${36 + index * 40}" r="11" fill="${colour}"/><text x="74" y="${42 + index * 40}" font-size="18" font-weight="700" fill="#ffffff">${text}</text><rect x="230" y="${24 + index * 40}" width="110" height="26" rx="13" fill="${colour}" opacity=".85"/><text x="285" y="${42 + index * 40}" text-anchor="middle" font-size="14" font-weight="700" fill="#ffffff">${label}</text>`).join(''),
+  compare: (p) => [['Its network', 0.82, '#e0533d', '9.0%'], ['Others', 0.12, p.light, '0.4%']].map(([name, share, colour, value], index) => `<text x="40" y="${52 + index * 56}" font-size="18" fill="#c9d4e6">${name}</text><rect x="150" y="${34 + index * 56}" width="170" height="26" rx="13" fill="#22304f"/><rect x="150" y="${34 + index * 56}" width="${Math.max(14, 170 * share)}" height="26" rx="13" fill="${colour}"/><text x="330" y="${54 + index * 56}" text-anchor="end" font-size="16" font-weight="800" fill="#ffffff">${value}</text>`).join(''),
+  tags: (p) => [['P1', '#c0392b'], ['P2', '#e0533d'], ['P3', '#f0a830'], ['Bug', p.accent], ['Feature', p.light]].map(([label, colour], index) => `<rect x="${30 + (index % 3) * 104}" y="${30 + Math.floor(index / 3) * 52}" width="94" height="38" rx="19" fill="${colour}"/><text x="${77 + (index % 3) * 104}" y="${55 + Math.floor(index / 3) * 52}" text-anchor="middle" font-size="18" font-weight="800" fill="#ffffff">${label}</text>`).join(''),
+  timeline: (p) => `<path d="M30 80 H330" stroke="#2a3a5c" stroke-width="6" stroke-linecap="round"/>`
+    + [[50, '#1f9d55'], [100, '#1f9d55'], [150, '#c8d23a'], [190, '#e0533d'], [240, '#f0a830'], [290, '#1f9d55']].map(([x, colour], index) => `<circle cx="${x}" cy="80" r="${index === 3 ? 16 : 10}" fill="${colour}" stroke="${index === 3 ? '#ffffff' : 'none'}" stroke-width="4"/>`).join('')
+    + `<text x="190" y="46" text-anchor="middle" font-size="18" font-weight="700" fill="#ffffff">the call</text><text x="50" y="122" font-size="15" fill="#9fb0cc">−15 min</text><text x="290" y="122" text-anchor="middle" font-size="15" fill="#9fb0cc">+15 min</text>`,
+  health: (p) => {
+    const angle = 0.72 * 2 * Math.PI - Math.PI / 2;
+    return `<circle cx="120" cy="76" r="50" fill="none" stroke="#22304f" stroke-width="18"/><path d="M120 26 A50 50 0 1 1 ${(120 + 50 * Math.cos(angle)).toFixed(1)} ${(76 + 50 * Math.sin(angle)).toFixed(1)}" fill="none" stroke="#f0a830" stroke-width="18" stroke-linecap="round"/>`
+      + `<text x="120" y="84" text-anchor="middle" font-size="22" font-weight="800" fill="#ffffff">4.1%</text><text x="200" y="66" font-size="18" fill="#c9d4e6">NQ rate of its site</text><text x="200" y="96" font-size="18" fill="#9fb0cc">× 1.6 its operator</text>`;
+  },
+  bars: (p) => [40, 76, 58, 104, 88, 120].map((height, index) => `<rect x="${50 + index * 46}" y="${134 - height}" width="32" height="${height}" rx="6" fill="${index === 5 ? p.accent : p.light}" opacity="${index === 5 ? 1 : 0.75}"/>`).join(''),
+  density: (p) => {
+    let out = '';
+    for (let row = 0; row < 4; row += 1) for (let col = 0; col < 7; col += 1) {
+      const x = 52 + col * 40 + (row % 2) * 20; const y = 28 + row * 32; const value = (Math.sin(col * 1.3 + row) + 1) / 2;
+      out += `<path d="M${x} ${y - 16} l14 8 v16 l-14 8 l-14 -8 v-16 Z" fill="${value > 0.6 ? p.accent : value > 0.3 ? p.light : '#2a3a5c'}" opacity="${0.5 + value / 2}"/>`;
+    }
+    return out;
+  },
+  snapshot: (p) => `${MINIS.table(p)}<circle cx="300" cy="112" r="30" fill="${p.deep}" stroke="#ffffff" stroke-width="4"/><path d="M300 112 V96 M300 112 L312 118" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>`,
+  chart: (p) => `<path d="M50 20 V130 H320" fill="none" stroke="#7d8aa3" stroke-width="3"/>` + [50, 80, 64, 100].map((height, index) => `<rect x="${80 + index * 58}" y="${126 - height}" width="38" height="${height}" rx="6" fill="${index === 3 ? p.accent : p.light}"/>`).join(''),
+  sql: (p) => [['SELECT', 'operator, avg(mos)'], ['FROM', 'cdr_voice'], ['GROUP BY', 'operator']].map(([keyword, rest], index) => `<text x="36" y="${44 + index * 36}" font-size="19" font-weight="800" fill="${p.light}" class="mono">${keyword}</text><text x="${36 + keyword.length * 12 + 10}" y="${44 + index * 36}" font-size="19" fill="#ffffff" class="mono">${rest}</text>`).join(''),
+  cdr: (p) => `${MINIS.table(p)}<circle cx="282" cy="96" r="32" fill="none" stroke="#ffffff" stroke-width="8"/><path d="M304 118 L330 144" stroke="#ffffff" stroke-width="10" stroke-linecap="round"/>`,
+  users: (p) => [[90, p.accent, 'Super-admin'], [180, p.light, 'Admin'], [270, p.series[2], 'User']].map(([x, colour, label]) => `<circle cx="${x}" cy="48" r="22" fill="${colour}"/><path d="M${x - 34} 112 a34 34 0 0 1 68 0 Z" fill="${colour}"/><text x="${x}" y="138" text-anchor="middle" font-size="15" font-weight="700" fill="#c9d4e6">${label}</text>`).join(''),
 };
 
 // -- slides ----------------------------------------------------------------------------------------------------------
@@ -399,6 +636,32 @@ const TEMPLATES = {
           <div><h3 style="font-size:30px">${escape(point.title)}</h3><p style="font-size:23px;color:var(--soft);line-height:1.4;margin-top:6px">${escape(point.text)}</p></div></div>`).join('')}</div>
       <div class="card" style="width:860px;flex:none;padding:20px"><svg width="820" height="560" viewBox="0 0 820 560" font-family="Helvetica Neue, Arial, sans-serif">${visual}</svg></div></div></div>`;
   },
+  // One idea in the middle and its parts around it, joined to it.
+  hub(slide, deck, p) {
+    const half = Math.ceil(slide.items.length / 2);
+    const sides = [slide.items.slice(0, half), slide.items.slice(half)];
+    const height = 560; const gap = 22; const width = 1696; const sideWidth = 590;
+    const lines = sides.map((items, side) => items.map((_item, index) => {
+      const itemHeight = (height - (items.length - 1) * gap) / items.length;
+      const y = index * (itemHeight + gap) + itemHeight / 2; const x = side ? width - sideWidth : sideWidth;
+      return `<path d="M${width / 2} ${height / 2} L${x} ${y.toFixed(1)}" stroke="${p.light}" stroke-width="3" stroke-dasharray="10 9" opacity=".7"/><circle cx="${x}" cy="${y.toFixed(1)}" r="9" fill="${p.accent}" stroke="#ffffff" stroke-width="3"/>`;
+    }).join('')).join('');
+    const column = (items) => `<div class="hub-side">${items.map((item) => `<div class="card hub-item">${badge(item.icon, p.accent, 60, 32)}
+      <div><h3>${escape(item.title)}</h3><p>${escape(item.text)}</p></div></div>`).join('')}</div>`;
+    return `${heading(slide)}<div class="content"><div class="hub" style="grid-template-columns:${sideWidth}px 1fr ${sideWidth}px">
+      <svg class="hub-lines" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${lines}</svg>
+      ${column(sides[0])}<div class="hub-core"><div class="hub-circle">${icon(slide.center.icon, '#ffffff', 96)}<span>${escape(slide.center.title)}</span></div></div>${column(sides[1])}</div>
+      ${slide.note ? `<p class="note">${escape(slide.note)}</p>` : ''}</div>`;
+  },
+  // Cards with a small picture each, for the ideas that are best listed.
+  tiles(slide, deck, p) {
+    const columns = slide.columns || Math.min(4, slide.tiles.length);
+    const rows = Math.ceil(slide.tiles.length / columns);
+    return `${heading(slide)}<div class="content"><div class="grid" style="grid-template-columns:repeat(${columns},1fr)">${slide.tiles.map((tile) => `
+      <div class="card tile"><div class="tile-visual" style="height:${rows > 1 ? 162 : 236}px"><svg viewBox="0 0 360 150" width="100%" height="100%" preserveAspectRatio="xMidYMid meet" font-family="Helvetica Neue, Arial, sans-serif">${MINIS[tile.mini](p)}</svg></div>
+        <h3>${escape(tile.title)}</h3><p>${escape(tile.text)}</p></div>`).join('')}</div>
+      ${slide.note ? `<p class="note">${escape(slide.note)}</p>` : ''}</div>`;
+  },
   highlights(slide, deck, p) {
     return `${heading(slide)}<div class="content"><div class="grid" style="grid-template-columns:repeat(${slide.items.length},1fr)">${slide.items.map((item) => `
       <div class="card" style="padding:40px 36px"><p style="font-size:84px;font-weight:800;letter-spacing:-2px;color:${p.light};line-height:1">${escape(item.value)}</p>
@@ -446,7 +709,23 @@ function css(p) {
   .tag i { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
   .chips { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
   .chip { font-size: 20px; font-weight: 700; padding: 7px 15px; border-radius: 12px; }
-  .mono { font-family: Menlo, 'SF Mono', Consolas, monospace; }`;
+  .mono { font-family: Menlo, 'SF Mono', Consolas, monospace; }
+  .hub { position: relative; display: grid; height: 560px; }
+  .hub-lines { position: absolute; left: 0; top: 0; z-index: 0; }
+  .hub-side { position: relative; z-index: 1; display: flex; flex-direction: column; gap: 22px; height: 560px; }
+  .hub-item { flex: 1; display: flex; gap: 22px; align-items: center; padding: 22px 28px; }
+  .hub-item h3 { font-size: 30px; }
+  .hub-item p { font-size: 22px; margin-top: 8px; }
+  .hub-core { position: relative; z-index: 1; display: grid; place-items: center; }
+  .hub-circle { width: 300px; height: 300px; border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+    background: radial-gradient(circle at 32% 28%, ${p.light}, ${p.accent} 58%, ${p.deep}); box-shadow: 0 0 90px ${p.glow}, 0 0 0 14px ${p.glow}; }
+  .hub-circle span { font-size: 28px; font-weight: 800; text-align: center; max-width: 230px; line-height: 1.15; }
+  .tile { padding: 0 0 28px; overflow: hidden; }
+  .tile-visual { padding: 12px 14px; margin-bottom: 24px; border-bottom: 1px solid var(--line);
+    background: radial-gradient(120% 140% at 0% 0%, ${p.soft}, var(--panel) 70%); }
+  .tile h3, .tile p { padding: 0 30px; }
+  .tile h3 { font-size: 30px; }
+  .tile p { font-size: 22px; }`;
 }
 
 function html(deck) {

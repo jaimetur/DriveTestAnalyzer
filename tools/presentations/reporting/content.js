@@ -17,8 +17,9 @@ module.exports = {
         { icon: 'TbPalette', title: 'One theme', text: 'The colour theme of the whole report: charts, tables and slide titles.' },
       ],
       notes: 'A Bundle Report Template builds one document from five sections. Common filters apply to every module, each module has its own campaigns, and one theme colours the whole report.' },
-    { id: 'read', type: 'cards', section: 'Bundle reports', footer: 'Built to read', kicker: 'PowerPoint and Word', title: 'Built to be read',
-      cards: [
+    { id: 'read', type: 'split', section: 'Bundle reports', footer: 'Built to read', kicker: 'PowerPoint and Word', title: 'Built to be read', visual: 'exports',
+      options: { job: 'Bundle Report Template', note: 'Sections reused, favourites kept' },
+      points: [
         { icon: 'TbFileTypePpt', title: 'PowerPoint', text: 'A table spread over several slides becomes one table on one slide.' },
         { icon: 'TbFileTypeDocx', title: 'Word', text: 'A cover, a Contents page and portrait pages in the report theme.' },
         { icon: 'TbRecycle', title: 'Reuse sections', text: 'A section already generated is reused while its data and options are the same.' },
@@ -33,11 +34,11 @@ module.exports = {
         { icon: 'TbHistory', title: 'Run history', text: 'Trigger, start, status, duration, email result and size of every run.' },
       ],
       notes: 'A Reporting Job collects artifacts of several modules, runs on demand or on a schedule and emails them with a description of each one. The run history tells how every run went.' },
-    { id: 'safe', type: 'cards', section: 'Reporting Jobs', footer: 'Permissions and portability', kicker: 'Permissions and portability', title: 'Safe to share', columns: 3,
-      cards: [
-        { icon: 'TbShieldCheck', title: 'Permissions', text: 'Only artifacts of the modules active for the user; every run checks them again.' },
-        { icon: 'TbTransfer', title: 'Portable', text: 'Reporting Jobs and Bundle Report Template Favourites travel with imports, exports and transfers.' },
-        { icon: 'TbArchive', title: 'Backed up', text: 'Workspace transfers and backups keep them.' },
+    { id: 'safe', type: 'tiles', section: 'Reporting Jobs', footer: 'Permissions and portability', kicker: 'Permissions and portability', title: 'Safe to share', columns: 3,
+      tiles: [
+        { mini: 'lock', title: 'Permissions', text: 'Only artifacts of the modules active for the user; every run checks them again.' },
+        { mini: 'transfer', title: 'Portable', text: 'Reporting Jobs and Bundle Report Template Favourites travel with imports, exports and transfers.' },
+        { mini: 'backup', title: 'Backed up', text: 'Workspace transfers and backups keep them.' },
       ],
       notes: 'A user only includes artifacts of the modules active for their account, and each run checks the permissions of the author of the job. Jobs and favourites travel between workspaces and servers.' },
     { id: 'summary', type: 'closing', section: 'Summary', footer: 'Summary', kicker: 'Summary', title: 'Reports that build themselves',

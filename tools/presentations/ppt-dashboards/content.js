@@ -9,9 +9,9 @@ module.exports = {
       lead: 'Interactive Dashboards from Report Templates: one selection of CDRs applied to every slide, explored live and exported to PowerPoint.',
       tags: ['Template-driven', 'Live charts', 'PowerPoint in the background'],
       notes: 'PPT Dashboards builds an interactive Dashboard from processed Data, Voice and Speech CDRs with a saved Report Template, applies one selection to all its slides and exports the result to PowerPoint.' },
-    { id: 'definition', type: 'cards', section: 'Introduction', footer: 'A saved definition', kicker: 'A Dashboard', title: 'A definition, not a copy of your data',
-      lead: 'It keeps its template, Scope, dates, filters and comments; its CDRs are chosen from its NR Mode and Campaign filter each time it is prepared.',
-      cards: [
+    { id: 'definition', type: 'hub', section: 'Introduction', footer: 'A saved definition', kicker: 'A Dashboard', title: 'A definition, not a copy of your data',
+      center: { icon: 'TbLayoutDashboard', title: 'A Dashboard' },
+      items: [
         { icon: 'TbTemplate', title: 'Template', text: 'A Report Template of the workspace for its NR Mode, NSA or SA.' },
         { icon: 'TbAdjustments', title: 'Scope and dates', text: 'The Scope, the vendor comparison and the dates of the slides.' },
         { icon: 'TbFilter', title: 'Filters', text: 'Campaign first, as it chooses the CDRs, then Operator, Vendor, Region, City and more.' },
@@ -46,15 +46,15 @@ module.exports = {
         { icon: 'TbPalette', title: 'Themes', text: 'Ericsson, NetCheck and the other themes colour the charts and the slide titles.' },
       ],
       notes: 'The viewer keeps the 16:9 layout of the template. Every chart opens its data, expands, refreshes, zooms and shows its definition, and the theme colours the viewer and the presentations.' },
-    { id: 'cache', type: 'cards', section: 'Workflow', footer: 'Preparation and cache', kicker: 'Preparation lifecycle and cache', title: 'Faster every time', columns: 3,
-      cards: [
+    { id: 'cache', type: 'split', section: 'Workflow', footer: 'Preparation and cache', kicker: 'Preparation lifecycle and cache', title: 'Faster every time', visual: 'cache',
+      points: [
         { icon: 'TbBolt', title: 'Background pre-caching', text: 'Up to five universes: every campaign and the newest one, two, three and four.' },
         { icon: 'TbTrash', title: 'Clear cache', text: 'Removes the prepared results only: the combined CDR tables stay the source.' },
         { icon: 'TbPlayerPlay', title: 'Presentation mode', text: 'Plays the slides, with their comments and floating tools.' },
       ],
       notes: 'Preparations run in the background and the browser follows their progress. The library pre-caches the most used universes, and Clear cache removes only prepared results.' },
-    { id: 'exports', type: 'cards', section: 'Results', footer: 'Exports', kicker: 'Generate PPT', title: 'Exports that keep the template',
-      cards: [
+    { id: 'exports', type: 'split', section: 'Results', footer: 'Exports', kicker: 'Generate PPT', title: 'Exports that keep the template', visual: 'exports',
+      points: [
         { icon: 'TbFileTypePpt', title: 'PowerPoint', text: 'Template slides, layouts, chart proportions, titles, legends and saved comments.' },
         { icon: 'TbListCheck', title: 'Generation Jobs', text: 'Jobs continue on the server after you leave the page.' },
         { icon: 'TbPhoto', title: 'Charts Panel', text: 'Find an exported chart; a saved snapshot or the live Dashboard.' },

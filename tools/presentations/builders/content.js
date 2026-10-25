@@ -24,12 +24,12 @@ module.exports = {
         { icon: 'TbDeviceFloppy', title: 'Saved queries', text: 'With a name and a description, in the workspace database.' },
       ],
       notes: 'Query Builder runs read-only SQL against the selected processed CDRs. Assistance Mode builds the common queries with form controls, SQL Mode edits SQL directly, and queries can be saved in the workspace.' },
-    { id: 'which', type: 'cards', section: 'Query Builder', footer: 'When to use which', kicker: 'The right tool', title: 'When to use which',
-      cards: [
-        { icon: 'TbChartBar', title: 'A quick chart', text: 'Chart Builder, with the Dashboard viewer.', color: '#B85B20' },
-        { icon: 'TbSql', title: 'Exact figures', text: 'Query Builder, with read-only SQL.', color: '#B85B20' },
-        { icon: 'TbPresentationAnalytics', title: 'A full template', text: 'PPT Dashboards, slide after slide.', color: '#7751B9', chips: ['PPT Dashboards'] },
-        { icon: 'TbFileAnalytics', title: 'One CDR in depth', text: 'CDR Analysis, its distributions and percentiles.', color: '#1F6FBF', chips: ['CDR Analysis'] },
+    { id: 'which', type: 'tiles', section: 'Query Builder', footer: 'When to use which', kicker: 'The right tool', title: 'When to use which',
+      tiles: [
+        { mini: 'chart', title: 'A quick chart', text: 'Chart Builder, with the Dashboard viewer.' },
+        { mini: 'sql', title: 'Exact figures', text: 'Query Builder, with read-only SQL.' },
+        { mini: 'grid', title: 'A full template', text: 'PPT Dashboards, slide after slide.' },
+        { mini: 'cdr', title: 'One CDR in depth', text: 'CDR Analysis, its distributions and percentiles.' },
       ],
       notes: 'Use Chart Builder for a quick chart, Query Builder for exact figures, PPT Dashboards for a complete template and CDR Analysis to study one CDR in depth.' },
     { id: 'summary', type: 'closing', section: 'Summary', footer: 'Summary', kicker: 'Summary', title: 'Ask the CDRs anything',

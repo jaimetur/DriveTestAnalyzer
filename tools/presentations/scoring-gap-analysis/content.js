@@ -35,16 +35,16 @@ module.exports = {
         { icon: 'TbTrendingUp', title: 'Scoring Trends', text: 'The campaigns and time split of the trends, for the country and its areas.' },
       ],
       notes: 'GAP Analysis compares the weighted points of each operator with those of the reference. Points Lost explains why each KPI lost its points, and Geographical Areas and Scoring Trends show where and when.' },
-    { id: 'methodology', type: 'cards', section: 'Methodology', footer: 'Methodology', kicker: 'Methodology', title: 'Your methodology, your rules',
-      cards: [
+    { id: 'methodology', type: 'split', section: 'Methodology', footer: 'Methodology', kicker: 'Methodology', title: 'Your methodology, your rules', visual: 'weights',
+      points: [
         { icon: 'TbJson', title: 'Named methodologies', text: 'NetCheck 2026 and 2026-Q3 shipped, editable, exchanged as portable JSON.' },
         { icon: 'TbAdjustments', title: 'Environments', text: 'Which CDR rows they include and how many points their KPIs can give.' },
         { icon: 'TbScale', title: 'KPIs and weights', text: 'Edit, replace, add and remove KPIs, their formulas and scoring rules.' },
         { icon: 'TbBan', title: 'Excluded Calls', text: 'Lists of calls left out of every scoring of the workspace.' },
       ],
       notes: 'A methodology holds its environments, KPIs, weights, thresholds and priorities. It is edited in Workspace Config, exchanged as portable JSON, and Excluded Calls leave chosen calls out of every scoring.' },
-    { id: 'share', type: 'cards', section: 'Exports', footer: 'Exports', kicker: 'Persistence and exports', title: 'Readable wherever it goes',
-      cards: [
+    { id: 'share', type: 'split', section: 'Exports', footer: 'Exports', kicker: 'Persistence and exports', title: 'Readable wherever it goes', visual: 'themes',
+      points: [
         { icon: 'TbPalette', title: 'Themes', text: 'Ericsson, NetCheck, Midnight and more, for the page and its exports.' },
         { icon: 'TbTag', title: 'Pills', text: 'Every chart and table names its area, operators and vendors.' },
         { icon: 'TbFileTypePpt', title: 'Report scenarios', text: 'National, London, the Main Cities or by Vendor, in PowerPoint and Word.' },
