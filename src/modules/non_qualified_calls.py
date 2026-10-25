@@ -241,9 +241,12 @@ ANALYSIS_CENTER_V30_STATE_KEY = 'nq_analysis_center_v30'
 # The Root Category and Root Causes of the lack of resources and the ping-pongs of the DT Analyzer RCA, and its new
 # default rules in the workspaces with rules of their own.
 ANALYSIS_CENTER_V31_STATE_KEY = 'nq_analysis_center_v31'
+# The keywords of the Root Categories of the DT Analyzer RCA, which translate the NetCheck values onto the catalog, for
+# those categories that still have none, once.
+ANALYSIS_CENTER_V32_STATE_KEY = 'nq_analysis_center_v32'
 # Set once the tables and columns of this version exist, so the requests check the schema without writing.
 SCHEMA_STATE_KEY = 'nq_calls_schema'
-SCHEMA_VERSION = '2026-10-25.2'
+SCHEMA_VERSION = '2026-10-25.3'
 # Indexed call fields that the suggestion rule can read, with their labels.
 RULE_FIELDS = {
     'failure_classification': 'Failure Classification', 'failure_category': 'Failure Category',
@@ -597,7 +600,8 @@ def _schema_ready(task_repository: Any) -> bool:
                 ANALYSIS_CENTER_V19_STATE_KEY, ANALYSIS_CENTER_V20_STATE_KEY, ANALYSIS_CENTER_V21_STATE_KEY,
                 ANALYSIS_CENTER_V22_STATE_KEY, ANALYSIS_CENTER_V23_STATE_KEY, ANALYSIS_CENTER_V24_STATE_KEY, ANALYSIS_CENTER_V25_STATE_KEY,
                 ANALYSIS_CENTER_V26_STATE_KEY, ANALYSIS_CENTER_V27_STATE_KEY, ANALYSIS_CENTER_V28_STATE_KEY,
-                ANALYSIS_CENTER_V29_STATE_KEY, ANALYSIS_CENTER_V30_STATE_KEY, ANALYSIS_CENTER_V31_STATE_KEY)
+                ANALYSIS_CENTER_V29_STATE_KEY, ANALYSIS_CENTER_V30_STATE_KEY, ANALYSIS_CENTER_V31_STATE_KEY,
+                ANALYSIS_CENTER_V32_STATE_KEY)
         states = {str(row[0]): str(row[1]) for row in connection.execute(
             f"SELECT key, value FROM workspace_state WHERE key IN ({', '.join('?' for _ in keys)})", keys)}
     return states.get(SCHEMA_STATE_KEY) == SCHEMA_VERSION and all(states.get(key) for key in keys[1:])
@@ -789,6 +793,9 @@ def ensure_nq_tables(task_repository: Any) -> None:
         _add_dta_categories(task_repository)
         nq_dta_rca.add_new_default_rules(task_repository, 2)
         task_repository.set_workspace_state(ANALYSIS_CENTER_V31_STATE_KEY, '1')
+    if not task_repository.get_workspace_state(ANALYSIS_CENTER_V32_STATE_KEY):
+        _add_dta_category_keywords(task_repository)
+        task_repository.set_workspace_state(ANALYSIS_CENTER_V32_STATE_KEY, '1')
     task_repository.set_workspace_state(SCHEMA_STATE_KEY, SCHEMA_VERSION)
 
 
@@ -839,6 +846,27 @@ def _add_dta_categories(task_repository: Any) -> None:
         task_repository.try_add_log('system', 'nq_root_causes', json.dumps(
             {'message': 'Root Categories and Root Causes of the DT Analyzer RCA added to the root cause catalog.',
              'categories': [item['name'] for item in added], 'causes': [item['name'] for item in causes], 'causes_mapped': mapped},
+            ensure_ascii=False))
+
+
+def _add_dta_category_keywords(task_repository: Any) -> None:
+    """The default keywords of the Root Categories of the DT Analyzer RCA (Protocol / Server, Authentication & Registration…)
+    for those still without any, so the values of NetCheck such as DNS or Registration reject find their category; the
+    keywords a workspace gave them stay."""
+    with task_repository.connection() as connection:
+        current = nq_catalog.stored_root_catalog(_read_root_catalog(connection))
+        defaults = {name.casefold(): keywords for name, keywords in nq_catalog.DTA_CATEGORY_KEYWORDS.items()}
+        given = []
+        for item in current['categories']:
+            keywords = defaults.get(item['name'].casefold())
+            if keywords and not item.get('keywords'):
+                item['keywords'] = list(keywords)
+                given.append(item['name'])
+        if given:
+            _write_root_catalog(connection, nq_catalog.normalize_root_catalog(current))
+    if given and hasattr(task_repository, 'try_add_log'):
+        task_repository.try_add_log('system', 'nq_root_causes', json.dumps(
+            {'message': 'Keywords of the Root Categories of the DT Analyzer RCA added to the root cause catalog.', 'categories': given},
             ensure_ascii=False))
 
 

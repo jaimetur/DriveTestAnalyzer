@@ -9,7 +9,7 @@ import pytest
 
 import src.DriveTestAnalyzer as core
 from src.modules import non_qualified_calls as nq
-from src.modules import nq_catalog, nq_dta_rca
+from src.modules import nq_catalog, nq_dta_rca, nq_rca
 from tests.test_non_qualified_calls import add_cdr, enable_module, login, query, workspace_user
 
 
@@ -322,6 +322,44 @@ def test_every_rule_gives_a_root_category_and_workspaces_get_its_categories(clie
     assert causes['Low throughput']['category'] == 'RAN Performance'
     log = next(row for row in core.repository.list_logs(limit=50) if row['action'] == 'nq_root_causes' and 'DT Analyzer' in row['details'])
     assert json.loads(log['details'])['causes_mapped'] == len(nq_catalog.DEFAULT_CAUSE_CATEGORIES)
+
+
+def test_the_netcheck_values_find_their_root_category_in_the_catalog(client, tmp_path):
+    setup_calls(client, tmp_path)
+    root = nq.list_root_causes(core.repository)
+    rule = {**(root.get('rule') or nq.DEFAULT_ROOT_CAUSE_RULE), 'comments': False, 'comment_domain': False}
+
+    def suggest(classification, category, subcategory='', comment='', technology='LTE'):
+        return nq_rca.suggest_from_text({'failure_classification': classification, 'failure_category': category,
+                                         'failure_subcategory': subcategory, 'failure_comment': comment, 'technology': technology,
+                                         'failure_technology': ''}, root, rule)
+    # A cause of the catalog gives its Root Category; the keywords of the categories of the DT Analyzer RCA give theirs.
+    assert suggest('Protocol_Problems', 'DNS', 'No response from DNS')['category'] == 'Protocol / Server'
+    assert suggest('AAA Problems', 'Registration reject')['category'] == 'Authentication & Registration'
+    assert suggest('AAA Problems', 'Tracking Area Update', 'No response')['category'] == 'Authentication & Registration'
+    assert suggest('VoLTE Problems', 'VoLTE Core', 'VoLTE Core Failure')['category'] == 'IMS / VoLTE'
+    assert suggest('RAN_Problems', 'BLER Problems', 'High UL BLER')['category'] == 'RAN Performance'
+    # The Failure Comment counts only when the Failure Category and Subcategory give nothing.
+    found = suggest('RAN Problems', 'RRC layer', 'No answer to RRC Connection Request', 'LTE(P): EARFCN 6300 / PCI 63')
+    assert (found['category'], found['cause']) == ('RAN Performance', 'RRC layer')
+    assert suggest('RAN Problems', '', '', 'no answer to RRC conn req')['cause'] == 'RRC layer'
+    # The Ericsson RCA too: a cause without a category of its own takes that of the catalog.
+    assert nq_rca.map_to_catalog('', 'DNS', root)['category'] == 'Protocol / Server'
+    # A workspace whose categories have no keywords gets the defaults once; those it gave them stay.
+    catalog = nq.list_root_causes(core.repository)
+    for item in catalog['categories']:
+        if item['name'] in nq_catalog.DTA_CATEGORY_KEYWORDS:
+            item['keywords'] = ['my words'] if item['name'] == 'Core Network' else []
+    with core.repository.connection() as connection:
+        nq._write_root_catalog(connection, nq_catalog.normalize_root_catalog(catalog))
+    core.repository.set_workspace_state(nq.ANALYSIS_CENTER_V32_STATE_KEY, '')
+    core.repository.set_workspace_state(nq.SCHEMA_STATE_KEY, '')
+    nq.ensure_nq_tables(core.repository)
+    keywords = {item['name']: item['keywords'] for item in nq.list_root_causes(core.repository)['categories']}
+    assert keywords['Authentication & Registration'] == list(nq_catalog.DTA_CATEGORY_KEYWORDS['Authentication & Registration'])
+    assert keywords['Core Network'] == ['my words']
+    log = next(row for row in core.repository.list_logs(limit=50) if row['action'] == 'nq_root_causes' and 'Keywords' in row['details'])
+    assert 'Core Network' not in json.loads(log['details'])['categories']
 
 
 def test_it_learns_from_the_decisions_of_the_analysts_when_asked(client, tmp_path):

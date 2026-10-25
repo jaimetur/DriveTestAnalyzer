@@ -356,6 +356,20 @@ DEFAULT_DOMAINS = (
     ('Device', '#7b8790', ('device',)),
     ('Operational', '#5b6b2e', ()),
 )
+# The keywords of the Root Categories of the DT Analyzer RCA (a workspace whose categories have none takes them, see
+# non_qualified_calls): the NetCheck values of each domain they translate onto the catalog, such as DNS, HTTP, Registration
+# reject or RRC layer. A domain chosen by the Failure Classification keeps them in it.
+DTA_CATEGORY_KEYWORDS = {
+    'Protocol / Server': ('protocol', 'dns', 'http', 'tcp', 'ftp', 'server'),
+    'RAN Performance': ('rrc', 'rab', 'paging', 'scg', 'bler problems', 'ran problems'),
+    'Core Network': ('core network', 'core problems', 'legacy core', 'cs problems', 'nas', 'pdn'),
+    'Authentication & Registration': ('aaa', 'authentication', 'authorization', 'registration', 'attach', 'service reject', 'area update',
+                                      'deregistered'),
+    'IMS / VoLTE': ('volte', 'ims', 'sip', 'qci1', 'qci 1'),
+    'EPS Fallback': ('epsfb', 'eps fallback'),
+    'BLER LTE': ('bler+lte', 'bler+4g'),
+    'BLER NR': ('bler+nr', 'bler+5g'),
+}
 # Root Categories of the meeting workbook: (name, domain, keywords). "a+b" needs both words.
 DEFAULT_CATEGORIES = (
     ('E2E', 'IMS/E2E', ('e2e',)),
@@ -380,15 +394,16 @@ DEFAULT_CATEGORIES = (
     ('No Failure/ Drop', 'Operational', ()),
     ('IMSI Issue', 'Core', ('imsi',)),
     ('VONR not Enabled in Source/Neighbor Site', 'IMS/E2E', ('vonr',)),
-    # The categories of the causes the DT Analyzer RCA finds outside the radio coverage and interference (nq_dta_rca).
-    ('Protocol / Server', 'Protocol', ()),
-    ('RAN Performance', 'RAN', ()),
-    ('Core Network', 'Core', ()),
-    ('Authentication & Registration', 'AAA', ()),
-    ('IMS / VoLTE', 'IMS/E2E', ()),
-    ('EPS Fallback', 'Core EPSFB', ()),
-    ('BLER LTE', 'RF', ()),
-    ('BLER NR', 'RF', ()),
+    # The categories of the causes the DT Analyzer RCA finds outside the radio coverage and interference (nq_dta_rca),
+    # with the words of the Failure Classification, Category and Subcategory of NetCheck that they stand for.
+    ('Protocol / Server', 'Protocol', DTA_CATEGORY_KEYWORDS['Protocol / Server']),
+    ('RAN Performance', 'RAN', DTA_CATEGORY_KEYWORDS['RAN Performance']),
+    ('Core Network', 'Core', DTA_CATEGORY_KEYWORDS['Core Network']),
+    ('Authentication & Registration', 'AAA', DTA_CATEGORY_KEYWORDS['Authentication & Registration']),
+    ('IMS / VoLTE', 'IMS/E2E', DTA_CATEGORY_KEYWORDS['IMS / VoLTE']),
+    ('EPS Fallback', 'Core EPSFB', DTA_CATEGORY_KEYWORDS['EPS Fallback']),
+    ('BLER LTE', 'RF', DTA_CATEGORY_KEYWORDS['BLER LTE']),
+    ('BLER NR', 'RF', DTA_CATEGORY_KEYWORDS['BLER NR']),
     ('RAN Capacity', 'RAN', ('capacity',)),
 )
 # The Root Category of the default causes of the DT Analyzer RCA categories.

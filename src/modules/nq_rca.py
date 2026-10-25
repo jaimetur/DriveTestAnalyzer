@@ -263,6 +263,12 @@ def _by_name(items: list[dict[str, Any]], value: str) -> dict[str, Any] | None:
     return next((item for item in items if normalized_text(item['name']) == key), None) if key else None
 
 
+def _category_of(root: dict[str, list[dict[str, Any]]], cause: dict[str, Any] | None) -> dict[str, Any] | None:
+    """The Root Category of the catalog a Root Cause found belongs to, for the values that name a cause but no category
+    (DNS, HTTP, RRC layer…)."""
+    return _by_name(root['categories'], str((cause or {}).get('category') or '')) if cause else None
+
+
 def _first_match(items: list[dict[str, Any]], text: str, match: str, domain: str = '') -> dict[str, Any] | None:
     for item in items:
         if domain and item.get('domain') and item['domain'] != domain:
@@ -292,7 +298,8 @@ def _memo(root: Any, rule: Any) -> dict[Any, Any]:
 
 def map_to_catalog(category: str, cause: str, root: dict[str, list[dict[str, Any]]], match: str = 'words',
                    extra_text: str = '') -> dict[str, str]:
-    """The catalog category and cause a pair of RCA values stands for: same names first, then keywords."""
+    """The catalog category and cause a pair of RCA values stands for: same names first, then keywords (without a
+    category of its own, the category of the cause found)."""
     memo = _memo(root, None)
     key = ('map', category, cause, match, extra_text)
     if key not in memo:
@@ -305,6 +312,7 @@ def _map_to_catalog(category: str, cause: str, root: dict[str, list[dict[str, An
         root['categories'], ' | '.join(normalized_text(value) for value in (category, cause, extra_text) if value), match)
     found_cause = _by_name(root['causes'], cause) or _first_match(root['causes'], normalized_text(cause), match) \
         or _first_match(root['causes'], normalized_text(category), match)
+    found_category = found_category or _category_of(root, found_cause)
     domain = (found_category or {}).get('domain') or (found_cause or {}).get('domain') or ''
     return {'domain': domain, 'category': (found_category or {}).get('name', ''), 'cause': (found_cause or {}).get('name', '')}
 
@@ -316,7 +324,9 @@ def suggest_from_text(call: Any, root: dict[str, list[dict[str, Any]]], rule: di
     1. A domain keyword in the rule's domain fields (Failure Classification) chooses the domain.
     2. Category keywords in those fields, the cause fields and the technology choose the category,
        and cause keywords in the cause fields (Failure Category, Subcategory, Comment) the cause:
-       in the domain found, when the rule keeps them in it.
+       in the domain found, when the rule keeps them in it. The Failure Comment counts only when the other cause
+       fields (the Failure Category and Subcategory) give nothing; without a category of its own, the category of
+       the cause found is the one.
     3. Without a category and cause, the comments are read the same way.
     """
     def text(fields: list[str]) -> str:
@@ -329,31 +339,36 @@ def suggest_from_text(call: Any, root: dict[str, list[dict[str, Any]]], rule: di
         return ' | '.join(value for value in values if value)
 
     domain_text = text(rule.get('domain_fields') or [])
-    cause_text = text(rule.get('cause_fields') or [])
+    fields = rule.get('cause_fields') or []
+    cause_texts = (text([field for field in fields if field != 'failure_comment']),
+                   text(['failure_comment']) if 'failure_comment' in fields else '')
     technology = text(['technology', 'failure_technology'])
     memo = _memo(root, rule)
-    key = ('suggest', domain_text, cause_text, technology, comments)
+    key = ('suggest', domain_text, cause_texts, technology, comments)
     if key not in memo:
-        memo[key] = _suggest(domain_text, cause_text, technology, comments, root, rule)
+        memo[key] = _suggest(domain_text, cause_texts, technology, comments, root, rule)
     return dict(memo[key]) if memo[key] else None
 
 
-def _suggest(domain_text: str, cause_text: str, technology: str, comments: str, root: dict[str, list[dict[str, Any]]],
+def _suggest(domain_text: str, cause_texts: tuple[str, str], technology: str, comments: str, root: dict[str, list[dict[str, Any]]],
              rule: dict[str, Any]) -> dict[str, str] | None:
     match = rule.get('match', 'words')
     domain = next((item for item in root['domains'] if keyword_found(item.get('keywords') or [], domain_text, match)), None)
     scope = domain['name'] if domain and rule.get('causes_in_domain', True) else ''
-    category_text = ' | '.join(value for value in (domain_text, cause_text, technology) if value)
-    category = _first_match(root['categories'], category_text, match, scope)
-    cause = _first_match(root['causes'], cause_text, match, scope)
+    # The Failure Category and Subcategory first, then with the Failure Comment: its free text never outweighs them.
+    primary, comment = cause_texts
+    texts = [primary, ' | '.join(value for value in (primary, comment) if value)] if comment else [primary]
+    cause = next((found for found in (_first_match(root['causes'], value, match, scope) for value in texts if value) if found), None)
+    category = next((found for found in (_first_match(root['categories'], ' | '.join(part for part in (domain_text, value, technology) if part),
+                                                      match, scope) for value in texts) if found), None) or _category_of(root, cause)
     if category or cause:
         found_domain = (domain or {}).get('name') or (category or {}).get('domain') or (cause or {}).get('domain') or ''
         return {'domain': found_domain, 'category': (category or {}).get('name', ''), 'cause': (cause or {}).get('name', ''),
                 'source': 'netcheck'}
     notes = normalized_text(comments) if rule.get('comments', True) else ''
     if notes:
-        category = _first_match(root['categories'], notes, match, scope)
         cause = _first_match(root['causes'], notes, match, scope)
+        category = _first_match(root['categories'], notes, match, scope) or _category_of(root, cause)
         if category or cause:
             found_domain = (domain or {}).get('name') or (category or {}).get('domain') or (cause or {}).get('domain') or ''
             return {'domain': found_domain, 'category': (category or {}).get('name', ''), 'cause': (cause or {}).get('name', ''),
