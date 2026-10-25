@@ -495,7 +495,7 @@ const VISUALS = {
     out += `<rect x="44" y="368" width="300" height="44" rx="12" fill="${p.accent}"/><text x="64" y="397" font-size="19" font-weight="700" fill="#ffffff">Group UK: UK · UK-SA</text>`;
     out += `<text x="362" y="398" font-size="28" font-weight="800" fill="${p.light}">+</text><rect x="392" y="368" width="200" height="44" rx="12" fill="#22304f" stroke="${p.light}" stroke-width="2"/><text x="412" y="397" font-size="19" font-weight="700" fill="#ffffff">Individual: DE</text>`;
     out += `<rect x="20" y="452" width="780" height="88" rx="18" fill="#2a2a1d" stroke="#e0a020" stroke-width="2" stroke-dasharray="8 6"/><g transform="translate(42 476)">${icon('TbUserPlus', '#f0c040', 40)}</g>`
-      + `<text x="98" y="490" font-size="22" font-weight="800" fill="#ffffff">Access request · EABCDEF</text><text x="98" y="520" font-size="19" fill="#c9d4e6">Inactive until a super-admin activates it</text>`;
+      + `<text x="98" y="490" font-size="22" font-weight="800" fill="#ffffff">Access request · EUSER05</text><text x="98" y="520" font-size="19" fill="#c9d4e6">Inactive until a super-admin activates it</text>`;
     return out;
   },
   // A week of scheduled backups, light and full, their folders and what is kept.
@@ -547,9 +547,9 @@ const VISUALS = {
       out += `<rect x="${20 + index * 262}" y="20" width="250" height="44" rx="22" fill="${colour}" stroke="${p.light}" stroke-width="2"/><text x="${145 + index * 262}" y="48" text-anchor="middle" font-size="18" font-weight="700" fill="#ffffff">${label}</text>`;
     });
     const rows = [
-      ['14:02', 'super', p.accent, 'Super Admin', 'save_user', 'User ELUILEY: role user-viewer → user-editor; Groups +UK', false],
+      ['14:02', 'super', p.accent, 'Super Admin', 'save_user', 'User EUSER01: role user-viewer → user-editor; Groups +UK', false],
       ['13:55', 'System', '#e0533d', 'Scheduler', 'scheduled_database_backup', 'Light backup of 3 workspaces, 2.1 GB in 48 s', false],
-      ['13:40', 'jaime', p.accent, 'NQ Calls', 'nq_call_map', 'Map of 0x4F21A: 2 hints to check, prepared in 1.2 s', false],
+      ['13:40', 'analyst', p.accent, 'NQ Calls', 'nq_call_map', 'Map of 0x4F21A: 2 hints to check, prepared in 1.2 s', false],
       ['13:31', 'System', '#e0533d', 'Background job', 'process_dataset_failed', 'CDR Voice Q3: the column Call_Status is missing', true],
     ];
     rows.forEach(([time, user, colour, module, action, details, error], index) => {
@@ -575,10 +575,10 @@ const VISUALS = {
       x += width + 10;
     });
     const rows = [
-      ['Ana López', 'EANALOP', 'admin', '#B0234F', ['UK', 'DE'], true, true],
-      ['Ben Smith', 'EBENSMI', 'user-editor', '#08736D', ['UK'], true, true],
-      ['Carla Ruiz', 'ECARRUI', 'user-viewer', '#4F46E5', ['DE'], true, false],
-      ['Diego Gil', 'EDIEGIL', 'user-editor', '#08736D', ['UK'], false, false],
+      ['User A', 'EUSER01', 'admin', '#B0234F', ['UK', 'DE'], true, true],
+      ['User B', 'EUSER02', 'user-editor', '#08736D', ['UK'], true, true],
+      ['User C', 'EUSER03', 'user-viewer', '#4F46E5', ['DE'], true, false],
+      ['User D', 'EUSER04', 'user-editor', '#08736D', ['UK'], false, false],
     ];
     rows.forEach(([name, username, role, profile, groups, active, selected], index) => {
       const y = 150 + index * 98;
