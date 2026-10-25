@@ -2277,6 +2277,8 @@ def sync_nq_calls(task_repository: Any, *, force: bool = False) -> dict[str, Any
                     connection.execute(f'DELETE FROM {NQ_DTA_LEARNED_TABLE} WHERE dataset_id = ?', (dataset_id,))
                     connection.execute(f'DELETE FROM {NQ_CALL_SOURCES_TABLE} WHERE dataset_id = ?', (dataset_id,))
                     connection.execute(f'DELETE FROM {NQ_CALL_POPULATION_TABLE} WHERE dataset_id = ?', (dataset_id,))
+                # What their rows learned is gone: the DT Analyzer RCA learns again once they are indexed.
+                connection.execute('DELETE FROM workspace_state WHERE key = ?', (nq_dta_rca.LEARNED_FINGERPRINT_STATE_KEY,))
                 for dataset_id, content in fresh.items():
                     row = datasets[dataset_id]
                     connection.executemany(f'INSERT OR REPLACE INTO {NQ_CALLS_TABLE} ({columns}) VALUES ({placeholders})',
@@ -3769,8 +3771,9 @@ def _refresh_dta_rca(task_repository: Any, *, force: bool = False) -> int:
 
 
 def _dta_learning_fingerprint(task_repository: Any) -> str:
-    """What the root causes learned depend on: whether it learns, the results of the rules and the decisions of the
-    analysts."""
+    """What the root causes learned depend on: whether it learns, the results of the rules, the decisions of the
+    analysts and the indexed CDRs (a workspace whose Reindex removed what it learned, before they were part of it,
+    learns again once)."""
     learn = nq_dta_rca.load_settings(task_repository)['learn']
     if not learn:
         return 'off'
@@ -3779,8 +3782,10 @@ def _dta_learning_fingerprint(task_repository: Any) -> str:
             f"SELECT call_key, root_category, root_cause FROM {NQ_CALL_TRACKING_TABLE} "
             "WHERE root_category <> '' OR root_cause <> '' ORDER BY call_key").fetchall()
         results = tuple(connection.execute(f'SELECT COUNT(*), MAX(rowid) FROM {NQ_DTA_RESULTS_TABLE}').fetchone())
+        sources = connection.execute(
+            f'SELECT dataset_id, revision, synced_at FROM {NQ_CALL_SOURCES_TABLE} ORDER BY dataset_id').fetchall()
     payload = json.dumps([str(task_repository.get_workspace_state(nq_dta_rca.FINGERPRINT_STATE_KEY) or ''), results,
-                          [tuple(row) for row in decisions]], default=str)
+                          [tuple(row) for row in decisions], [tuple(row) for row in sources]], default=str)
     return hashlib.sha1(payload.encode('utf-8')).hexdigest()
 
 

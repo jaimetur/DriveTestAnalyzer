@@ -1,6 +1,7 @@
 """DT Analyzer RCA of Non-Qualified Calls: the engine and its default rules, the inputs read from the CDR while
 indexing, the results in every place the RCA sources are listed, the editable rules and their transfer."""
 
+import hashlib
 import json
 
 import pandas as pd
@@ -365,3 +366,40 @@ def test_it_learns_from_the_decisions_of_the_analysts_when_asked(client, tmp_pat
     assert json.loads(nq.export_configuration_document(core.repository))['dta_rca_settings'] == {'learn': True}
     client.put('/api/non-qualified-calls/dta-rca/rules', json={'rules': payload['rules'], 'learn': False})
     assert detail(client, calls['0xE3'])['values']['dta_rca_cause'] == 'Potential E2E Issue'
+
+
+def test_what_it_learned_comes_back_after_a_reindex(client, tmp_path):
+    enable_module()
+    frame = pd.DataFrame({
+        'JOIN_ID': [f'0xE{index}' for index in range(4)], 'Session_ID_A': [1, 2, 3, 4], 'Operator': ['EE'] * 4,
+        'Campaign': ['UK_Q3_2026'] * 4, 'Session_Type': ['CALL'] * 4, 'Call_Status': ['Dropped'] * 4, 'status': ['Dropped'] * 4,
+        'Call_Start_Time': [f'2026-09-0{index + 1} 10:00:00' for index in range(4)], 'Technology': ['LTE'] * 4,
+        '4G_RSRP_Avg_A': [-80.0] * 4, '4G_SINR_Avg_A': [15.0] * 4, 'Cell_ID_A': ['1', '2', '3', '4'],
+    })
+    add_cdr(tmp_path, 'UK_Voice_Q3.xlsx', 'voice', frame)
+    login(client)
+    calls = {call['join_id']: call for call in query(client)['calls']}
+    for key in ('0xE0', '0xE1', '0xE2'):
+        client.patch(f"/api/non-qualified-calls/calls/{calls[key]['call_key']}",
+                     json={'changes': {'root_category': 'Poor Coverage LTE', 'root_cause': 'LOS but weak signal'}})
+    rules = client.get('/api/non-qualified-calls/dta-rca/rules').json()['rules']
+    client.put('/api/non-qualified-calls/dta-rca/rules', json={'rules': rules, 'learn': True})
+    assert client.get('/api/non-qualified-calls/dta-rca/rules').json()['learned'] == 4
+    # A Reindex removes what the rows of every CDR learned and gives their results the same count and row numbers: the
+    # calls learn again.
+    assert client.post('/api/non-qualified-calls/reindex').status_code == 200
+    calls = {call['join_id']: call for call in query(client)['calls']}
+    assert client.get('/api/non-qualified-calls/dta-rca/rules').json()['learned'] == 4
+    assert detail(client, calls['0xE3'])['values']['dta_rca_cause'] == 'LOS but weak signal'
+    # A workspace a Reindex left without what it learned, with the fingerprint of before (without the indexed CDRs),
+    # learns again once.
+    with core.repository.connection() as connection:
+        connection.execute(f'DELETE FROM {nq.NQ_DTA_LEARNED_TABLE}')
+        decisions = connection.execute(f"SELECT call_key, root_category, root_cause FROM {nq.NQ_CALL_TRACKING_TABLE} "
+                                       "WHERE root_category <> '' OR root_cause <> '' ORDER BY call_key").fetchall()
+        results = tuple(connection.execute(f'SELECT COUNT(*), MAX(rowid) FROM {nq.NQ_DTA_RESULTS_TABLE}').fetchone())
+    before = json.dumps([core.repository.get_workspace_state(nq_dta_rca.FINGERPRINT_STATE_KEY), results,
+                         [tuple(row) for row in decisions]], default=str)
+    core.repository.set_workspace_state(nq_dta_rca.LEARNED_FINGERPRINT_STATE_KEY, hashlib.sha1(before.encode('utf-8')).hexdigest())
+    query(client)
+    assert client.get('/api/non-qualified-calls/dta-rca/rules').json()['learned'] == 4
