@@ -48,6 +48,7 @@ Before version 0.6.0 the application was named Dashboard Analytic. Variables wit
 - **Chromium Executable** accepts an absolute executable path. Saving it restarts the shared Canvas renderer, so the next chart uses the selected browser.
 - **Ignore event time filtering** ignores Dashboard, CDR Analysis and template conditions based on `Event_Start_Time` or `Event_End_Time`. Use it when source timestamps are incomplete and must not exclude valid rows.
 - **Maximum simultaneous tasks** sets the background concurrency from 1 to 32, which is also how many datasets of a workspace are processed in parallel; the effective limit reserves one logical CPU for interactive requests.
+- **Public address of the server** (`https://name[:port]`) is the address of the links of the presentations and of their previews; empty, they take the address each user opened the application with.
 
 See [Application Config](app-config.md) for the complete in-app workflow. Workspace-owned Report Templates and chart mappings are managed separately in [Workspace Config](workspace-config.md) and require an active workspace.
 

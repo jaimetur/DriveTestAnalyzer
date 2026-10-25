@@ -340,8 +340,11 @@ def test_a_direct_link_opens_its_presentation_in_the_slide_viewer(client):
     footer = script[script.index('<footer class="presentation-dialog-actions">'):script.index('</footer>')]
     # Copy link, on each card and beside Close in the viewer, copies the link of the presentation (of the slide shown).
     assert footer.index('data-presentation-link') < footer.index('data-presentation-close>Close</button>')
-    assert "share.addEventListener('click', () => copyLink(share, linkOf(presentation)));" in script
-    assert "share.addEventListener('click', () => copyLink(share, linkOf(current, viewerIndex)));" in script
+    assert "share.addEventListener('click', () => copyLink(share, shareOf(presentation)));" in script
+    assert "share.addEventListener('click', () => copyLink(share, shareOf(current, viewerIndex)));" in script
+    # It is the short link of the presentation, at the public address of the server when it has one.
+    assert "`${linkBase || window.location.origin}/presentations/${encodeURIComponent(presentation.id)}${index > 0 ? `?slide=${index + 1}` : ''}`" in script
+    assert "linkBase = data.link_base || '';" in script
     # The link is the page with the presentation and its slide, which the viewer opens once it is there, also where the
     # page is not a secure context; while it is open, the address of the page is that link.
     assert "url.searchParams.set('presentation', presentation.id);" in script and "url.searchParams.set('slide', String(index + 1));" in script
@@ -350,6 +353,13 @@ def test_a_direct_link_opens_its_presentation_in_the_slide_viewer(client):
     # Whoever has not signed in opens it too.
     client.cookies.clear()
     assert client.get('/documents/view/help/help.md?presentation=workspace-config&slide=3').status_code == 200
+    # The short link opens it in Product Presentations (no .md for an app to take as a domain).
+    response = client.get('/presentations/workspace-config?slide=3', follow_redirects=False)
+    assert response.status_code == 302 and response.headers['location'] == '/documents/view/help/presentations.md?presentation=workspace-config&slide=3'
+    assert client.get('/presentations/workspace-config', follow_redirects=False).headers['location'].endswith('?presentation=workspace-config')
+    assert client.get('/presentations', follow_redirects=False).headers['location'] == '/documents/view/help/presentations.md'
+    assert client.get('/presentations/workspace-config?slide=3').status_code == 200
+    assert client.get('/api/presentations').json()['link_base'] == ''
     for chapter in ('help', 'presentations'):
         assert '**Copy link**, on each card and beside **Close** in the viewer' in (root / 'help' / f'{chapter}.md').read_text(encoding='utf-8')
 
@@ -375,7 +385,7 @@ def test_the_link_of_a_presentation_shows_its_title_and_the_picture_of_its_slide
     assert '<meta property="og:description" content="Slide 2 of 3: Datasets. Datasets &amp; campaigns.">' in page
     assert '<meta property="og:image" content="http://testserver/presentations/preview/workspace/2.jpg?v=abc">' in page
     assert '<meta name="twitter:card" content="summary_large_image">' in page
-    assert 'content="http://testserver/documents/view/help/help.md?presentation=workspace&amp;slide=2"' in page
+    assert '<meta property="og:url" content="http://testserver/presentations/workspace?slide=2">' in page
     # Its cover without a slide, and the first of the help home too.
     home = client.get('/documents/view/help?presentation=workspace').text
     assert '<meta property="og:description" content="Datasets &amp; campaigns.">' in home and '/presentations/preview/workspace/1.jpg' in home
@@ -395,6 +405,15 @@ def test_the_link_of_a_presentation_shows_its_title_and_the_picture_of_its_slide
     assert f'content="{presentations.HELP_CHAPTER_PREVIEW["description"]}"' in chapter
     assert '<meta property="og:image" content="http://testserver/presentations/preview/full-presentation/1.jpg?v=abc">' in chapter
     assert 'og:image' not in client.get('/documents/view/help/overview.md').text
+    # The short links lead the apps to the same preview.
+    assert '<meta property="og:title" content="Product Presentations">' in client.get('/presentations').text
+    assert 'Slide 2 of 3: Datasets.' in client.get('/presentations/workspace?slide=2').text
+    # With a public address, the links and their pictures use it, whatever address the page was opened with.
+    core.repository.set_application_state(core.RUNTIME_CONFIGURATION_STATE_KEY, json.dumps({'public_address': 'https://dta.example.com:8443'}))
+    page = client.get('/presentations/workspace?slide=2').text
+    assert '<meta property="og:url" content="https://dta.example.com:8443/presentations/workspace?slide=2">' in page
+    assert '<meta property="og:image" content="https://dta.example.com:8443/presentations/preview/workspace/2.jpg?v=abc">' in page
+    assert client.get('/api/presentations').json()['link_base'] == 'https://dta.example.com:8443'
     assert client.get('/presentations/preview/full-presentation/3.jpg').status_code == 200 and (current / 'workspace' / 'preview-03.jpg').is_file()
     # A slide beyond the last is the last; an unknown presentation shows the page as always.
     assert 'Slide 3 of 3: Campaigns.' in client.get('/documents/view/help/help.md?presentation=workspace&slide=9').text

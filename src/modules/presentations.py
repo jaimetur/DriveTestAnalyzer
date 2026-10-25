@@ -21,7 +21,8 @@ import time
 from contextlib import closing
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
+from urllib.parse import quote, urlencode
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 GENERATOR = PROJECT_ROOT / 'tools' / 'presentations'
@@ -405,13 +406,28 @@ class PresentationGenerator:
 
 
 _GENERATOR: PresentationGenerator | None = None
+# The public address of the server set in Application Config ('' when not set: each link takes the address it was opened with).
+_PUBLIC_ADDRESS: Callable[[], str] = lambda: ''
 
 
 # The Help chapter of every presentation: its link shows the Full Presentation where it is shared.
 HELP_CHAPTER = 'presentations.md'
+HELP_CHAPTER_URL = f'/documents/view/help/{HELP_CHAPTER}'
 HELP_CHAPTER_PREVIEW = {'presentation': 'full-presentation', 'title': 'Product Presentations',
                         'description': 'Every presentation of DriveTest Analyzer: those of the tool, of every main module, of Workspace '
                                        'Config and of Administration, and the Full Presentation that joins them all.'}
+
+
+def link_base(request: Any) -> str:
+    """The address of the links the server shares: its public address, or the one the request came to."""
+    return _PUBLIC_ADDRESS() or str(request.base_url).rstrip('/')
+
+
+def share_link(base: str, presentation_id: str = '', index: int = 0) -> str:
+    """The short link of a presentation at slide ``index`` (from 0), or of Product Presentations without one."""
+    if not presentation_id:
+        return f'{base}/presentations'
+    return f'{base}/presentations/{quote(presentation_id)}' + (f'?slide={index + 1}' if index else '')
 
 
 def link_preview(request: Any, chapter: str = '') -> dict[str, Any] | None:
@@ -435,9 +451,10 @@ def link_preview(request: Any, chapter: str = '') -> dict[str, Any] | None:
     title, description = (item['title'], str(item.get('description') or '')) if asked else (HELP_CHAPTER_PREVIEW['title'], HELP_CHAPTER_PREVIEW['description'])
     if index:
         description = f'Slide {index + 1} of {len(titles)}: {titles[index]}. {description}'
-    base = str(request.base_url).rstrip('/')
+    base = link_base(request)
     version = manifest.get('key') or manifest.get('generated_at') or ''
-    return {'title': title, 'description': description, 'url': str(request.url), 'width': PREVIEW_SIZE[0], 'height': PREVIEW_SIZE[1],
+    return {'title': title, 'description': description, 'url': share_link(base, item['id'] if asked else '', index),
+            'width': PREVIEW_SIZE[0], 'height': PREVIEW_SIZE[1],
             'image': f"{base}/presentations/preview/{item['id']}/{index + 1}.jpg" + (f'?v={version}' if version else '')}
 
 
@@ -480,8 +497,9 @@ def install_presentation_routes(core: Any) -> None:
     from fastapi import Depends, Form, HTTPException
     from fastapi.responses import FileResponse, RedirectResponse
 
-    global _GENERATOR
+    global _GENERATOR, _PUBLIC_ADDRESS
     _GENERATOR = generator = PresentationGenerator(lambda: core.settings.data_dir, lambda *event: core.repository.try_add_log(*event))
+    _PUBLIC_ADDRESS = lambda: str(core.runtime_configuration().get('public_address') or '')
     app = core.app
 
     @app.get('/api/presentations')
@@ -490,7 +508,8 @@ def install_presentation_routes(core: Any) -> None:
         if user is not None:
             generator.ensure(presentation_figures(core), user.username)
         manifest = generator.manifest()
-        return {**manifest, 'base': '/presentations/files', 'updating': generator.running, 'unavailable': generator.unavailable()}
+        return {**manifest, 'base': '/presentations/files', 'updating': generator.running, 'unavailable': generator.unavailable(),
+                'link_base': _PUBLIC_ADDRESS()}
 
     @app.get('/api/presentations/status')
     def presentations_status(user=Depends(core.super_admin_user)) -> dict[str, Any]:
@@ -503,6 +522,17 @@ def install_presentation_routes(core: Any) -> None:
         if path is None:
             raise HTTPException(status_code=404, detail='Presentation slide not found.')
         return FileResponse(path, media_type='image/jpeg', headers={'Cache-Control': 'public, max-age=86400'})
+
+    # The short links Copy link gives (no .md for an app to take as a domain): Product Presentations, which opens the
+    # presentation at its slide in the slide viewer; the apps that preview a link follow it to its picture.
+    @app.get('/presentations')
+    def presentations_link():
+        return RedirectResponse(HELP_CHAPTER_URL, status_code=302)
+
+    @app.get('/presentations/{presentation_id}')
+    def presentation_link(presentation_id: str, slide: int = 1):
+        query = {'presentation': presentation_id, **({'slide': slide} if slide > 1 else {})}
+        return RedirectResponse(f'{HELP_CHAPTER_URL}?{urlencode(query)}', status_code=302)
 
     @app.get('/presentations/files/{relative:path}')
     def presentation_file(relative: str):

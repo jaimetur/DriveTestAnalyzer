@@ -64,6 +64,14 @@
         </label>
       </section>
 
+      <section class="configuration-card" data-configuration-card>
+        <div class="configuration-card-head"><p class="eyebrow">Shared Links</p><h3>Public Address</h3></div>
+        <label>Public address of the server
+          <input type="url" name="public_address" value="{{ configuration.public_address }}" placeholder="https://dta.example.com:8443" autocomplete="off" spellcheck="false">
+          <span class="table-help">The address of the links of the presentations (Copy link) and of their previews. Give the name of the server rather than its IP: WhatsApp on Android does not open links with an IP. Leave it empty to use the address each user opened the application with.</span>
+        </label>
+      </section>
+
       <div class="form-actions configuration-field-wide">
         <button type="submit">Save Configuration</button>
       </div>

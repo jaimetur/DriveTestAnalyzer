@@ -29,6 +29,7 @@ Persisted values are stored in the application database and take precedence over
 - **Chromium Executable** optionally selects an executable browser for Canvas rendering. Leave it empty to use the deployment setting or automatic detection.
 - **Ignore event time filtering** ignores date and template conditions based on `Event_Start_Time` or `Event_End_Time`.
 - **Maximum simultaneous tasks** sets the background task limit from 1 to 32: the datasets of a workspace are processed in parallel up to this limit (the mappings of an upload first, which its CDRs wait for), while its combined tables, Auto-calculated Fields and Scoring jobs run one at a time. The effective limit reserves one logical CPU for interactive requests (with 8 CPUs, up to 7 tasks).
+- **Public address of the server** (`https://name[:port]`, without a path) is the address of the links of the presentations that **Copy link** gives and of their previews, whatever address each user opened the application with (see [Product Presentations](presentations.md)). Give the name of the server rather than its IP: WhatsApp on Android opens no link with an IP. Leave it empty to use the address each user opened the application with.
 
 Select **Save Configuration** to persist the values. Saving restarts the shared Canvas renderer so later charts use the selected renderer and browser.
 

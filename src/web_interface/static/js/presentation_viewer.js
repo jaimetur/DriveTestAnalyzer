@@ -9,6 +9,8 @@
   let manifest = null;
   let base = '/presentations/files';
   let version = '';
+  // The public address of the server (Application Config) that the links it shares use; without one, this page's.
+  let linkBase = '';
   const load = () => {
     manifest = manifest || fetch('/api/presentations', {cache: 'no-cache', credentials: 'same-origin'}).then((response) => {
       if (!response.ok) throw new Error('The presentations could not be loaded.');
@@ -16,6 +18,7 @@
     }).then((data) => {
       base = data.base || base;
       version = data.key || data.generated_at || '';
+      linkBase = data.link_base || '';
       return data;
     });
     return manifest;
@@ -42,7 +45,11 @@
       {index: index++, title, section: section.title, source: section.presentation, position})));
   };
   const count = (total) => `${total} slide${total === 1 ? '' : 's'}`;
-  // The direct link of a presentation (at a slide other than the first): this page, which opens it in the slide viewer.
+  // The link Copy link gives: the short one of a presentation (at a slide other than the first), which opens it in the
+  // slide viewer of Product Presentations, at the public address of the server when it has one.
+  const shareOf = (presentation, index = 0) => (
+    `${linkBase || window.location.origin}/presentations/${encodeURIComponent(presentation.id)}${index > 0 ? `?slide=${index + 1}` : ''}`);
+  // The address of this page while a presentation is open (at a slide other than the first), which opens it again.
   const linkOf = (presentation, index = 0) => {
     const url = new URL(window.location.pathname, window.location.origin);
     url.searchParams.set('presentation', presentation.id);
@@ -123,7 +130,7 @@
     const share = node('button', 'Copy link', 'presentation-card-link');
     share.type = 'button';
     share.title = 'Copy the direct link of this presentation: it opens it in the slide viewer';
-    share.addEventListener('click', () => copyLink(share, linkOf(presentation)));
+    share.addEventListener('click', () => copyLink(share, shareOf(presentation)));
     actions.append(download, share);
     item.append(open, actions);
     return item;
@@ -283,7 +290,7 @@
     };
     dialog.querySelectorAll('[data-presentation-close]').forEach((button) => button.addEventListener('click', () => dialog.close()));
     const share = dialog.querySelector('[data-presentation-link]');
-    share.addEventListener('click', () => copyLink(share, linkOf(current, viewerIndex)));
+    share.addEventListener('click', () => copyLink(share, shareOf(current, viewerIndex)));
     // Closed, the page has its own address again.
     dialog.addEventListener('close', () => {
       const url = new URL(window.location.href);

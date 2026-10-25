@@ -1356,7 +1356,8 @@ def test_config_page_persists_runtime_overrides(client, monkeypatch) -> None:
     assert 'href="/application-config"' in page.text
     assert 'data-configuration-timezone-picker' in page.text
     assert 'data-timezone="Europe/Madrid"' in page.text
-    assert page.text.count('data-configuration-card') == 6
+    assert page.text.count('data-configuration-card') == 7
+    assert 'name="public_address" value="" placeholder="https://dta.example.com:8443"' in page.text
     assert 'name="max_background_tasks" value="1" min="1" max="32"' in page.text
     assert '<section class="configuration-card configuration-field-wide" data-configuration-card>' not in page.text
 
@@ -1377,6 +1378,17 @@ def test_config_page_persists_runtime_overrides(client, monkeypatch) -> None:
     assert persisted['max_background_tasks'] == 1
     assert app_module.os.environ['DRIVETEST_ANALYZER_REPORT_CHART_RENDERER'] == 'pil'
     assert app_module.os.environ['IGNORE_EVENT_TIME_FILTERING'] == 'true'
+    assert persisted['public_address'] == ''
+    # The public address of the server: a name with its port, without a path (the trailing slash is dropped).
+    form = {'timezone_name': 'UTC', 'report_chart_renderer': 'pil', 'max_background_tasks': '1'}
+    for wrong in ('dta.example.com', 'ftp://dta.example.com', 'https://dta.example.com/help', 'https://dta.example.com:99999'):
+        assert client.post('/application-config', data={**form, 'public_address': wrong}).status_code == 400, wrong
+    response = client.post('/application-config', data={**form, 'public_address': ' https://DTA.example.com:8443/ '}, follow_redirects=False)
+    assert response.status_code == 303 and app_module.runtime_configuration()['public_address'] == 'https://dta.example.com:8443'
+    assert 'value="https://dta.example.com:8443"' in client.get('/application-config').text
+    event = app_module.repository.list_logs(limit=1)[0]
+    assert event['action'] == 'save_application_configuration'
+    assert json.loads(event['details'])['changes']['public_address'] == ['', 'https://dta.example.com:8443']
 
 
 def test_cdr_materialisation_adds_workspace_dimensions_to_dataset_rows() -> None:

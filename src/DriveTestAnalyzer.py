@@ -276,7 +276,24 @@ DEPLOYMENT_RUNTIME_DEFAULTS = {
     'chromium_path': str(os.environ.get('DRIVETEST_ANALYZER_CHROMIUM') or '').strip(),
     'ignore_event_time_filtering': env_flag(IGNORE_EVENT_TIME_FILTERING_ENV),
     'max_background_tasks': configured_background_task_limit(os.environ.get('DRIVETEST_ANALYZER_MAX_BACKGROUND_TASKS')),
+    # The address of the server in the links it shares; empty, each link takes the address it was opened with.
+    'public_address': '',
 }
+
+
+def public_address_value(raw: str) -> str:
+    """The public address of the server as ``https://name[:port]`` (empty when not set); anything else is refused."""
+    value = str(raw or '').strip().rstrip('/')
+    if not value:
+        return ''
+    parsed = urlsplit(value)
+    try:
+        parsed.port
+    except ValueError as exc:
+        raise ValueError('Enter the public address with a valid port, for example https://dta.example.com:8443.') from exc
+    if parsed.scheme not in {'http', 'https'} or not parsed.hostname or parsed.path or parsed.query or parsed.fragment or parsed.username:
+        raise ValueError('Enter the public address as http(s)://name[:port], without a path, for example https://dta.example.com:8443.')
+    return f'{parsed.scheme}://{parsed.netloc.lower()}'
 
 
 def runtime_configuration() -> dict[str, Any]:
@@ -294,6 +311,7 @@ def runtime_configuration() -> dict[str, Any]:
     values['chromium_path'] = str(values.get('chromium_path') or '').strip()
     values['ignore_event_time_filtering'] = bool(values.get('ignore_event_time_filtering'))
     values['max_background_tasks'] = configured_background_task_limit(values.get('max_background_tasks'))
+    values['public_address'] = str(values.get('public_address') or '').strip()
     values['configured'] = configured
     return values
 
@@ -23657,6 +23675,7 @@ def save_configuration(
     chromium_path: str = Form(''),
     ignore_event_time_filtering_value: bool = Form(False, alias='ignore_event_time_filtering'),
     max_background_tasks: int = Form(1),
+    public_address: str = Form(''),
     user: SessionUser = Depends(config_editor_user),
 ) -> RedirectResponse:
     timezone_name = timezone_name.strip()
@@ -23676,12 +23695,17 @@ def save_configuration(
         if not executable.is_file() or not os.access(executable, os.X_OK):
             raise HTTPException(status_code=400, detail='Chromium path must identify an executable file on this server.')
         chromium_path = str(executable.resolve())
+    try:
+        public_address = public_address_value(public_address)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     values = {
         'timezone': timezone_name,
         'report_chart_renderer': renderer,
         'chromium_path': chromium_path,
         'ignore_event_time_filtering': bool(ignore_event_time_filtering_value),
         'max_background_tasks': max_background_tasks,
+        'public_address': public_address,
     }
     before = {key: runtime_configuration().get(key) for key in values}
     repository.set_application_state(RUNTIME_CONFIGURATION_STATE_KEY, json.dumps(values, sort_keys=True))
@@ -23693,6 +23717,7 @@ def save_configuration(
         'chromium_configured': bool(chromium_path),
         'ignore_event_time_filtering': bool(ignore_event_time_filtering_value),
         'max_background_tasks': max_background_tasks,
+        'public_address': public_address,
         'changes': changed_values(before, values),
     }))
     return RedirectResponse('/application-config?notice=Configuration+saved.', status_code=status.HTTP_303_SEE_OTHER)
