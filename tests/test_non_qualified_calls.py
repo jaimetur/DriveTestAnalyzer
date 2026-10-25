@@ -605,7 +605,7 @@ def test_root_cause_taxonomy_imports_with_the_tracking_and_shows_in_exports(clie
     # The Root Cause Sources, then the Root Cause Analysis of every source with its tables, between the NQ rates and the Lifecycle:
     # the source in bold in the title, and what each slide shows in its subtitle.
     assert list(dict.fromkeys(title for title in titles if title.startswith('Root Cause Analysis'))) == [
-        'Root Cause Analysis · NetCheck RCA', 'Root Cause Analysis · Ericsson RCA', 'Root Cause Analysis · DT Analyzer RCA',
+        'Root Cause Analysis · DT Analyzer RCA', 'Root Cause Analysis · NetCheck RCA', 'Root Cause Analysis · Ericsson RCA',
         'Root Cause Analysis · Analysts']
     subtitles = {(paragraphs[0].text, paragraphs[1].text) for paragraphs in headers if len(paragraphs) > 1}
     assert {('Root Cause Analysis · NetCheck RCA', 'Root Domains by Call Type and NSA vs SA'),

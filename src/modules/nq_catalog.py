@@ -161,12 +161,22 @@ DEFAULT_TEAMS = (
 )
 # The 37 fields of the meeting workbook and those its analyses add (the initial root category and cause, the priority,
 # analyst and reviewer, a description, the implementation team and the planned fiscal year), in its order (the order
-# of the table and of the Excel export) but with the NetCheck RCA before the Ericsson RCA, with the initial category and
-# subcategory of the script before its suggestion and its evidence after it, then the DT Analyzer RCA, the Last
+# of the table and of the Excel export) but with the DT Analyzer RCA first, then the NetCheck RCA and the Ericsson RCA, with
+# the initial category and subcategory of the script before its suggestion and its evidence after it, then the Last
 # Cell ID and Failure Comment of
 # the CDR in Failure Details and the Analysis fields in the order of the call panel: the long texts (Description,
 # Findings, Proposed Measure) last.
 DEFAULT_FIELDS = (
+    _field('dta_rca_domain', 'DT Analyzer RCA Root Domain', 'rca', 'text', 'dta', 'dta_domain',
+           description='Root domain the DT Analyzer RCA finds from the data of the CDR (that of its category, else of its cause).'),
+    _field('dta_rca_category', 'DT Analyzer RCA Root Category', 'rca', 'text', 'dta', 'dta_category',
+           description='Root Category of the catalog the DT Analyzer RCA finds from the data of the CDR.'),
+    _field('dta_rca_cause', 'DT Analyzer RCA Root Cause', 'rca', 'text', 'dta', 'dta_cause',
+           description='Root Cause of the catalog the DT Analyzer RCA finds from the data of the CDR.'),
+    _field('dta_rca_rule', 'DT Analyzer RCA Rule', 'rca', 'text', 'dta', 'dta_rule',
+           description='The rule of the DT Analyzer RCA that explains the failure (the first one whose conditions hold).'),
+    _field('dta_rca_evidence', 'DT Analyzer RCA Evidence', 'rca', 'long_text', 'dta', 'dta_evidence',
+           description='Why the DT Analyzer RCA chose its root cause: the values of the call that met the rule.'),
     _field('netcheck_failure_classification', 'NetCheck RCA Failure Classification', 'rca', 'text', 'cdr', 'failure_classification',
            description='Failure classification of the NetCheck RCA (CDR Failure_Classification).'),
     _field('netcheck_suggested_category', 'NetCheck RCA Suggested Category', 'rca', 'text', 'cdr', 'failure_category',
@@ -191,16 +201,6 @@ DEFAULT_FIELDS = (
            description='Root cause suggested by the Ericsson RCA (Final_RCA_Subcategory of its Auto RCA output).'),
     _field('rca_evidence', 'Ericsson RCA Evidence', 'rca', 'long_text', 'rca', 'rca_evidence',
            description='Why the Ericsson RCA chose its category: the measurements and the condition that matched.'),
-    _field('dta_rca_domain', 'DT Analyzer RCA Root Domain', 'rca', 'text', 'dta', 'dta_domain',
-           description='Root domain the DT Analyzer RCA finds from the data of the CDR (that of its category, else of its cause).'),
-    _field('dta_rca_category', 'DT Analyzer RCA Root Category', 'rca', 'text', 'dta', 'dta_category',
-           description='Root Category of the catalog the DT Analyzer RCA finds from the data of the CDR.'),
-    _field('dta_rca_cause', 'DT Analyzer RCA Root Cause', 'rca', 'text', 'dta', 'dta_cause',
-           description='Root Cause of the catalog the DT Analyzer RCA finds from the data of the CDR.'),
-    _field('dta_rca_rule', 'DT Analyzer RCA Rule', 'rca', 'text', 'dta', 'dta_rule',
-           description='The rule of the DT Analyzer RCA that explains the failure (the first one whose conditions hold).'),
-    _field('dta_rca_evidence', 'DT Analyzer RCA Evidence', 'rca', 'long_text', 'dta', 'dta_evidence',
-           description='Why the DT Analyzer RCA chose its root cause: the values of the call that met the rule.'),
     _field('initial_root_category', 'Initial Root Category', 'rca', 'text',
            description='The first root category the analysts gave the call, before the selected one.'),
     _field('initial_root_cause', 'Initial Root Cause', 'rca', 'text',

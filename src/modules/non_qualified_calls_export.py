@@ -279,7 +279,7 @@ REPORT_PANELS: tuple[tuple[str, str, tuple[tuple[str, str], ...]], ...] = (
         ('types', 'Failure types of each service'), ('technology', 'Technology and classification'),
         ('serving', 'Serving Vendor and host network'), ('sites', 'Sites with the most Non-Qualified Calls'))),
     ('sources', 'Root Cause Sources', (('sources', 'The root cause sources compared'),)),
-    ('root', 'Root Cause Analysis', (('netcheck', 'NetCheck RCA'), ('script', 'Ericsson RCA'), ('dta', 'DT Analyzer RCA'),
+    ('root', 'Root Cause Analysis', (('dta', 'DT Analyzer RCA'), ('netcheck', 'NetCheck RCA'), ('script', 'Ericsson RCA'),
                                      ('analysts', 'Analysts'))),
     ('lifecycle', 'Lifecycle & Phases', (('pipeline', 'NQ Call Status Pipeline'), ('phases', 'Phases'),
                                          ('times', 'Time in each status and most frequent moves'), ('stalled', 'Stalled open calls'))),

@@ -1225,55 +1225,62 @@ def _category_lines(groups: list[dict[str, Any]], unnamed: str) -> list[Line]:
 
 
 def rca_insight_panels(insights: dict[str, Any]) -> list[tuple[str | SlideTitle, BytesIO]]:
-    """The root cause sources compared as in the page (the NetCheck RCA, the Ericsson RCA, the DT Analyzer RCA and
-    the analysts), each slide under the coverage and agreement indicators: the root domains and catalog categories of each
-    source, then its own categories and causes."""
+    """The root cause sources compared as in the page (the DT Analyzer RCA, the NetCheck RCA, the Ericsson RCA and
+    the analysts): the root domains and catalog categories of each source under the calls each one covers, then its own
+    categories and causes under how each RCA agrees with the analysts and with the other RCAs."""
     coverage = insights.get('coverage') or {}
     total = int(coverage.get('total') or 0)
     if not total:
         return []
     agreement = insights.get('agreement') or {}
-    provider, provider_rca = _provider(insights)
+    provider_rca = _provider(insights)[1]
 
-    def rate(name: str) -> tuple[str, str]:
+    def covered(label: str, source: str, kind: str) -> tuple[str, str, str, str]:
+        return label, _number(coverage.get(source)), f"{_share(int(coverage.get(source) or 0), total)} of the calls", kind
+
+    def rate(label: str, other: str, name: str, kind: str) -> tuple[str, str, str, str]:
+        # The first source names the card and the other one its note, so that every name fits.
         item = agreement.get(name) or {}
         value = item.get('rate')
-        return (f'{value:.0f}%' if value is not None else '—'), f"{_number(item.get('agree'))} of {_number(item.get('compared'))} calls"
+        return (label, f'{value:.0f}%' if value is not None else '—',
+                f"↔ {other} · {_number(item.get('agree'))} of {_number(item.get('compared'))}", kind)
 
-    def indicators() -> Panel:
+    def indicators(cards: list[tuple[str, str, str, str]]) -> Panel:
         panel = Panel()
-        _kpi_row(panel, [
-            (provider_rca, _number(coverage.get('netcheck')), f"{_share(int(coverage.get('netcheck') or 0), total)} of the calls",
-             'attended'),
-            ('Ericsson RCA', _number(coverage.get('script')), f"{_share(int(coverage.get('script') or 0), total)} of the calls", 'team'),
-            ('DT Analyzer RCA', _number(coverage.get('dta')), f"{_share(int(coverage.get('dta') or 0), total)} of the calls", '#8e24aa'),
-            ('Selected', _number(coverage.get('selected')), f"{_share(int(coverage.get('selected') or 0), total)} of the calls", 'closed'),
-            (f'Selected = {provider}', *rate('selected_netcheck'), 'open'),
-            ('Selected = Ericsson', *rate('selected_script'), 'commented'),
-            ('Selected = DT Analyzer', *rate('selected_dta'), 'commented'),
-            (f'{provider} = Ericsson', *rate('netcheck_script'), 'total'),
-        ], 0, 0.75, compact=True)
+        _kpi_row(panel, cards, 0, 0.75, compact=True)
         return panel
+
+    # As in the page, the DT Analyzer RCA first: the calls each source covers, then how each RCA agrees with the
+    # analysts and with the other RCAs.
+    coverage_cards = [
+        ('Calls', _number(total), 'Selected Non-Qualified Calls', 'total'), covered('DT Analyzer RCA', 'dta', '#8e24aa'),
+        covered(provider_rca, 'netcheck', 'attended'), covered('Ericsson RCA', 'script', 'team'), covered('Selected Cause', 'selected', 'closed'),
+    ]
+    agreement_cards = [
+        rate('Selected Cause', 'DT Analyzer RCA', 'selected_dta', 'commented'), rate('Selected Cause', provider_rca, 'selected_netcheck', 'commented'),
+        rate('Selected Cause', 'Ericsson RCA', 'selected_script', 'commented'), rate('DT Analyzer RCA', provider_rca, 'netcheck_dta', 'open'),
+        rate('DT Analyzer RCA', 'Ericsson RCA', 'script_dta', 'open'), rate(provider_rca, 'Ericsson RCA', 'netcheck_script', 'open'),
+    ]
 
     domains = insights.get('domains') or {}
     mapped = insights.get('mapped') or {}
     hierarchies = insights.get('hierarchies') or {}
     gap, top = 0.15, 0.87
     # As in the page: under the indicators, the root domains of each source and its categories in the catalog, the first
-    # categories that fit; then, under the indicators again, its own categories and causes.
-    catalog = indicators()
+    # categories that fit; then, under the agreement indicators, its own categories and causes.
+    catalog = indicators(coverage_cards)
     width = (catalog.width - 3 * gap) / 4
     # The root domains and the catalog categories of a source in two cards, one below the other as in the page: the
     # domain cards as tall as the longest of them, so the category cards start at the same height.
-    longest = max([len(domains.get(source) or []) for source in ('netcheck', 'script', 'dta', 'selected')] + [1])
+    longest = max([len(domains.get(source) or []) for source in ('dta', 'netcheck', 'script', 'selected')] + [1])
     middle = top + COMPACT_HEAD + COMPACT_ROW * longest + 0.05
     for index, (name, source, unnamed, notes) in enumerate((
+            ('DT Analyzer RCA', 'dta', 'No category',
+             ('The root domains it finds from the data of the CDR', 'The Root Categories it finds from the data of the CDR')),
             (provider_rca, 'netcheck', 'No catalog category',
              ('Its categories translated onto the root domains of the catalog', 'Its categories translated onto the Root Cause Catalog')),
             ('Ericsson RCA', 'script', 'No catalog category',
              ('Its categories translated onto the root domains of the catalog', 'Its categories translated onto the Root Cause Catalog')),
-            ('DT Analyzer RCA', 'dta', 'No category',
-             ('The root domains it finds from the data of the CDR', 'The Root Categories it finds from the data of the CDR')),
             ('Selected', 'selected', 'No category',
              ('The root domain of the category the analysts chose', 'The Root Category the analysts chose')))):
         left = index * (width + gap)
@@ -1285,10 +1292,10 @@ def rca_insight_panels(insights: dict[str, Any]) -> list[tuple[str | SlideTitle,
         catalog.card(left, middle + 0.08, width, catalog.height - middle - 0.08)
         _bar_section(catalog, left, middle + 0.08, width, catalog.height - 0.04, f'{name}{arrow}Root Category', notes[1],
                      _category_lines(mapped.get(source) or [], unnamed), compact=True)
-    sources = indicators()
-    for index, (title, note, source) in enumerate(((provider_rca, 'Failure Category → Subcategory of the CDR', 'netcheck'),
+    sources = indicators(agreement_cards)
+    for index, (title, note, source) in enumerate((('DT Analyzer RCA', 'Root Category → Root Cause it finds', 'dta'),
+                                                   (provider_rca, 'Failure Category → Subcategory of the CDR', 'netcheck'),
                                                    ('Ericsson RCA', 'Suggested Category → Cause of the Ericsson RCA', 'script'),
-                                                   ('DT Analyzer RCA', 'Root Category → Root Cause it finds', 'dta'),
                                                    ('Selected by the Analysts', 'Root Category → Root Cause', 'selected'))):
         left = index * (width + gap)
         sources.card(left, top, width, sources.height - top)

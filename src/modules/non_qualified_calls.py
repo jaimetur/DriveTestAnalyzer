@@ -236,9 +236,11 @@ V28_FORMER_NAME = 'DriveTest Analyzer RCA'
 # The Root Categories of the causes the DT Analyzer RCA finds outside the radio coverage and interference, and the default
 # causes they group (those still without a category), once.
 ANALYSIS_CENTER_V29_STATE_KEY = 'nq_analysis_center_v29'
+# The fields of the DT Analyzer RCA first among those of the RCA sources, once.
+ANALYSIS_CENTER_V30_STATE_KEY = 'nq_analysis_center_v30'
 # Set once the tables and columns of this version exist, so the requests check the schema without writing.
 SCHEMA_STATE_KEY = 'nq_calls_schema'
-SCHEMA_VERSION = '2026-10-24.4'
+SCHEMA_VERSION = '2026-10-25.1'
 # Indexed call fields that the suggestion rule can read, with their labels.
 RULE_FIELDS = {
     'failure_classification': 'Failure Classification', 'failure_category': 'Failure Category',
@@ -294,7 +296,8 @@ TRACKING_FIELDS = ('status', 'team', 'assignee', 'root_domain', 'root_category',
 EXTRA_FILTERS = ('nr_mode', 'call_type', 'period', 'age', 'root_pair', 'effective_domain', 'effective_cause', 'node',
                  'state', 'rca_state', 'place')
 KEY_FILTERS = ('effective_domain', 'effective_cause', 'node', 'rca_state', 'netcheck_domain', 'netcheck_category',
-               'netcheck_cause', 'script_domain', 'script_category', 'script_cause', 'dta_domain', 'dta_category', 'dta_cause')
+               'netcheck_cause', 'script_domain', 'script_category', 'script_cause', 'dta_domain', 'dta_category', 'dta_cause',
+               'netcheck_raw', 'script_raw', 'dta_raw')
 # The sources the Root Cause Analysis counts the calls with: the decision of the analysts, the NetCheck RCA of the CDR or
 # the Ericsson RCA mapped onto the Root Cause Catalog, or the DT Analyzer RCA.
 ROOT_SOURCES = ('analysts', 'netcheck', 'script', 'dta')
@@ -591,7 +594,7 @@ def _schema_ready(task_repository: Any) -> bool:
                 ANALYSIS_CENTER_V19_STATE_KEY, ANALYSIS_CENTER_V20_STATE_KEY, ANALYSIS_CENTER_V21_STATE_KEY,
                 ANALYSIS_CENTER_V22_STATE_KEY, ANALYSIS_CENTER_V23_STATE_KEY, ANALYSIS_CENTER_V24_STATE_KEY, ANALYSIS_CENTER_V25_STATE_KEY,
                 ANALYSIS_CENTER_V26_STATE_KEY, ANALYSIS_CENTER_V27_STATE_KEY, ANALYSIS_CENTER_V28_STATE_KEY,
-                ANALYSIS_CENTER_V29_STATE_KEY)
+                ANALYSIS_CENTER_V29_STATE_KEY, ANALYSIS_CENTER_V30_STATE_KEY)
         states = {str(row[0]): str(row[1]) for row in connection.execute(
             f"SELECT key, value FROM workspace_state WHERE key IN ({', '.join('?' for _ in keys)})", keys)}
     return states.get(SCHEMA_STATE_KEY) == SCHEMA_VERSION and all(states.get(key) for key in keys[1:])
@@ -776,7 +779,29 @@ def ensure_nq_tables(task_repository: Any) -> None:
     if not task_repository.get_workspace_state(ANALYSIS_CENTER_V29_STATE_KEY):
         _add_dta_categories(task_repository)
         task_repository.set_workspace_state(ANALYSIS_CENTER_V29_STATE_KEY, '1')
+    if not task_repository.get_workspace_state(ANALYSIS_CENTER_V30_STATE_KEY):
+        _dta_fields_first(task_repository)
+        task_repository.set_workspace_state(ANALYSIS_CENTER_V30_STATE_KEY, '1')
     task_repository.set_workspace_state(SCHEMA_STATE_KEY, SCHEMA_VERSION)
+
+
+def _dta_fields_first(task_repository: Any) -> None:
+    """The fields of the DT Analyzer RCA move before the first field of the other RCA sources (the RCA of the CDR and
+    the Ericsson RCA) in the RCA section, keeping their order; the other fields stay where they are."""
+    fields = list_fields(task_repository)
+    rca = [field for field in fields if field['section'] == 'rca']
+    dta = [field for field in rca if field['source'] == 'dta']
+    others = [field for field in rca if field['source'] != 'dta']
+    first = next((position for position, field in enumerate(others) if field['source'] in {'cdr', 'rca'}), None)
+    if not dta or first is None:
+        return
+    ordered = [*others[:first], *dta, *others[first:]]
+    if [field['key'] for field in ordered] == [field['key'] for field in rca]:
+        return
+    moved = iter(ordered)
+    fields = [next(moved) if field['section'] == 'rca' else field for field in fields]
+    _store_fields(task_repository, nq_catalog.normalize_fields(fields, {field['key']: field for field in list_fields(task_repository)},
+                                                               CATALOG_CALL_FIELDS))
 
 
 def _add_dta_categories(task_repository: Any) -> None:
@@ -4081,10 +4106,13 @@ def _call_key_filters(task_repository: Any, filters: dict[str, Any]) -> dict[str
             if wanted['effective_cause'] and f'{domain}||{cause}' not in wanted['effective_cause']:
                 continue
         # The root domain, domain·category or domain·cause the NetCheck RCA, the Ericsson RCA or the DT Analyzer RCA
-        # gives the call.
+        # gives the call, and the category or category·cause of its own hierarchy.
         if any(not _source_matches(source_root(call, source, taxonomy), wanted[f'{source}_domain'],
                                    wanted[f'{source}_category'], wanted[f'{source}_cause'])
                for source in sources_needed):
+            continue
+        if any(wanted[f'{source}_raw'] and not _raw_matches(rca_raw_pair(call, source, taxonomy), wanted[f'{source}_raw'])
+               for source in RCA_FILTER_SOURCES):
             continue
         if wanted['node']:
             node = serving_node(call['cell_id'])
@@ -4096,6 +4124,29 @@ def _call_key_filters(task_repository: Any, filters: dict[str, Any]) -> dict[str
             _key_filters_cache.pop(next(iter(_key_filters_cache)))
         _key_filters_cache[cache_key] = tuple(keys)
     return {**filters, '_call_keys': keys}
+
+
+def rca_raw_pair(call: Any, source: str, taxonomy: dict[str, Any]) -> tuple[str, str]:
+    """The category and cause of the own hierarchy of one RCA source for a call: the Failure Category (else
+    Classification) and Subcategory of the CDR, the suggested category and cause of the Ericsson RCA, or the Root
+    Category and Root Cause the DT Analyzer RCA finds."""
+    if source == 'netcheck':
+        return str(call['failure_category'] or call['failure_classification'] or ''), str(call['failure_subcategory'] or '')
+    if source == 'script':
+        try:
+            rca = json.loads(call['rca_json'] or '{}') or {}
+        except (TypeError, ValueError):
+            rca = {}
+        return (str(rca.get('rca_category') or rca.get('auto_rca_category_a') or ''),
+                str(rca.get('rca_cause') or rca.get('auto_rca_subcategory_a') or ''))
+    found = source_root(call, 'dta', taxonomy)
+    return str(found['category'] or ''), str(found['cause'] or '')
+
+
+def _raw_matches(pair: tuple[str, str], wanted: set[str]) -> bool:
+    """Whether the own category (a value) or category·cause ("category||cause") of a source is one of those wanted; a
+    call the source says nothing about never matches."""
+    return any(pair) and (pair[0] in wanted or f'{pair[0]}||{pair[1]}' in wanted)
 
 
 def _source_matches(mapped: dict[str, str], domains: set[str], categories: set[str], causes: set[str]) -> bool:
@@ -6998,13 +7049,8 @@ def rca_insights(task_repository: Any, filters: dict[str, Any], username: str) -
         mapped_counts[source][mapped] += 1
         mapped_domains[source].setdefault(mapped, Counter())[domain] += 1
     for row in rows:
-        try:
-            rca = json.loads(row['rca_json'] or '{}') or {}
-        except (TypeError, ValueError):
-            rca = {}
-        script_raw = (str(rca.get('rca_category') or rca.get('auto_rca_category_a') or ''),
-                      str(rca.get('rca_cause') or rca.get('auto_rca_subcategory_a') or ''))
-        netcheck_raw = (str(row['failure_category'] or row['failure_classification'] or ''), str(row['failure_subcategory'] or ''))
+        script_raw = rca_raw_pair(row, 'script', taxonomy)
+        netcheck_raw = rca_raw_pair(row, 'netcheck', taxonomy)
         selected = (str(row['root_category'] or ''), str(row['root_cause'] or ''))
         script = nq_rca.map_to_catalog(*script_raw, taxonomy, rule.get('match', 'words')) if any(script_raw) else None
         netcheck = nq_rca.suggest_from_text(row, taxonomy, cdr_rule) if any(netcheck_raw) else None
@@ -8252,7 +8298,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         """The executive summary, progress status, options and selection lines of one NQ selection.
 
         The options carry the Root Cause Analysis of the selection under ``root_causes``, one per source:
-        NetCheck RCA, Ericsson RCA, DT Analyzer RCA and the analysts (with the suggested root causes when
+        DT Analyzer RCA, NetCheck RCA, Ericsson RCA and the analysts (with the suggested root causes when
         ``include_suggestions``).
         """
         from src.modules.non_qualified_calls_export import selection_lines
@@ -8261,7 +8307,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         progress = progress_stats(repository, filters, username, granularity)
         options = {**list_options(repository),
                    'root_causes': [root_cause_stats(repository, filters, username, include_suggestions, source)
-                                   for source in ('netcheck', 'script', 'dta', 'analysts')],
+                                   for source in ('dta', 'netcheck', 'script', 'analysts')],
                    'rates': nq_rates(repository, filters),
                    'failures': failure_breakdowns(repository, filters, username),
                    'prioritization': nq_prioritization.panel(repository, filters, username),

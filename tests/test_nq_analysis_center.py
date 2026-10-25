@@ -80,9 +80,11 @@ def test_new_workspaces_get_the_catalog_of_the_meeting_workbook(client, tmp_path
     assert [field['key'] for field in fields if field['section'] == 'analysis'][:3] == ['analysis_status', 'tunnel_failure', 'needed_technology']
     assert [field['key'] for field in fields if field['section'] == 'analysis'][-3:] == ['description', 'findings', 'proposed_measure']
     assert [section['label'] for section in state['sections']][2] == 'Failure Details'
-    # The NetCheck RCA comes before the Ericsson RCA.
-    assert [field['label'] for field in fields[:4]] == ['NetCheck RCA Failure Classification', 'NetCheck RCA Suggested Category',
-                                                         'NetCheck RCA Suggested Cause', 'Ericsson RCA Category A']
+    # The DT Analyzer RCA comes first, then the NetCheck RCA before the Ericsson RCA.
+    assert [field['label'] for field in fields[:9]] == [
+        'DT Analyzer RCA Root Domain', 'DT Analyzer RCA Root Category', 'DT Analyzer RCA Root Cause', 'DT Analyzer RCA Rule',
+        'DT Analyzer RCA Evidence', 'NetCheck RCA Failure Classification', 'NetCheck RCA Suggested Category',
+        'NetCheck RCA Suggested Cause', 'Ericsson RCA Category A']
     by_key = {field['key']: field for field in fields}
     assert by_key['rca_suggested_cause']['source'] == 'rca' and by_key['rca_suggested_cause']['label'] == 'Ericsson RCA Suggested Cause'
     assert [field['label'] for field in fields if field['source'] == 'rca'][-1] == 'Ericsson RCA Evidence'
@@ -558,7 +560,7 @@ def test_excel_export_groups_the_catalog_by_section_with_its_colours(client, tmp
     assert width('Findings') == width('Description') == width('Proposed Measure') == 50 and width('Tunnel Failure') < 30
     assert fill('Implementation Status') == nq._tint('#00B050', nq.KEY_FIELD_TINT)
     assert fill('Planned Status') == nq._tint('#00843D', nq.KEY_FIELD_TINT)
-    rca_fill = sheet.cell(1, headers.index('NetCheck RCA Failure Classification') + 1).fill.fgColor.rgb
+    rca_fill = sheet.cell(1, headers.index('DT Analyzer RCA Root Domain') + 1).fill.fgColor.rgb
     assert rca_fill.endswith('FFC000')
     rows = [dict(zip(headers, (cell.value for cell in row))) for row in sheet.iter_rows(min_row=3)]
     row = next(item for item in rows if item['JOIN_ID'] == '0xA1')
@@ -973,10 +975,43 @@ def test_workspaces_before_the_ericsson_rca_name_get_netcheck_first(client, tmp_
     nq.ensure_nq_tables(repository)
     upgraded = nq.list_fields(repository)
     rca = [field['key'] for field in upgraded if field['section'] == 'rca']
-    assert rca[:4] == ['netcheck_failure_classification', 'netcheck_suggested_category', 'netcheck_suggested_cause', 'auto_rca_category_a']
+    assert rca[5:9] == ['netcheck_failure_classification', 'netcheck_suggested_category', 'netcheck_suggested_cause', 'auto_rca_category_a']
     assert rca[-2:] == ['selected_root_category', 'selected_root_cause'] and len(upgraded) == len(fields)
     assert next(field for field in upgraded if field['key'] == 'auto_rca_category_a')['description'] == \
         'Root cause category of the A side found by the Ericsson RCA (imported by JOIN_ID).'
+
+
+def test_workspaces_with_the_dt_analyzer_rca_after_the_others_get_it_first(client, tmp_path):
+    setup_calls(client, tmp_path)
+    repository = core.repository
+    fields = nq.list_fields(repository)
+    dta = [field for field in fields if field['source'] == 'dta']
+    rest = [field for field in fields if field not in dta]
+    # The layout of 0.8: the DT Analyzer RCA after the Ericsson RCA.
+    place = max(position for position, field in enumerate(rest) if field['section'] == 'rca' and field['source'] == 'rca')
+    rest[place + 1:place + 1] = dta
+    nq._store_fields(repository, rest)
+    repository.set_workspace_state(nq.ANALYSIS_CENTER_V30_STATE_KEY, '')
+    nq.ensure_nq_tables(repository)
+    rca = [field['key'] for field in nq.list_fields(repository) if field['section'] == 'rca']
+    assert rca[:6] == ['dta_rca_domain', 'dta_rca_category', 'dta_rca_cause', 'dta_rca_rule', 'dta_rca_evidence',
+                       'netcheck_failure_classification']
+    assert rca[-2:] == ['selected_root_category', 'selected_root_cause'] and len(nq.list_fields(repository)) == len(fields)
+
+
+def test_the_own_category_and_cause_of_each_rca_filter_the_calls(client, tmp_path):
+    setup_calls(client, tmp_path)
+    call = {'failure_classification': 'RF_Problems', 'failure_category': 'Coverage problem', 'failure_subcategory': 'DL coverage problems',
+            'rca_json': json.dumps({'rca_category': 'Poor Coverage LTE', 'rca_cause': ''}), 'dta_json': '{}'}
+    taxonomy = nq.list_root_causes(core.repository)
+    assert nq.rca_raw_pair(call, 'netcheck', taxonomy) == ('Coverage problem', 'DL coverage problems')
+    assert nq.rca_raw_pair(call, 'script', taxonomy) == ('Poor Coverage LTE', '')
+    # A category, or a category and its cause (an empty cause too); a call the source says nothing about never matches.
+    assert nq._raw_matches(('Coverage problem', 'DL coverage problems'), {'Coverage problem'})
+    assert nq._raw_matches(('Coverage problem', 'DL coverage problems'), {'Coverage problem||DL coverage problems'})
+    assert not nq._raw_matches(('Coverage problem', 'DL coverage problems'), {'Coverage problem||UL coverage'})
+    assert nq._raw_matches(('Poor Coverage LTE', ''), {'Poor Coverage LTE||'}) and not nq._raw_matches(('', ''), {'||'})
+    assert {'netcheck_raw', 'script_raw', 'dta_raw'} <= set(nq.KEY_FILTERS)
 
 
 def test_auto_rca_summary_fills_each_side_combines_rows_and_completes_the_catalog(client, tmp_path):
@@ -1130,11 +1165,12 @@ def test_admins_import_the_analyses_of_the_previous_tool_by_join_id(client, tmp_
     menu = page.split('data-module-sections-for="non-qualified-calls"', 1)[1].split('</nav>', 1)[0]
     assert menu.index('<span>Non-Qualified Calls</span>') < menu.index('module-sections-separator') < menu.index('<span>NQ Analysis Configuration</span>')
     script = (Path(__file__).parents[1] / 'src/web_interface/static/js/non_qualified_calls.js').read_text(encoding='utf-8')
-    anchors = ('fields-and-sections', 'statuses-and-teams', 'status-rules', 'root-cause-catalog', 'import-ericsson-rca-results',
-               'import-previous-nq-analyses', 'analysts-reviewers-to-asignees')
+    anchors = ('fields-and-sections', 'statuses-and-teams', 'status-rules', 'root-cause-catalog', 'dta-rca-rules',
+               'import-ericsson-rca-results', 'import-previous-nq-analyses', 'analysts-reviewers-to-asignees')
     for anchor in ('section-nq-analysis-configuration', *anchors):
         assert f'href="/non-qualified-calls#{anchor}"' in menu and f"'{anchor}':" in script, anchor
-    assert menu.index('#root-cause-catalog') < menu.rindex('module-sections-separator') < menu.index('#import-ericsson-rca-results')
+    assert menu.index('#root-cause-catalog') < menu.index('#dta-rca-rules') < menu.rindex('module-sections-separator') \
+        < menu.index('#import-ericsson-rca-results')
     # Columns is a button of the table, before Default column order, not an option of the NQ Analysis Configuration.
     assert 'nq-columns-open' not in center and 'additional-columns' not in menu
     # Layout (Mine / Workspace), Save for the workspace (admins) and Default column order, then Columns.

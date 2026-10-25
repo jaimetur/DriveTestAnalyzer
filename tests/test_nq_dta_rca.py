@@ -140,10 +140,10 @@ def test_every_call_gets_the_dta_rca_in_its_fields_recommendation_and_panels(cli
             'SELECT join_id, rca_inputs_json FROM nq_calls')}
     assert inputs['0xA1']['lte_rsrp'] == -121.5 and inputs['0xA1']['lte_sinr'] == 2.0
     coverage, core_failure, good = (detail(client, calls[key]) for key in ('0xA1', '0xB2', '0xC3'))
-    # Its five fields follow those of the Ericsson RCA in the RCA section.
+    # Its five fields come first in the RCA section, before those of the NetCheck RCA.
     state = client.get('/api/non-qualified-calls/state').json()
     keys = [field['key'] for field in state['fields']]
-    assert keys[keys.index('rca_evidence') + 1:keys.index('rca_evidence') + 6] == [
+    assert keys[keys.index('netcheck_failure_classification') - 5:keys.index('netcheck_failure_classification')] == [
         'dta_rca_domain', 'dta_rca_category', 'dta_rca_cause', 'dta_rca_rule', 'dta_rca_evidence']
     assert state['dta_refs'] == nq_catalog.DTA_REFS and state['rca_sources']['dta'] == 'DT Analyzer RCA'
     assert (coverage['values']['dta_rca_domain'], coverage['values']['dta_rca_category'], coverage['values']['dta_rca_cause']) == (

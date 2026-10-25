@@ -24,7 +24,7 @@
     <div class="nq-hero-copy">
       <p class="eyebrow">Non-Qualified Calls · Analysis Center</p>
       <h2>Follow up every call and test that did not complete</h2>
-      <p class="lede">Every Voice and Speech call and every Data test {{ provider.definition | default('whose result is not Completed (Failed, Dropped, Cutoff…)', true) }} in the ready CDRs of this workspace. Review the overall health, drill down from the summary into the calls, and follow each one through the sections of the Analysis Center: its root cause decided from {{ provider.name | default('NetCheck', true) }}, the Ericsson RCA, the DT Analyzer RCA and the analysts, its failure event, and its analysis, implementation and planning phases, with a status set by rules, a responsible team, an assignee and a shared comment thread.</p>
+      <p class="lede">Every Voice and Speech call and every Data test {{ provider.definition | default('whose result is not Completed (Failed, Dropped, Cutoff…)', true) }} in the ready CDRs of this workspace. Review the overall health, drill down from the summary into the calls, and follow each one through the sections of the Analysis Center: its root cause decided from the DT Analyzer RCA, {{ provider.rca | default('NetCheck RCA', true) }}, the Ericsson RCA and the analysts, its failure event, and its analysis, implementation and planning phases, with a status set by rules, a responsible team, an assignee and a shared comment thread.</p>
     </div>
   </article>
 
@@ -239,7 +239,7 @@
     <div class="collapsible-panel-body">
       <div class="nq-active-filters" data-nq-active-filters hidden></div>
       <div class="nq-progress-head">
-        <p class="nq-hint">The root cause sources of the filtered calls side by side: the {{ provider.rca | default('NetCheck RCA', true) }} of the CDR{% if provider and not provider.rca_hierarchy %} ({{ provider.name }} CDRs bring no RCA of their own, only the failure of each call){% endif %}, the Ericsson RCA results imported by JOIN_ID, the DT Analyzer RCA, which finds the root cause of every call from the data of its CDR with the rules of the workspace, and the Root Category and Cause selected by the analysts. See how many calls each one covers, how often they agree and how the analysts' choices relate to each RCA.</p>
+        <p class="nq-hint">The root cause sources of the filtered calls side by side: the DT Analyzer RCA, which finds the root cause of every call from the data of its CDR with the rules of the workspace, the {{ provider.rca | default('NetCheck RCA', true) }} of the CDR{% if provider and not provider.rca_hierarchy %} ({{ provider.name }} CDRs bring no RCA of their own, only the failure of each call){% endif %}, the Ericsson RCA results imported by JOIN_ID and the Root Category and Cause selected by the analysts. See how many calls each one covers, how often they agree and how the analysts' choices relate to each RCA.</p>
         <span class="nq-root-head-actions"><span class="nq-muted" id="nq-sources-results"></span></span>
       </div>
       <div class="nq-kpi-lines" id="nq-sources-kpis"></div>
@@ -258,7 +258,7 @@
       <div class="nq-active-filters" data-nq-active-filters hidden></div>
       <div class="nq-progress-head">
         <p class="nq-hint">Where the filtered calls fail: their root cause domain and cause, Classic and WhatsApp calls, NSA and SA, each technology and the eNB/gNB of the last cell of the call, with its site, host network and vendor from the network inventories of the workspace.</p>
-        <span class="nq-root-head-actions"><span class="nq-rate-tabs" id="nq-root-source" role="tablist" aria-label="Root causes counted"><button type="button" role="tab" class="nq-rate-tab is-active" aria-selected="true" data-nq-root-source="netcheck" title="The {{ provider.rca | default('NetCheck RCA', true) }} of the CDR (Failure Classification, Category and Subcategory) mapped onto the Root Cause Catalog">{{ provider.rca | default('NetCheck RCA', true) }}</button><button type="button" role="tab" class="nq-rate-tab" aria-selected="false" data-nq-root-source="script" title="The imported results of the Ericsson RCA mapped onto the Root Cause Catalog">Ericsson RCA</button><button type="button" role="tab" class="nq-rate-tab" aria-selected="false" data-nq-root-source="dta" title="The Root Category and Root Cause the DT Analyzer RCA finds from the data of the CDR, with the rules of the workspace">DT Analyzer RCA</button><button type="button" role="tab" class="nq-rate-tab" aria-selected="false" data-nq-root-source="analysts" title="The Root Category and Root Cause the analysts chose">Analysts</button></span>
+        <span class="nq-root-head-actions"><span class="nq-rate-tabs" id="nq-root-source" role="tablist" aria-label="Root causes counted"><button type="button" role="tab" class="nq-rate-tab is-active" aria-selected="true" data-nq-root-source="dta" title="The Root Category and Root Cause the DT Analyzer RCA finds from the data of the CDR, with the rules of the workspace">DT Analyzer RCA</button><button type="button" role="tab" class="nq-rate-tab" aria-selected="false" data-nq-root-source="netcheck" title="The {{ provider.rca | default('NetCheck RCA', true) }} of the CDR (Failure Classification, Category and Subcategory) mapped onto the Root Cause Catalog">{{ provider.rca | default('NetCheck RCA', true) }}</button><button type="button" role="tab" class="nq-rate-tab" aria-selected="false" data-nq-root-source="script" title="The imported results of the Ericsson RCA mapped onto the Root Cause Catalog">Ericsson RCA</button><button type="button" role="tab" class="nq-rate-tab" aria-selected="false" data-nq-root-source="analysts" title="The Root Category and Root Cause the analysts chose">Analysts</button></span>
         <button type="button" class="nq-secondary-action" data-nq-rule-open title="See how root causes are suggested; admins and super-admins change it">Suggestion Rule</button></span>
       </div>
       <div class="nq-kpis" id="nq-root-kpis"></div>
@@ -434,14 +434,14 @@
       <div class="nq-rule-summary"><p class="form-note" id="nq-root-rule-text"></p><button type="button" class="nq-secondary-action" id="nq-rule-open" data-nq-rule-open title="See how root causes are suggested; admins and super-admins change it">Suggestion Rule</button></div></header>
     {% if not nq_can_configure %}{{ role_warning('the root cause catalog') }}{% endif %}
     <div class="nq-catalog-tabs" role="tablist" aria-label="Root cause catalog">
-      <button type="button" role="tab" class="is-active" data-nq-catalog-tab="categories" aria-selected="true">Root Categories <small></small></button>
+      <button type="button" role="tab" class="is-active" data-nq-catalog-tab="domains" aria-selected="true">Domains <small></small></button>
+      <button type="button" role="tab" data-nq-catalog-tab="categories" aria-selected="false">Root Categories <small></small></button>
       <button type="button" role="tab" data-nq-catalog-tab="causes" aria-selected="false">Root Causes <small></small></button>
-      <button type="button" role="tab" data-nq-catalog-tab="domains" aria-selected="false">Domains <small></small></button>
       <button type="button" role="tab" data-nq-catalog-tab="mapping" aria-selected="false" title="Every root cause with its root category and domain, and every root category with its domain, in one table">Mapping <small></small></button>
       <input type="search" id="nq-root-search" placeholder="Filter values…" aria-label="Filter the values of the catalog">
     </div>
-    <fieldset class="nq-config-fieldset"{{ config_lock }}><ul class="nq-root-domains nq-catalog-list" id="nq-root-domains" data-nq-catalog-list="domains" hidden></ul>
-    <ul class="nq-root-domains nq-catalog-list" id="nq-root-categories" data-nq-catalog-list="categories"></ul>
+    <fieldset class="nq-config-fieldset"{{ config_lock }}><ul class="nq-root-domains nq-catalog-list" id="nq-root-domains" data-nq-catalog-list="domains"></ul>
+    <ul class="nq-root-domains nq-catalog-list" id="nq-root-categories" data-nq-catalog-list="categories" hidden></ul>
     <ul class="nq-root-domains nq-catalog-list" id="nq-root-causes" data-nq-catalog-list="causes" hidden></ul>
     <div class="nq-root-mapping nq-catalog-list" id="nq-root-mapping" data-nq-catalog-list="mapping" hidden></div>
     <div class="nq-root-actions">

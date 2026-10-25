@@ -169,6 +169,8 @@ def test_the_cdr_field_dictionary_changes_the_columns_of_a_field(client):
     assert core.repository.get_workspace_state(nq.KEY_SCHEME_STATE_KEY) == f'{nq.KEY_SCHEME}:{fingerprint}'
     page = client.get('/workspace-config').text
     assert 'id="cdr-field-dictionary"' in page and 'name="field:nq_rca_sources.mos" value="MOS_Avg; POLQA_LQ_Avg"' in page
+    # The sections menu of Workspace Config and the Modules & Sections drawer list it after the Serving Networks.
+    assert page.index('href="/workspace-config#serving-networks"') < page.index('href="/workspace-config#cdr-field-dictionary"')
     # It travels with Mappings & Reference Data: a package restores it, one of another CDR type is left out.
     payload = core._mappings_reference_data_archive_payload(core.active_workspace)
     exported = json.loads(payload)['cdr_field_dictionary']
@@ -208,7 +210,7 @@ def test_non_qualified_calls_name_the_provider_of_the_cdrs(client):
     assert nq.source_labels(core.repository)['netcheck'] == 'Umlaut RCA'
     page = client.get('/non-qualified-calls').text
     assert 'whose Umlaut qualifier is NOT QUALIFIED' in page and '>Umlaut RCA</button>' in page
-    assert 'decided from Umlaut, the Ericsson RCA' in page and 'Umlaut CDRs bring no RCA of their own' in page
+    assert 'decided from the DT Analyzer RCA, Umlaut RCA, the Ericsson RCA' in page and 'Umlaut CDRs bring no RCA of their own' in page
     # Umlaut calls have no JOIN_ID to find them by.
     assert '<label class="nq-join-search" data-nq-join-search hidden>' in page
     nq.ensure_nq_tables(core.repository)
