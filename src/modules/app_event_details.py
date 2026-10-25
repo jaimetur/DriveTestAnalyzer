@@ -100,7 +100,7 @@ def changes_text(changes: Any, labels: dict[str, str] | None = None) -> str:
 
 
 def fields_text(details: dict[str, Any], skip: tuple[str, ...] = ()) -> str:
-    """``username ELUILEY, role user-editor, active yes``: every recorded value but the empty ones."""
+    """``username EUSER01, role user-editor, active yes``: every recorded value but the empty ones."""
     parts = []
     # Only the starred Saved Filters are kept: the others are named unsaved.
     starred = details.get('starred') if isinstance(details.get('starred'), bool) and 'saved_filter_id' in details else None

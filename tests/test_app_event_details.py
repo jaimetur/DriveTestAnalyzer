@@ -17,14 +17,14 @@ def test_changed_values_keep_only_what_changed() -> None:
 
 def test_events_read_as_one_sentence_old_and_new() -> None:
     assert describe_app_event('update_user', {
-        'user_id': 15, 'username': 'ELUILEY', 'role': 'user-editor', 'active': True, 'password_changed': True,
+        'user_id': 15, 'username': 'EUSER01', 'role': 'user-editor', 'active': True, 'password_changed': True,
         'changes': {'role': ['user-viewer', 'user-editor'], 'active': [False, True], 'workspace_groups': [['UK'], ['UK', 'DE']]},
-    }) == 'User ELUILEY: role user-viewer → user-editor; activated; Workspace Groups +DE; password changed.'
-    assert describe_app_event('update_user', {'user_id': 15, 'username': 'ELUILEY', 'role': 'user-editor', 'active': True,
-                                              'changes': {}}) == 'User ELUILEY saved with no changes.'
+    }) == 'User EUSER01: role user-viewer → user-editor; activated; Workspace Groups +DE; password changed.'
+    assert describe_app_event('update_user', {'user_id': 15, 'username': 'EUSER01', 'role': 'user-editor', 'active': True,
+                                              'changes': {}}) == 'User EUSER01 saved with no changes.'
     # Events recorded before with only the final state say what was saved, and that it is not what changed.
-    assert describe_app_event('update_user', {'user_id': 15, 'username': 'ELUILEY', 'role': 'user-editor', 'active': True}) == (
-        'User ELUILEY saved (role user-editor, active); earlier versions did not record which fields changed.')
+    assert describe_app_event('update_user', {'user_id': 15, 'username': 'EUSER01', 'role': 'user-editor', 'active': True}) == (
+        'User EUSER01 saved (role user-editor, active); earlier versions did not record which fields changed.')
     assert describe_app_event('update_workspace_group', {
         'group_id': 2, 'name': 'DE', 'workspace_ids': ['workspace-5'], 'added_user_ids': [4], 'removed_user_ids': []}) == (
         'Workspace Group DE saved (workspace IDs workspace-5; users +user ID 4); earlier versions did not record which fields changed.')

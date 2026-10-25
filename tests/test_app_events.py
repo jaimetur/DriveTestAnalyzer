@@ -210,10 +210,10 @@ def test_events_of_the_application_belong_to_system(client) -> None:
 
 def test_app_event_details_say_what_changed_once(client) -> None:
     login_super(client)
-    core.repository.create_user('ELUILEY', 'secret123', 'user-viewer')
-    target = next(row for row in core.repository.list_users() if row['username'] == 'ELUILEY')
-    core.repository.update_user(int(target['id']), 'ELUILEY', 'user-viewer', False)
-    response = client.post(f"/admin/users/{target['id']}/update", data={'username': 'ELUILEY', 'role': 'user-editor', 'active': '1'},
+    core.repository.create_user('EUSER01', 'secret123', 'user-viewer')
+    target = next(row for row in core.repository.list_users() if row['username'] == 'EUSER01')
+    core.repository.update_user(int(target['id']), 'EUSER01', 'user-viewer', False)
+    response = client.post(f"/admin/users/{target['id']}/update", data={'username': 'EUSER01', 'role': 'user-editor', 'active': '1'},
                            headers={'X-Requested-With': 'XMLHttpRequest'})
     assert response.status_code == 200, response.text
     # The event records what changed, before and after, besides the account as saved.
@@ -227,23 +227,23 @@ def test_app_event_details_say_what_changed_once(client) -> None:
     assert response.status_code == 200, response.text
     group = events('update_workspace_group')[-1]
     assert group['changes'] == {'name': ['Field', 'Field team'], 'workspaces': [[], [core.active_workspace.name]]}
-    assert group['added_users'] == ['ELUILEY']
+    assert group['added_users'] == ['EUSER01']
     # Events recorded before with only the final state, and plain-text ones.
     core.repository.add_log('admin', 'update_user', json.dumps({'user_id': 15, 'username': 'OLDUSER', 'role': 'user-editor', 'active': True}))
     core.repository.add_log('admin', 'nq_call_options', 'Non-Qualified Calls statuses and teams updated.')
 
     # App Events shows one readable sentence per event, with the raw details folded away.
     page = client.get('/app-logs').text
-    sentence = 'User ELUILEY: role user-viewer → user-editor; activated.'
+    sentence = 'User EUSER01: role user-viewer → user-editor; activated.'
     assert page.count(sentence) == 1
     assert f'<p class="app-log-summary">{sentence}</p><details class="app-log-raw"><summary>Raw details</summary><code>' in page
-    assert f'Workspace Group Field team: name Field → Field team; Workspaces +{core.active_workspace.name}; users +ELUILEY.' in page
+    assert f'Workspace Group Field team: name Field → Field team; Workspaces +{core.active_workspace.name}; users +EUSER01.' in page
     assert ('<p class="app-log-summary">User OLDUSER saved (role user-editor, active); earlier versions did not record which '
             'fields changed.</p><details class="app-log-raw">') in page
     assert '<p class="app-log-summary">Non-Qualified Calls statuses and teams updated.</p></td>' in page
     # The refresh of the table gets the same sentence.
     logs = client.get('/api/app-logs').json()['logs']
-    assert next(log for log in logs if log['action'] == 'update_user' and 'ELUILEY' in log['details_text'])['description'] == sentence
+    assert next(log for log in logs if log['action'] == 'update_user' and 'EUSER01' in log['details_text'])['description'] == sentence
 
 
 def test_app_events_filters_choose_several_values(client) -> None:

@@ -884,13 +884,13 @@ The workbook tells how each value was decided (a rule of the tool, reviewed in t
 > **Create the accounts of the analysts and reviewers first**, with their first and last name: the dialog finds each one by the username or by the name of their account.
 
 1. Open **NQ Analysis Configuration → Analysts / Reviewers → Asignees**. It lists every **Analyst / Reviewer** of the calls of the workspace, one row per person also when they analysed some calls and reviewed others (the names written with the same letters, such as Raj Kumar and Rajkumar, are one person, shown with the spelling most calls use and the others below it), with **New Analyst / Reviewer** (the name they will take), their calls **As Analyst** and **As Reviewer** and how many of the calls they analysed have no Asignee.
-2. Check the **User account** of each person, a list of the users of the workspace by their first and last name. It proposes the only user named as them by username or by first and last name (the whole name, or its first part, as in anudeep.kumar or Anudeep Reddy for Anudeep), or else the Asignee most of the calls they analysed have; **Leave unchanged** leaves their calls out. **New Analyst / Reviewer** shows at once the first and last name of the account.
+2. Check the **User account** of each person, a list of the users of the workspace by their first and last name. It proposes the only user named as them by username or by first and last name (the whole name, or its first part, as in userb.test or UserB Test for UserB), or else the Asignee most of the calls they analysed have; **Leave unchanged** leaves their calls out. **New Analyst / Reviewer** shows at once the first and last name of the account.
 3. Read **Calls that change** and the line below the list: they count, as you choose, the calls that will change, those that will get a new Asignee, the Analysts and Reviewers that will take the name of their account and the teams the users will join.
 4. Press **Apply**. Each call records the change in its history, the Status Rules follow, and the change is written to App Events (`nq_analyst_assignees`).
 
 - By default only the calls without an Asignee get one; **Replace the Asignee the calls already have** changes the others too (it asks for confirmation).
 - Every call keeps its team: when the team has members and the user is not one of them, the user joins it.
-- The **Analyst** and the **Reviewer** of the calls take the first and last name of the account (EANUDRE or Anudeep become Anudeep Reddy), so every spelling of a person becomes one value in the filters, the table and the exports; an account without a name leaves them as they are. The former name stays in the history of each call.
+- The **Analyst** and the **Reviewer** of the calls take the first and last name of the account (EUSER02 or user.b become User B), so every spelling of a person becomes one value in the filters, the table and the exports; an account without a name leaves them as they are. The former name stays in the history of each call.
 - Only the calls a person analysed get the Asignee: those they only reviewed keep theirs.
 
 > [!NOTE]
