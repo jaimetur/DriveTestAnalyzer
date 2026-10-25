@@ -1293,10 +1293,11 @@ def rca_insight_panels(insights: dict[str, Any]) -> list[tuple[str | SlideTitle,
         _bar_section(catalog, left, middle + 0.08, width, catalog.height - 0.04, f'{name}{arrow}Root Category', notes[1],
                      _category_lines(mapped.get(source) or [], unnamed), compact=True)
     sources = indicators(agreement_cards)
-    for index, (title, note, source) in enumerate((('DT Analyzer RCA', 'Root Category → Root Cause it finds', 'dta'),
-                                                   (provider_rca, 'Failure Category → Subcategory of the CDR', 'netcheck'),
-                                                   ('Ericsson RCA', 'Suggested Category → Cause of the Ericsson RCA', 'script'),
-                                                   ('Selected by the Analysts', 'Root Category → Root Cause', 'selected'))):
+    # (Titled as the cards above them: the source → Root Cause, and Selected Root Cause.)
+    for index, (title, note, source) in enumerate((('DT Analyzer RCA → Root Cause', 'Root Category → Root Cause it finds', 'dta'),
+                                                   (f'{provider_rca} → Root Cause', 'Failure Category → Subcategory of the CDR', 'netcheck'),
+                                                   ('Ericsson RCA → Root Cause', 'Suggested Category → Cause of the Ericsson RCA', 'script'),
+                                                   ('Selected Root Cause', 'Root Category → Root Cause the analysts chose', 'selected'))):
         left = index * (width + gap)
         sources.card(left, top, width, sources.height - top)
         _bar_section(sources, left, top, width, sources.height - 0.08, title, note,

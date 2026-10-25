@@ -2795,10 +2795,10 @@
       kpiCard(`${PROVIDER_RCA} ↔ Ericsson RCA`, rate(agreement.netcheck_script), `${number(agreement.netcheck_script.agree)} of ${number(agreement.netcheck_script.compared)} calls agree`, 'open'),
     ));
     $('nq-sources-hierarchies').replaceChildren(
-      hierarchyCard('DT Analyzer RCA', 'Root Category → Root Cause it finds from the data of the CDR; click to drill down', insights.hierarchies.dta, 'dta'),
-      hierarchyCard(PROVIDER_RCA, 'Failure Category → Subcategory of the CDR; click to drill down', insights.hierarchies.netcheck, 'netcheck'),
-      hierarchyCard('Ericsson RCA', 'Suggested Category → Cause of the Ericsson RCA; click to drill down', insights.hierarchies.script, 'script'),
-      hierarchyCard('Selected by the Analysts', 'Root Category → Root Cause; click to drill down', insights.hierarchies.selected, 'selected'),
+      hierarchyCard('DT Analyzer RCA → Root Cause', 'Root Category → Root Cause it finds from the data of the CDR; click to drill down', insights.hierarchies.dta, 'dta'),
+      hierarchyCard(`${PROVIDER_RCA} → Root Cause`, 'Failure Category → Subcategory of the CDR; click to drill down', insights.hierarchies.netcheck, 'netcheck'),
+      hierarchyCard('Ericsson RCA → Root Cause', 'Suggested Category → Cause of the Ericsson RCA; click to drill down', insights.hierarchies.script, 'script'),
+      hierarchyCard('Selected Root Cause', 'Root Category → Root Cause the analysts chose; click to drill down', insights.hierarchies.selected, 'selected'),
     );
     // What each source proposes translated onto the Root Cause Catalog; a category shows the calls the source puts in it.
     const catalogCard = (title, note, source, filter) => {
