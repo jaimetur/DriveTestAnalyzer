@@ -248,15 +248,19 @@ def test_every_main_module_has_its_presentation_at_the_start_of_its_chapter():
     assert (GENERATOR_FOLDER / 'dt-analyzer-rca' / 'slides.html').is_file()
     assert all((GENERATOR_FOLDER / 'benchmarking-providers' / slide['image']).is_file()
                for slide in json.loads((GENERATOR_FOLDER / 'benchmarking-providers' / 'slides.json').read_text(encoding='utf-8'))['slides'])
-    # Help Home and Product Presentations show every presentation: those of the tool, then those of the modules and the
-    # full presentation, each in their own section; Product Overview points to Product Presentations.
-    general = ['overview', 'one-slider', 'roadmap', 'benchmarking-providers']
+    # Help Home and Product Presentations show every presentation: those of the tool (the Benchmarking Providers Roadmap
+    # after the Overview), then those of the modules (Network Insights after CDR Analysis) and the full presentation, each
+    # in their own section; Product Overview points to Product Presentations.
+    general = ['overview', 'benchmarking-providers', 'one-slider', 'roadmap']
+    modules_order = ['workspace', 'workspace-config', 'cdr-analysis', 'network-insights', 'ppt-dashboards', 'scoring-gap-analysis',
+                     'non-qualified-calls', 'dt-analyzer-rca', 'reporting', 'builders', 'ticket-center', 'administration']
+    assert sorted(general + modules_order + ['full-presentation']) == sorted(ids)
     for chapter, level in (('help', '###'), ('presentations', '##')):
         text = (help_folder / f'{chapter}.md').read_text(encoding='utf-8')
         tool, modules = text.find('```presentations\n' + '\n'.join(general) + '\n```'), text.find(f'\n{level} Module presentations\n')
         full = text.find(f'\n{level} Full presentation\n')
         assert 0 <= tool < modules < full, chapter
-        assert '```presentations\n' + '\n'.join(item for item in ids if item not in general + ['full-presentation']) + '\n```' in text[modules:full], chapter
+        assert '```presentations\n' + '\n'.join(modules_order) + '\n```' in text[modules:full], chapter
         assert '```presentations\nfull-presentation\n```' in text[full:], chapter
     overview = (help_folder / 'overview.md').read_text(encoding='utf-8')
     assert '```presentations' not in overview and '[Product Presentations](presentations.md)' in overview
