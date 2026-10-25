@@ -33,6 +33,9 @@ MANIFEST = 'presentations.json'
 # high-density screens).
 SLIDE_DPI = 144
 THUMB_DPI = 45
+# The picture of a slide where the link of a presentation is shared (WhatsApp, Teams, Slack…): 1200 × 675, light enough
+# for every app.
+PREVIEW_SIZE = (1200, 675)
 GENERATION_TIMEOUT_SECONDS = 600
 CDR_KINDS = ('data', 'voice', 'speech')
 # The CDRs whose rows the presentations count as calls (a Speech CDR measures calls of the Voice one).
@@ -223,6 +226,22 @@ def render_slides(folder: Path, manifest: dict[str, Any]) -> None:
             (target / f'thumb-{number:02d}.png').write_bytes(thumb)
 
 
+def slide_source(manifest: dict[str, Any], presentation_id: str, index: int) -> tuple[dict[str, Any], str, int, int] | None:
+    """The presentation of a manifest, the folder of the picture of its slide ``index`` (from 0, kept within its slides), the
+    number of that picture there (from 0) and the slide: the full presentation shows those of the presentations it joins."""
+    item = next((entry for entry in manifest.get('presentations') or [] if entry.get('id') == presentation_id), None)
+    if item is None:
+        return None
+    slides = [(section, position) for section in item.get('sections') or [] for position, _title in enumerate(section.get('slides') or [])]
+    if not slides:
+        return None
+    index = max(0, min(index, len(slides) - 1))
+    section, position = slides[index]
+    if section.get('presentation'):
+        return item, str(section['presentation']), position, index
+    return item, item['id'], index, index
+
+
 def node_executable() -> str | None:
     return shutil.which('node') or shutil.which('nodejs') or next((path for path in NODE_CANDIDATES if Path(path).is_file()), None)
 
@@ -272,6 +291,25 @@ class PresentationGenerator:
             return None
         target = (root / relative).resolve()
         return target if root.resolve() in target.parents and target.is_file() else None
+
+    def preview(self, presentation_id: str, index: int) -> Path | None:
+        """The JPEG of slide ``index`` (from 0) of a presentation for the previews of its links, made once from the picture
+        of the slide."""
+        current = self.current()
+        source = slide_source(self.manifest(), presentation_id, index)
+        if current is None or source is None:
+            return None
+        _item, folder, number, _index = source
+        picture = current / folder / f'slide-{number + 1:02d}.png'
+        target = current / folder / f'preview-{number + 1:02d}.jpg'
+        if not target.is_file() and picture.is_file():
+            from PIL import Image
+
+            partial = target.with_name(f'.{target.name}.{os.getpid()}.{threading.get_ident()}')
+            with Image.open(picture) as image:
+                image.convert('RGB').resize(PREVIEW_SIZE, Image.LANCZOS).save(partial, 'JPEG', quality=84, optimize=True, progressive=True)
+            os.replace(partial, target)
+        return target if target.is_file() else None
 
     def missing(self) -> list[str]:
         """The presentations of the generator that the last generation does not have (all of them before the first one),
@@ -369,6 +407,31 @@ class PresentationGenerator:
 _GENERATOR: PresentationGenerator | None = None
 
 
+def link_preview(request: Any) -> dict[str, Any] | None:
+    """What the link of a presentation (a Help page with ``?presentation=<id>&slide=<n>``) shows where it is shared, as
+    Open Graph: its title, the slide and description, and the picture of that slide."""
+    presentation_id = str(request.query_params.get('presentation') or '')
+    if not presentation_id or _GENERATOR is None:
+        return None
+    try:
+        index = max(0, int(request.query_params.get('slide') or 1) - 1)
+    except ValueError:
+        index = 0
+    manifest = _GENERATOR.manifest()
+    source = slide_source(manifest, presentation_id, index)
+    if source is None:
+        return None
+    item, _folder, _number, index = source
+    titles = [title for section in item['sections'] for title in section['slides']]
+    description = str(item.get('description') or '')
+    if index:
+        description = f'Slide {index + 1} of {len(titles)}: {titles[index]}. {description}'
+    base = str(request.base_url).rstrip('/')
+    version = manifest.get('key') or manifest.get('generated_at') or ''
+    return {'title': item['title'], 'description': description, 'url': str(request.url), 'width': PREVIEW_SIZE[0], 'height': PREVIEW_SIZE[1],
+            'image': f"{base}/presentations/preview/{item['id']}/{index + 1}.jpg" + (f'?v={version}' if version else '')}
+
+
 def generate_at_startup(core: Any) -> threading.Thread | None:
     """Once the application is open, generate the presentations in the background when one is missing, or again when
     their figures or generator changed: the startup never waits for them, and the Help says which ones are coming."""
@@ -423,6 +486,14 @@ def install_presentation_routes(core: Any) -> None:
     @app.get('/api/presentations/status')
     def presentations_status(user=Depends(core.super_admin_user)) -> dict[str, Any]:
         return generator.status()
+
+    @app.get('/presentations/preview/{presentation_id}/{number}.jpg')
+    def presentation_preview(presentation_id: str, number: int):
+        # The picture of a slide where the link of its presentation is shared (open to the apps that fetch it).
+        path = generator.preview(presentation_id, number - 1)
+        if path is None:
+            raise HTTPException(status_code=404, detail='Presentation slide not found.')
+        return FileResponse(path, media_type='image/jpeg', headers={'Cache-Control': 'public, max-age=86400'})
 
     @app.get('/presentations/files/{relative:path}')
     def presentation_file(relative: str):

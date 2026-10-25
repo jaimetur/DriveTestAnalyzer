@@ -14296,6 +14296,7 @@ def documents_view(request: Request, doc_name: str, user: SessionUser | None = D
         raise HTTPException(status_code=404, detail='Document not found')
     pretty_title = {'readme': 'README.md', 'changelog': 'CHANGELOG.md', 'help': 'Help'}[normalized]
     back_label = {'readme': 'Readme', 'changelog': 'Changelog', 'help': 'Documentation'}[normalized]
+    from src.modules.presentations import link_preview
     return render_template(
         request,
         'doc_view.html',
@@ -14306,6 +14307,8 @@ def documents_view(request: Request, doc_name: str, user: SessionUser | None = D
             'doc_api_url': f'/api/documents/{normalized}',
             'help_navigation': normalized == 'help',
             'changelog_navigation': normalized == 'changelog',
+            # The link of a presentation shows its title and the picture of its slide where it is shared.
+            'link_preview': link_preview(request) if normalized == 'help' else None,
         },
     )
 
@@ -14315,6 +14318,7 @@ def help_document_view(request: Request, doc_file: str, user: SessionUser | None
     path = resolve_help_doc_path(doc_file)
     if path.name.casefold() == OLD_REPORTING_HELP_DOCUMENT and not (user and can_access_ppt_reporting_old(user)):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='PPT Reporting (old) access required.')
+    from src.modules.presentations import link_preview
     return render_template(
         request,
         'doc_view.html',
@@ -14327,6 +14331,8 @@ def help_document_view(request: Request, doc_file: str, user: SessionUser | None
             'back_label': 'Documentation',
             'doc_api_url': f'/api/documents/help/{doc_file}',
             'help_navigation': True,
+            # The link of a presentation shows its title and the picture of its slide where it is shared.
+            'link_preview': link_preview(request),
         },
     )
 

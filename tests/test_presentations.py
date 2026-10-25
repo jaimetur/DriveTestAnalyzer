@@ -351,3 +351,47 @@ def test_a_direct_link_opens_its_presentation_in_the_slide_viewer(client):
     for chapter in ('help', 'overview'):
         assert '**Copy link**, on each card and beside **Close** in the viewer' in (root / 'help' / f'{chapter}.md').read_text(encoding='utf-8')
 
+
+def test_the_link_of_a_presentation_shows_its_title_and_the_picture_of_its_slide_where_it_is_shared(client):
+    from PIL import Image
+
+    # What a generation leaves: the pictures of the slides of a deck and the full presentation that shows them.
+    current = presentations._GENERATOR.root / 'current'
+    (current / 'workspace').mkdir(parents=True)
+    for number, colour in ((1, 'navy'), (2, 'teal'), (3, 'orange')):
+        Image.new('RGB', (1920, 1080), colour).save(current / 'workspace' / f'slide-{number:02d}.png')
+    (current / presentations.MANIFEST).write_text(json.dumps({'key': 'abc', 'generated_at': '2026-10-25T09:00:00+02:00', 'presentations': [
+        {'id': 'workspace', 'title': 'Workspace', 'description': 'Datasets & campaigns.', 'file': 'workspace.pptx', 'drawn': True,
+         'sections': [{'title': 'Workspace', 'slides': ['Cover', 'Datasets', 'Campaigns']}]},
+        {'id': 'full-presentation', 'title': 'Full Presentation', 'description': 'Every presentation in one.', 'file': 'full.pptx',
+         'sections': [{'title': 'Overview', 'slides': []}, {'title': 'Workspace', 'presentation': 'workspace', 'slides': ['Cover', 'Datasets', 'Campaigns']}]},
+    ]}), encoding='utf-8')
+    # The apps that show a preview of a link (WhatsApp, Teams, Slack…) read it without signing in.
+    client.cookies.clear()
+    page = client.get('/documents/view/help/help.md?presentation=workspace&slide=2', headers={'User-Agent': 'WhatsApp/2.23'}).text
+    assert '<title>Workspace</title>' in page and '<meta property="og:title" content="Workspace">' in page
+    assert '<meta property="og:description" content="Slide 2 of 3: Datasets. Datasets &amp; campaigns.">' in page
+    assert '<meta property="og:image" content="http://testserver/presentations/preview/workspace/2.jpg?v=abc">' in page
+    assert '<meta name="twitter:card" content="summary_large_image">' in page
+    assert 'content="http://testserver/documents/view/help/help.md?presentation=workspace&amp;slide=2"' in page
+    # Its cover without a slide, and the first of the help home too.
+    home = client.get('/documents/view/help?presentation=workspace').text
+    assert '<meta property="og:description" content="Datasets &amp; campaigns.">' in home and '/presentations/preview/workspace/1.jpg' in home
+    # The picture: a light JPEG of 1200 × 675 made once from the picture of the slide.
+    response = client.get('/presentations/preview/workspace/2.jpg?v=abc')
+    assert response.status_code == 200 and response.headers['content-type'] == 'image/jpeg'
+    with Image.open(__import__('io').BytesIO(response.content)) as image:
+        assert image.format == 'JPEG' and image.size == presentations.PREVIEW_SIZE
+        assert image.getpixel((600, 337))[1] > 100  # teal, the second slide
+    assert (current / 'workspace' / 'preview-02.jpg').is_file()
+    # A slide of the full presentation is the picture of that slide in the presentation it comes from.
+    page = client.get('/documents/view/help/overview.md?presentation=full-presentation&slide=3').text
+    assert 'Slide 3 of 3: Campaigns. Every presentation in one.' in page and '/presentations/preview/full-presentation/3.jpg' in page
+    assert client.get('/presentations/preview/full-presentation/3.jpg').status_code == 200 and (current / 'workspace' / 'preview-03.jpg').is_file()
+    # A slide beyond the last is the last; an unknown presentation shows the page as always.
+    assert 'Slide 3 of 3: Campaigns.' in client.get('/documents/view/help/help.md?presentation=workspace&slide=9').text
+    plain = client.get('/documents/view/help/help.md?presentation=missing').text
+    assert 'og:image' not in plain and '<title>DriveTest Analyzer</title>' in plain
+    assert client.get('/presentations/preview/missing/1.jpg').status_code == 404
+    assert 'og:image' not in client.get('/documents/view/changelog?presentation=workspace').text
+

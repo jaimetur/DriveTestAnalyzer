@@ -64,7 +64,25 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ app_name }}</title>
+  <title>{{ link_preview.title if link_preview else app_name }}</title>
+  {% if link_preview %}
+  <!-- What the link of a presentation shows where it is shared. -->
+  <meta name="description" content="{{ link_preview.description }}">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="{{ app_name }}">
+  <meta property="og:title" content="{{ link_preview.title }}">
+  <meta property="og:description" content="{{ link_preview.description }}">
+  <meta property="og:url" content="{{ link_preview.url }}">
+  <meta property="og:image" content="{{ link_preview.image }}">
+  <meta property="og:image:type" content="image/jpeg">
+  <meta property="og:image:width" content="{{ link_preview.width }}">
+  <meta property="og:image:height" content="{{ link_preview.height }}">
+  <meta property="og:image:alt" content="{{ link_preview.title }}">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{{ link_preview.title }}">
+  <meta name="twitter:description" content="{{ link_preview.description }}">
+  <meta name="twitter:image" content="{{ link_preview.image }}">
+  {% endif %}
   <link rel="icon" type="image/x-icon" href="{{ static_path('img/favicon.ico') }}?v={{ asset_version('img/favicon.ico') }}">
   <link rel="icon" type="image/png" sizes="32x32" href="{{ static_path('img/favicon-32x32.png') }}?v={{ asset_version('img/favicon-32x32.png') }}">
   <link rel="icon" type="image/png" sizes="16x16" href="{{ static_path('img/favicon-16x16.png') }}?v={{ asset_version('img/favicon-16x16.png') }}">
