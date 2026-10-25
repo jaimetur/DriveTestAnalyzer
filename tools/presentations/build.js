@@ -1,9 +1,10 @@
 // The presentations of DriveTest Analyzer shown in the Help, in Ericsson style: the overview deck (which closes with the
-// one-slider), the one-slider and the roadmap, plus the status of the adaptation to other benchmarking providers in the
-// design of its own deck. The server generates them with the live figures of the workspaces chosen in Super Admin
-// (src/modules/presentations.py); `node build.js` writes them with the figures below into static/presentations, the
-// copies the Help shows until then, and `python tools/presentations/render.py` renders their slides (see
-// help/project-structure.md).
+// one-slider), the one-slider and the roadmap, the status of the adaptation to other benchmarking providers, the deck of
+// every main module and of the DT Analyzer RCA in a design of their own, and the full presentation that joins them. The
+// server generates them, with the live figures of the workspaces chosen in Super Admin (src/modules/presentations.py);
+// none is kept in the repository. `node build.js <folder>` writes them, with the figures below, into <folder>, and
+// `python tools/presentations/render.py <folder>` renders their slides as the server does; `node build.js --ids` lists
+// them (see help/project-structure.md).
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -16,7 +17,8 @@ const tb = require('react-icons/tb');
 const art = require('./art.js');
 
 const ROOT = path.resolve(__dirname, '..', '..');
-const OUT = path.resolve(process.argv[2] || path.join(ROOT, 'src', 'web_interface', 'static', 'presentations'));
+// The folder the presentations are written into.
+const OUT = process.argv[2] && process.argv[2] !== '--ids' ? path.resolve(process.argv[2]) : '';
 // Arial, which every device has (PowerPoint, Keynote, the previews of phones): the Ericsson theme of the exports uses
 // Ericsson Hilda, which a device without it replaces with a serif font.
 const HEAD = 'Arial';
@@ -1110,16 +1112,16 @@ async function applyTheme(file, theme) {
 }
 
 // ------------------------------------------------------------------------------------- decks of their own design
-// Decks in a design of their own: their folder holds a picture of each slide and slides.json their order, section, title
-// and speaker notes. benchmarking-providers/ is the adaptation of the tool to the CDRs of benchmarking providers other
-// than NetCheck (Umlaut first, then P3), with the Ericsson logo at the top right; dt-analyzer-rca/ the DT Analyzer RCA of
-// Non-Qualified Calls, whose slides.html is the source of its pictures.
-function imageDeck(folder) {
-  const dir = path.join(__dirname, folder);
+// Decks in a design of their own: a picture of each slide and slides.json with their order, section, title and speaker
+// notes. benchmarking-providers/ keeps those of the adaptation of the tool to the CDRs of benchmarking providers other than
+// NetCheck (Umlaut first, then P3), with the Ericsson logo at the top right; module_decks.js draws the others when the
+// presentations are generated: the deck of every main module from the content.js of its folder, in the order of its
+// tabs, and the DT Analyzer RCA of Non-Qualified Calls from its slides.html.
+const { DECKS: MODULE_DECK_IDS, DRAWN, draw } = require('./module_decks.js');
+
+function imageDeck(dir) {
   return { dir, ...JSON.parse(fs.readFileSync(path.join(dir, 'slides.json'), 'utf8')) };
 }
-const PROVIDERS_SLIDES = imageDeck('benchmarking-providers');
-const DTA_SLIDES = imageDeck('dt-analyzer-rca');
 
 function imageSections(deck) {
   const sections = [];
@@ -1130,11 +1132,13 @@ function imageSections(deck) {
   return sections;
 }
 
-function imageSlides(pres, deck) {
+// (In the full presentation, the deck is one section titled after it.)
+function imageSlides(pres, deck, sectionTitle = '') {
   let section;
   for (const slide of deck.slides) {
-    if (slide.section !== section) { pres.addSection({ title: slide.section }); section = slide.section; }
-    const page = pres.addSlide({ sectionTitle: slide.section });
+    const title = sectionTitle || slide.section;
+    if (title !== section) { pres.addSection({ title }); section = title; }
+    const page = pres.addSlide({ sectionTitle: title });
     page.addImage({ path: path.join(deck.dir, slide.image), x: 0, y: 0, w: '100%', h: '100%', objectName: slide.title });
     if (slide.notes) page.addNotes(slide.notes);
   }
@@ -1151,36 +1155,96 @@ async function writeImageDeck(deck, file, subject) {
   return target;
 }
 
-// The presentations as the Help lists them (static/presentations/presentations.json): their file and the title of each
-// slide by section, which the slide viewer shows on its left.
-const PRESENTATIONS = [
-  { id: 'overview', title: 'DriveTest Analyzer — Overview', file: 'overview.pptx', download: 'DriveTest Analyzer - Overview.pptx',
-    description: 'The tool, the teams it serves and its platform, a slide per module in the order of the tool and its roadmap, closing with the one-slider.',
-    sections: [
-      { title: 'Introduction', slides: ['DriveTest Analyzer', 'One platform, from CDRs to decisions'] },
-      { title: 'Teams', slides: ['Built for every team'] },
-      { title: 'Platform', slides: ['Enterprise-ready'] },
-      { title: 'Modules', slides: ['Eight modules, one shared workspace', 'CDR Analysis', 'PPT Dashboards', 'Scoring & GAP Analysis — who wins',
-        'Scoring & GAP Analysis — where to win the points back', 'Network Insights', 'NQ Calls', 'Reporting', 'Builders', 'Ticket Center'] },
-      { title: 'Roadmap', slides: ['Roadmap'] },
-      { title: 'In one slide', slides: ['DriveTest Analyzer in one slide'] },
-    ] },
-  { id: 'one-slider', title: 'DriveTest Analyzer — One-slider', file: 'one-slider.pptx', download: 'DriveTest Analyzer - One-slider.pptx',
-    description: 'The most important of the tool in a single slide: figures, modules, teams, platform and what comes next.',
-    sections: [{ title: 'In one slide', slides: ['DriveTest Analyzer in one slide'] }] },
-  { id: 'roadmap', title: 'DriveTest Analyzer — Roadmap', file: 'roadmap.pptx', download: 'DriveTest Analyzer - Roadmap.pptx',
-    description: 'What comes next: Umlaut CDRs, the Active Tests community, scale-out and speed on AWS, PostgreSQL and health monitoring.',
-    sections: [{ title: 'Roadmap', slides: ['Roadmap — what comes next'] }] },
-  { id: 'benchmarking-providers', title: PROVIDERS_SLIDES.title, file: 'benchmarking-providers.pptx',
-    download: 'DriveTest Analyzer - Benchmarking Providers Roadmap.pptx',
-    description: 'How the tool is being adapted to Umlaut and P3 CDRs and the status of each phase, how it is built inside and how it is deployed in the cloud.',
-    sections: imageSections(PROVIDERS_SLIDES) },
-  { id: 'dt-analyzer-rca', title: DTA_SLIDES.title, file: 'dt-analyzer-rca.pptx', download: 'DriveTest Analyzer - DT Analyzer RCA.pptx',
-    description: 'How the DT Analyzer RCA finds the root cause of every Non-Qualified Call: what it reads, its rules, the lack of resources, the network around the call and the evidence it gives.',
-    sections: imageSections(DTA_SLIDES) },
-];
+// The presentations in the order the Help lists them: the decks of the main modules with the DT Analyzer RCA after that
+// of Non-Qualified Calls, and the full presentation last.
+const IDS = ['overview', 'one-slider', 'roadmap', 'benchmarking-providers',
+  ...MODULE_DECK_IDS.flatMap((id) => (id === 'non-qualified-calls' ? [id, 'dt-analyzer-rca'] : [id])), 'full-presentation'];
+// The parts of the full presentation: the Overview, the deck of every main module, the DT Analyzer RCA, the Benchmarking
+// Providers Roadmap and the Roadmap one after the other, with the slides they have.
+const FULL_PARTS = ['overview', ...MODULE_DECK_IDS, 'dt-analyzer-rca', 'benchmarking-providers', 'roadmap'];
+
+// The presentations as the Help lists them (presentations.json): their file and the title of each slide by section, which
+// the slide viewer shows on its left; `decks` are the decks of their own design by id. The sections of the full
+// presentation are its parts, each titled after it and naming it (the Help shows the pictures of its slides).
+function presentationsOf(decks) {
+  const presentations = [
+    { id: 'overview', title: 'DriveTest Analyzer — Overview', file: 'overview.pptx', download: 'DriveTest Analyzer - Overview.pptx',
+      description: 'The tool, the teams it serves and its platform, a slide per module in the order of the tool and its roadmap, closing with the one-slider.',
+      sections: [
+        { title: 'Introduction', slides: ['DriveTest Analyzer', 'One platform, from CDRs to decisions'] },
+        { title: 'Teams', slides: ['Built for every team'] },
+        { title: 'Platform', slides: ['Enterprise-ready'] },
+        { title: 'Modules', slides: ['Eight modules, one shared workspace', 'CDR Analysis', 'PPT Dashboards', 'Scoring & GAP Analysis — who wins',
+          'Scoring & GAP Analysis — where to win the points back', 'Network Insights', 'NQ Calls', 'Reporting', 'Builders', 'Ticket Center'] },
+        { title: 'Roadmap', slides: ['Roadmap'] },
+        { title: 'In one slide', slides: ['DriveTest Analyzer in one slide'] },
+      ] },
+    { id: 'one-slider', title: 'DriveTest Analyzer — One-slider', file: 'one-slider.pptx', download: 'DriveTest Analyzer - One-slider.pptx',
+      description: 'The most important of the tool in a single slide: figures, modules, teams, platform and what comes next.',
+      sections: [{ title: 'In one slide', slides: ['DriveTest Analyzer in one slide'] }] },
+    { id: 'roadmap', title: 'DriveTest Analyzer — Roadmap', file: 'roadmap.pptx', download: 'DriveTest Analyzer - Roadmap.pptx',
+      description: 'What comes next: Umlaut CDRs, the Active Tests community, scale-out and speed on AWS, PostgreSQL and health monitoring.',
+      sections: [{ title: 'Roadmap', slides: ['Roadmap — what comes next'] }] },
+    { id: 'benchmarking-providers', title: decks['benchmarking-providers'].title, file: 'benchmarking-providers.pptx',
+      download: 'DriveTest Analyzer - Benchmarking Providers Roadmap.pptx',
+      description: 'How the tool is being adapted to Umlaut and P3 CDRs and the status of each phase, how it is built inside and how it is deployed in the cloud.',
+      sections: imageSections(decks['benchmarking-providers']) },
+    ...MODULE_DECK_IDS.flatMap((id) => [
+      { id, title: decks[id].title, file: `${id}.pptx`, download: `DriveTest Analyzer - ${decks[id].name}.pptx`, description: decks[id].description,
+        sections: imageSections(decks[id]) },
+      ...(id === 'non-qualified-calls' ? [{ id: 'dt-analyzer-rca', title: decks['dt-analyzer-rca'].title, file: 'dt-analyzer-rca.pptx',
+        download: 'DriveTest Analyzer - DT Analyzer RCA.pptx',
+        description: 'How the DT Analyzer RCA finds the root cause of every Non-Qualified Call: what it reads, its rules, the lack of resources, the network around the call and the evidence it gives.',
+        sections: imageSections(decks['dt-analyzer-rca']) }] : []),
+    ]),
+  ];
+  presentations.push({ id: 'full-presentation', title: 'DriveTest Analyzer — Full Presentation', file: 'full-presentation.pptx',
+    download: 'DriveTest Analyzer - Full Presentation.pptx',
+    description: 'Every presentation in one: the Overview, the presentation of every main module and of Workspace Config, the DT Analyzer RCA, the Benchmarking Providers Roadmap and the Roadmap.',
+    sections: FULL_PARTS.map((id) => {
+      const part = presentations.find((item) => item.id === id);
+      return { title: part.title.replace('DriveTest Analyzer — ', ''), presentation: id, slides: part.sections.flatMap((section) => section.slides) };
+    }) });
+  return presentations;
+}
+
+// The slides of the Overview by section, or in a single one (the full presentation), where every slide goes to it.
+async function overviewSlides(deck, files, sectionTitle = '') {
+  const pres = sectionTitle
+    ? new Proxy(deck, { get: (target, key) => (key === 'addSlide' ? (options = {}) => target.addSlide({ ...options, sectionTitle }) : Reflect.get(target, key)) })
+    : deck;
+  const section = (title) => { if (!sectionTitle) deck.addSection({ title }); };
+  if (sectionTitle) deck.addSection({ title: sectionTitle });
+  section('Introduction');
+  await cover(pres, files);
+  await platform(pres);
+  section('Teams');
+  await teams(pres);
+  section('Platform');
+  await enterprise(pres);
+  section('Modules');
+  await modules(pres);
+  await cdrAnalysis(pres, files);
+  await dashboards(pres);
+  await scoring(pres);
+  await scoringActions(pres, files);
+  await networkInsights(pres, files);
+  await nqCalls(pres);
+  await reporting(pres);
+  await builders(pres);
+  await ticketCenter(pres);
+  section('Roadmap');
+  await roadmap(pres, files);
+  section('In one slide');
+  await oneSlider(pres, files, 'CONTENT', 'In one slide');
+}
 
 async function main() {
+  if (process.argv[2] === '--ids') {
+    console.log(JSON.stringify(IDS));
+    return;
+  }
+  if (!OUT) throw new Error('node build.js <folder> writes the presentations into <folder>; node build.js --ids lists them.');
   fs.mkdirSync(OUT, { recursive: true });
   const work = fs.mkdtempSync(path.join(os.tmpdir(), 'drivetest-presentations-'));
   const files = {
@@ -1196,32 +1260,17 @@ async function main() {
   // The black logo of the light slides, from the white one.
   await sharp(files.logoWhite).negate({ alpha: false }).toFile(files.logoBlack);
   const logos = { white: files.logoWhite, black: files.logoBlack };
+  // The pictures of the decks of their own design that module_decks.js draws.
+  const decks = { 'benchmarking-providers': imageDeck(path.join(__dirname, 'benchmarking-providers')) };
+  for (const id of DRAWN) decks[id] = await draw(id, path.join(work, 'decks', id));
+  const PRESENTATIONS = presentationsOf(decks);
+  const FULL_PRESENTATION = PRESENTATIONS.at(-1);
+  if (PRESENTATIONS.map((item) => item.id).join() !== IDS.join()) throw new Error('The presentations are not those of IDS.');
 
   const deck = new pptxgen();
   deck.author = 'DriveTest Analyzer'; deck.title = 'DriveTest Analyzer — Overview'; deck.subject = 'DriveTest Analyzer overview';
   defineLayouts(deck, logos);
-  deck.addSection({ title: 'Introduction' });
-  await cover(deck, files);
-  await platform(deck);
-  deck.addSection({ title: 'Teams' });
-  await teams(deck);
-  deck.addSection({ title: 'Platform' });
-  await enterprise(deck);
-  deck.addSection({ title: 'Modules' });
-  await modules(deck);
-  await cdrAnalysis(deck, files);
-  await dashboards(deck);
-  await scoring(deck);
-  await scoringActions(deck, files);
-  await networkInsights(deck, files);
-  await nqCalls(deck);
-  await reporting(deck);
-  await builders(deck);
-  await ticketCenter(deck);
-  deck.addSection({ title: 'Roadmap' });
-  await roadmap(deck, files);
-  deck.addSection({ title: 'In one slide' });
-  await oneSlider(deck, files, 'CONTENT', 'In one slide');
+  await overviewSlides(deck, files);
   const deckFile = path.join(OUT, 'overview.pptx');
   await deck.writeFile({ fileName: deckFile });
   await applyTheme(deckFile, THEME);
@@ -1244,12 +1293,27 @@ async function main() {
   await plan.writeFile({ fileName: planFile });
   await applyTheme(planFile, THEME);
 
-  const providersFile = await writeImageDeck(PROVIDERS_SLIDES, 'benchmarking-providers.pptx',
+  const providersFile = await writeImageDeck(decks['benchmarking-providers'], 'benchmarking-providers.pptx',
     'Adaptation of DriveTest Analyzer to other benchmarking providers');
-  const dtaFile = await writeImageDeck(DTA_SLIDES, 'dt-analyzer-rca.pptx', 'The DT Analyzer RCA of Non-Qualified Calls');
+  const dtaFile = await writeImageDeck(decks['dt-analyzer-rca'], 'dt-analyzer-rca.pptx', 'The DT Analyzer RCA of Non-Qualified Calls');
+  const moduleFiles = [];
+  for (const id of MODULE_DECK_IDS) moduleFiles.push(await writeImageDeck(decks[id], `${id}.pptx`, `The ${decks[id].name} module of DriveTest Analyzer`));
+
+  const full = new pptxgen();
+  full.author = 'DriveTest Analyzer'; full.title = FULL_PRESENTATION.title; full.subject = 'Every presentation of DriveTest Analyzer in one';
+  defineLayouts(full, logos);
+  for (const section of FULL_PRESENTATION.sections) {
+    if (section.presentation === 'overview') await overviewSlides(full, files, section.title);
+    else if (section.presentation === 'roadmap') { full.addSection({ title: section.title }); await roadmap(full, files, 'SINGLE'); }
+    else imageSlides(full, decks[section.presentation], section.title);
+  }
+  const fullFile = path.join(OUT, FULL_PRESENTATION.file);
+  await full.writeFile({ fileName: fullFile });
+  await applyTheme(fullFile, THEME);
   fs.writeFileSync(path.join(OUT, 'presentations.json'), `${JSON.stringify({ presentations: PRESENTATIONS, figures: FIGURES }, null, 2)}\n`);
   fs.rmSync(work, { recursive: true, force: true });
   console.log(deckFile); console.log(singleFile); console.log(planFile); console.log(providersFile); console.log(dtaFile);
+  moduleFiles.forEach((file) => console.log(file)); console.log(fullFile);
 }
 
 main().catch((error) => { console.error(error); process.exit(1); });

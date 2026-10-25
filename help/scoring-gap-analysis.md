@@ -7,10 +7,19 @@ Each calculation gives the NetCheck **Best Network** scoring, which rates every 
 > [!NOTE]
 > **Start with a saved methodology.** It defines the environments, KPI formulas, thresholds and maximum points. Each result keeps a snapshot of the rules it was calculated with.
 
+## Presentation
+
+The presentation **Scoring & GAP Analysis** sums the module up. KPI scores of every operator with the NetCheck methodology, compared with a reference operator: who wins, by how much and where to win the points back. Select it to open it in the slide viewer, play it full screen or download its PowerPoint; every presentation is also in [Presentations](help.md#presentations).
+
+```presentations
+scoring-gap-analysis
+```
+
 ## Choose your task
 
 | I want to… | Go to |
 | --- | --- |
+| Watch the presentation of the module | [Presentation](#presentation) |
 | Calculate or recalculate a comparison | [Calculate and review](#calculate-and-review) |
 | Find a Favourites Filter among many | [Filter Navigator](#filter-navigator) |
 | Understand filters and Split by | [Filters and Split by](#filters-and-split-by) |

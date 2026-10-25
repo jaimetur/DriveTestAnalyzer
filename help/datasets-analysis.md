@@ -8,10 +8,19 @@ CDR Analysis provides on-demand KPI analysis for one processed CDR in the active
 > [!TIP]
 > **Inspect before exporting.** Update Analysis after changing the controls, then inspect sample counts and the filtered records.
 
+## Presentation
+
+The presentation **CDR Analysis** sums the module up. On-demand KPI analysis of one processed CDR: its distributions, benchmarks, percentiles and metrics, filtered and exported in seconds. Select it to open it in the slide viewer, play it full screen or download its PowerPoint; every presentation is also in [Presentations](help.md#presentations).
+
+```presentations
+cdr-analysis
+```
+
 ## In this guide
 
 | Task or topic | Go to |
 | --- | --- |
+| Presentation | [Open section](#presentation) |
 | Eligible datasets | [Open section](#eligible-datasets) |
 | Analysis workflow | [Open section](#analysis-workflow) |
 | Analysis Controls | [Open section](#analysis-controls) |

@@ -1,12 +1,11 @@
-/* Presentations of the Help: a ```presentations block of a Help chapter lists the presentations (by id, one per line) of
-   static/presentations/presentations.json. Each one shows as a card that opens it in a slide viewer, as the preview of a
+/* Presentations of the Help: a ```presentations block of a Help chapter lists the presentations (by id, one per line) that
+   the server generates (/api/presentations). Each one shows as a card that opens it in a slide viewer, as the preview of a
    Bundle Report Template: its sections and slides on the left, the chosen slide on the right (the wheel and the arrow keys
    go through the slides; Ctrl/Cmd+wheel, a rectangle or the buttons zoom it), the slides gone through below it, and its
    PowerPoint to download. Slideshow plays it full screen, slide after slide with a transition, as the presentation mode
    of PPT Dashboards. */
 (function () {
-  // The server tells where the presentations are (generated with live figures, or those kept with the application) and
-  // whether new figures are being drawn.
+  // The server tells where the presentations it generated are, whether it is generating them and, when it cannot, why.
   let manifest = null;
   let base = '/presentations/files';
   let version = '';
@@ -29,12 +28,18 @@
   };
   const pad = (number) => String(number).padStart(2, '0');
   const versioned = (url) => (version ? `${url}?v=${encodeURIComponent(version)}` : url);
-  const slideUrl = (presentation, index, thumb = false) => versioned(`${base}/${presentation.id}/${thumb ? 'thumb' : 'slide'}-${pad(index + 1)}.png`);
+  // (A slide of the full presentation is the picture of that slide in the presentation its section names.)
+  const slideUrl = (presentation, index, thumb = false) => {
+    const slide = slidesOf(presentation)[index] || {};
+    const [folder, number] = slide.source ? [slide.source, slide.position] : [presentation.id, index];
+    return versioned(`${base}/${folder}/${thumb ? 'thumb' : 'slide'}-${pad(number + 1)}.png`);
+  };
   const fileUrl = (presentation) => versioned(`${base}/${presentation.file}`);
-  // Every slide with its number (from 0) and section.
+  // Every slide with its number (from 0) and section, and the presentation it comes from with its number there.
   const slidesOf = (presentation) => {
     let index = 0;
-    return presentation.sections.flatMap((section) => section.slides.map((title) => ({index: index++, title, section: section.title})));
+    return presentation.sections.flatMap((section) => section.slides.map((title, position) => (
+      {index: index++, title, section: section.title, source: section.presentation, position})));
   };
   const count = (total) => `${total} slide${total === 1 ? '' : 's'}`;
   // The transition effects of the slideshow, as those of the presentation mode of PPT Dashboards.
@@ -76,13 +81,20 @@
       return;
     }
     blocks.forEach((code, position) => {
-      // (While new figures are drawn, the last presentations show.)
-      if (data.updating && position === 0) code.parentElement.before(node('p', 'Updating the figures of the presentations: they show the last ones until then.', 'presentation-updating'));
+      // (While they are generated again, the last presentations show.)
+      if (data.updating && position === 0 && (data.presentations || []).length) code.parentElement.before(node('p', 'Updating the presentations: they show the last ones until then.', 'presentation-updating'));
       const gallery = node('div', undefined, 'presentation-gallery');
       code.textContent.split(/\s+/).filter(Boolean).forEach((id) => {
         const presentation = (data.presentations || []).find((item) => item.id === id);
         if (presentation) gallery.append(card(presentation));
       });
+      // (None yet: the server generates them at its start, or says why it cannot.)
+      if (!gallery.children.length) {
+        const why = data.updating ? 'The server is generating the presentations: they show here in a minute or two.'
+          : data.unavailable ? `The presentations cannot be generated on this server: ${data.unavailable}` : 'The presentations have not been generated yet.';
+        code.parentElement.replaceWith(node('p', why, data.unavailable && !data.updating ? 'presentation-error' : 'presentation-updating'));
+        return;
+      }
       code.parentElement.replaceWith(gallery);
     });
   }

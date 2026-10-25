@@ -5,10 +5,20 @@ Workspace Management is the first operational module. It controls isolated works
 > [!IMPORTANT]
 > **Ready data first.** Wait for CDR processing to finish before analysis. A detected input type and a completed upload do not mean the dataset is ready.
 
+## Presentations
+
+Two presentations sum the module up: **Workspace**, the isolated workspaces with their CDRs, network inventories and maps (what each one keeps, what it ingests and how it gets every dataset ready for the other modules), and **Workspace Config**, everything to set up in a new workspace before its first analysis (how operators, vendors and campaigns are named, coloured and ordered, the map areas of its countries, its networks and its methodology; see [Workspace Config](workspace-config.md)). Select one to open it in the slide viewer, play it full screen or download its PowerPoint; every presentation is also in [Presentations](help.md#presentations).
+
+```presentations
+workspace
+workspace-config
+```
+
 ## In this guide
 
 | Task or topic | Go to |
 | --- | --- |
+| Watch the presentations of the module and of Workspace Config | [Open section](#presentations) |
 | Workspace Lifecycle | [Open section](#workspace-lifecycle) |
 | Data Ingestion | [Open section](#data-ingestion) |
 | NetCheck CDR Support | [Open section](#netcheck-cdr-support) |

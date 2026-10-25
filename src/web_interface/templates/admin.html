@@ -506,11 +506,11 @@
         <h2>Presentations</h2>
         <p class="summary-description">The workspaces whose figures the presentations of the Help show. Only super-admins can change them.</p>
       </div>
-      <span class="pill presentations-status">{% if presentations.status.running %}Generating…{% elif presentations.status.generated_at %}Generated {{ presentations.status.generated_at[:16] | replace('T', ' ') }}{% else %}Copies of the application{% endif %}</span>
+      <span class="pill presentations-status" data-presentations-status>{% if presentations.status.running %}Generating…{% elif presentations.status.generated_at %}Generated {{ presentations.status.generated_at[:16] | replace('T', ' ') }}{% else %}Not generated yet{% endif %}</span>
       <span class="collapse-chip">Collapse</span>
     </summary>
     <form class="presentations-form" action="/super-admin/presentations" method="post">
-      <p class="table-help">The presentations of the Help (Overview, one-slider and roadmap) show the figures of the workspaces checked, added up, and are generated again when those figures change. With none checked, they show those of the workspace with the most CDR rows.</p>
+      <p class="table-help">The server generates every presentation of the Help, with the pictures of their slides: at startup when one is missing, again when their figures or the generator change, and with <b>Regenerate Presentations</b>. Those with figures (Overview, one-slider and roadmap, also in the Full Presentation) show the figures of the workspaces checked, added up; with none checked, those of the workspace with the most CDR rows.</p>
       <div class="presentations-workspaces">
         {% for workspace in presentations.workspaces %}
         <label class="presentations-workspace"><input type="checkbox" name="workspace_ids" value="{{ workspace.id }}" {% if workspace.chosen %}checked{% endif %}><span>{{ workspace.name }}</span></label>
@@ -518,10 +518,27 @@
         <p class="table-help">There is no workspace yet.</p>
         {% endfor %}
       </div>
-      {% if presentations.status.unavailable %}<p class="alert">{{ presentations.status.unavailable }} The Help shows the presentations kept with the application.</p>
+      {% if presentations.status.unavailable %}<p class="alert">{{ presentations.status.unavailable }} The Help cannot show the presentations until they are generated.</p>
       {% elif presentations.status.error %}<p class="alert">The last generation failed: {{ presentations.status.error }}</p>{% endif %}
-      <div class="form-actions"><a class="ghost-link" href="/documents/view/help#presentations">Open the presentations</a><button type="submit">Save Presentations</button></div>
+      <div class="form-actions"><a class="ghost-link" href="/documents/view/help#presentations">Open the presentations</a><button type="submit" class="ghost-link" formaction="/super-admin/presentations/regenerate" {% if presentations.status.unavailable %}disabled title="{{ presentations.status.unavailable }}"{% endif %}>Regenerate Presentations</button><button type="submit">Save Presentations</button></div>
     </form>
+    <script>
+      // While the presentations are generated, the label follows the generation.
+      (() => {
+        const label = document.querySelector('[data-presentations-status]');
+        if (!label || label.textContent.trim() !== 'Generating…') return;
+        const timer = setInterval(async () => {
+          try {
+            const status = await (await fetch('/api/presentations/status', {cache: 'no-cache', credentials: 'same-origin'})).json();
+            if (status.running) return;
+            clearInterval(timer);
+            label.textContent = status.error ? 'Generation failed' : status.generated_at ? `Generated ${status.generated_at.slice(0, 16).replace('T', ' ')}` : 'Not generated yet';
+          } catch (error) {
+            clearInterval(timer);
+          }
+        }, 4000);
+      })();
+    </script>
   </details>
   {% endif %}
   {% endif %}

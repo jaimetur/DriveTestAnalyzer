@@ -1,0 +1,45 @@
+// The Ticket Center presentation of the Help (see module_decks.js).
+module.exports = {
+  name: 'Ticket Center',
+  accent: '#DC2626',
+  description: 'Report bugs, suggest improvements and ask for new features with screenshots, and follow each ticket until it is resolved.',
+  slides: [
+    { id: 'cover', type: 'cover', section: 'Introduction', footer: 'Main module', kicker: 'Main module · Ticket Center', title: 'Ticket Center',
+      icon: 'TbTicket', icons: ['TbBug', 'TbBulb', 'TbSparkles', 'TbMessages'],
+      lead: 'Report bugs, suggest improvements and ask for new features with screenshots, and follow each ticket until it is resolved.',
+      tags: ['Bug · Improvement · New Feature', 'Screenshots and comments', 'The version of every ticket'],
+      notes: 'Ticket Center is where users report the bugs they find, suggest improvements and ask for new features, and follow each ticket until it is resolved. Every ticket keeps the version of the tool it was opened with.' },
+    { id: 'overview', type: 'split', section: 'Tickets', footer: 'Dashboard and tickets', kicker: 'Dashboard and tickets', title: 'Every ticket at a glance', visual: 'kanban',
+      points: [
+        { icon: 'TbLayoutDashboard', title: 'Dashboard', text: 'Counts, bars and cells that each list their tickets.' },
+        { icon: 'TbTable', title: 'Tickets', text: 'The latest activity first: number, type, module, priority, status and who attends it.' },
+        { icon: 'TbFileText', title: 'The page of a ticket', text: 'Its type, status, priority, module and the versions that opened and fixed it.' },
+      ],
+      notes: 'The dashboard sums up every ticket; each count lists its tickets below. The Tickets table shows the latest activity first, and each ticket has its own page.' },
+    { id: 'flow', type: 'steps', section: 'Tickets', footer: 'From report to fix', kicker: 'Lifecycle', title: 'From report to fix',
+      steps: [
+        { icon: 'TbSquarePlus', title: 'New Ticket', text: 'Its type, title, module and description in Markdown, with screenshots.' },
+        { icon: 'TbUserCheck', title: 'Attend', text: 'A super-admin sets it In Progress and is assigned to it.' },
+        { icon: 'TbMessages', title: 'Comment', text: 'Markdown, read exactly as it is written.' },
+        { icon: 'TbChecks', title: 'Resolve', text: 'With the version that fixed it.' },
+      ],
+      highlight: 3,
+      notes: 'A ticket is opened with its type, module, description and screenshots, attended by a super-admin, discussed in its comments and resolved with the version that fixed it.' },
+    { id: 'rules', type: 'cards', section: 'Rules', footer: 'Rules', kicker: 'Types, priorities and statuses', title: 'Clear rules for everyone', columns: 3,
+      cards: [
+        { icon: 'TbTag', title: 'Types and priorities', text: 'Bug, Improvement or New Feature, each with its priority and status.' },
+        { icon: 'TbUsers', title: 'Who can do what', text: 'Everyone reports and comments; super-admins attend and resolve.' },
+        { icon: 'TbArchive', title: 'Portable', text: 'In the application database: Application Config exports, transfers, backups and restores keep them.' },
+      ],
+      notes: 'Every ticket has a type, a priority and a status. Users report and comment, super-admins attend and resolve, and the tickets travel with the Application Config in exports, transfers and backups.' },
+    { id: 'summary', type: 'closing', section: 'Summary', footer: 'Summary', kicker: 'Summary', title: 'Make the tool better',
+      lead: 'Every bug, improvement and idea in one place, followed until it is done.',
+      links: [
+        { title: 'Dashboard', text: 'every ticket summed up' }, { title: 'New Ticket', text: 'report it well' },
+        { title: 'Types, priorities and statuses', text: 'what they mean' }, { title: 'Who can do what', text: 'roles' },
+      ],
+      modules: ['Admin', 'Workspace'],
+      note: 'The tickets live in the application database, not in a workspace: every workspace shares them.',
+      notes: 'Ticket Center gathers the feedback of every user of the application and follows it until it is resolved.' },
+  ],
+};

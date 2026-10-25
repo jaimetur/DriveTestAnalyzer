@@ -1,0 +1,53 @@
+// The Reporting presentation of the Help (see module_decks.js).
+module.exports = {
+  name: 'Reporting',
+  accent: '#2E8C58',
+  description: 'One PowerPoint or Word document with the parts you choose of every module, and Reporting Jobs that build and email them on a schedule.',
+  slides: [
+    { id: 'cover', type: 'cover', section: 'Introduction', footer: 'Main module', kicker: 'Main module · Reporting', title: 'Reporting',
+      icon: 'TbReportAnalytics', icons: ['TbFileTypeDocx', 'TbCalendarTime', 'TbMail', 'TbStack2'],
+      lead: 'One PowerPoint or Word document with the parts you choose of every module, and jobs that build and email them on a schedule.',
+      tags: ['Bundle Report Templates', 'Scheduled Reporting Jobs', 'Email delivery'],
+      notes: 'Reporting builds one document from the parts of the modules you choose, a Bundle Report Template, and collects the artifacts of several modules in Reporting Jobs that run on demand or on a schedule and email them.' },
+    { id: 'bundle', type: 'split', section: 'Bundle reports', footer: 'Bundle Report Templates', kicker: 'Bundle Report Templates', title: 'One report, every module', visual: 'slides',
+      points: [
+        { icon: 'TbStack2', title: 'Five sections', text: 'Scoring & GAP Analysis, Network Insights, Non-Qualified Calls, PPT Dashboards and CDR Analysis, in your order.' },
+        { icon: 'TbFilter', title: 'Common filters', text: 'The NR Mode, operators, vendors, regions, clusters and cities apply to every module.' },
+        { icon: 'TbCalendarStats', title: 'Campaigns per module', text: 'The latest, the latest 2 to 4, the previous one or all of them.' },
+        { icon: 'TbPalette', title: 'One theme', text: 'The colour theme of the whole report: charts, tables and slide titles.' },
+      ],
+      notes: 'A Bundle Report Template builds one document from five sections. Common filters apply to every module, each module has its own campaigns, and one theme colours the whole report.' },
+    { id: 'read', type: 'cards', section: 'Bundle reports', footer: 'Built to read', kicker: 'PowerPoint and Word', title: 'Built to be read',
+      cards: [
+        { icon: 'TbFileTypePpt', title: 'PowerPoint', text: 'A table spread over several slides becomes one table on one slide.' },
+        { icon: 'TbFileTypeDocx', title: 'Word', text: 'A cover, a Contents page and portrait pages in the report theme.' },
+        { icon: 'TbRecycle', title: 'Reuse sections', text: 'A section already generated is reused while its data and options are the same.' },
+        { icon: 'TbStar', title: 'Favourites', text: 'Save the panel as a favourite to generate it again in one click.' },
+      ],
+      notes: 'The PowerPoint and Word documents are composed for reading: tables are never split, Word has a cover and contents, and sections already generated are reused. Favourites keep every option.' },
+    { id: 'jobs', type: 'split', section: 'Reporting Jobs', footer: 'Reporting Jobs', kicker: 'Reporting Jobs', title: 'On demand or on a schedule', visual: 'schedule',
+      points: [
+        { icon: 'TbStack2', title: 'Artifacts', text: 'CDR Analysis, Network Insights, Dashboards, Scoring, Non-Qualified Calls and bundle reports.' },
+        { icon: 'TbCalendarTime', title: 'Schedules', text: 'In the timezone of the application, as often as needed.' },
+        { icon: 'TbMail', title: 'Email delivery', text: 'The artifacts with a clear description of each one and its filters.' },
+        { icon: 'TbHistory', title: 'Run history', text: 'Trigger, start, status, duration, email result and size of every run.' },
+      ],
+      notes: 'A Reporting Job collects artifacts of several modules, runs on demand or on a schedule and emails them with a description of each one. The run history tells how every run went.' },
+    { id: 'safe', type: 'cards', section: 'Reporting Jobs', footer: 'Permissions and portability', kicker: 'Permissions and portability', title: 'Safe to share', columns: 3,
+      cards: [
+        { icon: 'TbShieldCheck', title: 'Permissions', text: 'Only artifacts of the modules active for the user; every run checks them again.' },
+        { icon: 'TbTransfer', title: 'Portable', text: 'Reporting Jobs and Bundle Report Template Favourites travel with imports, exports and transfers.' },
+        { icon: 'TbArchive', title: 'Backed up', text: 'Workspace transfers and backups keep them.' },
+      ],
+      notes: 'A user only includes artifacts of the modules active for their account, and each run checks the permissions of the author of the job. Jobs and favourites travel between workspaces and servers.' },
+    { id: 'summary', type: 'closing', section: 'Summary', footer: 'Summary', kicker: 'Summary', title: 'Reports that build themselves',
+      lead: 'Choose once what goes in; the tool builds and sends it every time.',
+      links: [
+        { title: 'Bundle Report Templates', text: 'one document of every module' }, { title: 'Artifacts', text: 'what a job includes' },
+        { title: 'Schedules', text: 'when jobs run' }, { title: 'Email delivery', text: 'who receives them' },
+      ],
+      modules: ['Scoring & GAP Analysis', 'Network Insights', 'Non-Qualified Calls', 'PPT Dashboards', 'CDR Analysis'],
+      note: 'Every module that exports PowerPoint or Word is a section of the bundle reports and an artifact of the jobs.',
+      notes: 'Reporting brings every module together in one document and sends it on a schedule.' },
+  ],
+};

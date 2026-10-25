@@ -11,10 +11,19 @@ After **Launch Analysis**, the panels are grouped in three categories, each a pa
 > [!NOTE]
 > **Radio views need no extra input.** RSRP, SINR, maps, observed eNodeBs and observed bands come from the processed CDRs. The inventories (Multivendor Mappings and Network Inventories, Cell Configuration KMZ packages included) and the licensed spectrum are optional inputs that complete the Serving Cells, 5G Availability, Network Snapshot, Network Deployment, Cluster Sites Density and Spectrum panels.
 
+## Presentation
+
+The presentation **Network Insights** sums the module up. The network behind the measured performance: radio quality, weak areas on a map, serving cells, 5G availability, inventories, sites and spectrum. Select it to open it in the slide viewer, play it full screen or download its PowerPoint; every presentation is also in [Presentations](help.md#presentations).
+
+```presentations
+network-insights
+```
+
 ## Choose your task
 
 | I want to… | Go to |
 | --- | --- |
+| Watch the presentation of the module | [Presentation](#presentation) |
 | Run an analysis | [Launch Analysis](#launch-analysis) |
 | Compare coverage and interference per Operator | [Overview and RF Quality](#overview-and-rf-quality) |
 | Read the benchmark views of the Data tests (signal at the test, bandwidth, technology and bands in use) | [Key Findings](#key-findings) |

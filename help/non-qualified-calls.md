@@ -7,10 +7,20 @@ Follow up every call and test that did not complete. Non-Qualified Calls brings 
 
 The module is in development, so its main tab can show a red **ALPHA** label (see Interface Settings). On a new deployment it is in the Non-Qualified Calls and All Modules profiles; super-admins choose who sees it in [Super Admin → Modules Profiles](super-admin.md#modules-profiles).
 
+## Presentations
+
+Two presentations sum the module up: **Non-Qualified Calls**, the NQ Analysis Center (which calls to analyse first, why they failed, where, and who follows them up), and **DT Analyzer RCA**, the RCA of its own that finds the root cause of every call (see [DT Analyzer RCA](#dt-analyzer-rca)). Select one to open it in the slide viewer, play it full screen or download its PowerPoint; every presentation is also in [Presentations](help.md#presentations).
+
+```presentations
+non-qualified-calls
+dt-analyzer-rca
+```
+
 ## Choose your task
 
 | I want to… | Go to |
 | --- | --- |
+| Watch the presentations of the module and of the DT Analyzer RCA | [Presentations](#presentations) |
 | Know which calls are listed and how they are indexed | [Which calls are Non-Qualified](#which-calls-are-non-qualified) |
 | Understand Daily, cumulative and Final CDRs of the same call | [Daily and Final CDRs](#daily-and-final-cdrs) |
 | Choose the calls I work with | [Filters](#filters) |

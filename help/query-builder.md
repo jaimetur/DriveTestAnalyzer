@@ -8,10 +8,19 @@ Query Builder runs read-only SQL against selected, processed Data, Voice and Spe
 > [!TIP]
 > **Preview is not execution.** Changing Assistance controls updates SQL. Use Run Query to refresh the results.
 
+## Presentation
+
+The presentation **Builders** sums the module up. Ad-hoc exploration of the processed CDRs: Chart Builder draws any chart in the Dashboard viewer and Query Builder runs read-only SQL. Select it to open it in the slide viewer, play it full screen or download its PowerPoint; every presentation is also in [Presentations](help.md#presentations).
+
+```presentations
+builders
+```
+
 ## In this guide
 
 | Task or topic | Go to |
 | --- | --- |
+| Presentation | [Open section](#presentation) |
 | Assistance Mode | [Open section](#assistance-mode) |
 | SQL Mode | [Open section](#sql-mode) |
 | Saved queries | [Open section](#saved-queries) |

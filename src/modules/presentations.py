@@ -1,9 +1,11 @@
 """The presentations of the Help, with live figures.
 
-tools/presentations draws them (build.js) with the figures of the workspaces chosen in Super Admin. When those
-figures, or the generator, change, the server generates them again in the background into APP_DATA_DIR/presentations,
-and the Help shows them from there; until then, and where Node or the packages of the generator are missing, it shows
-the last ones generated (at first, those kept in static/presentations).
+The server generates every one of them with tools/presentations (build.js, which draws the pictures of the decks of their
+own design with module_decks.js), with the figures of the workspaces chosen in Super Admin, into
+APP_DATA_DIR/presentations: none is kept with the application. At startup it generates them before opening when one is
+missing (the startup page says so); when their figures, or the generator, change, it generates them again in the
+background, meanwhile showing the last ones; and Super Admin → Presentations generates them again on demand. Generating
+them needs Node.js with the packages of the generator, a Chromium browser and LibreOffice.
 """
 from __future__ import annotations
 
@@ -23,7 +25,7 @@ from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 GENERATOR = PROJECT_ROOT / 'tools' / 'presentations'
-STATIC_PRESENTATIONS = PROJECT_ROOT / 'src' / 'web_interface' / 'static' / 'presentations'
+LOGO = PROJECT_ROOT / 'src' / 'web_interface' / 'static' / 'img' / 'ericsson-logo-white.png'
 # The workspaces whose figures the presentations show (Super Admin).
 FIGURES_STATE_KEY = 'presentation_figure_workspaces'
 MANIFEST = 'presentations.json'
@@ -39,6 +41,13 @@ MAPPING_KINDS = ('mapping_vodafone', 'mapping_three', 'vendors')
 GEOGRAPHICAL_KINDS = ('regions', 'clusters')
 # Where Node usually is when the application does not run from a shell (a launcher of macOS, for example).
 NODE_CANDIDATES = ('/opt/homebrew/bin/node', '/usr/local/bin/node', '/usr/bin/node', '/usr/bin/nodejs')
+# The browsers that take the pictures of the slides, as those of the charts of the reports (the one of
+# DRIVETEST_ANALYZER_CHROMIUM, chosen in Configuration, first).
+BROWSER_CANDIDATES = ('/Applications/Brave Browser.app/Contents/MacOS/Brave Browser', '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+                      '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge', '/usr/bin/google-chrome', '/usr/bin/google-chrome-stable',
+                      '/usr/bin/chromium', '/usr/bin/chromium-browser')
+# The server generates the presentations at startup (the tests turn it off).
+GENERATE_AT_STARTUP = True
 
 
 # -- figures ---------------------------------------------------------------------------------------------------------
@@ -116,21 +125,20 @@ def figure_workspaces(core: Any) -> list[Any]:
 
 
 def product_figures() -> dict[str, int]:
-    """The figures of the tool itself: its Help chapters, releases and automated tests (those of the presentations kept
-    in the repository where the tests are not, as in a Docker image)."""
+    """The figures of the tool itself: its Help chapters, releases and automated tests (where they are: a Docker image
+    has none)."""
     help_root = PROJECT_ROOT / 'help'
     changelog = PROJECT_ROOT / 'CHANGELOG.md'
     tests_root = PROJECT_ROOT / 'tests'
-    if tests_root.is_dir():
-        tests = sum(1 for path in tests_root.glob('test_*.py') for line in path.read_text(encoding='utf-8', errors='replace').splitlines()
-                    if line.lstrip().startswith(('def test_', 'async def test_')))
-    else:
-        tests = int(_read_manifest(STATIC_PRESENTATIONS).get('figures', {}).get('tests') or 0)
-    return {
+    figures = {
         'help_chapters': len(list(help_root.glob('*.md'))) if help_root.is_dir() else 0,
         'releases': changelog.read_text(encoding='utf-8', errors='replace').count('\n## Release:') if changelog.is_file() else 0,
-        'tests': tests,
     }
+    # (Without them, the presentations show the count written in build.js.)
+    if tests_root.is_dir():
+        figures['tests'] = sum(1 for path in tests_root.glob('test_*.py') for line in path.read_text(encoding='utf-8', errors='replace').splitlines()
+                               if line.lstrip().startswith(('def test_', 'async def test_')))
+    return figures
 
 
 def presentation_figures(core: Any) -> dict[str, Any]:
@@ -162,13 +170,15 @@ def presentation_figures(core: Any) -> dict[str, Any]:
 def generator_signature() -> str:
     """What the presentations look like: a change of the generator draws them again."""
     digest = hashlib.sha256()
-    for name in ('build.js', 'art.js', 'package.json'):
+    for name in ('build.js', 'art.js', 'module_decks.js', 'package.json'):
         path = GENERATOR / name
         digest.update(path.read_bytes() if path.is_file() else b'')
-    # The pictures and notes of the slides kept as files, such as those of the benchmarking providers deck.
-    for path in sorted(GENERATOR.glob('*/slides.json')):
-        for part in sorted(path.parent.iterdir()):
-            digest.update(part.name.encode() + part.read_bytes())
+    # The decks of their own design: the content.js of each main module, the slides.html of the DT Analyzer RCA, and the
+    # pictures and notes of the benchmarking providers deck; and the logo of their slides.
+    for folder in sorted(path for path in GENERATOR.iterdir() if path.is_dir() and path.name != 'node_modules' and not path.name.startswith('.')):
+        for part in sorted(path for path in folder.iterdir() if path.is_file()):
+            digest.update(f'{folder.name}/{part.name}'.encode() + part.read_bytes())
+    digest.update(LOGO.read_bytes() if LOGO.is_file() else b'')
     return digest.hexdigest()
 
 
@@ -193,6 +203,9 @@ def render_slides(folder: Path, manifest: dict[str, Any]) -> None:
     from src.modules.pptx_to_docx import document_pdf, pdf_page_images
 
     for presentation in manifest['presentations']:
+        # The full presentation is made of the others: the Help shows the pictures of their slides.
+        if any(section.get('presentation') for section in presentation['sections']):
+            continue
         pdf = document_pdf((folder / presentation['file']).read_bytes(), 'pptx', whole=True)
         if pdf is None:
             raise RuntimeError('LibreOffice and PyMuPDF are needed to render the slides.')
@@ -211,6 +224,20 @@ def render_slides(folder: Path, manifest: dict[str, Any]) -> None:
 
 def node_executable() -> str | None:
     return shutil.which('node') or shutil.which('nodejs') or next((path for path in NODE_CANDIDATES if Path(path).is_file()), None)
+
+
+def browser_executable() -> str | None:
+    configured = str(os.environ.get('DRIVETEST_ANALYZER_CHROMIUM') or '').strip()
+    candidates = (configured, *BROWSER_CANDIDATES, shutil.which('chromium') or '', shutil.which('chromium-browser') or '',
+                  shutil.which('google-chrome') or '')
+    return next((path for path in candidates if path and Path(path).is_file()), None)
+
+
+def expected_ids() -> list[str]:
+    """The presentations the generator writes, in their order (``node build.js --ids``)."""
+    result = subprocess.run([node_executable(), str(GENERATOR / 'build.js'), '--ids'], cwd=GENERATOR, check=True, capture_output=True,
+                            text=True, timeout=60)
+    return json.loads(result.stdout.strip().splitlines()[-1])
 
 
 class PresentationGenerator:
@@ -235,41 +262,64 @@ class PresentationGenerator:
         return folder if (folder / MANIFEST).is_file() else None
 
     def manifest(self) -> dict[str, Any]:
-        """The presentations shown: the last generated, else those of the repository."""
-        return _read_manifest(self.current()) or _read_manifest(STATIC_PRESENTATIONS)
+        """The presentations shown: the last generated (none until the first generation)."""
+        return _read_manifest(self.current())
 
     def file(self, relative: str) -> Path | None:
-        for root in (self.current(), STATIC_PRESENTATIONS):
-            if root is None:
-                continue
-            target = (root / relative).resolve()
-            if root.resolve() in target.parents and target.is_file():
-                return target
-        return None
+        root = self.current()
+        if root is None:
+            return None
+        target = (root / relative).resolve()
+        return target if root.resolve() in target.parents and target.is_file() else None
+
+    def missing(self) -> list[str]:
+        """The presentations of the generator that the last generation does not have (all of them before the first one),
+        with their PowerPoint and, but for the full presentation, the pictures of their slides."""
+        current = self.current()
+        shown = {item['id']: item for item in self.manifest().get('presentations', [])}
+        missing = []
+        for presentation_id in expected_ids():
+            item = shown.get(presentation_id)
+            pictures = item is not None and (any(section.get('presentation') for section in item['sections'])
+                                             or (current / presentation_id / 'slide-01.png').is_file())
+            if item is None or not (current / item['file']).is_file() or not pictures:
+                missing.append(presentation_id)
+        return missing
 
     @staticmethod
     def unavailable() -> str:
         """Why the presentations cannot be generated here, or an empty text."""
+        from src.modules.pptx_to_docx import _soffice
+
         if node_executable() is None:
             return 'Node.js is not installed on this server.'
         if not (GENERATOR / 'node_modules' / 'pptxgenjs').is_dir():
             return 'The packages of the generator are not installed (npm install in tools/presentations).'
+        if browser_executable() is None:
+            return 'No Chromium browser (Chrome, Chromium, Brave or Edge) is installed on this server to draw the slides.'
+        if _soffice() is None:
+            return 'LibreOffice is not installed on this server to render the slides.'
         return ''
 
-    def ensure(self, figures: dict[str, Any], requested_by: str = 'system') -> bool:
-        """Generate the presentations again in the background when their figures or generator changed (once per change
-        when it fails); True when a generation runs."""
+    def ensure(self, figures: dict[str, Any], requested_by: str = 'system', *, force: bool = False, reason: str = '',
+               wait: bool = False) -> bool:
+        """Generate the presentations again, in the background (or before returning with ``wait``), when their figures or
+        generator changed (once per change when it fails), or always with ``force``; True when a generation runs (or ran)."""
         key = figures_key(figures)
         with self.lock:
             if self.running:
                 return True
-            if key in {self.manifest().get('key'), self.failed_key} or self.unavailable():
+            if (not force and key in {self.manifest().get('key'), self.failed_key}) or self.unavailable():
                 return False
             self.running = True
-        threading.Thread(target=self._generate, args=(figures, key, requested_by), name='presentations', daemon=True).start()
+        reason = reason or ('the generator changed' if self.manifest().get('generator') != generator_signature() else 'the figures changed')
+        if wait:
+            self._generate(figures, key, requested_by, reason)
+        else:
+            threading.Thread(target=self._generate, args=(figures, key, requested_by, reason), name='presentations', daemon=True).start()
         return True
 
-    def _generate(self, figures: dict[str, Any], key: str, requested_by: str) -> None:
+    def _generate(self, figures: dict[str, Any], key: str, requested_by: str, reason: str = '') -> None:
         started = time.monotonic()
         self.root.mkdir(parents=True, exist_ok=True)
         work = Path(tempfile.mkdtemp(prefix='.building-', dir=self.root))
@@ -278,10 +328,12 @@ class PresentationGenerator:
             output = work / 'presentations'
             subprocess.run([node_executable(), str(GENERATOR / 'build.js'), str(output)], cwd=GENERATOR, check=True,
                            capture_output=True, timeout=GENERATION_TIMEOUT_SECONDS,
-                           env={**os.environ, 'PRESENTATION_FIGURES': str(work / 'figures.json')})
+                           env={**os.environ, 'PRESENTATION_FIGURES': str(work / 'figures.json'),
+                                'DRIVETEST_ANALYZER_CHROMIUM': browser_executable() or ''})
             manifest = _read_manifest(output)
             render_slides(output, manifest)
-            manifest.update(key=key, figures=figures, generated_at=datetime.now().astimezone().isoformat(timespec='seconds'))
+            manifest.update(key=key, generator=generator_signature(), figures=figures,
+                            generated_at=datetime.now().astimezone().isoformat(timespec='seconds'))
             (output / MANIFEST).write_text(json.dumps(manifest, indent=2), encoding='utf-8')
             # The new presentations replace the shown ones at once.
             current = self.root / 'current'
@@ -293,14 +345,14 @@ class PresentationGenerator:
             self.failed_key, self.error = '', ''
             self.log('system', 'generate_presentations', json.dumps({
                 'workspaces': figures['workspaces'], 'presentations': [item['id'] for item in manifest['presentations']],
-                'seconds': round(time.monotonic() - started, 1), 'requested_by': requested_by,
+                'seconds': round(time.monotonic() - started, 1), 'requested_by': requested_by, 'reason': reason,
             }, ensure_ascii=False))
         except Exception as exc:  # noqa: BLE001 - the Help keeps the last presentations and App Events tells why.
             detail = getattr(exc, 'stderr', b'') or b''
             self.failed_key = key
             self.error = (detail.decode('utf-8', errors='replace')[-600:] if isinstance(detail, bytes) else str(detail)) or str(exc)
             self.log('system', 'generate_presentations_failed', json.dumps({
-                'workspaces': figures['workspaces'], 'error': self.error, 'requested_by': requested_by,
+                'workspaces': figures['workspaces'], 'error': self.error, 'requested_by': requested_by, 'reason': reason,
             }, ensure_ascii=False))
         finally:
             shutil.rmtree(work, ignore_errors=True)
@@ -314,6 +366,27 @@ class PresentationGenerator:
 
 
 _GENERATOR: PresentationGenerator | None = None
+
+
+def generate_at_startup(core: Any, step: Any) -> None:
+    """At startup, generate the presentations before the application opens when one is missing, saying so with ``step``
+    on the startup page; else again in the background when their figures or generator changed."""
+    if not GENERATE_AT_STARTUP or _GENERATOR is None:
+        return
+    try:
+        if (unavailable := _GENERATOR.unavailable()):
+            core.repository.try_add_log('system', 'generate_presentations_failed', json.dumps(
+                {'error': unavailable, 'requested_by': 'system', 'reason': 'startup'}, ensure_ascii=False))
+            return
+        figures = presentation_figures(core)
+        if (missing := _GENERATOR.missing()):
+            step('Generating the presentations of the Help…')
+            _GENERATOR.ensure(figures, 'system', force=True, reason=f"missing at startup: {', '.join(missing)}", wait=True)
+        else:
+            _GENERATOR.ensure(figures, 'system')
+    except Exception as exc:  # noqa: BLE001 - the application opens anyway, and App Events tells why.
+        core.repository.try_add_log('system', 'generate_presentations_failed', json.dumps(
+            {'error': str(exc), 'requested_by': 'system', 'reason': 'startup'}, ensure_ascii=False))
 
 
 def presentation_settings(core: Any) -> dict[str, Any]:
@@ -339,7 +412,11 @@ def install_presentation_routes(core: Any) -> None:
         if user is not None:
             generator.ensure(presentation_figures(core), user.username)
         manifest = generator.manifest()
-        return {**manifest, 'base': '/presentations/files', 'updating': generator.running}
+        return {**manifest, 'base': '/presentations/files', 'updating': generator.running, 'unavailable': generator.unavailable()}
+
+    @app.get('/api/presentations/status')
+    def presentations_status(user=Depends(core.super_admin_user)) -> dict[str, Any]:
+        return generator.status()
 
     @app.get('/presentations/files/{relative:path}')
     def presentation_file(relative: str):
@@ -358,4 +435,14 @@ def install_presentation_routes(core: Any) -> None:
             'workspaces': [workspaces[workspace_id] for workspace_id in chosen], 'before': before,
         }, ensure_ascii=False))
         generator.ensure(presentation_figures(core), user.username)
+        return RedirectResponse('/super-admin#presentations', status_code=303)
+
+    @app.post('/super-admin/presentations/regenerate')
+    def regenerate_presentations(user=Depends(core.super_admin_user)):
+        # Every presentation drawn again now, whatever changed (one generation at a time).
+        already_running = generator.running
+        started = generator.ensure(presentation_figures(core), user.username, force=True, reason='regenerated on demand')
+        core.repository.try_add_log(user.username, 'regenerate_presentations', json.dumps({
+            'started': started and not already_running, 'already_running': already_running, 'unavailable': generator.unavailable(),
+        }, ensure_ascii=False))
         return RedirectResponse('/super-admin#presentations', status_code=303)

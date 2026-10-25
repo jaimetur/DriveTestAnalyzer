@@ -8,10 +8,19 @@ Chart Builder is the ad-hoc chart editor. It uses the PPT Dashboard individual C
 > [!TIP]
 > **Investigate empty charts.** Check the selected CDRs, filters and sample counts before changing the chart presentation.
 
+## Presentation
+
+The presentation **Builders** sums the module up. Ad-hoc exploration of the processed CDRs: Chart Builder draws any chart in the Dashboard viewer and Query Builder runs read-only SQL. Select it to open it in the slide viewer, play it full screen or download its PowerPoint; every presentation is also in [Presentations](help.md#presentations).
+
+```presentations
+builders
+```
+
 ## In this guide
 
 | Task or topic | Go to |
 | --- | --- |
+| Presentation | [Open section](#presentation) |
 | Workflow | [Open section](#workflow) |
 | Interactive Preview | [Open section](#interactive-preview) |
 | Example | [Open section](#example) |

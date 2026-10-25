@@ -5,10 +5,19 @@ Build an interactive Dashboard from processed Data, Voice and Speech CDRs, using
 > [!NOTE]
 > **A Dashboard is a saved definition, not a copy of your data.** It stores its template, Scope, dates, filters and comments; its CDRs are chosen from its NR Mode and Campaign filter each time it is prepared. Source CDRs and generated caches remain separate.
 
+## Presentation
+
+The presentation **PPT Dashboards** sums the module up. Interactive Dashboards from Report Templates: one selection of CDRs on every slide, live charts to explore and PowerPoint exports generated in the background. Select it to open it in the slide viewer, play it full screen or download its PowerPoint; every presentation is also in [Presentations](help.md#presentations).
+
+```presentations
+ppt-dashboards
+```
+
 ## Choose your task
 
 | I want to… | Go to |
 | --- | --- |
+| Watch the presentation of the module | [Presentation](#presentation) |
 | Create or change a Dashboard | [PPT Manage Dashboards](#ppt-manage-dashboards) |
 | Choose the campaigns, dates and comparison scope | [Dashboard Scope & Filters](#dashboard-scope-filters) |
 | Understand Apply versus Save | [Apply, Save, Clear and Reload](#apply-save-clear-and-reload) |

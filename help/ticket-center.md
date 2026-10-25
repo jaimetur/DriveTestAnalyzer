@@ -8,10 +8,19 @@ Use **Ticket Center** to report the bugs you find in the tool, suggest improveme
 > [!TIP]
 > **Share a ticket by its link.** The list (`/tickets`) and each ticket (`/tickets/<number>`), with its screenshots, open without signing in, read-only, so a link can be sent to anyone who reaches the server. Opening, commenting and editing ask to sign in, and signing in from there returns to the ticket. The addresses of Bugs Report, as the module was called before (`/bugs-report`, `/bugs-report/<number>`), lead to the same pages.
 
+## Presentation
+
+The presentation **Ticket Center** sums the module up. Report bugs, suggest improvements and ask for new features with screenshots, and follow each ticket until it is resolved. Select it to open it in the slide viewer, play it full screen or download its PowerPoint; every presentation is also in [Presentations](help.md#presentations).
+
+```presentations
+ticket-center
+```
+
 ## In this guide
 
 | Task or topic | Go to |
 | --- | --- |
+| Presentation | [Open section](#presentation) |
 | Read the dashboard | [Open section](#dashboard) |
 | Open a ticket | [Open section](#new-ticket) |
 | Find and follow tickets | [Open section](#tickets) |

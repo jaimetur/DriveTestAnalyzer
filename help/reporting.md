@@ -5,10 +5,19 @@ Use **Reporting** to build a **Bundle Report Template**, one PowerPoint or Word 
 > [!NOTE]
 > **Module access.** **Reporting** is in every Modules Profile of a new deployment. Super-admins choose who sees it in **Super Admin → Modules Profiles**. Creating, editing and running jobs, and saving or deleting favourite Bundle Report Templates, requires `user-editor`, `admin` or `super-admin`. A Bundle Report Template only includes the sections of the modules activated for the account that generates it.
 
+## Presentation
+
+The presentation **Reporting** sums the module up. One PowerPoint or Word document with the parts you choose of every module, and Reporting Jobs that build and email them on a schedule. Select it to open it in the slide viewer, play it full screen or download its PowerPoint; every presentation is also in [Presentations](help.md#presentations).
+
+```presentations
+reporting
+```
+
 ## In this guide
 
 | Task or topic | Go to |
 | --- | --- |
+| Presentation | [Open section](#presentation) |
 | One report from several modules | [Open section](#bundle-report-templates) |
 | Artifacts a job can include | [Open section](#artifacts) |
 | Create, edit and run a job | [Open section](#reporting-jobs) |

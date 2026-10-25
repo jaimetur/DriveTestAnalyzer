@@ -2,9 +2,8 @@
 <!--
   The slides of the DT Analyzer RCA presentation of the Help, one <section> each (1920 × 1080).
   slides.json lists their order, sections, titles and speaker notes; build.js turns their pictures into the PowerPoint.
-  Picture slide N with a headless browser at 1920 × 1080, for example:
-    "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser" --headless=new --hide-scrollbars \
-      --window-size=1920,1080 --screenshot=slide-0N.png "file://$PWD/slides.html?slide=N"
+  module_decks.js takes the picture of each slide (1920 × 1080) with a headless browser when the server generates the
+  presentations; `node module_decks.js <folder> dt-analyzer-rca` takes them into <folder>/dt-analyzer-rca/.
 -->
 <html lang="en">
 <head>
@@ -24,6 +23,9 @@
     background: radial-gradient(1200px 700px at 88% -10%, rgba(124, 58, 237, .28), transparent 60%),
                 radial-gradient(900px 600px at -10% 110%, rgba(19, 133, 151, .18), transparent 60%), var(--ink); }
   .slide + .slide { margin-top: 40px; }
+  /* The Ericsson logo at the top right, as in the other decks of the Help. */
+  .slide::before { content: ''; position: absolute; top: 40px; right: 112px; width: 80px; height: 70px; z-index: 2;
+    background: url(../../../src/web_interface/static/img/ericsson-logo-white.png) center / contain no-repeat; }
   .kicker { font-size: 24px; letter-spacing: 4px; text-transform: uppercase; color: var(--dta); font-weight: 700; }
   h1 { font-size: 128px; line-height: .98; font-weight: 800; letter-spacing: -3px; }
   h2 { font-size: 68px; line-height: 1.05; font-weight: 800; letter-spacing: -1.5px; margin-top: 14px; }
@@ -406,10 +408,12 @@
 </section>
 
 <script>
-  // ?slide=N shows slide N alone, at the top, for its picture.
-  const wanted = new URLSearchParams(location.search).get('slide');
-  if (wanted) {
-    document.querySelectorAll('.slide').forEach((slide, index) => { slide.style.display = String(index + 1) === wanted ? '' : 'none'; slide.style.marginTop = '0'; });
+  // ?slide=N shows slide N alone, and ?slides=A-B the slides from A to B one below the other, at the top, for their pictures.
+  const query = new URLSearchParams(location.search);
+  const range = query.get('slides') || (query.get('slide') && `${query.get('slide')}-${query.get('slide')}`);
+  if (range) {
+    const [first, last] = range.split('-').map(Number);
+    document.querySelectorAll('.slide').forEach((slide, index) => { slide.style.display = index + 1 >= first && index + 1 <= last ? '' : 'none'; slide.style.marginTop = '0'; });
   }
 </script>
 </body>

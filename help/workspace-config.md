@@ -10,10 +10,19 @@ Workspace Config is a dedicated page for settings owned by the active workspace:
 
 Open **Config → Workspace Config** from the main navigation at `/workspace-config`. Template, mapping and Main Cities actions use routes below `/workspace-config/`. The page uses the same teal/navy palette as Application Config, and the **Modules & Sections** tab at the left edge links to its panels.
 
+## Presentation
+
+The presentation **Workspace Config** goes through everything to set up in a new workspace before its first analysis: how operators, vendors and campaigns are named, coloured and ordered, the map areas of its countries, its networks and its methodology. Select it to open it in the slide viewer, play it full screen or download its PowerPoint; every presentation is also in [Presentations](help.md#presentations).
+
+```presentations
+workspace-config
+```
+
 ## In this guide
 
 | Task or topic | Go to |
 | --- | --- |
+| Presentation | [Open section](#presentation) |
 | Access and active workspace | [Open section](#access-and-active-workspace) |
 | PPT Templates Management | [Open section](#ppt-templates-management) |
 | PPT Templates Editor | [Open section](#ppt-templates-editor) |

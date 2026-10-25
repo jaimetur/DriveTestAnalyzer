@@ -41,7 +41,7 @@ The production stack:
 - applies the configured pull policy;
 - mounts persistent config/data paths;
 - includes the bundled PowerPoint master;
-- includes Node.js and the packages of the generator of the Help presentations, which it draws again with live figures into the data directory (see [Presentations](super-admin.md#presentations));
+- includes Node.js with the packages of the generator of the Help presentations, Chromium and LibreOffice: the server generates the presentations, with live figures, into the data directory at its first start (see [Presentations](super-admin.md#presentations));
 - runs without source-code bind mounts;
 - supports native AMD64 and ARM64 images.
 

@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 
 import src.DriveTestAnalyzer as app_module
 from src.config import settings
+from src.modules import presentations
 from src.modules.workspace_countries import set_workspace_country
 
 
@@ -75,6 +76,8 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     object.__setattr__(settings, "data_dir", data_dir)
     monkeypatch.setattr(app_module, "application_data_dir", data_dir)
     app_module.SESSIONS.clear()
+    # The tests that need the presentations of the Help generate them (or a fake of them) themselves.
+    monkeypatch.setattr(presentations, "GENERATE_AT_STARTUP", False)
     # Bundled Network Insights content is seeded explicitly by the tests that need it.
 
     with TestClient(app_module.app) as test_client:

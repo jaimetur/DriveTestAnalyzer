@@ -1,0 +1,45 @@
+// The Builders presentation of the Help (see module_decks.js).
+module.exports = {
+  name: 'Builders',
+  accent: '#B85B20',
+  description: 'Ad-hoc exploration of the processed CDRs: Chart Builder draws any chart in the Dashboard viewer and Query Builder runs read-only SQL.',
+  slides: [
+    { id: 'cover', type: 'cover', section: 'Introduction', footer: 'Main module', kicker: 'Main module · Builders', title: 'Builders',
+      icon: 'TbCode', icons: ['TbChartBar', 'TbSql', 'TbFilter', 'TbDeviceFloppy'],
+      lead: 'Ad-hoc exploration of the processed CDRs: Chart Builder draws any chart, Query Builder runs read-only SQL.',
+      tags: ['Chart Builder', 'Query Builder', 'Nothing changed by accident'],
+      notes: 'The Builders explore the processed CDRs of the workspace without changing anything: Chart Builder for ad-hoc charts, Query Builder for read-only SQL.' },
+    { id: 'chart', type: 'split', section: 'Chart Builder', footer: 'Chart Builder', kicker: 'Chart Builder', title: 'Any chart, in seconds', visual: 'builder',
+      points: [
+        { icon: 'TbChartBar', title: 'Workflow', text: 'A CDR type, its rows, columns and values, and their aggregation.' },
+        { icon: 'TbEye', title: 'Interactive Preview', text: 'The Canvas chart viewer of PPT Dashboards, in the page.' },
+        { icon: 'TbFilter', title: 'Filter Builder', text: 'Searchable fields and operators for every filter.' },
+        { icon: 'TbLock', title: 'Temporary', text: 'It never changes a stored template nor creates a PowerPoint report.' },
+      ],
+      notes: 'Chart Builder is the ad-hoc chart editor. It uses the chart viewer of PPT Dashboards while its definition stays temporary: it never changes a template or creates a report.' },
+    { id: 'query', type: 'split', section: 'Query Builder', footer: 'Query Builder', kicker: 'Query Builder', title: 'Exact numbers with SQL', visual: 'sql',
+      points: [
+        { icon: 'TbListCheck', title: 'Assistance Mode', text: 'The common queries assembled with form controls.' },
+        { icon: 'TbSql', title: 'SQL Mode', text: 'The SQL edited directly, always read-only.' },
+        { icon: 'TbDeviceFloppy', title: 'Saved queries', text: 'With a name and a description, in the workspace database.' },
+      ],
+      notes: 'Query Builder runs read-only SQL against the selected processed CDRs. Assistance Mode builds the common queries with form controls, SQL Mode edits SQL directly, and queries can be saved in the workspace.' },
+    { id: 'which', type: 'cards', section: 'Query Builder', footer: 'When to use which', kicker: 'The right tool', title: 'When to use which',
+      cards: [
+        { icon: 'TbChartBar', title: 'A quick chart', text: 'Chart Builder, with the Dashboard viewer.', color: '#B85B20' },
+        { icon: 'TbSql', title: 'Exact figures', text: 'Query Builder, with read-only SQL.', color: '#B85B20' },
+        { icon: 'TbPresentationAnalytics', title: 'A full template', text: 'PPT Dashboards, slide after slide.', color: '#7751B9', chips: ['PPT Dashboards'] },
+        { icon: 'TbFileAnalytics', title: 'One CDR in depth', text: 'CDR Analysis, its distributions and percentiles.', color: '#1F6FBF', chips: ['CDR Analysis'] },
+      ],
+      notes: 'Use Chart Builder for a quick chart, Query Builder for exact figures, PPT Dashboards for a complete template and CDR Analysis to study one CDR in depth.' },
+    { id: 'summary', type: 'closing', section: 'Summary', footer: 'Summary', kicker: 'Summary', title: 'Ask the CDRs anything',
+      lead: 'Explore freely: the Builders read the CDRs and never change them.',
+      links: [
+        { title: 'Chart Builder · Workflow', text: 'build a chart' }, { title: 'Chart Builder · Filter Builder', text: 'its filters' },
+        { title: 'Query Builder · Assistance Mode', text: 'queries from forms' }, { title: 'Query Builder · Saved queries', text: 'keep them' },
+      ],
+      modules: ['Workspace', 'PPT Dashboards', 'CDR Analysis'],
+      note: 'Open a workspace first: the Builders work on its processed Data, Voice and Speech CDRs.',
+      notes: 'The Builders answer ad-hoc questions about the processed CDRs of the workspace, without changing them.' },
+  ],
+};

@@ -19,16 +19,40 @@ Present DriveTest Analyzer with its presentations:
 - **One-slider**, on a single slide: the most important of the tool, with its figures, modules, teams, platform and what comes next.
 - **Roadmap**, on a single slide: what comes next, such as Umlaut CDRs, the Active Tests community, scale-out and speed on AWS, PostgreSQL and health monitoring.
 - **Benchmarking Providers Roadmap**, in the design of its own deck: how the tool is being adapted to Umlaut and P3 CDRs and the status of each phase, how it is built inside and how it is deployed in the cloud (see [Benchmarking Providers](benchmarking-providers.md)).
-- **DT Analyzer RCA**, in the design of its own deck: how the DT Analyzer RCA finds the root cause of every Non-Qualified Call, from what it reads and how its rules decide to the lack of resources, the network around the call and the evidence it gives (see [DT Analyzer RCA](non-qualified-calls.md#dt-analyzer-rca)).
 
-Select a presentation to open it in the slide viewer (its slides on the left and, below the slide, the zoom buttons and **▶ Slideshow**, the arrows of the previous and next slide, **Close** and **Download PowerPoint**; the wheel and the arrow keys also change slide, Ctrl/Cmd+wheel zooms and Escape closes it), play it full screen with **▶ Slideshow**, choosing the seconds per slide and the transition, or download it with **Download PowerPoint**. The figures of the first three are live: those of the workspaces chosen in [Super Admin → Presentations](super-admin.md#presentations), generated again in the background when they change.
+Select a presentation to open it in the slide viewer (its slides on the left and, below the slide, the zoom buttons and **▶ Slideshow**, the arrows of the previous and next slide, **Close** and **Download PowerPoint**; the wheel and the arrow keys also change slide, Ctrl/Cmd+wheel zooms and Escape closes it), play it full screen with **▶ Slideshow**, choosing the seconds per slide and the transition, or download it with **Download PowerPoint**. The server generates every presentation, with the pictures of its slides: at its start when one is missing (the startup page says so), again in the background when their figures or the generator change, and on demand with **Regenerate Presentations** in [Super Admin → Presentations](super-admin.md#presentations). The figures of the first three are live: those of the workspaces chosen there.
 
 ```presentations
 overview
 one-slider
 roadmap
 benchmarking-providers
+```
+
+### Module presentations
+
+Each main module also has a presentation of its own, in a design of its own, at the start of its chapter: [Workspace Management](workspace-management.md), with **Workspace Config** after it (everything to set up in a new workspace: how operators, vendors and campaigns are named, coloured and ordered, the map areas of its countries, its networks and its methodology; see [Workspace Config](workspace-config.md)), [CDR Analysis](datasets-analysis.md), [PPT Dashboards](ppt-dashboards.md), [Scoring & GAP Analysis](scoring-gap-analysis.md), [Network Insights](network-insights.md), [Non-Qualified Calls](non-qualified-calls.md) with the **DT Analyzer RCA** beside it (how it finds the root cause of every Non-Qualified Call: what it reads, its rules, the lack of resources, the network around the call and the evidence it gives), [Reporting](reporting.md), [Builders](chart-builder.md) and [Ticket Center](ticket-center.md). They open in the same slide viewer and download as PowerPoint.
+
+```presentations
+workspace
+workspace-config
+cdr-analysis
+ppt-dashboards
+scoring-gap-analysis
+network-insights
+non-qualified-calls
 dt-analyzer-rca
+reporting
+builders
+ticket-center
+```
+
+### Full presentation
+
+The **Full Presentation** joins every presentation in one deck, with their slides as they are, each in a section named after it: the Overview, the presentation of every main module (with Workspace Config after Workspace), the DT Analyzer RCA, the Benchmarking Providers Roadmap and the Roadmap. It opens in the same slide viewer and downloads as PowerPoint.
+
+```presentations
+full-presentation
 ```
 
 ## In this guide
@@ -36,6 +60,8 @@ dt-analyzer-rca
 | Task or topic | Go to |
 | --- | --- |
 | Presentations | [Open section](#presentations) |
+| Module presentations | [Open section](#module-presentations) |
+| Full presentation | [Open section](#full-presentation) |
 | Choose where to start | [Open section](#choose-where-to-start) |
 | Documentation map | [Open section](#documentation-map) |
 | Fast troubleshooting | [Open section](#fast-troubleshooting) |
