@@ -499,7 +499,8 @@ def test_root_causes_are_suggested_labelled_required_and_analysed(client, tmp_pa
     assert calls['voice', 'Failed']['suggested_root_cause'] == {'domain': 'RF', 'category': '', 'cause': 'Coverage', 'source': 'netcheck'}
     # "Interference on PCI 80" does not say whether it is DL or UL: only the RF domain is suggested.
     assert calls['data', 'Cutoff']['suggested_root_cause'] == {'domain': 'RF', 'category': '', 'cause': '', 'source': 'netcheck'}
-    assert calls['voice', 'Dropped']['suggested_root_cause'] == {'domain': 'IMS/E2E', 'category': '', 'cause': '', 'source': 'netcheck'}
+    # "VoLTE Problems / IMS" finds the IMS / VoLTE category by its keywords.
+    assert calls['voice', 'Dropped']['suggested_root_cause'] == {'domain': 'IMS/E2E', 'category': 'IMS / VoLTE', 'cause': '', 'source': 'netcheck'}
     assert calls['data', 'Failed']['suggested_root_cause'] is None
 
     key = calls['voice', 'Dropped']['call_key']
@@ -681,7 +682,7 @@ def test_root_cause_suggestions_fall_back_to_comments_and_match_whole_words(clie
     assert client.get(f'/api/non-qualified-calls/calls/{failed}').json()['call']['suggested_root_cause'] is None
     client.post(f'/api/non-qualified-calls/calls/{failed}/comments', json={'body': 'Looks like an AAA rejection.'})
     assert client.get(f'/api/non-qualified-calls/calls/{failed}').json()['call']['suggested_root_cause'] == {
-        'domain': 'AAA', 'category': '', 'cause': '', 'source': 'comments'}
+        'domain': 'AAA', 'category': 'Authentication & Registration', 'cause': '', 'source': 'comments'}
     stats = client.post('/api/non-qualified-calls/root-causes/stats', json={'filters': {}}).json()
     assert {(item['domain'], item['cause']) for item in stats['causes']} >= {('RF', 'UL interference')}
     defaults = client.get('/api/non-qualified-calls/state').json()['root_cause_defaults']
@@ -722,12 +723,13 @@ def test_everybody_sees_the_suggestion_rule_and_admins_edit_it(client, tmp_path)
     assert saved.status_code == 200 and saved.json()['rule']['cause_fields'] == ['failure_comment']
     assert suggestion('voice', 'Failed') == {'domain': 'RF', 'category': '', 'cause': '', 'source': 'netcheck'}
     assert client.get('/api/non-qualified-calls/root-causes').json()['rule']['cause_fields'] == ['failure_comment']
-    # The comments resolve the cause the fields left open, unless the rule turns them off.
-    key = next(call['call_key'] for call in query(client)['calls'] if call['result'] == 'Dropped')
-    client.post(f'/api/non-qualified-calls/calls/{key}/comments', json={'body': 'qci1 bearer missing'})
-    assert suggestion('voice', 'Dropped') == {'domain': 'IMS/E2E', 'category': '', 'cause': 'No QCI1 established', 'source': 'comments'}
+    # The comments resolve the cause the fields left open (a call they give only the domain), unless the rule turns them off.
+    assert suggestion('data', 'Cutoff') == {'domain': 'RF', 'category': '', 'cause': '', 'source': 'netcheck'}
+    key = next(call['call_key'] for call in query(client)['calls'] if call['service'] == 'data' and call['result'] == 'Cutoff')
+    client.post(f'/api/non-qualified-calls/calls/{key}/comments', json={'body': 'Strong UL interference on the eNB counters'})
+    assert suggestion('data', 'Cutoff') == {'domain': 'RF', 'category': '', 'cause': 'UL interference', 'source': 'comments'}
     client.put('/api/non-qualified-calls/root-causes/rule', json={'rule': {**rule, 'comments': False}})
-    assert suggestion('voice', 'Dropped') == {'domain': 'IMS/E2E', 'category': '', 'cause': '', 'source': 'netcheck'}
+    assert suggestion('data', 'Cutoff') == {'domain': 'RF', 'category': '', 'cause': '', 'source': 'netcheck'}
     # Partial matching finds keywords inside words: "rf" in "performance".
     data_failed = next(call['call_key'] for call in query(client)['calls'] if call['service'] == 'data' and call['result'] == 'Failed')
     client.post(f'/api/non-qualified-calls/calls/{data_failed}/comments', json={'body': 'Poor performance.'})
