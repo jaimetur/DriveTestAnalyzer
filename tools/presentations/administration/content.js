@@ -2,7 +2,7 @@
 module.exports = {
   name: 'Administration',
   accent: '#B84343',
-  description: 'Admin and Super Admin: who sees and does what, the scheduled backups and their restore, the packages and transfers between servers, and the configuration of the application at every level.',
+  description: 'Admin and Super Admin: who sees and does what and the management of every account, the databases, the scheduled backups and their restore, the packages and transfers between servers, the configuration of the application at every level and App Events.',
   slides: [
     { id: 'cover', type: 'cover', section: 'Introduction', footer: 'Admin and Super Admin', kicker: 'Admin and Super Admin', title: 'Administration',
       icon: 'TbShieldLock', icons: ['TbUsers', 'TbDatabaseExport', 'TbTransfer', 'TbAdjustmentsHorizontal'],
@@ -17,6 +17,22 @@ module.exports = {
         { icon: 'TbUserPlus', title: 'Access Requests', text: 'A new user asks from the login page; a super-admin activates it.' },
       ],
       notes: 'Three independent settings decide what an account can do, see and open: its role, its Modules Profile and its Workspace Groups, and access only ever adds up. New users request access from the login page and stay inactive until a super-admin activates them; App Events records every change.' },
+    { id: 'user-management', type: 'split', section: 'Users & Access', footer: 'Users', kicker: 'Super Admin · Users', title: 'Every account, managed in place', visual: 'users',
+      points: [
+        { icon: 'TbTable', title: 'One table, saved at once', text: 'Name, username, password, role, Modules Profile, active and workspaces of each account.' },
+        { icon: 'TbFilter', title: 'Found and changed together', text: 'Search and filters by role, profile, group or status; the bar of the selected changes them all.' },
+        { icon: 'TbKey', title: 'Reset, deactivate, delete', text: 'A new password shown once; at least one active super-admin always remains.' },
+        { icon: 'TbMailForward', title: 'Requests to approve', text: 'An inactive user-editor until activated; approvers get an email, super-admins a dialog.' },
+      ],
+      notes: 'The Users table of Super Admin edits every account in place and saves each change at once. Its search and filters find users by name, role, Modules Profile, Workspace Group or status, such as the pending access requests, and the bar of the selected users changes their profile, groups, role or activation at once. Resetting a password shows the new one, nobody deactivates or deletes their own account, and at least one active super-admin remains; a request from the login page creates an inactive user-editor, emails the approvers and tells every super-admin.' },
+    { id: 'databases', type: 'split', section: 'Databases', footer: 'Database Management', kicker: 'Super Admin · Database Management', title: 'One application database, one per workspace', visual: 'databases',
+      points: [
+        { icon: 'TbDatabase', title: 'The application database', text: 'Users, Modules Profiles, Workspace Groups, tickets, Interface Settings and settings.' },
+        { icon: 'TbFolders', title: 'One database per workspace', text: 'Its datasets and their rows, combined CDR tables, Dashboards, templates, NQ follow-up and App Events.' },
+        { icon: 'TbTableOptions', title: 'Database Viewer', text: 'Every table by kind and colour, 100 rows a page, Excel-style filters and their chips.' },
+        { icon: 'TbPencil', title: 'Edited with care', text: 'Rows can be edited or deleted; labels and maps change from Workspace Config.' },
+      ],
+      notes: 'The application keeps one database of its own, with the users, Modules Profiles, Workspace Groups, tickets and settings, and one database per workspace, with its datasets, the materialised rows of each CDR and the combined CDR tables, its Dashboards, templates, NQ follow-up and App Events. The Database Viewer of Super Admin opens any of their tables by kind, 100 rows a page with Excel-style filters, and edits or deletes a row; labels and maps change from Workspace Config so they stay consistent.' },
     { id: 'backups', type: 'split', section: 'Backups', footer: 'Backup Protection', kicker: 'Super Admin · Backup Protection', title: 'Backed up on a schedule, restored part by part', visual: 'backups',
       points: [
         { icon: 'TbDatabaseExport', title: 'Back up now', text: 'The content chosen, from the application database to each workspace and its Dashboards or NQ follow-up.' },
@@ -42,6 +58,14 @@ module.exports = {
         { icon: 'TbAdjustments', title: 'Workspace Config', text: 'Maps, templates, Main Cities and the methodology of each workspace: its own presentation.' },
       ],
       notes: 'Each level has its page: Application Config for the runtime settings of every workspace and the Email Delivery, Admin Config for the packages, transfers and datasets, Super Admin for the users, the tabs and labels of the modules, the presentations and the databases, and Workspace Config for the settings of each workspace.' },
+    { id: 'events', type: 'split', section: 'App Events', footer: 'App Events', kicker: 'App Logs · App Events', title: 'Every action, on record', visual: 'events',
+      points: [
+        { icon: 'TbUserSearch', title: 'Who, and from where', text: 'Triggered by a user or the System, executed from a module, the Scheduler or a background job.' },
+        { icon: 'TbListDetails', title: 'What changed', text: 'One sentence per event: each field from its old to its new value, never a password.' },
+        { icon: 'TbFilter', title: 'Found at once', text: 'Date, Triggered by, Executed by, Type (Info or Error) and Action, to include or exclude.' },
+        { icon: 'TbTerminal2', title: 'Kept and live', text: 'In exports, transfers and backups; the Execution Log shows the live output of the server.' },
+      ],
+      notes: 'App Events records, in each workspace, every start of the application, every action of the users and the work that runs for them, with who triggered it, from where it ran and the details of what changed, so any error can be traced. Its filters find the events at once, the events travel in exports, transfers and backups, and the Execution Log beside it shows the live output of the server process.' },
     { id: 'summary', type: 'closing', section: 'Summary', footer: 'Summary', kicker: 'Summary', title: 'Safe, shared, under control',
       lead: 'Everyone sees what they need, every workspace is backed up, and every change is recorded.',
       links: [

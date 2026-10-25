@@ -52,14 +52,6 @@ module.exports = {
         { mini: 'vendor', title: 'Vendor Mapping', text: 'Needed only for the Vendor Comparison: the vendor of the serving cell of every row.' },
       ],
       notes: 'Preview opens the persisted rows of a dataset. Auto-calculated Fields add fields to the CDRs of the workspace, and Vendor Mapping gives the vendor of every row for the Vendor Comparison.' },
-    { id: 'events', type: 'split', section: 'App Events', footer: 'App Events', kicker: 'App Logs · App Events', title: 'Every action, on record', visual: 'events',
-      points: [
-        { icon: 'TbUserSearch', title: 'Who, and from where', text: 'Triggered by a user or the System, executed from a module, the Scheduler or a background job.' },
-        { icon: 'TbListDetails', title: 'What changed', text: 'One sentence per event: each field from its old to its new value, never a password.' },
-        { icon: 'TbFilter', title: 'Found at once', text: 'Date, Triggered by, Executed by, Type (Info or Error) and Action, to include or exclude.' },
-        { icon: 'TbTerminal2', title: 'Kept and live', text: 'In exports, transfers and backups; the Execution Log shows the live output of the server.' },
-      ],
-      notes: 'App Events records, in each workspace, every start of the application, every action of the users and the work that runs for them, with who triggered it, from where it ran and the details of what changed, so any error can be traced. Its filters find the events at once, the events travel in exports, transfers and backups, and the Execution Log beside it shows the live output of the server process.' },
     { id: 'summary', type: 'closing', section: 'Summary', footer: 'Summary', kicker: 'Summary', title: 'Everything starts here',
       lead: 'Every other module reads the processed datasets of the active workspace.',
       links: [

@@ -563,6 +563,56 @@ const VISUALS = {
     });
     return out;
   },
+  // The Users table of Super Admin: filters, the bar of the selected users and each account edited in place.
+  users(p) {
+    let out = `<rect x="20" y="20" width="420" height="44" rx="22" fill="#16213a" stroke="#2a3a5c" stroke-width="2"/><g transform="translate(36 30)">${icon('TbSearch', '#9fb0cc', 24)}</g><text x="70" y="49" font-size="18" fill="#9fb0cc">Search a name or username</text>`
+      + `<rect x="452" y="20" width="348" height="44" rx="22" fill="#2a2a1d" stroke="#e0a020" stroke-width="2"/><text x="626" y="49" text-anchor="middle" font-size="18" font-weight="700" fill="#f0c040">Pending access requests · 2</text>`;
+    out += `<rect x="20" y="80" width="780" height="54" rx="14" fill="${p.accent}"/><text x="40" y="114" font-size="19" font-weight="800" fill="#ffffff">3 selected</text>`;
+    let x = 158;
+    ['Modules Profile…', 'Add to group…', 'Role…', 'Activate', 'Deactivate'].forEach((label) => {
+      const width = label.length * 9 + 24;
+      out += `<rect x="${x}" y="91" width="${width}" height="32" rx="16" fill="#ffffff" opacity=".18"/><text x="${x + width / 2}" y="113" text-anchor="middle" font-size="16" font-weight="700" fill="#ffffff">${label}</text>`;
+      x += width + 10;
+    });
+    const rows = [
+      ['Ana López', 'EANALOP', 'admin', '#B0234F', ['UK', 'DE'], true, true],
+      ['Ben Smith', 'EBENSMI', 'user-editor', '#08736D', ['UK'], true, true],
+      ['Carla Ruiz', 'ECARRUI', 'user-viewer', '#4F46E5', ['DE'], true, false],
+      ['Diego Gil', 'EDIEGIL', 'user-editor', '#08736D', ['UK'], false, false],
+    ];
+    rows.forEach(([name, username, role, profile, groups, active, selected], index) => {
+      const y = 150 + index * 98;
+      out += `<rect x="20" y="${y}" width="780" height="86" rx="14" fill="#16213a" stroke="${selected ? p.light : '#2a3a5c'}" stroke-width="2"/>`;
+      out += `<rect x="38" y="${y + 30}" width="26" height="26" rx="6" fill="${selected ? p.accent : 'none'}" stroke="${selected ? p.accent : '#7d8aa3'}" stroke-width="2"/>${selected ? `<path d="M44 ${y + 43} l6 6 l10 -12" fill="none" stroke="#ffffff" stroke-width="3"/>` : ''}`;
+      out += `<text x="80" y="${y + 40}" font-size="20" font-weight="800" fill="#ffffff">${name}</text><text x="80" y="${y + 66}" font-size="16" fill="#9fb0cc" class="mono">${username}</text>`;
+      out += `<rect x="252" y="${y + 26}" width="132" height="34" rx="10" fill="#22304f"/><text x="318" y="${y + 49}" text-anchor="middle" font-size="16" font-weight="700" fill="#ffffff">${role}</text>`;
+      out += `<circle cx="412" cy="${y + 43}" r="12" fill="${profile}"/>`;
+      groups.forEach((group, g) => { out += `<rect x="${440 + g * 66}" y="${y + 26}" width="56" height="34" rx="10" fill="${p.deep}"/><text x="${468 + g * 66}" y="${y + 49}" text-anchor="middle" font-size="16" font-weight="700" fill="#ffffff">${group}</text>`; });
+      out += `<rect x="600" y="${y + 28}" width="58" height="30" rx="15" fill="${active ? '#1f9d55' : '#3a4d75'}"/><circle cx="${active ? 643 : 615}" cy="${y + 43}" r="11" fill="#ffffff"/>`;
+      out += `<g transform="translate(690 ${y + 28})">${icon('TbKey', '#c9d4e6', 30)}</g><g transform="translate(740 ${y + 28})">${icon('TbTrash', '#c9d4e6', 30)}</g>`;
+    });
+    return out;
+  },
+  // The databases of the application and of each workspace, and the Database Viewer on one of their tables.
+  databases(p) {
+    const cylinder = (x, y, title, colour, tables) => `<ellipse cx="${x + 110}" cy="${y + 22}" rx="110" ry="22" fill="${colour}"/><rect x="${x}" y="${y + 22}" width="220" height="${36 + tables.length * 36}" fill="${colour}" opacity=".85"/>`
+      + `<ellipse cx="${x + 110}" cy="${y + 58 + tables.length * 36}" rx="110" ry="22" fill="${colour}" opacity=".85"/><text x="${x + 110}" y="${y + 50}" text-anchor="middle" font-size="19" font-weight="800" fill="#ffffff">${title}</text>`
+      + tables.map((table, index) => `<rect x="${x + 18}" y="${y + 64 + index * 36}" width="184" height="28" rx="8" fill="#0b1220" opacity=".55"/><text x="${x + 110}" y="${y + 83 + index * 36}" text-anchor="middle" font-size="15" fill="#ffffff">${table}</text>`).join('');
+    let out = cylinder(20, 20, 'Application', '#5b6b80', ['Users', 'Modules Profiles', 'Workspace Groups', 'Tickets']);
+    out += cylinder(20, 300, 'Workspace UK', p.deep, ['Datasets', 'Dashboards', 'NQ Call Tracking', 'Combined CDR rows']);
+    out += `<rect x="270" y="20" width="530" height="520" rx="18" fill="#16213a" stroke="#2a3a5c" stroke-width="2"/><text x="294" y="58" font-size="20" font-weight="800" fill="#ffffff">Database Viewer</text>`;
+    out += `<rect x="294" y="74" width="300" height="38" rx="10" fill="#22304f"/><text x="310" y="99" font-size="17" fill="#c9d4e6">Table: Operator Mappings</text><rect x="604" y="74" width="172" height="38" rx="19" fill="${p.accent}"/><text x="690" y="99" text-anchor="middle" font-size="16" font-weight="700" fill="#ffffff">Operator = VF</text>`;
+    const columns = ['source_value', 'canonical_value'];
+    columns.forEach((name, index) => { out += `<rect x="${294 + index * 244}" y="126" width="236" height="36" rx="8" fill="${p.deep}"/><text x="${306 + index * 244}" y="150" font-size="16" font-weight="700" fill="#ffffff" class="mono">${name}</text>`; });
+    [['Vodafone UK', 'VF'], ['VFUK', 'VF'], ['Vodafone', 'VF'], ['Vodafone SA', 'VF SA'], ['Vodafone VoNR', 'VF VoNR']].forEach(([source, label], row) => {
+      const y = 172 + row * 50;
+      out += `<rect x="294" y="${y}" width="480" height="42" rx="8" fill="${row === 1 ? '#22304f' : '#101a2e'}"/><text x="306" y="${y + 27}" font-size="17" fill="#c9d4e6">${source}</text><text x="550" y="${y + 27}" font-size="17" font-weight="700" fill="#ffffff">${label}</text>`;
+      if (row === 1) out += `<g transform="translate(728 ${y + 8})">${icon('TbPencil', p.light, 26)}</g>`;
+    });
+    out += `<text x="294" y="456" font-size="17" fill="#9fb0cc">100 rows a page</text>`;
+    ['First', 'Previous', 'Next', 'Last'].forEach((label, index) => { out += `<rect x="${294 + index * 120}" y="476" width="110" height="40" rx="20" fill="#22304f"/><text x="${349 + index * 120}" y="502" text-anchor="middle" font-size="16" font-weight="700" fill="#c9d4e6">${label}</text>`; });
+    return out;
+  },
   // The follow-up over the weeks, and the NQ rate of each operator.
   trend(p) {
     const weeks = ['W1', 'W2', 'W3', 'W4', 'W5', 'W6', 'W7', 'W8'];
