@@ -20,6 +20,7 @@
 - **Workspaces table:** the workspaces table of Workspace Management shows the CDR Type and the Country of each workspace right after its name, before Access and Size.
 - **Root Cause Catalog of Non-Qualified Calls:** its Domains come first, before the Root Categories, Root Causes and Mapping, and the catalog opens on them.
 - **Direct links to the Presentations:** **Copy link**, on each presentation card of the Help and beside **Close** in the slide viewer, copies a link that opens the presentation, at the slide shown, directly in the slide viewer (a Help page with `?presentation=<id>&slide=<n>`), also for whoever has not signed in; while a presentation is open, the address of the page is that link too.
+- **Presentations on phones:** the slide viewer of the Help fits the part of the screen the browser leaves visible, so its buttons never hide behind the address bar, with the arrows of the slides first and large, then **▶ Slideshow**, **Copy link** and **Download** (× at the top closes it); a swipe changes slide, also in the slideshow, two fingers zoom and a double tap shows the whole slide. Held sideways, its buttons stand on one row.
 
 #### 🐛 Bug fixes:
 - **Non-Qualified Calls:** a section opened from the menu of the tab or from Modules & Sections stays at the top of the page until every panel above it is drawn, also when they take more than a minute in a large workspace (in Safari it moved down as they filled).

@@ -259,7 +259,7 @@
         <div class="presentation-dialog-buttons">
           <button type="button" class="presentation-secondary" data-presentation-link title="Copy the direct link of this slide: it opens the presentation in the slide viewer">Copy link</button>
           <button type="button" class="presentation-secondary" data-presentation-close>Close</button>
-          <a class="presentation-download" href="#" download>Download PowerPoint</a>
+          <a class="presentation-download" href="#" download title="Download PowerPoint" aria-label="Download PowerPoint">Download<span class="presentation-download-format">PowerPoint</span></a>
         </div>
       </footer>`;
     document.body.append(dialog);
@@ -488,8 +488,28 @@
     });
     settings.querySelector('[data-presentation-show-cancel]').addEventListener('click', closeShowSettings);
     settings.addEventListener('submit', (event) => { event.preventDefault(); startShow(); });
-    // A click on the slide goes to the next one; the controls show while the pointer moves.
-    layer.addEventListener('click', (event) => { if (!event.target.closest('.presentation-show-controls')) moveShow(1); });
+    // A click on the slide goes to the next one, and a swipe of a touch screen to the next or previous one; the controls
+    // show while the pointer moves.
+    let swipe = null;
+    let swiped = false;
+    layer.addEventListener('pointerdown', (event) => { if (event.pointerType === 'touch') swipe = {x: event.clientX, y: event.clientY}; });
+    layer.addEventListener('pointerup', (event) => {
+      if (!swipe || event.pointerType !== 'touch') return;
+      const dx = event.clientX - swipe.x, dy = event.clientY - swipe.y;
+      swipe = null;
+      if (Math.abs(dx) > 50 && Math.abs(dx) > 1.5 * Math.abs(dy)) {
+        swiped = true;
+        moveShow(dx < 0 ? 1 : -1);
+        revealShowControls();
+      }
+    });
+    layer.addEventListener('click', (event) => {
+      if (swiped) {
+        swiped = false;
+        return;
+      }
+      if (!event.target.closest('.presentation-show-controls')) moveShow(1);
+    });
     layer.addEventListener('pointermove', revealShowControls);
     layer.querySelectorAll('[data-presentation-show]').forEach((button) => button.addEventListener('click', () => {
       const action = button.dataset.presentationShow;
@@ -547,7 +567,26 @@
       wheelTurnedAt = now;
     }, {passive: false});
     let drag = null;
+    // On a touch screen one finger swipes from slide to slide (or moves the slide once zoomed), two fingers pinch to zoom and
+    // a double tap shows the whole slide.
+    const touches = new Map();
+    let pinch = null;
+    let tappedAt = 0;
     stage.addEventListener('pointerdown', (event) => {
+      if (event.pointerType === 'touch') {
+        if (!image.naturalWidth) return;
+        event.preventDefault();
+        touches.set(event.pointerId, local(event));
+        try { stage.setPointerCapture(event.pointerId); } catch { /* (The pointer may be gone already.) */ }
+        if (touches.size === 2) {
+          const [a, b] = [...touches.values()];
+          pinch = {distance: Math.hypot(a.x - b.x, a.y - b.y) || 1};
+          drag = null;
+        } else if (touches.size === 1) {
+          drag = {start: local(event), pan: view.scale > view.fit * 1.001, touch: true, rectangle: null, x: view.x, y: view.y};
+        }
+        return;
+      }
       if ((event.button !== 0 && event.button !== 1) || !image.naturalWidth) return;
       event.preventDefault();
       const pan = event.button === 1 || event.shiftKey;
@@ -558,6 +597,16 @@
       stage.classList.toggle('is-panning', pan);
     });
     stage.addEventListener('pointermove', (event) => {
+      if (event.pointerType === 'touch' && touches.has(event.pointerId)) {
+        touches.set(event.pointerId, local(event));
+        if (pinch && touches.size === 2) {
+          const [a, b] = [...touches.values()];
+          const distance = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+          zoomView(distance / pinch.distance, (a.x + b.x) / 2, (a.y + b.y) / 2);
+          pinch.distance = distance;
+          return;
+        }
+      }
       if (!drag) return;
       const point = local(event);
       if (drag.pan) {
@@ -567,15 +616,31 @@
         renderView();
         return;
       }
+      if (!drag.rectangle) return;
       Object.assign(drag.rectangle.style, {
         left: `${Math.min(drag.start.x, point.x)}px`, top: `${Math.min(drag.start.y, point.y)}px`,
         width: `${Math.abs(point.x - drag.start.x)}px`, height: `${Math.abs(point.y - drag.start.y)}px`,
       });
     });
+    const releaseTouch = (event) => {
+      touches.delete(event.pointerId);
+      if (touches.size < 2) pinch = null;
+    };
     const endDrag = (event) => {
+      if (event?.pointerType === 'touch') releaseTouch(event);
       if (!drag) return;
-      const {start, pan, rectangle} = drag;
+      const {start, pan, rectangle, touch} = drag;
       drag = null;
+      if (touch && event) {
+        const point = local(event);
+        const dx = point.x - start.x, dy = point.y - start.y;
+        if (!pan && Math.abs(dx) > 50 && Math.abs(dx) > 1.5 * Math.abs(dy)) showSlide(viewerIndex + (dx < 0 ? 1 : -1));
+        else if (Math.abs(dx) < 8 && Math.abs(dy) < 8) {
+          if (Date.now() - tappedAt < 320) fitView();
+          tappedAt = Date.now();
+        }
+        return;
+      }
       stage.classList.remove('is-panning');
       if (pan || !rectangle) return;
       rectangle.remove();
@@ -594,7 +659,10 @@
       renderView();
     };
     stage.addEventListener('pointerup', endDrag);
-    stage.addEventListener('pointercancel', () => endDrag(null));
+    stage.addEventListener('pointercancel', (event) => {
+      if (event.pointerType === 'touch') releaseTouch(event);
+      endDrag(null);
+    });
     stage.addEventListener('dblclick', fitView);
     dialog.addEventListener('keydown', (event) => {
       if (event.target.closest?.('input, select, textarea')) return;

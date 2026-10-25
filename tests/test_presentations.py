@@ -323,6 +323,12 @@ def test_the_slide_viewer_goes_through_the_slides_from_its_footer_the_wheel_and_
     assert "else if (['ArrowRight', 'ArrowDown', 'PageDown', ' '].includes(event.key)) showSlide(viewerIndex + 1);" in script
     assert "if (['ArrowLeft', 'ArrowUp', 'PageUp'].includes(event.key)) moveShow(-1);" in script
     assert 'if (event.ctrlKey || event.metaKey) {' in script and 'showSlide(viewerIndex + Math.sign(wheelTravel));' in script
+    # On a phone the viewer fits the screen the browser leaves visible, the arrows first; a swipe changes slide (also in the
+    # slideshow), two fingers zoom and a double tap shows the whole slide.
+    assert '.presentation-dialog { width: 100vw; height: 100vh; height: 100dvh; max-height: 100dvh; border-radius: 0; }' in styles
+    assert '.presentation-steps { order: -1; flex: 1 0 100%; justify-content: space-between; }' in styles
+    assert "if (!pan && Math.abs(dx) > 50 && Math.abs(dx) > 1.5 * Math.abs(dy)) showSlide(viewerIndex + (dx < 0 ? 1 : -1));" in script
+    assert 'zoomView(distance / pinch.distance, (a.x + b.x) / 2, (a.y + b.y) / 2);' in script and 'moveShow(dx < 0 ? 1 : -1);' in script
 
 
 def test_a_direct_link_opens_its_presentation_in_the_slide_viewer(client):
