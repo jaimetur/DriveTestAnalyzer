@@ -112,7 +112,7 @@ def test_the_help_shows_the_presentations_of_the_application_until_they_are_gene
     monkeypatch.setattr(presentations.PresentationGenerator, 'unavailable', staticmethod(lambda: 'Node.js is not installed on this server.'))
     login(client)
     manifest = client.get('/api/presentations').json()
-    assert [item['id'] for item in manifest['presentations']] == ['overview', 'one-slider', 'roadmap', 'benchmarking-providers']
+    assert [item['id'] for item in manifest['presentations']] == ['overview', 'one-slider', 'roadmap', 'benchmarking-providers', 'dt-analyzer-rca']
     assert not manifest['updating']
     assert client.get('/presentations/files/roadmap/slide-01.png').headers['content-type'] == 'image/png'
     # Super Admin tells why they are not generated.
@@ -123,18 +123,22 @@ def test_the_help_shows_the_presentations_of_the_application_until_they_are_gene
 
 
 
-def test_the_benchmarking_providers_deck_keeps_a_picture_and_the_notes_of_each_slide(tmp_path, monkeypatch):
-    root = Path(__file__).resolve().parents[1]
-    deck = root / 'tools/presentations/benchmarking-providers'
+def check_image_deck(name: str, count: int) -> None:
+    """A deck of its own design keeps a picture, a title and the notes of each slide, and the Help lists its slides by
+    section, in the order of the deck, with their rendered pictures."""
+    deck = Path(__file__).resolve().parents[1] / 'tools/presentations' / name
     slides = json.loads((deck / 'slides.json').read_text(encoding='utf-8'))['slides']
-    assert len(slides) == 24 and all((deck / slide['image']).is_file() and slide['title'] and slide['notes'] for slide in slides)
-    # The Help lists its slides by section, in the order of the deck, with their rendered pictures.
+    assert len(slides) == count and all((deck / slide['image']).is_file() and slide['title'] and slide['notes'] for slide in slides)
     manifest = json.loads((presentations.STATIC_PRESENTATIONS / presentations.MANIFEST).read_text(encoding='utf-8'))
-    entry = next(item for item in manifest['presentations'] if item['id'] == 'benchmarking-providers')
+    entry = next(item for item in manifest['presentations'] if item['id'] == name)
     assert [title for section in entry['sections'] for title in section['slides']] == [slide['title'] for slide in slides]
     assert [section['title'] for section in entry['sections']] == list(dict.fromkeys(slide['section'] for slide in slides))
     assert (presentations.STATIC_PRESENTATIONS / entry['file']).is_file()
-    assert len(list((presentations.STATIC_PRESENTATIONS / 'benchmarking-providers').glob('slide-*.png'))) == len(slides)
+    assert len(list((presentations.STATIC_PRESENTATIONS / name).glob('slide-*.png'))) == len(slides)
+
+
+def test_the_benchmarking_providers_deck_keeps_a_picture_and_the_notes_of_each_slide(tmp_path, monkeypatch):
+    check_image_deck('benchmarking-providers', 24)
     # A new picture of a slide generates the presentations again.
     generator = tmp_path / 'presentations'
     (generator / 'benchmarking-providers').mkdir(parents=True)
@@ -146,6 +150,13 @@ def test_the_benchmarking_providers_deck_keeps_a_picture_and_the_notes_of_each_s
     (generator / 'benchmarking-providers' / 'slide-01.png').write_bytes(b'second')
     assert presentations.generator_signature() != before
 
+
+
+def test_the_dt_analyzer_rca_deck_keeps_a_picture_and_the_notes_of_each_slide():
+    check_image_deck('dt-analyzer-rca', 12)
+    # The Help of Non-Qualified Calls shows it in the DT Analyzer RCA.
+    help_text = (Path(__file__).resolve().parents[1] / 'help' / 'non-qualified-calls.md').read_text(encoding='utf-8')
+    assert '```presentations\ndt-analyzer-rca\n```' in help_text
 
 def test_the_slide_viewer_goes_through_the_slides_from_its_footer_the_wheel_and_the_arrows():
     root = Path(__file__).resolve().parents[1]

@@ -54,8 +54,10 @@ NR_PCI_COLUMNS = NETCHECK_PROFILE.rf_field_aliases['nr_pci']
 NR_CHANNEL_COLUMNS = NETCHECK_PROFILE.rf_field_aliases['nr_arfcn']
 CELL_ROLES = {'start': 'Served the start', 'handover': 'Handover', 'end': 'Served the end', 'both': 'Served the whole call',
               'nr_leg': 'NR leg (by PCI)'}
-# The diagnosis: a cell this far serves from too far away (the overshooting distance of Network Insights); one this far
-# while a site three times nearer was there was not the right one; operators compared with at least this many tests each.
+# The diagnosis judges the serving distance and coverage holes by the inter-site distance (ISD) of the sites (ran_context);
+# a site without others of its network around (no ISD) is judged by these distances: a cell this far serves from too far
+# away (the overshooting distance of Network Insights), one this far while a site three times nearer was there was not
+# the right one. Operators are compared with at least this many tests each.
 OVERSHOOT_KM = 5.0
 FAR_SERVING_KM = 1.5
 MIN_COMPARED_TESTS = 5
@@ -207,16 +209,22 @@ def radio_values(row: dict[str, Any], columns: list[str]) -> list[dict[str, Any]
 def cell_trace(service: str, row: dict[str, Any], columns: list[str], cell_id: Any,
                profile: CdrFieldProfile = NETCHECK_PROFILE) -> list[dict[str, str]]:
     """The cells the call went through, in order: technology, band, cell identity, channel and PCI."""
+    _column, trace = _first_value(row, columns, profile.rf_field_aliases['cell_trace'].get(service, ()))
+    _column, pcis = _first_value(row, columns, profile.pci_columns.get(service, ()))
+    return trace_cells(trace, pcis, cell_id)
+
+
+def trace_cells(trace: Any, pcis: Any, cell_id: Any) -> list[dict[str, str]]:
+    """The cells of a cell trace of the CDR (``[LTE E-UTRA 20, TAC, ECI, EARFCN]->[...]``), else of the cell identities of
+    the call, each with the PCI of the PCI column in the same place (the last one for the last cell)."""
     from src.modules.network_insights import parse_cell_trace
     from src.modules.non_qualified_calls import MAX_ECI
 
-    _column, trace = _first_value(row, columns, profile.rf_field_aliases['cell_trace'].get(service, ()))
     cells = [cell for cell in parse_cell_trace(trace) if re.fullmatch(r'\d+', cell['cell'])]
     if not cells:
         for value in _sequence_numbers(cell_id):
             if value:
                 cells.append({'technology': 'NR' if int(value) > MAX_ECI else 'LTE', 'band': '', 'cell': value, 'channel': ''})
-    _column, pcis = _first_value(row, columns, profile.pci_columns.get(service, ()))
     pci_values = _sequence_numbers(pcis)
     for index, cell in enumerate(cells):
         cell['pci'] = pci_values[index] if len(pci_values) == len(cells) else (pci_values[-1] if index == len(cells) - 1 and pci_values else '')
@@ -631,12 +639,16 @@ def _share(part: int, total: int) -> str:
 
 
 def diagnosis(call: dict[str, Any], radio: dict[str, float | None], trace: list[dict[str, Any]], sites: list[dict[str, Any]],
-              failures: list[dict[str, Any]], tests: dict[str, Any], radius_km: float, min_calls: int) -> list[dict[str, str]]:
-    """What the map suggests about the failure, one finding per check: coverage, interference, serving distance, PCI, the
-    state of the cells around, the other operators, repetition and handovers."""
+              failures: list[dict[str, Any]], tests: dict[str, Any], radius_km: float, min_calls: int,
+              ran: dict[str, Any] | None = None) -> list[dict[str, str]]:
+    """What the map suggests about the failure, one finding per check: coverage (a coverage hole too), interference,
+    serving distance, PCI, the state of the cells around, the other operators, repetition and handovers. ``ran`` gives the
+    inter-site distance (ISD) of the serving site and the nearest site of the networks serving the operator, with its ISD
+    (ran_context): the serving distance and the coverage holes are judged by them."""
     from src.modules.network_insights import (
         DEFAULT_COVERAGE_THRESHOLD, DEFAULT_INTERFERENCE_THRESHOLD, DEFAULT_NR_COVERAGE_THRESHOLD, DEFAULT_NR_INTERFERENCE_THRESHOLD,
     )
+    from src.modules.ran_context import HOLE_ISD, NEARER_SHARE, OVERSHOOT_ISD, OVERSHOOT_MIN_KM, serving_isd_ratio
 
     limits = {'LTE': (DEFAULT_COVERAGE_THRESHOLD, DEFAULT_INTERFERENCE_THRESHOLD),
               'NR': (DEFAULT_NR_COVERAGE_THRESHOLD, DEFAULT_NR_INTERFERENCE_THRESHOLD)}
@@ -647,8 +659,18 @@ def diagnosis(call: dict[str, Any], radio: dict[str, float | None], trace: list[
     sinr = [(tech, radio[f'{tech.lower()}_sinr'], limits[tech][1]) for tech in limits if radio.get(f'{tech.lower()}_sinr') is not None]
     weak = [item for item in rsrp if item[1] < item[2]]
     text = ' · '.join(f'{tech} RSRP {value:.1f} dBm' for tech, value, _limit in rsrp)
-    if not rsrp:
+    # No site of its networks near: the nearest one beyond HOLE_ISD times its own inter-site distance.
+    closest = (ran or {}).get('nearest')
+    hole = bool(closest and closest.get('isd_km') and closest['distance_km'] >= HOLE_ISD * closest['isd_km'])
+    away = (f"the nearest site of its networks, Site {closest['site_id']} ({closest['network']}), is {_km(closest['distance_km'])} "
+            f"away, {serving_isd_ratio(closest['distance_km'], closest.get('isd_km')):.1f} times its inter-site distance "
+            f"({_km(closest.get('isd_km'))})") if hole else ''
+    if not rsrp and hole:
+        checks.append(_check('coverage', 'bad', 'Coverage hole', f'The CDR gives no RSRP of the call and {away}.'))
+    elif not rsrp:
         checks.append(_check('coverage', 'info', 'Coverage', 'The CDR gives no RSRP of the call.'))
+    elif weak and hole:
+        checks.append(_check('coverage', 'bad', 'Coverage hole', f'{text}: below {weak[0][2]:g} dBm in {weak[0][0]}, and {away}.'))
     elif weak:
         checks.append(_check('coverage', 'bad', 'Weak coverage', f'{text}: below {weak[0][2]:g} dBm in {weak[0][0]}.'))
     elif any(value < limit + 10 for _tech, value, limit in rsrp):
@@ -669,21 +691,29 @@ def diagnosis(call: dict[str, Any], radio: dict[str, float | None], trace: list[
         checks.append(_check('interference', 'ok', 'Good SINR', f'{text}.'))
     # The cell where the call ended (or that served all of it) against the nearest site of the networks serving the operator.
     end = next((step for step in reversed(trace) if step.get('site') and step['role'] in ('end', 'both')), None)
-    nearest = sites[0] if sites else None
+    nearest = closest or (sites[0] if sites else None)
     if end is None or end.get('distance_km') is None:
         checks.append(_check('distance', 'info', 'Serving distance', 'The cell where the call ended is not in the Network Inventory.'))
     else:
         distance, name = end['distance_km'], f"Site {end['site_id']} ({end['network']})"
-        nearer = nearest and nearest['key'] != end['site'] and nearest['distance_km'] * 3 <= distance
-        if distance >= OVERSHOOT_KM:
-            checks.append(_check('distance', 'bad', 'Served from far away', f'The cell where it failed is on {name}, {_km(distance)} away: overshooting?'))
-        elif distance >= FAR_SERVING_KM and nearer:
+        isd = (ran or {}).get('serving_isd')
+        ratio = serving_isd_ratio(distance, isd)
+        nearer = nearest and nearest['key'] != end['site'] and nearest['distance_km'] <= distance * NEARER_SHARE
+        spacing = f', {ratio:.1f} times the inter-site distance of its site ({_km(isd)})' if ratio is not None else ''
+        # Beyond twice the ISD of its site is too far; beyond it, with a site three times nearer, not the right site.
+        far, beyond = ((ratio >= OVERSHOOT_ISD and distance >= OVERSHOOT_MIN_KM, ratio >= 1) if ratio is not None
+                       else (distance >= OVERSHOOT_KM, distance >= FAR_SERVING_KM))
+        if far:
+            there = f" Site {nearest['site_id']} ({nearest['network']}) is {_km(nearest['distance_km'])} away." if nearer else ''
+            checks.append(_check('distance', 'bad', 'Served from far away',
+                                 f'The cell where it failed is on {name}, {_km(distance)} away{spacing}: overshooting?{there}'))
+        elif beyond and nearer:
             checks.append(_check('distance', 'warn', 'Not served by the nearest sites',
-                                 f"Served from {name} at {_km(distance)} while Site {nearest['site_id']} ({nearest['network']}) is "
+                                 f"Served from {name} at {_km(distance)}{spacing} while Site {nearest['site_id']} ({nearest['network']}) is "
                                  f"{_km(nearest['distance_km'])} away: a missing neighbour or overshooting?"))
         else:
             near = f" (nearest site {_km(nearest['distance_km'])})" if nearest and nearest['key'] != end['site'] else ' (the nearest site)'
-            checks.append(_check('distance', 'ok', 'Serving distance', f'Served from {name} at {_km(distance)}{near}.'))
+            checks.append(_check('distance', 'ok', 'Serving distance', f'Served from {name} at {_km(distance)}{spacing}{near}.'))
     # Cells around with the PCI and channel of a cell of the call.
     flagged = [(site, cell) for site in sites for cell in site['cells'] if cell.get('same_pci')]
     if flagged:
@@ -977,8 +1007,16 @@ def call_map(repository: Any, call_key: str, *, radius_km: Any = DEFAULT_RADIUS_
     from src.modules.nq_prioritization import load_settings as prioritization_settings
 
     label = lambda value: mapper.map(field_kind('operator'), value)  # noqa: E731 - the label of an Operator in the Operator Maps.
+    # The inter-site distance of the serving site and the nearest site of the networks serving the operator (ran_context).
+    from src.modules import ran_context
+
+    index = ran_context.ran_index(cells) if not cells.empty else None
+    serving_step = next((step for step in reversed(trace) if step.get('site') and step['role'] in ('end', 'both')), None)
+    nearest = index.nearest(point, families) if index else None
+    ran = {'serving_isd': index.isd(serving_step['site']) if index and serving_step else None,
+           'nearest': {**nearest, 'isd_km': index.isd(nearest['key'])} if nearest else None}
     checks = diagnosis(call, call_radio(service, row, columns, fields_profile), trace, sites, failures, test_points, radius,
-                       int(prioritization_settings(repository).get('min_calls') or 2))
+                       int(prioritization_settings(repository).get('min_calls') or 2), ran)
     drive = drive_context(repository, test_datasets(repository, call, scope), call, point, label, positions['start'])
     health = site_health(repository, call, serving_site, _text(row.get('Serving_Host_Network')) or _text(call.get('host_network')), label)
     classes = {

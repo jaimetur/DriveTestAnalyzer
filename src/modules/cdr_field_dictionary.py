@@ -47,6 +47,8 @@ _LABELS = {
     'packet_loss_pct': 'Packet loss (%)', 'jitter_ms': 'Jitter (ms)', 'lte_rsrp': 'LTE RSRP', 'nr_rsrp': 'NR RSRP',
     'lte_sinr': 'LTE SINR', 'nr_sinr': 'NR SINR', 'earfcn': 'EARFCN', 'nr_pci': 'NR PCI', 'nr_arfcn': 'NR ARFCN',
     'rtt_median': 'RTT (median)', 'cell_id': 'Cell ID', 'site_id': 'Site ID',
+    'lte_dl_rbs': 'LTE DL resource blocks (average)', 'lte_dl_bandwidth': 'LTE DL bandwidth (MHz)',
+    'nr_dl_rbs': 'NR DL resource blocks (average)', 'nr_dl_bandwidth': 'NR DL bandwidth (MHz)', 'nr_dl_band': 'NR DL band',
 }
 
 

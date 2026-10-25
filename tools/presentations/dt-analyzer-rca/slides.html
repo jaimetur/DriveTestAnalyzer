@@ -1,0 +1,416 @@
+<!doctype html>
+<!--
+  The slides of the DT Analyzer RCA presentation of the Help, one <section> each (1920 × 1080).
+  slides.json lists their order, sections, titles and speaker notes; build.js turns their pictures into the PowerPoint.
+  Picture slide N with a headless browser at 1920 × 1080, for example:
+    "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser" --headless=new --hide-scrollbars \
+      --window-size=1920,1080 --screenshot=slide-0N.png "file://$PWD/slides.html?slide=N"
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>DT Analyzer RCA</title>
+<style>
+  :root {
+    --ink: #0b1220; --panel: #131d33; --panel2: #1a2742; --line: #2a3a5c; --text: #eef2f9; --muted: #9fb0cc; --soft: #c9d4e6;
+    --dta: #b46be8; --dta2: #7c3aed; --dta-soft: #2a1d45;
+    --rf: #3a7fc1; --ran: #e08a1e; --core: #7b52c0; --epsfb: #2f6db3; --ims: #c8682b; --aaa: #2e8b57; --protocol: #138597;
+    --device: #7b8790; --operational: #6f8236;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: var(--ink); }
+  body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: var(--text); }
+  .slide { width: 1920px; height: 1080px; position: relative; overflow: hidden; padding: 96px 112px 0;
+    background: radial-gradient(1200px 700px at 88% -10%, rgba(124, 58, 237, .28), transparent 60%),
+                radial-gradient(900px 600px at -10% 110%, rgba(19, 133, 151, .18), transparent 60%), var(--ink); }
+  .slide + .slide { margin-top: 40px; }
+  .kicker { font-size: 24px; letter-spacing: 4px; text-transform: uppercase; color: var(--dta); font-weight: 700; }
+  h1 { font-size: 128px; line-height: .98; font-weight: 800; letter-spacing: -3px; }
+  h2 { font-size: 68px; line-height: 1.05; font-weight: 800; letter-spacing: -1.5px; margin-top: 14px; }
+  .lead { font-size: 30px; line-height: 1.38; color: var(--soft); max-width: 1500px; margin-top: 22px; }
+  .foot { position: absolute; left: 112px; right: 112px; bottom: 44px; display: flex; justify-content: space-between;
+    font-size: 20px; color: var(--muted); letter-spacing: .5px; }
+  .foot b { color: var(--dta); font-weight: 700; }
+  .card { background: linear-gradient(180deg, var(--panel2), var(--panel)); border: 1px solid var(--line); border-radius: 26px; padding: 34px 36px; }
+  .card h3 { font-size: 36px; font-weight: 800; letter-spacing: -.5px; }
+  .card p { font-size: 25px; line-height: 1.42; color: var(--soft); margin-top: 12px; }
+  .tag { display: inline-flex; align-items: center; gap: 10px; border-radius: 999px; padding: 8px 18px; font-size: 22px; font-weight: 700; }
+  .tag i { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+  .mono { font-family: Menlo, 'SF Mono', Consolas, monospace; }
+  .grid { display: grid; gap: 28px; }
+  .result { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 18px; }
+  .result span { font-size: 21px; font-weight: 700; padding: 8px 16px; border-radius: 12px; background: rgba(255, 255, 255, .07); color: var(--text); }
+  .rule { font-size: 22px; color: var(--soft); line-height: 1.5; }
+  .rule code { font-family: Menlo, Consolas, monospace; font-size: 21px; color: #fff; background: rgba(180, 107, 232, .18); padding: 2px 10px; border-radius: 8px; }
+  .icon { width: 64px; height: 64px; border-radius: 18px; display: grid; place-items: center; }
+  .icon svg { width: 36px; height: 36px; stroke: #fff; fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+</style>
+</head>
+<body>
+
+<!-- 1 · Cover -->
+<section class="slide" id="s1">
+  <svg width="1920" height="1080" style="position:absolute;inset:0" viewBox="0 0 1920 1080" aria-hidden="true">
+    <defs>
+      <radialGradient id="glow" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#c77dff" stop-opacity=".9"/><stop offset="1" stop-color="#7c3aed" stop-opacity="0"/></radialGradient>
+      <linearGradient id="beam" x1="0" x2="1"><stop offset="0" stop-color="#7c3aed" stop-opacity="0"/><stop offset="1" stop-color="#c77dff"/></linearGradient>
+    </defs>
+    <g stroke="#2a3a5c" stroke-width="2">
+      <line x1="1130" y1="250" x2="1320" y2="380"/><line x1="1320" y1="380" x2="1250" y2="600"/><line x1="1320" y1="380" x2="1560" y2="300"/>
+      <line x1="1560" y1="300" x2="1700" y2="470"/><line x1="1250" y1="600" x2="1480" y2="690"/><line x1="1480" y1="690" x2="1700" y2="470"/>
+      <line x1="1480" y1="690" x2="1640" y2="860"/><line x1="1250" y1="600" x2="1120" y2="800"/><line x1="1700" y1="470" x2="1830" y2="640"/>
+    </g>
+    <path d="M1120 800 L1250 600 L1480 690 L1700 470" stroke="url(#beam)" stroke-width="7" fill="none" stroke-linecap="round"/>
+    <g fill="#1a2742" stroke="#3a4d75" stroke-width="3">
+      <circle cx="1130" cy="250" r="20"/><circle cx="1320" cy="380" r="24"/><circle cx="1560" cy="300" r="18"/><circle cx="1640" cy="860" r="18"/><circle cx="1830" cy="640" r="16"/>
+    </g>
+    <circle cx="1700" cy="470" r="120" fill="url(#glow)"/>
+    <g fill="#b46be8"><circle cx="1120" cy="800" r="18"/><circle cx="1250" cy="600" r="22"/><circle cx="1480" cy="690" r="22"/></g>
+    <circle cx="1700" cy="470" r="34" fill="#fff"/>
+    <text x="1700" y="482" text-anchor="middle" font-size="34" font-weight="800" fill="#7c3aed" font-family="Helvetica Neue, Arial">✓</text>
+  </svg>
+  <div style="position:relative;margin-top:150px;max-width:1000px">
+    <p class="kicker">Non-Qualified Calls · Root cause analysis</p>
+    <h1 style="margin-top:26px">DT Analyzer<br><span style="color:var(--dta)">RCA</span></h1>
+    <p class="lead" style="font-size:36px;margin-top:34px">The root cause of every Non-Qualified Call, found from the data of its CDR and the network around it.</p>
+    <div style="display:flex;gap:14px;margin-top:46px">
+      <span class="tag" style="background:var(--dta-soft);color:#e7cdfb"><i style="background:var(--dta)"></i>Every workspace</span>
+      <span class="tag" style="background:var(--dta-soft);color:#e7cdfb"><i style="background:var(--dta)"></i>Every CDR provider</span>
+      <span class="tag" style="background:var(--dta-soft);color:#e7cdfb"><i style="background:var(--dta)"></i>64 editable rules</span>
+    </div>
+  </div>
+  <div class="foot"><span><b>DriveTest Analyzer</b> · Non-Qualified Calls</span><span>Version 0.9.0</span></div>
+</section>
+
+<!-- 2 · Four sources -->
+<section class="slide" id="s2">
+  <p class="kicker">Why an RCA of our own</p>
+  <h2>Four sources, one decision per call</h2>
+  <p class="lead">The RCA of the provider is often empty or non-committal, and some providers bring none. The DT Analyzer RCA gives every call a root cause, first among the sources the analysts compare.</p>
+  <div style="display:flex;align-items:center;gap:40px;margin-top:44px">
+    <div class="grid" style="grid-template-columns:1fr;width:820px;gap:14px">
+      <div class="card" style="border-color:#7d4cc4;background:linear-gradient(180deg,#2a1d45,#1c1630);display:flex;gap:26px;align-items:center;padding:20px 28px">
+        <div class="icon" style="background:var(--dta2)"><svg viewBox="0 0 24 24"><path d="M4 12h4l3-7 3 14 3-7h3"/></svg></div>
+        <div><h3>DT Analyzer RCA</h3><p style="margin-top:4px">From the CDR and the Network Inventory, always first</p></div>
+      </div>
+      <div class="card" style="display:flex;gap:26px;align-items:center;padding:20px 28px">
+        <div class="icon" style="background:#0b6fbf"><svg viewBox="0 0 24 24"><path d="M5 5h14v14H5z"/><path d="M9 9h6M9 13h6"/></svg></div>
+        <div><h3>NetCheck RCA</h3><p style="margin-top:4px">The RCA of the provider, mapped onto the catalog</p></div>
+      </div>
+      <div class="card" style="display:flex;gap:26px;align-items:center;padding:20px 28px">
+        <div class="icon" style="background:#9a7b14"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M5 20h14"/></svg></div>
+        <div><h3>Ericsson RCA</h3><p style="margin-top:4px">Imported results, by the call key of the provider</p></div>
+      </div>
+      <div class="card" style="display:flex;gap:26px;align-items:center;padding:20px 28px">
+        <div class="icon" style="background:#2e8b57"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/></svg></div>
+        <div><h3>Analysts</h3><p style="margin-top:4px">Their decisions on earlier calls</p></div>
+      </div>
+    </div>
+    <svg width="160" height="520" viewBox="0 0 160 520" aria-hidden="true">
+      <g fill="none" stroke="#3a4d75" stroke-width="4"><path d="M0 70 C90 70 70 260 150 260"/><path d="M0 197 C90 197 70 260 150 260"/><path d="M0 323 C90 323 70 260 150 260"/><path d="M0 450 C90 450 70 260 150 260"/></g>
+      <path d="M0 70 C90 70 70 260 150 260" fill="none" stroke="#b46be8" stroke-width="6"/>
+    </svg>
+    <div class="card" style="flex:1;padding:44px;border-color:#7d4cc4">
+      <p class="kicker" style="font-size:20px">Recommendation</p>
+      <h3 style="font-size:46px;margin-top:12px">Selected Cause</h3>
+      <p style="font-size:27px">The sources that agree win; the DT Analyzer RCA weighs 2 and its card shows the rule and the evidence.</p>
+      <div class="result" style="margin-top:28px"><span style="background:var(--rf)">RF</span><span>DL Interference LTE</span><span>Overshooting</span></div>
+      <p style="font-size:24px;margin-top:26px;color:var(--muted)">Root Cause Sources · Root Cause Analysis · RCA tab of the call · Excel, PowerPoint, Word and Reporting</p>
+    </div>
+  </div>
+  <div class="foot"><span><b>DT Analyzer RCA</b> · Sources</span><span>02</span></div>
+</section>
+
+<!-- 3 · What it reads -->
+<section class="slide" id="s3">
+  <p class="kicker">Inputs</p>
+  <h2>Everything the CDR knows about the call</h2>
+  <p class="lead" style="max-width:1700px">Read through the field profile of the workspace: the same rules for NetCheck, Umlaut and the providers to come.</p>
+  <div class="grid" style="grid-template-columns:repeat(4,1fr);margin-top:40px;gap:22px">
+    <div class="card" style="padding:26px 30px"><div class="icon" style="background:#475569"><svg viewBox="0 0 24 24"><path d="M6 3h12v18H6z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg></div><h3 style="margin-top:16px">Call</h3><p style="font-size:23px">Result, test, technology, direction and environment</p></div>
+    <div class="card" style="padding:26px 30px"><div class="icon" style="background:#b4434f"><svg viewBox="0 0 24 24"><path d="M12 3l9 16H3z"/><path d="M12 10v4M12 17h.01"/></svg></div><h3 style="margin-top:16px">Failure</h3><p style="font-size:23px">Description, signalling events, phase, side, and the technology, RSRP and SINR at the failure</p></div>
+    <div class="card" style="padding:26px 30px"><div class="icon" style="background:var(--rf)"><svg viewBox="0 0 24 24"><path d="M4 20V14M9 20V10M14 20V6M19 20V3"/></svg></div><h3 style="margin-top:16px">LTE radio</h3><p style="font-size:23px">RSRP, RSRQ, SINR, transmit power, BLER, resource blocks used</p></div>
+    <div class="card" style="padding:26px 30px"><div class="icon" style="background:#5b8fd6"><svg viewBox="0 0 24 24"><path d="M2 9a15 15 0 0 1 20 0M5 13a10 10 0 0 1 14 0M8.5 16.5a5 5 0 0 1 7 0M12 20h.01"/></svg></div><h3 style="margin-top:16px">NR radio</h3><p style="font-size:23px">RSRP, RSRQ, SINR, transmit power, BLER, resource blocks used</p></div>
+    <div class="card" style="padding:26px 30px"><div class="icon" style="background:#6b7fa8"><svg viewBox="0 0 24 24"><path d="M7 7h10v10H7z"/><path d="M3 12h4M17 12h4"/></svg></div><h3 style="margin-top:16px">B side</h3><p style="font-size:23px">The RSRP and SINR of the other side of a Voice call</p></div>
+    <div class="card" style="padding:26px 30px"><div class="icon" style="background:var(--ran)"><svg viewBox="0 0 24 24"><path d="M4 7h13l-3-3M20 17H7l3 3"/></svg></div><h3 style="margin-top:16px">Mobility</h3><p style="font-size:23px">Technologies used, handovers and their types, ping-pongs</p></div>
+    <div class="card" style="padding:26px 30px;border-color:#7d4cc4"><div class="icon" style="background:var(--dta2)"><svg viewBox="0 0 24 24"><path d="M12 2v20M5 7l7-5 7 5M7 22l5-9 5 9"/></svg></div><h3 style="margin-top:16px">Network Inventory</h3><p style="font-size:23px">Serving and nearest site against their ISD, PCI collisions, cells out of service</p></div>
+    <div class="card" style="padding:26px 30px"><div class="icon" style="background:var(--protocol)"><svg viewBox="0 0 24 24"><path d="M3 12h4l2-6 4 12 2-6h6"/></svg></div><h3 style="margin-top:16px">KPIs</h3><p style="font-size:23px">Throughput, access, DNS, TCP, packet loss, latency, setup, MOS, RTP</p></div>
+  </div>
+  <div class="foot"><span><b>DT Analyzer RCA</b> · What it reads</span><span>03</span></div>
+</section>
+
+<!-- 4 · How it decides -->
+<section class="slide" id="s4">
+  <p class="kicker">Rules</p>
+  <h2>The first rule that holds decides</h2>
+  <p class="lead">Rules are tried from top to bottom. The first one of the service of the call whose conditions hold gives its Root Category and Root Cause, with the evidence of the values that met it.</p>
+  <div style="display:flex;gap:56px;margin-top:40px">
+    <div style="flex:1;display:flex;flex-direction:column;gap:10px">
+      <div style="display:flex;align-items:center;gap:22px"><span class="mono" style="width:112px;flex:none;white-space:nowrap;font-size:24px;color:var(--muted)">1–12</span><div class="card" style="flex:1;padding:13px 26px;display:flex;justify-content:space-between;align-items:center"><span style="font-size:27px;font-weight:700">Reported outside the radio · lack of resources</span><span class="tag" style="background:rgba(255,255,255,.08)">12</span></div></div>
+      <div style="display:flex;align-items:center;gap:22px"><span class="mono" style="width:112px;flex:none;white-space:nowrap;font-size:24px;color:var(--muted)">13–23</span><div class="card" style="flex:1;padding:13px 26px;display:flex;justify-content:space-between;align-items:center;border-color:#7d4cc4"><span style="font-size:27px;font-weight:700">The network around the call</span><span class="tag" style="background:var(--dta-soft);color:#e7cdfb">11</span></div></div>
+      <div style="display:flex;align-items:center;gap:22px"><span class="mono" style="width:112px;flex:none;white-space:nowrap;font-size:24px;color:var(--muted)">24–35</span><div class="card" style="flex:1;padding:13px 26px;display:flex;justify-content:space-between;align-items:center"><span style="font-size:27px;font-weight:700">The radio of the call</span><span class="tag" style="background:rgba(255,255,255,.08)">12</span></div></div>
+      <div style="display:flex;align-items:center;gap:22px"><span class="mono" style="width:112px;flex:none;white-space:nowrap;font-size:24px;color:var(--muted)">36–41</span><div class="card" style="flex:1;padding:13px 26px;display:flex;justify-content:space-between;align-items:center"><span style="font-size:27px;font-weight:700">Handovers and the radio link</span><span class="tag" style="background:rgba(255,255,255,.08)">6</span></div></div>
+      <div style="display:flex;align-items:center;gap:22px"><span class="mono" style="width:112px;flex:none;white-space:nowrap;font-size:24px;color:var(--muted)">42–49</span><div class="card" style="flex:1;padding:13px 26px;display:flex;justify-content:space-between;align-items:center"><span style="font-size:27px;font-weight:700">Coverage and interference the provider reports</span><span class="tag" style="background:rgba(255,255,255,.08)">8</span></div></div>
+      <div style="display:flex;align-items:center;gap:22px"><span class="mono" style="width:112px;flex:none;white-space:nowrap;font-size:24px;color:var(--muted)">50–63</span><div class="card" style="flex:1;padding:13px 26px;display:flex;justify-content:space-between;align-items:center"><span style="font-size:27px;font-weight:700">The service, once the radio is not the cause</span><span class="tag" style="background:rgba(255,255,255,.08)">14</span></div></div>
+      <div style="display:flex;align-items:center;gap:22px"><span class="mono" style="width:112px;flex:none;white-space:nowrap;font-size:24px;color:var(--muted)">64</span><div class="card" style="flex:1;padding:13px 26px;display:flex;justify-content:space-between;align-items:center;opacity:.8"><span style="font-size:27px;font-weight:700">Not identified</span><span class="tag" style="background:rgba(255,255,255,.08)">1</span></div></div>
+    </div>
+    <div class="card" style="width:620px;align-self:flex-start;border-color:#7d4cc4">
+      <p class="kicker" style="font-size:20px">A rule</p>
+      <h3 style="margin-top:12px">Overshooting</h3>
+      <p class="rule" style="margin-top:22px">All of:</p>
+      <p class="rule" style="margin-top:8px"><code>Serving distance / ISD ≥ 2 ×</code></p>
+      <p class="rule" style="margin-top:10px"><code>Serving distance ≥ 1 km</code></p>
+      <p class="rule" style="margin-top:10px"><code>LTE SINR &lt; 3 dB</code></p>
+      <p class="rule" style="margin-top:24px">gives</p>
+      <div class="result" style="margin-top:10px"><span style="background:var(--rf)">RF</span><span>DL Interference LTE</span><span>Overshooting or excessive cell overlap</span></div>
+      <p style="font-size:22px;margin-top:26px;color:var(--muted)">Services, all or any of the conditions, thresholds, category and cause: all editable.</p>
+    </div>
+  </div>
+  <div class="foot"><span><b>DT Analyzer RCA</b> · How it decides</span><span>04</span></div>
+</section>
+
+<!-- 5 · Lack of resources -->
+<section class="slide" id="s5">
+  <p class="kicker">Lack of resources</p>
+  <h2>Three ways to see that the network ran short</h2>
+  <p class="lead">From what the provider reports, from the signalling of the CDR itself and from the resource blocks a test was given.</p>
+  <div class="grid" style="grid-template-columns:repeat(3,1fr);margin-top:58px">
+    <div class="card" style="padding:40px">
+      <div class="icon" style="background:var(--core)"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="6" rx="1.5"/><rect x="4" y="14" width="16" height="6" rx="1.5"/><path d="M8 7h.01M8 17h.01"/></svg></div>
+      <h3 style="margin-top:26px">The core rejects</h3>
+      <p>The provider reports insufficient resources or congestion: a PDU Session Establishment Reject with the 5GSM cause <i>Insufficient resources</i>, a CM Service Reject for congestion.</p>
+      <div class="result"><span style="background:var(--core)">Core</span><span>Core Network</span><span>Insufficient resources</span></div>
+    </div>
+    <div class="card" style="padding:40px;border-color:#7d4cc4">
+      <div class="icon" style="background:var(--ran)"><svg viewBox="0 0 24 24"><path d="M12 3v6M8 5l4 4 4-4"/><circle cx="12" cy="16" r="5"/><path d="M9 13l6 6"/></svg></div>
+      <h3 style="margin-top:26px">The access is rejected</h3>
+      <p>The signalling of the CDR itself, without any RCA of the provider: <span class="mono" style="font-size:22px">RRCConnectionReject</span>, <span class="mono" style="font-size:22px">RRCReject</span>, <span class="mono" style="font-size:22px">Immediate Assignment Reject</span>.</p>
+      <div class="result"><span style="background:var(--ran)">RAN</span><span>RAN Capacity</span><span>Access rejected</span></div>
+    </div>
+    <div class="card" style="padding:40px">
+      <div class="icon" style="background:var(--ran)"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="4" height="16" rx="1"/><rect x="10" y="12" width="4" height="8" rx="1"/><rect x="17" y="16" width="4" height="4" rx="1"/></svg></div>
+      <h3 style="margin-top:26px">Few resource blocks</h3>
+      <p>A Data test cut off by time with good radio whose carrier gave it less than 25 % of its resource blocks: the cell was loaded. A completed test usually gets about two thirds.</p>
+      <div class="result"><span style="background:var(--ran)">RAN</span><span>RAN Capacity</span><span>Cell overload</span></div>
+    </div>
+  </div>
+  <div style="margin-top:40px;display:flex;align-items:center;gap:22px">
+    <div style="flex:1;height:22px;border-radius:12px;background:linear-gradient(90deg,#d9534f 0,#d9534f 25%,#2a3a5c 25%,#2a3a5c 100%);position:relative"></div>
+    <span style="font-size:24px;color:var(--soft)">resource blocks used: <b style="color:#ff8a80">&lt; 25 %</b> loaded cell · <b style="color:#9fe0b5">≈ 66 %</b> a completed test</span>
+  </div>
+  <div class="foot"><span><b>DT Analyzer RCA</b> · Lack of resources</span><span>05</span></div>
+</section>
+
+<!-- 6 · ISD -->
+<section class="slide" id="s6">
+  <p class="kicker">The network around the call</p>
+  <h2>Far is relative: the inter-site distance</h2>
+  <p class="lead">A city site serves a few hundred metres, a rural or road site several kilometres. Every distance is compared with the ISD of the site: the mean distance to its 3 nearest sites of the same network, from the Network Inventory.</p>
+  <div style="display:flex;gap:40px;margin-top:46px">
+    <div class="card" style="flex:1;padding:30px 34px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline"><h3>City</h3><span class="mono" style="font-size:26px;color:var(--dta)">ISD ≈ 1 km</span></div>
+      <svg width="100%" height="390" viewBox="0 0 760 390" aria-hidden="true" style="margin-top:12px">
+        <g fill="#3a7fc1">
+          <circle cx="110" cy="90" r="16"/><circle cx="250" cy="70" r="16"/><circle cx="390" cy="95" r="16"/><circle cx="530" cy="80" r="16"/><circle cx="660" cy="105" r="16"/>
+          <circle cx="160" cy="220" r="16"/><circle cx="300" cy="205" r="16"/><circle cx="450" cy="230" r="16"/><circle cx="600" cy="215" r="16"/>
+          <circle cx="110" cy="335" r="16"/><circle cx="260" cy="345" r="16"/><circle cx="400" cy="330" r="16"/><circle cx="545" cy="350" r="16"/><circle cx="680" cy="330" r="16"/>
+        </g>
+        <circle cx="300" cy="205" r="150" fill="none" stroke="#9fb0cc" stroke-width="2" stroke-dasharray="8 8"/>
+        <line x1="300" y1="205" x2="645" y2="150" stroke="#ff8a80" stroke-width="6" stroke-linecap="round"/>
+        <circle cx="645" cy="150" r="20" fill="#fff"/><circle cx="300" cy="205" r="22" fill="#b46be8"/>
+        <text x="470" y="150" fill="#ff8a80" font-size="26" font-weight="700" font-family="Helvetica Neue, Arial" text-anchor="middle">3 km = 3 × ISD</text>
+      </svg>
+      <p style="font-size:26px;margin-top:6px"><b style="color:#ff8a80">Overshooting</b>: served from 3 km with sites every kilometre.</p>
+    </div>
+    <div class="card" style="flex:1;padding:30px 34px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline"><h3>Road and country</h3><span class="mono" style="font-size:26px;color:var(--dta)">ISD ≈ 3–6 km</span></div>
+      <svg width="100%" height="390" viewBox="0 0 760 390" aria-hidden="true" style="margin-top:12px">
+        <path d="M20 330 C200 300 260 120 430 160 S650 280 740 70" fill="none" stroke="#2a3a5c" stroke-width="26" stroke-linecap="round"/>
+        <path d="M20 330 C200 300 260 120 430 160 S650 280 740 70" fill="none" stroke="#475569" stroke-width="3" stroke-dasharray="14 14"/>
+        <g fill="#3a7fc1"><circle cx="90" cy="250" r="16"/><circle cx="360" cy="190" r="16"/><circle cx="660" cy="320" r="16"/></g>
+        <circle cx="360" cy="190" r="170" fill="none" stroke="#9fb0cc" stroke-width="2" stroke-dasharray="8 8"/>
+        <line x1="360" y1="190" x2="480" y2="285" stroke="#9fe0b5" stroke-width="6" stroke-linecap="round"/>
+        <circle cx="480" cy="285" r="20" fill="#fff"/><circle cx="360" cy="190" r="22" fill="#b46be8"/>
+        <text x="545" y="230" fill="#9fe0b5" font-size="26" font-weight="700" font-family="Helvetica Neue, Arial">3 km &lt; ISD</text>
+      </svg>
+      <p style="font-size:26px;margin-top:6px"><b style="color:#9fe0b5">Expected</b>: the same 3 km where the sites are far apart.</p>
+    </div>
+  </div>
+  <p style="font-size:24px;color:var(--muted);margin-top:26px">No neighbour lists nor Timing Advance needed: the positions of the sites are enough. A site with no other site of its network within 40 km has no ISD.</p>
+  <div class="foot"><span><b>DT Analyzer RCA</b> · Inter-site distance</span><span>06</span></div>
+</section>
+
+<!-- 7 · Network around the call -->
+<section class="slide" id="s7">
+  <p class="kicker">The network around the call</p>
+  <h2>What the Network Inventory reveals</h2>
+  <p class="lead">The same criteria as the Failure Map of the call, checked before the plain coverage and interference they bring.</p>
+  <div class="grid" style="grid-template-columns:repeat(2,1fr);margin-top:38px;gap:26px">
+    <div class="card" style="display:flex;gap:30px;padding:30px 34px">
+      <div class="icon" style="background:var(--rf);flex:none"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M4 4l16 16"/></svg></div>
+      <div><h3>Coverage hole</h3><p>The nearest site of the networks of the operator is at least <b style="color:#fff">1.5 × its ISD</b> away, with RSRP below −110 dBm or no radio at all.</p><div class="result"><span style="background:var(--rf)">RF</span><span>Poor Coverage LTE / NR</span><span>Large distance to the nearest site</span></div></div>
+    </div>
+    <div class="card" style="display:flex;gap:30px;padding:30px 34px;border-color:#7d4cc4">
+      <div class="icon" style="background:var(--rf);flex:none"><svg viewBox="0 0 24 24"><path d="M4 18L20 6"/><path d="M14 6h6v6"/></svg></div>
+      <div><h3>Overshooting</h3><p>The serving site is at least <b style="color:#fff">2 × its ISD</b> and 1 km away, with SINR below 3 dB or RSRP below −105 dBm; the nearest site hints at a missing neighbour.</p><div class="result"><span style="background:var(--rf)">RF</span><span>DL Interference / Poor Coverage</span><span>Overshooting</span></div></div>
+    </div>
+    <div class="card" style="display:flex;gap:30px;padding:30px 34px">
+      <div class="icon" style="background:var(--rf);flex:none"><svg viewBox="0 0 24 24"><circle cx="8" cy="12" r="4"/><circle cx="16" cy="12" r="4"/></svg></div>
+      <div><h3>PCI collision</h3><p>A cell within 2 km has the technology, PCI and channel of a cell of the call, and the SINR is below 3 dB.</p><div class="result"><span style="background:var(--rf)">RF</span><span>DL Interference LTE / NR</span><span>PCI Collision</span></div></div>
+    </div>
+    <div class="card" style="display:flex;gap:30px;padding:30px 34px">
+      <div class="icon" style="background:var(--operational);flex:none"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></div>
+      <div><h3>Cells out of service</h3><p>Cells of its sites are locked, halted or disabled, and its radio suffered: RSRP below −105 dBm or SINR below 3 dB.</p><div class="result"><span style="background:var(--operational)">Operational</span><span>Operational</span><span>Cell/Site Outage</span></div></div>
+    </div>
+  </div>
+  <div class="foot"><span><b>DT Analyzer RCA</b> · Network Inventory</span><span>07</span></div>
+</section>
+
+<!-- 8 · Radio, mobility, service -->
+<section class="slide" id="s8">
+  <p class="kicker">Radio · mobility · service</p>
+  <h2>From the air interface to the server</h2>
+  <div class="grid" style="grid-template-columns:repeat(3,1fr);margin-top:56px">
+    <div class="card" style="padding:38px">
+      <span class="tag" style="background:var(--rf)">Radio</span>
+      <div style="display:flex;flex-direction:column;gap:16px;margin-top:28px;font-size:25px;color:var(--soft)">
+        <div>Coverage <span class="mono" style="color:#fff;float:right">RSRP &lt; −110</span></div>
+        <div>Uplink at max power <span class="mono" style="color:#fff;float:right">≥ 23 dBm</span></div>
+        <div>Interference <span class="mono" style="color:#fff;float:right">SINR &lt; 0</span></div>
+        <div>No dominant cell <span class="mono" style="color:#fff;float:right">RSRQ &lt; −15</span></div>
+        <div>High BLER <span class="mono" style="color:#fff;float:right">&gt; 10 %</span></div>
+        <div>B side of a call <span class="mono" style="color:#fff;float:right">same levels</span></div>
+        <div>Fallback to 2G or 3G</div>
+      </div>
+    </div>
+    <div class="card" style="padding:38px">
+      <span class="tag" style="background:var(--ran)">Mobility</span>
+      <svg width="100%" height="150" viewBox="0 0 480 150" aria-hidden="true" style="margin-top:22px">
+        <circle cx="70" cy="75" r="44" fill="#e08a1e"/><circle cx="240" cy="75" r="44" fill="#2a3a5c"/><circle cx="410" cy="75" r="44" fill="#e08a1e"/>
+        <text x="70" y="88" text-anchor="middle" font-size="36" font-weight="800" fill="#fff" font-family="Helvetica Neue, Arial">A</text>
+        <text x="240" y="88" text-anchor="middle" font-size="36" font-weight="800" fill="#fff" font-family="Helvetica Neue, Arial">B</text>
+        <text x="410" y="88" text-anchor="middle" font-size="36" font-weight="800" fill="#fff" font-family="Helvetica Neue, Arial">A</text>
+        <path d="M118 75h70M288 75h70" stroke="#c9d4e6" stroke-width="5" marker-end="url(#)"/>
+      </svg>
+      <div style="display:flex;flex-direction:column;gap:16px;margin-top:14px;font-size:25px;color:var(--soft)">
+        <div><b style="color:#fff">Ping-pong</b>: back to a cell right after leaving it</div>
+        <div>Handover failures, LTE and NR</div>
+        <div>Radio link failures and RRC</div>
+        <div>Inter-RAT transitions</div>
+      </div>
+    </div>
+    <div class="card" style="padding:38px">
+      <span class="tag" style="background:var(--protocol)">Service</span>
+      <div style="display:flex;flex-direction:column;gap:16px;margin-top:28px;font-size:25px;color:var(--soft)">
+        <div>DNS, HTTP and TCP errors</div>
+        <div>Packet loss <span class="mono" style="color:#fff;float:right">&gt; 5 %</span></div>
+        <div>Latency <span class="mono" style="color:#fff;float:right">&gt; 150 ms</span></div>
+        <div>Timeouts and no DL packets</div>
+        <div>Loaded cell <span class="mono" style="color:#fff;float:right">RBs &lt; 25 %</span></div>
+        <div>Low throughput with good radio</div>
+        <div>Voice failure with good radio → <b style="color:#fff">E2E</b></div>
+      </div>
+    </div>
+  </div>
+  <p style="font-size:24px;color:var(--muted);margin-top:30px">Good radio means measured and taken by no radio rule: without radio values, neither the Cutoff tests nor the Voice failures get a cause.</p>
+  <div class="foot"><span><b>DT Analyzer RCA</b> · Radio, mobility and service</span><span>08</span></div>
+</section>
+
+<!-- 9 · Evidence -->
+<section class="slide" id="s9">
+  <p class="kicker">Result</p>
+  <h2>Every call says why</h2>
+  <p class="lead">Root Domain, Root Category and Root Cause on the catalog of the workspace, the rule and the evidence: the values that met it, and the sites it read.</p>
+  <div class="card" style="margin-top:54px;padding:44px 52px;border-color:#7d4cc4;background:linear-gradient(180deg,#22183a,#161226)">
+    <div style="display:flex;align-items:center;gap:20px">
+      <span class="tag" style="background:var(--dta2);color:#fff">DT Analyzer RCA</span>
+      <span style="font-size:26px;color:var(--muted)">Rule · <b style="color:#fff">Overshooting</b></span>
+    </div>
+    <div class="result" style="margin-top:28px"><span style="background:var(--rf);font-size:26px">RF</span><span style="font-size:26px">DL Interference LTE</span><span style="font-size:26px">Overshooting or excessive cell overlap</span></div>
+    <p class="mono" style="font-size:24px;line-height:1.7;color:#e3d4f7;margin-top:34px">Serving site distance / its ISD 2.62 × (≥ 2 ×); Serving site distance 4 km (≥ 1 km); LTE SINR (average) 1.71 dB (&lt; 3 dB). Network Inventory: served from Site 88794 at 4.00 km, 2.6 × its ISD of 1.53 km; nearest site 33228 at 0.84 km</p>
+  </div>
+  <div class="grid" style="grid-template-columns:repeat(4,1fr);margin-top:40px;gap:22px">
+    <div class="card" style="padding:26px 30px"><h3 style="font-size:28px">Root Cause Sources</h3><p style="font-size:22px">Coverage, agreement with the other sources</p></div>
+    <div class="card" style="padding:26px 30px"><h3 style="font-size:28px">Root Cause Analysis</h3><p style="font-size:22px">Its domains, categories and causes</p></div>
+    <div class="card" style="padding:26px 30px"><h3 style="font-size:28px">RCA tab of the call</h3><p style="font-size:22px">Its card, with the rule and evidence</p></div>
+    <div class="card" style="padding:26px 30px"><h3 style="font-size:28px">Exports</h3><p style="font-size:22px">Excel, PowerPoint, Word, Reporting</p></div>
+  </div>
+  <div class="foot"><span><b>DT Analyzer RCA</b> · Evidence</span><span>09</span></div>
+</section>
+
+<!-- 10 · Learning -->
+<section class="slide" id="s10">
+  <p class="kicker">Learning</p>
+  <h2>It learns from the analysts</h2>
+  <p class="lead">Optional, off by default. Calls share a pattern when the same rule explains them, they belong to the same service and the provider describes their failure the same way.</p>
+  <div style="display:flex;align-items:center;gap:60px;margin-top:70px">
+    <svg width="760" height="420" viewBox="0 0 760 420" aria-hidden="true">
+      <g font-family="Helvetica Neue, Arial" font-size="24" font-weight="700">
+        <rect x="20" y="40" width="300" height="80" rx="18" fill="#1a2742" stroke="#2e8b57" stroke-width="3"/><text x="170" y="90" text-anchor="middle" fill="#9fe0b5">Decided · cause X</text>
+        <rect x="20" y="170" width="300" height="80" rx="18" fill="#1a2742" stroke="#2e8b57" stroke-width="3"/><text x="170" y="220" text-anchor="middle" fill="#9fe0b5">Decided · cause X</text>
+        <rect x="20" y="300" width="300" height="80" rx="18" fill="#1a2742" stroke="#3a4d75" stroke-width="3"/><text x="170" y="350" text-anchor="middle" fill="#9fb0cc">Decided · cause Y</text>
+        <path d="M320 80 C430 80 430 210 520 210 M320 210 H520 M320 340 C430 340 430 210 520 210" fill="none" stroke="#3a4d75" stroke-width="4"/>
+        <rect x="520" y="160" width="230" height="100" rx="22" fill="#2a1d45" stroke="#b46be8" stroke-width="4"/>
+        <text x="635" y="203" text-anchor="middle" fill="#fff">New call</text><text x="635" y="237" text-anchor="middle" fill="#e7cdfb">learns cause X</text>
+      </g>
+    </svg>
+    <div style="flex:1;display:flex;flex-direction:column;gap:24px">
+      <div class="card" style="padding:28px 34px"><h3 style="font-size:32px">At least 2 calls agree</h3><p>and more than half of those decided; its own decision never counts</p></div>
+      <div class="card" style="padding:28px 34px"><h3 style="font-size:32px">Also for Not identified</h3><p>the calls no rule explains learn too</p></div>
+      <div class="card" style="padding:28px 34px"><h3 style="font-size:32px">Always up to date</h3><p>after every decision and every indexing of the CDRs</p></div>
+    </div>
+  </div>
+  <div class="foot"><span><b>DT Analyzer RCA</b> · Learning</span><span>10</span></div>
+</section>
+
+<!-- 11 · Yours to tune -->
+<section class="slide" id="s11">
+  <p class="kicker">Configuration</p>
+  <h2>Yours to tune, safe to share</h2>
+  <div style="display:flex;gap:44px;margin-top:56px">
+    <div class="card" style="flex:1.25;padding:40px 44px">
+      <p class="kicker" style="font-size:20px">DT Analyzer RCA Rules</p>
+      <div style="margin-top:26px;display:flex;flex-direction:column;gap:16px">
+        <div style="display:flex;gap:18px;align-items:center;padding:18px 22px;border-radius:16px;background:rgba(255,255,255,.05)"><span class="mono" style="color:var(--muted);font-size:24px">19</span><b style="font-size:26px;flex:1">Overshooting</b><span class="tag" style="background:var(--rf);font-size:20px">DL Interference LTE</span></div>
+        <div style="display:flex;gap:18px;align-items:center;padding:18px 22px;border-radius:16px;background:rgba(255,255,255,.05)"><span class="mono" style="color:var(--muted);font-size:24px">24</span><b style="font-size:26px;flex:1">Poor LTE coverage</b><span class="tag" style="background:var(--rf);font-size:20px">Poor Coverage LTE</span></div>
+        <div style="display:flex;gap:18px;align-items:center;padding:18px 22px;border-radius:16px;background:rgba(255,255,255,.05)"><span class="mono" style="color:var(--muted);font-size:24px">57</span><b style="font-size:26px;flex:1">NR cell short of resource blocks</b><span class="tag" style="background:var(--ran);font-size:20px">RAN Capacity</span></div>
+      </div>
+      <p style="font-size:25px;color:var(--soft);margin-top:30px;line-height:1.45">Order, services, all or any of the conditions, every threshold, the Root Category and Root Cause of each rule. <b style="color:#fff">Default Rules</b> brings back the defaults.</p>
+    </div>
+    <div style="flex:1;display:flex;flex-direction:column;gap:24px">
+      <div class="card" style="padding:30px 34px"><h3 style="font-size:32px">The catalog keeps them</h3><p>A value a rule gives shows <span class="tag" style="background:#f3e5f5;color:#6a1b9a;padding:2px 10px;font-size:20px">DT</span> and cannot be removed or renamed while a rule gives it.</p></div>
+      <div class="card" style="padding:30px 34px"><h3 style="font-size:32px">They travel</h3><p>With the NQ Calls configuration: export, import, transfers and backups.</p></div>
+      <div class="card" style="padding:30px 34px"><h3 style="font-size:32px">Every change recorded</h3><p>App Events tells what changed; the calls are calculated again at once.</p></div>
+    </div>
+  </div>
+  <div class="foot"><span><b>DT Analyzer RCA</b> · Configuration</span><span>11</span></div>
+</section>
+
+<!-- 12 · Values it gives -->
+<section class="slide" id="s12">
+  <p class="kicker">On the Root Cause Catalog</p>
+  <h2>Nine root domains, one catalog</h2>
+  <div class="grid" style="grid-template-columns:repeat(3,1fr);margin-top:48px;gap:24px">
+    <div class="card" style="padding:28px 32px;border-top:8px solid var(--rf)"><h3 style="font-size:32px">RF</h3><p style="font-size:22px">Coverage and interference LTE, NR, 2G/3G · BLER · overshooting · coverage holes · PCI collisions · dominance</p></div>
+    <div class="card" style="padding:28px 32px;border-top:8px solid var(--ran)"><h3 style="font-size:32px">RAN</h3><p style="font-size:22px">RAN Capacity · RAN Performance · Mobility LTE and NR · access rejected · cell overload · ping-pong · RRC · paging</p></div>
+    <div class="card" style="padding:28px 32px;border-top:8px solid var(--core)"><h3 style="font-size:32px">Core</h3><p style="font-size:22px">Core Network · IMSI · insufficient resources · TAU reject · bearer deactivation · sessions in GSM</p></div>
+    <div class="card" style="padding:28px 32px;border-top:8px solid var(--ims)"><h3 style="font-size:32px">IMS/E2E</h3><p style="font-size:22px">IMS / VoLTE · E2E · QCI1 · VoLTE core · potential E2E issue · E2E trace</p></div>
+    <div class="card" style="padding:28px 32px;border-top:8px solid var(--protocol)"><h3 style="font-size:32px">Protocol</h3><p style="font-size:22px">Protocol / Server · DNS · HTTP · TCP · packet loss · latency · timeouts · no DL packets</p></div>
+    <div class="card" style="padding:28px 32px;border-top:8px solid var(--aaa)"><h3 style="font-size:32px">AAA</h3><p style="font-size:22px">Authentication &amp; Registration · authentication and authorization</p></div>
+    <div class="card" style="padding:28px 32px;border-top:8px solid var(--epsfb)"><h3 style="font-size:32px">Core EPSFB</h3><p style="font-size:22px">EPS Fallback · EPS fallback failure</p></div>
+    <div class="card" style="padding:28px 32px;border-top:8px solid var(--device)"><h3 style="font-size:32px">Device</h3><p style="font-size:22px">UE / Test Setup Issue · device or test setup</p></div>
+    <div class="card" style="padding:28px 32px;border-top:8px solid var(--operational)"><h3 style="font-size:32px">Operational</h3><p style="font-size:22px">Cell/Site Outage · Unclear for the calls no rule explains</p></div>
+  </div>
+  <p style="font-size:24px;color:var(--muted);margin-top:30px">Every rule, with its conditions and result, is in the Help: Non-Qualified Calls → DT Analyzer RCA → Default rules.</p>
+  <div class="foot"><span><b>DT Analyzer RCA</b> · Root domains</span><span>12</span></div>
+</section>
+
+<script>
+  // ?slide=N shows slide N alone, at the top, for its picture.
+  const wanted = new URLSearchParams(location.search).get('slide');
+  if (wanted) {
+    document.querySelectorAll('.slide').forEach((slide, index) => { slide.style.display = String(index + 1) === wanted ? '' : 'none'; slide.style.marginTop = '0'; });
+  }
+</script>
+</body>
+</html>

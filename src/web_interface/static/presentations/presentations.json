@@ -142,6 +142,52 @@
           ]
         }
       ]
+    },
+    {
+      "id": "dt-analyzer-rca",
+      "title": "DriveTest Analyzer — DT Analyzer RCA",
+      "file": "dt-analyzer-rca.pptx",
+      "download": "DriveTest Analyzer - DT Analyzer RCA.pptx",
+      "description": "How the DT Analyzer RCA finds the root cause of every Non-Qualified Call: what it reads, its rules, the lack of resources, the network around the call and the evidence it gives.",
+      "sections": [
+        {
+          "title": "Introduction",
+          "slides": [
+            "DT Analyzer RCA",
+            "Four sources, one decision per call"
+          ]
+        },
+        {
+          "title": "How it works",
+          "slides": [
+            "Everything the CDR knows about the call",
+            "The first rule that holds decides"
+          ]
+        },
+        {
+          "title": "Root causes",
+          "slides": [
+            "Three ways to see that the network ran short",
+            "Far is relative: the inter-site distance",
+            "What the Network Inventory reveals",
+            "From the air interface to the server"
+          ]
+        },
+        {
+          "title": "Results",
+          "slides": [
+            "Every call says why",
+            "It learns from the analysts"
+          ]
+        },
+        {
+          "title": "Configuration",
+          "slides": [
+            "Yours to tune, safe to share",
+            "Nine root domains, one catalog"
+          ]
+        }
+      ]
     }
   ],
   "figures": {

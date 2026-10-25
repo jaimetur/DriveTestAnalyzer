@@ -235,3 +235,26 @@ def test_its_operator_is_compared_with_the_others_by_how_many_tests_each_did():
     # Every operator fails there alike.
     assert check((40, 3), (100, 7))['title'] == 'Every operator fails here'
     assert check((40, 0), (100, 1))['level'] == 'ok' and check((4, 4), (100, 0))['level'] == 'info'
+
+
+def test_the_diagnosis_judges_the_serving_distance_and_coverage_holes_by_the_inter_site_distance():
+    call = {'operator': 'Vodafone UK'}
+    end = {'site': 'vodafone|70002', 'site_id': '70002', 'network': 'Vodafone', 'role': 'end', 'distance_km': 3.0, 'cell': '1'}
+    nearest = {'key': 'vodafone|70009', 'site_id': '70009', 'network': 'Vodafone', 'distance_km': .8, 'isd_km': 1.0}
+
+    def checks(radio: dict, ran: dict) -> dict:
+        return {check['key']: check for check in nq_call_map.diagnosis(call, radio, [end], [], [], {}, 2.0, 2, ran)}
+
+    radio = {'lte_rsrp': -100.0, 'lte_sinr': 5.0}
+    # 3 km from a site whose sites are 1 km apart: overshooting, though below the 5 km of a fixed distance.
+    found = checks(radio, {'serving_isd': 1.0, 'nearest': nearest})['distance']
+    assert found['level'] == 'bad' and '3.0 times the inter-site distance of its site (1.0 km)' in found['detail']
+    assert 'Site 70009 (Vodafone) is 800 m away' in found['detail']
+    # The same 3 km where its sites are 4 km apart (a road) is what is expected there.
+    assert checks(radio, {'serving_isd': 4.0, 'nearest': {**nearest, 'distance_km': 2.9}})['distance']['level'] == 'ok'
+    # A site without an ISD (alone in its network) is judged by the fixed distances: a site three times nearer was there.
+    assert checks(radio, {'serving_isd': None, 'nearest': nearest})['distance']['level'] == 'warn'
+    # Weak coverage with the nearest site beyond 1.5 times its inter-site distance: a coverage hole.
+    found = checks({'lte_rsrp': -118.0}, {'serving_isd': 4.0, 'nearest': {**nearest, 'distance_km': 6.0, 'isd_km': 3.0}})['coverage']
+    assert (found['level'], found['title']) == ('bad', 'Coverage hole') and '2.0 times its inter-site distance (3.0 km)' in found['detail']
+    assert checks({'lte_rsrp': -118.0}, {'serving_isd': 4.0, 'nearest': nearest})['coverage']['title'] == 'Weak coverage'

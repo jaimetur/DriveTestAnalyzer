@@ -242,7 +242,7 @@ def test_the_catalog_keeps_the_values_the_rules_give(client, tmp_path):
     setup_calls(client, tmp_path)
     payload = client.get('/api/non-qualified-calls/root-causes').json()
     given = payload['dta_rules']
-    assert given['categories']['Poor Coverage LTE'][:2] == ['Poor LTE coverage', 'LTE uplink at maximum power']
+    assert {'Poor LTE coverage', 'LTE uplink at maximum power'} <= set(given['categories']['Poor Coverage LTE'])
     assert 'Device or test setup' in given['causes']['Device or test setup'] and 'AAA' in given['domains']
     assert 'Procedure Overlap' not in given['categories']
     base = {kind: [{**item, 'previous': item['name']} for item in payload[kind]] for kind in ('domains', 'categories', 'causes')}
@@ -256,9 +256,9 @@ def test_the_catalog_keeps_the_values_the_rules_give(client, tmp_path):
     # A category or cause a rule gives can be neither renamed nor removed, and a domain it gives cannot be removed.
     refused = put(categories=renamed('categories', 'Poor Coverage LTE', 'LTE Coverage'))
     assert refused.status_code == 400
-    assert refused.json()['detail'] == ('The Root Category "Poor Coverage LTE" is given by the DT Analyzer RCA rules "Poor LTE '
-                                        'coverage", "LTE uplink at maximum power", "Poor LTE coverage of the B side" and 1 more; '
-                                        'change those rules first to rename it.')
+    rules = given['categories']['Poor Coverage LTE']
+    assert refused.json()['detail'] == (f'The Root Category "Poor Coverage LTE" is given by the DT Analyzer RCA rules "{rules[0]}", '
+                                        f'"{rules[1]}", "{rules[2]}" and {len(rules) - 3} more; change those rules first to rename it.')
     refused = put(domains=[item for item in base['domains'] if item['name'] != 'AAA'])
     assert refused.status_code == 400 and refused.json()['detail'].startswith('The domain "AAA" is given by the DT Analyzer RCA rule ')
     # Also when the rule is disabled.
@@ -403,3 +403,108 @@ def test_what_it_learned_comes_back_after_a_reindex(client, tmp_path):
     core.repository.set_workspace_state(nq_dta_rca.LEARNED_FINGERPRINT_STATE_KEY, hashlib.sha1(before.encode('utf-8')).hexdigest())
     query(client)
     assert client.get('/api/non-qualified-calls/dta-rca/rules').json()['learned'] == 4
+
+
+def test_the_lack_of_resources_is_found_from_the_provider_and_from_the_cdr_itself():
+    # The provider reports insufficient resources of the core: before the reject is taken for an authentication one.
+    found = evaluate({'failure_category': 'PDU Session Establishment Reject', 'failure_subcategory': 'Insufficient resources'}, {})
+    assert (found['rule_key'], found['category'], found['cause']) == ('core-resources', 'Core Network', 'Insufficient resources')
+    # The signalling of the CDR itself, without any RCA of the provider: the network rejected the RRC connection.
+    found = evaluate({}, {'failure_events': '[RRCConnectionRequest]->[RRCConnectionReject]'})
+    assert (found['rule_key'], found['category'], found['cause']) == ('access-rejected', 'RAN Capacity', 'Access rejected (no resources)')
+    assert found['evidence'].startswith('Signalling events contains “rrcconnectionreject”')
+    assert evaluate({}, {'failure_events': '[RRCConnectionReestablishmentReject]'})['rule_key'] != 'access-rejected'
+    # A test cut off with good radio on a carrier that gave it few of its resource blocks: a loaded cell.
+    radio = {'lte_rsrp': -85.0, 'lte_sinr': 15.0}
+    found = evaluate({'result': 'Cutoff'}, {**radio, 'lte_dl_rbs': 12.0, 'lte_dl_bandwidth': 20.0})
+    assert (found['rule_key'], found['category'], found['cause']) == ('cell-load', 'RAN Capacity', 'Cell overload')
+    assert 'LTE DL resource blocks used 12 % (< 25 %)' in found['evidence']
+    assert evaluate({'result': 'Cutoff'}, {**radio, 'lte_dl_rbs': 80.0, 'lte_dl_bandwidth': 20.0})['rule_key'] == 'low-throughput'
+    # The resource blocks of the carrier: LTE by its bandwidth, NR at 30 kHz in TDD bands and wide carriers, else 15 kHz.
+    assert nq_dta_rca.resource_block_share(50, 20, 'LTE') == 50.0
+    assert nq_dta_rca.resource_block_share(136.5, 100, 'NR', 'n78') == 50.0
+    assert nq_dta_rca.resource_block_share(26, 10, 'NR', 'n28') == 50.0
+    assert nq_dta_rca.resource_block_share(None, 20, 'LTE') is None and nq_dta_rca.resource_block_share(10, 7, 'NR') is None
+
+
+def test_the_network_around_the_call_finds_holes_overshooting_pci_collisions_outages_and_ping_pongs():
+    weak = {'lte_rsrp': -116.0, 'lte_sinr': 1.0}
+    note = 'Network Inventory: nearest site 12 (Vodafone) at 7.00 km'
+    found = evaluate({}, {**weak, 'nearest_site_distance': 7.0, 'nearest_site_isd_ratio': 2.3, 'network_note': note})
+    assert (found['rule_key'], found['category'], found['cause']) == ('coverage-hole', 'Poor Coverage LTE', 'Large distance to the nearest site')
+    assert found['evidence'].endswith(f'. {note}')
+    assert evaluate({}, {'nearest_site_isd_ratio': 2.3})['rule_key'] == 'no-service-hole'
+    # Served from beyond twice the inter-site distance of its site: overshooting, in NR alone too; not where sites are far apart.
+    far = {'serving_distance': 3.0, 'serving_isd_ratio': 2.5, 'nearest_site_isd_ratio': .4}
+    found = evaluate({}, {**weak, **far})
+    assert (found['rule_key'], found['category'], found['cause']) == ('overshooting', 'DL Interference LTE', 'Overshooting or excessive cell overlap')
+    found = evaluate({'failure_technology': '5G SA'}, {'nr_rsrp': -100.0, 'nr_sinr': -2.0, **far})
+    assert (found['rule_key'], found['category']) == ('nr-overshooting', 'DL Interference NR')
+    assert evaluate({}, {**weak, **far, 'serving_isd_ratio': 1.2})['rule_key'] == 'lte-coverage'
+    # A cell around with the PCI and channel of its own, with interference.
+    found = evaluate({}, {'lte_rsrp': -95.0, 'lte_sinr': .5, 'pci_collisions': 2})
+    assert (found['rule_key'], found['cause']) == ('pci-collision', 'PCI Collision/PCI MOD 3 Collision')
+    # Cells out of service on its sites, when its radio suffered.
+    found = evaluate({}, {'lte_rsrp': -108.0, 'lte_sinr': 8.0, 'cells_out_of_service': 3})
+    assert (found['rule_key'], found['category'], found['cause']) == ('cell-outage', 'Operational', 'Cell/Site Outage')
+    assert evaluate({}, {'lte_rsrp': -90.0, 'lte_sinr': 12.0, 'cells_out_of_service': 3})['rule_key'] != 'cell-outage'
+    # Back and forth between two cells, once the radio is not the cause.
+    found = evaluate({'service': 'voice', 'result': 'Dropped'}, {'lte_rsrp': -90.0, 'lte_sinr': 12.0, 'ping_pong': 2})
+    assert (found['rule_key'], found['category'], found['cause']) == ('ping-pong', 'Mobility LTE', 'Ping-pong handover')
+
+
+def test_workspaces_with_rules_of_their_own_take_the_new_default_rules_and_catalog_values(client, tmp_path):
+    setup_calls(client, tmp_path)
+    added = nq_dta_rca.ADDED_RULES[2]
+    custom = {'key': 'mine', 'name': 'My rule', 'enabled': True, 'services': [], 'match': 'all',
+              'conditions': [{'input': 'failure_text', 'op': 'contains', 'value': 'my failure'}], 'category': 'E2E', 'cause': ''}
+    before = [custom, *(rule for rule in nq_dta_rca.default_rules() if rule['key'] not in added)]
+    core.repository.set_workspace_state(nq_dta_rca.RULES_STATE_KEY, json.dumps(before))
+    catalog = nq.list_root_causes(core.repository)
+    catalog['categories'] = [item for item in catalog['categories'] if item['name'] != 'RAN Capacity']
+    catalog['causes'] = [item for item in catalog['causes'] if item['name'] not in nq_catalog.DTA_CAUSES]
+    with core.repository.connection() as connection:
+        nq._write_root_catalog(connection, nq_catalog.normalize_root_catalog(catalog))
+    core.repository.set_workspace_state(nq.ANALYSIS_CENTER_V31_STATE_KEY, '')
+    core.repository.set_workspace_state(nq.SCHEMA_STATE_KEY, '')
+    nq.ensure_nq_tables(core.repository)
+    keys = [rule['key'] for rule in nq_dta_rca.load_rules(core.repository)]
+    # Its own rule stays first; each new rule follows the default rule before it.
+    assert keys[0] == 'mine' and set(added) <= set(keys)
+    assert keys[keys.index('subscriber-identity') + 1:keys.index('authentication')] == ['core-resources', 'access-rejected']
+    assert keys[keys.index('timeout') + 1:keys.index('timeout') + 3] == ['nr-cell-load', 'cell-load']
+    root = nq.list_root_causes(core.repository)
+    causes = {item['name']: item for item in root['causes']}
+    assert 'RAN Capacity' in {item['name'] for item in root['categories']}
+    assert causes['Access rejected (no resources)']['category'] == 'RAN Capacity' and causes['Ping-pong handover']['category'] == 'Mobility LTE'
+    log = next(row for row in core.repository.list_logs(limit=50) if row['action'] == 'nq_dta_rca_rules')
+    assert json.loads(log['details'])['message'] == 'New default rules of the DT Analyzer RCA added to the rules of the workspace.'
+    # Once: the rules a workspace removes afterwards do not come back.
+    core.repository.set_workspace_state(nq_dta_rca.RULES_STATE_KEY, json.dumps(before))
+    nq.ensure_nq_tables(core.repository)
+    assert [rule['key'] for rule in nq_dta_rca.load_rules(core.repository)] == [rule['key'] for rule in before]
+
+
+def test_the_network_inventory_gives_the_calls_the_network_around_them(client, tmp_path):
+    from tests.test_nq_call_map import prepare
+
+    calls = prepare(client, tmp_path)
+    # V1 started on a cell whose PCI and channel a cell of the next site has, and its SINR is low: a PCI collision.
+    values = detail(client, calls['V1'])['values']
+    assert (values['dta_rca_rule'], values['dta_rca_category'], values['dta_rca_cause']) == (
+        'PCI collision', 'DL Interference LTE', 'PCI Collision/PCI MOD 3 Collision')
+    assert 'PCI collisions around 1 (≥ 1)' in values['dta_rca_evidence']
+    assert 'Network Inventory: served from Site 70002 (Vodafone)' in values['dta_rca_evidence']
+    # The cells of the call and its PCIs were indexed with it.
+    with core.repository.connection() as connection:
+        inputs = json.loads(connection.execute(f"SELECT rca_inputs_json FROM {nq.NQ_CALLS_TABLE} WHERE join_id = 'V1'").fetchone()[0])
+    assert inputs['cell_pcis'] == '[101]->[206]' and inputs['end_latitude'] == 51.511 and 'LTE E-UTRA 3' in inputs['cell_trace']
+
+
+def test_the_help_lists_every_default_rule_in_its_order():
+    from pathlib import Path
+
+    text = (Path(__file__).resolve().parents[1] / 'help' / 'non-qualified-calls.md').read_text(encoding='utf-8')
+    section = text.split('\n### Default rules\n', 1)[1].split('\n### Root domains, categories and causes\n', 1)[0]
+    for number, rule in enumerate(nq_dta_rca.default_rules(), 1):
+        assert f"| {number} | {rule['name']} |" in section, rule['name']

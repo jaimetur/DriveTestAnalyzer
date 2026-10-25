@@ -1,18 +1,22 @@
 """DT Analyzer RCA: the root cause of every Non-Qualified Call, found from the data of its CDR.
 
 It is an RCA source of the NQ Analysis Center in every workspace, whatever its CDR type: beside the RCA the provider
-brings (the NetCheck RCA of NetCheck CDRs), the Ericsson RCA and the analysts, it always shows after the Ericsson RCA.
+brings (the NetCheck RCA of NetCheck CDRs), the Ericsson RCA and the analysts, it always shows first.
 Every call is read through the field profile of the workspace's CDR type (cdr_field_profiles ``nq_rca_sources``):
 its result and failure (phase, technology, side and the provider's description of it, events and SCG failures), the
-radio of LTE and NR on both sides (RSRP, RSRQ, SINR, BLER and transmit power), its mobility (handovers and the
-technologies it used) and its KPIs (throughput, access, DNS and TCP times, packet loss, latency, setup time, speech
-quality and RTP).
+radio of LTE and NR on both sides (RSRP, RSRQ, SINR, BLER, transmit power and the resource blocks used), its mobility
+(handovers, ping-pongs and the technologies it used) and its KPIs (throughput, access, DNS and TCP times, packet loss,
+latency, setup time, speech quality and RTP). The Network Inventory adds the network around it (ran_context): how far
+its serving site was against the inter-site distance (ISD) of that site, the nearest site, PCI collisions and cells out
+of service on its sites.
 
 Ordered rules decide: the first enabled rule of the service of the call whose conditions hold (all of them, or any of
 them) gives its Root Category and Root Cause on the Root Cause Catalog of the workspace, their root domain and the
 evidence, the values that matched. The default rules are the same in every workspace: what the provider reports outside
-the radio first (device, subscription, core and IMS), then the radio of the call, then the service once the radio is not
-the cause, and a last rule for the calls none of them explains. Admins edit them per workspace (order, conditions,
+the radio first (device, subscription, lack of resources, core and IMS) and cells out of service, then the radio of the
+call (coverage holes, overshooting and PCI collisions before the plain coverage and interference), its handovers, then
+the service once the radio is not the cause (a cell short of resource blocks first), and a last rule for the calls none
+of them explains. Admins edit them per workspace (order, conditions,
 thresholds, category and cause); they travel with the NQ Calls configuration (export, import, transfers and backups).
 
 non_qualified_calls stores the inputs of every indexed call and calculates the results when the calls are indexed and
@@ -27,7 +31,7 @@ from typing import Any
 
 from src.modules.nq_catalog import keyword_found, keywords, normalized_text
 
-ENGINE_VERSION = 1
+ENGINE_VERSION = 2
 SOURCE_LABEL = 'DT Analyzer RCA'
 RULES_STATE_KEY = 'nq_dta_rca_rules'
 FINGERPRINT_STATE_KEY = 'nq_dta_rca_fingerprint'
@@ -57,10 +61,13 @@ INPUTS: dict[str, tuple[str, str, str, str]] = {
     'direction': ('Direction', 'text', '', 'Call'),
     'environment': ('Environment', 'text', '', 'Call'),
     'failure_text': ('Failure description', 'text', '', 'Failure'),
+    'signalling_events': ('Signalling events', 'text', '', 'Failure'),
     'failure_phase': ('Failure Phase', 'text', '', 'Failure'),
     'failure_technology': ('Failure Technology', 'text', '', 'Failure'),
     'failure_side': ('Failure Side', 'text', '', 'Failure'),
     'radio_technology': ('Technology at the failure', 'text', '', 'Failure'),
+    'radio_rsrp': ('RSRP at the failure', 'number', 'dBm', 'Failure'),
+    'radio_sinr': ('SINR at the failure', 'number', 'dB', 'Failure'),
     'radio_measured': ('Radio measured', 'text', '', 'Call'),
     'lte_rsrp': ('LTE RSRP (average)', 'number', 'dBm', 'LTE radio'),
     'lte_rsrp_min': ('LTE RSRP (minimum)', 'number', 'dBm', 'LTE radio'),
@@ -69,6 +76,7 @@ INPUTS: dict[str, tuple[str, str, str, str]] = {
     'lte_sinr_min': ('LTE SINR (minimum)', 'number', 'dB', 'LTE radio'),
     'lte_tx_power': ('LTE transmit power (maximum)', 'number', 'dBm', 'LTE radio'),
     'lte_bler': ('LTE BLER', 'number', '%', 'LTE radio'),
+    'lte_dl_rb_share': ('LTE DL resource blocks used', 'number', '%', 'LTE radio'),
     'nr_rsrp': ('NR RSRP (average)', 'number', 'dBm', 'NR radio'),
     'nr_rsrp_min': ('NR RSRP (minimum)', 'number', 'dBm', 'NR radio'),
     'nr_rsrq': ('NR RSRQ (average)', 'number', 'dB', 'NR radio'),
@@ -76,6 +84,7 @@ INPUTS: dict[str, tuple[str, str, str, str]] = {
     'nr_sinr_min': ('NR SINR (minimum)', 'number', 'dB', 'NR radio'),
     'nr_tx_power': ('NR transmit power (maximum)', 'number', 'dBm', 'NR radio'),
     'nr_bler': ('NR BLER', 'number', '%', 'NR radio'),
+    'nr_dl_rb_share': ('NR DL resource blocks used', 'number', '%', 'NR radio'),
     'b_lte_rsrp': ('B side LTE RSRP (average)', 'number', 'dBm', 'B side radio'),
     'b_lte_sinr': ('B side LTE SINR (average)', 'number', 'dB', 'B side radio'),
     'b_nr_rsrp': ('B side NR RSRP (average)', 'number', 'dBm', 'B side radio'),
@@ -84,6 +93,14 @@ INPUTS: dict[str, tuple[str, str, str, str]] = {
     'rat_timeline': ('Technology timeline', 'text', '', 'Mobility'),
     'handovers': ('Handovers', 'number', '', 'Mobility'),
     'handovers_info': ('Handover types', 'text', '', 'Mobility'),
+    'ping_pong': ('Ping-pong handovers', 'number', '', 'Mobility'),
+    'serving_distance': ('Serving site distance', 'number', 'km', 'Network Inventory'),
+    'serving_isd': ('Serving site ISD', 'number', 'km', 'Network Inventory'),
+    'serving_isd_ratio': ('Serving site distance / its ISD', 'number', '×', 'Network Inventory'),
+    'nearest_site_distance': ('Nearest site distance', 'number', 'km', 'Network Inventory'),
+    'nearest_site_isd_ratio': ('Nearest site distance / its ISD', 'number', '×', 'Network Inventory'),
+    'pci_collisions': ('PCI collisions around', 'number', '', 'Network Inventory'),
+    'cells_out_of_service': ('Cells out of service on its sites', 'number', '', 'Network Inventory'),
     'throughput': ('Throughput', 'number', 'Mbit/s', 'KPIs'),
     'access_time': ('Service access time', 'number', 's', 'KPIs'),
     'dns_time': ('DNS time', 'number', 'ms', 'KPIs'),
@@ -101,11 +118,26 @@ INPUTS: dict[str, tuple[str, str, str, str]] = {
 CALL_INPUTS = ('result', 'test_name', 'technology', 'direction', 'environment', 'failure_phase', 'failure_technology')
 FAILURE_TEXT_FIELDS = ('failure_classification', 'failure_category', 'failure_subcategory', 'failure_comment')
 FAILURE_TEXT_INPUTS = ('failure_events', 'scg_failures')
-# The inputs found from the others: the description of the failure, the technology at the failure (the Failure Technology,
-# else the technology of the call or the technologies it used) and the radio measured (LTE and NR, by their RSRP or SINR).
-DERIVED_INPUTS = ('failure_text', 'radio_technology', 'radio_measured')
+# The inputs found from the others: the description of the failure, its signalling events alone (the events and SCG failures
+# of the CDR, without the provider's RCA), the technology at the failure (the Failure Technology, else the technology of
+# the call or the technologies it used) and its RSRP and SINR (those of NR when it failed in NR alone, else those of LTE,
+# the anchor, each one else the other), the radio measured (LTE and NR, by their RSRP or SINR) and the share of the
+# resource blocks of the primary carrier the call used.
+DERIVED_INPUTS = ('failure_text', 'signalling_events', 'radio_technology', 'radio_rsrp', 'radio_sinr', 'radio_measured', 'lte_dl_rb_share',
+                  'nr_dl_rb_share')
+# The inputs of the network around the call (ran_context) and its ping-pongs, which non_qualified_calls adds from the
+# Network Inventory and the cells of the call; a ``network_note`` names its serving and nearest sites for the evidence.
+CONTEXT_INPUTS = ('ping_pong', 'serving_distance', 'serving_isd', 'serving_isd_ratio', 'nearest_site_distance',
+                  'nearest_site_isd_ratio', 'pci_collisions', 'cells_out_of_service')
+NETWORK_NOTE = 'network_note'
+# Values read from the CDR that are no input themselves: the resource blocks and the bandwidth of the primary carriers (for
+# the share used), and the cells of the call with their PCIs and where it ended (read through the Map fields of the profile).
+RB_SOURCES = ('lte_dl_rbs', 'lte_dl_bandwidth', 'nr_dl_rbs', 'nr_dl_bandwidth', 'nr_dl_band')
+TRACE_SOURCES = ('cell_trace', 'cell_pcis', 'end_latitude', 'end_longitude')
+NUMBER_SOURCES = frozenset(('lte_dl_rbs', 'lte_dl_bandwidth', 'nr_dl_rbs', 'nr_dl_bandwidth', 'end_latitude', 'end_longitude'))
 # The inputs read from the CDR (the profile lists their columns).
-CDR_INPUTS = tuple(key for key in (*INPUTS, *FAILURE_TEXT_INPUTS) if key not in CALL_INPUTS and key not in DERIVED_INPUTS)
+CDR_INPUTS = tuple(key for key in (*INPUTS, *FAILURE_TEXT_INPUTS, *RB_SOURCES)
+                   if key not in CALL_INPUTS and key not in DERIVED_INPUTS and key not in CONTEXT_INPUTS)
 OPERATORS = {
     'lt': '<', 'le': '≤', 'gt': '>', 'ge': '≥', 'eq': '=', 'ne': '≠',
     'contains': 'contains', 'not_contains': 'does not contain', 'empty': 'is empty', 'not_empty': 'is not empty',
@@ -131,6 +163,13 @@ _DEFAULT_RULES: tuple[tuple[str, str, tuple[str, ...], str, tuple[tuple[str, str
      'UE / Test Setup Issue', 'Device or test setup'),
     ('subscriber-identity', 'Subscriber identity', (), 'any',
      (('failure_text', 'contains', 'imsi, ue identity cannot be derived'),), 'IMSI Issue', ''),
+    # A lack of resources: the insufficient resources or congestion the provider reports of the core, and the access the
+    # network rejects in the signalling of the CDR itself (or as the provider reports it).
+    ('core-resources', 'Insufficient resources of the core', (), 'any',
+     (('failure_text', 'contains', 'insufficient resources, service reject+congestion'),), 'Core Network', 'Insufficient resources'),
+    ('access-rejected', 'Access rejected by the network', (), 'any',
+     (('signalling_events', 'contains', 'rrcconnectionreject, rrcreject, immediate assignment reject'),
+      ('failure_text', 'contains', 'rrc connection reject')), 'RAN Capacity', 'Access rejected (no resources)'),
     ('authentication', 'Authentication or registration rejected', (), 'any',
      (('failure_text', 'contains', 'authentication, authorization, registration reject, attach reject, '
                                    'pdu session establishment reject'),), 'Authentication & Registration', 'Authentication/Authorization'),
@@ -147,6 +186,35 @@ _DEFAULT_RULES: tuple[tuple[str, str, tuple[str, ...], str, tuple[tuple[str, str
     ('paging', 'Paging', (), 'any', (('failure_text', 'contains', 'paging'),), 'RAN Performance', 'Paging'),
     ('session-in-gsm', 'Session in GSM', (), 'any', (('failure_text', 'contains', 'session in gsm'),), 'Core Network',
      'WhatsApp session in GSM'),
+    # Cells of its sites out of service in the Network Inventory, when its radio suffered.
+    ('cell-outage', 'Cells out of service on its sites', (), 'all', (('cells_out_of_service', 'ge', 1), ('radio_rsrp', 'lt', -105)),
+     'Operational', 'Cell/Site Outage'),
+    ('cell-outage-interference', 'Cells out of service on its sites with interference', (), 'all',
+     (('cells_out_of_service', 'ge', 1), ('radio_sinr', 'lt', 3)), 'Operational', 'Cell/Site Outage'),
+    # The network around the call (Network Inventory), before the coverage and interference it brings: no site near it (the
+    # nearest one beyond 1.5 times its inter-site distance), a serving site beyond twice its inter-site distance, a cell
+    # around with the PCI and channel of one of its own.
+    ('nr-coverage-hole', 'NR coverage hole', (), 'all', (('nearest_site_isd_ratio', 'ge', 1.5), ('nr_rsrp', 'lt', -110), *_NR),
+     'Poor Coverage NR', 'Large distance to the nearest site'),
+    ('coverage-hole', 'Coverage hole', (), 'all', (('nearest_site_isd_ratio', 'ge', 1.5), ('lte_rsrp', 'lt', -110)),
+     'Poor Coverage LTE', 'Large distance to the nearest site'),
+    ('no-service-hole', 'Coverage hole without service', (), 'all', (('nearest_site_isd_ratio', 'ge', 1.5), ('radio_measured', 'empty', '')),
+     'Poor Coverage LTE', 'Large distance to the nearest site'),
+    ('nr-overshooting', 'NR overshooting', (), 'all',
+     (('serving_isd_ratio', 'ge', 2), ('serving_distance', 'ge', 1), ('nr_sinr', 'lt', 3), *_NR),
+     'DL Interference NR', 'Overshooting or excessive cell overlap'),
+    ('overshooting', 'Overshooting', (), 'all', (('serving_isd_ratio', 'ge', 2), ('serving_distance', 'ge', 1), ('lte_sinr', 'lt', 3)),
+     'DL Interference LTE', 'Overshooting or excessive cell overlap'),
+    ('nr-overshooting-coverage', 'NR overshooting with weak coverage', (), 'all',
+     (('serving_isd_ratio', 'ge', 2), ('serving_distance', 'ge', 1), ('nr_rsrp', 'lt', -105), *_NR),
+     'Poor Coverage NR', 'Overshooting or excessive cell overlap'),
+    ('overshooting-coverage', 'Overshooting with weak coverage', (), 'all',
+     (('serving_isd_ratio', 'ge', 2), ('serving_distance', 'ge', 1), ('lte_rsrp', 'lt', -105)),
+     'Poor Coverage LTE', 'Overshooting or excessive cell overlap'),
+    ('nr-pci-collision', 'NR PCI collision', (), 'all', (('pci_collisions', 'ge', 1), ('nr_sinr', 'lt', 3), *_NR),
+     'DL Interference NR', 'PCI Collision/PCI MOD 3 Collision'),
+    ('pci-collision', 'PCI collision', (), 'all', (('pci_collisions', 'ge', 1), ('lte_sinr', 'lt', 3)),
+     'DL Interference LTE', 'PCI Collision/PCI MOD 3 Collision'),
     # The radio of the call: the anchor (LTE) before NR, the A side before the B side.
     ('lte-coverage', 'Poor LTE coverage', (), 'all', (('lte_rsrp', 'lt', -110),), 'Poor Coverage LTE', 'Coverage'),
     ('nr-coverage', 'Poor NR coverage', (), 'all', (('nr_rsrp', 'lt', -110),), 'Poor Coverage NR', 'Coverage'),
@@ -163,6 +231,9 @@ _DEFAULT_RULES: tuple[tuple[str, str, tuple[str, ...], str, tuple[tuple[str, str
      (('rat', 'contains', 'gsm, umts, wcdma, hspa, 2g, 3g'),), 'Poor Coverage 2G/3G', 'Inter-RAT transition'),
     ('lte-bler', 'High LTE BLER', (), 'all', (('lte_bler', 'gt', 10),), 'BLER LTE', 'BLER'),
     ('nr-bler', 'High NR BLER', (), 'all', (('nr_bler', 'gt', 10),), 'BLER NR', 'BLER'),
+    # Its handovers: back and forth between two cells, then the handover failures.
+    ('nr-ping-pong', 'NR ping-pong handovers', (), 'all', (('ping_pong', 'ge', 1), *_NR), 'Mobility NR', 'Ping-pong handover'),
+    ('ping-pong', 'Ping-pong handovers', (), 'all', (('ping_pong', 'ge', 1),), 'Mobility LTE', 'Ping-pong handover'),
     ('nr-handover', 'NR handover failure', (), 'all',
      (('failure_text', 'contains', 'handover'), ('failure_technology', 'contains', '5g, nr')), 'Mobility NR', 'Handover failure'),
     ('handover', 'Handover failure', (), 'any', (('failure_text', 'contains', 'handover'),), 'Mobility LTE', 'Handover failure'),
@@ -205,6 +276,11 @@ _DEFAULT_RULES: tuple[tuple[str, str, tuple[str, ...], str, tuple[tuple[str, str
      'Latency'),
     ('timeout', 'Data transfer timeout', ('data',), 'any', (('failure_text', 'contains', 'timeout'),), 'Protocol / Server',
      'Data transfer timeout'),
+    # A test cut off with good radio on a carrier that gave it few of its resource blocks: a loaded cell.
+    ('nr-cell-load', 'NR cell short of resource blocks', ('data',), 'all',
+     (('result', 'contains', 'cutoff'), _MEASURED, ('nr_dl_rb_share', 'lt', 25)), 'RAN Capacity', 'Cell overload'),
+    ('cell-load', 'Cell short of resource blocks', ('data',), 'all',
+     (('result', 'contains', 'cutoff'), _MEASURED, ('lte_dl_rb_share', 'lt', 25)), 'RAN Capacity', 'Cell overload'),
     ('reported-low-throughput', 'Low throughput reported by the provider', ('data',), 'any',
      (('failure_text', 'contains', 'low throughput'),), 'RAN Performance', 'Low throughput'),
     # The radio measured and none of the rules above: a test cut off for its time, a call that failed with good radio.
@@ -364,6 +440,52 @@ def save_rules(repository: Any, rules: Any, username: str, *, defaults: bool = F
     return normalized
 
 
+# The default rules each version of the engine added: a workspace with rules of its own takes them once, in their place.
+ADDED_RULES = {
+    2: ('core-resources', 'access-rejected', 'cell-outage', 'cell-outage-interference', 'nr-coverage-hole', 'coverage-hole', 'no-service-hole', 'nr-overshooting',
+        'overshooting', 'nr-overshooting-coverage', 'overshooting-coverage', 'nr-pci-collision', 'pci-collision', 'nr-ping-pong',
+        'ping-pong', 'nr-cell-load', 'cell-load'),
+}
+
+
+def with_added_rules(rules: list[dict[str, Any]], keys: tuple[str, ...]) -> tuple[list[dict[str, Any]], list[str]]:
+    """The rules of a workspace with the default rules of ``keys`` it lacks (by key and name), each right after the
+    nearest default rule before it that the workspace has (first when none), within MAX_RULES; and the names added."""
+    result = list(rules)
+    added = []
+    defaults = default_rules()
+    for position, rule in enumerate(defaults):
+        names = {item['name'].casefold() for item in result}
+        present = {item['key'] for item in result}
+        if rule['key'] not in keys or rule['key'] in present or rule['name'].casefold() in names or len(result) >= MAX_RULES:
+            continue
+        anchor = next((item['key'] for item in reversed(defaults[:position]) if item['key'] in present), None)
+        place = next((index + 1 for index, item in enumerate(result) if item['key'] == anchor), 0)
+        result.insert(place, rule)
+        added.append(rule['name'])
+    return result, added
+
+
+def add_new_default_rules(repository: Any, version: int) -> list[str]:
+    """Give a workspace with rules of its own the default rules of ``version`` it lacks; App Events says which (the
+    workspaces with the default rules take them anyway)."""
+    try:
+        stored = json.loads(repository.get_workspace_state(RULES_STATE_KEY) or 'null')
+    except (TypeError, ValueError):
+        stored = None
+    if not isinstance(stored, list) or not stored:
+        return []
+    rules, added = with_added_rules(normalize_rules(stored), ADDED_RULES.get(version, ()))
+    if added:
+        repository.set_workspace_state(RULES_STATE_KEY, json.dumps(rules, ensure_ascii=False))
+        if hasattr(repository, 'try_add_log'):
+            repository.try_add_log('system', 'nq_dta_rca_rules', json.dumps(
+                {'message': 'New default rules of the DT Analyzer RCA added to the rules of the workspace.', 'rules': len(rules),
+                 'enabled': sum(rule['enabled'] for rule in rules), 'changes': [f'Rule added: {name}' for name in added]},
+                ensure_ascii=False))
+    return added
+
+
 def default_settings() -> dict[str, Any]:
     """Learning from the decisions of the analysts is off in a new workspace."""
     return {'learn': False}
@@ -493,11 +615,13 @@ def resolve_result(category: str, cause: str, taxonomy: dict[str, Any]) -> dict[
     return {'category': category_name, 'cause': (found_cause or {}).get('name') or cause, 'domain': domain}
 
 
-def fingerprint(rules: list[dict[str, Any]], taxonomy: dict[str, Any]) -> str:
-    """What the results depend on: the version of the engine, the rules and the catalog values they resolve to."""
+def fingerprint(rules: list[dict[str, Any]], taxonomy: dict[str, Any], network: str = '') -> str:
+    """What the results depend on: the version of the engine, the rules, the catalog values they resolve to and the
+    network around the calls (the Network Inventory and the networks serving each operator, ``network``)."""
     catalog = {plural: [[item.get('name'), item.get('domain'), item.get('category'), item.get('keywords')]
                         for item in taxonomy.get(plural) or []] for plural in ('domains', 'categories', 'causes')}
-    payload = json.dumps([ENGINE_VERSION, rules, catalog], sort_keys=True, ensure_ascii=False, default=str)
+    payload = json.dumps([ENGINE_VERSION, rules, catalog] + ([network] if network else []), sort_keys=True, ensure_ascii=False,
+                         default=str)
     return hashlib.sha1(payload.encode('utf-8')).hexdigest()
 
 
@@ -527,6 +651,33 @@ def _field(call: Any, key: str) -> Any:
         return call[key]
     except (KeyError, IndexError, TypeError):
         return ''
+
+
+# The resource blocks of a carrier by its bandwidth (MHz): LTE (TS 36.101), NR at 15 kHz and at 30 kHz (TS 38.101-1),
+# which the TDD bands and the carriers wider than 50 MHz use.
+LTE_RESOURCE_BLOCKS = {1.4: 6, 3: 15, 5: 25, 10: 50, 15: 75, 20: 100}
+NR_RESOURCE_BLOCKS_15 = {5: 25, 10: 52, 15: 79, 20: 106, 25: 133, 30: 160, 40: 216, 50: 270}
+NR_RESOURCE_BLOCKS_30 = {10: 24, 15: 38, 20: 51, 25: 65, 30: 78, 40: 106, 50: 133, 60: 162, 70: 189, 80: 217, 90: 245, 100: 273}
+NR_TDD_BANDS = frozenset(('n38', 'n40', 'n41', 'n48', 'n77', 'n78', 'n79'))
+
+
+def resource_block_share(blocks: Any, bandwidth: Any, technology: str, band: Any = '') -> float | None:
+    """The share (%) of the resource blocks of its primary carrier the call was given on average."""
+    blocks, bandwidth = _number(blocks), _number(bandwidth)
+    if not blocks or not bandwidth:
+        return None
+    if technology == 'LTE':
+        total = LTE_RESOURCE_BLOCKS.get(bandwidth) or bandwidth * 5
+    else:
+        match = re.search(r'(\d+)', str(band or ''))
+        wide = bandwidth > 50 or (match is not None and f'n{match.group(1)}' in NR_TDD_BANDS)
+        total = (NR_RESOURCE_BLOCKS_30 if wide else NR_RESOURCE_BLOCKS_15).get(int(round(bandwidth)))
+    return round(min(blocks / total * 100, 100.0), 1) if total else None
+
+
+def signalling_events(inputs: dict[str, Any]) -> str:
+    """The events and SCG failures of the CDR, without the provider's RCA."""
+    return ' · '.join(value for key in FAILURE_TEXT_INPUTS if (value := _clean(inputs.get(key), 300)))
 
 
 def failure_text(call: Any, inputs: dict[str, Any]) -> str:
@@ -588,9 +739,22 @@ def evaluate(compiled: list[dict[str, Any]], call: Any, inputs: dict[str, Any]) 
         if key not in values:
             if key == 'failure_text':
                 values[key] = failure_text(call, inputs)
+            elif key == 'signalling_events':
+                values[key] = signalling_events(inputs)
+            elif key == 'lte_dl_rb_share':
+                values[key] = resource_block_share(inputs.get('lte_dl_rbs'), inputs.get('lte_dl_bandwidth'), 'LTE')
+            elif key == 'nr_dl_rb_share':
+                values[key] = resource_block_share(inputs.get('nr_dl_rbs'), inputs.get('nr_dl_bandwidth'), 'NR', inputs.get('nr_dl_band'))
             elif key == 'radio_technology':
                 values[key] = next((text for name in ('failure_technology', 'technology')
                                     if (text := _clean(_field(call, name)))), '') or _clean(inputs.get('rat'))
+            elif key in {'radio_rsrp', 'radio_sinr'}:
+                measure = key.removeprefix('radio_')
+                technology = normalized_text(value_of('radio_technology'))
+                nr_alone = bool(re.search(r'(?<![a-z0-9])(5g|nr)', technology)) and not re.search(r'(?<![a-z0-9])(4g|lte)', technology)
+                first, second = ('nr', 'lte') if nr_alone else ('lte', 'nr')
+                values[key] = next((number for name in (f'{first}_{measure}', f'{second}_{measure}')
+                                    if (number := _number(inputs.get(name))) is not None), None)
             elif key == 'radio_measured':
                 values[key] = ', '.join(name for name, keys in (('LTE', ('lte_rsrp', 'lte_sinr')), ('NR', ('nr_rsrp', 'nr_sinr')))
                                         if any(_number(inputs.get(item)) is not None for item in keys))
@@ -618,5 +782,8 @@ def evaluate(compiled: list[dict[str, Any]], call: Any, inputs: dict[str, Any]) 
                 continue
             rule = entry['rule']
             evidence = '; '.join(held) if held else 'No earlier rule explains the failure.'
+            # The sites a rule of the network around the call read.
+            if inputs.get(NETWORK_NOTE) and any(condition['input'] in CONTEXT_INPUTS[1:] for condition, _kind, _value in entry['conditions']):
+                evidence = f'{evidence}. {inputs[NETWORK_NOTE]}'
             return {'rule': rule['name'], 'rule_key': rule['key'], **entry['result'], 'evidence': evidence[:MAX_EVIDENCE]}
     return None

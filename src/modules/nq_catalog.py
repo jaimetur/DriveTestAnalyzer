@@ -389,6 +389,7 @@ DEFAULT_CATEGORIES = (
     ('EPS Fallback', 'Core EPSFB', ()),
     ('BLER LTE', 'RF', ()),
     ('BLER NR', 'RF', ()),
+    ('RAN Capacity', 'RAN', ('capacity',)),
 )
 # The Root Category of the default causes of the DT Analyzer RCA categories.
 DEFAULT_CAUSE_CATEGORIES = {
@@ -399,9 +400,13 @@ DEFAULT_CAUSE_CATEGORIES = {
     'Authentication/Authorization': 'Authentication & Registration',
     'No QCI1 established': 'IMS / VoLTE', 'VoLTE core': 'IMS / VoLTE',
     'EPS fallback failure': 'EPS Fallback',
+    'Access rejected (no resources)': 'RAN Capacity', 'Cell overload': 'RAN Capacity',
+    'Insufficient resources': 'Core Network', 'Ping-pong handover': 'Mobility LTE',
 }
 DTA_CATEGORIES = ('Protocol / Server', 'RAN Performance', 'Core Network', 'Authentication & Registration', 'IMS / VoLTE', 'EPS Fallback',
-                  'BLER LTE', 'BLER NR')
+                  'BLER LTE', 'BLER NR', 'RAN Capacity')
+# Root Causes the DT Analyzer RCA added to the catalog (a workspace without them takes them, see non_qualified_calls).
+DTA_CAUSES = ('Access rejected (no resources)', 'Insufficient resources', 'Ping-pong handover')
 # Root Causes: those of the meeting workbook, then the causes of the first catalog, each in its domain.
 DEFAULT_CAUSES = (
     ('NLOS due to clutter or terrain profile', 'RF', ('nlos', 'clutter', 'terrain')),
@@ -452,6 +457,10 @@ DEFAULT_CAUSES = (
     ('No DL packets', 'Protocol', ('no dl packets',)),
     ('Latency', 'Protocol', ('latency',)),
     ('Device or test setup', 'Device', ('device', 'modem')),
+    # The causes of the lack of resources and the handovers the DT Analyzer RCA finds.
+    ('Access rejected (no resources)', 'RAN', ('rrc connection reject', 'immediate assignment reject')),
+    ('Insufficient resources', 'Core', ('insufficient resources',)),
+    ('Ping-pong handover', 'RAN', ('ping-pong', 'ping pong')),
 )
 ROOT_KINDS = ('domain', 'category', 'cause')
 ROOT_KIND_LABELS = {'domain': 'Domains', 'category': 'Root Categories', 'cause': 'Root Causes'}

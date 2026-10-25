@@ -108,8 +108,8 @@ SERVICE_LABELS = {'voice': 'Voice', 'speech': 'Speech', 'data': 'Data'}
 # The result of a qualified NetCheck call (each CDR type tells its own, see cdr_field_profiles).
 QUALIFIED_RESULT = NETCHECK_PROFILE.nq_qualified_value
 # Bump when the indexed fields or the call key change so every CDR is indexed again (7: the inputs of the DT Analyzer
-# RCA).
-INDEX_VERSION = 7
+# RCA; 8: its resource blocks and the cells of the call with their PCIs and where it ended).
+INDEX_VERSION = 8
 # The call key of version 3: the JOIN_ID first, and Speech calls (not samples).
 KEY_SCHEME = '3'
 KEY_SCHEME_STATE_KEY = 'nq_calls_key_scheme'
@@ -238,9 +238,12 @@ V28_FORMER_NAME = 'DriveTest Analyzer RCA'
 ANALYSIS_CENTER_V29_STATE_KEY = 'nq_analysis_center_v29'
 # The fields of the DT Analyzer RCA first among those of the RCA sources, once.
 ANALYSIS_CENTER_V30_STATE_KEY = 'nq_analysis_center_v30'
+# The Root Category and Root Causes of the lack of resources and the ping-pongs of the DT Analyzer RCA, and its new
+# default rules in the workspaces with rules of their own.
+ANALYSIS_CENTER_V31_STATE_KEY = 'nq_analysis_center_v31'
 # Set once the tables and columns of this version exist, so the requests check the schema without writing.
 SCHEMA_STATE_KEY = 'nq_calls_schema'
-SCHEMA_VERSION = '2026-10-25.1'
+SCHEMA_VERSION = '2026-10-25.2'
 # Indexed call fields that the suggestion rule can read, with their labels.
 RULE_FIELDS = {
     'failure_classification': 'Failure Classification', 'failure_category': 'Failure Category',
@@ -594,7 +597,7 @@ def _schema_ready(task_repository: Any) -> bool:
                 ANALYSIS_CENTER_V19_STATE_KEY, ANALYSIS_CENTER_V20_STATE_KEY, ANALYSIS_CENTER_V21_STATE_KEY,
                 ANALYSIS_CENTER_V22_STATE_KEY, ANALYSIS_CENTER_V23_STATE_KEY, ANALYSIS_CENTER_V24_STATE_KEY, ANALYSIS_CENTER_V25_STATE_KEY,
                 ANALYSIS_CENTER_V26_STATE_KEY, ANALYSIS_CENTER_V27_STATE_KEY, ANALYSIS_CENTER_V28_STATE_KEY,
-                ANALYSIS_CENTER_V29_STATE_KEY, ANALYSIS_CENTER_V30_STATE_KEY)
+                ANALYSIS_CENTER_V29_STATE_KEY, ANALYSIS_CENTER_V30_STATE_KEY, ANALYSIS_CENTER_V31_STATE_KEY)
         states = {str(row[0]): str(row[1]) for row in connection.execute(
             f"SELECT key, value FROM workspace_state WHERE key IN ({', '.join('?' for _ in keys)})", keys)}
     return states.get(SCHEMA_STATE_KEY) == SCHEMA_VERSION and all(states.get(key) for key in keys[1:])
@@ -782,6 +785,10 @@ def ensure_nq_tables(task_repository: Any) -> None:
     if not task_repository.get_workspace_state(ANALYSIS_CENTER_V30_STATE_KEY):
         _dta_fields_first(task_repository)
         task_repository.set_workspace_state(ANALYSIS_CENTER_V30_STATE_KEY, '1')
+    if not task_repository.get_workspace_state(ANALYSIS_CENTER_V31_STATE_KEY):
+        _add_dta_categories(task_repository)
+        nq_dta_rca.add_new_default_rules(task_repository, 2)
+        task_repository.set_workspace_state(ANALYSIS_CENTER_V31_STATE_KEY, '1')
     task_repository.set_workspace_state(SCHEMA_STATE_KEY, SCHEMA_VERSION)
 
 
@@ -805,8 +812,9 @@ def _dta_fields_first(task_repository: Any) -> None:
 
 
 def _add_dta_categories(task_repository: Any) -> None:
-    """The Root Categories of the DT Analyzer RCA the catalog lacks (by name), in their default domain when the catalog has
-    it, and each default cause without a Root Category mapped to its own; the rest of the catalog stays as it is."""
+    """The Root Categories and Root Causes of the DT Analyzer RCA the catalog lacks (by name), in their default domain when
+    the catalog has it, and each default cause without a Root Category mapped to its own; the rest of the catalog stays
+    as it is."""
     defaults = nq_catalog.default_root_catalog()
     with task_repository.connection() as connection:
         current = nq_catalog.stored_root_catalog(_read_root_catalog(connection))
@@ -814,6 +822,10 @@ def _add_dta_categories(task_repository: Any) -> None:
         added = [{'name': item['name'], 'domain': item['domain'], 'keywords': list(item['keywords'])}
                  for item in defaults['categories'] if item['name'] in nq_catalog.DTA_CATEGORIES and item['name'].casefold() not in names]
         current['categories'] += added
+        names = {item['name'].casefold() for item in current['causes']}
+        causes = [{'name': item['name'], 'domain': item['domain'], 'keywords': list(item['keywords'])}
+                  for item in defaults['causes'] if item['name'] in nq_catalog.DTA_CAUSES and item['name'].casefold() not in names]
+        current['causes'] += causes
         known = {item['name'].casefold() for item in current['categories']}
         mapped = 0
         for cause in current['causes']:
@@ -821,12 +833,13 @@ def _add_dta_categories(task_repository: Any) -> None:
             if category and not cause.get('category') and category.casefold() in known:
                 cause['category'] = category
                 mapped += 1
-        if added or mapped:
+        if added or causes or mapped:
             _write_root_catalog(connection, nq_catalog.normalize_root_catalog(current))
-    if (added or mapped) and hasattr(task_repository, 'try_add_log'):
+    if (added or causes or mapped) and hasattr(task_repository, 'try_add_log'):
         task_repository.try_add_log('system', 'nq_root_causes', json.dumps(
-            {'message': 'Root Categories of the DT Analyzer RCA added to the root cause catalog.',
-             'categories': [item['name'] for item in added], 'causes_mapped': mapped}, ensure_ascii=False))
+            {'message': 'Root Categories and Root Causes of the DT Analyzer RCA added to the root cause catalog.',
+             'categories': [item['name'] for item in added], 'causes': [item['name'] for item in causes], 'causes_mapped': mapped},
+            ensure_ascii=False))
 
 
 def _initial_root_catalog(connection: Any) -> dict[str, list[dict[str, Any]]]:
@@ -2023,7 +2036,15 @@ def _dataset_calls(connection: Any, dataset: Any, cdr_columns: tuple[str, ...] =
     extra = {name: column for name in cdr_columns if (column := _resolve_column(columns, (name,)))}
     rca_inputs = {name: resolved_columns for name in nq_dta_rca.CDR_INPUTS
                   if (resolved_columns := _resolve_columns(columns, profile.nq_rca_sources.get(name, ())))}
-    rca_numbers = {name for name in rca_inputs if nq_dta_rca.INPUTS.get(name, ('', 'text'))[1] == 'number'}
+    # The cells of the call with their PCIs and where it ended, read as its Map reads them (nq_call_map).
+    ends = profile.end_coordinates.get(service, ())
+    trace_sources = {'cell_trace': profile.rf_field_aliases['cell_trace'].get(service, ()), 'cell_pcis': profile.pci_columns.get(service, ()),
+                     'end_latitude': tuple(latitude for _longitude, latitude in ends),
+                     'end_longitude': tuple(longitude for longitude, _latitude in ends)}
+    rca_inputs.update({name: resolved_columns for name, candidates in trace_sources.items()
+                       if (resolved_columns := _resolve_columns(columns, candidates))})
+    rca_numbers = {name for name in rca_inputs
+                   if nq_dta_rca.INPUTS.get(name, ('', 'text'))[1] == 'number' or name in nq_dta_rca.NUMBER_SOURCES}
     nr_mode = _text(dataset['nr_mode'])
 
     def identity(row: Any, aliases: dict[str, str], values: dict[str, Any]) -> tuple[str, str]:
@@ -2094,7 +2115,7 @@ def _dataset_calls(connection: Any, dataset: Any, cdr_columns: tuple[str, ...] =
                 if number is not None:
                     inputs[name] = round(number * profile.nq_rca_scales.get(name, 1.0), 4)
             elif text := next((text for column in candidates if (text := _text(row[aliases[column]]))), ''):
-                inputs[name] = text[:300]
+                inputs[name] = text[:2000 if name in nq_dta_rca.TRACE_SOURCES else 300]
         if sample_radio and service == 'voice' and identifier_column:
             inputs.update(sample_radio.get((values['operator'].casefold(), values['campaign'].casefold(),
                                             _text(row[aliases[identifier_column]])), {}))
@@ -3698,7 +3719,8 @@ def _latest_ready(task_repository: Any, maps: dict[str, str]) -> bool:
 # DT Analyzer RCA (see nq_dta_rca)
 # ---------------------------------------------------------------------------
 # The columns of an indexed row its rules read, besides its inputs.
-_DTA_COLUMNS = ('dataset_id', 'source_row_id', 'service', *nq_dta_rca.CALL_INPUTS, *nq_dta_rca.FAILURE_TEXT_FIELDS, 'rca_inputs_json')
+_DTA_COLUMNS = ('dataset_id', 'source_row_id', 'service', 'operator', 'latitude', 'longitude', 'cell_id', *nq_dta_rca.CALL_INPUTS,
+                *nq_dta_rca.FAILURE_TEXT_FIELDS, 'rca_inputs_json')
 # The result of the row of a call, as the calls query reads it (``s`` the call row): what it learned from the analysts,
 # else what its rule gives.
 DTA_JSON_SQL = (f"COALESCE((SELECT json_object('dta_domain', l.domain, 'dta_category', l.category, 'dta_cause', l.cause, "
@@ -3715,9 +3737,64 @@ def _sync_lock(task_repository: Any) -> Lock:
         return _sync_locks.setdefault(str(task_repository.db_path), Lock())
 
 
+def _dta_network_signature(task_repository: Any) -> str:
+    """The network the DT Analyzer RCA reads around the calls: the Network Inventory snapshot of each network (with its
+    revision) and the networks serving each operator; empty without an inventory."""
+    from src.modules.inventory_insights import snapshot_choice
+    from src.modules.network_inventory import dataset_revision, inventory_datasets, list_inventory_snapshots
+    from src.modules.serving_cells import load_serving_networks
+
+    try:
+        datasets = inventory_datasets(task_repository)
+        selection = snapshot_choice(list_inventory_snapshots(task_repository, datasets))
+    except Exception:  # noqa: BLE001 - a workspace without inventories reads no network around its calls.
+        return ''
+    if not selection:
+        return ''
+    revisions = {int(row['id']): dataset_revision(row) for row in datasets}
+    return json.dumps([sorted((family, dataset_id, revisions.get(dataset_id, '')) for family, dataset_id in selection.items()),
+                       load_serving_networks(task_repository)], sort_keys=True, default=str)
+
+
+def _dta_context(task_repository: Any, rows: list[Any], network: bool) -> dict[tuple[int, int], dict[str, Any]]:
+    """What the rules read of each row beyond its CDR: its ping-pongs, from the cells of the call, and with a Network
+    Inventory (``network``) the network around it (ran_context), as the Map of the call shows them."""
+    from src.modules import nq_call_map, ran_context
+    from src.modules.serving_cells import load_serving_networks, serving_families
+
+    config = load_serving_networks(task_repository)
+    families: dict[str, tuple[str, ...]] = {}
+    for row in rows:
+        operator = _text(row['operator'])
+        if operator not in families:
+            families[operator] = tuple(serving_families(operator, config))
+    index = None
+    if network and rows:
+        cells, _snapshots = nq_call_map.inventory_cells(task_repository, tuple(dict.fromkeys(item for value in families.values() for item in value)))
+        index = ran_context.ran_index(cells) if not cells.empty else None
+    max_distance = float(config.get('max_distance_km') or 30.0)
+    context = {}
+    for row in rows:
+        try:
+            inputs = json.loads(row['rca_inputs_json'] or '{}') or {}
+        except (TypeError, ValueError):
+            inputs = {}
+        steps = nq_call_map.trace_cells(inputs.get('cell_trace'), inputs.get('cell_pcis'), row['cell_id'])
+        values: dict[str, Any] = {'ping_pong': len(ran_context.ping_pongs([step['cell'] for step in steps]))} if steps else {}
+        if index is not None:
+            values.update(ran_context.call_context(
+                index, families[_text(row['operator'])], steps, nq_call_map._position(row['latitude'], row['longitude']),
+                nq_call_map._position(inputs.get('end_latitude'), inputs.get('end_longitude')), max_distance))
+        if values:
+            context[(int(row['dataset_id']), int(row['source_row_id']))] = values
+    return context
+
+
 def dta_rca_fingerprint(task_repository: Any) -> str:
-    """What the DT Analyzer RCA of the calls depends on: its rules and the Root Cause Catalog."""
-    return nq_dta_rca.fingerprint(nq_dta_rca.load_rules(task_repository), list_root_causes(task_repository))
+    """What the DT Analyzer RCA of the calls depends on: its rules, the Root Cause Catalog and the network around the
+    calls (the Network Inventory and the networks serving each operator)."""
+    return nq_dta_rca.fingerprint(nq_dta_rca.load_rules(task_repository), list_root_causes(task_repository),
+                                  _dta_network_signature(task_repository))
 
 
 def refresh_dta_rca(task_repository: Any, *, force: bool = False, wait: bool = True) -> int | None:
@@ -3737,19 +3814,22 @@ def _refresh_dta_rca(task_repository: Any, *, force: bool = False) -> int:
     """refresh_dta_rca, the indexing lock taken."""
     rules = nq_dta_rca.load_rules(task_repository)
     taxonomy = list_root_causes(task_repository)
-    fingerprint = nq_dta_rca.fingerprint(rules, taxonomy)
+    network = _dta_network_signature(task_repository)
+    fingerprint = nq_dta_rca.fingerprint(rules, taxonomy, network)
     everything = force or str(task_repository.get_workspace_state(nq_dta_rca.FINGERPRINT_STATE_KEY) or '') != fingerprint
     missing = '' if everything else (f' WHERE NOT EXISTS (SELECT 1 FROM {NQ_DTA_RESULTS_TABLE} r '
                                      'WHERE r.dataset_id = c.dataset_id AND r.source_row_id = c.source_row_id)')
     with task_repository.connection() as connection:
         rows = connection.execute(f"SELECT {', '.join(f'c.{column}' for column in _DTA_COLUMNS)} FROM {NQ_CALLS_TABLE} c{missing}").fetchall()
     compiled = nq_dta_rca.compile_rules(rules, taxonomy)
+    context = _dta_context(task_repository, rows, bool(network))
     results = []
     for row in rows:
         try:
             inputs = json.loads(row['rca_inputs_json'] or '{}') or {}
         except (TypeError, ValueError):
             inputs = {}
+        inputs.update(context.get((int(row['dataset_id']), int(row['source_row_id'])), {}))
         found = nq_dta_rca.evaluate(compiled, row, inputs) or {}
         results.append((int(row['dataset_id']), int(row['source_row_id']), found.get('rule', ''), found.get('rule_key', ''),
                         found.get('domain', ''), found.get('category', ''), found.get('cause', ''), found.get('evidence', '')))

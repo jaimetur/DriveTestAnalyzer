@@ -31,6 +31,7 @@ The module is in development, so its main tab can show a red **ALPHA** label (se
 | See where a call failed: its cells and sites, the sites and Non-Qualified Calls around and the RSRP / SINR of the tests around | [Map of the call](#map-of-the-call) |
 | Configure fields, statuses, teams, rules and the root cause catalog | [NQ Analysis Configuration](#nq-analysis-configuration) |
 | Know how the DT Analyzer RCA finds the root cause of every call, and change its rules | [DT Analyzer RCA](#dt-analyzer-rca) |
+| Read every rule of the DT Analyzer RCA and the root domains, categories and causes it gives | [Default rules](#default-rules) |
 | Import the Ericsson RCA results | [Ericsson RCA results](#ericsson-rca-results) |
 | Import the analyses of the previous tool | [Previous NQ Analyses](#previous-nq-analyses) |
 | Give the calls of each analyst to their user account and link the analysts and reviewers to it | [Analysts / Reviewers → Asignees](#analysts-reviewers-asignees) |
@@ -438,8 +439,8 @@ Below the map:
 - **This call**: its result, failure, phase, technology, times and serving site, its cells in order with their site and distance (a click shows the site on the map), the radio of the call (the Min, Avg and Max of each RSRP, RSRQ, SINR, transmit power, BLER, CQI… of the CDR row) and its other cell, handover and serving fields.
 - **Non-Qualified Calls around**: those at the same site, of its hotspot and the others, nearest first, each with **Open** (a click shows it on the map).
 - **Diagnosis hints**: what the map suggests, each finding marked *To check*, *Worth a look*, *Fine* or *Note* (the first ones first; a click on one about a site shows it on the map):
-  - **Coverage** and **Interference**: the average RSRP and SINR of the call against the levels of Network Insights (LTE weak below −110 dBm, interfering below 0 dB; NR below −115 dBm and −3 dB). A low SINR with a good RSRP points at interference, a low SINR with a weak RSRP at the coverage.
-  - **Serving distance**: the site of the cell where the call ended, flagged from 5 km (overshooting) or from 1.5 km when a site three times nearer was there (a missing neighbour or overshooting).
+  - **Coverage** and **Interference**: the average RSRP and SINR of the call against the levels of Network Insights (LTE weak below −110 dBm, interfering below 0 dB; NR below −115 dBm and −3 dB). A low SINR with a good RSRP points at interference, a low SINR with a weak RSRP at the coverage. A **Coverage hole** (to check) is a weak coverage, or no RSRP at all, where the nearest site of the networks serving the operator is at least 1.5 times its inter-site distance away.
+  - **Serving distance**: the site of the cell where the call ended against its inter-site distance (ISD, the mean distance to its 3 nearest sites of its network; see [The network around the call](#the-network-around-the-call)): flagged from twice its ISD and 1 km (overshooting), or beyond its ISD when a site three times nearer was there (a missing neighbour or overshooting). A site without others of its network within 40 km is judged by fixed distances instead: 5 km, or 1.5 km with a site three times nearer.
   - **PCI collision**: cells around with the PCI and channel of a cell of the call.
   - **Cells in service**: cells locked, halted or disabled on the sites of the call (to check) or around it, and sites planned or in progress around.
   - **Other operators**: the share of tests not completed of its operator against that of the others in the tests around (at least 5 of each), compared with a two-proportion test that weighs how many tests each did, with their median LTE RSRP. *Its network fails more here* (to check) when its share is clearly higher (z of 2 or more), at least 1.5 times and 2 points above the others — for example 9% of 426 tests against 0% of 1,447; *Fails a little more than the others* when it is higher without enough tests to be sure; *Every operator fails here* when the others do not complete 5% or more of their tests (about five times the usual share of a network), so the place may explain it.
@@ -628,28 +629,60 @@ The category with most weight wins (NetCheck goes first when it ties with the pr
 
 The **DT Analyzer RCA** finds the Root Category, the Root Cause and the root domain of every Non-Qualified Call, test and Speech sample from the data of its CDR. It works in every workspace, whatever its CDR type, also when the provider brings an RCA of its own such as the NetCheck RCA, and it comes first, before the NetCheck RCA and the Ericsson RCA, wherever the RCA sources are listed: the [Root Cause Sources](#root-cause-sources) and [Root Cause Analysis](#root-cause-analysis) panels and their filters, the RCA tab of the call, the [recommendation](#root-cause-recommendation), the fields of the catalog and the exports.
 
-It reads every call through the field profile of the CDR type of the workspace:
+It reads every call through the field profile of the CDR type of the workspace, and the network around it in the Network Inventory:
 
 | Values | What it reads |
 | --- | --- |
 | Call | Result, Test Name, Technology, Direction and Environment. |
-| Failure | The **failure description**: the Failure Classification, Category, Subcategory and Comment of the CDR, its failure events and SCG failures; the Failure Phase, Failure Technology and Failure Side, and the **technology at the failure** (the Failure Technology, else the technology of the call or the technologies it used). |
-| LTE and NR radio | The average and minimum RSRP, the RSRQ, the average and minimum SINR, the maximum transmit power and the BLER of the test, of the A side of a call or of the playing side of a Speech sample; the RSRP and SINR of its B side; and the **radio measured** (LTE, NR or both, when the CDR has their RSRP or SINR). |
-| Mobility | The technologies used and their timeline, the handovers and their types. |
+| Failure | The **failure description**: the Failure Classification, Category, Subcategory and Comment of the CDR (the RCA of the provider), its failure events and SCG failures; the **signalling events** alone (the failure events and SCG failures of the CDR, without the RCA of the provider); the Failure Phase, Failure Technology and Failure Side; the **technology at the failure** (the Failure Technology, else the technology of the call or the technologies it used) and the **RSRP** and **SINR at the failure** (those of NR when it failed in NR alone, else those of LTE, the anchor). |
+| LTE and NR radio | The average and minimum RSRP, the RSRQ, the average and minimum SINR, the maximum transmit power and the BLER of the test, of the A side of a call or of the playing side of a Speech sample; the RSRP and SINR of its B side; the **DL resource blocks used** by a Data test (the share of the resource blocks of its primary LTE or NR carrier it was given on average, from its bandwidth); and the **radio measured** (LTE, NR or both, when the CDR has their RSRP or SINR). |
+| Mobility | The technologies used and their timeline, the handovers and their types, and the **ping-pong handovers** (each time the call went back to a cell right after leaving it, A → B → A, in its cell trace). |
+| Network Inventory | The **serving site distance** (from where the call ended to the site of its last cell), the **ISD** of that site and how many ISDs that distance is, the **nearest site distance** of the networks serving its operator and how many of its own ISDs it is, the **PCI collisions around** (cells within 2 km with the PCI and channel of a cell of the call) and the **cells out of service on its sites** (locked, halted or disabled); see [The network around the call](#the-network-around-the-call). |
 | KPIs | Throughput (Mbit/s), service access time (s), DNS time (ms) and success (%), TCP round-trip time (ms), packet loss (%), latency (ms), call setup time (s), duration (s), speech quality (MOS), RTP packet loss (%) and jitter (ms). |
 
-The calls are calculated when they are indexed, and again whenever its rules or the [Root Cause Catalog](#root-cause-catalog) change.
+The calls are calculated when they are indexed, and again whenever its rules, the [Root Cause Catalog](#root-cause-catalog), the Network Inventory or the [Serving Networks](workspace-config.md#serving-networks) change.
+
+### Presentation
+
+The DT Analyzer RCA is also a presentation, **DT Analyzer RCA**: what it reads, how its rules decide, the lack of resources, the network around the call (coverage holes, overshooting, PCI collisions and cells out of service), handovers and service, the result and evidence of each call and how to change the rules. Select it to open it in the slide viewer, play it full screen or download its PowerPoint; it is also in [Presentations](help.md#presentations).
+
+```presentations
+dt-analyzer-rca
+```
+
+### The network around the call
+
+With a Network Inventory of the networks that serve the operator of the call ([Serving Networks](workspace-config.md#serving-networks)), the DT Analyzer RCA finds, as the [Map of the call](#map-of-the-call) does, the inventory cell of each cell of its trace (of its own network first, the nearest to where it served the call) and the site of the cell where it ended. Whether a site served from too far away depends on where it is: a city site serves a few hundred metres, a rural or road site several kilometres. So distances are compared with the **inter-site distance (ISD)** of the site: the mean distance to its 3 nearest sites in service of the same network, from the positions of the Network Inventory. The ISD does not need the neighbour lists of the cells (the inventories do not have them) nor the Timing Advance (the CDRs do not have it).
+
+- **Overshooting**: the serving site is at least **twice its ISD** (and 1 km) from where the call ended, with interference (SINR below 3 dB) or weak coverage (RSRP below −105 dBm). The evidence names the serving site and the nearest one, a hint of a missing neighbour.
+- **Coverage hole**: the nearest site in service of the networks serving the operator is at least **1.5 times its own ISD** away, with weak coverage (RSRP below −110 dBm) or no radio measured at all: no cell covers the place.
+- **PCI collision**: a cell within 2 km has the technology, PCI and channel of a cell of the call, with interference.
+- **Cells out of service**: cells of the sites of the call are locked, halted or disabled in the inventory, with weak coverage or interference.
+
+A site without other sites of its network within 40 km has no ISD, so no rule reads its distance. For example, the urban sites of a UK network are about 1 km apart and the rural ones about 3.4 km.
+
+### Lack of resources
+
+The DT Analyzer RCA finds a lack of resources in three ways:
+
+- **What the provider reports**: insufficient resources of the core (for example a PDU Session Establishment Reject with the 5GSM cause *Insufficient resources*) or a congestion reject (a CM Service Reject for congestion) give **Core Network · Insufficient resources**, before such a reject is taken for an authentication one. Only the RCA of the provider tells these causes: the CDR has no NAS cause of its own.
+- **The signalling of the CDR itself**, without the RCA of the provider: an access the network rejected (*RRCConnectionReject*, *RRCReject* or *Immediate Assignment Reject* in its failure events), or an RRC Connection Reject the provider reports, gives **RAN Capacity · Access rejected (no resources)**.
+- **The resource blocks of a Data test**: a test cut off by time (Cutoff) with its radio measured and good (no radio rule took it) whose primary carrier gave it less than **25 %** of its resource blocks on average gives **RAN Capacity · Cell overload**. A completed test usually gets about two thirds of them. A server or a TCP connection that sends little also leaves resource blocks unused, so these rules come after those of the protocols and servers.
 
 ### DT Analyzer RCA Rules
 
 **DT Analyzer RCA Rules**, in the **NQ Analysis Configuration** menu, shows the rules to every user; admins and super-admins change them. The rules are tried from top to bottom: the first enabled rule of the service of the call (Voice, Speech, Data, or every service when none is checked) whose conditions hold — all of them, or any of them — gives its Root Category and Root Cause, chosen from the catalog, with their domain and the evidence: the values of the call that met it (*LTE RSRP (average) −118.43 dBm (< −110 dBm)*). A rule without conditions takes every call of its services that reaches it, and a disabled rule is skipped. A number is compared (<, ≤, >, ≥, =, ≠) with a value in the unit shown; a text contains, or does not contain, one of its words, separated by commas (`a+b` needs both); any value can be empty or not empty. Each rule shows the Non-Qualified Calls it explains.
 
-The default rules, the same in every workspace, are, in this order:
+The default rules, the same in every workspace, are listed one by one in [Default rules](#default-rules). In short, in this order:
 
-1. What the provider reports outside the radio: the device or the test setup, the subscriber identity, rejected authentication or registration, tracking area updates, bearers deactivated by the network, the QCI1 bearer of a call, the VoLTE or IMS core, EPS fallback, paging and sessions in GSM.
-2. The radio of the call: poor LTE and NR coverage (average RSRP below −110 dBm), the LTE uplink at its maximum power (23 dBm, with an RSRP below −100 dBm), LTE and NR downlink interference (average SINR below 0 dB), no dominant LTE cell (RSRQ below −15 dB), the coverage and interference of the B side, fallbacks to 2G or 3G, a high BLER (above 10 %), handover and radio link failures, inter-RAT transitions, and the coverage and interference (downlink or uplink) the provider reports, in the category of the technology at the failure (LTE, the anchor, unless it is NR alone or 2G or 3G alone).
-3. The service, once the radio is not the cause: DNS, HTTP or server errors, TCP, no downlink packets, packet loss (above 5 %), high latency (above 150 ms), data transfer timeouts, the low throughput the provider reports and that of the Cutoff tests with good radio, the RTP loss of Speech samples, the Voice failures with good radio (a potential E2E issue) and the end-to-end traces the provider asks for. Good radio means that the radio was measured and no radio rule took the call: without radio values neither the Cutoff tests nor the Voice failures are given a cause.
-4. **Not identified** (Unclear) for the calls none of them explains.
+1. What the provider reports outside the radio, and the lack of resources: the device or the test setup, the subscriber identity, insufficient resources of the core and accesses rejected by the network, rejected authentication or registration, tracking area updates, bearers deactivated by the network, the QCI1 bearer of a call, the VoLTE or IMS core, EPS fallback, paging and sessions in GSM.
+2. The network around the call (Network Inventory): cells out of service on its sites, coverage holes, overshooting and PCI collisions, before the coverage and interference they bring.
+3. The radio of the call: poor LTE and NR coverage (average RSRP below −110 dBm), the LTE uplink at its maximum power (23 dBm, with an RSRP below −100 dBm), LTE and NR downlink interference (average SINR below 0 dB), no dominant LTE cell (RSRQ below −15 dB), the coverage and interference of the B side, fallbacks to 2G or 3G and a high BLER (above 10 %).
+4. Its handovers and the radio link: ping-pong handovers, handover and radio link failures and inter-RAT transitions; then the coverage and interference (downlink or uplink) the provider reports, in the category of the technology at the failure (LTE, the anchor, unless it is NR alone or 2G or 3G alone).
+5. The service, once the radio is not the cause: DNS, HTTP or server errors, TCP, no downlink packets, packet loss (above 5 %), high latency (above 150 ms), data transfer timeouts, Cutoff tests given few resource blocks (a loaded cell), the low throughput the provider reports and that of the Cutoff tests with good radio, the RTP loss of Speech samples, the Voice failures with good radio (a potential E2E issue) and the end-to-end traces the provider asks for. Good radio means that the radio was measured and no radio rule took the call: without radio values neither the Cutoff tests nor the Voice failures are given a cause.
+6. **Not identified** (Unclear) for the calls none of them explains.
+
+A workspace whose rules were changed before a version added default rules takes the new ones once, each after the default rule before it; App Events lists them.
 
 The values the rules give stay in the [Root Cause Catalog](#root-cause-catalog), which refuses to remove them, or to rename those root categories and causes, until no rule gives them.
 
@@ -659,6 +692,100 @@ The values the rules give stay in the [Root Cause Catalog](#root-cause-catalog),
 > **The order of the rules matters.** A rule only takes the calls the rules above it leave, so a broad rule high in the list hides the rules below it.
 
 **Learn from the decisions of the analysts**, at the top of the dialog and off by default, lets the DT Analyzer RCA learn from the Root Category and Root Cause the analysts choose. Calls share a pattern when the same rule explains them, they belong to the same service and the provider describes their failure the same way (its Failure Classification, Category and Subcategory). A call takes the Root Category and Cause the analysts gave most of the other calls of its pattern when at least 2 of them, and more than half of those decided, agree; its own decision never counts. It also learns for the calls the rules leave Not identified, and the other calls keep what their rule gives. The evidence says what was learned and from how many calls (*Learned from the analysts: 3 of the 3 other calls of the rule “Voice failure with good radio”…*), the card of the source in the call says **Learned from the analysts**, and the dialog counts the calls that learned. What it learns follows each new decision of the analysts and each indexing of the CDRs (also **Reindex**); turning it off gives every call the root cause of its rule again. The setting travels with the rules, and App Events records when it is turned on or off.
+
+### Default rules
+
+The default rules of the DT Analyzer RCA, the same in every workspace, in the order they are tried. The first rule of the service of the call whose conditions hold gives its Root Category and Root Cause; *All* rules take every service. A text condition holds when the text contains one of its words (`a+b` needs both). *In NR alone* means that the technology at the failure is NR without LTE (an SA call); *in 2G or 3G alone*, without LTE nor NR. Admins change them in [DT Analyzer RCA Rules](#dt-analyzer-rca-rules).
+
+| # | Rule | Services | When | Root Category · Root Cause | Domain |
+| --- | --- | --- | --- | --- | --- |
+| | **What the provider reports outside the radio, and the lack of resources** | | | | |
+| 1 | Device or test setup | All | Failure description contains `modem`, `device`, `test setup`, `ue crash`, `at command`, `script error`, `battery` | UE / Test Setup Issue · Device or test setup | Device |
+| 2 | Subscriber identity | All | Failure description contains `imsi`, `ue identity cannot be derived` | IMSI Issue | Core |
+| 3 | Insufficient resources of the core | All | Failure description contains `insufficient resources`, `service reject+congestion` | Core Network · Insufficient resources | Core |
+| 4 | Access rejected by the network | All | Signalling events contains `rrcconnectionreject`, `rrcreject`, `immediate assignment reject` or Failure description contains `rrc connection reject` | RAN Capacity · Access rejected (no resources) | RAN |
+| 5 | Authentication or registration rejected | All | Failure description contains `authentication`, `authorization`, `registration reject`, `attach reject`, `pdu session establishment reject` | Authentication & Registration · Authentication/Authorization | AAA |
+| 6 | Tracking area update | All | Failure description contains `tracking area update` | Core Network · TAU reject | Core |
+| 7 | Bearer deactivated by the network | All | Failure description contains `bearer deactivation`, `deregistered`, `detach request` | Core Network · EPS bearer deactivation | Core |
+| 8 | No QCI1 bearer for the call | Voice, Speech | Failure description contains `qci1`, `qci 1` | IMS / VoLTE · No QCI1 established | IMS/E2E |
+| 9 | VoLTE or IMS core | Voice, Speech | Failure description contains `volte core`, `ims core`, `ims registration`, `sip`, `server internal error` | IMS / VoLTE · VoLTE core | IMS/E2E |
+| 10 | EPS fallback | Voice, Speech | Failure description contains `epsfb`, `eps fallback` | EPS Fallback · EPS fallback failure | Core EPSFB |
+| 11 | Paging | All | Failure description contains `paging` | RAN Performance · Paging | RAN |
+| 12 | Session in GSM | All | Failure description contains `session in gsm` | Core Network · WhatsApp session in GSM | Core |
+| | **The network around the call (Network Inventory)** | | | | |
+| 13 | Cells out of service on its sites | All | Cells out of service on its sites ≥ 1 and RSRP at the failure < −105 dBm | Operational · Cell/Site Outage | Operational |
+| 14 | Cells out of service on its sites with interference | All | Cells out of service on its sites ≥ 1 and SINR at the failure < 3 dB | Operational · Cell/Site Outage | Operational |
+| 15 | NR coverage hole | All | Nearest site distance / its ISD ≥ 1.5 × and NR RSRP (average) < −110 dBm, in NR alone | Poor Coverage NR · Large distance to the nearest site | RF |
+| 16 | Coverage hole | All | Nearest site distance / its ISD ≥ 1.5 × and LTE RSRP (average) < −110 dBm | Poor Coverage LTE · Large distance to the nearest site | RF |
+| 17 | Coverage hole without service | All | Nearest site distance / its ISD ≥ 1.5 × and Radio measured is empty | Poor Coverage LTE · Large distance to the nearest site | RF |
+| 18 | NR overshooting | All | Serving site distance / its ISD ≥ 2 × and Serving site distance ≥ 1 km and NR SINR (average) < 3 dB, in NR alone | DL Interference NR · Overshooting or excessive cell overlap | RF |
+| 19 | Overshooting | All | Serving site distance / its ISD ≥ 2 × and Serving site distance ≥ 1 km and LTE SINR (average) < 3 dB | DL Interference LTE · Overshooting or excessive cell overlap | RF |
+| 20 | NR overshooting with weak coverage | All | Serving site distance / its ISD ≥ 2 × and Serving site distance ≥ 1 km and NR RSRP (average) < −105 dBm, in NR alone | Poor Coverage NR · Overshooting or excessive cell overlap | RF |
+| 21 | Overshooting with weak coverage | All | Serving site distance / its ISD ≥ 2 × and Serving site distance ≥ 1 km and LTE RSRP (average) < −105 dBm | Poor Coverage LTE · Overshooting or excessive cell overlap | RF |
+| 22 | NR PCI collision | All | PCI collisions around ≥ 1 and NR SINR (average) < 3 dB, in NR alone | DL Interference NR · PCI Collision/PCI MOD 3 Collision | RF |
+| 23 | PCI collision | All | PCI collisions around ≥ 1 and LTE SINR (average) < 3 dB | DL Interference LTE · PCI Collision/PCI MOD 3 Collision | RF |
+| | **The radio of the call** | | | | |
+| 24 | Poor LTE coverage | All | LTE RSRP (average) < −110 dBm | Poor Coverage LTE · Coverage | RF |
+| 25 | Poor NR coverage | All | NR RSRP (average) < −110 dBm | Poor Coverage NR · Coverage | RF |
+| 26 | LTE uplink at maximum power | All | LTE transmit power (maximum) ≥ 23 dBm and LTE RSRP (average) < −100 dBm | Poor Coverage LTE · Coverage | RF |
+| 27 | LTE downlink interference | All | LTE SINR (average) < 0 dB | DL Interference LTE · DL interference | RF |
+| 28 | NR downlink interference | All | NR SINR (average) < 0 dB | DL Interference NR · DL interference | RF |
+| 29 | No dominant LTE cell | All | LTE RSRQ (average) < −15 dB | DL Interference LTE · Lack of dominant cell | RF |
+| 30 | Poor LTE coverage of the B side | Voice, Speech | B side LTE RSRP (average) < −110 dBm | Poor Coverage LTE · Coverage | RF |
+| 31 | Poor NR coverage of the B side | Voice, Speech | B side NR RSRP (average) < −110 dBm | Poor Coverage NR · Coverage | RF |
+| 32 | LTE interference on the B side | Voice, Speech | B side LTE SINR (average) < 0 dB | DL Interference LTE · DL interference | RF |
+| 33 | Fallback to 2G or 3G | All | Technologies used contains `gsm`, `umts`, `wcdma`, `hspa`, `2g`, `3g` | Poor Coverage 2G/3G · Inter-RAT transition | RF |
+| 34 | High LTE BLER | All | LTE BLER > 10 % | BLER LTE · BLER | RF |
+| 35 | High NR BLER | All | NR BLER > 10 % | BLER NR · BLER | RF |
+| | **Its handovers and the radio link** | | | | |
+| 36 | NR ping-pong handovers | All | Ping-pong handovers ≥ 1, in NR alone | Mobility NR · Ping-pong handover | RAN |
+| 37 | Ping-pong handovers | All | Ping-pong handovers ≥ 1 | Mobility LTE · Ping-pong handover | RAN |
+| 38 | NR handover failure | All | Failure description contains `handover` and Failure Technology contains `5g`, `nr` | Mobility NR · Handover failure | RAN |
+| 39 | Handover failure | All | Failure description contains `handover` | Mobility LTE · Handover failure | RAN |
+| 40 | Radio link failure | All | Failure description contains `radio link failure`, `t310`, `reestablishment`, `random access`, `rach`, `scg failure`, `scgfailure`, `rrc` | RAN Performance · RRC layer | RAN |
+| 41 | Inter-RAT transition | All | Failure description contains `inter-rat`, `irat`, `redirection`, `4g -> 5g`, `5g -> 4g` | RAN Performance · Inter-RAT transition | RAN |
+| | **The coverage and interference the provider reports** | | | | |
+| 42 | NR coverage reported by the provider | All | Failure description contains `coverage`, `plmn lost`, `no service`, `out of service`, in NR alone | Poor Coverage NR · Coverage | RF |
+| 43 | 2G or 3G coverage reported by the provider | All | Failure description contains `coverage`, `plmn lost`, `no service`, `out of service`, in 2G or 3G alone | Poor Coverage 2G/3G · Coverage | RF |
+| 44 | Coverage reported by the provider | All | Failure description contains `coverage`, `plmn lost`, `no service`, `out of service` | Poor Coverage LTE · Coverage | RF |
+| 45 | NR uplink interference reported by the provider | All | Failure description contains `ul interference`, `uplink interference`, in NR alone | UL Interference NR · UL interference | RF |
+| 46 | Uplink interference reported by the provider | All | Failure description contains `ul interference`, `uplink interference` | UL Interference LTE · UL interference | RF |
+| 47 | NR interference reported by the provider | All | Failure description contains `interference`, in NR alone | DL Interference NR · DL interference | RF |
+| 48 | 2G or 3G interference reported by the provider | All | Failure description contains `interference`, in 2G or 3G alone | DL Interference 2G/3G · DL interference | RF |
+| 49 | Interference reported by the provider | All | Failure description contains `interference` | DL Interference LTE · DL interference | RF |
+| | **The service, once the radio is not the cause** | | | | |
+| 50 | DNS | Data | Failure description contains `dns` or DNS success < 100 % or DNS time > 1000 ms | Protocol / Server · DNS | Protocol |
+| 51 | HTTP or server error | Data | Failure description contains `http`, `server error`, `200 ok` | Protocol / Server · HTTP | Protocol |
+| 52 | TCP connection | Data | Failure description contains `tcp`, `handshake` or TCP round-trip time > 1000 ms | Protocol / Server · TCP connection errors | Protocol |
+| 53 | No downlink packets | Data | Failure description contains `no dl packets` | Protocol / Server · No DL packets | Protocol |
+| 54 | Packet loss | Data | Failure description contains `packet loss`, `no answer to ping`, `retransmission`, `no answer to hello` or Packet loss > 5 % | Protocol / Server · Packet loss | Protocol |
+| 55 | High latency | Data | Failure description contains `latency` or Latency (round-trip time) > 150 ms | Protocol / Server · Latency | Protocol |
+| 56 | Data transfer timeout | Data | Failure description contains `timeout` | Protocol / Server · Data transfer timeout | Protocol |
+| 57 | NR cell short of resource blocks | Data | Result contains `cutoff` and Radio measured is not empty and NR DL resource blocks used < 25 % | RAN Capacity · Cell overload | RAN |
+| 58 | Cell short of resource blocks | Data | Result contains `cutoff` and Radio measured is not empty and LTE DL resource blocks used < 25 % | RAN Capacity · Cell overload | RAN |
+| 59 | Low throughput reported by the provider | Data | Failure description contains `low throughput` | RAN Performance · Low throughput | RAN |
+| 60 | Low throughput with good radio | Data | Result contains `cutoff` and Radio measured is not empty | RAN Performance · Low throughput | RAN |
+| 61 | RTP packet loss | Speech | RTP packet loss > 5 % | Protocol / Server · Packet loss | Protocol |
+| 62 | Voice failure with good radio | Voice, Speech | Radio measured is not empty | E2E · Potential E2E Issue | IMS/E2E |
+| 63 | End-to-end trace required | All | Failure description contains `e2e` | E2E · E2E trace required | IMS/E2E |
+| | **The calls none of them explains** | | | | |
+| 64 | Not identified | All | Every call that reaches it | Unclear | Operational |
+
+### Root domains, categories and causes
+
+The values the default rules give, by root domain of the [Root Cause Catalog](#root-cause-catalog). The catalog keeps them: they cannot be removed, nor a category or cause renamed, while a rule gives them.
+
+| Domain | Root Categories | Root Causes |
+| --- | --- | --- |
+| RF | BLER LTE, BLER NR, DL Interference 2G/3G, DL Interference LTE, DL Interference NR, Poor Coverage 2G/3G, Poor Coverage LTE, Poor Coverage NR, UL Interference LTE, UL Interference NR | BLER, Coverage, DL interference, Inter-RAT transition, Lack of dominant cell, Large distance to the nearest site, Overshooting or excessive cell overlap, PCI Collision/PCI MOD 3 Collision, UL interference |
+| RAN | Mobility LTE, Mobility NR, RAN Capacity, RAN Performance | Access rejected (no resources), Cell overload, Handover failure, Inter-RAT transition, Low throughput, Paging, Ping-pong handover, RRC layer |
+| Core | Core Network, IMSI Issue | EPS bearer deactivation, Insufficient resources, TAU reject, WhatsApp session in GSM |
+| Core EPSFB | EPS Fallback | EPS fallback failure |
+| IMS/E2E | E2E, IMS / VoLTE | E2E trace required, No QCI1 established, Potential E2E Issue, VoLTE core |
+| AAA | Authentication & Registration | Authentication/Authorization |
+| Protocol | Protocol / Server | DNS, Data transfer timeout, HTTP, Latency, No DL packets, Packet loss, TCP connection errors |
+| Device | UE / Test Setup Issue | Device or test setup |
+| Operational | Operational, Unclear | Cell/Site Outage |
 
 ## Ericsson RCA results
 

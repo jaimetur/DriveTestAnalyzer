@@ -261,6 +261,12 @@ NETCHECK_PROFILE = CdrFieldProfile(
         'mos': ('POLQA_LQ_Avg', 'LQ'),
         'rtp_packet_loss': ('RTP_Packet_Loss_A',),
         'jitter': ('jitter_ms', 'RTP_Jitter_Avg_A'),
+        # The resource blocks the primary carriers gave the test, and their bandwidth (MHz) and NR band.
+        'lte_dl_rbs': ('LTE_DL_PCell_RBs_Avg',),
+        'lte_dl_bandwidth': ('LTE_DL_PCell_Bandwidth',),
+        'nr_dl_rbs': ('NR_DL_RBs_Avg',),
+        'nr_dl_bandwidth': ('NR_DL_PCell_Bandwidth',),
+        'nr_dl_band': ('NR_DL_PCell_Band',),
     },
     # NetCheck gives the RTP packet loss as a share (0 to 1).
     nq_rca_scales={'rtp_packet_loss': 100.0},

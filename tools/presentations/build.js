@@ -1109,30 +1109,46 @@ async function applyTheme(file, theme) {
   fs.writeFileSync(file, await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' }));
 }
 
-// ------------------------------------------------------------------------------------- benchmarking providers deck
-// The adaptation of the tool to the CDRs of benchmarking providers other than NetCheck (Umlaut first, then P3), in the
-// design of its own deck: benchmarking-providers/ holds a picture of each slide, with the Ericsson logo at the top right,
-// and slides.json their order, section, title and speaker notes.
-const PROVIDERS_DECK = path.join(__dirname, 'benchmarking-providers');
-const PROVIDERS_SLIDES = JSON.parse(fs.readFileSync(path.join(PROVIDERS_DECK, 'slides.json'), 'utf8'));
+// ------------------------------------------------------------------------------------- decks of their own design
+// Decks in a design of their own: their folder holds a picture of each slide and slides.json their order, section, title
+// and speaker notes. benchmarking-providers/ is the adaptation of the tool to the CDRs of benchmarking providers other
+// than NetCheck (Umlaut first, then P3), with the Ericsson logo at the top right; dt-analyzer-rca/ the DT Analyzer RCA of
+// Non-Qualified Calls, whose slides.html is the source of its pictures.
+function imageDeck(folder) {
+  const dir = path.join(__dirname, folder);
+  return { dir, ...JSON.parse(fs.readFileSync(path.join(dir, 'slides.json'), 'utf8')) };
+}
+const PROVIDERS_SLIDES = imageDeck('benchmarking-providers');
+const DTA_SLIDES = imageDeck('dt-analyzer-rca');
 
-function providersSections() {
+function imageSections(deck) {
   const sections = [];
-  for (const slide of PROVIDERS_SLIDES.slides) {
+  for (const slide of deck.slides) {
     if (sections.at(-1)?.title !== slide.section) sections.push({ title: slide.section, slides: [] });
     sections.at(-1).slides.push(slide.title);
   }
   return sections;
 }
 
-function providersDeck(pres) {
+function imageSlides(pres, deck) {
   let section;
-  for (const slide of PROVIDERS_SLIDES.slides) {
+  for (const slide of deck.slides) {
     if (slide.section !== section) { pres.addSection({ title: slide.section }); section = slide.section; }
     const page = pres.addSlide({ sectionTitle: slide.section });
-    page.addImage({ path: path.join(PROVIDERS_DECK, slide.image), x: 0, y: 0, w: '100%', h: '100%', objectName: slide.title });
+    page.addImage({ path: path.join(deck.dir, slide.image), x: 0, y: 0, w: '100%', h: '100%', objectName: slide.title });
     if (slide.notes) page.addNotes(slide.notes);
   }
+}
+
+async function writeImageDeck(deck, file, subject) {
+  const pres = new pptxgen();
+  pres.author = 'DriveTest Analyzer'; pres.title = deck.title; pres.subject = subject;
+  pres.layout = 'LAYOUT_WIDE';
+  imageSlides(pres, deck);
+  const target = path.join(OUT, file);
+  await pres.writeFile({ fileName: target });
+  await applyTheme(target, THEME);
+  return target;
 }
 
 // The presentations as the Help lists them (static/presentations/presentations.json): their file and the title of each
@@ -1158,7 +1174,10 @@ const PRESENTATIONS = [
   { id: 'benchmarking-providers', title: PROVIDERS_SLIDES.title, file: 'benchmarking-providers.pptx',
     download: 'DriveTest Analyzer - Benchmarking Providers Roadmap.pptx',
     description: 'How the tool is being adapted to Umlaut and P3 CDRs and the status of each phase, how it is built inside and how it is deployed in the cloud.',
-    sections: providersSections() },
+    sections: imageSections(PROVIDERS_SLIDES) },
+  { id: 'dt-analyzer-rca', title: DTA_SLIDES.title, file: 'dt-analyzer-rca.pptx', download: 'DriveTest Analyzer - DT Analyzer RCA.pptx',
+    description: 'How the DT Analyzer RCA finds the root cause of every Non-Qualified Call: what it reads, its rules, the lack of resources, the network around the call and the evidence it gives.',
+    sections: imageSections(DTA_SLIDES) },
 ];
 
 async function main() {
@@ -1225,17 +1244,12 @@ async function main() {
   await plan.writeFile({ fileName: planFile });
   await applyTheme(planFile, THEME);
 
-  const providers = new pptxgen();
-  providers.author = 'DriveTest Analyzer'; providers.title = PROVIDERS_SLIDES.title;
-  providers.subject = 'Adaptation of DriveTest Analyzer to other benchmarking providers';
-  providers.layout = 'LAYOUT_WIDE';
-  providersDeck(providers);
-  const providersFile = path.join(OUT, 'benchmarking-providers.pptx');
-  await providers.writeFile({ fileName: providersFile });
-  await applyTheme(providersFile, THEME);
+  const providersFile = await writeImageDeck(PROVIDERS_SLIDES, 'benchmarking-providers.pptx',
+    'Adaptation of DriveTest Analyzer to other benchmarking providers');
+  const dtaFile = await writeImageDeck(DTA_SLIDES, 'dt-analyzer-rca.pptx', 'The DT Analyzer RCA of Non-Qualified Calls');
   fs.writeFileSync(path.join(OUT, 'presentations.json'), `${JSON.stringify({ presentations: PRESENTATIONS, figures: FIGURES }, null, 2)}\n`);
   fs.rmSync(work, { recursive: true, force: true });
-  console.log(deckFile); console.log(singleFile); console.log(planFile); console.log(providersFile);
+  console.log(deckFile); console.log(singleFile); console.log(planFile); console.log(providersFile); console.log(dtaFile);
 }
 
 main().catch((error) => { console.error(error); process.exit(1); });
