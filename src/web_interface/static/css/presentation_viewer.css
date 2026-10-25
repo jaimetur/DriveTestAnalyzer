@@ -10,8 +10,11 @@
 .presentation-card-body { display: grid; gap: .25rem; padding: .8rem 1rem .4rem; }
 .presentation-card-title { color: var(--brand-3); font-size: 1rem; line-height: 1.3; }
 .presentation-card-description { color: var(--muted); font-size: .85rem; line-height: 1.45; }
-.doc-markdown .presentation-card-download { justify-self: start; margin: .4rem 1rem .9rem; padding: .35rem .85rem; border: 1px solid color-mix(in srgb, var(--brand) 45%, transparent); border-radius: 999px; color: var(--brand); font-size: .82rem; font-weight: 800; text-decoration: none; }
-.doc-markdown .presentation-card-download:hover, .doc-markdown .presentation-card-download:focus-visible { background: color-mix(in srgb, var(--brand) 10%, #fff); }
+.presentation-card-actions { display: flex; flex-wrap: wrap; gap: .5rem; margin: .4rem 1rem .9rem; }
+.doc-markdown .presentation-card-download, .presentation-card-link { padding: .35rem .85rem; border: 1px solid color-mix(in srgb, var(--brand) 45%, transparent); border-radius: 999px; background: #fff; color: var(--brand); font: inherit; font-size: .82rem; font-weight: 800; line-height: 1.2; text-decoration: none; box-shadow: none; cursor: pointer; }
+.doc-markdown .presentation-card-download:hover, .doc-markdown .presentation-card-download:focus-visible,
+.presentation-card-link:hover, .presentation-card-link:focus-visible { background: color-mix(in srgb, var(--brand) 10%, #fff); }
+.presentation-card-link.is-copied, .presentation-secondary.is-copied { border-color: var(--brand); background: var(--brand); color: #fff; }
 .presentation-error { color: var(--danger); font-weight: 700; }
 .presentation-updating { margin: .6rem 0 0; color: var(--muted); font-size: .86rem; font-style: italic; }
 
@@ -64,9 +67,9 @@
 .presentation-step-next { background: #1f6fbf; }
 .presentation-step-next:hover, .presentation-step-next:focus-visible { background: #17589a; }
 .presentation-dialog-buttons { grid-column: 3; display: flex; justify-content: flex-end; gap: .6rem; }
-.presentation-secondary { padding: .55rem 1rem; border: 1px solid color-mix(in srgb, var(--brand) 45%, transparent); border-radius: 999px; background: #fff; color: var(--brand-3); font: inherit; font-weight: 700; cursor: pointer; }
+.presentation-secondary { padding: .55rem 1rem; border: 1px solid color-mix(in srgb, var(--brand) 45%, transparent); border-radius: 999px; background: #fff; color: var(--brand-3); font: inherit; font-weight: 700; white-space: nowrap; cursor: pointer; }
 .presentation-secondary:hover, .presentation-secondary:focus-visible { background: color-mix(in srgb, var(--brand) 10%, #fff); }
-.presentation-download { display: inline-flex; align-items: center; padding: .6rem 1.2rem; border-radius: 999px; background: var(--brand); color: #fff; font-weight: 800; text-decoration: none; }
+.presentation-download { display: inline-flex; align-items: center; padding: .6rem 1.2rem; border-radius: 999px; background: var(--brand); color: #fff; font-weight: 800; white-space: nowrap; text-decoration: none; }
 .presentation-download:hover, .presentation-download:focus-visible { background: #075d59; }
 /* The slideshow: its settings above its button, and the slides full screen on black, each entering over the one it
    replaces with the transition of the presentation mode of PPT Dashboards. */

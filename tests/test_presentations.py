@@ -324,3 +324,23 @@ def test_the_slide_viewer_goes_through_the_slides_from_its_footer_the_wheel_and_
     assert "if (['ArrowLeft', 'ArrowUp', 'PageUp'].includes(event.key)) moveShow(-1);" in script
     assert 'if (event.ctrlKey || event.metaKey) {' in script and 'showSlide(viewerIndex + Math.sign(wheelTravel));' in script
 
+
+def test_a_direct_link_opens_its_presentation_in_the_slide_viewer(client):
+    root = Path(__file__).resolve().parents[1]
+    script = (root / 'src/web_interface/static/js/presentation_viewer.js').read_text(encoding='utf-8')
+    footer = script[script.index('<footer class="presentation-dialog-actions">'):script.index('</footer>')]
+    # Copy link, on each card and beside Close in the viewer, copies the link of the presentation (of the slide shown).
+    assert footer.index('data-presentation-link') < footer.index('data-presentation-close>Close</button>')
+    assert "share.addEventListener('click', () => copyLink(share, linkOf(presentation)));" in script
+    assert "share.addEventListener('click', () => copyLink(share, linkOf(current, viewerIndex)));" in script
+    # The link is the page with the presentation and its slide, which the viewer opens once it is there, also where the
+    # page is not a secure context; while it is open, the address of the page is that link.
+    assert "url.searchParams.set('presentation', presentation.id);" in script and "url.searchParams.set('slide', String(index + 1));" in script
+    assert script.count('openLinked(data);') == 2 and "if (!blocks.length && !linked().id) return;" in script
+    assert "document.execCommand('copy')" in script and 'window.history.replaceState' in script
+    # Whoever has not signed in opens it too.
+    client.cookies.clear()
+    assert client.get('/documents/view/help/help.md?presentation=workspace-config&slide=3').status_code == 200
+    for chapter in ('help', 'overview'):
+        assert '**Copy link**, on each card and beside **Close** in the viewer' in (root / 'help' / f'{chapter}.md').read_text(encoding='utf-8')
+

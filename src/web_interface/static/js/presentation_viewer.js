@@ -42,6 +42,52 @@
       {index: index++, title, section: section.title, source: section.presentation, position})));
   };
   const count = (total) => `${total} slide${total === 1 ? '' : 's'}`;
+  // The direct link of a presentation (at a slide other than the first): this page, which opens it in the slide viewer.
+  const linkOf = (presentation, index = 0) => {
+    const url = new URL(window.location.pathname, window.location.origin);
+    url.searchParams.set('presentation', presentation.id);
+    if (index > 0) url.searchParams.set('slide', String(index + 1));
+    return url.href;
+  };
+  // The presentation and slide (from 0) a link asks for.
+  const linked = () => {
+    const query = new URLSearchParams(window.location.search);
+    return {id: query.get('presentation') || '', index: Math.max(0, (Number.parseInt(query.get('slide') || '1', 10) || 1) - 1)};
+  };
+  // Copies a text, also where the page is not a secure context (served by address on the network), which has no
+  // clipboard API, or where the browser refuses it: a hidden field is selected and copied instead.
+  const copyText = async (text) => {
+    if (navigator.clipboard && window.isSecureContext) {
+      try {
+        await navigator.clipboard.writeText(text);
+        return;
+      } catch (_error) {
+        // The hidden field below.
+      }
+    }
+    const field = node('textarea');
+    field.value = text;
+    field.setAttribute('readonly', '');
+    field.style.cssText = 'position: fixed; top: 0; left: 0; opacity: 0; font-size: 16px;';
+    document.body.append(field);
+    field.select();
+    field.setSelectionRange(0, text.length);
+    const copied = document.execCommand('copy');
+    field.remove();
+    if (!copied) throw new Error('The browser did not let the page copy the link.');
+  };
+  // The link copied by a button, which says so for a moment; where the browser refuses it, the link is shown to copy.
+  const copyLink = async (button, link) => {
+    const label = button.textContent;
+    try {
+      await copyText(link);
+      button.textContent = 'Link copied';
+      button.classList.add('is-copied');
+      window.setTimeout(() => { button.textContent = label; button.classList.remove('is-copied'); }, 1600);
+    } catch (_error) {
+      window.prompt('Copy the link of the presentation:', link);
+    }
+  };
   // The transition effects of the slideshow, as those of the presentation mode of PPT Dashboards.
   const EFFECTS = [['none', 'None'], ['random', 'Random'], ['blinds', 'Blinds'], ['blur', 'Blur'], ['bounce', 'Bounce'], ['curtain', 'Curtain'],
     ['fade', 'Fade'], ['flip', 'Flip'], ['mosaic', 'Mosaic'], ['rise', 'Rise'], ['slide-left', 'Slide from left'], ['slide', 'Slide from right'],
@@ -62,10 +108,16 @@
     body.append(node('strong', presentation.title, 'presentation-card-title'), node('span', presentation.description, 'presentation-card-description'));
     open.append(cover, badge, body);
     open.addEventListener('click', () => openViewer(presentation, 0));
+    const actions = node('div', undefined, 'presentation-card-actions');
     const download = node('a', 'Download PowerPoint', 'presentation-card-download');
     download.href = fileUrl(presentation);
     download.download = presentation.download;
-    item.append(open, download);
+    const share = node('button', 'Copy link', 'presentation-card-link');
+    share.type = 'button';
+    share.title = 'Copy the direct link of this presentation: it opens it in the slide viewer';
+    share.addEventListener('click', () => copyLink(share, linkOf(presentation)));
+    actions.append(download, share);
+    item.append(open, actions);
     return item;
   }
 
@@ -105,13 +157,25 @@
       clearInterval(timer);
       container.querySelectorAll('[data-presentations-updating]').forEach((note) => note.remove());
       container.querySelectorAll('[data-presentation-ids]').forEach((block) => block.replaceWith(gallery(block.dataset.presentationIds.split(' '), data)));
+      openLinked(data);
     }, 10000);
   }
 
-  // Each ```presentations block of the chapter becomes the cards of its presentations.
+  // The presentation of a direct link, opened in the slide viewer once (when it is there).
+  let linkOpened = false;
+  function openLinked(data) {
+    const {id, index} = linked();
+    const presentation = id && !linkOpened && (data.presentations || []).find((item) => item.id === id);
+    if (!presentation) return;
+    linkOpened = true;
+    openViewer(presentation, index);
+  }
+
+  // Each ```presentations block of the chapter becomes the cards of its presentations; a direct link opens its
+  // presentation in the slide viewer.
   async function enhance(container) {
     const blocks = [...container.querySelectorAll('pre > code.language-presentations')];
-    if (!blocks.length) return;
+    if (!blocks.length && !linked().id) return;
     let data;
     try {
       data = await load();
@@ -128,6 +192,7 @@
       }
       code.parentElement.replaceWith(gallery(code.textContent.split(/\s+/).filter(Boolean), data));
     });
+    openLinked(data);
     if (data.updating) follow(container);
   }
 
@@ -192,6 +257,7 @@
           <button type="button" class="presentation-step presentation-step-next" data-presentation-viewer="next" title="Next slide (→ or ↓)" aria-label="Next slide"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg></button>
         </div>
         <div class="presentation-dialog-buttons">
+          <button type="button" class="presentation-secondary" data-presentation-link title="Copy the direct link of this slide: it opens the presentation in the slide viewer">Copy link</button>
           <button type="button" class="presentation-secondary" data-presentation-close>Close</button>
           <a class="presentation-download" href="#" download>Download PowerPoint</a>
         </div>
@@ -208,6 +274,15 @@
       counter: dialog.querySelector('.presentation-show-counter'), toggle: dialog.querySelector('[data-presentation-show="toggle"]'),
     };
     dialog.querySelectorAll('[data-presentation-close]').forEach((button) => button.addEventListener('click', () => dialog.close()));
+    const share = dialog.querySelector('[data-presentation-link]');
+    share.addEventListener('click', () => copyLink(share, linkOf(current, viewerIndex)));
+    // Closed, the page has its own address again.
+    dialog.addEventListener('close', () => {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('presentation');
+      url.searchParams.delete('slide');
+      window.history.replaceState(window.history.state, '', url.href);
+    });
     // A click on the backdrop closes it too.
     dialog.addEventListener('click', (event) => { if (event.target === dialog) dialog.close(); });
     bindViewer();
@@ -263,6 +338,8 @@
     });
     // The next slide is fetched ahead, so moving through the presentation does not wait for it.
     if (viewerIndex + 1 < slides.length) new Image().src = slideUrl(current, viewerIndex + 1);
+    // While it is open, the address of the page is the direct link of the slide shown (with the anchor of the page).
+    window.history.replaceState(window.history.state, '', `${linkOf(current, viewerIndex)}${window.location.hash}`);
   }
 
   function renderNavigation() {
