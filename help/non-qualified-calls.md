@@ -9,7 +9,7 @@ The module is in development, so its main tab can show a red **ALPHA** label (se
 
 ## Presentations
 
-Two presentations sum the module up: **Non-Qualified Calls**, the NQ Analysis Center (which calls to analyse first, why they failed, where, and who follows them up), and **DT Analyzer RCA**, the RCA of its own that finds the root cause of every call (see [DT Analyzer RCA](#dt-analyzer-rca)). Select one to open it in the slide viewer, play it full screen or download its PowerPoint; every presentation is also in [Presentations](help.md#presentations).
+Two presentations sum the module up: **Non-Qualified Calls**, the NQ Analysis Center (which calls to analyse first, why they failed, where, and who follows them up), and **DT Analyzer RCA**, the RCA of its own that finds the root cause of every call (see [DT Analyzer RCA](#dt-analyzer-rca)). Select one to open it in the slide viewer, play it full screen or download its PowerPoint; every presentation is also in [Product Presentations](presentations.md).
 
 ```presentations
 non-qualified-calls
@@ -654,7 +654,7 @@ The calls are calculated when they are indexed, and again whenever its rules, th
 
 ### Presentation
 
-The DT Analyzer RCA is also a presentation, **DT Analyzer RCA**: what it reads, how its rules decide, the lack of resources, the network around the call (coverage holes, overshooting, PCI collisions and cells out of service), handovers and service, the result and evidence of each call and how to change the rules. Select it to open it in the slide viewer, play it full screen or download its PowerPoint; it is also in [Presentations](help.md#presentations).
+The DT Analyzer RCA is also a presentation, **DT Analyzer RCA**: what it reads, how its rules decide, the lack of resources, the network around the call (coverage holes, overshooting, PCI collisions and cells out of service), handovers and service, the result and evidence of each call and how to change the rules. Select it to open it in the slide viewer, play it full screen or download its PowerPoint; it is also in [Product Presentations](presentations.md).
 
 ```presentations
 dt-analyzer-rca

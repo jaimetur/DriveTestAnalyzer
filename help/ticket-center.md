@@ -10,7 +10,7 @@ Use **Ticket Center** to report the bugs you find in the tool, suggest improveme
 
 ## Presentation
 
-The presentation **Ticket Center** sums the module up. Report bugs, suggest improvements and ask for new features with screenshots, and follow each ticket until it is resolved. Select it to open it in the slide viewer, play it full screen or download its PowerPoint; every presentation is also in [Presentations](help.md#presentations).
+The presentation **Ticket Center** sums the module up. Report bugs, suggest improvements and ask for new features with screenshots, and follow each ticket until it is resolved. Select it to open it in the slide viewer, play it full screen or download its PowerPoint; every presentation is also in [Product Presentations](presentations.md).
 
 ```presentations
 ticket-center

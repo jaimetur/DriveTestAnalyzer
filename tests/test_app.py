@@ -9971,11 +9971,12 @@ def test_docs_routes_expose_readme_changelog_and_help(client) -> None:
     help_documents = help_index.json()["documents"]
     assert help_documents[0]["relative_path"] == "help.md"
     assert all('number' not in document for document in help_documents)
-    assert help_documents[1]["label"] == "Product Overview"
-    assert help_documents[2]["label"] == "Technical Considerations"
-    assert help_documents[3]["label"] == "Deployment Configuration"
-    assert help_documents[4]["label"] == "Docker Deployment"
-    assert help_documents[5]["label"] == "Web Interfaces"
+    assert help_documents[1]["label"] == "Product Presentations"
+    assert help_documents[2]["label"] == "Product Overview"
+    assert help_documents[3]["label"] == "Technical Considerations"
+    assert help_documents[4]["label"] == "Deployment Configuration"
+    assert help_documents[5]["label"] == "Docker Deployment"
+    assert help_documents[6]["label"] == "Web Interfaces"
     assert any(item["relative_path"] == "web-interface.md" for item in help_documents)
     assert any(
         item["relative_path"] == "datasets-analysis.md"
@@ -9993,7 +9994,7 @@ def test_docs_routes_expose_readme_changelog_and_help(client) -> None:
         and item["label"] == "Query Builder"
         for item in help_documents
     )
-    assert [item['relative_path'] for item in help_documents[8:]] == [
+    assert [item['relative_path'] for item in help_documents[9:]] == [
         'ppt-dashboards.md',
         'scoring-gap-analysis.md',
         'network-insights.md',
@@ -10069,7 +10070,7 @@ def test_ppt_reporting_old_help_follows_its_feature(client) -> None:
         client.cookies.set(app_module.SESSION_COOKIE, token)
 
         index = [item['relative_path'] for item in client.get('/api/documents/help-index').json()['documents']]
-        assert index[8:14] == ['ppt-dashboards.md', 'ppt-reporting-old.md', 'scoring-gap-analysis.md', 'network-insights.md', 'non-qualified-calls.md', 'reporting.md']
+        assert index[9:15] == ['ppt-dashboards.md', 'ppt-reporting-old.md', 'scoring-gap-analysis.md', 'network-insights.md', 'non-qualified-calls.md', 'reporting.md']
         assert client.get('/documents/view/help/ppt-reporting-old.md').status_code == 200
         assert client.get('/api/documents/help/ppt-reporting-old.md').status_code == 200
         home = client.get('/api/documents/help').json()['content']
@@ -10081,11 +10082,11 @@ def test_help_navigation_groups_unnumbered_documents(client) -> None:
     # The Help navigation takes the group of each chapter from the server, as the Help menu of the tabs.
     login(client)
     groups = {item['relative_path']: item['group'] for item in client.get('/api/documents/help-index').json()['documents']}
-    documents = ['overview.md', 'configuration.md', 'docker-deployment.md', 'workspace-management.md', 'reporting.md', 'scoring-gap-analysis.md',
+    documents = ['presentations.md', 'overview.md', 'configuration.md', 'docker-deployment.md', 'workspace-management.md', 'reporting.md', 'scoring-gap-analysis.md',
                  'network-insights.md', 'query-builder.md', 'ticket-center.md', 'administrator-config.md', 'app-config.md', 'workspace-config.md',
                  'app-logs.md', 'super-admin.md', 'project-structure.md']
     assert groups['help.md'] == '' and [groups[document] for document in documents] == [
-        'General', 'General', 'General', 'Main Modules', 'Main Modules', 'Main Modules', 'Main Modules', 'Main Modules', 'Main Modules',
+        'General', 'General', 'General', 'General', 'Main Modules', 'Main Modules', 'Main Modules', 'Main Modules', 'Main Modules', 'Main Modules',
         'Administrative Modules', 'Administrative Modules', 'Administrative Modules', 'Administrative Modules', 'Administrative Modules',
         'Reference',
     ]
@@ -11229,7 +11230,7 @@ def test_module_tabs_take_order_title_icon_and_colour_from_interface_settings(cl
     assert reporting.startswith('# Scheduled Reporting') and 'Use **Scheduled Reporting**' in reporting
     index = client.get('/api/documents/help-index').json()
     assert {'readme', 'changelog'} <= set(index['icons'])
-    assert all(item.get('icon') for item in index['documents'] if item['relative_path'] in {'reporting.md', 'app-logs.md', 'chart-builder.md', 'overview.md', 'docker-deployment.md', 'roadmap.md', 'benchmarking-providers.md'})
+    assert all(item.get('icon') for item in index['documents'] if item['relative_path'] in {'reporting.md', 'app-logs.md', 'chart-builder.md', 'presentations.md', 'overview.md', 'docker-deployment.md', 'roadmap.md', 'benchmarking-providers.md'})
     # The module chips of every Modules Profile follow the order of the tabs.
     admin_page = client.get('/super-admin').text
     first_profile = re.search(r'form="(modules-profile-\d+)"', admin_page).group(1)

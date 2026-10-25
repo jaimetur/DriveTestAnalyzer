@@ -10,7 +10,7 @@ Chart Builder is the ad-hoc chart editor. It uses the PPT Dashboard individual C
 
 ## Presentation
 
-The presentation **Builders** sums the module up. Ad-hoc exploration of the processed CDRs: Chart Builder draws any chart in the Dashboard viewer and Query Builder runs read-only SQL. Select it to open it in the slide viewer, play it full screen or download its PowerPoint; every presentation is also in [Presentations](help.md#presentations).
+The presentation **Builders** sums the module up. Ad-hoc exploration of the processed CDRs: Chart Builder draws any chart in the Dashboard viewer and Query Builder runs read-only SQL. Select it to open it in the slide viewer, play it full screen or download its PowerPoint; every presentation is also in [Product Presentations](presentations.md).
 
 ```presentations
 builders

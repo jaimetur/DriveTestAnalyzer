@@ -10,7 +10,7 @@ CDR Analysis provides on-demand KPI analysis for one processed CDR in the active
 
 ## Presentation
 
-The presentation **CDR Analysis** sums the module up. On-demand KPI analysis of one processed CDR: its distributions, benchmarks, percentiles and metrics, filtered and exported in seconds. Select it to open it in the slide viewer, play it full screen or download its PowerPoint; every presentation is also in [Presentations](help.md#presentations).
+The presentation **CDR Analysis** sums the module up. On-demand KPI analysis of one processed CDR: its distributions, benchmarks, percentiles and metrics, filtered and exported in seconds. Select it to open it in the slide viewer, play it full screen or download its PowerPoint; every presentation is also in [Product Presentations](presentations.md).
 
 ```presentations
 cdr-analysis

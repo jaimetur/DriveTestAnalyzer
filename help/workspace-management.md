@@ -7,7 +7,7 @@ Workspace Management is the first operational module. It controls isolated works
 
 ## Presentations
 
-Two presentations sum the module up: **Workspace**, the isolated workspaces with their CDRs, network inventories and maps (what each one keeps, what it ingests and how it gets every dataset ready for the other modules), and **Workspace Config**, everything to set up in a new workspace before its first analysis (how operators, vendors and campaigns are named, coloured and ordered, the map areas of its countries, its networks and its methodology; see [Workspace Config](workspace-config.md)). Select one to open it in the slide viewer, play it full screen or download its PowerPoint; every presentation is also in [Presentations](help.md#presentations).
+Two presentations sum the module up: **Workspace**, the isolated workspaces with their CDRs, network inventories and maps (what each one keeps, what it ingests and how it gets every dataset ready for the other modules), and **Workspace Config**, everything to set up in a new workspace before its first analysis (how operators, vendors and campaigns are named, coloured and ordered, the map areas of its countries, its networks and its methodology; see [Workspace Config](workspace-config.md)). Select one to open it in the slide viewer, play it full screen or download its PowerPoint; every presentation is also in [Product Presentations](presentations.md).
 
 ```presentations
 workspace

@@ -248,16 +248,18 @@ def test_every_main_module_has_its_presentation_at_the_start_of_its_chapter():
     assert (GENERATOR_FOLDER / 'dt-analyzer-rca' / 'slides.html').is_file()
     assert all((GENERATOR_FOLDER / 'benchmarking-providers' / slide['image']).is_file()
                for slide in json.loads((GENERATOR_FOLDER / 'benchmarking-providers' / 'slides.json').read_text(encoding='utf-8'))['slides'])
-    # The Help and the Overview show every presentation: those of the tool, then those of the modules and the full
-    # presentation, each in their own section.
+    # Help Home and Product Presentations show every presentation: those of the tool, then those of the modules and the
+    # full presentation, each in their own section; Product Overview points to Product Presentations.
     general = ['overview', 'one-slider', 'roadmap', 'benchmarking-providers']
-    for chapter in ('help', 'overview'):
+    for chapter, level in (('help', '###'), ('presentations', '##')):
         text = (help_folder / f'{chapter}.md').read_text(encoding='utf-8')
-        tool, modules = text.find('```presentations\n' + '\n'.join(general) + '\n```'), text.find('\n### Module presentations\n')
-        full = text.find('\n### Full presentation\n')
+        tool, modules = text.find('```presentations\n' + '\n'.join(general) + '\n```'), text.find(f'\n{level} Module presentations\n')
+        full = text.find(f'\n{level} Full presentation\n')
         assert 0 <= tool < modules < full, chapter
         assert '```presentations\n' + '\n'.join(item for item in ids if item not in general + ['full-presentation']) + '\n```' in text[modules:full], chapter
         assert '```presentations\nfull-presentation\n```' in text[full:], chapter
+    overview = (help_folder / 'overview.md').read_text(encoding='utf-8')
+    assert '```presentations' not in overview and '[Product Presentations](presentations.md)' in overview
 
 
 @pytest.mark.skipif(bool(presentations.PresentationGenerator.unavailable()), reason='Node.js, its packages, Chromium and LibreOffice are needed.')
@@ -348,7 +350,7 @@ def test_a_direct_link_opens_its_presentation_in_the_slide_viewer(client):
     # Whoever has not signed in opens it too.
     client.cookies.clear()
     assert client.get('/documents/view/help/help.md?presentation=workspace-config&slide=3').status_code == 200
-    for chapter in ('help', 'overview'):
+    for chapter in ('help', 'presentations'):
         assert '**Copy link**, on each card and beside **Close** in the viewer' in (root / 'help' / f'{chapter}.md').read_text(encoding='utf-8')
 
 
@@ -385,8 +387,14 @@ def test_the_link_of_a_presentation_shows_its_title_and_the_picture_of_its_slide
         assert image.getpixel((600, 337))[1] > 100  # teal, the second slide
     assert (current / 'workspace' / 'preview-02.jpg').is_file()
     # A slide of the full presentation is the picture of that slide in the presentation it comes from.
-    page = client.get('/documents/view/help/overview.md?presentation=full-presentation&slide=3').text
+    page = client.get('/documents/view/help/presentations.md?presentation=full-presentation&slide=3').text
     assert 'Slide 3 of 3: Campaigns. Every presentation in one.' in page and '/presentations/preview/full-presentation/3.jpg' in page
+    # The link of Product Presentations shows the cover of the Full Presentation; the other chapters show none.
+    chapter = client.get('/documents/view/help/presentations.md').text
+    assert '<meta property="og:title" content="Product Presentations">' in chapter and '<title>Product Presentations</title>' in chapter
+    assert f'content="{presentations.HELP_CHAPTER_PREVIEW["description"]}"' in chapter
+    assert '<meta property="og:image" content="http://testserver/presentations/preview/full-presentation/1.jpg?v=abc">' in chapter
+    assert 'og:image' not in client.get('/documents/view/help/overview.md').text
     assert client.get('/presentations/preview/full-presentation/3.jpg').status_code == 200 and (current / 'workspace' / 'preview-03.jpg').is_file()
     # A slide beyond the last is the last; an unknown presentation shows the page as always.
     assert 'Slide 3 of 3: Campaigns.' in client.get('/documents/view/help/help.md?presentation=workspace&slide=9').text

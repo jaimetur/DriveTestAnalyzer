@@ -407,10 +407,19 @@ class PresentationGenerator:
 _GENERATOR: PresentationGenerator | None = None
 
 
-def link_preview(request: Any) -> dict[str, Any] | None:
+# The Help chapter of every presentation: its link shows the Full Presentation where it is shared.
+HELP_CHAPTER = 'presentations.md'
+HELP_CHAPTER_PREVIEW = {'presentation': 'full-presentation', 'title': 'Product Presentations',
+                        'description': 'Every presentation of DriveTest Analyzer: those of the tool, of every main module, of Workspace '
+                                       'Config and of Administration, and the Full Presentation that joins them all.'}
+
+
+def link_preview(request: Any, chapter: str = '') -> dict[str, Any] | None:
     """What the link of a presentation (a Help page with ``?presentation=<id>&slide=<n>``) shows where it is shared, as
-    Open Graph: its title, the slide and description, and the picture of that slide."""
-    presentation_id = str(request.query_params.get('presentation') or '')
+    Open Graph: its title, the slide and description, and the picture of that slide. The link of Product Presentations
+    (``chapter``) shows the cover of the Full Presentation."""
+    asked = str(request.query_params.get('presentation') or '')
+    presentation_id = asked or (HELP_CHAPTER_PREVIEW['presentation'] if chapter == HELP_CHAPTER else '')
     if not presentation_id or _GENERATOR is None:
         return None
     try:
@@ -423,12 +432,12 @@ def link_preview(request: Any) -> dict[str, Any] | None:
         return None
     item, _folder, _number, index = source
     titles = [title for section in item['sections'] for title in section['slides']]
-    description = str(item.get('description') or '')
+    title, description = (item['title'], str(item.get('description') or '')) if asked else (HELP_CHAPTER_PREVIEW['title'], HELP_CHAPTER_PREVIEW['description'])
     if index:
         description = f'Slide {index + 1} of {len(titles)}: {titles[index]}. {description}'
     base = str(request.base_url).rstrip('/')
     version = manifest.get('key') or manifest.get('generated_at') or ''
-    return {'title': item['title'], 'description': description, 'url': str(request.url), 'width': PREVIEW_SIZE[0], 'height': PREVIEW_SIZE[1],
+    return {'title': title, 'description': description, 'url': str(request.url), 'width': PREVIEW_SIZE[0], 'height': PREVIEW_SIZE[1],
             'image': f"{base}/presentations/preview/{item['id']}/{index + 1}.jpg" + (f'?v={version}' if version else '')}
 
 

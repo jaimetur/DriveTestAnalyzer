@@ -459,6 +459,7 @@ HELP_HOME_DOCUMENT = 'help.md'
 OLD_REPORTING_HELP_DOCUMENT = 'ppt-reporting-old.md'
 HELP_NAVIGATION_DOCUMENTS = (
     HELP_HOME_DOCUMENT,
+    'presentations.md',
     'overview.md',
     'technical-considerations.md',
     'configuration.md',
@@ -485,6 +486,7 @@ HELP_NAVIGATION_DOCUMENTS = (
     'benchmarking-providers.md',
 )
 HELP_DOCUMENT_LABELS = {
+    'presentations.md': 'Product Presentations',
     'overview.md': 'Product Overview',
     'technical-considerations.md': 'Technical Considerations',
     'datasets-analysis.md': 'CDR Analysis',
@@ -14331,8 +14333,9 @@ def help_document_view(request: Request, doc_file: str, user: SessionUser | None
             'back_label': 'Documentation',
             'doc_api_url': f'/api/documents/help/{doc_file}',
             'help_navigation': True,
-            # The link of a presentation shows its title and the picture of its slide where it is shared.
-            'link_preview': link_preview(request),
+            # The link of a presentation shows its title and the picture of its slide where it is shared (that of Product
+            # Presentations, the Full Presentation).
+            'link_preview': link_preview(request, path.name),
         },
     )
 

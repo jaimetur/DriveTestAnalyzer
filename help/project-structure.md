@@ -205,6 +205,7 @@ Workspaces, backups and transfer packages created with the former layout (module
 - `README.md`: product summary, source quick start and deployment overview.
 - `CHANGELOG.md`: versioned release history.
 - `help/help.md`: in-app Help index.
+- `help/presentations.md`: every presentation of the tool, of the modules and the Full Presentation.
 - `help/overview.md`: product and module tour.
 - `help/technical-considerations.md`: data interpretation, persistence, caching and job semantics.
 - Other Help chapters: focused operational and deployment guides.

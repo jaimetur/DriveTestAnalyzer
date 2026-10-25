@@ -7,7 +7,7 @@ Build an interactive Dashboard from processed Data, Voice and Speech CDRs, using
 
 ## Presentation
 
-The presentation **PPT Dashboards** sums the module up. Interactive Dashboards from Report Templates: one selection of CDRs on every slide, live charts to explore and PowerPoint exports generated in the background. Select it to open it in the slide viewer, play it full screen or download its PowerPoint; every presentation is also in [Presentations](help.md#presentations).
+The presentation **PPT Dashboards** sums the module up. Interactive Dashboards from Report Templates: one selection of CDRs on every slide, live charts to explore and PowerPoint exports generated in the background. Select it to open it in the slide viewer, play it full screen or download its PowerPoint; every presentation is also in [Product Presentations](presentations.md).
 
 ```presentations
 ppt-dashboards

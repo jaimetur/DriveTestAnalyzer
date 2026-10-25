@@ -7,7 +7,7 @@ Use **Reporting** to build a **Bundle Report Template**, one PowerPoint or Word 
 
 ## Presentation
 
-The presentation **Reporting** sums the module up. One PowerPoint or Word document with the parts you choose of every module, and Reporting Jobs that build and email them on a schedule. Select it to open it in the slide viewer, play it full screen or download its PowerPoint; every presentation is also in [Presentations](help.md#presentations).
+The presentation **Reporting** sums the module up. One PowerPoint or Word document with the parts you choose of every module, and Reporting Jobs that build and email them on a schedule. Select it to open it in the slide viewer, play it full screen or download its PowerPoint; every presentation is also in [Product Presentations](presentations.md).
 
 ```presentations
 reporting

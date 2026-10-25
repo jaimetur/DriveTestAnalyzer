@@ -11,7 +11,7 @@
 
 ## Roadmap presentation
 
-The roadmap is also a slide of its own, in the Overview deck (before the one-slider) and alone, in [Presentations](help.md#presentations): select it to open it in the slide viewer or download its PowerPoint.
+The roadmap is also a slide of its own, in the Overview deck (before the one-slider) and alone, in [Product Presentations](presentations.md): select it to open it in the slide viewer or download its PowerPoint.
 
 ```presentations
 roadmap

@@ -9,7 +9,7 @@ Each calculation gives the NetCheck **Best Network** scoring, which rates every 
 
 ## Presentation
 
-The presentation **Scoring & GAP Analysis** sums the module up. KPI scores of every operator with the NetCheck methodology, compared with a reference operator: who wins, by how much and where to win the points back. Select it to open it in the slide viewer, play it full screen or download its PowerPoint; every presentation is also in [Presentations](help.md#presentations).
+The presentation **Scoring & GAP Analysis** sums the module up. KPI scores of every operator with the NetCheck methodology, compared with a reference operator: who wins, by how much and where to win the points back. Select it to open it in the slide viewer, play it full screen or download its PowerPoint; every presentation is also in [Product Presentations](presentations.md).
 
 ```presentations
 scoring-gap-analysis

@@ -12,7 +12,7 @@ Open **Config → Workspace Config** from the main navigation at `/workspace-con
 
 ## Presentation
 
-The presentation **Workspace Config** goes through everything to set up in a new workspace before its first analysis: how operators, vendors and campaigns are named, coloured and ordered, the map areas of its countries, its networks and its methodology. Select it to open it in the slide viewer, play it full screen or download its PowerPoint; every presentation is also in [Presentations](help.md#presentations).
+The presentation **Workspace Config** goes through everything to set up in a new workspace before its first analysis: how operators, vendors and campaigns are named, coloured and ordered, the map areas of its countries, its networks and its methodology. Select it to open it in the slide viewer, play it full screen or download its PowerPoint; every presentation is also in [Product Presentations](presentations.md).
 
 ```presentations
 workspace-config

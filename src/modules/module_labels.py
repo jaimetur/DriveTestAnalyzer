@@ -130,6 +130,8 @@ ADMINISTRATIVE_HELP_ICONS = {'app-logs.md': 'app-logs', 'app-config.md': 'config
                              'administrator-config.md': 'admin', 'super-admin.md': 'super-admin'}
 # Icons of the General and Reference Help chapters, in the colour of Readme and Changelog.
 DOCUMENT_HELP_ICONS: dict[str, str] = {
+    # A screen on its stand with a play button.
+    'presentations.md': '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M12 16v4M8 20h8M10.5 8.2v4.6l3.8-2.3z"/>',
     'overview.md': '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5h.01"/>',
     'technical-considerations.md': '<rect x="6" y="6" width="12" height="12" rx="2"/><path d="M10 10h4v4h-4zM9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/>',
     'configuration.md': '<path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/>',

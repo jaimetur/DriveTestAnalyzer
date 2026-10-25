@@ -13,7 +13,7 @@ After **Launch Analysis**, the panels are grouped in three categories, each a pa
 
 ## Presentation
 
-The presentation **Network Insights** sums the module up. The network behind the measured performance: radio quality, weak areas on a map, serving cells, 5G availability, inventories, sites and spectrum. Select it to open it in the slide viewer, play it full screen or download its PowerPoint; every presentation is also in [Presentations](help.md#presentations).
+The presentation **Network Insights** sums the module up. The network behind the measured performance: radio quality, weak areas on a map, serving cells, 5G availability, inventories, sites and spectrum. Select it to open it in the slide viewer, play it full screen or download its PowerPoint; every presentation is also in [Product Presentations](presentations.md).
 
 ```presentations
 network-insights
