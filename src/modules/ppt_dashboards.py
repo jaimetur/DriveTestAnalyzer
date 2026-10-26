@@ -150,6 +150,9 @@ class DashboardDefinition(BaseModel):
     custom_fields: list[str] = Field(default_factory=list)
     hidden_filters: list[str] = Field(default_factory=list)
     slide_comments: dict[str, list[str]] = Field(default_factory=dict)
+    # Per slide, the comments added from Generate comments: {'generated': [their texts], 'engine', 'model',
+    # 'generated_at', 'generated_by', 'selection': the selection (campaigns, filters and CDRs) they were written for}.
+    slide_comment_meta: dict[str, dict[str, Any]] = Field(default_factory=dict)
     date_from: date | Literal['Oldest'] | None = 'Oldest'
     date_to: date | Literal['Newest'] | None = 'Newest'
     # The CDRs follow the NR Mode and the Campaign filter (see ``cdr_auto_selection``); Dashboards saved
@@ -161,8 +164,14 @@ class DashboardThemeRequest(BaseModel):
     theme: str
 
 
+AUTO_COMMENT_MODES = ('off', 'empty', 'generated', 'all')
+
+
 class DashboardPptExportRequest(BaseModel):
     definition: DashboardDefinition | None = None
+    # Auto comments: write generated comments into the PPT (not into the Dashboard) on the slides without comments,
+    # in place of the generated ones or in place of every comment.
+    auto_comments: Literal['off', 'empty', 'generated', 'all'] = 'off'
     preparation_token: str | None = None
     # Legend entries hidden in the viewer: {"dashboard": {label: hidden},
     # "charts": {chart key: {label: hidden}}}; the PPT shows them hidden too.
@@ -208,9 +217,14 @@ class DashboardChartFilterPreviewRequest(BaseModel):
 
 class DashboardComments(BaseModel):
     slide_comments: dict[str, list[str]] = Field(default_factory=dict)
-    # Comments added from the generated suggestions of one slide (App Events).
+    # Comments added from the generated suggestions of one slide: their slide, texts (as added, after any edit),
+    # engine and model, and the preparation they were generated from (its selection marks them out of date later).
     generated_slide: str = ''
     generated_added: int = Field(default=0, ge=0)
+    generated_texts: list[str] = Field(default_factory=list)
+    generated_engine: str = ''
+    generated_model: str = ''
+    token: str = ''
 
 
 class GeneratedCommentChart(BaseModel):
@@ -224,6 +238,20 @@ class GenerateComments(BaseModel):
     slide: int
     # The charts the viewer shows on the slide, with the legend items hidden and shown on each one.
     charts: list[GeneratedCommentChart] = Field(default_factory=list)
+
+
+class GeneratedCommentSlide(BaseModel):
+    number: int
+    charts: list[GeneratedCommentChart] = Field(default_factory=list)
+
+
+class GenerateAllComments(BaseModel):
+    token: str
+    # empty: only the slides without comments; generated: in place of the generated comments, keeping those written by
+    # hand; all: in place of every comment.
+    mode: Literal['empty', 'generated', 'all'] = 'empty'
+    # The slides the viewer shows (a dynamic grid can hide some cards); every content slide when none is given.
+    slides: list[GeneratedCommentSlide] = Field(default_factory=list)
 
 
 class DashboardName(BaseModel):
@@ -575,6 +603,8 @@ def install_dashboard_routes(core):
     dashboard_warmup_unavailable: dict[tuple[str, str], set[str]] = {}
     dashboard_status_shared_signature: dict[str, str] = {}
     interactive_chart_preview_jobs: OrderedDict[str, dict] = OrderedDict()
+    # Jobs writing the comments of every slide of a Dashboard (Generate comments → All slides).
+    comment_jobs: OrderedDict[str, dict] = OrderedDict()
     dashboard_work_gate = Lock()
 
     def workspace_key():
@@ -657,6 +687,8 @@ def install_dashboard_routes(core):
                 connection.execute(
                     f"ALTER TABLE {DASHBOARD_PPT_JOBS_TABLE} ADD COLUMN legend_visibility_json TEXT NOT NULL DEFAULT '{{}}'"
                 )
+            if 'auto_comments' not in columns:
+                connection.execute(f"ALTER TABLE {DASHBOARD_PPT_JOBS_TABLE} ADD COLUMN auto_comments TEXT NOT NULL DEFAULT 'off'")
             if first_check:
                 connection.execute(
                     f'''UPDATE {DASHBOARD_PPT_JOBS_TABLE}
@@ -1082,6 +1114,34 @@ def install_dashboard_routes(core):
                 preview['token'],
             )
 
+    def auto_slide_comments(snapshot, chart_entries, models, legend_visibility, legend_keys, layout, task_repository) -> list[str]:
+        """The comments the rules write for one slide of a PPT from the chart models of its job."""
+        charts = []
+        for index, entry in chart_entries:
+            model = models.get(index)
+            if not model or model.get('type') not in dashboard_comments.SUPPORTED_MODEL_TYPES:
+                continue
+            hidden, shown = chart_legend_lists(legend_visibility, legend_keys.get(index))
+            charts.append({
+                'index': index, 'title': entry.chart_title or entry.slide_title, 'kpi': entry.kpi, 'model': model,
+                'hidden': hidden, 'shown': shown,
+                'subject': ' · '.join(value for value in (entry.dynamic_row_value, entry.dynamic_column_value) if value),
+            })
+        if not charts:
+            return []
+        return [item['text'] for item in dashboard_comments.slide_comments(
+            charts, focus_operators=focus_operators(task_repository), layout=layout or '',
+        )]
+
+    def merge_auto_comments(comments: list[str], automatic: list[str], mode: str, generated: list[str]) -> list[str]:
+        """The comments of a PPT slide with its Auto comments: only on a slide without comments (``empty``), in place of
+        the comments generated before, keeping those written by hand (``generated``), or in place of every comment
+        (``all``). A slide the rules have nothing to say about keeps its comments."""
+        if not automatic or (mode == 'empty' and comments):
+            return comments
+        manual = [text for text in comments if text not in set(generated)] if mode == 'generated' else []
+        return [*manual, *[text for text in automatic if text not in manual]][:50]
+
     def render_dashboard_ppt_job(
         job_id, run_token, task_repository, snapshot, definition, user,
         destination, dashboard_id, preview_fingerprint, cover_regions, cover_cities, cover_campaigns='', theme=None,
@@ -1165,6 +1225,10 @@ def install_dashboard_routes(core):
                 if dashboard_datasets(snapshot.definition, entry.source_kind, task_repository)
             ]
             chart_model_errors: dict[int, str] = {}
+            job_row = dashboard_ppt_job(task_repository, job_id)
+            auto_mode = str(job_row['auto_comments'] or 'off') if job_row is not None else 'off'
+            auto_models: dict[int, dict] = {}
+            auto_written: dict[str, list[str]] = {}
             for position, index in enumerate(indexes):
                 if not run_is_active():
                     return
@@ -1200,10 +1264,17 @@ def install_dashboard_routes(core):
                 pulse.start()
                 try:
                     try:
-                        chart_model(
+                        model = chart_model(
                             snapshot_token, index, user,
                             expected_workspace=str(Path(task_repository.db_path).resolve()),
                         )
+                        if auto_mode != 'off' and dashboard_comments.needs_rebuild(model):
+                            # Auto comments read the facts a model cached before them lacks.
+                            model = chart_model(
+                                snapshot_token, index, user,
+                                expected_workspace=str(Path(task_repository.db_path).resolve()), force=True,
+                            )
+                        auto_models[index] = model
                     except (HTTPException, ValueError) as exc:
                         # A template can legitimately contain a chart for a
                         # field absent from one selected CDR type.  Retain a
@@ -1313,6 +1384,16 @@ def install_dashboard_routes(core):
                 _set_slide_header(slide, header.slide_title, header.slide_subtitle)
                 with use_theme(theme):
                     style_title(slide)
+                if auto_mode != 'off':
+                    comment_key = dashboard_slide_comment_key([entry for _index, entry in slide_entries])
+                    automatic = auto_slide_comments(
+                        snapshot, chart_entries, auto_models, legend_visibility, legend_keys, layout_name, task_repository,
+                    )
+                    merged = merge_auto_comments(comments, automatic, auto_mode,
+                                                 (snapshot.definition.slide_comment_meta.get(comment_key) or {}).get('generated') or [])
+                    if merged != comments:
+                        comments = merged
+                        auto_written[comment_key] = merged
                 _clear_commentary(slide)
                 _set_commentary(slide, comments)
                 _remove_template_chart_placeholders(slide)
@@ -1409,7 +1490,10 @@ def install_dashboard_routes(core):
                     'generate_tooltips': True,
                     'dashboard_id': dashboard_id,
                     'preview_fingerprint': preview_fingerprint,
-                    'definition': snapshot.definition.model_dump(mode='json'),
+                    # The job's viewer shows the comments of the PPT, Auto comments included.
+                    'definition': {**snapshot.definition.model_dump(mode='json'), 'slide_comments': {
+                        **snapshot.definition.slide_comments, **auto_written,
+                    }},
                     # Keep the exact viewer slide structure alongside the
                     # immutable PNG/Canvas assets so a completed PPT job can
                     # later be opened as its own Dashboard snapshot.
@@ -1429,6 +1513,11 @@ def install_dashboard_routes(core):
             update_dashboard_ppt_job(task_repository, job_id, progress=96, chart_count=rendered)
             report_structure.finish(presentation)
             presentation.save(destination)
+            if auto_mode != 'off':
+                task_repository.add_log(user.username, 'auto_dashboard_comments', json.dumps({
+                    'dashboard_id': dashboard_id, 'job_id': job_id, 'mode': auto_mode, 'engine': dashboard_comments.ENGINE_RULES,
+                    'slides_written': len(auto_written),
+                }))
             if not run_is_active():
                 shutil.rmtree(destination.parent, ignore_errors=True)
                 return
@@ -1585,8 +1674,15 @@ def install_dashboard_routes(core):
                     values = original.get(key, original.get(legacy_number, []))
                     if key in available_keys and values:
                         migrated[key] = list(values)
-                if migrated != original:
+                original_meta = raw_definition.get('slide_comment_meta') or {}
+                migrated_meta = {key: value for key, value in original_meta.items() if key in migrated and key in available_keys}
+                for legacy_number, entries in old_slides.items():
+                    key = dashboard_slide_comment_key(entries)
+                    if key in migrated and key not in migrated_meta and key in original_meta:
+                        migrated_meta[key] = original_meta[key]
+                if migrated != original or migrated_meta != original_meta:
                     raw_definition['slide_comments'] = migrated
+                    raw_definition['slide_comment_meta'] = migrated_meta
                     changed += 1
             if changed:
                 source_repository.set_workspace_state(STATE_KEY, json.dumps(dashboards))
@@ -1998,9 +2094,11 @@ def install_dashboard_routes(core):
         preparation_token: str | None = None, selected_operators: list[str] | None = None,
         selected_vendors: list[str] | None = None, selected_regions: list[str] | None = None,
         selected_cities: list[str] | None = None, legend_visibility: dict | None = None, theme: str | None = None,
+        auto_comments: str | None = None,
     ):
         """Create the export job immediately; all preparation runs in the background job (``theme``: the colour theme
-        of a report generating it, else the user's PPT Dashboards theme)."""
+        of a report generating it, else the user's PPT Dashboards theme; ``auto_comments``: the Auto comments mode, kept
+        by a relaunched job when None)."""
         task_repository = bound_repository()
         workspace = workspace_key()
         # Preparation and pre-caching never block an export: the queued job
@@ -2069,6 +2167,9 @@ def install_dashboard_routes(core):
                 status='queued', progress=0, slide_count=0, chart_count=0,
                 last_error='', started_at=None, finished_at=None,
             )
+        if auto_comments is not None:
+            update_dashboard_ppt_job(task_repository, job_id,
+                                     auto_comments=auto_comments if auto_comments in AUTO_COMMENT_MODES else 'off')
         if legend_visibility is not None:
             # A relaunched job keeps the legend state it was created with.
             update_dashboard_ppt_job(
@@ -2088,6 +2189,7 @@ def install_dashboard_routes(core):
         )
         task_repository.add_log(user.username, 'export_dashboard_ppt', json.dumps({
             'dashboard_id': dashboard_id, 'job_id': job_id, 'output': str(destination),
+            'auto_comments': str(dashboard_ppt_job(task_repository, job_id)['auto_comments'] or 'off'),
             'theme': normalize_theme(theme) if theme else load_user_theme(task_repository, user.username, DASHBOARD_THEME_MODULE),
         }))
         return job_id
@@ -2102,9 +2204,9 @@ def install_dashboard_routes(core):
     core.dashboard_reporting = SimpleNamespace(
         definition_model=DashboardDefinition,
         list_dashboards=lambda task_repository: read_dashboards(task_repository),
-        queue_export=lambda dashboard_id, user, definition=None, theme=None: queue_dashboard_ppt_export(
+        queue_export=lambda dashboard_id, user, definition=None, theme=None, auto_comments=None: queue_dashboard_ppt_export(
             dashboard_id, user, export_definition=DashboardDefinition.model_validate(definition) if definition is not None else None,
-            theme=theme,
+            theme=theme, auto_comments=auto_comments,
         ),
         job=dashboard_ppt_job,
         serialize_job=lambda row: serialize_dashboard_ppt_job(row),
@@ -2227,6 +2329,7 @@ def install_dashboard_routes(core):
             selected_regions=request.selected_regions if request else None,
             selected_cities=request.selected_cities if request else None,
             legend_visibility=request.legend_visibility if request else None,
+            auto_comments=request.auto_comments if request else None,
         )
         return JSONResponse({'job_id': job_id, 'status': 'queued'}, status_code=202)
 
@@ -2692,6 +2795,9 @@ def install_dashboard_routes(core):
             saved_definition = migrate_auto_cdrs(normalize_dashboard_filters(definition.model_dump(mode='json')), task_repository)
             # The CDRs are chosen from the NR Mode and Campaign each time: they are not saved.
             saved_definition.pop('datasets', None)
+            saved_definition['slide_comment_meta'] = comment_meta(
+                saved_definition.get('slide_comment_meta'), saved_definition.get('slide_comments') or {},
+            )
             saved_definition = follow_template_identities({dashboard_id: saved_definition}, template_uids(task_repository))[dashboard_id]
             dashboards[dashboard_id] = saved_definition
             task_repository.set_workspace_state(STATE_KEY, json.dumps(dashboards))
@@ -2796,16 +2902,86 @@ def install_dashboard_routes(core):
                 str(slide): [str(comment).strip() for comment in values if str(comment).strip()][:50]
                 for slide, values in payload.slide_comments.items()
             }
-            dashboards[dashboard_id]['slide_comments'] = {slide: values for slide, values in comments.items() if values}
+            saved = {slide: values for slide, values in comments.items() if values}
+            dashboards[dashboard_id]['slide_comments'] = saved
+            meta = comment_meta(dashboards[dashboard_id].get('slide_comment_meta'), saved)
+            if payload.generated_added and payload.generated_slide:
+                snapshot = snapshots.get(payload.token) if payload.token else None
+                present = set(saved.get(payload.generated_slide, []))
+                added = [text for text in (str(item).strip() for item in payload.generated_texts) if text in present]
+                if not payload.generated_texts:
+                    # Without their texts, the comments just added are the last ones of the slide.
+                    added = saved.get(payload.generated_slide, [])[-payload.generated_added:]
+                previous = (meta.get(payload.generated_slide) or {}).get('generated') or []
+                meta[payload.generated_slide] = {
+                    'generated': list(dict.fromkeys([*previous, *added])),
+                    'engine': payload.generated_engine or dashboard_comments.ENGINE_RULES,
+                    'model': payload.generated_model, 'generated_at': datetime.now(timezone.utc).isoformat(),
+                    'generated_by': user.username,
+                    'selection': snapshot.selection_key if snapshot is not None and snapshot.workspace == workspace_key() else '',
+                }
+            dashboards[dashboard_id]['slide_comment_meta'] = meta
             task_repository.set_workspace_state(STATE_KEY, json.dumps(dashboards))
             task_repository.add_log(user.username, 'save_dashboard_comments', json.dumps({'id': dashboard_id}))
             if payload.generated_added and payload.generated_slide:
                 task_repository.add_log(user.username, 'add_generated_dashboard_comments', json.dumps({
                     'id': dashboard_id, 'name': dashboards[dashboard_id].get('name', ''), 'slide': payload.generated_slide,
-                    'added': payload.generated_added,
-                    'comments': len(dashboards[dashboard_id]['slide_comments'].get(payload.generated_slide, [])),
+                    'added': payload.generated_added, 'engine': payload.generated_engine or dashboard_comments.ENGINE_RULES,
+                    'comments': len(saved.get(payload.generated_slide, [])),
                 }))
-        return {'slide_comments': dashboards[dashboard_id]['slide_comments']}
+        return {'slide_comments': saved, 'slide_comment_meta': meta}
+
+    def comment_meta(meta, comments) -> dict[str, dict]:
+        """The generated-comment metadata that still applies: a generated comment edited or removed by hand is no longer
+        generated, and a slide without generated comments has none."""
+        kept = {}
+        for slide, info in (meta or {}).items():
+            if not isinstance(info, dict):
+                continue
+            present = set(comments.get(slide, []))
+            generated = [text for text in info.get('generated') or [] if text in present]
+            if generated:
+                kept[slide] = {**info, 'generated': generated}
+        return kept
+
+    def comment_snapshot(token: str, user):
+        with lock:
+            snapshot = snapshots.get(token)
+        if snapshot is None or snapshot.workspace != workspace_key() or snapshot.owner not in {user.username, '*'}:
+            raise HTTPException(410, 'Dashboard preview expired. Refresh the Dashboard.')
+        return snapshot
+
+    def slide_comment_charts(token: str, snapshot, slide: dict, requested, user) -> tuple[list[dict], list[str]]:
+        """The charts of a slide the comments read, with the legend items the viewer hides on each one, and the
+        titles of those they cannot read."""
+        available = {int(chart['index']): chart for chart in slide.get('charts', []) if chart.get('available')}
+        requested = requested or [GeneratedCommentChart(index=index) for index in available]
+        charts, skipped = [], []
+        for chart in requested:
+            if chart.index not in available:
+                continue
+            model = chart_model(token, chart.index, user)
+            if dashboard_comments.needs_rebuild(model):
+                # A model cached before the comments read their facts is calculated again once.
+                model = chart_model(token, chart.index, user, force=True)
+            entry = snapshot.entries[chart.index]
+            if model.get('type') == 'empty':
+                continue
+            if model.get('type') not in dashboard_comments.SUPPORTED_MODEL_TYPES:
+                skipped.append(entry.chart_title or entry.chart_type)
+                continue
+            charts.append({
+                'index': chart.index, 'title': entry.chart_title or entry.slide_title, 'kpi': entry.kpi,
+                'model': model, 'hidden': chart.hidden, 'shown': chart.shown,
+                # The value of a dynamic grid card (its Operator, Vendor…) names what its map or table shows.
+                'subject': ' · '.join(value for value in (entry.dynamic_row_value, entry.dynamic_column_value) if value),
+            })
+        return charts, skipped
+
+    def write_slide_comments(charts: list[dict], slide: dict, task_repository) -> list[dict]:
+        return dashboard_comments.slide_comments(
+            charts, focus_operators=focus_operators(task_repository), layout=slide.get('layout') or '',
+        )
 
     @app.post('/api/ppt-dashboards/{dashboard_id}/comments/generate')
     def generate_dashboard_comments(dashboard_id: str, payload: GenerateComments, user=Depends(dashboard_editor_user)):
@@ -2815,35 +2991,13 @@ def install_dashboard_routes(core):
         name = read_dashboards(task_repository).get(dashboard_id, {}).get('name')
         if name is None:
             raise HTTPException(404, 'Dashboard not found.')
-        with lock:
-            snapshot = snapshots.get(payload.token)
-        if snapshot is None or snapshot.workspace != workspace_key() or snapshot.owner not in {user.username, '*'}:
-            raise HTTPException(410, 'Dashboard preview expired. Refresh the Dashboard.')
+        snapshot = comment_snapshot(payload.token, user)
         slide = next((item for item in snapshot.payload.get('slides', []) if item.get('number') == payload.slide), None)
         if slide is None:
             raise HTTPException(404, 'Slide not found.')
-        available = {int(chart['index']): chart for chart in slide.get('charts', []) if chart.get('available')}
-        requested = payload.charts or [GeneratedCommentChart(index=index) for index in available]
-        charts, skipped = [], []
         try:
-            for chart in requested:
-                if chart.index not in available:
-                    continue
-                model = chart_model(payload.token, chart.index, user)
-                if dashboard_comments.needs_rebuild(model):
-                    # A model cached before the comments read their facts is calculated again once.
-                    model = chart_model(payload.token, chart.index, user, force=True)
-                entry = snapshot.entries[chart.index]
-                if model.get('type') not in dashboard_comments.SUPPORTED_MODEL_TYPES:
-                    skipped.append(entry.chart_title or entry.chart_type)
-                    continue
-                charts.append({
-                    'index': chart.index, 'title': entry.chart_title or entry.slide_title, 'kpi': entry.kpi,
-                    'model': model, 'hidden': chart.hidden, 'shown': chart.shown,
-                })
-            suggestions = dashboard_comments.slide_comments(
-                charts, focus_operators=focus_operators(task_repository), layout=slide.get('layout') or '',
-            )
+            charts, skipped = slide_comment_charts(payload.token, snapshot, slide, payload.charts, user)
+            suggestions = write_slide_comments(charts, slide, task_repository)
         except HTTPException:
             raise
         except Exception as exc:
@@ -2857,9 +3011,129 @@ def install_dashboard_routes(core):
             'suggestions': len(suggestions), 'duration_ms': round((monotonic() - started) * 1000),
         }))
         return {
-            'comment_key': slide.get('comment_key', ''), 'engine': dashboard_comments.ENGINE_RULES,
+            'comment_key': slide.get('comment_key', ''), 'engine': dashboard_comments.ENGINE_RULES, 'model': '',
             'suggestions': suggestions, 'skipped': skipped,
         }
+
+    def apply_generated_comments(definition: dict, written: dict[str, list[str]], mode: str, legacy: dict[str, str],
+                                 info: dict) -> dict[str, int]:
+        """Write the generated comments of several slides into a Dashboard definition: on the slides without comments
+        (``empty``), in place of the generated ones keeping those written by hand (``generated``), or in place of every
+        comment (``all``). Returns how many slides were written, kept and left without comments."""
+        comments = dict(definition.get('slide_comments') or {})
+        meta = comment_meta(definition.get('slide_comment_meta'), comments)
+        counts = {'written': 0, 'kept': 0, 'empty': 0, 'comments': 0}
+        for key, texts in written.items():
+            current = list(comments.get(key, comments.get(legacy.get(key, ''), [])))
+            if not texts:
+                counts['empty'] += 1
+                continue
+            if mode == 'empty' and current:
+                counts['kept'] += 1
+                continue
+            generated = set((meta.get(key) or {}).get('generated') or [])
+            manual = [text for text in current if text not in generated] if mode == 'generated' else []
+            comments[key] = [*manual, *[text for text in texts if text not in manual]][:50]
+            comments.pop(legacy.get(key, ''), None)
+            meta[key] = {**info, 'generated': [text for text in texts if text in comments[key]]}
+            counts['written'] += 1
+            counts['comments'] += len(meta[key]['generated'])
+        definition['slide_comments'] = {key: values for key, values in comments.items() if values}
+        definition['slide_comment_meta'] = comment_meta(meta, definition['slide_comments'])
+        return counts
+
+    def run_dashboard_comment_job(job_id: str, dashboard_id: str, payload: GenerateAllComments, user, workspace: str) -> None:
+        """Generate the comments of every slide of a Dashboard and write them as its mode says."""
+        started = monotonic()
+        task_repository = Repository(Path(workspace), core.repository.global_db_path)
+
+        def update(**changes):
+            with lock:
+                job = comment_jobs.get(job_id)
+                if job is not None:
+                    job.update(changes)
+
+        try:
+            snapshot = comment_snapshot(payload.token, user) if workspace == workspace_key() else None
+            if snapshot is None:
+                raise HTTPException(410, 'Dashboard preview expired. Refresh the Dashboard.')
+            requested = {item.number: item for item in payload.slides}
+            slides = [slide for slide in snapshot.payload.get('slides', [])
+                      if not slide.get('structural_type') and (not requested or slide.get('number') in requested)]
+            written: dict[str, list[str]] = {}
+            legacy: dict[str, str] = {}
+            skipped: list[str] = []
+            for position, slide in enumerate(slides, 1):
+                spec = requested.get(slide.get('number'))
+                charts, not_read = slide_comment_charts(payload.token, snapshot, slide, spec.charts if spec else [], user)
+                skipped.extend(not_read)
+                key = str(slide.get('comment_key') or slide.get('number'))
+                written[key] = [item['text'] for item in write_slide_comments(charts, slide, task_repository)] if charts else []
+                legacy[key] = str(slide.get('number'))
+                update(done=position)
+            with lock:
+                dashboards = read_dashboards(task_repository)
+                if dashboard_id not in dashboards:
+                    raise HTTPException(404, 'Dashboard not found.')
+                info = {
+                    'engine': dashboard_comments.ENGINE_RULES, 'model': '',
+                    'generated_at': datetime.now(timezone.utc).isoformat(), 'generated_by': user.username,
+                    'selection': snapshot.selection_key,
+                }
+                counts = apply_generated_comments(dashboards[dashboard_id], written, payload.mode, legacy, info)
+                task_repository.set_workspace_state(STATE_KEY, json.dumps(dashboards))
+                definition = dashboards[dashboard_id]
+            task_repository.add_log(user.username, 'generate_all_dashboard_comments', json.dumps({
+                'id': dashboard_id, 'name': definition.get('name', ''), 'mode': payload.mode,
+                'engine': dashboard_comments.ENGINE_RULES, 'slides': len(slides), **counts,
+                'skipped_charts': sorted(set(skipped)), 'duration_ms': round((monotonic() - started) * 1000),
+            }))
+            update(state='ready', result={
+                **counts, 'slides': len(slides), 'slide_comments': definition.get('slide_comments', {}),
+                'slide_comment_meta': definition.get('slide_comment_meta', {}),
+            })
+        except HTTPException as exc:
+            update(state='failed', status=exc.status_code, detail=str(exc.detail))
+        except Exception as exc:
+            task_repository.add_log(user.username, 'generate_all_dashboard_comments_failed', json.dumps({
+                'id': dashboard_id, 'mode': payload.mode, 'error': str(exc),
+            }))
+            update(state='failed', status=500, detail=f'The comments of this Dashboard could not be generated: {exc}')
+
+    @app.post('/api/ppt-dashboards/{dashboard_id}/comments/generate-all')
+    def generate_all_dashboard_comments(
+        dashboard_id: str, payload: GenerateAllComments, background_tasks: BackgroundTasks, user=Depends(dashboard_editor_user),
+    ):
+        """Start writing the comments of every slide of a Dashboard; the page follows the job until it is done."""
+        task_repository = bound_repository()
+        if dashboard_id not in read_dashboards(task_repository):
+            raise HTTPException(404, 'Dashboard not found.')
+        snapshot = comment_snapshot(payload.token, user)
+        total = sum(1 for slide in snapshot.payload.get('slides', []) if not slide.get('structural_type')
+                    and (not payload.slides or slide.get('number') in {item.number for item in payload.slides}))
+        job_id = uuid4().hex
+        with lock:
+            comment_jobs[job_id] = {
+                'state': 'processing', 'owner': user.username, 'workspace': workspace_key(), 'done': 0, 'total': total,
+            }
+            while len(comment_jobs) > 16:
+                removable = next((key for key, value in comment_jobs.items() if value.get('state') != 'processing'), None)
+                if removable is None:
+                    break
+                comment_jobs.pop(removable, None)
+        background_tasks.add_task(run_dashboard_comment_job, job_id, dashboard_id, payload, user, workspace_key())
+        return JSONResponse({'state': 'processing', 'job_id': job_id, 'done': 0, 'total': total}, status_code=202)
+
+    @app.get('/api/ppt-dashboards/comment-jobs/{job_id}')
+    def dashboard_comment_job(job_id: str, user=Depends(dashboard_user)):
+        with lock:
+            job = comment_jobs.get(job_id)
+            if job is None or job.get('owner') != user.username or job.get('workspace') != workspace_key():
+                raise HTTPException(404, 'Comment job not found.')
+            result = dict(job)
+        if result.get('state') == 'failed':
+            raise HTTPException(int(result.get('status') or 500), str(result.get('detail') or 'The comments could not be generated.'))
+        return JSONResponse({key: result.get(key) for key in ('state', 'done', 'total', 'result')}, headers={'Cache-Control': 'no-store'})
 
     def dashboard_datasets(definition, kind, task_repository):
         """Return the selected CDRs of one kind that match the Dashboard's NR Mode."""
@@ -3828,6 +4102,8 @@ def install_dashboard_routes(core):
             'universe_rows': universe_rows,
             'rows_exact': rows_exact,
             'date_bounds': date_bounds,
+            # The selection behind the slides: generated comments written for another one are out of date.
+            'selection_key': selection_key,
         }
         add_dynamic_grid_metadata(payload, entries, deck)
         with lock:
@@ -3954,6 +4230,7 @@ def install_dashboard_routes(core):
         identity_definition = definition.model_dump(mode='json')
         identity_definition.pop('name', None)
         identity_definition.pop('slide_comments', None)
+        identity_definition.pop('slide_comment_meta', None)
         identity_definition['datasets'] = {
             kind: sorted(set(dataset_ids))
             for kind, dataset_ids in identity_definition.get('datasets', {}).items()

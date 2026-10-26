@@ -114,6 +114,8 @@
 .ds-comment-suggestion textarea:hover,.ds-comment-suggestion textarea:focus{border-color:#b79adf;background:#fff;outline:0}
 .ds-comment-suggestion:has(input[type="checkbox"]:not(:checked)){opacity:.55}
 .ds-comment-suggestion-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+.ds-comment.is-generated::after{content:'Generated';flex:0 0 auto;align-self:center;padding:1px 7px;border-radius:999px;background:#ebe2f7;color:#5f3b91;font-size:.68rem;font-weight:800}
+.ds-comments-stale{margin:0;padding:7px 10px;border-radius:8px;background:#fff4dc;color:#7a5410;font-size:.82rem}
 .ppt-dashboards .ds-comment-generate,.ppt-dashboards .ds-comment-suggestions-discard{background:#fff;color:#5f3b91;border-color:#b79adf}
 .ppt-dashboards .ds-comment-generate:hover:not(:disabled),.ppt-dashboards .ds-comment-suggestions-discard:hover{background:#f3edfb;color:#4c3277;border-color:#7751b9}
 .ds-live-chart-tooltip{position:absolute;z-index:4;display:grid;gap:2px;max-width:min(260px,80%);padding:9px 11px;border:1px solid #c9b8dd;border-radius:9px;background:rgba(255,255,255,.97);box-shadow:0 8px 24px #2d174d38;color:#34495a;font-size:.75rem;line-height:1.25;pointer-events:none}.ds-live-chart-tooltip[hidden]{display:none}.ds-live-chart-tooltip strong{color:#352747;font-size:.79rem}.ds-live-chart-tooltip span{display:block}
@@ -765,7 +767,7 @@
   .ds-comments-list {min-height:2.5rem}
   .ds-comment-entry {grid-template-columns:minmax(0,1fr) auto;gap:.35rem}
   .ds-comment-entry button {min-height:2.5rem;padding:.4rem .6rem;font-size:.74rem}
-  .ds-comment-entry .ds-comment-generate {grid-column:1/-1}
+  .ds-comment-entry .ds-comment-generate {grid-column:auto}
   .ds-slide-comments:has(.ds-comment-suggestions:not([hidden])) {max-height:none}
   .ds-slide-comments:has(.ds-comment-suggestions:not([hidden])) .ds-slide-comments-body {max-height:min(20rem,48dvh)}
   .ds-comment-suggestion {padding:.4rem .5rem;font-size:.82rem}

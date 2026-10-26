@@ -422,6 +422,9 @@ def normalize_definition(raw: Any) -> dict[str, Any]:
             'date_from': _date_text(entry.get('date_from')), 'date_to': _date_text(entry.get('date_to')),
             'filters': {str(field): _strings(values) for field, values in (entry.get('filters') or {}).items()
                         if str(field).strip() and _strings(values)} if isinstance(entry.get('filters'), dict) else {},
+            # Auto comments of the PPT: generated comments on the slides without comments, in place of the generated
+            # ones or in place of every comment; entries saved before keep the comments of the Dashboard (off).
+            'auto_comments': entry.get('auto_comments') if entry.get('auto_comments') in {'off', 'empty', 'generated', 'all'} else 'off',
         })
     for entry in raw.get('scoring') or []:
         if not isinstance(entry, dict):
@@ -1562,7 +1565,7 @@ def install_report_task_routes(core: Any) -> None:
                 raise RuntimeError('The Dashboard no longer exists.')
             update_run(task_repository, run_id, message=f'Generating {title}')
             job_id = tools.queue_export(entry['dashboard_id'], user, dashboard_definition(stored, entry, task_repository),
-                                        theme=entry.get('theme') or None)
+                                        theme=entry.get('theme') or None, auto_comments=entry.get('auto_comments') or 'off')
             row = wait_for_dashboard_job(task_repository, job_id, run_id)
             source = Path(str(row['output_path']))
             # Dashboard PPT names start with their own generation time, which is dropped.

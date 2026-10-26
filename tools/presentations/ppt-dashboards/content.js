@@ -46,6 +46,15 @@ module.exports = {
         { icon: 'TbPalette', title: 'Themes', text: 'Ericsson, NetCheck and the other themes colour the charts and the slide titles.' },
       ],
       notes: 'The viewer keeps the 16:9 layout of the template. Every chart opens its data, expands, refreshes, zooms and shows its definition, and the theme colours the viewer and the presentations.' },
+    { id: 'comments', type: 'split', section: 'Workflow', footer: 'Generated comments', kicker: 'Generate comments', title: 'Comments that write themselves',
+      visual: 'comments',
+      points: [
+        { icon: 'TbChartDots', title: 'Read from the figures', text: 'Medians, tails, shares, correlations and maps of each chart, never guessed from pixels.' },
+        { icon: 'TbSparkles', title: 'Rules, or an LLM writer', text: 'Rules always on the server; Kiro (by default) or Claude rewrite the same facts.' },
+        { icon: 'TbShieldCheck', title: 'Every figure checked', text: 'Each number must match the facts, otherwise the rules text is kept.' },
+        { icon: 'TbUserCheck', title: 'You decide', text: 'Review, edit and add, on one slide or all of them; Auto comments fill the PowerPoint and Reporting Jobs.' },
+      ],
+      notes: 'Generate comments writes the analysis of a slide from the exact figures its charts draw: the change since the previous campaign, the gap to the leader, the weak tail, the vendors of each operator and what the charts say together, from the point of view of the Focus operators. The rules run on the server; when Super Admin enables them, Kiro (the default LLM) or Claude write the same facts in a more natural way, and every figure they write is checked against the facts. You review and add the comments, generated ones keep a tag and say when they are out of date, and Auto comments fill the slides of the PowerPoint and of the Reporting Jobs.' },
     { id: 'cache', type: 'split', section: 'Workflow', footer: 'Preparation and cache', kicker: 'Preparation lifecycle and cache', title: 'Faster every time', visual: 'cache',
       points: [
         { icon: 'TbBolt', title: 'Background pre-caching', text: 'Up to five universes: every campaign and the newest one, two, three and four.' },

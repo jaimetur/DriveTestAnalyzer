@@ -634,6 +634,50 @@ const VISUALS = {
     });
     return out;
   },
+  // Generated comments: the figures of a chart become facts, the rules (or an LLM writer) write them, every figure is
+  // checked and the comment lands on the slide.
+  comments(p) {
+    const arrow = (x1, y1, x2, y2) => `<path d="M${x1} ${y1} L${x2} ${y2}" stroke="${p.light}" stroke-width="4" stroke-dasharray="9 8"/>`
+      + `<circle cx="${x2}" cy="${y2}" r="7" fill="${p.accent}" stroke="#ffffff" stroke-width="3"/>`;
+    const curve = (median, color) => {
+      const points = [];
+      for (let x = 0; x <= 270; x += 6) points.push(`${44 + x},${186 - 118 / (1 + Math.exp(-(x - median) / 22))}`);
+      return `<polyline points="${points.join(' ')}" fill="none" stroke="${color}" stroke-width="5" stroke-linecap="round"/>`;
+    };
+    let out = `<rect x="20" y="20" width="330" height="190" rx="18" fill="#16213a" stroke="#2a3a5c" stroke-width="2"/>`
+      + `<text x="44" y="54" font-size="20" font-weight="700" fill="#c9d4e6">NR RSRP · CDF</text>`
+      + `<line x1="44" y1="127" x2="326" y2="127" stroke="#2a3a5c" stroke-width="2" stroke-dasharray="6 7"/>`
+      + curve(90, p.series[2]) + curve(140, p.series[1]) + curve(190, p.accent);
+    out += arrow(350, 115, 382, 115)
+      + `<rect x="390" y="20" width="410" height="190" rx="18" fill="#16213a" stroke="#2a3a5c" stroke-width="2"/>`
+      + `<text x="414" y="54" font-size="20" font-weight="700" fill="#c9d4e6">Facts from the chart</text>`;
+    ['P50 −93.8 dBm', '+3.8 dB vs 2026-Q2', '5.1% below −110 dBm'].forEach((fact, index) => {
+      out += `<rect x="414" y="${72 + index * 44}" width="${index === 1 ? 250 : 290}" height="34" rx="17" fill="${index === 1 ? p.accent : '#22304f'}"/>`
+        + `<text x="432" y="${95 + index * 44}" font-size="19" font-weight="700" fill="#ffffff">${fact}</text>`;
+    });
+    out += arrow(205, 210, 205, 236) + arrow(605, 210, 605, 236);
+    out += `<rect x="20" y="244" width="370" height="104" rx="18" fill="${p.deep}" stroke="${p.accent}" stroke-width="2"/>`
+      + `<g transform="translate(44 272)">${icon('TbListCheck', '#ffffff', 46)}</g>`
+      + `<text x="108" y="290" font-size="26" font-weight="800" fill="#ffffff">Rules</text>`
+      + `<text x="108" y="322" font-size="19" fill="${p.light}">always on · on the server</text>`;
+    out += `<rect x="410" y="244" width="390" height="104" rx="18" fill="#16213a" stroke="${p.light}" stroke-width="2"/>`
+      + `<g transform="translate(434 272)">${icon('TbSparkles', p.light, 46)}</g>`
+      + `<text x="498" y="290" font-size="26" font-weight="800" fill="#ffffff">LLM writer</text>`
+      + `<rect x="498" y="304" width="86" height="28" rx="14" fill="${p.accent}"/><text x="541" y="324" text-anchor="middle" font-size="17" font-weight="800" fill="#ffffff">Kiro</text>`
+      + `<rect x="594" y="304" width="96" height="28" rx="14" fill="#22304f"/><text x="642" y="324" text-anchor="middle" font-size="17" font-weight="800" fill="#ffffff">Claude</text>`;
+    out += arrow(205, 348, 268, 380) + arrow(605, 348, 552, 380)
+      + `<rect x="270" y="364" width="280" height="44" rx="22" fill="#1f9d55"/>`
+      + `<g transform="translate(290 372)">${icon('TbShieldCheck', '#ffffff', 28)}</g>`
+      + `<text x="328" y="393" font-size="19" font-weight="800" fill="#ffffff">every figure checked</text>`;
+    out += arrow(410, 408, 410, 426)
+      + `<rect x="20" y="432" width="780" height="110" rx="18" fill="#f4f6fb"/>`
+      + `<rect x="44" y="446" width="112" height="26" rx="13" fill="${p.accent}"/><text x="100" y="465" text-anchor="middle" font-size="15" font-weight="800" fill="#ffffff">Generated</text>`
+      + `<text x="170" y="465" font-size="16" fill="#5b6478">Slide comments · review, edit, add</text>`;
+    ['Operator A median NR RSRP improves by 3.8 dB vs 2026-Q2.', 'Operator B leads; the gap to Operator A narrows from 7.2 to 3.7 dB.'].forEach((line, index) => {
+      out += `<circle cx="50" cy="${494 + index * 30}" r="5" fill="${p.accent}"/><text x="66" y="${500 + index * 30}" font-size="19" fill="${INK}">${escape(line)}</text>`;
+    });
+    return out;
+  },
 };
 
 // Small pictures of the tiles (360 × 150), one per idea, in the colours of the deck.

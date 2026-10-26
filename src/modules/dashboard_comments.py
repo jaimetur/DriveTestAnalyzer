@@ -2,10 +2,13 @@
 
 The comments are written from the models the viewer draws (the same filters, splits, hidden values and Operator Maps),
 never from pixels: a CDF or histogram gives the exact median, tail percentiles and class shares of each series, the
-average and median bars their value and samples, and the 100%, threshold and distribution stacked bars the share of
-each class. The findings compare the latest campaign with the previous one and each operator with the leader, from the
-point of view of the Focus operators of the Operator Maps, and name a group only with enough samples. The rules engine
-writes them offline; the LLM writers added later receive the same facts and fall back to these sentences.
+average and median bars their value and samples, the 100%, threshold and distribution stacked bars and the failure
+counts the share of each class, a scatter the rank correlation of its two measures, a map the share of its weakest class
+and where it gathers, and a table its highest and lowest rows. The findings compare the latest campaign with the
+previous one, each operator with the leader and, in Multivendor, the vendors of each operator, from the point of view of
+the Focus operators of the Operator Maps, and name a group only with enough samples; charts of one slide are also read
+together (LTE against NR, one operator per chart). The rules engine writes them offline; the LLM writers receive the
+same facts and fall back to these sentences.
 """
 from __future__ import annotations
 
@@ -14,7 +17,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Iterable
 
-from src.modules.cdr_reporting import _outcome_kind
+from src.modules.cdr_reporting import _outcome_kind, _range_bucket_sort_key
 from src.modules.column_names import campaign_sort_key, column_identity, compact_campaign_value
 from src.modules.network_insights_findings import _join
 
@@ -28,11 +31,23 @@ MAX_NARROW_SLIDE_COMMENTS = 3
 # Focus operators commented in each group of a chart, whose comments come before those of the other operators.
 MAX_FOCUS_SUBJECTS = 2
 FOCUS_BONUS = 1.5
-# Chart models the rules can read (CDF Line, Multi KPI CDF, histograms, 100%, threshold and distribution stacked bars,
-# average and median bars).
-SUPPORTED_MODEL_TYPES = frozenset({'cdf', 'multi_cdf', 'mean_bar', 'status_100', 'distribution'})
-OPERATOR_DIMENSIONS = frozenset({'operator', 'subscriber', 'operatorvendor'})
+# Chart models the rules can read: every chart type of the PPT Templates.
+SUPPORTED_MODEL_TYPES = frozenset({
+    'cdf', 'multi_cdf', 'mean_bar', 'status_100', 'distribution', 'failure_count', 'scatter', 'map', 'table',
+})
+# Models that carry the dimensions of their keys (tables are read from their cells).
+DIMENSIONED_MODEL_TYPES = SUPPORTED_MODEL_TYPES - {'multi_cdf', 'table'}
+OPERATOR_DIMENSIONS = frozenset({'operator', 'subscriber'})
+VENDOR_DIMENSIONS = frozenset({'operatorvendor', 'vendor'})
 CAMPAIGN_DIMENSIONS = frozenset({'campaign'})
+BUCKET_DIMENSIONS = frozenset({'valuebucket', 'ratebucket'})
+# Vendor groups that are not a vendor (multivendor comparisons leave them out of the vendor comments).
+NOT_VENDORS = frozenset({'mixed', 'other', 'others', 'unknown', '(blank)', ''})
+TECHNOLOGY_TOKENS = re.compile(r'\b(lte|nr|4g|5g)\b', re.I)
+# A scatter names a relation from this rank correlation, and calls it weak below WEAK_CORRELATION.
+STRONG_CORRELATION = 0.3
+WEAK_CORRELATION = 0.1
+MIN_RELATION_SAMPLES = 30
 THRESHOLD_STATE = re.compile(r'^\s*(<|≥|>=)\s*(-?\d+(?:\.\d+)?)\s*$')
 
 
@@ -96,6 +111,8 @@ class ChartFacts:
     records: list[Record]
     direction: int
     bucket_edges: list[float] = field(default_factory=list)
+    # Relations (scatter), maps and tables: what the family needs besides its records.
+    extra: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -110,7 +127,7 @@ def needs_rebuild(model: dict[str, Any]) -> bool:
     kind = model.get('type')
     if kind == 'multi_cdf':
         return any('dimensions' not in panel for panel in model.get('panels') or [])
-    return kind in SUPPORTED_MODEL_TYPES and 'dimensions' not in model
+    return kind in DIMENSIONED_MODEL_TYPES and 'dimensions' not in model
 
 
 def _format(value: float, digits: int | None = None) -> str:
@@ -167,6 +184,49 @@ def _labels(key: Iterable[Any], dimensions: list[list[str]]) -> dict[str, str]:
             continue
         labels.update(zip(names, parts))
     return labels
+
+
+def _bucket_bounds(name: str) -> tuple[float | None, float | None] | None:
+    """The range of a class named as the charts name them (``< -110``, ``-110 to -100``, ``20+``, ``below-110``,
+    ``Above``); None for a name that is not a range."""
+    text = str(name or '').strip()
+    number = r'-?\d+(?:\.\d+)?'
+    if match := re.fullmatch(rf'below\s*({number})', text, re.I):
+        return None, float(match.group(1))
+    if text.casefold() == 'above':
+        return float('inf'), None
+    if match := re.fullmatch(rf'<\s*({number})', text):
+        return None, float(match.group(1))
+    if match := re.fullmatch(rf'({number})(?:-| to )({number})', text):
+        return float(match.group(1)), float(match.group(2))
+    if match := re.fullmatch(rf'({number})\s*\+', text):
+        return float(match.group(1)), None
+    return None
+
+
+def _bucket_order(names: list[str]) -> list[int] | None:
+    """The classes from the lowest values to the highest, or None when one of them is not a range."""
+    keys = []
+    for name in names:
+        bounds = _bucket_bounds(name)
+        if bounds is None:
+            return None
+        low, high = bounds
+        keys.append((high if low is None else low, 0 if low is None else 1 if high is not None else 2))
+    return sorted(range(len(names)), key=lambda index: keys[index])
+
+
+def _bucket_phrase(name: str, kpi: KpiSemantics) -> str:
+    """A class as the comments read it: ``NR RSRP below −110 dBm``, ``Mean Data Rate 5 to 20``."""
+    bounds = _bucket_bounds(name)
+    if bounds is None:
+        return f'{kpi.name} in {name}'
+    low, high = bounds
+    if low is None:
+        return f'{kpi.name} below {_with_unit(_format(high, kpi.digits), kpi)}'
+    if high is None:
+        return f'{kpi.name} in the top class' if math.isinf(low) else f'{kpi.name} at or above {_with_unit(_format(low, kpi.digits), kpi)}'
+    return f'{kpi.name} {_format(low, kpi.digits)} to {_with_unit(_format(high, kpi.digits), kpi)}'
 
 
 def _stat_facts(chart_index: int, title: str, model: dict[str, Any], hidden: set[str], shown: set[str]) -> ChartFacts | None:
@@ -253,13 +313,14 @@ def _share_facts(chart_index: int, title: str, model: dict[str, Any], kpi_name: 
     rows = [row for row in rows if not _hidden(row[0], hidden, shown)]
     if not states or not rows:
         return None
-    if model.get('type') == 'distribution' and kpi.direction:
-        # Buckets go from the lowest values to the highest: the worst class is the first or the last one.
-        visible = [index for index, state in enumerate(states) if state not in hidden]
+    order = _bucket_order(states) if model.get('type') == 'distribution' and kpi.direction else None
+    if order:
+        # Buckets are read from the lowest values to the highest: the worst class is the first or the last one.
+        visible = [index for index in order if states[index] not in hidden]
         if not visible:
             return None
         worst = visible[0] if kpi.direction > 0 else visible[-1]
-        target = ([worst], states[worst], -1)
+        target = ([worst], _bucket_phrase(states[worst], kpi), -1)
     else:
         target = _share_target(states, kpi, rows, hidden)
     if target is None:
@@ -271,6 +332,99 @@ def _share_facts(chart_index: int, title: str, model: dict[str, Any], kpi_name: 
     ]
     semantics = KpiSemantics(label, '', direction)
     return ChartFacts(chart_index, title, 'share', semantics, label, records, direction)
+
+
+def _failure_facts(chart_index: int, title: str, model: dict[str, Any], hidden: set[str], shown: set[str]) -> ChartFacts | None:
+    """Count Stacked Horizontal Bars: the share of failed and dropped tests of each bar among all its tests."""
+    states = [str(state.get('name') or '') for state in model.get('states') or []] or ['Failed', 'Dropped']
+    counted = [index for index, state in enumerate(states) if state not in hidden]
+    dimensions = model.get('dimensions') or []
+    if model.get('mode') == 'hierarchy':
+        rows = [(record.get('key') or [], record.get('counts') or [], record.get('tests') or 0)
+                for record in model.get('records') or []]
+    else:
+        rows = [(row.get('key') or [], row.get('values') or [], tests)
+                for row, tests in zip(model.get('rows') or [], model.get('tests') or [])]
+    records = []
+    for key, counts, tests in rows:
+        labels = _labels(key, dimensions)
+        if not tests or _hidden(labels, hidden, shown):
+            continue
+        failures = sum(int(counts[index]) for index in counted if index < len(counts))
+        records.append(Record(labels, failures / int(tests), int(tests), {'failures': failures}))
+    if not records or not counted:
+        return None
+    label = ' + '.join(states[index] for index in counted)
+    return ChartFacts(chart_index, title, 'share', KpiSemantics(label, '', -1), label, records, -1)
+
+
+def _relation_facts(chart_index: int, title: str, model: dict[str, Any], hidden: set[str], shown: set[str]) -> ChartFacts | None:
+    """Scatter: the rank correlation of each visible series and its KPI in the lowest and highest quarter of the other
+    measure."""
+    y_kpi = kpi_semantics(model.get('y_label') or title)
+    x_kpi = kpi_semantics(model.get('x_label') or '')
+    dimensions = model.get('dimensions') or []
+    records = []
+    for series in model.get('series') or []:
+        stats = series.get('stats') or {}
+        labels = _labels(series.get('key') or [], dimensions)
+        if stats.get('spearman') is None or _hidden(labels, hidden, shown) or str(series.get('name')) in hidden:
+            continue
+        records.append(Record(labels, float(stats['spearman']), int(stats.get('n') or 0), stats))
+    if not records:
+        return None
+    return ChartFacts(chart_index, title, 'relation', y_kpi, 'Spearman ρ', records, 0, extra={'x': x_kpi})
+
+
+def _map_facts(chart_index: int, title: str, model: dict[str, Any], hidden: set[str], shown: set[str]) -> ChartFacts | None:
+    """Map: the share of the weakest class of its colour measure and the areas where it gathers."""
+    kpi = kpi_semantics(model.get('colour_metric') or '')
+    series = [item for item in model.get('series') or [] if str(item.get('name')) not in hidden]
+    names = [str((item.get('key') or [item.get('name')])[-1]) for item in series]
+    order = _bucket_order(names) if kpi.direction else None
+    total = sum(int(item.get('samples') or 0) for item in series)
+    if not order or not total:
+        return None
+    worst = order[0] if kpi.direction > 0 else order[-1]
+    records = [Record({'Class': name}, int(item.get('samples') or 0) / total, int(item.get('samples') or 0))
+               for name, item in zip(names, series)]
+    all_names = [str((item.get('key') or [item.get('name')])[-1]) for item in model.get('series') or []]
+    areas = model.get('areas') or {}
+    return ChartFacts(chart_index, title, 'map', kpi, _bucket_phrase(names[worst], kpi), records, -1, extra={
+        'worst': worst, 'total': total, 'areas': areas,
+        'worst_position': all_names.index(names[worst]) if names[worst] in all_names else None,
+    })
+
+
+def _number_cell(value: Any) -> float | None:
+    text = str(value or '').replace(',', '').replace('%', '').strip()
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
+def _table_facts(chart_index: int, title: str, kpi: str, model: dict[str, Any], hidden: set[str]) -> ChartFacts | None:
+    """Table: the highest and lowest rows of each numeric column."""
+    headers = [str(header) for header in model.get('headers') or []]
+    rows = [row for row in model.get('rows') or [] if row]
+    dimensions = int(model.get('row_dimension_count') or 1)
+    if len(headers) <= dimensions or len(rows) < 2:
+        return None
+    records = []
+    for row in rows:
+        label = ' · '.join(str(cell) for cell in row[:dimensions] if str(cell))
+        if label in hidden or any(str(cell) in hidden for cell in row[:dimensions]):
+            continue
+        values = {headers[index]: number for index in range(dimensions, min(len(row), len(headers)))
+                  if (number := _number_cell(row[index])) is not None}
+        if values:
+            records.append(Record({'Row': label}, 0.0, None, {'values': values,
+                                                               'percent': any('%' in str(cell) for cell in row[dimensions:])}))
+    if len(records) < 2:
+        return None
+    columns = [header for header in headers[dimensions:] if sum(header in record.extra['values'] for record in records) >= 2]
+    return ChartFacts(chart_index, title, 'table', kpi_semantics(kpi or title), 'value', records, 0, extra={'columns': columns[:3]})
 
 
 def chart_facts(chart_index: int, title: str, kpi: str, model: dict[str, Any],
@@ -291,15 +445,27 @@ def chart_facts(chart_index: int, title: str, kpi: str, model: dict[str, Any],
     if kind in {'status_100', 'distribution'}:
         facts = _share_facts(chart_index, title, model, kpi, hidden_items, shown_items)
         return [facts] if facts else []
-    return []
+    readers = {
+        'failure_count': lambda: _failure_facts(chart_index, title, model, hidden_items, shown_items),
+        'scatter': lambda: _relation_facts(chart_index, title, model, hidden_items, shown_items),
+        'map': lambda: _map_facts(chart_index, title, model, hidden_items, shown_items),
+        'table': lambda: _table_facts(chart_index, title, kpi, model, hidden_items),
+    }
+    facts = readers[kind]() if kind in readers else None
+    return [facts] if facts else []
 
 
-def _roles(records: list[Record]) -> tuple[str | None, str | None, list[str]]:
-    """The Operator and Campaign dimensions of a chart and the other ones (its groups: Test_Name, G_Level_4…)."""
+def _roles(records: list[Record]) -> tuple[str | None, str | None, str | None, list[str]]:
+    """The Operator, Campaign and Vendor dimensions of a chart and the groups it is read in (the other dimensions, such
+    as Test_Name or G_Level_4, and the Vendor). Without Operator, the Vendor of a vendor-only comparison is the
+    subject of the comments."""
     names = list(dict.fromkeys(name for record in records for name in record.labels))
     operator = next((name for name in names if column_identity(name) in OPERATOR_DIMENSIONS), None)
+    vendor = next((name for name in names if column_identity(name) in VENDOR_DIMENSIONS), None)
     campaign = next((name for name in names if column_identity(name) in CAMPAIGN_DIMENSIONS), None)
-    return operator, campaign, [name for name in names if name not in {operator, campaign}]
+    if operator is None and vendor is not None:
+        operator, vendor = vendor, None
+    return operator, campaign, vendor, [name for name in names if name not in {operator, campaign}]
 
 
 def _eligible(record: Record | None) -> bool:
@@ -358,6 +524,12 @@ def _subject(facts: ChartFacts, operator: str) -> str:
     return f'{operator} {metric}' if operator else metric[:1].upper() + metric[1:]
 
 
+def _metric(facts: ChartFacts) -> str:
+    """The statistic and KPI as a sentence names them inside it: ``median NR RSRP``, ``Mean Data Rate``."""
+    subject = _subject(facts, '')
+    return subject if subject == facts.semantics.name else subject[:1].lower() + subject[1:]
+
+
 def _change(facts: ChartFacts, operator: str, latest: Record, previous: Record, previous_campaign: str) -> Finding:
     """The change of one operator since the previous campaign."""
     subject = _subject(facts, operator)
@@ -394,7 +566,6 @@ def _position(facts: ChartFacts, operator: str, latest: dict[str, Record], previ
         return None
     best = ranking[0]
     value = latest[operator].value
-    lead_word = 'leads' if facts.direction else 'is highest'
     if facts.family == 'share':
         side = 'highest' if facts.direction >= 0 else 'lowest'
         other = ranking[1] if operator == best else best
@@ -406,19 +577,20 @@ def _position(facts: ChartFacts, operator: str, latest: dict[str, Record], previ
                            f'next: {other} ({_figure(facts, latest[other].value)}).', 2.4, 'position')
         return Finding(f'{best} has the {side} share of {facts.statistic} ({_figure(facts, latest[best].value)}) '
                        f'vs {_figure(facts, value)} for {operator}.', 2.2, 'position')
-    statistic = f'the {facts.statistic}'
+    metric = _metric(facts)
+    lead = f'leads in {metric}' if facts.direction else f'has the highest {metric}'
     if operator == best:
         second = ranking[1]
         if not _meaningful(facts, latest[second], latest[operator]):
-            return Finding(f'{operator} and {second} are on par at {statistic} ({_figure(facts, value, unit=False)} vs '
+            return Finding(f'{operator} and {second} are on par in {metric} ({_figure(facts, value, unit=False)} vs '
                            f'{_figure(facts, latest[second].value)}).', 1.6, 'position')
-        return Finding(f'{operator} {lead_word} at {statistic} ({_figure(facts, value)}), '
+        return Finding(f'{operator} {lead} ({_figure(facts, value)}), '
                        f'{_gap(facts, latest[second].value, value)} ahead of {second}.', 2.6, 'position')
     best_value = latest[best].value
     if not _meaningful(facts, latest[best], latest[operator]):
-        return Finding(f'{operator} is on par with {best} at {statistic} ({_figure(facts, value, unit=False)} vs '
+        return Finding(f'{operator} is on par with {best} in {metric} ({_figure(facts, value, unit=False)} vs '
                        f'{_figure(facts, best_value)}).', 1.8, 'position')
-    text = (f'{best} {lead_word} at {statistic} ({_figure(facts, best_value)}); {operator} trails by '
+    text = (f'{best} {lead} ({_figure(facts, best_value)}); {operator} trails by '
             f'{_gap(facts, value, best_value)} ({_figure(facts, value)})')
     if previous_campaign and operator in previous and best in previous:
         before = _gap_size(facts, previous[operator].value, previous[best].value)
@@ -450,7 +622,7 @@ def _tail(facts: ChartFacts, operator: str, latest: dict[str, Record], previous:
         value = share(latest[operator])
         if value is None:
             return None
-        text = f'Samples {label}: {f"{operator} " if operator else ""}{_percent(value)}'
+        text = f'{unit.name} samples {label}: {f"{operator} " if operator else ""}{_percent(value)}'
         before = share(previous[operator]) if previous_campaign and operator in previous else None
         if before is not None:
             text += f' ({_points(value - before)} vs {previous_campaign})'
@@ -466,17 +638,133 @@ def _tail(facts: ChartFacts, operator: str, latest: dict[str, Record], previous:
     best = max(values, key=lambda name: values[name] * facts.direction)
     label = percentile.upper()
     if best == operator:
-        return Finding(f'{operator} also has the best tail ({label} {_figure(facts, values[operator])}).', 1.4, 'tail')
-    return Finding(f'Tail ({label}): {operator} {_figure(facts, values[operator], unit=False)} vs '
+        return Finding(f'{operator} also has the best {unit.name} tail ({label} {_figure(facts, values[operator])}).', 1.4, 'tail')
+    return Finding(f'{unit.name} tail ({label}): {operator} {_figure(facts, values[operator], unit=False)} vs '
                    f'{best} {_figure(facts, values[best])}.', 1.8, 'tail')
+
+
+def _latest_campaign(records: list[Record], campaign_key: str | None) -> str | None:
+    campaigns = sorted({record.labels[campaign_key] for record in records if campaign_key in record.labels},
+                       key=campaign_sort_key) if campaign_key else []
+    return campaigns[-1] if campaigns else None
+
+
+def _vendor_findings(facts: ChartFacts, focus: set[str], operator_key: str, campaign_key: str | None,
+                     vendor_key: str, context_keys: list[str]) -> list[Finding]:
+    """Multivendor: for the same operator, how its vendor areas compare at the latest campaign."""
+    latest_campaign = _latest_campaign(facts.records, campaign_key)
+    others = [name for name in context_keys if name != vendor_key]
+    groups: dict[tuple[str, ...], dict[str, Record]] = {}
+    for record in facts.records:
+        vendor = record.labels.get(vendor_key, '')
+        if (latest_campaign and record.labels.get(campaign_key) != latest_campaign) or vendor.casefold() in NOT_VENDORS:
+            continue
+        if _eligible(record):
+            key = (record.labels.get(operator_key, ''), *(record.labels.get(name, '') for name in others))
+            groups.setdefault(key, {})[vendor] = record
+    findings = []
+    for (operator, *context), vendors in groups.items():
+        if len(vendors) < 2 or (focus and operator.casefold() not in focus):
+            continue
+        ranked = _ranked(facts, vendors)
+        best, worst = ranked[0], ranked[-1]
+        if not _meaningful(facts, vendors[worst], vendors[best]):
+            continue
+        higher, lower = (best, worst) if vendors[best].value >= vendors[worst].value else (worst, best)
+        prefix = ' · '.join(value for value in context if value)
+        what = f'the share of {facts.statistic}' if facts.family == 'share' else _metric(facts)
+        text = (f'{prefix + ": " if prefix else ""}For {operator}, {what} is {_gap(facts, vendors[lower].value, vendors[higher].value)} '
+                f'higher in {higher} areas than in {lower} areas ({_figure(facts, vendors[higher].value, unit=False)} vs '
+                f'{_figure(facts, vendors[lower].value)}).')
+        findings.append(Finding(text, 2.3 + (FOCUS_BONUS if focus else 0.0), 'vendor'))
+    return findings
+
+
+def _relation_findings(facts: ChartFacts, focus: set[str]) -> list[Finding]:
+    """Scatter: how strongly the KPI follows the other measure for the Focus operators (or the largest series)."""
+    operator_key, campaign_key, _vendor, context_keys = _roles(facts.records)
+    latest_campaign = _latest_campaign(facts.records, campaign_key)
+    records = [record for record in facts.records
+               if (not latest_campaign or record.labels.get(campaign_key) == latest_campaign)
+               and (record.samples or 0) >= MIN_RELATION_SAMPLES]
+    subjects = [record for record in records if operator_key and record.labels.get(operator_key, '').casefold() in focus]
+    bonus = FOCUS_BONUS if subjects else 0.0
+    subjects = (subjects or sorted(records, key=lambda record: -(record.samples or 0))[:1])[:MAX_FOCUS_SUBJECTS]
+    x_kpi: KpiSemantics = facts.extra['x']
+    findings = []
+    for record in subjects:
+        rho = record.value
+        name = record.labels.get(operator_key, '') if operator_key else ''
+        context = ' · '.join(record.labels.get(key, '') for key in context_keys if record.labels.get(key))
+        who = f'For {" · ".join(part for part in (name, context) if part)}, ' if name or context else ''
+        metric = facts.semantics.name if who else facts.semantics.name[:1].upper() + facts.semantics.name[1:]
+        if abs(rho) >= STRONG_CORRELATION and 'x_q25' in record.extra:
+            stats = record.extra
+            text = (f'{who}{metric} {"rises" if rho > 0 else "falls"} with {x_kpi.name} (Spearman ρ = {_format(rho, 2)}): '
+                    f'median {_with_unit(_format(stats["y_median_low"], facts.semantics.digits), facts.semantics)} at or below '
+                    f'{_with_unit(_format(stats["x_q25"], x_kpi.digits), x_kpi)} vs '
+                    f'{_with_unit(_format(stats["y_median_high"], facts.semantics.digits), facts.semantics)} at or above '
+                    f'{_with_unit(_format(stats["x_q75"], x_kpi.digits), x_kpi)}.')
+            findings.append(Finding(text, 2.0 + abs(rho) + bonus, 'relation'))
+        elif abs(rho) < WEAK_CORRELATION:
+            findings.append(Finding(f'{who}{metric} barely follows {x_kpi.name} (Spearman ρ = {_format(rho, 2)}).',
+                                    1.0 + bonus, 'relation'))
+    return findings
+
+
+def _map_findings(facts: ChartFacts) -> list[Finding]:
+    """Map: the share of the weakest class and the area that holds more of it than its share of the route."""
+    worst = facts.records[facts.extra['worst']]
+    findings = [Finding(f'{_percent(worst.value)} of the mapped samples have {facts.statistic}.', 2.0, 'map')]
+    areas = facts.extra.get('areas') or {}
+    position = facts.extra.get('worst_position')
+    rows = areas.get('rows') or []
+    totals = {row['name']: sum(row['counts']) for row in rows}
+    route = sum(totals.values())
+    worst_total = sum(row['counts'][position] for row in rows) if position is not None else 0
+    if position is not None and route and worst_total >= MIN_GROUP_SAMPLES:
+        candidates = []
+        for row in rows:
+            if row['name'] == '(blank)' or row['counts'][position] < MIN_GROUP_SAMPLES:
+                continue
+            held, weight = row['counts'][position] / worst_total, totals[row['name']] / route
+            if held >= 1.3 * weight:
+                candidates.append((held - weight, row['name'], held, weight))
+        if candidates:
+            _excess, area, held, weight = max(candidates)
+            findings.append(Finding(f'{area} holds {_percent(held)} of the samples with {facts.statistic} while it has '
+                                    f'{_percent(weight)} of the mapped samples.', 2.4, 'map'))
+    return findings
+
+
+def _table_findings(facts: ChartFacts) -> list[Finding]:
+    """Table: the highest and lowest rows of its first numeric columns."""
+    findings = []
+    for position, column in enumerate(facts.extra['columns']):
+        values = {record.labels['Row']: record.extra['values'][column] for record in facts.records
+                  if column in record.extra['values']}
+        if len(set(values.values())) < 2:
+            continue
+        high, low = max(values, key=values.get), min(values, key=values.get)
+        percent = any(record.extra['percent'] for record in facts.records)
+        shown = (lambda value: f'{_format(value, 1)}%') if percent else (lambda value: _format(value))
+        findings.append(Finding(f'{column}: highest {high} ({shown(values[high])}), lowest {low} ({shown(values[low])}).',
+                                1.4 - position * 0.2, 'table'))
+    return findings
 
 
 def chart_findings(facts: ChartFacts, focus_operators: Iterable[str] = ()) -> list[Finding]:
     """The findings of one chart, group by group: the change of the Focus operators (or of the leader) since the
-    previous campaign, their position against the leader, the weak tail, the largest move of the others and the
-    groups with too few samples to be named."""
+    previous campaign, their position against the leader, the weak tail, the largest move of the others, the vendors
+    of each operator and the groups with too few samples to be named."""
     focus = {str(name).strip().casefold() for name in focus_operators if str(name or '').strip()}
-    operator_key, campaign_key, context_keys = _roles(facts.records)
+    if facts.family == 'relation':
+        return _relation_findings(facts, focus)
+    if facts.family == 'map':
+        return _map_findings(facts)
+    if facts.family == 'table':
+        return _table_findings(facts)
+    operator_key, campaign_key, vendor_key, context_keys = _roles(facts.records)
     groups: dict[tuple[str, ...], list[Record]] = {}
     for record in facts.records:
         groups.setdefault(tuple(record.labels.get(name, '') for name in context_keys), []).append(record)
@@ -531,6 +819,86 @@ def chart_findings(facts: ChartFacts, focus_operators: Iterable[str] = ()) -> li
             counts = _join([f'{name} ({latest_all[name].samples})' for name in few])
             group_findings.append(Finding(f'Too few samples to compare {counts}: indicative results only.', 0.6, 'samples'))
         findings.extend(Finding(prefix + finding.text, finding.score, finding.kind) for finding in group_findings)
+    if vendor_key and operator_key:
+        findings.extend(_vendor_findings(facts, focus, operator_key, campaign_key, vendor_key, context_keys))
+    return findings
+
+
+def _latest_by_operator(facts: ChartFacts) -> tuple[dict[str, Record], str | None]:
+    """The eligible records of the latest campaign by operator, for charts read only by Operator (and Campaign)."""
+    operator_key, campaign_key, _vendor, context_keys = _roles(facts.records)
+    if not operator_key or context_keys:
+        return {}, None
+    latest_campaign = _latest_campaign(facts.records, campaign_key)
+    return {
+        record.labels[operator_key]: record for record in facts.records
+        if operator_key in record.labels and _eligible(record)
+        and (latest_campaign is None or record.labels.get(campaign_key) == latest_campaign)
+    }, latest_campaign
+
+
+def _technology(name: str) -> str | None:
+    tokens = {token.casefold() for token in TECHNOLOGY_TOKENS.findall(name)}
+    if tokens & {'nr', '5g'} and not tokens & {'lte', '4g'}:
+        return 'NR'
+    if tokens & {'lte', '4g'} and not tokens & {'nr', '5g'}:
+        return 'LTE'
+    return None
+
+
+def slide_findings(slide_facts: list[ChartFacts], focus_operators: Iterable[str] = ()) -> list[Finding]:
+    """What the charts of one slide say together: NR against LTE for the same KPI, and the operators of a slide that
+    gives each operator its own chart."""
+    focus = {str(name).strip().casefold() for name in focus_operators if str(name or '').strip()}
+    stats = [facts for facts in slide_facts if facts.family == 'stat']
+    findings: list[Finding] = []
+    for lte in stats:
+        for nr in stats:
+            if (_technology(lte.semantics.name) != 'LTE' or _technology(nr.semantics.name) != 'NR'
+                    or lte.statistic != nr.statistic or lte.semantics.unit != nr.semantics.unit
+                    or TECHNOLOGY_TOKENS.sub('', lte.semantics.name).split() != TECHNOLOGY_TOKENS.sub('', nr.semantics.name).split()):
+                continue
+            lte_values, _campaign_ = _latest_by_operator(lte)
+            nr_values, _campaign_ = _latest_by_operator(nr)
+            common = [name for name in nr_values if name in lte_values]
+            if not common:
+                continue
+            meaningful = [_meaningful(nr, lte_values[name], nr_values[name]) for name in common]
+            signs = {nr_values[name].value > lte_values[name].value for name in common}
+            gaps = [_gap_size(nr, lte_values[name].value, nr_values[name].value) for name in common]
+            side = 'above' if signs == {True} else 'below'
+            if len(common) > 1 and all(meaningful) and len(signs) == 1:
+                low, high = min(gaps), max(gaps)
+                shown = (lambda value: _format(value * 100, 0)) if nr.semantics.step is None else (lambda value: _format(value, nr.semantics.digits))
+                unit = '%' if nr.semantics.step is None else f' {"dB" if nr.semantics.unit == "dBm" else nr.semantics.unit}'.rstrip()
+                span = shown(low) if shown(low) == shown(high) else f'{shown(low)}–{shown(high)}'
+                findings.append(Finding(f'{_subject(nr, "")} stays {span}{unit} {side} {lte.semantics.name} for every operator.',
+                                        2.6, 'synthesis'))
+                continue
+            for name in [name for name in common if name.casefold() in focus][:MAX_FOCUS_SUBJECTS]:
+                if not _meaningful(nr, lte_values[name], nr_values[name]):
+                    continue
+                higher = nr_values[name].value > lte_values[name].value
+                findings.append(Finding(
+                    f'{_subject(nr, name)} is {_gap(nr, lte_values[name].value, nr_values[name].value)} '
+                    f'{"above" if higher else "below"} {lte.semantics.name} ({_figure(nr, nr_values[name].value, unit=False)} vs '
+                    f'{_figure(nr, lte_values[name].value)}).', 2.2 + FOCUS_BONUS, 'synthesis'))
+    by_metric: dict[tuple[str, str], list[tuple[str, Record, str | None]]] = {}
+    for facts in stats:
+        values, latest_campaign = _latest_by_operator(facts)
+        if len(values) == 1:
+            name, record = next(iter(values.items()))
+            by_metric.setdefault((facts.semantics.name, facts.statistic), []).append((name, record, latest_campaign))
+    for (metric, statistic), items in by_metric.items():
+        operators = {name for name, _record, _campaign_ in items}
+        if len(items) < 2 or len(operators) != len(items):
+            continue
+        facts = next(item for item in stats if item.semantics.name == metric and item.statistic == statistic)
+        ranked = sorted(items, key=lambda item: -item[1].value * (facts.direction or 1))
+        campaigns = {campaign for _name, _record, campaign in items if campaign}
+        when = f' in {_campaign(next(iter(campaigns)))}' if len(campaigns) == 1 else ''
+        values = ', '.join(f'{name} {_figure(facts, record.value, unit=False)}' for name, record, _campaign_ in ranked)
+        findings.append(Finding(f'{_subject(facts, "")}{when}: {_with_unit(values, facts.semantics)}.', 2.1, 'synthesis'))
     return findings
 
 
@@ -542,21 +910,32 @@ def slide_comments(charts: Iterable[dict[str, Any]], *, focus_operators: Iterabl
                    engine: str = ENGINE_RULES) -> list[dict[str, Any]]:
     """The comments of one slide from its visible charts.
 
-    Each chart is ``{'index', 'title', 'kpi', 'model', 'hidden', 'shown'}``. Every chart gets its best comment first,
-    then the best remaining ones fill the slide up to its limit, each comment once.
+    Each chart is ``{'index', 'title', 'kpi', 'model', 'hidden', 'shown', 'subject'}`` (``subject``: the value of a
+    dynamic grid card, such as its Operator). Every chart gets its best comment first, then the best remaining ones,
+    with those that read the charts together, fill the slide up to its limit, each comment once.
     """
     if engine not in ENGINES:
         raise ValueError(f'Unknown comment engine: {engine}.')
     focus = list(focus_operators)
     ranked: list[list[tuple[Finding, dict[str, Any]]]] = []
+    every_fact: list[ChartFacts] = []
     for chart in charts:
         findings = []
+        subject = str(chart.get('subject') or '')
         for facts in chart_facts(int(chart['index']), str(chart.get('title') or ''), str(chart.get('kpi') or ''),
                                  chart.get('model') or {}, chart.get('hidden') or (), chart.get('shown') or ()):
-            findings.extend((finding, {'chart_index': facts.chart_index, 'chart_title': facts.title})
-                            for finding in chart_findings(facts, focus))
+            every_fact.append(facts)
+            for finding in chart_findings(facts, focus):
+                text = finding.text
+                if subject and facts.family in {'map', 'table'}:
+                    text = f'{subject}: {text}'
+                findings.append((Finding(text, finding.score, finding.kind),
+                                 {'chart_index': facts.chart_index, 'chart_title': facts.title}))
         if findings:
             ranked.append(sorted(findings, key=lambda item: -item[0].score))
+    together = [(finding, {'chart_index': None, 'chart_title': ''}) for finding in slide_findings(every_fact, focus)]
+    if together:
+        ranked.append(sorted(together, key=lambda item: -item[0].score))
     limit = comment_limit(layout)
     chosen: list[tuple[Finding, dict[str, Any]]] = []
     seen: set[str] = set()

@@ -6418,6 +6418,21 @@ def _sorted_values_stats(values: list[float], edges: list[float] | None) -> dict
     return stats
 
 
+def _scatter_stats(x: pd.Series, y: pd.Series) -> dict[str, object]:
+    """How one scatter series moves: its rank correlation and the median of the KPI in the lowest and highest quarter
+    of the other measure, for the generated comments."""
+    stats: dict[str, object] = {"n": int(len(x))}
+    if len(x) >= 3 and x.nunique() > 1 and y.nunique() > 1:
+        rho = x.corr(y, method="spearman")
+        stats["spearman"] = None if pd.isna(rho) else float(rho)
+        low, high = float(x.quantile(.25)), float(x.quantile(.75))
+        stats.update({
+            "x_q25": low, "x_q75": high,
+            "y_median_low": float(y[x <= low].median()), "y_median_high": float(y[x >= high].median()),
+        })
+    return stats
+
+
 def _configured_axis_domain(
     entry: CatalogEntry,
     axis: str,
@@ -6895,6 +6910,7 @@ def catalog_chart_payload(
                 ]
                 for row_key in row_keys
             ]
+            tests = data.groupby([*render_rows, *render_columns], dropna=False).size()
             model.update({
                 "mode": "hierarchy",
                 "row_keys": [serialise_key(key) for key in row_keys],
@@ -6904,6 +6920,14 @@ def catalog_chart_payload(
                     "x": _configured_axis_domain(render_entry, "x", 0.0, float(maximum)),
                 },
                 "cells": cells,
+                "dimensions": _payload_dimensions(data, [*render_rows, *render_columns]),
+                "records": [
+                    {"key": serialise_key((*row_key, *column_key)), "counts": cell,
+                     "tests": int(tests.get((*row_key, *column_key) if len(render_rows) + len(render_columns) > 1
+                                            else (*row_key, *column_key)[0], 0))}
+                    for row_key, row in zip(row_keys, cells, strict=True)
+                    for column_key, cell in zip(column_keys, row, strict=True)
+                ],
             })
             return model
         has_series = bool(period) and not data[period].fillna("(all)").astype(str).eq("(all)").all()
@@ -6915,8 +6939,13 @@ def catalog_chart_payload(
             if len(fields) == 1 else pd.MultiIndex.from_tuples(keys, names=fields)
         )
         counts = counts.reindex(comparison_index, fill_value=0).head(16)
+        tests = data.groupby(fields if len(fields) > 1 else fields[0], dropna=False).size()
         model.update({
             "mode": "flat",
+            "dimensions": _payload_dimensions(data, fields),
+            "tests": [
+                int(tests.get(label, 0)) for label in counts.index
+            ],
             "maximum": max(int(counts.sum(axis=1).max()), 1) if not counts.empty else 1,
             "rows": [
                 {
@@ -7024,8 +7053,31 @@ def catalog_chart_payload(
             series_payload.append({
                 "name": label, "colour": colour,
                 "points": [[longitude_value, latitude_value] for _source_index, (longitude_value, latitude_value) in sampled],
+                "key": list(key), "samples": len(rows),
             })
             fallback.append((label, colour, 2))
+        # Where each series lies, by City (or Region) when the rows have it, for the generated comments.
+        area_column = _column(data, ("City", "Region"))
+        areas = None
+        if area_column:
+            positions = {key: index for index, key in enumerate(unique_keys)}
+            located = pd.DataFrame({
+                "area": data.loc[points.index, area_column].fillna("(blank)").astype(str).to_numpy(),
+                "series": [positions[key] for key in raw_keys],
+            })
+            table = pd.crosstab(located["area"], located["series"])
+            table = table.loc[table.sum(axis=1).sort_values(ascending=False).index[:15]]
+            areas = {
+                "dimension": area_column.replace("_", " "),
+                "rows": [
+                    {"name": str(area), "counts": [int(counts.get(index, 0)) for index in range(len(unique_keys))]}
+                    for area, counts in table.iterrows()
+                ],
+            }
+        try:
+            map_edges = _catalog_bucket_edges(render_entry) or []
+        except ValueError:
+            map_edges = []
         lon_low, lon_high = _configured_axis_domain(
             render_entry, "x", float(points[longitude].min()), float(points[longitude].max()),
         )
@@ -7050,6 +7102,10 @@ def catalog_chart_payload(
                 "x": [lon_low, lon_high],
                 "y": [lat_low, lat_high],
             },
+            "dimensions": _payload_dimensions(points, key_columns),
+            "colour_metric": str(data.attrs.get("catalogue_map_colour_metric") or "").replace("_", " "),
+            "bucket_edges": map_edges,
+            "areas": areas,
             "basemap": {
                 "provider": "OpenStreetMap",
                 "url_template": "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
@@ -7319,6 +7375,11 @@ def catalog_chart_payload(
             return empty("No valid samples for this KPI and technology filter")
         keys = [(str(label),) for label in points["__catalog_label"].drop_duplicates().tolist()]
         colours = _series_colours(keys, ["__catalog_label"], points)
+        series_keys = {
+            str(label): (category, series)
+            for label, category, series in data[["__catalog_label", group, period]].drop_duplicates("__catalog_label")
+            .itertuples(index=False, name=None)
+        }
         payload_series = []
         fallback = []
         for index, (label, subset) in enumerate(points.groupby("__catalog_label", sort=False)):
@@ -7328,12 +7389,15 @@ def catalog_chart_payload(
             payload_series.append({
                 "name": str(label), "colour": colour,
                 "points": [[float(x), float(y)] for _source_index, (x, y) in sampled],
+                "key": serialise_key(series_keys.get(str(label), (label, "(all)"))),
+                "stats": _scatter_stats(subset[x_metric], subset[metric]),
             })
             fallback.append((label, colour, 2))
         return {
             **_chart_payload_base("scatter", title, render_entry, data, metric, fallback),
             "x_label": x_metric.replace("_", " "),
             "y_label": metric.replace("_", " "),
+            "dimensions": _payload_dimensions(data, [group, period]),
             "domain": {
                 "x": _configured_axis_domain(
                     render_entry, "x", float(points[x_metric].min()), float(points[x_metric].max()),

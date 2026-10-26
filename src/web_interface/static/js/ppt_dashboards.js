@@ -204,6 +204,7 @@
     definitionValue.hidden_filters ||= [];
     definitionValue.hidden_filters = definitionValue.hidden_filters.map(vendorField);
     definitionValue.slide_comments ||= {};
+    definitionValue.slide_comment_meta ||= {};
     if (!definitionValue.date_from) definitionValue.date_from = 'Oldest';
     if (!definitionValue.date_to) definitionValue.date_to = 'Newest';
     return definitionValue;
@@ -242,6 +243,7 @@
     const preparedDefinition = canonicalSelectionDefinition(value);
     delete preparedDefinition.name;
     delete preparedDefinition.slide_comments;
+    delete preparedDefinition.slide_comment_meta;
     return JSON.stringify(canonicalize(preparedDefinition));
   };
   const hasUnsavedDashboardChanges = (ignoredFields = []) => {
@@ -1088,8 +1090,9 @@
     automaticTo.onchange = () => { syncDateControls(); rememberDialog(); };
     dateFrom.oninput = () => { syncDateControls(); rememberDialog(); };
     dateTo.oninput = () => { syncDateControls(); rememberDialog(); };
+    $('ds-ppt-auto-comments').value = lastAutoComments;
     confirm.onclick = () => { for (const key of Object.keys(selectionControls)) rememberSelection(key); finish({
-      scope: scopeControl.value, vendor_comparison: vendorComparison.value,
+      scope: scopeControl.value, vendor_comparison: vendorComparison.value, auto_comments: $('ds-ppt-auto-comments').value,
       campaigns: campaignSelection,
       date_from: automaticFrom.checked ? 'Oldest' : dateFrom.value,
       date_to: automaticTo.checked ? 'Newest' : dateTo.value,
@@ -1104,8 +1107,11 @@
     $('ds-ppt-dataset-overlay').querySelector('[role=dialog]').onkeydown = event => { if (event.key === 'Escape') finish(null); };
     overlay('ds-ppt-dataset-overlay', true);
   });
+  // The Auto comments of the last PPT generated in this page, offered again by the next one.
+  let lastAutoComments = 'off';
   async function queueDashboardPptExport(id, item, {chooseScope = false} = {}) {
     let exportDefinition = item;
+    let autoComments = lastAutoComments;
     let preparationToken = null;
     let filterDecision = 'unchanged';
     let selectedOperators = [];
@@ -1118,6 +1124,7 @@
       exportDefinition = JSON.parse(JSON.stringify(item));
       exportDefinition.scope = universeChoice.scope;
       exportDefinition.vendor_comparison = universeChoice.vendor_comparison;
+      autoComments = universeChoice.auto_comments || 'off';
       // The queued server worker chooses the CDRs of these campaigns; never make the library button wait for
       // a cache lookup or every chart model before the job exists.
       delete exportDefinition.datasets;
@@ -1164,11 +1171,13 @@
       }
     }
     if (!chooseScope && filterDecision === 'unchanged' && !hasAppliedUnsavedFilterChanges()) {
-      const accepted = await window.showConfirmDialog(
+      const decision = await window.showConfirmDialog(
         `Generate a PowerPoint presentation for “${exportDefinition.name}”?`,
-        {title: 'Generate Dashboard PPT', confirmLabel: 'Generate PPT'},
+        {title: 'Generate Dashboard PPT', confirmLabel: 'Generate PPT', optionLabel: 'Auto comments: write generated comments on the slides without comments',
+          optionChecked: autoComments !== 'off'},
       );
-      if (!accepted) return;
+      if (!decision?.accepted) return;
+      autoComments = decision.optionChecked ? (autoComments === 'off' ? 'empty' : autoComments) : 'off';
     }
     if (!chooseScope && exportDefinition.scope === 'multivendor') {
       const choice = await window.showConfirmDialog(
@@ -1182,6 +1191,7 @@
     }
     // Queuing validates the universe and resolves the cover labels on the
     // server, which can take a few seconds on a busy server: show it.
+    lastAutoComments = autoComments;
     window.showLoadingOverlay?.('Queuing Dashboard PPT', `Preparing the PowerPoint export for “${exportDefinition.name}”…`);
     try {
       await api(`/${encodeURIComponent(id)}/export-ppt`, 'POST', {
@@ -1189,6 +1199,7 @@
         preparation_token: preparationToken,
         // Legend entries hidden in the viewer are exported hidden as well.
         legend_visibility: legendVisibilityPayload(id),
+        auto_comments: autoComments,
         ...(chooseScope ? {
           selected_operators: selectedOperators,
           selected_vendors: selectedVendors,
@@ -1618,6 +1629,7 @@
     $('ds-comment-input').disabled = snapshot;
     $('ds-comment-add').disabled = snapshot;
     $('ds-comment-generate').disabled = snapshot;
+    $('ds-comment-generate-all').disabled = snapshot;
   };
   async function openDashboardPptViewer(job) {
     const payload = await api(`/ppt-jobs/${job.id}/charts.json`);
@@ -4026,8 +4038,12 @@
     const comments = definition.slide_comments[key] ||= [];
     if (comments.length + chosen.length > 50) throw new Error('A slide can have at most 50 comments.');
     comments.push(...chosen);
+    const {engine, model} = commentSuggestions;
     commentSuggestions = null;
-    await persistComments({generated_slide: key, generated_added: chosen.length});
+    await persistComments({
+      generated_slide: key, generated_added: chosen.length, generated_texts: chosen,
+      generated_engine: engine || 'rules', generated_model: model || '', token: prepared?.token || '',
+    });
     renderComments();
   });
   function renderComments() {
@@ -4041,8 +4057,15 @@
     if (panel && presentation.active) panel.open = presentation.showComments && comments.length > 0;
     list.replaceChildren();
     if (!comments.length) { list.append(node('li', 'No comments for this slide.', 'ds-comments-empty')); return; }
+    // Generated comments keep a tag, and say when they were written for another selection (campaigns, filters or CDRs).
+    const meta = (viewer.slide_comment_meta || {})[currentSlideCommentKey()] || {};
+    const generated = new Set(meta.generated || []);
+    if (generated.size && meta.selection && prepared?.selection_key && meta.selection !== prepared.selection_key && !pptDashboardViewer) {
+      list.append(node('li', 'The generated comments of this slide were written for another selection (campaigns, filters or CDRs): generate them again to bring them up to date.', 'ds-comments-stale'));
+    }
     comments.forEach((comment, index) => {
-      const item = node('li', undefined, 'ds-comment');
+      const item = node('li', undefined, `ds-comment${generated.has(comment) ? ' is-generated' : ''}`);
+      if (generated.has(comment)) item.title = `Generated${meta.generated_at ? ` on ${String(meta.generated_at).slice(0, 10)}` : ''}${meta.engine && meta.engine !== 'rules' ? ` with ${meta.engine}` : ''}`;
       const editor = document.createElement('input'); editor.type = 'text'; editor.value = comment; editor.maxLength = 500; editor.setAttribute('aria-label', `Comment ${index + 1}`);
       editor.disabled = Boolean(pptDashboardViewer);
       let savedComment = comment;
@@ -4069,8 +4092,9 @@
     const payload = await api(`/${id}/comments`, 'PATCH', {slide_comments: definition.slide_comments || {}, ...generated});
     if (!definition || activeId !== id) return;
     definition.slide_comments = payload.slide_comments;
-    updateSavedDefinition({slide_comments: payload.slide_comments});
-    dashboards[id] = {...dashboards[id], slide_comments: structuredClone(payload.slide_comments)};
+    definition.slide_comment_meta = payload.slide_comment_meta || {};
+    updateSavedDefinition({slide_comments: payload.slide_comments, slide_comment_meta: definition.slide_comment_meta});
+    dashboards[id] = {...dashboards[id], slide_comments: structuredClone(payload.slide_comments), slide_comment_meta: structuredClone(definition.slide_comment_meta)};
     $('ds-comments-status').textContent = 'Saved';
   }
   function syncPresentationControls() {
@@ -4484,13 +4508,55 @@
   $('ds-slide').onchange = () => { stopPresentation(); slideIndex = Number($('ds-slide').value); renderSlide(); };
   bind('ds-comment-add', async () => { const input = $('ds-comment-input'), comment = input.value.trim(); if (!comment || !definition || pptDashboardViewer) return; const key = currentSlideCommentKey(); definition.slide_comments ||= {}; const comments = definition.slide_comments[key] ||= []; if (comments.length >= 50) throw new Error('A slide can have at most 50 comments.'); comments.push(comment); input.value = ''; await persistComments(); renderComments(); });
   $('ds-comment-input').addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); $('ds-comment-add').click(); } });
+  // The charts a slide shows (a dynamic grid can hide cards), each with the legend items hidden and shown on it.
+  const commentCharts = slide => (slide.charts || []).filter(chart => chart.available && !dynamicCardHiddenBy(chart).length)
+    .map(chart => ({index: chart.index, ...chartLegendLists(chart)}));
+  // Writes the comments of every slide in a background job, on the slides without comments, in place of the generated
+  // ones or in place of every comment, and follows its progress.
+  bind('ds-comment-generate-all', async () => {
+    if (!definition || pptDashboardViewer || !activeId || !prepared?.token) return;
+    const choice = await window.showConfirmDialog(
+      'Write the comments of every slide of this Dashboard from the figures of its charts. Which comments should they replace?',
+      {title: 'Generate comments for all slides', confirmLabel: 'Only Slides Without Comments', secondaryLabel: 'Replace Generated Comments', tertiaryLabel: 'Replace Every Comment', cancelLabel: 'Cancel', wideActions: true},
+    );
+    const mode = {confirm: 'empty', secondary: 'generated', tertiary: 'all'}[choice];
+    if (!mode) return;
+    const slides = (prepared.slides || []).filter(slide => !slide.structural_type).map(slide => ({number: slide.number, charts: commentCharts(slide)}));
+    const id = activeId, button = $('ds-comment-generate-all'), state = $('ds-comments-status');
+    button.disabled = true;
+    try {
+      let job = await api(`/${id}/comments/generate-all`, 'POST', {token: prepared.token, mode, slides});
+      const jobId = job.job_id;
+      while (job.state === 'processing') {
+        state.textContent = `Generating comments: slide ${job.done || 0} of ${job.total || slides.length}…`;
+        await new Promise(resolve => window.setTimeout(resolve, 1200));
+        job = await api(`/comment-jobs/${jobId}`);
+      }
+      state.textContent = '';
+      const result = job.result || {};
+      if (activeId === id && definition) {
+        definition.slide_comments = result.slide_comments || {};
+        definition.slide_comment_meta = result.slide_comment_meta || {};
+        updateSavedDefinition({slide_comments: definition.slide_comments, slide_comment_meta: definition.slide_comment_meta});
+        dashboards[id] = {...dashboards[id], slide_comments: structuredClone(definition.slide_comments), slide_comment_meta: structuredClone(definition.slide_comment_meta)};
+        commentSuggestions = null;
+        renderComments();
+      }
+      const parts = [`Comments written on ${result.written || 0} of ${result.slides || slides.length} slides.`];
+      if (result.kept) parts.push(`${result.kept} kept the comments they had.`);
+      if (result.empty) parts.push(`${result.empty} had nothing to comment on.`);
+      window.showInfoDialog?.(parts.join(' '), {title: 'Generate comments for all slides'});
+    } finally {
+      button.disabled = Boolean(pptDashboardViewer);
+      if (state.textContent.startsWith('Generating comments')) state.textContent = '';
+    }
+  });
   // Suggests the comments of the open slide from the charts it shows (with their hidden legend items); nothing is saved
   // until the suggestions are added.
   bind('ds-comment-generate', async () => {
     const slide = prepared?.slides?.[slideIndex];
     if (!definition || pptDashboardViewer || !activeId || !prepared?.token || !slide) return;
-    const charts = (slide.charts || []).filter(chart => chart.available && !dynamicCardHiddenBy(chart).length)
-      .map(chart => ({index: chart.index, ...chartLegendLists(chart)}));
+    const charts = commentCharts(slide);
     if (!charts.length) throw new Error('This slide has no charts to write comments from.');
     const key = currentSlideCommentKey(), id = activeId, button = $('ds-comment-generate'), state = $('ds-comments-status');
     button.disabled = true;
@@ -4498,7 +4564,7 @@
     try {
       const payload = await api(`/${id}/comments/generate`, 'POST', {token: prepared.token, slide: slide.number, charts});
       if (activeId !== id || currentSlideCommentKey() !== key) return;
-      commentSuggestions = {key, items: payload.suggestions || [], skipped: payload.skipped || []};
+      commentSuggestions = {key, items: payload.suggestions || [], skipped: payload.skipped || [], engine: payload.engine, model: payload.model || ''};
       const panel = $('ds-comments-list').closest('.ds-slide-comments');
       if (panel) panel.open = true;
       renderComments();
