@@ -548,9 +548,9 @@
                 <li>The Scoring Impact column of the calls keeps the points of the CDRs scored so far.</li>
               </ul></section>
               <section><h4>Other conditions</h4><ul>
-                <li><strong>Cluster</strong>: at least <strong data-nq-about="min_calls"></strong> calls of the operator within <strong data-nq-about="spot_meters"></strong> m of the call (or at its site) in the quarter of the call and the <strong data-nq-about="previous_quarters"></strong> before.</li>
-                <li><strong>Hotspots</strong>: 2+ failures of an operator, NR Mode and campaign, whatever their call type, each within <strong data-nq-about="hotspot_minutes"></strong> min <strong data-nq-about="hotspot_join"></strong> <strong data-nq-about="hotspot_meters"></strong> m (or at its site) of another one (with OR, the time in the same drive).</li>
-                <li><strong>Consecutive failures</strong>: another failure of the same drive (the car) within <strong data-nq-about="consecutive_minutes"></strong> min, whatever its call type. <strong>Drops</strong> and <strong>Setup failures</strong>: by the result of the call.</li>
+                <li><strong>Cluster</strong>: at least <strong data-nq-about="min_calls"></strong> calls of the operator within <strong data-nq-about="spot_meters"></strong> m of the call (or at its site) in the quarter of its campaign and the <strong data-nq-about="previous_quarters"></strong> before (the Ping tests apart).</li>
+                <li><strong>Consecutive failures</strong>: another failure of the operator within <strong data-nq-about="consecutive_minutes"></strong> min, whatever its call type and wherever it was.</li>
+                <li><strong>Hotspots</strong>: 2+ failures of an operator, NR Mode and campaign, whatever their call type, each within <strong data-nq-about="consecutive_minutes"></strong> min <strong data-nq-about="hotspot_join"></strong> <strong data-nq-about="spot_meters"></strong> m (or at the site where it ended) of another one. <strong>Drops</strong> and <strong>Setup failures</strong>: by the result of the call.</li>
               </ul></section>
               <section><h4>Out of scope and shared settings</h4><ul>
                 <li><strong>Out of Scope</strong>: its regions, the operators that are not Focus operators and the NR Mode · Operator pairs chosen (SA · Three): no queue, not tracked.</li>
@@ -603,7 +603,7 @@
             <div class="nq-priority-queue-bars" id="nq-priority-queue-bars"></div>
             <details class="nq-priority-queue-outside" id="nq-priority-queue-outside" hidden><summary></summary><ul></ul></details>
           </section>
-          <section class="nq-priority-levels"><span class="nq-priority-shared" title="A change here applies to every strategy">Shared by every strategy</span><h3>Scoring Impact, Clusters, Hotspots and Consecutive Failures</h3>
+          <section class="nq-priority-levels"><span class="nq-priority-shared" title="A change here applies to every strategy">Shared by every strategy</span><h3>Scoring Impact, Clusters, Consecutive Failures and Hotspots</h3>
             <div class="nq-priority-levels-grid">
               <div class="nq-priority-level"><label for="nq-priority-high">High impact <strong>(%)</strong></label><span class="nq-priority-value"><input type="number" id="nq-priority-high" min="5" max="95" step="1"></span>
                 <span class="nq-priority-help" title="The calls that hold this first share of the points lost by their campaign, operator and service">Calls holding this first share of the points lost</span></div>
@@ -612,17 +612,13 @@
               <div class="nq-priority-level"><label for="nq-priority-min-calls">Cluster size <strong>(calls)</strong></label><span class="nq-priority-value"><input type="number" id="nq-priority-min-calls" min="2" max="50" step="1"></span>
                 <span class="nq-priority-help" title="A cluster: at least these Non-Qualified Calls of the operator failed within the Cluster distance of the call or at its site">Calls of the operator failed close to the call</span></div>
               <div class="nq-priority-level"><label for="nq-priority-quarters">Cluster period <strong>(quarters)</strong></label><span class="nq-priority-value"><input type="number" id="nq-priority-quarters" min="0" max="8" step="1"></span>
-                <span class="nq-priority-help" title="Before the quarter of the call, which always counts">Quarters before the call's own quarter</span></div>
+                <span class="nq-priority-help" title="The campaigns of these quarters before the quarter of the campaign of the call, which always counts (UK_Q3_2026 is 2026 Q3, whenever its calls ran; the date of a call counts only when its campaign does not name its quarter)">Quarters of campaigns before the call's campaign</span></div>
               <div class="nq-priority-level"><label for="nq-priority-spot">Cluster distance <strong>(m)</strong></label><span class="nq-priority-value"><input type="number" id="nq-priority-spot" min="25" max="2000" step="5"></span>
-                <span class="nq-priority-help" title="A call counts the calls of its operator that failed at most this far from it or at the same site (a call without a cell is listed at a spot of this size)">Max distance to the other calls (or same site)</span></div>
-              <div class="nq-priority-level"><label for="nq-priority-hotspot-meters">Hotspot distance <strong>(m)</strong></label><span class="nq-priority-value"><input type="number" id="nq-priority-hotspot-meters" min="25" max="5000" step="25"></span>
-                <span class="nq-priority-help" title="A failure joins the hotspot of another failure of its operator, NR Mode and campaign at most this far from it (or at the same site)">Max distance to another failure (or same site)</span></div>
-              <div class="nq-priority-level"><label for="nq-priority-hotspot-minutes">Hotspot time <strong>(min)</strong></label><span class="nq-priority-value"><input type="number" id="nq-priority-hotspot-minutes" min="1" max="240" step="1"></span>
-                <span class="nq-priority-help" title="…and at most these minutes before or after it">Max minutes to another failure</span></div>
-              <div class="nq-priority-level"><label for="nq-priority-hotspot-join">Hotspot join</label><span class="nq-priority-value"><select id="nq-priority-hotspot-join"><option value="and">AND</option><option value="or">OR</option></select></span>
-                <span class="nq-priority-help" title="AND: another failure within the Hotspot time and the Hotspot distance at once. OR: another failure of the same drive within the Hotspot time, or another one within the Hotspot distance">AND: close in time and distance · OR: either</span></div>
+                <span class="nq-priority-help" title="A call counts the calls of its operator that failed at most this far from it or at the same site; the hotspots take it too (a call without a cell is listed at a spot of this size)">Max distance to the other calls (or same site)</span></div>
               <div class="nq-priority-level"><label for="nq-priority-consecutive-minutes">Consecutive time <strong>(min)</strong></label><span class="nq-priority-value"><input type="number" id="nq-priority-consecutive-minutes" min="1" max="240" step="1"></span>
-                <span class="nq-priority-help" title="A failure is consecutive when another failure of its operator, NR Mode, campaign and drive (the car) started at most these minutes before or after it">Max minutes to another failure of the drive</span></div>
+                <span class="nq-priority-help" title="A failure is consecutive when another failure of its operator, NR Mode and campaign started at most these minutes before or after it, wherever it was; the hotspots take it too">Max minutes to another failure</span></div>
+              <div class="nq-priority-level"><label for="nq-priority-hotspot-join">Hotspot join</label><span class="nq-priority-value"><select id="nq-priority-hotspot-join"><option value="or">OR</option><option value="and">AND</option></select></span>
+                <span class="nq-priority-help" title="OR: another failure within the Consecutive time, or another one within the Cluster distance (or at the same site). AND: another failure within both at once">OR: close in time or distance · AND: both</span></div>
               <div class="nq-priority-level"><label for="nq-priority-capacity">Next to analyse <strong>(calls)</strong></label><span class="nq-priority-value"><input type="number" id="nq-priority-capacity" min="1" max="500" step="1"></span>
                 <span class="nq-priority-help" title="The first prioritized calls the panel lists (of each queue)">Calls each queue lists in the panel</span></div>
             </div>

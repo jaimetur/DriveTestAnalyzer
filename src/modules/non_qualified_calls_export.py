@@ -432,26 +432,31 @@ def prioritization_tables(data: dict[str, Any]) -> list[tuple[str, str, list[str
         tables.append(('hotspots', 'Hotspots' + (f' · the {len(spot_rows)} with the most calls of {len(spots):,}' if len(spots) > len(spot_rows) else ''),
                        ['Operator', 'NR Mode', 'Campaign', 'Site', 'Time', 'Calls', 'Voice', 'WhatsApp', 'Data', 'Points lost', 'Open',
                         'Main Root Category'], spot_rows, {5, 6, 7, 8, 9, 10}))
-    issues = [[row['operator'], row['place'], f"{row['calls']:,}", f"{row['campaigns']:,}",
-               ', '.join(f'{name} {count}' for name, count in row['services'].items()),
-               ', '.join(f'{name} {count}' for name, count in row['nr_modes'].items()), _points(row['points']),
+    # The sites with a repeated issue in the columns of the hotspots: their NR Modes and campaigns (with their calls when
+    # there are several) and the days of their first and last call.
+    def shares(counts: dict[str, int]) -> str:
+        return ' · '.join(f'{name} {count:,}' for name, count in counts.items()) if len(counts) > 1 else next(iter(counts), '—')
+    issues = [[row['operator'], shares(row['nr_modes']), shares(row.get('campaign_names') or {}), row['place'],
+               hotspot_time({'first': str(row.get('first') or '')[:10], 'last': str(row.get('last') or '')[:10]}), f"{row['calls']:,}",
+               *(f"{(row.get('kinds') or {}).get(kind, 0):,}" for kind in ('Voice', 'WhatsApp', 'Data')), _points(row['points']),
                f"{row['open']:,}", row['category'] or '—'] for row in (data.get('issues') or [])[:MAX_EXPORT_ISSUES]]
     if issues:
         count = len(data.get('issues') or [])
         tables.append(('issues', 'Repeated Issues Within Same Cluster' + (f' · the {len(issues)} sites with the most calls of {count:,}' if count > len(issues) else ''),
-                       ['Operator', 'Site', 'Calls', 'Campaigns', 'Services', 'NR Mode', 'Points lost', 'Open', 'Main Root Category'],
-                       issues, {2, 3, 6, 7}))
+                       ['Operator', 'NR Mode', 'Campaign', 'Site', 'Time', 'Calls', 'Voice', 'WhatsApp', 'Data', 'Points lost', 'Open',
+                        'Main Root Category'], issues, {5, 6, 7, 8, 9, 10}))
     return tables
 
 
 def hotspot_time(row: dict[str, Any]) -> str:
-    """When the calls of a hotspot started: 2026-07-14 10:05–10:31 (the date once when it is the same day)."""
+    """When the calls of a hotspot started: 2026-07-14 10:05–10:31 (the date once when it is the same day); 2026-07-14–2026-08-02
+    for days alone."""
     first, last = str(row.get('first') or '')[:16], str(row.get('last') or '')[:16]
     if not first:
         return '—'
-    if last == first:
+    if last == first or not last:
         return first
-    return f'{first}–{last[11:]}' if last[:10] == first[:10] else f'{first}–{last}'
+    return f'{first}–{last[11:]}' if len(first) > 10 and last[:10] == first[:10] else f'{first}–{last}'
 
 
 def _step_fields(row: dict[str, Any]) -> list[str]:
