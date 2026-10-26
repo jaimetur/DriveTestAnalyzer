@@ -354,12 +354,29 @@ Active columns are highlighted. Value choices respond to the other column filter
 | Tool | Behavior |
 | --- | --- |
 | Slide comments | Add, edit or remove; Enter or leaving an edit saves immediately |
+| **Generate comments** | Suggest the comments of the open slide from the figures of its charts; review them and add the ones you keep |
 | **Presentation** | Advance every 3, 5, 10 or 15 seconds, with Fade, Slide or no transition |
 | Pause/Resume and Stop | Floating controls remain available in Presentation mode |
 | **Dashboard Filters** | Change applied selection without automatically saving defaults |
 | **Auto-Calculated Fields** | Open the shared workspace manager for permitted editors |
 
 Manual navigation stops Presentation. Its settings adapt to compact landscape screens. Backdrop/Escape closes unchanged dialogs; pending Filters, Template or calculated-field edits require a decision first.
+
+#### Generated comments
+
+**Generate comments**, beside **Add comment** for editors, writes analysis comments for the open slide from the same figures its charts draw: the filters, splits, Dashboard filters and legend items hidden in the viewer apply, and the excluded operators are never named. The rules run on the server, so no data leaves it.
+
+| Chart type | What the comments read |
+| --- | --- |
+| CDF Line, Multi KPI CDF Lines, Histogram Line and Histogram Bars | The exact median of each series, its tail (P10, or P90 when lower is better) and, with **Buckets**, the share of samples in the worst class |
+| Average and Median Vertical Bars | The value of each bar |
+| 100% Stacked Vertical Bars | The share of failures (Failed, Dropped, Cutoff…), or else of the largest class (RAT, CA state…) |
+| Threshold Stacked Vertical Bars | The share reaching the threshold |
+| Distribution Stacked Vertical Bars | The share in the worst bucket |
+
+The comments compare the latest campaign of each group with the previous one and every operator with the leader, from the point of view of the **Focus** operators of the [Operator Maps](workspace-config.md#operator-maps); without Focus operators they follow the leader. Each KPI is read with its unit and its better side (RSRP and SINR in dB, higher LQ, Mean Data Rate and scores are better, lower durations, times, RTT and error ratios are better), a group with fewer than 10 samples is not named, and a difference too small to matter (1 dB for RSRP and SINR, 0.1 for LQ, 5% for the other KPIs, or a share difference that is not statistically significant) reads as *stable* or *on par*. A slide gets up to four comments (three in the **comments right** layouts), the best one of every chart first; Maps, Scatter, Tables and Count Stacked Horizontal Bars are not read yet, and the suggestions say so.
+
+The suggestions replace the list of comments until you decide: untick or edit them, then **Add selected comments** adds them after the existing comments of the slide (saved at once, like the comments you write), or **Discard** leaves the slide as it was. App Events records each generation (slide, charts read and skipped, suggestions and time taken) and the comments added from it.
 
 ## Generate PPT
 

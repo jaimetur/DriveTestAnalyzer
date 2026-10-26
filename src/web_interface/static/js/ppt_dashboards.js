@@ -1617,6 +1617,7 @@
     }
     $('ds-comment-input').disabled = snapshot;
     $('ds-comment-add').disabled = snapshot;
+    $('ds-comment-generate').disabled = snapshot;
   };
   async function openDashboardPptViewer(job) {
     const payload = await api(`/ppt-jobs/${job.id}/charts.json`);
@@ -3978,10 +3979,62 @@
     }
     return viewer.slide_comments[key] || [];
   };
+  // Comments suggested from the charts of one slide, waiting to be reviewed and added.
+  let commentSuggestions = null;
+  function renderCommentSuggestions() {
+    const box = $('ds-comment-suggestions'), list = $('ds-comments-list');
+    if (!box || !list) return;
+    const active = Boolean(commentSuggestions && !pptDashboardViewer && commentSuggestions.key === currentSlideCommentKey());
+    box.hidden = !active;
+    list.hidden = active;
+    box.replaceChildren();
+    if (!active) return;
+    const {items, skipped} = commentSuggestions;
+    const notes = [items.length
+      ? 'Suggested from the figures of the charts of this slide. Untick or edit them, then add them.'
+      : 'No comments could be written from the charts of this slide.'];
+    if (skipped.length) notes.push(`Charts not read yet: ${skipped.join(', ')}.`);
+    const suggestionList = node('ul', undefined, 'ds-comment-suggestion-list');
+    items.forEach((item, index) => {
+      const row = node('li', undefined, 'ds-comment-suggestion');
+      const choose = document.createElement('input'); choose.type = 'checkbox'; choose.checked = true; choose.setAttribute('aria-label', `Add suggested comment ${index + 1}`);
+      // A wrapping editor shows the whole sentence, also on phones; a comment stays one line.
+      const editor = document.createElement('textarea'); editor.rows = 1; editor.value = item.text; editor.maxLength = 500; editor.setAttribute('aria-label', `Suggested comment ${index + 1}`);
+      if (item.chart_title) editor.title = `From ${item.chart_title}`;
+      editor.addEventListener('input', () => fitSuggestion(editor));
+      editor.addEventListener('keydown', event => { if (event.key === 'Enter') event.preventDefault(); });
+      row.append(choose, editor); suggestionList.append(row);
+    });
+    box.append(suggestionList);
+    const actions = node('div', undefined, 'ds-comment-suggestion-actions');
+    const add = node('button', 'Add selected comments', 'ds-comment-suggestions-add'); add.type = 'button'; add.disabled = !items.length;
+    add.onclick = addSuggestedComments;
+    const discard = node('button', 'Discard', 'ds-comment-suggestions-discard'); discard.type = 'button';
+    discard.onclick = () => { commentSuggestions = null; renderComments(); };
+    actions.append(node('p', notes.join(' '), 'ds-comment-suggestions-note'), add, discard); box.append(actions);
+    box.querySelectorAll('textarea').forEach(fitSuggestion);
+  }
+  const fitSuggestion = editor => { editor.style.height = 'auto'; editor.style.height = `${editor.scrollHeight}px`; };
+  const addSuggestedComments = safe(async () => {
+    if (!commentSuggestions || !definition || pptDashboardViewer) return;
+    const chosen = [...$('ds-comment-suggestions').querySelectorAll('.ds-comment-suggestion')]
+      .filter(row => row.querySelector('input[type="checkbox"]').checked)
+      .map(row => row.querySelector('textarea').value.replace(/\s+/g, ' ').trim()).filter(Boolean);
+    if (!chosen.length) throw new Error('Select at least one suggested comment to add.');
+    const key = commentSuggestions.key;
+    definition.slide_comments ||= {};
+    const comments = definition.slide_comments[key] ||= [];
+    if (comments.length + chosen.length > 50) throw new Error('A slide can have at most 50 comments.');
+    comments.push(...chosen);
+    commentSuggestions = null;
+    await persistComments({generated_slide: key, generated_added: chosen.length});
+    renderComments();
+  });
   function renderComments() {
     const list = $('ds-comments-list');
     const viewer = viewerDefinition();
     if (!list || !viewer) return;
+    renderCommentSuggestions();
     const comments = currentSlideComments(viewer);
     const panel = list.closest('.ds-slide-comments');
     panel?.classList.toggle('ds-has-comments', comments.length > 0);
@@ -4009,11 +4062,11 @@
       item.append(editor, remove); list.append(item);
     });
   }
-  async function persistComments() {
+  async function persistComments(generated = {}) {
     if (pptDashboardViewer || !activeId || !definition) return;
     const id = activeId;
     $('ds-comments-status').textContent = 'Saving…';
-    const payload = await api(`/${id}/comments`, 'PATCH', {slide_comments: definition.slide_comments || {}});
+    const payload = await api(`/${id}/comments`, 'PATCH', {slide_comments: definition.slide_comments || {}, ...generated});
     if (!definition || activeId !== id) return;
     definition.slide_comments = payload.slide_comments;
     updateSavedDefinition({slide_comments: payload.slide_comments});
@@ -4109,6 +4162,8 @@
     stage.classList.remove('ds-positioned', 'ds-structural-stage', 'ds-slide-transition');
     stage.replaceChildren(node('div', 'Loading available Dashboard charts…', 'ds-empty'));
     $('ds-comments-list').replaceChildren();
+    commentSuggestions = null;
+    renderCommentSuggestions();
     $('ds-comments-status').textContent = '';
     $('ds-slide-thumbnails').replaceChildren();
     thumbnailsToken = null;
@@ -4429,6 +4484,29 @@
   $('ds-slide').onchange = () => { stopPresentation(); slideIndex = Number($('ds-slide').value); renderSlide(); };
   bind('ds-comment-add', async () => { const input = $('ds-comment-input'), comment = input.value.trim(); if (!comment || !definition || pptDashboardViewer) return; const key = currentSlideCommentKey(); definition.slide_comments ||= {}; const comments = definition.slide_comments[key] ||= []; if (comments.length >= 50) throw new Error('A slide can have at most 50 comments.'); comments.push(comment); input.value = ''; await persistComments(); renderComments(); });
   $('ds-comment-input').addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); $('ds-comment-add').click(); } });
+  // Suggests the comments of the open slide from the charts it shows (with their hidden legend items); nothing is saved
+  // until the suggestions are added.
+  bind('ds-comment-generate', async () => {
+    const slide = prepared?.slides?.[slideIndex];
+    if (!definition || pptDashboardViewer || !activeId || !prepared?.token || !slide) return;
+    const charts = (slide.charts || []).filter(chart => chart.available && !dynamicCardHiddenBy(chart).length)
+      .map(chart => ({index: chart.index, ...chartLegendLists(chart)}));
+    if (!charts.length) throw new Error('This slide has no charts to write comments from.');
+    const key = currentSlideCommentKey(), id = activeId, button = $('ds-comment-generate'), state = $('ds-comments-status');
+    button.disabled = true;
+    state.textContent = 'Generating comments…';
+    try {
+      const payload = await api(`/${id}/comments/generate`, 'POST', {token: prepared.token, slide: slide.number, charts});
+      if (activeId !== id || currentSlideCommentKey() !== key) return;
+      commentSuggestions = {key, items: payload.suggestions || [], skipped: payload.skipped || []};
+      const panel = $('ds-comments-list').closest('.ds-slide-comments');
+      if (panel) panel.open = true;
+      renderComments();
+    } finally {
+      button.disabled = Boolean(pptDashboardViewer);
+      if (state.textContent === 'Generating comments…') state.textContent = '';
+    }
+  });
   const togglePresentation = () => {
     if (!presentation.active) overlay('ds-presentation-overlay', true);
     else if (presentation.running) pausePresentation();

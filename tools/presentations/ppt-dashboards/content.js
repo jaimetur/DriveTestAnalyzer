@@ -15,9 +15,9 @@ module.exports = {
         { icon: 'TbTemplate', title: 'Template', text: 'A Report Template of the workspace for its NR Mode, NSA or SA.' },
         { icon: 'TbAdjustments', title: 'Scope and dates', text: 'The Scope, the vendor comparison and the dates of the slides.' },
         { icon: 'TbFilter', title: 'Filters', text: 'Campaign first, as it chooses the CDRs, then Operator, Vendor, Region, City and more.' },
-        { icon: 'TbMessage', title: 'Comments', text: 'Saved with the Dashboard and kept in its presentations.' },
+        { icon: 'TbMessage', title: 'Comments', text: 'Written, or generated from the figures of the charts, and kept in its presentations.' },
       ],
-      notes: 'A Dashboard is a saved definition. It never copies the data: its CDRs are chosen again from its NR Mode and Campaign filter every time it is prepared, and the source CDRs and caches stay apart.' },
+      notes: 'A Dashboard is a saved definition. It never copies the data: its CDRs are chosen again from its NR Mode and Campaign filter every time it is prepared, and the source CDRs and caches stay apart. Its slide comments are written by hand or suggested by Generate comments from the figures of the charts of the slide, then kept in its PowerPoint.' },
     { id: 'templates', type: 'split', section: 'Templates', footer: 'PPT Templates', kicker: 'PPT Templates', title: 'The template behind every Dashboard',
       visual: 'template',
       points: [

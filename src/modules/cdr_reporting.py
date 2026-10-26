@@ -6394,6 +6394,30 @@ def _chart_payload_base(
     }
 
 
+def _payload_dimensions(frame: pd.DataFrame, columns: Iterable[str]) -> list[list[str]]:
+    """The template dimensions (Operator, Campaign…) behind each level of a model's keys, for the generated comments."""
+    labels = frame.attrs.get("catalogue_dimension_labels", {})
+    dimensions = []
+    for column in columns:
+        declared = labels.get(column, column)
+        names = declared if isinstance(declared, (tuple, list)) else (declared,)
+        dimensions.append([str(name) for name in names if str(name)])
+    return dimensions
+
+
+def _sorted_values_stats(values: list[float], edges: list[float] | None) -> dict[str, object]:
+    """Exact statistics of one sorted series: what a CDF or histogram shows, for the generated comments."""
+    quantiles = np.percentile(values, [10, 50, 90])
+    stats: dict[str, object] = {
+        "n": len(values), "mean": float(np.mean(values)),
+        "p10": float(quantiles[0]), "p50": float(quantiles[1]), "p90": float(quantiles[2]),
+    }
+    if edges:
+        positions = [0, *(bisect_left(values, edge) for edge in edges), len(values)]
+        stats["bucket_shares"] = [(right - left) / len(values) for left, right in zip(positions[:-1], positions[1:])]
+    return stats
+
+
 def _configured_axis_domain(
     entry: CatalogEntry,
     axis: str,
@@ -6595,6 +6619,10 @@ def catalog_chart_payload(
             bin_edges = [low + index * bin_size for index in range(bin_count + 1)]
         colours = _series_colours(combinations, columns_split, numeric, line_chart=True)
         line_dashes = _series_line_dashes(combinations, columns_split, numeric)
+        try:
+            stat_edges = _catalog_bucket_edges(render_entry)
+        except ValueError:
+            stat_edges = None
         line_widths = _cdf_campaign_line_widths(
             [(combination, campaigns) for combination, _values, campaigns in series_rows],
             columns_split,
@@ -6636,6 +6664,7 @@ def catalog_chart_payload(
                 "x": [point[0] for _source_index, point in sampled],
                 "y": [point[1] for _source_index, point in sampled],
                 "samples": len(values),
+                "stats": _sorted_values_stats(values, stat_edges),
                 **({"counts": counts, "bin_edges": bin_edges} if histogram else {}),
             })
             fallback_legend.append((full_label, colour, line_width))
@@ -6650,6 +6679,8 @@ def catalog_chart_payload(
             "metric": candidate_metric.replace("_", " "),
             "domain": {"x": [low, high], "y": [y_low, y_high]},
             "series": payload_series,
+            "dimensions": _payload_dimensions(numeric, columns_split),
+            "bucket_edges": stat_edges or [],
         })
         if histogram:
             edges = _catalog_bucket_edges(render_entry) or []
@@ -6697,6 +6728,7 @@ def catalog_chart_payload(
         model = cdf_model(metric, title, histogram=chart_type != "cdf line") if metric else None
         if model and chart_type == "histogram bars":
             model["histogram_bars"] = True
+            model["operator"] = operator_filter or ""
             model["quality_bands"] = []
             series = sorted(model["series"], key=lambda item: _campaign_sort_key(str(item["key"][-1])))
             for index, item in enumerate(series):
@@ -6767,6 +6799,8 @@ def catalog_chart_payload(
                 return int(totals.get(lookup, 0))
 
             cells = []
+            records = []
+            single_column = render_columns == ["__catalog_single_column"]
             for row_key in row_keys:
                 row_cells = []
                 for column_key in column_keys:
@@ -6775,13 +6809,20 @@ def catalog_chart_payload(
                     row_cells.append(None if not total else [
                         float(counts.get((*key, state), 0)) / total for state in states
                     ])
+                    if total:
+                        records.append({
+                            "key": serialise_key(row_key if single_column else key),
+                            "shares": row_cells[-1], "samples": total,
+                        })
                 cells.append(row_cells)
             model.update({
                 "mode": "hierarchy",
                 "row_keys": [serialise_key(key) for key in row_keys],
                 "column_keys": [serialise_key(key) for key in column_keys],
-                "single_column": render_columns == ["__catalog_single_column"],
+                "single_column": single_column,
                 "cells": cells,
+                "dimensions": _payload_dimensions(state_data, row_hierarchy if single_column else dimensions),
+                "records": records,
             })
             return model
         combinations = list(state_data[[group, period]].drop_duplicates().itertuples(index=False, name=None))
@@ -6795,15 +6836,21 @@ def catalog_chart_payload(
         else:
             totals = state_data.groupby([group, period], sort=False, dropna=False).size()
             counts = state_data.groupby([group, period, "state"], sort=False, dropna=False).size()
+        flat_cells = [
+            [
+                float(counts.get((*key, state), 0)) / max(int(totals.get(key, 0)), 1)
+                for state in states
+            ]
+            for key in combinations
+        ]
         model.update({
             "mode": "flat",
             "categories": [_catalogue_display_label(*key) for key in combinations],
-            "cells": [
-                [
-                    float(counts.get((*key, state), 0)) / max(int(totals.get(key, 0)), 1)
-                    for state in states
-                ]
-                for key in combinations
+            "cells": flat_cells,
+            "dimensions": _payload_dimensions(state_data, [group, period]),
+            "records": [
+                {"key": serialise_key(key), "shares": shares, "samples": int(totals.get(key, 0))}
+                for key, shares in zip(combinations, flat_cells, strict=True)
             ],
         })
         return model
@@ -6919,6 +6966,8 @@ def catalog_chart_payload(
                 "y": _configured_axis_domain(render_entry, "y", 0.0, 1.0, percentage=True),
             },
             "axis_columns": axes,
+            "dimensions": _payload_dimensions(distribution, axes),
+            "samples": [distribution_total(key) for key in combinations],
             "keys": [serialise_key(key) for key in combinations],
             "buckets": [
                 {
@@ -7187,6 +7236,8 @@ def catalog_chart_payload(
             column_keys = _hierarchical_unique_keys(values, render_columns)
             lookup = {key if len(axes) > 1 else key[0]: float(value) for key, value in means.items()}
             flat_keys = [label if isinstance(label, tuple) else (label,) for label in means.index]
+            sample_counts = _aggregate_metric(values, [*row_hierarchy, *render_columns], metric, "count")
+            samples = {label if isinstance(label, tuple) else (label,): int(count) for label, count in sample_counts.items()}
             colours = _series_colours(flat_keys, [*row_hierarchy, *render_columns], values)
             def mean_value(row_key: tuple[object, ...], column_key: tuple[object, ...]) -> float | None:
                 key = (*row_key, *column_key)
@@ -7210,6 +7261,7 @@ def catalog_chart_payload(
                 "column_keys": [serialise_key(key) for key in column_keys],
                 "cells": [[mean_value(row_key, column_key) for column_key in column_keys] for row_key in row_keys],
                 "cell_colours": [[mean_colour(row_key, column_key) for column_key in column_keys] for row_key in row_keys],
+                "dimensions": _payload_dimensions(values, [*row_hierarchy, *render_columns]),
                 # Retain the flat values for existing API consumers. Canvas
                 # rendering uses the explicit row/column matrix above.
                 "bars": [
@@ -7217,17 +7269,21 @@ def catalog_chart_payload(
                         "key": serialise_key(key), "value": float(value),
                         "colour": colours.get(key, _colour(key, item_index)),
                         "legend": _legend_key_caption(key, [*row_hierarchy, *render_columns], values, _legend_dimensions(render_entry.legend)),
+                        "samples": samples.get(key, 0),
                     }
                     for item_index, (key, value) in enumerate(zip(flat_keys, means.tolist(), strict=True))
                 ],
             }
         keys = [label if isinstance(label, tuple) else (label,) for label in means.index]
         colours = _series_colours(keys, axes, values)
+        sample_counts = _aggregate_metric(values, axes, metric, "count")
+        samples = {label if isinstance(label, tuple) else (label,): int(count) for label, count in sample_counts.items()}
         return {
             **_chart_payload_base("mean_bar", title, render_entry, values, metric),
             "metric": metric.replace("_", " "),
             "aggregation": aggregation,
             "axis_columns": axes,
+            "dimensions": _payload_dimensions(values, axes),
             "maximum": max(float(means.max()), 1.0),
             "domain": {
                 "y": _configured_axis_domain(
@@ -7240,6 +7296,7 @@ def catalog_chart_payload(
                     "value": float(value),
                     "colour": colours.get(key, _colour(key, index)),
                     "legend": _legend_key_caption(key, axes, values, _legend_dimensions(render_entry.legend)),
+                    "samples": samples.get(key, 0),
                 }
                 for index, (key, value) in enumerate(zip(keys, means.tolist(), strict=True))
             ],

@@ -72,7 +72,8 @@ from src.modules.cdr_report_filenames import build_cdr_report_filename
 from src.modules.runtime_config import ignore_event_time_filtering
 from src.modules.ingestion import apply_operator_mappings
 from src.modules.value_patterns import ValueSet, is_pattern
-from src.modules.operator_roles import drop_excluded_operators, excluded_operators
+from src.modules.operator_roles import drop_excluded_operators, excluded_operators, focus_operators
+from src.modules import dashboard_comments
 
 KINDS = ('data', 'voice', 'speech')
 
@@ -207,6 +208,22 @@ class DashboardChartFilterPreviewRequest(BaseModel):
 
 class DashboardComments(BaseModel):
     slide_comments: dict[str, list[str]] = Field(default_factory=dict)
+    # Comments added from the generated suggestions of one slide (App Events).
+    generated_slide: str = ''
+    generated_added: int = Field(default=0, ge=0)
+
+
+class GeneratedCommentChart(BaseModel):
+    index: int
+    hidden: list[str] = Field(default_factory=list)
+    shown: list[str] = Field(default_factory=list)
+
+
+class GenerateComments(BaseModel):
+    token: str
+    slide: int
+    # The charts the viewer shows on the slide, with the legend items hidden and shown on each one.
+    charts: list[GeneratedCommentChart] = Field(default_factory=list)
 
 
 class DashboardName(BaseModel):
@@ -2782,7 +2799,67 @@ def install_dashboard_routes(core):
             dashboards[dashboard_id]['slide_comments'] = {slide: values for slide, values in comments.items() if values}
             task_repository.set_workspace_state(STATE_KEY, json.dumps(dashboards))
             task_repository.add_log(user.username, 'save_dashboard_comments', json.dumps({'id': dashboard_id}))
+            if payload.generated_added and payload.generated_slide:
+                task_repository.add_log(user.username, 'add_generated_dashboard_comments', json.dumps({
+                    'id': dashboard_id, 'name': dashboards[dashboard_id].get('name', ''), 'slide': payload.generated_slide,
+                    'added': payload.generated_added,
+                    'comments': len(dashboards[dashboard_id]['slide_comments'].get(payload.generated_slide, [])),
+                }))
         return {'slide_comments': dashboards[dashboard_id]['slide_comments']}
+
+    @app.post('/api/ppt-dashboards/{dashboard_id}/comments/generate')
+    def generate_dashboard_comments(dashboard_id: str, payload: GenerateComments, user=Depends(dashboard_editor_user)):
+        """Suggest the comments of one slide from the charts the viewer shows; nothing is saved until they are added."""
+        started = monotonic()
+        task_repository = bound_repository()
+        name = read_dashboards(task_repository).get(dashboard_id, {}).get('name')
+        if name is None:
+            raise HTTPException(404, 'Dashboard not found.')
+        with lock:
+            snapshot = snapshots.get(payload.token)
+        if snapshot is None or snapshot.workspace != workspace_key() or snapshot.owner not in {user.username, '*'}:
+            raise HTTPException(410, 'Dashboard preview expired. Refresh the Dashboard.')
+        slide = next((item for item in snapshot.payload.get('slides', []) if item.get('number') == payload.slide), None)
+        if slide is None:
+            raise HTTPException(404, 'Slide not found.')
+        available = {int(chart['index']): chart for chart in slide.get('charts', []) if chart.get('available')}
+        requested = payload.charts or [GeneratedCommentChart(index=index) for index in available]
+        charts, skipped = [], []
+        try:
+            for chart in requested:
+                if chart.index not in available:
+                    continue
+                model = chart_model(payload.token, chart.index, user)
+                if dashboard_comments.needs_rebuild(model):
+                    # A model cached before the comments read their facts is calculated again once.
+                    model = chart_model(payload.token, chart.index, user, force=True)
+                entry = snapshot.entries[chart.index]
+                if model.get('type') not in dashboard_comments.SUPPORTED_MODEL_TYPES:
+                    skipped.append(entry.chart_title or entry.chart_type)
+                    continue
+                charts.append({
+                    'index': chart.index, 'title': entry.chart_title or entry.slide_title, 'kpi': entry.kpi,
+                    'model': model, 'hidden': chart.hidden, 'shown': chart.shown,
+                })
+            suggestions = dashboard_comments.slide_comments(
+                charts, focus_operators=focus_operators(task_repository), layout=slide.get('layout') or '',
+            )
+        except HTTPException:
+            raise
+        except Exception as exc:
+            task_repository.add_log(user.username, 'generate_dashboard_comments_failed', json.dumps({
+                'id': dashboard_id, 'name': name, 'slide': payload.slide, 'error': str(exc),
+            }))
+            raise HTTPException(500, f'The comments of this slide could not be generated: {exc}') from exc
+        task_repository.add_log(user.username, 'generate_dashboard_comments', json.dumps({
+            'id': dashboard_id, 'name': name, 'slide': payload.slide, 'comment_key': slide.get('comment_key', ''),
+            'engine': dashboard_comments.ENGINE_RULES, 'charts': len(charts), 'skipped_charts': skipped,
+            'suggestions': len(suggestions), 'duration_ms': round((monotonic() - started) * 1000),
+        }))
+        return {
+            'comment_key': slide.get('comment_key', ''), 'engine': dashboard_comments.ENGINE_RULES,
+            'suggestions': suggestions, 'skipped': skipped,
+        }
 
     def dashboard_datasets(definition, kind, task_repository):
         """Return the selected CDRs of one kind that match the Dashboard's NR Mode."""
