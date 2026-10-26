@@ -432,7 +432,8 @@
       }
       // The other Non-Qualified Calls: those of its groups (hotspot, cluster, run of consecutive failures) and of its site,
       // then the others. The calls on one point make one mark with how many they are (the most related gives its colour);
-      // a call of its groups at its site too is ringed in the colour of the site.
+      // coloured by relation, a call of its groups at its site too is ringed in the colour of the site; coloured by call type
+      // or campaign, those of its groups are ringed in red and those of its site in violet.
       if (layers.failures) {
         const stacks = new Map();
         for (const failure of data.failures) {
@@ -454,12 +455,15 @@
           context.lineWidth = 1.6;
           context.strokeStyle = '#fff';
           context.stroke();
-          if (settings.failureColour === 'relation' && inGroup(failure) && items.some((item) => item.same_place)) {
-            diamond(context, x, y, size + 3);
+          const rings = settings.failureColour === 'relation'
+            ? (inGroup(failure) && items.some((item) => item.same_place) ? [COLOURS.place] : [])
+            : [...(items.some(inGroup) ? [COLOURS.group] : []), ...(items.some((item) => item.same_place) ? [COLOURS.place] : [])];
+          rings.forEach((ring, index) => {
+            diamond(context, x, y, size + 3 + index * 3);
             context.lineWidth = 2.2;
-            context.strokeStyle = COLOURS.place;
+            context.strokeStyle = ring;
             context.stroke();
-          }
+          });
           if (items.length > 1) {
             const badge = `×${items.length}`;
             context.font = '800 10px "IBM Plex Sans", system-ui, sans-serif';
@@ -848,13 +852,15 @@
       const data = shared.data;
       const call = data.call;
       if (settings.failureColour !== 'relation') {
-        const larger = ['Larger: of its hotspot, cluster or consecutive run, or at its site', '#8a7a80'];
+        // Whatever the colour, the calls of its groups and of its site keep their rings (and are larger).
+        const rings = [['Ringed in red: of its hotspot, cluster or consecutive run', '#adb5bd', 'is-ringed is-ringed-group'],
+          ['Ringed in violet: at its site', '#adb5bd', 'is-ringed']];
         if (settings.failureColour === 'type') {
           return [[`NQ calls of its call type (${KIND_LABELS[call.kind] || call.service_label || 'its type'})`, COLOURS.sameType],
-            ['NQ calls of other call types', COLOURS.otherType], larger];
+            ['NQ calls of other call types', COLOURS.otherType], ...rings];
         }
         return [[`NQ calls of its campaign (${campaignText(call.campaign, call.nr_mode) || 'its campaign'})`, COLOURS.sameCampaign],
-          ['NQ calls of other campaigns', COLOURS.otherCampaign], larger];
+          ['NQ calls of other campaigns', COLOURS.otherCampaign], ...rings];
       }
       const lines = [['NQ call of its hotspot, cluster or consecutive run', COLOURS.group],
         ['Ringed: also at its site', COLOURS.group, 'is-ringed'], ['NQ call at its site (not of its groups)', COLOURS.place],
