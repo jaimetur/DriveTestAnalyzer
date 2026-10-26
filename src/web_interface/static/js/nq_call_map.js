@@ -16,10 +16,12 @@
   const WORLD = 256 * 2 ** REFERENCE_ZOOM;
   const COLOURS = {
     call: '#b0234f', path: '#3d1824', start: '#2e8b57', handover: '#f08a24', end: '#d7263d', both: '#d7263d', nr_leg: '#6d46a8',
-    place: '#b0234f', hotspot: '#f08a24', own: '#e0507a', other: '#6c757d', samePci: '#d6336c', noValue: '#adb5bd',
+    group: '#d62828', place: '#7b3fe4', own: '#f08a24', other: '#6c757d', samePci: '#d6336c', noValue: '#adb5bd',
     completed: '#2e8b57', failed: '#d7263d', radius: '#7d1238',
     sameType: '#b0234f', otherType: '#1c7ed6', sameCampaign: '#b0234f', otherCampaign: '#6c757d',
   };
+  // Whether an NQ call is of a group of the call: its hotspot, its cluster or its run of consecutive failures.
+  const inGroup = (failure) => Boolean(failure.same_hotspot || failure.same_cluster || failure.same_run);
   // The test columns of the payload (see nq_call_map.nearby_tests).
   const COLUMN = {latitude: 0, longitude: 1, operator: 2, kind: 3, failed: 4, lte_rsrp: 5, lte_sinr: 6, nr_rsrp: 7, nr_sinr: 8, test: 9, start: 10, cdr: 11};
   const METRICS = {
@@ -32,7 +34,7 @@
   // The layers chosen above the map; the RSRP / SINR samples have their own button on the map.
   const LAYERS = {failures: 'NQ calls', sites: 'Sites', path: 'Cell path'};
   const FAILURE_SCOPES = {cdr: 'This CDR', campaign: 'Its campaign', every: 'Every campaign'};
-  // What the colour of the NQ calls tells (their size always marks the repetitions and the hotspot).
+  // What the colour of the NQ calls tells (their size always marks those of its groups and of its site).
   const FAILURE_COLOURS = {relation: 'Relation', type: 'Call type', campaign: 'Campaign'};
   const SETTINGS_KEY = 'nq-call-map-settings';
   const HINT = 'Drag to move · wheel or Ctrl/Cmd+wheel to zoom · Ctrl/Cmd+drag a rectangle to zoom into it · Alt/Opt+drag to measure · double-click to zoom in';
@@ -172,18 +174,26 @@
       view = {x: view.x + dx * (view.resolution - resolution), y: view.y + dy * (view.resolution - resolution), resolution};
       redraw();
     };
+    // The area of the radius, and every NQ call of the groups and of the site of the call shown, wherever it is.
     const fit = () => {
       const data = shared.data;
       if (!data) return;
-      const [x, y] = toWorld(data.centre[0], data.centre[1]);
-      const span = 2 * data.radius_km * 1000 / metresPerWorldPixel(data.centre[0]) * 1.1;
+      const [cx, cy] = toWorld(data.centre[0], data.centre[1]);
+      const reach = data.radius_km * 1000 / metresPerWorldPixel(data.centre[0]);
+      let [west, east, north, south] = [cx - reach, cx + reach, cy - reach, cy + reach];
+      for (const failure of data.failures) {
+        if (failure.latitude === null || !(inGroup(failure) || failure.same_place) || !shared.showsFailure(failure)) continue;
+        const [x, y] = toWorld(failure.latitude, failure.longitude);
+        [west, east, north, south] = [Math.min(west, x), Math.max(east, x), Math.min(north, y), Math.max(south, y)];
+      }
       const width = canvas.clientWidth || 600, height = canvas.clientHeight || 400;
-      view = {x, y, resolution: clamp(span / Math.max(80, Math.min(width, height)), MIN_RESOLUTION, MAX_RESOLUTION)};
+      const resolution = Math.max((east - west) / Math.max(80, width), (south - north) / Math.max(80, height)) * 1.1;
+      view = {x: (west + east) / 2, y: (north + south) / 2, resolution: clamp(resolution, MIN_RESOLUTION, MAX_RESOLUTION)};
       size = canvas.clientWidth && canvas.clientHeight ? {width, height} : null;
       redraw();
     };
     controls.append(button('−', 'Zoom out', () => zoomBy(2)), level, button('+', 'Zoom in', () => zoomBy(.5)),
-      button('Fit', 'Show the whole area of the radius', fit, 'nq-map-zoom-reset'));
+      button('Fit', 'Show the whole area of the radius and every NQ call of the hotspot, cluster, consecutive run and site of the call', fit, 'nq-map-zoom-reset'));
     card.replaceChildren(canvas, ruler, selectionBox, samples, controls, attribution, wheelHint, tooltip);
     // The legend goes below the map (in its images too), so it hides none of it.
     (legendHost || card).replaceChildren(legend);
@@ -420,21 +430,51 @@
         }
         if (zoom >= LABELS_FROM_ZOOM && (zoom >= LABELS_FROM_ZOOM + 1 || onPath || site.serving)) label(context, site.site_id, x, y + size + 9, '#2d1520', 'center');
       }
-      // The other Non-Qualified Calls: its repetitions at the same site, its hotspot and the others.
+      // The other Non-Qualified Calls: those of its groups (hotspot, cluster, run of consecutive failures) and of its site,
+      // then the others. The calls on one point make one mark with how many they are (the most related gives its colour);
+      // a call of its groups at its site too is ringed in the colour of the site.
       if (layers.failures) {
+        const stacks = new Map();
         for (const failure of data.failures) {
           if (failure.self || failure.latitude === null || !shared.showsFailure(failure)) continue;
           const [x, y] = project(failure.latitude, failure.longitude);
           if (x < -10 || y < -10 || x > width + 10 || y > height + 10) continue;
-          const colour = shared.failureColour(failure);
-          const size = failure.same_place || failure.same_hotspot ? 7 : 5.5;
+          const key = `${Math.round(x / 4)}:${Math.round(y / 4)}`;
+          if (!stacks.has(key)) stacks.set(key, {x, y, items: []});
+          stacks.get(key).items.push(failure);
+        }
+        const rank = (failure) => (inGroup(failure) ? 0 : failure.same_place ? 1 : failure.same_operator ? 2 : 3);
+        for (const {x, y, items} of stacks.values()) {
+          items.sort((first, second) => rank(first) - rank(second));
+          const [failure] = items;
+          const size = inGroup(failure) || failure.same_place ? 7 : 5.5;
           diamond(context, x, y, size);
-          context.fillStyle = colour;
+          context.fillStyle = shared.failureColour(failure);
           context.fill();
           context.lineWidth = 1.6;
           context.strokeStyle = '#fff';
           context.stroke();
-          hits.push({x, y, r: size + 3, kind: 'failure', item: failure, priority: 4});
+          if (settings.failureColour === 'relation' && inGroup(failure) && items.some((item) => item.same_place)) {
+            diamond(context, x, y, size + 3);
+            context.lineWidth = 2.2;
+            context.strokeStyle = COLOURS.place;
+            context.stroke();
+          }
+          if (items.length > 1) {
+            const badge = `×${items.length}`;
+            context.font = '800 10px "IBM Plex Sans", system-ui, sans-serif';
+            const badgeWidth = Math.max(16, context.measureText(badge).width + 8);
+            context.beginPath();
+            context.roundRect?.(x + size - 1, y - size - 13, badgeWidth, 14, 7);
+            if (!context.roundRect) context.rect(x + size - 1, y - size - 13, badgeWidth, 14);
+            context.fillStyle = '#2d1520';
+            context.fill();
+            context.fillStyle = '#fff';
+            context.textAlign = 'center';
+            context.textBaseline = 'middle';
+            context.fillText(badge, x + size - 1 + badgeWidth / 2, y - size - 6);
+          }
+          hits.push({x, y, r: size + 3, kind: 'failure', item: failure, priority: 4, stack: items.length});
         }
       }
       // The call: from where it started to where it ended (where it failed).
@@ -526,7 +566,7 @@
       canvas.classList.add('is-pointing');
       const {title, rows} = shared.describe(hit.kind, hit.item);
       tooltip.replaceChildren(node('strong', title));
-      for (const [name, value] of rows.slice(0, 9)) {
+      for (const [name, value] of [...(hit.stack > 1 ? [['At this point', `${hit.stack} NQ calls`]] : []), ...rows.slice(0, 9)]) {
         if (value === '' || value === null || value === undefined) continue;
         const line = node('div');
         line.append(node('span', name), node('b', String(value)));
@@ -681,7 +721,10 @@
       group('Call and NQ calls');
       item('pin', 'This call (where it failed)', COLOURS.call);
       if (data.call.end) item('dot', 'Where it started', COLOURS.start);
-      if (settings.layers.failures) shared.failureLegend().forEach(([text, colour]) => item('diamond', text, colour));
+      if (settings.layers.failures) {
+        shared.failureLegend().forEach(([text, colour, extra]) => item('diamond', text, colour, extra));
+        item('count', 'NQ calls at one point (how many)', '#2d1520');
+      }
       const located = data.trace.some((step) => step.site);
       if ((settings.layers.sites && data.sites.length) || (settings.layers.path && located)) {
         group('Sites and cells');
@@ -763,7 +806,7 @@
       if (!call || failure.self) return true;
       if (settings.failures === 'cdr' && failure.dataset_id !== call.dataset_id) return false;
       if (settings.failures === 'campaign' && (failure.campaign !== call.campaign || failure.nr_mode !== call.nr_mode)) return false;
-      return failure.same_place || failure.same_hotspot || (shared.operatorChoice() === 'own' ? failure.same_operator : shared.operatorShown(failure.operator));
+      return inGroup(failure) || failure.same_place || (shared.operatorChoice() === 'own' ? failure.same_operator : shared.operatorShown(failure.operator));
     };
     // The operators chosen: that of the call, the Focus operators of the Operator Maps (that of the call while the
     // workspace has none) or every operator.
@@ -799,13 +842,13 @@
       const call = shared.data?.call || {};
       if (settings.failureColour === 'type') return failure.kind === call.kind ? COLOURS.sameType : COLOURS.otherType;
       if (settings.failureColour === 'campaign') return sameCampaign(failure, call) ? COLOURS.sameCampaign : COLOURS.otherCampaign;
-      return failure.same_place ? COLOURS.place : failure.same_hotspot ? COLOURS.hotspot : failure.same_operator ? COLOURS.own : COLOURS.other;
+      return inGroup(failure) ? COLOURS.group : failure.same_place ? COLOURS.place : failure.same_operator ? COLOURS.own : COLOURS.other;
     };
     shared.failureLegend = () => {
       const data = shared.data;
       const call = data.call;
       if (settings.failureColour !== 'relation') {
-        const larger = ['Larger: at the same site (repetition) or of its hotspot', '#8a7a80'];
+        const larger = ['Larger: of its hotspot, cluster or consecutive run, or at its site', '#8a7a80'];
         if (settings.failureColour === 'type') {
           return [[`NQ calls of its call type (${KIND_LABELS[call.kind] || call.service_label || 'its type'})`, COLOURS.sameType],
             ['NQ calls of other call types', COLOURS.otherType], larger];
@@ -813,7 +856,8 @@
         return [[`NQ calls of its campaign (${campaignText(call.campaign, call.nr_mode) || 'its campaign'})`, COLOURS.sameCampaign],
           ['NQ calls of other campaigns', COLOURS.otherCampaign], larger];
       }
-      const lines = [['NQ call at the same site (repetition)', COLOURS.place], ['NQ call of its hotspot', COLOURS.hotspot],
+      const lines = [['NQ call of its hotspot, cluster or consecutive run', COLOURS.group],
+        ['Ringed: also at its site', COLOURS.group, 'is-ringed'], ['NQ call at its site (not of its groups)', COLOURS.place],
         [`Other NQ calls of ${call.operator || 'its operator'}`, COLOURS.own]];
       if (shared.operatorChoice() === 'all') lines.push(['NQ calls of other operators', COLOURS.other]);
       const own = String(call.operator || '').trim().toLowerCase();
@@ -835,7 +879,8 @@
         ]};
       }
       if (kind === 'failure') {
-        const flags = [item.same_place ? 'Same site (repetition)' : '', item.same_hotspot ? 'Same hotspot' : ''].filter(Boolean).join(' · ');
+        const flags = [item.same_hotspot ? 'Same hotspot' : '', item.same_cluster ? 'Same cluster' : '', item.same_run ? 'Same consecutive run' : '',
+          item.same_place ? 'Same site' : ''].filter(Boolean).join(' · ');
         return {title: `NQ call · ${item.operator}`, rows: [
           ['Call type', kindLabel(item)], ['Relation', flags], ['JOIN_ID', item.join_id], ['Campaign', campaignText(item.campaign, item.nr_mode)],
           ['Result', item.result], ['Failure', failureText(item)], ['Test', item.test_name], ['Started', cdrTime(item.start_time)],
@@ -1049,8 +1094,9 @@
       const shown = others.filter(shared.showsFailure);
       const scope = settings.failures === 'every' ? '' : ` · ${settings.failures === 'cdr' ? 'of this CDR' : 'of its campaign'}`;
       failuresCard.replaceChildren(cardHead('Non-Qualified Calls around',
-        `${number(shown.filter((item) => item.same_place).length)} at the same site · ${number(shown.filter((item) => item.same_hotspot).length)} in its hotspot · `
-        + `${number(shown.length)} within ${distanceText(data.radius_km)} or at its site${scope}`));
+        `${number(shown.filter((item) => item.same_hotspot).length)} in its hotspot · ${number(shown.filter((item) => item.same_cluster).length)} in its cluster · `
+        + `${number(shown.filter((item) => item.same_run).length)} in its consecutive run · ${number(shown.filter((item) => item.same_place).length)} at its site · `
+        + `${number(shown.filter((item) => item.distance_km !== null && item.distance_km <= data.radius_km).length)} within ${distanceText(data.radius_km)}${scope}`));
       if (!shown.length) {
         failuresCard.append(node('p', 'No other Non-Qualified Call around.', 'nq-map-empty'));
         return;
@@ -1062,7 +1108,8 @@
         const mark = node('span', undefined, 'nq-map-mark is-diamond');
         const text = node('div');
         const title = node('strong', `${kindLabel(item)} · ${item.operator} · ${campaignText(item.campaign, item.nr_mode)}`);
-        const tags = [item.same_place ? 'Same site' : '', item.same_hotspot ? 'Hotspot' : ''].filter(Boolean);
+        const tags = [item.same_hotspot ? 'Hotspot' : '', item.same_cluster ? 'Cluster' : '', item.same_run ? 'Consecutive' : '',
+          item.same_place ? 'Same site' : ''].filter(Boolean);
         text.append(title);
         tags.forEach((tag) => text.append(node('span', tag, 'nq-map-tag')));
         text.append(node('small', [item.result, failureText(item), cdrTime(item.start_time), distanceText(item.distance_km), item.status].filter(Boolean).join(' · ')));

@@ -131,6 +131,15 @@ def test_the_map_places_the_call_its_cells_the_sites_and_the_calls_and_tests_aro
     # App Events records the map opened.
     [event] = [json.loads(row['details']) for row in core.repository.list_logs() if row['action'] == 'nq_call_map']
     assert event['join_id'] == 'V1' and event['sites'] == 2 and event['tests_around'] == 3 and event['radius_km'] == 2.0
+    # A call of its cluster or of its run of consecutive failures shows wherever it is, marked as such.
+    nq_prioritization.ensure_tables(core.repository)
+    with core.repository.connection() as connection:
+        for key in ('V1', 'V4'):
+            connection.execute(f"INSERT INTO {nq_prioritization.PRIORITY_TABLE} (call_key, repeat_key, consecutive_key) VALUES (?, 'group:g', 'run:r') "
+                               "ON CONFLICT(call_key) DO UPDATE SET repeat_key = 'group:g', consecutive_key = 'run:r'", (calls[key]['call_key'],))
+    data = client.get(f"/api/non-qualified-calls/calls/{calls['V1']['call_key']}/map", params={'radius_km': 2}).json()
+    far = next(item for item in data['failures'] if item['join_id'] == 'V4')
+    assert far['same_cluster'] and far['same_run'] and not far['same_hotspot'] and far['distance_km'] > 2
 
 
 def test_the_radius_the_samples_and_the_unknown_calls(client, tmp_path):

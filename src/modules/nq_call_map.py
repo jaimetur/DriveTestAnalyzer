@@ -7,7 +7,8 @@ Around the place where the call failed (where it ended, else where it started) t
 - the inventory sites of the networks that serve its operator (Serving Networks) around it, with their cells (azimuth,
   beamwidth, band, channel, PCI and state); the cells with the PCI and channel of a cell of the call are flagged;
 - the other Non-Qualified Calls around it, of every operator and campaign: those of its operator at the same place (its
-  repetitions) and those of its hotspot are marked; the map shows those of its CDR, its campaign or every campaign
+  repetitions) and those of its hotspot, cluster and run of consecutive failures are marked; the map shows those of its
+  CDR, its campaign or every campaign
   (``FAILURE_SCOPES``, chosen in the page);
 - the tests of its CDR (or of every CDR of its campaign) around it, completed or not, with their LTE and NR RSRP and SINR
   and the campaign of their CDR: the radio conditions of the area;
@@ -417,7 +418,8 @@ def flag_same_pci(sites: list[dict[str, Any]], trace: list[dict[str, Any]]) -> N
 # ---------------------------------------------------------------------------
 def nearby_failures(repository: Any, call: dict[str, Any], centre: tuple[float, float], radius_km: float) -> list[dict[str, Any]]:
     """The Non-Qualified Calls (their latest version) within ``radius_km`` of ``centre`` and those of the operator of the call
-    at its place or in its hotspot wherever they are, nearest first: each with how it relates to the call."""
+    at its place or in its hotspot, cluster or run of consecutive failures wherever they are, nearest first: each with how
+    it relates to the call."""
     from src.modules import non_qualified_calls as nq
     from src.modules.nq_prioritization import PRIORITY_TABLE, call_kind
 
@@ -425,20 +427,23 @@ def nearby_failures(repository: Any, call: dict[str, Any], centre: tuple[float, 
     base, params = nq._base_sql(nq.untracked_status(repository, options), repository)
     south, north, west, east = bounding_box(centre, radius_km)
     with repository.connection() as connection:
-        own = connection.execute(f'SELECT place_key, cluster_key FROM {PRIORITY_TABLE} WHERE call_key = ?',
+        own = connection.execute(f'SELECT place_key, cluster_key, repeat_key, consecutive_key FROM {PRIORITY_TABLE} WHERE call_key = ?',
                                  (call.get('parent_key') or call['call_key'],)).fetchone()
-        place, hotspot = (_text(own['place_key']), _text(own['cluster_key'])) if own else ('', '')
+        place, hotspot, cluster, run = ((_text(own['place_key']), _text(own['cluster_key']), _text(own['repeat_key']), _text(own['consecutive_key']))
+                                        if own else ('', '', '', ''))
         rows = connection.execute(f"""
             WITH calls AS ({base})
             SELECT c.call_key, c.dataset_id, c.join_id, c.service, c.test_name, c.session_type, c.operator, c.campaign, c.nr_mode, c.result,
                    c.failure_classification, c.failure_category, c.failure_subcategory, c.failure_phase, c.technology,
                    c.start_time, c.latitude, c.longitude, c.site_id, c.host_network, c.cell_id, c.city, c.status,
                    c.root_domain, c.root_category, c.root_cause, COALESCE(q.place_key, '') AS place_key, COALESCE(q.place_label, '') AS place_label,
-                   COALESCE(q.cluster_key, '') AS cluster_key, q.repetitions AS repetitions
+                   COALESCE(q.cluster_key, '') AS cluster_key, COALESCE(q.repeat_key, '') AS repeat_key,
+                   COALESCE(q.consecutive_key, '') AS consecutive_key, q.repetitions AS repetitions
             FROM calls c LEFT JOIN {PRIORITY_TABLE} q ON q.call_key = c.call_key
             WHERE (c.latitude BETWEEN ? AND ? AND c.longitude BETWEEN ? AND ?)
-               OR (? <> '' AND q.place_key = ?) OR (? <> '' AND q.cluster_key = ?)
-        """, [*params, south, north, west, east, place, place, hotspot, hotspot]).fetchall()
+               OR (? <> '' AND q.place_key = ?) OR (? <> '' AND q.cluster_key = ?) OR (? <> '' AND q.repeat_key = ?)
+               OR (? <> '' AND q.consecutive_key = ?)
+        """, [*params, south, north, west, east, place, place, hotspot, hotspot, cluster, cluster, run, run]).fetchall()
     own_key = call.get('parent_key') or call['call_key']
     operator = _text(call.get('operator')).casefold()
     failures = []
@@ -448,8 +453,10 @@ def nearby_failures(repository: Any, call: dict[str, Any], centre: tuple[float, 
         same_operator = _text(row['operator']).casefold() == operator
         same_place = bool(place) and row['place_key'] == place and same_operator
         same_hotspot = bool(hotspot) and row['cluster_key'] == hotspot
+        same_cluster = bool(cluster) and row['repeat_key'] == cluster
+        same_run = bool(run) and row['consecutive_key'] == run
         is_self = row['call_key'] == own_key
-        if not is_self and not same_place and not same_hotspot and (distance is None or distance > radius_km):
+        if not is_self and not (same_place or same_hotspot or same_cluster or same_run) and (distance is None or distance > radius_km):
             continue
         kind = call_kind(row['service'], row['test_name'], row['session_type'])
         failures.append({
@@ -466,9 +473,9 @@ def nearby_failures(repository: Any, call: dict[str, Any], centre: tuple[float, 
             'latitude': position[0] if position else None, 'longitude': position[1] if position else None,
             'distance_km': None if distance is None else round(distance, 3),
             'self': is_self, 'same_operator': same_operator, 'same_place': same_place and not is_self,
-            'same_hotspot': same_hotspot and not is_self,
+            'same_hotspot': same_hotspot and not is_self, 'same_cluster': same_cluster and not is_self, 'same_run': same_run and not is_self,
         })
-    failures.sort(key=lambda item: (not item['self'], not (item['same_place'] or item['same_hotspot']),
+    failures.sort(key=lambda item: (not item['self'], not (item['same_hotspot'] or item['same_cluster'] or item['same_run'] or item['same_place']),
                                     math.inf if item['distance_km'] is None else item['distance_km']))
     return failures[:MAX_FAILURES]
 
