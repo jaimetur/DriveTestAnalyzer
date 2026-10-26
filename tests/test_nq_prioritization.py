@@ -935,7 +935,12 @@ def test_panel_filters_and_exports_show_the_prioritization(prioritized):
     assert columns['hotspots'] == columns['consecutive'] == columns['issues'] == ['Operator', 'NR Mode', 'Campaign', 'Site', 'Time', 'Calls', 'Voice', 'WhatsApp',
                                                          'Data', 'Points lost', 'Open', 'Main Root Category']
     assert sum(issue['kinds'].values()) == issue['calls'] == sum(issue['campaign_names'].values()) and issue['first'] <= issue['last']
-    assert non_qualified_calls_export.hotspot_time({'first': '2026-07-14 10:05:00', 'last': '2026-07-14 10:31:00'}) == '2026-07-14 10:05–10:31'
+    # The times in short, without the year: the end of the same day as its hour alone, the days alone for the sites.
+    time = non_qualified_calls_export.group_time
+    assert time({'first': '2026-07-14 10:05:00', 'last': '2026-07-14 10:31:00'}) == '07-14 10:05–10:31'
+    assert time({'first': '2026-09-24 13:43:00', 'last': '2026-10-07 09:40:00'}) == '09-24 13:43–10-07 09:40'
+    assert time({'first': '2026-05-11 06:20:00', 'last': '2026-08-21 02:22:00'}, with_time=False) == '05-11–08-21'
+    assert time({'first': '2026-05-11 06:20:00', 'last': '2026-05-11 09:00:00'}, with_time=False) == '05-11'
     subtitles = [subtitle for component, subtitle, *_rest in tables if component == 'rules']
     assert subtitles == ['Dual Queue (Scoring Based) · List 1 · Weekly & Final CDRs', 'Dual Queue (Scoring Based) · Outside the lists']
     columns = next(columns for component, _subtitle, columns, *_rest in tables if component == 'rules')

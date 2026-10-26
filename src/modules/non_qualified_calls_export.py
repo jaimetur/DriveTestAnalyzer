@@ -434,7 +434,7 @@ def prioritization_tables(data: dict[str, Any]) -> list[tuple[str, str, list[str
                                    ('consecutive', 'Consecutive Issues', 'runs')):
         items = data.get('hotspots' if component == 'hotspots' else 'consecutive') or []
         rows = [[row['operator'], row['nr_mode'] or '—', row['campaign'] or '—',
-                 (row['place'] or '—') + (f" +{row['places'] - 1}" if row.get('places', 0) > 1 else ''), hotspot_time(row),
+                 (row['place'] or '—') + (f" +{row['places'] - 1}" if row.get('places', 0) > 1 else ''), group_time(row),
                  f"{row['calls']:,}", *(f"{row['kinds'].get(kind, 0):,}" for kind in ('Voice', 'WhatsApp', 'Data')),
                  _points(row['points']), f"{row['open']:,}", row['category'] or '—'] for row in items[:MAX_EXPORT_ISSUES]]
         if rows:
@@ -445,7 +445,7 @@ def prioritization_tables(data: dict[str, Any]) -> list[tuple[str, str, list[str
     def shares(counts: dict[str, int]) -> str:
         return ' · '.join(f'{name} {count:,}' for name, count in counts.items()) if len(counts) > 1 else next(iter(counts), '—')
     issues = [[row['operator'], shares(row['nr_modes']), shares(row.get('campaign_names') or {}), row['place'],
-               hotspot_time({'first': str(row.get('first') or '')[:10], 'last': str(row.get('last') or '')[:10]}), f"{row['calls']:,}",
+               group_time(row, with_time=False), f"{row['calls']:,}",
                *(f"{(row.get('kinds') or {}).get(kind, 0):,}" for kind in ('Voice', 'WhatsApp', 'Data')), _points(row['points']),
                f"{row['open']:,}", row['category'] or '—'] for row in (data.get('issues') or [])[:MAX_EXPORT_ISSUES]]
     if issues:
@@ -462,15 +462,18 @@ def prioritization_tables(data: dict[str, Any]) -> list[tuple[str, str, list[str
     return tables
 
 
-def hotspot_time(row: dict[str, Any]) -> str:
-    """When the calls of a hotspot started: 2026-07-14 10:05–10:31 (the date once when it is the same day); 2026-07-14–2026-08-02
-    for days alone."""
-    first, last = str(row.get('first') or '')[:16], str(row.get('last') or '')[:16]
+def group_time(row: dict[str, Any], with_time: bool = True) -> str:
+    """When the calls of a hotspot, a run or a site started, in short as the page shows it, without the year (the campaign
+    tells it): 07-14 10:05–10:31 (the date once when it is the same day), 09-24 13:43–10-07 09:40, or the days alone
+    (05-11–08-21) without ``with_time``."""
+    first = str(row.get('first') or '')
+    last = str(row.get('last') or '') or first
     if not first:
         return '—'
-    if last == first or not last:
-        return first
-    return f'{first}–{last[11:]}' if len(first) > 10 and last[:10] == first[:10] else f'{first}–{last}'
+    cut = (lambda value: value[5:16]) if with_time else (lambda value: value[5:10])
+    if cut(last) == cut(first):
+        return cut(first)
+    return f'{cut(first)}–{last[11:16] if with_time and last[:10] == first[:10] else cut(last)}'
 
 
 def _step_fields(row: dict[str, Any]) -> list[str]:
