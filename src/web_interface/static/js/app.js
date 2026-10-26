@@ -9209,41 +9209,59 @@ function showInfoDialog(message, options = {}) {
   });
 })();
 
-// The personal Kiro API key of the user, which Kiro CLI uses to write the generated comments of PPT Dashboards.
+// The personal API keys of the user for the LLM writers of the generated comments of PPT Dashboards that Super Admin
+// sets to each user's key (Kiro CLI, Claude): one field per writer, each saved, replaced or removed.
 (() => {
-  const openButton = document.querySelector('[data-kiro-key-open]');
-  const overlay = document.getElementById('kiro-key-overlay');
-  const form = document.querySelector('[data-kiro-key-form]');
+  const openButton = document.querySelector('[data-api-keys-open]');
+  const overlay = document.getElementById('api-keys-overlay');
+  const form = document.querySelector('[data-api-keys-form]');
   if (!openButton || !overlay || !form) return;
-  const error = form.querySelector('[data-kiro-key-error]');
-  const remove = form.querySelector('[data-kiro-key-remove]');
+  const fields = form.querySelector('[data-api-keys-fields]');
+  const error = form.querySelector('[data-api-keys-error]');
   const close = () => { overlay.hidden = true; form.reset(); if (error) error.hidden = true; };
   const open = async () => {
     overlay.hidden = false;
-    form.querySelector('input')?.focus();
+    fields.replaceChildren();
     try {
-      const status = await (await fetch('/account/kiro-api-key', {headers: {'Accept': 'application/json'}})).json();
-      remove.hidden = !status.saved;
-      form.querySelector('input').placeholder = status.saved ? 'Saved: paste a new key to replace it' : 'ksk_…';
-    } catch (_error) { /* The status is only a hint. */ }
-  };
-  const send = async (body, message) => {
-    if (error) error.hidden = true;
-    try {
-      const response = await fetch('/account/kiro-api-key', {method: 'POST', body, headers: {'Accept': 'application/json'}});
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.detail || 'The Kiro API key could not be saved.');
-      close();
-      showInfoDialog(message, {title: 'Kiro API key', tone: 'info'});
-    } catch (requestError) {
-      if (error) { error.textContent = requestError.message; error.hidden = false; }
+      const {providers} = await (await fetch('/account/api-keys', {headers: {'Accept': 'application/json'}})).json();
+      providers.forEach((provider) => {
+        const label = document.createElement('label');
+        label.textContent = `${provider.label} API key`;
+        const input = document.createElement('input');
+        input.type = 'password'; input.name = provider.id; input.autocomplete = 'new-password';
+        input.placeholder = provider.saved ? 'Saved: paste a new key to replace it' : (provider.id === 'claude' ? 'sk-ant-…' : 'ksk_…');
+        label.append(input);
+        fields.append(label);
+        if (provider.saved) {
+          const remove = document.createElement('label');
+          remove.className = 'checkbox-row';
+          const box = document.createElement('input');
+          box.type = 'checkbox'; box.name = 'remove'; box.value = provider.id;
+          remove.append(box, ` Remove my ${provider.label} key`);
+          fields.append(remove);
+        }
+      });
+      fields.querySelector('input')?.focus();
+    } catch (_error) {
+      if (error) { error.textContent = 'Your API keys could not be read.'; error.hidden = false; }
     }
   };
   openButton.addEventListener('click', open);
-  form.querySelector('[data-kiro-key-cancel]').addEventListener('click', close);
+  form.querySelector('[data-api-keys-cancel]').addEventListener('click', close);
   overlay.addEventListener('click', (event) => { if (event.target === overlay) close(); });
-  remove.addEventListener('click', () => { const body = new FormData(); body.append('remove', '1'); void send(body, 'Your Kiro API key has been removed.'); });
-  form.addEventListener('submit', (event) => { event.preventDefault(); void send(new FormData(form), 'Your Kiro API key has been saved.'); });
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (error) error.hidden = true;
+    try {
+      const response = await fetch('/account/api-keys', {method: 'POST', body: new FormData(form), headers: {'Accept': 'application/json'}});
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.detail || 'The API keys could not be saved.');
+      close();
+      showInfoDialog('Your API keys have been saved.', {title: 'API keys', tone: 'info'});
+    } catch (requestError) {
+      if (error) { error.textContent = requestError.message; error.hidden = false; }
+    }
+  });
 })();
 
 function clearCatalogueImportQuery() {

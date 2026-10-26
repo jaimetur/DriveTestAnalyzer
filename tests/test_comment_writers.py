@@ -84,12 +84,17 @@ def test_kiro_cli_installs_from_a_package_and_writes_checked_comments(tmp_path):
     writers.save_kiro_cli(repository, installed, 'super')
     assert writers.kiro_cli_status(repository, tmp_path)['version'] == 'kiro-cli 2.4.0'
     without_key = writers.write_comments('kiro_cli', brief(), repository=repository, config_dir=tmp_path, username='ana')
-    assert without_key['engine'] == 'rules' and 'Kiro API key' in without_key['warning']
-    writers.set_kiro_key(tmp_path, 'Ana', 'ksk_test')
+    assert without_key['engine'] == 'rules' and 'Kiro API key in the user menu' in without_key['warning']
+    writers.set_user_key(tmp_path, 'kiro_cli', 'Ana', 'ksk_test')
     assert oct(os.stat(tmp_path / writers.CREDENTIALS_FILE).st_mode & 0o777) == '0o600'
     written = writers.write_comments('kiro_cli', brief(), repository=repository, config_dir=tmp_path, username='ana')
     assert written['engine'] == 'kiro_cli' and written['texts'] == [good]
     assert len(written['problems']) == 1 and 'left out' in written['warning']
+    # With the key of the server, every user writes with it; without one, Super Admin is asked to save it.
+    writers.save_settings(repository, {'enabled': ['kiro_cli'], 'default': 'kiro_cli', 'kiro_key_source': 'server'})
+    assert 'Super Admin' in writers.write_comments('kiro_cli', brief(), repository=repository, config_dir=tmp_path, username='ana')['warning']
+    writers.set_server_key(tmp_path, 'kiro_cli', 'ksk_server')
+    assert writers.write_comments('kiro_cli', brief(), repository=repository, config_dir=tmp_path, username='bob')['engine'] == 'kiro_cli'
     deb = writers.install_kiro_cli(tmp_path, 'kiro-cli.deb', fake_kiro_deb())
     assert deb['version'] == 'kiro-cli 2.4.0'
     with pytest.raises(ValueError, match='no kiro-cli executable'):
@@ -128,9 +133,11 @@ def test_claude_writes_with_structured_output_and_the_default_fallback(monkeypat
     assert request['betas'] == ['server-side-fallback-2026-07-01']
     assert request['output_config'] == {'effort': 'low', 'format': {'type': 'json_schema', 'schema': writers.COMMENTS_SCHEMA}}
     assert 'thinking' not in request and 'Three' in request['messages'][0]['content']
+    with pytest.raises(writers.WriterError, match='Claude API key in the user menu'):
+        writers.write_with_claude(brief(), writers.DEFAULT_SETTINGS, '', 'user')
 
 
-def test_super_admin_sets_the_writers_and_users_their_kiro_key(client):
+def test_super_admin_sets_the_writers_and_users_their_keys(client):
     client.post('/login', data={'username': 'super', 'password': 'super123'})
     page = client.get('/super-admin')
     assert page.status_code == 200 and 'AI Comment Writers' in page.text and 'Rules only' in page.text
@@ -145,15 +152,30 @@ def test_super_admin_sets_the_writers_and_users_their_kiro_key(client):
     }
     # The key is on the server, never in its database nor in the page.
     assert 'sk-ant-secret' not in json.dumps(writers.load_settings(core.repository))
-    assert writers.claude_key(core.settings.config_dir) == 'sk-ant-secret'
-    assert 'sk-ant-secret' not in client.get('/super-admin').text
-    assert 'Kiro API key' in client.get('/super-admin').text
-    assert client.post('/account/kiro-api-key', data={'api_key': 'ksk_mine'}).json() == {'saved': True}
-    assert client.get('/account/kiro-api-key').json() == {'saved': True, 'kiro_cli_enabled': True}
-    assert writers.kiro_key(core.settings.config_dir, 'super') == 'ksk_mine'
-    events = {row['action']: json.loads(row['details']) for row in core.repository.list_logs()}
-    assert events['save_comment_writers']['claude_api_key'] == 'replaced' and 'sk-ant' not in json.dumps(events)
-    assert events['save_kiro_api_key'] == {'action': 'saved'}
+    assert writers.server_key(core.application_config_dir, 'claude') == 'sk-ant-secret'
+    page = client.get('/super-admin').text
+    assert 'sk-ant-secret' not in page and 'data-api-keys-open' in page
+    # Kiro takes each user's key and Claude the server's by default: the user menu asks only for Kiro.
+    assert client.get('/account/api-keys').json() == {'providers': [{'id': 'kiro_cli', 'label': 'Kiro CLI', 'saved': False}]}
+    assert client.post('/account/api-keys', data={'kiro_cli': 'ksk_mine', 'claude': 'ignored'}).json() == {'saved': ['kiro_cli'], 'removed': []}
+    assert writers.user_key(core.application_config_dir, 'kiro_cli', 'super') == 'ksk_mine'
+    assert writers.user_key(core.application_config_dir, 'claude', 'super') == ''
+    # With Claude on each user's key, the user menu asks for both.
+    client.post('/super-admin/comment-writers', data={
+        'enabled': ['kiro_cli', 'claude'], 'default': 'claude', 'claude_key_source': 'user', 'kiro_key_source': 'user',
+    })
+    assert [item['id'] for item in client.get('/account/api-keys').json()['providers']] == ['kiro_cli', 'claude']
+    assert client.post('/account/api-keys', data={'claude': 'sk-ant-mine', 'remove': ['kiro_cli']}).json() == {
+        'saved': ['claude'], 'removed': ['kiro_cli']}
+    assert writers.user_key(core.application_config_dir, 'claude', 'super') == 'sk-ant-mine'
+    assert writers.user_key(core.application_config_dir, 'kiro_cli', 'super') == ''
+    # The key of the server stays saved while the writer uses those of the users.
+    assert writers.server_key(core.application_config_dir, 'claude') == 'sk-ant-secret'
+    events = [(row['action'], json.loads(row['details'])) for row in core.repository.list_logs()]
+    saved = [details for action, details in events if action == 'save_comment_writers']
+    assert saved[-1]['claude_server_key'] == 'replaced' and saved[0]['claude_key_source'] == 'user'
+    assert 'sk-ant' not in json.dumps(events) and 'ksk_' not in json.dumps(events)
+    assert [details for action, details in events if action == 'save_user_api_keys'][0] == {'saved': ['Claude'], 'removed': ['Kiro CLI']}
 
 
 @pytest.mark.skipif(sys.platform == 'win32', reason='the fake Kiro CLI is a shell script')
@@ -161,10 +183,10 @@ def test_dashboards_write_with_kiro_and_import_a_kiro_brief(client):
     body = prepare_rates_dashboard(client)
     slide = body['slides'][0]
     reply = {'comments': ['A leads the change: median Mean Data Rate up 33% vs 2026-Q2 (41 → 61).']}
-    installed = writers.install_kiro_cli(core.settings.config_dir, 'kiro.zip', fake_kiro_zip(reply))
+    installed = writers.install_kiro_cli(core.application_config_dir, 'kiro.zip', fake_kiro_zip(reply))
     writers.save_kiro_cli(core.repository, installed, 'super')
     client.post('/super-admin/comment-writers', data={'enabled': ['kiro_cli', 'kiro_brief'], 'default': 'kiro_cli'})
-    client.post('/account/kiro-api-key', data={'api_key': 'ksk_mine'})
+    client.post('/account/api-keys', data={'kiro_cli': 'ksk_mine'})
 
     generated = client.post('/api/ppt-dashboards/rates/comments/generate', json={'token': body['token'], 'slide': slide['number']})
     assert generated.status_code == 200, generated.text

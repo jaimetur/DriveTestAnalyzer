@@ -5784,12 +5784,13 @@ def cdr_field_dictionary_context(request: Request) -> dict[str, Any]:
     }
 
 
-def kiro_cli_writer_enabled() -> bool:
-    from src.modules.comment_writers import ENGINE_KIRO_CLI, load_settings
+def user_api_key_writers() -> list[str]:
+    """The writers of generated comments whose API key each user saves (the user menu offers API keys for them)."""
+    from src.modules.comment_writers import ENGINE_LABELS, user_key_engines
     try:
-        return ENGINE_KIRO_CLI in load_settings(repository)['enabled']
+        return [ENGINE_LABELS[engine] for engine in user_key_engines(repository)]
     except sqlite3.Error:
-        return False
+        return []
 
 
 def render_template(request: Request, template_name: str, context: dict[str, Any], status_code: int = 200) -> HTMLResponse:
@@ -5820,8 +5821,8 @@ def render_template(request: Request, template_name: str, context: dict[str, Any
         'ignore_event_time_filtering': ignore_event_time_filtering(),
         'features': user_features(template_user) if isinstance(template_user, SessionUser) else {},
         'user_modules_profile': user_modules_profile(template_user) if isinstance(template_user, SessionUser) else {},
-        # The user menu offers Kiro API key while Super Admin enables the Kiro CLI comment writer.
-        'kiro_cli_enabled': isinstance(template_user, SessionUser) and kiro_cli_writer_enabled(),
+        # The user menu offers API keys while an enabled comment writer takes the key of each user (Super Admin).
+        'user_api_key_writers': user_api_key_writers() if isinstance(template_user, SessionUser) else [],
         'show_module_stage_labels': module_stage_labels_visible(),
         'module_tab_badges': module_label_badges(module_settings) if module_stage_labels_visible() else {},
         'module_tabs': module_tabs(module_settings),

@@ -554,7 +554,7 @@
       <span class="collapse-chip">Collapse</span>
     </summary>
     <form class="comment-writers-form" action="/super-admin/comment-writers" method="post" autocomplete="off">
-      <p class="table-help">Users choose among the writers enabled here when they generate comments; Reporting Jobs keep their own choice. Without an LLM writer, or when one fails, the rules write the comments. Keys stay on this server, in its configuration folder: never in its database, exports, transfers or backups.</p>
+      <p class="table-help">Users choose among the writers enabled here when they generate comments; Reporting Jobs keep their own choice. Without an LLM writer, or when one fails, the rules write the comments. Each writer takes the API key of this server or that of each user (saved in the user menu, API keys; Reporting Jobs use that of their owner). Keys stay on this server, in its configuration folder: never in its database, exports, transfers or backups.</p>
       <div class="presentations-workspaces comment-writers-providers" role="group" aria-label="Writers users can choose">
         <label class="presentations-workspace"><input type="checkbox" name="enabled" value="kiro_cli" {% if 'kiro_cli' in writers.enabled %}checked{% endif %}><span>Kiro CLI</span></label>
         <label class="presentations-workspace"><input type="checkbox" name="enabled" value="kiro_brief" {% if 'kiro_brief' in writers.enabled %}checked{% endif %}><span>Kiro Brief</span></label>
@@ -569,17 +569,23 @@
       <section class="comment-writers-section" aria-labelledby="comment-writers-kiro">
         <h3 id="comment-writers-kiro">Kiro CLI</h3>
         {% set kiro = comment_writers.kiro_cli %}
-        <p class="form-note">{% if kiro.installed and not kiro.error %}Installed: {{ kiro.version }} ({{ kiro.architecture }}){% if kiro.from_environment %}, from DRIVETEST_ANALYZER_KIRO_CLI{% elif comment_writers.kiro_cli_installed.installed_by %}, uploaded by {{ comment_writers.kiro_cli_installed.installed_by }} on {{ comment_writers.kiro_cli_installed.installed_at[:10] }}{% endif %}. Each user saves their own Kiro API key in the user menu; the credits come off their Kiro plan.{% elif kiro.error %}<span class="alert">{{ kiro.error }}</span>{% else %}Not installed. Upload the screened package from Artifactory below (never one downloaded from AWS); it is unpacked in the configuration folder, so it stays across updates. This server runs on {{ kiro.server_architecture }}.{% endif %}</p>
-        <label>Kiro model (empty: Kiro's default)<input type="text" name="kiro_model" value="{{ writers.kiro_model }}" maxlength="80" placeholder="Auto"></label>
+        <p class="form-note">{% if kiro.installed and not kiro.error %}Installed: {{ kiro.version }} ({{ kiro.architecture }}){% if kiro.from_environment %}, from DRIVETEST_ANALYZER_KIRO_CLI{% elif comment_writers.kiro_cli_installed.installed_by %}, uploaded by {{ comment_writers.kiro_cli_installed.installed_by }} on {{ comment_writers.kiro_cli_installed.installed_at[:10] }}{% endif %}. The credits come off the Kiro plan of the key used.{% elif kiro.error %}<span class="alert">{{ kiro.error }}</span>{% else %}Not installed. Upload the screened package from Artifactory below (never one downloaded from AWS); it is unpacked in the configuration folder, so it stays across updates. This server runs on {{ kiro.server_architecture }}.{% endif %}</p>
+        <div class="comment-writers-grid">
+          <label>API key<select name="kiro_key_source"><option value="user" {% if writers.kiro_key_source == 'user' %}selected{% endif %}>Each user's key</option><option value="server" {% if writers.kiro_key_source == 'server' %}selected{% endif %}>Key of the server</option></select></label>
+          <label>Key of the server<input type="password" name="kiro_api_key" autocomplete="new-password" placeholder="{% if comment_writers.server_keys.kiro_cli %}Saved: leave empty to keep it{% else %}ksk_…{% endif %}"></label>
+          <label>Kiro model (empty: Kiro's default)<input type="text" name="kiro_model" value="{{ writers.kiro_model }}" maxlength="80" placeholder="Auto"></label>
+        </div>
+        {% if comment_writers.server_keys.kiro_cli %}<label class="checkbox-row"><input type="checkbox" name="remove_kiro_api_key" value="1"> Remove the key of the server</label>{% endif %}
       </section>
       <section class="comment-writers-section" aria-labelledby="comment-writers-claude">
         <h3 id="comment-writers-claude">Claude</h3>
         <div class="comment-writers-grid">
-          <label>API key<input type="password" name="claude_api_key" autocomplete="new-password" placeholder="{% if comment_writers.claude_key_saved %}Saved: leave empty to keep it{% elif comment_writers.claude_environment_key %}ANTHROPIC_API_KEY of the server{% else %}sk-ant-…{% endif %}"></label>
+          <label>API key<select name="claude_key_source"><option value="server" {% if writers.claude_key_source == 'server' %}selected{% endif %}>Key of the server</option><option value="user" {% if writers.claude_key_source == 'user' %}selected{% endif %}>Each user's key</option></select></label>
+          <label>Key of the server<input type="password" name="claude_api_key" autocomplete="new-password" placeholder="{% if comment_writers.server_keys.claude %}Saved: leave empty to keep it{% elif comment_writers.claude_environment_key %}ANTHROPIC_API_KEY of the server{% else %}sk-ant-…{% endif %}"></label>
           <label>Model<select name="claude_model">{% for value, label in comment_writers.claude_models %}<option value="{{ value }}" {% if writers.claude_model == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
           <label>Effort<select name="claude_effort">{% for value in comment_writers.claude_efforts %}<option value="{{ value }}" {% if writers.claude_effort == value %}selected{% endif %}>{{ value | capitalize }}</option>{% endfor %}</select></label>
         </div>
-        {% if comment_writers.claude_key_saved %}<label class="checkbox-row"><input type="checkbox" name="remove_claude_api_key" value="1"> Remove the saved key</label>{% endif %}
+        {% if comment_writers.server_keys.claude %}<label class="checkbox-row"><input type="checkbox" name="remove_claude_api_key" value="1"> Remove the key of the server</label>{% endif %}
       </section>
       <div class="form-actions"><button type="submit">Save AI Comment Writers</button></div>
     </form>

@@ -3003,7 +3003,7 @@ def install_dashboard_routes(core):
         if engine not in comment_writers.SERVER_ENGINES:
             return brief['rules'], {'engine': dashboard_comments.ENGINE_RULES, 'model': '', 'warning': '', 'problems': []}
         written = comment_writers.write_comments(engine, brief, repository=core.repository,
-                                                 config_dir=core.settings.config_dir, username=username)
+                                                 config_dir=core.application_config_dir, username=username)
         if written['engine'] == dashboard_comments.ENGINE_RULES:
             return brief['rules'], written
         return [{'text': item, 'kind': written['engine'], 'chart_index': None, 'chart_title': ''} for item in written['texts']], written

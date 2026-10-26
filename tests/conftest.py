@@ -64,6 +64,7 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     )
 
     object.__setattr__(settings, "database_path", config_dir / "application.db")
+    object.__setattr__(settings, "config_dir", config_dir)
     object.__setattr__(settings, "input_dir", input_dir)
     object.__setattr__(settings, "output_dir", output_dir)
     object.__setattr__(settings, "export_dir", export_dir)

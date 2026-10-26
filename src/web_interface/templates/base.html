@@ -131,7 +131,7 @@
         <button type="button" class="topnav-user-control" popovertarget="topnav-user-options" aria-haspopup="true" aria-expanded="false" title="User options" aria-label="User options for {{ user.username }}" data-user-menu-trigger><span class="topnav-link topnav-user-badge topnav-user-badge-{{ user.role }}" {% if user.role not in ['admin', 'super-admin'] and user_modules_profile.color %}style="--user-badge-color: {{ user_modules_profile.color }}"{% endif %}>User: {{ user.username }} ({{ user.role }} · {{ user_modules_profile.name }})</span></button>
         <nav id="topnav-user-options" class="module-config-options topnav-user-options" aria-label="User options" popover data-user-menu-options>
           <button type="button" data-change-password-open>{{ menu_icon(section_icons['key']) }}<span>Change password</span></button>
-          {% if kiro_cli_enabled %}<button type="button" data-kiro-key-open>{{ menu_icon(section_icons['key']) }}<span>Kiro API key</span></button>{% endif %}
+          {% if user_api_key_writers %}<button type="button" data-api-keys-open title="Your API keys for {{ user_api_key_writers | join(' and ') }}">{{ menu_icon(section_icons['key']) }}<span>API keys</span></button>{% endif %}
         </nav>
         <a class="topnav-link topnav-link-logout" href="/logout" title="Log out of DriveTest Analyzer">Logout</a>
       </nav>
@@ -312,19 +312,18 @@
     </div>
   </div>
   {% if user %}
-  {% if kiro_cli_enabled %}
-  <div id="kiro-key-overlay" class="confirm-overlay" hidden>
-    <div class="confirm-panel" role="dialog" aria-modal="true" aria-labelledby="kiro-key-title">
+  {% if user_api_key_writers %}
+  <div id="api-keys-overlay" class="confirm-overlay" hidden>
+    <div class="confirm-panel" role="dialog" aria-modal="true" aria-labelledby="api-keys-title">
       <p class="eyebrow">Generated comments</p>
-      <h3 id="kiro-key-title">Kiro API key</h3>
-      <form data-kiro-key-form autocomplete="off">
-        <p class="form-note" data-kiro-key-status>Kiro CLI writes the comments of PPT Dashboards with your personal Kiro API key (create it at app.kiro.dev → API Keys): the credits come off your Kiro plan. It stays on this server and is never shown again.</p>
-        <label>API key<input type="password" name="api_key" autocomplete="new-password" placeholder="ksk_…"></label>
-        <p class="form-note" data-kiro-key-error hidden></p>
+      <h3 id="api-keys-title">API keys</h3>
+      <form data-api-keys-form autocomplete="off">
+        <p class="form-note">The LLM writers of the comments of PPT Dashboards use your own key for {{ user_api_key_writers | join(' and ') }} (Super Admin chooses it): what they write is charged to your account (Kiro: app.kiro.dev → API Keys; Claude: console.anthropic.com → API Keys). Keys stay on this server and are never shown again.</p>
+        <div class="api-keys-fields" data-api-keys-fields></div>
+        <p class="form-note" data-api-keys-error hidden></p>
         <div class="confirm-actions">
-          <button type="button" class="ghost-link confirm-cancel" data-kiro-key-cancel>Cancel</button>
-          <button type="button" class="ghost-link" data-kiro-key-remove hidden>Remove key</button>
-          <button type="submit" class="action-link-primary">Save key</button>
+          <button type="button" class="ghost-link confirm-cancel" data-api-keys-cancel>Cancel</button>
+          <button type="submit" class="action-link-primary">Save keys</button>
         </div>
       </form>
     </div>

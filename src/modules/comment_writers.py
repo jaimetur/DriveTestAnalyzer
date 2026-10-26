@@ -2,11 +2,11 @@
 
 The rules of ``dashboard_comments`` always read the charts first. An LLM writer receives the same facts and the rules
 comments as a draft, rewrites them in a more natural way and returns JSON; every figure it writes must be one of the
-facts (``validate_comments``), otherwise the rules comment is kept. Kiro CLI runs headless with the personal API key of
-the user who generates (Reporting Jobs: their owner) and no tools; Claude runs with the API key of the server. The keys
-live in a file of the configuration folder of this server (never in its database, exports, transfers or backups) and
-are never sent back to the browser. Kiro CLI is the screened package a super-admin uploads (Ericsson forbids the
-versions downloaded from AWS): it is unpacked in the configuration folder, so it survives every image update.
+facts (``validate_comments``), otherwise the rules comment is kept. Kiro CLI runs headless with no tools; each writer
+takes the API key of the server or that of the user who generates (Reporting Jobs: their owner), as Super Admin
+chooses. The keys live in a file of the configuration folder of this server (never in its database, exports, transfers
+or backups) and are never sent back to the browser. Kiro CLI is the screened package a super-admin uploads (Ericsson
+forbids the versions downloaded from AWS): it is unpacked in the configuration folder, so it survives every image update.
 """
 from __future__ import annotations
 
@@ -41,7 +41,7 @@ CLAUDE_MODELS = (('claude-opus-5-5', 'Claude Opus 5.5'), ('claude-sonnet-5-5', '
 CLAUDE_EFFORTS = ('low', 'medium', 'high')
 DEFAULT_SETTINGS: dict[str, Any] = {
     'enabled': [], 'default': ENGINE_KIRO_CLI, 'claude_model': CLAUDE_MODELS[0][0], 'claude_effort': 'medium',
-    'kiro_model': '', 'timeout_seconds': 120, 'kiro_cli': {},
+    'kiro_model': '', 'timeout_seconds': 120, 'kiro_cli': {}, 'kiro_key_source': 'user', 'claude_key_source': 'server',
 }
 MAX_COMMENT_LENGTH = 500
 KIRO_STATUS_SECONDS = 300
@@ -91,7 +91,7 @@ def load_settings(repository: Any) -> dict[str, Any]:
 
 
 def save_settings(repository: Any, values: dict[str, Any]) -> dict[str, Any]:
-    """Validate and save the AI writer settings (the keys are saved apart, see ``set_claude_key``)."""
+    """Validate and save the AI writer settings (the keys are saved apart, see ``set_server_key``)."""
     settings = load_settings(repository)
     enabled = [provider for provider in PROVIDERS if provider in set(values.get('enabled') or [])]
     default = str(values.get('default') or ENGINE_KIRO_CLI)
@@ -109,7 +109,14 @@ def save_settings(repository: Any, values: dict[str, Any]) -> dict[str, Any]:
         raise ValueError('The timeout must be a number of seconds.') from exc
     if not 15 <= timeout <= 900:
         raise ValueError('The timeout must be between 15 and 900 seconds.')
+    sources = {}
+    for name in ('kiro', 'claude'):
+        source = str(values.get(f'{name}_key_source') or DEFAULT_SETTINGS[f'{name}_key_source'])
+        if source not in KEY_SOURCES:
+            raise ValueError('Choose the key of the server or the key of each user.')
+        sources[f'{name}_key_source'] = source
     settings.update({
+        **sources,
         'enabled': enabled, 'default': default, 'claude_model': model, 'claude_effort': effort,
         'kiro_model': re.sub(r'[^\w.:/-]', '', str(values.get('kiro_model') or '').strip())[:80], 'timeout_seconds': timeout,
     })
@@ -163,33 +170,57 @@ def _write_credentials(config_dir: Path, data: dict[str, Any]) -> None:
     temporary.replace(path)
 
 
-def claude_key(config_dir: Path) -> str:
-    return str(_read_credentials(config_dir).get('claude_api_key') or '')
+# Where each LLM writer takes its API key from, as Super Admin chooses: the one key of the server, or each user's own key
+# (saved in the user menu, API keys; Reporting Jobs use that of their owner).
+KEY_SOURCES = ('server', 'user')
+KEY_NAMES = {ENGINE_KIRO_CLI: 'kiro', ENGINE_CLAUDE: 'claude'}
 
 
-def set_claude_key(config_dir: Path, key: str) -> None:
+def server_key(config_dir: Path, engine: str) -> str:
+    return str(_read_credentials(config_dir).get(f'{KEY_NAMES[engine]}_api_key') or '')
+
+
+def set_server_key(config_dir: Path, engine: str, key: str) -> None:
+    """Save (or with an empty key remove) the API key of the server for a writer."""
     data = _read_credentials(config_dir)
     if key:
-        data['claude_api_key'] = key.strip()
+        data[f'{KEY_NAMES[engine]}_api_key'] = key.strip()
     else:
-        data.pop('claude_api_key', None)
+        data.pop(f'{KEY_NAMES[engine]}_api_key', None)
     _write_credentials(config_dir, data)
 
 
-def kiro_key(config_dir: Path, username: str) -> str:
-    return str((_read_credentials(config_dir).get('kiro_api_keys') or {}).get(str(username).casefold()) or '')
+def user_key(config_dir: Path, engine: str, username: str) -> str:
+    return str((_read_credentials(config_dir).get(f'{KEY_NAMES[engine]}_api_keys') or {}).get(str(username).casefold()) or '')
 
 
-def set_kiro_key(config_dir: Path, username: str, key: str) -> None:
-    """Save (or with an empty key remove) the personal Kiro API key of a user."""
+def set_user_key(config_dir: Path, engine: str, username: str, key: str) -> None:
+    """Save (or with an empty key remove) the personal API key of a user for a writer."""
     data = _read_credentials(config_dir)
-    keys = dict(data.get('kiro_api_keys') or {})
+    keys = dict(data.get(f'{KEY_NAMES[engine]}_api_keys') or {})
     if key:
         keys[str(username).casefold()] = key.strip()
     else:
         keys.pop(str(username).casefold(), None)
-    data['kiro_api_keys'] = keys
+    data[f'{KEY_NAMES[engine]}_api_keys'] = keys
     _write_credentials(config_dir, data)
+
+
+def key_source(settings: dict[str, Any], engine: str) -> str:
+    return settings.get(f'{KEY_NAMES[engine]}_key_source') or DEFAULT_SETTINGS[f'{KEY_NAMES[engine]}_key_source']
+
+
+def writer_key(settings: dict[str, Any], config_dir: Path, engine: str, username: str) -> tuple[str, str]:
+    """The API key a writer uses for a user, and where it comes from (the server or the user)."""
+    source = key_source(settings, engine)
+    key = server_key(config_dir, engine) if source == 'server' else user_key(config_dir, engine, username)
+    return key, source
+
+
+def user_key_engines(repository: Any) -> list[str]:
+    """The enabled writers whose key each user saves in the user menu."""
+    settings = load_settings(repository)
+    return [engine for engine in SERVER_ENGINES if engine in settings['enabled'] and key_source(settings, engine) == 'user']
 
 
 # -- Kiro CLI installation ----------------------------------------------------------------------------------------------
@@ -383,13 +414,14 @@ def _json_reply(text: str) -> Any:
 
 
 def write_with_kiro_cli(brief: dict[str, Any], settings: dict[str, Any], cli: Path | None, api_key: str,
-                        config_dir: Path) -> tuple[list[str], dict[str, Any]]:
-    """Kiro CLI headless (``kiro-cli chat --no-interactive``) with the user's API key and no tools trusted, run in an
-    empty folder so it has nothing to read."""
+                        config_dir: Path, source: str = 'user') -> tuple[list[str], dict[str, Any]]:
+    """Kiro CLI headless (``kiro-cli chat --no-interactive``) with the API key of the user or of the server and no tools
+    trusted, run in an empty folder so it has nothing to read."""
     if cli is None:
         raise WriterError('Kiro CLI is not installed on this server.')
     if not api_key:
-        raise WriterError('Add your Kiro API key in the user menu (Kiro API key) to write comments with Kiro.')
+        raise WriterError('Add your Kiro API key in the user menu (API keys) to write comments with Kiro.' if source == 'user'
+                          else 'Kiro has no API key of the server: Super Admin saves it in AI Comment Writers.')
     home = kiro_home(config_dir)
     home.mkdir(parents=True, exist_ok=True)
     command = [str(cli), 'chat', '--no-interactive']
@@ -412,8 +444,12 @@ def write_with_kiro_cli(brief: dict[str, Any], settings: dict[str, Any], cli: Pa
     return _comments_from(_json_reply(completed.stdout)), {'model': str(settings.get('kiro_model') or '')}
 
 
-def write_with_claude(brief: dict[str, Any], settings: dict[str, Any], api_key: str) -> tuple[list[str], dict[str, Any]]:
-    """Claude with structured output; a refusal routes to Anthropic's default fallback model on the server."""
+def write_with_claude(brief: dict[str, Any], settings: dict[str, Any], api_key: str,
+                      source: str = 'server') -> tuple[list[str], dict[str, Any]]:
+    """Claude with structured output; a refusal routes to Anthropic's default fallback model on the server. Without a
+    key of the server it uses the credentials of the server's environment (ANTHROPIC_API_KEY)."""
+    if source == 'user' and not api_key:
+        raise WriterError('Add your Claude API key in the user menu (API keys) to write comments with Claude.')
     try:
         import anthropic
     except ImportError as exc:
@@ -431,7 +467,7 @@ def write_with_claude(brief: dict[str, Any], settings: dict[str, Any], api_key: 
             messages=[{'role': 'user', 'content': f'Brief of the slide (JSON):\n{_prompt(brief)}'}],
         )
     except anthropic.AuthenticationError as exc:
-        raise WriterError('The Claude API key of the server was rejected.') from exc
+        raise WriterError('Your Claude API key was rejected.' if source == 'user' else 'The Claude API key of the server was rejected.') from exc
     except anthropic.RateLimitError as exc:
         raise WriterError('Claude is rate limited right now: try again in a minute.') from exc
     except anthropic.APIStatusError as exc:
@@ -533,10 +569,11 @@ def write_comments(engine: str, brief: dict[str, Any], *, repository: Any, confi
         return result
     settings = load_settings(repository)
     try:
+        api_key, source = writer_key(settings, config_dir, engine, username)
         if engine == ENGINE_KIRO_CLI:
-            texts, details = write_with_kiro_cli(brief, settings, kiro_cli_path(repository), kiro_key(config_dir, username), config_dir)
+            texts, details = write_with_kiro_cli(brief, settings, kiro_cli_path(repository), api_key, config_dir, source)
         else:
-            texts, details = write_with_claude(brief, settings, claude_key(config_dir))
+            texts, details = write_with_claude(brief, settings, api_key, source)
     except WriterError as exc:
         reason = str(exc) if str(exc).startswith(ENGINE_LABELS[engine]) else f'{ENGINE_LABELS[engine]}: {exc}'
         result.update({'engine': ENGINE_RULES, 'warning': f'{reason} The rules comments are shown.'})
@@ -563,9 +600,9 @@ def writer_settings_panel(core: Any) -> dict[str, Any]:
     settings = load_settings(core.repository)
     return {
         'settings': settings, 'labels': ENGINE_LABELS, 'claude_models': CLAUDE_MODELS, 'claude_efforts': CLAUDE_EFFORTS,
-        'claude_key_saved': bool(claude_key(core.settings.config_dir)),
+        'server_keys': {engine: bool(server_key(core.application_config_dir, engine)) for engine in SERVER_ENGINES},
         'claude_environment_key': bool(os.environ.get('ANTHROPIC_API_KEY')),
-        'kiro_cli': kiro_cli_status(core.repository, core.settings.config_dir),
+        'kiro_cli': kiro_cli_status(core.repository, core.application_config_dir),
         'kiro_cli_installed': settings.get('kiro_cli') or {},
     }
 
@@ -580,6 +617,8 @@ def install_comment_writer_routes(core: Any) -> None:
     def save_comment_writers(
         enabled: list[str] = Form([]), default: str = Form(ENGINE_KIRO_CLI), claude_model: str = Form(CLAUDE_MODELS[0][0]),
         claude_effort: str = Form('medium'), kiro_model: str = Form(''), timeout_seconds: str = Form('120'),
+        kiro_key_source: str = Form('user'), claude_key_source: str = Form('server'),
+        kiro_api_key: str = Form(''), remove_kiro_api_key: str = Form(''),
         claude_api_key: str = Form(''), remove_claude_api_key: str = Form(''), user=Depends(core.super_admin_user),
     ):
         before = load_settings(core.repository)
@@ -587,20 +626,25 @@ def install_comment_writer_routes(core: Any) -> None:
             saved = save_settings(core.repository, {
                 'enabled': enabled, 'default': default, 'claude_model': claude_model, 'claude_effort': claude_effort,
                 'kiro_model': kiro_model, 'timeout_seconds': timeout_seconds,
+                'kiro_key_source': kiro_key_source, 'claude_key_source': claude_key_source,
             })
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
-        key_change = ''
-        if remove_claude_api_key:
-            set_claude_key(core.settings.config_dir, '')
-            key_change = 'removed'
-        elif claude_api_key.strip():
-            set_claude_key(core.settings.config_dir, claude_api_key)
-            key_change = 'replaced'
-        visible = ('enabled', 'default', 'claude_model', 'claude_effort', 'kiro_model', 'timeout_seconds')
+        changes = {}
+        for engine, key, remove in ((ENGINE_KIRO_CLI, kiro_api_key, remove_kiro_api_key), (ENGINE_CLAUDE, claude_api_key, remove_claude_api_key)):
+            if remove:
+                set_server_key(core.application_config_dir, engine, '')
+                changes[f'{KEY_NAMES[engine]}_server_key'] = 'removed'
+            elif key.strip():
+                set_server_key(core.application_config_dir, engine, key)
+                changes[f'{KEY_NAMES[engine]}_server_key'] = 'replaced'
+            else:
+                changes[f'{KEY_NAMES[engine]}_server_key'] = 'unchanged'
+        visible = ('enabled', 'default', 'kiro_key_source', 'claude_key_source', 'claude_model', 'claude_effort', 'kiro_model',
+                   'timeout_seconds')
         core.repository.try_add_log(user.username, 'save_comment_writers', json.dumps({
             **{key: saved[key] for key in visible},
-            'changed': [key for key in visible if before.get(key) != saved.get(key)], 'claude_api_key': key_change or 'unchanged',
+            'changed': [key for key in visible if before.get(key) != saved.get(key)], **changes,
         }, ensure_ascii=False))
         return RedirectResponse('/super-admin#comment-writers', status_code=303)
 
@@ -608,7 +652,7 @@ def install_comment_writer_routes(core: Any) -> None:
     async def install_kiro_cli_package(package: UploadFile = File(...), user=Depends(core.super_admin_user)):
         content = await package.read()
         try:
-            installed = install_kiro_cli(core.settings.config_dir, package.filename or 'kiro-cli', content)
+            installed = install_kiro_cli(core.application_config_dir, package.filename or 'kiro-cli', content)
         except (ValueError, OSError, tarfile.TarError, zipfile.BadZipFile) as exc:
             core.repository.try_add_log(user.username, 'install_kiro_cli_failed', json.dumps({
                 'file': package.filename, 'size': len(content), 'error': str(exc),
@@ -621,19 +665,33 @@ def install_comment_writer_routes(core: Any) -> None:
         }, ensure_ascii=False))
         return JSONResponse({'installed': installed})
 
-    @app.get('/account/kiro-api-key')
-    def kiro_api_key_status(user=Depends(core.current_user)):
-        return JSONResponse({'saved': bool(kiro_key(core.settings.config_dir, user.username)),
-                             'kiro_cli_enabled': ENGINE_KIRO_CLI in load_settings(core.repository)['enabled']})
+    @app.get('/account/api-keys')
+    def account_api_keys(user=Depends(core.current_user)):
+        """The writers whose key each user saves (as Super Admin chooses), and whether this user has saved it."""
+        return JSONResponse({'providers': [
+            {'id': engine, 'label': ENGINE_LABELS[engine], 'saved': bool(user_key(core.application_config_dir, engine, user.username))}
+            for engine in user_key_engines(core.repository)
+        ]})
 
-    @app.post('/account/kiro-api-key')
-    def save_kiro_api_key(api_key: str = Form(''), remove: str = Form(''), user=Depends(core.current_user)):
-        key = '' if remove else api_key.strip()
-        if not remove and not key:
-            raise HTTPException(status_code=400, detail='Paste your Kiro API key, or remove the one saved.')
-        set_kiro_key(core.settings.config_dir, user.username, key)
-        core.repository.try_add_log(user.username, 'save_kiro_api_key', json.dumps({'action': 'removed' if remove else 'saved'}))
-        return JSONResponse({'saved': bool(key)})
+    @app.post('/account/api-keys')
+    def save_account_api_keys(kiro_cli: str = Form(''), claude: str = Form(''), remove: list[str] = Form([]),
+                              user=Depends(core.current_user)):
+        """Save or remove the personal API keys of the user: one field per writer (its id), ``remove`` the ids to remove."""
+        submitted = {ENGINE_KIRO_CLI: kiro_cli, ENGINE_CLAUDE: claude}
+        saved, dropped = [], []
+        for engine in user_key_engines(core.repository):
+            if engine in set(remove):
+                set_user_key(core.application_config_dir, engine, user.username, '')
+                dropped.append(engine)
+            elif submitted[engine].strip():
+                set_user_key(core.application_config_dir, engine, user.username, submitted[engine])
+                saved.append(engine)
+        if not saved and not dropped:
+            raise HTTPException(status_code=400, detail='Paste an API key, or choose one to remove.')
+        core.repository.try_add_log(user.username, 'save_user_api_keys', json.dumps({
+            'saved': [ENGINE_LABELS[engine] for engine in saved], 'removed': [ENGINE_LABELS[engine] for engine in dropped],
+        }))
+        return JSONResponse({'saved': saved, 'removed': dropped})
 
 
 # -- Kiro Brief -------------------------------------------------------------------------------------------------------
