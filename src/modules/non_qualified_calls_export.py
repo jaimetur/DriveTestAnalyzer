@@ -25,7 +25,7 @@ FILTER_LABELS = (
     ('root_category', 'Root Category'), ('root_cause', 'Root Cause'), ('call_type', 'Call Type'), ('period', 'Period'),
     ('age', 'Age of Open Calls'), ('root_pair', 'Root Domain · Cause'),
     ('effective_domain', 'Root Domain (with suggestions)'), ('effective_cause', 'Root Domain · Cause (with suggestions)'),
-    ('node', 'eNB / gNB'), ('place', 'Repetition Place'), ('hotspot', 'Hotspot'), ('state', 'Follow-up'), ('rca_state', 'Root Cause'),
+    ('node', 'eNB / gNB'), ('place', 'Repetition Place'), ('hotspot', 'Hotspot'), ('consecutive_issue', 'Consecutive Issue'), ('state', 'Follow-up'), ('rca_state', 'Root Cause'),
     ('version', 'CDR Version'),
 )
 STATE_LABELS = {
@@ -59,9 +59,11 @@ def selection_lines(filters: dict[str, Any], dataset_names: dict[str, str], gran
         values = [STATE_LABELS.get(value, value) if key in {'state', 'rca_state'} else value for value in values]
         values = [VERSION_LABELS.get(value, value) if key == 'version' else value for value in values]
         values = [{'auto': 'Automatic', 'manual': 'By hand'}.get(value, value) if key == 'status_mode' else value for value in values]
-        # A hotspot is chosen by its key, which tells nothing to read.
+        # A hotspot or a run of consecutive failures is chosen by its key, which tells nothing to read.
         if key == 'hotspot' and values:
             values = [f"{len(values)} hotspot{'s' if len(values) > 1 else ''} of the NQ Prioritization"]
+        if key == 'consecutive_issue' and values:
+            values = [f"{len(values)} run{'s' if len(values) > 1 else ''} of consecutive failures of the NQ Prioritization"]
         if values:
             lines.append(f'{label}: {", ".join(values)}')
     for key, chosen in (filters.get('fields') or {}).items():
@@ -277,7 +279,7 @@ REPORT_PANELS: tuple[tuple[str, str, tuple[tuple[str, str], ...]], ...] = (
     ('summary', 'Summary', (('executive', 'Executive Summary'),)),
     ('prioritization', 'NQ Prioritization & Queues', (('queue', 'Next to analyse'), ('rules', 'Prioritization Rules'),
                                                       ('kpis', 'Scoring points lost by KPI'), ('hotspots', 'Hotspots'),
-                                                      ('issues', 'Repeated Issues Within Same Cluster'))),
+                                                      ('consecutive', 'Consecutive Issues'), ('issues', 'Clustered Issues'))),
     ('rates', 'NQ Rate by Campaign and Operator', (('rates', 'NQ rate of each campaign and operator'),)),
     ('failures', 'Failures by Type, Technology & Serving Cell', (
         ('types', 'Failure types of each service'), ('technology', 'Technology and classification'),
@@ -423,21 +425,22 @@ def prioritization_tables(data: dict[str, Any]) -> list[tuple[str, str, list[str
             for row in data.get('kpis') or []]
     if kpis:
         tables.append(('kpis', 'Scoring points lost by KPI', ['KPI', 'Category', 'Environment', 'Calls', 'Points lost'], kpis, {3, 4}))
-    spots = data.get('hotspots') or []
-    spot_rows = [[row['operator'], row['nr_mode'] or '—', row['campaign'] or '—',
-                  (row['place'] or '—') + (f" +{row['places'] - 1}" if row.get('places', 0) > 1 else ''), hotspot_time(row),
-                  f"{row['calls']:,}", *(f"{row['kinds'].get(kind, 0):,}" for kind in ('Voice', 'WhatsApp', 'Data')),
-                  _points(row['points']), f"{row['open']:,}", row['category'] or '—'] for row in spots[:MAX_EXPORT_ISSUES]]
-    # The hotspots and the repeated issues as the page shows them: the more general table first, the hotspots with the OR
-    # join, the repeated issues with AND; the title of the hotspots tells their join.
+    # The hotspots, the runs of consecutive failures and the clustered issues as the page shows them, in the same columns: the
+    # more general tables first, the hotspots with the OR join, last with AND; the title of the hotspots tells their join.
     join = 'AND' if (data.get('settings') or {}).get('hotspot_join') == 'and' else 'OR'
+    columns = ['Operator', 'NR Mode', 'Campaign', 'Site', 'Time', 'Calls', 'Voice', 'WhatsApp', 'Data', 'Points lost', 'Open', 'Main Root Category']
     groups = []
-    if spot_rows:
-        groups.append(('hotspots', f'Hotspots (Consecutives {join} Clustered Issues)'
-                       + (f' · the {len(spot_rows)} with the most calls of {len(spots):,}' if len(spots) > len(spot_rows) else ''),
-                       ['Operator', 'NR Mode', 'Campaign', 'Site', 'Time', 'Calls', 'Voice', 'WhatsApp', 'Data', 'Points lost', 'Open',
-                        'Main Root Category'], spot_rows, {5, 6, 7, 8, 9, 10}))
-    # The sites with a repeated issue in the columns of the hotspots: their NR Modes and campaigns (with their calls when
+    for component, title, noun in (('hotspots', f'Hotspots (Consecutives {join} Clustered Issues)', 'hotspots'),
+                                   ('consecutive', 'Consecutive Issues', 'runs')):
+        items = data.get('hotspots' if component == 'hotspots' else 'consecutive') or []
+        rows = [[row['operator'], row['nr_mode'] or '—', row['campaign'] or '—',
+                 (row['place'] or '—') + (f" +{row['places'] - 1}" if row.get('places', 0) > 1 else ''), hotspot_time(row),
+                 f"{row['calls']:,}", *(f"{row['kinds'].get(kind, 0):,}" for kind in ('Voice', 'WhatsApp', 'Data')),
+                 _points(row['points']), f"{row['open']:,}", row['category'] or '—'] for row in items[:MAX_EXPORT_ISSUES]]
+        if rows:
+            groups.append((component, title + (f' · the {len(rows)} {noun} with the most calls of {len(items):,}' if len(items) > len(rows) else ''),
+                           columns, rows, {5, 6, 7, 8, 9, 10}))
+    # The sites with a clustered issue in the columns of the hotspots: their NR Modes and campaigns (with their calls when
     # there are several) and the days of their first and last call.
     def shares(counts: dict[str, int]) -> str:
         return ' · '.join(f'{name} {count:,}' for name, count in counts.items()) if len(counts) > 1 else next(iter(counts), '—')
@@ -447,10 +450,11 @@ def prioritization_tables(data: dict[str, Any]) -> list[tuple[str, str, list[str
                f"{row['open']:,}", row['category'] or '—'] for row in (data.get('issues') or [])[:MAX_EXPORT_ISSUES]]
     if issues:
         count = len(data.get('issues') or [])
-        groups.append(('issues', 'Repeated Issues Within Same Cluster' + (f' · the {len(issues)} sites with the most calls of {count:,}' if count > len(issues) else ''),
-                       ['Operator', 'NR Mode', 'Campaign', 'Site', 'Time', 'Calls', 'Voice', 'WhatsApp', 'Data', 'Points lost', 'Open',
-                        'Main Root Category'], issues, {5, 6, 7, 8, 9, 10}))
-    tables.extend(groups if join == 'OR' else reversed(groups))
+        groups.append(('issues', 'Clustered Issues' + (f' · the {len(issues)} sites with the most calls of {count:,}' if count > len(issues) else ''),
+                       columns, issues, {5, 6, 7, 8, 9, 10}))
+    hotspots = [group for group in groups if group[0] == 'hotspots']
+    others = [group for group in groups if group[0] != 'hotspots']
+    tables.extend([*hotspots, *others] if join == 'OR' else [*others, *hotspots])
     return tables
 
 

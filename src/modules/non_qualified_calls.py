@@ -265,7 +265,7 @@ V33_FORMER_DESCRIPTIONS = (
 )
 # Set once the tables and columns of this version exist, so the requests check the schema without writing.
 SCHEMA_STATE_KEY = 'nq_calls_schema'
-SCHEMA_VERSION = '2026-10-26.2'
+SCHEMA_VERSION = '2026-10-26.3'
 # Indexed call fields that the suggestion rule can read, with their labels.
 RULE_FIELDS = {
     'failure_classification': 'Failure Classification', 'failure_category': 'Failure Category',
@@ -315,11 +315,11 @@ TRACKING_FIELDS = ('status', 'team', 'assignee', 'root_domain', 'root_category',
 # (Classic, WhatsApp, Data), a timeline period ("month:2026-07"), the age of open calls,
 # a labelled root cause ("RF||Coverage"), the root domain or cause counting the suggested
 # ones, the eNB/gNB of the last cell ("EE||eNB 525176"), the place of the repeated issues of the NQ Prioritization
-# ("EE||Site S1") and its hotspots (their key).
+# ("EE||Site S1"), its hotspots and its runs of consecutive failures (their key).
 # The indicator cards filter by follow-up state (closed, attended, with team...) and the
 # Suggested card by the calls without a root cause that have a suggestion.
 EXTRA_FILTERS = ('nr_mode', 'call_type', 'period', 'age', 'root_pair', 'effective_domain', 'effective_cause', 'node',
-                 'state', 'rca_state', 'place', 'hotspot')
+                 'state', 'rca_state', 'place', 'hotspot', 'consecutive_issue')
 KEY_FILTERS = ('effective_domain', 'effective_cause', 'node', 'rca_state', 'netcheck_domain', 'netcheck_category',
                'netcheck_cause', 'script_domain', 'script_category', 'script_cause', 'dta_domain', 'dta_category', 'dta_cause',
                'netcheck_raw', 'script_raw', 'dta_raw')
@@ -4025,7 +4025,7 @@ PRIORITY_COLUMNS_SQL = (
     "COALESCE(p.suggested_priority, '') AS suggested_priority, COALESCE(p.queue, '') AS queue, p.queue_step AS queue_step, "
     "COALESCE(p.queue_list, '') AS queue_list, p.expected_points AS expected_points, "
     "COALESCE(p.expected_campaign, '') AS expected_campaign, COALESCE(p.cluster_key, '') AS cluster_key, "
-    "p.cluster_size AS cluster_size"
+    "p.cluster_size AS cluster_size, COALESCE(p.consecutive_key, '') AS consecutive_key, p.consecutive_size AS consecutive_size"
 )
 
 
@@ -4472,6 +4472,10 @@ def _filter_sql(filters: dict[str, Any], username: str, closed_statuses: list[st
     if spots:
         clauses.append(f"cluster_key IN ({', '.join('?' for _ in spots)})")
         params.extend(spots)
+    runs = _strings(filters.get('consecutive_issue'))
+    if runs:
+        clauses.append(f"consecutive_key IN ({', '.join('?' for _ in runs)})")
+        params.extend(runs)
     if '_call_keys' in filters:
         clauses.append('call_key IN (SELECT value FROM json_each(?))')
         params.append(json.dumps(list(filters['_call_keys'])))

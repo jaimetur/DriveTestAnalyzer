@@ -569,6 +569,19 @@ def test_former_descriptions_of_the_repetitions_take_the_campaigns(client):
     assert all(descriptions[key] == defaults[key] and 'campaign' in defaults[key] for key in former)
 
 
+def test_workspaces_of_the_previous_schema_get_the_runs_of_consecutive_failures(client):
+    enable_module()
+    nq.ensure_nq_tables(core.repository)
+    with core.repository.connection() as connection:
+        for column in ('consecutive_key', 'consecutive_size'):
+            connection.execute(f'ALTER TABLE {nq_prioritization.PRIORITY_TABLE} DROP COLUMN {column}')
+    core.repository.set_workspace_state(nq.SCHEMA_STATE_KEY, '2026-10-26.2')
+    nq.ensure_nq_tables(core.repository)
+    with core.repository.connection() as connection:
+        columns = {row[1] for row in connection.execute(f'PRAGMA table_info({nq_prioritization.PRIORITY_TABLE})')}
+    assert {'consecutive_key', 'consecutive_size'} <= columns and 'drive' not in columns
+
+
 def test_place_of_a_call_falls_back_from_the_site_of_its_last_cell_to_a_spot():
     def lookup(call, node):
         return {'site': '47258', 'host': 'Vodafone'} if node == ('eNB', 1000) and call['operator'] == 'VF' else None
@@ -811,6 +824,12 @@ def test_hotspots_and_consecutive_failures_mix_the_call_types(prioritized):
     linked = {key: row for key, row in rows.items() if kinds[key] != 'ping'}
     assert {row['consecutive'] for row in linked.values()} <= {'Yes', 'No'} and any(row['consecutive'] == 'Yes' for row in linked.values())
     assert all(row['cluster_key'] and row['cluster_size'] >= 1 for row in linked.values())
+    # A failure is consecutive in a run of 2 or more; with the OR join every run falls within one hotspot.
+    assert all((row['consecutive'] == 'Yes') == ((row['consecutive_size'] or 0) >= 2) for row in linked.values())
+    runs: dict[str, set] = {}
+    for row in linked.values():
+        runs.setdefault(row['consecutive_key'], set()).add(row['cluster_key'])
+    assert all(len(found) == 1 for found in runs.values())
     # A hotspot mixes the call types of its operator, NR Mode and campaign.
     spots: dict[str, set] = {}
     for key, row in linked.items():
@@ -877,12 +896,17 @@ def test_panel_filters_and_exports_show_the_prioritization(prioritized):
     assert spot['first'] <= spot['last'] and spot['place']
     calls = client.post('/api/non-qualified-calls/calls', json={'filters': {'hotspot': [spot['key']]}, 'page_size': 100}).json()
     assert calls['total'] == spot['calls'] == spot['size']
+    # Every run of consecutive failures, with its calls of each call type; its key filters its calls.
+    run = panel['consecutive'][0]
+    assert run['calls'] >= 2 and sum(run['kinds'].values()) == run['calls'] and run['key'].startswith('run:')
+    calls = client.post('/api/non-qualified-calls/calls', json={'filters': {'consecutive_issue': [run['key']]}, 'page_size': 100}).json()
+    assert calls['total'] == run['calls'] == run['size']
     # The exports follow the order of the page: the queues, the steps (a table per list, then the calls outside the lists),
-    # the KPIs, the hotspots and the repeated issues.
+    # the KPIs, then the hotspots, the consecutive issues and the clustered issues (the hotspots first with the OR join).
     tables = non_qualified_calls_export.prioritization_tables(panel)
     order = [component for component, *_rest in tables]
-    assert order.index('queue') < order.index('rules') < order.index('kpis') < order.index('hotspots') < order.index('issues')
-    assert next(subtitle for component, subtitle, *_rest in tables if component == 'issues').startswith('Repeated Issues Within Same Cluster')
+    assert order.index('queue') < order.index('rules') < order.index('kpis') < order.index('hotspots') < order.index('consecutive') < order.index('issues')
+    assert next(subtitle for component, subtitle, *_rest in tables if component == 'issues').startswith('Clustered Issues')
     assert next(subtitle for component, subtitle, *_rest in tables if component == 'hotspots').startswith(
         'Hotspots (Consecutives OR Clustered Issues)')
     # The clusters of the panel follow the NR Mode of the filters: one NR Mode filtered counts its calls alone.
@@ -891,14 +915,14 @@ def test_panel_filters_and_exports_show_the_prioritization(prioritized):
     places = nq_prioritization.place_values(core.repository, nq_prioritization.load_settings(core.repository), 'SA')
     assert sa['cluster_mode'] == 'SA' and places and all(rows[key]['nr_mode'] == 'SA' for key in places)
     assert sa['totals']['repeated'] == sum(value['repeated'] == 'Yes' for value in places.values()) < panel['totals']['repeated']
-    # With the AND join, the repeated issues (the more general table) go first.
+    # With the AND join, the consecutive and the clustered issues (the more general tables) go first.
     joined = non_qualified_calls_export.prioritization_tables({**panel, 'settings': {**panel['settings'], 'hotspot_join': 'and'}})
     order_and = [component for component, *_rest in joined]
-    assert order_and.index('issues') < order_and.index('hotspots')
+    assert order_and.index('consecutive') < order_and.index('issues') < order_and.index('hotspots')
     assert next(subtitle for component, subtitle, *_rest in joined if component == 'hotspots').startswith('Hotspots (Consecutives AND')
-    # The hotspots and the repeated issues share their columns.
+    # The three tables share their columns.
     columns = {component: columns for component, _subtitle, columns, *_rest in tables}
-    assert columns['hotspots'] == columns['issues'] == ['Operator', 'NR Mode', 'Campaign', 'Site', 'Time', 'Calls', 'Voice', 'WhatsApp',
+    assert columns['hotspots'] == columns['consecutive'] == columns['issues'] == ['Operator', 'NR Mode', 'Campaign', 'Site', 'Time', 'Calls', 'Voice', 'WhatsApp',
                                                          'Data', 'Points lost', 'Open', 'Main Root Category']
     assert sum(issue['kinds'].values()) == issue['calls'] == sum(issue['campaign_names'].values()) and issue['first'] <= issue['last']
     assert non_qualified_calls_export.hotspot_time({'first': '2026-07-14 10:05:00', 'last': '2026-07-14 10:31:00'}) == '2026-07-14 10:05–10:31'
