@@ -22,6 +22,7 @@ administration
 | Access Requests | [Open section](#access-requests) |
 | Interface Settings | [Open section](#interface-settings) |
 | Presentations | [Open section](#presentations) |
+| AI Comment Writers | [Open section](#ai-comment-writers) |
 | Database Management | [Open section](#database-management) |
 | Reset Application | [Open section](#reset-application) |
 | Operational checklist | [Open section](#operational-checklist) |
@@ -120,6 +121,22 @@ The Preview column draws each tab as it looks when it is not selected. Colours s
 **Presentations**, below Interface Settings, chooses the workspaces whose figures the [presentations of the Help](help.md#presentations) show (Overview, one-slider and roadmap, also in the Full Presentation): check one or several and **Save Presentations**. Their figures are added up: the CDRs (with their campaigns and the calls of the Data and Voice CDRs; a Speech CDR measures calls of the Voice one), the Network Inventories, the Vendor Mappings and the Non-Qualified Calls with their follow-up, Ericsson RCA results and comments; the users and their roles, the workspaces of the server with their campaigns and the Help, tests and releases of the application complete them. With none checked, they show those of the workspace with the most CDR rows.
 
 The server generates every presentation of the Help, with the pictures of their slides, into the `presentations` folder of the data directory, which keeps them across restarts and updates of the application (in Docker, the data volume): none is kept with the application. It always generates them in the background, in about half a minute, so the application never waits for them. At its start, when one is missing (a first start, or a new version that brings a new one), it generates them at once, and until they are ready the Help says *The server is generating the presentations* where they go. When their figures, or the presentations of a new version, change, it generates them again at its start, the first time a signed-in user opens them in the Help and when this setting is saved; until then the Help shows the last ones. **Regenerate Presentations** generates them all again at once, whatever changed. The label of the panel says when they were generated, or *Generating…* while they are, and follows the generation. Generating them needs Node.js with the packages of `tools/presentations`, a Chromium browser (the one of [Configuration](configuration.md), else Chrome, Chromium, Brave or Edge) to draw the slides and LibreOffice to render them, which the Docker image includes; where one is missing the panel says so, **Regenerate Presentations** is disabled and the Help says why it shows no presentation. App Events records every change of the setting (`save_presentation_figures`), every **Regenerate Presentations** (`regenerate_presentations`) and every generation with who or what asked for it and why, or why it failed (`generate_presentations`, `generate_presentations_failed`).
+
+## AI Comment Writers
+
+The writers of the generated comments of [PPT Dashboards](ppt-dashboards.md#generated-comments) (Generate comments, Generate all slides and Auto comments). The rules always read the charts on the server; an LLM writer rewrites their facts, and every figure it writes must be one of them, or the rules comment is kept.
+
+| Setting | Effect |
+| --- | --- |
+| **Kiro CLI**, **Kiro Brief**, **Claude** | The writers users can choose. Without any, the rules write every comment |
+| **Default writer** | Kiro CLI, Claude or Rules: the one Generate comments starts with and Auto comments and Reporting Jobs use unless they choose another (Rules when it is not enabled) |
+| **Timeout** | How long a writer may take for one slide (15–900 seconds, 120 by default) |
+| **Kiro model** | The model Kiro CLI uses (empty: Kiro's own default) |
+| **Claude** | Its API key (saved on this server; empty keeps the saved one, **Remove the saved key** removes it; without one, the `ANTHROPIC_API_KEY` of the server), model (Claude Opus 5.5 by default, Sonnet 5.5 or Haiku 5.5) and effort (Medium by default). A request Claude declines goes to Anthropic's default fallback model |
+
+**Install Kiro CLI** installs the screened package downloaded from the Ericsson Artifactory (`.deb`, `.zip`, `.tar.gz` or the `kiro-cli` executable; never a version downloaded from AWS): the server unpacks it into `tools/kiro-cli` of its configuration folder, which keeps it across restarts and image updates (in Docker, the config volume), checks that it runs on this server (the package must match its processor) and shows its version; it is checked again every few minutes, so an update that breaks it shows here. `DRIVETEST_ANALYZER_KIRO_CLI` points to a Kiro CLI already installed instead (a local run, a team server with `module add kiro_cli`). Kiro CLI runs headless (`kiro-cli chat --no-interactive`) with no tools trusted, in an empty folder, with the personal **Kiro API key** each user saves in the user menu (Kiro's API keys must be enabled for the users by the Kiro administrator; the credits come off each user's plan; Reporting Jobs use the key of their owner).
+
+The keys are written to `ai-credentials.json` in the configuration folder, readable only by the server: they are never in the application database, exports, transfers or backups, and never shown again; moving to another server, save them there again. App Events records each change of the settings (`save_comment_writers`, saying whether the Claude key was replaced or removed, never the key), each Kiro CLI installed or refused (`install_kiro_cli`, `install_kiro_cli_failed`) and each Kiro API key saved or removed (`save_kiro_api_key`).
 
 ## Database Management
 

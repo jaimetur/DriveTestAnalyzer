@@ -90,6 +90,17 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
             return response
 
         test_client.post = post_and_wait_for_uploads
+        # httpx2, which Starlette's TestClient uses once it is installed (the anthropic SDK brings it), keeps one cookie
+        # per domain: a session cookie a test sets replaces the one the server gave at sign-in, as it did with httpx.
+        cookies = test_client.cookies
+        set_cookie = cookies.set
+
+        def replace_cookie(name, value, domain='', path='/'):
+            for cookie in [cookie for cookie in cookies.jar if cookie.name == name]:
+                cookies.jar.clear(cookie.domain, cookie.path, cookie.name)
+            set_cookie(name, value, domain=domain, path=path)
+
+        cookies.set = replace_cookie
         # Tests that need a library explicitly import it; new workspaces stay empty.
         if slides_templates_dir.is_dir():
             shutil.copytree(slides_templates_dir, app_module.active_workspace.slides_templates_dir, dirs_exist_ok=True)

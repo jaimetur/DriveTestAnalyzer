@@ -309,6 +309,7 @@ def load_module_labels(repository: Any) -> dict[str, dict[str, str]]:
 
 # The icons of the entries of the tab menus (the inner markup of a 24x24 stroked SVG).
 SECTION_ICONS: dict[str, str] = {
+    'sparkle': '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 15l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z"/>',
     'select': '<path d="m4 7 2 2 3-3M4 15l2 2 3-3M12 8h8M12 16h8"/>',
     'upload': '<path d="M12 15V4m0 0-4 4m4-4 4 4"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/>',
     'table': '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M3 15h18M9 4v16"/>',
@@ -421,7 +422,8 @@ MODULE_SECTIONS: dict[str, list[tuple[Any, ...] | None]] = {
               ('Datasets Management', 'Datasets Management', 'table')],
     'super-admin': [('Users', 'Users', 'users'), ('Modules Profiles', 'Modules Profiles', 'toggle'),
                     ('Workspace Groups', 'Workspace Groups', 'folder'), ('Interface Settings', 'Interface Settings', 'sliders'),
-                    ('Presentations', 'Presentations', 'presentation'), ('Database Management', 'Database Management', 'database')],
+                    ('Presentations', 'Presentations', 'presentation'), ('AI Comment Writers', 'AI Comment Writers', 'sparkle'),
+                    ('Database Management', 'Database Management', 'database')],
 }
 
 

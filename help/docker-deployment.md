@@ -79,7 +79,7 @@ Deployments created while the application was named Dashboard Analytic keep thei
 
 Persist both roots:
 
-- Config: users, permissions and transfer offers.
+- Config: users, permissions and transfer offers, and the Kiro CLI that Super Admin installs for the generated comments of PPT Dashboards (`tools/kiro-cli`) with the keys of the AI writers (`ai-credentials.json`).
 - Data: workspace registry, databases, Report Templates, uploads, reports, Chart Sets and transfer packages.
 
 Do not rely on the writable container layer. Recreating a container must not remove application state.

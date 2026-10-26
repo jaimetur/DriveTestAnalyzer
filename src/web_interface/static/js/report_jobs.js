@@ -553,13 +553,16 @@
     // Auto comments: generated comments written into the PPT (the Dashboard keeps its own).
     const autoComments = select([['off', 'Off'], ['empty', 'Slides without comments'], ['generated', 'Replace generated comments'],
       ['all', 'Replace every comment']], entry?.auto_comments || 'off');
+    // Their writer: the default of Super Admin, the rules, or an LLM (run with the Kiro API key of the job's owner).
+    const autoCommentsEngine = select([['', 'Default writer'], ['rules', 'Rules'], ['kiro_cli', 'Kiro CLI'], ['claude', 'Claude']],
+      entry?.auto_comments_engine || '');
     // The Campaigns choose the CDRs: they follow NR Mode in its row and the CDRs they choose are listed below it.
     const campaignSlot = node('div', undefined, 'rj-campaign-slot');
     const campaignPreviewSlot = node('div', undefined, 'rj-campaign-preview-slot');
     let campaigns = null;
     const head = node('div', undefined, 'rj-grid rj-one-row');
     head.append(field('NR Mode', nrMode), campaignSlot, field('Dashboard', dashboard), field('Name in the email', label), field('Scope', scope), comparisonField,
-      field('Date from (empty: oldest)', dateFrom), field('Date to (empty: newest)', dateTo), field('Auto comments', autoComments), remove);
+      field('Date from (empty: oldest)', dateFrom), field('Date to (empty: newest)', dateTo), field('Auto comments', autoComments), field('Comment writer', autoCommentsEngine), remove);
     const filters = node('div', undefined, 'rj-filters');
     const filterNote = node('p', '', 'form-note');
     let pickers = [];
@@ -638,7 +641,7 @@
     if (dashboard.value) apply(entry || savedDashboard(), savedDashboard());
     card.getValue = () => ({
       dashboard_id: dashboard.value, label: label.value.trim(), scope: scope.value, vendor_comparison: comparison.value,
-      auto_cdrs: true, date_from: dateFrom.value, date_to: dateTo.value, filters: chosenFilters(), auto_comments: autoComments.value,
+      auto_cdrs: true, date_from: dateFrom.value, date_to: dateTo.value, filters: chosenFilters(), auto_comments: autoComments.value, auto_comments_engine: autoCommentsEngine.value,
     });
     return card;
   }

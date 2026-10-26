@@ -1630,6 +1630,7 @@
     $('ds-comment-add').disabled = snapshot;
     $('ds-comment-generate').disabled = snapshot;
     $('ds-comment-generate-all').disabled = snapshot;
+    for (const control of ['ds-comment-engine', 'ds-comment-kiro-brief', 'ds-comment-kiro-import']) $(control).disabled = snapshot;
   };
   async function openDashboardPptViewer(job) {
     const payload = await api(`/ppt-jobs/${job.id}/charts.json`);
@@ -4001,10 +4002,12 @@
     list.hidden = active;
     box.replaceChildren();
     if (!active) return;
-    const {items, skipped} = commentSuggestions;
+    const {items, skipped, engine, warning} = commentSuggestions;
+    const writer = (commentEngines.engines.find(item => item.id === engine) || {}).label || 'Rules';
     const notes = [items.length
-      ? 'Suggested from the figures of the charts of this slide. Untick or edit them, then add them.'
+      ? `Written by ${writer} from the figures of the charts of this slide. Untick or edit them, then add them.`
       : 'No comments could be written from the charts of this slide.'];
+    if (warning) notes.push(warning);
     if (skipped.length) notes.push(`Charts not read yet: ${skipped.join(', ')}.`);
     const suggestionList = node('ul', undefined, 'ds-comment-suggestion-list');
     items.forEach((item, index) => {
@@ -4508,47 +4511,106 @@
   $('ds-slide').onchange = () => { stopPresentation(); slideIndex = Number($('ds-slide').value); renderSlide(); };
   bind('ds-comment-add', async () => { const input = $('ds-comment-input'), comment = input.value.trim(); if (!comment || !definition || pptDashboardViewer) return; const key = currentSlideCommentKey(); definition.slide_comments ||= {}; const comments = definition.slide_comments[key] ||= []; if (comments.length >= 50) throw new Error('A slide can have at most 50 comments.'); comments.push(comment); input.value = ''; await persistComments(); renderComments(); });
   $('ds-comment-input').addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); $('ds-comment-add').click(); } });
+  // The writers Super Admin enabled (Rules and Kiro CLI or Claude): the choice shows only when there is one to make.
+  let commentEngines = {engines: [{id: 'rules', label: 'Rules'}], default: 'rules', kiro_brief: false};
+  const loadCommentEngines = async () => {
+    try { commentEngines = await api('/comment-engines'); } catch (_error) { return; }
+    const choice = $('ds-comment-engine');
+    choice.replaceChildren(...commentEngines.engines.map(item => { const option = node('option', item.label); option.value = item.id; return option; }));
+    choice.value = commentEngines.default;
+    choice.hidden = commentEngines.engines.length < 2;
+    syncKiroBriefControls();
+  };
+  const commentEngine = () => ($('ds-comment-engine').hidden ? '' : $('ds-comment-engine').value);
+  void loadCommentEngines();
   // The charts a slide shows (a dynamic grid can hide cards), each with the legend items hidden and shown on it.
   const commentCharts = slide => (slide.charts || []).filter(chart => chart.available && !dynamicCardHiddenBy(chart).length)
     .map(chart => ({index: chart.index, ...chartLegendLists(chart)}));
+  // Comments written on several slides (Generate all slides, Import Kiro comments): the Dashboard takes them and the
+  // user reads what was written.
+  const applyWrittenComments = (id, result, total, title) => {
+    if (activeId === id && definition) {
+      definition.slide_comments = result.slide_comments || {};
+      definition.slide_comment_meta = result.slide_comment_meta || {};
+      updateSavedDefinition({slide_comments: definition.slide_comments, slide_comment_meta: definition.slide_comment_meta});
+      dashboards[id] = {...dashboards[id], slide_comments: structuredClone(definition.slide_comments), slide_comment_meta: structuredClone(definition.slide_comment_meta)};
+      commentSuggestions = null;
+      renderComments();
+    }
+    const parts = [`Comments written on ${result.written || 0} of ${result.slides || total} slides.`];
+    if (result.kept) parts.push(`${result.kept} kept the comments they had.`);
+    if (result.empty) parts.push(`${result.empty} had nothing to comment on.`);
+    if (result.left_out) parts.push(`${result.left_out} comment(s) left out: their figures are not in the charts.`);
+    (result.warnings || []).forEach(warning => parts.push(warning));
+    window.showInfoDialog?.(parts.join(' '), {title});
+  };
+  const askCommentMode = async (title, message) => ({confirm: 'empty', secondary: 'generated', tertiary: 'all'}[await window.showConfirmDialog(message,
+    {title, confirmLabel: 'Only Slides Without Comments', secondaryLabel: 'Replace Generated Comments', tertiaryLabel: 'Replace Every Comment', cancelLabel: 'Cancel', wideActions: true})]);
+  const followCommentJob = async (job, label) => {
+    const jobId = job.job_id, state = $('ds-comments-status');
+    while (job.state === 'processing') {
+      state.textContent = `${label}: slide ${job.done || 0} of ${job.total || 0}…`;
+      await new Promise(resolve => window.setTimeout(resolve, 1200));
+      job = await api(`/comment-jobs/${jobId}`);
+    }
+    state.textContent = '';
+    return job;
+  };
+  // The Kiro Brief (when Super Admin enables it): the facts of every slide for Kiro IDE, and its comments imported back.
+  function syncKiroBriefControls() {
+    const enabled = Boolean(commentEngines.kiro_brief) && !pptDashboardViewer;
+    $('ds-comment-kiro-brief').hidden = !enabled;
+    $('ds-comment-kiro-import').hidden = !enabled;
+  }
+  bind('ds-comment-kiro-brief', async () => {
+    if (!definition || pptDashboardViewer || !activeId || !prepared?.token) return;
+    const id = activeId, button = $('ds-comment-kiro-brief');
+    const slides = (prepared.slides || []).filter(slide => !slide.structural_type).map(slide => ({number: slide.number, charts: commentCharts(slide)}));
+    button.disabled = true;
+    try {
+      const job = await followCommentJob(await api(`/${id}/comments/kiro-brief`, 'POST', {token: prepared.token, slides}), 'Preparing the Kiro brief');
+      window.location.href = `/api/ppt-dashboards/comment-briefs/${job.result.brief_id}.zip`;
+    } finally {
+      button.disabled = Boolean(pptDashboardViewer);
+    }
+  });
+  bind('ds-comment-kiro-import', () => $('ds-comment-kiro-files').click());
+  $('ds-comment-kiro-files').addEventListener('change', safe(async event => {
+    const input = event.target, files = [...input.files];
+    input.value = '';
+    if (!files.length || !definition || pptDashboardViewer || !activeId) return;
+    const mode = await askCommentMode('Import Kiro comments', 'Write the comments Kiro wrote from the Kiro brief (only those whose figures are in the charts). Which comments should they replace?');
+    if (!mode) return;
+    const id = activeId, body = new FormData();
+    files.forEach(file => body.append('files', file));
+    body.append('mode', mode);
+    $('ds-comments-status').textContent = 'Importing Kiro comments…';
+    try {
+      const response = await fetch(`/api/ppt-dashboards/${encodeURIComponent(id)}/comments/kiro-import`, {method: 'POST', body, credentials: 'same-origin'});
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.detail || `Import failed (${response.status}).`);
+      applyWrittenComments(id, result, result.slides || 0, 'Import Kiro comments');
+    } finally {
+      $('ds-comments-status').textContent = '';
+    }
+  }));
   // Writes the comments of every slide in a background job, on the slides without comments, in place of the generated
   // ones or in place of every comment, and follows its progress.
   bind('ds-comment-generate-all', async () => {
     if (!definition || pptDashboardViewer || !activeId || !prepared?.token) return;
-    const choice = await window.showConfirmDialog(
-      'Write the comments of every slide of this Dashboard from the figures of its charts. Which comments should they replace?',
-      {title: 'Generate comments for all slides', confirmLabel: 'Only Slides Without Comments', secondaryLabel: 'Replace Generated Comments', tertiaryLabel: 'Replace Every Comment', cancelLabel: 'Cancel', wideActions: true},
-    );
-    const mode = {confirm: 'empty', secondary: 'generated', tertiary: 'all'}[choice];
+    const mode = await askCommentMode('Generate comments for all slides',
+      'Write the comments of every slide of this Dashboard from the figures of its charts. Which comments should they replace?');
     if (!mode) return;
     const slides = (prepared.slides || []).filter(slide => !slide.structural_type).map(slide => ({number: slide.number, charts: commentCharts(slide)}));
-    const id = activeId, button = $('ds-comment-generate-all'), state = $('ds-comments-status');
+    const id = activeId, button = $('ds-comment-generate-all');
     button.disabled = true;
     try {
-      let job = await api(`/${id}/comments/generate-all`, 'POST', {token: prepared.token, mode, slides});
-      const jobId = job.job_id;
-      while (job.state === 'processing') {
-        state.textContent = `Generating comments: slide ${job.done || 0} of ${job.total || slides.length}…`;
-        await new Promise(resolve => window.setTimeout(resolve, 1200));
-        job = await api(`/comment-jobs/${jobId}`);
-      }
-      state.textContent = '';
-      const result = job.result || {};
-      if (activeId === id && definition) {
-        definition.slide_comments = result.slide_comments || {};
-        definition.slide_comment_meta = result.slide_comment_meta || {};
-        updateSavedDefinition({slide_comments: definition.slide_comments, slide_comment_meta: definition.slide_comment_meta});
-        dashboards[id] = {...dashboards[id], slide_comments: structuredClone(definition.slide_comments), slide_comment_meta: structuredClone(definition.slide_comment_meta)};
-        commentSuggestions = null;
-        renderComments();
-      }
-      const parts = [`Comments written on ${result.written || 0} of ${result.slides || slides.length} slides.`];
-      if (result.kept) parts.push(`${result.kept} kept the comments they had.`);
-      if (result.empty) parts.push(`${result.empty} had nothing to comment on.`);
-      window.showInfoDialog?.(parts.join(' '), {title: 'Generate comments for all slides'});
+      const job = await followCommentJob(await api(`/${id}/comments/generate-all`, 'POST', {token: prepared.token, mode, slides, engine: commentEngine()}),
+        'Generating comments');
+      applyWrittenComments(id, job.result || {}, slides.length, 'Generate comments for all slides');
     } finally {
       button.disabled = Boolean(pptDashboardViewer);
-      if (state.textContent.startsWith('Generating comments')) state.textContent = '';
+      $('ds-comments-status').textContent = '';
     }
   });
   // Suggests the comments of the open slide from the charts it shows (with their hidden legend items); nothing is saved
@@ -4562,9 +4624,9 @@
     button.disabled = true;
     state.textContent = 'Generating comments…';
     try {
-      const payload = await api(`/${id}/comments/generate`, 'POST', {token: prepared.token, slide: slide.number, charts});
+      const payload = await api(`/${id}/comments/generate`, 'POST', {token: prepared.token, slide: slide.number, charts, engine: commentEngine()});
       if (activeId !== id || currentSlideCommentKey() !== key) return;
-      commentSuggestions = {key, items: payload.suggestions || [], skipped: payload.skipped || [], engine: payload.engine, model: payload.model || ''};
+      commentSuggestions = {key, items: payload.suggestions || [], skipped: payload.skipped || [], engine: payload.engine, model: payload.model || '', warning: payload.warning || ''};
       const panel = $('ds-comments-list').closest('.ds-slide-comments');
       if (panel) panel.open = true;
       renderComments();

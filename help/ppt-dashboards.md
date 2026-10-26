@@ -364,7 +364,7 @@ Manual navigation stops Presentation. Its settings adapt to compact landscape sc
 
 #### Generated comments
 
-**Generate comments**, beside **Add comment** for editors, writes analysis comments for the open slide from the same figures its charts draw: the filters, splits, Dashboard filters and legend items hidden in the viewer apply, and the excluded operators are never named. The rules run on the server, so no data leaves it.
+**Generate comments**, beside **Add comment** for editors, writes analysis comments for the open slide from the same figures its charts draw: the filters, splits, Dashboard filters, dynamic grid cards and legend items hidden in the viewer apply, and the excluded operators are never named.
 
 | Chart type | What the comments read |
 | --- | --- |
@@ -373,10 +373,20 @@ Manual navigation stops Presentation. Its settings adapt to compact landscape sc
 | 100% Stacked Vertical Bars | The share of failures (Failed, Dropped, Cutoff…), or else of the largest class (RAT, CA state…) |
 | Threshold Stacked Vertical Bars | The share reaching the threshold |
 | Distribution Stacked Vertical Bars | The share in the worst bucket |
+| Count Stacked Horizontal Bars | The share of failed and dropped tests among all the tests of each bar |
+| Scatter | How the KPI follows the other measure (Spearman ρ) and its median in the lowest and highest quarter of it |
+| Map | The share of the samples in the weakest class of its colour measure and, with City or Region in the rows, the area that holds more of it than its share of the samples |
+| Table and Dynamic Table | The highest and lowest rows of its first numeric columns |
 
-The comments compare the latest campaign of each group with the previous one and every operator with the leader, from the point of view of the **Focus** operators of the [Operator Maps](workspace-config.md#operator-maps); without Focus operators they follow the leader. Each KPI is read with its unit and its better side (RSRP and SINR in dB, higher LQ, Mean Data Rate and scores are better, lower durations, times, RTT and error ratios are better), a group with fewer than 10 samples is not named, and a difference too small to matter (1 dB for RSRP and SINR, 0.1 for LQ, 5% for the other KPIs, or a share difference that is not statistically significant) reads as *stable* or *on par*. A slide gets up to four comments (three in the **comments right** layouts), the best one of every chart first; Maps, Scatter, Tables and Count Stacked Horizontal Bars are not read yet, and the suggestions say so.
+The comments compare the latest campaign of each group with the previous one and every operator with the leader, from the point of view of the **Focus** operators of the [Operator Maps](workspace-config.md#operator-maps) (without Focus operators they follow the leader), compare the vendors of each operator in Multivendor, and read the charts of a slide together: an NR KPI against the same LTE KPI for every operator, and the operators of a slide that gives each operator its own chart. Each KPI is read with its unit and its better side (RSRP and SINR in dB, higher LQ, Mean Data Rate and scores are better, lower durations, times, RTT and error ratios are better), a group with fewer than 10 samples is not named, and a difference too small to matter (1 dB for RSRP and SINR, 0.1 for LQ, 5% for the other KPIs, or a share difference that is not statistically significant) reads as *stable* or *on par*. A slide gets up to four comments (three in the **comments right** layouts), the best one of every chart first.
 
-The suggestions replace the list of comments until you decide: untick or edit them, then **Add selected comments** adds them after the existing comments of the slide (saved at once, like the comments you write), or **Discard** leaves the slide as it was. App Events records each generation (slide, charts read and skipped, suggestions and time taken) and the comments added from it.
+The suggestions replace the list of comments until you decide: untick or edit them, then **Add selected comments** adds them after the existing comments of the slide (saved at once, like the comments you write), or **Discard** leaves the slide as it was. Comments added from Generate comments keep a **Generated** tag (hover it to see when and by which writer); edited by hand, a comment is yours. When the slide is open with another selection (other campaigns, filters or CDRs, such as a new campaign with **Latest 2 campaigns**) than the one its generated comments were written for, the panel says they are out of date: generate them again.
+
+**Generate all slides** writes the comments of every slide in one go, in the background, following its progress slide by slide: on **Only Slides Without Comments**, in place of the generated comments keeping those written by hand (**Replace Generated Comments**), or in place of every comment (**Replace Every Comment**); a summary says how many slides were written and kept.
+
+**Writers.** The rules always read the charts, on the server. When Super Admin enables them in [AI Comment Writers](super-admin.md#ai-comment-writers), a choice beside Generate comments picks the writer: **Rules**, **Kiro CLI** (the default LLM, with your personal **Kiro API key** of the user menu, the credits coming off your Kiro plan) or **Claude** (with the API key of the server). An LLM writer receives the facts of the charts and the rules comments, rewrites them in a more natural way and connects them; every figure it writes must be one of the facts and it must not name a hidden item, otherwise that comment is left out, and when none keeps to the facts, or the writer fails, the rules comments are shown with a note saying why. With the **Kiro Brief** enabled, **Kiro brief** downloads the facts of every slide for Kiro IDE (a folder with the facts, the style guide, also as a Kiro steering file, and the comments.json Kiro fills in) and **Import Kiro comments** reads back comments.json and facts.json (or the folder zipped again), checks every figure and writes the comments with the same three choices as Generate all slides.
+
+App Events records each generation (slide, writer asked and writer that wrote, model, charts read and skipped, suggestions, comments left out, tokens of Claude and time taken), the comments added from it, Generate all slides, the Kiro briefs exported and the Kiro comments imported.
 
 ## Generate PPT
 
@@ -393,6 +403,8 @@ Open **Generate PPT** from the library, filter panel or viewer. **Select Dashboa
 The export has no CDR selector: **Campaigns** lists every campaign of the Dashboard's NR Mode, with **Latest campaign**, **Latest 2 campaigns**, **Latest 3 campaigns**, **Latest 4 campaigns**, **Previous campaign** and **All available campaigns** first (each one alone), starts with the Dashboard's Campaign and lists below it, by type, the CDRs it chooses now; both appear as soon as the dialog opens. The other choices load from those CDRs and start with saved filter values, or all available values when unrestricted or no saved values remain available.
 
 Cities offers **Main Cities** first, exported as the Main Cities of the workspace. Changing campaigns or dates preserves selected values still available; an All selection includes new values. The browser remembers the dialog's last Scope, Campaigns and dates per Dashboard/user.
+
+**Auto comments**, in the Scope of the dialog (or a checkbox of the confirmation when the PPT is generated from the viewer), writes generated comments into this PPT only, with the writer chosen by default in Super Admin: on the slides without comments, in place of the generated ones or in place of every comment. The Dashboard keeps its own comments; the job's viewer shows those of the PPT, a relaunched job keeps its choice, and App Events records how many slides they were written on.
 
 ### Save defaults only when intended
 

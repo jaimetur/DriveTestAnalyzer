@@ -8,7 +8,7 @@ module.exports = {
       icon: 'TbShieldLock', icons: ['TbUsers', 'TbDatabaseExport', 'TbTransfer', 'TbAdjustmentsHorizontal'],
       lead: 'Who sees and does what, how every workspace is backed up and moved between servers, and the configuration of the application.',
       tags: ['Users & Access', 'Backups and restore', 'Import / Export / Transfer'],
-      notes: 'Administration gathers what keeps the tool safe and shared: Super Admin manages the users and their access, Interface Settings, the presentations and the databases with their backups, and Admin moves content between workspaces and servers and manages the datasets.' },
+      notes: 'Administration gathers what keeps the tool safe and shared: Super Admin manages the users and their access, Interface Settings, the presentations, the AI writers of the generated comments and the databases with their backups, and Admin moves content between workspaces and servers and manages the datasets.' },
     { id: 'users', type: 'split', section: 'Users & Access', footer: 'Users & Access', kicker: 'Super Admin · Users & Access', title: 'Who sees and does what', visual: 'access',
       points: [
         { icon: 'TbUserShield', title: 'Roles', text: 'user-viewer explores, user-editor follows up, admin manages the data, super-admin everything.' },

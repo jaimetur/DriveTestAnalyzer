@@ -950,3 +950,39 @@ def slide_comments(charts: Iterable[dict[str, Any]], *, focus_operators: Iterabl
     for item in sorted((item for findings in ranked for item in findings[1:]), key=lambda item: -item[0].score):
         take(item)
     return [{'text': finding.text, 'kind': finding.kind, **source} for finding, source in chosen]
+
+
+def _brief_number(value: Any) -> Any:
+    return round(value, 4) if isinstance(value, float) else value
+
+
+def slide_brief(charts: Iterable[dict[str, Any]], *, focus_operators: Iterable[str] = (), layout: str = '') -> dict[str, Any]:
+    """What an LLM writer receives for one slide: the facts of its charts (each value also as the comments write it),
+    the rules comments as a draft, the Focus operators, the hidden legend items and how many comments it may write."""
+    charts = list(charts)
+    focus = [str(name) for name in focus_operators if str(name or '').strip()]
+    briefed, hidden = [], set()
+    for chart in charts:
+        hidden.update(str(item) for item in chart.get('hidden') or ())
+        for facts in chart_facts(int(chart['index']), str(chart.get('title') or ''), str(chart.get('kpi') or ''),
+                                 chart.get('model') or {}, chart.get('hidden') or (), chart.get('shown') or ()):
+            records = []
+            for record in facts.records[:60]:
+                extra = {key: ([_brief_number(item) for item in value] if isinstance(value, list) else _brief_number(value))
+                         for key, value in record.extra.items() if isinstance(value, (int, float, list))}
+                shown = (_percent(record.value) if facts.family in {'share', 'map'} else
+                         _format(record.value, 2) if facts.family == 'relation' else
+                         '' if facts.family == 'table' else _figure(facts, record.value))
+                records.append({'labels': record.labels, 'value': _brief_number(record.value), 'samples': record.samples,
+                                'shown': shown, 'extra': extra})
+            briefed.append({
+                'index': facts.chart_index, 'title': facts.title, 'kpi': str(chart.get('kpi') or ''), 'metric': facts.semantics.name,
+                'family': facts.family, 'statistic': facts.statistic, 'unit': facts.semantics.unit,
+                'better': {1: 'higher', -1: 'lower'}.get(facts.direction, 'unknown'), 'bucket_edges': facts.bucket_edges,
+                'subject': str(chart.get('subject') or ''), 'records': records,
+            })
+    rules = slide_comments(charts, focus_operators=focus, layout=layout)
+    return {
+        'limit': comment_limit(layout), 'focus_operators': focus, 'hidden': sorted(hidden), 'charts': briefed,
+        'rules_comments': [item['text'] for item in rules], 'rules': rules,
+    }

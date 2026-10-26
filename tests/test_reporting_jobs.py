@@ -77,6 +77,7 @@ def test_definitions_keep_every_module_option_and_need_an_artifact():
     assert definition['dashboards'] == [{
         'dashboard_id': 'd1', 'label': '', 'scope': 'multivendor', 'vendor_comparison': 'vendor_only', 'auto_cdrs': False,
         'datasets': {'data': [3, 4]}, 'cdr_selection': '', 'date_from': '2026-01-01', 'date_to': '', 'filters': {'Operator': ['EE']},
+        'auto_comments': 'off', 'auto_comments_engine': '',
     }]
     # The entries of the editor choose their CDRs by Campaign: they carry no CDRs.
     automatic = normalize_definition({

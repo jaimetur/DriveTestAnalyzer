@@ -5784,6 +5784,14 @@ def cdr_field_dictionary_context(request: Request) -> dict[str, Any]:
     }
 
 
+def kiro_cli_writer_enabled() -> bool:
+    from src.modules.comment_writers import ENGINE_KIRO_CLI, load_settings
+    try:
+        return ENGINE_KIRO_CLI in load_settings(repository)['enabled']
+    except sqlite3.Error:
+        return False
+
+
 def render_template(request: Request, template_name: str, context: dict[str, Any], status_code: int = 200) -> HTMLResponse:
     template_user = context.get('user')
     embedded_template_editor = bool(context.get('embedded_template_editor'))
@@ -5812,6 +5820,8 @@ def render_template(request: Request, template_name: str, context: dict[str, Any
         'ignore_event_time_filtering': ignore_event_time_filtering(),
         'features': user_features(template_user) if isinstance(template_user, SessionUser) else {},
         'user_modules_profile': user_modules_profile(template_user) if isinstance(template_user, SessionUser) else {},
+        # The user menu offers Kiro API key while Super Admin enables the Kiro CLI comment writer.
+        'kiro_cli_enabled': isinstance(template_user, SessionUser) and kiro_cli_writer_enabled(),
         'show_module_stage_labels': module_stage_labels_visible(),
         'module_tab_badges': module_label_badges(module_settings) if module_stage_labels_visible() else {},
         'module_tabs': module_tabs(module_settings),
@@ -13215,6 +13225,7 @@ def render_admin_template(
     """Admin (Import / Export / Transfer and Datasets Management), Super Admin (users, profiles, groups, interface
     settings and databases) or the Workspace Config page."""
     from src.modules.presentations import presentation_settings
+    from src.modules.comment_writers import writer_settings_panel
     embedded_template_editor = request.query_params.get('embedded_template_editor') == '1'
     selected_technology = request.query_params.get('catalogue_technology') or None
     selected_catalogue = request.query_params.get('catalogue_id') or None
@@ -13425,6 +13436,8 @@ def render_admin_template(
             'embedded_template_editor': embedded_template_editor,
             # (The figures of the presentations of the Help, in Super Admin.)
             'presentations': presentation_settings(sys.modules[__name__]) if admin_page == 'super-admin' else None,
+            # (The writers of the generated comments of PPT Dashboards, in Super Admin.)
+            'comment_writers': writer_settings_panel(sys.modules[__name__]) if admin_page == 'super-admin' else None,
             'users': admin_users,
             'modules_profiles': repository.list_modules_profiles(),
             'workspace_groups': repository.list_workspace_groups(),
@@ -27781,3 +27794,5 @@ install_bundle_report_template_routes(sys.modules[__name__])
 # The presentations of the Help, generated again with the live figures of the workspaces chosen in Super Admin.
 from src.modules.presentations import install_presentation_routes
 install_presentation_routes(sys.modules[__name__])
+from src.modules.comment_writers import install_comment_writer_routes
+install_comment_writer_routes(sys.modules[__name__])

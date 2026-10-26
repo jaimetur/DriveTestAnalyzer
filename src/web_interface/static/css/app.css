@@ -249,8 +249,14 @@ a.topnav-link-logout { background: linear-gradient(135deg, #ffd8d8, #ffc6c6); bo
 .presentations-workspace { display: inline-flex; align-items: center; gap: .5rem; padding: .5rem .85rem; border: 1px solid var(--line); border-radius: 999px; background: #fff; font-weight: 700; cursor: pointer; }
 .presentations-workspace:has(input:checked) { border-color: var(--brand); background: color-mix(in srgb, var(--brand) 10%, #fff); color: #075d59; }
 .presentations-workspace input { width: 1rem; height: 1rem; margin: 0; }
+.comment-writers-form, .comment-writers-kiro-install { display: grid; gap: .85rem; }
+.comment-writers-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: .75rem; }
+.comment-writers-section { display: grid; gap: .6rem; padding: .85rem; border: 1px solid var(--line); border-radius: .8rem; background: #fcfcfd; }
+.comment-writers-section h3 { margin: 0; font-size: .95rem; }
+.comment-writers-kiro-install { margin-top: .85rem; padding-top: .85rem; border-top: 1px solid var(--line); }
+#kiro-key-overlay [hidden] { display: none !important; }
 .presentations-form .form-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: .8rem; }
-.presentations-status { margin-left: auto; }
+.presentations-status, .comment-writers-status { margin-left: auto; }
 .interface-settings-form .form-actions { margin: 0; display: flex; flex-wrap: wrap; gap: 0.8rem; }
 /* Every colour picker shows its value in hexadecimal beside it, easy to copy or paste. */
 .color-hex-field { display: inline-flex; align-items: center; gap: 0.4rem; }

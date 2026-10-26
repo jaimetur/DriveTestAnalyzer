@@ -9209,6 +9209,43 @@ function showInfoDialog(message, options = {}) {
   });
 })();
 
+// The personal Kiro API key of the user, which Kiro CLI uses to write the generated comments of PPT Dashboards.
+(() => {
+  const openButton = document.querySelector('[data-kiro-key-open]');
+  const overlay = document.getElementById('kiro-key-overlay');
+  const form = document.querySelector('[data-kiro-key-form]');
+  if (!openButton || !overlay || !form) return;
+  const error = form.querySelector('[data-kiro-key-error]');
+  const remove = form.querySelector('[data-kiro-key-remove]');
+  const close = () => { overlay.hidden = true; form.reset(); if (error) error.hidden = true; };
+  const open = async () => {
+    overlay.hidden = false;
+    form.querySelector('input')?.focus();
+    try {
+      const status = await (await fetch('/account/kiro-api-key', {headers: {'Accept': 'application/json'}})).json();
+      remove.hidden = !status.saved;
+      form.querySelector('input').placeholder = status.saved ? 'Saved: paste a new key to replace it' : 'ksk_…';
+    } catch (_error) { /* The status is only a hint. */ }
+  };
+  const send = async (body, message) => {
+    if (error) error.hidden = true;
+    try {
+      const response = await fetch('/account/kiro-api-key', {method: 'POST', body, headers: {'Accept': 'application/json'}});
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.detail || 'The Kiro API key could not be saved.');
+      close();
+      showInfoDialog(message, {title: 'Kiro API key', tone: 'info'});
+    } catch (requestError) {
+      if (error) { error.textContent = requestError.message; error.hidden = false; }
+    }
+  };
+  openButton.addEventListener('click', open);
+  form.querySelector('[data-kiro-key-cancel]').addEventListener('click', close);
+  overlay.addEventListener('click', (event) => { if (event.target === overlay) close(); });
+  remove.addEventListener('click', () => { const body = new FormData(); body.append('remove', '1'); void send(body, 'Your Kiro API key has been removed.'); });
+  form.addEventListener('submit', (event) => { event.preventDefault(); void send(new FormData(form), 'Your Kiro API key has been saved.'); });
+})();
+
 function clearCatalogueImportQuery() {
   const url = new URL(window.location.href);
   url.searchParams.delete('catalogue_notice');
