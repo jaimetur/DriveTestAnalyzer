@@ -1706,6 +1706,9 @@ td.nq-queue-number { text-align: right; font-variant-numeric: tabular-nums; }
 .nq-priority-level > label { display: block; font-weight: 700; color: var(--nq-dark); white-space: nowrap; }
 .nq-priority-level > label strong { display: inline; }
 .nq-priority-level .nq-priority-help { grid-column: 1 / -1; font-size: .75rem; }
+/* The distances without an ISD, below the distance in ISDs they stand in for. */
+.nq-priority-levels-grid > .nq-priority-level.is-sub { margin-top: -.35rem; padding-left: .8rem; }
+.nq-priority-level.is-sub > label { font-weight: 600; color: var(--nq-muted); }
 .nq-priority-value { display: inline-flex; align-items: center; gap: .3rem; font-weight: 700; white-space: nowrap; }
 /* The unit goes with the name of the level, so every value lines up on the right. */
 .nq-priority-level .nq-priority-value { justify-self: end; }
@@ -1779,6 +1782,7 @@ details.nq-priority-info:not([open]) { padding-block: .55rem; }
   stroke-linejoin: round; }
 .nq-priority-glossary dl { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 16rem), 1fr)); gap: .45rem 1.2rem; margin: 0;
   font-size: .74rem; line-height: 1.35; }
+.nq-priority-glossary dl > .is-row-start { grid-column-start: 1; }
 .nq-priority-glossary dt { display: flex; align-items: center; flex-wrap: wrap; gap: .35rem; color: var(--nq-dark); font-weight: 800; }
 /* What a condition is based on: the scoring (amber, unstable during the campaign), the place, the order of the tests, the
    result of the call. In the lists of the conditions too, which open at the end of the page. */

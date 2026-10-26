@@ -2,9 +2,11 @@
 Points Lost Based and Vodafone Proposal) and the Prioritization Rules of the Non-Qualified Calls."""
 import io
 import json
+import random
 from pathlib import Path
 
 import pandas as pd
+
 import pytest
 
 import src.DriveTestAnalyzer as core
@@ -71,6 +73,10 @@ def test_settings_are_validated():
     assert defaults['strategy'] == 'cities_first'
     assert tuple(defaults[key] for key in ('high_share', 'medium_share', 'min_calls', 'previous_quarters', 'spot_meters',
                                            'consecutive_minutes', 'hotspot_join', 'capacity')) == (50, 80, 2, 1, 250, 15, 'or', 20)
+    # The distances in inter-site distances (ISD) of the nearest sites, and in meters by area without an ISD.
+    assert tuple(defaults[key] for key in ('cluster_isd', 'cluster_road_meters', 'consecutive_isd', 'consecutive_city_meters',
+                                           'consecutive_road_meters')) == (0.5, 1000, 2.0, 1000, 5000)
+    assert nq_prioritization.normalize_settings({'cluster_isd': '0.75', 'consecutive_isd': 3})['cluster_isd'] == 0.75
     assert nq_prioritization.normalize_settings({'hotspot_join': ' AND '})['hotspot_join'] == 'and'
     # The Hotspot time and distance of the first version give way to the Consecutive time and the Cluster distance.
     assert 'hotspot_minutes' not in nq_prioritization.normalize_settings({'hotspot_minutes': 30, 'hotspot_meters': 500})
@@ -81,6 +87,8 @@ def test_settings_are_validated():
     for settings, message in (({'high_share': 60, 'medium_share': 50}, 'above the High share'), ({'min_calls': 1}, 'goes from 2'),
                               ({'consecutive_minutes': 0}, 'Consecutive time'), ({'spot_meters': 10}, 'Cluster distance'),
                               ({'hotspot_join': 'xor'}, 'Hotspot join'), ({'consecutive_minutes': 241}, 'Consecutive time'),
+                              ({'cluster_isd': 0}, r'Cluster distance \(ISD\) goes from 0.1 to 10'),
+                              ({'consecutive_road_meters': 60000}, 'Consecutive distance on roads'),
                               ({'excluded_modes': [{'nr_mode': '5G', 'operator': 'VF'}]}, 'pair out of scope')):
         with pytest.raises(ValueError, match=message):
             nq_prioritization.normalize_settings(settings, strict=True)
@@ -466,7 +474,7 @@ def test_hotspots_link_the_failures_close_in_time_or_distance_whatever_their_cal
         failure('d', 50, 51.5030),  # 26 minutes later
         failure('e', 52, 51.6000, site='s1'), failure('f', 55, 51.7000, site='s1'),  # far, but ended at the same site
         failure('g', 0, 51.5000, operator='EE'), failure('h', 1, 51.5000, day=2),  # another operator, another day
-        failure('k', 30, 51.9000), failure('m', 40, 51.9900),  # 10 minutes apart, 10 km apart
+        failure('k', 30, 51.9000), failure('m', 40, 51.9900),  # 10 minutes apart, 10 km apart (44 km after c)
         failure('i', 0, 51.5000, start_time='')]  # no date
     found = nq_prioritization.hotspots(calls, join='and')
     assert found['a'][0] == found['b'][0] == found['c'][0] and found['a'][1] == 3
@@ -475,23 +483,58 @@ def test_hotspots_link_the_failures_close_in_time_or_distance_whatever_their_cal
     # A failure linked to two others joins them, whichever was first: a chain of links is one hotspot.
     chain = nq_prioritization.hotspots([failure('x', 0, 51.5000), failure('y', 14, 51.5040), failure('z', 7, 51.5020)], join='and')
     assert len({key for key, _size in chain.values()}) == 1 and chain['x'] == ('cluster:x', 3)
-    # OR (the default): close in time in the same drive wherever they are, or close in distance at any time of the campaign.
+    # OR (the default): consecutive in the same drive, or close in distance at any time of the campaign.
     either = nq_prioritization.hotspots(calls)
-    assert either['k'][0] == either['m'][0] == either['d'][0] == either['a'][0]
+    assert either['d'][0] == either['a'][0] and either['a'][1] == 6
     assert either['i'][0] == either['h'][0] == either['a'][0] and either['g'][1] == 1
+    # The car drove 44 km and then 10 km between them: too far for consecutive failures, unless the sites are that far apart.
+    assert either['k'][1] == either['m'][1] == 1
+    wide = nq_prioritization.hotspots([failure('k', 30, 51.9000, isd_km=6.0), failure('m', 40, 51.9900)])
+    assert wide['k'] == wide['m'] == ('cluster:k', 2)
     # Another car measuring at the same time elsewhere never joins by time.
     other_car = nq_prioritization.hotspots([failure('p', 0, 51.5000), failure('q', 5, 52.5000, drive='system:car 2')])
     assert other_car['p'][1] == other_car['q'][1] == 1
 
 
-def test_consecutive_failures_have_another_failure_of_their_drive_minutes_apart_wherever_it_was():
-    calls = [failure('a', 0, 51.5000), failure('b', 9, 52.0000),  # 9 minutes apart in the same car, 55 km apart
+def test_consecutive_failures_have_another_failure_of_their_drive_minutes_apart_and_close():
+    calls = [failure('a', 0, 51.5000), failure('b', 9, 51.5050),  # 9 minutes and 560 m apart in the same car
              failure('c', 40, 51.5000), failure('d', 41, 51.5000, drive='system:car 2'),  # another car at the same time
              failure('e', 41, 51.5000, operator='EE'), failure('f', 30, 51.5000, drive=''), failure('g', 0, 51.5, day=3, start_time='')]
     found = nq_prioritization.consecutive_failures(calls, 10)
     assert (found['a'], found['b'], found['c'], found['d'], found['e']) == ('Yes', 'Yes', 'No', 'No', 'No')
     assert found['f'] == found['g'] == ''
     assert nq_prioritization.consecutive_failures(calls, 5)['a'] == 'No'
+    # A car that drove from one place to the next breaks the run: two failures follow one another within 2 ISD of the sites
+    # nearest to them (the larger one), else within 1 km in cities and 5 km on connecting roads (either failure on one); a
+    # failure without a position follows the one before.
+    far = [failure('p', 0, 51.5000), failure('q', 5, 51.5300)]  # 3.3 km apart
+    consecutive = nq_prioritization.consecutive_failures
+    assert consecutive(far, 10) == {'p': 'No', 'q': 'No'}
+    assert consecutive([far[0], {**far[1], 'environment': 'Connecting Roads'}], 10)['p'] == 'Yes'
+    assert consecutive([far[0], {**far[1], 'isd_km': 2.0}], 10)['p'] == 'Yes'
+    assert consecutive([{**far[0], 'isd_km': 1.0}, {**far[1], 'environment': 'Highway'}], 10)['p'] == 'No'
+    assert consecutive([far[0], {**far[1], 'latitude': None}], 10)['p'] == 'Yes'
+    assert consecutive([{**far[0], 'isd_km': 1.2}, far[1]], 10, nq_prioritization.reach(3, 1000, 5000))['p'] == 'Yes'
+
+
+def test_the_cluster_distance_takes_the_isd_of_the_nearest_sites_or_the_meters_of_the_area():
+    near = [failure('a', 0, 51.5000, place_key='spot:1'), failure('b', 30, 51.5030, place_key='spot:2')]  # 334 m apart
+    distance = nq_prioritization.reach(0.5, 250, 1000)
+    pairs = lambda calls: list(nq_prioritization._near_pairs(calls, distance))  # noqa: E731
+    assert pairs(near) == []  # 250 m in cities without an ISD
+    assert pairs([{**near[0], 'isd_km': 0.8}, near[1]]) == [(0, 1)]  # half the larger ISD of the two: 400 m
+    assert pairs([{**near[0], 'isd_km': 0.6}, {**near[1], 'isd_km': 0.4}]) == []
+    assert pairs([near[0], {**near[1], 'environment': 'Connecting Roads'}]) == [(0, 1)]  # 1 km on connecting roads
+    assert nq_prioritization.repetitions([{**call, 'isd_km': 0.8} for call in near], 0, distance)['a'] == (2, 1)
+    assert nq_prioritization.cluster_groups(near, nq_prioritization.repetitions(near, 0, distance), 2, 0, distance) == {}
+    # Whatever the reach of each call, the grid finds every pair a comparison of all of them finds.
+    rng = random.Random(7)
+    calls = [{'call_key': str(index), 'latitude': 51.5 + rng.uniform(0, 0.1), 'longitude': -0.1 + rng.uniform(0, 0.15),
+              'isd_km': rng.choice([None, 0.3, 0.7, 2.5, 6.0]), 'environment': rng.choice(['City', 'Connecting Roads'])}
+             for index in range(300)]
+    assert set(nq_prioritization._near_pairs(calls, distance)) == {
+        (first, second) for first in range(300) for second in range(first + 1, 300)
+        if nq_prioritization._meters(calls[first], calls[second]) <= distance(calls[first], calls[second])}
 
 
 def test_clusters_take_the_quarter_of_the_campaign_and_leave_the_ping_tests_out():
@@ -762,7 +805,7 @@ def priority_rows() -> dict[str, dict]:
     with core.repository.connection() as connection:
         return {str(row['call_key']): dict(row) for row in connection.execute(
             f'SELECT p.*, l.service, l.nr_mode, l.operator, l.join_id, l.latitude, l.longitude, l.campaign, l.start_time, l.test_name, '
-            f'l.session_type, l.region FROM {nq_prioritization.PRIORITY_TABLE} p '
+            f'l.session_type, l.region, l.environment FROM {nq_prioritization.PRIORITY_TABLE} p '
             f'JOIN {nq.NQ_CALL_LATEST_TABLE} l ON l.call_key = p.call_key')}
 
 
@@ -865,7 +908,8 @@ def test_repeated_issues_count_every_service_and_nr_mode_of_the_operator(priorit
     assert any(len({mode for _service, mode in found}) > 1 for found in places.values())
     # The calls of the operator and NR Mode within the Cluster distance of the call or at its site (one quarter here), the Ping
     # tests apart.
-    meters = nq_prioritization.load_settings(core.repository)['spot_meters']
+    settings = nq_prioritization.load_settings(core.repository)
+    meters = nq_prioritization.reach(settings['cluster_isd'], settings['spot_meters'], settings['cluster_road_meters'])
     kinds = {key: nq_prioritization.call_kind(row['service'], row['test_name'], row['session_type']) for key, row in rows.items()}
     # The Ping tests and the calls out of scope are in no cluster and make none.
     out = nq_prioritization.scope_test(core.repository, nq_prioritization.load_settings(core.repository))
@@ -876,7 +920,7 @@ def test_repeated_issues_count_every_service_and_nr_mode_of_the_operator(priorit
     for row in counted.values():
         site = '' if row['place_key'].startswith('spot:') else row['place_key']
         assert row['repetitions'] == sum(1 for other in counted.values() if other['operator'] == row['operator'] and other['nr_mode'] == row['nr_mode']
-                                         and ((site and other['place_key'] == site) or nq_prioritization._meters(row, other) <= meters))
+                                         and ((site and other['place_key'] == site) or nq_prioritization._meters(row, other) <= meters(row, other)))
 
 
 def test_hotspots_and_consecutive_failures_mix_the_call_types(prioritized):

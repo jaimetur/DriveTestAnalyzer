@@ -72,7 +72,7 @@ FINGERPRINT_STATE_KEY = 'nq_prioritization_fingerprint'
 FAILED_STATE_KEY = 'nq_prioritization_failed'
 SUMMARY_STATE_KEY = 'nq_prioritization_summary'
 # Bumped when the calculation changes: every value is calculated again.
-IMPACT_VERSION = 19
+IMPACT_VERSION = 20
 # The scoring of every campaign is split by campaign and operator, as the points of the scoring are national.
 LEVELS = ('Campaign', 'Operator')
 SERVICES = ('voice', 'speech', 'data')
@@ -112,10 +112,14 @@ QUEUE_ORDER = (VOICE_QUEUE, DATA_QUEUE, UNIQUE_QUEUE)
 CAMPAIGN_LIST, FINAL_LIST = 'campaign', 'final'
 LIST_LABELS = {CAMPAIGN_LIST: 'Campaign', FINAL_LIST: 'Final'}
 # The time of the consecutive failures and the distance of the clusters by default, which the hotspots join: failures of
-# the same operator, NR Mode and campaign (Voice, WhatsApp and Data together), each at most 15 minutes OR 250 m (or the
-# same site) from another one of them by default.
+# the same operator, NR Mode and campaign (Voice, WhatsApp and Data together), each at most 15 minutes OR half the
+# inter-site distance (ISD) of the sites nearest to them (or the same site) from another one of them by default. Without
+# an ISD (no Network Inventory, or no site near) the clusters take 250 m in cities and 1 km on connecting roads (see
+# ``reach``).
 CLUSTER_MINUTES = 15
+CLUSTER_ISD = 0.5
 CLUSTER_METERS = 250.0
+CLUSTER_ROAD_METERS = 1000
 # How a failure joins a hotspot: close to another one in time AND in distance, or in time (in the same drive) OR in
 # distance (the default).
 HOTSPOT_JOINS = {'and': 'AND', 'or': 'OR'}
@@ -123,7 +127,13 @@ DEFAULT_HOTSPOT_JOIN = 'or'
 # The settings of the clusters, the hotspots and the consecutive failures, applied at once when they change (the places,
 # repetitions, hotspots and consecutive failures of the calls are calculated again from their stored values, without
 # the scoring impact).
-PLACE_SETTINGS = ('min_calls', 'previous_quarters', 'spot_meters', 'consecutive_minutes', 'hotspot_join')
+PLACE_SETTINGS = ('min_calls', 'previous_quarters', 'cluster_isd', 'spot_meters', 'cluster_road_meters', 'consecutive_minutes',
+                  'consecutive_isd', 'consecutive_city_meters', 'consecutive_road_meters', 'hotspot_join')
+# The farthest two consecutive failures of a drive can be from each other: this many times the inter-site distance (ISD)
+# of the sites nearest to them (the larger one), as a road site serves farther than an urban one; without an ISD (no
+# Network Inventory, or no site near), these distances by the area of the calls (Connecting Roads when either is on one).
+CONSECUTIVE_ISD = 2.0
+CONSECUTIVE_CITY_METERS, CONSECUTIVE_ROAD_METERS = 1000, 5000
 # The drive of a call, so that the failures of the cars that measure at the same time elsewhere never follow one another:
 # the measurement system of its CDR (the car: a data CDR, else the A side of a voice CDR), else the file of its CDR (the
 # device).
@@ -164,7 +174,7 @@ CONDITIONS = {key: CONDITION_LABELS[key] for key in (EVERY_CALL, 'consecutive', 
 FORMER_CONDITIONS = {'biggest': 'high'}
 CAMPAIGN_CONDITIONS = FINAL_CONDITIONS = CONDITIONS
 CONDITION_TAKES = {
-    EVERY_CALL: 'every one', 'consecutive': 'the consecutive failures (another failure of the same drive minutes before or after)',
+    EVERY_CALL: 'every one', 'consecutive': 'the consecutive failures (another failure of the same drive minutes before or after, close to it)',
     'cluster': 'the failures of a hotspot (2+ failures close in time and distance)',
     'drop': 'the drops (calls dropped and data tests cut off once established)',
     'setup': 'the setup failures (calls and data tests that failed before being established)',
@@ -183,12 +193,14 @@ CONDITION_KINDS = {
 CONDITION_HELP = {
     EVERY_CALL: 'Every call of the step.',
     'consecutive': 'Another failure of the same operator, NR Mode, campaign and drive (the car) started within the '
-                   'Consecutive time before or after it, whatever its call type and wherever it was.',
+                   'Consecutive time before or after it and the Consecutive distance (in ISDs of the nearest sites, else by '
+                   'area), whatever its call type.',
     'cluster': 'Two or more failures of the same operator, NR Mode and campaign, whatever their call type, each linked to '
-               'another one: within the Consecutive time of it in the same drive OR within the Cluster distance of it (or at '
-               'the site where it ended), or, with the AND join, within both.',
-    'repeated': 'The operator failed within the Cluster distance of it or at the same site in at least Cluster size calls of '
-                'its campaign and the Cluster period (campaigns) before it, whatever the time.',
+               'another one: consecutive to it in the same drive OR within the Cluster distance of it (or at the site where '
+               'it ended), or, with the AND join, within the Consecutive time and the Cluster distance.',
+    'repeated': 'The operator failed within the Cluster distance of it (in ISDs of the nearest sites, else by area) or at the '
+                'same site in at least Cluster size calls of its campaign and the Cluster period (campaigns) before it, '
+                'whatever the time.',
     'high': 'Within the first High share of the Expected Gain of the calls in scope of its campaign, operator and service: during '
             'the campaign what its failure lost in the latest Final CDR of its NR Mode, then its own points.',
     'medium': 'The next calls by Expected Gain, up to the Medium share.',
@@ -249,7 +261,8 @@ CREATE TABLE IF NOT EXISTS {PRIORITY_TABLE} (
     repeat_size INTEGER,
     repeat_all_key TEXT NOT NULL DEFAULT '',
     repeat_all_size INTEGER,
-    drive TEXT NOT NULL DEFAULT ''
+    drive TEXT NOT NULL DEFAULT '',
+    isd_km REAL
 );
 CREATE TABLE IF NOT EXISTS {PRIORITY_CAMPAIGNS_TABLE} (
     campaign_key TEXT PRIMARY KEY,
@@ -270,7 +283,8 @@ STRATEGY_COLUMNS = (('cluster_key', "TEXT NOT NULL DEFAULT ''"), ('cluster_size'
                     ('queue_step', 'INTEGER'), ('queue_list', "TEXT NOT NULL DEFAULT ''"),
                     ('consecutive_key', "TEXT NOT NULL DEFAULT ''"), ('consecutive_size', 'INTEGER'),
                     ('repeat_key', "TEXT NOT NULL DEFAULT ''"), ('repeat_size', 'INTEGER'),
-                    ('repeat_all_key', "TEXT NOT NULL DEFAULT ''"), ('repeat_all_size', 'INTEGER'), ('drive', "TEXT NOT NULL DEFAULT ''"))
+                    ('repeat_all_key', "TEXT NOT NULL DEFAULT ''"), ('repeat_all_size', 'INTEGER'), ('drive', "TEXT NOT NULL DEFAULT ''"),
+                    ('isd_km', 'REAL'))
 
 
 def ensure_columns(connection: Any) -> None:
@@ -301,8 +315,10 @@ def default_settings(operators: dict[str, list[str]] | None = None, modes: list[
     """The default settings; ``operators`` gives the operators of the steps by NR Mode (``default_step_operators``) and
     ``modes`` the NR Mode and operator pairs out of scope (``default_excluded_modes``)."""
     return {'strategy': DEFAULT_STRATEGY, 'steps': default_steps(operators), 'high_share': 50,
-            'medium_share': 80, 'min_calls': 2, 'previous_quarters': 1, 'spot_meters': int(CLUSTER_METERS),
-            'consecutive_minutes': CLUSTER_MINUTES, 'hotspot_join': DEFAULT_HOTSPOT_JOIN, 'capacity': 20,
+            'medium_share': 80, 'min_calls': 2, 'previous_quarters': 1, 'cluster_isd': CLUSTER_ISD, 'spot_meters': int(CLUSTER_METERS),
+            'cluster_road_meters': CLUSTER_ROAD_METERS,
+            'consecutive_minutes': CLUSTER_MINUTES, 'consecutive_isd': CONSECUTIVE_ISD, 'consecutive_city_meters': CONSECUTIVE_CITY_METERS,
+            'consecutive_road_meters': CONSECUTIVE_ROAD_METERS, 'hotspot_join': DEFAULT_HOTSPOT_JOIN, 'capacity': 20,
             'fill_priority': True, 'excluded_regions': list(DEFAULT_EXCLUDED_REGIONS),
             'excluded_modes': [dict(item) for item in modes or []], 'strategies': [], 'strategy_names': {},
             'final_lists': {key: key not in LIST_1_ONLY for key in STRATEGIES}}
@@ -320,6 +336,20 @@ def _whole(value: Any, default: int, low: int, high: int, label: str, strict: bo
             raise ValueError(f'{label} goes from {low} to {high}.')
         return min(high, max(low, int(number))) if math.isfinite(number) else default
     return int(round(number))
+
+
+def _decimal(value: Any, default: float, low: float, high: float, label: str, strict: bool) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        if strict and value not in (None, ''):
+            raise ValueError(f'{label} is a number.') from None
+        return default
+    if not math.isfinite(number) or not low <= number <= high:
+        if strict:
+            raise ValueError(f'{label} goes from {low:g} to {high:g}.')
+        return min(high, max(low, number)) if math.isfinite(number) else default
+    return round(number, 2)
 
 
 def _hotspot_join(value: Any, strict: bool) -> str:
@@ -390,10 +420,20 @@ def normalize_settings(value: Any, *, strict: bool = False, operators: dict[str,
                             'The Cluster size', strict),
         'previous_quarters': _whole(value.get('previous_quarters', defaults['previous_quarters']), defaults['previous_quarters'],
                                     0, 8, 'The Cluster period', strict),
+        'cluster_isd': _decimal(value.get('cluster_isd', defaults['cluster_isd']), defaults['cluster_isd'], 0.1, 10,
+                                'The Cluster distance (ISD)', strict),
         'spot_meters': _whole(value.get('spot_meters', defaults['spot_meters']), defaults['spot_meters'], 25, 2000,
-                              'The Cluster distance', strict),
+                              'The Cluster distance in cities', strict),
+        'cluster_road_meters': _whole(value.get('cluster_road_meters', defaults['cluster_road_meters']),
+                                      defaults['cluster_road_meters'], 100, 20000, 'The Cluster distance on roads', strict),
         'consecutive_minutes': _whole(value.get('consecutive_minutes', defaults['consecutive_minutes']),
                                       defaults['consecutive_minutes'], 1, 240, 'The Consecutive time', strict),
+        'consecutive_isd': _decimal(value.get('consecutive_isd', defaults['consecutive_isd']), defaults['consecutive_isd'], 0.1, 10,
+                                    'The Consecutive distance (ISD)', strict),
+        'consecutive_city_meters': _whole(value.get('consecutive_city_meters', defaults['consecutive_city_meters']),
+                                          defaults['consecutive_city_meters'], 100, 20000, 'The Consecutive distance in cities', strict),
+        'consecutive_road_meters': _whole(value.get('consecutive_road_meters', defaults['consecutive_road_meters']),
+                                          defaults['consecutive_road_meters'], 100, 50000, 'The Consecutive distance on roads', strict),
         'hotspot_join': _hotspot_join(value.get('hotspot_join', defaults['hotspot_join']), strict),
         'capacity': _whole(value.get('capacity', defaults['capacity']), defaults['capacity'], 1, 500,
                            'The calls to analyse next', strict),
@@ -533,8 +573,13 @@ def steps_changed(before: dict[str, Any], settings: dict[str, Any]) -> list[str]
 
 # The settings of the levels, the clusters and the hotspots, and Fill the Priority, as the Prioritization Rules name them.
 SETTING_LABELS = {'high_share': 'High impact (%)', 'medium_share': 'Medium impact (%)', 'min_calls': 'Cluster size',
-                  'previous_quarters': 'Cluster period (campaigns)', 'spot_meters': 'Cluster distance (m)',
-                  'consecutive_minutes': 'Consecutive time (min)', 'hotspot_join': 'Hotspot join', 'capacity': 'Next to analyse',
+                  'previous_quarters': 'Cluster period (campaigns)', 'cluster_isd': 'Cluster distance (ISD)',
+                  'spot_meters': 'Cluster distance without ISD · Cities (m)',
+                  'cluster_road_meters': 'Cluster distance without ISD · Connecting Roads (m)',
+                  'consecutive_minutes': 'Consecutive time (min)', 'consecutive_isd': 'Consecutive distance (ISD)',
+                  'consecutive_city_meters': 'Consecutive distance without ISD · Cities (m)',
+                  'consecutive_road_meters': 'Consecutive distance without ISD · Connecting Roads (m)', 'hotspot_join': 'Hotspot join',
+                  'capacity': 'Next to analyse',
                   'fill_priority': 'Fill the Priority'}
 
 
@@ -1488,10 +1533,32 @@ def place_of(call: dict[str, Any], node_details: Callable[[dict[str, Any], tuple
     return spot if spot else ('', '')
 
 
-def _near_pairs(calls: list[dict[str, Any]], meters: float) -> Iterator[tuple[int, int]]:
-    """The pairs of calls (their indexes, the first lower) that started at most ``meters`` apart, found in a grid of
-    ``meters`` (only the calls of the next squares are compared)."""
-    squares: dict[tuple[int, int], list[int]] = {}
+# A distance between two failures: fixed meters, or the meters of each pair (see ``reach``).
+Distance = float | Callable[[dict[str, Any], dict[str, Any]], float]
+
+
+def reach(isd_times: float, city_meters: float, road_meters: float) -> Callable[[dict[str, Any], dict[str, Any]], float]:
+    """The farthest two failures (``isd_km``, ``environment``) can be from each other to be linked: ``isd_times`` the
+    inter-site distance (ISD, see ``call_isds``) of the sites nearest to where they started (the larger one, as a road site
+    serves farther than an urban one), else ``road_meters`` when either is on a connecting road and ``city_meters`` in a
+    city."""
+    def meters(first: dict[str, Any], second: dict[str, Any]) -> float:
+        isd = max(float(first.get('isd_km') or 0), float(second.get('isd_km') or 0))
+        if isd:
+            return isd * 1000 * isd_times
+        return road_meters if 'roads' in {call_area(first.get('environment')), call_area(second.get('environment'))} else city_meters
+    return meters
+
+
+def _limit(meters: Distance, first: dict[str, Any], second: dict[str, Any]) -> float:
+    return meters(first, second) if callable(meters) else meters
+
+
+def _near_pairs(calls: list[dict[str, Any]], meters: Distance) -> Iterator[tuple[int, int]]:
+    """The pairs of calls (their indexes, the first lower) that started at most ``meters`` apart (of each pair, see
+    ``reach``), found in a grid: each call is compared with the calls of the squares within its own reach (that of the pair
+    is never longer than the longer of its two calls)."""
+    points: dict[int, tuple[float, float]] = {}
     for index, call in enumerate(calls):
         try:
             latitude, longitude = float(call.get('latitude')), float(call.get('longitude'))
@@ -1499,15 +1566,25 @@ def _near_pairs(calls: list[dict[str, Any]], meters: float) -> Iterator[tuple[in
             continue
         if not (math.isfinite(latitude) and math.isfinite(longitude)) or (latitude == 0 and longitude == 0):
             continue
-        y, x = latitude * METERS_PER_DEGREE, longitude * METERS_PER_DEGREE * math.cos(math.radians(latitude))
-        squares.setdefault((math.floor(y / meters), math.floor(x / meters)), []).append(index)
-    for (row, column), members in squares.items():
-        for other_row in (row - 1, row, row + 1):
-            for other_column in (column - 1, column, column + 1):
-                for first in members:
-                    for second in squares.get((other_row, other_column), ()):
-                        if first < second and _meters(calls[first], calls[second]) <= meters:
-                            yield first, second
+        points[index] = (latitude * METERS_PER_DEGREE, longitude * METERS_PER_DEGREE * math.cos(math.radians(latitude)))
+    own = {index: _limit(meters, calls[index], calls[index]) for index in points}
+    reaches = sorted(value for value in own.values() if value > 0)
+    if not reaches:
+        return
+    size = reaches[len(reaches) // 2]
+    squares: dict[tuple[int, int], list[int]] = {}
+    for index, (y, x) in points.items():
+        squares.setdefault((math.floor(y / size), math.floor(x / size)), []).append(index)
+    found: set[tuple[int, int]] = set()
+    for index, (y, x) in points.items():
+        row, column, steps = math.floor(y / size), math.floor(x / size), max(1, math.ceil(own[index] / size))
+        for other_row in range(row - steps, row + steps + 1):
+            for other_column in range(column - steps, column + steps + 1):
+                for other in squares.get((other_row, other_column), ()):
+                    pair = (min(index, other), max(index, other))
+                    if other != index and pair not in found and _meters(calls[index], calls[other]) <= _limit(meters, calls[index], calls[other]):
+                        found.add(pair)
+                        yield pair
 
 
 def _site_key(call: dict[str, Any]) -> str:
@@ -1516,10 +1593,10 @@ def _site_key(call: dict[str, Any]) -> str:
     return '' if not place or place.startswith('spot:') else place
 
 
-def repetitions(calls: list[dict[str, Any]], previous_quarters: int, meters: float = CLUSTER_METERS,
+def repetitions(calls: list[dict[str, Any]], previous_quarters: int, meters: Distance = CLUSTER_METERS,
                 by_mode: bool = True) -> dict[str, tuple[int, int]]:
     """For every call with a place (``place_key``): the Non-Qualified Calls of its operator (and of its NR Mode, ``by_mode``,
-    as the rules count them, else of every NR Mode together) that started within ``meters``
+    as the rules count them, else of every NR Mode together) that started within ``meters`` (of the pair, see ``reach``)
     of it or at the same site (its place, when a site or an eNB / gNB gives it) in its campaign and the
     ``previous_quarters`` campaigns before it (itself included), and their campaigns. A campaign is that of a quarter (see
     ``quarter_of``; SA and NSA together), and the quarters without a campaign among the calls are skipped. Calls without a
@@ -1554,7 +1631,7 @@ def repetitions(calls: list[dict[str, Any]], previous_quarters: int, meters: flo
 
 
 def cluster_groups(calls: list[dict[str, Any]], counts: dict[str, tuple[int, int]], min_calls: int, previous_quarters: int,
-                   meters: float = CLUSTER_METERS, by_mode: bool = True, prefix: str = 'group:') -> dict[str, tuple[str, int]]:
+                   meters: Distance = CLUSTER_METERS, by_mode: bool = True, prefix: str = 'group:') -> dict[str, tuple[str, int]]:
     """For every call of a cluster: its cluster and how many calls it holds. A call whose ``counts`` (of ``repetitions``)
     reach ``min_calls`` is linked to the calls it counts: of the same operator (and NR Mode, ``by_mode``), within ``meters``
     of it or at the same site, in its campaign and the ``previous_quarters`` campaigns before it; a cluster holds the calls
@@ -1639,15 +1716,25 @@ def _campaign_groups(calls: list[dict[str, Any]], *fields: str) -> list[list[dic
     return list(groups.values())
 
 
-def hotspots(calls: list[dict[str, Any]], minutes: float = CLUSTER_MINUTES, meters: float = CLUSTER_METERS,
-             join: str = DEFAULT_HOTSPOT_JOIN) -> dict[str, tuple[str, int]]:
+# How far two consecutive failures can be by default (see ``reach``).
+CONSECUTIVE_REACH = reach(CONSECUTIVE_ISD, CONSECUTIVE_CITY_METERS, CONSECUTIVE_ROAD_METERS)
+
+
+def _follows(first: dict[str, Any], second: dict[str, Any], meters: Distance) -> bool:
+    """Whether two failures of a drive are close enough to follow one another (a failure without a position is)."""
+    distance = _meters(first, second)
+    return not math.isfinite(distance) or distance <= _limit(meters, first, second)
+
+
+def hotspots(calls: list[dict[str, Any]], minutes: float = CLUSTER_MINUTES, meters: Distance = CLUSTER_METERS,
+             join: str = DEFAULT_HOTSPOT_JOIN, run_meters: Distance = CONSECUTIVE_REACH) -> dict[str, tuple[str, int]]:
     """For every failure (``call_key``, ``operator``, ``nr_mode``, ``campaign``, ``start_time``, ``latitude``, ``longitude``,
     ``place_key``, ``drive``), whatever its call type: its hotspot and how many failures it has. Two failures of the same
-    operator, NR Mode and campaign are linked when they started at most ``minutes`` apart AND at most ``meters`` apart or
-    ended at the same site (their place, as the clusters compare them; ``join`` and), or at most ``minutes`` apart in the
-    same drive OR at most ``meters`` apart or at the same site (``join`` or); a hotspot holds the failures linked to each
-    other, directly or through others of it (a failure linked to none stays alone, and so does a failure without a date
-    with the and join)."""
+    operator, NR Mode and campaign are linked when they started at most ``minutes`` apart AND at most ``meters`` apart (of
+    the pair, see ``reach``) or ended at the same site (their place, as the clusters compare them; ``join`` and), or at most
+    ``minutes`` and ``run_meters`` apart in the same drive OR at most ``meters`` apart or at the same site (``join`` or); a
+    hotspot holds the failures linked to each other, directly or through others of it (a failure linked to none stays
+    alone, and so does a failure without a date with the and join)."""
     found: dict[str, tuple[str, int]] = {}
     for members in _campaign_groups(calls):
         moments = [_moment(call.get('start_time')) for call in members]
@@ -1663,7 +1750,8 @@ def hotspots(calls: list[dict[str, Any]], minutes: float = CLUSTER_MINUTES, mete
             previous: dict[str, int] = {}
             for index in timed:
                 drive = str(members[index].get('drive') or '')
-                if drive and drive in previous and (moments[index] - moments[previous[drive]]).total_seconds() <= minutes * 60:
+                if (drive and drive in previous and (moments[index] - moments[previous[drive]]).total_seconds() <= minutes * 60
+                        and _follows(members[previous[drive]], members[index], run_meters)):
                     link(index, previous[drive])
                 if drive:
                     previous[drive] = index
@@ -1679,7 +1767,8 @@ def hotspots(calls: list[dict[str, Any]], minutes: float = CLUSTER_MINUTES, mete
                 for other in timed[position + 1:]:
                     if (moments[other] - moments[index]).total_seconds() > minutes * 60:
                         break
-                    if (sites[index] and sites[index] == sites[other]) or _meters(members[index], members[other]) <= meters:
+                    if ((sites[index] and sites[index] == sites[other])
+                            or _meters(members[index], members[other]) <= _limit(meters, members[index], members[other])):
                         link(index, other)
         spots: dict[int, list[int]] = {}
         for index in [*timed, *(index for index, moment in enumerate(moments) if moment is None)]:
@@ -1690,17 +1779,20 @@ def hotspots(calls: list[dict[str, Any]], minutes: float = CLUSTER_MINUTES, mete
     return found
 
 
-def consecutive_runs(calls: list[dict[str, Any]], minutes: float = CLUSTER_MINUTES) -> dict[str, tuple[str, int]]:
+def consecutive_runs(calls: list[dict[str, Any]], minutes: float = CLUSTER_MINUTES,
+                     meters: Distance = CONSECUTIVE_REACH) -> dict[str, tuple[str, int]]:
     """For every failure with a date and a drive (``call_key``, ``operator``, ``nr_mode``, ``campaign``, ``start_time``,
-    ``drive``), whatever its call type and wherever it was: its run of consecutive failures and how many failures it has.
-    The failures of the same operator, NR Mode, campaign and drive follow one another in a run while each started at most
-    ``minutes`` after the one before (a failure with none so close stays alone)."""
+    ``drive``, ``latitude``, ``longitude``, ``isd_km``, ``environment``), whatever its call type: its run of consecutive
+    failures and how many failures it has. The failures of the same operator, NR Mode, campaign and drive follow one another
+    in a run while each started at most ``minutes`` after the one before and ``meters`` from it (see ``reach``; a failure
+    with none so close stays alone, and a failure without a position follows the one before)."""
     found: dict[str, tuple[str, int]] = {}
     for members in _campaign_groups([call for call in calls if call.get('drive')], 'drive'):
-        timed = sorted(((moment, call['call_key']) for call in members if (moment := _moment(call.get('start_time'))) is not None))
+        timed = sorted(((moment, call['call_key'], call) for call in members if (moment := _moment(call.get('start_time'))) is not None),
+                       key=lambda item: (item[0], item[1]))
         runs: list[list[str]] = []
-        for position, (moment, key) in enumerate(timed):
-            if not position or (moment - timed[position - 1][0]).total_seconds() > minutes * 60:
+        for position, (moment, key, call) in enumerate(timed):
+            if not position or (moment - timed[position - 1][0]).total_seconds() > minutes * 60 or not _follows(timed[position - 1][2], call, meters):
                 runs.append([])
             runs[-1].append(key)
         found.update({key: (f'run:{run[0]}', len(run)) for run in runs for key in run})
@@ -1713,11 +1805,12 @@ def consecutive_of(run: tuple[str, int] | None) -> str:
     return '' if run is None else 'Yes' if run[1] >= 2 else 'No'
 
 
-def consecutive_failures(calls: list[dict[str, Any]], minutes: float = CLUSTER_MINUTES) -> dict[str, str]:
+def consecutive_failures(calls: list[dict[str, Any]], minutes: float = CLUSTER_MINUTES,
+                         meters: Distance = CONSECUTIVE_REACH) -> dict[str, str]:
     """For every failure: Yes when another failure of the same operator, NR Mode, campaign and drive started at most
     ``minutes`` before or after it, wherever it was, No when none did, '' without a date or a drive (see
     ``consecutive_runs``)."""
-    runs = consecutive_runs(calls, minutes)
+    runs = consecutive_runs(calls, minutes, meters)
     return {call['call_key']: consecutive_of(runs.get(call['call_key'])) for call in calls}
 
 
@@ -1753,6 +1846,37 @@ def drives_of(repository: Any, calls: list[dict[str, Any]]) -> dict[str, str]:
     return found
 
 
+def call_isds(repository: Any, calls: list[dict[str, Any]]) -> dict[str, float]:
+    """The inter-site distance (km) of the site in service nearest to where each call started (``latitude``,
+    ``longitude``) among the networks serving its operator (``operator``), from the newest Network Inventory snapshot of
+    each one (ran_context, as the Map of the call measures it); calls without a position or a site near have none."""
+    from src.modules import nq_call_map, ran_context
+    from src.modules.serving_cells import load_serving_networks, serving_families
+
+    config = load_serving_networks(repository)
+    families = {operator: tuple(serving_families(operator, config)) for operator in {str(call.get('operator') or '') for call in calls}}
+    try:
+        cells, _snapshots = nq_call_map.inventory_cells(repository, tuple(dict.fromkeys(item for value in families.values() for item in value)))
+    except Exception:  # noqa: BLE001 - without a Network Inventory the consecutive failures take the distances of the areas.
+        return {}
+    if cells.empty:
+        return {}
+    index = ran_context.ran_index(cells)
+    found: dict[str, float] = {}
+    for call in calls:
+        try:
+            point = (float(call['latitude']), float(call['longitude']))
+        except (TypeError, ValueError, KeyError):
+            continue
+        if not all(math.isfinite(value) for value in point) or point == (0.0, 0.0):
+            continue
+        site = index.nearest(point, families[str(call.get('operator') or '')])
+        isd = index.isd(site['key']) if site else None
+        if isd:
+            found[call['call_key']] = isd
+    return found
+
+
 def linked_values(calls: list[dict[str, Any]], settings: dict[str, Any], out_of_scope: Callable[[Any], bool] | None = None,
                   every_mode: bool = True) -> dict[str, dict[str, Any]]:
     """The groups of the calls with the settings given: ``repetitions`` (``repetitions``, of the NR Mode of each call as the
@@ -1763,11 +1887,13 @@ def linked_values(calls: list[dict[str, Any]], settings: dict[str, Any], out_of_
     they are in no group and make none."""
     linked = [call for call in calls if call_kind(call['service'], call.get('test_name'), call.get('session_type')) != PING
               and not (out_of_scope and out_of_scope(call))]
-    period, meters, size = settings['previous_quarters'], settings['spot_meters'], settings['min_calls']
+    period, size = settings['previous_quarters'], settings['min_calls']
+    meters = reach(settings['cluster_isd'], settings['spot_meters'], settings['cluster_road_meters'])
+    run_meters = reach(settings['consecutive_isd'], settings['consecutive_city_meters'], settings['consecutive_road_meters'])
     counts = repetitions(linked, period, meters)
     found = {'repetitions': counts, 'clusters': cluster_groups(linked, counts, size, period, meters),
-             'hotspots': hotspots(linked, settings['consecutive_minutes'], meters, settings['hotspot_join']),
-             'runs': consecutive_runs(linked, settings['consecutive_minutes']), 'clusters_all': {}}
+             'hotspots': hotspots(linked, settings['consecutive_minutes'], meters, settings['hotspot_join'], run_meters),
+             'runs': consecutive_runs(linked, settings['consecutive_minutes'], run_meters), 'clusters_all': {}}
     if every_mode:
         found['clusters_all'] = cluster_groups(linked, repetitions(linked, period, meters, False), size, period, meters, False, 'group-all:')
     return found
@@ -1798,7 +1924,7 @@ def place_values(repository: Any, settings: dict[str, Any], every_mode: bool = T
     with repository.connection() as connection:
         calls = [dict(row) for row in connection.execute(
             f'SELECT l.call_key, l.service, l.nr_mode, l.campaign, l.operator, l.region, l.site_id, l.latitude, l.longitude, '
-            f'l.start_time, l.test_name, l.session_type, p.place_key, p.place_label, p.drive FROM {PRIORITY_TABLE} p '
+            f'l.start_time, l.test_name, l.session_type, l.environment, p.place_key, p.place_label, p.drive, p.isd_km FROM {PRIORITY_TABLE} p '
             f'JOIN {nq.NQ_CALL_LATEST_TABLE} l ON l.call_key = p.call_key')]
     for call in calls:
         # Only the place of a call without a site or a node depends on the settings.
@@ -1930,7 +2056,7 @@ def _latest_calls(repository: Any) -> list[dict[str, Any]]:
     with repository.connection() as connection:
         return [dict(row) for row in connection.execute(
             f'SELECT call_key, dataset_id, source_row_id, service, nr_mode, campaign, operator, region, city, site_id, '
-            f'host_network, cell_id, latitude, longitude, start_time, join_id, test_name, session_type '
+            f'host_network, cell_id, latitude, longitude, start_time, join_id, test_name, session_type, environment '
             f"FROM {nq.NQ_CALL_LATEST_TABLE} WHERE version_state <> 'qualified'")]
 
 
@@ -2043,9 +2169,9 @@ def calculate(repository: Any, progress: Callable[[int, int, str], None] | None 
     # The calls near each one (clusters), the hotspots and the failures with another one minutes apart.
     if progress:
         progress(len(groups), len(groups) + 1, 'the hotspots and the expected gain of the calls')
-    drives = drives_of(repository, calls)
+    drives, isds = drives_of(repository, calls), call_isds(repository, calls)
     for call in calls:
-        call['drive'] = drives.get(call['call_key'], '')
+        call['drive'], call['isd_km'] = drives.get(call['call_key'], ''), isds.get(call['call_key'])
     linked = linked_values(calls, settings, scope_test(repository, settings))
     # Whether the Final CDR of the campaign of each call is scored (list 2 then orders it), and its Expected Gain: its
     # own points then, else what its failure lost in the latest campaign of its NR Mode with a Final CDR.
@@ -2089,11 +2215,11 @@ def calculate(repository: Any, progress: Callable[[int, int, str], None] | None 
             levels.get(call['call_key'], nq_catalog.IMPACT_NONE) if state == SCORED else LEVEL_OF_STATE[state],
             kpis_text(impact['kpis']) if state == SCORED else '', json.dumps(impact['kpis'] if state == SCORED else [], ensure_ascii=False),
             call['place_key'], call['place_label'], now, final_list.get(call['call_key'], 0),
-            None if gain is None else round(float(gain), 4), gain_campaign, call['drive'], *(grouped[name] for name in GROUP_FIELDS),
+            None if gain is None else round(float(gain), 4), gain_campaign, call['drive'], call['isd_km'], *(grouped[name] for name in GROUP_FIELDS),
         ))
     ensure_tables(repository)
     columns = ('call_key', 'campaign_key', 'impact_state', 'impact_points', 'impact_level', 'impact_kpis', 'impact_json', 'place_key',
-               'place_label', 'updated_at', 'final_list', 'expected_points', 'expected_campaign', 'drive', *GROUP_FIELDS)
+               'place_label', 'updated_at', 'final_list', 'expected_points', 'expected_campaign', 'drive', 'isd_km', *GROUP_FIELDS)
     with repository.connection() as connection:
         connection.executemany(
             f"INSERT INTO {PRIORITY_TABLE} ({', '.join(columns)}) VALUES ({', '.join('?' for _ in columns)}) ON CONFLICT(call_key) DO UPDATE SET "
@@ -2892,8 +3018,9 @@ def panel(repository: Any, filters: Any, username: str) -> dict[str, Any]:
         'strategy': {'key': strategy, 'label': strategy_labels(settings)[strategy]},
         # Every strategy by its name, for the selector of the panel.
         'strategies': strategy_labels(settings),
-        'settings': {key: settings[key] for key in ('high_share', 'medium_share', 'min_calls', 'previous_quarters', 'spot_meters',
-                                                    'consecutive_minutes', 'hotspot_join', 'capacity')},
+        'settings': {key: settings[key] for key in ('high_share', 'medium_share', 'min_calls', 'previous_quarters', 'cluster_isd',
+                                                    'spot_meters', 'cluster_road_meters', 'consecutive_minutes', 'consecutive_isd',
+                                                    'consecutive_city_meters', 'consecutive_road_meters', 'hotspot_join', 'capacity')},
         # The NR Mode whose calls alone the clusters count, and the filter that chose it ('' for every NR Mode together).
         'cluster_mode': cluster_mode, 'cluster_mode_source': cluster_source,
         'totals': {

@@ -1,6 +1,7 @@
 """The map of a Non-Qualified Call: its cells at their inventory sites, the sites and NQ calls around it and the RSRP / SINR
 of the tests around it (nq_call_map), and its route with its App Events."""
 import json
+import math
 
 import pandas as pd
 import pytest
@@ -135,18 +136,26 @@ def test_the_map_places_the_call_its_cells_the_sites_and_the_calls_and_tests_aro
     nq_prioritization.ensure_tables(core.repository)
     with core.repository.connection() as connection:
         for key in ('V1', 'V4'):
-            connection.execute(f"INSERT INTO {nq_prioritization.PRIORITY_TABLE} (call_key, repeat_key, consecutive_key) VALUES (?, 'group:g', 'run:r') "
-                               "ON CONFLICT(call_key) DO UPDATE SET repeat_key = 'group:g', consecutive_key = 'run:r'", (calls[key]['call_key'],))
+            connection.execute(f"INSERT INTO {nq_prioritization.PRIORITY_TABLE} (call_key, repeat_key, repeat_size, consecutive_key) VALUES (?, 'group:g', 2, 'run:r') "
+                               "ON CONFLICT(call_key) DO UPDATE SET repeat_key = 'group:g', repeat_size = 2, consecutive_key = 'run:r'", (calls[key]['call_key'],))
     data = client.get(f"/api/non-qualified-calls/calls/{calls['V1']['call_key']}/map", params={'radius_km': 2}).json()
     far = next(item for item in data['failures'] if item['join_id'] == 'V4')
     assert far['same_cluster'] and far['same_run'] and not far['same_hotspot'] and far['distance_km'] > 2
+    # Opened without a radius, the call takes the one that holds every NQ call of its hotspot and cluster (in tenths of a km),
+    # up to the largest radius offered (V4 is 160 km away).
+    data = client.get(f"/api/non-qualified-calls/calls/{calls['V1']['call_key']}/map").json()
+    grouped = [item['distance_km'] for item in data['failures'] if item['same_cluster'] or item['same_hotspot']]
+    assert data['group_radius_km'] == data['radius_km'] == min(nq_call_map.RADII_KM[-1], math.ceil(max(grouped) * 10) / 10)
+    assert data['radius_km'] in data['radii_km'] and data['radii_km'] == sorted(data['radii_km'])
 
 
 def test_the_radius_the_samples_and_the_unknown_calls(client, tmp_path):
     calls = prepare(client, tmp_path)
     key = calls['V4']['call_key']
-    # A radius that is not offered falls back to the default one; the samples of every CDR of the campaign take its CDR too.
-    data = client.get(f'/api/non-qualified-calls/calls/{key}/map', params={'radius_km': 3, 'tests': 'campaign'}).json()
+    # A radius beyond those offered falls back to the default one (1 km), one between them is kept in tenths of a km; the
+    # samples of every CDR of the campaign take its CDR too.
+    assert nq_call_map.DEFAULT_RADIUS_KM == 1.0 and nq_call_map.normalise_radius(2.34) == 2.4
+    data = client.get(f'/api/non-qualified-calls/calls/{key}/map', params={'radius_km': 30, 'tests': 'campaign'}).json()
     assert data['radius_km'] == nq_call_map.DEFAULT_RADIUS_KM and data['tests_scope'] == 'campaign'
     # Far from every inventory site: no site, and a cell trace it does not have.
     assert data['sites'] == [] and data['trace'] == [] and data['tests']['total'] == 1
@@ -155,6 +164,8 @@ def test_the_radius_the_samples_and_the_unknown_calls(client, tmp_path):
     core.repository.replace_operator_mapping_group(None, 'VF', ['Vodafone UK'], '#E60000', 'focus')
     data = client.get(f'/api/non-qualified-calls/calls/{key}/map').json()
     assert data['focus_labels'] == ['VF'] and data['focus_operators'] == ['VF', 'Vodafone UK']
+    # A call in no hotspot or cluster opens with 1 km.
+    assert data['group_radius_km'] is None and data['radius_km'] == 1.0
     assert client.get('/api/non-qualified-calls/calls/unknown/map').status_code == 404
 
 

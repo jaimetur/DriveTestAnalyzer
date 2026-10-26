@@ -9037,13 +9037,15 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         return JSONResponse(detail)
 
     @core.app.get('/api/non-qualified-calls/calls/{call_key}/map')
-    def nq_call_map_route(call_key: str, radius_km: float = nq_call_map.DEFAULT_RADIUS_KM, tests: str = nq_call_map.DEFAULT_TEST_SCOPE,
+    def nq_call_map_route(call_key: str, radius_km: float | None = None, tests: str = nq_call_map.DEFAULT_TEST_SCOPE,
                           user=Depends(core.current_user)) -> JSONResponse:
         """The map of the area where a call failed: its cells and sites, the sites around, the other Non-Qualified Calls
-        and the radio levels of the tests around it (see nq_call_map). App Events records each map opened."""
+        and the radio levels of the tests around it (see nq_call_map; without a radius, that of the groups of the call or
+        the default one). App Events records each map opened."""
         repository = workspace_repository(user)
         started = time.monotonic()
-        details = {'call_key': call_key, 'radius_km': nq_call_map.normalise_radius(radius_km), 'tests': tests}
+        details = {'call_key': call_key, 'radius_km': 'groups or default' if radius_km is None else nq_call_map.normalise_radius(radius_km),
+                   'tests': tests}
         try:
             payload = nq_call_map.call_map(repository, call_key, radius_km=radius_km, tests=tests)
         except ValueError as error:
@@ -9055,7 +9057,8 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         if payload is None:
             raise HTTPException(404, 'The call is no longer available. Refresh the list.')
         log_action(repository, user, 'nq_call_map', {
-            **details, 'join_id': payload['call']['join_id'], 'operator': payload['call']['operator'],
+            **details, 'radius_km': payload['radius_km'], 'radius_of_the_groups': payload['group_radius_km'] is not None,
+            'join_id': payload['call']['join_id'], 'operator': payload['call']['operator'],
             'sites': len(payload['sites']), 'cells_of_the_call': len(payload['trace']), 'nq_calls_around': len(payload['failures']),
             'tests_around': payload['tests']['total'], 'tests_shown': len(payload['tests']['rows']),
             # What its Diagnosis hints flagged, for the troubleshooting of the call.

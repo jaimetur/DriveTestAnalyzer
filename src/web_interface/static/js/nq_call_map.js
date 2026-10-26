@@ -768,7 +768,8 @@
   function mount({panel, expandDialog, api, toast, openCall, useRootCause = null, canEdit = () => false, campaignLabel, cdrTime, number}) {
     const stored = readSettings();
     const settings = {
-      radius_km: Number(stored.radius_km) || 2, tests: stored.tests === 'campaign' ? 'campaign' : 'cdr',
+      // Each call opens with the radius of its hotspot and cluster (or 1 km); the radius chosen holds while it stays open.
+      radius_km: 1, tests: stored.tests === 'campaign' ? 'campaign' : 'cdr',
       colour: METRICS[stored.colour] ? stored.colour : '', operators: ['all', 'focus'].includes(stored.operators) ? stored.operators : 'own',
       // The Non-Qualified Calls around drawn: those of every campaign until another choice.
       failures: FAILURE_SCOPES[stored.failures] ? stored.failures : 'every',
@@ -776,7 +777,7 @@
       // The RSRP / SINR samples start hidden, so the map shows the call, its cells and the sites first.
       layers: {tests: false, failures: true, sites: true, path: true, ...(stored.layers || {})},
     };
-    const save = () => storeSettings({radius_km: settings.radius_km, tests: settings.tests, colour: settings.colour,
+    const save = () => storeSettings({tests: settings.tests, colour: settings.colour,
       operators: settings.operators, failures: settings.failures, failureColour: settings.failureColour, layers: settings.layers});
     let callKey = '', loadedKey = '', controller = null, expandedView = null;
     const toolbar = node('div', undefined, 'nq-map-toolbar');
@@ -1321,9 +1322,10 @@
         layers.append(toggle);
       }
       toolbar.replaceChildren(
-        select('Radius', 'radius', radii.map((value) => [String(value), distanceText(value)]), String(settings.radius_km), (value) => {
-          settings.radius_km = Number(value); save(); load();
-        }, 'The area around where the call failed: its sites, Non-Qualified Calls and tests'),
+        select('Radius', 'radius', radii.map((value) => [String(value), `${distanceText(value)}${value === data?.group_radius_km ? ' (groups)' : ''}`]),
+          String(settings.radius_km), (value) => {
+            settings.radius_km = Number(value); load();
+          }, 'The area around where the call failed: its sites, Non-Qualified Calls and tests. A call opens with the radius that holds every NQ call of its hotspot and cluster, else with 1 km'),
         select('RSRP / SINR samples from', 'tests', scopes(data?.tests_scopes || {cdr: 'This CDR', campaign: 'Every CDR of its campaign'}), settings.tests, (value) => {
           settings.tests = value; save(); load();
         }, 'The tests whose RSRP / SINR the samples and the Radio around the call show: the CDR of the call, or every CDR of its campaign and NR Mode (Voice, Speech and Data together)'),
@@ -1357,7 +1359,8 @@
       setWaiting('Preparing the map of the call… The first map of a CDR reads its tests: it can take a few seconds.');
       status.textContent = '';
       try {
-        const query = new URLSearchParams({radius_km: String(settings.radius_km), tests: settings.tests});
+        const query = new URLSearchParams({tests: settings.tests});
+        if (loadedKey === key) query.set('radius_km', String(settings.radius_km));
         const data = await api(`/api/non-qualified-calls/calls/${encodeURIComponent(key)}/map?${query}`, {signal: controllerAbort.signal});
         if (request !== controllerAbort || key !== callKey) return false;
         const sameCall = loadedKey === key;

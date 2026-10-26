@@ -3543,7 +3543,11 @@
     const criteria = node('div', undefined, 'nq-priority-criteria');
     // The clusters count the calls of one NR Mode alone when the NR Mode filter, or the campaigns filtered, choose one; else
     // every NR Mode together.
-    [['Consecutive time', `${number(settings.consecutive_minutes)} min`], ['Cluster distance', `${number(settings.spot_meters)} m or same site`],
+    const metres = (value) => (value >= 1000 ? `${number(value / 1000)} km` : `${number(value)} m`);
+    const byIsd = (isd, city, roads) => `${number(isd)} ISD · without it ${metres(city)} cities, ${metres(roads)} roads`;
+    [['Consecutive time', `${number(settings.consecutive_minutes)} min`],
+      ['Consecutive distance', byIsd(settings.consecutive_isd, settings.consecutive_city_meters, settings.consecutive_road_meters)],
+      ['Cluster distance', `${byIsd(settings.cluster_isd, settings.spot_meters, settings.cluster_road_meters)} · or same site`],
       ['Hotspot join', joinWord], ['Cluster size', `${number(settings.min_calls)} calls`],
       ['Cluster period', `${number(settings.previous_quarters)} campaign${settings.previous_quarters === 1 ? '' : 's'} before`],
       ['Cluster NR Mode', data.cluster_mode ? `${data.cluster_mode} only (${data.cluster_mode_source})` : 'every NR Mode together']].forEach(([name, value]) => {
@@ -6622,8 +6626,10 @@
   // -- Prioritization Rules dialog (admins and super-admins change them) ---------------------------------
   const priorityDialog = $('nq-priority-dialog');
   const PRIORITY_INPUTS = {high_share: 'nq-priority-high', medium_share: 'nq-priority-medium', min_calls: 'nq-priority-min-calls',
-    previous_quarters: 'nq-priority-quarters', spot_meters: 'nq-priority-spot', consecutive_minutes: 'nq-priority-consecutive-minutes',
-    capacity: 'nq-priority-capacity'};
+    previous_quarters: 'nq-priority-quarters', cluster_isd: 'nq-priority-cluster-isd', spot_meters: 'nq-priority-spot',
+    cluster_road_meters: 'nq-priority-cluster-roads', consecutive_minutes: 'nq-priority-consecutive-minutes',
+    consecutive_isd: 'nq-priority-consecutive-isd', consecutive_city_meters: 'nq-priority-consecutive-city',
+    consecutive_road_meters: 'nq-priority-consecutive-roads', capacity: 'nq-priority-capacity'};
   // The settings chosen from a list (not numbers).
   const PRIORITY_CHOICES = {hotspot_join: 'nq-priority-hotspot-join'};
   // Every setting of the levels as the dialog holds it.
@@ -7293,11 +7299,13 @@
     // A strategy without list 2 (or with it turned off) shows its list 1, which orders every call.
     if (strategyFinalLists[strategy] === false) stepList = 'campaign';
     $('nq-priority-steps').replaceChildren(table(stepList));
-    // What each condition means, in the order of the lists.
+    // What each condition means, in the order of the lists: those based on the scoring and the result start a row of
+    // their own, below those of the position and the time.
     const help = fields.condition_help || {};
     const kinds = fields.condition_kinds || {};
+    const rowStart = stepConditions(stepList).find(([key]) => (kinds[key] || [])[1] === 'scoring')?.[0];
     $('nq-priority-glossary').replaceChildren(...stepConditions(stepList).map(([key, label]) => {
-      const item = node('div');
+      const item = node('div', undefined, key === rowStart ? 'is-row-start' : undefined);
       const term = node('dt');
       term.append(node('span', label, `nq-condition-value is-cond-${key}`));
       const [tag, kind] = kinds[key] || [];

@@ -31,8 +31,10 @@ import pandas as pd
 
 from src.modules.cdr_field_profiles import NETCHECK_PROFILE, CdrFieldProfile, workspace_field_profile
 
+# The radii offered. A call opens with the radius that holds every NQ call of its hotspot and its cluster (in tenths of a
+# km, see ``group_radius``), else with the default one.
 RADII_KM = (0.5, 1.0, 2.0, 5.0, 10.0)
-DEFAULT_RADIUS_KM = 2.0
+DEFAULT_RADIUS_KM = 1.0
 TEST_SCOPES = {'cdr': 'This CDR', 'campaign': 'Every CDR of its campaign'}
 DEFAULT_TEST_SCOPE = 'cdr'
 # The Non-Qualified Calls around that the map draws (the page chooses; the diagnosis and the decisions count them all).
@@ -144,8 +146,31 @@ def bounding_box(centre: tuple[float, float], radius_km: float) -> tuple[float, 
 
 
 def normalise_radius(value: Any) -> float:
+    """A radius offered, or one between them in tenths of a km (that of the groups of a call); else the default one."""
     number = _number(value)
-    return number if number in RADII_KM else DEFAULT_RADIUS_KM
+    if number is None or not RADII_KM[0] <= number <= RADII_KM[-1]:
+        return DEFAULT_RADIUS_KM
+    return number if number in RADII_KM else math.ceil(round(number * 10, 6)) / 10
+
+
+def group_radius(repository: Any, call: dict[str, Any], centre: tuple[float, float]) -> float | None:
+    """The radius around ``centre`` that holds every NQ call of the hotspot and of the cluster of a call (of 2 calls or more),
+    in tenths of a km between the smallest and the largest radius offered; None for a call in neither."""
+    from src.modules import non_qualified_calls as nq
+    from src.modules.nq_prioritization import PRIORITY_TABLE
+
+    with repository.connection() as connection:
+        own = connection.execute(f'SELECT cluster_key, cluster_size, repeat_key, repeat_size FROM {PRIORITY_TABLE} WHERE call_key = ?',
+                                 (call.get('parent_key') or call['call_key'],)).fetchone()
+        groups = [(column, _text(own[column])) for column, size in (('cluster_key', 'cluster_size'), ('repeat_key', 'repeat_size'))
+                  if own and _text(own[column]) and (own[size] or 0) >= 2]
+        if not groups:
+            return None
+        rows = connection.execute(
+            f'SELECT l.latitude, l.longitude FROM {PRIORITY_TABLE} q JOIN {nq.NQ_CALL_LATEST_TABLE} l ON l.call_key = q.call_key '
+            f'WHERE {" OR ".join(f"q.{column} = ?" for column, _ in groups)}', [value for _, value in groups]).fetchall()
+    farthest = max((distance_km(centre, position) for row in rows if (position := _position(row['latitude'], row['longitude']))), default=0.0)
+    return min(RADII_KM[-1], max(RADII_KM[0], math.ceil(round(farthest * 10, 6)) / 10))
 
 
 def _first_value(row: dict[str, Any], columns: list[str], candidates: tuple[str, ...]) -> tuple[str, Any]:
@@ -965,8 +990,10 @@ def site_health(repository: Any, call: dict[str, Any], site_id: str, host: str, 
 # ---------------------------------------------------------------------------
 # The whole map
 # ---------------------------------------------------------------------------
-def call_map(repository: Any, call_key: str, *, radius_km: Any = DEFAULT_RADIUS_KM, tests: str = DEFAULT_TEST_SCOPE) -> dict[str, Any] | None:
-    """Everything the map of a call shows around where it failed (see the module); None for an unknown call."""
+def call_map(repository: Any, call_key: str, *, radius_km: Any = None, tests: str = DEFAULT_TEST_SCOPE) -> dict[str, Any] | None:
+    """Everything the map of a call shows around where it failed (see the module); None for an unknown call. Without
+    ``radius_km`` the radius holds the NQ calls of its hotspot and its cluster (``group_radius``), else it is the default
+    one."""
     from src.modules import non_qualified_calls as nq
     from src.modules.inventory_insights import configured_vendor_colours
     from src.modules.network_insights import RSRP_CLASSES, SINR_CLASSES
@@ -975,7 +1002,6 @@ def call_map(repository: Any, call_key: str, *, radius_km: Any = DEFAULT_RADIUS_
     from src.modules.serving_cells import load_serving_networks, serving_families
     from src.modules.value_maps import ValueMapper, field_kind
 
-    radius = normalise_radius(radius_km)
     scope = tests if tests in TEST_SCOPES else DEFAULT_TEST_SCOPE
     options = nq.list_options(repository)
     with repository.connection() as connection:
@@ -1011,6 +1037,8 @@ def call_map(repository: Any, call_key: str, *, radius_km: Any = DEFAULT_RADIUS_
                              'there is nothing to place on the map.')
         point = (located['latitude'], located['longitude'])
         notes.append('The CDR does not give the position of this call: the map is centred on the site of its last cell.')
+    group = group_radius(repository, call, point) if radius_km is None else None
+    radius = (group or DEFAULT_RADIUS_KM) if radius_km is None else normalise_radius(radius_km)
     anchor = next((step['site'] for step in reversed(trace) if step.get('site') and step.get('technology') == 'LTE'), '')
     leg = (nr_leg(service, row, columns, cells, families, point, anchor, colours, fields_profile)
            if _text(call.get('nr_mode')).upper() != 'SA' else None)
@@ -1075,7 +1103,7 @@ def call_map(repository: Any, call_key: str, *, radius_km: Any = DEFAULT_RADIUS_
             'serving_distance_km': _number(row.get('Serving_Distance_km')),
             'radio': radio_values(row, columns),
         },
-        'centre': [point[0], point[1]], 'radius_km': radius, 'radii_km': list(RADII_KM),
+        'centre': [point[0], point[1]], 'radius_km': radius, 'radii_km': sorted({*RADII_KM, radius}), 'group_radius_km': group,
         'tests_scope': scope, 'tests_scopes': TEST_SCOPES, 'failure_scopes': FAILURE_SCOPES,
         # The Focus operators of the Operator Maps: their labels, and with every name of the CDRs they stand for.
         'focus_labels': labels_with_role(repository, FOCUS), 'focus_operators': focus_operators(repository),
