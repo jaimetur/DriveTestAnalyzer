@@ -2592,11 +2592,18 @@ def panel(repository: Any, filters: Any, username: str) -> dict[str, Any]:
             'suggested_priority, queue, queue_step, queue_list, expected_points, expected_campaign, test_name, session_type, '
             f'cluster_key, cluster_size, consecutive_key, consecutive_size FROM calls{where}',
             [*base_params, *params])]
-    # The clusters follow the NR Mode of the filters: when the filtered calls are of one NR Mode (that filter, or a campaign
-    # of one NR Mode), they count the calls of that NR Mode only; else every NR Mode together, as the Prioritization
-    # Rules do. The hotspots and the consecutive failures keep to one NR Mode always.
-    modes = {str(row['nr_mode'] or '').upper() for row in rows}
-    cluster_mode = next(iter(modes)) if len(modes) == 1 and '' not in modes else ''
+        # The clusters follow the NR Mode of the filters: one NR Mode chosen, or campaigns of one NR Mode (and no NR Mode
+        # chosen), count the calls of that NR Mode only; else every NR Mode together, as the Prioritization Rules do. The
+        # other filters (a site, an operator...) never decide it. The hotspots and the consecutive failures keep to one NR
+        # Mode always.
+        chosen = {str(value).upper() for value in nq._strings(filters.get('nr_mode')) if value not in {nq.UNASSIGNED, 'Unknown'}}
+        cluster_mode, cluster_source = (next(iter(chosen)), 'NR Mode filter') if len(chosen) == 1 else ('', '')
+        if not chosen and nq._strings(filters.get('campaign')):
+            campaign_where, campaign_params = nq._filter_sql({'campaign': filters['campaign']}, username, closed, definitions)
+            modes = {str(row[0] or '').upper() for row in connection.execute(
+                f'WITH calls AS ({base}) SELECT DISTINCT nr_mode FROM calls{campaign_where}', [*base_params, *campaign_params])}
+            if len(modes) == 1 and '' not in modes:
+                cluster_mode, cluster_source = next(iter(modes)), 'campaign filter'
     if cluster_mode:
         places = place_values(repository, settings, cluster_mode)
         for row in rows:
@@ -2774,8 +2781,8 @@ def panel(repository: Any, filters: Any, username: str) -> dict[str, Any]:
         'strategies': strategy_labels(settings),
         'settings': {key: settings[key] for key in ('high_share', 'medium_share', 'min_calls', 'previous_quarters', 'spot_meters',
                                                     'consecutive_minutes', 'hotspot_join', 'capacity')},
-        # The NR Mode whose calls alone the clusters count ('' when the filtered calls are of several: every one together).
-        'cluster_mode': cluster_mode,
+        # The NR Mode whose calls alone the clusters count, and the filter that chose it ('' for every NR Mode together).
+        'cluster_mode': cluster_mode, 'cluster_mode_source': cluster_source,
         'totals': {
             'calls': len(rows), 'prioritized': sum(row['prioritization'] == PRIORITIZED for row in rows),
             'tracked': sum(row['prioritization'] == TRACK_ONLY for row in rows),

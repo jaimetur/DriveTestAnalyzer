@@ -452,8 +452,12 @@ def prioritization_tables(data: dict[str, Any]) -> list[tuple[str, str, list[str
         count = len(data.get('issues') or [])
         groups.append(('issues', 'Clustered Issues' + (f' · the {len(issues)} sites with the most calls of {count:,}' if count > len(issues) else ''),
                        columns, issues, {5, 6, 7, 8, 9, 10}))
+    # Between the consecutive and the clustered issues, the one with more calls first (with the same calls, the one in fewer
+    # rows), as the page shows them.
+    every = {'consecutive': data.get('consecutive') or [], 'issues': data.get('issues') or []}
     hotspots = [group for group in groups if group[0] == 'hotspots']
-    others = [group for group in groups if group[0] != 'hotspots']
+    others = sorted((group for group in groups if group[0] != 'hotspots'),
+                    key=lambda group: (-sum(row['calls'] for row in every[group[0]]), len(every[group[0]])))
     tables.extend([*hotspots, *others] if join == 'OR' else [*others, *hotspots])
     return tables
 

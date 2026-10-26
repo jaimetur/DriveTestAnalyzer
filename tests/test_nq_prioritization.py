@@ -905,7 +905,11 @@ def test_panel_filters_and_exports_show_the_prioritization(prioritized):
     # the KPIs, then the hotspots, the consecutive issues and the clustered issues (the hotspots first with the OR join).
     tables = non_qualified_calls_export.prioritization_tables(panel)
     order = [component for component, *_rest in tables]
-    assert order.index('queue') < order.index('rules') < order.index('kpis') < order.index('hotspots') < order.index('consecutive') < order.index('issues')
+    assert order.index('queue') < order.index('rules') < order.index('kpis') < order.index('hotspots') < min(order.index('consecutive'), order.index('issues'))
+    # Between the consecutive and the clustered issues, the one with more calls first.
+    total = {'consecutive': sum(item['calls'] for item in panel['consecutive']), 'issues': sum(item['calls'] for item in panel['issues'])}
+    first, second = sorted(('consecutive', 'issues'), key=order.index)
+    assert total[first] >= total[second]
     assert next(subtitle for component, subtitle, *_rest in tables if component == 'issues').startswith('Clustered Issues')
     assert next(subtitle for component, subtitle, *_rest in tables if component == 'hotspots').startswith(
         'Hotspots (Consecutives OR Clustered Issues)')
@@ -913,12 +917,18 @@ def test_panel_filters_and_exports_show_the_prioritization(prioritized):
     assert panel['cluster_mode'] == ''
     sa = client.post('/api/non-qualified-calls/prioritization', json={'filters': {'nr_mode': ['SA']}}).json()
     places = nq_prioritization.place_values(core.repository, nq_prioritization.load_settings(core.repository), 'SA')
-    assert sa['cluster_mode'] == 'SA' and places and all(rows[key]['nr_mode'] == 'SA' for key in places)
+    assert (sa['cluster_mode'], sa['cluster_mode_source']) == ('SA', 'NR Mode filter') and places and all(rows[key]['nr_mode'] == 'SA' for key in places)
+    # The other filters never choose it, whatever NR Modes they leave; a campaign of both NR Modes neither.
+    single = next(item for item in sa['issues'] if set(item['nr_modes']) == {'SA'})
+    by_site = client.post('/api/non-qualified-calls/prioritization', json={'filters': {'place': [f"{single['operator']}||{single['place']}"]}}).json()
+    assert by_site['cluster_mode'] == ''
+    campaign = next(row['campaign'] for row in rows.values() if row['nr_mode'] == 'SA')
+    assert client.post('/api/non-qualified-calls/prioritization', json={'filters': {'campaign': [campaign]}}).json()['cluster_mode'] == ''
     assert sa['totals']['repeated'] == sum(value['repeated'] == 'Yes' for value in places.values()) < panel['totals']['repeated']
     # With the AND join, the consecutive and the clustered issues (the more general tables) go first.
     joined = non_qualified_calls_export.prioritization_tables({**panel, 'settings': {**panel['settings'], 'hotspot_join': 'and'}})
     order_and = [component for component, *_rest in joined]
-    assert order_and.index('consecutive') < order_and.index('issues') < order_and.index('hotspots')
+    assert max(order_and.index('consecutive'), order_and.index('issues')) < order_and.index('hotspots')
     assert next(subtitle for component, subtitle, *_rest in joined if component == 'hotspots').startswith('Hotspots (Consecutives AND')
     # The three tables share their columns.
     columns = {component: columns for component, _subtitle, columns, *_rest in tables}
@@ -930,6 +940,13 @@ def test_panel_filters_and_exports_show_the_prioritization(prioritized):
     assert subtitles == ['Dual Queue (Scoring Based) · List 1 · Weekly & Final CDRs', 'Dual Queue (Scoring Based) · Outside the lists']
     columns = next(columns for component, _subtitle, columns, *_rest in tables if component == 'rules')
     assert columns == ['Priority', 'Step', 'NR Mode', 'Operators', 'Call Type', 'Area', 'Condition', 'Calls', 'Open', 'Waiting', 'Points lost', 'Queue']
+    # Campaigns of one NR Mode choose it.
+    with core.repository.connection() as connection:
+        connection.execute(f"UPDATE {nq.NQ_CALL_LATEST_TABLE} SET campaign = campaign || '-SA' WHERE nr_mode = 'SA'")
+    by_campaign = client.post('/api/non-qualified-calls/prioritization', json={'filters': {'campaign': [f'{campaign}-SA']}}).json()
+    assert (by_campaign['cluster_mode'], by_campaign['cluster_mode_source']) == ('SA', 'campaign filter')
+    with core.repository.connection() as connection:
+        connection.execute(f"UPDATE {nq.NQ_CALL_LATEST_TABLE} SET campaign = substr(campaign, 1, length(campaign) - 3) WHERE nr_mode = 'SA'")
     deck = client.post('/api/non-qualified-calls/export/powerpoint', json={'filters': {}})
     titles = [slide.shapes.title.text_frame.text for slide in Presentation(io.BytesIO(deck.content)).slides if slide.shapes.title is not None]
     assert any(title.startswith('NQ Prioritization & Queues') for title in titles)

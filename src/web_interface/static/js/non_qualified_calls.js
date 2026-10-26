@@ -3499,7 +3499,7 @@
     const runNote = `Runs of failures of the same operator, NR Mode and campaign, whatever their call type and wherever they were (the Ping tests apart), each within the Consecutive time of the one before: every run with the filtered calls of each, the most calls first (${number(runs.length)}).`;
     const runBlock = groupBlock('Consecutive Issues', runNote,
       runs.length ? groupTable(runs, runCells('consecutive_issue', 'run')) : node('p', 'No consecutive failures among the filtered calls.', 'nq-muted'));
-    const issueNote = `Sites with calls of a cluster: at least the Cluster size of Non-Qualified Calls of the operator failed within the Cluster distance of the call or at its site, in its campaign and the Cluster period before it, in any service and ${data.cluster_mode ? `in ${data.cluster_mode} only, the NR Mode of the filtered calls` : 'NR Mode'} (the Ping tests apart; the site of the cell where the call ended, else the site that served its start, its eNB / gNB or a spot): every one with the filtered calls of each, the most calls first (${number(data.issue_count || 0)}).`;
+    const issueNote = `Sites with calls of a cluster: at least the Cluster size of Non-Qualified Calls of the operator failed within the Cluster distance of the call or at its site, in its campaign and the Cluster period before it, in any service and ${data.cluster_mode ? `in ${data.cluster_mode} only, the NR Mode of the ${data.cluster_mode_source}` : 'NR Mode'} (the Ping tests apart; the site of the cell where the call ended, else the site that served its start, its eNB / gNB or a spot): every one with the filtered calls of each, the most calls first (${number(data.issue_count || 0)}).`;
     // Every site with a clustered issue, in the columns of the hotspots: its NR Modes and campaigns (with their calls when
     // there are several) and the days of its first and last call. The table scrolls inside the subpanel, its header fixed.
     const shares = (entries) => (entries.length > 1 ? entries.map(([name, count]) => `${name} ${number(count)}`).join(' · ') : (entries[0]?.[0] || '—'));
@@ -3514,21 +3514,26 @@
       {text: item.place, pairs: [['place', `${item.operator}||${item.place}`]], title: `Up to ${number(item.repetitions)} repetitions in the window of a call`},
       issueTime(item)]) : node('p', 'No repeated issue among the filtered calls.', 'nq-muted'));
     // The three tables in one subpanel: the criteria of the Prioritization Rules that make them on top, the call types, then
-    // the more general tables first: with the OR join the hotspots (the consecutive and the clustered issues together), then
-    // the consecutive issues and the clustered issues (each within a hotspot); with AND the consecutive and the clustered
-    // issues, then the hotspots (every failure of a hotspot of AND is in a run and in a cluster).
+    // the more general tables first: with the OR join the hotspots (the consecutive and the clustered issues together) before
+    // the other two, with AND after them (every failure of a hotspot of AND is in a run and in a cluster). Neither of the
+    // consecutive and the clustered issues holds the other: the one with more calls goes first, with the same calls the one
+    // that groups them in fewer rows.
     const criteria = node('div', undefined, 'nq-priority-criteria');
-    // The clusters count the calls of the NR Mode of the filters alone when they are of one, else every NR Mode together.
+    // The clusters count the calls of one NR Mode alone when the NR Mode filter, or the campaigns filtered, choose one; else
+    // every NR Mode together.
     [['Consecutive time', `${number(settings.consecutive_minutes)} min`], ['Cluster distance', `${number(settings.spot_meters)} m or same site`],
       ['Hotspot join', joinWord], ['Cluster size', `${number(settings.min_calls)} calls`],
       ['Cluster period', `${number(settings.previous_quarters)} campaign${settings.previous_quarters === 1 ? '' : 's'} before`],
-      ['Cluster NR Mode', data.cluster_mode ? `${data.cluster_mode} only (filtered)` : 'every NR Mode together']].forEach(([name, value]) => {
+      ['Cluster NR Mode', data.cluster_mode ? `${data.cluster_mode} only (${data.cluster_mode_source})` : 'every NR Mode together']].forEach(([name, value]) => {
       const chip = node('span', undefined, 'nq-priority-criterion');
       chip.append(node('span', name), node('strong', value));
       criteria.append(chip);
     });
-    section('clusters', 'Hotspots, Consecutive & Clustered Issues', `With the criteria of the Prioritization Rules below, the more general tables first: with the OR join the hotspots, which hold the consecutive and the clustered issues together; with AND the consecutive and the clustered issues, as every failure of a hotspot of AND is in a run of consecutive failures and in a cluster.`,
-      criteria, kindsLegend(), ...(joinWord === 'OR' ? [hotspotBlock, runBlock, issueBlock] : [runBlock, issueBlock, hotspotBlock]));
+    const calls = (items) => items.reduce((total, item) => total + item.calls, 0);
+    const others = [[runBlock, runs], [issueBlock, data.issues]]
+      .sort(([, a], [, b]) => calls(b) - calls(a) || a.length - b.length).map(([block]) => block);
+    section('clusters', 'Hotspots, Consecutive & Clustered Issues', `With the criteria of the Prioritization Rules below, the more general tables first: with the OR join the hotspots, which hold the consecutive and the clustered issues together; with AND the consecutive and the clustered issues, as every failure of a hotspot of AND is in a run of consecutive failures and in a cluster. Between these two, the one with more calls goes first (with the same calls, the one in fewer rows).`,
+      criteria, kindsLegend(), ...(joinWord === 'OR' ? [hotspotBlock, ...others] : [...others, hotspotBlock]));
     // The step tells the NR Mode and the kind of call, so the queue keeps to the columns that tell the calls apart: the
     // Priority and the step in pills (the step of list 1, Weekly, or list 2, Final; what it takes on hover), the campaign
     // as the Campaign Maps name it and the Scoring Impact in its colour.
