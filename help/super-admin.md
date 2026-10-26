@@ -124,7 +124,7 @@ The server generates every presentation of the Help, with the pictures of their 
 
 ## AI Comment Writers
 
-The writers of the generated comments of [PPT Dashboards](ppt-dashboards.md#generated-comments) (Generate comments, Generate all slides and Auto comments). The rules always read the charts on the server; an LLM writer rewrites their facts, and every figure it writes must be one of them, or the rules comment is kept.
+The writers of the generated comments of [PPT Dashboards](ppt-dashboards.md#generated-comments) (Generate comments for this slide or for all slides, and Auto comments). The rules always read the charts on the server; an LLM writer rewrites their facts, and every figure it writes must be one of them, or the rules comment is kept.
 
 | Setting | Effect |
 | --- | --- |

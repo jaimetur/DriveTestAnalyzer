@@ -354,7 +354,7 @@ Active columns are highlighted. Value choices respond to the other column filter
 | Tool | Behavior |
 | --- | --- |
 | Slide comments | Add, edit or remove; Enter or leaving an edit saves immediately |
-| **Generate comments** | Suggest the comments of the open slide from the figures of its charts; review them and add the ones you keep |
+| Generated comments | The icons after the slide navigation: comments for the open slide from the figures of its charts (reviewed before they are added) or for all slides, and a menu with the writer and the Kiro brief |
 | **Presentation** | Advance every 3, 5, 10 or 15 seconds, with Fade, Slide or no transition |
 | Pause/Resume and Stop | Floating controls remain available in Presentation mode |
 | **Dashboard Filters** | Change applied selection without automatically saving defaults |
@@ -364,7 +364,7 @@ Manual navigation stops Presentation. Its settings adapt to compact landscape sc
 
 #### Generated comments
 
-**Generate comments**, beside **Add comment** for editors, writes analysis comments for the open slide from the same figures its charts draw: the filters, splits, Dashboard filters, dynamic grid cards and legend items hidden in the viewer apply, and the excluded operators are never named.
+For editors, three icons follow the slide navigation, set apart like **Presentation** before it (on a phone, on a row of their own below it); hovering each one names it. **Generate comments for this slide** (the sparkle) writes analysis comments for the open slide from the same figures its charts draw: the filters, splits, Dashboard filters, dynamic grid cards and legend items hidden in the viewer apply, and the excluded operators are never named.
 
 | Chart type | What the comments read |
 | --- | --- |
@@ -382,11 +382,11 @@ The comments compare the latest campaign of each group with the previous one and
 
 The suggestions replace the list of comments until you decide: untick or edit them, then **Add selected comments** adds them after the existing comments of the slide (saved at once, like the comments you write), or **Discard** leaves the slide as it was. Comments added from Generate comments keep a **Generated** tag (hover it to see when and by which writer); edited by hand, a comment is yours. When the slide is open with another selection (other campaigns, filters or CDRs, such as a new campaign with **Latest 2 campaigns**) than the one its generated comments were written for, the panel says they are out of date: generate them again.
 
-**Generate all slides** writes the comments of every slide in one go, in the background, following its progress slide by slide: on **Only Slides Without Comments**, in place of the generated comments keeping those written by hand (**Replace Generated Comments**), or in place of every comment (**Replace Every Comment**); a summary says how many slides were written and kept.
+**Generate comments for all slides** (the sparkle on a stack of slides) writes the comments of every slide in one go, in the background, following its progress slide by slide: on **Only Slides Without Comments**, in place of the generated comments keeping those written by hand (**Replace Generated Comments**), or in place of every comment (**Replace Every Comment**); a summary says how many slides were written and kept.
 
-**Writers.** The rules always read the charts, on the server. When Super Admin enables them in [AI Comment Writers](super-admin.md#ai-comment-writers), a choice beside Generate comments picks the writer: **Rules**, **Kiro CLI** (the default LLM) or **Claude**, each with the API key of the server or with your own (user menu → **API keys**), as Super Admin chooses; what it writes is charged to the account of the key. An LLM writer receives the facts of the charts and the rules comments, rewrites them in a more natural way and connects them; every figure it writes must be one of the facts and it must not name a hidden item, otherwise that comment is left out, and when none keeps to the facts, or the writer fails, the rules comments are shown with a note saying why. With the **Kiro Brief** enabled, **Kiro brief** downloads the facts of every slide for Kiro IDE (a folder with the facts, the style guide, also as a Kiro steering file, and the comments.json Kiro fills in) and **Import Kiro comments** reads back comments.json and facts.json (or the folder zipped again), checks every figure and writes the comments with the same three choices as Generate all slides.
+**Writers.** The rules always read the charts, on the server. When Super Admin enables them in [AI Comment Writers](super-admin.md#ai-comment-writers), the menu of the third icon (**⋯**) picks the writer, which the tooltips of the other two name: **Rules**, **Kiro CLI** (the default LLM) or **Claude**, each with the API key of the server or with your own (user menu → **API keys**), as Super Admin chooses; what it writes is charged to the account of the key. An LLM writer receives the facts of the charts and the rules comments, rewrites them in a more natural way and connects them; every figure it writes must be one of the facts and it must not name a hidden item, otherwise that comment is left out, and when none keeps to the facts, or the writer fails, the rules comments are shown with a note saying why. With the **Kiro Brief** enabled, the same menu offers **Download Kiro brief**, which downloads the facts of every slide for Kiro IDE (a folder with the facts, the style guide, also as a Kiro steering file, and the comments.json Kiro fills in) and **Import Kiro comments** reads back comments.json and facts.json (or the folder zipped again), checks every figure and writes the comments with the same three choices as Generate comments for all slides.
 
-App Events records each generation (slide, writer asked and writer that wrote, model, charts read and skipped, suggestions, comments left out, tokens of Claude and time taken), the comments added from it, Generate all slides, the Kiro briefs exported and the Kiro comments imported.
+App Events records each generation (slide, writer asked and writer that wrote, model, charts read and skipped, suggestions, comments left out, tokens of Claude and time taken), the comments added from it, Generate comments for all slides, the Kiro briefs exported and the Kiro comments imported.
 
 ## Generate PPT
 

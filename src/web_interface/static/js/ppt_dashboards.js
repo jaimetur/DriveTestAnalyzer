@@ -1630,7 +1630,8 @@
     $('ds-comment-add').disabled = snapshot;
     $('ds-comment-generate').disabled = snapshot;
     $('ds-comment-generate-all').disabled = snapshot;
-    for (const control of ['ds-comment-engine', 'ds-comment-kiro-brief', 'ds-comment-kiro-import']) $(control).disabled = snapshot;
+    for (const control of ['ds-comment-menu-toggle', 'ds-comment-kiro-brief', 'ds-comment-kiro-import']) $(control).disabled = snapshot;
+    if (snapshot) closeCommentMenu();
   };
   async function openDashboardPptViewer(job) {
     const payload = await api(`/ppt-jobs/${job.id}/charts.json`);
@@ -4511,18 +4512,56 @@
   $('ds-slide').onchange = () => { stopPresentation(); slideIndex = Number($('ds-slide').value); renderSlide(); };
   bind('ds-comment-add', async () => { const input = $('ds-comment-input'), comment = input.value.trim(); if (!comment || !definition || pptDashboardViewer) return; const key = currentSlideCommentKey(); definition.slide_comments ||= {}; const comments = definition.slide_comments[key] ||= []; if (comments.length >= 50) throw new Error('A slide can have at most 50 comments.'); comments.push(comment); input.value = ''; await persistComments(); renderComments(); });
   $('ds-comment-input').addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); $('ds-comment-add').click(); } });
-  // The writers Super Admin enabled (Rules and Kiro CLI or Claude): the choice shows only when there is one to make.
+  // The writers Super Admin enabled (Rules and Kiro CLI or Claude): the menu of the comment tools offers the choice only
+  // when there is one to make, and the tooltips of the generate buttons name the writer.
   let commentEngines = {engines: [{id: 'rules', label: 'Rules'}], default: 'rules', kiro_brief: false};
+  let selectedCommentEngine = 'rules';
+  const commentEngine = () => (commentEngines.engines.length < 2 ? '' : selectedCommentEngine);
+  const syncCommentWriters = () => {
+    const writer = (commentEngines.engines.find(item => item.id === selectedCommentEngine) || {}).label || 'Rules';
+    const suffix = commentEngines.engines.length < 2 ? '' : ` (writer: ${writer})`;
+    for (const [id, text] of [['ds-comment-generate', 'Generate comments for this slide'], ['ds-comment-generate-all', 'Generate comments for all slides']]) {
+      $(id).title = text + suffix;
+      $(id).setAttribute('aria-label', text + suffix);
+    }
+    $('ds-comment-writers').querySelectorAll('[role=menuitemradio]').forEach(item => item.setAttribute('aria-checked', String(item.dataset.engine === selectedCommentEngine)));
+  };
   const loadCommentEngines = async () => {
     try { commentEngines = await api('/comment-engines'); } catch (_error) { return; }
-    const choice = $('ds-comment-engine');
-    choice.replaceChildren(...commentEngines.engines.map(item => { const option = node('option', item.label); option.value = item.id; return option; }));
-    choice.value = commentEngines.default;
-    choice.hidden = commentEngines.engines.length < 2;
+    selectedCommentEngine = commentEngines.default;
+    const writers = $('ds-comment-writers');
+    writers.replaceChildren(node('span', 'Comment writer', 'ds-comment-menu-label'), ...commentEngines.engines.map(item => {
+      const option = node('button', item.label);
+      Object.assign(option, {type: 'button'});
+      option.setAttribute('role', 'menuitemradio');
+      option.dataset.engine = item.id;
+      option.addEventListener('click', () => { selectedCommentEngine = item.id; syncCommentWriters(); closeCommentMenu(); });
+      return option;
+    }));
+    writers.hidden = commentEngines.engines.length < 2;
+    syncCommentWriters();
     syncKiroBriefControls();
   };
-  const commentEngine = () => ($('ds-comment-engine').hidden ? '' : $('ds-comment-engine').value);
   void loadCommentEngines();
+  // The menu of the comment tools (writer and Kiro brief) opens above its button and closes on a choice, Escape or a
+  // click outside it.
+  function closeCommentMenu() {
+    $('ds-comment-menu').hidden = true;
+    $('ds-comment-menu-toggle').setAttribute('aria-expanded', 'false');
+  }
+  bind('ds-comment-menu-toggle', () => {
+    const menu = $('ds-comment-menu'), open = menu.hidden;
+    menu.hidden = !open;
+    $('ds-comment-menu-toggle').setAttribute('aria-expanded', String(open));
+    if (open) menu.querySelector('button:not([hidden])')?.focus();
+  });
+  document.addEventListener('pointerdown', event => { if (!$('ds-comment-menu').hidden && !event.target.closest('.ds-comment-menu-wrap')) closeCommentMenu(); });
+  $('ds-comment-menu').addEventListener('keydown', event => {
+    if (event.key !== 'Escape') return;
+    event.stopPropagation();
+    closeCommentMenu();
+    $('ds-comment-menu-toggle').focus();
+  });
   // The charts a slide shows (a dynamic grid can hide cards), each with the legend items hidden and shown on it.
   const commentCharts = slide => (slide.charts || []).filter(chart => chart.available && !dynamicCardHiddenBy(chart).length)
     .map(chart => ({index: chart.index, ...chartLegendLists(chart)}));
@@ -4559,12 +4598,13 @@
   // The Kiro Brief (when Super Admin enables it): the facts of every slide for Kiro IDE, and its comments imported back.
   function syncKiroBriefControls() {
     const enabled = Boolean(commentEngines.kiro_brief) && !pptDashboardViewer;
-    $('ds-comment-kiro-brief').hidden = !enabled;
-    $('ds-comment-kiro-import').hidden = !enabled;
+    $('ds-comment-kiro-actions').hidden = !enabled;
+    $('ds-comment-menu-toggle').hidden = !enabled && commentEngines.engines.length < 2;
   }
   bind('ds-comment-kiro-brief', async () => {
     if (!definition || pptDashboardViewer || !activeId || !prepared?.token) return;
     const id = activeId, button = $('ds-comment-kiro-brief');
+    closeCommentMenu();
     const slides = (prepared.slides || []).filter(slide => !slide.structural_type).map(slide => ({number: slide.number, charts: commentCharts(slide)}));
     button.disabled = true;
     try {
@@ -4574,7 +4614,7 @@
       button.disabled = Boolean(pptDashboardViewer);
     }
   });
-  bind('ds-comment-kiro-import', () => $('ds-comment-kiro-files').click());
+  bind('ds-comment-kiro-import', () => { closeCommentMenu(); $('ds-comment-kiro-files').click(); });
   $('ds-comment-kiro-files').addEventListener('change', safe(async event => {
     const input = event.target, files = [...input.files];
     input.value = '';
