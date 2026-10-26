@@ -429,7 +429,10 @@ def prioritization_tables(data: dict[str, Any]) -> list[tuple[str, str, list[str
                   f"{row['calls']:,}", *(f"{row['kinds'].get(kind, 0):,}" for kind in ('Voice', 'WhatsApp', 'Data')),
                   _points(row['points']), f"{row['open']:,}", row['category'] or '—'] for row in spots[:MAX_EXPORT_ISSUES]]
     if spot_rows:
-        tables.append(('hotspots', 'Hotspots' + (f' · the {len(spot_rows)} with the most calls of {len(spots):,}' if len(spots) > len(spot_rows) else ''),
+        # The title tells how the failures of a hotspot are joined, as the page does.
+        join = 'AND' if (data.get('settings') or {}).get('hotspot_join') == 'and' else 'OR'
+        tables.append(('hotspots', f'Hotspots (Consecutives {join} Clustered Issues)'
+                       + (f' · the {len(spot_rows)} with the most calls of {len(spots):,}' if len(spots) > len(spot_rows) else ''),
                        ['Operator', 'NR Mode', 'Campaign', 'Site', 'Time', 'Calls', 'Voice', 'WhatsApp', 'Data', 'Points lost', 'Open',
                         'Main Root Category'], spot_rows, {5, 6, 7, 8, 9, 10}))
     # The sites with a repeated issue in the columns of the hotspots: their NR Modes and campaigns (with their calls when

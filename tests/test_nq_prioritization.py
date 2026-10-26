@@ -883,6 +883,8 @@ def test_panel_filters_and_exports_show_the_prioritization(prioritized):
     order = [component for component, *_rest in tables]
     assert order.index('queue') < order.index('rules') < order.index('kpis') < order.index('hotspots') < order.index('issues')
     assert next(subtitle for component, subtitle, *_rest in tables if component == 'issues').startswith('Repeated Issues Within Same Cluster')
+    assert next(subtitle for component, subtitle, *_rest in tables if component == 'hotspots').startswith(
+        'Hotspots (Consecutives OR Clustered Issues)')
     # The hotspots and the repeated issues share their columns.
     columns = {component: columns for component, _subtitle, columns, *_rest in tables}
     assert columns['hotspots'] == columns['issues'] == ['Operator', 'NR Mode', 'Campaign', 'Site', 'Time', 'Calls', 'Voice', 'WhatsApp',

@@ -3475,7 +3475,8 @@
       table.classList.add('nq-priority-issues-table', 'nq-priority-group-table');
       return table;
     };
-    section('hotspots', 'Hotspots', hotspotNote, ...(spots.length ? [kindsLegend(), groupTable(spots, (item) => [item.nr_mode || '—', item.campaign || '—',
+    // The title tells how the failures of a hotspot are joined: Consecutives OR (or AND) Clustered Issues.
+    section('hotspots', `Hotspots (Consecutives ${data.settings.hotspot_join === 'and' ? 'AND' : 'OR'} Clustered Issues)`, hotspotNote, ...(spots.length ? [kindsLegend(), groupTable(spots, (item) => [item.nr_mode || '—', item.campaign || '—',
       {text: `${item.place || 'No site'}${item.places > 1 ? ` +${number(item.places - 1)}` : ''}`, pairs: [['hotspot', item.key]],
         title: `${number(item.calls)} of the ${number(item.size)} calls of the hotspot${item.places > 1 ? ` at ${number(item.places)} sites` : ''}`},
       hotspotTime(item)])] : [node('p', 'No hotspot among the filtered calls.', 'nq-muted')]));
