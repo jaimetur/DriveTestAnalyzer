@@ -3476,7 +3476,7 @@
     [...spots, ...runs].forEach((item) => { state.hotspotLabels[item.key] = `${item.operator || 'Unassigned'} · ${item.place || 'No site'} · ${hotspotTime(item)}`; });
     const settings = data.settings;
     const joinWord = settings.hotspot_join === 'and' ? 'AND' : 'OR';
-    const hotspotNote = `Failures of the same operator, NR Mode and campaign, whatever their call type (the Ping tests apart), each within the Consecutive time ${joinWord} the Cluster distance (or at the site where it ended) of another one of them: every hotspot with the filtered calls of each, the most calls first (${number(spots.length)}).`;
+    const hotspotNote = `Failures of the same operator, NR Mode and campaign, whatever their call type (the Ping tests apart), each within the Consecutive time ${joinWord} the Cluster distance (or at the site where it ended) of another one of them: every hotspot with the filtered calls of each, the most calls first (${number(spots.length)} hotspot${spots.length === 1 ? '' : 's'}).`;
     // The hotspots and the sites with a repeated issue share their columns and their look: each row with its operator, NR
     // Mode, campaign, site (a click shows its calls), time, calls, their call types, points lost, open calls and main root
     // category, the call types in a legend above them.
@@ -3514,10 +3514,10 @@
     // The title tells how the failures of a hotspot are joined: Consecutives OR (or AND) Clustered Issues.
     const hotspotBlock = groupBlock(`Hotspots (Consecutives ${joinWord} Clustered Issues)`, hotspotNote,
       spots.length ? groupTable(spots, runCells('hotspot', 'hotspot')) : node('p', 'No hotspot among the filtered calls.', 'nq-muted'));
-    const runNote = `Runs of failures of the same operator, NR Mode and campaign, whatever their call type and wherever they were (the Ping tests apart), each within the Consecutive time of the one before: every run with the filtered calls of each, the most calls first (${number(runs.length)}).`;
+    const runNote = `Runs of failures of the same operator, NR Mode and campaign, whatever their call type and wherever they were (the Ping tests apart), each within the Consecutive time of the one before: every run with the filtered calls of each, the most calls first (${number(runs.length)} run${runs.length === 1 ? '' : 's'}).`;
     const runBlock = groupBlock('Consecutive Issues', runNote,
       runs.length ? groupTable(runs, runCells('consecutive_issue', 'run')) : node('p', 'No consecutive failures among the filtered calls.', 'nq-muted'));
-    const issueNote = `Sites with calls of a cluster: at least the Cluster size of Non-Qualified Calls of the operator failed within the Cluster distance of the call or at its site, in its campaign and the Cluster period before it, in any service and ${data.cluster_mode ? `in ${data.cluster_mode} only, the NR Mode of the ${data.cluster_mode_source}` : 'NR Mode'} (the Ping tests apart; the site of the cell where the call ended, else the site that served its start, its eNB / gNB or a spot): every one with the filtered calls of each, the most calls first (${number(data.issue_count || 0)}).`;
+    const issueNote = `Sites with calls of a cluster: at least the Cluster size of Non-Qualified Calls of the operator failed within the Cluster distance of the call or at its site, in its campaign and the Cluster period before it, in any service and ${data.cluster_mode ? `in ${data.cluster_mode} only, the NR Mode of the ${data.cluster_mode_source}` : 'NR Mode'} (the Ping tests apart; the site of the cell where the call ended, else the site that served its start, its eNB / gNB or a spot): every one with the filtered calls of each, the most calls first (${number(data.issue_count || 0)} site${data.issue_count === 1 ? '' : 's'}).`;
     // Every site with a clustered issue, in the columns of the hotspots: its NR Modes and campaigns (with their calls when
     // there are several) and the days of its first and last call. The table scrolls inside the subpanel, its header fixed.
     const shares = (entries) => (entries.length > 1 ? entries.map(([name, count]) => `${name} ${number(count)}`).join(' · ') : (entries[0]?.[0] || '—'));
