@@ -72,7 +72,7 @@ FINGERPRINT_STATE_KEY = 'nq_prioritization_fingerprint'
 FAILED_STATE_KEY = 'nq_prioritization_failed'
 SUMMARY_STATE_KEY = 'nq_prioritization_summary'
 # Bumped when the calculation changes: every value is calculated again.
-IMPACT_VERSION = 18
+IMPACT_VERSION = 19
 # The scoring of every campaign is split by campaign and operator, as the points of the scoring are national.
 LEVELS = ('Campaign', 'Operator')
 SERVICES = ('voice', 'speech', 'data')
@@ -116,13 +116,18 @@ LIST_LABELS = {CAMPAIGN_LIST: 'Campaign', FINAL_LIST: 'Final'}
 # same site) from another one of them by default.
 CLUSTER_MINUTES = 15
 CLUSTER_METERS = 250.0
-# How a failure joins a hotspot: close to another one in time AND in distance, or in time OR in distance (the default).
+# How a failure joins a hotspot: close to another one in time AND in distance, or in time (in the same drive) OR in
+# distance (the default).
 HOTSPOT_JOINS = {'and': 'AND', 'or': 'OR'}
 DEFAULT_HOTSPOT_JOIN = 'or'
 # The settings of the clusters, the hotspots and the consecutive failures, applied at once when they change (the places,
 # repetitions, hotspots and consecutive failures of the calls are calculated again from their stored values, without
 # the scoring impact).
 PLACE_SETTINGS = ('min_calls', 'previous_quarters', 'spot_meters', 'consecutive_minutes', 'hotspot_join')
+# The drive of a call, so that the failures of the cars that measure at the same time elsewhere never follow one another:
+# the measurement system of its CDR (the car: a data CDR, else the A side of a voice CDR), else the file of its CDR (the
+# device).
+DRIVE_COLUMNS, FILE_COLUMNS = ('Measurement_System', 'System_A'), ('File_ID', 'File_ID_A')
 # The kinds of call the strategies tell apart.
 VOICE, WHATSAPP, DATA, PING = 'voice', 'whatsapp', 'data', 'ping'
 KIND_LABELS = {VOICE: 'Voice', WHATSAPP: 'WhatsApp', DATA: 'Data', PING: 'Ping'}
@@ -142,7 +147,7 @@ LEGACY_CALL_TYPES = {'voice_cities': ('voice', 'city'), 'voice_roads': ('voice',
 # The conditions of a step, chosen one by one, each joined to the one before by AND or OR, AND first: "Consecutive
 # failures AND Hotspots OR High impact" takes the consecutive failures of a hotspot and the calls with a High impact
 # (Every call alone takes every call). AND ( and OR ( start a group, one level of parentheses: "(High impact OR Medium
-# impact) AND Repeated". Consecutive failures: another failure within the Consecutive time.
+# impact) AND Repeated". Consecutive failures: another failure of the same drive within the Consecutive time.
 EVERY_CALL = 'all'
 JOINS = {'and': 'AND', 'or': 'OR', 'and_group': 'AND (', 'or_group': 'OR ('}
 GROUP_JOINS = {'and_group': 'and', 'or_group': 'or'}
@@ -159,7 +164,7 @@ CONDITIONS = {key: CONDITION_LABELS[key] for key in (EVERY_CALL, 'consecutive', 
 FORMER_CONDITIONS = {'biggest': 'high'}
 CAMPAIGN_CONDITIONS = FINAL_CONDITIONS = CONDITIONS
 CONDITION_TAKES = {
-    EVERY_CALL: 'every one', 'consecutive': 'the consecutive failures (another failure minutes before or after)',
+    EVERY_CALL: 'every one', 'consecutive': 'the consecutive failures (another failure of the same drive minutes before or after)',
     'cluster': 'the failures of a hotspot (2+ failures close in time and distance)',
     'drop': 'the drops (calls dropped and data tests cut off once established)',
     'setup': 'the setup failures (calls and data tests that failed before being established)',
@@ -177,11 +182,11 @@ CONDITION_KINDS = {
 # What each condition means, as the Prioritization Rules dialog explains it.
 CONDITION_HELP = {
     EVERY_CALL: 'Every call of the step.',
-    'consecutive': 'Another failure of the same operator, NR Mode and campaign started within the Consecutive time before '
-                   'or after it, whatever its call type and wherever it was.',
+    'consecutive': 'Another failure of the same operator, NR Mode, campaign and drive (the car) started within the '
+                   'Consecutive time before or after it, whatever its call type and wherever it was.',
     'cluster': 'Two or more failures of the same operator, NR Mode and campaign, whatever their call type, each linked to '
-               'another one: within the Consecutive time OR the Cluster distance of it (or at the site where it ended), or, '
-               'with the AND join, within both.',
+               'another one: within the Consecutive time of it in the same drive OR within the Cluster distance of it (or at '
+               'the site where it ended), or, with the AND join, within both.',
     'repeated': 'The operator failed within the Cluster distance of it or at the same site in at least Cluster size calls of '
                 'its campaign and the Cluster period (campaigns) before it, whatever the time.',
     'high': 'Within the first High share of the Expected Gain of the calls in scope of its campaign, operator and service: during '
@@ -243,7 +248,8 @@ CREATE TABLE IF NOT EXISTS {PRIORITY_TABLE} (
     repeat_key TEXT NOT NULL DEFAULT '',
     repeat_size INTEGER,
     repeat_all_key TEXT NOT NULL DEFAULT '',
-    repeat_all_size INTEGER
+    repeat_all_size INTEGER,
+    drive TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS {PRIORITY_CAMPAIGNS_TABLE} (
     campaign_key TEXT PRIMARY KEY,
@@ -264,10 +270,7 @@ STRATEGY_COLUMNS = (('cluster_key', "TEXT NOT NULL DEFAULT ''"), ('cluster_size'
                     ('queue_step', 'INTEGER'), ('queue_list', "TEXT NOT NULL DEFAULT ''"),
                     ('consecutive_key', "TEXT NOT NULL DEFAULT ''"), ('consecutive_size', 'INTEGER'),
                     ('repeat_key', "TEXT NOT NULL DEFAULT ''"), ('repeat_size', 'INTEGER'),
-                    ('repeat_all_key', "TEXT NOT NULL DEFAULT ''"), ('repeat_all_size', 'INTEGER'))
-# The columns of earlier versions that are no longer used: the drive of the calls (the consecutive failures were measured
-# within the same car).
-DROPPED_COLUMNS = ('drive',)
+                    ('repeat_all_key', "TEXT NOT NULL DEFAULT ''"), ('repeat_all_size', 'INTEGER'), ('drive', "TEXT NOT NULL DEFAULT ''"))
 
 
 def ensure_columns(connection: Any) -> None:
@@ -277,9 +280,6 @@ def ensure_columns(connection: Any) -> None:
     for column, definition in STRATEGY_COLUMNS:
         if column not in present:
             connection.execute(f'ALTER TABLE {PRIORITY_TABLE} ADD COLUMN {column} {definition}')
-    for column in DROPPED_COLUMNS:
-        if column in present:
-            connection.execute(f'ALTER TABLE {PRIORITY_TABLE} DROP COLUMN {column}')
 
 
 # ---------------------------------------------------------------------------
@@ -1104,7 +1104,7 @@ def _joined(values: list[bool], joins: list[str]) -> bool:
 def condition_holds(conditions: list[str], call: dict[str, Any], joins: Any = None) -> bool:
     """Whether a call meets the conditions of a step joined by their operators (or when not given), AND first, inside
     each group (in parentheses) and between the groups (Every call: every call). A failure is consecutive when another
-    failure started within the Consecutive time (unknown without a date)."""
+    failure of its drive started within the Consecutive time (unknown without a date or a drive)."""
     if not conditions:
         return False
     level = call.get('level')
@@ -1642,11 +1642,12 @@ def _campaign_groups(calls: list[dict[str, Any]], *fields: str) -> list[list[dic
 def hotspots(calls: list[dict[str, Any]], minutes: float = CLUSTER_MINUTES, meters: float = CLUSTER_METERS,
              join: str = DEFAULT_HOTSPOT_JOIN) -> dict[str, tuple[str, int]]:
     """For every failure (``call_key``, ``operator``, ``nr_mode``, ``campaign``, ``start_time``, ``latitude``, ``longitude``,
-    ``place_key``), whatever its call type: its hotspot and how many failures it has. Two failures of the same operator,
-    NR Mode and campaign are linked when they started at most ``minutes`` apart AND at most ``meters`` apart or ended at
-    the same site (their place, as the clusters compare them; ``join`` and), or at most ``minutes`` apart OR at most
-    ``meters`` apart or at the same site (``join`` or); a hotspot holds the failures linked to each other, directly or
-    through others of it (a failure linked to none stays alone, and so does a failure without a date with the and join)."""
+    ``place_key``, ``drive``), whatever its call type: its hotspot and how many failures it has. Two failures of the same
+    operator, NR Mode and campaign are linked when they started at most ``minutes`` apart AND at most ``meters`` apart or
+    ended at the same site (their place, as the clusters compare them; ``join`` and), or at most ``minutes`` apart in the
+    same drive OR at most ``meters`` apart or at the same site (``join`` or); a hotspot holds the failures linked to each
+    other, directly or through others of it (a failure linked to none stays alone, and so does a failure without a date
+    with the and join)."""
     found: dict[str, tuple[str, int]] = {}
     for members in _campaign_groups(calls):
         moments = [_moment(call.get('start_time')) for call in members]
@@ -1658,10 +1659,14 @@ def hotspots(calls: list[dict[str, Any]], minutes: float = CLUSTER_MINUTES, mete
         timed = sorted((index for index, moment in enumerate(moments) if moment is not None),
                        key=lambda index: (moments[index], members[index]['call_key']))
         if join == 'or':
-            # In time: the failures in their order, each with the one before (a chain covers the others).
-            for before, index in zip(timed, timed[1:]):
-                if (moments[index] - moments[before]).total_seconds() <= minutes * 60:
-                    link(index, before)
+            # In time: the failures of each drive in their order, each with the one before (a chain covers the others).
+            previous: dict[str, int] = {}
+            for index in timed:
+                drive = str(members[index].get('drive') or '')
+                if drive and drive in previous and (moments[index] - moments[previous[drive]]).total_seconds() <= minutes * 60:
+                    link(index, previous[drive])
+                if drive:
+                    previous[drive] = index
             # In distance: at the same site, or close.
             first_at: dict[str, int] = {}
             for index, site in enumerate(sites):
@@ -1686,12 +1691,12 @@ def hotspots(calls: list[dict[str, Any]], minutes: float = CLUSTER_MINUTES, mete
 
 
 def consecutive_runs(calls: list[dict[str, Any]], minutes: float = CLUSTER_MINUTES) -> dict[str, tuple[str, int]]:
-    """For every failure with a date (``call_key``, ``operator``, ``nr_mode``, ``campaign``, ``start_time``), whatever its call
-    type and wherever it was: its run of consecutive failures and how many failures it has. The failures of the same
-    operator, NR Mode and campaign follow one another in a run while each started at most ``minutes`` after the one before
-    (a failure with none so close stays alone)."""
+    """For every failure with a date and a drive (``call_key``, ``operator``, ``nr_mode``, ``campaign``, ``start_time``,
+    ``drive``), whatever its call type and wherever it was: its run of consecutive failures and how many failures it has.
+    The failures of the same operator, NR Mode, campaign and drive follow one another in a run while each started at most
+    ``minutes`` after the one before (a failure with none so close stays alone)."""
     found: dict[str, tuple[str, int]] = {}
-    for members in _campaign_groups(calls):
+    for members in _campaign_groups([call for call in calls if call.get('drive')], 'drive'):
         timed = sorted(((moment, call['call_key']) for call in members if (moment := _moment(call.get('start_time'))) is not None))
         runs: list[list[str]] = []
         for position, (moment, key) in enumerate(timed):
@@ -1704,15 +1709,48 @@ def consecutive_runs(calls: list[dict[str, Any]], minutes: float = CLUSTER_MINUT
 
 def consecutive_of(run: tuple[str, int] | None) -> str:
     """Whether a failure is consecutive by its run (``consecutive_runs``): Yes in a run of 2 or more, No alone, '' without a
-    date."""
+    date or a drive."""
     return '' if run is None else 'Yes' if run[1] >= 2 else 'No'
 
 
 def consecutive_failures(calls: list[dict[str, Any]], minutes: float = CLUSTER_MINUTES) -> dict[str, str]:
-    """For every failure: Yes when another failure of the same operator, NR Mode and campaign started at most ``minutes``
-    before or after it, wherever it was, No when none did, '' without a date (see ``consecutive_runs``)."""
+    """For every failure: Yes when another failure of the same operator, NR Mode, campaign and drive started at most
+    ``minutes`` before or after it, wherever it was, No when none did, '' without a date or a drive (see
+    ``consecutive_runs``)."""
     runs = consecutive_runs(calls, minutes)
     return {call['call_key']: consecutive_of(runs.get(call['call_key'])) for call in calls}
+
+
+def drives_of(repository: Any, calls: list[dict[str, Any]]) -> dict[str, str]:
+    """The drive of every call (``dataset_id``, ``source_row_id``) whose CDR tells it: its measurement system (the car,
+    ``DRIVE_COLUMNS``), else its file in the CDR (the device, ``FILE_COLUMNS``)."""
+    from src.modules.column_names import resolve_column_name
+
+    found: dict[str, str] = {}
+    by_dataset: dict[int, list[dict[str, Any]]] = {}
+    for call in calls:
+        by_dataset.setdefault(int(call['dataset_id']), []).append(call)
+    for dataset_id, items in by_dataset.items():
+        try:
+            available = repository.list_dataset_row_columns(dataset_id)
+        except Exception:  # noqa: BLE001 - a CDR that cannot be read gives no drive.
+            continue
+        system = next((name for name in (resolve_column_name(available, column) for column in DRIVE_COLUMNS) if name), None)
+        column = system or next((name for name in (resolve_column_name(available, column) for column in FILE_COLUMNS) if name), None)
+        if not column:
+            continue
+        table = repository.dataset_rows_table_name(dataset_id)
+        keys = {int(item['source_row_id']): item['call_key'] for item in items}
+        ids = list(keys)
+        with repository.connection() as connection:
+            for start in range(0, len(ids), 500):
+                chunk = ids[start:start + 500]
+                for row in connection.execute(f'SELECT rowid, "{column.replace(chr(34), chr(34) * 2)}" FROM "{table}" '
+                                              f'WHERE rowid IN ({", ".join("?" for _ in chunk)})', chunk):
+                    value = str(row[1] or '').strip()
+                    if value and int(row[0]) in keys:
+                        found[keys[int(row[0])]] = f'system:{value}' if system else f'file:{dataset_id}:{value}'
+    return found
 
 
 def linked_values(calls: list[dict[str, Any]], settings: dict[str, Any], out_of_scope: Callable[[Any], bool] | None = None,
@@ -1760,7 +1798,7 @@ def place_values(repository: Any, settings: dict[str, Any], every_mode: bool = T
     with repository.connection() as connection:
         calls = [dict(row) for row in connection.execute(
             f'SELECT l.call_key, l.service, l.nr_mode, l.campaign, l.operator, l.region, l.site_id, l.latitude, l.longitude, '
-            f'l.start_time, l.test_name, l.session_type, p.place_key, p.place_label FROM {PRIORITY_TABLE} p '
+            f'l.start_time, l.test_name, l.session_type, p.place_key, p.place_label, p.drive FROM {PRIORITY_TABLE} p '
             f'JOIN {nq.NQ_CALL_LATEST_TABLE} l ON l.call_key = p.call_key')]
     for call in calls:
         # Only the place of a call without a site or a node depends on the settings.
@@ -2005,6 +2043,9 @@ def calculate(repository: Any, progress: Callable[[int, int, str], None] | None 
     # The calls near each one (clusters), the hotspots and the failures with another one minutes apart.
     if progress:
         progress(len(groups), len(groups) + 1, 'the hotspots and the expected gain of the calls')
+    drives = drives_of(repository, calls)
+    for call in calls:
+        call['drive'] = drives.get(call['call_key'], '')
     linked = linked_values(calls, settings, scope_test(repository, settings))
     # Whether the Final CDR of the campaign of each call is scored (list 2 then orders it), and its Expected Gain: its
     # own points then, else what its failure lost in the latest campaign of its NR Mode with a Final CDR.
@@ -2048,11 +2089,11 @@ def calculate(repository: Any, progress: Callable[[int, int, str], None] | None 
             levels.get(call['call_key'], nq_catalog.IMPACT_NONE) if state == SCORED else LEVEL_OF_STATE[state],
             kpis_text(impact['kpis']) if state == SCORED else '', json.dumps(impact['kpis'] if state == SCORED else [], ensure_ascii=False),
             call['place_key'], call['place_label'], now, final_list.get(call['call_key'], 0),
-            None if gain is None else round(float(gain), 4), gain_campaign, *(grouped[name] for name in GROUP_FIELDS),
+            None if gain is None else round(float(gain), 4), gain_campaign, call['drive'], *(grouped[name] for name in GROUP_FIELDS),
         ))
     ensure_tables(repository)
     columns = ('call_key', 'campaign_key', 'impact_state', 'impact_points', 'impact_level', 'impact_kpis', 'impact_json', 'place_key',
-               'place_label', 'updated_at', 'final_list', 'expected_points', 'expected_campaign', *GROUP_FIELDS)
+               'place_label', 'updated_at', 'final_list', 'expected_points', 'expected_campaign', 'drive', *GROUP_FIELDS)
     with repository.connection() as connection:
         connection.executemany(
             f"INSERT INTO {PRIORITY_TABLE} ({', '.join(columns)}) VALUES ({', '.join('?' for _ in columns)}) ON CONFLICT(call_key) DO UPDATE SET "
@@ -2817,9 +2858,9 @@ def panel(repository: Any, filters: Any, username: str) -> dict[str, Any]:
         item['points'] = round(item['points'], 2)
         categories = item.pop('categories')
         item['category'] = max(categories.items(), key=lambda pair: (pair[1], pair[0]))[0] if categories else ''
-    # A short ID for each group, the same whatever the filters: H (hotspot), R (run of consecutive failures) or C (cluster) and
-    # the start of the key of its first call, longer where two groups of a table would share it.
-    for letter, items in (('H', spot_rows), ('R', run_rows), ('C', issue_rows)):
+    # A short ID for each group, the same whatever the filters: HOTSPOT, CONSECUTIVE (a run of consecutive failures) or
+    # CLUSTER and the start of the key of its first call, longer where two groups of a table would share it.
+    for letter, items in (('HOTSPOT', spot_rows), ('CONSECUTIVE', run_rows), ('CLUSTER', issue_rows)):
         codes = {item['key']: item['key'].split(':', 1)[-1].upper() for item in items}
         for length in range(6, 33):
             taken: dict[str, int] = {}

@@ -3475,7 +3475,7 @@
     data.issues.forEach((item) => { state.hotspotLabels[item.key] = `${item.id} · ${groupSites(item)}`; });
     const settings = data.settings;
     const joinWord = settings.hotspot_join === 'and' ? 'AND' : 'OR';
-    const hotspotNote = `Failures of the same operator, NR Mode and campaign, whatever their call type (the Ping tests and the calls out of scope apart), each within the Consecutive time ${joinWord} the Cluster distance (or at the site where it ended) of another one of them: every hotspot with the filtered calls of each, the most calls first (${number(spots.length)} hotspot${spots.length === 1 ? '' : 's'}).`;
+    const hotspotNote = `Failures of the same operator, NR Mode and campaign, whatever their call type (the Ping tests and the calls out of scope apart), each within ${joinWord === 'OR' ? 'the Consecutive time in the same drive OR' : 'the Consecutive time AND'} the Cluster distance (or at the site where it ended) of another one of them: every hotspot with the filtered calls of each, the most calls first (${number(spots.length)} hotspot${spots.length === 1 ? '' : 's'}).`;
     // The hotspots and the sites with a repeated issue share their columns and their look: each row with its operator, NR
     // Mode, campaign, site (a click shows its calls), time, calls, their call types, points lost, open calls and main root
     // category, the call types in a legend above them.
@@ -3527,7 +3527,7 @@
     const hotspotBlock = groupBlock(`Hotspots (Consecutives ${joinWord} Clustered Issues)`, hotspotNote,
       spots.length ? groupTable(spots, 'hotspot', 'hotspot', 'Hotspot ID', (item) => [groupSites(item), groupPeriod(item)])
         : node('p', 'No hotspot among the filtered calls.', 'nq-muted'), spots);
-    const runNote = `Runs of failures of the same operator, NR Mode and campaign, whatever their call type and wherever they were (the Ping tests and the calls out of scope apart), each within the Consecutive time of the one before: every run with the filtered calls of each, the most calls first (${number(runs.length)} run${runs.length === 1 ? '' : 's'}).`;
+    const runNote = `Runs of failures of the same operator, NR Mode, campaign and drive (the car), whatever their call type and wherever they were (the Ping tests and the calls out of scope apart), each within the Consecutive time of the one before: every run with the filtered calls of each, the most calls first (${number(runs.length)} run${runs.length === 1 ? '' : 's'}).`;
     const runBlock = groupBlock('Consecutive Issues', runNote,
       runs.length ? groupTable(runs, 'consecutive_issue', 'run', 'Consecutive ID', (item) => [groupPeriod(item)])
         : node('p', 'No consecutive failures among the filtered calls.', 'nq-muted'), runs);

@@ -455,9 +455,9 @@ def test_strategies_give_each_call_its_step_queue_and_priority():
         assert decide(vodafone, call)[:4] == ('Track only', 'Campaign 8 · Tracked', 'P8', '')
 
 
-def failure(key, minute, latitude, site='', operator='VF', day=1, **values):
+def failure(key, minute, latitude, site='', operator='VF', day=1, drive='system:car 1', **values):
     return {'call_key': key, 'operator': operator, 'nr_mode': 'SA', 'campaign': '2026-Q3', 'place_key': f'site:|{site}' if site else '',
-            'start_time': f'2026-09-0{day} 10:{minute:02d}:00', 'latitude': latitude, 'longitude': -0.12, **values}
+            'start_time': f'2026-09-0{day} 10:{minute:02d}:00', 'latitude': latitude, 'longitude': -0.12, 'drive': drive, **values}
 
 
 def test_hotspots_link_the_failures_close_in_time_or_distance_whatever_their_call_type():
@@ -475,18 +475,22 @@ def test_hotspots_link_the_failures_close_in_time_or_distance_whatever_their_cal
     # A failure linked to two others joins them, whichever was first: a chain of links is one hotspot.
     chain = nq_prioritization.hotspots([failure('x', 0, 51.5000), failure('y', 14, 51.5040), failure('z', 7, 51.5020)], join='and')
     assert len({key for key, _size in chain.values()}) == 1 and chain['x'] == ('cluster:x', 3)
-    # OR (the default): close in time wherever they are, or close in distance at any time of the campaign.
+    # OR (the default): close in time in the same drive wherever they are, or close in distance at any time of the campaign.
     either = nq_prioritization.hotspots(calls)
     assert either['k'][0] == either['m'][0] == either['d'][0] == either['a'][0]
     assert either['i'][0] == either['h'][0] == either['a'][0] and either['g'][1] == 1
+    # Another car measuring at the same time elsewhere never joins by time.
+    other_car = nq_prioritization.hotspots([failure('p', 0, 51.5000), failure('q', 5, 52.5000, drive='system:car 2')])
+    assert other_car['p'][1] == other_car['q'][1] == 1
 
 
-def test_consecutive_failures_have_another_failure_minutes_apart_wherever_it_was():
-    calls = [failure('a', 0, 51.5000), failure('b', 9, 52.0000),  # 9 minutes apart, 55 km apart
-             failure('c', 40, 51.5000), failure('d', 41, 53.0000), failure('e', 41, 51.5000, operator='EE'),
-             failure('f', 0, 51.5000, day=2), failure('g', 0, 51.5, day=3, start_time='')]
+def test_consecutive_failures_have_another_failure_of_their_drive_minutes_apart_wherever_it_was():
+    calls = [failure('a', 0, 51.5000), failure('b', 9, 52.0000),  # 9 minutes apart in the same car, 55 km apart
+             failure('c', 40, 51.5000), failure('d', 41, 51.5000, drive='system:car 2'),  # another car at the same time
+             failure('e', 41, 51.5000, operator='EE'), failure('f', 30, 51.5000, drive=''), failure('g', 0, 51.5, day=3, start_time='')]
     found = nq_prioritization.consecutive_failures(calls, 10)
-    assert (found['a'], found['b'], found['c'], found['d'], found['e'], found['f'], found['g']) == ('Yes', 'Yes', 'Yes', 'Yes', 'No', 'No', '')
+    assert (found['a'], found['b'], found['c'], found['d'], found['e']) == ('Yes', 'Yes', 'No', 'No', 'No')
+    assert found['f'] == found['g'] == ''
     assert nq_prioritization.consecutive_failures(calls, 5)['a'] == 'No'
 
 
@@ -625,7 +629,7 @@ def test_workspaces_of_the_previous_schema_get_the_runs_of_consecutive_failures(
     nq.ensure_nq_tables(core.repository)
     with core.repository.connection() as connection:
         columns = {row[1] for row in connection.execute(f'PRAGMA table_info({nq_prioritization.PRIORITY_TABLE})')}
-    assert {'consecutive_key', 'consecutive_size', 'repeat_key', 'repeat_all_key'} <= columns and 'drive' not in columns
+    assert {'consecutive_key', 'consecutive_size', 'repeat_key', 'repeat_all_key', 'drive'} <= columns
 
 
 def test_place_of_a_call_falls_back_from_the_site_of_its_last_cell_to_a_spot():
@@ -713,9 +717,11 @@ def nq_frames(prefix: str, campaigns=('2026-Q3',), seed=11) -> dict[str, pd.Data
         if kind == 'voice':
             frame['status'] = frame['Call_Status']
             frame['JOIN_ID'] = [f'{prefix}V{index}' for index in range(len(frame))]
+            frame['System_A'] = [f'Benchmarker ({index % 2 + 1})' for index in range(len(frame))]
         elif kind == 'data':
             frame['status'] = frame['Test_Result']
             frame['JOIN_ID'] = [f'{prefix}D{index}' for index in range(len(frame))]
+            frame['Measurement_System'] = [f'Benchmarker ({index % 2 + 1})' for index in range(len(frame))]
         else:
             frame['status'] = ['Completed' if value > 1.6 else 'Failed' for value in frame['LQ']]
             frame['JOIN_ID'] = [f'{prefix}S{index // 2}' for index in range(len(frame))]
@@ -876,6 +882,8 @@ def test_repeated_issues_count_every_service_and_nr_mode_of_the_operator(priorit
 def test_hotspots_and_consecutive_failures_mix_the_call_types(prioritized):
     rows = priority_rows()
     kinds = {key: nq_prioritization.call_kind(row['service'], row['test_name'], row['session_type']) for key, row in rows.items()}
+    # The drive of every call is the measurement system of its CDR.
+    assert {row['drive'] for row in rows.values() if row['service'] in {'voice', 'data'}} == {'system:Benchmarker (1)', 'system:Benchmarker (2)'}
     # The Ping tests and the calls out of scope are neither consecutive nor in a hotspot.
     out = nq_prioritization.scope_test(core.repository, nq_prioritization.load_settings(core.repository))
     assert {(row['consecutive'], row['cluster_key']) for key, row in rows.items() if kinds[key] == 'ping' or out(row)} <= {('', '')}
@@ -1004,7 +1012,8 @@ def test_panel_filters_and_exports_show_the_prioritization(prioritized):
         'Operator', 'NR Mode', 'Campaign', 'Site(s)', 'From', 'To', 'Calls', 'Voice', 'WhatsApp', 'Data', 'Points lost', 'Open', 'Main Root Category']
     # The IDs of the groups: short, of their letter, one for each group of a table.
     ids = [item['id'] for item in panel['issues']]
-    assert len(set(ids)) == len(ids) and all(value.startswith('C-') for value in ids) and spot['id'].startswith('H-') and run['id'].startswith('R-')
+    assert len(set(ids)) == len(ids) and all(value.startswith('CLUSTER-') for value in ids)
+    assert spot['id'].startswith('HOTSPOT-') and run['id'].startswith('CONSECUTIVE-')
     assert sum(issue['kinds'].values()) == issue['calls'] == sum(issue['campaign_names'].values()) and issue['first'] <= issue['last']
     # From and To: the day, the month in letters and the time, without the year.
     assert non_qualified_calls_export.group_time('2026-11-20 16:18:44.5') == '20 Nov 16:18'
