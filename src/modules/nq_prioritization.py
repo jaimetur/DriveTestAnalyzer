@@ -55,6 +55,7 @@ import json
 import math
 import re
 import time
+from collections import Counter
 from pathlib import Path
 from threading import Lock
 from typing import Any, Callable, Iterable, Iterator
@@ -1939,6 +1940,50 @@ def place_values(repository: Any, settings: dict[str, Any], every_mode: bool = T
     return values
 
 
+def group_id(letter: str, key: str, length: int = 6) -> str:
+    """The short ID of a group: HOT (hotspot), CON (run of consecutive failures) or CLU (cluster), and the start of the key
+    of its first call (the Hotspots, Consecutive & Clustered Issues panel takes more of it where two groups of a table would
+    share it)."""
+    return f"{letter}-{key.split(':', 1)[-1].upper()[:length]}"
+
+
+# The groups a call can be in: their ID prefix, the columns of their key and size (one of each at most) and the filter of
+# the list of calls that shows the calls of each.
+CALL_GROUPS = (('hotspot', 'HOT', 'cluster_key', 'cluster_size', 'hotspot'), ('cluster', 'CLU', 'repeat_key', 'repeat_size', 'clustered_issue'),
+               ('cluster_all', 'CLU', 'repeat_all_key', 'repeat_all_size', 'clustered_issue'),
+               ('run', 'CON', 'consecutive_key', 'consecutive_size', 'consecutive_issue'))
+
+
+def call_groups(call: dict[str, Any], connection: Any = None) -> list[dict[str, Any]]:
+    """The groups of a call of 2 calls or more, from its stored keys and sizes (``GROUP_FIELDS``), by the IDs of the
+    Hotspots, Consecutive & Clustered Issues panel: its hotspot, its cluster (of its NR Mode), its cluster of every NR Mode
+    together when that holds more calls (as the panel shows the clusters without one NR Mode filtered) and its run of
+    consecutive failures; a call is in one of each at most. Each with its key and the filter of the list of calls by it,
+    and with a ``connection`` what it holds too: its sites (the places of its calls, the most calls first, with how many) and
+    when its first and last call started."""
+    from src.modules import non_qualified_calls as nq
+
+    found = []
+    for kind, letter, key, size, filter_name in CALL_GROUPS:
+        value, calls = str(call.get(key) or ''), int(call.get(size) or 0)
+        if value and calls >= 2 and not (kind == 'cluster_all' and calls == int(call.get('repeat_size') or 0)):
+            found.append({'kind': kind, 'id': group_id(letter, value), 'calls': calls, 'key': value, 'filter': filter_name, 'column': key})
+    if connection is not None and found:
+        rows = connection.execute(
+            f"SELECT {', '.join(f'p.{item[2]}' for item in CALL_GROUPS)}, p.place_label, l.start_time FROM {PRIORITY_TABLE} p "
+            f"JOIN {nq.NQ_CALL_LATEST_TABLE} l ON l.call_key = p.call_key WHERE "
+            + ' OR '.join(f'p.{item["column"]} = ?' for item in found), [item['key'] for item in found]).fetchall()
+        for item in found:
+            members = [row for row in rows if row[item['column']] == item['key']]
+            places = Counter(str(row['place_label'] or '') for row in members if row['place_label'])
+            times = sorted(str(row['start_time']) for row in members if row['start_time'])
+            item['sites'] = [{'label': label, 'calls': count} for label, count in sorted(places.items(), key=lambda pair: (-pair[1], pair[0]))]
+            item['first'], item['last'] = (times[0], times[-1]) if times else ('', '')
+    for item in found:
+        del item['column']
+    return found
+
+
 # The values of every call that its groups give, as the table of the NQ Prioritization keeps them.
 GROUP_FIELDS = ('repetitions', 'repeated_campaigns', 'repeated', 'cluster_key', 'cluster_size', 'consecutive', 'consecutive_key',
                 'consecutive_size', 'repeat_key', 'repeat_size', 'repeat_all_key', 'repeat_all_size')
@@ -2988,18 +3033,17 @@ def panel(repository: Any, filters: Any, username: str) -> dict[str, Any]:
     # (cluster), prefixes of the same length, and the start of the key of its first call, longer where two groups of a table
     # would share it.
     for letter, items in (('HOT', spot_rows), ('CON', run_rows), ('CLU', issue_rows)):
-        codes = {item['key']: item['key'].split(':', 1)[-1].upper() for item in items}
         for length in range(6, 33):
             taken: dict[str, int] = {}
-            for code in codes.values():
-                taken[code[:length]] = taken.get(code[:length], 0) + 1
             for item in items:
-                if 'id' not in item and taken[codes[item['key']][:length]] == 1:
-                    item['id'] = f"{letter}-{codes[item['key']][:length]}"
+                taken[group_id(letter, item['key'], length)] = taken.get(group_id(letter, item['key'], length), 0) + 1
+            for item in items:
+                if 'id' not in item and taken[group_id(letter, item['key'], length)] == 1:
+                    item['id'] = group_id(letter, item['key'], length)
             if all('id' in item for item in items):
                 break
         for item in items:
-            item.setdefault('id', f"{letter}-{codes[item['key']]}")
+            item.setdefault('id', group_id(letter, item['key'], 32))
     for entry in (*rules, unruled):
         entry['points'] = round(entry['points'], 2)
     level_order = [name for name, _color in nq_catalog.IMPACT_LEVELS]

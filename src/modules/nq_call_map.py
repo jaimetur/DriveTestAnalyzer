@@ -456,10 +456,12 @@ def nearby_failures(repository: Any, call: dict[str, Any], centre: tuple[float, 
     base, params = nq._base_sql(nq.untracked_status(repository, options), repository)
     south, north, west, east = bounding_box(centre, radius_km)
     with repository.connection() as connection:
-        own = connection.execute(f'SELECT place_key, cluster_key, cluster_size, repeat_key, repeat_size, consecutive_key, consecutive_size '
-                                 f'FROM {PRIORITY_TABLE} WHERE call_key = ?', (call.get('parent_key') or call['call_key'],)).fetchone()
+        own = connection.execute(f'SELECT place_key, cluster_key, cluster_size, repeat_key, repeat_size, repeat_all_key, consecutive_key, '
+                                 f'consecutive_size FROM {PRIORITY_TABLE} WHERE call_key = ?', (call.get('parent_key') or call['call_key'],)).fetchone()
         place, hotspot, cluster, run = ((_text(own['place_key']), _text(own['cluster_key']), _text(own['repeat_key']), _text(own['consecutive_key']))
                                         if own else ('', '', '', ''))
+        # Its cluster of every NR Mode together too, as the panel shows the clusters without one NR Mode filtered.
+        cluster_all = _text(own['repeat_all_key']) if own else ''
         rows = connection.execute(f"""
             WITH calls AS ({base})
             SELECT c.call_key, c.dataset_id, c.join_id, c.service, c.test_name, c.session_type, c.operator, c.campaign, c.nr_mode, c.result,
@@ -467,12 +469,13 @@ def nearby_failures(repository: Any, call: dict[str, Any], centre: tuple[float, 
                    c.start_time, c.latitude, c.longitude, c.site_id, c.host_network, c.cell_id, c.city, c.status,
                    c.root_domain, c.root_category, c.root_cause, COALESCE(q.place_key, '') AS place_key, COALESCE(q.place_label, '') AS place_label,
                    COALESCE(q.cluster_key, '') AS cluster_key, COALESCE(q.repeat_key, '') AS repeat_key,
-                   COALESCE(q.consecutive_key, '') AS consecutive_key, q.repetitions AS repetitions
+                   COALESCE(q.repeat_all_key, '') AS repeat_all_key, COALESCE(q.consecutive_key, '') AS consecutive_key,
+                   q.repetitions AS repetitions
             FROM calls c LEFT JOIN {PRIORITY_TABLE} q ON q.call_key = c.call_key
             WHERE (c.latitude BETWEEN ? AND ? AND c.longitude BETWEEN ? AND ?)
                OR (? <> '' AND q.place_key = ?) OR (? <> '' AND q.cluster_key = ?) OR (? <> '' AND q.repeat_key = ?)
-               OR (? <> '' AND q.consecutive_key = ?)
-        """, [*params, south, north, west, east, place, place, hotspot, hotspot, cluster, cluster, run, run]).fetchall()
+               OR (? <> '' AND q.repeat_all_key = ?) OR (? <> '' AND q.consecutive_key = ?)
+        """, [*params, south, north, west, east, place, place, hotspot, hotspot, cluster, cluster, cluster_all, cluster_all, run, run]).fetchall()
     own_key = call.get('parent_key') or call['call_key']
     operator = _text(call.get('operator')).casefold()
     failures = []
@@ -482,10 +485,11 @@ def nearby_failures(repository: Any, call: dict[str, Any], centre: tuple[float, 
         same_operator = _text(row['operator']).casefold() == operator
         same_place = bool(place) and row['place_key'] == place and same_operator
         same_hotspot = bool(hotspot) and row['cluster_key'] == hotspot
+        same_cluster_all = bool(cluster_all) and row['repeat_all_key'] == cluster_all
         same_cluster = bool(cluster) and row['repeat_key'] == cluster
         same_run = bool(run) and row['consecutive_key'] == run
         is_self = row['call_key'] == own_key
-        if not is_self and not (same_place or same_hotspot or same_cluster or same_run) and (distance is None or distance > radius_km):
+        if not is_self and not (same_place or same_hotspot or same_cluster or same_cluster_all or same_run) and (distance is None or distance > radius_km):
             continue
         kind = call_kind(row['service'], row['test_name'], row['session_type'])
         failures.append({
@@ -503,14 +507,18 @@ def nearby_failures(repository: Any, call: dict[str, Any], centre: tuple[float, 
             'distance_km': None if distance is None else round(distance, 3),
             'self': is_self, 'same_operator': same_operator, 'same_place': same_place and not is_self,
             'same_hotspot': same_hotspot and not is_self, 'same_cluster': same_cluster and not is_self, 'same_run': same_run and not is_self,
+            'same_cluster_all': same_cluster_all and not is_self,
+            # The keys of its groups, so that the page can tell those of the group that filters the list of calls.
+            'cluster_key': _text(row['cluster_key']), 'repeat_key': _text(row['repeat_key']), 'repeat_all_key': _text(row['repeat_all_key']),
+            'consecutive_key': _text(row['consecutive_key']),
         })
     def order(item: dict[str, Any]) -> tuple[Any, ...]:
         return (not item['self'], not (item['same_hotspot'] or item['same_cluster'] or item['same_run'] or item['same_place']),
                 math.inf if item['distance_km'] is None else item['distance_km'])
 
     def kept(item: dict[str, Any]) -> bool:
-        return (item['self'] or item['same_hotspot'] or item['same_cluster'] or item['same_run'] or item['same_place']
-                or (item['campaign'] == _text(call.get('campaign')) and item['nr_mode'] == _text(call.get('nr_mode'))))
+        return (item['self'] or item['same_hotspot'] or item['same_cluster'] or item['same_cluster_all'] or item['same_run']
+                or item['same_place'] or (item['campaign'] == _text(call.get('campaign')) and item['nr_mode'] == _text(call.get('nr_mode'))))
     failures.sort(key=order)
     others = [item for item in failures if not kept(item)]
     groups = {'hotspot': (own['cluster_size'] or 0) if hotspot else 0, 'cluster': (own['repeat_size'] or 0) if cluster else 0,

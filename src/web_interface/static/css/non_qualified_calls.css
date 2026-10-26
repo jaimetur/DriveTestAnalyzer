@@ -244,7 +244,9 @@
 .nq-drawer-backdrop[hidden] { display: none; }
 .nq-drawer { position: fixed; top: 0; right: 0; bottom: 0; z-index: 81; display: grid; grid-template-rows: auto auto auto minmax(0, 1fr); width: min(620px, 100vw); background: #fff; box-shadow: -18px 0 40px rgba(60, 10, 30, .22); transform: translateX(105%); transition: transform .22s ease; visibility: hidden; }
 .nq-drawer.is-open { transform: none; visibility: visible; }
-.nq-drawer-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; padding: 1.1rem 1.2rem .9rem; background: linear-gradient(125deg, #7d1238, #e0507a); color: #fff; }
+.nq-drawer-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: .35rem 1rem; padding: 1.1rem 1.2rem .9rem; background: linear-gradient(125deg, #7d1238, #e0507a); color: #fff; }
+/* The call takes the width the tools leave (never pushing them to another row); the groups go on a row of their own. */
+.nq-drawer-head > div:first-child { flex: 1 1 0; min-width: 0; }
 .nq-drawer-head .eyebrow { display: flex; gap: .35rem; margin: 0 0 .35rem; }
 .nq-drawer-head h2 { margin: 0; color: #fff; font-size: 1.25rem; }
 .nq-drawer-meta { margin: .3rem 0 0; color: #ffe6ee; font-size: .85rem; }
@@ -256,6 +258,33 @@
 .nq-drawer-ids { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 0 1.4rem; }
 /* Its title level with that of the JOIN_ID and its value in a row as tall as the copy button, level with the JOIN_ID. */
 .nq-drawer-unique { grid-template-columns: minmax(0, max-content); grid-template-rows: auto 1.85rem; }
+/* Its groups, white cards in the colour of their group on the map of the call. */
+/* Its groups on a row of their own across the header: up to four columns of the same width, the text of each card wrapping. */
+.nq-drawer-groups { flex: 1 0 100%; grid-template-columns: minmax(0, 1fr); margin: 0; }
+.nq-drawer-group-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(max(13rem, calc((100% - 3 * .4rem) / 4)), 1fr)); gap: .75rem .4rem;
+  padding-top: .45rem; }
+/* Each group a white card: what it is, its ID and calls on top, then its sites and its period. */
+.nq-drawer .nq-drawer-group { position: relative; display: grid; align-content: start; gap: .08rem; min-width: 0; min-height: 0; margin: 0; padding: .25rem .6rem;
+  border: 0; border-radius: 10px; background: #fff; box-shadow: none; color: var(--nq-group, var(--nq-dark)); font: inherit; font-size: .74rem;
+  font-weight: 700; letter-spacing: 0; line-height: 1.3; text-align: left; text-transform: none; cursor: pointer; }
+.nq-drawer .nq-drawer-group:hover { background: #fff4f8; }
+.nq-drawer .nq-drawer-group:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+/* The group that filters the list stands out: tinted in its colour, ringed in its colour and white, with a tab on its top
+   edge. */
+.nq-drawer .nq-drawer-group.is-active, .nq-drawer .nq-drawer-group.is-active:hover {
+  background: color-mix(in srgb, var(--nq-group) 14%, #fff); box-shadow: 0 0 0 2px var(--nq-group), 0 0 0 5px #fff; }
+.nq-drawer-group.is-active::before { content: 'Filtering the list'; position: absolute; top: 0; right: .6rem; padding: .05rem .5rem; border: 2px solid #fff;
+  border-radius: 999px; background: var(--nq-group); color: #fff; font-size: .64rem; font-weight: 800; line-height: 1.2; transform: translateY(-55%); }
+.nq-drawer-group-head { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; }
+.nq-drawer-group b { font-weight: 850; }
+.nq-drawer-group-line { color: var(--nq-text, #2b2b2b); font-weight: 650; overflow-wrap: anywhere; }
+/* The clusters start a row of their own, below the hotspot and the run. */
+.nq-drawer-group-break { grid-column: 1 / -1; height: 0; margin-top: -.75rem; }
+.nq-drawer-join .nq-drawer-group code { padding: 0; background: none; color: inherit; font-size: .74rem; }
+/* In the colours of the groups on the map of the call (darker, for the text): hotspot blue, cluster green, run cyan. */
+.nq-drawer-group.is-hotspot { --nq-group: #1864ab; }
+.nq-drawer-group.is-cluster { --nq-group: #2b8a3e; }
+.nq-drawer-group.is-run { --nq-group: #0b7285; }
 /* The fields of the analysts of General beside the follow-up: the titles and the height, border and text of its lists (the
    Assignee). */
 .nq-drawer .nq-drawer-tracking .nq-analysis-field.nq-tracking-general { gap: .3rem; color: var(--nq-muted); font-size: .72rem; font-weight: 850; letter-spacing: .04em; text-transform: uppercase; }
@@ -1232,6 +1261,8 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
   .nq-drawer-join code { font-size: .68rem; }
   /* The navigation, the JOIN_ID and Close go above the call, across the width. */
   .nq-drawer-head { flex-direction: column-reverse; align-items: stretch; gap: .6rem; }
+  /* The groups stay below the call (the header is laid out from the bottom up). */
+  .nq-drawer-groups { order: -1; }
   .nq-drawer-tools { flex-wrap: nowrap; }
   .nq-drawer-find { flex: 1 1 auto; min-width: 0; }
   .nq-drawer .nq-drawer-find input { width: 100%; }
@@ -1694,6 +1725,12 @@ span.nq-condition-value { display: inline-block; padding: .05rem .45rem; border-
 .nq-step-legend-item { display: inline-flex; align-items: center; gap: .3rem; }
 .nq-step-legend-item > i { display: inline-block; width: .7rem; height: .7rem; border-radius: 3px; }
 td.nq-queue-number { text-align: right; font-variant-numeric: tabular-nums; }
+/* The queues fit their card without scrolling sideways: the JOIN_ID always on one line, the other columns (the step pill too)
+   and the headers on two lines when the card is narrow. */
+.nq-queue-table th { white-space: normal; vertical-align: bottom; }
+.nq-queue-table :is(th, td) { padding-right: .4rem; padding-left: .4rem; }
+.nq-queue-table td:is(:nth-child(4), :nth-child(5), :nth-child(6), :nth-child(8)) { white-space: normal; }
+.nq-queue-table td.nq-queue-join, .nq-queue-table td.nq-queue-join .nq-failure-drill { white-space: nowrap; }
 /* The tracked calls, folded below the queues. */
 .nq-priority-tracked { margin-top: .9rem; }
 .nq-priority-tracked > summary { color: var(--nq-dark); font-weight: 800; cursor: pointer; }

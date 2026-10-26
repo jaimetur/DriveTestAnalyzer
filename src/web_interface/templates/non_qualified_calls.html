@@ -373,6 +373,9 @@
       <form class="nq-drawer-find" id="nq-drawer-find" role="search"{% if provider and not provider.join_id %} hidden{% endif %}><input type="search" id="nq-drawer-find-input" placeholder="Go to a JOIN_ID…" autocomplete="off" aria-label="Go to the call of a JOIN_ID" title="Paste a JOIN_ID and press Enter to open its call"></form>
       <button type="button" class="nq-drawer-close" id="nq-drawer-close" aria-label="Close the call details">&times;</button>
     </div>
+    {# Its hotspot, run of consecutive failures and clusters, by the IDs of the Hotspots, Consecutive & Clustered Issues panel,
+       across the whole header so that the four fit on one row. #}
+    <div class="nq-drawer-join nq-drawer-groups" id="nq-drawer-groups" hidden><span>Groups</span><div class="nq-drawer-group-list" id="nq-drawer-groups-list"></div></div>
   </header>
   <div class="nq-drawer-tracking" id="nq-drawer-tracking"></div>
   {# One tab per section of the Analysis Center (built by the script), then the call details. #}

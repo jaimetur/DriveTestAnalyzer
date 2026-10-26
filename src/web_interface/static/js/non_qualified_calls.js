@@ -55,6 +55,12 @@
   const EXTRA_FILTERS = ['call_type', 'period', 'age', 'root_pair', 'effective_domain', 'effective_cause', 'node',
     'netcheck_domain', 'netcheck_category', 'netcheck_cause', 'script_domain', 'script_category', 'script_cause',
     'dta_domain', 'dta_category', 'dta_cause', 'dta_raw', 'netcheck_raw', 'script_raw', 'rca_state', 'place', 'hotspot', 'consecutive_issue', 'clustered_issue'];
+  // The filters of the groups of the NQ Prioritization: one at a time, the group chosen replaces the one filtered before.
+  const GROUP_FILTERS = ['hotspot', 'consecutive_issue', 'clustered_issue'];
+  // What each group of a call is, as the map of the call names the one that filters the list.
+  const GROUP_LABELS = {hotspot: 'hotspot', cluster: 'cluster', cluster_all: 'cluster of every NR Mode', run: 'consecutive run'};
+  // The map of the open call paints the group that filters the list (set once the map is mounted).
+  let refreshCallMap = () => {};
   // The values of the Follow-up filter (also set by the indicator cards), in their order.
   const FOLLOW_UP_STATES = ['attended', 'not_attended', 'open', 'stalled', 'closed', 'with_team', 'assigned', 'commented', 'labelled',
     'identified', 'not_identified'];
@@ -146,6 +152,20 @@
   // in four-digit numbers) and a point before decimals.
   const numberFormat = new Intl.NumberFormat('en-US');
   const number = (value) => numberFormat.format(Number(value || 0));
+  // When the first or last call of a group started: 20 Nov 16:18 (the day, the month in letters and the time; the year, which
+  // the campaign tells, left out), and the period of a group from its first to its last call (the time alone on the same day).
+  const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const momentText = (value) => {
+    const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+    return match ? `${match[3]} ${MONTHS[Number(match[2]) - 1]} ${match[4]}:${match[5]}` : '';
+  };
+  const groupPeriod = (item) => {
+    const first = momentText(item.first);
+    const last = momentText(item.last);
+    if (!first) return '';
+    if (!last || last === first) return first;
+    return String(item.first).slice(0, 10) === String(item.last).slice(0, 10) ? `${first}–${last.slice(-5)}` : `${first}–${last}`;
+  };
   // Readable text on any option colour.
   const contrastText = (hex) => {
     const match = /^#?([0-9a-f]{6})$/i.exec(hex || '');
@@ -492,7 +512,11 @@
         return;
       }
       if (EXTRA_FILTERS.includes(field)) {
-        if (active) delete state.extraFilters[field]; else state.extraFilters[field] = [value];
+        if (active) delete state.extraFilters[field];
+        else {
+          if (GROUP_FILTERS.includes(field)) GROUP_FILTERS.forEach((other) => { delete state.extraFilters[other]; });
+          state.extraFilters[field] = [value];
+        }
         return;
       }
       const select = root.querySelector(`[data-nq-filter="${field}"]`);
@@ -566,6 +590,21 @@
     root.querySelectorAll('[data-nq-flag]').forEach((box) => mark(box, box.dataset.nqFlag));
     mark($('nq-search'), 'search');
   };
+  // The group of the open call that filters the list of calls (its filter, key and name), for the map of the call.
+  const filteringGroup = () => {
+    const group = (state.detail?.call.groups || []).find((item) => (state.extraFilters[item.filter] || []).length === 1
+      && state.extraFilters[item.filter][0] === item.key);
+    return group ? {filter: group.filter, key: group.key, label: `${GROUP_LABELS[group.kind]} ${group.id}`} : null;
+  };
+  // The groups in the header of the open call that filter the list (and the map of the call, painted again).
+  const markGroupChips = () => {
+    $('nq-drawer-groups-list')?.querySelectorAll('.nq-drawer-group').forEach((chip) => {
+      const active = (state.extraFilters[chip.dataset.filter] || []).length === 1 && state.extraFilters[chip.dataset.filter][0] === chip.dataset.key;
+      chip.classList.toggle('is-active', active);
+      chip.setAttribute('aria-pressed', String(active));
+    });
+    refreshCallMap();
+  };
   // The filters applied, as chips that remove them, at the top of every panel; the NQ Rate panel dims those it ignores.
   const renderActiveFilters = (filters) => {
     const chips = [];
@@ -574,6 +613,7 @@
     Object.entries(filters.fields || {}).forEach(([key, values]) => entries.push([`field:${key}`, values]));
     Object.entries(filters.columns || {}).forEach(([key, values]) => entries.push([`column:${key}`, values]));
     markActiveFilters(new Set(entries.map(([field]) => field)));
+    markGroupChips();
     entries.forEach(([field, value]) => {
       let text;
       if (field === 'search') text = `Search: “${value}”`;
@@ -1912,13 +1952,15 @@
       const breakdowns = panelShown('summary');
       const result = await api('/api/non-qualified-calls/calls', {
         method: 'POST',
-        body: JSON.stringify({filters, sort: state.sort, direction: state.direction, page: state.page, page_size: state.pageSize, breakdowns}),
+        body: JSON.stringify({filters, sort: state.sort, direction: state.direction, page: state.page, page_size: state.pageSize, breakdowns,
+          locate: state.locate || ''}),
         // A quiet reload is the page keeping itself current, not someone using the application.
         ...(quiet ? {headers: {'X-Background-Refresh': '1'}} : {}),
       });
       if (token !== state.requestToken) return;
       state.result = result;
       state.page = result.page;
+      state.locate = '';
       renderSync(result.sync);
       renderActiveFilters(filters);
       renderColumnFilters();
@@ -1960,7 +2002,13 @@
       }
     }
   }
-  const scheduleLoad = debounce(() => { state.page = 1; loadCalls(); }, 300);
+  // The filters changed: the first page, or the page that holds the call open beside the list (so that its arrows keep going
+  // through the calls of the filters).
+  const scheduleLoad = debounce(() => {
+    state.page = 1;
+    state.locate = $('nq-drawer')?.getAttribute('aria-hidden') === 'false' ? state.detail?.call.call_key || '' : '';
+    loadCalls();
+  }, 300);
 
   // -- progress view --------------------------------------------------------------
   const PALETTE = ['#b0234f', '#0f6f7d', '#e08a1e', '#6a63c9', '#2e8b57', '#245a96', '#b85b20', '#7b8790', '#5b6b2e', '#c8365f'];
@@ -3447,26 +3495,13 @@
       element.title = HOTSPOT_KINDS.map((kind) => `${kind} ${number(item.kinds[kind] || 0)}`).join(' · ');
       return element;
     };
-    // When the first or last call of a group started, in its own column: 20 Nov 16:18 (the day, the month in letters and the
-    // time, the same in every table; the year, which the campaign tells, and the full date on hover).
-    const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const momentText = (value) => {
-      const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
-      return match ? `${match[3]} ${MONTHS[Number(match[2]) - 1]} ${match[4]}:${match[5]}` : '';
-    };
+    // When the first or last call of a group started, in its own column (the same in every table, the full date on hover).
     const momentCell = (value) => {
       const text = momentText(value);
       return text ? {text, title: String(value).slice(0, 16), className: 'nq-group-time'} : {text: '—', className: 'nq-group-time'};
     };
     // What identifies a group beside its ID: its sites (spatial groups), its period (temporal groups) or both (hotspots).
     const groupSites = (item) => `${item.place || 'No site'}${item.places > 1 ? ` +${number(item.places - 1)}` : ''}`;
-    const groupPeriod = (item) => {
-      const first = momentText(item.first);
-      const last = momentText(item.last);
-      if (!first) return '';
-      if (!last || last === first) return first;
-      return String(item.first).slice(0, 10) === String(item.last).slice(0, 10) ? `${first}–${last.slice(-5)}` : `${first}–${last}`;
-    };
     const spots = data.hotspots || [];
     const runs = data.consecutive || [];
     // The filters of the groups name each by its ID and what identifies it.
@@ -3565,7 +3600,9 @@
     // Priority and the step in pills (the step of list 1, Weekly, or list 2, Final; what it takes on hover), the campaign
     // as the Campaign Maps name it and the Scoring Impact in its colour.
     const levelColors = Object.fromEntries((data.levels || []).map((item) => [item.value, item.color]));
-    const queueTable = (rows) => failureTable(['#', 'JOIN_ID', 'Priority', 'Operator', 'Campaign', 'Step', 'Expected Gain', 'Scoring Impact'],
+    // Each queue fits its card without scrolling sideways (the JOIN_ID on one line, the other columns wrap when needed).
+    const withClass = (element, className) => { element.classList.add(className); return element; };
+    const queueTable = (rows) => withClass(failureTable(['#', 'JOIN_ID', 'Priority', 'Operator', 'Campaign', 'Step', 'Expected Gain', 'Scoring Impact'],
       rows.map((item) => [{text: number(item.position), className: 'nq-queue-position'},
         {text: item.join_id || item.call_key, className: 'nq-failure-name nq-queue-join', action: () => openDetail(item.call_key)},
         {text: item.priority || '—', className: `nq-queue-priority is-${String(item.priority || '').toLowerCase()}`},
@@ -3574,7 +3611,7 @@
           className: `nq-queue-step is-${item.list === 'final' ? 'final' : 'weekly'}`},
         {text: points(item.gain), className: 'nq-queue-number',
           title: item.gain_campaign ? `From the Final CDR of ${item.gain_campaign}` : 'No campaign with a Final CDR to tell it: the oldest first'},
-        item.level ? {text: item.level, className: 'nq-failure-name nq-priority-level', color: levelColors[item.level]} : '—']));
+        item.level ? {text: item.level, className: 'nq-failure-name nq-priority-level', color: levelColors[item.level]} : '—'])), 'nq-queue-table');
     const queues = node('div', undefined, 'nq-priority-queues');
     queues.append(...(data.queues || []).map((item) => {
       const box = node('div', undefined, 'nq-failure-card');
@@ -3683,7 +3720,10 @@
     useRootCause: (category, cause) => {
       if (state.detail) patchCall(state.detail.call, {root_category: category, root_cause: cause}, null, 'Root cause taken from the decisions at its place.');
     },
+    // The group of the call that filters the list, painted red on the map.
+    groupFilter: () => filteringGroup(),
   });
+  refreshCallMap = () => callMap?.refresh();
   const closeDrawer = () => {
     drawer.classList.remove('is-open');
     drawer.setAttribute('aria-hidden', 'true');
@@ -4557,6 +4597,46 @@
       return item;
     }));
   };
+  // The groups of the open call on one row when they fit (up to four columns); else the clusters start a row of their own,
+  // below the hotspot and the run (laid out again whenever the width of the header changes).
+  const layoutGroupChips = () => {
+    const list = $('nq-drawer-groups-list');
+    if (!list) return;
+    list.querySelector('.nq-drawer-group-break')?.remove();
+    const chips = [...list.querySelectorAll('.nq-drawer-group')];
+    if (chips.length < 2 || chips.every((chip) => chip.offsetTop === chips[0].offsetTop)) return;
+    const firstCluster = chips.findIndex((chip) => chip.dataset.kind.startsWith('cluster'));
+    if (firstCluster > 0) list.insertBefore(node('span', undefined, 'nq-drawer-group-break'), chips[firstCluster]);
+  };
+  let groupsWidth = 0;
+  if (window.ResizeObserver && $('nq-drawer-groups')) {
+    new ResizeObserver(([entry]) => {
+      const width = Math.round(entry.contentRect.width);
+      if (width === groupsWidth) return;
+      groupsWidth = width;
+      layoutGroupChips();
+    }).observe($('nq-drawer-groups'));
+  }
+
+  // Filter the list of calls by a group of the open call after confirming it, in place of the group filtered before (if any),
+  // or remove its filter when the list already shows it.
+  const filterByGroup = async (group, name, label) => {
+    const active = (state.extraFilters[group.filter] || []).length === 1 && state.extraFilters[group.filter][0] === group.key;
+    const others = GROUP_FILTERS.flatMap((field) => (state.extraFilters[field] || [])
+      .filter((value) => !(field === group.filter && value === group.key)).map((value) => extraLabel(field, value)));
+    const message = active ? `Remove the filter of ${name} from the list of calls?`
+      : `Show in the list only the ${number(group.calls)} calls of ${name}?${others.length ? ` It replaces the filter of ${others.join(', ')}.` : ''}`;
+    const accepted = typeof window.showConfirmDialog === 'function'
+      ? await window.showConfirmDialog(message, {title: active ? 'Remove the group filter' : 'Filter by this group', confirmLabel: active ? 'Remove filter' : 'Filter'})
+      : window.confirm(message);
+    if (!accepted) return;
+    state.hotspotLabels[group.key] = label;
+    GROUP_FILTERS.forEach((field) => { delete state.extraFilters[field]; });
+    if (!active) state.extraFilters[group.filter] = [group.key];
+    markGroupChips();
+    scheduleLoad();
+  };
+
   function renderDetail(detail) {
     state.detail = detail;
     const call = detail.call;
@@ -4583,6 +4663,65 @@
     $('nq-drawer-unique-label').textContent = uniqueField?.label || 'Unique ID';
     $('nq-drawer-unique-id').textContent = uniqueId || '—';
     $('nq-drawer-unique').hidden = !uniqueField;
+    // Its groups of 2 calls or more, each with what it is, its NR Mode, its ID in the Hotspots, Consecutive & Clustered Issues
+    // panel and its calls, and what it holds: its sites (spatial groups: clusters), its period (temporal groups: runs) or both
+    // (hotspots). Its hotspot and its run of consecutive failures keep to its NR Mode and campaign, its cluster to its NR Mode
+    // (with the calls of its cluster of every NR Mode together when that holds more, as the panel shows the clusters without
+    // one NR Mode filtered).
+    // The hotspot and the run first, then the clusters (on a row of their own when they do not all fit on one, see
+    // layoutGroupChips).
+    const GROUP_ORDER = ['hotspot', 'run', 'cluster', 'cluster_all'];
+    const groups = [...(call.groups || [])].sort((a, b) => GROUP_ORDER.indexOf(a.kind) - GROUP_ORDER.indexOf(b.kind));
+    const cluster = groups.find((group) => group.kind === 'cluster');
+    const mode = call.nr_mode || '';
+    const NAMES = {hotspot: 'Hotspot', cluster: 'Cluster', cluster_all: 'Cluster', run: 'Consecutive run'};
+    const TITLES = {
+      hotspot: 'Failures of its operator, NR Mode and campaign linked to each other in time or distance',
+      cluster: 'Calls of its operator and NR Mode failed close to each other or at the same site, in its campaign and those of the Cluster period',
+      cluster_all: 'Its cluster with the calls of every NR Mode together, as the Hotspots, Consecutive & Clustered Issues panel shows the clusters without one NR Mode filtered',
+      run: 'Failures of its operator, NR Mode, campaign and drive one after another',
+    };
+    const chips = [];
+    for (const group of groups) {
+      const calls = `${number(group.calls)} call${group.calls === 1 ? '' : 's'}`;
+      if (group.kind === 'cluster_all' && cluster?.id === group.id) {
+        // The same first call: one chip with both counts.
+        const chip = chips.find((item) => item.dataset.kind === 'cluster');
+        chip.querySelector('.nq-drawer-group-head').append(` · ${number(group.calls)} with every NR Mode`);
+        chip.title += `. ${TITLES.cluster_all}: ${calls}`;
+        continue;
+      }
+      const chip = node('button', undefined, `nq-drawer-group is-${group.kind === 'cluster_all' ? 'cluster' : group.kind}`);
+      chip.type = 'button';
+      chip.dataset.kind = group.kind;
+      chip.dataset.filter = group.filter;
+      chip.dataset.key = group.key;
+      const head = node('span', undefined, 'nq-drawer-group-head');
+      head.append(node('b', `${NAMES[group.kind]} ${group.kind === 'cluster_all' ? 'every NR Mode' : mode}`.trim()), node('code', group.id), `· ${calls}`);
+      chip.append(head);
+      chip.title = `${TITLES[group.kind]}: ${calls}`;
+      // Its sites with how many of its calls failed at each, the most first (the first 3, every one on hover), and its period.
+      const sites = group.sites || [];
+      if (group.kind !== 'run' && sites.length) {
+        const shown = sites.slice(0, 3).map((site) => `${number(site.calls)} at ${site.label}`).join(' · ');
+        chip.append(node('span', sites.length === 1 ? `At ${sites[0].label}`
+          : `${number(sites.length)} sites: ${shown}${sites.length > 3 ? ` · +${number(sites.length - 3)} more` : ''}`, 'nq-drawer-group-line'));
+        chip.title += `\n${sites.map((site) => `${site.label}: ${number(site.calls)} call${site.calls === 1 ? '' : 's'}`).join('\n')}`;
+      }
+      const period = ['hotspot', 'run'].includes(group.kind) ? groupPeriod(group) : '';
+      if (period) chip.append(node('span', period, 'nq-drawer-group-line'));
+      // A click filters the list of calls by the group (after confirming), as its ID does in the panel.
+      const main = sites.length ? `${sites[0].label}${sites.length > 1 ? ` +${number(sites.length - 1)}` : ''}` : '';
+      const label = [group.id, group.kind === 'run' ? '' : main, period].filter(Boolean).join(' · ');
+      const name = `${NAMES[group.kind]} ${group.kind === 'cluster_all' ? 'of every NR Mode' : mode} ${group.id}`.replace(/\s+/g, ' ');
+      chip.title += '\nClick to filter the list of calls by this group';
+      chip.addEventListener('click', () => filterByGroup(group, name, label));
+      chips.push(chip);
+    }
+    $('nq-drawer-groups-list').replaceChildren(...chips);
+    $('nq-drawer-groups').hidden = !chips.length;
+    markGroupChips();
+    window.requestAnimationFrame(layoutGroupChips);
     renderDetailNav();
     renderTracking(call);
     renderSections(detail);

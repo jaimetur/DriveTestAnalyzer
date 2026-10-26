@@ -4560,6 +4560,13 @@ def query_calls(task_repository: Any, request: dict[str, Any], username: str) ->
         total = int(connection.execute(f'SELECT COUNT(*) FROM ({filtered})', all_params).fetchone()[0])
         pages = max(1, math.ceil(total / page_size))
         page = min(max(1, int(request.get('page') or 1)), pages)
+        # The page that holds the call to show (the call open beside the list, after the filters change), when it is listed.
+        if locate := str(request.get('locate') or ''):
+            found = connection.execute(
+                f"SELECT n FROM (SELECT call_key, ROW_NUMBER() OVER (ORDER BY {sort} = '', {sort} {direction}, start_time DESC, "
+                f"call_key) AS n FROM ({filtered})) WHERE call_key = ?", [*all_params, locate]).fetchone()
+            if found:
+                page = math.ceil(int(found[0]) / page_size)
         rows = connection.execute(
             f'SELECT * FROM ({filtered}) ORDER BY {sort} = \'\', {sort} {direction}, start_time DESC, call_key '
             f'LIMIT ? OFFSET ?',
@@ -5613,6 +5620,7 @@ def call_detail(task_repository: Any, call_key: str) -> dict[str, Any] | None:
         if row is None:
             return None
         call = _call_payload(row)
+        call['groups'] = nq_prioritization.call_groups(call, connection)
         versions = _call_versions(connection, str(call.get('parent_key') or call_key),
                                   json.loads(_value_maps(task_repository)['failure_classification']))
         samples = _call_samples(connection, call, default, task_repository)
@@ -8267,6 +8275,8 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         page: int = 1
         page_size: int = DEFAULT_PAGE_SIZE
         breakdowns: bool = True
+        # A call to show: the page that holds it (when the filters keep it) instead of the page asked for.
+        locate: str = ''
 
     class TrackingPayload(BaseModel):
         changes: dict[str, Any] = Field(default_factory=dict)

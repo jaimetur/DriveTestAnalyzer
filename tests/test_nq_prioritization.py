@@ -537,6 +537,23 @@ def test_the_cluster_distance_takes_the_isd_of_the_nearest_sites_or_the_meters_o
         if nq_prioritization._meters(calls[first], calls[second]) <= distance(calls[first], calls[second])}
 
 
+def test_the_groups_of_a_call_take_the_ids_of_the_panel():
+    call = {'cluster_key': 'cluster:0c1bce5fda02e35fbd85092f', 'cluster_size': 17, 'repeat_key': 'group:0c1bce5fda02e35fbd85092f',
+            'repeat_size': 15, 'repeat_all_key': 'group-all:0c1bce5fda02e35fbd85092f', 'repeat_all_size': 39,
+            'consecutive_key': 'run:68ab51b9d4d0d6ef07b2cbfb', 'consecutive_size': 1}
+    found = nq_prioritization.call_groups(call)
+    assert [(group['kind'], group['id'], group['calls']) for group in found] == [('hotspot', 'HOT-0C1BCE', 17), ('cluster', 'CLU-0C1BCE', 15),
+                                                                              ('cluster_all', 'CLU-0C1BCE', 39)]
+    # The filter of the list of calls by each group, and its key.
+    assert [(group['filter'], group['key']) for group in found] == [('hotspot', call['cluster_key']), ('clustered_issue', call['repeat_key']),
+                                                                    ('clustered_issue', call['repeat_all_key'])]
+    # A group of one call is none, and the cluster of every NR Mode is left out when it holds the same calls.
+    assert [(group['kind'], group['id'], group['calls'], group['filter']) for group in nq_prioritization.call_groups(
+        {**call, 'cluster_size': 1, 'repeat_all_size': 15, 'consecutive_size': 3})] == [
+        ('cluster', 'CLU-0C1BCE', 15, 'clustered_issue'), ('run', 'CON-68AB51', 3, 'consecutive_issue')]
+    assert nq_prioritization.call_groups({}) == []
+
+
 def test_clusters_take_the_quarter_of_the_campaign_and_leave_the_ping_tests_out():
     # A call of the campaign of Q2 driven in July is in Q2; the date counts only when the campaign does not name its quarter.
     assert nq_prioritization.quarter_of('2026-07-02 10:00:00', 'UK_Q2_2026') == nq_prioritization.quarter_of('', '2026-Q2-SA') == 2026 * 4 + 1
@@ -921,6 +938,34 @@ def test_repeated_issues_count_every_service_and_nr_mode_of_the_operator(priorit
         site = '' if row['place_key'].startswith('spot:') else row['place_key']
         assert row['repetitions'] == sum(1 for other in counted.values() if other['operator'] == row['operator'] and other['nr_mode'] == row['nr_mode']
                                          and ((site and other['place_key'] == site) or nq_prioritization._meters(row, other) <= meters(row, other)))
+
+
+def test_the_list_shows_the_page_of_the_call_open(prioritized):
+    client = prioritized['client']
+    second = client.post('/api/non-qualified-calls/calls', json={'page': 2, 'page_size': 10, 'breakdowns': False}).json()
+    key = second['calls'][3]['call_key']
+    # The filters changed while a call is open: the page that holds it, in the order of the list.
+    located = client.post('/api/non-qualified-calls/calls', json={'page': 1, 'page_size': 10, 'breakdowns': False, 'locate': key}).json()
+    assert located['page'] == 2 and located['calls'][3]['call_key'] == key
+    # A call the filters leave out keeps the page asked for.
+    assert client.post('/api/non-qualified-calls/calls', json={'page': 1, 'page_size': 10, 'breakdowns': False, 'locate': 'none'}).json()['page'] == 1
+
+
+def test_the_header_of_a_call_shows_its_groups(prioritized):
+    rows = priority_rows()
+    key, row = next((key, row) for key, row in rows.items() if (row['cluster_size'] or 0) >= 2)
+    groups = prioritized['client'].get(f'/api/non-qualified-calls/calls/{key}').json()['call']['groups']
+    assert [{name: group[name] for name in ('kind', 'id', 'calls', 'key', 'filter')} for group in groups] == nq_prioritization.call_groups(row)
+    assert groups[0]['kind'] == 'hotspot' and groups[0]['id'] == nq_prioritization.group_id('HOT', row['cluster_key'])
+    # What each group holds: the places of its calls (the most calls first) and when its first and last call started.
+    members = [other for other in rows.values() if other['cluster_key'] == row['cluster_key']]
+    places = {}
+    for other in members:
+        if other['place_label']:
+            places[other['place_label']] = places.get(other['place_label'], 0) + 1
+    assert groups[0]['sites'] == [{'label': label, 'calls': count} for label, count in sorted(places.items(), key=lambda pair: (-pair[1], pair[0]))]
+    times = sorted(str(other['start_time']) for other in members if other['start_time'])
+    assert (groups[0]['first'], groups[0]['last']) == (times[0], times[-1])
 
 
 def test_hotspots_and_consecutive_failures_mix_the_call_types(prioritized):
