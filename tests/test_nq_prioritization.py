@@ -1012,8 +1012,8 @@ def test_panel_filters_and_exports_show_the_prioritization(prioritized):
         'Operator', 'NR Mode', 'Campaign', 'Site(s)', 'From', 'To', 'Calls', 'Voice', 'WhatsApp', 'Data', 'Points lost', 'Open', 'Main Root Category']
     # The IDs of the groups: short, of their letter, one for each group of a table.
     ids = [item['id'] for item in panel['issues']]
-    assert len(set(ids)) == len(ids) and all(value.startswith('CLUSTER-') for value in ids)
-    assert spot['id'].startswith('HOTSPOT-') and run['id'].startswith('CONSECUTIVE-')
+    assert len(set(ids)) == len(ids) and all(value.startswith('CLU-') for value in ids)
+    assert spot['id'].startswith('HOT-') and run['id'].startswith('CON-')
     assert sum(issue['kinds'].values()) == issue['calls'] == sum(issue['campaign_names'].values()) and issue['first'] <= issue['last']
     # From and To: the day, the month in letters and the time, without the year.
     assert non_qualified_calls_export.group_time('2026-11-20 16:18:44.5') == '20 Nov 16:18'

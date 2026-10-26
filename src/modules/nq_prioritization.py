@@ -2858,9 +2858,10 @@ def panel(repository: Any, filters: Any, username: str) -> dict[str, Any]:
         item['points'] = round(item['points'], 2)
         categories = item.pop('categories')
         item['category'] = max(categories.items(), key=lambda pair: (pair[1], pair[0]))[0] if categories else ''
-    # A short ID for each group, the same whatever the filters: HOTSPOT, CONSECUTIVE (a run of consecutive failures) or
-    # CLUSTER and the start of the key of its first call, longer where two groups of a table would share it.
-    for letter, items in (('HOTSPOT', spot_rows), ('CONSECUTIVE', run_rows), ('CLUSTER', issue_rows)):
+    # A short ID for each group, the same whatever the filters: HOT (hotspot), CON (run of consecutive failures) or CLU
+    # (cluster), prefixes of the same length, and the start of the key of its first call, longer where two groups of a table
+    # would share it.
+    for letter, items in (('HOT', spot_rows), ('CON', run_rows), ('CLU', issue_rows)):
         codes = {item['key']: item['key'].split(':', 1)[-1].upper() for item in items}
         for length in range(6, 33):
             taken: dict[str, int] = {}
