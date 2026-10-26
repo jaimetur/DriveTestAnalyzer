@@ -35,6 +35,9 @@ const BROWSERS = [process.env.DRIVETEST_ANALYZER_CHROMIUM, '/Applications/Brave 
   '/usr/bin/google-chrome', '/usr/bin/google-chrome-stable', '/usr/bin/chromium', '/usr/bin/chromium-browser'].filter(Boolean);
 // The slides taken in one picture, then cut one by one (a browser start for each would take minutes).
 const SLIDES_PER_PICTURE = 6;
+// How many times the browser is run for one picture before the generation fails, and the pause before trying again.
+const BROWSER_ATTEMPTS = 3;
+const BROWSER_RETRY_PAUSE_MS = 1500;
 
 // -- colours ---------------------------------------------------------------------------------------------------------
 function rgb(hex) {
@@ -929,10 +932,21 @@ async function draw(id, out, { check = false } = {}) {
     meta = JSON.parse(fs.readFileSync(path.join(folder, 'slides.json'), 'utf8'));
   }
   const executable = browser();
-  // (Without a profile of its own: with one, Brave does not end in headless mode.)
-  const run = (args, options = {}) => execFileSync(executable, ['--headless=new', '--disable-gpu', '--disable-dev-shm-usage', '--no-first-run',
-    '--no-default-browser-check', '--no-sandbox', '--hide-scrollbars', '--force-device-scale-factor=1', ...args],
-  { timeout: 120000, stdio: ['ignore', options.encoding ? 'pipe' : 'ignore', 'ignore'], ...options });
+  // (Without a profile of its own: with one, Brave does not end in headless mode. Without one, it sometimes exits at once
+  // while the user's Brave is open, so a run that fails is tried again after a pause; one that times out is not.)
+  const run = (args, options = {}) => {
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        return execFileSync(executable, ['--headless=new', '--disable-gpu', '--disable-dev-shm-usage', '--no-first-run',
+          '--no-default-browser-check', '--no-sandbox', '--hide-scrollbars', '--force-device-scale-factor=1', ...args],
+        { timeout: 120000, stdio: ['ignore', options.encoding ? 'pipe' : 'ignore', 'ignore'], ...options });
+      } catch (error) {
+        if (attempt >= BROWSER_ATTEMPTS || error.code === 'ETIMEDOUT') throw error;
+        console.warn(`${id}: the browser failed (${error.status ?? error.signal ?? error.code}), trying again (${attempt + 1} of ${BROWSER_ATTEMPTS})`);
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, BROWSER_RETRY_PAUSE_MS * attempt);
+      }
+    }
+  };
   for (const stale of fs.readdirSync(out).filter((name) => /^slide-\d+\.png$/.test(name))) fs.unlinkSync(path.join(out, stale));
   const picture = path.join(out, '.slides.png');
   for (let first = 0; first < meta.slides.length; first += SLIDES_PER_PICTURE) {
