@@ -1627,22 +1627,24 @@ def linked_values(calls: list[dict[str, Any]], settings: dict[str, Any]) -> tupl
             consecutive_failures(linked, settings['consecutive_minutes']))
 
 
-_places_cache: dict[str, tuple[Any, dict[str, dict[str, Any]]]] = {}
+_places_cache: dict[tuple[str, str], tuple[Any, dict[str, dict[str, Any]]]] = {}
 
 
-def place_values(repository: Any, settings: dict[str, Any]) -> dict[str, dict[str, Any]]:
-    """The place, repetitions, hotspot and consecutive failure of every calculated call with the settings of the clusters,
+def place_values(repository: Any, settings: dict[str, Any], nr_mode: str = '') -> dict[str, dict[str, Any]]:
+    """The place, repetitions, hotspot and consecutive failure of every calculated call (of the NR Mode given: its clusters
+    then count the calls of that NR Mode only) with the settings of the clusters,
     the hotspots and the consecutive failures given, from the stored values: the stored place of a call with a site or an
     eNB / gNB, else its spot of the Cluster distance (``spot_meters``); the calls of its operator within the Cluster
     distance or at its site in its campaign and the ``previous_quarters`` campaigns before it (a cluster, Repeated
     Issue, from ``min_calls``); its hotspot of ``hotspot_join``; whether another failure is within ``consecutive_minutes`` (see
-    ``linked_values``). The latest result is kept for each workspace until the settings or the calculation change."""
+    ``linked_values``). The latest result is kept for each workspace and NR Mode until the settings or the calculation
+    change."""
     from src.modules import non_qualified_calls as nq
 
     ensure_tables(repository)
     key = (tuple(settings[name] for name in PLACE_SETTINGS), repository.get_workspace_state(SUMMARY_STATE_KEY),
            repository.get_workspace_state(nq.LATEST_STATE_KEY))
-    workspace = _workspace_key(repository.db_path)
+    workspace = (_workspace_key(repository.db_path), nr_mode)
     cached = _places_cache.get(workspace)
     if cached and cached[0] == key:
         return cached[1]
@@ -1651,6 +1653,8 @@ def place_values(repository: Any, settings: dict[str, Any]) -> dict[str, dict[st
             f'SELECT l.call_key, l.service, l.nr_mode, l.campaign, l.operator, l.site_id, l.latitude, l.longitude, l.start_time, '
             f'l.test_name, l.session_type, p.place_key, p.place_label FROM {PRIORITY_TABLE} p '
             f'JOIN {nq.NQ_CALL_LATEST_TABLE} l ON l.call_key = p.call_key')]
+    if nr_mode:
+        calls = [call for call in calls if str(call['nr_mode'] or '').upper() == nr_mode]
     for call in calls:
         # Only the place of a call without a site or a node depends on the settings.
         if not call['place_key'] or str(call['place_key']).startswith('spot:'):
@@ -2563,6 +2567,17 @@ def panel(repository: Any, filters: Any, username: str) -> dict[str, Any]:
             'suggested_priority, queue, queue_step, queue_list, expected_points, expected_campaign, test_name, session_type, '
             f'cluster_key, cluster_size FROM calls{where}',
             [*base_params, *params])]
+    # The clusters follow the NR Mode of the filters: when the filtered calls are of one NR Mode (that filter, or a campaign
+    # of one NR Mode), they count the calls of that NR Mode only; else every NR Mode together, as the Prioritization
+    # Rules do. The hotspots and the consecutive failures keep to one NR Mode always.
+    modes = {str(row['nr_mode'] or '').upper() for row in rows}
+    cluster_mode = next(iter(modes)) if len(modes) == 1 and '' not in modes else ''
+    if cluster_mode:
+        places = place_values(repository, settings, cluster_mode)
+        for row in rows:
+            place = places.get(row['call_key'])
+            if place:
+                row['repeated'], row['repetitions'], row['repeated_campaigns'] = place['repeated'], place['repetitions'], place['repeated_campaigns']
     is_open = [str(row['status'] or '').casefold() not in closed_names for row in rows]
     attended = [bool(row['updated_at']) or int(row['comment_count'] or 0) > 0 for row in rows]
     strategy = settings['strategy']
@@ -2729,6 +2744,8 @@ def panel(repository: Any, filters: Any, username: str) -> dict[str, Any]:
         'strategies': strategy_labels(settings),
         'settings': {key: settings[key] for key in ('high_share', 'medium_share', 'min_calls', 'previous_quarters', 'spot_meters',
                                                     'consecutive_minutes', 'hotspot_join', 'capacity')},
+        # The NR Mode whose calls alone the clusters count ('' when the filtered calls are of several: every one together).
+        'cluster_mode': cluster_mode,
         'totals': {
             'calls': len(rows), 'prioritized': sum(row['prioritization'] == PRIORITIZED for row in rows),
             'tracked': sum(row['prioritization'] == TRACK_ONLY for row in rows),

@@ -885,6 +885,17 @@ def test_panel_filters_and_exports_show_the_prioritization(prioritized):
     assert next(subtitle for component, subtitle, *_rest in tables if component == 'issues').startswith('Repeated Issues Within Same Cluster')
     assert next(subtitle for component, subtitle, *_rest in tables if component == 'hotspots').startswith(
         'Hotspots (Consecutives OR Clustered Issues)')
+    # The clusters of the panel follow the NR Mode of the filters: one NR Mode filtered counts its calls alone.
+    assert panel['cluster_mode'] == ''
+    sa = client.post('/api/non-qualified-calls/prioritization', json={'filters': {'nr_mode': ['SA']}}).json()
+    places = nq_prioritization.place_values(core.repository, nq_prioritization.load_settings(core.repository), 'SA')
+    assert sa['cluster_mode'] == 'SA' and places and all(rows[key]['nr_mode'] == 'SA' for key in places)
+    assert sa['totals']['repeated'] == sum(value['repeated'] == 'Yes' for value in places.values()) < panel['totals']['repeated']
+    # With the AND join, the repeated issues (the more general table) go first.
+    joined = non_qualified_calls_export.prioritization_tables({**panel, 'settings': {**panel['settings'], 'hotspot_join': 'and'}})
+    order_and = [component for component, *_rest in joined]
+    assert order_and.index('issues') < order_and.index('hotspots')
+    assert next(subtitle for component, subtitle, *_rest in joined if component == 'hotspots').startswith('Hotspots (Consecutives AND')
     # The hotspots and the repeated issues share their columns.
     columns = {component: columns for component, _subtitle, columns, *_rest in tables}
     assert columns['hotspots'] == columns['issues'] == ['Operator', 'NR Mode', 'Campaign', 'Site', 'Time', 'Calls', 'Voice', 'WhatsApp',

@@ -428,10 +428,12 @@ def prioritization_tables(data: dict[str, Any]) -> list[tuple[str, str, list[str
                   (row['place'] or '—') + (f" +{row['places'] - 1}" if row.get('places', 0) > 1 else ''), hotspot_time(row),
                   f"{row['calls']:,}", *(f"{row['kinds'].get(kind, 0):,}" for kind in ('Voice', 'WhatsApp', 'Data')),
                   _points(row['points']), f"{row['open']:,}", row['category'] or '—'] for row in spots[:MAX_EXPORT_ISSUES]]
+    # The hotspots and the repeated issues as the page shows them: the more general table first, the hotspots with the OR
+    # join, the repeated issues with AND; the title of the hotspots tells their join.
+    join = 'AND' if (data.get('settings') or {}).get('hotspot_join') == 'and' else 'OR'
+    groups = []
     if spot_rows:
-        # The title tells how the failures of a hotspot are joined, as the page does.
-        join = 'AND' if (data.get('settings') or {}).get('hotspot_join') == 'and' else 'OR'
-        tables.append(('hotspots', f'Hotspots (Consecutives {join} Clustered Issues)'
+        groups.append(('hotspots', f'Hotspots (Consecutives {join} Clustered Issues)'
                        + (f' · the {len(spot_rows)} with the most calls of {len(spots):,}' if len(spots) > len(spot_rows) else ''),
                        ['Operator', 'NR Mode', 'Campaign', 'Site', 'Time', 'Calls', 'Voice', 'WhatsApp', 'Data', 'Points lost', 'Open',
                         'Main Root Category'], spot_rows, {5, 6, 7, 8, 9, 10}))
@@ -445,9 +447,10 @@ def prioritization_tables(data: dict[str, Any]) -> list[tuple[str, str, list[str
                f"{row['open']:,}", row['category'] or '—'] for row in (data.get('issues') or [])[:MAX_EXPORT_ISSUES]]
     if issues:
         count = len(data.get('issues') or [])
-        tables.append(('issues', 'Repeated Issues Within Same Cluster' + (f' · the {len(issues)} sites with the most calls of {count:,}' if count > len(issues) else ''),
+        groups.append(('issues', 'Repeated Issues Within Same Cluster' + (f' · the {len(issues)} sites with the most calls of {count:,}' if count > len(issues) else ''),
                        ['Operator', 'NR Mode', 'Campaign', 'Site', 'Time', 'Calls', 'Voice', 'WhatsApp', 'Data', 'Points lost', 'Open',
                         'Main Root Category'], issues, {5, 6, 7, 8, 9, 10}))
+    tables.extend(groups if join == 'OR' else reversed(groups))
     return tables
 
 

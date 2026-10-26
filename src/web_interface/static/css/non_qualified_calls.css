@@ -1639,13 +1639,22 @@ span.nq-condition-value { display: inline-block; padding: .05rem .45rem; border-
 :is(.nq-step-flow, .nq-step-legend-item) .is-progress { background: #e08a1e; }
 :is(.nq-step-flow, .nq-step-legend-item) .is-closed { background: #2e8b57; }
 .nq-step-points { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #74c0fc, #1864ab); }
-/* The calls of each call type of a hotspot over its own calls (Voice blue, WhatsApp green, Data teal), their numbers beside. */
+/* The calls of each call type of a hotspot over its own calls (Voice blue, Data teal, as in the rest of the tool, and
+   WhatsApp a lighter gradient from one to the other, so that it stands apart from both), their numbers beside. */
 :is(.nq-step-flow, .nq-step-legend-item) .is-voice { background: #1366d6; }
-:is(.nq-step-flow, .nq-step-legend-item) .is-whatsapp { background: #2f9e44; }
+:is(.nq-step-flow, .nq-step-legend-item) .is-whatsapp { background: linear-gradient(90deg, #63aef2, #45c4a6); }
 :is(.nq-step-flow, .nq-step-legend-item) .is-data { background: #0b8a7a; }
 .nq-hotspot-kinds { min-width: 6rem; }
 .nq-step-bar-value.nq-hotspot-kinds-value { flex-basis: auto; white-space: nowrap; }
 .nq-hotspot-legend { margin-bottom: .4rem; }
+/* The criteria of the hotspots and the clusters as chips above both tables, and each table with its own title. */
+.nq-priority-criteria { display: flex; flex-wrap: wrap; gap: .35rem .5rem; margin: .1rem 0 .6rem; }
+.nq-priority-criterion { display: inline-flex; align-items: baseline; gap: .35rem; padding: .15rem .65rem; border: 1px solid var(--nq-border);
+  border-radius: 999px; background: #fff; color: var(--nq-muted); font-size: .76rem; }
+.nq-priority-criterion > strong { color: var(--nq-dark); font-weight: 800; }
+.nq-priority-group { margin-top: .9rem; }
+.nq-priority-group-title { margin: 0 0 .2rem; color: var(--nq-dark); font-size: .92rem; font-weight: 800; }
+.nq-priority-group > .nq-hint { margin-top: 0; }
 /* The hotspots and the repeated issues fit their subpanel, their columns at the same widths one above the other: the
    headers, the NR Modes, the campaigns, the site and the time wrap. */
 .nq-priority-group-table .nq-failure-table { table-layout: fixed; }
