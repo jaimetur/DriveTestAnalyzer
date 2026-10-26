@@ -18,6 +18,7 @@
     call: '#b0234f', path: '#3d1824', start: '#2e8b57', handover: '#f08a24', end: '#d7263d', both: '#d7263d', nr_leg: '#6d46a8',
     place: '#b0234f', hotspot: '#f08a24', own: '#e0507a', other: '#6c757d', samePci: '#d6336c', noValue: '#adb5bd',
     completed: '#2e8b57', failed: '#d7263d', radius: '#7d1238',
+    sameType: '#b0234f', otherType: '#1c7ed6', sameCampaign: '#b0234f', otherCampaign: '#6c757d',
   };
   // The test columns of the payload (see nq_call_map.nearby_tests).
   const COLUMN = {latitude: 0, longitude: 1, operator: 2, kind: 3, failed: 4, lte_rsrp: 5, lte_sinr: 6, nr_rsrp: 7, nr_sinr: 8, test: 9, start: 10, cdr: 11};
@@ -31,6 +32,8 @@
   // The layers chosen above the map; the RSRP / SINR samples have their own button on the map.
   const LAYERS = {failures: 'NQ calls', sites: 'Sites', path: 'Cell path'};
   const FAILURE_SCOPES = {cdr: 'This CDR', campaign: 'Its campaign', every: 'Every campaign'};
+  // What the colour of the NQ calls tells (their size always marks the repetitions and the hotspot).
+  const FAILURE_COLOURS = {relation: 'Relation', type: 'Call type', campaign: 'Campaign'};
   const SETTINGS_KEY = 'nq-call-map-settings';
   const HINT = 'Drag to move · wheel or Ctrl/Cmd+wheel to zoom · Ctrl/Cmd+drag a rectangle to zoom into it · Alt/Opt+drag to measure · double-click to zoom in';
   const PANEL_HINT = 'Drag to move · Ctrl/Cmd+wheel to zoom · Ctrl/Cmd+drag a rectangle to zoom into it · Alt/Opt+drag to measure · double-click to enlarge';
@@ -423,7 +426,7 @@
           if (failure.self || failure.latitude === null || !shared.showsFailure(failure)) continue;
           const [x, y] = project(failure.latitude, failure.longitude);
           if (x < -10 || y < -10 || x > width + 10 || y > height + 10) continue;
-          const colour = failure.same_place ? COLOURS.place : failure.same_hotspot ? COLOURS.hotspot : failure.same_operator ? COLOURS.own : COLOURS.other;
+          const colour = shared.failureColour(failure);
           const size = failure.same_place || failure.same_hotspot ? 7 : 5.5;
           diamond(context, x, y, size);
           context.fillStyle = colour;
@@ -678,16 +681,7 @@
       group('Call and NQ calls');
       item('pin', 'This call (where it failed)', COLOURS.call);
       if (data.call.end) item('dot', 'Where it started', COLOURS.start);
-      if (settings.layers.failures) {
-        item('diamond', 'NQ call at the same site (repetition)', COLOURS.place);
-        item('diamond', 'NQ call of its hotspot', COLOURS.hotspot);
-        item('diamond', `Other NQ calls of ${data.call.operator || 'its operator'}`, COLOURS.own);
-        if (shared.operatorChoice() === 'all') item('diamond', 'NQ calls of other operators', COLOURS.other);
-        const own = String(data.call.operator || '').trim().toLowerCase();
-        if (shared.operatorChoice() === 'focus' && (data.focus_labels || []).some((label) => label.trim().toLowerCase() !== own)) {
-          item('diamond', 'NQ calls of the other Focus operators', COLOURS.other);
-        }
-      }
+      if (settings.layers.failures) shared.failureLegend().forEach(([text, colour]) => item('diamond', text, colour));
       const located = data.trace.some((step) => step.site);
       if ((settings.layers.sites && data.sites.length) || (settings.layers.path && located)) {
         group('Sites and cells');
@@ -731,11 +725,12 @@
       colour: METRICS[stored.colour] ? stored.colour : '', operators: ['all', 'focus'].includes(stored.operators) ? stored.operators : 'own',
       // The Non-Qualified Calls around drawn: those of every campaign until another choice.
       failures: FAILURE_SCOPES[stored.failures] ? stored.failures : 'every',
+      failureColour: FAILURE_COLOURS[stored.failureColour] ? stored.failureColour : 'relation',
       // The RSRP / SINR samples start hidden, so the map shows the call, its cells and the sites first.
       layers: {tests: false, failures: true, sites: true, path: true, ...(stored.layers || {})},
     };
     const save = () => storeSettings({radius_km: settings.radius_km, tests: settings.tests, colour: settings.colour,
-      operators: settings.operators, failures: settings.failures, layers: settings.layers});
+      operators: settings.operators, failures: settings.failures, failureColour: settings.failureColour, layers: settings.layers});
     let callKey = '', loadedKey = '', controller = null, expandedView = null;
     const toolbar = node('div', undefined, 'nq-map-toolbar');
     const status = node('p', '', 'nq-map-status');
@@ -798,6 +793,35 @@
     };
     const kindLabel = (failure) => KIND_LABELS[failure.kind] || SERVICE_LABELS[failure.service] || failure.service;
     const failureText = (item) => [item.failure_classification, item.failure_category, item.failure_subcategory].filter(Boolean).join(' · ');
+    // The colour of an NQ call by the choice of Colour NQ calls by, and the lines of the legend that explain it.
+    const sameCampaign = (failure, call) => failure.campaign === call.campaign && failure.nr_mode === call.nr_mode;
+    shared.failureColour = (failure) => {
+      const call = shared.data?.call || {};
+      if (settings.failureColour === 'type') return failure.kind === call.kind ? COLOURS.sameType : COLOURS.otherType;
+      if (settings.failureColour === 'campaign') return sameCampaign(failure, call) ? COLOURS.sameCampaign : COLOURS.otherCampaign;
+      return failure.same_place ? COLOURS.place : failure.same_hotspot ? COLOURS.hotspot : failure.same_operator ? COLOURS.own : COLOURS.other;
+    };
+    shared.failureLegend = () => {
+      const data = shared.data;
+      const call = data.call;
+      if (settings.failureColour !== 'relation') {
+        const larger = ['Larger: at the same site (repetition) or of its hotspot', '#8a7a80'];
+        if (settings.failureColour === 'type') {
+          return [[`NQ calls of its call type (${KIND_LABELS[call.kind] || call.service_label || 'its type'})`, COLOURS.sameType],
+            ['NQ calls of other call types', COLOURS.otherType], larger];
+        }
+        return [[`NQ calls of its campaign (${campaignText(call.campaign, call.nr_mode) || 'its campaign'})`, COLOURS.sameCampaign],
+          ['NQ calls of other campaigns', COLOURS.otherCampaign], larger];
+      }
+      const lines = [['NQ call at the same site (repetition)', COLOURS.place], ['NQ call of its hotspot', COLOURS.hotspot],
+        [`Other NQ calls of ${call.operator || 'its operator'}`, COLOURS.own]];
+      if (shared.operatorChoice() === 'all') lines.push(['NQ calls of other operators', COLOURS.other]);
+      const own = String(call.operator || '').trim().toLowerCase();
+      if (shared.operatorChoice() === 'focus' && (data.focus_labels || []).some((label) => label.trim().toLowerCase() !== own)) {
+        lines.push(['NQ calls of the other Focus operators', COLOURS.other]);
+      }
+      return lines;
+    };
     const siteName = (site) => `Site ${site.site_id} · ${site.network}${site.host_network && site.host_network !== site.network ? ` on ${site.host_network}` : ''}`;
     shared.describe = (kind, item) => {
       const data = shared.data;
@@ -1034,8 +1058,7 @@
       const list = node('ul', undefined, 'nq-map-failure-list');
       for (const item of shown.slice(0, 150)) {
         const entry = node('li');
-        const colour = item.same_place ? COLOURS.place : item.same_hotspot ? COLOURS.hotspot : item.same_operator ? COLOURS.own : COLOURS.other;
-        entry.style.setProperty('--mark', colour);
+        entry.style.setProperty('--mark', shared.failureColour(item));
         const mark = node('span', undefined, 'nq-map-mark is-diamond');
         const text = node('div');
         const title = node('strong', `${kindLabel(item)} · ${item.operator} · ${campaignText(item.campaign, item.nr_mode)}`);
@@ -1254,6 +1277,9 @@
         select('NQ calls from', 'failures', scopes(data?.failure_scopes || FAILURE_SCOPES), settings.failures, (value) => {
           settings.failures = value; save(); redrawAll(); renderFailures();
         }, 'The Non-Qualified Calls around that the map and its list show: those of the CDR of the call (of its type only: the Voice CDR of a Voice call), of every CDR of its campaign and NR Mode, or of every campaign (the Diagnosis hints and the Decisions at its place count those of every campaign)'),
+        select('Colour NQ calls by', 'failure-colour', Object.entries(FAILURE_COLOURS), settings.failureColour, (value) => {
+          settings.failureColour = value; save(); redrawAll(); renderFailures();
+        }, 'What the colour of the Non-Qualified Calls around tells: how they relate to the call (same site, hotspot, operator), whether they are of its call type, or of its campaign (the repetitions and the calls of its hotspot are always larger)'),
         select('Operators', 'operators', [['own', `${data?.call.operator || 'Its operator'} only`],
           ...(focusNames.size ? [['focus', 'Focus operators only']] : []), ['all', 'Every operator']], shared.operatorChoice(), (value) => {
           settings.operators = value; save(); redrawAll(); renderFailures();
@@ -1403,7 +1429,8 @@
         return call ? ['Call Area Map', call.operator, call.join_id].filter(Boolean).join(' · ') : 'Call Area Map';
       },
       details: () => ({section: 'Call Area Map', context: {call_key: shared.data?.call.call_key || '', join_id: shared.data?.call.join_id || '',
-        radius_km: String(shared.data?.radius_km ?? ''), tests: settings.tests, failures: settings.failures, colour: settings.colour}}),
+        radius_km: String(shared.data?.radius_km ?? ''), tests: settings.tests, failures: settings.failures, failure_colour: settings.failureColour,
+        colour: settings.colour}}),
     };
     return controller;
   }
