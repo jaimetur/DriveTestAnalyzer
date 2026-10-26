@@ -237,10 +237,10 @@ DEFAULT_FIELDS = (
            description='The KPIs and environments in which the call loses its points, the most first.'),
     _field('repeated_issue', 'Repeated Issue', 'general', 'yes_no', 'priority', 'repeated', in_table=True, in_summary=True,
            description='Yes when other Non-Qualified Calls of the operator failed within the Cluster distance of the call or at '
-                       'its site in the quarter of the call or the quarter before it.'),
+                       'its site in its campaign or the campaigns before it (the Cluster period).'),
     _field('repetitions', 'Repetitions', 'general', 'number', 'priority', 'repetitions',
-           description='The Non-Qualified Calls of the operator within the Cluster distance of the call or at its site in the '
-                       'quarter of the call and the quarters before it (the call included), whatever their service and NR Mode.'),
+           description='The Non-Qualified Calls of the operator within the Cluster distance of the call or at its site in its '
+                       'campaign and the campaigns before it (the call included), whatever their service and NR Mode.'),
     _field('repeated_campaigns', 'Repeated Campaigns', 'general', 'number', 'priority', 'repeated_campaigns',
            description='The campaigns those calls belong to.'),
     _field('repetition_place', 'Repetition Place', 'general', 'text', 'priority', 'place_label',

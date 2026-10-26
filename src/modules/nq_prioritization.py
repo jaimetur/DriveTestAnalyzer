@@ -12,8 +12,8 @@ Every Non-Qualified Call (the latest version of each call, as the calls table li
   calls that hold the first share of the points lost (50 % by default) are High, those up to the second share (80 %)
   Medium and the others Low.
 - **Repetition**: how many Non-Qualified Calls of the same operator failed within the Cluster distance (250 m by default)
-  of the call or at its site in the quarter of the call and the quarters before it (one by default), whatever their
-  service and NR Mode. The place is the site of the cell
+  of the call or at its site in its campaign and the campaigns before it (one by default), whatever their service and NR
+  Mode. The place is the site of the cell
   where the call ended (the site ID and host network of its eNB or gNB in the inventory cells of the workspace, in the
   networks that serve its operator and within their distance of the call), else the site that served its start
   (serving-cell Vendor Mapping), else the eNB or gNB of its last cell, else a spot of about 250 m around where it
@@ -183,7 +183,7 @@ CONDITION_HELP = {
                'another one: within the Consecutive time OR the Cluster distance of it (or at the site where it ended), or, '
                'with the AND join, within both.',
     'repeated': 'The operator failed within the Cluster distance of it or at the same site in at least Cluster size calls of '
-                'the quarter of its campaign and the Cluster period before it, whatever the time.',
+                'its campaign and the Cluster period (campaigns) before it, whatever the time.',
     'high': 'Within the first High share of the Expected Gain of the calls in scope of its campaign, operator and service: during '
             'the campaign what its failure lost in the latest Final CDR of its NR Mode, then its own points.',
     'medium': 'The next calls by Expected Gain, up to the Medium share.',
@@ -498,7 +498,7 @@ def steps_changed(before: dict[str, Any], settings: dict[str, Any]) -> list[str]
 
 # The settings of the levels, the clusters and the hotspots, and Fill the Priority, as the Prioritization Rules name them.
 SETTING_LABELS = {'high_share': 'High impact (%)', 'medium_share': 'Medium impact (%)', 'min_calls': 'Cluster size',
-                  'previous_quarters': 'Cluster period', 'spot_meters': 'Cluster distance (m)',
+                  'previous_quarters': 'Cluster period (campaigns)', 'spot_meters': 'Cluster distance (m)',
                   'consecutive_minutes': 'Consecutive time (min)', 'hotspot_join': 'Hotspot join', 'capacity': 'Next to analyse',
                   'fill_priority': 'Fill the Priority'}
 
@@ -1482,9 +1482,12 @@ def _site_key(call: dict[str, Any]) -> str:
 def repetitions(calls: list[dict[str, Any]], previous_quarters: int,
                 meters: float = CLUSTER_METERS) -> dict[str, tuple[int, int]]:
     """For every call with a place (``place_key``): the Non-Qualified Calls of its operator that started within ``meters``
-    of it or at the same site (its place, when a site or an eNB / gNB gives it) in its quarter (that of its campaign, see
-    ``quarter_of``) and the ``previous_quarters`` before it (itself included), and their campaigns. Calls without a
+    of it or at the same site (its place, when a site or an eNB / gNB gives it) in its campaign and the
+    ``previous_quarters`` campaigns before it (itself included), and their campaigns. A campaign is that of a quarter (see
+    ``quarter_of``; SA and NSA together), and the quarters without a campaign among the calls are skipped. Calls without a
     quarter count in every window near them, and count every call near them."""
+    # The campaigns in their order: the quarters of the calls, one after the other.
+    ranks = {quarter: rank for rank, quarter in enumerate(sorted({call['quarter'] for call in calls if call.get('quarter') is not None}))}
     groups: dict[str, list[dict[str, Any]]] = {}
     for call in calls:
         if call.get('place_key'):
@@ -1503,10 +1506,10 @@ def repetitions(calls: list[dict[str, Any]], previous_quarters: int,
             near[first].add(second)
             near[second].add(first)
         for index, call in enumerate(members):
-            quarter = call.get('quarter')
+            rank = ranks.get(call.get('quarter'))
             window = [members[other] for other in near[index]
-                      if quarter is None or members[other].get('quarter') is None
-                      or quarter - previous_quarters <= members[other]['quarter'] <= quarter]
+                      if rank is None or members[other].get('quarter') is None
+                      or rank - previous_quarters <= ranks[members[other]['quarter']] <= rank]
             found[call['call_key']] = (len(window), len({item.get('campaign_label') or '' for item in window}))
     return found
 
@@ -1631,7 +1634,7 @@ def place_values(repository: Any, settings: dict[str, Any]) -> dict[str, dict[st
     """The place, repetitions, hotspot and consecutive failure of every calculated call with the settings of the clusters,
     the hotspots and the consecutive failures given, from the stored values: the stored place of a call with a site or an
     eNB / gNB, else its spot of the Cluster distance (``spot_meters``); the calls of its operator within the Cluster
-    distance or at its site in the quarter of its campaign and the ``previous_quarters`` before it (a cluster, Repeated
+    distance or at its site in its campaign and the ``previous_quarters`` campaigns before it (a cluster, Repeated
     Issue, from ``min_calls``); its hotspot of ``hotspot_join``; whether another failure is within ``consecutive_minutes`` (see
     ``linked_values``). The latest result is kept for each workspace until the settings or the calculation change."""
     from src.modules import non_qualified_calls as nq

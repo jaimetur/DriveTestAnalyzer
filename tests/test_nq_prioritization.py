@@ -526,7 +526,7 @@ def test_final_campaigns_and_the_latest_one_before_a_campaign():
     assert nq_prioritization.previous_final_campaign(finals, {}, 'SA', 'UK_Q4_2025_SA') == ''
 
 
-def test_repetitions_count_the_calls_of_the_operator_near_the_call_in_the_quarter_and_those_before():
+def test_repetitions_count_the_calls_of_the_operator_near_the_call_in_its_campaign_and_those_before():
     calls = [
         {'call_key': 'a', 'operator': 'EE', 'place_key': 'site:|s1', 'quarter': 8100, 'campaign_label': 'Q1'},
         {'call_key': 'b', 'operator': 'EE', 'place_key': 'site:|s1', 'quarter': 8101, 'campaign_label': 'Q2'},
@@ -534,10 +534,11 @@ def test_repetitions_count_the_calls_of_the_operator_near_the_call_in_the_quarte
         {'call_key': 'd', 'operator': 'VF', 'place_key': 'site:|s1', 'quarter': 8101, 'campaign_label': 'Q2'},
         {'call_key': 'e', 'operator': 'EE', 'place_key': '', 'quarter': 8101, 'campaign_label': 'Q2'},
     ]
+    # The Cluster period counts campaigns: the one before Q4 (8103) is Q2 (8101), as Q3 has none.
     found = nq_prioritization.repetitions(calls, 1)
-    assert found['a'] == (1, 1) and found['b'] == (2, 2) and found['c'] == (1, 1) and found['d'] == (1, 1)
+    assert found['a'] == (1, 1) and found['b'] == (2, 2) and found['c'] == (2, 2) and found['d'] == (1, 1)
     assert 'e' not in found
-    assert nq_prioritization.repetitions(calls, 3)['c'] == (3, 3)
+    assert nq_prioritization.repetitions(calls, 0)['c'] == (1, 1) and nq_prioritization.repetitions(calls, 2)['c'] == (3, 3)
     # Within the Cluster distance of the call, at another site or at a spot, or at the same site wherever it is.
     def call(key, latitude, place, quarter=8101):
         return {'call_key': key, 'operator': 'EE', 'place_key': place, 'quarter': quarter, 'campaign_label': 'Q2',
@@ -545,8 +546,27 @@ def test_repetitions_count_the_calls_of_the_operator_near_the_call_in_the_quarte
     near = [call('p', 51.5000, 'site:|s2'), call('q', 51.5020, 'spot:250:1:1'), call('r', 51.5040, 'site:|s3'),
             call('s', 52.0000, 'site:|s2'), call('t', 51.5010, 'site:|s4', quarter=8104)]
     found = nq_prioritization.repetitions(near, 1, 250)
-    assert (found['p'], found['q'], found['r'], found['s'], found['t']) == ((3, 1), (3, 1), (2, 1), (2, 1), (1, 1))
+    # t, of the next campaign, counts those of the campaign before it near it; they never count the calls of later campaigns.
+    assert (found['p'], found['q'], found['r'], found['s'], found['t']) == ((3, 1), (3, 1), (2, 1), (2, 1), (3, 1))
     assert nq_prioritization.repetitions(near, 1, 500)['p'] == (4, 1)
+
+
+def test_former_descriptions_of_the_repetitions_take_the_campaigns(client):
+    enable_module()
+    nq.ensure_nq_tables(core.repository)
+    former = dict(nq.V34_FORMER_DESCRIPTIONS)
+    fields = nq.list_fields(core.repository)
+    for field in fields:
+        field['description'] = former.get(field['key'], field['description'])
+    nq._store_fields(core.repository, nq_catalog.normalize_fields(fields, {field['key']: field for field in nq.list_fields(core.repository)},
+                                                                  nq.CATALOG_CALL_FIELDS))
+    # A workspace of the version before: the descriptions still the former defaults take the current ones, once.
+    core.repository.set_workspace_state(nq.ANALYSIS_CENTER_V34_STATE_KEY, '')
+    core.repository.set_workspace_state(nq.SCHEMA_STATE_KEY, '2026-10-26.1')
+    nq.ensure_nq_tables(core.repository)
+    defaults = {field['key']: field['description'] for field in nq_catalog.DEFAULT_FIELDS}
+    descriptions = {field['key']: field['description'] for field in nq.list_fields(core.repository)}
+    assert all(descriptions[key] == defaults[key] and 'campaign' in defaults[key] for key in former)
 
 
 def test_place_of_a_call_falls_back_from_the_site_of_its_last_cell_to_a_spot():

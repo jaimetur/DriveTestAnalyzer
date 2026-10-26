@@ -247,6 +247,14 @@ ANALYSIS_CENTER_V32_STATE_KEY = 'nq_analysis_center_v32'
 # The descriptions of the repetitions of the NQ Prioritization, counted within the Cluster distance of the call or at its
 # site (formerly at its place), where they are still the former defaults, once: (key, former description).
 ANALYSIS_CENTER_V33_STATE_KEY = 'nq_analysis_center_v33'
+# The same descriptions counted in campaigns (formerly in quarters), where they are still the former defaults, once.
+ANALYSIS_CENTER_V34_STATE_KEY = 'nq_analysis_center_v34'
+V34_FORMER_DESCRIPTIONS = (
+    ('repeated_issue', 'Yes when other Non-Qualified Calls of the operator failed within the Cluster distance of the call or at '
+                       'its site in the quarter of the call or the quarter before it.'),
+    ('repetitions', 'The Non-Qualified Calls of the operator within the Cluster distance of the call or at its site in the '
+                    'quarter of the call and the quarters before it (the call included), whatever their service and NR Mode.'),
+)
 V33_FORMER_DESCRIPTIONS = (
     ('repeated_issue', 'Yes when other Non-Qualified Calls of the operator failed at the same place in the quarter of the call or '
                        'the quarter before it.'),
@@ -257,7 +265,7 @@ V33_FORMER_DESCRIPTIONS = (
 )
 # Set once the tables and columns of this version exist, so the requests check the schema without writing.
 SCHEMA_STATE_KEY = 'nq_calls_schema'
-SCHEMA_VERSION = '2026-10-26.1'
+SCHEMA_VERSION = '2026-10-26.2'
 # Indexed call fields that the suggestion rule can read, with their labels.
 RULE_FIELDS = {
     'failure_classification': 'Failure Classification', 'failure_category': 'Failure Category',
@@ -612,7 +620,7 @@ def _schema_ready(task_repository: Any) -> bool:
                 ANALYSIS_CENTER_V22_STATE_KEY, ANALYSIS_CENTER_V23_STATE_KEY, ANALYSIS_CENTER_V24_STATE_KEY, ANALYSIS_CENTER_V25_STATE_KEY,
                 ANALYSIS_CENTER_V26_STATE_KEY, ANALYSIS_CENTER_V27_STATE_KEY, ANALYSIS_CENTER_V28_STATE_KEY,
                 ANALYSIS_CENTER_V29_STATE_KEY, ANALYSIS_CENTER_V30_STATE_KEY, ANALYSIS_CENTER_V31_STATE_KEY,
-                ANALYSIS_CENTER_V32_STATE_KEY, ANALYSIS_CENTER_V33_STATE_KEY)
+                ANALYSIS_CENTER_V32_STATE_KEY, ANALYSIS_CENTER_V33_STATE_KEY, ANALYSIS_CENTER_V34_STATE_KEY)
         states = {str(row[0]): str(row[1]) for row in connection.execute(
             f"SELECT key, value FROM workspace_state WHERE key IN ({', '.join('?' for _ in keys)})", keys)}
     return states.get(SCHEMA_STATE_KEY) == SCHEMA_VERSION and all(states.get(key) for key in keys[1:])
@@ -807,18 +815,23 @@ def ensure_nq_tables(task_repository: Any) -> None:
     if not task_repository.get_workspace_state(ANALYSIS_CENTER_V32_STATE_KEY):
         _add_dta_category_keywords(task_repository)
         task_repository.set_workspace_state(ANALYSIS_CENTER_V32_STATE_KEY, '1')
-    if not task_repository.get_workspace_state(ANALYSIS_CENTER_V33_STATE_KEY):
-        defaults = {field['key']: field['description'] for field in nq_catalog.DEFAULT_FIELDS}
-        former = dict(V33_FORMER_DESCRIPTIONS)
-        fields = list_fields(task_repository)
-        described = [field for field in fields if field['key'] in former and field['description'] == former[field['key']]]
-        for field in described:
-            field['description'] = defaults[field['key']]
-        if described:
-            _store_fields(task_repository, nq_catalog.normalize_fields(fields, {field['key']: field for field in list_fields(task_repository)},
-                                                                       CATALOG_CALL_FIELDS))
-        task_repository.set_workspace_state(ANALYSIS_CENTER_V33_STATE_KEY, '1')
+    for state_key, formers in ((ANALYSIS_CENTER_V33_STATE_KEY, V33_FORMER_DESCRIPTIONS), (ANALYSIS_CENTER_V34_STATE_KEY, V34_FORMER_DESCRIPTIONS)):
+        if not task_repository.get_workspace_state(state_key):
+            _renew_default_descriptions(task_repository, dict(formers))
+            task_repository.set_workspace_state(state_key, '1')
     task_repository.set_workspace_state(SCHEMA_STATE_KEY, SCHEMA_VERSION)
+
+
+def _renew_default_descriptions(task_repository: Any, former: dict[str, str]) -> None:
+    """The fields whose description is still a former default (``former``: key → description) take the current one."""
+    defaults = {field['key']: field['description'] for field in nq_catalog.DEFAULT_FIELDS}
+    fields = list_fields(task_repository)
+    described = [field for field in fields if field['key'] in former and field['description'] == former[field['key']]]
+    for field in described:
+        field['description'] = defaults[field['key']]
+    if described:
+        _store_fields(task_repository, nq_catalog.normalize_fields(fields, {field['key']: field for field in list_fields(task_repository)},
+                                                                   CATALOG_CALL_FIELDS))
 
 
 def _dta_fields_first(task_repository: Any) -> None:
