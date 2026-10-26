@@ -26,7 +26,7 @@ Every Non-Qualified Call (the latest version of each call, as the calls table li
     out of scope and of the SA campaigns of an operator without SA stay out) with two lists, their steps giving the
     Priority from P1 to P8. During a
     campaign, list 1 takes each call by what it says about itself, which never changes: P1 SA Voice in Cities (on
-    Connecting Roads with Roads first), P2 SA Data (the consecutive failures of a cluster), P3 SA Voice on
+    Connecting Roads with Roads first), P2 SA Data (the failures of a hotspot), P3 SA Voice on
     Connecting Roads (in Cities), P4 SA WhatsApp, P5 NSA Voice, P6 NSA Data, P7 NSA WhatsApp and P8 the tracked calls.
     Once the Final CDR of the campaign is scored, list 2 orders its calls by their real impact (the same in every
     strategy). Admins change every field of the steps, their conditions joined by AND or OR. Voice and WhatsApp calls go
@@ -72,7 +72,7 @@ FINGERPRINT_STATE_KEY = 'nq_prioritization_fingerprint'
 FAILED_STATE_KEY = 'nq_prioritization_failed'
 SUMMARY_STATE_KEY = 'nq_prioritization_summary'
 # Bumped when the calculation changes: every value is calculated again.
-IMPACT_VERSION = 15
+IMPACT_VERSION = 16
 # The scoring of every campaign is split by campaign and operator, as the points of the scoring are national.
 LEVELS = ('Campaign', 'Operator')
 SERVICES = ('voice', 'speech', 'data')
@@ -416,11 +416,36 @@ def normalize_modes(value: list[Any], strict: bool = False) -> list[dict[str, st
     return modes
 
 
+# Set once the steps saved with Consecutive failures and Cluster took Hotspots (``hotspot_steps``).
+HOTSPOT_STEPS_STATE_KEY = 'nq_prioritization_hotspot_steps'
+
+
+def hotspot_steps(stored: dict[str, Any]) -> list[str]:
+    """The steps of every strategy saved with the conditions Consecutive failures and Cluster alone (joined by AND or OR)
+    take Hotspots instead, which joins both (in place): the strategy and step of each one."""
+    changed = []
+    for strategy, steps in (stored.get('steps') or {}).items():
+        for key, step in (steps.items() if isinstance(steps, dict) else ()):
+            if isinstance(step, dict) and not step.get('deleted') and sorted(step.get('conditions') or []) == ['consecutive', 'repeated']:
+                step['conditions'], step['joins'] = ['cluster'], []
+                changed.append(f'{strategy} · {key}')
+    return changed
+
+
 def load_settings(repository: Any) -> dict[str, Any]:
     try:
         stored = json.loads(repository.get_workspace_state(SETTINGS_STATE_KEY) or 'null')
     except (TypeError, ValueError):
         stored = None
+    # Once: the steps saved with Consecutive failures and Cluster take Hotspots, in every strategy (App Events records it).
+    if isinstance(stored, dict) and not repository.get_workspace_state(HOTSPOT_STEPS_STATE_KEY):
+        changed = hotspot_steps(stored)
+        if changed:
+            repository.set_workspace_state(SETTINGS_STATE_KEY, json.dumps(stored, ensure_ascii=False))
+            if hasattr(repository, 'try_add_log'):
+                repository.try_add_log(SYSTEM_USER, 'nq_prioritization_settings', json.dumps(
+                    {'steps_changed': [f'{name} · Consecutive failures and Cluster → Hotspots' for name in changed]}, ensure_ascii=False))
+        repository.set_workspace_state(HOTSPOT_STEPS_STATE_KEY, '1')
     operators, modes = default_step_operators(repository), default_excluded_modes(repository)
     settings = normalize_settings(stored, operators=operators, modes=modes) if isinstance(stored, dict) else default_settings(operators, modes)
     # The operators excluded in the Operator Maps are left out everywhere, also of the pairs out of scope saved before.
@@ -600,8 +625,8 @@ def _default_rows(strategy: str) -> dict[str, list[tuple[Any, ...]]]:
     """The steps of the two lists of a strategy by default, in order: (Priority, NR Mode, call type, area, conditions, queue)
     and the operators between the conditions when they are not OR. List 1 of the Dual Queue strategies differs only in the
     place of SA Voice: in Cities first (P1, Connecting Roads P3) with Cities first, on Connecting Roads first with Roads
-    first; their data steps take the consecutive failures of a cluster (Consecutive failures AND Cluster), and NSA Voice
-    (P5) goes before NSA Data (P6), as in list 2. List 2 is the
+    first; their data steps take the failures of a hotspot (Hotspots: the consecutive and the clustered issues with the OR
+    join), and NSA Voice (P5) goes before NSA Data (P6), as in list 2. List 2 is the
     same in every strategy of the application, by the impact levels: SA Voice High P1, SA Data High P2, SA WhatsApp High
     P3, SA Voice and WhatsApp Medium then every other one P4, NSA Voice P5, NSA Data High P6, NSA WhatsApp P7 and the
     tracked calls P8. Dual Queue (Scoring Based) uses it as its list 1 (alone). Vodafone Proposal (list 1 alone, in its
@@ -627,11 +652,11 @@ def _default_rows(strategy: str) -> dict[str, list[tuple[Any, ...]]]:
         # A strategy of the admins has only the steps they gave it.
         return {CAMPAIGN_LIST: [], FINAL_LIST: []}
     first, third = ('city', 'roads') if strategy == CITIES_FIRST else ('roads', 'city')
-    data, both = ('consecutive', 'repeated'), ('and',)
+    data = ('cluster',)
     return {
-        CAMPAIGN_LIST: [('P1', 'SA', 'voice', first, every, VOICE_QUEUE), ('P2', 'SA', 'data', 'any', data, DATA_QUEUE, both),
+        CAMPAIGN_LIST: [('P1', 'SA', 'voice', first, every, VOICE_QUEUE), ('P2', 'SA', 'data', 'any', data, DATA_QUEUE),
                         ('P3', 'SA', 'voice', third, every, VOICE_QUEUE), ('P4', 'SA', 'whatsapp', 'any', every, VOICE_QUEUE),
-                        ('P5', 'NSA', 'voice', 'any', every, VOICE_QUEUE), ('P6', 'NSA', 'data', 'any', data, DATA_QUEUE, both),
+                        ('P5', 'NSA', 'voice', 'any', every, VOICE_QUEUE), ('P6', 'NSA', 'data', 'any', data, DATA_QUEUE),
                         ('P7', 'NSA', 'whatsapp', 'any', every, VOICE_QUEUE), (TRACKED_PRIORITY, 'any', 'any', 'any', every, '')],
         FINAL_LIST: final,
     }
@@ -639,9 +664,10 @@ def _default_rows(strategy: str) -> dict[str, list[tuple[Any, ...]]]:
 
 def _former_rows(strategy: str, list_name: str) -> list[list[tuple[Any, ...]]]:
     """The default steps of a list of a strategy of the application before the current ones (a list saved exactly as one of
-    them takes the current defaults, see ``normalize_steps``). List 1 of the Dual Queue strategies: NSA Data (P5) before NSA
-    Voice (P6), its Data steps Consecutive failures AND Cluster, before Consecutive failures AND Hotspots, and before
-    Consecutive failures OR Hotspots (Cities first) or Hotspots (Roads first). List 1 of Vodafone Proposal: the other calls tracked with P5 (no P8 step), in the Unique queue or before in the
+    them takes the current defaults, see ``normalize_steps``). List 1 of the Dual Queue strategies: its Data steps
+    Consecutive failures AND Cluster; before, NSA Data (P5) before NSA Voice (P6), its Data steps Consecutive failures AND
+    Cluster, before Consecutive failures AND Hotspots, and before Consecutive failures OR Hotspots (Cities first) or Hotspots
+    (Roads first). List 1 of Vodafone Proposal: the other calls tracked with P5 (no P8 step), in the Unique queue or before in the
     Voice and Data queues. List 1 of Dual Queue (Scoring
     Based), then Points Lost Based: the former list 2, and before SA before NSA and Voice before Data, its Data steps
     Cluster OR / AND High impact. List 2: eleven steps with SA Voice Medium and Low P3, SA WhatsApp High, Medium and Low P4,
@@ -678,8 +704,9 @@ def _former_rows(strategy: str, list_name: str) -> list[list[tuple[Any, ...]]]:
         swapped = [*current[:4], ('P5', *nsa_data[1:]), ('P6', *nsa_voice[1:]), *current[6:]]
         variants = [(('consecutive', 'repeated'), ('and',)), (('consecutive', 'cluster'), ('and',)), (('consecutive', 'cluster'), None),
                     (('cluster',), None)]
-        return [[(*row[:4], data, row[5], *([joins] if joins else [])) if row[2] == 'data' else row for row in swapped]
-                for data, joins in variants]
+        return [[(*row[:4], ('consecutive', 'repeated'), row[5], ('and',)) if row[2] == 'data' else row for row in current],
+                *([(*row[:4], data, row[5], *([joins] if joins else [])) if row[2] == 'data' else row for row in swapped]
+                  for data, joins in variants)]
 
     def ten(data: tuple[str, ...]) -> list[tuple[Any, ...]]:
         return [('P1', 'SA', 'voice', 'any', ('high',), VOICE_QUEUE), ('P2', 'SA', 'data', 'any', data, DATA_QUEUE),
@@ -1482,19 +1509,21 @@ def _site_key(call: dict[str, Any]) -> str:
     return '' if not place or place.startswith('spot:') else place
 
 
-def repetitions(calls: list[dict[str, Any]], previous_quarters: int,
-                meters: float = CLUSTER_METERS) -> dict[str, tuple[int, int]]:
-    """For every call with a place (``place_key``): the Non-Qualified Calls of its operator that started within ``meters``
+def repetitions(calls: list[dict[str, Any]], previous_quarters: int, meters: float = CLUSTER_METERS,
+                by_mode: bool = True) -> dict[str, tuple[int, int]]:
+    """For every call with a place (``place_key``): the Non-Qualified Calls of its operator (and of its NR Mode, ``by_mode``,
+    as the rules count them, else of every NR Mode together) that started within ``meters``
     of it or at the same site (its place, when a site or an eNB / gNB gives it) in its campaign and the
     ``previous_quarters`` campaigns before it (itself included), and their campaigns. A campaign is that of a quarter (see
     ``quarter_of``; SA and NSA together), and the quarters without a campaign among the calls are skipped. Calls without a
     quarter count in every window near them, and count every call near them."""
     # The campaigns in their order: the quarters of the calls, one after the other.
     ranks = {quarter: rank for rank, quarter in enumerate(sorted({call['quarter'] for call in calls if call.get('quarter') is not None}))}
-    groups: dict[str, list[dict[str, Any]]] = {}
+    groups: dict[tuple[str, str], list[dict[str, Any]]] = {}
     for call in calls:
         if call.get('place_key'):
-            groups.setdefault(str(call.get('operator') or '').casefold(), []).append(call)
+            groups.setdefault((str(call.get('operator') or '').casefold(), str(call.get('nr_mode') or '').upper() if by_mode else ''),
+                              []).append(call)
     found: dict[str, tuple[int, int]] = {}
     for members in groups.values():
         near: list[set[int]] = [{index} for index in range(len(members))]
@@ -1636,23 +1665,24 @@ def consecutive_failures(calls: list[dict[str, Any]], minutes: float = CLUSTER_M
     return {call['call_key']: consecutive_of(runs.get(call['call_key'])) for call in calls}
 
 
-def linked_values(calls: list[dict[str, Any]],
-                  settings: dict[str, Any]) -> tuple[dict[str, tuple[int, int]], dict[str, tuple[str, int]], dict[str, tuple[str, int]]]:
-    """The repetitions (``repetitions``), hotspots (``hotspots``, of the Consecutive time and the Cluster distance) and runs
-    of consecutive failures (``consecutive_runs``) of the calls with the settings given; the Ping tests are left out of all
-    three."""
+def linked_values(calls: list[dict[str, Any]], settings: dict[str, Any],
+                  by_mode: bool = True) -> tuple[dict[str, tuple[int, int]], dict[str, tuple[str, int]], dict[str, tuple[str, int]]]:
+    """The repetitions (``repetitions``, of the NR Mode of each call as the rules take them, else of every NR Mode together
+    without ``by_mode``), hotspots (``hotspots``, of the Consecutive time and the Cluster distance) and runs of consecutive
+    failures (``consecutive_runs``) of the calls with the settings given, the last two always within one NR Mode; the Ping
+    tests are left out of all three."""
     linked = [call for call in calls if call_kind(call['service'], call.get('test_name'), call.get('session_type')) != PING]
-    return (repetitions(linked, settings['previous_quarters'], settings['spot_meters']),
+    return (repetitions(linked, settings['previous_quarters'], settings['spot_meters'], by_mode),
             hotspots(linked, settings['consecutive_minutes'], settings['spot_meters'], settings['hotspot_join']),
             consecutive_runs(linked, settings['consecutive_minutes']))
 
 
-_places_cache: dict[tuple[str, str], tuple[Any, dict[str, dict[str, Any]]]] = {}
+_places_cache: dict[tuple[str, bool], tuple[Any, dict[str, dict[str, Any]]]] = {}
 
 
-def place_values(repository: Any, settings: dict[str, Any], nr_mode: str = '') -> dict[str, dict[str, Any]]:
-    """The place, repetitions, hotspot and consecutive failure of every calculated call (of the NR Mode given: its clusters
-    then count the calls of that NR Mode only) with the settings of the clusters,
+def place_values(repository: Any, settings: dict[str, Any], mixed: bool = False) -> dict[str, dict[str, Any]]:
+    """The place, repetitions, hotspot and consecutive failure of every calculated call (its clusters count the calls of
+    its NR Mode, as the rules take them, or of every NR Mode together when ``mixed``) with the settings of the clusters,
     the hotspots and the consecutive failures given, from the stored values: the stored place of a call with a site or an
     eNB / gNB, else its spot of the Cluster distance (``spot_meters``); the calls of its operator within the Cluster
     distance or at its site in its campaign and the ``previous_quarters`` campaigns before it (a cluster, Repeated
@@ -1664,7 +1694,7 @@ def place_values(repository: Any, settings: dict[str, Any], nr_mode: str = '') -
     ensure_tables(repository)
     key = (tuple(settings[name] for name in PLACE_SETTINGS), repository.get_workspace_state(SUMMARY_STATE_KEY),
            repository.get_workspace_state(nq.LATEST_STATE_KEY))
-    workspace = (_workspace_key(repository.db_path), nr_mode)
+    workspace = (_workspace_key(repository.db_path), mixed)
     cached = _places_cache.get(workspace)
     if cached and cached[0] == key:
         return cached[1]
@@ -1673,15 +1703,13 @@ def place_values(repository: Any, settings: dict[str, Any], nr_mode: str = '') -
             f'SELECT l.call_key, l.service, l.nr_mode, l.campaign, l.operator, l.site_id, l.latitude, l.longitude, l.start_time, '
             f'l.test_name, l.session_type, p.place_key, p.place_label FROM {PRIORITY_TABLE} p '
             f'JOIN {nq.NQ_CALL_LATEST_TABLE} l ON l.call_key = p.call_key')]
-    if nr_mode:
-        calls = [call for call in calls if str(call['nr_mode'] or '').upper() == nr_mode]
     for call in calls:
         # Only the place of a call without a site or a node depends on the settings.
         if not call['place_key'] or str(call['place_key']).startswith('spot:'):
             call['place_key'], call['place_label'] = spot_of(call['latitude'], call['longitude'], settings['spot_meters']) or ('', '')
         call['quarter'] = quarter_of(call['start_time'], call['campaign'])
         call['campaign_label'] = f"{call['campaign']}|{call['nr_mode']}"
-    repeated, clusters, runs = linked_values(calls, settings)
+    repeated, clusters, runs = linked_values(calls, settings, not mixed)
     values = {}
     for call in calls:
         count, campaigns_count = repeated.get(call['call_key'], (None, None))
@@ -2593,9 +2621,8 @@ def panel(repository: Any, filters: Any, username: str) -> dict[str, Any]:
             f'cluster_key, cluster_size, consecutive_key, consecutive_size FROM calls{where}',
             [*base_params, *params])]
         # The clusters follow the NR Mode of the filters: one NR Mode chosen, or campaigns of one NR Mode (and no NR Mode
-        # chosen), count the calls of that NR Mode only; else every NR Mode together, as the Prioritization Rules do. The
-        # other filters (a site, an operator...) never decide it. The hotspots and the consecutive failures keep to one NR
-        # Mode always.
+        # chosen), count the calls of that NR Mode only, as the rules do; else every NR Mode together. The other filters (a
+        # site, an operator...) never decide it. The hotspots and the consecutive failures keep to one NR Mode always.
         chosen = {str(value).upper() for value in nq._strings(filters.get('nr_mode')) if value not in {nq.UNASSIGNED, 'Unknown'}}
         cluster_mode, cluster_source = (next(iter(chosen)), 'NR Mode filter') if len(chosen) == 1 else ('', '')
         if not chosen and nq._strings(filters.get('campaign')):
@@ -2604,8 +2631,8 @@ def panel(repository: Any, filters: Any, username: str) -> dict[str, Any]:
                 f'WITH calls AS ({base}) SELECT DISTINCT nr_mode FROM calls{campaign_where}', [*base_params, *campaign_params])}
             if len(modes) == 1 and '' not in modes:
                 cluster_mode, cluster_source = next(iter(modes)), 'campaign filter'
-    if cluster_mode:
-        places = place_values(repository, settings, cluster_mode)
+    if not cluster_mode:
+        places = place_values(repository, settings, mixed=True)
         for row in rows:
             place = places.get(row['call_key'])
             if place:

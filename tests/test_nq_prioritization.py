@@ -93,7 +93,7 @@ def test_settings_are_validated():
     steps = nq_prioritization.normalize_settings({'strategy': 'roads_first', 'steps': {'roads_first': {
         'campaign-6': {'priority': 'p2', 'operators': [' VF ', 'Three', 'three']}}}})['steps']
     assert steps['roads_first']['campaign-6'] == {'number': 6, 'priority': 'P2', 'nr_mode': 'NSA', 'call_type': 'data', 'area': 'any',
-                                                  'conditions': ['consecutive', 'repeated'], 'joins': ['and'], 'queue': 'Data',
+                                                  'conditions': ['cluster'], 'joins': [], 'queue': 'Data',
                                                   'operators': ['VF', 'Three']}
     # NSA Voice (P5) goes before NSA Data (P6) in list 1, as in list 2.
     assert [(steps['cities_first'][key]['priority'], steps['cities_first'][key]['call_type']) for key in ('campaign-5', 'campaign-6')] == [
@@ -101,9 +101,9 @@ def test_settings_are_validated():
     assert steps['roads_first']['final-tracked'] == {'number': 11, 'priority': 'P8', 'nr_mode': 'any', 'call_type': 'any', 'area': 'any',
                                                      'conditions': ['all'], 'joins': [], 'queue': '', 'operators': ['@focused']}
     assert (steps['roads_first']['campaign-1']['call_type'], steps['roads_first']['campaign-1']['area']) == ('voice', 'roads')
-    # The Data steps of list 1 of both Dual Queue strategies take the consecutive failures of a cluster.
+    # The Data steps of list 1 of both Dual Queue strategies take the failures of a hotspot.
     for strategy in ('cities_first', 'roads_first'):
-        assert (steps[strategy]['campaign-2']['conditions'], steps[strategy]['campaign-2']['joins']) == (['consecutive', 'repeated'], ['and'])
+        assert (steps[strategy]['campaign-2']['conditions'], steps[strategy]['campaign-2']['joins']) == (['cluster'], [])
     # List 2 of every strategy, by the impact levels, is the only list of Dual Queue (Scoring Based); Vodafone Proposal takes every
     # SA, then NSA, Voice and WhatsApp call and the Data calls of a cluster, in its Unique queue.
     ordered = lambda strategy, prefix: [steps[strategy][key] for key in sorted(steps[strategy], key=lambda key: steps[strategy][key]['number'])
@@ -357,12 +357,12 @@ def test_strategies_give_each_call_its_step_queue_and_priority():
     assert decide(cities, strategy_call(kind='whatsapp', area='roads'))[2:5] == ('P4', 'Voice', 4)
     assert decide(cities, strategy_call(nr_mode='NSA'))[2:5] == ('P5', 'Voice', 5)
     assert decide(cities, strategy_call(nr_mode='NSA', kind='whatsapp'))[2:5] == ('P7', 'Voice', 7)
-    # Data, in both strategies: the consecutive failures of a cluster go to the Data queue, the other failures are tracked.
-    cluster = strategy_call(kind='data', repeated=True, consecutive='Yes')
+    # Data, in both strategies: the failures of a hotspot go to the Data queue, the other failures are tracked.
+    cluster = strategy_call(kind='data', cluster_size=2)
     for strategy in (cities, roads):
-        assert decide(strategy, cluster)[1:5] == ('Campaign 2 · SA Data · Consecutive failures AND Cluster', 'P2', 'Data', 2)
-        assert decide(strategy, {**cluster, 'consecutive': 'No'})[:4] == ('Track only', 'Campaign 8 · Tracked', 'P8', '')
-        assert decide(strategy, {**cluster, 'repeated': False})[:3] == ('Track only', 'Campaign 8 · Tracked', 'P8')
+        assert decide(strategy, cluster)[1:5] == ('Campaign 2 · SA Data · Hotspots', 'P2', 'Data', 2)
+        assert decide(strategy, {**cluster, 'cluster_size': 1, 'repeated': True, 'consecutive': 'Yes'})[:4] == (
+            'Track only', 'Campaign 8 · Tracked', 'P8', '')
         assert decide(strategy, {**cluster, 'nr_mode': 'NSA'})[2:5] == ('P6', 'Data', 6)
     single = strategy_call(kind='data', cluster_size=1)
     for call in (single, strategy_call(kind='ping', cluster_size=4), strategy_call(excluded=True)):
@@ -567,6 +567,29 @@ def test_former_descriptions_of_the_repetitions_take_the_campaigns(client):
     defaults = {field['key']: field['description'] for field in nq_catalog.DEFAULT_FIELDS}
     descriptions = {field['key']: field['description'] for field in nq.list_fields(core.repository)}
     assert all(descriptions[key] == defaults[key] and 'campaign' in defaults[key] for key in former)
+
+
+def test_steps_saved_with_consecutive_failures_and_cluster_take_hotspots_once(client):
+    enable_module()
+    settings = nq_prioritization.default_settings()
+    settings['steps']['roads_first']['campaign-2'] = {**settings['steps']['roads_first']['campaign-2'], 'conditions': ['consecutive', 'repeated'],
+                                                      'joins': ['and'], 'priority': 'P3'}
+    settings['steps']['custom']['campaign-3'] = {**settings['steps']['custom']['campaign-3'], 'conditions': ['repeated', 'consecutive'], 'joins': ['or']}
+    settings['steps']['custom']['campaign-4'] = {**settings['steps']['custom']['campaign-4'], 'conditions': ['consecutive', 'repeated', 'high'],
+                                                 'joins': ['and', 'or']}
+    core.repository.set_workspace_state(nq_prioritization.SETTINGS_STATE_KEY, json.dumps(settings))
+    loaded = nq_prioritization.load_settings(core.repository)
+    assert (loaded['steps']['roads_first']['campaign-2']['conditions'], loaded['steps']['roads_first']['campaign-2']['priority']) == (['cluster'], 'P3')
+    assert loaded['steps']['custom']['campaign-3']['conditions'] == ['cluster']
+    # Only the steps with those two conditions alone.
+    assert loaded['steps']['custom']['campaign-4']['conditions'] == ['consecutive', 'repeated', 'high']
+    log = next(row for row in core.repository.list_logs(limit=20) if row['action'] == 'nq_prioritization_settings')
+    assert 'roads_first · campaign-2 · Consecutive failures and Cluster → Hotspots' in json.loads(log['details'])['steps_changed']
+    # Once: a step saved with them afterwards keeps them.
+    stored = json.loads(core.repository.get_workspace_state(nq_prioritization.SETTINGS_STATE_KEY))
+    stored['steps']['roads_first']['campaign-2']['conditions'] = ['consecutive', 'repeated']
+    core.repository.set_workspace_state(nq_prioritization.SETTINGS_STATE_KEY, json.dumps(stored))
+    assert nq_prioritization.load_settings(core.repository)['steps']['roads_first']['campaign-2']['conditions'] == ['consecutive', 'repeated']
 
 
 def test_workspaces_of_the_previous_schema_get_the_runs_of_consecutive_failures(client):
@@ -805,14 +828,15 @@ def test_repeated_issues_count_every_service_and_nr_mode_of_the_operator(priorit
     # Some places repeat across services and across NR Modes.
     assert any(len({service for service, _mode in found}) > 1 for found in places.values())
     assert any(len({mode for _service, mode in found}) > 1 for found in places.values())
-    # The calls of the operator within the Cluster distance of the call or at its site (one quarter here), the Ping tests apart.
+    # The calls of the operator and NR Mode within the Cluster distance of the call or at its site (one quarter here), the Ping
+    # tests apart.
     meters = nq_prioritization.load_settings(core.repository)['spot_meters']
     kinds = {key: nq_prioritization.call_kind(row['service'], row['test_name'], row['session_type']) for key, row in rows.items()}
     counted = {key: row for key, row in rows.items() if kinds[key] != 'ping' and row['place_key']}
     assert all(row['repetitions'] is None and row['repeated'] == 'No' for key, row in rows.items() if kinds[key] == 'ping')
     for row in counted.values():
         site = '' if row['place_key'].startswith('spot:') else row['place_key']
-        assert row['repetitions'] == sum(1 for other in counted.values() if other['operator'] == row['operator']
+        assert row['repetitions'] == sum(1 for other in counted.values() if other['operator'] == row['operator'] and other['nr_mode'] == row['nr_mode']
                                          and ((site and other['place_key'] == site) or nq_prioritization._meters(row, other) <= meters))
 
 
@@ -835,10 +859,16 @@ def test_hotspots_and_consecutive_failures_mix_the_call_types(prioritized):
     for key, row in linked.items():
         spots.setdefault(row['cluster_key'], set()).add((row['operator'], row['nr_mode'], kinds[key]))
     assert all(len({(operator, mode) for operator, mode, _kind in found}) == 1 for found in spots.values())
-    # The settings apply at once, from the stored values: a shorter Consecutive time leaves fewer consecutive failures and
-    # the AND join smaller hotspots than OR (the default).
     client = prioritized['client']
     settings = nq_prioritization.load_settings(core.repository)
+    # With the clusters of the campaign alone (a Cluster period of 0), a failure is in a hotspot of OR exactly when it is
+    # consecutive or in a cluster, as the rules take them (each of its NR Mode).
+    response = client.put('/api/non-qualified-calls/prioritization/settings', json={'settings': {**settings, 'previous_quarters': 0}})
+    assert response.status_code == 200, response.text
+    current = {key: row for key, row in priority_rows().items() if key in linked}
+    assert all((row['consecutive'] == 'Yes' or row['repeated'] == 'Yes') == (row['cluster_size'] >= 2) for row in current.values())
+    # The settings apply at once, from the stored values: a shorter Consecutive time leaves fewer consecutive failures and
+    # the AND join smaller hotspots than OR (the default).
     assert settings['hotspot_join'] == 'or'
     before = sum(row['consecutive'] == 'Yes' for row in linked.values())
     response = client.put('/api/non-qualified-calls/prioritization/settings', json={'settings': {
@@ -916,15 +946,17 @@ def test_panel_filters_and_exports_show_the_prioritization(prioritized):
     # The clusters of the panel follow the NR Mode of the filters: one NR Mode filtered counts its calls alone.
     assert panel['cluster_mode'] == ''
     sa = client.post('/api/non-qualified-calls/prioritization', json={'filters': {'nr_mode': ['SA']}}).json()
-    places = nq_prioritization.place_values(core.repository, nq_prioritization.load_settings(core.repository), 'SA')
-    assert (sa['cluster_mode'], sa['cluster_mode_source']) == ('SA', 'NR Mode filter') and places and all(rows[key]['nr_mode'] == 'SA' for key in places)
+    assert (sa['cluster_mode'], sa['cluster_mode_source']) == ('SA', 'NR Mode filter')
+    # One NR Mode counts the clusters as the rules do (its own calls); several count every NR Mode together.
+    assert sa['totals']['repeated'] == sum(row['repeated'] == 'Yes' for row in rows.values() if row['nr_mode'] == 'SA')
+    mixed = nq_prioritization.place_values(core.repository, nq_prioritization.load_settings(core.repository), mixed=True)
+    assert panel['totals']['repeated'] == sum(value['repeated'] == 'Yes' for value in mixed.values()) > sum(row['repeated'] == 'Yes' for row in rows.values())
     # The other filters never choose it, whatever NR Modes they leave; a campaign of both NR Modes neither.
     single = next(item for item in sa['issues'] if set(item['nr_modes']) == {'SA'})
     by_site = client.post('/api/non-qualified-calls/prioritization', json={'filters': {'place': [f"{single['operator']}||{single['place']}"]}}).json()
     assert by_site['cluster_mode'] == ''
     campaign = next(row['campaign'] for row in rows.values() if row['nr_mode'] == 'SA')
     assert client.post('/api/non-qualified-calls/prioritization', json={'filters': {'campaign': [campaign]}}).json()['cluster_mode'] == ''
-    assert sa['totals']['repeated'] == sum(value['repeated'] == 'Yes' for value in places.values()) < panel['totals']['repeated']
     # With the AND join, the consecutive and the clustered issues (the more general tables) go first.
     joined = non_qualified_calls_export.prioritization_tables({**panel, 'settings': {**panel['settings'], 'hotspot_join': 'and'}})
     order_and = [component for component, *_rest in joined]
@@ -1179,6 +1211,7 @@ def test_admins_change_the_priority_and_operators_of_each_step(strategized):
     # NSA Voice takes no operator: its calls are tracked, as the Tracked step takes the Focused Operators.
     settings['steps']['cities_first']['final-8'] = {'priority': 'P5', 'operators': []}
     settings['steps']['cities_first']['final-2']['conditions'] = ['repeated']
+    settings['steps']['cities_first']['campaign-2']['conditions'] = ['consecutive', 'repeated']
     settings['steps']['cities_first']['campaign-2']['joins'] = ['or']
     response = client.put('/api/non-qualified-calls/prioritization/settings', json={'settings': settings})
     assert response.status_code == 200, response.text
@@ -1196,5 +1229,6 @@ def test_admins_change_the_priority_and_operators_of_each_step(strategized):
     assert 'Dual Queue (Cities first) · Final 1 · SA Voice · High impact: Priority P1 → P3' in changed
     assert 'Dual Queue (Cities first) · Final 8 · NSA Voice: Operators Focused Operators → No operator' in changed
     assert 'Dual Queue (Cities first) · Final 2 · SA Data · High impact: Condition High impact → Cluster' in changed
-    assert ('Dual Queue (Cities first) · Campaign 2 · SA Data · Consecutive failures AND Cluster: Condition Consecutive failures AND Cluster → '
-            'Consecutive failures OR Cluster') in changed
+    assert any('Campaign 2 · SA Data' in line and 'Condition Hotspots → Consecutive failures OR Cluster' in line for line in changed)
+    # A step saved with Consecutive failures and Cluster after the Hotspots took them keeps them.
+    assert nq_prioritization.load_settings(core.repository)['steps']['cities_first']['campaign-2']['conditions'] == ['consecutive', 'repeated']

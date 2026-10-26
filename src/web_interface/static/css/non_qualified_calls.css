@@ -1639,11 +1639,11 @@ span.nq-condition-value { display: inline-block; padding: .05rem .45rem; border-
 :is(.nq-step-flow, .nq-step-legend-item) .is-progress { background: #e08a1e; }
 :is(.nq-step-flow, .nq-step-legend-item) .is-closed { background: #2e8b57; }
 .nq-step-points { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #74c0fc, #1864ab); }
-/* The calls of each call type of a hotspot over its own calls (Voice blue, Data teal, as in the rest of the tool, and
-   WhatsApp a lighter gradient from one to the other, so that it stands apart from both), their numbers beside. */
+/* The calls of each call type of a hotspot over its own calls (Voice blue, as in the rest of the tool, WhatsApp aqua green
+   and Data a darker green), their numbers beside. */
 :is(.nq-step-flow, .nq-step-legend-item) .is-voice { background: #1366d6; }
-:is(.nq-step-flow, .nq-step-legend-item) .is-whatsapp { background: linear-gradient(90deg, #63aef2, #45c4a6); }
-:is(.nq-step-flow, .nq-step-legend-item) .is-data { background: #0b8a7a; }
+:is(.nq-step-flow, .nq-step-legend-item) .is-whatsapp { background: #3fd2b4; }
+:is(.nq-step-flow, .nq-step-legend-item) .is-data { background: #1f7a45; }
 .nq-hotspot-kinds { min-width: 6rem; }
 .nq-step-bar-value.nq-hotspot-kinds-value { flex-basis: auto; white-space: nowrap; }
 .nq-hotspot-legend { margin-bottom: .4rem; }

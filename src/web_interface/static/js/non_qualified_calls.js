@@ -3426,7 +3426,7 @@
     section('impact', 'Scoring Impact', `The points of the scoring of its campaign each call loses: in every KPI that counts tests it misses, the points the operator loses in the environment of the call shared among the tests that miss the KPI. High: the calls that hold the first ${data.settings.high_share}% of the points their campaign, operator and service lose; Medium: up to ${data.settings.medium_share}%.`, grid);
     // Every hotspot among the filtered calls (2+ failures of an operator, NR Mode and campaign close to each other in time and
     // distance, whatever their call type), the most calls first: its calls of each call type in a stacked bar (Voice blue,
-    // WhatsApp a lighter gradient from one to the other, Data teal) and their numbers; a click on its site shows its calls.
+    // WhatsApp aqua green, Data darker green) and their numbers; a click on its site shows its calls.
     const HOTSPOT_KINDS = ['Voice', 'WhatsApp', 'Data'];
     const kindsBar = (item) => {
       const element = node('span', undefined, 'nq-step-bar nq-hotspot-kinds');
