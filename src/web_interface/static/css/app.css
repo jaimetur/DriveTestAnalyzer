@@ -253,6 +253,10 @@ a.topnav-link-logout { background: linear-gradient(135deg, #ffd8d8, #ffc6c6); bo
 .comment-writers-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: .75rem; }
 .comment-writers-section { display: grid; gap: .6rem; padding: .85rem; border: 1px solid var(--line); border-radius: .8rem; background: #fcfcfd; }
 .comment-writers-section h3 { margin: 0; font-size: .95rem; }
+.comment-writers-key-field { display: flex; align-items: center; gap: .5rem; }
+.comment-writers-key-field input { flex: 1; min-width: 0; }
+.admin-stack .comment-writers-key-field .comment-writers-remove-key { flex: 0 0 auto; white-space: nowrap; background: #fff; color: #9b1c2a; border: 1px solid #e3b3b9; box-shadow: none; }
+.admin-stack .comment-writers-key-field .comment-writers-remove-key:hover { background: #fdecee; border-color: #c9626f; color: #7d1220; }
 .comment-writers-kiro-install { margin-top: .85rem; padding-top: .85rem; border-top: 1px solid var(--line); }
 #api-keys-overlay [hidden] { display: none !important; }
 .api-keys-fields { display: grid; gap: .65rem; margin: .4rem 0; }

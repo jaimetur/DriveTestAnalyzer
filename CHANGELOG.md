@@ -10,6 +10,7 @@
 #### 🌟 New Features:
 
 #### 🚀 Enhancements:
+- **Super Admin — AI Comment Writers:** the key of the server of Kiro CLI or Claude is removed with **Remove key**, beside its field, once confirmed, without saving the rest of the panel.
 
 #### 🐛 Bug fixes:
 

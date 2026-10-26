@@ -618,8 +618,7 @@ def install_comment_writer_routes(core: Any) -> None:
         enabled: list[str] = Form([]), default: str = Form(ENGINE_KIRO_CLI), claude_model: str = Form(CLAUDE_MODELS[0][0]),
         claude_effort: str = Form('medium'), kiro_model: str = Form(''), timeout_seconds: str = Form('120'),
         kiro_key_source: str = Form('user'), claude_key_source: str = Form('server'),
-        kiro_api_key: str = Form(''), remove_kiro_api_key: str = Form(''),
-        claude_api_key: str = Form(''), remove_claude_api_key: str = Form(''), user=Depends(core.super_admin_user),
+        kiro_api_key: str = Form(''), claude_api_key: str = Form(''), user=Depends(core.super_admin_user),
     ):
         before = load_settings(core.repository)
         try:
@@ -631,11 +630,8 @@ def install_comment_writer_routes(core: Any) -> None:
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         changes = {}
-        for engine, key, remove in ((ENGINE_KIRO_CLI, kiro_api_key, remove_kiro_api_key), (ENGINE_CLAUDE, claude_api_key, remove_claude_api_key)):
-            if remove:
-                set_server_key(core.application_config_dir, engine, '')
-                changes[f'{KEY_NAMES[engine]}_server_key'] = 'removed'
-            elif key.strip():
+        for engine, key in ((ENGINE_KIRO_CLI, kiro_api_key), (ENGINE_CLAUDE, claude_api_key)):
+            if key.strip():
                 set_server_key(core.application_config_dir, engine, key)
                 changes[f'{KEY_NAMES[engine]}_server_key'] = 'replaced'
             else:
@@ -645,6 +641,18 @@ def install_comment_writer_routes(core: Any) -> None:
         core.repository.try_add_log(user.username, 'save_comment_writers', json.dumps({
             **{key: saved[key] for key in visible},
             'changed': [key for key in visible if before.get(key) != saved.get(key)], **changes,
+        }, ensure_ascii=False))
+        return RedirectResponse('/super-admin#comment-writers', status_code=303)
+
+    @app.post('/super-admin/comment-writers/server-key/{engine}/remove')
+    def remove_comment_writer_server_key(engine: str, user=Depends(core.super_admin_user)):
+        """Remove the key of the server of a writer (Remove key, beside the field of the key)."""
+        if engine not in SERVER_ENGINES:
+            raise HTTPException(status_code=404, detail='Unknown comment writer.')
+        had_key = bool(server_key(core.application_config_dir, engine))
+        set_server_key(core.application_config_dir, engine, '')
+        core.repository.try_add_log(user.username, 'remove_comment_writer_server_key', json.dumps({
+            'writer': ENGINE_LABELS[engine], 'removed': had_key,
         }, ensure_ascii=False))
         return RedirectResponse('/super-admin#comment-writers', status_code=303)
 

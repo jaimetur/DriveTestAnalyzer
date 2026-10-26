@@ -174,6 +174,15 @@ def test_super_admin_sets_the_writers_and_users_their_keys(client):
     events = [(row['action'], json.loads(row['details'])) for row in core.repository.list_logs()]
     saved = [details for action, details in events if action == 'save_comment_writers']
     assert saved[-1]['claude_server_key'] == 'replaced' and saved[0]['claude_key_source'] == 'user'
+    # Remove key, beside the field of the key, removes the key of the server alone.
+    assert 'comment-writers-remove-claude' in client.get('/super-admin').text
+    removed = client.post('/super-admin/comment-writers/server-key/claude/remove', follow_redirects=False)
+    assert removed.status_code == 303 and writers.server_key(core.application_config_dir, 'claude') == ''
+    assert writers.load_settings(core.repository)['claude_key_source'] == 'user'
+    assert 'comment-writers-remove-claude' not in client.get('/super-admin').text
+    assert client.post('/super-admin/comment-writers/server-key/rules/remove').status_code == 404
+    events = [(row['action'], json.loads(row['details'])) for row in core.repository.list_logs()]
+    assert [details for action, details in events if action == 'remove_comment_writer_server_key'] == [{'writer': 'Claude', 'removed': True}]
     assert 'sk-ant' not in json.dumps(events) and 'ksk_' not in json.dumps(events)
     assert [details for action, details in events if action == 'save_user_api_keys'][0] == {'saved': ['Claude'], 'removed': ['Kiro CLI']}
 
