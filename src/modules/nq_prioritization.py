@@ -72,7 +72,7 @@ FINGERPRINT_STATE_KEY = 'nq_prioritization_fingerprint'
 FAILED_STATE_KEY = 'nq_prioritization_failed'
 SUMMARY_STATE_KEY = 'nq_prioritization_summary'
 # Bumped when the calculation changes: every value is calculated again.
-IMPACT_VERSION = 16
+IMPACT_VERSION = 17
 # The scoring of every campaign is split by campaign and operator, as the points of the scoring are national.
 LEVELS = ('Campaign', 'Operator')
 SERVICES = ('voice', 'speech', 'data')
@@ -477,7 +477,8 @@ def save_settings(repository: Any, payload: Any, username: str) -> dict[str, Any
                                   modes=default_excluded_modes(repository))
     before = load_settings(repository)
     repository.set_workspace_state(SETTINGS_STATE_KEY, json.dumps(settings, ensure_ascii=False))
-    if any(settings[name] != before[name] for name in PLACE_SETTINGS):
+    # The groups leave the calls out of scope out: a change of the scope makes them again too.
+    if any(settings[name] != before[name] for name in (*PLACE_SETTINGS, 'excluded_regions', 'excluded_modes')):
         refresh_places(repository, settings)
     # The levels compare the calls in scope with each other: the shares and the scope change them at once.
     if any(settings[name] != before[name] for name in ('high_share', 'medium_share', 'excluded_regions', 'excluded_modes')):
@@ -1665,13 +1666,16 @@ def consecutive_failures(calls: list[dict[str, Any]], minutes: float = CLUSTER_M
     return {call['call_key']: consecutive_of(runs.get(call['call_key'])) for call in calls}
 
 
-def linked_values(calls: list[dict[str, Any]], settings: dict[str, Any],
-                  by_mode: bool = True) -> tuple[dict[str, tuple[int, int]], dict[str, tuple[str, int]], dict[str, tuple[str, int]]]:
+def linked_values(calls: list[dict[str, Any]], settings: dict[str, Any], by_mode: bool = True,
+                  out_of_scope: Callable[[Any], bool] | None = None
+                  ) -> tuple[dict[str, tuple[int, int]], dict[str, tuple[str, int]], dict[str, tuple[str, int]]]:
     """The repetitions (``repetitions``, of the NR Mode of each call as the rules take them, else of every NR Mode together
     without ``by_mode``), hotspots (``hotspots``, of the Consecutive time and the Cluster distance) and runs of consecutive
     failures (``consecutive_runs``) of the calls with the settings given, the last two always within one NR Mode; the Ping
-    tests are left out of all three."""
-    linked = [call for call in calls if call_kind(call['service'], call.get('test_name'), call.get('session_type')) != PING]
+    tests and the calls out of scope (``out_of_scope``, see ``scope_test``) are left out of all three: they are in no group
+    and make none."""
+    linked = [call for call in calls if call_kind(call['service'], call.get('test_name'), call.get('session_type')) != PING
+              and not (out_of_scope and out_of_scope(call))]
     return (repetitions(linked, settings['previous_quarters'], settings['spot_meters'], by_mode),
             hotspots(linked, settings['consecutive_minutes'], settings['spot_meters'], settings['hotspot_join']),
             consecutive_runs(linked, settings['consecutive_minutes']))
@@ -1692,16 +1696,16 @@ def place_values(repository: Any, settings: dict[str, Any], mixed: bool = False)
     from src.modules import non_qualified_calls as nq
 
     ensure_tables(repository)
-    key = (tuple(settings[name] for name in PLACE_SETTINGS), repository.get_workspace_state(SUMMARY_STATE_KEY),
-           repository.get_workspace_state(nq.LATEST_STATE_KEY))
+    key = (tuple(settings[name] for name in PLACE_SETTINGS), json.dumps([settings['excluded_regions'], settings['excluded_modes']]),
+           repository.get_workspace_state(SUMMARY_STATE_KEY), repository.get_workspace_state(nq.LATEST_STATE_KEY))
     workspace = (_workspace_key(repository.db_path), mixed)
     cached = _places_cache.get(workspace)
     if cached and cached[0] == key:
         return cached[1]
     with repository.connection() as connection:
         calls = [dict(row) for row in connection.execute(
-            f'SELECT l.call_key, l.service, l.nr_mode, l.campaign, l.operator, l.site_id, l.latitude, l.longitude, l.start_time, '
-            f'l.test_name, l.session_type, p.place_key, p.place_label FROM {PRIORITY_TABLE} p '
+            f'SELECT l.call_key, l.service, l.nr_mode, l.campaign, l.operator, l.region, l.site_id, l.latitude, l.longitude, '
+            f'l.start_time, l.test_name, l.session_type, p.place_key, p.place_label FROM {PRIORITY_TABLE} p '
             f'JOIN {nq.NQ_CALL_LATEST_TABLE} l ON l.call_key = p.call_key')]
     for call in calls:
         # Only the place of a call without a site or a node depends on the settings.
@@ -1709,7 +1713,7 @@ def place_values(repository: Any, settings: dict[str, Any], mixed: bool = False)
             call['place_key'], call['place_label'] = spot_of(call['latitude'], call['longitude'], settings['spot_meters']) or ('', '')
         call['quarter'] = quarter_of(call['start_time'], call['campaign'])
         call['campaign_label'] = f"{call['campaign']}|{call['nr_mode']}"
-    repeated, clusters, runs = linked_values(calls, settings, not mixed)
+    repeated, clusters, runs = linked_values(calls, settings, not mixed, scope_test(repository, settings))
     values = {}
     for call in calls:
         count, campaigns_count = repeated.get(call['call_key'], (None, None))
@@ -1937,7 +1941,7 @@ def calculate(repository: Any, progress: Callable[[int, int, str], None] | None 
     # The calls near each one (clusters), the hotspots and the failures with another one minutes apart.
     if progress:
         progress(len(groups), len(groups) + 1, 'the hotspots and the expected gain of the calls')
-    repeated, clusters, runs = linked_values(calls, settings)
+    repeated, clusters, runs = linked_values(calls, settings, out_of_scope=scope_test(repository, settings))
     # Whether the Final CDR of the campaign of each call is scored (list 2 then orders it), and its Expected Gain: its
     # own points then, else what its failure lost in the latest campaign of its NR Mode with a Final CDR.
     finals = final_campaigns(repository)

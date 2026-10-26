@@ -502,6 +502,9 @@ def test_clusters_take_the_quarter_of_the_campaign_and_leave_the_ping_tests_out(
     assert repeated['a'] == (1, 1) and 'p' not in repeated and 'p' not in spots and 'p' not in consecutive
     repeated, _spots, _consecutive = nq_prioritization.linked_values([call('a'), call('b')], settings)
     assert repeated['a'] == (2, 1)
+    # A call out of scope is in no group and makes none.
+    repeated, spots, runs = nq_prioritization.linked_values([call('a'), call('b')], settings, out_of_scope=lambda row: row['call_key'] == 'b')
+    assert repeated['a'] == (1, 1) and spots['a'][1] == runs['a'][1] == 1 and 'b' not in repeated and 'b' not in spots and 'b' not in runs
 
 
 def test_queues_take_priority_then_the_newest_campaign_step_gain_and_oldest():
@@ -733,7 +736,7 @@ def priority_rows() -> dict[str, dict]:
     with core.repository.connection() as connection:
         return {str(row['call_key']): dict(row) for row in connection.execute(
             f'SELECT p.*, l.service, l.nr_mode, l.operator, l.join_id, l.latitude, l.longitude, l.campaign, l.start_time, l.test_name, '
-            f'l.session_type FROM {nq_prioritization.PRIORITY_TABLE} p '
+            f'l.session_type, l.region FROM {nq_prioritization.PRIORITY_TABLE} p '
             f'JOIN {nq.NQ_CALL_LATEST_TABLE} l ON l.call_key = p.call_key')}
 
 
@@ -818,6 +821,12 @@ def test_steps_prioritize_the_calls_and_fill_their_priority_until_it_is_chosen_b
 
 
 def test_repeated_issues_count_every_service_and_nr_mode_of_the_operator(prioritized):
+    # An NR Mode · operator pair out of scope: its calls leave the groups at once, as the settings are saved.
+    operators = [row['operator'] for row in priority_rows().values() if row['nr_mode'] == 'SA']
+    settings = nq_prioritization.load_settings(core.repository)
+    response = prioritized['client'].put('/api/non-qualified-calls/prioritization/settings', json={'settings': {
+        **settings, 'excluded_modes': [*settings['excluded_modes'], {'nr_mode': 'SA', 'operator': max(set(operators), key=operators.count)}]}})
+    assert response.status_code == 200, response.text
     rows = priority_rows()
     repeated = [row for row in rows.values() if row['repeated'] == 'Yes']
     assert repeated and all(row['repetitions'] >= 2 for row in repeated)
@@ -832,8 +841,12 @@ def test_repeated_issues_count_every_service_and_nr_mode_of_the_operator(priorit
     # tests apart.
     meters = nq_prioritization.load_settings(core.repository)['spot_meters']
     kinds = {key: nq_prioritization.call_kind(row['service'], row['test_name'], row['session_type']) for key, row in rows.items()}
-    counted = {key: row for key, row in rows.items() if kinds[key] != 'ping' and row['place_key']}
-    assert all(row['repetitions'] is None and row['repeated'] == 'No' for key, row in rows.items() if kinds[key] == 'ping')
+    # The Ping tests and the calls out of scope are in no cluster and make none.
+    out = nq_prioritization.scope_test(core.repository, nq_prioritization.load_settings(core.repository))
+    counted = {key: row for key, row in rows.items() if kinds[key] != 'ping' and not out(row) and row['place_key']}
+    assert any(out(row) for row in rows.values())
+    assert all(row['repetitions'] is None and row['repeated'] == 'No' and not row['cluster_key'] and not row['consecutive']
+               for key, row in rows.items() if kinds[key] == 'ping' or out(row))
     for row in counted.values():
         site = '' if row['place_key'].startswith('spot:') else row['place_key']
         assert row['repetitions'] == sum(1 for other in counted.values() if other['operator'] == row['operator'] and other['nr_mode'] == row['nr_mode']
@@ -843,9 +856,10 @@ def test_repeated_issues_count_every_service_and_nr_mode_of_the_operator(priorit
 def test_hotspots_and_consecutive_failures_mix_the_call_types(prioritized):
     rows = priority_rows()
     kinds = {key: nq_prioritization.call_kind(row['service'], row['test_name'], row['session_type']) for key, row in rows.items()}
-    # The Ping tests are neither consecutive nor in a hotspot.
-    assert {(row['consecutive'], row['cluster_key']) for key, row in rows.items() if kinds[key] == 'ping'} <= {('', '')}
-    linked = {key: row for key, row in rows.items() if kinds[key] != 'ping'}
+    # The Ping tests and the calls out of scope are neither consecutive nor in a hotspot.
+    out = nq_prioritization.scope_test(core.repository, nq_prioritization.load_settings(core.repository))
+    assert {(row['consecutive'], row['cluster_key']) for key, row in rows.items() if kinds[key] == 'ping' or out(row)} <= {('', '')}
+    linked = {key: row for key, row in rows.items() if kinds[key] != 'ping' and not out(row)}
     assert {row['consecutive'] for row in linked.values()} <= {'Yes', 'No'} and any(row['consecutive'] == 'Yes' for row in linked.values())
     assert all(row['cluster_key'] and row['cluster_size'] >= 1 for row in linked.values())
     # A failure is consecutive in a run of 2 or more; with the OR join every run falls within one hotspot.
