@@ -570,7 +570,7 @@
       canvas.classList.add('is-pointing');
       const {title, rows} = shared.describe(hit.kind, hit.item);
       tooltip.replaceChildren(node('strong', title));
-      for (const [name, value] of [...(hit.stack > 1 ? [['At this point', `${hit.stack} NQ calls`]] : []), ...rows.slice(0, 9)]) {
+      for (const [name, value] of [...(hit.stack > 1 ? [['At this point', `${hit.stack} NQ calls`]] : []), ...rows.slice(0, 10)]) {
         if (value === '' || value === null || value === undefined) continue;
         const line = node('div');
         line.append(node('span', name), node('b', String(value)));
@@ -889,7 +889,8 @@
         const flags = [item.same_hotspot ? 'Same hotspot' : '', item.same_cluster ? 'Same cluster' : '', item.same_run ? 'Same consecutive run' : '',
           item.same_place ? 'Same site' : ''].filter(Boolean).join(' · ');
         return {title: `NQ call · ${item.operator}`, rows: [
-          ['Call type', kindLabel(item)], ['Relation', flags], ['JOIN_ID', item.join_id], ['Campaign', campaignText(item.campaign, item.nr_mode)],
+          ['Call type', kindLabel(item)], ['Operator', item.operator], ['Relation', flags], ['JOIN_ID', item.join_id],
+          ['Campaign', campaignText(item.campaign, item.nr_mode)],
           ['Result', item.result], ['Failure', failureText(item)], ['Test', item.test_name], ['Started', cdrTime(item.start_time)],
           ['Status', item.status], ['Root cause', [item.root_category, item.root_cause].filter(Boolean).join(' · ')],
           ['Place', item.place_label], ['Distance', distanceText(item.distance_km)],
