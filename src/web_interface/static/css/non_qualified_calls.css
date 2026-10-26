@@ -1658,20 +1658,33 @@ span.nq-condition-value { display: inline-block; padding: .05rem .45rem; border-
 /* The hotspots and the repeated issues fit their subpanel, their columns at the same widths one above the other: the
    headers, the NR Modes, the campaigns, the site and the time wrap. */
 .nq-priority-group-table .nq-failure-table { table-layout: fixed; }
-.nq-priority-group-table th, .nq-priority-group-table td:is(:nth-child(2), :nth-child(3), :nth-child(4), .nq-hotspot-time) { white-space: normal; }
-.nq-priority-group-table th:nth-child(1) { width: 8%; }
-.nq-priority-group-table th:nth-child(2) { width: 7%; }
-.nq-priority-group-table th:nth-child(3) { width: 10%; }
-.nq-priority-group-table th:nth-child(4) { width: 14%; }
-.nq-priority-group-table th:nth-child(5) { width: 18%; }
-.nq-priority-group-table th:nth-child(6) { width: 5%; }
-.nq-priority-group-table th:nth-child(7) { width: 14%; }
-.nq-priority-group-table th:nth-child(8) { width: 7%; }
-.nq-priority-group-table th:nth-child(9) { width: 5%; }
-.nq-priority-group-table th:nth-child(10) { width: 12%; }
-/* A time never splits a date or an hour: it only breaks between its start and its end, when the column is too narrow. */
-.nq-time-part { white-space: nowrap; }
-.nq-priority-group-table td.nq-hotspot-time { overflow-wrap: normal; }
+.nq-priority-group-table th, .nq-priority-group-table td:is(:nth-child(1), :nth-child(3), :nth-child(4), :nth-child(5)) { white-space: normal; }
+.nq-priority-group-table th:nth-child(1) { width: 17%; }
+.nq-priority-group-table th:nth-child(2) { width: 6%; }
+.nq-priority-group-table th:nth-child(3) { width: 6%; }
+.nq-priority-group-table th:nth-child(4) { width: 8%; }
+.nq-priority-group-table th:nth-child(5) { width: 11%; }
+.nq-priority-group-table th:nth-child(6) { width: 8%; }
+.nq-priority-group-table th:nth-child(7) { width: 8%; }
+.nq-priority-group-table th:nth-child(8) { width: 5%; }
+.nq-priority-group-table th:nth-child(9) { width: 11%; }
+.nq-priority-group-table th:nth-child(10) { width: 6%; }
+.nq-priority-group-table th:nth-child(11) { width: 5%; }
+.nq-priority-group-table th:nth-child(12) { width: 9%; }
+/* The ID of a group, which selects its calls, and what identifies it, lighter: its sites on the first line, the period of a
+   hotspot on the next one, never split. */
+.nq-group-id { text-align: left; }
+.nq-group-id-line { display: block; }
+.nq-group-id-what { color: var(--nq-muted); font-weight: 600; }
+.nq-group-id-period { white-space: nowrap; font-variant-numeric: tabular-nums; }
+/* Each table of groups with its title and the calls it holds in a badge beside it. */
+.nq-priority-group-head { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .6rem; margin: 0 0 .2rem; }
+.nq-priority-group-head .nq-priority-group-title { margin: 0; }
+.nq-priority-group-calls { padding: .1rem .55rem; border: 1px solid color-mix(in srgb, var(--nq-color) 35%, white); border-radius: 999px;
+  background: color-mix(in srgb, var(--nq-color) 10%, white); color: var(--nq-dark); font-size: .74rem; font-weight: 800;
+  font-variant-numeric: tabular-nums; }
+/* From and To: the day, the month and the time on one line, the figures of the same width in every row. */
+.nq-priority-group-table td.nq-group-time { white-space: nowrap; overflow-wrap: normal; font-variant-numeric: tabular-nums; }
 .nq-priority-group-table td { overflow-wrap: anywhere; }
 .nq-priority-group-table .nq-hotspot-kinds { min-width: 0; }
 .nq-step-bar-value { flex: 0 0 2.6rem; color: var(--nq-muted); font-size: .74rem; text-align: right; font-variant-numeric: tabular-nums; }

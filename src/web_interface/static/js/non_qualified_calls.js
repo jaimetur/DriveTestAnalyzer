@@ -29,7 +29,7 @@
     nr_mode: 'NR Mode', call_type: 'Call Type', period: 'Period',
     age: 'Age of Open Calls', root_pair: 'Root Domain · Cause', effective_domain: 'Root Domain (with suggestions)',
     effective_cause: 'Root Domain · Cause (with suggestions)', node: 'eNB / gNB', place: 'Repetition Place', hotspot: 'Hotspot',
-    consecutive_issue: 'Consecutive Issue', state: 'Follow-up',
+    consecutive_issue: 'Consecutive Issue', clustered_issue: 'Clustered Issue', state: 'Follow-up',
     rca_state: 'Root Cause',
     netcheck_domain: `Root Domain (${PROVIDER_RCA})`, netcheck_category: `Root Domain · Category (${PROVIDER_RCA})`,
     netcheck_cause: `Root Domain · Cause (${PROVIDER_RCA})`, script_domain: 'Root Domain (Ericsson RCA)',
@@ -54,7 +54,7 @@
   // NR Mode has its own filter, the first of the General Filters.
   const EXTRA_FILTERS = ['call_type', 'period', 'age', 'root_pair', 'effective_domain', 'effective_cause', 'node',
     'netcheck_domain', 'netcheck_category', 'netcheck_cause', 'script_domain', 'script_category', 'script_cause',
-    'dta_domain', 'dta_category', 'dta_cause', 'dta_raw', 'netcheck_raw', 'script_raw', 'rca_state', 'place', 'hotspot', 'consecutive_issue'];
+    'dta_domain', 'dta_category', 'dta_cause', 'dta_raw', 'netcheck_raw', 'script_raw', 'rca_state', 'place', 'hotspot', 'consecutive_issue', 'clustered_issue'];
   // The values of the Follow-up filter (also set by the indicator cards), in their order.
   const FOLLOW_UP_STATES = ['attended', 'not_attended', 'open', 'stalled', 'closed', 'with_team', 'assigned', 'commented', 'labelled',
     'identified', 'not_identified'];
@@ -543,6 +543,7 @@
     // A hotspot or a run of consecutive failures by its operator, site and time, as the NQ Prioritization last listed it.
     if (field === 'hotspot') return state.hotspotLabels[value] || 'Hotspot of the NQ Prioritization';
     if (field === 'consecutive_issue') return state.hotspotLabels[value] || 'Consecutive issue of the NQ Prioritization';
+    if (field === 'clustered_issue') return state.hotspotLabels[value] || 'Clustered issue of the NQ Prioritization';
     return value.replace(/\|\|$/, '').replace('||', ' · ');
   };
   const clearFilter = (field) => {
@@ -1825,7 +1826,8 @@
       hidePanelLoading(panel);
     }
   };
-  const PANEL_LOADERS = Object.fromEntries(Object.entries({prioritization: loadPrioritization, rates: loadRates, failures: loadFailures,
+  // The hotspots, consecutive and clustered issues come with the NQ Prioritization: either panel unfolded reads both.
+  const PANEL_LOADERS = Object.fromEntries(Object.entries({prioritization: loadPrioritization, clusters: loadPrioritization, rates: loadRates, failures: loadFailures,
     progress: loadProgress, lifecycle: loadLifecycle, root: loadRootCauses, sources: loadSources})
     .map(([name, load]) => [name, withLoadingBar(name, load)]));
   const panelShown = (name) => {
@@ -3279,13 +3281,13 @@
       [kpiCard('Track only', number(totals.tracked), share(totals.tracked)), priorityPairs('prioritization', 'Track only')],
       [kpiCard('High Scoring Impact', number(totals.high), `${Number(totals.points || 0).toFixed(1)} scoring points lost by the filtered calls`),
         priorityPairs('impact_level', 'High')],
-      [kpiCard('Repeated Issues', number(totals.repeated), `${number(totals.places)} places with repeated failures`), priorityPairs('repeated', 'Yes')],
+      [kpiCard('Repeated Issues', number(totals.repeated), `${number(totals.places)} clusters of repeated failures`), priorityPairs('repeated', 'Yes')],
       [kpiCard('Next to analyse', number(totals.next), (data.queues || []).length
         ? data.queues.map((item) => `${item.name} ${number(item.total)}`).join(' · ') : 'Prioritized, open and not attended yet'), null],
     ];
     $('nq-priority-kpis').replaceChildren(...cards.map(([card, pairs]) => (pairs ? drillCard(card, {pairs}) : card)));
-    // Each part of the panel in a subpanel of its own, in this order: the queues, the steps of the strategy, the Scoring
-    // Impact, and the hotspots with the consecutive and clustered issues.
+    // Each part of the panel in a subpanel of its own, in this order: the queues, the steps of the strategy and the Scoring
+    // Impact (the hotspots, consecutive and clustered issues have a panel of their own).
     const sections = {};
     const section = (key, title, note, ...content) => {
       const box = node('section', undefined, 'nq-failure-section nq-progress-section nq-priority-subpanel');
@@ -3445,35 +3447,32 @@
       element.title = HOTSPOT_KINDS.map((kind) => `${kind} ${number(item.kinds[kind] || 0)}`).join(' · ');
       return element;
     };
-    // When the calls of a hotspot started: 2026-07-14 10:05–10:31 (the date once when it is the same day).
-    const hotspotTime = (item) => {
-      const first = String(item.first || '').slice(0, 16);
-      const last = String(item.last || '').slice(0, 16);
-      if (!first) return '—';
-      if (last === first) return first;
-      return last.slice(0, 10) === first.slice(0, 10) ? `${first}–${last.slice(11)}` : `${first}–${last}`;
+    // When the first or last call of a group started, in its own column: 20 Nov 16:18 (the day, the month in letters and the
+    // time, the same in every table; the year, which the campaign tells, and the full date on hover).
+    const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const momentText = (value) => {
+      const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+      return match ? `${match[3]} ${MONTHS[Number(match[2]) - 1]} ${match[4]}:${match[5]}` : '';
     };
-    // The same in short for the tables, without the year (the campaign tells it): 07-14 10:05–10:31, 09-24 13:43–10-07 09:40,
-    // or the days alone (05-11–08-21); each moment is never split, the full range shows on hover.
-    const shortTime = (item, withTime) => {
-      const first = String(item.first || '');
-      const last = String(item.last || '') || first;
-      if (!first) return {parts: ['—'], full: ''};
-      const cut = (value) => (withTime ? value.slice(5, 16) : value.slice(5, 10));
-      const full = withTime ? hotspotTime(item) : (last.slice(0, 10) !== first.slice(0, 10) ? `${first.slice(0, 10)}–${last.slice(0, 10)}` : first.slice(0, 10));
-      if (cut(last) === cut(first)) return {parts: [cut(first)], full};
-      const end = withTime && last.slice(0, 10) === first.slice(0, 10) ? last.slice(11, 16) : cut(last);
-      return {parts: [cut(first), end], full};
+    const momentCell = (value) => {
+      const text = momentText(value);
+      return text ? {text, title: String(value).slice(0, 16), className: 'nq-group-time'} : {text: '—', className: 'nq-group-time'};
     };
-    const timeNode = ({parts, full}) => {
-      const element = node('span', undefined, 'nq-time-range');
-      parts.forEach((part, index) => element.append(...(index ? [document.createTextNode('–')] : []), node('span', part, 'nq-time-part')));
-      if (full) element.title = full;
-      return element;
+    // What identifies a group beside its ID: its sites (spatial groups), its period (temporal groups) or both (hotspots).
+    const groupSites = (item) => `${item.place || 'No site'}${item.places > 1 ? ` +${number(item.places - 1)}` : ''}`;
+    const groupPeriod = (item) => {
+      const first = momentText(item.first);
+      const last = momentText(item.last);
+      if (!first) return '';
+      if (!last || last === first) return first;
+      return String(item.first).slice(0, 10) === String(item.last).slice(0, 10) ? `${first}–${last.slice(-5)}` : `${first}–${last}`;
     };
     const spots = data.hotspots || [];
     const runs = data.consecutive || [];
-    [...spots, ...runs].forEach((item) => { state.hotspotLabels[item.key] = `${item.operator || 'Unassigned'} · ${item.place || 'No site'} · ${hotspotTime(item)}`; });
+    // The filters of the groups name each by its ID and what identifies it.
+    spots.forEach((item) => { state.hotspotLabels[item.key] = `${item.id} · ${groupSites(item)} · ${groupPeriod(item)}`; });
+    runs.forEach((item) => { state.hotspotLabels[item.key] = `${item.id} · ${groupPeriod(item)}`; });
+    data.issues.forEach((item) => { state.hotspotLabels[item.key] = `${item.id} · ${groupSites(item)}`; });
     const settings = data.settings;
     const joinWord = settings.hotspot_join === 'and' ? 'AND' : 'OR';
     const hotspotNote = `Failures of the same operator, NR Mode and campaign, whatever their call type (the Ping tests and the calls out of scope apart), each within the Consecutive time ${joinWord} the Cluster distance (or at the site where it ended) of another one of them: every hotspot with the filtered calls of each, the most calls first (${number(spots.length)} hotspot${spots.length === 1 ? '' : 's'}).`;
@@ -3489,43 +3488,53 @@
       });
       return legend;
     };
-    const groupTable = (items, cells) => {
-      const table = failureTable(['Operator', 'NR Mode', 'Campaign', 'Site', 'Time', 'Calls', 'Voice / WhatsApp / Data', 'Points lost', 'Open', 'Main Root Category'],
+    // The NR Modes and campaigns of a group, with their calls when there are several.
+    const shares = (entries) => (entries.length > 1 ? entries.map(([name, count]) => `${name} ${number(count)}`).join(' · ') : (entries[0]?.[0] || '—'));
+    // Each group: its ID (a click shows its calls) with what identifies it in parentheses (``describe``), its NR Modes,
+    // campaigns, sites (the site of most of its calls, +N when they are at more) and when its first and last call started.
+    const groupTable = (items, filter, noun, idLabel, describe) => {
+      const table = failureTable([idLabel, 'Operator', 'NR Mode', 'Campaign', 'Site(s)', 'From', 'To', 'Calls', 'Voice / WhatsApp / Data', 'Points lost', 'Open', 'Main Root Category'],
         items.map((item) => {
-          const [mode, campaign, site, time] = cells(item);
-          return [{text: item.operator || 'Unassigned', className: 'nq-failure-name'}, mode, campaign, site, {node: timeNode(time), className: 'nq-hotspot-time'},
-            number(item.calls), {node: kindsBar(item), className: 'nq-step-bar-cell'}, points(item.points), number(item.open), item.category || '—'];
+          // Its ID and what identifies it: the sites on its first line, the period on the next (both for a hotspot).
+          const id = node('button', undefined, 'nq-failure-drill nq-group-id');
+          const [first, ...more] = describe(item);
+          const line = node('span', undefined, 'nq-group-id-line');
+          line.append(node('strong', item.id), node('span', ` · ${first}`, 'nq-group-id-what'));
+          id.append(line, ...more.map((text) => node('span', text, 'nq-group-id-line nq-group-id-what nq-group-id-period')));
+          return [{node: id, pairs: [[filter, item.key]], className: 'nq-failure-name',
+            title: `${number(item.calls)} of the ${number(item.size)} calls of the ${noun}: click to see them`},
+          {text: item.operator || 'Unassigned'}, shares(Object.entries(item.nr_modes || {})), shares(Object.entries(item.campaign_names || {})),
+          {text: groupSites(item), title: item.places > 1 ? `${number(item.places)} sites` : ''},
+          momentCell(item.first), momentCell(item.last), number(item.calls), {node: kindsBar(item), className: 'nq-step-bar-cell'},
+          points(item.points), number(item.open), item.category || '—'];
         }));
       table.classList.add('nq-priority-issues-table', 'nq-priority-group-table');
       return table;
     };
     // Each table with its title and what it lists.
-    const groupBlock = (title, note, content) => {
+    // Each table with its title, the calls it holds in a badge beside it, and what it lists.
+    const groupBlock = (title, note, content, items) => {
       const box = node('div', undefined, 'nq-priority-group');
-      box.append(node('h4', title, 'nq-priority-group-title'), node('p', note, 'nq-hint'), content);
+      const head = node('div', undefined, 'nq-priority-group-head');
+      const calls = items.reduce((total, item) => total + item.calls, 0);
+      head.append(node('h4', title, 'nq-priority-group-title'), node('span', `${number(calls)} call${calls === 1 ? '' : 's'}`, 'nq-priority-group-calls'));
+      box.append(head, node('p', note, 'nq-hint'), content);
       return box;
     };
     // A hotspot or a run of consecutive failures: its site (the site of most of its calls, +N when they are at more) filters
     // its calls.
-    const runCells = (filter, noun) => (item) => [item.nr_mode || '—', item.campaign || '—',
-      {text: `${item.place || 'No site'}${item.places > 1 ? ` +${number(item.places - 1)}` : ''}`, pairs: [[filter, item.key]],
-        title: `${number(item.calls)} of the ${number(item.size)} calls of the ${noun}${item.places > 1 ? ` at ${number(item.places)} sites` : ''}`},
-      shortTime(item, true)];
     // The title tells how the failures of a hotspot are joined: Consecutives OR (or AND) Clustered Issues.
     const hotspotBlock = groupBlock(`Hotspots (Consecutives ${joinWord} Clustered Issues)`, hotspotNote,
-      spots.length ? groupTable(spots, runCells('hotspot', 'hotspot')) : node('p', 'No hotspot among the filtered calls.', 'nq-muted'));
+      spots.length ? groupTable(spots, 'hotspot', 'hotspot', 'Hotspot ID', (item) => [groupSites(item), groupPeriod(item)])
+        : node('p', 'No hotspot among the filtered calls.', 'nq-muted'), spots);
     const runNote = `Runs of failures of the same operator, NR Mode and campaign, whatever their call type and wherever they were (the Ping tests and the calls out of scope apart), each within the Consecutive time of the one before: every run with the filtered calls of each, the most calls first (${number(runs.length)} run${runs.length === 1 ? '' : 's'}).`;
     const runBlock = groupBlock('Consecutive Issues', runNote,
-      runs.length ? groupTable(runs, runCells('consecutive_issue', 'run')) : node('p', 'No consecutive failures among the filtered calls.', 'nq-muted'));
-    const issueNote = `Sites with calls of a cluster: at least the Cluster size of Non-Qualified Calls of the operator failed within the Cluster distance of the call or at its site, in its campaign and the Cluster period before it, in any service and ${data.cluster_mode ? `in ${data.cluster_mode} only, the NR Mode of the ${data.cluster_mode_source}` : 'NR Mode'} (the Ping tests and the calls out of scope apart; the site of the cell where the call ended, else the site that served its start, its eNB / gNB or a spot): every one with the filtered calls of each, the most calls first (${number(data.issue_count || 0)} site${data.issue_count === 1 ? '' : 's'}).`;
-    // Every site with a clustered issue, in the columns of the hotspots: its NR Modes and campaigns (with their calls when
-    // there are several) and the days of its first and last call. The table scrolls inside the subpanel, its header fixed.
-    const shares = (entries) => (entries.length > 1 ? entries.map(([name, count]) => `${name} ${number(count)}`).join(' · ') : (entries[0]?.[0] || '—'));
-    const issueBlock = groupBlock('Clustered Issues', issueNote, data.issues.length ? groupTable(data.issues, (item) => [
-      shares(Object.entries(item.nr_modes)),
-      shares(Object.entries(item.campaign_names || {})),
-      {text: item.place, pairs: [['place', `${item.operator}||${item.place}`]], title: `Up to ${number(item.repetitions)} repetitions in the window of a call`},
-      shortTime(item, false)]) : node('p', 'No repeated issue among the filtered calls.', 'nq-muted'));
+      runs.length ? groupTable(runs, 'consecutive_issue', 'run', 'Consecutive ID', (item) => [groupPeriod(item)])
+        : node('p', 'No consecutive failures among the filtered calls.', 'nq-muted'), runs);
+    const issueNote = `Clusters of failures of the same operator and ${data.cluster_mode ? `of ${data.cluster_mode} only, the NR Mode of the ${data.cluster_mode_source}` : 'of every NR Mode together'}, whatever their call type (the Ping tests and the calls out of scope apart): calls with at least the Cluster size of Non-Qualified Calls within the Cluster distance of them or at their site, in their campaign and the Cluster period before it, each within the Cluster distance (or at the same site) of another one of the cluster: every cluster with the filtered calls of each, the most calls first (${number(data.issue_count || 0)} cluster${data.issue_count === 1 ? '' : 's'}).`;
+    const issueBlock = groupBlock('Clustered Issues', issueNote,
+      data.issues.length ? groupTable(data.issues, 'clustered_issue', 'cluster', 'Cluster ID', (item) => [groupSites(item)])
+        : node('p', 'No clustered issue among the filtered calls.', 'nq-muted'), data.issues);
     // The three tables in one subpanel: the criteria of the Prioritization Rules that make them on top, the call types, then
     // the more general tables first: with the OR join the hotspots (the consecutive and the clustered issues together) before
     // the other two, with AND after them (every failure of a hotspot of AND is in a run and in a cluster). Neither of the
@@ -3545,7 +3554,8 @@
     const calls = (items) => items.reduce((total, item) => total + item.calls, 0);
     const others = [[runBlock, runs], [issueBlock, data.issues]]
       .sort(([, a], [, b]) => calls(b) - calls(a) || a.length - b.length).map(([block]) => block);
-    section('clusters', 'Hotspots, Consecutive & Clustered Issues', `With the criteria of the Prioritization Rules below, the more general tables first: with the OR join the hotspots, which hold the consecutive and the clustered issues together; with AND the consecutive and the clustered issues, as every failure of a hotspot of AND is in a run of consecutive failures and in a cluster. Between these two, the one with more calls goes first (with the same calls, the one in fewer rows).`,
+    // In a panel of their own, below the NQ Prioritization & Queues.
+    $('nq-clusters').replaceChildren(node('p', `With the criteria of the Prioritization Rules below, the more general tables first: with the OR join the hotspots, which hold the consecutive and the clustered issues together; with AND the consecutive and the clustered issues, as every failure of a hotspot of AND is in a run of consecutive failures and in a cluster. Between these two, the one with more calls goes first (with the same calls, the one in fewer rows).`, 'nq-hint'),
       criteria, kindsLegend(), ...(joinWord === 'OR' ? [hotspotBlock, ...others] : [...others, hotspotBlock]));
     // The step tells the NR Mode and the kind of call, so the queue keeps to the columns that tell the calls apart: the
     // Priority and the step in pills (the step of list 1, Weekly, or list 2, Final; what it takes on hover), the campaign
@@ -3579,7 +3589,7 @@
       content.push(tracked);
     }
     section('queues', 'Next to analyse', `The first ${data.settings.capacity} calls of each queue that are open and not attended yet, in the order the analysts of its team take them: Priority, the newest campaign first, the step of its list, the highest Expected Gain, then the oldest; the tracked calls, in no team queue, are folded below them. Click a call to open it.`, ...content);
-    $('nq-priority').replaceChildren(...['queues', 'steps', 'impact', 'clusters'].map((key) => sections[key]).filter(Boolean));
+    $('nq-priority').replaceChildren(...['queues', 'steps', 'impact'].map((key) => sections[key]).filter(Boolean));
   };
   let priorityToken = 0;
   let priorityKey = '';
@@ -3591,7 +3601,7 @@
     priorityWatch = window.setTimeout(() => {
       priorityWatch = null;
       priorityKey = '';
-      if (panelShown('prioritization')) void loadPrioritization();
+      if (panelShown('prioritization') || panelShown('clusters')) void loadPrioritization();
     }, 5000);
   };
   async function loadPrioritization() {
@@ -3608,6 +3618,7 @@
       if (token === priorityToken) {
         priorityKey = '';
         $('nq-priority').replaceChildren(node('p', error.message, 'nq-muted'));
+        $('nq-clusters').replaceChildren(node('p', error.message, 'nq-muted'));
       }
     }
   }

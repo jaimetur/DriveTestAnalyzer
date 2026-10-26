@@ -37,6 +37,7 @@
   <nav class="nq-view-switch" id="nq-view-switch" aria-label="Non-Qualified Calls sections" data-section-bar>
     <a href="#section-filters" title="The filters of the calls"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16l-6 7.5V19l-4 1.5v-8z"/></svg>Filters</a>
     <a href="#section-nq-prioritization-queues" title="NQ Prioritization &amp; Queues: the calls to analyse next in the Voice and Data queues, the steps of the strategy, the scoring impact and the repeated issues"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h4v4H3zM9 5h4v4H9zM3 15h4v4H3zM9 15h4v4H9z"/><path d="M15 7h6m-2-2 2 2-2 2M15 17h6m-2-2 2 2-2 2"/></svg>NQ Queues</a>
+    <a href="#section-hotspots-consecutive-clustered-issues" title="Hotspots, Consecutive &amp; Clustered Issues: the failures that repeat close in time, in distance or both"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="9" r="2"/><circle cx="15.5" cy="8" r="2"/><circle cx="12" cy="15" r="2"/><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z" stroke-dasharray="3 2.5"/></svg>Hotspots</a>
     <a href="#section-non-qualified-calls" title="The calls that match the filters"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>NQ Calls <span class="nq-view-count" id="nq-view-count"></span></a>
     <a href="#section-summary" title="The Executive Summary of the filtered calls"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>Summary</a>
     <a href="#section-nq-rate-by-campaign-and-operator" title="NQ Rate by Campaign and Operator"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 5 5 19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>NQ Rate</a>
@@ -153,6 +154,16 @@
       </div>
       <div class="nq-kpis" id="nq-priority-kpis"></div>
       <div class="nq-priority" id="nq-priority"></div>
+    </div>
+  </details>
+
+  {# The hotspots, the runs of consecutive failures and the clusters of the filtered calls, from the data of the NQ
+     Prioritization (shown when either panel is unfolded). #}
+  <details class="panel collapsible-panel nq-clusters-panel" data-nq-view-panel="clusters" data-nq-loader="clusters" open data-panel-state-key="non-qualified-calls:clusters">
+    <summary class="collapsible-summary"><div><p class="eyebrow">Repeated failures</p><h2>Hotspots, Consecutive &amp; Clustered Issues</h2></div><span class="collapse-chip">Collapse</span></summary>
+    <div class="collapsible-panel-body">
+      <div class="nq-active-filters" data-nq-active-filters hidden></div>
+      <div class="nq-priority nq-clusters" id="nq-clusters"></div>
     </div>
   </details>
 

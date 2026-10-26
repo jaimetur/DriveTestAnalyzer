@@ -306,6 +306,13 @@ def _normalize_items(section: str, raw: Any) -> list[dict[str, Any]]:
     if section == 'non_qualified_calls' and 'summary' in order and 'prioritization' not in saved:
         # Reports saved before the NQ Prioritization have it after the Summary.
         order.insert(order.index('summary') + 1, 'prioritization')
+    if section == 'non_qualified_calls' and 'prioritization' in order and 'clusters' not in saved:
+        # The hotspots, consecutive and clustered issues, a part of the NQ Prioritization before, follow it with its choice.
+        order.insert(order.index('prioritization') + 1, 'clusters')
+        former = (saved.get('prioritization') or {}).get('components')
+        if isinstance(former, dict):
+            saved['clusters'] = {'key': 'clusters', 'enabled': bool((saved.get('prioritization') or {}).get('enabled', True)),
+                                 'components': {name: bool(former.get(name, True)) for name in ('hotspots', 'consecutive', 'issues')}}
     order += [key for key in catalogue if key not in order]
     items = []
     for key in order:

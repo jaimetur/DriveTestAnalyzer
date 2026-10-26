@@ -1248,3 +1248,13 @@ def test_each_section_shows_one_campaigns_field():
     # Campaigns, GAP reference and Methodology in a row, one below the other on narrow screens.
     assert '.brt-scope { display: grid; grid-template-columns: minmax(0, 20rem) minmax(0, 14rem) minmax(20rem, 1fr);' in css
     assert css.index('.brt-scope { display: grid;') < css.index('@media (max-width: 900px) { .brt-scope {')
+
+
+def test_hotspots_consecutive_and_clustered_issues_follow_the_nq_prioritization_with_its_choice():
+    items = bundle_report_templates._normalize_items('non_qualified_calls', [
+        {'key': 'summary'}, {'key': 'prioritization', 'components': {'queue': True, 'hotspots': False, 'issues': True}}])
+    keys = [item['key'] for item in items]
+    assert keys.index('clusters') == keys.index('prioritization') + 1
+    clusters = next(item for item in items if item['key'] == 'clusters')
+    assert clusters['components'] == {'hotspots': False, 'consecutive': True, 'issues': True}
+    assert set(next(item for item in items if item['key'] == 'prioritization')['components']) == {'queue', 'rules', 'kpis'}

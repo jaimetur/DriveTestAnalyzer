@@ -498,13 +498,33 @@ def test_clusters_take_the_quarter_of_the_campaign_and_leave_the_ping_tests_out(
         return {**failure(key, 0, 51.5000), 'service': 'data', 'test_name': test_name, 'session_type': '', 'quarter': 8106,
                 'campaign_label': 'Q3', 'place_key': 'spot:250:1:1'}
     settings = nq_prioritization.default_settings()
-    repeated, spots, consecutive = nq_prioritization.linked_values([call('a'), call('p', 'Ping')], settings)
-    assert repeated['a'] == (1, 1) and 'p' not in repeated and 'p' not in spots and 'p' not in consecutive
-    repeated, _spots, _consecutive = nq_prioritization.linked_values([call('a'), call('b')], settings)
-    assert repeated['a'] == (2, 1)
+    linked = nq_prioritization.linked_values([call('a'), call('p', 'Ping')], settings)
+    assert linked['repetitions']['a'] == (1, 1) and not any('p' in linked[name] for name in ('repetitions', 'hotspots', 'runs', 'clusters'))
+    linked = nq_prioritization.linked_values([call('a'), call('b')], settings)
+    assert linked['repetitions']['a'] == (2, 1) and linked['clusters']['a'] == linked['clusters']['b'] == ('group:a', 2)
+    assert linked['clusters_all']['a'] == ('group-all:a', 2)
     # A call out of scope is in no group and makes none.
-    repeated, spots, runs = nq_prioritization.linked_values([call('a'), call('b')], settings, out_of_scope=lambda row: row['call_key'] == 'b')
-    assert repeated['a'] == (1, 1) and spots['a'][1] == runs['a'][1] == 1 and 'b' not in repeated and 'b' not in spots and 'b' not in runs
+    linked = nq_prioritization.linked_values([call('a'), call('b')], settings, out_of_scope=lambda row: row['call_key'] == 'b')
+    assert linked['repetitions']['a'] == (1, 1) and linked['hotspots']['a'][1] == linked['runs']['a'][1] == 1 and 'a' not in linked['clusters']
+    assert not any('b' in linked[name] for name in ('repetitions', 'hotspots', 'runs', 'clusters'))
+
+
+def test_clusters_hold_the_calls_linked_by_distance_or_site_and_those_they_count():
+    def call(key, latitude, place='', quarter=8106, operator='EE'):
+        return {'call_key': key, 'operator': operator, 'nr_mode': 'SA', 'place_key': place or 'spot:250:1:1', 'quarter': quarter,
+                'campaign_label': 'Q', 'latitude': latitude, 'longitude': -0.12, 'start_time': f'2026-09-01 10:{key[-1]}0'}
+    # a and b 220 m apart, b and c 220 m apart: one cluster through b; d at the site of e far away; f alone.
+    calls = [call('a1', 51.5000), call('b2', 51.5020), call('c3', 51.5040), call('d4', 52.0, 'site:|s9'), call('e5', 53.0, 'site:|s9'),
+             call('f6', 54.0), call('g7', 51.5000, operator='VF')]
+    counts = nq_prioritization.repetitions(calls, 1, 250)
+    found = nq_prioritization.cluster_groups(calls, counts, 2, 1, 250)
+    assert found['a1'] == found['b2'] == found['c3'] == ('group:a1', 3) and found['d4'] == found['e5'] == ('group:d4', 2)
+    assert 'f6' not in found and 'g7' not in found
+    # A cluster of the next campaign counts a call of the one before, which belongs to it although it is alone in its own.
+    calls = [call('x1', 51.5000, quarter=8105), call('y2', 51.5010, quarter=8106)]
+    counts = nq_prioritization.repetitions(calls, 1, 250)
+    assert counts['x1'][0] == 1 and nq_prioritization.cluster_groups(calls, counts, 2, 1, 250)['x1'] == ('group:x1', 2)
+    assert nq_prioritization.cluster_groups(calls, nq_prioritization.repetitions(calls, 0, 250), 2, 0, 250) == {}
 
 
 def test_queues_take_priority_then_the_newest_campaign_step_gain_and_oldest():
@@ -599,13 +619,13 @@ def test_workspaces_of_the_previous_schema_get_the_runs_of_consecutive_failures(
     enable_module()
     nq.ensure_nq_tables(core.repository)
     with core.repository.connection() as connection:
-        for column in ('consecutive_key', 'consecutive_size'):
+        for column in ('consecutive_key', 'consecutive_size', 'repeat_key', 'repeat_all_key'):
             connection.execute(f'ALTER TABLE {nq_prioritization.PRIORITY_TABLE} DROP COLUMN {column}')
     core.repository.set_workspace_state(nq.SCHEMA_STATE_KEY, '2026-10-26.2')
     nq.ensure_nq_tables(core.repository)
     with core.repository.connection() as connection:
         columns = {row[1] for row in connection.execute(f'PRAGMA table_info({nq_prioritization.PRIORITY_TABLE})')}
-    assert {'consecutive_key', 'consecutive_size'} <= columns and 'drive' not in columns
+    assert {'consecutive_key', 'consecutive_size', 'repeat_key', 'repeat_all_key'} <= columns and 'drive' not in columns
 
 
 def test_place_of_a_call_falls_back_from_the_site_of_its_last_cell_to_a_spot():
@@ -929,9 +949,11 @@ def test_panel_filters_and_exports_show_the_prioritization(prioritized):
         'filters': {}, 'sort': f"field:{fields['impact_points']['key']}", 'direction': 'desc', 'page_size': 10}).json()
     points = [call['values'][fields['impact_points']['key']] for call in ordered['calls']]
     assert points == sorted(points, reverse=True)
+    # Every cluster (of every NR Mode together, as no NR Mode is filtered): its key filters its calls.
     issue = panel['issues'][0]
-    place = client.post('/api/non-qualified-calls/calls', json={'filters': {'place': [f"{issue['operator']}||{issue['place']}"]}}).json()
-    assert place['total'] == issue['calls']
+    assert issue['key'].startswith('group-all:') and issue['calls'] >= 2
+    cluster = client.post('/api/non-qualified-calls/calls', json={'filters': {'clustered_issue': [issue['key']]}, 'page_size': 100}).json()
+    assert cluster['total'] == issue['calls'] == issue['size']
     # Every hotspot, the most calls first, with its calls of each call type; its key filters its calls.
     spots = panel['hotspots']
     assert spots and [item['calls'] for item in spots] == sorted((item['calls'] for item in spots), reverse=True)
@@ -962,9 +984,8 @@ def test_panel_filters_and_exports_show_the_prioritization(prioritized):
     sa = client.post('/api/non-qualified-calls/prioritization', json={'filters': {'nr_mode': ['SA']}}).json()
     assert (sa['cluster_mode'], sa['cluster_mode_source']) == ('SA', 'NR Mode filter')
     # One NR Mode counts the clusters as the rules do (its own calls); several count every NR Mode together.
-    assert sa['totals']['repeated'] == sum(row['repeated'] == 'Yes' for row in rows.values() if row['nr_mode'] == 'SA')
-    mixed = nq_prioritization.place_values(core.repository, nq_prioritization.load_settings(core.repository), mixed=True)
-    assert panel['totals']['repeated'] == sum(value['repeated'] == 'Yes' for value in mixed.values()) > sum(row['repeated'] == 'Yes' for row in rows.values())
+    assert panel['totals']['repeated'] == sum(bool(row['repeat_all_key']) for row in rows.values()) >= sum(bool(row['repeat_key']) for row in rows.values())
+    assert sa['totals']['repeated'] == sum(bool(row['repeat_key']) for row in rows.values() if row['nr_mode'] == 'SA')
     # The other filters never choose it, whatever NR Modes they leave; a campaign of both NR Modes neither.
     single = next(item for item in sa['issues'] if set(item['nr_modes']) == {'SA'})
     by_site = client.post('/api/non-qualified-calls/prioritization', json={'filters': {'place': [f"{single['operator']}||{single['place']}"]}}).json()
@@ -978,15 +999,16 @@ def test_panel_filters_and_exports_show_the_prioritization(prioritized):
     assert next(subtitle for component, subtitle, *_rest in joined if component == 'hotspots').startswith('Hotspots (Consecutives AND')
     # The three tables share their columns.
     columns = {component: columns for component, _subtitle, columns, *_rest in tables}
-    assert columns['hotspots'] == columns['consecutive'] == columns['issues'] == ['Operator', 'NR Mode', 'Campaign', 'Site', 'Time', 'Calls', 'Voice', 'WhatsApp',
-                                                         'Data', 'Points lost', 'Open', 'Main Root Category']
+    assert [columns[name][0] for name in ('hotspots', 'consecutive', 'issues')] == ['Hotspot ID', 'Consecutive ID', 'Cluster ID']
+    assert columns['hotspots'][1:] == columns['consecutive'][1:] == columns['issues'][1:] == [
+        'Operator', 'NR Mode', 'Campaign', 'Site(s)', 'From', 'To', 'Calls', 'Voice', 'WhatsApp', 'Data', 'Points lost', 'Open', 'Main Root Category']
+    # The IDs of the groups: short, of their letter, one for each group of a table.
+    ids = [item['id'] for item in panel['issues']]
+    assert len(set(ids)) == len(ids) and all(value.startswith('C-') for value in ids) and spot['id'].startswith('H-') and run['id'].startswith('R-')
     assert sum(issue['kinds'].values()) == issue['calls'] == sum(issue['campaign_names'].values()) and issue['first'] <= issue['last']
-    # The times in short, without the year: the end of the same day as its hour alone, the days alone for the sites.
-    time = non_qualified_calls_export.group_time
-    assert time({'first': '2026-07-14 10:05:00', 'last': '2026-07-14 10:31:00'}) == '07-14 10:05–10:31'
-    assert time({'first': '2026-09-24 13:43:00', 'last': '2026-10-07 09:40:00'}) == '09-24 13:43–10-07 09:40'
-    assert time({'first': '2026-05-11 06:20:00', 'last': '2026-08-21 02:22:00'}, with_time=False) == '05-11–08-21'
-    assert time({'first': '2026-05-11 06:20:00', 'last': '2026-05-11 09:00:00'}, with_time=False) == '05-11'
+    # From and To: the day, the month in letters and the time, without the year.
+    assert non_qualified_calls_export.group_time('2026-11-20 16:18:44.5') == '20 Nov 16:18'
+    assert non_qualified_calls_export.group_time('') == '—'
     subtitles = [subtitle for component, subtitle, *_rest in tables if component == 'rules']
     assert subtitles == ['Dual Queue (Scoring Based) · List 1 · Weekly & Final CDRs', 'Dual Queue (Scoring Based) · Outside the lists']
     columns = next(columns for component, _subtitle, columns, *_rest in tables if component == 'rules')

@@ -72,7 +72,7 @@ FINGERPRINT_STATE_KEY = 'nq_prioritization_fingerprint'
 FAILED_STATE_KEY = 'nq_prioritization_failed'
 SUMMARY_STATE_KEY = 'nq_prioritization_summary'
 # Bumped when the calculation changes: every value is calculated again.
-IMPACT_VERSION = 17
+IMPACT_VERSION = 18
 # The scoring of every campaign is split by campaign and operator, as the points of the scoring are national.
 LEVELS = ('Campaign', 'Operator')
 SERVICES = ('voice', 'speech', 'data')
@@ -239,7 +239,11 @@ CREATE TABLE IF NOT EXISTS {PRIORITY_TABLE} (
     queue_step INTEGER,
     queue_list TEXT NOT NULL DEFAULT '',
     consecutive_key TEXT NOT NULL DEFAULT '',
-    consecutive_size INTEGER
+    consecutive_size INTEGER,
+    repeat_key TEXT NOT NULL DEFAULT '',
+    repeat_size INTEGER,
+    repeat_all_key TEXT NOT NULL DEFAULT '',
+    repeat_all_size INTEGER
 );
 CREATE TABLE IF NOT EXISTS {PRIORITY_CAMPAIGNS_TABLE} (
     campaign_key TEXT PRIMARY KEY,
@@ -258,7 +262,9 @@ STRATEGY_COLUMNS = (('cluster_key', "TEXT NOT NULL DEFAULT ''"), ('cluster_size'
                     ('final_list', 'INTEGER NOT NULL DEFAULT 0'), ('expected_points', 'REAL'),
                     ('expected_campaign', "TEXT NOT NULL DEFAULT ''"), ('queue', "TEXT NOT NULL DEFAULT ''"),
                     ('queue_step', 'INTEGER'), ('queue_list', "TEXT NOT NULL DEFAULT ''"),
-                    ('consecutive_key', "TEXT NOT NULL DEFAULT ''"), ('consecutive_size', 'INTEGER'))
+                    ('consecutive_key', "TEXT NOT NULL DEFAULT ''"), ('consecutive_size', 'INTEGER'),
+                    ('repeat_key', "TEXT NOT NULL DEFAULT ''"), ('repeat_size', 'INTEGER'),
+                    ('repeat_all_key', "TEXT NOT NULL DEFAULT ''"), ('repeat_all_size', 'INTEGER'))
 # The columns of earlier versions that are no longer used: the drive of the calls (the consecutive failures were measured
 # within the same car).
 DROPPED_COLUMNS = ('drive',)
@@ -1547,6 +1553,49 @@ def repetitions(calls: list[dict[str, Any]], previous_quarters: int, meters: flo
     return found
 
 
+def cluster_groups(calls: list[dict[str, Any]], counts: dict[str, tuple[int, int]], min_calls: int, previous_quarters: int,
+                   meters: float = CLUSTER_METERS, by_mode: bool = True, prefix: str = 'group:') -> dict[str, tuple[str, int]]:
+    """For every call of a cluster: its cluster and how many calls it holds. A call whose ``counts`` (of ``repetitions``)
+    reach ``min_calls`` is linked to the calls it counts: of the same operator (and NR Mode, ``by_mode``), within ``meters``
+    of it or at the same site, in its campaign and the ``previous_quarters`` campaigns before it; a cluster holds the calls
+    linked to each other, directly or through others of it (the calls a cluster counts belong to it, also those that do not
+    reach the Cluster size themselves)."""
+    ranks = {quarter: rank for rank, quarter in enumerate(sorted({call['quarter'] for call in calls if call.get('quarter') is not None}))}
+    groups: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for call in calls:
+        if call.get('place_key'):
+            groups.setdefault((str(call.get('operator') or '').casefold(), str(call.get('nr_mode') or '').upper() if by_mode else ''),
+                              []).append(call)
+    found: dict[str, tuple[str, int]] = {}
+    for members in groups.values():
+        rank = [ranks.get(call.get('quarter')) for call in members]
+        clustered = [(counts.get(call['call_key']) or (0,))[0] >= min_calls for call in members]
+        parents = list(range(len(members)))
+
+        def counted(call: int, other: int) -> bool:
+            """Whether a call of a cluster counts the other one (in its window)."""
+            return clustered[call] and (rank[call] is None or rank[other] is None or rank[call] - previous_quarters <= rank[other] <= rank[call])
+
+        pairs: set[tuple[int, int]] = set(_near_pairs(members, meters))
+        sites: dict[str, list[int]] = {}
+        for index, call in enumerate(members):
+            if site := _site_key(call):
+                sites.setdefault(site, []).append(index)
+        pairs.update((first, second) for indexes in sites.values() for position, first in enumerate(indexes) for second in indexes[position + 1:])
+        for first, second in pairs:
+            if counted(first, second) or counted(second, first):
+                parents[_root(parents, first)] = _root(parents, second)
+        clusters: dict[int, list[int]] = {}
+        for index in sorted(range(len(members)), key=lambda index: (str(members[index].get('start_time') or '~'), members[index]['call_key'])):
+            clusters.setdefault(_root(parents, index), []).append(index)
+        for indexes in clusters.values():
+            if len(indexes) < 2:
+                continue
+            key = f"{prefix}{members[indexes[0]]['call_key']}"
+            found.update({members[index]['call_key']: (key, len(indexes)) for index in indexes})
+    return found
+
+
 # ---------------------------------------------------------------------------
 # Data clusters, consecutive failures, Final CDRs and the Expected Gain
 # ---------------------------------------------------------------------------
@@ -1666,27 +1715,33 @@ def consecutive_failures(calls: list[dict[str, Any]], minutes: float = CLUSTER_M
     return {call['call_key']: consecutive_of(runs.get(call['call_key'])) for call in calls}
 
 
-def linked_values(calls: list[dict[str, Any]], settings: dict[str, Any], by_mode: bool = True,
-                  out_of_scope: Callable[[Any], bool] | None = None
-                  ) -> tuple[dict[str, tuple[int, int]], dict[str, tuple[str, int]], dict[str, tuple[str, int]]]:
-    """The repetitions (``repetitions``, of the NR Mode of each call as the rules take them, else of every NR Mode together
-    without ``by_mode``), hotspots (``hotspots``, of the Consecutive time and the Cluster distance) and runs of consecutive
-    failures (``consecutive_runs``) of the calls with the settings given, the last two always within one NR Mode; the Ping
-    tests and the calls out of scope (``out_of_scope``, see ``scope_test``) are left out of all three: they are in no group
-    and make none."""
+def linked_values(calls: list[dict[str, Any]], settings: dict[str, Any], out_of_scope: Callable[[Any], bool] | None = None,
+                  every_mode: bool = True) -> dict[str, dict[str, Any]]:
+    """The groups of the calls with the settings given: ``repetitions`` (``repetitions``, of the NR Mode of each call as the
+    rules take them) and ``clusters`` (``cluster_groups``), ``hotspots`` (``hotspots``, of the Consecutive time and the
+    Cluster distance) and ``runs`` of consecutive failures (``consecutive_runs``), all within one NR Mode, and with
+    ``every_mode`` the clusters of every NR Mode together (``clusters_all``, as the panel shows them without one NR Mode
+    filtered). The Ping tests and the calls out of scope (``out_of_scope``, see ``scope_test``) are left out of all of them:
+    they are in no group and make none."""
     linked = [call for call in calls if call_kind(call['service'], call.get('test_name'), call.get('session_type')) != PING
               and not (out_of_scope and out_of_scope(call))]
-    return (repetitions(linked, settings['previous_quarters'], settings['spot_meters'], by_mode),
-            hotspots(linked, settings['consecutive_minutes'], settings['spot_meters'], settings['hotspot_join']),
-            consecutive_runs(linked, settings['consecutive_minutes']))
+    period, meters, size = settings['previous_quarters'], settings['spot_meters'], settings['min_calls']
+    counts = repetitions(linked, period, meters)
+    found = {'repetitions': counts, 'clusters': cluster_groups(linked, counts, size, period, meters),
+             'hotspots': hotspots(linked, settings['consecutive_minutes'], meters, settings['hotspot_join']),
+             'runs': consecutive_runs(linked, settings['consecutive_minutes']), 'clusters_all': {}}
+    if every_mode:
+        found['clusters_all'] = cluster_groups(linked, repetitions(linked, period, meters, False), size, period, meters, False, 'group-all:')
+    return found
 
 
 _places_cache: dict[tuple[str, bool], tuple[Any, dict[str, dict[str, Any]]]] = {}
 
 
-def place_values(repository: Any, settings: dict[str, Any], mixed: bool = False) -> dict[str, dict[str, Any]]:
-    """The place, repetitions, hotspot and consecutive failure of every calculated call (its clusters count the calls of
-    its NR Mode, as the rules take them, or of every NR Mode together when ``mixed``) with the settings of the clusters,
+def place_values(repository: Any, settings: dict[str, Any], every_mode: bool = True) -> dict[str, dict[str, Any]]:
+    """The place, repetitions, cluster, hotspot and consecutive failure of every calculated call (its clusters count the
+    calls of its NR Mode, as the rules take them, and with ``every_mode`` also those of every NR Mode together) with the
+    settings of the clusters,
     the hotspots and the consecutive failures given, from the stored values: the stored place of a call with a site or an
     eNB / gNB, else its spot of the Cluster distance (``spot_meters``); the calls of its operator within the Cluster
     distance or at its site in its campaign and the ``previous_quarters`` campaigns before it (a cluster, Repeated
@@ -1698,7 +1753,7 @@ def place_values(repository: Any, settings: dict[str, Any], mixed: bool = False)
     ensure_tables(repository)
     key = (tuple(settings[name] for name in PLACE_SETTINGS), json.dumps([settings['excluded_regions'], settings['excluded_modes']]),
            repository.get_workspace_state(SUMMARY_STATE_KEY), repository.get_workspace_state(nq.LATEST_STATE_KEY))
-    workspace = (_workspace_key(repository.db_path), mixed)
+    workspace = (_workspace_key(repository.db_path), every_mode)
     cached = _places_cache.get(workspace)
     if cached and cached[0] == key:
         return cached[1]
@@ -1713,27 +1768,36 @@ def place_values(repository: Any, settings: dict[str, Any], mixed: bool = False)
             call['place_key'], call['place_label'] = spot_of(call['latitude'], call['longitude'], settings['spot_meters']) or ('', '')
         call['quarter'] = quarter_of(call['start_time'], call['campaign'])
         call['campaign_label'] = f"{call['campaign']}|{call['nr_mode']}"
-    repeated, clusters, runs = linked_values(calls, settings, not mixed, scope_test(repository, settings))
-    values = {}
-    for call in calls:
-        count, campaigns_count = repeated.get(call['call_key'], (None, None))
-        cluster_key, cluster_size = clusters.get(call['call_key'], ('', None))
-        run = runs.get(call['call_key'])
-        values[call['call_key']] = {
-            'place_key': call['place_key'], 'place_label': call['place_label'], 'repetitions': count, 'repeated_campaigns': campaigns_count,
-            'repeated': 'Yes' if count is not None and count >= settings['min_calls'] else 'No',
-            'cluster_key': cluster_key, 'cluster_size': cluster_size, 'consecutive': consecutive_of(run),
-            'consecutive_key': run[0] if run else '', 'consecutive_size': run[1] if run else None}
+    linked = linked_values(calls, settings, scope_test(repository, settings), every_mode)
+    values = {call['call_key']: {'place_key': call['place_key'], 'place_label': call['place_label'],
+                                 **group_values(linked, call['call_key'], settings['min_calls'])} for call in calls}
     _places_cache[workspace] = (key, values)
     return values
+
+
+# The values of every call that its groups give, as the table of the NQ Prioritization keeps them.
+GROUP_FIELDS = ('repetitions', 'repeated_campaigns', 'repeated', 'cluster_key', 'cluster_size', 'consecutive', 'consecutive_key',
+                'consecutive_size', 'repeat_key', 'repeat_size', 'repeat_all_key', 'repeat_all_size')
+
+
+def group_values(linked: dict[str, dict[str, Any]], key: str, min_calls: int) -> dict[str, Any]:
+    """The values of a call (``GROUP_FIELDS``) by its groups (``linked_values``): its repetitions and whether it is a
+    Repeated Issue, its cluster (of its NR Mode and of every NR Mode together), hotspot and run of consecutive failures."""
+    count, campaigns_count = linked['repetitions'].get(key, (None, None))
+    hotspot = linked['hotspots'].get(key, ('', None))
+    run = linked['runs'].get(key)
+    cluster, cluster_all = linked['clusters'].get(key, ('', None)), linked['clusters_all'].get(key, ('', None))
+    return {'repetitions': count, 'repeated_campaigns': campaigns_count,
+            'repeated': 'Yes' if count is not None and count >= min_calls else 'No', 'cluster_key': hotspot[0], 'cluster_size': hotspot[1],
+            'consecutive': consecutive_of(run), 'consecutive_key': run[0] if run else '', 'consecutive_size': run[1] if run else None,
+            'repeat_key': cluster[0], 'repeat_size': cluster[1], 'repeat_all_key': cluster_all[0], 'repeat_all_size': cluster_all[1]}
 
 
 def refresh_places(repository: Any, settings: dict[str, Any]) -> int:
     """Write the places, repetitions, hotspots and consecutive failures of ``place_values`` into the calculated calls (how
     many changed)."""
     values = place_values(repository, settings)
-    fields = ('place_key', 'place_label', 'repetitions', 'repeated_campaigns', 'repeated', 'cluster_key', 'cluster_size', 'consecutive',
-              'consecutive_key', 'consecutive_size')
+    fields = ('place_key', 'place_label', *GROUP_FIELDS)
     with repository.connection() as connection:
         stored = {row['call_key']: tuple(row[name] for name in fields) for row in connection.execute(
             f"SELECT call_key, {', '.join(fields)} FROM {PRIORITY_TABLE}")}
@@ -1941,7 +2005,7 @@ def calculate(repository: Any, progress: Callable[[int, int, str], None] | None 
     # The calls near each one (clusters), the hotspots and the failures with another one minutes apart.
     if progress:
         progress(len(groups), len(groups) + 1, 'the hotspots and the expected gain of the calls')
-    repeated, clusters, runs = linked_values(calls, settings, out_of_scope=scope_test(repository, settings))
+    linked = linked_values(calls, settings, scope_test(repository, settings))
     # Whether the Final CDR of the campaign of each call is scored (list 2 then orders it), and its Expected Gain: its
     # own points then, else what its failure lost in the latest campaign of its NR Mode with a Final CDR.
     finals = final_campaigns(repository)
@@ -1977,35 +2041,22 @@ def calculate(repository: Any, progress: Callable[[int, int, str], None] | None 
     for call in calls:
         impact = impacts.get(call['call_key'], {'state': NOT_SCORED, 'points': 0.0, 'kpis': [], 'campaign_key': ''})
         state = impact['state']
-        count, campaigns_count = repeated.get(call['call_key'], (None, None))
-        cluster_key, cluster_size = clusters.get(call['call_key'], ('', None))
+        grouped = group_values(linked, call['call_key'], settings['min_calls'])
         gain, gain_campaign = expected.get(call['call_key'], (None, ''))
         values.append((
             call['call_key'], impact['campaign_key'], state, impact['points'] if state in {SCORED, EXCLUDED} else None,
             levels.get(call['call_key'], nq_catalog.IMPACT_NONE) if state == SCORED else LEVEL_OF_STATE[state],
             kpis_text(impact['kpis']) if state == SCORED else '', json.dumps(impact['kpis'] if state == SCORED else [], ensure_ascii=False),
-            call['place_key'], call['place_label'], count, campaigns_count,
-            ('Yes' if count is not None and count >= settings['min_calls'] else 'No'), now,
-            cluster_key, cluster_size, consecutive_of(runs.get(call['call_key'])), final_list.get(call['call_key'], 0),
-            None if gain is None else round(float(gain), 4), gain_campaign, (runs.get(call['call_key']) or ('', None))[0],
-            (runs.get(call['call_key']) or ('', None))[1],
+            call['place_key'], call['place_label'], now, final_list.get(call['call_key'], 0),
+            None if gain is None else round(float(gain), 4), gain_campaign, *(grouped[name] for name in GROUP_FIELDS),
         ))
     ensure_tables(repository)
+    columns = ('call_key', 'campaign_key', 'impact_state', 'impact_points', 'impact_level', 'impact_kpis', 'impact_json', 'place_key',
+               'place_label', 'updated_at', 'final_list', 'expected_points', 'expected_campaign', *GROUP_FIELDS)
     with repository.connection() as connection:
         connection.executemany(
-            f'INSERT INTO {PRIORITY_TABLE} (call_key, campaign_key, impact_state, impact_points, impact_level, impact_kpis, '
-            'impact_json, place_key, place_label, repetitions, repeated_campaigns, repeated, updated_at, cluster_key, '
-            'cluster_size, consecutive, final_list, expected_points, expected_campaign, consecutive_key, consecutive_size) '
-            'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(call_key) DO UPDATE SET '
-            'campaign_key = excluded.campaign_key, impact_state = excluded.impact_state, impact_points = excluded.impact_points, '
-            'impact_level = excluded.impact_level, impact_kpis = excluded.impact_kpis, impact_json = excluded.impact_json, '
-            'place_key = excluded.place_key, place_label = excluded.place_label, repetitions = excluded.repetitions, '
-            'repeated_campaigns = excluded.repeated_campaigns, repeated = excluded.repeated, updated_at = excluded.updated_at, '
-            'cluster_key = excluded.cluster_key, cluster_size = excluded.cluster_size, consecutive = excluded.consecutive, '
-            'final_list = excluded.final_list, expected_points = excluded.expected_points, '
-            'expected_campaign = excluded.expected_campaign, consecutive_key = excluded.consecutive_key, '
-            'consecutive_size = excluded.consecutive_size',
-            values)
+            f"INSERT INTO {PRIORITY_TABLE} ({', '.join(columns)}) VALUES ({', '.join('?' for _ in columns)}) ON CONFLICT(call_key) DO UPDATE SET "
+            + ', '.join(f'{name} = excluded.{name}' for name in columns[1:]), values)
         connection.execute(f'DELETE FROM {PRIORITY_TABLE} WHERE call_key NOT IN (SELECT value FROM json_each(?))',
                            (json.dumps([call['call_key'] for call in calls]),))
         connection.execute(f'DELETE FROM {PRIORITY_CAMPAIGNS_TABLE}')
@@ -2017,7 +2068,7 @@ def calculate(repository: Any, progress: Callable[[int, int, str], None] | None 
         'calculated_at': now, 'seconds': round(time.monotonic() - started, 1), 'calls': len(calls), 'version': IMPACT_VERSION,
         'campaigns': len(campaigns), 'scored': sum(1 for item in impacts.values() if item['state'] == SCORED),
         'pending': sum(1 for item in impacts.values() if item['state'] == PENDING),
-        'repeated': sum(1 for value in values if value[11] == 'Yes'), **applied,
+        'repeated': sum(1 for value in values if value[len(columns) - len(GROUP_FIELDS) + GROUP_FIELDS.index('repeated')] == 'Yes'), **applied,
     }
     repository.set_workspace_state(FINGERPRINT_STATE_KEY, stamp)
     repository.set_workspace_state(SUMMARY_STATE_KEY, json.dumps(summary))
@@ -2458,7 +2509,7 @@ def step_counts(repository: Any, settings: dict[str, Any]) -> dict[str, Any]:
     lists = [CAMPAIGN_LIST] + ([FINAL_LIST] if settings['final_lists'].get(strategy, True) else [])
     # The clusters, hotspots and consecutive failures of the settings being edited, at once (the impact levels follow
     # them in each list).
-    places = place_values(repository, settings)
+    places = place_values(repository, settings, every_mode=False)
     for row in rows:
         place = places.get(row['call_key'])
         if place:
@@ -2622,7 +2673,8 @@ def panel(repository: Any, filters: Any, username: str) -> dict[str, Any]:
             'updated_at, comment_count, root_category, field_values_json, impact_points, impact_level, impact_state, '
             'impact_json, place_label, repetitions, repeated_campaigns, repeated, prioritization, priority_rule, '
             'suggested_priority, queue, queue_step, queue_list, expected_points, expected_campaign, test_name, session_type, '
-            f'cluster_key, cluster_size, consecutive_key, consecutive_size FROM calls{where}',
+            'cluster_key, cluster_size, consecutive_key, consecutive_size, repeat_key, repeat_size, repeat_all_key, repeat_all_size '
+            f'FROM calls{where}',
             [*base_params, *params])]
         # The clusters follow the NR Mode of the filters: one NR Mode chosen, or campaigns of one NR Mode (and no NR Mode
         # chosen), count the calls of that NR Mode only, as the rules do; else every NR Mode together. The other filters (a
@@ -2635,12 +2687,11 @@ def panel(repository: Any, filters: Any, username: str) -> dict[str, Any]:
                 f'WITH calls AS ({base}) SELECT DISTINCT nr_mode FROM calls{campaign_where}', [*base_params, *campaign_params])}
             if len(modes) == 1 and '' not in modes:
                 cluster_mode, cluster_source = next(iter(modes)), 'campaign filter'
-    if not cluster_mode:
-        places = place_values(repository, settings, mixed=True)
-        for row in rows:
-            place = places.get(row['call_key'])
-            if place:
-                row['repeated'], row['repetitions'], row['repeated_campaigns'] = place['repeated'], place['repetitions'], place['repeated_campaigns']
+    # The cluster of each call: of its NR Mode with one NR Mode filtered, else of every NR Mode together.
+    for row in rows:
+        row['group_key'], row['group_size'] = ((row['repeat_key'], row['repeat_size']) if cluster_mode
+                                               else (row['repeat_all_key'], row['repeat_all_size']))
+        row['repeated'] = 'Yes' if row['group_key'] else 'No'
     is_open = [str(row['status'] or '').casefold() not in closed_names for row in rows]
     attended = [bool(row['updated_at']) or int(row['comment_count'] or 0) > 0 for row in rows]
     strategy = settings['strategy']
@@ -2674,7 +2725,7 @@ def panel(repository: Any, filters: Any, username: str) -> dict[str, Any]:
                'calls': 0, 'prioritized': 0, 'tracked': 0, 'points': 0.0, 'open': 0, 'attended': 0, 'waiting': 0}
     levels: dict[str, int] = {}
     kpis: dict[tuple[str, str, str], dict[str, Any]] = {}
-    issues: dict[tuple[str, str], dict[str, Any]] = {}
+    clusters: dict[str, dict[str, Any]] = {}
     spots: dict[str, dict[str, Any]] = {}
     runs: dict[str, dict[str, Any]] = {}
     queue: list[dict[str, Any]] = []
@@ -2705,37 +2756,20 @@ def panel(repository: Any, filters: Any, username: str) -> dict[str, Any]:
                 kpi['calls'] += 1
                 kpi['points'] += float(item.get('points') or 0)
         kind = KIND_LABELS[call_kind(row['service'], row['test_name'], row['session_type'])]
-        if row['repeated'] == 'Yes' and row['place_label']:
-            issue = issues.setdefault((str(row['operator'] or ''), row['place_label']), {
-                'operator': str(row['operator'] or ''), 'place': row['place_label'], 'calls': 0, 'campaigns': set(),
-                'services': {}, 'nr_modes': {}, 'points': 0.0, 'open': 0, 'repetitions': 0, 'categories': {},
-                'kinds': {KIND_LABELS[name]: 0 for name in (VOICE, WHATSAPP, DATA)}, 'campaign_names': {}, 'times': []})
-            issue['calls'] += 1
-            issue['campaigns'].add(f"{row['campaign']}|{row['nr_mode']}")
-            label = nq.SERVICE_LABELS.get(str(row['service']), str(row['service']))
-            issue['services'][label] = issue['services'].get(label, 0) + 1
-            issue['kinds'][kind] = issue['kinds'].get(kind, 0) + 1
-            name = compact_campaign_value(row['campaign']) or str(row['campaign'] or '')
-            issue['campaign_names'][name] = issue['campaign_names'].get(name, 0) + 1
-            if row['start_time']:
-                issue['times'].append(str(row['start_time']))
-            mode = str(row['nr_mode'] or 'Unknown')
-            issue['nr_modes'][mode] = issue['nr_modes'].get(mode, 0) + 1
-            issue['points'] += points
-            issue['open'] += opened
-            issue['repetitions'] = max(issue['repetitions'], int(row['repetitions'] or 0))
-            if row['root_category']:
-                issue['categories'][row['root_category']] = issue['categories'].get(row['root_category'], 0) + 1
-        # Its hotspot and its run of consecutive failures, when they hold 2 or more failures.
-        for groups, key, size in ((spots, row['cluster_key'], row['cluster_size']), (runs, row['consecutive_key'], row['consecutive_size'])):
+        # Its hotspot, its run of consecutive failures and its cluster, when they hold 2 or more failures.
+        for groups, key, size in ((spots, row['cluster_key'], row['cluster_size']), (runs, row['consecutive_key'], row['consecutive_size']),
+                                  (clusters, row['group_key'], row['group_size'])):
             if not key or (size or 0) < 2:
                 continue
+            campaign = compact_campaign_value(row['campaign']) or str(row['campaign'] or '')
             group = groups.setdefault(key, {
-                'key': key, 'operator': str(row['operator'] or ''), 'nr_mode': str(row['nr_mode'] or ''),
-                'campaign': compact_campaign_value(row['campaign']) or str(row['campaign'] or ''), 'size': int(size),
-                'calls': 0, 'kinds': {KIND_LABELS[name]: 0 for name in (VOICE, WHATSAPP, DATA)}, 'places': {}, 'times': [],
-                'points': 0.0, 'open': 0, 'categories': {}})
+                'key': key, 'operator': str(row['operator'] or ''), 'nr_mode': str(row['nr_mode'] or ''), 'campaign': campaign,
+                'size': int(size), 'calls': 0, 'kinds': {KIND_LABELS[name]: 0 for name in (VOICE, WHATSAPP, DATA)}, 'places': {},
+                'times': [], 'points': 0.0, 'open': 0, 'categories': {}, 'nr_modes': {}, 'campaign_names': {}})
             group['calls'] += 1
+            mode = str(row['nr_mode'] or 'Unknown')
+            group['nr_modes'][mode] = group['nr_modes'].get(mode, 0) + 1
+            group['campaign_names'][campaign] = group['campaign_names'].get(campaign, 0) + 1
             group['kinds'][kind] = group['kinds'].get(kind, 0) + 1
             if row['place_label']:
                 group['places'][row['place_label']] = group['places'].get(row['place_label'], 0) + 1
@@ -2767,23 +2801,14 @@ def panel(repository: Any, filters: Any, username: str) -> dict[str, Any]:
         queues.append({'name': name, 'total': len(members), 'rows': order_queue(members, names)})
     queue = []
     tracked = order_queue([{**row, 'priority': priority_of(row)} for row in tracked], names)
-    issue_rows = sorted(issues.values(), key=lambda item: (-item['calls'], -item['points'], item['operator'].casefold(), item['place']))
-    # Each site with the columns of the hotspots: its campaigns (as the Campaign Maps name them, the most calls first), the
-    # start of its first and last call and its calls of each call type.
-    for item in issue_rows:
-        item['campaigns'] = len(item['campaigns'])
-        names = item.pop('campaign_names')
-        item['campaign_names'] = {name: names[name] for name in sorted(names, key=lambda name: (-names[name], name))}
-        times = sorted(item.pop('times'))
-        item['first'], item['last'] = (times[0], times[-1]) if times else ('', '')
-        item['points'] = round(item['points'], 2)
-        categories = item.pop('categories')
-        item['category'] = max(categories.items(), key=lambda pair: (pair[1], pair[0]))[0] if categories else ''
-    # Every hotspot and every run of consecutive failures among the filtered calls, the most calls first: its main site (the
-    # place of most of its calls), the start of its first and last call and its calls of each call type.
-    spot_rows = sorted(spots.values(), key=lambda item: (-item['calls'], -item['points'], item['operator'].casefold(), item['key']))
-    run_rows = sorted(runs.values(), key=lambda item: (-item['calls'], -item['points'], item['operator'].casefold(), item['key']))
-    for item in (*spot_rows, *run_rows):
+    # Every hotspot, run of consecutive failures and cluster among the filtered calls, the most calls first: its main site
+    # (the place of most of its calls), its NR Modes and campaigns (the most calls first), the start of its first and last
+    # call and its calls of each call type.
+    spot_rows, run_rows, issue_rows = (sorted(groups.values(), key=lambda item: (-item['calls'], -item['points'], item['operator'].casefold(),
+                                                                                  item['key'])) for groups in (spots, runs, clusters))
+    for item in (*spot_rows, *run_rows, *issue_rows):
+        for name in ('nr_modes', 'campaign_names'):
+            item[name] = dict(sorted(item[name].items(), key=lambda pair: (-pair[1], pair[0])))
         places = item.pop('places')
         times = sorted(item.pop('times'))
         item['place'] = max(places.items(), key=lambda pair: (pair[1], pair[0]))[0] if places else ''
@@ -2792,6 +2817,21 @@ def panel(repository: Any, filters: Any, username: str) -> dict[str, Any]:
         item['points'] = round(item['points'], 2)
         categories = item.pop('categories')
         item['category'] = max(categories.items(), key=lambda pair: (pair[1], pair[0]))[0] if categories else ''
+    # A short ID for each group, the same whatever the filters: H (hotspot), R (run of consecutive failures) or C (cluster) and
+    # the start of the key of its first call, longer where two groups of a table would share it.
+    for letter, items in (('H', spot_rows), ('R', run_rows), ('C', issue_rows)):
+        codes = {item['key']: item['key'].split(':', 1)[-1].upper() for item in items}
+        for length in range(6, 33):
+            taken: dict[str, int] = {}
+            for code in codes.values():
+                taken[code[:length]] = taken.get(code[:length], 0) + 1
+            for item in items:
+                if 'id' not in item and taken[codes[item['key']][:length]] == 1:
+                    item['id'] = f"{letter}-{codes[item['key']][:length]}"
+            if all('id' in item for item in items):
+                break
+        for item in items:
+            item.setdefault('id', f"{letter}-{codes[item['key']]}")
     for entry in (*rules, unruled):
         entry['points'] = round(entry['points'], 2)
     level_order = [name for name, _color in nq_catalog.IMPACT_LEVELS]
@@ -2818,7 +2858,7 @@ def panel(repository: Any, filters: Any, username: str) -> dict[str, Any]:
             'calls': len(rows), 'prioritized': sum(row['prioritization'] == PRIORITIZED for row in rows),
             'tracked': sum(row['prioritization'] == TRACK_ONLY for row in rows),
             'high': sum(row['impact_level'] == IMPACT_HIGH for row in rows),
-            'repeated': sum(row['repeated'] == 'Yes' for row in rows), 'places': len(issues),
+            'repeated': sum(row['repeated'] == 'Yes' for row in rows), 'places': len(issue_rows),
             'points': round(sum(float(row['impact_points'] or 0) for row in rows), 2),
             'next': len(queue) + sum(item['total'] for item in queues),
             'waiting': sum(not row['impact_state'] for row in rows),
@@ -2828,8 +2868,7 @@ def panel(repository: Any, filters: Any, username: str) -> dict[str, Any]:
         'rules': [*rules, *([unruled] if unruled['calls'] else [])],
         'kpis': sorted(({**item, 'points': round(item['points'], 2)} for item in kpis.values()),
                        key=lambda item: (-item['points'], item['code'], item['environment']))[:MAX_PANEL_KPIS],
-        # Every hotspot, every run of consecutive failures and every site with a clustered issue among the filtered calls, the
-        # most calls first.
+        # Every hotspot, every run of consecutive failures and every cluster among the filtered calls, the most calls first.
         'hotspots': spot_rows, 'consecutive': run_rows,
         'issues': issue_rows, 'issue_count': len(issue_rows),
         'queue': [queue_row(row, position) for position, row in enumerate(queue[:settings['capacity']], start=1)],
