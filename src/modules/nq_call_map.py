@@ -40,7 +40,8 @@ DEFAULT_TEST_SCOPE = 'cdr'
 # The Non-Qualified Calls around that the map draws (the page chooses; the diagnosis and the decisions count them all).
 FAILURE_SCOPES = {'cdr': 'This CDR', 'campaign': 'Its campaign', 'every': 'Every campaign'}
 DEFAULT_FAILURE_SCOPE = 'every'
-# What one map draws at most: the nearest first.
+# What one map draws at most: the nearest first. Every NQ call of the campaign of the call within the radius (and of its
+# groups and its site) is drawn, and at most MAX_FAILURES of the other campaigns.
 MAX_TESTS = 6000
 MAX_FAILURES = 600
 MAX_SITES = 300
@@ -441,10 +442,13 @@ def flag_same_pci(sites: list[dict[str, Any]], trace: list[dict[str, Any]]) -> N
 # ---------------------------------------------------------------------------
 # The Non-Qualified Calls around it
 # ---------------------------------------------------------------------------
-def nearby_failures(repository: Any, call: dict[str, Any], centre: tuple[float, float], radius_km: float) -> list[dict[str, Any]]:
+def nearby_failures(repository: Any, call: dict[str, Any], centre: tuple[float, float], radius_km: float
+                    ) -> tuple[list[dict[str, Any]], int, dict[str, Any]]:
     """The Non-Qualified Calls (their latest version) within ``radius_km`` of ``centre`` and those of the operator of the call
     at its place or in its hotspot, cluster or run of consecutive failures wherever they are, nearest first: each with how
-    it relates to the call."""
+    it relates to the call. Every one of its campaign (and NR Mode) and of its groups and site is kept, and the nearest
+    MAX_FAILURES of the other campaigns; also how many of those were left out, and the groups of the call (how many calls
+    its hotspot, cluster and run hold, and whether it has a site)."""
     from src.modules import non_qualified_calls as nq
     from src.modules.nq_prioritization import PRIORITY_TABLE, call_kind
 
@@ -452,8 +456,8 @@ def nearby_failures(repository: Any, call: dict[str, Any], centre: tuple[float, 
     base, params = nq._base_sql(nq.untracked_status(repository, options), repository)
     south, north, west, east = bounding_box(centre, radius_km)
     with repository.connection() as connection:
-        own = connection.execute(f'SELECT place_key, cluster_key, repeat_key, consecutive_key FROM {PRIORITY_TABLE} WHERE call_key = ?',
-                                 (call.get('parent_key') or call['call_key'],)).fetchone()
+        own = connection.execute(f'SELECT place_key, cluster_key, cluster_size, repeat_key, repeat_size, consecutive_key, consecutive_size '
+                                 f'FROM {PRIORITY_TABLE} WHERE call_key = ?', (call.get('parent_key') or call['call_key'],)).fetchone()
         place, hotspot, cluster, run = ((_text(own['place_key']), _text(own['cluster_key']), _text(own['repeat_key']), _text(own['consecutive_key']))
                                         if own else ('', '', '', ''))
         rows = connection.execute(f"""
@@ -500,9 +504,19 @@ def nearby_failures(repository: Any, call: dict[str, Any], centre: tuple[float, 
             'self': is_self, 'same_operator': same_operator, 'same_place': same_place and not is_self,
             'same_hotspot': same_hotspot and not is_self, 'same_cluster': same_cluster and not is_self, 'same_run': same_run and not is_self,
         })
-    failures.sort(key=lambda item: (not item['self'], not (item['same_hotspot'] or item['same_cluster'] or item['same_run'] or item['same_place']),
-                                    math.inf if item['distance_km'] is None else item['distance_km']))
-    return failures[:MAX_FAILURES]
+    def order(item: dict[str, Any]) -> tuple[Any, ...]:
+        return (not item['self'], not (item['same_hotspot'] or item['same_cluster'] or item['same_run'] or item['same_place']),
+                math.inf if item['distance_km'] is None else item['distance_km'])
+
+    def kept(item: dict[str, Any]) -> bool:
+        return (item['self'] or item['same_hotspot'] or item['same_cluster'] or item['same_run'] or item['same_place']
+                or (item['campaign'] == _text(call.get('campaign')) and item['nr_mode'] == _text(call.get('nr_mode'))))
+    failures.sort(key=order)
+    others = [item for item in failures if not kept(item)]
+    groups = {'hotspot': (own['cluster_size'] or 0) if hotspot else 0, 'cluster': (own['repeat_size'] or 0) if cluster else 0,
+              'run': (own['consecutive_size'] or 0) if run else 0, 'site': bool(place)}
+    return (sorted([*(item for item in failures if kept(item)), *others[:MAX_FAILURES]], key=order),
+            max(0, len(others) - MAX_FAILURES), groups)
 
 
 # ---------------------------------------------------------------------------
@@ -1058,7 +1072,7 @@ def call_map(repository: Any, call_key: str, *, radius_km: Any = None, tests: st
                      'the map shows no sites. Upload one in Workspace to see them.')
     elif trace and not any(step.get('site') for step in trace):
         notes.append('The cells of this call are not in the Network Inventory of the networks that serve its operator.')
-    failures = nearby_failures(repository, call, point, radius)
+    failures, failures_left_out, groups = nearby_failures(repository, call, point, radius)
     # The operators of the tests with the labels of the Operator Maps, as the calls show them.
     mapper = ValueMapper.from_settings(repository.chart_mapping_settings())
     test_points = nearby_tests(repository, test_datasets(repository, call, scope), point, radius,
@@ -1109,6 +1123,7 @@ def call_map(repository: Any, call_key: str, *, radius_km: Any = None, tests: st
         'focus_labels': labels_with_role(repository, FOCUS), 'focus_operators': focus_operators(repository),
         'families': list(families), 'snapshots': snapshots, 'trace': trace, 'sites': sites, 'failures': failures,
         'tests': test_points, 'classes': classes, 'notes': notes,
+        'failures_left_out': failures_left_out, 'failures_max': MAX_FAILURES, 'groups': groups,
         'diagnosis': checks, 'decisions': site_decisions(failures), 'drive': drive, 'site_health': health,
         'basemap': {'url_template': OSM_TILES, 'attribution': OSM_ATTRIBUTION},
     }

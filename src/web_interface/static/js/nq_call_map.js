@@ -1100,10 +1100,18 @@
       const others = data.failures.filter((item) => !item.self);
       const shown = others.filter(shared.showsFailure);
       const scope = settings.failures === 'every' ? '' : ` · ${settings.failures === 'cdr' ? 'of this CDR' : 'of its campaign'}`;
+      // Each count takes the call itself too: in its hotspot, cluster or run (of 2 calls or more), at its site, within the radius.
+      const own = data.failures.find((item) => item.self);
+      const groups = data.groups || {};
+      const count = (test, itself) => number(shown.filter(test).length + (itself ? 1 : 0));
+      const within = (item) => item.distance_km !== null && item.distance_km <= data.radius_km;
+      // Every NQ call of its campaign comes, and the nearest ones of the other campaigns up to a maximum.
+      const cut = settings.failures === 'every' && data.failures_left_out
+        ? ` · of the other campaigns, the ${number(data.failures_max)} nearest (${number(data.failures_left_out)} more left out)` : '';
       failuresCard.replaceChildren(cardHead('Non-Qualified Calls around',
-        `${number(shown.filter((item) => item.same_hotspot).length)} in its hotspot · ${number(shown.filter((item) => item.same_cluster).length)} in its cluster · `
-        + `${number(shown.filter((item) => item.same_run).length)} in its consecutive run · ${number(shown.filter((item) => item.same_place).length)} at its site · `
-        + `${number(shown.filter((item) => item.distance_km !== null && item.distance_km <= data.radius_km).length)} within ${distanceText(data.radius_km)}${scope}`));
+        `${count((item) => item.same_hotspot, groups.hotspot >= 2)} in its hotspot · ${count((item) => item.same_cluster, groups.cluster >= 2)} in its cluster · `
+        + `${count((item) => item.same_run, groups.run >= 2)} in its consecutive run · ${count((item) => item.same_place, groups.site)} at its site · `
+        + `${count(within, own && within(own))} within ${distanceText(data.radius_km)}${scope}${cut}`));
       if (!shown.length) {
         failuresCard.append(node('p', 'No other Non-Qualified Call around.', 'nq-map-empty'));
         return;

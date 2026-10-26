@@ -9060,6 +9060,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
             **details, 'radius_km': payload['radius_km'], 'radius_of_the_groups': payload['group_radius_km'] is not None,
             'join_id': payload['call']['join_id'], 'operator': payload['call']['operator'],
             'sites': len(payload['sites']), 'cells_of_the_call': len(payload['trace']), 'nq_calls_around': len(payload['failures']),
+            'nq_calls_of_other_campaigns_left_out': payload['failures_left_out'],
             'tests_around': payload['tests']['total'], 'tests_shown': len(payload['tests']['rows']),
             # What its Diagnosis hints flagged, for the troubleshooting of the call.
             'to_check': [check['key'] for check in payload['diagnosis'] if check['level'] == 'bad'],

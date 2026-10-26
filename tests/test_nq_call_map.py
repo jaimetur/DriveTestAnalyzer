@@ -83,7 +83,7 @@ def prepare(client, tmp_path) -> dict[str, dict]:
     return {call['join_id']: call for call in calls}
 
 
-def test_the_map_places_the_call_its_cells_the_sites_and_the_calls_and_tests_around(client, tmp_path):
+def test_the_map_places_the_call_its_cells_the_sites_and_the_calls_and_tests_around(client, tmp_path, monkeypatch):
     calls = prepare(client, tmp_path)
     response = client.get(f"/api/non-qualified-calls/calls/{calls['V1']['call_key']}/map", params={'radius_km': 2})
     assert response.status_code == 200
@@ -118,6 +118,17 @@ def test_the_map_places_the_call_its_cells_the_sites_and_the_calls_and_tests_aro
     # Each with its CDR and campaign, so the page shows those of the CDR, the campaign or every campaign chosen.
     assert failures['V2']['dataset_id'] == call['dataset_id'] and failures['V2']['campaign'] == call['campaign']
     assert data['failure_scopes'] == nq_call_map.FAILURE_SCOPES and nq_call_map.DEFAULT_FAILURE_SCOPE == 'every'
+    assert data['failures_left_out'] == 0 and data['failures_max'] == nq_call_map.MAX_FAILURES
+    # Alone in its hotspot (of 1 call: the page counts no hotspot), in no cluster and no run.
+    assert {key: data['groups'][key] for key in ('hotspot', 'cluster', 'run')} == {'hotspot': 1, 'cluster': 0, 'run': 0}
+    # Every NQ call of its campaign comes, whatever the maximum; those of the other campaigns up to it, nearest first.
+    monkeypatch.setattr(nq_call_map, 'MAX_FAILURES', 0)
+    point = tuple(data['centre'])
+    kept, left_out, _groups = nq_call_map.nearby_failures(core.repository, call, point, 2.0)
+    assert {item['join_id'] for item in kept} == {'V1', 'V2'} and left_out == 0
+    kept, left_out, _groups = nq_call_map.nearby_failures(core.repository, {**call, 'campaign': 'Another campaign'}, point, 2.0)
+    assert {item['join_id'] for item in kept} == {'V1'} and left_out == 1
+    monkeypatch.undo()
     # The tests around, completed or not, with their RSRP and SINR.
     tests = data['tests']
     assert tests['total'] == 3 and tests['kinds'] == ['voice'] and len(tests['rows']) == 3
