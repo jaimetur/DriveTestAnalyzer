@@ -963,6 +963,8 @@ def call_map(repository: Any, call_key: str, *, radius_km: Any = DEFAULT_RADIUS_
     from src.modules import non_qualified_calls as nq
     from src.modules.inventory_insights import configured_vendor_colours
     from src.modules.network_insights import RSRP_CLASSES, SINR_CLASSES
+    from src.modules.nq_prioritization import call_kind
+    from src.modules.operator_roles import FOCUS, focus_operators, labels_with_role
     from src.modules.serving_cells import load_serving_networks, serving_families
     from src.modules.value_maps import ValueMapper, field_kind
 
@@ -1052,6 +1054,7 @@ def call_map(repository: Any, call_key: str, *, radius_km: Any = DEFAULT_RADIUS_
         'call': {
             'call_key': call['call_key'], 'parent_key': _text(call.get('parent_key')), 'join_id': _text(call.get('join_id')),
             'service': service, 'service_label': call.get('service_label'), 'operator': _text(call.get('operator')),
+            'kind': call_kind(service, call.get('test_name'), call.get('session_type')),
             'campaign': _text(call.get('campaign')), 'nr_mode': _text(call.get('nr_mode')), 'result': _text(call.get('result')),
             'technology': _text(call.get('technology')), 'test_name': _text(call.get('test_name')),
             'failure_phase': _text(call.get('failure_phase')), 'failure_technology': _text(call.get('failure_technology')),
@@ -1067,6 +1070,8 @@ def call_map(repository: Any, call_key: str, *, radius_km: Any = DEFAULT_RADIUS_
         },
         'centre': [point[0], point[1]], 'radius_km': radius, 'radii_km': list(RADII_KM),
         'tests_scope': scope, 'tests_scopes': TEST_SCOPES, 'failure_scopes': FAILURE_SCOPES,
+        # The Focus operators of the Operator Maps: their labels, and with every name of the CDRs they stand for.
+        'focus_labels': labels_with_role(repository, FOCUS), 'focus_operators': focus_operators(repository),
         'families': list(families), 'snapshots': snapshots, 'trace': trace, 'sites': sites, 'failures': failures,
         'tests': test_points, 'classes': classes, 'notes': notes,
         'diagnosis': checks, 'decisions': site_decisions(failures), 'drive': drive, 'site_health': health,

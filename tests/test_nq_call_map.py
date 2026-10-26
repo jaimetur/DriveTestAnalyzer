@@ -91,6 +91,8 @@ def test_the_map_places_the_call_its_cells_the_sites_and_the_calls_and_tests_aro
     # Where it failed: where it ended.
     assert call['start'] == [51.5078, -0.1279] and call['end'] == [51.511, -0.1215] and data['centre'] == [51.511, -0.1215]
     assert call['serving_site'] == '70001' and data['radius_km'] == 2.0
+    # Its type, as the NQ Prioritization names it (the NQ calls around carry theirs too).
+    assert call['kind'] == 'voice' and all(item['kind'] for item in data['failures'])
     # Its radio values: the Min / Avg / Max of a measure together.
     rsrp = next(item for item in call['radio'] if item['name'] == '4G RSRP (A)')
     assert (rsrp['min'], rsrp['avg'], rsrp['max']) == ('-121.0', '-114.5', '-104.0')
@@ -139,6 +141,11 @@ def test_the_radius_the_samples_and_the_unknown_calls(client, tmp_path):
     assert data['radius_km'] == nq_call_map.DEFAULT_RADIUS_KM and data['tests_scope'] == 'campaign'
     # Far from every inventory site: no site, and a cell trace it does not have.
     assert data['sites'] == [] and data['trace'] == [] and data['tests']['total'] == 1
+    # The Focus operators of the Operator Maps, for the Operators choice of the page: none until a label has the role.
+    assert data['focus_labels'] == [] and data['focus_operators'] == []
+    core.repository.replace_operator_mapping_group(None, 'VF', ['Vodafone UK'], '#E60000', 'focus')
+    data = client.get(f'/api/non-qualified-calls/calls/{key}/map').json()
+    assert data['focus_labels'] == ['VF'] and data['focus_operators'] == ['VF', 'Vodafone UK']
     assert client.get('/api/non-qualified-calls/calls/unknown/map').status_code == 404
 
 

@@ -297,12 +297,11 @@
       context.setLineDash([]);
       context.globalAlpha = 1;
       // The tests around, in the colour of their level.
-      const ownOperator = String(call.operator || '').toLowerCase();
       const operators = data.tests.operators;
       const testRadius = zoom >= 16 ? 5 : zoom >= 13 ? 4 : 3;
       if (layers.tests) {
         for (const row of data.tests.rows) {
-          if (settings.operators === 'own' && String(operators[row[COLUMN.operator]] || '').toLowerCase() !== ownOperator) continue;
+          if (!shared.operatorShown(operators[row[COLUMN.operator]])) continue;
           const [x, y] = project(row[COLUMN.latitude], row[COLUMN.longitude]);
           if (x < -10 || y < -10 || x > width + 10 || y > height + 10) continue;
           context.beginPath();
@@ -683,7 +682,11 @@
         item('diamond', 'NQ call at the same site (repetition)', COLOURS.place);
         item('diamond', 'NQ call of its hotspot', COLOURS.hotspot);
         item('diamond', `Other NQ calls of ${data.call.operator || 'its operator'}`, COLOURS.own);
-        if (settings.operators === 'all') item('diamond', 'NQ calls of other operators', COLOURS.other);
+        if (shared.operatorChoice() === 'all') item('diamond', 'NQ calls of other operators', COLOURS.other);
+        const own = String(data.call.operator || '').trim().toLowerCase();
+        if (shared.operatorChoice() === 'focus' && (data.focus_labels || []).some((label) => label.trim().toLowerCase() !== own)) {
+          item('diamond', 'NQ calls of the other Focus operators', COLOURS.other);
+        }
       }
       const located = data.trace.some((step) => step.site);
       if ((settings.layers.sites && data.sites.length) || (settings.layers.path && located)) {
@@ -725,7 +728,7 @@
     const stored = readSettings();
     const settings = {
       radius_km: Number(stored.radius_km) || 2, tests: stored.tests === 'campaign' ? 'campaign' : 'cdr',
-      colour: METRICS[stored.colour] ? stored.colour : '', operators: stored.operators === 'all' ? 'all' : 'own',
+      colour: METRICS[stored.colour] ? stored.colour : '', operators: ['all', 'focus'].includes(stored.operators) ? stored.operators : 'own',
       // The Non-Qualified Calls around drawn: those of every campaign until another choice.
       failures: FAILURE_SCOPES[stored.failures] ? stored.failures : 'every',
       // The RSRP / SINR samples start hidden, so the map shows the call, its cells and the sites first.
@@ -765,7 +768,17 @@
       if (!call || failure.self) return true;
       if (settings.failures === 'cdr' && failure.dataset_id !== call.dataset_id) return false;
       if (settings.failures === 'campaign' && (failure.campaign !== call.campaign || failure.nr_mode !== call.nr_mode)) return false;
-      return failure.same_place || failure.same_hotspot || settings.operators === 'all' || failure.same_operator;
+      return failure.same_place || failure.same_hotspot || (shared.operatorChoice() === 'own' ? failure.same_operator : shared.operatorShown(failure.operator));
+    };
+    // The operators chosen: that of the call, the Focus operators of the Operator Maps (that of the call while the
+    // workspace has none) or every operator.
+    let focusNames = new Set();
+    shared.operatorChoice = () => (settings.operators === 'focus' && !focusNames.size ? 'own' : settings.operators);
+    shared.operatorShown = (name) => {
+      const choice = shared.operatorChoice();
+      if (choice === 'all') return true;
+      const value = String(name || '').trim().toLowerCase();
+      return choice === 'focus' ? focusNames.has(value) : value === String(shared.data?.call.operator || '').trim().toLowerCase();
     };
     const views = () => [panelView, expandedView].filter(Boolean);
     const redrawAll = () => views().forEach((view) => { view.renderLegend(); view.redraw(); });
@@ -789,8 +802,8 @@
     shared.describe = (kind, item) => {
       const data = shared.data;
       if (kind === 'call' || kind === 'start') {
-        return {title: kind === 'start' ? 'Where the call started' : `This call · ${item.service_label || ''}`.trim(), rows: [
-          ['JOIN_ID', item.join_id], ['Operator', item.operator], ['Campaign', campaignText(item.campaign, item.nr_mode)],
+        return {title: kind === 'start' ? 'Where the call started' : 'This call', rows: [
+          ['Call type', KIND_LABELS[item.kind] || item.service_label], ['JOIN_ID', item.join_id], ['Operator', item.operator], ['Campaign', campaignText(item.campaign, item.nr_mode)],
           ['Result', item.result], ['Failure', failureText(item)], ['Phase', item.failure_phase],
           ['Technology', item.technology], ['Started', cdrTime(item.start_time)], ['Ended', item.end_time ? cdrTime(item.end_time) : ''],
           ['Serving site', item.serving_site ? `${item.serving_site}${item.serving_host ? ` (${item.serving_host})` : ''}` : ''],
@@ -799,8 +812,8 @@
       }
       if (kind === 'failure') {
         const flags = [item.same_place ? 'Same site (repetition)' : '', item.same_hotspot ? 'Same hotspot' : ''].filter(Boolean).join(' · ');
-        return {title: `${kindLabel(item)} · ${item.operator}`, rows: [
-          ['Relation', flags], ['JOIN_ID', item.join_id], ['Campaign', campaignText(item.campaign, item.nr_mode)],
+        return {title: `NQ call · ${item.operator}`, rows: [
+          ['Call type', kindLabel(item)], ['Relation', flags], ['JOIN_ID', item.join_id], ['Campaign', campaignText(item.campaign, item.nr_mode)],
           ['Result', item.result], ['Failure', failureText(item)], ['Test', item.test_name], ['Started', cdrTime(item.start_time)],
           ['Status', item.status], ['Root cause', [item.root_category, item.root_cause].filter(Boolean).join(' · ')],
           ['Place', item.place_label], ['Distance', distanceText(item.distance_km)],
@@ -1214,6 +1227,10 @@
     };
     const renderToolbar = () => {
       const data = shared.data;
+      // This CDR names its type: a campaign has a CDR per type (Voice, Data...), and the calls of a Data CDR are not those of a
+      // Voice call.
+      const cdrType = SERVICE_LABELS[data?.call.service] || '';
+      const scopes = (entries) => Object.entries(entries).map(([value, text]) => [value, value === 'cdr' && cdrType ? `${text} (${cdrType})` : text]);
       const radii = data?.radii_km || [0.5, 1, 2, 5, 10];
       const layers = node('div', undefined, 'nq-map-layers');
       layers.setAttribute('role', 'group');
@@ -1231,15 +1248,17 @@
         select('Radius', 'radius', radii.map((value) => [String(value), distanceText(value)]), String(settings.radius_km), (value) => {
           settings.radius_km = Number(value); save(); load();
         }, 'The area around where the call failed: its sites, Non-Qualified Calls and tests'),
-        select('RSRP / SINR samples from', 'tests', Object.entries(data?.tests_scopes || {cdr: 'This CDR', campaign: 'Every CDR of its campaign'}), settings.tests, (value) => {
+        select('RSRP / SINR samples from', 'tests', scopes(data?.tests_scopes || {cdr: 'This CDR', campaign: 'Every CDR of its campaign'}), settings.tests, (value) => {
           settings.tests = value; save(); load();
         }, 'The tests whose RSRP / SINR the samples and the Radio around the call show: the CDR of the call, or every CDR of its campaign and NR Mode (Voice, Speech and Data together)'),
-        select('NQ calls from', 'failures', Object.entries(data?.failure_scopes || FAILURE_SCOPES), settings.failures, (value) => {
+        select('NQ calls from', 'failures', scopes(data?.failure_scopes || FAILURE_SCOPES), settings.failures, (value) => {
           settings.failures = value; save(); redrawAll(); renderFailures();
-        }, 'The Non-Qualified Calls around that the map and its list show: those of the CDR of the call, of its campaign and NR Mode, or of every campaign (the Diagnosis hints and the Decisions at its place count those of every campaign)'),
-        select('Operators', 'operators', [['own', `${data?.call.operator || 'Its operator'} only`], ['all', 'Every operator']], settings.operators, (value) => {
+        }, 'The Non-Qualified Calls around that the map and its list show: those of the CDR of the call (of its type only: the Voice CDR of a Voice call), of every CDR of its campaign and NR Mode, or of every campaign (the Diagnosis hints and the Decisions at its place count those of every campaign)'),
+        select('Operators', 'operators', [['own', `${data?.call.operator || 'Its operator'} only`],
+          ...(focusNames.size ? [['focus', 'Focus operators only']] : []), ['all', 'Every operator']], shared.operatorChoice(), (value) => {
           settings.operators = value; save(); redrawAll(); renderFailures();
-        }, 'The samples and Non-Qualified Calls of the operator of the call, or of every operator (its repetitions and hotspot always show)'),
+        }, 'The samples and Non-Qualified Calls of the operator of the call, of the Focus operators of the Operator Maps'
+          + `${data?.focus_labels?.length ? ` (${data.focus_labels.join(', ')})` : ''} or of every operator (its repetitions and hotspot always show)`),
         layers);
     };
 
@@ -1264,6 +1283,7 @@
         if (request !== controllerAbort || key !== callKey) return false;
         const sameCall = loadedKey === key;
         shared.data = data;
+        focusNames = new Set((data.focus_operators || []).map((name) => String(name).trim().toLowerCase()).filter(Boolean));
         settings.radius_km = data.radius_km;
         // The samples are coloured by the RSRP of the radio of the call (NR in SA) until another measure is chosen.
         if (!METRICS[settings.colour]) settings.colour = data.call.nr_mode === 'SA' ? 'nr_rsrp' : 'lte_rsrp';
