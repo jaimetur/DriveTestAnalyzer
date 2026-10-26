@@ -6,10 +6,11 @@ Around the place where the call failed (where it ended, else where it started) t
   it went through (its Cell ID trace), placed at their inventory sites, and the NR cell of an NSA call found by its PCI;
 - the inventory sites of the networks that serve its operator (Serving Networks) around it, with their cells (azimuth,
   beamwidth, band, channel, PCI and state); the cells with the PCI and channel of a cell of the call are flagged;
-- the other Non-Qualified Calls around it, of every operator: those of its operator at the same place (its repetitions)
-  and those of its hotspot are marked;
-- the tests of its CDR (or of every CDR of its campaign) around it, completed or not, with their LTE and NR RSRP and SINR:
-  the radio conditions of the area;
+- the other Non-Qualified Calls around it, of every operator and campaign: those of its operator at the same place (its
+  repetitions) and those of its hotspot are marked; the map shows those of its CDR, its campaign or every campaign
+  (``FAILURE_SCOPES``, chosen in the page);
+- the tests of its CDR (or of every CDR of its campaign) around it, completed or not, with their LTE and NR RSRP and SINR
+  and the campaign of their CDR: the radio conditions of the area;
 - what it all suggests (``diagnosis``: coverage, interference, serving distance, PCI, cell states, the other operators,
   repetition and handovers), the root causes already decided for the calls at its place (``decisions``), the tests of its
   drive in the minutes around it (``drive``) and the NQ rate of its serving site per campaign (``site_health``).
@@ -33,6 +34,9 @@ RADII_KM = (0.5, 1.0, 2.0, 5.0, 10.0)
 DEFAULT_RADIUS_KM = 2.0
 TEST_SCOPES = {'cdr': 'This CDR', 'campaign': 'Every CDR of its campaign'}
 DEFAULT_TEST_SCOPE = 'cdr'
+# The Non-Qualified Calls around that the map draws (the page chooses; the diagnosis and the decisions count them all).
+FAILURE_SCOPES = {'cdr': 'This CDR', 'campaign': 'Its campaign', 'every': 'Every campaign'}
+DEFAULT_FAILURE_SCOPE = 'every'
 # What one map draws at most: the nearest first.
 MAX_TESTS = 6000
 MAX_FAILURES = 600
@@ -426,7 +430,7 @@ def nearby_failures(repository: Any, call: dict[str, Any], centre: tuple[float, 
         place, hotspot = (_text(own['place_key']), _text(own['cluster_key'])) if own else ('', '')
         rows = connection.execute(f"""
             WITH calls AS ({base})
-            SELECT c.call_key, c.join_id, c.service, c.test_name, c.session_type, c.operator, c.campaign, c.nr_mode, c.result,
+            SELECT c.call_key, c.dataset_id, c.join_id, c.service, c.test_name, c.session_type, c.operator, c.campaign, c.nr_mode, c.result,
                    c.failure_classification, c.failure_category, c.failure_subcategory, c.failure_phase, c.technology,
                    c.start_time, c.latitude, c.longitude, c.site_id, c.host_network, c.cell_id, c.city, c.status,
                    c.root_domain, c.root_category, c.root_cause, COALESCE(q.place_key, '') AS place_key, COALESCE(q.place_label, '') AS place_label,
@@ -449,7 +453,8 @@ def nearby_failures(repository: Any, call: dict[str, Any], centre: tuple[float, 
             continue
         kind = call_kind(row['service'], row['test_name'], row['session_type'])
         failures.append({
-            'call_key': row['call_key'], 'join_id': _text(row['join_id']), 'service': row['service'], 'kind': kind,
+            'call_key': row['call_key'], 'dataset_id': None if row['dataset_id'] is None else int(row['dataset_id']),
+            'join_id': _text(row['join_id']), 'service': row['service'], 'kind': kind,
             'test_name': _text(row['test_name']), 'operator': _text(row['operator']), 'campaign': _text(row['campaign']),
             'nr_mode': _text(row['nr_mode']), 'result': _text(row['result']), 'technology': _text(row['technology']),
             'failure_classification': _text(row['failure_classification']), 'failure_category': _text(row['failure_category']),
@@ -560,8 +565,10 @@ def test_datasets(repository: Any, call: dict[str, Any], scope: str) -> list[int
 def nearby_tests(repository: Any, dataset_ids: list[int], centre: tuple[float, float], radius_km: float,
                  operator_label: Callable[[str], str] = str) -> dict[str, Any]:
     """The tests of the CDRs within ``radius_km`` of ``centre`` (the nearest MAX_TESTS), as compact rows: latitude, longitude,
-    operator (its label in the Operator Maps), CDR type, failed, LTE RSRP, LTE SINR, NR RSRP, NR SINR, test name and start
-    time."""
+    operator (its label in the Operator Maps), CDR type, failed, LTE RSRP, LTE SINR, NR RSRP, NR SINR, test name, start
+    time and CDR (its campaign, NR Mode, type and stage in ``cdrs``)."""
+    from src.modules import non_qualified_calls as nq
+
     operators: list[str] = []
     operator_index: dict[str, int] = {}
     labels: dict[str, str] = {}
@@ -569,7 +576,20 @@ def nearby_tests(repository: Any, dataset_ids: list[int], centre: tuple[float, f
     names: list[str] = []
     name_index: dict[str, int] = {}
     parts = []
+    cdrs: list[dict[str, Any]] = []
+    cdr_index: dict[int, int] = {}
     south, north, west, east = bounding_box(centre, radius_km)
+    # The campaign and NR Mode of each CDR as its calls give them (the most common), and its stage.
+    placeholders = ', '.join('?' for _ in dataset_ids) or 'NULL'
+    with repository.connection() as connection:
+        stages = {int(row['dataset_id']): _text(row['cdr_stage']) for row in connection.execute(
+            f'SELECT dataset_id, cdr_stage FROM dataset_profiles WHERE dataset_id IN ({placeholders})', [int(value) for value in dataset_ids])}
+        profiles: dict[int, Any] = {}
+        for row in connection.execute(
+                f'SELECT dataset_id, campaign, nr_mode, COUNT(*) AS calls FROM {nq.NQ_CALL_POPULATION_TABLE} '
+                f'WHERE dataset_id IN ({placeholders}) GROUP BY dataset_id, campaign, nr_mode ORDER BY calls DESC',
+                [int(value) for value in dataset_ids]):
+            profiles.setdefault(int(row['dataset_id']), row)
     for dataset_id in dataset_ids:
         entry = _dataset_tests(repository, dataset_id)
         if not entry:
@@ -583,9 +603,14 @@ def nearby_tests(repository: Any, dataset_ids: list[int], centre: tuple[float, f
         inside, distances = inside[keep], distances[keep]
         if entry['kind'] not in kinds:
             kinds.append(entry['kind'])
-        parts.append((entry, inside, distances, kinds.index(entry['kind'])))
-    total = sum(len(inside) for _entry, inside, _distances_, _kind in parts)
-    candidates = [(float(distance), part_index, int(row)) for part_index, (_entry, inside, distances, _kind) in enumerate(parts)
+        profile = profiles.get(int(dataset_id))
+        cdr_index[int(dataset_id)] = len(cdrs)
+        cdrs.append({'dataset_id': int(dataset_id), 'kind': entry['kind'],
+                     'campaign': _text(profile['campaign']) if profile else '', 'nr_mode': _text(profile['nr_mode']) if profile else '',
+                     'stage': stages.get(int(dataset_id), '')})
+        parts.append((entry, inside, distances, kinds.index(entry['kind']), cdr_index[int(dataset_id)]))
+    total = sum(len(part[1]) for part in parts)
+    candidates = [(float(distance), part_index, int(row)) for part_index, (_entry, inside, distances, _kind, _cdr) in enumerate(parts)
                   for row, distance in zip(inside, distances)]
     candidates.sort(key=lambda item: item[0])
     rows = []
@@ -594,7 +619,7 @@ def nearby_tests(repository: Any, dataset_ids: list[int], centre: tuple[float, f
         return None if value is None or not math.isfinite(float(value)) else round(float(value), digits)
 
     for distance, part_index, row in candidates[:MAX_TESTS]:
-        entry, _inside, _distances_, kind = parts[part_index]
+        entry, _inside, _distances_, kind, cdr = parts[part_index]
         source = entry['operators'][entry['operator'][row]]
         if source not in labels:
             labels[source] = str(operator_label(source) or source)
@@ -608,11 +633,11 @@ def nearby_tests(repository: Any, dataset_ids: list[int], centre: tuple[float, f
             names.append(name)
         rows.append([round(float(entry['latitude'][row]), 6), round(float(entry['longitude'][row]), 6), operator_index[operator], kind,
                      int(bool(entry['failed'][row])), rounded(entry['lte_rsrp'][row]), rounded(entry['lte_sinr'][row]),
-                     rounded(entry['nr_rsrp'][row]), rounded(entry['nr_sinr'][row]), name_index[name], str(entry['start'][row])])
+                     rounded(entry['nr_rsrp'][row]), rounded(entry['nr_sinr'][row]), name_index[name], str(entry['start'][row]), cdr])
     covered = candidates[min(len(candidates), MAX_TESTS) - 1][0] if len(candidates) > MAX_TESTS else radius_km
-    return {'operators': operators, 'kinds': kinds, 'test_names': names, 'rows': rows, 'total': total,
+    return {'operators': operators, 'kinds': kinds, 'test_names': names, 'cdrs': cdrs, 'rows': rows, 'total': total,
             'truncated': total > len(rows), 'covered_km': round(covered, 3),
-            'columns': ['latitude', 'longitude', 'operator', 'kind', 'failed', 'lte_rsrp', 'lte_sinr', 'nr_rsrp', 'nr_sinr', 'test', 'start']}
+            'columns': ['latitude', 'longitude', 'operator', 'kind', 'failed', 'lte_rsrp', 'lte_sinr', 'nr_rsrp', 'nr_sinr', 'test', 'start', 'cdr']}
 
 
 # ---------------------------------------------------------------------------
@@ -1041,7 +1066,7 @@ def call_map(repository: Any, call_key: str, *, radius_km: Any = DEFAULT_RADIUS_
             'radio': radio_values(row, columns),
         },
         'centre': [point[0], point[1]], 'radius_km': radius, 'radii_km': list(RADII_KM),
-        'tests_scope': scope, 'tests_scopes': TEST_SCOPES,
+        'tests_scope': scope, 'tests_scopes': TEST_SCOPES, 'failure_scopes': FAILURE_SCOPES,
         'families': list(families), 'snapshots': snapshots, 'trace': trace, 'sites': sites, 'failures': failures,
         'tests': test_points, 'classes': classes, 'notes': notes,
         'diagnosis': checks, 'decisions': site_decisions(failures), 'drive': drive, 'site_health': health,

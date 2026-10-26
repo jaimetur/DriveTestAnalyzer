@@ -112,6 +112,9 @@ def test_the_map_places_the_call_its_cells_the_sites_and_the_calls_and_tests_aro
     failures = {item['join_id']: item for item in data['failures']}
     assert failures['V1']['self'] and set(failures) == {'V1', 'V2'}
     assert not failures['V2']['same_operator'] and failures['V2']['distance_km'] < 2
+    # Each with its CDR and campaign, so the page shows those of the CDR, the campaign or every campaign chosen.
+    assert failures['V2']['dataset_id'] == call['dataset_id'] and failures['V2']['campaign'] == call['campaign']
+    assert data['failure_scopes'] == nq_call_map.FAILURE_SCOPES and nq_call_map.DEFAULT_FAILURE_SCOPE == 'every'
     # The tests around, completed or not, with their RSRP and SINR.
     tests = data['tests']
     assert tests['total'] == 3 and tests['kinds'] == ['voice'] and len(tests['rows']) == 3
@@ -119,6 +122,10 @@ def test_the_map_places_the_call_its_cells_the_sites_and_the_calls_and_tests_aro
     rows = [dict(zip(columns, row)) for row in tests['rows']]
     assert sorted((tests['operators'][row['operator']], row['failed'], row['lte_rsrp']) for row in rows) == [
         ('EE', 1, -96.0), ('VF', 0, -80.5), ('VF', 1, -114.5)]
+    # And the CDR each comes from, with its campaign.
+    assert tests['cdrs'] == [{'dataset_id': call['dataset_id'], 'kind': 'voice', 'campaign': call['campaign'],
+                              'nr_mode': call['nr_mode'], 'stage': tests['cdrs'][0]['stage']}]
+    assert {row['cdr'] for row in rows} == {0}
     # App Events records the map opened.
     [event] = [json.loads(row['details']) for row in core.repository.list_logs() if row['action'] == 'nq_call_map']
     assert event['join_id'] == 'V1' and event['sites'] == 2 and event['tests_around'] == 3 and event['radius_km'] == 2.0

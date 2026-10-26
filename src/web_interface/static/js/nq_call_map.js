@@ -20,7 +20,7 @@
     completed: '#2e8b57', failed: '#d7263d', radius: '#7d1238',
   };
   // The test columns of the payload (see nq_call_map.nearby_tests).
-  const COLUMN = {latitude: 0, longitude: 1, operator: 2, kind: 3, failed: 4, lte_rsrp: 5, lte_sinr: 6, nr_rsrp: 7, nr_sinr: 8, test: 9, start: 10};
+  const COLUMN = {latitude: 0, longitude: 1, operator: 2, kind: 3, failed: 4, lte_rsrp: 5, lte_sinr: 6, nr_rsrp: 7, nr_sinr: 8, test: 9, start: 10, cdr: 11};
   const METRICS = {
     lte_rsrp: {label: 'LTE RSRP', unit: 'dBm', classes: 'rsrp'}, lte_sinr: {label: 'LTE SINR', unit: 'dB', classes: 'sinr'},
     nr_rsrp: {label: 'NR RSRP', unit: 'dBm', classes: 'rsrp'}, nr_sinr: {label: 'NR SINR', unit: 'dB', classes: 'sinr'},
@@ -30,6 +30,7 @@
   const SERVICE_LABELS = {voice: 'Voice', speech: 'Speech', data: 'Data'};
   // The layers chosen above the map; the RSRP / SINR samples have their own button on the map.
   const LAYERS = {failures: 'NQ calls', sites: 'Sites', path: 'Cell path'};
+  const FAILURE_SCOPES = {cdr: 'This CDR', campaign: 'Its campaign', every: 'Every campaign'};
   const SETTINGS_KEY = 'nq-call-map-settings';
   const HINT = 'Drag to move · wheel or Ctrl/Cmd+wheel to zoom · Ctrl/Cmd+drag a rectangle to zoom into it · Alt/Opt+drag to measure · double-click to zoom in';
   const PANEL_HINT = 'Drag to move · Ctrl/Cmd+wheel to zoom · Ctrl/Cmd+drag a rectangle to zoom into it · Alt/Opt+drag to measure · double-click to enlarge';
@@ -420,8 +421,7 @@
       // The other Non-Qualified Calls: its repetitions at the same site, its hotspot and the others.
       if (layers.failures) {
         for (const failure of data.failures) {
-          if (failure.self || failure.latitude === null) continue;
-          if (!failure.same_place && !failure.same_hotspot && settings.operators === 'own' && !failure.same_operator) continue;
+          if (failure.self || failure.latitude === null || !shared.showsFailure(failure)) continue;
           const [x, y] = project(failure.latitude, failure.longitude);
           if (x < -10 || y < -10 || x > width + 10 || y > height + 10) continue;
           const colour = failure.same_place ? COLOURS.place : failure.same_hotspot ? COLOURS.hotspot : failure.same_operator ? COLOURS.own : COLOURS.other;
@@ -726,11 +726,13 @@
     const settings = {
       radius_km: Number(stored.radius_km) || 2, tests: stored.tests === 'campaign' ? 'campaign' : 'cdr',
       colour: METRICS[stored.colour] ? stored.colour : '', operators: stored.operators === 'all' ? 'all' : 'own',
+      // The Non-Qualified Calls around drawn: those of every campaign until another choice.
+      failures: FAILURE_SCOPES[stored.failures] ? stored.failures : 'every',
       // The RSRP / SINR samples start hidden, so the map shows the call, its cells and the sites first.
       layers: {tests: false, failures: true, sites: true, path: true, ...(stored.layers || {})},
     };
     const save = () => storeSettings({radius_km: settings.radius_km, tests: settings.tests, colour: settings.colour,
-      operators: settings.operators, layers: settings.layers});
+      operators: settings.operators, failures: settings.failures, layers: settings.layers});
     let callKey = '', loadedKey = '', controller = null, expandedView = null;
     const toolbar = node('div', undefined, 'nq-map-toolbar');
     const status = node('p', '', 'nq-map-status');
@@ -756,6 +758,15 @@
     panel.replaceChildren(toolbar, status, mapWrap, node('p', PANEL_HINT, 'form-note nq-map-hint'), cards);
 
     const shared = {data: null, settings, selection: null};
+    // The Non-Qualified Calls around that the map and its list show: those of the CDR, the campaign (and NR Mode) or every
+    // campaign chosen, of its operator or of every operator (its repetitions and its hotspot whatever the operators chosen).
+    shared.showsFailure = (failure) => {
+      const call = shared.data?.call;
+      if (!call || failure.self) return true;
+      if (settings.failures === 'cdr' && failure.dataset_id !== call.dataset_id) return false;
+      if (settings.failures === 'campaign' && (failure.campaign !== call.campaign || failure.nr_mode !== call.nr_mode)) return false;
+      return failure.same_place || failure.same_hotspot || settings.operators === 'all' || failure.same_operator;
+    };
     const views = () => [panelView, expandedView].filter(Boolean);
     const redrawAll = () => views().forEach((view) => { view.renderLegend(); view.redraw(); });
     shared.setSamples = (shown) => { settings.layers.tests = shown; save(); redrawAll(); };
@@ -779,7 +790,8 @@
       const data = shared.data;
       if (kind === 'call' || kind === 'start') {
         return {title: kind === 'start' ? 'Where the call started' : `This call · ${item.service_label || ''}`.trim(), rows: [
-          ['JOIN_ID', item.join_id], ['Result', item.result], ['Failure', failureText(item)], ['Phase', item.failure_phase],
+          ['JOIN_ID', item.join_id], ['Operator', item.operator], ['Campaign', campaignText(item.campaign, item.nr_mode)],
+          ['Result', item.result], ['Failure', failureText(item)], ['Phase', item.failure_phase],
           ['Technology', item.technology], ['Started', cdrTime(item.start_time)], ['Ended', item.end_time ? cdrTime(item.end_time) : ''],
           ['Serving site', item.serving_site ? `${item.serving_site}${item.serving_host ? ` (${item.serving_host})` : ''}` : ''],
           ['Serving distance', item.serving_distance_km !== null && item.serving_distance_km !== undefined ? distanceText(item.serving_distance_km) : ''],
@@ -804,7 +816,10 @@
         ]};
       }
       const operator = data.tests.operators[item[COLUMN.operator]] || '';
+      const cdr = data.tests.cdrs?.[item[COLUMN.cdr]];
       return {title: `${SERVICE_LABELS[data.tests.kinds[item[COLUMN.kind]]] || 'Test'} test · ${operator}`, rows: [
+        ['Campaign', cdr ? campaignText(cdr.campaign, cdr.nr_mode) : ''],
+        ['CDR', cdr ? [SERVICE_LABELS[cdr.kind] || cdr.kind, cdr.stage ? cdr.stage[0].toUpperCase() + cdr.stage.slice(1) : ''].filter(Boolean).join(' · ') : ''],
         ['Test', data.tests.test_names[item[COLUMN.test]]], ['Started', cdrTime(item[COLUMN.start])],
         ['Result', item[COLUMN.failed] ? 'Not completed' : 'Completed'],
         ['LTE RSRP', dbText(item[COLUMN.lte_rsrp], 'dBm')], ['LTE SINR', dbText(item[COLUMN.lte_sinr], 'dB')],
@@ -994,10 +1009,11 @@
     const renderFailures = () => {
       const data = shared.data;
       const others = data.failures.filter((item) => !item.self);
-      const shown = others.filter((item) => item.same_place || item.same_hotspot || settings.operators === 'all' || item.same_operator);
+      const shown = others.filter(shared.showsFailure);
+      const scope = settings.failures === 'every' ? '' : ` · ${settings.failures === 'cdr' ? 'of this CDR' : 'of its campaign'}`;
       failuresCard.replaceChildren(cardHead('Non-Qualified Calls around',
-        `${number(others.filter((item) => item.same_place).length)} at the same site · ${number(others.filter((item) => item.same_hotspot).length)} in its hotspot · `
-        + `${number(others.length)} within ${distanceText(data.radius_km)} or at its site`));
+        `${number(shown.filter((item) => item.same_place).length)} at the same site · ${number(shown.filter((item) => item.same_hotspot).length)} in its hotspot · `
+        + `${number(shown.length)} within ${distanceText(data.radius_km)} or at its site${scope}`));
       if (!shown.length) {
         failuresCard.append(node('p', 'No other Non-Qualified Call around.', 'nq-map-empty'));
         return;
@@ -1215,9 +1231,12 @@
         select('Radius', 'radius', radii.map((value) => [String(value), distanceText(value)]), String(settings.radius_km), (value) => {
           settings.radius_km = Number(value); save(); load();
         }, 'The area around where the call failed: its sites, Non-Qualified Calls and tests'),
-        select('Samples from', 'tests', Object.entries(data?.tests_scopes || {cdr: 'This CDR', campaign: 'Every CDR of its campaign'}), settings.tests, (value) => {
+        select('RSRP / SINR samples from', 'tests', Object.entries(data?.tests_scopes || {cdr: 'This CDR', campaign: 'Every CDR of its campaign'}), settings.tests, (value) => {
           settings.tests = value; save(); load();
         }, 'The tests whose RSRP / SINR the samples and the Radio around the call show: the CDR of the call, or every CDR of its campaign and NR Mode (Voice, Speech and Data together)'),
+        select('NQ calls from', 'failures', Object.entries(data?.failure_scopes || FAILURE_SCOPES), settings.failures, (value) => {
+          settings.failures = value; save(); redrawAll(); renderFailures();
+        }, 'The Non-Qualified Calls around that the map and its list show: those of the CDR of the call, of its campaign and NR Mode, or of every campaign (the Diagnosis hints and the Decisions at its place count those of every campaign)'),
         select('Operators', 'operators', [['own', `${data?.call.operator || 'Its operator'} only`], ['all', 'Every operator']], settings.operators, (value) => {
           settings.operators = value; save(); redrawAll(); renderFailures();
         }, 'The samples and Non-Qualified Calls of the operator of the call, or of every operator (its repetitions and hotspot always show)'),
@@ -1364,7 +1383,7 @@
         return call ? ['Call Area Map', call.operator, call.join_id].filter(Boolean).join(' · ') : 'Call Area Map';
       },
       details: () => ({section: 'Call Area Map', context: {call_key: shared.data?.call.call_key || '', join_id: shared.data?.call.join_id || '',
-        radius_km: String(shared.data?.radius_km ?? ''), tests: settings.tests, colour: settings.colour}}),
+        radius_km: String(shared.data?.radius_km ?? ''), tests: settings.tests, failures: settings.failures, colour: settings.colour}}),
     };
     return controller;
   }
