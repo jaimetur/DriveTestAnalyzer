@@ -404,7 +404,7 @@ The export has no CDR selector: **Campaigns** lists every campaign of the Dashbo
 
 Cities offers **Main Cities** first, exported as the Main Cities of the workspace. Changing campaigns or dates preserves selected values still available; an All selection includes new values. The browser remembers the dialog's last Scope, Campaigns and dates per Dashboard/user.
 
-**Auto comments**, in the Scope of the dialog (or a checkbox of the confirmation when the PPT is generated from the viewer), writes generated comments into this PPT only, with the writer chosen by default in Super Admin: on the slides without comments, in place of the generated ones or in place of every comment. The Dashboard keeps its own comments; the job's viewer shows those of the PPT, a relaunched job keeps its choice, and App Events records how many slides they were written on.
+**Auto comments**, in the Scope of the dialog (or a checkbox of the confirmation when the PPT is generated from the viewer), writes generated comments into this PPT only, with the writer the viewer generates comments with (the default one of Super Admin until it is changed in the menu of the comment tools; with more than one writer enabled, the dialog shows it as **Comment writer** beside Auto comments, and a change there is also the viewer's): on the slides without comments, in place of the generated ones or in place of every comment. The Dashboard keeps its own comments; the job's viewer shows those of the PPT, a relaunched job keeps its choice, and App Events records how many slides they were written on.
 
 ### Save defaults only when intended
 

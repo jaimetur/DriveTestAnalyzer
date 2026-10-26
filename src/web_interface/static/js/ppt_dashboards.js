@@ -1090,9 +1090,19 @@
     automaticTo.onchange = () => { syncDateControls(); rememberDialog(); };
     dateFrom.oninput = () => { syncDateControls(); rememberDialog(); };
     dateTo.oninput = () => { syncDateControls(); rememberDialog(); };
-    $('ds-ppt-auto-comments').value = lastAutoComments;
+    // The writer of the auto comments, offered when Super Admin enabled more than one: the one the viewer generates
+    // comments with, and a change here is the viewer's choice too.
+    const autoCommentsControl = $('ds-ppt-auto-comments'), writerControl = $('ds-ppt-comment-writer');
+    writerControl.replaceChildren(...commentEngines.engines.map(engine => { const option = node('option', engine.label); option.value = engine.id; return option; }));
+    writerControl.value = selectedCommentEngine;
+    const syncAutoCommentsWriter = () => { $('ds-ppt-comment-writer-section').hidden = commentEngines.engines.length < 2 || autoCommentsControl.value === 'off'; };
+    autoCommentsControl.value = lastAutoComments;
+    autoCommentsControl.onchange = syncAutoCommentsWriter;
+    writerControl.onchange = () => { selectedCommentEngine = writerControl.value; syncCommentWriters(); };
+    syncAutoCommentsWriter();
     confirm.onclick = () => { for (const key of Object.keys(selectionControls)) rememberSelection(key); finish({
-      scope: scopeControl.value, vendor_comparison: vendorComparison.value, auto_comments: $('ds-ppt-auto-comments').value,
+      scope: scopeControl.value, vendor_comparison: vendorComparison.value, auto_comments: autoCommentsControl.value,
+      auto_comments_engine: commentEngine(),
       campaigns: campaignSelection,
       date_from: automaticFrom.checked ? 'Oldest' : dateFrom.value,
       date_to: automaticTo.checked ? 'Newest' : dateTo.value,
@@ -1112,6 +1122,7 @@
   async function queueDashboardPptExport(id, item, {chooseScope = false} = {}) {
     let exportDefinition = item;
     let autoComments = lastAutoComments;
+    let autoCommentsEngine = commentEngine();
     let preparationToken = null;
     let filterDecision = 'unchanged';
     let selectedOperators = [];
@@ -1125,6 +1136,7 @@
       exportDefinition.scope = universeChoice.scope;
       exportDefinition.vendor_comparison = universeChoice.vendor_comparison;
       autoComments = universeChoice.auto_comments || 'off';
+      autoCommentsEngine = universeChoice.auto_comments_engine || '';
       // The queued server worker chooses the CDRs of these campaigns; never make the library button wait for
       // a cache lookup or every chart model before the job exists.
       delete exportDefinition.datasets;
@@ -1171,9 +1183,11 @@
       }
     }
     if (!chooseScope && filterDecision === 'unchanged' && !hasAppliedUnsavedFilterChanges()) {
+      // The auto comments are written by the writer chosen in the menu of the comment tools of the viewer.
+      const writer = commentEngine() ? ` (writer: ${(commentEngines.engines.find(engine => engine.id === autoCommentsEngine) || {}).label || 'Rules'})` : '';
       const decision = await window.showConfirmDialog(
         `Generate a PowerPoint presentation for “${exportDefinition.name}”?`,
-        {title: 'Generate Dashboard PPT', confirmLabel: 'Generate PPT', optionLabel: 'Auto comments: write generated comments on the slides without comments',
+        {title: 'Generate Dashboard PPT', confirmLabel: 'Generate PPT', optionLabel: `Auto comments: write generated comments on the slides without comments${writer}`,
           optionChecked: autoComments !== 'off'},
       );
       if (!decision?.accepted) return;
@@ -1200,6 +1214,7 @@
         // Legend entries hidden in the viewer are exported hidden as well.
         legend_visibility: legendVisibilityPayload(id),
         auto_comments: autoComments,
+        auto_comments_engine: autoComments === 'off' ? '' : autoCommentsEngine,
         ...(chooseScope ? {
           selected_operators: selectedOperators,
           selected_vendors: selectedVendors,
