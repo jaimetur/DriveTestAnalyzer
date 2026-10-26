@@ -29,6 +29,9 @@ SETTINGS_STATE_KEY = 'ai_comment_writers_v1'
 CREDENTIALS_FILE = 'ai-credentials.json'
 # A Kiro CLI already installed on the machine (a local run, a team server with ``module add kiro_cli``).
 KIRO_CLI_ENVIRONMENT = 'DRIVETEST_ANALYZER_KIRO_CLI'
+# The screened Kiro CLI packages (one folder per version) in the Ericsson Artifactory, and the Kiro CLI release notes.
+KIRO_CLI_DOWNLOAD_URL = 'https://arm.seli.gic.ericsson.se/artifactory/proj-AmazonQ-Kiro-generic-local/kiro-cli/'
+KIRO_CLI_RELEASE_NOTES_URL = 'https://kiro.dev/changelog/cli/'
 ENGINE_RULES = 'rules'
 ENGINE_KIRO_CLI = 'kiro_cli'
 ENGINE_KIRO_BRIEF = 'kiro_brief'
@@ -604,6 +607,7 @@ def writer_settings_panel(core: Any) -> dict[str, Any]:
         'claude_environment_key': bool(os.environ.get('ANTHROPIC_API_KEY')),
         'kiro_cli': kiro_cli_status(core.repository, core.application_config_dir),
         'kiro_cli_installed': settings.get('kiro_cli') or {},
+        'kiro_cli_download_url': KIRO_CLI_DOWNLOAD_URL, 'kiro_cli_release_notes_url': KIRO_CLI_RELEASE_NOTES_URL,
     }
 
 

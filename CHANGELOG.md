@@ -10,7 +10,7 @@
 #### 🌟 New Features:
 
 #### 🚀 Enhancements:
-- **Super Admin — AI Comment Writers:** the key of the server of Kiro CLI or Claude is removed with **Remove key**, beside its field, once confirmed, without saving the rest of the panel.
+- **Super Admin — AI Comment Writers:** the key of the server of Kiro CLI or Claude is removed with **Remove key**, beside its field, once confirmed, without saving the rest of the panel, and **Open Artifactory**, beside Install Kiro CLI, opens the screened Kiro CLI packages of the Ericsson Artifactory, with a note on which file to download.
 
 #### 🐛 Bug fixes:
 

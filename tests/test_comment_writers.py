@@ -141,6 +141,7 @@ def test_super_admin_sets_the_writers_and_users_their_keys(client):
     client.post('/login', data={'username': 'super', 'password': 'super123'})
     page = client.get('/super-admin')
     assert page.status_code == 200 and 'AI Comment Writers' in page.text and 'Rules only' in page.text
+    assert f'href="{writers.KIRO_CLI_DOWNLOAD_URL}"' in page.text and 'Open Artifactory' in page.text
     saved = client.post('/super-admin/comment-writers', data={
         'enabled': ['kiro_cli', 'kiro_brief', 'claude'], 'default': 'kiro_cli', 'claude_model': 'claude-sonnet-5-5',
         'claude_effort': 'medium', 'timeout_seconds': '90', 'claude_api_key': 'sk-ant-secret',
