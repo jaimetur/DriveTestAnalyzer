@@ -1354,6 +1354,9 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 .nq-failure-card { display: grid; gap: .35rem; min-width: 0; }
 .nq-failure-operator { font-size: .95rem; }
 .nq-failure-wrap { overflow-x: auto; }
+/* Every site with a repeated issue: the table scrolls inside its subpanel, its header fixed. */
+.nq-priority-issues-table { max-height: 30rem; overflow-y: auto; }
+.nq-priority-issues-table thead th { position: sticky; top: 0; z-index: 1; }
 .nq-failure-table { width: 100%; min-width: 0; border-collapse: separate; border-spacing: 0; font-size: .78rem; }
 .nq-failure-table th { padding: .4rem .5rem; background: var(--nq-soft); color: var(--nq-dark); font-weight: 800; text-align: right; white-space: nowrap; }
 .nq-failure-table th:first-child, .nq-failure-table td.nq-failure-name { text-align: left; }
@@ -1636,6 +1639,15 @@ span.nq-condition-value { display: inline-block; padding: .05rem .45rem; border-
 :is(.nq-step-flow, .nq-step-legend-item) .is-progress { background: #e08a1e; }
 :is(.nq-step-flow, .nq-step-legend-item) .is-closed { background: #2e8b57; }
 .nq-step-points { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #74c0fc, #1864ab); }
+/* The calls of each call type of a hotspot over its own calls (Voice blue, WhatsApp green, Data teal), their numbers beside. */
+:is(.nq-step-flow, .nq-step-legend-item) .is-voice { background: #1366d6; }
+:is(.nq-step-flow, .nq-step-legend-item) .is-whatsapp { background: #2f9e44; }
+:is(.nq-step-flow, .nq-step-legend-item) .is-data { background: #0b8a7a; }
+.nq-hotspot-kinds { min-width: 6rem; }
+.nq-step-bar-value.nq-hotspot-kinds-value { flex-basis: auto; white-space: nowrap; }
+.nq-hotspot-legend { margin-bottom: .4rem; }
+/* The hotspots fit their subpanel: the headers, the site and the time wrap. */
+.nq-hotspots-table th, .nq-hotspots-table td:is(:nth-child(4), .nq-hotspot-time) { white-space: normal; }
 .nq-step-bar-value { flex: 0 0 2.6rem; color: var(--nq-muted); font-size: .74rem; text-align: right; font-variant-numeric: tabular-nums; }
 .nq-step-bar-value.is-waiting { color: var(--nq-color); font-weight: 800; }
 .nq-step-tab-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .3rem 1rem; }
@@ -1734,7 +1746,7 @@ details.nq-priority-info:not([open]) { padding-block: .55rem; }
 .nq-condition-tag { padding: .05rem .5rem; border-radius: 999px; font-size: .66rem; font-weight: 800; }
 .nq-condition-tag.is-scoring { background: #fff1d6; color: #8a5300; }
 .nq-condition-tag.is-position { background: #e6f0ff; color: #0f56b3; }
-.nq-condition-tag.is-sequence { background: #efe7fb; color: #5f3dc4; }
+.nq-condition-tag.is-time { background: #efe7fb; color: #5f3dc4; }
 .nq-condition-tag.is-result { background: #e3f6ec; color: #1e7a46; }
 .nq-priority-glossary dd { margin: .05rem 0 0; color: var(--nq-muted); }
 @media (max-width: 720px) {

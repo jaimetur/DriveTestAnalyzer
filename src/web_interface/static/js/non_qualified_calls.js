@@ -28,7 +28,7 @@
     root_domain: 'Root Domain', root_category: 'Root Category', root_cause: 'Root Cause', status_mode: 'Status Set',
     nr_mode: 'NR Mode', call_type: 'Call Type', period: 'Period',
     age: 'Age of Open Calls', root_pair: 'Root Domain · Cause', effective_domain: 'Root Domain (with suggestions)',
-    effective_cause: 'Root Domain · Cause (with suggestions)', node: 'eNB / gNB', place: 'Repetition Place', state: 'Follow-up',
+    effective_cause: 'Root Domain · Cause (with suggestions)', node: 'eNB / gNB', place: 'Repetition Place', hotspot: 'Hotspot', state: 'Follow-up',
     rca_state: 'Root Cause',
     netcheck_domain: `Root Domain (${PROVIDER_RCA})`, netcheck_category: `Root Domain · Category (${PROVIDER_RCA})`,
     netcheck_cause: `Root Domain · Cause (${PROVIDER_RCA})`, script_domain: 'Root Domain (Ericsson RCA)',
@@ -53,7 +53,7 @@
   // NR Mode has its own filter, the first of the General Filters.
   const EXTRA_FILTERS = ['call_type', 'period', 'age', 'root_pair', 'effective_domain', 'effective_cause', 'node',
     'netcheck_domain', 'netcheck_category', 'netcheck_cause', 'script_domain', 'script_category', 'script_cause',
-    'dta_domain', 'dta_category', 'dta_cause', 'dta_raw', 'netcheck_raw', 'script_raw', 'rca_state', 'place'];
+    'dta_domain', 'dta_category', 'dta_cause', 'dta_raw', 'netcheck_raw', 'script_raw', 'rca_state', 'place', 'hotspot'];
   // The values of the Follow-up filter (also set by the indicator cards), in their order.
   const FOLLOW_UP_STATES = ['attended', 'not_attended', 'open', 'stalled', 'closed', 'with_team', 'assigned', 'commented', 'labelled',
     'identified', 'not_identified'];
@@ -85,6 +85,8 @@
     user: {username: '', can_edit: false, can_moderate: false},
     unassigned: '__unassigned__', datasets: [], mainCities: [], sort: 'start_time', direction: 'desc', page: 1, pageSize: 10,
     result: null, selected: new Set(), detail: null, requestToken: 0, busy: false, extraFilters: {}, stale: new Set(),
+    // The name of each hotspot the NQ Prioritization listed (its operator, site and time), for the Hotspot filter.
+    hotspotLabels: {},
     fields: [], fieldTypes: {}, tableColumns: {builtin: [], cdr: []}, optionalColumns: {}, cdrColumns: [], versionLabels: {},
     // The table layouts: that of the workspace, that of the user and which one they see; ``layout`` is the one shown.
     layouts: null, layout: {builtin: [], cdr: [], export_cdr: [], fields: [], excel_fields: [], known_fields: [], order: []},
@@ -536,6 +538,8 @@
     if (value === state.unassigned) return NOT_CLASSIFIED;
     if (field === 'period') return value.split(':').slice(1).join(':');
     if (field === 'state' || field === 'rca_state') return STATE_LABELS[value] || value;
+    // A hotspot by its operator, site and time, as the NQ Prioritization last listed it.
+    if (field === 'hotspot') return state.hotspotLabels[value] || 'Hotspot of the NQ Prioritization';
     return value.replace(/\|\|$/, '').replace('||', ' · ');
   };
   const clearFilter = (field) => {
@@ -3278,7 +3282,7 @@
     ];
     $('nq-priority-kpis').replaceChildren(...cards.map(([card, pairs]) => (pairs ? drillCard(card, {pairs}) : card)));
     // Each part of the panel in a subpanel of its own, in this order: the queues, the steps of the strategy, the Scoring
-    // Impact and the repeated issues.
+    // Impact, the hotspots and the repeated issues.
     const sections = {};
     const section = (key, title, note, ...content) => {
       const box = node('section', undefined, 'nq-failure-section nq-progress-section nq-priority-subpanel');
@@ -3417,15 +3421,66 @@
       : node('p', 'The filtered calls lose no points of a scored campaign.', 'nq-muted'));
     grid.append(levelsCard, kpiCardBox);
     section('impact', 'Scoring Impact', `The points of the scoring of its campaign each call loses: in every KPI that counts tests it misses, the points the operator loses in the environment of the call shared among the tests that miss the KPI. High: the calls that hold the first ${data.settings.high_share}% of the points their campaign, operator and service lose; Medium: up to ${data.settings.medium_share}%.`, grid);
-    const issueNote = `Places where at least ${data.settings.min_calls} Non-Qualified Calls of the operator failed in the quarter of the call${data.settings.previous_quarters ? ` or the ${data.settings.previous_quarters === 1 ? 'quarter' : `${data.settings.previous_quarters} quarters`} before it` : ''}, in any service and NR Mode (the site of the cell where the call ended, else the site that served its start, its eNB / gNB or a spot): the filtered calls of each one${data.issue_count > data.issues.length ? `, the ${data.issues.length} with the most calls of ${number(data.issue_count)}` : ''}.`;
-    section('issues', 'Repeated issues', issueNote, data.issues.length
-      ? failureTable(['Operator', 'Place', 'Calls', 'Campaigns', 'Services', 'NR Mode', 'Points lost', 'Open', 'Main Root Category'], data.issues.map((item) => [
+    // Every hotspot among the filtered calls (2+ failures of an operator, NR Mode and campaign close to each other in time and
+    // distance, whatever their call type), the most calls first: its calls of each call type in a stacked bar (Voice blue,
+    // WhatsApp green, Data teal) and their numbers; a click on its site shows its calls.
+    const HOTSPOT_KINDS = ['Voice', 'WhatsApp', 'Data'];
+    const kindsBar = (item) => {
+      const element = node('span', undefined, 'nq-step-bar nq-hotspot-kinds');
+      const track = node('span', undefined, 'nq-step-bar-track');
+      const bar = node('span', undefined, 'nq-step-flow');
+      bar.style.width = item.calls ? '100%' : '0';
+      HOTSPOT_KINDS.forEach((kind) => {
+        const count = item.kinds[kind] || 0;
+        if (!count) return;
+        const part = node('span', undefined, `is-${kind.toLowerCase()}`);
+        part.style.flexGrow = String(count);
+        bar.append(part);
+      });
+      track.append(bar);
+      element.append(track, node('span', HOTSPOT_KINDS.map((kind) => number(item.kinds[kind] || 0)).join(' / '), 'nq-step-bar-value nq-hotspot-kinds-value'));
+      element.title = HOTSPOT_KINDS.map((kind) => `${kind} ${number(item.kinds[kind] || 0)}`).join(' · ');
+      return element;
+    };
+    // When the calls of a hotspot started: 2026-07-14 10:05–10:31 (the date once when it is the same day).
+    const hotspotTime = (item) => {
+      const first = String(item.first || '').slice(0, 16);
+      const last = String(item.last || '').slice(0, 16);
+      if (!first) return '—';
+      if (last === first) return first;
+      return last.slice(0, 10) === first.slice(0, 10) ? `${first}–${last.slice(11)}` : `${first}–${last}`;
+    };
+    const spots = data.hotspots || [];
+    spots.forEach((item) => { state.hotspotLabels[item.key] = `${item.operator || 'Unassigned'} · ${item.place || 'No site'} · ${hotspotTime(item)}`; });
+    const hotspotNote = `Failures of the same operator, NR Mode and campaign, whatever their call type (the Ping tests apart), each within ${data.settings.hotspot_minutes} min ${data.settings.hotspot_join === 'or' ? 'in the same drive, or within' : 'and'} ${data.settings.hotspot_meters} m (or at the same site) of another one of them: every hotspot with the filtered calls of each, the most calls first (${number(spots.length)}).`;
+    const hotspotLegend = node('p', undefined, 'nq-step-legend nq-hotspot-legend');
+    HOTSPOT_KINDS.forEach((kind) => {
+      const item = node('span', undefined, 'nq-step-legend-item');
+      item.append(node('i', undefined, `is-${kind.toLowerCase()}`), document.createTextNode(kind));
+      hotspotLegend.append(item);
+    });
+    const hotspotTable = spots.length
+      ? failureTable(['Operator', 'NR Mode', 'Campaign', 'Site', 'Time', 'Calls', 'Voice / WhatsApp / Data', 'Points lost', 'Open', 'Main Root Category'], spots.map((item) => [
+        {text: item.operator || 'Unassigned', className: 'nq-failure-name'}, item.nr_mode || '—', item.campaign || '—',
+        {text: `${item.place || 'No site'}${item.places > 1 ? ` +${number(item.places - 1)}` : ''}`, pairs: [['hotspot', item.key]],
+          title: `${number(item.calls)} of the ${number(item.size)} calls of the hotspot${item.places > 1 ? ` at ${number(item.places)} sites` : ''}`},
+        {text: hotspotTime(item), className: 'nq-hotspot-time'}, number(item.calls), {node: kindsBar(item), className: 'nq-step-bar-cell'},
+        points(item.points), number(item.open), item.category || '—']))
+      : null;
+    hotspotTable?.classList.add('nq-priority-issues-table', 'nq-hotspots-table');
+    section('hotspots', 'Hotspots', hotspotNote, ...(spots.length ? [hotspotLegend, hotspotTable] : [node('p', 'No hotspot among the filtered calls.', 'nq-muted')]));
+    const issueNote = `Sites with calls of a cluster: at least ${data.settings.min_calls} Non-Qualified Calls of the operator failed within ${data.settings.spot_meters} m of the call or at its site in its quarter${data.settings.previous_quarters ? ` or the ${data.settings.previous_quarters === 1 ? 'quarter' : `${data.settings.previous_quarters} quarters`} before it` : ''}, in any service and NR Mode (the site of the cell where the call ended, else the site that served its start, its eNB / gNB or a spot): every one with the filtered calls of each, the most calls first (${number(data.issue_count || 0)}).`;
+    // Every site with a repeated issue: the table scrolls inside the subpanel, its header fixed.
+    const issueTable = data.issues.length
+      ? failureTable(['Operator', 'Site', 'Calls', 'Campaigns', 'Services', 'NR Mode', 'Points lost', 'Open', 'Main Root Category'], data.issues.map((item) => [
         {text: item.operator || 'Unassigned', className: 'nq-failure-name'},
         {text: item.place, pairs: [['place', `${item.operator}||${item.place}`]], title: `Up to ${number(item.repetitions)} repetitions in the window of a call`},
         number(item.calls), number(item.campaigns), Object.entries(item.services).map(([name, count]) => `${name} ${number(count)}`).join(', '),
         Object.entries(item.nr_modes).map(([name, count]) => `${name} ${number(count)}`).join(', '), points(item.points), number(item.open),
         item.category || '—']))
-      : node('p', 'No repeated issue among the filtered calls.', 'nq-muted'));
+      : null;
+    issueTable?.classList.add('nq-priority-issues-table');
+    section('issues', 'Repeated Issues Within Same Cluster', issueNote, issueTable || node('p', 'No repeated issue among the filtered calls.', 'nq-muted'));
     // The step tells the NR Mode and the kind of call, so the queue keeps to the columns that tell the calls apart: the
     // Priority and the step in pills (the step of list 1, Weekly, or list 2, Final; what it takes on hover), the campaign
     // as the Campaign Maps name it and the Scoring Impact in its colour.
@@ -3458,7 +3513,7 @@
       content.push(tracked);
     }
     section('queues', 'Next to analyse', `The first ${data.settings.capacity} calls of each queue that are open and not attended yet, in the order the analysts of its team take them: Priority, the newest campaign first, the step of its list, the highest Expected Gain, then the oldest; the tracked calls, in no team queue, are folded below them. Click a call to open it.`, ...content);
-    $('nq-priority').replaceChildren(...['queues', 'steps', 'impact', 'issues'].map((key) => sections[key]).filter(Boolean));
+    $('nq-priority').replaceChildren(...['queues', 'steps', 'impact', 'hotspots', 'issues'].map((key) => sections[key]).filter(Boolean));
   };
   let priorityToken = 0;
   let priorityKey = '';
@@ -6491,7 +6546,12 @@
   const priorityDialog = $('nq-priority-dialog');
   const PRIORITY_INPUTS = {high_share: 'nq-priority-high', medium_share: 'nq-priority-medium', min_calls: 'nq-priority-min-calls',
     previous_quarters: 'nq-priority-quarters', spot_meters: 'nq-priority-spot', hotspot_meters: 'nq-priority-hotspot-meters',
-    hotspot_minutes: 'nq-priority-hotspot-minutes', capacity: 'nq-priority-capacity'};
+    hotspot_minutes: 'nq-priority-hotspot-minutes', consecutive_minutes: 'nq-priority-consecutive-minutes', capacity: 'nq-priority-capacity'};
+  // The settings chosen from a list (not numbers).
+  const PRIORITY_CHOICES = {hotspot_join: 'nq-priority-hotspot-join'};
+  // Every setting of the levels as the dialog holds it.
+  const levelSettings = () => ({...Object.fromEntries(Object.entries(PRIORITY_INPUTS).map(([key, id]) => [key, Number($(id).value)])),
+    ...Object.fromEntries(Object.entries(PRIORITY_CHOICES).map(([key, id]) => [key, $(id).value]))});
   // Every field of the steps of each strategy while the dialog is open (admins change them).
   let strategySteps = {};
   const FOCUSED = '@focused';
@@ -6806,8 +6866,7 @@
         // The levels too: the clusters and hotspots are counted again with those being edited.
         const settings = {strategy, steps: strategySteps, strategies: ownStrategies, final_lists: strategyFinalLists,
           excluded_regions: [...$('nq-priority-regions-out').selectedOptions].map((option) => option.value),
-          excluded_modes: excludedModes(),
-          ...Object.fromEntries(Object.entries(PRIORITY_INPUTS).map(([key, id]) => [key, Number($(id).value)]))};
+          excluded_modes: excludedModes(), ...levelSettings()};
         const result = await api('/api/non-qualified-calls/prioritization/step-counts', {method: 'POST', body: JSON.stringify({settings})});
         if (request !== stepCountsRequest) return;
         stepCounts = result;
@@ -7250,13 +7309,13 @@
     stepList = 'campaign';
     strategyFinalLists = {...(settings.final_lists || {})};
     fillScopeSelects($('nq-priority-regions-out'), $('nq-priority-modes-out'), settings);
-    Object.entries(PRIORITY_INPUTS).forEach(([key, id]) => { $(id).value = settings[key]; });
+    Object.entries({...PRIORITY_INPUTS, ...PRIORITY_CHOICES}).forEach(([key, id]) => { $(id).value = settings[key]; });
     $('nq-priority-fill').checked = Boolean(settings.fill_priority);
     showStrategy(select.value);
   };
   let priorityDefaults = false;
   // The settings as the dialog holds them, as they are saved.
-  const prioritySettings = () => ({...Object.fromEntries(Object.entries(PRIORITY_INPUTS).map(([key, id]) => [key, Number($(id).value)])),
+  const prioritySettings = () => ({...levelSettings(),
     strategy: $('nq-priority-strategy').value, steps: strategySteps, fill_priority: $('nq-priority-fill').checked,
     excluded_regions: [...$('nq-priority-regions-out').selectedOptions].map((option) => option.value),
     excluded_modes: excludedModes(), final_lists: strategyFinalLists, strategies: ownStrategies, strategy_names: strategyNames});
@@ -7267,8 +7326,8 @@
   // How the strategies work tells the levels as they are set in the dialog.
   const showAboutValues = () => {
     priorityDialog.querySelectorAll('[data-nq-about]').forEach((value) => {
-      const input = $(PRIORITY_INPUTS[value.dataset.nqAbout]);
-      value.textContent = input ? input.value : '';
+      const input = $(PRIORITY_INPUTS[value.dataset.nqAbout] || PRIORITY_CHOICES[value.dataset.nqAbout]);
+      value.textContent = input ? (input.tagName === 'SELECT' ? input.selectedOptions[0]?.textContent || '' : input.value) : '';
     });
   };
   const showSaveState = () => {

@@ -25,7 +25,7 @@ FILTER_LABELS = (
     ('root_category', 'Root Category'), ('root_cause', 'Root Cause'), ('call_type', 'Call Type'), ('period', 'Period'),
     ('age', 'Age of Open Calls'), ('root_pair', 'Root Domain · Cause'),
     ('effective_domain', 'Root Domain (with suggestions)'), ('effective_cause', 'Root Domain · Cause (with suggestions)'),
-    ('node', 'eNB / gNB'), ('place', 'Repetition Place'), ('state', 'Follow-up'), ('rca_state', 'Root Cause'),
+    ('node', 'eNB / gNB'), ('place', 'Repetition Place'), ('hotspot', 'Hotspot'), ('state', 'Follow-up'), ('rca_state', 'Root Cause'),
     ('version', 'CDR Version'),
 )
 STATE_LABELS = {
@@ -59,6 +59,9 @@ def selection_lines(filters: dict[str, Any], dataset_names: dict[str, str], gran
         values = [STATE_LABELS.get(value, value) if key in {'state', 'rca_state'} else value for value in values]
         values = [VERSION_LABELS.get(value, value) if key == 'version' else value for value in values]
         values = [{'auto': 'Automatic', 'manual': 'By hand'}.get(value, value) if key == 'status_mode' else value for value in values]
+        # A hotspot is chosen by its key, which tells nothing to read.
+        if key == 'hotspot' and values:
+            values = [f"{len(values)} hotspot{'s' if len(values) > 1 else ''} of the NQ Prioritization"]
         if values:
             lines.append(f'{label}: {", ".join(values)}')
     for key, chosen in (filters.get('fields') or {}).items():
@@ -273,7 +276,8 @@ def classified_root_stats(stats: dict[str, Any]) -> dict[str, Any]:
 REPORT_PANELS: tuple[tuple[str, str, tuple[tuple[str, str], ...]], ...] = (
     ('summary', 'Summary', (('executive', 'Executive Summary'),)),
     ('prioritization', 'NQ Prioritization & Queues', (('queue', 'Next to analyse'), ('rules', 'Prioritization Rules'),
-                                                      ('kpis', 'Scoring points lost by KPI'), ('issues', 'Repeated issues'))),
+                                                      ('kpis', 'Scoring points lost by KPI'), ('hotspots', 'Hotspots'),
+                                                      ('issues', 'Repeated Issues Within Same Cluster'))),
     ('rates', 'NQ Rate by Campaign and Operator', (('rates', 'NQ rate of each campaign and operator'),)),
     ('failures', 'Failures by Type, Technology & Serving Cell', (
         ('types', 'Failure types of each service'), ('technology', 'Technology and classification'),
@@ -374,6 +378,8 @@ def report_panels(summary: dict[str, Any], breakdowns: list[dict[str, Any]], pro
 
 FAILURES_TITLE = 'Failures by Type, Technology & Serving Cell'
 PRIORITIZATION_TITLE = 'NQ Prioritization & Queues'
+# The slides keep the hotspots and the sites with a repeated issue with the most calls (the page lists every one).
+MAX_EXPORT_ISSUES = 25
 
 
 def _points(value: Any) -> str:
@@ -417,14 +423,35 @@ def prioritization_tables(data: dict[str, Any]) -> list[tuple[str, str, list[str
             for row in data.get('kpis') or []]
     if kpis:
         tables.append(('kpis', 'Scoring points lost by KPI', ['KPI', 'Category', 'Environment', 'Calls', 'Points lost'], kpis, {3, 4}))
+    spots = data.get('hotspots') or []
+    spot_rows = [[row['operator'], row['nr_mode'] or '—', row['campaign'] or '—',
+                  (row['place'] or '—') + (f" +{row['places'] - 1}" if row.get('places', 0) > 1 else ''), hotspot_time(row),
+                  f"{row['calls']:,}", *(f"{row['kinds'].get(kind, 0):,}" for kind in ('Voice', 'WhatsApp', 'Data')),
+                  _points(row['points']), f"{row['open']:,}", row['category'] or '—'] for row in spots[:MAX_EXPORT_ISSUES]]
+    if spot_rows:
+        tables.append(('hotspots', 'Hotspots' + (f' · the {len(spot_rows)} with the most calls of {len(spots):,}' if len(spots) > len(spot_rows) else ''),
+                       ['Operator', 'NR Mode', 'Campaign', 'Site', 'Time', 'Calls', 'Voice', 'WhatsApp', 'Data', 'Points lost', 'Open',
+                        'Main Root Category'], spot_rows, {5, 6, 7, 8, 9, 10}))
     issues = [[row['operator'], row['place'], f"{row['calls']:,}", f"{row['campaigns']:,}",
                ', '.join(f'{name} {count}' for name, count in row['services'].items()),
                ', '.join(f'{name} {count}' for name, count in row['nr_modes'].items()), _points(row['points']),
-               f"{row['open']:,}", row['category'] or '—'] for row in data.get('issues') or []]
+               f"{row['open']:,}", row['category'] or '—'] for row in (data.get('issues') or [])[:MAX_EXPORT_ISSUES]]
     if issues:
-        tables.append(('issues', 'Repeated issues', ['Operator', 'Place', 'Calls', 'Campaigns', 'Services', 'NR Mode',
-                                                     'Points lost', 'Open', 'Main Root Category'], issues, {2, 3, 6, 7}))
+        count = len(data.get('issues') or [])
+        tables.append(('issues', 'Repeated Issues Within Same Cluster' + (f' · the {len(issues)} sites with the most calls of {count:,}' if count > len(issues) else ''),
+                       ['Operator', 'Site', 'Calls', 'Campaigns', 'Services', 'NR Mode', 'Points lost', 'Open', 'Main Root Category'],
+                       issues, {2, 3, 6, 7}))
     return tables
+
+
+def hotspot_time(row: dict[str, Any]) -> str:
+    """When the calls of a hotspot started: 2026-07-14 10:05–10:31 (the date once when it is the same day)."""
+    first, last = str(row.get('first') or '')[:16], str(row.get('last') or '')[:16]
+    if not first:
+        return '—'
+    if last == first:
+        return first
+    return f'{first}–{last[11:]}' if last[:10] == first[:10] else f'{first}–{last}'
 
 
 def _step_fields(row: dict[str, Any]) -> list[str]:

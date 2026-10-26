@@ -11,8 +11,9 @@ Every Non-Qualified Call (the latest version of each call, as the calls table li
   a Pareto within the campaign, operator and service of the call, the calls in scope compared only with each other: the
   calls that hold the first share of the points lost (50 % by default) are High, those up to the second share (80 %)
   Medium and the others Low.
-- **Repetition**: how many Non-Qualified Calls of the same operator failed at the same place in the quarter of the call
-  and the quarters before it (one by default), whatever their service and NR Mode. The place is the site of the cell
+- **Repetition**: how many Non-Qualified Calls of the same operator failed within the Cluster distance (250 m by default)
+  of the call or at its site in the quarter of the call and the quarters before it (one by default), whatever their
+  service and NR Mode. The place is the site of the cell
   where the call ended (the site ID and host network of its eNB or gNB in the inventory cells of the workspace, in the
   networks that serve its operator and within their distance of the call), else the site that served its start
   (serving-cell Vendor Mapping), else the eNB or gNB of its last cell, else a spot of about 250 m around where it
@@ -25,8 +26,7 @@ Every Non-Qualified Call (the latest version of each call, as the calls table li
     out of scope and of the SA campaigns of an operator without SA stay out) with two lists, their steps giving the
     Priority from P1 to P8. During a
     campaign, list 1 takes each call by what it says about itself, which never changes: P1 SA Voice in Cities (on
-    Connecting Roads with Roads first), P2 SA Data (the consecutive failures of a hotspot, 2+ failed data tests at one
-    spot of a drive), P3 SA Voice on
+    Connecting Roads with Roads first), P2 SA Data (the consecutive failures of a cluster), P3 SA Voice on
     Connecting Roads (in Cities), P4 SA WhatsApp, P5 NSA Voice, P6 NSA Data, P7 NSA WhatsApp and P8 the tracked calls.
     Once the Final CDR of the campaign is scored, list 2 orders its calls by their real impact (the same in every
     strategy). Admins change every field of the steps, their conditions joined by AND or OR. Voice and WhatsApp calls go
@@ -50,7 +50,6 @@ This module reads the NQ tables of ``non_qualified_calls`` (imported where it is
 
 from __future__ import annotations
 
-import bisect
 import hashlib
 import json
 import math
@@ -58,7 +57,7 @@ import re
 import time
 from pathlib import Path
 from threading import Lock
-from typing import Any, Callable, Iterable
+from typing import Any, Callable, Iterable, Iterator
 
 from src.modules import nq_catalog
 from src.modules.nq_catalog import IMPACT_HIGH, NO_RULE, PRIORITIZED, TRACK_ONLY
@@ -73,7 +72,7 @@ FINGERPRINT_STATE_KEY = 'nq_prioritization_fingerprint'
 FAILED_STATE_KEY = 'nq_prioritization_failed'
 SUMMARY_STATE_KEY = 'nq_prioritization_summary'
 # Bumped when the calculation changes: every value is calculated again.
-IMPACT_VERSION = 12
+IMPACT_VERSION = 13
 # The scoring of every campaign is split by campaign and operator, as the points of the scoring are national.
 LEVELS = ('Campaign', 'Operator')
 SERVICES = ('voice', 'speech', 'data')
@@ -112,18 +111,24 @@ QUEUE_ORDER = (VOICE_QUEUE, DATA_QUEUE, UNIQUE_QUEUE)
 # List 1 orders the calls of a campaign until its Final CDR is scored; list 2 orders them after.
 CAMPAIGN_LIST, FINAL_LIST = 'campaign', 'final'
 LIST_LABELS = {CAMPAIGN_LIST: 'Campaign', FINAL_LIST: 'Final'}
-# A hotspot by default: failures of one call type in one drive, each at most 15 minutes after the previous one, the same
-# day, at most 250 m from it or at the same site (the Hotspot time and distance of the settings; the distance is the
-# Cluster distance by default too).
+# A hotspot by default: failures of the same operator, NR Mode and campaign (Voice, WhatsApp and Data together), each at
+# most 15 minutes and 250 m (or the same site) from another one of them (the Hotspot time, distance and join of the
+# settings; 15 minutes is the Consecutive time and 250 m the Cluster distance by default too).
 CLUSTER_MINUTES = 15
 CLUSTER_METERS = 250.0
-# The settings of the clusters and the hotspots, applied at once when they change (the places, repetitions and hotspots
-# of the calls are calculated again from their stored values, without the scoring impact).
-PLACE_SETTINGS = ('min_calls', 'previous_quarters', 'spot_meters', 'hotspot_meters', 'hotspot_minutes')
-# The columns of a data CDR that give the order of its tests in the drive (two failures are consecutive tests when their
-# sequence numbers follow each other in the same file).
-# The columns that give the order of the tests of a drive: those of the data CDRs, else those of the voice CDRs.
-FILE_COLUMNS, SEQUENCE_COLUMNS = ('File_ID', 'File_ID_A'), ('Sequence_ID_per_File', 'Sequence_ID_A')
+# How a failure joins a hotspot: close to another one in time AND in distance, or in time (in the same drive) OR in
+# distance.
+HOTSPOT_JOINS = {'and': 'AND', 'or': 'OR'}
+DEFAULT_HOTSPOT_JOIN = 'and'
+# The settings of the clusters, the hotspots and the consecutive failures, applied at once when they change (the places,
+# repetitions, hotspots and consecutive failures of the calls are calculated again from their stored values, without
+# the scoring impact).
+PLACE_SETTINGS = ('min_calls', 'previous_quarters', 'spot_meters', 'hotspot_meters', 'hotspot_minutes', 'hotspot_join',
+                  'consecutive_minutes')
+# The drive of a call, so that the failures of the cars that measure at the same time elsewhere are never consecutive:
+# the measurement system of its CDR (the car: a data CDR, else the A side of a voice CDR), else the file of its CDR (the
+# device).
+DRIVE_COLUMNS, FILE_COLUMNS = ('Measurement_System', 'System_A'), ('File_ID', 'File_ID_A')
 # The kinds of call the strategies tell apart.
 VOICE, WHATSAPP, DATA, PING = 'voice', 'whatsapp', 'data', 'ping'
 KIND_LABELS = {VOICE: 'Voice', WHATSAPP: 'WhatsApp', DATA: 'Data', PING: 'Ping'}
@@ -144,7 +149,7 @@ LEGACY_CALL_TYPES = {'voice_cities': ('voice', 'city'), 'voice_roads': ('voice',
 # The conditions of a step, chosen one by one, each joined to the one before by AND or OR, AND first: "Consecutive
 # failures AND Hotspots OR High impact" takes the consecutive failures of a hotspot and the calls with a High impact
 # (Every call alone takes every call). AND ( and OR ( start a group, one level of parentheses: "(High impact OR Medium
-# impact) AND Repeated". Consecutive failures: the test right before or after it in the drive failed too.
+# impact) AND Repeated". Consecutive failures: another failure of the same drive within the Consecutive time.
 EVERY_CALL = 'all'
 JOINS = {'and': 'AND', 'or': 'OR', 'and_group': 'AND (', 'or_group': 'OR ('}
 GROUP_JOINS = {'and_group': 'and', 'or_group': 'or'}
@@ -161,29 +166,31 @@ CONDITIONS = {key: CONDITION_LABELS[key] for key in (EVERY_CALL, 'consecutive', 
 FORMER_CONDITIONS = {'biggest': 'high'}
 CAMPAIGN_CONDITIONS = FINAL_CONDITIONS = CONDITIONS
 CONDITION_TAKES = {
-    EVERY_CALL: 'every one', 'consecutive': 'the consecutive failures (the test right before or after failed too)',
-    'cluster': 'the failures of a hotspot (2+ failures of the same call type at one spot of a drive)',
+    EVERY_CALL: 'every one', 'consecutive': 'the consecutive failures (another failure of the same drive minutes before or after)',
+    'cluster': 'the failures of a hotspot (2+ failures close in time and distance)',
     'drop': 'the drops (calls dropped and data tests cut off once established)',
     'setup': 'the setup failures (calls and data tests that failed before being established)',
     'high': 'those with a High impact (by Expected Gain)',
     'medium': 'those with a Medium impact (by Expected Gain)', 'low': 'those with a Low impact (or none, by Expected Gain)',
-    'repeated': 'those of a cluster (a Repeated Issue: the operator failed at the same place in several calls)',
+    'repeated': 'those of a cluster (a Repeated Issue: the operator failed close to them in several calls)',
 }
 # What each condition is based on, as a tag beside it: the scoring (unstable during the campaign), the place, the place
-# and the time, the order of the tests of the drive, or the result of the call itself.
+# and the time, the time within the drive, or the result of the call itself.
 CONDITION_KINDS = {
-    'consecutive': ('Sequence-based', 'sequence'), 'cluster': ('Position & time', 'position'), 'repeated': ('Position-based', 'position'),
+    'consecutive': ('Time-based', 'time'), 'cluster': ('Position & time', 'position'), 'repeated': ('Position-based', 'position'),
     'high': ('Scoring-based', 'scoring'), 'medium': ('Scoring-based', 'scoring'),
     'low': ('Scoring-based', 'scoring'), 'drop': ('Result-based', 'result'), 'setup': ('Result-based', 'result'),
 }
 # What each condition means, as the Prioritization Rules dialog explains it.
 CONDITION_HELP = {
     EVERY_CALL: 'Every call of the step.',
-    'consecutive': 'The test right before or after it in the same drive failed too.',
-    'cluster': 'Two or more failures of the same call type at one spot of one drive: each within the Hotspot time of the '
-               'previous one, the same day, within the Hotspot distance of it or at the same site.',
-    'repeated': 'The operator failed at the same place (its site, else a spot of the Cluster distance) in at least Cluster size '
-                'calls of the quarter and the Cluster period before it, in any drive.',
+    'consecutive': 'Another failure of the same operator, NR Mode, campaign and drive (the car) started within the '
+                   'Consecutive time before or after it, whatever its call type.',
+    'cluster': 'Two or more failures of the same operator, NR Mode and campaign, whatever their call type, each linked to '
+               'another one: within the Hotspot time AND the Hotspot distance of it (or at the same site), or, with the '
+               'OR join, within the Hotspot time in the same drive OR within the Hotspot distance.',
+    'repeated': 'The operator failed within the Cluster distance of it or at the same site in at least Cluster size calls of '
+                'the quarter and the Cluster period before it, in any drive.',
     'high': 'Within the first High share of the Expected Gain of the calls in scope of its campaign, operator and service: during '
             'the campaign what its failure lost in the latest Final CDR of its NR Mode, then its own points.',
     'medium': 'The next calls by Expected Gain, up to the Medium share.',
@@ -237,7 +244,8 @@ CREATE TABLE IF NOT EXISTS {PRIORITY_TABLE} (
     expected_campaign TEXT NOT NULL DEFAULT '',
     queue TEXT NOT NULL DEFAULT '',
     queue_step INTEGER,
-    queue_list TEXT NOT NULL DEFAULT ''
+    queue_list TEXT NOT NULL DEFAULT '',
+    drive TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS {PRIORITY_CAMPAIGNS_TABLE} (
     campaign_key TEXT PRIMARY KEY,
@@ -255,7 +263,7 @@ CREATE TABLE IF NOT EXISTS {PRIORITY_CAMPAIGNS_TABLE} (
 STRATEGY_COLUMNS = (('cluster_key', "TEXT NOT NULL DEFAULT ''"), ('cluster_size', 'INTEGER'), ('consecutive', "TEXT NOT NULL DEFAULT ''"),
                     ('final_list', 'INTEGER NOT NULL DEFAULT 0'), ('expected_points', 'REAL'),
                     ('expected_campaign', "TEXT NOT NULL DEFAULT ''"), ('queue', "TEXT NOT NULL DEFAULT ''"),
-                    ('queue_step', 'INTEGER'), ('queue_list', "TEXT NOT NULL DEFAULT ''"))
+                    ('queue_step', 'INTEGER'), ('queue_list', "TEXT NOT NULL DEFAULT ''"), ('drive', "TEXT NOT NULL DEFAULT ''"))
 
 
 def ensure_columns(connection: Any) -> None:
@@ -287,7 +295,8 @@ def default_settings(operators: dict[str, list[str]] | None = None, modes: list[
     ``modes`` the NR Mode and operator pairs out of scope (``default_excluded_modes``)."""
     return {'strategy': DEFAULT_STRATEGY, 'steps': default_steps(operators), 'high_share': 50,
             'medium_share': 80, 'min_calls': 2, 'previous_quarters': 1, 'spot_meters': int(CLUSTER_METERS), 'hotspot_meters': int(CLUSTER_METERS),
-            'hotspot_minutes': CLUSTER_MINUTES, 'capacity': 20,
+            'hotspot_minutes': CLUSTER_MINUTES, 'hotspot_join': DEFAULT_HOTSPOT_JOIN, 'consecutive_minutes': CLUSTER_MINUTES,
+            'capacity': 20,
             'fill_priority': True, 'excluded_regions': list(DEFAULT_EXCLUDED_REGIONS),
             'excluded_modes': [dict(item) for item in modes or []], 'strategies': [], 'strategy_names': {},
             'final_lists': {key: key not in LIST_1_ONLY for key in STRATEGIES}}
@@ -305,6 +314,16 @@ def _whole(value: Any, default: int, low: int, high: int, label: str, strict: bo
             raise ValueError(f'{label} goes from {low} to {high}.')
         return min(high, max(low, int(number))) if math.isfinite(number) else default
     return int(round(number))
+
+
+def _hotspot_join(value: Any, strict: bool) -> str:
+    """How a failure joins a hotspot: and (close in time AND distance) or or."""
+    key = str(value or '').strip().casefold()
+    if key in HOTSPOT_JOINS:
+        return key
+    if strict:
+        raise ValueError('The Hotspot join is AND or OR.')
+    return DEFAULT_HOTSPOT_JOIN
 
 
 def _values(items: Any, allowed: Iterable[str] | None = None) -> list[str]:
@@ -371,6 +390,9 @@ def normalize_settings(value: Any, *, strict: bool = False, operators: dict[str,
                                  'The Hotspot distance', strict),
         'hotspot_minutes': _whole(value.get('hotspot_minutes', defaults['hotspot_minutes']), defaults['hotspot_minutes'], 1, 240,
                                   'The Hotspot time', strict),
+        'hotspot_join': _hotspot_join(value.get('hotspot_join', defaults['hotspot_join']), strict),
+        'consecutive_minutes': _whole(value.get('consecutive_minutes', defaults['consecutive_minutes']),
+                                      defaults['consecutive_minutes'], 1, 240, 'The Consecutive time', strict),
         'capacity': _whole(value.get('capacity', defaults['capacity']), defaults['capacity'], 1, 500,
                            'The calls to analyse next', strict),
         'fill_priority': bool(value.get('fill_priority', defaults['fill_priority'])),
@@ -484,8 +506,8 @@ def steps_changed(before: dict[str, Any], settings: dict[str, Any]) -> list[str]
 # The settings of the levels, the clusters and the hotspots, and Fill the Priority, as the Prioritization Rules name them.
 SETTING_LABELS = {'high_share': 'High impact (%)', 'medium_share': 'Medium impact (%)', 'min_calls': 'Cluster size',
                   'previous_quarters': 'Cluster period', 'spot_meters': 'Cluster distance (m)',
-                  'hotspot_meters': 'Hotspot distance (m)', 'hotspot_minutes': 'Hotspot time (min)', 'capacity': 'Next to analyse',
-                  'fill_priority': 'Fill the Priority'}
+                  'hotspot_meters': 'Hotspot distance (m)', 'hotspot_minutes': 'Hotspot time (min)', 'hotspot_join': 'Hotspot join',
+                  'consecutive_minutes': 'Consecutive time (min)', 'capacity': 'Next to analyse', 'fill_priority': 'Fill the Priority'}
 
 
 def settings_changes(before: Any, settings: Any) -> list[str]:
@@ -510,7 +532,7 @@ def settings_changes(before: Any, settings: Any) -> list[str]:
     pairs = lambda items: [f"{item['nr_mode']} · {item['operator']}" for item in items]  # noqa: E731
     if pairs(settings['excluded_modes']) != pairs(before['excluded_modes']):
         lines.append(list_change('Operators out of scope', pairs(before['excluded_modes']), pairs(settings['excluded_modes'])))
-    text = lambda value: ('Yes' if value else 'No') if isinstance(value, bool) else str(value)  # noqa: E731
+    text = lambda value: ('Yes' if value else 'No') if isinstance(value, bool) else HOTSPOT_JOINS.get(value, str(value))  # noqa: E731
     lines += [f'{label}: {text(before.get(key))} → {text(settings.get(key))}' for key, label in SETTING_LABELS.items()
               if settings.get(key) != before.get(key)]
     return lines
@@ -1051,8 +1073,8 @@ def _joined(values: list[bool], joins: list[str]) -> bool:
 
 def condition_holds(conditions: list[str], call: dict[str, Any], joins: Any = None) -> bool:
     """Whether a call meets the conditions of a step joined by their operators (or when not given), AND first, inside
-    each group (in parentheses) and between the groups (Every call: every call). A failure is consecutive when the test
-    right before or after it in the drive failed too (unknown when its CDR does not give the order of its tests)."""
+    each group (in parentheses) and between the groups (Every call: every call). A failure is consecutive when another
+    failure of its drive started within the Consecutive time (unknown when its CDR does not give its drive)."""
     if not conditions:
         return False
     level = call.get('level')
@@ -1434,26 +1456,62 @@ def place_of(call: dict[str, Any], node_details: Callable[[dict[str, Any], tuple
     return spot if spot else ('', '')
 
 
-def repetitions(calls: list[dict[str, Any]], previous_quarters: int) -> dict[str, tuple[int, int]]:
-    """For every call with a place (``place_key``): the Non-Qualified Calls of its operator at the same place in its quarter
-    and the ``previous_quarters`` before it (itself included), and their campaigns. Calls without a date count in every
-    window of their place, and count every call of it."""
-    groups: dict[tuple[str, str], list[dict[str, Any]]] = {}
+def _near_pairs(calls: list[dict[str, Any]], meters: float) -> Iterator[tuple[int, int]]:
+    """The pairs of calls (their indexes, the first lower) that started at most ``meters`` apart, found in a grid of
+    ``meters`` (only the calls of the next squares are compared)."""
+    squares: dict[tuple[int, int], list[int]] = {}
+    for index, call in enumerate(calls):
+        try:
+            latitude, longitude = float(call.get('latitude')), float(call.get('longitude'))
+        except (TypeError, ValueError):
+            continue
+        if not (math.isfinite(latitude) and math.isfinite(longitude)) or (latitude == 0 and longitude == 0):
+            continue
+        y, x = latitude * METERS_PER_DEGREE, longitude * METERS_PER_DEGREE * math.cos(math.radians(latitude))
+        squares.setdefault((math.floor(y / meters), math.floor(x / meters)), []).append(index)
+    for (row, column), members in squares.items():
+        for other_row in (row - 1, row, row + 1):
+            for other_column in (column - 1, column, column + 1):
+                for first in members:
+                    for second in squares.get((other_row, other_column), ()):
+                        if first < second and _meters(calls[first], calls[second]) <= meters:
+                            yield first, second
+
+
+def _site_key(call: dict[str, Any]) -> str:
+    """The site of the place of a call (or its eNB / gNB), '' when only its spot places it."""
+    place = str(call.get('place_key') or '')
+    return '' if not place or place.startswith('spot:') else place
+
+
+def repetitions(calls: list[dict[str, Any]], previous_quarters: int,
+                meters: float = CLUSTER_METERS) -> dict[str, tuple[int, int]]:
+    """For every call with a place (``place_key``): the Non-Qualified Calls of its operator that started within ``meters``
+    of it or at the same site (its place, when a site or an eNB / gNB gives it) in its quarter and the
+    ``previous_quarters`` before it (itself included), and their campaigns. Calls without a date count in every window
+    near them, and count every call near them."""
+    groups: dict[str, list[dict[str, Any]]] = {}
     for call in calls:
         if call.get('place_key'):
-            groups.setdefault((str(call.get('operator') or '').casefold(), call['place_key']), []).append(call)
+            groups.setdefault(str(call.get('operator') or '').casefold(), []).append(call)
     found: dict[str, tuple[int, int]] = {}
     for members in groups.values():
-        dated = sorted((call for call in members if call.get('quarter') is not None), key=lambda call: call['quarter'])
-        quarters = [call['quarter'] for call in dated]
-        undated = [call for call in members if call.get('quarter') is None]
-        for call in members:
-            if call.get('quarter') is None:
-                window = members
-            else:
-                low = bisect.bisect_left(quarters, call['quarter'] - previous_quarters)
-                high = bisect.bisect_right(quarters, call['quarter'])
-                window = [*dated[low:high], *undated]
+        near: list[set[int]] = [{index} for index in range(len(members))]
+        sites: dict[str, list[int]] = {}
+        for index, call in enumerate(members):
+            if site := _site_key(call):
+                sites.setdefault(site, []).append(index)
+        for indexes in sites.values():
+            for index in indexes:
+                near[index].update(indexes)
+        for first, second in _near_pairs(members, meters):
+            near[first].add(second)
+            near[second].add(first)
+        for index, call in enumerate(members):
+            quarter = call.get('quarter')
+            window = [members[other] for other in near[index]
+                      if quarter is None or members[other].get('quarter') is None
+                      or quarter - previous_quarters <= members[other]['quarter'] <= quarter]
             found[call['call_key']] = (len(window), len({item.get('campaign_label') or '' for item in window}))
     return found
 
@@ -1482,50 +1540,141 @@ def _meters(first: dict[str, Any], second: dict[str, Any]) -> float:
     return math.hypot((lon2 - lon1) * METERS_PER_DEGREE * math.cos(math.radians(lat1)), (lat2 - lat1) * METERS_PER_DEGREE)
 
 
-def data_clusters(calls: list[dict[str, Any]], minutes: float = CLUSTER_MINUTES,
-                  meters: float = CLUSTER_METERS) -> dict[str, tuple[str, int]]:
-    """For every failure of one call type (``call_key``, ``operator``, ``nr_mode``, ``campaign``, ``start_time``, ``latitude``,
-    ``longitude``, ``site_id``): its hotspot (cluster) and how many failures it has. A test joins the cluster of the same
-    operator, NR Mode and campaign whose last test failed the same day at most ``minutes`` before it, at most ``meters``
-    away or at the same site; else it starts one (a test without a date stays alone)."""
+def _root(parents: list[int], index: int) -> int:
+    while parents[index] != index:
+        parents[index] = parents[parents[index]]
+        index = parents[index]
+    return index
+
+
+def _campaign_groups(calls: list[dict[str, Any]], *fields: str) -> list[list[dict[str, Any]]]:
+    """The calls by operator, NR Mode and campaign (and the ``fields`` given)."""
     from src.modules.cdr_auto_selection import campaign_identity
 
-    groups: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
+    groups: dict[tuple[str, ...], list[dict[str, Any]]] = {}
     for call in calls:
         groups.setdefault((str(call.get('operator') or '').casefold(), str(call.get('nr_mode') or '').upper(),
-                           campaign_identity(call.get('campaign'))), []).append(call)
+                           campaign_identity(call.get('campaign')), *(str(call.get(field) or '') for field in fields)),
+                          []).append(call)
+    return list(groups.values())
+
+
+def hotspots(calls: list[dict[str, Any]], minutes: float = CLUSTER_MINUTES, meters: float = CLUSTER_METERS,
+             join: str = DEFAULT_HOTSPOT_JOIN) -> dict[str, tuple[str, int]]:
+    """For every failure (``call_key``, ``operator``, ``nr_mode``, ``campaign``, ``start_time``, ``latitude``, ``longitude``,
+    ``site_id``, ``drive``), whatever its call type: its hotspot and how many failures it has. Two failures of the same
+    operator, NR Mode and campaign are linked when they started at most ``minutes`` apart AND at most ``meters`` apart or
+    at the same site (``join`` and), or at most ``minutes`` apart in the same drive OR at most ``meters`` apart or at the
+    same site (``join`` or); a hotspot holds the failures linked to each other, directly or through others of it (a
+    failure linked to none stays alone, and so does a failure without a date with the and join)."""
     found: dict[str, tuple[str, int]] = {}
-    for members in groups.values():
-        timed = sorted(((moment, call) for call in members if (moment := _moment(call.get('start_time'))) is not None),
-                       key=lambda pair: (pair[0], pair[1]['call_key']))
-        clusters: list[list[tuple[Any, dict[str, Any]]]] = [[(None, call)] for call in members if _moment(call.get('start_time')) is None]
-        active: list[list[tuple[Any, dict[str, Any]]]] = []
-        for moment, call in timed:
-            active = [cluster for cluster in active if cluster[-1][0].date() == moment.date()
-                      and (moment - cluster[-1][0]).total_seconds() <= minutes * 60]
-            site = str(call.get('site_id') or '').strip().casefold()
-            target = next((cluster for cluster in active if _meters(cluster[-1][1], call) <= meters
-                           or (site and site == str(cluster[-1][1].get('site_id') or '').strip().casefold())), None)
-            if target is None:
-                target = []
-                active.append(target)
-                clusters.append(target)
-            target.append((moment, call))
-        for cluster in clusters:
-            key = f'cluster:{cluster[0][1]["call_key"]}'
-            found.update({call['call_key']: (key, len(cluster)) for _moment_, call in cluster})
+    for members in _campaign_groups(calls):
+        moments = [_moment(call.get('start_time')) for call in members]
+        sites = [str(call.get('site_id') or '').strip().casefold() for call in members]
+        parents = list(range(len(members)))
+
+        def link(first: int, second: int) -> None:
+            parents[_root(parents, first)] = _root(parents, second)
+        timed = sorted((index for index, moment in enumerate(moments) if moment is not None),
+                       key=lambda index: (moments[index], members[index]['call_key']))
+        if join == 'or':
+            # In time: the failures of each drive in their order, each with the one before (a chain covers the others).
+            previous: dict[str, int] = {}
+            for index in timed:
+                drive = str(members[index].get('drive') or '')
+                if drive and drive in previous and (moments[index] - moments[previous[drive]]).total_seconds() <= minutes * 60:
+                    link(index, previous[drive])
+                if drive:
+                    previous[drive] = index
+            # In distance: at the same site, or close.
+            first_at: dict[str, int] = {}
+            for index, site in enumerate(sites):
+                if site:
+                    link(index, first_at.setdefault(site, index))
+            for first, second in _near_pairs(members, meters):
+                link(first, second)
+        else:
+            for position, index in enumerate(timed):
+                for other in timed[position + 1:]:
+                    if (moments[other] - moments[index]).total_seconds() > minutes * 60:
+                        break
+                    if (sites[index] and sites[index] == sites[other]) or _meters(members[index], members[other]) <= meters:
+                        link(index, other)
+        spots: dict[int, list[int]] = {}
+        for index in [*timed, *(index for index, moment in enumerate(moments) if moment is None)]:
+            spots.setdefault(_root(parents, index), []).append(index)
+        for indexes in spots.values():
+            key = f"cluster:{members[indexes[0]]['call_key']}"
+            found.update({members[index]['call_key']: (key, len(indexes)) for index in indexes})
     return found
+
+
+def consecutive_failures(calls: list[dict[str, Any]], minutes: float = CLUSTER_MINUTES) -> dict[str, str]:
+    """For every failure (``call_key``, ``operator``, ``nr_mode``, ``campaign``, ``start_time``, ``drive``), whatever its call
+    type: Yes when another failure of the same operator, NR Mode, campaign and drive started at most ``minutes`` before or
+    after it, No when none did, '' without a date or a drive."""
+    found = {call['call_key']: '' for call in calls}
+    for members in _campaign_groups([call for call in calls if call.get('drive')], 'drive'):
+        timed = sorted(((moment, call['call_key']) for call in members if (moment := _moment(call.get('start_time'))) is not None))
+        for position, (moment, key) in enumerate(timed):
+            close = [(abs((timed[other][0] - moment).total_seconds()) <= minutes * 60)
+                     for other in (position - 1, position + 1) if 0 <= other < len(timed)]
+            found[key] = 'Yes' if any(close) else 'No'
+    return found
+
+
+def drives_of(repository: Any, calls: list[dict[str, Any]]) -> dict[str, str]:
+    """The drive of every call (``dataset_id``, ``source_row_id``) whose CDR tells it: its measurement system (the car,
+    ``DRIVE_COLUMNS``), else its file in the CDR (the device, ``FILE_COLUMNS``)."""
+    from src.modules.column_names import resolve_column_name
+
+    found: dict[str, str] = {}
+    by_dataset: dict[int, list[dict[str, Any]]] = {}
+    for call in calls:
+        by_dataset.setdefault(int(call['dataset_id']), []).append(call)
+    for dataset_id, items in by_dataset.items():
+        try:
+            available = repository.list_dataset_row_columns(dataset_id)
+        except Exception:  # noqa: BLE001 - a CDR that cannot be read gives no drive.
+            continue
+        system = next((name for name in (resolve_column_name(available, column) for column in DRIVE_COLUMNS) if name), None)
+        column = system or next((name for name in (resolve_column_name(available, column) for column in FILE_COLUMNS) if name), None)
+        if not column:
+            continue
+        table = repository.dataset_rows_table_name(dataset_id)
+        keys = {int(item['source_row_id']): item['call_key'] for item in items}
+        ids = list(keys)
+        with repository.connection() as connection:
+            for start in range(0, len(ids), 500):
+                chunk = ids[start:start + 500]
+                for row in connection.execute(f'SELECT rowid, "{column.replace(chr(34), chr(34) * 2)}" FROM "{table}" '
+                                              f'WHERE rowid IN ({", ".join("?" for _ in chunk)})', chunk):
+                    value = str(row[1] or '').strip()
+                    if value and int(row[0]) in keys:
+                        found[keys[int(row[0])]] = f'system:{value}' if system else f'file:{dataset_id}:{value}'
+    return found
+
+
+def linked_values(calls: list[dict[str, Any]], settings: dict[str, Any]) -> tuple[dict[str, tuple[int, int]], dict[str, tuple[str, int]], dict[str, str]]:
+    """The repetitions (``repetitions``), hotspots (``hotspots``) and consecutive failures (``consecutive_failures``) of the
+    calls with the settings given; the Ping tests are left out of the hotspots and the consecutive failures."""
+    linked = [call for call in calls if call_kind(call['service'], call.get('test_name'), call.get('session_type')) != PING]
+    return (repetitions(calls, settings['previous_quarters'], settings['spot_meters']),
+            hotspots(linked, settings['hotspot_minutes'], settings['hotspot_meters'], settings['hotspot_join']),
+            consecutive_failures(linked, settings['consecutive_minutes']))
 
 
 _places_cache: dict[str, tuple[Any, dict[str, dict[str, Any]]]] = {}
 
 
 def place_values(repository: Any, settings: dict[str, Any]) -> dict[str, dict[str, Any]]:
-    """The place, repetitions and hotspot of every calculated call with the cluster and hotspot settings given, from the
-    stored values: the stored place of a call with a site or an eNB / gNB, else its spot of the Cluster distance
-    (``spot_meters``); the calls of its operator at its place in its quarter and the ``previous_quarters`` before it (a
-    cluster, Repeated Issue, from ``min_calls``); its hotspot of ``hotspot_minutes`` and ``hotspot_meters`` among the
-    failures of its call type. The latest result is kept for each workspace until the settings or the calculation change."""
+    """The place, repetitions, hotspot and consecutive failure of every calculated call with the settings of the clusters,
+    the hotspots and the consecutive failures given, from the stored values: the stored place of a call with a site or an
+    eNB / gNB, else its spot of the Cluster distance (``spot_meters``); the calls of its operator within the Cluster
+    distance or at its site in its quarter and the ``previous_quarters`` before it (a cluster, Repeated Issue, from
+    ``min_calls``); its hotspot of ``hotspot_minutes``, ``hotspot_meters`` and ``hotspot_join``; whether another failure of
+    its drive is within ``consecutive_minutes`` (see ``linked_values``). The latest result is kept for each workspace until
+    the settings or the calculation change."""
     from src.modules import non_qualified_calls as nq
 
     ensure_tables(repository)
@@ -1538,7 +1687,7 @@ def place_values(repository: Any, settings: dict[str, Any]) -> dict[str, dict[st
     with repository.connection() as connection:
         calls = [dict(row) for row in connection.execute(
             f'SELECT l.call_key, l.service, l.nr_mode, l.campaign, l.operator, l.site_id, l.latitude, l.longitude, l.start_time, '
-            f'l.test_name, l.session_type, p.place_key, p.place_label FROM {PRIORITY_TABLE} p '
+            f'l.test_name, l.session_type, p.place_key, p.place_label, p.drive FROM {PRIORITY_TABLE} p '
             f'JOIN {nq.NQ_CALL_LATEST_TABLE} l ON l.call_key = p.call_key')]
     for call in calls:
         # Only the place of a call without a site or a node depends on the settings.
@@ -1546,12 +1695,7 @@ def place_values(repository: Any, settings: dict[str, Any]) -> dict[str, dict[st
             call['place_key'], call['place_label'] = spot_of(call['latitude'], call['longitude'], settings['spot_meters']) or ('', '')
         call['quarter'] = quarter_of(call['start_time'], call['campaign'])
         call['campaign_label'] = f"{call['campaign']}|{call['nr_mode']}"
-    repeated = repetitions(calls, settings['previous_quarters'])
-    kinds_of = {call['call_key']: call_kind(call['service'], call.get('test_name'), call.get('session_type')) for call in calls}
-    clusters: dict[str, tuple[str, int]] = {}
-    for kind in (VOICE, WHATSAPP, DATA):
-        clusters.update(data_clusters([call for call in calls if kinds_of[call['call_key']] == kind], settings['hotspot_minutes'],
-                                      settings['hotspot_meters']))
+    repeated, clusters, consecutive = linked_values(calls, settings)
     values = {}
     for call in calls:
         count, campaigns_count = repeated.get(call['call_key'], (None, None))
@@ -1559,15 +1703,16 @@ def place_values(repository: Any, settings: dict[str, Any]) -> dict[str, dict[st
         values[call['call_key']] = {
             'place_key': call['place_key'], 'place_label': call['place_label'], 'repetitions': count, 'repeated_campaigns': campaigns_count,
             'repeated': 'Yes' if count is not None and count >= settings['min_calls'] else 'No',
-            'cluster_key': cluster_key, 'cluster_size': cluster_size}
+            'cluster_key': cluster_key, 'cluster_size': cluster_size, 'consecutive': consecutive.get(call['call_key'], '')}
     _places_cache[workspace] = (key, values)
     return values
 
 
 def refresh_places(repository: Any, settings: dict[str, Any]) -> int:
-    """Write the places, repetitions and hotspots of ``place_values`` into the calculated calls (how many changed)."""
+    """Write the places, repetitions, hotspots and consecutive failures of ``place_values`` into the calculated calls (how
+    many changed)."""
     values = place_values(repository, settings)
-    fields = ('place_key', 'place_label', 'repetitions', 'repeated_campaigns', 'repeated', 'cluster_key', 'cluster_size')
+    fields = ('place_key', 'place_label', 'repetitions', 'repeated_campaigns', 'repeated', 'cluster_key', 'cluster_size', 'consecutive')
     with repository.connection() as connection:
         stored = {row['call_key']: tuple(row[name] for name in fields) for row in connection.execute(
             f"SELECT call_key, {', '.join(fields)} FROM {PRIORITY_TABLE}")}
@@ -1575,50 +1720,6 @@ def refresh_places(repository: Any, settings: dict[str, Any]) -> int:
                    if key in stored and stored[key] != tuple(value[name] for name in fields)]
         connection.executemany(f"UPDATE {PRIORITY_TABLE} SET {', '.join(f'{name} = ?' for name in fields)} WHERE call_key = ?", changes)
     return len(changes)
-
-
-def consecutive_failures(repository: Any, calls: list[dict[str, Any]]) -> dict[str, str]:
-    """For every failure (calls and data tests, Ping tests too): Yes when the test right before or after it in the drive
-    failed too (the previous or next sequence number of the same file of its CDR is another of these failures), No when
-    neither did, '' when its CDR does not give the order of its tests."""
-    from src.modules.column_names import resolve_column_name
-
-    positions: dict[str, tuple[int, str, int]] = {}
-    by_dataset: dict[int, list[dict[str, Any]]] = {}
-    for call in calls:
-        by_dataset.setdefault(int(call['dataset_id']), []).append(call)
-    for dataset_id, items in by_dataset.items():
-        try:
-            available = repository.list_dataset_row_columns(dataset_id)
-        except Exception:  # noqa: BLE001 - a CDR that cannot be read gives no order.
-            continue
-        file_column = next((name for name in (resolve_column_name(available, column) for column in FILE_COLUMNS) if name), None)
-        sequence_column = next((name for name in (resolve_column_name(available, column) for column in SEQUENCE_COLUMNS) if name), None)
-        if not file_column or not sequence_column:
-            continue
-        table = repository.dataset_rows_table_name(dataset_id)
-        keys = {int(item['source_row_id']): item['call_key'] for item in items}
-        ids = list(keys)
-        with repository.connection() as connection:
-            for start in range(0, len(ids), 500):
-                chunk = ids[start:start + 500]
-                for row in connection.execute(
-                        f'SELECT rowid, "{file_column.replace(chr(34), chr(34) * 2)}", "{sequence_column.replace(chr(34), chr(34) * 2)}" '
-                        f'FROM "{table}" WHERE rowid IN ({", ".join("?" for _ in chunk)})', chunk):
-                    try:
-                        positions[keys[int(row[0])]] = (dataset_id, str(row[1] or '').strip(), int(float(row[2])))
-                    except (TypeError, ValueError, KeyError):
-                        continue
-    failed = set(positions.values())
-    found: dict[str, str] = {}
-    for call in calls:
-        place = positions.get(call['call_key'])
-        if place is None:
-            found[call['call_key']] = ''
-            continue
-        dataset_id, file_id, sequence = place
-        found[call['call_key']] = 'Yes' if {(dataset_id, file_id, sequence - 1), (dataset_id, file_id, sequence + 1)} & failed else 'No'
-    return found
 
 
 def final_campaigns(repository: Any) -> dict[tuple[str, str], set[str]]:
@@ -1808,7 +1909,7 @@ def calculate(repository: Any, progress: Callable[[int, int, str], None] | None 
                              'impact_points': impact['points'], **{name: by_call[key][name] for name in ('operator', 'service', 'region', 'nr_mode')}}
                             for key, impact in impacts.items()), settings['high_share'], settings['medium_share'],
                            scope_test(repository, settings))
-    # Where each call failed, and the calls of its operator at the same place.
+    # Where each call failed.
     if progress:
         progress(len(groups), len(groups) + 1, 'the repetitions of the calls')
     lookup = _node_lookup(repository)
@@ -1816,16 +1917,13 @@ def calculate(repository: Any, progress: Callable[[int, int, str], None] | None 
         call['place_key'], call['place_label'] = place_of(call, lookup, settings['spot_meters'])
         call['quarter'] = quarter_of(call['start_time'], call['campaign'])
         call['campaign_label'] = f"{call['campaign']}|{call['nr_mode']}"
-    repeated = repetitions(calls, settings['previous_quarters'])
-    # The hotspots of each call type, and the failures whose test right before or after failed too.
+    # The calls near each one (clusters), the hotspots and the failures with another one of their drive minutes apart.
     if progress:
         progress(len(groups), len(groups) + 1, 'the hotspots and the expected gain of the calls')
-    kinds_of = {call['call_key']: call_kind(call['service'], call.get('test_name'), call.get('session_type')) for call in calls}
-    clusters: dict[str, tuple[str, int]] = {}
-    for kind in (VOICE, WHATSAPP, DATA):
-        clusters.update(data_clusters([call for call in calls if kinds_of[call['call_key']] == kind], settings['hotspot_minutes'],
-                                      settings['hotspot_meters']))
-    consecutive = consecutive_failures(repository, calls)
+    drives = drives_of(repository, calls)
+    for call in calls:
+        call['drive'] = drives.get(call['call_key'], '')
+    repeated, clusters, consecutive = linked_values(calls, settings)
     # Whether the Final CDR of the campaign of each call is scored (list 2 then orders it), and its Expected Gain: its
     # own points then, else what its failure lost in the latest campaign of its NR Mode with a Final CDR.
     finals = final_campaigns(repository)
@@ -1871,22 +1969,22 @@ def calculate(repository: Any, progress: Callable[[int, int, str], None] | None 
             call['place_key'], call['place_label'], count, campaigns_count,
             ('Yes' if count is not None and count >= settings['min_calls'] else 'No'), now,
             cluster_key, cluster_size, consecutive.get(call['call_key'], ''), final_list.get(call['call_key'], 0),
-            None if gain is None else round(float(gain), 4), gain_campaign,
+            None if gain is None else round(float(gain), 4), gain_campaign, call['drive'],
         ))
     ensure_tables(repository)
     with repository.connection() as connection:
         connection.executemany(
             f'INSERT INTO {PRIORITY_TABLE} (call_key, campaign_key, impact_state, impact_points, impact_level, impact_kpis, '
             'impact_json, place_key, place_label, repetitions, repeated_campaigns, repeated, updated_at, cluster_key, '
-            'cluster_size, consecutive, final_list, expected_points, expected_campaign) '
-            'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(call_key) DO UPDATE SET '
+            'cluster_size, consecutive, final_list, expected_points, expected_campaign, drive) '
+            'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(call_key) DO UPDATE SET '
             'campaign_key = excluded.campaign_key, impact_state = excluded.impact_state, impact_points = excluded.impact_points, '
             'impact_level = excluded.impact_level, impact_kpis = excluded.impact_kpis, impact_json = excluded.impact_json, '
             'place_key = excluded.place_key, place_label = excluded.place_label, repetitions = excluded.repetitions, '
             'repeated_campaigns = excluded.repeated_campaigns, repeated = excluded.repeated, updated_at = excluded.updated_at, '
             'cluster_key = excluded.cluster_key, cluster_size = excluded.cluster_size, consecutive = excluded.consecutive, '
             'final_list = excluded.final_list, expected_points = excluded.expected_points, '
-            'expected_campaign = excluded.expected_campaign',
+            'expected_campaign = excluded.expected_campaign, drive = excluded.drive',
             values)
         connection.execute(f'DELETE FROM {PRIORITY_TABLE} WHERE call_key NOT IN (SELECT value FROM json_each(?))',
                            (json.dumps([call['call_key'] for call in calls]),))
@@ -2338,12 +2436,13 @@ def step_counts(repository: Any, settings: dict[str, Any]) -> dict[str, Any]:
     takes = operator_takes(repository)
     steps = strategy_steps(strategy, settings['steps'].get(strategy))
     lists = [CAMPAIGN_LIST] + ([FINAL_LIST] if settings['final_lists'].get(strategy, True) else [])
-    # The clusters and hotspots of the settings being edited, at once (the impact levels follow them in each list).
+    # The clusters, hotspots and consecutive failures of the settings being edited, at once (the impact levels follow
+    # them in each list).
     places = place_values(repository, settings)
     for row in rows:
         place = places.get(row['call_key'])
         if place:
-            row['repeated'], row['cluster_size'] = place['repeated'], place['cluster_size']
+            row['repeated'], row['cluster_size'], row['consecutive'] = place['repeated'], place['cluster_size'], place['consecutive']
     in_scope = []
     found: dict[str, dict[str, int]] = {'region': {}, 'operator': {}, 'mode': {}}
     for row in rows:
@@ -2478,7 +2577,6 @@ def status(repository: Any) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # The Prioritization panel
 # ---------------------------------------------------------------------------
-MAX_ISSUES = 25
 MAX_PANEL_KPIS = 12
 
 
@@ -2503,7 +2601,8 @@ def panel(repository: Any, filters: Any, username: str) -> dict[str, Any]:
             f'WITH calls AS ({base}) SELECT call_key, join_id, service, nr_mode, campaign, operator, result, start_time, status, '
             'updated_at, comment_count, root_category, field_values_json, impact_points, impact_level, impact_state, '
             'impact_json, place_label, repetitions, repeated_campaigns, repeated, prioritization, priority_rule, '
-            f'suggested_priority, queue, queue_step, queue_list, expected_points, expected_campaign FROM calls{where}',
+            'suggested_priority, queue, queue_step, queue_list, expected_points, expected_campaign, test_name, session_type, '
+            f'cluster_key, cluster_size FROM calls{where}',
             [*base_params, *params])]
     is_open = [str(row['status'] or '').casefold() not in closed_names for row in rows]
     attended = [bool(row['updated_at']) or int(row['comment_count'] or 0) > 0 for row in rows]
@@ -2539,6 +2638,7 @@ def panel(repository: Any, filters: Any, username: str) -> dict[str, Any]:
     levels: dict[str, int] = {}
     kpis: dict[tuple[str, str, str], dict[str, Any]] = {}
     issues: dict[tuple[str, str], dict[str, Any]] = {}
+    spots: dict[str, dict[str, Any]] = {}
     queue: list[dict[str, Any]] = []
     # The open calls nobody attended yet that only a tracked step takes, in no team queue.
     tracked: list[dict[str, Any]] = []
@@ -2581,6 +2681,23 @@ def panel(repository: Any, filters: Any, username: str) -> dict[str, Any]:
             issue['repetitions'] = max(issue['repetitions'], int(row['repetitions'] or 0))
             if row['root_category']:
                 issue['categories'][row['root_category']] = issue['categories'].get(row['root_category'], 0) + 1
+        if row['cluster_key'] and (row['cluster_size'] or 0) >= 2:
+            spot = spots.setdefault(row['cluster_key'], {
+                'key': row['cluster_key'], 'operator': str(row['operator'] or ''), 'nr_mode': str(row['nr_mode'] or ''),
+                'campaign': compact_campaign_value(row['campaign']) or str(row['campaign'] or ''), 'size': int(row['cluster_size']),
+                'calls': 0, 'kinds': {KIND_LABELS[kind]: 0 for kind in (VOICE, WHATSAPP, DATA)}, 'places': {}, 'times': [],
+                'points': 0.0, 'open': 0, 'categories': {}})
+            spot['calls'] += 1
+            kind = KIND_LABELS[call_kind(row['service'], row['test_name'], row['session_type'])]
+            spot['kinds'][kind] = spot['kinds'].get(kind, 0) + 1
+            if row['place_label']:
+                spot['places'][row['place_label']] = spot['places'].get(row['place_label'], 0) + 1
+            if row['start_time']:
+                spot['times'].append(str(row['start_time']))
+            spot['points'] += points
+            spot['open'] += opened
+            if row['root_category']:
+                spot['categories'][row['root_category']] = spot['categories'].get(row['root_category'], 0) + 1
         if opened and not followed:
             if row['prioritization'] == PRIORITIZED:
                 queue.append(row)
@@ -2608,6 +2725,18 @@ def panel(repository: Any, filters: Any, username: str) -> dict[str, Any]:
         item['campaigns'] = len(item['campaigns'])
         item['points'] = round(item['points'], 2)
         item['category'] = max(item.pop('categories').items(), key=lambda pair: (pair[1], pair[0]))[0] if item['categories'] else ''
+    # Every hotspot among the filtered calls, the most calls first: its main site (the place of most of its calls), the
+    # start of its first and last call and its calls of each call type.
+    spot_rows = sorted(spots.values(), key=lambda item: (-item['calls'], -item['points'], item['operator'].casefold(), item['key']))
+    for item in spot_rows:
+        places = item.pop('places')
+        times = sorted(item.pop('times'))
+        item['place'] = max(places.items(), key=lambda pair: (pair[1], pair[0]))[0] if places else ''
+        item['places'] = len(places)
+        item['first'], item['last'] = (times[0], times[-1]) if times else ('', '')
+        item['points'] = round(item['points'], 2)
+        categories = item.pop('categories')
+        item['category'] = max(categories.items(), key=lambda pair: (pair[1], pair[0]))[0] if categories else ''
     for entry in (*rules, unruled):
         entry['points'] = round(entry['points'], 2)
     level_order = [name for name, _color in nq_catalog.IMPACT_LEVELS]
@@ -2626,7 +2755,8 @@ def panel(repository: Any, filters: Any, username: str) -> dict[str, Any]:
         'strategy': {'key': strategy, 'label': strategy_labels(settings)[strategy]},
         # Every strategy by its name, for the selector of the panel.
         'strategies': strategy_labels(settings),
-        'settings': {key: settings[key] for key in ('high_share', 'medium_share', 'min_calls', 'previous_quarters', 'capacity')},
+        'settings': {key: settings[key] for key in ('high_share', 'medium_share', 'min_calls', 'previous_quarters', 'spot_meters',
+                                                    'hotspot_minutes', 'hotspot_meters', 'hotspot_join', 'capacity')},
         'totals': {
             'calls': len(rows), 'prioritized': sum(row['prioritization'] == PRIORITIZED for row in rows),
             'tracked': sum(row['prioritization'] == TRACK_ONLY for row in rows),
@@ -2641,7 +2771,9 @@ def panel(repository: Any, filters: Any, username: str) -> dict[str, Any]:
         'rules': [*rules, *([unruled] if unruled['calls'] else [])],
         'kpis': sorted(({**item, 'points': round(item['points'], 2)} for item in kpis.values()),
                        key=lambda item: (-item['points'], item['code'], item['environment']))[:MAX_PANEL_KPIS],
-        'issues': issue_rows[:MAX_ISSUES], 'issue_count': len(issue_rows),
+        # Every hotspot among the filtered calls, then every site with a repeated issue (a cluster), the most calls first.
+        'hotspots': spot_rows,
+        'issues': issue_rows, 'issue_count': len(issue_rows),
         'queue': [queue_row(row, position) for position, row in enumerate(queue[:settings['capacity']], start=1)],
         'queues': [{'name': item['name'], 'total': item['total'],
                     'rows': [queue_row(row, position) for position, row in enumerate(item['rows'][:settings['capacity']], start=1)]}

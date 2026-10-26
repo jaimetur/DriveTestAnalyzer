@@ -244,9 +244,20 @@ ANALYSIS_CENTER_V31_STATE_KEY = 'nq_analysis_center_v31'
 # The keywords of the Root Categories of the DT Analyzer RCA, which translate the NetCheck values onto the catalog, for
 # those categories that still have none, once.
 ANALYSIS_CENTER_V32_STATE_KEY = 'nq_analysis_center_v32'
+# The descriptions of the repetitions of the NQ Prioritization, counted within the Cluster distance of the call or at its
+# site (formerly at its place), where they are still the former defaults, once: (key, former description).
+ANALYSIS_CENTER_V33_STATE_KEY = 'nq_analysis_center_v33'
+V33_FORMER_DESCRIPTIONS = (
+    ('repeated_issue', 'Yes when other Non-Qualified Calls of the operator failed at the same place in the quarter of the call or '
+                       'the quarter before it.'),
+    ('repetitions', 'The Non-Qualified Calls of the operator at the same place in the quarter of the call and the quarters before '
+                    'it (the call included), whatever their service and NR Mode.'),
+    ('repetition_place', 'Where the repetitions are counted: the site of the cell where the call ended, the site that served its '
+                         'start, its eNB / gNB or the spot where it started.'),
+)
 # Set once the tables and columns of this version exist, so the requests check the schema without writing.
 SCHEMA_STATE_KEY = 'nq_calls_schema'
-SCHEMA_VERSION = '2026-10-25.3'
+SCHEMA_VERSION = '2026-10-26.1'
 # Indexed call fields that the suggestion rule can read, with their labels.
 RULE_FIELDS = {
     'failure_classification': 'Failure Classification', 'failure_category': 'Failure Category',
@@ -295,12 +306,12 @@ TRACKING_FIELDS = ('status', 'team', 'assignee', 'root_domain', 'root_category',
 # Filters set by clicking the Progress View and Root Cause Analysis: NR mode, call type
 # (Classic, WhatsApp, Data), a timeline period ("month:2026-07"), the age of open calls,
 # a labelled root cause ("RF||Coverage"), the root domain or cause counting the suggested
-# ones, the eNB/gNB of the last cell ("EE||eNB 525176") and the place of the repeated issues of the NQ Prioritization
-# ("EE||Site S1").
+# ones, the eNB/gNB of the last cell ("EE||eNB 525176"), the place of the repeated issues of the NQ Prioritization
+# ("EE||Site S1") and its hotspots (their key).
 # The indicator cards filter by follow-up state (closed, attended, with team...) and the
 # Suggested card by the calls without a root cause that have a suggestion.
 EXTRA_FILTERS = ('nr_mode', 'call_type', 'period', 'age', 'root_pair', 'effective_domain', 'effective_cause', 'node',
-                 'state', 'rca_state', 'place')
+                 'state', 'rca_state', 'place', 'hotspot')
 KEY_FILTERS = ('effective_domain', 'effective_cause', 'node', 'rca_state', 'netcheck_domain', 'netcheck_category',
                'netcheck_cause', 'script_domain', 'script_category', 'script_cause', 'dta_domain', 'dta_category', 'dta_cause',
                'netcheck_raw', 'script_raw', 'dta_raw')
@@ -601,7 +612,7 @@ def _schema_ready(task_repository: Any) -> bool:
                 ANALYSIS_CENTER_V22_STATE_KEY, ANALYSIS_CENTER_V23_STATE_KEY, ANALYSIS_CENTER_V24_STATE_KEY, ANALYSIS_CENTER_V25_STATE_KEY,
                 ANALYSIS_CENTER_V26_STATE_KEY, ANALYSIS_CENTER_V27_STATE_KEY, ANALYSIS_CENTER_V28_STATE_KEY,
                 ANALYSIS_CENTER_V29_STATE_KEY, ANALYSIS_CENTER_V30_STATE_KEY, ANALYSIS_CENTER_V31_STATE_KEY,
-                ANALYSIS_CENTER_V32_STATE_KEY)
+                ANALYSIS_CENTER_V32_STATE_KEY, ANALYSIS_CENTER_V33_STATE_KEY)
         states = {str(row[0]): str(row[1]) for row in connection.execute(
             f"SELECT key, value FROM workspace_state WHERE key IN ({', '.join('?' for _ in keys)})", keys)}
     return states.get(SCHEMA_STATE_KEY) == SCHEMA_VERSION and all(states.get(key) for key in keys[1:])
@@ -796,6 +807,17 @@ def ensure_nq_tables(task_repository: Any) -> None:
     if not task_repository.get_workspace_state(ANALYSIS_CENTER_V32_STATE_KEY):
         _add_dta_category_keywords(task_repository)
         task_repository.set_workspace_state(ANALYSIS_CENTER_V32_STATE_KEY, '1')
+    if not task_repository.get_workspace_state(ANALYSIS_CENTER_V33_STATE_KEY):
+        defaults = {field['key']: field['description'] for field in nq_catalog.DEFAULT_FIELDS}
+        former = dict(V33_FORMER_DESCRIPTIONS)
+        fields = list_fields(task_repository)
+        described = [field for field in fields if field['key'] in former and field['description'] == former[field['key']]]
+        for field in described:
+            field['description'] = defaults[field['key']]
+        if described:
+            _store_fields(task_repository, nq_catalog.normalize_fields(fields, {field['key']: field for field in list_fields(task_repository)},
+                                                                       CATALOG_CALL_FIELDS))
+        task_repository.set_workspace_state(ANALYSIS_CENTER_V33_STATE_KEY, '1')
     task_repository.set_workspace_state(SCHEMA_STATE_KEY, SCHEMA_VERSION)
 
 
@@ -3989,7 +4011,8 @@ PRIORITY_COLUMNS_SQL = (
     "COALESCE(p.prioritization, '') AS prioritization, COALESCE(p.priority_rule, '') AS priority_rule, "
     "COALESCE(p.suggested_priority, '') AS suggested_priority, COALESCE(p.queue, '') AS queue, p.queue_step AS queue_step, "
     "COALESCE(p.queue_list, '') AS queue_list, p.expected_points AS expected_points, "
-    "COALESCE(p.expected_campaign, '') AS expected_campaign"
+    "COALESCE(p.expected_campaign, '') AS expected_campaign, COALESCE(p.cluster_key, '') AS cluster_key, "
+    "p.cluster_size AS cluster_size"
 )
 
 
@@ -4432,6 +4455,10 @@ def _filter_sql(filters: dict[str, Any], username: str, closed_statuses: list[st
     if places:
         clauses.append(f"(COALESCE(operator, '') || '||' || place_label) IN ({', '.join('?' for _ in places)})")
         params.extend(places)
+    spots = _strings(filters.get('hotspot'))
+    if spots:
+        clauses.append(f"cluster_key IN ({', '.join('?' for _ in spots)})")
+        params.extend(spots)
     if '_call_keys' in filters:
         clauses.append('call_key IN (SELECT value FROM json_each(?))')
         params.append(json.dumps(list(filters['_call_keys'])))

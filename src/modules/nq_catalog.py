@@ -236,16 +236,16 @@ DEFAULT_FIELDS = (
     _field('scoring_kpis_lost', 'Scoring KPIs Lost', 'general', 'text', 'priority', 'impact_kpis',
            description='The KPIs and environments in which the call loses its points, the most first.'),
     _field('repeated_issue', 'Repeated Issue', 'general', 'yes_no', 'priority', 'repeated', in_table=True, in_summary=True,
-           description='Yes when other Non-Qualified Calls of the operator failed at the same place in the quarter of the call or '
-                       'the quarter before it.'),
+           description='Yes when other Non-Qualified Calls of the operator failed within the Cluster distance of the call or at '
+                       'its site in the quarter of the call or the quarter before it.'),
     _field('repetitions', 'Repetitions', 'general', 'number', 'priority', 'repetitions',
-           description='The Non-Qualified Calls of the operator at the same place in the quarter of the call and the quarters '
-                       'before it (the call included), whatever their service and NR Mode.'),
+           description='The Non-Qualified Calls of the operator within the Cluster distance of the call or at its site in the '
+                       'quarter of the call and the quarters before it (the call included), whatever their service and NR Mode.'),
     _field('repeated_campaigns', 'Repeated Campaigns', 'general', 'number', 'priority', 'repeated_campaigns',
            description='The campaigns those calls belong to.'),
     _field('repetition_place', 'Repetition Place', 'general', 'text', 'priority', 'place_label',
-           description='Where the repetitions are counted: the site of the cell where the call ended, the site that served its '
-                       'start, its eNB / gNB or the spot where it started.'),
+           description='The site where the repeated issues list the call: the site of the cell where the call ended, the site '
+                       'that served its start, its eNB / gNB or the spot where it started.'),
     _field('team_responsible', 'Team Responsible', 'general', 'list', 'tracking', 'team', in_table=True),
     _field('assignee', 'Asignee', 'general', 'list', 'tracking', 'assignee', in_table=True,
            description='A member of the responsible team (any user of the workspace when the team has no members).'),
