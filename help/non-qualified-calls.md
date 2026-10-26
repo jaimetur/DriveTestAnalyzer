@@ -9,7 +9,7 @@ The module is in development, so its main tab can show a red **ALPHA** label (se
 
 ## Presentations
 
-Two presentations sum the module up: **Non-Qualified Calls**, the NQ Analysis Center (which calls to analyse first, why they failed, where, and who follows them up), and **DT Analyzer RCA**, the RCA of its own that finds the root cause of every call (see [DT Analyzer RCA](#dt-analyzer-rca)). Select one to open it in the slide viewer, play it full screen or download its PowerPoint; every presentation is also in [Product Presentations](presentations.md).
+Two presentations sum the module up: **Non-Qualified Calls**, the NQ Analysis Center (which calls to analyse first, how it groups the failures that belong together in consecutive runs, clusters and hotspots, why they failed, where, and who follows them up), and **DT Analyzer RCA**, the RCA of its own that finds the root cause of every call (see [DT Analyzer RCA](#dt-analyzer-rca)). Select one to open it in the slide viewer, play it full screen or download its PowerPoint; every presentation is also in [Product Presentations](presentations.md).
 
 ```presentations
 non-qualified-calls

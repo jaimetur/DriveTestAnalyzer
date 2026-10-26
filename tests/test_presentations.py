@@ -235,12 +235,12 @@ def test_every_main_module_has_its_presentation_at_the_start_of_its_chapter():
         assert all(slide['id'] and slide['title'] and slide['notes'] and slide['section'] for slide in deck['slides']), deck_id
         sections = [slide['section'] for slide in deck['slides']]
         assert len(list(dict.fromkeys(sections))) == len([1 for index, section in enumerate(sections) if index == 0 or sections[index - 1] != section]), deck_id
-    # Those of PPT Dashboards and Non-Qualified Calls explain the PPT Templates and the map of the call, and that of
-    # Workspace Config what to set up in a new workspace.
+    # Those of PPT Dashboards and Non-Qualified Calls explain the PPT Templates, and the groups of NQ calls and the map of
+    # the call, and that of Workspace Config what to set up in a new workspace.
     by_id = dict(decks)
     assert {'operators', 'vendors-campaigns', 'places'} <= {slide['id'] for slide in by_id['workspace-config']['slides']}
     assert {'templates'} <= {slide['id'] for slide in by_id['ppt-dashboards']['slides']}
-    assert {'map', 'map-findings'} <= {slide['id'] for slide in by_id['non-qualified-calls']['slides']}
+    assert {'groups', 'map', 'map-findings'} <= {slide['id'] for slide in by_id['non-qualified-calls']['slides']}
     # The DT Analyzer RCA keeps its slides.html, and the benchmarking providers deck its pictures.
     for name, count in (('dt-analyzer-rca', 12), ('benchmarking-providers', 24)):
         slides = json.loads((GENERATOR_FOLDER / name / 'slides.json').read_text(encoding='utf-8'))['slides']

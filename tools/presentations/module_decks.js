@@ -765,6 +765,66 @@ const MINIS = {
   users: (p) => [[90, p.accent, 'Super-admin'], [180, p.light, 'Admin'], [270, p.series[2], 'User']].map(([x, colour, label]) => `<circle cx="${x}" cy="48" r="22" fill="${colour}"/><path d="M${x - 34} 112 a34 34 0 0 1 68 0 Z" fill="${colour}"/><text x="${x}" y="138" text-anchor="middle" font-size="15" font-weight="700" fill="#c9d4e6">${label}</text>`).join(''),
 };
 
+// -- the pictures of the terms of an equation slide (460 × 270, in the colour of each term) ------------------------------
+const diamond = (x, y, fill, size = 13) => `<rect x="${x - size}" y="${y - size}" width="${size * 2}" height="${size * 2}" rx="4" fill="${fill}" stroke="#ffffff" stroke-width="3.5" transform="rotate(45 ${x} ${y})"/>`;
+const pill = (x, y, text, fill, color = '#ffffff', size = 17) => {
+  const width = text.length * size * 0.58 + 26;
+  return `<rect x="${(x - width / 2).toFixed(1)}" y="${y - size}" width="${width.toFixed(1)}" height="${size * 1.9}" rx="${size * 0.95}" fill="${fill}"/><text x="${x}" y="${(y + size * 0.36).toFixed(1)}" text-anchor="middle" font-size="${size}" font-weight="800" fill="${color}">${escape(text)}</text>`;
+};
+const MUTED = '#55627c';
+const TERMS = {
+  // The failures of one car along its drive, each linked to the one before it; the one after a long drive starts another run.
+  run(c) {
+    let out = `<path d="M18 228 C 120 228, 150 150, 250 150 S 380 120, 446 70" fill="none" stroke="#1d2a45" stroke-width="30" stroke-linecap="round"/>`;
+    out += `<path d="M18 228 C 120 228, 150 150, 250 150 S 380 120, 446 70" fill="none" stroke="#2f4066" stroke-width="3" stroke-dasharray="14 12"/>`;
+    out += `<g transform="translate(6 176)">${icon('TbCar', '#ffffff', 46)}</g>`;
+    const stops = [[96, 216], [168, 176], [246, 151]];
+    stops.slice(1).forEach(([x, y], index) => {
+      const [px, py] = stops[index];
+      out += `<path d="M${px} ${py - 18} Q ${(px + x) / 2} ${Math.min(py, y) - 74} ${x} ${y - 18}" fill="none" stroke="${c}" stroke-width="4" stroke-dasharray="7 6"/>`;
+      out += pill((px + x) / 2, Math.min(py, y) - 58, index ? '6 min' : '4 min', c, INK, 15);
+    });
+    stops.forEach(([x, y]) => { out += diamond(x, y, c); });
+    // Too far after the last one: a run of its own.
+    out += `<path d="M262 132 Q 340 60 404 92" fill="none" stroke="${MUTED}" stroke-width="3" stroke-dasharray="5 7"/>`;
+    out += `<g transform="translate(320 64)"><circle r="15" fill="${INK}" stroke="#e0533d" stroke-width="3"/><path d="M-6 -6 L6 6 M6 -6 L-6 6" stroke="#e0533d" stroke-width="3.5" stroke-linecap="round"/></g>`;
+    out += diamond(408, 96, MUTED, 11);
+    out += pill(360, 252, '40 km later: a new run', '#22304f', '#c9d4e6', 15);
+    return out;
+  },
+  // The calls that failed around a site, within half its ISD of each other or at it, linked to each other.
+  cluster(c) {
+    let out = [[0, 70, 460, 40], [0, 210, 460, 236], [120, 0, 92, 270], [350, 0, 384, 270]].map(([x1, y1, x2, y2]) => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#1a2742" stroke-width="14" stroke-linecap="round"/>`).join('');
+    const [sx, sy] = [232, 140];
+    out += `<circle cx="${sx}" cy="${sy}" r="104" fill="${c}" opacity=".10"/><circle cx="${sx}" cy="${sy}" r="104" fill="none" stroke="${c}" stroke-width="3" stroke-dasharray="10 8"/>`;
+    [-90, 30, 150].forEach((angle) => {
+      const [a, b] = [angle - 28, angle + 28].map((degrees) => [sx + 70 * Math.cos(degrees * Math.PI / 180), sy + 70 * Math.sin(degrees * Math.PI / 180)]);
+      out += `<path d="M${sx} ${sy} L${a[0].toFixed(1)} ${a[1].toFixed(1)} A70 70 0 0 1 ${b[0].toFixed(1)} ${b[1].toFixed(1)} Z" fill="${c}" opacity=".28"/>`;
+    });
+    const calls = [[176, 96], [286, 104], [196, 196], [300, 178], [232, 66], [158, 150]];
+    calls.forEach(([x, y]) => { out += `<line x1="${sx}" y1="${sy}" x2="${x}" y2="${y}" stroke="${c}" stroke-width="2.5" opacity=".55"/>`; });
+    out += `<path d="M${sx} ${sy - 20} L${sx + 16} ${sy + 12} L${sx - 16} ${sy + 12} Z" fill="#ffffff" stroke="${INK}" stroke-width="3"/>`;
+    calls.forEach(([x, y]) => { out += diamond(x, y, c, 11); });
+    [[60, 120], [404, 214], [400, 40]].forEach(([x, y]) => { out += diamond(x, y, MUTED, 10); });
+    out += pill(sx, 262, '0.5 ISD around the sites', '#22304f', '#c9d4e6', 15);
+    out += pill(392, 140, 'same site', c, INK, 14);
+    return out;
+  },
+  // The calls linked in time or in distance, all of them in one hotspot.
+  hotspot(c, p, { left = '#15aabf', right = '#2f9e44' } = {}) {
+    const [l, r, y, radius] = [172, 288, 132, 96];
+    let out = `<circle cx="${l}" cy="${y}" r="${radius + 10}" fill="${c}"/><circle cx="${r}" cy="${y}" r="${radius + 10}" fill="${c}"/>`;
+    out += `<circle cx="${l}" cy="${y}" r="${radius + 4}" fill="#131d33"/><circle cx="${r}" cy="${y}" r="${radius + 4}" fill="#131d33"/>`;
+    out += `<circle cx="${l}" cy="${y}" r="${radius}" fill="${left}" opacity=".16"/><circle cx="${r}" cy="${y}" r="${radius}" fill="${right}" opacity=".16"/>`;
+    out += `<circle cx="${l}" cy="${y}" r="${radius}" fill="none" stroke="${left}" stroke-width="3" stroke-dasharray="9 7"/><circle cx="${r}" cy="${y}" r="${radius}" fill="none" stroke="${right}" stroke-width="3" stroke-dasharray="9 7"/>`;
+    [[120, 100], [140, 176], [196, 70], [264, 194], [330, 96], [346, 160], [230, 128]].forEach(([x, cy]) => { out += diamond(x, cy, c, 11); });
+    out += pill(230, 132, 'OR', '#ffffff', c, 22);
+    out += `<text x="${l - 60}" y="20" font-size="17" font-weight="800" fill="${left}">Consecutive</text><text x="${r + 60}" y="20" text-anchor="end" font-size="17" font-weight="800" fill="${right}">Cluster</text>`;
+    out += pill(230, 260, 'AND: close in time and distance at once', '#22304f', '#c9d4e6', 14);
+    return out;
+  },
+};
+
 // -- slides ----------------------------------------------------------------------------------------------------------
 function heading(slide) {
   return `<p class="kicker">${escape(slide.kicker || slide.section)}</p><h2>${escape(slide.title)}</h2>${slide.lead ? `<p class="lead">${escape(slide.lead)}</p>` : ''}`;
@@ -842,6 +902,20 @@ const TEMPLATES = {
         <h3>${escape(tile.title)}</h3><p>${escape(tile.text)}</p></div>`).join('')}</div>
       ${slide.note ? `<p class="note">${escape(slide.note)}</p>` : ''}</div>`;
   },
+  // An equation of ideas: terms with a picture each (TERMS), joined by operators (A OR B = C), the last one the result, and
+  // the facts they share below.
+  equation(slide, deck, p) {
+    const parts = slide.terms.map((term, index) => {
+      const deep = mix(term.color, INK, 0.55);
+      const card = `<div class="card eq-term${index === slide.terms.length - 1 ? ' is-result' : ''}" style="border-top-color:${term.color};${index === slide.terms.length - 1 ? `box-shadow:0 0 0 2px ${term.color},0 0 90px ${mix(term.color, INK, 0.35)}` : ''}">
+        <div class="eq-art" style="background:radial-gradient(120% 120% at 50% 0%, ${mix(term.color, '#131d33', 0.72)}, #131d33 72%)"><svg viewBox="0 0 460 270" width="100%" height="100%" preserveAspectRatio="xMidYMid meet" font-family="Helvetica Neue, Arial, sans-serif">${TERMS[term.art](term.color, p, term.options || {})}</svg></div>
+        <div class="eq-body"><div class="eq-head">${badge(term.icon, term.color, 52, 30)}<h3>${escape(term.title)}</h3><span class="eq-tag" style="color:${mix(term.color, '#ffffff', 0.35)};border-color:${term.color}">${escape(term.tag)}</span></div>
+          <p>${escape(term.text)}</p><div class="chips">${term.rules.map((rule) => chip(rule, deep)).join('')}</div></div></div>`;
+      return index ? `<div class="eq-op"><span class="${slide.operators[index - 1].length === 1 ? 'is-symbol' : ''}" style="background:radial-gradient(circle at 30% 28%, ${p.light}, ${p.accent} 60%, ${p.deep});box-shadow:0 0 40px ${p.glow}">${escape(slide.operators[index - 1])}</span></div>${card}` : card;
+    });
+    return `${heading(slide)}<div class="content" style="padding-top:28px"><div class="eq">${parts.join('')}</div>
+      ${slide.facts ? `<div class="facts">${slide.facts.map((fact) => `<span class="fact">${icon(fact.icon, p.light, 26)}${escape(fact.text)}</span>`).join('')}</div>` : ''}</div>`;
+  },
   highlights(slide, deck, p) {
     return `${heading(slide)}<div class="content"><div class="grid" style="grid-template-columns:repeat(${slide.items.length},1fr)">${slide.items.map((item) => `
       <div class="card" style="padding:40px 36px"><p style="font-size:84px;font-weight:800;letter-spacing:-2px;color:${p.light};line-height:1">${escape(item.value)}</p>
@@ -905,7 +979,23 @@ function css(p) {
     background: radial-gradient(120% 140% at 0% 0%, ${p.soft}, var(--panel) 70%); }
   .tile h3, .tile p { padding: 0 30px; }
   .tile h3 { font-size: 30px; }
-  .tile p { font-size: 22px; }`;
+  .tile p { font-size: 22px; }
+  .eq { display: grid; grid-template-columns: 1fr 92px 1fr 92px 1fr; align-items: stretch; }
+  .eq-term { padding: 0; overflow: hidden; border-top: 6px solid; box-shadow: 0 30px 70px rgba(0, 0, 0, .35); }
+  .eq-art { height: 270px; border-bottom: 1px solid var(--line); }
+  .eq-body { padding: 22px 28px 26px; }
+  .eq-head { display: flex; align-items: center; gap: 16px; }
+  .eq-head h3 { font-size: 34px; flex: 1; }
+  .eq-tag { font-size: 17px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; border: 2px solid; border-radius: 999px; padding: 5px 12px; white-space: nowrap; }
+  .eq-term p { font-size: 22px; margin-top: 14px; }
+  .eq-term .chips { margin-top: 16px; }
+  .eq-term .chip { font-size: 18px; }
+  .eq-op { display: grid; place-items: center; }
+  .eq-op span { width: 76px; height: 76px; border-radius: 50%; display: grid; place-items: center; font-size: 26px; font-weight: 900; color: #fff; letter-spacing: 1px; }
+  .eq-op span.is-symbol { font-size: 40px; }
+  .facts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-top: 24px; }
+  .fact { display: flex; align-items: center; gap: 14px; padding: 12px 20px 12px 16px; border-radius: 20px; background: #131d33; border: 1px solid var(--line); font-size: 20px; line-height: 1.3; color: var(--soft); }
+  .fact svg { flex: none; }`;
 }
 
 function html(deck) {
