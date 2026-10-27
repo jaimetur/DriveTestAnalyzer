@@ -1,8 +1,7 @@
 {
-  "name": "NetCheck CDR Report (Main Cities)",
-  "template": "NSA - NetCheck CDR Report (Main Cities)",
-  "template_technology": "nsa",
-  "technology": "nsa",
+  "name": "NSA - NetCheck CDR Report (Main Cities)",
+  "template": "NetCheck CDR Report (Main Cities)",
+  "nr_mode": "NSA",
   "scope": "single",
   "vendor_comparison": "operator_vendor",
   "custom_fields": [

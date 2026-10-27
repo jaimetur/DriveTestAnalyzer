@@ -157,21 +157,20 @@ def local_now_iso() -> str:
     return datetime.now().astimezone().isoformat(timespec='microseconds')
 
 
-TEMPLATE_SCHEMA = """
-CREATE TABLE IF NOT EXISTS report_templates (
-    technology TEXT NOT NULL,
-    name TEXT NOT NULL,
+# The Report Templates of a workspace: one library, a template serving the CDRs of any NR Mode (the Dashboard chooses it).
+REPORT_TEMPLATES_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS {table} (
+    name TEXT NOT NULL PRIMARY KEY,
     content BLOB NOT NULL DEFAULT X'',
     is_default INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_by TEXT NOT NULL DEFAULT '',
     created_by TEXT NOT NULL DEFAULT '',
-    uid TEXT NOT NULL DEFAULT '',
-    PRIMARY KEY (technology, name),
-    CHECK (technology IN ('nsa', 'sa'))
+    uid TEXT NOT NULL DEFAULT ''
 );
 """
+TEMPLATE_SCHEMA = REPORT_TEMPLATES_TABLE_SQL.format(table='report_templates')
 
 SCHEMA = TEMPLATE_SCHEMA + """
 CREATE TABLE IF NOT EXISTS datasets (
@@ -2305,8 +2304,82 @@ class Repository:
             if column not in columns:
                 conn.execute(f"ALTER TABLE report_chart_jobs ADD COLUMN {column} {definition}")
 
+    def _merge_report_template_nr_modes(self, conn: sqlite3.Connection) -> None:
+        """Move the templates kept per NR Mode (NSA and SA libraries) into one library, once per workspace.
+
+        Each NSA and SA copy of the same template becomes one template naming the mode with tokens (see
+        report_template_modes); the Dashboards take their NR Mode as part of their selection and follow their template,
+        and so do the PPT jobs and Reporting (old) jobs that named it. The workspace keeps how the templates of before are
+        known now, for the packages and backups of before.
+        """
+        columns = {row['name'] for row in conn.execute("PRAGMA table_info(report_templates)").fetchall()}
+        if 'technology' not in columns:
+            return
+        from src.modules.report_template_modes import (
+            TEMPLATE_MODE_MERGE_STATE_KEY, merge_mode_templates, merge_state, migrate_dashboards_state)
+
+        rows = [dict(row) for row in conn.execute('SELECT * FROM report_templates').fetchall()]
+        merge = merge_mode_templates(rows)
+        conn.execute('DROP TABLE IF EXISTS report_templates_merged')
+        conn.execute(REPORT_TEMPLATES_TABLE_SQL.format(table='report_templates_merged'))
+        for template in merge.templates:
+            conn.execute(
+                'INSERT INTO report_templates_merged (name, content, is_default, created_at, updated_at, updated_by, created_by, uid) '
+                'VALUES (?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), COALESCE(?, CURRENT_TIMESTAMP), ?, ?, ?)',
+                (template['name'], sqlite3.Binary(template['content']), int(template['is_default']), template['created_at'],
+                 template['updated_at'] or None, template['updated_by'], template['created_by'], template['uid']),
+            )
+        conn.execute('DROP TABLE report_templates')
+        conn.execute('ALTER TABLE report_templates_merged RENAME TO report_templates')
+        conn.execute('CREATE TABLE IF NOT EXISTS workspace_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
+        previous = conn.execute('SELECT value FROM workspace_state WHERE key = ?', (TEMPLATE_MODE_MERGE_STATE_KEY,)).fetchone()
+        state = merge.state()
+        if previous:
+            try:
+                renames, uids = merge_state(json.loads(previous['value']))
+                state['renames'] = {**{f'{technology}|{name}': new for (technology, name), new in renames.items()}, **state['renames']}
+                state['uids'] = {**uids, **state['uids']}
+            except (TypeError, ValueError):
+                pass
+        conn.execute('INSERT OR REPLACE INTO workspace_state (key, value) VALUES (?, ?)',
+                     (TEMPLATE_MODE_MERGE_STATE_KEY, json.dumps(state, ensure_ascii=False)))
+        dashboards_row = conn.execute("SELECT value FROM workspace_state WHERE key = 'ppt_dashboards_v2'").fetchone()
+        renamed_dashboards = 0
+        if dashboards_row:
+            try:
+                dashboards = json.loads(dashboards_row['value'])
+            except (TypeError, ValueError):
+                dashboards = None
+            if isinstance(dashboards, dict):
+                migrated, changed = migrate_dashboards_state(dashboards, merge.renames, merge.uids)
+                renamed_dashboards = sum(1 for key, value in migrated.items() if isinstance(value, dict)
+                                         and isinstance(dashboards.get(key), dict) and value.get('name') != dashboards[key].get('name'))
+                if changed:
+                    conn.execute("UPDATE workspace_state SET value = ? WHERE key = 'ppt_dashboards_v2'",
+                                 (json.dumps(migrated, ensure_ascii=False),))
+        tables = {str(row[0]) for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+        for (technology, old_name), new_name in merge.renames.items():
+            if 'dashboard_ppt_jobs' in tables:
+                conn.execute('UPDATE dashboard_ppt_jobs SET template_name = ? WHERE template_name = ? AND LOWER(nr_mode) = ?',
+                             (new_name, old_name, technology))
+            if 'generated_jobs' in tables:
+                conn.execute('UPDATE generated_jobs SET template_name = ? WHERE template_name = ? AND LOWER(technology) = ?',
+                             (new_name, old_name, technology))
+        if 'audit_logs' in tables:
+            conn.execute(
+                'INSERT INTO audit_logs (username, action, details, created_at, origin) VALUES (?, ?, ?, ?, ?)',
+                ('system', 'report_templates_nr_mode_merged', json.dumps({
+                    'templates_before': len(rows), 'templates_after': len(merge.templates),
+                    'merged': [{'nsa': nsa, 'sa': sa, 'name': name} for nsa, sa, name in merge.merged],
+                    'renamed': {f'{technology.upper()} {old}': new for (technology, old), new in merge.renames.items()
+                                if not any(old in pair[:2] for pair in merge.merged)},
+                    'renamed_dashboards': renamed_dashboards, 'executed_by': 'system',
+                }, ensure_ascii=False), local_now_iso(), current_app_event_origin()),
+            )
+
     def _ensure_report_template_columns(self, conn: sqlite3.Connection) -> None:
-        """Keep template storage complete and one promoted template per technology."""
+        """Keep template storage complete, in one library without NR Mode and with one promoted template."""
+        self._merge_report_template_nr_modes(conn)
         columns = {row['name'] for row in conn.execute("PRAGMA table_info(report_templates)").fetchall()}
         if 'content' not in columns:
             conn.execute("ALTER TABLE report_templates ADD COLUMN content BLOB NOT NULL DEFAULT X''")
@@ -2323,22 +2396,20 @@ class Repository:
         # finds it again after a rename (see transfer_identities).
         if 'uid' not in columns:
             conn.execute("ALTER TABLE report_templates ADD COLUMN uid TEXT NOT NULL DEFAULT ''")
-        for row in conn.execute("SELECT technology, name FROM report_templates WHERE uid = ''").fetchall():
-            conn.execute("UPDATE report_templates SET uid = ? WHERE technology = ? AND name = ?",
-                         (uuid4().hex, row['technology'], row['name']))
+        for row in conn.execute("SELECT name FROM report_templates WHERE uid = ''").fetchall():
+            conn.execute("UPDATE report_templates SET uid = ? WHERE name = ?", (uuid4().hex, row['name']))
         # Templates written before Operator_Vendor are converted once per workspace.
         conn.execute('CREATE TABLE IF NOT EXISTS workspace_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
         rename_vendor_fields = not conn.execute(
             "SELECT 1 FROM workspace_state WHERE key = 'report_template_vendor_fields_v1'"
         ).fetchone()
-        for row in conn.execute("SELECT technology, name, content FROM report_templates").fetchall():
+        for row in conn.execute("SELECT name, content FROM report_templates").fetchall():
             content = bytes(row['content'] or b'')
             normalized = normalize_catalog_layouts(content)
             if rename_vendor_fields:
                 normalized = rename_template_vendor_fields(normalized)
             if normalized != content:
-                conn.execute("UPDATE report_templates SET content = ? WHERE technology = ? AND name = ?",
-                             (sqlite3.Binary(normalized), row['technology'], row['name']))
+                conn.execute("UPDATE report_templates SET content = ? WHERE name = ?", (sqlite3.Binary(normalized), row['name']))
         if rename_vendor_fields:
             conn.execute("INSERT OR REPLACE INTO workspace_state (key, value) VALUES ('report_template_vendor_fields_v1', '1')")
         now = local_now_iso()
@@ -2349,16 +2420,9 @@ class Repository:
                 "UPDATE report_templates SET updated_at = COALESCE(created_at, ?) WHERE updated_at IS NULL",
                 (now,),
             )
-        for technology in ('nsa', 'sa'):
-            defaults = conn.execute(
-                "SELECT name FROM report_templates WHERE technology = ? AND is_default = 1 ORDER BY name",
-                (technology,),
-            ).fetchall()
-            for row in defaults[1:]:
-                conn.execute(
-                    "UPDATE report_templates SET is_default = 0 WHERE technology = ? AND name = ?",
-                    (technology, row['name']),
-                )
+        defaults = conn.execute("SELECT name FROM report_templates WHERE is_default = 1 ORDER BY name").fetchall()
+        for row in defaults[1:]:
+            conn.execute("UPDATE report_templates SET is_default = 0 WHERE name = ?", (row['name'],))
 
     def initialize_template_registry(self) -> None:
         """Prepare template metadata without scanning datasets or global users."""
@@ -2366,106 +2430,99 @@ class Repository:
             conn.executescript(TEMPLATE_SCHEMA)
             self._ensure_report_template_columns(conn)
 
-    def list_report_templates(self, technology: str) -> list[sqlite3.Row]:
+    def list_report_templates(self) -> list[sqlite3.Row]:
         with self.connection() as conn:
             return conn.execute(
-                "SELECT technology, name, content, is_default, created_at, updated_at, updated_by, created_by, uid FROM report_templates WHERE technology = ? ORDER BY name COLLATE NOCASE",
-                (technology,),
+                "SELECT name, content, is_default, created_at, updated_at, updated_by, created_by, uid FROM report_templates ORDER BY name COLLATE NOCASE",
             ).fetchall()
 
     # ``updated_by`` records the user behind a template change. ``None`` keeps
     # the previous value for system updates (migrations, synchronizations).
     def add_report_template(
-        self, technology: str, name: str, content: bytes = b'', *, is_default: bool = False, updated_by: str | None = None,
+        self, name: str, content: bytes = b'', *, is_default: bool = False, updated_by: str | None = None,
     ) -> None:
         with self.connection() as conn:
             if is_default:
-                conn.execute("UPDATE report_templates SET is_default = 0 WHERE technology = ?", (technology,))
+                conn.execute("UPDATE report_templates SET is_default = 0")
             now = local_now_iso()
             conn.execute(
-                "INSERT INTO report_templates (technology, name, content, is_default, created_at, updated_at, updated_by, created_by, uid) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (technology, name, sqlite3.Binary(normalize_catalog_layouts(content)), int(is_default), now, now, updated_by or '', updated_by or '', uuid4().hex),
+                "INSERT INTO report_templates (name, content, is_default, created_at, updated_at, updated_by, created_by, uid) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (name, sqlite3.Binary(normalize_catalog_layouts(content)), int(is_default), now, now, updated_by or '', updated_by or '', uuid4().hex),
             )
 
-    def set_report_template_content(self, technology: str, name: str, content: bytes, *, updated_by: str | None = None) -> None:
+    def set_report_template_content(self, name: str, content: bytes, *, updated_by: str | None = None) -> None:
         with self.connection() as conn:
             result = conn.execute(
-                "UPDATE report_templates SET content = ?, updated_at = ?, updated_by = COALESCE(?, updated_by) WHERE technology = ? AND name = ?",
-                (sqlite3.Binary(normalize_catalog_layouts(content)), local_now_iso(), updated_by, technology, name),
+                "UPDATE report_templates SET content = ?, updated_at = ?, updated_by = COALESCE(?, updated_by) WHERE name = ?",
+                (sqlite3.Binary(normalize_catalog_layouts(content)), local_now_iso(), updated_by, name),
             )
             if not result.rowcount:
                 raise ValueError('Report Template was not found.')
 
-    def report_template_content(self, technology: str, name: str) -> bytes:
+    def report_template_content(self, name: str) -> bytes:
         with self.connection() as conn:
-            row = conn.execute(
-                "SELECT content FROM report_templates WHERE technology = ? AND name = ?", (technology, name),
-            ).fetchone()
+            row = conn.execute("SELECT content FROM report_templates WHERE name = ?", (name,)).fetchone()
         if not row:
             raise ValueError('Report Template was not found.')
         return bytes(row['content'] or b'')
 
-    def set_default_report_template(self, technology: str, name: str, *, updated_by: str | None = None) -> None:
+    def set_default_report_template(self, name: str, *, updated_by: str | None = None) -> None:
         with self.connection() as conn:
-            template = conn.execute(
-                "SELECT is_default FROM report_templates WHERE technology = ? AND name = ?", (technology, name)
-            ).fetchone()
+            template = conn.execute("SELECT is_default FROM report_templates WHERE name = ?", (name,)).fetchone()
             if not template:
                 raise ValueError('Report Template was not found.')
-            defaults = conn.execute(
-                "SELECT name FROM report_templates WHERE technology = ? AND is_default = 1", (technology,)
-            ).fetchall()
+            defaults = conn.execute("SELECT name FROM report_templates WHERE is_default = 1").fetchall()
             if bool(template['is_default']) and len(defaults) == 1:
                 return
             now = local_now_iso()
-            conn.execute("UPDATE report_templates SET is_default = 0, updated_at = ? WHERE technology = ?", (now, technology))
+            conn.execute("UPDATE report_templates SET is_default = 0, updated_at = ?", (now,))
             conn.execute(
-                "UPDATE report_templates SET is_default = 1, updated_at = ?, updated_by = COALESCE(?, updated_by) WHERE technology = ? AND name = ?",
-                (now, updated_by, technology, name),
+                "UPDATE report_templates SET is_default = 1, updated_at = ?, updated_by = COALESCE(?, updated_by) WHERE name = ?",
+                (now, updated_by, name),
             )
 
-    def rename_report_template(self, technology: str, name: str, new_name: str, *, updated_by: str | None = None) -> None:
+    def rename_report_template(self, name: str, new_name: str, *, updated_by: str | None = None) -> None:
         with self.connection() as conn:
             conn.execute(
-                "UPDATE report_templates SET name = ?, updated_at = ?, updated_by = COALESCE(?, updated_by) WHERE technology = ? AND name = ?",
-                (new_name, local_now_iso(), updated_by, technology, name),
+                "UPDATE report_templates SET name = ?, updated_at = ?, updated_by = COALESCE(?, updated_by) WHERE name = ?",
+                (new_name, local_now_iso(), updated_by, name),
             )
 
-    def move_report_template(self, technology: str, name: str, target_technology: str, *, updated_by: str | None = None) -> None:
+    def touch_report_template(self, name: str, *, updated_by: str | None = None) -> None:
         with self.connection() as conn:
             conn.execute(
-                "UPDATE report_templates SET technology = ?, updated_at = ?, updated_by = COALESCE(?, updated_by) WHERE technology = ? AND name = ?",
-                (target_technology, local_now_iso(), updated_by, technology, name),
+                "UPDATE report_templates SET updated_at = ?, updated_by = COALESCE(?, updated_by) WHERE name = ?",
+                (local_now_iso(), updated_by, name),
             )
 
-    def touch_report_template(self, technology: str, name: str, *, updated_by: str | None = None) -> None:
+    def report_template_uids(self) -> dict[str, str]:
+        """The identity of each template by name, giving one to those that have none."""
         with self.connection() as conn:
-            conn.execute(
-                "UPDATE report_templates SET updated_at = ?, updated_by = COALESCE(?, updated_by) WHERE technology = ? AND name = ?",
-                (local_now_iso(), updated_by, technology, name),
-            )
+            for row in conn.execute("SELECT name FROM report_templates WHERE uid = ''").fetchall():
+                conn.execute("UPDATE report_templates SET uid = ? WHERE name = ?", (uuid4().hex, row['name']))
+            return {str(row['name']): str(row['uid']) for row in conn.execute("SELECT name, uid FROM report_templates").fetchall()}
 
-    def report_template_uids(self) -> dict[tuple[str, str], str]:
-        """The identity of each template by technology and name, giving one to those that have none."""
-        with self.connection() as conn:
-            for row in conn.execute("SELECT technology, name FROM report_templates WHERE uid = ''").fetchall():
-                conn.execute("UPDATE report_templates SET uid = ? WHERE technology = ? AND name = ?",
-                             (uuid4().hex, row['technology'], row['name']))
-            return {(str(row['technology']), str(row['name'])): str(row['uid'])
-                    for row in conn.execute("SELECT technology, name, uid FROM report_templates").fetchall()}
-
-    def set_report_template_identity(self, technology: str, name: str, *, uid: str = '', created_by: str = '') -> None:
+    def set_report_template_identity(self, name: str, *, uid: str = '', created_by: str = '') -> None:
         """Give a template the identity and the creator an import decides (empty values keep its own)."""
         with self.connection() as conn:
             conn.execute(
                 "UPDATE report_templates SET uid = CASE WHEN ? <> '' THEN ? ELSE uid END, "
-                "created_by = CASE WHEN ? <> '' THEN ? ELSE created_by END WHERE technology = ? AND name = ?",
-                (uid, uid, created_by, created_by, technology, name),
+                "created_by = CASE WHEN ? <> '' THEN ? ELSE created_by END WHERE name = ?",
+                (uid, uid, created_by, created_by, name),
             )
 
-    def delete_report_template(self, technology: str, name: str) -> None:
+    def report_template_merge_state(self) -> tuple[dict[tuple[str, str], str], dict[str, str]]:
+        """How the templates of each NR Mode of before are known since they were merged: (technology, name) -> name and
+        old uid -> uid (see report_template_modes)."""
+        from src.modules.report_template_modes import TEMPLATE_MODE_MERGE_STATE_KEY, merge_state
+        try:
+            return merge_state(json.loads(self.get_workspace_state(TEMPLATE_MODE_MERGE_STATE_KEY) or '{}'))
+        except (TypeError, ValueError):
+            return {}, {}
+
+    def delete_report_template(self, name: str) -> None:
         with self.connection() as conn:
-            conn.execute("DELETE FROM report_templates WHERE technology = ? AND name = ?", (technology, name))
+            conn.execute("DELETE FROM report_templates WHERE name = ?", (name,))
 
     def dataset_rows_table_name(self, dataset_id: int) -> str:
         return f'dataset_rows_{int(dataset_id)}'

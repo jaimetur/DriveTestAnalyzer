@@ -238,20 +238,20 @@ def test_ppt_templates_are_deleted_by_their_creator_or_an_admin(client):
     assert 'created_by' in columns
     login(client, 'alice', 'alice123')
     assert client.post('/workspace-config/slides-templates/new', follow_redirects=False).status_code == 303
-    created = next(item for item in core.report_catalogue_options('nsa') if item['name'] == 'New Template')
+    created = next(item for item in core.report_catalogue_options() if item['name'] == 'New Template')
     assert created['created_by'] == 'alice'
-    delete_url = f"/workspace-config/report-templates/nsa/{quote(created['identifier'])}/delete"
+    delete_url = f"/workspace-config/report-templates/{quote(created['identifier'])}/delete"
 
     login(client, 'bob', 'bob123')
     page = client.get('/workspace-config').text
     assert 'title="Only admins and super-admins, or the user who created it, can delete this PPT Template"' in page
     refused = client.post(delete_url)
     assert refused.status_code == 403
-    assert any(item['name'] == 'New Template' for item in core.report_catalogue_options('nsa'))
+    assert any(item['name'] == 'New Template' for item in core.report_catalogue_options())
 
     login(client, 'alice', 'alice123')
     assert client.post(delete_url, follow_redirects=False).status_code in {200, 303}
-    assert not any(item['name'] == 'New Template' for item in core.report_catalogue_options('nsa'))
+    assert not any(item['name'] == 'New Template' for item in core.report_catalogue_options())
 
 
 def test_items_without_a_known_creator_are_assigned_to_the_default_super_admin(client):

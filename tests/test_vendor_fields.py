@@ -55,7 +55,7 @@ def _legacy_workspace(path: Path) -> None:
         connection.execute("INSERT INTO reporting_rows_data VALUES (1, 2, 'EE', 'EE', 'EE - All')")
         connection.execute("INSERT INTO dataset_rows_2 VALUES ('', 'Ericsson', 'Ericsson')")
         connection.execute(
-            "INSERT INTO report_templates (technology, name, content) VALUES ('nsa', 'Legacy', ?)",
+            "INSERT INTO report_templates (name, content) VALUES ('Legacy', ?)",
             ('Slide,Layout,Filters,Rows Split,Legend\n1,x,Vendor IN (3_Ericsson); Vendor_Only = Huawei,Operator × Vendor,Vendor\n'.encode(),),
         )
 
@@ -77,14 +77,14 @@ def test_workspace_migration_renames_cdr_vendor_fields_once(tmp_path) -> None:
     with repository.connection() as connection:
         indexes = {row[0] for row in connection.execute("SELECT sql FROM sqlite_master WHERE name = 'idx_dataset_rows_1_vendor_norm'")}
     assert indexes == set()
-    template = repository.report_template_content('nsa', 'Legacy').decode('utf-8')
+    template = repository.report_template_content('Legacy').decode('utf-8')
     assert 'Vendor IN (3_Ericsson); Vendor = Huawei,Operator × Operator_Vendor,Operator_Vendor' in template
 
     # A second start changes nothing, also in templates written with the new names.
-    repository.set_report_template_content('nsa', 'Legacy', b'Slide,Layout,Filters,Rows Split,Legend\n1,x,,Vendor,Vendor\n')
+    repository.set_report_template_content('Legacy', b'Slide,Layout,Filters,Rows Split,Legend\n1,x,,Vendor,Vendor\n')
     repository.initialize()
     assert repository.list_dataset_row_columns(1) == ['Operator', 'Operator_Vendor', 'Vendor', 'score']
-    assert repository.report_template_content('nsa', 'Legacy').decode('utf-8').endswith('1,x,,Vendor,Vendor\n')
+    assert repository.report_template_content('Legacy').decode('utf-8').endswith('1,x,,Vendor,Vendor\n')
 
 
 def test_template_conversion_keeps_vendor_filters_and_renames_aggregations() -> None:

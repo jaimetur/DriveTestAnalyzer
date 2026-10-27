@@ -317,25 +317,25 @@
         "items": [
           {
             "key": "8ccfd4cd-31a2-474a-a322-9cc626af2c26",
-            "label": "NetCheck CDR Report",
+            "label": "SA - NetCheck CDR Report",
             "enabled": true,
             "nr_mode": "SA"
           },
           {
             "key": "a0865774-c976-4f0c-9c38-889767ccb6f0",
-            "label": "NetCheck CDR Report",
+            "label": "NSA - NetCheck CDR Report",
             "enabled": false,
             "nr_mode": "NSA"
           },
           {
             "key": "dedf8013-36eb-4312-9a70-34a1c8865485",
-            "label": "NetCheck CDR Report (Main Cities)",
+            "label": "SA - NetCheck CDR Report (Main Cities)",
             "enabled": false,
             "nr_mode": "SA"
           },
           {
             "key": "93b15587-3693-4a2c-bf2a-80909d8f4efa",
-            "label": "NetCheck CDR Report (Main Cities)",
+            "label": "NSA - NetCheck CDR Report (Main Cities)",
             "enabled": false,
             "nr_mode": "NSA"
           },

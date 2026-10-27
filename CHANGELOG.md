@@ -6,6 +6,7 @@
 ## Release: v0.9.1
 ### Release Date: 2026-10-27
 #### ⚠️ Breaking Changes:
+- **Workspace Config — PPT Templates packages:** the PPT Templates of exports, transfers and backups are now one library (`report-templates/library/<template>.csv`), which versions before 0.9.1 do not import; this version still imports the NSA and SA libraries of the packages and backups of before.
 
 #### 🌟 New Features:
 - **Workspace Config — Operator Maps · NR Modes:** each Operator label has the NR Modes it has a network in (**NSA and SA**, **NSA only** or **SA only**), and its tests of the CDRs of the other NR Mode, such as the SA CDRs of Three, which has no SA, are out of scope in every module: Scoring & GAP Analysis (with its Scoring Trends and Geographical Areas; the headings of its panels name them, *Out of scope: SA · Three*), Network Insights, PPT Dashboards, CDR Analysis, the Chart Builder, Reporting, the filters and Non-Qualified Calls, whose Out of Scope shows them read only beside the regions and the operators that are not Focus operators. A label whose NQ calls of the SA campaigns barely ran on NR SA gets a suggestion, never applied on its own. The NR Modes travel with the Operator Maps in exports, transfers and backups, and the NR Mode · operator pairs the NQ Prioritization left out of scope (SA · Three) became the NR Modes of their label once.
@@ -23,6 +24,7 @@
 - **Ticket Center — Ticket references:** a ticket number written after `#` in a description or a comment (`#7`) links to that ticket and shows its title and status when pointed at, on its page and in the editor; a number of no ticket, one inside a word, a web address or code, or one with a backslash before its `#` stays text.
 - **Ticket Center — Opened and Resolved dates:** **Manage** (super-admins) corrects the dates a ticket was opened and resolved (also closed or rejected), for example for a ticket recorded after the work it describes, and its timeline follows them in its order: the resolution (the change that set its status and the comment just before it) takes the Resolved date, the earlier entries outside both dates take the Opened date and the others keep theirs; App Events records the change.
 - **Workspace Management — Campaign of the CDRs:** the Campaign of a CDR takes a name after its quarter (`2025-Q2 Flex` is saved as `2025-Q2-Flex`), a campaign of its own with its own group in the CDR tables, and a CDR whose filename has no quarter or year takes the campaign of its rows as Campaign Maps reads it: rows of `UK_Flex_2026` with the exception `25-Q2-Flex` propose `2025-Q2-Flex`.
+- **PPT Dashboards & Workspace Config — NR Mode out of the Report Templates:** a Report Template has no NR Mode: one library whose templates serve the CDRs of any NR Mode, their titles naming it with `{NR Mode}` (NSA or SA) and `{NR Mode Name}` (Non-Standalone or Standalone), and a **Preview NR Mode** in the editor for its previews. Each Dashboard keeps the NR Mode of the CDRs it reads as part of its selection, whatever its template, with a name unique in the workspace. When a workspace opens (and when a package or backup of before is imported), the NSA and SA copies of a template that only told the mode apart in their titles become one template, which their Dashboards, PPT jobs and Reporting (old) jobs use; the App Events record it. Reporting Jobs and Bundle Report Templates generate any saved Dashboard with their own NR Mode (favourites of before keep checked only the Dashboards of their NR Mode). Every Voice and Speech test takes the NR Mode of its CDR in Reporting (old) and the template previews too, as in the Dashboards, instead of being classified by its call mode.
 
 #### 🐛 Bug fixes:
 - **Super Admin — AI Comment Writers:** **Install Kiro CLI** no longer fails with an HTTP 500 error before reading the package, takes the kiro-cli program of a .deb among its shell completions and icons of the same name, and says when a package is for another system (a Linux package on a Mac, a .dmg on the Linux server).
@@ -31,6 +33,7 @@
 - **Workspace Config — Operator Maps:** choosing the Role **Include** for a label that was Focus or Exclude is saved again, from its row and from **Save Labels**, instead of keeping the Role it had.
 
 #### 📚 Documentation:
+- **Help — PPT Dashboards, Workspace Config, Reporting and Technical Considerations:** Report Templates without NR Mode, the NR Mode of each Dashboard, its tokens and the merge of the NSA and SA templates of before.
 
 ---
 

@@ -202,7 +202,7 @@
   function renderFilters() {
     const host = $('brt-filters');
     const filters = definition.filters;
-    // The NR Mode on its own row: it lists the campaigns of every section and the Dashboards.
+    // The NR Mode on its own row: it lists the campaigns of every section, and every Dashboard reads its CDRs.
     const mode = selectField('NR Mode', [['NSA', 'NSA (Non-Standalone)'], ['SA', 'SA (Standalone)']], filters.nr_mode || 'NSA');
     mode.input.id = 'brt-nr-mode';
     filterPickers.nr_mode = mode.input;
@@ -443,11 +443,6 @@
     const head = node('div', undefined, 'brt-item-head');
     const enabled = check(catalogueItem.title, saved ? saved.enabled : sectionKey !== 'dashboards', 'brt-check brt-item-check');
     head.append(handleButton('brt-item-handle', catalogueItem.title), enabled);
-    if (catalogueItem.nr_mode) {
-      // Each Dashboard is made for one NR Mode: the list shows those of the NR Mode of the common filters.
-      row.dataset.nrMode = catalogueItem.nr_mode;
-      head.append(node('span', catalogueItem.nr_mode, 'brt-badge'));
-    }
     row.append(head);
     const boxes = [];
     if (catalogueItem.components.length) {
@@ -553,9 +548,8 @@
     const empty = node('li', '', 'form-note brt-empty');
     const refresh = () => {
       if (saved.key === 'dashboards') {
-        const mode = nrMode();
-        list.querySelectorAll(':scope > .brt-item').forEach((row) => { row.hidden = Boolean(row.dataset.nrMode) && row.dataset.nrMode !== mode; });
-        empty.textContent = `There are no saved ${mode} Dashboards in this workspace.`;
+        // Every Dashboard reads the CDRs of the NR Mode of the common filters.
+        empty.textContent = 'There are no saved Dashboards in this workspace.';
         if (catalogue.items.length) list.append(empty);
         empty.hidden = [...list.querySelectorAll(':scope > .brt-item')].some((row) => !row.hidden);
       }

@@ -1,8 +1,7 @@
 {
   "name": "RF Quality (RSRP & SINR)",
-  "template": "NSA - RF Quality (RSRP & SINR)",
-  "template_technology": "nsa",
-  "technology": "nsa",
+  "template": "RF Quality (RSRP & SINR)",
+  "nr_mode": "NSA",
   "scope": "single",
   "vendor_comparison": "operator_vendor",
   "custom_fields": [],

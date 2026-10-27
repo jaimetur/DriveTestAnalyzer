@@ -358,11 +358,9 @@ def _canonical_catalog_headers(headers: Iterable[str]) -> tuple[str, ...]:
     )
 
 
-def _default_catalogue_layout(technology: str, chart_count: int) -> str:
+def _default_catalogue_layout(chart_count: int) -> str:
     """Choose the standard template layout when a legacy Report Template omitted it."""
-    if technology == "nsa":
-        return grid_layout_name(1, chart_count, "down") if chart_count <= 3 else grid_layout_name(2, 2, "right")
-    return grid_layout_name(1, min(chart_count, 4))
+    return grid_layout_name(1, chart_count, "down") if chart_count <= 3 else grid_layout_name(2, 2, "right")
 
 
 @dataclass(frozen=True)
@@ -1221,10 +1219,8 @@ def parse_axis_range(value: str, axis: str) -> tuple[float | None, float | None]
     return low, high
 
 
-def parse_catalog_csv(content: bytes | str, technology: str, *, validate_filters: bool = True) -> list[CatalogEntry]:
+def parse_catalog_csv(content: bytes | str, *, validate_filters: bool = True) -> list[CatalogEntry]:
     """Validate the editable report-template CSV and return its chart rows."""
-    if technology not in TEMPLATE_NAMES:
-        raise ValueError("Catalog technology must be NSA or SA.")
     if isinstance(content, bytes):
         try:
             text = content.decode("utf-8-sig")
@@ -1372,7 +1368,7 @@ def _catalog_entry_from_row(row: Mapping[str, str | None], slide: int, layout: s
     )
 
 
-def convert_catalog_csv(content: bytes | str, technology: str) -> bytes:
+def convert_catalog_csv(content: bytes | str) -> bytes:
     """Migrate a compatible legacy CSV into the current editable Report Templates schema.
 
     The importer deliberately accepts common title spelling variants and the former
@@ -1435,7 +1431,7 @@ def convert_catalog_csv(content: bytes | str, technology: str) -> bytes:
             not row["Layout"].strip()
             and row["Source Dataset"].strip().casefold() in CATALOG_SOURCE_KINDS
         ):
-            row["Layout"] = _default_catalogue_layout(technology, charts_per_slide[row["Slide"].strip()])
+            row["Layout"] = _default_catalogue_layout(charts_per_slide[row["Slide"].strip()])
 
     # A slide-less template cannot preserve source slides. Migrate the former
     # preservation marker into an explicit structural slide contract instead.
@@ -1453,12 +1449,12 @@ def convert_catalog_csv(content: bytes | str, technology: str) -> bytes:
     converted_content = output.getvalue().encode("utf-8")
     # Reuse the regular validator so a conversion never imports an incomplete chart
     # contract just because it used an older set of column headings.
-    entries = parse_catalog_csv(converted_content, technology)
+    entries = parse_catalog_csv(converted_content)
     return catalogue_csv(entries)
 
 
-def load_catalog_csv(path: Path, technology: str, *, validate_filters: bool = True) -> list[CatalogEntry]:
-    return parse_catalog_csv(path.read_bytes(), technology, validate_filters=validate_filters)
+def load_catalog_csv(path: Path, *, validate_filters: bool = True) -> list[CatalogEntry]:
+    return parse_catalog_csv(path.read_bytes(), validate_filters=validate_filters)
 
 
 _FILTER_FIELD_LOOKAHEAD = r"(?=\s*(?:NOT\s+CONTAINS|NOT\s+IN|CONTAINS|IN|[<>=!]))"
@@ -1829,56 +1825,6 @@ def _first_existing(df: pd.DataFrame, candidates: Iterable[str]) -> str | None:
         if actual:
             return actual
     return None
-
-
-def classify_sessions(df: pd.DataFrame, technology: str) -> pd.DataFrame:
-    main_rat_column = _first_existing(df, ["RAT", "RAT_A"])
-    sample_rat_column = _first_existing(df, ["Sample_RAT_A"])
-    normalized_rat_column = _first_existing(df, ["technology_primary"])
-    rat_column = main_rat_column or sample_rat_column or normalized_rat_column
-    call_mode_columns = list(dict.fromkeys(filter(None, (
-        _first_existing(df, ["L1_Call_Mode_A", "L1_call_Mode_A"]),
-        _first_existing(df, ["L2_Call_Mode_A", "L2_call_Mode_A"]),
-    ))))
-    if not rat_column and not call_mode_columns:
-        raise ValueError("The selected CDR does not contain RAT or Call Mode fields required to separate NSA and SA sessions.")
-
-    # WhatsApp's explicit RAT describes the packet session and remains
-    # authoritative. Native and MultiRAB calls are classified by their call
-    # mode first: a plain LTE RAT is common for valid VoLTE calls and must not
-    # make those samples disappear from an NSA report.
-    rat_values = (
-        df[rat_column].fillna("").astype(str).str.strip()
-        if rat_column else pd.Series("", index=df.index, dtype="string")
-    )
-    call_modes = pd.Series("", index=df.index, dtype="string")
-    for column in call_mode_columns:
-        call_modes = call_modes.str.cat(df[column].fillna("").astype(str), sep=" ")
-    session_column = _first_existing(df, ["Session_Type", "session_type"])
-    session_values = (
-        df[session_column].fillna("").astype(str)
-        if session_column else pd.Series("", index=df.index, dtype="string")
-    )
-    whatsapp = session_values.str.contains("whatsapp", case=False, na=False)
-    recognised_call_mode = call_modes.str.contains(r"VoLTE|EPSFB|VoNR", case=False, na=False, regex=True)
-
-    rat_nsa = rat_values.str.contains(r"EN[- ]?DC", case=False, na=False, regex=True)
-    rat_sa = rat_values.str.contains(r"NR", case=False, na=False, regex=True) & ~rat_nsa
-    mode_nsa = call_modes.str.contains(r"VoLTE|EPSFB", case=False, na=False, regex=True)
-    mode_sa = call_modes.str.contains(r"VoNR", case=False, na=False, regex=True)
-    conflicting_call_mode = mode_nsa & mode_sa
-    mode_nsa &= ~conflicting_call_mode
-    mode_sa &= ~conflicting_call_mode
-    multirab_lte_fallback = (
-        session_values.str.contains("multirab", case=False, na=False)
-        & rat_values.str.contains(r"(?:^|/)LTE(?:/|$)", case=False, na=False, regex=True)
-    )
-
-    if technology == "nsa":
-        mask = (whatsapp & rat_nsa) | (~whatsapp & (mode_nsa | (~recognised_call_mode & (rat_nsa | multirab_lte_fallback))))
-    else:
-        mask = (whatsapp & rat_sa) | (~whatsapp & (mode_sa | (~recognised_call_mode & rat_sa)))
-    return df[mask].copy()
 
 
 def build_three_vendor_lookup(mapping: pd.DataFrame) -> dict[str, str]:

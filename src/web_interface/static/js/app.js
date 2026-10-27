@@ -3172,7 +3172,6 @@ document.querySelectorAll('[data-catalogue-editor]').forEach((editor) => {
       try {
         const query = new URLSearchParams({
           source, column: selectedField,
-          technology: editor.dataset.templateTechnology,
           catalogue_id: editor.dataset.templateIdentifier,
         });
         const response = await fetch(`/workspace-config/catalogue-filter-values?${query.toString()}`, { credentials: 'same-origin' });
@@ -3629,7 +3628,7 @@ document.querySelectorAll('[data-catalogue-editor]').forEach((editor) => {
   let validationRevision = 0;
   const validateCatalogueContent = async (content, revision, showNetworkError = false) => {
     try {
-      const response = await fetch(`/api/workspace-config/report-templates/${encodeURIComponent(editor.dataset.templateTechnology)}/validate`, {
+      const response = await fetch('/api/workspace-config/report-templates/validate', {
         method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({catalogue_content: content}),
       });
@@ -3685,6 +3684,8 @@ document.querySelectorAll('[data-catalogue-editor]').forEach((editor) => {
   chartPreviewClose?.addEventListener('click', closeChartPreview);
   chartPreviewActionClose?.addEventListener('click', closeChartPreview);
   chartPreview?.addEventListener('click', (event) => { if (event.target === chartPreview) closeChartPreview(); });
+  // The previews read the CDRs of the NR Mode chosen in the editor: a template serves any NR Mode.
+  const previewNrMode = () => editor.querySelector('[data-catalogue-preview-nr-mode]')?.value || 'NSA';
   const previewChartData = async (row, definition = {}) => {
     const endpoint = editor.dataset.chartPreviewUrl;
     if (!endpoint) return;
@@ -3696,7 +3697,7 @@ document.querySelectorAll('[data-catalogue-editor]').forEach((editor) => {
     try {
       const response = await fetch(endpoint, {
         method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({catalogue_content: serialiseCatalogueContent(), row_index: rowIndex, definition}),
+        body: JSON.stringify({catalogue_content: serialiseCatalogueContent(), row_index: rowIndex, definition, nr_mode: previewNrMode()}),
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.detail || 'Unable to preview chart data.');
@@ -3774,7 +3775,7 @@ document.querySelectorAll('[data-catalogue-editor]').forEach((editor) => {
     chartPreviewController = new AbortController();
     if (showOverlay) showLoadingOverlay('Generating Chart Preview', 'Please wait while the chart preview is generated.');
     try {
-      const response = await fetch(endpoint, {method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json'}, signal: chartPreviewController.signal, body: JSON.stringify({catalogue_content: catalogueContent, row_index: rowIndex, definition: rowDefinition})});
+      const response = await fetch(endpoint, {method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json'}, signal: chartPreviewController.signal, body: JSON.stringify({catalogue_content: catalogueContent, row_index: rowIndex, definition: rowDefinition, nr_mode: previewNrMode()})});
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
         throw new Error(payload.detail || 'Unable to preview the generated chart.');
@@ -3839,7 +3840,7 @@ document.querySelectorAll('[data-catalogue-editor]').forEach((editor) => {
           body: JSON.stringify({
             catalogue_content: serialiseCatalogueContent(), row_index: rowIndex,
             definition: activeDefinition, page, page_size: chartPreviewDatasetPageSize,
-            column_filters, filter_column,
+            column_filters, filter_column, nr_mode: previewNrMode(),
           }),
         });
         const payload = await response.json().catch(() => ({}));
@@ -3852,7 +3853,7 @@ document.querySelectorAll('[data-catalogue-editor]').forEach((editor) => {
           method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({
             catalogue_content: serialiseCatalogueContent(), row_index: rowIndex,
-            definition: activeDefinition, column_filters, download: true,
+            definition: activeDefinition, column_filters, download: true, nr_mode: previewNrMode(),
           }),
         });
         if (!response.ok) {
@@ -3931,7 +3932,7 @@ document.querySelectorAll('[data-catalogue-editor]').forEach((editor) => {
       return {field, select};
     };
     const destination = createField('Destination template');
-    templates.forEach((item) => destination.select.add(new Option(`${item.technology.toUpperCase()} · ${item.name}`, `${item.technology}:${item.identifier}`)));
+    templates.forEach((item) => destination.select.add(new Option(item.name, item.identifier)));
     const slidePosition = createField('Slide position');
     const destinationSlide = createField('Destination slide');
     const chartPosition = createField('Chart position');
@@ -3943,13 +3944,13 @@ document.querySelectorAll('[data-catalogue-editor]').forEach((editor) => {
     const accept = document.createElement('button'); accept.type = 'button'; accept.textContent = 'Copy';
     actions.append(cancel, accept); panel.append(eyebrow, title, form, actions); overlay.append(panel); document.body.append(overlay);
     const selectedTemplate = () => {
-      const [technology, identifier] = destination.select.value.split(':', 2);
-      return {technology, identifier, sameTemplate: technology === editor.dataset.templateTechnology && identifier === editor.dataset.templateIdentifier};
+      const identifier = destination.select.value;
+      return {identifier, sameTemplate: identifier === editor.dataset.templateIdentifier};
     };
     const selectedSlides = () => {
       const selected = selectedTemplate();
       if (selected.sameTemplate) return sourceBlocks.map((block, index) => ({title: block.rows[0]['Slide Tittle'] || `Slide ${index + 1}`, charts: block.rows.length}));
-      return templates.find((item) => item.technology === selected.technology && item.identifier === selected.identifier)?.slides || [];
+      return templates.find((item) => item.identifier === selected.identifier)?.slides || [];
     };
     const updateChartPositions = () => {
       const slides = selectedSlides();
@@ -3983,7 +3984,6 @@ document.querySelectorAll('[data-catalogue-editor]').forEach((editor) => {
     accept.addEventListener('click', () => {
       const selected = selectedTemplate();
       finish({
-        targetTechnology: selected.technology,
         targetIdentifier: selected.identifier,
         sameTemplate: selected.sameTemplate,
         slidePosition: Number(slidePosition.select.value || 0),
@@ -4032,7 +4032,6 @@ document.querySelectorAll('[data-catalogue-editor]').forEach((editor) => {
         kind,
         catalogue_content: serialiseCatalogueContent(),
         source_row_index: rowIndex,
-        target_technology: selection.targetTechnology,
         target_identifier: selection.targetIdentifier,
         ...(kind === 'slide' ? {slide_position: selection.slidePosition} : {target_slide_index: selection.targetSlideIndex, chart_position: selection.chartPosition}),
       };
@@ -4443,12 +4442,11 @@ document.querySelectorAll('[data-catalogue-auto-rename]').forEach((input) => {
   const updateCatalogueIdentifier = (previousIdentifier, identifier) => {
     if (!previousIdentifier || !identifier || previousIdentifier === identifier) return;
     const row = input.closest('tr');
-    const technology = input.form?.action.match(/\/workspace-config\/report-templates\/([^/]+)\//)?.[1];
-    if (!row || !technology) return;
+    if (!row) return;
     const previousName = decodeURIComponent(previousIdentifier);
-    const oldSegment = `/workspace-config/report-templates/${technology}/${encodeURIComponent(previousName)}/`;
-    const newSegment = `/workspace-config/report-templates/${technology}/${encodeURIComponent(identifier)}/`;
-    const rawOldSegment = `/workspace-config/report-templates/${technology}/${previousName}/`;
+    const oldSegment = `/workspace-config/report-templates/${encodeURIComponent(previousName)}/`;
+    const newSegment = `/workspace-config/report-templates/${encodeURIComponent(identifier)}/`;
+    const rawOldSegment = `/workspace-config/report-templates/${previousName}/`;
     row.querySelectorAll('form[action], a[href]').forEach((element) => {
       const attribute = element.tagName === 'A' ? 'href' : 'action';
       const value = element.getAttribute(attribute);
@@ -4461,13 +4459,13 @@ document.querySelectorAll('[data-catalogue-auto-rename]').forEach((input) => {
       else if (value?.includes(oldSegment)) element.setAttribute('data-open-template-editor', value.replace(oldSegment, newSegment));
       element.setAttribute('data-template-name', input.value.trim());
     });
-    document.querySelectorAll('option').forEach((option) => {
-      if (option.value !== `${technology}:${previousName}`) return;
-      option.value = `${technology}:${identifier}`;
+    document.querySelectorAll('select[name="catalogue_selection"] option').forEach((option) => {
+      if (option.value !== previousName) return;
+      option.value = identifier;
       option.textContent = option.textContent.replace(previousName, identifier);
     });
     const parameters = new URLSearchParams(window.location.search);
-    if (parameters.get('catalogue_technology') === technology && parameters.get('catalogue_id') === previousName) {
+    if (parameters.get('catalogue_id') === previousName) {
       parameters.set('catalogue_id', identifier);
       const query = parameters.toString();
       window.history.replaceState(null, '', `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`);
@@ -4498,7 +4496,7 @@ document.querySelectorAll('[data-catalogue-auto-rename]').forEach((input) => {
         savedValue = String(payload.name || name).trim();
         input.value = savedValue;
         input.setAttribute('aria-label', `Name for ${savedValue}`);
-        const previousIdentifier = input.form.action.match(/\/workspace-config\/report-templates\/[^/]+\/([^/]+)\/rename$/)?.[1];
+        const previousIdentifier = input.form.action.match(/\/workspace-config\/report-templates\/([^/]+)\/rename$/)?.[1];
         updateCatalogueIdentifier(previousIdentifier, payload.identifier);
       } catch (error) {
         input.value = savedValue;
@@ -4589,8 +4587,8 @@ document.querySelectorAll('[data-catalogue-import-form]').forEach((form) => {
   const file = form.querySelector('[data-catalogue-import-file]');
   const convert = form.querySelector('[data-catalogue-convert]');
   const overwrite = form.querySelector('[data-catalogue-overwrite]');
-  let templateLibrary = {};
-  try { templateLibrary = JSON.parse(form.dataset.catalogueTemplateLibrary || '{}'); } catch (_error) { templateLibrary = {}; }
+  let templateLibrary = [];
+  try { templateLibrary = JSON.parse(form.dataset.catalogueTemplateLibrary || '[]'); } catch (_error) { templateLibrary = []; }
   const currentHeaders = [
     'Slide', 'Slide Tittle', 'Slide Subtittle', 'Layout', 'Dynamic Rows Field', 'Dynamic Columns Field', 'Chart Tittle', 'Source Dataset',
     'KPI', 'Chart type', 'Filters', 'Rows Split', 'Columns Split', 'Legend', 'Legend Position', 'Legend Format', 'Label Position', 'Label Format', 'Axis X Range', 'Axis Y Range', 'Exclude Null/Empty', 'Exclude Zero',
@@ -4635,14 +4633,13 @@ document.querySelectorAll('[data-catalogue-import-form]').forEach((form) => {
       );
       if (!accepted) return;
     }
-    const templateType = form.querySelector('[name="template_type"]')?.value?.trim().toLocaleLowerCase() || 'nsa';
     const requestedName = (name?.value?.trim() || selected.name.replace(/\.csv$/i, '').replace(/_+/g, ' ').trim());
-    const existing = (templateLibrary?.[templateType] || []).find((templateName) => (
+    const existing = (Array.isArray(templateLibrary) ? templateLibrary : []).find((templateName) => (
       String(templateName || '').trim().toLocaleLowerCase() === requestedName.toLocaleLowerCase()
     ));
     if (existing) {
       const accepted = await showConfirmDialog(
-        `A ${templateType.toUpperCase()} template named '${existing}' already exists. Do you want to overwrite it?`,
+        `A template named '${existing}' already exists. Do you want to overwrite it?`,
         {title: 'Overwrite Report Template?', confirmLabel: 'Overwrite template'},
       );
       if (!accepted) return;

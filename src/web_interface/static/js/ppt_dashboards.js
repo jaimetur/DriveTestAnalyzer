@@ -102,8 +102,8 @@
   window.addEventListener('pagehide', rememberScroll);
   window.addEventListener('beforeunload', rememberScroll);
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') rememberScroll(); });
-  // Names are unique per NR Mode: an NSA and an SA Dashboard may share one.
-  const nextName = (value, nrMode = 'NSA') => { let name = value, number = 2; while (Object.values(dashboards).some(item => item.name.toLowerCase() === name.toLowerCase() && dashboardNrMode(item) === nrMode)) name = `${value.slice(0, 108)} (${number++})`; return name; };
+  // Names are unique in the workspace, whatever the NR Mode each Dashboard reads.
+  const nextName = value => { let name = value, number = 2; while (Object.values(dashboards).some(item => item.name.toLowerCase() === name.toLowerCase())) name = `${value.slice(0, 108)} (${number++})`; return name; };
   const focusReturn = new Map();
   const status = message => { $('ds-status').textContent = message; };
   const backgroundWorkspaceName = () => document.querySelector('[data-header-active-workspace-name]')?.textContent?.trim() || 'Active workspace';
@@ -142,7 +142,9 @@
   const option = (value, label) => { const el = node('option', label); el.value = value; return el; };
   const identity = value => String(value).toLocaleLowerCase().replace(/[^a-z0-9]/g, '');
   // A Dashboard only uses CDRs of its own NR Mode (NSA or SA).
-  const dashboardNrMode = value => String(value?.technology || value?.template_technology || 'nsa').toUpperCase() === 'SA' ? 'SA' : 'NSA';
+  // The NR Mode of the CDRs a Dashboard reads (Dashboards of before named it technology): any template serves both.
+  const dashboardNrMode = value => String(value?.nr_mode || value?.technology || value?.template_technology || 'NSA').toUpperCase() === 'SA' ? 'SA' : 'NSA';
+  const templateRows = () => Array.isArray(config.templates) ? config.templates : [];
   // The Campaign filter chooses the CDRs of a Dashboard (see cdr_auto_selection): Latest campaign and Latest 2
   // campaigns follow the newest campaigns of its NR Mode. A new Dashboard compares its newest two campaigns, or
   // shows the newest one in Multivendor Operator_Vendor, as its newest CDRs did.
@@ -1229,15 +1231,13 @@
     await refreshDashboardPptJobs();
     window.dispatchEvent(new Event('drivetest-analyzer:refresh-background-tasks'));
   }
-  const updateDashboardTemplate = async (id, item, technology, templateName) => {
-    const normalizedTechnology = config.templates[technology] ? technology : 'nsa';
-    const selectedTemplate = (config.templates[normalizedTechnology] || []).find(row => row.name === templateName);
-    const currentTechnology = item.technology || item.template_technology || 'nsa';
-    if (!selectedTemplate || (currentTechnology === normalizedTechnology && item.template === selectedTemplate.name)) {
+  const updateDashboardTemplate = async (id, item, nrMode, templateName) => {
+    const selectedTemplate = templateRows().find(row => row.name === templateName);
+    if (!selectedTemplate || (dashboardNrMode(item) === nrMode && item.template === selectedTemplate.name)) {
       library();
       return;
     }
-    if (id === activeId && !await confirmDiscard(['template', 'template_technology', 'technology'])) {
+    if (id === activeId && !await confirmDiscard(['template', 'nr_mode'])) {
       library();
       return;
     }
@@ -1251,7 +1251,7 @@
     }
     status(`Updating NR Mode and Template for “${item.name}”…`);
     const result = await api(`/${encodeURIComponent(id)}/template`, 'PATCH', {
-      technology: normalizedTechnology,
+      nr_mode: nrMode,
       template: selectedTemplate.name,
     });
     dashboards[id] = structuredClone(result.definition);
@@ -1319,32 +1319,21 @@
         library(); status(`Renamed Dashboard to “${result.name}”.`);
       });
       nameEditor.append(nameInput, nameSave); nameCell.append(nameEditor);
-      const currentTechnology = item.technology || item.template_technology || 'nsa';
+      // The NR Mode of the CDRs the Dashboard reads; its template serves any NR Mode.
       const technologyCell = node('td'); technologyCell.dataset.label = 'NR Mode';
       const technologySelect = document.createElement('select'); technologySelect.className = 'ds-dashboard-definition-select ds-dashboard-nr-mode-select';
       technologySelect.setAttribute('aria-label', `NR Mode for ${item.name}`);
-      for (const technology of ['nsa', 'sa']) {
-        const choice = option(technology, technology.toUpperCase());
-        choice.disabled = !(config.templates[technology] || []).length;
-        technologySelect.append(choice);
-      }
-      technologySelect.value = currentTechnology;
+      for (const mode of ['NSA', 'SA']) technologySelect.append(option(mode, mode));
+      technologySelect.value = dashboardNrMode(item);
       const templateCell = node('td'); templateCell.dataset.label = 'Template';
       const templateSelect = document.createElement('select'); templateSelect.className = 'ds-dashboard-definition-select ds-dashboard-template-select';
       templateSelect.setAttribute('aria-label', `Template for ${item.name}`);
-      const setRowTemplateOptions = (technology, selectedName = '') => {
-        const choices = config.templates[technology] || [];
-        templateSelect.replaceChildren(...choices.map(row => option(row.name, row.name)));
-        const selected = choices.find(row => row.name === selectedName) || choices[0];
-        templateSelect.value = selected?.name || '';
-        templateSelect.disabled = !selected;
-        return selected;
-      };
-      setRowTemplateOptions(currentTechnology, item.template);
+      const choices = templateRows();
+      templateSelect.replaceChildren(...choices.map(row => option(row.name, row.name)));
+      templateSelect.value = (choices.find(row => row.name === item.template) || choices[0])?.name || '';
+      templateSelect.disabled = !choices.length;
       technologySelect.addEventListener('change', () => {
-        const selected = setRowTemplateOptions(technologySelect.value, item.template);
-        if (selected) void safe(() => updateDashboardTemplate(id, item, technologySelect.value, selected.name))();
-        else library();
+        void safe(() => updateDashboardTemplate(id, item, technologySelect.value, templateSelect.value || item.template))();
       });
       templateSelect.addEventListener('change', () => {
         void safe(() => updateDashboardTemplate(id, item, technologySelect.value, templateSelect.value))();
@@ -1978,31 +1967,28 @@
     } catch (_error) { /* A status refresh must not interrupt Dashboard work. */ }
     finally { dashboardStatusRefreshing = false; }
   };
-  function templateOptions(technology, selectedName = '') {
-    const select = $('ds-template'), rows = config.templates[technology] || [];
+  function templateOptions(selectedName = '') {
+    const select = $('ds-template'), rows = templateRows();
     select.replaceChildren(...rows.map(row => option(row.identifier, row.name)));
-    const selected = rows.find(row => row.name === selectedName) || rows[0];
+    const selected = rows.find(row => row.name === selectedName) || rows.find(row => row.active) || rows[0];
     select.value = selected?.identifier || '';
     return selected;
   }
   function syncNewDashboardNameFromTemplate() {
     if (definition) return;
-    const technology = $('ds-nr-mode').value;
-    const selected = (config.templates[technology] || []).find(row => row.identifier === $('ds-template').value);
+    const selected = templateRows().find(row => row.identifier === $('ds-template').value);
     if (selected) $('ds-name').value = selected.name;
   }
-  templateOptions($('ds-nr-mode').value);
+  templateOptions();
   syncNewDashboardNameFromTemplate();
   function setTemplate(value) {
-    const technology = $('ds-nr-mode').value;
-    const selected = (config.templates[technology] || []).find(row => row.identifier === value);
+    const selected = templateRows().find(row => row.identifier === value);
     if (!selected || !definition) return;
-    definition.template_technology = technology; definition.technology = technology; definition.template = selected.name;
+    definition.template = selected.name;
   }
-  function setNrMode(technology, selectedName = '') {
-    const normalized = config.templates[technology] ? technology : 'nsa';
-    $('ds-nr-mode').value = normalized;
-    return templateOptions(normalized, selectedName);
+  function setNrMode(nrMode, selectedName = '') {
+    $('ds-nr-mode').value = String(nrMode || 'NSA').toUpperCase() === 'SA' ? 'SA' : 'NSA';
+    return templateOptions(selectedName);
   }
   function selectControl(label, values, selected, change, multiple = false, isUnsaved = () => false) {
     const host = node('label', label, 'ds-source-filter'), select = document.createElement('select');
@@ -2584,7 +2570,7 @@
     stopPresentation();
     activeId = id; dashboardFiltersOpen = showFilters; rememberFiltersOpen(showFilters); $('ds-viewer-export-ppt').dataset.dashboardPptId = id; definition = runtimeDashboardDefinition(dashboards[id], id); savedDefinition = definitionFingerprint(savedRuntimeDashboardDefinition(dashboards[id])); dirty = false; prepared = null; appliedFilterState = ''; appliedSelectionState = ''; appliedDashboardDefinition = null; applyingDashboardDefinition = null; facetOptions = {}; availableFields = []; facetOptionRequests.clear(); slideIndex = 0; setViewEnabled(false); rememberOpen(id);
     resetViewerForDashboard();
-    $('ds-name').value = definition.name; setNrMode(definition.technology || definition.template_technology, definition.template);
+    $('ds-name').value = definition.name; setNrMode(dashboardNrMode(definition), definition.template);
     $('ds-filter-panel').hidden = !dashboardFiltersOpen; document.dispatchEvent(new CustomEvent('page-panel-navigation:update')); setActiveDashboardHeading(definition.name); sources(); facets(); library(); status(''); await prepare();
     updateDirtyState();
     // Date defaults may be derived while the prepared payload is restored. Rebuild
@@ -2639,13 +2625,13 @@
   const save = () => savePart('filters');
   const confirmDiscard = async (ignoredFields = []) => !hasUnsavedDashboardChanges(ignoredFields) || await window.showConfirmDialog('Discard unsaved Dashboard changes?', {title:'Unsaved changes',confirmLabel:'Discard'});
   bind('ds-create', async () => {
-    if (!await confirmDiscard(['name', 'template', 'template_technology', 'technology'])) return;
-    const technology = $('ds-nr-mode').value;
-    const selected = (config.templates[technology] || []).find(row => row.identifier === $('ds-template').value);
-    if (!selected) throw new Error('Choose a template for the selected NR Mode.');
+    if (!await confirmDiscard(['name', 'template', 'nr_mode'])) return;
+    const nrMode = $('ds-nr-mode').value;
+    const selected = templateRows().find(row => row.identifier === $('ds-template').value);
+    if (!selected) throw new Error('Choose a template.');
     const name = $('ds-name').value.trim() || selected.name;
     $('ds-name').value = name;
-    const item = {name,template_technology:technology,template:selected.name,technology,scope:'single',auto_cdrs:true,filters:{Campaign: defaultCampaignFilter('single')},custom_fields:[],date_from:'Oldest',date_to:'Newest'};
+    const item = {name,template:selected.name,nr_mode:nrMode,scope:'single',auto_cdrs:true,filters:{Campaign: defaultCampaignFilter('single')},custom_fields:[],date_from:'Oldest',date_to:'Newest'};
     status(`Creating “${item.name}”…`); $('ds-create').disabled = true;
     try { const id = dashboardId(), result = await api(`/${id}`,'PUT',item); dashboards[id] = result.definition; await openDashboard(id); }
     finally { $('ds-create').disabled = !$('ds-template').options.length; }
@@ -2697,7 +2683,7 @@
     finally { syncViewerScope(); }
   });
   async function duplicateDashboard(sourceId) {
-    const id = dashboardId(), item = runtimeDashboardDefinition(dashboards[sourceId]); item.name = nextName(`${item.name.slice(0,110)} (copy)`, dashboardNrMode(item));
+    const id = dashboardId(), item = runtimeDashboardDefinition(dashboards[sourceId]); item.name = nextName(`${item.name.slice(0,110)} (copy)`);
     status(`Duplicating “${dashboards[sourceId].name}”…`);
     const result = await api(`/${id}`,'PUT',item); dashboards[id] = result.definition; await openDashboard(id);
   }
@@ -2716,14 +2702,14 @@
     await api(`/${id}`,'DELETE'); delete dashboards[id]; dashboardStatuses.delete(id); if (id === activeId) closeDashboard(); else { library(); status(`Deleted “${item.name}”.`); }
   }
   bind('ds-import',() => $('ds-import-file').click());
-  $('ds-import-file').onchange = safe(async () => { const file = $('ds-import-file').files[0]; if (!file) return; const payload = JSON.parse(await file.text()); const format = String(payload.format || '').replace(/^dashboard-analytic-/, 'drivetest-analyzer-'); const legacy = format === 'drivetest-analyzer-dashboard-set' && payload.version === 1; if (!legacy && (format !== 'drivetest-analyzer-dashboard' || payload.version !== 2)) throw new Error('Unsupported Dashboard file.'); if (!await confirmDiscard()) return; payload.definition.name = nextName(payload.definition.name, dashboardNrMode(payload.definition)); if (!payload.definition.auto_cdrs) delete payload.definition.datasets; /* CDRs of another workspace: its newest campaigns are used. */ const id = dashboardId(), result = await api(`/${id}`,'PUT',payload.definition); dashboards[id] = result.definition; await openDashboard(id); $('ds-import-file').value = ''; });
+  $('ds-import-file').onchange = safe(async () => { const file = $('ds-import-file').files[0]; if (!file) return; const payload = JSON.parse(await file.text()); const format = String(payload.format || '').replace(/^dashboard-analytic-/, 'drivetest-analyzer-'); const legacy = format === 'drivetest-analyzer-dashboard-set' && payload.version === 1; if (!legacy && (format !== 'drivetest-analyzer-dashboard' || payload.version !== 2)) throw new Error('Unsupported Dashboard file.'); if (!await confirmDiscard()) return; payload.definition.name = nextName(payload.definition.name); if (!payload.definition.auto_cdrs) delete payload.definition.datasets; /* CDRs of another workspace: its newest campaigns are used. */ const id = dashboardId(), result = await api(`/${id}`,'PUT',payload.definition); dashboards[id] = result.definition; await openDashboard(id); $('ds-import-file').value = ''; });
   function closeDashboard() { delete $('ds-viewer-export-ppt').dataset.dashboardPptId; $('ds-viewer-export-ppt').disabled = true; clearTimeout(facetsRefreshTimer); dismissPreparationStatus(); stopPresentation(); rememberOpen(''); rememberFiltersOpen(false); ++sequence; clearTimeout(timer); controller?.abort(); preparing = null; activeId = ''; dashboardFiltersOpen = false; definition = null; savedDefinition = ''; appliedFilterState = ''; appliedSelectionState = ''; appliedDashboardDefinition = null; applyingDashboardDefinition = null; prepared = null; dirty = false; updateUnsavedFiltersBadge(); setViewEnabled(false); setPreparationState('hidden'); $('ds-filter-panel').hidden = true; document.dispatchEvent(new CustomEvent('page-panel-navigation:update')); setActiveDashboardHeading(''); $('ds-name').value = ''; setNrMode('nsa'); syncNewDashboardNameFromTemplate(); library(); status('Dashboard closed.'); }
   $('ds-name').oninput = () => { if (definition) { definition.name = $('ds-name').value; updateDirtyState(); } };
+  // The NR Mode chooses the CDRs the open Dashboard reads; its template stays (it serves any NR Mode).
   $('ds-nr-mode').onchange = () => {
-    const selected = setNrMode($('ds-nr-mode').value);
-    if (definition && selected) {
+    if (definition) {
       const previousNrMode = dashboardNrMode(definition);
-      definition.template_technology = definition.technology = $('ds-nr-mode').value; definition.template = selected.name;
+      definition.nr_mode = $('ds-nr-mode').value;
       // The campaigns of the previous NR Mode do not apply: its newest campaigns do.
       if (dashboardNrMode(definition) !== previousNrMode) {
         const key = campaignFilterKey(definition.filters);
@@ -3781,13 +3767,10 @@
     }
   };
   const templateEditorBaseUrl = (sourceDefinition = definition) => sourceDefinition
-    ? `/workspace-config/report-templates/${encodeURIComponent(sourceDefinition.template_technology)}/${encodeURIComponent(sourceDefinition.template)}/editor`
+    ? `/workspace-config/report-templates/${encodeURIComponent(sourceDefinition.template)}/editor`
     : '';
   function refreshEmbeddedTemplateEditor(updatedTemplate, focusRow) {
-    const sourceDefinition = {
-      template: updatedTemplate?.template,
-      template_technology: updatedTemplate?.technology,
-    };
+    const sourceDefinition = {template: updatedTemplate?.template};
     const url = templateEditorBaseUrl(sourceDefinition);
     const frame = $('ds-editor-frame');
     if (!url || frame.dataset.editorUrl !== url) return;
@@ -3906,10 +3889,7 @@
   $('ds-chart-expanded-auto-fields')?.addEventListener('click', () => document.querySelector('.ds-viewer-panel [data-workspace-manage-calculated-dimensions]')?.click());
   $('ds-chart-expanded-edit')?.addEventListener('click', () => {
     const job = expandedChartMode === 'ppt' ? selectedDashboardPptChartJob() : null;
-    const sourceDefinition = job ? {
-      template: job.template,
-      template_technology: String(job.nr_mode || 'nsa').toLocaleLowerCase(),
-    } : definition;
+    const sourceDefinition = job ? {template: job.template} : definition;
     openTemplateEditor(expandedChart?.focus_row, sourceDefinition);
   });
   function expandedChartOverlay(show, {preserveFocus = false} = {}) {

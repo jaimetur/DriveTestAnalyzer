@@ -16,7 +16,8 @@ from src.modules.report_tasks import (
 from src.modules.scoring_reports import default_report_configuration
 
 # The Reporting Jobs every workspace starts with (assets/reporting-jobs).
-STARTER_JOBS = {'Weekly NetCheck Report (@latest campaign)', 'All Modules Report (@latest 2 campaigns)', 'Scoring Report (@All Campaigns)'}
+STARTER_JOBS = {json.loads(path.read_text(encoding='utf-8'))['name']
+                for path in (core.PROJECT_ROOT / 'assets' / 'reporting-jobs').glob('*.json')}
 
 TZ = timezone(timedelta(hours=2))
 # Every Scoring artifact is configured with the report editor.
@@ -75,7 +76,7 @@ def test_definitions_keep_every_module_option_and_need_an_artifact():
     })
     # An entry saved when CDRs were chosen by hand keeps them until it is migrated (see migrate_auto_cdrs).
     assert definition['dashboards'] == [{
-        'dashboard_id': 'd1', 'label': '', 'scope': 'multivendor', 'vendor_comparison': 'vendor_only', 'auto_cdrs': False,
+        'dashboard_id': 'd1', 'label': '', 'nr_mode': '', 'scope': 'multivendor', 'vendor_comparison': 'vendor_only', 'auto_cdrs': False,
         'datasets': {'data': [3, 4]}, 'cdr_selection': '', 'date_from': '2026-01-01', 'date_to': '', 'filters': {'Operator': ['EE']},
         'auto_comments': 'off', 'auto_comments_engine': '',
     }]

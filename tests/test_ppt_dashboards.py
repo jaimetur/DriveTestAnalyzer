@@ -329,7 +329,7 @@ def setup_dashboard(client):
         'dataset_files': ('sample.csv', BytesIO(b'Operator,City,Mean_Data_Rate,Test_Name,Test_Start_Time\nA,London,10,HTTP DL,2026-09-01\nB,Leeds,20,HTTP DL,2026-09-02\nA,London,30,HTTP DL,2026-09-03\n'), 'text/csv'),
     })
     assert response.status_code == 200
-    core.repository.add_report_template('nsa', 'Dashboard test', (
+    core.repository.add_report_template('Dashboard test', (
         'Slide,Slide tittle,Slide Subtittle,Layout,Chart Tittle,CDR source,KPI,Chart type,Filters,Rows Split,Columns Split,Legend,Legend Position\n'
         '1,Comparison,,Title and 2 columns + Comments,Rate,CDR-Data,Mean_Data_Rate,CDF Line,,Operator,,,Top\n'
         '1,Comparison,,Title and 2 columns + Comments,Rate again,CDR-Data,Mean_Data_Rate,CDF Line,,Operator,,,Top\n'
@@ -525,8 +525,7 @@ def test_dashboard_background_warmup_prepares_the_five_automatic_date_universes(
 
 def test_dashboard_template_change_preserves_saved_scope_dates_and_filters(client):
     payload = setup_dashboard(client)
-    core.repository.add_report_template('sa', 'Dashboard SA test', core.repository.report_template_content(
-        'nsa', 'Dashboard test',
+    core.repository.add_report_template('Dashboard SA test', core.repository.report_template_content('Dashboard test',
     ), is_default=False)
     payload.update({
         'scope': 'multivendor',
@@ -542,13 +541,14 @@ def test_dashboard_template_change_preserves_saved_scope_dates_and_filters(clien
     saved_before_change = client.get('/api/ppt-dashboards').json()['change-template']
 
     changed = client.patch('/api/ppt-dashboards/change-template/template', json={
-        'technology': 'sa', 'template': 'Dashboard SA test',
+        'nr_mode': 'SA', 'template': 'Dashboard SA test',
     })
 
     assert changed.status_code == 200, changed.text
     definition_payload = changed.json()['definition']
     assert changed.json()['invalidated'] is True
-    assert definition_payload['technology'] == definition_payload['template_technology'] == 'sa'
+    assert definition_payload['nr_mode'] == 'SA'
+    assert 'technology' not in definition_payload and 'template_technology' not in definition_payload
     assert definition_payload['template'] == 'Dashboard SA test'
     for field in ('scope', 'custom_fields', 'hidden_filters', 'date_from', 'date_to', 'slide_comments'):
         assert definition_payload[field] == saved_before_change[field]
@@ -556,8 +556,7 @@ def test_dashboard_template_change_preserves_saved_scope_dates_and_filters(clien
     assert definition_payload['filters'] == {'City': ['London'], 'Campaign': ['@latest-campaign']}
     assert 'datasets' not in definition_payload
 
-    core.repository.add_report_template('sa', 'Dashboard SA copy', core.repository.report_template_content(
-        'nsa', 'Dashboard test',
+    core.repository.add_report_template('Dashboard SA copy', core.repository.report_template_content('Dashboard test',
     ), is_default=False)
     client.put('/api/ppt-dashboards/change-template', json={**definition_payload, 'filters': {'Campaign': ['UK_Q3_SA_2026']}})
     same_mode = client.patch('/api/ppt-dashboards/change-template/template', json={
@@ -699,7 +698,7 @@ def test_dashboard_campaigns_keep_their_nr_mode_suffix(client):
         ), 'text/csv'),
     })
     assert response.status_code == 200
-    core.repository.add_report_template('nsa', 'Dashboard test', (
+    core.repository.add_report_template('Dashboard test', (
         'Slide,Slide tittle,Slide Subtittle,Layout,Chart Tittle,CDR source,KPI,Chart type,Filters,Rows Split,Columns Split,Legend,Legend Position\n'
         '1,Comparison,,Title and 1 column + Comments,Rate,CDR-Data,Mean_Data_Rate,CDF Line,,Operator,,,Top\n'
     ).encode(), is_default=False)
@@ -718,7 +717,7 @@ def test_dashboard_campaigns_keep_their_nr_mode_suffix(client):
     assert filtered.json()['campaigns'] == ['2026-Q2-SA']
 
     # The PPT cover lists the Campaigns above the Scope in a larger font.
-    core.repository.add_report_template('nsa', 'Campaign cover', (
+    core.repository.add_report_template('Campaign cover', (
         'Slide,Slide tittle,Slide Subtittle,Layout,Chart Tittle,CDR source,KPI,Chart type,Filters,Rows Split,Columns Split,Legend,Legend Position\n'
         '1,Quarterly review,Template subtitle,Title Page,,,,Title Slide,,,,,Top\n'
     ).encode(), is_default=False)
@@ -1005,7 +1004,7 @@ def test_dashboard_ppt_all_labels_only_consider_the_selected_cdrs(client):
 
 def test_dashboard_ppt_cover_uses_scope_and_catalogue_geography(client):
     payload = setup_dashboard(client)
-    core.repository.add_report_template('nsa', 'Structural dashboard', (
+    core.repository.add_report_template('Structural dashboard', (
         'Slide,Slide tittle,Slide Subtittle,Layout,Chart Tittle,CDR source,KPI,Chart type,Filters,Rows Split,Columns Split,Legend,Legend Position\n'
         '1,Quarterly review,Template subtitle,Title Page,,,,Title Slide,,,,,Top\n'
         '2,,,Black logo end slide,,,,,,,,,\n'
@@ -1126,7 +1125,7 @@ def test_expanded_dashboard_chart_apply_builds_a_new_temporary_model(client):
         'exclude_null_empty': 'Yes', 'exclude_zero': 'Yes',
     })
     assert updated.status_code == 200, updated.text
-    entry = core.load_template_catalogue(core.repository.report_template_content('nsa', 'Dashboard test'), 'nsa')[0]
+    entry = core.load_template_catalogue(core.repository.report_template_content('Dashboard test'))[0]
     assert (entry.chart_title, entry.rows_split, entry.columns_split, entry.legend_position) == (
         'Updated template chart', 'Test_Name × Operator', 'City', 'right',
     )
@@ -2115,7 +2114,7 @@ def test_dashboards_lifecycle_and_layout(client, ppt_reporting_old):
     assert interactive.json()['renderer'] == 'catalog-v2'
     assert interactive.json()['series']
     assert list((Path(core.repository.db_path).parent / '.dashboard-data-cache' / 'charts-pil').glob('*.png'))
-    entry = core.load_template_catalogue(next(row['content'] for row in core.repository.list_report_templates('nsa') if row['name'] == 'Dashboard test'), 'nsa')[0]
+    entry = core.load_template_catalogue(next(row['content'] for row in core.repository.list_report_templates() if row['name'] == 'Dashboard test'))[0]
     assert not core.is_empty_catalog_chart(image.content, entry)
     data = client.get(f'/api/ppt-dashboards/data/{token}/0').json()
     assert data['total'] == 3
@@ -2406,9 +2405,8 @@ def test_relaunching_dashboard_ppt_uses_the_modified_report_template(client):
     ).json()['charts']
     assert original_charts[0]['title'] == 'Rate'
 
-    template = core.repository.report_template_content('nsa', 'Dashboard test')
-    core.repository.set_report_template_content(
-        'nsa', 'Dashboard test', template.replace(b',Rate,CDR-Data,', b',Updated rate,CDR-Data,', 1),
+    template = core.repository.report_template_content('Dashboard test')
+    core.repository.set_report_template_content('Dashboard test', template.replace(b',Rate,CDR-Data,', b',Updated rate,CDR-Data,', 1),
     )
 
     relaunched = client.post(f'/api/ppt-dashboards/ppt-jobs/{job_id}/retry')
@@ -2642,7 +2640,7 @@ def test_adding_a_dataset_builds_a_new_chart_model_with_every_campaign(client):
             ),
         })
         assert response.status_code == 200
-    core.repository.add_report_template('nsa', 'Campaign cache test', (
+    core.repository.add_report_template('Campaign cache test', (
         'Slide,Slide tittle,Slide Subtittle,Layout,Chart Tittle,CDR source,KPI,Chart type,Filters,Rows Split,Columns Split,Legend,Legend Position\n'
         '1,Campaigns,,Title and 1 column + Comments,Rate,CDR-Data,Mean_Data_Rate,Average Vertical Bars,,Operator,Campaign,,Right\n'
     ).encode(), is_default=False)
@@ -2683,7 +2681,7 @@ def test_dashboard_api_session_expires_on_application_process_restart(client):
 
 def test_dashboard_preview_identifies_title_and_transition_slides(client):
     payload = setup_dashboard(client)
-    core.repository.add_report_template('nsa', 'Structural dashboard', (
+    core.repository.add_report_template('Structural dashboard', (
         'Slide,Slide tittle,Slide Subtittle,Layout,Chart Tittle,CDR source,KPI,Chart type,Filters,Rows Split,Columns Split,Legend,Legend Position\n'
         '1,Quarterly review,Network results,Title Page,,,,Title Slide,,,,,Top\n'
         '2,Voice performance,,Title Only,,,,Transition Slide,,,,,Top\n'
@@ -2825,7 +2823,7 @@ def test_dashboard_rat_filter_uses_dataset_preview_column_precedence(client):
         ), 'text/csv'),
     })
     assert response.status_code == 200
-    core.repository.add_report_template('nsa', 'Radio Dashboard', (
+    core.repository.add_report_template('Radio Dashboard', (
         'Slide,Slide tittle,Slide Subtittle,Layout,Chart Tittle,CDR source,KPI,Chart type,Filters,Rows Split,Columns Split,Legend,Legend Position\n'
         '1,Radio,,Title and 1 column + Comments,Rate,CDR-Data,Mean_Data_Rate,CDF Line,,Operator,,,Top\n'
     ).encode(), is_default=False)
@@ -2852,7 +2850,7 @@ def test_dashboard_falls_back_to_combined_rows_for_values_missing_from_profiles(
     assert response.status_code == 200
     with core.repository.connection() as connection:
         connection.execute("UPDATE dataset_profiles SET filter_options_json = '{}' WHERE dataset_id = 1")
-    core.repository.add_report_template('nsa', 'Profile fallback Dashboard', (
+    core.repository.add_report_template('Profile fallback Dashboard', (
         'Slide,Slide tittle,Slide Subtittle,Layout,Chart Tittle,CDR source,KPI,Chart type,Filters,Rows Split,Columns Split,Legend,Legend Position\n'
         '1,Profile fallback,,Title and 1 column + Comments,Rate,CDR-Data,Mean_Data_Rate,CDF Line,,Operator,,,Top\n'
     ).encode(), is_default=False)
@@ -2894,17 +2892,17 @@ def test_dashboard_sql_selection_leaves_nr_mode_to_explicit_user_filters(client)
         ), 'text/csv'),
     })
     assert response.status_code == 200
-    core.repository.add_report_template('nsa', 'Voice Dashboard', (
+    core.repository.add_report_template('Voice Dashboard', (
         'Slide,Slide tittle,Slide Subtittle,Layout,Chart Tittle,CDR source,KPI,Chart type,Filters,Rows Split,Columns Split,Legend,Legend Position\n'
         '1,Voice,,Title and 1 column + Comments,Calls,CDR-Voice,Mean_Call_Setup_Time,CDF Line,,Operator,,,Top\n'
     ).encode(), is_default=False)
     payload = DashboardDefinition(
-        name='Voice', template='Voice Dashboard', datasets={'voice': [1]}, technology='nsa',
+        name='Voice', template='Voice Dashboard', datasets={'voice': [1]}, nr_mode='NSA',
     ).model_dump(mode='json')
     nsa = client.post('/api/ppt-dashboards/prepare', json=payload).json()
     assert nsa['rows']['voice'] == 4
     assert nsa['universe_rows']['voice'] == 4
-    payload['technology'] = 'sa'
+    payload['nr_mode'] = 'SA'
     # An SA Dashboard only uses SA CDRs, but never filters rows by RAT.
     assert client.post('/api/ppt-dashboards/prepare', json=payload).status_code == 400
     core.repository.update_dataset_profile(1, nr_mode='SA')
@@ -3227,7 +3225,7 @@ def test_cover_geography_falls_back_to_dashboard_filter_values(client):
     assert options.json()['cities'] == ['Leeds', 'London']
     assert options.json()['regions'] == []
 
-    core.repository.add_report_template('nsa', 'Cover only', (
+    core.repository.add_report_template('Cover only', (
         'Slide,Slide tittle,Slide Subtittle,Layout,Chart Tittle,CDR source,KPI,Chart type,Filters,Rows Split,Columns Split,Legend,Legend Position\n'
         '1,Quarterly review,Template subtitle,Title Page,,,,Title Slide,,,,,Top\n'
     ).encode(), is_default=False)
@@ -3251,7 +3249,7 @@ def test_ppt_cover_treats_every_filter_value_as_all_cities(client):
     payload = setup_dashboard(client)
     # The catalogue lists one more City than the Dashboard's filter options.
     core.repository.replace_cdr_catalogue(1, vendors=[], regions=[], cities=['Leeds', 'London', 'Manchester'])
-    core.repository.add_report_template('nsa', 'Cover only', (
+    core.repository.add_report_template('Cover only', (
         'Slide,Slide tittle,Slide Subtittle,Layout,Chart Tittle,CDR source,KPI,Chart type,Filters,Rows Split,Columns Split,Legend,Legend Position\n'
         '1,Quarterly review,Template subtitle,Title Page,,,,Title Slide,,,,,Top\n'
     ).encode(), is_default=False)
@@ -3270,18 +3268,17 @@ def test_ppt_cover_treats_every_filter_value_as_all_cities(client):
     assert client.get(f'/api/ppt-dashboards/ppt-jobs/{job_id}/charts.json').json()['cover']['cities'] == 'All Cities'
 
 
-def test_dashboard_names_are_unique_per_nr_mode(client):
+def test_dashboard_names_are_unique_whatever_their_nr_mode(client):
     payload = setup_dashboard(client)
-    core.repository.add_report_template('sa', 'Dashboard test', core.repository.report_template_content(
-        'nsa', 'Dashboard test',
-    ), is_default=False)
     assert client.put('/api/ppt-dashboards/nsa-one', json=payload).status_code == 200
     duplicate = client.put('/api/ppt-dashboards/nsa-two', json=payload)
     assert duplicate.status_code == 409
-    assert 'NSA Dashboard with this name' in duplicate.json()['detail']
-    sa_payload = {**payload, 'technology': 'sa', 'template_technology': 'sa'}
-    # The same name is allowed for a Dashboard of the other NR Mode.
-    assert client.put('/api/ppt-dashboards/sa-one', json=sa_payload).status_code == 200
+    assert 'A Dashboard with this name already exists' in duplicate.json()['detail']
+    # A Dashboard that reads the other NR Mode (with the same template) needs a name of its own.
+    sa_payload = {**payload, 'nr_mode': 'SA'}
+    assert client.put('/api/ppt-dashboards/sa-one', json=sa_payload).status_code == 409
+    assert client.put('/api/ppt-dashboards/sa-one', json={**sa_payload, 'name': 'Dashboard SA'}).status_code == 200
+    assert client.get('/api/ppt-dashboards').json()['sa-one']['nr_mode'] == 'SA'
 
 
 def test_report_template_changes_record_the_last_editor(client):
@@ -3297,14 +3294,15 @@ def test_report_template_changes_record_the_last_editor(client):
     writer.writerow(row)
     content = buffer.getvalue().encode()
     response = client.post(
-        '/workspace-config/report-templates/sa', data={'catalogue_name': 'Editor audit'},
+        '/workspace-config/report-templates', data={'catalogue_name': 'Editor audit'},
         files={'catalogue_file': ('x.csv', BytesIO(content), 'text/csv')}, follow_redirects=False,
     )
     assert response.status_code == 303
-    row = next(row for row in core.repository.list_report_templates('sa') if row['name'] == 'Editor audit')
+    row = next(row for row in core.repository.list_report_templates() if row['name'] == 'Editor audit')
     assert row['updated_by'] == 'super'
     page = client.get('/workspace-config')
-    assert '<th>NR Mode</th><th>Created</th><th>Last Updated</th><th>Last Updated by</th>' in page.text
+    # Templates have no NR Mode: the library has no column for it.
+    assert '<th>Template name</th><th>Created</th><th>Last Updated</th><th>Last Updated by</th>' in page.text
 
 
 def test_combined_rf_dashboard_keeps_samples_and_selected_geography(client):
@@ -3324,7 +3322,7 @@ def test_combined_rf_dashboard_keeps_samples_and_selected_geography(client):
         })
         assert response.status_code == 200, response.text
         datasets[kind] = [max(int(row['id']) for row in core.repository.list_datasets())]
-    core.repository.add_report_template('nsa', 'Pooled RF test', (
+    core.repository.add_report_template('Pooled RF test', (
         'Slide,Slide tittle,Slide Subtittle,Layout,Chart Tittle,CDR source,KPI,Chart type,Filters,Rows Split,Columns Split,Legend,Legend Position\n'
         '1,Combined RF,,Title and 1 column + Comments,RSRP,CDR-All,LTE_RSRP,Histogram Line,Bin Size = 5,Operator,Campaign,Operator,Right\n'
     ).encode(), is_default=False)
@@ -3373,7 +3371,7 @@ def test_dynamic_histogram_dashboard_filters_operators_and_updates_source_templa
         filters='Bin Size = 5', rows_split='Operator', columns_split='Campaign',
         legend='Campaign', dynamic_field='Operator',
     ) for radio, field in [('LTE', 'LTE_PCell_RSRP_Avg'), ('NR', 'NR_PCell_RSRP_Avg')]]
-    core.repository.add_report_template('nsa', 'Dynamic RF test', catalogue_csv(entries), is_default=False)
+    core.repository.add_report_template('Dynamic RF test', catalogue_csv(entries), is_default=False)
     payload = DashboardDefinition(name='Dynamic RF', template='Dynamic RF test',
                                   datasets={'data': [dataset_id]}, filters={'City': ['London']}).model_dump(mode='json')
     prepared = client.post('/api/ppt-dashboards/prepare', json=payload)
@@ -3391,7 +3389,7 @@ def test_dynamic_histogram_dashboard_filters_operators_and_updates_source_templa
         'chart_title': 'LTE RSRP – B', 'filters': 'Bin Size = 10',
     })
     assert saved.status_code == 200, saved.text
-    restored = core.load_template_catalogue(core.repository.report_template_content('nsa', 'Dynamic RF test'), 'nsa')
+    restored = core.load_template_catalogue(core.repository.report_template_content('Dynamic RF test'))
     assert len(restored) == 2
     assert restored[0].filters == 'Bin Size = 10'
     assert restored[0].chart_title == 'LTE RSRP'
@@ -3432,7 +3430,7 @@ def test_dynamic_vendor_only_editor_keeps_operator_rows_after_bin_edit(client):
         cdr_source='CDR-Data', kpi=field, chart_type='Histogram Bars', filters='Bin Size = 5',
         rows_split='Operator', columns_split='Campaign', legend='Campaign', dynamic_field='Operator',
     ) for radio, field in [('LTE', 'LTE_PCell_RSRP_Avg'), ('NR', 'NR_PCell_RSRP_Avg')]]
-    core.repository.add_report_template('nsa', 'Dynamic RF vendor test', catalogue_csv(entries), is_default=False)
+    core.repository.add_report_template('Dynamic RF vendor test', catalogue_csv(entries), is_default=False)
     payload = DashboardDefinition(name='Dynamic RF vendor', template='Dynamic RF vendor test',
                                   datasets={'data': [dataset_id]}, filters={'City': ['London']}).model_dump(mode='json')
     ordinary = client.post('/api/ppt-dashboards/prepare', json=payload)
@@ -3449,7 +3447,7 @@ def test_dynamic_vendor_only_editor_keeps_operator_rows_after_bin_edit(client):
         'chart_title': 'LTE RSRP – Huawei', 'filters': 'Bin Size = 10',
     })
     assert saved.status_code == 200, saved.text
-    restored = core.load_template_catalogue(core.repository.report_template_content('nsa', 'Dynamic RF vendor test'), 'nsa')
+    restored = core.load_template_catalogue(core.repository.report_template_content('Dynamic RF vendor test'))
     assert [entry.dynamic_columns_field for entry in restored] == ['Operator', 'Operator']
     assert [entry.rows_split for entry in restored] == ['Operator', 'Operator']
     assert [entry.filters for entry in restored] == ['Bin Size = 10', 'Bin Size = 5']
@@ -3480,7 +3478,7 @@ def _compact_read_dashboard(client):
                      kpi='LTE_PCell_RSRP_Avg', chart_type='Threshold Stacked Vertical Bars', filters='Threshold = -100', **common),
     ]
     # Registered before the upload, so the combined CDR table includes its fields.
-    core.repository.add_report_template('nsa', 'Compact reads test', catalogue_csv(entries), is_default=False)
+    core.repository.add_report_template('Compact reads test', catalogue_csv(entries), is_default=False)
     rows = ['Operator,City,Campaign,Test_Start_Time,LTE_PCell_RSRP_Avg,Call_Status']
     for index in range(240):
         operator = 'ABC'[index % 3]
@@ -3811,7 +3809,7 @@ def test_hidden_dynamic_values_close_their_grid_cards_in_the_ppt(client):
         cdr_source='CDR-Data', kpi=field, chart_type='Histogram Bars', filters='Bin Size = 5',
         rows_split='Operator', columns_split='Campaign', legend='Campaign', dynamic_field='Operator',
     ) for radio, field in [('LTE', 'LTE_PCell_RSRP_Avg'), ('NR', 'NR_PCell_RSRP_Avg')]]
-    core.repository.add_report_template('nsa', 'Dynamic grid legend test', catalogue_csv(entries), is_default=False)
+    core.repository.add_report_template('Dynamic grid legend test', catalogue_csv(entries), is_default=False)
     payload = DashboardDefinition(name='Dynamic grid', template='Dynamic grid legend test',
                                   datasets={'data': [dataset_id]}).model_dump(mode='json')
     dashboard_id = 'dynamic-grid-legend'

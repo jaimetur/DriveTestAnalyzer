@@ -523,23 +523,22 @@
   // first, which chooses the CDRs), prefilled with its saved definition.
   function dashboardEntry(entry = null) {
     const card = node('div', undefined, 'rj-entry');
-    // NR Mode comes first: it decides which Dashboards and CDRs are offered.
-    const modeOf = (item) => String(item?.technology || 'nsa').toUpperCase() === 'SA' ? 'SA' : 'NSA';
+    // NR Mode comes first: it decides which CDRs are read, in place of the Dashboard's own (any template serves both).
+    const modeOf = (item) => String(item?.nr_mode || item?.technology || 'nsa').toUpperCase() === 'SA' ? 'SA' : 'NSA';
     const initial = options.dashboards.find((item) => item.id === entry?.dashboard_id);
-    const nrMode = select([['NSA', 'NSA'], ['SA', 'SA']], initial ? modeOf(initial) : (options.dashboards.some((item) => modeOf(item) === 'NSA') ? 'NSA' : 'SA'));
-    const modeDashboards = () => options.dashboards.filter((item) => modeOf(item) === nrMode.value);
+    const nrMode = select([['NSA', 'NSA'], ['SA', 'SA']], entry?.nr_mode ? modeOf(entry) : initial ? modeOf(initial) : 'NSA');
     const dashboard = node('select');
     const noDashboards = node('p', '', 'form-note');
-    // A new entry starts with the first Dashboard of the NR Mode not added yet.
+    // A new entry starts with the first Dashboard not added yet.
     const fillDashboards = (selectedId = '') => {
       const added = new Set([...$('rj-dashboards').children].filter((other) => other !== card).map((other) => other.getValue?.().dashboard_id));
-      const available = modeDashboards();
+      const available = options.dashboards;
       const chosen = available.find((item) => item.id === selectedId) || available.find((item) => !added.has(item.id)) || available[0];
       dashboard.replaceChildren(...available.map((item) => {
         const option = node('option', item.name); option.value = item.id; option.selected = item.id === chosen?.id; return option;
       }));
       dashboard.disabled = !available.length;
-      noDashboards.textContent = available.length ? '' : `There are no saved ${nrMode.value} Dashboards in this workspace.`;
+      noDashboards.textContent = available.length ? '' : 'There are no saved Dashboards in this workspace.';
     };
     fillDashboards(entry?.dashboard_id);
     const label = node('input'); label.type = 'text'; label.placeholder = 'Optional artifact name'; label.value = entry?.label || '';
@@ -574,7 +573,7 @@
 
     // The Campaign chooses the CDRs; every filter lists the values of every CDR of the NR Mode that the others leave.
     const definitionFor = () => ({
-      ...current.saved, scope: scope.value, vendor_comparison: comparison.value, auto_cdrs: true,
+      ...current.saved, nr_mode: nrMode.value, scope: scope.value, vendor_comparison: comparison.value, auto_cdrs: true,
       filters: chosenFilters(), date_from: dateFrom.value || 'Oldest', date_to: dateTo.value || 'Newest',
     });
     // City offers Main Cities first, as in the Dashboard: the Main Cities of the workspace at each run.
@@ -625,12 +624,16 @@
       scheduleLoad();
     };
     const savedDashboard = () => options.dashboards.find((item) => item.id === dashboard.value) || {};
-    dashboard.addEventListener('change', () => { const saved = savedDashboard(); apply(saved, saved); });
+    const chosenConfig = () => ({scope: scope.value, vendor_comparison: comparison.value, date_from: dateFrom.value, date_to: dateTo.value});
+    // A Dashboard chosen reads its own NR Mode until another is chosen here.
+    dashboard.addEventListener('change', () => { const saved = savedDashboard(); nrMode.value = modeOf(saved); apply(saved, saved); });
+    // Another NR Mode keeps the Dashboard: the campaigns of the other NR Mode do not apply, its automatic choices
+    // (Latest campaign…) do, or else the newest campaigns of the new NR Mode, as when a Dashboard changes its NR Mode.
     nrMode.addEventListener('change', () => {
-      fillDashboards();
-      const saved = savedDashboard();
-      if (dashboard.value) apply(saved, saved);
-      else { current = {saved: {}, fields: []}; setCampaigns([]); filters.replaceChildren(); filterNote.textContent = ''; }
+      if (!dashboard.value) return;
+      const automatic = (campaigns?.getValue() || []).filter((value) => String(value).startsWith('@'));
+      const fallback = scope.value === 'multivendor' && comparison.value === 'operator_vendor' ? '@latest-campaign' : '@latest-2-campaigns';
+      apply({...chosenConfig(), filters: {...chosenFilters(), Campaign: automatic.length ? automatic : [fallback]}}, savedDashboard());
     });
     scope.addEventListener('change', () => { comparisonField.hidden = scope.value !== 'multivendor'; scheduleLoad(); });
     comparison.addEventListener('change', scheduleLoad);
@@ -640,7 +643,7 @@
       head, campaignPreviewSlot, noDashboards, node('strong', 'Adaptative Filters'), filterNote, filters);
     if (dashboard.value) apply(entry || savedDashboard(), savedDashboard());
     card.getValue = () => ({
-      dashboard_id: dashboard.value, label: label.value.trim(), scope: scope.value, vendor_comparison: comparison.value,
+      dashboard_id: dashboard.value, nr_mode: nrMode.value, label: label.value.trim(), scope: scope.value, vendor_comparison: comparison.value,
       auto_cdrs: true, date_from: dateFrom.value, date_to: dateTo.value, filters: chosenFilters(), auto_comments: autoComments.value, auto_comments_engine: autoCommentsEngine.value,
     });
     return card;

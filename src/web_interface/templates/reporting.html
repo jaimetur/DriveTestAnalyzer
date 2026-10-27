@@ -48,10 +48,8 @@
       </label>
       <label>PPT Templates
         <select name="slides_templates" required data-report-catalogue aria-label="PPT Templates">
-          {% for technology, catalogues in report_catalogues.items() %}
-          {% for catalogue in catalogues %}
-          <option value="{{ technology }}:{{ catalogue.identifier }}" data-catalogue-technology="{{ technology }}" data-catalogue-active="{{ 'true' if catalogue.active else 'false' }}"{% if technology == 'nsa' and catalogue.active %} selected{% endif %}>{{ technology | upper }} · {{ catalogue.name }}{% if catalogue.active %} · Default{% endif %}</option>
-          {% endfor %}
+          {% for catalogue in report_catalogues %}
+          <option value="{{ catalogue.identifier }}" data-catalogue-active="{{ 'true' if catalogue.active else 'false' }}"{% if catalogue.active %} selected{% endif %}>{{ catalogue.name }}{% if catalogue.active %} · Default{% endif %}</option>
           {% endfor %}
         </select>
       </label>
@@ -265,8 +263,6 @@
 <script>
   (() => {
     const scope = document.querySelector('[data-report-scope]');
-    const technology = document.querySelector('[data-report-technology]');
-    const catalogue = document.querySelector('[data-report-catalogue]');
     const cdrSelectors = document.querySelectorAll('select[name$="_dataset_id"]');
     const multivendorOption = scope?.querySelector('option[value="multivendor"]');
     if (!scope || !multivendorOption) return;
@@ -277,16 +273,7 @@
       if (!allCdrsMapped && scope.value === 'multivendor') scope.value = 'single';
     };
     cdrSelectors.forEach((select) => select.addEventListener('change', updateScope));
-    const updateCatalogues = () => {
-      if (!technology || !catalogue) return;
-      const matching = Array.from(catalogue.options).filter((option) => option.dataset.catalogueTechnology === technology.value);
-      Array.from(catalogue.options).forEach((option) => { option.hidden = option.disabled = option.dataset.catalogueTechnology !== technology.value; });
-      const active = matching.find((option) => option.dataset.catalogueActive === 'true') || matching[0];
-      if (active) catalogue.value = active.value;
-    };
-    technology?.addEventListener('change', updateCatalogues);
     updateScope();
-    updateCatalogues();
 
     const reportingModule = document.querySelector('[data-reporting-module]');
     const reportingModulePanels = document.querySelectorAll('[data-reporting-module-panel]');
@@ -1121,7 +1108,6 @@
       }
     });
     let activeChartSetTemplate = '';
-    let activeChartSetTechnology = '';
     const renderReportCharts = (payload) => {
       const charts = Array.isArray(payload.charts) ? payload.charts : [];
       if (!reportChartsBody) return;
@@ -1141,7 +1127,6 @@
       updateChartSetActions(selectedChartSet);
       reportCharts = charts;
       activeChartSetTemplate = String(payload.template || '');
-      activeChartSetTechnology = String(payload.technology || '').trim().toLocaleLowerCase();
       if (reportChartsEditTemplate) reportChartsEditTemplate.hidden = !activeChartSetTemplate;
       reportChartsBody.replaceChildren(...charts.map((chart) => {
         const card = document.createElement('article');
@@ -1193,7 +1178,7 @@
     const openTemplateEditor = (templateRowIndex = null) => {
       if (!activeChartSetTemplate || !reportTemplateEditor || !reportTemplateEditorFrame) return;
       const editorUrl = new URL(
-        `/workspace-config/report-templates/${encodeURIComponent(activeChartSetTechnology || 'auto')}/${encodeURIComponent(activeChartSetTemplate)}/editor`,
+        `/workspace-config/report-templates/${encodeURIComponent(activeChartSetTemplate)}/editor`,
         window.location.origin,
       );
       if (Number.isInteger(templateRowIndex) && templateRowIndex >= 0) editorUrl.searchParams.set('focus_row', String(templateRowIndex));

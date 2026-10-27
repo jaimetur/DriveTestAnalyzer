@@ -39,10 +39,11 @@ from src.modules.cdr_auto_selection import (
 )
 from src.modules.cdr_facets import FILTER_FIELDS as CASCADING_FILTER_FIELDS, cascading_options
 from src.modules.nr_mode import DEFAULT_NR_MODE, NR_MODES, dataset_nr_mode, normalize_nr_mode
+from src.modules.report_template_modes import migrate_dashboard_definition, render_nr_mode_tokens
 from src.modules.output_layout import DASHBOARDS_FOLDER, module_output_dir
 from fastapi import BackgroundTasks, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from pptx import Presentation
 from pptx.dml.color import RGBColor
 from pptx.enum.shapes import MSO_SHAPE_TYPE
@@ -143,8 +144,8 @@ def dashboard_viewer_tokens(theme_name: str) -> dict[str, str]:
 class DashboardDefinition(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     template: str = Field(min_length=1)
-    template_technology: Literal['nsa', 'sa'] = 'nsa'
-    technology: Literal['nsa', 'sa'] = 'nsa'
+    # The NR Mode of the CDRs the Dashboard reads, part of its selection: its template serves any NR Mode.
+    nr_mode: Literal['NSA', 'SA'] = 'NSA'
     scope: Literal['single', 'multivendor'] = 'single'
     vendor_comparison: Literal['operator_vendor', 'vendor_only'] = 'operator_vendor'
     datasets: dict[str, list[int]] = Field(default_factory=dict)
@@ -160,6 +161,16 @@ class DashboardDefinition(BaseModel):
     # The CDRs follow the NR Mode and the Campaign filter (see ``cdr_auto_selection``); Dashboards saved
     # before (without it) chose their CDRs by hand and are migrated once (``migrate_auto_cdrs``).
     auto_cdrs: bool = False
+
+    @model_validator(mode='before')
+    @classmethod
+    def without_template_nr_mode(cls, value: Any) -> Any:
+        """A Dashboard saved, exported or sent with the NR Mode of before (technology, template_technology)."""
+        if isinstance(value, dict):
+            value = migrate_dashboard_definition(value)
+            if isinstance(value, dict) and value.get('nr_mode') is not None:
+                value = {**value, 'nr_mode': normalize_nr_mode(value['nr_mode']) or DEFAULT_NR_MODE}
+        return value
 
 
 class DashboardThemeRequest(BaseModel):
@@ -266,46 +277,51 @@ class DashboardName(BaseModel):
 
 
 class DashboardTemplateSelection(BaseModel):
-    technology: Literal['nsa', 'sa']
+    nr_mode: Literal['NSA', 'SA'] = 'NSA'
     template: str = Field(min_length=1)
+
+    @model_validator(mode='before')
+    @classmethod
+    def without_template_nr_mode(cls, value: Any) -> Any:
+        if isinstance(value, dict):
+            mode = value.get('nr_mode', value.get('technology'))
+            value = {**{key: item for key, item in value.items() if key != 'technology'},
+                     'nr_mode': normalize_nr_mode(mode) or DEFAULT_NR_MODE}
+        return value
 
 
 def identity(value):
     return column_identity(value)
 
 
-def template_uids(task_repository) -> dict[tuple[str, str], str]:
-    """The identity of each PPT Template of a workspace by NR Mode and name."""
+def template_uids(task_repository) -> dict[str, str]:
+    """The identity of each PPT Template of a workspace by name."""
     return task_repository.report_template_uids()
 
 
-def follow_template_identities(dashboards: dict, templates: dict[tuple[str, str], str]) -> dict:
+def follow_template_identities(dashboards: dict, templates: dict[str, str]) -> dict:
     """The Dashboards with the identity (``template_uid``) of their PPT Template: one whose template was renamed since,
     here or by an import, takes its current name, and one without it (saved before, or imported) takes that of the
-    template of its NR Mode it names."""
-    by_uid = {uid: key for key, uid in templates.items() if uid}
+    template it names."""
+    by_uid = {uid: name for name, uid in templates.items() if uid}
     followed = {}
     for dashboard_id, definition in dashboards.items():
         if isinstance(definition, dict) and definition.get('template'):
-            technology = str(definition.get('template_technology') or definition.get('technology') or 'nsa').casefold()
             current = by_uid.get(str(definition.get('template_uid') or ''))
-            if current and current[0] == technology:
-                if current[1] != definition['template']:
-                    definition = {**definition, 'template': current[1]}
-            elif templates.get((technology, str(definition['template']))):
-                definition = {**definition, 'template_uid': templates[(technology, str(definition['template']))]}
+            if current:
+                if current != definition['template']:
+                    definition = {**definition, 'template': current}
+            elif templates.get(str(definition['template'])):
+                definition = {**definition, 'template_uid': templates[str(definition['template'])]}
         followed[dashboard_id] = definition
     return followed
 
 
-def rename_template_in_dashboards(dashboards: dict, technology: str, previous_template: str, template: str) -> list[str]:
+def rename_template_in_dashboards(dashboards: dict, previous_template: str, template: str) -> list[str]:
     """The Dashboards that use a renamed template take its new name, and their names follow it; returns their IDs."""
     changed: list[str] = []
     for dashboard_id, raw_definition in dashboards.items():
-        if not isinstance(raw_definition, dict):
-            continue
-        dashboard_technology = str(raw_definition.get('template_technology') or raw_definition.get('technology') or '').casefold()
-        if dashboard_technology != technology or str(raw_definition.get('template') or '') != previous_template:
+        if not isinstance(raw_definition, dict) or str(raw_definition.get('template') or '') != previous_template:
             continue
         updated = dict(raw_definition)
         updated['template'] = template
@@ -317,11 +333,11 @@ def rename_template_in_dashboards(dashboards: dict, technology: str, previous_te
 
 
 def dashboard_nr_mode(definition) -> str:
-    """Return the NR Mode (``NSA``/``SA``) of a Dashboard definition."""
+    """Return the NR Mode (``NSA``/``SA``) of the CDRs a Dashboard definition reads."""
     if isinstance(definition, dict):
-        value = definition.get('technology') or definition.get('template_technology')
+        value = definition.get('nr_mode') or definition.get('technology') or definition.get('template_technology')
     else:
-        value = getattr(definition, 'technology', None) or getattr(definition, 'template_technology', None)
+        value = getattr(definition, 'nr_mode', None)
     return normalize_nr_mode(value) or DEFAULT_NR_MODE
 
 
@@ -887,9 +903,7 @@ def install_dashboard_routes(core):
         definition = DashboardDefinition.model_validate(
             runtime_dashboard_definition(raw_definition, task_repository)
         )
-        template_content = task_repository.report_template_content(
-            definition.template_technology, definition.template,
-        )
+        template_content = task_repository.report_template_content(definition.template)
         material = {
             'definition': definition.model_dump(mode='json'),
             'template_content': sha256(template_content).hexdigest(),
@@ -1605,9 +1619,16 @@ def install_dashboard_routes(core):
             dataset_kinds = {int(row['id']): str(row['dataset_kind'] or '') for row in task_repository.list_datasets()}
         except (AttributeError, sqlite3.Error):
             dataset_kinds = None
+        try:
+            template_renames, template_uids_now = task_repository.report_template_merge_state()
+        except (AttributeError, sqlite3.Error):
+            template_renames, template_uids_now = {}, {}
+        # Dashboards of before kept an NR Mode of their own and of their template: it is now part of their selection.
         migrated = {
             dashboard_id: migrate_auto_cdrs(normalize_dashboard_filters(
-                definition if dataset_kinds is None else existing_dataset_selection(definition, dataset_kinds),
+                migrate_dashboard_definition(
+                    definition if dataset_kinds is None else existing_dataset_selection(definition, dataset_kinds),
+                    template_renames, template_uids_now),
                 reset_defaults=reset_defaults,
             ), task_repository)
             for dashboard_id, definition in dashboards.items()
@@ -1651,35 +1672,49 @@ def install_dashboard_routes(core):
         comments = definition.slide_comments.get(key, definition.slide_comments.get(legacy_key, []))
         return key, list(comments or [])
 
+    def rendered_slides(entries, nr_mode) -> dict[str, list]:
+        """The chart rows of each slide of a template as a Dashboard of an NR Mode shows them (its comments are kept by
+        the titles it shows)."""
+        slides: dict[str, list] = defaultdict(list)
+        for entry in entries:
+            slides[str(entry.slide)].append(replace(
+                entry, slide_title=render_nr_mode_tokens(entry.slide_title, nr_mode),
+                slide_subtitle=render_nr_mode_tokens(entry.slide_subtitle, nr_mode),
+                chart_title=render_nr_mode_tokens(entry.chart_title, nr_mode)))
+        return slides
+
     def reconcile_template_slide_comments(
-        technology: str, template_name: str, old_entries, new_entries,
+        template_name: str, old_entries, new_entries,
         task_repository=None,
     ) -> int:
         """Move comments from legacy/numeric keys to matching stable slide keys."""
-        old_slides: dict[str, list] = defaultdict(list)
-        new_slides: dict[str, list] = defaultdict(list)
-        for entry in old_entries:
-            old_slides[str(entry.slide)].append(entry)
-        for entry in new_entries:
-            new_slides[str(entry.slide)].append(entry)
-        available_keys = {dashboard_slide_comment_key(entries) for entries in new_slides.values()}
-        if not old_slides:
+        if not old_entries:
             return 0
-        if {
-            slide: dashboard_slide_comment_key(entries) for slide, entries in old_slides.items()
-        } == {
-            slide: dashboard_slide_comment_key(entries) for slide, entries in new_slides.items()
-        }:
+        # Titles written alike before and after (tokens included) read alike in every NR Mode: the Dashboards need not
+        # be read.
+        old_raw: dict[str, list] = defaultdict(list)
+        new_raw: dict[str, list] = defaultdict(list)
+        for entries, slides in ((old_entries, old_raw), (new_entries, new_raw)):
+            for entry in entries:
+                slides[str(entry.slide)].append(entry)
+        if {slide: dashboard_slide_comment_key(entries) for slide, entries in old_raw.items()} == {
+                slide: dashboard_slide_comment_key(entries) for slide, entries in new_raw.items()}:
             return 0
         changed = 0
         with lock:
             source_repository = task_repository or bound_repository()
             dashboards = read_dashboards(source_repository)
             for raw_definition in dashboards.values():
-                if (
-                    str(raw_definition.get('template_technology') or raw_definition.get('technology') or 'nsa').casefold() != technology
-                    or str(raw_definition.get('template') or '') != template_name
-                ):
+                if str(raw_definition.get('template') or '') != template_name:
+                    continue
+                nr_mode = dashboard_nr_mode(raw_definition)
+                old_slides, new_slides = rendered_slides(old_entries, nr_mode), rendered_slides(new_entries, nr_mode)
+                available_keys = {dashboard_slide_comment_key(entries) for entries in new_slides.values()}
+                if {
+                    slide: dashboard_slide_comment_key(entries) for slide, entries in old_slides.items()
+                } == {
+                    slide: dashboard_slide_comment_key(entries) for slide, entries in new_slides.items()
+                }:
                     continue
                 original = raw_definition.get('slide_comments') or {}
                 migrated = {
@@ -1864,13 +1899,15 @@ def install_dashboard_routes(core):
         return {**options, **cascading}
 
     def catalogue(definition, task_repository=None):
+        """The chart rows of a Dashboard's template, their titles naming the NR Mode it reads."""
         task_repository = task_repository or core.repository
-        rows = task_repository.list_report_templates(definition.template_technology)
+        rows = task_repository.list_report_templates()
         row = next((row for row in rows if row['name'] == definition.template), None)
         if row is None:
             raise HTTPException(400, 'The selected template is no longer available.')
         try:
-            return core.load_template_catalogue(bytes(row['content']), definition.template_technology, task_repository=task_repository)
+            return core.load_template_catalogue(bytes(row['content']), task_repository=task_repository,
+                                                nr_mode=dashboard_nr_mode(definition))
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
 
@@ -1974,10 +2011,11 @@ def install_dashboard_routes(core):
         catalogue = core.repository.cdr_catalogue_values(
             row['id'] for row in ready if row.get('dataset_kind') in KINDS
         )
-        options = {tech: core.report_catalogue_options(tech) for tech in ('nsa', 'sa')}
         return core.render_template(request, 'ppt_dashboards.html', {
             'user': user, 'dashboard_datasets': {kind: [row for row in ready if row.get('dataset_kind') == kind] for kind in KINDS},
-            'dashboard_templates': {tech: [{'name': row['name'], 'identifier': row['identifier']} for row in rows] for tech, rows in options.items()},
+            # Any template serves the CDRs of any NR Mode.
+            'dashboard_templates': [{'name': row['name'], 'identifier': row['identifier'], 'active': row['active']}
+                                    for row in core.report_catalogue_options()],
             'dashboard_workspace_id': core.active_workspace.id,
             'calculated_dimensions': core.calculated_dimensions_json(core.load_workspace_calculated_dimensions()),
             'dashboard_filter_fields': ADAPTATIVE_FILTER_FIELDS,
@@ -2413,10 +2451,9 @@ def install_dashboard_routes(core):
         fallback_focus_rows = []
         if any(not isinstance(item.get('focus_row'), int) for item in manifest.get('charts', []) if isinstance(item, dict)):
             try:
-                nr_mode = str(row['nr_mode'] or 'nsa').casefold()
                 definition = DashboardDefinition(
                     name=str(row['dashboard_name']), template=str(row['template_name']),
-                    template_technology=nr_mode, technology=nr_mode,
+                    nr_mode=normalize_nr_mode(row['nr_mode']) or DEFAULT_NR_MODE,
                     scope='multivendor' if str(row['scope']).casefold() == 'multivendor' else 'single',
                 )
                 entries = validate(definition, bound_repository())
@@ -2553,7 +2590,7 @@ def install_dashboard_routes(core):
             columns = columns_by_source['cdr-all']
         template_available = user.role in {'user-editor', 'admin', 'super-admin'} and any(
             str(item['name']) == definition.template
-            for item in task_repository.list_report_templates(definition.template_technology)
+            for item in task_repository.list_report_templates()
         )
         return JSONResponse({
             'token': token, 'chart_index': entry_index, 'cdr_source': entry.cdr_source,
@@ -2791,16 +2828,14 @@ def install_dashboard_routes(core):
         }))
         return {'deleted': job_id}
 
-    def ensure_unique_dashboard_name(dashboards, dashboard_id, name, nr_mode) -> None:
-        """Dashboard names are unique per NR Mode: an NSA and an SA Dashboard may share one."""
-        target = dashboard_nr_mode({'technology': nr_mode})
+    def ensure_unique_dashboard_name(dashboards, dashboard_id, name) -> None:
+        """Dashboard names are unique in a workspace, whatever the NR Mode each one reads."""
         if any(
             key != dashboard_id and isinstance(item, dict)
             and str(item.get('name') or '').strip().casefold() == str(name).strip().casefold()
-            and dashboard_nr_mode(item) == target
             for key, item in dashboards.items()
         ):
-            raise HTTPException(409, f'An {target} Dashboard with this name already exists.')
+            raise HTTPException(409, 'A Dashboard with this name already exists.')
 
     @app.put('/api/ppt-dashboards/{dashboard_id}')
     def save_dashboard(dashboard_id: str, definition: DashboardDefinition, user=Depends(dashboard_editor_user)):
@@ -2809,7 +2844,7 @@ def install_dashboard_routes(core):
             task_repository = bound_repository()
             validate(definition, task_repository)
             dashboards = read_dashboards(task_repository)
-            ensure_unique_dashboard_name(dashboards, dashboard_id, definition.name, definition.technology)
+            ensure_unique_dashboard_name(dashboards, dashboard_id, definition.name)
             created = dashboard_id not in dashboards
             definition.name = definition.name.strip()
             saved_definition = migrate_auto_cdrs(normalize_dashboard_filters(definition.model_dump(mode='json')), task_repository)
@@ -2824,7 +2859,9 @@ def install_dashboard_routes(core):
             if created:
                 record_creator(task_repository, PPT_DASHBOARDS, dashboard_id, user.username)
             creator = creator_of(task_repository, PPT_DASHBOARDS, dashboard_id)
-            task_repository.add_log(user.username, 'save_dashboard', json.dumps({'id': dashboard_id, 'name': definition.name}))
+            task_repository.add_log(user.username, 'save_dashboard', json.dumps({
+                'id': dashboard_id, 'name': definition.name, 'nr_mode': definition.nr_mode, 'template': definition.template,
+            }))
         # Saving a Dashboard may change template filters, so refresh its three
         # canonical automatic universes even when it was warmed previously.
         schedule_dashboard_warmup(workspace, dashboard_id, saved_definition, user.username, force=True)
@@ -2841,7 +2878,7 @@ def install_dashboard_routes(core):
             dashboards = read_dashboards(task_repository)
             if dashboard_id not in dashboards:
                 raise HTTPException(404, 'Dashboard not found.')
-            ensure_unique_dashboard_name(dashboards, dashboard_id, name, dashboard_nr_mode(dashboards[dashboard_id]))
+            ensure_unique_dashboard_name(dashboards, dashboard_id, name)
             dashboards[dashboard_id]['name'] = name
             task_repository.set_workspace_state(STATE_KEY, json.dumps(dashboards))
             task_repository.add_log(user.username, 'rename_dashboard', json.dumps({'id': dashboard_id, 'name': name}))
@@ -2851,11 +2888,11 @@ def install_dashboard_routes(core):
     def change_dashboard_template(
         dashboard_id: str, payload: DashboardTemplateSelection, user=Depends(dashboard_editor_user),
     ):
-        """Change NR Mode and template while retaining the saved filters.
+        """Change the NR Mode of the CDRs and the template while retaining the saved filters.
 
         The saved CDR universe is kept when the NR Mode is unchanged. A new NR
-        Mode selects the latest CDRs of that mode instead, because CDRs of the
-        other NR Mode are never part of a Dashboard.
+        Mode selects the latest CDRs of that mode instead: the campaigns of the
+        other NR Mode do not apply. Any template serves any NR Mode.
         """
         workspace = workspace_key()
         with lock:
@@ -2865,11 +2902,9 @@ def install_dashboard_routes(core):
             if current is None:
                 raise HTTPException(404, 'Dashboard not found.')
             updated = dict(current)
-            nr_mode_changed = dashboard_nr_mode(current) != dashboard_nr_mode({'technology': payload.technology})
-            if nr_mode_changed:
-                ensure_unique_dashboard_name(dashboards, dashboard_id, str(current.get('name') or ''), payload.technology)
-            updated['technology'] = payload.technology
-            updated['template_technology'] = payload.technology
+            previous_nr_mode, previous_template = dashboard_nr_mode(current), str(current.get('template') or '')
+            nr_mode_changed = previous_nr_mode != payload.nr_mode
+            updated['nr_mode'] = payload.nr_mode
             updated['template'] = payload.template
             if nr_mode_changed:
                 # The campaigns of the other NR Mode do not apply: the newest ones of the new NR Mode do.
@@ -2889,7 +2924,8 @@ def install_dashboard_routes(core):
             task_repository.set_workspace_state(STATE_KEY, json.dumps(dashboards))
             task_repository.add_log(user.username, 'change_dashboard_template', json.dumps({
                 'id': dashboard_id, 'name': definition.name,
-                'technology': payload.technology, 'template': payload.template,
+                'nr_mode': payload.nr_mode, 'previous_nr_mode': previous_nr_mode,
+                'template': payload.template, 'previous_template': previous_template,
             }))
         # Template and NR Mode belong to the preview fingerprint, so every old
         # report/chart snapshot becomes ineligible and a fresh warm-up is queued.
@@ -3309,7 +3345,7 @@ def install_dashboard_routes(core):
             if selected:
                 selected_by_kind[kind] = selected
         if not selected_by_kind:
-            raise HTTPException(400, f'No ready {definition.technology.upper()} CDR is in the combined CDR tables for the chosen Campaign.')
+            raise HTTPException(400, f'No ready {definition.nr_mode} CDR is in the combined CDR tables for the chosen Campaign.')
         if definition.scope == 'multivendor':
             selected_ids = [int(row['id']) for rows in selected_by_kind.values() for row in rows]
             if len(task_repository.cdr_catalogue_values(selected_ids)['vendors']) < 2:
@@ -3635,7 +3671,8 @@ def install_dashboard_routes(core):
         }
         revisions = {kind: task_repository.get_workspace_state(f'combined_reporting_updated_{kind}') for kind in selected_by_kind}
         selection_definition = {
-            'technology': definition.technology,
+            # Named as the selections of before were cached, which stay valid.
+            'technology': definition.nr_mode.casefold(),
             'datasets': {
                 kind: sorted(set(dataset_ids))
                 for kind, dataset_ids in definition.datasets.items()
@@ -6266,7 +6303,7 @@ def install_dashboard_routes(core):
         columns_by_source['cdr-all'] = [str(column) for column in columns if identity(column) not in hidden]
         template_available = user.role in {'user-editor', 'admin', 'super-admin'} and any(
             str(row['name']) == snapshot.definition.template
-            for row in task_repository.list_report_templates(snapshot.definition.template_technology)
+            for row in task_repository.list_report_templates()
         )
         return JSONResponse({
             'cdr_source': entry.cdr_source,
@@ -6494,14 +6531,18 @@ def install_dashboard_routes(core):
         """Persist the expanded Chart Definition into its source template row."""
         snapshot, _entry, _ = snapshot_chart(token, index, user, include_frame=False)
         task_repository = Repository(Path(snapshot.workspace), core.repository.global_db_path)
-        technology, template_name = snapshot.definition.template_technology, snapshot.definition.template
+        template_name, nr_mode = snapshot.definition.template, dashboard_nr_mode(snapshot.definition)
         template = next((
-            row for row in task_repository.list_report_templates(technology)
+            row for row in task_repository.list_report_templates()
             if str(row['name']) == template_name
         ), None)
         if template is None:
             raise HTTPException(404, 'The Report Template used by this chart is no longer available.')
-        entries = catalogue(snapshot.definition, task_repository)
+        # The template as written (its titles may name the NR Mode with tokens, which the Dashboard shows resolved).
+        try:
+            entries = core.load_template_catalogue(bytes(template['content']), task_repository=task_repository)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
         source_index = _entry.template_index if _entry.template_index is not None else index
         if source_index >= len(entries):
             raise HTTPException(404, 'The chart row is no longer available in the Report Template.')
@@ -6536,7 +6577,8 @@ def install_dashboard_routes(core):
                     changes[key] = core.parse_template_boolean(changes[key], label)
                 except ValueError as exc:
                     raise HTTPException(400, str(exc)) from exc
-        if changes.get("chart_title") == _entry.chart_title and any(value is not None for value in (_entry.dynamic_row_value, _entry.dynamic_column_value, _entry.dynamic_value)):
+        if changes.get("chart_title") in {_entry.chart_title, render_nr_mode_tokens(entries[source_index].chart_title, nr_mode)}:
+            # The title as the chart shows it (dynamic values, the NR Mode resolved): the template keeps its own.
             changes["chart_title"] = entries[source_index].chart_title
         for field in ('dynamic_rows_field', 'dynamic_columns_field', 'dynamic_field', 'rows_split', 'columns_split', 'legend'):
             if field in changes and changes[field] == getattr(_entry, field):
@@ -6550,7 +6592,7 @@ def install_dashboard_routes(core):
         entries[source_index] = updated_entry
         try:
             task_repository.set_report_template_content(
-                technology, template_name, core.catalogue_csv(entries), updated_by=user.username,
+                template_name, core.catalogue_csv(entries), updated_by=user.username,
             )
         except (OSError, ValueError) as exc:
             raise HTTPException(503, f'Unable to update the Report Template: {exc}') from exc
@@ -6564,7 +6606,6 @@ def install_dashboard_routes(core):
                 candidate for candidate in snapshots.values()
                 if (
                     candidate.workspace == snapshot.workspace
-                    and candidate.definition.template_technology == technology
                     and candidate.definition.template == template_name
                 )
             ]
@@ -6573,8 +6614,13 @@ def install_dashboard_routes(core):
                     current_source = current.template_index if current.template_index is not None else chart_index
                     if current_source != source_index:
                         continue
-                    effective_update = (prepare_multivendor_catalog_entry(updated_entry, candidate.definition.vendor_comparison)
-                                        if candidate.multivendor else updated_entry)
+                    candidate_mode = dashboard_nr_mode(candidate.definition)
+                    shown_update = replace(
+                        updated_entry, chart_title=render_nr_mode_tokens(updated_entry.chart_title, candidate_mode),
+                        slide_title=render_nr_mode_tokens(updated_entry.slide_title, candidate_mode),
+                        slide_subtitle=render_nr_mode_tokens(updated_entry.slide_subtitle, candidate_mode))
+                    effective_update = (prepare_multivendor_catalog_entry(shown_update, candidate.definition.vendor_comparison)
+                                        if candidate.multivendor else shown_update)
                     replacement = replace(
                         effective_update, slide=current.slide, layout=current.layout, template_index=current.template_index,
                         dynamic_value=current.dynamic_value,
@@ -6592,13 +6638,13 @@ def install_dashboard_routes(core):
                                 chart.update({'title': replacement.chart_title, 'source': replacement.source_kind,
                                               'cdr_source': replacement.cdr_source, 'chart_type': replacement.chart_type})
         task_repository.add_log(user.username, 'update_dashboard_chart_template', json.dumps({
-            'technology': technology, 'template': template_name, 'chart_index': index,
+            'template': template_name, 'nr_mode': nr_mode, 'chart_index': index,
         }))
         return {
-            'template': template_name, 'technology': technology, 'chart_index': index,
+            'template': template_name, 'chart_index': index,
             'synced_snapshots': len(matching_snapshots),
             'updated_at': str(next((
-                row['updated_at'] for row in task_repository.list_report_templates(technology)
+                row['updated_at'] for row in task_repository.list_report_templates()
                 if str(row['name']) == template_name
             ), '')),
         }
@@ -6606,12 +6652,11 @@ def install_dashboard_routes(core):
     def dashboard_status_signature(workspace, raw_definition, task_repository, shared) -> str:
         """Fingerprint every input that can change a Dashboard's cached universes."""
         definition = raw_definition if isinstance(raw_definition, dict) else {}
-        technology = str(definition.get('template_technology') or definition.get('technology') or 'nsa')
         template = str(definition.get('template') or '')
-        template_key = (technology, template)
+        template_key = template
         if template_key not in shared['templates']:
             try:
-                content = task_repository.report_template_content(technology, template)
+                content = task_repository.report_template_content(template)
                 shared['templates'][template_key] = sha256(content).hexdigest()
             except Exception:
                 shared['templates'][template_key] = ''
@@ -6877,18 +6922,18 @@ def install_dashboard_routes(core):
                     stopped = True
         return stopped
 
-    def rename_template_dashboards(technology: str, previous_template: str, template: str, username: str) -> int:
+    def rename_template_dashboards(previous_template: str, template: str, username: str) -> int:
         """Keep Dashboard template references and display names aligned after a template rename."""
         workspace = workspace_key()
         with lock:
             task_repository = bound_repository()
             dashboards = read_dashboards(task_repository)
             changed = [(dashboard_id, dashboards[dashboard_id])
-                       for dashboard_id in rename_template_in_dashboards(dashboards, technology, previous_template, template)]
+                       for dashboard_id in rename_template_in_dashboards(dashboards, previous_template, template)]
             if changed:
                 task_repository.set_workspace_state(STATE_KEY, json.dumps(dashboards))
                 task_repository.add_log(username, 'rename_dashboard_template_references', json.dumps({
-                    'technology': technology, 'previous_template': previous_template,
+                    'previous_template': previous_template,
                     'template': template, 'dashboards': len(changed),
                 }))
         for dashboard_id, definition in changed:

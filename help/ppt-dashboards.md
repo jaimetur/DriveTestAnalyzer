@@ -29,7 +29,7 @@ ppt-dashboards
 ## Before creating a Dashboard
 
 1. Open the correct workspace and process the required CDR types.
-2. Create or import a compatible **NSA/SA Report Template** in Workspace Config.
+2. Create or import a **Report Template** in Workspace Config. A template serves the CDRs of any NR Mode.
 3. For Multivendor Comparison, persist Vendor mappings first.
 4. Open **PPT Dashboards**.
 
@@ -45,12 +45,12 @@ Dashboards use the same template schema and renderer as Reporting. Detailed temp
 ### Create a definition
 
 1. Enter **Dashboard name**.
-2. Select **NR Mode** and a compatible **Template**.
+2. Select the **NR Mode** of the CDRs it reads and a **Template**. Any template serves both NR Modes: its titles name the NR Mode of the Dashboard where they write `{NR Mode}` (NSA or SA) or `{NR Mode Name}` (Non-Standalone or Standalone).
 3. Click **Create Dashboard**. The saved definition opens in Dashboard Scope & Filters.
 
-Names are unique within each NR Mode: an NSA and an SA Dashboard may share a name. The library sorts NSA first, then by name.
+Names are unique in the workspace, whatever the NR Mode each Dashboard reads: an NSA and an SA Dashboard of the same template need names of their own (for example **NSA - NetCheck CDR Report** and **SA - NetCheck CDR Report**). The library sorts NSA first, then by name.
 
-An existing or imported Dashboard **RF Quality (RSRP & SINR)** can use the workspace template **NSA - RF Quality (RSRP & SINR)**, with separate LTE and NR RSRP/SINR CDF, average, distribution, threshold and quality-map slides for Data, Voice and Speech, followed by the NSA NetCheck black-logo closing slide. Each chart family starts with an All CDR types slide pooling valid Data, Voice and Speech observations, followed by the separate types; LTE and NR remain separate. CDF slides use a two-by-two layout with LTE and NR above their contour histograms (5 dB RSRP bins; 1 dB SINR bins). Histograms show percentages per series, match CDF colours and campaign widths, and retain multivendor line patterns; red-to-green background bands match the quality-class slides. Grouped-bar histogram slides follow each CDF/contour slide for All CDR types, Data, Voice and Speech. Their `Title + 2 rows + dynamic columns + comments down` layout and `Dynamic Columns Field = Operator` create one column per selected Operator on the same slide, with LTE above NR and comments beneath. Every bin has one bar per Campaign, ordered oldest to newest: the newest uses the Operator colour and older Campaigns use progressively lighter shades. Percentages use the same valid-sample denominator and bin widths as the contour histograms. NR shares use valid NR measurements and do not measure availability across the entire route. Its Campaign is **Latest 2 campaigns**, so it uses the CDRs of the newest NSA campaigns; edit or delete it like any other Dashboard. See [Network Insights](network-insights.md#rf-quality-template-and-dashboard).
+An existing or imported Dashboard **RF Quality (RSRP & SINR)** can use the workspace template **RF Quality (RSRP & SINR)**, with separate LTE and NR RSRP/SINR CDF, average, distribution, threshold and quality-map slides for Data, Voice and Speech, followed by the NSA NetCheck black-logo closing slide. Each chart family starts with an All CDR types slide pooling valid Data, Voice and Speech observations, followed by the separate types; LTE and NR remain separate. CDF slides use a two-by-two layout with LTE and NR above their contour histograms (5 dB RSRP bins; 1 dB SINR bins). Histograms show percentages per series, match CDF colours and campaign widths, and retain multivendor line patterns; red-to-green background bands match the quality-class slides. Grouped-bar histogram slides follow each CDF/contour slide for All CDR types, Data, Voice and Speech. Their `Title + 2 rows + dynamic columns + comments down` layout and `Dynamic Columns Field = Operator` create one column per selected Operator on the same slide, with LTE above NR and comments beneath. Every bin has one bar per Campaign, ordered oldest to newest: the newest uses the Operator colour and older Campaigns use progressively lighter shades. Percentages use the same valid-sample denominator and bin widths as the contour histograms. NR shares use valid NR measurements and do not measure availability across the entire route. Its NR Mode is NSA and its Campaign **Latest 2 campaigns**, so it uses the CDRs of the newest NSA campaigns; edit or delete it like any other Dashboard. See [Network Insights](network-insights.md#rf-quality-template-and-dashboard).
 
 ### Row actions
 
@@ -67,10 +67,10 @@ An existing or imported Dashboard **RF Quality (RSRP & SINR)** can use the works
 
 ### Change name, NR Mode or template
 
-Edit the name in the table and confirm with the green check. NR Mode and Template have their own selectors.
+Edit the name in the table and confirm with the green check. NR Mode and Template have their own selectors, independent of each other: the NR Mode chooses the CDRs the Dashboard reads and keeps its template, and any template serves either NR Mode.
 
 > [!WARNING]
-> **Changing NR Mode or Template invalidates the prepared charts.** The application rebuilds them using the compatible template. An NR Mode change sets the Campaign filter to the newest campaigns of the new mode (the campaigns of the other mode do not apply); a template-only change keeps the Campaign.
+> **Changing NR Mode or Template invalidates the prepared charts.** The application rebuilds them. An NR Mode change sets the Campaign filter to the newest campaigns of the new mode (the campaigns of the other mode do not apply) and the titles of the template name the new NR Mode; a template-only change keeps the Campaign.
 
 The Scope, date settings, other filters, custom fields and comments are preserved. Only CDRs of the active NR Mode participate.
 
@@ -113,7 +113,7 @@ The Scope and vendor comparison are applied and saved with the filters. The view
 > [!IMPORTANT]
 > **Multivendor requires mapped Vendors.** The workspace must have at least two distinct cached Vendors, and the chosen CDRs must satisfy the mapping/comparison requirements. A single-vendor selection cannot produce a Multivendor comparison.
 
-NR Mode follows the shared reporting rule: Voice/Speech sessions are classified as NSA/SA; valid Data attempts remain available even when a sample RAT records a fallback. Use the **RAT** filter for a narrower technology selection.
+Each row keeps the NR Mode of its CDR: a Dashboard of an NR Mode reads every Data, Voice and Speech test of the CDRs of that NR Mode, whatever RAT or call mode it ran on (an EPS fallback call of an SA CDR is an SA test). Use the **RAT** filter for a narrower technology selection.
 
 **Select Comparison Scope** shows **Vendor comparison** beside Scope when Multivendor Comparison is chosen. Vendor Only (All Operators Combined) is first and is the default when entering multivendor scope.
 
@@ -486,13 +486,13 @@ Permitted editors can open the generating template and Auto-Calculated Fields wi
 
 | Included in the definition | Not copied by Dashboard definition export |
 | --- | --- |
-| Name, NR Mode and template association | Source CDRs |
+| Name, NR Mode of its CDRs and template association | Source CDRs |
 | Scope, dates, saved filters (Campaign included), hidden/additional fields | Prepared cache files |
 | Slide comments | Generated presentation assets |
 
-A Dashboard chooses its CDRs from its NR Mode and Campaign in the workspace where it is opened, so an imported Dashboard uses the CDRs of the destination with the same campaigns (Latest campaign, Latest 2, 3 and 4 campaigns and Previous campaign, among its newest ones). Dashboards exported by earlier versions with CDRs of their own take the campaigns of the CDRs of the destination with the same name and type, or else its newest two campaigns; check the inputs after import.
+A Dashboard chooses its CDRs from its NR Mode and Campaign in the workspace where it is opened, so an imported Dashboard uses the CDRs of the destination with the same campaigns (Latest campaign, Latest 2, 3 and 4 campaigns and Previous campaign, among its newest ones). Dashboards exported by earlier versions with CDRs of their own take the campaigns of the CDRs of the destination with the same name and type, or else its newest two campaigns; check the inputs after import. Dashboards exported when templates had an NR Mode of their own read that NR Mode as part of their selection and use their template as the destination knows it now (its NSA and SA copies merged into one); an SA Dashboard named as an NSA one takes " (SA)".
 
-Dashboards have their own Admin export/import/transfer/backup/restore component: an import or transfer replaces the Dashboards the destination has (found by their identity, so one renamed on the source server is renamed there too, or by name and NR Mode) and adds the others, and so does a restore (see [Matching and creators](administrator-config.md#matching-and-creators)). Full Workspace and Full Environment include definitions from selected workspaces, with Dashboards listed after Application Config.
+Dashboards have their own Admin export/import/transfer/backup/restore component: an import or transfer replaces the Dashboards the destination has (found by their identity, so one renamed on the source server is renamed there too, or by name) and adds the others, and so does a restore (see [Matching and creators](administrator-config.md#matching-and-creators)). Full Workspace and Full Environment include definitions from selected workspaces, with Dashboards listed after Application Config.
 
 > [!TIP]
 > Verify the template and Campaign after moving a Dashboard to another workspace. Its CDRs do not travel with it: it uses the CDRs of the destination for its campaigns.

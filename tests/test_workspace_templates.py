@@ -25,7 +25,7 @@ def test_new_workspaces_have_empty_independent_template_libraries(tmp_path):
     for workspace in (first, second):
         repo = Repository(workspace.database_path, tmp_path / 'application.db')
         repo.initialize()
-        assert repo.list_report_templates('nsa') == []
+        assert repo.list_report_templates() == []
 
 
 def test_report_template_migration_canonicalizes_existing_csv_layouts(tmp_path):
@@ -40,13 +40,13 @@ def test_report_template_migration_canonicalizes_existing_csv_layouts(tmp_path):
     ).encode('utf-8')
     with repo.connection() as conn:
         conn.execute(
-            "INSERT INTO report_templates (technology, name, content, is_default) VALUES ('nsa', 'Legacy', ?, 0)",
+            "INSERT INTO report_templates (name, content, is_default) VALUES ('Legacy', ?, 0)",
             (legacy,),
         )
 
     repo.initialize()
 
-    migrated = repo.report_template_content('nsa', 'Legacy').decode('utf-8')
+    migrated = repo.report_template_content('Legacy').decode('utf-8')
     assert 'Title + 2 rows + 2 columns + comments right' in migrated
     assert 'Dynamic Rows Field,Dynamic Columns Field' in migrated
     assert '2,Title + dynamic rows + 2 columns + comments down,Vendor,' in migrated
@@ -75,11 +75,11 @@ def test_template_registry_is_workspace_owned(tmp_path):
     second = Repository(tmp_path / 'b.db', tmp_path / 'app.db')
     first.initialize()
     second.initialize()
-    first.add_report_template('nsa', 'Only A', is_default=True)
-    assert len(first.list_report_templates('nsa')) == 1
-    assert second.list_report_templates('nsa') == []
+    first.add_report_template('Only A', is_default=True)
+    assert len(first.list_report_templates()) == 1
+    assert second.list_report_templates() == []
     first.initialize()
-    assert first.list_report_templates('nsa')[0]['name'] == 'Only A'
+    assert first.list_report_templates()[0]['name'] == 'Only A'
 
 
 def test_template_package_matches_source_and_imports_to_multiple_workspaces(client, tmp_path):
@@ -93,16 +93,16 @@ def test_template_package_matches_source_and_imports_to_multiple_workspaces(clie
     (obsolete_directory / 'old.csv').write_text('obsolete', encoding='utf-8')
     repo = Repository(other.database_path, app_module.repository.global_db_path)
     repo.initialize()
-    assert repo.list_report_templates('nsa') == []
+    assert repo.list_report_templates() == []
     archive_path = tmp_path / 'templates.zip'
     archive_path.write_bytes(package)
     assert app_module.matching_template_workspaces(manifest, [other, source]) == [source.id]
     app_module._apply_import_archive(archive_path, manifest, destination_workspace_ids=[source.id, other.id])
-    copied = next(row for row in repo.list_report_templates('nsa') if row['is_default'])
-    source_content = app_module.reporting_catalog_content('nsa')
+    copied = next(row for row in repo.list_report_templates() if row['is_default'])
+    source_content = app_module.reporting_catalog_content()
     assert bytes(copied['content']) == source_content
-    repo.set_report_template_content('nsa', str(copied['name']), b'independent')
-    assert app_module.reporting_catalog_content('nsa') == source_content
+    repo.set_report_template_content(str(copied['name']), b'independent')
+    assert app_module.reporting_catalog_content() == source_content
     assert repo.list_datasets() == []
     assert not obsolete_directory.exists()
     assert not other.slides_templates_dir.exists()
@@ -121,10 +121,10 @@ def test_template_package_replaces_and_adds_templates_without_duplicates(client,
     workspace = app_module.workspace_registry.create('Template destination')
     repo = Repository(workspace.database_path, app_module.repository.global_db_path)
     repo.initialize()
-    repo.add_report_template('nsa', 'Old', b'old')
-    repo.add_report_template('nsa', 'Same', b'previous')
-    repo.add_report_template('nsa', 'Case Name', b'previous case')
-    repo.add_report_template('nsa', 'Used', b'keep this', is_default=True)
+    repo.add_report_template('Old', b'old')
+    repo.add_report_template('Same', b'previous')
+    repo.add_report_template('Case Name', b'previous case')
+    repo.add_report_template('Used', b'keep this', is_default=True)
     repo.set_workspace_state(app_module.DASHBOARD_STATE_KEY, json.dumps({
         'dashboard-1': {'template_technology': 'nsa', 'template': 'Used'},
     }))
@@ -141,7 +141,7 @@ def test_template_package_replaces_and_adds_templates_without_duplicates(client,
 
     for _ in range(2):
         assert app_module.import_slides_templates_archive(staging, [workspace.id], importing_user='super') == 1
-    rows = {str(row['name']): row for row in repo.list_report_templates('nsa')}
+    rows = {str(row['name']): row for row in repo.list_report_templates()}
     # The templates only the destination has stay; those of the package replace theirs and take its names.
     assert set(rows) == {'Old', 'Same', 'case name', 'used', 'New'}
     assert bytes(rows['Old']['content']) == b'old'
@@ -163,8 +163,8 @@ def test_template_renamed_on_the_source_is_renamed_in_the_destination(client, tm
     destination_repo = Repository(destination.database_path, app_module.repository.global_db_path)
     for repo in (source_repo, destination_repo):
         repo.initialize()
-    source_repo.add_report_template('nsa', 'Coverage', b'first', updated_by='super')
-    destination_repo.add_report_template('nsa', 'Elsewhere', b'local', updated_by='super')
+    source_repo.add_report_template('Coverage', b'first', updated_by='super')
+    destination_repo.add_report_template('Elsewhere', b'local', updated_by='super')
     package_path = tmp_path / 'templates.zip'
     app_module.build_export_archive_file('ppt-templates', package_path, [source.id])
     app_module._apply_import_archive(package_path, app_module.read_import_manifest(package_path),
@@ -174,12 +174,12 @@ def test_template_renamed_on_the_source_is_renamed_in_the_destination(client, tm
     }))
 
     # Renamed and changed on the source, another template of the destination already having its new name.
-    source_repo.rename_report_template('nsa', 'Coverage', 'Elsewhere')
-    source_repo.set_report_template_content('nsa', 'Elsewhere', b'second')
+    source_repo.rename_report_template('Coverage', 'Elsewhere')
+    source_repo.set_report_template_content('Elsewhere', b'second')
     app_module.build_export_archive_file('ppt-templates', package_path, [source.id])
     notice = app_module._apply_import_archive(package_path, app_module.read_import_manifest(package_path),
                                               destination_workspace_ids=[destination.id], importing_user='other')
-    rows = {str(row['name']): row for row in destination_repo.list_report_templates('nsa')}
+    rows = {str(row['name']): row for row in destination_repo.list_report_templates()}
     assert set(rows) == {'Elsewhere', 'Elsewhere (2)'}
     assert bytes(rows['Elsewhere']['content']) == b'local'
     # A Dashboard of the destination uses it, so it keeps its definition (the package brings no Dashboards).
@@ -194,7 +194,7 @@ def test_template_renamed_on_the_source_is_renamed_in_the_destination(client, tm
     destination_repo.set_workspace_state(app_module.DASHBOARD_STATE_KEY, '{}')
     app_module._apply_import_archive(package_path, app_module.read_import_manifest(package_path),
                                      destination_workspace_ids=[destination.id], importing_user='other')
-    rows = {str(row['name']): row for row in destination_repo.list_report_templates('nsa')}
+    rows = {str(row['name']): row for row in destination_repo.list_report_templates()}
     assert set(rows) == {'Elsewhere', 'Elsewhere (2)'}
     assert bytes(rows['Elsewhere (2)']['content']) == b'second'
 
@@ -203,7 +203,7 @@ def test_template_package_with_dashboards_replaces_referenced_templates(client, 
     workspace = app_module.workspace_registry.create('Bundle destination')
     repo = Repository(workspace.database_path, app_module.repository.global_db_path)
     repo.initialize()
-    repo.add_report_template('nsa', 'Used', b'old', is_default=True)
+    repo.add_report_template('Used', b'old', is_default=True)
     repo.set_workspace_state(app_module.DASHBOARD_STATE_KEY, json.dumps({
         'dashboard-1': {'template_technology': 'nsa', 'template': 'Used'},
     }))
@@ -213,7 +213,7 @@ def test_template_package_with_dashboards_replaces_referenced_templates(client, 
     (library / 'Used.csv').write_bytes(b'new')
 
     app_module.import_slides_templates_archive(staging, [workspace.id], includes_dashboards=True)
-    rows = repo.list_report_templates('nsa')
+    rows = repo.list_report_templates()
     assert len(rows) == 1
     assert bytes(rows[0]['content']) == b'new'
 
@@ -221,11 +221,11 @@ def test_template_package_with_dashboards_replaces_referenced_templates(client, 
 def test_template_and_dashboard_bundle_replaces_referenced_template(client, tmp_path):
     source = app_module.active_workspace
     source_repo = Repository(source.database_path, app_module.repository.global_db_path)
-    source_repo.add_report_template('nsa', 'Bundle Used', b'imported')
+    source_repo.add_report_template('Bundle Used', b'imported')
     destination = app_module.workspace_registry.create('Bundle destination')
     destination_repo = Repository(destination.database_path, app_module.repository.global_db_path)
     destination_repo.initialize()
-    destination_repo.add_report_template('nsa', 'Bundle Used', b'local')
+    destination_repo.add_report_template('Bundle Used', b'local')
     destination_repo.set_workspace_state(app_module.DASHBOARD_STATE_KEY, json.dumps({
         'local-dashboard': {'template_technology': 'nsa', 'template': 'Bundle Used'},
     }))
@@ -242,7 +242,7 @@ def test_template_and_dashboard_bundle_replaces_referenced_template(client, tmp_
     assert [phase for phase in phases if phase.startswith('importing package') and ':' not in phase] == [
         'importing package 1 of 2 (PPT Templates)', 'importing package 2 of 2 (Dashboards)']
     assert 'importing package 1 of 2 (PPT Templates): importing PPT Templates' in phases
-    rows = [row for row in destination_repo.list_report_templates('nsa') if str(row['name']) == 'Bundle Used']
+    rows = [row for row in destination_repo.list_report_templates() if str(row['name']) == 'Bundle Used']
     assert len(rows) == 1
     assert bytes(rows[0]['content']) == b'imported'
     # The Dashboards of the bundle (the source's starter Dashboards) are added to the local ones.
@@ -254,20 +254,20 @@ def test_template_and_dashboard_bundle_replaces_referenced_template(client, tmp_
 
 def test_selective_template_restore_replaces_and_adds_like_an_import(client, tmp_path):
     repo = app_module.repository
-    repo.add_report_template('nsa', 'Backup Template', b'archived')
+    repo.add_report_template('Backup Template', b'archived')
     archive_path = app_module.create_recurring_database_backup({
         'components': ['report_templates'], 'backup_path': str(tmp_path / 'backups'),
         'max_backups': 30, 'workspace_ids': [app_module.active_workspace.id],
     })
-    repo.set_report_template_content('nsa', 'Backup Template', b'local edit')
-    repo.add_report_template('nsa', 'Old', b'remove')
-    repo.add_report_template('nsa', 'Used', b'preserve')
+    repo.set_report_template_content('Backup Template', b'local edit')
+    repo.add_report_template('Old', b'remove')
+    repo.add_report_template('Used', b'preserve')
     repo.set_workspace_state(app_module.DASHBOARD_STATE_KEY, json.dumps({
         'local-dashboard': {'template_technology': 'nsa', 'template': 'Used'},
     }))
 
     app_module.restore_database_backup(archive_path, ['report_templates'])
-    rows = {str(row['name']): row for row in repo.list_report_templates('nsa')}
+    rows = {str(row['name']): row for row in repo.list_report_templates()}
     # The templates the backup does not have stay, as with an import.
     assert bytes(rows['Old']['content']) == b'remove'
     assert bytes(rows['Backup Template']['content']) == b'archived'
@@ -284,8 +284,8 @@ def test_template_export_pins_source_when_active_workspace_changes(client, tmp_p
         assert json.loads(archive.read('manifest.json'))['source_workspace']['name'] == source.name
         assert any(name.endswith('.csv') for name in archive.namelist())
     # The options are the other workspace's own templates: only the ones every workspace starts with.
-    starter = {path.stem for path in (app_module.PROJECT_ROOT / 'assets' / 'ppt-templates' / 'nsa').glob('*.csv')}
-    assert {item['identifier'] for item in app_module.report_catalogue_options('nsa')} == starter
+    starter = {path.stem for path in (app_module.PROJECT_ROOT / 'assets' / 'ppt-templates').glob('*.csv')}
+    assert {item['identifier'] for item in app_module.report_catalogue_options()} == starter
 
 
 def test_inspection_preselects_only_matching_workspace_and_is_for_super_admins(client, tmp_path, monkeypatch):
@@ -318,7 +318,7 @@ def test_workspace_archive_and_duplicate_include_templates(client, tmp_path):
     duplicate = app_module.workspace_registry.duplicate(source.id)
     repo = Repository(duplicate.database_path, app_module.repository.global_db_path)
     repo.initialize()
-    assert repo.list_report_templates('nsa')
+    assert repo.list_report_templates()
     assert not list(duplicate.slides_templates_dir.rglob('*.csv'))
 
 

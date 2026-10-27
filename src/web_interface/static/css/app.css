@@ -997,17 +997,16 @@ body [data-section-bar].is-compact > a.section-bar-top { padding: .45rem .55rem;
 .catalogue-timestamp { width: 8rem; white-space: nowrap; color: #455964; font-size: 0.95rem; font-weight: 700; }
 .catalogue-timestamp > span { display: block; }
 .catalogue-workspace-table th:first-child, .catalogue-workspace-table td:first-child { width: auto; }
-.catalogue-workspace-table th:nth-child(2), .catalogue-workspace-table td:nth-child(2) { width: 8rem; min-width: 8rem; }
-.catalogue-workspace-table th:nth-child(3), .catalogue-workspace-table td:nth-child(3),
-.catalogue-workspace-table th:nth-child(4), .catalogue-workspace-table td:nth-child(4) { width: 8rem; }
-.catalogue-workspace-table th:nth-child(5), .catalogue-workspace-table td:nth-child(5) { width: 8.5rem; overflow-wrap: anywhere; }
+.catalogue-workspace-table th:nth-child(2), .catalogue-workspace-table td:nth-child(2),
+.catalogue-workspace-table th:nth-child(3), .catalogue-workspace-table td:nth-child(3) { width: 8rem; }
+.catalogue-workspace-table th:nth-child(4), .catalogue-workspace-table td:nth-child(4) { width: 8.5rem; overflow-wrap: anywhere; }
 .catalogue-workspace-table th:last-child, .catalogue-workspace-table td:last-child { box-sizing: border-box; width: 13.5rem; min-width: 13.5rem; white-space: nowrap; }
 .catalogue-default-cell { width: 5.5rem; text-align: center; }
-.catalogue-workspace-table th:nth-child(6), .catalogue-workspace-table td:nth-child(6) { width: 5.5rem; text-align: center; }
+.catalogue-workspace-table th:nth-child(5), .catalogue-workspace-table td:nth-child(5) { width: 5.5rem; text-align: center; }
 .catalogue-default-mark { display: inline-grid; place-items: center; width: 1.6rem; height: 1.6rem; border-radius: 999px; font-size: 1rem; font-weight: 800; line-height: 1; }
 .catalogue-default-mark.is-default { color: #08736d; background: rgba(8, 115, 109, 0.14); border: 1px solid rgba(8, 115, 109, 0.34); }
 .catalogue-default-mark.is-not-default { color: #87949d; background: rgba(135, 148, 157, 0.12); border: 1px solid rgba(135, 148, 157, 0.28); }
-.catalogue-rename-form, .catalogue-type-form, .catalogue-workspace-actions { display: flex; align-items: center; gap: 0.45rem; }
+.catalogue-rename-form, .catalogue-workspace-actions { display: flex; align-items: center; gap: 0.45rem; }
 .catalogue-rename-form { min-width: 280px; margin: 0; }
 .catalogue-rename-form input { min-width: 0; }
 .catalogue-rename-form button, .catalogue-workspace-actions button, .catalogue-workspace-actions .catalogue-export-button, .catalogue-workspace-actions .catalogue-edit-button { min-height: 2rem; padding: 0.4rem 0.65rem; border-radius: 999px; font-size: 0.78rem; }
@@ -1036,6 +1035,8 @@ body [data-section-bar].is-compact > a.section-bar-top { padding: .45rem .55rem;
 .slides-templates-editor-table td.is-find-match { box-shadow: inset 0 0 0 2px rgba(231, 189, 101, 0.95); background-color: rgba(255, 241, 196, 0.75); }
 .slides-templates-editor-table td.is-find-current { box-shadow: inset 0 0 0 3px #d08a0b; background-color: rgba(255, 224, 138, 0.9); }
 .catalogue-table-toolbar button { min-height: 2.15rem; padding: 0.4rem 0.75rem; }
+.catalogue-preview-nr-mode { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; font-weight: 600; }
+.catalogue-preview-nr-mode select { min-height: 2.15rem; width: auto; }
 .catalogue-calculated-dimensions-button { background: linear-gradient(145deg, #fff2ad, #efd66e); border-color: rgba(174, 132, 28, 0.54); color: #715211; box-shadow: 0 8px 18px rgba(167, 122, 19, 0.16); }
 .catalogue-calculated-dimensions-button:hover:not(:disabled) { background: linear-gradient(145deg, #ffea84, #dfbd45); color: #533b09; }
 .workspace-calculated-dimensions-content { display: grid; gap: 1rem; padding-top: 0.8rem; }
@@ -3436,12 +3437,11 @@ body:has(.release-navigator) .help-navigator{top:37%}
   }
   .workspace-library-table td::before { content: attr(data-label); }
   .catalogue-workspace-table td:nth-child(1)::before { content: 'Template name'; }
-  .catalogue-workspace-table td:nth-child(2)::before { content: 'NR Mode'; }
-  .catalogue-workspace-table td:nth-child(3)::before { content: 'Created'; }
-  .catalogue-workspace-table td:nth-child(4)::before { content: 'Last Updated'; }
-  .catalogue-workspace-table td:nth-child(5)::before { content: 'Last Updated by'; }
-  .catalogue-workspace-table td:nth-child(6)::before { content: 'Default'; }
-  .catalogue-workspace-table td:nth-child(7)::before { content: 'Actions'; }
+  .catalogue-workspace-table td:nth-child(2)::before { content: 'Created'; }
+  .catalogue-workspace-table td:nth-child(3)::before { content: 'Last Updated'; }
+  .catalogue-workspace-table td:nth-child(4)::before { content: 'Last Updated by'; }
+  .catalogue-workspace-table td:nth-child(5)::before { content: 'Default'; }
+  .catalogue-workspace-table td:nth-child(6)::before { content: 'Actions'; }
   .report-jobs-table td:nth-child(1)::before { content: 'ID'; }
   .report-jobs-table td:nth-child(2)::before { content: 'Generated by'; }
   .report-jobs-table td:nth-child(3)::before { content: 'Date'; }
@@ -3463,8 +3463,7 @@ body:has(.release-navigator) .help-navigator{top:37%}
   .report-jobs-table td:nth-child(1) { grid-column: 1 / -1; }
   .catalogue-workspace-table tbody tr { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .reporting-stack .report-jobs-table tbody tr { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .catalogue-workspace-table td:nth-child(2) { grid-column: 1 / -1; }
-  .catalogue-workspace-table td:nth-child(1), .catalogue-workspace-table td:nth-child(7),
+  .catalogue-workspace-table td:nth-child(1), .catalogue-workspace-table td:nth-child(6),
   .report-jobs-table td:nth-child(13),
   .workspace-library-table td[data-label="Workspace"], .workspace-library-table td[data-label="Users with access"],
   .workspace-library-table td[data-label="Actions"],
@@ -3476,10 +3475,10 @@ body:has(.release-navigator) .help-navigator{top:37%}
   .workspace-library-table .workspace-row-actions {
     max-width: none; flex-wrap: nowrap; justify-content: flex-start; gap: 0.3rem; white-space: nowrap;
   }
-  .catalogue-workspace-table td:nth-child(7),
+  .catalogue-workspace-table td:nth-child(6),
   .report-jobs-table td:nth-child(13), .workspace-library-table td[data-label="Actions"],
   .recovered-transfer-table td:nth-child(5) { grid-column: 1 / -1; }
-  .catalogue-workspace-table td:nth-child(7) { grid-column: span 1; }
+  .catalogue-workspace-table td:nth-child(6) { grid-column: span 1; }
   .catalogue-workspace-table input,
   .catalogue-workspace-table select { width: 100%; }
   .import-export-panel { padding: 0.55rem; }

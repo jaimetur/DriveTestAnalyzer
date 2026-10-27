@@ -48,9 +48,11 @@ The Workspace Config section is available to `user-editor`, `admin` and `super-a
 
 Templates belong to the active workspace and are stored in that workspace database's `report_templates` table. Import, export, backup and transfer packages serialize them as portable CSV files, but those files are package artifacts rather than the live source of record. Obsolete `slides-templates` directories are removed by the current migration and portability flows.
 
-PPT Templates Management supports NSA and SA templates, one default for each technology, and the editor described below. Template names are unique per NR Mode, so an NSA and an SA template may share a name.
+PPT Templates Management keeps one library of templates, one of them the default, and the editor described below. A template has no NR Mode of its own: it serves the CDRs of any NR Mode, and each Dashboard (or Reporting job) chooses the NR Mode it reads. Its slide titles, subtitles and chart titles name that NR Mode where they write `{NR Mode}` (NSA or SA) or `{NR Mode Name}` (Non-Standalone or Standalone), so one template gives the NSA and the SA decks. Template names are unique in the workspace.
 
-The library is sorted by NR Mode (NSA first) and then name; its columns show the NR Mode, creation and last update times, and **Last Updated by**, the user who last imported, edited, renamed, duplicated, promoted or moved the template.
+The library is sorted by name (an NR Mode written in a name, such as `NSA - Report`, is ignored for the order); its columns show the creation and last update times and **Last Updated by**, the user who last imported, edited, renamed, duplicated or promoted the template.
+
+Workspaces of earlier versions kept an NSA and an SA library: when they open, each pair of templates that only differed in the titles naming the mode (for example **NSA - NetCheck CDR Report** with *Non-Standalone* and **SA - NetCheck CDR Report** with *Standalone*) becomes one template named without the mode (**NetCheck CDR Report**) whose titles use the tokens, and the Dashboards, PPT jobs and Reporting (old) jobs that used either copy use it. A title only one copy named (such as *SA RF Quality Analysis* beside *RF Quality Analysis*) takes `{NR Mode}` in both. The other templates keep their names, an SA one named as an NSA one taking " (SA)". The App Events record it (`report_templates_nr_mode_merged`). Packages and backups of earlier versions are imported the same way.
 
 Available actions:
 
@@ -59,16 +61,15 @@ Available actions:
 - Edit
 - Rename
 - Duplicate
-- Change NR Mode (NSA/SA)
 - Set Default
 - Export
 - Delete
 
-**New Template** creates a blank NSA definition and opens it for editing. Import accepts a CSV name or derives it from the filename, can convert a legacy catalogue when prompted and requires explicit overwrite confirmation for a case-insensitive name collision.
+**New Template** creates a blank definition and opens it for editing. Import accepts a CSV name or derives it from the filename, can convert a legacy catalogue when prompted and requires explicit overwrite confirmation for a case-insensitive name collision.
 
-Renaming saves when you leave the name field or press Enter; the field keeps its previous name and shows an error if the save fails. Each template has an identity that never changes, and each Dashboard refers to its template by it, so a renamed template stays the template of its Dashboards (whose names, when they repeat the template name, follow it too); a duplicate gets its own identity. Duplicate creates `- Copy`; a non-default template can move between NSA and SA when no same-name target exists.
+Renaming saves when you leave the name field or press Enter; the field keeps its previous name and shows an error if the save fails. Each template has an identity that never changes, and each Dashboard refers to its template by it, so a renamed template stays the template of its Dashboards (whose names, when they repeat the template name, follow it too); a duplicate gets its own identity. Duplicate creates `- Copy`.
 
-One template can be default for each technology within a workspace. Reporting initially selects that default but does not change it when a user chooses another template for one job. A default template cannot change type or be deleted until another template becomes default. Only admins, super-admins and the user who created a template (with New Template, Import CSV or Duplicate; one brought by Admin Import / Transfer belongs to its creator on the source server when that user is active here, otherwise to whoever imports it) delete it; for the other users **Delete** is disabled and its tooltip says why. New workspaces start without templates.
+One template is the default within a workspace. Reporting initially selects that default but does not change it when a user chooses another template for one job. A default template cannot be deleted until another template becomes default. Only admins, super-admins and the user who created a template (with New Template, Import CSV or Duplicate; one brought by Admin Import / Transfer belongs to its creator on the source server when that user is active here, otherwise to whoever imports it) delete it; for the other users **Delete** is disabled and its tooltip says why. New workspaces start without templates.
 
 The row Export action downloads that individual CSV; portable ZIP export is available under Import / Export / Transfer.
 
@@ -104,6 +105,7 @@ The row Export action downloads that individual CSV; portable ZIP export is avai
 - Shared Filter Builder with parsed-expression display. Its conditions reach the Filters cell when **Apply filter** is pressed, once the filter is complete.
 - Chart Data Preview opens the full filtered dataset directly.
 - Chart Preview reuses the shared Interactive Preview.
+- **Preview NR Mode** (NSA by default), in the toolbar, chooses the CDRs the previews read: the ready CDRs of that NR Mode, every Data, Voice and Speech test of them, and the titles of the preview name it (`{NR Mode}`, `{NR Mode Name}`).
 - **Update Template** applies preview values to the in-memory row; it does not save to disk.
 - **Auto-calculated Fields** opens the shared active-workspace field manager.
 

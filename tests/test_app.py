@@ -1787,15 +1787,13 @@ def test_combined_tables_materialize_fixed_preview_fields_and_every_saved_templa
     repository = Repository(tmp_path / 'template-kpis.db')
     repository.initialize()
     fixture = (app_module.PROJECT_ROOT / 'tests' / 'fixtures' / 'NSA Slide Template.csv').read_bytes()
-    entries = app_module.parse_catalog_csv(fixture, 'nsa', validate_filters=False)
+    entries = app_module.parse_catalog_csv(fixture, validate_filters=False)
     data_entry = next(entry for entry in entries if entry.source_kind == 'data')
     voice_entry = next(entry for entry in entries if entry.source_kind == 'voice')
-    repository.add_report_template(
-        'nsa', 'Data coordinates',
+    repository.add_report_template('Data coordinates',
         app_module.catalogue_csv([replace(data_entry, kpi='Latitude vs Longitude')]),
     )
-    repository.add_report_template(
-        'sa', 'Voice quality',
+    repository.add_report_template('Voice quality',
         app_module.catalogue_csv([replace(voice_entry, kpi='Voice_Metric | Voice_Backup')]),
     )
     dataset_id, _created = repository.add_dataset('data.csv', str(tmp_path / 'data.csv'), 'admin')
@@ -1830,12 +1828,12 @@ def test_template_field_changes_add_combined_columns_and_keep_unused_fields(tmp_
     repository = Repository(tmp_path / 'template-fields.db')
     repository.initialize()
     fixture = (app_module.PROJECT_ROOT / 'tests' / 'fixtures' / 'NSA Slide Template.csv').read_bytes()
-    entry = next(item for item in app_module.parse_catalog_csv(fixture, 'nsa') if item.source_kind == 'data')
+    entry = next(item for item in app_module.parse_catalog_csv(fixture) if item.source_kind == 'data')
     configured = replace(
         entry, kpi='Extra_Metric', rows_split='Extra_Group',
         legend='Extra_Legend', filters='Extra_Filter = Example',
     )
-    repository.add_report_template('nsa', 'Primary', app_module.catalogue_csv([configured]))
+    repository.add_report_template('Primary', app_module.catalogue_csv([configured]))
     dataset_id, _created = repository.add_dataset('data.csv', str(tmp_path / 'data.csv'), 'admin')
     repository.update_dataset_profile(dataset_id, status='ready', dataset_kind='data', row_count=1)
     with repository.connection() as connection:
@@ -1853,16 +1851,15 @@ def test_template_field_changes_add_combined_columns_and_keep_unused_fields(tmp_
     columns = set(repository.list_reporting_row_columns('data'))
     assert {'Extra_Metric', 'Extra_Group', 'Extra_Legend', 'Extra_Filter'} <= columns
 
-    repository.set_report_template_content(
-        'nsa', 'Primary', app_module.catalogue_csv([replace(configured, chart_title='Renamed chart')]),
+    repository.set_report_template_content('Primary', app_module.catalogue_csv([replace(configured, chart_title='Renamed chart')]),
     )
     assert app_module.combined_reporting_template_columns_signature(repository) == original_signature
 
-    repository.add_report_template('nsa', 'Secondary', app_module.catalogue_csv([replace(entry, kpi='Extra_Metric')]))
-    repository.set_report_template_content('nsa', 'Primary', app_module.catalogue_csv([entry]))
+    repository.add_report_template('Secondary', app_module.catalogue_csv([replace(entry, kpi='Extra_Metric')]))
+    repository.set_report_template_content('Primary', app_module.catalogue_csv([entry]))
     assert 'Extra_Metric' in repository.list_reporting_row_columns('data')
 
-    repository.delete_report_template('nsa', 'Secondary')
+    repository.delete_report_template('Secondary')
     assert app_module.combined_reporting_template_columns_signature(repository) != original_signature
     remaining = {column_identity(column) for column in repository.list_reporting_row_columns('data')}
     assert column_identity('Extra_Metric') in remaining
@@ -1879,8 +1876,8 @@ def test_template_column_reconciliation_is_queued_only_for_missing_fields(tmp_pa
     repository = Repository(database_path)
     repository.initialize()
     fixture = (app_module.PROJECT_ROOT / 'tests' / 'fixtures' / 'NSA Slide Template.csv').read_bytes()
-    entry = next(item for item in app_module.parse_catalog_csv(fixture, 'nsa') if item.source_kind == 'data')
-    repository.add_report_template('nsa', 'Primary', app_module.catalogue_csv([entry]))
+    entry = next(item for item in app_module.parse_catalog_csv(fixture) if item.source_kind == 'data')
+    repository.add_report_template('Primary', app_module.catalogue_csv([entry]))
     dataset_id, _created = repository.add_dataset('data.csv', str(tmp_path / 'data.csv'), 'admin')
     repository.update_dataset_profile(dataset_id, status='ready', dataset_kind='data', row_count=1)
     with repository.connection() as connection:
@@ -1899,7 +1896,7 @@ def test_template_column_reconciliation_is_queued_only_for_missing_fields(tmp_pa
     monkeypatch.setattr(app_module, 'AUTO_CALCULATED_FIELD_JOBS', {})
     monkeypatch.setattr(app_module, 'WORKSPACE_DIMENSION_MATERIALIZATION_THREADS', set())
 
-    repository.set_report_template_content('nsa', 'Primary', app_module.catalogue_csv([replace(entry, kpi='New_Metric')]))
+    repository.set_report_template_content('Primary', app_module.catalogue_csv([replace(entry, kpi='New_Metric')]))
     assert app_module.missing_workspace_template_columns(repository) == {'data': ['New_Metric']}
     app_module.queue_workspace_dimension_materialization(workspace)
     assert scheduled == [True]
@@ -1911,7 +1908,7 @@ def test_template_column_reconciliation_is_queued_only_for_missing_fields(tmp_pa
     )
     app_module.WORKSPACE_DIMENSION_MATERIALIZATION_THREADS.clear()
     app_module.AUTO_CALCULATED_FIELD_JOBS.clear()
-    repository.set_report_template_content('nsa', 'Primary', app_module.catalogue_csv([entry]))
+    repository.set_report_template_content('Primary', app_module.catalogue_csv([entry]))
     app_module.queue_workspace_dimension_materialization(workspace)
     assert scheduled == [True]
     assert repository.get_workspace_state('combined_reporting_template_columns_signature') == (
@@ -2238,7 +2235,7 @@ def test_renaming_calculated_dimension_rebuilds_references_in_templates_and_dash
     assert response.json()['renamed_templates'] >= 1
     assert response.json()['renamed_dashboards'] == 1
     assert any(item.name == 'Test Classification' for item in app_module.load_workspace_calculated_dimensions())
-    template = next(item for item in app_module.report_catalogue_options('nsa') if item['active'])
+    template = next(item for item in app_module.report_catalogue_options() if item['active'])
     template_text = bytes(template['content']).decode('utf-8')
     assert 'Test Classification' in template_text
     assert 'Test Family' not in template_text
@@ -6521,7 +6518,7 @@ def test_interactive_template_save_fails_fast_while_workspace_writer_is_busy(cli
     import src.DriveTestAnalyzer as app_module
 
     login(client)
-    template = app_module.report_catalogue_options('nsa')[0]
+    template = app_module.report_catalogue_options()[0]
 
     class BusyWorkspaceLock:
         def acquire(self, timeout=None):
@@ -6532,7 +6529,7 @@ def test_interactive_template_save_fails_fast_while_workspace_writer_is_busy(cli
 
     monkeypatch.setattr(app_module, 'workspace_write_lock', lambda _path: BusyWorkspaceLock())
     response = client.post(
-        f'/workspace-config/report-templates/nsa/{quote(template["identifier"], safe="")}/save',
+        f'/workspace-config/report-templates/{quote(template["identifier"], safe="")}/save',
         data={'catalogue_content': bytes(template['content']).decode('utf-8')},
         headers={'accept': 'application/json'},
     )
@@ -6545,32 +6542,32 @@ def test_interactive_template_validation_rejects_invalid_content_before_save(cli
     import src.DriveTestAnalyzer as app_module
 
     login(client)
-    template = app_module.report_catalogue_options('nsa')[0]
+    template = app_module.report_catalogue_options()[0]
     original = bytes(template['content'])
     content = original.decode('utf-8')
-    valid = client.post('/api/workspace-config/report-templates/nsa/validate', json={'catalogue_content': content})
+    valid = client.post('/api/workspace-config/report-templates/validate', json={'catalogue_content': content})
     assert valid.status_code == 200
     assert valid.json()['valid'] is True
 
     malformed = content + '\n1,unexpected,extra,values,that,exceed,the,template,header,' + ','.join(['x'] * 50)
-    invalid = client.post('/api/workspace-config/report-templates/nsa/validate', json={'catalogue_content': malformed})
+    invalid = client.post('/api/workspace-config/report-templates/validate', json={'catalogue_content': malformed})
     assert invalid.status_code == 200
     assert invalid.json()['valid'] is False
     assert 'more values than the template header' in invalid.json()['detail']
 
     saved = client.post(
-        f'/workspace-config/report-templates/nsa/{quote(template["identifier"], safe="")}/save',
+        f'/workspace-config/report-templates/{quote(template["identifier"], safe="")}/save',
         data={'catalogue_content': malformed}, headers={'accept': 'application/json'},
     )
     assert saved.status_code == 400
-    assert app_module.repository.report_template_content('nsa', template['identifier']) == original
+    assert app_module.repository.report_template_content(template['identifier']) == original
 
 
 def test_interactive_template_save_schedules_materialization_after_releasing_workspace_writer(client, monkeypatch) -> None:
     import src.DriveTestAnalyzer as app_module
 
     login(client)
-    template = app_module.report_catalogue_options('nsa')[0]
+    template = app_module.report_catalogue_options()[0]
     content = bytes(template['content']).decode('utf-8')
     calls = []
     inside_write = False
@@ -6590,7 +6587,7 @@ def test_interactive_template_save_schedules_materialization_after_releasing_wor
         assert writer.acquire(blocking=False)
         try:
             assert workspace == app_module.active_workspace
-            assert app_module.repository.report_template_content('nsa', template['identifier'])
+            assert app_module.repository.report_template_content(template['identifier'])
             calls.append(workspace.id)
         finally:
             writer.release()
@@ -6600,7 +6597,7 @@ def test_interactive_template_save_schedules_materialization_after_releasing_wor
     scheduled = []
     monkeypatch.setattr(app_module, 'submit_background_task', lambda callback, *args: scheduled.append((callback, args)))
     response = client.post(
-        f'/workspace-config/report-templates/nsa/{quote(template["identifier"], safe="")}/save',
+        f'/workspace-config/report-templates/{quote(template["identifier"], safe="")}/save',
         data={'catalogue_content': content},
         headers={'accept': 'application/json'},
     )
@@ -6616,7 +6613,7 @@ def test_interactive_template_save_returns_before_dashboard_comment_reconciliati
     import src.DriveTestAnalyzer as app_module
 
     login(client)
-    template = app_module.report_catalogue_options('nsa')[0]
+    template = app_module.report_catalogue_options()[0]
     content = bytes(template['content']).decode('utf-8')
     scheduled = []
     reconciled = []
@@ -6633,7 +6630,7 @@ def test_interactive_template_save_returns_before_dashboard_comment_reconciliati
         lambda *_args: reconciled.append(True),
     )
     response = client.post(
-        f'/workspace-config/report-templates/nsa/{quote(template["identifier"], safe="")}/save',
+        f'/workspace-config/report-templates/{quote(template["identifier"], safe="")}/save',
         data={'catalogue_content': content},
         headers={'accept': 'application/json'},
     )
@@ -6650,7 +6647,7 @@ def test_template_filter_only_edit_skips_dashboard_comment_scan() -> None:
     import src.DriveTestAnalyzer as app_module
 
     fixture = (app_module.PROJECT_ROOT / 'tests' / 'fixtures' / 'NSA Slide Template.csv').read_bytes()
-    entries = app_module.parse_catalog_csv(fixture, 'nsa')
+    entries = app_module.parse_catalog_csv(fixture)
     edited = [replace(entry, filters='') for entry in entries]
 
     class UnexpectedDashboardRead:
@@ -6658,7 +6655,7 @@ def test_template_filter_only_edit_skips_dashboard_comment_scan() -> None:
             raise AssertionError('Filter-only edits must not scan saved Dashboards.')
 
     assert app_module.ppt_dashboard_reconcile_template_slide_comments(
-        'nsa', 'Template', entries, edited, UnexpectedDashboardRead(),
+        'Template', entries, edited, UnexpectedDashboardRead(),
     ) == 0
 
 
@@ -6985,12 +6982,12 @@ def test_renaming_a_numeric_operator_leaves_layouts_and_numbers_of_the_templates
         chart_title='FDFS DL of 3', cdr_source='CDR-Data', kpi='Mean_Data_Rate', chart_type='CDF Line',
         filters='Mean_Data_Rate >= 3; Operator IN (VF, 3)', rows_split='Operator', columns_split='', legend='Operator',
     )
-    app_module.repository.add_report_template('nsa', 'Numeric operator', app_module.catalogue_csv([entry]))
+    app_module.repository.add_report_template('Numeric operator', app_module.catalogue_csv([entry]))
     renamed = client.post('/workspace-config/operator-mappings/save', data={
         'original_canonical': '3', 'canonical_value': 'Three', 'aliases': '3\nThree UK', 'color': '#000000',
     }, follow_redirects=False)
     assert renamed.status_code == 303
-    stored = app_module.parse_catalog_csv(app_module.repository.report_template_content('nsa', 'Numeric operator'), 'nsa',
+    stored = app_module.parse_catalog_csv(app_module.repository.report_template_content('Numeric operator'),
                                           validate_filters=False)[0]
     # Only the Operator condition follows the new name: the grid, the threshold and the titles keep their 3.
     assert stored.layout == 'Title + 1 rows + 3 columns + comments down'
@@ -7020,8 +7017,7 @@ def test_canonical_mapping_renames_update_all_templates_and_dashboards_exactly(c
         columns_split='',
         legend='Operator',
     )
-    app_module.repository.add_report_template(
-        'nsa', 'Mapping references', app_module.catalogue_csv([entry]),
+    app_module.repository.add_report_template('Mapping references', app_module.catalogue_csv([entry]),
     )
     app_module.repository.set_workspace_state('ppt_dashboards_v2', json.dumps({
         'mapping-dashboard': {
@@ -7043,7 +7039,7 @@ def test_canonical_mapping_renames_update_all_templates_and_dashboards_exactly(c
 
     assert operator_rename.status_code == 303
     renamed_entry = app_module.parse_catalog_csv(
-        app_module.repository.report_template_content('nsa', 'Mapping references'), 'nsa',
+        app_module.repository.report_template_content('Mapping references'),
         validate_filters=False,
     )[0]
     assert renamed_entry.slide_title == 'VF_UK vs VF_SA'
@@ -7067,7 +7063,7 @@ def test_canonical_mapping_renames_update_all_templates_and_dashboards_exactly(c
 
     assert vendor_rename.status_code == 303
     renamed_entry = app_module.parse_catalog_csv(
-        app_module.repository.report_template_content('nsa', 'Mapping references'), 'nsa',
+        app_module.repository.report_template_content('Mapping references'),
         validate_filters=False,
     )[0]
     assert renamed_entry.chart_title == 'VF_UK and VF_SA by ERI'
@@ -7229,8 +7225,7 @@ def test_backup_skips_stale_workspace_registry_entries(monkeypatch, tmp_path: Pa
             database_path.parent.mkdir(parents=True)
             workspace_repository = app_module.Repository(database_path, app_module.repository.global_db_path)
             workspace_repository.initialize()
-            workspace_repository.add_report_template(
-                'nsa', f'{identifier} template', b'template', is_default=True,
+            workspace_repository.add_report_template(f'{identifier} template', b'template', is_default=True,
             )
         templates = root / 'report-templates'
         templates.mkdir(parents=True)
@@ -7253,8 +7248,8 @@ def test_backup_skips_stale_workspace_registry_entries(monkeypatch, tmp_path: Pa
     with zipfile.ZipFile(archive_path) as archive:
         names = archive.namelist()
         manifest = json.loads(archive.read('manifest.json'))
-    assert 'workspaces/Current-Workspace/report-templates/library/nsa/current-workspace template.csv' in names
-    assert 'workspaces/Current-Workspace/report-templates/default/nsa/current-workspace template.csv' in names
+    assert 'workspaces/Current-Workspace/report-templates/library/current-workspace template.csv' in names
+    assert 'workspaces/Current-Workspace/report-templates/default/current-workspace template.csv' in names
     assert not any(name.startswith('workspaces/Default/') for name in names)
     assert not any(name.startswith('workspaces/Workspace-3/') for name in names)
     assert manifest['components'] == ['workspace_components']
@@ -7728,7 +7723,7 @@ def test_operator_mapping_is_applied_to_charts_but_not_materialized_tables(clien
     dataset = app_module.serialize_dataset_row(app_module.repository.get_dataset(1))
     materialized = app_module.repository.load_dataset_rows(1, ['Operator', 'Subscriber', 'Operator_Vendor', 'Vendor'], {})
     combined = app_module.repository.load_reporting_rows('data', [1], ['Operator', 'Subscriber', 'Operator_Vendor', 'Vendor'])
-    chart_frame = app_module._combined_reporting_frame([dataset], 'nsa', [], False)
+    chart_frame = app_module._combined_reporting_frame([dataset], [], False)
 
     assert materialized['Operator'].tolist() == ['Vodafone UK', 'O2']
     assert combined['Operator'].tolist() == ['Vodafone UK', 'O2']
@@ -8998,7 +8993,8 @@ def test_reporting_preselects_two_latest_ready_cdrs_of_each_type(client, ppt_rep
     assert 'value="4" data-vendor-mapped="false" data-uploaded-at=' in speech_select
     assert 'selected>speech.csv' in speech_select
     assert speech_select.count(' selected>') == 1
-    assert 'if (active) catalogue.value = active.value;' in reporting.text
+    # One template list: its default is selected.
+    assert 'data-catalogue-active="true" selected' in reporting.text
 
 
 def test_dashboard_explicit_dataset_id_overrides_mismatched_input_kind_filter(client) -> None:
@@ -9440,16 +9436,16 @@ def test_admin_imports_report_catalogue(client) -> None:
     content = legacy_template_csv('8,Completed Call Ratio,Voice quality,Title and 1 column + Comments,Completed call ratio,CDR-Voice,Call_Status,100% Stacked Vertical Bars,Call Family = VoLTE,Operator,Campaign,Completed/Dropped/Failed,,,,,,,,')
 
     response = client.post(
-        '/workspace-config/report-templates/nsa',
+        '/workspace-config/report-templates',
         data={'catalogue_name': 'Test baseline'},
         files={'catalogue_file': ('nsa-slides-template.csv', BytesIO(content), 'text/csv')},
         follow_redirects=False,
     )
 
     assert response.status_code == 303
-    assert app_module.reporting_catalog_content('nsa') == content
+    assert app_module.reporting_catalog_content() == content
 
-    exported = client.get('/workspace-config/report-templates/nsa/export')
+    exported = client.get('/workspace-config/report-templates/export')
     assert exported.status_code == 200
     assert exported.content == content
 
@@ -9478,16 +9474,16 @@ def test_legacy_layout_alias_is_canonicalized_through_template_import_and_export
     original_csv = output.getvalue().encode('utf-8')
 
     imported = client.post(
-        '/workspace-config/report-templates/nsa',
+        '/workspace-config/report-templates',
         data={'catalogue_name': 'Legacy layout'},
         files={'catalogue_file': ('legacy-layout.csv', BytesIO(original_csv), 'text/csv')},
         follow_redirects=False,
     )
 
     assert imported.status_code == 303
-    stored = app_module.reporting_catalog_content('nsa')
+    stored = app_module.reporting_catalog_content()
     assert b'Title + 2 rows + 2 columns + comments right' in stored
-    exported = client.get('/workspace-config/report-templates/nsa/export')
+    exported = client.get('/workspace-config/report-templates/export')
     assert exported.status_code == 200
     assert b'Title + 2 rows + 2 columns + comments right' in exported.content
     assert b'Title and 2 columns and 2 rows + Comments right' not in exported.content
@@ -9506,7 +9502,7 @@ def test_admin_import_preserves_hyphens_in_uploaded_template_name(client) -> Non
     )
 
     assert response.status_code == 303
-    assert app_module.repository.report_template_content('nsa', 'NSA Slide Template - Gabriele') == content
+    assert app_module.repository.report_template_content('NSA Slide Template - Gabriele') == content
 
 
 def test_importing_an_existing_template_requires_explicit_overwrite(client) -> None:
@@ -9528,7 +9524,7 @@ def test_importing_an_existing_template_requires_explicit_overwrite(client) -> N
     )
     assert blocked.status_code == 303
     assert 'Confirm+overwrite' in blocked.headers['location']
-    assert b'Original' in app_module.repository.report_template_content('nsa', 'Shared Template')
+    assert b'Original' in app_module.repository.report_template_content('Shared Template')
 
     overwritten = client.post(
         '/workspace-config/slides-templates/import',
@@ -9537,8 +9533,8 @@ def test_importing_an_existing_template_requires_explicit_overwrite(client) -> N
     )
     assert overwritten.status_code == 303
     assert 'Overwrote+Shared+Template' in overwritten.headers['location']
-    assert b'Replacement' in app_module.repository.report_template_content('nsa', 'Shared Template')
-    assert b'Replacement' in app_module.reporting_catalog_content('nsa')
+    assert b'Replacement' in app_module.repository.report_template_content('Shared Template')
+    assert b'Replacement' in app_module.reporting_catalog_content()
 
 
 def test_admin_import_converts_a_legacy_catalogue_when_requested(client) -> None:
@@ -9551,14 +9547,14 @@ def test_admin_import_converts_a_legacy_catalogue_when_requested(client) -> None
     ).encode('utf-8')
 
     response = client.post(
-        '/workspace-config/report-templates/nsa',
+        '/workspace-config/report-templates',
         data={'catalogue_name': 'Legacy baseline', 'convert_catalogue': '1'},
         files={'catalogue_file': ('legacy.csv', BytesIO(legacy), 'text/csv')},
         follow_redirects=False,
     )
 
     assert response.status_code == 303
-    stored = app_module.reporting_catalog_content('nsa').decode('utf-8')
+    stored = app_module.reporting_catalog_content().decode('utf-8')
     assert 'Chart Tittle' in stored
     assert 'Legacy quality' in stored
 
@@ -9573,7 +9569,7 @@ def test_admin_stores_multiple_named_report_catalogues_and_can_activate_one(clie
 
     for name, content in [('Baseline Q4', first), ('Updated Q4', second)]:
         response = client.post(
-            '/workspace-config/report-templates/nsa',
+            '/workspace-config/report-templates',
             data={'catalogue_name': name},
             files={'catalogue_file': ('nsa.csv', BytesIO(content), 'text/csv')},
             follow_redirects=False,
@@ -9585,18 +9581,18 @@ def test_admin_stores_multiple_named_report_catalogues_and_can_activate_one(clie
     assert 'Updated Q4' in admin.text
     assert 'name="catalogue_selection"' not in admin.text
     assert 'data-admin-template-editor' in admin.text
-    assert 'data-open-template-editor="/workspace-config/report-templates/nsa/Baseline%20Q4/editor"' in admin.text
+    assert 'data-open-template-editor="/workspace-config/report-templates/Baseline%20Q4/editor"' in admin.text
     assert 'data-catalogue-editor-table' not in admin.text
     assert '<th>Default</th>' in admin.text
     assert 'catalogue-default-mark is-default' in admin.text
-    assert '/workspace-config/report-templates/nsa/Baseline%20Q4/export' in admin.text
+    assert '/workspace-config/report-templates/Baseline%20Q4/export' in admin.text
     assert app_module.reporting_catalog_entries('nsa')[0].slide_title == 'Second'
-    assert next(item['identifier'] for item in app_module.report_catalogue_options('nsa') if item['active']) == 'Updated Q4'
-    assert app_module.repository.report_template_content('nsa', 'Baseline Q4') == first
+    assert next(item['identifier'] for item in app_module.report_catalogue_options() if item['active']) == 'Updated Q4'
+    assert app_module.repository.report_template_content('Baseline Q4') == first
 
     login_super(client)
     reporting = client.get('/ppt-reporting-old')
-    assert 'value="nsa:Updated Q4" data-catalogue-technology="nsa" data-catalogue-active="true" selected' in reporting.text
+    assert 'value="Updated Q4" data-catalogue-active="true" selected' in reporting.text
     assert 'data-report-charts-edit-template' in reporting.text
     assert 'data-report-chart-viewer-edit-template' in reporting.text
     assert 'data-report-template-editor-frame' in reporting.text
@@ -9606,7 +9602,7 @@ def test_admin_stores_multiple_named_report_catalogues_and_can_activate_one(clie
     assert 'data-catalogue-editor-table' not in editor.text
     assert 'data-admin-template-editor' in editor.text
 
-    embedded_editor = client.get('/workspace-config/report-templates/nsa/Baseline%20Q4/editor')
+    embedded_editor = client.get('/workspace-config/report-templates/Baseline%20Q4/editor')
     assert embedded_editor.status_code == 200
     assert 'data-embedded-template-editor' in embedded_editor.text
     assert 'data-catalogue-editor-table' in embedded_editor.text
@@ -9653,16 +9649,14 @@ def test_admin_stores_multiple_named_report_catalogues_and_can_activate_one(clie
 
     copy_options = client.get('/api/workspace-config/report-templates/copy-options')
     assert copy_options.status_code == 200
-    assert {(item['technology'], item['identifier']) for item in copy_options.json()['templates']} >= {
-        ('nsa', 'Baseline Q4'), ('nsa', 'Updated Q4'),
-    }
+    assert {item['identifier'] for item in copy_options.json()['templates']} >= {'Baseline Q4', 'Updated Q4'}
     dimensions = app_module.calculated_dimensions_json(app_module.load_workspace_calculated_dimensions())
     dimensions.append({
         'name': 'Network Result', 'sources': ['cdr-data'], 'default': 'Other', 'default_from': '',
         'rules': [{'when': 'Test_Result IN (Completed)', 'value': 'Success'}],
     })
     saved_dimensions = client.put(
-        '/api/workspace-config/report-templates/nsa/Baseline%20Q4/calculated-dimensions',
+        '/api/workspace-config/report-templates/Baseline%20Q4/calculated-dimensions',
         json={'dimensions': dimensions},
     )
     assert saved_dimensions.status_code == 200
@@ -9677,19 +9671,19 @@ def test_admin_stores_multiple_named_report_catalogues_and_can_activate_one(clie
         item.name == 'Network Result'
         for item in app_module.load_workspace_calculated_dimensions()
     )
-    copied_chart = client.post('/workspace-config/report-templates/nsa/Baseline%20Q4/copy-items', json={
+    copied_chart = client.post('/workspace-config/report-templates/Baseline%20Q4/copy-items', json={
         'kind': 'chart', 'catalogue_content': first.decode(), 'source_row_index': 0,
         'target_technology': 'nsa', 'target_identifier': 'Updated Q4',
         'target_slide_index': 0, 'chart_position': 1,
     })
     assert copied_chart.status_code == 200
-    assert len(app_module.load_template_catalogue(app_module.repository.report_template_content('nsa', 'Updated Q4'), 'nsa')) == 2
-    copied_slide = client.post('/workspace-config/report-templates/nsa/Baseline%20Q4/copy-items', json={
+    assert len(app_module.load_template_catalogue(app_module.repository.report_template_content('Updated Q4'))) == 2
+    copied_slide = client.post('/workspace-config/report-templates/Baseline%20Q4/copy-items', json={
         'kind': 'slide', 'catalogue_content': first.decode(), 'source_row_index': 0,
         'target_technology': 'nsa', 'target_identifier': 'Updated Q4', 'slide_position': 1,
     })
     assert copied_slide.status_code == 200
-    copied_entries = app_module.load_template_catalogue(app_module.repository.report_template_content('nsa', 'Updated Q4'), 'nsa')
+    copied_entries = app_module.load_template_catalogue(app_module.repository.report_template_content('Updated Q4'))
     assert len(copied_entries) == 3
     assert sorted({entry.slide for entry in copied_entries}) == [1, 2]
 
@@ -9697,38 +9691,37 @@ def test_admin_stores_multiple_named_report_catalogues_and_can_activate_one(clie
         '9,Late,,Title and 1 column + Comments,,CDR-Voice,Call_Status,100% Stacked Vertical Bars,,Operator,Campaign,,Right',
         '8,Edited,,Title and 1 column + Comments,,CDR-Voice,Call_Status,100% Stacked Vertical Bars,,Operator,Campaign,,Right',
     ).decode('utf-8')
-    saved = client.post('/workspace-config/report-templates/nsa/Baseline%20Q4/save', data={'catalogue_content': edited}, follow_redirects=False)
+    saved = client.post('/workspace-config/report-templates/Baseline%20Q4/save', data={'catalogue_content': edited}, follow_redirects=False)
     assert saved.status_code == 303
-    saved_editor = client.get('/workspace-config/report-templates/nsa/Baseline%20Q4/editor')
+    saved_editor = client.get('/workspace-config/report-templates/Baseline%20Q4/editor')
     assert '>Edited</td>' in saved_editor.text
     assert saved_editor.text.index('>Edited</td>') < saved_editor.text.index('>Late</td>')
 
     saved_in_background = client.post(
-        '/workspace-config/report-templates/nsa/Baseline%20Q4/save',
+        '/workspace-config/report-templates/Baseline%20Q4/save',
         data={'catalogue_content': edited},
         headers={'accept': 'application/json'},
     )
     assert saved_in_background.status_code == 200
     assert saved_in_background.json() == {
         'template': 'Baseline Q4',
-        'technology': 'nsa',
         'chart_rows': 2,
     }
 
-    activated = client.post('/workspace-config/report-templates/nsa/Baseline%20Q4/activate', follow_redirects=False)
+    activated = client.post('/workspace-config/report-templates/Baseline%20Q4/activate', follow_redirects=False)
     assert activated.status_code == 303
     assert app_module.reporting_catalog_entries('nsa')[0].slide_title == 'Edited'
-    assert next(item['identifier'] for item in app_module.report_catalogue_options('nsa') if item['active']) == 'Baseline Q4'
-    assert app_module.repository.report_template_content('nsa', 'Updated Q4')
+    assert next(item['identifier'] for item in app_module.report_catalogue_options() if item['active']) == 'Baseline Q4'
+    assert app_module.repository.report_template_content('Updated Q4')
 
-    protected_delete = client.post('/workspace-config/report-templates/nsa/Baseline%20Q4/delete')
+    protected_delete = client.post('/workspace-config/report-templates/Baseline%20Q4/delete')
     assert protected_delete.status_code == 400
     assert 'The default template cannot be deleted.' in protected_delete.text
 
     reporting_after_activation = client.get('/ppt-reporting-old')
-    assert 'value="nsa:Baseline Q4" data-catalogue-technology="nsa" data-catalogue-active="true" selected' in reporting_after_activation.text
+    assert 'value="Baseline Q4" data-catalogue-active="true" selected' in reporting_after_activation.text
 
-    exported = client.get('/workspace-config/report-templates/nsa/Updated%20Q4/export')
+    exported = client.get('/workspace-config/report-templates/Updated%20Q4/export')
     assert exported.status_code == 200
     assert b'Second' in exported.content
     assert 'filename="Updated Q4.csv"' in exported.headers['content-disposition']
@@ -9780,26 +9773,26 @@ def test_admin_catalogue_rename_supports_background_json_save(client) -> None:
     import src.DriveTestAnalyzer as app_module
 
     login(client)
-    default_name = next(item['identifier'] for item in app_module.report_catalogue_options('nsa') if item['active'])
+    default_name = next(item['identifier'] for item in app_module.report_catalogue_options() if item['active'])
     response = client.post(
-        f'/workspace-config/report-templates/nsa/{quote(default_name)}/rename',
+        f'/workspace-config/report-templates/{quote(default_name)}/rename',
         data={'catalogue_name': 'Renamed default'},
         headers={'accept': 'application/json'},
     )
 
     assert response.status_code == 200
     assert response.json() == {'name': 'Renamed default', 'identifier': 'Renamed default'}
-    assert next(item for item in app_module.report_catalogue_options('nsa') if item['identifier'] == 'Renamed default')['name'] == 'Renamed default'
+    assert next(item for item in app_module.report_catalogue_options() if item['identifier'] == 'Renamed default')['name'] == 'Renamed default'
 
 
 def test_report_template_rename_keeps_special_characters_in_action_urls(client) -> None:
     import src.DriveTestAnalyzer as app_module
 
     login(client)
-    template = app_module.report_catalogue_options('nsa')[0]
+    template = app_module.report_catalogue_options()[0]
     new_name = 'North #1 & South'
     response = client.post(
-        f'/workspace-config/report-templates/nsa/{quote(template["identifier"], safe="")}/rename',
+        f'/workspace-config/report-templates/{quote(template["identifier"], safe="")}/rename',
         data={'catalogue_name': new_name},
         headers={'accept': 'application/json'},
     )
@@ -9808,8 +9801,8 @@ def test_report_template_rename_keeps_special_characters_in_action_urls(client) 
     assert response.json()['identifier'] == new_name
     workspace_config = client.get('/workspace-config')
     assert workspace_config.status_code == 200
-    assert '/workspace-config/report-templates/nsa/North%20%231%20%26%20South/rename' in workspace_config.text
-    assert '/workspace-config/report-templates/nsa/North%20%231%20%26%20South/editor' in workspace_config.text
+    assert '/workspace-config/report-templates/North%20%231%20%26%20South/rename' in workspace_config.text
+    assert '/workspace-config/report-templates/North%20%231%20%26%20South/editor' in workspace_config.text
 
 
 def test_admin_renaming_named_catalogue_renames_its_csv_file(client) -> None:
@@ -9819,7 +9812,7 @@ def test_admin_renaming_named_catalogue_renames_its_csv_file(client) -> None:
     login(client)
     content = legacy_template_csv('8,First,,Title and 1 column + Comments,,CDR-Voice,Call_Status,100% Stacked Vertical Bars,,Operator,Campaign,,')
     imported = client.post(
-        '/workspace-config/report-templates/nsa',
+        '/workspace-config/report-templates',
         data={'catalogue_name': 'Original catalogue'},
         files={'catalogue_file': ('nsa.csv', BytesIO(content), 'text/csv')},
         follow_redirects=False,
@@ -9834,7 +9827,7 @@ def test_admin_renaming_named_catalogue_renames_its_csv_file(client) -> None:
     }))
 
     replacement = client.post(
-        '/workspace-config/report-templates/nsa',
+        '/workspace-config/report-templates',
         data={'catalogue_name': 'Replacement template'},
         files={'catalogue_file': ('replacement.csv', BytesIO(content), 'text/csv')},
         follow_redirects=False,
@@ -9842,16 +9835,16 @@ def test_admin_renaming_named_catalogue_renames_its_csv_file(client) -> None:
     assert replacement.status_code == 303
 
     response = client.post(
-        '/workspace-config/report-templates/nsa/Original%20catalogue/rename',
+        '/workspace-config/report-templates/Original%20catalogue/rename',
         data={'catalogue_name': 'Renamed catalogue'},
         headers={'accept': 'application/json'},
     )
 
     assert response.status_code == 200
     assert response.json() == {'name': 'Renamed catalogue', 'identifier': 'Renamed catalogue'}
-    assert all(str(row['name']) != 'Original catalogue' for row in app_module.repository.list_report_templates('nsa'))
-    assert app_module.repository.report_template_content('nsa', 'Renamed catalogue') == content
-    assert not next(item for item in app_module.report_catalogue_options('nsa') if item['identifier'] == 'Renamed catalogue')['active']
+    assert all(str(row['name']) != 'Original catalogue' for row in app_module.repository.list_report_templates())
+    assert app_module.repository.report_template_content('Renamed catalogue') == content
+    assert not next(item for item in app_module.report_catalogue_options() if item['identifier'] == 'Renamed catalogue')['active']
     renamed_dashboard = json.loads(app_module.repository.get_workspace_state('ppt_dashboards_v2'))['template-rename-dashboard']
     assert renamed_dashboard['template'] == 'Renamed catalogue'
     assert renamed_dashboard['name'] == 'Renamed catalogue · Validation'
@@ -9864,17 +9857,17 @@ def test_admin_duplicates_template_using_the_source_template_name(client) -> Non
     login(client)
     content = legacy_template_csv('8,First,,Title and 1 column + Comments,,CDR-Voice,Call_Status,100% Stacked Vertical Bars,,Operator,Campaign,,')
     imported = client.post(
-        '/workspace-config/report-templates/nsa',
+        '/workspace-config/report-templates',
         data={'catalogue_name': 'Regional NSA Template'},
         files={'catalogue_file': ('nsa.csv', BytesIO(content), 'text/csv')},
         follow_redirects=False,
     )
     assert imported.status_code == 303
 
-    duplicated = client.post('/workspace-config/report-templates/nsa/Regional%20NSA%20Template/duplicate', follow_redirects=False)
+    duplicated = client.post('/workspace-config/report-templates/Regional%20NSA%20Template/duplicate', follow_redirects=False)
 
     assert duplicated.status_code == 303
-    copied = next(item for item in app_module.report_catalogue_options('nsa') if item['identifier'] == 'Regional NSA Template - Copy')
+    copied = next(item for item in app_module.report_catalogue_options() if item['identifier'] == 'Regional NSA Template - Copy')
     assert copied['name'] == 'Regional NSA Template - Copy'
     assert copied['content'] == content
 
@@ -9891,7 +9884,7 @@ def test_template_registry_does_not_rescan_legacy_csv_directories(client) -> Non
 
     assert all(
         item['identifier'] != 'Historic baseline'
-        for item in app_module.report_catalogue_options('nsa')
+        for item in app_module.report_catalogue_options()
     )
 
 
@@ -9902,42 +9895,36 @@ def test_template_registry_ignores_unregistered_library_csvs(client) -> None:
     rogue.parent.mkdir(parents=True, exist_ok=True)
     rogue.write_bytes(app_module.catalogue_csv([]))
 
-    assert all(item['identifier'] != rogue.stem for item in app_module.report_catalogue_options('nsa'))
+    assert all(item['identifier'] != rogue.stem for item in app_module.report_catalogue_options())
 
 
-def test_admin_importer_selects_template_type_and_moves_a_named_template(client) -> None:
-    from src.modules.cdr_reporting import CATALOG_HEADERS
+def test_admin_importer_imports_every_template_into_one_library(client) -> None:
     import src.DriveTestAnalyzer as app_module
 
     login(client)
     content = legacy_template_csv('8,First,,Title and 1 column + Comments,,CDR-Voice,Call_Status,100% Stacked Vertical Bars,,Operator,Campaign,,')
-    imported_sa = client.post(
+    # A form of before naming an NR Mode imports into the same library.
+    imported = client.post(
         '/workspace-config/slides-templates/import',
-        data={'template_type': 'sa', 'catalogue_name': 'SA imported template'},
+        data={'template_type': 'sa', 'catalogue_name': 'Imported template'},
         files={'catalogue_file': ('sa.csv', BytesIO(content), 'text/csv')},
         follow_redirects=False,
     )
-    assert imported_sa.status_code == 303
-    assert next(item['identifier'] for item in app_module.report_catalogue_options('sa') if item['active']) == 'SA imported template'
-
-    # Add two NSA templates: the second becomes default, so the first remains
-    # a movable library item.
-    for name in ('Move me', 'NSA default replacement'):
+    assert imported.status_code == 303
+    assert next(item['identifier'] for item in app_module.report_catalogue_options() if item['active']) == 'Imported template'
+    for name in ('Second', 'Third'):
         response = client.post(
-            '/workspace-config/report-templates/nsa',
+            '/workspace-config/report-templates',
             data={'catalogue_name': name},
             files={'catalogue_file': ('nsa.csv', BytesIO(content), 'text/csv')},
             follow_redirects=False,
         )
         assert response.status_code == 303
-    moved = client.post(
-        '/workspace-config/report-templates/nsa/Move%20me/type',
-        data={'template_type': 'sa'},
-        follow_redirects=False,
-    )
-    assert moved.status_code == 303
-    assert app_module.repository.report_template_content('sa', 'Move me') == content
-    assert all(str(row['name']) != 'Move me' for row in app_module.repository.list_report_templates('nsa'))
+    names = [str(row['name']) for row in app_module.repository.list_report_templates()]
+    assert {'Imported template', 'Second', 'Third'} <= set(names)
+    assert sum(1 for row in app_module.repository.list_report_templates() if row['is_default']) == 1
+    # Templates have no NR Mode to change any more.
+    assert client.post('/workspace-config/report-templates/Second/type', data={'template_type': 'sa'}).status_code == 404
 
 
 def test_docs_routes_expose_readme_changelog_and_help(client) -> None:

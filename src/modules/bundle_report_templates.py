@@ -545,7 +545,68 @@ def ensure_tables(repository: Any) -> None:
         with _REPORT_THEMES_LOCK:
             if database not in _REPORT_THEMES_STORED:
                 _store_report_themes(connection)
+                _uncheck_other_mode_dashboards(connection)
                 _REPORT_THEMES_STORED.add(database)
+
+
+# The workspace setting that marks the favourites as migrated to Dashboards that read the NR Mode of the report.
+DASHBOARD_NR_MODES_STATE_KEY = 'bundle_report_template_dashboard_nr_modes_v1'
+
+
+def _dashboard_mode(definition: Any) -> str:
+    """The NR Mode of the CDRs a saved Dashboard reads (those saved before named it technology)."""
+    value = definition.get('nr_mode') or definition.get('technology') if isinstance(definition, dict) else ''
+    return 'SA' if str(value or '').upper() == 'SA' else 'NSA'
+
+
+def uncheck_other_mode_dashboards(definition: dict[str, Any], modes: dict[str, str]) -> list[str]:
+    """Uncheck the Dashboards of a favourite of before whose own NR Mode is not the NR Mode of the report: it listed and
+    generated only those of its NR Mode, and every Dashboard now reads the NR Mode of the report. Returns their keys."""
+    report_mode = 'SA' if str((definition.get('filters') or {}).get('nr_mode') or '').upper() == 'SA' else 'NSA'
+    unchecked = []
+    for section in definition.get('sections') or []:
+        if not isinstance(section, dict) or section.get('key') != 'dashboards':
+            continue
+        for item in section.get('items') or []:
+            if not isinstance(item, dict) or not item.get('enabled', True):
+                continue
+            mode = modes.get(str(item.get('key'))) or str(item.get('nr_mode') or '').upper()
+            if mode in {'NSA', 'SA'} and mode != report_mode:
+                item['enabled'] = False
+                unchecked.append(str(item.get('key')))
+    return unchecked
+
+
+def _uncheck_other_mode_dashboards(connection: Any) -> None:
+    """Once per workspace, the favourites of before keep generating the Dashboards they did (uncheck_other_mode_dashboards)."""
+    connection.execute('CREATE TABLE IF NOT EXISTS workspace_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
+    if connection.execute('SELECT 1 FROM workspace_state WHERE key = ?', (DASHBOARD_NR_MODES_STATE_KEY,)).fetchone():
+        return
+    stored = connection.execute("SELECT value FROM workspace_state WHERE key = 'ppt_dashboards_v2'").fetchone()
+    try:
+        dashboards = json.loads(stored[0]) if stored else {}
+    except (TypeError, ValueError):
+        dashboards = {}
+    modes = {str(key): _dashboard_mode(value) for key, value in (dashboards if isinstance(dashboards, dict) else {}).items()}
+    changes = {}
+    for favourite_id, name, raw in connection.execute(f'SELECT id, name, definition_json FROM {BUNDLE_REPORT_TEMPLATES_TABLE}').fetchall():
+        try:
+            definition = json.loads(raw or '{}')
+        except json.JSONDecodeError:
+            continue
+        if isinstance(definition, dict) and (unchecked := uncheck_other_mode_dashboards(definition, modes)):
+            connection.execute(f'UPDATE {BUNDLE_REPORT_TEMPLATES_TABLE} SET definition_json = ? WHERE id = ?',
+                               (json.dumps(definition, ensure_ascii=False), favourite_id))
+            changes[str(name)] = unchecked
+    connection.execute('INSERT OR REPLACE INTO workspace_state (key, value) VALUES (?, ?)', (DASHBOARD_NR_MODES_STATE_KEY, '1'))
+    tables = {str(row[0]) for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    if changes and 'audit_logs' in tables:
+        from src.modules.repository import current_app_event_origin, local_now_iso
+        connection.execute(
+            'INSERT INTO audit_logs (username, action, details, created_at, origin) VALUES (?, ?, ?, ?, ?)',
+            ('system', 'bundle_report_templates_dashboard_nr_modes', json.dumps({
+                'unchecked_dashboards': changes, 'executed_by': 'system',
+            }, ensure_ascii=False), local_now_iso(), current_app_event_origin()))
 
 
 def favourite_contents(definition: Any, dashboard_names: dict[str, str] | None = None) -> list[dict[str, Any]]:
@@ -655,7 +716,7 @@ def export_entries(repository: Any) -> list[dict[str, Any]]:
 
 
 def workspace_dashboards(repository: Any) -> dict[str, tuple[str, str]]:
-    """The Dashboards of the workspace: each ID with its name and NR Mode (NSA or SA)."""
+    """The Dashboards of the workspace: each ID with its name and own NR Mode (NSA or SA)."""
     from src.modules.ppt_dashboards import LEGACY_STATE_KEY, STATE_KEY
     try:
         stored = json.loads(repository.get_workspace_state(STATE_KEY) or repository.get_workspace_state(LEGACY_STATE_KEY) or '{}')
@@ -663,7 +724,7 @@ def workspace_dashboards(repository: Any) -> dict[str, tuple[str, str]]:
         stored = {}
     if not isinstance(stored, dict):
         return {}
-    return {str(key): (str(value.get('name') or ''), 'SA' if str(value.get('technology') or '').casefold() == 'sa' else 'NSA')
+    return {str(key): (str(value.get('name') or ''), _dashboard_mode(value))
             for key, value in stored.items() if isinstance(value, dict)}
 
 
@@ -701,7 +762,8 @@ def match_dashboards(items: list[dict[str, Any]], dashboards: dict[str, tuple[st
 def export_favourites_document(repository: Any) -> bytes:
     """The favourite Bundle Report Templates of a workspace as a portable document (the Bundle Report Template Favourites element
     of Import / Export / Transfer, workspace transfers and backups)."""
-    return json.dumps({'format': FAVOURITES_FORMAT, 'version': 1, 'favourites': export_entries(repository)},
+    # Version 2: every Dashboard of a favourite reads the NR Mode of the report (see uncheck_other_mode_dashboards).
+    return json.dumps({'format': FAVOURITES_FORMAT, 'version': 2, 'favourites': export_entries(repository)},
                       ensure_ascii=False, indent=2).encode('utf-8')
 
 
@@ -713,17 +775,20 @@ def import_favourites_document(repository: Any, content: bytes | str, username: 
     if not isinstance(document, dict) or document.get('format') not in {FAVOURITES_FORMAT, *LEGACY_FAVOURITES_FORMATS}:
         raise ValueError('The file is not a DriveTest Analyzer Bundle Report Template Favourites export.')
     return import_entries(repository, document.get('favourites') or [], username, workspace_dashboards(repository),
-                          creator=creator, summary=summary)
+                          creator=creator, summary=summary, dashboards_of_report_mode=int(document.get('version') or 1) < 2)
 
 
 def import_entries(repository: Any, entries: Any, username: str,
                    dashboards: dict[str, tuple[str, str]] | None = None, *,
-                   creator: Callable[[Any, str], str] | None = None, summary: list[str] | None = None) -> int:
+                   creator: Callable[[Any, str], str] | None = None, summary: list[str] | None = None,
+                   dashboards_of_report_mode: bool = False) -> int:
     """Replace the favourites of a document that the workspace has (found by their identity, then by their name) and
     add the others. ``dashboards`` are those of this workspace (see workspace_dashboards), so a Dashboard of another
     workspace is found by its name and NR Mode. ``creator(creator in the document, creator here)`` decides who each
     one belongs to (without it a new one belongs to ``username`` and a replaced one keeps its creator). A renamed
-    favourite renames the jobs based on it, as a rename here does; ``summary`` receives the renamed favourites."""
+    favourite renames the jobs based on it, as a rename here does; ``summary`` receives the renamed favourites. The
+    favourites of a document of before (``dashboards_of_report_mode``) keep generating only the Dashboards of the NR Mode
+    of the report, as they did (uncheck_other_mode_dashboards)."""
     from src.modules.report_tasks import rename_favourite_jobs
     from src.modules.transfer_identities import BUNDLE_REPORT_TEMPLATE_FAVOURITES, ItemMatcher, identities, set_identities
 
@@ -747,6 +812,8 @@ def import_entries(repository: Any, entries: Any, username: str,
                     if item['key'] not in (dashboards or {}) and item['key'] in aliases:
                         item['key'] = aliases[item['key']]
                 match_dashboards(section['items'], dashboards or {}, definition['filters']['nr_mode'])
+        if dashboards_of_report_mode:
+            uncheck_other_mode_dashboards(definition, {key: mode for key, (_name, mode) in (dashboards or {}).items()})
         target, name = matcher.match(entry.get('uid'), ' '.join(str(entry['name']).split())[:120])
         saved = save_favourite(repository, target, name, definition, username)
         if target is not None and local_names.get(target) != name:
@@ -1277,10 +1344,6 @@ class SectionGenerator:
             if not isinstance(dashboard, dict):
                 deck.lines.append(f"{item.get('label') or item['key']}: the Dashboard no longer exists")
                 continue
-            # The NR Mode of the report chooses its Dashboards: each Dashboard is made for the KPIs of one NR Mode.
-            nr_mode = 'SA' if str(dashboard.get('technology') or '').casefold() == 'sa' else 'NSA'
-            if nr_mode != self.filters['nr_mode']:
-                continue
             self.progress(f"Generating the Dashboard {names.get(item['key'])}")
             definition = dict(dashboard)
             definition.pop('datasets', None)
@@ -1296,7 +1359,8 @@ class SectionGenerator:
                     values = [MAIN_CITIES, *values]
                 if values:
                     filters[column] = values
-            definition.update({'filters': filters, 'auto_cdrs': True})
+            # Every Dashboard reads the CDRs of the NR Mode of the report (any template serves both).
+            definition.update({'filters': filters, 'auto_cdrs': True, 'nr_mode': self.filters['nr_mode']})
             job_id = tools.queue_export(item['key'], self.user, definition, theme=self.definition.get('theme'))
             deadline = time.monotonic() + DASHBOARD_TIMEOUT_SECONDS
             while True:
@@ -1313,7 +1377,7 @@ class SectionGenerator:
                 time.sleep(2)
             deck.decks.append((item['key'], Path(str(row['output_path'])).read_bytes()))
         if not deck.decks:
-            raise BundleReportTemplateError(f"None of the chosen Dashboards is a {self.filters['nr_mode']} Dashboard.")
+            raise BundleReportTemplateError('None of the chosen Dashboards was generated.')
         return deck
 
     def scoring(self, section: dict[str, Any]) -> SectionDeck:
@@ -1966,7 +2030,7 @@ def install_bundle_report_template_routes(core: Any) -> None:
         repository = repository_for(user)
         tools = getattr(core, 'dashboard_reporting', None)
         dashboards = sorted(({'id': str(key), 'name': str(value.get('name') or key),
-                              'nr_mode': 'SA' if str(value.get('technology') or '').casefold() == 'sa' else 'NSA'} for key, value in
+                              'nr_mode': _dashboard_mode(value)} for key, value in
                              (tools.list_dashboards(repository).items() if tools is not None else []) if isinstance(value, dict)),
                             key=lambda item: item['name'].casefold())
         return {

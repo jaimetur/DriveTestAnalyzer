@@ -83,7 +83,7 @@ def test_editor_filter_accepts_grid_variants_without_comments_only():
 def test_template_editor_layout_suggestions_include_supported_names_only():
     from src.DriveTestAnalyzer import catalogue_layout_names
 
-    choices = catalogue_layout_names('nsa')
+    choices = catalogue_layout_names()
 
     assert set(DYNAMIC_LAYOUTS) <= set(choices)
     assert len(choices) == 121
@@ -195,7 +195,7 @@ def test_legacy_dynamic_field_migration_maps_to_the_declared_axis():
     migrated_csv = normalize_catalog_layouts(old_csv.encode('utf-8')).decode('utf-8')
     migrated_reader = csv.DictReader(io.StringIO(migrated_csv))
     migrated_rows = list(migrated_reader)
-    restored = parse_catalog_csv(old_csv, 'nsa')
+    restored = parse_catalog_csv(old_csv)
     normalized = list(csv.DictReader(io.StringIO(catalogue_csv(restored).decode('utf-8'))))
 
     assert CATALOG_HEADERS[4:6] == ('Dynamic Rows Field', 'Dynamic Columns Field')
@@ -222,7 +222,7 @@ def test_two_axis_dynamic_template_round_trips_both_fields():
     )
 
     exported = catalogue_csv([entry])
-    restored = parse_catalog_csv(exported, 'nsa')
+    restored = parse_catalog_csv(exported)
 
     assert CATALOG_HEADERS[4:6] == ('Dynamic Rows Field', 'Dynamic Columns Field')
     assert len(CATALOG_HEADERS) == 22
@@ -252,7 +252,7 @@ def test_catalogue_csv_accepts_reordered_headers_and_legacy_trailing_dynamic_hea
     writer = csv.DictWriter(reordered, fieldnames=reordered_headers, lineterminator='\n')
     writer.writeheader()
     writer.writerow(canonical_row)
-    restored = parse_catalog_csv(reordered.getvalue(), 'nsa')
+    restored = parse_catalog_csv(reordered.getvalue())
     assert (restored[0].dynamic_rows_field, restored[0].dynamic_columns_field) == ('Vendor_Only', 'Campaign')
 
     trailing_headers = TRAILING_DYNAMIC_CATALOG_HEADERS
@@ -260,7 +260,7 @@ def test_catalogue_csv_accepts_reordered_headers_and_legacy_trailing_dynamic_hea
     writer = csv.DictWriter(trailing, fieldnames=trailing_headers, lineterminator='\n')
     writer.writeheader()
     writer.writerow(canonical_row)
-    restored_trailing = parse_catalog_csv(trailing.getvalue(), 'nsa')
+    restored_trailing = parse_catalog_csv(trailing.getvalue())
     assert (restored_trailing[0].dynamic_rows_field, restored_trailing[0].dynamic_columns_field) == ('Vendor_Only', 'Campaign')
 
 
@@ -278,7 +278,7 @@ def test_catalogue_csv_rejects_duplicate_canonical_header_aliases():
     duplicate_row = rows[0].replace('CDR-Data', 'CDR-Data,CDR-Data', 1)
 
     with pytest.raises(ValueError, match='duplicate column names or aliases'):
-        parse_catalog_csv('\n'.join([duplicate_header, duplicate_row]), 'nsa')
+        parse_catalog_csv('\n'.join([duplicate_header, duplicate_row]))
 
 
 @pytest.mark.parametrize(
@@ -301,7 +301,7 @@ def test_dynamic_layout_requires_fields_for_each_dynamic_axis(layout, count, err
     ) for index in range(count)]
 
     with pytest.raises(ValueError, match=error):
-        parse_catalog_csv(catalogue_csv(entries), 'nsa')
+        parse_catalog_csv(catalogue_csv(entries))
 
 
 def test_catalogue_csv_renames_source_dataset_and_accepts_the_legacy_header():
@@ -317,7 +317,7 @@ def test_catalogue_csv_renames_source_dataset_and_accepts_the_legacy_header():
     assert current.splitlines()[0].decode('utf-8').split(',')[7] == 'Source Dataset'
 
     legacy = current.replace(b'Source Dataset', b'CDR source', 1)
-    restored = parse_catalog_csv(legacy, 'nsa')
+    restored = parse_catalog_csv(legacy)
     exported = catalogue_csv(restored)
 
     assert restored[0].cdr_source == 'CDR-Voice'

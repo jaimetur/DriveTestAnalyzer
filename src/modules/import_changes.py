@@ -350,16 +350,18 @@ def ticket_items(document: Any) -> list[Item]:
 
 
 def dashboard_items(document: Any) -> list[Item]:
-    """The Dashboards of a Dashboards document, found by their identity, then by their name and NR Mode."""
-    from src.modules.ppt_dashboards import dashboard_nr_mode
+    """The Dashboards of a Dashboards document, found by their identity, then by their name. Those of a document of
+    before, with an NR Mode of their own and of their template, as an import reads them (report_template_modes)."""
+    from src.modules.report_template_modes import migrate_dashboards_state
 
     dashboards = document.get('dashboards') if isinstance(document, dict) else None
+    dashboards, _changed = migrate_dashboards_state(dashboards) if isinstance(dashboards, dict) else ({}, False)
     identities = document.get('identities') if isinstance(document.get('identities'), dict) else {}
     creators = document.get('creators') if isinstance(document.get('creators'), dict) else {}
     return [Item(name=str(definition.get('name') or key), key=str(key), uid=str(identities.get(key) or key),
-                 match=f"{' '.join(str(definition.get('name') or '').split()).casefold()}|{dashboard_nr_mode(definition)}",
+                 match=' '.join(str(definition.get('name') or '').split()).casefold(),
                  values={**definition, 'created_by': str(creators.get(key) or '')})
-            for key, definition in (dashboards.items() if isinstance(dashboards, dict) else ()) if isinstance(definition, dict)]
+            for key, definition in dashboards.items() if isinstance(definition, dict)]
 
 
 def methodology_items(document: Any) -> list[Item]:
@@ -448,13 +450,12 @@ def nq_call_items(document: Any) -> list[Item]:
 
 
 def report_template_items(rows: Any) -> list[Item]:
-    """The PPT Templates of a workspace (or a package) as ``{technology, name, uid, content, is_default, created_by}``,
-    found by their identity, then by their name, in their NR Mode."""
+    """The PPT Templates of a workspace (or a package) as ``{name, uid, content, is_default, created_by}``, found by
+    their identity, then by their name."""
     items = []
     for row in rows if isinstance(rows, list) else []:
-        technology, name, uid = str(row.get('technology') or ''), str(row.get('name') or ''), str(row.get('uid') or '')
-        items.append(Item(name=f'{name} ({technology.upper()})', uid=f'{technology}|{uid}' if uid else '',
-                          match=f'{technology}|{name.casefold()}',
+        name, uid = str(row.get('name') or ''), str(row.get('uid') or '')
+        items.append(Item(name=name, uid=uid, match=name.casefold(),
                           values={key: row[key] for key in ('content', 'is_default', 'created_by') if key in row}))
     return items
 

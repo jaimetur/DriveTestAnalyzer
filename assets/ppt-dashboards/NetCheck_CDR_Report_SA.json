@@ -1,8 +1,7 @@
 {
-  "name": "NetCheck CDR Report",
-  "template": "SA - NetCheck CDR Report",
-  "template_technology": "sa",
-  "technology": "sa",
+  "name": "SA - NetCheck CDR Report",
+  "template": "NetCheck CDR Report",
+  "nr_mode": "SA",
   "scope": "single",
   "vendor_comparison": "operator_vendor",
   "custom_fields": [

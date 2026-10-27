@@ -103,7 +103,7 @@ class ItemMatcher:
     """Find the item of the workspace that an imported item replaces.
 
     ``items`` are those of the workspace as ``(key, name, uid)`` or ``(key, name, uid, group)``, where ``group``
-    separates the items whose names may repeat (the NR Mode of Dashboards, the technology of PPT Templates). Each
+    separates the items whose names may repeat. Each
     item of the workspace is replaced by one imported item at most. ``renamed`` lists ``(old name, new name)`` and
     ``conflicts`` ``(name, name given)`` of the items whose name another item already had. Names are compared by
     ``normalize`` (without case by default).

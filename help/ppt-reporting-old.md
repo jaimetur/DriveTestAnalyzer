@@ -26,12 +26,7 @@ PPT Reporting (old) is available to the super-admins without a Modules Profile a
 
 Process at least one suitable CDR. Reporting can combine multiple datasets of one type and retains Campaign for comparisons. Reports may use any non-empty combination of Data, Voice and Speech; template rows without a selected source render an explicit unavailable-source placeholder.
 
-Select NR Mode:
-
-| NR Mode | Included sessions |
-| --- | --- |
-| NSA | Voice/Speech sessions classified through recognised ENDC/NSA RAT or Call Mode values. |
-| SA | Voice/Speech sessions classified through recognised NR/SA RAT or Call Mode values. |
+Select NR Mode: **NSA** or **SA**, the NR Mode of the chosen CDRs. Every Data, Voice and Speech test of those CDRs is included, whatever RAT or call mode it ran on (as in PPT Dashboards: a row keeps the NR Mode of its CDR), so choose the CDRs of that NR Mode. The NR Mode names the report and its titles (`{NR Mode}`, `{NR Mode Name}` in the template).
 
 Valid Data attempts remain available even when sample RAT records a fallback.
 
@@ -45,7 +40,7 @@ Operator Comparison initially selects the two newest CDRs of each type, or the o
 
 ## Report Template selection
 
-Choose an NSA/SA Report Template from the active workspace. Each template controls slides, layouts, source datasets, chart types, KPIs, filters, aggregations and legends. Authorised users manage and edit templates in Workspace Config; new workspaces have none until a template is created or imported.
+Choose a Report Template from the active workspace (any template serves both NR Modes). Each template controls slides, layouts, source datasets, chart types, KPIs, filters, aggregations and legends. Authorised users manage and edit templates in Workspace Config; new workspaces have none until a template is created or imported.
 
 For the complete schema, supported chart types, examples, Filter Builder language, aggregations, legends, multi-chart slides and colour rules, see [Workspace Config → Report Template reference](workspace-config.md#report-template-reference).
 

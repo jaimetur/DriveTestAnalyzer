@@ -152,7 +152,7 @@ def test_mixed_vendor_groups_are_stored_with_their_interface_labels(tmp_path):
         ])
         connection.execute("INSERT INTO chart_mapping_groups (mapping_type, canonical_value, position, color) VALUES ('vendor', 'Non-Ericsson_Mixed', 5, '#B9770E')")
         template = b'Vendor,Filter\nVendor,Vendor NOT IN (Non-Ericsson_Mixed, Ericsson_Mixed)\n'
-        connection.execute("INSERT INTO report_templates (technology, name, content, is_default) VALUES ('sa', 'Template', ?, 1)", (template,))
+        connection.execute("INSERT INTO report_templates (name, content, is_default) VALUES ('Template', ?, 1)", (template,))
         connection.execute(
             "INSERT INTO workspace_state (key, value) VALUES ('nq_calls_filters', ?)",
             (json.dumps({'vendor': ['Ericsson_Mixed', 'Non-Ericsson_Mixed']}),),

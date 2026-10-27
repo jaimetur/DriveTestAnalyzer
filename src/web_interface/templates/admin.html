@@ -637,7 +637,7 @@
         <h2>PPT Templates Editor</h2>
         <p class="summary-description">Edit the slides, charts, KPIs and filters of the PowerPoint PPT Templates of a workspace.</p>
       </div>
-      <div class="summary-inline-actions">{% if catalogue_editor %}<span class="pill">{{ catalogue_editor.technology | upper }} · {{ catalogue_editor.catalogue.name }}</span>{% endif %}<span class="collapse-chip">Collapse</span></div>
+      <div class="summary-inline-actions">{% if catalogue_editor %}<span class="pill">{{ catalogue_editor.catalogue.name }}</span>{% endif %}<span class="collapse-chip">Collapse</span></div>
     </summary>
     <div class="collapsible-panel-body">
     <section class="catalogue-editor-catalogue-picker" aria-label="Workspace templates"{% if embedded_template_editor %} hidden{% endif %}>
@@ -646,12 +646,8 @@
         <label>Template to edit
           <select name="catalogue_selection" aria-label="Template to edit" required data-no-persist>
             <option value="" {% if not catalogue_editor %}selected{% endif %}>Choose a template to edit</option>
-            {% for technology, catalogue in report_catalogs.items() %}
-            <optgroup label="{{ technology | upper }} templates">
-              {% for item in catalogue.catalogues %}
-              <option value="{{ technology }}:{{ item.identifier }}" {% if catalogue_editor and catalogue_editor.technology == technology and catalogue_editor.catalogue.identifier == item.identifier %}selected{% endif %}>{{ item.name }}{% if item.active %} · Default{% endif %}</option>
-              {% endfor %}
-            </optgroup>
+            {% for item in report_catalogues %}
+            <option value="{{ item.identifier }}" {% if catalogue_editor and catalogue_editor.catalogue.identifier == item.identifier %}selected{% endif %}>{{ item.name }}{% if item.active %} · Default{% endif %}</option>
             {% endfor %}
           </select>
         </label>
@@ -661,12 +657,13 @@
     {% if catalogue_editor %}
     <div class="alert alert-warning" role="alert" data-catalogue-validation-alert{% if not catalogue_editor.validation_error %} hidden{% endif %}><strong>This Report Template contains a validation error.</strong> <span data-catalogue-validation-message>{{ catalogue_editor.validation_error or '' }}</span> Correct it before saving.</div>
     <p class="lede">Rows are ordered by Slide and alternate by slide block. When a slide contains several charts, its shared slide number, title, subtitle and layout are shown once and apply to the full slide block; saving writes those values back to every chart row in the CSV. Select a cell to edit it manually or use the contextual suggestions on the right.</p>
-    <div class="slides-templates-editor-grid" data-catalogue-editor data-editor-suggestions='{{ catalogue_editor.suggestions | tojson }}' data-calculated-dimensions='{{ catalogue_editor.calculated_dimensions | tojson }}' data-template-technology="{{ catalogue_editor.technology }}" data-template-identifier="{{ catalogue_editor.catalogue.identifier }}" data-template-options-url="/api/workspace-config/report-templates/copy-options" data-template-copy-url="/workspace-config/report-templates/{{ catalogue_editor.technology }}/{{ catalogue_editor.catalogue.identifier }}/copy-items" data-calculated-dimensions-url="/api/workspace/calculated-dimensions" data-calculated-dimension-export-url="/workspace/calculated-dimensions/export" data-chart-preview-url="/workspace-config/report-templates/{{ catalogue_editor.technology }}/{{ catalogue_editor.catalogue.identifier }}/chart-preview" data-chart-image-preview-url="/workspace-config/report-templates/{{ catalogue_editor.technology }}/{{ catalogue_editor.catalogue.identifier }}/chart-image-preview">
-      <form class="slides-templates-editor-table-wrap" action="/workspace-config/report-templates/{{ catalogue_editor.technology }}/{{ catalogue_editor.catalogue.identifier }}/save" method="post" data-catalogue-editor-save>
+    <div class="slides-templates-editor-grid" data-catalogue-editor data-editor-suggestions='{{ catalogue_editor.suggestions | tojson }}' data-calculated-dimensions='{{ catalogue_editor.calculated_dimensions | tojson }}' data-template-identifier="{{ catalogue_editor.catalogue.identifier }}" data-template-options-url="/api/workspace-config/report-templates/copy-options" data-template-copy-url="/workspace-config/report-templates/{{ catalogue_editor.catalogue.identifier }}/copy-items" data-calculated-dimensions-url="/api/workspace/calculated-dimensions" data-calculated-dimension-export-url="/workspace/calculated-dimensions/export" data-chart-preview-url="/workspace-config/report-templates/{{ catalogue_editor.catalogue.identifier }}/chart-preview" data-chart-image-preview-url="/workspace-config/report-templates/{{ catalogue_editor.catalogue.identifier }}/chart-image-preview">
+      <form class="slides-templates-editor-table-wrap" action="/workspace-config/report-templates/{{ catalogue_editor.catalogue.identifier }}/save" method="post" data-catalogue-editor-save>
         <input type="hidden" name="catalogue_content" value="" data-catalogue-editor-content>
         <div class="catalogue-table-toolbar">
           <button type="button" class="catalogue-find-toggle" data-catalogue-find-toggle aria-expanded="false" title="Find and replace in the whole template (Ctrl/Cmd+F)">Find &amp; Replace</button>
           <button type="button" class="catalogue-calculated-dimensions-button" data-manage-calculated-dimensions>Auto-calculated Fields</button>
+          <label class="catalogue-preview-nr-mode" title="The chart previews read the CDRs of this NR Mode, and the titles name it: {NR Mode} reads NSA or SA and {NR Mode Name} Non-Standalone or Standalone. The template serves both NR Modes.">Preview NR Mode<select data-catalogue-preview-nr-mode data-no-persist aria-label="NR Mode of the chart previews"><option value="NSA">NSA</option><option value="SA">SA</option></select></label>
         </div>
         <div class="catalogue-find-bar" data-catalogue-find-bar role="search" aria-label="Find and replace in the template" hidden>
           <label>Find<input type="search" data-catalogue-find-input placeholder="Text to find" autocomplete="off"></label>

@@ -298,10 +298,10 @@ def test_threshold_and_negative_bucket_labels_follow_the_configuration() -> None
 
 
 def test_bundled_rf_quality_template_is_valid() -> None:
-    catalogue = app_module.load_template_catalogue(TEMPLATE_PATH.read_bytes(), 'nsa')
+    catalogue = app_module.load_template_catalogue(TEMPLATE_PATH.read_bytes())
     assert len(catalogue) == 116
     from src.modules.cdr_reporting import catalogue_csv, parse_catalog_csv
-    restored = parse_catalog_csv(catalogue_csv(catalogue), 'nsa')
+    restored = parse_catalog_csv(catalogue_csv(catalogue))
     assert [(entry.cdr_source, entry.chart_type, entry.kpi, entry.filters) for entry in restored] == [
         (entry.cdr_source, entry.chart_type, entry.kpi, entry.filters) for entry in catalogue
     ]
@@ -366,7 +366,7 @@ def test_quality_maps_use_measurement_buckets_without_replacing_coordinates(fiel
 def test_rf_histogram_counts_samples_in_ordered_quality_ranges() -> None:
     from src.modules.cdr_reporting import catalog_chart_payload
 
-    catalogue = app_module.load_template_catalogue(TEMPLATE_PATH.read_bytes(), 'nsa')
+    catalogue = app_module.load_template_catalogue(TEMPLATE_PATH.read_bytes())
     entry = next(entry for entry in catalogue if entry.chart_type == 'Histogram Line' and entry.kpi == 'NR_PCell_RSRP_Avg')
     frame = pd.DataFrame({
         'Operator': ['EE'] * 9,
@@ -552,7 +552,7 @@ def test_combined_rf_source_pools_samples_instead_of_type_means() -> None:
     assert combined['LTE_RSRP'].mean() == -80
     assert combined['NR_RSRP'].count() == 1
     assert combined['CDR_Type'].tolist() == ['Data', 'Data', 'Data', 'Voice', 'Speech']
-    catalogue = app_module.load_template_catalogue(TEMPLATE_PATH.read_bytes(), 'nsa')
+    catalogue = app_module.load_template_catalogue(TEMPLATE_PATH.read_bytes())
     aggregate = [entry for entry in catalogue if entry.source_kind == 'all']
     assert len({entry.slide for entry in aggregate}) == 12
     assert len(aggregate) == 28
@@ -569,7 +569,7 @@ def test_histogram_legacy_png_renderer_accepts_combined_rf_samples(monkeypatch) 
     from src.modules.rf_catalog_source import pool_rf_frames
 
     monkeypatch.setenv('DRIVETEST_ANALYZER_REPORT_CHART_RENDERER', 'pil')
-    catalogue = app_module.load_template_catalogue(TEMPLATE_PATH.read_bytes(), 'nsa')
+    catalogue = app_module.load_template_catalogue(TEMPLATE_PATH.read_bytes())
     entry = next(entry for entry in catalogue if entry.source_kind == 'all' and entry.chart_type == 'Histogram Line' and entry.kpi == 'LTE_RSRP')
     combined = pool_rf_frames({'data': pd.DataFrame({
         'Operator': ['EE'] * 4, 'Campaign': ['2026-Q1', '2026-Q1', '2026-Q2', '2026-Q2'],
@@ -591,7 +591,7 @@ def test_dynamic_histogram_grids_keep_radio_positions_and_all_operators(layout, 
     from dataclasses import replace
     from src.modules.cdr_reporting import expand_dynamic_layouts, _layout_chart_frames, _named_slide_layout, catalogue_csv, parse_catalog_csv
     from pptx import Presentation
-    catalogue = app_module.load_template_catalogue(TEMPLATE_PATH.read_bytes(), 'nsa')
+    catalogue = app_module.load_template_catalogue(TEMPLATE_PATH.read_bytes())
     base = [entry for entry in catalogue if entry.chart_type == 'Histogram Bars'][:2]
     base = [replace(
         entry, layout=layout, dynamic_rows_field='' if columns else 'Operator',
@@ -613,7 +613,7 @@ def test_dynamic_histogram_grids_keep_radio_positions_and_all_operators(layout, 
         actual = expand_dynamic_layouts(base, {'Operator': [str(index) for index in range(count)]})
         assert len(actual) == count * 2
         assert len(_layout_chart_frames(_named_slide_layout(deck, actual[0].layout))) == count * 2
-    restored = parse_catalog_csv(catalogue_csv(base), 'nsa')
+    restored = parse_catalog_csv(catalogue_csv(base))
     if columns:
         assert [entry.dynamic_columns_field for entry in restored] == ['Operator', 'Operator']
         assert [entry.dynamic_rows_field for entry in restored] == ['', '']
@@ -640,7 +640,7 @@ def test_dynamic_grids_without_comments_expand_to_matching_frames(dynamic_layout
         expand_dynamic_layouts,
     )
 
-    catalogue = app_module.load_template_catalogue(TEMPLATE_PATH.read_bytes(), 'nsa')
+    catalogue = app_module.load_template_catalogue(TEMPLATE_PATH.read_bytes())
     base = [
         replace(
             entry, layout=dynamic_layout,
@@ -719,7 +719,7 @@ def test_two_axis_dynamic_expansion_filters_vendor_only_and_paginates_grid_frame
 
 def test_operator_histogram_campaign_bars_use_ordered_shades_and_exact_counts():
     from src.modules.cdr_reporting import catalog_chart_payload, expand_dynamic_layouts
-    catalogue = app_module.load_template_catalogue(TEMPLATE_PATH.read_bytes(), 'nsa')
+    catalogue = app_module.load_template_catalogue(TEMPLATE_PATH.read_bytes())
     expanded = expand_dynamic_layouts(catalogue, {'Operator': ['EE', 'O2']})
     entry = next(entry for entry in expanded if entry.chart_type == 'Histogram Bars' and entry.kpi == 'LTE_RSRP')
     frame = pd.DataFrame({'Operator': ['EE'] * 6 + ['O2'],
@@ -741,7 +741,7 @@ def test_operator_histogram_campaign_bars_use_ordered_shades_and_exact_counts():
 def test_legacy_dynamic_template_field_is_optional_for_static_rows_and_required_for_dynamic_layouts():
     import csv, io
     from src.modules.cdr_reporting import SINGLE_DYNAMIC_CATALOG_HEADERS, catalogue_csv, parse_catalog_csv
-    catalogue = app_module.load_template_catalogue(TEMPLATE_PATH.read_bytes(), 'nsa')
+    catalogue = app_module.load_template_catalogue(TEMPLATE_PATH.read_bytes())
     static = [entry for entry in catalogue if entry.chart_type != 'Histogram Bars']
     reader = csv.DictReader(io.StringIO(catalogue_csv(static).decode()))
     new_rows = list(reader)
@@ -749,21 +749,21 @@ def test_legacy_dynamic_template_field_is_optional_for_static_rows_and_required_
     output = io.StringIO(); writer = csv.DictWriter(output, headers, lineterminator='\n')
     writer.writeheader()
     writer.writerows({**{field: row[field] for field in headers[:-1]}, 'Dynamic Field': ''} for row in new_rows)
-    restored = parse_catalog_csv(output.getvalue(), 'nsa')
+    restored = parse_catalog_csv(output.getvalue())
     assert len(restored) == len(static)
     assert all(entry.dynamic_field == '' for entry in restored)
     from dataclasses import replace
     pair = [entry for entry in catalogue if entry.chart_type == 'Histogram Bars'][:2]
     missing = [replace(entry, dynamic_field='', dynamic_rows_field='', dynamic_columns_field='') for entry in pair]
     with pytest.raises(ValueError, match='requires Dynamic .* Field'):
-        parse_catalog_csv(catalogue_csv(missing), 'nsa')
+        parse_catalog_csv(catalogue_csv(missing))
 
 
 def test_multivendor_dynamic_histograms_page_by_vendor_and_keep_template_indexes():
     from dataclasses import replace
     from src.modules.cdr_reporting import expand_dynamic_layouts
 
-    catalogue = app_module.load_template_catalogue(TEMPLATE_PATH.read_bytes(), 'nsa')
+    catalogue = app_module.load_template_catalogue(TEMPLATE_PATH.read_bytes())
     base = [
         replace(entry, layout='2 rows + dynamic columns, comments down')
         for entry in catalogue if entry.chart_type == 'Histogram Bars'

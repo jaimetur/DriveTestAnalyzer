@@ -18,9 +18,10 @@ def _seed_favourites(repository):
 
 
 def test_the_shipped_content_names_no_operator_or_vendor():
-    templates = sorted((ASSETS / 'ppt-templates').glob('*/*.csv'))
-    assert {(path.parent.name, path.stem) for path in templates} >= {
-        ('nsa', 'NSA - NetCheck CDR Report'), ('sa', 'SA - NetCheck CDR Report'), ('nsa', 'NSA - RF Quality (RSRP & SINR)')}
+    # One library: each template serves any NR Mode.
+    templates = sorted((ASSETS / 'ppt-templates').glob('*.csv'))
+    assert not list((ASSETS / 'ppt-templates').glob('*/*.csv'))
+    assert {path.stem for path in templates} >= {'NetCheck CDR Report', 'NetCheck CDR Report (Main Cities)', 'RF Quality (RSRP & SINR)'}
     for path in templates:
         rows = list(csv.DictReader(io.StringIO(path.read_text(encoding='utf-8'))))
         # No template filters an Operator, nor Vendors by their operator (3_Ericsson); the Tableau templates of the UK
@@ -30,10 +31,11 @@ def test_the_shipped_content_names_no_operator_or_vendor():
         assert 'G_Level_4 NOT IN (London)' not in path.read_text(encoding='utf-8'), path.name
         assert path.stem.startswith('Tableau') or not any(VENDOR_FILTER.search(row.get('Filters') or '') for row in rows), path.name
     dashboards = [json.loads(path.read_text(encoding='utf-8')) for path in (ASSETS / 'ppt-dashboards').glob('*.json')]
-    assert {(item['name'], item['template_technology']) for item in dashboards} >= {
-        ('NetCheck CDR Report', 'nsa'), ('NetCheck CDR Report', 'sa'), ('RF Quality (RSRP & SINR)', 'nsa'),
-        ('NetCheck CDR Report (Main Cities)', 'nsa'), ('NetCheck CDR Report (Main Cities)', 'sa'),
-        ('Tableau Dashboards', 'nsa'), ('Tableau Charts', 'nsa')}
+    assert {(item['name'], item['nr_mode']) for item in dashboards} >= {
+        ('NSA - NetCheck CDR Report', 'NSA'), ('SA - NetCheck CDR Report', 'SA'), ('RF Quality (RSRP & SINR)', 'NSA'),
+        ('NSA - NetCheck CDR Report (Main Cities)', 'NSA'), ('SA - NetCheck CDR Report (Main Cities)', 'SA'),
+        ('Tableau Dashboards', 'NSA'), ('Tableau Charts', 'NSA')}
+    assert not any({'technology', 'template_technology'} & set(item) for item in dashboards)
     # The (Main Cities) Dashboards use the Main Cities of each workspace.
     assert all(item['filters']['City'] == ['@main-cities'] for item in dashboards if item['name'].endswith('(Main Cities)'))
     for item in dashboards:
@@ -41,7 +43,7 @@ def test_the_shipped_content_names_no_operator_or_vendor():
             field.replace(' ', '_').casefold() in {'operator', 'vendor', 'operator_vendor', 'vendor_operator'}
             for field in item.get('filters') or {})
         # Each Dashboard uses a shipped Report Template.
-        assert (ASSETS / 'ppt-templates' / item['template_technology'] / f"{item['template']}.csv").exists()
+        assert (ASSETS / 'ppt-templates' / f"{item['template']}.csv").exists()
     methodology = json.loads((ASSETS / 'scoring-methodologies' / 'NetCheck_2026.json').read_text(encoding='utf-8'))
     assert [profile['name'] for profile in methodology['profiles']] == ['NetCheck 2026']
 
@@ -52,11 +54,13 @@ def test_a_new_workspace_starts_with_the_shipped_content_once(client):
     repository = app_module.repository
     assert repository.get_workspace_state(starter_content.STATE_KEY) == '1'
     assert 'NetCheck 2026' in [profile['name'] for profile in repository.get_scoring_profiles()['profiles']]
-    templates = {(technology, row['name']) for technology in ('nsa', 'sa') for row in repository.list_report_templates(technology)}
-    assert {('nsa', 'NSA - NetCheck CDR Report'), ('sa', 'SA - NetCheck CDR Report'), ('nsa', 'NSA - RF Quality (RSRP & SINR)')} <= templates
+    templates = {row['name'] for row in repository.list_report_templates()}
+    assert {'NetCheck CDR Report', 'NetCheck CDR Report (Main Cities)', 'RF Quality (RSRP & SINR)'} <= templates
     dashboards = json.loads(repository.get_workspace_state(starter_content.DASHBOARDS_STATE_KEY))
-    names = sorted((item['name'], item['template_technology']) for item in dashboards.values())
-    assert ('NetCheck CDR Report', 'nsa') in names and ('RF Quality (RSRP & SINR)', 'nsa') in names
+    names = sorted((item['name'], item['template'], item['nr_mode']) for item in dashboards.values())
+    assert ('NSA - NetCheck CDR Report', 'NetCheck CDR Report', 'NSA') in names
+    assert ('SA - NetCheck CDR Report', 'NetCheck CDR Report', 'SA') in names
+    assert ('RF Quality (RSRP & SINR)', 'RF Quality (RSRP & SINR)', 'NSA') in names
     # It is added once: content deleted or renamed later is not added again.
     assert starter_content.seed_starter_content(repository) is None
     # A workspace that already has content with those names keeps it.
@@ -103,15 +107,15 @@ def test_the_other_starter_content_fits_any_market(client):
     # The weekly job is disabled until it is enabled in the workspace.
     assert weekly['enabled'] is False and weekly['schedule']['mode'] == 'weekly'
     assert sorted(dashboards[entry['dashboard_id']]['name'] for entry in weekly['definition']['dashboards']) == [
-        'NetCheck CDR Report', 'NetCheck CDR Report', 'RF Quality (RSRP & SINR)']
+        'NSA - NetCheck CDR Report', 'RF Quality (RSRP & SINR)', 'SA - NetCheck CDR Report']
     # Every operator (the Operator Maps leave out the excluded ones).
     assert all(entry['filters'] == {'Campaign': ['@latest-campaign']} for entry in weekly['definition']['dashboards'])
     assert [scenario['name'] for scenario in weekly['definition']['scoring'][0]['report']['scenarios']] == ['National', 'Main Cities']
     every = jobs['All Modules Report (@latest 2 campaigns)']['definition']
-    assert sorted((dashboards[entry['dashboard_id']]['name'], dashboards[entry['dashboard_id']]['template_technology'])
+    assert sorted((dashboards[entry['dashboard_id']]['name'], dashboards[entry['dashboard_id']]['nr_mode'])
                   for entry in every['dashboards']) == [
-        ('NetCheck CDR Report', 'nsa'), ('NetCheck CDR Report', 'sa'), ('NetCheck CDR Report (Main Cities)', 'nsa'),
-        ('NetCheck CDR Report (Main Cities)', 'sa'), ('RF Quality (RSRP & SINR)', 'nsa')]
+        ('NSA - NetCheck CDR Report', 'NSA'), ('NSA - NetCheck CDR Report (Main Cities)', 'NSA'),
+        ('RF Quality (RSRP & SINR)', 'NSA'), ('SA - NetCheck CDR Report', 'SA'), ('SA - NetCheck CDR Report (Main Cities)', 'SA')]
     assert [entry['selection']['nr_mode'] for entry in every['network_insights']] == ['NSA', 'SA']
     assert every['dataset_analysis']['enabled'] and every['dataset_analysis']['auto_cdrs']
     assert every['modules']['non_qualified_calls']['enabled']
@@ -244,11 +248,11 @@ def test_a_new_workspace_starts_with_the_favourites_of_the_uk_workspace(client):
     favourites = {item['name']: item['definition'] for item in bundle_report_templates.list_favourites(repository)}
     assert {item['name'] for item in shipped('bundle-report-template-favourites')} <= set(favourites)
     dashboards = json.loads(repository.get_workspace_state(starter_content.DASHBOARDS_STATE_KEY))
-    for name, technology in (('Complete Report (@Latest 2 campaigns) · NSA', 'nsa'), ('Complete Report (@Latest 2 campaigns) · SA', 'sa')):
+    for name, nr_mode in (('Complete Report (@Latest 2 campaigns) · NSA', 'NSA'), ('Complete Report (@Latest 2 campaigns) · SA', 'SA')):
         items = next(section for section in favourites[name]['sections'] if section['key'] == 'dashboards')['items']
         checked = [dashboards[item['key']] for item in items if item['enabled']]
-        assert checked and all(dashboard['template_technology'] == technology for dashboard in checked)
-        assert 'NetCheck CDR Report (Main Cities)' in [dashboard['name'] for dashboard in checked]
+        assert checked and all(dashboard['nr_mode'] == nr_mode for dashboard in checked)
+        assert f'{nr_mode} - NetCheck CDR Report (Main Cities)' in [dashboard['name'] for dashboard in checked]
     # The Favourites Filters, in their order, wait for the CDRs of their Campaign choice.
     filters = [item for item in saved_filters.list_saved_filters(repository) if item['pinned']]
     assert [item['name'] for item in filters] == [item['name'] for item in sorted(

@@ -36,7 +36,7 @@ from src.modules.cdr_auto_selection import (
     resolve_campaign_filter, resolve_cdrs, sort_campaigns,
 )
 from src.modules.column_names import compact_campaign_value
-from src.modules.nr_mode import NSA_VS_SA, normalize_scoring_nr_mode, nr_mode_label
+from src.modules.nr_mode import DEFAULT_NR_MODE, NSA_VS_SA, normalize_nr_mode, normalize_scoring_nr_mode, nr_mode_label
 from src.modules.scoring_reports import NR_CHARTS, NR_CHARTS_LABELS, NR_LAYOUT_LABELS, NR_LAYOUTS
 from src.modules.output_layout import REPORTING_JOBS_FOLDER, module_output_dir
 from src.modules.scoring_themes import DEFAULT_THEME, normalize_theme, themes_payload
@@ -310,6 +310,11 @@ def _network_thresholds(selection: dict[str, Any]) -> dict[str, float]:
     }
 
 
+def _dashboard_nr_mode(definition: dict[str, Any]) -> str:
+    """The NR Mode of the CDRs a saved Dashboard reads (those saved before named it technology)."""
+    return normalize_nr_mode(definition.get('nr_mode') or definition.get('technology')) or DEFAULT_NR_MODE
+
+
 def _datasets_by_kind(value: Any) -> dict[str, list[int]]:
     if not isinstance(value, dict):
         return {}
@@ -411,6 +416,9 @@ def normalize_definition(raw: Any) -> dict[str, Any]:
         auto_cdrs = bool(entry.get('auto_cdrs'))
         definition['dashboards'].append({
             'dashboard_id': str(entry['dashboard_id']).strip(), 'label': str(entry.get('label') or '').strip()[:120],
+            # The NR Mode of the CDRs it reads, in place of the Dashboard's (empty: the Dashboard's own, as the entries
+            # saved before).
+            'nr_mode': normalize_nr_mode(entry.get('nr_mode')) or '',
             'scope': entry.get('scope') if entry.get('scope') in {'single', 'multivendor'} else 'single',
             'vendor_comparison': entry.get('vendor_comparison') if entry.get('vendor_comparison') in {'operator_vendor', 'vendor_only'} else 'operator_vendor',
             # The CDRs of the Dashboard's NR Mode and of the Campaign filter at each run (auto_cdrs); entries saved
@@ -1535,8 +1543,10 @@ def install_report_task_routes(core: Any) -> None:
         return lines
 
     def dashboard_definition(stored: dict[str, Any], entry: dict[str, Any], task_repository=None) -> dict[str, Any]:
-        """The saved Dashboard with the artifact's Scope, CDRs, dates and filters."""
+        """The saved Dashboard with the artifact's NR Mode, Scope, CDRs, dates and filters."""
         definition = dict(stored)
+        if normalize_nr_mode(entry.get('nr_mode')):
+            definition['nr_mode'] = normalize_nr_mode(entry['nr_mode'])
         if entry.get('auto_cdrs'):
             # The CDRs of the Dashboard's NR Mode and of the entry's Campaign filter, chosen when it is generated.
             definition.pop('datasets', None)
@@ -1547,7 +1557,7 @@ def install_report_task_routes(core: Any) -> None:
             })
             return definition
         if entry.get('cdr_selection') in CDR_SELECTIONS and task_repository is not None:
-            nr_mode = 'SA' if str(stored.get('technology') or 'nsa').upper() == 'SA' else 'NSA'
+            nr_mode = _dashboard_nr_mode(definition)
             entry = {**entry, 'datasets': cdrs_by_kind(task_repository, automatic_cdrs(task_repository, nr_mode, entry['cdr_selection']))}
         definition.update({
             'scope': entry['scope'], 'vendor_comparison': entry['vendor_comparison'],
@@ -2054,7 +2064,7 @@ def install_report_task_routes(core: Any) -> None:
                     'id': dashboard_id, 'name': str(stored.get('name') or dashboard_id),
                     'template': str(stored.get('template') or ''), 'scope': str(stored.get('scope') or 'single'),
                     'vendor_comparison': str(stored.get('vendor_comparison') or 'operator_vendor'),
-                    'technology': str(stored.get('technology') or 'nsa'), 'datasets': stored.get('datasets') or {},
+                    'nr_mode': _dashboard_nr_mode(stored), 'datasets': stored.get('datasets') or {},
                     'filters': stored.get('filters') or {}, 'custom_fields': stored.get('custom_fields') or [],
                     'date_from': str(stored.get('date_from') or ''), 'date_to': str(stored.get('date_to') or ''),
                 })

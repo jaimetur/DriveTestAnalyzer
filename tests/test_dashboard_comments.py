@@ -101,7 +101,7 @@ def prepare_rates_dashboard(client):
         'dataset_files': ('rates.csv', BytesIO('\n'.join(rows).encode()), 'text/csv'),
     })
     assert uploaded.status_code == 200, uploaded.text
-    core.repository.add_report_template('nsa', 'Comments test', (
+    core.repository.add_report_template('Comments test', (
         'Slide,Slide tittle,Slide Subtittle,Layout,Chart Tittle,CDR source,KPI,Chart type,Filters,Rows Split,Columns Split,Legend,Legend Position\n'
         '1,Rates,,Title and 2 columns + Comments,Rate CDF,CDR-Data,Mean_Data_Rate,CDF Line,,Operator,Campaign,,Top\n'
         '1,Rates,,Title and 2 columns + Comments,Rate mean,CDR-Data,Mean_Data_Rate,Average Vertical Bars,,Operator,Campaign,,Top\n'

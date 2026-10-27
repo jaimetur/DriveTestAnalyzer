@@ -80,10 +80,12 @@ def test_scoring_report_configuration_changes_are_recorded(client) -> None:
 def test_report_template_export_is_recorded(client) -> None:
     login(client)
 
-    exported = client.get('/workspace-config/report-templates/nsa/export')
+    exported = client.get('/workspace-config/report-templates/export')
 
     assert exported.status_code == 200
-    assert [event['technology'] for event in events('export_report_template')] == ['nsa']
+    # The default template, which serves any NR Mode.
+    assert [event['template'] for event in events('export_report_template')] == [
+        next(item['name'] for item in core.report_catalogue_options() if item['active'])]
 
 
 @pytest.fixture()

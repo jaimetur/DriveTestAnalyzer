@@ -17,7 +17,7 @@ from urllib.parse import urlencode
 from pptx import Presentation
 from pptx.dml.color import RGBColor
 
-from src.modules.cdr_reporting import CATALOG_HEADERS, TRAILING_DYNAMIC_CATALOG_HEADERS, CatalogEntry, _apply_catalog_filters, _apply_catalog_grouping, _cdf_campaign_line_widths, _cdf_plot_geometry, _cdf_terminal_x_maximum, _cdf_visible_points, _draw_adjacent_stacked_bar_label, _draw_chart_legend, _draw_configured_bar_label, _draw_inside_bar_label, _draw_top_column_group_separators, _hierarchical_complete_keys, _hierarchical_unique_keys, _hierarchy_caption_spans, _hierarchy_group_colours, _hierarchy_spans, _horizontal_legend_columns, _layout_chart_frames, _legend_dimensions, _legend_labels, _named_slide_layout, _render_cdf_line, _render_failure_count, _render_failure_count_hierarchy, _render_map, _render_mean_column, _render_stacked_distribution, _render_status_100, _render_table, _resolved_legend_items, _series_colours, _series_line_dashes, _status_chart_categories, assign_cdr_vendors, catalog_chart_hover_targets, catalog_chart_payload, catalogue_csv, classify_sessions, convert_catalog_csv, ensure_vendor_group, enrich_multivendor, load_catalog_csv, normalise_operator_aliases, parse_axis_range, parse_calculated_dimensions, parse_catalog_csv, parse_catalog_filters, parse_catalog_grouping, parse_kpi_expression, parse_label_format, parse_label_position, parse_legend_position, parse_template_boolean, prepare_catalog_chart_preview_frame, prepare_multivendor_catalog_entry, render_catalog_chart_preview, render_cdr_report, vendor_from_cells
+from src.modules.cdr_reporting import CATALOG_HEADERS, TRAILING_DYNAMIC_CATALOG_HEADERS, CatalogEntry, _apply_catalog_filters, _apply_catalog_grouping, _cdf_campaign_line_widths, _cdf_plot_geometry, _cdf_terminal_x_maximum, _cdf_visible_points, _draw_adjacent_stacked_bar_label, _draw_chart_legend, _draw_configured_bar_label, _draw_inside_bar_label, _draw_top_column_group_separators, _hierarchical_complete_keys, _hierarchical_unique_keys, _hierarchy_caption_spans, _hierarchy_group_colours, _hierarchy_spans, _horizontal_legend_columns, _layout_chart_frames, _legend_dimensions, _legend_labels, _named_slide_layout, _render_cdf_line, _render_failure_count, _render_failure_count_hierarchy, _render_map, _render_mean_column, _render_stacked_distribution, _render_status_100, _render_table, _resolved_legend_items, _series_colours, _series_line_dashes, _status_chart_categories, assign_cdr_vendors, catalog_chart_hover_targets, catalog_chart_payload, catalogue_csv, convert_catalog_csv, ensure_vendor_group, enrich_multivendor, load_catalog_csv, normalise_operator_aliases, parse_axis_range, parse_calculated_dimensions, parse_catalog_csv, parse_catalog_filters, parse_catalog_grouping, parse_kpi_expression, parse_label_format, parse_label_position, parse_legend_position, parse_template_boolean, prepare_catalog_chart_preview_frame, prepare_multivendor_catalog_entry, render_catalog_chart_preview, render_cdr_report, vendor_from_cells
 from src.modules.cdr_reporting import _draw_fitted_aggregation_header
 
 
@@ -533,7 +533,7 @@ def test_reporting_cache_checks_requested_columns_in_bounded_table_scans(tmp_pat
     assert 'FROM "dataset_rows_1"' in presence_queries[1]
 
 
-def test_session_classification_and_multivendor_enrichment() -> None:
+def test_multivendor_enrichment_by_operator() -> None:
     cdr = pd.DataFrame({
         'Operator': ['Vodafone UK', '3'],
         'RAT_A': ['LTE EN-DC', 'NR'],
@@ -550,50 +550,11 @@ def test_session_classification_and_multivendor_enrichment() -> None:
         'Vendor': ['Nokia', 'Ericsson'],
     })
 
-    nsa = classify_sessions(cdr, 'nsa')
-    sa = classify_sessions(cdr, 'sa')
+    # The rows of each NR Mode are those of its CDRs (no call-mode classification).
+    nsa, sa = cdr.iloc[[0]], cdr.iloc[[1]]
 
-    assert len(nsa) == 1
-    assert len(sa) == 1
     assert enrich_multivendor(nsa, vodafone_mapping, three_mapping)['Operator_Vendor'].tolist() == ['Vodafone_Ericsson']
     assert enrich_multivendor(sa, vodafone_mapping, three_mapping)['Operator_Vendor'].tolist() == ['3_Ericsson (Mixed)']
-
-
-def test_speech_session_classification_uses_call_mode_when_sample_rat_is_blank() -> None:
-    speech = pd.DataFrame({
-        'sample': ['native-volte', 'native-vonr', 'whatsapp-endc', 'whatsapp-nr'],
-        'Sample_RAT_A': [None, None, 'EN-DC', 'NR SA'],
-        'L1_Call_Mode_A': ['VoLTE', 'VoNR', 'VoIP', 'VoIP'],
-    })
-
-    assert classify_sessions(speech, 'nsa')['sample'].tolist() == ['native-volte', 'whatsapp-endc']
-    assert classify_sessions(speech, 'sa')['sample'].tolist() == ['native-vonr', 'whatsapp-nr']
-
-
-def test_voice_session_classification_prioritises_call_mode_over_rat() -> None:
-    voice = pd.DataFrame({
-        'sample': ['volte-lte', 'multirab-volte', 'epsfb', 'vonr-endc', 'whatsapp-endc', 'whatsapp-nr'],
-        'Session_Type': ['CALL', 'MultiRAB CALL', 'CALL', 'CALL', 'WhatsApp CALL', 'WhatsApp CALL'],
-        'RAT_A': ['LTE', 'LTE', 'NR/LTE', 'EN-DC', 'EN-DC', 'NR'],
-        'L1_Call_Mode_A': ['VoLTE', 'VoLTE', 'EPSFB', 'VoNR', 'VoIP', 'VoIP'],
-    })
-
-    assert classify_sessions(voice, 'nsa')['sample'].tolist() == [
-        'volte-lte', 'multirab-volte', 'epsfb', 'whatsapp-endc',
-    ]
-    assert classify_sessions(voice, 'sa')['sample'].tolist() == ['vonr-endc', 'whatsapp-nr']
-
-
-def test_multirab_lte_uses_nsa_fallback_when_call_mode_is_unknown() -> None:
-    voice = pd.DataFrame({
-        'sample': ['multirab-lte', 'native-lte'],
-        'Session_Type': ['MultiRAB CALL', 'CALL'],
-        'RAT_A': ['LTE', 'LTE'],
-        'L1_Call_Mode_A': ['CSFB', 'CSFB'],
-    })
-
-    assert classify_sessions(voice, 'nsa')['sample'].tolist() == ['multirab-lte']
-    assert classify_sessions(voice, 'sa').empty
 
 
 def test_combined_reporting_frame_keeps_every_data_attempt_before_template_filters(tmp_path) -> None:
@@ -622,8 +583,7 @@ def test_combined_reporting_frame_keeps_every_data_attempt_before_template_filte
     )
 
     frame = app_module._combined_reporting_frame(
-        [{'id': dataset_id, 'dataset_kind': 'data'}],
-        'nsa', [entry], False, repository,
+        [{'id': dataset_id, 'dataset_kind': 'data'}], [entry], False, repository,
     )
 
     assert frame['RAT'].tolist() == ['EN-DC', 'LTE', 'NR SA']
@@ -721,8 +681,8 @@ def test_catalogue_converter_migrates_legacy_headers_and_grouping() -> None:
         '8,Quality,Voice,Title and 1 column + Comments,CDR-Voice,Call_Status,100% Stacked Vertical Bars,,Operator × Campaign\n'
     )
 
-    converted = convert_catalog_csv(legacy, 'nsa')
-    entries = parse_catalog_csv(converted, 'nsa')
+    converted = convert_catalog_csv(legacy)
+    entries = parse_catalog_csv(converted)
 
     assert converted.decode('utf-8').splitlines()[0] == ','.join(CATALOG_HEADERS)
     assert entries[0].slide_title == 'Quality'
@@ -739,7 +699,7 @@ def test_catalogue_converter_assigns_layouts_for_missing_legacy_layouts() -> Non
         '9,Quality,,,CDR-Voice,Call_Setup_Time,Average Vertical Bars,,Operator × Campaign\n'
     )
 
-    entries = parse_catalog_csv(convert_catalog_csv(legacy, 'nsa'), 'nsa')
+    entries = parse_catalog_csv(convert_catalog_csv(legacy))
 
     assert {entry.layout for entry in entries} == {'Title + 1 rows + 2 columns + comments down'}
 
@@ -789,7 +749,7 @@ def test_catalogue_csv_requires_the_report_chart_contract_columns() -> None:
         + '\n8,Completed Call Ratio,Voice quality,Title and 1 column + Comments,Completed call ratio,CDR-Voice,Call_Status,100% Stacked Vertical Bars,Call Family = VoLTE,Operator,Campaign,Completed/Dropped/Failed,\n'
     ).encode('utf-8')
 
-    entries = parse_catalog_csv(catalogue, 'nsa')
+    entries = parse_catalog_csv(catalogue)
 
     assert entries[0].slide == 8
     assert entries[0].slide_title == 'Completed Call Ratio'
@@ -805,7 +765,7 @@ def test_catalogue_parses_legend_position_and_accepts_prior_schema() -> None:
         ','.join(TRAILING_DYNAMIC_CATALOG_HEADERS)
         + '\n8,Quality,,Title and 1 column + Comments,,CDR-Voice,Call_Status,100% Stacked Vertical Bars,,Operator,Campaign,Completed/Dropped/Failed,Left\n'
     )
-    entry = parse_catalog_csv(current, 'nsa')[0]
+    entry = parse_catalog_csv(current)[0]
 
     assert entry.legend_position == 'left'
     assert parse_legend_position('Bottom') == 'bottom'
@@ -813,9 +773,9 @@ def test_catalogue_parses_legend_position_and_accepts_prior_schema() -> None:
         parse_legend_position('Centre')
 
     previous = 'Slide,Slide tittle,Slide Subtittle,Layout,Chart Tittle,CDR source,KPI,Chart type,Legend,Filters,Grouping_Rows,Grouping_Columns' + '\n8,Quality,,Title and 1 column + Comments,,CDR-Voice,Call_Status,100% Stacked Vertical Bars,,,Operator,Campaign\n'
-    assert parse_catalog_csv(previous, 'nsa')[0].legend_position == ''
+    assert parse_catalog_csv(previous)[0].legend_position == ''
     two_columns = ','.join(TRAILING_DYNAMIC_CATALOG_HEADERS) + '\n8,Quality,,Title and 2 columns + Comments,,CDR-Voice,Call_Status,100% Stacked Vertical Bars,,Operator,Campaign,,\n'
-    assert parse_catalog_csv(two_columns, 'nsa')[0].legend_position == ''
+    assert parse_catalog_csv(two_columns)[0].legend_position == ''
 
 
 def test_catalogue_cdf_axis_ranges_are_optional_and_backward_compatible() -> None:
@@ -823,7 +783,7 @@ def test_catalogue_cdf_axis_ranges_are_optional_and_backward_compatible() -> Non
         'Slide,Slide Tittle,Slide Subtittle,Layout,Chart Tittle,CDR source,KPI,Chart type,Filters,Rows Split,Columns Split,Legend,Legend Position\n'
         '8,Quality,,Title and 1 column + Comments,Quality,CDR-Speech,LQ,CDF Line,,Operator,,,Top\n'
     )
-    legacy_entry = parse_catalog_csv(rangeless, 'nsa')[0]
+    legacy_entry = parse_catalog_csv(rangeless)[0]
     assert legacy_entry.axis_x_range == ''
     assert legacy_entry.axis_y_range == ''
 
@@ -831,7 +791,7 @@ def test_catalogue_cdf_axis_ranges_are_optional_and_backward_compatible() -> Non
         ','.join(TRAILING_DYNAMIC_CATALOG_HEADERS)
         + '\n8,Quality,,Title and 1 column + Comments,Quality,CDR-Speech,LQ,CDF Line,,Operator,,,Top,,,,"[0.01,]","[75,100]"\n'
     )
-    entry = parse_catalog_csv(current, 'nsa')[0]
+    entry = parse_catalog_csv(current)[0]
     assert parse_axis_range(entry.axis_x_range, 'x') == (0.01, None)
     assert parse_axis_range(entry.axis_y_range, 'y') == (75.0, 100.0)
     assert b'Legend Position,Legend Format,Label Position,Label Format,Axis X Range,Axis Y Range' in catalogue_csv([entry])
@@ -845,7 +805,7 @@ def test_catalogue_bar_label_position_is_validated_and_serialised() -> None:
         ','.join(TRAILING_DYNAMIC_CATALOG_HEADERS)
         + '\n8,Failures,,Title and 1 column + Comments,Failures,CDR-Voice,Call_Status,Count Stacked Horizontal Bars,,Operator,,,Top,,Down,,,\n'
     )
-    entry = parse_catalog_csv(content, 'nsa')[0]
+    entry = parse_catalog_csv(content)[0]
     assert entry.label_position == 'down'
     assert b',Down,,' in catalogue_csv([entry])
 
@@ -866,7 +826,7 @@ def test_catalogue_label_format_is_validated_and_serialised() -> None:
     writer = csv.DictWriter(buffer, fieldnames=CATALOG_HEADERS)
     writer.writeheader()
     writer.writerow(row)
-    entry = parse_catalog_csv(buffer.getvalue(), 'nsa')[0]
+    entry = parse_catalog_csv(buffer.getvalue())[0]
     assert entry.label_format == '["#1A2B3C","Verdana","Large","Bold"]'
     assert b'#1A2B3C' in catalogue_csv([entry])
 
@@ -884,7 +844,7 @@ def test_catalogue_legend_format_is_validated_and_serialised() -> None:
     writer = csv.DictWriter(buffer, fieldnames=CATALOG_HEADERS)
     writer.writeheader()
     writer.writerow(row)
-    entry = parse_catalog_csv(buffer.getvalue(), 'nsa')[0]
+    entry = parse_catalog_csv(buffer.getvalue())[0]
     assert entry.legend_format == '["#1A2B3C","Verdana","Large","Bold"]'
     assert b'Legend Format' in catalogue_csv([entry])
 
@@ -899,7 +859,7 @@ def test_catalogue_null_and_zero_exclusions_are_independent_and_backward_compati
         'Slide,Slide Tittle,Slide Subtittle,Layout,Chart Tittle,CDR source,KPI,Chart type,Filters,Rows Split,Columns Split,Legend,Legend Position,Label,Axis X Range,Axis Y Range\n'
         '8,Quality,,Layout,Quality,CDR-Data,Metric,CDF Line,,Operator,,,Top,,,\n'
     )
-    previous = parse_catalog_csv(previous_visual_schema, 'nsa')[0]
+    previous = parse_catalog_csv(previous_visual_schema)[0]
     assert previous.exclude_null_empty is False
     assert previous.exclude_zero is False
 
@@ -907,7 +867,7 @@ def test_catalogue_null_and_zero_exclusions_are_independent_and_backward_compati
         ','.join(TRAILING_DYNAMIC_CATALOG_HEADERS)
         + '\n8,Quality,,Layout,Quality,CDR-Data,Metric,CDF Line,,Operator,,,Top,,,,,,Yes,Yes\n'
     )
-    entry = parse_catalog_csv(content, 'nsa')[0]
+    entry = parse_catalog_csv(content)[0]
     assert entry.exclude_null_empty is True
     assert entry.exclude_zero is True
     assert b'Exclude Null/Empty,Exclude Zero' in catalogue_csv([entry])
@@ -961,14 +921,14 @@ def test_catalogue_accepts_axis_ranges_and_labels_for_every_chart_type() -> None
         ','.join(TRAILING_DYNAMIC_CATALOG_HEADERS)
         + '\n8,Quality,,Title and 1 column + Comments,Quality,CDR-Data,Metric,Average Vertical Bars,,Operator,,,Top,,,,"[0.01,]",\n'
     )
-    bar_entry = parse_catalog_csv(non_cdf_range, 'nsa')[0]
+    bar_entry = parse_catalog_csv(non_cdf_range)[0]
     assert bar_entry.axis_x_range == '[0.01,]'
 
     non_bar_label = (
         ','.join(TRAILING_DYNAMIC_CATALOG_HEADERS)
         + '\n8,Quality,,Title and 1 column + Comments,Quality,CDR-Data,Metric,CDF Line,,Operator,,,Top,,Down,,,\n'
     )
-    cdf_entry = parse_catalog_csv(non_bar_label, 'nsa')[0]
+    cdf_entry = parse_catalog_csv(non_bar_label)[0]
     assert cdf_entry.label_position == 'down'
 
 
@@ -1746,11 +1706,9 @@ def test_chart_legend_normalises_title_case_position_from_interactive_preview() 
 def test_catalogue_accepts_structural_slides_and_rejects_chart_configuration_on_them() -> None:
     title = parse_catalog_csv(
         ','.join(TRAILING_DYNAMIC_CATALOG_HEADERS) + '\n1,Quarterly report,NSA analysis,Title Page,,,,Title Slide,,,,,\n',
-        'nsa',
     )[0]
     transition = parse_catalog_csv(
         ','.join(TRAILING_DYNAMIC_CATALOG_HEADERS) + '\n2,Voice analysis,Seven cities,Title Only,,,,Transition Slide,,,,,\n',
-        'nsa',
     )[0]
 
     assert title.structural_type == 'title slide'
@@ -1758,7 +1716,6 @@ def test_catalogue_accepts_structural_slides_and_rejects_chart_configuration_on_
     with pytest.raises(ValueError, match='cannot define chart, CDR, KPI'):
         parse_catalog_csv(
             ','.join(TRAILING_DYNAMIC_CATALOG_HEADERS) + '\n1,Quarterly report,,Title Page,,CDR-Data,LQ,Title Slide,,,,,\n',
-            'nsa',
         )
 
 
@@ -1770,7 +1727,6 @@ def test_catalogue_reads_structural_layouts_without_chart_type_as_their_structur
         + '\n18,,,Black logo end slide,,,,,,,,,\n19,,,Black logo end slide,,,,End Slide,,,,,'
         # A Transition row moved to the closing layout, still with its former Chart type, is an End Slide.
         + '\n20,,,Black logo end slide,,,,Transition Slide,,,,,\n',
-        'nsa',
     )
 
     assert (cover.structural_type, cover.chart_type) == ('title slide', 'Title Slide')
@@ -1781,11 +1737,10 @@ def test_catalogue_reads_structural_layouts_without_chart_type_as_their_structur
     saved = catalogue_csv([cover, implicit]).decode('utf-8')
     assert 'Title Slide' in saved and 'End Slide' in saved
     with pytest.raises(ValueError, match=r'^Slide: 2 -> Slide Tittle is required for a Transition Slide\.$'):
-        parse_catalog_csv(','.join(TRAILING_DYNAMIC_CATALOG_HEADERS) + '\n2,,,Title Only,,,,Transition Slide,,,,,\n', 'nsa')
+        parse_catalog_csv(','.join(TRAILING_DYNAMIC_CATALOG_HEADERS) + '\n2,,,Title Only,,,,Transition Slide,,,,,\n')
     with pytest.raises(ValueError, match='cannot define chart, CDR, KPI'):
         parse_catalog_csv(
             ','.join(TRAILING_DYNAMIC_CATALOG_HEADERS) + '\n1,Quarterly report,,Title Page,,CDR-Data,LQ,Title Slide,,,,,\n',
-            'nsa',
         )
 
 
@@ -1794,13 +1749,13 @@ def test_catalogue_validation_names_the_slide_and_chart_of_the_row() -> None:
     chart = '3,Rate,,Title + 1 rows + 2 columns,A,CDR-Data,Mean_Data_Rate,CDF Line,,Operator,,'
 
     with pytest.raises(ValueError, match=r'^Slide: 3 - Chart: 2 -> KPI and Chart type are required'):
-        parse_catalog_csv(f'{header}\n{chart}\n3,Rate,,Title + 1 rows + 2 columns,B,CDR-Data,,CDF Line,,Operator,,\n', 'nsa')
+        parse_catalog_csv(f'{header}\n{chart}\n3,Rate,,Title + 1 rows + 2 columns,B,CDR-Data,,CDF Line,,Operator,,\n')
     with pytest.raises(ValueError, match=r"^Slide: 3 - Chart: 1 -> Chart type 'Pie' is not supported\."):
-        parse_catalog_csv(f"{header}\n{chart.replace('CDF Line', 'Pie')}\n", 'nsa')
+        parse_catalog_csv(f"{header}\n{chart.replace('CDF Line', 'Pie')}\n")
     with pytest.raises(ValueError, match=r'^Slide: x \(after Slide: 3\) -> The Slide value must be a positive whole number\.'):
-        parse_catalog_csv(f'{header}\n{chart}\nx,Rate,,Title Page,,,,Title Slide,,,,,\n', 'nsa')
+        parse_catalog_csv(f'{header}\n{chart}\nx,Rate,,Title Page,,,,Title Slide,,,,,\n')
     with pytest.raises(ValueError, match=r'^Slide: 4 - Chart: 1 -> The row must define a supported CDR chart'):
-        parse_catalog_csv(f'{header}\n4,Notes,,Title + 1 rows + 1 columns,,,,,,,,,\n', 'nsa')
+        parse_catalog_csv(f'{header}\n4,Notes,,Title + 1 rows + 1 columns,,,,,,,,,\n')
 
 
 def test_catalogue_filter_and_grouping_contract_is_parsed_and_applied() -> None:
@@ -1812,7 +1767,6 @@ def test_catalogue_filter_and_grouping_contract_is_parsed_and_applied() -> None:
     assert grouping.dimensions == ('City', 'Operator', 'Campaign')
     entry = parse_catalog_csv(
         ','.join(TRAILING_DYNAMIC_CATALOG_HEADERS) + '\n8,Quality,,Title and 1 column + Comments,Quality by city,CDR-Speech,LQ,Average Vertical Bars,Session_Type IN (VoLTE); LQ >= 1.6,City,Operator × Campaign,,\n',
-        'nsa',
     )[0]
     frame = chart_frame({
         'Session_Type': ['VoLTE', 'WhatsApp'], 'LQ': [3.2, 4.0], 'City': ['London', 'Leeds'],
@@ -1844,8 +1798,8 @@ def test_catalogue_filters_accept_lines_but_reject_a_missing_condition_separator
         'Operator,Campaign,,Top\n'
     )
     with pytest.raises(ValueError, match=r'Slide: 5 - Chart: 1 ->.*semicolon is required'):
-        parse_catalog_csv(row, 'nsa')
-    editable = parse_catalog_csv(row, 'nsa', validate_filters=False)
+        parse_catalog_csv(row)
+    editable = parse_catalog_csv(row, validate_filters=False)
     assert editable[0].filters.endswith('Operator IN (EE, 3)')
 
 
@@ -1853,7 +1807,6 @@ def test_multivendor_rendering_rewrites_display_and_grouping_and_excludes_unreso
     entry = parse_catalog_csv(
         ','.join(TRAILING_DYNAMIC_CATALOG_HEADERS)
         + '\n8,Operator comparison,Operator subtitle,Title and 1 column + Comments,Operator chart,CDR-Speech,LQ,Average Vertical Bars,Operator = Vodafone UK,Operator,Operator × Campaign,Operator,\n',
-        'nsa',
     )[0]
     rendered = prepare_multivendor_catalog_entry(entry)
 
@@ -1933,17 +1886,16 @@ def test_vendor_filter_alias_round_trips_through_catalogue_csv() -> None:
         '', 'Vendor IN (VF_Ericsson, Ericsson)', 'Operator', '',
     )
 
-    parsed = parse_catalog_csv(catalogue_csv([entry]), 'nsa')[0]
+    parsed = parse_catalog_csv(catalogue_csv([entry]))[0]
 
     assert parsed.filters == 'Vendor IN (VF_Ericsson, Ericsson)'
-    assert parse_catalog_csv(catalogue_csv([parsed]), 'nsa')[0].filters == parsed.filters
+    assert parse_catalog_csv(catalogue_csv([parsed]))[0].filters == parsed.filters
 
 
 def test_multivendor_operator_filters_match_vendor_prefixes_and_keep_full_grouping_values() -> None:
     entry = parse_catalog_csv(
         ','.join(TRAILING_DYNAMIC_CATALOG_HEADERS)
         + '\n8,Operator comparison,,Title and 1 column + Comments,Operator chart,CDR-Speech,LQ,Average Vertical Bars,"Operator IN (Vodafone UK, 3, O2)",Operator,Operator × Campaign,Operator,Top\n',
-        'nsa',
     )[0]
     rendered = prepare_multivendor_catalog_entry(entry)
     frame = chart_frame({
@@ -2133,7 +2085,6 @@ def test_vendor_grouping_keeps_each_operator_together_outside_multivendor_mode()
 def test_rows_only_grouping_uses_one_all_series_without_repeating_the_category() -> None:
     entry = parse_catalog_csv(
         ','.join(TRAILING_DYNAMIC_CATALOG_HEADERS) + '\n8,Quality,,Title and 1 column + Comments,Quality,CDR-Speech,LQ,Average Vertical Bars,,Operator,,,\n',
-        'nsa',
     )[0]
     frame = chart_frame({'Operator': ['EE', 'O2'], 'LQ': [3.2, 3.8]})
 
@@ -2146,7 +2097,6 @@ def test_rows_only_grouping_uses_one_all_series_without_repeating_the_category()
 def test_campaign_grouping_displays_only_year_and_quarter() -> None:
     entry = parse_catalog_csv(
         ','.join(TRAILING_DYNAMIC_CATALOG_HEADERS) + '\n8,Quality,,Title and 1 column + Comments,Quality,CDR-Speech,LQ,Average Vertical Bars,,Operator,Campaign,,\n',
-        'nsa',
     )[0]
     frame = chart_frame({
         'Operator': ['EE', '3', 'Vodafone UK'],
@@ -2535,7 +2485,6 @@ def test_catalogue_filter_contract_supports_not_in_and_not_contains() -> None:
     ]
     entry = parse_catalog_csv(
         ','.join(TRAILING_DYNAMIC_CATALOG_HEADERS) + '\n8,Quality,,Title and 1 column + Comments,Quality,CDR-Speech,LQ,Average Vertical Bars,Session_Type NOT IN (WhatsApp); Campaign NOT CONTAINS legacy,Operator,Campaign,,\n',
-        'nsa',
     )[0]
     frame = chart_frame({
         'Session_Type': ['VoLTE', 'WhatsApp', 'VoLTE'], 'Campaign': ['Q1', 'Q1', 'legacy-Q2'],
@@ -2697,7 +2646,6 @@ def test_catalogue_call_family_uses_documented_netcheck_session_values() -> None
     entry = with_default_calculated_dimensions(parse_catalog_csv(
         ','.join(TRAILING_DYNAMIC_CATALOG_HEADERS)
         + '\n8,Completed Call Ratio,,Title and 1 column + Comments,,CDR-Voice,Call_Status,100% Stacked Vertical Bars,"Call Family IN (VoLTE, MultiRAB, WhatsApp)",Call Family,Operator × Campaign,,\n',
-        'nsa',
     )[0])
     frame = chart_frame({
         'Session_Type': ['CALL', 'MultiRAB CALL', 'WhatsApp CALL'],
@@ -2895,7 +2843,7 @@ def test_campaign_aggregation_is_ordered_oldest_to_newest_for_every_chart_render
 
 
 def test_nsa_speech_catalogue_filters_produce_samples_and_use_latest_campaign() -> None:
-    entries = [with_default_calculated_dimensions(entry) for entry in load_catalog_csv(Path(__file__).parent / 'fixtures' / 'NSA Slide Template.csv', 'nsa')]
+    entries = [with_default_calculated_dimensions(entry) for entry in load_catalog_csv(Path(__file__).parent / 'fixtures' / 'NSA Slide Template.csv')]
     speech = pd.DataFrame({
         'sample': ['volte', 'multirab', 'whatsapp-old', 'whatsapp-latest', 'whatsapp-sa', 'o2-latest'],
         'Session_Type': ['CALL', 'MultiRAB CALL', 'WhatsApp CALL', 'WhatsApp CALL', 'WhatsApp CALL', 'WhatsApp CALL'],
@@ -2906,7 +2854,8 @@ def test_nsa_speech_catalogue_filters_produce_samples_and_use_latest_campaign() 
         'Campaign': ['UK_Q3_2025', 'UK_Q3_2025', 'UK_Q3_2025', 'UK_Q4_2025', 'UK_Q4_2025', 'UK_Q4_2025'],
         'LQ': [3.8, 3.7, 3.9, 4.0, 4.1, 4.2],
     })
-    nsa = classify_sessions(speech, 'nsa')
+    # The NSA CDR: its rows without the one of an SA CDR.
+    nsa = speech.loc[speech['sample'] != 'whatsapp-sa']
     filtered_by_entry = {
         (entry.slide, entry.chart_type, index): _apply_catalog_filters(nsa, entry, False, 'LQ')
         for index, entry in enumerate(entries)
@@ -2934,7 +2883,6 @@ def test_failure_count_uses_row_and_column_hierarchies_without_flattening() -> N
     entry = with_default_calculated_dimensions(parse_catalog_csv(
         ','.join(TRAILING_DYNAMIC_CATALOG_HEADERS)
         + '\n9,Voice failures per Q/city,,Title and 1 column + Comments,Failures,CDR-Voice,Call_Status,Count Stacked Horizontal Bars,,Call Family × G Level 4,Operator × Campaign,Failed/Dropped,\n',
-        'nsa',
     )[0])
     frame = chart_frame({
         'Session_Type': ['VoLTE', 'VoLTE', 'MultiRAB CALL'],
@@ -2958,7 +2906,6 @@ def test_failure_count_hover_targets_cover_rendered_horizontal_segments() -> Non
     entry = with_default_calculated_dimensions(parse_catalog_csv(
         ','.join(TRAILING_DYNAMIC_CATALOG_HEADERS)
         + '\n9,Voice failures per Q/city,,Title and 1 column + Comments,Failures,CDR-Voice,Call_Status,Count Stacked Horizontal Bars,,Call Family × G Level 4,Operator × Campaign,Failed/Dropped,Right\n',
-        'nsa',
     )[0])
     frame = chart_frame({
         'Session_Type': ['VoLTE', 'VoLTE', 'VoLTE'], 'G_Level_4': ['London', 'London', 'Belfast'],
@@ -2976,7 +2923,6 @@ def test_failure_count_hover_targets_use_the_renderer_width_for_field_legends() 
     entry = with_default_calculated_dimensions(parse_catalog_csv(
         ','.join(TRAILING_DYNAMIC_CATALOG_HEADERS)
         + '\n9,Voice failures,,Title and 1 column + Comments,Failures,CDR-Voice,Call_Status,Count Stacked Horizontal Bars,,Call Family,Operator × Campaign,Call_Status,Right\n',
-        'nsa',
     )[0])
     frame = chart_frame({
         'Session_Type': ['VoLTE', 'VoLTE'], 'Operator': ['EE', '3'],
@@ -2994,7 +2940,6 @@ def test_status_100_hover_targets_support_multi_level_row_grouping() -> None:
     entry = parse_catalog_csv(
         ','.join(TRAILING_DYNAMIC_CATALOG_HEADERS)
         + '\n12,Success Ratio per Type of Test (Vendor Split),,Title and 1 column + Comments,Success Ratio per Type of Test (Vendor Split),CDR-Data,Result Group,100% Stacked Vertical Bars,,Type_of_Test × Vendor,,Result Group,Right\n',
-        'nsa',
     )[0]
     frame = chart_frame({
         'Type_of_Test': ['FTP', 'HTTP', 'FTP', 'HTTP'],
@@ -3013,7 +2958,6 @@ def test_status_100_hover_targets_support_tableau_dashboard_geography_hierarchy(
     entry = parse_catalog_csv(
         ','.join(TRAILING_DYNAMIC_CATALOG_HEADERS)
         + '\n1,SR Dashboard,,Title and 3 columns + Comments,Success Ratio per glevel,CDR-Data,Result Group,100% Stacked Vertical Bars,,G_Level_2 × G_Level_1 × Operator,,Result Group,Right\n',
-        'nsa',
     )[0]
     frame = chart_frame({
         'G_Level_2': ['England', 'England', 'Scotland', 'Scotland'],
@@ -3075,7 +3019,6 @@ def test_failure_count_keeps_zero_count_hierarchy_categories_from_all_filtered_r
     entry = with_default_calculated_dimensions(parse_catalog_csv(
         ','.join(TRAILING_DYNAMIC_CATALOG_HEADERS)
         + '\n9,Voice failures,,Title and 1 column + Comments,Failures,CDR-Voice,Call_Status,Count Stacked Horizontal Bars,,Call Family,Operator × Campaign,Failed/Dropped,\n',
-        'nsa',
     )[0])
     frame = chart_frame({
         'Session_Type': ['VoLTE', 'VoLTE'], 'Operator': ['Vodafone', '3'],
@@ -3234,7 +3177,7 @@ def test_failure_hierarchy_uses_dashed_child_boundaries_within_one_row_group() -
 
 
 def test_nsa_catalogue_splits_template_screenshots_into_individual_charts() -> None:
-    entries = [with_default_calculated_dimensions(entry) for entry in load_catalog_csv(Path(__file__).parent / 'fixtures' / 'NSA Slide Template.csv', 'nsa')]
+    entries = [with_default_calculated_dimensions(entry) for entry in load_catalog_csv(Path(__file__).parent / 'fixtures' / 'NSA Slide Template.csv')]
     slide_ten = [entry for entry in entries if entry.slide == 10]
     slide_thirteen = [entry for entry in entries if entry.slide == 13]
 
@@ -3248,7 +3191,7 @@ def test_nsa_catalogue_splits_template_screenshots_into_individual_charts() -> N
 
 
 def test_catalogue_uses_explicit_title_and_transition_slides() -> None:
-    entries = [with_default_calculated_dimensions(entry) for entry in load_catalog_csv(Path(__file__).parent / 'fixtures' / 'NSA Slide Template.csv', 'nsa')]
+    entries = [with_default_calculated_dimensions(entry) for entry in load_catalog_csv(Path(__file__).parent / 'fixtures' / 'NSA Slide Template.csv')]
     structural = [entry.chart_type for entry in entries if not entry.source_kind]
     title = next(entry for entry in entries if entry.slide == 1)
     conclusions = next(entry for entry in entries if entry.slide == 17)
@@ -3280,7 +3223,7 @@ def test_catalogue_rows_use_matching_master_image_placeholders(tmp_path) -> None
         frames,
         'nsa',
         False,
-        [with_default_calculated_dimensions(entry) for entry in parse_catalog_csv(catalogue, 'nsa')],
+        [with_default_calculated_dimensions(entry) for entry in parse_catalog_csv(catalogue)],
         chart_output_dir=tmp_path / 'charts',
     )
 
@@ -3355,7 +3298,7 @@ def test_layout_only_template_builds_one_new_slide_per_catalogue_number(tmp_path
         {'data': pd.DataFrame(), 'speech': pd.DataFrame(), 'voice': pd.DataFrame()},
         'nsa',
         False,
-        parse_catalog_csv(catalogue, 'nsa'),
+        parse_catalog_csv(catalogue),
     )
 
     generated = Presentation(destination)
@@ -3379,7 +3322,7 @@ def test_end_slide_is_the_closing_layout_without_placeholders_or_counter(tmp_pat
 
     render_cdr_report(
         destination, template, {'data': pd.DataFrame(), 'speech': pd.DataFrame(), 'voice': pd.DataFrame()},
-        'nsa', False, parse_catalog_csv(catalogue, 'nsa'),
+        'nsa', False, parse_catalog_csv(catalogue),
     )
 
     generated = Presentation(destination)
@@ -3393,7 +3336,6 @@ def test_powerpoint_report_can_disable_tooltip_sidecars(tmp_path) -> None:
     catalogue = parse_catalog_csv(
         ','.join(TRAILING_DYNAMIC_CATALOG_HEADERS)
         + '\n8,Completed Call Ratio,,Title and 1 column + Comments,,CDR-Voice,Call_Status,100% Stacked Vertical Bars,,,Operator,Campaign\n',
-        'nsa',
     )
     chart_directory = tmp_path / 'charts'
 
@@ -3430,7 +3372,7 @@ def test_reporting_module_is_available_to_authenticated_users(client, ppt_report
     assert 'name="three_mapping_dataset_id"' not in page.text
     assert '<option value="multivendor" disabled>Multivendor Comparison</option>' in page.text
     assert 'name="slides_templates"' in page.text
-    assert 'value="nsa:NSA Slide Template"' in page.text
+    assert 'value="NSA Slide Template"' in page.text
     assert 'data-report-job-form' in page.text
     assert 'name="data_dataset_id" multiple required' not in page.text
     assert 'data-reporting-filter-panel="charts"' in page.text
@@ -3767,7 +3709,7 @@ def test_reporting_chart_dataset_reuses_one_source_frame_and_projects_chart_colu
         'normalization_version': '1',
     }])
 
-    def load_shared(_datasets, _technology, entries, _multivendor):
+    def load_shared(_datasets, entries, _multivendor):
         loads.append([entry.kpi for entry in entries])
         return pd.DataFrame({
             'Operator': ['VF'], 'Campaign': ['2026-Q3'], 'Metric_A': [1], 'Metric_B': [2],
@@ -3977,7 +3919,7 @@ def test_chart_preview_focus_row_matches_the_editors_sorted_row(client, ppt_repo
         + '\n1,First slide,,Title and 1 column + Comments,First chart,CDR-Data,Mean_Data_Rate,Average Vertical Bars,,Operator,,,,,\n'
     ).encode()
     imported = client.post(
-        '/workspace-config/report-templates/nsa', data={'catalogue_name': 'Out of order'},
+        '/workspace-config/report-templates', data={'catalogue_name': 'Out of order'},
         files={'catalogue_file': ('out-of-order.csv', BytesIO(content), 'text/csv')},
         follow_redirects=False,
     )
@@ -4006,7 +3948,7 @@ def test_template_chart_image_preview_uses_combined_reporting_rows(client, monke
         + '\n1,Preview slide,,Title and 1 column + Comments,Preview chart,CDR-Data,Mean_Data_Rate,Average Vertical Bars,,Operator,Campaign,,Top\n'
     )
     created = client.post(
-        '/workspace-config/report-templates/nsa', data={'catalogue_name': 'Combined Preview'},
+        '/workspace-config/report-templates', data={'catalogue_name': 'Combined Preview'},
         files={'catalogue_file': ('combined-preview.csv', BytesIO(catalogue_content.encode()), 'text/csv')},
         follow_redirects=False,
     )
@@ -4020,9 +3962,8 @@ def test_template_chart_image_preview_uses_combined_reporting_rows(client, monke
     monkeypatch.setattr(
         app_module,
         '_combined_reporting_frame',
-        lambda datasets, technology, entries, multivendor: observed.update({
+        lambda datasets, entries, multivendor: observed.update({
             'dataset_ids': [dataset['id'] for dataset in datasets],
-            'technology': technology,
             'entries': entries,
             'multivendor': multivendor,
         }) or pd.DataFrame(),
@@ -4036,16 +3977,16 @@ def test_template_chart_image_preview_uses_combined_reporting_rows(client, monke
     )
 
     data_preview = client.post(
-        '/workspace-config/report-templates/nsa/Combined%20Preview/chart-preview',
+        '/workspace-config/report-templates/Combined%20Preview/chart-preview',
         json={'catalogue_content': catalogue_content, 'row_index': 0},
     )
     data_export = client.post(
-        '/workspace-config/report-templates/nsa/Combined%20Preview/chart-preview',
+        '/workspace-config/report-templates/Combined%20Preview/chart-preview',
         json={'catalogue_content': catalogue_content, 'row_index': 0, 'download': True},
     )
 
     preview = client.post(
-        '/workspace-config/report-templates/nsa/Combined%20Preview/chart-image-preview',
+        '/workspace-config/report-templates/Combined%20Preview/chart-image-preview',
         json={'catalogue_content': catalogue_content, 'row_index': 0},
     )
 
@@ -4057,8 +3998,13 @@ def test_template_chart_image_preview_uses_combined_reporting_rows(client, monke
     assert preview.status_code == 200
     assert preview.content == b'PNG'
     assert observed['dataset_ids'] == [7]
-    assert observed['technology'] == 'nsa'
     assert observed['multivendor'] is False
+    # The previews read the CDRs of the Preview NR Mode of the editor (NSA by default): this CDR is NSA.
+    sa_preview = client.post(
+        '/workspace-config/report-templates/Combined%20Preview/chart-image-preview',
+        json={'catalogue_content': catalogue_content, 'row_index': 0, 'nr_mode': 'SA'},
+    )
+    assert sa_preview.status_code == 400 and 'No processed SA CDR-Data datasets' in sa_preview.json()['detail']
 
 
 def test_reporting_requires_at_least_one_cdr_source(client, ppt_reporting_old) -> None:

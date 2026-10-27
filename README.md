@@ -74,7 +74,7 @@ CDR Analysis analyses one ready Data, Voice or Speech CDR.
 
 ### PPT Dashboards
 
-Create, save, duplicate, import and export workspace Dashboards from an NSA/SA Report Template. The editor groups the Scope, dates, default, aliased and custom Auto-calculated Field filters, which are applied, saved (Save Filters also applies them), reloaded or discarded together; the Campaign filter chooses the CDRs.
+Create, save, duplicate, import and export workspace Dashboards from a Report Template, each reading the CDRs of its NR Mode (a template serves both and names the NR Mode in its titles). The editor groups the Scope, dates, default, aliased and custom Auto-calculated Field filters, which are applied, saved (Save Filters also applies them), reloaded or discarded together; the Campaign filter chooses the CDRs.
 
 Each Dashboard uses the CDRs of its NR Mode (NSA or SA, set per CDR at upload and editable in the Workspace Datasets table) and of its Campaign filter that the combined CDR tables include (the Final CDR of a campaign before its Weekly and Daily CDRs, or the In Combined? choice); a new Dashboard follows its newest two campaigns (the newest one for Multivendor Operator_Vendor).
 
@@ -385,11 +385,13 @@ DriveTestAnalyzer/
 ├── assets/powerpoint-templates/               # PowerPoint master/layout file (Template_VodafoneThree.pptx)
 ├── assets/autocalculated-fields/             # Auto-calculated Fields every new workspace starts with
 ├── assets/scoring-methodologies/             # Scoring methodologies added to every workspace
-├── assets/ppt-templates/                     # Report Templates (nsa/, sa/) added to every workspace
+├── assets/ppt-templates/                     # Report Templates added to every workspace
 ├── assets/ppt-dashboards/                    # Dashboards added to every workspace
 ├── assets/scoring-report-configurations/     # Scoring report configurations added to every workspace
 ├── assets/query-builder-queries/             # Query Builder queries added to every workspace
-├── assets/reporting-jobs/                    # Reporting Jobs added to every workspace (disabled)
+├── assets/reporting-jobs/                    # Reporting Jobs added to every workspace
+├── assets/bundle-report-template-favourites/ # Favourite Bundle Report Templates added to every workspace
+├── assets/scoring-favourites-filters/        # Scoring & GAP Favourites Filters added to every workspace
 ├── assets/labels-operators/                  # Operators of the 50 main countries for new workspaces
 ├── assets/labels-vendors/                    # Vendor Maps of a new workspace
 ├── assets/labels-campaigns/                  # Default Campaign Maps of every workspace

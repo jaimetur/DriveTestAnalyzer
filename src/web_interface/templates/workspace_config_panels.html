@@ -133,14 +133,10 @@
     </summary>
     <div class="collapsible-panel-body">
     <h3 class="templates-library-heading">Import PPT Template</h3>
-    <p class="lede">Import a Report Template CSV, select whether it is for NSA or SA, and manage the stored workspace templates below.</p>
+    <p class="lede">Import a Report Template CSV and manage the stored workspace templates below. A template serves the CDRs of any NR Mode: each Dashboard chooses the NR Mode it reads, and the titles name it with {NR Mode} (NSA or SA) and {NR Mode Name} (Non-Standalone or Standalone).</p>
     {% if catalogue_error %}<span hidden data-catalogue-import-error>{{ catalogue_error }}</span>{% endif %}
     {% if catalogue_notice %}<span hidden data-catalogue-import-notice>{{ catalogue_notice }}</span>{% endif %}
-    <form class="catalogue-import-row" action="/workspace-config/slides-templates/import" method="post" enctype="multipart/form-data" autocomplete="off" data-catalogue-import-form data-catalogue-template-library='{{ template_names_by_technology | tojson }}' novalidate>
-      <select name="template_type" aria-label="Report Template type" title="Report Template type">
-        <option value="nsa" selected>NSA</option>
-        <option value="sa">SA</option>
-      </select>
+    <form class="catalogue-import-row" action="/workspace-config/slides-templates/import" method="post" enctype="multipart/form-data" autocomplete="off" data-catalogue-import-form data-catalogue-template-library='{{ template_names | tojson }}' novalidate>
       <input type="text" name="catalogue_name" aria-label="Template name" placeholder="Template name (optional)" maxlength="80" autocomplete="off" data-no-persist data-catalogue-import-name>
       <input type="file" name="catalogue_file" aria-label="Report Template CSV" accept=".csv,text/csv" data-catalogue-import-file>
       <input type="hidden" name="convert_catalogue" value="0" data-catalogue-convert>
@@ -150,28 +146,14 @@
     <h3 class="templates-library-heading">PPT Templates Library</h3>
     <div class="table-wrap catalogue-workspace-table-wrap">
       <table class="catalogue-workspace-table">
-        <thead><tr><th>Template name</th><th>NR Mode</th><th>Created</th><th>Last Updated</th><th>Last Updated by</th><th>Default</th><th>Actions</th></tr></thead>
+        <thead><tr><th>Template name</th><th>Created</th><th>Last Updated</th><th>Last Updated by</th><th>Default</th><th>Actions</th></tr></thead>
         <tbody>
           {% for catalogue in workspace_catalogues %}
           <tr>
             <td>
-              <form class="catalogue-rename-form" action="/workspace-config/report-templates/{{ catalogue.technology }}/{{ catalogue.identifier | urlencode }}/rename" method="post" autocomplete="off">
+              <form class="catalogue-rename-form" action="/workspace-config/report-templates/{{ catalogue.identifier | urlencode }}/rename" method="post" autocomplete="off">
                 <input type="text" name="catalogue_name" value="{{ catalogue.name }}" aria-label="Name for {{ catalogue.name }}" maxlength="80" required autocomplete="off" data-no-persist data-catalogue-auto-rename>
               </form>
-            </td>
-            <td>
-              {% if catalogue.active %}
-              <select aria-label="NR Mode for {{ catalogue.name }}" disabled title="Set another default template before changing its NR Mode.">
-                <option value="{{ catalogue.technology }}" selected>{{ catalogue.technology | upper }}</option>
-              </select>
-              {% else %}
-              <form class="catalogue-type-form" action="/workspace-config/report-templates/{{ catalogue.technology }}/{{ catalogue.identifier | urlencode }}/type" method="post">
-                <select name="template_type" aria-label="NR Mode for {{ catalogue.name }}" onchange="this.form.requestSubmit()">
-                  <option value="nsa" {% if catalogue.technology == 'nsa' %}selected{% endif %}>NSA</option>
-                  <option value="sa" {% if catalogue.technology == 'sa' %}selected{% endif %}>SA</option>
-                </select>
-              </form>
-              {% endif %}
             </td>
             {% set created_parts = (catalogue.created_at or '').replace('T', ' ').split() %}
             {% set updated_parts = (catalogue.updated_at or '').replace('T', ' ').split() %}
@@ -181,11 +163,11 @@
             <td class="catalogue-default-cell"><span class="catalogue-default-mark {% if catalogue.active %}is-default{% else %}is-not-default{% endif %}" aria-label="{% if catalogue.active %}Default template{% else %}Not the default template{% endif %}" title="{% if catalogue.active %}Default template{% else %}Not the default template{% endif %}">{% if catalogue.active %}✓{% else %}○{% endif %}</span></td>
             <td>
               <div class="catalogue-workspace-actions">
-                {% if catalogue.active %}<button type="button" class="catalogue-set-default-button icon-action" aria-label="Set default" title="Set default" disabled>★</button>{% else %}<form action="/workspace-config/report-templates/{{ catalogue.technology }}/{{ catalogue.identifier | urlencode }}/activate" method="post"><button type="submit" class="catalogue-set-default-button icon-action" aria-label="Set default" title="Set default">★</button></form>{% endif %}
-                <button type="button" class="catalogue-edit-button icon-action" aria-label="Edit template" data-open-template-editor="/workspace-config/report-templates/{{ catalogue.technology }}/{{ catalogue.identifier | urlencode }}/editor" data-template-name="{{ catalogue.name }}" title="Edit template">✎</button>
-                <form action="/workspace-config/report-templates/{{ catalogue.technology }}/{{ catalogue.identifier | urlencode }}/duplicate" method="post"><button type="submit" class="catalogue-duplicate-button icon-action" aria-label="Duplicate template" title="Duplicate template">⧉</button></form>
-                {% if catalogue.active %}<button type="button" class="danger-button icon-action" aria-label="Delete template" disabled title="The default template cannot be deleted">×</button>{% elif user.role not in ['admin', 'super-admin'] and (not catalogue.created_by or catalogue.created_by | lower != user.username | lower) %}<button type="button" class="danger-button icon-action" aria-label="Delete template" disabled title="Only admins and super-admins, or the user who created it, can delete this PPT Template">×</button>{% else %}<form action="/workspace-config/report-templates/{{ catalogue.technology }}/{{ catalogue.identifier | urlencode }}/delete" method="post" data-confirm="Delete template {{ catalogue.name }}? This cannot be undone."><button type="submit" class="danger-button icon-action" aria-label="Delete template" title="Delete template">×</button></form>{% endif %}
-                <a class="catalogue-export-button icon-action" aria-label="Export template" title="Export template" href="/workspace-config/report-templates/{{ catalogue.technology }}/{{ catalogue.identifier | urlencode }}/export">⬇</a>
+                {% if catalogue.active %}<button type="button" class="catalogue-set-default-button icon-action" aria-label="Set default" title="Set default" disabled>★</button>{% else %}<form action="/workspace-config/report-templates/{{ catalogue.identifier | urlencode }}/activate" method="post"><button type="submit" class="catalogue-set-default-button icon-action" aria-label="Set default" title="Set default">★</button></form>{% endif %}
+                <button type="button" class="catalogue-edit-button icon-action" aria-label="Edit template" data-open-template-editor="/workspace-config/report-templates/{{ catalogue.identifier | urlencode }}/editor" data-template-name="{{ catalogue.name }}" title="Edit template">✎</button>
+                <form action="/workspace-config/report-templates/{{ catalogue.identifier | urlencode }}/duplicate" method="post"><button type="submit" class="catalogue-duplicate-button icon-action" aria-label="Duplicate template" title="Duplicate template">⧉</button></form>
+                {% if catalogue.active %}<button type="button" class="danger-button icon-action" aria-label="Delete template" disabled title="The default template cannot be deleted">×</button>{% elif user.role not in ['admin', 'super-admin'] and (not catalogue.created_by or catalogue.created_by | lower != user.username | lower) %}<button type="button" class="danger-button icon-action" aria-label="Delete template" disabled title="Only admins and super-admins, or the user who created it, can delete this PPT Template">×</button>{% else %}<form action="/workspace-config/report-templates/{{ catalogue.identifier | urlencode }}/delete" method="post" data-confirm="Delete template {{ catalogue.name }}? This cannot be undone."><button type="submit" class="danger-button icon-action" aria-label="Delete template" title="Delete template">×</button></form>{% endif %}
+                <a class="catalogue-export-button icon-action" aria-label="Export template" title="Export template" href="/workspace-config/report-templates/{{ catalogue.identifier | urlencode }}/export">⬇</a>
               </div>
             </td>
           </tr>

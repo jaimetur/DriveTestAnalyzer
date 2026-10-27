@@ -280,7 +280,7 @@ def test_a_restore_adds_and_renames_like_an_import(client, tmp_path):
     repo.set_workspace_state(core.DASHBOARD_STATE_KEY, json.dumps({'d1': {'name': 'Coverage', 'technology': 'nsa', 'template': 'T'}}))
     # Valid templates: a renamed field is renamed in them too.
     saved = (Path(__file__).parent / 'fixtures' / 'NSA Slide Template.csv').read_bytes()
-    repo.add_report_template('nsa', 'Coverage', saved, updated_by='super')
+    repo.add_report_template('Coverage', saved, updated_by='super')
     [field] = core.calculated_dimensions_json(core.parse_calculated_dimensions(core.default_calculated_dimensions()))[:1]
     repo.replace_calculated_dimensions([{**field, 'name': 'Area kind'}])
     components = ['dashboards', 'report_templates', 'auto_calculated_fields']
@@ -292,8 +292,8 @@ def test_a_restore_adds_and_renames_like_an_import(client, tmp_path):
     dashboards['d1']['name'] = 'Coverage now'
     dashboards['local'] = {'name': 'Local', 'technology': 'nsa', 'template': 'T'}
     repo.set_workspace_state(core.DASHBOARD_STATE_KEY, json.dumps(dashboards))
-    repo.rename_report_template('nsa', 'Coverage', 'Coverage now')
-    repo.add_report_template('nsa', 'Local', saved)
+    repo.rename_report_template('Coverage', 'Coverage now')
+    repo.add_report_template('Local', saved)
     previous = core.parse_calculated_dimensions(repo.list_calculated_dimensions())
     current = core.parse_calculated_dimensions([{**field, 'name': 'Area type'}, {**field, 'name': 'Local field'}])
     repo.replace_calculated_dimensions(core.calculated_dimensions_json(current))
@@ -302,7 +302,7 @@ def test_a_restore_adds_and_renames_like_an_import(client, tmp_path):
     # The restore brings back what the backup has, found by its identity, and keeps what only the workspace has.
     core.restore_database_backup(backup, components, importing_user='super')
     assert {item['name'] for item in _dashboards(repo).values()} == {'Coverage', 'Local'}
-    templates = {str(row['name']) for row in repo.list_report_templates('nsa')}
+    templates = {str(row['name']) for row in repo.list_report_templates()}
     assert templates == {'Coverage', 'Local'}
     assert [item['name'] for item in repo.list_calculated_dimensions()] == ['Area kind', 'Local field']
 
@@ -311,8 +311,8 @@ def test_dashboards_follow_their_ppt_template_by_its_identity(client):
     client.post('/login', data={'username': 'super', 'password': 'super123'}, follow_redirects=False)
     repo = core.repository
     template = (Path(__file__).parent / 'fixtures' / 'NSA Slide Template.csv').read_bytes()
-    repo.add_report_template('nsa', 'Coverage', template, updated_by='super')
-    uid = repo.report_template_uids()[('nsa', 'Coverage')]
+    repo.add_report_template('Coverage', template, updated_by='super')
+    uid = repo.report_template_uids()['Coverage']
     assert uid
     # A Dashboard saved before identities takes that of the template it names.
     repo.set_workspace_state(core.DASHBOARD_STATE_KEY, json.dumps({
@@ -321,12 +321,14 @@ def test_dashboards_follow_their_ppt_template_by_its_identity(client):
     listed = client.get('/api/ppt-dashboards').json()
     assert listed['dash-1']['template_uid'] == uid
     # Renamed without telling the Dashboards, the template is still found by its identity.
-    repo.rename_report_template('nsa', 'Coverage', 'Coverage v2')
+    repo.rename_report_template('Coverage', 'Coverage v2')
     listed = client.get('/api/ppt-dashboards').json()
     assert listed['dash-1']['template'] == 'Coverage v2' and listed['dash-1']['template_uid'] == uid
     assert _dashboards(repo)['dash-1']['template'] == 'Coverage v2'
     # Its references stay with it: the template used by a Dashboard is protected under its new name.
-    assert ('nsa', 'Coverage v2') in core._dashboard_template_references(repo)
+    assert 'Coverage v2' in core._dashboard_template_references(repo)
+    # The Dashboard of before reads its NR Mode as part of its selection.
+    assert listed['dash-1']['nr_mode'] == 'NSA' and 'technology' not in listed['dash-1']
 
 
 def test_reporting_jobs_and_excluded_calls_follow_their_renames(client, tmp_path):
@@ -495,18 +497,18 @@ def test_the_incoming_transfer_dialog_names_every_element_with_its_title():
 def test_ppt_templates_tell_what_their_import_changed_like_the_other_elements(client, tmp_path):
     source, source_repo = _workspace('Templates source')
     destination, destination_repo = _workspace('Templates destination')
-    source_repo.add_report_template('nsa', 'Weekly', b'weekly')
-    source_repo.add_report_template('nsa', 'Daily', b'daily')
-    destination_repo.add_report_template('nsa', 'Daily', b'older daily')
-    destination_repo.add_report_template('nsa', 'Local', b'local')
+    source_repo.add_report_template('Weekly', b'weekly')
+    source_repo.add_report_template('Daily', b'daily')
+    destination_repo.add_report_template('Daily', b'older daily')
+    destination_repo.add_report_template('Local', b'local')
 
     notice = _transfer('ppt-templates', source, destination, tmp_path)
     # Like the other elements: the templates of the package, new and updated (with what changed).
     assert notice.startswith('Imported 2 PPT Templates into 1 workspace: 1 new and 1 updated.')
     [section] = [item for item in core.import_notice_details(notice)['sections']
                  if item['title'] == f'Updated PPT Templates of "{destination.name}"']
-    assert section['items'] == [{'name': 'Daily (NSA)', 'changes': ['Content', 'Creator: (empty) → super']}]
-    assert bytes(destination_repo.report_template_content('nsa', 'Local')) == b'local'
+    assert section['items'] == [{'name': 'Daily', 'changes': ['Content', 'Creator: (empty) → super']}]
+    assert bytes(destination_repo.report_template_content('Local')) == b'local'
     assert _transfer('ppt-templates', source, destination, tmp_path) == 'Imported 2 PPT Templates into 1 workspace: 2 unchanged.'
 
 

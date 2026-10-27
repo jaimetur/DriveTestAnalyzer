@@ -28,8 +28,7 @@
     "dashboards": [
       {
         "dashboard": {
-          "name": "NetCheck CDR Report",
-          "template_technology": "nsa"
+          "name": "NSA - NetCheck CDR Report"
         },
         "label": "",
         "scope": "single",
@@ -45,8 +44,7 @@
       },
       {
         "dashboard": {
-          "name": "NetCheck CDR Report",
-          "template_technology": "sa"
+          "name": "SA - NetCheck CDR Report"
         },
         "label": "",
         "scope": "single",
@@ -62,8 +60,7 @@
       },
       {
         "dashboard": {
-          "name": "RF Quality (RSRP & SINR)",
-          "template_technology": "nsa"
+          "name": "RF Quality (RSRP & SINR)"
         },
         "label": "",
         "scope": "single",

@@ -1,8 +1,7 @@
 {
-  "name": "NetCheck CDR Report (Main Cities)",
-  "template": "SA - NetCheck CDR Report (Main Cities)",
-  "template_technology": "sa",
-  "technology": "sa",
+  "name": "SA - NetCheck CDR Report (Main Cities)",
+  "template": "NetCheck CDR Report (Main Cities)",
+  "nr_mode": "SA",
   "scope": "single",
   "vendor_comparison": "operator_vendor",
   "custom_fields": [

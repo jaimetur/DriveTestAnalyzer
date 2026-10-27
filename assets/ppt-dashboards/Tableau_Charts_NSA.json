@@ -1,8 +1,7 @@
 {
   "name": "Tableau Charts",
   "template": "Tableau Charts",
-  "template_technology": "nsa",
-  "technology": "nsa",
+  "nr_mode": "NSA",
   "scope": "single",
   "vendor_comparison": "operator_vendor",
   "custom_fields": [],
