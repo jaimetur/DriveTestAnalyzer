@@ -584,9 +584,9 @@ def test_scoring_context_filters_are_pushed_down_and_persisted(repository, scori
     load_filters = []
     original_load_dataset_rows = repository.load_dataset_rows
 
-    def record_load(dataset_id, columns, dataset_filters):
+    def record_load(dataset_id, columns, dataset_filters, **options):
         load_filters.append(dataset_filters)
-        return original_load_dataset_rows(dataset_id, columns, dataset_filters)
+        return original_load_dataset_rows(dataset_id, columns, dataset_filters, **options)
 
     monkeypatch.setattr(repository, 'load_dataset_rows', record_load)
 

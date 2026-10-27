@@ -283,6 +283,7 @@ def test_results_controls_are_grouped_with_icons_and_unique_environment_heading(
             'resultScope': _function_source(script, 'resultScope'),
             'appendResultScope': _function_source(script, 'appendResultScope'),
             'resultScopeFilters': 'const resultScopeFilters = {};',
+            'resultOutOfScope': 'let resultOutOfScope = [];',
         },
     }
     program = r"""
@@ -535,10 +536,11 @@ def test_scoring_chart_pairs_render_five_operator_two_category_views():
         'renderCharts', 'renderHierarchyCharts', 'svgElement', 'hierarchyChartColor',
         'hierarchyDisplayValue', 'hierarchyPathEntry', 'hierarchyPrefixKey', 'hierarchyChartGroupKey', 'hierarchyLevelNames',
         'appendHierarchyAxisBands', 'hierarchyPathValueLabel', 'hierarchyPathFullLabel', 'chartFitWidth', 'styleIncompleteValue',
-        'resultScope', 'appendResultScope',
+        'resultScope', 'appendResultScope', 'outOfScopeChartNote',
     )
     payload = {'snippets': {name: _function_source(script, name) for name in names}}
     payload['snippets']['resultScopeFilters'] = 'const resultScopeFilters = {};'
+    payload['snippets']['resultOutOfScope'] = 'let resultOutOfScope = [];'
     # Zoom is attached in the browser; this test renders the charts only.
     payload['snippets']['zoomStubs'] = 'function enableMapZoom() {}\nfunction enableContentZoom() {}'
     program = r"""
