@@ -3679,6 +3679,15 @@
       if (cell.dataset.column === 'score' && points !== null && maximumPoints) {
         cell.style.setProperty('--share', Math.max(0, Math.min(1, points / maximumPoints)).toFixed(3));
       }
+      // The figure of a GAP with a bar in a span of its own, so the themes that draw the bar behind it can set it
+      // beside the zero line, on the side the bar leaves free.
+      if ((cell.dataset.gap === 'gain' || cell.dataset.gap === 'loss') && !cell.querySelector('.scoring-gap-figure')) {
+        const figure = document.createElement('span');
+        figure.className = 'scoring-gap-figure';
+        figure.dataset.figure = cell.textContent;
+        figure.append(...cell.childNodes);
+        cell.append(figure);
+      }
     }
   }
 
@@ -7187,6 +7196,8 @@
             const text = document.createElement('span');
             text.className = 'scoring-insight-databar-value';
             text.textContent = cell.textContent;
+            // A GAP keeps room for its figure on either side of the middle line (see the styles of is-left and is-right).
+            if (content.bar.side) text.dataset.figure = text.textContent;
             cell.replaceChildren(bar, text);
           }
         } else cell.textContent = content ?? '';

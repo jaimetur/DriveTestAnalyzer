@@ -79,7 +79,8 @@ function describe(table) {
     cells: tr.cells.map(cell => ({column: cell.dataset.column || '', text: cell.textContent, colSpan: cell.colSpan,
       badge: cell.querySelector('.scoring-kpi-badge')?.textContent || '', meta: cell.querySelector('.scoring-kpi-meta')?.textContent || '',
       tag: cell.querySelector('.scoring-kpi-category')?.textContent || '', name: cell.querySelector('.scoring-kpi-name')?.textContent || '',
-      share: cell.style.getPropertyValue('--share'), tint: cell.style.getPropertyValue('--cell-tint'), background: cell.style.backgroundColor})),
+      share: cell.style.getPropertyValue('--share'), tint: cell.style.getPropertyValue('--cell-tint'), background: cell.style.backgroundColor,
+      figure: cell.querySelector('.scoring-gap-figure')?.dataset.figure || ''})),
   }));
   const foot = table.tFoot ? table.tFoot.rows.map(tr => tr.cells.map(cell => [cell.dataset.column || '', cell.textContent, cell.colSpan])) : [];
   return {className: table.className, head, body, foot};
@@ -195,6 +196,9 @@ process.stdout.write(JSON.stringify({
     assert grouped[0]['cells'][0]['name'] == 'Voice' and grouped[0]['cells'][0]['meta'] == '2 KPIs'
     assert grouped[0]['cells'][0]['colSpan'] == 2 and grouped[3]['cells'][0]['meta'] == '1 KPI'
     assert grouped[1]['cells'][1]['tint'] == '#F4C7C7'
+    # Each GAP figure is in a span of its own (with a copy of it, to keep room on both sides of the zero line).
+    assert [(row['cells'][1]['text'], row['cells'][1]['figure']) for row in grouped if not row['section']] == [
+        ('−2.00', '−2.00'), ('+1.00', '+1.00'), ('−0.50', '−0.50')]
     # Ordered by GAP, the categories are apart: no sections, each KPI with its category.
     ordered = result['ordered']['body']
     assert not any(row['section'] for row in ordered)
@@ -494,6 +498,46 @@ def test_gap_of_one_operator_follows_its_latest_campaign_and_fills_the_slide():
         sizes = [run.font.size.pt for row in list(table_shape.table.rows)[2:] for cell in row.cells
                  for paragraph in cell.text_frame.paragraphs for run in paragraph.runs if run.font.size]
         assert max(sizes) >= 6
+
+
+def test_gap_figures_sit_beside_the_zero_line_off_their_bar():
+    import re as regex
+
+    from pptx.enum.text import PP_ALIGN
+
+    from src.modules.pptx_compose import title_parts
+    from src.modules.scoring_exports import _text_points
+
+    job, result = synthetic_result(levels=('Operator',))
+    for theme in ('netcheck', 'ericsson'):
+        deck = Presentation(BytesIO(export_scoring_powerpoint(job, result, TEMPLATE, theme=theme, scorings=['best_network'],
+                                                              environments=['Combined'])))
+        checked = {'GAP Analysis': 0, 'KPI GAP Profile': 0}
+        for slide in deck.slides:
+            kind = next((name for name in checked if title_parts(slide)[0].startswith(name)), None)
+            if kind is None:
+                continue
+            for table in (shape.table for shape in slide.shapes if shape.has_table):
+                widths = [column.width for column in table.columns]
+                for row in list(table.rows)[1:-1]:
+                    # The GAP cells with a bar: filled with it in the GAP tables, the KPI rows of the KPI GAP Profile.
+                    if kind == 'KPI GAP Profile' and row.cells[0].margin_left != 128016:
+                        continue
+                    for index, cell in list(enumerate(row.cells))[1:]:
+                        found = regex.search(r'-?\d[\d,]*\.\d+', cell.text_frame.text)
+                        value = float(found.group().replace(',', '')) if found else 0
+                        if not value or (kind == 'GAP Analysis' and cell._tc.tcPr.find(qn('a:gradFill')) is None):
+                            continue
+                        # A gain (its bar to the right) is written left of the zero line, a loss right of it, and the
+                        # figure fits the half its bar leaves free.
+                        inner = cell.margin_right if value > 0 else cell.margin_left
+                        assert cell.text_frame.paragraphs[0].alignment == (PP_ALIGN.RIGHT if value > 0 else PP_ALIGN.LEFT)
+                        assert inner >= widths[index] // 2, (theme, kind, cell.text_frame.text)
+                        text = sum(_text_points(run.text, run.font.size.pt, run.font.bold)
+                                   for run in cell.text_frame.paragraphs[0].runs if run.text)
+                        assert text * 12700 <= widths[index] - cell.margin_left - cell.margin_right
+                        checked[kind] += 1
+        assert all(checked.values()), (theme, checked)
 
 
 def test_the_groups_below_the_operators_are_set_apart_down_the_header_and_the_body():

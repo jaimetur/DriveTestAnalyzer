@@ -343,7 +343,8 @@ def _style_score(cell, value: dict, maximum: Any, size: float, font: str | None,
     write(cell, [(text, run)], font=font)
 
 
-def _style_gap(cell, gap: Any, color: Any, size: float, font: str | None) -> None:
+def _style_gap(cell, gap: Any, color: Any, size: float, font: str | None) -> bool | None:
+    """Style a GAP cell; returns whether its bar is a gain (to the right) or a loss (to the left), None without a bar."""
     current = style()
     text = cell.text_frame.text
     try:
@@ -352,6 +353,7 @@ def _style_gap(cell, gap: Any, color: Any, size: float, font: str | None) -> Non
         number = None
     run = {'size': size, 'color': current['muted'], 'bold': False}
     runs = []
+    gain = None
     if number is None or number == 0:
         solid(cell, current['gap_card'])
     else:
@@ -366,7 +368,34 @@ def _style_gap(cell, gap: Any, color: Any, size: float, font: str | None) -> Non
             run.update(color=current['gain' if gain else 'loss'], bold=True)
     if text.endswith('*'):
         run.update(color='#C62828', bold=True)
-    write(cell, [*runs, (text, run)], font=font)
+    # The figure stays off its bar, on the side of the zero line the bar leaves free (see figures_beside_the_axis).
+    write(cell, [*runs, (text, run)], align=PP_ALIGN.CENTER if gain is None else PP_ALIGN.RIGHT if gain else PP_ALIGN.LEFT,
+          font=font)
+    return gain
+
+
+# The room between the zero line of a GAP cell and its figure.
+AXIS_ROOM = Inches(.05)
+
+
+def figures_beside_the_axis(table, cells: list[tuple[Any, bool]]) -> None:
+    """Set the figure of each GAP cell (``cells``: the cell and whether its GAP is a gain) next to the zero line, on the
+    side its bar leaves free: left of it for a gain, right of it for a loss, so the bar does not run under the figure. A
+    figure wider than that half moves towards the zero line, over it if it must, as far as it still fits on one line.
+    The cells are right-aligned for a gain and left-aligned for a loss, and the columns already have their final width;
+    calling it again after their text grows places them again."""
+    from src.modules.scoring_exports import _text_points
+    widths = [column.width for column in table.columns]
+    for cell, gain in cells:
+        width = widths[cell._tc.getparent().tc_lst.index(cell._tc)]
+        text = sum(_text_points(run.text, run.font.size.pt, run.font.bold) for paragraph in cell.text_frame.paragraphs
+                   for run in paragraph.runs if run.text and run.font.size is not None)
+        outer = cell.margin_left if gain else cell.margin_right
+        inner = max(outer, min(width // 2 + AXIS_ROOM, width - outer - Pt(text + 3)))
+        if gain:
+            cell.margin_right = inner
+        else:
+            cell.margin_left = inner
 
 
 def _label_runs(name: str, *, size: float, kpi_type: str = '', meta: str = '', category: str = '',
@@ -534,6 +563,7 @@ def apply_scorecard(table, *, header_rows: int, metrics: list[dict], value_colum
 
     # Rows, before the columns go: each label and value in the style of the theme.
     value_index = {column: (kind, leaf) for column, kind, leaf in value_columns}
+    gap_cells: list[tuple[Any, bool]] = []
     for offset, metric in enumerate(metrics):
         row_index = header_rows + offset
         subtotal = metric.get('row_type') == 'category' and not summary
@@ -558,7 +588,9 @@ def apply_scorecard(table, *, header_rows: int, metrics: list[dict], value_colum
             elif kind == 'GAP':
                 gap = (metric.get(gap_column) or {}).get(leaf) if leaf is not None else metric.get('gap_points')
                 color = ((metric.get('gap_colors') or {}).get(leaf) if leaf is not None else metric.get('gap_color'))
-                _style_gap(cell, gap, color, number_size, font)
+                gain = _style_gap(cell, gap, color, number_size, font)
+                if gain is not None:
+                    gap_cells.append((cell, gain))
             else:
                 solid(cell, current['label'])
                 write(cell, [(cell.text_frame.text, {'size': number_size, 'color': current['muted']})], font=font)
@@ -643,4 +675,5 @@ def apply_scorecard(table, *, header_rows: int, metrics: list[dict], value_colum
                     if line is not None and line.find(qn('a:solidFill')) is not None and \
                             line.find(qn('a:solidFill'))[0].get('val') == 'FFFFFF':
                         line.find(qn('a:solidFill'))[0].set('val', current['border'].lstrip('#'))
+    figures_beside_the_axis(table, gap_cells)
     return header_rows

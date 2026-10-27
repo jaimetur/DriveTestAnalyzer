@@ -645,6 +645,12 @@
   /* A GAP bar grows from the middle line of its cell: behind the reference to the left, ahead of it to the right. */
   td.scoring-insight-bar-cell.is-signed { background-image: linear-gradient(#c9d2db, #c9d2db); background-repeat: no-repeat; background-size: 1px 70%; background-position: 50% 50%; }
   .scoring-insight-databar.is-left { background: linear-gradient(270deg, var(--databar-color), color-mix(in srgb, var(--databar-color) 12%, #fff)); }
+  /* Its figure sits beside the middle line, on the side its bar leaves free: two equal halves, the figure in one and an
+     invisible copy of it in the other, so the column always has room for it on either side. */
+  .scoring-insight-databar:is(.is-left, .is-right) + .scoring-insight-databar-value { display: grid; grid-template-columns: 1fr 1fr; column-gap: .6rem; }
+  .scoring-insight-databar.is-left + .scoring-insight-databar-value { text-align: left; }
+  .scoring-insight-databar.is-left + .scoring-insight-databar-value::before,
+  .scoring-insight-databar.is-right + .scoring-insight-databar-value::after { content: attr(data-figure); visibility: hidden; }
   .scoring-loss-map { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1rem; align-items: start; }
   .scoring-loss-map-figure { min-height: 12rem; color: #6b7a85; font-size: .8rem; }
   .scoring-loss-map-svg { display: block; width: 100%; max-height: 36rem; }
@@ -1223,6 +1229,15 @@
     background: linear-gradient(90deg, var(--sc-gain-bar), color-mix(in srgb, var(--sc-gain-bar) 14%, #fff)); }
   [data-scoring-workspace]:is([data-scoring-theme="netcheck"], [data-scoring-theme="umlaut"]) .scoring-comparison-table.scoring-scorecard tbody tr > td[data-gap="loss"]::after {
     background: linear-gradient(270deg, var(--sc-loss-bar), color-mix(in srgb, var(--sc-loss-bar) 14%, #fff)); }
+  /* The bar runs behind the figure, so the figure sits beside the zero line on the side the bar leaves free (left of it
+     for a gain, right of it for a loss): two equal halves, the figure in one and an invisible copy of it in the other, so
+     the column always has room for it on either side. */
+  [data-scoring-workspace]:is([data-scoring-theme="netcheck"], [data-scoring-theme="umlaut"]) .scoring-comparison-table.scoring-scorecard tbody tr > td:is([data-gap="gain"], [data-gap="loss"]) > .scoring-gap-figure {
+    display: grid; grid-template-columns: 1fr 1fr; column-gap: .7rem; white-space: nowrap; }
+  [data-scoring-workspace]:is([data-scoring-theme="netcheck"], [data-scoring-theme="umlaut"]) .scoring-comparison-table.scoring-scorecard tbody tr > td[data-gap="loss"] > .scoring-gap-figure { text-align: left; }
+  [data-scoring-workspace]:is([data-scoring-theme="netcheck"], [data-scoring-theme="umlaut"]) .scoring-comparison-table.scoring-scorecard tbody tr > td[data-gap="gain"] > .scoring-gap-figure::after,
+  [data-scoring-workspace]:is([data-scoring-theme="netcheck"], [data-scoring-theme="umlaut"]) .scoring-comparison-table.scoring-scorecard tbody tr > td[data-gap="loss"] > .scoring-gap-figure::before {
+    content: attr(data-figure); visibility: hidden; }
   [data-scoring-workspace]:is([data-scoring-theme="netcheck"], [data-scoring-theme="umlaut"]) .scoring-comparison-table.scoring-scorecard tbody tr.scoring-section-row > :is(th, td) {
     border-radius: 0 !important; box-shadow: inset 0 -1px 0 #c9d2db !important; padding-top: .7rem !important; }
   [data-scoring-workspace]:is([data-scoring-theme="netcheck"], [data-scoring-theme="umlaut"]) .scoring-scorecard tr.scoring-section-row .scoring-kpi-name { font-size: .66rem; letter-spacing: .06em; text-transform: uppercase; }

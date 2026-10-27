@@ -17,6 +17,7 @@ from pptx.dml.color import RGBColor
 from pptx.enum.chart import XL_CHART_TYPE, XL_DATA_LABEL_POSITION, XL_LEGEND_POSITION, XL_TICK_MARK, XL_TICK_LABEL_POSITION
 from pptx.enum.shapes import MSO_SHAPE
 from pptx.enum.text import MSO_ANCHOR, MSO_AUTO_SIZE, PP_ALIGN
+from pptx.oxml.ns import qn
 from pptx.oxml.xmlchemy import OxmlElement
 from pptx.util import Emu, Inches, Pt
 
@@ -46,7 +47,7 @@ from src.modules.scoring_insights import operator_styles
 from src.modules.scoring_export_panels import (
     FOCUS_OPERATORS, default_export_panels, exportable_options, normalize_export_panels,
 )
-from src.modules.scoring_pptx_scorecard import apply_scorecard, style_legend_band
+from src.modules.scoring_pptx_scorecard import apply_scorecard, figures_beside_the_axis, style_legend_band
 from src.modules.scoring_themes import DEFAULT_THEME, active_theme, themed, use_theme
 from src.modules.theme_titles import style_title
 from src.modules.scoring_act_slides import (
@@ -2222,6 +2223,12 @@ def _fill_gap_table(table, *, header_rows: int, bottom: float = GAP_TABLE_BOTTOM
         for cell in row.cells:
             cell.margin_top = cell.margin_bottom = 0
     frame.height = sum(row.height for row in rows)
+    # The GAP figures beside the zero line take their place again at their new size: in a GAP table only the GAP cells
+    # with a bar have a gradient fill, right-aligned for a gain and left-aligned for a loss (see _style_gap).
+    figures_beside_the_axis(table, [
+        (cell, cell.text_frame.paragraphs[0].alignment == PP_ALIGN.RIGHT) for row in rows[header_rows:] for cell in row.cells
+        if cell._tc.tcPr is not None and cell._tc.tcPr.find(qn('a:gradFill')) is not None
+        and cell.text_frame.paragraphs[0].alignment in (PP_ALIGN.LEFT, PP_ALIGN.RIGHT)])
 
 
 def _add_gap_total_row(table, rows: list[dict], column_ids: list[str | None], *, size: float) -> None:

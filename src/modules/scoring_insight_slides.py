@@ -427,7 +427,7 @@ def _profile_table(slide, profile: dict[str, Any], *, kind: str, left: float, wi
     gap_key = 'gap_to_maximum' if kind == 'maximum' else 'gap_to_reference'
     total_key = 'total_gap_to_maximum' if kind == 'maximum' else 'total_gap_to_reference'
     # Data bars in every value column of the KPI rows, each column with its own scale; the values are written over
-    # them, right-aligned.
+    # them, right-aligned, but a GAP beside the zero line on the side its bar leaves free.
     kpis = [row for line, row in lines if line == 'kpi']
     bar_columns = [[row[gap_key].get(name) for row in kpis] for name in columns]
     bar_columns.append([row[total_key] for row in kpis])
@@ -467,6 +467,7 @@ def _profile_table(slide, profile: dict[str, Any], *, kind: str, left: float, wi
         _cell(table.cell(1, column), text, size=size, bold=True, fill='#E9ECEF',
               align=PP_ALIGN.LEFT if column < 1 else PP_ALIGN.RIGHT)
         table.cell(1, column).text_frame.word_wrap = True
+    gap_cells: list[tuple[Any, bool]] = []
     for row_index, (line, row) in enumerate(lines, start=2):
         if line == 'group':
             fill = '#F1F4F7'
@@ -479,16 +480,21 @@ def _profile_table(slide, profile: dict[str, Any], *, kind: str, left: float, wi
             continue
         _cell(table.cell(row_index, 0), row.get('kpi') or '', size=size, fill='#FFFFFF', kpi_type=row.get('kpi_type') or '')
         table.cell(row_index, 0).margin_left = Inches(.14)
-        for offset, name in enumerate(columns):
-            value = row[gap_key].get(name)
-            _cell(table.cell(row_index, 1 + offset), _points(value, 2), size=size, fill=None, align=PP_ALIGN.RIGHT)
-        _cell(table.cell(row_index, len(widths) - 1), _points(row[total_key], 2), size=size, bold=True, fill=None,
-              align=PP_ALIGN.RIGHT)
+        for column, value in [*((1 + offset, row[gap_key].get(name)) for offset, name in enumerate(columns)),
+                              (len(widths) - 1, row[total_key])]:
+            cell = table.cell(row_index, column)
+            signed = kind != 'maximum' and bool(value)
+            _cell(cell, _points(value, 2), size=size, bold=column == len(widths) - 1, fill=None,
+                  align=PP_ALIGN.LEFT if signed and value < 0 else PP_ALIGN.RIGHT)
+            if signed:
+                gap_cells.append((cell, value > 0))
     # The total of every column: the points lost, or the GAP to the reference, in each environment and in all.
     totals = [sum(row[gap_key].get(name) or 0 for row in kpis) for name in columns] + [sum(row[total_key] or 0 for row in kpis)]
     _total_row(table, len(lines) + 2, ['Total points lost' if kind == 'maximum' else 'Total KPI GAP',
                                         *(_points(value, 2) if kind == 'maximum' else _signed_total(value) for value in totals)],
                size=size)
+    from src.modules.scoring_pptx_scorecard import figures_beside_the_axis
+    figures_beside_the_axis(table, gap_cells)
 
 
 def _profile_pairs(profiles: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
