@@ -11730,11 +11730,12 @@ if (queueNode) {
     ? {key: 'campaign', direction: 'desc'} : {key: 'id', direction: 'desc'}]));
   const queueSortValue = (row, key) => row.querySelector(`[data-queue-sort-cell="${key}"]`)?.dataset.queueSortValue || '';
   const formatQueueCount = (value) => Math.max(0, Number(value) || 0).toLocaleString('en-US', {maximumFractionDigits: 0});
-  // The CDR tables are grouped by their Campaign (2026-Q2, its NSA and SA CDRs together), the newest
-  // quarter first and the CDRs without a campaign last; each group keeps the order of the sorted column.
+  // The CDR tables are grouped by their Campaign (2026-Q2, its NSA and SA CDRs together; 2025-Q2-Flex, with
+  // the name after its quarter, is a campaign of its own), the newest quarter first and the CDRs without a
+  // campaign last; each group keeps the order of the sorted column.
   const campaignQuarter = (row) => {
-    const match = (row.querySelector('[data-dataset-campaign-input]')?.value || '').trim().toUpperCase().match(/^(\d{4})-Q([1-4])/);
-    return match ? `${match[1]}-Q${match[2]}` : '';
+    const match = (row.querySelector('[data-dataset-campaign-input]')?.value || '').trim().match(/^(\d{4})-Q([1-4])(-.+)?$/i);
+    return match ? `${match[1]}-Q${match[2]}${match[3] || ''}` : '';
   };
   // The size of the source files of some dataset rows: MB without decimals, or GB from 1 GB.
   const formatDatasetsSize = (rows) => {

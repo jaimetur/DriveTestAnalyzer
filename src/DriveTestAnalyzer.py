@@ -95,7 +95,7 @@ from src.modules.serving_cells import vendor_mapping_signature
 from src.modules.ingestion import CDR_IGNORED_SHEET_KEYS, add_three_gcid_column, add_vfuk_gcid_column, apply_operator_mappings, ensure_fixed_cdr_fields, get_dataset_source_columns, get_excel_sheet_columns, infer_dataset_kind, load_dataset, summarise_dataset
 from src.modules.geospatial import assign_clusters, assign_regions, polygon_vendor_endpoints, validate_cluster_mapping, validate_region_mapping, validate_vendor_polygons, vendor_polygon_operators
 from src.modules.nr_mode import NR_MODES, dataset_nr_mode, infer_nr_mode, normalize_nr_mode, nr_mode_label
-from src.modules.cdr_campaign import dataset_campaign, normalize_campaign
+from src.modules.cdr_campaign import campaign_of_rows, catalogued_campaigns, dataset_campaign, normalize_campaign
 from src.modules.cdr_stage import (
     CDR_STAGE_LABELS, CDR_STAGES, IN_COMBINED_LABELS, IN_COMBINED_VALUES, combined_dataset_ids, combined_inclusion,
     dataset_cdr_stage, infer_cdr_stage, normalize_cdr_stage, normalize_in_combined,
@@ -3679,7 +3679,9 @@ def serialize_dataset_row(row) -> dict[str, Any]:
     item['nr_mode_label'] = item['nr_mode'] or '—'
     item['cdr_stage'] = dataset_cdr_stage(item.get('dataset_kind'), item.get('cdr_stage'), item.get('file_name'))
     item['cdr_stage_label'] = CDR_STAGE_LABELS.get(item['cdr_stage'] or '', '—')
-    # The Campaign of a CDR (2026-Q2): chosen by the user, else suggested from its file name.
+    # The Campaign of a CDR (2026-Q2): chosen by the user, else suggested from its file name (or, with
+    # add_row_campaigns, from its rows).
+    item['campaign_chosen'] = item.get('campaign') is not None
     item['campaign'] = dataset_campaign(item.get('dataset_kind'), item.get('campaign'), item.get('file_name'))
     item['in_combined'] = normalize_in_combined(item.get('in_combined')) or 'auto'
     if item.get('dataset_kind') in INVENTORY_DATASET_KINDS:
@@ -3759,6 +3761,16 @@ def add_combined_inclusion(datasets: list[dict[str, Any]], task_repository: Repo
         dataset['combined_included'] = bool(item and item['included'])
         dataset['combined_reason'] = item['reason'] if item else (
             'Included when the CDR is ready' if dataset.get('dataset_kind') in CDR_DATASET_KINDS else '')
+
+
+def add_row_campaigns(datasets: list[dict[str, Any]], task_repository: Repository | None = None) -> None:
+    """A CDR without a chosen Campaign nor one in its file name takes the campaign of its rows (2025-Q2-Flex)."""
+    pending = [dataset for dataset in datasets if dataset.get('campaign') == '' and not dataset.get('campaign_chosen')]
+    if not pending:
+        return
+    campaigns = catalogued_campaigns(task_repository or repository, [dataset['id'] for dataset in pending])
+    for dataset in pending:
+        dataset['campaign'] = campaign_of_rows(campaigns.get(int(dataset['id'])) or [])
 
 
 def add_workspace_mapping_capabilities(datasets: list[dict[str, Any]]) -> None:
@@ -6122,6 +6134,7 @@ def build_dataset_view_state(
         key=lambda dataset: int(dataset['id']),
         reverse=True,
     )
+    add_row_campaigns(datasets)
     ready_datasets = [
         dataset for dataset in datasets
         if dataset['is_ready'] and (allowed_kinds is None or dataset.get('dataset_kind') in allowed_kinds)
@@ -21766,6 +21779,7 @@ def legacy_reporting_redirect(request: Request, legacy_path: str = '') -> Redire
 @app.get('/api/datasets/status')
 def dataset_status(user: SessionUser = Depends(current_user)) -> dict[str, Any]:
     datasets = [serialize_dataset_row(row) for row in repository.list_datasets()]
+    add_row_campaigns(datasets)
     add_workspace_mapping_capabilities(datasets)
     add_combined_inclusion(datasets)
     combined_tables: list[dict[str, Any]] = []
@@ -22608,6 +22622,8 @@ def update_dataset_campaign(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     previous = dataset_campaign(dataset['dataset_kind'], dataset['campaign'], dataset['file_name'])
+    if dataset['campaign'] is None and not previous:
+        previous = campaign_of_rows(catalogued_campaigns(repository, [dataset_id])[dataset_id])
     if dataset['campaign'] != campaign:
         repository.update_dataset_profile(dataset_id, campaign=campaign)
     if previous != campaign:

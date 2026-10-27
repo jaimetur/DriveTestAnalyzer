@@ -6,7 +6,8 @@ import pandas as pd
 import pytest
 
 import src.DriveTestAnalyzer as core
-from src.modules.cdr_campaign import dataset_campaign, infer_campaign, normalize_campaign
+from src.modules.cdr_campaign import campaign_of_rows, dataset_campaign, infer_campaign, normalize_campaign
+from src.modules.column_names import normalize_campaign_map
 from src.modules.repository import local_now_iso
 
 
@@ -55,6 +56,39 @@ def test_written_campaigns_are_normalised():
     assert normalize_campaign('') == ''
     with pytest.raises(ValueError):
         normalize_campaign('Q3 campaign')
+    # A name written after the year and quarter is kept, without the NR Mode.
+    assert normalize_campaign('2025-Q2-Flex') == '2025-Q2-Flex'
+    assert normalize_campaign(' 2025 q2 Flex SA ') == '2025-Q2-Flex'
+    assert normalize_campaign('2026-Q2-NSA') == '2026-Q2'
+
+
+def test_a_cdr_without_a_campaign_in_its_name_takes_that_of_its_rows():
+    config = normalize_campaign_map({'format': '{yy}-Q{quarter}{-mode}',
+                                     'exceptions': [{'label': '25-Q2-Flex', 'sources': ['UK_Flex_2026']}]})
+    assert campaign_of_rows(['UK_Flex_2026'], config) == '2025-Q2-Flex'
+    assert campaign_of_rows(['UK_Q3_2026', 'UK_Q3_2026_SA'], config) == '2026-Q3'
+    # Rows without a year and quarter, or of several campaigns, give none.
+    assert campaign_of_rows(['Pilot'], config) == '' and campaign_of_rows(['UK_Q3_2026', 'UK_Q4_2026'], config) == ''
+
+
+def test_workspace_proposes_the_campaign_of_the_rows_and_keeps_a_written_name(client, tmp_path):
+    from src.modules.campaign_maps import save_campaign_map
+
+    login(client)
+    flex = add_cdr(tmp_path, '20260820 Daily Data CDR UK London NSA 20260805 - 20260819.xlsx', kind='data')
+    core.repository.replace_cdr_catalogue(flex, vendors=[], regions=[], cities=[], campaigns=['UK_Flex_2026'])
+    save_campaign_map(core.repository, {'format': '{yy}-Q{quarter}{-mode}',
+                                        'exceptions': [{'label': '25-Q2-Flex', 'sources': ['UK_Flex_2026']}]})
+    status = {item['id']: item for item in client.get('/api/datasets/status').json()['datasets']}
+    assert status[flex]['campaign'] == '2025-Q2-Flex'
+    assert 'value="2025-Q2-Flex"' in client.get('/workspace').text
+    # A campaign written with a name keeps it; a cleared one stays blank.
+    assert client.post(f'/workspace/datasets/{flex}/campaign', json={'campaign': '2025-Q2 Flex'}).json()['campaign'] == '2025-Q2-Flex'
+    assert client.post(f'/workspace/datasets/{flex}/campaign', json={'campaign': ''}).json()['campaign'] == ''
+    status = {item['id']: item for item in client.get('/api/datasets/status').json()['datasets']}
+    assert status[flex]['campaign'] == ''
+    logs = [row for row in core.repository.list_logs(limit=20) if row['action'] == 'update_dataset_campaign']
+    assert '"previous_campaign": "2025-Q2-Flex"' in logs[0]['details']
 
 
 def test_workspace_shows_and_changes_the_campaign_of_each_cdr(client, tmp_path):

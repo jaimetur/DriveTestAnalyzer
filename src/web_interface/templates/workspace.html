@@ -279,7 +279,7 @@
             </td>
             {% if layout == 'cdr' %}
             <td data-label="Campaign" data-queue-campaign data-queue-sort-value="{{ dataset.campaign or '' }}" data-queue-sort-cell="campaign">
-              <input type="text" class="queue-campaign-input" value="{{ dataset.campaign or '' }}" placeholder="YYYY-Qn" maxlength="40" spellcheck="false" autocomplete="off" list="cdr-campaign-options" data-dataset-campaign-input data-update-url="/workspace/datasets/{{ dataset.id }}/campaign" aria-label="Campaign of {{ dataset.file_name }}" title="The campaign of this CDR, such as 2026-Q2 (suggested from its file name; blank: no campaign)"{% if user.role not in ['user-editor', 'admin', 'super-admin'] %} readonly{% endif %}>
+              <input type="text" class="queue-campaign-input" value="{{ dataset.campaign or '' }}" placeholder="YYYY-Qn" maxlength="40" spellcheck="false" autocomplete="off" list="cdr-campaign-options" data-dataset-campaign-input data-update-url="/workspace/datasets/{{ dataset.id }}/campaign" aria-label="Campaign of {{ dataset.file_name }}" title="The campaign of this CDR, such as 2026-Q2, or 2025-Q2-Flex with a name after its quarter (suggested from its file name or, without a quarter in it, from its rows and Campaign Maps; blank: no campaign)"{% if user.role not in ['user-editor', 'admin', 'super-admin'] %} readonly{% endif %}>
             </td>
             {% endif %}
             <td data-label="NR Mode" data-queue-nr-mode data-queue-sort-value="{{ dataset.nr_mode or '' }}" data-queue-sort-cell="nr-mode">
