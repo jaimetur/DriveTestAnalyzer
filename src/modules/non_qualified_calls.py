@@ -3260,8 +3260,6 @@ ANALYST_FIELD = 'analyst'
 REVIEWER_FIELD = 'reviewer'
 # The accounts every new deployment starts with (repository.py): first in the lists of assignees, apart and tagged.
 DEFAULT_USERS = ('super', 'admin', 'demo')
-# Temporary: accounts that change the Prioritization Rules without being admins (remove them when no longer needed).
-PRIORITIZATION_EDITORS = ('EDANREC',)
 
 
 def _analyst_rows(connection: Any, field: str = ANALYST_FIELD) -> list[Any]:
@@ -8428,8 +8426,8 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         return user
 
     def can_prioritize(user) -> bool:
-        """The Prioritization Rules: admins and super-admins, and for now the accounts of PRIORITIZATION_EDITORS."""
-        return can_configure(user) or str(user.username).casefold() in {name.casefold() for name in PRIORITIZATION_EDITORS}
+        """The Prioritization Rules: admins and super-admins."""
+        return can_configure(user)
 
     def prioritization_user(user=Depends(core.current_user)):
         if not can_prioritize(user):

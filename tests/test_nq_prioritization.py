@@ -1160,10 +1160,6 @@ def test_only_admins_change_the_rules_and_editors_recalculate(prioritized):
     assert response.status_code == 200, response.text
     assert client.get('/api/non-qualified-calls/prioritization/settings').json()['settings']['strategy'] == nq_prioritization.CUSTOM
     assert 'nq_prioritization_recalculate' in [row['action'] for row in core.repository.list_logs(limit=50)]
-    # For now EDANREC changes the Prioritization Rules too, without being an admin.
-    workspace_user('EDANREC', 'user-editor')
-    login(client, 'EDANREC', 'EDANREC123')
-    assert client.put('/api/non-qualified-calls/prioritization/settings', json={'settings': settings}).status_code == 200
 
 
 def test_the_panel_chooses_the_strategy_of_the_module(strategized):
@@ -1180,16 +1176,12 @@ def test_the_panel_chooses_the_strategy_of_the_module(strategized):
     log = next(row for row in core.repository.list_logs(limit=50) if row['action'] == 'nq_prioritization_strategy')
     assert json.loads(log['details'])['to'] == 'Vodafone Proposal'
     assert client.put('/api/non-qualified-calls/prioritization/strategy', json={'strategy': 'fifo'}).status_code == 400
-    # The same users as the Prioritization Rules: admins and super-admins, and for now EDANREC.
+    # The same users as the Prioritization Rules: admins and super-admins.
     workspace_user('editor', 'user-editor')
     login(client, 'editor', 'editor123')
     assert client.put('/api/non-qualified-calls/prioritization/strategy', json={'strategy': 'roads_first'}).status_code == 403
     page = client.get('/non-qualified-calls').text
     assert 'id="nq-priority-panel-strategy" aria-label="Strategy of the NQ Prioritization" disabled' in page
-    workspace_user('EDANREC', 'user-editor')
-    login(client, 'EDANREC', 'EDANREC123')
-    assert client.put('/api/non-qualified-calls/prioritization/strategy', json={'strategy': 'roads_first'}).status_code == 200
-    assert nq_prioritization.load_settings(core.repository)['strategy'] == 'roads_first'
 
 
 def test_strategies_travel_with_the_configuration(prioritized):
