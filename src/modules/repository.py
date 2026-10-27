@@ -3754,7 +3754,11 @@ class Repository:
         ``operator_roles.out_of_scope_sql``); no parameters when none is."""
         from src.modules.operator_roles import out_of_scope_pairs, out_of_scope_sql
 
-        groups = self.list_operator_mapping_groups()
+        try:
+            groups = self.list_operator_mapping_groups()
+        except sqlite3.OperationalError:
+            # A workspace database without Operator Maps: no operator is out of scope.
+            return '1', []
         if not out_of_scope_pairs(groups):
             return '1', []
         modes = self.ready_cdr_nr_modes()
