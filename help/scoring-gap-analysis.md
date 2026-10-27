@@ -23,9 +23,9 @@ scoring-gap-analysis
 | Calculate or recalculate a comparison | [Calculate and review](#calculate-and-review) |
 | Find a Favourites Filter among many | [Filter Navigator](#filter-navigator) |
 | Understand filters and Split by | [Filters and Split by](#filters-and-split-by) |
-| Leave calls out of every scoring | [Excluded Calls](#excluded-calls) |
 | Read scores, GAPs and coverage warnings | [Results and workspace settings](#results-and-workspace-settings) |
 | Change the colours of the charts, tables and exports | [Choose a theme](#choose-a-theme) |
+| Leave calls out of every scoring | [Excluded Calls](#excluded-calls) |
 | Show or configure the Most Reliable scoring | [Most Reliable Network scoring](#most-reliable-network-scoring) |
 | Change environments, KPIs or weights | [Methodology](#methodology) |
 | Edit formulas and scoring rules | [KPI definitions](#editing-replacing-adding-and-removing-kpis) |
@@ -181,23 +181,6 @@ Each comparison retains the selected environment and Split by context. For vendo
 No matching reference or no common valid environment contribution produces **N/A***.
 
 Filter choices use cached CDR catalogues. If an older CDR lacks expected choices, reprocess it to refresh its catalogue.
-
-## Excluded Calls
-
-The **Excluded Calls** panel, below the Scoring Calculation panel (listed after it in the floating section bar and in the sections menus of the module, which open it), keeps lists of calls left out of every scoring of the workspace: the Saved Filters with their Geographical Areas, Scoring Trends and Points Lost, the scoring reports, the Scoring artifacts of Reporting Jobs and the Bundle Report Templates. Each call is identified by its NetCheck **JOIN_ID**, and its rows are left out of the CDRs the list applies to: the Voice call with the Speech samples of the same call, or the Data test. Its header says how many lists are switched on and how many calls they hold.
-
-| Action | How |
-| --- | --- |
-| Import a list | **Import Excluded Calls (CSV/Excel)**, then **Choose File**: a CSV (comma, semicolon or tab separated), TXT or Excel file with a **JOIN_ID** column (**JOINT_ID** or **Call Key** are read too) and, optionally, a **Reason** column (or Comment or Note); a file of a single column without a header is a list of JOIN_IDs. The dialog says how many JOIN_IDs it read and the repeated or empty ones it leaves out. Give the list a **Name** (the name of the file by default) and a **Reason**, and choose its **CDRs**. **Download Template** gives a file with the columns. A list keeps up to 100,000 calls. |
-| Choose its CDRs | Without CDRs (**All CDRs**) the list applies to every CDR of the workspace, also to those processed later. Assigned to some CDRs, it applies to them and, for a Voice or Speech CDR, to the Speech or Voice CDR of the same campaign, stage and NR Mode, whose samples carry the JOIN_IDs of the same calls (listed with a **+**). The CDRs are kept by file name, so they follow the list to other workspaces. |
-| Switch a list on or off | The **On** switch: a list switched off keeps its calls but leaves nothing out, so the scorings with and without them can be compared. |
-| Edit, download or delete | ✎ changes the name, reason and CDRs (to change its calls, import the file as another list), ⇩ downloads the calls of the list (CSV) and 🗑 deletes it after confirmation. |
-
-**Found in the CDRs** gives the calls of each list found in its CDRs and their rows (the count of each CDR under **By CDR**), and **N not found** downloads the JOIN_IDs found in none of them. The calls are found in the background, one reading of each CDR, when a list is imported or changed and when a CDR is processed (**Scoring History indexing** among the background tasks says *Finding the Excluded Calls in <CDR>*); meanwhile the panel says *Finding the calls in N CDRs…* and every scoring leaves the calls out all the same.
-
-The scorings follow the lists at once: when a list is imported, switched on or off, changed or deleted, the Saved Filters of the CDRs whose calls it changes are calculated again when they are opened (the Favourites Filters also while the application is idle), and those of the other CDRs keep their results. The warnings of a result name the lists and the calls and CDR rows they leave out, for example *Excluded Calls: 4 calls (20 CDR rows) are left out of this scoring by the list “Faulty test phone Q3”.*, and they go with the notes of its PowerPoint slides.
-
-Everyone with the workspace sees the lists; those who can edit the Scoring Methodologies (editors and administrators) import, change and delete them, and each action is recorded in App Events. The [NQ Prioritization](non-qualified-calls.md#nq-prioritization) of Non-Qualified Calls follows them too: an excluded call loses no scoring points (Excluded from Scoring). The lists are kept in the **Scoring Exclusion Lists**, **Scoring Excluded Calls** and **Scoring Exclusion Matches** tables of Database Management and travel as the **Scoring Excluded Calls** element of Admin → Import / Export / Transfer, with Full Workspace transfers and with backups: importing or restoring them replaces the lists the workspace has (found by their identity, so a list renamed on the source server is renamed here too, or else by their name) and adds the others, each list belonging to its creator when that user is active in the destination (otherwise to the user who imports it).
 
 ## Results and workspace settings
 
@@ -486,6 +469,23 @@ Example: **VF_UK / Samsung / Q1: maximum 583.2645 of 650 points**, with the unav
 - Tooltips explain partial GAP coverage; PowerPoint slide notes include the coverage details.
 
 All Environments raw KPI values are calculated from pooled source rows, not averaged from environment KPI values. Older results without these saved measurements show N/A until recalculated. Weighted scoring points still sum the separately calculated environment contributions.
+
+## Excluded Calls
+
+The **Excluded Calls** panel, below the Scoring & GAP Results panel and above the Favourites Filters panel (listed after Scoring & GAP Results in the floating section bar and in the sections menus of the module, which open it), keeps lists of calls left out of every scoring of the workspace: the Saved Filters with their Geographical Areas, Scoring Trends and Points Lost, the scoring reports, the Scoring artifacts of Reporting Jobs and the Bundle Report Templates. Each call is identified by its NetCheck **JOIN_ID**, and its rows are left out of the CDRs the list applies to: the Voice call with the Speech samples of the same call, or the Data test. Its header says how many lists are switched on and how many calls they hold.
+
+| Action | How |
+| --- | --- |
+| Import a list | **Import Excluded Calls (CSV/Excel)**, then **Choose File**: a CSV (comma, semicolon or tab separated), TXT or Excel file with a **JOIN_ID** column (**JOINT_ID** or **Call Key** are read too) and, optionally, a **Reason** column (or Comment or Note); a file of a single column without a header is a list of JOIN_IDs. The dialog says how many JOIN_IDs it read and the repeated or empty ones it leaves out. Give the list a **Name** (the name of the file by default) and a **Reason**, and choose its **CDRs**. **Download Template** gives a file with the columns. A list keeps up to 100,000 calls. |
+| Choose its CDRs | Without CDRs (**All CDRs**) the list applies to every CDR of the workspace, also to those processed later. Assigned to some CDRs, it applies to them and, for a Voice or Speech CDR, to the Speech or Voice CDR of the same campaign, stage and NR Mode, whose samples carry the JOIN_IDs of the same calls (listed with a **+**). The CDRs are kept by file name, so they follow the list to other workspaces. |
+| Switch a list on or off | The **On** switch: a list switched off keeps its calls but leaves nothing out, so the scorings with and without them can be compared. |
+| Edit, download or delete | ✎ changes the name, reason and CDRs (to change its calls, import the file as another list), ⇩ downloads the calls of the list (CSV) and 🗑 deletes it after confirmation. |
+
+**Found in the CDRs** gives the calls of each list found in its CDRs and their rows (the count of each CDR under **By CDR**), and **N not found** downloads the JOIN_IDs found in none of them. The calls are found in the background, one reading of each CDR, when a list is imported or changed and when a CDR is processed (**Scoring History indexing** among the background tasks says *Finding the Excluded Calls in <CDR>*); meanwhile the panel says *Finding the calls in N CDRs…* and every scoring leaves the calls out all the same.
+
+The scorings follow the lists at once: when a list is imported, switched on or off, changed or deleted, the Saved Filters of the CDRs whose calls it changes are calculated again when they are opened (the Favourites Filters also while the application is idle), and those of the other CDRs keep their results. The warnings of a result name the lists and the calls and CDR rows they leave out, for example *Excluded Calls: 4 calls (20 CDR rows) are left out of this scoring by the list “Faulty test phone Q3”.*, and they go with the notes of its PowerPoint slides.
+
+Everyone with the workspace sees the lists; those who can edit the Scoring Methodologies (editors and administrators) import, change and delete them, and each action is recorded in App Events. The [NQ Prioritization](non-qualified-calls.md#nq-prioritization) of Non-Qualified Calls follows them too: an excluded call loses no scoring points (Excluded from Scoring). The lists are kept in the **Scoring Exclusion Lists**, **Scoring Excluded Calls** and **Scoring Exclusion Matches** tables of Database Management and travel as the **Scoring Excluded Calls** element of Admin → Import / Export / Transfer, with Full Workspace transfers and with backups: importing or restoring them replaces the lists the workspace has (found by their identity, so a list renamed on the source server is renamed here too, or else by their name) and adds the others, each list belonging to its creator when that user is active in the destination (otherwise to the user who imports it).
 
 ## Methodology
 

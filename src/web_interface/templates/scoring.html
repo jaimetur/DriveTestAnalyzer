@@ -1742,8 +1742,6 @@
     </div>
   </article>
 
-  {% include 'scoring_exclusions_panel.html' %}
-
   <section class="saved-filters-layout" aria-label="Saved Filters and results">
     <article class="panel scoring-results-panel" aria-labelledby="scoring-results-title">
       <div class="scoring-results-head">
@@ -1836,6 +1834,7 @@
       </div>
 
     </article>
+    {% include 'scoring_exclusions_panel.html' %}
     <article class="panel saved-filters-panel">
       <div class="section-head tight-head"><div><p class="eyebrow">Reusable selections</p><h3>Favourites Filters</h3></div><div class="saved-filters-panel-tools"><button type="button" class="saved-filter-navigator-open" data-saved-filter-navigator-open title="Find a Favourites Filter in the Filter Navigator: a tree by Area, NR Mode and Campaign, with a search"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="2" y="2.5" width="5" height="4" rx="1"/><rect x="12" y="8" width="6" height="4" rx="1"/><rect x="12" y="14" width="6" height="4" rx="1"/><path d="M4.5 6.5V16H12M4.5 10H12"/></svg><span>Filter Navigator</span></button><span class="pill" data-saved-filter-count>0 Favourites Filters</span></div></div>
       <div class="saved-filters-bulk" data-saved-filters-bulk hidden>

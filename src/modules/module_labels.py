@@ -375,12 +375,12 @@ MODULE_SECTIONS: dict[str, list[tuple[Any, ...] | None]] = {
     'ppt-reporting-old': [('NetCheck CDR Reports', 'NetCheck CDR Reports', 'presentation'), ('Charts Panel', 'Charts Panel', 'chart'),
                           ('Log Report', 'Log Report', 'log'), ('Reports and Charts Jobs', 'Reports and Charts Jobs', 'jobs')],
     'scoring': [('Select NR Mode, Campaign, filters, Split by & GAP reference', 'Scoring Calculation', 'sliders'),
-                ('Excluded Calls', 'Excluded Calls', 'ban'),
                 ('Scoring & GAP Results', 'Scoring & GAP Results', 'chart', [
                     ('scoring-results-summary', 'Summary', 'summary'), ('scoring-results-charts', 'Scoring Charts', 'chart'),
                     ('scoring-results-tables', 'Scoring Tables', 'table'), ('scoring-results-geographical-areas', 'Geographical Areas', 'pin'),
                     ('scoring-results-trends', 'Scoring Trends', 'activity'), ('scoring-results-gap', 'GAP Analysis', 'gap'),
                     ('scoring-results-points-lost', 'Points Lost', 'map')]),
+                ('Excluded Calls', 'Excluded Calls', 'ban'),
                 ('Favourites Filters', 'Favourites Filters', 'filter')],
     # In the order of the page (templates/network_insights.html): its category panels, each with its panels as parts.
     'network-insights': [('Launch Analysis', 'Launch Analysis', 'select'),

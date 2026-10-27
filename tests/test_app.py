@@ -11284,9 +11284,9 @@ def test_every_tab_lists_its_sections_with_icons_in_the_colour_of_its_module(cli
         assert f'data-module-sections="{key}"' in page, key
     # Each entry has its icon, and the menu the colour of its module.
     assert menus['scoring'].count('class="menu-item-icon"') == 11
-    # Excluded Calls, after Scoring Calculation as on the page.
-    assert menus['scoring'].index('href="/scoring#section-select-nr-mode-campaign-filters-split-by-gap-reference"') \
-        < menus['scoring'].index('href="/scoring#section-excluded-calls"') < menus['scoring'].index('href="/scoring#section-scoring-gap-results"')
+    # Excluded Calls, after Scoring & GAP Results and before Favourites Filters as on the page.
+    assert menus['scoring'].index('href="/scoring#section-scoring-gap-results"') \
+        < menus['scoring'].index('href="/scoring#section-excluded-calls"') < menus['scoring'].index('href="/scoring#section-favourites-filters"')
     assert 'data-module-sections-for="scoring" aria-label="Scoring &amp; GAP Analysis sections" style="--menu-accent: ' in page
     # Scoring Results lists its result tabs beside it.
     for tab in ('summary', 'charts', 'tables', 'geographical-areas', 'trends', 'gap', 'points-lost'):
