@@ -6423,7 +6423,8 @@ def _scatter_stats(x: pd.Series, y: pd.Series) -> dict[str, object]:
     of the other measure, for the generated comments."""
     stats: dict[str, object] = {"n": int(len(x))}
     if len(x) >= 3 and x.nunique() > 1 and y.nunique() > 1:
-        rho = x.corr(y, method="spearman")
+        # Spearman is the Pearson correlation of the ranks (pandas' method="spearman" needs scipy, not installed).
+        rho = x.rank().corr(y.rank())
         stats["spearman"] = None if pd.isna(rho) else float(rho)
         low, high = float(x.quantile(.25)), float(x.quantile(.75))
         stats.update({

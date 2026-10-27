@@ -17,6 +17,7 @@
 
 #### 🐛 Bug fixes:
 - **Super Admin — AI Comment Writers:** **Install Kiro CLI** no longer fails with an HTTP 500 error before reading the package, takes the kiro-cli program of a .deb among its shell completions and icons of the same name, and says when a package is for another system (a Linux package on a Mac, a .dmg on the Linux server).
+- **PPT Dashboards — Generate comments:** the scatter charts no longer fail with *No module named 'scipy'*, on the Dashboard, in its PPTs and in the cache prewarm recorded in App Events, when they measure how their two KPIs move together for the comments.
 
 #### 📚 Documentation:
 

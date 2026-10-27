@@ -2,7 +2,11 @@ import json
 import re
 from io import BytesIO
 
+import pandas as pd
+import pytest
+
 import src.DriveTestAnalyzer as core
+from src.modules import cdr_reporting
 from src.modules import dashboard_comments as comments
 from src.modules.ppt_dashboards import DashboardDefinition
 
@@ -209,6 +213,13 @@ def test_the_other_chart_types_vendors_and_slides_read_together():
     per_operator = [{'index': index, 'kpi': 'NR_SINR', 'model': medians('NR SINR', {operator: value}, operator)}
                     for index, (operator, value) in enumerate({'VF': 10.2, 'EE': 12.1, 'O2': 8.0}.items())]
     assert texts(per_operator) == ['Median NR SINR in 2026-Q3: EE 12.1, VF 10.2, O2 8 dB.']
+
+
+def test_scatter_series_take_their_rank_correlation_without_scipy():
+    # Spearman is the Pearson correlation of the ranks, tied values sharing their mean rank, as scipy calculates it.
+    x, y = pd.Series([1, 2, 2, 5, 9]), pd.Series([3, 1, 4, 4, 8])
+    assert cdr_reporting._scatter_stats(x, y)['spearman'] == pytest.approx(7.25 / 9.5)
+    assert cdr_reporting._scatter_stats(x, -x)['spearman'] == pytest.approx(-1)
 
 
 def test_generate_all_slides_writes_every_slide_as_its_mode_says(client):
