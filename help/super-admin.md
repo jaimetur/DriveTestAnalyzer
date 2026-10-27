@@ -58,7 +58,9 @@ Super-admins open every workspace, so their rows show **All workspaces**, and se
 
 The **Users** table edits every account in place and saves each change at once:
 
-- **User**: the name of the account (its username when it has none) above its username, ID and creation date; the pencil edits its first name, last name and username. **Password**, **Role**, **Modules Profile** and **Active**. Leave a password field empty to keep the current password. **Reset password** restores `super123`, `admin123` or `demo123` for the three bootstrap names and uses `Ericsson123` for another account; the dialog displays the resulting password so it can be changed or communicated securely.
+- **User**: the name of the account (its username when it has none) above its username, ID and creation date; the pencil edits its first name, last name and username.
+- **Last Log-in**: the date and time of its last sign-in, in the timezone of Application Runtime, above how long ago it was (*Never* before its first sign-in). The sign-ins recorded in App Events before v0.9.1 fill it in once.
+- **Password**, **Role**, **Modules Profile** and **Active**. Leave a password field empty to keep the current password. **Reset password** restores `super123`, `admin123` or `demo123` for the three bootstrap names and uses `Ericsson123` for another account; the dialog displays the resulting password so it can be changed or communicated securely.
 - **Workspaces**: its **Workspace Groups**, each listed with its workspaces, and its **Individual workspaces**. The summary names the groups and counts the individual workspaces. Super-admins grant any workspace individually.
 - **Reset password** and **Delete**.
 

@@ -399,7 +399,8 @@ CREATE TABLE IF NOT EXISTS users (
     modules_profile_id INTEGER,
     first_name TEXT NOT NULL DEFAULT '',
     last_name TEXT NOT NULL DEFAULT '',
-    access_requested_at TEXT NOT NULL DEFAULT ''
+    access_requested_at TEXT NOT NULL DEFAULT '',
+    last_login_at TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS application_state (
@@ -1134,6 +1135,8 @@ class Repository:
             # Inactive editors and viewers of earlier versions are taken as access requests waiting since they were created.
             conn.execute("ALTER TABLE users ADD COLUMN access_requested_at TEXT NOT NULL DEFAULT ''")
             conn.execute("UPDATE users SET access_requested_at = created_at WHERE active = 0 AND role IN ('user-viewer', 'user-editor')")
+        if 'last_login_at' not in user_columns:
+            conn.execute("ALTER TABLE users ADD COLUMN last_login_at TEXT NOT NULL DEFAULT ''")
         # The identity of each account, Modules Profile and Workspace Group, which never changes: a Users & Access import
         # finds them again by it after a rename.
         for table in ('users', 'modules_profiles', 'workspace_groups'):
@@ -2912,8 +2915,24 @@ class Repository:
         with self.global_connection() as conn:
             self._ensure_user_access_schema(conn)
             return list(conn.execute(
-                "SELECT id, username, role, active, created_at, first_name, last_name, access_requested_at FROM users ORDER BY id ASC"
+                "SELECT id, username, role, active, created_at, first_name, last_name, access_requested_at, last_login_at "
+                "FROM users ORDER BY id ASC"
             ).fetchall())
+
+    def record_user_login(self, username: str) -> None:
+        """Keep the time of the last sign-in of an account, shown in the Users table."""
+        with self.global_connection() as conn:
+            self._ensure_user_access_schema(conn)
+            conn.execute('UPDATE users SET last_login_at = ? WHERE username = ?', (local_now_iso(), username))
+
+    def fill_user_last_logins(self, last_logins: dict[str, str]) -> None:
+        """Give the accounts without a last sign-in the one found in the App Events (username → ISO timestamp)."""
+        with self.global_connection() as conn:
+            self._ensure_user_access_schema(conn)
+            conn.executemany(
+                "UPDATE users SET last_login_at = ? WHERE username COLLATE NOCASE = ? AND last_login_at = ''",
+                [(timestamp, username) for username, timestamp in last_logins.items()],
+            )
 
     def count_active_admin_users(self) -> int:
         with self.global_connection() as conn:

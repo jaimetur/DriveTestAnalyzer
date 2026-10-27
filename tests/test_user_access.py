@@ -2,6 +2,7 @@
 import io
 import json
 import zipfile
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import src.DriveTestAnalyzer as core
@@ -375,3 +376,36 @@ def test_users_access_import_counts_as_updated_only_what_really_changed(client):
     [section] = core.import_notice_details(notice)['sections']
     assert section == {'title': 'Updated users', 'kind': 'updated', 'items': [
         {'name': 'ana', 'changes': ['First Name: Ana → Anna', 'Role: user-editor → user-viewer']}]}
+
+
+def test_the_users_table_shows_the_last_log_in(client):
+    core.repository.create_user('ana', 'secret123', 'user-editor')
+    core.repository.create_user('ben', 'secret123', 'user-viewer')
+    # The sign-ins App Events recorded before the Users table kept them fill it in once; failed ones do not count.
+    with core.repository.connection() as conn:
+        conn.executemany('INSERT INTO audit_logs (username, action, details, created_at) VALUES (?, ?, ?, ?)', [
+            ('ben', 'login', json.dumps({'success': True, 'result': 'successful'}), '2026-10-01T09:30:00+02:00'),
+            ('ben', 'login', json.dumps({'success': False, 'result': 'failed'}), '2026-10-02T09:30:00+02:00'),
+        ])
+    core.repository.delete_application_state(core.USER_LAST_LOGINS_FILLED_KEY)
+    core.fill_user_last_logins_from_app_events()
+    last_logins = {row['username']: row['last_login_at'] for row in core.repository.list_users()}
+    assert (last_logins['ben'], last_logins['ana']) == ('2026-10-01T09:30:00+02:00', '')
+    # Each sign-in stamps its account.
+    login(client, 'ana', 'secret123')
+    login(client)
+    last_logins = {row['username']: row['last_login_at'] for row in core.repository.list_users()}
+    assert last_logins['ana'] and last_logins['super'] and last_logins['demo'] == ''
+    page = client.get('/super-admin').text
+    assert '<th>User</th><th>Last Log-in</th><th>Password</th>' in page
+    assert f"<strong>{core.format_local_timestamp('2026-10-01T09:30:00+02:00')[:16]}</strong>" in page
+    assert '<small>just now</small>' in page and 'title="demo has not signed in yet">Never</span>' in page
+
+
+def test_relative_age_tells_how_long_ago():
+    now = datetime.now(timezone.utc)
+    ages = [timedelta(seconds=5), timedelta(minutes=5), timedelta(hours=3), timedelta(days=4), timedelta(days=21),
+            timedelta(days=150), timedelta(days=800)]
+    assert [core.relative_age((now - age).isoformat()) for age in ages] == [
+        'just now', '5 min ago', '3 h ago', '4 d ago', '3 wk ago', '5 mo ago', '2 yr ago']
+    assert core.relative_age('') == ''

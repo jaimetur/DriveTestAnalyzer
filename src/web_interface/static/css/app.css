@@ -5285,6 +5285,10 @@ body:has(.confirm-overlay:not([hidden]), .ds-overlay:not([hidden]), .dataset-pre
 .user-identity-view { display: grid; gap: .1rem; min-width: 0; }
 .user-display-name { overflow: hidden; color: #10314a; font-size: .9rem; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
 .user-meta { color: #8a97a3; font-size: .72rem; font-weight: 600; white-space: nowrap; }
+.user-last-login { display: grid; gap: .1rem; white-space: nowrap; }
+.user-last-login strong { color: #34495a; font-size: .82rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.user-last-login small { color: #8a97a3; font-size: .72rem; font-weight: 600; }
+.user-last-login.is-never { color: #a7b3bc; font-size: .8rem; font-style: italic; font-weight: 600; }
 .user-identity-edit { display: none; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .3rem; width: min(19rem, 100%); }
 .user-identity.is-editing .user-identity-view { display: none; }
 .user-identity.is-editing .user-identity-edit, .users-create-row .user-identity-edit { display: grid; }

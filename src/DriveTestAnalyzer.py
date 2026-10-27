@@ -3222,6 +3222,7 @@ async def lifespan(_: FastAPI):
     migrate_reporting_title(repository)
     migrate_ticket_center_title(repository)
     submit_background_task(empty_workspace_trash)
+    submit_background_task(fill_user_last_logins_from_app_events)
     # Workspace schema cleanup and interrupted-job recovery happen when a
     # workspace becomes active.  Scanning every workspace here opens and
     # checkpoints every SQLite database, which can leave startup blocked for
@@ -3820,6 +3821,31 @@ def format_local_timestamp(value: Any) -> str:
         return parsed.astimezone(configured_display_timezone()).strftime('%Y-%m-%d %H:%M:%S')
     except ValueError:
         return raw
+
+
+def relative_age(value: Any) -> str:
+    """How long ago an ISO timestamp was: just now, 5 min ago, 3 h ago, 4 d ago, 3 wk ago, 5 mo ago or 2 yr ago."""
+    raw = str(value or '').strip()
+    try:
+        parsed = datetime.fromisoformat(raw.replace('Z', '+00:00'))
+    except ValueError:
+        return ''
+    parsed = parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+    seconds = max(0, int((datetime.now(timezone.utc) - parsed).total_seconds()))
+    days = seconds // 86400
+    if seconds < 45:
+        return 'just now'
+    if seconds < 3600:
+        return f'{max(1, seconds // 60)} min ago'
+    if seconds < 86400:
+        return f'{seconds // 3600} h ago'
+    if days < 14:
+        return f'{days} d ago'
+    if days < 60:
+        return f'{days // 7} wk ago'
+    if days < 365:
+        return f'{days // 30} mo ago'
+    return f'{days // 365} yr ago'
 
 
 class ProcessingStopped(Exception):
@@ -14137,6 +14163,10 @@ def login(
     user = SessionUser(username=record.username, role=record.role)
     response = RedirectResponse(next_url or '/documents/view/help', status_code=status.HTTP_303_SEE_OTHER)
     create_session(response, user)
+    try:
+        repository.record_user_login(record.username)
+    except sqlite3.Error:
+        pass
     repository.try_add_log(record.username, 'login', json.dumps({
         'success': True, 'result': 'successful', 'role': record.role,
         'workspace_id': active_workspace.id if active_workspace else '',
@@ -15727,10 +15757,43 @@ def admin_user_rows() -> list[dict[str, Any]]:
     groups = repository.list_workspace_groups()
     return [{
         **dict(row), 'created_at': format_local_timestamp(row['created_at']),
+        'last_login_at': format_local_timestamp(row['last_login_at']), 'last_login_age': relative_age(row['last_login_at']),
         'workspace_ids': repository.list_user_workspace_ids(int(row['id'])),
         'modules_profile_id': profile_of.get(int(row['id'])),
         'workspace_group_ids': [group['id'] for group in groups if int(row['id']) in group['member_ids']],
     } for row in repository.list_users()]
+
+
+USER_LAST_LOGINS_FILLED_KEY = 'users_last_logins_filled'
+
+
+def fill_user_last_logins_from_app_events() -> None:
+    """Once, give the accounts the last sign-in that the App Events of the workspaces recorded before the Users table
+    kept it."""
+    from src.modules.repository import local_now_iso
+
+    if repository.get_application_state(USER_LAST_LOGINS_FILLED_KEY):
+        return
+    latest: dict[str, tuple[datetime, str]] = {}
+    for workspace in workspace_registry.list():
+        try:
+            with closing(sqlite3.connect(f'file:{workspace.database_path}?mode=ro', uri=True, timeout=2)) as connection:
+                rows = connection.execute(
+                    "SELECT username, MAX(created_at) FROM audit_logs WHERE action = 'login' "
+                    "AND details LIKE '%\"success\": true%' GROUP BY username").fetchall()
+        except sqlite3.Error:
+            continue
+        for username, created_at in rows:
+            try:
+                parsed = datetime.fromisoformat(str(created_at).replace('Z', '+00:00'))
+            except ValueError:
+                continue
+            parsed = parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+            key = str(username).casefold()
+            if key not in latest or parsed > latest[key][0]:
+                latest[key] = (parsed, str(created_at))
+    repository.fill_user_last_logins({username: created_at for username, (_, created_at) in latest.items()})
+    repository.set_application_state(USER_LAST_LOGINS_FILLED_KEY, local_now_iso())
 
 
 def upload_cdr_profile(task_repository: Repository) -> dict[str, Any]:

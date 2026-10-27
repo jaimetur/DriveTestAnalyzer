@@ -121,7 +121,7 @@
     </div>
     <div class="table-wrap users-table-wrap">
       <table class="users-table">
-        <thead><tr><th class="user-select-column"><input type="checkbox" aria-label="Select every listed user" data-users-select-all></th><th>User</th><th>Password</th><th>Role</th><th>Modules Profile</th><th>Active</th><th>Workspaces</th><th><span class="sr-only">Actions</span></th></tr></thead>
+        <thead><tr><th class="user-select-column"><input type="checkbox" aria-label="Select every listed user" data-users-select-all></th><th>User</th><th>Last Log-in</th><th>Password</th><th>Role</th><th>Modules Profile</th><th>Active</th><th>Workspaces</th><th><span class="sr-only">Actions</span></th></tr></thead>
         <tbody>
           {% for row in users %}
           {% set locked = user.role != 'super-admin' and row['role'] == 'super-admin' %}
@@ -147,6 +147,10 @@
                 </div>
                 {% if not locked %}<button type="button" class="user-identity-toggle" data-user-identity-toggle aria-label="Edit the name and username of {{ row['username'] }}" title="Edit name and username"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/></svg></button>{% endif %}
               </div>
+            </td>
+            <td>
+              {% if row['last_login_at'] %}<span class="user-last-login" title="Last signed in {{ row['last_login_at'] }}"><strong>{{ row['last_login_at'][:16] }}</strong><small>{{ row['last_login_age'] }}</small></span>
+              {% else %}<span class="user-last-login is-never" title="{{ row['username'] }} has not signed in yet">Never</span>{% endif %}
             </td>
             <td>
               <div class="user-password-editor">
@@ -204,6 +208,7 @@
                 </div>
               </div>
             </td>
+            <td></td>
             <td>
               <div class="user-password-editor">
                 <input class="table-input password-masked" type="text" name="password" placeholder="Password" form="user-create" autocomplete="off" spellcheck="false" required aria-label="Password of the new user" data-create-user-password data-lpignore="true" data-1p-ignore data-bwignore="true" data-protonpass-ignore="true">
