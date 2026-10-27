@@ -228,8 +228,17 @@ def resolve_cdrs(repository: Any, nr_mode: object, campaigns: Iterable[object] |
     return chosen
 
 
+def newest_campaign_key(campaigns: Iterable[object]) -> tuple:
+    """The order of a CDR among the CDRs used: that of its newest campaign (a CDR without campaigns goes last)."""
+    keys = [campaign_sort_key(value) for value in campaigns if str(value or '').strip()]
+    return max(keys) if keys else (-2, -2, 0, 0, '')
+
+
 def describe_cdrs(repository: Any, chosen: dict[str, Iterable[int]]) -> dict[str, list[dict[str, Any]]]:
-    """The CDRs of each type as the modules list them: id, file name, stage and campaigns (as the Campaign Maps show them)."""
+    """The CDRs of each type as the modules list them: id, file name, stage and campaigns (as the Campaign Maps show them).
+
+    They are listed newest campaign first; the CDRs of the same campaign keep their order (the newest uploaded first).
+    """
     ids = [int(value) for values in chosen.values() for value in values or []]
     inclusion = combined_inclusion(repository) if ids else {}
     datasets = {int(dataset['id']): dataset for dataset in repository.list_datasets() if int(dataset['id']) in set(ids)}
@@ -237,7 +246,7 @@ def describe_cdrs(repository: Any, chosen: dict[str, Iterable[int]]) -> dict[str
     described: dict[str, list[dict[str, Any]]] = {}
     for kind, values in chosen.items():
         rows = []
-        for value in values or []:
+        for value in sorted(values or [], key=lambda item: newest_campaign_key(campaigns.get(int(item)) or []), reverse=True):
             dataset_id = int(value)
             dataset = datasets.get(dataset_id)
             stage = (inclusion.get(dataset_id) or {}).get('stage') or (str(_row(dataset, 'cdr_stage', '') or '') if dataset is not None else '')

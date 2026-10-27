@@ -1347,13 +1347,28 @@
     });
   }
 
+  // The CDRs used newest campaign first, as the server lists those of the other modules (cdr_auto_selection.describe_cdrs):
+  // by the newest campaign of each CDR, a CDR without campaigns last; the CDRs of one campaign keep their order (the
+  // newest uploaded first).
+  function byNewestCampaign(options) {
+    const compare = globalThis.campaignCompare;
+    if (typeof compare !== 'function') return options;
+    const newest = new Map(options.map(option => [option, uniqueCatalogueValues(
+      datasetCatalogues.get(String(option.querySelector('[data-dataset-id]')?.value || ''))?.campaigns)
+      .reduce((best, value) => (best === null || compare(value, best) > 0 ? value : best), null)]));
+    return options.sort((left, right) => {
+      const [first, second] = [newest.get(left), newest.get(right)];
+      return first === null || second === null ? (first === null) - (second === null) : compare(second, first);
+    });
+  }
+
   // The CDRs the calculation uses, read-only by type, with their stage and campaigns.
   function renderAutoCdrs() {
     if (!autoCdrSection) return;
     const checked = new Set(usedDatasetIds().map(String));
-    const cdrs = Object.fromEntries(datasetKindOrder.map(kind => [kind, datasetOptions
+    const cdrs = Object.fromEntries(datasetKindOrder.map(kind => [kind, byNewestCampaign(datasetOptions
       .filter(option => String(option.dataset.datasetKind || '').toLowerCase() === kind
-        && checked.has(String(option.querySelector('[data-dataset-id]')?.value || '')))
+        && checked.has(String(option.querySelector('[data-dataset-id]')?.value || ''))))
       .map(option => {
         const id = String(option.querySelector('[data-dataset-id]')?.value || '');
         return {id, name: option.dataset.datasetName || `CDR ${id}`, stage: String(option.dataset.cdrStage || 'final'),

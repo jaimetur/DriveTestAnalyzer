@@ -10,7 +10,7 @@ from src.modules import cdr_facets
 from src.modules.cdr_auto_selection import (
     ALL_CAMPAIGNS, LATEST_CAMPAIGN, LATEST_FOUR_CAMPAIGNS, LATEST_THREE_CAMPAIGNS, LATEST_TWO_CAMPAIGNS, NO_PREVIOUS_CAMPAIGN,
     PREVIOUS_CAMPAIGN, campaign_values,
-    complete_campaign_cdrs, expand_campaign_filter, resolve_campaign_filter, resolve_cdrs,
+    complete_campaign_cdrs, describe_cdrs, expand_campaign_filter, resolve_campaign_filter, resolve_cdrs,
 )
 from src.modules.cdr_facets import cascading_options, fill_missing_facets, stored_facets
 from src.modules.repository import Repository, local_now_iso
@@ -433,3 +433,20 @@ def test_a_saved_filter_keeps_its_campaign_choice_and_follows_it(workspace):
     response = client.post('/api/scoring/saved-filters', json={**selection, 'nr_mode': 'SA', 'dataset_ids': [],
                                                                 'context_filters': {'Campaign': [PREVIOUS_CAMPAIGN]}})
     assert response.status_code == 400
+
+
+def test_cdrs_used_are_listed_newest_campaign_first(workspace):
+    add = workspace['add']
+    repository = workspace['repository']
+    # Uploaded in no particular order: the list follows the campaigns, the SA campaign of a quarter before the NSA one,
+    # and the CDRs of one campaign keep their order; a CDR without campaigns goes last.
+    q2_sa = add(name='UK_Q2_SA_Data.csv', kind='data', nr_mode='SA', campaign='UK_Q2_SA_2026')
+    q1 = add(name='UK_Q1_Data.csv', kind='data', campaign='UK_Q1_2026')
+    q3_nsa = add(name='UK_Q3_NSA_Data.csv', kind='data', campaign='UK_Q3_NSA_2026')
+    unknown = add(name='Unknown_Data.csv', kind='data', campaign='')
+    q3_sa = add(name='UK_Q3_SA_Data.csv', kind='data', nr_mode='SA', campaign='UK_Q3_SA_2026')
+    q1_daily = add(name='UK_Q1_Daily_Data.csv', kind='data', campaign='UK_Q1_2026', stage='daily')
+
+    described = describe_cdrs(repository, {'data': [unknown, q1, q2_sa, q3_nsa, q1_daily, q3_sa], 'voice': []})
+    assert [row['id'] for row in described['data']] == [q3_sa, q3_nsa, q2_sa, q1, q1_daily, unknown]
+    assert described['voice'] == []
