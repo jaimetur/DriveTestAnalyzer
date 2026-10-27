@@ -41,6 +41,20 @@ def test_custom_format_mode_order_and_exceptions_cover_new_campaigns():
     assert compact_campaign_value('UK_Q3_2026') == '2026-Q3'
 
 
+def test_exception_labels_written_with_the_format_are_ordered_in_their_quarter():
+    campaigns = ['UK_Flex_2026', 'UK_BM_Q2_2025', 'UK_Q4_2025_SA', 'UK_Q1_2026', 'UK_Q2_SA_2026']
+    config = normalize_campaign_map({'format': '{yy}-Q{quarter}{-mode}', 'modes_in_label': ['SA'],
+                                     'exceptions': [{'label': '26-Q2-Flex', 'sources': ['UK_Flex_2026']}]})
+    ordered = sorted(campaigns, key=lambda value: campaign_sort_key(value, config))
+    assert [format_campaign(value, config) for value in ordered] == ['25-Q2', '25-Q4-SA', '26-Q1', '26-Q2-Flex', '26-Q2-SA']
+    assert campaign_sort_key('26-Q2-Flex', config)[:2] == (2026, 2)
+    # A label the format does not write, or with a year that is not two digits, still comes first.
+    for label in ('Flex', '126-Q2'):
+        config = normalize_campaign_map({'format': '{yy}-Q{quarter}{-mode}',
+                                         'exceptions': [{'label': label, 'sources': ['UK_Flex_2026']}]})
+        assert campaign_sort_key('UK_Flex_2026', config)[:2] == (-1, -1)
+
+
 @pytest.mark.parametrize('config, message', [
     ({'format': '{year}-{week}'}, 'Unknown campaign label markers'),
     ({'format': 'Campaign'}, 'needs at least one marker'),

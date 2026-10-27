@@ -95,7 +95,8 @@ def campaign_parts(value: object) -> tuple[str | None, str | None, str | None]:
 # ``modes_in_label`` are the modes {mode} writes: without NSA, an NSA campaign reads like one
 # without a mode (2026-Q3), and both are the same campaign.
 # Exceptions give their own label to campaigns that do not follow the pattern; they are
-# ordered by the year and quarter of their label, or first (in their table order) when
+# ordered by the year and quarter of their label, read as a campaign or with the label
+# format (26-Q2-Flex is 2026 Q2 with {yy}-Q{quarter}), or first (in their table order) when
 # the label has none. The default map, used by the workspaces without their own, is
 # ``assets/labels-campaigns/default-campaign-map.json``.
 DEFAULT_CAMPAIGN_MODE_ORDER = ('', 'NSA', 'SA')
@@ -221,6 +222,40 @@ def _exception_for(text: str, config: dict) -> tuple[int, dict] | None:
     return None
 
 
+_FORMAT_PART_PATTERNS = {
+    'year': r'(?<!\d)(?:19|20)\d{2}(?!\d)', 'yy': r'(?<!\d)\d{2}(?!\d)', 'quarter': r'[1-4](?!\d)',
+    'mode': r'(?:NSA|SA)(?![A-Za-z])', 'market': r'[A-Z]{2,3}',
+}
+
+
+def _exception_label_parts(label: str, config: dict) -> tuple[str | None, str | None, str | None]:
+    """Year, quarter and mode of an exception label: read as a campaign, else with the label format of the map.
+
+    With {yy}-Q{quarter} the label 26-Q2-Flex is 2026 Q2. The year and quarter markers are always written in a
+    label, the mode and market ones only when the campaign has them.
+    """
+    year, quarter, mode = campaign_parts(label)
+    if year and quarter:
+        return year, quarter, mode
+    label_format = config.get('format') or DEFAULT_CAMPAIGN_FORMAT
+    pattern, kinds, position = '', [], 0
+    for match in CAMPAIGN_FORMAT_MARKER.finditer(label_format):
+        kind = match.group(2)
+        part = f'{re.escape(match.group(1))}({_FORMAT_PART_PATTERNS[kind]}){re.escape(match.group(3))}'
+        pattern += re.escape(label_format[position:match.start()]) + (f'(?:{part})?' if kind in {'mode', 'market'} else part)
+        kinds.append(kind)
+        position = match.end()
+    found = re.search(pattern + re.escape(label_format[position:]), label, flags=re.I)
+    parts: dict[str, str] = {}
+    for kind, value in zip(kinds, found.groups() if found else ()):
+        if value:
+            parts.setdefault(kind, value)
+    format_year = parts.get('year') or (f'20{parts["yy"]}' if parts.get('yy') else None)
+    if not format_year or not parts.get('quarter'):
+        return year, quarter, mode
+    return format_year, f'Q{parts["quarter"]}', parts['mode'].upper() if parts.get('mode') else mode
+
+
 def format_campaign(value: object, config: dict | None = None) -> str:
     """The label of a campaign with a Campaign Map (the workspace's one by default)."""
     config = config or current_campaign_map()
@@ -258,14 +293,15 @@ def compact_campaign_value(value: object) -> str:
 def campaign_sort_key(value: object, config: dict | None = None) -> tuple[int, int, int, int, str]:
     """Campaign order with a Campaign Map: year, quarter, then the order of the radio modes.
 
-    Campaigns and exception labels without a year and quarter come first, exceptions in
-    their table order.
+    Exception labels read their year and quarter as a campaign or with the label format (see
+    ``_exception_label_parts``). Campaigns and exception labels without a year and quarter
+    come first, exceptions in their table order.
     """
     config = config or current_campaign_map()
     text = _campaign_text(value)
     exception = _exception_for(text, config)
     label = exception[1]['label'] if exception else text
-    year, quarter, mode = campaign_parts(label if exception else text)
+    year, quarter, mode = _exception_label_parts(label, config) if exception else campaign_parts(text)
     if not year or not quarter:
         return (-1, -1, exception[0] if exception else len(config.get('exceptions') or []), 0, label.casefold())
     modes = config.get('mode_order') or list(DEFAULT_CAMPAIGN_MODE_ORDER)

@@ -50,6 +50,36 @@
     return index >= 0 ? {index, item: map.exceptions[index]} : null;
   };
 
+  const FORMAT_PART_PATTERNS = {
+    year: '(?<!\\d)(?:19|20)\\d{2}(?!\\d)', yy: '(?<!\\d)\\d{2}(?!\\d)', quarter: '[1-4](?!\\d)',
+    mode: '(?:NSA|SA)(?![A-Za-z])', market: '[A-Z]{2,3}',
+  };
+  const escapeRegExp = (text) => String(text).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+  // Year, quarter and mode of an exception label, as column_names._exception_label_parts: read as a campaign, else
+  // with the label format of the map (26-Q2-Flex is 2026 Q2 with {yy}-Q{quarter}).
+  const exceptionLabelParts = (label, map) => {
+    const parts = campaignParts(label);
+    if (parts.year && parts.quarter) return parts;
+    const format = String(map.format || DEFAULT_MAP.format);
+    const kinds = [];
+    let pattern = '';
+    let position = 0;
+    for (const match of format.matchAll(MARKER)) {
+      const [, before, kind, after] = match;
+      const part = `${escapeRegExp(before)}(${FORMAT_PART_PATTERNS[kind]})${escapeRegExp(after)}`;
+      pattern += escapeRegExp(format.slice(position, match.index)) + (['mode', 'market'].includes(kind) ? `(?:${part})?` : part);
+      kinds.push(kind);
+      position = match.index + match[0].length;
+    }
+    const found = clean(label).match(new RegExp(pattern + escapeRegExp(format.slice(position)), 'i'));
+    const values = {};
+    kinds.forEach((kind, index) => { if (found?.[index + 1] && !values[kind]) values[kind] = found[index + 1]; });
+    const year = values.year || (values.yy ? `20${values.yy}` : '');
+    if (!year || !values.quarter) return parts;
+    return {year, quarter: values.quarter, mode: values.mode ? values.mode.toUpperCase() : parts.mode};
+  };
+
   const campaignLabel = (value, map = activeMap()) => {
     const text = clean(value);
     if (!text) return '';
@@ -69,7 +99,7 @@
     const text = clean(value);
     const exception = exceptionFor(text, map);
     const label = exception ? exception.item.label : text;
-    const {year, quarter, mode} = campaignParts(label);
+    const {year, quarter, mode} = exception ? exceptionLabelParts(label, map) : campaignParts(label);
     if (!year || !quarter) {
       return [-1, -1, exception ? exception.index : (map.exceptions || []).length, 0, label.toLowerCase()];
     }
