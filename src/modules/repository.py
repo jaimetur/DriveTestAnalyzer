@@ -4033,10 +4033,14 @@ class Repository:
 
     def _reporting_nr_mode(self, conn: sqlite3.Connection, dataset_id: int, dataset_kind: str) -> str | None:
         """The NR Mode of a CDR that its combined rows keep in NR_Mode."""
-        row = conn.execute(
-            'SELECT d.file_name, p.nr_mode FROM datasets d LEFT JOIN dataset_profiles p ON p.dataset_id = d.id WHERE d.id = ?',
-            (int(dataset_id),),
-        ).fetchone()
+        try:
+            row = conn.execute(
+                'SELECT d.file_name, p.nr_mode FROM datasets d LEFT JOIN dataset_profiles p ON p.dataset_id = d.id WHERE d.id = ?',
+                (int(dataset_id),),
+            ).fetchone()
+        except sqlite3.OperationalError:
+            # Combined tables without the dataset registry beside them have no NR Mode to give.
+            return None
         return dataset_nr_mode(dataset_kind, row['nr_mode'], row['file_name']) if row else None
 
     def _ensure_reporting_nr_mode_column(
