@@ -277,6 +277,75 @@ def test_super_admins_change_the_reporter_module_and_version_of_any_ticket(clien
     assert client.post(f'/api/tickets/{ticket_id}/update', data={'priority': 'P5'}).status_code == 403
 
 
+def test_super_admins_correct_the_dates_of_a_ticket_and_its_timeline_follows_them(client):
+    from src.modules.ticket_center import get_ticket
+
+    login(client)
+    # A ticket recorded after the work it describes: opened, assigned, commented and resolved at once (its new dates in
+    # summer time keep the hours given, whatever the time of the server when it was recorded).
+    ticket_id = open_ticket(client, screenshots=())
+    manage = f'/api/tickets/{ticket_id}/manage'
+    client.post(manage, data={'assigned_to': 'super'})
+    client.post(f'/api/tickets/{ticket_id}/comments', data={'body': 'Implemented in v0.8.4.'})
+    client.post(manage, data={'status': 'resolved', 'fixed_version': '0.8.4'})
+    entries = len(get_ticket(core.repository, ticket_id)['comments'])
+
+    changes = client.post(manage, data={'created_at': '2020-07-10T09:30', 'resolved_at': '2020-07-12 18:00'}).json()['changes']
+
+    assert set(changes) == {'created_at', 'resolved_at'}
+    ticket = get_ticket(core.repository, ticket_id)
+    assert ticket['created_at'].startswith('2020-07-10T09:30') and ticket['resolved_at'].startswith('2020-07-12T18:00')
+    # The assignment follows the opening, the resolution (its comment and the change of status) the Resolved date; the
+    # timeline keeps its order and records no new entry; the last update is the resolution.
+    timeline = [(entry['kind'], entry['created_at'][:16]) for entry in ticket['comments']]
+    assert timeline == [('change', '2020-07-10T09:30'), ('comment', '2020-07-12T18:00'), ('change', '2020-07-12T18:00')]
+    assert [entry['created_at'] for entry in ticket['comments']] == sorted(entry['created_at'] for entry in ticket['comments'])
+    assert len(ticket['comments']) == entries and ticket['updated_at'] == ticket['resolved_at']
+    assert set(logged('ticket_managed')[0]['changes']) == {'created_at', 'resolved_at'}
+    page = client.get(f'/tickets/{ticket_id}').text
+    assert 'Opened by' in page and '2020-07-10 09:30' in page and 'name="created_at"' in page and 'name="resolved_at"' in page
+    # Every save of the form sends the dates again: the minute they already have changes nothing.
+    assert client.post(manage, data={'created_at': '2020-07-10T09:30', 'resolved_at': '2020-07-12T18:00',
+                                     'status': 'resolved'}).json()['changes'] == {}
+    assert client.post(manage, data={'resolved_at': '2020-07-09T10:00'}).status_code == 400
+    assert client.post(manage, data={'created_at': 'last week'}).status_code == 400
+    # Opened again, it has no Resolved date: the one the form still sends is left out.
+    reopened = client.post(manage, data={'status': 'in_progress', 'resolved_at': '2020-07-12T18:00'}).json()['changes']
+    assert reopened['status'] == ['resolved', 'in_progress'] and 'resolved_at' not in reopened
+    assert client.post(manage, data={'resolved_at': '2020-07-13T18:00'}).json()['changes'] == {}
+
+
+def test_corrected_dates_keep_the_timeline_written_between_and_after_them():
+    from src.modules.ticket_center import add_comment, create_ticket, get_ticket, set_ticket_dates, update_ticket
+
+    repository = core.repository
+    repository.initialize()
+    ticket_id = create_ticket(repository, title='Slow export', description='', module='', priority='P3', ticket_type='bug',
+                              username='super', app_version=__version__, browser='', screenshots=[])
+    update_ticket(repository, ticket_id, 'super', {'assigned_to': 'super'})
+    add_comment(repository, ticket_id, 'super', 'Found the cause.')
+    update_ticket(repository, ticket_id, 'super', {'status': 'resolved'})
+    add_comment(repository, ticket_id, 'super', 'Confirmed by the reporter.')
+    dates = ['2020-01-02T09:00:00+01:00', '2020-01-03T10:00:00+01:00', '2020-01-05T12:00:00+01:00', '2020-01-09T08:00:00+01:00']
+    with repository.global_connection() as conn:
+        conn.execute("UPDATE tickets SET created_at = '2020-01-01T10:00:00+01:00', resolved_at = ?, updated_at = ? WHERE id = ?",
+                     (dates[2], dates[3], ticket_id))
+        for entry_id, moment in zip([row['id'] for row in conn.execute(
+                'SELECT id FROM ticket_comments WHERE ticket_id = ? ORDER BY id', (ticket_id,)).fetchall()], dates):
+            conn.execute('UPDATE ticket_comments SET created_at = ? WHERE id = ?', (moment, entry_id))
+
+    set_ticket_dates(repository, ticket_id, opened='2019-12-30T08:00:00+01:00', resolved='2020-01-06T12:00:00+01:00')
+
+    ticket = get_ticket(repository, ticket_id)
+    # The assignment, between both dates, and the comment written after the resolution keep theirs; the resolution (the
+    # change of status and the comment just before it) moves a day with the Resolved date.
+    assert [entry['created_at'][:16] for entry in ticket['comments']] == [
+        '2020-01-02T09:00', '2020-01-04T10:00', '2020-01-06T12:00', '2020-01-09T08:00']
+    assert ticket['created_at'].startswith('2019-12-30T08:00') and ticket['updated_at'].startswith('2020-01-09T08:00')
+    with pytest.raises(ValueError, match='Resolved date cannot be before'):
+        set_ticket_dates(repository, ticket_id, resolved='2019-12-01T08:00')
+
+
 def test_a_ticket_has_a_type_that_only_super_admins_change(client):
     add_user('ana')
     login(client, 'ana', 'secret123')

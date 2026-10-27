@@ -490,6 +490,11 @@
   // Super-admins: attend the ticket (In Progress, assigned to them), or change its status, type, assignment and fixed
   // version.
   const manageForm = page.querySelector('[data-ticket-manage-form]');
+  // The Resolved date belongs to a resolved, closed or rejected ticket: it follows the status chosen in the form.
+  const resolvedDate = manageForm?.querySelector('[data-ticket-resolved-date]');
+  manageForm?.querySelector('select[name="status"]')?.addEventListener('change', (event) => {
+    if (resolvedDate) resolvedDate.disabled = (resolvedDate.dataset.openStatuses || '').split(' ').includes(event.target.value);
+  });
   manageForm?.addEventListener('submit', async (event) => {
     event.preventDefault();
     busy(manageForm, true);

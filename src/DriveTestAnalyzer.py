@@ -18550,8 +18550,8 @@ def ticket_center_page(request: Request, user: SessionUser | None = Depends(opti
 @app.get('/tickets/{ticket_id:int}', response_class=HTMLResponse)
 def ticket_page(request: Request, ticket_id: int, user: SessionUser | None = Depends(optional_user)) -> HTMLResponse:
     from src.modules.ticket_center import (
-        FIELD_LABELS, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_PER_UPLOAD, PRIORITIES, STATUSES, TEXT_GUIDES, TICKET_TYPES,
-        ticket_references,
+        FIELD_LABELS, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_PER_UPLOAD, OPEN_STATUSES, PRIORITIES, STATUSES, TEXT_GUIDES,
+        TICKET_TYPES, ticket_references,
     )
 
     modules = ticket_modules()
@@ -18588,7 +18588,7 @@ def ticket_page(request: Request, ticket_id: int, user: SessionUser | None = Dep
         ]
     return render_template(request, 'ticket.html', {
         'user': user, 'ticket': ticket, 'ticket_modules': modules, 'ticket_priorities': PRIORITIES, 'ticket_statuses': STATUSES,
-        'ticket_types': TICKET_TYPES, 'ticket_center_title': ticket_center_title(),
+        'ticket_types': TICKET_TYPES, 'ticket_center_title': ticket_center_title(), 'ticket_open_statuses': sorted(OPEN_STATUSES),
         'ticket_can_edit': can_edit_ticket(user, ticket), 'ticket_can_manage': bool(user and user.role == 'super-admin'), 'ticket_text_guide': TEXT_GUIDES[ticket['ticket_type']],
         # The users by name, the default ones first (user_choices): who can attend it (the super-admins) and who can be
         # its reporter (every account, and its current reporter even without an account here).
@@ -18682,11 +18682,14 @@ def manage_ticket(
     created_by: str | None = Form(None),
     module: str | None = Form(None),
     app_version: str | None = Form(None),
+    created_at: str | None = Form(None),
+    resolved_at: str | None = Form(None),
     user: SessionUser = Depends(super_admin_user),
 ) -> JSONResponse:
     """Super-admins manage a ticket: its status, its type, who handles it and the version that fixes it, and also who
-    reported it, its module and the version it was opened with, whoever opened it."""
-    from src.modules.ticket_center import OPEN_STATUSES, update_ticket
+    reported it, its module, the version it was opened with, whoever opened it, and the dates it was opened and resolved
+    (its timeline follows them, see set_ticket_dates)."""
+    from src.modules.ticket_center import OPEN_STATUSES, set_ticket_dates, ticket_date, update_ticket
 
     ticket = require_ticket(ticket_id)
     values: dict[str, Any] = {}
@@ -18715,8 +18718,22 @@ def manage_ticket(
         values['assigned_to'] = assigned_to
     if fixed_version is not None:
         values['fixed_version'] = fixed_version
+    # The dates are checked before anything changes, and set after the rest (a status changed with them is the
+    # resolution they move).
+    try:
+        opened = ticket_date(created_at) if str(created_at or '').strip() else None
+        resolved = ticket_date(resolved_at) if str(resolved_at or '').strip() else None
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    # (A ticket opened again has no resolution: the Resolved date the form still sends is left out.)
+    if values.get('status', ticket['status']) in OPEN_STATUSES:
+        resolved = resolved_at = None
+    if opened and resolved and resolved < opened:
+        raise HTTPException(status_code=400, detail='The Resolved date cannot be before the Opened date.')
     try:
         changes = update_ticket(repository, ticket_id, user.username, values)
+        if opened or resolved:
+            changes.update(set_ticket_dates(repository, ticket_id, opened=created_at, resolved=resolved_at))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if changes:

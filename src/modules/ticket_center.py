@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import re
 import uuid
-from datetime import date
+from datetime import date, datetime, timedelta
 from pathlib import PurePosixPath
 from typing import Any, Iterable
 
@@ -395,6 +395,132 @@ def update_ticket(repository: Repository, ticket_id: int, username: str, values:
             "INSERT INTO ticket_comments (uid, ticket_id, username, kind, body, changes_json, created_at) VALUES (?, ?, ?, 'change', '', ?, ?)",
             (_new_uid(), int(ticket_id), username, json.dumps(changes, ensure_ascii=False), now),
         )
+    return changes
+
+
+def ticket_date(value: object) -> datetime:
+    """A date of a ticket as the Manage form gives it (``2026-10-20T15:35``, also with seconds or an offset); without an
+    offset it is the time of the server on that day."""
+    text = str(value or '').strip().replace(' ', 'T', 1)
+    try:
+        moment = datetime.fromisoformat(text)
+    except ValueError as exc:
+        raise ValueError('Give the dates of the ticket as YYYY-MM-DD HH:MM.') from exc
+    return moment.astimezone() if moment.tzinfo is None else moment
+
+
+def _moment(value: object) -> datetime | None:
+    try:
+        return ticket_date(value) if str(value or '').strip() else None
+    except ValueError:
+        return None
+
+
+def _minute(moment: datetime | None) -> str:
+    return moment.strftime('%Y-%m-%dT%H:%M') if moment else ''
+
+
+def set_ticket_dates(repository: Repository, ticket_id: int, opened: object = None,
+                     resolved: object = None) -> dict[str, list[str]]:
+    """Move the opening and the resolution of a ticket to other dates (such as a ticket recorded after the work it
+    describes), with its timeline. The change that set its current status and the comment just before it (its
+    resolution) follow the Resolved date; the entries before them that fall before the Opened date or after the Resolved
+    date follow the Opened date; the others (those between both, and those after the resolution) keep theirs, and every
+    entry stays in its order. A date given to the minute it already has changes nothing. Returns the changes as
+    {field: [old, new]}; the timeline records none of them."""
+    with repository.global_connection() as conn:
+        row = conn.execute('SELECT status, created_at, resolved_at FROM tickets WHERE id = ?', (int(ticket_id),)).fetchone()
+        if row is None:
+            raise LookupError('The ticket does not exist.')
+        old_opened, old_resolved = _moment(row['created_at']), _moment(row['resolved_at'])
+        new_opened = ticket_date(opened) if str(opened or '').strip() else old_opened
+        new_resolved = old_resolved
+        if str(resolved or '').strip():
+            if row['status'] in OPEN_STATUSES:
+                raise ValueError('Only a resolved, closed or rejected ticket has a Resolved date.')
+            new_resolved = ticket_date(resolved)
+        if _minute(new_opened) == _minute(old_opened):
+            new_opened = old_opened
+        if _minute(new_resolved) == _minute(old_resolved):
+            new_resolved = old_resolved
+        if new_opened == old_opened and new_resolved == old_resolved:
+            return {}
+        if new_opened and new_resolved and new_resolved < new_opened:
+            raise ValueError('The Resolved date cannot be before the Opened date.')
+        opening_shift = new_opened - old_opened if new_opened and old_opened else timedelta()
+        resolution_shift = new_resolved - old_resolved if new_resolved and old_resolved else timedelta()
+        entries = [dict(entry) for entry in conn.execute(
+            'SELECT id, kind, changes_json, created_at FROM ticket_comments WHERE ticket_id = ? ORDER BY id', (int(ticket_id),),
+        ).fetchall()]
+        # The resolution: the latest change to a status that is not open, and the comment just before it.
+        resolution: set[int] = set()
+        if row['status'] not in OPEN_STATUSES:
+            for index in range(len(entries) - 1, -1, -1):
+                try:
+                    status_change = json.loads(entries[index]['changes_json'] or '{}').get('status')
+                except (TypeError, ValueError, AttributeError):
+                    status_change = None
+                if entries[index]['kind'] == 'change' and isinstance(status_change, list) and status_change[-1] not in OPEN_STATUSES:
+                    resolution.add(entries[index]['id'])
+                    if index and entries[index - 1]['kind'] == 'comment':
+                        resolution.add(entries[index - 1]['id'])
+                    break
+        moved: dict[int, datetime] = {}
+        previous: datetime | None = None
+        def outside(moment: datetime) -> bool:
+            return bool((new_opened and moment < new_opened) or (new_resolved and moment > new_resolved))
+
+        for entry in entries:
+            moment = _moment(entry['created_at'])
+            if moment is None:
+                continue
+            if entry['id'] in resolution:
+                target = moment + resolution_shift
+                # (One written within the minute before it shows the minute of the Resolved date, as its change.)
+                minute = new_resolved.replace(second=0, microsecond=0) if new_resolved and resolution_shift else None
+                if minute and minute - timedelta(minutes=1) <= target < minute:
+                    target = minute
+            elif outside(moment) and (not resolution or entry['id'] < min(resolution)):
+                target = moment + opening_shift
+            else:
+                target = moment
+            # The timeline lists its entries in their order: none goes before the one before it.
+            if previous and target < previous:
+                target = previous + timedelta(seconds=1)
+            previous = target
+            if target != moment:
+                moved[entry['id']] = target
+        changes: dict[str, list[str]] = {}
+        assignments: dict[str, str] = {}
+        # Each date is written in the time of the server on its own day (as it was then, summer or winter time).
+        def stamp(moment: datetime) -> str:
+            return moment.astimezone().isoformat(timespec='microseconds')
+
+        if new_opened != old_opened:
+            assignments['created_at'] = stamp(new_opened)
+            changes['created_at'] = [str(row['created_at'] or ''), assignments['created_at']]
+        if new_resolved != old_resolved:
+            assignments['resolved_at'] = stamp(new_resolved)
+            changes['resolved_at'] = [str(row['resolved_at'] or ''), assignments['resolved_at']]
+        for entry_id, moment in moved.items():
+            conn.execute('UPDATE ticket_comments SET created_at = ? WHERE id = ?', (stamp(moment), entry_id))
+        # The screenshots of a comment keep its date; those of the ticket itself, its opening.
+        for attachment in conn.execute('SELECT id, comment_id, created_at FROM ticket_attachments WHERE ticket_id = ?',
+                                       (int(ticket_id),)).fetchall():
+            moment = _moment(attachment['created_at'])
+            if attachment['comment_id'] is not None and attachment['comment_id'] in moved:
+                target = moved[attachment['comment_id']]
+            elif attachment['comment_id'] is None and moment and outside(moment):
+                target = max(moment + opening_shift, new_opened) if new_opened else moment + opening_shift
+            else:
+                continue
+            conn.execute('UPDATE ticket_attachments SET created_at = ? WHERE id = ?', (stamp(target), attachment['id']))
+        # Its last update: the latest of its dates and of its timeline.
+        latest = max([moment for moment in (new_opened, new_resolved) if moment]
+                     + [moved.get(entry['id']) or _moment(entry['created_at']) for entry in entries if _moment(entry['created_at'])])
+        assignments['updated_at'] = stamp(latest)
+        conn.execute(f"UPDATE tickets SET {', '.join(f'{field} = ?' for field in assignments)} WHERE id = ?",
+                     (*assignments.values(), int(ticket_id)))
     return changes
 
 

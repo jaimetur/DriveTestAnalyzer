@@ -104,6 +104,7 @@ The page shows the title with its type, status, priority and module, who opened 
 - **Details** sums up the type, status, priority, module, reporter, who attends it, the versions it was opened and fixed with, and its dates.
 - **Edit** (reporter and super-admins) changes the title and the description (and the module, for the reporter), and the **Priority** of **Details** changes as soon as another one is chosen.
 - **Manage** (super-admins) changes the type, status, who attends the ticket, who reported it, its module, the version it was opened with and the version that fixed it, whoever opened it; **Save** records each change in the timeline.
+- **Opened on** and **Resolved on**, at the end of Manage, correct the dates the ticket was opened and resolved (also closed or rejected; Resolved on only for those), for example for a ticket recorded after the work it describes. Its timeline follows them: the change that set its current status and the comment just before it (its resolution) take the Resolved date, the entries before them that fall before the Opened date or after the Resolved date take the Opened date, and the others (those between both, and those written after the resolution) keep theirs, every entry in its order. **Updated** becomes the latest of those dates. The timeline does not record the change of dates; App Events does (`ticket_managed`).
 
 ## Types, priorities and statuses
 
@@ -142,7 +143,7 @@ New, In Progress and Waiting for Info are the open statuses. The date a ticket i
 | Open tickets and comment on them | Every signed-in user with the module |
 | Edit a ticket (title, module, description), change its priority and add screenshots to it | Its reporter and the super-admins |
 | Edit or delete a comment | Its author (super-admins also delete any comment) |
-| Manage a ticket: **Attend this ticket**, its type, its status, who attends it (a super-admin), who reported it, its module, the version it was opened with and the version that fixes it, whoever opened it | Super-admins |
+| Manage a ticket: **Attend this ticket**, its type, its status, who attends it (a super-admin), who reported it, its module, the version it was opened with the version that fixes it and the dates it was opened and resolved, whoever opened it | Super-admins |
 | Delete a ticket with its timeline and screenshots | Super-admins |
 
 **Attend this ticket** sets a new ticket **In Progress** and assigns it to the super-admin who presses it. Moving a ticket to In Progress or Waiting for Info assigns it to that super-admin when nobody attends it, and resolving it without a fixed version records the version running then.

@@ -115,6 +115,9 @@
         </label>
         <label class="tickets-field">Opened with version<input type="text" name="app_version" maxlength="40" required value="{{ ticket.app_version }}"></label>
         <label class="tickets-field">Fixed in version<input type="text" name="fixed_version" maxlength="40" value="{{ ticket.fixed_version }}" placeholder="{{ app_version }}"></label>
+        {# The dates it was opened and resolved (also closed or rejected): its timeline moves with them. #}
+        <label class="tickets-field" title="When the ticket was opened: the entries of its timeline before it move with it">Opened on<input type="datetime-local" name="created_at" step="60" required value="{{ (ticket.created_at or '')[:16] }}"></label>
+        <label class="tickets-field" title="When the ticket was resolved, closed or rejected: its resolution in the timeline moves with it">Resolved on<input type="datetime-local" name="resolved_at" step="60" value="{{ (ticket.resolved_at or '')[:16] }}" data-ticket-resolved-date data-open-statuses="{{ ticket_open_statuses | join(' ') }}"{% if ticket.status in ticket_open_statuses %} disabled{% endif %}></label>
         <div class="tickets-form-actions"><button type="submit" class="tickets-primary-button">Save</button></div>
         <button type="button" class="ticket-delete" data-ticket-delete>Delete ticket</button>
       </form>
