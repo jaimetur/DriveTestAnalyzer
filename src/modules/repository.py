@@ -28,7 +28,7 @@ from src.modules.column_names import (
     operator_vendor_value, vendor_filter_column, vendor_filter_value, vendor_filter_values, vendor_match_values,
 )
 from src.modules.nr_mode import NR_MODE_DATASET_KINDS, dataset_nr_mode, infer_nr_mode, normalize_nr_mode
-from src.modules.operator_roles import normalize_mapping_role
+from src.modules.operator_roles import normalize_mapping_role, normalize_nr_modes
 from src.modules.cdr_stage import CDR_STAGE_KINDS, infer_cdr_stage, normalize_cdr_stage, normalize_in_combined
 from src.modules.module_labels import MAIN_MODULES, MODULE_LABELS_STATE_KEY
 from src.modules.report_layouts import normalize_catalog_layouts, rename_template_vendor_fields
@@ -316,6 +316,9 @@ CREATE TABLE IF NOT EXISTS chart_mapping_groups (
     -- The part an Operator plays everywhere: focus (the Focus operators of the Scoring exports), exclude (left out of
     -- every analysis, filter and report) or none.
     role TEXT NOT NULL DEFAULT '',
+    -- The NR Modes an Operator has a network in ('' every one, else NSA or SA): its rows of the CDRs of the other NR Mode
+    -- are out of scope everywhere.
+    nr_modes TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (mapping_type, canonical_value)
 );
 
@@ -992,10 +995,13 @@ class Repository:
 
     @staticmethod
     def _ensure_chart_mapping_role_column(conn: sqlite3.Connection) -> None:
-        """The Role (Focus or Exclude) of each label, also in a workspace database written before it (another workspace
-        than the open one, such as one exported or transferred)."""
-        if 'role' not in {str(row[1]) for row in conn.execute('PRAGMA table_info(chart_mapping_groups)').fetchall()}:
+        """The Role (Focus or Exclude) and the NR Modes of each label, also in a workspace database written before them
+        (another workspace than the open one, such as one exported or transferred)."""
+        columns = {str(row[1]) for row in conn.execute('PRAGMA table_info(chart_mapping_groups)').fetchall()}
+        if 'role' not in columns:
             conn.execute("ALTER TABLE chart_mapping_groups ADD COLUMN role TEXT NOT NULL DEFAULT ''")
+        if 'nr_modes' not in columns:
+            conn.execute("ALTER TABLE chart_mapping_groups ADD COLUMN nr_modes TEXT NOT NULL DEFAULT ''")
 
     @staticmethod
     def _check_operator_roles(conn: sqlite3.Connection, mapping_type: str) -> None:
@@ -3531,18 +3537,24 @@ class Repository:
 
     def _read_chart_mapping_groups(self, mapping_type: str) -> list[dict[str, Any]]:
         table = self._chart_mapping_table(mapping_type)
-        query = (f'SELECT m.source_value, m.canonical_value, g.position, g.color, {{role}} FROM {table} m '
+        query = (f'SELECT m.source_value, m.canonical_value, g.position, g.color, {{role}}, {{nr_modes}} FROM {table} m '
                  'JOIN chart_mapping_groups g ON g.mapping_type = ? '
                  'AND g.canonical_value = m.canonical_value COLLATE NOCASE '
                  'ORDER BY g.position, g.canonical_value COLLATE NOCASE, m.source_value COLLATE NOCASE')
         with self.connection() as conn:
             try:
-                rows = conn.execute(query.format(role='g.role'), (mapping_type,)).fetchall()
+                rows = conn.execute(query.format(role='g.role', nr_modes='g.nr_modes'), (mapping_type,)).fetchall()
             except sqlite3.OperationalError as error:
-                if 'role' not in str(error):
+                if 'role' not in str(error) and 'nr_modes' not in str(error):
                     raise
-                # A workspace database written before the Roles (not opened since): its labels have none.
-                rows = conn.execute(query.format(role="'' AS role"), (mapping_type,)).fetchall()
+                # A workspace database written before the Roles or the NR Modes (not opened since): its labels have none.
+                role = 'g.role' if 'role' not in str(error) else "'' AS role"
+                try:
+                    rows = conn.execute(query.format(role=role, nr_modes="'' AS nr_modes"), (mapping_type,)).fetchall()
+                except sqlite3.OperationalError as older:
+                    if 'role' not in str(older):
+                        raise
+                    rows = conn.execute(query.format(role="'' AS role", nr_modes="'' AS nr_modes"), (mapping_type,)).fetchall()
         grouped: dict[str, dict[str, Any]] = {}
         for row in rows:
             canonical = str(row['canonical_value']).strip()
@@ -3556,6 +3568,10 @@ class Repository:
             role = normalize_mapping_role(row['role'])
             if role:
                 group['role'] = role
+            # Likewise only a label with a network in one NR Mode alone carries its NR Modes.
+            nr_modes = normalize_nr_modes(row['nr_modes'])
+            if nr_modes:
+                group['nr_modes'] = nr_modes
             source = str(row['source_value']).strip()
             if source.casefold() != key:
                 group['aliases'].append(source)
@@ -3575,9 +3591,9 @@ class Repository:
 
     def replace_operator_mapping_group(
         self, original_canonical: str | None, canonical_value: str, aliases: Iterable[object],
-        color: str | None = None, role: str | None = None,
+        color: str | None = None, role: str | None = None, nr_modes: Iterable[str] | str | None = None,
     ) -> None:
-        self._replace_chart_mapping_group('operator', original_canonical, canonical_value, aliases, color, role)
+        self._replace_chart_mapping_group('operator', original_canonical, canonical_value, aliases, color, role, nr_modes)
 
     def replace_vendor_mapping_group(
         self, original_canonical: str | None, canonical_value: str, aliases: Iterable[object],
@@ -3589,9 +3605,10 @@ class Repository:
     def _replace_chart_mapping_group(
         self, mapping_type: str, original_canonical: str | None, canonical_value: str,
         aliases: Iterable[object], color: str | None, role: str | None = None,
+        nr_modes: Iterable[str] | str | None = None,
     ) -> None:
         """Create or replace one canonical chart identity and its aliases; ``role`` None keeps its part (Focus or
-        Exclude)."""
+        Exclude) and ``nr_modes`` None its NR Modes."""
         table = self._chart_mapping_table(mapping_type)
         label = mapping_type.title()
         canonical = str(canonical_value).strip()
@@ -3637,7 +3654,7 @@ class Repository:
                     f"These aliases already belong to another canonical {label}: {', '.join(conflicts)}."
                 )
             previous = conn.execute(
-                'SELECT position, color, role FROM chart_mapping_groups '
+                'SELECT position, color, role, nr_modes FROM chart_mapping_groups '
                 'WHERE mapping_type = ? AND canonical_value = ? COLLATE NOCASE',
                 (mapping_type, original or canonical),
             ).fetchone()
@@ -3647,6 +3664,8 @@ class Repository:
             ).fetchone()[0])
             selected_color = normalized_color or (str(previous['color']) if previous else '#6F42C1')
             selected_role = normalize_mapping_role(previous['role'] if previous else '') if role is None else normalize_mapping_role(role)
+            selected_nr_modes = ','.join(normalize_nr_modes(
+                (previous['nr_modes'] if previous else '') if nr_modes is None or mapping_type != 'operator' else nr_modes))
             if original:
                 conn.execute(
                     f'DELETE FROM {table} WHERE canonical_value = ? COLLATE NOCASE',
@@ -3657,8 +3676,9 @@ class Repository:
                     (mapping_type, original),
                 )
             conn.execute(
-                'INSERT INTO chart_mapping_groups (mapping_type, canonical_value, position, color, role) VALUES (?, ?, ?, ?, ?)',
-                (mapping_type, canonical, position, selected_color, selected_role),
+                'INSERT INTO chart_mapping_groups (mapping_type, canonical_value, position, color, role, nr_modes) '
+                'VALUES (?, ?, ?, ?, ?, ?)',
+                (mapping_type, canonical, position, selected_color, selected_role, selected_nr_modes),
             )
             conn.executemany(
                 f'INSERT INTO {table} (source_value, canonical_value) VALUES (?, ?)',
@@ -3727,6 +3747,19 @@ class Repository:
                 "WHERE p.status = 'ready' AND LOWER(COALESCE(p.dataset_kind, '')) IN ('data', 'voice', 'speech')"
             ).fetchall()
         return {int(row['id']): dataset_nr_mode(row['dataset_kind'], row['nr_mode'], row['file_name']) for row in rows}
+
+    def out_of_scope_condition(self, dataset_ids: Iterable[int], operator_sql: str,
+                               dataset_sql: str | None = None) -> tuple[str, list[Any]]:
+        """The SQL condition that leaves out the rows of some CDRs of the operators out of scope in their NR Mode (see
+        ``operator_roles.out_of_scope_sql``); no parameters when none is."""
+        from src.modules.operator_roles import out_of_scope_pairs, out_of_scope_sql
+
+        groups = self.list_operator_mapping_groups()
+        if not out_of_scope_pairs(groups):
+            return '1', []
+        modes = self.ready_cdr_nr_modes()
+        return out_of_scope_sql(groups, {int(dataset_id): modes.get(int(dataset_id)) for dataset_id in dataset_ids},
+                                operator_sql, dataset_sql)
 
     def delete_operator_mapping_group(self, canonical_value: str) -> None:
         self._delete_chart_mapping_group('operator', canonical_value)
@@ -3811,7 +3844,7 @@ class Repository:
         table = self._chart_mapping_table(mapping_type)
         label = mapping_type.title()
         rows: list[tuple[str, str]] = []
-        group_rows: list[tuple[str, str, int, str, str]] = []
+        group_rows: list[tuple[str, str, int, str, str, str]] = []
         assigned_sources: dict[str, str] = {}
         canonical_labels: set[str] = set()
         for position, group in enumerate(groups):
@@ -3830,7 +3863,9 @@ class Repository:
             color = str(group.get('color') or '#6F42C1').strip().upper()
             if not re.fullmatch(r'#[0-9A-F]{6}', color):
                 raise ValueError(f'Colour for {canonical} must use the #RRGGBB format.')
-            group_rows.append((mapping_type, canonical, position, color, normalize_mapping_role(group.get('role'))))
+            # A package exported before the NR Modes gives each label every NR Mode.
+            group_rows.append((mapping_type, canonical, position, color, normalize_mapping_role(group.get('role')),
+                               ','.join(normalize_nr_modes(group.get('nr_modes')) if mapping_type == 'operator' else [])))
             for source in [canonical, *(str(value).strip() for value in aliases)]:
                 if not source:
                     continue
@@ -3847,8 +3882,8 @@ class Repository:
             conn.execute(f'DELETE FROM {table}')
             conn.execute('DELETE FROM chart_mapping_groups WHERE mapping_type = ?', (mapping_type,))
             conn.executemany(
-                'INSERT INTO chart_mapping_groups (mapping_type, canonical_value, position, color, role) '
-                'VALUES (?, ?, ?, ?, ?)', group_rows,
+                'INSERT INTO chart_mapping_groups (mapping_type, canonical_value, position, color, role, nr_modes) '
+                'VALUES (?, ?, ?, ?, ?, ?)', group_rows,
             )
             conn.executemany(
                 f'INSERT INTO {table} (source_value, canonical_value) VALUES (?, ?)', rows,
@@ -4497,7 +4532,10 @@ class Repository:
             self._create_reporting_row_indexes(conn, target_table, target_columns)
             return 'rows'
 
-    def load_reporting_rows(self, dataset_kind: str, dataset_ids: list[int], columns: list[str]) -> pd.DataFrame:
+    def load_reporting_rows(self, dataset_kind: str, dataset_ids: list[int], columns: list[str], *,
+                            in_scope_only: bool = False) -> pd.DataFrame:
+        """The rows of some CDRs of one type from their combined table; with ``in_scope_only`` without those of the
+        operators out of scope in the NR Mode of each CDR."""
         if not dataset_ids:
             return pd.DataFrame()
         table_name = self.reporting_rows_table_name(dataset_kind)
@@ -4516,8 +4554,15 @@ class Repository:
             for requested, actual in selected_columns
         )
         query = f"SELECT {select_clause} FROM {self._quote_identifier(table_name)} WHERE dataset_id IN ({placeholders})"
+        params: list[Any] = [int(dataset_id) for dataset_id in dataset_ids]
+        resolved_operator = self._resolve_dataset_row_column_name(existing_columns, 'Operator') if in_scope_only else None
+        if resolved_operator:
+            clause, clause_params = self.out_of_scope_condition(dataset_ids, self._quote_identifier(resolved_operator), 'dataset_id')
+            if clause_params:
+                query += f' AND {clause}'
+                params += clause_params
         with self.connection() as conn:
-            return pd.read_sql_query(query, conn, params=[int(dataset_id) for dataset_id in dataset_ids])
+            return pd.read_sql_query(query, conn, params=params)
 
     def load_filtered_reporting_rows(
         self, dataset_kind: str, columns: list[str], where_sql: str, parameters: list[Any],
@@ -4706,8 +4751,10 @@ class Repository:
         return sql_condition(f"LOWER(TRIM(CAST({self._quote_identifier(column)} AS TEXT)))", values)
 
     def load_dataset_rows(self, dataset_id: int, columns: list[str], filters: dict[str, Any], *,
-                          excluded_call_lists: Iterable[int] = ()) -> pd.DataFrame:
-        """The rows of a dataset with the filters, without the calls of the Scoring Excluded Calls lists given."""
+                          excluded_call_lists: Iterable[int] = (), in_scope_only: bool = False) -> pd.DataFrame:
+        """The rows of a dataset with the filters, without the calls of the Scoring Excluded Calls lists given and, with
+        ``in_scope_only`` (an analysis, never a rewrite of the rows), without those of the operators out of scope in its
+        NR Mode (see ``operator_roles.out_of_scope_sql``)."""
         table_name = self.dataset_rows_table_name(dataset_id)
         existing_columns = set(self.list_dataset_row_columns(dataset_id))
         selected_columns: list[tuple[str, str]] = []
@@ -4779,6 +4826,13 @@ class Repository:
             clause, clause_params = row_condition(self._quote_identifier(resolved_join_id), excluded_call_lists)
             where_clauses.append(clause)
             params.extend(clause_params)
+
+        resolved_operator = self._resolve_dataset_row_column_name(existing_columns, 'Operator') if in_scope_only else None
+        if resolved_operator:
+            clause, clause_params = self.out_of_scope_condition({int(dataset_id)}, self._quote_identifier(resolved_operator))
+            if clause_params:
+                where_clauses.append(clause)
+                params.extend(clause_params)
 
         select_clause = ', '.join(
             f"{self._quote_identifier(actual_column)} AS {self._quote_identifier(requested_column)}"

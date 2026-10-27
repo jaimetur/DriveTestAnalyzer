@@ -254,19 +254,31 @@ def test_every_call_type_takes_every_condition():
     assert nq_prioritization.scored_levels(scored, 50, 80, out) == {'a': 'High', 'b': 'Medium', 'c': 'Low', 'far': 'High', 'd': 'High'}
 
 
+def set_nr_modes(name, modes):
+    # The NR Modes of the label of a name in the Operator Maps (a label of its own when it has none).
+    group = next((item for item in core.repository.list_operator_mapping_groups()
+                  if name.casefold() in {value.casefold() for value in [item['canonical'], *item['aliases']]}), {})
+    core.repository.replace_operator_mapping_group(group.get('canonical'), group.get('canonical', name), group.get('aliases', []),
+                                                   group.get('color'), None, modes)
+    return group.get('canonical', name)
+
+
 def test_the_calls_out_of_scope_stay_out_of_the_queues(strategized, monkeypatch):
-    # The calls of the regions out of the scope of the team, those of the NR Mode · operator pairs chosen (SA · Three) and,
-    # always, those of the operators that are not Focus operators of the Operator Maps.
-    settings = {**nq_prioritization.default_settings(), 'excluded_regions': ['Vendor B'], 'excluded_modes': [{'nr_mode': 'SA', 'operator': 'Three'}]}
+    # The calls of the regions out of the scope of the team, those of an operator in an NR Mode its label has no network in
+    # (the NR Modes of the Operator Maps, SA · Three) and, always, those of the operators that are not Focus operators.
+    three = set_nr_modes('Three', ['NSA'])
+    settings = {**nq_prioritization.default_settings(), 'excluded_regions': ['Vendor B']}
+    assert nq_prioritization.load_settings(core.repository)['excluded_modes'] == [{'nr_mode': 'SA', 'operator': three}]
     scope = nq_prioritization.scope_of(core.repository, settings)
     assert scope('Vendor B', 'NSA', 'VF') == ('Out of scope · Vendor B', 'region')
-    assert scope('Vendor A', 'SA', 'Three') == ('Out of scope · SA · Three', 'mode')
+    assert scope('Vendor A', 'SA', 'Three') == (f'Out of scope · SA · {three}', 'mode')
     assert scope('Vendor A', 'NSA', 'Three') == scope('Vendor A', 'SA', 'VF') == ('', '')
     with monkeypatch.context() as patch:
         patch.setattr(nq_prioritization, 'focus_names', lambda repository: {'vf', 'three'})
         assert nq_prioritization.scope_of(core.repository, settings)('Vendor A', 'NSA', 'EE') == ('Out of scope · NSA · EE', 'operator')
     assert nq_prioritization.strategy_decision('cities_first', {**strategy_call(), 'scope': 'Out of scope · Vendor B'}) == (
         'No rule', 'Out of scope · Vendor B', '', '', None, '')
+    set_nr_modes('Three', [])
     client = strategized['client']
     # A third of the calls in a region, first in scope, then out of it.
     region = 'Vendor B'
@@ -298,8 +310,8 @@ def test_nq_calls_in_scope_only_leaves_the_calls_out_of_scope_out_of_the_module(
     with core.repository.connection() as connection:
         connection.execute(f"UPDATE {nq.NQ_CALL_LATEST_TABLE} SET region = CASE WHEN rowid % 3 = 0 THEN ? ELSE 'Vendor A' END", (region,))
         latest = [dict(row) for row in connection.execute(f'SELECT call_key, region, nr_mode, operator FROM {nq.NQ_CALL_LATEST_TABLE}')]
-    settings = {**nq_prioritization.load_settings(core.repository), 'excluded_regions': [region],
-                'excluded_modes': [{'nr_mode': 'NSA', 'operator': 'Three'}]}
+    set_nr_modes('Three', ['SA'])
+    settings = {**nq_prioritization.load_settings(core.repository), 'excluded_regions': [region]}
     nq_prioritization.save_settings(core.repository, settings, 'super')
     # The SQL condition takes the calls scope_of leaves in scope, also with Focus operators.
     for focus in (None, {'vf'}):
@@ -939,12 +951,10 @@ def test_steps_prioritize_the_calls_and_fill_their_priority_until_it_is_chosen_b
 
 
 def test_repeated_issues_count_every_service_and_nr_mode_of_the_operator(prioritized):
-    # An NR Mode · operator pair out of scope: its calls leave the groups at once, as the settings are saved.
+    # An NR Mode · operator pair out of scope (the NR Modes of the Operator Maps): its calls leave the groups.
     operators = [row['operator'] for row in priority_rows().values() if row['nr_mode'] == 'SA']
-    settings = nq_prioritization.load_settings(core.repository)
-    response = prioritized['client'].put('/api/non-qualified-calls/prioritization/settings', json={'settings': {
-        **settings, 'excluded_modes': [*settings['excluded_modes'], {'nr_mode': 'SA', 'operator': max(set(operators), key=operators.count)}]}})
-    assert response.status_code == 200, response.text
+    set_nr_modes(max(set(operators), key=operators.count), ['NSA'])
+    nq_prioritization.refresh_places(core.repository, nq_prioritization.load_settings(core.repository))
     rows = priority_rows()
     repeated = [row for row in rows.values() if row['repeated'] == 'Yes']
     assert repeated and all(row['repetitions'] >= 2 for row in repeated)
@@ -1291,17 +1301,45 @@ def test_the_panel_chooses_the_strategy_of_the_module(strategized):
 def test_strategies_travel_with_the_configuration(prioritized):
     settings = nq_prioritization.load_settings(core.repository)
     settings['steps']['custom']['campaign-1']['priority'] = 'P2'
-    settings.update(high_share=40, strategy=nq_prioritization.VODAFONE_PROPOSAL, strategy_names={'custom': 'Impact first'},
-                    excluded_modes=[{'nr_mode': 'SA', 'operator': 'Three'}])
+    settings.update(high_share=40, strategy=nq_prioritization.VODAFONE_PROPOSAL, strategy_names={'custom': 'Impact first'})
     nq_prioritization.save_settings(core.repository, settings, 'super')
+    three = set_nr_modes('Three', [])
     document = nq.export_configuration_document(core.repository)
-    assert json.loads(document)['prioritization']['high_share'] == 40
+    # The NR Mode · operator pairs out of scope travel with the Operator Maps (their NR Modes), not here.
+    assert json.loads(document)['prioritization']['high_share'] == 40 and 'excluded_modes' not in json.loads(document)['prioritization']
     core.repository.set_workspace_state(nq_prioritization.SETTINGS_STATE_KEY, json.dumps(nq_prioritization.default_settings()))
     nq.import_configuration_document(core.repository, document)
     restored = nq_prioritization.load_settings(core.repository)
     assert (restored['high_share'], restored['strategy'], restored['strategy_names'], restored['excluded_modes']) == (
-        40, nq_prioritization.VODAFONE_PROPOSAL, {'custom': 'Impact first'}, [{'nr_mode': 'SA', 'operator': 'Three'}])
+        40, nq_prioritization.VODAFONE_PROPOSAL, {'custom': 'Impact first'}, [])
     assert restored['steps']['custom']['campaign-1']['priority'] == 'P2'
+    # A configuration exported before the NR Modes of the Operator Maps gives its pairs out of scope to them.
+    earlier = json.loads(document)
+    earlier['prioritization']['excluded_modes'] = [{'nr_mode': 'SA', 'operator': 'Three'}]
+    nq.import_configuration_document(core.repository, json.dumps(earlier))
+    assert nq_prioritization.load_settings(core.repository)['excluded_modes'] == [{'nr_mode': 'SA', 'operator': three}]
+
+
+def test_the_pairs_out_of_scope_of_earlier_versions_become_nr_modes_of_the_operator_maps(client):
+    # Once per workspace: the NR Mode · operator pairs the NQ Calls left out of scope (those saved, or the default ones while
+    # none were) become the NR Modes of their label; a label with both NR Modes out keeps them, as a name without a label.
+    three, ee = (set_nr_modes(name, []) for name in ('Three', 'EE'))
+    stored = {**nq_prioritization.default_settings(), 'excluded_modes': [
+        {'nr_mode': 'SA', 'operator': 'Three'}, {'nr_mode': 'SA', 'operator': 'EE'}, {'nr_mode': 'NSA', 'operator': 'EE'},
+        {'nr_mode': 'SA', 'operator': 'Nobody'}]}
+    core.repository.set_workspace_state(nq_prioritization.SETTINGS_STATE_KEY, json.dumps(stored))
+    core.repository.set_workspace_state(nq_prioritization.MODES_MOVED_STATE_KEY, '')
+    assert nq_prioritization.migrate_excluded_modes(core.repository) == {
+        'changed': [f'{three}: NSA only'], 'kept': [f'NSA · SA · {ee}', 'SA · Nobody']}
+    labels = {group['canonical']: group.get('nr_modes') for group in core.repository.list_operator_mapping_groups()}
+    assert labels[three] == ['NSA'] and labels[ee] is None
+    assert nq_prioritization.load_settings(core.repository)['excluded_modes'] == [{'nr_mode': 'SA', 'operator': three}]
+    log = next(row for row in core.repository.list_logs(limit=20) if row['action'] == 'operator_nr_modes_from_nq_scope')
+    assert json.loads(log['details'])['changed'] == [f'{three}: NSA only']
+    # Only once: the NR Modes chosen afterwards stay.
+    set_nr_modes('Three', [])
+    assert nq_prioritization.migrate_excluded_modes(core.repository) == {'changed': [], 'kept': []}
+    assert nq_prioritization.load_settings(core.repository)['excluded_modes'] == []
 
 
 def test_workspaces_of_earlier_versions_get_the_tables_and_fields(client, tmp_path):

@@ -139,6 +139,45 @@ def test_nsa_vs_sa_from_the_scoring_history_keeps_the_nr_modes_apart(tmp_path):
     assert _totals(by_rows, 'UK_Q3_SA_2026') == pytest.approx(_totals(from_history, 'UK_Q3_SA_2026'), rel=1e-2)
 
 
+def test_an_operator_without_a_network_in_an_nr_mode_is_left_out_of_its_cdrs(tmp_path):
+    # Three has no SA (the NR Modes of its label in the Operator Maps): its tests of the SA CDRs are out of scope in the rows
+    # read and in the Scoring History, its NSA tests stay, and the results calculated before are out of date.
+    import src.DriveTestAnalyzer as core
+    from src.modules import scoring
+    from src.modules.nr_mode import NR_MODE_COLUMN
+
+    repository, ids = _workspace(tmp_path, 'UK_Q3_NSA_2026')
+    scoring_history.sync_history(repository)
+    configuration = repository.get_scoring_profile()['configuration']
+    dataset_ids = [*ids['NSA'], *ids['SA']]
+    _sources, _campaigns, before = saved_filters._source_snapshot(repository, dataset_ids, expected_nr_mode=NSA_VS_SA)
+    repository.replace_operator_mapping_group(None, 'Three', ['Three UK'], '#000000', None, ['NSA'])
+    sources, _campaigns, after = saved_filters._source_snapshot(repository, dataset_ids, expected_nr_mode=NSA_VS_SA)
+    assert after != before
+    for source in sources:
+        source['levels'] = ['Operator', 'Campaign']
+    frames = saved_filters._load_source_frames(repository, sources, lambda *args: None, scoring.load_input_columns, {},
+                                              nr_mode_campaigns=True)
+    assert all(set(frame.loc[frame[NR_MODE_COLUMN] == 'SA', 'Operator']) == {'EE', 'Vodafone UK'}
+               and 'Three UK' in set(frame.loc[frame[NR_MODE_COLUMN] == 'NSA', 'Operator']) for frame in frames.values())
+    by_rows = scoring.calculate_scoring(frames, ['Operator', 'Campaign'], configuration=configuration)
+    from_history = scoring_history.calculate_scoring_from_history(
+        repository, dataset_ids, ['Operator', 'Campaign'], configuration=configuration, nr_mode_campaigns=True)
+    for result in (by_rows, from_history):
+        operators = {(row['campaign'], row['operator']) for row in result['totals']}
+        assert ('UK_Q3_NSA_2026', 'Three UK') in operators and ('UK_Q3_SA_2026', 'Three UK') not in operators
+    assert _totals(by_rows, 'UK_Q3_SA_2026') == pytest.approx(_totals(from_history, 'UK_Q3_SA_2026'), rel=1e-2)
+    # The headings of the panels of the page name the pairs out of scope of the NR Modes of the result.
+    saved, _ = saved_filters.save_saved_filter(repository, dataset_ids, ['Operator'], NSA_VS_SA)
+    groups = repository.list_operator_mapping_groups()
+    payload = core._saved_filter_payload(saved_filters.calculate_saved_filter(repository, saved['id']), groups, [], None)
+    nsa, sa = payload['nr_mode_parts']
+    assert payload['out_of_scope'] == sa['out_of_scope'] == ['SA · Three'] and 'out_of_scope' not in nsa
+    single, _ = saved_filters.save_saved_filter(repository, ids['NSA'], ['Operator'], 'NSA')
+    assert 'out_of_scope' not in core._saved_filter_payload(
+        saved_filters.calculate_saved_filter(repository, single['id']), groups, [], None)
+
+
 def test_nsa_vs_sa_needs_campaign_labels_that_tell_the_nr_modes_apart(tmp_path):
     repository, ids = _workspace(tmp_path)
     dataset_ids = [*ids['NSA'], *ids['SA']]

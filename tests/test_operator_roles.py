@@ -8,7 +8,8 @@ import pandas as pd
 
 import src.DriveTestAnalyzer as core
 from src.modules.operator_roles import (
-    drop_excluded_operators, excluded_operators, focus_operators, normalize_mapping_role, with_exclusions,
+    drop_excluded_operators, drop_out_of_scope_operators, excluded_operators, focus_operators, normalize_mapping_role,
+    normalize_nr_modes, out_of_scope_operators, out_of_scope_pairs, out_of_scope_sql, with_exclusions,
 )
 from src.modules.repository import Repository
 from src.modules.value_maps import ValueMapper
@@ -253,3 +254,108 @@ console.log(JSON.stringify([choose('VF', 'focus'), choose('Lebara', 'exclude'), 
         [False, 'mapping-role-badge is-focus', 'Focus'], [False, 'mapping-role-badge is-exclude', 'Exclude'],
         [False, 'mapping-role-badge is-include', 'Include'], [False, 'mapping-role-badge is-include', 'Include'],
         [True, 'mapping-role-badge', '']]
+
+
+def test_the_nr_modes_of_a_label_leave_its_tests_of_the_other_nr_mode_out_of_scope():
+    groups = [GROUPS[0], {**GROUPS[1], 'nr_modes': ['NSA']}, GROUPS[2], {**GROUPS[3], 'nr_modes': ['SA']}]
+    assert [normalize_nr_modes(value) for value in ('NSA', ' sa ', 'NSA,SA', ['SA', 'NSA'], '', None, ['5G'])] == [
+        ['NSA'], ['SA'], [], [], [], [], []]
+    # Lebara, excluded with its Role, is out in every NR Mode anyway.
+    assert out_of_scope_pairs(groups) == [{'nr_mode': 'SA', 'operator': 'Three'}]
+    assert out_of_scope_operators(groups, 'SA') == ['Three', '3', 'Three UK']
+    assert out_of_scope_operators(groups, 'NSA') == out_of_scope_operators(groups, None) == []
+    frame = pd.DataFrame({'Operator': ['VF', ' three uk ', '3', 'EE'], 'value': range(4)})
+    assert drop_out_of_scope_operators(frame, groups, 'SA')['value'].tolist() == [0, 3]
+    assert drop_out_of_scope_operators(frame, groups, 'NSA') is frame
+    # An SQL condition on the rows of several CDRs of one table, by the NR Mode of each, or on those of one CDR.
+    connection = sqlite3.connect(':memory:')
+    connection.execute('CREATE TABLE rows (dataset_id INTEGER, Operator TEXT)')
+    connection.executemany('INSERT INTO rows VALUES (?, ?)', [(1, 'Three'), (1, 'VF'), (2, ' 3 '), (2, 'VF'), (3, None)])
+    clause, params = out_of_scope_sql(groups, {1: 'NSA', 2: 'SA', 3: 'SA'}, '"Operator"', 'dataset_id')
+    assert connection.execute(f'SELECT dataset_id, Operator FROM rows WHERE {clause} ORDER BY rowid', params).fetchall() == [
+        (1, 'Three'), (1, 'VF'), (2, 'VF'), (3, None)]
+    clause, params = out_of_scope_sql(groups, {2: 'SA'}, '"Operator"')
+    assert connection.execute(f'SELECT Operator FROM rows WHERE dataset_id = 2 AND {clause}', params).fetchall() == [('VF',)]
+    assert out_of_scope_sql(groups, {1: 'NSA'}, '"Operator"') == ('1', [])
+    connection.close()
+    # Nor do the lists of values offer them for those CDRs.
+    mapper = ValueMapper({'3': 'Three'}, {}, groups, [])
+    assert mapper.excluded_value('operator_vendor', 'Three_Ericsson', out_of_scope_operators(groups, 'SA'))
+    assert not mapper.excluded_value('operator', 'Three') and not mapper.excluded_value('operator', 'VF', ['Three'])
+
+
+def test_the_operator_maps_keep_the_nr_modes_of_each_label(tmp_path):
+    repository = Repository(tmp_path / 'workspace.db', global_db_path=tmp_path / 'application.db')
+    repository.initialize()
+    repository.replace_operator_mapping_group(None, 'VF', ['Vodafone'], '#E60000', 'focus')
+    repository.replace_operator_mapping_group(None, 'Three', ['3'], '#000000', 'focus', ['NSA'])
+    assert [(group['canonical'], group.get('nr_modes')) for group in repository.list_operator_mapping_groups()] == [
+        ('VF', None), ('Three', ['NSA'])]
+    # Saved again without them it keeps its own; both NR Modes, the default, are not carried.
+    repository.replace_operator_mapping_group('Three', 'Three', ['3', 'Three UK'], '#000000')
+    assert repository.list_operator_mapping_groups()[1]['nr_modes'] == ['NSA']
+    repository.replace_operator_mapping_group('Three', 'Three', ['3'], '#000000', None, 'NSA,SA')
+    assert 'nr_modes' not in repository.list_operator_mapping_groups()[1]
+    # Replaced as a whole (imports, transfers, restores) each label takes those given, both without them (a package of
+    # before the NR Modes).
+    groups = repository.list_operator_mapping_groups()
+    repository.replace_operator_mapping_groups([{**groups[0], 'nr_modes': ['SA']}, groups[1]])
+    assert [group.get('nr_modes') for group in repository.list_operator_mapping_groups()] == [['SA'], None]
+    # The rows of a CDR leave out those of the operators out of scope in its NR Mode only when asked (an analysis; never a
+    # rewrite of the rows).
+    source = tmp_path / 'sa.csv'
+    source.write_text('sa', encoding='utf-8')
+    dataset_id, _created = repository.add_dataset('UK_Q3_SA_2026_Data.csv', str(source), 'super')
+    repository.replace_dataset_rows(dataset_id, pd.DataFrame({'Operator': ['Vodafone', 'Three', '3', 'EE'], 'value': range(4)}))
+    repository.update_dataset_profile(dataset_id, status='ready', progress=100, dataset_kind='data', nr_mode='NSA', row_count=4)
+    repository.replace_operator_mapping_group('VF', 'VF', ['Vodafone'], '#E60000', 'focus', [])
+    repository.replace_operator_mapping_group('Three', 'Three', ['3'], '#000000', None, ['NSA'])
+    assert repository.load_dataset_rows(dataset_id, ['value'], {}, in_scope_only=True)['value'].tolist() == [0, 1, 2, 3]
+    repository.update_dataset_profile(dataset_id, nr_mode='SA')
+    assert repository.load_dataset_rows(dataset_id, ['value'], {}, in_scope_only=True)['value'].tolist() == [0, 3]
+    assert repository.load_dataset_rows(dataset_id, ['value'], {})['value'].tolist() == [0, 1, 2, 3]
+
+
+def test_a_workspace_database_written_before_the_nr_modes_reads_none(tmp_path):
+    path = tmp_path / 'earlier.db'
+    with sqlite3.connect(path) as connection:
+        connection.executescript(
+            'CREATE TABLE operator_mappings (source_value TEXT PRIMARY KEY COLLATE NOCASE, canonical_value TEXT NOT NULL);'
+            'CREATE TABLE vendor_mappings (source_value TEXT PRIMARY KEY COLLATE NOCASE, canonical_value TEXT NOT NULL);'
+            'CREATE TABLE chart_mapping_groups (mapping_type TEXT NOT NULL, canonical_value TEXT NOT NULL COLLATE NOCASE, '
+            "position INTEGER NOT NULL DEFAULT 0, color TEXT NOT NULL, role TEXT NOT NULL DEFAULT '', "
+            'PRIMARY KEY (mapping_type, canonical_value));'
+            "INSERT INTO chart_mapping_groups VALUES ('operator', 'Three', 0, '#000000', 'focus');"
+            "INSERT INTO operator_mappings VALUES ('Three', 'Three');")
+    repository = Repository(path, global_db_path=tmp_path / 'application.db')
+    assert repository.list_operator_mapping_groups() == [
+        {'canonical': 'Three', 'aliases': [], 'position': 0, 'color': '#000000', 'role': 'focus'}]
+    repository.replace_operator_mapping_group('Three', 'Three', [], '#000000', None, ['NSA'])
+    assert repository.list_operator_mapping_groups()[0]['nr_modes'] == ['NSA']
+
+
+def test_the_operator_maps_editor_saves_the_nr_modes_of_each_label(client):
+    login(client)
+    group = next(item for item in core.repository.list_operator_mapping_groups() if 'Three' in item['aliases'])
+    label, aliases = group['canonical'], '\n'.join(group['aliases'])
+
+    def save(**fields):
+        response = client.post('/workspace-config/operator-mappings/save', data={
+            'original_canonical': label, 'canonical_value': label, 'aliases': aliases, 'color': group['color'], **fields},
+            follow_redirects=False)
+        assert response.status_code == 303 and 'operator_mapping_error' not in response.headers['location']
+        return next(item for item in core.repository.list_operator_mapping_groups() if item['canonical'] == label)
+
+    assert save(nr_modes='NSA')['nr_modes'] == ['NSA']
+    # A page without the field keeps them; those given change them, and App Events records them before and after.
+    assert save()['nr_modes'] == ['NSA']
+    assert 'nr_modes' not in save(nr_modes='NSA,SA')
+    details = [json.loads(row['details']) for row in core.repository.list_logs() if row['action'] == 'operator_mapping_group_save']
+    assert {'nr_modes': ['NSA', 'SA'], 'previous_nr_modes': ['NSA']}.items() <= details[0].items()
+    # The NR Modes column sits beside the Role of each Operator label (the Vendor Maps have none).
+    save(nr_modes='NSA')
+    page = client.get('/workspace-config').text
+    operators = page[page.index('id="operator-maps"'):page.index('id="vendor-maps"')]
+    vendors = page[page.index('id="vendor-maps"'):page.index('id="campaign-maps"')]
+    assert 'mapping-nr-modes-column' in operators and 'mapping-nr-modes-column' not in vendors
+    assert '<option value="NSA" selected>NSA only</option>' in operators

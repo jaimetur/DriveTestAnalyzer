@@ -92,13 +92,16 @@ class SelectionTerms:
     holds ``(expression, low, high)`` ISO date bounds. ``excluded_sheets`` keeps
     rows whose sheet is NULL or not excluded, and each ``(expression, excluded)``
     pair of ``excluded_values`` rows whose value is NULL or not excluded (such as
-    the operators the Operator Maps exclude).
+    the operators the Operator Maps exclude). Each ``(dataset ids, expression,
+    excluded)`` of ``dataset_excluded_values`` does the same on the rows of those
+    CDRs alone (the operators out of scope in their NR Mode).
     """
 
     values: tuple[tuple[str | None, frozenset[str]], ...] = ()
     date: tuple[str | None, str | None, str | None] | None = None
     excluded_sheets: tuple[str, frozenset[str]] | None = None
     excluded_values: tuple[tuple[str, frozenset[str]], ...] = ()
+    dataset_excluded_values: tuple[tuple[frozenset[int], str, frozenset[str]], ...] = ()
 
     def expressions(self) -> list[str]:
         result = [expression for expression, _allowed in self.values if expression]
@@ -107,6 +110,7 @@ class SelectionTerms:
         if self.excluded_sheets:
             result.append(self.excluded_sheets[0])
         result.extend(expression for expression, _excluded in self.excluded_values)
+        result.extend(expression for _datasets, expression, _excluded in self.dataset_excluded_values)
         return result
 
 
@@ -584,7 +588,7 @@ def read_frame(
         physical_terms = [source.physical(expression) for expression in terms.expressions()]
         extra = [source.physical(expression) for expression in (prefetch(source) if prefetch else ())]
         parts = cache.segment_parts(connect, segment, [*physical_columns, *physical_terms], extra)
-        positions = np.flatnonzero(selection_mask(parts, source, terms))
+        positions = np.flatnonzero(selection_mask(parts, source, terms, segment.dataset_id))
         if order == 'dataset_date_rowid' and len(positions):
             ranks = _date_ranks(parts[ORDER_DATE])[positions]
             positions = positions[np.argsort(ranks, kind='stable')]
@@ -611,8 +615,9 @@ def read_frame(
     return frame_from_columns(names, arrays, total)
 
 
-def selection_mask(parts: dict[str, tuple], source: CacheSource, terms: SelectionTerms) -> np.ndarray:
-    """Rows of one CDR segment that satisfy the universe's predicates."""
+def selection_mask(parts: dict[str, tuple], source: CacheSource, terms: SelectionTerms,
+                   dataset_id: int | None = None) -> np.ndarray:
+    """Rows of one CDR segment (of ``dataset_id``) that satisfy the universe's predicates."""
     mask = np.ones(part_length(parts[ROWID]), dtype=bool)
     for expression, allowed in terms.values:
         if expression is None:
@@ -630,6 +635,9 @@ def selection_mask(parts: dict[str, tuple], source: CacheSource, terms: Selectio
         mask &= keep_sheets(parts[source.physical(expression)], excluded)
     for expression, excluded in terms.excluded_values:
         mask &= keep_sheets(parts[source.physical(expression)], excluded)
+    for datasets, expression, excluded in terms.dataset_excluded_values:
+        if dataset_id in datasets:
+            mask &= keep_sheets(parts[source.physical(expression)], excluded)
     return mask
 
 
@@ -648,9 +656,9 @@ def count_rows(
         expressions = [source.physical(expression) for expression in (*universe.expressions(), *selection.expressions())]
         extra = [source.physical(expression) for expression in (prefetch(source) if prefetch else ())]
         parts = cache.segment_parts(connect, segment, expressions, extra)
-        universe_mask = selection_mask(parts, source, universe)
+        universe_mask = selection_mask(parts, source, universe, segment.dataset_id)
         universe_rows += int(universe_mask.sum())
-        selected_rows += int((universe_mask & selection_mask(parts, source, selection)).sum())
+        selected_rows += int((universe_mask & selection_mask(parts, source, selection, segment.dataset_id)).sum())
     return universe_rows, selected_rows
 
 

@@ -7755,7 +7755,8 @@ def _configuration(task_repository: Any) -> dict[str, Any]:
         'status_rules': status_rules(task_repository), 'table_columns': table_columns(task_repository),
         'column_order': workspace_layout(task_repository)['order'], 'user_layouts': user_layouts(task_repository),
         'analyses_equivalences': workspace_equivalences(task_repository),
-        'prioritization': nq_prioritization.load_settings(task_repository),
+        # The NR Mode · operator pairs out of scope are the NR Modes of the Operator Maps, which travel with them.
+        'prioritization': {key: value for key, value in nq_prioritization.load_settings(task_repository).items() if key != 'excluded_modes'},
         'dta_rca_rules': nq_dta_rca.load_rules(task_repository),
         'dta_rca_settings': nq_dta_rca.load_settings(task_repository),
     }
@@ -8091,9 +8092,11 @@ def _merge_configuration(task_repository: Any, document: dict[str, Any]) -> None
     if isinstance(document.get('prioritization'), dict):
         # The Prioritization settings of the package replace those of the workspace (applied at the next calculation).
         task_repository.set_workspace_state(nq_prioritization.SETTINGS_STATE_KEY, json.dumps(
-            nq_prioritization.normalize_settings(document['prioritization'], operators=nq_prioritization.default_step_operators(task_repository),
-                                                 modes=nq_prioritization.default_excluded_modes(task_repository)),
+            nq_prioritization.normalize_settings(document['prioritization'], operators=nq_prioritization.default_step_operators(task_repository)),
             ensure_ascii=False))
+        # A package exported before the NR Modes of the Operator Maps gives its NR Mode · operator pairs out of scope to them.
+        if isinstance(document['prioritization'].get('excluded_modes'), list):
+            nq_prioritization.move_excluded_modes(task_repository, document['prioritization']['excluded_modes'])
     if isinstance(document.get('dta_rca_rules'), list) and document['dta_rca_rules']:
         # The rules of the package replace those of the workspace; the calls are calculated again when they are read.
         task_repository.set_workspace_state(nq_dta_rca.RULES_STATE_KEY, json.dumps(nq_dta_rca.normalize_rules(document['dta_rca_rules']),
@@ -8713,7 +8716,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
             'version_labels': VERSION_LABELS,
             'priority_refs': nq_catalog.PRIORITY_REFS, 'priority_types': nq_catalog.PRIORITY_TYPES,
             'prioritization': prioritization,
-            'default_prioritization': nq_prioritization.default_settings(step_operators, nq_prioritization.default_excluded_modes(repository)),
+            'default_prioritization': nq_prioritization.default_settings(step_operators, nq_prioritization.map_excluded_modes(repository)),
             'prioritization_strategies': nq_prioritization.STRATEGIES, 'prioritization_step_operators': step_operators,
             'focus_operators': labels_with_role(repository, FOCUS),
             'prioritization_operators': nq_prioritization.operator_choices(repository),
@@ -8721,6 +8724,9 @@ def install_non_qualified_calls_routes(core: Any) -> None:
             # The NR Mode · operator pairs always out of scope (the operators that are not Focus operators), and why.
             'prioritization_fixed_modes': nq_prioritization.fixed_excluded_modes(repository),
             'prioritization_fixed_reason': nq_prioritization.NOT_FOCUS_REASON,
+            # Those of the NR Modes of the Operator Maps (out of scope in every module), and why.
+            'prioritization_map_modes': nq_prioritization.map_excluded_modes(repository),
+            'prioritization_map_reason': nq_prioritization.MAP_MODES_REASON,
             'prioritization_fields': {'nr_modes': nq_prioritization.STEP_NR_MODES, 'call_types': nq_prioritization.CALL_TYPES,
                                       'areas': nq_prioritization.STEP_AREAS,
                                       'conditions': {nq_prioritization.CAMPAIGN_LIST: nq_prioritization.CAMPAIGN_CONDITIONS,
@@ -8798,7 +8804,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         repository = workspace_repository(user)
         return JSONResponse({'settings': nq_prioritization.load_settings(repository),
                              'defaults': nq_prioritization.default_settings(nq_prioritization.default_step_operators(repository),
-                                                                            nq_prioritization.default_excluded_modes(repository)),
+                                                                            nq_prioritization.map_excluded_modes(repository)),
                              'strategies': nq_prioritization.strategy_labels(nq_prioritization.load_settings(repository)),
                              'priority_options': nq_prioritization.priority_options(repository)})
 

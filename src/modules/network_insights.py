@@ -37,7 +37,7 @@ from src.modules.cdr_environments import ENVIRONMENTS, environment_class, enviro
 from src.modules.cdr_field_profiles import NETCHECK_PROFILE, CdrFieldProfile, workspace_field_profile
 from src.modules.cdr_facets import cascading_options, stored_facets
 from src.modules.value_patterns import ValueSet, is_pattern
-from src.modules.operator_roles import drop_excluded_operators, excluded_operators
+from src.modules.operator_roles import drop_excluded_operators, drop_out_of_scope_operators, excluded_operators, out_of_scope_pairs
 from src.modules.mapping_order import dimension_order_key, operator_order_key, vendor_order_key
 from src.modules.output_layout import NETWORK_INSIGHTS_FOLDER, module_output_dir
 from src.modules import inventory_insights as ii
@@ -1581,6 +1581,8 @@ def install_network_insights_routes(core: Any) -> None:
             'mappings': {key: value for key, value in task_repository.chart_mapping_settings().items()
                          if key in {'operator_mappings', 'vendor_mappings'}},
             'excluded_operators': excluded_operators(task_repository),
+            # Only a workspace with some NR Mode out of scope adds it, so the others keep their samples.
+            **({'out_of_scope': pairs} if (pairs := out_of_scope_pairs(task_repository)) else {}),
         }, sort_keys=True, default=str)
         return hashlib.sha256(fingerprint.encode()).hexdigest(), selected
 
@@ -1602,6 +1604,11 @@ def install_network_insights_routes(core: Any) -> None:
         with ThreadPoolExecutor(max_workers=max(1, min(4, len(pairs)))) as executor:
             frames = list(executor.map(
                 lambda pair: dataset_samples(task_repository, pair[0], pair[1], revisions.get(pair[1]), mappings), pairs))
+        # The samples of the operators out of scope in the NR Mode of each CDR (the NR Modes of the Operator Maps) are left
+        # out (the samples of each CDR keep them).
+        nr_modes = {row['id']: row['nr_mode'] for row in ready_cdrs(task_repository)}
+        frames = [drop_out_of_scope_operators(frame, settings, nr_modes.get(dataset_id), columns=['operator'])
+                  if 'operator' in frame.columns else frame for (_kind, dataset_id), frame in zip(pairs, frames)]
         frames = [frame for frame in frames if not frame.empty]
         samples = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
         if 'operator' in samples.columns:

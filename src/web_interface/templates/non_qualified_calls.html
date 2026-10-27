@@ -6,6 +6,9 @@
 {# The operators that are not Focus operators are always out of scope; the Role of the Operator Maps chooses them (a link for
    those who open Workspace Config). #}
 {% macro focus_scope_note() %}<p><strong>Focus operators</strong>: only the Focus operators of the Operator Maps can be in scope. Every other operator is always out of scope, in both NR Modes: it shows chosen and grey, with All, and cannot be changed here. {% if user.role in ['user-editor', 'admin', 'super-admin'] %}<a class="nq-scope-focus-link" href="/workspace-config#operator-labels">Choose the Focus operators in Operator Maps</a> (the Role of each label).{% else %}The Role of each label in Workspace Config → Operator Maps chooses them.{% endif %} Without any Focus operator, every operator can be in scope.</p>{% endmacro %}
+{# The NR Modes of each label of the Operator Maps leave an operator out in an NR Mode it has no network in, in every module
+   (a link for those who open Workspace Config). #}
+{% macro nr_modes_scope_note() %}<p><strong>Operators</strong>: the NR Mode · Operator pairs out of scope are those of the <strong>NR Modes</strong> of each label in the Operator Maps: an operator without a network in an NR Mode (such as Three, which has no SA, whose calls in the SA campaigns are NSA calls its NSA campaigns already have) has its calls of that NR Mode out of scope in every module, NQ Calls included. They show chosen and grey and cannot be changed here. {% if user.role in ['user-editor', 'admin', 'super-admin'] %}<a class="nq-scope-focus-link" href="/workspace-config#operator-labels">Choose the NR Modes in Operator Maps</a>.{% else %}The NR Modes of each label in Workspace Config → Operator Maps choose them.{% endif %} The operators excluded in the Operator Maps are not in the list: their calls count nowhere.</p>{% endmacro %}
 {% set config_lock = '' if nq_can_configure else ' disabled' %}
 {% set priority_lock = '' if nq_can_prioritize else ' disabled' %}
 <link rel="stylesheet" href="{{ static_path('css/rich_text.css') }}?v={{ asset_version('css/rich_text.css') }}">
@@ -567,7 +570,7 @@
                 <li><strong>Hotspots</strong>: 2+ failures of an operator, NR Mode and campaign, whatever their call type, each in a time window with another one (with OR, in the same drive) <strong data-nq-about="hotspot_join"></strong> within the Cluster distance of it (or at the site where it ended). <strong>Drops</strong> and <strong>Setup failures</strong>: by the result of the call.</li>
               </ul></section>
               <section><h4>Out of scope and shared settings</h4><ul>
-                <li><strong>Out of Scope</strong>: its regions, the operators that are not Focus operators and the NR Mode · Operator pairs chosen (SA · Three): no queue, not tracked.</li>
+                <li><strong>Out of Scope</strong>: its regions, the operators that are not Focus operators and the NR Mode · Operator pairs of the NR Modes of the Operator Maps (SA · Three): no queue, not tracked.</li>
                 <li>The operators excluded in the Operator Maps count nowhere.</li>
                 <li>Shared by every strategy: Out of Scope, the levels on the right and Fill the Priority; they apply at once.</li>
                 <li><strong>Fill the Priority</strong>: an open call takes the Priority of its step until someone changes it, and keeps it once its analysis starts.</li>
@@ -584,7 +587,7 @@
             <span class="nq-priority-help">No queue and not tracked, in every strategy</span>
             <label class="nq-priority-scope-field" title="The regions out of the responsibility of the team (Vendor B by default)">Regions
               <select id="nq-priority-regions-out" multiple aria-label="Regions out of the scope of the team" data-multiselect-empty-label="None" data-multiselect-joiner=", "></select></label>
-            <label class="nq-priority-scope-field" title="The operators out of scope and, for each one, its NR Mode out of scope: SA, NSA or All (both). By default SA of each Focus operator without SA (such as Three, whose calls in the SA campaigns are NSA calls its NSA campaigns already have); the other operators are always out of scope (grey, All)">Operators
+            <label class="nq-priority-scope-field" title="The operators out of scope, read only, with their NR Mode out of scope: SA or NSA of each label of the Operator Maps without a network in it (such as SA · Three, whose calls in the SA campaigns are NSA calls its NSA campaigns already have), out of scope in every module, and All for the operators that are not Focus operators">Operators
               <select id="nq-priority-modes-out" multiple aria-label="Operators out of scope" data-multiselect-empty-label="None" data-multiselect-joiner=", " data-multiselect-count-locked="true"></select></label>
             <div class="nq-scope-operator-modes" data-nq-scope-modes="nq-priority-modes-out" hidden></div>
             {# What the card does, unfolded by the ⓘ of its title. #}
@@ -592,7 +595,7 @@
               <p>The calls out of scope enter no queue and are not tracked, in every strategy; their Prioritization Rule tells why (such as <em>Out of scope · Vendor B</em>) and the panel counts them apart.</p>
               <p><strong>Regions</strong>: the regions out of the responsibility of the team, Vendor B until you choose others.</p>
               {{ focus_scope_note() }}
-              <p><strong>Operators</strong>: the operators out of scope and, for each one, <strong>SA</strong>, <strong>NSA</strong> or <strong>All</strong> (both NR Modes). Of the Focus operators, SA with each one without SA is out of scope by default: its calls of the SA campaigns, such as those of Three, are not real SA calls but NSA calls its NSA campaigns already have. The operators excluded in the Operator Maps are not in the list: their calls count nowhere.</p>
+              {{ nr_modes_scope_note() }}
             </div>
           </section>
           <section class="nq-priority-strategy">
@@ -660,13 +663,13 @@
     <fieldset class="nq-config-fieldset nq-scope-fields"{{ priority_lock }}>
       <label class="nq-priority-scope-field" title="The regions out of the responsibility of the team (Vendor B by default)">Regions
         <select id="nq-scope-regions" multiple aria-label="Regions out of the scope of the team" data-multiselect-empty-label="None" data-multiselect-joiner=", "></select></label>
-      <label class="nq-priority-scope-field" title="The operators out of scope and, for each one, its NR Mode out of scope: SA, NSA or All (both). By default SA of each Focus operator without SA (such as Three, whose calls in the SA campaigns are NSA calls its NSA campaigns already have); the other operators are always out of scope (grey, All)">Operators
+      <label class="nq-priority-scope-field" title="The operators out of scope, read only, with their NR Mode out of scope: SA or NSA of each label of the Operator Maps without a network in it (such as SA · Three, whose calls in the SA campaigns are NSA calls its NSA campaigns already have), out of scope in every module, and All for the operators that are not Focus operators">Operators
         <select id="nq-scope-modes" multiple aria-label="Operators out of scope" data-multiselect-empty-label="None" data-multiselect-joiner=", " data-multiselect-count-locked="true"></select></label>
       <div class="nq-scope-operator-modes" data-nq-scope-modes="nq-scope-modes" hidden></div>
       <div class="nq-scope-about">
         <p><strong>Regions</strong>: the regions out of the responsibility of the team, Vendor B until you choose others.</p>
         {{ focus_scope_note() }}
-        <p><strong>Operators</strong>: choose the operators out of scope and, for each one, <strong>SA</strong>, <strong>NSA</strong> or <strong>All</strong> to leave out its calls of that NR Mode or of both. Of the Focus operators, SA with each one without SA is out of scope by default: its calls of the SA campaigns, such as those of Three, are not real SA calls but NSA calls its NSA campaigns already have (choose All for Three to leave out its NSA calls too). The operators excluded in the Operator Maps are not in the list: their calls count nowhere.</p>
+        {{ nr_modes_scope_note() }}
         <p>With <strong>NQ Calls in Scope Only</strong> on, the calls out of scope count nowhere in the module: not in the lists, panels, charts, counts and shares, nor in the values the filters offer.</p>
       </div>
     </fieldset>

@@ -8,6 +8,7 @@
 #### ⚠️ Breaking Changes:
 
 #### 🌟 New Features:
+- **Workspace Config — Operator Maps · NR Modes:** each Operator label has the NR Modes it has a network in (**NSA and SA**, **NSA only** or **SA only**), and its tests of the CDRs of the other NR Mode, such as the SA CDRs of Three, which has no SA, are out of scope in every module: Scoring & GAP Analysis (with its Scoring Trends and Geographical Areas; the headings of its panels name them, *Out of scope: SA · Three*), Network Insights, PPT Dashboards, CDR Analysis, the Chart Builder, Reporting, the filters and Non-Qualified Calls, whose Out of Scope shows them read only beside the regions and the operators that are not Focus operators. A label whose NQ calls of the SA campaigns barely ran on NR SA gets a suggestion, never applied on its own. The NR Modes travel with the Operator Maps in exports, transfers and backups, and the NR Mode · operator pairs the NQ Prioritization left out of scope (SA · Three) became the NR Modes of their label once.
 
 #### 🚀 Enhancements:
 - **Super Admin — AI Comment Writers:** the key of the server of Kiro CLI or Claude is removed with **Remove key**, beside its field, once confirmed, without saving the rest of the panel, and **Open Artifactory**, beside Install Kiro CLI, opens the screened Kiro CLI packages of the Ericsson Artifactory, with a note on which file to download; Install Kiro CLI also takes **Kiro CLI.dmg** when the app runs on a Mac.

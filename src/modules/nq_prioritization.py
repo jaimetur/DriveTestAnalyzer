@@ -23,8 +23,8 @@ Every Non-Qualified Call (the latest version of each call, as the calls table li
 
   - **Dual Queue (Cities first)** (the default) and **Dual Queue (Roads first)** order the calls of the operators of their
     SA and NSA steps (the Focus operators by name by default, the SA steps those that use SA; the calls of the regions
-    out of scope and of the SA campaigns of an operator without SA stay out) with two lists, their steps giving the
-    Priority from P1 to P8. During a
+    out of scope and of the NR Modes the Operator Maps leave out, such as SA · Three, stay out) with two lists, their
+    steps giving the Priority from P1 to P8. During a
     campaign, list 1 takes each call by what it says about itself, which never changes: P1 SA Voice in Cities (on
     Connecting Roads with Roads first), P2 SA Data (the failures of a hotspot), P3 SA Voice on
     Connecting Roads (in Cities), P4 SA WhatsApp, P5 NSA Voice, P6 NSA Data, P7 NSA WhatsApp and P8 the tracked calls.
@@ -217,8 +217,9 @@ MAX_STEP_NUMBER = 20
 # on LTE and EN-DC).
 FOCUSED_OPERATORS = '@focused'
 FOCUSED_LABEL = 'Focused Operators'
-# The calls the strategies leave out of the queues: those of the regions and of the NR Mode and operator pairs out of the
-# scope of the team (chosen by the admins; SA · Three by default, the SA campaigns of an operator without SA, whose calls
+# The calls the strategies leave out of the queues: those of the regions out of the scope of the team (chosen by the
+# admins), of the operators that are not Focus operators and of the NR Mode and operator pairs out of scope in every
+# module (the NR Modes of the Operator Maps, such as SA · Three: the SA campaigns of an operator without SA, whose calls
 # there are NSA calls its NSA campaigns already have).
 OUT_OF_SCOPE = 'Out of scope'
 OUT_OF_SCOPE_KIND = 'out_of_scope'
@@ -493,11 +494,11 @@ def load_settings(repository: Any) -> dict[str, Any]:
                 repository.try_add_log(SYSTEM_USER, 'nq_prioritization_settings', json.dumps(
                     {'steps_changed': [f'{name} · Time-Window Issues and Cluster → Hotspots' for name in changed]}, ensure_ascii=False))
         repository.set_workspace_state(HOTSPOT_STEPS_STATE_KEY, '1')
-    operators, modes = default_step_operators(repository), default_excluded_modes(repository)
-    settings = normalize_settings(stored, operators=operators, modes=modes) if isinstance(stored, dict) else default_settings(operators, modes)
-    # The operators excluded in the Operator Maps are left out everywhere, also of the pairs out of scope saved before.
-    excluded = excluded_names(repository)
-    settings['excluded_modes'] = [item for item in settings['excluded_modes'] if item['operator'].casefold() not in excluded]
+    operators = default_step_operators(repository)
+    settings = normalize_settings(stored, operators=operators) if isinstance(stored, dict) else default_settings(operators)
+    # The NR Mode · operator pairs out of scope are the NR Modes of the Operator Maps, shared by every module (those saved
+    # here before became them, see migrate_excluded_modes).
+    settings['excluded_modes'] = map_excluded_modes(repository)
     return settings
 
 
@@ -520,8 +521,9 @@ def rule_names(repository: Any) -> list[str]:
 def save_settings(repository: Any, payload: Any, username: str) -> dict[str, Any]:
     """Save the settings and apply the rules again at once; the impact and the repetitions are calculated again in the
     background when their settings change."""
-    settings = normalize_settings(payload, strict=True, operators=default_step_operators(repository),
-                                  modes=default_excluded_modes(repository))
+    settings = normalize_settings(payload, strict=True, operators=default_step_operators(repository))
+    # The NR Mode · operator pairs out of scope are those of the Operator Maps, whatever the payload gives.
+    settings['excluded_modes'] = map_excluded_modes(repository)
     before = load_settings(repository)
     repository.set_workspace_state(SETTINGS_STATE_KEY, json.dumps(settings, ensure_ascii=False))
     # The groups leave the calls out of scope out: a change of the scope makes them again too.
@@ -1916,7 +1918,7 @@ def place_values(repository: Any, settings: dict[str, Any], every_mode: bool = T
     from src.modules import non_qualified_calls as nq
 
     ensure_tables(repository)
-    key = (tuple(settings[name] for name in PLACE_SETTINGS), json.dumps([settings['excluded_regions'], settings['excluded_modes']]),
+    key = (tuple(settings[name] for name in PLACE_SETTINGS), json.dumps([settings['excluded_regions'], map_excluded_modes(repository)]),
            repository.get_workspace_state(SUMMARY_STATE_KEY), repository.get_workspace_state(nq.LATEST_STATE_KEY))
     workspace = (_workspace_key(repository.db_path), every_mode)
     cached = _places_cache.get(workspace)
@@ -2106,6 +2108,10 @@ def fingerprint(repository: Any) -> str:
     payload = [IMPACT_VERSION, repository.get_workspace_state(nq.LATEST_STATE_KEY), history, lists, matches, datasets,
                repository.get_workspace_state(SCORING_CONFIGURATION_STATE_KEY), repository.list_operator_mappings(),
                inventories, repository.get_workspace_state(SERVING_NETWORKS_STATE_KEY)]
+    # The NR Modes of the Operator Maps leave tests out of the Scoring History the impact is calculated from (only a
+    # workspace with some NR Mode out of scope adds them, so the others keep their values).
+    if modes := map_excluded_modes(repository):
+        payload.append(modes)
     return hashlib.sha1(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()
 
 
@@ -2414,10 +2420,11 @@ def fixed_excluded_modes(repository: Any) -> list[dict[str, str]]:
 
 
 def default_excluded_modes(repository: Any) -> list[dict[str, str]]:
-    """The NR Mode and operator pairs out of scope until the admins choose others: SA with each Focus operator of the SA
-    campaigns that does not use SA (Three: its calls there are NSA calls, which its NSA campaigns already have), by its
-    label in the Operator Maps (the other operators are always out of scope, see ``fixed_excluded_modes``, and those excluded
-    in the Operator Maps are left out)."""
+    """The NR Mode and operator pairs the NQ Calls left out of scope while no pair was saved, before the NR Modes of the
+    Operator Maps (see ``migrate_excluded_modes``): SA with each Focus operator of the SA campaigns that does not use SA
+    (Three: its calls there are NSA calls, which its NSA campaigns already have), by its label in the Operator Maps (the
+    other operators are always out of scope, see ``fixed_excluded_modes``, and those excluded in the Operator Maps are
+    left out)."""
     rows = _operator_counts(repository)
     with_sa = operators_using_sa(repository, rows)
     if with_sa is None:
@@ -2435,20 +2442,104 @@ def default_excluded_modes(repository: Any) -> list[dict[str, str]]:
     return [{'nr_mode': 'SA', 'operator': name} for name in sorted(found.values(), key=str.casefold)]
 
 
-def excluded_modes_of(repository: Any, settings: dict[str, Any]) -> dict[tuple[str, str], str]:
-    """The NR Mode and operator pairs out of scope chosen by the admins, by NR Mode and every name of the operator in the
-    Operator Maps (casefolded): their label (SA · Three)."""
+def nr_mode_suggestions(repository: Any) -> dict[str, str]:
+    """The NR Modes the Operator Maps suggest for the labels, never applied on their own, by label (casefolded): NSA for
+    each operator of the SA campaigns that does not use SA (under ``SA_SHARE`` of its Non-Qualified Calls there ran on NR
+    SA, see ``operators_using_sa``); none before the calls are indexed or when they give no technology."""
+    try:
+        rows = _operator_counts(repository)
+        with_sa = operators_using_sa(repository, rows)
+    except Exception:  # noqa: BLE001 - a suggestion never prevents the page from opening.
+        return {}
+    if with_sa is None:
+        return {}
+    label = operator_label(repository)
+    return {label(operator).casefold(): 'NSA' for operator, _technology, nr_mode, _calls in rows
+            if str(nr_mode or '').upper() == 'SA' and str(operator or '').strip()
+            and str(operator).strip().casefold() not in with_sa}
+
+
+# Set once the NR Mode · operator pairs out of scope of the NQ settings became NR Modes of the Operator Maps.
+MODES_MOVED_STATE_KEY = 'nq_prioritization_modes_moved'
+
+
+def move_excluded_modes(repository: Any, pairs: Iterable[dict[str, str]], username: str = SYSTEM_USER) -> dict[str, list[str]]:
+    """Give the Operator labels of NR Mode · operator pairs out of scope (SA · Three) the other NR Mode alone, so every
+    module leaves out their calls of that NR Mode: the pairs of the NQ settings saved before the NR Modes of the Operator
+    Maps, or of a package exported then. A label with both NR Modes out keeps them (only the Role Exclude leaves an
+    operator out everywhere), as does a name without a label; App Events records the labels changed and those kept."""
+    from src.modules.operator_roles import normalize_nr_modes
+
+    groups = {str(group.get('canonical') or '').strip().casefold(): group for group in repository.list_operator_mapping_groups()}
+    label = operator_label(repository)
+    out: dict[str, set[str]] = {}
+    names: dict[str, str] = {}
+    for pair in normalize_modes(list(pairs)):
+        name = label(pair['operator'])
+        out.setdefault(name.casefold(), set()).add(pair['nr_mode'])
+        names.setdefault(name.casefold(), name)
+    result: dict[str, list[str]] = {'changed': [], 'kept': []}
+    for key, modes in out.items():
+        group = groups.get(key)
+        kept = [mode for mode in (normalize_nr_modes(group.get('nr_modes')) or NR_MODES) if mode not in modes] if group else []
+        if group is None or not kept:
+            result['kept'].append(' · '.join([*sorted(modes, key=NR_MODES.index), names[key]]))
+            continue
+        if kept == normalize_nr_modes(group.get('nr_modes')):
+            continue
+        repository.replace_operator_mapping_group(group['canonical'], group['canonical'], group.get('aliases') or [],
+                                                  group.get('color'), None, kept)
+        result['changed'].append(f"{group['canonical']}: {' and '.join(kept)} only")
+    if (result['changed'] or result['kept']) and hasattr(repository, 'try_add_log'):
+        repository.try_add_log(username, 'operator_nr_modes_from_nq_scope', json.dumps(result, ensure_ascii=False))
+    return result
+
+
+def migrate_excluded_modes(repository: Any) -> dict[str, list[str]]:
+    """Once per workspace: the NR Mode · operator pairs the NQ Calls left out of scope (those saved, or the default ones
+    while none were) become NR Modes of the Operator Maps (``move_excluded_modes``), so every module leaves them out."""
+    if repository.get_workspace_state(MODES_MOVED_STATE_KEY):
+        return {'changed': [], 'kept': []}
+    try:
+        stored = json.loads(repository.get_workspace_state(SETTINGS_STATE_KEY) or 'null')
+    except (TypeError, ValueError):
+        stored = None
+    pairs = (stored['excluded_modes'] if isinstance(stored, dict) and isinstance(stored.get('excluded_modes'), list)
+             else default_excluded_modes(repository))
+    result = move_excluded_modes(repository, pairs)
+    repository.set_workspace_state(MODES_MOVED_STATE_KEY, '1')
+    return result
+
+
+def map_excluded_modes(repository: Any) -> list[dict[str, str]]:
+    """The NR Mode and operator pairs out of scope in every module, NQ Calls included: each NR Mode an Operator label of
+    the Operator Maps has no network in (SA · Three, see ``operator_roles.out_of_scope_pairs``)."""
+    from src.modules.operator_roles import out_of_scope_pairs
+
+    try:
+        return out_of_scope_pairs(repository.list_operator_mapping_groups())
+    except Exception:  # noqa: BLE001 - without Operator Maps, no NR Mode is out of scope.
+        return []
+
+
+# Why the pairs of the NR Modes of the Operator Maps are out of scope, as the dialog tells it.
+MAP_MODES_REASON = 'No network in this NR Mode (NR Modes of its label in the Operator Maps): its calls of it are out of scope in every module'
+
+
+def excluded_modes_of(repository: Any) -> dict[tuple[str, str], str]:
+    """The NR Mode and operator pairs out of scope (``map_excluded_modes``), by NR Mode and every name of the operator in
+    the Operator Maps (casefolded): their label (SA · Three)."""
     aliases = _operator_aliases(repository)
-    return {(item['nr_mode'], name): f"{item['nr_mode']} · {item['operator']}" for item in settings['excluded_modes']
+    return {(item['nr_mode'], name): f"{item['nr_mode']} · {item['operator']}" for item in map_excluded_modes(repository)
             for name in aliases.get(item['operator'].casefold(), {item['operator'].casefold()})}
 
 
 def scope_of(repository: Any, settings: dict[str, Any]) -> Callable[[Any, Any, Any], tuple[str, str]]:
     """Why a call (region, NR Mode, operator) is out of the queues of every strategy, and its kind (('', '') when it is in
     scope): its region (Vendor B, 'region'), its operator, not a Focus operator of the Operator Maps (both NR Modes,
-    always, 'operator'), or its NR Mode and operator chosen by the admins (SA · Three, 'mode')."""
+    always, 'operator'), or its NR Mode, which its label in the Operator Maps has no network in (SA · Three, 'mode')."""
     regions = {name.casefold() for name in settings['excluded_regions']}
-    chosen = excluded_modes_of(repository, settings)
+    chosen = excluded_modes_of(repository)
     focus = focus_names(repository)
     label = operator_label(repository)
 
@@ -2479,7 +2570,7 @@ def scope_sql(repository: Any, settings: dict[str, Any] | None = None) -> tuple[
     if focus is not None:
         clauses.append(f"{operator} IN ({', '.join('?' for _ in focus)})")
         params.extend(sorted(focus))
-    for mode, name in sorted(excluded_modes_of(repository, settings)):
+    for mode, name in sorted(excluded_modes_of(repository)):
         clauses.append(f"NOT (upper(COALESCE(nr_mode, '')) = ? AND {operator} = ?)")
         params.extend([mode, name])
     return ('(' + ' AND '.join(clauses) + ')' if clauses else '1', params)

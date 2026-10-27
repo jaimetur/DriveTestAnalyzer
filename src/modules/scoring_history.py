@@ -24,7 +24,8 @@ import pandas as pd
 
 from src.modules.cdr_stage import dataset_cdr_stage
 from src.modules.column_names import column_identity, resolve_column_name, vendor_match_values
-from src.modules.nr_mode import NR_MODE_COLUMN, campaign_with_nr_mode, dataset_nr_mode
+from src.modules.nr_mode import NR_MODE_COLUMN, NR_MODES, campaign_with_nr_mode, dataset_nr_mode
+from src.modules.operator_roles import out_of_scope_operators
 from src.modules.scoring import (
     START_TIME_COLUMNS, _FIELDS, _LEVEL_SOURCE_ALIASES, _SHARED, _condition, _filter, _is_condition_expression,
     _key_name, _numeric, finish_scoring, normalize_time_split, period_labels, required_input_columns, window_of_days,
@@ -737,11 +738,13 @@ def calculate_scoring_from_history(
     missing_by_kind: dict[str, dict[str, set[str]]] = {}
     campaign_values: dict[str, str] = {}
     warnings: list[str] = []
-    # NSA vs SA: the NR Mode of each CDR now (Workspace can change it after the CDR was indexed).
-    nr_modes = ({int(row['id']): dataset_nr_mode(row['dataset_kind'], row['nr_mode'], row['file_name'])
-                 for row in repository.list_datasets() if int(row['id']) in set(dataset_ids)}
-                if nr_mode_campaigns else {})
+    # The NR Mode of each CDR now (Workspace can change it after the CDR was indexed): NSA vs SA names its campaigns with
+    # it, and the operators out of scope in it (the NR Modes of the Operator Maps) are left out.
+    nr_modes = {int(row['id']): dataset_nr_mode(row['dataset_kind'], row['nr_mode'], row['file_name'])
+                for row in repository.list_datasets() if int(row['id']) in set(dataset_ids)}
+    out_of_scope = {mode: {name.casefold() for name in out_of_scope_operators(repository, mode)} for mode in NR_MODES}
     for dataset_id in dataset_ids:
+        left_out = out_of_scope.get(nr_modes.get(dataset_id)) or set()
         source = sources[dataset_id]
         kind = str(source['kind'])
         present = set(json.loads(source['columns_json'] or '[]'))
@@ -762,6 +765,8 @@ def calculate_scoring_from_history(
         kept = []
         for record in records:
             values = {dimension: record[dimension] for dimension in DIMENSIONS}
+            if left_out and (values['operator'] or '').strip().casefold() in left_out:
+                continue
             if any((values[dimension] or '').strip().lower() not in allowed for dimension, allowed in filters.items()):
                 continue
             if city_filter is not None and (values['city'] or '').strip().lower() not in city_filter:

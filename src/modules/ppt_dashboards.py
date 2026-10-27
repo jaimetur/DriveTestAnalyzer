@@ -38,7 +38,7 @@ from src.modules.cdr_auto_selection import (
     latest_campaigns, resolve_campaign_filter, resolve_cdrs, sort_campaigns,
 )
 from src.modules.cdr_facets import FILTER_FIELDS as CASCADING_FILTER_FIELDS, cascading_options
-from src.modules.nr_mode import DEFAULT_NR_MODE, dataset_nr_mode, normalize_nr_mode
+from src.modules.nr_mode import DEFAULT_NR_MODE, NR_MODES, dataset_nr_mode, normalize_nr_mode
 from src.modules.output_layout import DASHBOARDS_FOLDER, module_output_dir
 from fastapi import BackgroundTasks, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
@@ -72,7 +72,9 @@ from src.modules.cdr_report_filenames import build_cdr_report_filename
 from src.modules.runtime_config import ignore_event_time_filtering
 from src.modules.ingestion import apply_operator_mappings
 from src.modules.value_patterns import ValueSet, is_pattern
-from src.modules.operator_roles import drop_excluded_operators, excluded_operators, focus_operators
+from src.modules.operator_roles import (
+    drop_excluded_operators, excluded_operators, focus_operators, out_of_scope_operators, out_of_scope_pairs,
+)
 from src.modules import comment_writers, dashboard_comments
 
 KINDS = ('data', 'voice', 'speech')
@@ -3477,6 +3479,11 @@ def install_dashboard_routes(core):
             # The operators the Operator Maps exclude are left out of every Dashboard.
             clauses.append(f"NOT COALESCE({operator_expression} IN ({', '.join('?' for _ in excluded_names)}), 0)")
             params.extend(sorted(excluded_names))
+        for mode_datasets, operator_expression, excluded_names in selection_out_of_scope_operators(task_repository, columns):
+            # And those out of scope in the NR Mode of each CDR (the NR Modes of the Operator Maps).
+            clauses.append(f"NOT COALESCE(dataset_id IN ({', '.join('?' for _ in mode_datasets)}) "
+                           f"AND {operator_expression} IN ({', '.join('?' for _ in excluded_names)}), 0)")
+            params.extend([*sorted(mode_datasets), *sorted(excluded_names)])
         date_term = selection_date_term(task_repository, columns, definition)
         if date_term is not None:
             date_expression, low, high = date_term
@@ -3510,6 +3517,7 @@ def install_dashboard_routes(core):
                 (f'LOWER(TRIM(CAST({sheet_term[0]} AS TEXT)))', frozenset(sheet_term[1])) if sheet_term else None
             ),
             excluded_values=selection_excluded_operators(task_repository, columns),
+            dataset_excluded_values=selection_out_of_scope_operators(task_repository, columns),
         )
 
     def selection_excluded_operators(task_repository, columns):
@@ -3517,6 +3525,24 @@ def install_dashboard_routes(core):
         names = excluded_operators(task_repository)
         expression = filter_sql_normalized_expression(task_repository, columns, 'Operator') if names else None
         return ((expression, frozenset(name.lower() for name in names)),) if expression is not None else ()
+
+    def selection_out_of_scope_operators(task_repository, columns):
+        """The (CDRs of an NR Mode, normalized Operator SQL, names) terms of the operators out of scope in each NR Mode
+        (the NR Modes of the Operator Maps), if any."""
+        groups = task_repository.list_operator_mapping_groups()
+        if not out_of_scope_pairs(groups):
+            return ()
+        expression = filter_sql_normalized_expression(task_repository, columns, 'Operator')
+        if expression is None:
+            return ()
+        modes = task_repository.ready_cdr_nr_modes()
+        terms = []
+        for mode in NR_MODES:
+            names = frozenset(name.lower() for name in out_of_scope_operators(groups, mode))
+            datasets = frozenset(dataset_id for dataset_id, value in modes.items() if value == mode)
+            if names and datasets:
+                terms.append((datasets, expression, names))
+        return tuple(terms)
 
     def dashboard_combined_requested_columns(definition, dimensions, kind):
         default_filter_keys = {identity(field) for field in ADAPTATIVE_FILTER_FIELDS}
@@ -5938,6 +5964,9 @@ def install_dashboard_routes(core):
                     'date': cache_terms.date,
                     'sheets': [cache_terms.excluded_sheets[0], sorted(cache_terms.excluded_sheets[1])] if cache_terms.excluded_sheets else None,
                     'excluded': [[expression, sorted(values)] for expression, values in cache_terms.excluded_values],
+                    **({'out_of_scope': [[sorted(datasets), expression, sorted(values)]
+                                         for datasets, expression, values in cache_terms.dataset_excluded_values]}
+                       if cache_terms.dataset_excluded_values else {}),
                     'order': cache_order,
                 }
             else:

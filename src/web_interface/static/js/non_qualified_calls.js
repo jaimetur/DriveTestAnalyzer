@@ -2959,6 +2959,8 @@
       state.prioritizationOperators = payload.prioritization_operators || [];
       state.prioritizationFixedModes = payload.prioritization_fixed_modes || [];
       state.prioritizationFixedReason = payload.prioritization_fixed_reason || '';
+      state.prioritizationMapModes = payload.prioritization_map_modes || [];
+      state.prioritizationMapReason = payload.prioritization_map_reason || '';
       state.prioritizationRegions = payload.prioritization_regions || [];
       renderScopeSummary();
       state.priorityOptions = payload.priority_options || [];
@@ -6940,8 +6942,16 @@
   // The NR Mode out of scope of each operator chosen in an Out of Scope select of operators: SA, NSA or ALL (both).
   const scopeOperatorModes = new WeakMap();
   const SCOPE_MODES = [['SA', 'SA'], ['NSA', 'NSA'], ['ALL', 'All']];
-  // Under the select, each operator chosen with its NR Mode to choose; those that are not Focus operators always take All,
-  // grey, with a note that tells why.
+  // The operators out of scope that cannot be changed here, with their NR Mode: those that are not Focus operators (All)
+  // and those whose label in the Operator Maps has no network in an NR Mode (SA · Three), out of scope in every module.
+  const fixedScopeModes = () => {
+    const modes = new Map();
+    (state.prioritizationMapModes || []).forEach((item) => modes.set(item.operator, modes.has(item.operator) ? 'ALL' : item.nr_mode));
+    (state.prioritizationFixedModes || []).forEach((item) => modes.set(item.operator, 'ALL'));
+    return modes;
+  };
+  // Under the select, each operator chosen with its NR Mode; those out of scope always (grey) show theirs, with a note that
+  // tells why.
   const renderScopeOperatorModes = (select) => {
     const host = document.querySelector(`[data-nq-scope-modes="${select.id}"]`);
     if (!host) return;
@@ -6952,11 +6962,11 @@
       const name = option.value;
       const row = node('span', undefined, 'nq-scope-operator-mode');
       row.classList.toggle('is-fixed', option.disabled);
-      row.title = option.disabled ? state.prioritizationFixedReason : `The NR Mode of the calls of ${name} out of scope (All: both)`;
+      row.title = option.disabled ? option.dataset.disabledReason || '' : `The NR Mode of the calls of ${name} out of scope (All: both)`;
       const choice = node('span', undefined, 'nq-scope-mode-choice');
       choice.setAttribute('role', 'radiogroup');
       choice.setAttribute('aria-label', `NR Mode of ${name} out of scope`);
-      const current = option.disabled ? 'ALL' : modes.get(name) || 'ALL';
+      const current = option.disabled ? fixedScopeModes().get(name) || 'ALL' : modes.get(name) || 'ALL';
       choice.append(...SCOPE_MODES.map(([value, label]) => {
         const item = node('label');
         const input = node('input');
@@ -6972,8 +6982,12 @@
       row.append(node('span', name, 'nq-scope-operator-name'), choice);
       return row;
     }));
-    if (chosen.some((option) => option.disabled)) {
+    const notFocus = new Set((state.prioritizationFixedModes || []).map((item) => item.operator));
+    if (chosen.some((option) => option.disabled && notFocus.has(option.value))) {
       host.append(node('p', 'The operators that are not Focus operators of the Operator Maps are always out of scope, in both SA and NSA.', 'nq-scope-fixed-note'));
+    }
+    if (chosen.some((option) => option.disabled && !notFocus.has(option.value))) {
+      host.append(node('p', 'The NR Modes of each label in the Operator Maps leave out its calls of an NR Mode it has no network in (such as SA · Three), in every module.', 'nq-scope-fixed-note'));
     }
     host.hidden = !host.children.length;
   };
@@ -7507,21 +7521,18 @@
       return option;
     }));
     regions.dispatchEvent(new Event('multiselect:options-updated'));
-    // The operators out of scope, each with its NR Mode (SA, NSA or All): every operator of the Operator Maps, the Focus
-    // operators first; the other operators are always out of scope in both NR Modes, chosen and grey with the reason on hover.
-    const fixed = [...new Set(state.prioritizationFixedModes.map((item) => item.operator))];
-    // Only the operators of the list (the Operator Maps but those excluded there), and those always out of scope.
-    const operators = [...new Set([...state.prioritizationOperators.filter((name) => !fixed.includes(name)), ...fixed])];
-    const chosen = new Map();
-    (settings.excluded_modes || []).filter((item) => operators.includes(item.operator) && !fixed.includes(item.operator))
-      .forEach((item) => chosen.set(item.operator, [...(chosen.get(item.operator) || []), item.nr_mode]));
-    scopeOperatorModes.set(modes, new Map([...chosen].map(([name, nrModes]) => [name, nrModes.includes('SA') && nrModes.includes('NSA') ? 'ALL' : nrModes[0]])));
+    // The operators out of scope, each with its NR Mode (SA, NSA or All), read only: those whose label in the Operator Maps
+    // has no network in an NR Mode (out of scope in every module, chosen there) and the operators that are not Focus
+    // operators, always out of scope in both NR Modes; chosen and grey with the reason on hover.
+    const notFocus = new Set(state.prioritizationFixedModes.map((item) => item.operator));
+    const operators = [...fixedScopeModes().keys()].sort((a, b) => Number(notFocus.has(a)) - Number(notFocus.has(b)));
+    scopeOperatorModes.set(modes, new Map());
     modes.replaceChildren(...operators.map((name) => {
       const option = node('option', name);
       option.value = name;
-      option.disabled = fixed.includes(name);
-      option.selected = option.disabled || chosen.has(name);
-      if (option.disabled) option.dataset.disabledReason = state.prioritizationFixedReason;
+      option.disabled = true;
+      option.selected = true;
+      option.dataset.disabledReason = notFocus.has(name) ? state.prioritizationFixedReason : state.prioritizationMapReason;
       return option;
     }));
     modes.dispatchEvent(new Event('multiselect:options-updated'));

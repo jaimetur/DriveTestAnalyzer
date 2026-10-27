@@ -10,8 +10,13 @@
   <option value="focus"{% if role == 'focus' %} selected{% endif %}>Focus</option>
   <option value="exclude"{% if role == 'exclude' %} selected{% endif %}>Exclude</option>
 </select>{% endmacro %}
+{% macro mapping_nr_modes_select(nr_modes, form_id, name, suggestion='') %}{% set chosen = (nr_modes or []) | join(',') %}<select class="table-select mapping-nr-modes-select" name="nr_modes" data-no-persist{% if form_id %} form="{{ form_id }}"{% endif %} aria-label="NR Modes of {{ name }}" title="The NR Modes the operator has a network in. Its rows of the CDRs of the other NR Mode are out of scope: left out of every analysis, filter, chart and report of the workspace, NQ Calls included.">
+  <option value="NSA,SA"{% if not chosen %} selected{% endif %}>NSA and SA</option>
+  <option value="NSA"{% if chosen == 'NSA' %} selected{% endif %}>NSA only</option>
+  <option value="SA"{% if chosen == 'SA' %} selected{% endif %}>SA only</option>
+</select>{% if suggestion %}<span class="mapping-nr-modes-suggestion" data-mapping-nr-modes-suggestion="{{ suggestion }}" title="A suggestion, never applied on its own: under 10% of its Non-Qualified Calls of the SA campaigns ran on NR SA, so it seems to have no SA network and its SA CDRs to hold LTE and EN-DC tests">Suggested: {{ suggestion }} only</span>{% endif %}{% endmacro %}
 {% macro mapping_role_badge(role) %}<span class="mapping-role-badge{% if role is not none %} is-{{ role or 'include' }}{% endif %}" data-mapping-role-badge title="The Role of its label in subpanel 2 (read only)"{% if role is none %} hidden{% endif %}>{% if role is not none %}{{ {'focus': 'Focus', 'exclude': 'Exclude'}.get(role, 'Include') }}{% endif %}</span>{% endmacro %}
-{% macro mapping_labels_view(kind, groups, rows) %}
+{% macro mapping_labels_view(kind, groups, rows, nr_mode_suggestions={}) %}
 {% set title = 'Operator' if kind == 'operator' else 'Vendor' %}
 {% set unassigned = rows | rejectattr('assigned') | list %}
 {% set found = {} %}{% for row in rows %}{% set _ = found.update({row.value: row.cdrs}) %}{% endfor %}
@@ -69,12 +74,18 @@
       <li><span class="mapping-role-badge is-focus">Focus</span> The operators the Scoring &amp; GAP Analysis PowerPoint and Word focus on: Where to act (with its performance owners, places and route), the locations ranked and per location, the individual GAP comparisons against the reference, GAP by part, the KPI GAP Profile and the Points Lost views (per KPI, maps, per Vendor, per kind of site, sites to review and route stretches) show only the Focus operators, while the other slides and the web page show every operator (on the page, the Focus operators come first and are chosen by default in those sections). Without any Focus operator, every operator is shown.</li>
       <li><span class="mapping-role-badge is-exclude">Exclude</span> The operator is left out of every analysis, filter, chart and report of the workspace, as if every Operator filter left it out (for example an MVNO that is not benchmarked). At least one label always stays included.</li>
     </ul>
+    <strong>NR Modes of each label</strong>
+    <ul>
+      <li><span class="mapping-role-badge is-nr-modes">NSA and SA</span> The default: the operator has a network in both NR Modes.</li>
+      <li><span class="mapping-role-badge is-nr-modes">NSA only</span> The operator has no SA network (such as Three today): its tests of the SA CDRs, which run on LTE and EN-DC as its NSA CDRs already measure, are out of scope. They are left out of every analysis, filter, chart and report of the workspace (Scoring &amp; GAP Analysis, Network Insights, Dashboards, CDR Analysis, Chart Builder, Reporting and NQ Calls), while its NSA tests stay. A suggestion appears under a label whose Non-Qualified Calls of the SA campaigns barely ran on NR SA; it is never applied on its own.</li>
+      <li><span class="mapping-role-badge is-nr-modes">SA only</span> The same with its tests of the NSA CDRs.</li>
+    </ul>
   </div>
   {% endif %}
   <p class="form-note">Highlighted names appear in the current CDRs (with how many); grey ones are names of other campaigns. Remove a name with ×, or add one with +: a name of another label moves to this one.</p>
   <div class="table-wrap operator-mappings-table-wrap">
     <table class="operator-mappings-table{{ ' mapping-labels-table-operator' if kind == 'operator' else '' }}">
-      <thead><tr><th class="mapping-order-column">Order</th><th class="mapping-colour-column">Colour</th><th class="mapping-canonical-column">Label</th>{% if kind == 'operator' %}<th class="mapping-role-column">Role<span class="mapping-column-note">Include, Focus or Exclude</span></th>{% endif %}<th class="mapping-aliases-column">Possible names in the CDRs<span class="mapping-column-note">How this label can be written in the CDRs of the different campaigns</span></th><th class="mapping-actions-column">Actions</th></tr></thead>
+      <thead><tr><th class="mapping-order-column">Order</th><th class="mapping-colour-column">Colour</th><th class="mapping-canonical-column">Label</th>{% if kind == 'operator' %}<th class="mapping-role-column">Role<span class="mapping-column-note">Include, Focus or Exclude</span></th><th class="mapping-nr-modes-column">NR Modes<span class="mapping-column-note">Where it has a network</span></th>{% endif %}<th class="mapping-aliases-column">Possible names in the CDRs<span class="mapping-column-note">How this label can be written in the CDRs of the different campaigns</span></th><th class="mapping-actions-column">Actions</th></tr></thead>
       <tbody>
         {% for mapping in groups %}
         <tr>
@@ -86,12 +97,13 @@
             <input class="table-input operator-mapping-canonical" type="text" name="canonical_value" value="{{ mapping.canonical }}" form="{{ kind }}-mapping-{{ loop.index }}" required>
             <span class="mapping-status mapping-status-merged" data-mapping-merge-badge hidden></span>
           </td>
-          {% if kind == 'operator' %}<td data-label="Role">{{ mapping_role_select(mapping.role, kind ~ '-mapping-' ~ loop.index, mapping.canonical) }}</td>{% endif %}
+          {% if kind == 'operator' %}<td data-label="Role">{{ mapping_role_select(mapping.role, kind ~ '-mapping-' ~ loop.index, mapping.canonical) }}</td>
+          <td data-label="NR Modes">{{ mapping_nr_modes_select(mapping.nr_modes, kind ~ '-mapping-' ~ loop.index, mapping.canonical, nr_mode_suggestions.get(mapping.canonical | lower, '') if not mapping.nr_modes else '') }}</td>{% endif %}
           <td data-label="Possible names in the CDRs"><textarea class="operator-mapping-aliases" name="aliases" form="{{ kind }}-mapping-{{ loop.index }}" rows="3" hidden data-mapping-names-source aria-label="Possible names of {{ mapping.canonical }}">{{ mapping.aliases | join('\n') }}</textarea><div class="mapping-name-chips" data-mapping-name-chips></div></td>
           <td data-label="Actions"><div class="table-actions"><form action="/workspace-config/{{ kind }}-mappings/delete" method="post" data-confirm="Delete the {{ mapping.canonical }} {{ title }} label? The names it stands for are shown as they are until they get another label."><input type="hidden" name="canonical_value" value="{{ mapping.canonical }}"><button type="submit" class="danger-button icon-action" aria-label="Delete the {{ mapping.canonical }} label" title="Delete label">×</button></form></div></td>
         </tr>
         {% endfor %}
-        {% if not groups %}<tr><td colspan="{{ 6 if kind == 'operator' else 5 }}">No {{ title }} labels yet.</td></tr>{% endif %}
+        {% if not groups %}<tr><td colspan="{{ 7 if kind == 'operator' else 5 }}">No {{ title }} labels yet.</td></tr>{% endif %}
       </tbody>
     </table>
   </div>
@@ -102,7 +114,7 @@
   <form class="operator-mapping-create" action="/workspace-config/{{ kind }}-mappings/save" method="post">
     <label>Colour<input type="color" name="color" value="#6F42C1"></label>
     <label>Label<input type="text" name="canonical_value" placeholder="New {{ title }} label" required></label>
-    {% if kind == 'operator' %}<label>Role{{ mapping_role_select('', '', 'the new label') }}</label>{% endif %}
+    {% if kind == 'operator' %}<label>Role{{ mapping_role_select('', '', 'the new label') }}</label><label>NR Modes{{ mapping_nr_modes_select([], '', 'the new label') }}</label>{% endif %}
     <label>Possible names in the CDRs<textarea name="aliases" rows="3" placeholder="How it can be written in the CDRs of the different campaigns, one per line"></textarea></label>
     <button type="submit">Add label</button>
   </form>
@@ -249,7 +261,7 @@
       <p class="lede">How the Operators of <strong>"{{ active_workspace.name }}"</strong> are named, ordered and coloured. Each label stands for one or more names of the CDRs; stored CDR tables keep their original values.</p>
       {% if operator_mapping_notice %}<div class="alert alert-success">{{ operator_mapping_notice }}</div>{% endif %}
       {% if operator_mapping_error %}<div class="alert alert-error">{{ operator_mapping_error }}</div>{% endif %}
-      {{ mapping_labels_view('operator', operator_mapping_groups, (mapping_assignments or {}).get('operator', [])) }}
+      {{ mapping_labels_view('operator', operator_mapping_groups, (mapping_assignments or {}).get('operator', []), operator_nr_mode_suggestions or {}) }}
       {% else %}
       <p class="form-note">Open a workspace before managing Operator Mappings.</p>
       {% endif %}

@@ -85,17 +85,19 @@ class ValueMapper:
         return bool(self.excluded_operators) and any(
             str(name).strip().casefold() in self.excluded_operators for name in names if name is not None)
 
-    def excluded_value(self, kind: str | None, value: Any) -> bool:
-        """Whether a mapped Operator, Operator_Vendor or Vendor_Operator value is (or belongs to) an excluded operator."""
-        if not self.excluded_operators or value is None:
+    def excluded_value(self, kind: str | None, value: Any, names: Iterable[str] | None = None) -> bool:
+        """Whether a mapped Operator, Operator_Vendor or Vendor_Operator value is (or belongs to) an excluded operator, or
+        to one of ``names`` when given (such as the operators out of scope in the NR Mode of a CDR)."""
+        excluded = self.excluded_operators if names is None else {str(name).strip().casefold() for name in names}
+        if not excluded or value is None:
             return False
         text = str(value).strip().casefold()
         if kind == 'operator':
-            return text in self.excluded_operators
+            return text in excluded
         if kind == 'operator_vendor':
-            return any(text == name or text.startswith(f'{name} - all') or text.startswith(f'{name}_') for name in self.excluded_operators)
+            return any(text == name or text.startswith(f'{name} - all') or text.startswith(f'{name}_') for name in excluded)
         if kind == 'vendor_operator':
-            return any(text == name or text.startswith(f'{name} - all') or text.endswith(f'_{name}') for name in self.excluded_operators)
+            return any(text == name or text.startswith(f'{name} - all') or text.endswith(f'_{name}') for name in excluded)
         return False
 
     def values(self, kind: str | None, values: Iterable[Any]) -> list[Any]:

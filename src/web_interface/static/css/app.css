@@ -731,6 +731,14 @@ body [data-section-bar].is-compact > a.section-bar-top { padding: .45rem .55rem;
 .mapping-role-select:has(option[value=""]:checked) { border-color: #c79a1e; background-color: #fffbea; color: #7a5a00; font-weight: 700; }
 .mapping-role-select:has(option[value="focus"]:checked) { border-color: #2f855a; background-color: #f0fff4; color: #22543d; font-weight: 700; }
 .mapping-role-select:has(option[value="exclude"]:checked) { border-color: #c53030; background-color: #fff5f5; color: #9b2c2c; font-weight: 700; }
+/* The NR Modes of each Operator label: both (as any field), NSA only (blue) or SA only (magenta), as the NR Mode pills. */
+.operator-mapping-create:has(.mapping-nr-modes-select) { grid-template-columns: 6rem minmax(180px, 0.7fr) 9rem 9rem minmax(260px, 1.3fr) auto; }
+.operator-mappings-table .mapping-nr-modes-column { width: 10.5rem; }
+.operator-mappings-table td[data-label="NR Modes"] { padding-right: 1.5rem; }
+.mapping-nr-modes-select { box-sizing: border-box; width: 100%; min-width: 0; }
+.mapping-nr-modes-select:has(option[value="NSA"]:checked) { border-color: #1d4ed8; background-color: #eff4ff; color: #1d4ed8; font-weight: 700; }
+.mapping-nr-modes-select:has(option[value="SA"]:checked) { border-color: #be185d; background-color: #fdf2f8; color: #be185d; font-weight: 700; }
+.mapping-nr-modes-suggestion { display: block; margin-top: .3rem; color: #9a5b00; font-size: .78rem; font-weight: 700; line-height: 1.3; cursor: help; }
 .operator-mapping-create input, .operator-mapping-create textarea { width: 100%; box-sizing: border-box; }
 .operator-mapping-create input:not([type="color"]) { height: 3rem; padding-block: 0.55rem; }
 .operator-mapping-create input[type="color"] { height: 3rem; padding: 0.15rem; }
@@ -742,8 +750,10 @@ body [data-section-bar].is-compact > a.section-bar-top { padding: .45rem .55rem;
 @media (max-width: 1100px) {
   .operator-mapping-create:has(.mapping-role-select) { grid-template-columns: 6rem minmax(0, 1fr) 9rem; }
   .operator-mapping-create:has(.mapping-role-select) > label:has(textarea) { grid-column: 1 / 3; }
+  .operator-mapping-create:has(.mapping-nr-modes-select) { grid-template-columns: 6rem minmax(0, 1fr) 9rem 9rem; }
+  .operator-mapping-create:has(.mapping-nr-modes-select) > label:has(textarea) { grid-column: 1 / 4; }
 }
-@media (max-width: 760px) { .operator-mapping-create, .operator-mapping-create:has(.mapping-role-select) { grid-template-columns: 1fr; } .operator-mapping-create:has(.mapping-role-select) > label:has(textarea) { grid-column: auto; } }
+@media (max-width: 760px) { .operator-mapping-create, .operator-mapping-create:has(.mapping-role-select), .operator-mapping-create:has(.mapping-nr-modes-select) { grid-template-columns: 1fr; } .operator-mapping-create:has(.mapping-role-select) > label:has(textarea), .operator-mapping-create:has(.mapping-nr-modes-select) > label:has(textarea) { grid-column: auto; } }
 .spectrum-holdings-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.8rem; align-items: end; margin-top: 1rem; padding: 1rem; border: 1px solid rgba(11, 79, 92, 0.22); border-radius: 0.9rem; background: rgba(255, 255, 255, 0.72); }
 .spectrum-holdings-form label { display: grid; gap: 0.35rem; }
 .spectrum-holdings-form textarea { width: 100%; box-sizing: border-box; min-height: 12rem; padding: 0.6rem 0.8rem; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.84rem; }
@@ -5086,6 +5096,8 @@ body:has(dialog.vendor-mapping-dialog[open]) { overflow: hidden; }
 /* The Operator labels keep their Label as wide as in the names of the CDRs above; the possible names take the rest. */
 .operator-mappings-table.mapping-labels-table-operator .mapping-canonical-column { width: 17%; }
 .operator-mappings-table.mapping-labels-table-operator .mapping-aliases-column { width: auto; }
+/* The NR Modes column takes a width of its own, so the possible names keep theirs. */
+@media (min-width: 641px) { .operator-mappings-table.mapping-labels-table-operator { min-width: 1090px; } }
 .mapping-assignments-table .mapping-name-comment { display: block; min-height: 2.75rem; resize: vertical; font: inherit; line-height: 1.35; }
 /* The fields edited in the table (the Label of a name that is not a label itself, and its Comments) in pastel yellow. */
 .mapping-assignments-table.has-comments select[data-mapping-assignment-label]:not([data-locked]),
@@ -5099,7 +5111,10 @@ body:has(dialog.vendor-mapping-dialog[open]) { overflow: hidden; }
 .mapping-role-help ul { display: grid; gap: .45rem; margin: 0; padding: 0; list-style: none; }
 .mapping-role-help li { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); gap: .6rem; align-items: start; }
 .mapping-role-help .mapping-role-badge { justify-self: start; }
-@media (max-width: 640px) { .mapping-role-help li { grid-template-columns: minmax(0, 1fr); gap: .25rem; } }
+.mapping-role-help > ul + strong { margin-top: .7rem; }
+.mapping-role-help li:has(.is-nr-modes) { grid-template-columns: 6.5rem minmax(0, 1fr); }
+.mapping-role-badge.is-nr-modes { border-color: #8aa0b4; background: #f4f7fa; color: #2c3e50; }
+@media (max-width: 640px) { .mapping-role-help li, .mapping-role-help li:has(.is-nr-modes) { grid-template-columns: minmax(0, 1fr); gap: .25rem; } }
 .mapping-role-badge.is-include { border-color: #c79a1e; background: #fffbea; color: #7a5a00; }
 .mapping-role-badge.is-focus { border-color: #2f855a; background: #f0fff4; color: #22543d; }
 .mapping-role-badge.is-exclude { border-color: #c53030; background: #fff5f5; color: #9b2c2c; }

@@ -510,6 +510,8 @@
   let environmentDefaultSavedFilterId = null;
   let currentResults = null;
   let currentResultsSavedFilterId = null;
+  // The NR Mode · operator pairs out of scope of the result being drawn (SA · Three), named beside each pane heading.
+  let resultOutOfScope = [];
   // The filters of the Saved Filter whose results are shown, for the area, operators and vendors in the chart and
   // table titles.
   let resultScopeFilters = {};
@@ -3092,6 +3094,21 @@
       environmentChip.className = 'scoring-context-chip scoring-environment-chip';
       environmentChip.textContent = `Environment: ${environmentLabel(String(environment))}`;
       heading.append(separator, environmentChip);
+    }
+    // The tests of the operators without a network in an NR Mode (the NR Modes of the Operator Maps) count nowhere.
+    if (resultOutOfScope.length) {
+      if (!heading.querySelector('.scoring-context-separator')) {
+        const separator = document.createElement('span');
+        separator.className = 'scoring-context-separator';
+        separator.ariaHidden = 'true';
+        separator.textContent = '—';
+        heading.append(separator);
+      }
+      const scopeChip = document.createElement('span');
+      scopeChip.className = 'scoring-context-chip scoring-out-of-scope-chip';
+      scopeChip.textContent = `Out of scope: ${resultOutOfScope.join(', ')}`;
+      scopeChip.title = 'Left out of every panel: the operator has no network in this NR Mode (the NR Modes of its label in Workspace Config → Operator Maps)';
+      heading.append(scopeChip);
     }
     if (kind === 'gap' || kind === 'gap-summary') appendResultScope(heading, context);
     pane.append(heading);
@@ -10278,6 +10295,7 @@
     paneOf = name => root.querySelector(`[data-result-pane="${name}"]`)) {
     currentResults = savedPayload;
     currentResultsSavedFilterId = savedFilterIdOf(savedFilter || savedPayload.saved_filter || {}) || null;
+    resultOutOfScope = Array.isArray(savedPayload?.out_of_scope) ? savedPayload.out_of_scope : [];
     const resultFilters = (savedFilter || savedPayload.saved_filter || {}).context_filters;
     resultScopeFilters = resultFilters && typeof resultFilters === 'object' ? resultFilters : {};
     syncResultScoring(savedPayload);

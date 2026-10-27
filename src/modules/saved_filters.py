@@ -29,7 +29,7 @@ from src.modules.scoring_area_summary import (
 from src.modules.scoring_vendors import scoring_vendor_name, scoring_vendor_operators
 from src.modules.cdr_auto_selection import CAMPAIGN_PRESET_LABELS, campaign_identity, campaign_presets
 from src.modules.value_patterns import ValueSet
-from src.modules.operator_roles import EXCLUDE, normalize_mapping_role
+from src.modules.operator_roles import EXCLUDE, normalize_mapping_role, out_of_scope_operators
 from src.modules.cdr_stage import combined_dataset_ids
 from src.modules.nr_mode import (
     NR_MODE_COLUMN, NSA_VS_SA, SAME_OPERATOR_NSA, SAME_OPERATOR_NSA_LABEL, SCORING_NR_MODES, campaign_with_nr_mode,
@@ -358,6 +358,9 @@ def _source_snapshot(
         # The Excluded Calls lists that leave calls of it out (a CDR they do not touch keeps its scorings).
         if excluded_calls := exclusions.signature(dataset_id):
             signature['excluded_calls'] = excluded_calls
+        # The operators out of scope in its NR Mode (a CDR whose NR Mode has none keeps its scorings).
+        if out_of_scope := sorted(name.casefold() for name in out_of_scope_operators(repository, nr_mode)):
+            signature['out_of_scope'] = out_of_scope
         sources.append({'metadata': metadata, 'signature': signature, 'columns': columns, 'table_name': table_name})
 
     modes = {str(source['metadata']['nr_mode']) for source in sources}
@@ -1892,9 +1895,10 @@ def _load_source_frames(
         if missing_filter_fields:
             frame = pd.DataFrame()
         else:
+            # The operators out of scope in the NR Mode of the CDR (the NR Modes of the Operator Maps) are left out.
             frame = repository.load_dataset_rows(
                 dataset_id, list(dict.fromkeys(selected_columns)), dataset_filters,
-                **({'excluded_call_lists': excluded_call_lists} if excluded_call_lists else {}),
+                **({'excluded_call_lists': excluded_call_lists} if excluded_call_lists else {}), in_scope_only=True,
             )
         if frame.empty:
             if not active_filters and not excluded_call_lists:

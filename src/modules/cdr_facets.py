@@ -301,7 +301,11 @@ def cascading_options(repository: Any, dataset_ids: Iterable[int], selections: d
             values[field].setdefault(value if field == 'Campaign' else value.casefold(), value)
 
     facets, missing = stored_facets(repository, ids)
-    combinations = {combination for items in facets.values() for combination in items}
+    # The operators out of scope in the NR Mode of each CDR (the NR Modes of the Operator Maps) are left out of its values.
+    left_out = _out_of_scope_names(repository, mapper, ids)
+    operator_index = FACET_FIELDS.index('Operator')
+    combinations = {combination for dataset_id, items in facets.items() for combination in items
+                    if str(combination[operator_index] or '').strip().casefold() not in left_out.get(dataset_id, ())}
     for combination in combinations:
         raw = dict(zip(FACET_FIELDS, combination))
         raw['Vendor_Operator'] = raw['Operator_Vendor']
@@ -321,14 +325,15 @@ def cascading_options(repository: Any, dataset_ids: Iterable[int], selections: d
         # some value of every other chosen filter.
         request_missing_facets(repository, missing)
         catalogues = repository.cdr_catalogues_by_dataset(missing)
-        for catalogue in catalogues.values():
+        for dataset_id, catalogue in catalogues.items():
             lists = {field: [str(value) for value in catalogue.get(key) or []] for field, key in CATALOGUE_KEYS.items()}
             lists['Vendor_Operator'] = lists['Operator_Vendor']
             mapped_lists = {field: [mapping(field, value) for value in items] for field, items in lists.items()}
             for field, kind in MAPPED_KINDS.items():
                 # The operators the Operator Maps exclude are left out of every list.
                 if field in mapped_lists:
-                    kept = [index for index, value in enumerate(mapped_lists[field]) if not mapper.excluded_value(kind, value)]
+                    kept = [index for index, value in enumerate(mapped_lists[field]) if not mapper.excluded_value(kind, value)
+                            and not (left_out.get(dataset_id) and mapper.excluded_value(kind, value, left_out[dataset_id]))]
                     mapped_lists[field] = [mapped_lists[field][index] for index in kept]
                     lists[field] = [lists[field][index] for index in kept]
             # A catalogue does not list environments: it may hold any of them.
@@ -341,6 +346,19 @@ def cascading_options(repository: Any, dataset_ids: Iterable[int], selections: d
                     for value in mapped_lists.get(field, []):
                         offer(field, value)
     return {field: _order(field, values[field].values(), mapper) for field in wanted}
+
+
+def _out_of_scope_names(repository: Any, mapper: ValueMapper, dataset_ids: Iterable[int]) -> dict[int, set[str]]:
+    """The names (casefolded) of the operators out of scope in the NR Mode of each CDR that has some (see
+    ``operator_roles.out_of_scope_operators``)."""
+    from src.modules.operator_roles import NR_MODES, out_of_scope_operators, out_of_scope_pairs
+
+    if not out_of_scope_pairs(mapper.operator_groups) or not hasattr(repository, 'ready_cdr_nr_modes'):
+        return {}
+    modes = repository.ready_cdr_nr_modes()
+    names = {mode: {name.casefold() for name in out_of_scope_operators(mapper.operator_groups, mode)} for mode in NR_MODES}
+    return {int(dataset_id): names[modes[int(dataset_id)]] for dataset_id in dataset_ids
+            if names.get(modes.get(int(dataset_id)))}
 
 
 def matching_dataset_ids(repository: Any, dataset_ids: Iterable[int], selections: dict[str, Iterable[object]] | None,

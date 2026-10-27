@@ -76,7 +76,9 @@ from src.modules.app_event_details import app_event_origin, app_event_origin_par
 from src.modules.background_scheduler import BackgroundTaskScheduler
 from src.modules.auth import SessionUser, verify_password
 from src.modules.workspace_countries import country_options
-from src.modules.operator_roles import drop_excluded_operators, excluded_operators, normalize_mapping_role
+from src.modules.operator_roles import (
+    drop_excluded_operators, drop_out_of_scope_operators, excluded_operators, normalize_mapping_role, normalize_nr_modes,
+)
 from src.modules.cdr_types import (
     CDR_TYPES, DEFAULT_CDR_TYPE, cdr_type_options, normalize_cdr_type, set_workspace_cdr_type, workspace_cdr_type,
 )
@@ -2770,6 +2772,17 @@ def activate_workspace(workspace_id: str, *, initialize: bool = True) -> Workspa
                 seed_starter_content(repository)
             except Exception as exc:  # noqa: BLE001 - starter content never blocks opening a workspace
                 repository.try_add_log('system', 'starter_content_failed', json.dumps({'error': str(exc)}))
+            # Once: the NR Mode · operator pairs out of scope of the NQ Calls become NR Modes of the Operator Maps, which
+            # leave them out of every module.
+            try:
+                from src.modules.nq_prioritization import migrate_excluded_modes
+                if migrate_excluded_modes(repository)['changed']:
+                    ANALYSIS_CACHE.clear()
+                    PREPARED_ANALYSIS_FRAME_CACHE.clear()
+                    DATAFRAME_CACHE.clear()
+                    _clear_chart_preview_caches()
+            except Exception as exc:  # noqa: BLE001 - never blocks opening a workspace
+                repository.try_add_log('system', 'operator_nr_modes_migration_failed', json.dumps({'error': str(exc)}))
             # What has no known creator, or was created by the application, belongs to UNKNOWN_CREATOR_OWNER.
             try:
                 from src.modules.deletion_rights import UNKNOWN_CREATOR_OWNER, assign_unknown_creators
@@ -13482,6 +13495,8 @@ def render_admin_template(
             'workspace_catalogues': workspace_catalogues,
             'database_table_groups': database_table_groups,
             'operator_mapping_groups': repository.list_operator_mapping_groups() if active_workspace else [],
+            # The NR Modes suggested for the labels from their NQ calls, never applied on their own.
+            'operator_nr_mode_suggestions': operator_nr_mode_suggestions() if active_workspace else {},
             'operator_mapping_notice': request.query_params.get('operator_mapping_notice') or None,
             'cdr_type_options': cdr_type_options(),
             'country_options': country_options(),
@@ -13983,8 +13998,11 @@ def build_datasets_analysis_payload(
             # the analysis/chart frame shows the canonical Operator/Vendor labels and theme.
             mapping_settings = repository.chart_mapping_settings()
             df = apply_operator_mappings(df, mapping_settings['operator_mappings'])
-            # The operators the Operator Maps exclude are left out of every analysis.
+            # The operators the Operator Maps exclude are left out of every analysis, and those out of scope in the NR
+            # Mode of the CDR (the NR Modes of the Operator Maps).
             df = drop_excluded_operators(df, excluded_operators(mapping_settings))
+            df = drop_out_of_scope_operators(df, mapping_settings, dataset_nr_mode(
+                selected_dataset.get('dataset_kind'), selected_dataset.get('nr_mode'), selected_dataset.get('file_name')))
             df.attrs.update(shared_frame_attrs(mapping_settings))
             df = normalise_operator_aliases(df)
         if shares_frame:
@@ -17427,7 +17445,8 @@ def _combined_reporting_frame(
     columns = reporting_query_columns(dataset_kind, catalog_entries, multivendor)
     for dataset_id in dataset_ids:
         task_repository.copy_dataset_rows_to_reporting(dataset_id, dataset_kind, columns)
-    combined = task_repository.load_reporting_rows(dataset_kind, dataset_ids, columns)
+    # Without the rows of the operators out of scope in the NR Mode of each CDR (the NR Modes of the Operator Maps).
+    combined = task_repository.load_reporting_rows(dataset_kind, dataset_ids, columns, in_scope_only=True)
     if combined.empty:
         raise ValueError(f'The selected {dataset_kind.title()} CDRs have no materialised reporting rows.')
     if 'source_sheet' in combined.columns:
@@ -18872,8 +18891,9 @@ def _chart_builder_context(payload: dict[str, Any]) -> tuple[pd.DataFrame, Catal
         'columns': dataset_columns,
     })
     def load_frame() -> pd.DataFrame:
+        # Without the rows of the operators out of scope in the NR Mode of each CDR (the NR Modes of the Operator Maps).
         frames = [
-            repository.load_dataset_rows(dataset_id, columns, {})
+            repository.load_dataset_rows(dataset_id, columns, {}, in_scope_only=True)
             for dataset_id, columns in dataset_columns.items() if columns
         ]
         if not frames:
@@ -20737,9 +20757,19 @@ def _saved_filter_payload(saved_filter: dict[str, Any], operator_groups: list[di
     NSA vs SA also gives the results of each NR Mode on their own (``nr_mode_parts``, NSA then SA), which the page shows
     one below the other in every tab."""
     from src.modules.scoring_views import normalize_result_gaps, nr_mode_result
-    from src.modules.nr_mode import NR_MODES, NSA_VS_SA, normalize_scoring_nr_mode
+    from src.modules.nr_mode import NR_MODES, NSA_VS_SA, normalize_scoring_nr_mode, nr_modes_of
+    from src.modules.operator_roles import out_of_scope_pairs
+
+    def out_of_scope(nr_mode: Any) -> dict[str, Any]:
+        # The NR Mode · operator pairs out of scope in the NR Modes of a result (the NR Modes of the Operator Maps), which
+        # the headings of its panels name.
+        modes = nr_modes_of(nr_mode)
+        pairs = [f"{pair['nr_mode']} · {pair['operator']}" for pair in out_of_scope_pairs(operator_groups) if pair['nr_mode'] in modes]
+        return {'out_of_scope': pairs} if pairs else {}
+
     result = normalize_scoring_vendor_result(normalize_result_gaps(saved_filter.get('result') or {}), operator_groups)
-    payload = _scoring_result_payload(saved_filter, result, operator_groups, vendor_groups, fallback)
+    payload = {**_scoring_result_payload(saved_filter, result, operator_groups, vendor_groups, fallback),
+               **out_of_scope(saved_filter.get('nr_mode'))}
     if normalize_scoring_nr_mode(saved_filter.get('nr_mode')) == NSA_VS_SA and payload['views']:
         parts = []
         for mode in NR_MODES:
@@ -20749,7 +20779,7 @@ def _saved_filter_payload(saved_filter: dict[str, Any], operator_groups: list[di
             part_filter = {**nr_mode_result({key: value for key, value in saved_filter.items() if key != 'result'}, mode),
                            'nr_mode': mode}
             parts.append({'nr_mode': mode, **_scoring_result_payload(part_filter, part_result, operator_groups,
-                                                                      vendor_groups, fallback)})
+                                                                      vendor_groups, fallback), **out_of_scope(mode)})
         if len(parts) > 1:
             payload['nr_mode_parts'] = parts
     return payload
@@ -25652,6 +25682,7 @@ def save_admin_operator_mapping_group(
     aliases: str = Form(''),
     color: str = Form(''),
     role: str | None = Form(None),
+    nr_modes: str | None = Form(None),
     user: SessionUser = Depends(config_editor_user),
 ) -> Response:
     if not active_workspace:
@@ -25665,10 +25696,13 @@ def save_admin_operator_mapping_group(
     original = original_canonical.strip()
     canonical = canonical_value.strip()
     mapping_settings = repository.chart_mapping_settings()
-    previous_role = next((normalize_mapping_role(group.get('role')) for group in mapping_settings['operator_mapping_groups']
-                          if str(group.get('canonical') or '').strip().casefold() == (original or canonical).casefold()), '')
-    # Without the field (an earlier page) the label keeps its role.
+    previous_group = next((group for group in mapping_settings['operator_mapping_groups']
+                           if str(group.get('canonical') or '').strip().casefold() == (original or canonical).casefold()), {})
+    previous_role = normalize_mapping_role(previous_group.get('role'))
+    previous_nr_modes = normalize_nr_modes(previous_group.get('nr_modes'))
+    # Without the fields (an earlier page) the label keeps its role and NR Modes.
     chosen_role = previous_role if role is None else normalize_mapping_role(role)
+    chosen_nr_modes = previous_nr_modes if nr_modes is None else normalize_nr_modes(nr_modes)
     renamed_templates = 0
     renamed_dashboards = 0
     renamed_filters = 0
@@ -25680,7 +25714,7 @@ def save_admin_operator_mapping_group(
         ):
             raise ValueError('Another Operator Mapping already uses this canonical label.')
         repository.replace_operator_mapping_group(
-            original_canonical or None, canonical_value, parsed_aliases, color, chosen_role,
+            original_canonical or None, canonical_value, parsed_aliases, color, chosen_role, chosen_nr_modes,
         )
         if original and original != canonical:
             renamed_templates = rename_chart_mapping_template_references(
@@ -25706,6 +25740,9 @@ def save_admin_operator_mapping_group(
         'aliases': parsed_aliases,
         'role': chosen_role,
         'previous_role': previous_role,
+        # The NR Modes the operator has a network in (its rows of the CDRs of the others are out of scope everywhere).
+        'nr_modes': chosen_nr_modes or list(NR_MODES),
+        'previous_nr_modes': previous_nr_modes or list(NR_MODES),
         'renamed_templates': renamed_templates,
         'renamed_dashboards': renamed_dashboards,
         'renamed_filters': renamed_filters,
@@ -25742,6 +25779,16 @@ def mapping_assignment_rows() -> dict[str, list[dict[str, Any]]]:
         'vendor': assignment_rows('vendor', detected['vendor'], repository.list_vendor_mappings()),
         'campaign': assignment_rows('campaign', detected['campaign'], {}, campaign_map),
     }
+
+
+def operator_nr_mode_suggestions() -> dict[str, str]:
+    """The NR Modes suggested for the Operator labels (see nq_prioritization.nr_mode_suggestions), none on an error."""
+    from src.modules.nq_prioritization import nr_mode_suggestions
+
+    try:
+        return nr_mode_suggestions(repository)
+    except Exception:  # noqa: BLE001 - a suggestion never prevents the page from opening.
+        return {}
 
 
 def unassigned_mapping_values() -> dict[str, list[str]]:
