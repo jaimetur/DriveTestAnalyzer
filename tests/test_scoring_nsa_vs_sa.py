@@ -447,16 +447,15 @@ def test_documents_show_each_nr_mode_as_the_results_of_the_page(tmp_path):
                 if title.startswith(('NSA · ', 'SA · '))]
 
 
-def test_the_charts_keep_the_place_of_an_operator_out_of_scope_in_an_nr_mode(tmp_path):
-    # Three has no SA: in NSA vs SA with NSA & SA in the same chart, its SA bar keeps its place, empty and named Out of
-    # scope, on the page (columns of the charts alone) and in the PowerPoint; the tables keep their columns.
+def test_the_charts_name_the_operators_out_of_scope_at_their_foot(tmp_path):
+    # Three has no SA: the charts of the operators keep no place for its SA bar and name it at their foot, on the page (the
+    # pairs of the result) and in the PowerPoint, while the charts of an NSA scoring say nothing.
     from io import BytesIO
 
     from pptx import Presentation
 
     import src.DriveTestAnalyzer as core
     from src.modules.scoring_exports import export_scoring_powerpoint
-    from src.modules.scoring_views import with_out_of_scope_columns
 
     repository, ids = _workspace(tmp_path, 'UK_Q3_NSA_2026')
     repository.replace_operator_mapping_group(None, 'Three', ['Three UK'], '#000000', None, ['NSA'])
@@ -464,26 +463,21 @@ def test_the_charts_keep_the_place_of_an_operator_out_of_scope_in_an_nr_mode(tmp
     calculated = saved_filters.calculate_saved_filter(repository, saved['id'])
     groups = repository.list_operator_mapping_groups()
     payload = core._saved_filter_payload(calculated, groups, [], None)
-    matrix = payload['views']['hierarchy_score_tables'][0]
-    extra = matrix['chart_out_of_scope']
-    assert [(column['operator'], column['context']['campaign']) for column in extra['columns']] == [('Three', 'UK_Q3_SA_2026')]
-    assert len(extra['operators']) == len(matrix['operators']) + 1 and not any(
-        column.get('out_of_scope') for column in matrix['hierarchy_columns'])
-    assert with_out_of_scope_columns(matrix, []) is matrix
+    assert payload['out_of_scope'] == ['SA · Three']
+    assert not any(column.get('out_of_scope') for matrix in payload['views']['hierarchy_score_tables']
+                   for column in matrix['hierarchy_columns'])
     template = Path(__file__).resolve().parents[1] / 'assets/powerpoint-templates/Template_VodafoneThree.pptx'
-    content = export_scoring_powerpoint(calculated, calculated['result'], template, groups, nr_layout='interleaved',
-                                        nr_charts='same')
-    def texts(shapes):
-        for shape in shapes:
-            if shape.shape_type == 6:  # A group.
-                yield from texts(shape.shapes)
-            elif shape.has_table:
-                yield from (cell.text for row in shape.table.rows for cell in row.cells)
-            elif shape.has_text_frame:
-                yield shape.text_frame.text
-    slides = [slide for slide in Presentation(BytesIO(content)).slides
-              if slide.shapes.title is not None and 'Scoring per Service' in slide.shapes.title.text_frame.text]
-    assert slides and any(text.endswith('Out of scope') for text in texts(slides[0].shapes))
+
+    def chart_notes(job, result):
+        content = export_scoring_powerpoint(job, result, template, groups, nr_layout='interleaved', nr_charts='same')
+        return [shape.text_frame.text for slide in Presentation(BytesIO(content)).slides
+                if slide.shapes.title is not None and 'Scoring per Service' in slide.shapes.title.text_frame.text
+                for shape in slide.shapes if shape.has_text_frame and 'Out of scope' in shape.text_frame.text]
+    notes = chart_notes(calculated, calculated['result'])
+    assert notes and all(note.startswith('Out of scope: SA · Three: no network in that NR Mode') for note in notes)
+    single, _ = saved_filters.save_saved_filter(repository, ids['NSA'], ['Operator'], 'NSA')
+    nsa = saved_filters.calculate_saved_filter(repository, single['id'])
+    assert chart_notes(nsa, nsa['result']) == []
 
 
 def test_documents_draw_the_nsa_and_sa_trends_on_one_axis_of_quarters():

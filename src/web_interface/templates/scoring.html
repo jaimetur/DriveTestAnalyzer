@@ -803,7 +803,7 @@
   .scoring-context-chip { display: inline-flex; align-items: center; min-height: 1.45rem; padding: .18rem .5rem; border: 1px solid rgba(25,42,53,.1); border-radius: 999px; background: #f3f6f6; color: #465c68; font-size: .68rem; font-weight: 700; }
   .scoring-environment-chip { border-color: #80b9b2; background: #e0f3f0; color: #07534f; font-size: .72rem; font-weight: 800; }
   .scoring-out-of-scope-chip { margin-left: .35rem; border-color: #e2b56b; background: #fff6e5; color: #8a4b00; font-size: .72rem; font-weight: 800; }
-  .scoring-chart-value.scoring-best-network-out-of-scope { fill: #8a4b00; font-size: 14px; font-weight: 800; }
+  .scoring-chart-footnote { margin: .35rem .85rem .15rem; color: #8a4b00; font-size: .76rem; font-weight: 600; line-height: 1.35; }
   .scoring-context-note { margin: 0 0 .55rem; color: var(--muted); font-size: .72rem; }
   .scoring-threshold-legend { display: flex; align-items: center; flex-wrap: wrap; gap: .4rem .8rem; margin: 0 0 .55rem; padding: .45rem .6rem; border: 1px solid rgba(25,42,53,.1); border-radius: 10px; background: #f7f8f7; }
   .scoring-threshold-legend > strong { color: #445a65; font-size: .7rem; }
@@ -1093,6 +1093,7 @@
   [data-scoring-workspace][data-scoring-theme="midnight"] .scoring-position-table th { background: #16233a !important; color: #8fb3d9 !important; }
   [data-scoring-workspace][data-scoring-theme="midnight"] [data-result-pane] :is(.scoring-scope-pill, .scoring-context-chip) {
     background: #16233a !important; color: #cfe0f5 !important; border-color: #2a3b58 !important; }
+  [data-scoring-workspace][data-scoring-theme="midnight"] [data-result-pane] .scoring-chart-footnote { color: #f5c26b; }
   [data-scoring-workspace][data-scoring-theme="midnight"] [data-result-pane] :is(.scoring-insight-select select, label select, .scoring-map-zoom button, .scoring-loss-operator[aria-pressed="false"]) {
     background-color: #0f1726 !important; color: #dce6f2 !important; border-color: #2a3b58 !important; }
   /* The operator choices keep their blue (as specific as the rule above, which reaches the operator chips too). */

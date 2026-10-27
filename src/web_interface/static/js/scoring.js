@@ -5510,10 +5510,7 @@
           }
           stackY = segmentY;
         }
-        if (!hasValue && hierarchyColumnsById.get(String(category))?.out_of_scope) {
-          // The empty place of an operator out of scope in this NR Mode (see chartTableWithOutOfScope).
-          svg.append(outOfScopeLabel(svg, x + barWidth / 2, baselineY, options.categoryTooltips?.[category]));
-        } else if (!hasValue) {
+        if (!hasValue) {
           const unavailable = document.createElementNS(svg.namespaceURI, 'text');
           unavailable.setAttribute('x', String(x + barWidth / 2));
           unavailable.setAttribute('y', String(baselineY - 7));
@@ -5838,7 +5835,17 @@
 
   // ``context`` is the context of the chart's table, for its area, operators and vendors; false leaves them out (the
   // National & Geographical Areas card shows every area).
-  function makeExpandableChartCard(title, meta, chart, context = null) {
+  // The operators out of scope in an NR Mode of the result (the NR Modes of the Operator Maps), named at the foot of the
+  // charts of the operators: their tests are left out, so they have no bar of that NR Mode.
+  function outOfScopeChartNote() {
+    if (!resultOutOfScope.length) return null;
+    const note = document.createElement('p');
+    note.className = 'scoring-chart-footnote';
+    note.textContent = `Out of scope: ${resultOutOfScope.join(', ')}: no network in that NR Mode (NR Modes of the Operator Maps), so its tests are left out.`;
+    return note;
+  }
+
+  function makeExpandableChartCard(title, meta, chart, context = null, {outOfScope = false} = {}) {
     const card = document.createElement('article');
     card.className = 'scoring-chart-card';
     card.tabIndex = 0;
@@ -5854,6 +5861,8 @@
     scroll.className = 'scoring-chart-scroll';
     scroll.append(chart);
     card.append(heading, scroll);
+    const outOfScopeNote = outOfScope ? outOfScopeChartNote() : null;
+    if (outOfScopeNote) card.append(outOfScopeNote);
     // Charts zoom like the maps: a dragged rectangle or the floating buttons.
     const svg = chart?.matches?.('svg[viewBox]') ? chart : chart?.querySelector?.('svg.scoring-chart-svg');
     if (svg) enableMapZoom(card, svg);
@@ -5934,7 +5943,7 @@
       ),
     });
     stackedChart.style.minWidth = '0';
-    pane.append(makeExpandableChartCard(`${scoringLabel()} Scoring per Category`, contextLabel(selected.context, {environmentPrefix: false}), stackedChart, selected.context));
+    pane.append(makeExpandableChartCard(`${scoringLabel()} Scoring per Category`, contextLabel(selected.context, {environmentPrefix: false}), stackedChart, selected.context, {outOfScope: true}));
     const clusteredChart = makeSvgChart(`${scoringLabel()} Scoring per Category (Breakdown)`, selected.rows, selected.operatorTable, {
       legendEntries: operatorLegend,
       fitWidth: chartFitWidth(pane),
@@ -5943,36 +5952,13 @@
     clusteredChart.style.width = '100%';
     pane.append(makeExpandableChartCard(
       `${scoringLabel()} Scoring per Category (Breakdown)`, contextLabel(selected.context, {environmentPrefix: false}), clusteredChart,
-      selected.context,
+      selected.context, {outOfScope: true},
     ));
     pane.classList.add('scoring-chart-grid');
   }
 
-  // A table of the charts with the empty place of each operator out of scope in an NR Mode (the columns the server adds
-  // for the charts alone, see with_out_of_scope_columns), which the charts name Out of scope.
-  function chartTableWithOutOfScope(table) {
-    const extra = table?.chart_out_of_scope;
-    return extra ? {...table, operators: extra.operators,
-      hierarchy_columns: [...(table.hierarchy_columns || []), ...(extra.columns || [])],
-      operator_styles: {...(table.operator_styles || {}), ...(extra.styles || {})}} : table;
-  }
-
-  // The name of that empty place, upright along the empty bar.
-  function outOfScopeLabel(svg, centerX, baselineY, fullLabel) {
-    const y = baselineY - 8;
-    const label = svgElement(svg, 'text', {x: centerX, y, 'text-anchor': 'start', 'dominant-baseline': 'central',
-      transform: `rotate(-90 ${centerX} ${y})`, class: 'scoring-chart-value scoring-best-network-out-of-scope'});
-    label.textContent = 'Out of scope';
-    setChartTooltip(label, [
-      fullLabel ? `Hierarchy: ${fullLabel}` : '',
-      'Out of scope: the operator has no network in this NR Mode (the NR Modes of its label in Workspace Config → Operator Maps), so its tests are left out.',
-    ].filter(Boolean).join('\n'), true);
-    return label;
-  }
-
-  function renderHierarchyCharts(pane, sourceTable) {
+  function renderHierarchyCharts(pane, tableData) {
     pane.replaceChildren();
-    const tableData = chartTableWithOutOfScope(sourceTable);
     if (!tableData) {
       const empty = document.createElement('div');
       empty.className = 'scoring-empty';
@@ -6054,6 +6040,7 @@
     chart.style.minWidth = '0';
     pane.append(makeExpandableChartCard(
       `${scoringLabel()} Scoring per Category`, contextLabel(tableData.context, {environmentPrefix: false}), chart, tableData.context,
+      {outOfScope: true},
     ));
     const clusteredRows = sourceRows.map(row => ({
       category: String(row.category),
@@ -6093,7 +6080,7 @@
     clusteredChart.style.maxWidth = 'none';
     pane.append(makeExpandableChartCard(
       `${scoringLabel()} Scoring per Category (Breakdown)`, contextLabel(tableData.context, {environmentPrefix: false}), clusteredChart,
-      tableData.context,
+      tableData.context, {outOfScope: true},
     ));
     pane.classList.add('scoring-chart-grid');
   }
@@ -6304,11 +6291,6 @@
           svg.append(segmentLabel);
         }
         stackY = segmentY;
-      }
-      // The empty place of an operator out of scope in this NR Mode (the NR Modes of the Operator Maps).
-      if (hierarchyColumnsById.get(operator)?.out_of_scope) {
-        svg.append(outOfScopeLabel(svg, x + barWidth / 2, baselineY, presentation.fullLabel));
-        return;
       }
       const totalLabel = svgElement(svg, 'text', {'text-anchor': 'middle', class: 'scoring-chart-value scoring-best-network-total'});
       totalLabel.textContent = hasPoints ? `${formatChartNumber(totalPoints, {minimumFractionDigits: 1, maximumFractionDigits: 1})}${complete ? '' : '*'}` : 'N/A';
@@ -6656,9 +6638,9 @@
       pane.append(empty);
       return;
     }
-    const selected = chartTableWithOutOfScope(hierarchyTable
+    const selected = hierarchyTable
       || scoreTables.find(table => comparisonIdentity(table, 'score') === contextSelections.get('score'))
-      || scoreTables[0]);
+      || scoreTables[0];
     const data = bestNetworkTotals(selected);
     if (!data.operators.length || !data.rows.length) {
       const empty = document.createElement('div');
@@ -6671,7 +6653,7 @@
     layout.className = 'scoring-best-network-layout';
     const meta = contextLabel(selected.context, {environmentPrefix: false});
     const bars = makeBestNetworkBars(selected, data);
-    layout.append(makeExpandableChartCard(`${scoringLabel()} Scoring per Service`, meta, bars, selected.context));
+    layout.append(makeExpandableChartCard(`${scoringLabel()} Scoring per Service`, meta, bars, selected.context, {outOfScope: true}));
     const configuration = activeScoringConfiguration();
     const allocations = maximumAllocationEnvironments(selected, allTables, configuration);
     const donut = makeMaximumAllocationDonut(allocations);

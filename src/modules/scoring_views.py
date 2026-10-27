@@ -6,7 +6,7 @@ import json
 import math
 import re
 from functools import lru_cache
-from typing import Any, Iterable
+from typing import Any
 
 from src.modules.column_names import campaign_sort_key
 from src.modules.mapping_order import vendor_order_key
@@ -546,59 +546,6 @@ def _hierarchy_column_sort_key(column: dict[str, Any]) -> tuple[Any, ...]:
         else:
             values.append((1, '' if value is None else str(value).casefold(), '' if value is None else str(value)))
     return tuple(values)
-
-
-def with_out_of_scope_columns(matrix: dict[str, Any], pairs: Iterable[dict[str, Any]]) -> dict[str, Any]:
-    """A hierarchy matrix split by Operator and Campaign as its charts draw it, with an empty column marked
-    ``out_of_scope`` for each operator out of scope in the NR Mode of a campaign (``pairs``: the NR Mode and operator
-    label pairs of the Operator Maps, such as SA · Three) that the matrix shows in other campaigns: NSA vs SA keeps the
-    place of its SA bar, named Out of scope, instead of leaving it out. The matrix itself is returned when none is."""
-    levels = list(matrix.get('hierarchy_levels') or [])
-    columns = list(matrix.get('hierarchy_columns') or [])
-    out = {(str(pair.get('nr_mode') or '').upper(), str(pair.get('operator') or '').casefold()) for pair in pairs or []}
-    if not out or not columns or 'Operator' not in levels or 'Campaign' not in levels:
-        return matrix
-    index = levels.index('Campaign')
-
-    def key(column: dict[str, Any], campaign: Any) -> str:
-        return json.dumps([[entry['level'], campaign if position == index else entry.get('value')]
-                           for position, entry in enumerate(column['path'])], ensure_ascii=False, default=str)
-
-    campaigns = list(dict.fromkeys(column['path'][index].get('value') for column in columns))
-    present = {key(column, column['path'][index].get('value')) for column in columns}
-    added: dict[str, dict[str, Any]] = {}
-    for column in columns:
-        for campaign in campaigns:
-            if ((campaign_nr_mode(campaign), str(column.get('operator') or '').casefold()) not in out
-                    or key(column, campaign) in present or key(column, campaign) in added):
-                continue
-            path = [{**entry, 'value': campaign} if position == index else dict(entry)
-                    for position, entry in enumerate(column['path'])]
-            added[key(column, campaign)] = {
-                **column, 'id': _hierarchy_leaf_id(path), 'path': path, 'is_reference': False, 'out_of_scope': True,
-                'label': ' · '.join(f'{item["level"]}: {_hierarchy_display_value(item)}' for item in path),
-                'context': {**(column.get('context') or {}), 'campaign': campaign},
-                '_style': (matrix.get('operator_styles') or {}).get(column['id'], {}),
-            }
-    if not added:
-        return matrix
-    placeholders = list(added.values())
-    empty = {'points': None, 'complete': False, 'value': None, 'score': None, 'sample_count': 0, 'out_of_scope': True,
-             'threshold_band': 'Unavailable', 'color': THRESHOLD_COLORS['Unavailable']}
-    ordered = sorted([*columns, *({k: v for k, v in item.items() if k != '_style'} for item in placeholders)],
-                     key=_hierarchy_column_sort_key)
-    total = dict(matrix.get('total') or {})
-    total['values'] = {**(total.get('values') or {}), **{item['id']: dict(empty) for item in placeholders}}
-    return {
-        **matrix,
-        'operators': [column['id'] for column in ordered],
-        'hierarchy_columns': ordered,
-        'operator_styles': {**(matrix.get('operator_styles') or {}),
-                            **{item['id']: {**item['_style'], 'out_of_scope': True} for item in placeholders}},
-        'rows': [{**row, 'values': {**(row.get('values') or {}), **{item['id']: dict(empty) for item in placeholders}}}
-                 for row in matrix.get('rows') or []],
-        'total': total,
-    }
 
 
 def _missing_hierarchy_value() -> dict[str, Any]:

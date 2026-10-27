@@ -20815,24 +20815,9 @@ def _saved_filter_payload(saved_filter: dict[str, Any], operator_groups: list[di
         pairs = [f"{pair['nr_mode']} · {pair['operator']}" for pair in out_of_scope_pairs(operator_groups) if pair['nr_mode'] in modes]
         return {'out_of_scope': pairs} if pairs else {}
 
-    def chart_out_of_scope(views: dict[str, Any]) -> None:
-        # The Scoring per Service chart keeps the place of an operator out of scope in an NR Mode, named Out of scope
-        # (see with_out_of_scope_columns); the tables keep their columns.
-        from src.modules.scoring_views import with_out_of_scope_columns
-
-        for matrix in views.get('hierarchy_score_tables') or []:
-            chart = with_out_of_scope_columns(matrix, out_of_scope_pairs(operator_groups))
-            if chart is not matrix:
-                matrix['chart_out_of_scope'] = {
-                    'operators': chart['operators'],
-                    'columns': [column for column in chart['hierarchy_columns'] if column.get('out_of_scope')],
-                    'styles': {key: style for key, style in chart['operator_styles'].items() if style.get('out_of_scope')},
-                }
-
     result = normalize_scoring_vendor_result(normalize_result_gaps(saved_filter.get('result') or {}), operator_groups)
     payload = {**_scoring_result_payload(saved_filter, result, operator_groups, vendor_groups, fallback),
                **out_of_scope(saved_filter.get('nr_mode'))}
-    chart_out_of_scope(payload.get('views') or {})
     if normalize_scoring_nr_mode(saved_filter.get('nr_mode')) == NSA_VS_SA and payload['views']:
         parts = []
         for mode in NR_MODES:
