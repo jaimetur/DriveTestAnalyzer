@@ -82,8 +82,9 @@
     dropzones.set(zone, {reset: () => { files = []; sync(); }, count: () => files.length});
   });
 
-  // The list: the chips (type, status, priority, module and assignee), search, reporter and order of the tickets,
-  // remembered by this browser. No chip pressed in a group lists every value of it, and the groups add up.
+  // The list: the chips (type, status, priority, module and assignee), search, reporter, the days of creation and of
+  // the last update and order of the tickets, remembered by this browser. No chip pressed in a group lists every value
+  // of it, and the groups add up. Each column also filters by its values, as in Excel (app.js), with the other filters.
   const table = document.querySelector('[data-tickets-table]');
   if (table) {
     const rows = [...table.querySelectorAll('[data-ticket-row]')];
@@ -99,12 +100,57 @@
     const allowed = Object.fromEntries(groups.map((group) => [group, new Set(chips.filter((chip) => chip.dataset.chip === group).map((chip) => chip.dataset.value))]));
     const state = {types: [], statuses: [...openStatuses], priorities: [], modules: [], assignees: [], recent: false};
     const sameSet = (values, expected) => values.length === expected.length && expected.every((value) => values.includes(value));
+    // Created and Updated list their days, the newest first, after Last Day: the newest day of the tickets, whatever day
+    // it is. Last Day stands alone, so the days are unticked and disabled while it is chosen (as in App Events).
+    const lastDayValue = '@last-day';
+    const dayOf = (value) => String(value || '').slice(0, 10);
+    const dateFilters = Object.fromEntries([...document.querySelectorAll('[data-tickets-date]')].map((control) => [control.dataset.ticketsDate, control]));
+    const newestDay = {};
+    Object.entries(dateFilters).forEach(([field, control]) => {
+      const days = [...new Set(rows.map((row) => dayOf(row.dataset[field])).filter(Boolean))].sort().reverse();
+      newestDay[field] = days[0] || '';
+      const lastDay = new Option('Last Day', lastDayValue);
+      lastDay.dataset.standaloneChoice = 'true';
+      control.replaceChildren(lastDay, ...days.map((day, index) => {
+        const option = new Option(day, day);
+        option.dataset.disabledReason = 'Last Day is chosen: untick it to choose days';
+        if (!index) option.dataset.dividerBefore = 'true';
+        return option;
+      }));
+    });
+    const chosenDates = (field) => [...dateFilters[field].selectedOptions].map((option) => option.value);
+    // The days a filter takes (Last Day, the newest one); none, every day.
+    const takenDays = (field) => {
+      const chosen = chosenDates(field);
+      return chosen.includes(lastDayValue) ? [newestDay[field]].filter(Boolean) : chosen;
+    };
+    // (Whether Last Day changed the days: their menu is then drawn again.)
+    const syncLastDay = (control) => {
+      const lastDay = [...control.options].some((option) => option.value === lastDayValue && option.selected);
+      let changed = false;
+      [...control.options].filter((option) => option.value !== lastDayValue).forEach((option) => {
+        if (option.disabled !== lastDay) { option.disabled = lastDay; changed = true; }
+        if (lastDay && option.selected) { option.selected = false; changed = true; }
+      });
+      return changed;
+    };
+    const redraw = (control) => control.dispatchEvent(new Event('multiselect:options-updated'));
+    const setDates = (field, values) => {
+      const chosen = new Set(values);
+      [...dateFilters[field].options].forEach((option) => { option.selected = chosen.has(option.value); });
+      syncLastDay(dateFilters[field]);
+    };
+    const columns = window.enableExcelColumnFilters?.(table, {
+      onChange: () => apply(), excludeLastColumn: false, menuClass: 'tickets-column-filter-menu', persistKey: 'ticket-center:column-filters',
+    });
     const clear = () => {
       groups.forEach((group) => { state[group] = []; });
       state.recent = false;
       filters.search.value = '';
       filters.reporter.value = '*';
       if (filters.mine) filters.mine.checked = false;
+      Object.entries(dateFilters).forEach(([field, control]) => { setDates(field, []); redraw(control); });
+      columns?.clear();
     };
     const storageKey = 'ticket-center:filters';
     try {
@@ -114,7 +160,10 @@
       if (saved.reporter && [...filters.reporter.options].some((option) => option.value === saved.reporter)) filters.reporter.value = saved.reporter;
       if (filters.mine) filters.mine.checked = Boolean(saved.mine);
       if (saved.sort && [...sort.options].some((option) => option.value === saved.sort)) sort.value = saved.sort;
+      Object.keys(dateFilters).forEach((field) => { if (Array.isArray(saved[field])) setDates(field, saved[field]); });
     } catch (_) { /* Filters start at their defaults. */ }
+    // (The lists show their days, and the choices kept, in their menus.)
+    Object.values(dateFilters).forEach(redraw);
     // A link to the tickets of a status or type (?status=new, from the admin notices of the super-admins) lists only them.
     const params = new URLSearchParams(window.location.search);
     const linkedStatus = params.get('status');
@@ -132,6 +181,7 @@
     const matches = (group, value) => !state[group].length || state[group].includes(value);
     const apply = () => {
       const query = filters.search.value.trim().toLowerCase();
+      const days = Object.fromEntries(Object.keys(dateFilters).map((field) => [field, takenDays(field)]));
       let shown = 0;
       rows.forEach((row) => {
         const visible = (!query || row.dataset.search.includes(query))
@@ -139,7 +189,9 @@
           && matches('modules', row.dataset.module) && matches('assignees', row.dataset.assignee)
           && (!state.recent || row.dataset.recent === 'true')
           && (filters.reporter.value === '*' || row.dataset.reporter === filters.reporter.value)
-          && (!filters.mine?.checked || row.dataset.mine === 'true');
+          && (!filters.mine?.checked || row.dataset.mine === 'true')
+          && Object.entries(days).every(([field, taken]) => !taken.length || taken.includes(dayOf(row.dataset[field])))
+          && (columns?.matches(row) ?? true);
         row.hidden = !visible;
         shown += visible ? 1 : 0;
       });
@@ -159,6 +211,7 @@
         window.localStorage.setItem(storageKey, JSON.stringify({
           ...Object.fromEntries(groups.map((group) => [group, state[group]])), recent: state.recent,
           reporter: filters.reporter.value, mine: Boolean(filters.mine?.checked), sort: sort.value,
+          ...Object.fromEntries(Object.keys(dateFilters).map((field) => [field, chosenDates(field)])),
         }));
       } catch (_) { /* Not remembered. */ }
     };
@@ -169,6 +222,10 @@
     }));
     recentChip?.addEventListener('click', () => { state.recent = false; apply(); });
     Object.values(filters).forEach((control) => control.addEventListener(control.type === 'search' ? 'input' : 'change', apply));
+    Object.values(dateFilters).forEach((control) => control.addEventListener('change', () => {
+      if (syncLastDay(control)) redraw(control);
+      apply();
+    }));
     sort.addEventListener('change', apply);
     document.querySelector('[data-tickets-reset]')?.addEventListener('click', () => {
       clear();
@@ -195,7 +252,8 @@
       recent: {statuses: ['resolved', 'closed'], recent: true}, mine: {mine: true},
     };
     const pressedStat = () => {
-      const plain = groups.every((group) => group === 'statuses' || !state[group].length) && !filters.search.value && filters.reporter.value === '*';
+      const plain = groups.every((group) => group === 'statuses' || !state[group].length) && !filters.search.value && filters.reporter.value === '*'
+        && Object.keys(dateFilters).every((field) => !chosenDates(field).length) && !columns?.activeCount();
       if (!plain) return '';
       if (filters.mine?.checked) return !state.recent && sameSet(state.statuses, openStatuses) ? 'mine' : '';
       if (state.recent) return sameSet(state.statuses, ['resolved', 'closed']) ? 'recent' : '';

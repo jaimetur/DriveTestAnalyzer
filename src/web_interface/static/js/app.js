@@ -12878,7 +12878,8 @@ document.querySelectorAll('[data-configuration-timezone-picker]').forEach((picke
    with a data-filter-date (its day, YYYY-MM-DD) filters by that day, listed by year and month as in Excel. With
    rowSelector only the rows it matches (not empty or editor rows) are filtered, menuClass styles the menus, head
    holds the filters when the header is drawn apart from the table (its <thead> by default), and with persistKey the
-   filters are kept in this browser under that key, by the name of their column, and come back with the page. */
+   filters are kept in this browser under that key, by the name of their column, and come back with the page. The
+   controller it returns tells whether a row matches, how many columns filter and clears every filter (clear). */
 window.enableExcelColumnFilters = (table, {onChange, excludeLastColumn = true, rowSelector = '', menuClass = '', head = null, persistKey = ''} = {}) => {
   if (!table || table._excelColumnFilters) return table?._excelColumnFilters || null;
   const headers = Array.from((head || table.tHead)?.rows[0]?.cells || []);
@@ -12968,7 +12969,10 @@ window.enableExcelColumnFilters = (table, {onChange, excludeLastColumn = true, r
     if (years.size === 1) expandDateGroup(tree.firstElementChild, true);
     return tree;
   };
-  const controller = {matches, apply, activeCount: () => selectedByColumn.size};
+  const controller = {matches, apply, activeCount: () => selectedByColumn.size, clear: () => {
+    closeMenu(); selectedByColumn.clear();
+    headers.forEach((header) => header.classList.remove('has-excel-column-filter')); saveFilters();
+  }};
   table._excelColumnFilters = controller;
   table.classList.add('excel-filter-table');
   head?.closest('table')?.classList.add('excel-filter-table');

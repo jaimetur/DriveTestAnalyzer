@@ -186,6 +186,12 @@
         <option value="*">Every reporter</option>
         {% for person in ticket_reporters %}{% if person.divider %}<hr>{% endif %}<option value="{{ person.username | lower }}" data-name="{{ person.name }}"{% if person.is_default %} data-default-user="true"{% endif %}>{{ person.label }}</option>{% endfor %}
       </select>
+      {# The days the tickets were created and last updated, the newest first, after Last Day (ticket_center.js). #}
+      {% for field, label in [('created', 'Created'), ('updated', 'Updated')] %}
+      <label class="tickets-date-filter"><span>{{ label }}</span>
+        <select multiple size="1" aria-label="{{ label }}" data-tickets-date="{{ field }}" data-multiselect-empty-label="Any day" data-multiselect-no-values-label="No days"></select>
+      </label>
+      {% endfor %}
       <select aria-label="Sort" data-tickets-sort>
         <option value="updated">Latest activity</option>
         <option value="priority">Priority</option>
@@ -217,22 +223,23 @@
       </div>{% endif %}
     </div>
     <div class="tickets-table-wrap">
+      {# Each column filters by the values of its cells (data-filter-value, the day of data-filter-date), as in Excel (app.js). #}
       <table class="tickets-table" data-tickets-table>
         <thead><tr><th>#</th><th>Type</th><th>Ticket</th><th>Priority</th><th>Status</th><th>Assigned to</th><th>Updated</th><th>Activity</th></tr></thead>
         <tbody>
           {% for ticket in tickets %}
           <tr data-ticket-row data-href="/tickets/{{ ticket.id }}" data-id="{{ ticket.id }}" data-type="{{ ticket.ticket_type }}" data-status="{{ ticket.status }}" data-open="{{ 'true' if ticket.is_open else 'false' }}" data-recent="{{ 'true' if ticket.recently_resolved else 'false' }}" data-priority="{{ ticket.priority }}" data-module="{{ ticket.module }}" data-assignee="{{ ticket.assigned_to | lower }}" data-reporter="{{ ticket.created_by | lower }}" data-mine="{{ 'true' if user and ticket.created_by | lower == user.username | lower else 'false' }}" data-created="{{ ticket.created_at }}" data-updated="{{ ticket.updated_at }}" data-search="#{{ ticket.id }} {{ ticket.title | lower }} {{ ticket.created_by | lower }} {{ ticket.created_by_name | lower }}">
             <td class="tickets-id">#{{ ticket.id }}</td>
-            <td>{{ type_badge(ticket.ticket_type, ticket.type_label) }}</td>
-            <td class="tickets-title-cell">
+            <td data-filter-value="{{ ticket.type_label }}">{{ type_badge(ticket.ticket_type, ticket.type_label) }}</td>
+            <td class="tickets-title-cell" data-filter-value="{{ ticket.title }}">
               <a href="/tickets/{{ ticket.id }}" class="tickets-title">{{ ticket.title }}</a>
               <span class="tickets-meta">{{ module_chip(ticket.module_title, ticket.module_color) }}<span>{{ ticket.created_by_name }} · {{ ticket.created_date }} · v{{ ticket.app_version }}</span></span>
             </td>
-            <td>{{ priority_pill(ticket.priority, ticket.priority_label) }}</td>
-            <td>{{ status_pill(ticket.status, ticket.status_label) }}{% if ticket.fixed_version %}<small class="tickets-fixed">Fixed in v{{ ticket.fixed_version }}</small>{% endif %}</td>
-            <td>{{ ticket.assigned_to_name or '—' }}</td>
-            <td class="tickets-date">{{ ticket.updated_date }}</td>
-            <td class="tickets-activity"><span class="tickets-activity-items"><span title="Comments">💬 {{ ticket.comment_count }}</span><span title="Screenshots">🖼 {{ ticket.attachment_count }}</span></span></td>
+            <td data-filter-value="{{ ticket.priority }} · {{ ticket.priority_label }}">{{ priority_pill(ticket.priority, ticket.priority_label) }}</td>
+            <td data-filter-value="{{ ticket.status_label }}{% if ticket.fixed_version %} · Fixed in v{{ ticket.fixed_version }}{% endif %}">{{ status_pill(ticket.status, ticket.status_label) }}{% if ticket.fixed_version %}<small class="tickets-fixed">Fixed in v{{ ticket.fixed_version }}</small>{% endif %}</td>
+            <td data-filter-value="{{ ticket.assigned_to_name or 'Unassigned' }}">{{ ticket.assigned_to_name or '—' }}</td>
+            <td class="tickets-date" data-filter-date="{{ (ticket.updated_at | string)[:10] }}">{{ ticket.updated_date }}</td>
+            <td class="tickets-activity" data-filter-value="{{ ticket.comment_count }} comment{{ '' if ticket.comment_count == 1 else 's' }} · {{ ticket.attachment_count }} screenshot{{ '' if ticket.attachment_count == 1 else 's' }}"><span class="tickets-activity-items"><span title="Comments">💬 {{ ticket.comment_count }}</span><span title="Screenshots">🖼 {{ ticket.attachment_count }}</span></span></td>
           </tr>
           {% endfor %}
         </tbody>

@@ -218,6 +218,13 @@
 .ticket-center .tickets-toolbar select { flex: 0 1 auto; width: auto; max-width: 16rem; }
 .ticket-center .tickets-mine-toggle input { width: auto; margin: 0; padding: 0; }
 .tickets-mine-toggle { display: inline-flex; align-items: center; gap: .4rem; white-space: nowrap; color: #34495a; font-size: .82rem; font-weight: 700; cursor: pointer; }
+/* Created and Updated: the app's lists of days (app.js), their name beside them, as tall as the other filters. */
+.ticket-center .tickets-date-filter { display: inline-flex; flex: 0 1 auto; align-items: center; gap: .4rem; color: #34495a; font-size: .82rem; font-weight: 700; white-space: nowrap; }
+.ticket-center .tickets-date-filter .multiselect-shell { min-width: 8.5rem; }
+.ticket-center .tickets-date-filter .multiselect-trigger { padding: .55rem .75rem; border: 1px solid rgba(16, 49, 74, .18); border-radius: 12px; background: #fff; box-shadow: none; color: #10314a; font-size: .88rem; font-weight: 500; }
+.ticket-center .tickets-date-filter .multiselect-trigger:focus-visible { outline: none; border-color: #1e61a3; box-shadow: 0 0 0 3px rgba(30, 97, 163, .15); }
+.ticket-center .tickets-date-filter .multiselect-menu { font-weight: 500; }
+.ticket-center .tickets-date-filter .multiselect-option input { flex: 0 0 auto; width: auto; }
 .tickets-count { margin-left: auto; color: #607585; font-size: .78rem; font-weight: 700; }
 .ticket-center .tickets-reset { padding: .45rem .9rem; font-size: .78rem; }
 .tickets-chips { display: grid; gap: .45rem; margin-bottom: .8rem; padding: .7rem .8rem; border: 1px solid rgba(16, 49, 74, .1); border-radius: 14px; background: #fff; }
@@ -241,6 +248,21 @@
 .tickets-table tbody tr { cursor: pointer; }
 .tickets-table tbody tr:hover td { background: #fff7f7; }
 .tickets-table tbody tr:last-child td { border-bottom: 0; }
+/* Each column filters by its values (app.js): its header keeps its look, and the filters take the colour of the module. */
+.tickets-table .excel-column-filter-trigger { height: auto; min-height: 2.3rem; padding: .6rem .7rem; letter-spacing: inherit; text-transform: inherit; }
+.tickets-table .excel-column-filter-trigger:hover, .tickets-table .excel-column-filter-trigger:focus-visible { background: rgba(220, 38, 38, .06); box-shadow: inset 0 -3px rgba(220, 38, 38, .45); }
+.tickets-table .excel-column-filter-icon { border-color: rgba(16, 49, 74, .2); background: #fff; color: #48606f; }
+.tickets-table th.has-excel-column-filter .excel-column-filter-trigger { background: #fdecec; box-shadow: inset 0 -3px #dc2626; color: #991b1b; }
+.tickets-table th.has-excel-column-filter .excel-column-filter-icon { border-color: #dc2626; background: #dc2626; color: #fff; }
+.tickets-column-filter-menu { border-color: rgba(220, 38, 38, .24); color: #10314a; box-shadow: 0 18px 48px rgba(16, 49, 74, .22); }
+.tickets-column-filter-menu input[type="search"] { border-color: rgba(16, 49, 74, .18); background: #fff; color: #10314a; }
+.tickets-column-filter-menu :is(.excel-column-filter-toolbar button, .excel-column-filter-footer button:first-child) { border-color: rgba(16, 49, 74, .16); background: #f7f9fb; color: #34495a; }
+.tickets-column-filter-menu .excel-column-filter-options { border-color: rgba(16, 49, 74, .12); background: #fff; }
+.tickets-column-filter-menu .excel-column-filter-options label { color: #10314a; }
+.tickets-column-filter-menu .excel-column-filter-options label:hover, .tickets-column-filter-menu .excel-column-filter-toggle:hover { background: #fff3f3; }
+.tickets-column-filter-menu .excel-column-filter-options input { accent-color: #dc2626; }
+.tickets-column-filter-menu .excel-column-filter-count { color: #607585; }
+.tickets-column-filter-menu .excel-column-filter-footer button:last-child { border-color: rgba(153, 27, 27, .4); background: linear-gradient(135deg, #991b1b, #ef4444); color: #fff; }
 .tickets-id { color: #7b8994; font-weight: 800; white-space: nowrap; }
 .tickets-title-cell { min-width: 16rem; }
 .tickets-title { display: block; color: #10314a; font-weight: 800; text-decoration: none; }
@@ -333,7 +355,8 @@
   .tickets-new-link { width: 100%; text-align: center; }
   .ticket-title { padding-right: 0; font-size: 1.2rem; }
   .ticket-center .ticket-edit-toggle { position: static; justify-self: start; }
-  .ticket-center .tickets-toolbar select { flex: 1 1 45%; max-width: none; }
+  .ticket-center .tickets-toolbar select, .ticket-center .tickets-date-filter { flex: 1 1 45%; max-width: none; }
+  .ticket-center .tickets-date-filter .multiselect-shell { flex: 1 1 auto; min-width: 0; }
   .tickets-count { width: 100%; margin-left: 0; }
   .ticket-type-picker { grid-template-columns: minmax(0, 1fr); }
   .tickets-chip-label { flex-basis: 100%; }
