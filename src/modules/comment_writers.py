@@ -240,18 +240,38 @@ def kiro_home(config_dir: Path) -> Path:
     return Path(config_dir) / 'tools' / 'kiro-home'
 
 
+MACH_O_MAGICS = {b'\xcf\xfa\xed\xfe', b'\xce\xfa\xed\xfe', b'\xca\xfe\xba\xbe', b'\xfe\xed\xfa\xcf'}
+
+
 def binary_architecture(path: Path) -> str:
-    """The processor an executable is built for, from its header."""
+    """The system and processor an executable is built for, from its header (Linux x86_64, macOS, script…)."""
     try:
         header = Path(path).read_bytes()[:20]
     except OSError:
         return 'unknown'
     if header[:4] == b'\x7fELF' and len(header) >= 20:
         machine = int.from_bytes(header[18:20], 'little' if header[5] == 1 else 'big')
-        return {0x3E: 'x86_64', 0xB7: 'aarch64', 0x03: 'x86'}.get(machine, f'ELF machine {machine}')
-    if header[:4] in {b'\xcf\xfa\xed\xfe', b'\xca\xfe\xba\xbe', b'\xfe\xed\xfa\xcf'}:
+        return 'Linux ' + {0x3E: 'x86_64', 0xB7: 'aarch64', 0x03: 'x86'}.get(machine, f'ELF machine {machine}')
+    if header[:4] in MACH_O_MAGICS:
         return 'macOS'
-    return 'unknown'
+    if header[:2] == b'#!':
+        return 'script'
+    return 'not an executable'
+
+
+def server_platform() -> str:
+    """The system and processor of this server, as a package names them (Linux x86_64, macOS arm64)."""
+    return f"{ {'Darwin': 'macOS'}.get(platform.system(), platform.system()) } {platform.machine()}".strip()
+
+
+def _is_executable_file(path: Path) -> bool:
+    """A program a package may hold: a Linux (ELF) or macOS (Mach-O) binary, or a script."""
+    try:
+        with open(path, 'rb') as handle:
+            header = handle.read(4)
+    except OSError:
+        return False
+    return header == b'\x7fELF' or header in MACH_O_MAGICS or header[:2] == b'#!'
 
 
 def _ar_members(content: bytes) -> dict[str, bytes]:
@@ -268,10 +288,35 @@ def _ar_members(content: bytes) -> dict[str, bytes]:
     return members
 
 
+def _extract_dmg(content: bytes, target: Path) -> None:
+    """Copy the kiro-cli programs of a macOS disk image (Kiro CLI.dmg, with Kiro CLI.app inside), mounted read-only."""
+    if platform.system() != 'Darwin':
+        raise ValueError('Kiro CLI.dmg is the package for macOS: on this Linux server upload the kiro-cli.deb of the '
+                         'Windows_WSL folder of Artifactory.')
+    image, mount = target.parent / 'package.dmg', target.parent / 'mount'
+    image.write_bytes(content)
+    mount.mkdir()
+    attached = subprocess.run(['hdiutil', 'attach', '-readonly', '-nobrowse', '-noautoopen', '-mountpoint', str(mount),
+                               str(image)], input='Y\n', capture_output=True, text=True, timeout=180, check=False)
+    if attached.returncode != 0:
+        raise ValueError(f'The disk image could not be opened: {(attached.stderr or attached.stdout).strip()[-300:]}')
+    try:
+        for path in mount.rglob('kiro-cli*'):
+            if path.is_file() and not path.is_symlink() and _is_executable_file(path):
+                destination = target / path.relative_to(mount)
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(path, destination)
+    finally:
+        subprocess.run(['hdiutil', 'detach', str(mount), '-force'], capture_output=True, timeout=60, check=False)
+
+
 def _extract(filename: str, content: bytes, target: Path) -> None:
-    """Unpack a package as Artifactory gives it: a .deb, a .zip, a tar archive, or the executable itself."""
+    """Unpack a package as Artifactory gives it: a .deb, a .dmg (on macOS), a .zip, a tar archive, or the executable
+    itself."""
     name = filename.casefold()
-    if name.endswith('.deb'):
+    if name.endswith('.dmg'):
+        _extract_dmg(content, target)
+    elif name.endswith('.deb'):
         members = _ar_members(content)
         data_name = next((member for member in members if member.startswith('data.tar')), None)
         if data_name is None:
@@ -319,21 +364,32 @@ def install_kiro_cli(config_dir: Path, filename: str, content: bytes) -> dict[st
         unpacked = Path(scratch) / 'unpacked'
         unpacked.mkdir()
         _extract(filename, content, unpacked)
-        executables = [path for path in unpacked.rglob('*') if path.is_file() and path.name.startswith('kiro-cli')]
-        main = next((path for path in executables if path.name == 'kiro-cli'), None)
-        if main is None:
+        # The programs of the package (kiro-cli and its kiro-cli-* helpers), those of a bin folder (MacOS in an app)
+        # first: a .deb also holds shell completions, icons and menu entries named kiro-cli.
+        candidates = sorted((path for path in unpacked.rglob('*') if path.is_file() and path.name.startswith('kiro-cli')
+                             and _is_executable_file(path)),
+                            key=lambda path: (path.parent.name not in {'bin', 'MacOS'}, len(path.parts)))
+        executables: dict[str, Path] = {}
+        for path in candidates:
+            executables.setdefault(path.name, path)
+        if 'kiro-cli' not in executables:
             raise ValueError('The package has no kiro-cli executable.')
         staged = Path(scratch) / 'bin'
         staged.mkdir()
-        for path in executables:
-            shutil.copy2(path, staged / path.name)
-            os.chmod(staged / path.name, 0o755)
-        architecture = binary_architecture(staged / 'kiro-cli')
+        for name, path in executables.items():
+            shutil.copy2(path, staged / name)
+            os.chmod(staged / name, 0o755)
+        architecture, server = binary_architecture(staged / 'kiro-cli'), server_platform()
+        if architecture.startswith('Linux') and server.startswith('macOS'):
+            raise ValueError(f'This Kiro CLI is a {architecture} package: it runs on the Linux server of the app (Docker), '
+                             f'not on this {server} computer. On a Mac, set {KIRO_CLI_ENVIRONMENT} to a kiro-cli '
+                             'installed on it.')
         try:
             version = _run_version(staged / 'kiro-cli', home)
         except (OSError, subprocess.SubprocessError, ValueError) as exc:
-            raise ValueError(f'This Kiro CLI does not run on this server ({architecture} package, '
-                             f'{platform.machine()} server): {exc}') from exc
+            detail = exc.strerror if isinstance(exc, OSError) and exc.strerror else str(exc)
+            raise ValueError(f'This Kiro CLI does not run on this server ({architecture} package, {server} server): '
+                             f'{detail}') from exc
         slug = re.sub(r'[^\w.-]+', '-', version).strip('-') or 'kiro-cli'
         destination = root / slug
         if destination.exists():
@@ -368,7 +424,7 @@ def kiro_cli_status(repository: Any, config_dir: Path) -> dict[str, Any]:
     """Whether Kiro CLI is installed and runs on this server (checked again every few minutes, so an image update that
     breaks it shows in Super Admin)."""
     path = kiro_cli_path(repository)
-    status: dict[str, Any] = {'installed': False, 'server_architecture': platform.machine(),
+    status: dict[str, Any] = {'installed': False, 'server_architecture': server_platform(),
                               'from_environment': bool(os.environ.get(KIRO_CLI_ENVIRONMENT, '').strip())}
     if path is None:
         return status

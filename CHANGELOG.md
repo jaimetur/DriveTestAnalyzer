@@ -10,12 +10,12 @@
 #### 🌟 New Features:
 
 #### 🚀 Enhancements:
-- **Super Admin — AI Comment Writers:** the key of the server of Kiro CLI or Claude is removed with **Remove key**, beside its field, once confirmed, without saving the rest of the panel, and **Open Artifactory**, beside Install Kiro CLI, opens the screened Kiro CLI packages of the Ericsson Artifactory, with a note on which file to download.
+- **Super Admin — AI Comment Writers:** the key of the server of Kiro CLI or Claude is removed with **Remove key**, beside its field, once confirmed, without saving the rest of the panel, and **Open Artifactory**, beside Install Kiro CLI, opens the screened Kiro CLI packages of the Ericsson Artifactory, with a note on which file to download; Install Kiro CLI also takes **Kiro CLI.dmg** when the app runs on a Mac.
 - **App Logs — Execution Log:** it opens on its latest lines and follows the new ones; scrolling up stops it, and **Go to the end** (or scrolling back down to the end) follows them again.
 - **App Logs — App Events:** the Date filter offers **Last Day**, the newest date of the events, to include or to exclude; the days are disabled while it is chosen.
 
 #### 🐛 Bug fixes:
-- **Super Admin — AI Comment Writers:** **Install Kiro CLI** no longer fails with an HTTP 500 error before reading the package.
+- **Super Admin — AI Comment Writers:** **Install Kiro CLI** no longer fails with an HTTP 500 error before reading the package, takes the kiro-cli program of a .deb among its shell completions and icons of the same name, and says when a package is for another system (a Linux package on a Mac, a .dmg on the Linux server).
 
 #### 📚 Documentation:
 

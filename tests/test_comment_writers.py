@@ -1,7 +1,9 @@
 import io
 import json
 import os
+import shutil
 import stat
+import subprocess
 import sys
 import tarfile
 import zipfile
@@ -37,10 +39,14 @@ def fake_kiro_zip(reply: dict) -> bytes:
 def fake_kiro_deb() -> bytes:
     data = io.BytesIO()
     with tarfile.open(fileobj=data, mode='w:gz') as archive:
-        script = FAKE_KIRO.encode()
-        info = tarfile.TarInfo('./usr/bin/kiro-cli')
-        info.size, info.mode = len(script), 0o755
-        archive.addfile(info, io.BytesIO(script))
+        # As a real package: shell completions, a menu entry and an icon named kiro-cli besides the program.
+        for name, content, mode in (('./usr/share/bash-completion/completions/kiro-cli', b'complete -F _kiro_cli kiro-cli\n', 0o644),
+                                    ('./usr/share/applications/kiro-cli.desktop', b'[Desktop Entry]\nExec=kiro-cli\n', 0o644),
+                                    ('./usr/share/icons/hicolor/64x64/apps/kiro-cli.png', b'\x89PNG\r\n\x1a\n', 0o644),
+                                    ('./usr/bin/kiro-cli', FAKE_KIRO.encode(), 0o755)):
+            info = tarfile.TarInfo(name)
+            info.size, info.mode = len(content), mode
+            archive.addfile(info, io.BytesIO(content))
     members = [('debian-binary', b'2.0\n'), ('control.tar.gz', b''), ('data.tar.gz', data.getvalue())]
     out = io.BytesIO()
     out.write(b'!<arch>\n')
@@ -99,6 +105,40 @@ def test_kiro_cli_installs_from_a_package_and_writes_checked_comments(tmp_path):
     assert deb['version'] == 'kiro-cli 2.4.0'
     with pytest.raises(ValueError, match='no kiro-cli executable'):
         writers.install_kiro_cli(tmp_path, 'other.zip', zipfile_with('other/bin/tool'))
+
+
+def test_a_linux_package_on_macos_says_where_it_runs(tmp_path, monkeypatch):
+    elf = b'\x7fELF\x02\x01\x01' + b'\x00' * 9 + b'\x02\x00\x3e\x00' + b'\x00' * 44
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, 'w') as archive:
+        info = zipfile.ZipInfo('kirocli/bin/kiro-cli')
+        info.external_attr = (stat.S_IFREG | 0o755) << 16
+        archive.writestr(info, elf)
+    monkeypatch.setattr(writers, 'server_platform', lambda: 'macOS arm64')
+    with pytest.raises(ValueError, match='Linux x86_64 package: it runs on the Linux server of the app'):
+        writers.install_kiro_cli(tmp_path, 'kiro-cli.zip', buffer.getvalue())
+    assert not [path for path in (tmp_path / 'tools' / 'kiro-cli').iterdir()]
+
+
+@pytest.mark.skipif(sys.platform != 'darwin' or not shutil.which('hdiutil'), reason='a disk image needs macOS')
+def test_kiro_cli_installs_from_the_disk_image_on_macos(tmp_path):
+    app = tmp_path / 'image' / 'Kiro CLI.app' / 'Contents'
+    (app / 'MacOS').mkdir(parents=True)
+    (app / 'MacOS' / 'kiro-cli').write_text(FAKE_KIRO.replace('{reply}', '{}'))
+    (app / 'MacOS' / 'kiro-cli').chmod(0o755)
+    (app / 'Resources').mkdir()
+    (app / 'Resources' / 'kiro-cli.icns').write_bytes(b'icns')
+    image = tmp_path / 'Kiro CLI.dmg'
+    subprocess.run(['hdiutil', 'create', '-quiet', '-volname', 'Kiro CLI', '-srcfolder', str(tmp_path / 'image'), '-format', 'UDZO',
+                    str(image)], check=True, timeout=120)
+    installed = writers.install_kiro_cli(tmp_path / 'config', 'Kiro CLI.dmg', image.read_bytes())
+    assert installed['version'] == 'kiro-cli 2.4.0' and installed['architecture'] == 'script'
+
+
+def test_a_disk_image_on_linux_asks_for_the_debian_package(tmp_path, monkeypatch):
+    monkeypatch.setattr(writers.platform, 'system', lambda: 'Linux')
+    with pytest.raises(ValueError, match='Kiro CLI.dmg is the package for macOS'):
+        writers.install_kiro_cli(tmp_path, 'Kiro CLI.dmg', b'koly')
 
 
 def zipfile_with(name: str) -> bytes:
