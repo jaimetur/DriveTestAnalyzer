@@ -1390,7 +1390,9 @@ def test_workspaces_of_earlier_versions_get_the_strategy_fields_and_priorities(c
 def test_the_default_strategy_fills_the_queues_and_priorities_by_step(strategized):
     rows = priority_rows()
     steps = {step['rule']: step for step in nq_prioritization.strategy_steps(nq_prioritization.CITIES_FIRST)}
-    sa_voice = [row for row in rows.values() if row['nr_mode'] == 'SA' and row['service'] in {'voice', 'speech'}]
+    # The SA Voice calls in scope take the steps (Three has no SA in the Operator Maps: its SA calls are out of scope).
+    sa_voice = [row for row in rows.values() if row['nr_mode'] == 'SA' and row['service'] in {'voice', 'speech'}
+                and not str(row['priority_rule']).startswith(nq_prioritization.OUT_OF_SCOPE)]
     assert sa_voice and {row['priority_rule'] for row in sa_voice} <= set(steps)
     for row in rows.values():
         if row['prioritization'] == 'Prioritized':
