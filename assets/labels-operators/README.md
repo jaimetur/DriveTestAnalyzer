@@ -7,5 +7,6 @@ Each operator has:
 - `canonical`: the label shown in every filter, table, chart, legend and report;
 - `color`: the main colour of its brand, as `#RRGGBB` (an approximation of the corporate colour, to be adjusted in Workspace Config → Operator Maps when needed);
 - `aliases`: the ways the CDRs write it, also followed by the country (`O2 DE`, or `O2 - de` as NetCheck writes it).
+- `nr_modes` (optional): the NR Modes it has a network in, when it does not have both (`["NSA"]` for Three in the United Kingdom, whose SA tests are left out of every analysis).
 
 The United Kingdom keeps the labels and spellings of the UK workspace (VF, VF SA, VF VoNR, VF SM, Three, EE, O2 and Lebara).

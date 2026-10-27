@@ -5,9 +5,7 @@
     "subtitle": "SA · All Regions · @Latest 4 campaigns",
     "filters": {
       "nr_mode": "SA",
-      "operators": [
-        "-Three"
-      ],
+      "operators": [],
       "operator_vendors": [],
       "vendor_operators": [],
       "vendors": [],

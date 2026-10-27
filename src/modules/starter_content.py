@@ -27,8 +27,8 @@ New deployments and new workspaces, and existing workspaces once, receive the co
 
 The Vendor Maps of a new workspace come from ``assets/labels-vendors/default-vendor-maps.json`` (see ``repository``);
 the default Campaign Maps from ``assets/labels-campaigns/default-campaign-map.json`` (see ``column_names``).
-The content is that of the UK workspace (UK cities, regions, operators and GAP references), without the Operator
-filters of its Dashboards, the comments of their slides, its CDRs, email recipients or users.
+The content is that of the UK workspace without what only fits it (its regions, London, its cities one by one and its
+operators), the comments of the slides, CDRs, email recipients or users; its GAP references are UK operators.
 """
 from __future__ import annotations
 

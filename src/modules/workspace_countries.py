@@ -2,8 +2,9 @@
 
 ``assets/labels-operators/operators-by-country.json`` lists, for the 50 main countries (ISO 3166
 alpha-3 codes), their mobile operators: the label of each one, its corporate colour and the ways the
-CDRs write it (also with the country, such as ``o2 - de``). A workspace created for a country starts
-with those Operator Maps; one created without a country starts without Operator Maps.
+CDRs write it (also with the country, such as ``o2 - de``), and the NR Modes it has a network in when it
+lacks one (``nr_modes``, such as ``["NSA"]`` for Three in the United Kingdom). A workspace created for a
+country starts with those Operator Maps; one created without a country starts without Operator Maps.
 """
 from __future__ import annotations
 
@@ -62,7 +63,7 @@ def add_country_operators(repository: Any, code: str) -> int:
             continue
         aliases = [alias for alias in operator.get('aliases') or [] if str(alias).casefold() not in mapped]
         try:
-            repository.replace_operator_mapping_group(None, label, aliases, operator.get('color'))
+            repository.replace_operator_mapping_group(None, label, aliases, operator.get('color'), nr_modes=operator.get('nr_modes'))
         except ValueError:
             # A spelling the workspace already gives to another label keeps it.
             continue

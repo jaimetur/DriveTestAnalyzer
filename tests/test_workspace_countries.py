@@ -18,8 +18,18 @@ def test_the_operators_of_the_50_main_countries_are_shipped():
         spellings = [value.casefold() for operator in item['operators'] for value in (operator['canonical'], *operator['aliases'])]
         assert len(spellings) == len(set(spellings)), code
         assert all(re.fullmatch(r'#[0-9A-F]{6}', operator['color']) for operator in item['operators']), code
-    # The United Kingdom keeps the labels of the NetCheck UK CDRs.
-    assert [operator['canonical'] for operator in countries['GBR']['operators']] == ['EE', '3', 'VF', 'VF SA', 'VF VoNR', 'O2', 'Lebara']
+    # The United Kingdom keeps the labels of the UK workspace; Three has no SA.
+    assert [operator['canonical'] for operator in countries['GBR']['operators']] == [
+        'VF', 'VF SA', 'VF VoNR', 'VF SM', 'Three', 'EE', 'O2', 'Lebara']
+    assert {operator['canonical']: operator['nr_modes'] for operator in countries['GBR']['operators'] if 'nr_modes' in operator} == {
+        'Three': ['NSA']}
+
+
+def test_a_workspace_of_the_united_kingdom_leaves_out_the_sa_tests_of_three(client):
+    # The client workspace is one of the United Kingdom (see conftest).
+    operators = _operators()
+    assert '3' in operators['Three']['aliases'] and operators['Three']['nr_modes'] == ['NSA']
+    assert all('nr_modes' not in group for name, group in operators.items() if name != 'Three')
 
 
 def test_a_workspace_created_for_a_country_starts_with_its_operators(client):

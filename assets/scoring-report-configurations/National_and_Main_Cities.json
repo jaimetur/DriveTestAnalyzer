@@ -116,10 +116,8 @@
           "enabled": true,
           "time_split": "Campaign",
           "breakdown": "Region",
-          "cities": [
-            "London"
-          ],
-          "main_cities": false,
+          "cities": [],
+          "main_cities": true,
           "campaigns": [
             "@all-campaigns"
           ]
@@ -240,10 +238,8 @@
           "enabled": true,
           "time_split": "Campaign",
           "breakdown": "Region",
-          "cities": [
-            "London"
-          ],
-          "main_cities": false,
+          "cities": [],
+          "main_cities": true,
           "campaigns": [
             "@all-campaigns"
           ]
