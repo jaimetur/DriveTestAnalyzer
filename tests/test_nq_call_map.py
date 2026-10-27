@@ -306,3 +306,73 @@ def test_the_diagnosis_judges_the_serving_distance_and_coverage_holes_by_the_int
     found = checks({'lte_rsrp': -118.0}, {'serving_isd': 4.0, 'nearest': {**nearest, 'distance_km': 6.0, 'isd_km': 3.0}})['coverage']
     assert (found['level'], found['title']) == ('bad', 'Coverage hole') and '2.0 times its inter-site distance (3.0 km)' in found['detail']
     assert checks({'lte_rsrp': -118.0}, {'serving_isd': 4.0, 'nearest': nearest})['coverage']['title'] == 'Weak coverage'
+
+
+def holds(shape: dict, latitude: float, longitude: float) -> bool:
+    """Whether a shape of the groups of a call (``group_rings``) holds a position, a little tolerant of the projection."""
+    scale = 6371008.8 * math.pi / 180
+    dx = (longitude - shape['centre'][1]) * scale * math.cos(math.radians(shape['centre'][0]))
+    dy = (latitude - shape['centre'][0]) * scale
+    along = dx * math.cos(shape['angle']) + dy * math.sin(shape['angle'])
+    across = -dx * math.sin(shape['angle']) + dy * math.cos(shape['angle'])
+    return (along / shape['metres']) ** 2 + (across / max(1, shape['minor_metres'])) ** 2 <= 1.01
+
+
+def test_the_enclosing_circle_and_ellipse_hold_every_point():
+    import random
+
+    generator = random.Random(7)
+    for _ in range(100):
+        points = [(generator.uniform(-2000, 2000), generator.uniform(-2000, 2000)) for _ in range(generator.randint(1, 30))]
+        x, y, radius = nq_call_map.enclosing_circle(points)
+        assert all(math.hypot(px - x, py - y) <= radius + 1e-6 for px, py in points)
+        # The smallest: never wider than the circle of the two farthest points by more than 2 / sqrt(3).
+        farthest = max((math.hypot(a[0] - b[0], a[1] - b[1]) for a in points for b in points), default=0)
+        assert radius <= farthest / math.sqrt(3) + 1e-6
+    # A drive: an ellipse along it, long and narrow, that holds every failure.
+    angle = math.radians(30)
+    drive = [(step * 600 * math.cos(angle) + generator.uniform(-40, 40), step * 600 * math.sin(angle) + generator.uniform(-40, 40))
+             for step in range(6)]
+    x, y, major, minor, axis = nq_call_map.enclosing_ellipse(drive, 40)
+    for px, py in drive:
+        along = (px - x) * math.cos(axis) + (py - y) * math.sin(axis)
+        across = -(px - x) * math.sin(axis) + (py - y) * math.cos(axis)
+        assert (along / major) ** 2 + (across / minor) ** 2 <= 1 + 1e-9
+    assert abs(math.sin(axis - angle)) < .1 and major > 1500 and minor < major / 3
+
+
+def test_the_shapes_of_the_groups_of_a_call_hold_every_call_of_them(client, tmp_path):
+    from tests.test_nq_prioritization import prepare, priority_rows
+
+    prepare(client, tmp_path, nq_prioritization.CUSTOM)
+    rows = priority_rows()
+    hotspots: dict[str, list[dict]] = {}
+    for row in rows.values():
+        if (row['cluster_size'] or 0) >= 2:
+            hotspots.setdefault(row['cluster_key'], []).append(row)
+    checked = 0
+    for members in hotspots.values():
+        row = members[0]
+        shapes = nq_call_map.group_rings(core.repository, {'call_key': row['call_key']})
+        assert shapes and {shape['kind'] for shape in shapes} <= {'cluster', 'run', 'hotspot'}
+        # Every call of its hotspot is inside a circle of a cluster or an ellipse of a time window of it.
+        for member in members:
+            if member['latitude'] is not None:
+                assert any(holds(shape, member['latitude'], member['longitude']) for shape in shapes), member['call_key']
+        # Its own groups, of 2 calls or more, are among them with their keys; each time window with its failures in their order.
+        own = {(kind, row[column]) for kind, column, size in (('cluster', 'repeat_key', 'repeat_size'), ('run', 'consecutive_key', 'consecutive_size'))
+               if (row[size] or 0) >= 2}
+        assert own <= {(shape['kind'], shape['key']) for shape in shapes if shape['own']}
+        for shape in shapes:
+            if shape['kind'] == 'run':
+                times = sorted((other['start_time'], other['call_key']) for other in rows.values() if other['consecutive_key'] == shape['key']
+                               and (shape['own'] or other['cluster_key'] == row['cluster_key']) and other['latitude'] is not None)
+                assert shape['path'] == [[rows[key]['latitude'], rows[key]['longitude']] for _time, key in times]
+        checked += 1
+    assert checked >= 3
+    # A call in no group has none; the map of a call gives them with the join of its hotspots.
+    alone = next(key for key, row in rows.items() if (row['cluster_size'] or 0) < 2 and (row['repeat_size'] or 0) < 2
+                 and (row['consecutive_size'] or 0) < 2)
+    assert nq_call_map.group_rings(core.repository, {'call_key': alone}) == []
+    payload = client.get(f"/api/non-qualified-calls/calls/{next(iter(hotspots.values()))[0]['call_key']}/map").json()
+    assert payload['rings'] and payload['hotspot_join'] == 'or'

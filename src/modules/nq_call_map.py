@@ -7,7 +7,8 @@ Around the place where the call failed (where it ended, else where it started) t
 - the inventory sites of the networks that serve its operator (Serving Networks) around it, with their cells (azimuth,
   beamwidth, band, channel, PCI and state); the cells with the PCI and channel of a cell of the call are flagged;
 - the other Non-Qualified Calls around it, of every operator and campaign: those of its operator at the same place (its
-  repetitions) and those of its hotspot, cluster and time-window issue are marked; the map shows those of its
+  repetitions) and those of its hotspot, cluster and time-window issue are marked, with the shapes of its groups and the
+  hotspot zone they make (``group_rings``); the map shows those of its
   CDR, its campaign or every campaign
   (``FAILURE_SCOPES``, chosen in the page);
 - the tests of its CDR (or of every CDR of its campaign) around it, completed or not, with their LTE and NR RSRP and SINR
@@ -1012,6 +1013,163 @@ def site_health(repository: Any, call: dict[str, Any], site_id: str, host: str, 
 # ---------------------------------------------------------------------------
 # The whole map
 # ---------------------------------------------------------------------------
+def enclosing_circle(points: list[tuple[float, float]]) -> tuple[float, float, float]:
+    """The smallest circle (x, y, radius) that holds the points (x, y) of a plane (Welzl, iteratively)."""
+    def circle_of(*given: tuple[float, float]) -> tuple[float, float, float]:
+        if len(given) == 1:
+            return given[0][0], given[0][1], 0.0
+        if len(given) == 2:
+            (ax, ay), (bx, by) = given
+            return (ax + bx) / 2, (ay + by) / 2, math.hypot(ax - bx, ay - by) / 2
+        (ax, ay), (bx, by), (cx, cy) = given
+        d = 2 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by))
+        if abs(d) < 1e-9:
+            # In a line: the circle of its two farthest points.
+            pairs = [(given[i], given[j]) for i in range(3) for j in range(i + 1, 3)]
+            return circle_of(*max(pairs, key=lambda pair: math.hypot(pair[0][0] - pair[1][0], pair[0][1] - pair[1][1])))
+        ux = ((ax * ax + ay * ay) * (by - cy) + (bx * bx + by * by) * (cy - ay) + (cx * cx + cy * cy) * (ay - by)) / d
+        uy = ((ax * ax + ay * ay) * (cx - bx) + (bx * bx + by * by) * (ax - cx) + (cx * cx + cy * cy) * (bx - ax)) / d
+        return ux, uy, math.hypot(ax - ux, ay - uy)
+
+    def inside(circle: tuple[float, float, float], point: tuple[float, float]) -> bool:
+        return math.hypot(point[0] - circle[0], point[1] - circle[1]) <= circle[2] + 1e-6
+
+    ordered = sorted(set(points))
+    circle = circle_of(ordered[0])
+    for i, first in enumerate(ordered):
+        if inside(circle, first):
+            continue
+        circle = circle_of(first)
+        for j, second in enumerate(ordered[:i]):
+            if inside(circle, second):
+                continue
+            circle = circle_of(first, second)
+            for third in ordered[:j]:
+                if not inside(circle, third):
+                    circle = circle_of(first, second, third)
+    return circle
+
+
+def enclosing_ellipse(points: list[tuple[float, float]], margin: float) -> tuple[float, float, float, float, float]:
+    """An ellipse (x, y, semi-major, semi-minor, angle of the major axis from the x axis in radians) along the main direction
+    of the points of a plane that holds them all, ``margin`` wider at its ends and at least that wide."""
+    count = len(points)
+    mx, my = sum(x for x, _ in points) / count, sum(y for _, y in points) / count
+    sxx = sum((x - mx) ** 2 for x, _ in points)
+    syy = sum((y - my) ** 2 for _, y in points)
+    sxy = sum((x - mx) * (y - my) for x, y in points)
+    angle = 0.5 * math.atan2(2 * sxy, sxx - syy)
+    ux, uy = math.cos(angle), math.sin(angle)
+    along = [(x - mx) * ux + (y - my) * uy for x, y in points]
+    across = [-(x - mx) * uy + (y - my) * ux for x, y in points]
+    # Centred on the middle of the points along its axis.
+    shift = (max(along) + min(along)) / 2
+    mx, my = mx + shift * ux, my + shift * uy
+    along = [value - shift for value in along]
+    semi_major = max(abs(value) for value in along) * 1.12 + margin
+    semi_minor = max([margin] + [abs(v) / math.sqrt(max(1e-9, 1 - (u / semi_major) ** 2)) + margin for u, v in zip(along, across)])
+    return mx, my, max(semi_major, semi_minor), semi_minor, angle
+
+
+def group_rings(repository: Any, call: dict[str, Any], failed_at: tuple[float, float] | None = None) -> list[dict[str, Any]]:
+    """The shapes of the groups of a call, as the Groups slide of the presentation draws them: a circle around the NQ calls of
+    each cluster and an ellipse along those of each time-window issue (its drive) that make its hotspot, which is what they
+    make together (their envelope with the OR join, where they meet with AND, drawn by the page); its own cluster and
+    time-window issue whole (with the calls of the campaigns of its Cluster period), those of the other calls of its hotspot
+    with its calls. A call in no hotspot takes the shapes of its cluster and its time-window issue. Every NQ call of its
+    groups is inside one: a call of its hotspot in neither takes a circle of the whole hotspot. Each shape the smallest that
+    holds its calls (those of the call itself also where it failed, ``failed_at``, as the map places it, besides where it
+    started, as the rules measure), a little wider; each with the key of its group, and a time window with where its
+    failures started in their order (its ``path``). None for a call in no group of 2 calls or more."""
+    from src.modules import non_qualified_calls as nq
+    from src.modules.nq_prioritization import PRIORITY_TABLE
+
+    key = call.get('parent_key') or call['call_key']
+    select = (f'SELECT p.call_key, p.cluster_key, p.cluster_size, p.repeat_key, p.repeat_size, p.consecutive_key, p.consecutive_size, '
+              f'p.isd_km, l.latitude, l.longitude, l.start_time FROM {PRIORITY_TABLE} p '
+              f'JOIN {nq.NQ_CALL_LATEST_TABLE} l ON l.call_key = p.call_key')
+    with repository.connection() as connection:
+        own = connection.execute(f'{select} WHERE p.call_key = ?', (key,)).fetchone()
+        if own is None:
+            return []
+
+        def grouped(row: Any, column: str, size: str) -> str:
+            return _text(row[column]) if _text(row[column]) and (row[size] or 0) >= 2 else ''
+        hotspot = grouped(own, 'cluster_key', 'cluster_size')
+        hotspot_rows = [dict(row) for row in connection.execute(f'{select} WHERE p.cluster_key = ?', (hotspot,))] if hotspot else []
+        # Its own groups, and with a hotspot those of every call of it.
+        wanted = {('cluster', grouped(row, 'repeat_key', 'repeat_size')) for row in [own, *hotspot_rows]}
+        wanted |= {('run', grouped(row, 'consecutive_key', 'consecutive_size')) for row in [own, *hotspot_rows]}
+        wanted = {(kind, value) for kind, value in wanted if value}
+        if not wanted and not hotspot:
+            return []
+        members: dict[tuple[str, str], list[dict[str, Any]]] = {}
+        for kind, column in (('cluster', 'repeat_key'), ('run', 'consecutive_key')):
+            values = [value for found, value in wanted if found == kind]
+            if values:
+                for row in connection.execute(f'{select} WHERE p.{column} IN ({", ".join("?" for _ in values)})', values):
+                    members.setdefault((kind, _text(row[column])), []).append(dict(row))
+    own_groups = {('cluster', grouped(own, 'repeat_key', 'repeat_size')), ('run', grouped(own, 'consecutive_key', 'consecutive_size'))}
+    in_hotspot = {row['call_key'] for row in hotspot_rows}
+    origin = _position(own['latitude'], own['longitude']) or _position(call.get('latitude'), call.get('longitude'))
+    if origin is None:
+        return []
+    scale = 6371008.8 * math.pi / 180
+
+    def plane(row: dict[str, Any]) -> tuple[float, float] | None:
+        found = _position(row['latitude'], row['longitude'])
+        return None if found is None else ((found[1] - origin[1]) * scale * math.cos(math.radians(origin[0])), (found[0] - origin[0]) * scale)
+
+    failed = plane({'latitude': failed_at[0], 'longitude': failed_at[1]}) if failed_at else None
+
+    def shape_of(kind: str, rows: list[dict[str, Any]], is_own: bool, key: str = '') -> dict[str, Any] | None:
+        points = [point for row in rows if (point := plane(row)) is not None]
+        if is_own and failed is not None:
+            points.append(failed)
+        if not points:
+            return None
+        if kind == 'run' and len(set(points)) > 1:
+            x, y, radius, minor, angle = enclosing_ellipse(points, 40)
+        else:
+            x, y, radius = enclosing_circle(points)
+            radius = max(radius * 1.04 + 10, 50)
+            minor, angle = radius, 0.0
+        found = {'kind': kind, 'own': is_own, 'key': key, 'calls': len(rows), 'metres': round(radius), 'xy': (x, y),
+                 'centre': [origin[0] + y / scale, origin[1] + x / (scale * math.cos(math.radians(origin[0])))],
+                 'minor_metres': round(minor), 'angle': round(angle, 4)}
+        if kind == 'run':
+            found['path'] = [list(position) for row in sorted(rows, key=lambda item: (_text(item['start_time']), item['call_key']))
+                             if (position := _position(row['latitude'], row['longitude'])) is not None]
+        return found
+    rings = []
+    for (kind, value), rows in sorted(members.items(), key=lambda item: (item[0] not in own_groups, item[0])):
+        is_own = (kind, value) in own_groups
+        # The groups of the other calls of its hotspot with the calls of the hotspot (a cluster also counts the campaigns of
+        # its Cluster period, which the hotspot leaves out).
+        found = shape_of(kind, rows if is_own or not in_hotspot else [row for row in rows if row['call_key'] in in_hotspot], is_own, value)
+        if found:
+            rings.append(found)
+
+    def holds(ring: dict[str, Any], point: tuple[float, float]) -> bool:
+        dx, dy = point[0] - ring['xy'][0], point[1] - ring['xy'][1]
+        along = dx * math.cos(ring['angle']) + dy * math.sin(ring['angle'])
+        across = -dx * math.sin(ring['angle']) + dy * math.cos(ring['angle'])
+        return (along / ring['metres']) ** 2 + (across / max(1, ring['minor_metres'])) ** 2 <= 1.0001
+    outside = [row for row in hotspot_rows if (point := plane(row)) is not None and not any(holds(ring, point) for ring in rings)]
+    if outside:
+        found = shape_of('hotspot', hotspot_rows, True)
+        if found:
+            rings.append(found)
+    isd = _number(own['isd_km'])
+    names = {'cluster': 'cluster', 'run': 'time window', 'hotspot': 'hotspot'}
+    for ring in rings:
+        del ring['xy']
+        size = f"{_km(ring['metres'] / 1000)}" + (f" ({round(ring['metres'] / (isd * 1000), 2):g} ISD)" if isd else '')
+        reach = f"along {_km(ring['metres'] * 2 / 1000)}" if ring['kind'] == 'run' else f'within {size}'
+        ring['label'] = f"{'Its' if ring['own'] else 'A'} {names[ring['kind']]}: {ring['calls']} NQ calls {reach}"
+    return rings
+
+
 def call_map(repository: Any, call_key: str, *, radius_km: Any = None, tests: str = DEFAULT_TEST_SCOPE) -> dict[str, Any] | None:
     """Everything the map of a call shows around where it failed (see the module); None for an unknown call. Without
     ``radius_km`` the radius holds the NQ calls of its hotspot and its cluster (``group_radius``), else it is the default
@@ -1131,7 +1289,8 @@ def call_map(repository: Any, call_key: str, *, radius_km: Any = None, tests: st
         'focus_labels': labels_with_role(repository, FOCUS), 'focus_operators': focus_operators(repository),
         'families': list(families), 'snapshots': snapshots, 'trace': trace, 'sites': sites, 'failures': failures,
         'tests': test_points, 'classes': classes, 'notes': notes,
-        'failures_left_out': failures_left_out, 'failures_max': MAX_FAILURES, 'groups': groups,
+        'failures_left_out': failures_left_out, 'failures_max': MAX_FAILURES, 'groups': groups, 'rings': group_rings(repository, call, point),
+        'hotspot_join': str(prioritization_settings(repository).get('hotspot_join') or 'or'),
         'diagnosis': checks, 'decisions': site_decisions(failures), 'drive': drive, 'site_health': health,
         'basemap': {'url_template': OSM_TILES, 'attribution': OSM_ATTRIBUTION},
     }

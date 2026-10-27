@@ -19,6 +19,8 @@
     group: '#d62828', hotspot: '#1971c2', cluster: '#2f9e44', run: '#15aabf',
     place: '#7b3fe4', own: '#f08a24', other: '#6c757d', samePci: '#d6336c', noValue: '#adb5bd',
     completed: '#2e8b57', failed: '#d7263d', radius: '#7d1238',
+    // The hotspot zone of the call: an orange of its own, apart from the colours of the NQ calls and their groups.
+    hotZone: '#e8590c',
     sameType: '#b0234f', otherType: '#1c7ed6', sameCampaign: '#b0234f', otherCampaign: '#6c757d',
   };
   // The group of the call that filters the list of calls (its filter, key and name, set by the page), if any.
@@ -26,11 +28,22 @@
   const inFocus = (failure) => Boolean(groupFocus && (groupFocus.filter === 'hotspot' ? failure.cluster_key === groupFocus.key
     : groupFocus.filter === 'consecutive_issue' ? failure.consecutive_key === groupFocus.key
       : failure.repeat_key === groupFocus.key || failure.repeat_all_key === groupFocus.key));
-  // The group of the call an NQ call stands for: the one that filters the list (red), else its time-window issue,
-  // its cluster (of its NR Mode or of every NR Mode together) or its hotspot, each in a colour of its own.
-  const groupKind = (failure) => (inFocus(failure) ? 'focus' : failure.same_run ? 'run'
-    : failure.same_cluster || failure.same_cluster_all ? 'cluster' : failure.same_hotspot ? 'hotspot' : '');
-  const GROUP_COLOURS = {focus: COLOURS.group, run: COLOURS.run, cluster: COLOURS.cluster, hotspot: COLOURS.hotspot};
+  // The keys of the clusters and time windows the map draws a circle around (its own and those of its hotspot).
+  let ringKeys = {cluster: new Set(), run: new Set()};
+  const setRings = (rings) => {
+    ringKeys = {cluster: new Set(), run: new Set()};
+    (rings || []).forEach((ring) => { if (ring.key && ringKeys[ring.kind]) ringKeys[ring.kind].add(ring.key); });
+  };
+  // The group of the call an NQ call stands for: the one that filters the list (red), else a time window (cyan) or a
+  // cluster (green) of the call or of its hotspot, both at once when it joins a cluster to a time window (a bridge), else its
+  // hotspot (blue).
+  const groupKind = (failure) => {
+    if (inFocus(failure)) return 'focus';
+    const timed = failure.same_run || (Boolean(failure.consecutive_key) && ringKeys.run.has(failure.consecutive_key));
+    const spatial = failure.same_cluster || failure.same_cluster_all || (Boolean(failure.repeat_key) && ringKeys.cluster.has(failure.repeat_key));
+    return timed && spatial ? 'bridge' : timed ? 'run' : spatial ? 'cluster' : failure.same_hotspot ? 'hotspot' : '';
+  };
+  const GROUP_COLOURS = {focus: COLOURS.group, run: COLOURS.run, cluster: COLOURS.cluster, hotspot: COLOURS.hotspot, bridge: COLOURS.cluster};
   // Whether an NQ call is of a group of the call.
   const inGroup = (failure) => Boolean(groupKind(failure));
   // The test columns of the payload (see nq_call_map.nearby_tests).
@@ -185,13 +198,19 @@
       view = {x: view.x + dx * (view.resolution - resolution), y: view.y + dy * (view.resolution - resolution), resolution};
       redraw();
     };
-    // The area of the radius, and every NQ call of the groups and of the site of the call shown, wherever it is.
+    // The area of the radius and of the rings of its groups, and every NQ call of the groups and of the site of the call
+    // shown, wherever it is.
     const fit = () => {
       const data = shared.data;
       if (!data) return;
       const [cx, cy] = toWorld(data.centre[0], data.centre[1]);
       const reach = data.radius_km * 1000 / metresPerWorldPixel(data.centre[0]);
       let [west, east, north, south] = [cx - reach, cx + reach, cy - reach, cy + reach];
+      for (const ring of data.rings || []) {
+        const [x, y] = toWorld(ring.centre[0], ring.centre[1]);
+        const r = ring.metres / metresPerWorldPixel(ring.centre[0]);
+        [west, east, north, south] = [Math.min(west, x - r), Math.max(east, x + r), Math.min(north, y - r), Math.max(south, y + r)];
+      }
       for (const failure of data.failures) {
         if (failure.latitude === null || !(inGroup(failure) || failure.same_place) || !shared.showsFailure(failure)) continue;
         const [x, y] = toWorld(failure.latitude, failure.longitude);
@@ -320,6 +339,107 @@
       context.stroke();
       context.setLineDash([]);
       context.globalAlpha = 1;
+      // The shape of a group: a few pixels wider, so that the marks of the calls on its edge show inside it at any zoom (the
+      // map turns the y axis of the plane of the shape downwards).
+      const shape = (target, ring) => {
+        const [rx, ry] = project(ring.centre[0], ring.centre[1]);
+        target.beginPath();
+        target.ellipse(rx, ry, ring.metres / metresPerPixel + 9, (ring.minor_metres || ring.metres) / metresPerPixel + 9,
+          -(ring.angle || 0), 0, Math.PI * 2);
+      };
+      // The hotspot zone: where its clusters OR its time windows are (their envelope), or with the AND join where they meet
+      // (their intersection), in an orange of its own: tinted over the shapes of its groups and outlined outside them.
+      let hotZone = null;
+      if ((data.groups?.hotspot || 0) >= 2) {
+        const spatial = (data.rings || []).filter((ring) => ring.kind !== 'run');
+        const timed = (data.rings || []).filter((ring) => ring.kind === 'run');
+        const meet = data.hotspot_join === 'and' && spatial.length && timed.length;
+        const layer = (rings) => {
+          const found = document.createElement('canvas');
+          [found.width, found.height] = [canvas.width, canvas.height];
+          const target = found.getContext('2d');
+          target.setTransform(ratio, 0, 0, ratio, 0, 0);
+          target.fillStyle = '#000';
+          rings.forEach((ring) => { shape(target, ring); target.fill(); });
+          return found;
+        };
+        const zone = layer(meet ? spatial : [...spatial, ...timed]);
+        const area = zone.getContext('2d');
+        area.setTransform(1, 0, 0, 1, 0, 0);
+        if (meet) {
+          area.globalCompositeOperation = 'destination-in';
+          area.drawImage(layer(timed), 0, 0);
+        }
+        // Its edge, a few pixels outside it, clear of the lines of the shapes: the zone moved every way that far, less the
+        // zone moved a little less.
+        const grown = (pixels) => {
+          const found = document.createElement('canvas');
+          [found.width, found.height] = [canvas.width, canvas.height];
+          const target = found.getContext('2d');
+          for (let step = 0; step < 16; step += 1) {
+            const angle = step * Math.PI / 8;
+            target.drawImage(zone, Math.cos(angle) * pixels, Math.sin(angle) * pixels);
+          }
+          target.drawImage(zone, 0, 0);
+          return found;
+        };
+        const edge = grown(Math.round(7 * ratio));
+        const line = edge.getContext('2d');
+        line.globalCompositeOperation = 'destination-out';
+        line.drawImage(grown(Math.round(3 * ratio)), 0, 0);
+        for (const target of [area, line]) {
+          target.globalCompositeOperation = 'source-in';
+          target.fillStyle = COLOURS.hotZone;
+          target.fillRect(0, 0, canvas.width, canvas.height);
+        }
+        const paint = (layerCanvas, alpha) => {
+          context.save();
+          context.setTransform(1, 0, 0, 1, 0, 0);
+          context.globalAlpha = alpha;
+          context.drawImage(layerCanvas, 0, 0);
+          context.restore();
+        };
+        hotZone = {fill: () => paint(zone, .22), edge: () => paint(edge, .95)};
+      }
+      // The shapes of its groups, as the Groups slide draws them: a circle around each cluster in green and an ellipse along
+      // each time window in cyan of its hotspot (what they make together), those of the call itself bolder, the larger
+      // below; the hotspot in blue when one of its calls is in neither. Their tint first, then the hotspot zone, then their
+      // lines and the edge of the zone.
+      const shapes = [...(data.rings || [])].sort((a, b) => b.metres - a.metres);
+      for (const ring of shapes) {
+        shape(context, ring);
+        context.fillStyle = GROUP_COLOURS[ring.kind];
+        context.globalAlpha = .08;
+        context.fill();
+        context.globalAlpha = 1;
+      }
+      hotZone?.fill();
+      for (const ring of shapes) {
+        shape(context, ring);
+        context.strokeStyle = GROUP_COLOURS[ring.kind];
+        context.globalAlpha = ring.own ? 1 : .85;
+        context.lineWidth = ring.own ? 3 : 2;
+        context.stroke();
+        context.globalAlpha = 1;
+      }
+      hotZone?.edge();
+      // Each time window as its failures follow one another (each within the Time window of the one before).
+      for (const ring of (data.rings || []).filter((item) => item.path && item.path.length > 1)) {
+        context.beginPath();
+        ring.path.forEach(([latitude, longitude], index) => {
+          const [px, py] = project(latitude, longitude);
+          if (index) context.lineTo(px, py); else context.moveTo(px, py);
+        });
+        context.lineJoin = 'round';
+        context.lineWidth = ring.own ? 5 : 4;
+        context.strokeStyle = '#fff';
+        context.stroke();
+        context.lineWidth = ring.own ? 2.6 : 2;
+        context.strokeStyle = COLOURS.run;
+        context.setLineDash([8, 5]);
+        context.stroke();
+        context.setLineDash([]);
+      }
       // The tests around, in the colour of their level.
       const operators = data.tests.operators;
       const testRadius = zoom >= 16 ? 5 : zoom >= 13 ? 4 : 3;
@@ -463,6 +583,18 @@
           diamond(context, x, y, size);
           context.fillStyle = shared.failureColour(failure);
           context.fill();
+          if (settings.failureColour === 'relation' && groupKind(failure) === 'bridge') {
+            // A call of a cluster and of a time window, which joins them: its right half cyan.
+            context.save();
+            context.beginPath();
+            context.rect(x, y - size - 2, size + 2, size * 2 + 4);
+            context.clip();
+            diamond(context, x, y, size);
+            context.fillStyle = COLOURS.run;
+            context.fill();
+            context.restore();
+            diamond(context, x, y, size);
+          }
           context.lineWidth = 1.6;
           context.strokeStyle = '#fff';
           context.stroke();
@@ -759,6 +891,18 @@
         item('line', 'Same PCI and channel as a cell of the call', COLOURS.samePci, 'is-dashed');
       }
       item('line', `Radius ${distanceText(data.radius_km)}`, COLOURS.radius, 'is-dashed');
+      // Its own circles one by one, those of the other calls of its hotspot by kind.
+      const rings = data.rings || [];
+      rings.filter((ring) => ring.own).forEach((ring) => item('ring', ring.label, GROUP_COLOURS[ring.kind]));
+      if (rings.some((ring) => ring.path && ring.path.length > 1)) item('line', 'Time window: its failures in their order', COLOURS.run, 'is-dashed');
+      if ((data.groups?.hotspot || 0) >= 2 && rings.length) {
+        item('zone', data.hotspot_join === 'and' && rings.some((ring) => ring.kind === 'run') && rings.some((ring) => ring.kind !== 'run')
+          ? 'Hotspot (AND): where its clusters and time windows meet' : 'Hotspot (OR): its clusters and time windows together', COLOURS.hotZone);
+      }
+      [['cluster', 'Other clusters of its hotspot'], ['run', 'Other time windows of its hotspot']].forEach(([kind, text]) => {
+        const count = rings.filter((ring) => !ring.own && ring.kind === kind).length;
+        if (count) item('ring', `${text} (${count})`, GROUP_COLOURS[kind]);
+      });
     };
 
     return {
@@ -881,8 +1025,10 @@
       // takes that of the group filtering the list, else of its run, else of its cluster).
       const kinds = new Set(data.failures.filter((failure) => !failure.self && shared.showsFailure(failure)).map(groupKind).filter(Boolean));
       const lines = [...(kinds.has('focus') ? [[`NQ call of its ${groupFocus.label} (filtering the list)`, COLOURS.group]] : []),
-        ...[['hotspot', 'NQ call of its hotspot'], ['run', 'NQ call of its time window'], ['cluster', 'NQ call of its cluster']]
-          .filter(([kind]) => kinds.has(kind)).map(([kind, text]) => [groupFocus ? `${text} (not filtering the list)` : text, GROUP_COLOURS[kind]]),
+        ...[['run', 'NQ call of a time window (its own or of its hotspot)'], ['cluster', 'NQ call of a cluster (its own or of its hotspot)'],
+          ['bridge', 'NQ call of a cluster and a time window, which it joins'], ['hotspot', 'NQ call of its hotspot (in neither)']]
+          .filter(([kind]) => kinds.has(kind)).map(([kind, text]) => [groupFocus ? `${text} (not filtering the list)` : text, GROUP_COLOURS[kind],
+            kind === 'bridge' ? 'is-bridge' : '']),
         ['Ringed: also at its site', GROUP_COLOURS[[...kinds][0]] || COLOURS.hotspot, 'is-ringed'], ['NQ call at its site (not of its groups)', COLOURS.place],
         [`Other NQ calls of ${call.operator || 'its operator'}`, COLOURS.own]];
       if (shared.operatorChoice() === 'all') lines.push(['NQ calls of other operators', COLOURS.other]);
@@ -905,8 +1051,12 @@
         ]};
       }
       if (kind === 'failure') {
+        // Its groups: those of the call, else a cluster or a time window of its hotspot; joining both when it is of both.
+        const inCluster = !item.same_cluster && Boolean(item.repeat_key) && ringKeys.cluster.has(item.repeat_key);
+        const inWindow = !item.same_run && Boolean(item.consecutive_key) && ringKeys.run.has(item.consecutive_key);
         const flags = [item.same_hotspot ? 'Same hotspot' : '', item.same_cluster ? 'Same cluster' : '', item.same_run ? 'Same time window' : '',
-          item.same_place ? 'Same site' : ''].filter(Boolean).join(' · ');
+          inCluster ? 'A cluster of its hotspot' : '', inWindow ? 'A time window of its hotspot' : '',
+          groupKind(item) === 'bridge' ? 'Joins a cluster and a time window' : '', item.same_place ? 'Same site' : ''].filter(Boolean).join(' · ');
         return {title: `NQ call · ${item.operator}`, rows: [
           ['Call type', kindLabel(item)], ['Operator', item.operator], ['Campaign', campaignText(item.campaign, item.nr_mode)],
           ['Relation', flags], ['JOIN_ID', item.join_id],
@@ -1393,6 +1543,7 @@
         if (request !== controllerAbort || key !== callKey) return false;
         const sameCall = loadedKey === key;
         shared.data = data;
+        setRings(data.rings);
         groupFocus = groupFilter();
         focusNames = new Set((data.focus_operators || []).map((name) => String(name).trim().toLowerCase()).filter(Boolean));
         settings.radius_km = data.radius_km;
