@@ -138,6 +138,33 @@ def test_the_markdown_written_again_reads_the_same_and_stays_the_same():
     assert result[6]['once'].startswith('\\- not a bullet\n1\\. not numbered\n\\# not a heading\n\\> not a quote\n\\*not italic\\*\n- \\[ ] not a task')
 
 
+def test_numbers_link_their_items_only_with_the_references_of_the_page():
+    result = run(r"""const refs = {href: '/tickets/{id}', titles: {7: 'Prioritize NQ calls · Resolved', 12: 'Three SA · New'}};
+      return {
+        tokens: RT.parseInline('See #7, (#12) and **#7**; not #99, a#7, #7a, #7.5, ##7, &#7;, \\#7, `#7`, [#7](/x) or https://a.b/c#7', refs),
+        without: RT.parseInline('See #7'),
+        markdown: RT.tokensToMarkdown(RT.normalizeTokens(RT.parseInline('See **#7** and #12.', refs))),
+        every: RT.parseInline('#7', {href: '/tickets/{id}'}),
+        unsafe: RT.parseInline('#7', {href: 'javascript:alert({id})'}),
+      };""")
+    ref = lambda number, title: {'type': 'ref', 'text': f'#{number}', 'href': f'/tickets/{number}', 'title': title}
+    assert result['tokens'] == [
+        {'type': 'text', 'text': 'See '}, ref(7, 'Prioritize NQ calls · Resolved'), {'type': 'text', 'text': ', ('},
+        ref(12, 'Three SA · New'), {'type': 'text', 'text': ') and '}, {'type': 'strong', 'children': [ref(7, 'Prioritize NQ calls · Resolved')]},
+        # A number of no item, inside a word or a number, escaped, in code, in a link or a web address stays text.
+        {'type': 'text', 'text': '; not #99, a#7, #7a, #7.5, ##7, &#7;, #7, '}, {'type': 'code', 'text': '#7'}, {'type': 'text', 'text': ', '},
+        {'type': 'link', 'href': '/x', 'children': [{'type': 'text', 'text': '#7'}]}, {'type': 'text', 'text': ' or '},
+        {'type': 'link', 'href': 'https://a.b/c#7', 'children': [{'type': 'text', 'text': 'https://a.b/c#7'}]},
+    ]
+    # The texts of a page without references (Non-Qualified Calls) keep their numbers as text; a reference is written
+    # back as it was.
+    assert result['without'] == [{'type': 'text', 'text': 'See #7'}]
+    assert result['markdown'] == 'See **#7** and #12.'
+    # Without titles every number links; an address that is no page of the tool links none.
+    assert result['every'] == [ref(7, '')]
+    assert result['unsafe'] == [{'type': 'text', 'text': '#7'}]
+
+
 def test_plain_text_for_previews():
     text = run(r"""return RT.toPlainText('Title\n- **a**\n  1. b\n> [!TIP]\n> hey\n- [x] done');""")
     assert text == 'Title\n• a\n  1. b\nTip\nhey\n☑ done'

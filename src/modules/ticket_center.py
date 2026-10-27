@@ -9,6 +9,7 @@ server, so a Ticket Center package merges into another server without duplicatin
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from datetime import date
 from pathlib import PurePosixPath
@@ -56,6 +57,9 @@ MANAGER_FIELDS = frozenset({'status', 'ticket_type', 'assigned_to', 'created_by'
 EXPORT_FORMAT = 'drivetest-analyzer-ticket-center'
 EXPORT_VERSION = 1
 ATTACHMENTS_ARCHIVE_DIR = 'ticket-center/attachments'
+# A ticket mentioned in a description or comment as #<number>: rich_text.js links it when the ticket exists (it also
+# leaves out a number written inside a word, a web address or code).
+TICKET_REFERENCE = re.compile(r'#([1-9][0-9]{0,8})')
 # The dashboard: tickets resolved in these last days, and created and resolved per period (Weekly by default) in its
 # last periods: the name of its choice, its unit, how many it shows, and every how many of them the axis has a label.
 RECENT_RESOLVED_DAYS = 30
@@ -333,6 +337,19 @@ def get_ticket(repository: Repository, ticket_id: int) -> dict[str, Any] | None:
         comment['changes'] = changes if isinstance(changes, dict) else {}
         comment['attachments'] = by_comment.get(comment['id'], [])
     return {**dict(row), 'comments': comments, 'attachments': by_comment.get(None, [])}
+
+
+def ticket_references(repository: Repository, texts: Iterable[object]) -> dict[str, Any]:
+    """The references of rich_text.js for texts of tickets: #7 opens ticket 7, its title and status in the tooltip, when it
+    exists (a number of no ticket stays text)."""
+    numbers = {int(number) for text in texts for number in TICKET_REFERENCE.findall(str(text or ''))}
+    titles: dict[str, str] = {}
+    if numbers:
+        with repository.global_connection() as conn:
+            for row in conn.execute('SELECT id, title, status FROM tickets').fetchall():
+                if int(row['id']) in numbers:
+                    titles[str(row['id'])] = f"{row['title']} · {STATUSES.get(str(row['status']), str(row['status']))}"
+    return {'href': '/tickets/{id}', 'titles': titles, 'help': 'A link to ticket 7, once the text is saved'}
 
 
 def update_ticket(repository: Repository, ticket_id: int, username: str, values: dict[str, Any]) -> dict[str, list[str]]:

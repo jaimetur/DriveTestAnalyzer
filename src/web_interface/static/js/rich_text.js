@@ -4,7 +4,8 @@
 // the like (> [!TIP]), quotes, code blocks and dividers. A short line ending with a colon, or followed by a list, is the
 // title of what follows it.
 // Each line of a text is one element, the same on the page and in the editor, styled by rich_text.css, so a text reads
-// the same while it is written; the editor saves it back as Markdown in the text area it replaces.
+// the same while it is written; the editor saves it back as Markdown in the text area it replaces. Where the page gives
+// them (data-rich-refs), #7 links to the item of that number, a ticket.
 (() => {
   'use strict';
 
@@ -22,6 +23,9 @@
   const DIVIDER = /^[-=_*]{3,}(?:\s*(.*?)\s*[-=_*]{3,})?$/;
   const ESCAPABLE = /[!-/:-@[-`{-~·•◦▪–]/;
   const WORD = /[\p{L}\p{N}]/u;
+  // #7: the number of an item, neither inside a word or a number (a#7, #7a, #7.5) nor after another # or & (&#7;).
+  const REFERENCE = /^#([1-9]\d{0,8})(?![\p{L}\p{N}_]|[.,]\d)/u;
+  const BEFORE_REFERENCE = /[\p{L}\p{N}_#&]/u;
   const GLYPHS = ['•', '◦', '▪'];
   // The kinds of card, with their title when the card has none of its own, and the names they are also written with.
   const CARDS = {
@@ -37,7 +41,8 @@
 
   // ---------------------------------------------------------------------------------------------------------------
   // Inline formats: [{type: 'text' | 'code', text} | {type: 'strong' | 'em' | 'del' | 'mark', children} |
-  // {type: 'link', href, children}].
+  // {type: 'link', href, children} | {type: 'ref', text, href, title}]. A reference (ref) is read only with the
+  // references of the text, {href: '/tickets/{id}', titles: {7: 'Its title'}}: a number with no title is no item.
 
   const runLength = (source, index, char) => {
     let end = index;
@@ -92,9 +97,18 @@
     const href = source.slice(position + 2, end).trim().replace(/\s+"[^"]*"$/, '').replace(/^<(.*)>$/, '$1');
     return safeHref(href) ? {label: source.slice(index + 1, position), href, end: end + 1} : null;
   };
+  // The item a #number at index refers to, when the references have it.
+  const referenceAt = (source, index, references) => {
+    if (BEFORE_REFERENCE.test(source[index - 1] || '')) return null;
+    const match = source.slice(index).match(REFERENCE);
+    const titles = references.titles;
+    if (!match || (titles && !Object.prototype.hasOwnProperty.call(titles, match[1]))) return null;
+    const href = String(references.href || '').replace('{id}', match[1]);
+    return safeHref(href) ? {type: 'ref', text: match[0], href, title: titles ? String(titles[match[1]] ?? '') : ''} : null;
+  };
   // **bold**, *italic*, ***both***, ~~strikethrough~~ and ==highlight== (also with _ and __): the closing run of the
   // same length, not after a space; _ never opens or closes inside a word.
-  const emphasisAt = (source, index, char, run) => {
+  const emphasisAt = (source, index, char, run, references) => {
     const type = (char === '~' || char === '=') ? {2: char === '~' ? 'del' : 'mark'}[run] : {1: 'em', 2: 'strong', 3: 'both'}[run];
     const after = source[index + run];
     if (!type || !after || /\s/.test(after) || (char === '_' && WORD.test(source[index - 1] || ''))) return null;
@@ -111,7 +125,7 @@
       if (current === char) {
         const length = runLength(source, position, char);
         if (length === run && !/\s/.test(source[position - 1]) && !(char === '_' && WORD.test(source[position + length] || ''))) {
-          const children = parseInline(source.slice(index + run, position));
+          const children = parseInline(source.slice(index + run, position), references);
           const token = type === 'both' ? {type: 'em', children: [{type: 'strong', children}]} : {type, children};
           return {token, end: position + length};
         }
@@ -122,7 +136,7 @@
     }
     return null;
   };
-  function parseInline(text) {
+  function parseInline(text, references = null) {
     const source = String(text ?? '');
     const tokens = [];
     let plain = '';
@@ -153,10 +167,20 @@
         }
         continue;
       }
+      if (char === '#' && references) {
+        const reference = referenceAt(source, index, references);
+        if (reference) {
+          flush();
+          tokens.push(reference);
+          index += reference.text.length;
+          continue;
+        }
+      }
       if (char === '[') {
         const link = parseLink(source, index);
         if (link) {
           flush();
+          // The text of a link is not linked again.
           tokens.push({type: 'link', href: link.href, children: parseInline(link.label)});
           index = link.end;
           continue;
@@ -182,7 +206,7 @@
       }
       if ('*_~='.includes(char)) {
         const run = runLength(source, index, char);
-        const emphasis = emphasisAt(source, index, char, run);
+        const emphasis = emphasisAt(source, index, char, run, references);
         if (emphasis) {
           flush();
           tokens.push(emphasis.token);
@@ -218,6 +242,10 @@
         if (token.text) push({type: token.type, text: token.text});
         return;
       }
+      if (token.type === 'ref') {
+        push(token);
+        return;
+      }
       if (around.includes(token.type)) {
         normalizeTokens(token.children, around).forEach(push);
         return;
@@ -232,11 +260,12 @@
     });
     return out;
   }
-  // What a line shows, to compare two ways of writing it: a link whose text is its address reads as that text, and
-  // the spaces around the line do not count.
+  // What a line shows, to compare two ways of writing it: a link whose text is its address, or a reference, reads as
+  // that text, and the spaces around the line do not count.
   const signature = (tokens) => {
     const plainLinks = (list) => list.map((token) => {
       if (token.type === 'link' && tokensText(token.children) === token.href) return {type: 'text', text: token.href};
+      if (token.type === 'ref') return {type: 'text', text: token.text};
       return token.children ? {...token, children: plainLinks(token.children)} : token;
     });
     const normal = normalizeTokens(plainLinks(tokens));
@@ -251,6 +280,7 @@
   function tokensToMarkdown(tokens, everything = false) {
     return tokens.map((token) => {
       if (token.type === 'text') return escapeText(token.text, everything);
+      if (token.type === 'ref') return token.text;
       if (token.type === 'code') {
         const longest = Math.max(0, ...(token.text.match(/`+/g) || []).map((run) => run.length));
         const fence = '`'.repeat(longest + 1);
@@ -638,6 +668,14 @@
     return tokens.map((token) => {
       if (token.type === 'text') return document.createTextNode(token.text);
       if (token.type === 'code') return element('code', '', token.text);
+      if (token.type === 'ref') {
+        // The item opens in the same tab, its title in the tooltip; data-ref marks it (the editor drops classes).
+        const node = element('a', '', token.text);
+        node.setAttribute('href', token.href);
+        node.dataset.ref = token.text.slice(1);
+        if (token.title) node.title = token.title;
+        return node;
+      }
       const node = element({strong: 'strong', em: 'em', del: 's', mark: 'mark', link: 'a'}[token.type]);
       if (token.type === 'link') {
         node.setAttribute('href', token.href);
@@ -662,7 +700,9 @@
         tokens.push({type: 'code', text: cleanText(node.textContent)});
         return;
       }
-      const type = {STRONG: 'strong', B: 'strong', EM: 'em', I: 'em', S: 'del', DEL: 'del', STRIKE: 'del', MARK: 'mark', A: 'link'}[node.tagName];
+      // A reference is the text written (#7), linked again when the text is shown.
+      const type = node.hasAttribute('data-ref') ? ''
+        : {STRONG: 'strong', B: 'strong', EM: 'em', I: 'em', S: 'del', DEL: 'del', STRIKE: 'del', MARK: 'mark', A: 'link'}[node.tagName];
       const children = nodesToTokens(node);
       if (!type || (type === 'link' && !safeHref(node.getAttribute('href') || ''))) tokens.push(...children);
       else tokens.push(type === 'link' ? {type, href: node.getAttribute('href'), children} : {type, children});
@@ -681,12 +721,12 @@
       else line.dataset[name] = String(value);
     });
   };
-  function lineElement(line, keepSource = false) {
+  function lineElement(line, keepSource = false, references = null) {
     const node = element('div', 'rt-line');
     setLine(node, line);
     if (line.type === 'code') node.textContent = line.text || '';
     else {
-      node.append(...tokensToNodes(parseInline(line.text || '')));
+      node.append(...tokensToNodes(parseInline(line.text || '', references)));
       // What the line was written as: saved again as it was while the line is not changed.
       if (keepSource) node.dataset.src = line.text || '';
     }
@@ -758,7 +798,7 @@
   // Shows a text in an element of the page (the element keeps its classes).
   function renderInto(container, text, options = {}) {
     container.classList.add('rt-doc');
-    container.replaceChildren(...parse(text, options).map((line) => lineElement(line, options.keepSource)));
+    container.replaceChildren(...parse(text, options).map((line) => lineElement(line, options.keepSource, options.references)));
     decorate(container, options);
     return container;
   }
@@ -968,6 +1008,7 @@
     if (textarea.richText) return textarea.richText;
     const implicit = Boolean(options.implicitBullets);
     const layoutOptions = {implicitBullets: implicit};
+    const references = options.references || null;
     const valueProperty = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
     const source = () => valueProperty.get.call(textarea);
     const setSource = (value) => valueProperty.set.call(textarea, value);
@@ -1040,7 +1081,7 @@
     };
     const load = (text) => {
       const value = String(text ?? '');
-      doc.replaceChildren(...parse(value, layoutOptions).map((line) => lineElement(line, true)));
+      doc.replaceChildren(...parse(value, layoutOptions).map((line) => lineElement(line, true, references)));
       decorate(doc, layoutOptions);
       setSource(value);
       initialHtml = doc.innerHTML;
@@ -1285,10 +1326,10 @@
       const parsed = parse(text, layoutOptions);
       while (parsed.length > 1 && parsed[parsed.length - 1].type === 'p' && !parsed[parsed.length - 1].text) parsed.pop();
       if (parsed.length === 1 && parsed[0].type === 'p' && !parsed[0].card) {
-        insertNodes(tokensToNodes(parseInline(parsed[0].text)));
+        insertNodes(tokensToNodes(parseInline(parsed[0].text, references)));
         return;
       }
-      const elements = parsed.map((item) => lineElement({...item, card: card || item.card}));
+      const elements = parsed.map((item) => lineElement({...item, card: card || item.card}, false, references));
       const tail = splitLine(line, {type: 'p', card});
       if (!lineText(line)) line.replaceWith(...elements);
       else {
@@ -1787,7 +1828,7 @@
     const linkForm = () => {
       const range = savedRange;
       const startNode = range?.startContainer;
-      const existing = startNode ? (startNode.nodeType === 1 ? startNode : startNode.parentElement)?.closest('a') : null;
+      const existing = startNode ? (startNode.nodeType === 1 ? startNode : startNode.parentElement)?.closest('a:not([data-ref])') : null;
       const form = element('form', 'rt-link-form');
       const input = element('input');
       input.type = 'url';
@@ -1827,7 +1868,7 @@
     };
     const helpCard = () => {
       const table = element('table', 'rt-help');
-      HELP.forEach(([syntax, meaning]) => {
+      [...HELP, ...(references?.help ? [['#7', references.help]] : [])].forEach(([syntax, meaning]) => {
         const row = element('tr');
         const written = element('td');
         written.append(element('code', '', syntax));
@@ -2174,22 +2215,38 @@
     return controller;
   }
 
+  // The references of the texts within an element of the page: the JSON of the data-rich-refs around it ({href,
+  // titles, help: the meaning of #7 in the help of the editor}), or none.
+  const referencesOf = (node) => {
+    const holder = node?.closest?.('[data-rich-refs]');
+    if (!holder) return null;
+    try {
+      const references = JSON.parse(holder.dataset.richRefs);
+      return references && typeof references === 'object' ? references : null;
+    } catch {
+      return null;
+    }
+  };
+
   // The texts and text areas of the page marked for it: data-rich-text (data-raw, the text) and
   // textarea[data-rich-editor] ("bullets": every line a bullet; data-rich-class, the class of the text).
   function init(root = document) {
     root.querySelectorAll('[data-rich-text]').forEach((node) => {
       if (node.classList.contains('rt-doc')) return;
-      renderInto(node, node.dataset.raw ?? node.textContent, {implicitBullets: node.dataset.richText === 'bullets'});
+      renderInto(node, node.dataset.raw ?? node.textContent, {
+        implicitBullets: node.dataset.richText === 'bullets', references: referencesOf(node),
+      });
     });
     root.querySelectorAll('textarea[data-rich-editor]').forEach((textarea) => attach(textarea, {
       implicitBullets: textarea.dataset.richEditor === 'bullets', docClass: textarea.dataset.richClass || '',
       toolbar: textarea.dataset.richToolbar || 'always', filesHandledByForm: textarea.dataset.richFiles === 'form',
+      references: referencesOf(textarea),
     }));
   }
 
   window.RichText = {
     CARDS, parse, parseInline, inlinePlain, layout, toMarkdown, tokensToMarkdown, normalizeTokens, normalizeText,
-    toPlainText, withPlain, render, renderInto, attach, init,
+    toPlainText, withPlain, render, renderInto, attach, init, referencesOf,
   };
   if (typeof document.querySelectorAll === 'function') {
     init();

@@ -1,7 +1,9 @@
 """Ticket Center (formerly Bugs Report): tickets of a type with screenshots, the reporter's edits, the super-admins'
 attention, the dashboard, access, the former addresses and portability."""
+import html
 import io
 import json
+import re
 import zipfile
 from pathlib import Path
 
@@ -198,6 +200,23 @@ def test_descriptions_and_comments_are_markdown_shown_and_edited_by_the_rich_tex
     new_ticket = client.get('/tickets').text
     assert 'data-ticket-description data-rich-editor data-rich-class="ticket-text" data-rich-files="form"' in new_ticket
     assert 'js/rich_text.js' in new_ticket and 'css/rich_text.css' in new_ticket
+
+
+def test_the_tickets_mentioned_as_numbers_are_given_to_the_rich_text_script(client):
+    login(client)
+    first = open_ticket(client, title='Export fails', screenshots=())
+    second = open_ticket(client, title="Map's labels", screenshots=())
+    client.post(f'/api/tickets/{second}/comments', data={'body': f'Same as #{first}, not #9999'})
+    page = client.get(f'/tickets/{second}').text
+    # The tickets that exist, with their title and status for the tooltip of their links; rich_text.js links them.
+    references = json.loads(html.unescape(re.search(r"data-rich-refs='([^']*)'", page).group(1)))
+    assert references == {'href': '/tickets/{id}', 'titles': {str(first): 'Export fails · New'},
+                          'help': 'A link to ticket 7, once the text is saved'}
+    assert "references: window.RichText.referencesOf(page)" in (Path(core.__file__).parent / 'web_interface/static/js/ticket_center.js').read_text(encoding='utf-8')
+    client.post(f'/api/tickets/{first}/comments', data={'body': f"See #{second}"})
+    page = client.get(f'/tickets/{first}').text
+    # A title with a quote stays within the attribute.
+    assert json.loads(html.unescape(re.search(r"data-rich-refs='([^']*)'", page).group(1)))['titles'] == {str(second): "Map's labels · New"}
 
 
 def test_anyone_reads_tickets_without_signing_in_but_only_signed_in_users_change_them(client):

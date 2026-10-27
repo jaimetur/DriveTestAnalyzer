@@ -18532,6 +18532,7 @@ def ticket_center_page(request: Request, user: SessionUser | None = Depends(opti
 def ticket_page(request: Request, ticket_id: int, user: SessionUser | None = Depends(optional_user)) -> HTMLResponse:
     from src.modules.ticket_center import (
         FIELD_LABELS, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_PER_UPLOAD, PRIORITIES, STATUSES, TEXT_GUIDES, TICKET_TYPES,
+        ticket_references,
     )
 
     modules = ticket_modules()
@@ -18575,6 +18576,8 @@ def ticket_page(request: Request, ticket_id: int, user: SessionUser | None = Dep
         'ticket_super_admins': user_choices(username for username, person in people.items() if person['role'] == 'super-admin'),
         'ticket_reporters': user_choices([*people, *([] if ticket['created_by'] in people else [ticket['created_by']])]),
         'ticket_max_screenshots': MAX_ATTACHMENTS_PER_UPLOAD, 'ticket_max_screenshot_mb': MAX_ATTACHMENT_BYTES // (1024 * 1024),
+        # The tickets its description and comments mention as #<number>, which rich_text.js links.
+        'ticket_references': ticket_references(repository, [ticket['description'], *(comment['body'] for comment in ticket['comments'])]),
     })
 
 

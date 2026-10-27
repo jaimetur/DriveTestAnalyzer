@@ -3,7 +3,7 @@
 {% block content %}
 <link rel="stylesheet" href="{{ static_path('css/ticket_center.css') }}?v={{ asset_version('css/ticket_center.css') }}">
 <link rel="stylesheet" href="{{ static_path('css/rich_text.css') }}?v={{ asset_version('css/rich_text.css') }}">
-<section class="dashboard-stack spacious-stack ticket-center ticket-page" data-ticket-page="{{ ticket.id }}" data-ticket-center-title="{{ ticket_center_title }}">
+<section class="dashboard-stack spacious-stack ticket-center ticket-page" data-ticket-page="{{ ticket.id }}" data-ticket-center-title="{{ ticket_center_title }}" data-rich-refs='{{ ticket_references | tojson }}'>
   <nav class="ticket-breadcrumb" aria-label="Back to the list"><a class="ticket-back-link" href="/tickets#section-tickets"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M11 18l-6-6 6-6"/></svg>Back to Tickets</a><span class="ticket-breadcrumb-id">{{ ticket_center_title }} · Ticket #{{ ticket.id }}</span></nav>
 
   <article class="panel ticket-header" data-status="{{ ticket.status }}">

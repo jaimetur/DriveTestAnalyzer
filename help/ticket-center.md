@@ -65,6 +65,7 @@ Descriptions and comments are written in Markdown and read the same while they a
 | `- [ ] task` or `- [x] done` | A task (**Ctrl+Shift+9**); a click on its box ticks it |
 | A text between two asterisks, one asterisk, two tildes, two equal signs or backticks | Bold (**Ctrl+B**), italic (**Ctrl+I**), strikethrough (**Ctrl+Shift+X**), highlight (**Ctrl+Shift+H**) and code (**Ctrl+E**) |
 | `[text](https://…)` or a web address | A link (**Ctrl+K**); in the editor, Ctrl and a click open it |
+| `#` and the number of a ticket (`#7`) | A link to that ticket, which shows its title and status when pointed at; a number of no ticket, one inside a word, a web address or code, or one with a backslash before its `#` stays text. In the editor a number typed links once the text is saved |
 | `> [!TIP] Title` and its lines starting with `>` | A card with its title (or the name of its kind): **NOTE**, **INFO**, **TIP**, **SUCCESS**, **QUESTION**, **IMPORTANT**, **WARNING**, **CAUTION** or **ERROR** |
 | `> text` | A quote |
 | A line of three backticks, the code, and another line of three backticks | A code block, as written |

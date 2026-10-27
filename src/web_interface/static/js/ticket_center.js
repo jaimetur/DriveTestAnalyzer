@@ -452,7 +452,7 @@
       // The comment as written, edited as it reads (rich_text.js).
       editor.body.value = text ? (text.dataset.raw ?? text.textContent) : '';
       editor.body.setAttribute('aria-label', 'Comment');
-      window.RichText?.attach(editor.body, {docClass: 'ticket-text'});
+      window.RichText?.attach(editor.body, {docClass: 'ticket-text', references: window.RichText.referencesOf(page)});
       editor.querySelector('.ticket-ghost-button').addEventListener('click', () => { editor.remove(); if (text) text.hidden = false; });
       editor.addEventListener('submit', async (event) => {
         event.preventDefault();

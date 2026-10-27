@@ -58,6 +58,9 @@
 .rt-doc mark { padding: 0 .12em; border-radius: 3px; background: var(--rt-mark); color: inherit; }
 .rt-doc a { color: var(--rt-link); text-decoration: underline; text-underline-offset: 2px; }
 .rt-doc[contenteditable="true"] a { cursor: text; }
+/* A reference to an item (#7, a ticket): bold, underlined when pointed at. */
+.rt-doc a[data-ref] { font-weight: 700; text-decoration: none; white-space: nowrap; }
+.rt-doc:not([contenteditable="true"]) a[data-ref]:hover { text-decoration: underline; }
 
 /* Cards (> [!TIP]) and quotes: the lines of each on its colour, its title with its icon. */
 .rt-line[data-card] {
