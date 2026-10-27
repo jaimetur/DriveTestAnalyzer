@@ -258,9 +258,7 @@ DEFAULT_FIELDS = (
     _field('cluster_id', 'Cluster ID', 'general', 'text', 'priority', 'cluster_id',
            description='The ID of the cluster of the call (C-...) in the Hotspots, Time-Window & Clustered Issues panel: the '
                        'calls of its operator and NR Mode failed close to each other or at the same site, in its campaign and '
-                       'those of the Cluster period; followed by that of its cluster with the calls of every NR Mode together, '
-                       'as the panel shows the clusters without one NR Mode filtered, when it starts with another call (empty '
-                       'when it is in none of 2 calls or more).'),
+                       'those of the Cluster period (empty when it is in none of 2 calls or more).'),
     _field('team_responsible', 'Team Responsible', 'general', 'list', 'tracking', 'team', in_table=True),
     _field('assignee', 'Asignee', 'general', 'list', 'tracking', 'assignee', in_table=True,
            description='A member of the responsible team (any user of the workspace when the team has no members).'),

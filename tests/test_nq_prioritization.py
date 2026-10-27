@@ -555,9 +555,9 @@ def test_the_groups_of_a_call_take_the_ids_of_the_panel():
 
 
 def group_ids_of(call: dict) -> dict[str, str]:
-    """The Hotspot ID, Time-Window ID and Cluster ID a call takes from the groups of its header."""
-    ids = lambda *kinds: ', '.join(dict.fromkeys(group['id'] for group in nq_prioritization.call_groups(call) if group['kind'] in kinds))  # noqa: E731
-    return {'hotspot_id': ids('hotspot'), 'consecutive_id': ids('run'), 'cluster_id': ids('cluster', 'cluster_all')}
+    """The Hotspot ID, Time-Window ID and Cluster ID a call takes from the groups of its header (its cluster of its NR Mode)."""
+    ids = {group['kind']: group['id'] for group in nq_prioritization.call_groups(call)}
+    return {'hotspot_id': ids.get('hotspot', ''), 'consecutive_id': ids.get('run', ''), 'cluster_id': ids.get('cluster', '')}
 
 
 def test_the_ids_of_the_groups_of_a_call_in_sql_are_those_of_its_header():
@@ -566,13 +566,13 @@ def test_the_ids_of_the_groups_of_a_call_in_sql_are_those_of_its_header():
     columns = ('cluster_key', 'cluster_size', 'consecutive_key', 'consecutive_size', 'repeat_key', 'repeat_size', 'repeat_all_key',
                'repeat_all_size')
     calls = [
-        # Its cluster of every NR Mode starts with the same call: one Cluster ID.
+        # Its cluster of every NR Mode starts with the same call.
         ('cluster:0c1bce5fda02e35fbd85092f', 17, 'run:68ab51b9d4d0d6ef07b2cbfb', 1, 'group:0c1bce5fda02e35fbd85092f', 15,
          'group-all:0c1bce5fda02e35fbd85092f', 39),
-        # With another call: that of its NR Mode, then that of every NR Mode.
+        # With another call: the Cluster ID is still that of its NR Mode alone.
         ('cluster:2fccb4a639d24b6d4059e295', 6, 'run:10d7b4a20e9e3a631b7f8b3b', 3, 'group:2fccb4a639d24b6d4059e295', 6,
          'group-all:ccd51ce10b4e7c48af6a98c2', 11),
-        # Alone in its NR Mode, in a cluster of every NR Mode.
+        # Alone in its NR Mode, in a cluster of every NR Mode: no Cluster ID.
         ('cluster:f35716e91b85c70465723201', 1, '', None, '', None, 'group-all:f35716e91b85c70465723201', 2),
         ('', None, '', None, '', None, '', None),
     ]
@@ -582,8 +582,8 @@ def test_the_ids_of_the_groups_of_a_call_in_sql_are_those_of_its_header():
     connection.executemany(f"INSERT INTO p VALUES ({', '.join('?' for _ in columns)})", calls)
     found = [dict(row) for row in connection.execute(f"SELECT {nq_prioritization.group_ids_sql('p')} FROM p")]
     assert found == [group_ids_of(dict(zip(columns, call))) for call in calls]
-    assert found[1] == {'hotspot_id': 'H-2FCCB4', 'consecutive_id': 'T-10D7B4', 'cluster_id': 'C-2FCCB4, C-CCD51C'}
-    assert found[2] == {'hotspot_id': '', 'consecutive_id': '', 'cluster_id': 'C-F35716'}
+    assert found[1] == {'hotspot_id': 'H-2FCCB4', 'consecutive_id': 'T-10D7B4', 'cluster_id': 'C-2FCCB4'}
+    assert found[2] == {'hotspot_id': '', 'consecutive_id': '', 'cluster_id': ''}
 
 
 def test_clusters_take_the_quarter_of_the_campaign_and_leave_the_ping_tests_out():
@@ -1059,6 +1059,17 @@ def test_workspaces_of_the_previous_version_get_the_ids_of_the_groups(client):
     assert renamed['consecutive_id']['description'] == defaults['consecutive_id']['description'] and '(T-...)' in defaults['consecutive_id']['description']
     assert renamed['hotspot_id']['description'] == defaults['hotspot_id']['description']
     assert renamed['cluster_id']['description'] == 'Our own cluster note.'
+    # The Cluster ID gave the cluster of every NR Mode too: its former description takes the current one, once.
+    fields = nq.list_fields(core.repository)
+    for field in fields:
+        if field['key'] == 'cluster_id':
+            field['description'] = dict(nq.V37_FORMER_DESCRIPTIONS)['cluster_id']
+    nq._store_fields(core.repository, fields)
+    core.repository.set_workspace_state(nq.ANALYSIS_CENTER_V37_STATE_KEY, '')
+    core.repository.set_workspace_state(nq.SCHEMA_STATE_KEY, '2026-10-27.2')
+    nq.ensure_nq_tables(core.repository)
+    cluster = next(field for field in nq.list_fields(core.repository) if field['key'] == 'cluster_id')
+    assert cluster['description'] == defaults['cluster_id']['description'] and 'every NR Mode' not in cluster['description']
 
 
 def test_hotspots_and_consecutive_failures_mix_the_call_types(prioritized):

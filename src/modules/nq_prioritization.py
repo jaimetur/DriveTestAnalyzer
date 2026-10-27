@@ -1955,13 +1955,10 @@ def group_id_sql(letter: str, key: str, size: str) -> str:
 
 def group_ids_sql(alias: str) -> str:
     """The Hotspot ID, Time-Window ID and Cluster ID of a call (the NQ Prioritization of ``alias``), as ``call_groups`` gives
-    them: its cluster first, then its cluster of every NR Mode together when that starts with another call."""
-    cluster = group_id_sql('C', f'{alias}.repeat_key', f'{alias}.repeat_size')
-    cluster_all = group_id_sql('C', f'{alias}.repeat_all_key', f'{alias}.repeat_all_size')
+    them: one each, its cluster that of its NR Mode, as the rules take it."""
     return (f"{group_id_sql('H', f'{alias}.cluster_key', f'{alias}.cluster_size')} AS hotspot_id, "
             f"{group_id_sql('T', f'{alias}.consecutive_key', f'{alias}.consecutive_size')} AS consecutive_id, "
-            f"(CASE WHEN {cluster_all} IN ('', {cluster}) THEN {cluster} WHEN {cluster} = '' THEN {cluster_all} "
-            f"ELSE {cluster} || ', ' || {cluster_all} END) AS cluster_id")
+            f"{group_id_sql('C', f'{alias}.repeat_key', f'{alias}.repeat_size')} AS cluster_id")
 
 
 # The groups a call can be in: their ID prefix, the columns of their key and size (one of each at most) and the filter of

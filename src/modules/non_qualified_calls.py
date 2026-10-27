@@ -268,7 +268,7 @@ V33_FORMER_DESCRIPTIONS = (
 ANALYSIS_CENTER_V35_STATE_KEY = 'nq_analysis_center_v35'
 V35_FIELD_KEYS = {'hotspot_id', 'consecutive_id', 'cluster_id'}
 # The Consecutive Issues are the Time-Window Issues, and the IDs of the groups take one letter (H-, T- and C-), once: the
-# label and descriptions of those fields where they are still the former defaults.
+# label and descriptions of those fields where they are still the former defaults (as stored: at most 300 characters).
 ANALYSIS_CENTER_V36_STATE_KEY = 'nq_analysis_center_v36'
 V36_FORMER_LABELS = (('consecutive_id', 'Consecutive ID'),)
 V36_FORMER_DESCRIPTIONS = (
@@ -278,15 +278,21 @@ V36_FORMER_DESCRIPTIONS = (
     ('consecutive_id', 'The ID of the run of consecutive failures of the call (CON-...) in the Hotspots, Consecutive & Clustered '
                        'Issues panel: the failures of its operator, NR Mode, campaign and drive one after another (empty when it is '
                        'in none of 2 calls or more).'),
-    ('cluster_id', 'The ID of the cluster of the call (CLU-...) in the Hotspots, Consecutive & Clustered Issues panel: the calls of '
-                   'its operator and NR Mode failed close to each other or at the same site, in its campaign and those of the '
-                   'Cluster period; followed by that of its cluster with the calls of every NR Mode together, as the panel shows '
-                   'the clusters without one NR Mode filtered, when it starts with another call (empty when it is in none of 2 '
-                   'calls or more).'),
+    ('cluster_id', 'The ID of the cluster of the call (CLU-...) in the Hotspots, Consecutive & Clustered Issues panel: the '
+                   'calls of its operator and NR Mode failed close to each other or at the same site, in its campaign and '
+                   'those of the Cluster period; followed by that of its cluster with the calls of every NR Mode to'),
+)
+# The Cluster ID holds the cluster of the NR Mode of the call alone (it also gave its cluster of every NR Mode together),
+# once: its description where it is still the former default (as stored: at most 300 characters).
+ANALYSIS_CENTER_V37_STATE_KEY = 'nq_analysis_center_v37'
+V37_FORMER_DESCRIPTIONS = (
+    ('cluster_id', 'The ID of the cluster of the call (C-...) in the Hotspots, Time-Window & Clustered Issues panel: the '
+                   'calls of its operator and NR Mode failed close to each other or at the same site, in its campaign and '
+                   'those of the Cluster period; followed by that of its cluster with the calls of every NR Mode toge'),
 )
 # Set once the tables and columns of this version exist, so the requests check the schema without writing.
 SCHEMA_STATE_KEY = 'nq_calls_schema'
-SCHEMA_VERSION = '2026-10-27.2'
+SCHEMA_VERSION = '2026-10-27.3'
 # Indexed call fields that the suggestion rule can read, with their labels.
 RULE_FIELDS = {
     'failure_classification': 'Failure Classification', 'failure_category': 'Failure Category',
@@ -642,7 +648,7 @@ def _schema_ready(task_repository: Any) -> bool:
                 ANALYSIS_CENTER_V26_STATE_KEY, ANALYSIS_CENTER_V27_STATE_KEY, ANALYSIS_CENTER_V28_STATE_KEY,
                 ANALYSIS_CENTER_V29_STATE_KEY, ANALYSIS_CENTER_V30_STATE_KEY, ANALYSIS_CENTER_V31_STATE_KEY,
                 ANALYSIS_CENTER_V32_STATE_KEY, ANALYSIS_CENTER_V33_STATE_KEY, ANALYSIS_CENTER_V34_STATE_KEY,
-                ANALYSIS_CENTER_V35_STATE_KEY, ANALYSIS_CENTER_V36_STATE_KEY)
+                ANALYSIS_CENTER_V35_STATE_KEY, ANALYSIS_CENTER_V36_STATE_KEY, ANALYSIS_CENTER_V37_STATE_KEY)
         states = {str(row[0]): str(row[1]) for row in connection.execute(
             f"SELECT key, value FROM workspace_state WHERE key IN ({', '.join('?' for _ in keys)})", keys)}
     return states.get(SCHEMA_STATE_KEY) == SCHEMA_VERSION and all(states.get(key) for key in keys[1:])
@@ -851,6 +857,9 @@ def ensure_nq_tables(task_repository: Any) -> None:
         _rename_default_labels(task_repository, V36_FORMER_LABELS)
         _renew_default_descriptions(task_repository, dict(V36_FORMER_DESCRIPTIONS))
         task_repository.set_workspace_state(ANALYSIS_CENTER_V36_STATE_KEY, '1')
+    if not task_repository.get_workspace_state(ANALYSIS_CENTER_V37_STATE_KEY):
+        _renew_default_descriptions(task_repository, dict(V37_FORMER_DESCRIPTIONS))
+        task_repository.set_workspace_state(ANALYSIS_CENTER_V37_STATE_KEY, '1')
     task_repository.set_workspace_state(SCHEMA_STATE_KEY, SCHEMA_VERSION)
 
 
