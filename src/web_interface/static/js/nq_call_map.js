@@ -785,7 +785,50 @@
       if (expanded || !onExpand) zoomBy(.5, ...pointerOffset(event));
       else onExpand();
     });
+    // On a touch screen two fingers zoom the map (a pinch) towards their middle, which also moves it; one finger moves it.
+    const touches = new Map();
+    let pinch = null;
+    const pinchNow = () => {
+      const [first, second] = [...touches.values()];
+      const [x, y] = pointerOffset({clientX: (first.x + second.x) / 2, clientY: (first.y + second.y) / 2});
+      return {distance: Math.max(1, Math.hypot(first.x - second.x, first.y - second.y)), x, y};
+    };
+    // Whether a touch belongs to a pinch, which then takes it from the mouse handlers below.
+    const pinchTouch = (event) => {
+      if (event.pointerType !== 'touch' || !view) return false;
+      if (event.type === 'pointerdown') {
+        touches.set(event.pointerId, {x: event.clientX, y: event.clientY});
+        if (touches.size < 2) return false;
+        pinch = {...pinchNow(), view: {...view}};
+        // The finger down first stops moving the map.
+        drag = null;
+        selectionBox.hidden = true;
+        tooltip.hidden = true;
+        canvas.classList.remove('is-panning', 'is-selecting', 'is-measuring');
+        try { canvas.setPointerCapture?.(event.pointerId); } catch (_error) { /* A pointer that is gone already. */ }
+        event.preventDefault();
+        return true;
+      }
+      if (!touches.has(event.pointerId)) return false;
+      if (event.type === 'pointermove') {
+        touches.set(event.pointerId, {x: event.clientX, y: event.clientY});
+        if (!pinch || touches.size < 2) return false;
+        const now = pinchNow();
+        const resolution = clamp(pinch.view.resolution * pinch.distance / now.distance, MIN_RESOLUTION, MAX_RESOLUTION);
+        // The place under the middle of the fingers when they touched stays under their middle.
+        view = {x: pinch.view.x + pinch.x * pinch.view.resolution - now.x * resolution,
+          y: pinch.view.y + pinch.y * pinch.view.resolution - now.y * resolution, resolution};
+        redraw();
+        return true;
+      }
+      // A finger lifted: after a pinch, the one left neither moves the map nor chooses an element.
+      touches.delete(event.pointerId);
+      if (!pinch) return false;
+      if (touches.size < 2) pinch = null;
+      return true;
+    };
     canvas.addEventListener('pointerdown', (event) => {
+      if (pinchTouch(event)) return;
       if ((event.button !== 0 && event.button !== 1) || !view) return;
       modifierKeys(event);
       const measuring = event.button === 0 && event.altKey;
@@ -798,6 +841,7 @@
       event.preventDefault();
     });
     canvas.addEventListener('pointermove', (event) => {
+      if (pinchTouch(event)) return;
       if (!drag) {
         hovered = hitAt(event);
         showTooltip(hovered, event);
@@ -823,6 +867,7 @@
     });
     canvas.addEventListener('pointerleave', () => { if (!drag) { tooltip.hidden = true; canvas.classList.remove('is-pointing'); } });
     const stopDrag = (event) => {
+      if (pinchTouch(event)) return;
       if (!drag || event.pointerId !== drag.id) return;
       const finished = drag;
       drag = null;
