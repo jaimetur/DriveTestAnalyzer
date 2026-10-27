@@ -593,7 +593,7 @@ def test_narrow_chart_hierarchy_grid_wraps_campaign_quarter_without_losing_hyphe
     assert grid.top == chart_shape.top + chart_shape.height
     campaign_labels = [cell.text for cell in grid.table.rows[0].cells]
     assert [label.replace('\n', '') for label in campaign_labels] == [
-        f'2026-Q{index % 4 + 1}' for index in range(12)
+        f'26-Q{index % 4 + 1}' for index in range(12)
     ]
     assert all('\n' in label and label.splitlines()[0].endswith('-') for label in campaign_labels)
     assert grid.table.rows[1].height > Inches(.3)
@@ -783,7 +783,7 @@ def test_powerpoint_exports_one_reference_style_scoring_matrix_with_signed_gaps_
     assert [slide.slide_layout.name for slide in intro_slides] == ['Title Page', 'Title Page']
     cover_text = _slide_text(presentation.slides[0]).replace('\x0b', '\n')
     transition_text = _slide_text(presentation.slides[1]).replace('\x0b', '\n')
-    expected_filter_text = 'Campaigns: 2026-Q2\nSplit by: Operator\nOperator: All Operators\nVendor: All Vendors\nRegion: All Regions\nCity: All Cities'
+    expected_filter_text = 'Campaigns: 26-Q2\nSplit by: Operator\nOperator: All Operators\nVendor: All Vendors\nRegion: All Regions\nCity: All Cities'
     for text in (cover_text, transition_text):
         assert 'Non-Standalone' in text and expected_filter_text in text
 
@@ -968,7 +968,7 @@ def test_powerpoint_exports_one_reference_style_scoring_matrix_with_signed_gaps_
     assert reference_bottom.get('w') == metadata_bottom.get('w')
     assert reference_bottom.find('.//{http://schemas.openxmlformats.org/drawingml/2006/main}srgbClr').get('val') == metadata_bottom.find('.//{http://schemas.openxmlformats.org/drawingml/2006/main}srgbClr').get('val')
 
-    assert '2026-Q2' in '\n'.join(_slide_text(slide) for slide in presentation.slides)
+    assert '26-Q2' in '\n'.join(_slide_text(slide) for slide in presentation.slides)
     visible = '\n'.join(_slide_text(slide) for slide in presentation.slides)
     assert all(warning not in visible for warning in WARNINGS)
     assert all(all(warning in slide.notes_slide.notes_text_frame.text for warning in WARNINGS)
@@ -1047,7 +1047,7 @@ def test_cover_campaigns_prefer_scored_contexts_and_include_context_filters():
         text = _slide_text(slide).replace('\x0b', '\n')
         assert 'Standalone' in text and 'Split by: Operator, City' in text
         assert 'City: London' in text
-        assert 'Campaigns: 2026-Q2' in text
+        assert 'Campaigns: 26-Q2' in text
         assert 'Wrong_source_campaign' not in text
 
 
@@ -1071,7 +1071,7 @@ def test_intro_slides_show_all_canonical_scope_filters_without_overlapping_campa
         assert 'Operator: O2 UK' in text
         assert 'Vendor: All Vendors' in text
         assert 'Campaign: UK_Q2_2026, UK_Q3_2026' not in text
-        assert 'Campaigns: 2026-Q2' in text
+        assert 'Campaigns: 26-Q2' in text
         assert slide.slide_layout.name == 'Title Page'
         # The NR Mode is the subtitle, right below the room of two title lines (the cover's larger than a transition's).
         subtitle_shape = next(shape for shape in slide.placeholders if shape.placeholder_format.type == 4)
@@ -1086,7 +1086,7 @@ def test_intro_slides_show_all_canonical_scope_filters_without_overlapping_campa
         # The Campaigns, then the Split by and each filter, under the line of the layout.
         filters_shape = next(shape for shape in slide.shapes if shape.name == 'Scoring Aggregations and Filters')
         assert filters_shape.top > Inches(5.77) and filters_shape.top + filters_shape.height <= Inches(7.5)
-        ordered_labels = ['Campaigns: 2026-Q2', 'Split by: Operator', 'Operator: O2 UK', 'Vendor: All Vendors',
+        ordered_labels = ['Campaigns: 26-Q2', 'Split by: Operator', 'Operator: O2 UK', 'Vendor: All Vendors',
                           'Region: North, South', 'City: All Cities']
         assert [line for line in filters_shape.text.splitlines()] == [label for label in ordered_labels] or \
             [filters_shape.text.index(label) for label in ordered_labels] == sorted(filters_shape.text.index(label) for label in ordered_labels)
@@ -1187,7 +1187,7 @@ def test_multilevel_hierarchy_export_uses_editable_nested_tables_and_one_chart_p
     assert best_network_categories.depth == 3
     best_paths = best_network_categories.flattened_labels
     page_operators = list(dict.fromkeys(path[0] for path in best_paths))
-    assert ('EE', 'North', '2026-Q2') in best_paths
+    assert ('EE', 'North', '26-Q2') in best_paths
     hierarchy_text = '\n'.join(
         line for line in _slide_text(best_network_slide).splitlines()
         if not (line.startswith(('Drive - City: ', 'Drive - Connecting Roads: ')) and ' pts (' in line)
@@ -1305,7 +1305,7 @@ def test_multilevel_hierarchy_export_uses_editable_nested_tables_and_one_chart_p
     assert chart_categories.depth == 3
     chart_paths = chart_categories.flattened_labels
     page_operators = list(dict.fromkeys(path[0] for path in chart_paths))
-    assert ('EE', 'North', '2026-Q2') in chart_paths
+    assert ('EE', 'North', '26-Q2') in chart_paths
     assert all(not re.search(r'\b(?:Operator|Vendor|Region|City|Campaign):', label)
                for path in chart_paths for label in path)
     categories = list(dict.fromkeys(row['category'] for row in scoring_rows))
@@ -1494,7 +1494,7 @@ def test_multilevel_hierarchy_export_uses_editable_nested_tables_and_one_chart_p
         assert all(kpi.casefold() != 'average kpi gap' for kpi in operator_gap_kpis)
         header_text = '\n'.join(cell.text for row in list(operator_gap_table.rows)[:gap_header_rows] for cell in row.cells)
         assert 'North' in header_text and 'South' in header_text
-        assert '2026-Q2' in header_text and '2026-Q3' in header_text
+        assert '26-Q2' in header_text and '26-Q3' in header_text
         assert not re.search(r'\b(?:Operator|Vendor|Region|City|Campaign):', header_text)
         assert 'GAP' not in header_text.split('\n')
     assert any(_charts_on_slide(slide) for slide, title in zip(presentation.slides, titles)
@@ -1510,7 +1510,7 @@ def test_multilevel_hierarchy_export_uses_editable_nested_tables_and_one_chart_p
     assert all('Average KPI GAP' not in _slide_text(slide) for slide in all_gap_slides)
     assert all('Average KPI GAP:' in _slide_text(slide) for slide in individual_gap_slides)
     hierarchy_text = '\n'.join(_slide_text(slide) for slide in score_slides + gap_slides)
-    assert '2026-Q2' in hierarchy_text
+    assert '26-Q2' in hierarchy_text
     assert 'UK_Q2_2026' not in hierarchy_text
     assert 'South' in hierarchy_text
     assert not re.search(r'\b(?:Operator|Vendor|Region|City|Campaign):', hierarchy_text)
@@ -1543,7 +1543,7 @@ def test_unselected_campaign_stays_metadata_without_becoming_a_hierarchy_header(
 
     presentation = _export(result, operator_mapping_groups=_mapping_groups(), job_fields=job_fields)
     intro_text = '\n'.join(_slide_text(presentation.slides[index]) for index in (0, 1))
-    assert 'Campaigns: 2026-Q2' in intro_text
+    assert 'Campaigns: 26-Q2' in intro_text
 
 
 @pytest.mark.parametrize('hierarchy', [False, True])
@@ -1671,7 +1671,7 @@ def test_slides_name_the_area_operators_and_vendors_of_their_tables_as_the_web_t
         assert subtitles[title].text == f'Best Network — Drive - City · {scope}', title
     # The KPI GAP Profile names its location after them; a longer subtitle is smaller so it keeps one line.
     profile = subtitles[next(title for title in subtitles if title.startswith('KPI GAP Profile'))]
-    assert profile.text == f'Best Network — Drive - City · {scope} · Region: North · Campaign: 2026-Q2'
+    assert profile.text == f'Best Network — Drive - City · {scope} · Region: North · Campaign: 26-Q2'
     assert 8 <= profile.runs[0].font.size.pt < 14
     assert subtitles['Best Network Scoring per Service'].runs[0].font.size.pt < 14
 
