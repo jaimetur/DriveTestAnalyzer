@@ -6,7 +6,7 @@
     </summary>
 {% endmacro %}
 {% macro mapping_role_select(role, form_id, name) %}<select class="table-select mapping-role-select" name="role" data-no-persist{% if form_id %} form="{{ form_id }}"{% endif %} aria-label="Role of {{ name }}" title="Include: analysed as usual. Focus: one of the Focus operators of the Scoring exports. Exclude: left out of every analysis, filter, chart and report of the workspace.">
-  <option value=""{% if not role %} selected{% endif %}>Include</option>
+  <option value="include"{% if not role %} selected{% endif %}>Include</option>
   <option value="focus"{% if role == 'focus' %} selected{% endif %}>Focus</option>
   <option value="exclude"{% if role == 'exclude' %} selected{% endif %}>Exclude</option>
 </select>{% endmacro %}

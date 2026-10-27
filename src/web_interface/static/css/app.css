@@ -728,7 +728,7 @@ body [data-section-bar].is-compact > a.section-bar-top { padding: .45rem .55rem;
 /* The select fills its column and leaves room before the names of the next one. */
 .operator-mappings-table td[data-label="Role"] { padding-right: 1.5rem; }
 .mapping-role-select { box-sizing: border-box; width: 100%; min-width: 0; }
-.mapping-role-select:has(option[value=""]:checked) { border-color: #c79a1e; background-color: #fffbea; color: #7a5a00; font-weight: 700; }
+.mapping-role-select:has(option[value="include"]:checked) { border-color: #c79a1e; background-color: #fffbea; color: #7a5a00; font-weight: 700; }
 .mapping-role-select:has(option[value="focus"]:checked) { border-color: #2f855a; background-color: #f0fff4; color: #22543d; font-weight: 700; }
 .mapping-role-select:has(option[value="exclude"]:checked) { border-color: #c53030; background-color: #fff5f5; color: #9b2c2c; font-weight: 700; }
 /* The NR Modes of each Operator label: both (as any field), NSA only (blue) or SA only (magenta), as the NR Mode pills. */

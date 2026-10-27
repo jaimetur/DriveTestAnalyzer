@@ -97,6 +97,14 @@ def test_the_operator_maps_editor_saves_the_role_of_each_label(client):
     assert next(item for item in core.repository.list_operator_mapping_groups() if item['canonical'] == 'Lebara')['role'] == 'focus'
     details = [json.loads(row['details']) for row in core.repository.list_logs() if row['action'] == 'operator_mapping_group_save']
     assert {'role': 'focus', 'previous_role': 'exclude'}.items() <= details[0].items()
+    # Include, posted as such (an empty value would reach the server as no value), takes the Role away.
+    client.post('/workspace-config/operator-mappings/save', data={
+        'original_canonical': 'Lebara', 'canonical_value': 'Lebara', 'aliases': 'LEB', 'color': '#6F42C1', 'role': 'include'})
+    assert 'role' not in next(item for item in core.repository.list_operator_mapping_groups() if item['canonical'] == 'Lebara')
+    details = [json.loads(row['details']) for row in core.repository.list_logs() if row['action'] == 'operator_mapping_group_save']
+    assert {'role': '', 'previous_role': 'focus'}.items() <= details[0].items()
+    client.post('/workspace-config/operator-mappings/save', data={
+        'original_canonical': 'Lebara', 'canonical_value': 'Lebara', 'aliases': 'LEB', 'color': '#6F42C1', 'role': 'focus'})
     # The Role column sits beside each Operator label (the Vendor Maps have none).
     page = client.get('/workspace-config').text
     operators = page[page.index('id="operator-maps"'):page.index('id="vendor-maps"')]
@@ -106,7 +114,7 @@ def test_the_operator_maps_editor_saves_the_role_of_each_label(client):
     assert 'data-mapping-role-help' in operators and 'data-mapping-role-help' not in vendors
     assert '<option value="focus" selected>Focus</option>' in operators
     # A label with neither role shows Include.
-    assert '<option value="" selected>Include</option>' in operators and '>None</option>' not in operators
+    assert '<option value="include" selected>Include</option>' in operators and '>None</option>' not in operators
 
 
 def test_the_dashboard_column_cache_leaves_out_the_excluded_values():
@@ -184,9 +192,9 @@ def test_the_operator_maps_editor_keeps_one_operator_included(client):
 const dialogs = [];
 const showInfoDialog = (message) => dialogs.push(message);
 const option = (value, selected) => ({value, defaultSelected: selected});
-const select = (value) => ({value, options: [option('', value === ''), option('focus', value === 'focus'), option('exclude', value === 'exclude')],
+const select = (value) => ({value, options: [option('include', value === 'include'), option('focus', value === 'focus'), option('exclude', value === 'exclude')],
   closest: (selector) => selector.startsWith('form') ? null : panel});
-const selects = [select(''), select('exclude')];
+const selects = [select('include'), select('exclude')];
 const panel = {querySelectorAll: () => selects};
 selects[0].value = 'exclude';
 const refused = keepOneOperatorIncluded(selects[0]);
@@ -198,7 +206,7 @@ console.log(JSON.stringify({refused, after, accepted, dialogs: dialogs.length, n
 """
     completed = subprocess.run([node, '-e', program], capture_output=True, text=True, check=False)
     assert completed.returncode == 0, completed.stderr
-    assert json.loads(completed.stdout) == {'refused': False, 'after': ['', 'exclude'], 'accepted': True, 'dialogs': 1,
+    assert json.loads(completed.stdout) == {'refused': False, 'after': ['include', 'exclude'], 'accepted': True, 'dialogs': 1,
                                             'none': False, 'newOnly': True}
 
 
@@ -336,7 +344,8 @@ def test_a_workspace_database_written_before_the_nr_modes_reads_none(tmp_path):
 
 def test_the_operator_maps_editor_saves_the_nr_modes_of_each_label(client):
     login(client)
-    group = next(item for item in core.repository.list_operator_mapping_groups() if 'Three' in item['aliases'])
+    group = next(item for item in core.repository.list_operator_mapping_groups()
+                 if 'three' in {name.casefold() for name in [item['canonical'], *item['aliases']]})
     label, aliases = group['canonical'], '\n'.join(group['aliases'])
 
     def save(**fields):

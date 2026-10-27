@@ -27,6 +27,7 @@
 - **Super Admin — AI Comment Writers:** **Install Kiro CLI** no longer fails with an HTTP 500 error before reading the package, takes the kiro-cli program of a .deb among its shell completions and icons of the same name, and says when a package is for another system (a Linux package on a Mac, a .dmg on the Linux server).
 - **PPT Dashboards — Generate comments:** the scatter charts no longer fail with *No module named 'scipy'*, on the Dashboard, in its PPTs and in the cache prewarm recorded in App Events, when they measure how their two KPIs move together for the comments.
 - **Non-Qualified Calls — small screens:** the tables of the Hotspots, Time-Window & Clustered Issues panel no longer squeeze their columns until the words split and From and To overlap: on screens too narrow for them they scroll sideways in the panel (as the other tables do) and From and To put the time below the day; the periods of the Progress View table no longer split at their hyphen, and the RCA source tabs of Root Cause Analysis fit the panel on phones.
+- **Workspace Config — Operator Maps:** choosing the Role **Include** for a label that was Focus or Exclude is saved again, from its row and from **Save Labels**, instead of keeping the Role it had.
 
 #### 📚 Documentation:
 

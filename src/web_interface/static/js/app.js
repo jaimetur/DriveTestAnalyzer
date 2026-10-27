@@ -9690,9 +9690,9 @@ function keepOneOperatorIncluded(select) {
   const panel = select.closest('[data-panel-state-key="admin:operator-mappings"]');
   if (!panel || select.closest('form.operator-mapping-create')) return true;
   const previous = operatorRolePrevious.has(select) ? operatorRolePrevious.get(select)
-    : (Array.from(select.options).find((option) => option.defaultSelected)?.value ?? '');
+    : (Array.from(select.options).find((option) => option.defaultSelected)?.value ?? 'include');
   if (select.value === 'exclude' && everyOperatorExcluded(operatorLabelRoles(panel))) {
-    select.value = previous === 'exclude' ? '' : previous;
+    select.value = previous === 'exclude' ? 'include' : previous;
     showInfoDialog(OPERATOR_ROLE_LAST_INCLUDED, {title: 'One operator must stay included', tone: 'error'});
     return false;
   }
@@ -9732,7 +9732,10 @@ document.addEventListener('change', (event) => {
   const label = target.closest('tr')?.querySelector('input[name="original_canonical"]')?.value;
   if (!panel || !label) return;
   panel.querySelectorAll('[data-mapping-assignment-label]').forEach((select) => {
-    Array.from(select.options).filter((option) => option.value === label).forEach((option) => { option.dataset.role = target.value; });
+    // Include is posted as "include" (an empty choice would reach the server as no choice) and read as no Role.
+    Array.from(select.options).filter((option) => option.value === label).forEach((option) => {
+      option.dataset.role = target.value === 'include' ? '' : target.value;
+    });
     refreshMappingRoleBadge(select);
   });
 });
