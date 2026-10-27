@@ -16,36 +16,55 @@
   const WORLD = 256 * 2 ** REFERENCE_ZOOM;
   const COLOURS = {
     call: '#b0234f', path: '#3d1824', start: '#2e8b57', handover: '#f08a24', end: '#d7263d', both: '#d7263d', nr_leg: '#6d46a8',
-    group: '#d62828', hotspot: '#1971c2', cluster: '#2f9e44', run: '#15aabf',
-    place: '#7b3fe4', own: '#f08a24', other: '#6c757d', samePci: '#d6336c', noValue: '#adb5bd',
-    completed: '#2e8b57', failed: '#d7263d', radius: '#7d1238',
-    // The hotspot zone of the call: an orange of its own, apart from the colours of the NQ calls and their groups.
-    hotZone: '#e8590c',
+    // The groups of the call: its hotspot (and its zone) orange, a cluster green, a time window blue; the NQ calls at its site
+    // outlined in red, the others grey.
+    hotspot: '#e8590c', cluster: '#2f9e44', run: '#1971c2', site: '#d62828',
+    own: '#6c757d', other: '#adb5bd', samePci: '#d6336c', noValue: '#adb5bd',
+    completed: '#2e8b57', failed: '#d7263d', radius: '#7d1238', hotZone: '#e8590c',
     sameType: '#b0234f', otherType: '#1c7ed6', sameCampaign: '#b0234f', otherCampaign: '#6c757d',
   };
-  // The group of the call that filters the list of calls (its filter, key and name, set by the page), if any.
+  // The group of the call that filters the list of calls (its filter, key and name, set by the page), if any: a cluster or
+  // a time window shows alone on the map, with its shape.
   let groupFocus = null;
   const inFocus = (failure) => Boolean(groupFocus && (groupFocus.filter === 'hotspot' ? failure.cluster_key === groupFocus.key
     : groupFocus.filter === 'consecutive_issue' ? failure.consecutive_key === groupFocus.key
       : failure.repeat_key === groupFocus.key || failure.repeat_all_key === groupFocus.key));
-  // The keys of the clusters and time windows the map draws a circle around (its own and those of its hotspot).
+  const focusKind = () => (groupFocus?.filter === 'clustered_issue' ? 'cluster' : groupFocus?.filter === 'consecutive_issue' ? 'run' : '');
+  // The keys of the clusters and time windows the map draws a shape around (its own and those of its hotspot).
   let ringKeys = {cluster: new Set(), run: new Set()};
   const setRings = (rings) => {
     ringKeys = {cluster: new Set(), run: new Set()};
     (rings || []).forEach((ring) => { if (ring.key && ringKeys[ring.kind]) ringKeys[ring.kind].add(ring.key); });
   };
-  // The group of the call an NQ call stands for: the one that filters the list (red), else a time window (cyan) or a
-  // cluster (green) of the call or of its hotspot, both at once when it joins a cluster to a time window (a bridge), else its
-  // hotspot (blue).
-  const groupKind = (failure) => {
-    if (inFocus(failure)) return 'focus';
-    const timed = failure.same_run || (Boolean(failure.consecutive_key) && ringKeys.run.has(failure.consecutive_key));
-    const spatial = failure.same_cluster || failure.same_cluster_all || (Boolean(failure.repeat_key) && ringKeys.cluster.has(failure.repeat_key));
-    return timed && spatial ? 'bridge' : timed ? 'run' : spatial ? 'cluster' : failure.same_hotspot ? 'hotspot' : '';
+  // The groups an NQ call is of, in their order of priority: the hotspot of the call, a cluster, then a time window (of the
+  // call or of its hotspot).
+  const memberships = (failure) => [
+    ...(failure.same_hotspot ? ['hotspot'] : []),
+    ...(failure.same_cluster || failure.same_cluster_all || (Boolean(failure.repeat_key) && ringKeys.cluster.has(failure.repeat_key)) ? ['cluster'] : []),
+    ...(failure.same_run || (Boolean(failure.consecutive_key) && ringKeys.run.has(failure.consecutive_key)) ? ['run'] : []),
+  ];
+  // Those the map shows: with a cluster or a time window filtering the list, that one alone.
+  const groupsOf = (failure) => (focusKind() ? (inFocus(failure) ? [focusKind()] : []) : memberships(failure));
+  // The NQ calls of the other groups, hidden while a cluster or a time window filters the list.
+  const hiddenByFocus = (failure) => Boolean(focusKind()) && !inFocus(failure) && memberships(failure).length > 0;
+  const GROUP_COLOURS = {hotspot: COLOURS.hotspot, cluster: COLOURS.cluster, run: COLOURS.run};
+  // Whether an NQ call is of a group of the call shown.
+  const inGroup = (failure) => groupsOf(failure).length > 0;
+  // The shapes the map draws: every one, or with a cluster or a time window filtering the list, its own (one around its
+  // calls when the call has none of it, such as its cluster of every NR Mode).
+  const visibleRings = (data) => {
+    const kind = focusKind();
+    if (!data || !kind) return data?.rings || [];
+    const found = (data.rings || []).filter((ring) => ring.kind === kind && ring.key === groupFocus.key);
+    if (found.length) return found;
+    const calls = data.failures.filter((failure) => failure.latitude !== null && (failure.self || inFocus(failure)));
+    if (calls.length < 2) return [];
+    const centre = [calls.reduce((sum, item) => sum + item.latitude, 0) / calls.length, calls.reduce((sum, item) => sum + item.longitude, 0) / calls.length];
+    const metres = Math.max(...calls.map((item) => geodesic([centre[1], centre[0]], [item.longitude, item.latitude]).metres)) * 1.04 + 40;
+    const path = kind === 'run' ? [...calls].sort((a, b) => String(a.start_time).localeCompare(String(b.start_time))).map((item) => [item.latitude, item.longitude]) : undefined;
+    return [{kind, key: groupFocus.key, own: true, calls: calls.length, metres, minor_metres: metres, angle: 0, centre, path,
+      label: `${kind === 'run' ? 'Its time window' : 'Its cluster'}: ${calls.length} NQ calls`}];
   };
-  const GROUP_COLOURS = {focus: COLOURS.group, run: COLOURS.run, cluster: COLOURS.cluster, hotspot: COLOURS.hotspot, bridge: COLOURS.cluster};
-  // Whether an NQ call is of a group of the call.
-  const inGroup = (failure) => Boolean(groupKind(failure));
   // The test columns of the payload (see nq_call_map.nearby_tests).
   const COLUMN = {latitude: 0, longitude: 1, operator: 2, kind: 3, failed: 4, lte_rsrp: 5, lte_sinr: 6, nr_rsrp: 7, nr_sinr: 8, test: 9, start: 10, cdr: 11};
   const METRICS = {
@@ -172,7 +191,13 @@
       samplesMeasure.append(option);
     }
     samplesMeasure.addEventListener('change', () => shared.setColour(samplesMeasure.value));
-    samples.append(samplesToggle, samplesMeasure);
+    // The lines that join the failures of each time window in their order, and their numbers: shown or hidden with their own
+    // button.
+    const pathsToggle = node('button', undefined, 'nq-map-samples-toggle nq-map-paths-toggle');
+    pathsToggle.type = 'button';
+    pathsToggle.append(node('span', undefined, 'nq-map-paths-mark'), node('span', 'Time-window paths'));
+    pathsToggle.addEventListener('click', (event) => { event.stopPropagation(); shared.setPaths(shared.settings.layers.paths === false); });
+    samples.append(samplesToggle, samplesMeasure, pathsToggle);
     samples.hidden = true;
     // In the call panel the wheel alone scrolls the panel: a moment's note says how to zoom.
     const wheelHint = node('div', 'Ctrl/Cmd + wheel to zoom the map', 'nq-map-wheel-hint');
@@ -206,7 +231,7 @@
       const [cx, cy] = toWorld(data.centre[0], data.centre[1]);
       const reach = data.radius_km * 1000 / metresPerWorldPixel(data.centre[0]);
       let [west, east, north, south] = [cx - reach, cx + reach, cy - reach, cy + reach];
-      for (const ring of data.rings || []) {
+      for (const ring of visibleRings(data)) {
         const [x, y] = toWorld(ring.centre[0], ring.centre[1]);
         const r = ring.metres / metresPerWorldPixel(ring.centre[0]);
         [west, east, north, south] = [Math.min(west, x - r), Math.max(east, x + r), Math.min(north, y - r), Math.max(south, y + r)];
@@ -350,9 +375,10 @@
       // The hotspot zone: where its clusters OR its time windows are (their envelope), or with the AND join where they meet
       // (their intersection), in an orange of its own: tinted over the shapes of its groups and outlined outside them.
       let hotZone = null;
-      if ((data.groups?.hotspot || 0) >= 2) {
-        const spatial = (data.rings || []).filter((ring) => ring.kind !== 'run');
-        const timed = (data.rings || []).filter((ring) => ring.kind === 'run');
+      const visible = visibleRings(data);
+      if ((data.groups?.hotspot || 0) >= 2 && !focusKind()) {
+        const spatial = visible.filter((ring) => ring.kind !== 'run');
+        const timed = visible.filter((ring) => ring.kind === 'run');
         const meet = data.hotspot_join === 'and' && spatial.length && timed.length;
         const layer = (rings) => {
           const found = document.createElement('canvas');
@@ -402,10 +428,10 @@
         hotZone = {fill: () => paint(zone, .22), edge: () => paint(edge, .95)};
       }
       // The shapes of its groups, as the Groups slide draws them: a circle around each cluster in green and an ellipse along
-      // each time window in cyan of its hotspot (what they make together), those of the call itself bolder, the larger
-      // below; the hotspot in blue when one of its calls is in neither. Their tint first, then the hotspot zone, then their
-      // lines and the edge of the zone.
-      const shapes = [...(data.rings || [])].sort((a, b) => b.metres - a.metres);
+      // each time window in blue of its hotspot (what they make together), those of the call itself bolder, the larger
+      // below; the hotspot when one of its calls is in neither. Their tint first, then the hotspot zone, then their lines and
+      // the edge of the zone.
+      const shapes = [...visible].sort((a, b) => b.metres - a.metres);
       for (const ring of shapes) {
         shape(context, ring);
         context.fillStyle = GROUP_COLOURS[ring.kind];
@@ -424,11 +450,14 @@
       }
       hotZone?.edge();
       // Each time window as its failures follow one another (each within the Time window of the one before).
-      for (const ring of (data.rings || []).filter((item) => item.path && item.path.length > 1)) {
+      // Their order is numbered beside each failure, above the NQ calls (see below).
+      const pathNumbers = [];
+      for (const ring of settings.layers.paths === false ? [] : visible.filter((item) => item.path && item.path.length > 1)) {
         context.beginPath();
         ring.path.forEach(([latitude, longitude], index) => {
           const [px, py] = project(latitude, longitude);
           if (index) context.lineTo(px, py); else context.moveTo(px, py);
+          pathNumbers.push([px, py, index + 1]);
         });
         context.lineJoin = 'round';
         context.lineWidth = ring.own ? 5 : 4;
@@ -575,7 +604,7 @@
           if (!stacks.has(key)) stacks.set(key, {x, y, items: []});
           stacks.get(key).items.push(failure);
         }
-        const rank = (failure) => (inFocus(failure) ? 0 : inGroup(failure) ? 1 : failure.same_place ? 2 : failure.same_operator ? 3 : 4);
+        const rank = (failure) => (inGroup(failure) ? 0 : failure.same_place ? 1 : failure.same_operator ? 2 : 3);
         for (const {x, y, items} of stacks.values()) {
           items.sort((first, second) => rank(first) - rank(second));
           const [failure] = items;
@@ -583,24 +612,14 @@
           diamond(context, x, y, size);
           context.fillStyle = shared.failureColour(failure);
           context.fill();
-          if (settings.failureColour === 'relation' && groupKind(failure) === 'bridge') {
-            // A call of a cluster and of a time window, which joins them: its right half cyan.
-            context.save();
-            context.beginPath();
-            context.rect(x, y - size - 2, size + 2, size * 2 + 4);
-            context.clip();
-            diamond(context, x, y, size);
-            context.fillStyle = COLOURS.run;
-            context.fill();
-            context.restore();
-            diamond(context, x, y, size);
-          }
           context.lineWidth = 1.6;
           context.strokeStyle = '#fff';
           context.stroke();
-          const rings = settings.failureColour === 'relation'
-            ? (inGroup(failure) && items.some((item) => item.same_place) ? [COLOURS.place] : [])
-            : [...(items.some(inGroup) ? [GROUP_COLOURS[groupKind(items.find(inGroup))]] : []), ...(items.some((item) => item.same_place) ? [COLOURS.place] : [])];
+          // Its other groups as outlines in their colour (all of them when the colour tells the call type or the campaign),
+          // then red when one of the calls on the point is at its site.
+          const groups = groupsOf(failure);
+          const rings = [...(settings.failureColour === 'relation' ? groups.slice(1) : groups).map((kind) => GROUP_COLOURS[kind]),
+            ...(items.some((item) => item.same_place) ? [COLOURS.site] : [])];
           rings.forEach((ring, index) => {
             diamond(context, x, y, size + 3 + index * 3);
             context.lineWidth = 2.2;
@@ -623,6 +642,22 @@
           }
           hits.push({x, y, r: size + 3, kind: 'failure', item: failure, priority: 4, stack: items.length});
         }
+      }
+      // The order of the failures of each time window, in a blue badge at the top left of each.
+      context.font = '800 10px "IBM Plex Sans", system-ui, sans-serif';
+      context.textAlign = 'center';
+      context.textBaseline = 'middle';
+      for (const [px, py, number] of pathNumbers) {
+        const [bx, by] = [px - 11, py - 11];
+        context.beginPath();
+        context.arc(bx, by, 7.5, 0, Math.PI * 2);
+        context.fillStyle = COLOURS.run;
+        context.fill();
+        context.lineWidth = 1.5;
+        context.strokeStyle = '#fff';
+        context.stroke();
+        context.fillStyle = '#fff';
+        context.fillText(String(number), bx, by + .5);
       }
       // The call: from where it started to where it ended (where it failed).
       if (start) {
@@ -833,6 +868,13 @@
       samplesMeasure.hidden = !settings.layers.tests;
       samplesMeasure.value = settings.colour;
       if (!data) return;
+      const paths = visibleRings(data).some((ring) => ring.path && ring.path.length > 1);
+      const pathsShown = settings.layers.paths !== false;
+      pathsToggle.hidden = !paths;
+      pathsToggle.classList.toggle('is-on', pathsShown);
+      pathsToggle.setAttribute('aria-pressed', String(pathsShown));
+      pathsToggle.title = pathsShown ? 'Hide the lines that join the failures of each time window in their order, and their numbers'
+        : 'Show the lines that join the failures of each time window in their order, and their numbers';
       let list = null;
       const group = (title) => {
         list = node('ul');
@@ -865,12 +907,28 @@
           item('dot', 'No value', COLOURS.noValue);
         }
       }
-      group('Call and NQ calls');
+      group(focusKind() ? `Call and NQ calls · only its ${groupFocus.label} (filtering the list)` : 'Call and NQ calls');
       item('pin', 'This call (where it failed)', COLOURS.call);
       if (data.call.end) item('dot', 'Where it started', COLOURS.start);
+      item('line', `Radius ${distanceText(data.radius_km)}`, COLOURS.radius, 'is-dashed');
       if (settings.layers.failures) {
         shared.failureLegend().forEach(([text, colour, extra]) => item('diamond', text, colour, extra));
         item('count', 'NQ calls at one point (how many)', '#2d1520');
+      }
+      // The shapes of its groups: its own one by one, those of the other calls of its hotspot by kind, then its zone.
+      const rings = visibleRings(data);
+      if (rings.length) {
+        group('Groups of the call');
+        rings.filter((ring) => ring.own).forEach((ring) => item('ring', ring.label, GROUP_COLOURS[ring.kind]));
+        [['cluster', 'Other clusters of its hotspot'], ['run', 'Other time windows of its hotspot']].forEach(([kind, text]) => {
+          const count = rings.filter((ring) => !ring.own && ring.kind === kind).length;
+          if (count) item('ring', `${text} (${count})`, GROUP_COLOURS[kind]);
+        });
+        if (pathsShown && paths) item('line', 'Time window: its failures in their order (numbered)', COLOURS.run, 'is-dashed');
+        if ((data.groups?.hotspot || 0) >= 2 && !focusKind()) {
+          item('zone', data.hotspot_join === 'and' && rings.some((ring) => ring.kind === 'run') && rings.some((ring) => ring.kind !== 'run')
+            ? 'Hotspot (AND): where its clusters and time windows meet' : 'Hotspot (OR): its clusters and time windows together', COLOURS.hotZone);
+        }
       }
       const located = data.trace.some((step) => step.site);
       if ((settings.layers.sites && data.sites.length) || (settings.layers.path && located)) {
@@ -890,19 +948,6 @@
       if (settings.layers.sites && data.sites.some((site) => site.cells.some((cell) => cell.same_pci))) {
         item('line', 'Same PCI and channel as a cell of the call', COLOURS.samePci, 'is-dashed');
       }
-      item('line', `Radius ${distanceText(data.radius_km)}`, COLOURS.radius, 'is-dashed');
-      // Its own circles one by one, those of the other calls of its hotspot by kind.
-      const rings = data.rings || [];
-      rings.filter((ring) => ring.own).forEach((ring) => item('ring', ring.label, GROUP_COLOURS[ring.kind]));
-      if (rings.some((ring) => ring.path && ring.path.length > 1)) item('line', 'Time window: its failures in their order', COLOURS.run, 'is-dashed');
-      if ((data.groups?.hotspot || 0) >= 2 && rings.length) {
-        item('zone', data.hotspot_join === 'and' && rings.some((ring) => ring.kind === 'run') && rings.some((ring) => ring.kind !== 'run')
-          ? 'Hotspot (AND): where its clusters and time windows meet' : 'Hotspot (OR): its clusters and time windows together', COLOURS.hotZone);
-      }
-      [['cluster', 'Other clusters of its hotspot'], ['run', 'Other time windows of its hotspot']].forEach(([kind, text]) => {
-        const count = rings.filter((ring) => !ring.own && ring.kind === kind).length;
-        if (count) item('ring', `${text} (${count})`, GROUP_COLOURS[kind]);
-      });
     };
 
     return {
@@ -932,7 +977,7 @@
       failures: FAILURE_SCOPES[stored.failures] ? stored.failures : 'every',
       failureColour: FAILURE_COLOURS[stored.failureColour] ? stored.failureColour : 'relation',
       // The RSRP / SINR samples start hidden, so the map shows the call, its cells and the sites first.
-      layers: {tests: false, failures: true, sites: true, path: true, ...(stored.layers || {})},
+      layers: {tests: false, failures: true, sites: true, path: true, paths: true, ...(stored.layers || {})},
     };
     const save = () => storeSettings({tests: settings.tests, colour: settings.colour,
       operators: settings.operators, failures: settings.failures, failureColour: settings.failureColour, layers: settings.layers});
@@ -968,6 +1013,7 @@
       if (!call || failure.self) return true;
       if (settings.failures === 'cdr' && failure.dataset_id !== call.dataset_id) return false;
       if (settings.failures === 'campaign' && (failure.campaign !== call.campaign || failure.nr_mode !== call.nr_mode)) return false;
+      if (hiddenByFocus(failure)) return false;
       return inGroup(failure) || failure.same_place || (shared.operatorChoice() === 'own' ? failure.same_operator : shared.operatorShown(failure.operator));
     };
     // The operators chosen: that of the call, the Focus operators of the Operator Maps (that of the call while the
@@ -983,6 +1029,7 @@
     const views = () => [panelView, expandedView].filter(Boolean);
     const redrawAll = () => views().forEach((view) => { view.renderLegend(); view.redraw(); });
     shared.setSamples = (shown) => { settings.layers.tests = shown; save(); redrawAll(); };
+    shared.setPaths = (shown) => { settings.layers.paths = shown; save(); redrawAll(); };
     shared.setColour = (colour) => { settings.colour = colour; settings.layers.tests = true; save(); redrawAll(); };
     shared.select = (choice) => {
       shared.selection = choice;
@@ -1004,37 +1051,38 @@
       const call = shared.data?.call || {};
       if (settings.failureColour === 'type') return failure.kind === call.kind ? COLOURS.sameType : COLOURS.otherType;
       if (settings.failureColour === 'campaign') return sameCampaign(failure, call) ? COLOURS.sameCampaign : COLOURS.otherCampaign;
-      return inGroup(failure) ? GROUP_COLOURS[groupKind(failure)] : failure.same_place ? COLOURS.place : failure.same_operator ? COLOURS.own : COLOURS.other;
+      const [group] = groupsOf(failure);
+      return group ? GROUP_COLOURS[group] : failure.same_operator ? COLOURS.own : COLOURS.other;
     };
+    // The lines of the legend of the NQ calls shown: only what they show.
     shared.failureLegend = () => {
       const data = shared.data;
       const call = data.call;
-      if (settings.failureColour !== 'relation') {
-        // Whatever the colour, the calls of its groups and of its site keep their rings (and are larger).
-        const rings = [[groupFocus ? `Ringed in red: of its ${groupFocus.label} (filtering the list); in the colour of its other groups`
-          : 'Ringed in the colour of its group: blue its hotspot, green its cluster, cyan its time window', '#adb5bd', 'is-ringed is-ringed-group'],
-          ['Ringed in violet: at its site', '#adb5bd', 'is-ringed']];
-        if (settings.failureColour === 'type') {
-          return [[`NQ calls of its call type (${KIND_LABELS[call.kind] || call.service_label || 'its type'})`, COLOURS.sameType],
-            ['NQ calls of other call types', COLOURS.otherType], ...rings];
-        }
-        return [[`NQ calls of its campaign (${campaignText(call.campaign, call.nr_mode) || 'its campaign'})`, COLOURS.sameCampaign],
-          ['NQ calls of other campaigns', COLOURS.otherCampaign], ...rings];
+      const shown = data.failures.filter((failure) => !failure.self && shared.showsFailure(failure));
+      const groups = shown.map(groupsOf);
+      const names = {hotspot: 'its hotspot', cluster: 'a cluster', run: 'a time window'};
+      const lines = [];
+      if (settings.failureColour === 'relation') {
+        ['hotspot', 'cluster', 'run'].filter((kind) => groups.some((found) => found[0] === kind))
+          .forEach((kind) => lines.push([`NQ call of ${names[kind]}`, GROUP_COLOURS[kind]]));
+        [['cluster', 'green'], ['run', 'blue']].filter(([kind]) => groups.some((found) => found.slice(1).includes(kind)))
+          .forEach(([kind, colour]) => lines.push([`Outlined in ${colour}: also of ${names[kind]}`, GROUP_COLOURS[kind], 'is-outlined']));
+      } else {
+        lines.push(settings.failureColour === 'type'
+          ? [`NQ calls of its call type (${KIND_LABELS[call.kind] || call.service_label || 'its type'})`, COLOURS.sameType]
+          : [`NQ calls of its campaign (${campaignText(call.campaign, call.nr_mode) || 'its campaign'})`, COLOURS.sameCampaign]);
+        lines.push([settings.failureColour === 'type' ? 'NQ calls of other call types' : 'NQ calls of other campaigns',
+          settings.failureColour === 'type' ? COLOURS.otherType : COLOURS.otherCampaign]);
+        ['hotspot', 'cluster', 'run'].filter((kind) => groups.some((found) => found.includes(kind)))
+          .forEach((kind) => lines.push([`Outlined: of ${names[kind]}`, GROUP_COLOURS[kind], 'is-outlined']));
       }
-      // The groups of the NQ calls shown: the one that filters the list in red, the others each in its colour (a call of several
-      // takes that of the group filtering the list, else of its run, else of its cluster).
-      const kinds = new Set(data.failures.filter((failure) => !failure.self && shared.showsFailure(failure)).map(groupKind).filter(Boolean));
-      const lines = [...(kinds.has('focus') ? [[`NQ call of its ${groupFocus.label} (filtering the list)`, COLOURS.group]] : []),
-        ...[['run', 'NQ call of a time window (its own or of its hotspot)'], ['cluster', 'NQ call of a cluster (its own or of its hotspot)'],
-          ['bridge', 'NQ call of a cluster and a time window, which it joins'], ['hotspot', 'NQ call of its hotspot (in neither)']]
-          .filter(([kind]) => kinds.has(kind)).map(([kind, text]) => [groupFocus ? `${text} (not filtering the list)` : text, GROUP_COLOURS[kind],
-            kind === 'bridge' ? 'is-bridge' : '']),
-        ['Ringed: also at its site', GROUP_COLOURS[[...kinds][0]] || COLOURS.hotspot, 'is-ringed'], ['NQ call at its site (not of its groups)', COLOURS.place],
-        [`Other NQ calls of ${call.operator || 'its operator'}`, COLOURS.own]];
-      if (shared.operatorChoice() === 'all') lines.push(['NQ calls of other operators', COLOURS.other]);
-      const own = String(call.operator || '').trim().toLowerCase();
-      if (shared.operatorChoice() === 'focus' && (data.focus_labels || []).some((label) => label.trim().toLowerCase() !== own)) {
-        lines.push(['NQ calls of the other Focus operators', COLOURS.other]);
+      if (shown.some((failure) => failure.same_place)) lines.push(['Outlined in red: at its site', COLOURS.site, 'is-outlined']);
+      if (settings.failureColour === 'relation') {
+        const plain = shown.filter((failure, index) => !groups[index].length);
+        if (plain.some((failure) => failure.same_operator)) lines.push([`Other NQ calls of ${call.operator || 'its operator'}`, COLOURS.own]);
+        if (plain.some((failure) => !failure.same_operator)) {
+          lines.push([shared.operatorChoice() === 'focus' ? 'NQ calls of the other Focus operators' : 'NQ calls of other operators', COLOURS.other]);
+        }
       }
       return lines;
     };
@@ -1056,7 +1104,8 @@
         const inWindow = !item.same_run && Boolean(item.consecutive_key) && ringKeys.run.has(item.consecutive_key);
         const flags = [item.same_hotspot ? 'Same hotspot' : '', item.same_cluster ? 'Same cluster' : '', item.same_run ? 'Same time window' : '',
           inCluster ? 'A cluster of its hotspot' : '', inWindow ? 'A time window of its hotspot' : '',
-          groupKind(item) === 'bridge' ? 'Joins a cluster and a time window' : '', item.same_place ? 'Same site' : ''].filter(Boolean).join(' · ');
+          memberships(item).includes('cluster') && memberships(item).includes('run') ? 'Joins a cluster and a time window' : '',
+          item.same_place ? 'Same site' : ''].filter(Boolean).join(' · ');
         return {title: `NQ call · ${item.operator}`, rows: [
           ['Call type', kindLabel(item)], ['Operator', item.operator], ['Campaign', campaignText(item.campaign, item.nr_mode)],
           ['Relation', flags], ['JOIN_ID', item.join_id],

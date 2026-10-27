@@ -281,10 +281,11 @@
 /* The clusters start a row of their own, below the hotspot and the run. */
 .nq-drawer-group-break { grid-column: 1 / -1; height: 0; margin-top: -.75rem; }
 .nq-drawer-join .nq-drawer-group code { padding: 0; background: none; color: inherit; font-size: .74rem; }
-/* In the colours of the groups on the map of the call (darker, for the text): hotspot blue, cluster green, run cyan. */
-.nq-drawer-group.is-hotspot { --nq-group: #1864ab; }
+/* In the colours of the groups on the map of the call (darker, for the text): hotspot orange, cluster green, time window
+   blue. */
+.nq-drawer-group.is-hotspot { --nq-group: #c2410c; }
 .nq-drawer-group.is-cluster { --nq-group: #2b8a3e; }
-.nq-drawer-group.is-run { --nq-group: #0b7285; }
+.nq-drawer-group.is-run { --nq-group: #1864ab; }
 /* The fields of the analysts of General beside the follow-up: the titles and the height, border and text of its lists (the
    Assignee). */
 .nq-drawer .nq-drawer-tracking .nq-analysis-field.nq-tracking-general { gap: .3rem; color: var(--nq-muted); font-size: .72rem; font-weight: 850; letter-spacing: .04em; text-transform: uppercase; }
@@ -1881,6 +1882,10 @@ details.nq-priority-info:not([open]) { padding-block: .55rem; }
 .nq-map-samples-dot { width: .8rem; height: .8rem; border-radius: 50%; background: conic-gradient(#2e8b57 0 25%, #8bc34a 0 45%, #f2c230 0 65%, #f08a24 0 82%, #d7263d 0); box-shadow: 0 0 0 2px #fff; }
 .nq-drawer .nq-map-samples-measure { width: auto; max-width: 12rem; min-height: 2rem; padding: .2rem 1.8rem .2rem .6rem; border: 1px solid var(--nq-border); border-radius: 999px; background-color: rgba(255, 255, 255, .95); color: var(--nq-dark); font: inherit; font-size: .78rem; font-weight: 800; box-shadow: 0 5px 16px rgba(60, 4, 24, .16); }
 .nq-map-samples-measure[hidden] { display: none; }
+/* The button of the time-window paths: a dashed line in their blue (white when they are shown). */
+.nq-drawer .nq-map-paths-toggle[hidden] { display: none; }
+.nq-map-paths-mark { width: 1rem; height: 0; border-top: 3px dashed #1971c2; }
+.nq-map-paths-toggle.is-on .nq-map-paths-mark { border-top-color: #fff; }
 .nq-map-wheel-hint { position: absolute; top: 50%; left: 50%; z-index: 6; padding: .55rem .9rem; border-radius: 10px; background: rgba(45, 21, 32, .82); color: #fff; font-size: .85rem; font-weight: 800; transform: translate(-50%, -50%); pointer-events: none; }
 .nq-map-wheel-hint[hidden] { display: none; }
 .nq-map-selection { position: absolute; z-index: 4; box-sizing: border-box; border: 2px solid var(--nq-dark); background: rgba(176, 35, 79, .14); box-shadow: 0 0 0 1px rgba(255, 255, 255, .8) inset; pointer-events: none; }
@@ -1902,10 +1907,8 @@ details.nq-priority-info:not([open]) { padding-block: .55rem; }
 .nq-map-mark.is-dot { border: 1px solid #fff; border-radius: 50%; background: var(--mark); }
 .nq-map-mark.is-diamond { width: .6rem; height: .6rem; margin: 0 .1rem; border: 1px solid #fff; background: var(--mark); transform: rotate(45deg); }
 /* A call of the groups of the call at its site too, ringed in the colour of the site; a point of several calls, counted. */
-.nq-map-mark.is-diamond.is-ringed { outline: 2px solid #7b3fe4; outline-offset: 1px; }
-/* A call of a cluster and a time window, which it joins: half green, half cyan. */
-.nq-map-mark.is-diamond.is-bridge { background: linear-gradient(45deg, #2f9e44 50%, #15aabf 50%); }
-.nq-map-mark.is-diamond.is-ringed.is-ringed-group { outline-color: #d62828; }
+/* An NQ call outlined in the colour of another of its groups, or in red at the site of the call. */
+.nq-map-mark.is-diamond.is-outlined { background: #fff; outline: 2px solid var(--mark); outline-offset: 1px; }
 .nq-map-mark.is-count { width: auto; height: auto; padding: 0 .3rem; border-radius: 999px; background: var(--mark); color: #fff;
   font-size: .62rem; font-weight: 800; line-height: 1.3; }
 .nq-map-mark.is-count::before { content: '×N'; }
