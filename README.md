@@ -223,6 +223,8 @@ Run tests with:
 pytest -q
 ```
 
+The tests run in parallel, one process per CPU (`pytest-xdist`); `pytest -q -n 0` runs them in one process, for `-s` or a debugger.
+
 ## Configuration
 
 Local storage roots can be set in [`storage-paths.conf`](storage-paths.conf). Environment variables override that file.

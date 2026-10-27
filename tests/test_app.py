@@ -5315,10 +5315,10 @@ def test_interrupted_dataset_processing_is_resumed_instead_of_failed(client) -> 
 
     resumed = app_module.resume_interrupted_dataset_processing(workspace)
     assert resumed == [dataset_id]
-    for _attempt in range(200):
-        if app_module.repository.get_dataset(dataset_id)['status'] == 'ready':
-            break
-        time.sleep(0.01)
+    # The processing runs in a worker process: give it the time a busy machine (parallel tests) needs.
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline and app_module.repository.get_dataset(dataset_id)['status'] != 'ready':
+        time.sleep(0.02)
     completed = app_module.repository.get_dataset(dataset_id)
     assert completed['status'] == 'ready'
     assert completed['progress'] == 100
@@ -6872,12 +6872,12 @@ def test_admin_operator_mapping_panel_groups_and_edits_aliases(client) -> None:
     login(client)
     initial_mappings = app_module.repository.list_operator_mappings()
     assert initial_mappings['vodafone uk'] == 'VF'
-    assert initial_mappings['three uk'] == '3'
-    assert [group['canonical'] for group in app_module.repository.list_operator_mapping_groups()[:7]] == [
-        'EE', '3', 'VF', 'VF SA', 'VF VoNR', 'O2', 'Lebara',
+    assert initial_mappings['three uk'] == 'Three'
+    assert [group['canonical'] for group in app_module.repository.list_operator_mapping_groups()[:8]] == [
+        'VF', 'VF SA', 'VF VoNR', 'VF SM', 'Three', 'EE', 'O2', 'Lebara',
     ]
-    assert [group['color'] for group in app_module.repository.list_operator_mapping_groups()[:7]] == [
-        '#76B7B2', '#000000', '#F34851', '#801A21', '#801A21', '#69B4EC', '#6F42C1',
+    assert [group['color'] for group in app_module.repository.list_operator_mapping_groups()[:8]] == [
+        '#F34851', '#801A21', '#801A21', '#801A21', '#000000', '#76B7B2', '#69B4EC', '#6F42C1',
     ]
     app_module.repository.replace_operator_mapping_group(
         None, 'Legacy Carrier', ['Legacy A', 'Legacy B'],
@@ -6948,7 +6948,7 @@ def test_admin_vendor_mappings_support_aliases_colours_and_reordering(client) ->
     }, follow_redirects=False)
     assert moved.status_code == 303
     reordered = app_module.repository.list_vendor_mapping_groups()
-    assert [group['canonical'] for group in reordered][-2:] == ['Ciena', '(blank)']
+    assert [group['canonical'] for group in reordered][-2:] == ['Ciena', 'Unknown']
 
     page = client.get('/workspace-config')
     assert 'data-panel-state-key="admin:vendor-mappings"' in page.text
@@ -6977,6 +6977,8 @@ def test_renaming_a_numeric_operator_leaves_layouts_and_numbers_of_the_templates
     import src.DriveTestAnalyzer as app_module
 
     login(client)
+    # A workspace whose Three label is the number 3.
+    app_module.repository.replace_operator_mapping_group('Three', '3', ['Three UK'], '#000000')
     entry = app_module.CatalogEntry(
         slide=15, slide_title='Top 3 operators', slide_subtitle='', layout='Title + 1 rows + 3 columns + comments down',
         chart_title='FDFS DL of 3', cdr_source='CDR-Data', kpi='Mean_Data_Rate', chart_type='CDF Line',
@@ -7075,13 +7077,13 @@ def test_canonical_mapping_renames_update_all_templates_and_dashboards_exactly(c
     assert dashboard['filters']['Vendor'] == ['VF_UK_ERI', 'VF_SA_ERI', 'ERI']
 
     duplicate = client.post('/workspace-config/operator-mappings/save', data={
-        'original_canonical': 'VF_UK', 'canonical_value': '3', 'aliases': '',
+        'original_canonical': 'VF_UK', 'canonical_value': 'Three', 'aliases': '',
     }, follow_redirects=False)
     assert duplicate.status_code == 303
     assert 'operator_mapping_error=' in duplicate.headers['location']
     groups = app_module.repository.list_operator_mapping_groups()
     assert any(group['canonical'] == 'VF_UK' for group in groups)
-    assert sum(group['canonical'] == '3' for group in groups) == 1
+    assert sum(group['canonical'] == 'Three' for group in groups) == 1
 
     duplicate_vendor = client.post('/workspace-config/vendor-mappings/save', data={
         'original_canonical': 'ERI', 'canonical_value': 'Huawei', 'aliases': '',
@@ -10332,9 +10334,9 @@ def test_dashboard_adaptive_filters_populate_netcheck_a_columns_for_existing_cdr
     response = client.get("/datasets-analysis?dataset_id=1&metric=Call_Duration&aggregation=all&load=1")
     assert response.status_code == 200
     assert 'select name="operator" multiple' in response.text
-    # Operators are listed with their Operator Maps labels: Vodafone UK is VF and Three UK is 3.
+    # Operators are listed with their Operator Maps labels: Vodafone UK is VF and Three UK is Three.
     assert 'value="VF"' in response.text
-    assert 'value="3"' in response.text
+    assert 'value="Three"' in response.text
     assert 'select name="session_type" multiple' in response.text
     assert 'value="VoLTE"' in response.text
     assert 'value="VoNR"' in response.text

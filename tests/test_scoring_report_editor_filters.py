@@ -107,7 +107,8 @@ def test_reporting_artifacts_show_the_cdrs_of_their_automatic_choice_and_tabs_si
     root = Path(__file__).resolve().parents[1]
     script = (root / 'src/web_interface/static/js/report_jobs.js').read_text(encoding='utf-8')
     # Every artifact lists the CDRs its Campaigns choose now.
-    assert "const result = await api('/api/reporting/auto-cdrs', {method: 'POST', body: JSON.stringify({nr_mode: nrModeOf(), campaigns: value(), complete})});" in script
+    # A Dashboard of NSA & SA resolves the Latest choices among the campaigns of each NR Mode (each_nr_mode).
+    assert "const result = await api('/api/reporting/auto-cdrs', {method: 'POST', body: JSON.stringify({nr_mode: nrModeOf(), campaigns: value(), complete, each_nr_mode: eachNrMode})});" in script
     css = (root / 'src/web_interface/static/css/report_jobs.css').read_text(encoding='utf-8')
     assert 'border-radius: 10px 10px 0 0;' in css and 'margin: .3rem 0 -1rem;' in css
     assert 'margin-bottom: -1px; padding: .62rem 1.15rem .6rem;' in css
@@ -124,7 +125,7 @@ def test_reporting_artifacts_choose_their_cdrs_by_campaign():
     assert "$('rj-da-scope').replaceChildren(field('NR Mode', daNrMode), daCampaigns.field);" in script
     # Dashboards, Scoring and Network Insights choose their Campaigns (Latest campaign, Latest 2 campaigns or chosen ones)
     # in one list right after NR Mode, with the CDRs they choose below that row.
-    assert "campaigns = name ? campaignPicker(() => nrMode.value, saved || [], {onChange: () => scheduleLoad()}) : null;" in script
+    assert "campaigns = name ? campaignPicker(() => nrMode.value, saved || [], {onChange: () => scheduleLoad(), eachNrMode: true}) : null;" in script
     assert "head.append(field('NR Mode', nrMode), campaignSlot, field('Dashboard', dashboard)" in script
     assert "head.append(field('NR Mode', nrMode), campaigns.field, field('GAP reference operator', baseline)" in script
     assert "head.append(field('NR Mode', nrMode), campaigns.field, field('Technology', technology)" in script

@@ -660,7 +660,9 @@ def test_the_nq_calls_configuration_and_the_follow_up_of_the_calls_tell_what_cha
     package = element_items('nq-call-tracking', updated)
     assert 'nq-call-tracking' in DETAILED_ELEMENTS
     changes = compare(package, element_items('nq-call-tracking', tracking), package, detailed=True)
-    assert changes.updated == [('0xA1 (voice)', ['Status: Not Attended → Under Analysis', 'Comments: 1 new', 'Description'])]
+    # A short value is told before and after, as every other field of the summary.
+    assert changes.updated == [('0xA1 (voice)', ['Status: Not Attended → Under Analysis', 'Comments: 1 new',
+                                                 'Description: (empty) → The neighbour list misses the target cell.'])]
     assert changes.details == [[{'label': 'Status', 'before': 'Not Attended', 'after': 'Under Analysis'},
                                 {'label': 'Comments · new', 'before': '', 'after': 'luis: A missing neighbour.'},
                                 {'label': 'Description', 'before': '', 'after': 'The neighbour list misses the target cell.'}]]

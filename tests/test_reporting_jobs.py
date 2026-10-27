@@ -1,5 +1,6 @@
 import io
 import json
+import re
 import time
 import zipfile
 from datetime import datetime, timedelta, timezone
@@ -678,7 +679,9 @@ def test_users_table_sets_profile_workspace_groups_and_names(client):
     assert (user['first_name'], user['last_name'], user['modules_profile_id'], user['workspace_group_ids']) == ('Ana', 'García', profile_id, [group_id])
     assert core.repository.user_has_workspace_access('analyst', workspace.id)
     page = client.get('/super-admin').text
-    assert '<th>User</th><th>Password</th><th>Role</th><th>Modules Profile</th><th>Active</th><th>Workspaces</th>' in page
+    header = page.split('<table class="users-table">', 1)[1].split('</thead>', 1)[0]
+    assert re.findall(r'<th[^>]*>(?:<button[^>]*>)?([^<]+)', header) == [
+        'User', 'Last Log-in', 'Password', 'Role', 'Modules Profile', 'Active', 'Workspaces']
     assert 'name="first_name" value="Ana"' in page and '>AG</span>' in page
     # A form without the workspace selector keeps the memberships, the names and the profile.
     client.post(f'/admin/users/{analyst_id}/update', data={'username': 'analyst', 'role': 'user-viewer', 'active': '1'},

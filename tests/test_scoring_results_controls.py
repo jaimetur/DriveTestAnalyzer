@@ -1902,7 +1902,7 @@ def test_kpi_gap_profile_and_points_lost_map_share_location_and_operators():
     # City, Region and Cluster are always listed; those without results are disabled.
     assert "insightSelect('points-loss-view', allViews.map(item => [item, item]), 'Maps per')" in maps
     assert "option.disabled = !views.includes(option.value);" in maps
-    assert ".map(entry => pointsLossMapCard(entry, payload, savedFilterId, chosen.length > 1, mode));" in maps
+    assert ".map(entry => pointsLossMapCard(entry, payload, savedFilterId, chosen.length > 1, mode, rank));" in maps
     # The Focus operators are chosen by default (every operator without them), as in the PowerPoint and Word, first in
     # the choice.
     assert "if (!chosen.length) chosen = focusChosen(operators);" in controls

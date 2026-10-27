@@ -196,6 +196,15 @@ def border(cell, edge: str, color: str, width_pt: float) -> None:
     properties.insert(position, line)
 
 
+# The run each style of write gives a text, copied for the next texts of that style instead of being built property by
+# property (a deck writes tens of thousands of them).
+_RUN_STYLES: dict[tuple, Any] = {}
+
+
+def _one_line(text: str) -> bool:
+    return isinstance(text, str) and not any(ord(character) < 32 or ord(character) == 127 for character in text)
+
+
 def write(cell, runs: list[tuple[str, dict[str, Any]]], *, align=PP_ALIGN.CENTER, font: str | None = None) -> None:
     """Write the runs of a cell: each with its size, colour, bold, italic and underline."""
     frame = cell.text_frame
@@ -207,6 +216,14 @@ def write(cell, runs: list[tuple[str, dict[str, Any]]], *, align=PP_ALIGN.CENTER
     for text, options in runs:
         if not text:
             continue
+        key = (options.get('size', 7), bool(options.get('bold')), bool(options.get('italic')),
+               bool(options.get('underline')), font, str(_rgb(options.get('color', '#1F2A37'))))
+        style = _RUN_STYLES.get(key) if _one_line(text) else None
+        if style is not None:
+            run_element = deepcopy(style)
+            run_element.find(qn('a:t')).text = text
+            paragraph._p._insert_r(run_element)
+            continue
         run = paragraph.add_run()
         run.text = text
         run.font.size = Pt(options.get('size', 7))
@@ -217,6 +234,8 @@ def write(cell, runs: list[tuple[str, dict[str, Any]]], *, align=PP_ALIGN.CENTER
         if font:
             run.font.name = font
         run.font.color.rgb = _rgb(options.get('color', '#1F2A37'))
+        if _one_line(text):
+            _RUN_STYLES[key] = deepcopy(run._r)
     cell.vertical_anchor = MSO_ANCHOR.MIDDLE
     cell.margin_left = cell.margin_right = Inches(.04 if align == PP_ALIGN.LEFT else .025)
 

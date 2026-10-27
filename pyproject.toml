@@ -30,9 +30,12 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-  "pytest>=8.4.0,<9.0.0"
+  "pytest>=8.4.0,<9.0.0",
+  "pytest-xdist>=3.6.0,<4.0.0"
 ]
 
 [tool.pytest.ini_options]
 pythonpath = [".", "src"]
 testpaths = ["tests"]
+# The tests run in parallel, one process per CPU (-n 0 runs them in this process, for -s or a debugger).
+addopts = "-n auto --dist worksteal"

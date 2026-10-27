@@ -446,6 +446,20 @@ def _add_gap_color_scale(slide, matrix: dict, *, left: float, width: float, top:
           width=width * .16, size=6.5, height=.13)
 
 
+# The text body and properties _cell gives a new cell, by style: the next new cells of that style take a copy instead of
+# building them property by property (a deck writes tens of thousands of cells).
+_CELL_STYLES: dict[tuple, tuple[Any, Any]] = {}
+_ONE_LINE_TEXT = re.compile(r'[^\x00-\x1f\x7f]*')
+
+
+def _new_table_cell(tc) -> bool:
+    """Whether a table cell is still as add_table made it (an empty paragraph and empty properties)."""
+    body, properties = tc.txBody, tc.tcPr
+    return (properties is not None and not len(properties) and not properties.attrib and body is not None
+            and [child.tag for child in body] == [qn('a:bodyPr'), qn('a:lstStyle'), qn('a:p')]
+            and not any(len(child) or child.attrib for child in body))
+
+
 def _cell(cell, text: str, *, color: str = _WHITE, foreground: str = '#17232D',
           size: float = 9, bold: bool = False, left: bool = False) -> None:
     if str(text) == 'N/A':
@@ -453,6 +467,20 @@ def _cell(cell, text: str, *, color: str = _WHITE, foreground: str = '#17232D',
     if str(text) == 'N/A*' or (str(text).endswith('*') and str(text)[:-1].replace('.', '').replace(',', '').lstrip('+-').isdigit()):
         foreground = '#C62828'
         bold = True
+    theme = active_theme()
+    tc = cell._tc
+    style_key = None
+    if isinstance(text, str) and _ONE_LINE_TEXT.fullmatch(text) and _new_table_cell(tc):
+        style_key = (bool(text), str(_theme_rgb(color)), str(_theme_rgb(foreground)), size, bold, left, _FONT,
+                     theme.get('cell_border_pt', 1.5), theme.get('cell_border', '#FFFFFF'))
+        style = _CELL_STYLES.get(style_key)
+        if style is not None:
+            body, properties = deepcopy(style[0]), deepcopy(style[1])
+            if text:
+                body.find(f"{qn('a:p')}/{qn('a:r')}/{qn('a:t')}").text = text
+            tc.replace(tc.txBody, body)
+            tc.replace(tc.tcPr, properties)
+            return
     cell.text = text
     cell.margin_left = cell.margin_right = Inches(.025)
     cell.margin_top = cell.margin_bottom = 0
@@ -471,7 +499,6 @@ def _cell(cell, text: str, *, color: str = _WHITE, foreground: str = '#17232D',
     border_namespace = '{http://schemas.openxmlformats.org/drawingml/2006/main}'
     edges = ('lnL', 'lnR', 'lnT', 'lnB')
     # The cells are set apart by the lines of the theme (white gaps in most themes), not drawn on a grid.
-    theme = active_theme()
     border_width = str(int(float(theme.get('cell_border_pt', 1.5)) * 12700))
     border_color = str(theme.get('cell_border', '#FFFFFF')).lstrip('#').upper()
     for edge_index, edge in enumerate(edges):
@@ -486,6 +513,8 @@ def _cell(cell, text: str, *, color: str = _WHITE, foreground: str = '#17232D',
         fill.append(rgb)
         line.append(fill)
         properties.insert(edge_index, line)
+    if style_key is not None:
+        _CELL_STYLES[style_key] = (deepcopy(tc.txBody), deepcopy(tc.tcPr))
 
 
 def _operator_color(matrix: dict, operator: str) -> str:

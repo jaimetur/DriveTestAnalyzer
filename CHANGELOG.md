@@ -29,6 +29,8 @@
 - **Ticket Center — Ticket navigation:** the page of a ticket opens the **First**, **Previous**, **Next** and **Last** ticket from the buttons at its top, beside its position (*3 of 12*): in the order of the Tickets list as the browser showed it last, with its filters, or by number among every ticket when the ticket is not in that list (*By number*); pointing at a button shows the number and title of the ticket it opens.
 - **Scoring & GAP Analysis — Excluded Calls panel:** the panel sits below the Scoring & GAP Results and above the Favourites Filters, and the floating section bar and the sections menus of the module (its tab and the side menu) list it in that place.
 - **Scoring & GAP Analysis, Network Insights, PPT Dashboards and Reporting Jobs — CDRs used:** the CDRs of each type are listed newest campaign first (the order of the Campaign Maps reversed: in a quarter the SA campaign before the NSA one) instead of by upload date; the CDRs of the same campaign keep the newest uploaded first.
+- **Scoring & GAP Analysis — PowerPoint exports:** the Scoring PowerPoint documents are generated about a third faster, with the same slides.
+- **Developer — Tests:** the test suite runs in parallel, one process per CPU (`pytest-xdist`; `-n 0` runs it in one process), and each test opens a copy of a workspace prepared once per process instead of creating and seeding one.
 
 #### 🐛 Bug fixes:
 - **Super Admin — AI Comment Writers:** **Install Kiro CLI** no longer fails with an HTTP 500 error before reading the package, takes the kiro-cli program of a .deb among its shell completions and icons of the same name, and says when a package is for another system (a Linux package on a Mac, a .dmg on the Linux server).
