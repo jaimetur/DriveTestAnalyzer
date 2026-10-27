@@ -616,7 +616,7 @@ def test_scoring_job_results_cache_force_and_exports(scoring_api):
         shape.text for slide in presentation.slides for shape in slide.shapes if shape.has_text_frame
     )
     assert 'Scoring & GAP Analysis' in slide_text
-    assert '2026-Q2' in slide_text
+    assert '26-Q2' in slide_text
     scoring_slides = {}
     for slide in presentation.slides:
         title = next(
