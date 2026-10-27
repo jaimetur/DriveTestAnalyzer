@@ -143,7 +143,7 @@ def test_the_map_places_the_call_its_cells_the_sites_and_the_calls_and_tests_aro
     # App Events records the map opened.
     [event] = [json.loads(row['details']) for row in core.repository.list_logs() if row['action'] == 'nq_call_map']
     assert event['join_id'] == 'V1' and event['sites'] == 2 and event['tests_around'] == 3 and event['radius_km'] == 2.0
-    # A call of its cluster or of its run of consecutive failures shows wherever it is, marked as such.
+    # A call of its cluster or of its time-window issue shows wherever it is, marked as such.
     nq_prioritization.ensure_tables(core.repository)
     with core.repository.connection() as connection:
         for key in ('V1', 'V4'):

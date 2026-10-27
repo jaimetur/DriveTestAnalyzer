@@ -25,7 +25,7 @@ FILTER_LABELS = (
     ('root_category', 'Root Category'), ('root_cause', 'Root Cause'), ('call_type', 'Call Type'), ('period', 'Period'),
     ('age', 'Age of Open Calls'), ('root_pair', 'Root Domain · Cause'),
     ('effective_domain', 'Root Domain (with suggestions)'), ('effective_cause', 'Root Domain · Cause (with suggestions)'),
-    ('node', 'eNB / gNB'), ('place', 'Repetition Place'), ('hotspot', 'Hotspot'), ('consecutive_issue', 'Consecutive Issue'), ('clustered_issue', 'Clustered Issue'), ('state', 'Follow-up'), ('rca_state', 'Root Cause'),
+    ('node', 'eNB / gNB'), ('place', 'Repetition Place'), ('hotspot', 'Hotspot'), ('consecutive_issue', 'Time-Window Issue'), ('clustered_issue', 'Clustered Issue'), ('state', 'Follow-up'), ('rca_state', 'Root Cause'),
     ('version', 'CDR Version'),
 )
 STATE_LABELS = {
@@ -59,11 +59,11 @@ def selection_lines(filters: dict[str, Any], dataset_names: dict[str, str], gran
         values = [STATE_LABELS.get(value, value) if key in {'state', 'rca_state'} else value for value in values]
         values = [VERSION_LABELS.get(value, value) if key == 'version' else value for value in values]
         values = [{'auto': 'Automatic', 'manual': 'By hand'}.get(value, value) if key == 'status_mode' else value for value in values]
-        # A hotspot or a run of consecutive failures is chosen by its key, which tells nothing to read.
+        # A hotspot or a time-window issue is chosen by its key, which tells nothing to read.
         if key == 'hotspot' and values:
             values = [f"{len(values)} hotspot{'s' if len(values) > 1 else ''} of the NQ Prioritization"]
         if key == 'consecutive_issue' and values:
-            values = [f"{len(values)} run{'s' if len(values) > 1 else ''} of consecutive failures of the NQ Prioritization"]
+            values = [f"{len(values)} time-window issue{'s' if len(values) > 1 else ''} of the NQ Prioritization"]
         if key == 'clustered_issue' and values:
             values = [f"{len(values)} cluster{'s' if len(values) > 1 else ''} of the NQ Prioritization"]
         if values:
@@ -281,7 +281,7 @@ REPORT_PANELS: tuple[tuple[str, str, tuple[tuple[str, str], ...]], ...] = (
     ('summary', 'Summary', (('executive', 'Executive Summary'),)),
     ('prioritization', 'NQ Prioritization & Queues', (('queue', 'Next to analyse'), ('rules', 'Prioritization Rules'),
                                                       ('kpis', 'Scoring points lost by KPI'))),
-    ('clusters', 'Hotspots, Consecutive & Clustered Issues', (('hotspots', 'Hotspots'), ('consecutive', 'Consecutive Issues'),
+    ('clusters', 'Hotspots, Time-Window & Clustered Issues', (('hotspots', 'Hotspots'), ('consecutive', 'Time-Window Issues'),
                                                               ('issues', 'Clustered Issues'))),
     ('rates', 'NQ Rate by Campaign and Operator', (('rates', 'NQ rate of each campaign and operator'),)),
     ('failures', 'Failures by Type, Technology & Serving Cell', (
@@ -356,7 +356,7 @@ def keyed_report_panels(summary: dict[str, Any], breakdowns: list[dict[str, Any]
         failures.extend(('failures', _failure_component(subtitle),
                          SlideTitle(FAILURES_TITLE, '', subtitle + (f' · {number}/{len(pages)}' if len(pages) > 1 else '')), image)
                         for number, (_title, image) in enumerate(pages, start=1))
-    # The NQ Prioritization, then the hotspots, consecutive and clustered issues (a panel of their own), each table on its own
+    # The NQ Prioritization, then the hotspots, time-window and clustered issues (a panel of their own), each table on its own
     # panels with what it shows in the subtitle.
     prioritization = []
     for component, subtitle, columns, rows, numeric in prioritization_tables(options.get('prioritization') or {}):
@@ -384,8 +384,8 @@ def report_panels(summary: dict[str, Any], breakdowns: list[dict[str, Any]], pro
 
 FAILURES_TITLE = 'Failures by Type, Technology & Serving Cell'
 PRIORITIZATION_TITLE = 'NQ Prioritization & Queues'
-CLUSTERS_TITLE = 'Hotspots, Consecutive & Clustered Issues'
-# The tables of the hotspots, the runs of consecutive failures and the clusters, a panel of their own.
+CLUSTERS_TITLE = 'Hotspots, Time-Window & Clustered Issues'
+# The tables of the hotspots, the time-window issues and the clusters, a panel of their own.
 CLUSTER_COMPONENTS = ('hotspots', 'consecutive', 'issues')
 # The slides keep the hotspots and the sites with a repeated issue with the most calls (the page lists every one).
 MAX_EXPORT_ISSUES = 25
@@ -432,7 +432,7 @@ def prioritization_tables(data: dict[str, Any]) -> list[tuple[str, str, list[str
             for row in data.get('kpis') or []]
     if kpis:
         tables.append(('kpis', 'Scoring points lost by KPI', ['KPI', 'Category', 'Environment', 'Calls', 'Points lost'], kpis, {3, 4}))
-    # The hotspots, the runs of consecutive failures and the clustered issues as the page shows them, in the same columns: the
+    # The hotspots, the time-window issues and the clustered issues as the page shows them, in the same columns: the
     # more general tables first, the hotspots with the OR join, last with AND; the title of the hotspots tells their join.
     join = 'AND' if (data.get('settings') or {}).get('hotspot_join') == 'and' else 'OR'
     columns = ['Operator', 'NR Mode', 'Campaign', 'Site(s)', 'From', 'To', 'Calls', 'Voice', 'WhatsApp', 'Data', 'Points lost', 'Open',
@@ -442,8 +442,8 @@ def prioritization_tables(data: dict[str, Any]) -> list[tuple[str, str, list[str
     def shares(counts: dict[str, int]) -> str:
         return ' · '.join(f'{name} {count:,}' for name, count in counts.items()) if len(counts) > 1 else next(iter(counts), '—')
     groups = []
-    for component, title, noun, label in (('hotspots', f'Hotspots (Consecutives {join} Clustered Issues)', 'hotspots', 'Hotspot ID'),
-                                          ('consecutive', 'Consecutive Issues', 'runs', 'Consecutive ID'),
+    for component, title, noun, label in (('hotspots', f'Hotspots (Time-Window {join} Clustered Issues)', 'hotspots', 'Hotspot ID'),
+                                          ('consecutive', 'Time-Window Issues', 'time-window issues', 'Time-Window ID'),
                                           ('issues', 'Clustered Issues', 'clusters', 'Cluster ID')):
         items = data.get(component) or []
         rows = [[row.get('id') or '—', row['operator'], shares(row.get('nr_modes') or {row['nr_mode']: row['calls']}),
@@ -454,7 +454,7 @@ def prioritization_tables(data: dict[str, Any]) -> list[tuple[str, str, list[str
         if rows:
             groups.append((component, title + (f' · the {len(rows)} {noun} with the most calls of {len(items):,}' if len(items) > len(rows) else ''),
                            [label, *columns], rows, {7, 8, 9, 10, 11, 12}))
-    # Between the consecutive and the clustered issues, the one with more calls first (with the same calls, the one in fewer
+    # Between the time-window and the clustered issues, the one with more calls first (with the same calls, the one in fewer
     # rows), as the page shows them.
     every = {'consecutive': data.get('consecutive') or [], 'issues': data.get('issues') or []}
     hotspots = [group for group in groups if group[0] == 'hotspots']

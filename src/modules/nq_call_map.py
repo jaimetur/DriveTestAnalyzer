@@ -7,7 +7,7 @@ Around the place where the call failed (where it ended, else where it started) t
 - the inventory sites of the networks that serve its operator (Serving Networks) around it, with their cells (azimuth,
   beamwidth, band, channel, PCI and state); the cells with the PCI and channel of a cell of the call are flagged;
 - the other Non-Qualified Calls around it, of every operator and campaign: those of its operator at the same place (its
-  repetitions) and those of its hotspot, cluster and run of consecutive failures are marked; the map shows those of its
+  repetitions) and those of its hotspot, cluster and time-window issue are marked; the map shows those of its
   CDR, its campaign or every campaign
   (``FAILURE_SCOPES``, chosen in the page);
 - the tests of its CDR (or of every CDR of its campaign) around it, completed or not, with their LTE and NR RSRP and SINR
@@ -445,7 +445,7 @@ def flag_same_pci(sites: list[dict[str, Any]], trace: list[dict[str, Any]]) -> N
 def nearby_failures(repository: Any, call: dict[str, Any], centre: tuple[float, float], radius_km: float
                     ) -> tuple[list[dict[str, Any]], int, dict[str, Any]]:
     """The Non-Qualified Calls (their latest version) within ``radius_km`` of ``centre`` and those of the operator of the call
-    at its place or in its hotspot, cluster or run of consecutive failures wherever they are, nearest first: each with how
+    at its place or in its hotspot, cluster or time-window issue wherever they are, nearest first: each with how
     it relates to the call. Every one of its campaign (and NR Mode) and of its groups and site is kept, and the nearest
     MAX_FAILURES of the other campaigns; also how many of those were left out, and the groups of the call (how many calls
     its hotspot, cluster and run hold, and whether it has a site)."""

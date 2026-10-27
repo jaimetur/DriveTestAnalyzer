@@ -263,13 +263,30 @@ V33_FORMER_DESCRIPTIONS = (
     ('repetition_place', 'Where the repetitions are counted: the site of the cell where the call ended, the site that served its '
                          'start, its eNB / gNB or the spot where it started.'),
 )
-# The IDs of the hotspot, run of consecutive failures and cluster of each call of the NQ Prioritization, once, after the
+# The IDs of the hotspot, time-window issue and cluster of each call of the NQ Prioritization, once, after the
 # Repetition Place.
 ANALYSIS_CENTER_V35_STATE_KEY = 'nq_analysis_center_v35'
 V35_FIELD_KEYS = {'hotspot_id', 'consecutive_id', 'cluster_id'}
+# The Consecutive Issues are the Time-Window Issues, and the IDs of the groups take one letter (H-, T- and C-), once: the
+# label and descriptions of those fields where they are still the former defaults.
+ANALYSIS_CENTER_V36_STATE_KEY = 'nq_analysis_center_v36'
+V36_FORMER_LABELS = (('consecutive_id', 'Consecutive ID'),)
+V36_FORMER_DESCRIPTIONS = (
+    ('hotspot_id', 'The ID of the hotspot of the call (HOT-...) in the Hotspots, Consecutive & Clustered Issues panel: the failures '
+                   'of its operator, NR Mode and campaign linked to each other in time or distance (empty when it is in none of 2 '
+                   'calls or more).'),
+    ('consecutive_id', 'The ID of the run of consecutive failures of the call (CON-...) in the Hotspots, Consecutive & Clustered '
+                       'Issues panel: the failures of its operator, NR Mode, campaign and drive one after another (empty when it is '
+                       'in none of 2 calls or more).'),
+    ('cluster_id', 'The ID of the cluster of the call (CLU-...) in the Hotspots, Consecutive & Clustered Issues panel: the calls of '
+                   'its operator and NR Mode failed close to each other or at the same site, in its campaign and those of the '
+                   'Cluster period; followed by that of its cluster with the calls of every NR Mode together, as the panel shows '
+                   'the clusters without one NR Mode filtered, when it starts with another call (empty when it is in none of 2 '
+                   'calls or more).'),
+)
 # Set once the tables and columns of this version exist, so the requests check the schema without writing.
 SCHEMA_STATE_KEY = 'nq_calls_schema'
-SCHEMA_VERSION = '2026-10-27.1'
+SCHEMA_VERSION = '2026-10-27.2'
 # Indexed call fields that the suggestion rule can read, with their labels.
 RULE_FIELDS = {
     'failure_classification': 'Failure Classification', 'failure_category': 'Failure Category',
@@ -319,7 +336,7 @@ TRACKING_FIELDS = ('status', 'team', 'assignee', 'root_domain', 'root_category',
 # (Classic, WhatsApp, Data), a timeline period ("month:2026-07"), the age of open calls,
 # a labelled root cause ("RF||Coverage"), the root domain or cause counting the suggested
 # ones, the eNB/gNB of the last cell ("EE||eNB 525176"), the place of the repeated issues of the NQ Prioritization
-# ("EE||Site S1"), its hotspots, runs of consecutive failures and clusters (their key).
+# ("EE||Site S1"), its hotspots, time-window issues and clusters (their key).
 # The indicator cards filter by follow-up state (closed, attended, with team...) and the
 # Suggested card by the calls without a root cause that have a suggestion.
 EXTRA_FILTERS = ('nr_mode', 'call_type', 'period', 'age', 'root_pair', 'effective_domain', 'effective_cause', 'node',
@@ -625,7 +642,7 @@ def _schema_ready(task_repository: Any) -> bool:
                 ANALYSIS_CENTER_V26_STATE_KEY, ANALYSIS_CENTER_V27_STATE_KEY, ANALYSIS_CENTER_V28_STATE_KEY,
                 ANALYSIS_CENTER_V29_STATE_KEY, ANALYSIS_CENTER_V30_STATE_KEY, ANALYSIS_CENTER_V31_STATE_KEY,
                 ANALYSIS_CENTER_V32_STATE_KEY, ANALYSIS_CENTER_V33_STATE_KEY, ANALYSIS_CENTER_V34_STATE_KEY,
-                ANALYSIS_CENTER_V35_STATE_KEY)
+                ANALYSIS_CENTER_V35_STATE_KEY, ANALYSIS_CENTER_V36_STATE_KEY)
         states = {str(row[0]): str(row[1]) for row in connection.execute(
             f"SELECT key, value FROM workspace_state WHERE key IN ({', '.join('?' for _ in keys)})", keys)}
     return states.get(SCHEMA_STATE_KEY) == SCHEMA_VERSION and all(states.get(key) for key in keys[1:])
@@ -830,6 +847,10 @@ def ensure_nq_tables(task_repository: Any) -> None:
             _store_fields(task_repository, nq_catalog.normalize_fields(fields, {field['key']: field for field in list_fields(task_repository)},
                                                                        CATALOG_CALL_FIELDS))
         task_repository.set_workspace_state(ANALYSIS_CENTER_V35_STATE_KEY, '1')
+    if not task_repository.get_workspace_state(ANALYSIS_CENTER_V36_STATE_KEY):
+        _rename_default_labels(task_repository, V36_FORMER_LABELS)
+        _renew_default_descriptions(task_repository, dict(V36_FORMER_DESCRIPTIONS))
+        task_repository.set_workspace_state(ANALYSIS_CENTER_V36_STATE_KEY, '1')
     task_repository.set_workspace_state(SCHEMA_STATE_KEY, SCHEMA_VERSION)
 
 

@@ -26,7 +26,7 @@
   const inFocus = (failure) => Boolean(groupFocus && (groupFocus.filter === 'hotspot' ? failure.cluster_key === groupFocus.key
     : groupFocus.filter === 'consecutive_issue' ? failure.consecutive_key === groupFocus.key
       : failure.repeat_key === groupFocus.key || failure.repeat_all_key === groupFocus.key));
-  // The group of the call an NQ call stands for: the one that filters the list (red), else its run of consecutive failures,
+  // The group of the call an NQ call stands for: the one that filters the list (red), else its time-window issue,
   // its cluster (of its NR Mode or of every NR Mode together) or its hotspot, each in a colour of its own.
   const groupKind = (failure) => (inFocus(failure) ? 'focus' : failure.same_run ? 'run'
     : failure.same_cluster || failure.same_cluster_all ? 'cluster' : failure.same_hotspot ? 'hotspot' : '');
@@ -204,7 +204,7 @@
       redraw();
     };
     controls.append(button('−', 'Zoom out', () => zoomBy(2)), level, button('+', 'Zoom in', () => zoomBy(.5)),
-      button('Fit', 'Show the whole area of the radius and every NQ call of the hotspot, cluster, consecutive run and site of the call', fit, 'nq-map-zoom-reset'));
+      button('Fit', 'Show the whole area of the radius and every NQ call of the hotspot, cluster, time window and site of the call', fit, 'nq-map-zoom-reset'));
     card.replaceChildren(canvas, ruler, selectionBox, samples, controls, attribution, wheelHint, tooltip);
     // The legend goes below the map (in its images too), so it hides none of it.
     (legendHost || card).replaceChildren(legend);
@@ -441,7 +441,7 @@
         }
         if (zoom >= LABELS_FROM_ZOOM && (zoom >= LABELS_FROM_ZOOM + 1 || onPath || site.serving)) label(context, site.site_id, x, y + size + 9, '#2d1520', 'center');
       }
-      // The other Non-Qualified Calls: those of its groups (hotspot, cluster, run of consecutive failures) and of its site,
+      // The other Non-Qualified Calls: those of its groups (hotspot, cluster, time-window issue) and of its site,
       // then the others. The calls on one point make one mark with how many they are (the most related gives its colour);
       // coloured by relation, a call of its groups at its site too is ringed in the colour of the site; coloured by call type
       // or campaign, those of its groups are ringed in red and those of its site in violet.
@@ -868,7 +868,7 @@
       if (settings.failureColour !== 'relation') {
         // Whatever the colour, the calls of its groups and of its site keep their rings (and are larger).
         const rings = [[groupFocus ? `Ringed in red: of its ${groupFocus.label} (filtering the list); in the colour of its other groups`
-          : 'Ringed in the colour of its group: blue its hotspot, green its cluster, cyan its consecutive run', '#adb5bd', 'is-ringed is-ringed-group'],
+          : 'Ringed in the colour of its group: blue its hotspot, green its cluster, cyan its time window', '#adb5bd', 'is-ringed is-ringed-group'],
           ['Ringed in violet: at its site', '#adb5bd', 'is-ringed']];
         if (settings.failureColour === 'type') {
           return [[`NQ calls of its call type (${KIND_LABELS[call.kind] || call.service_label || 'its type'})`, COLOURS.sameType],
@@ -881,7 +881,7 @@
       // takes that of the group filtering the list, else of its run, else of its cluster).
       const kinds = new Set(data.failures.filter((failure) => !failure.self && shared.showsFailure(failure)).map(groupKind).filter(Boolean));
       const lines = [...(kinds.has('focus') ? [[`NQ call of its ${groupFocus.label} (filtering the list)`, COLOURS.group]] : []),
-        ...[['hotspot', 'NQ call of its hotspot'], ['run', 'NQ call of its consecutive run'], ['cluster', 'NQ call of its cluster']]
+        ...[['hotspot', 'NQ call of its hotspot'], ['run', 'NQ call of its time window'], ['cluster', 'NQ call of its cluster']]
           .filter(([kind]) => kinds.has(kind)).map(([kind, text]) => [groupFocus ? `${text} (not filtering the list)` : text, GROUP_COLOURS[kind]]),
         ['Ringed: also at its site', GROUP_COLOURS[[...kinds][0]] || COLOURS.hotspot, 'is-ringed'], ['NQ call at its site (not of its groups)', COLOURS.place],
         [`Other NQ calls of ${call.operator || 'its operator'}`, COLOURS.own]];
@@ -905,7 +905,7 @@
         ]};
       }
       if (kind === 'failure') {
-        const flags = [item.same_hotspot ? 'Same hotspot' : '', item.same_cluster ? 'Same cluster' : '', item.same_run ? 'Same consecutive run' : '',
+        const flags = [item.same_hotspot ? 'Same hotspot' : '', item.same_cluster ? 'Same cluster' : '', item.same_run ? 'Same time window' : '',
           item.same_place ? 'Same site' : ''].filter(Boolean).join(' · ');
         return {title: `NQ call · ${item.operator}`, rows: [
           ['Call type', kindLabel(item)], ['Operator', item.operator], ['Campaign', campaignText(item.campaign, item.nr_mode)],
@@ -1130,7 +1130,7 @@
         ? ` · of the other campaigns, the ${number(data.failures_max)} nearest (${number(data.failures_left_out)} more left out)` : '';
       failuresCard.replaceChildren(cardHead('Non-Qualified Calls around',
         `${count((item) => item.same_hotspot, groups.hotspot >= 2)} in its hotspot · ${count((item) => item.same_cluster, groups.cluster >= 2)} in its cluster · `
-        + `${count((item) => item.same_run, groups.run >= 2)} in its consecutive run · ${count((item) => item.same_place, groups.site)} at its site · `
+        + `${count((item) => item.same_run, groups.run >= 2)} in its time window · ${count((item) => item.same_place, groups.site)} at its site · `
         + `${count(within, own && within(own))} within ${distanceText(data.radius_km)}${scope}${cut}`));
       if (!shown.length) {
         failuresCard.append(node('p', 'No other Non-Qualified Call around.', 'nq-map-empty'));
@@ -1143,7 +1143,7 @@
         const mark = node('span', undefined, 'nq-map-mark is-diamond');
         const text = node('div');
         const title = node('strong', `${kindLabel(item)} · ${item.operator} · ${campaignText(item.campaign, item.nr_mode)}`);
-        const tags = [item.same_hotspot ? 'Hotspot' : '', item.same_cluster ? 'Cluster' : '', item.same_run ? 'Consecutive' : '',
+        const tags = [item.same_hotspot ? 'Hotspot' : '', item.same_cluster ? 'Cluster' : '', item.same_run ? 'Time Window' : '',
           item.same_place ? 'Same site' : ''].filter(Boolean);
         text.append(title);
         tags.forEach((tag) => text.append(node('span', tag, 'nq-map-tag')));

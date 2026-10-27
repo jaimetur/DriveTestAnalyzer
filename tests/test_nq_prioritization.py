@@ -78,17 +78,17 @@ def test_settings_are_validated():
                                            'consecutive_road_meters')) == (0.5, 1000, 2.0, 1000, 5000)
     assert nq_prioritization.normalize_settings({'cluster_isd': '0.75', 'consecutive_isd': 3})['cluster_isd'] == 0.75
     assert nq_prioritization.normalize_settings({'hotspot_join': ' AND '})['hotspot_join'] == 'and'
-    # The Hotspot time and distance of the first version give way to the Consecutive time and the Cluster distance.
+    # The Hotspot time and distance of the first version give way to the Time window and the Cluster distance.
     assert 'hotspot_minutes' not in nq_prioritization.normalize_settings({'hotspot_minutes': 30, 'hotspot_meters': 500})
     # Dual Queue (Scoring Based) and Vodafone Proposal use their list 1 alone; the other Dual Queue strategies take list 2 once the
     # Final CDR is scored.
     assert defaults['final_lists'] == {'cities_first': True, 'roads_first': True, 'custom': False, 'vodafone_proposal': False}
     assert defaults['excluded_regions'] == ['Vendor B']
     for settings, message in (({'high_share': 60, 'medium_share': 50}, 'above the High share'), ({'min_calls': 1}, 'goes from 2'),
-                              ({'consecutive_minutes': 0}, 'Consecutive time'), ({'spot_meters': 10}, 'Cluster distance'),
-                              ({'hotspot_join': 'xor'}, 'Hotspot join'), ({'consecutive_minutes': 241}, 'Consecutive time'),
+                              ({'consecutive_minutes': 0}, 'Time window'), ({'spot_meters': 10}, 'Cluster distance'),
+                              ({'hotspot_join': 'xor'}, 'Hotspot join'), ({'consecutive_minutes': 241}, 'Time window'),
                               ({'cluster_isd': 0}, r'Cluster distance \(ISD\) goes from 0.1 to 10'),
-                              ({'consecutive_road_meters': 60000}, 'Consecutive distance on roads'),
+                              ({'consecutive_road_meters': 60000}, 'Time-window distance on roads'),
                               ({'excluded_modes': [{'nr_mode': '5G', 'operator': 'VF'}]}, 'pair out of scope')):
         with pytest.raises(ValueError, match=message):
             nq_prioritization.normalize_settings(settings, strict=True)
@@ -400,7 +400,7 @@ def test_strategies_give_each_call_its_step_queue_and_priority():
     assert decide(cities, {**single, 'final': True, 'repeated': True}, steps)[1] == 'Final 2 · SA Data · Cluster'
     assert decide(cities, strategy_call(kind='whatsapp'), steps)[:5] == ('Track only', 'Campaign 3 · Tracked · NSA WhatsApp', 'P4', '', 3)
     assert decide(cities, {**single, 'nr_mode': 'NSA', 'consecutive': 'Yes'}, steps)[1:5] == (
-        'Campaign 5 · Data · Consecutive failures', 'P5', 'Voice', 5)
+        'Campaign 5 · Data · Time-Window Issues', 'P5', 'Voice', 5)
     # The Area of a step takes the calls of any type that failed there: a medium impact WhatsApp call in a city is no longer
     # taken by step 5 of list 2, which takes those on Connecting Roads, but by step 7, every other SA WhatsApp call.
     whatsapp = strategy_call(kind='whatsapp', final=True, level='Medium')
@@ -414,11 +414,11 @@ def test_strategies_give_each_call_its_step_queue_and_priority():
     steps = nq_prioritization.strategy_steps(cities, chosen)
     hotspot = strategy_call(kind='data', cluster_size=3, consecutive='No')
     assert decide(cities, hotspot, steps)[1:3] == ('Campaign 8 · Tracked', 'P8')
-    assert decide(cities, {**hotspot, 'consecutive': 'Yes'}, steps)[1:3] == ('Campaign 2 · SA Data · Consecutive failures AND Hotspots', 'P2')
+    assert decide(cities, {**hotspot, 'consecutive': 'Yes'}, steps)[1:3] == ('Campaign 2 · SA Data · Time-Window Issues AND Hotspots', 'P2')
     assert decide(cities, {**single, 'consecutive': 'Yes'}, steps)[2] == 'P8'
     high_data = {**single, 'final': True, 'level': 'High'}
     assert decide(cities, high_data, steps)[2] == 'P8'
-    assert decide(cities, {**high_data, 'repeated': True}, steps)[1:3] == ('Final 2 · SA Data · High impact AND Cluster OR Consecutive failures', 'P2')
+    assert decide(cities, {**high_data, 'repeated': True}, steps)[1:3] == ('Final 2 · SA Data · High impact AND Cluster OR Time-Window Issues', 'P2')
     assert decide(cities, {**single, 'final': True, 'consecutive': 'Yes'}, steps)[2] == 'P2'
     # AND ( and OR ( start a group: one level of parentheses, AND first inside each group and between the groups.
     chosen = nq_prioritization.normalize_steps({'cities_first': {
@@ -430,10 +430,10 @@ def test_strategies_give_each_call_its_step_queue_and_priority():
         'Final 1 · SA Voice · (High impact OR Medium impact) AND Cluster', 'P1')
     assert decide(cities, {**voice, 'level': 'High'}, steps)[2] != 'P1'
     data = {**single, 'final': True, 'consecutive': 'Yes'}
-    assert decide(cities, {**data, 'repeated': True}, steps)[1:3] == ('Final 2 · SA Data · Consecutive failures AND (High impact OR Cluster)', 'P2')
+    assert decide(cities, {**data, 'repeated': True}, steps)[1:3] == ('Final 2 · SA Data · Time-Window Issues AND (High impact OR Cluster)', 'P2')
     assert decide(cities, data, steps)[2] != 'P2'
     assert nq_prioritization.step_conditions_text(['consecutive', 'cluster', 'high', 'repeated'], ['or', 'and_group', 'or']) == (
-        '(Consecutive failures OR Hotspots) AND (High impact OR Cluster)')
+        '(Time-Window Issues OR Hotspots) AND (High impact OR Cluster)')
     # List 2, once the Final CDR of the campaign is scored: the same in both strategies, by the impact levels.
     final = strategy_call(final=True)
     for strategy in (cities, roads):
@@ -542,20 +542,20 @@ def test_the_groups_of_a_call_take_the_ids_of_the_panel():
             'repeat_size': 15, 'repeat_all_key': 'group-all:0c1bce5fda02e35fbd85092f', 'repeat_all_size': 39,
             'consecutive_key': 'run:68ab51b9d4d0d6ef07b2cbfb', 'consecutive_size': 1}
     found = nq_prioritization.call_groups(call)
-    assert [(group['kind'], group['id'], group['calls']) for group in found] == [('hotspot', 'HOT-0C1BCE', 17), ('cluster', 'CLU-0C1BCE', 15),
-                                                                              ('cluster_all', 'CLU-0C1BCE', 39)]
+    assert [(group['kind'], group['id'], group['calls']) for group in found] == [('hotspot', 'H-0C1BCE', 17), ('cluster', 'C-0C1BCE', 15),
+                                                                              ('cluster_all', 'C-0C1BCE', 39)]
     # The filter of the list of calls by each group, and its key.
     assert [(group['filter'], group['key']) for group in found] == [('hotspot', call['cluster_key']), ('clustered_issue', call['repeat_key']),
                                                                     ('clustered_issue', call['repeat_all_key'])]
     # A group of one call is none, and the cluster of every NR Mode is left out when it holds the same calls.
     assert [(group['kind'], group['id'], group['calls'], group['filter']) for group in nq_prioritization.call_groups(
         {**call, 'cluster_size': 1, 'repeat_all_size': 15, 'consecutive_size': 3})] == [
-        ('cluster', 'CLU-0C1BCE', 15, 'clustered_issue'), ('run', 'CON-68AB51', 3, 'consecutive_issue')]
+        ('cluster', 'C-0C1BCE', 15, 'clustered_issue'), ('run', 'T-68AB51', 3, 'consecutive_issue')]
     assert nq_prioritization.call_groups({}) == []
 
 
 def group_ids_of(call: dict) -> dict[str, str]:
-    """The Hotspot ID, Consecutive ID and Cluster ID a call takes from the groups of its header."""
+    """The Hotspot ID, Time-Window ID and Cluster ID a call takes from the groups of its header."""
     ids = lambda *kinds: ', '.join(dict.fromkeys(group['id'] for group in nq_prioritization.call_groups(call) if group['kind'] in kinds))  # noqa: E731
     return {'hotspot_id': ids('hotspot'), 'consecutive_id': ids('run'), 'cluster_id': ids('cluster', 'cluster_all')}
 
@@ -582,8 +582,8 @@ def test_the_ids_of_the_groups_of_a_call_in_sql_are_those_of_its_header():
     connection.executemany(f"INSERT INTO p VALUES ({', '.join('?' for _ in columns)})", calls)
     found = [dict(row) for row in connection.execute(f"SELECT {nq_prioritization.group_ids_sql('p')} FROM p")]
     assert found == [group_ids_of(dict(zip(columns, call))) for call in calls]
-    assert found[1] == {'hotspot_id': 'HOT-2FCCB4', 'consecutive_id': 'CON-10D7B4', 'cluster_id': 'CLU-2FCCB4, CLU-CCD51C'}
-    assert found[2] == {'hotspot_id': '', 'consecutive_id': '', 'cluster_id': 'CLU-F35716'}
+    assert found[1] == {'hotspot_id': 'H-2FCCB4', 'consecutive_id': 'T-10D7B4', 'cluster_id': 'C-2FCCB4, C-CCD51C'}
+    assert found[2] == {'hotspot_id': '', 'consecutive_id': '', 'cluster_id': 'C-F35716'}
 
 
 def test_clusters_take_the_quarter_of_the_campaign_and_leave_the_ping_tests_out():
@@ -703,7 +703,7 @@ def test_steps_saved_with_consecutive_failures_and_cluster_take_hotspots_once(cl
     # Only the steps with those two conditions alone.
     assert loaded['steps']['custom']['campaign-4']['conditions'] == ['consecutive', 'repeated', 'high']
     log = next(row for row in core.repository.list_logs(limit=20) if row['action'] == 'nq_prioritization_settings')
-    assert 'roads_first · campaign-2 · Consecutive failures and Cluster → Hotspots' in json.loads(log['details'])['steps_changed']
+    assert 'roads_first · campaign-2 · Time-Window Issues and Cluster → Hotspots' in json.loads(log['details'])['steps_changed']
     # Once: a step saved with them afterwards keeps them.
     stored = json.loads(core.repository.get_workspace_state(nq_prioritization.SETTINGS_STATE_KEY))
     stored['steps']['roads_first']['campaign-2']['conditions'] = ['consecutive', 'repeated']
@@ -988,7 +988,7 @@ def test_the_header_of_a_call_shows_its_groups(prioritized):
     key, row = next((key, row) for key, row in rows.items() if (row['cluster_size'] or 0) >= 2)
     groups = prioritized['client'].get(f'/api/non-qualified-calls/calls/{key}').json()['call']['groups']
     assert [{name: group[name] for name in ('kind', 'id', 'calls', 'key', 'filter')} for group in groups] == nq_prioritization.call_groups(row)
-    assert groups[0]['kind'] == 'hotspot' and groups[0]['id'] == nq_prioritization.group_id('HOT', row['cluster_key'])
+    assert groups[0]['kind'] == 'hotspot' and groups[0]['id'] == nq_prioritization.group_id('H', row['cluster_key'])
     # What each group holds: the places of its calls (the most calls first) and when its first and last call started.
     members = [other for other in rows.values() if other['cluster_key'] == row['cluster_key']]
     places = {}
@@ -1007,13 +1007,13 @@ def test_the_calls_show_and_export_the_ids_of_their_groups(prioritized):
     rows = priority_rows()
     fields = {field['source_ref']: field for field in nq.list_fields(core.repository) if field['source'] == 'priority'}
     refs = ('hotspot_id', 'consecutive_id', 'cluster_id')
-    assert [fields[ref]['label'] for ref in refs] == ['Hotspot ID', 'Consecutive ID', 'Cluster ID']
+    assert [fields[ref]['label'] for ref in refs] == ['Hotspot ID', 'Time-Window ID', 'Cluster ID']
     # Columns of the table to choose, after the Repetition Place, exported to Excel.
     keys = [field['key'] for field in nq.list_fields(core.repository)]
     place = keys.index(fields['place_label']['key'])
     assert keys[place + 1:place + 4] == [fields[ref]['key'] for ref in refs]
     assert all(fields[ref]['in_export'] and not fields[ref]['in_table'] for ref in refs)
-    # Each call takes the IDs of the groups of its header, those of the Hotspots, Consecutive & Clustered Issues panel.
+    # Each call takes the IDs of the groups of its header, those of the Hotspots, Time-Window & Clustered Issues panel.
     listed = client.post('/api/non-qualified-calls/calls', json={'filters': {}, 'page_size': 100, 'breakdowns': False}).json()['calls']
     assert listed and all({ref: call['values'][fields[ref]['key']] for ref in refs} == group_ids_of(rows[call['call_key']]) for call in listed)
     assert any(call['values'][fields['hotspot_id']['key']] for call in listed)
@@ -1040,6 +1040,25 @@ def test_workspaces_of_the_previous_version_get_the_ids_of_the_groups(client):
     nq.ensure_nq_tables(core.repository)
     keys = [field['key'] for field in nq.list_fields(core.repository)]
     assert keys[keys.index('repetition_place') + 1:keys.index('repetition_place') + 4] == ['hotspot_id', 'consecutive_id', 'cluster_id']
+    # Those added as Consecutive ID, with the former prefixes, take the Time-Window Issues and the one-letter prefixes, once
+    # (a description changed by hand keeps it).
+    former = dict(nq.V36_FORMER_DESCRIPTIONS)
+    fields = nq.list_fields(core.repository)
+    for field in fields:
+        if field['key'] in former:
+            field['description'] = former[field['key']] if field['key'] != 'cluster_id' else 'Our own cluster note.'
+        if field['key'] == 'consecutive_id':
+            field['label'] = 'Consecutive ID'
+    nq._store_fields(core.repository, fields)
+    core.repository.set_workspace_state(nq.ANALYSIS_CENTER_V36_STATE_KEY, '')
+    core.repository.set_workspace_state(nq.SCHEMA_STATE_KEY, '2026-10-27.1')
+    nq.ensure_nq_tables(core.repository)
+    renamed = {field['key']: field for field in nq.list_fields(core.repository) if field['key'] in nq.V35_FIELD_KEYS}
+    defaults = {field['key']: field for field in nq_catalog.DEFAULT_FIELDS if field['key'] in nq.V35_FIELD_KEYS}
+    assert renamed['consecutive_id']['label'] == 'Time-Window ID'
+    assert renamed['consecutive_id']['description'] == defaults['consecutive_id']['description'] and '(T-...)' in defaults['consecutive_id']['description']
+    assert renamed['hotspot_id']['description'] == defaults['hotspot_id']['description']
+    assert renamed['cluster_id']['description'] == 'Our own cluster note.'
 
 
 def test_hotspots_and_consecutive_failures_mix_the_call_types(prioritized):
@@ -1072,7 +1091,7 @@ def test_hotspots_and_consecutive_failures_mix_the_call_types(prioritized):
     assert response.status_code == 200, response.text
     current = {key: row for key, row in priority_rows().items() if key in linked}
     assert all((row['consecutive'] == 'Yes' or row['repeated'] == 'Yes') == (row['cluster_size'] >= 2) for row in current.values())
-    # The settings apply at once, from the stored values: a shorter Consecutive time leaves fewer consecutive failures and
+    # The settings apply at once, from the stored values: a shorter Time window leaves fewer consecutive failures and
     # the AND join smaller hotspots than OR (the default).
     assert settings['hotspot_join'] == 'or'
     before = sum(row['consecutive'] == 'Yes' for row in linked.values())
@@ -1149,7 +1168,7 @@ def test_panel_filters_and_exports_show_the_prioritization(prioritized):
     assert total[first] >= total[second]
     assert next(subtitle for component, subtitle, *_rest in tables if component == 'issues').startswith('Clustered Issues')
     assert next(subtitle for component, subtitle, *_rest in tables if component == 'hotspots').startswith(
-        'Hotspots (Consecutives OR Clustered Issues)')
+        'Hotspots (Time-Window OR Clustered Issues)')
     # The clusters of the panel follow the NR Mode of the filters: one NR Mode filtered counts its calls alone.
     assert panel['cluster_mode'] == ''
     sa = client.post('/api/non-qualified-calls/prioritization', json={'filters': {'nr_mode': ['SA']}}).json()
@@ -1167,16 +1186,16 @@ def test_panel_filters_and_exports_show_the_prioritization(prioritized):
     joined = non_qualified_calls_export.prioritization_tables({**panel, 'settings': {**panel['settings'], 'hotspot_join': 'and'}})
     order_and = [component for component, *_rest in joined]
     assert max(order_and.index('consecutive'), order_and.index('issues')) < order_and.index('hotspots')
-    assert next(subtitle for component, subtitle, *_rest in joined if component == 'hotspots').startswith('Hotspots (Consecutives AND')
+    assert next(subtitle for component, subtitle, *_rest in joined if component == 'hotspots').startswith('Hotspots (Time-Window AND')
     # The three tables share their columns.
     columns = {component: columns for component, _subtitle, columns, *_rest in tables}
-    assert [columns[name][0] for name in ('hotspots', 'consecutive', 'issues')] == ['Hotspot ID', 'Consecutive ID', 'Cluster ID']
+    assert [columns[name][0] for name in ('hotspots', 'consecutive', 'issues')] == ['Hotspot ID', 'Time-Window ID', 'Cluster ID']
     assert columns['hotspots'][1:] == columns['consecutive'][1:] == columns['issues'][1:] == [
         'Operator', 'NR Mode', 'Campaign', 'Site(s)', 'From', 'To', 'Calls', 'Voice', 'WhatsApp', 'Data', 'Points lost', 'Open', 'Main Root Category']
     # The IDs of the groups: short, of their letter, one for each group of a table.
     ids = [item['id'] for item in panel['issues']]
-    assert len(set(ids)) == len(ids) and all(value.startswith('CLU-') for value in ids)
-    assert spot['id'].startswith('HOT-') and run['id'].startswith('CON-')
+    assert len(set(ids)) == len(ids) and all(value.startswith('C-') for value in ids)
+    assert spot['id'].startswith('H-') and run['id'].startswith('T-')
     assert sum(issue['kinds'].values()) == issue['calls'] == sum(issue['campaign_names'].values()) and issue['first'] <= issue['last']
     # From and To: the day, the month in letters and the time, without the year.
     assert non_qualified_calls_export.group_time('2026-11-20 16:18:44.5') == '20 Nov 16:18'
@@ -1429,6 +1448,6 @@ def test_admins_change_the_priority_and_operators_of_each_step(strategized):
     assert 'Dual Queue (Cities first) · Final 1 · SA Voice · High impact: Priority P1 → P3' in changed
     assert 'Dual Queue (Cities first) · Final 8 · NSA Voice: Operators Focused Operators → No operator' in changed
     assert 'Dual Queue (Cities first) · Final 2 · SA Data · High impact: Condition High impact → Cluster' in changed
-    assert any('Campaign 2 · SA Data' in line and 'Condition Hotspots → Consecutive failures OR Cluster' in line for line in changed)
-    # A step saved with Consecutive failures and Cluster after the Hotspots took them keeps them.
+    assert any('Campaign 2 · SA Data' in line and 'Condition Hotspots → Time-Window Issues OR Cluster' in line for line in changed)
+    # A step saved with Time-Window Issues and Cluster after the Hotspots took them keeps them.
     assert nq_prioritization.load_settings(core.repository)['steps']['cities_first']['campaign-2']['conditions'] == ['consecutive', 'repeated']

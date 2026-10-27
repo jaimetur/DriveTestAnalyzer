@@ -155,16 +155,16 @@ STEP_AREAS = {'city': 'Cities', 'roads': 'Connecting Roads', 'any': 'Any'}
 AREA_TAKES = {'city': ' in cities', 'roads': ' on connecting roads and highways', 'any': ''}
 # The Call Types of the first version of the steps, which also gave the area.
 LEGACY_CALL_TYPES = {'voice_cities': ('voice', 'city'), 'voice_roads': ('voice', 'roads')}
-# The conditions of a step, chosen one by one, each joined to the one before by AND or OR, AND first: "Consecutive
-# failures AND Hotspots OR High impact" takes the consecutive failures of a hotspot and the calls with a High impact
+# The conditions of a step, chosen one by one, each joined to the one before by AND or OR, AND first: "Time-Window
+# Issues AND Hotspots OR High impact" takes the time-window issues of a hotspot and the calls with a High impact
 # (Every call alone takes every call). AND ( and OR ( start a group, one level of parentheses: "(High impact OR Medium
-# impact) AND Repeated". Consecutive failures: another failure of the same drive within the Consecutive time.
+# impact) AND Repeated". Time-Window Issues: another failure of the same drive within the Time window.
 EVERY_CALL = 'all'
 JOINS = {'and': 'AND', 'or': 'OR', 'and_group': 'AND (', 'or_group': 'OR ('}
 GROUP_JOINS = {'and_group': 'and', 'or_group': 'or'}
 JOIN_WORDS = {'and': 'and', 'or': 'or'}
 MAX_CONDITIONS = 6
-CONDITION_LABELS = {EVERY_CALL: 'Every call', 'consecutive': 'Consecutive failures', 'cluster': 'Hotspots', 'drop': 'Drops', 'setup': 'Setup failures', 'high': 'High impact', 'medium': 'Medium impact', 'low': 'Low impact',
+CONDITION_LABELS = {EVERY_CALL: 'Every call', 'consecutive': 'Time-Window Issues', 'cluster': 'Hotspots', 'drop': 'Drops', 'setup': 'Setup failures', 'high': 'High impact', 'medium': 'Medium impact', 'low': 'Low impact',
                     'repeated': 'Cluster'}
 # Every call type and both lists take every condition (the impact levels by the Expected Gain of the call, see
 # ``expected_levels``: during the campaign from the latest Final CDR of its NR Mode, then its own points).
@@ -175,7 +175,7 @@ CONDITIONS = {key: CONDITION_LABELS[key] for key in (EVERY_CALL, 'consecutive', 
 FORMER_CONDITIONS = {'biggest': 'high'}
 CAMPAIGN_CONDITIONS = FINAL_CONDITIONS = CONDITIONS
 CONDITION_TAKES = {
-    EVERY_CALL: 'every one', 'consecutive': 'the consecutive failures (another failure of the same drive minutes before or after, close to it)',
+    EVERY_CALL: 'every one', 'consecutive': 'the time-window issues (another failure of the same drive minutes before or after, close to it)',
     'cluster': 'the failures of a hotspot (2+ failures close in time and distance)',
     'drop': 'the drops (calls dropped and data tests cut off once established)',
     'setup': 'the setup failures (calls and data tests that failed before being established)',
@@ -194,11 +194,11 @@ CONDITION_KINDS = {
 CONDITION_HELP = {
     EVERY_CALL: 'Every call of the step.',
     'consecutive': 'Another failure of the same operator, NR Mode, campaign and drive (the car) started within the '
-                   'Consecutive time before or after it and the Consecutive distance (in ISDs of the nearest sites, else by '
+                   'Time window before or after it and the Time-window distance (in ISDs of the nearest sites, else by '
                    'area), whatever its call type.',
     'cluster': 'Two or more failures of the same operator, NR Mode and campaign, whatever their call type, each linked to '
-               'another one: consecutive to it in the same drive OR within the Cluster distance of it (or at the site where '
-               'it ended), or, with the AND join, within the Consecutive time and the Cluster distance.',
+               'another one: in a time window with it in the same drive OR within the Cluster distance of it (or at the site where '
+               'it ended), or, with the AND join, within the Time window and the Cluster distance.',
     'repeated': 'The operator failed within the Cluster distance of it (in ISDs of the nearest sites, else by area) or at the '
                 'same site in at least Cluster size calls of its campaign and the Cluster period (campaigns) before it, '
                 'whatever the time.',
@@ -428,13 +428,13 @@ def normalize_settings(value: Any, *, strict: bool = False, operators: dict[str,
         'cluster_road_meters': _whole(value.get('cluster_road_meters', defaults['cluster_road_meters']),
                                       defaults['cluster_road_meters'], 100, 20000, 'The Cluster distance on roads', strict),
         'consecutive_minutes': _whole(value.get('consecutive_minutes', defaults['consecutive_minutes']),
-                                      defaults['consecutive_minutes'], 1, 240, 'The Consecutive time', strict),
+                                      defaults['consecutive_minutes'], 1, 240, 'The Time window', strict),
         'consecutive_isd': _decimal(value.get('consecutive_isd', defaults['consecutive_isd']), defaults['consecutive_isd'], 0.1, 10,
-                                    'The Consecutive distance (ISD)', strict),
+                                    'The Time-window distance (ISD)', strict),
         'consecutive_city_meters': _whole(value.get('consecutive_city_meters', defaults['consecutive_city_meters']),
-                                          defaults['consecutive_city_meters'], 100, 20000, 'The Consecutive distance in cities', strict),
+                                          defaults['consecutive_city_meters'], 100, 20000, 'The Time-window distance in cities', strict),
         'consecutive_road_meters': _whole(value.get('consecutive_road_meters', defaults['consecutive_road_meters']),
-                                          defaults['consecutive_road_meters'], 100, 50000, 'The Consecutive distance on roads', strict),
+                                          defaults['consecutive_road_meters'], 100, 50000, 'The Time-window distance on roads', strict),
         'hotspot_join': _hotspot_join(value.get('hotspot_join', defaults['hotspot_join']), strict),
         'capacity': _whole(value.get('capacity', defaults['capacity']), defaults['capacity'], 1, 500,
                            'The calls to analyse next', strict),
@@ -463,12 +463,12 @@ def normalize_modes(value: list[Any], strict: bool = False) -> list[dict[str, st
     return modes
 
 
-# Set once the steps saved with Consecutive failures and Cluster took Hotspots (``hotspot_steps``).
+# Set once the steps saved with Time-Window Issues and Cluster took Hotspots (``hotspot_steps``).
 HOTSPOT_STEPS_STATE_KEY = 'nq_prioritization_hotspot_steps'
 
 
 def hotspot_steps(stored: dict[str, Any]) -> list[str]:
-    """The steps of every strategy saved with the conditions Consecutive failures and Cluster alone (joined by AND or OR)
+    """The steps of every strategy saved with the conditions Time-Window Issues and Cluster alone (joined by AND or OR)
     take Hotspots instead, which joins both (in place): the strategy and step of each one."""
     changed = []
     for strategy, steps in (stored.get('steps') or {}).items():
@@ -484,14 +484,14 @@ def load_settings(repository: Any) -> dict[str, Any]:
         stored = json.loads(repository.get_workspace_state(SETTINGS_STATE_KEY) or 'null')
     except (TypeError, ValueError):
         stored = None
-    # Once: the steps saved with Consecutive failures and Cluster take Hotspots, in every strategy (App Events records it).
+    # Once: the steps saved with Time-Window Issues and Cluster take Hotspots, in every strategy (App Events records it).
     if isinstance(stored, dict) and not repository.get_workspace_state(HOTSPOT_STEPS_STATE_KEY):
         changed = hotspot_steps(stored)
         if changed:
             repository.set_workspace_state(SETTINGS_STATE_KEY, json.dumps(stored, ensure_ascii=False))
             if hasattr(repository, 'try_add_log'):
                 repository.try_add_log(SYSTEM_USER, 'nq_prioritization_settings', json.dumps(
-                    {'steps_changed': [f'{name} · Consecutive failures and Cluster → Hotspots' for name in changed]}, ensure_ascii=False))
+                    {'steps_changed': [f'{name} · Time-Window Issues and Cluster → Hotspots' for name in changed]}, ensure_ascii=False))
         repository.set_workspace_state(HOTSPOT_STEPS_STATE_KEY, '1')
     operators, modes = default_step_operators(repository), default_excluded_modes(repository)
     settings = normalize_settings(stored, operators=operators, modes=modes) if isinstance(stored, dict) else default_settings(operators, modes)
@@ -577,9 +577,9 @@ SETTING_LABELS = {'high_share': 'High impact (%)', 'medium_share': 'Medium impac
                   'previous_quarters': 'Cluster period (campaigns)', 'cluster_isd': 'Cluster distance (ISD)',
                   'spot_meters': 'Cluster distance without ISD · Cities (m)',
                   'cluster_road_meters': 'Cluster distance without ISD · Connecting Roads (m)',
-                  'consecutive_minutes': 'Consecutive time (min)', 'consecutive_isd': 'Consecutive distance (ISD)',
-                  'consecutive_city_meters': 'Consecutive distance without ISD · Cities (m)',
-                  'consecutive_road_meters': 'Consecutive distance without ISD · Connecting Roads (m)', 'hotspot_join': 'Hotspot join',
+                  'consecutive_minutes': 'Time window (min)', 'consecutive_isd': 'Time-window distance (ISD)',
+                  'consecutive_city_meters': 'Time-window distance without ISD · Cities (m)',
+                  'consecutive_road_meters': 'Time-window distance without ISD · Connecting Roads (m)', 'hotspot_join': 'Hotspot join',
                   'capacity': 'Next to analyse',
                   'fill_priority': 'Fill the Priority'}
 
@@ -718,8 +718,8 @@ def _default_rows(strategy: str) -> dict[str, list[tuple[Any, ...]]]:
 def _former_rows(strategy: str, list_name: str) -> list[list[tuple[Any, ...]]]:
     """The default steps of a list of a strategy of the application before the current ones (a list saved exactly as one of
     them takes the current defaults, see ``normalize_steps``). List 1 of the Dual Queue strategies: its Data steps
-    Consecutive failures AND Cluster; before, NSA Data (P5) before NSA Voice (P6), its Data steps Consecutive failures AND
-    Cluster, before Consecutive failures AND Hotspots, and before Consecutive failures OR Hotspots (Cities first) or Hotspots
+    Time-Window Issues AND Cluster; before, NSA Data (P5) before NSA Voice (P6), its Data steps Time-Window Issues AND
+    Cluster, before Time-Window Issues AND Hotspots, and before Time-Window Issues OR Hotspots (Cities first) or Hotspots
     (Roads first). List 1 of Vodafone Proposal: the other calls tracked with P5 (no P8 step), in the Unique queue or before in the
     Voice and Data queues. List 1 of Dual Queue (Scoring
     Based), then Points Lost Based: the former list 2, and before SA before NSA and Voice before Data, its Data steps
@@ -875,7 +875,7 @@ def _step_rule(list_name: str, number: int | None, label: str) -> str:
 
 
 def step_label(step: dict[str, Any]) -> str:
-    """What a step takes, in short: SA Voice · Cities, SA Data · Consecutive failures OR Hotspots, Tracked."""
+    """What a step takes, in short: SA Voice · Cities, SA Data · Time-Window Issues OR Hotspots, Tracked."""
     parts = [STEP_NR_MODES[step['nr_mode']] if step['nr_mode'] != 'any' else '',
              CALL_TYPES[step['call_type']] if step['call_type'] != 'any' else '']
     base = ' '.join(part for part in parts if part) or 'Every call'
@@ -1150,7 +1150,7 @@ def _joined(values: list[bool], joins: list[str]) -> bool:
 def condition_holds(conditions: list[str], call: dict[str, Any], joins: Any = None) -> bool:
     """Whether a call meets the conditions of a step joined by their operators (or when not given), AND first, inside
     each group (in parentheses) and between the groups (Every call: every call). A failure is consecutive when another
-    failure of its drive started within the Consecutive time (unknown without a date or a drive)."""
+    failure of its drive started within the Time window (unknown without a date or a drive)."""
     if not conditions:
         return False
     level = call.get('level')
@@ -1881,7 +1881,7 @@ def call_isds(repository: Any, calls: list[dict[str, Any]]) -> dict[str, float]:
 def linked_values(calls: list[dict[str, Any]], settings: dict[str, Any], out_of_scope: Callable[[Any], bool] | None = None,
                   every_mode: bool = True) -> dict[str, dict[str, Any]]:
     """The groups of the calls with the settings given: ``repetitions`` (``repetitions``, of the NR Mode of each call as the
-    rules take them) and ``clusters`` (``cluster_groups``), ``hotspots`` (``hotspots``, of the Consecutive time and the
+    rules take them) and ``clusters`` (``cluster_groups``), ``hotspots`` (``hotspots``, of the Time window and the
     Cluster distance) and ``runs`` of consecutive failures (``consecutive_runs``), all within one NR Mode, and with
     ``every_mode`` the clusters of every NR Mode together (``clusters_all``, as the panel shows them without one NR Mode
     filtered). The Ping tests and the calls out of scope (``out_of_scope``, see ``scope_test``) are left out of all of them:
@@ -1941,8 +1941,8 @@ def place_values(repository: Any, settings: dict[str, Any], every_mode: bool = T
 
 
 def group_id(letter: str, key: str, length: int = 6) -> str:
-    """The short ID of a group: HOT (hotspot), CON (run of consecutive failures) or CLU (cluster), and the start of the key
-    of its first call (the Hotspots, Consecutive & Clustered Issues panel takes more of it where two groups of a table would
+    """The short ID of a group: H (hotspot), T (time-window issue) or C (cluster), and the start of the key
+    of its first call (the Hotspots, Time-Window & Clustered Issues panel takes more of it where two groups of a table would
     share it)."""
     return f"{letter}-{key.split(':', 1)[-1].upper()[:length]}"
 
@@ -1954,26 +1954,26 @@ def group_id_sql(letter: str, key: str, size: str) -> str:
 
 
 def group_ids_sql(alias: str) -> str:
-    """The Hotspot ID, Consecutive ID and Cluster ID of a call (the NQ Prioritization of ``alias``), as ``call_groups`` gives
+    """The Hotspot ID, Time-Window ID and Cluster ID of a call (the NQ Prioritization of ``alias``), as ``call_groups`` gives
     them: its cluster first, then its cluster of every NR Mode together when that starts with another call."""
-    cluster = group_id_sql('CLU', f'{alias}.repeat_key', f'{alias}.repeat_size')
-    cluster_all = group_id_sql('CLU', f'{alias}.repeat_all_key', f'{alias}.repeat_all_size')
-    return (f"{group_id_sql('HOT', f'{alias}.cluster_key', f'{alias}.cluster_size')} AS hotspot_id, "
-            f"{group_id_sql('CON', f'{alias}.consecutive_key', f'{alias}.consecutive_size')} AS consecutive_id, "
+    cluster = group_id_sql('C', f'{alias}.repeat_key', f'{alias}.repeat_size')
+    cluster_all = group_id_sql('C', f'{alias}.repeat_all_key', f'{alias}.repeat_all_size')
+    return (f"{group_id_sql('H', f'{alias}.cluster_key', f'{alias}.cluster_size')} AS hotspot_id, "
+            f"{group_id_sql('T', f'{alias}.consecutive_key', f'{alias}.consecutive_size')} AS consecutive_id, "
             f"(CASE WHEN {cluster_all} IN ('', {cluster}) THEN {cluster} WHEN {cluster} = '' THEN {cluster_all} "
             f"ELSE {cluster} || ', ' || {cluster_all} END) AS cluster_id")
 
 
 # The groups a call can be in: their ID prefix, the columns of their key and size (one of each at most) and the filter of
 # the list of calls that shows the calls of each.
-CALL_GROUPS = (('hotspot', 'HOT', 'cluster_key', 'cluster_size', 'hotspot'), ('cluster', 'CLU', 'repeat_key', 'repeat_size', 'clustered_issue'),
-               ('cluster_all', 'CLU', 'repeat_all_key', 'repeat_all_size', 'clustered_issue'),
-               ('run', 'CON', 'consecutive_key', 'consecutive_size', 'consecutive_issue'))
+CALL_GROUPS = (('hotspot', 'H', 'cluster_key', 'cluster_size', 'hotspot'), ('cluster', 'C', 'repeat_key', 'repeat_size', 'clustered_issue'),
+               ('cluster_all', 'C', 'repeat_all_key', 'repeat_all_size', 'clustered_issue'),
+               ('run', 'T', 'consecutive_key', 'consecutive_size', 'consecutive_issue'))
 
 
 def call_groups(call: dict[str, Any], connection: Any = None) -> list[dict[str, Any]]:
     """The groups of a call of 2 calls or more, from its stored keys and sizes (``GROUP_FIELDS``), by the IDs of the
-    Hotspots, Consecutive & Clustered Issues panel: its hotspot, its cluster (of its NR Mode), its cluster of every NR Mode
+    Hotspots, Time-Window & Clustered Issues panel: its hotspot, its cluster (of its NR Mode), its cluster of every NR Mode
     together when that holds more calls (as the panel shows the clusters without one NR Mode filtered) and its run of
     consecutive failures; a call is in one of each at most. Each with its key and the filter of the list of calls by it,
     and with a ``connection`` what it holds too: its sites (the places of its calls, the most calls first, with how many) and
@@ -3046,10 +3046,10 @@ def panel(repository: Any, filters: Any, username: str) -> dict[str, Any]:
         item['points'] = round(item['points'], 2)
         categories = item.pop('categories')
         item['category'] = max(categories.items(), key=lambda pair: (pair[1], pair[0]))[0] if categories else ''
-    # A short ID for each group, the same whatever the filters: HOT (hotspot), CON (run of consecutive failures) or CLU
-    # (cluster), prefixes of the same length, and the start of the key of its first call, longer where two groups of a table
+    # A short ID for each group, the same whatever the filters: H (hotspot), T (time-window issue) or C (cluster), and the
+    # start of the key of its first call, longer where two groups of a table
     # would share it.
-    for letter, items in (('HOT', spot_rows), ('CON', run_rows), ('CLU', issue_rows)):
+    for letter, items in (('H', spot_rows), ('T', run_rows), ('C', issue_rows)):
         for length in range(6, 33):
             taken: dict[str, int] = {}
             for item in items:

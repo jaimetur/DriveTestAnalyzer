@@ -307,7 +307,7 @@ def _normalize_items(section: str, raw: Any) -> list[dict[str, Any]]:
         # Reports saved before the NQ Prioritization have it after the Summary.
         order.insert(order.index('summary') + 1, 'prioritization')
     if section == 'non_qualified_calls' and 'prioritization' in order and 'clusters' not in saved:
-        # The hotspots, consecutive and clustered issues, a part of the NQ Prioritization before, follow it with its choice.
+        # The hotspots, time-window and clustered issues, a part of the NQ Prioritization before, follow it with its choice.
         order.insert(order.index('prioritization') + 1, 'clusters')
         former = (saved.get('prioritization') or {}).get('components')
         if isinstance(former, dict):

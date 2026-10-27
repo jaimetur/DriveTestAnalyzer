@@ -319,7 +319,7 @@ SECTION_ICONS: dict[str, str] = {
     'gauge': '<path d="M4 16a8 8 0 1 1 16 0"/><path d="m12 16 4-5"/><circle cx="12" cy="16" r="1.2"/>',
     # Two queues of calls moving on (the Voice and Data queues of the NQ Prioritization), and rules in their order.
     'queues': '<path d="M3 5h4v4H3zM9 5h4v4H9zM3 15h4v4H3zM9 15h4v4H9z"/><path d="M15 7h6m-2-2 2 2-2 2M15 17h6m-2-2 2 2-2 2"/>',
-    # Failures grouped in a ring (the hotspots, consecutive and clustered issues of the NQ Prioritization).
+    # Failures grouped in a ring (the hotspots, time-window and clustered issues of the NQ Prioritization).
     'hotspots': '<circle cx="8" cy="9" r="2"/><circle cx="15.5" cy="8" r="2"/><circle cx="12" cy="15" r="2"/><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z" stroke-dasharray="3 2.5"/>',
     'rules': '<path d="M3 4h4v4H3zM3 10h4v4H3zM3 16h4v4H3z"/><path d="M10 6h11M10 12h8M10 18h5"/>',
     'jobs': '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
@@ -396,7 +396,7 @@ MODULE_SECTIONS: dict[str, list[tuple[Any, ...] | None]] = {
                              ('section-network-deployment', 'Network Deployment', 'antenna'),
                              ('section-cluster-sites-density', 'Cluster Sites Density', 'pin'), ('section-spectrum', 'Spectrum', 'spectrum')])],
     'non-qualified-calls': [('Filters', 'Filters', 'filter'), ('NQ Prioritization & Queues', 'NQ Prioritization & Queues', 'queues'),
-                            ('Hotspots, Consecutive & Clustered Issues', 'Hotspots, Consecutive & Clustered Issues', 'hotspots'),
+                            ('Hotspots, Time-Window & Clustered Issues', 'Hotspots, Time-Window & Clustered Issues', 'hotspots'),
                             ('Non-Qualified Calls', 'Non-Qualified Calls', 'phone'), ('Summary', 'Summary', 'summary'),
                             ('NQ Rate by Campaign and Operator', 'NQ Rate by Campaign and Operator', 'chart'),
                             ('Failures by Type, Technology & Serving Cell', 'Failures by Type, Technology & Serving Cell', 'antenna'),

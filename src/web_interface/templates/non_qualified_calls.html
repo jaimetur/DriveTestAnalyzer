@@ -37,7 +37,7 @@
   <nav class="nq-view-switch" id="nq-view-switch" aria-label="Non-Qualified Calls sections" data-section-bar>
     <a href="#section-filters" title="The filters of the calls"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16l-6 7.5V19l-4 1.5v-8z"/></svg>Filters</a>
     <a href="#section-nq-prioritization-queues" title="NQ Prioritization &amp; Queues: the calls to analyse next in the Voice and Data queues, the steps of the strategy, the scoring impact and the repeated issues"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h4v4H3zM9 5h4v4H9zM3 15h4v4H3zM9 15h4v4H9z"/><path d="M15 7h6m-2-2 2 2-2 2M15 17h6m-2-2 2 2-2 2"/></svg>NQ Queues</a>
-    <a href="#section-hotspots-consecutive-clustered-issues" title="Hotspots, Consecutive &amp; Clustered Issues: the failures that repeat close in time, in distance or both"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="9" r="2"/><circle cx="15.5" cy="8" r="2"/><circle cx="12" cy="15" r="2"/><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z" stroke-dasharray="3 2.5"/></svg>Hotspots</a>
+    <a href="#section-hotspots-time-window-clustered-issues" title="Hotspots, Time-Window &amp; Clustered Issues: the failures that repeat close in time, in distance or both"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="9" r="2"/><circle cx="15.5" cy="8" r="2"/><circle cx="12" cy="15" r="2"/><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z" stroke-dasharray="3 2.5"/></svg>Hotspots</a>
     <a href="#section-non-qualified-calls" title="The calls that match the filters"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>NQ Calls <span class="nq-view-count" id="nq-view-count"></span></a>
     <a href="#section-summary" title="The Executive Summary of the filtered calls"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>Summary</a>
     <a href="#section-nq-rate-by-campaign-and-operator" title="NQ Rate by Campaign and Operator"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 5 5 19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>NQ Rate</a>
@@ -157,10 +157,10 @@
     </div>
   </details>
 
-  {# The hotspots, the runs of consecutive failures and the clusters of the filtered calls, from the data of the NQ
+  {# The hotspots, the time-window issues and the clusters of the filtered calls, from the data of the NQ
      Prioritization (shown when either panel is unfolded). #}
   <details class="panel collapsible-panel nq-clusters-panel" data-nq-view-panel="clusters" data-nq-loader="clusters" open data-panel-state-key="non-qualified-calls:clusters">
-    <summary class="collapsible-summary"><div><p class="eyebrow">Repeated failures</p><h2>Hotspots, Consecutive &amp; Clustered Issues</h2></div><span class="collapse-chip">Collapse</span></summary>
+    <summary class="collapsible-summary"><div><p class="eyebrow">Repeated failures</p><h2>Hotspots, Time-Window &amp; Clustered Issues</h2></div><span class="collapse-chip">Collapse</span></summary>
     <div class="collapsible-panel-body">
       <div class="nq-active-filters" data-nq-active-filters hidden></div>
       <div class="nq-priority nq-clusters" id="nq-clusters"></div>
@@ -373,7 +373,7 @@
       <form class="nq-drawer-find" id="nq-drawer-find" role="search"{% if provider and not provider.join_id %} hidden{% endif %}><input type="search" id="nq-drawer-find-input" placeholder="Go to a JOIN_ID…" autocomplete="off" aria-label="Go to the call of a JOIN_ID" title="Paste a JOIN_ID and press Enter to open its call"></form>
       <button type="button" class="nq-drawer-close" id="nq-drawer-close" aria-label="Close the call details">&times;</button>
     </div>
-    {# Its hotspot, run of consecutive failures and clusters, by the IDs of the Hotspots, Consecutive & Clustered Issues panel,
+    {# Its hotspot, time-window issue and clusters, by the IDs of the Hotspots, Time-Window & Clustered Issues panel,
        across the whole header so that the four fit on one row. #}
     <div class="nq-drawer-join nq-drawer-groups" id="nq-drawer-groups" hidden><span>Groups</span><div class="nq-drawer-group-list" id="nq-drawer-groups-list"></div></div>
   </header>
@@ -563,8 +563,8 @@
               </ul></section>
               <section><h4>Other conditions</h4><ul>
                 <li><strong>Cluster</strong>: at least <strong data-nq-about="min_calls"></strong> calls of the operator within <strong data-nq-about="cluster_isd"></strong> ISD of the call (the inter-site distance of the sites nearest to them; without it <strong data-nq-about="spot_meters"></strong> m in cities, <strong data-nq-about="cluster_road_meters"></strong> m on roads) or at its site, in its campaign and the <strong data-nq-about="previous_quarters"></strong> campaigns before it (the Ping tests and the calls out of scope apart).</li>
-                <li><strong>Consecutive failures</strong>: another failure of the operator in the same drive (the car) within <strong data-nq-about="consecutive_minutes"></strong> min and <strong data-nq-about="consecutive_isd"></strong> ISD (without it <strong data-nq-about="consecutive_city_meters"></strong> m in cities, <strong data-nq-about="consecutive_road_meters"></strong> m on roads), whatever its call type.</li>
-                <li><strong>Hotspots</strong>: 2+ failures of an operator, NR Mode and campaign, whatever their call type, each consecutive to another one (with OR, in the same drive) <strong data-nq-about="hotspot_join"></strong> within the Cluster distance of it (or at the site where it ended). <strong>Drops</strong> and <strong>Setup failures</strong>: by the result of the call.</li>
+                <li><strong>Time-Window Issues</strong>: another failure of the operator in the same drive (the car) within <strong data-nq-about="consecutive_minutes"></strong> min and <strong data-nq-about="consecutive_isd"></strong> ISD (without it <strong data-nq-about="consecutive_city_meters"></strong> m in cities, <strong data-nq-about="consecutive_road_meters"></strong> m on roads), whatever its call type.</li>
+                <li><strong>Hotspots</strong>: 2+ failures of an operator, NR Mode and campaign, whatever their call type, each in a time window with another one (with OR, in the same drive) <strong data-nq-about="hotspot_join"></strong> within the Cluster distance of it (or at the site where it ended). <strong>Drops</strong> and <strong>Setup failures</strong>: by the result of the call.</li>
               </ul></section>
               <section><h4>Out of scope and shared settings</h4><ul>
                 <li><strong>Out of Scope</strong>: its regions, the operators that are not Focus operators and the NR Mode · Operator pairs chosen (SA · Three): no queue, not tracked.</li>
@@ -617,7 +617,7 @@
             <div class="nq-priority-queue-bars" id="nq-priority-queue-bars"></div>
             <details class="nq-priority-queue-outside" id="nq-priority-queue-outside" hidden><summary></summary><ul></ul></details>
           </section>
-          <section class="nq-priority-levels"><span class="nq-priority-shared" title="A change here applies to every strategy">Shared by every strategy</span><h3>Scoring Impact, Clusters, Consecutive Failures and Hotspots</h3>
+          <section class="nq-priority-levels"><span class="nq-priority-shared" title="A change here applies to every strategy">Shared by every strategy</span><h3>Scoring Impact, Clusters, Time-Window Issues and Hotspots</h3>
             <div class="nq-priority-levels-grid">
               <div class="nq-priority-level"><label for="nq-priority-high">High impact <strong>(%)</strong></label><span class="nq-priority-value"><input type="number" id="nq-priority-high" min="5" max="95" step="1"></span>
                 <span class="nq-priority-help" title="The calls that hold this first share of the points lost by their campaign, operator and service">Calls holding this first share of the points lost</span></div>
@@ -631,14 +631,14 @@
               <div class="nq-priority-level is-sub"><label for="nq-priority-spot">Without ISD · Cities <strong>(m)</strong></label><span class="nq-priority-value"><input type="number" id="nq-priority-spot" min="25" max="2000" step="5"></span></div>
               <div class="nq-priority-level is-sub"><label for="nq-priority-cluster-roads" title="Without ISD on connecting roads and highways (either call on one)">Without ISD · Roads <strong>(m)</strong></label><span class="nq-priority-value"><input type="number" id="nq-priority-cluster-roads" min="100" max="20000" step="50"></span>
                 <span class="nq-priority-help" title="A call counts the calls of its operator that failed at most this many inter-site distances (ISD) from it, of the sites nearest to the two calls (the larger one), or at the same site; the hotspots take it too. Without an ISD (no Network Inventory, or no site near), the meters of its area: Connecting Roads when either call is on one (a call without a cell is listed at a spot of the Cities meters)">Max distance to the other calls, in ISDs of the nearest sites (or same site); without an ISD, by area</span></div>
-              <div class="nq-priority-level"><label for="nq-priority-consecutive-minutes">Consecutive time <strong>(min)</strong></label><span class="nq-priority-value"><input type="number" id="nq-priority-consecutive-minutes" min="1" max="240" step="1"></span>
-                <span class="nq-priority-help" title="A failure is consecutive when another failure of its operator, NR Mode, campaign and drive (the car, from the measurement system of its CDR) started at most these minutes before or after it, within the Consecutive distance; the hotspots take it too">Max minutes to another failure</span></div>
-              <div class="nq-priority-level"><label for="nq-priority-consecutive-isd">Consecutive distance <strong>(ISD)</strong></label><span class="nq-priority-value"><input type="number" id="nq-priority-consecutive-isd" min="0.1" max="10" step="0.1"></span></div>
+              <div class="nq-priority-level"><label for="nq-priority-consecutive-minutes">Time window <strong>(min)</strong></label><span class="nq-priority-value"><input type="number" id="nq-priority-consecutive-minutes" min="1" max="240" step="1"></span>
+                <span class="nq-priority-help" title="A failure is in a time-window issue when another failure of its operator, NR Mode, campaign and drive (the car, from the measurement system of its CDR) started at most these minutes before or after it, within the Time-window distance; the hotspots take it too">Max minutes to another failure</span></div>
+              <div class="nq-priority-level"><label for="nq-priority-consecutive-isd">Time-window distance <strong>(ISD)</strong></label><span class="nq-priority-value"><input type="number" id="nq-priority-consecutive-isd" min="0.1" max="10" step="0.1"></span></div>
               <div class="nq-priority-level is-sub"><label for="nq-priority-consecutive-city">Without ISD · Cities <strong>(m)</strong></label><span class="nq-priority-value"><input type="number" id="nq-priority-consecutive-city" min="100" max="20000" step="50"></span></div>
               <div class="nq-priority-level is-sub"><label for="nq-priority-consecutive-roads" title="Without ISD on connecting roads and highways (either call on one)">Without ISD · Roads <strong>(m)</strong></label><span class="nq-priority-value"><input type="number" id="nq-priority-consecutive-roads" min="100" max="50000" step="100"></span>
                 <span class="nq-priority-help" title="Two failures of a drive follow one another only when they are at most this many inter-site distances (ISD) apart, of the sites nearest to them (the larger one), so that a car driving far between them breaks the run; without an ISD (no Network Inventory, or no site near), the meters of their area: Connecting Roads when either is on one. A failure without a position follows the one before">Max distance to the failure before, in ISDs of the nearest sites; without an ISD, by area</span></div>
               <div class="nq-priority-level"><label for="nq-priority-hotspot-join">Hotspot join</label><span class="nq-priority-value"><select id="nq-priority-hotspot-join"><option value="or">OR</option><option value="and">AND</option></select></span>
-                <span class="nq-priority-help" title="OR: another failure of the same drive within the Consecutive time, or another one within the Cluster distance (or at the same site). AND: another failure within both at once">OR: close in time or distance · AND: both</span></div>
+                <span class="nq-priority-help" title="OR: another failure of the same drive within the Time window, or another one within the Cluster distance (or at the same site). AND: another failure within both at once">OR: close in time or distance · AND: both</span></div>
               <div class="nq-priority-level"><label for="nq-priority-capacity">Next to analyse <strong>(calls)</strong></label><span class="nq-priority-value"><input type="number" id="nq-priority-capacity" min="1" max="500" step="1"></span>
                 <span class="nq-priority-help" title="The first prioritized calls the panel lists (of each queue)">Calls each queue lists in the panel</span></div>
             </div>

@@ -1645,7 +1645,7 @@ body:has(dialog.nq-priority-dialog[open]) { overflow: hidden; }
 .nq-step-join { color: var(--nq-color); font-weight: 800; }
 /* Every condition in a colour of its own, in the steps of the Prioritization Rules, their list of Conditions and the steps of
    the panel: the impact levels as the Scoring Impact (High red, Medium orange, Low blue), Every call green, Cluster grape,
-   Hotspots pink, Consecutive failures cyan, Drops brown and Setup failures slate. */
+   Hotspots pink, Time-Window Issues cyan, Drops brown and Setup failures slate. */
 .nq-condition-value { --nq-cond: #5f6b7a; }
 .nq-condition-value.is-cond-all { --nq-cond: #2b8a3e; }
 .nq-condition-value.is-cond-high { --nq-cond: #c8102e; }
