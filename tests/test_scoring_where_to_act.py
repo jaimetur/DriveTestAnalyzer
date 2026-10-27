@@ -102,7 +102,8 @@ def test_the_route_that_loses_most_with_its_owners(owned):
 
 def test_the_summary_slides_of_where_to_act(owned):
     job, result, _insights = owned
-    deck = Presentation(BytesIO(export_scoring_powerpoint(job, result, TEMPLATE, theme='umlaut')))
+    # All Environments carries every slide of Where to act (each environment repeats them).
+    deck = Presentation(BytesIO(export_scoring_powerpoint(job, result, TEMPLATE, theme='umlaut', environments=['Combined'])))
     titles = [slide.shapes.title.text_frame.paragraphs[0].text for slide in deck.slides if slide.shapes.title is not None]
     for operator in ('Vodafone UK', 'Three UK'):
         assert f'Where to act — {operator}' in titles and f'Where to act, by performance owner — {operator}' in titles
@@ -115,7 +116,7 @@ def test_the_summary_slides_of_where_to_act(owned):
     names = {shape.name for shape in route.shapes}
     assert {'Scoring Owner Route Map', 'Scoring Route Owners Table', 'Scoring Route Stretches Table', 'Scoring Act Review'} <= names
     without = Presentation(BytesIO(export_scoring_powerpoint(
-        {**job, '_operator_choices': {'act-operator': ['EE']}}, result, TEMPLATE)))
+        {**job, '_operator_choices': {'act-operator': ['EE']}}, result, TEMPLATE, environments=['Combined'])))
     titles = [slide.shapes.title.text_frame.paragraphs[0].text for slide in without.slides if slide.shapes.title is not None]
     # The operator chosen on the page, the reference included.
     assert 'Where to act — EE' in titles and 'Where to act — Vodafone UK' not in titles
@@ -123,7 +124,7 @@ def test_the_summary_slides_of_where_to_act(owned):
     # loses most always shows the operators of its panel (every operator but the reference without Focus operators).
     own = Presentation(BytesIO(export_scoring_powerpoint(
         {**job, '_operator_choices': {'act-operator': ['EE'], 'places-operators': ['Three UK'], 'route-operators': ['Three UK']}},
-        result, TEMPLATE)))
+        result, TEMPLATE, environments=['Combined'])))
     titles = [slide.shapes.title.text_frame.paragraphs[0].text for slide in own.slides if slide.shapes.title is not None]
     assert 'Where to act — EE' in titles
     assert {title.rsplit(' — ', 1)[1] for title in titles if title.startswith(('Cities ranked — ', 'Towns ranked — '))} == {'Three UK'}
@@ -137,10 +138,18 @@ def test_where_to_act_of_a_report_follows_the_focus_operators_of_the_operator_ma
 
     job, result, _insights = owned
 
+    # A report of Where to act alone: the other panels do not change the operators it shows.
+    scenario = default_scenario()
+    best = scenario['scorings']['best_network']
+    for group in ('summary', 'charts', 'tables', 'geographical_areas', 'trends', 'gap', 'points'):
+        best[group] = {key: key == 'act' for key in best[group]}
+    scenario['scorings']['most_reliable']['enabled'] = False
+    scenario['area_summary']['enabled'] = False
+
     def act_titles(roles):
         groups = [{'canonical': name, 'aliases': aliases, 'position': index, 'color': '#365F91', **({'role': role} if role else {})}
                   for index, (name, (aliases, role)) in enumerate(roles.items())]
-        entry = {'scenario': normalize_report_configuration({'scenarios': [default_scenario()]})['scenarios'][0], 'job': job, 'result': result}
+        entry = {'scenario': normalize_report_configuration({'scenarios': [scenario]})['scenarios'][0], 'job': job, 'result': result}
         deck = Presentation(BytesIO(export_scoring_report([entry], TEMPLATE, groups)))
         titles = [slide.shapes.title.text_frame.paragraphs[0].text for slide in deck.slides if slide.shapes.title is not None]
         return sorted({title.split(' — ', 1)[1] for title in titles if title.startswith('Where to act — ')})

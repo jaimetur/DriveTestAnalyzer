@@ -25,7 +25,8 @@ FOCUS = [{'canonical': 'Three UK', 'aliases': [], 'position': 0, 'color': '#0000
 
 
 def _deck(job, result, **keys):
-    return Presentation(BytesIO(export_scoring_powerpoint({**job, **keys}, result, TEMPLATE, FOCUS)))
+    # All Environments carries every panel (each environment repeats them).
+    return Presentation(BytesIO(export_scoring_powerpoint({**job, **keys}, result, TEMPLATE, FOCUS, environments=['Combined'])))
 
 
 def _titles(deck) -> list[str]:
