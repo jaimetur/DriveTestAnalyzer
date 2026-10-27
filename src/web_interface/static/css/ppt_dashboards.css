@@ -1772,6 +1772,8 @@
   .ds-dashboards-table th:first-child, .ds-dashboards-table td:first-child,
   .ds-dashboards-table th:nth-child(3), .ds-dashboards-table td:nth-child(3) { width:27%; min-width:15rem; }
 }
+/* The NR Mode selector fits NSA & SA. */
+.ds-dashboards-table .ds-dashboard-nr-mode-select { min-width:8.4rem; }
 
 /* The PPT job Filters tooltip matches the Reports and Charts Jobs datasets
    tooltip; the Filters dialog keeps its light palette. */
