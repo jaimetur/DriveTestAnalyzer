@@ -2445,6 +2445,9 @@ th { color: var(--muted); font-weight: 600; position: sticky; top: 0; background
   .app-logs-panel .table-wrap { height: auto; max-height: 70vh; }
 }
 .execution-log-panel { margin-top: 1.25rem; }
+.execution-log-frame { position: relative; }
+.execution-log-end { position: absolute; right: 1.6rem; bottom: 1rem; z-index: 1; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35); }
+.execution-log-end[hidden] { display: none; }
 .execution-log-output { height: 60rem; margin: 1rem 0 0; padding: 1rem; overflow-x: auto; overflow-y: scroll; border: 1px solid rgba(16, 49, 74, 0.22); border-radius: 0.8rem; background: #102033; color: #e5f3fb; font: 0.78rem/1.55 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; scrollbar-gutter: stable; }
 .table-actions { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center; }
 .danger-button { background: linear-gradient(135deg, #c65544, #df7758); }

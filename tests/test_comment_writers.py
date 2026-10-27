@@ -193,8 +193,14 @@ def test_dashboards_write_with_kiro_and_import_a_kiro_brief(client):
     body = prepare_rates_dashboard(client)
     slide = body['slides'][0]
     reply = {'comments': ['A leads the change: median Mean Data Rate up 33% vs 2026-Q2 (41 → 61).']}
-    installed = writers.install_kiro_cli(core.application_config_dir, 'kiro.zip', fake_kiro_zip(reply))
-    writers.save_kiro_cli(core.repository, installed, 'super')
+    # Install Kiro CLI of Super Admin: a file that is no package is refused with its reason, the package is installed.
+    refused = client.post('/super-admin/comment-writers/kiro-cli', files={'package': ('notes.txt', b'not a package', 'text/plain')})
+    assert refused.status_code == 400 and refused.json()['detail']
+    uploaded = client.post('/super-admin/comment-writers/kiro-cli', files={'package': ('kiro.zip', fake_kiro_zip(reply), 'application/zip')})
+    assert uploaded.status_code == 200, uploaded.text
+    assert uploaded.json()['installed']['version']
+    events = [row['action'] for row in core.repository.list_logs()]
+    assert 'install_kiro_cli_failed' in events and 'install_kiro_cli' in events
     client.post('/super-admin/comment-writers', data={'enabled': ['kiro_cli', 'kiro_brief'], 'default': 'kiro_cli'})
     client.post('/account/api-keys', data={'kiro_cli': 'ksk_mine'})
 

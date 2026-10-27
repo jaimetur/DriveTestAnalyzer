@@ -387,6 +387,14 @@ def test_app_events_filters_exclude_their_values(client) -> None:
     kept = client.get('/api/app-logs?user=system&action=change_password&exclude=action').json()
     assert kept['matching'] == 30 and kept['facets']['action'] == ['change_password', 'login', 'logout']
     assert client.get('/api/app-logs?user=system&action=missing&exclude=action').json()['facets']['action'] == ['login', 'logout']
+    # Last Day is the newest date of the events (here only the password change of 2026-10-15), to include or to leave
+    # out, and the page offers it first in the Date filter, standing alone, with the days after a line.
+    last_day = client.get('/api/app-logs?date=@last-day').json()
+    assert last_day['filtered'] and last_day['matching'] == 1 and last_day['logs'][0]['action'] == 'change_password'
+    assert client.get('/api/app-logs?date=@last-day&exclude=date').json()['matching'] == 60
+    date_filter = page.split('<select data-app-log-date-filter', 1)[1].split('</select>', 1)[0]
+    assert '<option value="@last-day" data-standalone-choice="true">Last Day</option>' in date_filter
+    assert date_filter.index('@last-day') < date_filter.index('value="2026-10-15"') and 'data-divider-before="true">2026-10-15<' in date_filter
 
 
 def test_executed_by_tells_where_each_event_ran(client) -> None:

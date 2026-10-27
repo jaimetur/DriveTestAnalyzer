@@ -25,6 +25,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from fastapi import Depends, File, Form, HTTPException, UploadFile
+from fastapi.responses import JSONResponse, RedirectResponse
+
 SETTINGS_STATE_KEY = 'ai_comment_writers_v1'
 CREDENTIALS_FILE = 'ai-credentials.json'
 # A Kiro CLI already installed on the machine (a local run, a team server with ``module add kiro_cli``).
@@ -612,9 +615,8 @@ def writer_settings_panel(core: Any) -> dict[str, Any]:
 
 
 def install_comment_writer_routes(core: Any) -> None:
-    from fastapi import Depends, File, Form, HTTPException, UploadFile
-    from fastapi.responses import JSONResponse, RedirectResponse
-
+    # The FastAPI names are imported with the module: its annotations are strings (``from __future__ import annotations``)
+    # that FastAPI resolves from the module globals, so a local import leaves UploadFile undefined.
     app = core.app
 
     @app.post('/super-admin/comment-writers')

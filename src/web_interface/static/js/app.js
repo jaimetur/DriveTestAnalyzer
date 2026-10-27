@@ -11223,6 +11223,23 @@ if (appLogsPanel) {
   const restorePagePosition = (position) => {
     window.requestAnimationFrame(() => window.scrollTo(window.scrollX, position));
   };
+  // The Execution Log follows its latest lines: scrolling up stops it, and Go to the end (or scrolling back down to the
+  // end) follows them again.
+  const executionLogEnd = document.querySelector('[data-execution-log-end]');
+  let executionLogFollowing = true;
+  const followExecutionLog = () => {
+    executionLogOutput.scrollTop = executionLogOutput.scrollHeight;
+    executionLogFollowing = true;
+    if (executionLogEnd) executionLogEnd.hidden = true;
+  };
+  if (executionLogOutput) {
+    executionLogOutput.addEventListener('scroll', () => {
+      executionLogFollowing = executionLogOutput.scrollTop + executionLogOutput.clientHeight >= executionLogOutput.scrollHeight - 4;
+      if (executionLogEnd) executionLogEnd.hidden = executionLogFollowing;
+    }, {passive: true});
+    executionLogEnd?.addEventListener('click', followExecutionLog);
+    window.requestAnimationFrame(followExecutionLog);
+  }
   const renderExecutionLogs = (entries) => {
     if (!executionLogOutput) return;
     const executionLogs = Array.isArray(entries) ? entries : [];
@@ -11232,9 +11249,8 @@ if (appLogsPanel) {
     if (executionLogOutput.textContent === nextOutput) return;
     const pagePosition = window.scrollY;
     const scrollPosition = executionLogOutput.scrollTop;
-    const wasAtBottom = scrollPosition + executionLogOutput.clientHeight >= executionLogOutput.scrollHeight - 4;
     executionLogOutput.textContent = nextOutput;
-    executionLogOutput.scrollTop = wasAtBottom ? executionLogOutput.scrollHeight : scrollPosition;
+    executionLogOutput.scrollTop = executionLogFollowing ? executionLogOutput.scrollHeight : scrollPosition;
     if (executionLogCount) executionLogCount.textContent = `${executionLogs.length} entries`;
     restorePagePosition(pagePosition);
   };
@@ -11259,6 +11275,30 @@ if (appLogsPanel) {
   } catch (_error) {
     // The log view remains fully usable when browser storage is unavailable.
   }
+  // Date offers Last Day first (the newest date of the events, whatever day it is): it stands alone, so the days are
+  // unticked and disabled while it is chosen, in Include and in Exclude.
+  const lastDayValue = '@last-day';
+  const dateOptions = (dates) => {
+    const lastDay = new Option('Last Day', lastDayValue);
+    lastDay.dataset.standaloneChoice = 'true';
+    return [lastDay, ...dates.map((date, index) => {
+      const option = new Option(date, date);
+      option.dataset.disabledReason = 'Last Day is chosen: untick it to choose days';
+      if (!index) option.dataset.dividerBefore = 'true';
+      return option;
+    })];
+  };
+  const syncLastDay = () => {
+    if (!dateFilter) return;
+    const lastDay = Array.from(dateFilter.options).some((option) => option.value === lastDayValue && option.selected);
+    let changed = false;
+    Array.from(dateFilter.options).filter((option) => option.value !== lastDayValue).forEach((option) => {
+      if (option.disabled !== lastDay) { option.disabled = lastDay; changed = true; }
+      if (lastDay && option.selected) { option.selected = false; changed = true; }
+    });
+    if (changed) dateFilter.dispatchEvent(new Event('multiselect:options-updated'));
+  };
+  syncLastDay();
   // The checkbox menus show the restored values (a change event that does not bubble).
   Object.values(appLogFilters).filter(Boolean).forEach((control) => control.dispatchEvent(new Event('change')));
   const persistAppLogFilters = () => {
@@ -11292,6 +11332,7 @@ if (appLogsPanel) {
     options.forEach((option) => { option.selected = chosen.has(option.value); });
     control.replaceChildren(...options);
     control.dispatchEvent(new Event('multiselect:options-updated'));
+    if (control === dateFilter) syncLastDay();
   };
   const replaceSelectOptions = (control, values) => setFilterOptions(control, values.map((value) => new Option(value, value)));
   // An open list is as tall as most of the window (its search and Select All / None stay at its top): below its
@@ -11357,7 +11398,7 @@ if (appLogsPanel) {
   const applyFacets = (facets, executorChoices = []) => {
     replaceUserOptions(userFilter, facets.user || []);
     replacePlaceOptions(executorFilter, executorChoices);
-    replaceSelectOptions(dateFilter, facets.date || []);
+    setFilterOptions(dateFilter, dateOptions(facets.date || []));
     replaceSelectOptions(typeFilter, facets.type || []);
     replaceSelectOptions(actionFilter, facets.action || []);
   };
@@ -11471,6 +11512,7 @@ if (appLogsPanel) {
       if (manual && refreshButton) refreshButton.disabled = false;
     }
   };
+  dateFilter?.addEventListener('change', syncLastDay);
   [userFilter, executorFilter, dateFilter, typeFilter, actionFilter].filter(Boolean).forEach((filter) => filter.addEventListener('change', () => {
     persistAppLogFilters();
     loadAppLogs({page: 1, resetMobilePage: true});
@@ -11481,6 +11523,7 @@ if (appLogsPanel) {
       delete control.dataset.multiselectExcluding;
       control.dispatchEvent(new Event('multiselect:options-updated'));
     });
+    syncLastDay();
     try { window.localStorage.removeItem(appLogFiltersStorageKey); } catch (_error) { /* Ignore unavailable browser storage. */ }
     loadAppLogs({page: 1, resetMobilePage: true});
   });

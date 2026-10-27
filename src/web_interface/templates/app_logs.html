@@ -30,7 +30,9 @@
       {# Every filter chooses several values to include, or to exclude (every event but theirs); none chosen shows every event. #}
       <label>Date
         <select data-app-log-date-filter multiple size="1" data-multiselect-empty-label="All dates" data-multiselect-no-values-label="No dates" data-multiselect-exclude aria-label="Date">
-          {% for date in log_dates %}<option value="{{ date }}">{{ date }}</option>{% endfor %}
+          {# Last Day stands alone (the newest date of the events): the days are disabled while it is chosen. #}
+          <option value="@last-day" data-standalone-choice="true">Last Day</option>
+          {% for date in log_dates %}<option value="{{ date }}" data-disabled-reason="Last Day is chosen: untick it to choose days"{% if loop.first %} data-divider-before="true"{% endif %}>{{ date }}</option>{% endfor %}
         </select>
       </label>
       <label>Triggered by
@@ -102,8 +104,11 @@
       </div>
       <span class="pill" data-execution-log-count>{{ execution_logs | length }} entries</span>
     </div>
-    <p class="lede">Live server output for this running instance. Entries use the configured application timezone.</p>
+    <p class="lede">Live server output for this running instance. Entries use the configured application timezone. It follows the latest lines; scrolling up stops it until you go back to the end.</p>
+    <div class="execution-log-frame">
     <pre class="execution-log-output" data-execution-log-output aria-live="polite">{% if execution_logs %}{{ execution_logs | join('\n') }}{% else %}No server log entries captured yet. Restart the application once to begin capturing its execution log.{% endif %}</pre>
+    <button type="button" class="execution-log-end" data-execution-log-end title="Show the latest lines and follow them again" hidden>Go to the end ↓</button>
+    </div>
   </article>
 </section>
 {% endblock %}

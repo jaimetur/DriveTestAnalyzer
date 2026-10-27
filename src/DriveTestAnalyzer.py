@@ -13698,6 +13698,8 @@ APP_EVENT_FILTER_FIELDS = {
     'type': lambda log: str(log['log_type'] or ''),
     'action': lambda log: str(log['action'] or ''),
 }
+# The Last Day choice of the Date filter: the newest date of the events, whatever day it is.
+APP_EVENTS_LAST_DAY = '@last-day'
 _APP_EVENTS_CACHE: dict[str, tuple[str, list[dict[str, Any]]]] = {}
 
 
@@ -13724,6 +13726,9 @@ def app_events_view(filters: dict[str, Iterable[str]] | None = None, page: int =
     chosen = {name: {str(value).casefold() if name == 'user' else str(value)
                      for value in (filters or {}).get(name) or [] if str(value).strip() and value != 'all'}
               for name in APP_EVENT_FILTER_FIELDS}
+    if APP_EVENTS_LAST_DAY in chosen['date']:
+        newest = max((APP_EVENT_FILTER_FIELDS['date'](log) for log in logs), default='')
+        chosen['date'] = {newest} if newest else set()
     leaving_out = set(excluded or ())
 
     def matches(log: dict[str, Any], skipped: str = '') -> bool:
