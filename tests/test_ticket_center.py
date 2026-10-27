@@ -219,6 +219,42 @@ def test_the_tickets_mentioned_as_numbers_are_given_to_the_rich_text_script(clie
     assert json.loads(html.unescape(re.search(r"data-rich-refs='([^']*)'", page).group(1)))['titles'] == {str(second): "Map's labels · New"}
 
 
+def test_a_ticket_page_goes_to_the_first_previous_next_and_last_tickets(client):
+    from src.modules.ticket_center import ticket_neighbours
+
+    assert ticket_neighbours([3, 5, 9], 5) == {'first': 3, 'previous': 3, 'next': 9, 'last': 9, 'position': 2, 'total': 3}
+    assert ticket_neighbours([3, 5, 9], 3) == {'first': None, 'previous': None, 'next': 5, 'last': 9, 'position': 1, 'total': 3}
+    assert ticket_neighbours([3, 5, 9], 9) == {'first': 3, 'previous': 5, 'next': None, 'last': None, 'position': 3, 'total': 3}
+    assert ticket_neighbours([3], 3) == {'first': None, 'previous': None, 'next': None, 'last': None, 'position': 1, 'total': 1}
+
+    login(client)
+    first, second, third, fourth = (open_ticket(client, title=title, screenshots=()) for title in ('Export fails', 'Map labels', 'Gone', "Chart's legend"))
+    assert client.post(f'/api/tickets/{third}/delete').json()['deleted']
+    # By number among every ticket, the way of a ticket outside the Tickets list, whose links keep it.
+    page = client.get(f'/tickets/{second}').text
+    assert (f'data-ticket-pager-link="first" aria-label="First ticket" href="/tickets/{first}?order=number" '
+            f'title="First ticket · #{first} Export fails"') in page
+    assert f'data-ticket-pager-link="previous" aria-label="Previous ticket" href="/tickets/{first}?order=number"' in page
+    assert (f'data-ticket-pager-link="next" aria-label="Next ticket" href="/tickets/{fourth}?order=number" '
+            f'title="Next ticket · #{fourth} Chart&#39;s legend"') in page
+    assert f'data-ticket-pager-link="last" aria-label="Last ticket" href="/tickets/{fourth}?order=number"' in page
+    assert '<span><strong>2</strong> of 3</span><small>By number</small>' in page
+    # The titles of every ticket for the order of the list, which ticket_center.js takes from what the list showed.
+    titles = json.loads(html.unescape(re.search(r"data-ticket-titles='([^']*)'", page).group(1)))
+    assert titles == [[first, 'Export fails'], [second, 'Map labels'], [fourth, "Chart's legend"]]
+    script = (Path(core.__file__).parent / 'web_interface/static/js/ticket_center.js').read_text(encoding='utf-8')
+    assert 'window.localStorage.setItem(listOrderKey, JSON.stringify(rows.filter((row) => !row.hidden)' in script
+    assert "get('order') !== 'number'" in script
+    # The first and the last tickets cannot move further.
+    page = client.get(f'/tickets/{first}').text
+    assert 'data-ticket-pager-link="first" aria-label="First ticket" aria-disabled="true" title="First ticket"' in page
+    assert 'data-ticket-pager-link="previous" aria-label="Previous ticket" aria-disabled="true"' in page
+    assert f'data-ticket-pager-link="next" aria-label="Next ticket" href="/tickets/{second}?order=number"' in page
+    page = client.get(f'/tickets/{fourth}').text
+    assert 'data-ticket-pager-link="next" aria-label="Next ticket" aria-disabled="true"' in page
+    assert 'data-ticket-pager-link="last" aria-label="Last ticket" aria-disabled="true"' in page
+
+
 def test_anyone_reads_tickets_without_signing_in_but_only_signed_in_users_change_them(client):
     login(client)
     ticket_id = open_ticket(client)

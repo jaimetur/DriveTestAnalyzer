@@ -98,6 +98,8 @@ Every column of the table also filters the tickets as in Excel: the **▾** of i
 
 The page shows the title with its type, status, priority and module, who opened it, when and with which version, and the version that fixed it; **Back to Tickets**, above it, returns to the list.
 
+The buttons at the end of that row open the **First**, **Previous**, **Next** and **Last** ticket, around the position of the ticket (*3 of 12*). They follow the Tickets list as the browser showed it last, with its filters and its order (*Tickets list*); a ticket that is not in that list, for example one opened from a link or left out by the filters, goes through every ticket by number (*By number*), and so do the tickets it leads to. Where the ticket cannot move (before the first one, after the last one) the buttons are disabled, and pointing at a button shows the number and title of the ticket it opens.
+
 - **Description** shows the text and the screenshots of the ticket; click a screenshot to see it full size (**Open original** opens the image itself). The reporter and the super-admins add more screenshots below it.
 - **Timeline** lists, oldest first, the comments and every change: who changed the type, status, priority, module, assignment, fixed version, title or description, from what to what and when.
 - **Add a comment** writes a comment with optional screenshots, pasted, dropped or chosen as in the New Ticket form. The author of a comment edits it (it shows *edited*) and deletes it; super-admins delete any comment.

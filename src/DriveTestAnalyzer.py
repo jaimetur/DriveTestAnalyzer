@@ -18566,13 +18566,14 @@ def ticket_center_page(request: Request, user: SessionUser | None = Depends(opti
 def ticket_page(request: Request, ticket_id: int, user: SessionUser | None = Depends(optional_user)) -> HTMLResponse:
     from src.modules.ticket_center import (
         FIELD_LABELS, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_PER_UPLOAD, OPEN_STATUSES, PRIORITIES, STATUSES, TEXT_GUIDES,
-        TICKET_TYPES, ticket_references,
+        TICKET_TYPES, ticket_neighbours, ticket_references, ticket_titles,
     )
 
     modules = ticket_modules()
     people = ticket_people()
     by_key = {module['key']: module for module in modules}
     ticket = serialize_ticket(require_ticket(ticket_id), by_key, people)
+    titles = ticket_titles(repository)
     if user and user.role == 'super-admin':
         from src.modules.admin_notices import mark_seen
 
@@ -18612,6 +18613,9 @@ def ticket_page(request: Request, ticket_id: int, user: SessionUser | None = Dep
         'ticket_max_screenshots': MAX_ATTACHMENTS_PER_UPLOAD, 'ticket_max_screenshot_mb': MAX_ATTACHMENT_BYTES // (1024 * 1024),
         # The tickets its description and comments mention as #<number>, which rich_text.js links.
         'ticket_references': ticket_references(repository, [ticket['description'], *(comment['body'] for comment in ticket['comments'])]),
+        # Its navigation to the first, previous, next and last tickets by number; ticket_center.js follows the order of
+        # the Tickets list instead when the ticket is in it.
+        'ticket_titles': titles, 'ticket_pager': ticket_neighbours(list(titles), ticket_id),
     })
 
 

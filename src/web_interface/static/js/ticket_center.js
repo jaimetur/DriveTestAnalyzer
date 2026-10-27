@@ -22,6 +22,8 @@
     return payload;
   };
   const busy = (form, value) => form.querySelectorAll('button[type="submit"]').forEach((button) => { button.disabled = value; });
+  // The numbers of the tickets the list showed last in this browser, in its order: the page of a ticket goes through them.
+  const listOrderKey = 'ticket-center:list-order';
 
   // Screenshots: chosen, dropped or pasted anywhere in their form, previewed before they are sent.
   const dropzones = new Map();
@@ -213,6 +215,7 @@
           reporter: filters.reporter.value, mine: Boolean(filters.mine?.checked), sort: sort.value,
           ...Object.fromEntries(Object.keys(dateFilters).map((field) => [field, chosenDates(field)])),
         }));
+        window.localStorage.setItem(listOrderKey, JSON.stringify(rows.filter((row) => !row.hidden).map((row) => Number(row.dataset.id))));
       } catch (_) { /* Not remembered. */ }
     };
     chips.forEach((chip) => chip.addEventListener('click', () => {
@@ -374,6 +377,43 @@
   if (!page) return;
   const ticketId = page.dataset.ticketPage;
   const reload = () => window.location.reload();
+
+  // First, Previous, Next and Last follow the Tickets list as this browser showed it last (its filters and order) when
+  // the ticket is in it; the server gives them by number, the way of a ticket outside the list, which keeps its links
+  // (?order=number) by number.
+  const pager = page.querySelector('[data-ticket-pager]');
+  if (pager && new URLSearchParams(window.location.search).get('order') !== 'number') {
+    const titles = new Map(JSON.parse(pager.dataset.ticketTitles || '[]'));
+    let order = [];
+    try { order = JSON.parse(window.localStorage.getItem(listOrderKey) || '[]'); } catch (_) { /* By number. */ }
+    // (Without the tickets deleted since.)
+    order = Array.isArray(order) ? order.map(Number).filter((id) => titles.has(id)) : [];
+    const index = order.indexOf(Number(ticketId));
+    if (index >= 0) {
+      const targets = {
+        first: index > 0 ? order[0] : null, previous: index > 0 ? order[index - 1] : null,
+        next: index < order.length - 1 ? order[index + 1] : null, last: index < order.length - 1 ? order[order.length - 1] : null,
+      };
+      pager.querySelectorAll('[data-ticket-pager-link]').forEach((link) => {
+        const target = targets[link.dataset.ticketPagerLink];
+        const label = link.getAttribute('aria-label');
+        if (target) {
+          link.href = `/tickets/${target}`;
+          link.title = `${label} · #${target} ${titles.get(target)}`;
+          link.removeAttribute('aria-disabled');
+        } else {
+          link.removeAttribute('href');
+          link.title = label;
+          link.setAttribute('aria-disabled', 'true');
+        }
+      });
+      const position = pager.querySelector('[data-ticket-pager-position]');
+      position.title = 'In the order of the Tickets list as this browser showed it last, with its filters';
+      position.querySelector('strong').textContent = index + 1;
+      position.querySelector('strong').nextSibling.textContent = ` of ${order.length}`;
+      position.querySelector('small').textContent = 'Tickets list';
+    }
+  }
 
   const editForm = page.querySelector('[data-ticket-edit-form]');
   const editToggle = page.querySelector('[data-ticket-edit-toggle]');

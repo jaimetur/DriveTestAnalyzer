@@ -339,6 +339,24 @@ def get_ticket(repository: Repository, ticket_id: int) -> dict[str, Any] | None:
     return {**dict(row), 'comments': comments, 'attachments': by_comment.get(None, [])}
 
 
+def ticket_titles(repository: Repository) -> dict[int, str]:
+    """The title of every ticket by its number, the oldest first: the order a ticket page goes through outside the list."""
+    with repository.global_connection() as conn:
+        return {int(row['id']): str(row['title']) for row in conn.execute('SELECT id, title FROM tickets ORDER BY id').fetchall()}
+
+
+def ticket_neighbours(order: list[int], ticket_id: int) -> dict[str, Any]:
+    """The first, previous, next and last tickets of an order around one of its tickets (None where it cannot move:
+    before the first one and after the last one), and its position in it."""
+    index = order.index(int(ticket_id))
+    before, after = index > 0, index < len(order) - 1
+    return {
+        'first': order[0] if before else None, 'previous': order[index - 1] if before else None,
+        'next': order[index + 1] if after else None, 'last': order[-1] if after else None,
+        'position': index + 1, 'total': len(order),
+    }
+
+
 def ticket_references(repository: Repository, texts: Iterable[object]) -> dict[str, Any]:
     """The references of rich_text.js for texts of tickets: #7 opens ticket 7, its title and status in the tooltip, when it
     exists (a number of no ticket stays text)."""
