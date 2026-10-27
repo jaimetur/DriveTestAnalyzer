@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import os
 import shutil
 import sqlite3
 import time
@@ -38,6 +39,20 @@ def wait_for_background_dataset_work(timeout: float = 30.0) -> None:
         if not datasets_busy and not jobs_busy:
             return
         time.sleep(0.02)
+
+
+@pytest.fixture(autouse=True)
+def restore_environment():
+    """A test leaves the environment and the time zone of the process as it found them: the runtime settings of the
+    application (Super Admin) write TZ and other variables into os.environ, and the next tests of the process would read
+    their local times in that time zone."""
+    saved = dict(os.environ)
+    yield
+    if os.environ != saved:
+        os.environ.clear()
+        os.environ.update(saved)
+    if hasattr(time, 'tzset'):
+        time.tzset()
 
 
 def _prepare_client_folders(root: Path, monkeypatch: pytest.MonkeyPatch, *, create: bool) -> Path:
