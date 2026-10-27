@@ -1947,6 +1947,23 @@ def group_id(letter: str, key: str, length: int = 6) -> str:
     return f"{letter}-{key.split(':', 1)[-1].upper()[:length]}"
 
 
+def group_id_sql(letter: str, key: str, size: str) -> str:
+    """``group_id`` in SQL, from the columns of the key and size of a group: '' for a group of less than 2 calls."""
+    return (f"(CASE WHEN COALESCE({size}, 0) >= 2 AND COALESCE({key}, '') <> '' "
+            f"THEN '{letter}-' || upper(substr({key}, instr({key}, ':') + 1, 6)) ELSE '' END)")
+
+
+def group_ids_sql(alias: str) -> str:
+    """The Hotspot ID, Consecutive ID and Cluster ID of a call (the NQ Prioritization of ``alias``), as ``call_groups`` gives
+    them: its cluster first, then its cluster of every NR Mode together when that starts with another call."""
+    cluster = group_id_sql('CLU', f'{alias}.repeat_key', f'{alias}.repeat_size')
+    cluster_all = group_id_sql('CLU', f'{alias}.repeat_all_key', f'{alias}.repeat_all_size')
+    return (f"{group_id_sql('HOT', f'{alias}.cluster_key', f'{alias}.cluster_size')} AS hotspot_id, "
+            f"{group_id_sql('CON', f'{alias}.consecutive_key', f'{alias}.consecutive_size')} AS consecutive_id, "
+            f"(CASE WHEN {cluster_all} IN ('', {cluster}) THEN {cluster} WHEN {cluster} = '' THEN {cluster_all} "
+            f"ELSE {cluster} || ', ' || {cluster_all} END) AS cluster_id")
+
+
 # The groups a call can be in: their ID prefix, the columns of their key and size (one of each at most) and the filter of
 # the list of calls that shows the calls of each.
 CALL_GROUPS = (('hotspot', 'HOT', 'cluster_key', 'cluster_size', 'hotspot'), ('cluster', 'CLU', 'repeat_key', 'repeat_size', 'clustered_issue'),

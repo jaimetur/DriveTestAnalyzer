@@ -554,6 +554,38 @@ def test_the_groups_of_a_call_take_the_ids_of_the_panel():
     assert nq_prioritization.call_groups({}) == []
 
 
+def group_ids_of(call: dict) -> dict[str, str]:
+    """The Hotspot ID, Consecutive ID and Cluster ID a call takes from the groups of its header."""
+    ids = lambda *kinds: ', '.join(dict.fromkeys(group['id'] for group in nq_prioritization.call_groups(call) if group['kind'] in kinds))  # noqa: E731
+    return {'hotspot_id': ids('hotspot'), 'consecutive_id': ids('run'), 'cluster_id': ids('cluster', 'cluster_all')}
+
+
+def test_the_ids_of_the_groups_of_a_call_in_sql_are_those_of_its_header():
+    import sqlite3
+
+    columns = ('cluster_key', 'cluster_size', 'consecutive_key', 'consecutive_size', 'repeat_key', 'repeat_size', 'repeat_all_key',
+               'repeat_all_size')
+    calls = [
+        # Its cluster of every NR Mode starts with the same call: one Cluster ID.
+        ('cluster:0c1bce5fda02e35fbd85092f', 17, 'run:68ab51b9d4d0d6ef07b2cbfb', 1, 'group:0c1bce5fda02e35fbd85092f', 15,
+         'group-all:0c1bce5fda02e35fbd85092f', 39),
+        # With another call: that of its NR Mode, then that of every NR Mode.
+        ('cluster:2fccb4a639d24b6d4059e295', 6, 'run:10d7b4a20e9e3a631b7f8b3b', 3, 'group:2fccb4a639d24b6d4059e295', 6,
+         'group-all:ccd51ce10b4e7c48af6a98c2', 11),
+        # Alone in its NR Mode, in a cluster of every NR Mode.
+        ('cluster:f35716e91b85c70465723201', 1, '', None, '', None, 'group-all:f35716e91b85c70465723201', 2),
+        ('', None, '', None, '', None, '', None),
+    ]
+    connection = sqlite3.connect(':memory:')
+    connection.row_factory = sqlite3.Row
+    connection.execute(f"CREATE TABLE p ({', '.join(columns)})")
+    connection.executemany(f"INSERT INTO p VALUES ({', '.join('?' for _ in columns)})", calls)
+    found = [dict(row) for row in connection.execute(f"SELECT {nq_prioritization.group_ids_sql('p')} FROM p")]
+    assert found == [group_ids_of(dict(zip(columns, call))) for call in calls]
+    assert found[1] == {'hotspot_id': 'HOT-2FCCB4', 'consecutive_id': 'CON-10D7B4', 'cluster_id': 'CLU-2FCCB4, CLU-CCD51C'}
+    assert found[2] == {'hotspot_id': '', 'consecutive_id': '', 'cluster_id': 'CLU-F35716'}
+
+
 def test_clusters_take_the_quarter_of_the_campaign_and_leave_the_ping_tests_out():
     # A call of the campaign of Q2 driven in July is in Q2; the date counts only when the campaign does not name its quarter.
     assert nq_prioritization.quarter_of('2026-07-02 10:00:00', 'UK_Q2_2026') == nq_prioritization.quarter_of('', '2026-Q2-SA') == 2026 * 4 + 1
@@ -966,6 +998,48 @@ def test_the_header_of_a_call_shows_its_groups(prioritized):
     assert groups[0]['sites'] == [{'label': label, 'calls': count} for label, count in sorted(places.items(), key=lambda pair: (-pair[1], pair[0]))]
     times = sorted(str(other['start_time']) for other in members if other['start_time'])
     assert (groups[0]['first'], groups[0]['last']) == (times[0], times[-1])
+
+
+def test_the_calls_show_and_export_the_ids_of_their_groups(prioritized):
+    from openpyxl import load_workbook
+
+    client = prioritized['client']
+    rows = priority_rows()
+    fields = {field['source_ref']: field for field in nq.list_fields(core.repository) if field['source'] == 'priority'}
+    refs = ('hotspot_id', 'consecutive_id', 'cluster_id')
+    assert [fields[ref]['label'] for ref in refs] == ['Hotspot ID', 'Consecutive ID', 'Cluster ID']
+    # Columns of the table to choose, after the Repetition Place, exported to Excel.
+    keys = [field['key'] for field in nq.list_fields(core.repository)]
+    place = keys.index(fields['place_label']['key'])
+    assert keys[place + 1:place + 4] == [fields[ref]['key'] for ref in refs]
+    assert all(fields[ref]['in_export'] and not fields[ref]['in_table'] for ref in refs)
+    # Each call takes the IDs of the groups of its header, those of the Hotspots, Consecutive & Clustered Issues panel.
+    listed = client.post('/api/non-qualified-calls/calls', json={'filters': {}, 'page_size': 100, 'breakdowns': False}).json()['calls']
+    assert listed and all({ref: call['values'][fields[ref]['key']] for ref in refs} == group_ids_of(rows[call['call_key']]) for call in listed)
+    assert any(call['values'][fields['hotspot_id']['key']] for call in listed)
+    assert any(call['values'][fields['consecutive_id']['key']] for call in listed)
+    # They filter the list of calls as any other field.
+    spot = next(call['values'][fields['hotspot_id']['key']] for call in listed if call['values'][fields['hotspot_id']['key']])
+    filtered = client.post('/api/non-qualified-calls/calls', json={
+        'filters': {'fields': {fields['hotspot_id']['key']: [spot]}}, 'page_size': 100, 'breakdowns': False}).json()
+    assert filtered['total'] == sum(group_ids_of(row)['hotspot_id'] == spot for row in rows.values()) >= 2
+    sheet = load_workbook(io.BytesIO(client.post('/api/non-qualified-calls/export', json={'filters': {}}).content))['NQ Calls']
+    headers = [cell.value for cell in sheet[2]]
+    exported = {row[headers.index('Call Key')]: row for row in sheet.iter_rows(min_row=3, values_only=True)}
+    assert exported and all([exported[key][headers.index(fields[ref]['label'])] or '' for ref in refs]
+                            == list(group_ids_of(row).values()) for key, row in rows.items() if key in exported)
+
+
+def test_workspaces_of_the_previous_version_get_the_ids_of_the_groups(client):
+    enable_module()
+    nq.ensure_nq_tables(core.repository)
+    fields = [field for field in nq.list_fields(core.repository) if field['key'] not in nq.V35_FIELD_KEYS]
+    nq._store_fields(core.repository, fields)
+    core.repository.set_workspace_state(nq.ANALYSIS_CENTER_V35_STATE_KEY, '')
+    core.repository.set_workspace_state(nq.SCHEMA_STATE_KEY, '2026-10-26.4')
+    nq.ensure_nq_tables(core.repository)
+    keys = [field['key'] for field in nq.list_fields(core.repository)]
+    assert keys[keys.index('repetition_place') + 1:keys.index('repetition_place') + 4] == ['hotspot_id', 'consecutive_id', 'cluster_id']
 
 
 def test_hotspots_and_consecutive_failures_mix_the_call_types(prioritized):

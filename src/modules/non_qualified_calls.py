@@ -263,9 +263,13 @@ V33_FORMER_DESCRIPTIONS = (
     ('repetition_place', 'Where the repetitions are counted: the site of the cell where the call ended, the site that served its '
                          'start, its eNB / gNB or the spot where it started.'),
 )
+# The IDs of the hotspot, run of consecutive failures and cluster of each call of the NQ Prioritization, once, after the
+# Repetition Place.
+ANALYSIS_CENTER_V35_STATE_KEY = 'nq_analysis_center_v35'
+V35_FIELD_KEYS = {'hotspot_id', 'consecutive_id', 'cluster_id'}
 # Set once the tables and columns of this version exist, so the requests check the schema without writing.
 SCHEMA_STATE_KEY = 'nq_calls_schema'
-SCHEMA_VERSION = '2026-10-26.4'
+SCHEMA_VERSION = '2026-10-27.1'
 # Indexed call fields that the suggestion rule can read, with their labels.
 RULE_FIELDS = {
     'failure_classification': 'Failure Classification', 'failure_category': 'Failure Category',
@@ -620,7 +624,8 @@ def _schema_ready(task_repository: Any) -> bool:
                 ANALYSIS_CENTER_V22_STATE_KEY, ANALYSIS_CENTER_V23_STATE_KEY, ANALYSIS_CENTER_V24_STATE_KEY, ANALYSIS_CENTER_V25_STATE_KEY,
                 ANALYSIS_CENTER_V26_STATE_KEY, ANALYSIS_CENTER_V27_STATE_KEY, ANALYSIS_CENTER_V28_STATE_KEY,
                 ANALYSIS_CENTER_V29_STATE_KEY, ANALYSIS_CENTER_V30_STATE_KEY, ANALYSIS_CENTER_V31_STATE_KEY,
-                ANALYSIS_CENTER_V32_STATE_KEY, ANALYSIS_CENTER_V33_STATE_KEY, ANALYSIS_CENTER_V34_STATE_KEY)
+                ANALYSIS_CENTER_V32_STATE_KEY, ANALYSIS_CENTER_V33_STATE_KEY, ANALYSIS_CENTER_V34_STATE_KEY,
+                ANALYSIS_CENTER_V35_STATE_KEY)
         states = {str(row[0]): str(row[1]) for row in connection.execute(
             f"SELECT key, value FROM workspace_state WHERE key IN ({', '.join('?' for _ in keys)})", keys)}
     return states.get(SCHEMA_STATE_KEY) == SCHEMA_VERSION and all(states.get(key) for key in keys[1:])
@@ -819,6 +824,12 @@ def ensure_nq_tables(task_repository: Any) -> None:
         if not task_repository.get_workspace_state(state_key):
             _renew_default_descriptions(task_repository, dict(formers))
             task_repository.set_workspace_state(state_key, '1')
+    if not task_repository.get_workspace_state(ANALYSIS_CENTER_V35_STATE_KEY):
+        fields = list_fields(task_repository)
+        if _add_default_fields(fields, V35_FIELD_KEYS):
+            _store_fields(task_repository, nq_catalog.normalize_fields(fields, {field['key']: field for field in list_fields(task_repository)},
+                                                                       CATALOG_CALL_FIELDS))
+        task_repository.set_workspace_state(ANALYSIS_CENTER_V35_STATE_KEY, '1')
     task_repository.set_workspace_state(SCHEMA_STATE_KEY, SCHEMA_VERSION)
 
 
@@ -4025,7 +4036,7 @@ PRIORITY_COLUMNS_SQL = (
     "COALESCE(p.expected_campaign, '') AS expected_campaign, COALESCE(p.cluster_key, '') AS cluster_key, "
     "p.cluster_size AS cluster_size, COALESCE(p.consecutive_key, '') AS consecutive_key, p.consecutive_size AS consecutive_size, "
     "COALESCE(p.repeat_key, '') AS repeat_key, p.repeat_size AS repeat_size, COALESCE(p.repeat_all_key, '') AS repeat_all_key, "
-    "p.repeat_all_size AS repeat_all_size"
+    "p.repeat_all_size AS repeat_all_size, " + nq_prioritization.group_ids_sql('p')
 )
 
 

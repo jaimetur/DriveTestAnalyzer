@@ -3982,6 +3982,8 @@
   const HEADER_FIELDS = ['unique_id'];
   // The values of the NQ Prioritization about the repeated issue of a call, on a row of their own in Prioritization Info.
   const REPETITION_REFS = ['repeated', 'repetitions', 'repeated_campaigns', 'place_label'];
+  // The values of the NQ Prioritization that are the IDs of the groups of a call (Hotspot ID, Consecutive ID and Cluster ID).
+  const GROUP_ID_REFS = ['hotspot_id', 'consecutive_id', 'cluster_id'];
   const phaseFields = () => PHASE_SECTIONS.map((key) => state.fields.find((field) => field.section === key && field.type === 'list'
     && ['user', 'derived'].includes(field.source))).filter(Boolean);
   const renderTracking = (call) => {
@@ -4069,8 +4071,9 @@
     const phasePanel = node('section', undefined, 'nq-phase-panel');
     phasePanel.setAttribute('aria-label', 'Phases of the call');
     phasePanel.append(node('span', 'Phases', 'nq-phase-panel-title'), phases);
-    // The values of the NQ Prioritization of the call, read only, in a Prioritization Info subpanel above the phases (not in their tab).
-    const infoFields = state.fields.filter((item) => item.source === 'priority');
+    // The values of the NQ Prioritization of the call, read only, in a Prioritization Info subpanel above the phases (not in their tab),
+    // but for the IDs of its groups, which its Groups in the header show.
+    const infoFields = state.fields.filter((item) => item.source === 'priority' && !GROUP_ID_REFS.includes(item.source_ref));
     const infoPanel = node('section', undefined, 'nq-phase-panel nq-call-info-panel');
     infoPanel.setAttribute('aria-label', 'Prioritization information');
     const infoCard = (item) => {

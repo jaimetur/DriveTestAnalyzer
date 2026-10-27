@@ -89,12 +89,13 @@ PRIORITY_REFS = {
     'impact_level': 'Scoring Impact', 'impact_points': 'Scoring Points Lost', 'impact_kpis': 'Scoring KPIs Lost',
     'repeated': 'Repeated Issue', 'repetitions': 'Repetitions', 'repeated_campaigns': 'Repeated Campaigns',
     'place_label': 'Repetition Place', 'prioritization': 'Prioritization', 'priority_rule': 'Prioritization Rule',
-    'queue': 'Prioritization Queue', 'expected_points': 'Expected Gain',
+    'queue': 'Prioritization Queue', 'expected_points': 'Expected Gain', 'hotspot_id': 'Hotspot ID', 'consecutive_id': 'Consecutive ID',
+    'cluster_id': 'Cluster ID',
 }
 PRIORITY_TYPES = {
     'impact_level': 'list', 'impact_points': 'number', 'impact_kpis': 'text', 'repeated': 'yes_no', 'repetitions': 'number',
     'repeated_campaigns': 'number', 'place_label': 'text', 'prioritization': 'list', 'priority_rule': 'list',
-    'queue': 'list', 'expected_points': 'number',
+    'queue': 'list', 'expected_points': 'number', 'hotspot_id': 'text', 'consecutive_id': 'text', 'cluster_id': 'text',
 }
 PRIORITY_NUMBERS = frozenset(ref for ref, kind in PRIORITY_TYPES.items() if kind == 'number')
 IMPACT_HIGH, IMPACT_MEDIUM, IMPACT_LOW = 'High', 'Medium', 'Low'
@@ -246,6 +247,20 @@ DEFAULT_FIELDS = (
     _field('repetition_place', 'Repetition Place', 'general', 'text', 'priority', 'place_label',
            description='The site where the repeated issues list the call: the site of the cell where the call ended, the site '
                        'that served its start, its eNB / gNB or the spot where it started.'),
+    _field('hotspot_id', 'Hotspot ID', 'general', 'text', 'priority', 'hotspot_id',
+           description='The ID of the hotspot of the call (HOT-...) in the Hotspots, Consecutive & Clustered Issues panel: the '
+                       'failures of its operator, NR Mode and campaign linked to each other in time or distance (empty when it '
+                       'is in none of 2 calls or more).'),
+    _field('consecutive_id', 'Consecutive ID', 'general', 'text', 'priority', 'consecutive_id',
+           description='The ID of the run of consecutive failures of the call (CON-...) in the Hotspots, Consecutive & Clustered '
+                       'Issues panel: the failures of its operator, NR Mode, campaign and drive one after another (empty when '
+                       'it is in none of 2 calls or more).'),
+    _field('cluster_id', 'Cluster ID', 'general', 'text', 'priority', 'cluster_id',
+           description='The ID of the cluster of the call (CLU-...) in the Hotspots, Consecutive & Clustered Issues panel: the '
+                       'calls of its operator and NR Mode failed close to each other or at the same site, in its campaign and '
+                       'those of the Cluster period; followed by that of its cluster with the calls of every NR Mode together, '
+                       'as the panel shows the clusters without one NR Mode filtered, when it starts with another call (empty '
+                       'when it is in none of 2 calls or more).'),
     _field('team_responsible', 'Team Responsible', 'general', 'list', 'tracking', 'team', in_table=True),
     _field('assignee', 'Asignee', 'general', 'list', 'tracking', 'assignee', in_table=True,
            description='A member of the responsible team (any user of the workspace when the team has no members).'),
