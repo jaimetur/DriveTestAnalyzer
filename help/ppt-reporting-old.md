@@ -26,7 +26,7 @@ PPT Reporting (old) is available to the super-admins without a Modules Profile a
 
 Process at least one suitable CDR. Reporting can combine multiple datasets of one type and retains Campaign for comparisons. Reports may use any non-empty combination of Data, Voice and Speech; template rows without a selected source render an explicit unavailable-source placeholder.
 
-Select NR Mode: **NSA** or **SA**, the NR Mode of the chosen CDRs. Every Data, Voice and Speech test of those CDRs is included, whatever RAT or call mode it ran on (as in PPT Dashboards: a row keeps the NR Mode of its CDR), so choose the CDRs of that NR Mode. The NR Mode names the report and its titles (`{NR Mode}`, `{NR Mode Name}` in the template).
+Select NR Mode: **NSA** or **SA**, the NR Mode of the chosen CDRs. When it leaves operators out of scope (the **NR Modes** of their labels in the [Operator Maps](workspace-config.md#operator-maps), such as Three, which has no SA), a pill under it names them (*Out of scope: SA · Three*) and their tests are left out of the report. Every Data, Voice and Speech test of those CDRs is included, whatever RAT or call mode it ran on (as in PPT Dashboards: a row keeps the NR Mode of its CDR), so choose the CDRs of that NR Mode. The NR Mode names the report and its titles (`{NR Mode}`, `{NR Mode Name}` in the template).
 
 Valid Data attempts remain available even when sample RAT records a fallback.
 

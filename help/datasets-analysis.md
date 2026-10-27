@@ -68,6 +68,7 @@ Controls adapt to the selected dataset.
 - Per-KPI headline values.
 - Percentile scorecards.
 - Filtered sample counts.
+- The operators out of scope in the NR Mode of the CDR (the **NR Modes** of their labels in the [Operator Maps](workspace-config.md#operator-maps), such as Three, which has no SA), named beside **Global Metrics** (*Out of scope: SA · Three*): their rows are left out of the analysis.
 
 ## Charts and Scorecards
 

@@ -278,6 +278,10 @@ a.topnav-link-logout { background: linear-gradient(135deg, #ffd8d8, #ffc6c6); bo
 .chart-builder-viewer { display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; min-height: 0; overflow: hidden; border: 1px solid rgba(184, 91, 32, 0.22); border-radius: 12px; background: #fff; }
 .chart-builder-viewer-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .75rem 1rem; border-bottom: 1px solid rgba(184, 91, 32, 0.18); background: #fff8f1; }
 .chart-builder-viewer-header :is(.eyebrow, h3) { margin: 0; }
+.chart-builder-out-of-scope { margin: .3rem 0 0; }
+.chart-builder-out-of-scope[hidden] { display: none; }
+.report-out-of-scope { display: block; margin-top: .3rem; }
+.report-out-of-scope[hidden] { display: none; }
 .chart-builder-canvas { position: relative; display: grid; place-items: center; min-height: min(62vh, 760px); overflow: hidden; background: #fff; }
 .chart-builder-canvas canvas { width: 100%; height: 100%; min-height: 0; touch-action: none; }
 .chart-builder-canvas .ds-chart-controls { position: absolute; right: .75rem; bottom: .75rem; }
@@ -739,6 +743,23 @@ body [data-section-bar].is-compact > a.section-bar-top { padding: .45rem .55rem;
 .mapping-nr-modes-select:has(option[value="NSA"]:checked) { border-color: #1d4ed8; background-color: #eff4ff; color: #1d4ed8; font-weight: 700; }
 .mapping-nr-modes-select:has(option[value="SA"]:checked) { border-color: #be185d; background-color: #fdf2f8; color: #be185d; font-weight: 700; }
 .mapping-nr-modes-suggestion { display: block; margin-top: .3rem; color: #9a5b00; font-size: .78rem; font-weight: 700; line-height: 1.3; cursor: help; }
+.mapping-nr-modes-note { display: block; margin-top: .3rem; color: #9b2c2c; font-size: .78rem; font-weight: 700; line-height: 1.3; }
+.mapping-nr-modes-note[hidden] { display: none; }
+/* The Role and the NR Modes of the label of a name of the CDRs, side by side. */
+.mapping-role-badges { display: inline-flex; flex-wrap: wrap; gap: .3rem; }
+/* The NR Mode · operator pairs out of scope of a selection, as every module names them (see outOfScopePill). */
+.out-of-scope-pill { display: inline-flex; align-items: center; min-height: 1.45rem; padding: .18rem .55rem; border: 1px solid #e2b56b; border-radius: 999px; background: #fff6e5; color: #8a4b00; font-size: .74rem; font-weight: 800; line-height: 1.2; white-space: nowrap; vertical-align: middle; cursor: help; }
+/* What is out of scope in the workspace, above the Operator Maps: in every module and in the Non-Qualified Calls alone. */
+.operator-scope-summary { padding: .75rem 1rem; border: 1px solid rgba(155, 44, 44, .22); border-radius: .75rem; background: #fffafa; font-size: .88rem; line-height: 1.45; }
+.operator-scope-summary > strong { display: block; margin-bottom: .45rem; color: var(--text, #1d2f3a); }
+.operator-scope-summary dl { display: grid; grid-template-columns: 11rem minmax(0, 1fr); gap: .5rem .8rem; margin: 0; }
+.operator-scope-summary dt { color: #58707e; font-weight: 800; }
+.operator-scope-summary dd { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; margin: 0; }
+.operator-scope-note { flex-basis: 100%; color: var(--muted); font-size: .8rem; }
+.operator-scope-none { color: var(--muted); }
+@media (max-width: 640px) { .operator-scope-summary dl { grid-template-columns: minmax(0, 1fr); } }
+.mapping-nr-modes-badge.is-nsa { border-color: #1d4ed8; background: #eff4ff; color: #1d4ed8; }
+.mapping-nr-modes-badge.is-sa { border-color: #be185d; background: #fdf2f8; color: #be185d; }
 .operator-mapping-create input, .operator-mapping-create textarea { width: 100%; box-sizing: border-box; }
 .operator-mapping-create input:not([type="color"]) { height: 3rem; padding-block: 0.55rem; }
 .operator-mapping-create input[type="color"] { height: 3rem; padding: 0.15rem; }

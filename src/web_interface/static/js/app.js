@@ -5629,6 +5629,33 @@ function renderAutoCdrList(host, cdrs, {loading = false} = {}) {
 }
 globalThis.renderAutoCdrList = renderAutoCdrList;
 
+// The NR Mode · operator pairs out of scope of the workspace (the NR Modes of the Operator Maps): every module names those
+// of the NR Modes its selection reads (NSA, SA or NSA+SA) in a pill, as their tests are left out of it.
+function outOfScopePairs(nrModes) {
+  let pairs = [];
+  try {
+    pairs = JSON.parse(document.getElementById('operator-out-of-scope')?.textContent || '[]');
+  } catch (_error) {
+    pairs = [];
+  }
+  const modes = new Set((Array.isArray(nrModes) ? nrModes : [nrModes]).flatMap((value) => {
+    const text = String(value || '').toUpperCase().replace(/\s+/g, '');
+    return ['NSA+SA', 'NSAVSSA', 'BOTH'].includes(text) ? ['NSA', 'SA'] : [text];
+  }));
+  return (Array.isArray(pairs) ? pairs : []).filter((pair) => modes.has(pair.nr_mode)).map((pair) => `${pair.nr_mode} · ${pair.operator}`);
+}
+
+function outOfScopePill(nrModes, className = '') {
+  const pairs = outOfScopePairs(nrModes);
+  if (!pairs.length) return null;
+  const pill = document.createElement('span');
+  pill.className = `out-of-scope-pill${className ? ` ${className}` : ''}`;
+  pill.textContent = `Out of scope: ${pairs.join(', ')}`;
+  pill.title = 'Left out of every analysis: these operators have no network in this NR Mode (the NR Modes of their labels in Workspace Config → Operator Maps)';
+  return pill;
+}
+globalThis.outOfScopePill = outOfScopePill;
+
 // Patterns among the values of a filter (such as the Operator filters), as value_patterns.py resolves
 // them: * stands for any characters (VF*), and a value that starts with - or NOT leaves out what it names (-Lebara,
 // NOT Leb*), whatever the case. accepts(...names) tells whether a value known by those names is taken.
@@ -9718,11 +9745,41 @@ function refreshMappingRoleBadge(select) {
   badge.textContent = role === null ? '' : ({focus: 'Focus', exclude: 'Exclude'}[role] || 'Include');
 }
 
+// Likewise the NR Modes of their label (none shown for both): its tests of the CDRs of the other NR Mode are out of scope.
+function refreshMappingNrModesBadge(select) {
+  const badge = select.closest('tr')?.querySelector('[data-mapping-nr-modes-badge]');
+  if (!badge) return;
+  const modes = !select.value || select.value === '__new__' ? '' : (select.selectedOptions[0]?.dataset.nrModes || '');
+  badge.hidden = !modes;
+  badge.className = `mapping-role-badge mapping-nr-modes-badge${modes ? ` is-${modes.toLowerCase()}` : ''}`;
+  badge.textContent = modes ? `${modes} only` : '';
+}
+
+// The NR Modes of a label: the note under them names the NR Mode out of scope, and the names of the CDRs of the label
+// show them, before they are saved.
+document.addEventListener('change', (event) => {
+  const target = event.target instanceof HTMLSelectElement && event.target.matches('.mapping-nr-modes-select') ? event.target : null;
+  const panel = target?.closest('[data-panel-state-key="admin:operator-mappings"]');
+  const label = target?.closest('tr')?.querySelector('input[name="original_canonical"]')?.value;
+  if (!panel || !label) return;
+  const modes = ['NSA', 'SA'].includes(target.value) ? target.value : '';
+  const note = target.parentElement?.querySelector('[data-mapping-nr-modes-note]');
+  if (note) {
+    note.hidden = !modes;
+    note.textContent = modes ? `${modes === 'NSA' ? 'SA' : 'NSA'} out of scope in every module` : '';
+  }
+  panel.querySelectorAll('[data-mapping-assignment-label]').forEach((select) => {
+    Array.from(select.options).filter((option) => option.value === label).forEach((option) => { option.dataset.nrModes = modes; });
+    refreshMappingNrModesBadge(select);
+  });
+});
+
 document.addEventListener('change', (event) => {
   const target = event.target instanceof HTMLSelectElement ? event.target : null;
   if (!target) return;
   if (target.matches('[data-mapping-assignment-label]')) {
     refreshMappingRoleBadge(target);
+    refreshMappingNrModesBadge(target);
     return;
   }
   const panel = target.matches('.mapping-role-select') ? target.closest('[data-panel-state-key="admin:operator-mappings"]') : null;

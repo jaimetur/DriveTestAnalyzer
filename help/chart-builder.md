@@ -38,7 +38,7 @@ builders
 7. Choose a Legend and Legend Position when required.
 8. Enter a Chart Title and review the regenerated preview.
 
-The Source Dataset selector is filtered by CDR Type and shows only processed datasets of that type.
+The Source Dataset selector is filtered by CDR Type and shows only processed datasets of that type. When the chosen datasets are of an NR Mode that leaves operators out of scope (the **NR Modes** of their labels in the [Operator Maps](workspace-config.md#operator-maps), such as Three, which has no SA), the chart header names them (*Out of scope: SA · Three*) and their rows are left out of the chart.
 
 ## Interactive Preview
 

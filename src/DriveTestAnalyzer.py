@@ -78,6 +78,7 @@ from src.modules.auth import SessionUser, verify_password
 from src.modules.workspace_countries import country_options
 from src.modules.operator_roles import (
     drop_excluded_operators, drop_out_of_scope_operators, excluded_operators, normalize_mapping_role, normalize_nr_modes,
+    out_of_scope_pairs,
 )
 from src.modules.cdr_types import (
     CDR_TYPES, DEFAULT_CDR_TYPE, cdr_type_options, normalize_cdr_type, set_workspace_cdr_type, workspace_cdr_type,
@@ -5922,6 +5923,10 @@ def render_template(request: Request, template_name: str, context: dict[str, Any
             'operator_order': [str(group['canonical']) for group in repository.list_operator_mapping_groups()],
             'vendor_order': [str(group['canonical']) for group in repository.list_vendor_mapping_groups()],
         } if active_workspace and isinstance(template_user, SessionUser) else {},
+        # The NR Mode · operator pairs out of scope (the NR Modes of the Operator Maps): every module names them beside a
+        # selection that reads CDRs of those NR Modes.
+        'operator_out_of_scope': out_of_scope_pairs(repository.list_operator_mapping_groups())
+        if active_workspace and isinstance(template_user, SessionUser) else [],
         **context,
     }
     response = templates.TemplateResponse(request, template_name, payload, status_code=status_code)
@@ -13515,6 +13520,8 @@ def render_admin_template(
             'operator_mapping_groups': repository.list_operator_mapping_groups() if active_workspace else [],
             # The NR Modes suggested for the labels from their NQ calls, never applied on their own.
             'operator_nr_mode_suggestions': operator_nr_mode_suggestions() if active_workspace else {},
+            # What is out of scope in the workspace, in every module and in the Non-Qualified Calls alone.
+            'operator_scope': operator_scope_summary() if active_workspace else None,
             'operator_mapping_notice': request.query_params.get('operator_mapping_notice') or None,
             'cdr_type_options': cdr_type_options(),
             'country_options': country_options(),
@@ -18954,7 +18961,9 @@ def chart_builder(request: Request, user: SessionUser = Depends(current_user)) -
     for row in repository.list_datasets():
         if row['status'] != 'ready':
             continue
-        datasets.append({'id': int(row['id']), 'name': str(row['file_name']), 'kind': str(row['dataset_kind']), 'columns': repository.list_dataset_row_columns(int(row['id']))})
+        datasets.append({'id': int(row['id']), 'name': str(row['file_name']), 'kind': str(row['dataset_kind']), 'columns': repository.list_dataset_row_columns(int(row['id'])),
+                         # The NR Mode of a CDR names the operators out of scope in it beside the chart.
+                         'nr_mode': dataset_nr_mode(row['dataset_kind'], row['nr_mode'], row['file_name']) or ''})
     return render_template(request, 'chart_builder.html', {'user': user, 'datasets': datasets})
 
 
@@ -20795,7 +20804,6 @@ def _saved_filter_payload(saved_filter: dict[str, Any], operator_groups: list[di
     one below the other in every tab."""
     from src.modules.scoring_views import normalize_result_gaps, nr_mode_result
     from src.modules.nr_mode import NR_MODES, NSA_VS_SA, normalize_scoring_nr_mode, nr_modes_of
-    from src.modules.operator_roles import out_of_scope_pairs
 
     def out_of_scope(nr_mode: Any) -> dict[str, Any]:
         # The NR Mode · operator pairs out of scope in the NR Modes of a result (the NR Modes of the Operator Maps), which
@@ -20804,9 +20812,24 @@ def _saved_filter_payload(saved_filter: dict[str, Any], operator_groups: list[di
         pairs = [f"{pair['nr_mode']} · {pair['operator']}" for pair in out_of_scope_pairs(operator_groups) if pair['nr_mode'] in modes]
         return {'out_of_scope': pairs} if pairs else {}
 
+    def chart_out_of_scope(views: dict[str, Any]) -> None:
+        # The Scoring per Service chart keeps the place of an operator out of scope in an NR Mode, named Out of scope
+        # (see with_out_of_scope_columns); the tables keep their columns.
+        from src.modules.scoring_views import with_out_of_scope_columns
+
+        for matrix in views.get('hierarchy_score_tables') or []:
+            chart = with_out_of_scope_columns(matrix, out_of_scope_pairs(operator_groups))
+            if chart is not matrix:
+                matrix['chart_out_of_scope'] = {
+                    'operators': chart['operators'],
+                    'columns': [column for column in chart['hierarchy_columns'] if column.get('out_of_scope')],
+                    'styles': {key: style for key, style in chart['operator_styles'].items() if style.get('out_of_scope')},
+                }
+
     result = normalize_scoring_vendor_result(normalize_result_gaps(saved_filter.get('result') or {}), operator_groups)
     payload = {**_scoring_result_payload(saved_filter, result, operator_groups, vendor_groups, fallback),
                **out_of_scope(saved_filter.get('nr_mode'))}
+    chart_out_of_scope(payload.get('views') or {})
     if normalize_scoring_nr_mode(saved_filter.get('nr_mode')) == NSA_VS_SA and payload['views']:
         parts = []
         for mode in NR_MODES:
@@ -25818,6 +25841,25 @@ def mapping_assignment_rows() -> dict[str, list[dict[str, Any]]]:
         'vendor': assignment_rows('vendor', detected['vendor'], repository.list_vendor_mappings()),
         'campaign': assignment_rows('campaign', detected['campaign'], {}, campaign_map),
     }
+
+
+def operator_scope_summary() -> dict[str, Any]:
+    """What is out of scope in the workspace: in every module, the Operator labels with the Role Exclude and the NR Mode ·
+    operator pairs of their NR Modes; in the Non-Qualified Calls alone, the regions and the operators that are not Focus
+    operators (as the NQ Prioritization takes them; none of them on an error)."""
+    from src.modules import nq_prioritization
+    from src.modules.operator_roles import EXCLUDE, labels_with_role, out_of_scope_pairs
+
+    groups = repository.list_operator_mapping_groups()
+    summary: dict[str, Any] = {'excluded': labels_with_role(groups, EXCLUDE),
+                               'pairs': [f"{pair['nr_mode']} · {pair['operator']}" for pair in out_of_scope_pairs(groups)],
+                               'regions': [], 'not_focus': []}
+    try:
+        summary['regions'] = list(nq_prioritization.load_settings(repository)['excluded_regions'])
+        summary['not_focus'] = list(dict.fromkeys(item['operator'] for item in nq_prioritization.fixed_excluded_modes(repository)))
+    except Exception:  # noqa: BLE001 - the summary never prevents the page from opening.
+        pass
+    return summary
 
 
 def operator_nr_mode_suggestions() -> dict[str, str]:

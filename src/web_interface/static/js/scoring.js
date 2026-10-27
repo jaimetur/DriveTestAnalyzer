@@ -5495,7 +5495,10 @@
           }
           stackY = segmentY;
         }
-        if (!hasValue) {
+        if (!hasValue && hierarchyColumnsById.get(String(category))?.out_of_scope) {
+          // The empty place of an operator out of scope in this NR Mode (see chartTableWithOutOfScope).
+          svg.append(outOfScopeLabel(svg, x + barWidth / 2, baselineY, options.categoryTooltips?.[category]));
+        } else if (!hasValue) {
           const unavailable = document.createElementNS(svg.namespaceURI, 'text');
           unavailable.setAttribute('x', String(x + barWidth / 2));
           unavailable.setAttribute('y', String(baselineY - 7));
@@ -5930,8 +5933,31 @@
     pane.classList.add('scoring-chart-grid');
   }
 
-  function renderHierarchyCharts(pane, tableData) {
+  // A table of the charts with the empty place of each operator out of scope in an NR Mode (the columns the server adds
+  // for the charts alone, see with_out_of_scope_columns), which the charts name Out of scope.
+  function chartTableWithOutOfScope(table) {
+    const extra = table?.chart_out_of_scope;
+    return extra ? {...table, operators: extra.operators,
+      hierarchy_columns: [...(table.hierarchy_columns || []), ...(extra.columns || [])],
+      operator_styles: {...(table.operator_styles || {}), ...(extra.styles || {})}} : table;
+  }
+
+  // The name of that empty place, upright along the empty bar.
+  function outOfScopeLabel(svg, centerX, baselineY, fullLabel) {
+    const y = baselineY - 8;
+    const label = svgElement(svg, 'text', {x: centerX, y, 'text-anchor': 'start', 'dominant-baseline': 'central',
+      transform: `rotate(-90 ${centerX} ${y})`, class: 'scoring-chart-value scoring-best-network-out-of-scope'});
+    label.textContent = 'Out of scope';
+    setChartTooltip(label, [
+      fullLabel ? `Hierarchy: ${fullLabel}` : '',
+      'Out of scope: the operator has no network in this NR Mode (the NR Modes of its label in Workspace Config → Operator Maps), so its tests are left out.',
+    ].filter(Boolean).join('\n'), true);
+    return label;
+  }
+
+  function renderHierarchyCharts(pane, sourceTable) {
     pane.replaceChildren();
+    const tableData = chartTableWithOutOfScope(sourceTable);
     if (!tableData) {
       const empty = document.createElement('div');
       empty.className = 'scoring-empty';
@@ -6263,6 +6289,11 @@
           svg.append(segmentLabel);
         }
         stackY = segmentY;
+      }
+      // The empty place of an operator out of scope in this NR Mode (the NR Modes of the Operator Maps).
+      if (hierarchyColumnsById.get(operator)?.out_of_scope) {
+        svg.append(outOfScopeLabel(svg, x + barWidth / 2, baselineY, presentation.fullLabel));
+        return;
       }
       const totalLabel = svgElement(svg, 'text', {'text-anchor': 'middle', class: 'scoring-chart-value scoring-best-network-total'});
       totalLabel.textContent = hasPoints ? `${formatChartNumber(totalPoints, {minimumFractionDigits: 1, maximumFractionDigits: 1})}${complete ? '' : '*'}` : 'N/A';
@@ -6610,9 +6641,9 @@
       pane.append(empty);
       return;
     }
-    const selected = hierarchyTable
+    const selected = chartTableWithOutOfScope(hierarchyTable
       || scoreTables.find(table => comparisonIdentity(table, 'score') === contextSelections.get('score'))
-      || scoreTables[0];
+      || scoreTables[0]);
     const data = bestNetworkTotals(selected);
     if (!data.operators.length || !data.rows.length) {
       const empty = document.createElement('div');

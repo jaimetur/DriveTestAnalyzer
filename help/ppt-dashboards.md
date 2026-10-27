@@ -45,7 +45,7 @@ Dashboards use the same template schema and renderer as Reporting. Detailed temp
 ### Create a definition
 
 1. Enter **Dashboard name**.
-2. Select the **NR Mode** of the CDRs it reads and a **Template**. Any template serves both NR Modes: its titles name the NR Mode of the Dashboard where they write `{NR Mode}` (NSA or SA) or `{NR Mode Name}` (Non-Standalone or Standalone).
+2. Select the **NR Mode** of the CDRs it reads and a **Template**. When the NR Mode leaves operators out of scope (the **NR Modes** of their labels in the [Operator Maps](workspace-config.md#operator-maps), such as Three, which has no SA), their tests are left out of the Dashboard, and its CDRs used and the viewer, beside its Campaign and Scope, name them (*Out of scope: SA · Three*). Any template serves both NR Modes: its titles name the NR Mode of the Dashboard where they write `{NR Mode}` (NSA or SA) or `{NR Mode Name}` (Non-Standalone or Standalone).
 3. Click **Create Dashboard**. The saved definition opens in Dashboard Scope & Filters.
 
 Names are unique in the workspace, whatever the NR Mode each Dashboard reads: an NSA and an SA Dashboard of the same template need names of their own (for example **NSA - NetCheck CDR Report** and **SA - NetCheck CDR Report**). The library sorts NSA first, then by name.

@@ -447,6 +447,45 @@ def test_documents_show_each_nr_mode_as_the_results_of_the_page(tmp_path):
                 if title.startswith(('NSA · ', 'SA · '))]
 
 
+def test_the_charts_keep_the_place_of_an_operator_out_of_scope_in_an_nr_mode(tmp_path):
+    # Three has no SA: in NSA vs SA with NSA & SA in the same chart, its SA bar keeps its place, empty and named Out of
+    # scope, on the page (columns of the charts alone) and in the PowerPoint; the tables keep their columns.
+    from io import BytesIO
+
+    from pptx import Presentation
+
+    import src.DriveTestAnalyzer as core
+    from src.modules.scoring_exports import export_scoring_powerpoint
+    from src.modules.scoring_views import with_out_of_scope_columns
+
+    repository, ids = _workspace(tmp_path, 'UK_Q3_NSA_2026')
+    repository.replace_operator_mapping_group(None, 'Three', ['Three UK'], '#000000', None, ['NSA'])
+    saved, _ = saved_filters.save_saved_filter(repository, [*ids['NSA'], *ids['SA']], ['Operator'], NSA_VS_SA)
+    calculated = saved_filters.calculate_saved_filter(repository, saved['id'])
+    groups = repository.list_operator_mapping_groups()
+    payload = core._saved_filter_payload(calculated, groups, [], None)
+    matrix = payload['views']['hierarchy_score_tables'][0]
+    extra = matrix['chart_out_of_scope']
+    assert [(column['operator'], column['context']['campaign']) for column in extra['columns']] == [('Three', 'UK_Q3_SA_2026')]
+    assert len(extra['operators']) == len(matrix['operators']) + 1 and not any(
+        column.get('out_of_scope') for column in matrix['hierarchy_columns'])
+    assert with_out_of_scope_columns(matrix, []) is matrix
+    template = Path(__file__).resolve().parents[1] / 'assets/powerpoint-templates/Template_VodafoneThree.pptx'
+    content = export_scoring_powerpoint(calculated, calculated['result'], template, groups, nr_layout='interleaved',
+                                        nr_charts='same')
+    def texts(shapes):
+        for shape in shapes:
+            if shape.shape_type == 6:  # A group.
+                yield from texts(shape.shapes)
+            elif shape.has_table:
+                yield from (cell.text for row in shape.table.rows for cell in row.cells)
+            elif shape.has_text_frame:
+                yield shape.text_frame.text
+    slides = [slide for slide in Presentation(BytesIO(content)).slides
+              if slide.shapes.title is not None and 'Scoring per Service' in slide.shapes.title.text_frame.text]
+    assert slides and any(text.endswith('Out of scope') for text in texts(slides[0].shapes))
+
+
 def test_documents_draw_the_nsa_and_sa_trends_on_one_axis_of_quarters():
     from io import BytesIO
     from pptx import Presentation

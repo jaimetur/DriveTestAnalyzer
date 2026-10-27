@@ -89,6 +89,9 @@
 .ds-viewer-context span{min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ds-viewer-context span+span::before{content:'●';margin:0 .65rem;color:#695678;font-size:.7em;font-weight:900;vertical-align:.1em}
 .ds-viewer-context-scope{color:#276c42}
+/* The operators out of scope in the NR Mode of the Dashboard, a pill after the other items (see outOfScopePill). */
+.ds-viewer-context .ds-viewer-out-of-scope{margin-left:.65rem;font-size:.72rem}
+.ds-viewer-context span+.ds-viewer-out-of-scope::before{content:none}
 .ds-viewer-context-region{color:#0b7184}
 .ds-viewer-context-city{color:#9b3e70}
 .ds-slide-sidebar{display:flex;flex:0 0 auto;min-width:0;min-height:0;flex-direction:column}.ds-viewer-navigation-footer{display:flex;flex:0 0 auto;justify-content:center;padding:.55rem 0}.ds-slide-navigation{display:flex;align-items:center;justify-content:center;gap:4px}.ppt-dashboards .ds-slide-nav-button{display:grid;place-items:center;width:2rem;min-width:2rem;height:2rem;min-height:2rem;padding:0!important;border-radius:999px!important;font-size:1rem!important;font-weight:800;line-height:1}
@@ -1899,6 +1902,8 @@
 /* The filters of a panel stretched to the height of the CDRs column stay together at its top. */
 .ds-additional-filter-panel,.ds-default-filter-panel{align-content:start}
 .ds-auto-cdrs-pending{margin:0;color:#8a5a00;font-size:.72rem;font-weight:700}
+/* The operators out of scope in the NR Mode of the Dashboard, above its CDRs. */
+#ds-auto-cdrs>.ds-out-of-scope{justify-self:start}
 .ds-auto-cdrs-note{margin:0;font-size:.72rem}
 .multiselect-option.ds-campaign-preset span{font-weight:800;font-style:italic}
 .ds-ppt-cdrs{margin:.6rem 0 0}

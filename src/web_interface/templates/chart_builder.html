@@ -16,12 +16,12 @@
       <select data-chart-builder-type><option value="data">Data</option><option value="voice">Voice</option><option value="speech">Speech</option></select>
     </label>
     <label class="chart-builder-sources">Source Dataset <span class="form-label-hint">Select one or more processed CDRs</span>
-      <select data-chart-builder-sources multiple size="6">{% for dataset in datasets %}<option value="{{ dataset.id }}" data-kind="{{ dataset.kind }}" data-columns='{{ dataset.columns | tojson }}'>{{ dataset.name }}</option>{% endfor %}</select>
+      <select data-chart-builder-sources multiple size="6">{% for dataset in datasets %}<option value="{{ dataset.id }}" data-kind="{{ dataset.kind }}" data-nr-mode="{{ dataset.nr_mode }}" data-columns='{{ dataset.columns | tojson }}'>{{ dataset.name }}</option>{% endfor %}</select>
     </label>
     <div class="chart-builder-layout">
       <section class="chart-builder-viewer ppt-dashboards" data-chart-builder-viewer aria-label="Individual chart viewer">
         <header class="chart-builder-viewer-header">
-          <div><p class="eyebrow">Individual chart</p><h3 data-chart-builder-title>Ad-hoc chart</h3></div>
+          <div><p class="eyebrow">Individual chart</p><h3 data-chart-builder-title>Ad-hoc chart</h3><p class="chart-builder-out-of-scope" data-chart-builder-out-of-scope hidden></p></div>
           <button type="button" class="ds-viewer-icon-action ds-viewer-refresh-action" data-chart-builder-refresh title="Refresh chart" aria-label="Refresh chart"></button>
         </header>
         <div class="chart-builder-canvas ds-chart-expanded-canvas" data-chart-builder-canvas>
@@ -58,7 +58,7 @@
   let previewRequest = 0;
   let previewController = null;
   const sourceOptions = Array.from(sources.options).map((option) => ({
-    value: option.value, label: option.textContent, kind: option.dataset.kind, columns: option.dataset.columns,
+    value: option.value, label: option.textContent, kind: option.dataset.kind, columns: option.dataset.columns, nrMode: option.dataset.nrMode,
   }));
   const selected = () => Array.from(sources.selectedOptions).filter((option) => option.dataset.kind === type.value).map((option) => Number(option.value));
   const columns = () => Array.from(new Set(Array.from(sources.selectedOptions).flatMap((option) => JSON.parse(option.dataset.columns || '[]')))).sort((a,b) => a.localeCompare(b));
@@ -68,7 +68,7 @@
     // multi-select mirrors its option list into checkbox controls.
     sources.replaceChildren(...sourceOptions.filter((option) => option.kind === type.value).map((option) => {
       const item = new Option(option.label, option.value);
-      item.dataset.kind = option.kind; item.dataset.columns = option.columns;
+      item.dataset.kind = option.kind; item.dataset.columns = option.columns; item.dataset.nrMode = option.nrMode || '';
       return item;
     }));
     sources.dispatchEvent(new Event('multiselect:options-updated'));
@@ -128,7 +128,17 @@
   canvas.addEventListener('dashboardchartzoom', syncNavigation); canvas.addEventListener('dashboardchartpan', syncNavigation);
   document.querySelector('[data-chart-builder-refresh]').addEventListener('click', preview);
   type.addEventListener('change', () => { filterSources(); render(); canvas.hidden = true; zoom.hidden = true; message.hidden = false; message.textContent = 'Select one or more processed Source Datasets.'; });
-  sources.addEventListener('change', () => { render(); queue(); });
+  // The operators out of scope in the NR Modes of the Source Datasets chosen (the NR Modes of the Operator Maps), left out of the chart.
+  const outOfScopeHost = document.querySelector('[data-chart-builder-out-of-scope]');
+  const showOutOfScope = () => {
+    if (!outOfScopeHost) return;
+    const modes = Array.from(sources.selectedOptions).filter((option) => option.dataset.kind === type.value).map((option) => option.dataset.nrMode);
+    const pill = globalThis.outOfScopePill?.(modes);
+    outOfScopeHost.replaceChildren(...(pill ? [pill] : []));
+    outOfScopeHost.hidden = !pill;
+  };
+  sources.addEventListener('change', () => { showOutOfScope(); render(); queue(); });
+  type.addEventListener('change', showOutOfScope);
   // The shared controls include native selects hidden behind searchable menus.
   // Delegate both events so every visible editor change reaches this preview.
   fields.addEventListener('input', queue);

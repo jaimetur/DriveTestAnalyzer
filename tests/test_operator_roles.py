@@ -368,3 +368,39 @@ def test_the_operator_maps_editor_saves_the_nr_modes_of_each_label(client):
     vendors = page[page.index('id="vendor-maps"'):page.index('id="campaign-maps"')]
     assert 'mapping-nr-modes-column' in operators and 'mapping-nr-modes-column' not in vendors
     assert '<option value="NSA" selected>NSA only</option>' in operators
+    # Under them, what is out of scope; above the subpanels, what is out of scope in the workspace; and every page has the
+    # pairs for the modules to name them beside their selection.
+    assert 'data-mapping-nr-modes-note>SA out of scope in every module</span>' in operators
+    summary = operators[operators.index('data-operator-scope-summary'):operators.index('id="operator-assignments"')]
+    assert f'SA · {label}</span>' in summary and 'Non-Qualified Calls only' in summary
+    assert f'<script id="operator-out-of-scope" type="application/json">[{{"nr_mode": "SA", "operator": "{label}"}}]</script>' in page
+
+
+def test_every_module_names_the_operators_out_of_scope_of_its_nr_modes():
+    import shutil
+    import subprocess
+    from pathlib import Path
+
+    import pytest
+
+    script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/app.js').read_text(encoding='utf-8')
+    helpers = script[script.index('function outOfScopePairs(nrModes) {'):script.index('globalThis.outOfScopePill = outOfScopePill;')]
+    node = shutil.which('node')
+    if not node:
+        pytest.skip('Node.js is required for the out of scope pill checks.')
+    program = r"""
+const created = [];
+const document = {
+  getElementById: () => ({textContent: JSON.stringify([{nr_mode: 'SA', operator: 'Three'}, {nr_mode: 'NSA', operator: 'X'}])}),
+  createElement: () => { const element = {className: '', textContent: '', title: ''}; created.push(element); return element; },
+};
+""" + helpers + r"""
+console.log(JSON.stringify({sa: outOfScopePairs('SA'), both: outOfScopePairs('NSA+SA'), list: outOfScopePairs(['nsa', 'SA']),
+  none: outOfScopePairs(''), pill: outOfScopePill('SA', 'extra').textContent, className: created.at(-1).className,
+  empty: outOfScopePill('LTE')}));
+"""
+    completed = subprocess.run([node, '-e', program], capture_output=True, text=True, check=False)
+    assert completed.returncode == 0, completed.stderr
+    assert json.loads(completed.stdout) == {
+        'sa': ['SA · Three'], 'both': ['SA · Three', 'NSA · X'], 'list': ['SA · Three', 'NSA · X'], 'none': [],
+        'pill': 'Out of scope: SA · Three', 'className': 'out-of-scope-pill extra', 'empty': None}

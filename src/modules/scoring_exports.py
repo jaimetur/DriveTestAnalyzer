@@ -30,7 +30,7 @@ from src.modules import report_structure
 from src.modules.nr_mode import NR_MODES, NSA_VS_SA, SAME_OPERATOR_NSA, normalize_scoring_nr_mode
 from src.modules.pptx_compose import PAGE_SUFFIX
 from src.modules.scoring import most_reliable_result
-from src.modules.operator_roles import focus_operators
+from src.modules.operator_roles import focus_operators, out_of_scope_pairs
 from src.modules.scoring_points_loss import map_background, map_boundaries
 from src.modules.scoring_insight_slides import (
     TITLE_BLUE, add_area_summary_slides, add_campaign_comparison_slides, add_kpi_gap_profile_slides,
@@ -57,7 +57,7 @@ from src.modules.scoring_act_slides import (
 from src.modules.scoring_vendors import normalize_scoring_vendor_result
 from src.modules.scoring_views import (
     THRESHOLD_COLORS, _hierarchy_display_value, gap_priority_order_key, latest_campaign_columns, build_scoring_views, nr_mode_result,
-    refresh_baseline_warning, scoring_coverage_notes,
+    refresh_baseline_warning, scoring_coverage_notes, with_out_of_scope_columns,
 )
 from src.modules.scoring_pptx_allocation import (
     _environment_display_label, add_maximum_allocation_donut, category_maximum_allocations,
@@ -1370,6 +1370,9 @@ def _add_chart_hierarchy_grid(slide, chart_shape, columns: list[dict]) -> Any:
             while end + 1 < len(columns) and columns[end + 1]['path'][:depth_index + 1] == prefix:
                 end += 1
             value = str(_hierarchy_display_value(columns[start]['path'][depth_index]))
+            if columns[start].get('out_of_scope') and depth_index == depth - 1:
+                # The empty place of an operator out of scope in this NR Mode (see with_out_of_scope_columns).
+                value += '\nOut of scope'
             cell_width = (chart_shape.width.inches - .75) * (end - start + 1) / len(columns)
             longest_line = max(len(line) for line in value.split('\n'))
             font_size = min(8, max(4, (cell_width - .02) * 72 / max(1, longest_line * .52)))
@@ -1476,9 +1479,11 @@ def _format_stacked_segment_labels(chart) -> None:
         series._element.insert(series._element.index(category), labels)
 
 
-def _best_network(presentation, matrices: list[dict]) -> None:
+def _best_network(presentation, matrices: list[dict], out_of_scope: list[dict] | None = None) -> None:
+    """The Scoring per Service charts; an operator out of scope in the NR Mode of a campaign (``out_of_scope``, the NR
+    Modes of the Operator Maps) keeps an empty place there, named Out of scope (see with_out_of_scope_columns)."""
     voice_categories = {'CLASSIC CALLS', 'WHATSAPP CALLS', 'MULTI RAB'}
-    for matrix in [page for source in matrices for page in _stacked_chart_pages(source)]:
+    for matrix in [page for source in matrices for page in _stacked_chart_pages(with_out_of_scope_columns(source, out_of_scope or []))]:
         slide = _slide(presentation, _scoring_chart_title(matrix, 'per Service'), _chart_subtitle(matrix))
         _stacked_chart_page_note(slide, matrix)
         hierarchy_columns = matrix.get('hierarchy_columns', [])
@@ -1829,8 +1834,11 @@ def _add_hierarchy_chart_categories(data: CategoryChartData, columns: list[dict]
     for column in columns:
         parent = None
         prefix = ()
-        for item in column.get('path', []):
+        for position, item in enumerate(column.get('path', [])):
             value = _hierarchy_display_value(item)
+            if column.get('out_of_scope') and position == len(column['path']) - 1:
+                # The place of an operator out of scope in this NR Mode (see with_out_of_scope_columns).
+                value = f'{value} · Out of scope'
             prefix += (item.get('value'),)
             if prefix in nodes:
                 parent = nodes[prefix]
@@ -2978,9 +2986,11 @@ def _add_scoring_block(presentation, job: dict[str, Any], result: dict[str, Any]
             environment_cover(current_environment)
             for matrix in environment_matrices:
                 if _option(options, 'charts', 'service'):
-                    _best_network(presentation, [_matrix_for(matrix, panel_operators('charts', 'service'))])
+                    _best_network(presentation, [_matrix_for(matrix, panel_operators('charts', 'service'))],
+                                  out_of_scope_pairs(operator_mapping_groups))
                 if _option(options, 'charts', 'category'):
-                    _hierarchy_chart(presentation, _matrix_for(matrix, panel_operators('charts', 'category')))
+                    _hierarchy_chart(presentation, with_out_of_scope_columns(
+                        _matrix_for(matrix, panel_operators('charts', 'category')), out_of_scope_pairs(operator_mapping_groups)))
                 if _option(options, 'charts', 'breakdown'):
                     _hierarchy_category_comparison_chart(presentation, _matrix_for(matrix, panel_operators('charts', 'breakdown')))
                 section('charts')
@@ -3022,7 +3032,8 @@ def _add_scoring_block(presentation, job: dict[str, Any], result: dict[str, Any]
             environment_cover(current_environment)
             for matrix in environment_matrices:
                 if _option(options, 'charts', 'service'):
-                    _best_network(presentation, [_matrix_for(matrix, panel_operators('charts', 'service'))])
+                    _best_network(presentation, [_matrix_for(matrix, panel_operators('charts', 'service'))],
+                                  out_of_scope_pairs(operator_mapping_groups))
                 if _option(options, 'charts', 'category'):
                     _stacked_category_chart(presentation, _matrix_for(matrix, panel_operators('charts', 'category')))
                 if _option(options, 'charts', 'breakdown'):

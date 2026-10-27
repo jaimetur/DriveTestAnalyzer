@@ -395,6 +395,9 @@
         const result = await api('/api/reporting/auto-cdrs', {method: 'POST', body: JSON.stringify({nr_mode: nrModeOf(), campaigns: value(), complete})});
         if (request !== previewRequest) return;
         previewCaption.textContent = 'CDRs used now (chosen again at each run)';
+        // The operators out of scope in its NR Mode (the NR Modes of the Operator Maps), left out of the artifact.
+        const outOfScope = globalThis.outOfScopePill?.(nrModeOf());
+        if (outOfScope) previewCaption.append(' ', outOfScope);
         globalThis.renderAutoCdrList?.(previewList, result.cdr_rows || result.cdrs || {});
         previewLeft.textContent = result.incomplete_campaigns?.length ? `Left out without every CDR type: ${result.incomplete_campaigns.join(', ')}` : '';
         previewLeft.hidden = !previewLeft.textContent;

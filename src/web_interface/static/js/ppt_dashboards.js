@@ -2133,6 +2133,10 @@
     let note = host.querySelector(':scope > .ds-auto-cdrs-pending');
     if (!note) { note = node('p', 'Apply the filters to use these CDRs.', 'form-note ds-auto-cdrs-pending'); host.append(note); }
     note.hidden = !hasUnappliedFilterChanges();
+    // The operators out of scope in the NR Mode of the Dashboard (the NR Modes of the Operator Maps), left out of it.
+    host.querySelector(':scope > .ds-out-of-scope')?.remove();
+    const outOfScope = globalThis.outOfScopePill?.(dashboardNrMode(definition), 'ds-out-of-scope');
+    if (outOfScope) host.prepend(outOfScope);
   }
   // The Scope controls and the Date from / Date to filters; the CDRs used below the Scope.
   function sources() {
@@ -3236,6 +3240,9 @@
         item.title = item.textContent;
         return item;
       }));
+    // The operators out of scope in the NR Mode of the Dashboard (the NR Modes of the Operator Maps), left out of it.
+    const outOfScope = definition ? globalThis.outOfScopePill?.(dashboardNrMode(definition), 'ds-viewer-out-of-scope') : null;
+    if (outOfScope) context.append(outOfScope);
     context.hidden = !context.childElementCount;
   }
   // The covers and transitions of a Dashboard, as in its PPT: the Vodafone-Three red with the Ericsson mark, the logos

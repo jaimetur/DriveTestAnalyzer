@@ -14,14 +14,29 @@
   <option value="NSA,SA"{% if not chosen %} selected{% endif %}>NSA and SA</option>
   <option value="NSA"{% if chosen == 'NSA' %} selected{% endif %}>NSA only</option>
   <option value="SA"{% if chosen == 'SA' %} selected{% endif %}>SA only</option>
-</select>{% if suggestion %}<span class="mapping-nr-modes-suggestion" data-mapping-nr-modes-suggestion="{{ suggestion }}" title="A suggestion, never applied on its own: under 10% of its Non-Qualified Calls of the SA campaigns ran on NR SA, so it seems to have no SA network and its SA CDRs to hold LTE and EN-DC tests">Suggested: {{ suggestion }} only</span>{% endif %}{% endmacro %}
+</select>{% if form_id %}<span class="mapping-nr-modes-note" data-mapping-nr-modes-note{% if not chosen %} hidden{% endif %}>{% if chosen %}{{ 'SA' if chosen == 'NSA' else 'NSA' }} out of scope in every module{% endif %}</span>{% endif %}{% if suggestion %}<span class="mapping-nr-modes-suggestion" data-mapping-nr-modes-suggestion="{{ suggestion }}" title="A suggestion, never applied on its own: under 10% of its Non-Qualified Calls of the SA campaigns ran on NR SA, so it seems to have no SA network and its SA CDRs to hold LTE and EN-DC tests">Suggested: {{ suggestion }} only</span>{% endif %}{% endmacro %}
 {% macro mapping_role_badge(role) %}<span class="mapping-role-badge{% if role is not none %} is-{{ role or 'include' }}{% endif %}" data-mapping-role-badge title="The Role of its label in subpanel 2 (read only)"{% if role is none %} hidden{% endif %}>{% if role is not none %}{{ {'focus': 'Focus', 'exclude': 'Exclude'}.get(role, 'Include') }}{% endif %}</span>{% endmacro %}
+{% macro mapping_nr_modes_badge(nr_modes) %}<span class="mapping-role-badge mapping-nr-modes-badge{% if nr_modes %} is-{{ nr_modes | lower }}{% endif %}" data-mapping-nr-modes-badge title="The NR Modes of its label in subpanel 2 (read only): its tests of the CDRs of the other NR Mode are out of scope in every module"{% if not nr_modes %} hidden{% endif %}>{% if nr_modes %}{{ nr_modes }} only{% endif %}</span>{% endmacro %}
+{% macro operator_scope_summary(scope) %}{% if scope %}
+<div class="operator-scope-summary" data-operator-scope-summary>
+  <strong>Out of scope in this workspace</strong>
+  <dl>
+    <dt>Every module</dt>
+    <dd>{% if scope.excluded or scope.pairs %}{% for name in scope.excluded %}<span class="mapping-role-badge is-exclude" title="Role Exclude: left out of every analysis, filter, chart and report">{{ name }}</span>{% endfor %}{% for pair in scope.pairs %}<span class="mapping-role-badge mapping-nr-modes-badge is-{{ pair.split(' ')[0] | lower }}" title="NR Modes: its tests of the CDRs of this NR Mode are left out of every analysis, filter, chart and report">{{ pair }}</span>{% endfor %}{% else %}<span class="operator-scope-none">Nothing: every operator is analysed in both NR Modes</span>{% endif %}
+      <span class="operator-scope-note">The labels with the Role <strong>Exclude</strong>, and the NR Mode · operator pairs of the <strong>NR Modes</strong> of the labels, set below.</span></dd>
+    <dt>Non-Qualified Calls only</dt>
+    <dd>{% for region in scope.regions %}<span class="mapping-role-badge is-include" title="A region out of the scope of the team">{{ region }}</span>{% endfor %}{% for name in scope.not_focus %}<span class="mapping-role-badge is-include" title="Not a Focus operator: its calls of both NR Modes are out of the scope of the team">{{ name }}</span>{% endfor %}{% if not scope.regions and not scope.not_focus %}<span class="operator-scope-none">Nothing more</span>{% endif %}
+      <span class="operator-scope-note">The calls out of the scope of the team besides those above: the regions of the <a href="/non-qualified-calls">Out of Scope</a> settings of the NQ Prioritization and the operators that are not Focus operators. The other modules keep them.</span></dd>
+  </dl>
+</div>
+{% endif %}{% endmacro %}
 {% macro mapping_labels_view(kind, groups, rows, nr_mode_suggestions={}) %}
 {% set title = 'Operator' if kind == 'operator' else 'Vendor' %}
 {% set unassigned = rows | rejectattr('assigned') | list %}
 {% set found = {} %}{% for row in rows %}{% set _ = found.update({row.value: row.cdrs}) %}{% endfor %}
 {% set found_campaigns = {} %}{% for row in rows if row.campaigns is defined %}{% set _ = found_campaigns.update({row.value: row.campaigns}) %}{% endfor %}
 {% set roles = {} %}{% for group in groups %}{% set _ = roles.update({group.canonical | lower: group.role or ''}) %}{% endfor %}
+{% set label_nr_modes = {} %}{% for group in groups %}{% set _ = label_nr_modes.update({group.canonical | lower: (group.nr_modes or []) | join(',')}) %}{% endfor %}
 <script type="application/json" data-mapping-found-names>{{ found | tojson }}</script>
 {% if found_campaigns %}<script type="application/json" data-mapping-found-campaigns>{{ found_campaigns | tojson }}</script>{% endif %}
 <div class="mapping-subpanels">
@@ -41,14 +56,14 @@
             <td data-label="CDRs" class="mapping-assignment-cdrs" data-mapping-tip='{{ {"title": row.value ~ " · " ~ (row.cdrs | length) ~ (" CDR" if row.cdrs | length == 1 else " CDRs"), "lines": row.cdrs} | tojson }}'>{{ row.cdrs | length }}</td>
             <td data-label="Label">
               <select class="table-select mapping-assignment-select" name="label" data-no-persist data-mapping-assignment-label data-value="{{ row.value }}" aria-label="Label of {{ row.value }}"{% if row.canonical %} data-locked title="{{ row.value }} is itself one of the {{ title }} labels below: rename that label there to change it."{% endif %}>
-                {% if row.canonical %}<option value="{{ row.label }}" data-role="{{ roles.get(row.label | lower, '') }}" selected>{{ row.label }}</option>{% else %}
+                {% if row.canonical %}<option value="{{ row.label }}" data-role="{{ roles.get(row.label | lower, '') }}" data-nr-modes="{{ label_nr_modes.get(row.label | lower, '') }}" selected>{{ row.label }}</option>{% else %}
                 {% if not row.assigned %}<option value="" selected>Choose a label…</option>{% endif %}
-                {% for group in groups %}<option value="{{ group.canonical }}" data-role="{{ group.role or '' }}"{% if row.assigned and group.canonical | lower == row.label | lower %} selected{% endif %}>{{ group.canonical }}</option>{% endfor %}
+                {% for group in groups %}<option value="{{ group.canonical }}" data-role="{{ group.role or '' }}" data-nr-modes="{{ (group.nr_modes or []) | join(',') }}"{% if row.assigned and group.canonical | lower == row.label | lower %} selected{% endif %}>{{ group.canonical }}</option>{% endfor %}
                 <option value="__new__">+ New label…</option>{% endif %}
               </select>
             </td>
             <td data-label="Status">{% if not row.assigned %}<span class="mapping-status mapping-status-unassigned">Unassigned</span>{% elif row.merged_with %}<span class="mapping-status mapping-status-merged" data-mapping-tip='{{ {"title": row.label ~ " merges " ~ (row.merged_with | length + 1) ~ " names of the CDRs", "lines": ([row.value] + row.merged_with) | sort, "note": ("They coincide in " ~ (row.merged_in | join(", ")) ~ ", where every filter, table, chart and report adds them up as one." if row.merged_in else "Every filter, table, chart and report adds them up as one.")} | tojson }}'>Merges {{ row.merged_with | length + 1 }}</span>{% elif row.shares_label_with %}<span class="mapping-status mapping-status-assigned" data-mapping-tip='{{ {"title": row.label ~ " also stands for", "lines": row.shares_label_with, "note": "Never in the same campaign and NR Mode as " ~ row.value ~ ", so they are not added up."} | tojson }}'>Assigned</span>{% else %}<span class="mapping-status mapping-status-assigned">Assigned</span>{% endif %}</td>
-            {% if kind == 'operator' %}<td data-label="Role">{{ mapping_role_badge(roles.get(row.label | lower, '') if row.assigned else none) }}</td>
+            {% if kind == 'operator' %}<td data-label="Role"><span class="mapping-role-badges">{{ mapping_role_badge(roles.get(row.label | lower, '') if row.assigned else none) }}{{ mapping_nr_modes_badge(label_nr_modes.get(row.label | lower, '') if row.assigned else '') }}</span></td>
             <td data-label="Comments"><textarea class="table-input mapping-name-comment" name="comment" rows="2" maxlength="1000" data-no-persist data-mapping-name-comment data-value="{{ row.value }}" aria-label="Comments of {{ row.value }}" placeholder="For example: SA terminal of the NSA drive">{{ row.comment or '' }}</textarea></td>{% endif %}
           </tr>
           {% endfor %}
@@ -243,6 +258,7 @@
       <p class="lede">How the Operators of <strong>"{{ active_workspace.name }}"</strong> are named, ordered and coloured. Each label stands for one or more names of the CDRs; stored CDR tables keep their original values.</p>
       {% if operator_mapping_notice %}<div class="alert alert-success">{{ operator_mapping_notice }}</div>{% endif %}
       {% if operator_mapping_error %}<div class="alert alert-error">{{ operator_mapping_error }}</div>{% endif %}
+      {{ operator_scope_summary(operator_scope) }}
       {{ mapping_labels_view('operator', operator_mapping_groups, (mapping_assignments or {}).get('operator', []), operator_nr_mode_suggestions or {}) }}
       {% else %}
       <p class="form-note">Open a workspace before managing Operator Mappings.</p>

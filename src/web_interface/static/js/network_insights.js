@@ -127,6 +127,9 @@
       host.prepend(title);
     }
     title.innerHTML = `<strong>CDRs used</strong> <span>${escapeHtml($('ni-nr-mode').value)} · chosen from the NR Mode and Campaign</span>`;
+    // The operators out of scope in the NR Mode (the NR Modes of the Operator Maps), left out of the analysis.
+    const outOfScope = globalThis.outOfScopePill?.($('ni-nr-mode').value);
+    if (outOfScope) title.append(' ', outOfScope);
     if (cdrs) shownCdrs = cdrs;
     globalThis.renderAutoCdrList?.(host, cdrs || shownCdrs, {loading: loading || !cdrs});
   };

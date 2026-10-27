@@ -45,6 +45,7 @@
       </label>
       <label>NR Mode
         <select name="technology" required data-report-technology><option value="nsa">NSA (Non-Standalone)</option><option value="sa">SA (Standalone)</option></select>
+        <span class="report-out-of-scope" data-report-out-of-scope hidden></span>
       </label>
       <label>PPT Templates
         <select name="slides_templates" required data-report-catalogue aria-label="PPT Templates">
@@ -2204,6 +2205,21 @@
     });
     pollReportJobs();
     pollReportChartJobs();
+  })();
+</script>
+<script>
+  // The operators out of scope in the NR Mode chosen (the NR Modes of the Operator Maps), left out of the report.
+  (() => {
+    const select = document.querySelector('[data-report-technology]');
+    const host = document.querySelector('[data-report-out-of-scope]');
+    if (!select || !host) return;
+    const show = () => {
+      const pill = globalThis.outOfScopePill?.(select.value);
+      host.replaceChildren(...(pill ? [pill] : []));
+      host.hidden = !pill;
+    };
+    select.addEventListener('change', show);
+    show();
   })();
 </script>
 {% endblock %}

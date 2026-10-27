@@ -212,6 +212,11 @@
             {% if analysis_loaded and analysis and analysis.global_kpis.date_to %}
             <span class="pill">To {{ analysis.global_kpis.date_to }}</span>
             {% endif %}
+            {# The operators out of scope in the NR Mode of the CDR (the NR Modes of the Operator Maps), left out of its analysis. #}
+            {% set out_of_scope = (operator_out_of_scope or []) | selectattr('nr_mode', 'equalto', (selected_dataset.nr_mode if selected_dataset else '') or '') | list %}
+            {% if selected_dataset and out_of_scope %}
+            <span class="out-of-scope-pill" title="Left out of every analysis: these operators have no network in this NR Mode (the NR Modes of their labels in Workspace Config → Operator Maps)">Out of scope: {% for pair in out_of_scope %}{{ pair.nr_mode }} · {{ pair.operator }}{% if not loop.last %}, {% endif %}{% endfor %}</span>
+            {% endif %}
           </div>
         </div>
         {% if analysis_loaded and analysis %}
