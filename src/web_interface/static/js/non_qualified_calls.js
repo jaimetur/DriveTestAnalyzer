@@ -3496,8 +3496,9 @@
       return element;
     };
     // When the first or last call of a group started, in its own column (the same in every table, the full date on hover).
+    // The day and the month never apart: the time goes below them when the column is narrow.
     const momentCell = (value) => {
-      const text = momentText(value);
+      const text = momentText(value).replace(' ', '\u00a0');
       return text ? {text, title: String(value).slice(0, 16), className: 'nq-group-time'} : {text: '—', className: 'nq-group-time'};
     };
     // What identifies a group beside its ID: its sites (spatial groups), its period (temporal groups) or both (hotspots).

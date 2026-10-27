@@ -785,11 +785,11 @@ const TERMS = {
       out += pill((px + x) / 2, Math.min(py, y) - 58, index ? '6 min' : '4 min', c, INK, 15);
     });
     stops.forEach(([x, y]) => { out += diamond(x, y, c); });
-    // Too far after the last one: a run of its own.
+    // Too far after the last one: a time-window issue of its own.
     out += `<path d="M262 132 Q 340 60 404 92" fill="none" stroke="${MUTED}" stroke-width="3" stroke-dasharray="5 7"/>`;
     out += `<g transform="translate(320 64)"><circle r="15" fill="${INK}" stroke="#e0533d" stroke-width="3"/><path d="M-6 -6 L6 6 M6 -6 L-6 6" stroke="#e0533d" stroke-width="3.5" stroke-linecap="round"/></g>`;
     out += diamond(408, 96, MUTED, 11);
-    out += pill(360, 252, '40 km later: a new run', '#22304f', '#c9d4e6', 15);
+    out += pill(360, 252, '40 km later: a new one', '#22304f', '#c9d4e6', 15);
     return out;
   },
   // The calls that failed around a site, within half its ISD of each other or at it, linked to each other.
@@ -819,7 +819,7 @@ const TERMS = {
     out += `<circle cx="${l}" cy="${y}" r="${radius}" fill="none" stroke="${left}" stroke-width="3" stroke-dasharray="9 7"/><circle cx="${r}" cy="${y}" r="${radius}" fill="none" stroke="${right}" stroke-width="3" stroke-dasharray="9 7"/>`;
     [[120, 100], [140, 176], [196, 70], [264, 194], [330, 96], [346, 160], [230, 128]].forEach(([x, cy]) => { out += diamond(x, cy, c, 11); });
     out += pill(230, 132, 'OR', '#ffffff', c, 22);
-    out += `<text x="${l - 60}" y="20" font-size="17" font-weight="800" fill="${left}">Consecutive</text><text x="${r + 60}" y="20" text-anchor="end" font-size="17" font-weight="800" fill="${right}">Cluster</text>`;
+    out += `<text x="${l - 60}" y="20" font-size="17" font-weight="800" fill="${left}">Time window</text><text x="${r + 60}" y="20" text-anchor="end" font-size="17" font-weight="800" fill="${right}">Cluster</text>`;
     out += pill(230, 260, 'AND: close in time and distance at once', '#22304f', '#c9d4e6', 14);
     return out;
   },
