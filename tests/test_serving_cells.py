@@ -143,7 +143,7 @@ def test_map_dialog_marks_outdated_vendor_mappings_and_serving_networks_are_save
     editor = json.loads(config_page.split('data-serving-networks-data>', 1)[1].split('</script>', 1)[0])
     rows = {row['operator']: row for row in editor['rows']}
     assert rows['O2'] == {'operator': 'O2', 'networks': ['o2', 'vodafone'], 'defaults': ['o2'], 'configured': True}
-    assert rows['3']['networks'] == ['three', 'vodafone'] and rows['3']['configured'] is False
+    assert rows['Three']['networks'] == ['three', 'vodafone'] and rows['Three']['configured'] is False
     assert [item['label'] for item in editor['networks']][:4] == ['Vodafone', '3', 'O2', 'EE']
     assert client.post('/workspace-config/serving-networks/save', data={'serving_networks_csv': 'O2', 'max_distance_km': '20'},
                        follow_redirects=False).headers['location'].count('serving_networks_error') == 1

@@ -301,7 +301,7 @@ def test_report_adds_the_national_and_areas_slide():
     assert len(slides) == 1
     table = next(shape.table for shape in slides[0].shapes if shape.has_table)
     assert [table.cell(0, column).text for column in range(len(table.columns))] == [
-        'Area', 'Operator', 'Score\n2026-Q2', 'Δ vs\n2026-Q1', 'Δ vs\nEE']
+        'Area', 'Operator', 'Score\n26-Q2', 'Δ vs\n26-Q1', 'Δ vs\nEE']
     areas = [table.cell(row, 0).text for row in range(1, len(table.rows)) if table.cell(row, 0).text]
     assert areas == ['National', 'Vendor A', 'VMO2 North', 'London']
     # Every operator: the Focus operators choose none of the trends.

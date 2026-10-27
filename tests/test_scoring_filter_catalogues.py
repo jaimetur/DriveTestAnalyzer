@@ -63,8 +63,8 @@ def test_scoring_vendor_catalogue_uses_pure_labels_without_scanning_rows(scoring
         item['catalogue'] for item in captured['scoring_datasets']
         if item['file_name'] == 'UK_Q2_2026_NSA_Data.csv'
     )
-    # Operator Maps order (EE, 3, O2), then the Operators missing from the maps.
-    assert catalogue['operators'] == ['EE', '3', 'O2', 'VF_SA', 'VF_UK']
+    # Operator Maps order (Three, EE, O2), then the Operators missing from the maps.
+    assert catalogue['operators'] == ['Three', 'EE', 'O2', 'VF_SA', 'VF_UK']
     # Vendor Maps order: vendors, then mixed groups, then Operators without a Vendor in Operator Maps order.
     assert catalogue['vendors'] == ['Ericsson', 'Huawei', 'Mixed_Vendor', 'EE - All', 'O2 - All', 'VF_SA - All']
 
@@ -153,7 +153,7 @@ def test_scoring_api_filters_before_calculation_and_ppt_preserves_scope(scoring_
     exported = scoring_api['client'].get(f'/scoring/saved-filters/{job["id"]}/export/ppt')
     assert exported.status_code == 200, exported.text
     assert re.search(
-        r'\d{8}_\d{6} - Scoring & GAP Analysis - NSA - North - All Clusters - Leeds - O2 - Nokia - 2026-Q2\.pptx',
+        r'\d{8}_\d{6} - Scoring & GAP Analysis - NSA - North - All Clusters - Leeds - O2 - Nokia - 26-Q2\.pptx',
         unquote(exported.headers['content-disposition']),
     )
     deck = Presentation(BytesIO(exported.content))
@@ -204,8 +204,8 @@ def test_scoring_ppt_export_labels_full_selected_catalogues_as_all(scoring_api):
     assert exported.status_code == 200, exported.text
     filename = unquote(exported.headers['content-disposition'])
     assert 'All Regions' in filename and 'All Cities' in filename
-    assert 'All Operators' in filename and 'All Vendors' in filename and '2026-Q2' in filename
-    assert 'South' not in filename and 'London' not in filename and '2026-Q3' not in filename
+    assert 'All Operators' in filename and 'All Vendors' in filename and '26-Q2' in filename
+    assert 'South' not in filename and 'London' not in filename and '26-Q3' not in filename
 
     deck = Presentation(BytesIO(exported.content))
     cover_text = '\n'.join(shape.text for slide in list(deck.slides)[:2]
@@ -214,7 +214,7 @@ def test_scoring_ppt_export_labels_full_selected_catalogues_as_all(scoring_api):
     assert 'City: All Cities' in cover_text
     assert 'Vendor: All Vendors' in cover_text
     assert 'Operator: All Operators' in cover_text
-    assert 'Campaigns: 2026-Q2' in cover_text
+    assert 'Campaigns: 26-Q2' in cover_text
     assert 'South' not in cover_text and 'London' not in cover_text and 'Huawei' not in cover_text
 
     saved = saved_filters.get_saved_filter(repository, job['id'])

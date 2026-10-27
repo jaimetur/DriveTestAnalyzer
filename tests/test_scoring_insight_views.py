@@ -38,7 +38,7 @@ def _combined(items, operator=None):
 def test_standings_rank_every_operator_and_measure_its_distances(national):
     _job, _result, insights = national
     standing = _combined(insights['standings'])[0]
-    assert (standing['campaign'], standing['previous_campaign']) == ('2026-Q3', '2026-Q2')
+    assert (standing['campaign'], standing['previous_campaign']) == ('26-Q3', '26-Q2')
     rows = standing['operators']
     assert [row['rank'] for row in rows] == [1, 2, 3, 4]
     assert [row['total'] for row in rows] == sorted((row['total'] for row in rows), reverse=True)
@@ -80,7 +80,7 @@ def test_levers_are_the_kpis_behind_the_reference_that_win_most(national):
 def test_campaign_scope_counts_the_tests_of_the_latest_campaign(national):
     _job, _result, insights = national
     scope = next(item for item in insights['campaign_scope'] if item['environment'] == 'Combined')
-    assert scope['campaigns'] == ['2026-Q1', '2026-Q2', '2026-Q3'] and scope['latest_campaign'] == '2026-Q3'
+    assert scope['campaigns'] == ['26-Q1', '26-Q2', '26-Q3'] and scope['latest_campaign'] == '26-Q3'
     assert scope['window']['first'] == '2026-02-09' and scope['window']['days'] > 3
     # 8 cities × 6 positions and 4 routes × 9 positions, twice, with 7 Data tests and 4 calls each.
     assert scope['tests']['Vodafone UK']['data'] == {'Drive - City': 672, 'Drive - Connecting Roads': 504}
@@ -92,14 +92,14 @@ def test_campaign_scope_names_the_campaign_scored_without_campaign_in_the_split_
     job, result = synthetic_cdr_result(levels=('Operator',), campaigns=('2026-Q2',))
     scope = next(item for item in build_scoring_views(job, result)['insights']['campaign_scope']
                  if item['environment'] == 'Combined')
-    assert scope['campaigns'] == ['2026-Q2'] and scope['latest_campaign'] == '2026-Q2'
-    assert scope['tests_campaign'] == '2026-Q2' and scope['tests']['Vodafone UK']['data']
+    assert scope['campaigns'] == ['26-Q2'] and scope['latest_campaign'] == '26-Q2'
+    assert scope['tests_campaign'] == '26-Q2' and scope['tests']['Vodafone UK']['data']
 
 
 def test_gap_parts_add_up_to_the_total_gap_of_each_campaign(national):
     _job, _result, insights = national
     item = _combined(insights['gap_parts'], 'O2 UK')[0]
-    assert item['by_reliability'] is True and item['campaigns'] == ['2026-Q1', '2026-Q2', '2026-Q3']
+    assert item['by_reliability'] is True and item['campaigns'] == ['26-Q1', '26-Q2', '26-Q3']
     assert [part['label'] for part in item['parts']] == ['Data reliability', 'Data quality', 'Voice reliability', 'Voice quality']
     for index, total in enumerate(item['totals']):
         assert sum(part['values'][index] for part in item['parts']) == pytest.approx(total)
@@ -120,7 +120,7 @@ def test_operators_without_identified_sites_are_listed_apart_from_the_sites_to_r
     ], {})
     assert [item['operator'] for item in views['sites_to_review']] == ['VF']
     [missing] = views['sites_unidentified']
-    assert (missing['operator'], missing['unidentified'], missing['campaign']) == ('BT', 61.5, '2026-Q3')
+    assert (missing['operator'], missing['unidentified'], missing['campaign']) == ('BT', 61.5, '26-Q3')
     script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/scoring.js').read_text(encoding='utf-8')
     assert "const unidentified = insightItems(payload, 'sites_unidentified', environment);" in script
     assert 'none of the cells `' in script and 'cannot be `' in script
@@ -145,7 +145,7 @@ def test_sites_vendors_and_stretches_find_where_the_points_are_lost(national):
     leeds = f"{zlib.crc32(b'Leeds') % 900 + 100}03"
     first = sites['rows'][0]
     assert (first['site'], first['city'], first['priority']) == (leeds, 'Leeds', 'High')
-    assert [entry['campaign'] for entry in first['history']] == ['2026-Q1', '2026-Q2']
+    assert [entry['campaign'] for entry in first['history']] == ['26-Q1', '26-Q2']
     vendors = _combined(insights['vendor_losses'], 'Vodafone UK')[-1]
     assert {row['name'] for row in vendors['rows']} <= {'Ericsson', 'Nokia'}
     assert sum(row['share'] for row in vendors['rows']) == pytest.approx(100, abs=.2)
@@ -252,8 +252,8 @@ def test_the_campaigns_card_lists_the_other_analysed_campaigns_below_the_referen
         for shape in slide.shapes))
     texts = [shape.text_frame.text for shape in slide.shapes if shape.has_text_frame]
     # The reference (the latest campaign), then the others, the newest first.
-    assert 'CAMPAIGNS' in texts and '2026-Q3' in texts
-    assert '+2 campaigns: 2026-Q2, 2026-Q1' in texts
+    assert 'CAMPAIGNS' in texts and '26-Q3' in texts
+    assert '+2 campaigns: 26-Q2, 26-Q1' in texts
     script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/scoring.js').read_text(encoding='utf-8')
     assert "const otherCampaigns = scope.campaigns.filter(campaign => !latest.includes(campaign)).reverse();" in script
     # With NSA vs SA the reference is the latest NSA and the latest SA campaign.

@@ -373,9 +373,9 @@ def test_coverage_notes_name_excluded_kpis_for_each_vendor_campaign_context():
     })
 
     combined_notes = notes['Combined']
-    q1_note = next(note for note in combined_notes if '/ 2026-Q1:' in note)
-    q2_note = next(note for note in combined_notes if '/ 2026-Q2:' in note)
-    assert q1_note.startswith('VF_UK / Samsung / North / Leeds / 2026-Q1: maximum achievable scoring 933.2645 of 1000 points.')
+    q1_note = next(note for note in combined_notes if '/ 26-Q1:' in note)
+    q2_note = next(note for note in combined_notes if '/ 26-Q2:' in note)
+    assert q1_note.startswith('VF_UK / Samsung / North / Leeds / 26-Q1: maximum achievable scoring 933.2645 of 1000 points.')
     # Short notes: the first missing KPIs by environment, then how many more.
     assert 'KPIs without valid measurements: Call Setup Time > 10 s [%], Call Setup Time,' in q1_note
     assert '(DriveCity)' in q1_note and 'more.' in q1_note
@@ -394,4 +394,4 @@ def test_coverage_notes_group_series_with_the_same_missing_contributions():
     ]
     notes = scoring_coverage_notes({'configuration': configuration, 'totals': totals, 'scoring': []})['Combined']
     assert len(notes) == 1
-    assert notes[0].startswith('EE / All / Leeds / 2026-Q1, EE / All / York / 2026-Q1, VF_UK / All / Leeds / 2026-Q1 and 3 more series:')
+    assert notes[0].startswith('EE / All / Leeds / 26-Q1, EE / All / York / 26-Q1, VF_UK / All / Leeds / 26-Q1 and 3 more series:')

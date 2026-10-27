@@ -6,6 +6,7 @@ from io import BytesIO
 import pytest
 from pptx import Presentation
 
+from src.modules.column_names import compact_campaign_value
 from src.modules.scoring_exports import export_scoring_powerpoint
 from src.modules.scoring_views import build_scoring_views
 from tests.scoring_synthetic import CITIES, most_reliable_result, synthetic_result
@@ -64,11 +65,11 @@ def test_campaign_trend_needs_two_campaigns():
     _job, _result, insights = _insights(campaigns=('2026-Q2',))
     assert insights['campaign_trends'] == []
     _job, _result, insights = _insights(campaigns=('2026-Q1', '2026-Q2'))
-    assert _combined(insights['campaign_trends'])[0]['campaigns'] == ['2026-Q1', '2026-Q2']
+    assert _combined(insights['campaign_trends'])[0]['campaigns'] == ['26-Q1', '26-Q2']
     _job, _result, insights = _insights()
     trends = _combined(insights['campaign_trends'])
     assert len(trends) == len(CITIES)
-    assert trends[0]['campaigns'] == ['2025-Q2', '2025-Q3', '2025-Q4', '2026-Q1', '2026-Q2']
+    assert trends[0]['campaigns'] == ['25-Q2', '25-Q3', '25-Q4', '26-Q1', '26-Q2']
     assert {series['operator'] for series in trends[0]['series']} == {'EE', 'O2 UK', 'Three UK', 'Vodafone UK'}
 
 
@@ -76,7 +77,7 @@ def test_campaign_comparison_subtracts_the_previous_campaign():
     _job, result, insights = _insights(campaigns=('2026-Q1', '2026-Q2'))
     comparison = next(item for item in _combined(insights['campaign_comparisons'])
                       if item['operator'] == 'EE' and 'London' in item['title'])
-    assert (comparison['previous_campaign'], comparison['latest_campaign']) == ('2026-Q1', '2026-Q2')
+    assert (comparison['previous_campaign'], comparison['latest_campaign']) == ('26-Q1', '26-Q2')
     deltas = [row['delta'] for row in comparison['rows']]
     assert deltas == sorted(deltas)
     assert comparison['total_delta'] == pytest.approx(sum(deltas))
@@ -92,12 +93,12 @@ def test_campaign_comparison_keeps_every_campaign_to_compare_any_two():
     _job, result, insights = _insights()
     comparison = next(item for item in _combined(insights['campaign_comparisons'])
                       if item['operator'] == 'EE' and 'London' in item['title'])
-    assert comparison['campaigns'] == ['2025-Q2', '2025-Q3', '2025-Q4', '2026-Q1', '2026-Q2']
-    # The points of each KPI in every campaign add up to the scoring of that campaign.
+    assert comparison['campaigns'] == ['25-Q2', '25-Q3', '25-Q4', '26-Q1', '26-Q2']
+    # The points of each KPI in every campaign add up to the scoring of that campaign (named as the charts show it).
 
     def total(campaign):
         return next(row['weighted_points'] for row in result['totals']
-                    if row['city'] == 'London' and row['operator'] == 'EE' and row['campaign'] == campaign
+                    if row['city'] == 'London' and row['operator'] == 'EE' and compact_campaign_value(row['campaign']) == campaign
                     and row['environment'] == 'Combined' and row['category'] == 'Overall')
     for index, campaign in enumerate(comparison['campaigns']):
         points = sum(kpi['values'][index]['points'] for kpi in comparison['kpis'] if kpi['values'][index])
@@ -215,7 +216,7 @@ def test_campaign_comparison_names_the_methodologies_of_a_result_by_campaign():
         sum(kpi['values'][1]['points'] for kpi in comparison['kpis'] if kpi['values'][1])
         - sum(kpi['values'][0]['points'] for kpi in comparison['kpis'] if kpi['values'][0]))
     assert comparison_note(comparison) == (
-        'VIDEO STREAM: the methodology changed between 2026-Q2 (NetCheck 2026) and 2026-Q3 (NetCheck 2026-Q3), so the '
+        'VIDEO STREAM: the methodology changed between 26-Q2 (NetCheck 2026) and 26-Q3 (NetCheck 2026-Q3), so the '
         'category is compared as a whole and its KPIs have no Δ of their own.')
 
 

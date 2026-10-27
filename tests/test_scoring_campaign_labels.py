@@ -6,9 +6,9 @@ from tests.test_scoring_results_controls import SCORING_SCRIPT, _function_source
 
 
 @pytest.mark.parametrize('raw, expected', [
-    ('UK_Q1_2026', '2026-Q1'), ('UK_Q2_2026', '2026-Q2'),
-    ('2026_Q3', '2026-Q3'), ('Germany q4 2025', '2025-Q4'),
-    ('2026-Q1', '2026-Q1'), ('Special campaign', 'Special campaign'),
+    ('UK_Q1_2026', '26-Q1'), ('UK_Q2_2026', '26-Q2'),
+    ('2026_Q3', '26-Q3'), ('Germany q4 2025', '25-Q4'),
+    ('2026-Q1', '26-Q1'), ('Special campaign', 'Special campaign'),
 ])
 def test_campaign_display_matches_in_web_and_powerpoint(raw, expected):
     script = SCORING_SCRIPT.read_text()

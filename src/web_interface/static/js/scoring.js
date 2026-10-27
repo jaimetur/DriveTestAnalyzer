@@ -4156,7 +4156,7 @@
   }
 
   // Campaigns as the workspace Campaign Maps show them (campaign_labels.js); without it,
-  // the default map: 2026-Q2, 2026-Q2-NSA or 2026-Q2-SA.
+  // the default map: 26-Q2, 26-Q2-NSA or 26-Q2-SA.
   function hierarchyDisplayValue(entry) {
     const text = String(entry?.value ?? 'Not specified');
     if (entry?.level !== 'Campaign') return text;
@@ -4164,7 +4164,7 @@
     const year = text.match(/(?<!\d)((?:19|20)\d{2})(?!\d)/)?.[1];
     const quarter = text.match(/(?:^|[^A-Z0-9])Q\s*[_\- ]?([1-4])(?=$|[^0-9])/i)?.[1];
     const mode = (text.match(/(?:^|[_\- ])(NSA|SA)(?=$|[_\- ])/i)?.[1] || '').toUpperCase();
-    return year && quarter ? `${year}-Q${quarter}${mode ? `-${mode}` : ''}` : text;
+    return year && quarter ? `${year.slice(2)}-Q${quarter}${mode ? `-${mode}` : ''}` : text;
   }
 
   function hierarchyPathEntry(column, depth, levels) {
@@ -6764,7 +6764,7 @@
       const [year, quarter, rank, exception] = globalThis.campaignSortKey(value);
       return year < 0 ? exception - 1e6 : year * 100000 + quarter * 10000 + rank * 100 + exception;
     }
-    const match = hierarchyDisplayValue({level: 'Campaign', value}).match(/^((?:19|20)\d{2})-Q([1-4])(?:-(NSA|SA))?$/);
+    const match = hierarchyDisplayValue({level: 'Campaign', value}).match(/^(\d{2})-Q([1-4])(?:-(NSA|SA))?$/);
     return match ? Number(match[1]) * 100 + Number(match[2]) * 10 + ({NSA: 1, SA: 2}[match[3]] || 0) : Number.NEGATIVE_INFINITY;
   }
 

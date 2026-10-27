@@ -82,7 +82,7 @@ def test_results_of_each_methodology_keep_their_rows_and_split_back():
     ]
     merged = merge_results(parts)
     # A warning of the area summary names the methodology and campaigns it concerns.
-    assert merged['warnings'][-1] == ('NetCheck 2026-Q3 (2026-Q3): National & Area Summary: the selected CDRs have no '
+    assert merged['warnings'][-1] == ('NetCheck 2026-Q3 (26-Q3): National & Area Summary: the selected CDRs have no '
                                       'London measurements.')
     merged['warnings'] = merged['warnings'][:-1]
     assert [(row['Campaign'], row['methodology']) for row in merged['scoring']] == [
@@ -105,9 +105,9 @@ def test_the_same_scaling_notice_of_every_methodology_is_told_once():
     scaled = 'Scaled to the maximum scoring: Drive - Connecting Roads has no results.'
     assert merged_notices([scaled], [scaled]) == [scaled]
     # A scaling of one methodology only, or a different one, names the methodology and campaigns it concerns.
-    assert merged_notices([scaled], []) == [f'NetCheck 2026 (2026-Q2): {scaled}']
-    assert merged_notices([scaled], ['Other scaling.']) == [f'NetCheck 2026 (2026-Q2): {scaled}',
-                                                             'NetCheck 2026-Q3 (2026-Q3): Other scaling.']
+    assert merged_notices([scaled], []) == [f'NetCheck 2026 (26-Q2): {scaled}']
+    assert merged_notices([scaled], ['Other scaling.']) == [f'NetCheck 2026 (26-Q2): {scaled}',
+                                                             'NetCheck 2026-Q3 (26-Q3): Other scaling.']
 
 
 def add_campaign_dataset(repository: Repository, name: str, campaign: str, kind: str = 'data') -> int:
