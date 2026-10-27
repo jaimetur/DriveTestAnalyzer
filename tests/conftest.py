@@ -112,6 +112,9 @@ def client_workspace_template(tmp_path_factory: pytest.TempPathFactory) -> Path:
     with pytest.MonkeyPatch.context() as monkeypatch:
         slides_templates_dir = _prepare_client_folders(root, monkeypatch, create=True)
         with TestClient(app_module.app):
+            # On a busy machine the workspace is still being prepared (its starter content seeded) after the grace period
+            # of the startup: it must be complete before the favourites are removed.
+            assert app_module.STARTUP_READY.wait(timeout=300), 'The workspace of the tests was not ready.'
             # Tests that need a library explicitly import it; new workspaces stay empty.
             if slides_templates_dir.is_dir():
                 shutil.copytree(slides_templates_dir, app_module.active_workspace.slides_templates_dir, dirs_exist_ok=True)
@@ -151,6 +154,8 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, client_workspace_tem
     _prepare_client_folders(tmp_path, monkeypatch, create=False)
 
     with TestClient(app_module.app) as test_client:
+        # The workspace is ready before the test starts, also on a busy machine (see client_workspace_template).
+        assert app_module.STARTUP_READY.wait(timeout=300), 'The workspace of the test was not ready.'
         original_post = test_client.post
 
         def post_and_wait_for_uploads(url, *args, **kwargs):
