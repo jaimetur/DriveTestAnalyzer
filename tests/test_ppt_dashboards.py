@@ -711,10 +711,10 @@ def test_dashboard_campaigns_keep_their_nr_mode_suffix(client):
 
     assert options.status_code == 200, options.text
     # Compact labels keep an SA/NSA suffix; a Campaign filter limits them.
-    assert options.json()['campaigns'] == ['2026-Q1', '2026-Q2-SA']
+    assert options.json()['campaigns'] == ['26-Q1', '26-Q2-SA']
     payload['filters'] = {'Campaign': ['NetCheck_UK_2026_Q2_SA']}
     filtered = client.post('/api/ppt-dashboards/geography-options', json=payload)
-    assert filtered.json()['campaigns'] == ['2026-Q2-SA']
+    assert filtered.json()['campaigns'] == ['26-Q2-SA']
 
     # The PPT cover lists the Campaigns above the Scope in a larger font.
     core.repository.add_report_template('Campaign cover', (
@@ -733,17 +733,17 @@ def test_dashboard_campaigns_keep_their_nr_mode_suffix(client):
             break
         time.sleep(0.05)
     assert job['status'] == 'ready', job
-    assert job['cover']['campaigns'] == 'Campaigns: 2026-Q1, 2026-Q2-SA'
+    assert job['cover']['campaigns'] == 'Campaigns: 26-Q1, 26-Q2-SA'
     # The job Filters list the Campaigns right above the Operators.
-    assert job['filters'].index('Campaigns: 2026-Q1, 2026-Q2-SA') + 1 == job['filters'].index('Operator: All Operators')
+    assert job['filters'].index('Campaigns: 26-Q1, 26-Q2-SA') + 1 == job['filters'].index('Operator: All Operators')
     with core.repository.connection() as connection:
         row = connection.execute('SELECT output_path FROM dashboard_ppt_jobs WHERE id = ?', (job_id,)).fetchone()
     # Exports comparing several Campaigns name them at the end of the file name.
-    assert row['output_path'].endswith(' - Operator Comparison - 2026-Q1_vs_2026-Q2-SA.pptx')
+    assert row['output_path'].endswith(' - Operator Comparison - 26-Q1_vs_26-Q2-SA.pptx')
     slide = Presentation(row['output_path']).slides[0]
     details = {shape.name: shape for shape in slide.shapes if shape.name.startswith('dashboard-ppt-')}
     campaigns, scope = details['dashboard-ppt-campaigns'], details['dashboard-ppt-scope']
-    assert campaigns.text == 'Campaigns: 2026-Q1, 2026-Q2-SA'
+    assert campaigns.text == 'Campaigns: 26-Q1, 26-Q2-SA'
     # Campaigns sit between the subtitle and the template's decorative line,
     # while the Scope and geography stay below that line.
     subtitle = next(shape for shape in slide.placeholders if shape.placeholder_format.type == 4)
@@ -2654,7 +2654,7 @@ def test_adding_a_dataset_builds_a_new_chart_model_with_every_campaign(client):
     assert first.status_code == 200, first.text
     first_model = client.get(f"/api/ppt-dashboards/chart/{first.json()['token']}/0")
     assert first_model.status_code == 200, first_model.text
-    assert {bar['key'][-1] for bar in first_model.json()['bars']} == {'2026-Q1'}
+    assert {bar['key'][-1] for bar in first_model.json()['bars']} == {'26-Q1'}
 
     payload['datasets']['data'] = [first_id, second_id]
     payload['date_from'], payload['date_to'] = 'Oldest', 'Newest'
@@ -2662,7 +2662,7 @@ def test_adding_a_dataset_builds_a_new_chart_model_with_every_campaign(client):
     assert combined.status_code == 200, combined.text
     combined_model = client.get(f"/api/ppt-dashboards/chart/{combined.json()['token']}/0")
     assert combined_model.status_code == 200, combined_model.text
-    assert {bar['key'][-1] for bar in combined_model.json()['bars']} == {'2026-Q1', '2026-Q2'}
+    assert {bar['key'][-1] for bar in combined_model.json()['bars']} == {'26-Q1', '26-Q2'}
 
     cache_dir = Path(core.repository.db_path).parent / '.dashboard-data-cache' / 'charts-canvas'
     assert len(list(cache_dir.glob('*.json'))) >= 2

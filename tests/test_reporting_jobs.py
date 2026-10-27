@@ -895,7 +895,7 @@ def test_jobs_name_their_modules_abbreviated_and_move_or_delete_several_at_once(
         {'campaigns': 'All campaigns', 'modules': ['non_qualified_calls']}]
     assert report_tasks.job_campaigns({'scoring': [{'campaigns': ['@all-campaigns']}, {'campaigns': []}],
                                        'dashboards': [{'filters': {'Campaign': ['UK_Q2_2026', 'UK_Q3_2026']}}]}) == [
-        {'campaigns': 'All campaigns', 'modules': ['scoring']}, {'campaigns': '2026-Q2, 2026-Q3', 'modules': ['dashboards']}]
+        {'campaigns': 'All campaigns', 'modules': ['scoring']}, {'campaigns': '26-Q2, 26-Q3', 'modules': ['dashboards']}]
     assert task['campaigns'] == [{'campaigns': 'Latest campaign', 'modules': ['scoring']}]
     assert "const modules = choices.length > 1 ? choice.modules.map((key) => MODULE_TAGS[key] || key.slice(0, 3).toUpperCase()).join(' · ') : '';" in script
     # The actions in a light toolbar of icon buttons (an icon of its own for each, in the colour of its action), and the
