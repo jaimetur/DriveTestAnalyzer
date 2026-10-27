@@ -397,7 +397,9 @@ def test_the_users_table_shows_the_last_log_in(client):
     last_logins = {row['username']: row['last_login_at'] for row in core.repository.list_users()}
     assert last_logins['ana'] and last_logins['super'] and last_logins['demo'] == ''
     page = client.get('/super-admin').text
-    assert '<th>User</th><th>Last Log-in</th><th>Password</th>' in page
+    # Every column but Password sorts the table, Last Log-in after User.
+    assert page.index('data-users-sort="user"') < page.index('data-users-sort="last-login" data-users-sort-first="desc"') < page.index('<th>Password</th>')
+    assert all(f'data-users-sort="{key}"' in page for key in ('role', 'profile', 'active', 'workspaces'))
     assert f"<strong>{core.format_local_timestamp('2026-10-01T09:30:00+02:00')[:16]}</strong>" in page
     assert '<small>just now</small>' in page and 'title="demo has not signed in yet">Never</span>' in page
 

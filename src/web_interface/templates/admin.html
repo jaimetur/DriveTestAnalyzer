@@ -120,8 +120,10 @@
       <button type="button" class="users-bulk-clear" data-users-bulk-clear aria-label="Clear selection" title="Clear selection">×</button>
     </div>
     <div class="table-wrap users-table-wrap">
+      {# A column title sorts the users by it; a second click reverses the order. #}
+      {% macro users_sort(key, label, first='asc') %}<th aria-sort="none"><button type="button" class="users-sort-button" data-users-sort="{{ key }}"{% if first == 'desc' %} data-users-sort-first="desc"{% endif %} title="Sort the users by {{ label }}">{{ label }}<span aria-hidden="true" data-users-sort-indicator>↕</span></button></th>{% endmacro %}
       <table class="users-table">
-        <thead><tr><th class="user-select-column"><input type="checkbox" aria-label="Select every listed user" data-users-select-all></th><th>User</th><th>Last Log-in</th><th>Password</th><th>Role</th><th>Modules Profile</th><th>Active</th><th>Workspaces</th><th><span class="sr-only">Actions</span></th></tr></thead>
+        <thead><tr><th class="user-select-column"><input type="checkbox" aria-label="Select every listed user" data-users-select-all></th>{{ users_sort('user', 'User') }}{{ users_sort('last-login', 'Last Log-in', 'desc') }}<th>Password</th>{{ users_sort('role', 'Role') }}{{ users_sort('profile', 'Modules Profile') }}{{ users_sort('active', 'Active', 'desc') }}{{ users_sort('workspaces', 'Workspaces') }}<th><span class="sr-only">Actions</span></th></tr></thead>
         <tbody>
           {% for row in users %}
           {% set locked = user.role != 'super-admin' and row['role'] == 'super-admin' %}
@@ -148,7 +150,7 @@
                 {% if not locked %}<button type="button" class="user-identity-toggle" data-user-identity-toggle aria-label="Edit the name and username of {{ row['username'] }}" title="Edit name and username"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/></svg></button>{% endif %}
               </div>
             </td>
-            <td>
+            <td data-users-sort-cell="last-login" data-users-sort-value="{{ row['last_login_at'] }}">
               {% if row['last_login_at'] %}<span class="user-last-login" title="Last signed in {{ row['last_login_at'] }}"><strong>{{ row['last_login_at'][:16] }}</strong><small>{{ row['last_login_age'] }}</small></span>
               {% else %}<span class="user-last-login is-never" title="{{ row['username'] }} has not signed in yet">Never</span>{% endif %}
             </td>
@@ -170,7 +172,7 @@
               </select>
               {% endif %}
             </td>
-            <td>
+            <td data-users-sort-cell="profile">
               {% set row_profile = (modules_profiles | selectattr('id', 'equalto', row['modules_profile_id']) | list | first) %}
               {% if locked %}<span class="user-access-all" {% if row_profile %}style="--profile-color: {{ row_profile.color }}"{% endif %} title="Only super-admins change super-admin accounts">{% if row_profile %}{{ row_profile.name }}{% else %}<strong>Full Access</strong>{% endif %}</span>
               {% else %}<select class="table-select user-profile-select" name="modules_profile_id" form="user-update-{{ row['id'] }}" aria-label="Modules Profile of {{ row['username'] }}" {% if row_profile %}style="--profile-color: {{ row_profile.color }}"{% endif %} data-profile-select>{% if row['role'] == 'super-admin' %}<option value="all" class="user-profile-full-access" {% if not row['modules_profile_id'] %}selected{% endif %}>Full Access</option><hr>{% endif %}{% for profile in modules_profiles %}<option value="{{ profile.id }}" data-color="{{ profile.color }}" {% if profile.id == row['modules_profile_id'] %}selected{% endif %}>{{ profile.name }}</option>{% endfor %}</select>{% endif %}
@@ -181,7 +183,7 @@
                 <span class="toggle-slider"></span>
               </label>
             </td>
-            <td>
+            <td data-users-sort-cell="workspaces">
               {% if row['role'] == 'super-admin' %}<span class="user-access-all" title="Super-admins open every workspace">All workspaces</span>
               {% else %}{{ workspace_access_picker('user-update-' ~ row['id'], row['workspace_group_ids'], row['workspace_ids'], row['username']) }}{% endif %}
             </td>
@@ -2556,6 +2558,55 @@
   const statusFilter = filters.find((select) => select.dataset.usersFilter === 'active');
   if (statusFilter && new URLSearchParams(window.location.search).get('users') === 'access-requests') statusFilter.value = 'access-request';
   applyFilters();
+
+  // Sorting of the Users table by any column but Password, by what each row shows now (also after a change in place):
+  // Role from user-viewer to super-admin, and the users that never signed in last whatever the direction. This
+  // browser remembers the sort.
+  const USERS_SORT_KEY = 'drivetest-analyzer:admin:users-sort';
+  const usersBody = document.querySelector('.users-table tbody');
+  const usersCreateRow = document.querySelector('[data-users-create-row]');
+  const sortButtons = [...document.querySelectorAll('[data-users-sort]')];
+  const roleRank = ['user-viewer', 'user-editor', 'admin', 'super-admin'];
+  const sortValue = (row, key) => {
+    const cell = row.querySelector(`[data-users-sort-cell="${key}"]`);
+    if (key === 'user') return row.querySelector('[data-user-display-name]')?.textContent.trim() || row.dataset.username || '';
+    if (key === 'last-login') return cell?.dataset.usersSortValue || '';
+    if (key === 'role') return roleRank.indexOf(row.querySelector('[name="role"]')?.value || row.dataset.role);
+    if (key === 'active') return row.querySelector('[name="active"]')?.checked ? 1 : 0;
+    if (key === 'profile') return (cell?.querySelector('select')?.selectedOptions[0] || cell)?.textContent.trim() || '';
+    return (cell?.querySelector('[data-user-workspaces-summary]') || cell)?.textContent.trim() || '';
+  };
+  const compareUsers = (left, right, key) => {
+    const [leftValue, rightValue] = [sortValue(left, key), sortValue(right, key)];
+    return typeof leftValue === 'number' ? leftValue - rightValue
+      : leftValue.localeCompare(rightValue, undefined, {numeric: true, sensitivity: 'base'});
+  };
+  let usersSort = null;
+  try { usersSort = JSON.parse(localStorage.getItem(USERS_SORT_KEY) || 'null'); } catch (error) { usersSort = null; }
+  const applyUsersSort = () => {
+    const sorted = sortButtons.some((button) => button.dataset.usersSort === usersSort?.key);
+    sortButtons.forEach((button) => {
+      const active = sorted && button.dataset.usersSort === usersSort.key;
+      const direction = usersSort?.direction === 'desc' ? 'descending' : 'ascending';
+      button.closest('th').setAttribute('aria-sort', active ? direction : 'none');
+      button.querySelector('[data-users-sort-indicator]').textContent = active ? (direction === 'descending' ? '↓' : '↑') : '↕';
+    });
+    if (!sorted || !usersBody) return;
+    const {key} = usersSort;
+    const direction = usersSort.direction === 'desc' ? -1 : 1;
+    [...userRows].sort((left, right) => (key === 'last-login' && (!sortValue(left, key) - !sortValue(right, key)))
+      || compareUsers(left, right, key) * direction || compareUsers(left, right, 'user')
+      || Number(left.dataset.userId) - Number(right.dataset.userId))
+      .forEach((row) => usersBody.insertBefore(row, usersCreateRow));
+  };
+  sortButtons.forEach((button) => button.addEventListener('click', () => {
+    const key = button.dataset.usersSort;
+    const direction = usersSort?.key === key ? (usersSort.direction === 'desc' ? 'asc' : 'desc') : (button.dataset.usersSortFirst || 'asc');
+    usersSort = {key, direction};
+    try { localStorage.setItem(USERS_SORT_KEY, JSON.stringify(usersSort)); } catch (error) { /* Kept for this page only. */ }
+    applyUsersSort();
+  }));
+  applyUsersSort();
 
   document.querySelectorAll('form[data-user-password-reset]').forEach((form) => {
     form.addEventListener('submit', async (event) => {
