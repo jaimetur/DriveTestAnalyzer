@@ -1461,8 +1461,8 @@ def test_list_1_orders_a_campaign_without_its_final_cdr_by_the_gain_of_the_lates
     nq.sync_nq_calls(core.repository)
     nq_prioritization.calculate(core.repository)
     rows = priority_rows()
-    q2 = [row for row in rows.values() if '2026-q2' in row['campaign_key']]
-    q3 = [row for row in rows.values() if '2026-q3' in row['campaign_key']]
+    q2 = [row for row in rows.values() if '26-q2' in row['campaign_key']]
+    q3 = [row for row in rows.values() if '26-q3' in row['campaign_key']]
     assert q2 and q3
     assert {row['final_list'] for row in q2} == {1} and {row['final_list'] for row in q3} == {0}
     assert {row['queue_list'] for row in q3 if row['queue_list']} == {'campaign'}

@@ -108,7 +108,7 @@ def test_scoring_leaves_out_campaigns_without_every_type(workspace):
     add(name='UK_Q2_2026_Data.csv', kind='data', campaign='UK_Q2_2026')
     ids, incomplete = complete_campaign_cdrs(workspace['repository'], 'NSA')
     assert sorted(ids) == sorted(complete)
-    assert incomplete == ['2026-Q2']
+    assert incomplete == ['26-Q2']
 
 
 def test_scoring_previous_campaign_is_the_complete_campaign_before_the_newest(workspace):
@@ -390,7 +390,7 @@ def test_reporting_jobs_saved_with_cdrs_choose_them_by_their_campaigns(workspace
     assert migrated['dashboards'][0]['filters'] == {'Operator': ['EE'], 'Campaign': ['UK_Q1_2026']}
     assert (migrated['dashboards'][0]['datasets'], migrated['dashboards'][0]['auto_cdrs']) == ({}, True)
     # Network Insights filters its samples by the campaign as the Campaign Maps show it.
-    assert migrated['network_insights'][0]['selection']['campaigns'] == ['2026-Q2']
+    assert migrated['network_insights'][0]['selection']['campaigns'] == ['26-Q2']
     assert migrated['network_insights'][0]['selection']['datasets'] == {}
     assert migrated['scoring'][0]['campaigns'] == ['UK_Q1_2026', 'UK_Q2_2026']
     assert migrated['scoring'][0]['dataset_ids'] == []

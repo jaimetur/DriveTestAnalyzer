@@ -82,7 +82,7 @@ def test_snapshot_endpoint_groups_deployment_hosts_spectrum_quality_and_density(
     assert spectrum[('VF', 'B20')]['carriers'] == 1 and spectrum[('VF', 'B20')]['deployed_mhz'] == 10
     assert spectrum[('VF', 'n78')]['deployed_mhz'] == 100
     quality = {row['operator']: row for row in payload['quality']}
-    assert quality['3']['not_in_service'] == 1 and quality['VF']['without_position'] == 0
+    assert quality['Three']['not_in_service'] == 1 and quality['VF']['without_position'] == 0
     density = {row['area']: row for row in payload['density']['region'] if row['operator'] == 'VF'}
     assert density['North']['sites'] == 4 and 1.2 < density['North']['median_isd_km'] < 1.4
 
@@ -344,7 +344,7 @@ def test_inventory_cells_and_snapshot_panels_are_kept_on_disk_with_the_network_c
     ii._cell_cache.clear()
     pd.testing.assert_frame_equal(ii.load_cells(core.repository, selection), first)
     # Every network named by the panels has its Operator Maps colour (or one of the fallback palette).
-    assert {'VF', '3'} <= set(payload['colours']) and all(colour.startswith('#') for colour in payload['colours'].values())
+    assert {'VF', 'Three'} <= set(payload['colours']) and all(colour.startswith('#') for colour in payload['colours'].values())
 
 
 def test_snapshot_panels_list_the_networks_in_operator_maps_order(client, tmp_path):
@@ -354,14 +354,14 @@ def test_snapshot_panels_list_the_networks_in_operator_maps_order(client, tmp_pa
     _dataset(tmp_path, '260917_Cell_Config.zip', 'network_inventory', rows)
     groups = core.repository.list_operator_mapping_groups()
     by_name = {group['canonical']: group for group in groups}
-    # VF before 3, unlike the alphabetical order.
-    core.repository.replace_operator_mapping_groups([by_name['VF'], by_name['3'], *(group for group in groups if group['canonical'] not in {'VF', '3'})])
+    # Three before VF, unlike the order of the Operator Maps of the United Kingdom.
+    core.repository.replace_operator_mapping_groups([by_name['Three'], by_name['VF'], *(group for group in groups if group['canonical'] not in {'VF', 'Three'})])
     payload = client.post('/api/network-insights/snapshot', json={'group': 'host_network'}).json()
-    assert payload['network_order'][:2] == ['VF', '3']
-    assert [item['operator'] for item in payload['selection']][:2] == ['VF', '3']
-    assert [table['operator'] for table in payload['deployment']][:2] == ['VF', '3']
-    assert [row['operator'] for row in payload['quality']][:2] == ['VF', '3']
-    assert payload['host_matrix']['owners'][:2] == ['VF', '3']
+    assert payload['network_order'][:2] == ['Three', 'VF']
+    assert [item['operator'] for item in payload['selection']][:2] == ['Three', 'VF']
+    assert [table['operator'] for table in payload['deployment']][:2] == ['Three', 'VF']
+    assert [row['operator'] for row in payload['quality']][:2] == ['Three', 'VF']
+    assert payload['host_matrix']['owners'][:2] == ['Three', 'VF']
 
 
 def _duplex_inventory_rows():
@@ -394,13 +394,13 @@ def test_nr_sites_by_duplex_mode_count_logical_and_physical_sites(client, tmp_pa
     keys = ('sites', 'tdd_sites', 'fdd_sites', 'both_sites', 'tdd_only_sites', 'fdd_only_sites', 'physical_sites',
             'physical_tdd_sites', 'physical_fdd_sites')
     assert [rows['VF'][key] for key in keys] == [2, 1, 2, 1, 0, 1, 2, 1, 2]
-    assert [rows['3'][key] for key in keys] == [1, 1, 0, 0, 1, 0, 1, 1, 0]
+    assert [rows['Three'][key] for key in keys] == [1, 1, 0, 0, 1, 0, 1, 1, 0]
     # The site shared by VF0 and T1 counts once among the physical sites of every network.
     assert [rows['All networks'][key] for key in keys] == [3, 2, 2, 1, 1, 1, 2, 1, 2]
     assert payload['rows'][-1]['all_networks'] and payload['radius_m'] == 50
 
-    three = client.post('/api/network-insights/nr-duplex-sites', json={'operators': ['3']}).json()
-    assert [row['operator'] for row in three['rows']] == ['3', 'All networks']
+    three = client.post('/api/network-insights/nr-duplex-sites', json={'operators': ['Three']}).json()
+    assert [row['operator'] for row in three['rows']] == ['Three', 'All networks']
     assert three['filters'] == {'operators': 1}
     huawei = client.post('/api/network-insights/nr-duplex-sites', json={'vendors': ['Huawei']}).json()
     assert {row['operator']: row['fdd_only_sites'] for row in huawei['rows']} == {'VF': 1, 'All networks': 1}
@@ -412,7 +412,7 @@ def test_nr_sites_by_duplex_mode_count_logical_and_physical_sites(client, tmp_pa
     by_host = client.post('/api/network-insights/nr-duplex-sites', json={'split': 'host_network'}).json()
     assert by_host['split_label'] == 'Host Network'
     assert {(row['area'], row['operator']): row['sites'] for row in by_host['rows']} == {
-        ('3', '3'): 1, ('3', 'All networks'): 1, ('O2', 'VF'): 1, ('O2', 'All networks'): 1,
+        ('Three', 'Three'): 1, ('Three', 'All networks'): 1, ('O2', 'VF'): 1, ('O2', 'All networks'): 1,
         ('VF', 'VF'): 1, ('VF', 'All networks'): 1}
     events = [row for row in core.repository.list_logs(limit=20) if row['action'] == 'network_insights_nr_duplex_sites']
     assert events

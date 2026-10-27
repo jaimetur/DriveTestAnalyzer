@@ -168,8 +168,8 @@ def test_failure_count_hierarchy_uses_operator_mapping_order() -> None:
     model = catalog_chart_payload(frame, entry, prefiltered=True)
 
     assert model['column_keys'] == [
-        ['3', '2026-Q2'], ['EE', '2026-Q2'], ['O2', '2026-Q2'],
-        ['VF_UK', '2026-Q2'], ['VF_SA', '2026-Q2'],
+        ['3', '26-Q2'], ['EE', '26-Q2'], ['O2', '26-Q2'],
+        ['VF_UK', '26-Q2'], ['VF_SA', '26-Q2'],
     ]
 
 
@@ -200,8 +200,8 @@ def test_failure_count_hierarchy_keeps_operator_mapping_order_when_city_rows_are
     model = catalog_chart_payload(frame, entry, prefiltered=True)
 
     assert model['column_keys'] == [
-        ['3', '2026-Q2'], ['EE', '2026-Q2'], ['O2', '2026-Q2'],
-        ['VF_UK', '2026-Q2'], ['VF_SA', '2026-Q2'],
+        ['3', '26-Q2'], ['EE', '26-Q2'], ['O2', '26-Q2'],
+        ['VF_UK', '26-Q2'], ['VF_SA', '26-Q2'],
     ]
 
 
@@ -316,7 +316,7 @@ def test_report_operator_aliases_use_only_workspace_configuration() -> None:
 
     assert filtered["Operator"].tolist() == ["VF", "VF", "O2", "O2", "O2", "3", "3", "3", "EE", "EE"]
     assert set(grouped[primary]) == {"VF", "O2", "3", "EE"}
-    assert set(grouped[series]) == {"2025-Q4", "2026-Q2"}
+    assert set(grouped[series]) == {"25-Q4", "26-Q2"}
 
 
 def test_catalog_filters_accept_case_separators_and_subscriber_spelling_alias() -> None:
@@ -591,7 +591,7 @@ def test_combined_reporting_frame_keeps_every_data_attempt_before_template_filte
     preview, summary = app_module.preview_catalog_chart_data(frame, entry, limit=100)
     assert summary['matched_rows'] == 3
     assert preview['Filter · Test_Result'].tolist() == ['Cutoff', 'Cutoff', 'Cutoff']
-    assert preview['Resolved Columns Split'].tolist() == ['EE · 2026-Q2'] * 3
+    assert preview['Resolved Columns Split'].tolist() == ['EE · 26-Q2'] * 3
 
 
 def test_workspace_vendor_assignment_writes_the_normalized_vendor_field() -> None:
@@ -1109,19 +1109,19 @@ def test_interactive_cdf_model_uses_reporting_hierarchy_palette_and_legend() -> 
         'catalog-v2', 'cdf', 1600, 900, 'POLQA CDF',
     )
     assert [(series['key'], series['colour'], series['width'], series['dash']) for series in model['series']] == [
-        (['VF_Ericsson', '2026-Q1'], '#2E8B57', 1, []),
-        (['VF_Ericsson', '2026-Q2'], '#2E8B57', 4, []),
-        (['VF_Huawei', '2026-Q1'], '#E15759', 1, []),
-        (['VF_Huawei', '2026-Q2'], '#E15759', 4, []),
+        (['VF_Ericsson', '26-Q1'], '#2E8B57', 1, []),
+        (['VF_Ericsson', '26-Q2'], '#2E8B57', 4, []),
+        (['VF_Huawei', '26-Q1'], '#E15759', 1, []),
+        (['VF_Huawei', '26-Q2'], '#E15759', 4, []),
     ]
     assert {key: value for key, value in model['legend'].items() if key != 'format'} == {
         'position': 'right',
         'line_markers': True,
         'items': [
-            {'label': 'VF_Ericsson · 2026-Q1', 'colour': '#2E8B57', 'width': 1, 'dash': []},
-            {'label': 'VF_Ericsson · 2026-Q2', 'colour': '#2E8B57', 'width': 4, 'dash': []},
-            {'label': 'VF_Huawei · 2026-Q1', 'colour': '#E15759', 'width': 1, 'dash': []},
-            {'label': 'VF_Huawei · 2026-Q2', 'colour': '#E15759', 'width': 4, 'dash': []},
+            {'label': 'VF_Ericsson · 26-Q1', 'colour': '#2E8B57', 'width': 1, 'dash': []},
+            {'label': 'VF_Ericsson · 26-Q2', 'colour': '#2E8B57', 'width': 4, 'dash': []},
+            {'label': 'VF_Huawei · 26-Q1', 'colour': '#E15759', 'width': 1, 'dash': []},
+            {'label': 'VF_Huawei · 26-Q2', 'colour': '#E15759', 'width': 4, 'dash': []},
         ],
     }
     assert all(series['x'] and series['y'] and series['samples'] == 2 for series in model['series'])
@@ -1187,9 +1187,9 @@ def test_multivendor_cdf_legend_keeps_operator_and_vendor_for_each_curve(chart_t
     model = catalog_chart_payload(frame, entry, multivendor=True, prefiltered=True)
 
     labels = [item['label'] for item in model['legend']['items']]
-    assert labels == ['Ericsson · VF · 2026-Q1', 'Ericsson · 3 · 2026-Q1', 'Huawei · VF · 2026-Q1']
+    assert labels == ['Ericsson · VF · 26-Q1', 'Ericsson · 3 · 26-Q1', 'Huawei · VF · 26-Q1']
     assert [series['name'] for series in model['series']] == [
-        'Ericsson · VF · 2026-Q1', 'Ericsson · 3 · 2026-Q1', 'Huawei · VF · 2026-Q1',
+        'Ericsson · VF · 26-Q1', 'Ericsson · 3 · 26-Q1', 'Huawei · VF · 26-Q1',
     ]
     assert [item['colour'] for item in model['legend']['items']] == ['#2E8B57', '#2E8B57', '#E15759']
     assert [item['dash'] for item in model['legend']['items']] == [[], [18, 8], []]
@@ -1218,8 +1218,8 @@ def test_interactive_status_model_preserves_reporting_row_and_column_aggregation
     assert model['domain']['y'] == [.25, .75]
     assert model['label_position'] == 'middle'
     assert model['column_keys'] == [
-        ['VF', '2026-Q1'], ['VF', '2026-Q2'],
-        ['3', '2026-Q1'], ['3', '2026-Q2'],
+        ['VF', '26-Q1'], ['VF', '26-Q2'],
+        ['3', '26-Q1'], ['3', '26-Q2'],
     ]
     assert model['cells'][0] == [
         pytest.approx([1.0, 0.0]), pytest.approx([0.5, 0.5]),
@@ -1303,8 +1303,8 @@ def test_interactive_distribution_model_uses_reporting_buckets_and_nested_keys()
     assert model['domain']['y'] == [.1, .9]
     assert model['label_position'] == 'down'
     assert model['keys'] == [
-        ['VF', '2026-Q1'], ['VF', '2026-Q2'],
-        ['3', '2026-Q1'], ['3', '2026-Q2'],
+        ['VF', '26-Q1'], ['VF', '26-Q2'],
+        ['3', '26-Q1'], ['3', '26-Q2'],
     ]
     assert [bucket['name'] for bucket in model['buckets']] == ['<1', '1-5', '5-20', '20+']
     assert model['cells'] == [
@@ -1405,9 +1405,9 @@ def test_interactive_mean_model_omits_groups_without_valid_samples() -> None:
     # The JSON response rejects NaN: a group without samples has no bar.
     json.dumps(model, allow_nan=False)
     assert [(bar['key'], bar['value']) for bar in model['bars']] == [
-        (['VF_Ericsson', '2026-Q1'], pytest.approx(1.5)),
-        (['VF_Ericsson', '2026-Q2'], pytest.approx(2.5)),
-        (['VF_Huawei', '2026-Q1'], pytest.approx(3.0)),
+        (['VF_Ericsson', '26-Q1'], pytest.approx(1.5)),
+        (['VF_Ericsson', '26-Q2'], pytest.approx(2.5)),
+        (['VF_Huawei', '26-Q1'], pytest.approx(3.0)),
     ]
 
 
@@ -1426,10 +1426,10 @@ def test_interactive_mean_model_uses_reporting_aggregation_and_vendor_palette() 
 
     assert model['type'] == 'mean_bar'
     assert [(bar['key'], bar['value'], bar['colour']) for bar in model['bars']] == [
-        (['VF_Ericsson', '2026-Q1'], pytest.approx(3.9), '#2E8B57'),
-        (['VF_Ericsson', '2026-Q2'], pytest.approx(4.2), '#2E8B57'),
-        (['VF_Huawei', '2026-Q1'], pytest.approx(2.9), '#E15759'),
-        (['VF_Huawei', '2026-Q2'], pytest.approx(3.2), '#E15759'),
+        (['VF_Ericsson', '26-Q1'], pytest.approx(3.9), '#2E8B57'),
+        (['VF_Ericsson', '26-Q2'], pytest.approx(4.2), '#2E8B57'),
+        (['VF_Huawei', '26-Q1'], pytest.approx(2.9), '#E15759'),
+        (['VF_Huawei', '26-Q2'], pytest.approx(3.2), '#E15759'),
     ]
     assert [(item['label'], item['colour']) for item in model['legend']['items']] == [
         ('VF_Ericsson', '#2E8B57'), ('VF_Huawei', '#E15759'),
@@ -1453,9 +1453,9 @@ def test_interactive_mean_model_nests_column_only_hierarchies_by_parent() -> Non
     assert model['mode'] == 'hierarchy'
     assert model['row_keys'] == [[]]
     assert model['column_keys'] == [
-        ['VF', '2026-Q1'], ['VF', '2026-Q2'],
-        ['3', '2026-Q1'], ['3', '2026-Q2'],
-        ['EE', '2026-Q1'], ['EE', '2026-Q2'],
+        ['VF', '26-Q1'], ['VF', '26-Q2'],
+        ['3', '26-Q1'], ['3', '26-Q2'],
+        ['EE', '26-Q1'], ['EE', '26-Q2'],
     ]
     assert model['cell_colours'] == [[
         '#E15759', '#E15759',
@@ -1829,7 +1829,7 @@ def test_multivendor_rendering_rewrites_display_and_grouping_and_excludes_unreso
     filtered = _apply_catalog_filters(frame, rendered, True, 'LQ')
     grouped, primary, series = _apply_catalog_grouping(filtered, rendered, True, 'LQ')
     assert grouped[primary].tolist() == ['Ericsson · VF']
-    assert grouped[series].tolist() == ['Ericsson · VF · 2026-Q2-SA']
+    assert grouped[series].tolist() == ['Ericsson · VF · 26-Q2-SA']
 
     already_filtered = replace(entry, filters='vendor NOT CONTAINS (Mixed, Other)')
     assert prepare_multivendor_catalog_entry(already_filtered).filters == already_filtered.filters
@@ -1913,8 +1913,8 @@ def test_multivendor_operator_filters_match_vendor_prefixes_and_keep_full_groupi
     assert filtered['Operator_Vendor'].tolist() == ['VF_Ericsson', 'VF_Huawei', '3_Nokia', 'O2_Ericsson']
     assert grouped[primary].tolist() == ['Ericsson · VF', 'Ericsson · O2', 'Huawei · VF', 'Nokia · 3']
     assert grouped[series].tolist() == [
-        'Ericsson · VF · 2025-Q4', 'Ericsson · O2 · 2026-Q1',
-        'Huawei · VF · 2026-Q1', 'Nokia · 3 · 2025-Q4',
+        'Ericsson · VF · 25-Q4', 'Ericsson · O2 · 26-Q1',
+        'Huawei · VF · 26-Q1', 'Nokia · 3 · 25-Q4',
     ]
     assert [caption for caption, _colour, _width in _resolved_legend_items(rendered, grouped, 'LQ')] == [
         'Ericsson · VF', 'Ericsson · O2', 'Huawei · VF', 'Nokia · 3',
@@ -2107,8 +2107,8 @@ def test_campaign_grouping_displays_only_year_and_quarter() -> None:
     grouped, _primary, series = _apply_catalog_grouping(frame, entry, False, 'LQ')
 
     assert grouped['Campaign'].tolist() == ['2024 Q3 NSA', 'UK_Q4_2025', 'UK_Q2_SA_2026']
-    assert grouped['__catalog_column_0'].tolist() == ['2024-Q3-NSA', '2025-Q4', '2026-Q2-SA']
-    assert grouped[series].tolist() == ['2024-Q3-NSA', '2025-Q4', '2026-Q2-SA']
+    assert grouped['__catalog_column_0'].tolist() == ['24-Q3-NSA', '25-Q4', '26-Q2-SA']
+    assert grouped[series].tolist() == ['24-Q3-NSA', '25-Q4', '26-Q2-SA']
 
 
 def test_cdf_renders_a_curve_for_each_complete_rows_and_columns_combination() -> None:
@@ -2837,8 +2837,8 @@ def test_campaign_aggregation_is_ordered_oldest_to_newest_for_every_chart_render
     keys = _hierarchical_unique_keys(grouped, ['__catalog_column_0', '__catalog_column_1'])
 
     assert keys == [
-        ('VF', '2026-Q1'), ('VF', '2026-Q2'),
-        ('EE', '2026-Q1'), ('EE', '2026-Q2'),
+        ('VF', '26-Q1'), ('VF', '26-Q2'),
+        ('EE', '26-Q1'), ('EE', '26-Q2'),
     ]
 
 

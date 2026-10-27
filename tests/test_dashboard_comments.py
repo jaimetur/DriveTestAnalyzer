@@ -37,10 +37,10 @@ def texts(charts, **options):
 def test_cdf_comments_follow_the_focus_operator_against_the_leader_and_the_previous_campaign():
     written = texts([{'index': 0, 'title': 'NR RSRP', 'kpi': 'NR_RSRP', 'model': RSRP_CDF}], focus_operators=['Vodafone'])
     assert written == [
-        'Vodafone median NR RSRP improves by 3.8 dB vs 2026-Q2 (−97.6 → −93.8 dBm).',
-        'EE leads in median NR RSRP (−90.1 dBm); Vodafone trails by 3.7 dB (−93.8 dBm); the gap narrows from 7.2 dB in 2026-Q2.',
-        'NR RSRP samples below −110 dBm: Vodafone 5.1% (−4.3 pp vs 2026-Q2); highest: O2 (11.8%).',
-        'O2 median NR RSRP degrades by 1.3 dB vs 2026-Q2 (−100.2 → −101.5 dBm).',
+        'Vodafone median NR RSRP improves by 3.8 dB vs 26-Q2 (−97.6 → −93.8 dBm).',
+        'EE leads in median NR RSRP (−90.1 dBm); Vodafone trails by 3.7 dB (−93.8 dBm); the gap narrows from 7.2 dB in 26-Q2.',
+        'NR RSRP samples below −110 dBm: Vodafone 5.1% (−4.3 pp vs 26-Q2); highest: O2 (11.8%).',
+        'O2 median NR RSRP degrades by 1.3 dB vs 26-Q2 (−100.2 → −101.5 dBm).',
     ]
     # Three has too few samples to lead, and the narrow "comments right" box takes three comments.
     assert not any(text.startswith('Three') for text in written)
@@ -59,8 +59,8 @@ def test_bar_and_stacked_comments_read_their_values_and_class_shares():
         {'key': ['EE', '2026-Q2'], 'value': 199.0, 'samples': 900}, {'key': ['EE', '2026-Q3'], 'value': 212.0, 'samples': 950},
     ]}
     assert texts([{'index': 0, 'kpi': 'Mean Data Rate', 'model': bars}], focus_operators=['VF'])[:2] == [
-        'VF Mean Data Rate improves by 16% vs 2026-Q2 (152 → 180).',
-        'EE leads in Mean Data Rate (212); VF trails by 15% (180); the gap narrows from 24% in 2026-Q2.',
+        'VF Mean Data Rate improves by 16% vs 26-Q2 (152 → 180).',
+        'EE leads in Mean Data Rate (212); VF trails by 15% (180); the gap narrows from 24% in 26-Q2.',
     ]
     results = {'type': 'status_100', 'states': [{'name': 'Completed'}, {'name': 'Dropped'}, {'name': 'Failed'}],
                'dimensions': OPERATOR_CAMPAIGN, 'records': [
@@ -68,14 +68,14 @@ def test_bar_and_stacked_comments_read_their_values_and_class_shares():
                    {'key': ['VF', '2026-Q3'], 'shares': [.987, .005, .008], 'samples': 2100},
                    {'key': ['EE', '2026-Q3'], 'shares': [.989, .004, .007], 'samples': 2050}]}
     assert texts([{'index': 0, 'kpi': 'Test_Result', 'model': results}], focus_operators=['VF']) == [
-        'VF share of Dropped + Failed falls from 2.6% to 1.3% vs 2026-Q2 (−1.3 pp).',
+        'VF share of Dropped + Failed falls from 2.6% to 1.3% vs 26-Q2 (−1.3 pp).',
         'VF is on par with EE in share of Dropped + Failed (1.3% vs 1.1%).',
     ]
     quality = {'type': 'status_100', 'states': [{'name': '< 3'}, {'name': '≥ 3'}], 'dimensions': OPERATOR_CAMPAIGN, 'records': [
         {'key': ['VF', '2026-Q2'], 'shares': [.079, .921], 'samples': 3000},
         {'key': ['VF', '2026-Q3'], 'shares': [.058, .942], 'samples': 3000}]}
     assert texts([{'index': 0, 'kpi': 'LQ', 'model': quality}], focus_operators=['VF']) == [
-        'VF share of LQ ≥ 3 rises from 92.1% to 94.2% vs 2026-Q2 (+2.1 pp).',
+        'VF share of LQ ≥ 3 rises from 92.1% to 94.2% vs 26-Q2 (+2.1 pp).',
     ]
 
 
@@ -142,7 +142,7 @@ def test_generate_comments_reads_the_open_slide_and_records_app_events(client):
     assert generated_results.status_code == 200, generated_results.text
     # One failure in 12 tests is not significantly different from none.
     assert [item['text'] for item in generated_results.json()['suggestions']] == [
-        'A is on par with B in share of Failed (8.3% vs 0%).', 'A share of Failed is stable vs 2026-Q2 (8.3%).',
+        'A is on par with B in share of Failed (8.3% vs 0%).', 'A share of Failed is stable vs 26-Q2 (8.3%).',
     ]
 
     added = client.patch('/api/ppt-dashboards/rates/comments', json={
@@ -173,7 +173,7 @@ def test_the_other_chart_types_vendors_and_slides_read_together():
                 'rows': [{'key': ['VF', '2026-Q2'], 'values': [30, 8]}, {'key': ['VF', '2026-Q3'], 'values': [14, 3]},
                          {'key': ['EE', '2026-Q3'], 'values': [12, 2]}]}
     assert texts([{'index': 0, 'kpi': 'Call_Status', 'model': failures}], focus_operators=['VF'])[0] == (
-        'VF share of Failed + Dropped falls from 2.5% to 1.2% vs 2026-Q2 (−1.4 pp).')
+        'VF share of Failed + Dropped falls from 2.5% to 1.2% vs 26-Q2 (−1.4 pp).')
     scatter = {'type': 'scatter', 'x_label': 'LTE PCell RSRP Avg', 'y_label': 'Mean Data Rate', 'dimensions': OPERATOR_CAMPAIGN,
                'series': [{'name': 'VF · 2026-Q3', 'key': ['VF', '2026-Q3'], 'stats': {
                    'n': 800, 'spearman': 0.41, 'x_q25': -105.3, 'x_q75': -88.1, 'y_median_low': 35.2, 'y_median_high': 80.4}}]}
@@ -212,7 +212,7 @@ def test_the_other_chart_types_vendors_and_slides_read_together():
     assert 'Median NR SINR stays 3.9–4.4 dB below LTE SINR for every operator.' in texts(radio, focus_operators=['VF'])
     per_operator = [{'index': index, 'kpi': 'NR_SINR', 'model': medians('NR SINR', {operator: value}, operator)}
                     for index, (operator, value) in enumerate({'VF': 10.2, 'EE': 12.1, 'O2': 8.0}.items())]
-    assert texts(per_operator) == ['Median NR SINR in 2026-Q3: EE 12.1, VF 10.2, O2 8 dB.']
+    assert texts(per_operator) == ['Median NR SINR in 26-Q3: EE 12.1, VF 10.2, O2 8 dB.']
 
 
 def test_scatter_series_take_their_rank_correlation_without_scipy():

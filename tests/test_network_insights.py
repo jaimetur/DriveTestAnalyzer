@@ -413,9 +413,9 @@ def test_network_insights_page_and_analysis(client, tmp_path) -> None:
         'datasets': {'data': ids}, 'technology': 'lte', 'group': 'operator',
     })
     assert operator_comparison.status_code == 200, operator_comparison.text
-    assert operator_comparison.json()['comparison'] == {'previous': '2026-Q1', 'latest': '2026-Q2'}
+    assert operator_comparison.json()['comparison'] == {'previous': '26-Q1', 'latest': '26-Q2'}
     # Operator is always grouped unless Vendor replaces it.
-    assert {row['operator'] for row in payload['overview']} == {'EE · 2026-Q1', 'EE · 2026-Q2', 'VF · 2026-Q1', 'VF · 2026-Q2'}
+    assert {row['operator'] for row in payload['overview']} == {'EE · 26-Q1', 'EE · 26-Q2', 'VF · 26-Q1', 'VF · 26-Q2'}
     operator_payload = operator_comparison.json()
     assert {row['operator'] for row in operator_payload['overview']} == {'EE', 'VF'}
     ee = next(row for row in operator_payload['overview'] if row['operator'] == 'EE')
@@ -440,12 +440,12 @@ def test_network_insights_page_and_analysis(client, tmp_path) -> None:
     # the page offers only Latest campaign and Previous campaign besides the campaigns.
     assert config['campaign_presets'] == [['@latest-campaign', 'Latest campaign'], ['@previous-campaign', 'Previous campaign']]
     assert '<option value="@latest-campaign" selected>Latest campaign</option>' in page.text
-    for campaigns, analysed in (([], ['2026-Q2']), (['2026-Q1', '2026-Q2'], ['2026-Q2']), (['@latest-2-campaigns'], ['2026-Q2']),
-                                (['@all-campaigns'], ['2026-Q2']), (['@previous-campaign'], ['2026-Q1']), (['2026-Q1'], ['2026-Q1'])):
+    for campaigns, analysed in (([], ['26-Q2']), (['26-Q1', '26-Q2'], ['26-Q2']), (['@latest-2-campaigns'], ['26-Q2']),
+                                (['@all-campaigns'], ['26-Q2']), (['@previous-campaign'], ['26-Q1']), (['26-Q1'], ['26-Q1'])):
         single = client.post('/api/network-insights/analysis', json={'datasets': {}, 'technology': 'lte', 'campaigns': campaigns})
         assert single.status_code == 200, single.text
         assert single.json()['options']['campaigns'] == analysed, campaigns
-    assert client.post('/api/network-insights/analysis', json={'datasets': {}, 'campaigns': ['2030-Q1']}).status_code == 400
+    assert client.post('/api/network-insights/analysis', json={'datasets': {}, 'campaigns': ['30-Q1']}).status_code == 400
 
 
 def test_analysis_reports_bandwidths_per_environment_and_filters_environments(client, tmp_path, monkeypatch) -> None:
@@ -466,7 +466,7 @@ def test_analysis_reports_bandwidths_per_environment_and_filters_environments(cl
     assert [item['label'] for item in bandwidth['classes']][0] == '200+ MHz'
     download, every = bandwidth['scopes']['download'], bandwidth['scopes']['all']
     assert (download['tests'], every['tests']) == (8, 12)
-    assert set(download['ladders']['columns']) == {'EE · 2026-Q3', 'VF · 2026-Q3'}
+    assert set(download['ladders']['columns']) == {'EE · 26-Q3', 'VF · 26-Q3'}
     assert download['ladders']['environments'] == ['Cities', 'Towns', 'Roads and railways']
     assert bandwidth['column_label'] == 'Operator → Campaign'
     assert {row['band'] for row in every['bands']} == {'B3', 'n78', 'n1'}
@@ -727,14 +727,14 @@ def test_operator_histogram_campaign_bars_use_ordered_shades_and_exact_counts():
         'LTE_RSRP': [-95, -90, -105, -100, -100, -95, -75]})
     model = catalog_chart_payload(frame, entry)
     assert model['histogram_bars'] is True
-    assert [item['name'] for item in model['series']] == ['2026-Q1', '2026-Q2', '2026-Q3']
+    assert [item['name'] for item in model['series']] == ['26-Q1', '26-Q2', '26-Q3']
     assert all(item['samples'] == 2 and sum(item['counts']) == 2 for item in model['series'])
     assert all(sum(item['bin_ratios']) == 1 for item in model['series'])
     from PIL import ImageColor
     channels = [ImageColor.getrgb(item['colour']) for item in model['series']]
     assert all(channels[0][i] >= channels[1][i] >= channels[2][i] for i in range(3))
     contour = next(row for row in catalogue if row.chart_type == 'Histogram Line' and row.kpi == 'LTE_RSRP')
-    newest = next(item for item in catalog_chart_payload(frame, contour)['series'] if item['key'] == ['EE', '2026-Q3'])
+    newest = next(item for item in catalog_chart_payload(frame, contour)['series'] if item['key'] == ['EE', '26-Q3'])
     assert model['series'][-1]['colour'].lower() == newest['colour'].lower()
 
 
@@ -825,7 +825,7 @@ def test_grouped_cdf_curves_differ_by_line_style_and_lte_nr_stays_separate(clien
     series = grouped['charts']['rsrp_cdf']['series']
     assert len(series) == 4 and all(not item['dash'] for item in series)
     widths = {item['name']: item['width'] for item in series}
-    assert widths == {'EE · 2026-Q1': 1, 'EE · 2026-Q2': 4, 'VF · 2026-Q1': 1, 'VF · 2026-Q2': 4}
+    assert widths == {'EE · 26-Q1': 1, 'EE · 26-Q2': 4, 'VF · 26-Q1': 1, 'VF · 26-Q2': 4}
     assert len({item['colour'] for item in series}) == 2
     styles = {(item['colour'], str(item['dash'])) for item in client.post('/api/network-insights/analysis', json={
         'datasets': {'data': ids}, 'technology': 'lte', 'group': ['operator', 'city'],
@@ -1008,7 +1008,7 @@ def test_combined_inventory_preserves_sources_and_exports_filtered_pages(client,
     assert first['rows'][0][:7] == ['VF', 'VF_Ericsson', 'Ericsson', 'North', 'Cluster A', 'Leeds', 'LTE']
     second = client.post('/api/network-insights/inventory?page=1', json=selection).json()
     assert len(second['rows']) == 8
-    assert second['rows'][-1][:7] == ['3', '3_Nokia', 'Nokia', 'South', '', 'London', 'LTE']
+    assert second['rows'][-1][:7] == ['Three', 'Three_Nokia', 'Nokia', 'South', '', 'London', 'LTE']
     response = client.post('/api/network-insights/inventory/export', json=selection)
     exported = list(csv.reader(io.StringIO(response.text)))
     assert exported[0] == first['columns'] and len(exported) == 59
@@ -1127,9 +1127,9 @@ def test_full_inventory_tables_and_individual_exports_are_scoped_by_operator(cli
     response = client.post('/api/network-insights/inventory/tables', json=selection)
     assert response.status_code == 200
     tables = response.json()['inventories']
-    assert {table['operator'] for table in tables} == {'VF', '3'}
+    assert {table['operator'] for table in tables} == {'VF', 'Three'}
     assert {table['operator_label'] for table in tables} == {'Vodafone', 'Three'}
-    assert {table['operator']: table['total_rows'] for table in tables} == {'VF': 56, '3': 2}
+    assert {table['operator']: table['total_rows'] for table in tables} == {'VF': 56, 'Three': 2}
     for table in tables:
         assert all(row[0] == table['operator'] for row in table['rows'])
         response = client.post(f"/api/network-insights/inventory/export?operator={table['operator']}", json=selection)
@@ -1138,8 +1138,8 @@ def test_full_inventory_tables_and_individual_exports_are_scoped_by_operator(cli
         assert all(row[0] == table['operator'] for row in exported[1:])
     page = client.post('/api/network-insights/inventory?operator=VF&page=1', json=selection).json()
     assert page['total_rows'] == 56 and len(page['rows']) == 6 and page['page'] == 1
-    filtered = client.post('/api/network-insights/inventory/tables', json={**selection, 'operators': ['3']}).json()
-    assert [row['operator'] for row in filtered['inventories']] == ['3']
+    filtered = client.post('/api/network-insights/inventory/tables', json={**selection, 'operators': ['Three']}).json()
+    assert [row['operator'] for row in filtered['inventories']] == ['Three']
     # A table-specific export cannot widen the general Operator filter.
     response = client.post('/api/network-insights/inventory/export?operator=VF', json={**selection, 'operators': ['3']})
     assert len(list(csv.reader(io.StringIO(response.text)))) == 1
@@ -1185,7 +1185,7 @@ def test_full_inventory_uses_real_mapping_geography_headers_before_filtering(cli
     response = client.post('/api/network-insights/inventory/tables', json=selection)
     assert response.status_code == 200
     tables = response.json()['inventories']
-    assert {table['operator']: table['total_rows'] for table in tables} == {'VF': 1, '3': 1}
+    assert {table['operator']: table['total_rows'] for table in tables} == {'VF': 1, 'Three': 1}
     assert {row[4] for table in tables for row in table['rows']} == {'VF Cluster', 'Three Cluster'}
     assert all(row[3] == 'North' and row[5:7] == ['Leeds', 'LTE'] for table in tables for row in table['rows'])
     exported = list(csv.reader(io.StringIO(client.post('/api/network-insights/inventory/export', json=selection).text)))
@@ -1204,8 +1204,8 @@ def test_cluster_inventory_counts_deduplicate_uploads_and_do_not_require_cdrs(cl
         _add_ready_dataset(tmp_path, name, kind, pd.DataFrame(rows), None)
     response = client.get('/api/network-insights/cluster-inventories')
     assert response.status_code == 200
-    assert response.json()['rows'] == [{'operator': 'Three', 'sites': 1, 'cells': 1},
-                                       {'operator': 'Vodafone', 'sites': 2, 'cells': 3}]
+    assert response.json()['rows'] == [{'operator': 'Vodafone', 'sites': 2, 'cells': 3},
+                                       {'operator': 'Three', 'sites': 1, 'cells': 1}]
     html = client.get('/network-insights').text
     assert 'id="ni-sites-source"' in html
     assert html.index('id="ni-sites-pending"') < html.index('<strong>Cluster polygons.</strong>')
@@ -1224,7 +1224,7 @@ def test_combined_inventory_export_prepares_all_rows_before_delivery(client, tmp
     rows = list(csv.DictReader(io.StringIO(response.text)))
     assert len(rows) == 10108
     assert sum(row['Operator'] == 'VF' for row in rows) == 56
-    assert sum(row['Operator'] == '3' for row in rows) == 10052
+    assert sum(row['Operator'] == 'Three' for row in rows) == 10052
     assert {row['Source_Dataset_Name'] for row in rows} == {
         'vf-full.xlsx', 'three-full.csv', 'three-large.csv'}
 
@@ -1280,12 +1280,12 @@ def test_full_inventory_without_cdrs_includes_unobserved_cells_and_both_operator
     _combined_inventory_sources(tmp_path)
     selection = {'datasets': {}, 'technology': 'lte_nr', 'campaigns': ['No matching campaign']}
     tables = client.post('/api/network-insights/inventory/tables', json=selection).json()['inventories']
-    assert {table['operator']: table['total_rows'] for table in tables} == {'VF': 56, '3': 2}
+    assert {table['operator']: table['total_rows'] for table in tables} == {'VF': 56, 'Three': 2}
     exported = client.post('/api/network-insights/inventory/export', json=selection)
     rows = list(csv.DictReader(io.StringIO(exported.text)))
     assert len(rows) == 58
-    assert {row['Operator'] for row in rows} == {'VF', '3'}
-    assert any(row['Operator'] == '3' and row['Cid__ECI'] == '999' for row in rows)
+    assert {row['Operator'] for row in rows} == {'VF', 'Three'}
+    assert any(row['Operator'] == 'Three' and row['Cid__ECI'] == '999' for row in rows)
 
 
 def test_pending_inventory_names_follow_actual_filtered_operators_not_group_labels(client, tmp_path):
@@ -1309,7 +1309,7 @@ def test_site_tables_filter_columns_excel_style_and_export_with_operator_suffix(
     _login(client)
     selection = _combined_inventory_sources(tmp_path)
     tables = client.post('/api/network-insights/sites/tables', json={**selection, 'source': 'inventory'}).json()['tables']
-    assert {table['operator']: table['total_rows'] for table in tables} == {'VF': 56, '3': 2}
+    assert {table['operator']: table['total_rows'] for table in tables} == {'VF': 56, 'Three': 2}
     request = {**selection, 'source': 'inventory', 'operator': 'VF', 'column': 'Site_ID'}
     values = client.post('/api/network-insights/sites/values', json=request).json()['values']
     assert {row['value']: row['count'] for row in values} == {'VF1': 55, 'VF5G': 1}

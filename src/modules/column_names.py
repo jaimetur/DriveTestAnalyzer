@@ -311,8 +311,8 @@ def format_campaign(value: object, config: dict | None = None) -> str:
 def compact_campaign_value(value: object) -> str:
     """The campaign as every chart, table, legend, filter and report shows it (see Campaign Maps).
 
-    With the default map UK_Q2_2026 reads 2026-Q2, UK_Q2_NSA_2026 reads 2026-Q2-NSA and
-    UK_Q2_SA_2026 (or 2026-Q2_SA) reads 2026-Q2-SA; values without a year and quarter are
+    With the default map UK_Q2_2026 reads 26-Q2, UK_Q2_NSA_2026 reads 26-Q2-NSA and
+    UK_Q2_SA_2026 (or 2026-Q2_SA) reads 26-Q2-SA; values without a year and quarter are
     kept. Comparisons normalise both sides with it, so any spelling matches the same campaign.
     """
     return format_campaign(value)

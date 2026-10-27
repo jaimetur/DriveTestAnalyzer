@@ -811,12 +811,12 @@ def test_campaigns_read_year_quarter_and_mode_everywhere():
 
     raw = ['UK_Q2_SA_2026', 'UK_Q2_2026', 'UK_Q2_NSA_2026', 'UK_Q1_2026', '2026-Q2_SA', 'Special campaign']
     assert [campaign_label(value) for value in raw] == [
-        '2026-Q2-SA', '2026-Q2', '2026-Q2-NSA', '2026-Q1', '2026-Q2-SA', 'Special campaign']
+        '26-Q2-SA', '26-Q2', '26-Q2-NSA', '26-Q1', '26-Q2-SA', 'Special campaign']
     # In a quarter: the plain campaign, then NSA, then SA.
     assert [compact_campaign_value(value) for value in sorted(raw[:4], key=campaign_sort_key)] == [
-        '2026-Q1', '2026-Q2', '2026-Q2-NSA', '2026-Q2-SA']
+        '26-Q1', '26-Q2', '26-Q2-NSA', '26-Q2-SA']
     items = _items({'field': 'campaign', 'items': [{'value': 'UK_Q1_2026', 'count': 3}]}, {})
-    assert items == [('2026-Q1', 3, '#b0234f')]
+    assert items == [('26-Q1', 3, '#b0234f')]
 
 def test_indicator_cards_filter_by_follow_up_state(client, tmp_path):
     enable_module()
