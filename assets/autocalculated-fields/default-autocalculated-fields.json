@@ -91,5 +91,22 @@
         "value": "NR SA Mixed"
       }
     ]
+  },
+  {
+    "name": "7_Cities",
+    "sources": [
+      "cdr-data",
+      "cdr-voice",
+      "cdr-speech"
+    ],
+    "default": "No",
+    "default_from": "",
+    "expression": "",
+    "rules": [
+      {
+        "when": "[G Level 4] IN (Belfast, Bristol, Cardiff, Edinburgh, Leeds, London, Sheffield)",
+        "value": "Yes"
+      }
+    ]
   }
 ]

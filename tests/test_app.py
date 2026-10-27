@@ -2677,9 +2677,9 @@ def test_admin_import_export_packages_detect_configuration_and_workspaces(client
         exported_mappings = json.loads(archive.read('workspaces/Default/mappings-reference-data/mappings-reference-data.json'))
         assert exported_mappings['version'] == 1
         assert exported_mappings['spectrum_holdings'] == []
-        assert exported_mappings['campaign_map']['format'] == '{year}-Q{quarter}{-mode}'
-        assert exported_mappings['operator_mappings'][0]['canonical'] == 'EE'
-        assert exported_mappings['operator_mappings'][0]['color'] == '#76B7B2'
+        assert exported_mappings['campaign_map']['format'] == '{yy}-Q{quarter}{-mode}'
+        assert exported_mappings['operator_mappings'][0]['canonical'] == 'VF'
+        assert exported_mappings['operator_mappings'][0]['color'] == '#F34851'
         assert exported_mappings['vendor_mappings'][0]['canonical'] == 'Ericsson'
         assert exported_mappings['vendor_mappings'][0]['color'] == '#0255AD'
         # Map Areas travel with the Mappings & Reference Data, with their polygons.

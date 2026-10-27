@@ -1,5 +1,5 @@
 {
-  "name": "RF Quality (RSRP & SINR)",
+  "name": "NSA - RF Quality (RSRP & SINR)",
   "template": "RF Quality (RSRP & SINR)",
   "nr_mode": "NSA",
   "scope": "single",

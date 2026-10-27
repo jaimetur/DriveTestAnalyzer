@@ -135,7 +135,7 @@ def test_unassigned_values_show_a_card_until_they_are_assigned(client, tmp_path)
         {'value': 'Vodafone Lab SA', 'label': 'VF_SA'}, {'value': 'Vodafone Lab VoNR', 'label': 'VF_SA'}]}).json()
     # Both names are in the same NSA CDR, with both campaigns.
     assert preview['merges'] == [{'label': 'VF_SA', 'values': ['Vodafone Lab SA', 'Vodafone Lab VoNR'],
-                                  'campaigns': ['Xmas drive (NSA)', '2026-Q1 (NSA)']}]
+                                  'campaigns': ['Xmas drive (NSA)', '26-Q1 (NSA)']}]
     assert preview['underscores'] == ['VF_SA']
 
     response = client.post('/workspace-config/operator-mappings/assign', data={

@@ -10,7 +10,7 @@
 (() => {
   'use strict';
 
-  const DEFAULT_MAP = {format: '{year}-Q{quarter}{-mode}', mode_order: ['', 'NSA', 'SA'], modes_in_label: ['NSA', 'SA'], exceptions: []};
+  const DEFAULT_MAP = {format: '{yy}-Q{quarter}{-mode}', mode_order: ['', 'NSA', 'SA'], modes_in_label: ['NSA', 'SA'], exceptions: []};
   const MARKER = /\{([^A-Za-z{}]*)(year|yy|quarter|mode|market)([^A-Za-z{}]*)\}/g;
 
   const readMap = () => {

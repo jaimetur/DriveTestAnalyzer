@@ -117,7 +117,7 @@ def _default_campaign_map() -> dict:
     except (OSError, ValueError):
         shipped = {}
     shipped = shipped if isinstance(shipped, dict) else {}
-    return {'format': str(shipped.get('format') or '').strip() or '{year}-Q{quarter}{-mode}',
+    return {'format': str(shipped.get('format') or '').strip() or '{yy}-Q{quarter}{-mode}',
             'mode_order': list(shipped.get('mode_order') or DEFAULT_CAMPAIGN_MODE_ORDER),
             'modes_in_label': list(shipped.get('modes_in_label', DEFAULT_CAMPAIGN_LABEL_MODES)),
             'exceptions': list(shipped.get('exceptions') or [])}

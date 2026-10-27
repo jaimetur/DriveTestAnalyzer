@@ -1,0 +1,46 @@
+{
+  "name": "SCO (@Lastest 4 campaigns) · NSA · Nationwide",
+  "enabled": true,
+  "send_email": false,
+  "recipients": [],
+  "schedule": {
+    "mode": "manual",
+    "time": "08:00"
+  },
+  "position": 11,
+  "definition": {
+    "dataset_analysis": {
+      "enabled": false,
+      "formats": [
+        "powerpoint"
+      ],
+      "auto_cdrs": true,
+      "nr_mode": "NSA",
+      "campaigns": [],
+      "filters": {},
+      "metrics": {},
+      "aggregation": "all",
+      "cdf_grouping": "operator"
+    },
+    "network_insights": [],
+    "dashboards": [],
+    "scoring": [],
+    "modules": {
+      "bundle_report_template": {
+        "enabled": true,
+        "formats": [
+          "powerpoint",
+          "word"
+        ],
+        "options": {
+          "filters": {
+            "favourites": [
+              "SCO (@Lastest 4 campaigns) · NSA · Nationwide"
+            ]
+          }
+        }
+      }
+    },
+    "theme": "ericsson"
+  }
+}

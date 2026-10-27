@@ -18,7 +18,7 @@
   };
   const campaigns = readJson('campaign-map-campaigns', []);
   // The default map of the application (assets/labels-campaigns/default-campaign-map.json).
-  const DEFAULT_MAP = {format: '{year}-Q{quarter}{-mode}', mode_order: ['', 'NSA', 'SA'], modes_in_label: ['NSA', 'SA'], exceptions: [],
+  const DEFAULT_MAP = {format: '{yy}-Q{quarter}{-mode}', mode_order: ['', 'NSA', 'SA'], modes_in_label: ['NSA', 'SA'], exceptions: [],
     ...(readJson('campaign-map-default', {}) || {})};
   const saved = {...DEFAULT_MAP, ...(readJson('campaign-map', {}) || {})};
 

@@ -59,5 +59,10 @@
       "nan",
       "none"
     ]
+  },
+  {
+    "canonical": "Unknown",
+    "color": "#7A8791",
+    "aliases": []
   }
 ]

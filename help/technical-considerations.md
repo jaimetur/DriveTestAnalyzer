@@ -123,14 +123,14 @@ This design keeps the business rule visible in the template and makes comparison
 
 ## Campaign ordering
 
-Every chart, table, legend and PowerPoint or Word report shows a campaign as its year and quarter, followed by its radio mode when it has one: **2026-Q2**, **2026-Q2-NSA** or **2026-Q2-SA** (for example `UK_Q2_SA_2026`, `2026 Q2 SA` or `2026-Q2_SA` all read `2026-Q2-SA`). Values without a year and quarter are shown as they are. Filters keep the full campaign, and the Excel and CSV exports keep the original values.
+Every chart, table, legend and PowerPoint or Word report shows a campaign as its year (two digits) and quarter, followed by its radio mode when it has one: **26-Q2**, **26-Q2-NSA** or **26-Q2-SA** (for example `UK_Q2_SA_2026`, `2026 Q2 SA` or `2026-Q2_SA` all read `26-Q2-SA`). Values without a year and quarter are shown as they are. Filters keep the full campaign, and the Excel and CSV exports keep the original values.
 
 Campaigns are ordered chronologically from oldest to newest; inside a quarter, the campaign without a mode comes first, then NSA, then SA. Values without a year and quarter come first, by name. These are the defaults: the label format, the order inside a quarter and exceptions for campaigns that do not follow the pattern are set per workspace in [Campaign Maps](workspace-config.md#campaign-maps).
 
 Example:
 
 ```text
-2025-Q4 → 2026-Q1 → 2026-Q2 → 2026-Q2-NSA → 2026-Q2-SA
+25-Q4 → 26-Q1 → 26-Q2 → 26-Q2-NSA → 26-Q2-SA
 ```
 
 ## Template execution semantics

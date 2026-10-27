@@ -267,7 +267,7 @@ The viewer preserves the template's 16:9 layout and uses approximately 96% of th
 - Campaigns, Scope, Regions and Cities identify the applied selection.
 - Export snapshots show the selection captured by that PPT job.
 
-Campaign labels are compact, such as **2026-Q2**, **2026-Q2-NSA** or **2026-Q2-SA** (see [Campaign ordering](technical-considerations.md#campaign-ordering)). Older CDRs may populate cached campaign labels a few seconds after first opening.
+Campaign labels are compact, such as **26-Q2**, **26-Q2-NSA** or **26-Q2-SA** (see [Campaign ordering](technical-considerations.md#campaign-ordering)). Older CDRs may populate cached campaign labels a few seconds after first opening.
 
 ### Slides and navigation
 

@@ -2089,36 +2089,14 @@
     "name": "United Kingdom",
     "operators": [
       {
-        "canonical": "EE",
-        "color": "#76B7B2",
-        "aliases": [
-          "EE UK",
-          "EE_UK",
-          "EEUK",
-          "Everything Everywhere",
-          "Everything_Everywhere"
-        ]
-      },
-      {
-        "canonical": "3",
-        "color": "#000000",
-        "aliases": [
-          "3 UK",
-          "3_UK",
-          "3UK",
-          "Three",
-          "Three UK",
-          "Three_UK"
-        ]
-      },
-      {
         "canonical": "VF",
         "color": "#F34851",
         "aliases": [
           "Vodafone UK",
           "VF UK",
           "VFUK",
-          "Vodafone"
+          "Vodafone",
+          "Vodafone SM"
         ]
       },
       {
@@ -2141,6 +2119,34 @@
         "aliases": [
           "Vodafone VoNR",
           "VF_VoNR"
+        ]
+      },
+      {
+        "canonical": "VF SM",
+        "color": "#801A21",
+        "aliases": []
+      },
+      {
+        "canonical": "Three",
+        "color": "#000000",
+        "aliases": [
+          "3 UK",
+          "3_UK",
+          "3UK",
+          "Three UK",
+          "Three_UK",
+          "3"
+        ]
+      },
+      {
+        "canonical": "EE",
+        "color": "#76B7B2",
+        "aliases": [
+          "EE UK",
+          "EE_UK",
+          "EEUK",
+          "Everything Everywhere",
+          "Everything_Everywhere"
         ]
       },
       {

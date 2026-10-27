@@ -1,0 +1,83 @@
+{
+  "name": "PPT Weekly (@latest campaings)",
+  "enabled": false,
+  "send_email": false,
+  "recipients": [],
+  "schedule": {
+    "mode": "weekly",
+    "time": "08:00",
+    "weekdays": [
+      0
+    ]
+  },
+  "position": 17,
+  "definition": {
+    "dataset_analysis": {
+      "enabled": false,
+      "formats": [
+        "powerpoint"
+      ],
+      "auto_cdrs": true,
+      "nr_mode": "NSA",
+      "campaigns": [],
+      "filters": {},
+      "metrics": {},
+      "aggregation": "all",
+      "cdf_grouping": "operator"
+    },
+    "network_insights": [],
+    "dashboards": [
+      {
+        "dashboard": {
+          "name": "NSA - NetCheck CDR Report"
+        },
+        "label": "",
+        "scope": "single",
+        "vendor_comparison": "operator_vendor",
+        "auto_cdrs": true,
+        "date_from": "",
+        "date_to": "",
+        "filters": {
+          "Campaign": [
+            "@latest-campaign"
+          ]
+        }
+      },
+      {
+        "dashboard": {
+          "name": "SA - NetCheck CDR Report"
+        },
+        "label": "",
+        "scope": "single",
+        "vendor_comparison": "operator_vendor",
+        "auto_cdrs": true,
+        "date_from": "",
+        "date_to": "",
+        "filters": {
+          "Campaign": [
+            "@latest-campaign"
+          ]
+        }
+      },
+      {
+        "dashboard": {
+          "name": "NSA - RF Quality (RSRP & SINR)"
+        },
+        "label": "",
+        "scope": "single",
+        "vendor_comparison": "operator_vendor",
+        "auto_cdrs": true,
+        "date_from": "",
+        "date_to": "",
+        "filters": {
+          "Campaign": [
+            "@latest-campaign"
+          ]
+        }
+      }
+    ],
+    "scoring": [],
+    "modules": {},
+    "theme": "ericsson"
+  }
+}

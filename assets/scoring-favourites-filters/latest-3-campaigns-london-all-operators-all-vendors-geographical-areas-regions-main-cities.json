@@ -1,0 +1,32 @@
+{
+  "name": "Latest 3 Campaigns - London - All Operators - All Vendors - Geographical Areas: Regions & Main Cities",
+  "pinned": true,
+  "position": 23,
+  "nr_mode": "NSA",
+  "levels": [
+    "Operator",
+    "Campaign"
+  ],
+  "baseline_operator": "EE",
+  "context_filters": {
+    "Region": [],
+    "City": [
+      "London"
+    ],
+    "Operator": [],
+    "Vendor": [],
+    "Campaign": [
+      "@latest-3-campaigns"
+    ]
+  },
+  "scoring_profile_id": "by-campaign",
+  "area_summary": {
+    "breakdown": "Region",
+    "cities": [],
+    "time_split": "Campaign",
+    "main_cities": true,
+    "campaigns": [
+      "@all-campaigns"
+    ]
+  }
+}

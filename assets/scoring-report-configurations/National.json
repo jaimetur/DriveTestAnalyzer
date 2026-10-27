@@ -14,12 +14,20 @@
           "best_network": {
             "enabled": true,
             "environments": "all",
+            "summary": {
+              "standings": true,
+              "position": true,
+              "levers": true,
+              "act": true,
+              "owners": true,
+              "places": true,
+              "route": true,
+              "scope": true
+            },
             "charts": {
               "service": true,
               "category": true,
-              "breakdown": true,
-              "location_cards": true,
-              "trend": true
+              "breakdown": true
             },
             "tables": {
               "summary": true,
@@ -28,22 +36,48 @@
               "gap_values": false,
               "campaign_comparison": true
             },
+            "geographical_areas": {
+              "cards": true,
+              "ranking": true,
+              "versus": true
+            },
+            "trends": {
+              "trend": true,
+              "areas": true
+            },
             "gap": {
               "all_operators": true,
               "individual": true,
-              "profile": true,
-              "points_loss_map": true
+              "parts": true,
+              "profile": true
+            },
+            "points": {
+              "stake": true,
+              "kpis": true,
+              "map": true,
+              "vendors": true,
+              "site_types": true,
+              "sites": true,
+              "stretches": true
             }
           },
           "most_reliable": {
             "enabled": true,
             "environments": "all",
+            "summary": {
+              "standings": true,
+              "position": true,
+              "levers": true,
+              "act": true,
+              "owners": true,
+              "places": true,
+              "route": true,
+              "scope": true
+            },
             "charts": {
               "service": true,
               "category": true,
-              "breakdown": true,
-              "location_cards": true,
-              "trend": true
+              "breakdown": true
             },
             "tables": {
               "summary": true,
@@ -52,15 +86,47 @@
               "gap_values": false,
               "campaign_comparison": true
             },
+            "geographical_areas": {
+              "cards": true,
+              "ranking": true,
+              "versus": true
+            },
+            "trends": {
+              "trend": true,
+              "areas": true
+            },
             "gap": {
               "all_operators": true,
               "individual": true,
-              "profile": true,
-              "points_loss_map": true
+              "parts": true,
+              "profile": true
+            },
+            "points": {
+              "stake": true,
+              "kpis": true,
+              "map": true,
+              "vendors": true,
+              "site_types": true,
+              "sites": true,
+              "stretches": true
             }
           }
+        },
+        "area_summary": {
+          "enabled": true,
+          "time_split": "Campaign",
+          "breakdown": "Region",
+          "cities": [
+            "London"
+          ],
+          "main_cities": false,
+          "campaigns": [
+            "@all-campaigns"
+          ]
         }
       }
-    ]
+    ],
+    "theme": "netcheck",
+    "all_operators": false
   }
 }

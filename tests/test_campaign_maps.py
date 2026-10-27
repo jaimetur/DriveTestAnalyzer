@@ -20,9 +20,9 @@ def _labels(config):
 
 def test_default_map_reads_year_quarter_and_mode_in_order():
     config = normalize_campaign_map(DEFAULT_CAMPAIGN_MAP)
-    assert _labels(config) == ['Special', 'Xmas drive', '2025-Q4', '2026-Q1', '2026-Q2', '2026-Q2-NSA', '2026-Q2-SA']
+    assert _labels(config) == ['Special', 'Xmas drive', '25-Q4', '26-Q1', '26-Q2', '26-Q2-NSA', '26-Q2-SA']
     # Any spelling of a campaign reads the same, so comparisons and filters keep matching.
-    assert {compact_campaign_value(value) for value in ('UK_Q2_SA_2026', '2026-Q2_SA', '2026 Q2 SA', 'Q2_2026_SA')} == {'2026-Q2-SA'}
+    assert {compact_campaign_value(value) for value in ('UK_Q2_SA_2026', '2026-Q2_SA', '2026 Q2 SA', 'Q2_2026_SA')} == {'26-Q2-SA'}
 
 
 def test_custom_format_mode_order_and_exceptions_cover_new_campaigns():
@@ -38,7 +38,7 @@ def test_custom_format_mode_order_and_exceptions_cover_new_campaigns():
     assert format_campaign('2025-Q4 Xmas', config) == '2025-Q4 Xmas'
     with use_campaign_map(config):
         assert compact_campaign_value('UK_Q3_2026') == 'Q3_2026 (UK)'
-    assert compact_campaign_value('UK_Q3_2026') == '2026-Q3'
+    assert compact_campaign_value('UK_Q3_2026') == '26-Q3'
 
 
 def test_exception_labels_written_with_the_format_are_ordered_in_their_quarter():
@@ -98,7 +98,7 @@ def test_workspace_config_edits_previews_and_saves_the_map(client, tmp_path):
     core._restore_workspace_mappings_reference_data(core.active_workspace, json.dumps(document).encode())
     assert load_campaign_map(core.repository)['exceptions'][0]['sources'] == ['UK_Q1_2026']
     client.put('/api/workspace-config/campaign-map', json={'campaign_map': None})
-    assert compact_campaign_value('UK_Q2_SA_2026') == '2026-Q2-SA'
+    assert compact_campaign_value('UK_Q2_SA_2026') == '26-Q2-SA'
 
 
 def test_modes_shown_in_the_label_drop_the_hidden_mode_without_exceptions(client, tmp_path):
@@ -107,7 +107,7 @@ def test_modes_shown_in_the_label_drop_the_hidden_mode_without_exceptions(client
     assert normalize_campaign_map(DEFAULT_CAMPAIGN_MAP)['modes_in_label'] == ['NSA', 'SA']
     # NSA campaigns read like the campaigns without a mode of their quarter; SA keeps its mode.
     assert [format_campaign(value, config) for value in ('UK_Q2_NSA_2026', 'UK_Q2_2026', 'UK_Q2_SA_2026')] == [
-        '2026-Q2', '2026-Q2', '2026-Q2-SA']
+        '26-Q2', '26-Q2', '26-Q2-SA']
     assert campaign_sort_key('UK_Q2_NSA_2026', config) < campaign_sort_key('UK_Q2_SA_2026', config)
 
     voice = voice_rows()
@@ -116,9 +116,9 @@ def test_modes_shown_in_the_label_drop_the_hidden_mode_without_exceptions(client
     login(client)
     saved = client.put('/api/workspace-config/campaign-map', json={'campaign_map': {**DEFAULT_CAMPAIGN_MAP, 'modes_in_label': ['SA']}})
     assert saved.status_code == 200, saved.text
-    assert compact_campaign_value('UK_Q2_NSA_2026') == '2026-Q2' and compact_campaign_value('UK_Q2_SA_2026') == '2026-Q2-SA'
+    assert compact_campaign_value('UK_Q2_NSA_2026') == '26-Q2' and compact_campaign_value('UK_Q2_SA_2026') == '26-Q2-SA'
     # It travels with the Mappings & Reference Data.
     document = json.loads(core._mappings_reference_data_archive_payload(core.active_workspace))
     assert document['campaign_map']['modes_in_label'] == ['SA']
     client.put('/api/workspace-config/campaign-map', json={'campaign_map': None})
-    assert compact_campaign_value('UK_Q2_NSA_2026') == '2026-Q2-NSA'
+    assert compact_campaign_value('UK_Q2_NSA_2026') == '26-Q2-NSA'

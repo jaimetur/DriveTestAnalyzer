@@ -1,0 +1,16 @@
+{
+  "name": "SA - Tableau Dashboards",
+  "template": "Tableau Dashboards",
+  "nr_mode": "SA",
+  "scope": "single",
+  "vendor_comparison": "operator_vendor",
+  "custom_fields": [],
+  "hidden_filters": [],
+  "auto_cdrs": true,
+  "filters": {
+    "Campaign": [
+      "@latest-2-campaigns"
+    ]
+  },
+  "slide_comments": {}
+}

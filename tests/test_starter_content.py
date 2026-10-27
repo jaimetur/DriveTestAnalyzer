@@ -21,7 +21,8 @@ def test_the_shipped_content_names_no_operator_or_vendor():
     # One library: each template serves any NR Mode.
     templates = sorted((ASSETS / 'ppt-templates').glob('*.csv'))
     assert not list((ASSETS / 'ppt-templates').glob('*/*.csv'))
-    assert {path.stem for path in templates} >= {'NetCheck CDR Report', 'NetCheck CDR Report (Main Cities)', 'RF Quality (RSRP & SINR)'}
+    assert {path.stem for path in templates} == {'NetCheck CDR Report', 'NetCheck CDR Report (Main Cities)', 'RF Quality (RSRP & SINR)',
+                                                 'Tableau Dashboards', 'Tableau Charts', 'Tableau Charts - Only Maps'}
     for path in templates:
         rows = list(csv.DictReader(io.StringIO(path.read_text(encoding='utf-8'))))
         # No template filters an Operator, nor Vendors by their operator (3_Ericsson); the Tableau templates of the UK
@@ -31,10 +32,10 @@ def test_the_shipped_content_names_no_operator_or_vendor():
         assert 'G_Level_4 NOT IN (London)' not in path.read_text(encoding='utf-8'), path.name
         assert path.stem.startswith('Tableau') or not any(VENDOR_FILTER.search(row.get('Filters') or '') for row in rows), path.name
     dashboards = [json.loads(path.read_text(encoding='utf-8')) for path in (ASSETS / 'ppt-dashboards').glob('*.json')]
-    assert {(item['name'], item['nr_mode']) for item in dashboards} >= {
-        ('NSA - NetCheck CDR Report', 'NSA'), ('SA - NetCheck CDR Report', 'SA'), ('RF Quality (RSRP & SINR)', 'NSA'),
-        ('NSA - NetCheck CDR Report (Main Cities)', 'NSA'), ('SA - NetCheck CDR Report (Main Cities)', 'SA'),
-        ('Tableau Dashboards', 'NSA'), ('Tableau Charts', 'NSA')}
+    # The Dashboards of the UK workspace, one per NR Mode.
+    assert {(item['name'], item['template'], item['nr_mode']) for item in dashboards} == {
+        (f'{nr_mode} - {template}', template, nr_mode) for nr_mode in ('NSA', 'SA') for template in (
+            'NetCheck CDR Report', 'NetCheck CDR Report (Main Cities)', 'RF Quality (RSRP & SINR)', 'Tableau Dashboards', 'Tableau Charts')}
     assert not any({'technology', 'template_technology'} & set(item) for item in dashboards)
     # The (Main Cities) Dashboards use the Main Cities of each workspace.
     assert all(item['filters']['City'] == ['@main-cities'] for item in dashboards if item['name'].endswith('(Main Cities)'))
@@ -60,7 +61,8 @@ def test_a_new_workspace_starts_with_the_shipped_content_once(client):
     names = sorted((item['name'], item['template'], item['nr_mode']) for item in dashboards.values())
     assert ('NSA - NetCheck CDR Report', 'NetCheck CDR Report', 'NSA') in names
     assert ('SA - NetCheck CDR Report', 'NetCheck CDR Report', 'SA') in names
-    assert ('RF Quality (RSRP & SINR)', 'RF Quality (RSRP & SINR)', 'NSA') in names
+    assert ('NSA - RF Quality (RSRP & SINR)', 'RF Quality (RSRP & SINR)', 'NSA') in names
+    assert ('SA - Tableau Charts', 'Tableau Charts', 'SA') in names
     # It is added once: content deleted or renamed later is not added again.
     assert starter_content.seed_starter_content(repository) is None
     # A workspace that already has content with those names keeps it.
@@ -81,46 +83,48 @@ def test_a_workspace_already_set_up_gets_the_auto_calculated_fields_the_template
     assert [item['name'] for item in repository.list_calculated_dimensions()] == [item['name'] for item in shipped]
 
 
-def test_the_other_starter_content_fits_any_market(client):
+def test_the_other_starter_content_is_that_of_the_uk_workspace(client):
     import src.DriveTestAnalyzer as app_module
     from src.modules import report_tasks
     from src.modules.scoring_reports import load_report_state
 
     repository = app_module.repository
-    # Scoring report configurations without filters of a market (the GAP compares the Focus operators of the Operator Maps).
+    # The Scoring report configurations of the UK workspace: only its London scenarios filter a City (the GAP compares
+    # the Focus operators of the Operator Maps).
     saved = {item['name']: item['configuration'] for item in load_report_state(repository)['configurations']}
-    assert {'National', 'National & Main Cities', 'National per Vendor'} <= set(saved)
+    assert {'National', 'National & London', 'National & Main Cities', 'National per Vendor',
+            'National, London & Main Cities (All Environments only)'} <= set(saved)
     for configuration in saved.values():
         for scenario in configuration['scenarios']:
-            assert scenario['context_filters'] == {}
+            assert scenario['context_filters'] in ({}, {'City': ['London']})
             assert all('operators' not in options['gap'] for options in scenario['scorings'].values())
     # Query Builder queries on the views of the chosen CDRs.
     queries = {row['name']: row for row in repository.list_query_builder_queries()}
-    assert len(queries) >= 6 and all(json.loads(row['dataset_ids_json']) == [] for row in queries.values())
+    assert len(queries) >= 7 and all(json.loads(row['dataset_ids_json']) == [] for row in queries.values())
     assert all(re.search(r'\bselected_(data|voice|speech)\b', row['query_sql']) for row in queries.values())
-    # The Reporting Jobs of the UK workspace, with the starter Dashboards and their own Scoring reports.
+    # The Reporting Jobs of the UK workspace, in its order, with the starter Dashboards and their own Scoring reports.
+    shipped = sorted((json.loads(path.read_text(encoding='utf-8')) for path in (ASSETS / 'reporting-jobs').glob('*.json')),
+                     key=lambda item: item['position'])
+    assert [task['name'] for task in report_tasks.list_tasks(repository)] == [item['name'] for item in shipped]
+    assert all(not item['send_email'] and item['recipients'] == [] for item in shipped)
     jobs = {task['name']: task for task in report_tasks.list_tasks(repository)}
-    assert {'Weekly NetCheck Report (@latest campaign)', 'All Modules Report (@latest 2 campaigns)',
-            'Scoring Report (@All Campaigns)'} <= set(jobs)
     dashboards = json.loads(repository.get_workspace_state(starter_content.DASHBOARDS_STATE_KEY))
-    weekly = jobs['Weekly NetCheck Report (@latest campaign)']
+    weekly = jobs['PPT Weekly (@latest campaings)']
     # The weekly job is disabled until it is enabled in the workspace.
     assert weekly['enabled'] is False and weekly['schedule']['mode'] == 'weekly'
     assert sorted(dashboards[entry['dashboard_id']]['name'] for entry in weekly['definition']['dashboards']) == [
-        'NSA - NetCheck CDR Report', 'RF Quality (RSRP & SINR)', 'SA - NetCheck CDR Report']
+        'NSA - NetCheck CDR Report', 'NSA - RF Quality (RSRP & SINR)', 'SA - NetCheck CDR Report']
     # Every operator (the Operator Maps leave out the excluded ones).
     assert all(entry['filters'] == {'Campaign': ['@latest-campaign']} for entry in weekly['definition']['dashboards'])
-    assert [scenario['name'] for scenario in weekly['definition']['scoring'][0]['report']['scenarios']] == ['National', 'Main Cities']
-    every = jobs['All Modules Report (@latest 2 campaigns)']['definition']
+    every = jobs['SCO+NI+NQ+PPT+CDR (@latest 2 campaigns)']['definition']
     assert sorted((dashboards[entry['dashboard_id']]['name'], dashboards[entry['dashboard_id']]['nr_mode'])
                   for entry in every['dashboards']) == [
         ('NSA - NetCheck CDR Report', 'NSA'), ('NSA - NetCheck CDR Report (Main Cities)', 'NSA'),
-        ('RF Quality (RSRP & SINR)', 'NSA'), ('SA - NetCheck CDR Report', 'SA'), ('SA - NetCheck CDR Report (Main Cities)', 'SA')]
+        ('NSA - RF Quality (RSRP & SINR)', 'NSA'), ('SA - NetCheck CDR Report', 'SA'), ('SA - NetCheck CDR Report (Main Cities)', 'SA')]
     assert [entry['selection']['nr_mode'] for entry in every['network_insights']] == ['NSA', 'SA']
     assert every['dataset_analysis']['enabled'] and every['dataset_analysis']['auto_cdrs']
-    assert every['modules']['non_qualified_calls']['enabled']
     assert [scenario['name'] for scenario in every['scoring'][0]['report']['scenarios']] == ['National', 'London', 'Main Cities']
-    scoring = jobs['Scoring Report (@All Campaigns)']['definition']['scoring']
+    scoring = jobs['SCO (@All Campaigns)']['definition']['scoring']
     assert [(entry['nr_mode'], entry['campaigns']) for entry in scoring] == [('NSA', ['@all-campaigns']), ('SA', ['@all-campaigns'])]
 
 
@@ -248,7 +252,8 @@ def test_a_new_workspace_starts_with_the_favourites_of_the_uk_workspace(client):
     favourites = {item['name']: item['definition'] for item in bundle_report_templates.list_favourites(repository)}
     assert {item['name'] for item in shipped('bundle-report-template-favourites')} <= set(favourites)
     dashboards = json.loads(repository.get_workspace_state(starter_content.DASHBOARDS_STATE_KEY))
-    for name, nr_mode in (('Complete Report (@Latest 2 campaigns) · NSA', 'NSA'), ('Complete Report (@Latest 2 campaigns) · SA', 'SA')):
+    for name, nr_mode in (('SCO+NI+NQ+PPT+CDR (@Latest 2 campaigns) · NSA · Nationwide', 'NSA'),
+                          ('SCO+NI+NQ+PPT+CDR (@Latest 2 campaigns) · SA · Nationwide', 'SA')):
         items = next(section for section in favourites[name]['sections'] if section['key'] == 'dashboards')['items']
         checked = [dashboards[item['key']] for item in items if item['enabled']]
         assert checked and all(dashboard['nr_mode'] == nr_mode for dashboard in checked)
@@ -261,3 +266,23 @@ def test_a_new_workspace_starts_with_the_favourites_of_the_uk_workspace(client):
     assert filters[0]['missing_cdrs'] == ['Latest campaign CDRs']
     for item in shipped('scoring-favourites-filters'):
         assert 'cdrs' not in item and item['context_filters']['Campaign'][0].startswith('@')
+
+
+def test_the_starter_jobs_generate_the_starter_favourites_they_name(client):
+    import src.DriveTestAnalyzer as app_module
+    from src.modules import bundle_report_templates, report_tasks
+
+    repository = app_module.repository
+    for task in report_tasks.list_tasks(repository):
+        report_tasks.delete_task(repository, task['id'])
+    _seed_favourites(repository)
+    shipped = [json.loads(path.read_text(encoding='utf-8')) for path in (ASSETS / 'reporting-jobs').glob('*.json')]
+    assert starter_content._seed_reporting_jobs(repository, 'system') == len(shipped)
+    # Each job of a favourite Bundle Report Template generates the one of this workspace with the name of the asset.
+    favourites = {str(item['id']): item['name'] for item in bundle_report_templates.list_favourites(repository)}
+    generated = {}
+    for task in report_tasks.list_tasks(repository):
+        report = task['definition']['modules'].get('bundle_report_template') or {}
+        if report.get('enabled'):
+            generated[task['name']] = [favourites.get(value) for value in report['options']['filters']['favourites']]
+    assert len(generated) == 14 and all(names == [name] for name, names in generated.items())

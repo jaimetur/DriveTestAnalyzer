@@ -1,5 +1,5 @@
 Slide,Slide Tittle,Slide Subtittle,Layout,Dynamic Rows Field,Dynamic Columns Field,Chart Tittle,Source Dataset,KPI,Chart type,Filters,Rows Split,Columns Split,Legend,Legend Position,Legend Format,Label Position,Label Format,Axis X Range,Axis Y Range,Exclude Null/Empty,Exclude Zero
-1,RF Quality Analysis,RSRP & SINR · Coverage and interference,Title Page,,,,,,Title Slide,,,,,Top,,,,,,,
+1,{NR Mode} RF Quality Analysis,RSRP & SINR · Coverage and interference,Title Page,,,,,,Title Slide,,,,,Top,,,,,,,
 2,Coverage (RSRP),,Title Only,,,,,,Transition Slide,,,,,Top,,,,,,,
 3,RSRP distribution,Data+Voice+Speech,Title + 2 rows + 2 columns + comments right,,,LTE RSRP (dBm) – Data+Voice+Speech,CDR-All,LTE_RSRP,CDF Line,"LTE_RSRP >= -160;
 LTE_RSRP <= -20",Operator,Campaign,Operator,Right,,,,"[-130,-50]",,Yes,
@@ -306,4 +306,4 @@ Playing_SINR_Avg <= 50",Value Bucket,,Value Bucket,Right,,,,,,Yes,
 45,SINR quality maps,Speech,Title + 1 rows + 2 columns + comments down,,,NR SINR quality – Speech,CDR-Speech,Playing_Latitude vs Playing_Longitude vs Playing_SINR_NR_Avg,Map,"Buckets = 0,5,13,20;
 Playing_SINR_NR_Avg >= -30;
 Playing_SINR_NR_Avg <= 50",Value Bucket,,Value Bucket,Right,,,,,,Yes,
-46,.,,Black logo end slide,,,,,,Transition Slide,,,,,Top,,,,,,,
+46,,,Black logo end slide,,,,,,End Slide,,,,,Top,,,,,,,
