@@ -30,6 +30,7 @@ from typing import Callable, Iterable, Mapping
 import numpy as np
 import pandas as pd
 from src.modules.mapping_order import operator_vendor_order_key, swap_operator_vendor, vendor_operator_order_key, vendor_order_key
+from src.modules.nr_mode import campaign_nr_mode
 from src.modules.report_layouts import DYNAMIC_LAYOUTS, canonical_layout_name, grid_layout_name, dynamic_layout_axes
 from src.modules.column_names import (
     MAIN_CDR_FIELDS, OPERATOR_VENDOR_FIELD, VENDOR_FIELD, VENDOR_FILTER_IDENTITIES, VENDOR_OPERATOR_FIELD, campaign_sort_key,
@@ -2613,7 +2614,9 @@ def _cdf_campaign_line_widths(
                 positions.append(index)
         return positions
 
+    # The campaigns of each NR Mode are ranked apart: the latest NSA and the latest SA campaigns are both thick.
     operator_positions = dimension_positions("Operator")
+    operator_positions += [index for index in dimension_positions("NR Mode") if operator_positions]
     campaign_positions = dimension_positions("Campaign")
     normalized_rows: list[tuple[tuple[str, ...], set[str], tuple[str, ...]]] = []
     campaigns_by_family: dict[tuple[str, ...], set[str]] = {}
@@ -2634,6 +2637,17 @@ def _cdf_campaign_line_widths(
         normalized_rows.append((normalized_key, normalized_campaigns, family))
         campaigns_by_family.setdefault(family, set()).update(normalized_campaigns)
 
+    # Campaigns that name NSA and SA side by side (2026-Q3 and 2026-Q3-SA) are ranked apart too.
+    every_campaign = {campaign for campaigns in campaigns_by_family.values() for campaign in campaigns}
+    mixed_modes = bool(frame.attrs.get(BOTH_NR_MODES_ATTR)) and len({campaign_nr_mode(campaign) for campaign in every_campaign}) > 1
+
+    def campaign_mode(campaign: str) -> str:
+        return campaign_nr_mode(campaign) if mixed_modes else ''
+
+    campaigns_by_family = {
+        (*family, mode): {campaign for campaign in campaigns if campaign_mode(campaign) == mode}
+        for family, campaigns in campaigns_by_family.items() for mode in {campaign_mode(campaign) for campaign in campaigns}
+    }
     widths_by_family: dict[tuple[str, ...], dict[str, int]] = {}
     for family, campaigns in campaigns_by_family.items():
         ordered = sorted(campaigns, key=_campaign_sort_key)
@@ -2649,8 +2663,8 @@ def _cdf_campaign_line_widths(
 
     widths: dict[tuple[str, ...], int] = {}
     for key, campaigns, family in normalized_rows:
-        family_widths = widths_by_family.get(family, {})
-        widths[key] = max((family_widths.get(campaign, 1) for campaign in campaigns), default=4)
+        widths[key] = max((widths_by_family.get((*family, campaign_mode(campaign)), {}).get(campaign, 1)
+                           for campaign in campaigns), default=4)
     return widths
 
 
@@ -3820,7 +3834,71 @@ def _multivendor_vendor_sort_key(value: object, frame: pd.DataFrame | None = Non
     return 1, vendor.casefold(), text.casefold()
 
 
+def _nr_mode_levels(frame: pd.DataFrame, axis_columns: list[str]) -> list[int]:
+    """The levels of a series key that hold the NR Mode of its CDRs (the NR Mode field in a split)."""
+    labels = frame.attrs.get("catalogue_dimension_labels", {})
+    levels: list[int] = []
+    for index, column in enumerate(axis_columns):
+        declared = labels.get(column, column)
+        names = declared if isinstance(declared, (tuple, list)) else (declared,)
+        if any(_normalise_catalog_name(str(name)) == "nrmode" for name in names):
+            levels.append(index)
+    return levels
+
+
+def _sa_series(key: tuple[object, ...], levels: list[int]) -> bool:
+    return any(index < len(key) and str(key[index]).strip().upper() == "SA" for index in levels)
+
+
+def _sa_series_keys(keys: list[tuple[object, ...]], axis_columns: list[str], frame: pd.DataFrame) -> set[tuple[object, ...]] | None:
+    """The SA series of a chart that shows both NR Modes beside another field: by its NR Mode level or, without one,
+    in a Dashboard of NSA & SA, by its campaigns when some name SA and others do not (2026-Q3 and 2026-Q3-SA). None when
+    it tells no NR Mode apart."""
+    levels = _nr_mode_levels(frame, axis_columns)
+    if levels:
+        return {key for key in keys if _sa_series(key, levels)} if len(levels) < len(axis_columns) else None
+    if not frame.attrs.get(BOTH_NR_MODES_ATTR):
+        return None
+    labels = frame.attrs.get("catalogue_dimension_labels", {})
+    campaign_levels = [
+        index for index, column in enumerate(axis_columns)
+        if any(_normalise_catalog_name(str(name)) == "campaign" for name in (
+            labels.get(column, column) if isinstance(labels.get(column, column), (tuple, list)) else (labels.get(column, column),)))
+    ]
+    if not campaign_levels or len(campaign_levels) >= len(axis_columns):
+        return None
+    modes = {key: {campaign_nr_mode(key[index]) for index in campaign_levels if index < len(key)} for key in keys}
+    if {mode for values in modes.values() for mode in values} != {"NSA", "SA"}:
+        return None
+    return {key for key, values in modes.items() if "SA" in values}
+
+
+def _sa_tint(colour: str) -> str:
+    """The lighter tint of an operator's colour that its SA series use."""
+    try:
+        channels = [int(colour[index:index + 2], 16) for index in (1, 3, 5)]
+    except (TypeError, ValueError):
+        return colour
+    return '#' + ''.join(f'{round(channel + (255 - channel) * SA_SERIES_TINT):02X}' for channel in channels)
+
+
 def _series_colours(
+    keys: list[tuple[object, ...]],
+    axis_columns: list[str],
+    frame: pd.DataFrame,
+    *,
+    line_chart: bool = False,
+) -> dict[tuple[object, ...], str]:
+    """The colour of each series: its SA series (the NR Mode in a split, beside another field) take a lighter tint of
+    the colour the same series has in NSA, so each operator keeps its colour in both NR Modes."""
+    colours = _series_base_colours(keys, axis_columns, frame, line_chart=line_chart)
+    sa_keys = _sa_series_keys(keys, axis_columns, frame)
+    if not sa_keys:
+        return colours
+    return {key: _sa_tint(colour) if key in sa_keys else colour for key, colour in colours.items()}
+
+
+def _series_base_colours(
     keys: list[tuple[object, ...]],
     axis_columns: list[str],
     frame: pd.DataFrame,
@@ -3942,6 +4020,12 @@ def _series_colours(
     # Keep a non-semantic category stable across subordinate dimensions such
     # as Campaign. Legends contain each primary category once, whereas bars or
     # lines may contain several hierarchy combinations for that category.
+    mode_levels = _nr_mode_levels(frame, axis_columns)
+    if mode_levels and len(mode_levels) < len(axis_columns):
+        # The NR Mode is told apart by the tint (see _series_colours): the same series keeps its colour in both.
+        plain = [tuple(value for index, value in enumerate(key) if index not in mode_levels) for key in keys]
+        primary_colours = _hierarchy_group_colours(list(dict.fromkeys(plain)), frame=frame)
+        return {key: primary_colours[str(base[0]) if base else ""] for key, base in zip(keys, plain, strict=True)}
     primary_colours = _hierarchy_group_colours(keys, frame=frame)
     return {key: primary_colours[str(key[0]) if key else ""] for key in keys}
 
@@ -3949,9 +4033,25 @@ def _series_colours(
 CDF_COMPARISON_LINE_DASHES: tuple[tuple[int, ...], ...] = (
     (), (18, 8), (2, 10), (18, 6, 3, 6), (10, 7), (22, 6, 2, 6, 2, 6),
 )
+# The SA series beside the NSA ones of the same operator: a lighter tint of its colour, and a dashed line.
+SA_SERIES_TINT = 0.45
+# Set on the frames of a Dashboard of NSA & SA: its campaigns that name SA are SA series too.
+BOTH_NR_MODES_ATTR = 'catalogue_both_nr_modes'
+SA_LINE_DASH: tuple[int, ...] = (12, 6)
 
 
 def _series_line_dashes(
+    keys: list[tuple[object, ...]], axis_columns: list[str], frame: pd.DataFrame,
+) -> dict[tuple[object, ...], tuple[int, ...]]:
+    """The dash of each line: the SA lines (the NR Mode in a split) are dashed where no dash tells operators apart."""
+    dashes = _operator_line_dashes(keys, axis_columns, frame)
+    sa_keys = _sa_series_keys(keys, axis_columns, frame)
+    if not sa_keys:
+        return dashes
+    return {key: SA_LINE_DASH if not dash and key in sa_keys else dash for key, dash in dashes.items()}
+
+
+def _operator_line_dashes(
     keys: list[tuple[object, ...]], axis_columns: list[str], frame: pd.DataFrame,
 ) -> dict[tuple[object, ...], tuple[int, ...]]:
     """Distinguish Operators within each Vendor, starting with a solid line."""

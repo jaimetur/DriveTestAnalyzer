@@ -15,6 +15,9 @@ SCORING_NR_MODES = (*NR_MODES, NSA_VS_SA)
 NR_MODE_LABELS = {'NSA': 'NSA', 'SA': 'SA', NSA_VS_SA: 'NSA vs SA'}
 # The loaded CDR rows of an NSA vs SA calculation keep the NR Mode of their CDR in this column.
 NR_MODE_COLUMN = '__nr_mode'
+# The field of the combined CDR rows with the NR Mode of their CDR (NSA or SA), for the filters, splits and legends of
+# the Report Templates and Dashboards.
+NR_MODE_FIELD = 'NR_Mode'
 # The GAP reference of NSA vs SA that compares each operator in SA with itself in NSA (in the NSA campaign of the same
 # quarter or period): the GAP is SA minus NSA.
 SAME_OPERATOR_NSA = '@same-operator-nsa'

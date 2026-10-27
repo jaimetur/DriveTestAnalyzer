@@ -38,8 +38,11 @@ from src.modules.cdr_auto_selection import (
     latest_campaigns, resolve_campaign_filter, resolve_cdrs, sort_campaigns,
 )
 from src.modules.cdr_facets import FILTER_FIELDS as CASCADING_FILTER_FIELDS, cascading_options
-from src.modules.nr_mode import DEFAULT_NR_MODE, NR_MODES, dataset_nr_mode, normalize_nr_mode
-from src.modules.report_template_modes import migrate_dashboard_definition, render_nr_mode_tokens
+from src.modules.nr_mode import NR_MODE_FIELD, NR_MODES, NSA_VS_SA, dataset_nr_mode, nr_modes_of
+from src.modules.report_template_modes import (
+    DASHBOARD_NR_MODE_LABELS, chart_filter_nr_modes, dashboard_nr_mode_value, entry_for_nr_mode, migrate_dashboard_definition,
+    missing_nr_mode_fields, missing_nr_mode_note,
+)
 from src.modules.output_layout import DASHBOARDS_FOLDER, module_output_dir
 from fastapi import BackgroundTasks, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
@@ -52,7 +55,7 @@ from pptx.util import Inches, Pt
 from starlette.background import BackgroundTask
 
 from src.modules.cdr_reporting import (
-    _catalog_spec, _clear_commentary, _clear_end_slide, _layout_chart_frames, _legend_dimensions, _named_slide_layout,
+    BOTH_NR_MODES_ATTR, _catalog_spec, _clear_commentary, _clear_end_slide, _layout_chart_frames, _legend_dimensions, _named_slide_layout,
     _remove_all_slides, _remove_template_chart_placeholders, _render_dashboard_payload,
     _set_commentary, _set_slide_header, _set_structural_slide_text, catalog_chart_payload,
     catalog_kpi_fields, expand_dynamic_layouts, entry_dynamic_fields, dynamic_chart_title, _normalise_operator_label, _normalise_vendor, prepare_multivendor_catalog_entry,
@@ -144,8 +147,12 @@ def dashboard_viewer_tokens(theme_name: str) -> dict[str, str]:
 class DashboardDefinition(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     template: str = Field(min_length=1)
-    # The NR Mode of the CDRs the Dashboard reads, part of its selection: its template serves any NR Mode.
-    nr_mode: Literal['NSA', 'SA'] = 'NSA'
+    # The NR Mode of the CDRs the Dashboard reads, part of its selection: its template serves any NR Mode. NSA+SA
+    # (NSA & SA) reads the CDRs of both, whose rows keep the NR Mode of their CDR.
+    nr_mode: Literal['NSA', 'SA', 'NSA+SA'] = 'NSA'
+    # With NSA & SA, the Campaign filter of the SA CDRs (the Campaign filter chooses the NSA ones); empty, the
+    # Campaign filter chooses both. Each has its Latest presets, resolved in its own NR Mode.
+    sa_campaigns: list[str] = Field(default_factory=list)
     scope: Literal['single', 'multivendor'] = 'single'
     vendor_comparison: Literal['operator_vendor', 'vendor_only'] = 'operator_vendor'
     datasets: dict[str, list[int]] = Field(default_factory=dict)
@@ -169,7 +176,7 @@ class DashboardDefinition(BaseModel):
         if isinstance(value, dict):
             value = migrate_dashboard_definition(value)
             if isinstance(value, dict) and value.get('nr_mode') is not None:
-                value = {**value, 'nr_mode': normalize_nr_mode(value['nr_mode']) or DEFAULT_NR_MODE}
+                value = {**value, 'nr_mode': dashboard_nr_mode_value(value['nr_mode'])}
         return value
 
 
@@ -277,7 +284,7 @@ class DashboardName(BaseModel):
 
 
 class DashboardTemplateSelection(BaseModel):
-    nr_mode: Literal['NSA', 'SA'] = 'NSA'
+    nr_mode: Literal['NSA', 'SA', 'NSA+SA'] = 'NSA'
     template: str = Field(min_length=1)
 
     @model_validator(mode='before')
@@ -286,7 +293,7 @@ class DashboardTemplateSelection(BaseModel):
         if isinstance(value, dict):
             mode = value.get('nr_mode', value.get('technology'))
             value = {**{key: item for key, item in value.items() if key != 'technology'},
-                     'nr_mode': normalize_nr_mode(mode) or DEFAULT_NR_MODE}
+                     'nr_mode': dashboard_nr_mode_value(mode)}
         return value
 
 
@@ -333,19 +340,40 @@ def rename_template_in_dashboards(dashboards: dict, previous_template: str, temp
 
 
 def dashboard_nr_mode(definition) -> str:
-    """Return the NR Mode (``NSA``/``SA``) of the CDRs a Dashboard definition reads."""
+    """Return the NR Mode (``NSA``, ``SA`` or ``NSA+SA``) of the CDRs a Dashboard definition reads."""
     if isinstance(definition, dict):
         value = definition.get('nr_mode') or definition.get('technology') or definition.get('template_technology')
     else:
         value = getattr(definition, 'nr_mode', None)
-    return normalize_nr_mode(value) or DEFAULT_NR_MODE
+    return dashboard_nr_mode_value(value)
+
+
+# The options of the Campaign filter of the SA CDRs of an NSA & SA Dashboard (its ``sa_campaigns``).
+SA_CAMPAIGN_FIELD = 'SA Campaign'
+
+
+def entry_uses_nr_mode(entry) -> bool:
+    """Whether a chart row filters, splits or labels its series by the NR Mode field."""
+    key = identity(NR_MODE_FIELD)
+    fields = [*re.split(r'\s*×\s*|\s+\bx\b\s+|,|/', f'{entry.rows_split} × {entry.columns_split} × {entry.legend}'),
+              *entry_dynamic_fields(entry)]
+    return any(identity(field) == key for field in fields if str(field).strip()) or 'nrmode' in identity(entry.filters or '')
+
+
+def chart_nr_mode_unread(entry, definition) -> str:
+    """Why a chart of one NR Mode shows nothing in a Dashboard that does not read it (empty when it reads it)."""
+    modes = chart_filter_nr_modes(entry)
+    read = nr_modes_of(dashboard_nr_mode(definition))
+    if not entry.source_kind or entry.structural_type or any(mode in read for mode in modes):
+        return ''
+    return (f"This chart shows the {' & '.join(modes) or 'CDRs of no NR Mode'} CDRs and the Dashboard reads the "
+            f"{DASHBOARD_NR_MODE_LABELS[dashboard_nr_mode(definition)]} ones: choose NR Mode NSA & SA to show it.")
 
 
 def dataset_matches_nr_mode(dataset, nr_mode) -> bool:
-    """Whether a serialized CDR belongs to the requested NR Mode."""
-    target = normalize_nr_mode(nr_mode) or DEFAULT_NR_MODE
+    """Whether a serialized CDR belongs to the requested NR Mode (either one for NSA & SA)."""
     mode = dataset_nr_mode(dataset.get('dataset_kind'), dataset.get('nr_mode'), dataset.get('file_name'))
-    return mode is None or mode == target
+    return mode is None or mode in nr_modes_of(dashboard_nr_mode_value(nr_mode))
 
 
 FILTER_COLUMNS = {
@@ -1677,10 +1705,7 @@ def install_dashboard_routes(core):
         the titles it shows)."""
         slides: dict[str, list] = defaultdict(list)
         for entry in entries:
-            slides[str(entry.slide)].append(replace(
-                entry, slide_title=render_nr_mode_tokens(entry.slide_title, nr_mode),
-                slide_subtitle=render_nr_mode_tokens(entry.slide_subtitle, nr_mode),
-                chart_title=render_nr_mode_tokens(entry.chart_title, nr_mode)))
+            slides[str(entry.slide)].append(entry_for_nr_mode(entry, nr_mode))
         return slides
 
     def reconcile_template_slide_comments(
@@ -1812,6 +1837,25 @@ def install_dashboard_routes(core):
     def campaign_filter_key(filters) -> str | None:
         return next((field for field in filters if identity(field) == identity('Campaign')), None)
 
+    def follow_nr_mode_campaigns(updated: dict, previous_nr_mode: str, nr_mode: str) -> None:
+        """The Campaign filters of a Dashboard whose NR Mode changes: the campaigns of an NR Mode it keeps reading stay
+        (the Campaign filter chooses the NSA CDRs and SA Campaign the SA ones with NSA & SA), the others take the newest
+        campaigns of the new NR Mode."""
+        filters = dict(updated.get('filters') or {})
+        key = campaign_filter_key(filters)
+        current = list(filters.pop(key) or []) if key else []
+        by_mode = {'NSA': current if previous_nr_mode in ('NSA', NSA_VS_SA) else [],
+                   'SA': (list(updated.get('sa_campaigns') or []) or current) if previous_nr_mode == NSA_VS_SA
+                   else current if previous_nr_mode == 'SA' else []}
+        default = default_campaign_filter(updated)
+        if nr_mode == NSA_VS_SA:
+            filters['Campaign'] = by_mode['NSA'] or default
+            updated['sa_campaigns'] = by_mode['SA'] or default
+        else:
+            filters['Campaign'] = by_mode.get(nr_mode) or default
+            updated['sa_campaigns'] = []
+        updated['filters'] = filters
+
     def migrate_auto_cdrs(definition, task_repository):
         """A Dashboard saved when its CDRs were chosen by hand chooses them by Campaign.
 
@@ -1847,14 +1891,32 @@ def install_dashboard_routes(core):
         filters = with_main_cities(dict(effective.get('filters') or {}), task_repository)
         key = campaign_filter_key(filters)
         campaigns = list(filters.get(key) or []) if key else []
-        if key and campaign_presets(campaigns):
-            campaigns = resolve_campaign_filter(task_repository, nr_mode, campaigns)
+        if nr_mode == NSA_VS_SA:
+            # NSA & SA: the CDRs of each NR Mode, chosen by its own Campaign filter (the SA one, or the Campaign one).
+            sa_campaigns = [str(value) for value in effective.get('sa_campaigns') or [] if str(value).strip()] or campaigns
+            by_mode = {'NSA': resolve_campaign_filter(task_repository, 'NSA', campaigns),
+                       'SA': resolve_campaign_filter(task_repository, 'SA', sa_campaigns)}
+            datasets = {kind: [] for kind in KINDS}
+            for mode, mode_campaigns in by_mode.items():
+                for kind, ids in resolve_cdrs(task_repository, mode, mode_campaigns, KINDS).items():
+                    datasets.setdefault(kind, []).extend(ids)
+            effective['datasets'] = datasets
+            # Their campaigns, unless an NR Mode takes every campaign (its CDRs are already chosen).
+            campaigns = sort_campaigns({*by_mode['NSA'], *by_mode['SA']}) if all(by_mode.values()) else []
             if campaigns:
-                filters[key] = campaigns
-            else:
-                # CDRs without campaigns: every CDR of the NR Mode.
+                filters[key or 'Campaign'] = campaigns
+            elif key:
                 filters.pop(key)
-        effective['datasets'] = resolve_cdrs(task_repository, nr_mode, campaigns, KINDS)
+            key = campaign_filter_key(filters)
+        else:
+            if key and campaign_presets(campaigns):
+                campaigns = resolve_campaign_filter(task_repository, nr_mode, campaigns)
+                if campaigns:
+                    filters[key] = campaigns
+                else:
+                    # CDRs without campaigns: every CDR of the NR Mode.
+                    filters.pop(key)
+            effective['datasets'] = resolve_cdrs(task_repository, nr_mode, campaigns, KINDS)
         if key and campaigns:
             # CDRs that hold only chosen campaigns need no Campaign predicate on their rows: the selection
             # stays a complete, unfiltered universe whose counts and options are known.
@@ -1892,7 +1954,12 @@ def install_dashboard_routes(core):
         filters = raw.get('filters') or {}
         fields = [field for field in options if field in CASCADING_FILTER_FIELDS] or list(CASCADING_FILTER_FIELDS)
         cascading = {}
-        if 'Campaign' in fields:
+        if 'Campaign' in fields and nr_mode == NSA_VS_SA:
+            # NSA & SA: the Campaign filter lists the campaigns of the NSA CDRs and SA Campaign those of the SA ones.
+            for mode, field in (('NSA', 'Campaign'), ('SA', SA_CAMPAIGN_FIELD)):
+                ids = [row['id'] for row in candidate_cdrs(task_repository, mode)]
+                cascading[field] = cascading_options(task_repository, ids, filters, ['Campaign']).get('Campaign', [])
+        elif 'Campaign' in fields:
             cascading.update(cascading_options(task_repository, candidates, filters, ['Campaign']))
         if others := [field for field in fields if field != 'Campaign']:
             cascading.update(cascading_options(task_repository, resolved or candidates, filters, others))
@@ -2164,6 +2231,10 @@ def install_dashboard_routes(core):
         if not isinstance(stored_definition, dict):
             raise HTTPException(404, 'Dashboard not found.')
         raw_definition = export_definition.model_dump(mode='json') if export_definition is not None else dict(stored_definition)
+        if dashboard_nr_mode(raw_definition) != dashboard_nr_mode(stored_definition):
+            # The comments of a Dashboard were written for the CDRs of its own NR Mode: generated in another one (by a
+            # Reporting Job or a Bundle Report Template), its slides go without them, unless auto comments write them.
+            raw_definition = {**raw_definition, 'slide_comments': {}, 'slide_comment_meta': {}}
         explicit_selections = {
             field: list(dict.fromkeys(str(value).strip() for value in selected if str(value).strip()))
             for field, selected in (
@@ -2184,7 +2255,9 @@ def install_dashboard_routes(core):
             ):
                 snapshot = candidate
         dashboard_name = str(raw_definition.get('name') or dashboard_id)
-        nr_mode_label = dashboard_nr_mode(raw_definition)
+        nr_mode = dashboard_nr_mode(raw_definition)
+        # The file names the NR Mode the Dashboard reads (NSA & SA for both).
+        nr_mode_label = DASHBOARD_NR_MODE_LABELS[nr_mode]
         scope = 'multivendor' if str(raw_definition.get('scope') or 'single') == 'multivendor' else 'single'
         export_time = datetime.now()
         ensure_dashboard_ppt_jobs(task_repository)
@@ -2195,7 +2268,7 @@ def install_dashboard_routes(core):
         )
         common = {
             'dashboard_name': dashboard_name, 'template_name': str(raw_definition.get('template') or ''),
-            'nr_mode': nr_mode_label.casefold(), 'scope': scope, 'filters_json': '[]',
+            'nr_mode': nr_mode.casefold(), 'scope': scope, 'filters_json': '[]',
             'output_file': output_file, 'output_path': str(destination),
             'vendor_comparison': raw_definition.get('vendor_comparison') or 'operator_vendor',
         }
@@ -2348,7 +2421,7 @@ def install_dashboard_routes(core):
             cover_cities = dashboard_ppt_cover_label('City', city_label, len(selected_cities))
             zone_label = region_label if region_label == 'All Regions' else ' + '.join(selected_regions)
             output_file, destination = dashboard_ppt_unique_output(
-                task_repository, export_time, dashboard_nr_mode(raw_definition), dashboard_name,
+                task_repository, export_time, DASHBOARD_NR_MODE_LABELS[dashboard_nr_mode(raw_definition)], dashboard_name,
                 dashboard_ppt_scope_label(raw_definition.get('scope') or 'single'), zone_label, job_id,
                 dashboard_ppt_campaign_suffix(campaigns),
             )
@@ -2453,7 +2526,7 @@ def install_dashboard_routes(core):
             try:
                 definition = DashboardDefinition(
                     name=str(row['dashboard_name']), template=str(row['template_name']),
-                    nr_mode=normalize_nr_mode(row['nr_mode']) or DEFAULT_NR_MODE,
+                    nr_mode=dashboard_nr_mode_value(row['nr_mode']),
                     scope='multivendor' if str(row['scope']).casefold() == 'multivendor' else 'single',
                 )
                 entries = validate(definition, bound_repository())
@@ -2909,11 +2982,7 @@ def install_dashboard_routes(core):
             if nr_mode_changed:
                 # The campaigns of the other NR Mode do not apply: the newest ones of the new NR Mode do.
                 updated.pop('datasets', None)
-                filters = dict(updated.get('filters') or {})
-                key = campaign_filter_key(filters)
-                if key:
-                    filters.pop(key)
-                updated['filters'] = {**filters, 'Campaign': default_campaign_filter(updated)}
+                follow_nr_mode_campaigns(updated, previous_nr_mode, payload.nr_mode)
                 updated['auto_cdrs'] = True
             definition = DashboardDefinition.model_validate(updated)
             validate(definition, task_repository)
@@ -4235,7 +4304,7 @@ def install_dashboard_routes(core):
                     available = task_repository.list_dataset_row_columns(int(dataset['id']))
                     requested = [column for column in available if identity(column) in {identity(field) for field in rf_source_columns(kind)}]
                     task_repository.copy_dataset_rows_to_reporting(int(dataset['id']), kind, requested)
-        if any(any(entry_dynamic_fields(entry)) for entry in entries):
+        if any(any(entry_dynamic_fields(entry)) or entry_uses_nr_mode(entry) for entry in entries):
             ensure_combined_filter_columns(definition, task_repository, dimensions, selected_by_kind, chart_entries=entries)
         selected_source_rows = {
             kind: sum(int(dataset.get('row_count') or 0) for dataset in selected)
@@ -4277,6 +4346,7 @@ def install_dashboard_routes(core):
         for entry in entries:
             slide_entries_by_number[entry.slide].append(entry)
         deck = Presentation(core.settings.powerpoint_template)
+        fields_by_mode: dict[str, dict[str, set[str]]] = {}
         for editor_index, (index, entry) in enumerate(sorted(enumerate(entries), key=lambda item: (item[1].slide, item[0]))):
             editor_index = entry.template_index if entry.template_index is not None else editor_index
             slide = slides.setdefault(entry.slide, {
@@ -4298,6 +4368,16 @@ def install_dashboard_routes(core):
                     'cdr_source': entry.cdr_source, 'chart_type': entry.chart_type,
                     'available': bool(selected_by_kind) if entry.source_kind == 'all' else entry.source_kind in selected_by_kind, 'focus_row': editor_index,
                 }
+                if unread := chart_nr_mode_unread(entry, definition):
+                    # A chart of one NR Mode (NR Mode IN (SA)) in a Dashboard that reads the other one.
+                    chart.update(available=False, unavailable=unread)
+                elif dashboard_nr_mode(definition) == NSA_VS_SA and entry.source_kind in selected_by_kind:
+                    # A field only the CDRs of one NR Mode have: the chart says which NR Mode has no samples.
+                    if entry.source_kind not in fields_by_mode:
+                        fields_by_mode[entry.source_kind] = core.cdr_fields_by_nr_mode(
+                            task_repository, entry.source_kind, [int(row['id']) for row in selected_by_kind[entry.source_kind]])
+                    if missing := missing_nr_mode_fields(entry, fields_by_mode[entry.source_kind], NSA_VS_SA):
+                        chart['nr_mode_note'] = missing_nr_mode_note(missing)
                 slide['charts'].append(chart)
         for slide in slides.values():
             positions = normalized_frame_positions(_layout_chart_frames(_named_slide_layout(deck, slide['layout'])))
@@ -6052,6 +6132,8 @@ def install_dashboard_routes(core):
                         # The operators the Operator Maps exclude are left out of every Dashboard.
                         raw_frame = drop_excluded_operators(raw_frame, excluded_operators(mapping_settings))
                         raw_frame.attrs.update(mapping_settings)
+                        # NSA & SA: its campaigns that name SA are drawn as SA series (see _sa_series_keys).
+                        raw_frame.attrs[BOTH_NR_MODES_ATTR] = dashboard_nr_mode(snapshot.definition) == NSA_VS_SA
                         raw_frame = normalise_operator_aliases(raw_frame)
                         raw_frame.attrs['operator_aliases_normalized'] = True
                         with lock:
@@ -6577,7 +6659,7 @@ def install_dashboard_routes(core):
                     changes[key] = core.parse_template_boolean(changes[key], label)
                 except ValueError as exc:
                     raise HTTPException(400, str(exc)) from exc
-        if changes.get("chart_title") in {_entry.chart_title, render_nr_mode_tokens(entries[source_index].chart_title, nr_mode)}:
+        if changes.get("chart_title") in {_entry.chart_title, entry_for_nr_mode(entries[source_index], nr_mode).chart_title}:
             # The title as the chart shows it (dynamic values, the NR Mode resolved): the template keeps its own.
             changes["chart_title"] = entries[source_index].chart_title
         for field in ('dynamic_rows_field', 'dynamic_columns_field', 'dynamic_field', 'rows_split', 'columns_split', 'legend'):
@@ -6615,10 +6697,7 @@ def install_dashboard_routes(core):
                     if current_source != source_index:
                         continue
                     candidate_mode = dashboard_nr_mode(candidate.definition)
-                    shown_update = replace(
-                        updated_entry, chart_title=render_nr_mode_tokens(updated_entry.chart_title, candidate_mode),
-                        slide_title=render_nr_mode_tokens(updated_entry.slide_title, candidate_mode),
-                        slide_subtitle=render_nr_mode_tokens(updated_entry.slide_subtitle, candidate_mode))
+                    shown_update = entry_for_nr_mode(updated_entry, candidate_mode)
                     effective_update = (prepare_multivendor_catalog_entry(shown_update, candidate.definition.vendor_comparison)
                                         if candidate.multivendor else shown_update)
                     replacement = replace(

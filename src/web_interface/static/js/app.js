@@ -2985,6 +2985,13 @@ document.querySelectorAll('[data-catalogue-editor]').forEach((editor) => {
     if (validationMessage) validationMessage.textContent = message || '';
     if (validationAlert) validationAlert.hidden = !message;
   };
+  // The charts that use a field only the CDRs of one NR Mode have (they show no samples of the other one).
+  const nrModeWarning = document.querySelector('[data-catalogue-nr-mode-warning]');
+  const showNrModeWarnings = (warnings = []) => {
+    if (!nrModeWarning) return;
+    nrModeWarning.querySelector('[data-catalogue-nr-mode-warning-message]').textContent = warnings.join(' ');
+    nrModeWarning.hidden = !warnings.length;
+  };
   const canonicalFilterValue = (value) => String(value || '')
     .replace(/\u00a0/g, ' ')
     .split(/\s*;\s*|\s*[\r\n]+\s*/)
@@ -3636,6 +3643,7 @@ document.querySelectorAll('[data-catalogue-editor]').forEach((editor) => {
       if (revision !== validationRevision) return false;
       const error = response.ok && result.valid ? '' : (result.detail || 'Unable to validate the Report Template.');
       showCatalogueValidation(error);
+      showNrModeWarnings(error ? [] : result.warnings || []);
       return !error;
     } catch (error) {
       if (revision !== validationRevision) return false;

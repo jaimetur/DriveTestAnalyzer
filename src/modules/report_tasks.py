@@ -36,7 +36,7 @@ from src.modules.cdr_auto_selection import (
     resolve_campaign_filter, resolve_cdrs, sort_campaigns,
 )
 from src.modules.column_names import compact_campaign_value
-from src.modules.nr_mode import DEFAULT_NR_MODE, NSA_VS_SA, normalize_nr_mode, normalize_scoring_nr_mode, nr_mode_label
+from src.modules.nr_mode import DEFAULT_NR_MODE, NSA_VS_SA, normalize_scoring_nr_mode, nr_mode_label
 from src.modules.scoring_reports import NR_CHARTS, NR_CHARTS_LABELS, NR_LAYOUT_LABELS, NR_LAYOUTS
 from src.modules.output_layout import REPORTING_JOBS_FOLDER, module_output_dir
 from src.modules.scoring_themes import DEFAULT_THEME, normalize_theme, themes_payload
@@ -311,8 +311,8 @@ def _network_thresholds(selection: dict[str, Any]) -> dict[str, float]:
 
 
 def _dashboard_nr_mode(definition: dict[str, Any]) -> str:
-    """The NR Mode of the CDRs a saved Dashboard reads (those saved before named it technology)."""
-    return normalize_nr_mode(definition.get('nr_mode') or definition.get('technology')) or DEFAULT_NR_MODE
+    """The NR Mode of the CDRs a saved Dashboard reads: NSA, SA or NSA+SA (those saved before named it technology)."""
+    return normalize_scoring_nr_mode(definition.get('nr_mode') or definition.get('technology')) or DEFAULT_NR_MODE
 
 
 def _datasets_by_kind(value: Any) -> dict[str, list[int]]:
@@ -418,7 +418,7 @@ def normalize_definition(raw: Any) -> dict[str, Any]:
             'dashboard_id': str(entry['dashboard_id']).strip(), 'label': str(entry.get('label') or '').strip()[:120],
             # The NR Mode of the CDRs it reads, in place of the Dashboard's (empty: the Dashboard's own, as the entries
             # saved before).
-            'nr_mode': normalize_nr_mode(entry.get('nr_mode')) or '',
+            'nr_mode': normalize_scoring_nr_mode(entry.get('nr_mode')) or '',
             'scope': entry.get('scope') if entry.get('scope') in {'single', 'multivendor'} else 'single',
             'vendor_comparison': entry.get('vendor_comparison') if entry.get('vendor_comparison') in {'operator_vendor', 'vendor_only'} else 'operator_vendor',
             # The CDRs of the Dashboard's NR Mode and of the Campaign filter at each run (auto_cdrs); entries saved
@@ -1545,15 +1545,16 @@ def install_report_task_routes(core: Any) -> None:
     def dashboard_definition(stored: dict[str, Any], entry: dict[str, Any], task_repository=None) -> dict[str, Any]:
         """The saved Dashboard with the artifact's NR Mode, Scope, CDRs, dates and filters."""
         definition = dict(stored)
-        if normalize_nr_mode(entry.get('nr_mode')):
-            definition['nr_mode'] = normalize_nr_mode(entry['nr_mode'])
+        if normalize_scoring_nr_mode(entry.get('nr_mode')):
+            definition['nr_mode'] = normalize_scoring_nr_mode(entry['nr_mode'])
         if entry.get('auto_cdrs'):
-            # The CDRs of the Dashboard's NR Mode and of the entry's Campaign filter, chosen when it is generated.
+            # The CDRs of the Dashboard's NR Mode and of the entry's Campaign filter, chosen when it is generated (with
+            # NSA & SA, in each NR Mode).
             definition.pop('datasets', None)
             definition.update({
                 'scope': entry['scope'], 'vendor_comparison': entry['vendor_comparison'], 'auto_cdrs': True,
                 'date_from': entry.get('date_from') or 'Oldest', 'date_to': entry.get('date_to') or 'Newest',
-                'filters': dict(entry.get('filters') or {}),
+                'filters': dict(entry.get('filters') or {}), 'sa_campaigns': [],
             })
             return definition
         if entry.get('cdr_selection') in CDR_SELECTIONS and task_repository is not None:
@@ -2220,11 +2221,21 @@ def install_report_task_routes(core: Any) -> None:
         """The CDRs an entry uses now for its NR Mode and campaigns (``complete``: each campaign with every CDR type)."""
         task_repository = reporting_repository(user)
         nr_mode = normalize_scoring_nr_mode(payload.get('nr_mode')) or 'NSA'
-        if nr_mode == NSA_VS_SA and not payload.get('complete'):
+        each_nr_mode = nr_mode == NSA_VS_SA and bool(payload.get('each_nr_mode')) and not payload.get('complete')
+        if nr_mode == NSA_VS_SA and not payload.get('complete') and not each_nr_mode:
             nr_mode = 'NSA'
         campaigns = (scoring_campaigns(task_repository, nr_mode, _strings(payload.get('campaigns'))) if payload.get('complete')
+                     else [] if each_nr_mode
                      else resolve_campaign_filter(task_repository, nr_mode, _strings(payload.get('campaigns'))))
-        if payload.get('complete'):
+        if each_nr_mode:
+            # A Dashboard of NSA & SA: the CDRs of each NR Mode, its Latest choices among the campaigns of that mode.
+            chosen, incomplete = {kind: [] for kind in ('data', 'voice', 'speech')}, []
+            for mode in ('NSA', 'SA'):
+                mode_campaigns = resolve_campaign_filter(task_repository, mode, _strings(payload.get('campaigns')))
+                campaigns.extend(value for value in mode_campaigns if value not in campaigns)
+                for kind, ids in resolve_cdrs(task_repository, mode, mode_campaigns).items():
+                    chosen.setdefault(kind, []).extend(ids)
+        elif payload.get('complete'):
             ids, incomplete = complete_campaign_cdrs(task_repository, nr_mode, campaigns)
             kinds = {int(row['id']): str(row['dataset_kind']) for row in task_repository.list_datasets()}
             chosen = {kind: [dataset_id for dataset_id in ids if kinds.get(dataset_id) == kind] for kind in ('data', 'voice', 'speech')}

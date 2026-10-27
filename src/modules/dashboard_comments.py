@@ -5,10 +5,11 @@ never from pixels: a CDF or histogram gives the exact median, tail percentiles a
 average and median bars their value and samples, the 100%, threshold and distribution stacked bars and the failure
 counts the share of each class, a scatter the rank correlation of its two measures, a map the share of its weakest class
 and where it gathers, and a table its highest and lowest rows. The findings compare the latest campaign with the
-previous one, each operator with the leader and, in Multivendor, the vendors of each operator, from the point of view of
-the Focus operators of the Operator Maps, and name a group only with enough samples; charts of one slide are also read
-together (LTE against NR, one operator per chart). The rules engine writes them offline; the LLM writers receive the
-same facts and fall back to these sentences.
+previous one, each operator with the leader, in Multivendor the vendors of each operator and, with the NR Mode in a
+split, each operator in SA with itself in NSA, from the point of view of the Focus operators of the Operator Maps, and
+name a group only with enough samples; charts of one slide are also read together (LTE against NR, SA against NSA, one
+operator per chart). The rules engine writes them offline; the LLM writers receive the same facts and fall back to these
+sentences.
 """
 from __future__ import annotations
 
@@ -40,6 +41,9 @@ DIMENSIONED_MODEL_TYPES = SUPPORTED_MODEL_TYPES - {'multi_cdf', 'table'}
 OPERATOR_DIMENSIONS = frozenset({'operator', 'subscriber'})
 VENDOR_DIMENSIONS = frozenset({'operatorvendor', 'vendor'})
 CAMPAIGN_DIMENSIONS = frozenset({'campaign'})
+NR_MODE_DIMENSIONS = frozenset({'nrmode'})
+# The NR Mode a chart title names (CDF_SA, DL Throughput NSA).
+NR_MODE_TITLE_TOKENS = re.compile(r'(?:^|[^A-Za-z])(NSA|SA)(?![A-Za-z])')
 BUCKET_DIMENSIONS = frozenset({'valuebucket', 'ratebucket'})
 # Vendor groups that are not a vendor (multivendor comparisons leave them out of the vendor comments).
 NOT_VENDORS = frozenset({'mixed', 'other', 'others', 'unknown', '(blank)', ''})
@@ -680,6 +684,61 @@ def _vendor_findings(facts: ChartFacts, focus: set[str], operator_key: str, camp
     return findings
 
 
+def _nr_mode_comparison(facts: ChartFacts, nsa: dict[str, Record], sa: dict[str, Record], focus: set[str],
+                        prefix: str = '') -> list[Finding]:
+    """Each operator in SA against itself in NSA (the latest campaign of each NR Mode): one sentence when SA is on the
+    same side for every operator, else the Focus operators (or the largest gap)."""
+    common = [name for name in sa if name in nsa]
+    if not common:
+        return []
+
+    def higher(name: str) -> bool:
+        return sa[name].value > nsa[name].value
+
+    if len(common) > 1 and all(_meaningful(facts, nsa[name], sa[name]) for name in common) and len({higher(name) for name in common}) == 1:
+        side = 'higher' if higher(common[0]) else 'lower'
+        if facts.direction:
+            side = 'better' if (sa[common[0]].value - nsa[common[0]].value) * facts.direction > 0 else 'worse'
+        return [Finding(f'{prefix}{_subject(facts, "")} is {side} in SA than in NSA for every operator.', 2.6, 'nr_mode')]
+    subjects = [name for name in common if name.casefold() in focus][:MAX_FOCUS_SUBJECTS]
+    subjects = subjects or [max(common, key=lambda name: _gap_size(facts, nsa[name].value, sa[name].value))]
+    findings = []
+    for name in subjects:
+        figures = f'({_figure(facts, sa[name].value, unit=False)} vs {_figure(facts, nsa[name].value)})'
+        if not _meaningful(facts, nsa[name], sa[name]):
+            if name.casefold() in focus:
+                findings.append(Finding(f'{prefix}{_subject(facts, name)} is similar in SA and NSA {figures}.', 1.4, 'nr_mode'))
+            continue
+        findings.append(Finding(
+            f'{prefix}{_subject(facts, name)} is {_gap(facts, nsa[name].value, sa[name].value)} '
+            f'{"higher" if higher(name) else "lower"} in SA than in NSA {figures}.',
+            2.4 + (FOCUS_BONUS if name.casefold() in focus else 0.0), 'nr_mode'))
+    return findings
+
+
+def _nr_mode_findings(facts: ChartFacts, focus: set[str], operator_key: str, campaign_key: str | None,
+                      mode_key: str, context_keys: list[str]) -> list[Finding]:
+    """A chart split by NR Mode: each operator in SA against itself in NSA, group by group."""
+    others = [name for name in context_keys if name != mode_key]
+    groups: dict[tuple[str, ...], dict[str, list[Record]]] = {}
+    for record in facts.records:
+        mode = str(record.labels.get(mode_key, '')).strip().upper()
+        if mode in {'NSA', 'SA'}:
+            groups.setdefault(tuple(record.labels.get(name, '') for name in others), {}).setdefault(mode, []).append(record)
+    findings = []
+    for context, by_mode in groups.items():
+        if set(by_mode) != {'NSA', 'SA'}:
+            continue
+        latest = {}
+        for mode, records in by_mode.items():
+            campaign = _latest_campaign(records, campaign_key)
+            latest[mode] = {record.labels.get(operator_key, ''): record for record in records
+                            if _eligible(record) and (campaign is None or record.labels.get(campaign_key) == campaign)}
+        prefix = ' · '.join(value for value in context if value)
+        findings.extend(_nr_mode_comparison(facts, latest['NSA'], latest['SA'], focus, f'{prefix}: ' if prefix else ''))
+    return findings
+
+
 def _relation_findings(facts: ChartFacts, focus: set[str]) -> list[Finding]:
     """Scatter: how strongly the KPI follows the other measure for the Focus operators (or the largest series)."""
     operator_key, campaign_key, _vendor, context_keys = _roles(facts.records)
@@ -821,6 +880,9 @@ def chart_findings(facts: ChartFacts, focus_operators: Iterable[str] = ()) -> li
         findings.extend(Finding(prefix + finding.text, finding.score, finding.kind) for finding in group_findings)
     if vendor_key and operator_key:
         findings.extend(_vendor_findings(facts, focus, operator_key, campaign_key, vendor_key, context_keys))
+    mode_key = next((name for name in context_keys if column_identity(name) in NR_MODE_DIMENSIONS), None)
+    if mode_key and operator_key:
+        findings.extend(_nr_mode_findings(facts, focus, operator_key, campaign_key, mode_key, context_keys))
     return findings
 
 
@@ -846,12 +908,27 @@ def _technology(name: str) -> str | None:
     return None
 
 
+def _title_nr_mode(title: str) -> str | None:
+    """The NR Mode a chart title names alone (CDF_SA, DL Throughput NSA), if any."""
+    modes = {mode.upper() for mode in NR_MODE_TITLE_TOKENS.findall(title or '')}
+    return next(iter(modes)) if len(modes) == 1 else None
+
+
 def slide_findings(slide_facts: list[ChartFacts], focus_operators: Iterable[str] = ()) -> list[Finding]:
-    """What the charts of one slide say together: NR against LTE for the same KPI, and the operators of a slide that
-    gives each operator its own chart."""
+    """What the charts of one slide say together: NR against LTE and SA against NSA for the same KPI, and the operators
+    of a slide that gives each operator its own chart."""
     focus = {str(name).strip().casefold() for name in focus_operators if str(name or '').strip()}
     stats = [facts for facts in slide_facts if facts.family == 'stat']
     findings: list[Finding] = []
+    for nsa in slide_facts:
+        for sa in slide_facts:
+            if (_title_nr_mode(nsa.title) != 'NSA' or _title_nr_mode(sa.title) != 'SA' or nsa.family != sa.family
+                    or nsa.family not in {'stat', 'share'} or nsa.statistic != sa.statistic
+                    or nsa.semantics.name != sa.semantics.name):
+                continue
+            nsa_values, _campaign_ = _latest_by_operator(nsa)
+            sa_values, _campaign_ = _latest_by_operator(sa)
+            findings.extend(_nr_mode_comparison(sa, nsa_values, sa_values, focus))
     for lte in stats:
         for nr in stats:
             if (_technology(lte.semantics.name) != 'LTE' or _technology(nr.semantics.name) != 'NR'

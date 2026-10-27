@@ -22,7 +22,8 @@ def test_the_shipped_content_names_no_operator_or_vendor():
     templates = sorted((ASSETS / 'ppt-templates').glob('*.csv'))
     assert not list((ASSETS / 'ppt-templates').glob('*/*.csv'))
     assert {path.stem for path in templates} == {'NetCheck CDR Report', 'NetCheck CDR Report (Main Cities)', 'RF Quality (RSRP & SINR)',
-                                                 'Tableau Dashboards', 'Tableau Charts', 'Tableau Charts - Only Maps'}
+                                                 'Tableau Dashboards', 'Tableau Charts', 'Tableau Charts - Only Maps',
+                                                 'FDFS DL (NSA & SA)'}
     for path in templates:
         rows = list(csv.DictReader(io.StringIO(path.read_text(encoding='utf-8'))))
         # No template filters an Operator, nor Vendors by their operator (3_Ericsson); the Tableau templates of the UK
@@ -34,10 +35,11 @@ def test_the_shipped_content_names_no_operator_or_vendor():
         assert not any(re.search(r'\bUK\b', row.get('Slide Tittle') or '') for row in rows), path.name
         assert path.stem.startswith('Tableau') or not any(VENDOR_FILTER.search(row.get('Filters') or '') for row in rows), path.name
     dashboards = [json.loads(path.read_text(encoding='utf-8')) for path in (ASSETS / 'ppt-dashboards').glob('*.json')]
-    # The Dashboards of the UK workspace, one per NR Mode.
+    # The Dashboards of the UK workspace, one per NR Mode, and the NSA & SA comparison.
     assert {(item['name'], item['template'], item['nr_mode']) for item in dashboards} == {
         (f'{nr_mode} - {template}', template, nr_mode) for nr_mode in ('NSA', 'SA') for template in (
-            'NetCheck CDR Report', 'NetCheck CDR Report (Main Cities)', 'RF Quality (RSRP & SINR)', 'Tableau Dashboards', 'Tableau Charts')}
+            'NetCheck CDR Report', 'NetCheck CDR Report (Main Cities)', 'RF Quality (RSRP & SINR)', 'Tableau Dashboards', 'Tableau Charts')
+    } | {('NSA & SA - FDFS DL (NSA & SA)', 'FDFS DL (NSA & SA)', 'NSA+SA')}
     assert not any({'technology', 'template_technology'} & set(item) for item in dashboards)
     # The (Main Cities) Dashboards use the Main Cities of each workspace.
     assert all(item['filters']['City'] == ['@main-cities'] for item in dashboards if item['name'].endswith('(Main Cities)'))
@@ -287,3 +289,23 @@ def test_the_starter_jobs_generate_the_starter_favourites_they_name(client):
         if report.get('enabled'):
             generated[task['name']] = [favourites.get(value) for value in report['options']['filters']['favourites']]
     assert len(generated) == 8 and all(names == [name] for name, names in generated.items())
+
+
+def test_the_nsa_and_sa_example_reaches_an_existing_workspace_once(client):
+    import src.DriveTestAnalyzer as app_module
+
+    repository = app_module.repository
+    # A workspace set up before the example was shipped.
+    repository.delete_report_template('FDFS DL (NSA & SA)')
+    dashboards = json.loads(repository.get_workspace_state(starter_content.DASHBOARDS_STATE_KEY))
+    repository.set_workspace_state(starter_content.DASHBOARDS_STATE_KEY, json.dumps(
+        {key: item for key, item in dashboards.items() if item['template'] != 'FDFS DL (NSA & SA)'}))
+    repository.set_workspace_state(starter_content.LATER_EXAMPLES_STATE_KEY, '[]')
+    assert starter_content.seed_starter_content(repository) == {'examples': 2}
+    dashboards = json.loads(repository.get_workspace_state(starter_content.DASHBOARDS_STATE_KEY))
+    example = next(item for item in dashboards.values() if item['template'] == 'FDFS DL (NSA & SA)')
+    assert example['nr_mode'] == 'NSA+SA' and example['sa_campaigns'] == ['@latest-campaign']
+    assert example['filters']['Campaign'] == ['@latest-3-campaigns']
+    # Deleted later, it is not added again.
+    repository.delete_report_template('FDFS DL (NSA & SA)')
+    assert starter_content.seed_starter_content(repository) is None

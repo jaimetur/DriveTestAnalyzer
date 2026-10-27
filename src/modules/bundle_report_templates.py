@@ -286,7 +286,7 @@ def _normalize_items(section: str, raw: Any) -> list[dict[str, Any]]:
                 # The name and NR Mode of the Dashboard find it again in another workspace.
                 mode = str(item.get('nr_mode') or '').upper()
                 items.append({'key': key, 'label': str(item.get('label') or '').strip()[:160], 'enabled': bool(item.get('enabled', True)),
-                              'nr_mode': mode if mode in {'NSA', 'SA'} else ''})
+                              'nr_mode': mode if mode in {'NSA', 'SA', NSA_VS_SA} else ''})
         return items
     catalogue = {key: (title, components) for key, title, components in _panels()[section]}
     if section == 'scoring':
@@ -554,9 +554,9 @@ DASHBOARD_NR_MODES_STATE_KEY = 'bundle_report_template_dashboard_nr_modes_v1'
 
 
 def _dashboard_mode(definition: Any) -> str:
-    """The NR Mode of the CDRs a saved Dashboard reads (those saved before named it technology)."""
-    value = definition.get('nr_mode') or definition.get('technology') if isinstance(definition, dict) else ''
-    return 'SA' if str(value or '').upper() == 'SA' else 'NSA'
+    """The NR Mode of the CDRs a saved Dashboard reads: NSA, SA or NSA+SA (those saved before named it technology)."""
+    value = str((definition.get('nr_mode') or definition.get('technology') if isinstance(definition, dict) else '') or '').upper()
+    return value if value in {'SA', NSA_VS_SA} else 'NSA'
 
 
 def uncheck_other_mode_dashboards(definition: dict[str, Any], modes: dict[str, str]) -> list[str]:
@@ -1359,8 +1359,10 @@ class SectionGenerator:
                     values = [MAIN_CITIES, *values]
                 if values:
                     filters[column] = values
-            # Every Dashboard reads the CDRs of the NR Mode of the report (any template serves both).
-            definition.update({'filters': filters, 'auto_cdrs': True, 'nr_mode': self.filters['nr_mode']})
+            # Every Dashboard reads the CDRs of the NR Mode of the report (any template serves both); one of NSA & SA
+            # keeps reading both, which its slides compare, the Campaigns choosing the CDRs of each NR Mode.
+            nr_mode = NSA_VS_SA if _dashboard_mode(dashboard) == NSA_VS_SA else self.filters['nr_mode']
+            definition.update({'filters': filters, 'auto_cdrs': True, 'nr_mode': nr_mode, 'sa_campaigns': []})
             job_id = tools.queue_export(item['key'], self.user, definition, theme=self.definition.get('theme'))
             deadline = time.monotonic() + DASHBOARD_TIMEOUT_SECONDS
             while True:

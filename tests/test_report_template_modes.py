@@ -213,3 +213,170 @@ def test_reporting_jobs_keep_the_nr_mode_of_each_dashboard_entry():
         {'dashboard_id': 'd1', 'nr_mode': 'sa', 'auto_cdrs': True}, {'dashboard_id': 'd2', 'auto_cdrs': True}]})
     # Empty: the Dashboard's own NR Mode, as the entries saved before.
     assert [entry['nr_mode'] for entry in definition['dashboards']] == ['SA', '']
+
+
+# NSA & SA in one Dashboard (ticket #11, phases 2 and 3).
+
+def entry_of(**fields):
+    from dataclasses import replace
+
+    from src.modules.cdr_reporting import parse_catalog_csv
+    return replace(parse_catalog_csv(template('{NR Mode Name}', chart='{NR Mode} DL Throughput', title='FDFS DL ({NR Mode})'))[0], **fields)
+
+
+def test_a_dashboard_of_both_nr_modes_names_them_and_tells_them_apart():
+    from src.modules.report_template_modes import entry_for_nr_mode
+
+    both = entry_for_nr_mode(entry_of(legend='Operator'), 'NSA+SA')
+    assert (both.slide_title, both.slide_subtitle, both.chart_title) == (
+        'FDFS DL (NSA & SA)', 'Non-Standalone & Standalone', 'NSA & SA DL Throughput')
+    # A chart that reads both NR Modes gets NR Mode as the last level of the split of its legend, and of its legend.
+    assert (both.columns_split, both.legend) == ('Operator × NR Mode', 'Operator, NR Mode')
+    # One NR Mode: nothing to tell apart.
+    single = entry_for_nr_mode(entry_of(legend='Operator'), 'SA')
+    assert (single.chart_title, single.columns_split, single.legend) == ('SA DL Throughput', 'Operator', 'Operator')
+    # A chart split by Campaign (whose SA campaigns name the mode) or by NR Mode is left as it is.
+    for split in ('Operator × Campaign', 'Operator × NR Mode'):
+        assert entry_for_nr_mode(entry_of(columns_split=split), 'NSA+SA').columns_split == split
+    # A chart that keeps one NR Mode with its filters names that one.
+    sa_chart = entry_for_nr_mode(entry_of(filters='NR Mode IN (SA)'), 'NSA+SA')
+    assert (sa_chart.chart_title, sa_chart.slide_title, sa_chart.columns_split) == (
+        'SA DL Throughput', 'FDFS DL (NSA & SA)', 'Operator')
+
+
+def test_the_nr_modes_a_chart_keeps_with_its_filters():
+    from src.modules.report_template_modes import chart_filter_nr_modes, dashboard_nr_mode_value
+
+    assert chart_filter_nr_modes(entry_of(filters='')) == ('NSA', 'SA')
+    assert chart_filter_nr_modes(entry_of(filters='NR Mode IN (SA)')) == ('SA',)
+    assert chart_filter_nr_modes(entry_of(filters='NR_Mode = NSA')) == ('NSA',)
+    assert chart_filter_nr_modes(entry_of(filters='NR Mode NOT IN (NSA)')) == ('SA',)
+    assert [dashboard_nr_mode_value(value) for value in ('nsa', 'SA', 'NSA+SA', 'NSA & SA', None)] == [
+        'NSA', 'SA', 'NSA+SA', 'NSA+SA', 'NSA']
+
+
+def test_a_chart_says_which_nr_mode_has_no_samples_of_its_fields():
+    from src.modules.report_template_modes import missing_nr_mode_fields, missing_nr_mode_note
+
+    fields = {'NSA': {'meandatarate', 'operator', 'testresult', 'testname'}, 'SA': {'operator', 'testresult', 'testname'}}
+    missing = missing_nr_mode_fields(entry_of(filters='Test_Result = Completed'), fields)
+    assert missing == {'SA': ['Mean_Data_Rate']}
+    assert missing_nr_mode_note(missing) == 'The SA CDRs have no Mean_Data_Rate: no SA samples.'
+    # A chart of NSA alone, a Dashboard of NSA alone and a field no CDR has say nothing.
+    assert missing_nr_mode_fields(entry_of(filters='NR Mode IN (NSA)'), fields) == {}
+    assert missing_nr_mode_fields(entry_of(), fields, 'NSA') == {}
+    assert missing_nr_mode_fields(entry_of(kpi='Unknown_KPI'), fields) == {}
+
+
+def test_combined_rows_keep_the_nr_mode_of_their_cdr(client, tmp_path):
+    import pandas as pd
+
+    repository = app_module.repository
+    (tmp_path / 'sa.csv').write_text('test source', encoding='utf-8')
+    dataset_id, _created = repository.add_dataset('UK_Q3_SA_2026_Data.csv', str(tmp_path / 'sa.csv'), 'tester')
+    repository.update_dataset_profile(dataset_id, dataset_kind='data', nr_mode='SA')
+    repository.replace_dataset_rows(dataset_id, pd.DataFrame({'Operator': ['A', 'B'], 'Mean_Data_Rate': [10.0, 20.0]}))
+    assert repository.copy_dataset_rows_to_reporting(dataset_id, 'data', ['Operator', 'Mean_Data_Rate']) == 'rows'
+    rows = repository.load_reporting_rows('data', [dataset_id], ['Operator', 'NR Mode'])
+    assert rows['NR Mode'].tolist() == ['SA', 'SA']
+    # Nothing to do the next time; a CDR whose NR Mode is corrected takes it on its rows.
+    assert repository.copy_dataset_rows_to_reporting(dataset_id, 'data', ['Operator']) is False
+    repository.update_dataset_profile(dataset_id, nr_mode='NSA')
+    assert repository.set_reporting_nr_mode(dataset_id, 'data') is True
+    assert repository.load_reporting_rows('data', [dataset_id], ['NR_Mode'])['NR_Mode'].tolist() == ['NSA', 'NSA']
+    # Rows filled before the column existed take it when it is requested.
+    with repository.connection() as connection:
+        connection.execute('UPDATE reporting_rows_data SET NR_Mode = NULL')
+    assert repository.copy_dataset_rows_to_reporting(dataset_id, 'data', ['Operator']) == 'columns'
+    assert repository.load_reporting_rows('data', [dataset_id], ['NR_Mode'])['NR_Mode'].tolist() == ['NSA', 'NSA']
+
+
+def test_sa_series_take_a_lighter_tint_and_a_dash_of_their_operator():
+    import pandas as pd
+
+    from src.modules.cdr_reporting import _cdf_campaign_line_widths, _series_colours, _series_line_dashes
+
+    frame = pd.DataFrame({'op': ['A'], 'mode': ['NSA']})
+    frame.attrs['catalogue_dimension_labels'] = {'op': 'Operator', 'mode': 'NR Mode'}
+    frame.attrs['operator_mapping_groups'] = []
+    keys = [('A', 'NSA'), ('A', 'SA'), ('B', 'NSA'), ('B', 'SA')]
+    colours = _series_colours(keys, ['op', 'mode'], frame, line_chart=True)
+    assert colours[('A', 'NSA')] != colours[('B', 'NSA')]
+    for operator in ('A', 'B'):
+        nsa, sa = colours[(operator, 'NSA')], colours[(operator, 'SA')]
+        assert sa != nsa and sum(int(sa[index:index + 2], 16) for index in (1, 3, 5)) > sum(int(nsa[index:index + 2], 16) for index in (1, 3, 5))
+    dashes = _series_line_dashes(keys, ['op', 'mode'], frame)
+    assert dashes[('A', 'NSA')] == () and dashes[('A', 'SA')]
+    # The latest NSA and the latest SA campaigns of an operator are both drawn thick.
+    widths = _cdf_campaign_line_widths(
+        [(('A', 'NSA'), ['2026-Q1', '2026-Q2']), (('A', 'SA'), ['2026-Q3-SA'])], ['op', 'mode'], frame)
+    assert widths[('A', 'SA')] == 4
+
+
+def test_auto_comments_compare_each_operator_in_sa_with_itself_in_nsa():
+    from src.modules.dashboard_comments import ChartFacts, Record, chart_findings, kpi_semantics, slide_findings
+
+    semantics = kpi_semantics('Mean Data Rate')
+    records = [Record({'Operator': operator, 'NR Mode': mode}, value, 200)
+               for operator, mode, value in (('A', 'NSA', 100.0), ('A', 'SA', 150.0), ('B', 'NSA', 90.0), ('B', 'SA', 80.0))]
+    facts = ChartFacts(0, 'DL Throughput', 'stat', semantics, 'median', records, 1)
+    texts = [finding.text for finding in chart_findings(facts, ['A'])]
+    assert any('A' in text and 'higher in SA than in NSA' in text for text in texts), texts
+    # Two charts of one slide, of NSA and of SA.
+    nsa = ChartFacts(0, 'CDF_NSA', 'stat', semantics, 'median',
+                     [Record({'Operator': 'A'}, 100.0, 200), Record({'Operator': 'B'}, 90.0, 200)], 1)
+    sa = ChartFacts(1, 'CDF_SA', 'stat', semantics, 'median',
+                    [Record({'Operator': 'A'}, 150.0, 200), Record({'Operator': 'B'}, 140.0, 200)], 1)
+    texts = [finding.text for finding in slide_findings([nsa, sa])]
+    assert any('better in SA than in NSA for every operator' in text for text in texts), texts
+
+
+def add_data_cdr(tmp_path, name, nr_mode, campaign):
+    import pandas as pd
+
+    from src.modules.repository import local_now_iso
+
+    repository = app_module.repository
+    (tmp_path / name).write_text('test source', encoding='utf-8')
+    dataset_id, _created = repository.add_dataset(name, str(tmp_path / name), 'super')
+    rows = pd.DataFrame({'Operator': ['A', 'B'], 'Campaign': [campaign] * 2, 'Mean_Data_Rate': [10.0, 20.0],
+                         'Transfer_Duration': [1.0, 2.0], 'Test_Result': ['Completed'] * 2,
+                         'Test_Name': ['FDFS HTTPS DL ST'] * 2, 'Test_Start_Time': ['2026-09-01'] * 2})
+    repository.replace_dataset_rows(dataset_id, rows)
+    repository.update_dataset_profile(
+        dataset_id, status='ready', progress=100, dataset_kind='data', nr_mode=nr_mode, cdr_stage='final', campaign=campaign,
+        row_count=len(rows), column_count=len(rows.columns), processed_at=local_now_iso(),
+    )
+    repository.copy_dataset_rows_to_reporting(dataset_id, 'data')
+    return dataset_id
+
+
+def test_a_dashboard_of_nsa_and_sa_reads_the_cdrs_of_each_nr_mode_by_its_campaigns(client, tmp_path):
+    assert client.post('/login', data={'username': 'super', 'password': 'super123'}, follow_redirects=False).status_code == 303
+    nsa_q1 = add_data_cdr(tmp_path, 'q1.csv', 'NSA', '2026-Q1')
+    nsa_q2 = add_data_cdr(tmp_path, 'q2.csv', 'NSA', '2026-Q2')
+    sa_q2 = add_data_cdr(tmp_path, 'q2_sa.csv', 'SA', '2026-Q2-SA')
+    sa_q3 = add_data_cdr(tmp_path, 'q3_sa.csv', 'SA', '2026-Q3-SA')
+    definition = {'name': 'Comparison', 'template': 'FDFS DL (NSA & SA)', 'nr_mode': 'NSA+SA', 'auto_cdrs': True,
+                  'filters': {'Campaign': ['@latest-campaign']}, 'sa_campaigns': ['@latest-2-campaigns']}
+    from src.modules.cdr_facets import fill_missing_facets
+
+    fill_missing_facets(app_module.repository, [nsa_q1, nsa_q2, sa_q2, sa_q3])
+    automatic = client.post('/api/ppt-dashboards/auto-cdrs', json=definition)
+    assert automatic.status_code == 200, automatic.text
+    chosen = {row['id'] for row in automatic.json()['cdrs']['data']}
+    assert chosen == {nsa_q2, sa_q2, sa_q3} and nsa_q1 not in chosen
+    # The Campaign filter lists the NSA campaigns and SA Campaign the SA ones.
+    assert automatic.json()['options']['Campaign'] == ['2026-Q1', '2026-Q2']
+    assert automatic.json()['options']['SA Campaign'] == ['2026-Q2-SA', '2026-Q3-SA']
+
+    prepared = client.post('/api/ppt-dashboards/prepare', json=definition)
+    assert prepared.status_code == 200, prepared.text
+    slide = next(slide for slide in prepared.json()['slides'] if slide['charts'])
+    assert slide['title'] == 'FDFS DL Throughput and Transfer Time (NSA & SA)'
+    assert [(chart['title'], chart['available']) for chart in slide['charts']] == [
+        ('CDF_NSA', True), ('CDF_SA', True), ('Transfer time FDFS DL', True)]
+    # In a Dashboard of NSA alone, the chart of SA says why it shows nothing.
+    prepared = client.post('/api/ppt-dashboards/prepare', json={**definition, 'nr_mode': 'NSA', 'sa_campaigns': []})
+    charts = next(slide for slide in prepared.json()['slides'] if slide['charts'])['charts']
+    assert charts[1]['available'] is False and 'shows the SA CDRs' in charts[1]['unavailable']

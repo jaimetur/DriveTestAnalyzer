@@ -1,8 +1,10 @@
 """Report Templates and PPT Dashboards without an NR Mode of their own.
 
 A Report Template serves the CDRs of any NR Mode: the Dashboard that uses it chooses the NR Mode as part of its
-selection, and the titles of the template name it with the tokens ``{NR Mode}`` (NSA or SA) and ``{NR Mode Name}``
-(Non-Standalone or Standalone).
+selection (NSA, SA or both, NSA & SA), and the titles of the template name it with the tokens ``{NR Mode}`` (NSA, SA or
+NSA & SA) and ``{NR Mode Name}`` (Non-Standalone, Standalone or Non-Standalone & Standalone). Each row of the combined
+CDR tables keeps the NR Mode of its CDR in the NR Mode field: a chart keeps one NR Mode with a filter (NR Mode IN (SA)),
+and splits or colours its series by it (``entry_for_nr_mode``).
 
 Templates and Dashboards were kept per NR Mode before, most of them as an NSA and an SA copy of the same template that
 only told the mode apart in a title. ``merge_mode_templates`` turns each such pair into one template with the tokens,
@@ -17,7 +19,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Iterable, Mapping
 
-from src.modules.nr_mode import DEFAULT_NR_MODE, normalize_nr_mode
+from src.modules.column_names import column_identity
+from src.modules.nr_mode import DEFAULT_NR_MODE, NR_MODES, NSA_VS_SA, normalize_nr_mode, normalize_scoring_nr_mode, nr_modes_of
 
 NR_MODE_TOKEN = '{NR Mode}'
 NR_MODE_NAME_TOKEN = '{NR Mode Name}'
@@ -25,7 +28,11 @@ NR_MODE_NAME_TOKEN = '{NR Mode Name}'
 NR_MODE_TOKEN_VALUES = {
     'NSA': {NR_MODE_TOKEN: 'NSA', NR_MODE_NAME_TOKEN: 'Non-Standalone'},
     'SA': {NR_MODE_TOKEN: 'SA', NR_MODE_NAME_TOKEN: 'Standalone'},
+    NSA_VS_SA: {NR_MODE_TOKEN: 'NSA & SA', NR_MODE_NAME_TOKEN: 'Non-Standalone & Standalone'},
 }
+# The NR Mode a Dashboard reads, as its selectors and file names show it.
+DASHBOARD_NR_MODE_LABELS = {'NSA': 'NSA', 'SA': 'SA', NSA_VS_SA: 'NSA & SA'}
+NR_MODE_SPLIT_FIELD = 'NR Mode'
 _TOKEN_PATTERN = re.compile(r'\{\s*NR\s*Mode(\s+Name)?\s*\}', re.IGNORECASE)
 # The workspace setting that keeps how the templates of each NR Mode are known since they were merged, so a Dashboard
 # or a package of before still finds its template: {"renames": {"nsa|NSA - X": "X"}, "uids": {old uid: new uid}}.
@@ -40,12 +47,126 @@ _NAME_PREFIX = re.compile(r'^\s*(NSA|SA)\s*[-–—_:]\s*(.+?)\s*$', re.IGNORECA
 _NAME_SUFFIX = re.compile(r'^\s*(.+?)\s*(?:[-–—_]\s*(NSA|SA)|\(\s*(NSA|SA)\s*\))\s*$', re.IGNORECASE)
 
 
+def dashboard_nr_mode_value(value: object) -> str:
+    """The NR Mode of the CDRs a Dashboard reads: NSA, SA or NSA+SA (both, NSA & SA); NSA when none is given."""
+    text = str(value or '').strip()
+    if text.replace(' ', '').upper() in {'NSA&SA', 'NSAANDSA'}:
+        return NSA_VS_SA
+    return normalize_scoring_nr_mode(text) or DEFAULT_NR_MODE
+
+
 def render_nr_mode_tokens(text: str, nr_mode: object) -> str:
     """A template text with its NR Mode tokens written for an NR Mode (NSA when none is given)."""
     if not text or '{' not in text:
         return text
-    values = NR_MODE_TOKEN_VALUES[normalize_nr_mode(nr_mode) or DEFAULT_NR_MODE]
+    values = NR_MODE_TOKEN_VALUES[dashboard_nr_mode_value(nr_mode)]
     return _TOKEN_PATTERN.sub(lambda match: values[NR_MODE_NAME_TOKEN if match.group(1) else NR_MODE_TOKEN], text)
+
+
+def chart_filter_nr_modes(entry: Any) -> tuple[str, ...]:
+    """The NR Modes the Filters of a chart row keep (NR Mode IN (SA), NR Mode = NSA, NR Mode NOT IN (SA))."""
+    from src.modules.cdr_reporting import parse_catalog_filters
+
+    modes = set(NR_MODES)
+    try:
+        conditions = parse_catalog_filters(str(getattr(entry, 'filters', '') or ''))
+    except ValueError:
+        return tuple(NR_MODES)
+    for condition in conditions:
+        if column_identity(condition.column) != column_identity(NR_MODE_SPLIT_FIELD):
+            continue
+        values = {normalize_nr_mode(value) for value in condition.values} - {None}
+        if condition.operator in {'IN', '='}:
+            modes &= values
+        elif condition.operator in {'NOT IN', '!='}:
+            modes -= values
+    return tuple(mode for mode in NR_MODES if mode in modes)
+
+
+# Filters of a chart row that set the chart up rather than keep rows (Threshold, Buckets, Bin Size…).
+_CHART_SETTINGS = frozenset({'threshold', 'buckets', 'binsize', 'classcolours', 'histogramoperator'})
+
+
+def chart_fields(entry: Any) -> list[str]:
+    """The CDR fields a chart row reads: its KPI, filters, splits, legend and dynamic fields (not NR Mode, which every
+    row has)."""
+    from src.modules.cdr_reporting import (
+        _legend_dimensions, catalog_kpi_fields, entry_dynamic_fields, parse_catalog_filters, parse_catalog_grouping,
+    )
+
+    try:
+        fields = [*catalog_kpi_fields(entry.kpi), *parse_catalog_grouping(entry.rows_split).dimensions,
+                  *parse_catalog_grouping(entry.columns_split).dimensions, *_legend_dimensions(entry.legend),
+                  *(condition.column for condition in parse_catalog_filters(entry.filters)), *entry_dynamic_fields(entry)]
+    except ValueError:
+        return []
+    skipped = {*_CHART_SETTINGS, column_identity(NR_MODE_SPLIT_FIELD)}
+    return list(dict.fromkeys(field for field in fields if str(field).strip() and column_identity(field) not in skipped))
+
+
+def missing_nr_mode_fields(entry: Any, fields_by_mode: Mapping[str, set[str]], nr_mode: object = NSA_VS_SA) -> dict[str, list[str]]:
+    """The fields of a chart that the CDRs of an NR Mode it shows do not have while those of the other one do, by that
+    NR Mode: the chart has no samples of it. ``fields_by_mode``: the field identities of the CDRs of each NR Mode."""
+    if not entry.source_kind or entry.source_kind == 'all' or entry.structural_type:
+        return {}
+    read = nr_modes_of(dashboard_nr_mode_value(nr_mode))
+    missing: dict[str, list[str]] = {}
+    for mode in chart_filter_nr_modes(entry):
+        others = [fields_by_mode.get(other) for other in NR_MODES if other != mode]
+        if mode not in read or mode not in fields_by_mode or not any(others):
+            continue
+        absent = [field for field in chart_fields(entry) if column_identity(field) not in fields_by_mode[mode]
+                  and any(column_identity(field) in fields for fields in others if fields)]
+        if absent:
+            missing[mode] = absent
+    return missing
+
+
+def missing_nr_mode_note(missing: Mapping[str, list[str]]) -> str:
+    """What a chart says when the CDRs of an NR Mode lack some of its fields."""
+    return ' '.join(f"The {mode} CDRs have no {', '.join(fields)}: no {mode} samples." for mode, fields in missing.items())
+
+
+def _names_field(value: str, names: set[str]) -> bool:
+    return any(column_identity(part) in names for part in re.split(r'\s*×\s*|\s+\bx\b\s+|,|/', value or '') if part.strip())
+
+
+def entry_for_nr_mode(entry: Any, nr_mode: object) -> Any:
+    """A chart row of a template as a Dashboard that reads the CDRs of an NR Mode (NSA, SA or NSA+SA) shows it.
+
+    Its slide titles name the NR Mode of the Dashboard and its chart title the NR Modes the chart shows (those its
+    filters keep, NR Mode IN (SA)). A chart that shows both NR Modes and tells them apart neither by NR Mode nor by
+    Campaign (whose SA campaigns name the mode) gets the NR Mode as the last level of the split that holds its legend,
+    and of its legend: the NSA and SA tests of an operator are never added together.
+    """
+    from dataclasses import replace
+
+    from src.modules.cdr_reporting import _legend_dimensions, entry_dynamic_fields, parse_catalog_grouping
+
+    dashboard_mode = dashboard_nr_mode_value(nr_mode)
+    shown = [mode for mode in chart_filter_nr_modes(entry) if mode in (NR_MODES if dashboard_mode == NSA_VS_SA else (dashboard_mode,))]
+    chart_mode = NSA_VS_SA if len(shown) > 1 else (shown[0] if shown else dashboard_mode)
+    changes: dict[str, Any] = {
+        'slide_title': render_nr_mode_tokens(entry.slide_title, dashboard_mode),
+        'slide_subtitle': render_nr_mode_tokens(entry.slide_subtitle, dashboard_mode),
+        'chart_title': render_nr_mode_tokens(entry.chart_title, chart_mode),
+    }
+    if len(shown) > 1 and entry.source_kind and not entry.structural_type:
+        names = {column_identity(NR_MODE_SPLIT_FIELD), column_identity('Campaign')}
+        told_apart = any(_names_field(value, names) for value in (
+            entry.rows_split, entry.columns_split, entry.legend, *entry_dynamic_fields(entry)))
+        legend = _legend_dimensions(entry.legend)
+        legend_keys = {column_identity(value) for value in legend}
+        rows = parse_catalog_grouping(entry.rows_split).dimensions
+        columns = parse_catalog_grouping(entry.columns_split).dimensions
+        axis = next((name for name, dimensions in (('columns_split', columns), ('rows_split', rows))
+                     if legend_keys & {column_identity(value) for value in dimensions}), None)
+        axis = axis or ('columns_split' if columns else 'rows_split' if rows else None)
+        if not told_apart and axis:
+            changes[axis] = ' × '.join([*(columns if axis == 'columns_split' else rows), NR_MODE_SPLIT_FIELD])
+            if legend:
+                changes['legend'] = ', '.join([*legend, NR_MODE_SPLIT_FIELD])
+    return replace(entry, **changes)
 
 
 def _tokenized(text: str, nr_mode: str) -> str:

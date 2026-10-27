@@ -95,7 +95,8 @@ from src.modules.network_inventory import INVENTORY_DATASET_KINDS, build_invento
 from src.modules.serving_cells import vendor_mapping_signature
 from src.modules.ingestion import CDR_IGNORED_SHEET_KEYS, add_three_gcid_column, add_vfuk_gcid_column, apply_operator_mappings, ensure_fixed_cdr_fields, get_dataset_source_columns, get_excel_sheet_columns, infer_dataset_kind, load_dataset, summarise_dataset
 from src.modules.geospatial import assign_clusters, assign_regions, polygon_vendor_endpoints, validate_cluster_mapping, validate_region_mapping, validate_vendor_polygons, vendor_polygon_operators
-from src.modules.nr_mode import DEFAULT_NR_MODE, NR_MODES, dataset_nr_mode, infer_nr_mode, normalize_nr_mode, nr_mode_label
+from src.modules.nr_mode import DEFAULT_NR_MODE, NR_MODE_FIELD, NR_MODES, dataset_nr_mode, infer_nr_mode, normalize_nr_mode, nr_mode_label
+from src.modules.report_template_modes import dashboard_nr_mode_value
 from src.modules.cdr_campaign import campaign_of_rows, catalogued_campaigns, dataset_campaign, normalize_campaign
 from src.modules.cdr_stage import (
     CDR_STAGE_LABELS, CDR_STAGES, IN_COMBINED_LABELS, IN_COMBINED_VALUES, combined_dataset_ids, combined_inclusion,
@@ -1163,19 +1164,15 @@ def rename_calculated_dimension_query_references(renames: dict[str, str], task_r
 
 def load_template_catalogue(catalogue_content: bytes | str, *, validate_filters: bool = True, task_repository: Repository | None = None,
                             nr_mode: str | None = None):
-    """The chart rows of a Report Template; given the NR Mode of the CDRs it is used with, its titles name that mode
-    (the {NR Mode} and {NR Mode Name} tokens). The editor reads them without one, as written."""
-    from src.modules.report_template_modes import render_nr_mode_tokens
+    """The chart rows of a Report Template; given the NR Mode of the CDRs it is used with (NSA, SA or NSA+SA), as
+    that NR Mode shows them (``entry_for_nr_mode``: titles naming the mode, NR Mode in the splits of a chart that reads
+    both). The editor reads them without one, as written."""
+    from src.modules.report_template_modes import entry_for_nr_mode
 
     dimensions = load_repository_calculated_dimensions(task_repository) if task_repository else load_workspace_calculated_dimensions()
-    return [
-        replace(entry, calculated_dimensions=dimensions, **({} if nr_mode is None else {
-            'slide_title': render_nr_mode_tokens(entry.slide_title, nr_mode),
-            'slide_subtitle': render_nr_mode_tokens(entry.slide_subtitle, nr_mode),
-            'chart_title': render_nr_mode_tokens(entry.chart_title, nr_mode),
-        }))
-        for entry in parse_catalog_csv(catalogue_content, validate_filters=validate_filters)
-    ]
+    entries = [replace(entry, calculated_dimensions=dimensions)
+               for entry in parse_catalog_csv(catalogue_content, validate_filters=validate_filters)]
+    return entries if nr_mode is None else [entry_for_nr_mode(entry, nr_mode) for entry in entries]
 
 
 def materialize_workspace_calculated_dimensions(
@@ -1649,6 +1646,9 @@ def missing_workspace_template_columns(task_repository: Repository) -> dict[str,
             field for field in workspace_template_fields(task_repository, kind)
             if column_identity(field) in source_keys and column_identity(field) not in present_keys
         ]
+        if column_identity(NR_MODE_FIELD) not in present_keys:
+            # The NR Mode of the CDR of each row, which the CDRs themselves do not have.
+            fields.append(NR_MODE_FIELD)
         if fields:
             missing[kind] = fields
     return missing
@@ -2533,8 +2533,8 @@ def reporting_catalog_entries(nr_mode: str | None = None):
 
 
 def catalogue_editor_columns(datasets: Iterable[Any] | None = None, calculated_dimensions: Iterable[Any] = ()) -> dict[str, list[str]]:
-    """Offer the processed CDR fields that can be used in the template editor."""
-    common = {'Operator', 'Campaign', 'source_sheet', 'Operator_Vendor', 'Vendor', 'RAT_A', 'RAT'}
+    """Offer the processed CDR fields that can be used in the template editor (NR Mode: that of the CDR of each row)."""
+    common = {'Operator', 'Campaign', 'source_sheet', 'Operator_Vendor', 'Vendor', 'RAT_A', 'RAT', 'NR Mode'}
     columns: dict[str, set[str]] = {
         'cdr-data': set(common) | {
             'Test_Result', 'Test_Name', 'Type_of_Test', 'Direction', 'G Level 4',
@@ -2579,6 +2579,9 @@ def catalogue_editor_filter_values(columns: dict[str, list[str]]) -> dict[str, d
         for column in repository.list_dataset_row_columns(dataset['id']):
             known = values[source].setdefault(str(column), set())
             known.update(repository.list_distinct_dataset_row_values(dataset['id'], str(column), limit=100))
+    for per_column in values.values():
+        # The NR Mode of the CDR of each row (a chart keeps one with NR Mode IN (SA)).
+        per_column.setdefault('NR Mode', set()).update(NR_MODES)
     return {
         source: {
             column: sorted(column_values, key=str.casefold)[:100]
@@ -22614,6 +22617,10 @@ def update_dataset_nr_mode(
     previous = dataset_nr_mode(dataset['dataset_kind'], dataset['nr_mode'], dataset['file_name'])
     if previous != nr_mode:
         repository.update_dataset_profile(dataset_id, nr_mode=nr_mode)
+        kind = str(dataset['dataset_kind']).casefold()
+        if repository.set_reporting_nr_mode(dataset_id, kind):
+            # Its rows in the combined table change their NR_Mode: the prepared Dashboards read them again.
+            mark_combined_reporting_updated(repository, kind, rows_changed=True)
         repository.add_log(user.username, 'update_dataset_nr_mode', json.dumps({
             'dataset_id': dataset_id, 'file': dataset['file_name'],
             'previous_nr_mode': previous, 'nr_mode': nr_mode,
@@ -26619,7 +26626,43 @@ async def validate_report_catalogue_content(
         entries = parse_catalog_csv(content)
     except (TypeError, ValueError) as exc:
         return JSONResponse({'valid': False, 'detail': str(exc)})
-    return JSONResponse({'valid': True, 'rows': len(entries)})
+    return JSONResponse({'valid': True, 'rows': len(entries), 'warnings': nr_mode_field_warnings(entries)})
+
+
+def cdr_fields_by_nr_mode(task_repository: Repository, kind: str, dataset_ids: Iterable[int] | None = None) -> dict[str, set[str]]:
+    """The field identities of the ready CDRs of a type (of those given) in each NR Mode, with the Auto-calculated
+    Fields of the type."""
+    wanted = None if dataset_ids is None else {int(value) for value in dataset_ids}
+    calculated = {column_identity(dimension.name) for dimension in load_repository_calculated_dimensions(task_repository)
+                  if f'cdr-{kind}' in dimension.sources}
+    fields: dict[str, set[str]] = {}
+    for dataset in task_repository.list_datasets():
+        if dataset['status'] != 'ready' or str(dataset['dataset_kind'] or '').casefold() != kind:
+            continue
+        if wanted is not None and int(dataset['id']) not in wanted:
+            continue
+        mode = dataset_nr_mode(kind, dataset['nr_mode'], dataset['file_name'])
+        fields.setdefault(mode, set(calculated)).update(
+            column_identity(column) for column in task_repository.list_dataset_row_columns(int(dataset['id'])))
+    return fields
+
+
+def nr_mode_field_warnings(entries: Iterable[CatalogEntry], task_repository: Repository | None = None) -> list[str]:
+    """The charts of a template that use a field only the CDRs of one NR Mode have: they show no samples of the other."""
+    from src.modules.report_template_modes import missing_nr_mode_fields, missing_nr_mode_note
+
+    task_repository = task_repository or repository
+    by_kind: dict[str, dict[str, set[str]]] = {}
+    warnings = []
+    for entry in entries:
+        kind = entry.source_kind
+        if kind not in CDR_DATASET_KINDS:
+            continue
+        if kind not in by_kind:
+            by_kind[kind] = cdr_fields_by_nr_mode(task_repository, kind)
+        if missing := missing_nr_mode_fields(entry, by_kind[kind]):
+            warnings.append(f'Slide {entry.slide} · {entry.chart_title or entry.chart_type}: {missing_nr_mode_note(missing)}')
+    return warnings
 
 
 @app.post('/workspace-config/report-templates/{catalogue_id}/save')
@@ -26672,22 +26715,22 @@ def save_report_catalogue(
 
 
 def template_preview_datasets(source_kind: str, nr_mode: object) -> list[dict[str, Any]]:
-    """The ready CDRs a template editor preview reads for a Source Dataset: those of the NR Mode it previews."""
-    mode = normalize_nr_mode(nr_mode) or DEFAULT_NR_MODE
+    """The ready CDRs a template editor preview reads for a Source Dataset: those of the NR Mode it previews (both for
+    NSA & SA)."""
+    from src.modules.nr_mode import nr_modes_of
+    modes = nr_modes_of(dashboard_nr_mode_value(nr_mode))
     ready = [
         serialize_dataset_row(dataset)
         for dataset in repository.list_datasets()
         if _reporting_kind_matches(str(dataset['dataset_kind'] or '').casefold(), source_kind) and dataset['status'] == 'ready'
     ]
-    return [row for row in ready if dataset_nr_mode(row.get('dataset_kind'), row.get('nr_mode'), row.get('file_name')) == mode]
+    return [row for row in ready if dataset_nr_mode(row.get('dataset_kind'), row.get('nr_mode'), row.get('file_name')) in modes]
 
 
 def template_preview_entry(entry: CatalogEntry, nr_mode: object) -> CatalogEntry:
-    """A template chart as a preview of the NR Mode shows it: its titles naming that mode."""
-    from src.modules.report_template_modes import render_nr_mode_tokens
-    return replace(entry, chart_title=render_nr_mode_tokens(entry.chart_title, nr_mode),
-                   slide_title=render_nr_mode_tokens(entry.slide_title, nr_mode),
-                   slide_subtitle=render_nr_mode_tokens(entry.slide_subtitle, nr_mode))
+    """A template chart as a preview of the NR Mode shows it, as a Dashboard of that NR Mode does."""
+    from src.modules.report_template_modes import entry_for_nr_mode
+    return entry_for_nr_mode(entry, nr_mode)
 
 
 @app.post('/workspace-config/report-templates/{catalogue_id}/chart-preview')
@@ -26704,7 +26747,7 @@ async def preview_report_template_chart(
         raise HTTPException(status_code=404, detail='Report Template not found.')
     try:
         payload = await request.json()
-        nr_mode = normalize_nr_mode(payload.get('nr_mode')) or DEFAULT_NR_MODE
+        nr_mode = dashboard_nr_mode_value(payload.get('nr_mode'))
         dimensions = load_workspace_calculated_dimensions()
         entries = [
             replace(entry, calculated_dimensions=dimensions)
@@ -26820,7 +26863,7 @@ async def preview_report_template_chart_image(
         raise HTTPException(status_code=404, detail='Report Template not found.')
     try:
         payload = await request.json()
-        nr_mode = normalize_nr_mode(payload.get('nr_mode')) or DEFAULT_NR_MODE
+        nr_mode = dashboard_nr_mode_value(payload.get('nr_mode'))
         dimensions = load_workspace_calculated_dimensions()
         entries = [
             replace(entry, calculated_dimensions=dimensions)

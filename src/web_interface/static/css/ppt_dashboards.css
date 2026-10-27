@@ -1843,6 +1843,9 @@
 .ppt-dashboards .ds-ppt-dataset-eyebrow .ds-ppt-eyebrow-part:not(:empty) ~ .ds-ppt-eyebrow-part:not(:empty)::before { content:'●'; margin:0 .6rem; color:#695678; font-size:.75em; vertical-align:.12em; }
 .ppt-dashboards .ds-ppt-dataset-eyebrow .ds-ppt-eyebrow-nr-mode-nsa { color:#9a6c00; font-weight:850; }
 .ppt-dashboards .ds-ppt-dataset-eyebrow .ds-ppt-eyebrow-nr-mode-sa { color:#1f5f99; font-weight:850; }
+.ppt-dashboards .ds-ppt-dataset-eyebrow .ds-ppt-eyebrow-nr-mode-nsa-sa { color:#5b3f9a; font-weight:850; }
+/* NSA & SA: the NR Mode a chart has no samples of (a field only the CDRs of the other NR Mode have). */
+.ds-chart-nr-mode-note { position:absolute; left:6px; bottom:6px; z-index:4; max-width:calc(100% - 12px); overflow:hidden; padding:2px 8px; border:1px solid #e3c873; border-radius:999px; background:#fff8dc; color:#6b5310; font-size:.68rem; font-weight:750; white-space:nowrap; text-overflow:ellipsis; pointer-events:auto; }
 .ppt-dashboards .ds-ppt-dataset-eyebrow .ds-ppt-eyebrow-dashboard { color:#6d46a8; font-weight:850; }
 
 /* Generate PPT is a labelled library action right after Open Filters; its

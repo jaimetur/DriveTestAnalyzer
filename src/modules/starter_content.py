@@ -10,7 +10,8 @@ New deployments and new workspaces, and existing workspaces once, receive the co
 - ``assets/ppt-templates/*.csv``: Report Templates, named after their file, each serving the CDRs of any NR Mode (their
   titles name it with ``{NR Mode}`` and ``{NR Mode Name}``);
 - ``assets/ppt-dashboards/*.json``: PPT Dashboards, which use those templates, each reading the CDRs of its NR Mode
-  (``nr_mode``);
+  (``nr_mode``: NSA, SA or NSA+SA for both, whose SA CDRs follow ``sa_campaigns``); the templates and Dashboards shipped
+  later (``LATER_EXAMPLES``, such as the NSA & SA comparison FDFS DL (NSA & SA)) reach every existing workspace once;
 - ``assets/autocalculated-fields/default-autocalculated-fields.json``: the Auto-calculated Fields every new
   workspace starts with, which the templates use;
 - ``assets/scoring-report-configurations/*.json``: saved Scoring report configurations (``name`` and
@@ -50,6 +51,10 @@ METHODOLOGIES_STATE_KEY = 'starter_methodologies_offered'
 METHODOLOGIES_SHIPPED_BEFORE = ('netcheck-2026',)
 # The methodology a new workspace starts with as its active one (the others apply to the campaigns they name).
 BASE_METHODOLOGY = 'netcheck-2026'
+# The Report Templates shipped after workspaces were set up, which reach each of them once with their Dashboards (those
+# of ``assets/ppt-dashboards`` that use them); a workspace that deleted them is not given them again.
+LATER_EXAMPLES_STATE_KEY = 'starter_examples_offered'
+LATER_EXAMPLES = ('FDFS DL (NSA & SA)',)
 
 
 def _json_files(folder: Path) -> list[Path]:
@@ -128,6 +133,37 @@ def _seed_dashboards(repository: Any) -> int:
         added += 1
     if added:
         repository.set_workspace_state(DASHBOARDS_STATE_KEY, json.dumps(dashboards))
+    return added
+
+
+def _seed_later_examples(repository: Any, username: str) -> int:
+    """Add once the templates of ``LATER_EXAMPLES`` (and their Dashboards) a workspace was not given yet."""
+    stored = repository.get_workspace_state(LATER_EXAMPLES_STATE_KEY)
+    offered = set(json.loads(stored or '[]'))
+    pending = [name for name in LATER_EXAMPLES if name not in offered]
+    if not pending:
+        return 0
+    templates = {str(row['name']).casefold() for row in repository.list_report_templates()}
+    raw = repository.get_workspace_state(DASHBOARDS_STATE_KEY)
+    dashboards = json.loads(raw) if raw else {}
+    names = {str(item.get('name') or '').casefold() for item in dashboards.values() if isinstance(item, dict)}
+    added = 0
+    for name in pending:
+        path = ASSETS / 'ppt-templates' / f'{name}.csv'
+        if path.is_file() and name.casefold() not in templates:
+            repository.add_report_template(name, path.read_bytes(), updated_by=username)
+            added += 1
+        for dashboard_path in _json_files(ASSETS / 'ppt-dashboards'):
+            definition = json.loads(dashboard_path.read_text(encoding='utf-8'))
+            key = str(definition.get('name') or '').casefold()
+            if definition.get('template') == name and key and key not in names and isinstance(dashboards, dict):
+                dashboards[str(uuid.uuid4())] = definition
+                names.add(key)
+                added += 1
+        offered.add(name)
+    if isinstance(dashboards, dict) and added:
+        repository.set_workspace_state(DASHBOARDS_STATE_KEY, json.dumps(dashboards))
+    repository.set_workspace_state(LATER_EXAMPLES_STATE_KEY, json.dumps(sorted(offered)))
     return added
 
 
@@ -270,10 +306,10 @@ def seed_starter_content(repository: Any, username: str = 'system') -> dict[str,
     Methodologies shipped after the workspace was set up are added to it once too.
     """
     if repository.get_workspace_state(STATE_KEY) == '1':
-        methodologies = _seed_methodologies(repository)
-        if not methodologies:
+        added = {'methodologies': _seed_methodologies(repository), 'examples': _seed_later_examples(repository, username)}
+        added = {key: value for key, value in added.items() if value}
+        if not added:
             return None
-        added = {'methodologies': methodologies}
         if hasattr(repository, 'try_add_log'):
             repository.try_add_log(username, 'starter_content_added', json.dumps(added))
         return added
@@ -290,6 +326,8 @@ def seed_starter_content(repository: Any, username: str = 'system') -> dict[str,
     # Jobs name; the Reporting Jobs also name the favourite Bundle Report Templates they generate.
     added['bundle_report_template_favourites'] = _seed_bundle_report_template_favourites(repository, username)
     added['reporting_jobs'] = _seed_reporting_jobs(repository, username)
+    # The later examples came with the templates and Dashboards above.
+    repository.set_workspace_state(LATER_EXAMPLES_STATE_KEY, json.dumps(sorted(LATER_EXAMPLES)))
     repository.set_workspace_state(STATE_KEY, '1')
     if any(added.values()) and hasattr(repository, 'try_add_log'):
         repository.try_add_log(username, 'starter_content_added', json.dumps(added))

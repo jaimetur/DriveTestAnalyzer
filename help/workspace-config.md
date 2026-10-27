@@ -48,7 +48,7 @@ The Workspace Config section is available to `user-editor`, `admin` and `super-a
 
 Templates belong to the active workspace and are stored in that workspace database's `report_templates` table. Import, export, backup and transfer packages serialize them as portable CSV files, but those files are package artifacts rather than the live source of record. Obsolete `slides-templates` directories are removed by the current migration and portability flows.
 
-PPT Templates Management keeps one library of templates, one of them the default, and the editor described below. A template has no NR Mode of its own: it serves the CDRs of any NR Mode, and each Dashboard (or Reporting job) chooses the NR Mode it reads. Its slide titles, subtitles and chart titles name that NR Mode where they write `{NR Mode}` (NSA or SA) or `{NR Mode Name}` (Non-Standalone or Standalone), so one template gives the NSA and the SA decks. Template names are unique in the workspace.
+PPT Templates Management keeps one library of templates, one of them the default, and the editor described below. A template has no NR Mode of its own: it serves the CDRs of any NR Mode, and each Dashboard (or Reporting job) chooses the NR Mode it reads. Its slide titles, subtitles and chart titles name that NR Mode where they write `{NR Mode}` (NSA, SA or NSA & SA) or `{NR Mode Name}` (Non-Standalone, Standalone or Non-Standalone & Standalone), so one template gives the NSA, the SA and the [NSA & SA](ppt-dashboards.md#nsa--sa-in-one-dashboard) decks. Every row has the **NR Mode** field (that of its CDR): a chart keeps one NR Mode with the filter `NR Mode IN (SA)` (its title's `{NR Mode}` then names that one), and NR Mode can split or label its series in Rows Split, Columns Split, Legend and the Dynamic Rows/Columns Field. Template names are unique in the workspace.
 
 The library is sorted by name (an NR Mode written in a name, such as `NSA - Report`, is ignored for the order); its columns show the creation and last update times and **Last Updated by**, the user who last imported, edited, renamed, duplicated or promoted the template.
 
@@ -105,7 +105,8 @@ The row Export action downloads that individual CSV; portable ZIP export is avai
 - Shared Filter Builder with parsed-expression display. Its conditions reach the Filters cell when **Apply filter** is pressed, once the filter is complete.
 - Chart Data Preview opens the full filtered dataset directly.
 - Chart Preview reuses the shared Interactive Preview.
-- **Preview NR Mode** (NSA by default), in the toolbar, chooses the CDRs the previews read: the ready CDRs of that NR Mode, every Data, Voice and Speech test of them, and the titles of the preview name it (`{NR Mode}`, `{NR Mode Name}`).
+- **Preview NR Mode** (NSA by default, SA or NSA & SA), in the toolbar, chooses the CDRs the previews read: the ready CDRs of that NR Mode (of both for NSA & SA, as a Dashboard of NSA & SA shows them), every Data, Voice and Speech test of them, and the titles of the preview name it (`{NR Mode}`, `{NR Mode Name}`).
+- A note above the rows names the charts that use a KPI, filter or split field only the CDRs of one NR Mode have (they show no samples of the other one).
 - **Update Template** applies preview values to the in-memory row; it does not save to disk.
 - **Auto-calculated Fields** opens the shared active-workspace field manager.
 

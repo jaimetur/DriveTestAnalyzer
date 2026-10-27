@@ -367,7 +367,7 @@
   // With `single` (Network Insights), one Campaign: Latest campaign (the default), Previous campaign or one campaign; an
   // entry saved with several keeps the newest one, and one saved with Latest 2, 3 or 4 campaigns or All available
   // campaigns Latest campaign.
-  function campaignPicker(nrModeOf, saved = [], {compact = false, complete = false, single = false, onChange = null} = {}) {
+  function campaignPicker(nrModeOf, saved = [], {compact = false, complete = false, single = false, onChange = null, eachNrMode = false} = {}) {
     const wrapper = node('div', undefined, 'rj-campaign-picker');
     const presets = single ? (options.single_campaign_presets || []).map((key) => [key, options.campaign_presets?.[key] || key])
       : Object.entries(options.campaign_presets || {});
@@ -392,7 +392,7 @@
       const request = ++previewRequest;
       globalThis.renderAutoCdrList?.(previewList, null, {loading: true});
       try {
-        const result = await api('/api/reporting/auto-cdrs', {method: 'POST', body: JSON.stringify({nr_mode: nrModeOf(), campaigns: value(), complete})});
+        const result = await api('/api/reporting/auto-cdrs', {method: 'POST', body: JSON.stringify({nr_mode: nrModeOf(), campaigns: value(), complete, each_nr_mode: eachNrMode})});
         if (request !== previewRequest) return;
         previewCaption.textContent = 'CDRs used now (chosen again at each run)';
         // The operators out of scope in its NR Mode (the NR Modes of the Operator Maps), left out of the artifact.
@@ -527,9 +527,13 @@
   function dashboardEntry(entry = null) {
     const card = node('div', undefined, 'rj-entry');
     // NR Mode comes first: it decides which CDRs are read, in place of the Dashboard's own (any template serves both).
-    const modeOf = (item) => String(item?.nr_mode || item?.technology || 'nsa').toUpperCase() === 'SA' ? 'SA' : 'NSA';
+    // NSA & SA reads the CDRs of both NR Modes, the Campaigns choosing those of each one.
+    const modeOf = (item) => {
+      const mode = String(item?.nr_mode || item?.technology || 'nsa').toUpperCase();
+      return ['SA', 'NSA+SA'].includes(mode) ? mode : 'NSA';
+    };
     const initial = options.dashboards.find((item) => item.id === entry?.dashboard_id);
-    const nrMode = select([['NSA', 'NSA'], ['SA', 'SA']], entry?.nr_mode ? modeOf(entry) : initial ? modeOf(initial) : 'NSA');
+    const nrMode = select([['NSA', 'NSA'], ['SA', 'SA'], ['NSA+SA', 'NSA & SA']], entry?.nr_mode ? modeOf(entry) : initial ? modeOf(initial) : 'NSA');
     const dashboard = node('select');
     const noDashboards = node('p', '', 'form-note');
     // A new entry starts with the first Dashboard not added yet.
@@ -585,7 +589,7 @@
     // The Campaigns of the Dashboard (or of this entry), beside NR Mode.
     const setCampaigns = (saved) => {
       const name = current.fields.find(isCampaign);
-      campaigns = name ? campaignPicker(() => nrMode.value, saved || [], {onChange: () => scheduleLoad()}) : null;
+      campaigns = name ? campaignPicker(() => nrMode.value, saved || [], {onChange: () => scheduleLoad(), eachNrMode: true}) : null;
       campaignSlot.replaceChildren(...(campaigns ? [campaigns.field] : []));
       campaignPreviewSlot.replaceChildren(...(campaigns ? [campaigns.preview] : []));
     };
@@ -642,7 +646,7 @@
     comparison.addEventListener('change', scheduleLoad);
     // Campaign first: it chooses the CDRs.
     current = {saved: {}, fields: []};
-    card.append(entryHead(card, 'Dashboard', () => [nrMode.value, dashboard.selectedOptions[0]?.textContent, label.value.trim()].filter(Boolean).join(' · ')),
+    card.append(entryHead(card, 'Dashboard', () => [nrMode.value === 'NSA+SA' ? 'NSA & SA' : nrMode.value, dashboard.selectedOptions[0]?.textContent, label.value.trim()].filter(Boolean).join(' · ')),
       head, campaignPreviewSlot, noDashboards, node('strong', 'Adaptative Filters'), filterNote, filters);
     if (dashboard.value) apply(entry || savedDashboard(), savedDashboard());
     card.getValue = () => ({

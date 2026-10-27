@@ -1,0 +1,11 @@
+Slide,Slide Tittle,Slide Subtittle,Layout,Dynamic Rows Field,Dynamic Columns Field,Chart Tittle,Source Dataset,KPI,Chart type,Filters,Rows Split,Columns Split,Legend,Legend Position,Legend Format,Label Position,Label Format,Axis X Range,Axis Y Range,Exclude Null/Empty,Exclude Zero
+1,FDFS DL {NR Mode} Comparison,{NR Mode Name},Title Page,,,,,,Title Slide,,,,,,,,,,,,
+2,FDFS DL Throughput and Transfer Time ({NR Mode}),,Title + 1 rows + 3 columns + comments down,,,CDF_NSA,CDR-Data,Mean_Data_Rate,CDF Line,"Test_Result = Completed;
+Test_Name IN (FDFS HTTP DL ST, FDFS HTTPS DL ST);
+NR Mode IN (NSA)",Operator,Campaign,"Operator, Campaign",Bottom,,,,,,,
+2,FDFS DL Throughput and Transfer Time ({NR Mode}),,Title + 1 rows + 3 columns + comments down,,,CDF_SA,CDR-Data,Mean_Data_Rate,CDF Line,"Test_Result = Completed;
+Test_Name IN (FDFS HTTP DL ST, FDFS HTTPS DL ST);
+NR Mode IN (SA)",Operator,Campaign,"Operator, Campaign",Bottom,,,,,,,
+2,FDFS DL Throughput and Transfer Time ({NR Mode}),,Title + 1 rows + 3 columns + comments down,,,Transfer time FDFS DL,CDR-Data,Transfer_Duration,Average Vertical Bars,"Test_Result = Completed;
+Test_Name IN (FDFS HTTP DL ST, FDFS HTTPS DL ST)",,Operator × Campaign,Operator,Bottom,,,,,,,
+3,,,Black logo end slide,,,,,,End Slide,,,,,,,,,,,,

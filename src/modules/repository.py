@@ -27,7 +27,7 @@ from src.modules.column_names import (
     MAIN_CDR_FIELDS, OPERATOR_VENDOR_FIELD, VENDOR_FIELD, clean_column_name, column_identity, mapped_vendor_only_value,
     operator_vendor_value, vendor_filter_column, vendor_filter_value, vendor_filter_values, vendor_match_values,
 )
-from src.modules.nr_mode import NR_MODE_DATASET_KINDS, dataset_nr_mode, infer_nr_mode, normalize_nr_mode
+from src.modules.nr_mode import NR_MODE_DATASET_KINDS, NR_MODE_FIELD, dataset_nr_mode, infer_nr_mode, normalize_nr_mode
 from src.modules.operator_roles import normalize_mapping_role, normalize_nr_modes
 from src.modules.cdr_stage import CDR_STAGE_KINDS, infer_cdr_stage, normalize_cdr_stage, normalize_in_combined
 from src.modules.module_labels import MAIN_MODULES, MODULE_LABELS_STATE_KEY
@@ -4028,8 +4028,53 @@ class Repository:
     REPORTING_CORE_COLUMNS = (
         'source_sheet', *MAIN_CDR_FIELDS, 'Sample_RAT_A',
         'technology_primary', 'L1_Call_Mode_A', 'L2_Call_Mode_A', 'Session_Type',
-        'session_type', 'Type_of_Test', 'Test_Name', 'test_name', 'Test_Type', 'test_type',
+        'session_type', 'Type_of_Test', 'Test_Name', 'test_name', 'Test_Type', 'test_type', NR_MODE_FIELD,
     )
+
+    def _reporting_nr_mode(self, conn: sqlite3.Connection, dataset_id: int, dataset_kind: str) -> str | None:
+        """The NR Mode of a CDR that its combined rows keep in NR_Mode."""
+        row = conn.execute(
+            'SELECT d.file_name, p.nr_mode FROM datasets d LEFT JOIN dataset_profiles p ON p.dataset_id = d.id WHERE d.id = ?',
+            (int(dataset_id),),
+        ).fetchone()
+        return dataset_nr_mode(dataset_kind, row['nr_mode'], row['file_name']) if row else None
+
+    def _ensure_reporting_nr_mode_column(
+        self, conn: sqlite3.Connection, table_name: str, target_columns: list[str],
+    ) -> tuple[list[str], str]:
+        """The combined table with its NR_Mode column (the NR Mode of the CDR of each row), added when missing."""
+        current = next((column for column in target_columns if self._column_identity(column) == self._column_identity(NR_MODE_FIELD)), None)
+        if current:
+            return target_columns, current
+        try:
+            conn.execute(f"ALTER TABLE {self._quote_identifier(table_name)} ADD COLUMN {self._quote_identifier(NR_MODE_FIELD)}")
+        except sqlite3.OperationalError as exc:
+            if 'duplicate column name' not in str(exc).casefold():
+                raise
+            target_columns = self._table_columns(conn, table_name)
+            return target_columns, next(column for column in target_columns if column.casefold() == NR_MODE_FIELD.casefold())
+        return [*target_columns, NR_MODE_FIELD], NR_MODE_FIELD
+
+    def set_reporting_nr_mode(self, dataset_id: int, dataset_kind: str) -> bool:
+        """The combined rows of a CDR take its NR Mode after it changed; whether any row changed."""
+        if dataset_kind not in {'data', 'voice', 'speech'}:
+            return False
+        table_name = self.reporting_rows_table_name(dataset_kind)
+        with self.connection() as conn:
+            conn.execute('BEGIN IMMEDIATE')
+            if not conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (table_name,)).fetchone():
+                return False
+            column = next((column for column in self._table_columns(conn, table_name)
+                           if self._column_identity(column) == self._column_identity(NR_MODE_FIELD)), None)
+            if not column:
+                return False
+            nr_mode = self._reporting_nr_mode(conn, dataset_id, dataset_kind)
+            changed = conn.execute(
+                f"UPDATE {self._quote_identifier(table_name)} SET {self._quote_identifier(column)} = ? "
+                f"WHERE dataset_id = ? AND {self._quote_identifier(column)} IS NOT ?",
+                (nr_mode, int(dataset_id), nr_mode),
+            ).rowcount
+            return bool(changed)
 
     def _ensure_reporting_table(self, conn: sqlite3.Connection, dataset_kind: str) -> tuple[str, list[str]]:
         table_name = self.reporting_rows_table_name(dataset_kind)
@@ -4110,6 +4155,9 @@ class Repository:
             quoted_table = self._quote_identifier(table_name)
             existing = self._ensure_reporting_columns(conn, table_name, safe_df.columns.tolist(), list(self.REPORTING_CORE_COLUMNS))
             source_lookup = {self._column_identity(str(column)): str(column) for column in safe_df.columns}
+            nr_mode_column = None
+            if self._column_identity(NR_MODE_FIELD) not in source_lookup:
+                existing, nr_mode_column = self._ensure_reporting_nr_mode_column(conn, table_name, existing)
             conn.execute(f"DELETE FROM {quoted_table} WHERE dataset_id = ?", (dataset_id,))
             payload_columns: dict[str, Any] = {'dataset_id': int(dataset_id), 'source_row_id': range(1, len(safe_df) + 1)}
             for target in existing:
@@ -4117,6 +4165,8 @@ class Repository:
                     continue
                 source = source_lookup.get(self._column_identity(target))
                 payload_columns[target] = safe_df[source] if source else None
+            if nr_mode_column:
+                payload_columns[nr_mode_column] = self._reporting_nr_mode(conn, dataset_id, dataset_kind)
             payload = pd.DataFrame(payload_columns, index=safe_df.index)
             payload.to_sql(table_name, conn, if_exists='append', index=False)
             self._create_reporting_row_indexes(conn, table_name, existing)
@@ -4508,6 +4558,12 @@ class Repository:
             previous_columns = {self._column_identity(column) for column in target_columns}
             source_lookup = {self._column_identity(column): column for column in source_columns}
             target_columns = self._ensure_reporting_columns(conn, target_table, source_columns, desired)
+            # Every row keeps the NR Mode of its CDR (unless the CDR has an NR Mode column of its own).
+            nr_mode_column = None
+            nr_mode = None
+            if self._column_identity(NR_MODE_FIELD) not in source_lookup:
+                target_columns, nr_mode_column = self._ensure_reporting_nr_mode_column(conn, target_table, target_columns)
+                nr_mode = self._reporting_nr_mode(conn, dataset_id, dataset_kind)
             # Schema changes need the writer reservation above, but the
             # following presence checks can scan hundreds of thousands of
             # rows. Release the writer before those read-only scans so other
@@ -4558,7 +4614,15 @@ class Repository:
                             pair for index, pair in enumerate(missing_pairs)
                             if int(source_presence[f'present_{index}'] or 0)
                         )
-                if not columns_to_refresh:
+                # The rows of a CDR share its NR Mode: one row tells whether they have it.
+                refresh_nr_mode = False
+                if nr_mode_column:
+                    current_mode = conn.execute(
+                        f"SELECT {self._quote_identifier(nr_mode_column)} AS mode FROM {quoted_target} WHERE dataset_id = ? LIMIT 1",
+                        (dataset_id,),
+                    ).fetchone()
+                    refresh_nr_mode = current_mode is not None and current_mode['mode'] != nr_mode
+                if not columns_to_refresh and not refresh_nr_mode:
                     return False
                 # Adding a template field used to delete and recreate every
                 # shared CDR row, including columns that were already ready.
@@ -4574,21 +4638,31 @@ class Repository:
                         "WHERE dataset_id = ?",
                         (dataset_id,),
                     )
+                if refresh_nr_mode:
+                    conn.execute(
+                        f"UPDATE {quoted_target} SET {self._quote_identifier(nr_mode_column)} = ? WHERE dataset_id = ?",
+                        (nr_mode, dataset_id),
+                    )
                 self._create_reporting_row_indexes(conn, target_table, target_columns)
                 return 'columns'
             conn.execute('BEGIN IMMEDIATE')
             conn.execute(f"DELETE FROM {quoted_target} WHERE dataset_id = ?", (dataset_id,))
             insert_columns = ['dataset_id', 'source_row_id', *(column for column in target_columns if column not in {'dataset_id', 'source_row_id'})]
             select_columns = ['?', 'rowid']
+            parameters: list[Any] = [dataset_id]
             for target in insert_columns[1:]:
                 if target == 'source_row_id':
+                    continue
+                if target == nr_mode_column:
+                    select_columns.append('?')
+                    parameters.append(nr_mode)
                     continue
                 source = source_lookup.get(self._column_identity(target))
                 select_columns.append(self._quote_identifier(source) if source else 'NULL')
             conn.execute(
                 f"INSERT INTO {quoted_target} ({', '.join(self._quote_identifier(column) for column in insert_columns)}) "
                 f"SELECT {', '.join(select_columns)} FROM {self._quote_identifier(source_table)}",
-                (dataset_id,),
+                parameters,
             )
             self._create_reporting_row_indexes(conn, target_table, target_columns)
             return 'rows'

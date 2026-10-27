@@ -143,7 +143,18 @@
   const identity = value => String(value).toLocaleLowerCase().replace(/[^a-z0-9]/g, '');
   // A Dashboard only uses CDRs of its own NR Mode (NSA or SA).
   // The NR Mode of the CDRs a Dashboard reads (Dashboards of before named it technology): any template serves both.
-  const dashboardNrMode = value => String(value?.nr_mode || value?.technology || value?.template_technology || 'NSA').toUpperCase() === 'SA' ? 'SA' : 'NSA';
+  // NSA+SA (NSA & SA) reads the CDRs of both NR Modes, each row keeping the NR Mode of its CDR.
+  const NSA_AND_SA = 'NSA+SA';
+  const normalizeDashboardNrMode = value => {
+    const text = String(value || 'NSA').toUpperCase().replace(/\s+/g, '');
+    return ['NSA+SA', 'NSA&SA', 'NSAVSSA', 'BOTH'].includes(text) ? NSA_AND_SA : text === 'SA' ? 'SA' : 'NSA';
+  };
+  const dashboardNrMode = value => normalizeDashboardNrMode(value?.nr_mode || value?.technology || value?.template_technology);
+  const nrModeLabel = mode => (mode === NSA_AND_SA ? 'NSA & SA' : mode);
+  const nrModeClass = mode => (mode === NSA_AND_SA ? 'nsa-sa' : String(mode).toLowerCase());
+  const DASHBOARD_NR_MODES = ['NSA', 'SA', NSA_AND_SA];
+  // With NSA & SA, the campaigns of the SA CDRs: the Campaign filter chooses the NSA ones.
+  const SA_CAMPAIGN_FIELD = 'SA Campaign';
   const templateRows = () => Array.isArray(config.templates) ? config.templates : [];
   // The Campaign filter chooses the CDRs of a Dashboard (see cdr_auto_selection): Latest campaign and Latest 2
   // campaigns follow the newest campaigns of its NR Mode. A new Dashboard compares its newest two campaigns, or
@@ -173,6 +184,21 @@
     }
   };
   const campaignDisplay = value => campaignPresetLabels[value] || globalThis.campaignLabel?.(value) || value;
+  // The Campaign filters of the open Dashboard when its NR Mode changes (as the server does for the Dashboards list):
+  // the campaigns of an NR Mode it keeps reading stay (with NSA & SA, Campaign chooses the NSA CDRs and SA Campaign the
+  // SA ones), the others take the newest campaigns of the new NR Mode.
+  const followNrModeCampaigns = (previous, next) => {
+    const key = campaignFilterKey(definition.filters);
+    const current = key ? (definition.filters[key] || []).map(String) : [];
+    if (key) delete definition.filters[key];
+    const byMode = {
+      NSA: ['NSA', NSA_AND_SA].includes(previous) ? current : [],
+      SA: previous === NSA_AND_SA ? ((definition.sa_campaigns || []).length ? definition.sa_campaigns : current) : previous === 'SA' ? current : [],
+    };
+    const fallback = defaultCampaignFilter(definition.scope, definition.vendor_comparison);
+    definition.filters.Campaign = (next === NSA_AND_SA ? byMode.NSA : byMode[next]).length ? (next === NSA_AND_SA ? byMode.NSA : byMode[next]) : fallback;
+    definition.sa_campaigns = next === NSA_AND_SA ? (byMode.SA.length ? [...byMode.SA] : fallback) : [];
+  };
   const multivendorAvailable = Boolean(config.multivendor_available);
   const syncMultivendorAvailability = () => {
     for (const id of ['ds-scope', 'ds-ppt-dataset-scope', 'ds-viewer-scope']) {
@@ -207,6 +233,8 @@
     definitionValue.hidden_filters = definitionValue.hidden_filters.map(vendorField);
     definitionValue.slide_comments ||= {};
     definitionValue.slide_comment_meta ||= {};
+    // The Campaign filter of the SA CDRs belongs to NSA & SA only.
+    definitionValue.sa_campaigns = dashboardNrMode(definitionValue) === NSA_AND_SA ? (definitionValue.sa_campaigns || []).map(String) : [];
     if (!definitionValue.date_from) definitionValue.date_from = 'Oldest';
     if (!definitionValue.date_to) definitionValue.date_to = 'Newest';
     return definitionValue;
@@ -284,7 +312,7 @@
   const filterStateFingerprint = value => {
     const selection = canonicalSelectionDefinition(value);
     return JSON.stringify(canonicalize({
-      filters: selection.filters, custom_fields: selection.custom_fields, hidden_filters: selection.hidden_filters,
+      filters: selection.filters, sa_campaigns: selection.sa_campaigns, custom_fields: selection.custom_fields, hidden_filters: selection.hidden_filters,
       scope: selection.scope || 'single', vendor_comparison: selection.vendor_comparison || 'operator_vendor',
       date_from: selection.date_from || 'Oldest', date_to: selection.date_to || 'Newest',
     }));
@@ -292,7 +320,7 @@
   const preparationStateFingerprint = value => {
     const selection = canonicalSelectionDefinition(value);
     return JSON.stringify(canonicalize({
-      datasets: selection.datasets, scope: selection.scope || 'single', filters: selection.filters,
+      datasets: selection.datasets, scope: selection.scope || 'single', filters: selection.filters, sa_campaigns: selection.sa_campaigns,
       custom_fields: selection.custom_fields, hidden_filters: selection.hidden_filters,
       date_from: selection.date_from || 'Oldest', date_to: selection.date_to || 'Newest',
     }));
@@ -300,7 +328,7 @@
   const selectionStateFingerprint = value => {
     const selection = canonicalSelectionDefinition(value);
     return JSON.stringify(canonicalize({
-      datasets: selection.datasets, filters: selection.filters, custom_fields: selection.custom_fields,
+      datasets: selection.datasets, filters: selection.filters, sa_campaigns: selection.sa_campaigns, custom_fields: selection.custom_fields,
       hidden_filters: selection.hidden_filters, date_from: selection.date_from || 'Oldest', date_to: selection.date_to || 'Newest',
     }));
   };
@@ -628,8 +656,8 @@
     catch (_) { /* Local storage is optional. */ }
     // The heading starts with the Dashboard's NR Mode and name.
     const headingNrMode = dashboardNrMode(dashboard);
-    $('ds-ppt-dataset-nr-mode').textContent = headingNrMode;
-    $('ds-ppt-dataset-nr-mode').className = `ds-ppt-eyebrow-part ds-ppt-eyebrow-nr-mode-${headingNrMode.toLowerCase()}`;
+    $('ds-ppt-dataset-nr-mode').textContent = nrModeLabel(headingNrMode);
+    $('ds-ppt-dataset-nr-mode').className = `ds-ppt-eyebrow-part ds-ppt-eyebrow-nr-mode-${nrModeClass(headingNrMode)}`;
     $('ds-ppt-dataset-dashboard').textContent = String(dashboard?.name || '');
     const scopeControl = $('ds-ppt-dataset-scope');
     syncMultivendorAvailability();
@@ -1041,7 +1069,9 @@
       );
       campaignControl.disabled = false;
       campaignControl.dataset.multiselectDynamicAll = 'true';
-      campaignCopy.textContent = `The CDRs of ${dashboardNrMode(dashboard)} of the chosen campaigns are used: Latest campaign, Latest 2, 3 and 4 campaigns and Previous campaign follow the newest ones.`;
+      campaignCopy.textContent = dashboardNrMode(dashboard) === NSA_AND_SA
+        ? 'The NSA and SA CDRs of the chosen campaigns are used: Latest campaign, Latest 2, 3 and 4 campaigns and Previous campaign follow the newest ones of each NR Mode.'
+        : `The CDRs of ${dashboardNrMode(dashboard)} of the chosen campaigns are used: Latest campaign, Latest 2, 3 and 4 campaigns and Previous campaign follow the newest ones.`;
       campaignControl.dispatchEvent(new Event('multiselect:options-updated'));
     };
     campaignControl.onchange = () => {
@@ -1323,7 +1353,7 @@
       const technologyCell = node('td'); technologyCell.dataset.label = 'NR Mode';
       const technologySelect = document.createElement('select'); technologySelect.className = 'ds-dashboard-definition-select ds-dashboard-nr-mode-select';
       technologySelect.setAttribute('aria-label', `NR Mode for ${item.name}`);
-      for (const mode of ['NSA', 'SA']) technologySelect.append(option(mode, mode));
+      for (const mode of DASHBOARD_NR_MODES) technologySelect.append(option(mode, nrModeLabel(mode)));
       technologySelect.value = dashboardNrMode(item);
       const templateCell = node('td'); templateCell.dataset.label = 'Template';
       const templateSelect = document.createElement('select'); templateSelect.className = 'ds-dashboard-definition-select ds-dashboard-template-select';
@@ -1801,7 +1831,10 @@
       // NR Mode uses the same colour code as the Datasets and Dashboards selectors.
       const nrMode = String(job.nr_mode || job.technology || job.type || '-');
       const nrModeCell = node('td');
-      if (['nsa', 'sa'].includes(nrMode.toLowerCase())) nrModeCell.append(node('span', nrMode.toUpperCase(), `ds-nr-mode-badge ds-nr-mode-badge-${nrMode.toLowerCase()}`));
+      if (['nsa', 'sa', 'nsa+sa'].includes(nrMode.toLowerCase())) {
+        const mode = normalizeDashboardNrMode(nrMode);
+        nrModeCell.append(node('span', nrModeLabel(mode), `ds-nr-mode-badge ds-nr-mode-badge-${nrModeClass(mode)}`));
+      }
       else nrModeCell.textContent = nrMode;
       row.append(nrModeCell);
       for (const value of [job.dashboard_name, job.scope]) row.append(node('td', String(value)));
@@ -1987,7 +2020,7 @@
     definition.template = selected.name;
   }
   function setNrMode(nrMode, selectedName = '') {
-    $('ds-nr-mode').value = String(nrMode || 'NSA').toUpperCase() === 'SA' ? 'SA' : 'NSA';
+    $('ds-nr-mode').value = normalizeDashboardNrMode(nrMode);
     return templateOptions(selectedName);
   }
   function selectControl(label, values, selected, change, multiple = false, isUnsaved = () => false) {
@@ -2087,7 +2120,7 @@
   // The CDRs of the current selection and the Campaign, Operator, Vendor, Region, Cluster and City lists, asked to the
   // server at every change of the NR Mode or filters (from the CDR Filter Facets, without preparing the Dashboard),
   // so they follow the selection before it is applied.
-  const liveSelectionKey = value => (value ? JSON.stringify(canonicalize({id: activeId, nr: dashboardNrMode(value), filters: value.filters || {}})) : '');
+  const liveSelectionKey = value => (value ? JSON.stringify(canonicalize({id: activeId, nr: dashboardNrMode(value), filters: value.filters || {}, sa_campaigns: value.sa_campaigns || []})) : '');
   const currentLiveSelection = () => (liveSelection && definition && liveSelection.key === liveSelectionKey(definition) ? liveSelection : null);
   // The live list of a filter (Vendor V3 and Vendor_Only are the Vendor list), or null.
   const liveOptionsFor = field => {
@@ -2178,7 +2211,9 @@
       const selected = Array.isArray(definition.filters[field])
         ? definition.filters[field].map(value => String(value)) : [];
       const custom = definition.custom_fields.includes(field);
-      const label = ['vendor', 'vendoronly'].includes(identity(field)) ? 'Vendor' : identity(field) === 'operatorvendor' ? 'Operator_Vendor' : identity(field) === 'vendoroperator' ? 'Vendor_Operator' : custom ? field : field === 'technology_primary' ? 'Technology' : field.replaceAll('_',' ').replace(/\b\w/g, letter => letter.toUpperCase());
+      const bothNrModes = !custom && isCampaignField(field) && dashboardNrMode(definition) === NSA_AND_SA;
+      if (bothNrModes) facet.dataset.campaignFacet = 'true';
+      const label = bothNrModes ? 'Campaign (NSA)' : ['vendor', 'vendoronly'].includes(identity(field)) ? 'Vendor' : identity(field) === 'operatorvendor' ? 'Operator_Vendor' : identity(field) === 'vendoroperator' ? 'Vendor_Operator' : custom ? field : field === 'technology_primary' ? 'Technology' : field.replaceAll('_',' ').replace(/\b\w/g, letter => letter.toUpperCase());
       const aliases = Object.entries(filterAliases).find(([name]) => identity(name) === identity(field))?.[1] || [];
       if (aliases.length > 1) {
         const aliasTooltip = `Supported columns by priority:\n${aliases.map((alias, index) => `${index + 1}. ${alias}`).join('\n')}`;
@@ -2310,6 +2345,10 @@
       facet.append(values);
       (custom ? additionalHost : defaultHost).append(facet);
     }
+    if (dashboardNrMode(definition) === NSA_AND_SA) {
+      const saFacet = saCampaignFacet(), campaignFacet = defaultHost.querySelector('[data-campaign-facet]');
+      if (campaignFacet) campaignFacet.after(saFacet); else defaultHost.prepend(saFacet);
+    }
     if (!additionalHost.childElementCount) additionalHost.append(node('p', 'No additional filters have been added.', 'form-note ds-no-additional-filters'));
     const visible = [...fields].map(field => identity(field));
     const restorable = facetFields.filter(field => hidden.has(identity(field)));
@@ -2325,6 +2364,51 @@
     if ([...fieldPicker.options].some(item => item.value === previous)) fieldPicker.value = previous;
     fieldPicker.dispatchEvent(new Event('multiselect:options-updated'));
     globalThis.setupCustomMultiSelects?.();
+  }
+  // With NSA & SA, the Campaign filter of the SA CDRs (sa_campaigns), with its own Latest choices resolved among the
+  // SA campaigns; Select All takes every SA campaign.
+  function saCampaignFacet() {
+    const facet = node('div', undefined, 'ds-facet ds-sa-campaign-facet');
+    const saved = savedDashboardDefinition().sa_campaigns || [], applied = appliedDefinition().sa_campaigns || [];
+    updateFilterControlState(facet, filterControlState(definition.sa_campaigns || [], applied, saved));
+    const head = node('div', undefined, 'ds-facet-head'); head.append(node('span', 'Campaign (SA)')); facet.append(head);
+    const values = document.createElement('select'); values.multiple = true; values.size = 1; values.dataset.multiselectAutoClose = '1000';
+    values.setAttribute('aria-label', 'Campaign (SA) filter');
+    values.dataset.multiselectDynamicAll = 'true'; values.dataset.campaignPresets = 'true';
+    const selected = (definition.sa_campaigns || []).map(String);
+    const available = [...new Set([...(liveOptionsFor(SA_CAMPAIGN_FIELD) || facetOptions[SA_CAMPAIGN_FIELD] || []), ...selected]
+      .map(String).filter(value => !isCampaignPreset(value)))]
+      .sort((left, right) => (globalThis.campaignCompare?.(left, right) ?? left.localeCompare(right)));
+    values.append(...Object.keys(campaignPresetLabels).map(value => {
+      const item = option(value, campaignPresetLabels[value]); item.selected = selected.includes(value);
+      item.dataset.optionClass = 'ds-campaign-preset'; item.dataset.campaignPreset = 'true';
+      return item;
+    }));
+    for (const [index, value] of available.entries()) {
+      const item = option(value, campaignDisplay(value)); item.selected = selected.includes(value);
+      if (index === 0) item.dataset.dividerBefore = 'true';
+      values.append(item);
+    }
+    values.onchange = () => {
+      const current = (definition.sa_campaigns || []).map(String);
+      const chosen = [...values.selectedOptions].map(item => item.value).filter(Boolean);
+      const presets = chosen.filter(isCampaignPreset), campaigns = chosen.filter(value => !isCampaignPreset(value));
+      const addedPreset = presets.find(value => !current.includes(value));
+      let next = addedPreset ? [addedPreset] : campaigns.length ? campaigns : presets;
+      if (values.dataset.multiselectDynamicAllSelected === 'true') { delete values.dataset.multiselectDynamicAllSelected; next = [ALL_CAMPAIGNS]; }
+      const shown = new Set(next);
+      if ([...values.options].some(item => item.selected !== shown.has(item.value))) {
+        for (const item of values.options) item.selected = shown.has(item.value);
+        values.dispatchEvent(new Event('multiselect:options-updated'));
+      }
+      if (next.length === current.length && next.every(value => current.includes(value))) return;
+      definition.sa_campaigns = next;
+      updateFilterControlState(facet, filterControlState(next, applied, saved));
+      filterChanged();
+      refreshFacetsAfterMenusClose();
+    };
+    facet.append(values);
+    return facet;
   }
   const hasOpenFacetMenu = () => Boolean($('ds-filter-panel').querySelector('.multiselect-menu:not([hidden])'));
   function refreshFacetsAfterMenusClose() {
@@ -2635,7 +2719,7 @@
     if (!selected) throw new Error('Choose a template.');
     const name = $('ds-name').value.trim() || selected.name;
     $('ds-name').value = name;
-    const item = {name,template:selected.name,nr_mode:nrMode,scope:'single',auto_cdrs:true,filters:{Campaign: defaultCampaignFilter('single')},custom_fields:[],date_from:'Oldest',date_to:'Newest'};
+    const item = {name,template:selected.name,nr_mode:nrMode,scope:'single',auto_cdrs:true,filters:{Campaign: defaultCampaignFilter('single')},sa_campaigns:normalizeDashboardNrMode(nrMode) === NSA_AND_SA ? defaultCampaignFilter('single') : [],custom_fields:[],date_from:'Oldest',date_to:'Newest'};
     status(`Creating “${item.name}”…`); $('ds-create').disabled = true;
     try { const id = dashboardId(), result = await api(`/${id}`,'PUT',item); dashboards[id] = result.definition; await openDashboard(id); }
     finally { $('ds-create').disabled = !$('ds-template').options.length; }
@@ -2714,11 +2798,9 @@
     if (definition) {
       const previousNrMode = dashboardNrMode(definition);
       definition.nr_mode = $('ds-nr-mode').value;
-      // The campaigns of the previous NR Mode do not apply: its newest campaigns do.
+      // The campaigns of an NR Mode it no longer reads do not apply: the newest ones of the new NR Mode do.
       if (dashboardNrMode(definition) !== previousNrMode) {
-        const key = campaignFilterKey(definition.filters);
-        if (key) delete definition.filters[key];
-        definition.filters.Campaign = defaultCampaignFilter(definition.scope, definition.vendor_comparison);
+        followNrModeCampaigns(previousNrMode, dashboardNrMode(definition));
         sources(); facets();
       }
       changed();
@@ -4179,7 +4261,7 @@
     // restored. Never leave the previous Dashboard's title, slide or comments
     // visible during that short wait.
     const viewer = viewerDefinition();
-    $('ds-position').textContent = viewer ? `${dashboardNrMode(viewer)} · ${viewer.name} · Loading slides` : '';
+    $('ds-position').textContent = viewer ? `${nrModeLabel(dashboardNrMode(viewer))} · ${viewer.name} · Loading slides` : '';
     $('ds-title').textContent = 'Loading Dashboard…';
     $('ds-subtitle').textContent = '';
     $('ds-viewer-context').replaceChildren();
@@ -4310,7 +4392,7 @@
     setSlideTitle(slideName(slide, `Dashboard ${slide.number}`)); $('ds-subtitle').textContent = slide.subtitle;
     renderViewerContext();
     const viewer = viewerDefinition();
-    $('ds-position').textContent = `${dashboardNrMode(viewer)} · ${viewer?.name || 'Dashboard'} · Slide ${slideIndex+1} / ${prepared.slides.length}`;
+    $('ds-position').textContent = `${nrModeLabel(dashboardNrMode(viewer))} · ${viewer?.name || 'Dashboard'} · Slide ${slideIndex+1} / ${prepared.slides.length}`;
     $('ds-slide').replaceChildren(...prepared.slides.map((item, index) => {
       const title = slideName(item);
       const subtitle = String(item.subtitle || '').trim();
@@ -4363,6 +4445,8 @@
         card.style.setProperty('--ds-chart-height', `${height}%`);
       }
       const message = node('div',`Rendering ${chart.title || 'chart'}…`,'ds-chart-message'); card.append(message);
+      // NSA & SA: a field only the CDRs of one NR Mode have leaves the chart without samples of the other one.
+      if (chart.nr_mode_note) { const note = node('div', chart.nr_mode_note, 'ds-chart-nr-mode-note'); note.title = chart.nr_mode_note; card.append(note); }
       const canvas = document.createElement('canvas'); canvas.setAttribute('role', 'img'); canvas.setAttribute('aria-label', chart.title); canvas.hidden = true; card.append(canvas);
       canvas.addEventListener('dashboardchartlayout', event => {
         const top = Number(event.detail?.titleTop);
@@ -4392,9 +4476,9 @@
         }).catch(error => {
           if (prepared?.token === token) message.textContent = error.message || `Unable to render ${chart.title || 'chart'}.`;
         });
-      } else message.textContent = chart.source
+      } else message.textContent = chart.unavailable || (chart.source
         ? `No CDR ${chart.source[0].toUpperCase()}${chart.source.slice(1)} dataset has been selected for this chart.`
-        : 'No compatible CDR dataset has been selected for this chart.';
+        : 'No compatible CDR dataset has been selected for this chart.');
       const data = node('button','', 'ds-chart-data'); data.type = 'button'; data.title = 'View dataset'; data.setAttribute('aria-label', 'View dataset'); data.disabled = !chart.available || (Boolean(pptDashboardViewer) && !chart.data_url); data.onclick = safe(async () => { await openChartDataset(chart); });
       const expand = node('button', '', 'ds-chart-expand'); expand.type = 'button'; expand.title = 'Expand chart'; expand.setAttribute('aria-label', 'Expand chart'); expand.disabled = !chart.available; expand.onclick = safe(async event => { event.stopPropagation(); await openExpandedChart(chart, renderedPayload, pptDashboardViewer ? 'ppt' : 'dashboard'); });
       const definitionToggle = node('button', 'Chart Definition', 'ds-chart-definition-toggle');

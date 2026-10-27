@@ -100,7 +100,7 @@ NSA/SA selection chooses CDRs: every row keeps the NR Mode of its CDR (set when 
 
 - A Dashboard, a Reporting job, a Reporting (old) report and the template editor previews read the CDRs of their NR Mode and every Data, Voice and Speech test of them, whatever RAT or call mode a test ran on: an EPS fallback (EPSFB) call of an SA CDR is an SA test.
 - Valid Data attempts remain available even when a sampled radio-access value records fallback. This prevents an otherwise valid data test from disappearing solely because one sample is LTE.
-- Report Templates have no NR Mode: the NR Mode is part of the selection of the Dashboard that uses a template, and the titles name it with `{NR Mode}` and `{NR Mode Name}`. PPT Dashboard does not expose Technology as an adaptive filter, while the separate RAT filter can restrict explicit `RAT_A`, `RAT` or `Sample_RAT_A` values.
+- Report Templates have no NR Mode: the NR Mode is part of the selection of the Dashboard that uses a template (NSA, SA or NSA & SA), and the titles name it with `{NR Mode}` and `{NR Mode Name}`. The combined CDR tables keep the NR Mode of the CDR of each row in their `NR_Mode` column (the **NR Mode** field of filters, splits and legends), added and filled once per CDR in the background when a workspace opens after the update and corrected on its rows when the NR Mode of a CDR changes. PPT Dashboard does not expose Technology as an adaptive filter, while the separate RAT filter can restrict explicit `RAT_A`, `RAT` or `Sample_RAT_A` values.
 - Missing radio values are not silently relabelled as a recognised technology.
 
 When a chart looks incomplete, compare its chart-filtered dataset with the source RAT and Call Mode fields and with the NR Mode of the CDRs it reads.
