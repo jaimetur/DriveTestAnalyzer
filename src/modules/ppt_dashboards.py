@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import copy
 import json
+import math
 import html
 import os
 import re
@@ -40,7 +41,7 @@ from src.modules.cdr_auto_selection import (
 from src.modules.cdr_facets import FILTER_FIELDS as CASCADING_FILTER_FIELDS, cascading_options
 from src.modules.nr_mode import NR_MODE_FIELD, NR_MODES, NSA_VS_SA, dataset_nr_mode, nr_modes_of
 from src.modules.report_template_modes import (
-    DASHBOARD_NR_MODE_LABELS, chart_filter_nr_modes, dashboard_nr_mode_value, entry_for_nr_mode, migrate_dashboard_definition,
+    DASHBOARD_NR_MODE_LABELS, NR_MODE_TOKEN_VALUES, chart_filter_nr_modes, dashboard_nr_mode_value, entry_for_nr_mode, migrate_dashboard_definition,
     missing_nr_mode_fields, missing_nr_mode_note,
 )
 from src.modules.output_layout import DASHBOARDS_FOLDER, module_output_dir
@@ -63,7 +64,7 @@ from src.modules.cdr_reporting import (
     parse_catalog_grouping,
     prepare_catalog_chart_preview_frame, render_catalog_chart_preview, render_unavailable_source_chart,
     split_calculated_dimension_aliases, chart_title_parts, _select_dynamic_chart_frame, STRUCTURAL_LAYOUT_TYPES,
-    CATALOG_SOURCE_KINDS, CatalogEntry,
+    CATALOG_SOURCE_KINDS, CatalogEntry, ELEMENT_CHART_TYPES,
 )
 from src.modules.report_layouts import DYNAMIC_LAYOUTS, canonical_layout_name, compact_grid_layout, grid_layout_name
 
@@ -124,6 +125,10 @@ DASHBOARD_PPT_JOBS_TABLE = 'dashboard_ppt_jobs'
 # The Design a user is changing and has not saved, per Dashboard (Dashboard Designer): it survives a reload and is not
 # part of exports, transfers or backups (it is the user's work in progress, not the Dashboard).
 DASHBOARD_DESIGN_DRAFTS_TABLE = 'dashboard_design_drafts'
+# The pictures the Image elements of Designs show (logos, legends, diagrams), by id; they travel with the Designs.
+DASHBOARD_DESIGN_IMAGES_TABLE = 'dashboard_design_images'
+DESIGN_IMAGE_TYPES = {'image/png': 'PNG', 'image/jpeg': 'JPEG', 'image/gif': 'GIF'}
+DESIGN_IMAGE_MAX_BYTES = 8 * 1024 * 1024
 # The colour theme of PPT Dashboards: per user in each workspace, as in the other themed modules.
 DASHBOARD_THEME_MODULE = 'ppt_dashboards'
 
@@ -621,6 +626,56 @@ def reflowed_dynamic_grid(layout: str, hidden_cards: list[bool]) -> tuple[str, l
         for card, hidden in enumerate(hidden_cards)
     ]
     return (grid_layout_name(len(visible_rows), len(visible_columns), comments) if visible_rows else ''), cells
+
+
+def slide_geometry(entries) -> list[list[float]] | None:
+    """The places a Design gives a slide of its own (a free layout: rectangles in percent of the chart area of its
+    layout), or None when it uses those of its layout."""
+    for entry in entries:
+        options = dashboard_design.row_format(entry).get('slide_options')
+        geometry = options.get('geometry') if isinstance(options, dict) else None
+        if isinstance(geometry, list) and geometry and all(isinstance(rect, list) and len(rect) == 4 for rect in geometry):
+            return [[float(value) for value in rect] for rect in geometry]
+    return None
+
+
+def explicit_places(entries, capacity: int) -> list[int] | None:
+    """The place of each chart row of a slide when the Design gives them (a place can stay empty): None for rows that
+    fill the places in order (a template written by hand, or the cards of a dynamic grid, which repeat one element)."""
+    rows = [dashboard_design.row_format(entry) for entry in entries]
+    ids = [row.get('id') for row in rows]
+    if not rows or not all(ids) or len(set(ids)) != len(ids):
+        return None
+    places = [row.get('place', position) for position, row in enumerate(rows)]
+    if not all(isinstance(place, int) and 0 <= place < capacity for place in places) or len(set(places)) != len(places):
+        return None
+    return places
+
+
+def repeat_field(entry) -> str:
+    """The field a chart is repeated by in its own place (Repeat by of the Designer: small multiples), or ''."""
+    repeat = dashboard_design.row_format(entry).get('repeat')
+    return str(repeat.get('field') or '').strip() if isinstance(repeat, dict) else ''
+
+
+def subdivided(rect, count: int) -> list[list[float]]:
+    """A place divided into a grid of ``count`` smaller places (as square as it can), in reading order."""
+    columns = max(1, math.ceil(math.sqrt(count * max(rect[2], 1) / max(rect[3], 1) / 1.6)))
+    columns = min(columns, count)
+    rows = max(1, math.ceil(count / columns))
+    gap_x, gap_y = min(1.2, rect[2] / columns / 10), min(1.6, rect[3] / rows / 10)
+    width, height = (rect[2] - gap_x * (columns - 1)) / columns, (rect[3] - gap_y * (rows - 1)) / rows
+    return [[rect[0] + (index % columns) * (width + gap_x), rect[1] + (index // columns) * (height + gap_y), width, height]
+            for index in range(count)]
+
+
+def frame_from_rect(rect, frames) -> tuple[int, int, int, int]:
+    """A rectangle in percent of the chart area of a layout (its chart frames' bounds) as a frame of the slide (EMU)."""
+    left, top = min(frame[0] for frame in frames), min(frame[1] for frame in frames)
+    width = max(frame[0] + frame[2] for frame in frames) - left
+    height = max(frame[1] + frame[3] for frame in frames) - top
+    x, y, w, h = (float(value) for value in rect)
+    return int(left + x / 100 * width), int(top + y / 100 * height), int(w / 100 * width), int(h / 100 * height)
 
 
 def normalized_frame_positions(frames) -> list[list[float]]:
@@ -1163,6 +1218,109 @@ def install_dashboard_routes(core):
             run.font.color.rgb = RGBColor(0x1D, 0x33, 0x45)
         return left, top + title_height, width, height - title_height
 
+    def add_dashboard_element(slide, entry, placement, task_repository) -> None:
+        """A text box (its Markdown as paragraphs, **bold** kept, lines starting with - or * as bullets) or a picture
+        (fitted in its place, keeping its ratio) of a Dashboard Design."""
+        left, top, width, height = placement
+        content = dashboard_design.row_format(entry).get('content')
+        content = content if isinstance(content, dict) else {}
+        if entry.chart_type.casefold() == 'image':
+            data = design_image(task_repository, str(content.get('image') or ''))
+            if data is None:
+                return
+            from PIL import Image as PilImage
+            with PilImage.open(BytesIO(data[0])) as picture:
+                ratio = picture.width / max(picture.height, 1)
+            fitted_width, fitted_height = (width, int(width / ratio)) if width / max(height, 1) < ratio else (int(height * ratio), height)
+            slide.shapes.add_picture(BytesIO(data[0]), left + (width - fitted_width) // 2, top + (height - fitted_height) // 2,
+                                     fitted_width, fitted_height)
+            return
+        from pptx.enum.text import PP_ALIGN
+        box = slide.shapes.add_textbox(left, top, width, height)
+        frame = box.text_frame
+        frame.word_wrap = True
+        size = {'small': 12, 'medium': 16, 'large': 22}.get(str(content.get('size') or 'medium').casefold(), 16)
+        colour = str(content.get('colour') or '#263B4A').lstrip('#')
+        align = {'center': PP_ALIGN.CENTER, 'right': PP_ALIGN.RIGHT}.get(str(content.get('align') or ''), PP_ALIGN.LEFT)
+        lines = str(content.get('text') or '').splitlines() or ['']
+        for number, raw in enumerate(lines):
+            paragraph = frame.paragraphs[0] if number == 0 else frame.add_paragraph()
+            paragraph.alignment = align
+            text = raw.rstrip()
+            heading = re.match(r'^(#{1,3})\s+(.*)$', text)
+            bullet = re.match(r'^\s*[-*]\s+(.*)$', text)
+            if heading:
+                text = heading.group(2)
+            elif bullet:
+                text = '• ' + bullet.group(1)
+            for part_number, part in enumerate(re.split(r'\*\*', text)):
+                if not part:
+                    continue
+                run = paragraph.add_run()
+                run.text = part
+                run.font.size = Pt(size + (6 if heading else 0))
+                run.font.bold = bool(heading) or part_number % 2 == 1
+                try:
+                    run.font.color.rgb = RGBColor.from_string(colour.upper()[:6])
+                except ValueError:
+                    pass
+
+    def design_image(task_repository, image_id: str) -> tuple[bytes, str] | None:
+        if not re.fullmatch(r'[0-9a-f]{32}', image_id or ''):
+            return None
+        ensure_design_images(task_repository)
+        with task_repository.connection() as connection:
+            row = connection.execute(
+                f'SELECT data, content_type FROM {DASHBOARD_DESIGN_IMAGES_TABLE} WHERE id = ?', (image_id,)).fetchone()
+        return (bytes(row['data']), str(row['content_type'])) if row else None
+
+    def ensure_design_images(task_repository) -> None:
+        with task_repository.connection() as connection:
+            connection.execute(
+                f'CREATE TABLE IF NOT EXISTS {DASHBOARD_DESIGN_IMAGES_TABLE} ('
+                'id TEXT PRIMARY KEY, name TEXT NOT NULL DEFAULT \'\', content_type TEXT NOT NULL, data BLOB NOT NULL, '
+                'width INTEGER NOT NULL DEFAULT 0, height INTEGER NOT NULL DEFAULT 0, created_by TEXT NOT NULL DEFAULT \'\', '
+                'created_at TEXT NOT NULL)'
+            )
+
+    @app.post('/api/ppt-dashboards/design/images')
+    async def upload_dashboard_design_image(file: UploadFile = File(...), user=Depends(dashboard_editor_user)):
+        """Keep a picture for an Image element of a Design (PNG, JPEG or GIF, up to 8 MB)."""
+        task_repository = bound_repository()
+        data = await file.read(DESIGN_IMAGE_MAX_BYTES + 1)
+        if len(data) > DESIGN_IMAGE_MAX_BYTES:
+            raise HTTPException(413, 'The picture is larger than 8 MB.')
+        from PIL import Image as PilImage, UnidentifiedImageError
+        try:
+            with PilImage.open(BytesIO(data)) as picture:
+                kind, width, height = picture.format, picture.width, picture.height
+        except (UnidentifiedImageError, OSError) as exc:
+            raise HTTPException(400, 'Choose a PNG, JPEG or GIF picture (an SVG can be saved as PNG first).') from exc
+        content_type = next((mime for mime, name in DESIGN_IMAGE_TYPES.items() if name == kind), None)
+        if content_type is None:
+            raise HTTPException(400, 'Choose a PNG, JPEG or GIF picture (an SVG can be saved as PNG first).')
+        ensure_design_images(task_repository)
+        image_id = uuid4().hex
+        name = Path(file.filename or 'picture').name[:200]
+        with task_repository.connection() as connection:
+            connection.execute(
+                f'INSERT INTO {DASHBOARD_DESIGN_IMAGES_TABLE} (id, name, content_type, data, width, height, created_by, created_at) '
+                'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                (image_id, name, content_type, sqlite3.Binary(data), width, height, user.username,
+                 datetime.now(timezone.utc).astimezone().isoformat(timespec='seconds')),
+            )
+        task_repository.add_log(user.username, 'dashboard_design_image_uploaded', json.dumps({
+            'id': image_id, 'name': name, 'type': content_type, 'width': width, 'height': height, 'bytes': len(data),
+        }))
+        return {'id': image_id, 'name': name, 'width': width, 'height': height, 'url': f'/api/ppt-dashboards/design/images/{image_id}'}
+
+    @app.get('/api/ppt-dashboards/design/images/{image_id}')
+    def dashboard_design_image(image_id: str, user=Depends(dashboard_user)):
+        found = design_image(bound_repository(), image_id)
+        if found is None:
+            raise HTTPException(404, 'The picture is no longer available.')
+        return Response(found[0], media_type=found[1], headers={'Cache-Control': 'private, max-age=86400'})
+
     def add_dashboard_chart_picture(slide, png: bytes, placement) -> None:
         """Fill a same-ratio chart placeholder without PowerPoint cropping or distortion."""
         left, top, width, height = placement
@@ -1453,17 +1611,35 @@ def install_dashboard_routes(core):
                 chart_entries = [
                     (index, entry) for index, entry in slide_entries
                     if index not in hidden_entries
-                    and entry.source_kind and dashboard_datasets(snapshot.definition, entry.source_kind, task_repository)
+                    and (entry.chart_type.casefold() in ELEMENT_CHART_TYPES
+                         or entry.source_kind and dashboard_datasets(snapshot.definition, entry.source_kind, task_repository))
                 ]
                 if not chart_entries:
                     continue
                 layout_name = reflowed_layouts.get(slide_number) or header.layout
                 layout = _named_slide_layout(presentation, layout_name)
                 placements = _layout_chart_frames(layout)
+                if slide_number in reflowed_cells:
+                    if layout is None or len(placements) < len(chart_entries):
+                        raise ValueError(f'Slide {slide_number}: the PowerPoint layout has insufficient chart placeholders.')
+                    placements = [placements[reflowed_cells[slide_number][index]] for index, _entry in chart_entries]
+                elif layout is not None and placements and all(
+                        isinstance(dashboard_design.row_format(entry).get('rect'), list) for _index, entry in chart_entries):
+                    # Each chart in its own place (Repeat by), as the viewer lays them out.
+                    placements = [frame_from_rect(dashboard_design.row_format(entry)['rect'], placements) for _index, entry in chart_entries]
+                elif layout is not None and placements:
+                    # As the viewer lays them out: the places of a free layout, and each element on its own place.
+                    slide_rows = [entry for _index, entry in slide_entries if not entry.structural_type]
+                    geometry = slide_geometry(slide_rows)
+                    places_frames = [frame_from_rect(rect, placements) for rect in geometry] if geometry else placements
+                    places = explicit_places(slide_rows, len(places_frames))
+                    if places is not None:
+                        place_of = {id(entry): place for entry, place in zip(slide_rows, places)}
+                        placements = [places_frames[place_of[id(entry)]] for _index, entry in chart_entries]
+                    else:
+                        placements = places_frames
                 if layout is None or len(placements) < len(chart_entries):
                     raise ValueError(f'Slide {slide_number}: the PowerPoint layout has insufficient chart placeholders.')
-                if slide_number in reflowed_cells:
-                    placements = [placements[reflowed_cells[slide_number][index]] for index, _entry in chart_entries]
                 slide = presentation.slides.add_slide(layout)
                 _set_slide_header(slide, header.slide_title, header.slide_subtitle)
                 with use_theme(theme):
@@ -1471,7 +1647,8 @@ def install_dashboard_routes(core):
                 if auto_mode != 'off':
                     comment_key = dashboard_slide_comment_key([entry for _index, entry in slide_entries])
                     automatic, writer = auto_slide_comments(
-                        snapshot, chart_entries, auto_models, legend_visibility, legend_keys, layout_name, task_repository,
+                        snapshot, [item for item in chart_entries if item[1].chart_type.casefold() not in ELEMENT_CHART_TYPES],
+                        auto_models, legend_visibility, legend_keys, layout_name, task_repository,
                         auto_engine, user.username,
                     )
                     auto_engines.add(writer)
@@ -1487,6 +1664,10 @@ def install_dashboard_routes(core):
                 for chart_number, ((index, entry), placement) in enumerate(zip(chart_entries, placements, strict=False), 1):
                     if not run_is_active():
                         return
+                    if entry.chart_type.casefold() in ELEMENT_CHART_TYPES:
+                        # A text box or picture of the Design: native, editable PowerPoint shapes.
+                        add_dashboard_element(slide, entry, placement, task_repository)
+                        continue
                     if compact_titles:
                         # Small grid cells: a readable text title above a title-less chart image.
                         placement = add_dashboard_cell_title(slide, entry, placement)
@@ -2028,9 +2209,6 @@ def install_dashboard_routes(core):
                 raise HTTPException(400, str(exc)) from exc
             parameters = (dashboard_design.design_from_entries(entries)['parameters']
                           if any('"parameters"' in entry.format for entry in entries) else [])
-            if not parameters:
-                # A template without parameters, as the Dashboard of before read it.
-                return [entry_for_nr_mode(entry, nr_mode) for entry in entries]
         else:
             _template, resolved, _report = dashboard_design_state(definition, task_repository, template)
             parameters = resolved.get('parameters') or []
@@ -2041,7 +2219,64 @@ def install_dashboard_routes(core):
             except ValueError as exc:
                 raise HTTPException(400, str(exc)) from exc
         entries = dashboard_design.apply_parameters(entries, parameters, definition.parameter_values)
+        entries = dashboard_design.apply_tokens(entries, selection_token_texts(definition, entries, task_repository))
+        # The titles name the NR Mode as each chart shows it (entry_for_nr_mode); a text box names that of the Dashboard.
+        mode_texts = {token.strip('{}').casefold(): text for token, text in NR_MODE_TOKEN_VALUES[dashboard_nr_mode_value(nr_mode)].items()}
+        entries = dashboard_design.apply_tokens(entries, mode_texts, titles=False)
         return [entry_for_nr_mode(entry, nr_mode) for entry in entries]
+
+    # The field behind each selection token of the titles and text boxes, and what it reads when not filtered.
+    SELECTION_TOKEN_FIELDS = {
+        'operators': ('Operator', 'All Operators'), 'vendors': ('Vendor', 'All Vendors'), 'regions': ('Region', 'All Regions'),
+        'clusters': ('Cluster', 'All Clusters'), 'cities': ('City', 'All Cities'),
+    }
+
+    def selection_token_texts(definition, entries, task_repository) -> dict[str, str]:
+        """What the selection tokens the rows name read for a Dashboard (dashboard_design.SELECTION_TOKENS): its name,
+        its Scope, its Campaigns and the Operators, Vendors, Regions, Clusters and Cities it is filtered by, or All… when
+        it is not filtered by them or keeps every value of its CDRs. Only the tokens named are read."""
+        wanted = dashboard_design.used_tokens(entries) & {token.casefold() for token in dashboard_design.SELECTION_TOKENS}
+        if not wanted:
+            return {}
+        texts: dict[str, str] = {}
+        if 'dashboard' in wanted:
+            texts['dashboard'] = definition.name
+        if 'scope' in wanted:
+            texts['scope'] = dashboard_ppt_scope_label(definition.scope)
+        try:
+            selected_by_kind = selected_sources(definition, task_repository) if wanted - {'dashboard', 'scope'} else {}
+        except (HTTPException, ValueError):
+            # No CDR to read yet (a Design checked before its CDRs are ready): the fields read as not filtered.
+            selected_by_kind = {}
+        if 'campaigns' in wanted:
+            campaigns = dashboard_campaign_values(definition, selected_by_kind, task_repository, wait=False)[0]
+            texts['campaigns'] = ', '.join(campaigns) or 'All Campaigns'
+        fields = [token for token in SELECTION_TOKEN_FIELDS if token in wanted]
+        if not fields:
+            return texts
+        filters = definition.filters if isinstance(definition.filters, dict) else {}
+        selected_ids = [int(row['id']) for rows in selected_by_kind.values() for row in rows]
+        if selected_ids:
+            core.backfill_cdr_catalogues(selected_ids, task_repository)
+        catalogue_values = dict(task_repository.cdr_catalogue_values(selected_ids)) if selected_ids else {}
+        for token in fields:
+            field, all_label = SELECTION_TOKEN_FIELDS[token]
+            configured = next((values for key, values in filters.items()
+                               if identity(vendor_filter_column(key)) == identity(vendor_filter_column(field))), None)
+            values = configured if isinstance(configured, list) else ([configured] if configured else [])
+            values = list(dict.fromkeys(str(value).strip() for value in values if str(value).strip()))
+            if not values:
+                texts[token] = all_label
+                continue
+            if token == 'operators' and selected_ids:
+                # As the Operators of its filters name them (Operator Maps).
+                available = profile_filter_options(unfiltered_definition(definition), [], selected_by_kind, ['Operator'], task_repository)['Operator']
+            else:
+                available = catalogue_values.get('vendors_only' if token == 'vendors' else token) or []
+            values = values_present_in_cdrs(values, available)
+            every = {str(value).strip().casefold() for value in available if str(value).strip()}
+            texts[token] = all_label if every and {value.casefold() for value in values} >= every else ', '.join(values)
+        return texts
 
     def validate(definition, task_repository=None):
         if not definition.name.strip():
@@ -3356,16 +3591,23 @@ def install_dashboard_routes(core):
             definition.design_overrides = dashboard_design.normalized_overrides(request.overrides)
         entries = catalogue(definition, task_repository, template=template)
         deck = Presentation(core.settings.powerpoint_template)
+        options = dict(snapshot.options or snapshot.payload.get('options') or {})
+        for field_name in {repeat_field(entry) for entry in entries} - {''}:
+            # A field chosen for Repeat by in Design and not read with the selection: its values are read now.
+            if not any(identity(key) == identity(field_name) for key in options):
+                try:
+                    options[field_name] = load_filter_options(definition, field_name, task_repository)
+                except HTTPException:
+                    options[field_name] = []
         expanded, slides = dashboard_slides(
-            entries, definition, snapshot.options or snapshot.payload.get('options') or {}, task_repository,
-            selected_sources(definition, task_repository), deck)
+            entries, definition, options, task_repository, selected_sources(definition, task_repository), deck)
         payload = {**snapshot.payload, 'slides': slides}
         payload.pop('grid_layouts', None)
         add_dynamic_grid_metadata(payload, expanded, deck)
         token = uuid4().hex
         with lock:
             snapshots[token] = replace(
-                snapshot, owner=user.username, entries=expanded, frames={}, definition=definition, payload=payload,
+                snapshot, owner=user.username, entries=expanded, frames={}, definition=definition, payload=payload, options=options,
                 chart_frames={}, filtered_frames={}, chart_payloads={}, frame_locks={}, sources=dict(snapshot.sources),
                 cancelled=None, viewed_at=0.0,
             )
@@ -3536,7 +3778,9 @@ def install_dashboard_routes(core):
     def free_places(slide) -> list[int]:
         visible = [element for element in slide.get('elements') or [] if not element.get('hidden')]
         used = {element.get('place', index) for index, element in enumerate(visible)}
-        return [place for place in range(layout_capacity(slide.get('layout') or '')) if place not in used]
+        geometry = (slide.get('options') or {}).get('geometry')
+        capacity = len(geometry) if isinstance(geometry, list) and geometry else layout_capacity(slide.get('layout') or '')
+        return [place for place in range(capacity) if place not in used]
 
     @app.get('/api/ppt-dashboards/design/targets')
     def dashboard_design_targets(user=Depends(dashboard_editor_user)):
@@ -4922,11 +5166,55 @@ def install_dashboard_routes(core):
             'cities': options['cities'],
         }
 
+    def expand_repeated_elements(entries, definition, options, deck):
+        """Repeat by (Designer): each chart repeated by a field becomes one chart per value of the field in the selection
+        (its filter values first), each in its share of the chart's place; the other charts of its slide keep theirs. The
+        places are written on the rows (``rect``), so the viewer and the PPT export lay them out alike."""
+        if not any(repeat_field(entry) for entry in entries):
+            return entries
+        deck = deck or Presentation(core.settings.powerpoint_template)
+        by_slide: dict[int, list[int]] = defaultdict(list)
+        for index, entry in enumerate(entries):
+            by_slide[entry.slide].append(index)
+        result: list = []
+        for _number, indexes in sorted(by_slide.items()):
+            rows = [entries[index] for index in indexes]
+            charts = [row for row in rows if not row.structural_type]
+            if not any(repeat_field(row) for row in charts) or rows[0].layout in DYNAMIC_LAYOUTS:
+                result.extend(rows)
+                continue
+            positions = slide_geometry(charts) or normalized_frame_positions(_layout_chart_frames(_named_slide_layout(deck, rows[0].layout)))
+            places = explicit_places(charts, len(positions)) or list(range(len(charts)))
+            for row, place in zip(charts, places):
+                rect = positions[place] if place < len(positions) else None
+                data = dashboard_design.row_format(row)
+                field_name = repeat_field(row)
+                if rect is None:
+                    result.append(row)
+                    continue
+                if not field_name:
+                    result.append(replace(row, format=dashboard_design.format_cell({**data, 'rect': rect})))
+                    continue
+                values = next((items for key, items in options.items() if identity(key) == identity(field_name)), [])
+                chosen = next((items for key, items in definition.filters.items() if identity(key) == identity(field_name)), [])
+                values = [str(value) for value in values if str(value).strip() and (not chosen or str(value) in {str(item) for item in chosen})]
+                values = sorted(dict.fromkeys(values), key=str.casefold)[:12]
+                if not values:
+                    result.append(replace(row, format=dashboard_design.format_cell({**data, 'rect': rect})))
+                    continue
+                for value, part in zip(values, subdivided(rect, len(values))):
+                    filters = dashboard_design.join_conditions(dashboard_design.filter_conditions(row.filters) + [f'{field_name} IN ({value})'])
+                    result.append(replace(row, filters=filters,
+                                          chart_title=f'{row.chart_title} – {value}' if row.chart_title else value,
+                                          format=dashboard_design.format_cell({**data, 'rect': part, 'repeat_value': value})))
+        return result
+
     def dashboard_slides(entries, definition, options, task_repository, selected_by_kind, deck):
         """The rows of a Dashboard with its dynamic layouts expanded, and its slides as the viewer shows them: their
         charts, positions on the layout and whether each chart has CDRs to read."""
         slides = OrderedDict()
         entries = expand_dashboard_layouts(entries, definition, options, task_repository)
+        entries = expand_repeated_elements(entries, definition, options, deck)
         slide_entries_by_number: dict[int, list] = defaultdict(list)
         for entry in entries:
             slide_entries_by_number[entry.slide].append(entry)
@@ -4956,7 +5244,17 @@ def install_dashboard_routes(core):
                     'available': bool(selected_by_kind) if entry.source_kind == 'all' else entry.source_kind in selected_by_kind, 'focus_row': editor_index,
                     'element': str(row.get('id') or ''), 'place': row.get('place'),
                 }
-                if unread := chart_nr_mode_unread(entry, definition):
+                kind = next((key for key, chart_type in dashboard_design.KIND_CHART_TYPES.items()
+                             if chart_type.casefold() == entry.chart_type.casefold()), 'chart')
+                if kind != 'chart':
+                    chart['kind'] = kind
+                if kind in {'text', 'image'}:
+                    # Read no CDR: the viewer shows the text or the picture (their content), never a chart model.
+                    content = dict(row.get('content') or {}) if isinstance(row.get('content'), dict) else {}
+                    if kind == 'image' and content.get('image'):
+                        content['url'] = f"/api/ppt-dashboards/design/images/{content['image']}"
+                    chart.update(available=False, content=content)
+                elif unread := chart_nr_mode_unread(entry, definition):
                     # A chart of one NR Mode (NR Mode IN (SA)) in a Dashboard that reads the other one.
                     chart.update(available=False, unavailable=unread)
                 elif dashboard_nr_mode(definition) == NSA_VS_SA and entry.source_kind in selected_by_kind:
@@ -4968,19 +5266,24 @@ def install_dashboard_routes(core):
                         chart['nr_mode_note'] = missing_nr_mode_note(missing)
                 slide['charts'].append(chart)
         for slide in slides.values():
-            positions = normalized_frame_positions(_layout_chart_frames(_named_slide_layout(deck, slide['layout'])))
             charts = slide['charts']
-            places = [chart.pop('place', None) for chart in charts]
-            # The place of an element on its layout (Designer): a place left empty stays empty. The cards of a dynamic
-            # grid (one element repeated) fill the grid in order.
-            if (all(isinstance(place, int) or place is None for place in places) and any(place is not None for place in places)
-                    and len({chart['element'] for chart in charts}) == len(charts)):
-                order = [place if place is not None else position for position, place in enumerate(places)]
-                if len(set(order)) == len(order) and positions and all(0 <= place < len(positions) for place in order):
-                    for chart, place in zip(charts, order):
-                        chart['position'] = positions[place]
-                    continue
-            if positions and len(positions) >= len(charts):
+            for chart in charts:
+                chart.pop('place', None)
+            chart_rows = [entries[chart['index']] for chart in charts]
+            # The places of a free layout (Designer), else those of the layout; each element on its place (a place can
+            # stay empty), else the charts fill the places in order (the cards of a dynamic grid too).
+            rects = [dashboard_design.row_format(row).get('rect') for row in chart_rows]
+            if chart_rows and all(isinstance(rect, list) and len(rect) == 4 for rect in rects):
+                # Each chart has its own place (a chart repeated in its place: Repeat by).
+                for chart, rect in zip(charts, rects):
+                    chart['position'] = rect
+                continue
+            positions = slide_geometry(chart_rows) or normalized_frame_positions(_layout_chart_frames(_named_slide_layout(deck, slide['layout'])))
+            places = explicit_places(chart_rows, len(positions))
+            if places is not None:
+                for chart, place in zip(charts, places):
+                    chart['position'] = positions[place]
+            elif positions and len(positions) >= len(charts):
                 for chart, position in zip(charts, positions):
                     chart['position'] = position
         return entries, list(slides.values())
@@ -5030,6 +5333,7 @@ def install_dashboard_routes(core):
         fields = {field for field in ADAPTATIVE_FILTER_FIELDS if identity(field) not in hidden_filter_keys}
         fields.update(definition.custom_fields)
         fields.update(field for entry in entries for field in entry_dynamic_fields(prepare_multivendor_catalog_entry(entry, definition.vendor_comparison) if definition.scope == "multivendor" else entry) if field)
+        fields.update(field for entry in entries if (field := repeat_field(entry)))
         fields = sorted(fields, key=str.casefold)
         use_profile_options = bool(
             date_bounds
@@ -5144,6 +5448,7 @@ def install_dashboard_routes(core):
                 return None
             payload = manifest['payload']
             entries = expand_dashboard_layouts(entries, definition, payload.get('options', {}), task_repository)
+            entries = expand_repeated_elements(entries, definition, payload.get('options', {}), None)
             if not isinstance(payload, dict) or not isinstance(payload.get('slides'), list):
                 return None
             if 'grid_layouts' not in payload:

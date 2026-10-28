@@ -1084,6 +1084,15 @@
     }
     context.fillStyle = '#405765'; context.textAlign = 'center'; font(context, 20, true); context.fillText(String(payload.metric || ''), plot.left + plot.width / 2, plot.top + plot.height + 31);
     if (payload.y_label) verticalLabel(context, payload.y_label, Math.max(18, plot.left - 65), plot.top + plot.height / 2, '#405765', 18);
+    // The numeric axes, for the range of the Dashboard Designer: the values of the X axis (KPI units, from the lowest to
+    // the highest value of the series) and the percentages of the Y axis.
+    const values = (payload.series || []).flatMap(series => [...(series.x || []), ...(series.bin_edges || [])]).map(Number).filter(finite);
+    const extent = values.length ? [Math.min(...values), Math.max(...values)] : [xLow, xHigh];
+    const xStart = transformPoint(transform, plot.left, plot.top + plot.height), yStart = transformPoint(transform, plot.left - 80, plot.top);
+    (state.numericAxes ||= []).push(
+      {axis: 'x', domain: [xLow, xHigh], extent, x: xStart.x, y: xStart.y, width: plot.width * transform.scale, height: 60 * transform.scale},
+      {axis: 'y', domain: [yLow * 100, yHigh * 100], extent: [0, 100], percent: true, x: yStart.x, y: yStart.y, width: 80 * transform.scale, height: plot.height * transform.scale},
+    );
     drawLegend(context, payload.legend, {fontSize: 11, sideX: legendLayout(payload.legend, 11).position === 'right' ? plot.left + plot.width + 25 : undefined});
   }
 
@@ -1461,6 +1470,82 @@
     else if (payload.type === 'scatter') drawScatter(context, payload, state, transform);
     else if (payload.type === 'map') drawMap(context, payload, state, transform);
     else if (payload.type === 'table') drawTable(context, payload, state);
+    else if (payload.type === 'kpi') drawKpi(context, payload, state, transform);
+  }
+
+  // KPI cards (Dashboard Designer): the figure of the latest campaign, its samples, its change against the comparison
+  // (green when it improves, red when it worsens), the colour of its band and its trend over the campaigns.
+  const KPI_BANDS = {good: '#237A4B', fair: '#B25F00', poor: '#B3262E'};
+  function roundedRect(context, x, y, width, height, radius) {
+    context.beginPath();
+    context.moveTo(x + radius, y); context.lineTo(x + width - radius, y); context.quadraticCurveTo(x + width, y, x + width, y + radius);
+    context.lineTo(x + width, y + height - radius); context.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+    context.lineTo(x + radius, y + height); context.quadraticCurveTo(x, y + height, x, y + height - radius);
+    context.lineTo(x, y + radius); context.quadraticCurveTo(x, y, x + radius, y); context.closePath();
+  }
+  function drawKpi(context, payload, state, transform) {
+    const cards = payload.cards || [];
+    // A missing figure (null) is not a zero.
+    const known = value => value !== null && value !== undefined && value !== '' && finite(value);
+    if (!cards.length) return;
+    const columns = cards.length <= 4 ? cards.length : cards.length <= 6 ? 3 : 4;
+    const rows = Math.ceil(cards.length / columns);
+    const area = {left: 40, top: payload.hide_title ? 30 : 95, right: 1560, bottom: 875};
+    const gap = 26;
+    const width = (area.right - area.left - gap * (columns - 1)) / columns;
+    const height = (area.bottom - area.top - gap * (rows - 1)) / rows;
+    const decimals = Number.isInteger(payload.decimals) ? payload.decimals : 2;
+    const unit = payload.unit ? (payload.share ? '%' : ` ${payload.unit}`) : '';
+    const number = value => (known(value) ? Number(value).toFixed(decimals) : '–');
+    cards.forEach((card, index) => {
+      const x = area.left + (index % columns) * (width + gap), y = area.top + Math.floor(index / columns) * (height + gap);
+      const accent = KPI_BANDS[card.band] || '#4B2C82';
+      context.save();
+      roundedRect(context, x, y, width, height, 18);
+      context.fillStyle = '#FFFFFF'; context.fill();
+      context.strokeStyle = '#DDE3EA'; context.lineWidth = 2; context.stroke();
+      context.clip();
+      context.fillStyle = accent; context.fillRect(x, y, 10, height);
+      context.restore();
+      const inner = {left: x + 34, right: x + width - 26};
+      const scale = Math.min(1, height / 360, width / 380);
+      context.textAlign = 'left'; context.textBaseline = 'top';
+      context.fillStyle = '#405765'; font(context, Math.max(18, 30 * scale), true);
+      context.fillText(fittedText(context, String(card.label || payload.metric || ''), inner.right - inner.left), inner.left, y + 24 * scale);
+      const valueText = `${number(card.value)}${known(card.value) ? unit : ''}`;
+      let size = Math.max(40, Math.min(150, height * .34, (inner.right - inner.left) / Math.max(3, valueText.length * .62)));
+      context.fillStyle = card.band ? accent : '#17202A'; font(context, size, true);
+      while (size > 30 && textWidth(context, valueText) > inner.right - inner.left) { size -= 4; font(context, size, true); }
+      const valueTop = y + 24 * scale + 46 * scale;
+      context.fillText(valueText, inner.left, valueTop);
+      pushRectangleHit(state, transform, {x, y, width, height}, {label: card.label || payload.metric, series: card.campaign || '', value: `${valueText} · n = ${card.n}`});
+      let line = valueTop + size + 14 * scale;
+      context.fillStyle = '#6B7785'; font(context, Math.max(15, 21 * scale));
+      context.fillText(`n = ${Number(card.n || 0).toLocaleString()}${card.campaign ? ` · ${card.campaign}` : ''}`, inner.left, line);
+      line += 34 * scale;
+      if (known(card.delta)) {
+        const up = Number(card.delta) > 0, flat = card.improves === null || card.improves === undefined;
+        context.fillStyle = flat ? '#6B7785' : card.improves ? KPI_BANDS.good : KPI_BANDS.poor;
+        font(context, Math.max(16, 24 * scale), true);
+        const deltaUnit = payload.share ? ' pp' : unit;
+        context.fillText(`${up ? '▲' : Number(card.delta) < 0 ? '▼' : '='} ${up ? '+' : ''}${Number(card.delta).toFixed(decimals)}${deltaUnit} vs ${card.comparison_label}`, inner.left, line);
+        line += 36 * scale;
+      }
+      const trend = (card.trend || []).map(value => (known(value) ? Number(value) : null));
+      if (trend.filter(known).length > 1) {
+        const top = Math.max(line + 8, y + height - 90 * scale), bottom = y + height - 22 * scale;
+        const values = trend.filter(known), low = Math.min(...values), high = Math.max(...values);
+        const points = trend.map((value, position) => (known(value) ? {
+          x: inner.left + position / (trend.length - 1) * (inner.right - inner.left),
+          y: bottom - (high === low ? .5 : (value - low) / (high - low)) * (bottom - top),
+        } : null)).filter(Boolean);
+        context.strokeStyle = accent; context.lineWidth = 3; context.beginPath();
+        points.forEach((point, position) => (position ? context.lineTo(point.x, point.y) : context.moveTo(point.x, point.y)));
+        context.stroke();
+        const last = points.at(-1);
+        context.fillStyle = accent; context.beginPath(); context.arc(last.x, last.y, 6, 0, Math.PI * 2); context.fill();
+      }
+    });
   }
 
   // The colour theme of a chart (its model's style, or the page's: scoring_themes.dashboard_chart_style): its font and
@@ -2074,6 +2159,26 @@
       .filter(item => item.label && item.colour && !seen.has(item.label) && seen.add(item.label));
   };
   globalThis.getDashboardChartLegendItemAt = (canvas, event) => legendItemAt(canvas, event);
+  // The axis under a pointer (Dashboard Designer): a numeric axis with its range and the range of its values, or a level
+  // of a category axis with its field and every value it has (hidden ones included).
+  globalThis.getDashboardChartAxisAt = (canvas, event) => {
+    const view = views.get(canvas), state = renderStates.get(canvas), bounds = canvas.getBoundingClientRect();
+    if (!view || !state || !bounds.width) return null;
+    const x = ((event.clientX - bounds.left) / view.scaleX - view.originX) / view.zoom;
+    const y = ((event.clientY - bounds.top) / view.scaleY - view.originY) / view.zoom;
+    const numeric = (state.numericAxes || []).find(item => x >= item.x && x <= item.x + item.width && y >= item.y && y <= item.y + item.height);
+    if (numeric) return {kind: 'numeric', axis: numeric.axis, domain: numeric.domain, extent: numeric.extent, percent: Boolean(numeric.percent)};
+    const hit = axisItemAt(canvas, event);
+    if (!hit) return null;
+    const model = models.get(canvas) || {};
+    // The dimensions of a model list the levels of its rows first, then those of its columns.
+    const rowLevels = Array.isArray(model.row_keys) ? Math.max(0, ...model.row_keys.map(key => (Array.isArray(key) ? key.length : 1)))
+      : Number(model.row_dimension_count) || 0;
+    const onColumns = hit.axis !== 'row' && hit.axis !== 'table-row' && (Array.isArray(model.row_keys) || hit.axis === 'table-column');
+    const dimension = model.dimensions?.[onColumns ? rowLevels + hit.level : hit.level]?.[0];
+    return {kind: 'category', axis: hit.axis, level: hit.level, value: hit.value, values: axisLevelValues(model, hit.axis, hit.level),
+      dimension: String(dimension || '')};
+  };
   globalThis.setDashboardChartZoom = setChartZoom;
   globalThis.getDashboardChartZoom = canvas => cameraFor(canvas).zoom;
   globalThis.zoomDashboardChartAt = zoomChartAt;

@@ -421,25 +421,50 @@ A difference of a Dashboard wins over the template. When the template changes th
 
 ### Slides
 
+- The slides at the left show each slide in small as it is laid out (its charts, KPI cards, text boxes, pictures, or its cover), drawn again when the slide, the Design or the data change; a slide left out of the Dashboard shows its places only.
 - Choose a slide at the left; its **⋯** menu (or a right click) offers **New slide after**, **Duplicate**, **Hide in this Dashboard** / **Show again**, **Delete** (Template scope, or a slide of this Dashboard), **Optional (off by default)** and, for an optional slide, **Show in this Dashboard**. **+ New slide** adds a content, title, transition or end slide.
 - Drag a slide to move it: in Template scope any slide, in This Dashboard scope the slides of this Dashboard (those of the template keep their order).
-- The **Slide** tab changes the title and subtitle (**{ }** inserts `{NR Mode}`, `{NR Mode Name}` or a parameter) and the **layout**: a grid of up to 6 × 6 places, with comments below, to the right or none, and the other layouts of the slide master. A layout with fewer places than the slide has charts removes the last ones, after asking.
+- The **Slide** tab changes the title and subtitle (**{ }** inserts a field or a parameter, see [Fields in titles and text boxes](#fields-in-titles-and-text-boxes)) and the **layout**: a grid of up to 6 × 6 places, with comments below, to the right or none, and the other layouts of the slide master. A layout with fewer places than the slide has charts removes the last ones, after asking. **Adjust places…** resizes its rows and columns by dragging the lines between them and merges neighbouring places into one (a chart over two columns) or splits them again; **Reset places** gives the layout its places back.
+
+### Fields in titles and text boxes
+
+Slide titles, subtitles, chart titles and text boxes write these fields as each Dashboard reads them (**{ }** beside them inserts one):
+
+| Field | Writes |
+| --- | --- |
+| `{NR Mode}`, `{NR Mode Name}` | NSA, SA or NSA & SA; Non-Standalone, Standalone or Non-Standalone & Standalone (a chart title, the NR Mode the chart shows) |
+| `{Dashboard}` | The name of the Dashboard |
+| `{Scope}` | Operator Comparison or Multivendor Comparison |
+| `{Campaigns}` | The Campaigns of the Dashboard (*26-Q2, 26-Q3*) |
+| `{Operators}`, `{Vendors}`, `{Regions}`, `{Clusters}`, `{Cities}` | The values the Dashboard is filtered by (*London, Leeds*), or *All Operators*, *All Cities*… when it is not filtered by them or keeps every value of its CDRs |
+
+The template keeps the fields, so each Dashboard of it writes its own selection. Parameters of the template are written the same way (`{City}`), and their names cannot be those of the fields.
 
 ### Charts on the slide
 
-- Click a chart to build it in the **Element** tab, as in Tableau: choose its source (Data, Voice, Speech, RF All) and NR Mode (that of the Dashboard, NSA or SA, kept as the filter `NR Mode IN (SA)`), then drag the fields of the source, grouped by the sections of the CDR Field Dictionary and told apart as dimensions (blue `Abc`) and measures (green `#`), to its shelves: **Measure** (its menu chooses the aggregation), **Rows**, **Columns**, **Legend**, **Filters** and **Repeat by** (with a dynamic layout of the slide). A field dropped on Filters opens its values in the Dashboard's selection with their samples (Include, Exclude, Contains), or a numeric condition, or a parameter of the template (**Use parameter**); the filters of the Dashboard show first on the shelf, locked. **Chart Type** shows every chart type drawn, greys those the shelves cannot draw with what they need, and chooses one when the measure changes; Threshold, Buckets and Bin Size are set beside the type that uses them. The chart is drawn again a moment after each change.
+- Click a chart to build it in the **Element** tab, as in Tableau: choose its source (Data, Voice, Speech, RF All) and NR Mode (that of the Dashboard, NSA or SA, kept as the filter `NR Mode IN (SA)`), then drag the fields of the source, grouped by the sections of the CDR Field Dictionary and told apart as dimensions (blue `Abc`) and measures (green `#`), to its shelves: **Measure** (its menu chooses the aggregation), **Rows**, **Columns**, **Legend**, **Filters** and **Repeat by** (one chart per value of a field, side by side in the place of this one: small multiples, in the viewer and in the PPT). A field dropped on Filters opens its values in the Dashboard's selection with their samples (Include, Exclude, Contains), or a numeric condition, or a parameter of the template (**Use parameter**); the filters of the Dashboard show first on the shelf, locked. **Chart Type** shows a picture of every chart type, greys those the shelves cannot draw with what they need, and chooses one when the measure changes; Threshold, Buckets and Bin Size are set beside the type that uses them. The chart is drawn again a moment after each change.
 - **Format** (under the shelves) changes how the chart looks, in the viewer and in the PPT alike (the same renderer draws both):
   - **Series:** click an entry of its legend on the chart, or the series in the list, to change its colour, line width, line (solid, dashed, dotted) and opacity. The colours of Operator and Vendor Maps stay until a series is given one: **Default** gives one series its colour back, **Default colours** every series.
   - **Legend:** its place (top, bottom, left, right or hidden) and the size of its text.
   - **Labels:** their place, colour, size and bold.
-  - **Axes:** the titles of the X and Y axes and the decimals of the X axis of a CDF.
+  - **Axes:** the titles of the X and Y axes and the decimals of the X axis of a CDF. Click the labels of an axis on the chart to change it there: a numeric axis opens a slider with two ends for its range (**Automatic** gives it back), a text axis the list of its values to untick those the chart leaves out (kept as a `NOT IN` condition of its Filters), **Only** one of them or **Show all**.
   - **Copy format** and **Paste format** give another chart the same format (with its legend and label positions and axis ranges).
 - **Advanced** keeps the legend and label positions, the axis ranges, Exclude Null/Empty, Exclude Zero and the text of each column as the template writes it.
-- Drag a chart by its **⠿** handle onto another chart to swap their places, or onto a free place to move it there. A free place of the layout shows **+ Add**: a new chart or one copied before (**Copy** in the menu of a chart).
+- Drag a chart by its **⠿** handle onto another chart to swap their places, or onto a free place to move it there. A free place of the layout shows **+ Add**: a chart, a KPI card, a text box, a picture, or one copied before (**Copy** in the menu of a chart).
 - **Delete** removes a chart (in This Dashboard scope, a chart of the template is hidden in this Dashboard).
 - **Ctrl/Cmd+Z** and **Shift+Ctrl/Cmd+Z** undo and redo; **Delete** removes the chart chosen; **Esc** leaves it.
 
 A change the template cannot hold (a chart without a KPI or a split, for example) is refused with the reason and undone.
+
+### KPI cards, text boxes and pictures
+
+| Element | What it shows | In the PPT |
+| --- | --- | --- |
+| **KPI card** | One figure of the latest campaign of the Dashboard: Average, Median, Percentile, Count of samples, Share of a value (%), or Share below / above a threshold (%), of a measure of a source with its filters; compared with the previous campaign, the best competitor (with **One card per** Operator, for example) or a target, green or red as it improves (**Higher is better**); its colour band (**Good from**, **Poor from**) and its **Trend over the campaigns** | Drawn by the same renderer as in the viewer |
+| **Text box** | Text written with the editor of the tickets (bold, lists, headings), its size, alignment and colour, with fields and parameters | A text box of its own, bold, bullets and headings kept |
+| **Image** | A PNG, JPEG or GIF picture of up to 8 MB (an SVG can be saved as PNG first), fitted in its place keeping its ratio | A picture of its own |
+
+Pictures are kept in the table **Dashboard Design Images**. Text boxes and pictures read no CDR; PPT Reporting (old) leaves them out (a slide with only them keeps its title).
 
 ### Save, drafts and the other actions
 
@@ -457,7 +482,7 @@ A change the template cannot hold (a chart without a KPI or a split, for example
 | **user-editor** | The Dashboards they created | The templates they created; **Save as my Dashboard** for a variant of another one |
 | **user-viewer** | — | — |
 
-App Events record `dashboard_design_saved` (what changed: slides and charts of the template, differences of the Dashboard), `report_template_saved_from_designer`, `report_template_design_ids_assigned`, `dashboard_design_detached`, `report_template_saved_from_dashboard` and `dashboard_design_draft_discarded`.
+App Events record `dashboard_design_saved` (what changed: slides and charts of the template, differences of the Dashboard), `report_template_saved_from_designer`, `report_template_design_ids_assigned`, `dashboard_design_detached`, `report_template_saved_from_dashboard`, `dashboard_design_draft_discarded` and `dashboard_design_image_uploaded`.
 
 ### Template parameters
 

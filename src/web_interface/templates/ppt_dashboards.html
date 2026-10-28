@@ -2,6 +2,7 @@
 {% block content %}
 <link rel="stylesheet" href="{{ static_path('css/ppt_dashboards.css') }}?v={{ asset_version('css/ppt_dashboards.css') }}">
 <link rel="stylesheet" href="{{ static_path('css/dashboard_designer.css') }}?v={{ asset_version('css/dashboard_designer.css') }}">
+<link rel="stylesheet" href="{{ static_path('css/rich_text.css') }}?v={{ asset_version('css/rich_text.css') }}">
 <section class="dashboard-stack spacious-stack ppt-dashboards" id="ppt-dashboards">
   <article class="panel hero-panel module-hero-ppt-dashboards">
     <p class="eyebrow">PPT Dashboards</p><h2>Your PPT dashboard, live on screen</h2>
@@ -128,7 +129,9 @@
 <script defer src="{{ static_path('js/dashboard_charts.js') }}?v={{ asset_version('js/dashboard_charts.js') }}"></script>
 <script defer src="{{ static_path('js/element_image.js') }}?v={{ asset_version('js/element_image.js') }}"></script>
 <script defer src="{{ static_path('js/image_buttons.js') }}?v={{ asset_version('js/image_buttons.js') }}"></script>
+<script defer src="{{ static_path('js/rich_text.js') }}?v={{ asset_version('js/rich_text.js') }}"></script>
 <script defer src="{{ static_path('js/ppt_dashboards.js') }}?v={{ asset_version('js/ppt_dashboards.js') }}"></script>
 <script defer src="{{ static_path('js/dashboard_chart_builder.js') }}?v={{ asset_version('js/dashboard_chart_builder.js') }}"></script>
+<script defer src="{{ static_path('js/dashboard_layout_editor.js') }}?v={{ asset_version('js/dashboard_layout_editor.js') }}"></script>
 <script defer src="{{ static_path('js/dashboard_designer.js') }}?v={{ asset_version('js/dashboard_designer.js') }}"></script>
 {% endblock %}

@@ -1983,6 +1983,14 @@
 .ds-slide-thumbnail-frame { position:relative; display:block; aspect-ratio:16 / 9; overflow:hidden; border:1px solid var(--ds-border); border-radius:6px; background:#fff; }
 .ds-slide-thumbnail-chart { position:absolute; box-sizing:border-box; overflow:hidden; border:1px solid #e9e3f1; border-radius:2px; background:#fff; }
 .ds-slide-thumbnail-chart canvas { display:block; width:100%; height:100%; pointer-events:none; }
+/* Text boxes and pictures in small: the text as a hint of its lines, the picture fitted. */
+.ppt-dashboards .ds-slide-thumbnail-chart.is-element { border-color:transparent; pointer-events:none; }
+.ppt-dashboards .ds-slide-thumbnail-chart .ds-element-text { box-sizing:border-box; height:100%; padding:2px 3px; overflow:hidden; font-size:4px; line-height:1.25; }
+.ppt-dashboards .ds-slide-thumbnail-chart .ds-element-text[data-size="large"] { font-size:5.5px; }
+.ppt-dashboards .ds-slide-thumbnail-chart .ds-element-text[data-size="small"] { font-size:3.2px; }
+.ppt-dashboards .ds-slide-thumbnail-chart .ds-element-text * { margin:0 0 1px; font-size:inherit; line-height:inherit; }
+.ppt-dashboards .ds-slide-thumbnail-chart .ds-element-image, .ppt-dashboards .ds-slide-thumbnail-chart .ds-element-image img { display:block; width:100%; height:100%; }
+.ppt-dashboards .ds-slide-thumbnail-chart .ds-element-empty { display:none; }
 .ds-slide-thumbnail-caption { display:-webkit-box; overflow:hidden; font-size:.74rem; font-weight:650; line-height:1.25; -webkit-box-orient:vertical; -webkit-line-clamp:2; }
 .ds-slide-thumbnail-caption b { margin-right:.35rem; color:var(--ds-color); font-weight:850; }
 

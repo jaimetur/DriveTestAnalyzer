@@ -162,6 +162,8 @@ def test_parameters_fill_filters_titles_and_settings_and_all_leaves_the_conditio
     assert 'City IN ({Town})' in renamed['filters'] and renamed['chart_title'] == 'Calls in {Town}'
     with pytest.raises(ValueError, match='built-in token'):
         dd.validate_parameters([{'name': 'NR Mode', 'type': 'text'}])
+    with pytest.raises(ValueError, match='built-in token'):
+        dd.validate_parameters([{'name': 'Cities', 'type': 'text'}])
     with pytest.raises(ValueError, match='Two parameters'):
         dd.validate_parameters([{'name': 'A', 'type': 'text'}, {'name': 'a', 'type': 'text'}])
 
@@ -397,3 +399,179 @@ def test_the_format_of_a_chart_travels_in_its_row_and_reaches_its_model(client):
     assert client.put('/api/ppt-dashboards/design-b/design', json={'template_design': template}).status_code == 200
     rows = parse_catalog_csv(core.repository.report_template_content('Design test'))
     assert dd.row_format(rows[1])['style'] == {'labels': {'colour': '#123456'}}
+
+
+# --------------------------------------------------------------------------------------------------------------------
+# Free layouts and the elements other than charts (phase 4)
+# --------------------------------------------------------------------------------------------------------------------
+
+def test_kpi_cards_text_boxes_pictures_places_and_repeat_travel_in_the_format_column():
+    from src.modules import ppt_dashboards as dashboards
+    design = {'version': 1, 'parameters': [], 'slides': [{
+        'id': 's1', 'kind': 'content', 'title': 'Overview', 'subtitle': '', 'layout': 'Title and 2 columns + Comments', 'optional': False,
+        'options': {'geometry': [[0, 0, 30, 100], [32, 0, 68, 100]], 'grid': {'rows': [1], 'columns': [0.3, 0.7], 'areas': [[0, 0, 1, 1], [0, 1, 1, 1]]}},
+        'elements': [
+            {'id': 's1e1', 'kind': 'text', 'place': 1, 'chart_type': 'Text Box', 'chart_title': '', 'content': {'text': '# Notes', 'align': 'center'}},
+            {'id': 's1e2', 'kind': 'kpi', 'place': 0, 'chart_type': 'KPI Card', 'chart_title': 'Rate', 'cdr_source': 'CDR-Data', 'kpi': 'Mean_Data_Rate', 'rows_split': 'Campaign',
+             'kpi_card': {'measure': 'median', 'comparison': 'target', 'target': 15}, 'repeat': {'field': 'City'}},
+            {'id': 's1e3', 'kind': 'image', 'place': 2, 'chart_type': 'Image', 'chart_title': '', 'content': {'image': 'a' * 32, 'fit': 'cover'}},
+        ]}]}
+    entries = dd.entries_from_design(design)
+    # The rows follow the order of the places; each kind keeps what it needs.
+    assert [entry.chart_type for entry in entries] == ['KPI Card', 'Text Box', 'Image']
+    assert dd.row_format(entries[0])['kpi'] == {'measure': 'median', 'comparison': 'target', 'target': 15}
+    assert dashboards.repeat_field(entries[0]) == 'City'
+    back = dd.design_from_entries(parse_catalog_csv(catalogue_csv(entries)))
+    slide = back['slides'][0]
+    assert slide['options']['geometry'] == [[0, 0, 30, 100], [32, 0, 68, 100]]
+    assert {element['id']: (element['kind'], element['place']) for element in slide['elements']} == {
+        's1e2': ('kpi', 0), 's1e1': ('text', 1), 's1e3': ('image', 2)}
+    assert next(element for element in slide['elements'] if element['id'] == 's1e1')['content'] == {'text': '# Notes', 'align': 'center'}
+    # The places of a free layout, and which place each row takes (a place can stay empty; repeated places are refused).
+    assert dashboards.slide_geometry(entries) == [[0, 0, 30, 100], [32, 0, 68, 100]]
+    assert dashboards.explicit_places(entries, 3) == [0, 1, 2]
+    assert dashboards.explicit_places(entries, 2) is None
+    assert dashboards.explicit_places([replace(entries[0], format='')], 3) is None
+    # A rectangle of the chart area as a frame of the slide, and a place divided for the small multiples.
+    assert dashboards.frame_from_rect([50, 0, 50, 50], [(100, 200, 400, 300), (500, 200, 400, 300)]) == (500, 200, 400, 150)
+    cells = dashboards.subdivided([0, 0, 60, 40], 4)
+    assert len(cells) == 4 and all(cell[2] > 0 and cell[3] > 0 for cell in cells)
+    assert max(cell[0] + cell[2] for cell in cells) == pytest.approx(60) and max(cell[1] + cell[3] for cell in cells) == pytest.approx(40)
+
+
+def element(element_id, kind, place, content):
+    """A text box or a picture as the Designer adds it: no CDR, only its content."""
+    blank = dict.fromkeys(dd.ELEMENT_FIELDS, '') | {'exclude_null_empty': False, 'exclude_zero': False}
+    return {**blank, 'id': element_id, 'kind': kind, 'place': place, 'chart_type': dd.KIND_CHART_TYPES[kind], 'content': content}
+
+
+def png(width=4, height=2):
+    from PIL import Image
+    buffer = BytesIO()
+    Image.new('RGB', (width, height), (220, 20, 60)).save(buffer, format='PNG')
+    return buffer.getvalue()
+
+
+def test_free_places_kpi_cards_repeat_text_and_pictures_are_laid_out_on_the_prepared_cdrs(client):
+    definition = setup(client)
+    picture = png()
+    uploaded = client.post('/api/ppt-dashboards/design/images', files={'file': ('logo.png', picture, 'image/png')})
+    assert uploaded.status_code == 200, uploaded.text
+    image = uploaded.json()
+    assert (image['width'], image['height'], image['name']) == (4, 2, 'logo.png')
+    served = client.get(image['url'])
+    assert served.status_code == 200 and served.content == picture and served.headers['content-type'] == 'image/png'
+    assert logged('dashboard_design_image_uploaded')[-1]['id'] == image['id']
+    refused = client.post('/api/ppt-dashboards/design/images', files={'file': ('notes.svg', b'<svg/>', 'image/svg+xml')})
+    assert refused.status_code == 400
+    assert client.get(f"/api/ppt-dashboards/design/images/{'0' * 32}").status_code == 404
+
+    body = client.get('/api/ppt-dashboards/design-a/design?edit=1').json()
+    edited = copy.deepcopy(body['design'])
+    first, second = edited['slides']
+    first['options'] = {'geometry': [[0, 0, 30, 100], [32, 0, 68, 100]]}
+    kpi, chart = first['elements']
+    kpi.update(kind='kpi', chart_type='KPI Card', chart_title='Rate', kpi_card={'measure': 'average', 'comparison': 'target', 'target': 15}, place=0)
+    chart.update(repeat={'field': 'City'}, place=1)
+    second['options'] = {'geometry': [[0, 0, 50, 100], [50, 0, 50, 100]]}
+    second['elements'] = [
+        element(second['elements'][0]['id'], 'text', 0, {'text': '# Summary\n- **Fast** in London\nPlain line', 'size': 'medium', 'align': 'left'}),
+        element('s2e9', 'image', 1, {'image': image['id'], 'fit': 'contain'}),
+    ]
+    token = client.post('/api/ppt-dashboards/prepare', json=definition).json()['token']
+    preview = client.post('/api/ppt-dashboards/design/preview', json={'token': token, 'dashboard_id': 'design-a', 'design': edited})
+    assert preview.status_code == 200, preview.text
+    overview, summary = preview.json()['slides']
+    # The KPI card keeps its place; the chart repeated by City is one chart per city in the other place.
+    card = next(item for item in overview['charts'] if item.get('kind') == 'kpi')
+    assert card['position'] == pytest.approx([0, 0, 30, 100])
+    repeated = [item for item in overview['charts'] if item.get('element') == chart['id']]
+    assert len(repeated) == 2
+    assert all(item['position'][0] >= 32 - 1e-6 and item['position'][0] + item['position'][2] <= 100 + 1e-6 for item in repeated)
+    model = client.get(f"/api/ppt-dashboards/chart/{preview.json()['token']}/{card['index']}").json()
+    assert model['type'] == 'kpi'
+    assert model['cards'][0]['value'] == pytest.approx(20) and model['cards'][0]['n'] == 3
+    assert model['cards'][0]['comparison_label'] == 'Target' and model['cards'][0]['improves'] is True
+    # The text box and the picture read no CDR: the viewer shows their content.
+    text, picture_chart = sorted(summary['charts'], key=lambda item: item['position'][0])
+    assert text['kind'] == 'text' and text['content']['text'].startswith('# Summary') and text['available'] is False
+    assert picture_chart['kind'] == 'image' and picture_chart['content']['url'] == image['url']
+    assert picture_chart['position'] == pytest.approx([50, 0, 50, 100])
+
+
+def test_text_boxes_and_pictures_are_native_shapes_of_the_exported_ppt(client):
+    import time
+    from pptx import Presentation
+    from pptx.enum.shapes import MSO_SHAPE_TYPE
+    definition = setup(client)
+    deadline = time.monotonic() + 15
+    while time.monotonic() < deadline and core.repository.get_dataset(1)['status'] != 'ready':
+        time.sleep(0.05)
+    image = client.post('/api/ppt-dashboards/design/images', files={'file': ('logo.png', png(8, 2), 'image/png')}).json()
+    body = client.get('/api/ppt-dashboards/design-a/design?edit=1').json()
+    edited = copy.deepcopy(body['design'])
+    edited['slides'][0]['hidden'] = True
+    second = edited['slides'][1]
+    second['options'] = {'geometry': [[0, 0, 50, 100], [50, 0, 50, 100]]}
+    second['elements'] = [
+        element(second['elements'][0]['id'], 'text', 0, {'text': '# Summary\n- **Fast** in London\nPlain line', 'size': 'medium', 'align': 'left'}),
+        element('s2e9', 'image', 1, {'image': image['id'], 'fit': 'contain'}),
+    ]
+    assert client.put('/api/ppt-dashboards/design-a/design', json={'design': edited}).status_code == 200
+    payload = {**definition, 'design_overrides': stored('design-a')['design_overrides']}
+    queued = client.post('/api/ppt-dashboards/design-a/export-ppt', json={'definition': payload})
+    assert queued.status_code == 202, queued.text
+    job_id = queued.json()['job_id']
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
+        job = next(item for item in client.get('/api/ppt-dashboards/ppt-jobs').json()['jobs'] if item['id'] == job_id)
+        if job['status'] in {'ready', 'failed'}:
+            break
+        time.sleep(0.05)
+    assert job['status'] == 'ready', job
+    with core.repository.connection() as connection:
+        output = connection.execute('SELECT output_path FROM dashboard_ppt_jobs WHERE id = ?', (job_id,)).fetchone()['output_path']
+    slides = list(Presentation(output).slides)
+    assert len(slides) == 1
+    shapes = slides[0].shapes
+    box = next(shape for shape in shapes if shape.has_text_frame and 'Summary' in shape.text_frame.text)
+    assert [paragraph.text for paragraph in box.text_frame.paragraphs] == ['Summary', '• Fast in London', 'Plain line']
+    assert [run.font.bold for run in box.text_frame.paragraphs[1].runs] == [False, True, False]
+    pictures = [shape for shape in shapes if shape.shape_type == MSO_SHAPE_TYPE.PICTURE]
+    assert len(pictures) == 1
+    # Fitted in its place keeping its ratio (4:1), centred on the right half.
+    assert pictures[0].width / pictures[0].height == pytest.approx(4, rel=0.01)
+    assert pictures[0].left > box.left
+
+
+def test_titles_and_text_boxes_name_the_selection_of_the_dashboard(client):
+    import time
+    definition = setup(client)
+    deadline = time.monotonic() + 15
+    while time.monotonic() < deadline and core.repository.get_dataset(1)['status'] != 'ready':
+        time.sleep(0.05)
+    body = client.get('/api/ppt-dashboards/design-a/design?edit=1').json()
+    edited = copy.deepcopy(body['design'])
+    first, second = edited['slides']
+    first['title'] = '{Dashboard}: {Operators} in {Cities}'
+    first['subtitle'] = '{Scope} · {NR Mode}'
+    first['elements'][0]['chart_title'] = 'Rate in {Regions}'
+    second['elements'] = [element(second['elements'][0]['id'], 'text', 0, {'text': '**{Cities}** · {NR Mode Name} · {Vendors}'})]
+    saved = client.put('/api/ppt-dashboards/design-a/design', json={'design': edited})
+    assert saved.status_code == 200, saved.text
+    overrides = stored('design-a')['design_overrides']
+
+    def shown(filters):
+        prepared = client.post('/api/ppt-dashboards/prepare?dashboard_id=design-a', json={**definition, 'filters': filters, 'design_overrides': overrides})
+        assert prepared.status_code == 200, prepared.text
+        return prepared.json()['slides']
+
+    overview, notes = shown({'City': ['London']})
+    assert (overview['title'], overview['subtitle']) == ('Design dashboard: All Operators in London', 'Operator Comparison · NSA')
+    assert overview['charts'][0]['title'] == 'Rate in All Regions'
+    assert notes['charts'][0]['content']['text'] == '**London** · Non-Standalone · All Vendors'
+    # Every value of the CDRs reads as All, as on the cover.
+    overview, _notes = shown({'City': ['London', 'Leeds'], 'Operator': ['B']})
+    assert overview['title'] == 'Design dashboard: B in All Cities'
+    # The Design keeps the tokens: each Dashboard writes its own.
+    assert stored('design-a')['design_overrides']['slides'][first['id']]['title']['value'] == '{Dashboard}: {Operators} in {Cities}'

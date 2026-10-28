@@ -49,13 +49,18 @@ ELEMENT_FIELDS = (
 SLIDE_FIELDS = ('title', 'subtitle', 'layout')
 # Properties a Dashboard can override besides the columns.
 SLIDE_OVERRIDABLE = (*SLIDE_FIELDS, 'options')
-ELEMENT_OVERRIDABLE = tuple(field for field in ELEMENT_FIELDS if field != 'filters') + ('place', 'style', 'kind', 'content')
+ELEMENT_OVERRIDABLE = tuple(field for field in ELEMENT_FIELDS if field != 'filters') + ('place', 'style', 'kind', 'content', 'kpi_card', 'repeat')
 STRUCTURAL_KINDS = {'title slide': 'title', 'transition slide': 'transition', 'end slide': 'end'}
 STRUCTURAL_CHART_TYPES = {'title': 'Title Slide', 'transition': 'Transition Slide', 'end': 'End Slide'}
 ELEMENT_KINDS = ('chart', 'kpi', 'text', 'image')
+# The Chart type of the row of each kind of element other than a chart.
+KIND_CHART_TYPES = {'kpi': 'KPI Card', 'text': 'Text Box', 'image': 'Image'}
 PARAMETER_TYPES = ('values', 'number', 'text')
-# Tokens the slides resolve (report_template_modes) or the text boxes do: parameters cannot take their names.
-RESERVED_TOKENS = {'nr mode', 'nr mode name', 'campaigns', 'scope', 'dashboard', 'dates'}
+# The fields a Dashboard writes in the titles and text boxes of its slides from its own selection (``{Cities}``: the
+# Cities it is filtered by, or All Cities), as the Designer offers them.
+SELECTION_TOKENS = ('Dashboard', 'Scope', 'Campaigns', 'Operators', 'Vendors', 'Regions', 'Clusters', 'Cities')
+# Tokens the slides resolve (report_template_modes and the selection): parameters cannot take their names.
+RESERVED_TOKENS = {'nr mode', 'nr mode name', 'dates', *(token.casefold() for token in SELECTION_TOKENS)}
 TOKEN_PATTERN = re.compile(r'\{([^{}]+)\}')
 FILTER_SEPARATOR = re.compile(r';|[\r\n]+')
 
@@ -133,7 +138,13 @@ def with_design_ids(entries: list[CatalogEntry]) -> list[CatalogEntry]:
 # ---------------------------------------------------------------------------
 
 def _element_from_entry(entry: CatalogEntry, data: dict[str, Any], element_id: str, place: int) -> dict[str, Any]:
-    element = {'id': element_id, 'kind': data.get('kind') or 'chart', 'place': data.get('place', place)}
+    kind = data.get('kind') or next((key for key, chart_type in KIND_CHART_TYPES.items()
+                                     if chart_type.casefold() == entry.chart_type.casefold()), 'chart')
+    element = {'id': element_id, 'kind': kind, 'place': data.get('place', place)}
+    if data.get('kpi'):
+        element['kpi_card'] = data['kpi']
+    if data.get('repeat'):
+        element['repeat'] = data['repeat']
     for field in ELEMENT_FIELDS:
         element[field] = getattr(entry, field)
     rows_field, columns_field = entry_dynamic_fields(entry)
@@ -204,6 +215,10 @@ def _entry_format(slide: dict[str, Any], element: dict[str, Any] | None, *, firs
             data['style'] = element['style']
         if element.get('content') is not None:
             data['content'] = element['content']
+        if element.get('kpi_card'):
+            data['kpi'] = element['kpi_card']
+        if element.get('repeat'):
+            data['repeat'] = element['repeat']
     if first_row:
         options = dict(slide.get('options') or {})
         if slide.get('optional'):
@@ -244,6 +259,8 @@ def entries_from_design(design: dict[str, Any], *, include_hidden: bool = False)
             values = {field: element.get(field, '' if field not in {'exclude_null_empty', 'exclude_zero'} else False)
                       for field in ELEMENT_FIELDS}
             values['legend_position'] = values['legend_position'] or ''
+            if (element.get('kind') or 'chart') in KIND_CHART_TYPES:
+                values['chart_type'] = KIND_CHART_TYPES[element['kind']]
             entries.append(CatalogEntry(
                 **base, **values,
                 format=_entry_format(slide, element, first_row=position == 0, template_first_row=not entries,
@@ -445,7 +462,7 @@ def overrides_between(template: dict[str, Any], edited: dict[str, Any],
                         result['hidden_elements'].append(element_id)
                     for name in ELEMENT_OVERRIDABLE:
                         value, base = _comparable(element.get(name)), _comparable(template_element.get(name))
-                        if value == base or (name in {'style', 'content'} and not value and not base):
+                        if value == base or (name in {'style', 'content', 'kpi_card', 'repeat'} and not value and not base):
                             continue
                         prior = (before['elements'].get(element_id) or {}).get(name) or {}
                         kept_base = prior.get('base', base) if _comparable(prior.get('value')) == value else base
@@ -684,6 +701,47 @@ def rename_parameter(design: dict[str, Any], previous: str, name: str) -> dict[s
     return result
 
 
+# The columns of a row whose text names fields of the Dashboard (its titles), besides the text of a text box.
+TITLE_FIELDS = ('slide_title', 'slide_subtitle', 'chart_title')
+
+
+def _with_text_content(entry: CatalogEntry, texts: dict[str, str]) -> CatalogEntry:
+    """A text box row with the tokens of its text replaced."""
+    if entry.chart_type.casefold() != KIND_CHART_TYPES['text'].casefold() or '{' not in entry.format:
+        return entry
+    data = row_format(entry)
+    content = data.get('content')
+    if not isinstance(content, dict) or '{' not in str(content.get('text') or ''):
+        return entry
+    data['content'] = {**content, 'text': _replace_tokens(str(content['text']), texts)}
+    return replace(entry, format=format_cell(data))
+
+
+def used_tokens(entries: Iterable[CatalogEntry]) -> set[str]:
+    """The tokens (lower case) the titles and text boxes of some rows name."""
+    found: set[str] = set()
+    for entry in entries:
+        texts = [getattr(entry, field) for field in TITLE_FIELDS]
+        if entry.chart_type.casefold() == KIND_CHART_TYPES['text'].casefold():
+            content = row_format(entry).get('content')
+            texts.append(str(content.get('text') or '') if isinstance(content, dict) else '')
+        found.update(match.strip().casefold() for text in texts if '{' in text for match in TOKEN_PATTERN.findall(text))
+    return found
+
+
+def apply_tokens(entries: list[CatalogEntry], texts: dict[str, str], *, titles: bool = True) -> list[CatalogEntry]:
+    """The rows with the tokens of their titles (unless ``titles`` is False) and text boxes written (``texts``:
+    lower-case token -> text)."""
+    if not texts:
+        return entries
+    result = []
+    for entry in entries:
+        changes = {field: _replace_tokens(getattr(entry, field), texts) for field in TITLE_FIELDS
+                   if titles and '{' in getattr(entry, field)}
+        result.append(_with_text_content(replace(entry, **changes) if changes else entry, texts))
+    return result
+
+
 def apply_parameters(entries: list[CatalogEntry], parameters: list[dict[str, Any]],
                      values: dict[str, Any] | None) -> list[CatalogEntry]:
     """The rows with the parameters replaced by the values of a Dashboard.
@@ -716,7 +774,7 @@ def apply_parameters(entries: list[CatalogEntry], parameters: list[dict[str, Any
                    if '{' in getattr(entry, field)}
         if '{' in entry.filters:
             changes['filters'] = resolve_filters(entry.filters)
-        result.append(replace(entry, **changes) if changes else entry)
+        result.append(_with_text_content(replace(entry, **changes) if changes else entry, texts))
     return result
 
 

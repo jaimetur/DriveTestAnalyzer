@@ -29,22 +29,43 @@
   // The settings a chart type keeps among its Filters, shown with Chart Type instead of as filters.
   const SETTINGS = ['threshold', 'buckets', 'binsize', 'classcolours', 'histogramoperator', 'nrmode'];
   const AGGREGATIONS = [['', 'As the chart type counts it'], ['AVG', 'Average'], ['MEDIAN', 'Median'], ['SUM', 'Sum'], ['COUNT', 'Count'], ['COUNTD', 'Count distinct'], ['MIN', 'Minimum'], ['MAX', 'Maximum']];
-  // Chart Type: each chart type, its picture and what its shelves need.
+  // Chart Type: each chart type, a small picture of it (A, B and C are the colours of its series) and what its shelves
+  // need.
+  const A = 'var(--ds-cb-a)', B = 'var(--ds-cb-b)', C = 'var(--ds-cb-c)', G = 'var(--ds-cb-grid)';
+  const curve = (colour, d) => `<path d="${d}" fill="none" stroke="${colour}" stroke-width="2.4" stroke-linecap="round"/>`;
+  const bar = (colour, x, y, w, h) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="1" fill="${colour}"/>`;
+  const axes = `<path d="M5 4v26h38" fill="none" stroke="${G}" stroke-width="1.4"/>`;
+  const PICTURES = {
+    'CDF Line': axes + curve(A, 'M6 29C14 29 15 10 22 8S36 5 42 5') + curve(B, 'M6 29C18 29 20 16 26 13S38 9 42 9'),
+    'Multi KPI CDF Lines': axes + curve(A, 'M6 29C12 29 13 9 20 7S36 5 42 5') + curve(B, 'M6 29C16 29 18 14 25 11S38 8 42 8') + curve(C, 'M6 29C20 29 24 20 30 17S40 13 42 13'),
+    'Average Vertical Bars': axes + bar(A, 8, 14, 5, 16) + bar(B, 14, 9, 5, 21) + bar(A, 24, 17, 5, 13) + bar(B, 30, 11, 5, 19) + `<path d="M7 12h29" stroke="${C}" stroke-width="1.6" stroke-dasharray="3 2"/>`,
+    'Median Vertical Bars': axes + bar(A, 8, 12, 5, 18) + bar(B, 14, 16, 5, 14) + bar(A, 24, 8, 5, 22) + bar(B, 30, 14, 5, 16) + `<path d="M7 18h6M14 21h5M24 15h5M30 20h5" stroke="#fff" stroke-width="1.6"/>`,
+    '100% Stacked Vertical Bars': axes + [8, 17, 26, 35].map((x, i) => bar(A, x, 5, 6, 14 + i) + bar(B, x, 19 + i, 6, 6 - i) + bar(C, x, 25, 6, 5)).join(''),
+    'Count Stacked Horizontal Bars': axes + bar(A, 6, 7, 18, 5) + bar(B, 24, 7, 8, 5) + bar(A, 6, 15, 26, 5) + bar(B, 32, 15, 6, 5) + bar(A, 6, 23, 12, 5) + bar(B, 18, 23, 10, 5),
+    'Threshold Stacked Vertical Bars': axes + [8, 17, 26, 35].map((x, i) => bar(B, x, 6, 6, 6 + i * 2) + bar(A, x, 12 + i * 2, 6, 18 - i * 2)).join('') + `<path d="M6 16h37" stroke="${C}" stroke-width="1.6" stroke-dasharray="3 2"/>`,
+    'Distribution Stacked Vertical Bars': axes + [8, 17, 26, 35].map((x, i) => bar(A, x, 5, 6, 6 + i) + bar(B, x, 11 + i, 6, 7) + bar(C, x, 18 + i, 6, 12 - i)).join(''),
+    'Histogram Bars': axes + [[7, 24], [12, 17], [17, 9], [22, 6], [27, 10], [32, 18], [37, 25]].map(([x, y]) => bar(A, x, y, 4, 30 - y)).join(''),
+    'Histogram Line': axes + curve(A, 'M6 29C12 28 14 8 22 7S30 26 42 28') + curve(B, 'M6 29C16 29 20 13 27 12S36 27 42 29'),
+    'Scatter': axes + [[10, 24], [14, 19], [17, 22], [21, 15], [25, 17], [29, 11], [33, 13], [37, 7]].map(([x, y], i) => `<circle cx="${x}" cy="${y}" r="2" fill="${i % 2 ? B : A}"/>`).join(''),
+    'Table': `<rect x="5" y="5" width="38" height="24" rx="2" fill="none" stroke="${G}" stroke-width="1.4"/>` + bar(A, 5, 5, 38, 6) + `<path d="M5 17h38M5 23h38M17 5v24M30 5v24" stroke="${G}" stroke-width="1.2"/>`,
+    'Dynamic Table': `<rect x="5" y="5" width="38" height="24" rx="2" fill="none" stroke="${G}" stroke-width="1.4"/>` + bar(A, 5, 5, 38, 6) + bar(B, 18, 12, 11, 5) + bar(C, 30, 18, 12, 5) + bar(B, 6, 24, 11, 4) + `<path d="M5 17h38M5 23h38M17 5v24M30 5v24" stroke="${G}" stroke-width="1.2"/>`,
+    'Map': `<path d="M5 9l11-4 15 4 12-4v20l-12 4-15-4-11 4z" fill="none" stroke="${G}" stroke-width="1.4"/>` + [[11, 17], [17, 24], [36, 20]].map(([x, y], i) => `<circle cx="${x}" cy="${y}" r="2.4" fill="${[A, B, A][i]}"/>`).join('') + `<path d="M26 24c0-3.5 4.5-6.5 4.5-10.5a4.5 4.5 0 0 0-9 0c0 4 4.5 7 4.5 10.5z" fill="${C}"/><circle cx="26" cy="13.5" r="1.7" fill="#fff"/>`,
+  };
   const TYPES = [
-    {type: 'CDF Line', icon: 'M3 20 C 8 19, 9 8, 13 6 S 19 4, 21 4', need: s => s.numeric === 1 && s.measures === 1 || 'One numeric measure'},
-    {type: 'Multi KPI CDF Lines', icon: 'M3 20 C 8 19, 9 8, 13 6 S 19 4, 21 4 M3 20 C 10 20, 12 13, 15 11 S 19 9, 21 8', need: s => s.numeric >= 2 && s.numeric === s.measures || 'Two numeric measures or more'},
-    {type: 'Average Vertical Bars', icon: 'M5 20V11M10 20V6M15 20V13M20 20V9', need: s => s.numeric >= 1 && s.splits >= 1 || 'A numeric measure and a Rows or Columns split'},
-    {type: 'Median Vertical Bars', icon: 'M5 20V13M10 20V8M15 20V11M20 20V6', need: s => s.numeric >= 1 && s.splits >= 1 || 'A numeric measure and a Rows or Columns split'},
-    {type: '100% Stacked Vertical Bars', icon: 'M6 20V4M12 20V4M18 20V4M4 10h4M10 13h4M16 8h4', need: s => s.text === 1 && s.measures === 1 || 'One dimension as the measure (such as Call_Status)'},
-    {type: 'Count Stacked Horizontal Bars', icon: 'M4 6h12M4 12h16M4 18h9', need: s => s.measures === 1 || 'One measure'},
-    {type: 'Threshold Stacked Vertical Bars', icon: 'M6 20V8M12 20V5M18 20V10M3 12h18', need: s => s.numeric === 1 && s.measures === 1 || 'One numeric measure', setting: 'Threshold'},
-    {type: 'Distribution Stacked Vertical Bars', icon: 'M6 20V4M12 20V4M18 20V4M4 8h4M4 14h4M10 10h4M16 12h4', need: s => s.numeric === 1 && s.measures === 1 || 'One numeric measure', setting: 'Buckets'},
-    {type: 'Histogram Bars', icon: 'M4 20v-4M7 20v-8M10 20V6M13 20V9M16 20v-6M19 20v-2', need: s => s.numeric === 1 && s.measures === 1 || 'One numeric measure', setting: 'Bin Size'},
-    {type: 'Histogram Line', icon: 'M3 20 L6 16 L9 9 L12 6 L15 11 L18 17 L21 19', need: s => s.numeric === 1 && s.measures === 1 || 'One numeric measure', setting: 'Bin Size'},
-    {type: 'Scatter', icon: 'M6 17h.01M9 12h.01M12 15h.01M14 8h.01M17 11h.01M19 5h.01', need: s => s.numeric === 2 && s.measures === 2 || 'Two numeric measures'},
-    {type: 'Table', icon: 'M4 5h16v14H4zM4 10h16M4 15h16M10 5v14', need: s => s.measures >= 1 || 'A measure'},
-    {type: 'Dynamic Table', icon: 'M4 5h16v14H4zM4 10h16M10 5v14M15 5v14', need: s => s.measures >= 1 || 'A measure'},
-    {type: 'Map', icon: 'M12 21s-6-6.2-6-11a6 6 0 0 1 12 0c0 4.8-6 11-6 11zM12 12a2 2 0 1 0 0-4 2 2 0 0 0 0 4', need: s => s.geo || 'Latitude and Longitude in the source'},
+    {type: 'CDF Line', need: s => s.numeric === 1 && s.measures === 1 || 'One numeric measure'},
+    {type: 'Multi KPI CDF Lines', need: s => s.numeric >= 2 && s.numeric === s.measures || 'Two numeric measures or more'},
+    {type: 'Average Vertical Bars', need: s => s.numeric >= 1 && s.splits >= 1 || 'A numeric measure and a Rows or Columns split'},
+    {type: 'Median Vertical Bars', need: s => s.numeric >= 1 && s.splits >= 1 || 'A numeric measure and a Rows or Columns split'},
+    {type: '100% Stacked Vertical Bars', need: s => s.text === 1 && s.measures === 1 || 'One dimension as the measure (such as Call_Status)'},
+    {type: 'Count Stacked Horizontal Bars', need: s => s.measures === 1 || 'One measure'},
+    {type: 'Threshold Stacked Vertical Bars', need: s => s.numeric === 1 && s.measures === 1 || 'One numeric measure', setting: 'Threshold'},
+    {type: 'Distribution Stacked Vertical Bars', need: s => s.numeric === 1 && s.measures === 1 || 'One numeric measure', setting: 'Buckets'},
+    {type: 'Histogram Bars', need: s => s.numeric === 1 && s.measures === 1 || 'One numeric measure', setting: 'Bin Size'},
+    {type: 'Histogram Line', need: s => s.numeric === 1 && s.measures === 1 || 'One numeric measure', setting: 'Bin Size'},
+    {type: 'Scatter', need: s => s.numeric === 2 && s.measures === 2 || 'Two numeric measures'},
+    {type: 'Table', need: s => s.measures >= 1 || 'A measure'},
+    {type: 'Dynamic Table', need: s => s.measures >= 1 || 'A measure'},
+    {type: 'Map', need: s => s.geo || 'Latitude and Longitude in the source'},
   ];
   const SHELVES = [
     ['kpi', 'Measure', 'The KPI the chart measures (several for Multi KPI CDF Lines, Scatter or a Table)'],
@@ -52,9 +73,16 @@
     ['columns_split', 'Columns', 'Series or table columns, in order'],
     ['legend', 'Legend', 'The fields the legend explains'],
     ['filters', 'Filters', 'Conditions on the rows of the chart'],
-    ['repeat', 'Repeat by', 'One chart per value of a field (with a dynamic layout of the slide)'],
+    ['repeat', 'Repeat by', 'One chart per value of a field, side by side in the place of this one (small multiples)'],
   ];
 
+  // An SVG picture (SVG elements need their own namespace, which innerHTML of an <svg> gives them).
+  const picture = type => {
+    const holder = document.createElement('span');
+    holder.className = 'ds-cb-picture';
+    holder.innerHTML = `<svg viewBox="0 0 48 34" aria-hidden="true">${PICTURES[type] || ''}</svg>`;
+    return holder;
+  };
   const splitParts = (value, separator) => String(value || '').split(separator).map(part => part.trim()).filter(Boolean);
   const kpiParts = value => splitParts(value, /\s+vs\s+|\s*\|\s*/i);
   const kpiField = part => { const match = /^(SUM|COUNTD|COUNT|AVERAGE|AVG|MEAN|MAX|MIN|MEDIAN)\s*\(\s*(.+?)\s*\)$/i.exec(part); return match ? match[2] : part; };
@@ -128,7 +156,7 @@
       if (key === 'rows_split' || key === 'columns_split') return splitParts(values[key], '×');
       if (key === 'legend') return splitParts(values.legend, ',');
       if (key === 'filters') return plainFilters;
-      return [values.dynamic_rows_field ? `Rows: ${values.dynamic_rows_field}` : '', values.dynamic_columns_field ? `Columns: ${values.dynamic_columns_field}` : ''].filter(Boolean);
+      return values.repeat?.field ? [values.repeat.field] : [];
     }
     function writeShelf(key, items) {
       if (key === 'kpi') change({kpi: items.join(' | ')});
@@ -138,10 +166,7 @@
     }
     function addToShelf(key, field) {
       if (key === 'filters') { openFilterDialog(field); return; }
-      if (key === 'repeat') {
-        openMenu(document.activeElement || host, [['Repeat as rows', () => change({dynamic_rows_field: field})], ['Repeat as columns', () => change({dynamic_columns_field: field})]]);
-        return;
-      }
+      if (key === 'repeat') { change({repeat: {field}}); return; }
       const items = shelfItems(key).filter(item => identity(key === 'kpi' ? kpiField(item) : item) !== identity(field));
       const next = key === 'kpi' && !['Multi KPI CDF Lines', 'Scatter', 'Table', 'Dynamic Table'].includes(values.chart_type) ? [field] : [...items, field];
       const changes = {};
@@ -224,7 +249,7 @@
           }},
         isMeasure && aggregation ? `${AGGREGATIONS.find(([code]) => code === aggregation)?.[1] || aggregation} of ${field}` : item),
         h('button', {type: 'button', class: 'ds-cb-pill-remove', 'aria-label': `Remove ${item}`, onclick: () => {
-          if (key === 'repeat') change(item.startsWith('Rows:') ? {dynamic_rows_field: ''} : {dynamic_columns_field: ''});
+          if (key === 'repeat') change({repeat: null});
           else writeShelf(key, items.filter((_value, position) => position !== index));
         }}, '×'));
       pill.addEventListener('dragstart', event => { event.dataTransfer.setData('application/x-ds-pill', JSON.stringify([key, index])); event.dataTransfer.effectAllowed = 'move'; });
@@ -300,11 +325,8 @@
       return h('button', {type: 'button', class: `ds-cb-type-button${active ? ' is-active' : ''}${verdict === true ? '' : ' is-unavailable'}`,
         title: verdict === true ? item.type : `${item.type}: needs ${verdict.toLowerCase()}`, 'aria-pressed': String(active),
         onclick: () => change({chart_type: item.type})},
-      h('svg', {viewBox: '0 0 24 24', 'aria-hidden': 'true'}), h('span', {text: item.type}));
+      picture(item.type), h('span', {text: item.type}));
     }));
-    chartTypes.querySelectorAll('svg').forEach((svg, position) => {
-      svg.innerHTML = `<path d="${TYPES[position].icon}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`;
-    });
     const chosenType = TYPES.find(item => item.type.toLowerCase() === String(values.chart_type || '').toLowerCase());
     const settingRow = (() => {
       if (!chosenType?.setting) return null;
@@ -328,7 +350,7 @@
           if (value) kept.push(`NR Mode IN (${value})`);
           writeFilters(plainFilters, kept);
         }}, label)))),
-      h('div', {class: 'ds-cb-shelves'}, SHELVES.map(shelf)),
+      h('div', {class: 'ds-cb-shelves'}, SHELVES.filter(([key]) => key !== 'repeat' || options.showSource !== false).map(shelf)),
       h('div', {class: 'ds-cb-chart-types'}, h('span', {class: 'ds-cb-shelf-label', text: 'Chart Type'}), chartTypes, settingRow),
       h('div', {class: 'ds-cb-data'}, h('span', {class: 'ds-cb-shelf-label', text: `Fields · ${SOURCES.find(([value]) => value === source)?.[1] || source}`}), search, fieldsHost),
     ].filter(Boolean));

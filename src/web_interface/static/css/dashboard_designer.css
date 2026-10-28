@@ -135,6 +135,8 @@
 .ppt-dashboards .ds-design-slide-box { position: absolute; box-sizing: border-box; border: 1px solid #d9d1e6; border-radius: 2px; background: color-mix(in srgb, var(--ds-soft) 70%, #fff); }
 .ppt-dashboards .ds-design-slide-box.is-changed { border-color: var(--ds-design-changed); }
 .ppt-dashboards .ds-design-slide-box.is-local { border-color: var(--ds-design-local); }
+/* Over the picture of a slide, only the marks of what this Dashboard changes. */
+.ppt-dashboards .ds-design-slide-box.is-mark { z-index: 2; border-width: 1.5px; background: transparent; pointer-events: none; }
 .ppt-dashboards .ds-design-slide-structural { position: absolute; inset: 0; display: grid; place-items: center; background: var(--ds-color); color: #fff; font-size: .62rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
 .ppt-dashboards .ds-design-slide-caption { display: -webkit-box; overflow: hidden; padding-right: 1.4rem; font-size: .74rem; font-weight: 650; line-height: 1.25; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .ppt-dashboards .ds-design-slide-caption b { margin-right: .35rem; color: var(--ds-color); font-weight: 850; }
@@ -150,8 +152,9 @@
 #ds-viewer.ds-designing .ds-chart.ds-design-card.is-selected { box-shadow: 0 0 0 3px var(--ds-color); }
 #ds-viewer.ds-designing .ds-chart.is-drop-target, .ds-design-free-place.is-drop-target { box-shadow: 0 0 0 3px var(--ds-design-local); }
 #ds-viewer.ds-designing .ds-chart.is-dragging { opacity: .5; }
-.ppt-dashboards .ds-design-mark { position: absolute; bottom: .35rem; left: .4rem; z-index: 4; display: flex; flex-wrap: wrap; gap: .2rem; pointer-events: none; }
-.ppt-dashboards .ds-design-drag { position: absolute; top: .3rem; left: .35rem; z-index: 5; display: grid; place-items: center; width: 1.45rem; height: 1.45rem; border: 1px solid var(--ds-border);
+/* The handle to drag an element and its marks share its bottom left corner: the image buttons float over its top. */
+.ppt-dashboards .ds-design-mark { position: absolute; bottom: .35rem; left: 2.2rem; z-index: 4; display: flex; flex-wrap: wrap; gap: .2rem; pointer-events: none; }
+.ppt-dashboards .ds-design-drag { position: absolute; bottom: .3rem; left: .4rem; z-index: 5; display: grid; place-items: center; width: 1.45rem; height: 1.45rem; border: 1px solid var(--ds-border);
   border-radius: 6px; background: #fff; color: var(--ds-design-muted); font-size: .85rem; line-height: 1; cursor: grab; }
 .ppt-dashboards .ds-design-free-place { position: absolute; box-sizing: border-box; display: grid; place-items: center; border: 2px dashed color-mix(in srgb, var(--ds-color) 45%, transparent);
   border-radius: 10px; background: color-mix(in srgb, var(--ds-soft) 45%, transparent); }
@@ -248,9 +251,12 @@
 .ppt-dashboards .ds-cb-pill-remove { padding: 0 .45rem 0 .1rem; opacity: .8; }
 .ppt-dashboards .ds-cb-chart-types { display: grid; gap: .35rem; }
 .ppt-dashboards .ds-cb-types { display: grid; grid-template-columns: repeat(auto-fill, minmax(4.4rem, 1fr)); gap: .25rem; }
-.ppt-dashboards .ds-cb-type-button { display: grid; justify-items: center; gap: .1rem; min-height: 3.4rem; padding: .3rem .2rem; border: 1px solid var(--ds-border); border-radius: 8px;
+.ppt-dashboards .ds-cb-type-button { display: grid; justify-items: center; align-content: start; gap: .2rem; min-height: 4.2rem; padding: .3rem .2rem; border: 1px solid var(--ds-border); border-radius: 8px;
   background: #fff; box-shadow: none; color: var(--ds-design-ink); font: inherit; font-size: .6rem; font-weight: 700; line-height: 1.1; text-align: center; cursor: pointer; }
-.ppt-dashboards .ds-cb-type-button svg { width: 1.4rem; height: 1.4rem; }
+.ppt-dashboards .ds-cb-picture { display: block; width: 100%; max-width: 3.4rem; }
+.ppt-dashboards .ds-cb-picture svg { display: block; width: 100%; height: auto; }
+.ppt-dashboards .ds-cb-types, .ds-cb-host .ds-cb-types { --ds-cb-a: #6F42C1; --ds-cb-b: #2E8B57; --ds-cb-c: #E8833A; --ds-cb-grid: #B9AFC8; }
+.ppt-dashboards .ds-cb-type-button.is-unavailable .ds-cb-picture { filter: grayscale(1); }
 .ppt-dashboards .ds-cb-type-button.is-active { border-color: var(--ds-color); background: var(--ds-soft); box-shadow: inset 0 0 0 1px var(--ds-color); }
 .ppt-dashboards .ds-cb-type-button.is-unavailable { opacity: .42; }
 .ppt-dashboards .ds-cb-row { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; font-size: .76rem; font-weight: 700; color: var(--ds-design-ink); }
@@ -322,3 +328,51 @@
 .ds-design-series h4 { margin: 0; font-size: .85rem; overflow-wrap: anywhere; }
 .ds-design-format-row { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); align-items: center; gap: .5rem; font-size: .76rem; font-weight: 700; }
 .ds-design-format-row input[type="number"], .ds-design-format-row select { min-height: 1.9rem; padding: .15rem .4rem; border: 1px solid #d9d1e6; border-radius: 7px; font: inherit; }
+
+/* Free layouts (dashboard_layout_editor.js): the places of a slide on a 16:9 board. */
+.ppt-dashboards .ds-layout-board { position: relative; width: 100%; aspect-ratio: 16 / 8; border: 1px solid var(--ds-border, #ddd5ea); border-radius: 10px;
+  background: repeating-linear-gradient(45deg, #faf8fd, #faf8fd 8px, #f4f0f9 8px, #f4f0f9 16px); touch-action: none; }
+.ppt-dashboards .ds-layout-place { position: absolute; box-sizing: border-box; display: grid; place-items: center; align-content: center; gap: .1rem; padding: 0;
+  border: 2px solid #b9a8d6; border-radius: 6px; background: #fff; box-shadow: none; color: #4b2c82; font: inherit; font-size: 1.1rem; font-weight: 850; cursor: pointer; }
+.ppt-dashboards .ds-layout-place small { font-size: .7rem; font-weight: 700; color: #6b6178; }
+.ppt-dashboards .ds-layout-place.is-selected { border-color: #4b2c82; background: #efe7fa; box-shadow: 0 0 0 2px #4b2c82; }
+.ppt-dashboards .ds-layout-divider { position: absolute; z-index: 2; }
+.ppt-dashboards .ds-layout-divider.is-column { top: 0; bottom: 0; width: 14px; margin-left: -7px; cursor: col-resize; }
+.ppt-dashboards .ds-layout-divider.is-row { left: 0; right: 0; height: 14px; margin-top: -7px; cursor: row-resize; }
+.ppt-dashboards .ds-layout-divider::after { content: ''; position: absolute; border-radius: 2px; background: #7a4bb3; opacity: .55; }
+.ppt-dashboards .ds-layout-divider.is-column::after { top: 8%; bottom: 8%; left: 5px; width: 4px; }
+.ppt-dashboards .ds-layout-divider.is-row::after { left: 8%; right: 8%; top: 5px; height: 4px; }
+.ppt-dashboards .ds-layout-divider:hover::after { opacity: 1; }
+
+/* Text boxes and pictures of a Design on the slide (viewer and Design). */
+.ppt-dashboards .ds-chart.ds-element-card { display: flex; overflow: hidden; padding: .8rem 1rem; background: #fff; }
+.ppt-dashboards .ds-element-text { width: 100%; overflow: auto; color: #263B4A; font-size: 1rem; line-height: 1.45; }
+.ppt-dashboards .ds-element-text[data-size="small"] { font-size: .82rem; }
+.ppt-dashboards .ds-element-text[data-size="large"] { font-size: 1.3rem; }
+.ppt-dashboards .ds-element-image { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; }
+.ppt-dashboards .ds-element-image img { width: 100%; height: 100%; }
+.ppt-dashboards .ds-element-empty { color: #8b8298; font-style: italic; }
+.ppt-dashboards .ds-design-image-preview { max-width: 100%; max-height: 9rem; border: 1px solid var(--ds-border); border-radius: 8px; object-fit: contain; background: #fff; }
+.ppt-dashboards .ds-design-field .rt-editor, .ppt-dashboards .ds-design-field textarea#ds-design-text { min-height: 8rem; }
+
+/* The range of an axis (a slider of two thumbs) and the values of a category axis, opened from the chart in Design. */
+.ds-axis-range { display: grid; gap: .55rem; width: min(19rem, calc(100vw - 16px)); padding: .75rem; }
+.ds-axis-range h4 { margin: 0; font-size: .85rem; }
+.ds-axis-slider { position: relative; height: 1.8rem; }
+.ds-axis-slider input[type="range"] { position: absolute; inset: 0; width: 100%; margin: 0; background: none; pointer-events: none; -webkit-appearance: none; appearance: none; }
+.ds-axis-slider input[type="range"]::-webkit-slider-thumb { width: 1.05rem; height: 1.05rem; border: 2px solid #fff; border-radius: 50%; background: #4b2c82;
+  box-shadow: 0 1px 4px rgba(36, 22, 61, .35); pointer-events: auto; cursor: grab; -webkit-appearance: none; appearance: none; }
+.ds-axis-slider input[type="range"]::-moz-range-thumb { width: 1rem; height: 1rem; border: 2px solid #fff; border-radius: 50%; background: #4b2c82; pointer-events: auto; cursor: grab; }
+.ds-axis-track, .ds-axis-track-fill { position: absolute; top: 50%; height: 6px; margin-top: -3px; border-radius: 3px; }
+.ds-axis-track { left: 0; right: 0; background: #e6e0ef; }
+.ds-axis-track-fill { background: #7a4bb3; }
+.ds-axis-scale { display: flex; justify-content: space-between; font-size: .7rem; color: #6b6178; font-variant-numeric: tabular-nums; }
+.ds-axis-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; }
+.ds-axis-inputs label { display: grid; gap: .2rem; font-size: .72rem; font-weight: 750; color: #6b6178; }
+.ds-axis-inputs input { min-height: 1.9rem; padding: .15rem .4rem; border: 1px solid #d9d1e6; border-radius: 7px; font: inherit; font-variant-numeric: tabular-nums; }
+.ds-axis-values { display: grid; max-height: 14rem; overflow-y: auto; border: 1px solid #ece6f3; border-radius: 8px; }
+.ds-axis-value { display: flex; align-items: center; gap: .45rem; padding: .25rem .5rem; border-bottom: 1px solid #f3eff7; font-size: .78rem; cursor: pointer; }
+.ds-axis-value:hover { background: #f6f2fb; }
+.ds-axis-range .ds-design-format-actions { display: flex; flex-wrap: wrap; gap: .3rem; }
+.ds-axis-range .ds-design-format-actions button { min-height: 1.8rem; padding: .15rem .6rem; border: 1px solid #ddd5ea; border-radius: 7px; background: #fff; box-shadow: none; color: #2f2540; font: inherit; font-size: .74rem; font-weight: 750; cursor: pointer; }
+.ds-axis-range .ds-design-format-actions button:disabled { opacity: .45; cursor: not-allowed; }

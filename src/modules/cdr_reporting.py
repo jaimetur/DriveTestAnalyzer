@@ -85,7 +85,11 @@ CATALOG_SOURCE_KINDS = {"cdr-data": "data", "cdr-voice": "voice", "cdr-speech": 
 CHART_TYPES = {
     "100% stacked vertical bars", "count stacked horizontal bars", "cdf line", "multi kpi cdf lines", "scatter", "table", "dynamic table",
     "distribution stacked vertical bars", "threshold stacked vertical bars", "average vertical bars", "median vertical bars", "map", "histogram line", "histogram bars",
+    "kpi card",
 }
+# Elements of a Dashboard Design that read no CDR (dashboard_design): a text box, and a picture. Rows of either have no
+# Source Dataset; PPT Reporting (old) leaves them out.
+ELEMENT_CHART_TYPES = {"text box", "image"}
 BAR_CHART_TYPES = {
     "100% stacked vertical bars", "count stacked horizontal bars",
     "distribution stacked vertical bars", "threshold stacked vertical bars",
@@ -1302,7 +1306,8 @@ def parse_catalog_csv(content: bytes | str, *, validate_filters: bool = True) ->
             raise ValueError(f"{location} -> Layout is required for a chart with a Source Dataset.")
         if entry.cdr_source and entry.cdr_source.casefold() not in CATALOG_SOURCE_KINDS:
             raise ValueError(f"{location} -> Source Dataset '{entry.cdr_source}' is not supported.")
-        if not entry.source_kind and not entry.structural_type and entry.chart_type.casefold() not in PRESERVED_CHART_TYPES:
+        if (not entry.source_kind and not entry.structural_type
+                and entry.chart_type.casefold() not in PRESERVED_CHART_TYPES | ELEMENT_CHART_TYPES):
             raise ValueError(
                 f"{location} -> The row must define a supported CDR chart (Source Dataset, KPI and Chart type), "
                 "a Title Slide, a Transition Slide or an End Slide."
@@ -6355,6 +6360,108 @@ def _catalog_spec(entry: CatalogEntry) -> dict:
     return spec
 
 
+def _kpi_settings(entry: CatalogEntry) -> dict:
+    """The settings of a KPI card (its row's Format: ``kpi``)."""
+    try:
+        data = json.loads(entry.format) if entry.format else {}
+    except ValueError:
+        data = {}
+    settings = data.get("kpi") if isinstance(data, dict) else None
+    return settings if isinstance(settings, dict) else {}
+
+
+def _kpi_value(values: pd.Series, settings: dict) -> float | None:
+    """The figure of a KPI card over some samples: average (default), median, percentile, count, share of a value or
+    share below / above a threshold (shares in percent)."""
+    measure = str(settings.get("measure") or "average")
+    if measure == "count":
+        return float(values.notna().sum())
+    if measure == "share_value":
+        texts = values.dropna().astype(str).str.strip().str.casefold()
+        wanted = {str(item).strip().casefold() for item in str(settings.get("value") or "").split(",") if str(item).strip()}
+        return float(texts.isin(wanted).mean() * 100) if len(texts) and wanted else None
+    numbers = pd.to_numeric(values, errors="coerce").dropna()
+    if numbers.empty:
+        return None
+    if measure == "median":
+        return float(numbers.median())
+    if measure == "percentile":
+        return float(numbers.quantile(min(100.0, max(0.0, float(settings.get("percentile") or 90))) / 100))
+    if measure in {"share_below", "share_above"}:
+        threshold = float(settings.get("threshold") or 0)
+        return float(((numbers < threshold) if measure == "share_below" else (numbers > threshold)).mean() * 100)
+    return float(numbers.mean())
+
+
+def kpi_card_payload(frame: pd.DataFrame, entry: CatalogEntry, metric: str | None, title: str) -> dict[str, object]:
+    """The model of a KPI card: the figure of the latest campaign of the chart's rows (one card, or one per value of its
+    Repeat by field) with its samples, its comparison (the previous campaign, the best competitor or a target) and
+    whether it improves, its colour band and, optionally, its trend over every campaign."""
+    settings = _kpi_settings(entry)
+    if metric is None or frame.empty:
+        return {"type": "empty", "title": title, "message": "No samples for this KPI.", "legend": {"items": []}}
+    columns = {_normalise_catalog_name(column): column for column in frame.columns}
+    campaign_column = columns.get("campaign")
+    repeat = str(settings.get("repeat") or "").strip()
+    group_column = columns.get(_normalise_catalog_name(repeat)) if repeat else None
+    campaigns = sorted(frame[campaign_column].dropna().astype(str).unique(), key=campaign_sort_key) if campaign_column else []
+    latest = campaigns[-1] if campaigns else None
+    previous = campaigns[-2] if len(campaigns) > 1 else None
+    higher = settings.get("higher_is_better")
+    higher = True if higher in (None, "") else bool(higher)
+    measure = str(settings.get("measure") or "average")
+    share = measure.startswith("share")
+    decimals = int(settings["decimals"]) if str(settings.get("decimals", "")).strip().isdigit() else (1 if share else 2)
+    unit = "%" if share else str(settings.get("unit") or "")
+
+    def campaign_rows(rows: pd.DataFrame, campaign: str | None) -> pd.DataFrame:
+        return rows if campaign is None or campaign_column is None else rows[rows[campaign_column].astype(str) == campaign]
+
+    groups = sorted(frame[group_column].dropna().astype(str).unique(), key=str.casefold) if group_column else [None]
+    latest_values = {
+        group: _kpi_value(campaign_rows(frame if group is None else frame[frame[group_column].astype(str) == group], latest)[metric], settings)
+        for group in groups
+    }
+    bands = settings.get("bands") if isinstance(settings.get("bands"), dict) else {}
+    cards = []
+    for group in groups:
+        rows = frame if group is None else frame[frame[group_column].astype(str) == group]
+        latest_rows = campaign_rows(rows, latest)
+        value = latest_values[group]
+        comparison = str(settings.get("comparison") or "previous")
+        compare_value, compare_label = None, ""
+        if comparison == "previous" and previous:
+            compare_value, compare_label = _kpi_value(campaign_rows(rows, previous)[metric], settings), previous
+        elif comparison == "target" and str(settings.get("target", "")).strip():
+            compare_value, compare_label = float(settings["target"]), "Target"
+        elif comparison == "best" and group is not None:
+            others = {other: item for other, item in latest_values.items() if other != group and item is not None}
+            if others:
+                best = (max if higher else min)(others, key=others.get)
+                compare_value, compare_label = others[best], f"Best competitor ({best})"
+        delta = None if value is None or compare_value is None else value - compare_value
+        verdict = None if delta is None or abs(delta) < 10 ** -(decimals + 1) else ((delta > 0) == higher)
+        band = None
+        good, poor = bands.get("good"), bands.get("poor")
+        if value is not None and str(good).strip() not in {"", "None"} and str(poor).strip() not in {"", "None"}:
+            good, poor = float(good), float(poor)
+            band = ("good" if value >= good else "poor" if value <= poor else "fair") if higher else (
+                "good" if value <= good else "poor" if value >= poor else "fair")
+        card = {
+            "label": group or str(settings.get("label") or metric),
+            "value": value, "n": int(latest_rows[metric].notna().sum()), "campaign": latest,
+            "comparison_label": compare_label, "comparison": compare_value, "delta": delta, "improves": verdict, "band": band,
+        }
+        if settings.get("sparkline") and len(campaigns) > 1:
+            card["trend"] = [_kpi_value(campaign_rows(rows, campaign)[metric], settings) for campaign in campaigns]
+            card["trend_labels"] = list(campaigns)
+        cards.append(card)
+    return {
+        "type": "kpi", "title": title, "metric": str(settings.get("label") or metric), "unit": unit, "decimals": decimals,
+        "share": share, "cards": cards, "legend": {"items": []},
+    }
+
+
 def prepare_catalog_chart_preview_frame(
     frame: pd.DataFrame, entry: CatalogEntry, *, multivendor: bool = False,
     template_filters_applied: bool = False,
@@ -6618,6 +6725,8 @@ def catalog_chart_payload(
     filtered.attrs["catalogue_cdr_source"] = render_entry.cdr_source
     filtered = _exclude_chart_values(filtered, render_entry, spec, multivendor)
     metric = _metric_column(filtered, spec)
+    if render_entry.chart_type.casefold() == "kpi card":
+        return kpi_card_payload(filtered, render_entry, metric, title)
     try:
         data, group, period = _apply_catalog_grouping(filtered, render_entry, multivendor, metric)
     except ValueError:
@@ -8110,6 +8219,11 @@ def render_cdr_report(destination: Path, template: Path, frames: dict[str, pd.Da
             continue
 
         chart_entries = [entry for entry in slide_entries if entry.source_kind]
+        if not chart_entries and any(entry.chart_type.casefold() in ELEMENT_CHART_TYPES for entry in slide_entries):
+            # A slide of a Dashboard Design with only text boxes and pictures: its title, as a transition slide.
+            slide = presentation.slides.add_slide(_named_slide_layout(presentation, "Title Only"))
+            _set_structural_slide_text(slide, header.slide_title, header.slide_subtitle)
+            continue
         if not chart_entries:
             raise ValueError(
                 f"Slide {number} does not define an automated chart, a Title Slide, a Transition Slide or an End Slide."

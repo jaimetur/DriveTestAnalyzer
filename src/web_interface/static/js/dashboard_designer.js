@@ -44,7 +44,8 @@
   const LABEL_POSITIONS = [['', 'Default'], ['none', 'None'], ['top', 'Top'], ['up', 'Up'], ['middle', 'Middle'], ['down', 'Down']];
   const STRUCTURAL = {title: 'Title Slide', transition: 'Transition Slide', end: 'End Slide'};
   const STRUCTURAL_LAYOUTS = {title: 'Title Page', transition: 'Transition', end: 'Black logo end slide'};
-  const BUILT_IN_TOKENS = ['{NR Mode}', '{NR Mode Name}'];
+  // The fields the titles and text boxes can name: the NR Mode and the selection of the Dashboard (dashboard_design.py).
+  const BUILT_IN_TOKENS = ['{NR Mode}', '{NR Mode Name}', '{Dashboard}', '{Scope}', '{Campaigns}', '{Operators}', '{Vendors}', '{Regions}', '{Clusters}', '{Cities}'];
   const DEFAULT_LAYOUT = 'Title + 1 rows + 1 columns + comments down';
 
   const state = {
@@ -54,6 +55,8 @@
     templateDirty: false, dashboardDirty: false, keepTemplateChanges: false,
     history: [], future: [], slide: '', element: '', tab: 'slide',
     queue: Promise.resolve(), busy: 0, clipboard: null, dragSlide: '', dragElement: '',
+    // The token of the slides laid out from the Design shown, and a count of the data prepared (for the slide list).
+    syncedToken: '', generation: 0,
     // On a phone the panel floats over the slide: folded until a chart is chosen.
     folded: window.matchMedia?.('(max-width: 900px)').matches || false,
   };
@@ -78,7 +81,8 @@
   const isTemplateSlide = slide => Boolean(slide) && slide.origin === 'template' && Boolean(findSlide(state.template, slide.id));
   const isLocalElement = element => element?.origin === 'dashboard';
   const layoutOf = name => (state.layouts || []).find(layout => layout.name === name) || null;
-  const placesOf = slide => layoutOf(slide?.layout)?.places || [];
+  // The places of a slide: those of its free layout (Adjust places), else those of its layout.
+  const placesOf = slide => (Array.isArray(slide?.options?.geometry) && slide.options.geometry.length ? slide.options.geometry : layoutOf(slide?.layout)?.places || []);
   const placeOf = (element, index) => (Number.isInteger(element.place) ? element.place : index);
   const visibleElements = slide => (slide?.elements || []).filter(element => !element.hidden);
   const dashboardCount = () => (state.info?.template?.dashboards || []).length;
@@ -129,6 +133,7 @@
         if (!findSlide(state.design, state.slide)) state.slide = designSlides()[0]?.id || '';
         if (state.element && !findElement(state.design, state.element)) state.element = '';
         viewer().showDesign(result, {designSlide: state.slide});
+        state.syncedToken = viewer().state().prepared?.token;
         renderDesigner();
         scheduleDraft();
       } finally { setBusy(-1); }
@@ -253,6 +258,8 @@
     } finally { setBusy(-1); }
     if (!state.rights.dashboard && !state.rights.template) throw new Error('You cannot change the Design of this Dashboard or of its template.');
     state.active = true;
+    state.syncedToken = prepared.token;
+    thumbnails.clear();
     state.slide = prepared.slides?.[viewer().state().slideIndex]?.design_slide || designSlides()[0]?.id || '';
     state.element = '';
     state.tab = 'slide';
@@ -493,7 +500,7 @@
   // ------------------------------------------------------------------
   // Elements
   // ------------------------------------------------------------------
-  const elementLabel = element => element?.chart_title || element?.kpi || 'Chart';
+  const elementLabel = element => element?.chart_title || ({text: 'Text box', image: 'Image', kpi: 'KPI card'}[element?.kind]) || element?.kpi || 'Chart';
   function setElementValues(elementId, values) {
     return edit(design => {
       const found = findElement(design, elementId);
@@ -504,10 +511,24 @@
       Object.assign(found.element, values);
     });
   }
-  const addElement = (slideId, place) => edit(design => {
+  // A new element of a kind: a chart (like the one chosen), a KPI card, a text box or a picture.
+  function newElement(design, place, kind) {
+    const chart = newChartElement(design, place);
+    const blank = {cdr_source: '', kpi: '', filters: '', rows_split: '', columns_split: '', legend: '', legend_position: '', legend_format: '',
+      label_position: '', label_format: '', axis_x_range: '', axis_y_range: '', exclude_null_empty: false, exclude_zero: false,
+      dynamic_rows_field: '', dynamic_columns_field: ''};
+    if (kind === 'kpi') {
+      return {...chart, kind: 'kpi', chart_type: 'KPI Card', chart_title: 'KPI', rows_split: 'Campaign', columns_split: '', legend: '',
+        kpi_card: {measure: 'average', comparison: 'previous', sparkline: true}};
+    }
+    if (kind === 'text') return {...blank, id: chart.id, kind: 'text', place, chart_type: 'Text Box', chart_title: '', content: {text: 'Write the text of this box.', size: 'medium', align: 'left'}};
+    if (kind === 'image') return {...blank, id: chart.id, kind: 'image', place, chart_type: 'Image', chart_title: '', content: {image: '', fit: 'contain'}};
+    return chart;
+  }
+  const addElement = (slideId, place, kind = 'chart') => edit(design => {
     const slide = findSlide(design, slideId);
     if (!slide) return false;
-    const element = newChartElement(design, place);
+    const element = newElement(design, place, kind);
     slide.elements = [...(slide.elements || []), element];
     state.element = element.id;
     state.tab = 'element';
@@ -576,6 +597,8 @@
       const target = findSlide(design, slideId);
       if (!target) return false;
       target.layout = name;
+      // The places adjusted on the layout of before do not apply to another one.
+      if (target.options) { delete target.options.geometry; delete target.options.grid; }
       if (slideKind(target) !== 'content' || !capacity) return undefined;
       const shown = visibleElements(target).map((element, index) => [placeOf(element, index), element]).sort((left, right) => left[0] - right[0]);
       const kept = shown.slice(0, capacity).map(([, element]) => element);
@@ -654,22 +677,61 @@
     state.detached ? null : ['Detach from template…', guarded(detachDashboard), state.rights.dashboard && (!dirty() || 'Save or discard the changes first')],
   ].filter(Boolean);
 
-  function frameBoxes(slide) {
-    const frame = h('span', {class: 'ds-design-slide-frame'});
+  // The places of a slide as boxes: its outline while it is not laid out (left out, or a change still being laid out), or
+  // the marks of what this Dashboard changes over its picture (outline false).
+  function slideBoxes(frame, slide, outline = true) {
     if (slideKind(slide) !== 'content') {
-      frame.append(h('span', {class: 'ds-design-slide-structural', text: STRUCTURAL[slideKind(slide)] || 'Slide'}));
+      if (outline) frame.append(h('span', {class: 'ds-design-slide-structural', text: STRUCTURAL[slideKind(slide)] || 'Slide'}));
       return frame;
     }
     const places = placesOf(slide);
     visibleElements(slide).forEach((element, index) => {
       const place = places[placeOf(element, index)];
-      if (!place) return;
+      const changed = element.overridden?.length, local = isLocalElement(element);
+      if (!place || (!outline && !changed && !local)) return;
       const [left, top, width, height] = place;
       frame.append(h('span', {
-        class: `ds-design-slide-box${element.overridden?.length ? ' is-changed' : ''}${isLocalElement(element) ? ' is-local' : ''}`,
+        class: `ds-design-slide-box${outline ? '' : ' is-mark'}${changed ? ' is-changed' : ''}${local ? ' is-local' : ''}`,
         style: {left: `${left}%`, top: `${top}%`, width: `${width}%`, height: `${height}%`}, title: elementLabel(element),
       }));
     });
+    return frame;
+  }
+  // Each slide of the list in small as the viewer lays it out (charts, KPI cards, text boxes, pictures and covers), drawn
+  // when in sight and again only when the slide, the Design around it or the data change; while a change is still being
+  // laid out, the slide keeps its last picture.
+  const thumbnails = new Map();
+  const thumbnailObserver = 'IntersectionObserver' in window ? new IntersectionObserver(entries => entries.forEach(entry => {
+    if (!entry.isIntersecting) return;
+    thumbnailObserver.unobserve(entry.target);
+    drawThumbnail(entry.target);
+  }), {rootMargin: '240px 0px'}) : null;
+  function thumbnailKey(slide) {
+    const {slides, ...around} = state.design || {};
+    const position = designSlides().findIndex(item => item.id === slide.id);
+    return JSON.stringify([slide, position, around, state.overrides?.filters || null, state.generation]);
+  }
+  function drawThumbnail(frame) {
+    const slide = findSlide(state.design, frame.dataset.slideId);
+    if (!slide || !frame.isConnected) return;
+    if (!viewer().drawThumbnail?.(frame, slide.id)) { frame.replaceChildren(); slideBoxes(frame, slide); return; }
+    slideBoxes(frame, slide, false);
+  }
+  function frameBoxes(slide) {
+    const laidOut = viewer().state().prepared?.token === state.syncedToken;
+    const cached = thumbnails.get(slide.id);
+    const leftOut = slide.hidden || slide.optional_off;
+    if (cached && (!laidOut || cached.key === thumbnailKey(slide)) && cached.leftOut === leftOut) return cached.frame;
+    const frame = h('span', {class: 'ds-design-slide-frame ds-slide-thumbnail-frame', dataset: {slideId: slide.id}});
+    // Left out of this Dashboard, or not laid out yet: its places only (drawn again once laid out).
+    if (leftOut || !laidOut) {
+      slideBoxes(frame, slide);
+      thumbnails.set(slide.id, {key: leftOut && laidOut ? thumbnailKey(slide) : null, frame, leftOut});
+      return frame;
+    }
+    slideBoxes(frame, slide);
+    thumbnails.set(slide.id, {key: thumbnailKey(slide), frame, leftOut});
+    if (thumbnailObserver) thumbnailObserver.observe(frame); else requestAnimationFrame(() => drawThumbnail(frame));
     return frame;
   }
   function slideBadges(slide) {
@@ -824,10 +886,13 @@
         card.addEventListener('click', event => {
           if (!state.active || card.dataset.elementId !== state.element || event.target.tagName !== 'CANVAS') return;
           const item = globalThis.getDashboardChartLegendItemAt?.(event.target, event);
-          if (!item) return;
+          const axis = item ? null : globalThis.getDashboardChartAxisAt?.(event.target, event);
+          if (!item && !axis) return;
           event.preventDefault();
           event.stopPropagation();
-          openSeriesFormat(card, card.dataset.elementId, item.label, event);
+          if (item) openSeriesFormat(card, card.dataset.elementId, item.label, event);
+          else if (axis.kind === 'numeric') openAxisRange(card, card.dataset.elementId, axis, event);
+          else openAxisValues(card, card.dataset.elementId, axis, event);
         }, true);
         card.addEventListener('contextmenu', event => {
           if (!state.active) return;
@@ -854,13 +919,17 @@
       if ((state.report?.template_changed || []).some(item => item.element === id)) marks.push(['Template changed', 'is-warning']);
       if (marks.length) card.append(h('span', {class: 'ds-design-mark'}, marks.map(([text, kind]) => h('span', {class: `ds-design-badge ${kind}`, text}))));
     });
-    if (!slide || slideKind(slide) !== 'content' || stage.querySelector('[data-repeated]') || !stage.classList.contains('ds-positioned')) return;
+    // A dynamic layout fills its grid with the cards of one element: it has no free place of its own.
+    if (!slide || slideKind(slide) !== 'content' || layoutOf(slide.layout)?.dynamic || !stage.classList.contains('ds-positioned')) return;
     const places = placesOf(slide);
     for (const place of freePlaces(slide)) {
       const [left, top, width, height] = places[place];
       const free = h('div', {class: 'ds-design-free-place', style: {left: `${left}%`, top: `${top}%`, width: `${width}%`, height: `${height}%`}},
         h('button', {type: 'button', class: 'ds-design-add-element', 'aria-haspopup': 'menu', onclick: event => openMenu(event.currentTarget, [
-          ['Chart', guarded(() => addElement(slide.id, place)), true],
+          ['Chart', guarded(() => addElement(slide.id, place, 'chart')), true],
+          ['KPI card', guarded(() => addElement(slide.id, place, 'kpi')), true],
+          ['Text box', guarded(() => addElement(slide.id, place, 'text')), true],
+          ['Image', guarded(() => addElement(slide.id, place, 'image')), true],
           ['Paste', guarded(() => pasteElement(slide.id, place)), Boolean(state.clipboard) || 'Copy an element first'],
         ])}, '+ Add'));
       free.addEventListener('dragover', event => { if (state.dragElement) { event.preventDefault(); free.classList.add('is-drop-target'); } });
@@ -918,10 +987,12 @@
     ...(props.multiline ? {rows: props.rows || 3} : {type: 'text'}), id: props.id, list: props.list, placeholder: props.placeholder,
     value: props.multiline ? undefined : value ?? '', oninput: event => oninput(event.target.value), spellcheck: 'false',
   }, props.multiline ? value ?? '' : null);
-  function tokenMenuButton(input) {
-    return h('button', {type: 'button', class: 'ds-design-token', title: 'Insert a field: NR Mode or a parameter', 'aria-haspopup': 'menu',
+  // append: the token goes at the end (a text box, whose editor keeps its own caret).
+  function tokenMenuButton(input, {append = false} = {}) {
+    return h('button', {type: 'button', class: 'ds-design-token', title: 'Insert a field: NR Mode, the selection of the Dashboard (Campaigns, Operators, Cities…) or a parameter', 'aria-haspopup': 'menu',
       onclick: event => openMenu(event.currentTarget, [...BUILT_IN_TOKENS, ...parameters().map(item => `{${item.name}}`)].map(token => [token, () => {
-        const start = input.selectionStart ?? input.value.length, end = input.selectionEnd ?? input.value.length;
+        const start = append ? input.value.length : input.selectionStart ?? input.value.length;
+        const end = append ? input.value.length : input.selectionEnd ?? input.value.length;
         input.value = `${input.value.slice(0, start)}${token}${input.value.slice(end)}`;
         input.dispatchEvent(new Event('input'));
         input.focus();
@@ -936,6 +1007,10 @@
   function renderPanel() {
     const panel = $('ds-design-panel');
     if (!panel || !state.active) return;
+    // While a text is being written in the rich text editor of a text box, its panel stays as it is (the caret too).
+    const panelKey = `${state.tab}|${state.element}|${state.slide}|${state.scope}`;
+    if (panel.dataset.key === panelKey && document.activeElement?.closest?.('#ds-design-panel [contenteditable="true"]')) return;
+    panel.dataset.key = panelKey;
     const focused = panel.contains(document.activeElement) && document.activeElement.id ? document.activeElement : null;
     const advancedOpen = Boolean(panel.querySelector('.ds-design-advanced')?.open);
     const dataOpen = new Set([...panel.querySelectorAll('.ds-cb-group')].filter(group => group.open).map(group => group.querySelector('summary')?.firstChild?.textContent));
@@ -992,6 +1067,11 @@
       field('Subtitle', h('div', {class: 'ds-design-input-row'}, subtitle, tokenMenuButton(subtitle))),
       field('Layout', h('button', {type: 'button', class: 'ds-design-layout-button', disabled: !editable, onclick: event => openLayoutGallery(event.currentTarget, slide)}, shownSource.layout || 'Choose a layout')),
     ];
+    const grid = layoutOf(shownSource.layout)?.grid;
+    if (kind === 'content' && grid && window.DashboardLayoutEditor) {
+      nodes.push(h('button', {type: 'button', class: 'ds-design-action', disabled: !editable, title: 'Resize the rows and columns of the layout, merge places or split them',
+        onclick: () => adjustPlaces(slide.id)}, shownSource.options?.geometry ? 'Adjust places… (adjusted)' : 'Adjust places…'));
+    }
     if (state.scope === 'template' && findSlide(state.template, slide.id)) {
       nodes.push(h('label', {class: 'ds-design-check'}, h('input', {type: 'checkbox', checked: Boolean(findSlide(state.template, slide.id).optional), onchange: event => guarded(() => setOptional(slide.id, event.target.checked))()}), 'Optional: off in each Dashboard until it is shown there'));
     }
@@ -1084,6 +1164,79 @@
         h('button', {type: 'button', onclick: closeMenus}, 'Close')));
     placePopover(popover, anchor, event);
   }
+  // The range of a numeric axis, chosen with a slider of two thumbs (as in Tableau): applied when a thumb is released;
+  // Automatic gives the axis its own range back. The Y axis of a CDF is in percent (0–100).
+  function openAxisRange(anchor, elementId, axis, event) {
+    closeMenus();
+    const key = axis.axis === 'y' ? 'axis_y_range' : 'axis_x_range';
+    const low = Math.min(axis.extent[0], axis.domain[0]), high = Math.max(axis.extent[1], axis.domain[1]);
+    const span = high - low || 1;
+    const decimals = axis.percent ? 0 : Math.max(0, Math.min(4, 2 - Math.floor(Math.log10(span))));
+    const step = Number((span / 200).toFixed(decimals)) || 10 ** -decimals;
+    const round = value => Number(Number(value).toFixed(decimals));
+    let start = round(axis.domain[0]), end = round(axis.domain[1]);
+    const from = h('input', {type: 'range', min: String(round(low)), max: String(round(high)), step: String(step), value: String(start), 'aria-label': 'Start of the axis'});
+    const to = h('input', {type: 'range', min: String(round(low)), max: String(round(high)), step: String(step), value: String(end), 'aria-label': 'End of the axis'});
+    const fromNumber = h('input', {type: 'number', step: String(step), value: String(start), 'aria-label': 'Start'});
+    const toNumber = h('input', {type: 'number', step: String(step), value: String(end), 'aria-label': 'End'});
+    const track = h('span', {class: 'ds-axis-track-fill'});
+    const paint = () => {
+      track.style.left = `${(start - low) / span * 100}%`;
+      track.style.width = `${Math.max(0, end - start) / span * 100}%`;
+      fromNumber.value = String(start); toNumber.value = String(end);
+    };
+    let timer = 0;
+    const commit = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => guarded(() => setElementValues(elementId, {[key]: `[${start},${end}]`}))(), 150);
+    };
+    from.addEventListener('input', () => { start = Math.min(round(from.value), end - step); from.value = String(start); paint(); });
+    to.addEventListener('input', () => { end = Math.max(round(to.value), start + step); to.value = String(end); paint(); });
+    from.addEventListener('change', commit); to.addEventListener('change', commit);
+    fromNumber.addEventListener('change', () => { start = Math.min(round(fromNumber.value), end - step); from.value = String(start); paint(); commit(); });
+    toNumber.addEventListener('change', () => { end = Math.max(round(toNumber.value), start + step); to.value = String(end); paint(); commit(); });
+    const popover = h('div', {class: 'ds-design-popover ds-axis-range', role: 'dialog', 'aria-label': 'Range of the axis'},
+      h('h4', {text: `${axis.axis === 'y' ? 'Y' : 'X'} axis range${axis.percent ? ' (%)' : ''}`}),
+      h('div', {class: 'ds-axis-slider'}, h('span', {class: 'ds-axis-track'}), track, from, to),
+      h('div', {class: 'ds-axis-scale'}, h('span', {text: String(round(low))}), h('span', {text: String(round(high))})),
+      h('div', {class: 'ds-axis-inputs'}, h('label', {}, 'Start', fromNumber), h('label', {}, 'End', toNumber)),
+      h('div', {class: 'ds-design-format-actions'},
+        h('button', {type: 'button', title: 'The range the chart takes from its values', onclick: () => { closeMenus(); guarded(() => setElementValues(elementId, {[key]: ''}))(); }}, 'Automatic'),
+        h('button', {type: 'button', onclick: closeMenus}, 'Close')));
+    placePopover(popover, anchor, event);
+    paint();
+  }
+  // The values of a category axis (a level of its split): unticked ones are left out of the chart (a filter of the
+  // chart on that field, NOT IN), Show all puts them back.
+  function openAxisValues(anchor, elementId, axis, event) {
+    closeMenus();
+    const element = findElement(editableDesign(), elementId)?.element;
+    const field = axis.dimension;
+    if (!element || !field) return;
+    const pattern = new RegExp(`^${field.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s+NOT\\s+IN\\s*\\((.*)\\)$`, 'i');
+    const conditions = (element.filters || '').split(/;|\n+/).map(item => item.trim()).filter(Boolean);
+    const current = conditions.find(item => pattern.test(item));
+    const excluded = new Set(current ? pattern.exec(current)[1].split(',').map(item => item.trim()).filter(Boolean) : []);
+    const values = [...new Set([...(axis.values || []), ...excluded])];
+    const write = () => {
+      const kept = conditions.filter(item => !pattern.test(item));
+      if (excluded.size) kept.push(`${field} NOT IN (${[...excluded].join(', ')})`);
+      guarded(() => setElementValues(elementId, {filters: kept.join('; ')}))();
+    };
+    const list = h('div', {class: 'ds-axis-values'}, values.map(value => h('label', {class: 'ds-axis-value'},
+      h('input', {type: 'checkbox', checked: !excluded.has(value), onchange: event2 => { if (event2.target.checked) excluded.delete(value); else excluded.add(value); write(); }}),
+      h('span', {text: value}))));
+    const popover = h('div', {class: 'ds-design-popover ds-axis-range', role: 'dialog', 'aria-label': `Values of ${field}`},
+      h('h4', {text: `${field} on the axis`}),
+      h('p', {class: 'ds-design-field-note', text: 'Untick the values the chart leaves out.'}),
+      list,
+      h('div', {class: 'ds-design-format-actions'},
+        h('button', {type: 'button', onclick: () => { excluded.clear(); values.filter(value => value !== axis.value).forEach(value => excluded.add(value)); closeMenus(); write(); }}, `Only “${axis.value}”`),
+        h('button', {type: 'button', disabled: !excluded.size, onclick: () => { excluded.clear(); closeMenus(); write(); }}, 'Show all'),
+        h('button', {type: 'button', onclick: closeMenus}, 'Close')));
+    placePopover(popover, anchor, event);
+  }
+
   function formatSection(elementId, element) {
     const style = styleOf(element);
     const items = legendItems(elementId);
@@ -1128,8 +1281,96 @@
         onchange: event => set('axes.x.decimals', integer(event.target.value))}), 'The decimals of the values of the X axis of a CDF.'));
   }
 
+  // The panel of a KPI card: what it measures, against what, and how it looks.
+  function kpiForm(element, shown) {
+    const settings = {measure: 'average', comparison: 'previous', ...(shown.kpi_card || {})};
+    const setKpi = values => setElementValues(element.id, {kpi_card: {...settings, ...values}});
+    const setNow = values => guarded(() => setKpi(values))();
+    const later = key => debounced(value => setKpi({[key]: value}));
+    const source = String(shown.cdr_source || 'CDR-Data');
+    const fields = state.fields?.fields?.[source.toLowerCase()] || [];
+    const kpiField = selectInput([['', 'Choose a field'], ...fields.map(item => [item.name, `${item.type === 'number' ? '#' : 'Abc'} · ${item.name}`])], shown.kpi,
+      value => guarded(() => setElementValues(element.id, {kpi: value}))(), 'ds-design-kpi-field');
+    const repeat = settings.repeat || '';
+    const title = textInput(shown.chart_title, debounced(value => setElementValues(element.id, {chart_title: value})), {id: 'ds-design-chart-title'});
+    const measure = settings.measure;
+    return [
+      field('Title', h('div', {class: 'ds-design-input-row'}, title, tokenMenuButton(title))),
+      h('div', {class: 'ds-design-two'},
+        field('Source', selectInput(SOURCES, source, value => guarded(() => setElementValues(element.id, {cdr_source: value}))(), 'ds-design-kpi-source')),
+        field('Field', kpiField)),
+      h('div', {class: 'ds-design-two'},
+        field('Figure', selectInput([['average', 'Average'], ['median', 'Median'], ['percentile', 'Percentile'], ['count', 'Count of samples'],
+          ['share_value', 'Share of a value (%)'], ['share_below', 'Share below a threshold (%)'], ['share_above', 'Share above a threshold (%)']], measure, value => setNow({measure: value}))),
+        measure === 'share_value' ? field('Value(s)', textInput(settings.value, later('value'), {id: 'ds-design-kpi-value', placeholder: 'Completed'}))
+          : measure === 'percentile' ? field('Percentile', textInput(settings.percentile, later('percentile'), {id: 'ds-design-kpi-percentile', placeholder: '90'}))
+            : ['share_below', 'share_above'].includes(measure) ? field('Threshold', textInput(settings.threshold, later('threshold'), {id: 'ds-design-kpi-threshold', placeholder: '1.6'}))
+              : field('Unit', textInput(settings.unit, later('unit'), {id: 'ds-design-kpi-unit', placeholder: 'Mbit/s'}))),
+      h('div', {class: 'ds-design-two'},
+        field('Compared with', selectInput([['previous', 'Previous campaign'], ['best', 'Best competitor'], ['target', 'A target'], ['none', 'Nothing']], settings.comparison, value => setNow({comparison: value}))),
+        settings.comparison === 'target' ? field('Target', textInput(settings.target, later('target'), {id: 'ds-design-kpi-target'})) : field('Decimals', textInput(settings.decimals, later('decimals'), {id: 'ds-design-kpi-decimals', placeholder: 'Auto'}))),
+      h('div', {class: 'ds-design-two'},
+        field('One card per', selectInput([['', 'None (one card)'], ['Operator', 'Operator'], ['Vendor', 'Vendor'], ['Region', 'Region'], ['City', 'City']], repeat,
+          value => guarded(() => setElementValues(element.id, {kpi_card: {...settings, repeat: value}, rows_split: value ? `${value} × Campaign` : 'Campaign'}))())),
+        h('label', {class: 'ds-design-check'}, h('input', {type: 'checkbox', checked: settings.higher_is_better !== false, onchange: event => setNow({higher_is_better: event.target.checked})}), 'Higher is better')),
+      h('div', {class: 'ds-design-two'},
+        field('Good from', textInput(settings.bands?.good, debounced(value => setKpi({bands: {...(settings.bands || {}), good: value}})), {id: 'ds-design-kpi-good', placeholder: 'No band'})),
+        field('Poor from', textInput(settings.bands?.poor, debounced(value => setKpi({bands: {...(settings.bands || {}), poor: value}})), {id: 'ds-design-kpi-poor', placeholder: 'No band'}))),
+      h('label', {class: 'ds-design-check'}, h('input', {type: 'checkbox', checked: Boolean(settings.sparkline), onchange: event => setNow({sparkline: event.target.checked})}), 'Trend over the campaigns'),
+      field('Filters', textInput((shown.filters || '').split(/;\s*/).filter(Boolean).join('\n'), debounced(value => setElementValues(element.id, {filters: value.split(/\n+/).map(line => line.trim()).filter(Boolean).join('; ')})), {id: 'ds-design-filters', multiline: true, rows: 3, placeholder: 'Call_Family IN (VoLTE)'}), 'One condition per line; a parameter is written {Name}.'),
+      h('p', {class: 'ds-design-field-note', text: 'The figure is that of the latest campaign of the Dashboard\'s selection; green when it improves on what it is compared with, red when it worsens.'}),
+    ];
+  }
+
+  // The panel of a text box (Markdown, with the editor of the tickets and NQ) or of a picture.
+  function textForm(element, shown) {
+    const content = {...(shown.content || {})};
+    const setContent = values => setElementValues(element.id, {content: {...content, ...values}});
+    const area = h('textarea', {id: 'ds-design-text', rows: 8, 'aria-label': 'Text of the box', spellcheck: 'true'}, content.text || '');
+    area.addEventListener('input', debounced(() => setContent({text: area.value}), 800));
+    queueMicrotask(() => { if (window.RichText && area.isConnected) window.RichText.attach(area, {label: 'Text'}); });
+    return [
+      field('Text', h('div', {class: 'ds-design-input-row'}, area, tokenMenuButton(area, {append: true})),
+        'Bold, bullet lists and headings are kept in the PPT; the fields ({Campaigns}, {Cities}…) and parameters are written in the text.'),
+      h('div', {class: 'ds-design-two'},
+        field('Size', selectInput([['small', 'Small'], ['medium', 'Medium'], ['large', 'Large']], content.size || 'medium', value => guarded(() => setContent({size: value}))())),
+        field('Align', selectInput([['left', 'Left'], ['center', 'Centre'], ['right', 'Right']], content.align || 'left', value => guarded(() => setContent({align: value}))()))),
+      field('Colour', h('div', {class: 'ds-design-input-row'},
+        h('input', {type: 'color', value: content.colour || '#263B4A', 'aria-label': 'Text colour', onchange: event => guarded(() => setContent({colour: event.target.value.toUpperCase()}))()}),
+        h('button', {type: 'button', class: 'ds-design-token', title: 'Default colour', onclick: () => guarded(() => setContent({colour: ''}))()}, '↺'))),
+    ];
+  }
+  function imageForm(element, shown) {
+    const content = {...(shown.content || {})};
+    const input = h('input', {type: 'file', accept: 'image/png,image/jpeg,image/gif', 'aria-label': 'Picture', onchange: guarded(async event => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      const body = new FormData();
+      body.append('file', file);
+      const response = await fetch('/api/ppt-dashboards/design/images', {method: 'POST', body, credentials: 'same-origin'});
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(typeof result.detail === 'string' ? result.detail : 'The picture could not be kept.');
+      await setElementValues(element.id, {content: {...content, image: result.id, name: result.name}});
+    })});
+    return [
+      content.image ? h('img', {class: 'ds-design-image-preview', src: `/api/ppt-dashboards/design/images/${content.image}`, alt: content.name || 'Picture'}) : null,
+      field(content.image ? 'Change the picture' : 'Picture', input, 'PNG, JPEG or GIF, up to 8 MB (an SVG can be saved as PNG first). It keeps its ratio in its place.'),
+      field('Fit', selectInput([['contain', 'Whole picture'], ['cover', 'Fill the place']], content.fit || 'contain', value => guarded(() => setElementValues(element.id, {content: {...content, fit: value}}))())),
+    ];
+  }
+
   function elementForm(element) {
     const shown = state.scope === 'template' ? findElement(state.template, element.id)?.element : element;
+    const kind = (shown || element).kind || 'chart';
+    if (shown && kind !== 'chart') {
+      const forms = {kpi: kpiForm, text: textForm, image: imageForm};
+      return [
+        h('h3', {class: 'ds-design-panel-title', text: {kpi: 'KPI card', text: 'Text box', image: 'Image'}[kind] + (shown.chart_title ? ` · ${shown.chart_title}` : '')}),
+        originNote(element, 'element'),
+        ...(forms[kind] ? forms[kind](element, shown) : []),
+        h('div', {class: 'ds-design-panel-actions'}, elementActions(element.id).map(([label, action, enabled]) => h('button', {type: 'button', class: 'ds-design-action', disabled: enabled !== true, title: typeof enabled === 'string' ? enabled : null, onclick: action}, label))),
+      ];
+    }
     if (!shown) {
       return [h('h3', {class: 'ds-design-panel-title', text: elementLabel(element)}),
         h('p', {class: 'ds-design-origin is-local', text: 'This element is only in this Dashboard: change it in This Dashboard scope, or apply it to the template.'}),
@@ -1207,6 +1448,56 @@
   }
   for (const [id, key] of [['ds-title', 'title'], ['ds-subtitle', 'subtitle']]) {
     $(id)?.addEventListener('click', () => { if (state.active && !shownSlide()?.hidden) editHeading(key); });
+  }
+
+  // Free layout: the places of the layout of a slide resized, merged or split (dashboard_layout_editor.js). Each element
+  // keeps its place (the place it is merged into, else a free one); an element left without a place is removed after
+  // asking, as with a smaller layout.
+  function adjustPlaces(slideId) {
+    const slide = findSlide(editableDesign(), slideId);
+    const grid = layoutOf(slide?.layout)?.grid;
+    if (!slide || !grid) return;
+    window.DashboardLayoutEditor.open({
+      title: slide.title || 'Slide', grid: slide.options?.grid || null, rows: grid[0], columns: grid[1],
+      onSave: guarded(async result => {
+        const capacity = result ? result.geometry.length : (layoutOf(slide.layout)?.places || []).length;
+        const visible = visibleElements(slide);
+        // The editor starts from the places as they are (the grid adjusted before, else the layout's in reading order).
+        const moved = visible.map((element, index) => {
+          const place = placeOf(element, index);
+          return result ? (result.mapping[place] ?? -1) : place;
+        });
+        const homeless = visible.filter((_element, index) => moved[index] < 0 || moved[index] >= capacity).length;
+        const free = capacity - new Set(moved.filter(place => place >= 0 && place < capacity)).size;
+        if (homeless > free && !await window.showConfirmDialog(`The places now hold ${capacity} element${capacity === 1 ? '' : 's'}: ${homeless - free} element${homeless - free === 1 ? '' : 's'} of the slide will be removed.`, {title: 'Adjust places', confirmLabel: 'Apply', tone: 'danger'})) return;
+        await edit(design => {
+          const target = findSlide(design, slideId);
+          if (!target) return false;
+          target.options = {...(target.options || {})};
+          if (result) { target.options.grid = result.grid; target.options.geometry = result.geometry; }
+          else { delete target.options.grid; delete target.options.geometry; }
+          const elements = visibleElements(target);
+          const taken = new Set();
+          const homes = elements.map((element, index) => {
+            const place = moved[index];
+            if (place >= 0 && place < capacity && !taken.has(place)) { taken.add(place); return place; }
+            return null;
+          });
+          elements.forEach((element, index) => {
+            let place = homes[index];
+            if (place === null) place = [...Array(capacity).keys()].find(candidate => !taken.has(candidate));
+            if (place === undefined) {
+              if (state.scope === 'dashboard' && !state.detached && !isLocalElement(element)) element.hidden = true;
+              else target.elements.splice(target.elements.indexOf(element), 1);
+              return;
+            }
+            taken.add(place);
+            element.place = place;
+          });
+          return undefined;
+        });
+      }),
+    });
   }
 
   // ------------------------------------------------------------------
@@ -1572,6 +1863,9 @@
   // Prepared again (filters applied): the Design not saved yet is laid out on the new selection.
   document.addEventListener('ds:prepared', () => {
     if (!state.active) return;
+    // New data: every slide of the list is drawn again.
+    state.generation = (state.generation || 0) + 1;
+    if (!dirty()) state.syncedToken = viewer().state().prepared?.token;
     if (dirty()) guarded(() => preview(state.dashboardDirty ? {...previewBody(), design: state.design} : previewBody()))();
     else loadFields(viewer().state().prepared?.token);
   });

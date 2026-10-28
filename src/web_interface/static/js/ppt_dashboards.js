@@ -4324,9 +4324,11 @@
   }), {root: $('ds-slide-thumbnails'), rootMargin: '240px 0px'}) : null;
   function drawSlideThumbnail(item) {
     const slide = prepared?.slides[Number(item.dataset.slideIndex)];
-    if (!slide) return;
+    if (slide) drawThumbnailFrame(item.querySelector('.ds-slide-thumbnail-frame'), slide);
+  }
+  // A slide in small inside its frame: its charts once calculated, its text boxes and pictures, or its cover.
+  function drawThumbnailFrame(frame, slide) {
     const token = prepared.token;
-    const frame = item.querySelector('.ds-slide-thumbnail-frame');
     frame.replaceChildren();
     if (!slide.charts.length) { structuralDashboard(frame, slide); return; }
     const {cards, layout} = slideCards(slide);
@@ -4339,6 +4341,7 @@
       const box = node('span', undefined, 'ds-slide-thumbnail-chart');
       Object.assign(box.style, {left: `${left}%`, top: `${top}%`, width: `${width}%`, height: `${height}%`});
       frame.append(box);
+      if (chart.kind === 'text' || chart.kind === 'image') { box.classList.add('is-element'); box.append(designElementContent(chart)); return; }
       if (!chart.available) return;
       loadChartPayload(chart, 'low').then(payload => {
         if (!box.isConnected || prepared?.token !== token) return;
@@ -4387,6 +4390,28 @@
       if (box.top < view.top) nav.scrollTop -= view.top - box.top;
       else if (box.bottom > view.bottom) nav.scrollTop += box.bottom - view.bottom;
     }
+  }
+  // The content of a text box (Markdown, as the tickets and NQ write it: rich_text.js) or of a picture of a Design.
+  function designElementContent(chart) {
+    const content = chart.content || {};
+    if (chart.kind === 'image') {
+      const frame = node('div', undefined, 'ds-element-image');
+      if (content.url) {
+        const image = document.createElement('img');
+        image.src = content.url; image.alt = chart.title || 'Picture';
+        image.style.objectFit = content.fit === 'cover' ? 'cover' : 'contain';
+        frame.append(image);
+      } else frame.append(node('span', 'No picture chosen yet.', 'ds-element-empty'));
+      return frame;
+    }
+    const text = node('div', undefined, 'ds-element-text');
+    text.dataset.size = String(content.size || 'medium').toLowerCase();
+    text.style.textAlign = ['left', 'center', 'right'].includes(content.align) ? content.align : 'left';
+    if (content.colour) text.style.color = content.colour;
+    if (window.RichText && content.text) window.RichText.renderInto(text, String(content.text));
+    else text.textContent = content.text || '';
+    if (!content.text) text.append(node('span', 'Empty text box.', 'ds-element-empty'));
+    return text;
   }
   function renderSlide() {
     if (!prepared) return; slideIndex = Math.max(0,Math.min(slideIndex,prepared.slides.length-1));
@@ -4451,6 +4476,13 @@
         card.style.setProperty('--ds-chart-top', `${top}%`);
         card.style.setProperty('--ds-chart-width', `${width}%`);
         card.style.setProperty('--ds-chart-height', `${height}%`);
+      }
+      // A text box or a picture of a Dashboard Design: its content, no chart.
+      if (chart.kind === 'text' || chart.kind === 'image') {
+        card.classList.add('ds-element-card', `ds-element-${chart.kind}`);
+        card.replaceChildren(designElementContent(chart));
+        stage.append(card);
+        continue;
       }
       const message = node('div',`Rendering ${chart.title || 'chart'}…`,'ds-chart-message'); card.append(message);
       // NSA & SA: a field only the CDRs of one NR Mode have leaves the chart without samples of the other one.
@@ -4993,6 +5025,13 @@
       renderSlide();
     },
     goToSlide(index) { if (!prepared) return; stopPresentation(); slideIndex = index; renderSlide(); },
+    // The first slide laid out from a slide of the Design, drawn in small inside frame (false when none is laid out).
+    drawThumbnail(frame, designSlide) {
+      const slide = prepared?.slides.find(item => item.design_slide === designSlide);
+      if (!slide) return false;
+      drawThumbnailFrame(frame, slide);
+      return true;
+    },
     renderSlide() { if (prepared) renderSlide(); },
     // The Design saved: the Dashboard keeps it, so its filters saved later do not count it as a change.
     storeDesign(id, fields) {
