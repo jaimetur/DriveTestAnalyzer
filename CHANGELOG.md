@@ -4,7 +4,7 @@
 ---
 
 ## Release: v0.10.0
-### Release Date: 2026-10-28
+### Release Date: 2026-10-29
 #### ⚠️ Breaking Changes:
 - **Import / Export / Transfer — Workspace databases:** the CDR rows of a workspace travel in its columnar copies (`cdr-store/` beside `database.sqlite` in backups, packages and transfers), with its CDR and combined tables empty: earlier versions cannot restore or import the workspace databases this version exports.
 
