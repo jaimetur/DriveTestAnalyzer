@@ -5,10 +5,10 @@ from urllib.parse import quote
 import src.DriveTestAnalyzer as core
 from src.modules import saved_filters
 from src.modules.deletion_rights import (
-    PPT_DASHBOARDS, SCORING_METHODOLOGIES, SCORING_REPORT_CONFIGURATIONS, UNKNOWN_CREATOR_OWNER, assign_unknown_creators,
+    PPT_DESIGNER, SCORING_METHODOLOGIES, SCORING_REPORT_CONFIGURATIONS, UNKNOWN_CREATOR_OWNER, assign_unknown_creators,
     can_delete, creator_of, creators, record_creator,
 )
-from src.modules.ppt_dashboards import STATE_KEY as DASHBOARDS_STATE_KEY
+from src.modules.ppt_designer import STATE_KEY as DESIGNS_STATE_KEY
 from src.modules.scoring_reports import (
     REPORT_CONFIGURATIONS_FORMAT, REPORT_CONFIGURATIONS_VERSION, default_report_configuration, default_scenario,
 )
@@ -210,25 +210,25 @@ def test_favourites_and_reporting_jobs_are_deleted_by_their_creator_or_an_admin(
     assert not {'Alice job', 'Bob job'} & names()
 
 
-def test_dashboards_are_deleted_by_their_creator_or_an_admin(client):
+def test_designs_are_deleted_by_their_creator_or_an_admin(client):
     team()
     repository = workspace_repository()
-    repository.set_workspace_state(DASHBOARDS_STATE_KEY, json.dumps({
-        'alice-dashboard': {'name': 'Alice dashboard', 'template': 'T'}, 'old-dashboard': {'name': 'Old', 'template': 'T'}}))
-    record_creator(repository, PPT_DASHBOARDS, 'alice-dashboard', 'alice')
+    repository.set_workspace_state(DESIGNS_STATE_KEY, json.dumps({
+        'alice-design': {'name': 'Alice design', 'template': 'T'}, 'old-design': {'name': 'Old', 'template': 'T'}}))
+    record_creator(repository, PPT_DESIGNER, 'alice-design', 'alice')
 
     login(client, 'bob', 'bob123')
-    listed = client.get('/api/ppt-dashboards').json()
-    assert listed['alice-dashboard']['created_by'] == 'alice' and listed['old-dashboard']['created_by'] == ''
-    refused = client.delete('/api/ppt-dashboards/alice-dashboard')
+    listed = client.get('/api/ppt-designer').json()
+    assert listed['alice-design']['created_by'] == 'alice' and listed['old-design']['created_by'] == ''
+    refused = client.delete('/api/ppt-designer/alice-design')
     assert refused.status_code == 403 and REFUSAL in refused.json()['detail']
-    assert client.delete('/api/ppt-dashboards/old-dashboard').status_code == 403
+    assert client.delete('/api/ppt-designer/old-design').status_code == 403
 
     login(client, 'alice', 'alice123')
-    assert client.delete('/api/ppt-dashboards/alice-dashboard').status_code == 200
-    assert creator_of(repository, PPT_DASHBOARDS, 'alice-dashboard') == ''
+    assert client.delete('/api/ppt-designer/alice-design').status_code == 200
+    assert creator_of(repository, PPT_DESIGNER, 'alice-design') == ''
     login(client, 'boss', 'boss123')
-    assert client.delete('/api/ppt-dashboards/old-dashboard').status_code == 200
+    assert client.delete('/api/ppt-designer/old-design').status_code == 200
 
 
 def test_ppt_templates_are_deleted_by_their_creator_or_an_admin(client):
@@ -258,18 +258,18 @@ def test_items_without_a_known_creator_are_assigned_to_the_default_super_admin(c
     repository = workspace_repository()
     system_filter = add_saved_filter(repository, 'system-filter', 'system')
     owned_filter = add_saved_filter(repository, 'owned-filter', 'alice')
-    repository.set_workspace_state(DASHBOARDS_STATE_KEY, json.dumps({'old-dashboard': {'name': 'Old', 'template': 'T'}}))
+    repository.set_workspace_state(DESIGNS_STATE_KEY, json.dumps({'old-design': {'name': 'Old', 'template': 'T'}}))
     # They go to the super-admin every deployment starts with (whether or not the account still exists).
     assert UNKNOWN_CREATOR_OWNER == 'super'
     assigned = assign_unknown_creators(repository)
     owner = UNKNOWN_CREATOR_OWNER
-    assert assigned['saved_filters'] == 1 and assigned['ppt_dashboards'] == 1
+    assert assigned['saved_filters'] == 1 and assigned['ppt_designer'] == 1
     with repository.connection() as connection:
         owners = dict(connection.execute(f'SELECT id, created_by FROM {saved_filters.SAVED_FILTERS_TABLE}').fetchall())
         templates = {row[0] for row in connection.execute('SELECT created_by FROM report_templates')}
     assert owners[system_filter] == owner and owners[owned_filter] == 'alice'
     assert templates <= {owner}
-    assert creator_of(repository, PPT_DASHBOARDS, 'old-dashboard') == owner
+    assert creator_of(repository, PPT_DESIGNER, 'old-design') == owner
     # Every shipped report configuration and methodology now has a creator; a second pass changes nothing.
     assert all(creators(repository, SCORING_REPORT_CONFIGURATIONS).values())
     assert assign_unknown_creators(repository) == {}

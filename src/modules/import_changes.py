@@ -349,19 +349,23 @@ def ticket_items(document: Any) -> list[Item]:
     return items
 
 
-def dashboard_items(document: Any) -> list[Item]:
-    """The Dashboards of a Dashboards document, found by their identity, then by their name. Those of a document of
+def design_items(document: Any) -> list[Item]:
+    """The Designs of a Designs document, found by their identity, then by their name. Those of a document of
     before, with an NR Mode of their own and of their template, as an import reads them (report_template_modes)."""
-    from src.modules.report_template_modes import migrate_dashboards_state
+    from src.modules.report_template_modes import migrate_designs_state
 
-    dashboards = document.get('dashboards') if isinstance(document, dict) else None
-    dashboards, _changed = migrate_dashboards_state(dashboards) if isinstance(dashboards, dict) else ({}, False)
+    from src.modules.ppt_naming import renamed_design
+
+    # A document of before PPT Designer keeps them as Dashboards.
+    designs = document.get('designs', document.get('dashboards')) if isinstance(document, dict) else None
+    designs = {key: renamed_design(value) for key, value in designs.items()} if isinstance(designs, dict) else designs
+    designs, _changed = migrate_designs_state(designs) if isinstance(designs, dict) else ({}, False)
     identities = document.get('identities') if isinstance(document.get('identities'), dict) else {}
     creators = document.get('creators') if isinstance(document.get('creators'), dict) else {}
     return [Item(name=str(definition.get('name') or key), key=str(key), uid=str(identities.get(key) or key),
                  match=' '.join(str(definition.get('name') or '').split()).casefold(),
                  values={**definition, 'created_by': str(creators.get(key) or '')})
-            for key, definition in dashboards.items() if isinstance(definition, dict)]
+            for key, definition in designs.items() if isinstance(definition, dict)]
 
 
 def methodology_items(document: Any) -> list[Item]:
@@ -480,7 +484,7 @@ def settings_values(document: Any) -> dict[str, Any]:
 
 # The items of the export document of each element of a workspace (those of the settings elements are their sections).
 ELEMENT_ITEMS = {
-    'dashboards': dashboard_items,
+    'designs': design_items,
     'ppt-templates': report_template_items,
     'scoring-configuration': methodology_items,
     'auto-calculated-fields': auto_calculated_field_items,
@@ -495,7 +499,7 @@ ELEMENT_ITEMS = {
 }
 # How the completion message names the items of each element: one, several, and what comes before their count.
 ELEMENT_NAMES = {
-    'dashboards': ('Dashboard', 'Dashboards', ''),
+    'designs': ('Design', 'Designs', ''),
     'ppt-templates': ('PPT Template', 'PPT Templates', ''),
     'scoring-configuration': ('Scoring & GAP Analysis Methodology', 'Scoring & GAP Analysis Methodologies', ''),
     'auto-calculated-fields': ('auto-calculated field', 'auto-calculated fields', ''),

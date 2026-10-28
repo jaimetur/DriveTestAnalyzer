@@ -84,18 +84,18 @@ def test_definitions_keep_the_order_and_options_of_every_section():
             {'key': 'network_insights', 'enabled': True, 'items': [
                 {'key': 'spectrum', 'enabled': True, 'components': {'licensed': False}}, {'key': 'unknown'}],
              'options': {'technology': 'nr', 'group': ['vendor', 'nonsense'], 'overshoot_km': 500, 'campaigns': ['2026-Q2']}},
-            {'key': 'dashboards', 'enabled': False, 'items': [{'key': 'd1', 'label': 'Weekly'}, {'key': 'd1'}]},
+            {'key': 'designs', 'enabled': False, 'items': [{'key': 'd1', 'label': 'Weekly'}, {'key': 'd1'}]},
             {'key': 'bogus'},
         ]})
     assert definition['title'] == 'Monthly'
     assert definition['filters']['nr_mode'] == 'SA' and definition['filters']['operators'] == ['EE']
     assert 'campaigns' not in definition['filters']
     campaigns = {section['key']: section['options']['campaigns'] for section in definition['sections']}
-    assert campaigns == {'network_insights': ['2026-Q2'], 'dashboards': ['@latest-campaign'], 'scoring': ['@latest-campaign'],
+    assert campaigns == {'network_insights': ['2026-Q2'], 'designs': ['@latest-campaign'], 'scoring': ['@latest-campaign'],
                          'non_qualified_calls': ['@latest-campaign'], 'dataset_analysis': ['@latest-campaign']}
     # A report saved when the NR Mode was an option of each section takes that of the first one.
     assert bundle_report_templates.normalize_definition({'sections': [{'key': 'scoring', 'options': {'nr_mode': 'SA'}}]})['filters']['nr_mode'] == 'SA'
-    assert [section['key'] for section in definition['sections']] == ['network_insights', 'dashboards', 'scoring', 'non_qualified_calls',
+    assert [section['key'] for section in definition['sections']] == ['network_insights', 'designs', 'scoring', 'non_qualified_calls',
                                                                       'dataset_analysis']
     network = definition['sections'][0]
     assert network['items'][0]['key'] == 'spectrum' and network['items'][0]['components']['licensed'] is False
@@ -105,7 +105,7 @@ def test_definitions_keep_the_order_and_options_of_every_section():
     assert network['options']['overshoot_km'] == 100
     assert definition['sections'][1]['items'] == [{'key': 'd1', 'label': 'Weekly', 'enabled': True, 'nr_mode': ''}]
     chosen = [section['key'] for section in bundle_report_templates.enabled_sections(definition)]
-    # Dashboards is unchecked; Scoring, Network Insights and Non-Qualified Calls have checked sub-modules; CDR Analysis,
+    # Designs is unchecked; Scoring, Network Insights and Non-Qualified Calls have checked sub-modules; CDR Analysis,
     # added after the report was saved, is unchecked.
     assert chosen == ['network_insights', 'scoring', 'non_qualified_calls']
 
@@ -533,10 +533,10 @@ def test_favourites_are_saved_listed_and_travel_as_their_own_element(client):
     assert payload['favourites'] == [] and payload['can_edit'] is True
     assert [section['key'] for section in payload['catalogue']['sections']] == list(bundle_report_templates.SECTION_KEYS)
     definition = payload['defaults']
-    # PPT Dashboards and then CDR Analysis are the last sections by default.
-    assert [section['key'] for section in definition['sections']][-2:] == ['dashboards', 'dataset_analysis']
-    next(section for section in definition['sections'] if section['key'] == 'dashboards')['items'] = [
-        {'key': 'd1', 'label': 'Weekly Dashboard', 'enabled': True}]
+    # PPT Designer and then CDR Analysis are the last sections by default.
+    assert [section['key'] for section in definition['sections']][-2:] == ['designs', 'dataset_analysis']
+    next(section for section in definition['sections'] if section['key'] == 'designs')['items'] = [
+        {'key': 'd1', 'label': 'Weekly Design', 'enabled': True}]
     created = client.post('/api/reporting/bundle-report-template/favourites', json={'name': 'Monthly', 'definition': definition})
     assert created.status_code == 200, created.text
     favourite = created.json()['favourite']
@@ -557,7 +557,7 @@ def test_favourites_are_saved_listed_and_travel_as_their_own_element(client):
     restored = bundle_report_templates.list_favourites(core.repository)
     assert [item['name'] for item in restored] == ['Monthly report']
     assert next(section for section in restored[0]['definition']['sections']
-                if section['key'] == 'dashboards')['items'][0]['label'] == 'Weekly Dashboard'
+                if section['key'] == 'designs')['items'][0]['label'] == 'Weekly Design'
     assert 'bundle_report_template_favourite_deleted' in [row['action'] for row in core.repository.list_logs(limit=20)]
     # Reporting Jobs documents that carried them still bring them.
     bundle_report_templates.delete_favourite(core.repository, restored[0]['id'])
@@ -821,50 +821,50 @@ def test_favourites_are_an_artifact_of_reporting_jobs(client, monkeypatch, tmp_p
     assert not list(tmp_path.glob('.bundle-report-template-*'))
 
 
-def test_imported_favourites_find_their_dashboards_by_name_only_when_their_id_is_unknown(client):
+def test_imported_favourites_find_their_designs_by_name_only_when_their_id_is_unknown(client):
     login(client)
-    definition = bundle_report_templates.normalize_definition({'sections': [{'key': 'dashboards', 'items': [
+    definition = bundle_report_templates.normalize_definition({'sections': [{'key': 'designs', 'items': [
         {'key': 'elsewhere', 'label': 'Weekly'}, {'key': 'sa-weekly', 'label': 'Weekly'}]}]})
     imported = bundle_report_templates.import_entries(core.repository, [{'name': 'Imported', 'definition': definition}], 'super',
                                                {'nsa-weekly': ('Weekly', 'NSA'), 'sa-weekly': ('Other', 'SA')})
     assert imported == 1
     favourite = bundle_report_templates.list_favourites(core.repository)[0]
-    dashboards = next(section for section in favourite['definition']['sections'] if section['key'] == 'dashboards')
-    assert [item['key'] for item in dashboards['items']] == ['nsa-weekly', 'sa-weekly']
+    designs = next(section for section in favourite['definition']['sections'] if section['key'] == 'designs')
+    assert [item['key'] for item in designs['items']] == ['nsa-weekly', 'sa-weekly']
 
 
-def test_favourites_keep_their_dashboards_checked_and_ordered_in_another_workspace(client):
-    from src.modules.ppt_dashboards import STATE_KEY
+def test_favourites_keep_their_designs_checked_and_ordered_in_another_workspace(client):
+    from src.modules.ppt_designer import STATE_KEY
 
     login(client)
 
-    def dashboards(ids):
+    def designs(ids):
         names = ['NetCheck CDR Report', 'NetCheck CDR Report (Main Cities)', 'RF Quality (RSRP & SINR)']
         return {ids[index * 2 + offset]: {'name': name, 'technology': mode}
                 for index, name in enumerate(names) for offset, mode in enumerate(('nsa', 'sa'))}
 
-    # The source workspace: every Dashboard in NSA and in SA with the same name; the NSA report checks two of them,
+    # The source workspace: every Design in NSA and in SA with the same name; the NSA report checks two of them,
     # RF Quality first.
     source = [f'source-{index}' for index in range(6)]
-    core.repository.set_workspace_state(STATE_KEY, json.dumps(dashboards(source)))
-    definition = bundle_report_templates.normalize_definition({'sections': [{'key': 'dashboards', 'items': [
+    core.repository.set_workspace_state(STATE_KEY, json.dumps(designs(source)))
+    definition = bundle_report_templates.normalize_definition({'sections': [{'key': 'designs', 'items': [
         {'key': source[4], 'enabled': True}, {'key': source[0], 'enabled': True}, {'key': source[2], 'enabled': False},
         {'key': source[1], 'enabled': False}, {'key': source[3], 'enabled': False}, {'key': source[5], 'enabled': False}]}]})
     bundle_report_templates.save_favourite(core.repository, None, 'Final CDR', definition, 'super')
     document = bundle_report_templates.export_favourites_document(core.repository)
     exported = json.loads(document)['favourites'][0]['definition']['sections'][0]['items']
-    # Each Dashboard travels with its name and NR Mode.
+    # Each Design travels with its name and NR Mode.
     assert [(item['label'], item['nr_mode']) for item in exported[:2]] == [('RF Quality (RSRP & SINR)', 'NSA'), ('NetCheck CDR Report', 'NSA')]
-    # Another workspace has the same Dashboards with other IDs, in another order.
+    # Another workspace has the same Designs with other IDs, in another order.
     target = [f'target-{index}' for index in range(6)]
-    core.repository.set_workspace_state(STATE_KEY, json.dumps(dict(reversed(list(dashboards(target).items())))))
+    core.repository.set_workspace_state(STATE_KEY, json.dumps(dict(reversed(list(designs(target).items())))))
     bundle_report_templates.delete_favourite(core.repository, bundle_report_templates.list_favourites(core.repository)[0]['id'])
     assert bundle_report_templates.import_favourites_document(core.repository, document, 'super') == 1
     items = bundle_report_templates.list_favourites(core.repository)[0]['definition']['sections'][0]['items']
-    # They find the Dashboards of their NR Mode, in the same order and checked as they were.
+    # They find the Designs of their NR Mode, in the same order and checked as they were.
     assert [(item['key'], item['enabled']) for item in items] == [
         (target[4], True), (target[0], True), (target[2], False), (target[1], False), (target[3], False), (target[5], False)]
-    # Documents of earlier versions do not name the NR Mode: the checked Dashboards take those of the report's NR Mode.
+    # Documents of earlier versions do not name the NR Mode: the checked Designs take those of the report's NR Mode.
     legacy = json.loads(document)
     for item in legacy['favourites'][0]['definition']['sections'][0]['items']:
         item.pop('nr_mode')

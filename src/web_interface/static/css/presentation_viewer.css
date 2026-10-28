@@ -72,7 +72,7 @@
 .presentation-download { display: inline-flex; align-items: center; gap: .28em; padding: .6rem 1.2rem; border-radius: 999px; background: var(--brand); color: #fff; font-weight: 800; white-space: nowrap; text-decoration: none; }
 .presentation-download:hover, .presentation-download:focus-visible { background: #075d59; }
 /* The slideshow: its settings above its button, and the slides full screen on black, each entering over the one it
-   replaces with the transition of the presentation mode of PPT Dashboards. */
+   replaces with the transition of the presentation mode of PPT Designer. */
 .presentation-show-menu { position: relative; }
 .presentation-tools .presentation-show-button { display: inline-flex; align-items: center; gap: .45rem; padding: 0 1.15rem 0 .95rem; border-color: var(--brand); background: var(--brand); color: #fff; font-size: .95rem; }
 /* The icons of the slideshow: a rounded play, pause, arrows and stop, in the colour of their button. */

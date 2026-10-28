@@ -52,7 +52,7 @@ def layout_name(slide: Any) -> str:
 
 def is_cover(slide: Any) -> bool:
     """A cover or a transition: a slide of a cover layout, or a title alone on Title Only (the transitions of the PPT
-    Templates, such as Coverage (RSRP) in a Dashboard)."""
+    Templates, such as Coverage (RSRP) in a Design)."""
     name = layout_name(slide)
     return name in COVER_LAYOUTS or (name == 'title only' and not content_shapes(slide))
 

@@ -5,7 +5,7 @@
   <article class="panel module-hero report-jobs-hero">
     <p class="eyebrow">Reporting</p>
     <h2>Reporting</h2>
-    <p class="lede">Design Bundle Report Templates, reports of Dashboards, Scoring &amp; GAP Analysis, Network Insights, Non-Qualified Calls and CDR Analysis, or collect artifacts in a Reporting Job, run it once or on a schedule, and email the artifacts with a description of each one and its filters.</p>
+    <p class="lede">Design Bundle Report Templates, reports of Designs, Scoring &amp; GAP Analysis, Network Insights, Non-Qualified Calls and CDR Analysis, or collect artifacts in a Reporting Job, run it once or on a schedule, and email the artifacts with a description of each one and its filters.</p>
   </article>
 
   <details class="panel collapsible-panel bundle-report-template-panel" open data-panel-state-key="reporting:bundle-report-template" id="bundle-report-template">
@@ -29,10 +29,10 @@
       <div class="brt-cover-fields">
         <label class="brt-field brt-title-field">Title on the cover<input type="text" id="brt-title" maxlength="160" placeholder="The name of the favourite, or Drive Test Analyzer Report"></label>
         <label class="brt-field brt-subtitle-field">Subtitle<input type="text" id="brt-subtitle" maxlength="200" placeholder="Optional, under the title of the cover"></label>
-        <label class="brt-field brt-theme-field" title="The colours and slide titles of every module that supports themes: Scoring &amp; GAP Analysis, Network Insights, PPT Dashboards and CDR Analysis">Theme<select id="brt-theme" aria-label="Colour theme of the Bundle Report Template"></select></label>
+        <label class="brt-field brt-theme-field" title="The colours and slide titles of every module that supports themes: Scoring &amp; GAP Analysis, Network Insights, PPT Designer and CDR Analysis">Theme<select id="brt-theme" aria-label="Colour theme of the Bundle Report Template"></select></label>
       </div>
       <h3 class="brt-heading">Common filters</h3>
-      <p class="form-note">They apply to every module and replace the saved filters of the Dashboards; empty filters include every value. The NR Mode also lists the Dashboards, and each module has its own Campaigns, which choose its CDRs.</p>
+      <p class="form-note">They apply to every module and replace the saved filters of the Designs; empty filters include every value. The NR Mode also lists the Designs, and each module has its own Campaigns, which choose its CDRs.</p>
       <div class="brt-filters" id="brt-filters"><p class="form-note">Loading the filters…</p></div>
       <h3 class="brt-heading">Modules</h3>
       <p class="form-note">Check the modules, sub-modules, charts and tables to include, and drag them by their handle (or move them with the arrow keys) to order them. In Word, each page holds as many components of a module as fit, in this order, and a component never spans two pages.</p>
@@ -147,7 +147,7 @@
         <label class="rj-source-option"><input type="radio" name="rj-source" value="editor"><span><strong>Design the artifacts</strong><small>Choose and set up each artifact of the job in this editor.</small></span></label>
       </div>
       <p class="rj-favourite-tip" id="rj-favourite-tip" role="note" hidden><strong>Tip:</strong> the easiest way to create a Reporting Job is to design a Bundle Report Template in the panel above and save it as a favourite: the job then only has to choose it (<em>A Bundle Report Template favourite</em>).</p>
-      <div class="rj-grid rj-one-row rj-job-theme"><label title="The colours and slide titles of every artifact of the job that supports themes: CDR Analysis, Network Insights, Scoring &amp; GAP Analysis, PPT Dashboards and Bundle Report Templates (it replaces the theme of a Bundle Report Template favourite)">Theme<select id="rj-theme" aria-label="Colour theme of the artifacts of the job"></select></label></div>
+      <div class="rj-grid rj-one-row rj-job-theme"><label title="The colours and slide titles of every artifact of the job that supports themes: CDR Analysis, Network Insights, Scoring &amp; GAP Analysis, PPT Designer and Bundle Report Templates (it replaces the theme of a Bundle Report Template favourite)">Theme<select id="rj-theme" aria-label="Colour theme of the artifacts of the job"></select></label></div>
       <section class="rj-card rj-favourite-card" id="rj-favourite-card" data-rj-source="favourite">
         <div class="rj-grid rj-one-row" id="rj-favourite-field"></div>
         <div class="rj-formats" id="rj-favourite-formats"></div>
@@ -178,11 +178,11 @@
           <button type="button" id="rj-add-network" class="rj-secondary">Add Network Insights</button>
         </div>
       </section>
-      <section class="rj-card" data-rj-section="dashboards" data-rj-module="dashboards">
-        <label class="rj-card-toggle"><input type="checkbox" id="rj-dashboards-enabled" data-rj-entries="rj-dashboards"><strong>PPT Dashboards</strong><small>Each entry generates a new Dashboard PPT with its own NR Mode, Scope, dates and Adaptative Filters (the Campaign chooses the CDRs), prefilled with the saved Dashboard. Add the same Dashboard several times to include several configurations.</small></label>
+      <section class="rj-card" data-rj-section="designs" data-rj-module="designs">
+        <label class="rj-card-toggle"><input type="checkbox" id="rj-designs-enabled" data-rj-entries="rj-designs"><strong>PPT Designer</strong><small>Each entry generates a new Design PPT with its own NR Mode, Scope, dates and Adaptative Filters (the Campaign chooses the CDRs), prefilled with the saved Design. Add the same Design several times to include several configurations.</small></label>
         <div class="rj-card-body" data-rj-body>
-          <div id="rj-dashboards" class="rj-entries"></div>
-          <button type="button" id="rj-add-dashboard" class="rj-secondary">Add Dashboard</button>
+          <div id="rj-designs" class="rj-entries"></div>
+          <button type="button" id="rj-add-design" class="rj-secondary">Add Design</button>
         </div>
       </section>
       <section class="rj-card" data-rj-section="scoring" data-rj-module="scoring">

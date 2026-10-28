@@ -1,4 +1,4 @@
-/* Browser painter for report-faithful PPT Dashboard chart models. */
+/* Browser painter for report-faithful PPT Designer chart models. */
 (() => {
   'use strict';
 
@@ -49,7 +49,7 @@
     return Math.max(10, Math.round(base * ((5 / 6) ** Math.max(0, Number(level) || 0))));
   };
   // Aggregation headers and members must remain legible after a chart is
-  // reduced into a multi-chart Dashboard slide.
+  // reduced into a multi-chart Design slide.
   const aggregationSize = (format = {}, level = 0) => {
     return legendFormatSize(AGGREGATION_TITLE_SIZE, format, level);
   };
@@ -1084,7 +1084,7 @@
     }
     context.fillStyle = '#405765'; context.textAlign = 'center'; font(context, 20, true); context.fillText(String(payload.metric || ''), plot.left + plot.width / 2, plot.top + plot.height + 31);
     if (payload.y_label) verticalLabel(context, payload.y_label, Math.max(18, plot.left - 65), plot.top + plot.height / 2, '#405765', 18);
-    // The numeric axes, for the range of the Dashboard Designer: the values of the X axis (KPI units, from the lowest to
+    // The numeric axes, for the range of the Designer: the values of the X axis (KPI units, from the lowest to
     // the highest value of the series) and the percentages of the Y axis.
     const values = (payload.series || []).flatMap(series => [...(series.x || []), ...(series.bin_edges || [])]).map(Number).filter(finite);
     const extent = values.length ? [Math.min(...values), Math.max(...values)] : [xLow, xHigh];
@@ -1227,7 +1227,7 @@
     context.fillStyle = '#EDF4F0'; context.fillRect(left, top, width, height);
     for (const fraction of [.2, .4, .6, .8]) { line(context, left + width * fraction, top, left + width * fraction, top + height, '#D8E5DF'); line(context, left, top + height * fraction, left + width, top + height * fraction, '#D8E5DF'); }
     const basemap = payload.basemap, worldBounds = basemap?.world_bounds;
-    // The plot and its tiles, to turn a position on the canvas into a place (see getDashboardMapView).
+    // The plot and its tiles, to turn a position on the canvas into a place (see getCanvasMapView).
     state.mapGeometry = {left, top, width, height, worldBounds: Array.isArray(worldBounds) ? worldBounds.map(Number) : null, zoom: Number(basemap?.zoom)};
     const tileRecords = mapTileRecords(state.canvas, payload);
     if (Array.isArray(worldBounds) && worldBounds.length === 4) {
@@ -1347,7 +1347,7 @@
     const textWidth = text => context.measureText(text).width * textWidthRatio;
     // The text size is the smaller of what the row height allows and what
     // lets every heading and value fit its column, so a table reads well in
-    // a wide Dashboard card, a PPT placeholder and the expanded chart view.
+    // a wide Design card, a PPT placeholder and the expanded chart view.
     // Headings always fit whole; a few exceptionally long values may still
     // be shortened with an ellipsis instead of shrinking the whole table.
     const widestAtSize = (texts, bold, share = 1) => {
@@ -1473,7 +1473,7 @@
     else if (payload.type === 'kpi') drawKpi(context, payload, state, transform);
   }
 
-  // KPI cards (Dashboard Designer): the figure of the latest campaign, its samples, its change against the comparison
+  // KPI cards (Designer): the figure of the latest campaign, its samples, its change against the comparison
   // (green when it improves, red when it worsens), the colour of its band and its trend over the campaigns.
   const KPI_BANDS = {good: '#237A4B', fair: '#B25F00', poor: '#B3262E'};
   function roundedRect(context, x, y, width, height, radius) {
@@ -1548,7 +1548,7 @@
     });
   }
 
-  // The colour theme of a chart (its model's style, or the page's: scoring_themes.dashboard_chart_style): its font and
+  // The colour theme of a chart (its model's style, or the page's: scoring_themes.canvas_chart_style): its font and
   // its colours instead of the renderer's greys. Series, operator, vendor and threshold colours stay as they are.
   const styledContexts = new WeakMap();
   const renderedCanvases = new Set();
@@ -1614,7 +1614,7 @@
     return `#${full}${Math.round(clamp(opacity, 0, 1) * 255).toString(16).padStart(2, '0')}`.toUpperCase();
   }
   const DASHES = {dashed: [10, 6], dotted: [2, 5], solid: []};
-  // The format the Dashboard Designer gives a chart (the style of its template row, see dashboard_design) over its model:
+  // The format the Designer gives a chart (the style of its template row, see design_slides) over its model:
   // the colour of a series replaced wherever it is drawn (bars, lines, points and legend), its line width and dash, the
   // place and size of the legend, the place and text of the labels, the axis titles and decimals, and the title. The PPT
   // export draws the same model with this renderer, so it shows the same format.
@@ -1660,7 +1660,7 @@
     const context = prepareCanvas(canvas), state = {canvas, hits: []};
     const formatted = formattedPayload(payload);
     payload = formatted.payload;
-    const theme = payload?.style || globalThis.dashboardChartStyle || null;
+    const theme = payload?.style || globalThis.canvasChartStyle || null;
     applyStyle(context, formatted.colours ? {...(theme || {}), colours: {...(theme?.colours || {}), ...formatted.colours}} : theme);
     renderedCanvases.add(canvas);
     context.fillStyle = '#FFFFFF'; context.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
@@ -1669,7 +1669,7 @@
     drawPayload(context, visible, state, {x: 0, y: 0, scale: 1}); renderStates.set(canvas, state);
     const view = views.get(canvas);
     const titleHeight = 40 * Math.min(view?.scaleX || 1, view?.scaleY || 1) * (view?.zoom || 1);
-    canvas.dispatchEvent(new CustomEvent('dashboardchartlayout', {detail: {titleTop: 20, titleHeight}}));
+    canvas.dispatchEvent(new CustomEvent('designchartlayout', {detail: {titleTop: 20, titleHeight}}));
   }
 
   function closestHit(hits, x, y) {
@@ -1840,7 +1840,7 @@
             payload.rows.splice(Math.max(0, destination), 0, ...moved);
           }
         }
-        canvas.dispatchEvent(new CustomEvent('dashboardtableorderchange', {detail: {
+        canvas.dispatchEvent(new CustomEvent('designtableorderchange', {detail: {
           headers: [...payload.headers], rows: payload.rows.map(row => [...row]),
         }}));
       }
@@ -1860,11 +1860,11 @@
     if (camera.zoom > 1) canvas.classList.remove('ds-chart-selection-blocked');
     const payload = models.get(canvas);
     if (payload) draw(canvas, payload);
-    canvas.dispatchEvent(new CustomEvent('dashboardchartzoom', {detail: {zoom: camera.zoom}}));
+    canvas.dispatchEvent(new CustomEvent('designchartzoom', {detail: {zoom: camera.zoom}}));
     return camera.zoom;
   }
 
-  // Zoom keeping the point under the pointer in its place (Ctrl/Cmd+wheel in the viewer of PPT Dashboards).
+  // Zoom keeping the point under the pointer in its place (Ctrl/Cmd+wheel in the viewer of PPT Designer).
   function zoomChartAt(canvas, requestedZoom, clientX, clientY) {
     const camera = constrainCamera(cameraFor(canvas)), bounds = canvas.getBoundingClientRect();
     if (!bounds.width || !bounds.height) return setChartZoom(canvas, requestedZoom);
@@ -1901,7 +1901,7 @@
     const payload = models.get(canvas);
     if (payload) draw(canvas, payload);
     const state = chartPanState(canvas);
-    canvas.dispatchEvent(new CustomEvent('dashboardchartpan', {detail: state}));
+    canvas.dispatchEvent(new CustomEvent('designchartpan', {detail: state}));
     return state;
   }
 
@@ -1940,7 +1940,7 @@
     if (camera.zoom > 1) canvas.classList.remove('ds-chart-selection-blocked');
     const payload = models.get(canvas);
     if (payload) draw(canvas, payload);
-    canvas.dispatchEvent(new CustomEvent('dashboardchartzoom', {detail: {zoom: camera.zoom}}));
+    canvas.dispatchEvent(new CustomEvent('designchartzoom', {detail: {zoom: camera.zoom}}));
   }
 
   function legendItemAt(canvas, event) {
@@ -2009,7 +2009,7 @@
         hidden.add(hit.label);
       }
       setHiddenLegendItems(canvas, [...hidden], [...shown]);
-      canvas.dispatchEvent(new CustomEvent('dashboardchartlegend', {detail: {
+      canvas.dispatchEvent(new CustomEvent('designchartlegend', {detail: {
         label: hit.label, labelHidden: !wasHidden, labels: legendLabels(canvas), hiddenLabels: hiddenLegendLabels(canvas),
       }}));
     });
@@ -2024,7 +2024,7 @@
       const label = hit ? hit.label : axis.value;
       const labels = hit ? legendLabels(canvas) : axisLevelValues(models.get(canvas), axis.axis, axis.level);
       const hiddenLabels = labels.filter(labelHidden);
-      canvas.dispatchEvent(new CustomEvent('dashboardchartlegendmenu', {detail: {
+      canvas.dispatchEvent(new CustomEvent('designchartlegendmenu', {detail: {
         label, labelHidden: labelHidden(label), labels, hiddenLabels, axis: axis?.axis || 'legend', level: axis?.level ?? null,
         clientX: event.clientX, clientY: event.clientY,
       }}));
@@ -2064,7 +2064,7 @@
       pendingX = 0; pendingY = 0;
       constrainCamera(camera);
       draw(canvas, payload);
-      canvas.dispatchEvent(new CustomEvent('dashboardchartpan', {detail: chartPanState(canvas)}));
+      canvas.dispatchEvent(new CustomEvent('designchartpan', {detail: chartPanState(canvas)}));
     };
     canvas.addEventListener('pointerdown', event => {
       // A map that navigates itself (geo_navigation) moves with its own drag instead.
@@ -2124,7 +2124,7 @@
     resizeFrame = requestAnimationFrame(() => entries.forEach(entry => { const payload = models.get(entry.target); if (payload) draw(entry.target, payload); }));
   }) : null;
 
-  globalThis.renderDashboardChart = (canvas, payload) => {
+  globalThis.renderCanvasChart = (canvas, payload) => {
     // A model can carry the legend entries to show hidden (PPT exports).
     if (Array.isArray(payload?.hidden_legend_items)) {
       hiddenLegendItems.set(canvas, {
@@ -2135,21 +2135,21 @@
     models.set(canvas, payload); draw(canvas, payload); attachTooltip(canvas); attachTableReordering(canvas); attachPan(canvas); attachLegendToggle(canvas);
     if (resizeObserver && !observed.has(canvas)) { observed.add(canvas); resizeObserver.observe(canvas); }
   };
-  // Another page theme (globalThis.dashboardChartStyle) redraws the charts on the page at once.
-  globalThis.redrawDashboardCharts = () => {
+  // Another page theme (globalThis.canvasChartStyle) redraws the charts on the page at once.
+  globalThis.redrawCanvasCharts = () => {
     renderedCanvases.forEach(canvas => {
       if (!canvas.isConnected) { renderedCanvases.delete(canvas); return; }
       const payload = models.get(canvas); if (payload) draw(canvas, payload);
     });
   };
-  globalThis.getDashboardChartHits = canvas => structuredClone(renderStates.get(canvas)?.hits || []);
-  globalThis.getDashboardChartLegendHits = canvas => structuredClone(renderStates.get(canvas)?.legendHits || []);
-  globalThis.getDashboardChartHiddenLegendItems = hiddenLegendLabels;
-  globalThis.setDashboardChartHiddenLegendItems = setHiddenLegendItems;
-  globalThis.getDashboardChartLegendLabels = legendLabels;
+  globalThis.getCanvasChartHits = canvas => structuredClone(renderStates.get(canvas)?.hits || []);
+  globalThis.getCanvasChartLegendHits = canvas => structuredClone(renderStates.get(canvas)?.legendHits || []);
+  globalThis.getCanvasChartHiddenLegendItems = hiddenLegendLabels;
+  globalThis.setCanvasChartHiddenLegendItems = setHiddenLegendItems;
+  globalThis.getCanvasChartLegendLabels = legendLabels;
   // The entries of the legend of a chart as its model has them (label and colour, before any Design format), and the
-  // entry under a pointer: the Dashboard Designer formats a series from them.
-  globalThis.getDashboardChartLegendItems = canvas => {
+  // entry under a pointer: the Designer formats a series from them.
+  globalThis.getCanvasChartLegendItems = canvas => {
     const model = models.get(canvas) || {};
     const legend = (model.legend?.items || []).filter(item => item.colour).map(item => ({label: String(item.label), colour: item.colour}));
     if (legend.length) return legend;
@@ -2158,10 +2158,10 @@
     return (model.series || []).map(item => ({label: String(item.name ?? item.legend_name ?? ''), colour: item.colour || ''}))
       .filter(item => item.label && item.colour && !seen.has(item.label) && seen.add(item.label));
   };
-  globalThis.getDashboardChartLegendItemAt = (canvas, event) => legendItemAt(canvas, event);
-  // The axis under a pointer (Dashboard Designer): a numeric axis with its range and the range of its values, or a level
+  globalThis.getCanvasChartLegendItemAt = (canvas, event) => legendItemAt(canvas, event);
+  // The axis under a pointer (Designer): a numeric axis with its range and the range of its values, or a level
   // of a category axis with its field and every value it has (hidden ones included).
-  globalThis.getDashboardChartAxisAt = (canvas, event) => {
+  globalThis.getCanvasChartAxisAt = (canvas, event) => {
     const view = views.get(canvas), state = renderStates.get(canvas), bounds = canvas.getBoundingClientRect();
     if (!view || !state || !bounds.width) return null;
     const x = ((event.clientX - bounds.left) / view.scaleX - view.originX) / view.zoom;
@@ -2179,13 +2179,13 @@
     return {kind: 'category', axis: hit.axis, level: hit.level, value: hit.value, values: axisLevelValues(model, hit.axis, hit.level),
       dimension: String(dimension || '')};
   };
-  globalThis.setDashboardChartZoom = setChartZoom;
-  globalThis.getDashboardChartZoom = canvas => cameraFor(canvas).zoom;
-  globalThis.zoomDashboardChartAt = zoomChartAt;
-  globalThis.panDashboardChart = panChart;
-  globalThis.getDashboardChartPanState = chartPanState;
+  globalThis.setCanvasChartZoom = setChartZoom;
+  globalThis.getCanvasChartZoom = canvas => cameraFor(canvas).zoom;
+  globalThis.zoomCanvasChartAt = zoomChartAt;
+  globalThis.panCanvasChart = panChart;
+  globalThis.getCanvasChartPanState = chartPanState;
   // The plot of the last drawn map and the canvas scale, to turn a pointer position into a place.
-  globalThis.getDashboardMapView = canvas => {
+  globalThis.getCanvasMapView = canvas => {
     const geometry = renderStates.get(canvas)?.mapGeometry, view = views.get(canvas);
     return geometry && view ? {...geometry, scaleX: view.scaleX, scaleY: view.scaleY, originX: view.originX, originY: view.originY, cameraZoom: view.zoom} : null;
   };

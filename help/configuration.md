@@ -27,9 +27,9 @@ DriveTest Analyzer separates application settings, storage roots and Docker depl
 | `APP_PORT` | Source launcher port and production host port in Compose. | `7278` |
 | `APP_DEV_PORT` | Development host port mapped to the container service. | `7279` |
 | `APP_SECRET_KEY` | Signs authenticated session cookies. | A long private random value |
-| `DRIVETEST_ANALYZER_REPORT_CHART_RENDERER` | Renderer for Reports, Chart Sets, previews and Dashboard exports. | `dashboard-canvas`; use `pil` only for the legacy painter |
+| `DRIVETEST_ANALYZER_REPORT_CHART_RENDERER` | Renderer for Reports, Chart Sets, previews and Design exports. | `canvas`; use `pil` only for the legacy painter |
 | `DRIVETEST_ANALYZER_CHROMIUM` | Optional explicit Chromium-family executable used by the server Canvas renderer. | Auto-detected supported browser |
-| `DRIVETEST_ANALYZER_DASHBOARD_FRAME_CACHE_SNAPSHOTS` | Number of recently used Dashboard snapshots that keep their chart data frames in memory. Lower it on servers with little RAM. | `3` |
+| `DRIVETEST_ANALYZER_DESIGN_FRAME_CACHE_SNAPSHOTS` | Number of recently used Design snapshots that keep their chart data frames in memory. Lower it on servers with little RAM. | `3` |
 | `TZ` | IANA timezone used by Docker and displayed/persisted timestamps. | `Europe/Madrid` |
 | `IGNORE_EVENT_TIME_FILTERING` | When true, ignores date and template filters based on Event_Start_Time or Event_End_Time. | `false` |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURITY` | Default SMTP server, port and encryption (`starttls`, `ssl` or `none`) for [Reporting](reporting.md) emails. Application Config → Email Delivery overrides them. | Not set; `587`; `starttls` |
@@ -44,9 +44,9 @@ Before version 0.6.0 the application was named Dashboard Analytic. Variables wit
 `user-editor`, `admin` and `super-admin` accounts can choose **Config → Application Config** to persist runtime settings in the application database. Values saved there take precedence over Docker and environment variables, and apply to every workspace.
 
 - **Timezone** accepts an IANA name such as `Europe/Madrid`. It controls displayed timestamps and newly stored local timestamps. Without it, or `TZ`, the server's own timezone is used (UTC when the server has none).
-- **Report Chart Renderer** selects `dashboard-canvas` or the legacy `pil` renderer.
+- **Report Chart Renderer** selects `canvas` or the legacy `pil` renderer.
 - **Chromium Executable** accepts an absolute executable path. Saving it restarts the shared Canvas renderer, so the next chart uses the selected browser.
-- **Ignore event time filtering** ignores Dashboard, CDR Analysis and template conditions based on `Event_Start_Time` or `Event_End_Time`. Use it when source timestamps are incomplete and must not exclude valid rows.
+- **Ignore event time filtering** ignores Design, CDR Analysis and template conditions based on `Event_Start_Time` or `Event_End_Time`. Use it when source timestamps are incomplete and must not exclude valid rows.
 - **Maximum simultaneous tasks** sets the background concurrency from 1 to 32, which is also how many datasets of a workspace are processed in parallel; the effective limit reserves one logical CPU for interactive requests.
 - **Public address of the server** (`https://name[:port]`) is the address of the links of the presentations and of their previews; empty, they take the address each user opened the application with.
 
@@ -61,8 +61,8 @@ Always replace `APP_SECRET_KEY` outside local development. Changing it invalidat
 | Variable | Contains |
 | --- | --- |
 | `APP_CONFIG_DIR` | Global `application.db`: users, roles, workspace permissions, application state and transfer offers. |
-| `APP_DATA_DIR` | Workspace registry and directories, uploads, generated output, Dashboard caches, map tiles, backup ZIPs and temporary transfer/export packages. |
-| `APP_ASSETS_DIR` | Bundled PowerPoint masters used by report and Dashboard generation. |
+| `APP_DATA_DIR` | Workspace registry and directories, uploads, generated output, Design caches, map tiles, backup ZIPs and temporary transfer/export packages. |
+| `APP_ASSETS_DIR` | Bundled PowerPoint masters used by report and Design generation. |
 
 Only these three variables are accepted in `storage-paths.conf`:
 
@@ -128,7 +128,7 @@ APP_ASSETS_DIR/
 
 Report Templates are records in each workspace database. CSV files appear in export, transfer and backup ZIPs as their portable representation; no persistent template CSV directory is required.
 
-The starter content of every workspace stays a code asset in the application folder: `assets/autocalculated-fields/default-autocalculated-fields.json` (Auto-calculated Fields), `assets/labels-operators/`, `assets/labels-vendors/`, `assets/labels-campaigns/`, `assets/scoring-methodologies/`, `assets/scoring-report-configurations/`, `assets/ppt-templates/`, `assets/ppt-dashboards/`, `assets/query-builder-queries/`, `assets/scoring-favourites-filters/`, `assets/bundle-report-template-favourites/` and `assets/reporting-jobs/` (see [Workspace Management](workspace-management.md#workspace-lifecycle)), as are the Map Areas included with the application (`assets/map-areas/`); changing `APP_ASSETS_DIR` currently relocates the PowerPoint master lookup only.
+The starter content of every workspace stays a code asset in the application folder: `assets/autocalculated-fields/default-autocalculated-fields.json` (Auto-calculated Fields), `assets/labels-operators/`, `assets/labels-vendors/`, `assets/labels-campaigns/`, `assets/scoring-methodologies/`, `assets/scoring-report-configurations/`, `assets/ppt-templates/`, `assets/ppt-designer/`, `assets/query-builder-queries/`, `assets/scoring-favourites-filters/`, `assets/bundle-report-template-favourites/` and `assets/reporting-jobs/` (see [Workspace Management](workspace-management.md#workspace-lifecycle)), as are the Map Areas included with the application (`assets/map-areas/`); changing `APP_ASSETS_DIR` currently relocates the PowerPoint master lookup only.
 
 For the complete workspace, output and cache tree, see [Project Structure → Persistent data layout](project-structure.md#persistent-data-layout).
 
@@ -156,7 +156,7 @@ After first login:
 
 - `http://127.0.0.1:7278/healthz` responds locally, or the equivalent published host and port responds remotely.
 - A file uploaded to `Default` remains after an application or container restart.
-- Workspace Report Templates and Dashboard definitions remain available.
+- Workspace Report Templates and Design definitions remain available.
 - The workspace size and cache size reflect the configured data root.
-- Dashboard preparation writes nothing in the workspace: its caches are kept in memory.
+- Design preparation writes nothing in the workspace: its caches are kept in memory.
 - `APP_CONFIG_DIR` and `APP_DATA_DIR` are included in infrastructure backups.

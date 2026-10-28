@@ -125,8 +125,8 @@ def test_template_package_replaces_and_adds_templates_without_duplicates(client,
     repo.add_report_template('Same', b'previous')
     repo.add_report_template('Case Name', b'previous case')
     repo.add_report_template('Used', b'keep this', is_default=True)
-    repo.set_workspace_state(app_module.DASHBOARD_STATE_KEY, json.dumps({
-        'dashboard-1': {'template_technology': 'nsa', 'template': 'Used'},
+    repo.set_workspace_state(app_module.DESIGN_STATE_KEY, json.dumps({
+        'design-1': {'template_technology': 'nsa', 'template': 'Used'},
     }))
     staging = tmp_path / 'templates'
     library = staging / 'report-templates/library/nsa'
@@ -147,9 +147,9 @@ def test_template_package_replaces_and_adds_templates_without_duplicates(client,
     assert bytes(rows['Old']['content']) == b'old'
     assert bytes(rows['Same']['content']) == b'updated'
     assert bytes(rows['case name']['content']) == b'updated case'
-    # Used by a Dashboard of the destination: it keeps its definition, and the Dashboard follows its name.
+    # Used by a Design of the destination: it keeps its definition, and the Design follows its name.
     assert bytes(rows['used']['content']) == b'keep this'
-    assert json.loads(repo.get_workspace_state(app_module.DASHBOARD_STATE_KEY))['dashboard-1']['template'] == 'used'
+    assert json.loads(repo.get_workspace_state(app_module.DESIGN_STATE_KEY))['design-1']['template'] == 'used'
     # The destination keeps its default template.
     assert rows['used']['is_default'] == 1 and rows['New']['is_default'] == 0
     # Without a creator in the package, a new template belongs to the user who imports it.
@@ -169,8 +169,8 @@ def test_template_renamed_on_the_source_is_renamed_in_the_destination(client, tm
     app_module.build_export_archive_file('ppt-templates', package_path, [source.id])
     app_module._apply_import_archive(package_path, app_module.read_import_manifest(package_path),
                                      destination_workspace_ids=[destination.id], importing_user='super')
-    destination_repo.set_workspace_state(app_module.DASHBOARD_STATE_KEY, json.dumps({
-        'dashboard-1': {'template_technology': 'nsa', 'template': 'Coverage', 'name': 'Coverage NSA'},
+    destination_repo.set_workspace_state(app_module.DESIGN_STATE_KEY, json.dumps({
+        'design-1': {'template_technology': 'nsa', 'template': 'Coverage', 'name': 'Coverage NSA'},
     }))
 
     # Renamed and changed on the source, another template of the destination already having its new name.
@@ -182,16 +182,16 @@ def test_template_renamed_on_the_source_is_renamed_in_the_destination(client, tm
     rows = {str(row['name']): row for row in destination_repo.list_report_templates()}
     assert set(rows) == {'Elsewhere', 'Elsewhere (2)'}
     assert bytes(rows['Elsewhere']['content']) == b'local'
-    # A Dashboard of the destination uses it, so it keeps its definition (the package brings no Dashboards).
+    # A Design of the destination uses it, so it keeps its definition (the package brings no Designs).
     assert bytes(rows['Elsewhere (2)']['content']) == b'first'
     assert '"Coverage" renamed "Elsewhere (2)"' in notice
-    dashboard = json.loads(destination_repo.get_workspace_state(app_module.DASHBOARD_STATE_KEY))['dashboard-1']
-    assert dashboard['template'] == 'Elsewhere (2)'
+    design = json.loads(destination_repo.get_workspace_state(app_module.DESIGN_STATE_KEY))['design-1']
+    assert design['template'] == 'Elsewhere (2)'
     # Its creator on the source exists here, so it keeps belonging to them.
     assert rows['Elsewhere (2)']['created_by'] == 'super'
 
-    # Without Dashboards that use it, a template of the package replaces the definition too.
-    destination_repo.set_workspace_state(app_module.DASHBOARD_STATE_KEY, '{}')
+    # Without Designs that use it, a template of the package replaces the definition too.
+    destination_repo.set_workspace_state(app_module.DESIGN_STATE_KEY, '{}')
     app_module._apply_import_archive(package_path, app_module.read_import_manifest(package_path),
                                      destination_workspace_ids=[destination.id], importing_user='other')
     rows = {str(row['name']): row for row in destination_repo.list_report_templates()}
@@ -199,26 +199,26 @@ def test_template_renamed_on_the_source_is_renamed_in_the_destination(client, tm
     assert bytes(rows['Elsewhere (2)']['content']) == b'second'
 
 
-def test_template_package_with_dashboards_replaces_referenced_templates(client, tmp_path):
+def test_template_package_with_designs_replaces_referenced_templates(client, tmp_path):
     workspace = app_module.workspace_registry.create('Bundle destination')
     repo = Repository(workspace.database_path, app_module.repository.global_db_path)
     repo.initialize()
     repo.add_report_template('Used', b'old', is_default=True)
-    repo.set_workspace_state(app_module.DASHBOARD_STATE_KEY, json.dumps({
-        'dashboard-1': {'template_technology': 'nsa', 'template': 'Used'},
+    repo.set_workspace_state(app_module.DESIGN_STATE_KEY, json.dumps({
+        'design-1': {'template_technology': 'nsa', 'template': 'Used'},
     }))
     staging = tmp_path / 'templates'
     library = staging / 'report-templates/library/nsa'
     library.mkdir(parents=True)
     (library / 'Used.csv').write_bytes(b'new')
 
-    app_module.import_slides_templates_archive(staging, [workspace.id], includes_dashboards=True)
+    app_module.import_slides_templates_archive(staging, [workspace.id], includes_designs=True)
     rows = repo.list_report_templates()
     assert len(rows) == 1
     assert bytes(rows[0]['content']) == b'new'
 
 
-def test_template_and_dashboard_bundle_replaces_referenced_template(client, tmp_path):
+def test_template_and_design_bundle_replaces_referenced_template(client, tmp_path):
     source = app_module.active_workspace
     source_repo = Repository(source.database_path, app_module.repository.global_db_path)
     source_repo.add_report_template('Bundle Used', b'imported')
@@ -226,11 +226,11 @@ def test_template_and_dashboard_bundle_replaces_referenced_template(client, tmp_
     destination_repo = Repository(destination.database_path, app_module.repository.global_db_path)
     destination_repo.initialize()
     destination_repo.add_report_template('Bundle Used', b'local')
-    destination_repo.set_workspace_state(app_module.DASHBOARD_STATE_KEY, json.dumps({
-        'local-dashboard': {'template_technology': 'nsa', 'template': 'Bundle Used'},
+    destination_repo.set_workspace_state(app_module.DESIGN_STATE_KEY, json.dumps({
+        'local-design': {'template_technology': 'nsa', 'template': 'Bundle Used'},
     }))
     package_path = tmp_path / 'bundle.zip'
-    app_module.build_export_archive_file(['ppt-templates', 'dashboards'], package_path)
+    app_module.build_export_archive_file(['ppt-templates', 'designs'], package_path)
 
     phases = []
     app_module._apply_import_archive(
@@ -240,16 +240,16 @@ def test_template_and_dashboard_bundle_replaces_referenced_template(client, tmp_
     )
     # The progress names each package being imported, and what each one is doing within its share of the bar.
     assert [phase for phase in phases if phase.startswith('importing package') and ':' not in phase] == [
-        'importing package 1 of 2 (PPT Templates)', 'importing package 2 of 2 (Dashboards)']
+        'importing package 1 of 2 (PPT Templates)', 'importing package 2 of 2 (Designs)']
     assert 'importing package 1 of 2 (PPT Templates): importing PPT Templates' in phases
     rows = [row for row in destination_repo.list_report_templates() if str(row['name']) == 'Bundle Used']
     assert len(rows) == 1
     assert bytes(rows[0]['content']) == b'imported'
-    # The Dashboards of the bundle (the source's starter Dashboards) are added to the local ones.
-    imported = json.loads(destination_repo.get_workspace_state(app_module.DASHBOARD_STATE_KEY))
-    assert 'local-dashboard' in imported
-    assert sorted(item['name'] for key, item in imported.items() if key != 'local-dashboard') == sorted(
-        item['name'] for item in json.loads(source_repo.get_workspace_state(app_module.DASHBOARD_STATE_KEY)).values())
+    # The Designs of the bundle (the source's starter Designs) are added to the local ones.
+    imported = json.loads(destination_repo.get_workspace_state(app_module.DESIGN_STATE_KEY))
+    assert 'local-design' in imported
+    assert sorted(item['name'] for key, item in imported.items() if key != 'local-design') == sorted(
+        item['name'] for item in json.loads(source_repo.get_workspace_state(app_module.DESIGN_STATE_KEY)).values())
 
 
 def test_selective_template_restore_replaces_and_adds_like_an_import(client, tmp_path):
@@ -262,8 +262,8 @@ def test_selective_template_restore_replaces_and_adds_like_an_import(client, tmp
     repo.set_report_template_content('Backup Template', b'local edit')
     repo.add_report_template('Old', b'remove')
     repo.add_report_template('Used', b'preserve')
-    repo.set_workspace_state(app_module.DASHBOARD_STATE_KEY, json.dumps({
-        'local-dashboard': {'template_technology': 'nsa', 'template': 'Used'},
+    repo.set_workspace_state(app_module.DESIGN_STATE_KEY, json.dumps({
+        'local-design': {'template_technology': 'nsa', 'template': 'Used'},
     }))
 
     app_module.restore_database_backup(archive_path, ['report_templates'])

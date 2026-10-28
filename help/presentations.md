@@ -22,14 +22,14 @@ roadmap
 
 ## Module presentations
 
-Each main module also has a presentation of its own, in a design of its own, at the start of its chapter: [Workspace Management](workspace-management.md), with **Workspace Config** after it (everything to set up in a new workspace: how operators, vendors and campaigns are named, coloured and ordered, the map areas of its countries, its networks and its methodology; see [Workspace Config](workspace-config.md)), [CDR Analysis](datasets-analysis.md), [Network Insights](network-insights.md), [PPT Dashboards](ppt-dashboards.md), [Scoring & GAP Analysis](scoring-gap-analysis.md), [Non-Qualified Calls](non-qualified-calls.md) with the **DT Analyzer RCA** beside it (how it finds the root cause of every Non-Qualified Call: what it reads, its rules, the lack of resources, the network around the call and the evidence it gives), [Reporting](reporting.md), [Builders](chart-builder.md) and [Ticket Center](ticket-center.md), and **Administration** after them (Admin and Super Admin: users and access, the databases, backups, packages and transfers, the configuration of the application at every level and App Events; see [Super Admin](super-admin.md)). They open in the same slide viewer and download as PowerPoint.
+Each main module also has a presentation of its own, in a design of its own, at the start of its chapter: [Workspace Management](workspace-management.md), with **Workspace Config** after it (everything to set up in a new workspace: how operators, vendors and campaigns are named, coloured and ordered, the map areas of its countries, its networks and its methodology; see [Workspace Config](workspace-config.md)), [CDR Analysis](datasets-analysis.md), [Network Insights](network-insights.md), [PPT Designer](ppt-designer.md), [Scoring & GAP Analysis](scoring-gap-analysis.md), [Non-Qualified Calls](non-qualified-calls.md) with the **DT Analyzer RCA** beside it (how it finds the root cause of every Non-Qualified Call: what it reads, its rules, the lack of resources, the network around the call and the evidence it gives), [Reporting](reporting.md), [Builders](chart-builder.md) and [Ticket Center](ticket-center.md), and **Administration** after them (Admin and Super Admin: users and access, the databases, backups, packages and transfers, the configuration of the application at every level and App Events; see [Super Admin](super-admin.md)). They open in the same slide viewer and download as PowerPoint.
 
 ```presentations
 workspace
 workspace-config
 cdr-analysis
 network-insights
-ppt-dashboards
+ppt-designer
 scoring-gap-analysis
 non-qualified-calls
 dt-analyzer-rca

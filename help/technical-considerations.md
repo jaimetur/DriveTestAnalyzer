@@ -23,7 +23,7 @@ This article collects rules that affect data interpretation, performance, persis
 | Campaign ordering | [Open section](#campaign-ordering) |
 | Template execution semantics | [Open section](#template-execution-semantics) |
 | Multivendor calculation and remapping | [Open section](#multivendor-calculation-and-remapping) |
-| Interactive previews and Dashboard preparation | [Open section](#interactive-previews-and-dashboard-preparation) |
+| Interactive previews and Design preparation | [Open section](#interactive-previews-and-design-preparation) |
 | Filtered dataset preview | [Open section](#filtered-dataset-preview) |
 | Background jobs and output | [Open section](#background-jobs-and-output) |
 | Import, export and server transfer | [Open section](#import-export-and-server-transfer) |
@@ -43,9 +43,9 @@ Stored below `APP_CONFIG_DIR`:
 
 Stored below `APP_DATA_DIR/workspaces/<workspace>/`:
 
-- `<workspace>.db`: datasets, profiles, audit events, Dashboard definitions and selections, generated jobs, Auto-calculated Fields, complete Report Templates in `report_templates`, and materialised reporting rows.
+- `<workspace>.db`: datasets, profiles, audit events, Design definitions and selections, generated jobs, Auto-calculated Fields, complete Report Templates in `report_templates`, and materialised reporting rows.
 - `input/`: uploaded source files.
-- `output/reports/dashboards/`: Dashboard PowerPoint jobs and their persistent PNG, tooltip and Canvas-model assets.
+- `output/reports/designs/`: Design PowerPoint jobs and their persistent PNG, tooltip and Canvas-model assets.
 - `output/reports/cdr-analysis/`: CDR Analysis PowerPoint and Word exports.
 - `output/reports/network-insights/`: Summary Network Insights PowerPoint and Word exports.
 - `output/reports/reports-old/`: PPT Reporting (old) PowerPoint reports and their PNG charts.
@@ -97,9 +97,9 @@ Normalisation is case-insensitive and avoids ambiguous fragments. For example, `
 
 NSA/SA selection chooses CDRs: every row keeps the NR Mode of its CDR (set when the CDR is uploaded, see [NR Mode](workspace-management.md#nr-mode)), rather than a row-level RAT or Call Mode classification.
 
-- A Dashboard, a Reporting job, a Reporting (old) report and the template editor previews read the CDRs of their NR Mode and every Data, Voice and Speech test of them, whatever RAT or call mode a test ran on: an EPS fallback (EPSFB) call of an SA CDR is an SA test.
+- A Design, a Reporting job, a Reporting (old) report and the template editor previews read the CDRs of their NR Mode and every Data, Voice and Speech test of them, whatever RAT or call mode a test ran on: an EPS fallback (EPSFB) call of an SA CDR is an SA test.
 - Valid Data attempts remain available even when a sampled radio-access value records fallback. This prevents an otherwise valid data test from disappearing solely because one sample is LTE.
-- Report Templates have no NR Mode: the NR Mode is part of the selection of the Dashboard that uses a template (NSA, SA or NSA & SA), and the titles name it with `{NR Mode}` and `{NR Mode Name}`. The combined CDR tables keep the NR Mode of the CDR of each row in their `NR_Mode` column (the **NR Mode** field of filters, splits and legends), added and filled once per CDR in the background when a workspace opens after the update and corrected on its rows when the NR Mode of a CDR changes. PPT Dashboard does not expose Technology as an adaptive filter, while the separate RAT filter can restrict explicit `RAT_A`, `RAT` or `Sample_RAT_A` values.
+- Report Templates have no NR Mode: the NR Mode is part of the selection of the Design that uses a template (NSA, SA or NSA & SA), and the titles name it with `{NR Mode}` and `{NR Mode Name}`. The combined CDR tables keep the NR Mode of the CDR of each row in their `NR_Mode` column (the **NR Mode** field of filters, splits and legends), added and filled once per CDR in the background when a workspace opens after the update and corrected on its rows when the NR Mode of a CDR changes. PPT Designer does not expose Technology as an adaptive filter, while the separate RAT filter can restrict explicit `RAT_A`, `RAT` or `Sample_RAT_A` values.
 - Missing radio values are not silently relabelled as a recognised technology.
 
 When a chart looks incomplete, compare its chart-filtered dataset with the source RAT and Call Mode fields and with the NR Mode of the CDRs it reads.
@@ -136,7 +136,7 @@ Example:
 
 Template filters are parsed as ordered, semicolon-terminated conditions joined with logical AND. Rows and Columns are ordered dimensions, so reversing their selection changes the grouping hierarchy. Legends derive their content from the chosen dimension, filter, threshold or bucket rule, and side legends reserve plot space.
 
-These contracts are shared by PPT Dashboards, PPT Reporting (old), Chart Builder and Template Editor so a saved definition has the same meaning in previews and generated output. The authoring syntax, operators, examples, aggregation behaviour and legend rules are centralized in [Workspace Config → Report Template reference](workspace-config.md#report-template-reference).
+These contracts are shared by PPT Designer, PPT Reporting (old), Chart Builder and Template Editor so a saved definition has the same meaning in previews and generated output. The authoring syntax, operators, examples, aggregation behaviour and legend rules are centralized in [Workspace Config → Report Template reference](workspace-config.md#report-template-reference).
 
 ## Multivendor calculation and remapping
 
@@ -194,11 +194,11 @@ For Vendor Comparison, the renderer also appends this effective filter without a
 vendor NOT CONTAINS (Mixed, Other);
 ```
 
-## Interactive previews and Dashboard preparation
+## Interactive previews and Design preparation
 
-PPT Reporting (old), Chart Builder and PPT Templates Editor use the shared Interactive Preview. PPT Dashboards uses the same chart contracts in its live viewer, expanded viewer and historical Charts Panel, while preparing one synchronized dataset selection for the complete Dashboard.
+PPT Reporting (old), Chart Builder and PPT Templates Editor use the shared Interactive Preview. PPT Designer uses the same chart contracts in its live viewer, expanded viewer and historical Charts Panel, while preparing one synchronized dataset selection for the complete Design.
 
-Live charts draw their Canvas models in the user's browser. Server-side Report, Chart Set and Dashboard exports send those same models through a persistent Node/Chromium renderer, which keeps chart geometry and semantic tooltips aligned with the interactive view. Docker includes these runtime dependencies; source deployments using `dashboard-canvas` need Node.js, a supported Chromium-family browser and the WebSocket module.
+Live charts draw their Canvas models in the user's browser. Server-side Report, Chart Set and Design exports send those same models through a persistent Node/Chromium renderer, which keeps chart geometry and semantic tooltips aligned with the interactive view. Docker includes these runtime dependencies; source deployments using `canvas` need Node.js, a supported Chromium-family browser and the WebSocket module.
 
 `DRIVETEST_ANALYZER_CHROMIUM` can select an explicit browser executable, while `DRIVETEST_ANALYZER_REPORT_CHART_RENDERER=pil` selects the legacy painter.
 
@@ -212,19 +212,19 @@ The shared preview cache separates expensive data work from presentation work:
 
 Changing only a title should therefore be much faster than changing datasets or filters.
 
-PPT Dashboard persistence has additional layers:
+PPT Designer persistence has additional layers:
 
-- `dashboard_filter_selections` stores a versioned selection key, faceted filter values and row counts; its predicates are reproduced from the saved Dashboard definition.
-- The columnar copies of the CDRs of the shared `reporting_rows_data`, `reporting_rows_voice` and `reporting_rows_speech` combined tables supply Dashboard filters, chart datasets and chart rendering.
+- `design_filter_selections` stores a versioned selection key, faceted filter values and row counts; its predicates are reproduced from the saved Design definition.
+- The columnar copies of the CDRs of the shared `reporting_rows_data`, `reporting_rows_voice` and `reporting_rows_speech` combined tables supply Design filters, chart datasets and chart rendering.
 - Compact interactive chart models and reusable preview manifests are kept in memory only (never on disk); their keys include selected datasets and revisions, NR Mode, scope, dates, filters, template definition and renderer/cache versions. Equivalent value and dataset ordering resolves to the same selection.
 
-When a workspace opens, the application removes the Dashboard caches earlier versions wrote on disk (`.dashboard-data-cache`, `.dashboard-chart-cache` and `.dashboard-cache-version.json`) and, when the selection format changed, the saved selection metadata. The Workspace **Clear cache** action clears the derived data on demand without deleting definitions, datasets, combined CDR tables, templates or generated jobs.
+When a workspace opens, the application removes the Design caches earlier versions wrote on disk (`.design-data-cache`, `.design-chart-cache` and `.design-cache-version.json`) and, when the selection format changed, the saved selection metadata. The Workspace **Clear cache** action clears the derived data on demand without deleting definitions, datasets, combined CDR tables, templates or generated jobs.
 
 Chart models are generated only when the corresponding chart is viewed or included in a requested PPT.
 
-The combined-table revision in these cache keys advances only when rows are inserted or rebuilt. Adding or filling columns (for example when another Dashboard or template needs a new field) records a separate timestamp and keeps every prepared universe valid.
+The combined-table revision in these cache keys advances only when rows are inserted or rebuilt. Adding or filling columns (for example when another Design or template needs a new field) records a separate timestamp and keeps every prepared universe valid.
 
-PPT Manage Dashboards status checks read each universe manifest directly from its fingerprint-derived path and are reused until datasets, combined rows, auto-calculated fields, mappings, templates or manifests change. Only the most recently used Dashboard snapshots keep their pandas chart frames in memory (3 by default, configurable with `DRIVETEST_ANALYZER_DASHBOARD_FRAME_CACHE_SNAPSHOTS`); older snapshots rebuild them from the combined tables on demand, which bounds memory use on smaller servers.
+PPT Designs status checks read each universe manifest directly from its fingerprint-derived path and are reused until datasets, combined rows, auto-calculated fields, mappings, templates or manifests change. Only the most recently used Design snapshots keep their pandas chart frames in memory (3 by default, configurable with `DRIVETEST_ANALYZER_DESIGN_FRAME_CACHE_SNAPSHOTS`); older snapshots rebuild them from the combined tables on demand, which bounds memory use on smaller servers.
 
 ## Filtered dataset preview
 
@@ -259,19 +259,19 @@ output/reports/reports-old/<report-name>/
 output/reports/reports-charts-old/<generation>/
 ```
 
-Dashboard PowerPoint generations use the separate `dashboard_ppt_jobs` table because they preserve a saved Dashboard identity and its exact applied definition. Each job records its CDR selection, dates, NR Mode, scope, adaptive filters, preview fingerprint and progress. Its output contains the PPTX plus persistent PNG, tooltip and Canvas-model assets:
+Design PowerPoint generations use the separate `design_ppt_jobs` table because they preserve a saved Design identity and its exact applied definition. Each job records its CDR selection, dates, NR Mode, scope, adaptive filters, preview fingerprint and progress. Its output contains the PPTX plus persistent PNG, tooltip and Canvas-model assets:
 
 ```text
-output/reports/dashboards/<timestamp - dashboard-name>/
+output/reports/designs/<timestamp - design-name>/
 ```
 
-The Dashboard jobs UI supports stop, retry, relaunch and deletion. A completed job can be reopened through Charts Panel without rerendering its charts, and its Filtered Chart Dataset replays the saved selection directly against the combined CDR table used at generation time.
+The Design jobs UI supports stop, retry, relaunch and deletion. A completed job can be reopened through Charts Panel without rerendering its charts, and its Filtered Chart Dataset replays the saved selection directly against the combined CDR table used at generation time.
 
 Both job families continue after leaving the page or signing out. A process restart marks interrupted in-process jobs as failed and retryable because the current worker model runs inside the application process.
 
 ## Import, export and server transfer
 
-Portable ZIPs can contain Application Config, Dashboard definitions, Report Templates, Auto-calculated Fields, complete workspaces or a selected Full Environment.
+Portable ZIPs can contain Application Config, Design definitions, Report Templates, Auto-calculated Fields, complete workspaces or a selected Full Environment.
 
 - Large packages are built and processed on disk rather than fully in browser memory.
 - Workspace database snapshots use SQLite-safe copy/backup behaviour, and take the columnar copies of the CDRs (`cdr-store/` beside `database.sqlite`) as they were when the snapshot was made; a copy being written meanwhile takes its place once the snapshot has them.
@@ -279,7 +279,7 @@ Portable ZIPs can contain Application Config, Dashboard definitions, Report Temp
 - Workspace replacement closes the target automatically when required.
 - Old workspace files are removed only after the replacement succeeds.
 - Full Environment import preserves imported workspace permissions, including the workspace that was active on the source.
-- Dashboard-only packages contain definitions and comments. Complete workspace and Full Environment packages can include source CDRs and generated output; regenerable Dashboard and map caches are never portability content.
+- Design-only packages contain definitions and comments. Complete workspace and Full Environment packages can include source CDRs and generated output; regenerable Design and map caches are never portability content.
 
 Server transfers use a persisted offer and resumable package reception:
 
@@ -296,7 +296,7 @@ An import that ends without recording its result is reported as failed to both s
 
 - SQLite uses WAL mode, a busy timeout and normal synchronous mode.
 - Processed CDR rows are materialised per dataset and into combined tables by CDR type.
-- PPT Dashboard filter catalogues normally come from persisted dataset profiles. If an older profile lacks a current default or added field, the application reads only the missing catalogues from combined CDR tables in one grouped pass per CDR type.
+- PPT Designer filter catalogues normally come from persisted dataset profiles. If an older profile lacks a current default or added field, the application reads only the missing catalogues from combined CDR tables in one grouped pass per CDR type.
 - Combined CDR tables are queried directly and compact Canvas models persist across restarts after being requested. Live, expanded, historical and exported charts share aggregation, hierarchy, colour, title, legend and semantic-tooltip contracts with Reports and Chart Sets.
 - Interactive Preview caches combined and filtered frames separately.
 - Database import prefers bulk database/file replacement over row-by-row queries where safe.

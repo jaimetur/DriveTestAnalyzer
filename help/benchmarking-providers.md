@@ -31,7 +31,7 @@ The adaptation is planned in seven phases. The durations are indicative: they de
 | 1. Multi-provider base | The CDR types of the providers and a field profile per CDR type; the modules read the CDR columns through the profile of the workspace. | **Done** in version 0.9.0 |
 | 2. Umlaut reader, profile and upload | The Umlaut reader (files per service, the Statistics sheet, Side1/Side2 headers, samples joined to their call), the Umlaut profile with its native names, campaign and operator detection confirmed on upload, derived columns (call key, ECI, mean radio of the call) and a CDR Field Dictionary panel. | **Done** in version 0.9.0; Umlaut CDR stays *coming soon* until a multi-operator export validates it |
 | 3. Scoring ready for Umlaut | Formulas with native names and a field picker, percentiles other than P90 and environments by the Umlaut scoring category; the Umlaut methodology is loaded when it is available. | Planned · 1 week |
-| 4. Umlaut PPT templates | PPT Dashboards templates per service and Auto-calculated Fields with Umlaut values. | Planned · 1 week |
+| 4. Umlaut PPT templates | PPT Designer templates per service and Auto-calculated Fields with Umlaut values. | Planned · 1 week |
 | 5. Non-Qualified Calls and RCA | NQ = Qualifier NOT QUALIFIED, an Umlaut call key, the Umlaut values of the DT Analyzer RCA (available in every workspace) and the Ericsson RCA by the provider's call key. | Planned · 1.5–2 weeks |
 | 6. Umlaut Network Insights | The radio of the calls from their samples, NR cells by PCI + ARFCN + distance, MIMO rank and bandwidths. | Planned · 1–1.5 weeks |
 | 7. P3 | The P3 reader, profile and content, with the same model. | Once a P3 sample is available |
@@ -82,7 +82,7 @@ The modules keep a single logic: they read the data through the profile of the w
 | Workspace Config | A "CDR Field Dictionary" panel: every concept with its provider column, conversion and values, editable and included in export, backup and restore. |
 | CDR Analysis, **Builders** and the preview | The columns exactly as they come in the files, plus a group of columns derived by DriveTest Analyzer (call key, ECI, mean radio of the call). |
 | Scoring & GAP Analysis | Only the provider’s methodologies. Formulas with native names (a field picker and quoted names, because Umlaut uses names such as "Call Setup Duration (OptionD) [s]") and percentiles other than P90. The Umlaut visual theme already exists. |
-| PPT Dashboards | The provider’s templates; for Umlaut, per service (M2M voice, OTT, Browsing, FDTT, File, YouTube, Interactivity), filtering by Umlaut values (SUCCESS, VOICE M2M MOC). |
+| PPT Designer | The provider’s templates; for Umlaut, per service (M2M voice, OTT, Browsing, FDTT, File, YouTube, Interactivity), filtering by Umlaut values (SUCCESS, VOICE M2M MOC). |
 | Non-Qualified Calls | Columns with the provider’s names (Sequence, Qualifier, Failure Indication). In Umlaut, NQ = Qualifier NOT QUALIFIED. RCA sources: the provider’s when it exists, the DriveTest Analyzer one and the Ericsson one. |
 | Network Insights | The same panels, with the radio read through the profile; whatever the provider does not bring is marked as not available. |
 | [Reporting](reporting.md) and Help | Names and texts according to the workspace’s provider. |

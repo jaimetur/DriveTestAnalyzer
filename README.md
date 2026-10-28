@@ -40,7 +40,7 @@ After login, the application opens **Help Home** by default.
 - Analyse one processed CDR in CDR Analysis.
 - Calculate and revisit NetCheck scoring and operator GAP comparisons in Scoring & GAP Analysis, with CSV and PowerPoint exports.
 - Compare RSRP/SINR, map weak-coverage and high-interference areas, and review observed sites, spectrum and network deployment in Network Insights.
-- Explore template-driven Dashboards with synchronized adaptive filters in PPT Dashboards.
+- Explore template-driven Designs with synchronized adaptive filters in PPT Designer.
 - Create temporary ad-hoc charts in Chart Builder.
 - Generate NSA/SA PowerPoint reports and standalone Chart Sets.
 - Create workspace-owned Auto-calculated Fields and apply them asynchronously to the applicable CDR tables.
@@ -72,21 +72,21 @@ CDR Analysis analyses one ready Data, Voice or Speech CDR.
 - **Charts and Scorecards**: CDF curves and grouped comparisons.
 - **Processed Metrics**: filtered/aggregated results and Word/PowerPoint exports.
 
-### PPT Dashboards
+### PPT Designer
 
-Create, save, duplicate, import and export workspace Dashboards from a Report Template, each reading the CDRs of its NR Mode (a template serves both and names the NR Mode in its titles). The editor groups the Scope, dates, default, aliased and custom Auto-calculated Field filters, which are applied, saved (Save Filters also applies them), reloaded or discarded together; the Campaign filter chooses the CDRs.
+Create, save, duplicate, import and export workspace Designs from a Report Template, each reading the CDRs of its NR Mode (a template serves both and names the NR Mode in its titles). The editor groups the Scope, dates, default, aliased and custom Auto-calculated Field filters, which are applied, saved (Save Filters also applies them), reloaded or discarded together; the Campaign filter chooses the CDRs.
 
-Each Dashboard uses the CDRs of its NR Mode (NSA or SA, set per CDR at upload and editable in the Workspace Datasets table) and of its Campaign filter that the combined CDR tables include (the Final CDR of a campaign before its Weekly and Daily CDRs, or the Active? choice); a new Dashboard follows its newest two campaigns (the newest one for Multivendor Operator_Vendor).
+Each Design uses the CDRs of its NR Mode (NSA or SA, set per CDR at upload and editable in the Workspace Datasets table) and of its Campaign filter that the combined CDR tables include (the Final CDR of a campaign before its Weekly and Daily CDRs, or the Active? choice); a new Design follows its newest two campaigns (the newest one for Multivendor Operator_Vendor).
 
-View Dashboard opens immediately and shows centred preparation progress until its navigable 16:9 slides and live Canvas charts are ready. Generate PPT uses the same prepared definition and waits for pending filter decisions.
+View Design opens immediately and shows centred preparation progress until its navigable 16:9 slides and live Canvas charts are ready. Generate PPT uses the same prepared definition and waits for pending filter decisions.
 
-Dashboard queries read the workspace's combined CDR tables directly; reusable selection manifests and chart models avoid recalculating unchanged work, and a low-priority background worker pre-caches each Dashboard's standard universes (all CDRs and the newest one to four per type) without blocking opening or exporting.
+Design queries read the workspace's combined CDR tables directly; reusable selection manifests and chart models avoid recalculating unchanged work, and a low-priority background worker pre-caches each Design's standard universes (all CDRs and the newest one to four per type) without blocking opening or exporting.
 
-See [PPT Dashboards Help](help/ppt-dashboards.md) for the operational workflow and [Workspace Config → Report Template reference](help/workspace-config.md#report-template-reference) for template authoring, supported chart types and examples.
+See [PPT Designer Help](help/ppt-designer.md) for the operational workflow and [Workspace Config → Report Template reference](help/workspace-config.md#report-template-reference) for template authoring, supported chart types and examples.
 
 ### Reporting
 
-Reporting schedules **Reporting Jobs** that collect a Summary CDR Analysis, a Summary Network Insights, Dashboard PPTs and Scoring PPTs, each configured with the options of its own module, run them once or daily, weekly or monthly and email the artifacts with a description of each one and its filters. SMTP delivery is configured in Application Config → Email Delivery. Reporting is available to the users whose Modules Profile includes it (Super Admin → Modules Profiles).
+Reporting schedules **Reporting Jobs** that collect a Summary CDR Analysis, a Summary Network Insights, Design PPTs and Scoring PPTs, each configured with the options of its own module, run them once or daily, weekly or monthly and email the artifacts with a description of each one and its filters. SMTP delivery is configured in Application Config → Email Delivery. Reporting is available to the users whose Modules Profile includes it (Super Admin → Modules Profiles).
 
 ### PPT Reporting (old)
 
@@ -111,7 +111,7 @@ Export CSV tables or editable PowerPoint matrices and charts. See [Scoring & GAP
 
 ### Network Insights
 
-Analyse the network behind the measured performance from the radio fields of ready Data, Voice and Speech CDRs: RSRP and SINR distributions and quality classes per Operator, grouped by Campaign, Region, City or CDR type, with changes between the two latest campaigns; LTE+NR shows LTE and NR in separate sections. Coverage and interference maps locate grid areas below separate configurable LTE and NR thresholds. Every Multivendor Mapping and Network Inventory (Cell Configuration KMZ packages included) is a dated inventory snapshot: Serving Cells measures the distance from each sample to its serving site, the overshooting samples and cells and the share hosted by another network, 5G Availability finds the 5G sites whose samples get no NR, Network Snapshot compares the snapshots, the owner × host network matrix and the inventory quality, Cluster Sites Density calculates sites per km² and inter-site distances per cluster or region and also lets users select observed CDR sites/cells or complete inventory sites/cells per operator, Spectrum compares licensed holdings (configured in Workspace Config) with the spectrum deployed in the snapshot and the bands observed in the measurements, and Network Deployment counts the sites and cells of each owner network by host network, RAN vendor, technology, band, eMOCN scenario, region, cluster and more, groups Region and Cluster by imported polygon names, falling back to inventory fields when polygons are absent, exports each grouped table to CSV, and offers side-by-side Vodafone and Three Observed Sites/Cells (from CDRs) and Full Sites/Cells Inventory tables with Excel-style column filters, the latter of complete mapping rows filtered by Operator, Vendor, Region, City and Technology, with highlighted operator/vendor/location/technology/cluster fields, complete source attributes, individual CSV exports and Export All to CSV for all deployment views (`_VF`, `_3` or `_VF_3` file suffixes). Workspaces with NSA Report Templates also receive an NSA RF Quality Report Template and Dashboard with RSRP/SINR CDF and bar slides. See [Network Insights Help](help/network-insights.md).
+Analyse the network behind the measured performance from the radio fields of ready Data, Voice and Speech CDRs: RSRP and SINR distributions and quality classes per Operator, grouped by Campaign, Region, City or CDR type, with changes between the two latest campaigns; LTE+NR shows LTE and NR in separate sections. Coverage and interference maps locate grid areas below separate configurable LTE and NR thresholds. Every Multivendor Mapping and Network Inventory (Cell Configuration KMZ packages included) is a dated inventory snapshot: Serving Cells measures the distance from each sample to its serving site, the overshooting samples and cells and the share hosted by another network, 5G Availability finds the 5G sites whose samples get no NR, Network Snapshot compares the snapshots, the owner × host network matrix and the inventory quality, Cluster Sites Density calculates sites per km² and inter-site distances per cluster or region and also lets users select observed CDR sites/cells or complete inventory sites/cells per operator, Spectrum compares licensed holdings (configured in Workspace Config) with the spectrum deployed in the snapshot and the bands observed in the measurements, and Network Deployment counts the sites and cells of each owner network by host network, RAN vendor, technology, band, eMOCN scenario, region, cluster and more, groups Region and Cluster by imported polygon names, falling back to inventory fields when polygons are absent, exports each grouped table to CSV, and offers side-by-side Vodafone and Three Observed Sites/Cells (from CDRs) and Full Sites/Cells Inventory tables with Excel-style column filters, the latter of complete mapping rows filtered by Operator, Vendor, Region, City and Technology, with highlighted operator/vendor/location/technology/cluster fields, complete source attributes, individual CSV exports and Export All to CSV for all deployment views (`_VF`, `_3` or `_VF_3` file suffixes). Workspaces with NSA Report Templates also receive an NSA RF Quality Report Template and Design with RSRP/SINR CDF and bar slides. See [Network Insights Help](help/network-insights.md).
 
 ### Chart Builder
 
@@ -130,7 +130,7 @@ Build read-only SQL in Assistance Mode or SQL Mode, inspect paginated results an
 
 ### Ticket Center
 
-Report the bugs of the tool, suggest improvements and ask for new features in tickets of their type, with their screenshots (pasted, dropped or chosen), the version and the date, a priority from P1 to P5 and the module they are about, and follow them with comments; super-admins attend them until they are resolved. A dashboard counts them by type and status, the open ones by priority and module, and those created and resolved each week. See [Ticket Center Help](help/ticket-center.md).
+Report the bugs of the tool, suggest improvements and ask for new features in tickets of their type, with their screenshots (pasted, dropped or chosen), the version and the date, a priority from P1 to P5 and the module they are about, and follow them with comments; super-admins attend them until they are resolved. A design counts them by type and status, the open ones by priority and module, and those created and resolved each week. See [Ticket Center Help](help/ticket-center.md).
 
 ### App Logs
 
@@ -143,7 +143,7 @@ Report the bugs of the tool, suggest improvements and ask for new features in ti
 ### Application Config and Workspace Config
 
 - **Application Config** stores runtime settings that apply across all workspaces. `user-editor`, `admin` and `super-admin` can use Config → Application Config; `user-viewer` cannot.
-- **`user-viewer`** is read-only for the workspace: it explores datasets and generates jobs (Dashboard PPTs, Scoring, Network Insights, queries and reports) but cannot upload, delete, reprocess, map or clear datasets, or save, rename or delete Dashboards, saved queries and Scoring jobs.
+- **`user-viewer`** is read-only for the workspace: it explores datasets and generates jobs (Design PPTs, Scoring, Network Insights, queries and reports) but cannot upload, delete, reprocess, map or clear datasets, or save, rename or delete Designs, saved queries and Scoring jobs.
 - **Workspace Config** is selected from the Config dropdown and groups PPT Templates Management, Operator Mappings, Vendor Mappings, Spectrum Holdings and Serving Networks for the active workspace. Its Help chapter contains the PPT Templates Editor guide and complete Report Template reference. It uses Application Config's teal/navy palette and a Page Sections navigator. `user-editor`, `admin` and `super-admin` can manage these panels when a workspace is open; `user-viewer` cannot.
 - These scopes remain separate: Application Config values are global, while templates and chart mappings stay with their workspace and use the existing portable package formats.
 
@@ -177,7 +177,7 @@ See [Product overview](help/overview.md) for a detailed tour of every module and
 2. Upload the required source files in Workspace.
 3. Confirm their types and wait for **Processed**.
 4. Optionally map VFUK/3UK vendor data.
-5. Use CDR Analysis, PPT Dashboards, Chart Builder or Reporting.
+5. Use CDR Analysis, PPT Designer, Chart Builder or Reporting.
 6. Review long-running work in the floating task cards and **Reports and Charts Jobs**.
 7. Check App Logs if an operation fails.
 
@@ -238,8 +238,8 @@ Local storage roots can be set in [`storage-paths.conf`](storage-paths.conf). En
 | `APP_CONFIG_DIR` | Global database, users, permissions and transfer offers. |
 | `APP_DATA_DIR` | Workspace registry, workspaces, Report Templates and transfer packages. |
 | `APP_ASSETS_DIR` | Bundled assets and PowerPoint masters. |
-| `DRIVETEST_ANALYZER_REPORT_CHART_RENDERER` | Report, Chart Set and preview renderer. Defaults to `dashboard-canvas`; set `pil` to use the legacy server-side painter. |
-| `DRIVETEST_ANALYZER_DASHBOARD_FRAME_CACHE_SNAPSHOTS` | Recently used Dashboard snapshots that keep chart data frames in memory. Defaults to `3`; lower it on servers with little RAM. |
+| `DRIVETEST_ANALYZER_REPORT_CHART_RENDERER` | Report, Chart Set and preview renderer. Defaults to `canvas`; set `pil` to use the legacy server-side painter. |
+| `DRIVETEST_ANALYZER_DESIGN_FRAME_CACHE_SNAPSHOTS` | Recently used Design snapshots that keep chart data frames in memory. Defaults to `3`; lower it on servers with little RAM. |
 | `TZ` | Container timezone, for example `Europe/Madrid`. |
 | `HOST_CONFIG_DIR` | Host path mounted as persistent configuration. |
 | `HOST_DATA_DIR` | Host path mounted as persistent data. |
@@ -334,7 +334,7 @@ CONTAINER_NAME=drivetest-analyzer
             ├── input/
             └── output/
                 └── reports/
-                    ├── dashboards/          # PPT Dashboards PowerPoint jobs
+                    ├── designs/          # PPT Designer PowerPoint jobs
                     ├── cdr-analysis/        # CDR Analysis exports
                     ├── network-insights/    # Network Insights exports
                     ├── reporting-jobs/      # Reporting Job runs and their artifacts
@@ -388,7 +388,7 @@ DriveTestAnalyzer/
 ├── assets/autocalculated-fields/             # Auto-calculated Fields every new workspace starts with
 ├── assets/scoring-methodologies/             # Scoring methodologies added to every workspace
 ├── assets/ppt-templates/                     # Report Templates added to every workspace
-├── assets/ppt-dashboards/                    # Dashboards added to every workspace
+├── assets/ppt-designer/                    # Designs added to every workspace
 ├── assets/scoring-report-configurations/     # Scoring report configurations added to every workspace
 ├── assets/query-builder-queries/             # Query Builder queries added to every workspace
 ├── assets/reporting-jobs/                    # Reporting Jobs added to every workspace
@@ -410,7 +410,7 @@ DriveTestAnalyzer/
 
 ## Current limitations
 
-- General analysis caches remain process-local; PPT Dashboard preview manifests and report-faithful compact chart models persist beside each workspace database and survive application restarts. Dashboard data itself is queried directly from the combined CDR tables.
+- General analysis caches remain process-local; PPT Designer preview manifests and report-faithful compact chart models persist beside each workspace database and survive application restarts. Design data itself is queried directly from the combined CDR tables.
 - SQLite is the current persistence model and may not suit very large concurrent deployments.
 - Smart Orchestrator Logs reporting is visible but not implemented.
 - Scoring starts from NetCheck 2026 Q2 Drive City/Road rules. Walk is supported at zero initial points with City-derived thresholds that require validation before allocation; custom environments can be configured using supported CDR fields and formula operations.
@@ -428,7 +428,7 @@ DriveTestAnalyzer/
 - [CDR Analysis](help/datasets-analysis.md)
 - [Network Insights](help/network-insights.md)
 - [Non-Qualified Calls](help/non-qualified-calls.md)
-- [PPT Dashboards](help/ppt-dashboards.md)
+- [PPT Designer](help/ppt-designer.md)
 - [Scoring & GAP Analysis](help/scoring-gap-analysis.md)
 - [Reporting](help/reporting.md)
 - [PPT Reporting (old)](help/ppt-reporting-old.md)

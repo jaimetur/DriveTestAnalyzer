@@ -24,10 +24,10 @@ KEY_KINDS = {
     'vendor': 'vendor', 'vendors': 'vendor', 'vendors_only': 'vendor',
 }
 # Workspace settings that keep filters: saved Scoring report configurations, the Scoring calculation,
-# the Non-Qualified Calls filters and the Dashboards. CDR Analysis keeps the filters of each CDR as a query string.
+# the Non-Qualified Calls filters and the Designs. CDR Analysis keeps the filters of each CDR as a query string.
 FILTER_STATE_KEYS = (
     'scoring_report_configurations', 'scoring_calculation_selection_v1', 'nq_calls_filters',
-    'ppt_dashboards_v2', 'ppt_dashboard_sets_v1',
+    'ppt_designs_v2', 'ppt_design_sets_v1',
 )
 CDR_ANALYSIS_STATE_KEY = 'datasets_analysis_selection_v1'
 _ALL_SUFFIX = re.compile(r'^(?P<name>.+?)\s+- All(?: Vendors)?$', re.IGNORECASE)

@@ -1,14 +1,14 @@
-/* The Dashboard Designer (ticket #26): the Design mode of the PPT Dashboard viewer.
+/* The Designer (ticket #26): the Designer of the PPT Designer viewer.
 
-   In Design the slides at the left are the slides of the Design (hidden and optional ones included), the elements of the
+   In slide set the slides at the left are the slides of the slide set (hidden and optional ones included), the elements of the
    slide shown can be chosen, moved between the places of its layout and changed in the panel at the right, and every
-   change is laid out at once by the server on the CDRs the Dashboard already prepared (POST /slides/preview). Changes go
-   to the template (Template scope: every Dashboard that follows it) or to this Dashboard only (This Dashboard scope:
-   kept as its differences from the template, see dashboard_design.py). Nothing is stored until Save. */
+   change is laid out at once by the server on the CDRs the Design already prepared (POST /slides/preview). Changes go
+   to the template (Template scope: every Design that follows it) or to this Design only (This Design scope:
+   kept as its differences from the template, see design_slides.py). Nothing is stored until Save. */
 (() => {
   'use strict';
   const $ = id => document.getElementById(id);
-  const viewer = () => window.dashboardViewer;
+  const viewer = () => window.designViewer;
   const api = (path, method = 'GET', body) => viewer().api(path, method, body);
   const clone = value => (value === undefined ? undefined : structuredClone(value));
   const h = (tag, props = {}, ...children) => {
@@ -30,7 +30,7 @@
   const report = error => {
     if (error?.name === 'AbortError') return;
     viewer()?.status?.(error.message);
-    window.showInfoDialog?.(error.message, {title: 'Dashboard Designer', tone: 'error'});
+    window.showInfoDialog?.(error.message, {title: 'Designer', tone: 'error'});
   };
   const guarded = fn => async (...args) => { try { return await fn(...args); } catch (error) { report(error); return undefined; } };
 
@@ -44,27 +44,27 @@
   const LABEL_POSITIONS = [['', 'Default'], ['none', 'None'], ['top', 'Top'], ['up', 'Up'], ['middle', 'Middle'], ['down', 'Down']];
   const STRUCTURAL = {title: 'Title Slide', transition: 'Transition Slide', end: 'End Slide'};
   const STRUCTURAL_LAYOUTS = {title: 'Title Page', transition: 'Transition', end: 'Black logo end slide'};
-  // The fields the titles and text boxes can name: the NR Mode and the selection of the Dashboard (dashboard_design.py).
-  const BUILT_IN_TOKENS = ['{NR Mode}', '{NR Mode Name}', '{Dashboard}', '{Scope}', '{Campaigns}', '{Operators}', '{Vendors}', '{Regions}', '{Clusters}', '{Cities}'];
+  // The fields the titles and text boxes can name: the NR Mode and the selection of the Design (design_slides.py).
+  const BUILT_IN_TOKENS = ['{NR Mode}', '{NR Mode Name}', '{Design}', '{Scope}', '{Campaigns}', '{Operators}', '{Vendors}', '{Regions}', '{Clusters}', '{Cities}'];
   const DEFAULT_LAYOUT = 'Title + 1 rows + 1 columns + comments down';
 
   const state = {
-    dashboardId: '', info: null, active: false, layouts: null, fields: null,
+    designId: '', info: null, active: false, layouts: null, fields: null,
     template: null, slide_set: null, overrides: null, report: null, summary: null, detached: false,
-    rights: {dashboard: false, template: false}, scope: 'dashboard',
-    templateDirty: false, dashboardDirty: false, keepTemplateChanges: false,
+    rights: {design: false, template: false}, scope: 'design',
+    templateDirty: false, designDirty: false, keepTemplateChanges: false,
     history: [], future: [], slide: '', element: '', tab: 'slide',
     queue: Promise.resolve(), busy: 0, clipboard: null, dragSlide: '', dragElement: '',
-    // The token of the slides laid out from the Design shown, and a count of the data prepared (for the slide list).
+    // The token of the slides laid out from the slide set shown, and a count of the data prepared (for the slide list).
     syncedToken: '', generation: 0,
     // On a phone the panel floats over the slide: folded until a chart is chosen.
     folded: window.matchMedia?.('(max-width: 900px)').matches || false,
   };
 
   // ------------------------------------------------------------------
-  // The Design of the open Dashboard
+  // The slide set of the open Design
   // ------------------------------------------------------------------
-  const dirty = () => state.templateDirty || state.dashboardDirty || state.keepTemplateChanges;
+  const dirty = () => state.templateDirty || state.designDirty || state.keepTemplateChanges;
   const editedSlides = () => state.slide_set?.slides || [];
   const templateSlides = () => state.template?.slides || [];
   const findSlide = (slide_set, id) => (slide_set?.slides || []).find(slide => slide.id === id) || null;
@@ -79,13 +79,13 @@
   const shownElement = () => findElement(state.slide_set, state.element)?.element || null;
   const slideKind = slide => slide?.kind || 'content';
   const isTemplateSlide = slide => Boolean(slide) && slide.origin === 'template' && Boolean(findSlide(state.template, slide.id));
-  const isLocalElement = element => element?.origin === 'dashboard';
+  const isLocalElement = element => element?.origin === 'design';
   const layoutOf = name => (state.layouts || []).find(layout => layout.name === name) || null;
   // The places of a slide: those of its free layout (Adjust places), else those of its layout.
   const placesOf = slide => (Array.isArray(slide?.options?.geometry) && slide.options.geometry.length ? slide.options.geometry : layoutOf(slide?.layout)?.places || []);
   const placeOf = (element, index) => (Number.isInteger(element.place) ? element.place : index);
   const visibleElements = slide => (slide?.elements || []).filter(element => !element.hidden);
-  const dashboardCount = () => (state.info?.template?.dashboards || []).length;
+  const designCount = () => (state.info?.template?.designs || []).length;
   const editableSlideSet = () => (state.scope === 'template' ? state.template : state.slide_set);
   const parameters = () => (state.active ? state.template?.parameters || state.slide_set?.parameters : state.info?.slide_set?.parameters) || [];
 
@@ -97,35 +97,35 @@
     state.report = info.report;
     state.summary = info.summary;
     state.detached = Boolean(info.detached);
-    state.rights = info.rights || {dashboard: false, template: false};
-    state.templateDirty = state.dashboardDirty = state.keepTemplateChanges = false;
+    state.rights = info.rights || {design: false, template: false};
+    state.templateDirty = state.designDirty = state.keepTemplateChanges = false;
     state.history = []; state.future = [];
-    if (state.detached || !state.rights.template) state.scope = 'dashboard';
-    else if (!state.rights.dashboard) state.scope = 'template';
+    if (state.detached || !state.rights.template) state.scope = 'design';
+    else if (!state.rights.design) state.scope = 'template';
   }
 
   async function loadInfo(id) {
     try {
       const info = await api(`/${encodeURIComponent(id)}/slides`);
-      if (state.dashboardId !== id || state.active) return;
+      if (state.designId !== id || state.active) return;
       state.info = info;
     } catch (_error) {
-      if (state.dashboardId === id) state.info = null;
+      if (state.designId === id) state.info = null;
     }
     syncDesignerButton();
     renderParameterValues();
   }
 
   // ------------------------------------------------------------------
-  // Laying out a Design being edited (the server previews it on the prepared CDRs)
+  // Laying out a slide set being edited (the server previews it on the prepared CDRs)
   // ------------------------------------------------------------------
   function preview(body) {
     const run = async () => {
       const token = viewer().state().prepared?.token;
-      if (!token) throw new Error('The Dashboard is not prepared yet.');
+      if (!token) throw new Error('The Design is not prepared yet.');
       setBusy(1);
       try {
-        const result = await api('/slides/preview', 'POST', {token, dashboard_id: viewer().state().activeId, ...body});
+        const result = await api('/slides/preview', 'POST', {token, design_id: viewer().state().activeId, ...body});
         state.slide_set = result.slide_set;
         state.overrides = result.overrides;
         state.report = result.report;
@@ -147,7 +147,7 @@
     overrides: state.overrides,
   });
 
-  // The unsaved Design is kept on the server as a draft of this user (Dashboard Design Drafts), a moment after each change.
+  // The unsaved slide set is kept on the server as a draft of this user (Design slide set Drafts), a moment after each change.
   let draftTimer = 0;
   function scheduleDraft() {
     clearTimeout(draftTimer);
@@ -157,7 +157,7 @@
       if (!state.active || !dirty() || viewer().state().activeId !== id) return;
       api(`/${encodeURIComponent(id)}/slides/draft`, 'PUT', {state: {
         template: state.templateDirty ? state.template : null, slide_set: state.slide_set, overrides: state.overrides,
-        templateDirty: state.templateDirty, dashboardDirty: state.dashboardDirty, keepTemplateChanges: state.keepTemplateChanges,
+        templateDirty: state.templateDirty, designDirty: state.designDirty, keepTemplateChanges: state.keepTemplateChanges,
         template_updated_at: state.info?.template?.updated_at || '', scope: state.scope, slide: state.slide,
       }}).catch(() => undefined);
     }, 1200);
@@ -171,34 +171,34 @@
     const when = result.updated_at ? new Date(result.updated_at).toLocaleString() : 'before';
     const stale = draft.templateDirty && draft.template_updated_at && draft.template_updated_at !== state.info?.template?.updated_at;
     const choice = await window.showConfirmDialog(
-      `You have changes of this Design that were not saved (${when}).${stale ? ' The template changed since: saving them would replace those changes, so the save will ask you to reload first.' : ''}`,
-      {title: 'Unsaved Design', confirmLabel: 'Restore', cancelLabel: 'Discard them'});
+      `You have changes in the Designer that were not saved (${when}).${stale ? ' The template changed since: saving them would replace those changes, so the save will ask you to reload first.' : ''}`,
+      {title: 'Unsaved changes', confirmLabel: 'Restore', cancelLabel: 'Discard them'});
     if (choice !== true && choice !== 'confirm') { await forgetDraft(id, true); return false; }
     state.history.push(snapshotState());
     if (draft.templateDirty && draft.template) { state.template = draft.template; state.templateDirty = true; state.info.template.updated_at = draft.template_updated_at || state.info.template.updated_at; }
     if (draft.slide_set) state.slide_set = draft.slide_set;
     if (draft.overrides) state.overrides = draft.overrides;
-    state.dashboardDirty = Boolean(draft.dashboardDirty);
+    state.designDirty = Boolean(draft.designDirty);
     state.keepTemplateChanges = Boolean(draft.keepTemplateChanges);
-    if (draft.scope && (draft.scope === 'dashboard' ? state.rights.dashboard : state.rights.template && !state.detached)) state.scope = draft.scope;
+    if (draft.scope && (draft.scope === 'design' ? state.rights.design : state.rights.template && !state.detached)) state.scope = draft.scope;
     if (draft.slide && findSlide(state.slide_set, draft.slide)) state.slide = draft.slide;
     return true;
   }
 
   const snapshotState = () => ({
     template: clone(state.template), slide_set: clone(state.slide_set), overrides: clone(state.overrides),
-    templateDirty: state.templateDirty, dashboardDirty: state.dashboardDirty, keepTemplateChanges: state.keepTemplateChanges,
+    templateDirty: state.templateDirty, designDirty: state.designDirty, keepTemplateChanges: state.keepTemplateChanges,
     slide: state.slide, element: state.element,
   });
   function restoreState(saved) {
     Object.assign(state, {
       template: saved.template, slide_set: saved.slide_set, overrides: saved.overrides, templateDirty: saved.templateDirty,
-      dashboardDirty: saved.dashboardDirty, keepTemplateChanges: saved.keepTemplateChanges, slide: saved.slide, element: saved.element,
+      designDirty: saved.designDirty, keepTemplateChanges: saved.keepTemplateChanges, slide: saved.slide, element: saved.element,
     });
   }
 
-  // One change of the Design, in the scope chosen: ``mutate`` changes the Design given (the template, or the Design of
-  // this Dashboard) and returns false to give up. Changes wait for the one before to be laid out.
+  // One change of the slide set, in the scope chosen: ``mutate`` changes the slide set given (the template, or the slide set of
+  // this Design) and returns false to give up. Changes wait for the one before to be laid out.
   async function edit(mutate, {slide, element, scope} = {}) {
     await state.queue.catch(() => undefined);
     const target = scope || state.scope;
@@ -206,7 +206,7 @@
     const slide_set = clone(target === 'template' ? state.template : state.slide_set);
     if (!slide_set || mutate(slide_set, target) === false) return;
     if (target === 'template') { state.template = slide_set; state.templateDirty = true; }
-    else { state.slide_set = slide_set; state.dashboardDirty = true; }
+    else { state.slide_set = slide_set; state.designDirty = true; }
     state.history.push(before);
     if (state.history.length > 80) state.history.shift();
     state.future = [];
@@ -216,7 +216,7 @@
     try {
       await preview(target === 'template' ? previewBody() : {...previewBody(), slide_set: state.slide_set});
     } catch (_error) {
-      // Refused (reported by preview): the Design goes back to what it was.
+      // Refused (reported by preview): the slide set goes back to what it was.
       state.history.pop();
       restoreState(before);
       renderDesigner();
@@ -241,12 +241,12 @@
   }
 
   // ------------------------------------------------------------------
-  // Entering, saving and leaving Design
+  // Entering, saving and leaving the Designer
   // ------------------------------------------------------------------
   async function enterDesigner() {
     const {activeId, prepared} = viewer().state();
     if (!activeId) return;
-    if (!prepared?.token) throw new Error('Wait until the Dashboard is ready, then open Design.');
+    if (!prepared?.token) throw new Error('Wait until the Design is ready, then open the Designer.');
     setBusy(1);
     try {
       const [info, layouts] = await Promise.all([
@@ -256,7 +256,7 @@
       state.layouts = layouts.layouts;
       loadSlideSet(info);
     } finally { setBusy(-1); }
-    if (!state.rights.dashboard && !state.rights.template) throw new Error('You cannot change the Design of this Dashboard or of its template.');
+    if (!state.rights.design && !state.rights.template) throw new Error('You cannot change the slides of this Design or of its template.');
     state.active = true;
     state.syncedToken = prepared.token;
     thumbnails.clear();
@@ -269,9 +269,9 @@
     renderDesigner();
     loadFields(prepared.token);
     const restored = await offerDraft(activeId);
-    // Laid out again with the ids of the Design (and the draft restored), so each element on the slide is known.
-    await preview(restored && state.dashboardDirty ? {...previewBody(), slide_set: state.slide_set} : previewBody());
-    viewer().status('Design: changes are laid out at once and stored when you save them.');
+    // Laid out again with the ids of the slide set (and the draft restored), so each element on the slide is known.
+    await preview(restored && state.designDirty ? {...previewBody(), slide_set: state.slide_set} : previewBody());
+    viewer().status('Designer: changes are laid out at once and stored when you save them.');
   }
 
   async function loadFields(token) {
@@ -286,16 +286,16 @@
     clearTimeout(draftTimer);
     const id = viewer().state().activeId;
     if (state.templateDirty) {
-      const others = (state.info.template.dashboards || []).filter(item => item.id !== id);
+      const others = (state.info.template.designs || []).filter(item => item.id !== id);
       const message = others.length
-        ? `Save the template “${state.info.template.name}”? It also changes ${others.length} other Dashboard${others.length === 1 ? '' : 's'}: ${others.map(item => item.name).join(', ')}.`
+        ? `Save the template “${state.info.template.name}”? It also changes ${others.length} other Design${others.length === 1 ? '' : 's'}: ${others.map(item => item.name).join(', ')}.`
         : `Save the template “${state.info.template.name}”?`;
       if (!await window.showConfirmDialog(message, {title: 'Save template', confirmLabel: 'Save'})) return;
     }
     const body = {};
     if (state.templateDirty) Object.assign(body, {template_slide_set: state.template, template_updated_at: state.info.template.updated_at});
-    if (state.detached && state.dashboardDirty) body.slide_set = state.slide_set;
-    else if (state.dashboardDirty) body.overrides = state.overrides;
+    if (state.detached && state.designDirty) body.slide_set = state.slide_set;
+    else if (state.designDirty) body.overrides = state.overrides;
     if (state.keepTemplateChanges) Object.assign(body, {keep_template_changes: true, overrides: state.overrides});
     setBusy(1);
     let info;
@@ -306,7 +306,7 @@
     state.element = findElement(state.slide_set, element) ? element : '';
     viewer().storeSlides(id, storedSlideFields(info));
     renderDesigner();
-    viewer().status('Design saved.');
+    viewer().status('Slides saved.');
   }
   const hasOverrides = overrides => Object.entries(overrides || {}).some(([key, value]) => key !== 'version'
     && (Array.isArray(value) ? value.length : value && typeof value === 'object' && Object.keys(value).length));
@@ -317,7 +317,7 @@
 
   async function discardSlides({ask = true} = {}) {
     await state.queue.catch(() => undefined);
-    if (ask && dirty() && !await window.showConfirmDialog('Discard the changes of the Design that are not saved?', {title: 'Discard changes', confirmLabel: 'Discard', tone: 'danger'})) return false;
+    if (ask && dirty() && !await window.showConfirmDialog('Discard the changes that are not saved?', {title: 'Discard changes', confirmLabel: 'Discard', tone: 'danger'})) return false;
     const id = viewer().state().activeId;
     clearTimeout(draftTimer);
     await forgetDraft(id, true);
@@ -332,8 +332,8 @@
   async function exitDesigner({force = false} = {}) {
     if (!state.active) return true;
     if (!force && dirty()) {
-      const choice = await window.showConfirmDialog('The Design has changes that are not saved.', {
-        title: 'Close Design', confirmLabel: 'Save', secondaryLabel: 'Discard', cancelLabel: 'Keep designing',
+      const choice = await window.showConfirmDialog('The Designer has changes that are not saved.', {
+        title: 'Close Designer', confirmLabel: 'Save', secondaryLabel: 'Discard', cancelLabel: 'Keep designing',
       });
       if (choice === 'confirm' || choice === true) await saveSlides();
       else if (choice === 'secondary') await discardSlides({ask: false});
@@ -350,7 +350,7 @@
     closeMenus();
     if (!force) {
       viewer().renderSlide();
-      if (state.dashboardId) loadInfo(state.dashboardId);
+      if (state.designId) loadInfo(state.designId);
     }
     return true;
   }
@@ -407,13 +407,13 @@
     const slide = findSlide(editableSlideSet(), slideId);
     if (!slide) return;
     if (state.scope === 'template') {
-      const others = dashboardCount();
-      if (!await window.showConfirmDialog(`Delete the slide “${slide.title || STRUCTURAL[slideKind(slide)] || 'slide'}” from the template?${others > 1 ? ` The ${others} Dashboards of the template lose it.` : ''}`, {title: 'Delete slide', confirmLabel: 'Delete', tone: 'danger'})) return;
+      const others = designCount();
+      if (!await window.showConfirmDialog(`Delete the slide “${slide.title || STRUCTURAL[slideKind(slide)] || 'slide'}” from the template?${others > 1 ? ` The ${others} Designs of the template lose it.` : ''}`, {title: 'Delete slide', confirmLabel: 'Delete', tone: 'danger'})) return;
     }
     await edit(slide_set => {
       const index = slide_set.slides.findIndex(item => item.id === slideId);
       if (index < 0 || slide_set.slides.filter(item => !item.hidden && !item.optional_off).length <= 1) {
-        report(new Error('A Dashboard needs at least one slide.'));
+        report(new Error('A Design needs at least one slide.'));
         return false;
       }
       slide_set.slides.splice(index, 1);
@@ -425,12 +425,12 @@
     const slide = findSlide(slide_set, slideId);
     if (!slide) return false;
     if (hidden) slide.hidden = true; else delete slide.hidden;
-  }, {scope: 'dashboard'});
+  }, {scope: 'design'});
   const setOptionalShown = (slideId, shown) => edit(slide_set => {
     const slide = findSlide(slide_set, slideId);
     if (!slide) return false;
     if (shown) delete slide.optional_off; else slide.optional_off = true;
-  }, {scope: 'dashboard'});
+  }, {scope: 'design'});
   const setOptional = (slideId, optional) => edit(slide_set => {
     const slide = findSlide(slide_set, slideId);
     if (!slide) return false;
@@ -452,18 +452,18 @@
     if (!original || index < 0) return false;
     const local = (slide_set.slides[index].elements || []).filter(isLocalElement);
     slide_set.slides[index] = {...clone(original), elements: [...clone(original.elements || []), ...local]};
-  }, {scope: 'dashboard'});
+  }, {scope: 'design'});
   const resetElement = elementId => edit(slide_set => {
     const original = findElement(state.template, elementId)?.element;
     const found = findElement(slide_set, elementId);
     if (!original || !found) return false;
     found.slide.elements[found.slide.elements.indexOf(found.element)] = clone(original);
-  }, {scope: 'dashboard'});
+  }, {scope: 'design'});
   async function applyToTemplate({slideId = '', elementId = ''} = {}) {
     if (!state.rights.template) return;
     await state.queue.catch(() => undefined);
-    const others = dashboardCount();
-    if (!await window.showConfirmDialog(`Make this change part of the template?${others > 1 ? ` The ${others} Dashboards of the template take it.` : ''}`, {title: 'Apply to template', confirmLabel: 'Apply'})) return;
+    const others = designCount();
+    if (!await window.showConfirmDialog(`Make this change part of the template?${others > 1 ? ` The ${others} Designs of the template take it.` : ''}`, {title: 'Apply to template', confirmLabel: 'Apply'})) return;
     const before = snapshotState();
     const template = clone(state.template);
     const clean = item => { const copy = clone(item); for (const mark of ['origin', 'overridden', 'hidden', 'optional_off']) delete copy[mark]; return copy; };
@@ -474,7 +474,7 @@
       const index = template.slides.findIndex(item => item.id === slideId);
       if (index >= 0) template.slides[index] = {...cleaned, optional: template.slides[index].optional};
       else {
-        // A slide of this Dashboard: after the slide before it, as here.
+        // A slide of this Design: after the slide before it, as here.
         const order = editedSlides().map(item => item.id);
         const previous = order.slice(0, order.indexOf(slideId)).reverse().find(id => template.slides.some(item => item.id === id));
         const at = previous ? template.slides.findIndex(item => item.id === previous) + 1 : 0;
@@ -493,7 +493,7 @@
     state.future = [];
     state.template = template;
     state.templateDirty = true;
-    state.dashboardDirty = true;
+    state.designDirty = true;
     await preview({...previewBody(), slide_set: state.slide_set});
   }
 
@@ -505,7 +505,7 @@
     return edit(slide_set => {
       const found = findElement(slide_set, elementId);
       if (!found) {
-        report(new Error('This element is only in this Dashboard: change it in This Dashboard scope, or apply it to the template first.'));
+        report(new Error('This element is only in this Design: change it in This Design scope, or apply it to the template first.'));
         return false;
       }
       Object.assign(found.element, values);
@@ -541,7 +541,7 @@
         report(new Error('A slide keeps at least one element: delete the slide instead.'));
         return false;
       }
-      if (state.scope === 'dashboard' && !state.detached && !isLocalElement(found.element)) found.element.hidden = true;
+      if (state.scope === 'design' && !state.detached && !isLocalElement(found.element)) found.element.hidden = true;
       else found.slide.elements.splice(found.slide.elements.indexOf(found.element), 1);
       state.element = '';
     });
@@ -614,8 +614,8 @@
         taken.add(element.place);
       }
       for (const element of shown.slice(capacity).map(([, item]) => item)) {
-        // Left out of the layout: removed, or hidden here when it is an element of the template (This Dashboard).
-        if (state.scope === 'dashboard' && !state.detached && !isLocalElement(element)) element.hidden = true;
+        // Left out of the layout: removed, or hidden here when it is an element of the template (This Design).
+        if (state.scope === 'design' && !state.detached && !isLocalElement(element)) element.hidden = true;
         else target.elements.splice(target.elements.indexOf(element), 1);
       }
       return undefined;
@@ -646,39 +646,39 @@
       type: 'button', class: `ds-design-scope${state.scope === scope ? ' is-active' : ''}`, 'aria-pressed': String(state.scope === scope),
       title, disabled: !enabled, onclick: () => { state.scope = scope; renderDesigner(); },
     }, label);
-    const count = dashboardCount();
+    const count = designCount();
     const differences = Object.values(state.summary || {}).reduce((total, value) => total + Number(value || 0), 0);
     const changed = (state.report?.template_changed || []).length;
     bar.replaceChildren(
       h('div', {class: 'ds-design-bar-group'},
-        h('span', {class: 'ds-design-bar-label', text: 'Design'}),
+        h('span', {class: 'ds-design-bar-label', text: 'slide set'}),
         state.detached
-          ? h('span', {class: 'ds-design-pill ds-design-pill-detached', title: `Detached from ${state.info?.template?.name || 'its template'}: it keeps a Design of its own`, text: 'Detached'})
+          ? h('span', {class: 'ds-design-pill ds-design-pill-detached', title: `Detached from ${state.info?.template?.name || 'its template'}: it keeps slides of its own`, text: 'Detached'})
           : h('div', {class: 'ds-design-scopes', role: 'group', 'aria-label': 'Change'},
-            scopeButton('dashboard', 'This Dashboard', 'Changes only this Dashboard: kept as its differences from the template', state.rights.dashboard),
-            scopeButton('template', `Template · ${count} Dashboard${count === 1 ? '' : 's'}`, `Changes the template ${state.info?.template?.name || ''}: every Dashboard that follows it`, state.rights.template))),
+            scopeButton('design', 'This Design', 'Changes only this Design: kept as its differences from the template', state.rights.design),
+            scopeButton('template', `Template · ${count} Design${count === 1 ? '' : 's'}`, `Changes the template ${state.info?.template?.name || ''}: every Design that follows it`, state.rights.template))),
       h('div', {class: 'ds-design-bar-group'},
         h('button', {type: 'button', class: 'ds-design-tool', title: 'Undo (Ctrl/Cmd+Z)', 'aria-label': 'Undo', disabled: !state.history.length, onclick: guarded(undo)}, '↶'),
         h('button', {type: 'button', class: 'ds-design-tool', title: 'Redo (Shift+Ctrl/Cmd+Z)', 'aria-label': 'Redo', disabled: !state.future.length, onclick: guarded(redo)}, '↷'),
         h('button', {type: 'button', class: 'ds-design-action', onclick: guarded(openParametersDialog), disabled: state.detached ? false : !state.rights.template && !parameters().length, title: 'The parameters of the template'}, `Parameters${parameters().length ? ` · ${parameters().length}` : ''}`),
-        state.detached ? null : h('button', {type: 'button', class: `ds-design-action${changed ? ' has-warning' : ''}`, onclick: guarded(openDifferencesDialog), title: 'What this Dashboard changes of its template'}, `Differences · ${differences}${changed ? ` · ${changed} template changed` : ''}`)),
+        state.detached ? null : h('button', {type: 'button', class: `ds-design-action${changed ? ' has-warning' : ''}`, onclick: guarded(openDifferencesDialog), title: 'What this Design changes of its template'}, `Differences · ${differences}${changed ? ` · ${changed} template changed` : ''}`)),
       h('div', {class: 'ds-design-bar-group ds-design-bar-end'},
         h('span', {class: 'ds-design-busy', id: 'ds-design-busy', hidden: state.busy === 0, text: 'Laying out…'}),
         dirty() ? h('span', {class: 'ds-design-pill ds-design-pill-unsaved', text: state.templateDirty ? 'Unsaved template' : 'Unsaved'}) : null,
         h('button', {type: 'button', class: 'ds-design-action ds-design-primary', disabled: !dirty(), onclick: guarded(saveSlides)}, 'Save'),
         h('button', {type: 'button', class: 'ds-design-action', disabled: !dirty(), onclick: guarded(() => discardSlides())}, 'Discard'),
         h('button', {type: 'button', class: 'ds-design-action', 'aria-haspopup': 'menu', onclick: event => openMenu(event.currentTarget, moreActions())}, 'More ▾'),
-        h('button', {type: 'button', class: 'ds-design-action', onclick: guarded(() => exitDesigner())}, 'Close Design')),
+        h('button', {type: 'button', class: 'ds-design-action', onclick: guarded(() => exitDesigner())}, 'Close Designer')),
     );
   }
   const moreActions = () => [
     ['Save as template…', guarded(saveAsTemplate), !dirty() || 'Save or discard the changes first'],
-    ['Save as my Dashboard…', guarded(saveAsMyDashboard), !state.templateDirty || 'Save or discard the changes of the template first'],
-    state.detached ? null : ['Detach from template…', guarded(detachDashboard), state.rights.dashboard && (!dirty() || 'Save or discard the changes first')],
+    ['Save as my Design…', guarded(saveAsMyDesign), !state.templateDirty || 'Save or discard the changes of the template first'],
+    state.detached ? null : ['Detach from template…', guarded(detachDesign), state.rights.design && (!dirty() || 'Save or discard the changes first')],
   ].filter(Boolean);
 
   // The places of a slide as boxes: its outline while it is not laid out (left out, or a change still being laid out), or
-  // the marks of what this Dashboard changes over its picture (outline false).
+  // the marks of what this Design changes over its picture (outline false).
   function slideBoxes(frame, slide, outline = true) {
     if (slideKind(slide) !== 'content') {
       if (outline) frame.append(h('span', {class: 'ds-design-slide-structural', text: STRUCTURAL[slideKind(slide)] || 'Slide'}));
@@ -698,7 +698,7 @@
     return frame;
   }
   // Each slide of the list in small as the viewer lays it out (charts, KPI cards, text boxes, pictures and covers), drawn
-  // when in sight and again only when the slide, the Design around it or the data change; while a change is still being
+  // when in sight and again only when the slide, the slide set around it or the data change; while a change is still being
   // laid out, the slide keeps its last picture.
   const thumbnails = new Map();
   const thumbnailObserver = 'IntersectionObserver' in window ? new IntersectionObserver(entries => entries.forEach(entry => {
@@ -723,7 +723,7 @@
     const leftOut = slide.hidden || slide.optional_off;
     if (cached && (!laidOut || cached.key === thumbnailKey(slide)) && cached.leftOut === leftOut) return cached.frame;
     const frame = h('span', {class: 'ds-design-slide-frame ds-slide-thumbnail-frame', dataset: {slideId: slide.id}});
-    // Left out of this Dashboard, or not laid out yet: its places only (drawn again once laid out).
+    // Left out of this Design, or not laid out yet: its places only (drawn again once laid out).
     if (leftOut || !laidOut) {
       slideBoxes(frame, slide);
       thumbnails.set(slide.id, {key: leftOut && laidOut ? thumbnailKey(slide) : null, frame, leftOut});
@@ -739,7 +739,7 @@
     if (slide.hidden) badges.push(['Hidden here', 'is-hidden']);
     if (slide.optional && slide.optional_off) badges.push(['Optional · off', 'is-hidden']);
     else if (slide.optional) badges.push(['Optional', 'is-optional']);
-    if (slide.origin === 'dashboard' && !state.detached) badges.push(['This Dashboard', 'is-local']);
+    if (slide.origin === 'design' && !state.detached) badges.push(['This Design', 'is-local']);
     if (slide.overridden?.length || (slide.elements || []).some(element => element.overridden?.length || element.hidden || isLocalElement(element))) badges.push(['Changed here', 'is-changed']);
     if ((state.report?.template_changed || []).some(item => item.slide === slide.id || (slide.elements || []).some(element => element.id === item.element))) badges.push(['Template changed', 'is-warning']);
     return badges.length ? h('span', {class: 'ds-design-slide-badges'}, badges.map(([text, kind]) => h('span', {class: `ds-design-badge ${kind}`, text}))) : null;
@@ -803,13 +803,13 @@
     ];
     if (template) {
       actions.push([slide.optional ? 'Not optional' : 'Optional (off by default)', guarded(() => setOptional(slide.id, !slide.optional)), Boolean(findSlide(state.template, slide.id))]);
-      actions.push(['Delete', guarded(() => deleteSlide(slide.id)), Boolean(findSlide(state.template, slide.id)) || 'Only in this Dashboard: delete it in This Dashboard scope']);
+      actions.push(['Delete', guarded(() => deleteSlide(slide.id)), Boolean(findSlide(state.template, slide.id)) || 'Only in this Design: delete it in This Design scope']);
     } else if (fromTemplate) {
-      if (slide.optional) actions.push([slide.optional_off ? 'Show in this Dashboard' : 'Leave out of this Dashboard', guarded(() => setOptionalShown(slide.id, Boolean(slide.optional_off))), true]);
-      else actions.push([slide.hidden ? 'Show again' : 'Hide in this Dashboard', guarded(() => setSlideHidden(slide.id, !slide.hidden)), true]);
+      if (slide.optional) actions.push([slide.optional_off ? 'Show in this Design' : 'Leave out of this Design', guarded(() => setOptionalShown(slide.id, Boolean(slide.optional_off))), true]);
+      else actions.push([slide.hidden ? 'Show again' : 'Hide in this Design', guarded(() => setSlideHidden(slide.id, !slide.hidden)), true]);
       if (slide.overridden?.length || (slide.elements || []).some(element => element.overridden?.length || element.hidden)) actions.push(['Reset to template', guarded(() => resetSlide(slide.id)), true]);
     } else actions.push(['Delete', guarded(() => deleteSlide(slide.id)), true]);
-    if (!template && !state.detached && state.rights.template && (slide.origin === 'dashboard' || slide.overridden?.length || (slide.elements || []).some(element => element.overridden?.length || element.hidden || isLocalElement(element)))) {
+    if (!template && !state.detached && state.rights.template && (slide.origin === 'design' || slide.overridden?.length || (slide.elements || []).some(element => element.overridden?.length || element.hidden || isLocalElement(element)))) {
       actions.push(['Apply to template', guarded(() => applyToTemplate({slideId: slide.id})), true]);
     }
     return actions;
@@ -824,7 +824,7 @@
     else showLeftOutSlide();
     renderDesigner();
   }
-  // A slide the Dashboard leaves out (hidden, or optional and off) is not laid out: the stage says so.
+  // A slide the Design leaves out (hidden, or optional and off) is not laid out: the stage says so.
   function showLeftOutSlide() {
     const slide = shownSlide();
     const stage = $('ds-charts');
@@ -833,9 +833,9 @@
     $('ds-title').textContent = slide.title || STRUCTURAL[slideKind(slide)] || '';
     $('ds-subtitle').textContent = slide.subtitle || '';
     const notice = h('div', {class: 'ds-design-left-out'},
-      h('p', {text: slide.hidden ? 'This slide of the template is hidden in this Dashboard.' : 'This optional slide of the template is off in this Dashboard.'}),
+      h('p', {text: slide.hidden ? 'This slide of the template is hidden in this Design.' : 'This optional slide of the template is off in this Design.'}),
       h('button', {type: 'button', class: 'ds-design-action ds-design-primary',
-        onclick: guarded(() => (slide.hidden ? setSlideHidden(slide.id, false) : setOptionalShown(slide.id, true)))}, slide.hidden ? 'Show again' : 'Show in this Dashboard'));
+        onclick: guarded(() => (slide.hidden ? setSlideHidden(slide.id, false) : setOptionalShown(slide.id, true)))}, slide.hidden ? 'Show again' : 'Show in this Design'));
     stage.replaceChildren(notice);
   }
 
@@ -879,14 +879,14 @@
           selectElement(card.dataset.elementId);
         });
         // The series of the chart chosen are listed in its Format once it is drawn.
-        card.querySelector('canvas')?.addEventListener('dashboardchartlayout', () => {
+        card.querySelector('canvas')?.addEventListener('designchartlayout', () => {
           if (state.active && card.dataset.elementId === state.element && $('ds-design-panel')?.querySelector('.ds-design-series-list .ds-design-empty')) renderPanel();
         });
         // A click on an entry of the legend of the chart chosen formats that series (instead of hiding it).
         card.addEventListener('click', event => {
           if (!state.active || card.dataset.elementId !== state.element || event.target.tagName !== 'CANVAS') return;
-          const item = globalThis.getDashboardChartLegendItemAt?.(event.target, event);
-          const axis = item ? null : globalThis.getDashboardChartAxisAt?.(event.target, event);
+          const item = globalThis.getCanvasChartLegendItemAt?.(event.target, event);
+          const axis = item ? null : globalThis.getCanvasChartAxisAt?.(event.target, event);
           if (!item && !axis) return;
           event.preventDefault();
           event.stopPropagation();
@@ -914,7 +914,7 @@
       }
       if (!found) return;
       const marks = [];
-      if (isLocalElement(found.element) && !state.detached) marks.push(['This Dashboard', 'is-local']);
+      if (isLocalElement(found.element) && !state.detached) marks.push(['This Design', 'is-local']);
       else if (found.element.overridden?.length) marks.push(['Changed here', 'is-changed']);
       if ((state.report?.template_changed || []).some(item => item.element === id)) marks.push(['Template changed', 'is-warning']);
       if (marks.length) card.append(h('span', {class: 'ds-design-mark'}, marks.map(([text, kind]) => h('span', {class: `ds-design-badge ${kind}`, text}))));
@@ -989,7 +989,7 @@
   }, props.multiline ? value ?? '' : null);
   // append: the token goes at the end (a text box, whose editor keeps its own caret).
   function tokenMenuButton(input, {append = false} = {}) {
-    return h('button', {type: 'button', class: 'ds-design-token', title: 'Insert a field: NR Mode, the selection of the Dashboard (Campaigns, Operators, Cities…) or a parameter', 'aria-haspopup': 'menu',
+    return h('button', {type: 'button', class: 'ds-design-token', title: 'Insert a field: NR Mode, the selection of the Design (Campaigns, Operators, Cities…) or a parameter', 'aria-haspopup': 'menu',
       onclick: event => openMenu(event.currentTarget, [...BUILT_IN_TOKENS, ...parameters().map(item => `{${item.name}}`)].map(token => [token, () => {
         const start = append ? input.value.length : input.selectionStart ?? input.value.length;
         const end = append ? input.value.length : input.selectionEnd ?? input.value.length;
@@ -1025,13 +1025,13 @@
     if (state.tab === 'element' && element) body.append(...elementForm(element));
     else if (slide) body.append(...slideForm(slide));
     else body.append(h('p', {class: 'ds-design-empty', text: 'Choose a slide.'}));
-    const scopeNote = state.detached ? 'This Dashboard has a Design of its own.'
-      : state.scope === 'template' ? `Changes the template: ${dashboardCount()} Dashboard${dashboardCount() === 1 ? '' : 's'} follow it.`
-        : 'Changes only this Dashboard.';
+    const scopeNote = state.detached ? 'This Design has slides of its own.'
+      : state.scope === 'template' ? `Changes the template: ${designCount()} Design${designCount() === 1 ? '' : 's'} follow it.`
+        : 'Changes only this Design.';
     const fold = h('button', {type: 'button', class: 'ds-design-fold', 'aria-expanded': String(!state.folded), title: state.folded ? 'Show the panel' : 'Fold the panel',
       onclick: () => { state.folded = !state.folded; renderPanel(); }}, state.folded ? '▴' : '▾');
     panel.classList.toggle('is-folded', state.folded);
-    panel.replaceChildren(h('div', {class: 'ds-design-panel-head'}, h('div', {class: 'ds-design-panel-top'}, tabs, fold), h('p', {class: `ds-design-scope-note is-${state.detached ? 'dashboard' : state.scope}`, text: scopeNote})), body);
+    panel.replaceChildren(h('div', {class: 'ds-design-panel-head'}, h('div', {class: 'ds-design-panel-top'}, tabs, fold), h('p', {class: `ds-design-scope-note is-${state.detached ? 'design' : state.scope}`, text: scopeNote})), body);
     if (advancedOpen) { const advanced = panel.querySelector('.ds-design-advanced'); if (advanced) advanced.open = true; }
     if (dataOpen.size) panel.querySelectorAll('.ds-cb-group').forEach(group => { group.open = dataOpen.has(group.querySelector('summary')?.firstChild?.textContent); });
     const again = typing && $(typing.id);
@@ -1044,17 +1044,17 @@
 
   function originNote(item, kind) {
     if (state.detached) return null;
-    if (item.origin === 'dashboard') return h('p', {class: 'ds-design-origin is-local', text: `This ${kind} is only in this Dashboard.`});
+    if (item.origin === 'design') return h('p', {class: 'ds-design-origin is-local', text: `This ${kind} is only in this Design.`});
     if (item.overridden?.length) return h('p', {class: 'ds-design-origin is-changed', text: `Changed here: ${item.overridden.join(', ').replaceAll('_', ' ')}.`});
     return h('p', {class: 'ds-design-origin', text: `As the template has it.`});
   }
 
   function slideForm(slide) {
     const kind = slideKind(slide);
-    const editable = state.scope === 'dashboard' || Boolean(findSlide(state.template, slide.id));
+    const editable = state.scope === 'design' || Boolean(findSlide(state.template, slide.id));
     const setSlide = values => edit(slide_set => {
       const target = findSlide(slide_set, slide.id);
-      if (!target) { report(new Error('This slide is only in this Dashboard: change it in This Dashboard scope.')); return false; }
+      if (!target) { report(new Error('This slide is only in this Design: change it in This Design scope.')); return false; }
       Object.assign(target, values);
     });
     const shownSource = state.scope === 'template' ? findSlide(state.template, slide.id) || slide : slide;
@@ -1068,12 +1068,12 @@
       field('Layout', h('button', {type: 'button', class: 'ds-design-layout-button', disabled: !editable, onclick: event => openLayoutGallery(event.currentTarget, slide)}, shownSource.layout || 'Choose a layout')),
     ];
     const grid = layoutOf(shownSource.layout)?.grid;
-    if (kind === 'content' && grid && window.DashboardLayoutEditor) {
+    if (kind === 'content' && grid && window.PlacesEditor) {
       nodes.push(h('button', {type: 'button', class: 'ds-design-action', disabled: !editable, title: 'Resize the rows and columns of the layout, merge places or split them',
         onclick: () => adjustPlaces(slide.id)}, shownSource.options?.geometry ? 'Adjust places… (adjusted)' : 'Adjust places…'));
     }
     if (state.scope === 'template' && findSlide(state.template, slide.id)) {
-      nodes.push(h('label', {class: 'ds-design-check'}, h('input', {type: 'checkbox', checked: Boolean(findSlide(state.template, slide.id).optional), onchange: event => guarded(() => setOptional(slide.id, event.target.checked))()}), 'Optional: off in each Dashboard until it is shown there'));
+      nodes.push(h('label', {class: 'ds-design-check'}, h('input', {type: 'checkbox', checked: Boolean(findSlide(state.template, slide.id).optional), onchange: event => guarded(() => setOptional(slide.id, event.target.checked))()}), 'Optional: off in each Design until it is shown there'));
     }
     if (kind === 'content') {
       const elements = visibleElements(slide);
@@ -1081,14 +1081,14 @@
       nodes.push(h('ul', {class: 'ds-design-element-list'}, elements.map((item, index) => h('li', {},
         h('button', {type: 'button', onclick: () => selectElement(item.id)},
           h('span', {class: 'ds-design-place', text: String(placeOf(item, index) + 1)}), elementLabel(item),
-          isLocalElement(item) && !state.detached ? h('span', {class: 'ds-design-badge is-local', text: 'This Dashboard'}) : item.overridden?.length ? h('span', {class: 'ds-design-badge is-changed', text: 'Changed'}) : null)))));
+          isLocalElement(item) && !state.detached ? h('span', {class: 'ds-design-badge is-local', text: 'This Design'}) : item.overridden?.length ? h('span', {class: 'ds-design-badge is-changed', text: 'Changed'}) : null)))));
       if (freePlaces(slide).length) nodes.push(h('button', {type: 'button', class: 'ds-design-action', onclick: guarded(() => addElement(slide.id, freePlaces(slide)[0]))}, '+ Add chart'));
     }
     nodes.push(h('div', {class: 'ds-design-panel-actions'}, slideActions(slide).map(([label, action, enabled]) => h('button', {type: 'button', class: 'ds-design-action', disabled: enabled !== true, title: typeof enabled === 'string' ? enabled : null, onclick: action}, label))));
     return nodes;
   }
 
-  // The values of a field in the Dashboard's selection with their samples, for the filter dialogs (one read each).
+  // The values of a field in the Design's selection with their samples, for the filter dialogs (one read each).
   const fieldValueReads = new Map();
   function fieldValues(source, field) {
     const token = viewer().state().prepared?.token;
@@ -1099,7 +1099,7 @@
     }
     return fieldValueReads.get(key);
   }
-  // The filters of the Dashboard apply to every chart: the Filters shelf shows them first, locked.
+  // The filters of the Design apply to every chart: the Filters shelf shows them first, locked.
   function lockedFilters() {
     const definition = viewer().state().definition || {};
     const label = value => String(value).replace(/^@latest-campaign$/, 'Latest campaign').replace(/^@latest-(\d+)-campaigns$/, 'Latest $1 campaigns')
@@ -1110,12 +1110,12 @@
 
   // ------------------------------------------------------------------
   // Format of a chart (phase 3): series, legend, labels and axes, kept in its style (see formattedPayload in
-  // dashboard_charts.js). The colours of Operator / Vendor Maps stay unless a series is given one; Default gives it back.
+  // canvas_charts.js). The colours of Operator / Vendor Maps stay unless a series is given one; Default gives it back.
   // ------------------------------------------------------------------
   const SIZES = [['', 'Default'], ['Small', 'Small'], ['Medium', 'Medium'], ['Large', 'Large']];
   const DASH_NAMES = [['', 'Default'], ['solid', 'Solid'], ['dashed', 'Dashed'], ['dotted', 'Dotted']];
   const cardCanvas = elementId => [...($('ds-charts')?.querySelectorAll('.ds-chart') || [])].find(card => card.dataset.elementId === elementId)?.querySelector('canvas');
-  const legendItems = elementId => { const canvas = cardCanvas(elementId); return canvas && globalThis.getDashboardChartLegendItems ? globalThis.getDashboardChartLegendItems(canvas) : []; };
+  const legendItems = elementId => { const canvas = cardCanvas(elementId); return canvas && globalThis.getCanvasChartLegendItems ? globalThis.getCanvasChartLegendItems(canvas) : []; };
   const styleOf = element => clone(element?.style && typeof element.style === 'object' ? element.style : {});
   const cleanStyle = style => {
     const prune = value => {
@@ -1132,7 +1132,7 @@
   };
   function setStyle(elementId, change) {
     const current = findElement(editableSlideSet(), elementId)?.element;
-    if (!current) { report(new Error('This element is only in this Dashboard: change it in This Dashboard scope, or apply it to the template first.')); return undefined; }
+    if (!current) { report(new Error('This element is only in this Design: change it in This Design scope, or apply it to the template first.')); return undefined; }
     const style = styleOf(current);
     change(style);
     return setElementValues(elementId, {style: cleanStyle(style)});
@@ -1318,7 +1318,7 @@
         field('Poor from', textInput(settings.bands?.poor, debounced(value => setKpi({bands: {...(settings.bands || {}), poor: value}})), {id: 'ds-design-kpi-poor', placeholder: 'No band'}))),
       h('label', {class: 'ds-design-check'}, h('input', {type: 'checkbox', checked: Boolean(settings.sparkline), onchange: event => setNow({sparkline: event.target.checked})}), 'Trend over the campaigns'),
       field('Filters', textInput((shown.filters || '').split(/;\s*/).filter(Boolean).join('\n'), debounced(value => setElementValues(element.id, {filters: value.split(/\n+/).map(line => line.trim()).filter(Boolean).join('; ')})), {id: 'ds-design-filters', multiline: true, rows: 3, placeholder: 'Call_Family IN (VoLTE)'}), 'One condition per line; a parameter is written {Name}.'),
-      h('p', {class: 'ds-design-field-note', text: 'The figure is that of the latest campaign of the Dashboard\'s selection; green when it improves on what it is compared with, red when it worsens.'}),
+      h('p', {class: 'ds-design-field-note', text: 'The figure is that of the latest campaign of the Design\'s selection; green when it improves on what it is compared with, red when it worsens.'}),
     ];
   }
 
@@ -1347,13 +1347,13 @@
       if (!file) return;
       const body = new FormData();
       body.append('file', file);
-      const response = await fetch('/api/ppt-dashboards/images', {method: 'POST', body, credentials: 'same-origin'});
+      const response = await fetch('/api/ppt-designer/images', {method: 'POST', body, credentials: 'same-origin'});
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(typeof result.detail === 'string' ? result.detail : 'The picture could not be kept.');
       await setElementValues(element.id, {content: {...content, image: result.id, name: result.name}});
     })});
     return [
-      content.image ? h('img', {class: 'ds-design-image-preview', src: `/api/ppt-dashboards/images/${content.image}`, alt: content.name || 'Picture'}) : null,
+      content.image ? h('img', {class: 'ds-design-image-preview', src: `/api/ppt-designer/images/${content.image}`, alt: content.name || 'Picture'}) : null,
       field(content.image ? 'Change the picture' : 'Picture', input, 'PNG, JPEG or GIF, up to 8 MB (an SVG can be saved as PNG first). It keeps its ratio in its place.'),
       field('Fit', selectInput([['contain', 'Whole picture'], ['cover', 'Fill the place']], content.fit || 'contain', value => guarded(() => setElementValues(element.id, {content: {...content, fit: value}}))())),
     ];
@@ -1373,7 +1373,7 @@
     }
     if (!shown) {
       return [h('h3', {class: 'ds-design-panel-title', text: elementLabel(element)}),
-        h('p', {class: 'ds-design-origin is-local', text: 'This element is only in this Dashboard: change it in This Dashboard scope, or apply it to the template.'}),
+        h('p', {class: 'ds-design-origin is-local', text: 'This element is only in this Design: change it in This Design scope, or apply it to the template.'}),
         h('div', {class: 'ds-design-panel-actions'}, elementActions(element.id).map(([label, action, enabled]) => h('button', {type: 'button', class: 'ds-design-action', disabled: enabled !== true, onclick: action}, label)))];
     }
     const set = (key, delay) => (delay === 0 ? value => guarded(() => setElementValues(element.id, {[key]: value}))() : debounced(value => setElementValues(element.id, {[key]: value}), delay));
@@ -1381,7 +1381,7 @@
     const datalist = fieldsDatalist(shown);
     const fieldInput = (key, placeholder) => textInput(shown[key], set(key), {id: `ds-design-${key}`, list: 'ds-design-fields', placeholder});
     const builder = h('div', {class: 'ds-cb'});
-    window.DashboardChartBuilder?.render(builder, {
+    window.ChartShelves?.render(builder, {
       values: shown, fields: state.fields?.fields, calculated: state.fields?.calculated_fields, parameters: parameters(),
       lockedFilters: lockedFilters(), fieldValues,
       onChange: changes => guarded(() => setElementValues(element.id, changes))(),
@@ -1415,14 +1415,14 @@
     ];
   }
 
-  // The title and subtitle of the slide shown are edited on the slide itself: a click writes them as the Design has them
+  // The title and subtitle of the slide shown are edited on the slide itself: a click writes them as the slide set has them
   // (with their tokens), Enter or leaving the field keeps the change, Esc gives it up.
   function editHeading(key) {
     const slide = shownSlide();
     const heading = $(key === 'title' ? 'ds-title' : 'ds-subtitle');
     if (!state.active || !slide || !heading || heading.querySelector('input')) return;
     const source = state.scope === 'template' ? findSlide(state.template, slide.id) : slide;
-    if (!source) { report(new Error('This slide is only in this Dashboard: change it in This Dashboard scope.')); return; }
+    if (!source) { report(new Error('This slide is only in this Design: change it in This Design scope.')); return; }
     const input = h('input', {type: 'text', class: `ds-design-heading-input is-${key}`, value: source[key] || '', 'aria-label': key === 'title' ? 'Slide title' : 'Slide subtitle'});
     const shown = [...heading.childNodes];
     heading.replaceChildren(input);
@@ -1450,14 +1450,14 @@
     $(id)?.addEventListener('click', () => { if (state.active && !shownSlide()?.hidden) editHeading(key); });
   }
 
-  // Free layout: the places of the layout of a slide resized, merged or split (dashboard_layout_editor.js). Each element
+  // Free layout: the places of the layout of a slide resized, merged or split (places_editor.js). Each element
   // keeps its place (the place it is merged into, else a free one); an element left without a place is removed after
   // asking, as with a smaller layout.
   function adjustPlaces(slideId) {
     const slide = findSlide(editableSlideSet(), slideId);
     const grid = layoutOf(slide?.layout)?.grid;
     if (!slide || !grid) return;
-    window.DashboardLayoutEditor.open({
+    window.PlacesEditor.open({
       title: slide.title || 'Slide', grid: slide.options?.grid || null, rows: grid[0], columns: grid[1],
       onSave: guarded(async result => {
         const capacity = result ? result.geometry.length : (layoutOf(slide.layout)?.places || []).length;
@@ -1487,7 +1487,7 @@
             let place = homes[index];
             if (place === null) place = [...Array(capacity).keys()].find(candidate => !taken.has(candidate));
             if (place === undefined) {
-              if (state.scope === 'dashboard' && !state.detached && !isLocalElement(element)) element.hidden = true;
+              if (state.scope === 'design' && !state.detached && !isLocalElement(element)) element.hidden = true;
               else target.elements.splice(target.elements.indexOf(element), 1);
               return;
             }
@@ -1586,7 +1586,7 @@
   // Dialogs: Differences, Parameters
   // ------------------------------------------------------------------
   function openDialog(title, eyebrow, content, {wide = false} = {}) {
-    const overlay = h('div', {class: 'confirm-overlay ds-overlay ds-secondary ppt-dashboards ds-design-dialog-overlay'});
+    const overlay = h('div', {class: 'confirm-overlay ds-overlay ds-secondary ppt-designer ds-design-dialog-overlay'});
     const close = () => overlay.remove();
     const dialog = h('section', {class: `confirm-panel ds-design-dialog${wide ? ' is-wide' : ''}`, role: 'dialog', 'aria-modal': 'true', 'aria-label': title, tabindex: '-1'},
       h('div', {class: 'section-head'}, h('div', {}, h('p', {class: 'eyebrow', text: eyebrow}), h('h2', {text: title})), h('button', {type: 'button', class: 'ds-dialog-close', 'aria-label': 'Close', onclick: close}, '×')),
@@ -1609,7 +1609,7 @@
       const changed = state.report?.template_changed || [];
       if (changed.length) {
         rows.push(h('h3', {text: 'Changed in the template since'}));
-        rows.push(h('p', {class: 'form-note', text: 'This Dashboard changed these properties, and the template changed them too afterwards.'}));
+        rows.push(h('p', {class: 'form-note', text: 'This Design changed these properties, and the template changed them too afterwards.'}));
         for (const item of changed) {
           rows.push(h('div', {class: 'ds-design-difference is-warning'},
             h('span', {}, h('b', {text: item.slide ? slideName(item.slide) : elementName(item.element)}), ` · ${item.property.replaceAll('_', ' ')}: template now “${String(item.template ?? '')}”, here “${String(item.value ?? '')}”`),
@@ -1625,48 +1625,48 @@
       for (const id of overrides.hidden_slides || []) entries.push([`Slide “${slideName(id)}”`, 'hidden', () => setSlideHidden(id, false)]);
       for (const id of overrides.shown_optional || []) entries.push([`Slide “${slideName(id)}”`, 'optional slide shown', () => setOptionalShown(id, false)]);
       for (const id of overrides.hidden_elements || []) entries.push([`Chart “${elementName(id)}”`, 'removed here', () => resetElement(id)]);
-      for (const local of overrides.local_slides || []) entries.push([`Slide “${local.slide?.title || 'New slide'}”`, 'only in this Dashboard', () => deleteSlideHere(local.slide?.id)]);
-      for (const [slideId, elements] of Object.entries(overrides.local_elements || {})) for (const element of elements) entries.push([`Chart “${elementLabel(element)}” on “${slideName(slideId)}”`, 'only in this Dashboard', () => deleteElementHere(element.id)]);
+      for (const local of overrides.local_slides || []) entries.push([`Slide “${local.slide?.title || 'New slide'}”`, 'only in this Design', () => deleteSlideHere(local.slide?.id)]);
+      for (const [slideId, elements] of Object.entries(overrides.local_elements || {})) for (const element of elements) entries.push([`Chart “${elementLabel(element)}” on “${slideName(slideId)}”`, 'only in this Design', () => deleteElementHere(element.id)]);
       rows.push(h('h3', {text: `Differences from the template · ${entries.length}`}));
-      if (!entries.length) rows.push(h('p', {class: 'form-note', text: 'This Dashboard shows its template as it is.'}));
+      if (!entries.length) rows.push(h('p', {class: 'form-note', text: 'This Design shows its template as it is.'}));
       for (const [what, detail, reset] of entries) {
         rows.push(h('div', {class: 'ds-design-difference'}, h('span', {}, h('b', {text: what}), ` · ${detail}`),
-          h('button', {type: 'button', class: 'ds-design-action', disabled: !state.rights.dashboard, onclick: guarded(async () => { await reset(); refresh(); })}, 'Reset to template')));
+          h('button', {type: 'button', class: 'ds-design-action', disabled: !state.rights.design, onclick: guarded(async () => { await reset(); refresh(); })}, 'Reset to template')));
       }
       const dropped = state.report?.dropped || [];
       if (dropped.length) {
         rows.push(h('h3', {text: 'No longer in the template'}));
-        rows.push(h('p', {class: 'form-note', text: `${dropped.length} change${dropped.length === 1 ? '' : 's'} of this Dashboard refer to slides or charts the template deleted: they are left out, and dropped when you save.`}));
+        rows.push(h('p', {class: 'form-note', text: `${dropped.length} change${dropped.length === 1 ? '' : 's'} of this Design refer to slides or charts the template deleted: they are left out, and dropped when you save.`}));
       }
       body.replaceChildren(...rows);
     };
     refresh();
-    openDialog('Differences', `${state.info?.name || 'Dashboard'} · template ${state.info?.template?.name || ''}`, body, {wide: true});
+    openDialog('Differences', `${state.info?.name || 'Design'} · template ${state.info?.template?.name || ''}`, body, {wide: true});
   }
   const resetSlideProperty = (slideId, name) => edit(slide_set => {
     const slide = findSlide(slide_set, slideId), original = findSlide(state.template, slideId);
     if (!slide || !original) return false;
     slide[name] = clone(original[name]);
-  }, {scope: 'dashboard'});
+  }, {scope: 'design'});
   const resetElementProperty = (elementId, name) => edit(slide_set => {
     const found = findElement(slide_set, elementId), original = findElement(state.template, elementId)?.element;
     if (!found || !original) return false;
     found.element[name] = clone(original[name]);
-  }, {scope: 'dashboard'});
+  }, {scope: 'design'});
   const deleteSlideHere = slideId => edit(slide_set => {
     const index = slide_set.slides.findIndex(item => item.id === slideId);
     if (index < 0) return false;
     slide_set.slides.splice(index, 1);
-  }, {scope: 'dashboard'});
+  }, {scope: 'design'});
   const deleteElementHere = elementId => edit(slide_set => {
     const found = findElement(slide_set, elementId);
     if (!found) return false;
     found.slide.elements.splice(found.slide.elements.indexOf(found.element), 1);
-  }, {scope: 'dashboard'});
+  }, {scope: 'design'});
 
   function openParametersDialog() {
-    const editable = state.detached ? state.rights.dashboard : state.rights.template;
-    const scope = state.detached ? 'dashboard' : 'template';
+    const editable = state.detached ? state.rights.design : state.rights.template;
+    const scope = state.detached ? 'design' : 'template';
     const slide_set = () => (state.detached ? state.slide_set : state.template);
     const body = h('div', {class: 'ds-design-parameters'});
     const uses = name => {
@@ -1718,7 +1718,7 @@
             h('button', {type: 'button', class: 'ds-design-action', disabled: used.length > 0, title: used.length ? 'Remove its uses first' : null, onclick: guarded(async () => { list.splice(index, 1); await save(list); refresh(); })}, 'Delete')) : null);
       });
       body.replaceChildren(
-        h('p', {class: 'form-note', text: 'Each Dashboard of the template chooses the values of its parameters in Dashboard Scope & Filters. Write {Name} in a chart filter (City IN ({City})), a numeric setting (LQ < {Threshold}) or a title.'}),
+        h('p', {class: 'form-note', text: 'Each Design of the template chooses the values of its parameters in Design Scope & Filters. Write {Name} in a chart filter (City IN ({City})), a numeric setting (LQ < {Threshold}) or a title.'}),
         fieldsDatalist(shownElement()),
         ...rows,
         editable ? h('button', {type: 'button', class: 'ds-design-action', onclick: guarded(async () => {
@@ -1734,44 +1734,44 @@
   }
 
   // ------------------------------------------------------------------
-  // Save as template, Save as my Dashboard, Detach
+  // Save as template, Save as my Design, Detach
   // ------------------------------------------------------------------
   async function saveAsTemplate() {
     const id = viewer().state().activeId;
-    const name = await window.showTextInputDialog('Name of the new template', {title: 'Save as template', value: `${state.info?.name || 'Dashboard'} template`.slice(0, 120), maxLength: 120, confirmLabel: 'Save'});
+    const name = await window.showTextInputDialog('Name of the new template', {title: 'Save as template', value: `${state.info?.name || 'Design'} template`.slice(0, 120), maxLength: 120, confirmLabel: 'Save'});
     if (!name || !String(name).trim()) return;
     const result = await api(`/${encodeURIComponent(id)}/save-as-template`, 'POST', {name: String(name).trim()});
-    viewer().status(`Saved the template “${result.template}”: new Dashboards can use it.`);
+    viewer().status(`Saved the template “${result.template}”: new Designs can use it.`);
   }
-  async function saveAsMyDashboard() {
-    const {dashboard} = viewer().state();
-    if (state.templateDirty) throw new Error('Save or discard the changes of the template first: your Dashboard takes the changes of this one only.');
-    const name = await window.showTextInputDialog('Name of your Dashboard', {title: 'Save as my Dashboard', value: `${dashboard?.name || 'Dashboard'} (mine)`.slice(0, 120), maxLength: 120, confirmLabel: 'Save'});
+  async function saveAsMyDesign() {
+    const {design} = viewer().state();
+    if (state.templateDirty) throw new Error('Save or discard the changes of the template first: your Design takes the changes of this one only.');
+    const name = await window.showTextInputDialog('Name of your Design', {title: 'Save as my Design', value: `${design?.name || 'Design'} (mine)`.slice(0, 120), maxLength: 120, confirmLabel: 'Save'});
     if (!name || !String(name).trim()) return;
-    const id = globalThis.crypto?.randomUUID?.() || randomId('dashboard-');
-    const definition = {...clone(dashboard), name: String(name).trim(), slide_comments: {}, slide_comment_meta: {},
+    const id = globalThis.crypto?.randomUUID?.() || randomId('design-');
+    const definition = {...clone(design), name: String(name).trim(), slide_comments: {}, slide_comment_meta: {},
       slide_overrides: state.detached ? {} : (hasOverrides(state.overrides) ? state.overrides : {}), own_slides: state.detached ? state.slide_set : null};
     delete definition.datasets;
     await api(`/${encodeURIComponent(id)}`, 'PUT', definition);
-    // This Dashboard keeps what it had saved; the new one, with the changes shown, opens.
+    // This Design keeps what it had saved; the new one, with the changes shown, opens.
     await exitDesigner({force: true});
     syncDesignerButton();
     await viewer().reloadLibrary();
-    await viewer().openDashboard(id);
-    viewer().status(`Saved “${definition.name}”: your own Dashboard, following the same template with these changes.`);
+    await viewer().openDesign(id);
+    viewer().status(`Saved “${definition.name}”: your own Design, following the same template with these changes.`);
   }
-  async function detachDashboard() {
+  async function detachDesign() {
     const id = viewer().state().activeId;
-    if (!await window.showConfirmDialog(`Detach this Dashboard from the template “${state.info?.template?.name}”? It keeps the Design it shows as its own and no longer takes the changes of the template.`, {title: 'Detach from template', confirmLabel: 'Detach', tone: 'danger'})) return;
+    if (!await window.showConfirmDialog(`Detach this Design from the template “${state.info?.template?.name}”? It keeps the slides it shows as its own and no longer takes the changes of the template.`, {title: 'Detach from template', confirmLabel: 'Detach', tone: 'danger'})) return;
     const info = await api(`/${encodeURIComponent(id)}/detach`, 'POST');
     loadSlideSet(info);
     viewer().storeSlides(id, storedSlideFields(info));
     renderDesigner();
-    viewer().status('Detached: this Dashboard keeps a Design of its own.');
+    viewer().status('Detached: this Design keeps slides of its own.');
   }
 
   // ------------------------------------------------------------------
-  // The values of the template parameters, in Dashboard Scope & Filters
+  // The values of the template parameters, in Design Scope & Filters
   // ------------------------------------------------------------------
   const parameterOptions = new Map();
   async function parameterValues(field) {
@@ -1829,44 +1829,44 @@
   }
 
   // ------------------------------------------------------------------
-  // The Design button and the events of the viewer
+  // The slide set button and the events of the viewer
   // ------------------------------------------------------------------
   function syncDesignerButton() {
     const button = $('ds-design');
     if (!button) return;
     const rights = state.info?.rights;
-    button.hidden = !rights || !(rights.dashboard || rights.template);
+    button.hidden = !rights || !(rights.design || rights.template);
     button.classList.toggle('is-active', state.active);
-    button.textContent = state.active ? 'Designing' : 'Design';
+    button.textContent = state.active ? 'Designing' : 'slide set';
   }
   $('ds-design')?.addEventListener('click', guarded(async () => {
     if (state.active) { await exitDesigner(); syncDesignerButton(); return; }
     await enterDesigner();
     syncDesignerButton();
   }));
-  document.addEventListener('ds:dashboard-opened', event => {
+  document.addEventListener('ds:design-opened', event => {
     exitDesigner({force: true});
-    state.dashboardId = event.detail.id;
+    state.designId = event.detail.id;
     state.info = null;
     parameterOptions.clear();
     syncDesignerButton();
     renderParameterValues();
     loadInfo(event.detail.id);
   });
-  document.addEventListener('ds:dashboard-closed', () => {
+  document.addEventListener('ds:design-closed', () => {
     exitDesigner({force: true});
-    state.dashboardId = '';
+    state.designId = '';
     state.info = null;
     syncDesignerButton();
     renderParameterValues();
   });
-  // Prepared again (filters applied): the Design not saved yet is laid out on the new selection.
+  // Prepared again (filters applied): the slide set not saved yet is laid out on the new selection.
   document.addEventListener('ds:prepared', () => {
     if (!state.active) return;
     // New data: every slide of the list is drawn again.
     state.generation = (state.generation || 0) + 1;
     if (!dirty()) state.syncedToken = viewer().state().prepared?.token;
-    if (dirty()) guarded(() => preview(state.dashboardDirty ? {...previewBody(), slide_set: state.slide_set} : previewBody()))();
+    if (dirty()) guarded(() => preview(state.designDirty ? {...previewBody(), slide_set: state.slide_set} : previewBody()))();
     else loadFields(viewer().state().prepared?.token);
   });
   document.addEventListener('ds:slide-rendered', () => {
@@ -1875,7 +1875,7 @@
     renderSorter();
     renderPanel();
   });
-  // The viewer closed while designing: Design closes with it (asking about the changes not saved).
+  // The viewer closed while designing: slide set closes with it (asking about the changes not saved).
   $('ds-viewer-close')?.addEventListener('click', event => {
     if (!state.active || !dirty()) { exitDesigner({force: true}); syncDesignerButton(); return; }
     event.stopImmediatePropagation();

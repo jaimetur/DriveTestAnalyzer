@@ -1,6 +1,6 @@
-"""LLM writers of the generated comments of PPT Dashboards: Kiro CLI (the default LLM) and Claude, set up in Super Admin.
+"""LLM writers of the generated comments of PPT Designer: Kiro CLI (the default LLM) and Claude, set up in Super Admin.
 
-The rules of ``dashboard_comments`` always read the charts first. An LLM writer receives the same facts and the rules
+The rules of ``design_comments`` always read the charts first. An LLM writer receives the same facts and the rules
 comments as a draft, rewrites them in a more natural way and returns JSON; every figure it writes must be one of the
 facts (``validate_comments``), otherwise the rules comment is kept. Kiro CLI runs headless with no tools; each writer
 takes the API key of the server or that of the user who generates (Reporting Jobs: their owner), as Super Admin
@@ -775,13 +775,13 @@ KIRO_BRIEF_GUIDE = STYLE_GUIDE.replace(
 )
 KIRO_BRIEF_README = '''# Kiro Brief of {name}
 
-The facts of the charts of every slide of this PPT Dashboard, prepared by DriveTest Analyzer on {date}, for Kiro IDE
+The facts of the charts of every slide of this PPT Designer, prepared by DriveTest Analyzer on {date}, for Kiro IDE
 to write their comments.
 
 1. Unzip this folder and open it in Kiro IDE (File → Open Folder). Kiro reads the style guide in
    `.kiro/steering/drivetest-comments.md` by itself.
 2. Ask Kiro: "Write the comments of every slide of facts.json into comments.json, following brief.md."
-3. Check comments.json, then in the PPT Dashboard choose Import Kiro comments and select comments.json and facts.json
+3. Check comments.json, then in the PPT Designer choose Import Kiro comments and select comments.json and facts.json
    (or this folder zipped again). Every figure of the comments is checked against facts.json: a comment with a figure
    that is not in the facts is left out.
 
@@ -790,15 +790,15 @@ Never share this folder outside your organisation: it holds the figures of your 
 
 
 def kiro_brief_archive(brief: dict[str, Any]) -> bytes:
-    """The Kiro Brief of a Dashboard: the facts of every slide, the style guide (also as a Kiro steering file), the
+    """The Kiro Brief of a Design: the facts of every slide, the style guide (also as a Kiro steering file), the
     comments.json Kiro fills in and a README."""
     facts = {
         'format': 'drivetest-analyzer-comment-brief', 'version': 1,
-        'dashboard': {'id': brief['dashboard_id'], 'name': brief['name']}, 'generated_at': brief['generated_at'],
+        'design': {'id': brief['design_id'], 'name': brief['name']}, 'generated_at': brief['generated_at'],
         'selection': brief.get('selection', ''), 'slides': brief['slides'],
     }
     comments = {
-        'format': 'drivetest-analyzer-comments', 'version': 1, 'dashboard': brief['dashboard_id'],
+        'format': 'drivetest-analyzer-comments', 'version': 1, 'design': brief['design_id'],
         'slides': {slide['comment_key']: [] for slide in brief['slides']},
     }
     buffer = io.BytesIO()

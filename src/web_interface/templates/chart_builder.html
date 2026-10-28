@@ -1,10 +1,10 @@
 {% extends 'base.html' %}
 {% block content %}
-<link rel="stylesheet" href="{{ static_path('css/dashboard_designer.css') }}?v={{ asset_version('css/dashboard_designer.css') }}">
+<link rel="stylesheet" href="{{ static_path('css/designer.css') }}?v={{ asset_version('css/designer.css') }}">
 <section class="dashboard-stack spacious-stack reporting-stack">
   <article class="panel hero-panel chart-builder-hero" style="background:linear-gradient(135deg,#b85b20,#e99b45)!important;color:#fff">
     <p class="eyebrow">Chart Builder</p><h2>Ad-Hoc Charts from your CDRs</h2>
-    <p class="lede">Chart any KPI of one or more processed CDRs as a bar, CDF, scatter or table, slice it by rows, columns and filters, and explore it with the interactive viewer of PPT Dashboards without changing any template.</p>
+    <p class="lede">Chart any KPI of one or more processed CDRs as a bar, CDF, scatter or table, slice it by rows, columns and filters, and explore it with the interactive viewer of PPT Designer without changing any template.</p>
   </article>
   <article class="panel" data-page-panel-label="Interactive Preview">
     <div class="section-head tight-head">
@@ -20,7 +20,7 @@
       <select data-chart-builder-sources multiple size="6">{% for dataset in datasets %}<option value="{{ dataset.id }}" data-kind="{{ dataset.kind }}" data-nr-mode="{{ dataset.nr_mode }}" data-columns='{{ dataset.columns | tojson }}'>{{ dataset.name }}</option>{% endfor %}</select>
     </label>
     <div class="chart-builder-layout">
-      <section class="chart-builder-viewer ppt-dashboards" data-chart-builder-viewer aria-label="Individual chart viewer">
+      <section class="chart-builder-viewer ppt-designer" data-chart-builder-viewer aria-label="Individual chart viewer">
         <header class="chart-builder-viewer-header">
           <div><p class="eyebrow">Individual chart</p><h3 data-chart-builder-title>Ad-hoc chart</h3><p class="chart-builder-out-of-scope" data-chart-builder-out-of-scope hidden></p></div>
           <button type="button" class="ds-viewer-icon-action ds-viewer-refresh-action" data-chart-builder-refresh title="Refresh chart" aria-label="Refresh chart"></button>
@@ -36,8 +36,8 @@
         </div>
       </section>
       <section class="report-chart-viewer-sandbox" data-chart-builder-sandbox>
-        <p class="eyebrow">Chart Definition</p><p class="form-note">Drag the fields of the CDRs to the shelves: each change regenerates only this temporary preview. <strong>Add to Dashboard…</strong> puts the chart on a slide of a Dashboard whose slides you can edit.</p>
-        <div class="report-chart-viewer-fields ppt-dashboards ds-cb-host" data-chart-builder-fields></div>
+        <p class="eyebrow">Chart Definition</p><p class="form-note">Drag the fields of the CDRs to the shelves: each change regenerates only this temporary preview. <strong>Add to Design…</strong> puts the chart on a slide of a Design whose slides you can edit.</p>
+        <div class="report-chart-viewer-fields ppt-designer ds-cb-host" data-chart-builder-fields></div>
       </section>
     </div>
   </article>
@@ -62,7 +62,7 @@
     value: option.value, label: option.textContent, kind: option.dataset.kind, columns: option.dataset.columns, nrMode: option.dataset.nrMode,
   }));
   const selected = () => Array.from(sources.selectedOptions).filter((option) => option.dataset.kind === type.value).map((option) => Number(option.value));
-  // The chart as its template row would write it, built on the shelves (dashboard_chart_builder.js).
+  // The chart as its template row would write it, built on the shelves (chart_shelves.js).
   const chart = {chart_title: 'Ad-hoc chart', chart_type: '100% Stacked Vertical Bars', kpi: '', filters: '', rows_split: '', columns_split: '', legend: '', legend_position: 'top', legend_format: ''};
   let fieldInfo = {fields: [], calculated_fields: []};
   const definition = () => ({...chart, cdr_source: `CDR-${type.value[0].toUpperCase()}${type.value.slice(1)}`});
@@ -103,44 +103,44 @@
     const legendPosition = element('select', {'aria-label': 'Legend position', onchange: (event) => { chart.legend_position = event.target.value; queue(); }},
       ...[['top', 'Top'], ['bottom', 'Bottom'], ['left', 'Left'], ['right', 'Right']].map(([value, label]) => { const option = element('option', {value}, label); option.selected = value === chart.legend_position; return option; }));
     const shelves = element('div', {class: 'ds-cb'});
-    const add = element('button', {type: 'button', class: 'ds-cb-add', onclick: openAddToDashboard}, 'Add to Dashboard…');
+    const add = element('button', {type: 'button', class: 'ds-cb-add', onclick: openAddToDesign}, 'Add to Design…');
     add.disabled = !chart.kpi || !selected().length;
     fields.replaceChildren(element('label', {class: 'ds-cb-title'}, 'Chart title', title), shelves,
       element('div', {class: 'ds-cb-advanced'}, element('label', {}, 'Legend position', legendPosition)), add);
-    globalThis.DashboardChartBuilder?.render(shelves, {
+    globalThis.ChartShelves?.render(shelves, {
       values: definition(), fields: {[definition().cdr_source.toLowerCase()]: fieldInfo.fields || []}, calculated: fieldInfo.calculated_fields || [],
       parameters: [], showSource: false, fieldValues,
       onChange: (changes) => { Object.assign(chart, changes); render(); queue(); },
     });
   };
-  // Add to Dashboard: a slide (with a free place) of a Dashboard whose slides the user can edit, or a new slide at its end.
-  async function openAddToDashboard(event) {
+  // Add to Design: a slide (with a free place) of a Design whose slides the user can edit, or a new slide at its end.
+  async function openAddToDesign(event) {
     document.querySelectorAll('.ds-design-popover').forEach((node) => node.remove());
     const anchor = event.currentTarget;
     let targets = [];
-    try { targets = (await fetch('/api/ppt-dashboards/targets', {credentials: 'same-origin'}).then((response) => response.json())).dashboards || []; } catch (_error) { targets = []; }
-    const dialog = element('div', {class: 'ds-design-popover ds-cb-add-dialog', role: 'dialog', 'aria-label': 'Add to Dashboard'});
+    try { targets = (await fetch('/api/ppt-designer/targets', {credentials: 'same-origin'}).then((response) => response.json())).designs || []; } catch (_error) { targets = []; }
+    const dialog = element('div', {class: 'ds-design-popover ds-cb-add-dialog', role: 'dialog', 'aria-label': 'Add to Design'});
     if (!targets.length) {
-      dialog.append(element('h4', {}, 'Add to Dashboard'), element('p', {class: 'form-note'}, 'There is no Dashboard whose slides you can edit: create one in PPT Dashboards first.'));
+      dialog.append(element('h4', {}, 'Add to Design'), element('p', {class: 'form-note'}, 'There is no Design whose slides you can edit: create one in PPT Designer first.'));
     } else {
-      const dashboard = element('select', {'aria-label': 'Dashboard'}, ...targets.map((item) => element('option', {value: item.id}, `${item.name} · ${item.nr_mode === 'NSA+SA' ? 'NSA & SA' : item.nr_mode}`)));
+      const design = element('select', {'aria-label': 'Design'}, ...targets.map((item) => element('option', {value: item.id}, `${item.name} · ${item.nr_mode === 'NSA+SA' ? 'NSA & SA' : item.nr_mode}`)));
       const slide = element('select', {'aria-label': 'Slide'});
       const fillSlides = () => {
-        const target = targets.find((item) => item.id === dashboard.value);
+        const target = targets.find((item) => item.id === design.value);
         slide.replaceChildren(element('option', {value: ''}, 'A new slide at the end'), ...(target?.slides || []).map((item) => { const option = element('option', {value: item.id}, `${item.title}${item.free ? ` · ${item.free} free place${item.free === 1 ? '' : 's'}` : ' · no free place'}`); option.disabled = !item.free; return option; }));
       };
-      dashboard.addEventListener('change', fillSlides);
+      design.addEventListener('change', fillSlides);
       fillSlides();
-      const note = element('p', {class: 'form-note'}, 'The chart becomes part of that Dashboard only (one of its differences from its template), with the selection of CDRs of the Dashboard.');
+      const note = element('p', {class: 'form-note'}, 'The chart becomes part of that Design only (one of its differences from its template), with the selection of CDRs of the Design.');
       const keep = element('button', {type: 'button', onclick: async () => {
         keep.disabled = true;
         try {
-          const result = await postJson(`/api/ppt-dashboards/${encodeURIComponent(dashboard.value)}/add-chart`, {element: definition(), slide_id: slide.value, slide_title: chart.chart_title});
+          const result = await postJson(`/api/ppt-designer/${encodeURIComponent(design.value)}/add-chart`, {element: definition(), slide_id: slide.value, slide_title: chart.chart_title});
           dialog.remove();
-          (globalThis.showInfoDialog || window.alert)(`The chart is now on the slide “${result.slide}” of the Dashboard “${result.dashboard}”.`, {title: 'Add to Dashboard'});
+          (globalThis.showInfoDialog || window.alert)(`The chart is now on the slide “${result.slide}” of the Design “${result.design}”.`, {title: 'Add to Design'});
         } catch (error) { note.textContent = error.message; keep.disabled = false; }
       }}, 'Add');
-      dialog.append(element('h4', {}, 'Add to Dashboard'), element('label', {}, 'Dashboard', dashboard), element('label', {}, 'Slide', slide), note,
+      dialog.append(element('h4', {}, 'Add to Design'), element('label', {}, 'Design', design), element('label', {}, 'Slide', slide), note,
         element('div', {class: 'ds-cb-actions'}, keep, element('button', {type: 'button', onclick: () => dialog.remove()}, 'Cancel')));
     }
     document.body.append(dialog);
@@ -163,7 +163,7 @@
       canvas.setAttribute('aria-label', title.textContent); canvas.hidden = false;
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       if (requestId !== previewRequest) return;
-      globalThis.renderDashboardChart(canvas, body); resetZoom(); zoom.hidden = false; message.hidden = true;
+      globalThis.renderCanvasChart(canvas, body); resetZoom(); zoom.hidden = false; message.hidden = true;
     } catch (error) {
       if (error.name !== 'AbortError' && requestId === previewRequest) {
         canvas.hidden = true; zoom.hidden = true; message.hidden = false;
@@ -173,7 +173,7 @@
   };
   function queue() { window.clearTimeout(timer); previewController?.abort(); timer = window.setTimeout(preview, 350); }
   const syncNavigation = () => {
-    const state = globalThis.getDashboardChartPanState?.(canvas) || {zoom: 1};
+    const state = globalThis.getCanvasChartPanState?.(canvas) || {zoom: 1};
     document.querySelectorAll('[data-chart-builder-pan]').forEach((button) => {
       const direction = button.dataset.chartBuilderPan;
       button.hidden = Number(state.zoom) <= 1;
@@ -185,13 +185,13 @@
     document.querySelector('[data-chart-builder-zoom-reset]').disabled = level <= 1;
     document.querySelector('[data-chart-builder-zoom-in]').disabled = level >= 4;
   };
-  const setZoom = (value) => { globalThis.setDashboardChartZoom?.(canvas, value); syncNavigation(); };
+  const setZoom = (value) => { globalThis.setCanvasChartZoom?.(canvas, value); syncNavigation(); };
   const resetZoom = () => setZoom(1);
-  document.querySelector('[data-chart-builder-zoom-out]').addEventListener('click', () => setZoom((globalThis.getDashboardChartZoom?.(canvas) || 1) - .25));
-  document.querySelector('[data-chart-builder-zoom-in]').addEventListener('click', () => setZoom((globalThis.getDashboardChartZoom?.(canvas) || 1) + .25));
+  document.querySelector('[data-chart-builder-zoom-out]').addEventListener('click', () => setZoom((globalThis.getCanvasChartZoom?.(canvas) || 1) - .25));
+  document.querySelector('[data-chart-builder-zoom-in]').addEventListener('click', () => setZoom((globalThis.getCanvasChartZoom?.(canvas) || 1) + .25));
   document.querySelector('[data-chart-builder-zoom-reset]').addEventListener('click', resetZoom);
-  document.querySelectorAll('[data-chart-builder-pan]').forEach((button) => button.addEventListener('click', () => { globalThis.panDashboardChart?.(canvas, button.dataset.chartBuilderPan); syncNavigation(); }));
-  canvas.addEventListener('dashboardchartzoom', syncNavigation); canvas.addEventListener('dashboardchartpan', syncNavigation);
+  document.querySelectorAll('[data-chart-builder-pan]').forEach((button) => button.addEventListener('click', () => { globalThis.panCanvasChart?.(canvas, button.dataset.chartBuilderPan); syncNavigation(); }));
+  canvas.addEventListener('designchartzoom', syncNavigation); canvas.addEventListener('designchartpan', syncNavigation);
   document.querySelector('[data-chart-builder-refresh]').addEventListener('click', preview);
   type.addEventListener('change', () => { filterSources(); valueReads.clear(); loadFields(); canvas.hidden = true; zoom.hidden = true; message.hidden = false; message.textContent = 'Select one or more processed Source Datasets.'; });
   // The operators out of scope in the NR Modes of the Source Datasets chosen (the NR Modes of the Operator Maps), left out of the chart.
@@ -217,12 +217,12 @@
     }}),
   }));
   filterSources();
-  // The shelves are drawn once dashboard_chart_builder.js (deferred) has loaded.
+  // The shelves are drawn once chart_shelves.js (deferred) has loaded.
   document.addEventListener('DOMContentLoaded', () => { render(); loadFields(); });
 })();
 </script>
-<script defer src="{{ static_path('js/dashboard_charts.js') }}?v={{ asset_version('js/dashboard_charts.js') }}"></script>
-<script defer src="{{ static_path('js/dashboard_chart_builder.js') }}?v={{ asset_version('js/dashboard_chart_builder.js') }}"></script>
+<script defer src="{{ static_path('js/canvas_charts.js') }}?v={{ asset_version('js/canvas_charts.js') }}"></script>
+<script defer src="{{ static_path('js/chart_shelves.js') }}?v={{ asset_version('js/chart_shelves.js') }}"></script>
 <script defer src="{{ static_path('js/element_image.js') }}?v={{ asset_version('js/element_image.js') }}"></script>
 <script defer src="{{ static_path('js/image_buttons.js') }}?v={{ asset_version('js/image_buttons.js') }}"></script>
 {% endblock %}

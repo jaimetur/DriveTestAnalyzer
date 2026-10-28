@@ -1,5 +1,5 @@
-"""The CDRs chosen in a Dashboard always belong to its workspace."""
-from src.modules.ppt_dashboards import existing_dataset_selection
+"""The CDRs chosen in a Design always belong to its workspace."""
+from src.modules.ppt_designer import existing_dataset_selection
 
 
 class _Datasets:
@@ -10,21 +10,21 @@ class _Datasets:
         return self.rows
 
 
-def test_a_dashboard_forgets_the_cdrs_its_workspace_does_not_have():
+def test_a_design_forgets_the_cdrs_its_workspace_does_not_have():
     kinds = {4: 'data', 5: 'speech', 6: 'voice'}
     # CDRs of another workspace (or deleted ones), and a Speech CDR chosen as Voice, are left out.
     assert existing_dataset_selection({'name': 'A', 'datasets': {'data': [4, 9], 'voice': [5], 'speech': [5]}}, kinds) == {
         'name': 'A', 'datasets': {'data': [4], 'voice': [], 'speech': [5]}}
-    # Without any of its CDRs it uses the latest CDRs again, like a Dashboard without CDRs.
+    # Without any of its CDRs it uses the latest CDRs again, like a Design without CDRs.
     assert existing_dataset_selection({'name': 'B', 'datasets': {'data': [9, 3], 'voice': [11, 5], 'speech': [10, 4]}}, kinds) == {
         'name': 'B'}
-    # A Dashboard whose CDRs are all here, or that has none, is not changed.
+    # A Design whose CDRs are all here, or that has none, is not changed.
     unchanged = {'name': 'C', 'datasets': {'data': [4], 'voice': [], 'speech': []}}
     assert existing_dataset_selection(unchanged, kinds) is unchanged
     assert existing_dataset_selection({'name': 'D'}, kinds) == {'name': 'D'}
 
 
-def test_imported_dashboards_choose_the_cdrs_of_the_destination_with_the_same_name():
+def test_imported_designs_choose_the_cdrs_of_the_destination_with_the_same_name():
     import src.DriveTestAnalyzer as app_module
 
     destination = _Datasets([
@@ -38,18 +38,18 @@ def test_imported_dashboards_choose_the_cdrs_of_the_destination_with_the_same_na
         {'id': 10, 'name': 'UK_Q3_Speech.xlsm', 'kind': 'speech'},
         {'id': 3, 'name': 'UK_Q3_Data.xlsm', 'kind': 'data'},
     ]
-    dashboards = {
+    designs = {
         'report': {'name': 'NetCheck CDR Report', 'datasets': {'data': [9], 'voice': [11], 'speech': [10]}},
         'uk-only': {'name': 'UK only', 'datasets': {'data': [3], 'voice': [], 'speech': [10]}},
         'latest': {'name': 'Latest CDRs'},
     }
-    imported = app_module._dashboards_on_destination_cdrs(dashboards, source_cdrs, destination)
+    imported = app_module._designs_on_destination_cdrs(designs, source_cdrs, destination)
     # Id 9 is another CDR in the destination: the CDR with the same name and type is chosen instead.
     assert imported['report']['datasets'] == {'data': [4], 'voice': [6], 'speech': []}
     assert imported['uk-only'] == {'name': 'UK only'}
     assert imported['latest'] == {'name': 'Latest CDRs'}
     # A package without the names of its CDRs keeps only the CDRs the destination has with their type.
-    assert app_module._dashboards_on_destination_cdrs(
+    assert app_module._designs_on_destination_cdrs(
         {'report': {'datasets': {'data': [9, 3], 'voice': [6]}}}, None, destination,
     ) == {'report': {'datasets': {'data': [9], 'voice': [6]}}}
 

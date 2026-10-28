@@ -117,8 +117,8 @@ def test_the_operator_maps_editor_saves_the_role_of_each_label(client):
     assert '<option value="include" selected>Include</option>' in operators and '>None</option>' not in operators
 
 
-def test_the_dashboard_column_cache_leaves_out_the_excluded_values():
-    from src.modules.dashboard_column_cache import SelectionTerms, keep_sheets
+def test_the_design_column_cache_leaves_out_the_excluded_values():
+    from src.modules.design_column_cache import SelectionTerms, keep_sheets
 
     terms = SelectionTerms(excluded_values=(('lower(operator)', frozenset({'lebara', 'leb'})),))
     assert terms.expressions() == ['lower(operator)']

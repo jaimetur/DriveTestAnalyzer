@@ -14,7 +14,7 @@ from typing import Any, Callable, Iterable
 from uuid import uuid4
 
 IDENTITIES_STATE_PREFIX = 'identities:'
-PPT_DASHBOARDS = 'ppt-dashboards'
+PPT_DESIGNER = 'ppt-designer'
 QUERY_BUILDER_QUERIES = 'query-builder-queries'
 NETWORK_INSIGHTS_FAVOURITES = 'network-insights-favourites'
 BUNDLE_REPORT_TEMPLATE_FAVOURITES = 'bundle-report-template-favourites'
@@ -44,7 +44,7 @@ def _store(repository: Any, kind: str, values: dict[str, str]) -> None:
 def portable_identities(repository: Any, kind: str, item_keys: Iterable[Any],
                         default: Callable[[str], str] | None = None) -> dict[str, str]:
     """The uid of each of the given items (by their key as given), giving one to those that have none: ``default`` of
-    their key (a Dashboard ID is already unique) or a new one, kept from then on."""
+    their key (a Design ID is already unique) or a new one, kept from then on."""
     values = identities(repository, kind)
     result: dict[str, str] = {}
     changed = False

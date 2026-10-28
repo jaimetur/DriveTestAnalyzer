@@ -12,7 +12,7 @@ const webSocketImplementation = () => globalThis.WebSocket || require('ws');
 
 const moduleDirectory = path.dirname(fileURLToPath(import.meta.url));
 const rendererSource = fs.readFileSync(
-  path.resolve(moduleDirectory, '../web_interface/static/js/dashboard_charts.js'),
+  path.resolve(moduleDirectory, '../web_interface/static/js/canvas_charts.js'),
   'utf8',
 );
 
@@ -83,7 +83,7 @@ async function startRenderer() {
   const executable = browserExecutable();
   if (!executable) throw new Error('No supported Chromium browser is installed.');
   const port = await availablePort();
-  const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'dashboard-canvas-renderer-'));
+  const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'canvas-renderer-'));
   let browserError = '';
   const browser = spawn(executable, [
     '--headless=new', '--disable-gpu', '--disable-dev-shm-usage',
@@ -128,7 +128,7 @@ async function startRenderer() {
     frameId: frameTree.frame.id,
     html: '<!doctype html><html><head><style>html,body{margin:0;width:1600px;height:900px;overflow:hidden}canvas{display:block;width:1600px;height:900px}</style></head><body><canvas id="chart"></canvas></body></html>',
   });
-  await devtools.call('Runtime.evaluate', {expression: `${rendererSource}\n//# sourceURL=dashboard_charts.js`});
+  await devtools.call('Runtime.evaluate', {expression: `${rendererSource}\n//# sourceURL=canvas_charts.js`});
 
   const close = () => {
     devtools.close();
@@ -166,9 +166,9 @@ for await (const line of lines) {
       document.documentElement.style.width = document.body.style.width = ${JSON.stringify(`${width}px`)};
       document.documentElement.style.height = document.body.style.height = ${JSON.stringify(`${height}px`)};
       previous.replaceWith(canvas);
-      globalThis.renderDashboardChart(canvas, ${JSON.stringify(request.payload)});
+      globalThis.renderCanvasChart(canvas, ${JSON.stringify(request.payload)});
       return new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => {
-        resolve(globalThis.getDashboardChartHits(canvas));
+        resolve(globalThis.getCanvasChartHits(canvas));
       })));
     })()`;
     const evaluation = await renderer.devtools.call('Runtime.evaluate', {

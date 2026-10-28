@@ -314,13 +314,13 @@ def test_nq_filter_values_offer_the_nr_mode_first_and_each_mode_its_campaigns(wo
     assert values['nr_mode'] == ['NSA', 'SA']
 
 
-def test_dashboards_follow_the_newest_campaigns_and_need_no_campaign_predicate(workspace):
+def test_designs_follow_the_newest_campaigns_and_need_no_campaign_predicate(workspace):
     add = workspace['add']
     client = workspace['client']
     q1 = add(name='UK_Q1_2026_Data.csv', kind='data', campaign='UK_Q1_2026')
     q2 = add(name='UK_Q2_2026_Data.csv', kind='data', campaign='UK_Q2_2026')
     q3 = add(name='UK_Q3_2026_Data.csv', kind='data', campaign='UK_Q3_2026')
-    import src.modules.ppt_dashboards  # noqa: F401 - registers the module
+    import src.modules.ppt_designer  # noqa: F401 - registers the module
     resolve = core_runtime_definition()
     latest_two = resolve({'name': 'D', 'template': 'T', 'technology': 'nsa', 'auto_cdrs': True,
                           'filters': {'Campaign': ['@latest-2-campaigns'], 'City': ['London']}}, workspace['repository'])
@@ -330,44 +330,44 @@ def test_dashboards_follow_the_newest_campaigns_and_need_no_campaign_predicate(w
     one = resolve({'name': 'D', 'template': 'T', 'technology': 'nsa', 'auto_cdrs': True,
                    'filters': {'Campaign': ['2026-Q1']}}, workspace['repository'])
     assert one['datasets']['data'] == [q1] and one['filters'] == {}
-    # A Dashboard saved when CDRs were chosen by hand takes their campaigns.
+    # A Design saved when CDRs were chosen by hand takes their campaigns.
     migrated = resolve({'name': 'D', 'template': 'T', 'technology': 'nsa', 'datasets': {'data': [q2]}}, workspace['repository'])
     assert migrated['datasets']['data'] == [q2]
-    assert client.get('/ppt-dashboards').status_code == 200
+    assert client.get('/ppt-designer').status_code == 200
 
 
-def test_dashboards_saved_with_main_cities_use_the_main_cities_of_the_workspace(workspace):
+def test_designs_saved_with_main_cities_use_the_main_cities_of_the_workspace(workspace):
     import json
 
-    import src.modules.ppt_dashboards  # noqa: F401 - registers the module
+    import src.modules.ppt_designer  # noqa: F401 - registers the module
     repository = workspace['repository']
     workspace['add'](name='UK_Q1_2026_Data.csv', kind='data', campaign='UK_Q1_2026')
     resolve = core_runtime_definition()
-    dashboard = {'name': 'D', 'template': 'T', 'technology': 'nsa', 'auto_cdrs': True,
+    design = {'name': 'D', 'template': 'T', 'technology': 'nsa', 'auto_cdrs': True,
                  'filters': {'City': ['@main-cities'], 'Campaign': ['UK_Q1_2026']}}
-    # Without Main Cities, every city; then the Main Cities of the workspace whenever the Dashboard is used.
-    assert 'City' not in resolve(dashboard, repository)['filters']
+    # Without Main Cities, every city; then the Main Cities of the workspace whenever the Design is used.
+    assert 'City' not in resolve(design, repository)['filters']
     repository.set_main_cities(['London', 'Leeds'])
-    assert resolve(dashboard, repository)['filters']['City'] == ['London', 'Leeds']
+    assert resolve(design, repository)['filters']['City'] == ['London', 'Leeds']
     repository.set_main_cities(['Bristol'])
-    assert resolve(dashboard, repository)['filters']['City'] == ['Bristol']
-    # A Dashboard saved before with exactly the Main Cities of then gets the Main Cities choice, once.
-    repository.set_workspace_state('ppt_dashboards_v2', json.dumps({
-        'a': {**dashboard, 'filters': {'City': ['bristol']}}, 'b': {**dashboard, 'filters': {'City': ['Bristol', 'Leeds']}}}))
-    repository.set_workspace_state('ppt_dashboard_main_cities_reference_v1', '0')
-    stored = app_module.dashboard_reporting.list_dashboards(repository)
+    assert resolve(design, repository)['filters']['City'] == ['Bristol']
+    # A Design saved before with exactly the Main Cities of then gets the Main Cities choice, once.
+    repository.set_workspace_state('ppt_designs_v2', json.dumps({
+        'a': {**design, 'filters': {'City': ['bristol']}}, 'b': {**design, 'filters': {'City': ['Bristol', 'Leeds']}}}))
+    repository.set_workspace_state('ppt_design_main_cities_reference_v1', '0')
+    stored = app_module.design_reporting.list_designs(repository)
     assert stored['a']['filters']['City'] == ['@main-cities'] and stored['b']['filters']['City'] == ['Bristol', 'Leeds']
-    assert repository.get_workspace_state('ppt_dashboard_main_cities_reference_v1') == '1'
+    assert repository.get_workspace_state('ppt_design_main_cities_reference_v1') == '1'
 
 
 def core_runtime_definition():
-    """The Dashboards' runtime_dashboard_definition, reached through a registered route closure."""
+    """The Designs' runtime_design_definition, reached through a registered route closure."""
     for route in app_module.app.routes:
         endpoint = getattr(route, 'endpoint', None)
-        if getattr(endpoint, '__name__', '') == 'prefetched_dashboard':
+        if getattr(endpoint, '__name__', '') == 'prefetched_design':
             closure = {name: cell.cell_contents for name, cell in zip(endpoint.__code__.co_freevars, endpoint.__closure__ or ())}
-            return closure['runtime_dashboard_definition']
-    raise AssertionError('The PPT Dashboards routes are not registered.')
+            return closure['runtime_design_definition']
+    raise AssertionError('The PPT Designer routes are not registered.')
 
 
 def test_reporting_jobs_saved_with_cdrs_choose_them_by_their_campaigns(workspace):
@@ -378,7 +378,7 @@ def test_reporting_jobs_saved_with_cdrs_choose_them_by_their_campaigns(workspace
     q1 = add(name='UK_Q1_2026_Voice.csv', kind='voice', campaign='UK_Q1_2026')
     q2 = add(name='UK_Q2_2026_Data.csv', kind='data', campaign='UK_Q2_2026')
     definition = {
-        'dashboards': [{'dashboard_id': 'd1', 'datasets': {'voice': [q1]}, 'filters': {'Operator': ['EE']}}],
+        'designs': [{'design_id': 'd1', 'datasets': {'voice': [q1]}, 'filters': {'Operator': ['EE']}}],
         'network_insights': [{'cdr_selection': 'newest', 'selection': {'datasets': {'data': [q2]}}}],
         'scoring': [{'nr_mode': 'NSA', 'dataset_ids': [q1, q2], 'report': default_report_configuration()}],
         'modules': {'non_qualified_calls': {'enabled': True, 'formats': ['powerpoint'], 'options': {'filters': {'datasets': [str(q1)]}}}},
@@ -387,8 +387,8 @@ def test_reporting_jobs_saved_with_cdrs_choose_them_by_their_campaigns(workspace
     assert created.status_code == 200, created.text
     task = next(task for task in client.get('/api/reporting/state').json()['tasks'] if task['name'] == 'Legacy CDRs')
     migrated = task['definition']
-    assert migrated['dashboards'][0]['filters'] == {'Operator': ['EE'], 'Campaign': ['UK_Q1_2026']}
-    assert (migrated['dashboards'][0]['datasets'], migrated['dashboards'][0]['auto_cdrs']) == ({}, True)
+    assert migrated['designs'][0]['filters'] == {'Operator': ['EE'], 'Campaign': ['UK_Q1_2026']}
+    assert (migrated['designs'][0]['datasets'], migrated['designs'][0]['auto_cdrs']) == ({}, True)
     # Network Insights filters its samples by the campaign as the Campaign Maps show it.
     assert migrated['network_insights'][0]['selection']['campaigns'] == ['26-Q2']
     assert migrated['network_insights'][0]['selection']['datasets'] == {}

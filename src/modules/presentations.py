@@ -227,9 +227,14 @@ def render_slides(folder: Path, manifest: dict[str, Any]) -> None:
             (target / f'thumb-{number:02d}.png').write_bytes(thumb)
 
 
+# Presentations of renamed modules, by their former id (shared links of PPT Dashboards open those of PPT Designer).
+LEGACY_PRESENTATION_IDS = {'ppt-dashboards': 'ppt-designer'}
+
+
 def slide_source(manifest: dict[str, Any], presentation_id: str, index: int) -> tuple[dict[str, Any], str, int, int] | None:
     """The presentation of a manifest, the folder of the picture of its slide ``index`` (from 0, kept within its slides), the
     number of that picture there (from 0) and the slide: the full presentation shows those of the presentations it joins."""
+    presentation_id = LEGACY_PRESENTATION_IDS.get(presentation_id, presentation_id)
     item = next((entry for entry in manifest.get('presentations') or [] if entry.get('id') == presentation_id), None)
     if item is None:
         return None

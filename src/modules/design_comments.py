@@ -1,4 +1,4 @@
-"""Generated comments of PPT Dashboard slides: the facts of the charts of a slide, their findings and their sentences.
+"""Generated comments of PPT Designer slides: the facts of the charts of a slide, their findings and their sentences.
 
 The comments are written from the models the viewer draws (the same filters, splits, hidden values and Operator Maps),
 never from pixels: a CDF or histogram gives the exact median, tail percentiles and class shares of each series, the

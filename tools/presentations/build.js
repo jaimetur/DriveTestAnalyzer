@@ -42,7 +42,7 @@ const M = {
   tickets: { name: 'Ticket Center', short: 'Ticket Center', color: 'FAD22D', iconColor: '242424', icon: 'TbTicket', desc: 'Bugs & requests, tracked' },
   builders: { name: 'Builders', short: 'Builders', color: '0082F0', icon: 'TbCode', desc: 'Ad-hoc charts & SQL' },
   cdr: { name: 'CDR Analysis', short: 'CDR Analysis', color: '4D4D4D', icon: 'TbFileAnalytics', desc: 'Deep dive into one CDR' },
-  dash: { name: 'PPT Dashboards', short: 'PPT Dashboards', color: 'E07800', icon: 'TbPresentationAnalytics', desc: 'Template-driven KPI decks' },
+  dash: { name: 'PPT Designer', short: 'PPT Designer', color: 'E07800', icon: 'TbPresentationAnalytics', desc: 'Template-driven KPI decks' },
 };
 // The modules in the order of the tabs of the tool.
 const TOOL_ORDER = ['cdr', 'dash', 'scoring', 'ni', 'nq', 'reporting', 'builders', 'tickets'];
@@ -223,7 +223,7 @@ async function modules(pres) {
     ], { x, y: node.y - 0.4, w: 2.25, h: 0.8, align: node.right ? 'left' : 'right', valign: 'middle' });
   }
   slide.addNotes('Eight modules around one workspace, in the order of the tool: CDR Analysis, the template-driven PPT '
-    + 'Dashboards, the scores and GAPs of Scoring & GAP Analysis, the radio and network view of Network Insights, the '
+    + 'Designs, the scores and GAPs of Scoring & GAP Analysis, the radio and network view of Network Insights, the '
     + 'follow-up of every Non-Qualified Call, Reporting, the Chart and Query Builders and the Ticket Center. They all read '
     + 'the same processed CDRs.');
 }
@@ -264,7 +264,7 @@ async function teams(pres) {
         line: { color: level === 2 ? K.deep : K.blue, width: 1.5 } });
     }
   }
-  slide.addNotes('Benchmarking scores operators with Scoring & GAP Analysis and shares PPT Dashboards and reports; the NQ team '
+  slide.addNotes('Benchmarking scores operators with Scoring & GAP Analysis and shares PPT Designer and reports; the NQ team '
     + 'follows every failed call; troubleshooting reads coverage, interference and serving cells in Network Insights with CDR '
     + 'Analysis and the Builders; technical and executive reports come from the same modules, scheduled in Reporting.');
 }
@@ -610,7 +610,7 @@ async function reporting(pres) {
     }
     text(slide, name, { x: x - 0.05, y: 6.1, w: 1.32, h: 0.3, fontSize: 11, color: K.ink, align: 'center' });
   }
-  slide.addNotes('A Bundle Report Template composes one PowerPoint or Word document from the sections of PPT Dashboards, Scoring, '
+  slide.addNotes('A Bundle Report Template composes one PowerPoint or Word document from the sections of PPT Designer, Scoring, '
     + 'Network Insights, NQ Calls and CDR Analysis. Reporting Jobs run it, or any artifact, on demand or on a schedule and '
     + 'email it; the Run History stops, reruns and resumes runs. Seven themes take the same report from the operator brand to '
     + 'the boardroom.');
@@ -664,12 +664,12 @@ async function cdrAnalysis(pres, files) {
     + 'every processed record; then export it to PowerPoint or Word, in seven themes. The chart uses illustrative data.');
 }
 
-async function dashboards(pres) {
+async function designs(pres) {
   const slide = pres.addSlide({ masterName: 'CONTENT', sectionTitle: 'Modules' });
-  heading(slide, 'PPT Dashboards — ', 'the KPI deck, live and in PowerPoint', 'A saved Report Template becomes an interactive Dashboard of every slide, then a PowerPoint in one click');
+  heading(slide, 'PPT Designer — ', 'the KPI deck, live and in PowerPoint', 'A saved Report Template becomes an interactive Design of every slide, then a PowerPoint in one click');
   const stages = [
     ['1', 'Report Template', 'Slides, charts, KPIs and splits, validated as you edit'],
-    ['2', 'Interactive Dashboard', 'Every slide live, with its scope, filters and comments'],
+    ['2', 'Interactive Design', 'Every slide live, with its scope, filters and comments'],
     ['3', 'PowerPoint', 'The whole deck in your template, in one click'],
   ];
   for (const [index, [number, title, desc]] of stages.entries()) {
@@ -689,7 +689,7 @@ async function dashboards(pres) {
     ['3', 'CDF', 'DL throughput', 'Operator'], ['4', 'Bars', 'Call setup time', 'City'], ['5', 'Map', 'RSRP', 'Region'], ['6', 'Table', 'POLQA LQ', 'Vendor'],
   ], { x: 0.82, y: 2.62, w: 3.31, colW: [0.55, 0.65, 1.21, 0.9], fontSize: 9.5, fontFace: BODY, color: K.ink, rowH: 0.36,
     border: { type: 'solid', color: K.line, pt: 0.75 }, fill: { color: K.white }, margin: 0.04, objectName: 'Report Template rows' });
-  // 2: a slide of the Dashboard with its four charts.
+  // 2: a slide of the Design with its four charts.
   const sx = 5.0; const sy = 2.6;
   shape(slide, pres.shapes.ROUNDED_RECTANGLE, { x: sx, y: sy, w: 3.33, h: 1.95, rectRadius: 0.06, fill: { color: K.white }, line: { color: K.line, width: 1 } });
   shape(slide, pres.shapes.RECTANGLE, { x: sx + 0.15, y: sy + 0.14, w: 1.6, h: 0.08, fill: { color: K.ink }, line: { color: K.ink, width: 0 } });
@@ -721,8 +721,8 @@ async function dashboards(pres) {
     slide.addImage({ data: await icon(name, M.dash.color), x: x + 0.15, y: 5.88, w: 0.3, h: 0.3, objectName: named('icon') });
     text(slide, label, { x: x + 0.55, y: 5.75, w: 1.7, h: 0.55, fontSize: 11.5, bold: true, valign: 'middle' });
   }
-  slide.addNotes('PPT Dashboards turns a saved Report Template, its slides, charts, KPIs and splits, into an interactive '
-    + 'Dashboard of every slide, prepared in the background and cached, with its scope, filters and comments, a presentation '
+  slide.addNotes('PPT Designer turns a saved Report Template, its slides, charts, KPIs and splits, into an interactive '
+    + 'Design of every slide, prepared in the background and cached, with its scope, filters and comments, a presentation '
     + 'mode and the dataset behind every chart; then the whole deck becomes a PowerPoint in one click, in your template.');
 }
 
@@ -1089,7 +1089,7 @@ async function oneSlider(pres, files, masterName = 'SINGLE', sectionTitle = 'Dri
   }
   slide.addNotes(`DriveTest Analyzer in one slide. Data in: CDRs (${STATS.calls} Data and Voice calls in ${STATS.cdrs} CDRs of `
     + `${plural(FIGURES.campaigns, 'campaign')} of ${STATS.where}), network inventories, vendor mappings and regions and clusters. `
-    + 'On one shared workspace, eight modules: CDR Analysis, PPT Dashboards, Scoring & GAP Analysis, Network Insights, '
+    + 'On one shared workspace, eight modules: CDR Analysis, PPT Designer, Scoring & GAP Analysis, Network Insights, '
     + `Non-Qualified Calls (${STATS.nqExact} NQ calls), Reporting, the Builders and the Ticket Center. They serve `
     + 'benchmarking, the NQ team, troubleshooting and technical and executive reporting, on an enterprise platform on AWS with '
     + `roles, isolated workspaces, automated backups, a Ticket Center, a ${STATS.chapters}-chapter Help and ${STATS.tests} `
@@ -1194,7 +1194,7 @@ function presentationsOf(decks) {
         { title: 'Introduction', slides: ['DriveTest Analyzer', 'One platform, from CDRs to decisions'] },
         { title: 'Teams', slides: ['Built for every team'] },
         { title: 'Platform', slides: ['Enterprise-ready'] },
-        { title: 'Modules', slides: ['Eight modules, one shared workspace', 'CDR Analysis', 'PPT Dashboards', 'Scoring & GAP Analysis — who wins',
+        { title: 'Modules', slides: ['Eight modules, one shared workspace', 'CDR Analysis', 'PPT Designer', 'Scoring & GAP Analysis — who wins',
           'Scoring & GAP Analysis — where to win the points back', 'Network Insights', 'NQ Calls', 'Reporting', 'Builders', 'Ticket Center'] },
         { title: 'Roadmap', slides: ['Roadmap'] },
         { title: 'In one slide', slides: ['DriveTest Analyzer in one slide'] },
@@ -1245,7 +1245,7 @@ async function overviewSlides(deck, files, sectionTitle = '') {
   section('Modules');
   await modules(pres);
   await cdrAnalysis(pres, files);
-  await dashboards(pres);
+  await designs(pres);
   await scoring(pres);
   await scoringActions(pres, files);
   await networkInsights(pres, files);

@@ -213,11 +213,11 @@ def node_json(script: str):
 def test_every_main_module_has_its_presentation_at_the_start_of_its_chapter():
     help_folder = Path(__file__).resolve().parents[1] / 'help'
     ids = presentations.expected_ids()
-    assert ids == ['overview', 'one-slider', 'roadmap', 'benchmarking-providers', 'workspace', 'workspace-config', 'cdr-analysis', 'ppt-dashboards',
+    assert ids == ['overview', 'one-slider', 'roadmap', 'benchmarking-providers', 'workspace', 'workspace-config', 'cdr-analysis', 'ppt-designer',
                    'scoring-gap-analysis', 'network-insights', 'non-qualified-calls', 'dt-analyzer-rca', 'reporting', 'builders',
                    'ticket-center', 'administration', 'full-presentation']
     chapters = {'workspace-management': 'workspace\nworkspace-config', 'workspace-config': 'workspace-config',
-                'datasets-analysis': 'cdr-analysis', 'ppt-dashboards': 'ppt-dashboards',
+                'datasets-analysis': 'cdr-analysis', 'ppt-designer': 'ppt-designer',
                 'scoring-gap-analysis': 'scoring-gap-analysis', 'network-insights': 'network-insights',
                 'non-qualified-calls': 'non-qualified-calls\ndt-analyzer-rca', 'reporting': 'reporting', 'chart-builder': 'builders',
                 'query-builder': 'builders', 'ticket-center': 'ticket-center', 'super-admin': 'administration',
@@ -235,11 +235,11 @@ def test_every_main_module_has_its_presentation_at_the_start_of_its_chapter():
         assert all(slide['id'] and slide['title'] and slide['notes'] and slide['section'] for slide in deck['slides']), deck_id
         sections = [slide['section'] for slide in deck['slides']]
         assert len(list(dict.fromkeys(sections))) == len([1 for index, section in enumerate(sections) if index == 0 or sections[index - 1] != section]), deck_id
-    # Those of PPT Dashboards and Non-Qualified Calls explain the PPT Templates, and the groups of NQ calls and the map of
+    # Those of PPT Designer and Non-Qualified Calls explain the PPT Templates, and the groups of NQ calls and the map of
     # the call, and that of Workspace Config what to set up in a new workspace.
     by_id = dict(decks)
     assert {'operators', 'vendors-campaigns', 'places'} <= {slide['id'] for slide in by_id['workspace-config']['slides']}
-    assert {'templates'} <= {slide['id'] for slide in by_id['ppt-dashboards']['slides']}
+    assert {'templates'} <= {slide['id'] for slide in by_id['ppt-designer']['slides']}
     assert {'groups', 'map', 'map-findings'} <= {slide['id'] for slide in by_id['non-qualified-calls']['slides']}
     # The DT Analyzer RCA keeps its slides.html, and the benchmarking providers deck its pictures.
     for name, count in (('dt-analyzer-rca', 12), ('benchmarking-providers', 24)):
@@ -252,7 +252,7 @@ def test_every_main_module_has_its_presentation_at_the_start_of_its_chapter():
     # after the Overview), then those of the modules (Network Insights after CDR Analysis) and the full presentation, each
     # in their own section; Product Overview points to Product Presentations.
     general = ['overview', 'benchmarking-providers', 'one-slider', 'roadmap']
-    modules_order = ['workspace', 'workspace-config', 'cdr-analysis', 'network-insights', 'ppt-dashboards', 'scoring-gap-analysis',
+    modules_order = ['workspace', 'workspace-config', 'cdr-analysis', 'network-insights', 'ppt-designer', 'scoring-gap-analysis',
                      'non-qualified-calls', 'dt-analyzer-rca', 'reporting', 'builders', 'ticket-center', 'administration']
     assert sorted(general + modules_order + ['full-presentation']) == sorted(ids)
     for chapter, level in (('help', '###'), ('presentations', '##')):
@@ -299,7 +299,7 @@ def test_the_server_generates_every_presentation_with_the_pictures_of_their_slid
     # rendered: the slide viewer shows the pictures of the slides in the presentation of their section.
     full = by_id['full-presentation']
     assert [section['presentation'] for section in full['sections']] == [
-        'overview', 'benchmarking-providers', 'workspace', 'workspace-config', 'cdr-analysis', 'network-insights', 'ppt-dashboards',
+        'overview', 'benchmarking-providers', 'workspace', 'workspace-config', 'cdr-analysis', 'network-insights', 'ppt-designer',
         'scoring-gap-analysis', 'non-qualified-calls', 'reporting', 'builders', 'ticket-center', 'administration', 'dt-analyzer-rca', 'roadmap']
     for section in full['sections']:
         part = by_id[section['presentation']]

@@ -10,7 +10,7 @@ import src.DriveTestAnalyzer as core
 from src.modules import bundle_report_templates as brt
 from src.modules import network_insights_favourites as ni_favourites
 from src.modules.deletion_rights import (
-    AUTO_CALCULATED_FIELDS, PPT_DASHBOARDS, SCORING_METHODOLOGIES, SCORING_REPORT_CONFIGURATIONS, creators, set_creator,
+    AUTO_CALCULATED_FIELDS, PPT_DESIGNER, SCORING_METHODOLOGIES, SCORING_REPORT_CONFIGURATIONS, creators, set_creator,
 )
 from src.modules.repository import Repository
 from src.modules.scoring_reports import default_report_configuration, load_report_state, save_named_configuration
@@ -33,8 +33,8 @@ def _transfer(target: str, source, destination, tmp_path: Path, importing_user: 
                                       importing_user=importing_user)
 
 
-def _dashboards(repository: Repository) -> dict:
-    return json.loads(repository.get_workspace_state(core.DASHBOARD_STATE_KEY) or '{}')
+def _designs(repository: Repository) -> dict:
+    return json.loads(repository.get_workspace_state(core.DESIGN_STATE_KEY) or '{}')
 
 
 def test_items_are_found_by_identity_then_name_and_keep_their_names_unique():
@@ -62,65 +62,65 @@ def test_imported_items_belong_to_their_creator_when_active_here():
     assert imported_creator(None, '', 'importer', exists) == 'importer'
 
 
-def test_dashboards_are_replaced_by_identity_or_name_and_the_others_kept(client, tmp_path):
+def test_designs_are_replaced_by_identity_or_name_and_the_others_kept(client, tmp_path):
     core.repository.create_user('analyst', 'analyst123', 'user-editor')
-    source, source_repo = _workspace('Dashboards source')
-    destination, destination_repo = _workspace('Dashboards destination')
-    source_repo.set_workspace_state(core.DASHBOARD_STATE_KEY, json.dumps({
+    source, source_repo = _workspace('Designs source')
+    destination, destination_repo = _workspace('Designs destination')
+    source_repo.set_workspace_state(core.DESIGN_STATE_KEY, json.dumps({
         'd1': {'name': 'Coverage', 'technology': 'nsa', 'template': 'T'},
         'd2': {'name': 'Speed', 'technology': 'nsa', 'template': 'T'},
     }))
-    set_creator(source_repo, PPT_DASHBOARDS, 'd1', 'analyst')
-    set_creator(source_repo, PPT_DASHBOARDS, 'd2', 'ghost')
-    destination_repo.set_workspace_state(core.DASHBOARD_STATE_KEY, json.dumps({
+    set_creator(source_repo, PPT_DESIGNER, 'd1', 'analyst')
+    set_creator(source_repo, PPT_DESIGNER, 'd2', 'ghost')
+    destination_repo.set_workspace_state(core.DESIGN_STATE_KEY, json.dumps({
         'local': {'name': 'Local only', 'technology': 'nsa', 'template': 'T'},
         'x9': {'name': 'Speed', 'technology': 'nsa', 'template': 'Old'},
     }))
 
-    notice = _transfer('dashboards', source, destination, tmp_path)
-    stored = _dashboards(destination_repo)
-    # Speed replaces the Dashboard of that name, keeping its ID; the Dashboards only the destination has stay.
+    notice = _transfer('designs', source, destination, tmp_path)
+    stored = _designs(destination_repo)
+    # Speed replaces the Design of that name, keeping its ID; the Designs only the destination has stay.
     assert set(stored) == {'local', 'x9', 'd1'}
-    # The message counts the Dashboards of the package and tells what changed in the updated ones.
-    assert notice.startswith('Imported 2 Dashboards into 1 workspace: 1 new and 1 updated.')
+    # The message counts the Designs of the package and tells what changed in the updated ones.
+    assert notice.startswith('Imported 2 Designs into 1 workspace: 1 new and 1 updated.')
     [section] = [item for item in core.import_notice_details(notice)['sections']
-                 if item['title'] == f'Updated Dashboards of "{destination.name}"']
+                 if item['title'] == f'Updated Designs of "{destination.name}"']
     assert section['items'] == [{'name': 'Speed', 'changes': ['Template: Old → T', 'Creator: (empty) → super']}]
     # Imported again, nothing changes and nothing is counted as updated.
-    again = _transfer('dashboards', source, destination, tmp_path)
-    assert again == 'Imported 2 Dashboards into 1 workspace: 2 unchanged.'
+    again = _transfer('designs', source, destination, tmp_path)
+    assert again == 'Imported 2 Designs into 1 workspace: 2 unchanged.'
     assert core.import_notice_details(again)['sections'] == []
     assert stored['x9']['template'] == 'T' and stored['local']['name'] == 'Local only'
-    known = creators(destination_repo, PPT_DASHBOARDS)
+    known = creators(destination_repo, PPT_DESIGNER)
     assert known['d1'] == 'analyst' and known['x9'] == 'super'
 
     # Renamed on the source, it is renamed in the destination instead of being added again.
-    renamed = _dashboards(source_repo)
+    renamed = _designs(source_repo)
     renamed['d1']['name'] = 'Coverage v2'
     renamed['d2']['name'] = 'Speed v2'
-    source_repo.set_workspace_state(core.DASHBOARD_STATE_KEY, json.dumps(renamed))
-    notice = _transfer('dashboards', source, destination, tmp_path)
-    stored = _dashboards(destination_repo)
+    source_repo.set_workspace_state(core.DESIGN_STATE_KEY, json.dumps(renamed))
+    notice = _transfer('designs', source, destination, tmp_path)
+    stored = _designs(destination_repo)
     assert {key: item['name'] for key, item in stored.items()} == {'local': 'Local only', 'x9': 'Speed v2', 'd1': 'Coverage v2'}
     assert '"Coverage" renamed "Coverage v2"' in notice
-    assert notice.startswith('Imported 2 Dashboards into 1 workspace: 2 updated.')
+    assert notice.startswith('Imported 2 Designs into 1 workspace: 2 updated.')
     # The summary window gets the message in parts: its headline and a table of the renamed items of each element.
     details = core.import_notice_details(notice)
-    [section] = [item for item in details['sections'] if item['title'] == f'Dashboards of "{destination.name}"']
+    [section] = [item for item in details['sections'] if item['title'] == f'Designs of "{destination.name}"']
     assert {'label': '', 'from': 'Coverage', 'to': 'Coverage v2'} in section['items']
     assert details['headline'] and details['headline'] in notice
 
-    # A Reporting Job that names the Dashboard by its ID on the source finds the one it replaced.
-    assert brt.dashboard_aliases(destination_repo) == {'d2': 'x9'}
+    # A Reporting Job that names the Design by its ID on the source finds the one it replaced.
+    assert brt.design_aliases(destination_repo) == {'d2': 'x9'}
     from src.modules.report_tasks import import_tasks_document, list_tasks
     document = {'format': 'drivetest-analyzer-reporting-jobs', 'version': 1, 'reporting_jobs': [{
         'name': 'Weekly', 'enabled': False, 'schedule': {'mode': 'manual'}, 'created_by': 'super',
-        'definition': {'dashboards': [{'dashboard_id': 'd2', 'label': 'Speed v2'}]},
+        'definition': {'designs': [{'design_id': 'd2', 'label': 'Speed v2'}]},
     }]}
     import_tasks_document(destination_repo, json.dumps(document), 'super', parse_recipients=core.parse_recipients,
                           invalid_recipients=core.invalid_recipients)
     [job] = list_tasks(destination_repo)
-    assert job['definition']['dashboards'][0]['dashboard_id'] == 'x9'
+    assert job['definition']['designs'][0]['design_id'] == 'x9'
 
 
 def test_query_builder_queries_follow_their_renames_and_creators(client, tmp_path):
@@ -196,7 +196,7 @@ def test_auto_calculated_fields_are_added_and_renamed_by_identity(client, tmp_pa
     names = [item['name'] for item in destination_repo.list_calculated_dimensions()]
     assert names == ['Local field', 'Area kind']
     assert creators(destination_repo, AUTO_CALCULATED_FIELDS)[core._normalise_catalogue_dimension_name('Area kind')] == 'admin'
-    destination_repo.set_workspace_state(core.DASHBOARD_STATE_KEY, json.dumps({
+    destination_repo.set_workspace_state(core.DESIGN_STATE_KEY, json.dumps({
         'd1': {'name': 'Uses it', 'custom_fields': ['Area kind'], 'filters': {'Area kind': ['A']}},
     }))
     destination_repo.save_query_builder_query('By area', '', 'SELECT "Area kind", COUNT(*) FROM t GROUP BY "Area kind"', [], 'super')
@@ -206,8 +206,8 @@ def test_auto_calculated_fields_are_added_and_renamed_by_identity(client, tmp_pa
                                        importing_user='admin', summary=summary)
     names = [item['name'] for item in destination_repo.list_calculated_dimensions()]
     assert names == ['Local field', 'Area type']
-    dashboard = _dashboards(destination_repo)['d1']
-    assert dashboard['custom_fields'] == ['Area type'] and 'Area type' in dashboard['filters']
+    design = _designs(destination_repo)['d1']
+    assert design['custom_fields'] == ['Area type'] and 'Area type' in design['filters']
     # The saved queries use it as a column of the CDR tables: their SQL takes its new name too.
     [query] = destination_repo.list_query_builder_queries()
     assert query['query_sql'] == 'SELECT "Area type", COUNT(*) FROM t GROUP BY "Area type"'
@@ -277,21 +277,21 @@ def test_methodologies_are_merged_keeping_those_only_the_destination_has(client,
 
 def test_a_restore_adds_and_renames_like_an_import(client, tmp_path):
     workspace, repo = _workspace('Restore workspace')
-    repo.set_workspace_state(core.DASHBOARD_STATE_KEY, json.dumps({'d1': {'name': 'Coverage', 'technology': 'nsa', 'template': 'T'}}))
+    repo.set_workspace_state(core.DESIGN_STATE_KEY, json.dumps({'d1': {'name': 'Coverage', 'technology': 'nsa', 'template': 'T'}}))
     # Valid templates: a renamed field is renamed in them too.
     saved = (Path(__file__).parent / 'fixtures' / 'NSA Slide Template.csv').read_bytes()
     repo.add_report_template('Coverage', saved, updated_by='super')
     [field] = core.calculated_dimensions_json(core.parse_calculated_dimensions(core.default_calculated_dimensions()))[:1]
     repo.replace_calculated_dimensions([{**field, 'name': 'Area kind'}])
-    components = ['dashboards', 'report_templates', 'auto_calculated_fields']
+    components = ['designs', 'report_templates', 'auto_calculated_fields']
     backup = core.create_recurring_database_backup({'components': components, 'workspace_ids': [workspace.id],
                                                     'backup_path': str(tmp_path / 'backups'), 'max_backups': 5})
 
     # After the backup, each one is renamed and another is created.
-    dashboards = _dashboards(repo)
-    dashboards['d1']['name'] = 'Coverage now'
-    dashboards['local'] = {'name': 'Local', 'technology': 'nsa', 'template': 'T'}
-    repo.set_workspace_state(core.DASHBOARD_STATE_KEY, json.dumps(dashboards))
+    designs = _designs(repo)
+    designs['d1']['name'] = 'Coverage now'
+    designs['local'] = {'name': 'Local', 'technology': 'nsa', 'template': 'T'}
+    repo.set_workspace_state(core.DESIGN_STATE_KEY, json.dumps(designs))
     repo.rename_report_template('Coverage', 'Coverage now')
     repo.add_report_template('Local', saved)
     previous = core.parse_calculated_dimensions(repo.list_calculated_dimensions())
@@ -301,33 +301,33 @@ def test_a_restore_adds_and_renames_like_an_import(client, tmp_path):
 
     # The restore brings back what the backup has, found by its identity, and keeps what only the workspace has.
     core.restore_database_backup(backup, components, importing_user='super')
-    assert {item['name'] for item in _dashboards(repo).values()} == {'Coverage', 'Local'}
+    assert {item['name'] for item in _designs(repo).values()} == {'Coverage', 'Local'}
     templates = {str(row['name']) for row in repo.list_report_templates()}
     assert templates == {'Coverage', 'Local'}
     assert [item['name'] for item in repo.list_calculated_dimensions()] == ['Area kind', 'Local field']
 
 
-def test_dashboards_follow_their_ppt_template_by_its_identity(client):
+def test_designs_follow_their_ppt_template_by_its_identity(client):
     client.post('/login', data={'username': 'super', 'password': 'super123'}, follow_redirects=False)
     repo = core.repository
     template = (Path(__file__).parent / 'fixtures' / 'NSA Slide Template.csv').read_bytes()
     repo.add_report_template('Coverage', template, updated_by='super')
     uid = repo.report_template_uids()['Coverage']
     assert uid
-    # A Dashboard saved before identities takes that of the template it names.
-    repo.set_workspace_state(core.DASHBOARD_STATE_KEY, json.dumps({
+    # A Design saved before identities takes that of the template it names.
+    repo.set_workspace_state(core.DESIGN_STATE_KEY, json.dumps({
         'dash-1': {'name': 'Coverage NSA', 'template': 'Coverage', 'template_technology': 'nsa', 'technology': 'nsa'},
     }))
-    listed = client.get('/api/ppt-dashboards').json()
+    listed = client.get('/api/ppt-designer').json()
     assert listed['dash-1']['template_uid'] == uid
-    # Renamed without telling the Dashboards, the template is still found by its identity.
+    # Renamed without telling the Designs, the template is still found by its identity.
     repo.rename_report_template('Coverage', 'Coverage v2')
-    listed = client.get('/api/ppt-dashboards').json()
+    listed = client.get('/api/ppt-designer').json()
     assert listed['dash-1']['template'] == 'Coverage v2' and listed['dash-1']['template_uid'] == uid
-    assert _dashboards(repo)['dash-1']['template'] == 'Coverage v2'
-    # Its references stay with it: the template used by a Dashboard is protected under its new name.
-    assert 'Coverage v2' in core._dashboard_template_references(repo)
-    # The Dashboard of before reads its NR Mode as part of its selection.
+    assert _designs(repo)['dash-1']['template'] == 'Coverage v2'
+    # Its references stay with it: the template used by a Design is protected under its new name.
+    assert 'Coverage v2' in core._design_template_references(repo)
+    # The Design of before reads its NR Mode as part of its selection.
     assert listed['dash-1']['nr_mode'] == 'NSA' and 'technology' not in listed['dash-1']
 
 
@@ -337,7 +337,7 @@ def test_reporting_jobs_and_excluded_calls_follow_their_renames(client, tmp_path
 
     source, source_repo = _workspace('Jobs source')
     destination, destination_repo = _workspace('Jobs destination')
-    job = save_task(source_repo, None, {'name': 'Weekly', 'definition': {'dashboards': [{'dashboard_id': 'd1', 'label': 'X'}]},
+    job = save_task(source_repo, None, {'name': 'Weekly', 'definition': {'designs': [{'design_id': 'd1', 'label': 'X'}]},
                                         'schedule': {'mode': 'manual'}, 'send_email': False, 'recipients': ''}, 'super',
                     parse_recipients=core.parse_recipients, invalid_recipients=core.invalid_recipients)
     excluded = scoring_exclusions.create_list(source_repo, name='Retests', calls=[{'join_id': 'J1'}], username='super')
@@ -449,8 +449,8 @@ def test_an_export_tells_which_part_it_is_archiving(client, tmp_path):
 
     # A selection of several elements names each one by its position.
     phases = []
-    core.build_export_archive_file(['dashboards', 'ppt-templates'], tmp_path / 'selection.zip', phase_callback=phases.append)
-    assert phases == ['Dashboards (1 of 2)', 'PPT Templates (2 of 2)']
+    core.build_export_archive_file(['designs', 'ppt-templates'], tmp_path / 'selection.zip', phase_callback=phases.append)
+    assert phases == ['Designs (1 of 2)', 'PPT Templates (2 of 2)']
 
 
 def test_import_summaries_come_in_parts_for_the_summary_window():
@@ -467,7 +467,7 @@ def test_import_summaries_come_in_parts_for_the_summary_window():
         {'text': 'user "bob" left out because another user has that username'},
     ]
     notice = core.import_notice('Import selection completed (2 packages). ' + line, 'Import selection completed (2 packages).',
-                                [line], ['Imported 3 Dashboards into 1 workspaces.', 'PPT Templates imported successfully.'])
+                                [line], ['Imported 3 Designs into 1 workspaces.', 'PPT Templates imported successfully.'])
     assert json.loads(json.dumps({'notice': notice, 'details': core.import_notice_details(notice)}))['details']['packages'][1] == 'PPT Templates imported successfully.'
     assert core.import_notice_details('Plain message.') is None
     # The incoming and outgoing transfers and the imports open it in a wide window.

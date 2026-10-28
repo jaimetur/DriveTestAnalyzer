@@ -1,4 +1,4 @@
-/* Free layouts of the Dashboard Designer (ticket #26, phase 4): the places of a slide adjusted on a grid.
+/* Free layouts of the Designer (ticket #26, phase 4): the places of a slide adjusted on a grid.
 
    The rows and columns of the grid are resized by dragging the lines between them, and neighbouring places are merged
    into one (a chart over two columns) or split again. The result is the geometry of the places, as fractions of the chart
@@ -54,7 +54,7 @@
     spec.rows = normalized(spec.rows); spec.columns = normalized(spec.columns);
     const original = structuredClone(spec);
     let selected = new Set();
-    const overlay = h('div', {class: 'confirm-overlay ds-overlay ds-secondary ppt-dashboards ds-design-dialog-overlay'});
+    const overlay = h('div', {class: 'confirm-overlay ds-overlay ds-secondary ppt-designer ds-design-dialog-overlay'});
     const board = h('div', {class: 'ds-layout-board', role: 'application', 'aria-label': 'Places of the slide'});
     const note = h('p', {class: 'form-note', text: 'Drag the lines between rows or columns to resize them. Click a place, Shift+click another to select the places between them, then Merge; Split gives a merged place its cells back.'});
     const mergeButton = h('button', {type: 'button', class: 'ds-design-action', onclick: () => merge()}, 'Merge');
@@ -176,5 +176,5 @@
     dialog.focus();
   }
 
-  window.DashboardLayoutEditor = {open, geometry, gridSpec};
+  window.PlacesEditor = {open, geometry, gridSpec};
 })();

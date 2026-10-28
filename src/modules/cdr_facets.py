@@ -1,6 +1,6 @@
 """Cascading filter values of the CDRs a module can use.
 
-The filters of PPT Dashboards, Scoring & GAP Analysis and Network Insights list the values of
+The filters of PPT Designer, Scoring & GAP Analysis and Network Insights list the values of
 every CDR of the chosen NR Mode (not only of the CDRs a selection already uses), and each filter
 lists only the values that the other filters leave: choosing Vodafone as Operator leaves in
 Vendor only the Vendors of Vodafone, and choosing a Campaign leaves its Operators, Regions and

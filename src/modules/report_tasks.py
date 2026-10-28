@@ -1,7 +1,7 @@
 """Reporting: scheduled report jobs that collect artifacts and email them.
 
 A Reporting Job (``report_tasks``) selects artifacts — CDR Analysis,
-Network Insights, Dashboard PPTs and Scoring PPTs — plus optional email
+Network Insights, Design PPTs and Scoring PPTs — plus optional email
 recipients and a schedule. Each execution (``report_task_runs``) writes its
 artifacts to its own folder and, when email is enabled, sends them as attachments
 with a body that describes every artifact and its filters.
@@ -65,19 +65,19 @@ RUN_FINAL_STATUSES = ('sent', 'completed', 'partial', 'failed', 'stopped')
 RUN_ACTIVE_STATUSES = ('queued', 'running', 'stopping')
 # The runs Rerun starts again from the beginning.
 RUN_RERUN_STATUSES = ('failed', 'stopped')
-DASHBOARD_JOB_TIMEOUT_SECONDS = 3 * 60 * 60
+DESIGN_JOB_TIMEOUT_SECONDS = 3 * 60 * 60
 SCHEDULER_INTERVAL_SECONDS = 30
 INTERRUPTED_RUN_MESSAGE = 'The run was interrupted by an application restart.'
 # A run interrupted by application restarts goes on from the step it was on, up to this many times.
 MAX_RUN_RESUMES = 3
 MODULE_LABELS = {
     'dataset_analysis': 'CDR Analysis', 'network_insights': 'Network Insights',
-    'dashboards': 'Dashboards', 'scoring': 'Scoring',
+    'designs': 'Designs', 'scoring': 'Scoring',
 }
 # The feature a user needs to include each kind of artifact in a Reporting Job.
 MODULE_FEATURES = {
     'dataset_analysis': 'datasets-analysis', 'network_insights': 'network-insights',
-    'dashboards': 'ppt-dashboards', 'scoring': 'scoring',
+    'designs': 'ppt-designer', 'scoring': 'scoring',
 }
 # Artifacts of other modules (for example Non-Qualified Calls) register here:
 # key -> {'label', 'feature', 'formats', 'generate', 'filters', 'settings', 'values'}.
@@ -88,6 +88,13 @@ ARTIFACT_PROVIDERS: dict[str, dict[str, Any]] = {}
 # Jobs Templates and Bundle Reports Templates), and the key that replaced each.
 LEGACY_PROVIDER_KEYS = {'complete_report': 'bundle_report_template', 'reporting_jobs_template': 'bundle_report_template',
                         'bundle_reports_template': 'bundle_report_template'}
+
+
+def _current_artifact_modules(artifacts: Any) -> Any:
+    """The artifacts of a run, those of the Designs generated before PPT Designer (module dashboards) included."""
+    if not isinstance(artifacts, list):
+        return artifacts
+    return [{**item, 'module': 'designs'} if isinstance(item, dict) and item.get('module') == 'dashboards' else item for item in artifacts]
 
 
 def _current_provider_keys(definition: Any) -> bool:
@@ -310,8 +317,8 @@ def _network_thresholds(selection: dict[str, Any]) -> dict[str, float]:
     }
 
 
-def _dashboard_nr_mode(definition: dict[str, Any]) -> str:
-    """The NR Mode of the CDRs a saved Dashboard reads: NSA, SA or NSA+SA (those saved before named it technology)."""
+def _design_nr_mode(definition: dict[str, Any]) -> str:
+    """The NR Mode of the CDRs a saved Design reads: NSA, SA or NSA+SA (those saved before named it technology)."""
     return normalize_scoring_nr_mode(definition.get('nr_mode') or definition.get('technology')) or DEFAULT_NR_MODE
 
 
@@ -390,12 +397,12 @@ def normalize_definition(raw: Any) -> dict[str, Any]:
         },
         # One Network Insights per entry, each with its own selection.
         'network_insights': [_network_entry(entry) for entry in _network_entries(raw.get('network_insights'))],
-        'dashboards': [],
+        'designs': [],
         'scoring': [],
         # Artifacts of modules registered in ARTIFACT_PROVIDERS.
         'modules': {},
         # The one colour theme of the job, read by every artifact that supports themes (CDR Analysis, Network Insights,
-        # Scoring & GAP Analysis, PPT Dashboards and Bundle Report Templates); jobs without one take the default theme.
+        # Scoring & GAP Analysis, PPT Designer and Bundle Report Templates); jobs without one take the default theme.
         'theme': normalize_theme(str(raw.get('theme') or '').strip() or DEFAULT_THEME),
     }
     for key, config in (raw.get('modules') or {}).items() if isinstance(raw.get('modules'), dict) else ():
@@ -408,20 +415,23 @@ def normalize_definition(raw: Any) -> dict[str, Any]:
                 formats.insert(0, next(value for value in provider['formats'] if value in {'powerpoint', 'word'}))
             definition['modules'][key] = {'enabled': True, 'formats': formats,
                                           'options': config.get('options') if isinstance(config.get('options'), dict) else {}}
-    # Dashboards and Scoring entries carry every option of their own module;
+    # Designs and Scoring entries carry every option of their own module;
     # each run generates a new PPT with them.
-    for entry in raw.get('dashboards') or []:
-        if not isinstance(entry, dict) or not str(entry.get('dashboard_id') or '').strip():
+    # A job saved before PPT Designer names its Designs as Dashboards (dashboards, dashboard_id).
+    for entry in raw.get('designs', raw.get('dashboards')) or []:
+        if isinstance(entry, dict) and 'design_id' not in entry and 'dashboard_id' in entry:
+            entry = {**entry, 'design_id': entry['dashboard_id']}
+        if not isinstance(entry, dict) or not str(entry.get('design_id') or '').strip():
             continue
         auto_cdrs = bool(entry.get('auto_cdrs'))
-        definition['dashboards'].append({
-            'dashboard_id': str(entry['dashboard_id']).strip(), 'label': str(entry.get('label') or '').strip()[:120],
-            # The NR Mode of the CDRs it reads, in place of the Dashboard's (empty: the Dashboard's own, as the entries
+        definition['designs'].append({
+            'design_id': str(entry['design_id']).strip(), 'label': str(entry.get('label') or '').strip()[:120],
+            # The NR Mode of the CDRs it reads, in place of the Design's (empty: the Design's own, as the entries
             # saved before).
             'nr_mode': normalize_scoring_nr_mode(entry.get('nr_mode')) or '',
             'scope': entry.get('scope') if entry.get('scope') in {'single', 'multivendor'} else 'single',
             'vendor_comparison': entry.get('vendor_comparison') if entry.get('vendor_comparison') in {'operator_vendor', 'vendor_only'} else 'operator_vendor',
-            # The CDRs of the Dashboard's NR Mode and of the Campaign filter at each run (auto_cdrs); entries saved
+            # The CDRs of the Design's NR Mode and of the Campaign filter at each run (auto_cdrs); entries saved
             # before chose them by hand or with an automatic choice (see migrate_auto_cdrs).
             'auto_cdrs': auto_cdrs,
             'datasets': {} if auto_cdrs else _datasets_by_kind(entry.get('datasets')),
@@ -431,7 +441,7 @@ def normalize_definition(raw: Any) -> dict[str, Any]:
             'filters': {str(field): _strings(values) for field, values in (entry.get('filters') or {}).items()
                         if str(field).strip() and _strings(values)} if isinstance(entry.get('filters'), dict) else {},
             # Auto comments of the PPT: generated comments on the slides without comments, in place of the generated
-            # ones or in place of every comment; entries saved before keep the comments of the Dashboard (off).
+            # ones or in place of every comment; entries saved before keep the comments of the Design (off).
             'auto_comments': entry.get('auto_comments') if entry.get('auto_comments') in {'off', 'empty', 'generated', 'all'} else 'off',
             # Their writer (empty: the default one of Super Admin), run with the Kiro API key of the job's owner.
             'auto_comments_engine': entry.get('auto_comments_engine') if entry.get('auto_comments_engine') in {'rules', 'kiro_cli', 'claude'} else '',
@@ -466,7 +476,7 @@ def normalize_definition(raw: Any) -> dict[str, Any]:
                        if key not in {'theme', 'nr_layout', 'nr_charts'}},
         })
     if not (definition['dataset_analysis']['enabled'] or definition['network_insights']
-            or definition['dashboards'] or definition['scoring'] or definition['modules']):
+            or definition['designs'] or definition['scoring'] or definition['modules']):
         raise ValueError('Select at least one artifact for the Reporting Job.')
     return definition
 
@@ -531,7 +541,7 @@ def used_modules(definition: dict[str, Any]) -> list[tuple[str, str, str]]:
     used = []
     if (definition.get('dataset_analysis') or {}).get('enabled'):
         used.append(('dataset_analysis', MODULE_LABELS['dataset_analysis'], MODULE_FEATURES['dataset_analysis']))
-    for module in ('network_insights', 'dashboards', 'scoring'):
+    for module in ('network_insights', 'designs', 'scoring'):
         if definition.get(module):
             used.append((module, MODULE_LABELS[module], MODULE_FEATURES[module]))
     for key in definition.get('modules') or {}:
@@ -567,7 +577,7 @@ def _favourite_items(config: dict[str, Any], favourite_names: dict[str, str] | N
     return [(favourite_names or {}).get(value) or (f'Favourite {value}' if value.isdigit() else value) for value in chosen] or ['Every favourite']
 
 
-def artifact_groups(definition: dict[str, Any], dashboard_names: dict[str, str] | None = None,
+def artifact_groups(definition: dict[str, Any], design_names: dict[str, str] | None = None,
                     favourite_names: dict[str, str] | None = None,
                     favourite_contents: dict[str, list[dict[str, Any]]] | None = None) -> list[dict[str, Any]]:
     """The artifacts of a job by module: [{'module', 'items'}], each item an entry name with its formats.
@@ -586,10 +596,10 @@ def artifact_groups(definition: dict[str, Any], dashboard_names: dict[str, str] 
     network = [f"{network_entry_name(entry)} {formats(entry.get('formats'))}" for entry in definition.get('network_insights') or []]
     if network:
         groups.append({'module': 'Network Insights', 'items': network})
-    dashboards = [f"{entry.get('label') or (dashboard_names or {}).get(entry.get('dashboard_id', ''), entry.get('dashboard_id', ''))} (PPT)"
-                  for entry in definition.get('dashboards') or []]
-    if dashboards:
-        groups.append({'module': 'PPT Dashboards', 'items': dashboards})
+    designs = [f"{entry.get('label') or (design_names or {}).get(entry.get('design_id', ''), entry.get('design_id', ''))} (PPT)"
+                  for entry in definition.get('designs') or []]
+    if designs:
+        groups.append({'module': 'PPT Designer', 'items': designs})
     scoring = [f"{scoring_entry_name(entry)} {formats(entry.get('formats'))}" for entry in definition.get('scoring') or []]
     if scoring:
         groups.append({'module': 'Scoring & GAP Analysis', 'items': scoring})
@@ -607,7 +617,7 @@ def artifact_groups(definition: dict[str, Any], dashboard_names: dict[str, str] 
 
 
 # The fields of the labels of a job, in the colours of those of the Favourites Filters of Scoring & GAP Analysis, with the
-# names each artifact gives them (Network Insights, CDR Analysis and Bundle Report Templates; Scoring and PPT Dashboards;
+# names each artifact gives them (Network Insights, CDR Analysis and Bundle Report Templates; Scoring and PPT Designer;
 # modules): first its areas, then the operators or vendors it filters.
 AREA_FIELDS = (('Region', ('regions', 'Region', 'region')), ('Cluster', ('clusters', 'Cluster', 'cluster')),
                ('City', ('cities', 'City', 'city')))
@@ -643,7 +653,7 @@ def job_scope(definition: dict[str, Any], favourite_filters: dict[str, dict[str,
         selection = entry.get('selection') or {}
         scopes.append((selection, False))
         modes.append(selection.get('nr_mode'))
-    for entry in definition.get('dashboards') or []:
+    for entry in definition.get('designs') or []:
         scopes.append((entry.get('filters'), False))
     for entry in definition.get('scoring') or []:
         modes.append(entry.get('nr_mode'))
@@ -672,13 +682,13 @@ def job_scope(definition: dict[str, Any], favourite_filters: dict[str, dict[str,
 
 
 # The modules of the labels of a job, in the order of the sections of the Bundle Report Templates (CDR Analysis last).
-JOB_MODULES = ('scoring', 'network_insights', 'non_qualified_calls', 'dashboards', 'dataset_analysis')
+JOB_MODULES = ('scoring', 'network_insights', 'non_qualified_calls', 'designs', 'dataset_analysis')
 
 
 def job_modules(definition: dict[str, Any], favourite_modules: dict[str, list[str]] | None = None) -> list[str]:
     """The modules a job generates artifacts of, in JOB_MODULES order: those of its own artifacts and the sections of the
     favourite Bundle Report Templates it generates (every favourite when it chooses none; ``favourite_modules`` by ID)."""
-    found = {key for key in ('network_insights', 'dashboards', 'scoring') if definition.get(key)}
+    found = {key for key in ('network_insights', 'designs', 'scoring') if definition.get(key)}
     if (definition.get('dataset_analysis') or {}).get('enabled'):
         found.add('dataset_analysis')
     for key in definition.get('modules') or {}:
@@ -707,7 +717,7 @@ def job_campaigns(definition: dict[str, Any], favourite_campaigns: dict[str, lis
     if analysis.get('enabled'):
         choices.append(('dataset_analysis', analysis.get('campaigns')))
     choices += [('network_insights', (entry.get('selection') or {}).get('campaigns')) for entry in definition.get('network_insights') or []]
-    choices += [('dashboards', (entry.get('filters') or {}).get('Campaign')) for entry in definition.get('dashboards') or []]
+    choices += [('designs', (entry.get('filters') or {}).get('Campaign')) for entry in definition.get('designs') or []]
     choices += [('scoring', entry.get('campaigns')) for entry in definition.get('scoring') or []]
     for key, config in (definition.get('modules') or {}).items():
         if key != 'bundle_report_template':
@@ -728,12 +738,12 @@ def job_campaigns(definition: dict[str, Any], favourite_campaigns: dict[str, lis
 def based_on_favourite(definition: dict[str, Any]) -> bool:
     """Whether a job only generates one favourite Bundle Report Template (made from a favourite in the Job Editor)."""
     report = (definition.get('modules') or {}).get('bundle_report_template') or {}
-    others = (bool((definition.get('dataset_analysis') or {}).get('enabled')) or any(definition.get(key) for key in ('network_insights', 'dashboards', 'scoring'))
+    others = (bool((definition.get('dataset_analysis') or {}).get('enabled')) or any(definition.get(key) for key in ('network_insights', 'designs', 'scoring'))
               or any(key != 'bundle_report_template' and (module or {}).get('enabled') for key, module in (definition.get('modules') or {}).items()))
     return bool(report.get('enabled')) and len(_chosen_favourites(definition)) == 1 and not others
 
 
-def artifact_labels(definition: dict[str, Any], dashboard_names: dict[str, str] | None = None,
+def artifact_labels(definition: dict[str, Any], design_names: dict[str, str] | None = None,
                     favourite_names: dict[str, str] | None = None) -> list[str]:
     labels = []
     section = definition.get('dataset_analysis') or {}
@@ -741,10 +751,10 @@ def artifact_labels(definition: dict[str, Any], dashboard_names: dict[str, str] 
         labels.append(f"{MODULE_LABELS['dataset_analysis']} ({'/'.join(FORMAT_LABELS[value] for value in section.get('formats') or [])})")
     for entry in definition.get('network_insights') or []:
         labels.append(f"{MODULE_LABELS['network_insights']} · {network_entry_name(entry)} ({'/'.join(FORMAT_LABELS[value] for value in entry.get('formats') or [])})")
-    dashboards = definition.get('dashboards') or []
-    if dashboards:
-        names = ', '.join(entry.get('label') or (dashboard_names or {}).get(entry.get('dashboard_id', ''), entry.get('dashboard_id', '')) for entry in dashboards)
-        labels.append(f'Dashboards: {len(dashboards)} PPT ({names})')
+    designs = definition.get('designs') or []
+    if designs:
+        names = ', '.join(entry.get('label') or (design_names or {}).get(entry.get('design_id', ''), entry.get('design_id', '')) for entry in designs)
+        labels.append(f'Designs: {len(designs)} PPT ({names})')
     scoring = definition.get('scoring') or []
     if scoring:
         for entry in scoring:
@@ -795,7 +805,7 @@ def run_from_row(row: sqlite3.Row) -> dict[str, Any]:
         'message': str(row['message'] or ''), 'requested_by': str(row['requested_by']),
         'created_at': str(row['created_at']), 'started_at': row['started_at'], 'finished_at': row['finished_at'],
         'send_email': bool(row['send_email']), 'recipients': _loads(row['recipients_json'], []),
-        'email_status': str(row['email_status'] or ''), 'artifacts': _loads(row['artifacts_json'], []),
+        'email_status': str(row['email_status'] or ''), 'artifacts': _current_artifact_modules(_loads(row['artifacts_json'], [])),
         'output_dir': str(row['output_dir'] or ''), 'error': str(row['last_error'] or ''),
         'control': _loads(row['control_json'], {}) if 'control_json' in row.keys() else {},
     }
@@ -1209,7 +1219,7 @@ def _remap_favourites(definition: dict[str, Any], source_names: dict[str, str], 
 def imported_jobs(task_repository: Any, document: dict[str, Any]) -> list[tuple[int, dict[str, Any], dict[str, Any], dict[str, Any]]]:
     """The Reporting Jobs of an exported document as this workspace saves them (also for the preview of an import):
     each with its position in the document, its item, its definition pointing at the datasets (by file name),
-    favourite Bundle Report Templates (by name) and Dashboards of this workspace, and its schedule (a past single
+    favourite Bundle Report Templates (by name) and Designs of this workspace, and its schedule (a past single
     execution becomes manual)."""
     # Datasets are matched by file name, since IDs differ between workspaces.
     source_names = {int(key): str(value) for key, value in (document.get('dataset_names') or {}).items() if str(key).isdigit()}
@@ -1218,11 +1228,11 @@ def imported_jobs(task_repository: Any, document: dict[str, Any]) -> list[tuple[
         destination.setdefault(str(row['file_name']).casefold(), int(row['id']))
     mapping = {source_id: destination[name.casefold()] for source_id, name in source_names.items() if name.casefold() in destination}
     # Favourite Bundle Report Templates are matched by name too (they are imported before the jobs, as their own element).
-    from src.modules.bundle_report_templates import dashboard_aliases, list_favourites, workspace_dashboards
+    from src.modules.bundle_report_templates import design_aliases, list_favourites, workspace_designs
     favourite_names = {str(key): str(value) for key, value in (document.get('favourite_names') or {}).items()}
     favourites_here = {item['name'].casefold(): str(item['id']) for item in list_favourites(task_repository)}
-    dashboards_here = workspace_dashboards(task_repository)
-    dashboard_aliases_here = {alias: key for alias, key in dashboard_aliases(task_repository).items() if alias not in dashboards_here}
+    designs_here = workspace_designs(task_repository)
+    design_aliases_here = {alias: key for alias, key in design_aliases(task_repository).items() if alias not in designs_here}
     jobs = []
     for index, item in enumerate(document.get('reporting_jobs') or []):
         if not isinstance(item, dict):
@@ -1233,10 +1243,10 @@ def imported_jobs(task_repository: Any, document: dict[str, Any]) -> list[tuple[
         definition = json.loads(json.dumps(item.get('definition') or {}))
         _current_provider_keys(definition)  # Jobs exported when Bundle Report Templates had a former name.
         definition = _remap_favourites(_remap_dataset_ids(definition, mapping), favourite_names, favourites_here)
-        for entry in definition.get('dashboards') or []:
-            # A Dashboard an import gave another ID here is found by the ID it had there.
-            if isinstance(entry, dict) and str(entry.get('dashboard_id') or '') in dashboard_aliases_here:
-                entry['dashboard_id'] = dashboard_aliases_here[str(entry['dashboard_id'])]
+        for entry in definition.get('designs') or []:
+            # A Design an import gave another ID here is found by the ID it had there.
+            if isinstance(entry, dict) and str(entry.get('design_id') or '') in design_aliases_here:
+                entry['design_id'] = design_aliases_here[str(entry['design_id'])]
         jobs.append((index, item, definition, schedule))
     return jobs
 
@@ -1280,10 +1290,10 @@ def import_tasks_document(
     if summary is not None:
         summary.extend(matcher.summary())
     if document.get('complete_reports'):
-        # Documents that carried the favourite Bundle Report Templates with the Reporting Jobs: their Dashboards are found here
+        # Documents that carried the favourite Bundle Report Templates with the Reporting Jobs: their Designs are found here
         # by their name.
-        from src.modules.bundle_report_templates import import_entries, workspace_dashboards
-        import_entries(task_repository, document['complete_reports'], username, workspace_dashboards(task_repository))
+        from src.modules.bundle_report_templates import import_entries, workspace_designs
+        import_entries(task_repository, document['complete_reports'], username, workspace_designs(task_repository))
     return imported
 
 
@@ -1332,7 +1342,7 @@ def artifact_path(folder: Path, stamp: str, module: str, name: str, suffix: str)
     """``<yyyymmdd_hhmmss> - <Module> - <Report name><suffix>``, unique in ``folder``.
 
     The report name drops its own leading timestamps and module name, so a
-    Dashboard or Scoring PPT does not repeat them.
+    Design or Scoring PPT does not repeat them.
     """
     report = str(name or '').strip()
     while _LEADING_STAMP.match(report):
@@ -1511,28 +1521,28 @@ def install_report_task_routes(core: Any) -> None:
                 artifacts.append(failed_artifact('network_insights', title, getattr(exc, 'detail', exc)))
         return artifacts
 
-    def wait_for_dashboard_job(task_repository, job_id, run_id) -> Any:
-        tools = core.dashboard_reporting
-        deadline = time.monotonic() + DASHBOARD_JOB_TIMEOUT_SECONDS
+    def wait_for_design_job(task_repository, job_id, run_id) -> Any:
+        tools = core.design_reporting
+        deadline = time.monotonic() + DESIGN_JOB_TIMEOUT_SECONDS
         while time.monotonic() < deadline:
             row = tools.job(task_repository, job_id)
             if row is None:
-                raise RuntimeError('The Dashboard PPT job was deleted.')
+                raise RuntimeError('The Design PPT job was deleted.')
             if str(row['status']) == 'ready':
                 return row
             if str(row['status']) in {'failed', 'stopped'}:
-                raise RuntimeError(str(row['last_error'] or f"The Dashboard PPT job {row['status']}."))
-            update_run(task_repository, run_id, message=f"Waiting for Dashboard PPT job {job_id} ({int(row['progress'] or 0)}%)")
+                raise RuntimeError(str(row['last_error'] or f"The Design PPT job {row['status']}."))
+            update_run(task_repository, run_id, message=f"Waiting for Design PPT job {job_id} ({int(row['progress'] or 0)}%)")
             try:
                 check_run_stopped()
             except RunStopped:
-                # (Its Dashboard PPT job stops with it.)
+                # (Its Design PPT job stops with it.)
                 tools.stop_job(task_repository, job_id)
                 raise
             time.sleep(3)
-        raise RuntimeError('The Dashboard PPT job did not finish within three hours.')
+        raise RuntimeError('The Design PPT job did not finish within three hours.')
 
-    def dashboard_details(serialized: dict[str, Any]) -> list[str]:
+    def design_details(serialized: dict[str, Any]) -> list[str]:
         cover = serialized.get('cover') or {}
         lines = [f"Template: {serialized.get('template') or '—'} · {serialized.get('nr_mode')} · {serialized.get('scope')}"]
         for label, key in (('Campaigns', 'campaigns'), ('Regions', 'regions'), ('Cities', 'cities')):
@@ -1542,13 +1552,13 @@ def install_report_task_routes(core: Any) -> None:
         lines.extend(str(item) for item in serialized.get('filters') or [])
         return lines
 
-    def dashboard_definition(stored: dict[str, Any], entry: dict[str, Any], task_repository=None) -> dict[str, Any]:
-        """The saved Dashboard with the artifact's NR Mode, Scope, CDRs, dates and filters."""
+    def design_definition(stored: dict[str, Any], entry: dict[str, Any], task_repository=None) -> dict[str, Any]:
+        """The saved Design with the artifact's NR Mode, Scope, CDRs, dates and filters."""
         definition = dict(stored)
         if normalize_scoring_nr_mode(entry.get('nr_mode')):
             definition['nr_mode'] = normalize_scoring_nr_mode(entry['nr_mode'])
         if entry.get('auto_cdrs'):
-            # The CDRs of the Dashboard's NR Mode and of the entry's Campaign filter, chosen when it is generated (with
+            # The CDRs of the Design's NR Mode and of the entry's Campaign filter, chosen when it is generated (with
             # NSA & SA, in each NR Mode).
             definition.pop('datasets', None)
             definition.update({
@@ -1558,7 +1568,7 @@ def install_report_task_routes(core: Any) -> None:
             })
             return definition
         if entry.get('cdr_selection') in CDR_SELECTIONS and task_repository is not None:
-            nr_mode = _dashboard_nr_mode(definition)
+            nr_mode = _design_nr_mode(definition)
             entry = {**entry, 'datasets': cdrs_by_kind(task_repository, automatic_cdrs(task_repository, nr_mode, entry['cdr_selection']))}
         definition.update({
             'scope': entry['scope'], 'vendor_comparison': entry['vendor_comparison'],
@@ -1569,25 +1579,25 @@ def install_report_task_routes(core: Any) -> None:
             definition['datasets'] = entry['datasets']
         return definition
 
-    def generate_dashboard(entry, task_repository, folder, stamp, user, run_id) -> dict[str, Any]:
-        tools = core.dashboard_reporting
-        stored = tools.list_dashboards(task_repository).get(entry['dashboard_id'])
-        title = f"Dashboard · {entry.get('label') or (stored or {}).get('name') or entry['dashboard_id']}"
+    def generate_design(entry, task_repository, folder, stamp, user, run_id) -> dict[str, Any]:
+        tools = core.design_reporting
+        stored = tools.list_designs(task_repository).get(entry['design_id'])
+        title = f"Design · {entry.get('label') or (stored or {}).get('name') or entry['design_id']}"
         try:
             if not isinstance(stored, dict):
-                raise RuntimeError('The Dashboard no longer exists.')
+                raise RuntimeError('The Design no longer exists.')
             update_run(task_repository, run_id, message=f'Generating {title}')
-            job_id = tools.queue_export(entry['dashboard_id'], user, dashboard_definition(stored, entry, task_repository),
+            job_id = tools.queue_export(entry['design_id'], user, design_definition(stored, entry, task_repository),
                                         theme=entry.get('theme') or None, auto_comments=entry.get('auto_comments') or 'off',
                                         auto_comments_engine=entry.get('auto_comments_engine') or '')
-            row = wait_for_dashboard_job(task_repository, job_id, run_id)
+            row = wait_for_design_job(task_repository, job_id, run_id)
             source = Path(str(row['output_path']))
-            # Dashboard PPT names start with their own generation time, which is dropped.
-            destination = artifact_path(folder, stamp, 'PPT Dashboards', entry.get('label') or source.stem, source.suffix)
+            # Design PPT names start with their own generation time, which is dropped.
+            destination = artifact_path(folder, stamp, 'PPT Designer', entry.get('label') or source.stem, source.suffix)
             shutil.copy2(source, destination)
-            return ready_artifact('dashboards', title, destination, dashboard_details(tools.serialize_job(row)))
+            return ready_artifact('designs', title, destination, design_details(tools.serialize_job(row)))
         except Exception as exc:
-            return failed_artifact('dashboards', title, getattr(exc, 'detail', exc))
+            return failed_artifact('designs', title, getattr(exc, 'detail', exc))
 
     def scoring_details(job: dict[str, Any], entry: dict[str, Any], names: dict[int, str]) -> list[str]:
         scenarios = [scenario['name'] for scenario in (entry.get('report') or {}).get('scenarios') or []]
@@ -1607,7 +1617,7 @@ def install_report_task_routes(core: Any) -> None:
         """A job saved when its CDRs were chosen by hand or by an automatic choice chooses them by Campaign.
 
         The newest complete set becomes Latest campaign, every complete set every campaign, and CDRs chosen by
-        hand the campaigns they hold; a Dashboard that used its own CDRs keeps its Campaign filter. Non-Qualified
+        hand the campaigns they hold; a Design that used its own CDRs keeps its Campaign filter. Non-Qualified
         Calls take the NR Mode and the campaigns of the CDRs of their CDRs filter.
         """
         migrated = json.loads(json.dumps(definition))
@@ -1622,15 +1632,15 @@ def install_report_task_routes(core: Any) -> None:
             analysis['campaigns'] = (filters.pop('campaigns', None) or (campaigns_of_cdrs(task_repository, ids, compact=True) if ids
                                      else [] if analysis.get('cdr_selection', 'all_complete') == 'all_complete' else [LATEST_CAMPAIGN]))
             analysis.update(filters=filters, dataset_ids=[], cdr_selection='', auto_cdrs=True)
-        tools = getattr(core, 'dashboard_reporting', None)
-        stored_dashboards = tools.list_dashboards(task_repository) if tools is not None and migrated.get('dashboards') else {}
-        for entry in migrated.get('dashboards') or []:
+        tools = getattr(core, 'design_reporting', None)
+        stored_designs = tools.list_designs(task_repository) if tools is not None and migrated.get('designs') else {}
+        for entry in migrated.get('designs') or []:
             if entry.get('auto_cdrs'):
                 continue
             filters = dict(entry.get('filters') or {})
             if not any(str(field).casefold() == 'campaign' for field in filters):
                 ids = [value for values in (entry.get('datasets') or {}).values() for value in values]
-                stored = stored_dashboards.get(entry.get('dashboard_id')) or {}
+                stored = stored_designs.get(entry.get('design_id')) or {}
                 campaigns = ([LATEST_CAMPAIGN] if entry.get('cdr_selection') == 'newest'
                              else [] if entry.get('cdr_selection') == 'all_complete'
                              else campaigns_of_cdrs(task_repository, ids) if ids
@@ -1812,7 +1822,7 @@ def install_report_task_routes(core: Any) -> None:
                     **definition,
                     'dataset_analysis': {**(definition.get('dataset_analysis') or {}), 'theme': theme},
                     'network_insights': [{**entry, 'theme': theme} for entry in definition.get('network_insights') or []],
-                    'dashboards': [{**entry, 'theme': theme} for entry in definition.get('dashboards') or []],
+                    'designs': [{**entry, 'theme': theme} for entry in definition.get('designs') or []],
                     'scoring': [{**entry, 'report': {**(entry.get('report') or {}), 'theme': theme}} for entry in definition.get('scoring') or []],
                     'modules': {key: {**config, 'theme': theme} for key, config in (definition.get('modules') or {}).items()},
                 }
@@ -1820,8 +1830,8 @@ def install_report_task_routes(core: Any) -> None:
                 steps.append(('CDR Analysis', lambda: generate_dataset_analysis(definition['dataset_analysis'], folder, stamp, user.username, names, task_repository)))
             for index, entry in enumerate(definition.get('network_insights') or [], start=1):
                 steps.append(('Network Insights', lambda entry=entry, index=index: generate_network_insights(entry, folder, stamp, index, task_repository)))
-            for entry in definition.get('dashboards') or []:
-                steps.append(('Dashboard', lambda entry=entry: [generate_dashboard(entry, task_repository, folder, stamp, user, run_id)]))
+            for entry in definition.get('designs') or []:
+                steps.append(('Design', lambda entry=entry: [generate_design(entry, task_repository, folder, stamp, user, run_id)]))
             for entry in definition.get('scoring') or []:
                 steps.append(('Scoring', lambda entry=entry: generate_scoring(entry, task_repository, folder, stamp, user.username, names, run_id)))
             for key, config in (definition.get('modules') or {}).items():
@@ -2046,7 +2056,7 @@ def install_report_task_routes(core: Any) -> None:
         return True
 
     def reporting_options(task_repository, user) -> dict[str, Any]:
-        from src.modules.ppt_dashboards import ADAPTATIVE_FILTER_FIELDS
+        from src.modules.ppt_designer import ADAPTATIVE_FILTER_FIELDS
 
         datasets = [
             {'id': int(row['id']), 'file_name': str(row['file_name']), 'kind': str(row['dataset_kind']),
@@ -2055,21 +2065,21 @@ def install_report_task_routes(core: Any) -> None:
             if row['status'] == 'ready' and str(row['dataset_kind']) in {'data', 'voice', 'speech'}
         ]
         datasets.sort(key=lambda item: item['id'], reverse=True)
-        tools = getattr(core, 'dashboard_reporting', None)
-        dashboards = []
+        tools = getattr(core, 'design_reporting', None)
+        designs = []
         if tools is not None:
-            for dashboard_id, stored in tools.list_dashboards(task_repository).items():
+            for design_id, stored in tools.list_designs(task_repository).items():
                 if not isinstance(stored, dict):
                     continue
-                dashboards.append({
-                    'id': dashboard_id, 'name': str(stored.get('name') or dashboard_id),
+                designs.append({
+                    'id': design_id, 'name': str(stored.get('name') or design_id),
                     'template': str(stored.get('template') or ''), 'scope': str(stored.get('scope') or 'single'),
                     'vendor_comparison': str(stored.get('vendor_comparison') or 'operator_vendor'),
-                    'nr_mode': _dashboard_nr_mode(stored), 'datasets': stored.get('datasets') or {},
+                    'nr_mode': _design_nr_mode(stored), 'datasets': stored.get('datasets') or {},
                     'filters': stored.get('filters') or {}, 'custom_fields': stored.get('custom_fields') or [],
                     'date_from': str(stored.get('date_from') or ''), 'date_to': str(stored.get('date_to') or ''),
                 })
-        dashboards.sort(key=lambda item: item['name'].casefold())
+        designs.sort(key=lambda item: item['name'].casefold())
         try:
             profiles = task_repository.get_scoring_profiles()
             methodologies = [{'id': profile['id'], 'name': profile.get('name') or profile['id']} for profile in profiles['profiles']]
@@ -2095,8 +2105,8 @@ def install_report_task_routes(core: Any) -> None:
             'allowed_modules': {module: core.user_has_feature(user, feature) for module, feature in MODULE_FEATURES.items()},
             'providers': [provider_options(key, provider, user)
                           for key, provider in ARTIFACT_PROVIDERS.items() if core.user_has_feature(user, provider['feature'])],
-            'datasets': datasets, 'dashboards': dashboards,
-            'dashboard_filter_fields': list(ADAPTATIVE_FILTER_FIELDS),
+            'datasets': datasets, 'designs': designs,
+            'design_filter_fields': list(ADAPTATIVE_FILTER_FIELDS),
             'main_cities': list(task_repository.list_main_cities()),
             # The Scoring report editor shows and saves Operators with their Operator Maps label.
             'operator_groups': [{'canonical': group['canonical'], 'aliases': group['aliases']}
@@ -2148,11 +2158,11 @@ def install_report_task_routes(core: Any) -> None:
                 'filters': [{'key': name, 'label': text} for name, text in provider.get('filters') or ()],
                 'settings': list(provider.get('settings') or ()), 'values': values}
 
-    def serialize_task(task, runs_by_id, dashboard_names, favourite_names=None, favourite_contents=None,
+    def serialize_task(task, runs_by_id, design_names, favourite_names=None, favourite_contents=None,
                        favourite_filters=None, favourite_modules=None, favourite_campaigns=None) -> dict[str, Any]:
         last = runs_by_id.get(task['last_run_id']) if task['last_run_id'] else None
-        return {**task, 'artifacts': artifact_labels(task['definition'], dashboard_names, favourite_names),
-                'artifact_groups': artifact_groups(task['definition'], dashboard_names, favourite_names, favourite_contents),
+        return {**task, 'artifacts': artifact_labels(task['definition'], design_names, favourite_names),
+                'artifact_groups': artifact_groups(task['definition'], design_names, favourite_names, favourite_contents),
                 'based_on': 'favourite' if based_on_favourite(task['definition']) else 'artifacts', 'last_run': last,
                 **job_scope(task['definition'], favourite_filters), 'modules': job_modules(task['definition'], favourite_modules),
                 'campaigns': job_campaigns(task['definition'], favourite_campaigns)}
@@ -2172,15 +2182,15 @@ def install_report_task_routes(core: Any) -> None:
         for run_id in missing:
             if (run := get_run(task_repository, run_id)) is not None:
                 runs_by_id[run_id] = run
-        tools = getattr(core, 'dashboard_reporting', None)
-        dashboard_names = {str(key): str(value.get('name') or key) for key, value in tools.list_dashboards(task_repository).items()
+        tools = getattr(core, 'design_reporting', None)
+        design_names = {str(key): str(value.get('name') or key) for key, value in tools.list_designs(task_repository).items()
                            if isinstance(value, dict)} if tools is not None else {}
         # The jobs that generate favourite Bundle Report Templates name them and list what each one includes.
         try:
             from src.modules.bundle_report_templates import enabled_sections, favourite_contents as contents_of, list_favourites
             favourites = list_favourites(task_repository)
             favourite_names = {str(item['id']): item['name'] for item in favourites}
-            favourite_contents = {str(item['id']): contents_of(item['definition'], dashboard_names) for item in favourites}
+            favourite_contents = {str(item['id']): contents_of(item['definition'], design_names) for item in favourites}
             # Their common filters and the modules and campaigns of their sections, which give the labels of the jobs (see
             # job_scope, job_modules and job_campaigns).
             favourite_filters = {str(item['id']): item['definition']['filters'] for item in favourites}
@@ -2206,7 +2216,7 @@ def install_report_task_routes(core: Any) -> None:
         # Jobs saved when CDRs were chosen by hand open with the campaigns of those CDRs.
         tasks = [{**task, 'definition': migrate_auto_cdrs(task['definition'], task_repository)} for task in list_tasks(task_repository)]
         return {
-            'tasks': [serialize_task(task, runs_by_id, dashboard_names, favourite_names, favourite_contents, favourite_filters,
+            'tasks': [serialize_task(task, runs_by_id, design_names, favourite_names, favourite_contents, favourite_filters,
                                      favourite_modules, favourite_campaigns) for task in tasks],
             'runs': runs, 'can_edit': user.role in {'user-editor', 'admin', 'super-admin'},
             'workspace_id': core.active_workspace.id if core.active_workspace else '',
@@ -2228,7 +2238,7 @@ def install_report_task_routes(core: Any) -> None:
                      else [] if each_nr_mode
                      else resolve_campaign_filter(task_repository, nr_mode, _strings(payload.get('campaigns'))))
         if each_nr_mode:
-            # A Dashboard of NSA & SA: the CDRs of each NR Mode, its Latest choices among the campaigns of that mode.
+            # A Design of NSA & SA: the CDRs of each NR Mode, its Latest choices among the campaigns of that mode.
             chosen, incomplete = {kind: [] for kind in ('data', 'voice', 'speech')}, []
             for mode in ('NSA', 'SA'):
                 mode_campaigns = resolve_campaign_filter(task_repository, mode, _strings(payload.get('campaigns')))

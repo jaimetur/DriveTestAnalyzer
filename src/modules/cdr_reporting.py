@@ -66,7 +66,7 @@ SINGLE_DYNAMIC_CATALOG_HEADERS = (*PRE_DYNAMIC_CATALOG_HEADERS, "Dynamic Field")
 TRAILING_DYNAMIC_CATALOG_HEADERS = (*PRE_DYNAMIC_CATALOG_HEADERS, "Dynamic Rows Field", "Dynamic Columns Field")
 CATALOG_HEADERS = (*PRE_DYNAMIC_CATALOG_HEADERS[:4], "Dynamic Rows Field", "Dynamic Columns Field", *PRE_DYNAMIC_CATALOG_HEADERS[4:])
 # What the columns cannot hold of the Design of a template (stable slide and element ids, formats, parameters: see
-# dashboard_design), as a JSON object per row. Optional and last, so every schema of before stays valid.
+# design_slides), as a JSON object per row. Optional and last, so every schema of before stays valid.
 FORMAT_HEADER = "Format"
 # Templates created before configurable visual settings remain valid and
 # acquire empty Label/axis cells the next time they are saved in the editor.
@@ -87,7 +87,7 @@ CHART_TYPES = {
     "distribution stacked vertical bars", "threshold stacked vertical bars", "average vertical bars", "median vertical bars", "map", "histogram line", "histogram bars",
     "kpi card",
 }
-# Elements of a Dashboard Design that read no CDR (dashboard_design): a text box, and a picture. Rows of either have no
+# Elements of a Design Design that read no CDR (design_slides): a text box, and a picture. Rows of either have no
 # Source Dataset; PPT Reporting (old) leaves them out.
 ELEMENT_CHART_TYPES = {"text box", "image"}
 BAR_CHART_TYPES = {
@@ -117,12 +117,12 @@ OSM_TILE_MAX_ZOOM = 18
 OSM_TILE_CACHE_DIR = settings.data_dir / '.map-tiles-cache' / 'openstreetmap'
 OSM_TLS_CONTEXT = ssl.create_default_context(cafile=certifi.where())
 REPORT_CHART_RENDERER_ENV = "DRIVETEST_ANALYZER_REPORT_CHART_RENDERER"
-_DASHBOARD_CANVAS_RENDERER = None
-_DASHBOARD_CANVAS_RENDERER_LOCK = threading.RLock()
-# The browser worker keeps a copy of dashboard_charts.js in memory. Bump this
+_DESIGN_CANVAS_RENDERER = None
+_DESIGN_CANVAS_RENDERER_LOCK = threading.RLock()
+# The browser worker keeps a copy of canvas_charts.js in memory. Bump this
 # whenever rendering semantics change so a live server does not keep painting
 # previews with an older script after a hot reload.
-DASHBOARD_CANVAS_RENDERER_VERSION = 12
+DESIGN_CANVAS_RENDERER_VERSION = 12
 
 
 def _node_executable() -> str:
@@ -132,11 +132,11 @@ def _node_executable() -> str:
     return next((candidate for candidate in candidates if candidate and Path(candidate).is_file() and os.access(candidate, os.X_OK)), 'node')
 
 
-class _DashboardCanvasRenderer:
+class _DesignCanvasRenderer:
     """Keep one headless Chromium canvas alive for repeated report PNG exports."""
 
     def __init__(self) -> None:
-        script = Path(__file__).with_name("dashboard_canvas_renderer.mjs")
+        script = Path(__file__).with_name("canvas_chart_renderer.mjs")
         node = _node_executable()
         error = ""
         # Chromium occasionally fails to start on a busy machine; one retry avoids failing a whole export.
@@ -161,15 +161,15 @@ class _DashboardCanvasRenderer:
             self.close()
             error = str(ready.get("error") or "") or self._stderr_tail() or f"{node} exited with code {self.process.poll()}"
         else:
-            raise RuntimeError(f"Unable to start the Dashboard Canvas renderer: {error}")
+            raise RuntimeError(f"Unable to start the Design Canvas renderer: {error}")
         self.request_id = 0
-        self.renderer_version = DASHBOARD_CANVAS_RENDERER_VERSION
+        self.renderer_version = DESIGN_CANVAS_RENDERER_VERSION
 
     def render(
         self, payload: dict[str, object], *, width: int = 1600, height: int = 900,
     ) -> tuple[bytes, list[dict[str, object]]]:
         if not self.process.stdin or not self.process.stdout or self.process.poll() is not None:
-            raise RuntimeError("The Dashboard Canvas renderer is not running.")
+            raise RuntimeError("The Design Canvas renderer is not running.")
         self.request_id += 1
         self.process.stdin.write(json.dumps({
             "id": self.request_id, "payload": payload, "width": width, "height": height,
@@ -179,7 +179,7 @@ class _DashboardCanvasRenderer:
         if response.get("error"):
             raise RuntimeError(response["error"])
         if response.get("id") != self.request_id or not response.get("png"):
-            raise RuntimeError("The Dashboard Canvas renderer returned an invalid response.")
+            raise RuntimeError("The Design Canvas renderer returned an invalid response.")
         hits = response.get("hits")
         return base64.b64decode(response["png"]), hits if isinstance(hits, list) else []
 
@@ -203,60 +203,61 @@ class _DashboardCanvasRenderer:
             process.terminate()
 
 
-def _render_dashboard_payload(
+def _render_canvas_payload(
     payload: dict[str, object], *, width: int = 1600, height: int = 900,
 ) -> tuple[bytes, list[dict[str, object]]]:
-    global _DASHBOARD_CANVAS_RENDERER
-    with _DASHBOARD_CANVAS_RENDERER_LOCK:
+    global _DESIGN_CANVAS_RENDERER
+    with _DESIGN_CANVAS_RENDERER_LOCK:
         if (
-            _DASHBOARD_CANVAS_RENDERER is None
-            or _DASHBOARD_CANVAS_RENDERER.process.poll() is not None
-            or getattr(_DASHBOARD_CANVAS_RENDERER, "renderer_version", None) != DASHBOARD_CANVAS_RENDERER_VERSION
+            _DESIGN_CANVAS_RENDERER is None
+            or _DESIGN_CANVAS_RENDERER.process.poll() is not None
+            or getattr(_DESIGN_CANVAS_RENDERER, "renderer_version", None) != DESIGN_CANVAS_RENDERER_VERSION
         ):
-            if _DASHBOARD_CANVAS_RENDERER is not None:
-                _DASHBOARD_CANVAS_RENDERER.close()
-            _DASHBOARD_CANVAS_RENDERER = _DashboardCanvasRenderer()
-        return _DASHBOARD_CANVAS_RENDERER.render(payload, width=width, height=height)
+            if _DESIGN_CANVAS_RENDERER is not None:
+                _DESIGN_CANVAS_RENDERER.close()
+            _DESIGN_CANVAS_RENDERER = _DesignCanvasRenderer()
+        return _DESIGN_CANVAS_RENDERER.render(payload, width=width, height=height)
 
 
-def _render_dashboard_payload_png(payload: dict[str, object]) -> bytes:
-    return _render_dashboard_payload(payload)[0]
+def _render_canvas_payload_png(payload: dict[str, object]) -> bytes:
+    return _render_canvas_payload(payload)[0]
 
 
-def _close_dashboard_canvas_renderer() -> None:
-    global _DASHBOARD_CANVAS_RENDERER
-    with _DASHBOARD_CANVAS_RENDERER_LOCK:
-        if _DASHBOARD_CANVAS_RENDERER is not None:
-            _DASHBOARD_CANVAS_RENDERER.close()
-            _DASHBOARD_CANVAS_RENDERER = None
+def _close_canvas_chart_renderer() -> None:
+    global _DESIGN_CANVAS_RENDERER
+    with _DESIGN_CANVAS_RENDERER_LOCK:
+        if _DESIGN_CANVAS_RENDERER is not None:
+            _DESIGN_CANVAS_RENDERER.close()
+            _DESIGN_CANVAS_RENDERER = None
 
 
-def reset_dashboard_canvas_renderer() -> None:
+def reset_canvas_chart_renderer() -> None:
     """Restart the shared renderer after its executable configuration changes."""
-    _close_dashboard_canvas_renderer()
+    _close_canvas_chart_renderer()
 
 
-atexit.register(_close_dashboard_canvas_renderer)
+atexit.register(_close_canvas_chart_renderer)
 
 
 def report_chart_renderer_name(renderer: str | None = None) -> str:
     """Resolve the shared export painter, with PIL retained as an explicit fallback."""
-    selected = (renderer or os.environ.get(REPORT_CHART_RENDERER_ENV, "dashboard-canvas")).strip().casefold()
+    selected = (renderer or os.environ.get(REPORT_CHART_RENDERER_ENV, "canvas")).strip().casefold()
     aliases = {
         "pil": "pil",
         "legacy": "pil",
-        "dashboard": "dashboard-canvas",
-        "canvas": "dashboard-canvas",
-        "dashboard-canvas": "dashboard-canvas",
+        "canvas": "canvas",
+        # The names it had while it was the painter of PPT Dashboards.
+        "dashboard": "canvas",
+        "dashboard-canvas": "canvas",
     }
     if selected not in aliases:
         raise ValueError(
-            f"Unsupported report chart renderer '{selected}'. Expected 'pil' or 'dashboard-canvas'."
+            f"Unsupported report chart renderer '{selected}'. Expected 'pil' or 'canvas'."
         )
     return aliases[selected]
 
 
-def _dashboard_hits_to_hover_targets(
+def _design_hits_to_hover_targets(
     hits: list[dict[str, object]],
 ) -> list[dict[str, object]]:
     """Convert live Canvas hit geometry to the static PNG viewer contract."""
@@ -457,7 +458,7 @@ class CatalogEntry:
     dynamic_value: str | None = None
     template_index: int | None = None
     vendor_comparison: str = "operator_vendor"
-    # The Format cell of the row: a compact JSON object (see dashboard_design), empty for a row without one.
+    # The Format cell of the row: a compact JSON object (see design_slides), empty for a row without one.
     format: str = ""
 
     @property
@@ -3310,14 +3311,14 @@ def render_catalog_chart_preview(
         raise ValueError('Only chart rows with a Source Dataset can be previewed.')
     render_entry = prepare_multivendor_catalog_entry(entry) if multivendor else entry
     render_frame = frame if prefiltered else normalise_operator_aliases(frame)
-    if report_chart_renderer_name(renderer) == "dashboard-canvas":
+    if report_chart_renderer_name(renderer) == "canvas":
         payload = catalog_chart_payload(
             render_frame,
             render_entry,
             multivendor=False,
             prefiltered=prefiltered,
         )
-        return _render_dashboard_payload_png(payload)
+        return _render_canvas_payload_png(payload)
     return _chart_for_catalog_entry(
         render_entry,
         {render_entry.source_kind: render_frame},
@@ -3336,7 +3337,7 @@ def render_catalog_chart_preview_with_hover(
 ) -> tuple[bytes, list[dict[str, object]]]:
     """Render one PNG and return hit geometry from the selected painter."""
     selected = report_chart_renderer_name(renderer)
-    if selected != "dashboard-canvas":
+    if selected != "canvas":
         return (
             render_catalog_chart_preview(
                 frame, entry, multivendor=multivendor, prefiltered=prefiltered, renderer=selected,
@@ -3352,8 +3353,8 @@ def render_catalog_chart_preview_with_hover(
     payload = catalog_chart_payload(
         render_frame, render_entry, multivendor=False, prefiltered=prefiltered,
     )
-    image, hits = _render_dashboard_payload(payload)
-    return image, _dashboard_hits_to_hover_targets(hits)
+    image, hits = _render_canvas_payload(payload)
+    return image, _design_hits_to_hover_targets(hits)
 
 
 def catalog_chart_hover_targets(
@@ -3906,7 +3907,7 @@ def _sa_series(key: tuple[object, ...], levels: list[int]) -> bool:
 
 def _sa_series_keys(keys: list[tuple[object, ...]], axis_columns: list[str], frame: pd.DataFrame) -> set[tuple[object, ...]] | None:
     """The SA series of a chart that shows both NR Modes beside another field: by its NR Mode level or, without one,
-    in a Dashboard of NSA & SA, by its campaigns when some name SA and others do not (2026-Q3 and 2026-Q3-SA). None when
+    in a Design of NSA & SA, by its campaigns when some name SA and others do not (2026-Q3 and 2026-Q3-SA). None when
     it tells no NR Mode apart."""
     levels = _nr_mode_levels(frame, axis_columns)
     if levels:
@@ -4089,7 +4090,7 @@ CDF_COMPARISON_LINE_DASHES: tuple[tuple[int, ...], ...] = (
 )
 # The SA series beside the NSA ones of the same operator: a lighter tint of its colour, and a dashed line.
 SA_SERIES_TINT = 0.45
-# Set on the frames of a Dashboard of NSA & SA: its campaigns that name SA are SA series too.
+# Set on the frames of a Design of NSA & SA: its campaigns that name SA are SA series too.
 BOTH_NR_MODES_ATTR = 'catalogue_both_nr_modes'
 SA_LINE_DASH: tuple[int, ...] = (12, 6)
 
@@ -7785,7 +7786,7 @@ def _clear_commentary(slide) -> None:
 
 
 def _set_commentary(slide, comments: list[str] | tuple[str, ...]) -> None:
-    """Write saved Dashboard notes into the layout's commentary placeholder."""
+    """Write saved Design notes into the layout's commentary placeholder."""
     values = [str(comment).strip() for comment in comments if str(comment).strip()]
     if not values or "comments" not in slide.slide_layout.name.casefold():
         return
@@ -8220,7 +8221,7 @@ def render_cdr_report(destination: Path, template: Path, frames: dict[str, pd.Da
 
         chart_entries = [entry for entry in slide_entries if entry.source_kind]
         if not chart_entries and any(entry.chart_type.casefold() in ELEMENT_CHART_TYPES for entry in slide_entries):
-            # A slide of a Dashboard Design with only text boxes and pictures: its title, as a transition slide.
+            # A slide of a Design Design with only text boxes and pictures: its title, as a transition slide.
             slide = presentation.slides.add_slide(_named_slide_layout(presentation, "Title Only"))
             _set_structural_slide_text(slide, header.slide_title, header.slide_subtitle)
             continue
@@ -8281,7 +8282,7 @@ def render_cdr_report(destination: Path, template: Path, frames: dict[str, pd.Da
             if chart_bytes is None:
                 if source_unavailable:
                     chart_bytes = render_unavailable_source_chart(entry)
-                elif selected_renderer == 'dashboard-canvas':
+                elif selected_renderer == 'canvas':
                     chart_bytes, canvas_hover = render_catalog_chart_preview_with_hover(
                         prepared_frame, prepared_entry, prefiltered=True, renderer=selected_renderer,
                     )
@@ -8301,7 +8302,7 @@ def render_cdr_report(destination: Path, template: Path, frames: dict[str, pd.Da
                 gc.collect()
                 source_frame = frame_for(entry.source_kind)
                 prepared_frame, prepared_entry = prepared_chart_frame(source_frame, entry)
-                if selected_renderer == 'dashboard-canvas':
+                if selected_renderer == 'canvas':
                     chart_bytes, canvas_hover = render_catalog_chart_preview_with_hover(
                         prepared_frame, prepared_entry, prefiltered=True, renderer=selected_renderer,
                     )
@@ -8315,7 +8316,7 @@ def render_cdr_report(destination: Path, template: Path, frames: dict[str, pd.Da
                 hover_targets = canvas_hover
             elif hover_future:
                 hover_targets = hover_future.result()
-            elif generate_tooltips and chart_bytes is not None and selected_renderer == 'dashboard-canvas' and not source_unavailable:
+            elif generate_tooltips and chart_bytes is not None and selected_renderer == 'canvas' and not source_unavailable:
                 # A reused PNG without a matching sidecar cannot expose its in-memory Canvas hits.
                 hover_targets = catalog_chart_hover_targets(prepared_frame, prepared_entry, prefiltered=True)
             else:

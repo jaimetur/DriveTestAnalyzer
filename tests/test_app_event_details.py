@@ -62,7 +62,7 @@ def test_where_an_event_ran_new_and_old() -> None:
     assert app_event_origin('scheduled_database_backup_completed', {}) == 'server:scheduler'
     assert app_event_origin('reporting_job_run', {'trigger': 'schedule'}) == 'server:scheduler'
     assert app_event_origin('reporting_job_run', {'trigger': 'manual'}) == 'server:background'
-    assert app_event_origin('precompute_dashboard_charts', {}) == 'server:idle'
+    assert app_event_origin('precompute_design_charts', {}) == 'server:idle'
     assert app_event_origin('recover_interrupted_background_jobs', {}) == 'server:startup'
     assert app_event_origin('incoming_server_transfer_offer_received', {'source': 'Lab'}) == 'remote:Lab'
     assert app_event_origin('access_request', {}) == 'public:access-request'

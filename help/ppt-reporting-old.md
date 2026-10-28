@@ -3,7 +3,7 @@
 Use **PPT Reporting (old) → NetCheck CDR Reports** to create a persistent PowerPoint Report or standalone Chart Set from processed CDR-Data, CDR-Voice and CDR-Speech datasets.
 
 > [!NOTE]
-> **Restricted classic workflow.** PPT Reporting (old) is available only to the super-admins without a Modules Profile and to the users whose Modules Profile includes it (Super Admin → Modules Profiles; it is in no profile of a new deployment). PPT Dashboards and the scheduled [Reporting](reporting.md) jobs are the main workflows.
+> **Restricted classic workflow.** PPT Reporting (old) is available only to the super-admins without a Modules Profile and to the users whose Modules Profile includes it (Super Admin → Modules Profiles; it is in no profile of a new deployment). PPT Designer and the scheduled [Reporting](reporting.md) jobs are the main workflows.
 
 > [!WARNING]
 > **Missing CDR types.** A non-empty CDR selection is enough to generate a job, but charts requiring an unselected source type show an unavailable placeholder.
@@ -26,7 +26,7 @@ PPT Reporting (old) is available to the super-admins without a Modules Profile a
 
 Process at least one suitable CDR. Reporting can combine multiple datasets of one type and retains Campaign for comparisons. Reports may use any non-empty combination of Data, Voice and Speech; template rows without a selected source render an explicit unavailable-source placeholder.
 
-Select NR Mode: **NSA** or **SA**, the NR Mode of the chosen CDRs. When it leaves operators out of scope (the **NR Modes** of their labels in the [Operator Maps](workspace-config.md#operator-maps), such as Three, which has no SA), a pill under it names them (*Out of scope: SA · Three*) and their tests are left out of the report. Every Data, Voice and Speech test of those CDRs is included, whatever RAT or call mode it ran on (as in PPT Dashboards: a row keeps the NR Mode of its CDR), so choose the CDRs of that NR Mode. The NR Mode names the report and its titles (`{NR Mode}`, `{NR Mode Name}` in the template).
+Select NR Mode: **NSA** or **SA**, the NR Mode of the chosen CDRs. When it leaves operators out of scope (the **NR Modes** of their labels in the [Operator Maps](workspace-config.md#operator-maps), such as Three, which has no SA), a pill under it names them (*Out of scope: SA · Three*) and their tests are left out of the report. Every Data, Voice and Speech test of those CDRs is included, whatever RAT or call mode it ran on (as in PPT Designer: a row keeps the NR Mode of its CDR), so choose the CDRs of that NR Mode. The NR Mode names the report and its titles (`{NR Mode}`, `{NR Mode Name}` in the template).
 
 Valid Data attempts remain available even when sample RAT records a fallback.
 
@@ -90,7 +90,7 @@ Charts Panel browses report-rendered and standalone Chart Sets. Filter by NR Mod
 - Administrators can open the exact source template and row.
 - Temporary preview changes do not modify the stored template until Update Template and Save are used in the editor.
 
-Reports, Chart Sets, Dashboard exports and interactive previews share the Dashboard Canvas renderer for consistent geometry, colours, hierarchy, legends and semantic tooltips. `DRIVETEST_ANALYZER_REPORT_CHART_RENDERER=pil` enables the legacy server painter when required.
+Reports, Chart Sets, Design exports and interactive previews share the Design Canvas renderer for consistent geometry, colours, hierarchy, legends and semantic tooltips. `DRIVETEST_ANALYZER_REPORT_CHART_RENDERER=pil` enables the legacy server painter when required.
 
 ## Troubleshooting
 

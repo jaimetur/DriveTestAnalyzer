@@ -26,9 +26,9 @@
       "cdf_grouping": "operator"
     },
     "network_insights": [],
-    "dashboards": [
+    "designs": [
       {
-        "dashboard": {
+        "design": {
           "name": "NSA - NetCheck CDR Report"
         },
         "label": "",
@@ -44,7 +44,7 @@
         }
       },
       {
-        "dashboard": {
+        "design": {
           "name": "SA - NetCheck CDR Report"
         },
         "label": "",
@@ -60,7 +60,7 @@
         }
       },
       {
-        "dashboard": {
+        "design": {
           "name": "NSA - RF Quality (RSRP & SINR)"
         },
         "label": "",

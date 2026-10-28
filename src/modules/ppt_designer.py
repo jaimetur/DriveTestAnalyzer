@@ -1,4 +1,4 @@
-"""Workspace dashboard definitions and shared-table, template-driven previews."""
+"""Workspace design definitions and shared-table, template-driven previews."""
 from __future__ import annotations
 
 import copy
@@ -29,9 +29,9 @@ import pandas as pd
 from src.modules.column_names import campaign_sort_key, column_identity, compact_campaign_value, sort_vendor_values, vendor_filter_column, vendor_filter_value, vendor_filter_values, vendor_match_values
 from src.modules import report_structure
 from src.modules.deletion_rights import (
-    PPT_DASHBOARDS, can_delete, creator_of, creators, deletion_refusal, forget_creator, record_creator,
+    PPT_DESIGNER, can_delete, creator_of, creators, deletion_refusal, forget_creator, record_creator,
 )
-from src.modules.scoring_themes import THEMES, dashboard_chart_style, load_user_theme, normalize_theme, save_user_theme, themes_payload, use_theme
+from src.modules.scoring_themes import THEMES, canvas_chart_style, load_user_theme, normalize_theme, save_user_theme, themes_payload, use_theme
 from src.modules.theme_titles import style_title
 from src.modules.value_maps import ValueMapper, field_kind
 from src.modules.cdr_auto_selection import (
@@ -41,13 +41,15 @@ from src.modules.cdr_auto_selection import (
 from src.modules.cdr_facets import FILTER_FIELDS as CASCADING_FILTER_FIELDS, cascading_options
 from src.modules.nr_mode import NR_MODE_FIELD, NR_MODES, NSA_VS_SA, dataset_nr_mode, nr_modes_of
 from src.modules.report_template_modes import (
-    DASHBOARD_NR_MODE_LABELS, NR_MODE_TOKEN_VALUES, chart_filter_nr_modes, dashboard_nr_mode_value, entry_for_nr_mode, migrate_dashboard_definition,
+    DESIGN_NR_MODE_LABELS, NR_MODE_TOKEN_VALUES, chart_filter_nr_modes, design_nr_mode_value, entry_for_nr_mode, migrate_design_definition,
     missing_nr_mode_fields, missing_nr_mode_note,
 )
-from src.modules.output_layout import DASHBOARDS_FOLDER, module_output_dir
+from src.modules.output_layout import DESIGNS_FOLDER, module_output_dir
 from fastapi import BackgroundTasks, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel, Field, model_validator
+
+from src.modules.ppt_naming import renamed_design
 from pptx import Presentation
 from pptx.dml.color import RGBColor
 from pptx.enum.shapes import MSO_SHAPE_TYPE
@@ -57,7 +59,7 @@ from starlette.background import BackgroundTask
 
 from src.modules.cdr_reporting import (
     BOTH_NR_MODES_ATTR, _catalog_spec, _clear_commentary, _clear_end_slide, _layout_chart_frames, _legend_dimensions, _named_slide_layout,
-    _remove_all_slides, _remove_template_chart_placeholders, _render_dashboard_payload,
+    _remove_all_slides, _remove_template_chart_placeholders, _render_canvas_payload,
     _set_commentary, _set_slide_header, _set_structural_slide_text, catalog_chart_payload,
     catalog_kpi_fields, expand_dynamic_layouts, entry_dynamic_fields, dynamic_chart_title, _normalise_operator_label, _normalise_vendor, prepare_multivendor_catalog_entry,
     ensure_vendor_group, normalise_operator_aliases, parse_catalog_filters,
@@ -69,7 +71,7 @@ from src.modules.cdr_reporting import (
 from src.modules.report_layouts import DYNAMIC_LAYOUTS, canonical_layout_name, compact_grid_layout, grid_layout_name
 
 from src.modules import cdr_store
-from src.modules.dashboard_column_cache import (
+from src.modules.design_column_cache import (
     WEIGHT_COLUMN, CacheSource, ColumnCache, Segment, SelectionTerms, StaleSegment, build_from_copies, count_rows,
     default_memory_bytes, expand_weighted_rows, read_frame, read_grouped_frame,
 )
@@ -82,16 +84,16 @@ from src.modules.value_patterns import ValueSet, is_pattern
 from src.modules.operator_roles import (
     drop_excluded_operators, excluded_operators, focus_operators, out_of_scope_operators, out_of_scope_pairs,
 )
-from src.modules import comment_writers, dashboard_comments
-from src.modules import dashboard_design
+from src.modules import comment_writers, design_comments
+from src.modules import design_slides
 
 KINDS = ('data', 'voice', 'speech')
 
 
 def existing_dataset_selection(definition: Any, dataset_kinds: dict[int, str]) -> Any:
-    """A Dashboard without the CDRs that are not in its workspace with their type (deleted, or from another workspace).
+    """A Design without the CDRs that are not in its workspace with their type (deleted, or from another workspace).
 
-    When none of its chosen CDRs is left, the Dashboard uses the latest CDRs again, like a Dashboard without CDRs.
+    When none of its chosen CDRs is left, the Design uses the latest CDRs again, like a Design without CDRs.
     """
     if not isinstance(definition, dict) or not isinstance(definition.get('datasets'), dict):
         return definition
@@ -112,30 +114,30 @@ def _dataset_id(value: Any) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
-STATE_KEY = 'ppt_dashboards_v2'
-LEGACY_STATE_KEY = 'ppt_dashboard_sets_v1'
-DEFAULT_FILTERS_MIGRATION_KEY = 'ppt_dashboard_default_filters_v6'
-# The Main Cities choice of a City filter: the Main Cities of the workspace whenever the Dashboard is used, so a change
-# of the Main Cities in Workspace Config reaches the Dashboards saved with it.
+STATE_KEY = 'ppt_designs_v2'
+LEGACY_STATE_KEY = 'ppt_design_sets_v1'
+DEFAULT_FILTERS_MIGRATION_KEY = 'ppt_design_default_filters_v6'
+# The Main Cities choice of a City filter: the Main Cities of the workspace whenever the Design is used, so a change
+# of the Main Cities in Workspace Config reaches the Designs saved with it.
 MAIN_CITIES = '@main-cities'
-# Dashboards saved before kept the Main Cities of that moment: once per workspace, a City filter of exactly the current
+# Designs saved before kept the Main Cities of that moment: once per workspace, a City filter of exactly the current
 # Main Cities becomes the Main Cities choice.
-MAIN_CITIES_MIGRATION_KEY = 'ppt_dashboard_main_cities_reference_v1'
-DASHBOARD_PPT_JOBS_TABLE = 'dashboard_ppt_jobs'
-# The Design a user is changing and has not saved, per Dashboard (Dashboard Designer): it survives a reload and is not
-# part of exports, transfers or backups (it is the user's work in progress, not the Dashboard).
-DASHBOARD_DESIGN_DRAFTS_TABLE = 'dashboard_design_drafts'
+MAIN_CITIES_MIGRATION_KEY = 'ppt_design_main_cities_reference_v1'
+DESIGN_PPT_JOBS_TABLE = 'design_ppt_jobs'
+# The slide set a user is changing and has not saved, per Design (Designer): it survives a reload and is not
+# part of exports, transfers or backups (it is the user's work in progress, not the Design).
+DESIGN_DRAFTS_TABLE = 'design_drafts'
 # The pictures the Image elements of Designs show (logos, legends, diagrams), by id; they travel with the Designs.
-DASHBOARD_DESIGN_IMAGES_TABLE = 'dashboard_design_images'
+DESIGN_IMAGES_TABLE = 'design_images'
 DESIGN_IMAGE_TYPES = {'image/png': 'PNG', 'image/jpeg': 'JPEG', 'image/gif': 'GIF'}
 DESIGN_IMAGE_MAX_BYTES = 8 * 1024 * 1024
-# The colour theme of PPT Dashboards: per user in each workspace, as in the other themed modules.
-DASHBOARD_THEME_MODULE = 'ppt_dashboards'
+# The colour theme of PPT Designer: per user in each workspace, as in the other themed modules.
+DESIGN_THEME_MODULE = 'ppt_designer'
 
 
-def dashboard_viewer_tokens(theme_name: str) -> dict[str, str]:
-    """The CSS variables of the Dashboard viewer in a theme, set on the viewer and changed at once with the theme: the
-    slide title and subtitle in the theme's title style (as on the content slides of the Dashboard PPTs, the part that
+def design_viewer_tokens(theme_name: str) -> dict[str, str]:
+    """The CSS variables of the Design viewer in a theme, set on the viewer and changed at once with the theme: the
+    slide title and subtitle in the theme's title style (as on the content slides of the Design PPTs, the part that
     tells the slide apart in its focus style) and the chart cards in its rules."""
     from src.modules.scoring_themes import get_theme
     from src.modules.theme_titles import title_style
@@ -155,10 +157,10 @@ def dashboard_viewer_tokens(theme_name: str) -> dict[str, str]:
             '--ds-card-line': theme['line'], '--ds-accent': theme['title_accent']}
 
 
-class DashboardDefinition(BaseModel):
+class DesignDefinition(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     template: str = Field(min_length=1)
-    # The NR Mode of the CDRs the Dashboard reads, part of its selection: its template serves any NR Mode. NSA+SA
+    # The NR Mode of the CDRs the Design reads, part of its selection: its template serves any NR Mode. NSA+SA
     # (NSA & SA) reads the CDRs of both, whose rows keep the NR Mode of their CDR.
     nr_mode: Literal['NSA', 'SA', 'NSA+SA'] = 'NSA'
     # With NSA & SA, the Campaign filter of the SA CDRs (the Campaign filter chooses the NSA ones); empty, the
@@ -176,10 +178,10 @@ class DashboardDefinition(BaseModel):
     slide_comment_meta: dict[str, dict[str, Any]] = Field(default_factory=dict)
     date_from: date | Literal['Oldest'] | None = 'Oldest'
     date_to: date | Literal['Newest'] | None = 'Newest'
-    # The CDRs follow the NR Mode and the Campaign filter (see ``cdr_auto_selection``); Dashboards saved
+    # The CDRs follow the NR Mode and the Campaign filter (see ``cdr_auto_selection``); Designs saved
     # before (without it) chose their CDRs by hand and are migrated once (``migrate_auto_cdrs``).
     auto_cdrs: bool = False
-    # Its Design (dashboard_design): what it changes of its template, by id; its own Design once detached from its
+    # Its slide set (design_slides): what it changes of its template, by id; its own slide set once detached from its
     # template (``template`` then names the template it came from); the values of the template parameters by id.
     slide_overrides: dict[str, Any] = Field(default_factory=dict)
     own_slides: dict[str, Any] | None = None
@@ -188,30 +190,31 @@ class DashboardDefinition(BaseModel):
     @model_validator(mode='before')
     @classmethod
     def without_template_nr_mode(cls, value: Any) -> Any:
-        """A Dashboard saved, exported or sent with the NR Mode of before (technology, template_technology)."""
+        """A Design saved, exported or sent with the NR Mode of before (technology, template_technology), or as a Dashboard
+        of PPT Dashboards (the fields of its slides were design and design_overrides)."""
         if isinstance(value, dict):
-            value = migrate_dashboard_definition(value)
+            value = migrate_design_definition(renamed_design(value))
             if isinstance(value, dict) and value.get('nr_mode') is not None:
-                value = {**value, 'nr_mode': dashboard_nr_mode_value(value['nr_mode'])}
+                value = {**value, 'nr_mode': design_nr_mode_value(value['nr_mode'])}
         return value
 
 
-class DashboardThemeRequest(BaseModel):
+class DesignThemeRequest(BaseModel):
     theme: str
 
 
 AUTO_COMMENT_MODES = ('off', 'empty', 'generated', 'all')
 
 
-class DashboardPptExportRequest(BaseModel):
-    definition: DashboardDefinition | None = None
-    # Auto comments: write generated comments into the PPT (not into the Dashboard) on the slides without comments,
+class DesignPptExportRequest(BaseModel):
+    definition: DesignDefinition | None = None
+    # Auto comments: write generated comments into the PPT (not into the Design) on the slides without comments,
     # in place of the generated ones or in place of every comment.
     auto_comments: Literal['off', 'empty', 'generated', 'all'] = 'off'
     # Their writer (empty: the default one of Super Admin).
     auto_comments_engine: str = ''
     preparation_token: str | None = None
-    # Legend entries hidden in the viewer: {"dashboard": {label: hidden},
+    # Legend entries hidden in the viewer: {"design": {label: hidden},
     # "charts": {chart key: {label: hidden}}}; the PPT shows them hidden too.
     legend_visibility: dict[str, object] | None = None
     selected_operators: list[str] | None = None
@@ -220,17 +223,17 @@ class DashboardPptExportRequest(BaseModel):
     selected_cities: list[str] | None = None
 
 
-class DashboardFilterOptionsRequest(BaseModel):
-    definition: DashboardDefinition
+class DesignFilterOptionsRequest(BaseModel):
+    definition: DesignDefinition
     field: str = Field(min_length=1, max_length=255)
 
 
-class DashboardFilterOptionsBatchRequest(BaseModel):
-    definition: DashboardDefinition
+class DesignFilterOptionsBatchRequest(BaseModel):
+    definition: DesignDefinition
     fields: list[str] = Field(min_length=1, max_length=64)
 
 
-class DashboardChartFilterPreviewRequest(BaseModel):
+class DesignChartFilterPreviewRequest(BaseModel):
     filters: str = ''
     chart_title: str | None = None
     cdr_source: str | None = None
@@ -253,7 +256,7 @@ class DashboardChartFilterPreviewRequest(BaseModel):
     dynamic_field: str | None = None
 
 
-class DashboardComments(BaseModel):
+class DesignComments(BaseModel):
     slide_comments: dict[str, list[str]] = Field(default_factory=dict)
     # Comments added from the generated suggestions of one slide: their slide, texts (as added, after any edit),
     # engine and model, and the preparation they were generated from (its selection marks them out of date later).
@@ -295,27 +298,27 @@ class GenerateAllComments(BaseModel):
     slides: list[GeneratedCommentSlide] = Field(default_factory=list)
 
 
-class DashboardName(BaseModel):
+class DesignName(BaseModel):
     name: str = Field(min_length=1, max_length=120)
 
 
-class DashboardDesignPreview(BaseModel):
-    """A Design the Designer shows before it is saved, laid out on the selection of an open Dashboard (``token``):
-    the template Design as edited (Template scope), the Dashboard Design as edited in This Dashboard scope (its
+class DesignSlidesPreview(BaseModel):
+    """A slide set the Designer shows before it is saved, laid out on the selection of an open Design (``token``):
+    the template slide set as edited (Template scope), the Design slide set as edited in This Design scope (its
     overrides are worked out from it, starting from ``overrides``) and the values of the parameters."""
     token: str = Field(min_length=1)
-    # The Dashboard designed: its Design as saved now (detached or not, its overrides) is the start of the preview,
+    # The Design designed: its slide set as saved now (detached or not, its overrides) is the start of the preview,
     # whatever it was when the selection was prepared.
-    dashboard_id: str = ''
+    design_id: str = ''
     template_slide_set: dict[str, Any] | None = None
     slide_set: dict[str, Any] | None = None
     overrides: dict[str, Any] | None = None
     parameter_values: dict[str, Any] | None = None
 
 
-class DashboardDesignSave(BaseModel):
-    """What the Designer saves: the template Design (Template scope, checked against the template it was read from),
-    and the Dashboard Design edited in This Dashboard scope (or its own Design once detached)."""
+class DesignSlidesSave(BaseModel):
+    """What the Designer saves: the template slide set (Template scope, checked against the template it was read from),
+    and the Design slide set edited in This Design scope (or its own slide set once detached)."""
     template_slide_set: dict[str, Any] | None = None
     template_updated_at: str = ''
     slide_set: dict[str, Any] | None = None
@@ -324,25 +327,25 @@ class DashboardDesignSave(BaseModel):
     keep_template_changes: bool = False
 
 
-class DashboardDesignTemplate(BaseModel):
+class DesignSlidesTemplate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
 
 
-class DashboardDesignAddChart(BaseModel):
-    """A chart built elsewhere (Chart Builder) added to a Dashboard: on a free place of one of its slides, or on a new
+class DesignSlidesAddChart(BaseModel):
+    """A chart built elsewhere (Chart Builder) added to a Design: on a free place of one of its slides, or on a new
     slide at its end (``slide_id`` empty)."""
     element: dict[str, Any]
     slide_id: str = ''
     slide_title: str = ''
 
 
-class DashboardDesignDraft(BaseModel):
-    """The Designer's unsaved work on a Dashboard: the template Design, the Dashboard Design and overrides as edited,
+class DesignSlidesDraft(BaseModel):
+    """The Designer's unsaved work on a Design: the template slide set, the Design slide set and overrides as edited,
     what of them changed, and the template version they started from."""
     state: dict[str, Any]
 
 
-class DashboardTemplateSelection(BaseModel):
+class DesignTemplateSelection(BaseModel):
     nr_mode: Literal['NSA', 'SA', 'NSA+SA'] = 'NSA'
     template: str = Field(min_length=1)
 
@@ -352,7 +355,7 @@ class DashboardTemplateSelection(BaseModel):
         if isinstance(value, dict):
             mode = value.get('nr_mode', value.get('technology'))
             value = {**{key: item for key, item in value.items() if key != 'technology'},
-                     'nr_mode': dashboard_nr_mode_value(mode)}
+                     'nr_mode': design_nr_mode_value(mode)}
         return value
 
 
@@ -365,13 +368,13 @@ def template_uids(task_repository) -> dict[str, str]:
     return task_repository.report_template_uids()
 
 
-def follow_template_identities(dashboards: dict, templates: dict[str, str]) -> dict:
-    """The Dashboards with the identity (``template_uid``) of their PPT Template: one whose template was renamed since,
+def follow_template_identities(designs: dict, templates: dict[str, str]) -> dict:
+    """The Designs with the identity (``template_uid``) of their PPT Template: one whose template was renamed since,
     here or by an import, takes its current name, and one without it (saved before, or imported) takes that of the
     template it names."""
     by_uid = {uid: name for name, uid in templates.items() if uid}
     followed = {}
-    for dashboard_id, definition in dashboards.items():
+    for design_id, definition in designs.items():
         if isinstance(definition, dict) and definition.get('template'):
             current = by_uid.get(str(definition.get('template_uid') or ''))
             if current:
@@ -379,35 +382,35 @@ def follow_template_identities(dashboards: dict, templates: dict[str, str]) -> d
                     definition = {**definition, 'template': current}
             elif templates.get(str(definition['template'])):
                 definition = {**definition, 'template_uid': templates[str(definition['template'])]}
-        followed[dashboard_id] = definition
+        followed[design_id] = definition
     return followed
 
 
-def rename_template_in_dashboards(dashboards: dict, previous_template: str, template: str) -> list[str]:
-    """The Dashboards that use a renamed template take its new name, and their names follow it; returns their IDs."""
+def rename_template_in_designs(designs: dict, previous_template: str, template: str) -> list[str]:
+    """The Designs that use a renamed template take its new name, and their names follow it; returns their IDs."""
     changed: list[str] = []
-    for dashboard_id, raw_definition in dashboards.items():
+    for design_id, raw_definition in designs.items():
         if not isinstance(raw_definition, dict) or str(raw_definition.get('template') or '') != previous_template:
             continue
         updated = dict(raw_definition)
         updated['template'] = template
         name = str(updated.get('name') or '')
         updated['name'] = re.sub(re.escape(previous_template), template, name, flags=re.IGNORECASE)
-        dashboards[dashboard_id] = updated
-        changed.append(dashboard_id)
+        designs[design_id] = updated
+        changed.append(design_id)
     return changed
 
 
-def dashboard_nr_mode(definition) -> str:
-    """Return the NR Mode (``NSA``, ``SA`` or ``NSA+SA``) of the CDRs a Dashboard definition reads."""
+def design_nr_mode(definition) -> str:
+    """Return the NR Mode (``NSA``, ``SA`` or ``NSA+SA``) of the CDRs a Design definition reads."""
     if isinstance(definition, dict):
         value = definition.get('nr_mode') or definition.get('technology') or definition.get('template_technology')
     else:
         value = getattr(definition, 'nr_mode', None)
-    return dashboard_nr_mode_value(value)
+    return design_nr_mode_value(value)
 
 
-# The options of the Campaign filter of the SA CDRs of an NSA & SA Dashboard (its ``sa_campaigns``).
+# The options of the Campaign filter of the SA CDRs of an NSA & SA Design (its ``sa_campaigns``).
 SA_CAMPAIGN_FIELD = 'SA Campaign'
 
 
@@ -420,19 +423,19 @@ def entry_uses_nr_mode(entry) -> bool:
 
 
 def chart_nr_mode_unread(entry, definition) -> str:
-    """Why a chart of one NR Mode shows nothing in a Dashboard that does not read it (empty when it reads it)."""
+    """Why a chart of one NR Mode shows nothing in a Design that does not read it (empty when it reads it)."""
     modes = chart_filter_nr_modes(entry)
-    read = nr_modes_of(dashboard_nr_mode(definition))
+    read = nr_modes_of(design_nr_mode(definition))
     if not entry.source_kind or entry.structural_type or any(mode in read for mode in modes):
         return ''
-    return (f"This chart shows the {' & '.join(modes) or 'CDRs of no NR Mode'} CDRs and the Dashboard reads the "
-            f"{DASHBOARD_NR_MODE_LABELS[dashboard_nr_mode(definition)]} ones: choose NR Mode NSA & SA to show it.")
+    return (f"This chart shows the {' & '.join(modes) or 'CDRs of no NR Mode'} CDRs and the Design reads the "
+            f"{DESIGN_NR_MODE_LABELS[design_nr_mode(definition)]} ones: choose NR Mode NSA & SA to show it.")
 
 
 def dataset_matches_nr_mode(dataset, nr_mode) -> bool:
     """Whether a serialized CDR belongs to the requested NR Mode (either one for NSA & SA)."""
     mode = dataset_nr_mode(dataset.get('dataset_kind'), dataset.get('nr_mode'), dataset.get('file_name'))
-    return mode is None or mode in nr_modes_of(dashboard_nr_mode_value(nr_mode))
+    return mode is None or mode in nr_modes_of(design_nr_mode_value(nr_mode))
 
 
 FILTER_COLUMNS = {
@@ -455,39 +458,41 @@ ADAPTATIVE_FILTER_FIELDS = (
     'Operator', 'Operator_Vendor', 'Vendor_Operator', 'Vendor', 'Market', 'Region', 'Cluster', 'City', 'Campaign', 'RAT',
     'Session Type', 'Call Status',
 )
-DASHBOARD_RENDER_CACHE_VERSION = 22
-DASHBOARD_SELECTION_CACHE_VERSION = 18
-# Only the most recently used Dashboard snapshots keep their chart frames in
+DESIGN_RENDER_CACHE_VERSION = 22
+DESIGN_SELECTION_CACHE_VERSION = 18
+# Only the most recently used Design snapshots keep their chart frames in
 # memory; older snapshots rebuild them on demand from the combined tables.
-DASHBOARD_FRAME_CACHE_SNAPSHOTS = max(1, int(os.environ.get('DRIVETEST_ANALYZER_DASHBOARD_FRAME_CACHE_SNAPSHOTS') or 3))
+# Also read under its name of PPT Dashboards (DRIVETEST_ANALYZER_DASHBOARD_FRAME_CACHE_SNAPSHOTS).
+DESIGN_FRAME_CACHE_SNAPSHOTS = max(1, int(os.environ.get('DRIVETEST_ANALYZER_DESIGN_FRAME_CACHE_SNAPSHOTS')
+                                          or os.environ.get('DRIVETEST_ANALYZER_DASHBOARD_FRAME_CACHE_SNAPSHOTS') or 3))
 # Grouped compact reads for eligible charts; 0 restores complete reads.
-DASHBOARD_COMPACT_READS = os.environ.get('DRIVETEST_ANALYZER_COMPACT_READS', '1') != '0'
+DESIGN_COMPACT_READS = os.environ.get('DRIVETEST_ANALYZER_COMPACT_READS', '1') != '0'
 # Per-CDR column cache: any universe or comparison mode is assembled from it in
 # memory; 0 restores SQLite reads for every chart.
-DASHBOARD_COLUMN_CACHE = os.environ.get('DRIVETEST_ANALYZER_COLUMN_CACHE', '1') != '0'
+DESIGN_COLUMN_CACHE = os.environ.get('DRIVETEST_ANALYZER_COLUMN_CACHE', '1') != '0'
 # Order-independent charts filter each distinct row of their columns once, with its number of rows (see read_frame).
-DASHBOARD_WEIGHTED_READS = os.environ.get('DRIVETEST_ANALYZER_WEIGHTED_READS', '1') != '0'
-# Dashboard source reads: larger page cache, memory-mapped I/O and a sequential
+DESIGN_WEIGHTED_READS = os.environ.get('DRIVETEST_ANALYZER_WEIGHTED_READS', '1') != '0'
+# Design source reads: larger page cache, memory-mapped I/O and a sequential
 # scan when the selected CDRs hold at least this share of a combined table.
-DASHBOARD_READ_CACHE_KIB = 262_144
-DASHBOARD_READ_MMAP_BYTES = 2 * 1024 ** 3
-DASHBOARD_SEQUENTIAL_SCAN_SHARE = 0.2
-DASHBOARD_SELECTION_CACHE_LIMIT = 128
-DASHBOARD_PROFILE_SELECTION_THRESHOLD = 100_000
-DASHBOARD_CHART_MODEL_CACHE_VERSION = 19
-DASHBOARD_CHART_MODELS_KEPT = 2000
-DASHBOARD_PREVIEW_MANIFESTS_KEPT = 256
-DASHBOARD_CHART_RENDER_WORKERS = max(1, min(2, (os.cpu_count() or 2) - 1))
-DASHBOARD_PREVIEW_MANIFEST_VERSION = 9
-DASHBOARD_DATE_BOUNDS_CACHE_VERSION = 1
+DESIGN_READ_CACHE_KIB = 262_144
+DESIGN_READ_MMAP_BYTES = 2 * 1024 ** 3
+DESIGN_SEQUENTIAL_SCAN_SHARE = 0.2
+DESIGN_SELECTION_CACHE_LIMIT = 128
+DESIGN_PROFILE_SELECTION_THRESHOLD = 100_000
+DESIGN_CHART_MODEL_CACHE_VERSION = 19
+DESIGN_CHART_MODELS_KEPT = 2000
+DESIGN_PREVIEW_MANIFESTS_KEPT = 256
+DESIGN_CHART_RENDER_WORKERS = max(1, min(2, (os.cpu_count() or 2) - 1))
+DESIGN_PREVIEW_MANIFEST_VERSION = 9
+DESIGN_DATE_BOUNDS_CACHE_VERSION = 1
 
 
-def dashboard_cache_dir(workspace: str | Path) -> Path:
-    return Path(workspace).parent / '.dashboard-data-cache'
+def design_cache_dir(workspace: str | Path) -> Path:
+    return Path(workspace).parent / '.design-data-cache'
 
 
 def column_cache_dir(workspace: str | Path) -> Path:
-    return dashboard_cache_dir(workspace) / 'columns'
+    return design_cache_dir(workspace) / 'columns'
 
 
 # Template "filters" that configure a chart instead of selecting rows.
@@ -629,10 +634,10 @@ def reflowed_dynamic_grid(layout: str, hidden_cards: list[bool]) -> tuple[str, l
 
 
 def slide_geometry(entries) -> list[list[float]] | None:
-    """The places a Design gives a slide of its own (a free layout: rectangles in percent of the chart area of its
+    """The places a slide set gives a slide of its own (a free layout: rectangles in percent of the chart area of its
     layout), or None when it uses those of its layout."""
     for entry in entries:
-        options = dashboard_design.row_format(entry).get('slide_options')
+        options = design_slides.row_format(entry).get('slide_options')
         geometry = options.get('geometry') if isinstance(options, dict) else None
         if isinstance(geometry, list) and geometry and all(isinstance(rect, list) and len(rect) == 4 for rect in geometry):
             return [[float(value) for value in rect] for rect in geometry]
@@ -640,9 +645,9 @@ def slide_geometry(entries) -> list[list[float]] | None:
 
 
 def explicit_places(entries, capacity: int) -> list[int] | None:
-    """The place of each chart row of a slide when the Design gives them (a place can stay empty): None for rows that
+    """The place of each chart row of a slide when the slide set gives them (a place can stay empty): None for rows that
     fill the places in order (a template written by hand, or the cards of a dynamic grid, which repeat one element)."""
-    rows = [dashboard_design.row_format(entry) for entry in entries]
+    rows = [design_slides.row_format(entry) for entry in entries]
     ids = [row.get('id') for row in rows]
     if not rows or not all(ids) or len(set(ids)) != len(ids):
         return None
@@ -654,7 +659,7 @@ def explicit_places(entries, capacity: int) -> list[int] | None:
 
 def repeat_field(entry) -> str:
     """The field a chart is repeated by in its own place (Repeat by of the Designer: small multiples), or ''."""
-    repeat = dashboard_design.row_format(entry).get('repeat')
+    repeat = design_slides.row_format(entry).get('repeat')
     return str(repeat.get('field') or '').strip() if isinstance(repeat, dict) else ''
 
 
@@ -695,7 +700,7 @@ class Snapshot:
     entries: list
     frames: dict
     multivendor: bool
-    definition: DashboardDefinition
+    definition: DesignDefinition
     dimensions: tuple
     selection_id: int
     selection_key: str
@@ -713,11 +718,11 @@ class Snapshot:
     # change while the prepared universe is open.
     sources: dict[str, tuple] = field(default_factory=dict)
     # The values of each filter field in the selection (as read, before the value maps): the Designer lays out the
-    # dynamic grids of a Design it previews on this same selection.
+    # dynamic grids of a slide set it previews on this same selection.
     options: dict[str, list] = field(default_factory=dict)
 
 
-def install_dashboard_routes(core):
+def install_design_routes(core):
     app = core.app
     lock = RLock()
     snapshots = OrderedDict()
@@ -725,33 +730,33 @@ def install_dashboard_routes(core):
     direct_preparation_tasks: dict[str, dict] = {}
     direct_preparation_results: OrderedDict[str, dict] = OrderedDict()
     initialized_ppt_job_databases: set[str] = set()
-    dashboard_ppt_runs: dict[tuple[str, int], str] = {}
-    dashboard_ppt_data_tokens: dict[tuple[str, int, str], str] = {}
-    # Whether each Dashboard has CDRs to show, by the signature of its inputs (see dashboard_status_payload).
-    dashboard_status_cache: dict[tuple[str, str], tuple[str, bool]] = {}
+    design_ppt_runs: dict[tuple[str, int], str] = {}
+    design_ppt_data_tokens: dict[tuple[str, int, str], str] = {}
+    # Whether each Design has CDRs to show, by the signature of its inputs (see design_status_payload).
+    design_status_cache: dict[tuple[str, str], tuple[str, bool]] = {}
     interactive_chart_preview_jobs: OrderedDict[str, dict] = OrderedDict()
-    # Jobs writing the comments of every slide of a Dashboard (Generate comments → All slides).
+    # Jobs writing the comments of every slide of a Design (Generate comments → All slides).
     comment_jobs: OrderedDict[str, dict] = OrderedDict()
-    # Kiro Briefs prepared for download (the facts of every slide of a Dashboard).
+    # Kiro Briefs prepared for download (the facts of every slide of a Design).
     comment_briefs: OrderedDict[str, dict] = OrderedDict()
-    dashboard_work_gate = Lock()
-    # The prepared universes of the Dashboards (by workspace, Dashboard and definition), kept in memory only, so that
-    # reopening one (or exporting it) reuses its preparation: the newest DASHBOARD_PREVIEW_MANIFESTS_KEPT.
+    design_work_gate = Lock()
+    # The prepared universes of the Designs (by workspace, Design and definition), kept in memory only, so that
+    # reopening one (or exporting it) reuses its preparation: the newest DESIGN_PREVIEW_MANIFESTS_KEPT.
     preview_manifests: OrderedDict[str, dict] = OrderedDict()
-    # The Canvas models of the charts, kept in memory only: the newest DASHBOARD_CHART_MODELS_KEPT.
+    # The Canvas models of the charts, kept in memory only: the newest DESIGN_CHART_MODELS_KEPT.
     canvas_models: OrderedDict[str, dict] = OrderedDict()
 
     def workspace_key():
         if not core.active_workspace:
-            raise HTTPException(400, 'Open a workspace before using PPT Dashboards.')
+            raise HTTPException(400, 'Open a workspace before using PPT Designer.')
         return str(Path(core.repository.db_path).resolve())
 
-    def dashboard_user(user=Depends(core.current_user)):
+    def design_user(user=Depends(core.current_user)):
         if core.active_workspace and user.role != 'super-admin' and not core.repository.user_has_workspace_access(user.username, core.active_workspace.id):
             raise HTTPException(403, 'You do not have access to the active workspace.')
         return user
 
-    def dashboard_editor_user(user=Depends(dashboard_user)):
+    def design_editor_user(user=Depends(design_user)):
         if user.role not in {'user-editor', 'admin', 'super-admin'}:
             raise HTTPException(403, 'Editor access required.')
         return user
@@ -759,16 +764,16 @@ def install_dashboard_routes(core):
     def bound_repository():
         return Repository(Path(workspace_key()), core.repository.global_db_path)
 
-    def ensure_dashboard_ppt_jobs(task_repository):
+    def ensure_design_ppt_jobs(task_repository):
         database_key = str(Path(task_repository.db_path).resolve())
         with lock:
             first_check = database_key not in initialized_ppt_job_databases
             initialized_ppt_job_databases.add(database_key)
         with task_repository.connection() as connection:
-            connection.execute(f'''CREATE TABLE IF NOT EXISTS {DASHBOARD_PPT_JOBS_TABLE} (
+            connection.execute(f'''CREATE TABLE IF NOT EXISTS {DESIGN_PPT_JOBS_TABLE} (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                dashboard_id TEXT NOT NULL,
-                dashboard_name TEXT NOT NULL,
+                design_id TEXT NOT NULL,
+                design_name TEXT NOT NULL,
                 template_name TEXT NOT NULL,
                 nr_mode TEXT NOT NULL DEFAULT 'nsa',
                 scope TEXT NOT NULL DEFAULT 'single',
@@ -789,71 +794,71 @@ def install_dashboard_routes(core):
                 finished_at TEXT
             )''')
             columns = {str(row['name']) for row in connection.execute(
-                f'PRAGMA table_info({DASHBOARD_PPT_JOBS_TABLE})'
+                f'PRAGMA table_info({DESIGN_PPT_JOBS_TABLE})'
             ).fetchall()}
             if 'vendor_comparison' not in columns:
-                connection.execute(f"ALTER TABLE {DASHBOARD_PPT_JOBS_TABLE} ADD COLUMN vendor_comparison TEXT NOT NULL DEFAULT 'operator_vendor'")
+                connection.execute(f"ALTER TABLE {DESIGN_PPT_JOBS_TABLE} ADD COLUMN vendor_comparison TEXT NOT NULL DEFAULT 'operator_vendor'")
             if 'scope' not in columns:
                 connection.execute(
-                    f"ALTER TABLE {DASHBOARD_PPT_JOBS_TABLE} ADD COLUMN scope TEXT NOT NULL DEFAULT 'single'"
+                    f"ALTER TABLE {DESIGN_PPT_JOBS_TABLE} ADD COLUMN scope TEXT NOT NULL DEFAULT 'single'"
                 )
             if 'nr_mode' not in columns:
                 connection.execute(
-                    f"ALTER TABLE {DASHBOARD_PPT_JOBS_TABLE} ADD COLUMN nr_mode TEXT NOT NULL DEFAULT 'nsa'"
+                    f"ALTER TABLE {DESIGN_PPT_JOBS_TABLE} ADD COLUMN nr_mode TEXT NOT NULL DEFAULT 'nsa'"
                 )
             if 'filters_json' not in columns:
                 connection.execute(
-                    f"ALTER TABLE {DASHBOARD_PPT_JOBS_TABLE} ADD COLUMN filters_json TEXT NOT NULL DEFAULT '[]'"
+                    f"ALTER TABLE {DESIGN_PPT_JOBS_TABLE} ADD COLUMN filters_json TEXT NOT NULL DEFAULT '[]'"
                 )
             if 'regions_json' not in columns:
                 connection.execute(
-                    f"ALTER TABLE {DASHBOARD_PPT_JOBS_TABLE} ADD COLUMN regions_json TEXT NOT NULL DEFAULT '[]'"
+                    f"ALTER TABLE {DESIGN_PPT_JOBS_TABLE} ADD COLUMN regions_json TEXT NOT NULL DEFAULT '[]'"
                 )
             if 'selections_json' not in columns:
                 connection.execute(
-                    f"ALTER TABLE {DASHBOARD_PPT_JOBS_TABLE} ADD COLUMN selections_json TEXT NOT NULL DEFAULT '{{}}'"
+                    f"ALTER TABLE {DESIGN_PPT_JOBS_TABLE} ADD COLUMN selections_json TEXT NOT NULL DEFAULT '{{}}'"
                 )
             if 'started_at' not in columns:
                 connection.execute(
-                    f"ALTER TABLE {DASHBOARD_PPT_JOBS_TABLE} ADD COLUMN started_at TEXT"
+                    f"ALTER TABLE {DESIGN_PPT_JOBS_TABLE} ADD COLUMN started_at TEXT"
                 )
             if 'legend_visibility_json' not in columns:
                 connection.execute(
-                    f"ALTER TABLE {DASHBOARD_PPT_JOBS_TABLE} ADD COLUMN legend_visibility_json TEXT NOT NULL DEFAULT '{{}}'"
+                    f"ALTER TABLE {DESIGN_PPT_JOBS_TABLE} ADD COLUMN legend_visibility_json TEXT NOT NULL DEFAULT '{{}}'"
                 )
             if 'auto_comments' not in columns:
-                connection.execute(f"ALTER TABLE {DASHBOARD_PPT_JOBS_TABLE} ADD COLUMN auto_comments TEXT NOT NULL DEFAULT 'off'")
+                connection.execute(f"ALTER TABLE {DESIGN_PPT_JOBS_TABLE} ADD COLUMN auto_comments TEXT NOT NULL DEFAULT 'off'")
             if 'auto_comments_engine' not in columns:
-                connection.execute(f"ALTER TABLE {DASHBOARD_PPT_JOBS_TABLE} ADD COLUMN auto_comments_engine TEXT NOT NULL DEFAULT ''")
+                connection.execute(f"ALTER TABLE {DESIGN_PPT_JOBS_TABLE} ADD COLUMN auto_comments_engine TEXT NOT NULL DEFAULT ''")
             if first_check:
                 connection.execute(
-                    f'''UPDATE {DASHBOARD_PPT_JOBS_TABLE}
+                    f'''UPDATE {DESIGN_PPT_JOBS_TABLE}
                         SET status = 'failed', progress = 100,
-                            last_error = 'Dashboard export was interrupted by an application restart.',
+                            last_error = 'Design export was interrupted by an application restart.',
                             finished_at = ?
                         WHERE status IN ('queued', 'processing')''',
                     (datetime.now(timezone.utc).isoformat(),),
                 )
 
-    def dashboard_ppt_job(task_repository, job_id):
-        ensure_dashboard_ppt_jobs(task_repository)
+    def design_ppt_job(task_repository, job_id):
+        ensure_design_ppt_jobs(task_repository)
         with task_repository.connection() as connection:
             return connection.execute(
-                f'SELECT * FROM {DASHBOARD_PPT_JOBS_TABLE} WHERE id = ?', (job_id,),
+                f'SELECT * FROM {DESIGN_PPT_JOBS_TABLE} WHERE id = ?', (job_id,),
             ).fetchone()
 
-    def update_dashboard_ppt_job(task_repository, job_id, **changes):
+    def update_design_ppt_job(task_repository, job_id, **changes):
         if not changes:
             return
         assignments = ', '.join(f'{key} = ?' for key in changes)
         with task_repository.connection() as connection:
             connection.execute(
-                f'UPDATE {DASHBOARD_PPT_JOBS_TABLE} SET {assignments} WHERE id = ?',
+                f'UPDATE {DESIGN_PPT_JOBS_TABLE} SET {assignments} WHERE id = ?',
                 (*changes.values(), job_id),
             )
 
     def normalized_legend_visibility(value) -> dict[str, dict]:
-        """Keep a bounded {"dashboard": {label: hidden}, "charts": {key: {label: hidden}}} state."""
+        """Keep a bounded {"design": {label: hidden}, "charts": {key: {label: hidden}}} state."""
         def states(raw) -> dict[str, bool]:
             if not isinstance(raw, dict):
                 return {}
@@ -862,7 +867,7 @@ def install_dashboard_routes(core):
         value = value if isinstance(value, dict) else {}
         charts = value.get('charts') if isinstance(value.get('charts'), dict) else {}
         return {
-            'dashboard': states(value.get('dashboard')),
+            'design': states(value.get('design')),
             'charts': {str(key)[:600]: states(raw) for key, raw in list(charts.items())[:2000] if states(raw)},
         }
 
@@ -882,22 +887,22 @@ def install_dashboard_routes(core):
     def chart_legend_lists(visibility, chart_key) -> tuple[list[str], list[str]]:
         """Hidden and explicitly shown legend labels or values of one chart.
 
-        The chart's own choices come first, then the Dashboard-wide ones. The
+        The chart's own choices come first, then the Design-wide ones. The
         renderer hides every series, row or column with a hidden value at any
         aggregation level, exactly as the viewer does.
         """
         chart_states = visibility.get('charts', {}).get(chart_key, {}) if chart_key else {}
         hidden = [label for label, value in chart_states.items() if value]
         shown = [label for label, value in chart_states.items() if not value]
-        for label, value in visibility.get('dashboard', {}).items():
+        for label, value in visibility.get('design', {}).items():
             if label not in chart_states:
                 (hidden if value else shown).append(label)
         return hidden, shown
 
-    def dashboard_filter_lines(definition: dict, task_repository, selection_labels: dict[str, str] | None = None) -> list[str]:
+    def design_filter_lines(definition: dict, task_repository, selection_labels: dict[str, str] | None = None) -> list[str]:
         lines = []
         for kind in KINDS:
-            datasets = dashboard_datasets(definition, kind, task_repository)
+            datasets = design_datasets(definition, kind, task_repository)
             names = [str(dataset.get('file_name') or dataset.get('display_name') or dataset.get('id')) for dataset in datasets]
             if names:
                 lines.append(f'CDR {kind.title()}: {", ".join(names)}')
@@ -933,7 +938,7 @@ def install_dashboard_routes(core):
                 lines.append(f'{label}: {", ".join(selected)}')
         return lines
 
-    def dashboard_ppt_job_filters_with_all_selections(filters: list[str]) -> list[str]:
+    def design_ppt_job_filters_with_all_selections(filters: list[str]) -> list[str]:
         """Show All Operators and All Vendors for jobs that stored no such line.
 
         Jobs that recorded their Region or City selection omitted Operator and
@@ -950,11 +955,11 @@ def install_dashboard_routes(core):
         ]
         return [*filters[:geography], *missing, *filters[geography:]]
 
-    def serialize_dashboard_ppt_job(row):
+    def serialize_design_ppt_job(row):
         output_path = Path(str(row['output_path'] or ''))
         output_file = str(row['output_file'] or '')
         timestamp_match = re.match(r'^(\d{8}_\d{6})', output_file)
-        charts_dir = output_path.parent / 'dashboard-charts'
+        charts_dir = output_path.parent / 'design-charts'
         ready = str(row['status']) == 'ready' and output_path.is_file()
         charts_ready = ready and (charts_dir / 'manifest.json').is_file()
         job_id = int(row['id'])
@@ -972,20 +977,20 @@ def install_dashboard_routes(core):
             filters = [str(item) for item in filters if str(item).strip()] if isinstance(filters, list) else []
         except (TypeError, json.JSONDecodeError):
             filters = []
-        filters = dashboard_ppt_job_filters_with_all_selections(filters)
+        filters = design_ppt_job_filters_with_all_selections(filters)
         if str(row['scope']) == 'multivendor':
             filters.append('Vendor comparison: ' + ('Vendor' if row['vendor_comparison'] == 'vendor_only' else 'Operator_Vendor'))
-        cover = dashboard_ppt_job_cover(row, {})
+        cover = design_ppt_job_cover(row, {})
         if charts_ready and (not cover['regions'] or not cover['cities']):
             try:
                 manifest = json.loads((charts_dir / 'manifest.json').read_text(encoding='utf-8'))
             except (OSError, ValueError, json.JSONDecodeError):
                 pass
             else:
-                cover = dashboard_ppt_job_cover(row, manifest if isinstance(manifest, dict) else {})
+                cover = design_ppt_job_cover(row, manifest if isinstance(manifest, dict) else {})
         return {
-            'id': job_id, 'dashboard_id': str(row['dashboard_id']),
-            'dashboard_name': str(row['dashboard_name']),
+            'id': job_id, 'design_id': str(row['design_id']),
+            'design_name': str(row['design_name']),
             'timestamp': timestamp_match.group(1) if timestamp_match else '',
             'template': str(row['template_name'] or ''),
             'nr_mode': str(row['nr_mode'] or 'nsa').upper(),
@@ -998,21 +1003,21 @@ def install_dashboard_routes(core):
             'duration_seconds': duration,
             'slides': int(row['slide_count'] or 0), 'charts': int(row['chart_count'] or 0),
             'error': str(row['last_error'] or ''),
-            'download_url': f'/api/ppt-dashboards/ppt-jobs/{job_id}/download' if ready else None,
-            'charts_url': f'/api/ppt-dashboards/ppt-jobs/{job_id}/charts' if charts_ready else None,
-            'charts_api_url': f'/api/ppt-dashboards/ppt-jobs/{job_id}/charts.json' if charts_ready else None,
-            'charts_download_url': f'/api/ppt-dashboards/ppt-jobs/{job_id}/charts.zip' if charts_ready else None,
-            'retry_url': f'/api/ppt-dashboards/ppt-jobs/{job_id}/retry' if str(row['status']) in {'ready', 'failed', 'stopped'} else None,
-            'stop_url': f'/api/ppt-dashboards/ppt-jobs/{job_id}/stop' if str(row['status']) in {'queued', 'processing'} else None,
-            'delete_url': f'/api/ppt-dashboards/ppt-jobs/{job_id}/delete',
+            'download_url': f'/api/ppt-designer/ppt-jobs/{job_id}/download' if ready else None,
+            'charts_url': f'/api/ppt-designer/ppt-jobs/{job_id}/charts' if charts_ready else None,
+            'charts_api_url': f'/api/ppt-designer/ppt-jobs/{job_id}/charts.json' if charts_ready else None,
+            'charts_download_url': f'/api/ppt-designer/ppt-jobs/{job_id}/charts.zip' if charts_ready else None,
+            'retry_url': f'/api/ppt-designer/ppt-jobs/{job_id}/retry' if str(row['status']) in {'ready', 'failed', 'stopped'} else None,
+            'stop_url': f'/api/ppt-designer/ppt-jobs/{job_id}/stop' if str(row['status']) in {'queued', 'processing'} else None,
+            'delete_url': f'/api/ppt-designer/ppt-jobs/{job_id}/delete',
         }
 
-    def dashboard_preview_fingerprint(raw_definition, task_repository):
+    def design_preview_fingerprint(raw_definition, task_repository):
         """Include the current Report Template content in the prepared-preview identity."""
-        definition = DashboardDefinition.model_validate(
-            runtime_dashboard_definition(raw_definition, task_repository)
+        definition = DesignDefinition.model_validate(
+            runtime_design_definition(raw_definition, task_repository)
         )
-        # A Dashboard detached from its template reads its own Design.
+        # A Design detached from its template reads its own slide set.
         template_content = (json.dumps(definition.own_slides, sort_keys=True).encode() if definition.own_slides
                             else task_repository.report_template_content(definition.template))
         material = {
@@ -1022,22 +1027,22 @@ def install_dashboard_routes(core):
         }
         return sha256(json.dumps(material, sort_keys=True, default=str).encode()).hexdigest()
 
-    def dashboard_export_snapshot(dashboard_id, raw_definition, task_repository):
+    def design_export_snapshot(design_id, raw_definition, task_repository):
         workspace = str(Path(task_repository.db_path).resolve())
-        definition = DashboardDefinition.model_validate(
-            runtime_dashboard_definition(raw_definition, task_repository)
+        definition = DesignDefinition.model_validate(
+            runtime_design_definition(raw_definition, task_repository)
         )
-        preview = restore_matching_preview_manifest(workspace, dashboard_id, definition)
+        preview = restore_matching_preview_manifest(workspace, design_id, definition)
         snapshot = snapshots.get(str(preview.get('token') or '')) if preview else None
         if snapshot is None:
-            raise ValueError('The Dashboard dataset is not prepared.')
-        return validate_dashboard_export_snapshot(snapshot, task_repository)
+            raise ValueError('The Design dataset is not prepared.')
+        return validate_design_export_snapshot(snapshot, task_repository)
 
-    def validate_dashboard_export_snapshot(snapshot, task_repository):
+    def validate_design_export_snapshot(snapshot, task_repository):
         selected_sources(snapshot.definition, task_repository)
         return snapshot
 
-    def dashboard_chart_render_size(placement) -> tuple[int, int]:
+    def design_chart_render_size(placement) -> tuple[int, int]:
         """Return a placeholder-ratio Canvas size with one unchanged logical axis."""
         _left, _top, width, height = placement
         frame_ratio = float(width) / float(height)
@@ -1045,15 +1050,15 @@ def install_dashboard_routes(core):
             return min(4096, max(320, round(900 * frame_ratio))), 900
         return 1600, min(4096, max(240, round(1600 / frame_ratio)))
 
-    def dashboard_ppt_scope_label(scope: str) -> str:
-        """Return the human-readable scope used on Dashboard PPT covers."""
+    def design_ppt_scope_label(scope: str) -> str:
+        """Return the human-readable scope used on Design PPT covers."""
         return 'Multivendor Comparison' if str(scope).casefold() == 'multivendor' else 'Operator Comparison'
 
     def values_present_in_cdrs(values: list[str], available: list[str]) -> list[str]:
         """Keep only values that exist in the selected CDRs.
 
         Saved filters can hold values of other CDRs (for example an NSA-only
-        Operator in an SA Dashboard). When none of the values exist, the
+        Operator in an SA Design). When none of the values exist, the
         selection is kept so it never reads as an unrestricted "All".
         """
         present = {str(value).strip().casefold() for value in available if str(value).strip()}
@@ -1062,7 +1067,7 @@ def install_dashboard_routes(core):
         kept = [value for value in values if str(value).strip().casefold() in present]
         return kept or values
 
-    def dashboard_ppt_selection_values(
+    def design_ppt_selection_values(
         filters: dict, field: str, requested: list[str], available: list[str],
     ) -> list[str]:
         configured = next((values for key, values in filters.items() if identity(vendor_filter_column(key)) == identity(vendor_filter_column(field))), None)
@@ -1073,11 +1078,11 @@ def install_dashboard_routes(core):
             values = [str(values).strip()] if str(values).strip() else []
         return values_present_in_cdrs(values, available)
 
-    def dashboard_ppt_selection_label(
+    def design_ppt_selection_label(
         field: str, values: list[str], available: list[str], alternatives: tuple[list[str], ...] = (),
     ) -> str:
         # "All" means the selection covers every value of the CDR catalogue or
-        # of the Dashboard's own filter options (which a saved "select every
+        # of the Design's own filter options (which a saved "select every
         # value" filter comes from), ignoring case and surrounding spaces.
         selected = {str(value).strip().casefold() for value in values if str(value).strip()}
         field = vendor_filter_column(field) if identity(vendor_filter_column(field)) == 'vendor' else field
@@ -1095,13 +1100,13 @@ def install_dashboard_routes(core):
             return all_label
         return ', '.join(values)
 
-    def dashboard_ppt_cover_label(field: str, label: str, count: int) -> str:
+    def design_ppt_cover_label(field: str, label: str, count: int) -> str:
         if not label or label.startswith('All '):
             return label
         singular, plural = {'Region': ('Region', 'Regions'), 'City': ('City', 'Cities')}[field]
         return f'{singular if count == 1 else plural}: {label}'
 
-    def dashboard_ppt_job_cover(row, manifest: dict) -> dict[str, str]:
+    def design_ppt_job_cover(row, manifest: dict) -> dict[str, str]:
         """Return a PPT job's cover lines, rebuilding them for older jobs."""
         cover = manifest.get('cover')
         if isinstance(cover, dict):
@@ -1117,12 +1122,12 @@ def install_dashboard_routes(core):
                 labels[field] = value
         return {
             'campaigns': '',
-            'scope': dashboard_ppt_scope_label(str(row['scope'] or 'single')),
-            'regions': dashboard_ppt_cover_label('Region', labels.get('Region', ''), len(labels.get('Region', '').split(', '))),
-            'cities': dashboard_ppt_cover_label('City', labels.get('City', ''), len(labels.get('City', '').split(', '))),
+            'scope': design_ppt_scope_label(str(row['scope'] or 'single')),
+            'regions': design_ppt_cover_label('Region', labels.get('Region', ''), len(labels.get('Region', '').split(', '))),
+            'cities': design_ppt_cover_label('City', labels.get('City', ''), len(labels.get('City', '').split(', '))),
         }
 
-    def add_dashboard_ppt_cover_geography(
+    def add_design_ppt_cover_geography(
         slide, campaigns: str, scope: str, regions: str, cities: str, slide_height: int,
     ) -> None:
         """Place the cover Campaigns above the decorative line and the Scope and geography below it."""
@@ -1137,7 +1142,7 @@ def install_dashboard_routes(core):
 
         def add_line(name: str, value: str, color: RGBColor, size: int, top: int, height: int) -> None:
             box = slide.shapes.add_textbox(left, top, width, height)
-            box.name = f'dashboard-ppt-{name}'
+            box.name = f'design-ppt-{name}'
             box.text_frame.margin_left = margin_left
             box.text_frame.margin_top = 0
             box.text_frame.margin_bottom = 0
@@ -1155,7 +1160,7 @@ def install_dashboard_routes(core):
                 run.font.bold = bold
                 run.font.color.rgb = color
 
-        # Like the Dashboard viewer, Scope, Regions and Cities follow the
+        # Like the Design viewer, Scope, Regions and Cities follow the
         # template's decorative line under the subtitle.
         white = RGBColor(255, 255, 255)
         details = [
@@ -1192,7 +1197,7 @@ def install_dashboard_routes(core):
         for index, (name, value, color) in enumerate(details):
             add_line(name, value, color, 16, first_top + Inches(0.38 * index), Inches(0.34))
 
-    def add_dashboard_cell_title(slide, entry, placement):
+    def add_design_cell_title(slide, entry, placement):
         """Write a small-cell chart title as slide text and return the remaining chart frame."""
         from pptx.dml.color import RGBColor
         from pptx.util import Emu, Pt
@@ -1218,11 +1223,11 @@ def install_dashboard_routes(core):
             run.font.color.rgb = RGBColor(0x1D, 0x33, 0x45)
         return left, top + title_height, width, height - title_height
 
-    def add_dashboard_element(slide, entry, placement, task_repository) -> None:
+    def add_design_element(slide, entry, placement, task_repository) -> None:
         """A text box (its Markdown as paragraphs, **bold** kept, lines starting with - or * as bullets) or a picture
-        (fitted in its place, keeping its ratio) of a Dashboard Design."""
+        (fitted in its place, keeping its ratio) of a Design slide set."""
         left, top, width, height = placement
-        content = dashboard_design.row_format(entry).get('content')
+        content = design_slides.row_format(entry).get('content')
         content = content if isinstance(content, dict) else {}
         if entry.chart_type.casefold() == 'image':
             data = design_image(task_repository, str(content.get('image') or ''))
@@ -1271,21 +1276,21 @@ def install_dashboard_routes(core):
         ensure_design_images(task_repository)
         with task_repository.connection() as connection:
             row = connection.execute(
-                f'SELECT data, content_type FROM {DASHBOARD_DESIGN_IMAGES_TABLE} WHERE id = ?', (image_id,)).fetchone()
+                f'SELECT data, content_type FROM {DESIGN_IMAGES_TABLE} WHERE id = ?', (image_id,)).fetchone()
         return (bytes(row['data']), str(row['content_type'])) if row else None
 
     def ensure_design_images(task_repository) -> None:
         with task_repository.connection() as connection:
             connection.execute(
-                f'CREATE TABLE IF NOT EXISTS {DASHBOARD_DESIGN_IMAGES_TABLE} ('
+                f'CREATE TABLE IF NOT EXISTS {DESIGN_IMAGES_TABLE} ('
                 'id TEXT PRIMARY KEY, name TEXT NOT NULL DEFAULT \'\', content_type TEXT NOT NULL, data BLOB NOT NULL, '
                 'width INTEGER NOT NULL DEFAULT 0, height INTEGER NOT NULL DEFAULT 0, created_by TEXT NOT NULL DEFAULT \'\', '
                 'created_at TEXT NOT NULL)'
             )
 
-    @app.post('/api/ppt-dashboards/images')
-    async def upload_dashboard_design_image(file: UploadFile = File(...), user=Depends(dashboard_editor_user)):
-        """Keep a picture for an Image element of a Design (PNG, JPEG or GIF, up to 8 MB)."""
+    @app.post('/api/ppt-designer/images')
+    async def upload_design_slides_image(file: UploadFile = File(...), user=Depends(design_editor_user)):
+        """Keep a picture for an Image element of a slide set (PNG, JPEG or GIF, up to 8 MB)."""
         task_repository = bound_repository()
         data = await file.read(DESIGN_IMAGE_MAX_BYTES + 1)
         if len(data) > DESIGN_IMAGE_MAX_BYTES:
@@ -1304,42 +1309,42 @@ def install_dashboard_routes(core):
         name = Path(file.filename or 'picture').name[:200]
         with task_repository.connection() as connection:
             connection.execute(
-                f'INSERT INTO {DASHBOARD_DESIGN_IMAGES_TABLE} (id, name, content_type, data, width, height, created_by, created_at) '
+                f'INSERT INTO {DESIGN_IMAGES_TABLE} (id, name, content_type, data, width, height, created_by, created_at) '
                 'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
                 (image_id, name, content_type, sqlite3.Binary(data), width, height, user.username,
                  datetime.now(timezone.utc).astimezone().isoformat(timespec='seconds')),
             )
-        task_repository.add_log(user.username, 'dashboard_design_image_uploaded', json.dumps({
+        task_repository.add_log(user.username, 'design_image_uploaded', json.dumps({
             'id': image_id, 'name': name, 'type': content_type, 'width': width, 'height': height, 'bytes': len(data),
         }))
-        return {'id': image_id, 'name': name, 'width': width, 'height': height, 'url': f'/api/ppt-dashboards/images/{image_id}'}
+        return {'id': image_id, 'name': name, 'width': width, 'height': height, 'url': f'/api/ppt-designer/images/{image_id}'}
 
-    @app.get('/api/ppt-dashboards/images/{image_id}')
-    def dashboard_design_image(image_id: str, user=Depends(dashboard_user)):
+    @app.get('/api/ppt-designer/images/{image_id}')
+    def design_slides_image(image_id: str, user=Depends(design_user)):
         found = design_image(bound_repository(), image_id)
         if found is None:
             raise HTTPException(404, 'The picture is no longer available.')
         return Response(found[0], media_type=found[1], headers={'Cache-Control': 'private, max-age=86400'})
 
-    def add_dashboard_chart_picture(slide, png: bytes, placement) -> None:
+    def add_design_chart_picture(slide, png: bytes, placement) -> None:
         """Fill a same-ratio chart placeholder without PowerPoint cropping or distortion."""
         left, top, width, height = placement
         slide.shapes.add_picture(BytesIO(png), left, top, width, height)
 
-    def ensure_export_universe_cached(task_repository, workspace, dashboard_id, definition, user, *, cancelled, progress):
-        """Prepare (in memory) the universe of the saved Dashboard behind an export when it is not prepared yet."""
+    def ensure_export_universe_cached(task_repository, workspace, design_id, definition, user, *, cancelled, progress):
+        """Prepare (in memory) the universe of the saved Design behind an export when it is not prepared yet."""
         with lock:
-            saved = read_dashboards(task_repository).get(dashboard_id)
+            saved = read_designs(task_repository).get(design_id)
         if not isinstance(saved, dict):
             return
-        universe = DashboardDefinition.model_validate(runtime_dashboard_definition(saved, task_repository))
+        universe = DesignDefinition.model_validate(runtime_design_definition(saved, task_repository))
         universe.datasets = {kind: list(ids) for kind, ids in definition.datasets.items()}
         universe.scope = definition.scope
         universe.date_from, universe.date_to = 'Oldest', 'Newest'
-        if restore_matching_preview_manifest(workspace, dashboard_id, universe, materialize=False) is not None:
+        if restore_matching_preview_manifest(workspace, design_id, universe, materialize=False) is not None:
             return
         try:
-            with dashboard_work_gate:
+            with design_work_gate:
                 preview = build_preview(universe, user, workspace=workspace, cancelled=cancelled, progress=progress)
         except HTTPException:
             # The export's own preparation reports an invalid selection.
@@ -1348,8 +1353,8 @@ def install_dashboard_routes(core):
             snapshot = snapshots.get(preview['token'])
         if snapshot is not None:
             persist_preview_manifest(
-                workspace, dashboard_id,
-                dashboard_preview_fingerprint(snapshot.definition.model_dump(mode='json'), task_repository),
+                workspace, design_id,
+                design_preview_fingerprint(snapshot.definition.model_dump(mode='json'), task_repository),
                 preview['token'],
             )
 
@@ -1360,7 +1365,7 @@ def install_dashboard_routes(core):
         charts = []
         for index, entry in chart_entries:
             model = models.get(index)
-            if not model or model.get('type') not in dashboard_comments.SUPPORTED_MODEL_TYPES:
+            if not model or model.get('type') not in design_comments.SUPPORTED_MODEL_TYPES:
                 continue
             hidden, shown = chart_legend_lists(legend_visibility, legend_keys.get(index))
             charts.append({
@@ -1369,7 +1374,7 @@ def install_dashboard_routes(core):
                 'subject': ' · '.join(value for value in (entry.dynamic_row_value, entry.dynamic_column_value) if value),
             })
         if not charts:
-            return [], dashboard_comments.ENGINE_RULES
+            return [], design_comments.ENGINE_RULES
         suggestions, written = write_slide_comments(charts, layout or '', task_repository, engine, username)
         return [item['text'] for item in suggestions], written['engine']
 
@@ -1382,36 +1387,36 @@ def install_dashboard_routes(core):
         manual = [text for text in comments if text not in set(generated)] if mode == 'generated' else []
         return [*manual, *[text for text in automatic if text not in manual]][:50]
 
-    def render_dashboard_ppt_job(
+    def render_design_ppt_job(
         job_id, run_token, task_repository, snapshot, definition, user,
-        destination, dashboard_id, preview_fingerprint, cover_regions, cover_cities, cover_campaigns='', theme=None,
+        destination, design_id, preview_fingerprint, cover_regions, cover_cities, cover_campaigns='', theme=None,
     ):
         run_key = (str(Path(task_repository.db_path).resolve()), job_id)
         # The colour theme of the titles of the content slides and of the charts: that of the report generating the PPT
-        # (a Bundle Report Template or a Reporting Job), else the one the user chose for PPT Dashboards.
-        theme = normalize_theme(theme) if theme else load_user_theme(task_repository, user.username, DASHBOARD_THEME_MODULE)
-        chart_style = dashboard_chart_style(theme)
+        # (a Bundle Report Template or a Reporting Job), else the one the user chose for PPT Designer.
+        theme = normalize_theme(theme) if theme else load_user_theme(task_repository, user.username, DESIGN_THEME_MODULE)
+        chart_style = canvas_chart_style(theme)
 
         def run_is_active():
             with lock:
-                if dashboard_ppt_runs.get(run_key) != run_token:
+                if design_ppt_runs.get(run_key) != run_token:
                     return False
-            current = dashboard_ppt_job(task_repository, job_id)
+            current = design_ppt_job(task_repository, job_id)
             return current is not None and str(current['status']) in {'queued', 'processing'}
 
         try:
             if not run_is_active():
                 return
             # The preparation step already marked the job as started.
-            update_dashboard_ppt_job(task_repository, job_id, status='processing')
+            update_design_ppt_job(task_repository, job_id, status='processing')
             if snapshot is None:
-                update_dashboard_ppt_job(
+                update_design_ppt_job(
                     task_repository, job_id, progress=1, last_error='',
                 )
 
                 def preparation_progress(percent, _detail):
                     if run_is_active():
-                        update_dashboard_ppt_job(
+                        update_design_ppt_job(
                             task_repository, job_id,
                             # Preparation is visible without dominating the
                             # progress bar; the following Canvas rendering
@@ -1420,18 +1425,18 @@ def install_dashboard_routes(core):
                         )
 
                 workspace = str(Path(task_repository.db_path).resolve())
-                # Prepare the chosen CDR universe (the saved Dashboard filters
+                # Prepare the chosen CDR universe (the saved Design filters
                 # over all dates) before applying the export's own selections.
                 ensure_export_universe_cached(
-                    task_repository, workspace, dashboard_id, definition, user,
+                    task_repository, workspace, design_id, definition, user,
                     cancelled=lambda: not run_is_active(),
-                    progress=lambda percent, _detail: run_is_active() and update_dashboard_ppt_job(
+                    progress=lambda percent, _detail: run_is_active() and update_design_ppt_job(
                         task_repository, job_id, progress=max(1, min(12, 1 + round(percent * 0.11))),
                     ),
                 )
-                preview = restore_matching_preview_manifest(workspace, dashboard_id, definition)
+                preview = restore_matching_preview_manifest(workspace, design_id, definition)
                 if preview is None:
-                    with dashboard_work_gate:
+                    with design_work_gate:
                         preview = build_preview(
                             definition, user, workspace=workspace,
                             cancelled=lambda: not run_is_active(), progress=preparation_progress,
@@ -1439,31 +1444,31 @@ def install_dashboard_routes(core):
                 token = str(preview['token'])
                 with lock:
                     snapshot = snapshots.get(token)
-                    dashboard_ppt_data_tokens[(
+                    design_ppt_data_tokens[(
                         str(Path(task_repository.db_path).resolve()), job_id, user.username,
                     )] = token
                 if snapshot is None:
-                    raise RuntimeError('The refreshed Dashboard snapshot could not be created.')
+                    raise RuntimeError('The refreshed Design snapshot could not be created.')
                 persist_preview_manifest(
-                    str(Path(task_repository.db_path).resolve()), dashboard_id,
-                    dashboard_preview_fingerprint(
+                    str(Path(task_repository.db_path).resolve()), design_id,
+                    design_preview_fingerprint(
                         snapshot.definition.model_dump(mode='json'), task_repository,
                     ), token,
                 )
-                snapshot = validate_dashboard_export_snapshot(snapshot, task_repository)
-            update_dashboard_ppt_job(task_repository, job_id, progress=24, last_error='')
+                snapshot = validate_design_export_snapshot(snapshot, task_repository)
+            update_design_ppt_job(task_repository, job_id, progress=24, last_error='')
             with lock:
                 snapshot_token = next((
                     token for token, candidate in snapshots.items() if candidate is snapshot
                 ), '')
             if not snapshot_token:
-                raise RuntimeError('The prepared Dashboard snapshot has expired.')
+                raise RuntimeError('The prepared Design snapshot has expired.')
             indexes = [
                 index for index, entry in enumerate(snapshot.entries)
-                if dashboard_datasets(snapshot.definition, entry.source_kind, task_repository)
+                if design_datasets(snapshot.definition, entry.source_kind, task_repository)
             ]
             chart_model_errors: dict[int, str] = {}
-            job_row = dashboard_ppt_job(task_repository, job_id)
+            job_row = design_ppt_job(task_repository, job_id)
             auto_mode = str(job_row['auto_comments'] or 'off') if job_row is not None else 'off'
             auto_engine = comment_writers.resolve_engine(
                 core.repository, str(job_row['auto_comments_engine'] or '') if job_row is not None else '',
@@ -1476,7 +1481,7 @@ def install_dashboard_routes(core):
                     return
                 model_progress_start = 25 + round(position * 65 / max(len(indexes), 1))
                 model_progress_end = 25 + round((position + 1) * 65 / max(len(indexes), 1))
-                update_dashboard_ppt_job(
+                update_design_ppt_job(
                     task_repository, job_id,
                     progress=model_progress_start, last_error='',
                 )
@@ -1495,14 +1500,14 @@ def install_dashboard_routes(core):
                         progress = model_progress_start + round(span * fraction)
                         if run_is_active():
                             try:
-                                update_dashboard_ppt_job(task_repository, job_id, progress=progress, last_error='')
+                                update_design_ppt_job(task_repository, job_id, progress=progress, last_error='')
                             except sqlite3.Error:
                                 # Progress is advisory.  A transient SQLite
                                 # writer contention must never affect the
                                 # Canvas model or cause the PPT job to fail.
                                 pass
 
-                pulse = Thread(target=pulse_canvas_progress, name=f'dashboard-ppt-model-progress-{job_id}', daemon=True)
+                pulse = Thread(target=pulse_canvas_progress, name=f'design-ppt-model-progress-{job_id}', daemon=True)
                 pulse.start()
                 try:
                     try:
@@ -1510,7 +1515,7 @@ def install_dashboard_routes(core):
                             snapshot_token, index, user,
                             expected_workspace=str(Path(task_repository.db_path).resolve()),
                         )
-                        if auto_mode != 'off' and dashboard_comments.needs_rebuild(model):
+                        if auto_mode != 'off' and design_comments.needs_rebuild(model):
                             # Auto comments read the facts a model cached before them lacks.
                             model = chart_model(
                                 snapshot_token, index, user,
@@ -1526,15 +1531,15 @@ def install_dashboard_routes(core):
                 finally:
                     model_finished.set()
                     pulse.join(timeout=0.1)
-                update_dashboard_ppt_job(
+                update_design_ppt_job(
                     task_repository, job_id,
                     progress=model_progress_end, last_error='',
                 )
-            update_dashboard_ppt_job(task_repository, job_id, progress=90, last_error='')
+            update_design_ppt_job(task_repository, job_id, progress=90, last_error='')
             presentation = Presentation(core.settings.powerpoint_template)
             _remove_all_slides(presentation)
             # Legend entries hidden in the viewer stay hidden in the PPT charts.
-            job_row = dashboard_ppt_job(task_repository, job_id)
+            job_row = design_ppt_job(task_repository, job_id)
             try:
                 legend_visibility = normalized_legend_visibility(json.loads(str(job_row['legend_visibility_json'] or '{}')))
             except (KeyError, IndexError, TypeError, ValueError):
@@ -1565,7 +1570,7 @@ def install_dashboard_routes(core):
                 reflowed_cells[slide_number] = {
                     index: cell for (index, _entry), cell in zip(cards, cells) if cell is not None
                 }
-            charts_dir = destination.parent / 'dashboard-charts'
+            charts_dir = destination.parent / 'design-charts'
             charts_dir.mkdir(parents=True, exist_ok=True)
             manifest = []
             focus_rows = {
@@ -1577,7 +1582,7 @@ def install_dashboard_routes(core):
             chart_total = sum(
                 1 for entries in grouped.values() for index, entry in entries
                 if index not in hidden_entries
-                and entry.source_kind and dashboard_datasets(snapshot.definition, entry.source_kind, task_repository)
+                and entry.source_kind and design_datasets(snapshot.definition, entry.source_kind, task_repository)
             )
             rendered = 0
             for slide_number in sorted(grouped):
@@ -1585,7 +1590,7 @@ def install_dashboard_routes(core):
                     return
                 slide_entries = grouped[slide_number]
                 header = slide_entries[0][1]
-                _comment_key, comments = dashboard_slide_comments(
+                _comment_key, comments = design_slide_comments(
                     snapshot.definition, [entry for _index, entry in slide_entries],
                 )
                 if header.structural_type:
@@ -1599,12 +1604,12 @@ def install_dashboard_routes(core):
                     is_cover = header.structural_type == 'title slide' and slide_number == min(grouped)
                     _set_structural_slide_text(slide, header.slide_title, header.slide_subtitle)
                     if is_cover:
-                        add_dashboard_ppt_cover_geography(
-                            slide, cover_campaigns, dashboard_ppt_scope_label(snapshot.definition.scope),
+                        add_design_ppt_cover_geography(
+                            slide, cover_campaigns, design_ppt_scope_label(snapshot.definition.scope),
                             cover_regions, cover_cities, presentation.slide_height,
                         )
                     else:
-                        # The other title and transition rows open the parts of the Dashboard: 01, 02…
+                        # The other title and transition rows open the parts of the Design: 01, 02…
                         report_structure.mark(slide, 1)
                     _set_commentary(slide, comments)
                     continue
@@ -1612,7 +1617,7 @@ def install_dashboard_routes(core):
                     (index, entry) for index, entry in slide_entries
                     if index not in hidden_entries
                     and (entry.chart_type.casefold() in ELEMENT_CHART_TYPES
-                         or entry.source_kind and dashboard_datasets(snapshot.definition, entry.source_kind, task_repository))
+                         or entry.source_kind and design_datasets(snapshot.definition, entry.source_kind, task_repository))
                 ]
                 if not chart_entries:
                     continue
@@ -1624,9 +1629,9 @@ def install_dashboard_routes(core):
                         raise ValueError(f'Slide {slide_number}: the PowerPoint layout has insufficient chart placeholders.')
                     placements = [placements[reflowed_cells[slide_number][index]] for index, _entry in chart_entries]
                 elif layout is not None and placements and all(
-                        isinstance(dashboard_design.row_format(entry).get('rect'), list) for _index, entry in chart_entries):
+                        isinstance(design_slides.row_format(entry).get('rect'), list) for _index, entry in chart_entries):
                     # Each chart in its own place (Repeat by), as the viewer lays them out.
-                    placements = [frame_from_rect(dashboard_design.row_format(entry)['rect'], placements) for _index, entry in chart_entries]
+                    placements = [frame_from_rect(design_slides.row_format(entry)['rect'], placements) for _index, entry in chart_entries]
                 elif layout is not None and placements:
                     # As the viewer lays them out: the places of a free layout, and each element on its own place.
                     slide_rows = [entry for _index, entry in slide_entries if not entry.structural_type]
@@ -1645,7 +1650,7 @@ def install_dashboard_routes(core):
                 with use_theme(theme):
                     style_title(slide)
                 if auto_mode != 'off':
-                    comment_key = dashboard_slide_comment_key([entry for _index, entry in slide_entries])
+                    comment_key = design_slide_comment_key([entry for _index, entry in slide_entries])
                     automatic, writer = auto_slide_comments(
                         snapshot, [item for item in chart_entries if item[1].chart_type.casefold() not in ELEMENT_CHART_TYPES],
                         auto_models, legend_visibility, legend_keys, layout_name, task_repository,
@@ -1665,17 +1670,17 @@ def install_dashboard_routes(core):
                     if not run_is_active():
                         return
                     if entry.chart_type.casefold() in ELEMENT_CHART_TYPES:
-                        # A text box or picture of the Design: native, editable PowerPoint shapes.
-                        add_dashboard_element(slide, entry, placement, task_repository)
+                        # A text box or picture of the slide set: native, editable PowerPoint shapes.
+                        add_design_element(slide, entry, placement, task_repository)
                         continue
                     if compact_titles:
                         # Small grid cells: a readable text title above a title-less chart image.
-                        placement = add_dashboard_cell_title(slide, entry, placement)
-                    update_dashboard_ppt_job(
+                        placement = add_design_cell_title(slide, entry, placement)
+                    update_design_ppt_job(
                         task_repository, job_id,
                         progress=91 + round(rendered * 4 / max(chart_total, 1)), chart_count=rendered,
                     )
-                    render_width, render_height = dashboard_chart_render_size(placement)
+                    render_width, render_height = design_chart_render_size(placement)
                     chart_error = chart_model_errors.get(index)
                     payload = None
                     if chart_error:
@@ -1693,7 +1698,7 @@ def install_dashboard_routes(core):
                             hidden_items, shown_items = chart_legend_lists(legend_visibility, legend_keys.get(index))
                             if hidden_items:
                                 payload = {**payload, 'hidden_legend_items': hidden_items, 'shown_legend_items': shown_items}
-                            png, hover_targets = _render_dashboard_payload(
+                            png, hover_targets = _render_canvas_payload(
                                 payload, width=render_width, height=render_height,
                             )
                         except Exception as exc:
@@ -1718,7 +1723,7 @@ def install_dashboard_routes(core):
                         (charts_dir / model_file).write_text(
                             json.dumps(payload, ensure_ascii=False, separators=(',', ':')), encoding='utf-8',
                         )
-                    add_dashboard_chart_picture(slide, png, placement)
+                    add_design_chart_picture(slide, png, placement)
                     manifest.append({
                         'slide': slide_number, 'title': entry.chart_title or header.slide_title,
                         'source': entry.cdr_source, 'chart_type': entry.chart_type,
@@ -1727,7 +1732,7 @@ def install_dashboard_routes(core):
                         'model_file': model_file if payload is not None else '', 'error': chart_error,
                     })
                     rendered += 1
-                    update_dashboard_ppt_job(
+                    update_design_ppt_job(
                         task_repository, job_id,
                         progress=91 + round(rendered * 4 / max(chart_total, 1)), chart_count=rendered,
                     )
@@ -1755,7 +1760,7 @@ def install_dashboard_routes(core):
             (charts_dir / 'manifest.json').write_text(
                 json.dumps({
                     'generate_tooltips': True,
-                    'dashboard_id': dashboard_id,
+                    'design_id': design_id,
                     'preview_fingerprint': preview_fingerprint,
                     # The job's viewer shows the comments of the PPT, Auto comments included.
                     'definition': {**snapshot.definition.model_dump(mode='json'), 'slide_comments': {
@@ -1763,39 +1768,39 @@ def install_dashboard_routes(core):
                     }},
                     # Keep the exact viewer slide structure alongside the
                     # immutable PNG/Canvas assets so a completed PPT job can
-                    # later be opened as its own Dashboard snapshot.
+                    # later be opened as its own Design snapshot.
                     'slides': viewer_slides,
                     'charts': manifest,
                     # The exact cover lines, so the job's viewer snapshot shows
                     # the same Campaigns, Scope, Regions and Cities as the PPT cover.
                     'cover': {
                         'campaigns': cover_campaigns,
-                        'scope': dashboard_ppt_scope_label(snapshot.definition.scope),
+                        'scope': design_ppt_scope_label(snapshot.definition.scope),
                         'regions': cover_regions, 'cities': cover_cities,
                     },
                 }, ensure_ascii=False),
                 encoding='utf-8',
             )
             destination.parent.mkdir(parents=True, exist_ok=True)
-            update_dashboard_ppt_job(task_repository, job_id, progress=96, chart_count=rendered)
+            update_design_ppt_job(task_repository, job_id, progress=96, chart_count=rendered)
             report_structure.finish(presentation)
             presentation.save(destination)
             if auto_mode != 'off':
-                task_repository.add_log(user.username, 'auto_dashboard_comments', json.dumps({
-                    'dashboard_id': dashboard_id, 'job_id': job_id, 'mode': auto_mode, 'requested_engine': auto_engine,
+                task_repository.add_log(user.username, 'auto_design_comments', json.dumps({
+                    'design_id': design_id, 'job_id': job_id, 'mode': auto_mode, 'requested_engine': auto_engine,
                     'engines': sorted(auto_engines), 'slides_written': len(auto_written),
                 }))
             if not run_is_active():
                 shutil.rmtree(destination.parent, ignore_errors=True)
                 return
-            update_dashboard_ppt_job(
+            update_design_ppt_job(
                 task_repository, job_id, status='ready', progress=100,
                 slide_count=len(presentation.slides), chart_count=rendered,
                 finished_at=datetime.now(timezone.utc).isoformat(),
             )
             if chart_model_errors:
-                task_repository.add_log(user.username, 'export_dashboard_ppt_warning', json.dumps({
-                    'dashboard_id': dashboard_id, 'job_id': job_id,
+                task_repository.add_log(user.username, 'export_design_ppt_warning', json.dumps({
+                    'design_id': design_id, 'job_id': job_id,
                     'placeholder_charts': [
                         {'slide': snapshot.entries[index].slide, 'error': error}
                         for index, error in chart_model_errors.items()
@@ -1803,12 +1808,12 @@ def install_dashboard_routes(core):
                 }, ensure_ascii=False))
         except Exception as exc:
             if run_is_active():
-                update_dashboard_ppt_job(
+                update_design_ppt_job(
                     task_repository, job_id, status='failed', progress=100, last_error=str(exc),
                     finished_at=datetime.now(timezone.utc).isoformat(),
                 )
-                task_repository.add_log(user.username, 'export_dashboard_ppt_failed', json.dumps({
-                    'dashboard_id': dashboard_id, 'job_id': job_id, 'error': str(exc),
+                task_repository.add_log(user.username, 'export_design_ppt_failed', json.dumps({
+                    'design_id': design_id, 'job_id': job_id, 'error': str(exc),
                 }, ensure_ascii=False))
 
     def city_filter_key(filters) -> str | None:
@@ -1829,7 +1834,7 @@ def install_dashboard_routes(core):
         return filters
 
     def main_cities_reference(definition, main_cities):
-        """A Dashboard whose City filter is exactly the Main Cities (saved before as their names) with the Main Cities choice."""
+        """A Design whose City filter is exactly the Main Cities (saved before as their names) with the Main Cities choice."""
         if not isinstance(definition, dict) or not main_cities:
             return definition
         filters = dict(definition.get('filters') or {})
@@ -1840,15 +1845,15 @@ def install_dashboard_routes(core):
         filters[key] = [MAIN_CITIES]
         return {**definition, 'filters': filters}
 
-    def read_dashboards(task_repository):
+    def read_designs(task_repository):
         stored = task_repository.get_workspace_state(STATE_KEY)
         if stored is None:
             stored = task_repository.get_workspace_state(LEGACY_STATE_KEY)
         if stored is None:
             return {}
-        dashboards = json.loads(stored or '{}')
-        if not isinstance(dashboards, dict):
-            return dashboards
+        designs = json.loads(stored or '{}')
+        if not isinstance(designs, dict):
+            return designs
         reset_defaults = task_repository.get_workspace_state(DEFAULT_FILTERS_MIGRATION_KEY) != '1'
         try:
             dataset_kinds = {int(row['id']): str(row['dataset_kind'] or '') for row in task_repository.list_datasets()}
@@ -1858,26 +1863,26 @@ def install_dashboard_routes(core):
             template_renames, template_uids_now = task_repository.report_template_merge_state()
         except (AttributeError, sqlite3.Error):
             template_renames, template_uids_now = {}, {}
-        # Dashboards of before kept an NR Mode of their own and of their template: it is now part of their selection.
+        # Designs of before kept an NR Mode of their own and of their template: it is now part of their selection.
         migrated = {
-            dashboard_id: migrate_auto_cdrs(normalize_dashboard_filters(
-                migrate_dashboard_definition(
+            design_id: migrate_auto_cdrs(normalize_design_filters(
+                migrate_design_definition(
                     definition if dataset_kinds is None else existing_dataset_selection(definition, dataset_kinds),
                     template_renames, template_uids_now),
                 reset_defaults=reset_defaults,
             ), task_repository)
-            for dashboard_id, definition in dashboards.items()
+            for design_id, definition in designs.items()
         }
         reference_main_cities = task_repository.get_workspace_state(MAIN_CITIES_MIGRATION_KEY) != '1'
         if reference_main_cities:
             main_cities = task_repository.list_main_cities()
-            migrated = {dashboard_id: main_cities_reference(definition, main_cities) for dashboard_id, definition in migrated.items()}
-        # Each Dashboard refers to its PPT Template by its identity, so a renamed template is still its template.
+            migrated = {design_id: main_cities_reference(definition, main_cities) for design_id, definition in migrated.items()}
+        # Each Design refers to its PPT Template by its identity, so a renamed template is still its template.
         try:
             migrated = follow_template_identities(migrated, template_uids(task_repository))
         except (AttributeError, sqlite3.Error):
             pass
-        if migrated != dashboards or reset_defaults or task_repository.get_workspace_state(STATE_KEY) is None:
+        if migrated != designs or reset_defaults or task_repository.get_workspace_state(STATE_KEY) is None:
             task_repository.set_workspace_state(STATE_KEY, json.dumps(migrated))
         if reset_defaults:
             task_repository.set_workspace_state(DEFAULT_FILTERS_MIGRATION_KEY, '1')
@@ -1885,7 +1890,7 @@ def install_dashboard_routes(core):
             task_repository.set_workspace_state(MAIN_CITIES_MIGRATION_KEY, '1')
         return migrated
 
-    def dashboard_slide_comment_key(entries) -> str:
+    def design_slide_comment_key(entries) -> str:
         """Return a position-independent identity for one template slide."""
         signature = [
             {
@@ -1900,15 +1905,15 @@ def install_dashboard_routes(core):
         encoded = json.dumps(signature, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
         return f"slide:{sha256(encoded.encode('utf-8')).hexdigest()[:24]}"
 
-    def dashboard_slide_comments(definition: DashboardDefinition, entries) -> tuple[str, list[str]]:
-        """Read stable comments while retaining numeric keys from older Dashboards."""
-        key = dashboard_slide_comment_key(entries)
+    def design_slide_comments(definition: DesignDefinition, entries) -> tuple[str, list[str]]:
+        """Read stable comments while retaining numeric keys from older Designs."""
+        key = design_slide_comment_key(entries)
         legacy_key = str(entries[0].slide) if entries else ''
         comments = definition.slide_comments.get(key, definition.slide_comments.get(legacy_key, []))
         return key, list(comments or [])
 
     def rendered_slides(entries, nr_mode) -> dict[str, list]:
-        """The chart rows of each slide of a template as a Dashboard of an NR Mode shows them (its comments are kept by
+        """The chart rows of each slide of a template as a Design of an NR Mode shows them (its comments are kept by
         the titles it shows)."""
         slides: dict[str, list] = defaultdict(list)
         for entry in entries:
@@ -1917,54 +1922,54 @@ def install_dashboard_routes(core):
 
     def reconcile_template_slide_comments(
         template_name: str, old_entries, new_entries,
-        task_repository=None, dashboard_ids=None,
+        task_repository=None, design_ids=None,
     ) -> int:
-        """Keep the comments of each slide when a template (or, with ``dashboard_ids``, the Design of those Dashboards)
+        """Keep the comments of each slide when a template (or, with ``design_ids``, the slide set of those Designs)
         changes the titles they are kept by: legacy numeric keys move to the stable ones, and a slide whose titles
-        changed takes the comments of the slide with the same id (dashboard_design). Comments of slides the rows do not
+        changed takes the comments of the slide with the same id (design_slides). Comments of slides the rows do not
         name (the pages of a dynamic grid) stay as they are."""
         if not old_entries:
             return 0
-        # Titles written alike before and after (tokens included) read alike in every NR Mode: the Dashboards need not
+        # Titles written alike before and after (tokens included) read alike in every NR Mode: the Designs need not
         # be read.
         old_raw: dict[str, list] = defaultdict(list)
         new_raw: dict[str, list] = defaultdict(list)
         for entries, slides in ((old_entries, old_raw), (new_entries, new_raw)):
             for entry in entries:
                 slides[str(entry.slide)].append(entry)
-        if dashboard_ids is None and {slide: dashboard_slide_comment_key(entries) for slide, entries in old_raw.items()} == {
-                slide: dashboard_slide_comment_key(entries) for slide, entries in new_raw.items()}:
+        if design_ids is None and {slide: design_slide_comment_key(entries) for slide, entries in old_raw.items()} == {
+                slide: design_slide_comment_key(entries) for slide, entries in new_raw.items()}:
             return 0
         old_slide_set = new_slide_set = None
 
         def slide_id(entries) -> str:
-            return str(dashboard_design.row_format(entries[0]).get('slide') or '') if entries else ''
+            return str(design_slides.row_format(entries[0]).get('slide') or '') if entries else ''
 
         changed = 0
         with lock:
             source_repository = task_repository or bound_repository()
-            dashboards = read_dashboards(source_repository)
-            for dashboard_id, raw_definition in dashboards.items():
-                if dashboard_ids is not None:
-                    if dashboard_id not in dashboard_ids:
+            designs = read_designs(source_repository)
+            for design_id, raw_definition in designs.items():
+                if design_ids is not None:
+                    if design_id not in design_ids:
                         continue
                     old_rows, new_rows = old_entries, new_entries
                 elif str(raw_definition.get('template') or '') != template_name or raw_definition.get('own_slides'):
                     continue
-                elif dashboard_design.has_overrides(raw_definition.get('slide_overrides')):
+                elif design_slides.has_overrides(raw_definition.get('slide_overrides')):
                     # Its slides are those of the template with its differences.
                     if old_slide_set is None:
-                        old_slide_set = dashboard_design.slides_from_entries(old_entries)
-                        new_slide_set = dashboard_design.slides_from_entries(new_entries)
+                        old_slide_set = design_slides.slides_from_entries(old_entries)
+                        new_slide_set = design_slides.slides_from_entries(new_entries)
                     overrides = raw_definition.get('slide_overrides')
-                    old_rows = dashboard_design.entries_from_slides(dashboard_design.resolve_slides(old_slide_set, overrides)[0])
-                    new_rows = dashboard_design.entries_from_slides(dashboard_design.resolve_slides(new_slide_set, overrides)[0])
+                    old_rows = design_slides.entries_from_slides(design_slides.resolve_slides(old_slide_set, overrides)[0])
+                    new_rows = design_slides.entries_from_slides(design_slides.resolve_slides(new_slide_set, overrides)[0])
                 else:
                     old_rows, new_rows = old_entries, new_entries
-                nr_mode = dashboard_nr_mode(raw_definition)
+                nr_mode = design_nr_mode(raw_definition)
                 old_slides, new_slides = rendered_slides(old_rows, nr_mode), rendered_slides(new_rows, nr_mode)
-                old_keys = {number: dashboard_slide_comment_key(entries) for number, entries in old_slides.items()}
-                new_keys = {number: dashboard_slide_comment_key(entries) for number, entries in new_slides.items()}
+                old_keys = {number: design_slide_comment_key(entries) for number, entries in old_slides.items()}
+                new_keys = {number: design_slide_comment_key(entries) for number, entries in new_slides.items()}
                 if old_keys == new_keys:
                     continue
                 available_keys, known_keys = set(new_keys.values()), set(old_keys.values())
@@ -1994,16 +1999,16 @@ def install_dashboard_routes(core):
                     raw_definition['slide_comment_meta'] = migrated_meta
                     changed += 1
             if changed:
-                source_repository.set_workspace_state(STATE_KEY, json.dumps(dashboards))
+                source_repository.set_workspace_state(STATE_KEY, json.dumps(designs))
         return changed
 
-    def normalize_dashboard_filters(definition, *, reset_defaults=False):
+    def normalize_design_filters(definition, *, reset_defaults=False):
         """Migrate retired filters and apply the current defaults once per workspace."""
         if not isinstance(definition, dict):
             return definition
         normalized = dict(definition)
         # Scope, source CDRs and dates are stored independently from filters so
-        # a Dashboard can restore an explicitly saved Dataset Universe.
+        # a Design can restore an explicitly saved Dataset Universe.
         filters = normalized.get('filters')
         retired_filter_keys = {identity('Technology'), identity('Zone')}
         migrated_filters = {}
@@ -2034,7 +2039,7 @@ def install_dashboard_routes(core):
         return normalized
 
     def default_campaign_filter(definition) -> list[str]:
-        """The Campaign of a new Dashboard: its newest two campaigns, or the newest one for Operator_Vendor."""
+        """The Campaign of a new Design: its newest two campaigns, or the newest one for Operator_Vendor."""
         multivendor = definition.get('scope') == 'multivendor' and definition.get('vendor_comparison', 'operator_vendor') == 'operator_vendor'
         return [LATEST_CAMPAIGN if multivendor else LATEST_TWO_CAMPAIGNS]
 
@@ -2042,7 +2047,7 @@ def install_dashboard_routes(core):
         return next((field for field in filters if identity(field) == identity('Campaign')), None)
 
     def follow_nr_mode_campaigns(updated: dict, previous_nr_mode: str, nr_mode: str) -> None:
-        """The Campaign filters of a Dashboard whose NR Mode changes: the campaigns of an NR Mode it keeps reading stay
+        """The Campaign filters of a Design whose NR Mode changes: the campaigns of an NR Mode it keeps reading stay
         (the Campaign filter chooses the NSA CDRs and SA Campaign the SA ones with NSA & SA), the others take the newest
         campaigns of the new NR Mode."""
         filters = dict(updated.get('filters') or {})
@@ -2061,10 +2066,10 @@ def install_dashboard_routes(core):
         updated['filters'] = filters
 
     def migrate_auto_cdrs(definition, task_repository):
-        """A Dashboard saved when its CDRs were chosen by hand chooses them by Campaign.
+        """A Design saved when its CDRs were chosen by hand chooses them by Campaign.
 
         Its saved CDRs become the campaigns they hold, unless it already restricted the Campaign; a
-        Dashboard without saved CDRs (which used the newest ones) takes Latest 2 campaigns, or Latest
+        Design without saved CDRs (which used the newest ones) takes Latest 2 campaigns, or Latest
         campaign for Multivendor Operator_Vendor, as its saved CDRs did.
         """
         if not isinstance(definition, dict) or definition.get('auto_cdrs'):
@@ -2081,17 +2086,17 @@ def install_dashboard_routes(core):
         migrated['auto_cdrs'] = True
         return migrated
 
-    def runtime_dashboard_definition(definition, task_repository):
-        """A Dashboard definition with its CDRs: those of its NR Mode and Campaign filter.
+    def runtime_design_definition(definition, task_repository):
+        """A Design definition with its CDRs: those of its NR Mode and Campaign filter.
 
         The CDRs are those the combined CDR tables include (the Final CDR of each campaign, else its
-        newest Weekly or Daily CDRs, or the Active? choice of Workspace), of the Dashboard's NR
+        newest Weekly or Daily CDRs, or the Active? choice of Workspace), of the Design's NR
         Mode and of the campaigns of its Campaign filter (every campaign without one). Latest campaign
         and Latest 2 campaigns are replaced by the newest campaigns now.
         """
-        effective = migrate_auto_cdrs(normalize_dashboard_filters(definition), task_repository)
+        effective = migrate_auto_cdrs(normalize_design_filters(definition), task_repository)
         effective.setdefault('scope', 'single')
-        nr_mode = dashboard_nr_mode(effective)
+        nr_mode = design_nr_mode(effective)
         filters = with_main_cities(dict(effective.get('filters') or {}), task_repository)
         key = campaign_filter_key(filters)
         campaigns = list(filters.get(key) or []) if key else []
@@ -2133,25 +2138,25 @@ def install_dashboard_routes(core):
         effective.setdefault('date_to', 'Newest')
         return effective
 
-    def auto_cdr_definition(definition: DashboardDefinition, task_repository) -> DashboardDefinition:
-        """A Dashboard sent by the browser with the CDRs of its NR Mode and Campaign filter."""
-        return DashboardDefinition.model_validate(runtime_dashboard_definition(definition.model_dump(mode='json'), task_repository))
+    def auto_cdr_definition(definition: DesignDefinition, task_repository) -> DesignDefinition:
+        """A Design sent by the browser with the CDRs of its NR Mode and Campaign filter."""
+        return DesignDefinition.model_validate(runtime_design_definition(definition.model_dump(mode='json'), task_repository))
 
-    def automatic_scope_universe(definition: DashboardDefinition, task_repository) -> DashboardDefinition:
-        """The Dashboard of a library PPT export, with automatic dates."""
+    def automatic_scope_universe(definition: DesignDefinition, task_repository) -> DesignDefinition:
+        """The Design of a library PPT export, with automatic dates."""
         raw_definition = definition.model_dump(mode='json')
         for field in ('date_from', 'date_to'):
             raw_definition.pop(field, None)
-        return DashboardDefinition.model_validate(runtime_dashboard_definition(raw_definition, task_repository))
+        return DesignDefinition.model_validate(runtime_design_definition(raw_definition, task_repository))
 
-    def cascading_dashboard_options(options, definition, task_repository):
+    def cascading_design_options(options, definition, task_repository):
         """The Operator, Vendor, Region, Cluster, City and Campaign lists of every CDR of the NR Mode.
 
         Each lists only the values the other filters leave, read from the CDR Filter Facets (never the
-        CDR rows); the other filters keep the values of the Dashboard's CDRs.
+        CDR rows); the other filters keep the values of the Design's CDRs.
         """
         raw = definition.model_dump(mode='json') if hasattr(definition, 'model_dump') else dict(definition)
-        nr_mode = dashboard_nr_mode(raw)
+        nr_mode = design_nr_mode(raw)
         candidates = [row['id'] for row in candidate_cdrs(task_repository, nr_mode)]
         # The Campaign lists every campaign of the NR Mode; the other filters, the values of the CDRs it chooses.
         resolved = [int(value) for values in (raw.get('datasets') or {}).values() for value in values]
@@ -2170,16 +2175,16 @@ def install_dashboard_routes(core):
         return {**options, **cascading}
 
     def template_slide_set(template_name, task_repository):
-        """The Design of a template (dashboard_design) and its rows as written, or (None, None) when it is gone."""
+        """The slide set of a template (design_slides) and its rows as written, or (None, None) when it is gone."""
         row = next((row for row in task_repository.list_report_templates() if row['name'] == template_name), None)
         if row is None:
             return None, None
         entries = core.load_template_catalogue(bytes(row['content']), task_repository=task_repository)
-        return dashboard_design.slides_from_entries(entries), entries
+        return design_slides.slides_from_entries(entries), entries
 
-    def dashboard_design_state(definition, task_repository, template=None):
-        """The Design a Dashboard shows: (template Design or None when detached, resolved Design, report). ``template``:
-        the template Design to read instead of the stored one (the Designer previews one being edited)."""
+    def design_slides_state(definition, task_repository, template=None):
+        """The slide set a Design shows: (template slide set or None when detached, resolved slide set, report). ``template``:
+        the template slide set to read instead of the stored one (the Designer previews one being edited)."""
         if definition.own_slides:
             slide_set = copy.deepcopy(definition.own_slides)
             return None, slide_set, {'dropped': [], 'template_changed': []}
@@ -2190,15 +2195,15 @@ def install_dashboard_routes(core):
                 raise HTTPException(400, str(exc)) from exc
         if template is None:
             raise HTTPException(400, 'The selected template is no longer available.')
-        resolved, report = dashboard_design.resolve_slides(template, definition.slide_overrides)
+        resolved, report = design_slides.resolve_slides(template, definition.slide_overrides)
         return template, resolved, report
 
     def catalogue(definition, task_repository=None, template=None):
-        """The chart rows of a Dashboard: its template with its overrides (or its own Design once detached) and the
-        values of its parameters, their titles naming the NR Mode it reads. ``template``: see dashboard_design_state."""
+        """The chart rows of a Design: its template with its overrides (or its own slide set once detached) and the
+        values of its parameters, their titles naming the NR Mode it reads. ``template``: see design_slides_state."""
         task_repository = task_repository or core.repository
-        nr_mode = dashboard_nr_mode(definition)
-        if template is None and not definition.own_slides and not dashboard_design.has_overrides(definition.slide_overrides):
+        nr_mode = design_nr_mode(definition)
+        if template is None and not definition.own_slides and not design_slides.has_overrides(definition.slide_overrides):
             rows = task_repository.list_report_templates()
             row = next((row for row in rows if row['name'] == definition.template), None)
             if row is None:
@@ -2207,22 +2212,22 @@ def install_dashboard_routes(core):
                 entries = core.load_template_catalogue(bytes(row['content']), task_repository=task_repository)
             except ValueError as exc:
                 raise HTTPException(400, str(exc)) from exc
-            parameters = (dashboard_design.slides_from_entries(entries)['parameters']
+            parameters = (design_slides.slides_from_entries(entries)['parameters']
                           if any('"parameters"' in entry.format for entry in entries) else [])
         else:
-            _template, resolved, _report = dashboard_design_state(definition, task_repository, template)
+            _template, resolved, _report = design_slides_state(definition, task_repository, template)
             parameters = resolved.get('parameters') or []
             try:
-                # Checked as a template written by hand would be (a slide of the Dashboard included).
+                # Checked as a template written by hand would be (a slide of the Design included).
                 entries = core.load_template_catalogue(
-                    core.catalogue_csv(dashboard_design.entries_from_slides(resolved)), task_repository=task_repository)
+                    core.catalogue_csv(design_slides.entries_from_slides(resolved)), task_repository=task_repository)
             except ValueError as exc:
                 raise HTTPException(400, str(exc)) from exc
-        entries = dashboard_design.apply_parameters(entries, parameters, definition.parameter_values)
-        entries = dashboard_design.apply_tokens(entries, selection_token_texts(definition, entries, task_repository))
-        # The titles name the NR Mode as each chart shows it (entry_for_nr_mode); a text box names that of the Dashboard.
-        mode_texts = {token.strip('{}').casefold(): text for token, text in NR_MODE_TOKEN_VALUES[dashboard_nr_mode_value(nr_mode)].items()}
-        entries = dashboard_design.apply_tokens(entries, mode_texts, titles=False)
+        entries = design_slides.apply_parameters(entries, parameters, definition.parameter_values)
+        entries = design_slides.apply_tokens(entries, selection_token_texts(definition, entries, task_repository))
+        # The titles name the NR Mode as each chart shows it (entry_for_nr_mode); a text box names that of the Design.
+        mode_texts = {token.strip('{}').casefold(): text for token, text in NR_MODE_TOKEN_VALUES[design_nr_mode_value(nr_mode)].items()}
+        entries = design_slides.apply_tokens(entries, mode_texts, titles=False)
         return [entry_for_nr_mode(entry, nr_mode) for entry in entries]
 
     # The field behind each selection token of the titles and text boxes, and what it reads when not filtered.
@@ -2232,24 +2237,25 @@ def install_dashboard_routes(core):
     }
 
     def selection_token_texts(definition, entries, task_repository) -> dict[str, str]:
-        """What the selection tokens the rows name read for a Dashboard (dashboard_design.SELECTION_TOKENS): its name,
+        """What the selection tokens the rows name read for a Design (design_slides.SELECTION_TOKENS): its name,
         its Scope, its Campaigns and the Operators, Vendors, Regions, Clusters and Cities it is filtered by, or All… when
         it is not filtered by them or keeps every value of its CDRs. Only the tokens named are read."""
-        wanted = dashboard_design.used_tokens(entries) & {token.casefold() for token in dashboard_design.SELECTION_TOKENS}
+        wanted = design_slides.used_tokens(entries) & ({token.casefold() for token in design_slides.SELECTION_TOKENS}
+                                                       | set(design_slides.LEGACY_SELECTION_TOKENS))
         if not wanted:
             return {}
         texts: dict[str, str] = {}
-        if 'dashboard' in wanted:
-            texts['dashboard'] = definition.name
+        if wanted & {'design', 'dashboard'}:
+            texts['design'] = texts['dashboard'] = definition.name
         if 'scope' in wanted:
-            texts['scope'] = dashboard_ppt_scope_label(definition.scope)
+            texts['scope'] = design_ppt_scope_label(definition.scope)
         try:
-            selected_by_kind = selected_sources(definition, task_repository) if wanted - {'dashboard', 'scope'} else {}
+            selected_by_kind = selected_sources(definition, task_repository) if wanted - {'design', 'dashboard', 'scope'} else {}
         except (HTTPException, ValueError):
-            # No CDR to read yet (a Design checked before its CDRs are ready): the fields read as not filtered.
+            # No CDR to read yet (a slide set checked before its CDRs are ready): the fields read as not filtered.
             selected_by_kind = {}
         if 'campaigns' in wanted:
-            campaigns = dashboard_campaign_values(definition, selected_by_kind, task_repository, wait=False)[0]
+            campaigns = design_campaign_values(definition, selected_by_kind, task_repository, wait=False)[0]
             texts['campaigns'] = ', '.join(campaigns) or 'All Campaigns'
         fields = [token for token in SELECTION_TOKEN_FIELDS if token in wanted]
         if not fields:
@@ -2280,7 +2286,7 @@ def install_dashboard_routes(core):
 
     def validate(definition, task_repository=None):
         if not definition.name.strip():
-            raise HTTPException(400, 'Enter a Dashboard name.')
+            raise HTTPException(400, 'Enter a Design name.')
         if (
             not ignore_event_time_filtering()
             and isinstance(definition.date_from, date)
@@ -2321,7 +2327,7 @@ def install_dashboard_routes(core):
             for name in sorted(names)
         }
 
-    def expand_dashboard_layouts(entries, definition, options, task_repository):
+    def expand_design_layouts(entries, definition, options, task_repository):
         effective_entries = [prepare_multivendor_catalog_entry(entry, definition.vendor_comparison) if definition.scope == "multivendor" else entry for entry in entries]
         dynamic_fields = {field for entry in effective_entries for field in entry_dynamic_fields(entry) if field}
         mappings = task_repository.chart_mapping_settings()['operator_mappings']
@@ -2364,89 +2370,89 @@ def install_dashboard_routes(core):
                                       operator_mappings=mappings, vendor_mappings=chart_mapping_settings['vendor_mappings'], vendor_comparison=definition.vendor_comparison, vendor_families=vendor_families,
                                       mapping_groups=chart_mapping_settings)
 
-    @app.get('/ppt-dashboards', response_class=HTMLResponse)
-    def page(request: Request, user=Depends(dashboard_user)):
+    @app.get('/ppt-designer', response_class=HTMLResponse)
+    def page(request: Request, user=Depends(design_user)):
         workspace_key()
         ready = [core.serialize_dataset_row(row) for row in core.repository.list_datasets() if row['status'] == 'ready']
         core.backfill_cdr_catalogues(row['id'] for row in ready if row.get('dataset_kind') in KINDS)
         catalogue = core.repository.cdr_catalogue_values(
             row['id'] for row in ready if row.get('dataset_kind') in KINDS
         )
-        return core.render_template(request, 'ppt_dashboards.html', {
-            'user': user, 'dashboard_datasets': {kind: [row for row in ready if row.get('dataset_kind') == kind] for kind in KINDS},
+        return core.render_template(request, 'ppt_designer.html', {
+            'user': user, 'design_datasets': {kind: [row for row in ready if row.get('dataset_kind') == kind] for kind in KINDS},
             # Any template serves the CDRs of any NR Mode.
-            'dashboard_templates': [{'name': row['name'], 'identifier': row['identifier'], 'active': row['active']}
+            'design_templates': [{'name': row['name'], 'identifier': row['identifier'], 'active': row['active']}
                                     for row in core.report_catalogue_options()],
-            'dashboard_workspace_id': core.active_workspace.id,
+            'design_workspace_id': core.active_workspace.id,
             'calculated_dimensions': core.calculated_dimensions_json(core.load_workspace_calculated_dimensions()),
-            'dashboard_filter_fields': ADAPTATIVE_FILTER_FIELDS,
-            'dashboard_filter_aliases': {
+            'design_filter_fields': ADAPTATIVE_FILTER_FIELDS,
+            'design_filter_aliases': {
                 field: list(aliases) for field, aliases in FILTER_COLUMNS.items() if len(aliases) > 1
             },
-            'dashboard_ignore_event_time_filtering': ignore_event_time_filtering(),
-            'dashboard_multivendor_available': len(catalogue['vendors']) >= 2,
+            'design_ignore_event_time_filtering': ignore_event_time_filtering(),
+            'design_multivendor_available': len(catalogue['vendors']) >= 2,
             'dashboard_main_cities': core.repository.list_main_cities(),
-            # The colour theme of the charts and slide titles of the viewer and of the Dashboard PPTs.
-            'dashboard_themes': themes_payload()['themes'],
-            'dashboard_theme': load_user_theme(bound_repository(), user.username, DASHBOARD_THEME_MODULE),
-            'dashboard_chart_styles': {key: dashboard_chart_style(key) for key in THEMES},
-            'dashboard_viewer_tokens': {key: dashboard_viewer_tokens(key) for key in THEMES},
+            # The colour theme of the charts and slide titles of the viewer and of the Design PPTs.
+            'design_themes': themes_payload()['themes'],
+            'design_theme': load_user_theme(bound_repository(), user.username, DESIGN_THEME_MODULE),
+            'canvas_chart_styles': {key: canvas_chart_style(key) for key in THEMES},
+            'design_viewer_tokens': {key: design_viewer_tokens(key) for key in THEMES},
         })
 
-    @app.get('/api/ppt-dashboards/theme')
-    def dashboard_theme(user=Depends(dashboard_user)):
-        """The colour theme the user chose for the PPT Dashboards charts and slide titles in this workspace."""
-        theme = load_user_theme(bound_repository(), user.username, DASHBOARD_THEME_MODULE)
-        return {'theme': theme, 'style': dashboard_chart_style(theme)}
+    @app.get('/api/ppt-designer/theme')
+    def design_theme(user=Depends(design_user)):
+        """The colour theme the user chose for the PPT Designer charts and slide titles in this workspace."""
+        theme = load_user_theme(bound_repository(), user.username, DESIGN_THEME_MODULE)
+        return {'theme': theme, 'style': canvas_chart_style(theme)}
 
-    @app.put('/api/ppt-dashboards/theme')
-    def dashboard_theme_save(payload: DashboardThemeRequest, user=Depends(dashboard_user)):
+    @app.put('/api/ppt-designer/theme')
+    def design_theme_save(payload: DesignThemeRequest, user=Depends(design_user)):
         if payload.theme.strip().casefold() not in THEMES:
             raise HTTPException(400, f'Unknown theme: {payload.theme}.')
         task_repository = bound_repository()
-        previous = load_user_theme(task_repository, user.username, DASHBOARD_THEME_MODULE)
-        theme = save_user_theme(task_repository, user.username, payload.theme, DASHBOARD_THEME_MODULE)
+        previous = load_user_theme(task_repository, user.username, DESIGN_THEME_MODULE)
+        theme = save_user_theme(task_repository, user.username, payload.theme, DESIGN_THEME_MODULE)
         if theme != previous:
-            task_repository.try_add_log(user.username, 'ppt_dashboards_theme_changed', json.dumps({'theme': theme, 'previous': previous}))
-        return {'theme': theme, 'style': dashboard_chart_style(theme)}
+            task_repository.try_add_log(user.username, 'ppt_designer_theme_changed', json.dumps({'theme': theme, 'previous': previous}))
+        return {'theme': theme, 'style': canvas_chart_style(theme)}
 
-    @app.get('/api/ppt-dashboards')
-    def list_dashboards(user=Depends(dashboard_user)):
+    @app.get('/api/ppt-designer')
+    def list_designs(user=Depends(design_user)):
         workspace_key()
         with lock:
             task_repository = bound_repository()
-            dashboards = read_dashboards(task_repository)
-            known = creators(task_repository, PPT_DASHBOARDS)
-        # Each Dashboard with who created it: only they, admins and super-admins delete it.
+            designs = read_designs(task_repository)
+            known = creators(task_repository, PPT_DESIGNER)
+        # Each Design with who created it: only they, admins and super-admins delete it.
         return JSONResponse(
-                {dashboard_id: {**definition, 'created_by': known.get(str(dashboard_id).casefold(), '')}
-                 if isinstance(definition, dict) else definition for dashboard_id, definition in dashboards.items()},
+                {design_id: {**definition, 'created_by': known.get(str(design_id).casefold(), '')}
+                 if isinstance(definition, dict) else definition for design_id, definition in designs.items()},
             headers={'Cache-Control': 'no-store, max-age=0, must-revalidate'},
         )
 
-    @app.get('/api/ppt-dashboards/{dashboard_id}/export')
-    def export_dashboard_definition(dashboard_id: str, user=Depends(dashboard_user)):
-        """Create the same Dashboard archive accepted by Admin Import."""
+    @app.get('/api/ppt-designer/{design_id}/export')
+    def export_design_definition(design_id: str, user=Depends(design_user)):
+        """Create the same Design archive accepted by Admin Import."""
         task_repository = bound_repository()
         with lock:
-            definition = read_dashboards(task_repository).get(dashboard_id)
+            definition = read_designs(task_repository).get(design_id)
         if not isinstance(definition, dict):
-            raise HTTPException(404, 'Dashboard not found.')
+            raise HTTPException(404, 'Design not found.')
         workspace = core.active_workspace
         workspace_name = str(workspace.name if workspace else 'Workspace')
-        archive_path = f'workspaces/{workspace_name}/dashboards/dashboards.json'
+        archive_path = f'workspaces/{workspace_name}/designs/designs.json'
         payload = json.dumps({
-            'format': 'drivetest-analyzer-dashboards', 'version': 1,
-            'dashboards': {dashboard_id: definition},
+            'format': 'drivetest-analyzer-designs', 'version': 1,
+            'designs': {design_id: definition},
         }, ensure_ascii=False, indent=2).encode('utf-8')
-        temporary = tempfile.NamedTemporaryFile(prefix='dashboard-export-', suffix='.zip', delete=False)
+        temporary = tempfile.NamedTemporaryFile(prefix='design-export-', suffix='.zip', delete=False)
         temporary.close()
         archive = Path(temporary.name)
         try:
             with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED, compresslevel=1) as bundle:
                 bundle.writestr('manifest.json', json.dumps({
-                    'format': 'drivetest-analyzer-export', 'version': 1, 'kind': 'dashboards',
-                    'components': ['workspace_components'], 'workspace_components': ['dashboards'],
+                    'format': 'drivetest-analyzer-export', 'version': 1, 'kind': 'designs',
+                    'components': ['workspace_components'], 'workspace_components': ['designs'],
                     'source_workspace': {'id': workspace.id, 'name': workspace_name} if workspace else {},
                     'archive_path': archive_path,
                 }, indent=2, sort_keys=True))
@@ -2454,77 +2460,77 @@ def install_dashboard_routes(core):
         except Exception:
             archive.unlink(missing_ok=True)
             raise
-        safe_name = re.sub(r'[^A-Za-z0-9._-]+', '_', str(definition.get('name') or dashboard_id)).strip('._') or 'Dashboard'
-        task_repository.try_add_log(user.username, 'export_dashboard_definition', json.dumps({
-            'id': dashboard_id, 'name': str(definition.get('name') or ''),
+        safe_name = re.sub(r'[^A-Za-z0-9._-]+', '_', str(definition.get('name') or design_id)).strip('._') or 'Design'
+        task_repository.try_add_log(user.username, 'export_design_definition', json.dumps({
+            'id': design_id, 'name': str(definition.get('name') or ''),
         }))
         return FileResponse(
-            archive, filename=f'{safe_name}_dashboard.zip', media_type='application/zip',
+            archive, filename=f'{safe_name}_design.zip', media_type='application/zip',
             background=BackgroundTask(archive.unlink, missing_ok=True),
         )
 
-    def dashboard_ppt_output_dir(task_repository) -> Path:
-        return module_output_dir(Path(task_repository.db_path).parent / 'output', DASHBOARDS_FOLDER)
+    def design_ppt_output_dir(task_repository) -> Path:
+        return module_output_dir(Path(task_repository.db_path).parent / 'output', DESIGNS_FOLDER)
 
-    def remove_dashboard_ppt_job_folder(task_repository, output_path) -> None:
-        """Delete one job folder, never anything outside the Dashboard output root."""
+    def remove_design_ppt_job_folder(task_repository, output_path) -> None:
+        """Delete one job folder, never anything outside the Design output root."""
         text = str(output_path or '').strip()
         if not text:
             return
         folder = Path(text).parent.resolve()
-        root = dashboard_ppt_output_dir(task_repository).resolve()
+        root = design_ppt_output_dir(task_repository).resolve()
         if folder == root or root not in folder.parents:
             return
         shutil.rmtree(folder, ignore_errors=True)
 
-    def dashboard_ppt_campaign_suffix(campaigns: list[str]) -> str:
+    def design_ppt_campaign_suffix(campaigns: list[str]) -> str:
         """Return ``2026-Q1_vs_2026-Q2`` for exports that compare several Campaigns."""
         return '_vs_'.join(campaigns) if len(campaigns) > 1 else ''
 
-    def dashboard_ppt_unique_output(
-        task_repository, export_time, nr_mode_label, dashboard_name, scope_label, zone_label, job_id=None,
+    def design_ppt_unique_output(
+        task_repository, export_time, nr_mode_label, design_name, scope_label, zone_label, job_id=None,
         campaign_suffix='',
     ):
-        """Return a unique ``timestamp - NR Mode - Dashboard - Scope - Regions - Campaigns`` file and folder."""
+        """Return a unique ``timestamp - NR Mode - Design - Scope - Regions - Campaigns`` file and folder."""
         for offset in range(60):
             output_file = build_cdr_report_filename(
-                export_time + timedelta(seconds=offset), nr_mode_label, dashboard_name,
+                export_time + timedelta(seconds=offset), nr_mode_label, design_name,
                 scope_label, zone_label, campaign_suffix,
             )
-            job_dir = dashboard_ppt_output_dir(task_repository) / Path(output_file).stem
+            job_dir = design_ppt_output_dir(task_repository) / Path(output_file).stem
             with task_repository.connection() as connection:
                 already_queued = connection.execute(
-                    f'SELECT 1 FROM {DASHBOARD_PPT_JOBS_TABLE} WHERE output_file = ? AND id IS NOT ? LIMIT 1',
+                    f'SELECT 1 FROM {DESIGN_PPT_JOBS_TABLE} WHERE output_file = ? AND id IS NOT ? LIMIT 1',
                     (output_file, job_id),
                 ).fetchone()
             if not already_queued and not job_dir.exists():
                 return output_file, job_dir / output_file
         raise HTTPException(503, 'No unique PowerPoint filename is available for this export.')
 
-    def queue_dashboard_ppt_export(
-        dashboard_id, user, *, reuse_job_id=None, export_definition: DashboardDefinition | None = None,
+    def queue_design_ppt_export(
+        design_id, user, *, reuse_job_id=None, export_definition: DesignDefinition | None = None,
         preparation_token: str | None = None, selected_operators: list[str] | None = None,
         selected_vendors: list[str] | None = None, selected_regions: list[str] | None = None,
         selected_cities: list[str] | None = None, legend_visibility: dict | None = None, theme: str | None = None,
         auto_comments: str | None = None, auto_comments_engine: str | None = None,
     ):
         """Create the export job immediately; all preparation runs in the background job (``theme``: the colour theme
-        of a report generating it, else the user's PPT Dashboards theme; ``auto_comments``: the Auto comments mode, kept
+        of a report generating it, else the user's PPT Designer theme; ``auto_comments``: the Auto comments mode, kept
         by a relaunched job when None)."""
         task_repository = bound_repository()
         workspace = workspace_key()
         # Preparation never blocks an export: the queued job waits for the
-        # shared Dashboard work slot and prepares its universe.
+        # shared Design work slot and prepares its universe.
         with lock:
-            stored_definition = read_dashboards(task_repository).get(dashboard_id)
+            stored_definition = read_designs(task_repository).get(design_id)
         if not isinstance(stored_definition, dict):
-            raise HTTPException(404, 'Dashboard not found.')
+            raise HTTPException(404, 'Design not found.')
         raw_definition = export_definition.model_dump(mode='json') if export_definition is not None else dict(stored_definition)
-        # Its Design is the one saved (the Designer saves it), whatever the viewer sends.
+        # Its slide set is the one saved (the Designer saves it), whatever the viewer sends.
         raw_definition.update({key: copy.deepcopy(stored_definition.get(key, default))
                                for key, default in (('slide_overrides', {}), ('own_slides', None))})
-        if dashboard_nr_mode(raw_definition) != dashboard_nr_mode(stored_definition):
-            # The comments of a Dashboard were written for the CDRs of its own NR Mode: generated in another one (by a
+        if design_nr_mode(raw_definition) != design_nr_mode(stored_definition):
+            # The comments of a Design were written for the CDRs of its own NR Mode: generated in another one (by a
             # Reporting Job or a Bundle Report Template), its slides go without them, unless auto comments write them.
             raw_definition = {**raw_definition, 'slide_comments': {}, 'slide_comment_meta': {}}
         explicit_selections = {
@@ -2546,20 +2552,20 @@ def install_dashboard_routes(core):
                 and (export_definition is None or candidate.definition.scope == export_definition.scope and candidate.definition.vendor_comparison == export_definition.vendor_comparison)
             ):
                 snapshot = candidate
-        dashboard_name = str(raw_definition.get('name') or dashboard_id)
-        nr_mode = dashboard_nr_mode(raw_definition)
-        # The file names the NR Mode the Dashboard reads (NSA & SA for both).
-        nr_mode_label = DASHBOARD_NR_MODE_LABELS[nr_mode]
+        design_name = str(raw_definition.get('name') or design_id)
+        nr_mode = design_nr_mode(raw_definition)
+        # The file names the NR Mode the Design reads (NSA & SA for both).
+        nr_mode_label = DESIGN_NR_MODE_LABELS[nr_mode]
         scope = 'multivendor' if str(raw_definition.get('scope') or 'single') == 'multivendor' else 'single'
         export_time = datetime.now()
-        ensure_dashboard_ppt_jobs(task_repository)
+        ensure_design_ppt_jobs(task_repository)
         # A provisional, always valid output path; the background job adds the
         # selected Regions once it has resolved them.
-        output_file, destination = dashboard_ppt_unique_output(
-            task_repository, export_time, nr_mode_label, dashboard_name, dashboard_ppt_scope_label(scope), '', reuse_job_id,
+        output_file, destination = design_ppt_unique_output(
+            task_repository, export_time, nr_mode_label, design_name, design_ppt_scope_label(scope), '', reuse_job_id,
         )
         common = {
-            'dashboard_name': dashboard_name, 'template_name': str(raw_definition.get('template') or ''),
+            'design_name': design_name, 'template_name': str(raw_definition.get('template') or ''),
             'nr_mode': nr_mode.casefold(), 'scope': scope, 'filters_json': '[]',
             'output_file': output_file, 'output_path': str(destination),
             'vendor_comparison': raw_definition.get('vendor_comparison') or 'operator_vendor',
@@ -2567,92 +2573,92 @@ def install_dashboard_routes(core):
         if reuse_job_id is None:
             with task_repository.connection() as connection:
                 cursor = connection.execute(
-                    f'''INSERT INTO {DASHBOARD_PPT_JOBS_TABLE} (
-                        dashboard_id, dashboard_name, template_name, nr_mode, scope, regions_json, selections_json, filters_json, output_file, output_path,
+                    f'''INSERT INTO {DESIGN_PPT_JOBS_TABLE} (
+                        design_id, design_name, template_name, nr_mode, scope, regions_json, selections_json, filters_json, output_file, output_path,
                         created_by, created_at, status, progress
                     ) VALUES (?, ?, ?, ?, ?, '[]', '{{}}', ?, ?, ?, ?, ?, 'queued', 0)''',
                     (
-                        dashboard_id, common['dashboard_name'], common['template_name'], common['nr_mode'], common['scope'],
+                        design_id, common['design_name'], common['template_name'], common['nr_mode'], common['scope'],
                         common['filters_json'], output_file, str(destination), user.username,
                         datetime.now(timezone.utc).isoformat(),
                     ),
                 )
                 job_id = int(cursor.lastrowid)
-            update_dashboard_ppt_job(task_repository, job_id, vendor_comparison=common['vendor_comparison'])
+            update_design_ppt_job(task_repository, job_id, vendor_comparison=common['vendor_comparison'])
             previous_output = ''
         else:
             job_id = int(reuse_job_id)
-            previous_output = str(dashboard_ppt_job(task_repository, job_id)['output_path'] or '')
-            update_dashboard_ppt_job(
+            previous_output = str(design_ppt_job(task_repository, job_id)['output_path'] or '')
+            update_design_ppt_job(
                 task_repository, job_id, **common, created_at=datetime.now(timezone.utc).isoformat(),
                 status='queued', progress=0, slide_count=0, chart_count=0,
                 last_error='', started_at=None, finished_at=None,
             )
         if auto_comments is not None:
-            update_dashboard_ppt_job(task_repository, job_id,
+            update_design_ppt_job(task_repository, job_id,
                                      auto_comments=auto_comments if auto_comments in AUTO_COMMENT_MODES else 'off',
                                      auto_comments_engine=str(auto_comments_engine or ''))
         if legend_visibility is not None:
             # A relaunched job keeps the legend state it was created with.
-            update_dashboard_ppt_job(
+            update_design_ppt_job(
                 task_repository, job_id,
                 legend_visibility_json=json.dumps(normalized_legend_visibility(legend_visibility), ensure_ascii=False),
             )
         run_token = uuid4().hex
         with lock:
-            dashboard_ppt_runs[(str(Path(task_repository.db_path).resolve()), job_id)] = run_token
+            design_ppt_runs[(str(Path(task_repository.db_path).resolve()), job_id)] = run_token
             snapshot_token = next((token for token, value in snapshots.items() if value is snapshot), '')
             if snapshot_token:
-                dashboard_ppt_data_tokens[(str(Path(task_repository.db_path).resolve()), job_id, user.username)] = snapshot_token
+                design_ppt_data_tokens[(str(Path(task_repository.db_path).resolve()), job_id, user.username)] = snapshot_token
         core.submit_background_task(
-            prepare_and_render_dashboard_ppt_job,
-            job_id, run_token, task_repository, user, dashboard_id, raw_definition,
+            prepare_and_render_design_ppt_job,
+            job_id, run_token, task_repository, user, design_id, raw_definition,
             explicit_selections, snapshot, export_time, previous_output, theme,
         )
-        task_repository.add_log(user.username, 'export_dashboard_ppt', json.dumps({
-            'dashboard_id': dashboard_id, 'job_id': job_id, 'output': str(destination),
-            'auto_comments': str(dashboard_ppt_job(task_repository, job_id)['auto_comments'] or 'off'),
-            'theme': normalize_theme(theme) if theme else load_user_theme(task_repository, user.username, DASHBOARD_THEME_MODULE),
+        task_repository.add_log(user.username, 'export_design_ppt', json.dumps({
+            'design_id': design_id, 'job_id': job_id, 'output': str(destination),
+            'auto_comments': str(design_ppt_job(task_repository, job_id)['auto_comments'] or 'off'),
+            'theme': normalize_theme(theme) if theme else load_user_theme(task_repository, user.username, DESIGN_THEME_MODULE),
         }))
         return job_id
 
-    def stop_reporting_dashboard_job(task_repository, job_id) -> None:
-        """Stop the Dashboard PPT job a Reporting Job run waits for, when the run is stopped."""
-        row = dashboard_ppt_job(task_repository, job_id)
+    def stop_reporting_design_job(task_repository, job_id) -> None:
+        """Stop the Design PPT job a Reporting Job run waits for, when the run is stopped."""
+        row = design_ppt_job(task_repository, job_id)
         if row is not None and str(row['status']) in {'queued', 'processing'}:
-            update_dashboard_ppt_job(task_repository, job_id, status='stopped', finished_at=datetime.now(timezone.utc).isoformat())
+            update_design_ppt_job(task_repository, job_id, status='stopped', finished_at=datetime.now(timezone.utc).isoformat())
 
-    # Reporting Jobs and Bundle Report Templates generate Dashboard PPTs through the PPT jobs.
-    core.dashboard_reporting = SimpleNamespace(
-        definition_model=DashboardDefinition,
-        list_dashboards=lambda task_repository: read_dashboards(task_repository),
-        queue_export=lambda dashboard_id, user, definition=None, theme=None, auto_comments=None, auto_comments_engine=None: queue_dashboard_ppt_export(
-            dashboard_id, user, export_definition=DashboardDefinition.model_validate(definition) if definition is not None else None,
+    # Reporting Jobs and Bundle Report Templates generate Design PPTs through the PPT jobs.
+    core.design_reporting = SimpleNamespace(
+        definition_model=DesignDefinition,
+        list_designs=lambda task_repository: read_designs(task_repository),
+        queue_export=lambda design_id, user, definition=None, theme=None, auto_comments=None, auto_comments_engine=None: queue_design_ppt_export(
+            design_id, user, export_definition=DesignDefinition.model_validate(definition) if definition is not None else None,
             theme=theme, auto_comments=auto_comments, auto_comments_engine=auto_comments_engine,
         ),
-        job=dashboard_ppt_job,
-        serialize_job=lambda row: serialize_dashboard_ppt_job(row),
-        stop_job=stop_reporting_dashboard_job,
+        job=design_ppt_job,
+        serialize_job=lambda row: serialize_design_ppt_job(row),
+        stop_job=stop_reporting_design_job,
     )
 
-    def prepare_and_render_dashboard_ppt_job(
-        job_id, run_token, task_repository, user, dashboard_id, raw_definition,
+    def prepare_and_render_design_ppt_job(
+        job_id, run_token, task_repository, user, design_id, raw_definition,
         explicit_selections, snapshot, export_time, previous_output, theme=None,
     ):
         """Resolve the export universe, labels and file name, then render the PPT."""
         run_key = (str(Path(task_repository.db_path).resolve()), job_id)
         with lock:
-            if dashboard_ppt_runs.get(run_key) != run_token:
+            if design_ppt_runs.get(run_key) != run_token:
                 return
         try:
-            update_dashboard_ppt_job(
+            update_design_ppt_job(
                 task_repository, job_id, status='processing', progress=1,
                 started_at=datetime.now(timezone.utc).isoformat(),
             )
             if previous_output:
-                remove_dashboard_ppt_job_folder(task_repository, previous_output)
+                remove_design_ppt_job_folder(task_repository, previous_output)
             # The CDRs of its NR Mode and Campaign filter, chosen now.
-            raw_definition = runtime_dashboard_definition(dict(raw_definition), task_repository)
+            raw_definition = runtime_design_definition(dict(raw_definition), task_repository)
             if explicit_selections:
                 raw_filters = dict(raw_definition.get('filters') or {})
                 for field, selected in explicit_selections.items():
@@ -2662,22 +2668,22 @@ def install_dashboard_routes(core):
                     if selected:
                         raw_filters[field] = selected
                 raw_definition['filters'] = raw_filters
-            snapshot_definition = DashboardDefinition.model_validate(raw_definition)
+            snapshot_definition = DesignDefinition.model_validate(raw_definition)
             # A reused snapshot carries resolved calendar dates; the job Filters
             # column keeps the requested (possibly symbolic) range either way.
             requested_dates = {key: raw_definition.get(key) for key in ('date_from', 'date_to')}
             if snapshot is not None:
                 try:
-                    snapshot = validate_dashboard_export_snapshot(snapshot, task_repository)
+                    snapshot = validate_design_export_snapshot(snapshot, task_repository)
                     raw_definition = snapshot.definition.model_dump(mode='json')
                 except (ValueError, HTTPException):
                     snapshot = None
-            dashboard_name = str(raw_definition.get('name') or dashboard_id)
-            preview_fingerprint = dashboard_preview_fingerprint(raw_definition, task_repository)
+            design_name = str(raw_definition.get('name') or design_id)
+            preview_fingerprint = design_preview_fingerprint(raw_definition, task_repository)
             selected_by_kind = selected_sources(snapshot_definition, task_repository)
-            catalogue = dashboard_geography_catalogue(snapshot_definition, selected_by_kind, task_repository)
+            catalogue = design_geography_catalogue(snapshot_definition, selected_by_kind, task_repository)
             # Available values come only from the selected CDRs, never from
-            # the Dashboard's saved filters.
+            # the Design's saved filters.
             profile_options = profile_filter_options(
                 unfiltered_definition(snapshot_definition), [], selected_by_kind,
                 ['Operator', 'Region', 'City'], task_repository,
@@ -2689,61 +2695,61 @@ def install_dashboard_routes(core):
             requested = {field: explicit_selections.get(field, []) for field in ('Operator', 'Vendor', 'Region', 'City')}
             filters = raw_definition.get('filters') or {}
             selections = {
-                field: dashboard_ppt_selection_values(filters, field, requested[field], values)
+                field: design_ppt_selection_values(filters, field, requested[field], values)
                 for field, values in available.items()
             }
             selection_labels = {
-                field: dashboard_ppt_selection_label(
+                field: design_ppt_selection_label(
                     field, selections[field], values,
                     # Dialog selections are chosen from the catalogue; only saved
-                    # Dashboard filters come from the filter options.
+                    # Design filters come from the filter options.
                     (profile_options[field],) if field in {'Region', 'City'} and field not in explicit_selections else (),
                 )
                 for field, values in available.items()
             }
-            campaigns = dashboard_campaign_values(snapshot_definition, selected_by_kind, task_repository)[0]
-            cover_campaigns = dashboard_campaigns_label(campaigns)
-            filters_json = json.dumps(dashboard_filter_lines(
+            campaigns = design_campaign_values(snapshot_definition, selected_by_kind, task_repository)[0]
+            cover_campaigns = design_campaigns_label(campaigns)
+            filters_json = json.dumps(design_filter_lines(
                 {**raw_definition, **requested_dates}, task_repository,
                 {**selection_labels, 'Campaign': cover_campaigns},
             ), ensure_ascii=False)
             selected_regions, selected_cities = selections['Region'], selections['City']
             region_label, city_label = selection_labels['Region'], selection_labels['City']
-            cover_regions = dashboard_ppt_cover_label('Region', region_label, len(selected_regions))
-            cover_cities = dashboard_ppt_cover_label('City', city_label, len(selected_cities))
+            cover_regions = design_ppt_cover_label('Region', region_label, len(selected_regions))
+            cover_cities = design_ppt_cover_label('City', city_label, len(selected_cities))
             zone_label = region_label if region_label == 'All Regions' else ' + '.join(selected_regions)
-            output_file, destination = dashboard_ppt_unique_output(
-                task_repository, export_time, DASHBOARD_NR_MODE_LABELS[dashboard_nr_mode(raw_definition)], dashboard_name,
-                dashboard_ppt_scope_label(raw_definition.get('scope') or 'single'), zone_label, job_id,
-                dashboard_ppt_campaign_suffix(campaigns),
+            output_file, destination = design_ppt_unique_output(
+                task_repository, export_time, DESIGN_NR_MODE_LABELS[design_nr_mode(raw_definition)], design_name,
+                design_ppt_scope_label(raw_definition.get('scope') or 'single'), zone_label, job_id,
+                design_ppt_campaign_suffix(campaigns),
             )
-            update_dashboard_ppt_job(
+            update_design_ppt_job(
                 task_repository, job_id, regions_json=json.dumps(selected_regions, ensure_ascii=False),
                 selections_json=json.dumps(selections, ensure_ascii=False), filters_json=filters_json,
                 output_file=output_file, output_path=str(destination),
             )
         except Exception as exc:
             with lock:
-                active = dashboard_ppt_runs.get(run_key) == run_token
+                active = design_ppt_runs.get(run_key) == run_token
             if active:
                 detail = exc.detail if isinstance(exc, HTTPException) else str(exc)
-                update_dashboard_ppt_job(
+                update_design_ppt_job(
                     task_repository, job_id, status='failed', last_error=str(detail),
                     finished_at=datetime.now(timezone.utc).isoformat(),
                 )
             return
-        render_dashboard_ppt_job(
+        render_design_ppt_job(
             job_id, run_token, task_repository, snapshot, snapshot_definition, user, destination,
-            dashboard_id, preview_fingerprint, cover_regions, cover_cities, cover_campaigns, theme,
+            design_id, preview_fingerprint, cover_regions, cover_cities, cover_campaigns, theme,
         )
 
-    @app.post('/api/ppt-dashboards/{dashboard_id}/export-ppt')
-    def export_dashboard_ppt(
-        dashboard_id: str, request: DashboardPptExportRequest | None = None,
-        user=Depends(dashboard_user),
+    @app.post('/api/ppt-designer/{design_id}/export-ppt')
+    def export_design_ppt(
+        design_id: str, request: DesignPptExportRequest | None = None,
+        user=Depends(design_user),
     ):
-        job_id = queue_dashboard_ppt_export(
-            dashboard_id, user,
+        job_id = queue_design_ppt_export(
+            design_id, user,
             export_definition=request.definition if request else None,
             preparation_token=request.preparation_token if request else None,
             selected_operators=request.selected_operators if request else None,
@@ -2756,69 +2762,69 @@ def install_dashboard_routes(core):
         )
         return JSONResponse({'job_id': job_id, 'status': 'queued'}, status_code=202)
 
-    @app.get('/api/ppt-dashboards/ppt-jobs')
-    def dashboard_ppt_jobs(user=Depends(dashboard_user)):
+    @app.get('/api/ppt-designer/ppt-jobs')
+    def design_ppt_jobs(user=Depends(design_user)):
         task_repository = bound_repository()
-        ensure_dashboard_ppt_jobs(task_repository)
+        ensure_design_ppt_jobs(task_repository)
         with task_repository.connection() as connection:
             rows = connection.execute(
                 # Newest first: a relaunched job takes the date of its relaunch and moves to the top.
-                f'SELECT * FROM {DASHBOARD_PPT_JOBS_TABLE} ORDER BY created_at DESC, id DESC LIMIT 100'
+                f'SELECT * FROM {DESIGN_PPT_JOBS_TABLE} ORDER BY created_at DESC, id DESC LIMIT 100'
             ).fetchall()
-        return {'jobs': [serialize_dashboard_ppt_job(row) for row in rows]}
+        return {'jobs': [serialize_design_ppt_job(row) for row in rows]}
 
-    @app.get('/api/ppt-dashboards/ppt-jobs/{job_id}/download')
-    def download_dashboard_ppt(job_id: int, user=Depends(dashboard_user)):
+    @app.get('/api/ppt-designer/ppt-jobs/{job_id}/download')
+    def download_design_ppt(job_id: int, user=Depends(design_user)):
         task_repository = bound_repository()
-        row = dashboard_ppt_job(task_repository, job_id)
+        row = design_ppt_job(task_repository, job_id)
         path = Path(str(row['output_path'])) if row else None
         if row is None or str(row['status']) != 'ready' or not path.is_file():
-            raise HTTPException(404, 'Dashboard PowerPoint is not available.')
-        task_repository.try_add_log(user.username, 'download_dashboard_ppt', json.dumps({'job_id': job_id, 'file': path.name}))
+            raise HTTPException(404, 'Design PowerPoint is not available.')
+        task_repository.try_add_log(user.username, 'download_design_ppt', json.dumps({'job_id': job_id, 'file': path.name}))
         return FileResponse(
             path, filename=path.name,
             media_type='application/vnd.openxmlformats-officedocument.presentationml.presentation',
         )
 
-    @app.get('/api/ppt-dashboards/ppt-jobs/{job_id}/charts')
-    def open_dashboard_ppt_charts(job_id: int, user=Depends(dashboard_user)):
-        row = dashboard_ppt_job(bound_repository(), job_id)
+    @app.get('/api/ppt-designer/ppt-jobs/{job_id}/charts')
+    def open_design_ppt_charts(job_id: int, user=Depends(design_user)):
+        row = design_ppt_job(bound_repository(), job_id)
         if row is None:
-            raise HTTPException(404, 'Dashboard charts are not available.')
-        charts_dir = Path(str(row['output_path'])).parent / 'dashboard-charts'
+            raise HTTPException(404, 'Design charts are not available.')
+        charts_dir = Path(str(row['output_path'])).parent / 'design-charts'
         try:
             manifest = json.loads((charts_dir / 'manifest.json').read_text(encoding='utf-8'))
         except (AttributeError, OSError, json.JSONDecodeError):
-            raise HTTPException(404, 'Dashboard charts are not available.')
+            raise HTTPException(404, 'Design charts are not available.')
         cards = ''.join(
             f'<article><h2>{html.escape(str(item.get("title") or "Chart"))}</h2>'
-            f'<img src="/api/ppt-dashboards/ppt-jobs/{job_id}/charts/{html.escape(str(item.get("file") or ""))}" alt=""></article>'
+            f'<img src="/api/ppt-designer/ppt-jobs/{job_id}/charts/{html.escape(str(item.get("file") or ""))}" alt=""></article>'
             for item in manifest.get('charts', []) if isinstance(item, dict)
         )
         return HTMLResponse(
-            '<!doctype html><html><head><title>Dashboard charts</title><style>'
+            '<!doctype html><html><head><title>Design charts</title><style>'
             'body{font-family:Arial;margin:24px;background:#f5f2f8}article{margin:0 0 24px;padding:16px;background:white;border-radius:12px}'
             'img{display:block;width:100%;height:auto}h2{font-size:18px}</style></head><body>' + cards + '</body></html>'
         )
 
-    @app.get('/api/ppt-dashboards/ppt-jobs/{job_id}/charts.json')
-    def dashboard_ppt_charts_manifest(job_id: int, user=Depends(dashboard_user)):
-        row = dashboard_ppt_job(bound_repository(), job_id)
+    @app.get('/api/ppt-designer/ppt-jobs/{job_id}/charts.json')
+    def design_ppt_charts_manifest(job_id: int, user=Depends(design_user)):
+        row = design_ppt_job(bound_repository(), job_id)
         if row is None:
-            raise HTTPException(404, 'Dashboard charts are not available.')
-        charts_dir = Path(str(row['output_path'])).parent / 'dashboard-charts'
+            raise HTTPException(404, 'Design charts are not available.')
+        charts_dir = Path(str(row['output_path'])).parent / 'design-charts'
         try:
             manifest = json.loads((charts_dir / 'manifest.json').read_text(encoding='utf-8'))
         except (AttributeError, OSError, json.JSONDecodeError):
-            raise HTTPException(404, 'Dashboard charts are not available.')
+            raise HTTPException(404, 'Design charts are not available.')
         charts = []
         definition_available = isinstance(manifest.get('definition'), dict)
         fallback_focus_rows = []
         if any(not isinstance(item.get('focus_row'), int) for item in manifest.get('charts', []) if isinstance(item, dict)):
             try:
-                definition = DashboardDefinition(
-                    name=str(row['dashboard_name']), template=str(row['template_name']),
-                    nr_mode=dashboard_nr_mode_value(row['nr_mode']),
+                definition = DesignDefinition(
+                    name=str(row['design_name']), template=str(row['template_name']),
+                    nr_mode=design_nr_mode_value(row['nr_mode']),
                     scope='multivendor' if str(row['scope']).casefold() == 'multivendor' else 'single',
                 )
                 entries = validate(definition, bound_repository())
@@ -2864,8 +2870,8 @@ def install_dashboard_routes(core):
                 'focus_row': int(item['focus_row']) if isinstance(item.get('focus_row'), int) else (
                     fallback_focus_rows[chart_index] if chart_index < len(fallback_focus_rows) else None
                 ),
-                'image_url': f'/api/ppt-dashboards/ppt-jobs/{job_id}/charts/{chart_file}',
-                'payload_url': f'/api/ppt-dashboards/ppt-jobs/{job_id}/chart-models/{model_file}' if model_available else None,
+                'image_url': f'/api/ppt-designer/ppt-jobs/{job_id}/charts/{chart_file}',
+                'payload_url': f'/api/ppt-designer/ppt-jobs/{job_id}/chart-models/{model_file}' if model_available else None,
                 'data_url': f'/ppt-jobs/{job_id}/data/{chart_index}' if definition_available and isinstance(item.get('entry_index'), int) else None,
             })
         chart_by_entry = {
@@ -2900,28 +2906,28 @@ def install_dashboard_routes(core):
                 for number, items in sorted(grouped.items())
             ]
         return {
-            'job': serialize_dashboard_ppt_job(row),
+            'job': serialize_design_ppt_job(row),
             'generate_tooltips': bool(manifest.get('generate_tooltips')),
             'charts': charts,
             'definition': manifest.get('definition') if definition_available else None,
-            'cover': dashboard_ppt_job_cover(row, manifest),
+            'cover': design_ppt_job_cover(row, manifest),
             'slides': slides,
             'viewer_available': bool(slides) and any(
                 chart.get('available') for slide in slides for chart in slide.get('charts', [])
             ),
         }
 
-    @app.get('/api/ppt-dashboards/ppt-jobs/{job_id}/charts/{chart_index}/filter-context')
-    def dashboard_ppt_chart_filter_context(
-        job_id: int, chart_index: int, prepare: bool = False, user=Depends(dashboard_user),
+    @app.get('/api/ppt-designer/ppt-jobs/{job_id}/charts/{chart_index}/filter-context')
+    def design_ppt_chart_filter_context(
+        job_id: int, chart_index: int, prepare: bool = False, user=Depends(design_user),
     ):
         """Load PPT chart metadata immediately and restore its data only on demand."""
         task_repository = bound_repository()
-        row = dashboard_ppt_job(task_repository, job_id)
-        charts_dir = Path(str(row['output_path'])).parent / 'dashboard-charts' if row else None
+        row = design_ppt_job(task_repository, job_id)
+        charts_dir = Path(str(row['output_path'])).parent / 'design-charts' if row else None
         try:
             manifest = json.loads((charts_dir / 'manifest.json').read_text(encoding='utf-8'))
-            definition = DashboardDefinition.model_validate(manifest['definition'])
+            definition = DesignDefinition.model_validate(manifest['definition'])
             entry_index = int(manifest['charts'][chart_index]['entry_index'])
             entry = validate(definition, task_repository)[entry_index]
         except (AttributeError, IndexError, KeyError, OSError, TypeError, ValueError, json.JSONDecodeError):
@@ -2930,7 +2936,7 @@ def install_dashboard_routes(core):
         token = ''
         if prepare:
             preview = restore_preview_manifest(
-                workspace, str(manifest.get('dashboard_id') or row['dashboard_id']),
+                workspace, str(manifest.get('design_id') or row['design_id']),
                 str(manifest.get('preview_fingerprint') or ''),
             ) or build_preview(definition, user, workspace=workspace)
             token = str(preview['token'])
@@ -2950,7 +2956,7 @@ def install_dashboard_routes(core):
             }, key=str.casefold)
         columns = columns_by_source.get(f'cdr-{entry.source_kind}', [])
         datasets_by_source['cdr-all'] = [row for source in KINDS for row in datasets_by_source[f'cdr-{source}']]
-        columns_by_source['cdr-all'] = sorted({*rf_union_source(task_repository, [kind for kind in KINDS if dashboard_datasets(definition, kind, task_repository)])[1]}, key=str.casefold)
+        columns_by_source['cdr-all'] = sorted({*rf_union_source(task_repository, [kind for kind in KINDS if design_datasets(definition, kind, task_repository)])[1]}, key=str.casefold)
         if entry.source_kind == 'all':
             columns = columns_by_source['cdr-all']
         template_available = user.role in {'user-editor', 'admin', 'super-admin'} and any(
@@ -2960,7 +2966,7 @@ def install_dashboard_routes(core):
         return JSONResponse({
             'token': token, 'chart_index': entry_index, 'cdr_source': entry.cdr_source,
             'chart_type': entry.chart_type, 'chart_title': entry.chart_title, 'kpi': entry.kpi,
-            'dataset_ids': [str(row['id']) for row in dashboard_datasets(definition, entry.source_kind, task_repository)],
+            'dataset_ids': [str(row['id']) for row in design_datasets(definition, entry.source_kind, task_repository)],
             'filters': entry.filters, 'rows_split': entry.rows_split,
             'columns_split': entry.columns_split, 'legend': entry.legend,
             'legend_position': entry.legend_position,
@@ -2973,50 +2979,50 @@ def install_dashboard_routes(core):
             'columns_by_source': columns_by_source, 'columns': columns,
         })
 
-    @app.get('/api/ppt-dashboards/ppt-jobs/{job_id}/chart-models/{model_file}')
-    def dashboard_ppt_chart_model(job_id: int, model_file: str, user=Depends(dashboard_user)):
+    @app.get('/api/ppt-designer/ppt-jobs/{job_id}/chart-models/{model_file}')
+    def design_ppt_chart_model(job_id: int, model_file: str, user=Depends(design_user)):
         if not re.fullmatch(r'slide-\d+-chart-\d+\.model\.json', model_file):
             raise HTTPException(404, 'Chart model not found.')
-        row = dashboard_ppt_job(bound_repository(), job_id)
-        path = Path(str(row['output_path'])).parent / 'dashboard-charts' / model_file if row else None
+        row = design_ppt_job(bound_repository(), job_id)
+        path = Path(str(row['output_path'])).parent / 'design-charts' / model_file if row else None
         try:
             payload = json.loads(path.read_text(encoding='utf-8'))
         except (AttributeError, OSError, json.JSONDecodeError):
             raise HTTPException(404, 'Chart model not found.')
         return JSONResponse(payload)
 
-    @app.get('/api/ppt-dashboards/ppt-jobs/{job_id}/data/{chart_index}')
-    def dashboard_ppt_chart_data(
+    @app.get('/api/ppt-designer/ppt-jobs/{job_id}/data/{chart_index}')
+    def design_ppt_chart_data(
         job_id: int, chart_index: int, page: int = 0, download: bool = False,
         column_filters: str = '', include_filter_values: bool = False, filter_column: str = '',
-        user=Depends(dashboard_user),
+        user=Depends(design_user),
     ):
         task_repository = bound_repository()
-        row = dashboard_ppt_job(task_repository, job_id)
-        charts_dir = Path(str(row['output_path'])).parent / 'dashboard-charts' if row else None
+        row = design_ppt_job(task_repository, job_id)
+        charts_dir = Path(str(row['output_path'])).parent / 'design-charts' if row else None
         try:
             manifest = json.loads((charts_dir / 'manifest.json').read_text(encoding='utf-8'))
             chart = manifest['charts'][chart_index]
-            definition = DashboardDefinition.model_validate(manifest['definition'])
+            definition = DesignDefinition.model_validate(manifest['definition'])
             entry_index = int(chart['entry_index'])
         except (AttributeError, IndexError, KeyError, OSError, TypeError, ValueError, json.JSONDecodeError):
             raise HTTPException(404, 'The filtered dataset is not available for this PowerPoint Job.')
         workspace = str(Path(task_repository.db_path).resolve())
         token_key = (workspace, job_id, user.username)
         with lock:
-            token = dashboard_ppt_data_tokens.get(token_key)
+            token = design_ppt_data_tokens.get(token_key)
             cached_snapshot = snapshots.get(token) if token else None
         if cached_snapshot is None:
             preview = restore_preview_manifest(
                 workspace,
-                str(manifest.get('dashboard_id') or row['dashboard_id']),
+                str(manifest.get('design_id') or row['design_id']),
                 str(manifest.get('preview_fingerprint') or ''),
             )
             if preview is None:
                 preview = build_preview(definition, user, workspace=workspace)
             token = str(preview['token'])
             with lock:
-                dashboard_ppt_data_tokens[token_key] = token
+                design_ppt_data_tokens[token_key] = token
         snapshot, entry, _ = snapshot_chart(
             token, entry_index, user, include_frame=False, expected_workspace=workspace,
         )
@@ -3049,12 +3055,12 @@ def install_dashboard_routes(core):
         ) if filter_column else (chart_dataset_filter_values(frame) if include_filter_values else {})
         frame = apply_chart_column_filters(frame, selected_column_filters)
         if download:
-            task_repository.try_add_log(user.username, 'export_dashboard_chart_data_csv', json.dumps({
+            task_repository.try_add_log(user.username, 'export_design_chart_data_csv', json.dumps({
                 'job_id': job_id, 'chart_index': chart_index, 'rows': len(frame),
             }))
             return Response(
                 frame.to_csv(index=False), media_type='text/csv',
-                headers={'Content-Disposition': 'attachment; filename="dashboard-chart-data.csv"'},
+                headers={'Content-Disposition': 'attachment; filename="design-chart-data.csv"'},
             )
         page = max(page, 0)
         visible = frame.iloc[page * 100:(page + 1) * 100].fillna('').astype(str)
@@ -3067,25 +3073,25 @@ def install_dashboard_routes(core):
             'page_size': 100, 'unfiltered_total': chart_total,
         }
 
-    @app.get('/api/ppt-dashboards/ppt-jobs/{job_id}/charts/{chart_file}')
-    def dashboard_ppt_chart(job_id: int, chart_file: str, user=Depends(dashboard_user)):
+    @app.get('/api/ppt-designer/ppt-jobs/{job_id}/charts/{chart_file}')
+    def design_ppt_chart(job_id: int, chart_file: str, user=Depends(design_user)):
         if not re.fullmatch(r'slide-\d+-chart-\d+\.png', chart_file):
             raise HTTPException(404, 'Chart not found.')
-        row = dashboard_ppt_job(bound_repository(), job_id)
-        path = Path(str(row['output_path'])).parent / 'dashboard-charts' / chart_file if row else None
+        row = design_ppt_job(bound_repository(), job_id)
+        path = Path(str(row['output_path'])).parent / 'design-charts' / chart_file if row else None
         if path is None or not path.is_file():
             raise HTTPException(404, 'Chart not found.')
         return FileResponse(path, media_type='image/png')
 
-    @app.get('/api/ppt-dashboards/ppt-jobs/{job_id}/charts.zip')
-    def download_dashboard_ppt_charts(job_id: int, user=Depends(dashboard_user)):
+    @app.get('/api/ppt-designer/ppt-jobs/{job_id}/charts.zip')
+    def download_design_ppt_charts(job_id: int, user=Depends(design_user)):
         task_repository = bound_repository()
-        row = dashboard_ppt_job(task_repository, job_id)
-        charts_dir = Path(str(row['output_path'])).parent / 'dashboard-charts' if row else None
+        row = design_ppt_job(task_repository, job_id)
+        charts_dir = Path(str(row['output_path'])).parent / 'design-charts' if row else None
         if charts_dir is None or not (charts_dir / 'manifest.json').is_file():
-            raise HTTPException(404, 'Dashboard charts are not available.')
-        task_repository.try_add_log(user.username, 'download_dashboard_ppt_charts', json.dumps({'job_id': job_id}))
-        temporary = tempfile.NamedTemporaryFile(prefix='dashboard-ppt-charts-', suffix='.zip', delete=False)
+            raise HTTPException(404, 'Design charts are not available.')
+        task_repository.try_add_log(user.username, 'download_design_ppt_charts', json.dumps({'job_id': job_id}))
+        temporary = tempfile.NamedTemporaryFile(prefix='design-ppt-charts-', suffix='.zip', delete=False)
         temporary.close()
         archive = Path(temporary.name)
         with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED) as bundle:
@@ -3096,25 +3102,25 @@ def install_dashboard_routes(core):
             media_type='application/zip', background=BackgroundTask(archive.unlink, missing_ok=True),
         )
 
-    @app.post('/api/ppt-dashboards/ppt-jobs/{job_id}/stop')
-    def stop_dashboard_ppt(job_id: int, user=Depends(dashboard_user)):
+    @app.post('/api/ppt-designer/ppt-jobs/{job_id}/stop')
+    def stop_design_ppt(job_id: int, user=Depends(design_user)):
         task_repository = bound_repository()
-        row = dashboard_ppt_job(task_repository, job_id)
+        row = design_ppt_job(task_repository, job_id)
         if row is None or str(row['status']) not in {'queued', 'processing'}:
-            raise HTTPException(409, 'Only queued or processing Dashboard exports can be stopped.')
-        update_dashboard_ppt_job(
+            raise HTTPException(409, 'Only queued or processing Design exports can be stopped.')
+        update_design_ppt_job(
             task_repository, job_id, status='stopped',
             finished_at=datetime.now(timezone.utc).isoformat(),
         )
-        task_repository.try_add_log(user.username, 'stop_dashboard_ppt_job', json.dumps({'job_id': job_id}))
+        task_repository.try_add_log(user.username, 'stop_design_ppt_job', json.dumps({'job_id': job_id}))
         return {'stopped': job_id}
 
-    @app.post('/api/ppt-dashboards/ppt-jobs/{job_id}/retry')
-    def retry_dashboard_ppt(job_id: int, user=Depends(dashboard_user)):
+    @app.post('/api/ppt-designer/ppt-jobs/{job_id}/retry')
+    def retry_design_ppt(job_id: int, user=Depends(design_user)):
         task_repository = bound_repository()
-        row = dashboard_ppt_job(task_repository, job_id)
+        row = design_ppt_job(task_repository, job_id)
         if row is None or str(row['status']) not in {'ready', 'failed', 'stopped'}:
-            raise HTTPException(409, 'This Dashboard export cannot be relaunched.')
+            raise HTTPException(409, 'This Design export cannot be relaunched.')
         try:
             saved_selections = json.loads(str(row['selections_json'] or '{}'))
         except (TypeError, json.JSONDecodeError):
@@ -3122,16 +3128,16 @@ def install_dashboard_routes(core):
         if not isinstance(saved_selections, dict):
             saved_selections = {}
         try:
-            manifest_path = Path(str(row['output_path'])).parent / 'dashboard-charts' / 'manifest.json'
+            manifest_path = Path(str(row['output_path'])).parent / 'design-charts' / 'manifest.json'
             manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
-            retry_definition = DashboardDefinition.model_validate(manifest['definition'])
+            retry_definition = DesignDefinition.model_validate(manifest['definition'])
         except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError):
             # Failed or stopped Jobs may not have reached manifest creation.
             # Preserve at least their recorded Scope while rebuilding the
-            # current saved Dashboard universe.
-            raw_definition = read_dashboards(task_repository).get(str(row['dashboard_id']))
+            # current saved Design universe.
+            raw_definition = read_designs(task_repository).get(str(row['design_id']))
             if not isinstance(raw_definition, dict):
-                raise HTTPException(404, 'Dashboard not found.')
+                raise HTTPException(404, 'Design not found.')
             raw_definition = dict(raw_definition)
             raw_definition['scope'] = (
                 'multivendor' if str(row['scope'] or '').casefold() == 'multivendor' else 'single'
@@ -3141,16 +3147,16 @@ def install_dashboard_routes(core):
                     **(raw_definition.get('filters') or {}),
                     **{field: values for field, values in saved_selections.items() if isinstance(values, list)},
                 }
-            retry_definition = DashboardDefinition.model_validate(
-                runtime_dashboard_definition(raw_definition, task_repository)
+            retry_definition = DesignDefinition.model_validate(
+                runtime_design_definition(raw_definition, task_repository)
             )
         try:
             selected_regions = json.loads(str(row['regions_json'] or '[]'))
         except (TypeError, json.JSONDecodeError):
             selected_regions = []
         retry_definition.vendor_comparison = str(row['vendor_comparison'] or 'operator_vendor')
-        queue_dashboard_ppt_export(
-            str(row['dashboard_id']), user, reuse_job_id=job_id,
+        queue_design_ppt_export(
+            str(row['design_id']), user, reuse_job_id=job_id,
             export_definition=retry_definition,
             selected_operators=saved_selections.get('Operator') if isinstance(saved_selections.get('Operator'), list) else None,
             selected_vendors=saved_selections.get('Vendor', saved_selections.get('Vendor_Only')),
@@ -3159,101 +3165,101 @@ def install_dashboard_routes(core):
         )
         return JSONResponse({'job_id': job_id, 'status': 'queued'}, status_code=202)
 
-    @app.post('/api/ppt-dashboards/ppt-jobs/delete-all')
-    def delete_all_dashboard_ppts(user=Depends(dashboard_editor_user)):
+    @app.post('/api/ppt-designer/ppt-jobs/delete-all')
+    def delete_all_design_ppts(user=Depends(design_editor_user)):
         task_repository = bound_repository()
-        ensure_dashboard_ppt_jobs(task_repository)
+        ensure_design_ppt_jobs(task_repository)
         with task_repository.connection() as connection:
             rows = connection.execute(
-                f'SELECT id, output_path FROM {DASHBOARD_PPT_JOBS_TABLE}'
+                f'SELECT id, output_path FROM {DESIGN_PPT_JOBS_TABLE}'
             ).fetchall()
-            connection.execute(f'DELETE FROM {DASHBOARD_PPT_JOBS_TABLE}')
+            connection.execute(f'DELETE FROM {DESIGN_PPT_JOBS_TABLE}')
         database_key = str(Path(task_repository.db_path).resolve())
         with lock:
             for row in rows:
-                dashboard_ppt_runs.pop((database_key, int(row['id'])), None)
+                design_ppt_runs.pop((database_key, int(row['id'])), None)
         for row in rows:
-            remove_dashboard_ppt_job_folder(task_repository, row['output_path'])
-        task_repository.add_log(user.username, 'delete_all_dashboard_ppts', json.dumps({'count': len(rows)}))
+            remove_design_ppt_job_folder(task_repository, row['output_path'])
+        task_repository.add_log(user.username, 'delete_all_design_ppts', json.dumps({'count': len(rows)}))
         return {'deleted': len(rows)}
 
-    @app.post('/api/ppt-dashboards/ppt-jobs/{job_id}/delete')
-    def delete_dashboard_ppt(job_id: int, user=Depends(dashboard_editor_user)):
+    @app.post('/api/ppt-designer/ppt-jobs/{job_id}/delete')
+    def delete_design_ppt(job_id: int, user=Depends(design_editor_user)):
         task_repository = bound_repository()
-        row = dashboard_ppt_job(task_repository, job_id)
+        row = design_ppt_job(task_repository, job_id)
         if row is None:
-            raise HTTPException(404, 'Dashboard export job not found.')
+            raise HTTPException(404, 'Design export job not found.')
         if str(row['status']) in {'queued', 'processing'}:
-            raise HTTPException(409, 'A running Dashboard export cannot be deleted.')
-        remove_dashboard_ppt_job_folder(task_repository, row['output_path'])
+            raise HTTPException(409, 'A running Design export cannot be deleted.')
+        remove_design_ppt_job_folder(task_repository, row['output_path'])
         with task_repository.connection() as connection:
-            connection.execute(f'DELETE FROM {DASHBOARD_PPT_JOBS_TABLE} WHERE id = ?', (job_id,))
-        task_repository.try_add_log(user.username, 'delete_dashboard_ppt', json.dumps({
+            connection.execute(f'DELETE FROM {DESIGN_PPT_JOBS_TABLE} WHERE id = ?', (job_id,))
+        task_repository.try_add_log(user.username, 'delete_design_ppt', json.dumps({
             'job_id': job_id, 'file': str(row['output_file'] or ''),
         }))
         return {'deleted': job_id}
 
-    def ensure_unique_dashboard_name(dashboards, dashboard_id, name) -> None:
-        """Dashboard names are unique in a workspace, whatever the NR Mode each one reads."""
+    def ensure_unique_design_name(designs, design_id, name) -> None:
+        """Design names are unique in a workspace, whatever the NR Mode each one reads."""
         if any(
-            key != dashboard_id and isinstance(item, dict)
+            key != design_id and isinstance(item, dict)
             and str(item.get('name') or '').strip().casefold() == str(name).strip().casefold()
-            for key, item in dashboards.items()
+            for key, item in designs.items()
         ):
-            raise HTTPException(409, 'A Dashboard with this name already exists.')
+            raise HTTPException(409, 'A Design with this name already exists.')
 
-    @app.put('/api/ppt-dashboards/{dashboard_id}')
-    def save_dashboard(dashboard_id: str, definition: DashboardDefinition, user=Depends(dashboard_editor_user)):
+    @app.put('/api/ppt-designer/{design_id}')
+    def save_design(design_id: str, definition: DesignDefinition, user=Depends(design_editor_user)):
         workspace_key()
         with lock:
             task_repository = bound_repository()
             validate(definition, task_repository)
-            dashboards = read_dashboards(task_repository)
-            ensure_unique_dashboard_name(dashboards, dashboard_id, definition.name)
-            created = dashboard_id not in dashboards
+            designs = read_designs(task_repository)
+            ensure_unique_design_name(designs, design_id, definition.name)
+            created = design_id not in designs
             definition.name = definition.name.strip()
-            saved_definition = migrate_auto_cdrs(normalize_dashboard_filters(definition.model_dump(mode='json')), task_repository)
+            saved_definition = migrate_auto_cdrs(normalize_design_filters(definition.model_dump(mode='json')), task_repository)
             # The CDRs are chosen from the NR Mode and Campaign each time: they are not saved.
             saved_definition.pop('datasets', None)
             saved_definition['slide_comment_meta'] = comment_meta(
                 saved_definition.get('slide_comment_meta'), saved_definition.get('slide_comments') or {},
             )
-            saved_definition = follow_template_identities({dashboard_id: saved_definition}, template_uids(task_repository))[dashboard_id]
+            saved_definition = follow_template_identities({design_id: saved_definition}, template_uids(task_repository))[design_id]
             if not created:
-                # Its Design changes only from the Designer (save_dashboard_design): the filters saved from a viewer
+                # Its slide set changes only from the Designer (save_design_slides): the filters saved from a viewer
                 # opened before never take it back.
                 for key, default in (('slide_overrides', {}), ('own_slides', None)):
-                    saved_definition[key] = copy.deepcopy(dashboards[dashboard_id].get(key, default))
-            dashboards[dashboard_id] = saved_definition
-            task_repository.set_workspace_state(STATE_KEY, json.dumps(dashboards))
+                    saved_definition[key] = copy.deepcopy(designs[design_id].get(key, default))
+            designs[design_id] = saved_definition
+            task_repository.set_workspace_state(STATE_KEY, json.dumps(designs))
             if created:
-                record_creator(task_repository, PPT_DASHBOARDS, dashboard_id, user.username)
-            creator = creator_of(task_repository, PPT_DASHBOARDS, dashboard_id)
-            task_repository.add_log(user.username, 'save_dashboard', json.dumps({
-                'id': dashboard_id, 'name': definition.name, 'nr_mode': definition.nr_mode, 'template': definition.template,
+                record_creator(task_repository, PPT_DESIGNER, design_id, user.username)
+            creator = creator_of(task_repository, PPT_DESIGNER, design_id)
+            task_repository.add_log(user.username, 'save_design', json.dumps({
+                'id': design_id, 'name': definition.name, 'nr_mode': definition.nr_mode, 'template': definition.template,
             }))
-        # As the list gives it, with who created it: the page compares it with the Dashboard it has open.
-        return {'id': dashboard_id, 'definition': {**saved_definition, 'created_by': creator}}
+        # As the list gives it, with who created it: the page compares it with the Design it has open.
+        return {'id': design_id, 'definition': {**saved_definition, 'created_by': creator}}
 
-    @app.patch('/api/ppt-dashboards/{dashboard_id}/name')
-    def rename_dashboard(dashboard_id: str, payload: DashboardName, user=Depends(dashboard_editor_user)):
+    @app.patch('/api/ppt-designer/{design_id}/name')
+    def rename_design(design_id: str, payload: DesignName, user=Depends(design_editor_user)):
         name = payload.name.strip()
         if not name:
-            raise HTTPException(400, 'Enter a Dashboard name.')
+            raise HTTPException(400, 'Enter a Design name.')
         with lock:
             task_repository = bound_repository()
-            dashboards = read_dashboards(task_repository)
-            if dashboard_id not in dashboards:
-                raise HTTPException(404, 'Dashboard not found.')
-            ensure_unique_dashboard_name(dashboards, dashboard_id, name)
-            dashboards[dashboard_id]['name'] = name
-            task_repository.set_workspace_state(STATE_KEY, json.dumps(dashboards))
-            task_repository.add_log(user.username, 'rename_dashboard', json.dumps({'id': dashboard_id, 'name': name}))
-        return {'id': dashboard_id, 'name': name}
+            designs = read_designs(task_repository)
+            if design_id not in designs:
+                raise HTTPException(404, 'Design not found.')
+            ensure_unique_design_name(designs, design_id, name)
+            designs[design_id]['name'] = name
+            task_repository.set_workspace_state(STATE_KEY, json.dumps(designs))
+            task_repository.add_log(user.username, 'rename_design', json.dumps({'id': design_id, 'name': name}))
+        return {'id': design_id, 'name': name}
 
-    @app.patch('/api/ppt-dashboards/{dashboard_id}/template')
-    def change_dashboard_template(
-        dashboard_id: str, payload: DashboardTemplateSelection, user=Depends(dashboard_editor_user),
+    @app.patch('/api/ppt-designer/{design_id}/template')
+    def change_design_template(
+        design_id: str, payload: DesignTemplateSelection, user=Depends(design_editor_user),
     ):
         """Change the NR Mode of the CDRs and the template while retaining the saved filters.
 
@@ -3264,68 +3270,68 @@ def install_dashboard_routes(core):
         workspace_key()
         with lock:
             task_repository = bound_repository()
-            dashboards = read_dashboards(task_repository)
-            current = dashboards.get(dashboard_id)
+            designs = read_designs(task_repository)
+            current = designs.get(design_id)
             if current is None:
-                raise HTTPException(404, 'Dashboard not found.')
+                raise HTTPException(404, 'Design not found.')
             updated = dict(current)
-            previous_nr_mode, previous_template = dashboard_nr_mode(current), str(current.get('template') or '')
+            previous_nr_mode, previous_template = design_nr_mode(current), str(current.get('template') or '')
             nr_mode_changed = previous_nr_mode != payload.nr_mode
             updated['nr_mode'] = payload.nr_mode
             updated['template'] = payload.template
             dropped_overrides = {}
             if payload.template != previous_template:
-                # What it changed of its template (by the ids of that template), or its own Design once detached,
+                # What it changed of its template (by the ids of that template), or its own slide set once detached,
                 # does not apply to another template: it follows the chosen one as it is.
-                dropped_overrides = dashboard_design.overrides_summary(current.get('slide_overrides'))
+                dropped_overrides = design_slides.overrides_summary(current.get('slide_overrides'))
                 updated['slide_overrides'], updated['own_slides'] = {}, None
             if nr_mode_changed:
                 # The campaigns of the other NR Mode do not apply: the newest ones of the new NR Mode do.
                 updated.pop('datasets', None)
                 follow_nr_mode_campaigns(updated, previous_nr_mode, payload.nr_mode)
                 updated['auto_cdrs'] = True
-            definition = DashboardDefinition.model_validate(updated)
+            definition = DesignDefinition.model_validate(updated)
             validate(definition, task_repository)
-            saved_definition = migrate_auto_cdrs(normalize_dashboard_filters(definition.model_dump(mode='json')), task_repository)
+            saved_definition = migrate_auto_cdrs(normalize_design_filters(definition.model_dump(mode='json')), task_repository)
             saved_definition.pop('datasets', None)
-            saved_definition = follow_template_identities({dashboard_id: saved_definition}, template_uids(task_repository))[dashboard_id]
-            dashboards[dashboard_id] = saved_definition
-            task_repository.set_workspace_state(STATE_KEY, json.dumps(dashboards))
-            task_repository.add_log(user.username, 'change_dashboard_template', json.dumps({
-                'id': dashboard_id, 'name': definition.name,
+            saved_definition = follow_template_identities({design_id: saved_definition}, template_uids(task_repository))[design_id]
+            designs[design_id] = saved_definition
+            task_repository.set_workspace_state(STATE_KEY, json.dumps(designs))
+            task_repository.add_log(user.username, 'change_design_template', json.dumps({
+                'id': design_id, 'name': definition.name,
                 'nr_mode': payload.nr_mode, 'previous_nr_mode': previous_nr_mode,
                 'template': payload.template, 'previous_template': previous_template,
                 **({'dropped_slide_overrides': dropped_overrides, 'detached_before': bool(current.get('own_slides'))}
                    if payload.template != previous_template and (any(dropped_overrides.values()) or current.get('own_slides')) else {}),
             }))
-        return {'id': dashboard_id, 'definition': saved_definition, 'invalidated': True}
+        return {'id': design_id, 'definition': saved_definition, 'invalidated': True}
 
-    @app.delete('/api/ppt-dashboards/{dashboard_id}')
-    def delete_dashboard(dashboard_id: str, user=Depends(dashboard_editor_user)):
+    @app.delete('/api/ppt-designer/{design_id}')
+    def delete_design(design_id: str, user=Depends(design_editor_user)):
         with lock:
             task_repository = bound_repository()
-            dashboards = read_dashboards(task_repository)
-            if dashboard_id not in dashboards:
-                raise HTTPException(404, 'Dashboard not found.')
-            if not can_delete(user, creator_of(task_repository, PPT_DASHBOARDS, dashboard_id)):
-                raise HTTPException(403, deletion_refusal('Dashboard'))
-            del dashboards[dashboard_id]
-            task_repository.set_workspace_state(STATE_KEY, json.dumps(dashboards))
-            forget_creator(task_repository, PPT_DASHBOARDS, dashboard_id)
-            task_repository.add_log(user.username, 'delete_dashboard', json.dumps({'id': dashboard_id}))
+            designs = read_designs(task_repository)
+            if design_id not in designs:
+                raise HTTPException(404, 'Design not found.')
+            if not can_delete(user, creator_of(task_repository, PPT_DESIGNER, design_id)):
+                raise HTTPException(403, deletion_refusal('Design'))
+            del designs[design_id]
+            task_repository.set_workspace_state(STATE_KEY, json.dumps(designs))
+            forget_creator(task_repository, PPT_DESIGNER, design_id)
+            task_repository.add_log(user.username, 'delete_design', json.dumps({'id': design_id}))
         return {'deleted': True}
 
     # ------------------------------------------------------------------
-    # Dashboard Designer (ticket #26): the Design of a Dashboard and of its template
+    # Designer (ticket #26): the slide set of a Design and of its template
     # ------------------------------------------------------------------
 
     def template_row_of(template_name, task_repository):
         return next((row for row in task_repository.list_report_templates() if str(row['name']) == str(template_name)), None)
 
-    def can_design_dashboard(user, dashboard_id, task_repository) -> bool:
-        """Admins and super-admins edit the slides of any Dashboard, a user-editor only those they created, a user-viewer none."""
+    def can_design_design(user, design_id, task_repository) -> bool:
+        """Admins and super-admins edit the slides of any Design, a user-editor only those they created, a user-viewer none."""
         return user.role in {'user-editor', 'admin', 'super-admin'} and can_delete(
-            user, creator_of(task_repository, PPT_DASHBOARDS, dashboard_id))
+            user, creator_of(task_repository, PPT_DESIGNER, design_id))
 
     def can_design_template(user, template_row) -> bool:
         """The same rule for a PPT Template, by its creator."""
@@ -3333,63 +3339,63 @@ def install_dashboard_routes(core):
             user, template_row['created_by'])
 
     def designer_refusal(label: str) -> str:
-        return f'Only admins and super-admins, or the user who created it, can change the Design of this {label}.'
+        return f'Only admins and super-admins, or the user who created it, can change the slides of this {label}.'
 
     def checked_slide_set(slide_set, label='template') -> dict:
-        """A Design sent by the Designer, checked as its template CSV would be (the same messages), with its
+        """A slide set sent by the Designer, checked as its template CSV would be (the same messages), with its
         parameters completed."""
         if not isinstance(slide_set, dict) or not isinstance(slide_set.get('slides'), list):
-            raise HTTPException(400, f'The {label} Design is not valid.')
-        slide_set = dashboard_design.template_slides_of(slide_set)
+            raise HTTPException(400, f'The slides of the {label} are not valid.')
+        slide_set = design_slides.template_slides_of(slide_set)
         try:
-            slide_set['parameters'] = dashboard_design.validate_parameters(slide_set.get('parameters') or [])
+            slide_set['parameters'] = design_slides.validate_parameters(slide_set.get('parameters') or [])
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
         if not slide_set['slides']:
             raise HTTPException(400, f'The {label} needs at least one slide.')
-        if empty := dashboard_design.slides_without_elements(slide_set):
+        if empty := design_slides.slides_without_elements(slide_set):
             raise HTTPException(400, f'Add an element to the slide "{empty[0]}" or delete it.')
         slide_ids = [slide.get('id') for slide in slide_set['slides']]
         element_ids = [element.get('id') for slide in slide_set['slides'] for element in slide.get('elements') or []]
         if not all(slide_ids) or len(set(slide_ids)) != len(slide_ids) or not all(element_ids) or len(set(element_ids)) != len(element_ids):
             raise HTTPException(400, f'Each slide and element of the {label} needs an id of its own.')
         try:
-            core.parse_catalog_csv(dashboard_design.slides_csv(slide_set))
+            core.parse_catalog_csv(design_slides.slides_csv(slide_set))
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
         return slide_set
 
     def template_with_ids(template_name, task_repository, username='system'):
-        """The Design of a template, with ids of its own stored first when it has none yet (the positional ones it was
+        """The slide set of a template, with ids of its own stored first when it has none yet (the positional ones it was
         read with, so nothing overridden changes id)."""
         row = template_row_of(template_name, task_repository)
         if row is None:
             return None, None
         entries = core.load_template_catalogue(bytes(row['content']), task_repository=task_repository)
-        if entries and not dashboard_design.has_slide_ids(entries):
-            content = core.catalogue_csv(dashboard_design.with_slide_ids(entries))
+        if entries and not design_slides.has_slide_ids(entries):
+            content = core.catalogue_csv(design_slides.with_slide_ids(entries))
             task_repository.set_report_template_content(str(row['name']), content)
             task_repository.add_log(username, 'report_template_slide_ids_assigned', json.dumps({
                 'template': str(row['name']), 'rows': len(entries),
             }))
             row = template_row_of(template_name, task_repository)
             entries = core.load_template_catalogue(bytes(row['content']), task_repository=task_repository)
-        return dashboard_design.slides_from_entries(entries), row
+        return design_slides.slides_from_entries(entries), row
 
-    def slide_set_payload(dashboard_id, definition, task_repository, user, *, template=None, template_row=None,
+    def slide_set_payload(design_id, definition, task_repository, user, *, template=None, template_row=None,
                        report=None, resolved=None):
-        """What the Designer reads: the Design shown, its template's Design, overrides, report, rights."""
+        """What the Designer reads: the slide set shown, its template's slide set, overrides, report, rights."""
         if resolved is None:
-            template, resolved, report = dashboard_design_state(definition, task_repository, template)
+            template, resolved, report = design_slides_state(definition, task_repository, template)
         template_row = template_row if template_row is not None else (None if definition.own_slides else template_row_of(definition.template, task_repository))
-        dashboards = read_dashboards(task_repository)
+        designs = read_designs(task_repository)
         using = [
-            {'id': key, 'name': str(item.get('name') or ''), 'nr_mode': dashboard_nr_mode(item)}
-            for key, item in dashboards.items()
+            {'id': key, 'name': str(item.get('name') or ''), 'nr_mode': design_nr_mode(item)}
+            for key, item in designs.items()
             if isinstance(item, dict) and not item.get('own_slides') and str(item.get('template') or '') == definition.template
         ] if not definition.own_slides else []
         return {
-            'dashboard_id': dashboard_id,
+            'design_id': design_id,
             'name': definition.name,
             'detached': bool(definition.own_slides),
             'template': {
@@ -3397,37 +3403,37 @@ def install_dashboard_routes(core):
                 'slide_set': template,
                 'updated_at': str(template_row['updated_at'] or '') if template_row is not None else '',
                 'created_by': str(template_row['created_by'] or '') if template_row is not None else '',
-                'dashboards': sorted(using, key=lambda item: item['name'].casefold()),
+                'designs': sorted(using, key=lambda item: item['name'].casefold()),
             },
-            'overrides': dashboard_design.normalized_overrides(definition.slide_overrides),
-            'summary': dashboard_design.overrides_summary(definition.slide_overrides),
+            'overrides': design_slides.normalized_overrides(definition.slide_overrides),
+            'summary': design_slides.overrides_summary(definition.slide_overrides),
             'slide_set': resolved,
             'report': report or {'dropped': [], 'template_changed': []},
             'parameter_values': definition.parameter_values,
             'rights': {
-                'dashboard': can_design_dashboard(user, dashboard_id, task_repository),
+                'design': can_design_design(user, design_id, task_repository),
                 'template': not definition.own_slides and can_design_template(user, template_row),
             },
         }
 
-    def stored_dashboard(dashboard_id, task_repository):
-        dashboards = read_dashboards(task_repository)
-        if dashboard_id not in dashboards:
-            raise HTTPException(404, 'Dashboard not found.')
-        return DashboardDefinition.model_validate(dashboards[dashboard_id])
+    def stored_design(design_id, task_repository):
+        designs = read_designs(task_repository)
+        if design_id not in designs:
+            raise HTTPException(404, 'Design not found.')
+        return DesignDefinition.model_validate(designs[design_id])
 
-    def write_dashboard_design(dashboard_id, task_repository, **changes) -> dict:
-        """Store Design fields of one Dashboard (re-read under the lock: its filters and comments saved meanwhile stay)."""
+    def write_design_slides(design_id, task_repository, **changes) -> dict:
+        """Store slide set fields of one Design (re-read under the lock: its filters and comments saved meanwhile stay)."""
         with lock:
-            dashboards = read_dashboards(task_repository)
-            if dashboard_id not in dashboards:
-                raise HTTPException(404, 'Dashboard not found.')
-            dashboards[dashboard_id] = {**dashboards[dashboard_id], **copy.deepcopy(changes)}
-            task_repository.set_workspace_state(STATE_KEY, json.dumps(dashboards))
-            return dashboards[dashboard_id]
+            designs = read_designs(task_repository)
+            if design_id not in designs:
+                raise HTTPException(404, 'Design not found.')
+            designs[design_id] = {**designs[design_id], **copy.deepcopy(changes)}
+            task_repository.set_workspace_state(STATE_KEY, json.dumps(designs))
+            return designs[design_id]
 
-    @app.get('/api/ppt-dashboards/slides/layouts')
-    def dashboard_design_layouts(user=Depends(dashboard_user)):
+    @app.get('/api/ppt-designer/slides/layouts')
+    def design_slides_layouts(user=Depends(design_user)):
         """The layouts of the slide master the Designer offers: the places of each one (fractions of the slide)."""
         deck = Presentation(core.settings.powerpoint_template)
         layouts = []
@@ -3451,7 +3457,7 @@ def install_dashboard_routes(core):
         with lock:
             snapshot = snapshots.get(token)
         if snapshot is None or snapshot.workspace != workspace or snapshot.owner not in {user.username, '*'}:
-            raise HTTPException(410, 'Dashboard preview expired. Refresh the Dashboard.')
+            raise HTTPException(410, 'Design preview expired. Refresh the Design.')
         return snapshot, Repository(Path(workspace), core.repository.global_db_path)
 
     def field_categories(task_repository) -> dict[str, str]:
@@ -3472,7 +3478,7 @@ def install_dashboard_routes(core):
         """The type of each column of the selected CDRs of a kind, as their columnar copies keep them: number or text."""
         types: dict[str, str] = {}
         root = cdr_store.store_root(task_repository.db_path)
-        for row in dashboard_datasets(snapshot.definition, kind, task_repository):
+        for row in design_datasets(snapshot.definition, kind, task_repository):
             manifest = cdr_store.read_manifest(cdr_store.manifest_file(root, kind, int(row['id']))) or {}
             for column, column_type in manifest.get('columns') or []:
                 kind_of = 'number' if str(column_type).split(':')[0] in {'BIGINT', 'DOUBLE'} else 'text'
@@ -3480,8 +3486,8 @@ def install_dashboard_routes(core):
                 types[identity(column)] = 'text' if types.get(identity(column)) == 'text' else kind_of
         return types
 
-    @app.get('/api/ppt-dashboards/slides/fields')
-    def dashboard_design_fields(token: str, user=Depends(dashboard_user)):
+    @app.get('/api/ppt-designer/slides/fields')
+    def design_slides_fields(token: str, user=Depends(design_user)):
         """The fields of each source of the CDRs (Data, Voice, Speech and RF All) the Designer offers for an element:
         their names (``columns_by_source``) and, for the chart builder, their type (number or text) and the section of
         the CDR Field Dictionary they belong to (``fields``)."""
@@ -3511,9 +3517,9 @@ def install_dashboard_routes(core):
         return {'columns_by_source': columns_by_source, 'fields': fields,
                 'calculated_fields': [dimension.name for dimension in dimensions]}
 
-    @app.get('/api/ppt-dashboards/slides/values')
-    def dashboard_design_values(token: str, source: str, field: str, user=Depends(dashboard_user)):
-        """The values of a field in the selection of an open Dashboard, with their number of samples (most first): read
+    @app.get('/api/ppt-designer/slides/values')
+    def design_slides_values(token: str, source: str, field: str, user=Depends(design_user)):
+        """The values of a field in the selection of an open Design, with their number of samples (most first): read
         as the rows of a chart are (the same filters, maps and excluded operators)."""
         snapshot, _task_repository = designer_snapshot(token, user)
         if str(source).casefold() not in CATALOG_SOURCE_KINDS:
@@ -3537,38 +3543,38 @@ def install_dashboard_routes(core):
         counts = counts[counts.ne('')].value_counts()
         return {'field': field, 'values': [{'value': value, 'count': int(count)} for value, count in counts.head(2000).items()]}
 
-    @app.get('/api/ppt-dashboards/{dashboard_id}/slides')
-    def dashboard_design_read(dashboard_id: str, edit: bool = False, user=Depends(dashboard_user)):
-        """The Design of a Dashboard; ``edit`` (entering Design) first stores ids of its own in its template when it has
-        none yet, so what a Dashboard changes is kept by ids that do not move."""
+    @app.get('/api/ppt-designer/{design_id}/slides')
+    def design_slides_read(design_id: str, edit: bool = False, user=Depends(design_user)):
+        """The slide set of a Design; ``edit`` (entering the Designer) first stores ids of its own in its template when it has
+        none yet, so what a Design changes is kept by ids that do not move."""
         workspace_key()
         task_repository = bound_repository()
-        definition = stored_dashboard(dashboard_id, task_repository)
+        definition = stored_design(design_id, task_repository)
         template, template_row = (None, None)
         if not definition.own_slides:
             template_row = template_row_of(definition.template, task_repository)
-            if edit and (can_design_dashboard(user, dashboard_id, task_repository) or can_design_template(user, template_row)):
+            if edit and (can_design_design(user, design_id, task_repository) or can_design_template(user, template_row)):
                 template, template_row = template_with_ids(definition.template, task_repository, user.username)
                 ensure_design_drafts(task_repository)
             else:
                 template, _entries = template_slide_set(definition.template, task_repository)
             if template is None:
                 raise HTTPException(400, 'The selected template is no longer available.')
-        return slide_set_payload(dashboard_id, definition, task_repository, user, template=template, template_row=template_row)
+        return slide_set_payload(design_id, definition, task_repository, user, template=template, template_row=template_row)
 
-    @app.post('/api/ppt-dashboards/slides/preview')
-    def dashboard_design_preview(request: DashboardDesignPreview, user=Depends(dashboard_editor_user)):
-        """Lay out a Design being edited on the selection of an open Dashboard: a new preview (token) whose charts
+    @app.post('/api/ppt-designer/slides/preview')
+    def design_slides_preview(request: DesignSlidesPreview, user=Depends(design_editor_user)):
+        """Lay out a slide set being edited on the selection of an open Design: a new preview (token) whose charts
         are read from the same prepared CDR rows, at once."""
         workspace = workspace_key()
         with lock:
             snapshot = snapshots.get(request.token)
         if snapshot is None or snapshot.workspace != workspace or snapshot.owner not in {user.username, '*'}:
-            raise HTTPException(410, 'Dashboard preview expired. Refresh the Dashboard.')
+            raise HTTPException(410, 'Design preview expired. Refresh the Design.')
         task_repository = Repository(Path(workspace), core.repository.global_db_path)
         definition = snapshot.definition.model_copy(deep=True)
-        if request.dashboard_id:
-            stored = read_dashboards(task_repository).get(request.dashboard_id)
+        if request.design_id:
+            stored = read_designs(task_repository).get(request.design_id)
             if isinstance(stored, dict):
                 definition.own_slides = copy.deepcopy(stored.get('own_slides'))
                 definition.slide_overrides = copy.deepcopy(stored.get('slide_overrides') or {})
@@ -3583,23 +3589,23 @@ def install_dashboard_routes(core):
             definition.parameter_values = dict(request.parameter_values)
         if request.slide_set is not None:
             if definition.own_slides:
-                definition.own_slides = checked_slide_set(request.slide_set, 'Dashboard')
+                definition.own_slides = checked_slide_set(request.slide_set, 'Design')
             else:
-                definition.slide_overrides = dashboard_design.overrides_between(
+                definition.slide_overrides = design_slides.overrides_between(
                     template, request.slide_set, request.overrides if request.overrides is not None else definition.slide_overrides)
         elif request.overrides is not None:
-            definition.slide_overrides = dashboard_design.normalized_overrides(request.overrides)
+            definition.slide_overrides = design_slides.normalized_overrides(request.overrides)
         entries = catalogue(definition, task_repository, template=template)
         deck = Presentation(core.settings.powerpoint_template)
         options = dict(snapshot.options or snapshot.payload.get('options') or {})
         for field_name in {repeat_field(entry) for entry in entries} - {''}:
-            # A field chosen for Repeat by in Design and not read with the selection: its values are read now.
+            # A field chosen for Repeat by in the Designer and not read with the selection: its values are read now.
             if not any(identity(key) == identity(field_name) for key in options):
                 try:
                     options[field_name] = load_filter_options(definition, field_name, task_repository)
                 except HTTPException:
                     options[field_name] = []
-        expanded, slides = dashboard_slides(
+        expanded, slides = design_slides(
             entries, definition, options, task_repository, selected_sources(definition, task_repository), deck)
         payload = {**snapshot.payload, 'slides': slides}
         payload.pop('grid_layouts', None)
@@ -3613,35 +3619,35 @@ def install_dashboard_routes(core):
             )
             while len(snapshots) > 128:
                 snapshots.popitem(last=False)
-        _template, resolved, report = dashboard_design_state(definition, task_repository, template)
+        _template, resolved, report = design_slides_state(definition, task_repository, template)
         return {
             **payload, 'token': token, 'slide_set': resolved, 'report': report,
-            'overrides': dashboard_design.normalized_overrides(definition.slide_overrides),
-            'summary': dashboard_design.overrides_summary(definition.slide_overrides),
+            'overrides': design_slides.normalized_overrides(definition.slide_overrides),
+            'summary': design_slides.overrides_summary(definition.slide_overrides),
         }
 
-    @app.put('/api/ppt-dashboards/{dashboard_id}/slides')
-    def save_dashboard_design(dashboard_id: str, request: DashboardDesignSave, user=Depends(dashboard_editor_user)):
-        """Save the Design of a Dashboard: its template (Template scope) and its own differences (This Dashboard)."""
+    @app.put('/api/ppt-designer/{design_id}/slides')
+    def save_design_slides(design_id: str, request: DesignSlidesSave, user=Depends(design_editor_user)):
+        """Save the slide set of a Design: its template (Template scope) and its own differences (This Design)."""
         workspace_key()
         task_repository = bound_repository()
-        definition = stored_dashboard(dashboard_id, task_repository)
+        definition = stored_design(design_id, task_repository)
         template_row = None if definition.own_slides else template_row_of(definition.template, task_repository)
-        details: dict[str, Any] = {'id': dashboard_id, 'name': definition.name}
+        details: dict[str, Any] = {'id': design_id, 'name': definition.name}
         template = None
         if request.template_slide_set is not None:
             if definition.own_slides:
-                raise HTTPException(400, 'This Dashboard is detached from its template.')
+                raise HTTPException(400, 'This Design is detached from its template.')
             if not can_design_template(user, template_row):
                 raise HTTPException(403, designer_refusal('PPT Template'))
             if request.template_updated_at and str(template_row['updated_at'] or '') != request.template_updated_at:
                 raise HTTPException(409, f'The template "{definition.template}" changed since the Designer opened it: '
-                                         'reload the Design and apply your changes again.')
+                                         'reload the Designer and apply your changes again.')
             template = checked_slide_set(request.template_slide_set)
             previous_content = bytes(template_row['content'] or b'')
-            previous_slide_set = dashboard_design.slides_from_entries(
+            previous_slide_set = design_slides.slides_from_entries(
                 core.load_template_catalogue(previous_content, task_repository=task_repository))
-            content = dashboard_design.slides_csv(template)
+            content = design_slides.slides_csv(template)
             try:
                 core.persist_report_template_for_request(definition.template, content, updated_by=user.username)
             except TimeoutError as exc:
@@ -3651,9 +3657,9 @@ def install_dashboard_routes(core):
                                               new_entries, task_repository)
             invalidate_workspace_chart_models(task_repository.db_path)
             details['template'] = {
-                'name': definition.template, 'before': dashboard_design.slides_summary(previous_slide_set),
-                'after': dashboard_design.slides_summary(template),
-                'dashboards': sum(1 for item in read_dashboards(task_repository).values()
+                'name': definition.template, 'before': design_slides.slides_summary(previous_slide_set),
+                'after': design_slides.slides_summary(template),
+                'designs': sum(1 for item in read_designs(task_repository).values()
                                   if isinstance(item, dict) and not item.get('own_slides') and item.get('template') == definition.template),
             }
             task_repository.add_log(user.username, 'report_template_saved_from_designer', json.dumps(details['template']))
@@ -3663,105 +3669,105 @@ def install_dashboard_routes(core):
             if template is None:
                 raise HTTPException(400, 'The selected template is no longer available.')
         if request.slide_set is not None or request.overrides is not None or request.keep_template_changes:
-            if not can_design_dashboard(user, dashboard_id, task_repository):
-                raise HTTPException(403, designer_refusal('Dashboard'))
-            _base, before, _report = dashboard_design_state(definition, task_repository, template)
+            if not can_design_design(user, design_id, task_repository):
+                raise HTTPException(403, designer_refusal('Design'))
+            _base, before, _report = design_slides_state(definition, task_repository, template)
             if definition.own_slides:
-                own = checked_slide_set(request.slide_set, 'Dashboard') if request.slide_set is not None else definition.own_slides
-                definition = DashboardDefinition.model_validate(write_dashboard_design(dashboard_id, task_repository, own_slides=own))
-                details['slides'] = dashboard_design.slides_summary(own)
+                own = checked_slide_set(request.slide_set, 'Design') if request.slide_set is not None else definition.own_slides
+                definition = DesignDefinition.model_validate(write_design_slides(design_id, task_repository, own_slides=own))
+                details['slides'] = design_slides.slides_summary(own)
             else:
                 previous = request.overrides if request.overrides is not None else definition.slide_overrides
-                overrides = (dashboard_design.overrides_between(template, request.slide_set, previous) if request.slide_set is not None
-                             else dashboard_design.normalized_overrides(previous))
+                overrides = (design_slides.overrides_between(template, request.slide_set, previous) if request.slide_set is not None
+                             else design_slides.normalized_overrides(previous))
                 if request.keep_template_changes:
-                    overrides = dashboard_design.keep_overrides(overrides, template)
+                    overrides = design_slides.keep_overrides(overrides, template)
                 candidate = definition.model_copy(update={'slide_overrides': overrides}, deep=True)
-                # Refused as a template would be (a slide of the Dashboard with a chart that cannot be drawn).
+                # Refused as a template would be (a slide of the Design with a chart that cannot be drawn).
                 catalogue(candidate, task_repository, template=template)
-                stored = overrides if dashboard_design.has_overrides(overrides) else {}
-                definition = DashboardDefinition.model_validate(
-                    write_dashboard_design(dashboard_id, task_repository, slide_overrides=stored))
-                details['overrides'] = dashboard_design.overrides_summary(stored)
-            _base, after, _report = dashboard_design_state(definition, task_repository, template)
+                stored = overrides if design_slides.has_overrides(overrides) else {}
+                definition = DesignDefinition.model_validate(
+                    write_design_slides(design_id, task_repository, slide_overrides=stored))
+                details['overrides'] = design_slides.overrides_summary(stored)
+            _base, after, _report = design_slides_state(definition, task_repository, template)
             # Its slides retitled here keep their comments.
-            reconcile_template_slide_comments(definition.template, dashboard_design.entries_from_slides(before),
-                                              dashboard_design.entries_from_slides(after), task_repository,
-                                              dashboard_ids={dashboard_id})
+            reconcile_template_slide_comments(definition.template, design_slides.entries_from_slides(before),
+                                              design_slides.entries_from_slides(after), task_repository,
+                                              design_ids={design_id})
         if len(details) > 2:
-            task_repository.add_log(user.username, 'dashboard_design_saved', json.dumps(details))
-        # Saved: the draft of this user is the Design now.
+            task_repository.add_log(user.username, 'design_slides_saved', json.dumps(details))
+        # Saved: the draft of this user is the slide set now.
         ensure_design_drafts(task_repository)
         with task_repository.connection() as connection:
-            connection.execute(f'DELETE FROM {DASHBOARD_DESIGN_DRAFTS_TABLE} WHERE dashboard_id = ? AND username = ?',
-                               (dashboard_id, user.username))
-        return slide_set_payload(dashboard_id, definition, task_repository, user, template=template, template_row=template_row)
+            connection.execute(f'DELETE FROM {DESIGN_DRAFTS_TABLE} WHERE design_id = ? AND username = ?',
+                               (design_id, user.username))
+        return slide_set_payload(design_id, definition, task_repository, user, template=template, template_row=template_row)
 
-    @app.post('/api/ppt-dashboards/{dashboard_id}/detach')
-    def detach_dashboard_design(dashboard_id: str, user=Depends(dashboard_editor_user)):
-        """Detach: the Dashboard keeps the Design it shows as its own and stops following its template."""
+    @app.post('/api/ppt-designer/{design_id}/detach')
+    def detach_design(design_id: str, user=Depends(design_editor_user)):
+        """Detach: the Design keeps the slides it shows as its own and stops following its template."""
         workspace_key()
         task_repository = bound_repository()
-        definition = stored_dashboard(dashboard_id, task_repository)
+        definition = stored_design(design_id, task_repository)
         if definition.own_slides:
-            raise HTTPException(400, 'This Dashboard is already detached from its template.')
-        if not can_design_dashboard(user, dashboard_id, task_repository):
-            raise HTTPException(403, designer_refusal('Dashboard'))
-        _template, resolved, _report = dashboard_design_state(definition, task_repository)
-        own = dashboard_design.template_slides_of(resolved)
-        definition = DashboardDefinition.model_validate(
-            write_dashboard_design(dashboard_id, task_repository, own_slides=own, slide_overrides={}))
-        task_repository.add_log(user.username, 'dashboard_design_detached', json.dumps({
-            'id': dashboard_id, 'name': definition.name, 'template': definition.template,
-            'slides': dashboard_design.slides_summary(own),
+            raise HTTPException(400, 'This Design is already detached from its template.')
+        if not can_design_design(user, design_id, task_repository):
+            raise HTTPException(403, designer_refusal('Design'))
+        _template, resolved, _report = design_slides_state(definition, task_repository)
+        own = design_slides.template_slides_of(resolved)
+        definition = DesignDefinition.model_validate(
+            write_design_slides(design_id, task_repository, own_slides=own, slide_overrides={}))
+        task_repository.add_log(user.username, 'design_detached', json.dumps({
+            'id': design_id, 'name': definition.name, 'template': definition.template,
+            'slides': design_slides.slides_summary(own),
         }))
-        return slide_set_payload(dashboard_id, definition, task_repository, user)
+        return slide_set_payload(design_id, definition, task_repository, user)
 
-    @app.post('/api/ppt-dashboards/{dashboard_id}/save-as-template')
-    def save_dashboard_design_as_template(dashboard_id: str, payload: DashboardDesignTemplate,
-                                          user=Depends(dashboard_editor_user)):
-        """Save as template: the Design the Dashboard shows (its template with its differences) as a new template."""
+    @app.post('/api/ppt-designer/{design_id}/save-as-template')
+    def save_design_slides_as_template(design_id: str, payload: DesignSlidesTemplate,
+                                          user=Depends(design_editor_user)):
+        """Save as template: the slide set the Design shows (its template with its differences) as a new template."""
         workspace_key()
         task_repository = bound_repository()
-        definition = stored_dashboard(dashboard_id, task_repository)
+        definition = stored_design(design_id, task_repository)
         name = payload.name.strip()
         if any(str(row['name']).casefold() == name.casefold() for row in task_repository.list_report_templates()):
             raise HTTPException(409, 'A PPT Template with this name already exists.')
-        _template, resolved, _report = dashboard_design_state(definition, task_repository)
-        slide_set = checked_slide_set(dashboard_design.template_slides_of(resolved))
-        task_repository.add_report_template(name, dashboard_design.slides_csv(slide_set), updated_by=user.username)
-        task_repository.add_log(user.username, 'report_template_saved_from_dashboard', json.dumps({
-            'dashboard': dashboard_id, 'name': definition.name, 'template': name,
-            'from_template': '' if definition.own_slides else definition.template, 'slides': dashboard_design.slides_summary(slide_set),
+        _template, resolved, _report = design_slides_state(definition, task_repository)
+        slide_set = checked_slide_set(design_slides.template_slides_of(resolved))
+        task_repository.add_report_template(name, design_slides.slides_csv(slide_set), updated_by=user.username)
+        task_repository.add_log(user.username, 'report_template_saved_from_design', json.dumps({
+            'design': design_id, 'name': definition.name, 'template': name,
+            'from_template': '' if definition.own_slides else definition.template, 'slides': design_slides.slides_summary(slide_set),
         }))
         return {'template': name}
 
-    def detach_template_dashboards(template_name: str, username: str) -> int:
-        """Before a template is deleted, the Dashboards that follow it keep the Design they show as their own."""
+    def detach_template_designs(template_name: str, username: str) -> int:
+        """Before a template is deleted, the Designs that follow it keep the slides they show as their own."""
         workspace_key()
         task_repository = bound_repository()
         detached = []
         with lock:
-            dashboards = read_dashboards(task_repository)
+            designs = read_designs(task_repository)
             template = None
-            for dashboard_id, raw in dashboards.items():
+            for design_id, raw in designs.items():
                 if not isinstance(raw, dict) or raw.get('own_slides') or str(raw.get('template') or '') != template_name:
                     continue
                 if template is None:
                     template, _entries = template_slide_set(template_name, task_repository)
                     if template is None:
                         return 0
-                resolved, _report = dashboard_design.resolve_slides(template, raw.get('slide_overrides'))
-                dashboards[dashboard_id] = {**raw, 'own_slides': dashboard_design.template_slides_of(resolved), 'slide_overrides': {}}
-                detached.append(dashboard_id)
+                resolved, _report = design_slides.resolve_slides(template, raw.get('slide_overrides'))
+                designs[design_id] = {**raw, 'own_slides': design_slides.template_slides_of(resolved), 'slide_overrides': {}}
+                detached.append(design_id)
             if detached:
-                task_repository.set_workspace_state(STATE_KEY, json.dumps(dashboards))
-                task_repository.add_log(username, 'dashboard_design_detached', json.dumps({
-                    'template': template_name, 'dashboards': detached, 'reason': 'template deleted',
+                task_repository.set_workspace_state(STATE_KEY, json.dumps(designs))
+                task_repository.add_log(username, 'design_detached', json.dumps({
+                    'template': template_name, 'designs': detached, 'reason': 'template deleted',
                 }))
         return len(detached)
 
-    core.ppt_dashboard_detach_template_dashboards = detach_template_dashboards
+    core.ppt_design_detach_template_designs = detach_template_designs
 
     layout_capacity_cache: dict[str, int] = {}
 
@@ -3782,46 +3788,46 @@ def install_dashboard_routes(core):
         capacity = len(geometry) if isinstance(geometry, list) and geometry else layout_capacity(slide.get('layout') or '')
         return [place for place in range(capacity) if place not in used]
 
-    @app.get('/api/ppt-dashboards/targets')
-    def dashboard_design_targets(user=Depends(dashboard_editor_user)):
-        """The Dashboards whose slides the user can edit, with their content slides and how many free places each one has (Add to
-        Dashboard of Chart Builder)."""
+    @app.get('/api/ppt-designer/targets')
+    def design_slides_targets(user=Depends(design_editor_user)):
+        """The Designs whose slides the user can edit, with their content slides and how many free places each one has (Add to
+        Design of Chart Builder)."""
         workspace_key()
         task_repository = bound_repository()
         result = []
-        for dashboard_id, raw in read_dashboards(task_repository).items():
-            if not isinstance(raw, dict) or not can_design_dashboard(user, dashboard_id, task_repository):
+        for design_id, raw in read_designs(task_repository).items():
+            if not isinstance(raw, dict) or not can_design_design(user, design_id, task_repository):
                 continue
             try:
-                _template, resolved, _report = dashboard_design_state(DashboardDefinition.model_validate(raw), task_repository)
+                _template, resolved, _report = design_slides_state(DesignDefinition.model_validate(raw), task_repository)
             except HTTPException:
                 continue
             slides = [{'id': slide['id'], 'title': slide.get('title') or 'Slide', 'free': len(free_places(slide))}
                       for slide in resolved.get('slides') or []
                       if (slide.get('kind') or 'content') == 'content' and not slide.get('hidden') and not slide.get('optional_off')]
-            result.append({'id': dashboard_id, 'name': str(raw.get('name') or ''), 'nr_mode': dashboard_nr_mode(raw), 'slides': slides})
-        return {'dashboards': sorted(result, key=lambda item: item['name'].casefold())}
+            result.append({'id': design_id, 'name': str(raw.get('name') or ''), 'nr_mode': design_nr_mode(raw), 'slides': slides})
+        return {'designs': sorted(result, key=lambda item: item['name'].casefold())}
 
-    @app.post('/api/ppt-dashboards/{dashboard_id}/add-chart')
-    def add_chart_to_dashboard(dashboard_id: str, payload: DashboardDesignAddChart, user=Depends(dashboard_editor_user)):
-        """Add to Dashboard: the chart becomes part of this Dashboard only (a difference of it from its template)."""
+    @app.post('/api/ppt-designer/{design_id}/add-chart')
+    def add_chart_to_design(design_id: str, payload: DesignSlidesAddChart, user=Depends(design_editor_user)):
+        """Add to Design: the chart becomes part of this Design only (a difference of it from its template)."""
         workspace_key()
         task_repository = bound_repository()
-        if not can_design_dashboard(user, dashboard_id, task_repository):
-            raise HTTPException(403, designer_refusal('Dashboard'))
-        definition = stored_dashboard(dashboard_id, task_repository)
+        if not can_design_design(user, design_id, task_repository):
+            raise HTTPException(403, designer_refusal('Design'))
+        definition = stored_design(design_id, task_repository)
         template = None if definition.own_slides else template_with_ids(definition.template, task_repository, user.username)[0]
-        _base, resolved, _report = dashboard_design_state(definition, task_repository, template)
+        _base, resolved, _report = design_slides_state(definition, task_repository, template)
         element = {field: payload.element.get(field, False if field in {'exclude_null_empty', 'exclude_zero'} else '')
-                   for field in dashboard_design.ELEMENT_FIELDS}
-        element.update(id=dashboard_design.new_id('e'), kind='chart', origin='dashboard')
+                   for field in design_slides.ELEMENT_FIELDS}
+        element.update(id=design_slides.new_id('e'), kind='chart', origin='design')
         element['legend_position'] = str(element['legend_position'] or '').casefold()
         if not str(element['kpi']).strip() or not str(element['cdr_source']).strip():
             raise HTTPException(400, 'The chart needs a source and a KPI.')
         if payload.slide_id:
             slide = next((item for item in resolved.get('slides') or [] if item['id'] == payload.slide_id), None)
             if slide is None or (slide.get('kind') or 'content') != 'content':
-                raise HTTPException(404, 'The slide is no longer in the Dashboard.')
+                raise HTTPException(404, 'The slide is no longer in the Design.')
             places = free_places(slide)
             if not places:
                 raise HTTPException(409, f'The slide "{slide.get("title") or "Slide"}" has no free place: choose another slide or a new one.')
@@ -3832,37 +3838,37 @@ def install_dashboard_routes(core):
             title = payload.slide_title.strip() or element['chart_title'] or 'New slide'
             element['place'] = 0
             resolved.setdefault('slides', []).append({
-                'id': dashboard_design.new_id('s'), 'kind': 'content', 'title': title, 'subtitle': '',
+                'id': design_slides.new_id('s'), 'kind': 'content', 'title': title, 'subtitle': '',
                 'layout': 'Title + 1 rows + 1 columns + comments down', 'optional': False, 'elements': [element],
             })
         if definition.own_slides:
-            write_dashboard_design(dashboard_id, task_repository, own_slides=checked_slide_set(resolved, 'Dashboard'))
+            write_design_slides(design_id, task_repository, own_slides=checked_slide_set(resolved, 'Design'))
         else:
-            overrides = dashboard_design.overrides_between(template, resolved, definition.slide_overrides)
+            overrides = design_slides.overrides_between(template, resolved, definition.slide_overrides)
             catalogue(definition.model_copy(update={'slide_overrides': overrides}, deep=True), task_repository, template=template)
-            write_dashboard_design(dashboard_id, task_repository, slide_overrides=overrides)
-        task_repository.add_log(user.username, 'dashboard_chart_added', json.dumps({
-            'id': dashboard_id, 'name': definition.name, 'slide': title, 'new_slide': not payload.slide_id,
+            write_design_slides(design_id, task_repository, slide_overrides=overrides)
+        task_repository.add_log(user.username, 'design_chart_added', json.dumps({
+            'id': design_id, 'name': definition.name, 'slide': title, 'new_slide': not payload.slide_id,
             'chart': element['chart_title'] or element['kpi'], 'chart_type': element['chart_type'], 'source': element['cdr_source'],
         }))
-        return {'dashboard': definition.name, 'slide': title}
+        return {'design': definition.name, 'slide': title}
 
     def ensure_design_drafts(task_repository) -> None:
         with task_repository.connection() as connection:
             connection.execute(
-                f'CREATE TABLE IF NOT EXISTS {DASHBOARD_DESIGN_DRAFTS_TABLE} ('
-                'dashboard_id TEXT NOT NULL, username TEXT NOT NULL, state TEXT NOT NULL, updated_at TEXT NOT NULL, '
-                'PRIMARY KEY (dashboard_id, username))'
+                f'CREATE TABLE IF NOT EXISTS {DESIGN_DRAFTS_TABLE} ('
+                'design_id TEXT NOT NULL, username TEXT NOT NULL, state TEXT NOT NULL, updated_at TEXT NOT NULL, '
+                'PRIMARY KEY (design_id, username))'
             )
 
-    @app.get('/api/ppt-dashboards/{dashboard_id}/slides/draft')
-    def dashboard_design_draft(dashboard_id: str, user=Depends(dashboard_editor_user)):
+    @app.get('/api/ppt-designer/{design_id}/slides/draft')
+    def design_slides_draft(design_id: str, user=Depends(design_editor_user)):
         task_repository = bound_repository()
         ensure_design_drafts(task_repository)
         with task_repository.connection() as connection:
             row = connection.execute(
-                f'SELECT state, updated_at FROM {DASHBOARD_DESIGN_DRAFTS_TABLE} WHERE dashboard_id = ? AND username = ?',
-                (dashboard_id, user.username),
+                f'SELECT state, updated_at FROM {DESIGN_DRAFTS_TABLE} WHERE design_id = ? AND username = ?',
+                (design_id, user.username),
             ).fetchone()
         if row is None:
             return {'draft': None}
@@ -3872,53 +3878,53 @@ def install_dashboard_routes(core):
             state = None
         return {'draft': state, 'updated_at': str(row['updated_at'])}
 
-    @app.put('/api/ppt-dashboards/{dashboard_id}/slides/draft')
-    def save_dashboard_design_draft(dashboard_id: str, payload: DashboardDesignDraft, user=Depends(dashboard_editor_user)):
+    @app.put('/api/ppt-designer/{design_id}/slides/draft')
+    def save_design_slides_draft(design_id: str, payload: DesignSlidesDraft, user=Depends(design_editor_user)):
         task_repository = bound_repository()
-        stored_dashboard(dashboard_id, task_repository)
+        stored_design(design_id, task_repository)
         encoded = json.dumps(payload.state)
         if len(encoded) > 8_000_000:
-            raise HTTPException(413, 'The Design is too large to keep as a draft.')
+            raise HTTPException(413, 'The slides are too large to keep as a draft.')
         ensure_design_drafts(task_repository)
         now = datetime.now(timezone.utc).astimezone().isoformat(timespec='seconds')
         with task_repository.connection() as connection:
             connection.execute(
-                f'INSERT INTO {DASHBOARD_DESIGN_DRAFTS_TABLE} (dashboard_id, username, state, updated_at) VALUES (?, ?, ?, ?) '
-                'ON CONFLICT(dashboard_id, username) DO UPDATE SET state = excluded.state, updated_at = excluded.updated_at',
-                (dashboard_id, user.username, encoded, now),
+                f'INSERT INTO {DESIGN_DRAFTS_TABLE} (design_id, username, state, updated_at) VALUES (?, ?, ?, ?) '
+                'ON CONFLICT(design_id, username) DO UPDATE SET state = excluded.state, updated_at = excluded.updated_at',
+                (design_id, user.username, encoded, now),
             )
         return {'updated_at': now}
 
-    @app.delete('/api/ppt-dashboards/{dashboard_id}/slides/draft')
-    def delete_dashboard_design_draft(dashboard_id: str, discarded: bool = False, user=Depends(dashboard_editor_user)):
-        """Forget the draft of a Dashboard (saved, or ``discarded`` by the user: logged in App Events)."""
+    @app.delete('/api/ppt-designer/{design_id}/slides/draft')
+    def delete_design_slides_draft(design_id: str, discarded: bool = False, user=Depends(design_editor_user)):
+        """Forget the draft of a Design (saved, or ``discarded`` by the user: logged in App Events)."""
         task_repository = bound_repository()
         ensure_design_drafts(task_repository)
         with task_repository.connection() as connection:
             deleted = connection.execute(
-                f'DELETE FROM {DASHBOARD_DESIGN_DRAFTS_TABLE} WHERE dashboard_id = ? AND username = ?',
-                (dashboard_id, user.username),
+                f'DELETE FROM {DESIGN_DRAFTS_TABLE} WHERE design_id = ? AND username = ?',
+                (design_id, user.username),
             ).rowcount
         if discarded:
-            task_repository.add_log(user.username, 'dashboard_design_draft_discarded', json.dumps({
-                'id': dashboard_id, 'draft': bool(deleted),
+            task_repository.add_log(user.username, 'design_draft_discarded', json.dumps({
+                'id': design_id, 'draft': bool(deleted),
             }))
         return {'deleted': bool(deleted)}
 
-    @app.patch('/api/ppt-dashboards/{dashboard_id}/comments')
-    def save_dashboard_comments(dashboard_id: str, payload: DashboardComments, user=Depends(dashboard_editor_user)):
+    @app.patch('/api/ppt-designer/{design_id}/comments')
+    def save_design_comments(design_id: str, payload: DesignComments, user=Depends(design_editor_user)):
         with lock:
             task_repository = bound_repository()
-            dashboards = read_dashboards(task_repository)
-            if dashboard_id not in dashboards:
-                raise HTTPException(404, 'Dashboard not found.')
+            designs = read_designs(task_repository)
+            if design_id not in designs:
+                raise HTTPException(404, 'Design not found.')
             comments = {
                 str(slide): [str(comment).strip() for comment in values if str(comment).strip()][:50]
                 for slide, values in payload.slide_comments.items()
             }
             saved = {slide: values for slide, values in comments.items() if values}
-            dashboards[dashboard_id]['slide_comments'] = saved
-            meta = comment_meta(dashboards[dashboard_id].get('slide_comment_meta'), saved)
+            designs[design_id]['slide_comments'] = saved
+            meta = comment_meta(designs[design_id].get('slide_comment_meta'), saved)
             if payload.generated_added and payload.generated_slide:
                 snapshot = snapshots.get(payload.token) if payload.token else None
                 present = set(saved.get(payload.generated_slide, []))
@@ -3929,18 +3935,18 @@ def install_dashboard_routes(core):
                 previous = (meta.get(payload.generated_slide) or {}).get('generated') or []
                 meta[payload.generated_slide] = {
                     'generated': list(dict.fromkeys([*previous, *added])),
-                    'engine': payload.generated_engine or dashboard_comments.ENGINE_RULES,
+                    'engine': payload.generated_engine or design_comments.ENGINE_RULES,
                     'model': payload.generated_model, 'generated_at': datetime.now(timezone.utc).isoformat(),
                     'generated_by': user.username,
                     'selection': snapshot.selection_key if snapshot is not None and snapshot.workspace == workspace_key() else '',
                 }
-            dashboards[dashboard_id]['slide_comment_meta'] = meta
-            task_repository.set_workspace_state(STATE_KEY, json.dumps(dashboards))
-            task_repository.add_log(user.username, 'save_dashboard_comments', json.dumps({'id': dashboard_id}))
+            designs[design_id]['slide_comment_meta'] = meta
+            task_repository.set_workspace_state(STATE_KEY, json.dumps(designs))
+            task_repository.add_log(user.username, 'save_design_comments', json.dumps({'id': design_id}))
             if payload.generated_added and payload.generated_slide:
-                task_repository.add_log(user.username, 'add_generated_dashboard_comments', json.dumps({
-                    'id': dashboard_id, 'name': dashboards[dashboard_id].get('name', ''), 'slide': payload.generated_slide,
-                    'added': payload.generated_added, 'engine': payload.generated_engine or dashboard_comments.ENGINE_RULES,
+                task_repository.add_log(user.username, 'add_generated_design_comments', json.dumps({
+                    'id': design_id, 'name': designs[design_id].get('name', ''), 'slide': payload.generated_slide,
+                    'added': payload.generated_added, 'engine': payload.generated_engine or design_comments.ENGINE_RULES,
                     'comments': len(saved.get(payload.generated_slide, [])),
                 }))
         return {'slide_comments': saved, 'slide_comment_meta': meta}
@@ -3962,7 +3968,7 @@ def install_dashboard_routes(core):
         with lock:
             snapshot = snapshots.get(token)
         if snapshot is None or snapshot.workspace != workspace_key() or snapshot.owner not in {user.username, '*'}:
-            raise HTTPException(410, 'Dashboard preview expired. Refresh the Dashboard.')
+            raise HTTPException(410, 'Design preview expired. Refresh the Design.')
         return snapshot
 
     def slide_comment_charts(token: str, snapshot, slide: dict, requested, user) -> tuple[list[dict], list[str]]:
@@ -3975,13 +3981,13 @@ def install_dashboard_routes(core):
             if chart.index not in available:
                 continue
             model = chart_model(token, chart.index, user)
-            if dashboard_comments.needs_rebuild(model):
+            if design_comments.needs_rebuild(model):
                 # A model cached before the comments read their facts is calculated again once.
                 model = chart_model(token, chart.index, user, force=True)
             entry = snapshot.entries[chart.index]
             if model.get('type') == 'empty':
                 continue
-            if model.get('type') not in dashboard_comments.SUPPORTED_MODEL_TYPES:
+            if model.get('type') not in design_comments.SUPPORTED_MODEL_TYPES:
                 skipped.append(entry.chart_title or entry.chart_type)
                 continue
             charts.append({
@@ -3995,23 +4001,23 @@ def install_dashboard_routes(core):
     def write_slide_comments(charts: list[dict], layout: str, task_repository, engine: str, username: str) -> tuple[list[dict], dict]:
         """The comments of one slide by its writer: the rules, or an LLM writer that rewrites their facts (checked
         against them; the rules comments when it fails). Returns them and what wrote them."""
-        brief = dashboard_comments.slide_brief(charts, focus_operators=focus_operators(task_repository), layout=layout or '')
+        brief = design_comments.slide_brief(charts, focus_operators=focus_operators(task_repository), layout=layout or '')
         if engine not in comment_writers.SERVER_ENGINES:
-            return brief['rules'], {'engine': dashboard_comments.ENGINE_RULES, 'model': '', 'warning': '', 'problems': []}
+            return brief['rules'], {'engine': design_comments.ENGINE_RULES, 'model': '', 'warning': '', 'problems': []}
         written = comment_writers.write_comments(engine, brief, repository=core.repository,
                                                  config_dir=core.application_config_dir, username=username)
-        if written['engine'] == dashboard_comments.ENGINE_RULES:
+        if written['engine'] == design_comments.ENGINE_RULES:
             return brief['rules'], written
         return [{'text': item, 'kind': written['engine'], 'chart_index': None, 'chart_title': ''} for item in written['texts']], written
 
-    @app.post('/api/ppt-dashboards/{dashboard_id}/comments/generate')
-    def generate_dashboard_comments(dashboard_id: str, payload: GenerateComments, user=Depends(dashboard_editor_user)):
+    @app.post('/api/ppt-designer/{design_id}/comments/generate')
+    def generate_design_comments(design_id: str, payload: GenerateComments, user=Depends(design_editor_user)):
         """Suggest the comments of one slide from the charts the viewer shows; nothing is saved until they are added."""
         started = monotonic()
         task_repository = bound_repository()
-        name = read_dashboards(task_repository).get(dashboard_id, {}).get('name')
+        name = read_designs(task_repository).get(design_id, {}).get('name')
         if name is None:
-            raise HTTPException(404, 'Dashboard not found.')
+            raise HTTPException(404, 'Design not found.')
         snapshot = comment_snapshot(payload.token, user)
         slide = next((item for item in snapshot.payload.get('slides', []) if item.get('number') == payload.slide), None)
         if slide is None:
@@ -4023,12 +4029,12 @@ def install_dashboard_routes(core):
         except HTTPException:
             raise
         except Exception as exc:
-            task_repository.add_log(user.username, 'generate_dashboard_comments_failed', json.dumps({
-                'id': dashboard_id, 'name': name, 'slide': payload.slide, 'error': str(exc),
+            task_repository.add_log(user.username, 'generate_design_comments_failed', json.dumps({
+                'id': design_id, 'name': name, 'slide': payload.slide, 'error': str(exc),
             }))
             raise HTTPException(500, f'The comments of this slide could not be generated: {exc}') from exc
-        task_repository.add_log(user.username, 'generate_dashboard_comments', json.dumps({
-            'id': dashboard_id, 'name': name, 'slide': payload.slide, 'comment_key': slide.get('comment_key', ''),
+        task_repository.add_log(user.username, 'generate_design_comments', json.dumps({
+            'id': design_id, 'name': name, 'slide': payload.slide, 'comment_key': slide.get('comment_key', ''),
             'requested_engine': engine, 'engine': written['engine'], 'model': written.get('model', ''),
             'charts': len(charts), 'skipped_charts': skipped, 'suggestions': len(suggestions),
             **{key: written[key] for key in ('input_tokens', 'output_tokens') if key in written},
@@ -4040,15 +4046,15 @@ def install_dashboard_routes(core):
             'suggestions': suggestions, 'skipped': skipped, 'warning': written.get('warning', ''),
         }
 
-    @app.get('/api/ppt-dashboards/comment-engines')
-    def dashboard_comment_engines(user=Depends(dashboard_user)):
+    @app.get('/api/ppt-designer/comment-engines')
+    def design_comment_engines(user=Depends(design_user)):
         """The writers a user can choose (Rules and those Super Admin enabled), the default one, and whether the
         Kiro Brief is enabled."""
         return comment_writers.available_engines(core.repository)
 
     def apply_generated_comments(definition: dict, written: dict[str, list[str]], mode: str, legacy: dict[str, str],
                                  info: dict, writers: dict[str, dict] | None = None) -> dict[str, int]:
-        """Write the generated comments of several slides into a Dashboard definition: on the slides without comments
+        """Write the generated comments of several slides into a Design definition: on the slides without comments
         (``empty``), in place of the generated ones keeping those written by hand (``generated``), or in place of every
         comment (``all``). Returns how many slides were written, kept and left without comments."""
         comments = dict(definition.get('slide_comments') or {})
@@ -4073,8 +4079,8 @@ def install_dashboard_routes(core):
         definition['slide_comment_meta'] = comment_meta(meta, definition['slide_comments'])
         return counts
 
-    def run_dashboard_comment_job(job_id: str, dashboard_id: str, payload: GenerateAllComments, user, workspace: str) -> None:
-        """Generate the comments of every slide of a Dashboard and write them as its mode says."""
+    def run_design_comment_job(job_id: str, design_id: str, payload: GenerateAllComments, user, workspace: str) -> None:
+        """Generate the comments of every slide of a Design and write them as its mode says."""
         started = monotonic()
         task_repository = Repository(Path(workspace), core.repository.global_db_path)
 
@@ -4087,7 +4093,7 @@ def install_dashboard_routes(core):
         try:
             snapshot = comment_snapshot(payload.token, user) if workspace == workspace_key() else None
             if snapshot is None:
-                raise HTTPException(410, 'Dashboard preview expired. Refresh the Dashboard.')
+                raise HTTPException(410, 'Design preview expired. Refresh the Design.')
             requested = {item.number: item for item in payload.slides}
             slides = [slide for slide in snapshot.payload.get('slides', [])
                       if not slide.get('structural_type') and (not requested or slide.get('number') in requested)]
@@ -4103,7 +4109,7 @@ def install_dashboard_routes(core):
                 skipped.extend(not_read)
                 key = str(slide.get('comment_key') or slide.get('number'))
                 suggestions, info_written = (write_slide_comments(charts, slide.get('layout') or '', task_repository, engine, user.username)
-                                             if charts else ([], {'engine': dashboard_comments.ENGINE_RULES, 'model': ''}))
+                                             if charts else ([], {'engine': design_comments.ENGINE_RULES, 'model': ''}))
                 written[key] = [item['text'] for item in suggestions]
                 writers[key] = {'engine': info_written['engine'], 'model': info_written.get('model', '')}
                 if info_written.get('warning'):
@@ -4111,19 +4117,19 @@ def install_dashboard_routes(core):
                 legacy[key] = str(slide.get('number'))
                 update(done=position)
             with lock:
-                dashboards = read_dashboards(task_repository)
-                if dashboard_id not in dashboards:
-                    raise HTTPException(404, 'Dashboard not found.')
+                designs = read_designs(task_repository)
+                if design_id not in designs:
+                    raise HTTPException(404, 'Design not found.')
                 info = {
-                    'engine': dashboard_comments.ENGINE_RULES, 'model': '',
+                    'engine': design_comments.ENGINE_RULES, 'model': '',
                     'generated_at': datetime.now(timezone.utc).isoformat(), 'generated_by': user.username,
                     'selection': snapshot.selection_key,
                 }
-                counts = apply_generated_comments(dashboards[dashboard_id], written, payload.mode, legacy, info, writers)
-                task_repository.set_workspace_state(STATE_KEY, json.dumps(dashboards))
-                definition = dashboards[dashboard_id]
-            task_repository.add_log(user.username, 'generate_all_dashboard_comments', json.dumps({
-                'id': dashboard_id, 'name': definition.get('name', ''), 'mode': payload.mode, 'requested_engine': engine,
+                counts = apply_generated_comments(designs[design_id], written, payload.mode, legacy, info, writers)
+                task_repository.set_workspace_state(STATE_KEY, json.dumps(designs))
+                definition = designs[design_id]
+            task_repository.add_log(user.username, 'generate_all_design_comments', json.dumps({
+                'id': design_id, 'name': definition.get('name', ''), 'mode': payload.mode, 'requested_engine': engine,
                 'engines': sorted({item['engine'] for item in writers.values()}), 'warnings': sorted(set(warnings))[:5],
                 'slides': len(slides), **counts,
                 'skipped_charts': sorted(set(skipped)), 'duration_ms': round((monotonic() - started) * 1000),
@@ -4136,19 +4142,19 @@ def install_dashboard_routes(core):
         except HTTPException as exc:
             update(state='failed', status=exc.status_code, detail=str(exc.detail))
         except Exception as exc:
-            task_repository.add_log(user.username, 'generate_all_dashboard_comments_failed', json.dumps({
-                'id': dashboard_id, 'mode': payload.mode, 'error': str(exc),
+            task_repository.add_log(user.username, 'generate_all_design_comments_failed', json.dumps({
+                'id': design_id, 'mode': payload.mode, 'error': str(exc),
             }))
-            update(state='failed', status=500, detail=f'The comments of this Dashboard could not be generated: {exc}')
+            update(state='failed', status=500, detail=f'The comments of this Design could not be generated: {exc}')
 
-    @app.post('/api/ppt-dashboards/{dashboard_id}/comments/generate-all')
-    def generate_all_dashboard_comments(
-        dashboard_id: str, payload: GenerateAllComments, background_tasks: BackgroundTasks, user=Depends(dashboard_editor_user),
+    @app.post('/api/ppt-designer/{design_id}/comments/generate-all')
+    def generate_all_design_comments(
+        design_id: str, payload: GenerateAllComments, background_tasks: BackgroundTasks, user=Depends(design_editor_user),
     ):
-        """Start writing the comments of every slide of a Dashboard; the page follows the job until it is done."""
+        """Start writing the comments of every slide of a Design; the page follows the job until it is done."""
         task_repository = bound_repository()
-        if dashboard_id not in read_dashboards(task_repository):
-            raise HTTPException(404, 'Dashboard not found.')
+        if design_id not in read_designs(task_repository):
+            raise HTTPException(404, 'Design not found.')
         snapshot = comment_snapshot(payload.token, user)
         total = sum(1 for slide in snapshot.payload.get('slides', []) if not slide.get('structural_type')
                     and (not payload.slides or slide.get('number') in {item.number for item in payload.slides}))
@@ -4162,10 +4168,10 @@ def install_dashboard_routes(core):
                 if removable is None:
                     break
                 comment_jobs.pop(removable, None)
-        background_tasks.add_task(run_dashboard_comment_job, job_id, dashboard_id, payload, user, workspace_key())
+        background_tasks.add_task(run_design_comment_job, job_id, design_id, payload, user, workspace_key())
         return JSONResponse({'state': 'processing', 'job_id': job_id, 'done': 0, 'total': total}, status_code=202)
 
-    def run_kiro_brief_job(job_id: str, dashboard_id: str, payload: GenerateAllComments, user, workspace: str) -> None:
+    def run_kiro_brief_job(job_id: str, design_id: str, payload: GenerateAllComments, user, workspace: str) -> None:
         """Read the facts of every slide for the Kiro Brief: Kiro IDE writes the comments from them."""
         task_repository = Repository(Path(workspace), core.repository.global_db_path)
 
@@ -4178,7 +4184,7 @@ def install_dashboard_routes(core):
         try:
             snapshot = comment_snapshot(payload.token, user) if workspace == workspace_key() else None
             if snapshot is None:
-                raise HTTPException(410, 'Dashboard preview expired. Refresh the Dashboard.')
+                raise HTTPException(410, 'Design preview expired. Refresh the Design.')
             requested = {item.number: item for item in payload.slides}
             slides = [slide for slide in snapshot.payload.get('slides', [])
                       if not slide.get('structural_type') and (not requested or slide.get('number') in requested)]
@@ -4188,24 +4194,24 @@ def install_dashboard_routes(core):
                 spec = requested.get(slide.get('number'))
                 charts, _skipped = slide_comment_charts(payload.token, snapshot, slide, spec.charts if spec else [], user)
                 if charts:
-                    brief = dashboard_comments.slide_brief(charts, focus_operators=focus, layout=slide.get('layout') or '')
+                    brief = design_comments.slide_brief(charts, focus_operators=focus, layout=slide.get('layout') or '')
                     brief.pop('rules', None)
                     briefed.append({'comment_key': str(slide.get('comment_key') or slide.get('number')), 'number': slide.get('number'),
                                     'title': slide.get('title', ''), 'subtitle': slide.get('subtitle', ''), 'layout': slide.get('layout', ''),
                                     **brief})
                 update(done=position)
-            name = read_dashboards(task_repository).get(dashboard_id, {}).get('name', dashboard_id)
+            name = read_designs(task_repository).get(design_id, {}).get('name', design_id)
             brief_id = uuid4().hex
             with lock:
                 comment_briefs[brief_id] = {
-                    'owner': user.username, 'workspace': workspace, 'dashboard_id': dashboard_id, 'name': name,
+                    'owner': user.username, 'workspace': workspace, 'design_id': design_id, 'name': name,
                     'selection': snapshot.selection_key, 'slides': briefed,
                     'generated_at': datetime.now(timezone.utc).isoformat(timespec='seconds'),
                 }
                 while len(comment_briefs) > 16:
                     comment_briefs.popitem(last=False)
             task_repository.add_log(user.username, 'export_kiro_comment_brief', json.dumps({
-                'id': dashboard_id, 'name': name, 'slides': len(briefed),
+                'id': design_id, 'name': name, 'slides': len(briefed),
             }))
             update(state='ready', result={'brief_id': brief_id, 'slides': len(briefed)})
         except HTTPException as exc:
@@ -4213,24 +4219,24 @@ def install_dashboard_routes(core):
         except Exception as exc:
             update(state='failed', status=500, detail=f'The Kiro Brief could not be prepared: {exc}')
 
-    @app.post('/api/ppt-dashboards/{dashboard_id}/comments/kiro-brief')
-    def start_kiro_brief(dashboard_id: str, payload: GenerateAllComments, background_tasks: BackgroundTasks,
-                         user=Depends(dashboard_editor_user)):
+    @app.post('/api/ppt-designer/{design_id}/comments/kiro-brief')
+    def start_kiro_brief(design_id: str, payload: GenerateAllComments, background_tasks: BackgroundTasks,
+                         user=Depends(design_editor_user)):
         """Start reading the facts of every slide for the Kiro Brief; the page downloads it when the job is done."""
         if not comment_writers.available_engines(core.repository)['kiro_brief']:
             raise HTTPException(403, 'Super Admin has not enabled the Kiro Brief.')
-        if dashboard_id not in read_dashboards(bound_repository()):
-            raise HTTPException(404, 'Dashboard not found.')
+        if design_id not in read_designs(bound_repository()):
+            raise HTTPException(404, 'Design not found.')
         snapshot = comment_snapshot(payload.token, user)
         total = sum(1 for slide in snapshot.payload.get('slides', []) if not slide.get('structural_type'))
         job_id = uuid4().hex
         with lock:
             comment_jobs[job_id] = {'state': 'processing', 'owner': user.username, 'workspace': workspace_key(), 'done': 0, 'total': total}
-        background_tasks.add_task(run_kiro_brief_job, job_id, dashboard_id, payload, user, workspace_key())
+        background_tasks.add_task(run_kiro_brief_job, job_id, design_id, payload, user, workspace_key())
         return JSONResponse({'state': 'processing', 'job_id': job_id, 'done': 0, 'total': total}, status_code=202)
 
-    @app.get('/api/ppt-dashboards/comment-briefs/{brief_id}.zip')
-    def download_kiro_brief(brief_id: str, user=Depends(dashboard_user)):
+    @app.get('/api/ppt-designer/comment-briefs/{brief_id}.zip')
+    def download_kiro_brief(brief_id: str, user=Depends(design_user)):
         with lock:
             brief = comment_briefs.get(brief_id)
         if brief is None or brief['owner'] != user.username or brief['workspace'] != workspace_key():
@@ -4239,9 +4245,9 @@ def install_dashboard_routes(core):
         name = re.sub(r'[^\w.-]+', '_', f"Kiro brief - {brief['name']}").strip('_')
         return Response(content, media_type='application/zip', headers={'Content-Disposition': f'attachment; filename="{name}.zip"'})
 
-    @app.post('/api/ppt-dashboards/{dashboard_id}/comments/kiro-import')
+    @app.post('/api/ppt-designer/{design_id}/comments/kiro-import')
     async def import_kiro_comments(
-        dashboard_id: str, files: list[UploadFile] = File(...), mode: str = Form('empty'), user=Depends(dashboard_editor_user),
+        design_id: str, files: list[UploadFile] = File(...), mode: str = Form('empty'), user=Depends(design_editor_user),
     ):
         """Check the comments Kiro IDE wrote from a Kiro Brief against its facts and write those that keep to them."""
         if mode not in {'empty', 'generated', 'all'}:
@@ -4252,27 +4258,27 @@ def install_dashboard_routes(core):
             comments_document, facts_document = comment_writers.read_kiro_import(uploads)
             written, problems = comment_writers.check_kiro_comments(comments_document, facts_document)
         except ValueError as exc:
-            task_repository.add_log(user.username, 'import_kiro_comments_failed', json.dumps({'id': dashboard_id, 'error': str(exc)}))
+            task_repository.add_log(user.username, 'import_kiro_comments_failed', json.dumps({'id': design_id, 'error': str(exc)}))
             raise HTTPException(400, str(exc)) from exc
         with lock:
-            dashboards = read_dashboards(task_repository)
-            if dashboard_id not in dashboards:
-                raise HTTPException(404, 'Dashboard not found.')
+            designs = read_designs(task_repository)
+            if design_id not in designs:
+                raise HTTPException(404, 'Design not found.')
             legacy = {str(slide.get('comment_key')): str(slide.get('number')) for slide in facts_document.get('slides') or []}
             info = {'engine': comment_writers.ENGINE_KIRO_BRIEF, 'model': '', 'generated_by': user.username,
                     'generated_at': datetime.now(timezone.utc).isoformat(), 'selection': str(facts_document.get('selection') or '')}
-            counts = apply_generated_comments(dashboards[dashboard_id], written, mode, legacy, info)
-            task_repository.set_workspace_state(STATE_KEY, json.dumps(dashboards))
-            definition = dashboards[dashboard_id]
+            counts = apply_generated_comments(designs[design_id], written, mode, legacy, info)
+            task_repository.set_workspace_state(STATE_KEY, json.dumps(designs))
+            definition = designs[design_id]
         task_repository.add_log(user.username, 'import_kiro_comments', json.dumps({
-            'id': dashboard_id, 'name': definition.get('name', ''), 'mode': mode, 'slides': len(written), **counts,
+            'id': design_id, 'name': definition.get('name', ''), 'mode': mode, 'slides': len(written), **counts,
             'left_out': len(problems), 'problems': problems[:5],
         }))
         return {**counts, 'slides': len(written), 'left_out': len(problems), 'problems': problems[:5],
                 'slide_comments': definition.get('slide_comments', {}), 'slide_comment_meta': definition.get('slide_comment_meta', {})}
 
-    @app.get('/api/ppt-dashboards/comment-jobs/{job_id}')
-    def dashboard_comment_job(job_id: str, user=Depends(dashboard_user)):
+    @app.get('/api/ppt-designer/comment-jobs/{job_id}')
+    def design_comment_job(job_id: str, user=Depends(design_user)):
         with lock:
             job = comment_jobs.get(job_id)
             if job is None or job.get('owner') != user.username or job.get('workspace') != workspace_key():
@@ -4282,22 +4288,22 @@ def install_dashboard_routes(core):
             raise HTTPException(int(result.get('status') or 500), str(result.get('detail') or 'The comments could not be generated.'))
         return JSONResponse({key: result.get(key) for key in ('state', 'done', 'total', 'result')}, headers={'Cache-Control': 'no-store'})
 
-    def dashboard_datasets(definition, kind, task_repository):
-        """Return the selected CDRs of one kind that match the Dashboard's NR Mode."""
+    def design_datasets(definition, kind, task_repository):
+        """Return the selected CDRs of one kind that match the Design's NR Mode."""
         if kind == 'all':
-            return [row for source in KINDS for row in dashboard_datasets(definition, source, task_repository)]
+            return [row for source in KINDS for row in design_datasets(definition, source, task_repository)]
         datasets = definition.get('datasets', {}) if isinstance(definition, dict) else definition.datasets
-        nr_mode = dashboard_nr_mode(definition)
+        nr_mode = design_nr_mode(definition)
         return [
             row for row in core._optional_reporting_datasets(list((datasets or {}).get(kind, [])), kind, task_repository)
-            # A Dashboard only analyses CDRs of its own NR Mode.
+            # A Design only analyses CDRs of its own NR Mode.
             if dataset_matches_nr_mode(row, nr_mode)
         ]
 
     def selected_sources(definition, task_repository):
         selected_by_kind = {}
         for kind in KINDS:
-            selected = dashboard_datasets(definition, kind, task_repository)
+            selected = design_datasets(definition, kind, task_repository)
             if definition.scope == 'multivendor' and any(not row.get('vendor_mapping_applied') for row in selected):
                 raise HTTPException(400, 'Map Vendors for every selected CDR before using Multivendor Comparison.')
             if selected:
@@ -4386,7 +4392,7 @@ def install_dashboard_routes(core):
         return taken or [value for value in values if is_pattern(value)]
 
     def selection_filter_terms(task_repository, columns, definition, exclude=None):
-        """Return each user-selected Dashboard filter as (normalized SQL or None, values).
+        """Return each user-selected Design filter as (normalized SQL or None, values).
 
         A ``None`` expression selects no row. SQLite queries and the per-CDR
         column cache both evaluate these terms, so they always agree.
@@ -4419,7 +4425,7 @@ def install_dashboard_routes(core):
         return terms
 
     def selection_filter_where(task_repository, columns, definition, exclude=None):
-        """Build only the user-selected Dashboard filter predicates."""
+        """Build only the user-selected Design filter predicates."""
         clauses, params = [], []
         for normalized_expression, values in selection_filter_terms(task_repository, columns, definition, exclude):
             if normalized_expression is None:
@@ -4470,7 +4476,7 @@ def install_dashboard_routes(core):
             clauses.append(filter_where)
             params.extend(filter_params)
         for operator_expression, excluded_names in selection_excluded_operators(task_repository, columns):
-            # The operators the Operator Maps exclude are left out of every Dashboard.
+            # The operators the Operator Maps exclude are left out of every Design.
             clauses.append(f"NOT COALESCE({operator_expression} IN ({', '.join('?' for _ in excluded_names)}), 0)")
             params.extend(sorted(excluded_names))
         for mode_datasets, operator_expression, excluded_names in selection_out_of_scope_operators(task_repository, columns):
@@ -4538,13 +4544,13 @@ def install_dashboard_routes(core):
                 terms.append((datasets, expression, names))
         return tuple(terms)
 
-    def dashboard_combined_requested_columns(definition, dimensions, kind):
+    def design_combined_requested_columns(definition, dimensions, kind):
         default_filter_keys = {identity(field) for field in ADAPTATIVE_FILTER_FIELDS}
         # The combined-table contract owns fixed preview columns, Default
         # Filter aliases and saved-template KPI fields. Some of those aliases
         # are alternatives, so comparing the whole contract with one physical
-        # CDR schema would report false missing columns forever. Dashboard
-        # preparation only owns genuinely Dashboard-specific extensions.
+        # CDR schema would report false missing columns forever. Design
+        # preparation only owns genuinely Design-specific extensions.
         candidates = {
             field for field in definition.custom_fields
             if identity(field) not in default_filter_keys
@@ -4562,10 +4568,10 @@ def install_dashboard_routes(core):
             )
         }
 
-    def dashboard_combined_columns_missing(definition, task_repository, dimensions, selected_by_kind):
-        """Whether opening this Dashboard must add a genuinely new source column."""
+    def design_combined_columns_missing(definition, task_repository, dimensions, selected_by_kind):
+        """Whether opening this Design must add a genuinely new source column."""
         for kind in selected_by_kind:
-            requested = dashboard_combined_requested_columns(definition, dimensions, kind)
+            requested = design_combined_requested_columns(definition, dimensions, kind)
             current = {identity(column) for column in task_repository.list_reporting_row_columns(kind)}
             if not {identity(column) for column in requested}.issubset(current):
                 return True
@@ -4579,7 +4585,7 @@ def install_dashboard_routes(core):
             dimension for dimension in dimensions if identity(dimension.name) in selected_dimension_keys
         )
         for kind in selected_by_kind:
-            requested = dashboard_combined_requested_columns(definition, dimensions, kind)
+            requested = design_combined_requested_columns(definition, dimensions, kind)
             if chart_entries:
                 requested.update(core.reporting_query_columns(
                     kind, chart_entries, definition.scope == 'multivendor',
@@ -4595,7 +4601,7 @@ def install_dashboard_routes(core):
                 and int(row['id']) in included
             ]
             for row in all_ready_sources:
-                # A newly requested Dashboard-specific column belongs to the
+                # A newly requested Design-specific column belongs to the
                 # shared source, not merely the currently selected universe.
                 # Future dataset selections can therefore stay SQL-only.
                 change = task_repository.copy_dataset_rows_to_reporting(
@@ -4615,7 +4621,7 @@ def install_dashboard_routes(core):
                 )
                 columns_changed = True
             if rows_changed or columns_changed:
-                # Filling new columns keeps prepared Dashboard universes valid;
+                # Filling new columns keeps prepared Design universes valid;
                 # only reinserted rows advance their cache revision.
                 core.mark_combined_reporting_updated(task_repository, kind, rows_changed=rows_changed)
 
@@ -4647,7 +4653,7 @@ def install_dashboard_routes(core):
         payload = {
             # Scope changes only how charts group the already selected rows.
             # Keep that presentation setting out of the selection cache key.
-            'schema': DASHBOARD_SELECTION_CACHE_VERSION,
+            'schema': DESIGN_SELECTION_CACHE_VERSION,
             'definition': selection_definition,
             'versions': versions,
             'combined_revisions': revisions,
@@ -4676,9 +4682,9 @@ def install_dashboard_routes(core):
                 'date_column': date_column,
             }
         cache_signature = sha256(json.dumps({
-            'schema': DASHBOARD_DATE_BOUNDS_CACHE_VERSION, 'sources': sources,
+            'schema': DESIGN_DATE_BOUNDS_CACHE_VERSION, 'sources': sources,
         }, sort_keys=True, default=str).encode()).hexdigest()
-        cache_state_key = f'dashboard_date_bounds_v{DASHBOARD_DATE_BOUNDS_CACHE_VERSION}'
+        cache_state_key = f'design_date_bounds_v{DESIGN_DATE_BOUNDS_CACHE_VERSION}'
         try:
             cached_bounds = json.loads(task_repository.get_workspace_state(cache_state_key) or '{}')
             if not isinstance(cached_bounds, dict):
@@ -4719,7 +4725,7 @@ def install_dashboard_routes(core):
         # This result is immutable while the selected datasets and their
         # combined-table revisions are unchanged.  Persist a small bounded
         # map so restarting the server does not repeat a full date scan just
-        # to validate a Dashboard preview manifest.
+        # to validate a Design preview manifest.
         cached_bounds[cache_signature] = bounds
         if len(cached_bounds) > 128:
             cached_bounds = dict(list(cached_bounds.items())[-128:])
@@ -4795,7 +4801,7 @@ def install_dashboard_routes(core):
         return {field_name: sorted(values, key=str.casefold) for field_name, values in options.items()}
 
     def profile_filter_options(definition, dimensions, selected_by_kind, fields, task_repository, checkpoint=None):
-        """Load large-dashboard facet values from selected CDR profiles.
+        """Load large-design facet values from selected CDR profiles.
 
         ``checkpoint`` runs between fields, so a background preparation stops
         promptly when a user-requested preparation is waiting.
@@ -4860,7 +4866,7 @@ def install_dashboard_routes(core):
             if not options[field_name] or field_name in incomplete_fields
         ]
         if missing_fields:
-            # Older upload profiles do not contain every Dashboard facet. Read
+            # Older upload profiles do not contain every Design facet. Read
             # only the missing catalogues from the narrow combined tables. An
             # adaptive facet must ignore its own current restriction so users
             # can see and select values outside the saved selection.
@@ -4878,16 +4884,16 @@ def install_dashboard_routes(core):
     ):
         cache_key = persistent_selection_key(definition, task_repository, dimensions, selected_by_kind)
         estimated_rows = sum(sum(int(row.get('row_count') or 0) for row in selected) for selected in selected_by_kind.values())
-        use_profile_options = use_profile_options or estimated_rows > DASHBOARD_PROFILE_SELECTION_THRESHOLD
+        use_profile_options = use_profile_options or estimated_rows > DESIGN_PROFILE_SELECTION_THRESHOLD
         if callable(progress):
-            progress(55, 'Checking the filtered Dashboard selection cache')
-        # Dashboard preparation is already serialized by dashboard_work_gate.
+            progress(55, 'Checking the filtered Design selection cache')
+        # Design preparation is already serialized by design_work_gate.
         # Do not retain the shared task-registry lock while SQLite counts or
         # facet queries run: progress polling needs that lock to report the
         # exact live phase during a potentially long combined-table scan.
         with task_repository.connection() as connection:
             cached = connection.execute(
-                'SELECT id, options_json, row_counts_json, universe_row_counts_json FROM dashboard_filter_selections WHERE cache_key = ?',
+                'SELECT id, options_json, row_counts_json, universe_row_counts_json FROM design_filter_selections WHERE cache_key = ?',
                 (cache_key,),
             ).fetchone()
             if cached:
@@ -4897,11 +4903,11 @@ def install_dashboard_routes(core):
                     options.update(combined_filter_options(
                         definition, selected_by_kind, missing_fields, task_repository, connection,
                     ))
-                    connection.execute('UPDATE dashboard_filter_selections SET options_json = ? WHERE id = ?',
+                    connection.execute('UPDATE design_filter_selections SET options_json = ? WHERE id = ?',
                                        (json.dumps(options), cached['id']))
                 if callable(progress):
                     progress(78, 'Restoring cached row counts and filter options')
-                connection.execute('UPDATE dashboard_filter_selections SET last_accessed_at = CURRENT_TIMESTAMP WHERE id = ?', (cached['id'],))
+                connection.execute('UPDATE design_filter_selections SET last_accessed_at = CURRENT_TIMESTAMP WHERE id = ?', (cached['id'],))
                 return (
                     int(cached['id']), cache_key,
                     options, json.loads(cached['row_counts_json']),
@@ -4972,20 +4978,20 @@ def install_dashboard_routes(core):
             # Another process (for example a Reporting worker) may have cached
             # the same selection meanwhile; keep a single row per cache key.
             connection.execute(
-                'INSERT INTO dashboard_filter_selections '
+                'INSERT INTO design_filter_selections '
                 '(cache_key, options_json, row_counts_json, universe_row_counts_json) VALUES (?, ?, ?, ?) '
                 'ON CONFLICT(cache_key) DO UPDATE SET options_json = excluded.options_json, '
                 'row_counts_json = excluded.row_counts_json, universe_row_counts_json = excluded.universe_row_counts_json',
                 (cache_key, json.dumps(options), json.dumps(row_counts), json.dumps(universe_row_counts)),
             )
             selection_id = int(connection.execute(
-                'SELECT id FROM dashboard_filter_selections WHERE cache_key = ?', (cache_key,)).fetchone()['id'])
+                'SELECT id FROM design_filter_selections WHERE cache_key = ?', (cache_key,)).fetchone()['id'])
             stale = connection.execute(
-                'SELECT id FROM dashboard_filter_selections ORDER BY last_accessed_at DESC, id DESC LIMIT -1 OFFSET ?',
-                (DASHBOARD_SELECTION_CACHE_LIMIT,),
+                'SELECT id FROM design_filter_selections ORDER BY last_accessed_at DESC, id DESC LIMIT -1 OFFSET ?',
+                (DESIGN_SELECTION_CACHE_LIMIT,),
             ).fetchall()
             for row in stale:
-                connection.execute('DELETE FROM dashboard_filter_selections WHERE id = ?', (row['id'],))
+                connection.execute('DELETE FROM design_filter_selections WHERE id = ?', (row['id'],))
             return selection_id, cache_key, options, row_counts, universe_row_counts, True
 
     def mapped_values(field, values, mapper):
@@ -5022,7 +5028,7 @@ def install_dashboard_routes(core):
         return {field: [str(value) for value in options.get(field, [])] for field in fields}
 
     def load_filter_options(definition, field_name, task_repository):
-        """Load one adaptive filter catalogue without preparing Dashboard charts."""
+        """Load one adaptive filter catalogue without preparing Design charts."""
         field_name = field_name.strip()
         validate(definition, task_repository)
         dimensions = core.load_repository_calculated_dimensions(task_repository)
@@ -5060,15 +5066,15 @@ def install_dashboard_routes(core):
         return sorted(values, key=str.casefold)
 
     def unfiltered_definition(definition):
-        """Return the Dashboard without its filters, to read the values its CDRs provide."""
+        """Return the Design without its filters, to read the values its CDRs provide."""
         return definition.model_copy(update={'filters': {}})
 
-    def dashboard_geography_catalogue(definition, selected_by_kind, task_repository) -> dict[str, list[str]]:
+    def design_geography_catalogue(definition, selected_by_kind, task_repository) -> dict[str, list[str]]:
         """Return Vendor, Region and City values of the selected CDRs.
 
         Values come from the per-CDR catalogue. A Region or City catalogue can
         be empty when the CDR stores that field under another alias, so the
-        Dashboard's own filter values (which resolve those aliases) complete it.
+        Design's own filter values (which resolve those aliases) complete it.
         """
         selected_ids = [int(row['id']) for rows in selected_by_kind.values() for row in rows]
         if not selected_ids:
@@ -5107,12 +5113,12 @@ def install_dashboard_routes(core):
                 with lock:
                     campaign_backfills.difference_update((database, dataset_id) for dataset_id in pending)
 
-        Thread(target=run, name='dashboard-campaign-backfill', daemon=True).start()
+        Thread(target=run, name='design-campaign-backfill', daemon=True).start()
 
-    def dashboard_campaign_values(
+    def design_campaign_values(
         definition, selected_by_kind, task_repository, *, wait: bool = True,
     ) -> tuple[list[str], bool]:
-        """Return the compact Campaigns (for example ``2026-Q2`` or ``2026-Q2-SA``) behind a Dashboard.
+        """Return the compact Campaigns (for example ``2026-Q2`` or ``2026-Q2-SA``) behind a Design.
 
         A Campaign filter limits them to its values; otherwise every Campaign of
         the selected CDRs is read from their cached catalogue. CDRs catalogued
@@ -5140,20 +5146,20 @@ def install_dashboard_routes(core):
         labels = {compact_campaign_value(value) for value in values}
         return sorted((label for label in labels if label), key=campaign_sort_key), pending
 
-    def dashboard_campaigns_label(campaigns: list[str]) -> str:
+    def design_campaigns_label(campaigns: list[str]) -> str:
         if not campaigns:
             return ''
         return f"{'Campaign' if len(campaigns) == 1 else 'Campaigns'}: {', '.join(campaigns)}"
 
-    def load_dashboard_geography_options(definition, task_repository) -> dict[str, list[str]]:
+    def load_design_geography_options(definition, task_repository) -> dict[str, list[str]]:
         """Load Vendor and geography catalogues from the per-CDR persisted cache."""
         validate(definition, task_repository)
         selected_by_kind = selected_sources(definition, task_repository)
-        options = dashboard_geography_catalogue(definition, selected_by_kind, task_repository)
+        options = design_geography_catalogue(definition, selected_by_kind, task_repository)
         operators = profile_filter_options(
             unfiltered_definition(definition), [], selected_by_kind, ['Operator'], task_repository,
         )['Operator']
-        campaigns, campaigns_pending = dashboard_campaign_values(
+        campaigns, campaigns_pending = design_campaign_values(
             definition, selected_by_kind, task_repository, wait=False,
         )
         mapper = ValueMapper.from_repository(task_repository)
@@ -5187,33 +5193,33 @@ def install_dashboard_routes(core):
             places = explicit_places(charts, len(positions)) or list(range(len(charts)))
             for row, place in zip(charts, places):
                 rect = positions[place] if place < len(positions) else None
-                data = dashboard_design.row_format(row)
+                data = design_slides.row_format(row)
                 field_name = repeat_field(row)
                 if rect is None:
                     result.append(row)
                     continue
                 if not field_name:
-                    result.append(replace(row, format=dashboard_design.format_cell({**data, 'rect': rect})))
+                    result.append(replace(row, format=design_slides.format_cell({**data, 'rect': rect})))
                     continue
                 values = next((items for key, items in options.items() if identity(key) == identity(field_name)), [])
                 chosen = next((items for key, items in definition.filters.items() if identity(key) == identity(field_name)), [])
                 values = [str(value) for value in values if str(value).strip() and (not chosen or str(value) in {str(item) for item in chosen})]
                 values = sorted(dict.fromkeys(values), key=str.casefold)[:12]
                 if not values:
-                    result.append(replace(row, format=dashboard_design.format_cell({**data, 'rect': rect})))
+                    result.append(replace(row, format=design_slides.format_cell({**data, 'rect': rect})))
                     continue
                 for value, part in zip(values, subdivided(rect, len(values))):
-                    filters = dashboard_design.join_conditions(dashboard_design.filter_conditions(row.filters) + [f'{field_name} IN ({value})'])
+                    filters = design_slides.join_conditions(design_slides.filter_conditions(row.filters) + [f'{field_name} IN ({value})'])
                     result.append(replace(row, filters=filters,
                                           chart_title=f'{row.chart_title} – {value}' if row.chart_title else value,
-                                          format=dashboard_design.format_cell({**data, 'rect': part, 'repeat_value': value})))
+                                          format=design_slides.format_cell({**data, 'rect': part, 'repeat_value': value})))
         return result
 
-    def dashboard_slides(entries, definition, options, task_repository, selected_by_kind, deck):
-        """The rows of a Dashboard with its dynamic layouts expanded, and its slides as the viewer shows them: their
+    def design_slides(entries, definition, options, task_repository, selected_by_kind, deck):
+        """The rows of a Design with its dynamic layouts expanded, and its slides as the viewer shows them: their
         charts, positions on the layout and whether each chart has CDRs to read."""
         slides = OrderedDict()
-        entries = expand_dashboard_layouts(entries, definition, options, task_repository)
+        entries = expand_design_layouts(entries, definition, options, task_repository)
         entries = expand_repeated_elements(entries, definition, options, deck)
         slide_entries_by_number: dict[int, list] = defaultdict(list)
         for entry in entries:
@@ -5221,10 +5227,10 @@ def install_dashboard_routes(core):
         fields_by_mode: dict[str, dict[str, set[str]]] = {}
         for editor_index, (index, entry) in enumerate(sorted(enumerate(entries), key=lambda item: (item[1].slide, item[0]))):
             editor_index = entry.template_index if entry.template_index is not None else editor_index
-            row = dashboard_design.row_format(entry)
+            row = design_slides.row_format(entry)
             slide = slides.setdefault(entry.slide, {
                 'number': entry.slide,
-                'comment_key': dashboard_slide_comment_key(slide_entries_by_number[entry.slide]),
+                'comment_key': design_slide_comment_key(slide_entries_by_number[entry.slide]),
                 'title': entry.slide_title,
                 'subtitle': entry.slide_subtitle,
                 'layout': entry.layout,
@@ -5232,7 +5238,7 @@ def install_dashboard_routes(core):
                 'compact_titles': compact_grid_layout(entry.layout),
                 'charts': [],
                 'focus_row': editor_index,
-                # The slide of the Design it shows (a dynamic grid shows one slide of the Design in several pages).
+                # The slide of the slide set it shows (a dynamic grid shows one slide of the slide set in several pages).
                 'source_slide': str(row.get('slide') or ''),
             })
             if not entry.structural_type:
@@ -5244,7 +5250,7 @@ def install_dashboard_routes(core):
                     'available': bool(selected_by_kind) if entry.source_kind == 'all' else entry.source_kind in selected_by_kind, 'focus_row': editor_index,
                     'element': str(row.get('id') or ''), 'place': row.get('place'),
                 }
-                kind = next((key for key, chart_type in dashboard_design.KIND_CHART_TYPES.items()
+                kind = next((key for key, chart_type in design_slides.KIND_CHART_TYPES.items()
                              if chart_type.casefold() == entry.chart_type.casefold()), 'chart')
                 if kind != 'chart':
                     chart['kind'] = kind
@@ -5252,12 +5258,12 @@ def install_dashboard_routes(core):
                     # Read no CDR: the viewer shows the text or the picture (their content), never a chart model.
                     content = dict(row.get('content') or {}) if isinstance(row.get('content'), dict) else {}
                     if kind == 'image' and content.get('image'):
-                        content['url'] = f"/api/ppt-dashboards/images/{content['image']}"
+                        content['url'] = f"/api/ppt-designer/images/{content['image']}"
                     chart.update(available=False, content=content)
                 elif unread := chart_nr_mode_unread(entry, definition):
-                    # A chart of one NR Mode (NR Mode IN (SA)) in a Dashboard that reads the other one.
+                    # A chart of one NR Mode (NR Mode IN (SA)) in a Design that reads the other one.
                     chart.update(available=False, unavailable=unread)
-                elif dashboard_nr_mode(definition) == NSA_VS_SA and entry.source_kind in selected_by_kind:
+                elif design_nr_mode(definition) == NSA_VS_SA and entry.source_kind in selected_by_kind:
                     # A field only the CDRs of one NR Mode have: the chart says which NR Mode has no samples.
                     if entry.source_kind not in fields_by_mode:
                         fields_by_mode[entry.source_kind] = core.cdr_fields_by_nr_mode(
@@ -5272,7 +5278,7 @@ def install_dashboard_routes(core):
             chart_rows = [entries[chart['index']] for chart in charts]
             # The places of a free layout (Designer), else those of the layout; each element on its place (a place can
             # stay empty), else the charts fill the places in order (the cards of a dynamic grid too).
-            rects = [dashboard_design.row_format(row).get('rect') for row in chart_rows]
+            rects = [design_slides.row_format(row).get('rect') for row in chart_rows]
             if chart_rows and all(isinstance(rect, list) and len(rect) == 4 for rect in rects):
                 # Each chart has its own place (a chart repeated in its place: Repeat by).
                 for chart, rect in zip(charts, rects):
@@ -5291,7 +5297,7 @@ def install_dashboard_routes(core):
     def build_preview(definition, user, *, workspace: str | None = None, cancelled=None, progress=None):
         def ensure_not_cancelled():
             if callable(cancelled) and cancelled():
-                raise RuntimeError('Dashboard preparation cancelled.')
+                raise RuntimeError('Design preparation cancelled.')
 
         def report(percent, detail):
             # Every progress step is also a cancellation point.
@@ -5300,7 +5306,7 @@ def install_dashboard_routes(core):
                 progress(percent, detail)
 
         workspace = workspace or workspace_key()
-        report(5, 'Validating the Dashboard template and selected source datasets')
+        report(5, 'Validating the Design template and selected source datasets')
         ensure_not_cancelled()
         task_repository = Repository(Path(workspace), core.repository.global_db_path)
         entries = validate(definition, task_repository)
@@ -5320,8 +5326,8 @@ def install_dashboard_routes(core):
             kind: sum(int(dataset.get('row_count') or 0) for dataset in selected)
             for kind, selected in selected_by_kind.items()
         }
-        if dashboard_combined_columns_missing(definition, task_repository, dimensions, selected_by_kind):
-            report(20, 'Adding new Dashboard-specific fields to the combined CDR tables')
+        if design_combined_columns_missing(definition, task_repository, dimensions, selected_by_kind):
+            report(20, 'Adding new Design-specific fields to the combined CDR tables')
             ensure_combined_filter_columns(definition, task_repository, dimensions, selected_by_kind)
         ensure_not_cancelled()
         date_bounds = selected_date_bounds(task_repository, selected_by_kind, progress=report)
@@ -5350,14 +5356,14 @@ def install_dashboard_routes(core):
             known_full_row_counts=selected_source_rows if complete_unfiltered_universe else None,
             progress=report, checkpoint=ensure_not_cancelled,
         )
-        report(82, 'Preparing the Dashboard slide structure and chart positions')
+        report(82, 'Preparing the Design slide structure and chart positions')
         deck = Presentation(core.settings.powerpoint_template)
-        entries, slides = dashboard_slides(entries, definition, options, task_repository, selected_by_kind, deck)
+        entries, slides = design_slides(entries, definition, options, task_repository, selected_by_kind, deck)
         token = uuid4().hex
         payload = {
             'slides': slides,
-            'options': cascading_dashboard_options(mapped_filter_options(options, task_repository), definition, task_repository),
-            # The CDRs the Dashboard uses, chosen from its NR Mode and Campaign.
+            'options': cascading_design_options(mapped_filter_options(options, task_repository), definition, task_repository),
+            # The CDRs the Design uses, chosen from its NR Mode and Campaign.
             'cdrs': describe_cdrs(task_repository, {kind: [int(row['id']) for row in rows] for kind, rows in selected_by_kind.items()}),
             'filter_fields': list(ADAPTATIVE_FILTER_FIELDS),
             'available_fields': sorted(available_fields, key=str.casefold),
@@ -5380,15 +5386,15 @@ def install_dashboard_routes(core):
             while len(snapshots) > 128:
                 snapshots.popitem(last=False)
         ensure_not_cancelled()
-        report(90, 'Dashboard selection and slide structure are ready')
+        report(90, 'Design selection and slide structure are ready')
         return {**payload, 'token': token}
 
-    def preview_manifest_key(workspace: str, dashboard_id: str, fingerprint: str) -> str:
-        return sha256(f'{workspace}:{DASHBOARD_PREVIEW_MANIFEST_VERSION}:{dashboard_id}:{fingerprint}'.encode()).hexdigest()
+    def preview_manifest_key(workspace: str, design_id: str, fingerprint: str) -> str:
+        return sha256(f'{workspace}:{DESIGN_PREVIEW_MANIFEST_VERSION}:{design_id}:{fingerprint}'.encode()).hexdigest()
 
     def persist_preview_manifest(
         workspace: str,
-        dashboard_id: str,
+        design_id: str,
         fingerprint: str,
         token: str,
     ) -> None:
@@ -5397,8 +5403,8 @@ def install_dashboard_routes(core):
             if snapshot is None:
                 return
             manifest = {
-                'version': DASHBOARD_PREVIEW_MANIFEST_VERSION,
-                'dashboard_id': dashboard_id,
+                'version': DESIGN_PREVIEW_MANIFEST_VERSION,
+                'design_id': design_id,
                 'fingerprint': fingerprint,
                 'definition': snapshot.definition.model_dump(mode='json'),
                 'selection_id': snapshot.selection_id,
@@ -5406,13 +5412,13 @@ def install_dashboard_routes(core):
                 'payload': snapshot.payload,
             }
         with lock:
-            preview_manifests[preview_manifest_key(workspace, dashboard_id, fingerprint)] = manifest
-            while len(preview_manifests) > DASHBOARD_PREVIEW_MANIFESTS_KEPT:
+            preview_manifests[preview_manifest_key(workspace, design_id, fingerprint)] = manifest
+            while len(preview_manifests) > DESIGN_PREVIEW_MANIFESTS_KEPT:
                 preview_manifests.popitem(last=False)
 
     def restore_preview_manifest(
         workspace: str,
-        dashboard_id: str,
+        design_id: str,
         fingerprint: str,
         *,
         materialize: bool = True,
@@ -5421,16 +5427,16 @@ def install_dashboard_routes(core):
         try:
             if manifest is None:
                 with lock:
-                    manifest = preview_manifests.get(preview_manifest_key(workspace, dashboard_id, fingerprint))
+                    manifest = preview_manifests.get(preview_manifest_key(workspace, design_id, fingerprint))
                 if manifest is None:
                     return None
             if (
-                manifest.get('version') != DASHBOARD_PREVIEW_MANIFEST_VERSION
-                or manifest.get('dashboard_id') != dashboard_id
+                manifest.get('version') != DESIGN_PREVIEW_MANIFEST_VERSION
+                or manifest.get('design_id') != design_id
                 or manifest.get('fingerprint') != fingerprint
             ):
                 return None
-            definition = DashboardDefinition.model_validate(manifest['definition'])
+            definition = DesignDefinition.model_validate(manifest['definition'])
             task_repository = Repository(Path(workspace), core.repository.global_db_path)
             entries = validate(definition, task_repository)
             dimensions = core.load_repository_calculated_dimensions(task_repository)
@@ -5441,13 +5447,13 @@ def install_dashboard_routes(core):
             selection_id = int(manifest['selection_id'])
             with task_repository.connection() as connection:
                 selection = connection.execute(
-                    'SELECT id FROM dashboard_filter_selections WHERE id = ? AND cache_key = ?',
+                    'SELECT id FROM design_filter_selections WHERE id = ? AND cache_key = ?',
                     (selection_id, selection_key),
                 ).fetchone()
             if selection is None:
                 return None
             payload = manifest['payload']
-            entries = expand_dashboard_layouts(entries, definition, payload.get('options', {}), task_repository)
+            entries = expand_design_layouts(entries, definition, payload.get('options', {}), task_repository)
             entries = expand_repeated_elements(entries, definition, payload.get('options', {}), None)
             if not isinstance(payload, dict) or not isinstance(payload.get('slides'), list):
                 return None
@@ -5484,7 +5490,7 @@ def install_dashboard_routes(core):
         return {**payload, 'token': token}
 
     def preview_cache_identity(definition):
-        """Return the parts of a Dashboard definition that affect its prepared data."""
+        """Return the parts of a Design definition that affect its prepared data."""
         identity_definition = definition.model_dump(mode='json')
         identity_definition.pop('name', None)
         identity_definition.pop('slide_comments', None)
@@ -5497,7 +5503,7 @@ def install_dashboard_routes(core):
         return identity_definition
 
     def restore_matching_preview_manifest(
-        workspace: str, dashboard_id: str, definition: DashboardDefinition, *, materialize: bool = True,
+        workspace: str, design_id: str, definition: DesignDefinition, *, materialize: bool = True,
     ):
         """Restore a persistent preview by definition, including non-default session universes."""
         task_repository = Repository(Path(workspace), core.repository.global_db_path)
@@ -5506,26 +5512,26 @@ def install_dashboard_routes(core):
             apply_selected_date_bounds(requested, selected_date_bounds(
                 task_repository, selected_sources(requested, task_repository),
             ))
-            requested_fingerprint = dashboard_preview_fingerprint(
+            requested_fingerprint = design_preview_fingerprint(
                 requested.model_dump(mode='json'), task_repository,
             )
             requested_identity = preview_cache_identity(requested)
             # Manifests are kept under a key derived from their fingerprint, so the matching one is found directly.
             with lock:
-                manifest = preview_manifests.get(preview_manifest_key(workspace, dashboard_id, requested_fingerprint))
+                manifest = preview_manifests.get(preview_manifest_key(workspace, design_id, requested_fingerprint))
             if manifest is None:
                 return None
-            stored_definition = DashboardDefinition.model_validate(manifest['definition'])
+            stored_definition = DesignDefinition.model_validate(manifest['definition'])
             if preview_cache_identity(stored_definition) != requested_identity:
                 return None
             return restore_preview_manifest(
-                workspace, dashboard_id, requested_fingerprint, materialize=materialize, manifest=manifest,
+                workspace, design_id, requested_fingerprint, materialize=materialize, manifest=manifest,
             )
         except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError, sqlite3.Error):
             return None
 
-    def run_direct_preparation(preparation_id, definition, dashboard_id, workspace, user, cancellation):
-        """Prepare one requested Dashboard universe and return its preview payload."""
+    def run_direct_preparation(preparation_id, definition, design_id, workspace, user, cancellation):
+        """Prepare one requested Design universe and return its preview payload."""
         task_repository = Repository(Path(workspace), core.repository.global_db_path)
 
         def preparation_cancelled():
@@ -5540,41 +5546,41 @@ def install_dashboard_routes(core):
         gate_acquired = False
         while not gate_acquired:
             if cancellation['requested']:
-                raise RuntimeError('Dashboard preparation cancelled.')
-            gate_acquired = dashboard_work_gate.acquire(timeout=0.2)
+                raise RuntimeError('Design preparation cancelled.')
+            gate_acquired = design_work_gate.acquire(timeout=0.2)
         try:
             with lock:
                 task = direct_preparation_tasks.get(preparation_id)
                 if task is not None:
                     if cancellation['requested']:
-                        raise RuntimeError('Dashboard preparation cancelled.')
+                        raise RuntimeError('Design preparation cancelled.')
                     task.update(
                         status='processing',
                         started_at=datetime.now(timezone.utc).timestamp(),
                         progress=1,
-                        detail='Starting the Dashboard preparation worker',
+                        detail='Starting the Design preparation worker',
                     )
             preview = build_preview(
                 definition, user, workspace=workspace, cancelled=preparation_cancelled,
                 progress=update_preparation_progress,
             )
         finally:
-            dashboard_work_gate.release()
-        if dashboard_id:
-            update_preparation_progress(94, 'Saving the reusable Dashboard preparation cache')
+            design_work_gate.release()
+        if design_id:
+            update_preparation_progress(94, 'Saving the reusable Design preparation cache')
             with lock:
                 prepared_snapshot = snapshots.get(preview['token'])
             if prepared_snapshot is None:
-                raise RuntimeError('The prepared Dashboard snapshot has expired.')
+                raise RuntimeError('The prepared Design snapshot has expired.')
             persist_preview_manifest(
                 workspace,
-                dashboard_id,
-                dashboard_preview_fingerprint(
+                design_id,
+                design_preview_fingerprint(
                     prepared_snapshot.definition.model_dump(mode='json'), task_repository,
                 ),
                 preview['token'],
             )
-        update_preparation_progress(100, 'Dashboard dataset and filters are ready')
+        update_preparation_progress(100, 'Design dataset and filters are ready')
         return preview
 
     def remember_preparation_result(preparation_id, workspace, username, result) -> None:
@@ -5585,33 +5591,33 @@ def install_dashboard_routes(core):
             while len(direct_preparation_results) > 256:
                 direct_preparation_results.popitem(last=False)
 
-    @app.post('/api/ppt-dashboards/prepare')
+    @app.post('/api/ppt-designer/prepare')
     def prepare(
-        definition: DashboardDefinition,
-        dashboard_id: str | None = None,
+        definition: DesignDefinition,
+        design_id: str | None = None,
         rendering_only: bool = False,
         preparation_id: str | None = None,
         use_scope_universe: bool = False,
         background: bool = False,
-        user=Depends(dashboard_user),
+        user=Depends(design_user),
     ):
-        """Prepare a Dashboard universe.
+        """Prepare a Design universe.
 
         With ``background=1`` the request returns immediately (202) and the
         browser polls ``/preparation-progress/{id}``. Long preparations on slow
         servers therefore never exceed reverse-proxy response timeouts.
         """
         definition = (automatic_scope_universe if use_scope_universe else auto_cdr_definition)(definition, bound_repository())
-        if dashboard_id:
-            # The Design of a saved Dashboard is the one stored (the Designer saves it): a viewer opened before does
+        if design_id:
+            # The slide set of a saved Design is the one stored (the Designer saves it): a viewer opened before does
             # not send it back older.
-            stored = read_dashboards(bound_repository()).get(dashboard_id)
+            stored = read_designs(bound_repository()).get(design_id)
             if isinstance(stored, dict):
                 definition = definition.model_copy(update={
                     'slide_overrides': copy.deepcopy(stored.get('slide_overrides') or {}),
                     'own_slides': copy.deepcopy(stored.get('own_slides')),
                 })
-        preparation_id = preparation_id or f'dashboard-preparation:{uuid4().hex}'
+        preparation_id = preparation_id or f'design-preparation:{uuid4().hex}'
         workspace = workspace_key()
         cancellation = {'requested': False}
         with lock:
@@ -5626,23 +5632,23 @@ def install_dashboard_routes(core):
             direct_preparation_results.pop(preparation_id, None)
             direct_preparation_tasks[preparation_id] = {
                 'id': preparation_id, 'workspace': workspace, 'name': definition.name,
-                'dashboard_id': dashboard_id, 'owner': user.username,
+                'design_id': design_id, 'owner': user.username,
                 'rendering_only': rendering_only, 'cancellation': cancellation,
                 'status': 'queued', 'queued_at': datetime.now(timezone.utc).timestamp(),
                 'started_at': None,
-                'progress': 0, 'detail': 'Waiting for an available Dashboard preparation slot',
+                'progress': 0, 'detail': 'Waiting for an available Design preparation slot',
             }
 
         def execute():
             try:
-                return run_direct_preparation(preparation_id, definition, dashboard_id, workspace, user, cancellation)
+                return run_direct_preparation(preparation_id, definition, design_id, workspace, user, cancellation)
             except HTTPException:
                 raise
             except (ValueError, KeyError) as exc:
                 raise HTTPException(400, str(exc)) from exc
             except RuntimeError as exc:
                 if cancellation['requested']:
-                    raise HTTPException(409, 'Dashboard preparation was interrupted.') from exc
+                    raise HTTPException(409, 'Design preparation was interrupted.') from exc
                 raise
             finally:
                 with lock:
@@ -5658,69 +5664,69 @@ def install_dashboard_routes(core):
             except HTTPException as exc:
                 result = {'status': 'failed', 'code': exc.status_code, 'detail': str(exc.detail)}
             except Exception as exc:
-                result = {'status': 'failed', 'code': 500, 'detail': f'Dashboard preparation failed: {exc}'}
+                result = {'status': 'failed', 'code': 500, 'detail': f'Design preparation failed: {exc}'}
             remember_preparation_result(preparation_id, workspace, user.username, result)
 
-        Thread(target=execute_in_background, name='dashboard-preparation', daemon=True).start()
+        Thread(target=execute_in_background, name='design-preparation', daemon=True).start()
         return JSONResponse({'preparation_id': preparation_id, 'status': 'queued'}, status_code=202)
 
-    @app.post('/api/ppt-dashboards/filter-options')
-    def filter_options(request: DashboardFilterOptionsRequest, user=Depends(dashboard_user)):
+    @app.post('/api/ppt-designer/filter-options')
+    def filter_options(request: DesignFilterOptionsRequest, user=Depends(design_user)):
         try:
             task_repository = bound_repository()
             definition = auto_cdr_definition(request.definition, task_repository)
             values = load_filter_options(definition, request.field, task_repository)
             if request.field.strip() in CASCADING_FILTER_FIELDS:
-                values = cascading_dashboard_options({request.field.strip(): values}, definition, task_repository)[request.field.strip()]
+                values = cascading_design_options({request.field.strip(): values}, definition, task_repository)[request.field.strip()]
             return {'field': request.field.strip(), 'values': values}
         except (ValueError, KeyError) as exc:
             raise HTTPException(400, str(exc)) from exc
 
-    @app.post('/api/ppt-dashboards/filter-options/batch')
-    def filter_options_batch(request: DashboardFilterOptionsBatchRequest, user=Depends(dashboard_user)):
+    @app.post('/api/ppt-designer/filter-options/batch')
+    def filter_options_batch(request: DesignFilterOptionsBatchRequest, user=Depends(design_user)):
         """Return the values the selected CDRs offer for several filters in one request."""
         try:
             task_repository = bound_repository()
             definition = auto_cdr_definition(request.definition, task_repository)
             options = load_filter_options_batch(definition, request.fields, task_repository)
-            return {'options': cascading_dashboard_options(options, definition, task_repository)}
+            return {'options': cascading_design_options(options, definition, task_repository)}
         except (ValueError, KeyError) as exc:
             raise HTTPException(400, str(exc)) from exc
 
-    @app.post('/api/ppt-dashboards/auto-cdrs')
-    def dashboard_auto_cdrs(definition: DashboardDefinition, user=Depends(dashboard_user)):
-        """The CDRs a Dashboard selection uses now and the lists of its Campaign, Operator, Vendor, Region, Cluster and City.
+    @app.post('/api/ppt-designer/auto-cdrs')
+    def design_auto_cdrs(definition: DesignDefinition, user=Depends(design_user)):
+        """The CDRs a Design selection uses now and the lists of its Campaign, Operator, Vendor, Region, Cluster and City.
 
-        Chosen from its NR Mode and Campaign and read from the CDR Filter Facets, without preparing the Dashboard
+        Chosen from its NR Mode and Campaign and read from the CDR Filter Facets, without preparing the Design
         or reading CDR rows, so the CDRs and these filters follow every change before it is applied.
         """
         try:
             task_repository = bound_repository()
             resolved = auto_cdr_definition(definition, task_repository)
-            options = cascading_dashboard_options({field: [] for field in CASCADING_FILTER_FIELDS}, resolved, task_repository)
+            options = cascading_design_options({field: [] for field in CASCADING_FILTER_FIELDS}, resolved, task_repository)
             return {'options': options, 'cdrs': describe_cdrs(task_repository, resolved.datasets)}
         except (ValueError, KeyError) as exc:
             raise HTTPException(400, str(exc)) from exc
 
-    @app.post('/api/ppt-dashboards/geography-options')
-    def geography_options(definition: DashboardDefinition, user=Depends(dashboard_user)):
+    @app.post('/api/ppt-designer/geography-options')
+    def geography_options(definition: DesignDefinition, user=Depends(design_user)):
         try:
             task_repository = bound_repository()
             # The values of the CDRs of the chosen campaigns (the campaigns and those CDRs come from /auto-cdrs).
-            return load_dashboard_geography_options(auto_cdr_definition(definition, task_repository), task_repository)
+            return load_design_geography_options(auto_cdr_definition(definition, task_repository), task_repository)
         except (ValueError, KeyError) as exc:
             raise HTTPException(400, str(exc)) from exc
 
-    @app.get('/api/ppt-dashboards/prepared/{token}')
-    def prepared_preview(token: str, user=Depends(dashboard_user)):
+    @app.get('/api/ppt-designer/prepared/{token}')
+    def prepared_preview(token: str, user=Depends(design_user)):
         with lock:
             snapshot = snapshots.get(token)
             if snapshot is None or snapshot.workspace != workspace_key() or snapshot.owner not in {user.username, '*'}:
-                raise HTTPException(410, 'Dashboard preview expired. Refresh the Dashboard.')
+                raise HTTPException(410, 'Design preview expired. Refresh the Design.')
             return {**snapshot.payload, 'token': token}
 
-    @app.get('/api/ppt-dashboards/preparation-progress/{preparation_id}')
-    def preparation_progress(preparation_id: str, user=Depends(dashboard_user)):
+    @app.get('/api/ppt-designer/preparation-progress/{preparation_id}')
+    def preparation_progress(preparation_id: str, user=Depends(design_user)):
         workspace = workspace_key()
         with lock:
             task = direct_preparation_tasks.get(preparation_id)
@@ -5733,51 +5739,51 @@ def install_dashboard_routes(core):
                         key: value for key, value in result.items() if key not in {'workspace', 'owner'}
                     } | {'progress': 100 if result.get('status') == 'completed' else 0}
             if task is None or task.get('workspace') != workspace:
-                raise HTTPException(404, 'Dashboard preparation is no longer active.')
+                raise HTTPException(404, 'Design preparation is no longer active.')
             return {
                 'progress': task.get('progress', 0),
-                'detail': task.get('detail') or 'Preparing Dashboard dataset',
+                'detail': task.get('detail') or 'Preparing Design dataset',
                 'status': task.get('status', 'processing'),
             }
 
-    def prefetched_dashboard_response(dashboard_id: str, definition: DashboardDefinition, user):
+    def prefetched_design_response(design_id: str, definition: DesignDefinition, user):
         workspace = workspace_key()
-        restored = restore_matching_preview_manifest(workspace, dashboard_id, definition)
+        restored = restore_matching_preview_manifest(workspace, design_id, definition)
         if restored is not None:
             return restored
-        raise HTTPException(409, 'Dashboard preparation is required.')
+        raise HTTPException(409, 'Design preparation is required.')
 
-    @app.get('/api/ppt-dashboards/prefetched/{dashboard_id}')
-    def prefetched_dashboard(dashboard_id: str, user=Depends(dashboard_user)):
+    @app.get('/api/ppt-designer/prefetched/{design_id}')
+    def prefetched_design(design_id: str, user=Depends(design_user)):
         task_repository = bound_repository()
         with lock:
-            raw_definition = read_dashboards(task_repository).get(dashboard_id)
+            raw_definition = read_designs(task_repository).get(design_id)
             if not isinstance(raw_definition, dict):
-                raise HTTPException(404, 'Dashboard not found.')
-            definition = DashboardDefinition.model_validate(runtime_dashboard_definition(raw_definition, task_repository))
-        return prefetched_dashboard_response(dashboard_id, definition, user)
+                raise HTTPException(404, 'Design not found.')
+            definition = DesignDefinition.model_validate(runtime_design_definition(raw_definition, task_repository))
+        return prefetched_design_response(design_id, definition, user)
 
-    @app.post('/api/ppt-dashboards/prefetched/{dashboard_id}')
-    def prefetched_dashboard_for_definition(
-        dashboard_id: str,
-        definition: DashboardDefinition,
+    @app.post('/api/ppt-designer/prefetched/{design_id}')
+    def prefetched_design_for_definition(
+        design_id: str,
+        definition: DesignDefinition,
         use_scope_universe: bool = False,
-        user=Depends(dashboard_user),
+        user=Depends(design_user),
     ):
         task_repository = bound_repository()
         with lock:
-            if dashboard_id not in read_dashboards(task_repository):
-                raise HTTPException(404, 'Dashboard not found.')
+            if design_id not in read_designs(task_repository):
+                raise HTTPException(404, 'Design not found.')
         definition = (automatic_scope_universe if use_scope_universe else auto_cdr_definition)(definition, task_repository)
-        return prefetched_dashboard_response(dashboard_id, definition, user)
+        return prefetched_design_response(design_id, definition, user)
 
     def reporting_source(snapshot, kind, task_repository):
-        """Return the shared combined CDR table used directly by Dashboard queries."""
-        selected = dashboard_datasets(snapshot.definition, kind, task_repository)
+        """Return the shared combined CDR table used directly by Design queries."""
+        selected = design_datasets(snapshot.definition, kind, task_repository)
         if not selected:
             raise HTTPException(400, 'Unavailable source type: select a matching CDR dataset.')
         if kind == 'all':
-            table, columns = rf_union_source(task_repository, [source for source in KINDS if dashboard_datasets(snapshot.definition, source, task_repository)])
+            table, columns = rf_union_source(task_repository, [source for source in KINDS if design_datasets(snapshot.definition, source, task_repository)])
             return Path(snapshot.workspace), table, columns
         columns = task_repository.list_reporting_row_columns(kind)
         if not columns:
@@ -5904,8 +5910,8 @@ def install_dashboard_routes(core):
     def reporting_read_connection(database_path):
         """Read connection with a larger page cache and memory-mapped I/O."""
         connection = workspace_read_connection(database_path)
-        connection.execute(f'PRAGMA cache_size=-{DASHBOARD_READ_CACHE_KIB}')
-        connection.execute(f'PRAGMA mmap_size={DASHBOARD_READ_MMAP_BYTES}')
+        connection.execute(f'PRAGMA cache_size=-{DESIGN_READ_CACHE_KIB}')
+        connection.execute(f'PRAGMA mmap_size={DESIGN_READ_MMAP_BYTES}')
         return connection
 
     def selection_share(database_path, table, where, parameters) -> float:
@@ -5929,12 +5935,12 @@ def install_dashboard_routes(core):
 
     def sequential_scan_source(database_path, branch, where, parameters):
         match = re.search(r'FROM "(reporting_rows_[a-z]+)"$', branch)
-        if match and selection_share(database_path, match.group(1), where, parameters) >= DASHBOARD_SEQUENTIAL_SCAN_SHARE:
+        if match and selection_share(database_path, match.group(1), where, parameters) >= DESIGN_SEQUENTIAL_SCAN_SHARE:
             return branch + ' NOT INDEXED'
         return branch
 
     def sequential_scan_table(database_path, table_name, where, parameters):
-        if selection_share(database_path, table_name, where, parameters) >= DASHBOARD_SEQUENTIAL_SCAN_SHARE:
+        if selection_share(database_path, table_name, where, parameters) >= DESIGN_SEQUENTIAL_SCAN_SHARE:
             return '"' + str(table_name).replace('"', '""') + '" NOT INDEXED'
         return table_name
 
@@ -6195,7 +6201,7 @@ def install_dashboard_routes(core):
                 source_kind, table, tuple(projection),
                 has_event_time=any(str(column).casefold() == 'event_start_time' for column in physical),
             )
-            rows = rows_by_kind.get(source_kind, []) if rows_by_kind is not None else dashboard_datasets(definition, source_kind, task_repository)
+            rows = rows_by_kind.get(source_kind, []) if rows_by_kind is not None else design_datasets(definition, source_kind, task_repository)
             result.append((source, rows))
         return result
 
@@ -6206,7 +6212,7 @@ def install_dashboard_routes(core):
         ).encode()).hexdigest()
         segments = []
         for source, rows in column_cache_sources(task_repository, kind, table_name, definition, rows_by_kind):
-            # Same revision contract as every Dashboard cache: the CDR version,
+            # Same revision contract as every Design cache: the CDR version,
             # its combined table's row and column revisions and the calculated
             # dimensions, so a cached column is never stale.
             revision = [
@@ -6228,7 +6234,7 @@ def install_dashboard_routes(core):
         They equal the SQLite counts: the universe is the selected CDRs within
         the dates and sheets, and the filtered rows also match every filter.
         """
-        if not DASHBOARD_COLUMN_CACHE or not selected:
+        if not DESIGN_COLUMN_CACHE or not selected:
             return None
         universe_definition = definition.model_copy(deep=True)
         universe_definition.filters = {}
@@ -6259,7 +6265,7 @@ def install_dashboard_routes(core):
         """Every distinct value of one CDR column, kept in memory per CDR version.
 
         The scan of a CDR's own rows only depends on that CDR, so a changed
-        Dashboard filter reuses it instead of reading the CDR again.
+        Design filter reuses it instead of reading the CDR again.
         """
         version = [dataset.get('id'), dataset.get('updated_at'), dataset.get('processed_at'),
                    dataset.get('normalization_version'), dataset.get('row_count'), column]
@@ -6347,7 +6353,7 @@ def install_dashboard_routes(core):
     def chart_dataset_column_classes(snapshot, entry, columns):
         task_repository = Repository(Path(snapshot.workspace), core.repository.global_db_path)
         datasets = []
-        for dataset_id in [row['id'] for row in dashboard_datasets(snapshot.definition, entry.source_kind, task_repository)]:
+        for dataset_id in [row['id'] for row in design_datasets(snapshot.definition, entry.source_kind, task_repository)]:
             dataset = task_repository.get_dataset(int(dataset_id))
             if dataset:
                 datasets.append(core.serialize_dataset_row(dataset))
@@ -6356,7 +6362,7 @@ def install_dashboard_routes(core):
     def chart_dataset_column_metadata(snapshot, entry, columns):
         task_repository = Repository(Path(snapshot.workspace), core.repository.global_db_path)
         datasets = []
-        for dataset_id in [row['id'] for row in dashboard_datasets(snapshot.definition, entry.source_kind, task_repository)]:
+        for dataset_id in [row['id'] for row in design_datasets(snapshot.definition, entry.source_kind, task_repository)]:
             dataset = task_repository.get_dataset(int(dataset_id))
             if dataset:
                 datasets.append(core.serialize_dataset_row(dataset))
@@ -6385,7 +6391,7 @@ def install_dashboard_routes(core):
         """Return the strongest known upper bound for one chart's source rows."""
         if selected is None:
             task_repository = Repository(Path(snapshot.workspace), core.repository.global_db_path)
-            selected = dashboard_datasets(snapshot.definition, entry.source_kind, task_repository)
+            selected = design_datasets(snapshot.definition, entry.source_kind, task_repository)
         limits = []
         source_total = sum(int(row.get('row_count') or 0) for row in selected)
         if source_total:
@@ -6413,7 +6419,7 @@ def install_dashboard_routes(core):
         ):
             return None
         task_repository = Repository(Path(snapshot.workspace), core.repository.global_db_path)
-        selected = dashboard_datasets(snapshot.definition, entry.source_kind, task_repository)
+        selected = design_datasets(snapshot.definition, entry.source_kind, task_repository)
         database_path, table_name, source_columns = reporting_source(
             snapshot, entry.source_kind, task_repository,
         )
@@ -6579,12 +6585,12 @@ def install_dashboard_routes(core):
         """
         with lock:
             # Snapshots a user is viewing keep their frames first, so the
-            # preparations of other Dashboards (exports) cannot evict the open
-            # Dashboard and force every remaining chart to reread its CDR rows.
+            # preparations of other Designs (exports) cannot evict the open
+            # Design and force every remaining chart to reread its CDR rows.
             ordered = list(snapshots.values())
             viewed = sorted((item for item in ordered if item.viewed_at), key=lambda item: item.viewed_at)
             unviewed = [item for item in ordered if not item.viewed_at]
-            recent = [*viewed[-DASHBOARD_FRAME_CACHE_SNAPSHOTS:], *unviewed[-1:]]
+            recent = [*viewed[-DESIGN_FRAME_CACHE_SNAPSHOTS:], *unviewed[-1:]]
             for snapshot in ordered:
                 if any(snapshot is item for item in recent):
                     continue
@@ -6606,7 +6612,7 @@ def install_dashboard_routes(core):
             if snapshot is not None:
                 snapshots.move_to_end(token)
         if snapshot is None or snapshot.workspace != (expected_workspace or workspace_key()) or snapshot.owner not in {user.username, '*'}:
-            raise HTTPException(410, 'Dashboard preview expired. Refresh the Dashboard.')
+            raise HTTPException(410, 'Design preview expired. Refresh the Design.')
         if index < 0 or index >= len(snapshot.entries):
             raise HTTPException(404, 'Chart not found.')
         entry = snapshot.entries[index]
@@ -6620,7 +6626,7 @@ def install_dashboard_routes(core):
                 source = snapshot.sources.get(entry.source_kind)
             if source is None:
                 rows_by_kind = {
-                    kind: dashboard_datasets(snapshot.definition, kind, task_repository)
+                    kind: design_datasets(snapshot.definition, kind, task_repository)
                     for kind in (KINDS if entry.source_kind == 'all' else (entry.source_kind,))
                 }
                 source = (rows_by_kind, *reporting_source(snapshot, entry.source_kind, task_repository))
@@ -6646,7 +6652,7 @@ def install_dashboard_routes(core):
             aggregation_columns = chart_aggregation_columns(
                 entry, source_columns, snapshot.multivendor, template_filters_applied,
             )
-            compact_columns = None if complete or aggregation_columns or not DASHBOARD_COMPACT_READS else compact_chart_columns(
+            compact_columns = None if complete or aggregation_columns or not DESIGN_COMPACT_READS else compact_chart_columns(
                 entry, source_columns, snapshot.multivendor,
             )
             grouped_read = bool(compact_columns) and entry.chart_type.casefold() in COMPACT_READ_CHART_TYPES
@@ -6675,7 +6681,7 @@ def install_dashboard_routes(core):
             # in table order; the others only when the column cache reproduces
             # SQLite's plan order, so no chart's row order changes.
             cache_order = None
-            if DASHBOARD_COLUMN_CACHE and not aggregation_columns:
+            if DESIGN_COLUMN_CACHE and not aggregation_columns:
                 ordered_columns = list(dict.fromkeys(
                     source_lookup[identity(column)] for column in requested_columns if identity(column) in source_lookup
                 ))
@@ -6706,7 +6712,7 @@ def install_dashboard_routes(core):
                 selection_identity = {'where': where, 'parameters': parameters}
             # An order-independent chart read from the column cache filters each distinct row once, with the number
             # of its rows, and has its rows back before its model is calculated (see read_frame).
-            weighted_read = bool(cache_order) and grouped_read and DASHBOARD_WEIGHTED_READS
+            weighted_read = bool(cache_order) and grouped_read and DESIGN_WEIGHTED_READS
             raw_key = sha256(json.dumps({
                 'kind': entry.source_kind, 'columns': read_columns, **selection_identity,
                 'aggregation_columns': aggregation_columns, 'compact': grouped_read and not cache_order,
@@ -6745,11 +6751,11 @@ def install_dashboard_routes(core):
                         mapping_settings = task_repository.chart_mapping_settings()
                         operator_mappings = mapping_settings['operator_mappings']
                         raw_frame = apply_operator_mappings(raw_frame, operator_mappings)
-                        # The operators the Operator Maps exclude are left out of every Dashboard.
+                        # The operators the Operator Maps exclude are left out of every Design.
                         raw_frame = drop_excluded_operators(raw_frame, excluded_operators(mapping_settings))
                         raw_frame.attrs.update(mapping_settings)
                         # NSA & SA: its campaigns that name SA are drawn as SA series (see _sa_series_keys).
-                        raw_frame.attrs[BOTH_NR_MODES_ATTR] = dashboard_nr_mode(snapshot.definition) == NSA_VS_SA
+                        raw_frame.attrs[BOTH_NR_MODES_ATTR] = design_nr_mode(snapshot.definition) == NSA_VS_SA
                         raw_frame = normalise_operator_aliases(raw_frame)
                         raw_frame.attrs['operator_aliases_normalized'] = True
                         with lock:
@@ -6854,14 +6860,14 @@ def install_dashboard_routes(core):
             )
             # The format the Designer gave the chart (series colours, legend, labels, axes): the renderer applies it, in
             # the viewer and in the PPT alike.
-            style = dashboard_design.row_format(entry).get('style')
+            style = design_slides.row_format(entry).get('style')
             if isinstance(style, dict) and style:
                 payload = {**payload, 'format_overrides': style}
             with lock:
                 payload = snapshot.chart_payloads.setdefault(index, payload)
                 if not (callable(snapshot.cancelled) and snapshot.cancelled()):
                     canvas_models[model_key] = payload
-                    while len(canvas_models) > DASHBOARD_CHART_MODELS_KEPT:
+                    while len(canvas_models) > DESIGN_CHART_MODELS_KEPT:
                         canvas_models.popitem(last=False)
         with lock:
             snapshot.chart_payloads.setdefault(index, payload)
@@ -6876,7 +6882,7 @@ def install_dashboard_routes(core):
                 task_repository.chart_mapping_settings(), sort_keys=True,
             ).encode()).hexdigest()
         filename = sha256(
-            f'{DASHBOARD_CHART_MODEL_CACHE_VERSION}:{snapshot.selection_key}:{snapshot.definition.scope}:'
+            f'{DESIGN_CHART_MODEL_CACHE_VERSION}:{snapshot.selection_key}:{snapshot.definition.scope}:'
             f'{entry_key}:{operator_mapping_key}'.encode()
         ).hexdigest()
         return f'{snapshot.workspace}:{filename}'
@@ -6915,8 +6921,8 @@ def install_dashboard_routes(core):
             while visible_chart_requests.get(workspace, 0) and not core.APP_SHUTTING_DOWN.is_set():
                 visible_chart_condition.wait(timeout=0.5)
 
-    @app.get('/api/ppt-dashboards/chart/{token}/{index}')
-    def interactive_chart(token: str, index: int, priority: str = 'high', user=Depends(dashboard_user)):
+    @app.get('/api/ppt-designer/chart/{token}/{index}')
+    def interactive_chart(token: str, index: int, priority: str = 'high', user=Depends(design_user)):
         with lock:
             snapshot = snapshots.get(token)
             if snapshot is not None:
@@ -6929,24 +6935,24 @@ def install_dashboard_routes(core):
         with nullcontext() if preload else visible_chart_work(workspace):
             payload = chart_model(token, index, user)
         # The server keeps the chart models in memory. A browser cache could
-        # outlive a renderer change or an explicit Dashboard refresh and
+        # outlive a renderer change or an explicit Design refresh and
         # reintroduce an obsolete ordering/model.
         return JSONResponse(payload, headers={'Cache-Control': 'no-store'})
 
-    @app.post('/api/ppt-dashboards/chart/{token}/{index}/refresh')
-    def refresh_interactive_chart(token: str, index: int, user=Depends(dashboard_user)):
+    @app.post('/api/ppt-designer/chart/{token}/{index}/refresh')
+    def refresh_interactive_chart(token: str, index: int, user=Depends(design_user)):
         """Invalidate and rebuild only the requested Canvas chart model."""
         payload = chart_model(token, index, user, force=True)
         return JSONResponse(payload, headers={'Cache-Control': 'no-store'})
 
-    @app.post('/api/ppt-dashboards/charts/{token}/refresh')
-    def refresh_interactive_charts(token: str, user=Depends(dashboard_user)):
-        """Invalidate and rebuild every available Canvas model in a Dashboard snapshot."""
+    @app.post('/api/ppt-designer/charts/{token}/refresh')
+    def refresh_interactive_charts(token: str, user=Depends(design_user)):
+        """Invalidate and rebuild every available Canvas model in a Design snapshot."""
         with lock:
             snapshot = snapshots.get(token)
         workspace = workspace_key()
         if snapshot is None or snapshot.workspace != workspace or snapshot.owner not in {user.username, '*'}:
-            raise HTTPException(410, 'Dashboard preview expired. Refresh the Dashboard.')
+            raise HTTPException(410, 'Design preview expired. Refresh the Design.')
         indexes = list(dict.fromkeys(
             int(chart['index'])
             for slide in snapshot.payload.get('slides', [])
@@ -6954,8 +6960,8 @@ def install_dashboard_routes(core):
             if chart.get('available')
         ))
         with ThreadPoolExecutor(
-            max_workers=DASHBOARD_CHART_RENDER_WORKERS,
-            thread_name_prefix='ppt-dashboard-refresh',
+            max_workers=DESIGN_CHART_RENDER_WORKERS,
+            thread_name_prefix='ppt-designer-refresh',
         ) as chart_executor:
             futures = [
                 chart_executor.submit(
@@ -6968,9 +6974,9 @@ def install_dashboard_routes(core):
         core.invalidate_workspace_size_cache(Path(workspace).parent)
         return {'refreshed': len(indexes)}
 
-    @app.get('/api/ppt-dashboards/chart/{token}/{index}/filter-context')
-    def interactive_chart_filter_context(token: str, index: int, user=Depends(dashboard_user)):
-        """Return filter fields available to an expanded Dashboard chart."""
+    @app.get('/api/ppt-designer/chart/{token}/{index}/filter-context')
+    def interactive_chart_filter_context(token: str, index: int, user=Depends(design_user)):
+        """Return filter fields available to an expanded Design chart."""
         snapshot, entry, _ = snapshot_chart(token, index, user, include_frame=False)
         task_repository = Repository(Path(snapshot.workspace), core.repository.global_db_path)
         _database_path, _table_name, columns = reporting_source(snapshot, entry.source_kind, task_repository)
@@ -6985,7 +6991,7 @@ def install_dashboard_routes(core):
             'chart_type': entry.chart_type,
             'chart_title': entry.chart_title,
             'kpi': entry.kpi,
-            'dataset_ids': [str(row['id']) for row in dashboard_datasets(snapshot.definition, entry.source_kind, task_repository)],
+            'dataset_ids': [str(row['id']) for row in design_datasets(snapshot.definition, entry.source_kind, task_repository)],
             'filters': entry.filters,
             'rows_split': entry.rows_split,
             'columns_split': entry.columns_split,
@@ -7027,7 +7033,7 @@ def install_dashboard_routes(core):
     def build_interactive_chart_filter_preview(
         token: str,
         index: int,
-        request: DashboardChartFilterPreviewRequest,
+        request: DesignChartFilterPreviewRequest,
         user,
     ):
         """Build one expanded chart with temporary, unsaved template filters."""
@@ -7093,7 +7099,7 @@ def install_dashboard_routes(core):
             snapshot, entries=[preview_entry], definition=preview_definition,
             frames={}, chart_frames={}, filtered_frames={}, chart_payloads={}, frame_locks={},
         )
-        selected = dashboard_datasets(preview_definition, preview_entry.source_kind, task_repository)
+        selected = design_datasets(preview_definition, preview_entry.source_kind, task_repository)
         ensure_combined_filter_columns(
             preview_definition, task_repository, snapshot.dimensions,
             selected_sources(preview_definition, task_repository), [preview_entry],
@@ -7143,7 +7149,7 @@ def install_dashboard_routes(core):
         job_id: str,
         token: str,
         index: int,
-        request: DashboardChartFilterPreviewRequest,
+        request: DesignChartFilterPreviewRequest,
         user,
     ) -> None:
         """Finish a potentially slow preview without holding a proxy request open."""
@@ -7159,14 +7165,14 @@ def install_dashboard_routes(core):
             if job is not None:
                 job.update(result)
 
-    @app.post('/api/ppt-dashboards/chart/{token}/{index}/filter-preview')
+    @app.post('/api/ppt-designer/chart/{token}/{index}/filter-preview')
     def interactive_chart_filter_preview(
         token: str,
         index: int,
-        request: DashboardChartFilterPreviewRequest,
+        request: DesignChartFilterPreviewRequest,
         background_tasks: BackgroundTasks,
         background: bool = False,
-        user=Depends(dashboard_user),
+        user=Depends(design_user),
     ):
         """Render one temporary chart, optionally outside the proxy request."""
         if not background:
@@ -7198,8 +7204,8 @@ def install_dashboard_routes(core):
             headers={'Cache-Control': 'no-store'},
         )
 
-    @app.get('/api/ppt-dashboards/chart-preview-jobs/{job_id}')
-    def interactive_chart_filter_preview_status(job_id: str, user=Depends(dashboard_user)):
+    @app.get('/api/ppt-designer/chart-preview-jobs/{job_id}')
+    def interactive_chart_filter_preview_status(job_id: str, user=Depends(design_user)):
         """Return a temporary Chart Definition preview once its query completes."""
         with lock:
             job = interactive_chart_preview_jobs.get(job_id)
@@ -7219,17 +7225,17 @@ def install_dashboard_routes(core):
             raise HTTPException(int(result.get('status') or 500), str(result.get('detail') or 'Unable to render chart preview.'))
         return JSONResponse(result['payload'], headers={'Cache-Control': 'no-store'})
 
-    @app.post('/api/ppt-dashboards/chart/{token}/{index}/update-template')
+    @app.post('/api/ppt-designer/chart/{token}/{index}/update-template')
     def update_interactive_chart_template(
         token: str,
         index: int,
-        request: DashboardChartFilterPreviewRequest,
-        user=Depends(dashboard_editor_user),
+        request: DesignChartFilterPreviewRequest,
+        user=Depends(design_editor_user),
     ):
         """Persist the expanded Chart Definition into its source template row."""
         snapshot, _entry, _ = snapshot_chart(token, index, user, include_frame=False)
         task_repository = Repository(Path(snapshot.workspace), core.repository.global_db_path)
-        template_name, nr_mode = snapshot.definition.template, dashboard_nr_mode(snapshot.definition)
+        template_name, nr_mode = snapshot.definition.template, design_nr_mode(snapshot.definition)
         template = next((
             row for row in task_repository.list_report_templates()
             if str(row['name']) == template_name
@@ -7238,21 +7244,21 @@ def install_dashboard_routes(core):
             raise HTTPException(404, 'The Report Template used by this chart is no longer available.')
         if not can_design_template(user, template):
             raise HTTPException(403, designer_refusal('PPT Template'))
-        # The template as written (its titles may name the NR Mode with tokens, which the Dashboard shows resolved).
+        # The template as written (its titles may name the NR Mode with tokens, which the Design shows resolved).
         try:
             entries = core.load_template_catalogue(bytes(template['content']), task_repository=task_repository)
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
         source_index = _entry.template_index if _entry.template_index is not None else index
-        element_id = dashboard_design.row_format(_entry).get('id')
-        if element_id and (snapshot.definition.own_slides or dashboard_design.has_overrides(snapshot.definition.slide_overrides)):
-            # A Dashboard with a Design of its own: its rows are not those of the template, the ids are.
+        element_id = design_slides.row_format(_entry).get('id')
+        if element_id and (snapshot.definition.own_slides or design_slides.has_overrides(snapshot.definition.slide_overrides)):
+            # A Design with a slide set of its own: its rows are not those of the template, the ids are.
             if snapshot.definition.own_slides:
-                raise HTTPException(409, 'This Dashboard is detached from its template: change the chart from Design.')
+                raise HTTPException(409, 'This Design is detached from its template: change the chart from the Designer.')
             source_index = next((position for position, entry in enumerate(entries)
-                                 if dashboard_design.row_format(entry).get('id') == element_id), None)
+                                 if design_slides.row_format(entry).get('id') == element_id), None)
             if source_index is None:
-                raise HTTPException(409, 'This chart is only in this Dashboard: change it from Design.')
+                raise HTTPException(409, 'This chart is only in this Design: change it from the Designer.')
         if source_index >= len(entries):
             raise HTTPException(404, 'The chart row is no longer available in the Report Template.')
         changes = {
@@ -7306,7 +7312,7 @@ def install_dashboard_routes(core):
         except (OSError, ValueError) as exc:
             raise HTTPException(503, f'Unable to update the Report Template: {exc}') from exc
         # Keep every live view of this Report Template consistent with the row
-        # just persisted. The Dashboard viewer, an expanded chart and a
+        # just persisted. The Design viewer, an expanded chart and a
         # restored/PPT chart can legitimately use different snapshot tokens;
         # updating only the request's snapshot makes another one reopen the
         # previous Chart Definition even though the CSV was saved correctly.
@@ -7323,7 +7329,7 @@ def install_dashboard_routes(core):
                     current_source = current.template_index if current.template_index is not None else chart_index
                     if current_source != source_index:
                         continue
-                    candidate_mode = dashboard_nr_mode(candidate.definition)
+                    candidate_mode = design_nr_mode(candidate.definition)
                     shown_update = entry_for_nr_mode(updated_entry, candidate_mode)
                     effective_update = (prepare_multivendor_catalog_entry(shown_update, candidate.definition.vendor_comparison)
                                         if candidate.multivendor else shown_update)
@@ -7343,7 +7349,7 @@ def install_dashboard_routes(core):
                             if chart.get('index') == chart_index:
                                 chart.update({'title': replacement.chart_title, 'source': replacement.source_kind,
                                               'cdr_source': replacement.cdr_source, 'chart_type': replacement.chart_type})
-        task_repository.add_log(user.username, 'update_dashboard_chart_template', json.dumps({
+        task_repository.add_log(user.username, 'update_design_chart_template', json.dumps({
             'template': template_name, 'nr_mode': nr_mode, 'chart_index': index,
         }))
         return {
@@ -7355,8 +7361,8 @@ def install_dashboard_routes(core):
             ), '')),
         }
 
-    def dashboard_status_signature(workspace, raw_definition, task_repository, shared) -> str:
-        """Fingerprint every input that can change a Dashboard's cached universes."""
+    def design_status_signature(workspace, raw_definition, task_repository, shared) -> str:
+        """Fingerprint every input that can change a Design's cached universes."""
         definition = raw_definition if isinstance(raw_definition, dict) else {}
         template = str(definition.get('template') or '')
         template_key = template
@@ -7373,7 +7379,7 @@ def install_dashboard_routes(core):
             'shared': shared['signature'],
         }, sort_keys=True, default=str).encode()).hexdigest()
 
-    def dashboard_status_shared_state(workspace, task_repository) -> dict:
+    def design_status_shared_state(workspace, task_repository) -> dict:
         datasets = [
             (row['id'], row['status'], row['dataset_kind'], row['nr_mode'], row['updated_at'], row['processed_at'])
             for row in task_repository.list_datasets()
@@ -7386,65 +7392,65 @@ def install_dashboard_routes(core):
         }, sort_keys=True, default=str).encode()).hexdigest()
         return {'signature': data_signature, 'data_signature': data_signature, 'templates': {}}
 
-    def dashboard_status_payload(requested_definitions=None, username='system', active_dashboard_id=None):
-        """The state of each Dashboard: being prepared or rendered for a user, Ready when it has CDRs to show (it is
+    def design_status_payload(requested_definitions=None, username='system', active_design_id=None):
+        """The state of each Design: being prepared or rendered for a user, Ready when it has CDRs to show (it is
         prepared when opened, from the columnar copies of its CDRs), or Data needed."""
         workspace = workspace_key()
         task_repository = Repository(Path(workspace), core.repository.global_db_path)
-        dashboards = read_dashboards(task_repository)
+        designs = read_designs(task_repository)
         result = {}
         with lock:
             direct_jobs = {}
-            for dashboard_id in dashboards:
-                direct_jobs[dashboard_id] = next((
+            for design_id in designs:
+                direct_jobs[design_id] = next((
                     dict(task) for task in direct_preparation_tasks.values()
-                    if task.get('workspace') == workspace and task.get('dashboard_id') == dashboard_id
+                    if task.get('workspace') == workspace and task.get('design_id') == design_id
                 ), None)
         try:
-            shared = dashboard_status_shared_state(workspace, task_repository)
+            shared = design_status_shared_state(workspace, task_repository)
         except (OSError, sqlite3.Error, TypeError, ValueError):
             shared = {'signature': uuid4().hex, 'data_signature': '', 'templates': {}}
-        for dashboard_id, raw_definition in dashboards.items():
-            direct_job = direct_jobs.get(dashboard_id)
+        for design_id, raw_definition in designs.items():
+            direct_job = direct_jobs.get(design_id)
             if direct_job is not None:
                 rendering_only = bool(direct_job.get('rendering_only'))
-                result[dashboard_id] = {
+                result[design_id] = {
                     'state': 'rendering' if rendering_only else 'loading-data',
                     'label': 'Rendering' if rendering_only else 'Loading data',
                 }
                 continue
-            key = (workspace, dashboard_id)
-            signature = dashboard_status_signature(workspace, raw_definition, task_repository, shared)
+            key = (workspace, design_id)
+            signature = design_status_signature(workspace, raw_definition, task_repository, shared)
             with lock:
-                cached = dashboard_status_cache.get(key)
+                cached = design_status_cache.get(key)
             if cached is not None and cached[0] == signature:
                 has_data = cached[1]
             else:
                 try:
-                    definition = auto_cdr_definition(DashboardDefinition.model_validate(
-                        runtime_dashboard_definition(raw_definition, task_repository)), task_repository)
+                    definition = auto_cdr_definition(DesignDefinition.model_validate(
+                        runtime_design_definition(raw_definition, task_repository)), task_repository)
                     has_data = any(definition.datasets.values())
                 except (HTTPException, KeyError, OSError, sqlite3.Error, TypeError, ValueError):
                     has_data = False
                 with lock:
-                    dashboard_status_cache[key] = (signature, has_data)
-            result[dashboard_id] = {'state': 'ready', 'label': 'Ready'} if has_data else {'state': 'data-needed', 'label': 'Data needed'}
+                    design_status_cache[key] = (signature, has_data)
+            result[design_id] = {'state': 'ready', 'label': 'Ready'} if has_data else {'state': 'data-needed', 'label': 'Data needed'}
         return JSONResponse(result, headers={'Cache-Control': 'no-store, max-age=0, must-revalidate'})
 
-    @app.get('/api/ppt-dashboards/statuses')
-    def dashboard_statuses(active_dashboard_id: str | None = None, user=Depends(dashboard_user)):
-        return dashboard_status_payload(username=user.username, active_dashboard_id=active_dashboard_id)
+    @app.get('/api/ppt-designer/statuses')
+    def design_statuses(active_design_id: str | None = None, user=Depends(design_user)):
+        return design_status_payload(username=user.username, active_design_id=active_design_id)
 
-    @app.post('/api/ppt-dashboards/statuses')
-    def dashboard_statuses_for_session(
-        definitions: dict[str, DashboardDefinition], active_dashboard_id: str | None = None,
-        user=Depends(dashboard_user),
+    @app.post('/api/ppt-designer/statuses')
+    def design_statuses_for_session(
+        definitions: dict[str, DesignDefinition], active_design_id: str | None = None,
+        user=Depends(design_user),
     ):
-        """Report the states of the Dashboards."""
-        return dashboard_status_payload(definitions, username=user.username, active_dashboard_id=active_dashboard_id)
+        """Report the states of the Designs."""
+        return design_status_payload(definitions, username=user.username, active_design_id=active_design_id)
 
-    def cancel_workspace_dashboard_tasks(workspace: str | Path) -> list:
-        """Cancel explicitly requested Dashboard preparation for a workspace."""
+    def cancel_workspace_design_tasks(workspace: str | Path) -> list:
+        """Cancel explicitly requested Design preparation for a workspace."""
         database_path = str(Path(workspace).resolve())
         with lock:
             for task in direct_preparation_tasks.values():
@@ -7461,7 +7467,7 @@ def install_dashboard_routes(core):
         return []
 
     def invalidate_workspace_chart_models(workspace: str | Path) -> None:
-        """Rebuild open Dashboard charts after a mapping colour/order change."""
+        """Rebuild open Design charts after a mapping colour/order change."""
         database_path = str(Path(workspace).resolve())
         with lock:
             for snapshot in snapshots.values():
@@ -7477,7 +7483,7 @@ def install_dashboard_routes(core):
                 snapshot.chart_payloads.clear()
                 snapshot.frame_locks.clear()
 
-    def dashboard_task_payloads(workspace):
+    def design_task_payloads(workspace):
         database_path = str(workspace.database_path.resolve())
         with lock:
             direct_tasks = [
@@ -7487,26 +7493,26 @@ def install_dashboard_routes(core):
             ]
             return [{
                 'id': task['id'],
-                'dashboard_name': task['name'],
+                'design_name': task['name'],
                 'label': (
-                    'Waiting to render Dashboard Charts' if task.get('rendering_only') else 'Waiting to prepare Dashboard dataset'
+                    'Waiting to render Design Charts' if task.get('rendering_only') else 'Waiting to prepare Design dataset'
                 ) if task.get('status') == 'queued' else (
-                    'Rendering Dashboard Charts' if task.get('rendering_only') else 'Preparing Dashboard dataset'
+                    'Rendering Design Charts' if task.get('rendering_only') else 'Preparing Design dataset'
                 ),
                 'detail': (
-                    'Rendering charts with the current Dashboard scope'
+                    'Rendering charts with the current Design scope'
                     if task.get('rendering_only')
-                    else str(task.get('detail') or 'Building filtered Dashboard selection')
+                    else str(task.get('detail') or 'Building filtered Design selection')
                 ),
                 'status': task.get('status', 'processing'),
                 'queued_at': task.get('queued_at'),
                 'started_at': task.get('started_at'),
                 'progress': task.get('progress', 0),
-                'stop_task_id': f'dashboard-prepare:{task["id"]}',
+                'stop_task_id': f'design-prepare:{task["id"]}',
                 'stop_url': f'/api/background-tasks/{workspace.id}/stop',
             } for task in direct_tasks]
 
-    def stop_dashboard_task(workspace_path, task_id):
+    def stop_design_task(workspace_path, task_id):
         database_path = str(Path(workspace_path).resolve())
         stopped = False
         with lock:
@@ -7518,31 +7524,31 @@ def install_dashboard_routes(core):
                     stopped = True
         return stopped
 
-    def rename_template_dashboards(previous_template: str, template: str, username: str) -> int:
-        """Keep Dashboard template references and display names aligned after a template rename."""
+    def rename_template_designs(previous_template: str, template: str, username: str) -> int:
+        """Keep Design template references and display names aligned after a template rename."""
         workspace_key()
         with lock:
             task_repository = bound_repository()
-            dashboards = read_dashboards(task_repository)
-            changed = [(dashboard_id, dashboards[dashboard_id])
-                       for dashboard_id in rename_template_in_dashboards(dashboards, previous_template, template)]
+            designs = read_designs(task_repository)
+            changed = [(design_id, designs[design_id])
+                       for design_id in rename_template_in_designs(designs, previous_template, template)]
             if changed:
-                task_repository.set_workspace_state(STATE_KEY, json.dumps(dashboards))
-                task_repository.add_log(username, 'rename_dashboard_template_references', json.dumps({
+                task_repository.set_workspace_state(STATE_KEY, json.dumps(designs))
+                task_repository.add_log(username, 'rename_design_template_references', json.dumps({
                     'previous_template': previous_template,
-                    'template': template, 'dashboards': len(changed),
+                    'template': template, 'designs': len(changed),
                 }))
         return len(changed)
 
-    core.ppt_dashboard_tasks = dashboard_task_payloads
-    core.ppt_dashboard_cancel_workspace_tasks = cancel_workspace_dashboard_tasks
-    core.ppt_dashboard_invalidate_chart_models = invalidate_workspace_chart_models
-    core.ppt_dashboard_stop_task = stop_dashboard_task
-    core.ppt_dashboard_rename_template_references = rename_template_dashboards
-    core.ppt_dashboard_reconcile_template_slide_comments = reconcile_template_slide_comments
+    core.ppt_design_tasks = design_task_payloads
+    core.ppt_design_cancel_workspace_tasks = cancel_workspace_design_tasks
+    core.ppt_design_invalidate_chart_models = invalidate_workspace_chart_models
+    core.ppt_design_stop_task = stop_design_task
+    core.ppt_design_rename_template_references = rename_template_designs
+    core.ppt_design_reconcile_template_slide_comments = reconcile_template_slide_comments
 
-    @app.get('/api/ppt-dashboards/preview/{token}/{index}.png')
-    def chart(token: str, index: int, user=Depends(dashboard_user)):
+    @app.get('/api/ppt-designer/preview/{token}/{index}.png')
+    def chart(token: str, index: int, user=Depends(design_user)):
         snapshot, entry, _ = snapshot_chart(token, index, user, include_frame=False)
         entry_key = sha256(repr(entry).encode()).hexdigest()
         task_repository = Repository(Path(snapshot.workspace), core.repository.global_db_path)
@@ -7567,16 +7573,16 @@ def install_dashboard_routes(core):
                 images[key] = png
                 while len(images) > 100:
                     images.popitem(last=False)
-        # The same Dashboard token can be explicitly refreshed. Never let a
+        # The same Design token can be explicitly refreshed. Never let a
         # browser keep a previously rendered chart image for an hour after the
         # server has rebuilt its model or mapping-dependent frame.
         return Response(png, media_type='image/png', headers={'Cache-Control': 'no-store, max-age=0, must-revalidate'})
 
-    @app.get('/api/ppt-dashboards/data/{token}/{index}')
+    @app.get('/api/ppt-designer/data/{token}/{index}')
     def chart_data(
         token: str, index: int, page: int = 0, download: bool = False,
         column_filters: str = '', include_filter_values: bool = False, filter_column: str = '',
-        user=Depends(dashboard_user),
+        user=Depends(design_user),
     ):
         snapshot, entry, _ = snapshot_chart(token, index, user, include_frame=False)
         filter_column = vendor_filter_column(filter_column) if filter_column else ''
@@ -7608,10 +7614,10 @@ def install_dashboard_routes(core):
         ) if filter_column else (chart_dataset_filter_values(frame) if include_filter_values else {})
         frame = apply_chart_column_filters(frame, selected_column_filters)
         if download:
-            bound_repository().try_add_log(user.username, 'export_dashboard_chart_data_csv', json.dumps({
-                'dashboard': snapshot.definition.name, 'chart_index': index, 'rows': len(frame),
+            bound_repository().try_add_log(user.username, 'export_design_chart_data_csv', json.dumps({
+                'design': snapshot.definition.name, 'chart_index': index, 'rows': len(frame),
             }))
-            return Response(frame.to_csv(index=False), media_type='text/csv', headers={'Content-Disposition': 'attachment; filename="dashboard-chart-data.csv"'})
+            return Response(frame.to_csv(index=False), media_type='text/csv', headers={'Content-Disposition': 'attachment; filename="design-chart-data.csv"'})
         page = max(page, 0)
         visible = frame.iloc[page*100:(page+1)*100].fillna('').astype(str)
         return {

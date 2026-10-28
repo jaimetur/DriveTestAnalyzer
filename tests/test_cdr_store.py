@@ -255,10 +255,10 @@ def test_the_rows_of_a_cdr_with_filters_are_the_same_from_its_copy(client, tmp_p
     pd.testing.assert_frame_equal(copied_rows, sqlite_rows, check_exact=True)
 
 
-def test_the_dashboard_columns_of_the_copies_are_those_of_the_combined_table(client, tmp_path):
+def test_the_design_columns_of_the_copies_are_those_of_the_combined_table(client, tmp_path):
     import numpy as np
     import sqlite3
-    from src.modules import dashboard_column_cache as dcc
+    from src.modules import design_column_cache as dcc
 
     first = add_cdr(tmp_path, 'first.csv', 'data', pd.DataFrame({
         'Operator': ['EE', ' o2 ', 'EE'], 'Call Status': ['Completed', 'Failed', None], 'Mean_Data_Rate': [12.5, None, 3],

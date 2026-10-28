@@ -14,7 +14,7 @@ from contextlib import closing
 from pathlib import Path
 
 REPORTS_FOLDER = 'reports'
-DASHBOARDS_FOLDER = 'dashboards'
+DESIGNS_FOLDER = 'designs'
 CDR_ANALYSIS_FOLDER = 'cdr-analysis'
 NETWORK_INSIGHTS_FOLDER = 'network-insights'
 REPORTS_OLD_FOLDER = 'reports-old'
@@ -22,21 +22,25 @@ REPORTS_CHARTS_OLD_FOLDER = 'reports-charts-old'
 REPORTING_JOBS_FOLDER = 'reporting-jobs'
 BUNDLE_REPORTS_FOLDER = 'bundle-reports'
 MODULE_FOLDERS = frozenset({
-    DASHBOARDS_FOLDER, CDR_ANALYSIS_FOLDER, NETWORK_INSIGHTS_FOLDER,
+    DESIGNS_FOLDER, CDR_ANALYSIS_FOLDER, NETWORK_INSIGHTS_FOLDER,
     REPORTS_OLD_FOLDER, REPORTS_CHARTS_OLD_FOLDER, REPORTING_JOBS_FOLDER, BUNDLE_REPORTS_FOLDER,
 })
 # Former folders directly below output/ (and those of the Bundle Report Templates when they were called Complete
-# Reports or Reporting Jobs Templates) and the module folder that replaces each one.
+# Reports or Reporting Jobs Templates, and of PPT Designer when it was PPT Dashboards) and the module folder that
+# replaces each one.
 LEGACY_OUTPUT_FOLDERS = (
-    ('dashboards', DASHBOARDS_FOLDER),
+    ('dashboards', DESIGNS_FOLDER),
+    (f'{REPORTS_FOLDER}/dashboards', DESIGNS_FOLDER),
     ('reporting', REPORTING_JOBS_FOLDER),
     ('charts', REPORTS_CHARTS_OLD_FOLDER),
     ('report-charts', REPORTS_CHARTS_OLD_FOLDER),
     (f'{REPORTS_FOLDER}/complete-reports', BUNDLE_REPORTS_FOLDER),
     (f'{REPORTS_FOLDER}/reporting-jobs-templates', BUNDLE_REPORTS_FOLDER),
 )
+# The charts of a PPT job of PPT Designer, in its folder, as PPT Dashboards named them.
+LEGACY_CHARTS_FOLDER, CHARTS_FOLDER = 'dashboard-charts', 'design-charts'
 STORED_PATH_COLUMNS = (
-    ('dashboard_ppt_jobs', 'output_path'),
+    ('design_ppt_jobs', 'output_path'),
     ('generated_jobs', 'output_path'),
     ('report_task_runs', 'output_dir'),
 )
@@ -112,6 +116,11 @@ def migrate_output_layout(output_dir: Path | str, database_path: Path | str) -> 
     moves: list[tuple[Path, Path]] = []
     for legacy, folder in LEGACY_OUTPUT_FOLDERS:
         _merge_into(output_dir / legacy, root / folder, moves)
+    designs = root / DESIGNS_FOLDER
+    if designs.is_dir():
+        for job in list(designs.iterdir()):
+            if (job / LEGACY_CHARTS_FOLDER).is_dir():
+                _merge_into(job / LEGACY_CHARTS_FOLDER, job / CHARTS_FOLDER, moves)
     if root.is_dir():
         for item in list(root.iterdir()):
             if item.name in MODULE_FOLDERS or item.name.startswith('.'):

@@ -37,7 +37,7 @@
         <div class="configuration-card-head"><p class="eyebrow">Chart Rendering</p><h3>Renderer</h3></div>
         <label>Report Chart Renderer
           <select name="report_chart_renderer">
-            <option value="dashboard-canvas" {% if configuration.report_chart_renderer == 'dashboard-canvas' %}selected{% endif %}>Dashboard Canvas</option>
+            <option value="canvas" {% if configuration.report_chart_renderer == 'canvas' %}selected{% endif %}>Design Canvas</option>
             <option value="pil" {% if configuration.report_chart_renderer == 'pil' %}selected{% endif %}>PIL legacy renderer</option>
           </select>
           <span class="table-help">Overrides DRIVETEST_ANALYZER_REPORT_CHART_RENDERER.</span>

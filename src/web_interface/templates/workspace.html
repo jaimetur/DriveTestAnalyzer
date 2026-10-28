@@ -8,7 +8,7 @@
         <h2>Isolated Workspaces for your Data</h2>
       </div>
     </div>
-    <p class="lede">Each workspace keeps its own datasets apart (CDRs, Smart Orchestrator logs, Vendor mappings, Region and Cluster polygons and the rest of its sources) together with their processing history, configuration, dashboards and reports, with access granted by role, group or user. Open the workspace to work in, or create and manage workspaces below.</p>
+    <p class="lede">Each workspace keeps its own datasets apart (CDRs, Smart Orchestrator logs, Vendor mappings, Region and Cluster polygons and the rest of its sources) together with their processing history, configuration, designs and reports, with access granted by role, group or user. Open the workspace to work in, or create and manage workspaces below.</p>
   </article>
   <article class="panel workspace-switcher-panel" data-page-panel-label="Workspaces Management">
     <div class="section-head tight-head">
@@ -1691,7 +1691,7 @@
       event.preventDefault();
       const workspaceName = form.dataset.workspaceName || 'this workspace';
       const accepted = await showConfirmDialog(
-        `Clear the generated Dashboard cache for '${workspaceName}'? Reusable preview manifests and rendered chart models will be rebuilt when needed.`,
+        `Clear the generated Design cache for '${workspaceName}'? Reusable preview manifests and rendered chart models will be rebuilt when needed.`,
         {title: 'Clear workspace cache', confirmLabel: 'Clear cache'},
       );
       if (!accepted) return;
@@ -1772,11 +1772,11 @@
       event.preventDefault();
       const workspaceName = form.dataset.workspaceName || 'this workspace';
       const result = await showConfirmDialog(
-        `Duplicate workspace '${workspaceName}'? You can also include its generated dashboards, reports and chart sets.`,
+        `Duplicate workspace '${workspaceName}'? You can also include its generated designs, reports and chart sets.`,
         {
           title: 'Duplicate workspace',
           confirmLabel: 'Duplicate workspace',
-          optionLabel: 'Also duplicate generated dashboards, reports and chart sets.',
+          optionLabel: 'Also duplicate generated designs, reports and chart sets.',
           optionChecked: false,
         },
       );
@@ -1794,7 +1794,7 @@
       showLoadingOverlay(
         'Duplicating workspace',
         result.optionChecked
-          ? 'Please wait while the workspace database, datasets, dashboards, reports and chart sets are copied.'
+          ? 'Please wait while the workspace database, datasets, designs, reports and chart sets are copied.'
           : 'Please wait while the workspace database, datasets and associated files are copied.',
       );
       HTMLFormElement.prototype.submit.call(form);
@@ -1917,7 +1917,7 @@
       refreshTable();
     }, 5000);
   };
-  // Cache artifacts are written by Dashboard workers after this page loads.
+  // Cache artifacts are written by Design workers after this page loads.
   // Keep the size column current even while no workspace lifecycle operation
   // is active; the server invalidates its size snapshot on every cache write.
   startPolling();

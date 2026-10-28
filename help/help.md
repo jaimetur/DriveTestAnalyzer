@@ -31,14 +31,14 @@ roadmap
 
 ### Module presentations
 
-Each main module also has a presentation of its own, in a design of its own, at the start of its chapter: [Workspace Management](workspace-management.md), with **Workspace Config** after it (everything to set up in a new workspace: how operators, vendors and campaigns are named, coloured and ordered, the map areas of its countries, its networks and its methodology; see [Workspace Config](workspace-config.md)), [CDR Analysis](datasets-analysis.md), [Network Insights](network-insights.md), [PPT Dashboards](ppt-dashboards.md), [Scoring & GAP Analysis](scoring-gap-analysis.md), [Non-Qualified Calls](non-qualified-calls.md) with the **DT Analyzer RCA** beside it (how it finds the root cause of every Non-Qualified Call: what it reads, its rules, the lack of resources, the network around the call and the evidence it gives), [Reporting](reporting.md), [Builders](chart-builder.md) and [Ticket Center](ticket-center.md), and **Administration** after them (Admin and Super Admin: users and access, the databases, backups, packages and transfers, the configuration of the application at every level and App Events; see [Super Admin](super-admin.md)). They open in the same slide viewer and download as PowerPoint.
+Each main module also has a presentation of its own, in a design of its own, at the start of its chapter: [Workspace Management](workspace-management.md), with **Workspace Config** after it (everything to set up in a new workspace: how operators, vendors and campaigns are named, coloured and ordered, the map areas of its countries, its networks and its methodology; see [Workspace Config](workspace-config.md)), [CDR Analysis](datasets-analysis.md), [Network Insights](network-insights.md), [PPT Designer](ppt-designer.md), [Scoring & GAP Analysis](scoring-gap-analysis.md), [Non-Qualified Calls](non-qualified-calls.md) with the **DT Analyzer RCA** beside it (how it finds the root cause of every Non-Qualified Call: what it reads, its rules, the lack of resources, the network around the call and the evidence it gives), [Reporting](reporting.md), [Builders](chart-builder.md) and [Ticket Center](ticket-center.md), and **Administration** after them (Admin and Super Admin: users and access, the databases, backups, packages and transfers, the configuration of the application at every level and App Events; see [Super Admin](super-admin.md)). They open in the same slide viewer and download as PowerPoint.
 
 ```presentations
 workspace
 workspace-config
 cdr-analysis
 network-insights
-ppt-dashboards
+ppt-designer
 scoring-gap-analysis
 non-qualified-calls
 dt-analyzer-rca
@@ -76,7 +76,7 @@ full-presentation
 | Installing the service | [Deployment Configuration](configuration.md) and [Docker Deployment](docker-deployment.md) |
 | Uploading data | the [Data Ingestion](workspace-management.md#data-ingestion) section in Workspace Management |
 | Analysing one dataset | [CDR Analysis](datasets-analysis.md) |
-| Exploring a complete template as a live dashboard or generating its PowerPoint | [PPT Dashboards](ppt-dashboards.md) |
+| Exploring a complete template as a live design or generating its PowerPoint | [PPT Designer](ppt-designer.md) |
 | Building one report from several modules, or scheduling reports and emailing them | [Reporting](reporting.md) |
 | Generating persistent Reports or Chart Sets | [PPT Reporting (old)](ppt-reporting-old.md) |
 | Calculating NetCheck scores or comparing operator gaps | [Scoring & GAP Analysis](scoring-gap-analysis.md) |
@@ -95,19 +95,19 @@ full-presentation
 
 - [Product Presentations](presentations.md) — every presentation of the tool, of the modules and the Full Presentation, in the slide viewer.
 - [Product Overview](overview.md) — detailed tour of every module and panel.
-- [Technical Considerations](technical-considerations.md) — normalisation, execution semantics, vendor mapping, storage, Dashboard caching and jobs.
+- [Technical Considerations](technical-considerations.md) — normalisation, execution semantics, vendor mapping, storage, Design caching and jobs.
 - [Deployment Configuration](configuration.md) — runtime/rendering variables, storage roots, Docker settings and initial access.
 - [Docker Deployment](docker-deployment.md) — production, development, persistence and upgrades.
 - [Web Interfaces](web-interface.md) — shared navigation, dialogs, tables and responsive behaviour.
 - [Workspace Management](workspace-management.md) — workspaces, data ingestion, processing, previews and mappings.
 - [CDR Analysis](datasets-analysis.md) — interactive single-dataset analysis and exports.
-- [PPT Dashboards](ppt-dashboards.md) — saved Dashboards, synchronized filters and slide layouts.
+- [PPT Designer](ppt-designer.md) — saved Designs, synchronized filters and slide layouts.
 - [PPT Reporting (old)](ppt-reporting-old.md) — classic Reports, Chart Sets, interactive previews and jobs.
 - [Non-Qualified Calls](non-qualified-calls.md) — the NQ Analysis Center: summary, NQ rate by campaign and operator, lifecycle and phases, root cause analysis and sources, drill-down and shared follow-up (status set by rules or by hand, team, assignee, root category and cause recommended from the DT Analyzer RCA, NetCheck, the Ericsson RCA and previous decisions, fields by section and comments) of every call and test that did not complete, across Daily and Final CDRs.
-- [Reporting](reporting.md) — bundle reports with parts of several modules (Bundle Report Templates), and scheduled Reporting Jobs that email CDR Analysis, Network Insights, Dashboard and Scoring artifacts.
+- [Reporting](reporting.md) — bundle reports with parts of several modules (Bundle Report Templates), and scheduled Reporting Jobs that email CDR Analysis, Network Insights, Design and Scoring artifacts.
 - [Chart Builder](chart-builder.md) — temporary ad-hoc chart construction.
 - [Query Builder](query-builder.md) — guided query design, SQL editing, execution and saved queries.
-- [Ticket Center](ticket-center.md) — tickets of bugs, improvements and new features with screenshots, the version and date they were opened with, priorities, statuses, a timeline of comments and changes, and a dashboard.
+- [Ticket Center](ticket-center.md) — tickets of bugs, improvements and new features with screenshots, the version and date they were opened with, priorities, statuses, a timeline of comments and changes, and a design.
 - [App Logs](app-logs.md) — workspace events and live server output.
 - [Application Config](app-config.md) — application-wide runtime settings and their effect.
 - [Workspace Config](workspace-config.md) — workspace-owned templates, Main Cities, chart mappings and scoring methodologies.

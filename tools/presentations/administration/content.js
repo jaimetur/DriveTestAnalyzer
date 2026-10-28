@@ -28,14 +28,14 @@ module.exports = {
     { id: 'databases', type: 'split', section: 'Databases', footer: 'Database Management', kicker: 'Super Admin · Database Management', title: 'One application database, one per workspace', visual: 'databases',
       points: [
         { icon: 'TbDatabase', title: 'The application database', text: 'Users, Modules Profiles, Workspace Groups, tickets, Interface Settings and settings.' },
-        { icon: 'TbFolders', title: 'One database per workspace', text: 'Its datasets and their rows, combined CDR tables, Dashboards, templates, NQ follow-up and App Events.' },
+        { icon: 'TbFolders', title: 'One database per workspace', text: 'Its datasets and their rows, combined CDR tables, Designs, templates, NQ follow-up and App Events.' },
         { icon: 'TbTableOptions', title: 'Database Viewer', text: 'Every table by kind and colour, 100 rows a page, Excel-style filters and their chips.' },
         { icon: 'TbPencil', title: 'Edited with care', text: 'Rows can be edited or deleted; labels and maps change from Workspace Config.' },
       ],
-      notes: 'The application keeps one database of its own, with the users, Modules Profiles, Workspace Groups, tickets and settings, and one database per workspace, with its datasets, the materialised rows of each CDR and the combined CDR tables, its Dashboards, templates, NQ follow-up and App Events. The Database Viewer of Super Admin opens any of their tables by kind, 100 rows a page with Excel-style filters, and edits or deletes a row; labels and maps change from Workspace Config so they stay consistent.' },
+      notes: 'The application keeps one database of its own, with the users, Modules Profiles, Workspace Groups, tickets and settings, and one database per workspace, with its datasets, the materialised rows of each CDR and the combined CDR tables, its Designs, templates, NQ follow-up and App Events. The Database Viewer of Super Admin opens any of their tables by kind, 100 rows a page with Excel-style filters, and edits or deletes a row; labels and maps change from Workspace Config so they stay consistent.' },
     { id: 'backups', type: 'split', section: 'Backups', footer: 'Backup Protection', kicker: 'Super Admin · Backup Protection', title: 'Backed up on a schedule, restored part by part', visual: 'backups',
       points: [
-        { icon: 'TbDatabaseExport', title: 'Back up now', text: 'The content chosen, from the application database to each workspace and its Dashboards or NQ follow-up.' },
+        { icon: 'TbDatabaseExport', title: 'Back up now', text: 'The content chosen, from the application database to each workspace and its Designs or NQ follow-up.' },
         { icon: 'TbCalendarTime', title: 'Scheduled backups', text: 'Hourly to monthly; light backups between the weekly full ones, in full/ and light/ folders.' },
         { icon: 'TbArchive', title: 'Kept by days, weeks and months', text: 'Room is checked before writing, and interrupted work is cleaned up at night.' },
         { icon: 'TbRestore', title: 'Restore', text: 'A full or light backup, the parts and the workspaces chosen, in the background.' },

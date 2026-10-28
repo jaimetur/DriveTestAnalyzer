@@ -1,13 +1,13 @@
 """The CDRs of a module, chosen automatically from its NR Mode and Campaign filter.
 
-PPT Dashboards, Scoring & GAP Analysis, CDR Analysis, Network Insights, Non-Qualified Calls
+PPT Designer, Scoring & GAP Analysis, CDR Analysis, Network Insights, Non-Qualified Calls
 and their Reporting artifacts do not ask for CDRs: they use the CDRs that the combined CDR
 tables include (see ``cdr_stage.combined_inclusion``: the Final CDR of a campaign before its
 Weekly and Daily CDRs, the newest cumulative CDR before the previous ones, or the In
 Combined? choice of the Workspace) of their NR Mode and whose campaigns are among the chosen
 ones; every campaign when the Campaign filter is not restricted.
 
-The Campaign filter of a saved definition (a Dashboard, a Reporting Job entry) also accepts
+The Campaign filter of a saved definition (a Design, a Reporting Job entry) also accepts
 choices made again each time they are used, so they follow the campaigns that arrive later:
 **Latest campaign**, **Latest 2 campaigns**, **Latest 3 campaigns**, **Latest 4 campaigns**, **Previous
 campaign** (the one before the latest) and **All available campaigns**. Network Insights analyses one campaign: only

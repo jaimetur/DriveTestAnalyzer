@@ -1,5 +1,5 @@
 """Who deletes what the users of a workspace share: admins and super-admins delete everything, the other roles only
-what they created (PPT Dashboards, PPT Templates, Scoring Saved Filters and Methodologies, the favourites of the
+what they created (PPT Designer, PPT Templates, Scoring Saved Filters and Methodologies, the favourites of the
 Scoring report editor, Reporting Jobs and Bundle Report Template favourites).
 
 The items whose table has no creator of their own keep it in the workspace settings, by kind. Those created before it
@@ -15,7 +15,7 @@ from src.modules.repository import DEFAULT_ACCOUNT_USERNAMES
 
 DELETION_ROLES = frozenset({'admin', 'super-admin'})
 CREATORS_STATE_PREFIX = 'creators:'
-PPT_DASHBOARDS = 'ppt-dashboards'
+PPT_DESIGNER = 'ppt-designer'
 SCORING_REPORT_CONFIGURATIONS = 'scoring-report-configurations'
 SCORING_METHODOLOGIES = 'scoring-methodologies'
 # Auto-calculated Fields keep who created them for Import / Export and Transfer only: anyone who edits them deletes them.
@@ -108,7 +108,7 @@ def assign_unknown_creators(repository: Any) -> dict[str, int]:
     """Give the items of the open workspace without a known creator, or created by the application, to the
     UNKNOWN_CREATOR_OWNER account; returns how many of each kind changed."""
     from src.modules.bundle_report_templates import BUNDLE_REPORT_TEMPLATES_TABLE, ensure_tables
-    from src.modules.ppt_dashboards import LEGACY_STATE_KEY, STATE_KEY
+    from src.modules.ppt_designer import LEGACY_STATE_KEY, STATE_KEY
     from src.modules.report_tasks import REPORT_TASKS_TABLE, ensure_report_task_tables
     from src.modules.repository import SCORING_CONFIGURATION_STATE_KEY
     from src.modules.saved_filters import SAVED_FILTERS_TABLE
@@ -125,10 +125,10 @@ def assign_unknown_creators(repository: Any) -> dict[str, int]:
                             ('ppt_templates', 'report_templates')):
             changed[kind] = connection.execute(f'UPDATE {table} SET created_by = ? WHERE {unknown}', (owner,)).rowcount
     try:
-        dashboards = json.loads(repository.get_workspace_state(STATE_KEY) or repository.get_workspace_state(LEGACY_STATE_KEY) or '{}')
+        designs = json.loads(repository.get_workspace_state(STATE_KEY) or repository.get_workspace_state(LEGACY_STATE_KEY) or '{}')
     except (TypeError, ValueError):
-        dashboards = {}
-    changed['ppt_dashboards'] = _assign_kept_creators(repository, PPT_DASHBOARDS, list(dashboards) if isinstance(dashboards, dict) else [], owner)
+        designs = {}
+    changed['ppt_designer'] = _assign_kept_creators(repository, PPT_DESIGNER, list(designs) if isinstance(designs, dict) else [], owner)
     changed['scoring_report_configurations'] = _assign_kept_creators(
         repository, SCORING_REPORT_CONFIGURATIONS, [item['name'] for item in load_report_state(repository)['configurations']], owner)
     try:

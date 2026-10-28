@@ -110,7 +110,7 @@ def normalize_catalog_layouts(content: bytes) -> bytes:
                 row['Dynamic Columns Field'] = legacy if dynamic_columns else ''
             changed = True
         non_dynamic_headers = [header for header in headers if header not in {'Dynamic Rows Field', 'Dynamic Columns Field'}]
-        # The Format column (the Design beyond the columns, see dashboard_design) stays last.
+        # The Format column (the Design beyond the columns, see design_slides) stays last.
         if set(base_headers).issubset(non_dynamic_headers) and all(header in base_headers + optional_headers + ['Format'] for header in headers):
             complete_headers = (base_headers[:4] + ['Dynamic Rows Field', 'Dynamic Columns Field'] + base_headers[4:] + optional_headers[:-2]
                                 + (['Format'] if 'Format' in headers else []))
@@ -186,7 +186,7 @@ def rename_template_vendor_fields(content: bytes) -> bytes:
         return content
 
 
-# The Design of a template (stable slide and element ids, see dashboard_design) in its Format column.
+# The Design of a template (stable slide and element ids, see design_slides) in its Format column.
 
 def slide_item_id(prefix: str) -> str:
     return f'{prefix}{uuid4().hex[:10]}'
@@ -198,7 +198,7 @@ def slides_format_cell(data: dict[str, Any]) -> str:
 
 
 def csv_with_slide_ids(content: bytes) -> bytes:
-    """A template CSV written with a Format column, with every row's ids completed (as ``dashboard_design.with_slide_ids``).
+    """A template CSV written with a Format column, with every row's ids completed (as ``design_slides.with_slide_ids``).
 
     Works on the raw rows, so an incomplete template (the editor can keep one) is never refused here; a CSV without a
     Format column, or with no slide id in it, is returned as it is.

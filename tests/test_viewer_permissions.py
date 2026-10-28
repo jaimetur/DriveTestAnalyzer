@@ -47,10 +47,10 @@ def _ready_cdr(tmp_path):
     ('delete', '/api/query-builder/saved/1', {}),
     ('delete', '/api/scoring/saved-filters/1', {}),
     ('post', '/api/scoring/saved-filters/1/duplicate', {'json': {'dataset_ids': [1]}}),
-    ('put', '/api/ppt-dashboards/d1', {'json': {'name': 'D'}}),
-    ('delete', '/api/ppt-dashboards/d1', {}),
-    ('patch', '/api/ppt-dashboards/d1/name', {'json': {'name': 'D'}}),
-    ('patch', '/api/ppt-dashboards/d1/comments', {'json': {'slide_comments': {}}}),
+    ('put', '/api/ppt-designer/d1', {'json': {'name': 'D'}}),
+    ('delete', '/api/ppt-designer/d1', {}),
+    ('patch', '/api/ppt-designer/d1/name', {'json': {'name': 'D'}}),
+    ('patch', '/api/ppt-designer/d1/comments', {'json': {'slide_comments': {}}}),
 ])
 def test_user_viewer_cannot_change_the_workspace(client, tmp_path, method, path, kwargs):
     dataset_id = _ready_cdr(tmp_path)
@@ -67,7 +67,7 @@ def test_user_viewer_still_explores_and_generates_jobs(client, tmp_path):
     _ready_cdr(tmp_path)
     _viewer(client)
     assert client.get('/workspace').status_code == 200
-    page = client.get('/ppt-dashboards')
+    page = client.get('/ppt-designer')
     assert page.status_code == 200 and 'data-ds-manage-only' in page.text
     assert 'data-authenticated-role="user-viewer"' in page.text
     assert client.post('/api/scoring/saved-filters/match', json={}).status_code != 403

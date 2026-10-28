@@ -172,10 +172,10 @@ def test_each_user_keeps_a_network_insights_theme(client) -> None:
     assert client.get('/api/network-insights/theme').json() == {'theme': 'ericsson'}
     assert client.put('/api/network-insights/theme', json={'theme': 'paper'}).json() == {'theme': 'paper'}
     assert client.get('/api/network-insights/theme').json() == {'theme': 'paper'}
-    # One theme for every themed module: Scoring, CDR Analysis and PPT Dashboards take it too.
+    # One theme for every themed module: Scoring, CDR Analysis and PPT Designer take it too.
     assert client.get('/api/scoring/theme').json()['theme'] == 'paper'
     assert client.get('/api/cdr-analysis/theme').json()['theme'] == 'paper'
-    assert client.get('/api/ppt-dashboards/theme').json()['theme'] == 'paper'
+    assert client.get('/api/ppt-designer/theme').json()['theme'] == 'paper'
     assert client.put('/api/network-insights/theme', json={'theme': 'sunset'}).status_code == 400
     changes = [json.loads(row['details']) for row in core.repository.list_logs() if row['action'] == 'network_insights_theme_changed']
     assert changes[0] == {'theme': 'paper', 'previous': 'ericsson'}

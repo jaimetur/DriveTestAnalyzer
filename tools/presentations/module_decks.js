@@ -18,18 +18,18 @@ const tb = require('react-icons/tb');
 
 // The decks in the order of the tabs of the tool (PPT Reporting (old) has none), Workspace Config after Workspace and the
 // administration (Admin and Super Admin) after them, and those drawn from a slides.html.
-const DECKS = ['workspace', 'workspace-config', 'cdr-analysis', 'ppt-dashboards', 'scoring-gap-analysis', 'network-insights', 'non-qualified-calls', 'reporting',
+const DECKS = ['workspace', 'workspace-config', 'cdr-analysis', 'ppt-designer', 'scoring-gap-analysis', 'network-insights', 'non-qualified-calls', 'reporting',
   'builders', 'ticket-center', 'administration'];
 const DRAWN = [...DECKS, 'dt-analyzer-rca'];
 // The colour of each module, that of its tab (module_labels.MODULE_TABS), for the chips naming the other modules.
 const MODULES = {
-  'Workspace': '#08736D', 'Workspace Config': '#0369A1', 'CDR Analysis': '#1F6FBF', 'PPT Dashboards': '#7751B9',
+  'Workspace': '#08736D', 'Workspace Config': '#0369A1', 'CDR Analysis': '#1F6FBF', 'PPT Designer': '#7751B9',
   'Scoring & GAP Analysis': '#176E77', 'Network Insights': '#4F46E5', 'Non-Qualified Calls': '#B0234F', 'Reporting': '#2E8C58',
   'Builders': '#B85B20', 'Ticket Center': '#DC2626', 'DT Analyzer RCA': '#7C3AED', 'Admin': '#B84343',
 };
 // The Ericsson logo at the top right of every slide, as in the other decks of the Help.
 const LOGO = `data:image/png;base64,${fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'web_interface', 'static', 'img', 'ericsson-logo-white.png')).toString('base64')}`;
-// The browsers that take the pictures, as those of the charts of the reports (dashboard_canvas_renderer.mjs).
+// The browsers that take the pictures, as those of the charts of the reports (canvas_chart_renderer.mjs).
 const BROWSERS = [process.env.DRIVETEST_ANALYZER_CHROMIUM, '/Applications/Brave Browser.app/Contents/MacOS/Brave Browser',
   '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
   '/usr/bin/google-chrome', '/usr/bin/google-chrome-stable', '/usr/bin/chromium', '/usr/bin/chromium-browser'].filter(Boolean);
@@ -334,7 +334,7 @@ const VISUALS = {
     out += `<path d="M452 236 C 492 236, 484 412, 520 412" fill="none" stroke="${p.light}" stroke-width="4"/>`;
     out += `<rect x="522" y="14" width="288" height="262" rx="18" fill="#16213a" stroke="${p.accent}" stroke-width="3"/>`;
     out += `<text x="546" y="50" font-size="17" font-weight="800" fill="${p.light}" letter-spacing="2">EVERY MODULE</text>`;
-    ['PPT Dashboards', 'Scoring & GAP', 'Network Insights', 'Non-Qualified Calls', 'Query Builder'].forEach((name, index) => {
+    ['PPT Designer', 'Scoring & GAP', 'Network Insights', 'Non-Qualified Calls', 'Query Builder'].forEach((name, index) => {
       out += `<rect x="544" y="${66 + index * 40}" width="244" height="32" rx="10" fill="${p.soft}"/><circle cx="562" cy="${82 + index * 40}" r="6" fill="${p.light}"/>`;
       out += `<text x="578" y="${89 + index * 40}" font-size="18" font-weight="700" fill="#ffffff">${name}</text>`;
     });
@@ -581,7 +581,7 @@ const VISUALS = {
     out += `<rect x="306" y="104" width="208" height="92" rx="14" fill="${p.accent}"/><g transform="translate(324 124)">${icon('TbFileZip', '#ffffff', 44)}</g><text x="380" y="146" font-size="20" font-weight="800" fill="#ffffff">Package</text><text x="380" y="174" font-size="17" fill="#ffffff">Workspace UK</text>`;
     out += `<text x="410" y="236" text-anchor="middle" font-size="18" fill="#9fb0cc">Super-admins approve it</text>`;
     out += `<rect x="20" y="350" width="780" height="190" rx="18" fill="#16213a" stroke="#2a3a5c" stroke-width="2"/><text x="44" y="388" font-size="20" fill="#9fb0cc">Preview before Import</text>`;
-    [['Dashboards', '3 added · 2 changed', '#1f9d55'], ['PPT Templates', '1 changed', '#f0a830'], ['NQ Call Tracking', 'unchanged', '#7d8aa3']].forEach(([name, change, colour], index) => {
+    [['Designs', '3 added · 2 changed', '#1f9d55'], ['PPT Templates', '1 changed', '#f0a830'], ['NQ Call Tracking', 'unchanged', '#7d8aa3']].forEach(([name, change, colour], index) => {
       const y = 404 + index * 42;
       out += `<rect x="44" y="${y}" width="732" height="34" rx="10" fill="#22304f"/><circle cx="64" cy="${y + 17}" r="7" fill="${colour}"/><text x="82" y="${y + 23}" font-size="18" font-weight="700" fill="#ffffff">${name}</text><text x="756" y="${y + 23}" text-anchor="end" font-size="17" fill="#c9d4e6">${change}</text>`;
     });
@@ -646,7 +646,7 @@ const VISUALS = {
       + `<ellipse cx="${x + 110}" cy="${y + 58 + tables.length * 36}" rx="110" ry="22" fill="${colour}" opacity=".85"/><text x="${x + 110}" y="${y + 50}" text-anchor="middle" font-size="19" font-weight="800" fill="#ffffff">${title}</text>`
       + tables.map((table, index) => `<rect x="${x + 18}" y="${y + 64 + index * 36}" width="184" height="28" rx="8" fill="#0b1220" opacity=".55"/><text x="${x + 110}" y="${y + 83 + index * 36}" text-anchor="middle" font-size="15" fill="#ffffff">${table}</text>`).join('');
     let out = cylinder(20, 20, 'Application', '#5b6b80', ['Users', 'Modules Profiles', 'Workspace Groups', 'Tickets']);
-    out += cylinder(20, 300, 'Workspace UK', p.deep, ['Datasets', 'Dashboards', 'NQ Call Tracking', 'Combined CDR rows']);
+    out += cylinder(20, 300, 'Workspace UK', p.deep, ['Datasets', 'Designs', 'NQ Call Tracking', 'Combined CDR rows']);
     out += `<rect x="270" y="20" width="530" height="520" rx="18" fill="#16213a" stroke="#2a3a5c" stroke-width="2"/><text x="294" y="58" font-size="20" font-weight="800" fill="#ffffff">Database Viewer</text>`;
     out += `<rect x="294" y="74" width="300" height="38" rx="10" fill="#22304f"/><text x="310" y="99" font-size="17" fill="#c9d4e6">Table: Operator Mappings</text><rect x="604" y="74" width="172" height="38" rx="19" fill="${p.accent}"/><text x="690" y="99" text-anchor="middle" font-size="16" font-weight="700" fill="#ffffff">Operator = VF</text>`;
     const columns = ['source_value', 'canonical_value'];

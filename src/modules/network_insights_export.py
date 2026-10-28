@@ -883,7 +883,7 @@ def _slide(presentation: Presentation, title: str, subtitle: str = ''):
 
     layout = _named_slide_layout(presentation, 'Title + 1 rows + 1 columns')
     if layout is None:
-        raise ValueError('The Dashboard template requires the Title + 1 rows + 1 columns layout.')
+        raise ValueError('The Design template requires the Title + 1 rows + 1 columns layout.')
     slide = presentation.slides.add_slide(layout)
     _set_slide_header(slide, title, subtitle)
     _remove_template_chart_placeholders(slide)

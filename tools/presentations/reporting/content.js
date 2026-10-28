@@ -11,7 +11,7 @@ module.exports = {
       notes: 'Reporting builds one document from the parts of the modules you choose, a Bundle Report Template, and collects the artifacts of several modules in Reporting Jobs that run on demand or on a schedule and email them.' },
     { id: 'bundle', type: 'split', section: 'Bundle reports', footer: 'Bundle Report Templates', kicker: 'Bundle Report Templates', title: 'One report, every module', visual: 'slides',
       points: [
-        { icon: 'TbStack2', title: 'Five sections', text: 'Scoring & GAP Analysis, Network Insights, Non-Qualified Calls, PPT Dashboards and CDR Analysis, in your order.' },
+        { icon: 'TbStack2', title: 'Five sections', text: 'Scoring & GAP Analysis, Network Insights, Non-Qualified Calls, PPT Designer and CDR Analysis, in your order.' },
         { icon: 'TbFilter', title: 'Common filters', text: 'The NR Mode, operators, vendors, regions, clusters and cities apply to every module.' },
         { icon: 'TbCalendarStats', title: 'Campaigns per module', text: 'The latest, the latest 2 to 4, the previous one or all of them.' },
         { icon: 'TbPalette', title: 'One theme', text: 'The colour theme of the whole report: charts, tables and slide titles.' },
@@ -28,7 +28,7 @@ module.exports = {
       notes: 'The PowerPoint and Word documents are composed for reading: tables are never split, Word has a cover and contents, and sections already generated are reused. Favourites keep every option.' },
     { id: 'jobs', type: 'split', section: 'Reporting Jobs', footer: 'Reporting Jobs', kicker: 'Reporting Jobs', title: 'On demand or on a schedule', visual: 'schedule',
       points: [
-        { icon: 'TbStack2', title: 'Artifacts', text: 'CDR Analysis, Network Insights, Dashboards, Scoring, Non-Qualified Calls and bundle reports.' },
+        { icon: 'TbStack2', title: 'Artifacts', text: 'CDR Analysis, Network Insights, Designs, Scoring, Non-Qualified Calls and bundle reports.' },
         { icon: 'TbCalendarTime', title: 'Schedules', text: 'In the timezone of the application, as often as needed.' },
         { icon: 'TbMail', title: 'Email delivery', text: 'The artifacts with a clear description of each one and its filters.' },
         { icon: 'TbHistory', title: 'Run history', text: 'Trigger, start, status, duration, email result and size of every run.' },
@@ -47,7 +47,7 @@ module.exports = {
         { title: 'Bundle Report Templates', text: 'one document of every module' }, { title: 'Artifacts', text: 'what a job includes' },
         { title: 'Schedules', text: 'when jobs run' }, { title: 'Email delivery', text: 'who receives them' },
       ],
-      modules: ['Scoring & GAP Analysis', 'Network Insights', 'Non-Qualified Calls', 'PPT Dashboards', 'CDR Analysis'],
+      modules: ['Scoring & GAP Analysis', 'Network Insights', 'Non-Qualified Calls', 'PPT Designer', 'CDR Analysis'],
       note: 'Every module that exports PowerPoint or Word is a section of the bundle reports and an artifact of the jobs.',
       notes: 'Reporting brings every module together in one document and sends it on a schedule.' },
   ],

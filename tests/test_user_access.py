@@ -34,7 +34,7 @@ def test_former_user_groups_become_modules_profiles_and_workspace_groups(client)
     ids = {row['username']: int(row['id']) for row in core.repository.list_users()}
     # The access model saved before Modules Profiles and Workspace Groups.
     module_groups = {'NQ Calls': 3, 'Benchmarking': 4, 'All Modules': 5}
-    benchmarking = ['workspace', 'datasets-analysis', 'ppt-dashboards', 'scoring', 'network-insights', 'reporting', 'builders']
+    benchmarking = ['workspace', 'datasets-analysis', 'ppt-designer', 'scoring', 'network-insights', 'reporting', 'builders']
     rules = {key: {'default': 'all', 'allow': {'groups': [5, 4] + ([3] if key == 'workspace' else [])},
                    'deny': {'groups': [3] if key != 'workspace' else []}} for key in benchmarking}
     rules['non-qualified-calls'] = {'default': 'all', 'allow': {'groups': [5, 3]}, 'deny': {'groups': [4]}}

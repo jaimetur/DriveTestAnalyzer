@@ -3,7 +3,7 @@
    Bundle Report Template: its sections and slides on the left, the chosen slide on the right (the wheel and the arrow keys
    go through the slides; Ctrl/Cmd+wheel, a rectangle or the buttons zoom it), the slides gone through below it, and its
    PowerPoint to download. Slideshow plays it full screen, slide after slide with a transition, as the presentation mode
-   of PPT Dashboards. */
+   of PPT Designer. */
 (function () {
   // The server tells where the presentations it generated are, whether it is generating them and, when it cannot, why.
   let manifest = null;
@@ -59,7 +59,9 @@
   // The presentation and slide (from 0) a link asks for.
   const linked = () => {
     const query = new URLSearchParams(window.location.search);
-    return {id: query.get('presentation') || '', index: Math.max(0, (Number.parseInt(query.get('slide') || '1', 10) || 1) - 1)};
+    // Shared links of renamed modules keep opening their presentation (PPT Designer was PPT Dashboards).
+    const id = query.get('presentation') || '';
+    return {id: {'ppt-dashboards': 'ppt-designer'}[id] || id, index: Math.max(0, (Number.parseInt(query.get('slide') || '1', 10) || 1) - 1)};
   };
   // Copies a text, also where the page is not a secure context (served by address on the network), which has no
   // clipboard API, or where the browser refuses it: a hidden field is selected and copied instead.
@@ -95,7 +97,7 @@
       window.prompt('Copy the link of the presentation:', link);
     }
   };
-  // The transition effects of the slideshow, as those of the presentation mode of PPT Dashboards.
+  // The transition effects of the slideshow, as those of the presentation mode of PPT Designer.
   const EFFECTS = [['none', 'None'], ['random', 'Random'], ['blinds', 'Blinds'], ['blur', 'Blur'], ['bounce', 'Bounce'], ['curtain', 'Curtain'],
     ['fade', 'Fade'], ['flip', 'Flip'], ['mosaic', 'Mosaic'], ['rise', 'Rise'], ['slide-left', 'Slide from left'], ['slide', 'Slide from right'],
     ['rotate', 'Soft rotate'], ['wipe', 'Wipe'], ['zoom', 'Zoom']];
@@ -389,7 +391,7 @@
     }));
   }
 
-  // -- the slideshow, as the presentation mode of PPT Dashboards ---------------------------------------------------
+  // -- the slideshow, as the presentation mode of PPT Designer ---------------------------------------------------
   const show = {active: false, running: false, delay: 8000, duration: 1, effect: 'flip', loop: false, timer: 0, lastRandom: '', hideControls: 0};
 
   function showEffect() {

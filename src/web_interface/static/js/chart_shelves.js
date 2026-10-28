@@ -1,10 +1,10 @@
-/* The chart builder of the Dashboard Designer (ticket #26, phase 2): the data pane, shelves and Chart Type of a chart.
+/* The chart builder of the Designer (ticket #26, phase 2): the data pane, shelves and Chart Type of a chart.
 
    A chart is built Tableau-like: the fields of its source (dimensions and measures told apart, grouped by the sections of
    the CDR Field Dictionary) are dragged to its shelves — Measure, Rows, Columns, Legend, Filters and Repeat by — and Chart Type
    offers the chart types the shelves can draw, the others greyed with the reason. Each change gives the values of the
    chart as its template row writes them (KPI, Rows Split, Columns Split, Legend, Filters, Chart type, Dynamic Rows/Columns
-   Field), so the same engine and renderer draw it. Used by Design (dashboard_designer.js) and by Chart Builder. */
+   Field), so the same engine and renderer draw it. Used by slide set (designer.js) and by Chart Builder. */
 (() => {
   'use strict';
   const h = (tag, props = {}, ...children) => {
@@ -25,7 +25,7 @@
   const identity = value => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
 
   const SOURCES = [['CDR-Data', 'Data'], ['CDR-Voice', 'Voice'], ['CDR-Speech', 'Speech'], ['CDR-All', 'RF All']];
-  const NR_MODES = [['', 'Dashboard'], ['NSA', 'NSA'], ['SA', 'SA']];
+  const NR_MODES = [['', 'Design'], ['NSA', 'NSA'], ['SA', 'SA']];
   // The settings a chart type keeps among its Filters, shown with Chart Type instead of as filters.
   const SETTINGS = ['threshold', 'buckets', 'binsize', 'classcolours', 'histogramoperator', 'nrmode'];
   const AGGREGATIONS = [['', 'As the chart type counts it'], ['AVG', 'Average'], ['MEDIAN', 'Median'], ['SUM', 'Sum'], ['COUNT', 'Count'], ['COUNTD', 'Count distinct'], ['MIN', 'Minimum'], ['MAX', 'Maximum']];
@@ -137,7 +137,7 @@
       fieldsHost.replaceChildren(...[...groups.entries()].map(([group, items]) => h('details', {class: 'ds-cb-group', open: Boolean(query) || group !== 'Other fields'},
         h('summary', {}, group, h('span', {class: 'ds-cb-count', text: String(items.length)})),
         h('div', {class: 'ds-cb-group-fields'}, items.sort((left, right) => (left.type === right.type ? left.name.localeCompare(right.name) : left.type === 'text' ? -1 : 1)).map(fieldPill)))));
-      if (!fieldsHost.childElementCount) fieldsHost.append(h('p', {class: 'ds-cb-empty', text: fieldList.length ? 'No field matches.' : 'The fields appear once the Dashboard is prepared.'}));
+      if (!fieldsHost.childElementCount) fieldsHost.append(h('p', {class: 'ds-cb-empty', text: fieldList.length ? 'No field matches.' : 'The fields appear once the Design is prepared.'}));
     };
     const fieldPill = item => {
       const pill = h('button', {type: 'button', class: `ds-cb-field is-${item.type}`, draggable: 'true', title: `${item.name} · ${item.type === 'number' ? 'measure (numbers)' : 'dimension (values)'} · drag it to a shelf, or click to choose one`,
@@ -188,7 +188,7 @@
     const shelf = ([key, label, title]) => {
       const items = shelfItems(key);
       const zone = h('div', {class: `ds-cb-shelf-items${items.length ? '' : ' is-empty'}`, 'aria-label': `${label} shelf`},
-        key === 'filters' ? (options.lockedFilters || []).map(text => h('span', {class: 'ds-cb-pill is-locked', title: 'A filter of the Dashboard: it applies to every chart', text})) : null,
+        key === 'filters' ? (options.lockedFilters || []).map(text => h('span', {class: 'ds-cb-pill is-locked', title: 'A filter of the Design: it applies to every chart', text})) : null,
         items.map((item, index) => shelfPill(key, item, index, items)),
         items.length ? null : h('span', {class: 'ds-cb-drop-hint', text: key === 'filters' ? 'Drop a field to filter' : 'Drop a field here'}));
       zone.addEventListener('dragover', event => {
@@ -256,7 +256,7 @@
       return pill;
     };
 
-    // Filter dialog: the values of a field with their samples in the Dashboard's selection, or a numeric condition;
+    // Filter dialog: the values of a field with their samples in the Design's selection, or a numeric condition;
     // a parameter of the template can stand for the values.
     function openFilterDialog(field, existing = '', index = -1) {
       closeMenus();
@@ -345,7 +345,7 @@
     host.replaceChildren(...[
       options.showSource === false ? null : h('div', {class: 'ds-cb-source'},
         h('div', {class: 'ds-cb-segmented', role: 'group', 'aria-label': 'Source'}, SOURCES.map(([value, label]) => h('button', {type: 'button', class: value === source ? 'is-active' : '', 'aria-pressed': String(value === source), onclick: () => change({cdr_source: value})}, label))),
-        h('div', {class: 'ds-cb-segmented', role: 'group', 'aria-label': 'NR Mode of the chart', title: 'The NR Mode of the CDRs the chart reads (Dashboard: those of the Dashboard)'}, NR_MODES.map(([value, label]) => h('button', {type: 'button', class: value === nrMode ? 'is-active' : '', 'aria-pressed': String(value === nrMode), onclick: () => {
+        h('div', {class: 'ds-cb-segmented', role: 'group', 'aria-label': 'NR Mode of the chart', title: 'The NR Mode of the CDRs the chart reads (Design: those of the Design)'}, NR_MODES.map(([value, label]) => h('button', {type: 'button', class: value === nrMode ? 'is-active' : '', 'aria-pressed': String(value === nrMode), onclick: () => {
           const kept = settings.filter(item => identity(conditionField(item)) !== 'nrmode');
           if (value) kept.push(`NR Mode IN (${value})`);
           writeFilters(plainFilters, kept);
@@ -376,5 +376,5 @@
     placePopover(menu, anchor);
   }
 
-  window.DashboardChartBuilder = {render, kpiParts, kpiField};
+  window.ChartShelves = {render, kpiParts, kpiField};
 })();

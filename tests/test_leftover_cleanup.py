@@ -44,7 +44,7 @@ def test_stale_leftovers_are_removed_and_recorded(client, tmp_path, monkeypatch)
     _age(partial, 30)
     # Temporary files of the caches of a workspace, never those of its Input folder.
     workspace = core.active_workspace
-    cache_leftover = workspace.database_path.parent / '.dashboard-data-cache' / 'frames' / 'model.abc.tmp'
+    cache_leftover = workspace.database_path.parent / '.design-data-cache' / 'frames' / 'model.abc.tmp'
     cache_leftover.parent.mkdir(parents=True, exist_ok=True)
     cache_leftover.write_bytes(b'x')
     _age(cache_leftover, 30)
@@ -52,7 +52,7 @@ def test_stale_leftovers_are_removed_and_recorded(client, tmp_path, monkeypatch)
     input_file.parent.mkdir(parents=True, exist_ok=True)
     input_file.write_bytes(b'x')
     _age(input_file, 30)
-    fresh_cache = workspace.database_path.parent / '.dashboard-data-cache' / 'frames' / 'writing.tmp'
+    fresh_cache = workspace.database_path.parent / '.design-data-cache' / 'frames' / 'writing.tmp'
     fresh_cache.write_bytes(b'x')
 
     removed = {path for path, _size in core.remove_stale_leftovers()}

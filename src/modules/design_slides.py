@@ -1,6 +1,6 @@
-"""The Design of a PPT Template and the overrides of a Dashboard (Dashboard Designer, ticket #26).
+"""The slide set of a PPT Template and the overrides of a Design (Designer, ticket #26).
 
-A **Design** is the structured form of a template that the Designer edits::
+A **slide set** is the structured form of a template that the Designer edits::
 
     {"version": 1,
      "parameters": [{"id", "name", "type": "values" | "number" | "text", "field", "multiple", "default",
@@ -11,11 +11,11 @@ A **Design** is the structured form of a template that the Designer edits::
 
 It lives in the template CSV itself: every row keeps its element and slide ids, and what the columns cannot hold, in
 its ``Format`` cell (a JSON object), so every path that copies a template (Table view, import, export, transfer,
-backup, restore) carries its Design unchanged. A template without Format cells reads with positional ids until the
+backup, restore) carries its slide set unchanged. A template without Format cells reads with positional ids until the
 Designer gives it ids of its own (``with_slide_ids``; the repository completes them on every write of a template
 that has them, ``report_layouts.csv_with_slide_ids``).
 
-A Dashboard inherits the Design of its template live and keeps only its **overrides**, by id::
+A Design inherits the slide set of its template live and keeps only its **overrides**, by id::
 
     {"version": 1,
      "slides": {slide id: {property: {"value", "base"}}},        # base: the template value when it was overridden
@@ -25,7 +25,7 @@ A Dashboard inherits the Design of its template live and keeps only its **overri
      "local_slides": [{"after": slide id or "", "slide": {...}}],
      "local_elements": {template slide id: [{...}]}}
 
-so a template change reaches every Dashboard that did not change that same thing.
+so a template change reaches every Design that did not change that same thing.
 """
 from __future__ import annotations
 
@@ -47,7 +47,7 @@ ELEMENT_FIELDS = (
     'exclude_null_empty', 'exclude_zero', 'dynamic_rows_field', 'dynamic_columns_field',
 )
 SLIDE_FIELDS = ('title', 'subtitle', 'layout')
-# Properties a Dashboard can override besides the columns.
+# Properties a Design can override besides the columns.
 SLIDE_OVERRIDABLE = (*SLIDE_FIELDS, 'options')
 ELEMENT_OVERRIDABLE = tuple(field for field in ELEMENT_FIELDS if field != 'filters') + ('place', 'style', 'kind', 'content', 'kpi_card', 'repeat')
 STRUCTURAL_KINDS = {'title slide': 'title', 'transition slide': 'transition', 'end slide': 'end'}
@@ -56,11 +56,13 @@ ELEMENT_KINDS = ('chart', 'kpi', 'text', 'image')
 # The Chart type of the row of each kind of element other than a chart.
 KIND_CHART_TYPES = {'kpi': 'KPI Card', 'text': 'Text Box', 'image': 'Image'}
 PARAMETER_TYPES = ('values', 'number', 'text')
-# The fields a Dashboard writes in the titles and text boxes of its slides from its own selection (``{Cities}``: the
+# The fields a Design writes in the titles and text boxes of its slides from its own selection (``{Cities}``: the
 # Cities it is filtered by, or All Cities), as the Designer offers them.
-SELECTION_TOKENS = ('Dashboard', 'Scope', 'Campaigns', 'Operators', 'Vendors', 'Regions', 'Clusters', 'Cities')
+SELECTION_TOKENS = ('Design', 'Scope', 'Campaigns', 'Operators', 'Vendors', 'Regions', 'Clusters', 'Cities')
 # Tokens the slides resolve (report_template_modes and the selection): parameters cannot take their names.
-RESERVED_TOKENS = {'nr mode', 'nr mode name', 'dates', *(token.casefold() for token in SELECTION_TOKENS)}
+# The field of the name of the Design, as titles wrote it while Designs were Dashboards.
+LEGACY_SELECTION_TOKENS = {'dashboard': 'design'}
+RESERVED_TOKENS = {'nr mode', 'nr mode name', 'dates', *(token.casefold() for token in SELECTION_TOKENS), *LEGACY_SELECTION_TOKENS}
 TOKEN_PATTERN = re.compile(r'\{([^{}]+)\}')
 FILTER_SEPARATOR = re.compile(r';|[\r\n]+')
 
@@ -97,7 +99,7 @@ def with_slide_ids(entries: list[CatalogEntry]) -> list[CatalogEntry]:
     """The rows of a template, each with a slide id and (chart rows) an element id of its own.
 
     Rows keep the ids they have; a missing id takes the positional one the template was read with until then
-    (``slides_from_entries``), so what a Dashboard overrode keeps its id, and one already taken (a copied row) a new one.
+    (``slides_from_entries``), so what a Design overrode keeps its id, and one already taken (a copied row) a new one.
     All rows of a slide share the slide id of its first row that has one.
     """
     result = list(entries)
@@ -134,7 +136,7 @@ def with_slide_ids(entries: list[CatalogEntry]) -> list[CatalogEntry]:
 
 
 # ---------------------------------------------------------------------------
-# Template rows <-> Design
+# Template rows <-> slide set
 # ---------------------------------------------------------------------------
 
 def _element_from_entry(entry: CatalogEntry, data: dict[str, Any], element_id: str, place: int) -> dict[str, Any]:
@@ -157,7 +159,7 @@ def _element_from_entry(entry: CatalogEntry, data: dict[str, Any], element_id: s
 
 
 def slides_from_entries(entries: list[CatalogEntry]) -> dict[str, Any]:
-    """The Design of a template from its rows (as written: no NR Mode applied).
+    """The slide set of a template from its rows (as written: no NR Mode applied).
 
     Rows without ids get positional ones (``s<slide>`` and ``s<slide>e<n>``), the same every time the same CSV is
     read, until ``with_slide_ids`` gives them ids of their own.
@@ -231,9 +233,9 @@ def _entry_format(slide: dict[str, Any], element: dict[str, Any] | None, *, firs
 
 
 def entries_from_slides(slide_set: dict[str, Any], *, include_hidden: bool = False) -> list[CatalogEntry]:
-    """The template rows of a Design (slides numbered from 1 in their order, elements in the order of their place).
+    """The template rows of a slide set (slides numbered from 1 in their order, elements in the order of their place).
 
-    Slides marked hidden or optional-off (a resolved Dashboard Design) are left out unless ``include_hidden``.
+    Slides marked hidden or optional-off (a resolved Design slide set) are left out unless ``include_hidden``.
     """
     entries: list[CatalogEntry] = []
     parameters = list(slide_set.get('parameters') or [])
@@ -277,7 +279,7 @@ def _place(element: dict[str, Any], default: int) -> int:
 
 
 def slides_csv(slide_set: dict[str, Any]) -> bytes:
-    """The CSV of a Design (its Table view and export): the columns plus the Format column."""
+    """The CSV of a slide set (its Table view and export): the columns plus the Format column."""
     return catalogue_csv(entries_from_slides(slide_set, include_hidden=True))
 
 
@@ -288,7 +290,7 @@ def slides_without_elements(slide_set: dict[str, Any]) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
-# Overrides of a Dashboard
+# Overrides of a Design
 # ---------------------------------------------------------------------------
 
 def empty_overrides() -> dict[str, Any]:
@@ -334,7 +336,7 @@ def apply_filter_override(filters: str, change: dict[str, Any] | None) -> str:
 
 
 def resolve_slides(template: dict[str, Any], overrides: dict[str, Any] | None) -> tuple[dict[str, Any], dict[str, Any]]:
-    """The Design a Dashboard shows: its template with its overrides, and a report of them.
+    """The slide set a Design shows: its template with its overrides, and a report of them.
 
     Hidden template slides and optional slides left off stay in the result, marked ``hidden`` / ``optional_off``
     (the Designer shows them greyed; ``entries_from_slides`` leaves them out). Every overridden slide and element
@@ -384,7 +386,7 @@ def resolve_slides(template: dict[str, Any], overrides: dict[str, Any] | None) -
                 element.setdefault('overridden', []).append('filters')
         for local in data['local_elements'].get(slide['id']) or []:
             if isinstance(local, dict) and local.get('id'):
-                slide.setdefault('elements', []).append({**copy.deepcopy(local), 'origin': 'dashboard'})
+                slide.setdefault('elements', []).append({**copy.deepcopy(local), 'origin': 'design'})
     for slide_id in list(data['slides']) + list(data['local_elements']) + list(hidden_slides) + list(shown_optional):
         if slide_id not in template_slides:
             dropped.append({'slide': slide_id})
@@ -396,9 +398,9 @@ def resolve_slides(template: dict[str, Any], overrides: dict[str, Any] | None) -
     for local in data['local_slides']:
         if not isinstance(local, dict) or not isinstance(local.get('slide'), dict):
             continue
-        slide = {**copy.deepcopy(local['slide']), 'origin': 'dashboard'}
+        slide = {**copy.deepcopy(local['slide']), 'origin': 'design'}
         for element in slide.get('elements') or []:
-            element['origin'] = 'dashboard'
+            element['origin'] = 'design'
         after = str(local.get('after') or '')
         ids = [item['id'] for item in slides]
         if not after:
@@ -406,7 +408,7 @@ def resolve_slides(template: dict[str, Any], overrides: dict[str, Any] | None) -
         elif after in ids:
             slides.insert(ids.index(after) + 1, slide)
         elif after in template_order:
-            # Its anchor is left out here: after the nearest earlier template slide that is in the Design.
+            # Its anchor is left out here: after the nearest earlier template slide that is in the slide set.
             earlier = [item for item in template_order[:template_order.index(after)] if item in ids]
             slides.insert(ids.index(earlier[-1]) + 1 if earlier else 0, slide)
         else:
@@ -424,10 +426,10 @@ def _comparable(value: Any) -> Any:
 
 def overrides_between(template: dict[str, Any], edited: dict[str, Any],
                       previous: dict[str, Any] | None = None) -> dict[str, Any]:
-    """The overrides that turn a template Design into the Design a Dashboard edited.
+    """The overrides that turn a template slide set into the slide set a Design edited.
 
-    ``edited`` is a resolved Design (``resolve_slides``) after the edits of This Dashboard scope: template slides keep
-    their order (only Dashboard slides move), hidden template slides keep ``hidden`` and optional ones left off
+    ``edited`` is a resolved slide set (``resolve_slides``) after the edits of This Design scope: template slides keep
+    their order (only Design slides move), hidden template slides keep ``hidden`` and optional ones left off
     ``optional_off``. An override keeps the template value it was made on (``base``) while its value does not change,
     so a later template change still shows as *Template changed*.
     """
@@ -489,7 +491,7 @@ def overrides_between(template: dict[str, Any], edited: dict[str, Any],
                 local['id'] = new_id('s')
             result['local_slides'].append({'after': previous_id, 'slide': local})
         previous_id = slide_id or previous_id
-    # A template slide the edited Design does not have at all is left out of the Dashboard as a hidden one.
+    # A template slide the edited slide set does not have at all is left out of the Design as a hidden one.
     edited_ids = {str(slide.get('id') or '') for slide in edited.get('slides') or []}
     result['hidden_slides'].extend(slide_id for slide_id in template_slides if slide_id not in edited_ids)
     result['hidden_slides'] = list(dict.fromkeys(result['hidden_slides']))
@@ -510,7 +512,7 @@ def _clean_slide(slide: dict[str, Any]) -> dict[str, Any]:
 
 
 def template_slides_of(resolved: dict[str, Any]) -> dict[str, Any]:
-    """A resolved Design as a template of its own (Save as template, Detach): what it shows, without the marks."""
+    """A resolved slide set as a template of its own (Save as template, Detach): what it shows, without the marks."""
     slide_set = {'version': SLIDES_VERSION, 'parameters': copy.deepcopy(resolved.get('parameters') or []), 'slides': []}
     for slide in resolved.get('slides') or []:
         if slide.get('hidden') or slide.get('optional_off'):
@@ -578,7 +580,7 @@ def keep_overrides(overrides: dict[str, Any] | None, template: dict[str, Any]) -
 
 
 def without_dropped(overrides: dict[str, Any] | None, template: dict[str, Any]) -> dict[str, Any]:
-    """The overrides whose slide or element the template still has (a Dashboard saved after the template deleted one)."""
+    """The overrides whose slide or element the template still has (a Design saved after the template deleted one)."""
     data = normalized_overrides(overrides)
     slides = {slide['id'] for slide in template.get('slides') or []}
     elements = {element['id'] for slide in template.get('slides') or [] for element in slide.get('elements') or []}
@@ -640,7 +642,7 @@ def validate_parameters(parameters: list[dict[str, Any]]) -> list[dict[str, Any]
 
 
 def parameter_value(parameter: dict[str, Any], values: dict[str, Any] | None) -> Any:
-    """The value a Dashboard gives a parameter (its default when it gives none). ``None``: All values."""
+    """The value a Design gives a parameter (its default when it gives none). ``None``: All values."""
     values = values or {}
     if parameter['id'] in values:
         return values[parameter['id']]
@@ -670,7 +672,7 @@ def _replace_tokens(text: str, replacements: dict[str, str]) -> str:
 
 
 def parameter_uses(slide_set: dict[str, Any], name: str) -> list[str]:
-    """Where a Design names a parameter (``{name}``): slide and element titles, filters and settings."""
+    """Where a slide set names a parameter (``{name}``): slide and element titles, filters and settings."""
     key = name.strip().casefold()
     uses = []
     for number, slide in enumerate(slide_set.get('slides') or [], start=1):
@@ -686,7 +688,7 @@ def parameter_uses(slide_set: dict[str, Any], name: str) -> list[str]:
 
 
 def rename_parameter(slide_set: dict[str, Any], previous: str, name: str) -> dict[str, Any]:
-    """The Design with every ``{previous}`` written ``{name}``."""
+    """The slide set with every ``{previous}`` written ``{name}``."""
     replacements = {previous.strip().casefold(): '{' + name + '}'}
     result = copy.deepcopy(slide_set)
     for slide in result.get('slides') or []:
@@ -701,7 +703,7 @@ def rename_parameter(slide_set: dict[str, Any], previous: str, name: str) -> dic
     return result
 
 
-# The columns of a row whose text names fields of the Dashboard (its titles), besides the text of a text box.
+# The columns of a row whose text names fields of the Design (its titles), besides the text of a text box.
 TITLE_FIELDS = ('slide_title', 'slide_subtitle', 'chart_title')
 
 
@@ -744,7 +746,7 @@ def apply_tokens(entries: list[CatalogEntry], texts: dict[str, str], *, titles: 
 
 def apply_parameters(entries: list[CatalogEntry], parameters: list[dict[str, Any]],
                      values: dict[str, Any] | None) -> list[CatalogEntry]:
-    """The rows with the parameters replaced by the values of a Dashboard.
+    """The rows with the parameters replaced by the values of a Design.
 
     A filter condition naming a field-values parameter set to All is left out; elsewhere the values are written as a
     comma-separated list (``City IN ({City})`` -> ``City IN (London, Leeds)``) and All as ``All`` in texts.

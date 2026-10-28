@@ -1,10 +1,10 @@
 """Bundle Report Template: one PowerPoint or Word report with chosen parts of several modules.
 
-A Bundle Report Template has five sections — PPT Dashboards, Scoring & GAP Analysis, Network Insights, Non-Qualified
-Calls and CDR Analysis — in the order the user chooses, each with its sub-modules (the Dashboards, the results tabs of
+A Bundle Report Template has five sections — PPT Designer, Scoring & GAP Analysis, Network Insights, Non-Qualified
+Calls and CDR Analysis — in the order the user chooses, each with its sub-modules (the Designs, the results tabs of
 Scoring, the panels of Network Insights and Non-Qualified Calls and the CDR types of CDR Analysis) in its own order, and
 the charts and tables of each sub-module. Common filters (NR Mode, Operators, Vendors and area) apply to every section
-and replace the saved filters of the Dashboards (the NR Mode lists the Dashboards); each section has its own Campaigns
+and replace the saved filters of the Designs (the NR Mode lists the Designs); each section has its own Campaigns
 (which choose its CDRs) and its own options (the scorings, environments, methodology and GAP reference of Scoring, the
 technology, Split by and thresholds of Network Insights, the periods of Non-Qualified Calls, the metrics and comparisons
 of CDR Analysis).
@@ -69,13 +69,13 @@ BUNDLE_REPORT_FILE_PREFIX = 'DT Analyzer Bundle Report'
 FORMATS = ('powerpoint', 'word')
 FORMAT_SUFFIXES = {'powerpoint': 'pptx', 'word': 'docx'}
 FORMAT_LABELS = {'powerpoint': 'PowerPoint', 'word': 'Word'}
-# The sections in their default order (PPT Dashboards, then CDR Analysis, last), with the feature (main module) a user
+# The sections in their default order (PPT Designer, then CDR Analysis, last), with the feature (main module) a user
 # needs to include each one. A saved report keeps its own order.
 SECTIONS: tuple[tuple[str, str, str], ...] = (
     ('scoring', 'scoring', 'Scoring & GAP Analysis'),
     ('network_insights', 'network-insights', 'Network Insights'),
     ('non_qualified_calls', 'non-qualified-calls', 'Non-Qualified Calls'),
-    ('dashboards', 'ppt-dashboards', 'PPT Dashboards'),
+    ('designs', 'ppt-designer', 'PPT Designer'),
     ('dataset_analysis', 'datasets-analysis', 'CDR Analysis'),
 )
 SECTION_KEYS = tuple(key for key, _feature, _title in SECTIONS)
@@ -100,11 +100,11 @@ COMBINED_ENVIRONMENT = 'all'
 FILTER_FIELDS = ('operators', 'operator_vendors', 'vendor_operators', 'vendors', 'regions', 'clusters', 'cities')
 FILTER_LABELS = {'operators': 'Operators', 'operator_vendors': 'Operator_Vendor', 'vendor_operators': 'Vendor_Operator',
                  'vendors': 'Vendors', 'regions': 'Regions', 'clusters': 'Clusters', 'cities': 'Cities'}
-# The common filters as each module names them: Scoring context filters, Dashboard Adaptative Filters and
+# The common filters as each module names them: Scoring context filters, Design Adaptative Filters and
 # Non-Qualified Calls filters (Network Insights uses the same names as the Bundle Report Template).
 SCORING_FILTERS = {'operators': 'Operator', 'operator_vendors': 'Operator_Vendor', 'vendor_operators': 'Vendor_Operator',
                    'vendors': 'Vendor', 'regions': 'Region', 'clusters': 'Cluster', 'cities': 'City'}
-DASHBOARD_FILTERS = SCORING_FILTERS
+DESIGN_FILTERS = SCORING_FILTERS
 NQ_FILTERS = {'operators': 'operator', 'operator_vendors': 'operator_vendor', 'vendor_operators': 'vendor_operator',
               'vendors': 'vendor', 'regions': 'region', 'clusters': 'cluster', 'cities': 'city'}
 # (CDR Analysis filters the same dimensions as Non-Qualified Calls.)
@@ -115,7 +115,7 @@ NI_GROUPINGS = {'operator': 'Operator', 'vendor': 'Vendor', 'region': 'Region', 
 NQ_GRANULARITIES = {'week': 'Week', 'month': 'Month', 'quarter': 'Quarter', 'year': 'Year'}
 AREA_SUMMARY_BREAKDOWNS = ('None', 'Region', 'Cluster', 'City')
 AREA_SUMMARY_TIME_SPLITS = ('All', 'Campaign', 'Daily', 'Weekly', 'Monthly', 'Quarterly', 'Yearly')
-DASHBOARD_TIMEOUT_SECONDS = 3 * 60 * 60
+DESIGN_TIMEOUT_SECONDS = 3 * 60 * 60
 # Small consecutive components share a PowerPoint slide when they fit at least at this share of their size.
 COMPACT_SCALE = 0.9
 COMPACT_MAXIMUM = 3
@@ -277,13 +277,13 @@ def _normalize_options(section: str, raw: Any, legacy_campaigns: Any = None) -> 
 def _normalize_items(section: str, raw: Any) -> list[dict[str, Any]]:
     """The sub-modules of a section in the saved order, then those it did not have yet, each with its components."""
     raw_items = [item for item in raw if isinstance(item, dict)] if isinstance(raw, list) else []
-    if section == 'dashboards':
+    if section == 'designs':
         items, seen = [], set()
         for item in raw_items:
             key = str(item.get('key') or '').strip()[:200]
             if key and key not in seen:
                 seen.add(key)
-                # The name and NR Mode of the Dashboard find it again in another workspace.
+                # The name and NR Mode of the Design find it again in another workspace.
                 mode = str(item.get('nr_mode') or '').upper()
                 items.append({'key': key, 'label': str(item.get('label') or '').strip()[:160], 'enabled': bool(item.get('enabled', True)),
                               'nr_mode': mode if mode in {'NSA', 'SA', NSA_VS_SA} else ''})
@@ -327,6 +327,10 @@ def normalize_definition(raw: Any) -> dict[str, Any]:
     """A Bundle Report Template: its title, the common filters and the four sections in order with their sub-modules,
     components and options. Sections, sub-modules and components it lacks are added (checked)."""
     raw = raw if isinstance(raw, dict) else {}
+    # A template saved before PPT Designer names the section of its Designs dashboards.
+    if any(isinstance(item, dict) and item.get('key') == 'dashboards' for item in raw.get('sections') or []):
+        raw = {**raw, 'sections': [{**item, 'key': 'designs'} if isinstance(item, dict) and item.get('key') == 'dashboards' else item
+                                   for item in raw['sections']]}
     filters = raw.get('filters') if isinstance(raw.get('filters'), dict) else {}
     # Reports saved when the NR Mode was an option of each section take that of the first one.
     nr_mode = filters.get('nr_mode') or next((item.get('options', {}).get('nr_mode') for item in raw.get('sections') or []
@@ -356,7 +360,7 @@ def normalize_definition(raw: Any) -> dict[str, Any]:
         'options': _normalize_options(key, raw_sections.get(key, {}).get('options'), legacy),
     } for key in order]
     # The one colour theme of the report, read by every section that supports themes (Scoring & GAP Analysis, Network
-    # Insights, PPT Dashboards and CDR Analysis), chosen beside the title; reports saved before, which kept it in their
+    # Insights, PPT Designer and CDR Analysis), chosen beside the title; reports saved before, which kept it in their
     # Scoring and Network Insights sections, take that of their Scoring section.
     legacy_theme = (raw_sections.get('scoring', {}).get('options') or {}).get('theme') \
         if isinstance(raw_sections.get('scoring', {}).get('options'), dict) else None
@@ -371,7 +375,7 @@ def enabled_sections(definition: dict[str, Any]) -> list[dict[str, Any]]:
         if not section['enabled']:
             continue
         items = [item for item in section['items'] if item['enabled']
-                 and (section['key'] == 'dashboards' or any(item['components'].values()))]
+                 and (section['key'] == 'designs' or any(item['components'].values()))]
         if items:
             chosen.append({**section, 'items': items})
     return chosen
@@ -417,18 +421,18 @@ def scope_line(options: dict[str, Any]) -> str:
     return f"Campaigns: {', '.join(campaigns) or 'All campaigns'}"
 
 
-def section_lines(section: dict[str, Any], dashboard_names: dict[str, str] | None = None,
+def section_lines(section: dict[str, Any], design_names: dict[str, str] | None = None,
                   methodology_names: dict[str, str] | None = None) -> list[str]:
     """What the Campaigns and options of a section choose, as its cover shows them."""
-    return [scope_line(section['options']), *_option_lines(section, dashboard_names, methodology_names)]
+    return [scope_line(section['options']), *_option_lines(section, design_names, methodology_names)]
 
 
-def _option_lines(section: dict[str, Any], dashboard_names: dict[str, str] | None,
+def _option_lines(section: dict[str, Any], design_names: dict[str, str] | None,
                   methodology_names: dict[str, str] | None) -> list[str]:
     options = section['options']
-    if section['key'] == 'dashboards':
-        names = [item.get('label') or (dashboard_names or {}).get(item['key'], item['key']) for item in section['items']]
-        return [f"Dashboards: {', '.join(names)}"]
+    if section['key'] == 'designs':
+        names = [item.get('label') or (design_names or {}).get(item['key'], item['key']) for item in section['items']]
+        return [f"Designs: {', '.join(names)}"]
     if section['key'] == 'scoring':
         scorings = ', '.join(label for key, label in SCORINGS if key in options['scorings'])
         environments = ', '.join('All Environments' if name == COMBINED_ENVIRONMENT else name for name in options['environments'])
@@ -465,7 +469,7 @@ def _option_lines(section: dict[str, Any], dashboard_names: dict[str, str] | Non
             f"{'Suggested root causes counted' if options['include_suggestions'] else 'Labelled root causes only'}"]
 
 
-def catalogue_payload(dashboards: list[dict[str, Any]], export_panels: Any = None) -> dict[str, Any]:
+def catalogue_payload(designs: list[dict[str, Any]], export_panels: Any = None) -> dict[str, Any]:
     """The sections, sub-modules and components the editor lists: of Scoring & GAP Analysis, the panels the workspace
     exports (``export_panels``, see scoring_export_panels), each with the operators it exports."""
     panels = _panels()
@@ -478,8 +482,8 @@ def catalogue_payload(dashboards: list[dict[str, Any]], export_panels: Any = Non
                 for name, label in components if scoring_panels[item_key][name]['exportable']]
     return {'sections': [{
         'key': key, 'feature': feature, 'title': title,
-        'items': ([{'key': item['id'], 'title': item['name'], 'nr_mode': item.get('nr_mode', ''), 'components': []} for item in dashboards]
-                  if key == 'dashboards' else
+        'items': ([{'key': item['id'], 'title': item['name'], 'nr_mode': item.get('nr_mode', ''), 'components': []} for item in designs]
+                  if key == 'designs' else
                   [{'key': item_key, 'title': item_title, 'components': components_of(key, item_key, components)}
                    for item_key, item_title, components in panels[key]
                    if key != 'scoring' or components_of(key, item_key, components)]),
@@ -545,27 +549,27 @@ def ensure_tables(repository: Any) -> None:
         with _REPORT_THEMES_LOCK:
             if database not in _REPORT_THEMES_STORED:
                 _store_report_themes(connection)
-                _uncheck_other_mode_dashboards(connection)
+                _uncheck_other_mode_designs(connection)
                 _REPORT_THEMES_STORED.add(database)
 
 
-# The workspace setting that marks the favourites as migrated to Dashboards that read the NR Mode of the report.
-DASHBOARD_NR_MODES_STATE_KEY = 'bundle_report_template_dashboard_nr_modes_v1'
+# The workspace setting that marks the favourites as migrated to Designs that read the NR Mode of the report.
+DESIGN_NR_MODES_STATE_KEY = 'bundle_report_template_design_nr_modes_v1'
 
 
-def _dashboard_mode(definition: Any) -> str:
-    """The NR Mode of the CDRs a saved Dashboard reads: NSA, SA or NSA+SA (those saved before named it technology)."""
+def _design_mode(definition: Any) -> str:
+    """The NR Mode of the CDRs a saved Design reads: NSA, SA or NSA+SA (those saved before named it technology)."""
     value = str((definition.get('nr_mode') or definition.get('technology') if isinstance(definition, dict) else '') or '').upper()
     return value if value in {'SA', NSA_VS_SA} else 'NSA'
 
 
-def uncheck_other_mode_dashboards(definition: dict[str, Any], modes: dict[str, str]) -> list[str]:
-    """Uncheck the Dashboards of a favourite of before whose own NR Mode is not the NR Mode of the report: it listed and
-    generated only those of its NR Mode, and every Dashboard now reads the NR Mode of the report. Returns their keys."""
+def uncheck_other_mode_designs(definition: dict[str, Any], modes: dict[str, str]) -> list[str]:
+    """Uncheck the Designs of a favourite of before whose own NR Mode is not the NR Mode of the report: it listed and
+    generated only those of its NR Mode, and every Design now reads the NR Mode of the report. Returns their keys."""
     report_mode = 'SA' if str((definition.get('filters') or {}).get('nr_mode') or '').upper() == 'SA' else 'NSA'
     unchecked = []
     for section in definition.get('sections') or []:
-        if not isinstance(section, dict) or section.get('key') != 'dashboards':
+        if not isinstance(section, dict) or section.get('key') not in {'designs', 'dashboards'}:
             continue
         for item in section.get('items') or []:
             if not isinstance(item, dict) or not item.get('enabled', True):
@@ -577,48 +581,48 @@ def uncheck_other_mode_dashboards(definition: dict[str, Any], modes: dict[str, s
     return unchecked
 
 
-def _uncheck_other_mode_dashboards(connection: Any) -> None:
-    """Once per workspace, the favourites of before keep generating the Dashboards they did (uncheck_other_mode_dashboards)."""
+def _uncheck_other_mode_designs(connection: Any) -> None:
+    """Once per workspace, the favourites of before keep generating the Designs they did (uncheck_other_mode_designs)."""
     connection.execute('CREATE TABLE IF NOT EXISTS workspace_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
-    if connection.execute('SELECT 1 FROM workspace_state WHERE key = ?', (DASHBOARD_NR_MODES_STATE_KEY,)).fetchone():
+    if connection.execute('SELECT 1 FROM workspace_state WHERE key = ?', (DESIGN_NR_MODES_STATE_KEY,)).fetchone():
         return
-    stored = connection.execute("SELECT value FROM workspace_state WHERE key = 'ppt_dashboards_v2'").fetchone()
+    stored = connection.execute("SELECT value FROM workspace_state WHERE key = 'ppt_designs_v2'").fetchone()
     try:
-        dashboards = json.loads(stored[0]) if stored else {}
+        designs = json.loads(stored[0]) if stored else {}
     except (TypeError, ValueError):
-        dashboards = {}
-    modes = {str(key): _dashboard_mode(value) for key, value in (dashboards if isinstance(dashboards, dict) else {}).items()}
+        designs = {}
+    modes = {str(key): _design_mode(value) for key, value in (designs if isinstance(designs, dict) else {}).items()}
     changes = {}
     for favourite_id, name, raw in connection.execute(f'SELECT id, name, definition_json FROM {BUNDLE_REPORT_TEMPLATES_TABLE}').fetchall():
         try:
             definition = json.loads(raw or '{}')
         except json.JSONDecodeError:
             continue
-        if isinstance(definition, dict) and (unchecked := uncheck_other_mode_dashboards(definition, modes)):
+        if isinstance(definition, dict) and (unchecked := uncheck_other_mode_designs(definition, modes)):
             connection.execute(f'UPDATE {BUNDLE_REPORT_TEMPLATES_TABLE} SET definition_json = ? WHERE id = ?',
                                (json.dumps(definition, ensure_ascii=False), favourite_id))
             changes[str(name)] = unchecked
-    connection.execute('INSERT OR REPLACE INTO workspace_state (key, value) VALUES (?, ?)', (DASHBOARD_NR_MODES_STATE_KEY, '1'))
+    connection.execute('INSERT OR REPLACE INTO workspace_state (key, value) VALUES (?, ?)', (DESIGN_NR_MODES_STATE_KEY, '1'))
     tables = {str(row[0]) for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
     if changes and 'audit_logs' in tables:
         from src.modules.repository import current_app_event_origin, local_now_iso
         connection.execute(
             'INSERT INTO audit_logs (username, action, details, created_at, origin) VALUES (?, ?, ?, ?, ?)',
-            ('system', 'bundle_report_templates_dashboard_nr_modes', json.dumps({
-                'unchecked_dashboards': changes, 'executed_by': 'system',
+            ('system', 'bundle_report_templates_design_nr_modes', json.dumps({
+                'unchecked_designs': changes, 'executed_by': 'system',
             }, ensure_ascii=False), local_now_iso(), current_app_event_origin()))
 
 
-def favourite_contents(definition: Any, dashboard_names: dict[str, str] | None = None) -> list[dict[str, Any]]:
+def favourite_contents(definition: Any, design_names: dict[str, str] | None = None) -> list[dict[str, Any]]:
     """What a Bundle Report Template includes: its checked sections in order, each with its checked sub-modules (the
-    Dashboards by name). Sections without any are left out."""
+    Designs by name). Sections without any are left out."""
     titles = {key: {item_key: title for item_key, title, _components in panels} for key, panels in _panels().items()}
     contents = []
     for section in normalize_definition(definition)['sections']:
         if not section['enabled']:
             continue
-        if section['key'] == 'dashboards':
-            items = [item['label'] or (dashboard_names or {}).get(item['key'], item['key']) for item in section['items'] if item['enabled']]
+        if section['key'] == 'designs':
+            items = [item['label'] or (design_names or {}).get(item['key'], item['key']) for item in section['items'] if item['enabled']]
         else:
             items = [titles[section['key']].get(item['key'], item['key']) for item in section['items']
                      if item['enabled'] and any(item['components'].values())]
@@ -694,11 +698,11 @@ LEGACY_FAVOURITES_FORMATS = ('drivetest-analyzer-complete-report-favourites', 'd
 
 
 def export_entries(repository: Any) -> list[dict[str, Any]]:
-    """The favourites as their documents carry them: each Dashboard with its current name and NR Mode, which find it
+    """The favourites as their documents carry them: each Design with its current name and NR Mode, which find it
     in another workspace."""
     from src.modules.transfer_identities import BUNDLE_REPORT_TEMPLATE_FAVOURITES, portable_identities
 
-    dashboards = workspace_dashboards(repository)
+    designs = workspace_designs(repository)
     favourites = list_favourites(repository)
     # Each favourite with its identity, so the destination finds it again after a rename (see transfer_identities).
     uids = portable_identities(repository, BUNDLE_REPORT_TEMPLATE_FAVOURITES, [str(item['id']) for item in favourites])
@@ -706,63 +710,63 @@ def export_entries(repository: Any) -> list[dict[str, Any]]:
     for item in favourites:
         definition = item['definition']
         for section in definition['sections']:
-            if section['key'] == 'dashboards':
-                for dashboard in section['items']:
-                    if dashboard['key'] in dashboards:
-                        dashboard['label'], dashboard['nr_mode'] = dashboards[dashboard['key']]
+            if section['key'] == 'designs':
+                for design in section['items']:
+                    if design['key'] in designs:
+                        design['label'], design['nr_mode'] = designs[design['key']]
         entries.append({'name': item['name'], 'definition': definition, 'created_by': item['created_by'],
                         'uid': uids[str(item['id'])]})
     return entries
 
 
-def workspace_dashboards(repository: Any) -> dict[str, tuple[str, str]]:
-    """The Dashboards of the workspace: each ID with its name and own NR Mode (NSA or SA)."""
-    from src.modules.ppt_dashboards import LEGACY_STATE_KEY, STATE_KEY
+def workspace_designs(repository: Any) -> dict[str, tuple[str, str]]:
+    """The Designs of the workspace: each ID with its name and own NR Mode (NSA or SA)."""
+    from src.modules.ppt_designer import LEGACY_STATE_KEY, STATE_KEY
     try:
         stored = json.loads(repository.get_workspace_state(STATE_KEY) or repository.get_workspace_state(LEGACY_STATE_KEY) or '{}')
     except (AttributeError, TypeError, json.JSONDecodeError):
         stored = {}
     if not isinstance(stored, dict):
         return {}
-    return {str(key): (str(value.get('name') or ''), _dashboard_mode(value))
+    return {str(key): (str(value.get('name') or ''), _design_mode(value))
             for key, value in stored.items() if isinstance(value, dict)}
 
 
-def dashboard_aliases(repository: Any) -> dict[str, str]:
-    """The Dashboards of the workspace by the ID of the Dashboard of another server that an import gave them (see
+def design_aliases(repository: Any) -> dict[str, str]:
+    """The Designs of the workspace by the ID of the Design of another server that an import gave them (see
     transfer_identities), so what refers to that ID finds them."""
-    from src.modules.transfer_identities import PPT_DASHBOARDS, identities
-    keys = {str(key).casefold(): str(key) for key in workspace_dashboards(repository)}
-    return {uid: keys[key] for key, uid in identities(repository, PPT_DASHBOARDS).items() if key in keys and uid.casefold() != key}
+    from src.modules.transfer_identities import PPT_DESIGNER, identities
+    keys = {str(key).casefold(): str(key) for key in workspace_designs(repository)}
+    return {uid: keys[key] for key, uid in identities(repository, PPT_DESIGNER).items() if key in keys and uid.casefold() != key}
 
 
-def match_dashboards(items: list[dict[str, Any]], dashboards: dict[str, tuple[str, str]], nr_mode: str) -> None:
-    """Give the Dashboards of a favourite from another workspace the IDs of those here with their name and NR Mode,
-    never the same one to two of them; a Dashboard of this workspace keeps its ID. Documents of earlier versions do not
-    name the NR Mode: their checked Dashboards take first those of the NR Mode of the report (``nr_mode``)."""
-    if not dashboards:
+def match_designs(items: list[dict[str, Any]], designs: dict[str, tuple[str, str]], nr_mode: str) -> None:
+    """Give the Designs of a favourite from another workspace the IDs of those here with their name and NR Mode,
+    never the same one to two of them; a Design of this workspace keeps its ID. Documents of earlier versions do not
+    name the NR Mode: their checked Designs take first those of the NR Mode of the report (``nr_mode``)."""
+    if not designs:
         return
-    used = {item['key'] for item in items if item['key'] in dashboards}
+    used = {item['key'] for item in items if item['key'] in designs}
     by_name: dict[str, list[str]] = {}
-    for key, (name, _mode) in dashboards.items():
+    for key, (name, _mode) in designs.items():
         by_name.setdefault(name.casefold(), []).append(key)
-    pending = sorted((item for item in items if item['key'] not in dashboards),
+    pending = sorted((item for item in items if item['key'] not in designs),
                      key=lambda item: (not item.get('nr_mode'), not item['enabled']))
     for item in pending:
         candidates = [key for key in by_name.get(str(item.get('label') or '').casefold(), []) if key not in used]
         mode = item.get('nr_mode') or nr_mode
-        chosen = next((key for key in candidates if dashboards[key][1] == mode), None)
+        chosen = next((key for key in candidates if designs[key][1] == mode), None)
         if chosen is None and not item.get('nr_mode'):
             chosen = next(iter(candidates), None)
         if chosen is not None:
-            item['key'], item['nr_mode'] = chosen, dashboards[chosen][1]
+            item['key'], item['nr_mode'] = chosen, designs[chosen][1]
             used.add(chosen)
 
 
 def export_favourites_document(repository: Any) -> bytes:
     """The favourite Bundle Report Templates of a workspace as a portable document (the Bundle Report Template Favourites element
     of Import / Export / Transfer, workspace transfers and backups)."""
-    # Version 2: every Dashboard of a favourite reads the NR Mode of the report (see uncheck_other_mode_dashboards).
+    # Version 2: every Design of a favourite reads the NR Mode of the report (see uncheck_other_mode_designs).
     return json.dumps({'format': FAVOURITES_FORMAT, 'version': 2, 'favourites': export_entries(repository)},
                       ensure_ascii=False, indent=2).encode('utf-8')
 
@@ -774,21 +778,21 @@ def import_favourites_document(repository: Any, content: bytes | str, username: 
     document = json.loads(content)
     if not isinstance(document, dict) or document.get('format') not in {FAVOURITES_FORMAT, *LEGACY_FAVOURITES_FORMATS}:
         raise ValueError('The file is not a DriveTest Analyzer Bundle Report Template Favourites export.')
-    return import_entries(repository, document.get('favourites') or [], username, workspace_dashboards(repository),
-                          creator=creator, summary=summary, dashboards_of_report_mode=int(document.get('version') or 1) < 2)
+    return import_entries(repository, document.get('favourites') or [], username, workspace_designs(repository),
+                          creator=creator, summary=summary, designs_of_report_mode=int(document.get('version') or 1) < 2)
 
 
 def import_entries(repository: Any, entries: Any, username: str,
-                   dashboards: dict[str, tuple[str, str]] | None = None, *,
+                   designs: dict[str, tuple[str, str]] | None = None, *,
                    creator: Callable[[Any, str], str] | None = None, summary: list[str] | None = None,
-                   dashboards_of_report_mode: bool = False) -> int:
+                   designs_of_report_mode: bool = False) -> int:
     """Replace the favourites of a document that the workspace has (found by their identity, then by their name) and
-    add the others. ``dashboards`` are those of this workspace (see workspace_dashboards), so a Dashboard of another
+    add the others. ``designs`` are those of this workspace (see workspace_designs), so a Design of another
     workspace is found by its name and NR Mode. ``creator(creator in the document, creator here)`` decides who each
     one belongs to (without it a new one belongs to ``username`` and a replaced one keeps its creator). A renamed
     favourite renames the jobs based on it, as a rename here does; ``summary`` receives the renamed favourites. The
-    favourites of a document of before (``dashboards_of_report_mode``) keep generating only the Dashboards of the NR Mode
-    of the report, as they did (uncheck_other_mode_dashboards)."""
+    favourites of a document of before (``designs_of_report_mode``) keep generating only the Designs of the NR Mode
+    of the report, as they did (uncheck_other_mode_designs)."""
     from src.modules.report_tasks import rename_favourite_jobs
     from src.modules.transfer_identities import BUNDLE_REPORT_TEMPLATE_FAVOURITES, ItemMatcher, identities, set_identities
 
@@ -799,7 +803,7 @@ def import_entries(repository: Any, entries: Any, username: str,
     local_creators = {item['id']: item['created_by'] for item in existing}
     local_names = {item['id']: item['name'] for item in existing}
     matcher = ItemMatcher([(item['id'], item['name'], local_uids.get(str(item['id']), '')) for item in existing])
-    aliases = dashboard_aliases(repository)
+    aliases = design_aliases(repository)
     imported_uids: dict[str, str] = {}
     imported = 0
     for entry in entries:
@@ -807,13 +811,13 @@ def import_entries(repository: Any, entries: Any, username: str,
             continue
         definition = normalize_definition(entry.get('definition'))
         for section in definition['sections']:
-            if section['key'] == 'dashboards':
+            if section['key'] == 'designs':
                 for item in section['items']:
-                    if item['key'] not in (dashboards or {}) and item['key'] in aliases:
+                    if item['key'] not in (designs or {}) and item['key'] in aliases:
                         item['key'] = aliases[item['key']]
-                match_dashboards(section['items'], dashboards or {}, definition['filters']['nr_mode'])
-        if dashboards_of_report_mode:
-            uncheck_other_mode_dashboards(definition, {key: mode for key, (_name, mode) in (dashboards or {}).items()})
+                match_designs(section['items'], designs or {}, definition['filters']['nr_mode'])
+        if designs_of_report_mode:
+            uncheck_other_mode_designs(definition, {key: mode for key, (_name, mode) in (designs or {}).items()})
         target, name = matcher.match(entry.get('uid'), ' '.join(str(entry['name']).split())[:120])
         saved = save_favourite(repository, target, name, definition, username)
         if target is not None and local_names.get(target) != name:
@@ -1081,7 +1085,7 @@ def _compose_section(composer: compose.DeckComposer, section: SectionDeck, entri
 
 def _nest_transitions(slides: list[Any]) -> None:
     """The transitions of a module inside its section of a Bundle Report Template, one level down; a module whose own cover
-    stays (each Dashboard) has it as a transition of the second level and its transitions one more level down."""
+    stays (each Design) has it as a transition of the second level and its transitions one more level down."""
     depth = 1
     for slide in slides:
         if report_structure.level(slide) is not None:
@@ -1171,7 +1175,7 @@ def compose_word(template: Path, powerpoint: bytes, sections: list[SectionDeck],
                     if current is not None:
                         title, level = f'{counter.next(current + depth)}  {title}', current + depth
                     elif not module:
-                        # The cover a module keeps in its section (each Dashboard), as in _nest_transitions.
+                        # The cover a module keeps in its section (each Design), as in _nest_transitions.
                         title, depth, level = f'{counter.next(2)}  {title}', 2, 2
                     plan.append(('heading2', PackItem('heading2', title or 'Section', [line for line in subtitle.split(' · ') if line][:3],
                                                       level=level, contents=title or 'Section')))
@@ -1332,54 +1336,54 @@ class SectionGenerator:
             cities = list(dict.fromkeys([*cities, *self.repository.list_main_cities()]))
         return cities
 
-    def dashboards(self, section: dict[str, Any]) -> SectionDeck:
-        tools = getattr(self.core, 'dashboard_reporting', None)
+    def designs(self, section: dict[str, Any]) -> SectionDeck:
+        tools = getattr(self.core, 'design_reporting', None)
         if tools is None:
-            raise BundleReportTemplateError('PPT Dashboards are not available.')
-        stored = tools.list_dashboards(self.repository)
+            raise BundleReportTemplateError('PPT Designer are not available.')
+        stored = tools.list_designs(self.repository)
         names = {str(key): str(value.get('name') or key) for key, value in stored.items() if isinstance(value, dict)}
-        deck = SectionDeck('dashboards', '', [], order=[item['key'] for item in section['items']], item_titles=names)
+        deck = SectionDeck('designs', '', [], order=[item['key'] for item in section['items']], item_titles=names)
         for item in section['items']:
-            dashboard = stored.get(item['key'])
-            if not isinstance(dashboard, dict):
-                deck.lines.append(f"{item.get('label') or item['key']}: the Dashboard no longer exists")
+            design = stored.get(item['key'])
+            if not isinstance(design, dict):
+                deck.lines.append(f"{item.get('label') or item['key']}: the Design no longer exists")
                 continue
-            self.progress(f"Generating the Dashboard {names.get(item['key'])}")
-            definition = dict(dashboard)
+            self.progress(f"Generating the Design {names.get(item['key'])}")
+            definition = dict(design)
             definition.pop('datasets', None)
             filters = {name: values for name, values in (definition.get('filters') or {}).items()
-                       if name not in {*DASHBOARD_FILTERS.values(), 'Campaign'}}
+                       if name not in {*DESIGN_FILTERS.values(), 'Campaign'}}
             if section['options']['campaigns']:
-                # The Campaigns of the section choose the CDRs of every Dashboard.
+                # The Campaigns of the section choose the CDRs of every Design.
                 filters['Campaign'] = list(section['options']['campaigns'])
-            from src.modules.ppt_dashboards import MAIN_CITIES
-            for field_name, column in DASHBOARD_FILTERS.items():
+            from src.modules.ppt_designer import MAIN_CITIES
+            for field_name, column in DESIGN_FILTERS.items():
                 values = list(self.filters[field_name])
                 if field_name == 'cities' and self.filters['main_cities']:
                     values = [MAIN_CITIES, *values]
                 if values:
                     filters[column] = values
-            # Every Dashboard reads the CDRs of the NR Mode of the report (any template serves both); one of NSA & SA
+            # Every Design reads the CDRs of the NR Mode of the report (any template serves both); one of NSA & SA
             # keeps reading both, which its slides compare, the Campaigns choosing the CDRs of each NR Mode.
-            nr_mode = NSA_VS_SA if _dashboard_mode(dashboard) == NSA_VS_SA else self.filters['nr_mode']
+            nr_mode = NSA_VS_SA if _design_mode(design) == NSA_VS_SA else self.filters['nr_mode']
             definition.update({'filters': filters, 'auto_cdrs': True, 'nr_mode': nr_mode, 'sa_campaigns': []})
             job_id = tools.queue_export(item['key'], self.user, definition, theme=self.definition.get('theme'))
-            deadline = time.monotonic() + DASHBOARD_TIMEOUT_SECONDS
+            deadline = time.monotonic() + DESIGN_TIMEOUT_SECONDS
             while True:
                 row = tools.job(self.repository, job_id)
                 if row is None:
-                    raise BundleReportTemplateError('The Dashboard PPT job was deleted.')
+                    raise BundleReportTemplateError('The Design PPT job was deleted.')
                 if str(row['status']) == 'ready':
                     break
                 if str(row['status']) in {'failed', 'stopped'}:
-                    raise BundleReportTemplateError(str(row['last_error'] or f"The Dashboard PPT job {row['status']}."))
+                    raise BundleReportTemplateError(str(row['last_error'] or f"The Design PPT job {row['status']}."))
                 if time.monotonic() > deadline:
-                    raise BundleReportTemplateError('The Dashboard PPT job did not finish within three hours.')
-                self.progress(f"Generating the Dashboard {names.get(item['key'])} ({int(row['progress'] or 0)}%)")
+                    raise BundleReportTemplateError('The Design PPT job did not finish within three hours.')
+                self.progress(f"Generating the Design {names.get(item['key'])} ({int(row['progress'] or 0)}%)")
                 time.sleep(2)
             deck.decks.append((item['key'], Path(str(row['output_path'])).read_bytes()))
         if not deck.decks:
-            raise BundleReportTemplateError('None of the chosen Dashboards was generated.')
+            raise BundleReportTemplateError('None of the chosen Designs was generated.')
         return deck
 
     def scoring(self, section: dict[str, Any]) -> SectionDeck:
@@ -1616,7 +1620,7 @@ def section_fingerprint(core: Any, repository: Any, definition: dict[str, Any], 
                         generator: 'SectionGenerator') -> str:
     """Identity of a generated section: the version and code of the application, its options and the common filters,
     and every input its module reads (the CDRs, the Operator and Vendor Maps, the Main Cities and, per module, the
-    Dashboards, the methodologies and the Saved Filters calculated, the inventory of the analysis, the follow-up of the
+    Designs, the methodologies and the Saved Filters calculated, the inventory of the analysis, the follow-up of the
     calls or the CDRs of CDR Analysis). The same identity means the same document; a change of any input, or an update
     of the application, generates it again."""
     inputs: dict[str, Any] = {
@@ -1627,9 +1631,9 @@ def section_fingerprint(core: Any, repository: Any, definition: dict[str, Any], 
         'operators': repository.list_operator_mapping_groups(), 'vendors': repository.list_vendor_mapping_groups(),
         'main_cities': list(repository.list_main_cities()),
     }
-    if section['key'] == 'dashboards':
-        stored = core.dashboard_reporting.list_dashboards(repository)
-        inputs['dashboards'] = {item['key']: stored.get(item['key']) for item in section['items']}
+    if section['key'] == 'designs':
+        stored = core.design_reporting.list_designs(repository)
+        inputs['designs'] = {item['key']: stored.get(item['key']) for item in section['items']}
     elif section['key'] == 'scoring':
         inputs['methodologies'] = repository.get_scoring_profiles()
         # A Saved Filter of the same selection is used as it is: calculating one again generates the section again.
@@ -1832,8 +1836,8 @@ def build_report(core: Any, repository: Any, user: Any, definition: dict[str, An
             warnings.append(f"{titles[section['key']]}: {getattr(exc, 'detail', exc)}")
             continue
         deck.title = titles[section['key']]
-        dashboards = deck.item_titles if section['key'] == 'dashboards' else None
-        deck.lines = [*section_lines(section, dashboards, methodology_names), *deck.lines]
+        designs = deck.item_titles if section['key'] == 'designs' else None
+        deck.lines = [*section_lines(section, designs, methodology_names), *deck.lines]
         decks.append(deck)
         section_keys.append(key)
     if not decks:
@@ -2030,13 +2034,13 @@ def install_bundle_report_template_routes(core: Any) -> None:
     @app.get('/api/reporting/bundle-report-template/options')
     def bundle_report_template_options(user=Depends(reporting_user)):
         repository = repository_for(user)
-        tools = getattr(core, 'dashboard_reporting', None)
-        dashboards = sorted(({'id': str(key), 'name': str(value.get('name') or key),
-                              'nr_mode': _dashboard_mode(value)} for key, value in
-                             (tools.list_dashboards(repository).items() if tools is not None else []) if isinstance(value, dict)),
+        tools = getattr(core, 'design_reporting', None)
+        designs = sorted(({'id': str(key), 'name': str(value.get('name') or key),
+                              'nr_mode': _design_mode(value)} for key, value in
+                             (tools.list_designs(repository).items() if tools is not None else []) if isinstance(value, dict)),
                             key=lambda item: item['name'].casefold())
         return {
-            'catalogue': catalogue_payload(dashboards, load_export_panels(repository)),
+            'catalogue': catalogue_payload(designs, load_export_panels(repository)),
             'allowed_sections': {key: core.user_has_feature(user, feature) for key, feature in SECTION_FEATURES.items()},
             'section_titles': section_titles(),
             'defaults': normalize_definition({}),

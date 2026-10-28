@@ -383,7 +383,7 @@ def themes_payload() -> dict[str, Any]:
             'sources': sources}
 
 
-# The neutral colours the chart renderer of PPT Dashboards (dashboard_charts.js) draws with, by role: what a theme
+# The neutral colours the chart renderer of PPT Designer (canvas_charts.js) draws with, by role: what a theme
 # translates (series, operator, vendor and threshold colours stay as they are).
 _RENDERER_ROLES = {
     'title': ('#1D3345',),
@@ -401,8 +401,8 @@ _RENDERER_ROLES = {
 _RENDERER_DARK_ROLES = {'panel': ('#EDF4F0',), 'panel_line': ('#D8E5DF', '#B9CDC4')}
 
 
-def dashboard_chart_style(theme: dict[str, Any] | str | None = None) -> dict[str, Any]:
-    """The style of a theme for the chart renderer of PPT Dashboards (the ``style`` of a chart model): its font and the
+def canvas_chart_style(theme: dict[str, Any] | str | None = None) -> dict[str, Any]:
+    """The style of a theme for the chart renderer of PPT Designer (the ``style`` of a chart model): its font and the
     colours that replace the renderer's greys. On the white slides of a light theme the text is the theme's ink and the
     table headers its header colour (its title colour when that header carries dark text); a dark theme (Midnight)
     paints the charts in its surface (``background``) with its light ink, as its slides."""
@@ -427,7 +427,7 @@ def dashboard_chart_style(theme: dict[str, Any] | str | None = None) -> dict[str
 
 def user_theme_key(username: str, module: str = 'scoring') -> str:
     """The theme of a user in a workspace: one for every themed module (Scoring & GAP Analysis, Network Insights, CDR
-    Analysis and PPT Dashboards), so choosing it in one module chooses it in all of them; ``module`` only names the module
+    Analysis and PPT Designer), so choosing it in one module chooses it in all of them; ``module`` only names the module
     that reads or changes it."""
     return f'theme:{username}'
 

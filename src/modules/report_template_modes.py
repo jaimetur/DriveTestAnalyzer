@@ -1,15 +1,15 @@
-"""Report Templates and PPT Dashboards without an NR Mode of their own.
+"""Report Templates and PPT Designer without an NR Mode of their own.
 
-A Report Template serves the CDRs of any NR Mode: the Dashboard that uses it chooses the NR Mode as part of its
+A Report Template serves the CDRs of any NR Mode: the Design that uses it chooses the NR Mode as part of its
 selection (NSA, SA or both, NSA & SA), and the titles of the template name it with the tokens ``{NR Mode}`` (NSA, SA or
 NSA & SA) and ``{NR Mode Name}`` (Non-Standalone, Standalone or Non-Standalone & Standalone). Each row of the combined
 CDR tables keeps the NR Mode of its CDR in the NR Mode field: a chart keeps one NR Mode with a filter (NR Mode IN (SA)),
 and splits or colours its series by it (``entry_for_nr_mode``).
 
-Templates and Dashboards were kept per NR Mode before, most of them as an NSA and an SA copy of the same template that
+Templates and Designs were kept per NR Mode before, most of them as an NSA and an SA copy of the same template that
 only told the mode apart in a title. ``merge_mode_templates`` turns each such pair into one template with the tokens,
 both when a workspace is migrated and when a package or backup of before is imported, and returns how the old
-templates are known now, so the Dashboards and jobs that named them follow (``migrate_dashboards_state``).
+templates are known now, so the Designs and jobs that named them follow (``migrate_designs_state``).
 """
 from __future__ import annotations
 
@@ -30,11 +30,11 @@ NR_MODE_TOKEN_VALUES = {
     'SA': {NR_MODE_TOKEN: 'SA', NR_MODE_NAME_TOKEN: 'Standalone'},
     NSA_VS_SA: {NR_MODE_TOKEN: 'NSA & SA', NR_MODE_NAME_TOKEN: 'Non-Standalone & Standalone'},
 }
-# The NR Mode a Dashboard reads, as its selectors and file names show it.
-DASHBOARD_NR_MODE_LABELS = {'NSA': 'NSA', 'SA': 'SA', NSA_VS_SA: 'NSA & SA'}
+# The NR Mode a Design reads, as its selectors and file names show it.
+DESIGN_NR_MODE_LABELS = {'NSA': 'NSA', 'SA': 'SA', NSA_VS_SA: 'NSA & SA'}
 NR_MODE_SPLIT_FIELD = 'NR Mode'
 _TOKEN_PATTERN = re.compile(r'\{\s*NR\s*Mode(\s+Name)?\s*\}', re.IGNORECASE)
-# The workspace setting that keeps how the templates of each NR Mode are known since they were merged, so a Dashboard
+# The workspace setting that keeps how the templates of each NR Mode are known since they were merged, so a Design
 # or a package of before still finds its template: {"renames": {"nsa|NSA - X": "X"}, "uids": {old uid: new uid}}.
 TEMPLATE_MODE_MERGE_STATE_KEY = 'report_template_nr_mode_merge_v1'
 # The columns of a template row whose text may name the NR Mode (a merge only tells the modes apart in them).
@@ -47,8 +47,8 @@ _NAME_PREFIX = re.compile(r'^\s*(NSA|SA)\s*[-–—_:]\s*(.+?)\s*$', re.IGNORECA
 _NAME_SUFFIX = re.compile(r'^\s*(.+?)\s*(?:[-–—_]\s*(NSA|SA)|\(\s*(NSA|SA)\s*\))\s*$', re.IGNORECASE)
 
 
-def dashboard_nr_mode_value(value: object) -> str:
-    """The NR Mode of the CDRs a Dashboard reads: NSA, SA or NSA+SA (both, NSA & SA); NSA when none is given."""
+def design_nr_mode_value(value: object) -> str:
+    """The NR Mode of the CDRs a Design reads: NSA, SA or NSA+SA (both, NSA & SA); NSA when none is given."""
     text = str(value or '').strip()
     if text.replace(' ', '').upper() in {'NSA&SA', 'NSAANDSA'}:
         return NSA_VS_SA
@@ -59,7 +59,7 @@ def render_nr_mode_tokens(text: str, nr_mode: object) -> str:
     """A template text with its NR Mode tokens written for an NR Mode (NSA when none is given)."""
     if not text or '{' not in text:
         return text
-    values = NR_MODE_TOKEN_VALUES[dashboard_nr_mode_value(nr_mode)]
+    values = NR_MODE_TOKEN_VALUES[design_nr_mode_value(nr_mode)]
     return _TOKEN_PATTERN.sub(lambda match: values[NR_MODE_NAME_TOKEN if match.group(1) else NR_MODE_TOKEN], text)
 
 
@@ -109,7 +109,7 @@ def missing_nr_mode_fields(entry: Any, fields_by_mode: Mapping[str, set[str]], n
     NR Mode: the chart has no samples of it. ``fields_by_mode``: the field identities of the CDRs of each NR Mode."""
     if not entry.source_kind or entry.source_kind == 'all' or entry.structural_type:
         return {}
-    read = nr_modes_of(dashboard_nr_mode_value(nr_mode))
+    read = nr_modes_of(design_nr_mode_value(nr_mode))
     missing: dict[str, list[str]] = {}
     for mode in chart_filter_nr_modes(entry):
         others = [fields_by_mode.get(other) for other in NR_MODES if other != mode]
@@ -132,9 +132,9 @@ def _names_field(value: str, names: set[str]) -> bool:
 
 
 def entry_for_nr_mode(entry: Any, nr_mode: object) -> Any:
-    """A chart row of a template as a Dashboard that reads the CDRs of an NR Mode (NSA, SA or NSA+SA) shows it.
+    """A chart row of a template as a Design that reads the CDRs of an NR Mode (NSA, SA or NSA+SA) shows it.
 
-    Its slide titles name the NR Mode of the Dashboard and its chart title the NR Modes the chart shows (those its
+    Its slide titles name the NR Mode of the Design and its chart title the NR Modes the chart shows (those its
     filters keep, NR Mode IN (SA)). A chart that shows both NR Modes and tells them apart neither by NR Mode nor by
     Campaign (whose SA campaigns name the mode) gets the NR Mode as the last level of the split that holds its legend,
     and of its legend: the NSA and SA tests of an operator are never added together.
@@ -143,12 +143,12 @@ def entry_for_nr_mode(entry: Any, nr_mode: object) -> Any:
 
     from src.modules.cdr_reporting import _legend_dimensions, entry_dynamic_fields, parse_catalog_grouping
 
-    dashboard_mode = dashboard_nr_mode_value(nr_mode)
-    shown = [mode for mode in chart_filter_nr_modes(entry) if mode in (NR_MODES if dashboard_mode == NSA_VS_SA else (dashboard_mode,))]
-    chart_mode = NSA_VS_SA if len(shown) > 1 else (shown[0] if shown else dashboard_mode)
+    design_mode = design_nr_mode_value(nr_mode)
+    shown = [mode for mode in chart_filter_nr_modes(entry) if mode in (NR_MODES if design_mode == NSA_VS_SA else (design_mode,))]
+    chart_mode = NSA_VS_SA if len(shown) > 1 else (shown[0] if shown else design_mode)
     changes: dict[str, Any] = {
-        'slide_title': render_nr_mode_tokens(entry.slide_title, dashboard_mode),
-        'slide_subtitle': render_nr_mode_tokens(entry.slide_subtitle, dashboard_mode),
+        'slide_title': render_nr_mode_tokens(entry.slide_title, design_mode),
+        'slide_subtitle': render_nr_mode_tokens(entry.slide_subtitle, design_mode),
         'chart_title': render_nr_mode_tokens(entry.chart_title, chart_mode),
     }
     if len(shown) > 1 and entry.source_kind and not entry.structural_type:
@@ -347,9 +347,9 @@ def merge_state(value: object) -> tuple[dict[tuple[str, str], str], dict[str, st
     return renames, {str(old): str(new) for old, new in (value.get('uids') or {}).items()}
 
 
-def migrate_dashboard_definition(definition: Any, renames: Mapping[tuple[str, str], str] | None = None,
+def migrate_design_definition(definition: Any, renames: Mapping[tuple[str, str], str] | None = None,
                                  uids: Mapping[str, str] | None = None) -> Any:
-    """A Dashboard saved with an NR Mode of its own and of its template (technology, template_technology): its NR Mode
+    """A Design saved with an NR Mode of its own and of its template (technology, template_technology): its NR Mode
     is now part of its selection (nr_mode) and its template is the one its template is known as now."""
     if not isinstance(definition, dict) or not ({'technology', 'template_technology'} & set(definition)):
         return definition
@@ -368,12 +368,12 @@ def migrate_dashboard_definition(definition: Any, renames: Mapping[tuple[str, st
     return updated
 
 
-def migrate_dashboards_state(dashboards: Mapping[str, Any], renames: Mapping[tuple[str, str], str] | None = None,
+def migrate_designs_state(designs: Mapping[str, Any], renames: Mapping[tuple[str, str], str] | None = None,
                              uids: Mapping[str, str] | None = None) -> tuple[dict[str, Any], bool]:
-    """Every Dashboard of a workspace or package without an NR Mode of its own (migrate_dashboard_definition), their
-    names unique as they are now in every NR Mode: an SA Dashboard named as an NSA one takes " (SA)"."""
-    migrated = {key: migrate_dashboard_definition(value, renames, uids) for key, value in dashboards.items()}
-    changed = migrated != dict(dashboards)
+    """Every Design of a workspace or package without an NR Mode of its own (migrate_design_definition), their
+    names unique as they are now in every NR Mode: an SA Design named as an NSA one takes " (SA)"."""
+    migrated = {key: migrate_design_definition(value, renames, uids) for key, value in designs.items()}
+    changed = migrated != dict(designs)
     taken: set[str] = set()
     for key in sorted(migrated, key=lambda item: (str((migrated[item] or {}).get('nr_mode') if isinstance(migrated[item], dict) else ''), str(item))):
         definition = migrated[key]

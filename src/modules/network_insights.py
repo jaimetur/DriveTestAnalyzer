@@ -44,7 +44,7 @@ from src.modules import cdr_store
 from src.modules import inventory_insights as ii
 from src.modules import network_insights_favourites as ni_favourites
 from src.modules.network_insights_findings import findings_payload, mode_of_test
-from src.modules.scoring_themes import THEMES, dashboard_chart_style, load_user_theme, normalize_theme, save_user_theme, themes_payload, use_theme
+from src.modules.scoring_themes import THEMES, canvas_chart_style, load_user_theme, normalize_theme, save_user_theme, themes_payload, use_theme
 from src.modules.network_inventory import dataset_revision, effective_snapshot_date, ensure_inventory_cells, network_family
 from src.modules.network_inventory import inventory_datasets as snapshot_datasets
 from src.modules.serving_cells import load_serving_networks, serving_families
@@ -520,7 +520,7 @@ def cdf_payload(
 def campaign_line_widths(campaigns: dict[str, str], families: dict[str, str]) -> dict[str, int]:
     """Line width per label: the latest campaign of each Operator/Vendor is the thickest.
 
-    Like the PPT Dashboard CDFs, two campaigns use widths 1 and 4 and longer
+    Like the PPT Designer CDFs, two campaigns use widths 1 and 4 and longer
     histories thin out by one per older campaign.
     """
     from src.modules.cdr_reporting import _campaign_sort_key
@@ -1802,8 +1802,8 @@ def install_network_insights_routes(core: Any) -> None:
                 # The colour themes of Scoring & GAP Analysis, for the charts, tables and exports (see scoring_themes).
                 'themes': themes_payload()['themes'],
                 'theme': load_user_theme(task_repository, user.username, THEME_MODULE),
-                # The font and colours of each theme for the CDFs and maps (dashboard_charts.js).
-                'chart_styles': {key: dashboard_chart_style(key) for key in THEMES},
+                # The font and colours of each theme for the CDFs and maps (canvas_charts.js).
+                'chart_styles': {key: canvas_chart_style(key) for key in THEMES},
             },
         })
 
@@ -3251,7 +3251,7 @@ def install_network_insights_routes(core: Any) -> None:
 
     def write_themed_summary(selection: dict[str, Any], export_kind: str, destination: Path,
                              components: list[str] | None, compose: bool) -> dict[str, Any]:
-        from src.modules.cdr_reporting import _render_dashboard_payload
+        from src.modules.cdr_reporting import _render_canvas_payload
         from src.modules.bundle_report_templates import module_document
         from src.modules.network_insights_export import export_network_insights_powerpoint
 
@@ -3279,8 +3279,8 @@ def install_network_insights_routes(core: Any) -> None:
         deployment = {'groupings': groupings, 'cluster_inventories': cluster_inventory_summary(), 'snapshot': snapshot,
                       'nr_duplex': nr_duplex_payload(task_repository, NrDuplexRequest.model_validate(request.model_dump()))}
         # The CDFs and maps in the font and colours of the theme (on the dark cards of a dark theme).
-        chart_style = dashboard_chart_style()
-        render = lambda payload, width, height: _render_dashboard_payload({**payload, 'style': chart_style}, width=width, height=height)[0]
+        chart_style = canvas_chart_style()
+        render = lambda payload, width, height: _render_canvas_payload({**payload, 'style': chart_style}, width=width, height=height)[0]
         chosen = {} if components is None else {'components': components}
         if not compose:
             export_network_insights_powerpoint(destination, analysis, deployment, description, render, **chosen)

@@ -92,7 +92,7 @@
     <strong>NR Modes of each label</strong>
     <ul>
       <li><span class="mapping-role-badge is-nr-modes">NSA and SA</span> The default: the operator has a network in both NR Modes.</li>
-      <li><span class="mapping-role-badge is-nr-modes">NSA only</span> The operator has no SA network (such as Three today): its tests of the SA CDRs, which run on LTE and EN-DC as its NSA CDRs already measure, are out of scope. They are left out of every analysis, filter, chart and report of the workspace (Scoring &amp; GAP Analysis, Network Insights, Dashboards, CDR Analysis, Chart Builder, Reporting and NQ Calls), while its NSA tests stay. A suggestion appears under a label whose Non-Qualified Calls of the SA campaigns barely ran on NR SA; it is never applied on its own.</li>
+      <li><span class="mapping-role-badge is-nr-modes">NSA only</span> The operator has no SA network (such as Three today): its tests of the SA CDRs, which run on LTE and EN-DC as its NSA CDRs already measure, are out of scope. They are left out of every analysis, filter, chart and report of the workspace (Scoring &amp; GAP Analysis, Network Insights, Designs, CDR Analysis, Chart Builder, Reporting and NQ Calls), while its NSA tests stay. A suggestion appears under a label whose Non-Qualified Calls of the SA campaigns barely ran on NR SA; it is never applied on its own.</li>
       <li><span class="mapping-role-badge is-nr-modes">SA only</span> The same with its tests of the NSA CDRs.</li>
     </ul>
   </div>
@@ -148,7 +148,7 @@
     </summary>
     <div class="collapsible-panel-body">
     <h3 class="templates-library-heading">Import PPT Template</h3>
-    <p class="lede">Import a Report Template CSV and manage the stored workspace templates below. A template serves the CDRs of any NR Mode: each Dashboard chooses the NR Mode it reads, and the titles name it with {NR Mode} (NSA or SA) and {NR Mode Name} (Non-Standalone or Standalone).</p>
+    <p class="lede">Import a Report Template CSV and manage the stored workspace templates below. A template serves the CDRs of any NR Mode: each Design chooses the NR Mode it reads, and the titles name it with {NR Mode} (NSA or SA) and {NR Mode Name} (Non-Standalone or Standalone).</p>
     {% if catalogue_error %}<span hidden data-catalogue-import-error>{{ catalogue_error }}</span>{% endif %}
     {% if catalogue_notice %}<span hidden data-catalogue-import-notice>{{ catalogue_notice }}</span>{% endif %}
     <form class="catalogue-import-row" action="/workspace-config/slides-templates/import" method="post" enctype="multipart/form-data" autocomplete="off" data-catalogue-import-form data-catalogue-template-library='{{ template_names | tojson }}' novalidate>
@@ -199,12 +199,12 @@
 
   <details id="main-cities" class="panel collapsible-panel main-cities-panel" open data-panel-state-key="workspace-config:main-cities">
     <summary class="collapsible-summary">
-      <div><p class="eyebrow">Dashboard filters</p><h2>Main Cities</h2></div>
+      <div><p class="eyebrow">Design filters</p><h2>Main Cities</h2></div>
       <span class="collapse-chip">Collapse</span>
     </summary>
     <div class="collapsible-panel-body">
       {% if active_workspace %}
-      <p class="lede">Choose the cities for the Main Cities preset in Dashboard filters and PowerPoint exports for <strong>"{{ active_workspace.name }}"</strong>.</p>
+      <p class="lede">Choose the cities for the Main Cities preset in Design filters and PowerPoint exports for <strong>"{{ active_workspace.name }}"</strong>.</p>
       {% if main_cities_notice %}<div class="alert alert-success">{{ main_cities_notice }}</div>{% endif %}
       {% if main_cities_error %}<div class="alert alert-error">{{ main_cities_error }}</div>{% endif %}
       <form class="main-cities-form" action="/workspace-config/main-cities/save" method="post" data-main-cities-form>

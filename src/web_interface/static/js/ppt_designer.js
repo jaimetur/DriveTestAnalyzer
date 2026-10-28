@@ -5,7 +5,7 @@
   const config = JSON.parse($('ds-config').textContent);
   const mainCities = [...new Set((Array.isArray(config.main_cities) ? config.main_cities : [])
     .map(value => String(value).trim()).filter(Boolean))];
-  // City offers Main Cities first: saved as such, it is the Main Cities of the workspace whenever the Dashboard is used.
+  // City offers Main Cities first: saved as such, it is the Main Cities of the workspace whenever the Design is used.
   const MAIN_CITIES = '@main-cities';
   const mainCitiesOption = (selected) => {
     const entry = document.createElement('option'); entry.value = MAIN_CITIES; entry.textContent = 'Main Cities';
@@ -20,8 +20,8 @@
   const eventTimeFilteringDisabled = Boolean(config.ignore_event_time_filtering);
   const eventTimeFilteringDisabledReason = 'Date filters are disabled because Ignore event time filtering is enabled in Config.';
   const filterAliases = config.filter_aliases || {};
-  let dashboards = {}, activeId = '', definition = null, savedDefinition = '', appliedFilterState = '', appliedSelectionState = '', appliedDashboardDefinition = null, applyingDashboardDefinition = null, prepared = null, slideIndex = 0;
-  let dashboardFiltersOpen = false;
+  let designs = {}, activeId = '', definition = null, savedDefinition = '', appliedFilterState = '', appliedSelectionState = '', appliedDesignDefinition = null, applyingDesignDefinition = null, prepared = null, slideIndex = 0;
+  let designFiltersOpen = false;
   let sequence = 0, cacheLookupSequence = 0, timer, controller, preparing = null, preparingFilterState = '', preparationProgressTimer = 0, dirty = false, filterActionBusy = false, preparationRunning = false, dataToken = '', dataEndpoint = '';
   let presentationTimer = 0;
   const presentation = {active: false, running: false, delay: 5000, transitionDuration: 1, effect: 'flip', showComments: true};
@@ -36,26 +36,26 @@
   const chartPayloads = new Map();
   const renderedChartPayloads = new Map();
   const preparedPayloads = new Map();
-  const dashboardStatuses = new Map();
+  const designStatuses = new Map();
   // Do not let status polling replace an active explicitly requested
-  // preparation with the previously-ready persisted Dashboard.
-  const dashboardPreparationTokens = new Map();
-  let dashboardStatusRefreshing = false;
+  // preparation with the previously-ready persisted Design.
+  const designPreparationTokens = new Map();
+  let designStatusRefreshing = false;
   let expandedChartRequest = 0;
   let slidePreloadRequest = 0, expandedChartPreloadRequest = 0, backgroundChartPreloadRequest = 0;
   let backgroundPreparationToken = '';
-  let dateBounds = null, templateEditorSaved = false, templateEditorPreloadTimer = 0, dashboardPptColumnFilters = null;
-  let dashboardPptJobs = [], dashboardPptCharts = [], dashboardPptChartsJobId = '', dashboardPptChartsRequest = 0;
-  let pptDashboardViewer = null;
-  let dashboardPptJobsLoaded = false, dashboardPptJobsRefreshing = false;
+  let dateBounds = null, templateEditorSaved = false, templateEditorPreloadTimer = 0, designPptColumnFilters = null;
+  let designPptJobs = [], designPptCharts = [], designPptChartsJobId = '', designPptChartsRequest = 0;
+  let pptDesignViewer = null;
+  let designPptJobsLoaded = false, designPptJobsRefreshing = false;
   const authenticatedSession = document.body.dataset.authenticatedSession || 'anonymous';
-  const openStorageKey = `drivetest-analyzer:ppt-dashboards:${config.workspace}:open:${authenticatedSession}`;
-  const filtersOpenStorageKey = `drivetest-analyzer:ppt-dashboards:${config.workspace}:filters-open:${authenticatedSession}`;
-  const libraryStorageKey = `drivetest-analyzer:ppt-dashboards:${config.workspace}:library`;
-  const scrollStorageKey = `drivetest-analyzer:ppt-dashboards:${config.workspace}:scroll`;
-  const preparedStorageKey = `drivetest-analyzer:ppt-dashboards:${config.workspace}:prepared`;
-  const universeStorageKey = `drivetest-analyzer:ppt-dashboards:${config.workspace}:universes`;
-  const presentationEffectStorageKey = 'drivetest-analyzer:ppt-dashboards:presentation-effect';
+  const openStorageKey = `drivetest-analyzer:ppt-designer:${config.workspace}:open:${authenticatedSession}`;
+  const filtersOpenStorageKey = `drivetest-analyzer:ppt-designer:${config.workspace}:filters-open:${authenticatedSession}`;
+  const libraryStorageKey = `drivetest-analyzer:ppt-designer:${config.workspace}:library`;
+  const scrollStorageKey = `drivetest-analyzer:ppt-designer:${config.workspace}:scroll`;
+  const preparedStorageKey = `drivetest-analyzer:ppt-designer:${config.workspace}:prepared`;
+  const universeStorageKey = `drivetest-analyzer:ppt-designer:${config.workspace}:universes`;
+  const presentationEffectStorageKey = 'drivetest-analyzer:ppt-designer:presentation-effect';
   try {
     const storedPresentationEffect = localStorage.getItem(presentationEffectStorageKey);
     const effectSelect = $('ds-presentation-effect');
@@ -63,7 +63,7 @@
   } catch (_) { /* Local storage is optional. */ }
   const navigationEntry = performance.getEntriesByType?.('navigation')?.[0];
   const restorePageState = navigationEntry?.type === 'reload';
-  const dashboardId = () => {
+  const designId = () => {
     if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
     const bytes = new Uint8Array(16);
     if (globalThis.crypto?.getRandomValues) globalThis.crypto.getRandomValues(bytes);
@@ -76,7 +76,7 @@
   const rememberOpen = id => { try { if (id) sessionStorage.setItem(openStorageKey, id); else sessionStorage.removeItem(openStorageKey); } catch (_) { /* Storage is optional. */ } };
   const rememberFiltersOpen = isOpen => { try { sessionStorage.setItem(filtersOpenStorageKey, isOpen ? 'open' : 'closed'); } catch (_) { /* Storage is optional. */ } };
   const rememberedFiltersOpen = () => { try { return sessionStorage.getItem(filtersOpenStorageKey) === 'open'; } catch (_) { return false; } };
-  const rememberLibrary = () => { try { sessionStorage.setItem(libraryStorageKey, JSON.stringify(dashboards)); } catch (_) { /* Storage is optional. */ } };
+  const rememberLibrary = () => { try { sessionStorage.setItem(libraryStorageKey, JSON.stringify(designs)); } catch (_) { /* Storage is optional. */ } };
   const rememberScroll = () => { try { sessionStorage.setItem(scrollStorageKey, String(window.scrollY)); } catch (_) { /* Storage is optional. */ } };
   const restoreScroll = () => {
     try {
@@ -102,23 +102,23 @@
   window.addEventListener('pagehide', rememberScroll);
   window.addEventListener('beforeunload', rememberScroll);
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') rememberScroll(); });
-  // Names are unique in the workspace, whatever the NR Mode each Dashboard reads.
-  const nextName = value => { let name = value, number = 2; while (Object.values(dashboards).some(item => item.name.toLowerCase() === name.toLowerCase())) name = `${value.slice(0, 108)} (${number++})`; return name; };
+  // Names are unique in the workspace, whatever the NR Mode each Design reads.
+  const nextName = value => { let name = value, number = 2; while (Object.values(designs).some(item => item.name.toLowerCase() === name.toLowerCase())) name = `${value.slice(0, 108)} (${number++})`; return name; };
   const focusReturn = new Map();
   const status = message => { $('ds-status').textContent = message; };
   const backgroundWorkspaceName = () => document.querySelector('[data-header-active-workspace-name]')?.textContent?.trim() || 'Active workspace';
   const emitPreparationStatus = (statusValue, detail = '', token = backgroundPreparationToken, progress = null) => {
     if (!token || token !== backgroundPreparationToken) return;
-    const rendering = detail.includes('Rendering Dashboard charts') || detail.includes('render Dashboard charts');
+    const rendering = detail.includes('Rendering Design charts') || detail.includes('render Design charts');
     const queued = String(statusValue || '').toLowerCase() === 'queued';
     window.dispatchEvent(new CustomEvent('drivetest-analyzer:background-task', {detail: {
       id: token, workspace_id: config.workspace, workspace_name: backgroundWorkspaceName(), is_active: true,
-      dashboard_name: definition?.name || 'Dashboard',
+      design_name: definition?.name || 'Design',
       label: queued
-        ? (rendering ? 'Waiting to render Dashboard Charts' : 'Waiting to prepare Dashboard dataset')
-        : (rendering ? 'Rendering Dashboard Charts' : 'Preparing Dashboard dataset'),
+        ? (rendering ? 'Waiting to render Design Charts' : 'Waiting to prepare Design dataset')
+        : (rendering ? 'Rendering Design Charts' : 'Preparing Design dataset'),
       detail, progress, status: statusValue,
-      stop_task_id: `dashboard-prepare:${token}`,
+      stop_task_id: `design-prepare:${token}`,
       stop_url: `/api/background-tasks/${encodeURIComponent(config.workspace)}/stop`,
     }}));
     window.dispatchEvent(new Event('drivetest-analyzer:refresh-background-tasks'));
@@ -141,23 +141,23 @@
   };
   const option = (value, label) => { const el = node('option', label); el.value = value; return el; };
   const identity = value => String(value).toLocaleLowerCase().replace(/[^a-z0-9]/g, '');
-  // A Dashboard only uses CDRs of its own NR Mode (NSA or SA).
-  // The NR Mode of the CDRs a Dashboard reads (Dashboards of before named it technology): any template serves both.
+  // A Design only uses CDRs of its own NR Mode (NSA or SA).
+  // The NR Mode of the CDRs a Design reads (Designs of before named it technology): any template serves both.
   // NSA+SA (NSA & SA) reads the CDRs of both NR Modes, each row keeping the NR Mode of its CDR.
   const NSA_AND_SA = 'NSA+SA';
-  const normalizeDashboardNrMode = value => {
+  const normalizeDesignNrMode = value => {
     const text = String(value || 'NSA').toUpperCase().replace(/\s+/g, '');
     return ['NSA+SA', 'NSA&SA', 'NSAVSSA', 'BOTH'].includes(text) ? NSA_AND_SA : text === 'SA' ? 'SA' : 'NSA';
   };
-  const dashboardNrMode = value => normalizeDashboardNrMode(value?.nr_mode || value?.technology || value?.template_technology);
+  const designNrMode = value => normalizeDesignNrMode(value?.nr_mode || value?.technology || value?.template_technology);
   const nrModeLabel = mode => (mode === NSA_AND_SA ? 'NSA & SA' : mode);
   const nrModeClass = mode => (mode === NSA_AND_SA ? 'nsa-sa' : String(mode).toLowerCase());
-  const DASHBOARD_NR_MODES = ['NSA', 'SA', NSA_AND_SA];
+  const DESIGN_NR_MODES = ['NSA', 'SA', NSA_AND_SA];
   // With NSA & SA, the campaigns of the SA CDRs: the Campaign filter chooses the NSA ones.
   const SA_CAMPAIGN_FIELD = 'SA Campaign';
   const templateRows = () => Array.isArray(config.templates) ? config.templates : [];
-  // The Campaign filter chooses the CDRs of a Dashboard (see cdr_auto_selection): Latest campaign and Latest 2
-  // campaigns follow the newest campaigns of its NR Mode. A new Dashboard compares its newest two campaigns, or
+  // The Campaign filter chooses the CDRs of a Design (see cdr_auto_selection): Latest campaign and Latest 2
+  // campaigns follow the newest campaigns of its NR Mode. A new Design compares its newest two campaigns, or
   // shows the newest one in Multivendor Operator_Vendor, as its newest CDRs did.
   const LATEST_CAMPAIGN = '@latest-campaign', PREVIOUS_CAMPAIGN = '@previous-campaign', LATEST_TWO_CAMPAIGNS = '@latest-2-campaigns', ALL_CAMPAIGNS = '@all-campaigns';
   // Previous campaign is the one before the newest; All available campaigns takes every campaign of the NR Mode each
@@ -184,7 +184,7 @@
     }
   };
   const campaignDisplay = value => campaignPresetLabels[value] || globalThis.campaignLabel?.(value) || value;
-  // The Campaign filters of the open Dashboard when its NR Mode changes (as the server does for the Dashboards list):
+  // The Campaign filters of the open Design when its NR Mode changes (as the server does for the Designs list):
   // the campaigns of an NR Mode it keeps reading stay (with NSA & SA, Campaign chooses the NSA CDRs and SA Campaign the
   // SA ones), the others take the newest campaigns of the new NR Mode.
   const followNrModeCampaigns = (previous, next) => {
@@ -208,7 +208,7 @@
     }
   };
   syncMultivendorAvailability();
-  const canonicalDashboardDefinition = value => {
+  const canonicalDesignDefinition = value => {
     const definitionValue = structuredClone(value || {});
     definitionValue.vendor_comparison ||= 'operator_vendor';
     definitionValue.auto_cdrs = true;
@@ -234,19 +234,19 @@
     definitionValue.slide_comments ||= {};
     definitionValue.slide_comment_meta ||= {};
     // The Campaign filter of the SA CDRs belongs to NSA & SA only.
-    definitionValue.sa_campaigns = dashboardNrMode(definitionValue) === NSA_AND_SA ? (definitionValue.sa_campaigns || []).map(String) : [];
+    definitionValue.sa_campaigns = designNrMode(definitionValue) === NSA_AND_SA ? (definitionValue.sa_campaigns || []).map(String) : [];
     if (!definitionValue.date_from) definitionValue.date_from = 'Oldest';
     if (!definitionValue.date_to) definitionValue.date_to = 'Newest';
     return definitionValue;
   };
-  const savedRuntimeDashboardDefinition = value => {
-    const canonical = canonicalDashboardDefinition(value);
+  const savedRuntimeDesignDefinition = value => {
+    const canonical = canonicalDesignDefinition(value);
     canonical.scope ||= 'single';
     return canonical;
   };
-  const runtimeDashboardDefinition = value => savedRuntimeDashboardDefinition(value);
+  const runtimeDesignDefinition = value => savedRuntimeDesignDefinition(value);
   const rememberUniverse = () => {};
-  const persistedDashboardDefinition = value => canonicalDashboardDefinition(value);
+  const persistedDesignDefinition = value => canonicalDesignDefinition(value);
   const canonicalize = value => {
     if (Array.isArray(value)) return value.map(canonicalize);
     if (!value || typeof value !== 'object') return value;
@@ -257,7 +257,7 @@
     return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0;
   });
   const canonicalSelectionDefinition = value => {
-    const selection = canonicalDashboardDefinition(value);
+    const selection = canonicalDesignDefinition(value);
     selection.datasets = Object.fromEntries(Object.entries(selection.datasets).map(([kind, ids]) => [kind, canonicalSetValues(ids)]));
     selection.filters = Object.fromEntries(Object.entries(selection.filters).map(([field, values]) => [field, canonicalSetValues(values)]));
     selection.custom_fields = canonicalSetValues(selection.custom_fields);
@@ -268,7 +268,7 @@
     }
     return selection;
   };
-  const definitionFingerprint = value => JSON.stringify(canonicalize(persistedDashboardDefinition(value)));
+  const definitionFingerprint = value => JSON.stringify(canonicalize(persistedDesignDefinition(value)));
   const preparedStateFingerprint = value => {
     const preparedDefinition = canonicalSelectionDefinition(value);
     delete preparedDefinition.name;
@@ -276,34 +276,34 @@
     delete preparedDefinition.slide_comment_meta;
     return JSON.stringify(canonicalize(preparedDefinition));
   };
-  const hasUnsavedDashboardChanges = (ignoredFields = []) => {
+  const hasUnsavedDesignChanges = (ignoredFields = []) => {
     if (!definition) return false;
-    const current = canonicalDashboardDefinition(definition);
+    const current = canonicalDesignDefinition(definition);
     let saved;
-    try { saved = canonicalDashboardDefinition(JSON.parse(savedDefinition || '{}')); }
+    try { saved = canonicalDesignDefinition(JSON.parse(savedDefinition || '{}')); }
     catch (_) { return true; }
     for (const field of ignoredFields) current[field] = saved[field];
     return definitionFingerprint(current) !== definitionFingerprint(saved);
   };
-  const savedDashboardDefinition = () => {
-    try { return canonicalDashboardDefinition(JSON.parse(savedDefinition || '{}')); }
+  const savedDesignDefinition = () => {
+    try { return canonicalDesignDefinition(JSON.parse(savedDefinition || '{}')); }
     catch (_error) { return {}; }
   };
   const sameFilterValues = (left, right) => JSON.stringify([...(left || [])].sort()) === JSON.stringify([...(right || [])].sort());
   // The filters being applied (their preparation is running, such as after Save Filters) count as applied: they are
-  // neither flagged nor asked about while the Dashboard is prepared. A failed preparation leaves them unapplied again.
-  const appliedDefinition = () => applyingDashboardDefinition || appliedDashboardDefinition || savedDashboardDefinition();
+  // neither flagged nor asked about while the Design is prepared. A failed preparation leaves them unapplied again.
+  const appliedDefinition = () => applyingDesignDefinition || appliedDesignDefinition || savedDesignDefinition();
   const filterControlState = (current, applied, saved, equal = sameFilterValues) => {
     if (!equal(current, applied)) return 'unapplied';
     return equal(applied, saved) ? '' : 'applied-unsaved';
   };
-  const filterState = field => filterControlState(definition?.filters?.[field], appliedDefinition().filters?.[field], savedDashboardDefinition().filters?.[field]);
+  const filterState = field => filterControlState(definition?.filters?.[field], appliedDefinition().filters?.[field], savedDesignDefinition().filters?.[field]);
   const scopeState = () => filterControlState(
-    definition?.scope || 'single', appliedDefinition().scope || 'single', savedDashboardDefinition().scope || 'single',
+    definition?.scope || 'single', appliedDefinition().scope || 'single', savedDesignDefinition().scope || 'single',
     (left, right) => left === right,
   );
   const dateState = key => filterControlState(
-    definition?.[key], appliedDefinition()[key], savedDashboardDefinition()[key], (left, right) => left === right,
+    definition?.[key], appliedDefinition()[key], savedDesignDefinition()[key], (left, right) => left === right,
   );
   const updateFilterControlState = (element, state, date = false) => {
     element.classList.toggle(date ? 'ds-date-picker-unsaved' : 'ds-filter-unsaved', state === 'unapplied');
@@ -335,17 +335,17 @@
       hidden_filters: selection.hidden_filters, date_from: selection.date_from || 'Oldest', date_to: selection.date_to || 'Newest',
     }));
   };
-  const hasUnsavedFilterChanges = () => Boolean(definition) && filterStateFingerprint(definition) !== filterStateFingerprint(savedDashboardDefinition());
+  const hasUnsavedFilterChanges = () => Boolean(definition) && filterStateFingerprint(definition) !== filterStateFingerprint(savedDesignDefinition());
   const hasUnappliedFilterChanges = () => Boolean(definition)
     && filterStateFingerprint(definition) !== filterStateFingerprint(appliedDefinition());
   // The Scope and dates belong to the filters: there is no separate Dataset Universe any longer.
   const hasUnsavedUniverseChanges = () => false;
   const hasUnappliedUniverseChanges = () => false;
   const hasAppliedUnsavedFilterChanges = () => Boolean(
-    prepared?.token && appliedDashboardDefinition
-    && filterStateFingerprint(appliedDashboardDefinition) !== filterStateFingerprint(savedDashboardDefinition())
+    prepared?.token && appliedDesignDefinition
+    && filterStateFingerprint(appliedDesignDefinition) !== filterStateFingerprint(savedDesignDefinition())
   );
-  const dashboardNeedsRefresh = () => Boolean(
+  const designNeedsRefresh = () => Boolean(
     definition && prepared && preparationStateFingerprint(definition) !== appliedFilterState,
   );
   const universeNeedsRefresh = () => false;
@@ -353,8 +353,8 @@
     const refresh = $('ds-preparing-refresh');
     const ready = $('ds-preparing').dataset.state === 'ready';
     const stale = universeNeedsRefresh() && ready;
-    refresh.hidden = !ready || !dashboardNeedsRefresh();
-    refresh.disabled = !dashboardNeedsRefresh() || !ready || Boolean(preparing);
+    refresh.hidden = !ready || !designNeedsRefresh();
+    refresh.disabled = !designNeedsRefresh() || !ready || Boolean(preparing);
     $('ds-preparing-ready').hidden = stale;
     $('ds-preparing-out-of-sync').hidden = !stale;
   };
@@ -365,11 +365,11 @@
     syncPreparationRefresh();
   };
   const api = async (path = '', method = 'GET', body, signal) => {
-    const request = () => fetch(`/api/ppt-dashboards${path}`, {method, signal, cache: 'no-store', headers: {'Content-Type': 'application/json'}, ...(body ? {body: JSON.stringify(body)} : {})});
+    const request = () => fetch(`/api/ppt-designer${path}`, {method, signal, cache: 'no-store', headers: {'Content-Type': 'application/json'}, ...(body ? {body: JSON.stringify(body)} : {})});
     let response = await request();
     // Some reverse proxies can return a transient, non-JSON 501 while the
     // preparation worker route is being refreshed. A single retry is safe:
-    // a 501 response means the POST was rejected before Dashboard processing.
+    // a 501 response means the POST was rejected before Design processing.
     if (method === 'POST' && path.startsWith('/prepare?') && response.status === 501 && !signal?.aborted) {
       await new Promise(resolve => window.setTimeout(resolve, 250));
       response = await request();
@@ -390,7 +390,7 @@
       if (!payload) {
         const error = new Error([502, 503, 504].includes(response.status)
           ? `The server did not answer in time (${response.status}). It may be busy with background work; please try again in a moment.`
-          : `The Dashboard API returned an unexpected ${response.status} response. Please reload the page and try again.`);
+          : `The Design API returned an unexpected ${response.status} response. Please reload the page and try again.`);
         error.status = response.status;
         throw error;
       }
@@ -398,46 +398,46 @@
       error.status = response.status;
       throw error;
     }
-    if (!payload) throw new Error('The Dashboard API returned HTML instead of JSON. Please reload the page and try again.');
+    if (!payload) throw new Error('The Design API returned HTML instead of JSON. Please reload the page and try again.');
     return payload;
   };
-  const safe = fn => async (...args) => { try { await fn(...args); } catch (error) { if (error.name !== 'AbortError') { status(error.message); if (window.showInfoDialog) window.showInfoDialog(error.message, {title:'PPT Dashboards',tone:'error'}); } } };
+  const safe = fn => async (...args) => { try { await fn(...args); } catch (error) { if (error.name !== 'AbortError') { status(error.message); if (window.showInfoDialog) window.showInfoDialog(error.message, {title:'PPT Designer',tone:'error'}); } } };
   const bind = (id, fn) => $(id).addEventListener('click', safe(fn));
   // Pre-caching never blocks an export: the export job pre-caches the chosen
-  // universe itself. Only a Dashboard without usable CDRs cannot be exported.
-  const dashboardCanExport = id => Boolean(id && !['data-needed', 'error'].includes(dashboardStatuses.get(id)?.state));
-  const setActiveDashboardHeading = name => {
-    const heading = $('ds-active-dashboard-heading');
-    heading.replaceChildren(document.createTextNode(name ? 'Dashboard Filters: ' : 'Dashboard Filters'));
-    if (name) heading.append(node('span', name.toUpperCase(), 'ds-active-dashboard-name'));
+  // universe itself. Only a Design without usable CDRs cannot be exported.
+  const designCanExport = id => Boolean(id && !['data-needed', 'error'].includes(designStatuses.get(id)?.state));
+  const setActiveDesignHeading = name => {
+    const heading = $('ds-active-design-heading');
+    heading.replaceChildren(document.createTextNode(name ? 'Design Filters: ' : 'Design Filters'));
+    if (name) heading.append(node('span', name.toUpperCase(), 'ds-active-design-name'));
   };
-  const syncDashboardPptActions = () => {
-    document.querySelectorAll('[data-dashboard-ppt-id]').forEach(button => {
-      button.disabled = !dashboardCanExport(button.dataset.dashboardPptId);
+  const syncDesignPptActions = () => {
+    document.querySelectorAll('[data-design-ppt-id]').forEach(button => {
+      button.disabled = !designCanExport(button.dataset.designPptId);
     });
     // Status polling runs every two seconds.  Keep immutable PPT snapshots
     // read-only during those refreshes instead of letting the normal ready
-    // Dashboard synchronization re-enable generation controls.
-    if (pptDashboardViewer) {
+    // Design synchronization re-enable generation controls.
+    if (pptDesignViewer) {
       $('ds-generate-ppt').disabled = true;
       $('ds-viewer-export-ppt').disabled = true;
       return;
     }
-    const activePptReady = dashboardCanExport(activeId) && !dashboardPreparationTokens.has(activeId) && Boolean(prepared?.slides?.length);
+    const activePptReady = designCanExport(activeId) && !designPreparationTokens.has(activeId) && Boolean(prepared?.slides?.length);
     $('ds-generate-ppt').disabled = !activePptReady;
     $('ds-viewer-export-ppt').disabled = !activePptReady;
   };
-  const syncDashboardViewActions = () => {
-    document.querySelectorAll('[data-dashboard-view-id]').forEach(button => {
+  const syncDesignViewActions = () => {
+    document.querySelectorAll('[data-design-view-id]').forEach(button => {
       button.disabled = false;
     });
   };
-  const setViewEnabled = enabled => { $('ds-view').disabled = !definition; syncDashboardViewActions(); syncDashboardPptActions(); };
+  const setViewEnabled = enabled => { $('ds-view').disabled = !definition; syncDesignViewActions(); syncDesignPptActions(); };
   const updateUnsavedFiltersBadge = () => {
     $('ds-unapplied-filters-badge').hidden = !hasUnappliedFilterChanges();
     $('ds-unsaved-filters-badge').hidden = !hasUnsavedFilterChanges();
   };
-  const updateDirtyState = () => { dirty = hasUnsavedDashboardChanges(); updateFilterActionState(); updateUnsavedFiltersBadge(); return dirty; };
+  const updateDirtyState = () => { dirty = hasUnsavedDesignChanges(); updateFilterActionState(); updateUnsavedFiltersBadge(); return dirty; };
   const updateSavedDefinition = updates => {
     try {
       savedDefinition = definitionFingerprint({...JSON.parse(savedDefinition || '{}'), ...updates});
@@ -454,18 +454,18 @@
     if (state !== 'ready') { $('ds-preparing-rows').hidden = true; $('ds-preparing-rows').textContent = ''; }
     const ready = state === 'ready';
     const refresh = $('ds-preparing-refresh');
-    refresh.hidden = !ready || !dashboardNeedsRefresh();
+    refresh.hidden = !ready || !designNeedsRefresh();
     syncPreparationRefresh();
     if (state === 'hidden') return;
     const floatingFilters = $('ds-filter-panel').parentElement?.id === 'ds-filter-float';
-    $('ds-preparing-title').textContent = ready ? 'Dashboard dataset is ready' : phase === 'rendering' ? 'Rendering Dashboard Charts' : 'Preparing Dashboard dataset';
+    $('ds-preparing-title').textContent = ready ? 'Design dataset is ready' : phase === 'rendering' ? 'Rendering Design Charts' : 'Preparing Design dataset';
     $('ds-preparing-detail').textContent = floatingFilters
       ? (ready
-        ? 'Dataset and filters are ready. The Dashboard dataset is ready to use.'
-        : phase === 'rendering' ? 'Charts are rendering with the current Dashboard scope.' : 'Dataset and filters are still loading. The Dashboard will update when preparation is complete.')
+        ? 'Dataset and filters are ready. The Design dataset is ready to use.'
+        : phase === 'rendering' ? 'Charts are rendering with the current Design scope.' : 'Dataset and filters are still loading. The Design will update when preparation is complete.')
       : (ready
-        ? "Datasets and filters are ready. You can now open the dashboard using 'View Dashboard' button below."
-        : phase === 'rendering' ? 'Charts are rendering with the current Dashboard scope. View Dashboard will become available when rendering is complete.' : 'Dataset and filters are still loading. View Dashboard will become available when preparation is complete.');
+        ? "Datasets and filters are ready. You can now open the design using 'View Design' button below."
+        : phase === 'rendering' ? 'Charts are rendering with the current Design scope. View Design will become available when rendering is complete.' : 'Dataset and filters are still loading. View Design will become available when preparation is complete.');
   };
   const setPreparationProgress = (progress, detail = 'Preparing…') => {
     const numeric = Number(progress);
@@ -491,7 +491,7 @@
   const awaitBackgroundPreparation = async (preparationId, signal) => {
     let missingPolls = 0;
     for (;;) {
-      if (signal?.aborted) throw new DOMException('The Dashboard preparation was superseded.', 'AbortError');
+      if (signal?.aborted) throw new DOMException('The Design preparation was superseded.', 'AbortError');
       let progress = null;
       try {
         progress = await api(`/preparation-progress/${encodeURIComponent(preparationId)}`, 'GET', undefined, signal);
@@ -501,14 +501,14 @@
         // A task can briefly be unregistered between its worker finishing and
         // its result being recorded. Give up only if it stays unknown.
         if (error.status === 404 && ++missingPolls > 40) {
-          throw new Error('Dashboard preparation is no longer active. Please try again.');
+          throw new Error('Design preparation is no longer active. Please try again.');
         }
       }
       if (progress?.status === 'completed' && progress.token) {
         return api(`/prepared/${encodeURIComponent(progress.token)}`, 'GET', undefined, signal);
       }
       if (progress?.status === 'failed') {
-        const error = new Error(progress.detail || 'Dashboard preparation failed.');
+        const error = new Error(progress.detail || 'Design preparation failed.');
         error.status = progress.code;
         throw error;
       }
@@ -517,8 +517,8 @@
   };
   const monitorPreparationProgress = token => {
     clearTimeout(preparationProgressTimer);
-    setPreparationProgress(null, 'Waiting for the server to register the Dashboard preparation task');
-    emitPreparationStatus('queued', 'Waiting for the server to register the Dashboard preparation task', token);
+    setPreparationProgress(null, 'Waiting for the server to register the Design preparation task');
+    emitPreparationStatus('queued', 'Waiting for the server to register the Design preparation task', token);
     const refresh = async () => {
       if (!token || token !== backgroundPreparationToken) return;
       try {
@@ -545,7 +545,7 @@
     document.body.style.overflow = [...document.querySelectorAll('.ds-overlay')].some(el => !el.hidden) ? 'hidden' : '';
   }
   const restoreAppliedFilterSelection = () => {
-    const applied = canonicalDashboardDefinition(appliedDefinition());
+    const applied = canonicalDesignDefinition(appliedDefinition());
     definition.filters = structuredClone(applied.filters);
     definition.custom_fields = structuredClone(applied.custom_fields);
     definition.hidden_filters = structuredClone(applied.hidden_filters);
@@ -556,9 +556,9 @@
   const resolveUnappliedFilterChanges = async () => {
     if (!hasUnappliedFilterChanges()) return 'unchanged';
     const choice = await window.showConfirmDialog(
-      'This Dashboard has filter changes that have not been applied. Apply, save or discard them before continuing?',
+      'This Design has filter changes that have not been applied. Apply, save or discard them before continuing?',
       {
-        title: 'Unapplied Dashboard filters',
+        title: 'Unapplied Design filters',
         confirmLabel: 'Apply Filters and Continue',
         secondaryLabel: 'Discard and Continue',
         tertiaryLabel: 'Save and Continue',
@@ -581,19 +581,19 @@
     status('Discarded unapplied filter changes.');
     return 'discarded';
   };
-  const openActiveDashboardViewer = async () => {
-    if (pptDashboardViewer) {
+  const openActiveDesignViewer = async () => {
+    if (pptDesignViewer) {
       prepared = null;
       chartPayloads.clear(); renderedChartPayloads.clear();
     }
-    pptDashboardViewer = null;
-    syncPptDashboardViewerControls();
+    pptDesignViewer = null;
+    syncPptDesignViewerControls();
     const filterDecision = await resolveUnappliedFilterChanges();
     if (!filterDecision) return;
     if (!$('ds-filter-overlay').hidden) await closeFilters();
     const needsPreparation = !prepared || preparationStateFingerprint(definition) !== appliedFilterState;
     if (needsPreparation) {
-      resetViewerForDashboard();
+      resetViewerForDesign();
       const needsDataPreparation = selectionStateFingerprint(definition) !== appliedSelectionState;
       setPreparationState('preparing', needsDataPreparation ? 'data' : 'rendering');
     }
@@ -601,15 +601,15 @@
     if (needsPreparation) await prepare();
     if (prepared?.slides.length) renderSlide();
   };
-  const withPptSelection = (dashboard, selectionField, values) => {
-    dashboard.filters ||= {};
-    for (const filterField of Object.keys(dashboard.filters)) {
-      if (identity(filterField) === identity(selectionField)) delete dashboard.filters[filterField];
+  const withPptSelection = (design, selectionField, values) => {
+    design.filters ||= {};
+    for (const filterField of Object.keys(design.filters)) {
+      if (identity(filterField) === identity(selectionField)) delete design.filters[filterField];
     }
-    if (values.length) dashboard.filters[selectionField] = values;
-    return dashboard;
+    if (values.length) design.filters[selectionField] = values;
+    return design;
   };
-  const pptDialogStorageKey = dashboardId => `drivetest-analyzer:ppt-dashboards:${config.workspace}:ppt-dialog:${config.username || authenticatedSession}:${dashboardId}`;
+  const pptDialogStorageKey = designId => `drivetest-analyzer:ppt-designer:${config.workspace}:ppt-dialog:${config.username || authenticatedSession}:${designId}`;
   // The PPT export dialog scrolls its body, which would clip an opened
   // selector menu. The menu is fixed right below its field instead, so it can
   // overflow the panel and the dialog without anything scrolling.
@@ -653,22 +653,22 @@
     pptDialogBody.addEventListener('scroll', placeOpenPptDialogMenus, {passive: true});
     window.addEventListener('resize', placeOpenPptDialogMenus);
   }
-  const chooseDashboardPptUniverse = (dashboard, dashboardId) => new Promise(resolve => {
+  const chooseDesignPptUniverse = (design, designId) => new Promise(resolve => {
     let remembered = null;
-    try { remembered = JSON.parse(localStorage.getItem(pptDialogStorageKey(dashboardId)) || 'null'); }
+    try { remembered = JSON.parse(localStorage.getItem(pptDialogStorageKey(designId)) || 'null'); }
     catch (_) { /* Local storage is optional. */ }
-    // The heading starts with the Dashboard's NR Mode and name.
-    const headingNrMode = dashboardNrMode(dashboard);
+    // The heading starts with the Design's NR Mode and name.
+    const headingNrMode = designNrMode(design);
     $('ds-ppt-dataset-nr-mode').textContent = nrModeLabel(headingNrMode);
     $('ds-ppt-dataset-nr-mode').className = `ds-ppt-eyebrow-part ds-ppt-eyebrow-nr-mode-${nrModeClass(headingNrMode)}`;
-    $('ds-ppt-dataset-dashboard').textContent = String(dashboard?.name || '');
+    $('ds-ppt-dataset-design').textContent = String(design?.name || '');
     const scopeControl = $('ds-ppt-dataset-scope');
     syncMultivendorAvailability();
     scopeControl.value = remembered?.scope === 'multivendor' && !$('ds-ppt-dataset-scope').querySelector('option[value="multivendor"]').disabled ? 'multivendor' : 'single';
     const vendorComparison = $('ds-ppt-vendor-comparison');
     vendorComparison.value = remembered?.vendor_comparison || 'vendor_only';
     const confirm = $('ds-ppt-dataset-confirm');
-    // The Campaign chooses the CDRs of the export: the Dashboard's own Campaign unless changed here (null: every campaign).
+    // The Campaign chooses the CDRs of the export: the Design's own Campaign unless changed here (null: every campaign).
     const campaignControl = $('ds-ppt-dataset-campaign');
     const campaignCopy = $('ds-ppt-campaign-copy');
     const cdrsNote = $('ds-ppt-cdrs');
@@ -688,8 +688,8 @@
     const dateFrom = $('ds-ppt-date-from'), dateTo = $('ds-ppt-date-to');
     const automaticFrom = $('ds-ppt-date-from-auto'), automaticTo = $('ds-ppt-date-to-auto');
     const dateStatus = $('ds-ppt-date-status');
-    const savedDateFrom = String(remembered?.date_from || dashboard?.date_from || 'Oldest');
-    const savedDateTo = String(remembered?.date_to || dashboard?.date_to || 'Newest');
+    const savedDateFrom = String(remembered?.date_from || design?.date_from || 'Oldest');
+    const savedDateTo = String(remembered?.date_to || design?.date_to || 'Newest');
     automaticFrom.checked = savedDateFrom === 'Oldest'; automaticTo.checked = savedDateTo === 'Newest';
     dateFrom.value = /^\d{4}-\d{2}-\d{2}$/.test(savedDateFrom) ? savedDateFrom : '';
     dateTo.value = /^\d{4}-\d{2}-\d{2}$/.test(savedDateTo) ? savedDateTo : '';
@@ -709,34 +709,34 @@
     const selectionControls = {
       operators: operatorControl, vendors: vendorControl, regions: regionControl, cities: cityControl,
     };
-    // Dashboard Filters start from the values saved in the Dashboard; a field
+    // Design Filters start from the values saved in the Design; a field
     // it does not filter starts with every value of the selected CDRs.
     const selectionFields = {operators: 'Operator', vendors: 'Vendor', regions: 'Region', cities: 'City'};
     // Save Universe and Save Filters update this saved definition.
-    let savedDashboard = dashboard;
-    const savedDashboardSelection = field => {
-      const filters = savedDashboard?.filters || {};
+    let savedDesign = design;
+    const savedDesignSelection = field => {
+      const filters = savedDesign?.filters || {};
       const key = Object.keys(filters).find(item => identity(item) === identity(field));
       return key && Array.isArray(filters[key]) ? filters[key].map(String).filter(Boolean) : null;
     };
     const selectionState = Object.fromEntries(Object.keys(selectionControls).map(key => {
-      const saved = savedDashboardSelection(selectionFields[key]);
+      const saved = savedDesignSelection(selectionFields[key]);
       return [key, saved?.length ? {values: saved, all: false} : {values: [], all: true}];
     }));
     let campaignSelection = Array.isArray(remembered?.campaigns) ? remembered.campaigns.map(String)
-      : remembered && remembered.campaigns === null ? null : savedDashboardSelection('Campaign');
-    // "Show All Filters" adds the Dashboard's other main filters and its
-    // Additional Filters, each starting from its saved Dashboard values.
+      : remembered && remembered.campaigns === null ? null : savedDesignSelection('Campaign');
+    // "Show All Filters" adds the Design's other main filters and its
+    // Additional Filters, each starting from its saved Design values.
     const dialogPanel = $('ds-ppt-dataset-overlay').querySelector('[role=dialog]');
     const showAllButton = $('ds-ppt-show-all-filters');
     const extraMainHost = $('ds-ppt-extra-main-filters');
     const additionalGroup = $('ds-ppt-additional-group');
     const additionalHost = $('ds-ppt-additional-filters');
     const mainFieldIds = new Set([...Object.values(selectionFields), 'Campaign'].map(identity));
-    const hiddenFieldIds = new Set((dashboard?.hidden_filters || []).map(identity));
-    const additionalFields = [...new Set((dashboard?.custom_fields || []).map(String))];
+    const hiddenFieldIds = new Set((design?.hidden_filters || []).map(identity));
+    const additionalFields = [...new Set((design?.custom_fields || []).map(String))];
     const additionalFieldIds = new Set(additionalFields.map(identity));
-    const extraMainFields = [...(config.filter_fields || facetFields).filter(field => !hiddenFieldIds.has(identity(field))), ...Object.keys(dashboard?.filters || {})]
+    const extraMainFields = [...(config.filter_fields || facetFields).filter(field => !hiddenFieldIds.has(identity(field))), ...Object.keys(design?.filters || {})]
       .filter((field, index, all) => !mainFieldIds.has(identity(field)) && !additionalFieldIds.has(identity(field))
         && all.findIndex(item => identity(item) === identity(field)) === index);
     const extraFilterLabel = (field, custom) => custom ? field : field === 'technology_primary' ? 'Technology' : field.replaceAll('_', ' ').replace(/\b\w/g, letter => letter.toUpperCase());
@@ -749,7 +749,7 @@
     showAllButton.textContent = 'Show All Filters';
     showAllButton.setAttribute('aria-expanded', 'false');
     showAllButton.disabled = !extraMainFields.length && !additionalFields.length;
-    showAllButton.title = showAllButton.disabled ? 'This Dashboard has no other filters.' : 'Show every Dashboard filter, including Additional Filters';
+    showAllButton.title = showAllButton.disabled ? 'This Design has no other filters.' : 'Show every Design filter, including Additional Filters';
     const buildExtraFilters = () => {
       if (extraFilters.size) return;
       for (const [fields, host, custom] of [[extraMainFields, extraMainHost, false], [additionalFields, additionalHost, true]]) {
@@ -764,7 +764,7 @@
           section.append(node('h3', label), control);
           host.append(section);
           control.onchange = () => updateSaveState();
-          extraFilters.set(field, {control, loaded: false, saved: savedDashboardSelection(field)});
+          extraFilters.set(field, {control, loaded: false, saved: savedDesignSelection(field)});
         }
       }
       if (!additionalFields.length) additionalHost.append(node('p', 'No additional filters have been added.', 'form-note'));
@@ -811,12 +811,12 @@
     const extraFilterSelections = () => Object.fromEntries([...extraFilters].filter(([, state]) => state.loaded).map(([field, state]) => {
       const available = [...state.control.options].filter(item => item.value !== '' || item.textContent === '(Empty)');
       const values = available.filter(item => item.selected).map(item => item.value);
-      // Every value selected keeps the Dashboard's open selection.
+      // Every value selected keeps the Design's open selection.
       return [field, values.length === available.length ? [] : values];
     }));
-    // Save Filters is enabled only when the dialog differs from what the Dashboard has saved.
+    // Save Filters is enabled only when the dialog differs from what the Design has saved.
     const saveFiltersButton = $('ds-ppt-save-filters');
-    let savingDashboardPart = false;
+    let savingDesignPart = false;
     const sameValues = (left, right) => left.length === right.length && left.every(value => right.includes(value));
     const dialogUniverse = () => ({
       scope: scopeControl.value, vendor_comparison: vendorComparison.value,
@@ -825,8 +825,8 @@
     });
     const universeChanged = () => {
       const current = dialogUniverse();
-      const saved = savedDashboard || {};
-      const savedCampaigns = savedDashboardSelection('Campaign');
+      const saved = savedDesign || {};
+      const savedCampaigns = savedDesignSelection('Campaign');
       // The vendor comparison only counts in Multivendor Comparison.
       return (current.scope === 'multivendor' && current.vendor_comparison !== (saved.vendor_comparison || 'operator_vendor'))
         || current.scope !== (saved.scope === 'multivendor' ? 'multivendor' : 'single')
@@ -842,7 +842,7 @@
       const compare = (field, control, currentAll, currentValues) => {
         const available = [...control.options].filter(item => !control.disabled && (item.value !== '' || item.textContent === '(Empty)')).map(item => item.value);
         if (!available.length) return;
-        const saved = savedDashboardSelection(field);
+        const saved = savedDesignSelection(field);
         const savedPresent = saved?.length ? saved.filter(value => available.includes(value)) : [];
         const savedAll = !savedPresent.length || savedPresent.length === available.length;
         const changed = currentAll ? !savedAll : savedAll || !sameValues(savedPresent, currentValues);
@@ -858,13 +858,13 @@
       return changes;
     };
     const updateSaveState = () => {
-      const busy = savingDashboardPart || geographyLoading;
+      const busy = savingDesignPart || geographyLoading;
       saveFiltersButton.disabled = busy || (!universeChanged() && !Object.keys(changedFilterFields()).length);
     };
-    const saveDashboardPart = async part => {
-      savingDashboardPart = true; updateSaveState();
+    const saveDesignPart = async part => {
+      savingDesignPart = true; updateSaveState();
       try {
-        const item = structuredClone(dashboards[dashboardId] || savedDashboard);
+        const item = structuredClone(designs[designId] || savedDesign);
         const savedComparison = item.vendor_comparison || 'operator_vendor';
         Object.assign(item, dialogUniverse());
         if (item.scope !== 'multivendor') item.vendor_comparison = savedComparison;
@@ -875,23 +875,23 @@
         }
         for (const key of Object.keys(item.filters)) if (isCampaignField(key)) delete item.filters[key];
         if (campaignSelection !== null) item.filters.Campaign = campaignSelection;
-        const result = await api(`/${encodeURIComponent(dashboardId)}`, 'PUT', item);
-        dashboards[dashboardId] = structuredClone(result.definition);
-        savedDashboard = dashboards[dashboardId];
-        if (dashboardId === activeId && definition) {
-          definition = copyDefinitionFields(definition, canonicalDashboardDefinition(result.definition), filterDefinitionFields);
+        const result = await api(`/${encodeURIComponent(designId)}`, 'PUT', item);
+        designs[designId] = structuredClone(result.definition);
+        savedDesign = designs[designId];
+        if (designId === activeId && definition) {
+          definition = copyDefinitionFields(definition, canonicalDesignDefinition(result.definition), filterDefinitionFields);
           savedDefinition = definitionFingerprint(result.definition);
           updateDirtyState(); sources(); facets();
         }
         library();
         status(`Saved the Scope, dates and filters of “${result.definition.name}”.`);
       } catch (error) {
-        window.showInfoDialog?.(error.message, {title: 'PPT Dashboards', tone: 'error'});
+        window.showInfoDialog?.(error.message, {title: 'PPT Designer', tone: 'error'});
       } finally {
-        savingDashboardPart = false; updateSaveState();
+        savingDesignPart = false; updateSaveState();
       }
     };
-    saveFiltersButton.onclick = () => { void saveDashboardPart(); };
+    saveFiltersButton.onclick = () => { void saveDesignPart(); };
     showAllButton.onclick = () => {
       showAllFilters = !showAllFilters;
       dialogPanel.classList.toggle('ds-ppt-all-filters', showAllFilters);
@@ -910,7 +910,7 @@
         choice[key] = state.values;
         choice[`${key}_all`] = state.all;
       }
-      try { localStorage.setItem(pptDialogStorageKey(dashboardId), JSON.stringify(choice)); }
+      try { localStorage.setItem(pptDialogStorageKey(designId), JSON.stringify(choice)); }
       catch (_) { /* Local storage is optional. */ }
     };
     const rememberSelection = key => {
@@ -924,10 +924,10 @@
       updateConfirmState();
     };
     const exportUniverse = () => ({
-      ...structuredClone(dashboard), scope: scopeControl.value, vendor_comparison: vendorComparison.value,
+      ...structuredClone(design), scope: scopeControl.value, vendor_comparison: vendorComparison.value,
       date_from: automaticFrom.checked ? 'Oldest' : dateFrom.value,
       date_to: automaticTo.checked ? 'Newest' : dateTo.value,
-      // The values offered are those of the CDRs of the chosen campaigns, whatever the saved Dashboard filters.
+      // The values offered are those of the CDRs of the chosen campaigns, whatever the saved Design filters.
       filters: campaignSelection === null ? {} : {Campaign: campaignSelection},
     });
     const updateConfirmState = () => {
@@ -1072,9 +1072,9 @@
       );
       campaignControl.disabled = false;
       campaignControl.dataset.multiselectDynamicAll = 'true';
-      campaignCopy.textContent = dashboardNrMode(dashboard) === NSA_AND_SA
+      campaignCopy.textContent = designNrMode(design) === NSA_AND_SA
         ? 'The NSA and SA CDRs of the chosen campaigns are used: Latest campaign, Latest 2, 3 and 4 campaigns and Previous campaign follow the newest ones of each NR Mode.'
-        : `The CDRs of ${dashboardNrMode(dashboard)} of the chosen campaigns are used: Latest campaign, Latest 2, 3 and 4 campaigns and Previous campaign follow the newest ones.`;
+        : `The CDRs of ${designNrMode(design)} of the chosen campaigns are used: Latest campaign, Latest 2, 3 and 4 campaigns and Previous campaign follow the newest ones.`;
       campaignControl.dispatchEvent(new Event('multiselect:options-updated'));
     };
     campaignControl.onchange = () => {
@@ -1154,7 +1154,7 @@
   });
   // The Auto comments of the last PPT generated in this page, offered again by the next one.
   let lastAutoComments = 'off';
-  async function queueDashboardPptExport(id, item, {chooseScope = false} = {}) {
+  async function queueDesignPptExport(id, item, {chooseScope = false} = {}) {
     let exportDefinition = item;
     let autoComments = lastAutoComments;
     let autoCommentsEngine = commentEngine();
@@ -1165,7 +1165,7 @@
     let selectedRegions = [];
     let selectedCities = [];
     if (chooseScope) {
-      const universeChoice = await chooseDashboardPptUniverse(item, id);
+      const universeChoice = await chooseDesignPptUniverse(item, id);
       if (!universeChoice) return;
       exportDefinition = JSON.parse(JSON.stringify(item));
       exportDefinition.scope = universeChoice.scope;
@@ -1191,13 +1191,13 @@
       filterDecision = id === activeId ? await resolveUnappliedFilterChanges() : 'unchanged';
       if (!filterDecision) return;
       if (id === activeId && prepared?.token) {
-        const exportAppliedDefinition = appliedDashboardDefinition || definition;
+        const exportAppliedDefinition = appliedDesignDefinition || definition;
         if (filterDecision !== 'unchanged') {
           exportDefinition = JSON.parse(JSON.stringify(exportAppliedDefinition));
           preparationToken = prepared.token;
         } else if (hasAppliedUnsavedFilterChanges()) {
           const choice = await window.showConfirmDialog(
-            'This Dashboard has applied filters that have not been saved. Which filters should the PowerPoint use?',
+            'This Design has applied filters that have not been saved. Which filters should the PowerPoint use?',
             {
               title: 'Choose PowerPoint filters',
               confirmLabel: 'Use Current Filters',
@@ -1209,7 +1209,7 @@
           if (choice === 'confirm') {
             exportDefinition = JSON.parse(JSON.stringify(exportAppliedDefinition));
             preparationToken = prepared.token;
-          } else if (choice === 'secondary') exportDefinition = savedDashboardDefinition();
+          } else if (choice === 'secondary') exportDefinition = savedDesignDefinition();
           else return;
         } else {
           exportDefinition = JSON.parse(JSON.stringify(exportAppliedDefinition));
@@ -1222,7 +1222,7 @@
       const writer = commentEngine() ? ` (writer: ${(commentEngines.engines.find(engine => engine.id === autoCommentsEngine) || {}).label || 'Rules'})` : '';
       const decision = await window.showConfirmDialog(
         `Generate a PowerPoint presentation for “${exportDefinition.name}”?`,
-        {title: 'Generate Dashboard PPT', confirmLabel: 'Generate PPT', optionLabel: `Auto comments: write generated comments on the slides without comments${writer}`,
+        {title: 'Generate Design PPT', confirmLabel: 'Generate PPT', optionLabel: `Auto comments: write generated comments on the slides without comments${writer}`,
           optionChecked: autoComments !== 'off'},
       );
       if (!decision?.accepted) return;
@@ -1241,7 +1241,7 @@
     // Queuing validates the universe and resolves the cover labels on the
     // server, which can take a few seconds on a busy server: show it.
     lastAutoComments = autoComments;
-    window.showLoadingOverlay?.('Queuing Dashboard PPT', `Preparing the PowerPoint export for “${exportDefinition.name}”…`);
+    window.showLoadingOverlay?.('Queuing Design PPT', `Preparing the PowerPoint export for “${exportDefinition.name}”…`);
     try {
       await api(`/${encodeURIComponent(id)}/export-ppt`, 'POST', {
         definition: exportDefinition,
@@ -1260,13 +1260,13 @@
     } finally {
       window.hideLoadingOverlay?.();
     }
-    status(`Dashboard PPT export queued for “${exportDefinition.name}”.`);
-    await refreshDashboardPptJobs();
+    status(`Design PPT export queued for “${exportDefinition.name}”.`);
+    await refreshDesignPptJobs();
     window.dispatchEvent(new Event('drivetest-analyzer:refresh-background-tasks'));
   }
-  const updateDashboardTemplate = async (id, item, nrMode, templateName) => {
+  const updateDesignTemplate = async (id, item, nrMode, templateName) => {
     const selectedTemplate = templateRows().find(row => row.name === templateName);
-    if (!selectedTemplate || (dashboardNrMode(item) === nrMode && item.template === selectedTemplate.name)) {
+    if (!selectedTemplate || (designNrMode(item) === nrMode && item.template === selectedTemplate.name)) {
       library();
       return;
     }
@@ -1275,8 +1275,8 @@
       return;
     }
     const accepted = await window.showConfirmDialog(
-      `Changing the NR Mode or Template for “${item.name}” will invalidate every report and chart created inside this Dashboard. Its Scope, dates and filters are kept (a new NR Mode uses its newest campaigns). Continue?`,
-      {title: 'Update Dashboard definition?', confirmLabel: 'Update Dashboard', cancelLabel: 'Cancel', tone: 'warning'},
+      `Changing the NR Mode or Template for “${item.name}” will invalidate every report and chart created inside this Design. Its Scope, dates and filters are kept (a new NR Mode uses its newest campaigns). Continue?`,
+      {title: 'Update Design definition?', confirmLabel: 'Update Design', cancelLabel: 'Cancel', tone: 'warning'},
     );
     if (!accepted) {
       library();
@@ -1287,21 +1287,21 @@
       nr_mode: nrMode,
       template: selectedTemplate.name,
     });
-    dashboards[id] = structuredClone(result.definition);
-    dashboardStatuses.delete(id);
-    if (id === activeId) await openDashboard(id, {showFilters: dashboardFiltersOpen});
+    designs[id] = structuredClone(result.definition);
+    designStatuses.delete(id);
+    if (id === activeId) await openDesign(id, {showFilters: designFiltersOpen});
     else library();
     status(`Updated NR Mode and Template for “${item.name}”. Its Scope, dates and filters were kept.`);
-    void refreshDashboardStatuses();
+    void refreshDesignStatuses();
   };
-  // "Dashboard Datasets & Filters" is a sub-panel of PPT Manage Dashboards: it is
-  // shown in a table row directly below the Dashboard whose filters are open,
-  // and parked (hidden) whenever no Dashboard has its filters open. Compact
-  // screens show it in the same floating dialog used by the Dashboard viewer.
+  // "Design Datasets & Filters" is a sub-panel of PPT Designs: it is
+  // shown in a table row directly below the Design whose filters are open,
+  // and parked (hidden) whenever no Design has its filters open. Compact
+  // screens show it in the same floating dialog used by the Design viewer.
   const compactLibraryFiltersQuery = window.matchMedia('(max-width:640px), (orientation:landscape) and (max-height:600px)');
   let libraryFloatingFilters = false;
   const syncCompactLibraryFilters = () => {
-    if (!compactLibraryFiltersQuery.matches || !activeId || !dashboardFiltersOpen) return;
+    if (!compactLibraryFiltersQuery.matches || !activeId || !designFiltersOpen) return;
     if (!$('ds-filter-overlay').hidden || !$('ds-viewer').hidden) return;
     openFloatingFilters({fromLibrary: true});
   };
@@ -1313,9 +1313,9 @@
     rememberLibrary();
     parkFilterPanel();
     $('ds-create').disabled = !$('ds-template').options.length;
-    $('ds-count').textContent = `Total Dashboards: ${Object.keys(dashboards).length}`;
-    const body = $('ds-dashboards-body'); body.replaceChildren();
-    // Sort by NR Mode (NSA before SA), then Dashboard name, with the same
+    $('ds-count').textContent = `Total Designs: ${Object.keys(designs).length}`;
+    const body = $('ds-designs-body'); body.replaceChildren();
+    // Sort by NR Mode (NSA before SA), then Design name, with the same
     // rule as the Report Templates table: an NSA/SA marker in the name is
     // ignored and names compare case-insensitively by character code.
     const sortName = value => {
@@ -1323,18 +1323,18 @@
       return (text.replace(/^\s*n?sa\s*[-–—:]\s*|\s*[-–—:]?\s*\(?\bn?sa\)?\s*$/i, '').trim() || text).toLowerCase();
     };
     const compareText = (left, right) => (left < right ? -1 : left > right ? 1 : 0);
-    const rows = Object.entries(dashboards).sort(([, left], [, right]) => (
-      compareText(dashboardNrMode(left), dashboardNrMode(right))
+    const rows = Object.entries(designs).sort(([, left], [, right]) => (
+      compareText(designNrMode(left), designNrMode(right))
       || compareText(sortName(left.name), sortName(right.name))
       || compareText(String(left.name).toLowerCase(), String(right.name).toLowerCase())
     ));
-    if (!rows.length) { const row = node('tr'), cell = node('td', 'No Dashboards have been created yet.', 'form-note'); cell.colSpan = 5; row.append(cell); body.append(row); return; }
+    if (!rows.length) { const row = node('tr'), cell = node('td', 'No Designs have been created yet.', 'form-note'); cell.colSpan = 5; row.append(cell); body.append(row); return; }
     for (const [id, item] of rows) {
-      const row = node('tr'); if (id === activeId) row.classList.add('ds-dashboard-active');
-      const nameCell = node('td'); nameCell.dataset.label = 'Dashboard';
-      const nameEditor = node('div', undefined, 'ds-dashboard-name-editor');
-      const nameInput = document.createElement('input'); nameInput.type = 'text'; nameInput.value = item.name; nameInput.maxLength = 120; nameInput.setAttribute('aria-label', `Dashboard name: ${item.name}`);
-      const nameSave = node('button', '✓', 'ds-dashboard-name-save'); nameSave.type = 'button'; nameSave.title = 'Save Dashboard name'; nameSave.setAttribute('aria-label', 'Save Dashboard name'); nameSave.hidden = true;
+      const row = node('tr'); if (id === activeId) row.classList.add('ds-design-active');
+      const nameCell = node('td'); nameCell.dataset.label = 'Design';
+      const nameEditor = node('div', undefined, 'ds-design-name-editor');
+      const nameInput = document.createElement('input'); nameInput.type = 'text'; nameInput.value = item.name; nameInput.maxLength = 120; nameInput.setAttribute('aria-label', `Design name: ${item.name}`);
+      const nameSave = node('button', '✓', 'ds-design-name-save'); nameSave.type = 'button'; nameSave.title = 'Save Design name'; nameSave.setAttribute('aria-label', 'Save Design name'); nameSave.hidden = true;
       const updateNameSave = () => { nameSave.hidden = nameInput.value.trim() === item.name; };
       nameInput.addEventListener('input', updateNameSave);
       nameInput.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); nameSave.click(); } });
@@ -1342,134 +1342,134 @@
         const name = nameInput.value.trim();
         if (!name || name === item.name) { nameInput.value = item.name; updateNameSave(); return; }
         const result = await api(`/${id}/name`, 'PATCH', {name});
-        dashboards[id].name = result.name;
+        designs[id].name = result.name;
         if (id === activeId && definition) {
           definition.name = result.name; $('ds-name').value = result.name;
-          setActiveDashboardHeading(result.name);
+          setActiveDesignHeading(result.name);
           updateSavedDefinition({name: result.name});
           if (!$('ds-viewer').hidden) renderSlide();
         }
-        library(); status(`Renamed Dashboard to “${result.name}”.`);
+        library(); status(`Renamed Design to “${result.name}”.`);
       });
       nameEditor.append(nameInput, nameSave); nameCell.append(nameEditor);
-      // The NR Mode of the CDRs the Dashboard reads; its template serves any NR Mode.
+      // The NR Mode of the CDRs the Design reads; its template serves any NR Mode.
       const technologyCell = node('td'); technologyCell.dataset.label = 'NR Mode';
-      const technologySelect = document.createElement('select'); technologySelect.className = 'ds-dashboard-definition-select ds-dashboard-nr-mode-select';
+      const technologySelect = document.createElement('select'); technologySelect.className = 'ds-design-definition-select ds-design-nr-mode-select';
       technologySelect.setAttribute('aria-label', `NR Mode for ${item.name}`);
-      for (const mode of DASHBOARD_NR_MODES) technologySelect.append(option(mode, nrModeLabel(mode)));
-      technologySelect.value = dashboardNrMode(item);
+      for (const mode of DESIGN_NR_MODES) technologySelect.append(option(mode, nrModeLabel(mode)));
+      technologySelect.value = designNrMode(item);
       const templateCell = node('td'); templateCell.dataset.label = 'Template';
-      const templateSelect = document.createElement('select'); templateSelect.className = 'ds-dashboard-definition-select ds-dashboard-template-select';
+      const templateSelect = document.createElement('select'); templateSelect.className = 'ds-design-definition-select ds-design-template-select';
       templateSelect.setAttribute('aria-label', `Template for ${item.name}`);
       const choices = templateRows();
       templateSelect.replaceChildren(...choices.map(row => option(row.name, row.name)));
       templateSelect.value = (choices.find(row => row.name === item.template) || choices[0])?.name || '';
       templateSelect.disabled = !choices.length;
       technologySelect.addEventListener('change', () => {
-        void safe(() => updateDashboardTemplate(id, item, technologySelect.value, templateSelect.value || item.template))();
+        void safe(() => updateDesignTemplate(id, item, technologySelect.value, templateSelect.value || item.template))();
       });
       templateSelect.addEventListener('change', () => {
-        void safe(() => updateDashboardTemplate(id, item, technologySelect.value, templateSelect.value))();
+        void safe(() => updateDesignTemplate(id, item, technologySelect.value, templateSelect.value))();
       });
       technologyCell.append(technologySelect); templateCell.append(templateSelect);
       row.append(nameCell, technologyCell, templateCell);
       const statusCell = node('td'); statusCell.dataset.label = 'Status';
-      const dashboardStatus = dashboardStatuses.get(id) || {state: 'checking', label: 'Checking Cache'};
-      const statusBadge = node('span', dashboardStatus.label, `ds-dashboard-status ds-dashboard-status-${dashboardStatus.state}`);
-      statusBadge.dataset.dashboardStatusId = id;
-      statusBadge.title = dashboardStatus.detail || dashboardStatus.label;
+      const designStatus = designStatuses.get(id) || {state: 'checking', label: 'Checking Cache'};
+      const statusBadge = node('span', designStatus.label, `ds-design-status ds-design-status-${designStatus.state}`);
+      statusBadge.dataset.designStatusId = id;
+      statusBadge.title = designStatus.detail || designStatus.label;
       statusCell.append(statusBadge); row.append(statusCell);
-      const actions = node('div', undefined, 'ds-dashboard-actions');
+      const actions = node('div', undefined, 'ds-design-actions');
       const action = (label, glyph, handler, tone = '') => {
-        const button = node('button', glyph, `icon-action ds-dashboard-action ${tone}`); button.type = 'button'; button.title = label; button.setAttribute('aria-label', label); button.onclick = safe(handler); actions.append(button); return button;
+        const button = node('button', glyph, `icon-action ds-design-action ${tone}`); button.type = 'button'; button.title = label; button.setAttribute('aria-label', label); button.onclick = safe(handler); actions.append(button); return button;
       };
       const primaryActionLabel = (button, firstLine, secondLine) => {
-        const label = node('span', undefined, 'ds-dashboard-action-label');
+        const label = node('span', undefined, 'ds-design-action-label');
         label.append(node('span', firstLine), node('span', secondLine)); button.replaceChildren(label);
       };
-      const view = action('View Dashboard', 'View Dashboard', async () => {
+      const view = action('View Design', 'View Design', async () => {
         if (id !== activeId) {
           if (!await confirmDiscard()) return;
-          const loading = openDashboard(id, {showFilters: false});
+          const loading = openDesign(id, {showFilters: false});
           overlay('ds-viewer', true);
           await loading;
         } else {
-          dashboardFiltersOpen = false;
+          designFiltersOpen = false;
           rememberFiltersOpen(false);
           $('ds-filter-panel').hidden = true;
           document.dispatchEvent(new CustomEvent('page-panel-navigation:update'));
           library();
-          await openActiveDashboardViewer();
+          await openActiveDesignViewer();
         }
-      }, 'ds-dashboard-view');
+      }, 'ds-design-view');
       view.classList.remove('icon-action');
-      primaryActionLabel(view, 'View', 'Dashboard');
-      view.dataset.dashboardViewId = id;
+      primaryActionLabel(view, 'View', 'Design');
+      view.dataset.designViewId = id;
       view.disabled = false;
-      const filtersAreOpen = id === activeId && dashboardFiltersOpen;
+      const filtersAreOpen = id === activeId && designFiltersOpen;
       const open = action(filtersAreOpen ? 'Close Filters' : 'Open Filters', filtersAreOpen ? 'Close Filters' : 'Open Filters', async () => {
-        if (filtersAreOpen) { if (await confirmDiscard()) closeDashboard(); }
+        if (filtersAreOpen) { if (await confirmDiscard()) closeDesign(); }
         else if (id === activeId) {
-          dashboardFiltersOpen = true;
+          designFiltersOpen = true;
           rememberFiltersOpen(true);
           $('ds-filter-panel').hidden = false;
           document.dispatchEvent(new CustomEvent('page-panel-navigation:update'));
           library();
-        } else if (await confirmDiscard()) await openDashboard(id);
-      }, filtersAreOpen ? 'ds-dashboard-close' : 'ds-dashboard-open');
+        } else if (await confirmDiscard()) await openDesign(id);
+      }, filtersAreOpen ? 'ds-design-close' : 'ds-design-open');
       open.classList.remove('icon-action');
       primaryActionLabel(open, filtersAreOpen ? 'Close' : 'Open', 'Filters');
-      const ppt = action('Generate Dashboard PPT', '', () => queueDashboardPptExport(id, item, {chooseScope: true}), 'ds-dashboard-ppt');
+      const ppt = action('Generate Design PPT', '', () => queueDesignPptExport(id, item, {chooseScope: true}), 'ds-design-ppt');
       ppt.classList.remove('icon-action');
       primaryActionLabel(ppt, 'Generate', 'PPT');
-      ppt.dataset.dashboardPptId = id;
+      ppt.dataset.designPptId = id;
       // Same rule as the periodic status sync: pre-caching never blocks exports.
-      ppt.disabled = !dashboardCanExport(id);
-      // user-viewer generates PPTs and explores filters but cannot change stored Dashboards.
-      if (config.can_manage) action('Duplicate Dashboard', '⧉', async () => { if (await confirmDiscard()) await duplicateDashboard(id); });
-      action('Export Dashboard', '', () => exportDashboard(id, item), 'ds-dashboard-export');
+      ppt.disabled = !designCanExport(id);
+      // user-viewer generates PPTs and explores filters but cannot change stored Designs.
+      if (config.can_manage) action('Duplicate Design', '⧉', async () => { if (await confirmDiscard()) await duplicateDesign(id); });
+      action('Export Design', '', () => exportDesign(id, item), 'ds-design-export');
       if (config.can_manage) {
-        const remove = action('Delete Dashboard', '×', async () => { await deleteDashboard(id); }, 'danger-button');
+        const remove = action('Delete Design', '×', async () => { await deleteDesign(id); }, 'danger-button');
         // Only admins, super-admins and the user who created it delete it.
         if (!(window.canDeleteShared?.(item.created_by) ?? true)) {
           remove.disabled = true;
-          remove.title = window.sharedDeleteRefusal('Dashboard');
+          remove.title = window.sharedDeleteRefusal('Design');
         }
       }
       const cell = node('td'); cell.dataset.label = 'Actions'; cell.append(actions); row.append(cell); body.append(row);
       if (filtersAreOpen && !compactLibraryFiltersQuery.matches) {
         filterRowCell.append($('ds-filter-home'));
-        row.classList.add('ds-dashboard-filters-open');
+        row.classList.add('ds-design-filters-open');
         body.append(filterRow);
       }
     }
     syncCompactLibraryFilters();
   }
-  const renderDashboardStatuses = () => {
-    document.querySelectorAll('[data-dashboard-status-id]').forEach(badge => {
-      const value = dashboardStatuses.get(badge.dataset.dashboardStatusId) || {state: 'checking', label: 'Checking Cache'};
-      badge.className = `ds-dashboard-status ds-dashboard-status-${value.state}`;
+  const renderDesignStatuses = () => {
+    document.querySelectorAll('[data-design-status-id]').forEach(badge => {
+      const value = designStatuses.get(badge.dataset.designStatusId) || {state: 'checking', label: 'Checking Cache'};
+      badge.className = `ds-design-status ds-design-status-${value.state}`;
       badge.textContent = value.label;
       badge.title = value.detail || value.label;
     });
-    syncDashboardViewActions();
-    syncDashboardPptActions();
+    syncDesignViewActions();
+    syncDesignPptActions();
   };
   const jobAction = (label, className, handler, glyph = '') => {
     const button = node('button', glyph, className); button.type = 'button';
     button.title = label; button.setAttribute('aria-label', label); button.onclick = safe(handler); return button;
   };
-  const closeDashboardPptFilters = () => {
+  const closeDesignPptFilters = () => {
     $('ds-ppt-filter-dialog-content').replaceChildren();
     overlay('ds-ppt-filter-overlay', false);
   };
-  const showDashboardPptFilters = (dashboardName, content) => {
-    $('ds-ppt-filter-dialog-title').textContent = `Filters: ${dashboardName}`;
+  const showDesignPptFilters = (designName, content) => {
+    $('ds-ppt-filter-dialog-title').textContent = `Filters: ${designName}`;
     $('ds-ppt-filter-dialog-content').replaceChildren(content.cloneNode(true));
     overlay('ds-ppt-filter-overlay', true);
   };
-  const hideDashboardPptFilterTooltip = () => { $('ds-ppt-filter-tooltip').hidden = true; };
-  const showDashboardPptFilterTooltip = (trigger, content) => {
+  const hideDesignPptFilterTooltip = () => { $('ds-ppt-filter-tooltip').hidden = true; };
+  const showDesignPptFilterTooltip = (trigger, content) => {
     const tooltip = $('ds-ppt-filter-tooltip');
     tooltip.replaceChildren(content.cloneNode(true));
     tooltip.hidden = false;
@@ -1484,8 +1484,8 @@
       tooltip.style.top = `${top}px`;
     });
   };
-  bind('ds-ppt-filter-dialog-close', closeDashboardPptFilters);
-  const dashboardPptFilterContent = job => {
+  bind('ds-ppt-filter-dialog-close', closeDesignPptFilters);
+  const designPptFilterContent = job => {
     const content = node('div', undefined, 'ds-ppt-job-filter-content');
     const filterGroups = new Map();
     const otherFilters = [];
@@ -1517,14 +1517,14 @@
     if (!content.childElementCount) content.textContent = 'No filters applied';
     return content;
   };
-  const showDashboardPptJobFilterTooltip = (trigger, job) => showDashboardPptFilterTooltip(trigger, dashboardPptFilterContent(job));
-  const showDashboardPptJobFilters = job => {
-    hideDashboardPptFilterTooltip();
-    showDashboardPptFilters(String(job?.dashboard_name || 'Dashboard'), dashboardPptFilterContent(job));
+  const showDesignPptJobFilterTooltip = (trigger, job) => showDesignPptFilterTooltip(trigger, designPptFilterContent(job));
+  const showDesignPptJobFilters = job => {
+    hideDesignPptFilterTooltip();
+    showDesignPptFilters(String(job?.design_name || 'Design'), designPptFilterContent(job));
   };
-  const setDashboardPptChartBadges = job => {
+  const setDesignPptChartBadges = job => {
     for (const [id, value] of [
-      ['ds-ppt-charts-dashboard', job?.dashboard_name],
+      ['ds-ppt-charts-design', job?.design_name],
       ['ds-ppt-charts-date', job?.date ? String(job.date).replace('\n', ' · ') : ''],
       ['ds-ppt-charts-scope', job?.scope],
     ]) {
@@ -1534,131 +1534,131 @@
     }
     const filtersBadge = $('ds-ppt-charts-filters');
     filtersBadge.hidden = !job;
-    const viewDashboard = $('ds-ppt-charts-view-dashboard');
-    viewDashboard.hidden = !job?.charts_api_url;
-    viewDashboard.dataset.jobId = job?.id || '';
+    const viewDesign = $('ds-ppt-charts-view-design');
+    viewDesign.hidden = !job?.charts_api_url;
+    viewDesign.dataset.jobId = job?.id || '';
     filtersBadge.dataset.jobId = job?.id || '';
-    filtersBadge.setAttribute('aria-label', job ? `View filters used for ${job.dashboard_name}` : 'View filters');
+    filtersBadge.setAttribute('aria-label', job ? `View filters used for ${job.design_name}` : 'View filters');
   };
-  const selectedDashboardPptChartJob = () => dashboardPptJobs.find(job => String(job.id) === $('ds-ppt-charts-filters').dataset.jobId);
-  // View as Dashboard opens the Dashboard of the job shown in the Charts Panel.
-  $('ds-ppt-charts-view-dashboard').addEventListener('click', safe(() => {
-    const job = dashboardPptJobs.find(item => String(item.id) === $('ds-ppt-charts-view-dashboard').dataset.jobId);
-    if (job) return openDashboardPptViewer(job);
+  const selectedDesignPptChartJob = () => designPptJobs.find(job => String(job.id) === $('ds-ppt-charts-filters').dataset.jobId);
+  // View as Design opens the Design of the job shown in the Charts Panel.
+  $('ds-ppt-charts-view-design').addEventListener('click', safe(() => {
+    const job = designPptJobs.find(item => String(item.id) === $('ds-ppt-charts-view-design').dataset.jobId);
+    if (job) return openDesignPptViewer(job);
   }));
   $('ds-ppt-charts-filters').addEventListener('pointerenter', () => {
-    const job = selectedDashboardPptChartJob();
-    if (job) showDashboardPptJobFilterTooltip($('ds-ppt-charts-filters'), job);
+    const job = selectedDesignPptChartJob();
+    if (job) showDesignPptJobFilterTooltip($('ds-ppt-charts-filters'), job);
   });
-  $('ds-ppt-charts-filters').addEventListener('pointerleave', hideDashboardPptFilterTooltip);
+  $('ds-ppt-charts-filters').addEventListener('pointerleave', hideDesignPptFilterTooltip);
   $('ds-ppt-charts-filters').addEventListener('focus', () => {
-    const job = selectedDashboardPptChartJob();
-    if (job) showDashboardPptJobFilterTooltip($('ds-ppt-charts-filters'), job);
+    const job = selectedDesignPptChartJob();
+    if (job) showDesignPptJobFilterTooltip($('ds-ppt-charts-filters'), job);
   });
-  $('ds-ppt-charts-filters').addEventListener('blur', hideDashboardPptFilterTooltip);
+  $('ds-ppt-charts-filters').addEventListener('blur', hideDesignPptFilterTooltip);
   $('ds-ppt-charts-filters').addEventListener('click', event => {
     event.preventDefault();
     event.stopPropagation();
-    const job = selectedDashboardPptChartJob();
-    if (job) showDashboardPptJobFilters(job);
+    const job = selectedDesignPptChartJob();
+    if (job) showDesignPptJobFilters(job);
   });
-  const showDashboardPptChart = async index => {
-    if (!dashboardPptCharts.length) return;
-    const chartIndex = Math.max(0, Math.min(Number(index) || 0, dashboardPptCharts.length - 1));
-    const chart = dashboardPptCharts[chartIndex];
+  const showDesignPptChart = async index => {
+    if (!designPptCharts.length) return;
+    const chartIndex = Math.max(0, Math.min(Number(index) || 0, designPptCharts.length - 1));
+    const chart = designPptCharts[chartIndex];
     if (!chart.payload_url) throw new Error('This earlier PPT Job does not contain an interactive Canvas model. Relaunch it to add interactive chart previews.');
     const response = await fetch(chart.payload_url, {cache: 'no-store', credentials: 'same-origin'});
     const payload = await response.json();
-    if (!response.ok) throw new Error(payload.detail || 'Unable to load the Dashboard chart model.');
+    if (!response.ok) throw new Error(payload.detail || 'Unable to load the Design chart model.');
     await openExpandedChart(chart, payload, 'ppt');
   };
-  const renderDashboardPptCharts = (payload, job) => {
+  const renderDesignPptCharts = (payload, job) => {
     $('ds-ppt-charts-panel').hidden = false;
-    dashboardPptCharts = Array.isArray(payload.charts) ? payload.charts : [];
-    dashboardPptChartsJobId = String(job?.id || '');
-    $('ds-ppt-charts-count').textContent = `${dashboardPptCharts.length} chart${dashboardPptCharts.length === 1 ? '' : 's'}`;
-    $('ds-ppt-charts-empty').hidden = dashboardPptCharts.length > 0;
-    $('ds-ppt-charts-copy').textContent = dashboardPptCharts.length
-      ? `Cached charts generated for Dashboard "${job.dashboard_name}". Click any chart to enlarge it.`
-      : 'This PowerPoint job does not contain any Dashboard charts.';
-    setDashboardPptChartBadges(job);
-    const thumbnailJobId = dashboardPptChartsJobId;
+    designPptCharts = Array.isArray(payload.charts) ? payload.charts : [];
+    designPptChartsJobId = String(job?.id || '');
+    $('ds-ppt-charts-count').textContent = `${designPptCharts.length} chart${designPptCharts.length === 1 ? '' : 's'}`;
+    $('ds-ppt-charts-empty').hidden = designPptCharts.length > 0;
+    $('ds-ppt-charts-copy').textContent = designPptCharts.length
+      ? `Cached charts generated for Design "${job.design_name}". Click any chart to enlarge it.`
+      : 'This PowerPoint job does not contain any Design charts.';
+    setDesignPptChartBadges(job);
+    const thumbnailJobId = designPptChartsJobId;
     const cachedImage = chart => {
       const image = node('img');
       image.src = chart.image_url;
-      image.alt = chart.title || 'Dashboard chart';
+      image.alt = chart.title || 'Design chart';
       image.loading = 'lazy';
       return image;
     };
-    const cards = dashboardPptCharts.map((chart, index) => {
+    const cards = designPptCharts.map((chart, index) => {
       const card = node('article', undefined, 'report-chart-card');
       card.tabIndex = 0;
       const head = node('div', undefined, 'report-chart-card-head');
       const heading = node('div');
-      heading.append(node('h3', chart.title || 'Dashboard chart'));
+      heading.append(node('h3', chart.title || 'Design chart'));
       heading.append(node('p', [chart.slide ? `Slide ${chart.slide}` : '', chart.source || '', chart.chart_type || ''].filter(Boolean).join(' · ')));
       head.append(heading);
       const preview = node('div', undefined, 'ds-ppt-chart-thumbnail');
-      if (chart.payload_url && globalThis.renderDashboardChart) {
+      if (chart.payload_url && globalThis.renderCanvasChart) {
         const canvas = node('canvas');
         canvas.setAttribute('role', 'img');
-        canvas.setAttribute('aria-label', chart.title || 'Dashboard chart');
+        canvas.setAttribute('aria-label', chart.title || 'Design chart');
         preview.append(canvas);
         fetch(chart.payload_url, {cache: 'no-store', credentials: 'same-origin'})
           .then(async response => {
             const model = await response.json();
             if (!response.ok) throw new Error(model.detail || 'Unable to load chart model.');
-            if (dashboardPptChartsJobId !== thumbnailJobId || !canvas.isConnected) return;
-            globalThis.renderDashboardChart(canvas, model);
+            if (designPptChartsJobId !== thumbnailJobId || !canvas.isConnected) return;
+            globalThis.renderCanvasChart(canvas, model);
           })
           .catch(() => {
-            if (dashboardPptChartsJobId === thumbnailJobId && preview.isConnected) preview.replaceChildren(cachedImage(chart));
+            if (designPptChartsJobId === thumbnailJobId && preview.isConnected) preview.replaceChildren(cachedImage(chart));
           });
       } else preview.append(cachedImage(chart));
       card.append(head, preview);
-      card.addEventListener('click', safe(() => showDashboardPptChart(index)));
+      card.addEventListener('click', safe(() => showDesignPptChart(index)));
       card.addEventListener('keydown', safe(async event => {
         if (!['Enter', ' '].includes(event.key)) return;
         event.preventDefault();
-        await showDashboardPptChart(index);
+        await showDesignPptChart(index);
       }));
       return card;
     });
     $('ds-ppt-charts-body').replaceChildren(...cards);
   };
-  const loadDashboardPptCharts = async (jobId, scrollIntoView = false) => {
-    const job = dashboardPptJobs.find(item => String(item.id) === String(jobId));
+  const loadDesignPptCharts = async (jobId, scrollIntoView = false) => {
+    const job = designPptJobs.find(item => String(item.id) === String(jobId));
     if (!job?.charts_api_url) return;
     $('ds-ppt-charts-panel').hidden = false;
-    const request = ++dashboardPptChartsRequest;
-    dashboardPptChartsJobId = String(job.id);
+    const request = ++designPptChartsRequest;
+    designPptChartsJobId = String(job.id);
     $('ds-ppt-chart-job').value = String(job.id);
     $('ds-ppt-jobs-body').querySelectorAll('tr[data-job-id]').forEach(row => row.classList.toggle('is-selected', row.dataset.jobId === String(job.id)));
-    renderDashboardPptJobPickerLabel($('ds-ppt-chart-job-picker-label'), job);
-    $('ds-ppt-charts-copy').textContent = `Loading cached charts for Dashboard "${job.dashboard_name}"…`;
+    renderDesignPptJobPickerLabel($('ds-ppt-chart-job-picker-label'), job);
+    $('ds-ppt-charts-copy').textContent = `Loading cached charts for Design "${job.design_name}"…`;
     $('ds-ppt-charts-empty').hidden = true;
     try {
       const payload = await api(`/ppt-jobs/${job.id}/charts.json`);
-      if (request !== dashboardPptChartsRequest) return;
-      renderDashboardPptCharts(payload, job);
+      if (request !== designPptChartsRequest) return;
+      renderDesignPptCharts(payload, job);
       if (scrollIntoView) {
         const panel = document.querySelector('.ds-ppt-charts-panel');
         panel.open = true;
         panel.scrollIntoView({behavior: 'smooth', block: 'start'});
       }
     } catch (error) {
-      if (request !== dashboardPptChartsRequest) return;
-      dashboardPptCharts = [];
-      dashboardPptChartsJobId = '';
+      if (request !== designPptChartsRequest) return;
+      designPptCharts = [];
+      designPptChartsJobId = '';
       $('ds-ppt-charts-body').replaceChildren();
       $('ds-ppt-charts-count').textContent = '0 charts';
       $('ds-ppt-charts-empty').hidden = false;
-      $('ds-ppt-charts-copy').textContent = error instanceof Error ? error.message : 'Dashboard charts could not be loaded.';
+      $('ds-ppt-charts-copy').textContent = error instanceof Error ? error.message : 'Design charts could not be loaded.';
     }
   };
-  const viewerDefinition = () => pptDashboardViewer?.definition || definition;
-  const syncPptDashboardViewerControls = () => {
-    const snapshot = Boolean(pptDashboardViewer);
+  const viewerDefinition = () => pptDesignViewer?.definition || definition;
+  const syncPptDesignViewerControls = () => {
+    const snapshot = Boolean(pptDesignViewer);
     for (const id of ['ds-floating-filters', 'ds-viewer-refresh', 'ds-viewer-export-ppt', 'ds-edit']) {
       const control = $(id);
       if (control) control.disabled = snapshot;
@@ -1670,56 +1670,56 @@
     for (const control of ['ds-comment-menu-toggle', 'ds-comment-kiro-brief', 'ds-comment-kiro-import']) $(control).disabled = snapshot;
     if (snapshot) closeCommentMenu();
   };
-  async function openDashboardPptViewer(job) {
+  async function openDesignPptViewer(job) {
     const payload = await api(`/ppt-jobs/${job.id}/charts.json`);
     if (!payload.viewer_available || !Array.isArray(payload.slides) || !payload.definition) {
-      throw new Error('This PowerPoint job does not contain the saved Dashboard viewer snapshot. Relaunch it to create one.');
+      throw new Error('This PowerPoint job does not contain the saved Design viewer snapshot. Relaunch it to create one.');
     }
-    pptDashboardViewer = {
-      job, definition: canonicalDashboardDefinition(payload.definition), cover: payload.cover || null,
+    pptDesignViewer = {
+      job, definition: canonicalDesignDefinition(payload.definition), cover: payload.cover || null,
     };
-    dashboardPptCharts = Array.isArray(payload.charts) ? payload.charts : [];
-    dashboardPptChartsJobId = String(job.id);
+    designPptCharts = Array.isArray(payload.charts) ? payload.charts : [];
+    designPptChartsJobId = String(job.id);
     chartPayloads.clear(); renderedChartPayloads.clear();
     prepared = {token: `ppt-job-${job.id}`, slides: payload.slides};
     slideIndex = 0;
     stopPresentation();
-    syncPptDashboardViewerControls();
+    syncPptDesignViewerControls();
     overlay('ds-viewer', true);
     renderSlide();
   }
-  const dashboardPptChartFilterControls = [...document.querySelectorAll('[data-dashboard-ppt-chart-filter]')];
-  const dashboardPptChartFilterState = {nr_mode: '', dashboard: '', template: '', scope: '', region: '', city: ''};
-  const normalizeDashboardPptChartFilter = value => String(value || '').trim().toLocaleLowerCase();
-  const dashboardPptChartMetadata = job => ({
-    nr_mode: normalizeDashboardPptChartFilter(job.nr_mode),
-    dashboard: normalizeDashboardPptChartFilter(job.dashboard_name),
-    template: normalizeDashboardPptChartFilter(job.template),
-    scope: normalizeDashboardPptChartFilter(job.scope),
-    region: normalizeDashboardPptChartFilter(job.cover?.regions),
-    city: normalizeDashboardPptChartFilter(job.cover?.cities),
+  const designPptChartFilterControls = [...document.querySelectorAll('[data-design-ppt-chart-filter]')];
+  const designPptChartFilterState = {nr_mode: '', design: '', template: '', scope: '', region: '', city: ''};
+  const normalizeDesignPptChartFilter = value => String(value || '').trim().toLocaleLowerCase();
+  const designPptChartMetadata = job => ({
+    nr_mode: normalizeDesignPptChartFilter(job.nr_mode),
+    design: normalizeDesignPptChartFilter(job.design_name),
+    template: normalizeDesignPptChartFilter(job.template),
+    scope: normalizeDesignPptChartFilter(job.scope),
+    region: normalizeDesignPptChartFilter(job.cover?.regions),
+    city: normalizeDesignPptChartFilter(job.cover?.cities),
   });
-  const matchesDashboardPptChartFilters = (job, ignoredField = '') => Object.entries(dashboardPptChartFilterState)
-    .every(([field, selected]) => !selected || field === ignoredField || dashboardPptChartMetadata(job)[field] === selected);
-  const refreshDashboardPptChartFilterChoices = jobs => {
+  const matchesDesignPptChartFilters = (job, ignoredField = '') => Object.entries(designPptChartFilterState)
+    .every(([field, selected]) => !selected || field === ignoredField || designPptChartMetadata(job)[field] === selected);
+  const refreshDesignPptChartFilterChoices = jobs => {
     const labelFor = (field, job) => ({
-      nr_mode: String(job.nr_mode || '').toUpperCase(), dashboard: job.dashboard_name,
+      nr_mode: String(job.nr_mode || '').toUpperCase(), design: job.design_name,
       template: job.template, scope: job.scope, region: job.cover?.regions, city: job.cover?.cities,
     }[field] || '');
-    for (const [field, selected] of Object.entries(dashboardPptChartFilterState)) {
+    for (const [field, selected] of Object.entries(designPptChartFilterState)) {
       if (!selected) continue;
-      const stillAvailable = jobs.some(job => dashboardPptChartMetadata(job)[field] === selected);
-      if (!stillAvailable) dashboardPptChartFilterState[field] = '';
+      const stillAvailable = jobs.some(job => designPptChartMetadata(job)[field] === selected);
+      if (!stillAvailable) designPptChartFilterState[field] = '';
     }
-    for (const control of dashboardPptChartFilterControls) {
-      const field = control.dataset.dashboardPptChartFilter;
+    for (const control of designPptChartFilterControls) {
+      const field = control.dataset.designPptChartFilter;
       const values = new Map();
-      const matchingJobs = jobs.filter(job => matchesDashboardPptChartFilters(job, field));
+      const matchingJobs = jobs.filter(job => matchesDesignPptChartFilters(job, field));
       matchingJobs.forEach(job => {
-        const value = dashboardPptChartMetadata(job)[field];
+        const value = designPptChartMetadata(job)[field];
         if (value && !values.has(value)) values.set(value, labelFor(field, job));
       });
-      const selected = dashboardPptChartFilterState[field];
+      const selected = designPptChartFilterState[field];
       if (selected && !values.has(selected)) {
         const previousLabel = [...control.options].find(item => item.value === selected)?.textContent || selected;
         values.set(selected, previousLabel);
@@ -1727,92 +1727,92 @@
       control.replaceChildren(option('', 'All'), ...[...values.entries()]
         .sort((left, right) => left[1].localeCompare(right[1]))
         .map(([value, label]) => option(value, label)));
-      control.value = dashboardPptChartFilterState[field];
+      control.value = designPptChartFilterState[field];
     }
   };
-  const dashboardPptJobTimestampLabel = job => String(job?.date || '').replace('\n', ' · ');
-  const dashboardPptJobLabelParts = job => [
-    ['timestamp', dashboardPptJobTimestampLabel(job)],
+  const designPptJobTimestampLabel = job => String(job?.date || '').replace('\n', ' · ');
+  const designPptJobLabelParts = job => [
+    ['timestamp', designPptJobTimestampLabel(job)],
     ['nr-mode', String(job.nr_mode || '').toUpperCase()],
-    ['dashboard', job.dashboard_name],
+    ['design', job.design_name],
     ['scope', job.scope],
     ['region', job.cover?.regions],
     ['city', job.cover?.cities],
   ].filter(([, label]) => label);
-  const renderDashboardPptJobPickerLabel = (container, job, emptyLabel = 'No generated Dashboard PPTs') => {
+  const renderDesignPptJobPickerLabel = (container, job, emptyLabel = 'No generated Design PPTs') => {
     container.replaceChildren();
     if (!job) { container.textContent = emptyLabel; return; }
-    dashboardPptJobLabelParts(job).forEach(([name, label], index) => {
+    designPptJobLabelParts(job).forEach(([name, label], index) => {
       if (index) container.append(node('span', '•', 'ds-ppt-chart-job-separator'));
-      const item = node(name === 'dashboard' ? 'strong' : 'span', label, `ds-ppt-chart-job-${name}`);
+      const item = node(name === 'design' ? 'strong' : 'span', label, `ds-ppt-chart-job-${name}`);
       if (name === 'region' || name === 'city') item.title = label;
       container.append(item);
     });
   };
-  const rebuildDashboardPptJobPicker = (available, emptyLabel) => {
+  const rebuildDesignPptJobPicker = (available, emptyLabel) => {
     const selected = available.find(job => String(job.id) === $('ds-ppt-chart-job').value);
-    renderDashboardPptJobPickerLabel($('ds-ppt-chart-job-picker-label'), selected, emptyLabel);
+    renderDesignPptJobPickerLabel($('ds-ppt-chart-job-picker-label'), selected, emptyLabel);
     $('ds-ppt-chart-job-picker-options').replaceChildren(...available.map(job => {
       const choice = node('button', undefined, 'chart-set-picker-option ds-ppt-chart-job-option');
       choice.type = 'button';
-      choice.dataset.dashboardPptJobId = String(job.id);
+      choice.dataset.designPptJobId = String(job.id);
       choice.setAttribute('role', 'option');
       choice.setAttribute('aria-selected', String(job === selected));
-      renderDashboardPptJobPickerLabel(choice, job);
+      renderDesignPptJobPickerLabel(choice, job);
       return choice;
     }));
   };
-  const syncDashboardPptChartJobs = (jobs, preferredJobId = '') => {
-    dashboardPptJobs = jobs;
+  const syncDesignPptChartJobs = (jobs, preferredJobId = '') => {
+    designPptJobs = jobs;
     const select = $('ds-ppt-chart-job');
     const previous = String(preferredJobId || select.value);
     const generated = jobs.filter(job => job.charts_api_url).sort((left, right) =>
       String(right.timestamp || '').localeCompare(String(left.timestamp || '')) || Number(right.id) - Number(left.id));
-    refreshDashboardPptChartFilterChoices(generated);
-    const available = generated.filter(matchesDashboardPptChartFilters);
+    refreshDesignPptChartFilterChoices(generated);
+    const available = generated.filter(matchesDesignPptChartFilters);
     select.replaceChildren(...(available.length
-      ? available.map(job => option(String(job.id), dashboardPptJobLabelParts(job).map(([, label]) => label).join(' • ')))
-      : [option('', generated.length ? 'No matching Dashboard PPTs' : 'No generated Dashboard PPTs')]));
+      ? available.map(job => option(String(job.id), designPptJobLabelParts(job).map(([, label]) => label).join(' • ')))
+      : [option('', generated.length ? 'No matching Design PPTs' : 'No generated Design PPTs')]));
     select.disabled = available.length === 0;
     select.value = available.some(job => String(job.id) === previous) ? previous : String(available[0]?.id || '');
-    const emptyLabel = generated.length ? 'No matching Dashboard PPTs' : 'No generated Dashboard PPTs';
-    rebuildDashboardPptJobPicker(available, emptyLabel);
+    const emptyLabel = generated.length ? 'No matching Design PPTs' : 'No generated Design PPTs';
+    rebuildDesignPptJobPicker(available, emptyLabel);
     if (!available.length) {
-      ++dashboardPptChartsRequest;
-      dashboardPptCharts = [];
-      dashboardPptChartsJobId = '';
+      ++designPptChartsRequest;
+      designPptCharts = [];
+      designPptChartsJobId = '';
       $('ds-ppt-charts-body').replaceChildren();
       $('ds-ppt-charts-count').textContent = '0 charts';
       $('ds-ppt-charts-empty').hidden = false;
-      $('ds-ppt-charts-copy').textContent = 'Select a completed Dashboard PowerPoint job to inspect its cached charts. Click any chart to enlarge it.';
-      setDashboardPptChartBadges(null);
+      $('ds-ppt-charts-copy').textContent = 'Select a completed Design PowerPoint job to inspect its cached charts. Click any chart to enlarge it.';
+      setDesignPptChartBadges(null);
       $('ds-ppt-charts-panel').hidden = true;
       return;
     }
-    if (dashboardPptChartsJobId !== select.value) void loadDashboardPptCharts(select.value);
+    if (designPptChartsJobId !== select.value) void loadDesignPptCharts(select.value);
   };
   $('ds-ppt-chart-job').addEventListener('change', safe(event => {
-    rebuildDashboardPptJobPicker(
-      dashboardPptJobs.filter(job => job.charts_api_url && matchesDashboardPptChartFilters(job)),
-      'No matching Dashboard PPTs',
+    rebuildDesignPptJobPicker(
+      designPptJobs.filter(job => job.charts_api_url && matchesDesignPptChartFilters(job)),
+      'No matching Design PPTs',
     );
-    return loadDashboardPptCharts(event.target.value);
+    return loadDesignPptCharts(event.target.value);
   }));
   $('ds-ppt-chart-job-picker-options').addEventListener('click', event => {
-    const choice = event.target.closest('[data-dashboard-ppt-job-id]');
+    const choice = event.target.closest('[data-design-ppt-job-id]');
     if (!choice) return;
-    $('ds-ppt-chart-job').value = choice.dataset.dashboardPptJobId || '';
+    $('ds-ppt-chart-job').value = choice.dataset.designPptJobId || '';
     $('ds-ppt-chart-job-picker').open = false;
     $('ds-ppt-chart-job').dispatchEvent(new Event('change'));
   });
   document.addEventListener('pointerdown', event => {
     if ($('ds-ppt-chart-job-picker').open && !$('ds-ppt-chart-job-picker').contains(event.target)) $('ds-ppt-chart-job-picker').open = false;
   });
-  dashboardPptChartFilterControls.forEach(control => control.addEventListener('change', () => {
-    dashboardPptChartFilterState[control.dataset.dashboardPptChartFilter] = normalizeDashboardPptChartFilter(control.value);
-    syncDashboardPptChartJobs(dashboardPptJobs);
+  designPptChartFilterControls.forEach(control => control.addEventListener('change', () => {
+    designPptChartFilterState[control.dataset.designPptChartFilter] = normalizeDesignPptChartFilter(control.value);
+    syncDesignPptChartJobs(designPptJobs);
   }));
-  const renderDashboardPptJobs = (jobs, preferredJobId = '') => {
+  const renderDesignPptJobs = (jobs, preferredJobId = '') => {
     const body = $('ds-ppt-jobs-body'); body.replaceChildren();
     $('ds-ppt-jobs-count').textContent = `Total Jobs: ${jobs.length}`;
     $('ds-ppt-jobs-empty').hidden = jobs.length > 0;
@@ -1822,38 +1822,38 @@
       if (job.charts_api_url) {
         row.classList.add('ds-ppt-job-selectable');
         row.dataset.jobId = String(job.id);
-        row.classList.toggle('is-selected', String(job.id) === dashboardPptChartsJobId);
+        row.classList.toggle('is-selected', String(job.id) === designPptChartsJobId);
         row.addEventListener('click', event => {
           if (event.target.closest('button, a, input, select, label, .ds-ppt-job-filters')) return;
           body.querySelectorAll('tr.is-selected').forEach(item => item.classList.remove('is-selected'));
           row.classList.add('is-selected');
-          void loadDashboardPptCharts(job.id);
+          void loadDesignPptCharts(job.id);
         });
       }
       for (const value of [job.id, job.generated_by, job.date]) row.append(node('td', String(value)));
-      // NR Mode uses the same colour code as the Datasets and Dashboards selectors.
+      // NR Mode uses the same colour code as the Datasets and Designs selectors.
       const nrMode = String(job.nr_mode || job.technology || job.type || '-');
       const nrModeCell = node('td');
       if (['nsa', 'sa', 'nsa+sa'].includes(nrMode.toLowerCase())) {
-        const mode = normalizeDashboardNrMode(nrMode);
+        const mode = normalizeDesignNrMode(nrMode);
         nrModeCell.append(node('span', nrModeLabel(mode), `ds-nr-mode-badge ds-nr-mode-badge-${nrModeClass(mode)}`));
       }
       else nrModeCell.textContent = nrMode;
       row.append(nrModeCell);
-      for (const value of [job.dashboard_name, job.scope]) row.append(node('td', String(value)));
+      for (const value of [job.design_name, job.scope]) row.append(node('td', String(value)));
       const filterLines = Array.isArray(job.filters) ? job.filters : [];
       const filterTooltip = filterLines.length ? filterLines.join('\n') : 'No filters applied';
       const filtersCell = node('td');
       const filtersIcon = node('button', '', 'ds-ppt-job-filters');
       filtersIcon.type = 'button';
-      filtersIcon.setAttribute('aria-label', `View filters used for ${job.dashboard_name}`);
+      filtersIcon.setAttribute('aria-label', `View filters used for ${job.design_name}`);
       filtersIcon.setAttribute('aria-describedby', 'ds-ppt-filter-tooltip');
       filtersIcon.setAttribute('aria-haspopup', 'dialog');
-      filtersIcon.addEventListener('pointerenter', () => showDashboardPptJobFilterTooltip(filtersIcon, job));
-      filtersIcon.addEventListener('pointerleave', hideDashboardPptFilterTooltip);
-      filtersIcon.addEventListener('focus', () => showDashboardPptJobFilterTooltip(filtersIcon, job));
-      filtersIcon.addEventListener('blur', hideDashboardPptFilterTooltip);
-      filtersIcon.addEventListener('click', () => showDashboardPptJobFilters(job));
+      filtersIcon.addEventListener('pointerenter', () => showDesignPptJobFilterTooltip(filtersIcon, job));
+      filtersIcon.addEventListener('pointerleave', hideDesignPptFilterTooltip);
+      filtersIcon.addEventListener('focus', () => showDesignPptJobFilterTooltip(filtersIcon, job));
+      filtersIcon.addEventListener('blur', hideDesignPptFilterTooltip);
+      filtersIcon.addEventListener('click', () => showDesignPptJobFilters(job));
       filtersCell.dataset.filterValue = filterTooltip; filtersCell.append(filtersIcon); row.append(filtersCell);
       for (const value of [job.slides || '-', job.charts || '-']) row.append(node('td', String(value)));
       const statusCell = node('td');
@@ -1866,47 +1866,47 @@
       const durationLabel = Number.isFinite(duration) ? ` · ${duration < 60 ? `${duration < 10 ? duration.toFixed(1) : Math.round(duration)}s` : `${Math.floor(duration / 60)}m ${Math.round(duration % 60)}s`}` : '';
       progressCell.append(progress, node('span', ` ${Number(job.progress) || 0}%${durationLabel}`)); row.append(progressCell);
       const actionsCell = node('td'); const actions = node('div', undefined, 'report-job-actions');
-      if (job.download_url) { const link = node('a', undefined, 'report-job-download-button report-job-report-download-button report-job-download-labeled'); link.append(node('span', 'Download PPT', 'report-job-download-label')); link.href = job.download_url; link.download = ''; link.title = link.ariaLabel = 'Download Dashboard PPT'; actions.append(link); }
-      if (job.charts_api_url) actions.append(jobAction('View Dashboard snapshot', 'report-job-dashboard-button', () => openDashboardPptViewer(job), ''));
-      if (job.charts_download_url) { const link = node('a', '', 'report-job-download-button report-job-charts-download-button'); link.href = job.charts_download_url; link.download = ''; link.title = link.ariaLabel = 'Download Dashboard charts as ZIP'; actions.append(link); }
-      if (job.charts_api_url) actions.append(jobAction('Open Dashboard charts', 'report-job-charts-button', () => loadDashboardPptCharts(job.id, true), '📈'));
+      if (job.download_url) { const link = node('a', undefined, 'report-job-download-button report-job-report-download-button report-job-download-labeled'); link.append(node('span', 'Download PPT', 'report-job-download-label')); link.href = job.download_url; link.download = ''; link.title = link.ariaLabel = 'Download Design PPT'; actions.append(link); }
+      if (job.charts_api_url) actions.append(jobAction('View Design snapshot', 'report-job-design-button', () => openDesignPptViewer(job), ''));
+      if (job.charts_download_url) { const link = node('a', '', 'report-job-download-button report-job-charts-download-button'); link.href = job.charts_download_url; link.download = ''; link.title = link.ariaLabel = 'Download Design charts as ZIP'; actions.append(link); }
+      if (job.charts_api_url) actions.append(jobAction('Open Design charts', 'report-job-charts-button', () => loadDesignPptCharts(job.id, true), '📈'));
       if (job.retry_url) {
         const retry = jobAction(job.status === 'ready' ? 'Relaunch Job' : 'Retry export', 'report-job-retry-button', async () => {
           // Relaunching can take a few seconds on a busy server: give
           // immediate feedback and ignore repeated clicks until it answers.
-          if (dashboardPptRetrying.has(String(job.id))) return;
-          dashboardPptRetrying.add(String(job.id));
+          if (designPptRetrying.has(String(job.id))) return;
+          designPptRetrying.add(String(job.id));
           retry.disabled = true; retry.classList.add('is-busy'); retry.title = 'Relaunching…';
           status(`Relaunching PowerPoint Job ${job.id}…`);
           try {
             await api(`/ppt-jobs/${job.id}/retry`, 'POST');
             status(`PowerPoint Job ${job.id} was queued again.`);
           } finally {
-            dashboardPptRetrying.delete(String(job.id));
+            designPptRetrying.delete(String(job.id));
             retry.disabled = false; retry.classList.remove('is-busy'); retry.title = job.status === 'ready' ? 'Relaunch Job' : 'Retry export';
-            await refreshDashboardPptJobs({force: true});
+            await refreshDesignPptJobs({force: true});
           }
         }, '↻');
-        retry.disabled = dashboardPptRetrying.has(String(job.id));
+        retry.disabled = designPptRetrying.has(String(job.id));
         actions.append(retry);
       }
-      if (job.stop_url) actions.append(jobAction('Stop export', 'report-job-stop-button', async () => { await api(`/ppt-jobs/${job.id}/stop`, 'POST'); await refreshDashboardPptJobs(); }, '■'));
+      if (job.stop_url) actions.append(jobAction('Stop export', 'report-job-stop-button', async () => { await api(`/ppt-jobs/${job.id}/stop`, 'POST'); await refreshDesignPptJobs(); }, '■'));
       if (config.can_manage) actions.append(jobAction('Delete export', 'danger-button', async () => {
-        if (!await window.showConfirmDialog(`Delete Dashboard PPT job ${job.id} and all its files?`, {title: 'Delete Dashboard PPT', confirmLabel: 'Delete'})) return;
-        await api(`/ppt-jobs/${job.id}/delete`, 'POST'); await refreshDashboardPptJobs();
+        if (!await window.showConfirmDialog(`Delete Design PPT job ${job.id} and all its files?`, {title: 'Delete Design PPT', confirmLabel: 'Delete'})) return;
+        await api(`/ppt-jobs/${job.id}/delete`, 'POST'); await refreshDesignPptJobs();
       }, '×'));
       actionsCell.append(actions); row.append(actionsCell); body.append(row);
     }
-    syncDashboardPptChartJobs(jobs, preferredJobId);
-    dashboardPptColumnFilters?.apply();
-    if (!dashboardPptColumnFilters) syncDashboardPptJobsHeight();
+    syncDesignPptChartJobs(jobs, preferredJobId);
+    designPptColumnFilters?.apply();
+    if (!designPptColumnFilters) syncDesignPptJobsHeight();
   };
-  function syncDashboardPptJobsHeight() {
+  function syncDesignPptJobsHeight() {
     const body = $('ds-ppt-jobs-body');
     const wrapper = body.closest('.ds-ppt-jobs-table-wrap');
     if (!wrapper) return;
     const rows = Array.from(body.rows);
-    rows.forEach((row) => { row.hidden = !(dashboardPptColumnFilters?.matches(row) ?? true); });
+    rows.forEach((row) => { row.hidden = !(designPptColumnFilters?.matches(row) ?? true); });
     const visibleRows = rows.filter(row => !row.hidden);
     requestAnimationFrame(() => {
       if (window.matchMedia('(max-width: 760px)').matches || visibleRows.length <= 5) {
@@ -1925,83 +1925,83 @@
   // button is held over it swaps the pressed button for a new element, so the
   // browser never fires the click. Unchanged polls are skipped, and renders
   // wait until the pointer is released.
-  const dashboardPptRetrying = new Set();
-  let dashboardPptJobsSignature = '', dashboardPptJobsPointerDown = false, dashboardPptJobsPendingRender = null;
-  const dashboardPptJobsTable = $('ds-ppt-jobs-body').closest('table');
-  dashboardPptJobsTable.addEventListener('pointerdown', () => { dashboardPptJobsPointerDown = true; });
-  const releaseDashboardPptJobsPointer = () => {
-    if (!dashboardPptJobsPointerDown) return;
-    dashboardPptJobsPointerDown = false;
+  const designPptRetrying = new Set();
+  let designPptJobsSignature = '', designPptJobsPointerDown = false, designPptJobsPendingRender = null;
+  const designPptJobsTable = $('ds-ppt-jobs-body').closest('table');
+  designPptJobsTable.addEventListener('pointerdown', () => { designPptJobsPointerDown = true; });
+  const releaseDesignPptJobsPointer = () => {
+    if (!designPptJobsPointerDown) return;
+    designPptJobsPointerDown = false;
     // Let the click of the released button run before any deferred render.
     window.setTimeout(() => {
-      const pending = dashboardPptJobsPendingRender;
-      dashboardPptJobsPendingRender = null;
-      if (pending && !dashboardPptJobsPointerDown) pending();
+      const pending = designPptJobsPendingRender;
+      designPptJobsPendingRender = null;
+      if (pending && !designPptJobsPointerDown) pending();
     }, 0);
   };
-  document.addEventListener('pointerup', releaseDashboardPptJobsPointer, true);
-  document.addEventListener('pointercancel', releaseDashboardPptJobsPointer, true);
-  const refreshDashboardPptJobs = async ({force = false} = {}) => {
-    if (dashboardPptJobsRefreshing) return;
-    dashboardPptJobsRefreshing = true;
+  document.addEventListener('pointerup', releaseDesignPptJobsPointer, true);
+  document.addEventListener('pointercancel', releaseDesignPptJobsPointer, true);
+  const refreshDesignPptJobs = async ({force = false} = {}) => {
+    if (designPptJobsRefreshing) return;
+    designPptJobsRefreshing = true;
     try {
-      const previousJobs = new Map(dashboardPptJobs.map(job => [String(job.id), job]));
+      const previousJobs = new Map(designPptJobs.map(job => [String(job.id), job]));
       const payload = await api('/ppt-jobs');
       const jobs = Array.isArray(payload.jobs) ? payload.jobs : [];
       const signature = JSON.stringify(jobs);
-      if (!force && dashboardPptJobsLoaded && signature === dashboardPptJobsSignature) return;
-      dashboardPptJobsSignature = signature;
-      const newlyReady = dashboardPptJobsLoaded ? jobs.filter(job => {
+      if (!force && designPptJobsLoaded && signature === designPptJobsSignature) return;
+      designPptJobsSignature = signature;
+      const newlyReady = designPptJobsLoaded ? jobs.filter(job => {
         const previous = previousJobs.get(String(job.id));
         return job.status === 'ready' && job.charts_api_url && (!previous || previous.status !== 'ready');
       }).sort((left, right) =>
         String(right.timestamp || '').localeCompare(String(left.timestamp || '')) || Number(right.id) - Number(left.id)) : [];
-      const render = () => renderDashboardPptJobs(jobs, newlyReady[0]?.id || '');
-      if (dashboardPptJobsPointerDown) dashboardPptJobsPendingRender = render;
+      const render = () => renderDesignPptJobs(jobs, newlyReady[0]?.id || '');
+      if (designPptJobsPointerDown) designPptJobsPendingRender = render;
       else render();
-      dashboardPptJobsLoaded = true;
+      designPptJobsLoaded = true;
     } finally {
-      dashboardPptJobsRefreshing = false;
+      designPptJobsRefreshing = false;
     }
   };
-  dashboardPptColumnFilters = window.enableExcelColumnFilters?.(
-    $('ds-ppt-jobs-body').closest('table'), {onChange: syncDashboardPptJobsHeight},
+  designPptColumnFilters = window.enableExcelColumnFilters?.(
+    $('ds-ppt-jobs-body').closest('table'), {onChange: syncDesignPptJobsHeight},
   ) || null;
   if ($('ds-ppt-jobs-delete-all')) bind('ds-ppt-jobs-delete-all', async () => {
     const accepted = await window.showConfirmDialog(
-      'Delete all Dashboard PPT jobs and every generated PPT and chart folder?',
+      'Delete all Design PPT jobs and every generated PPT and chart folder?',
       {title: 'Delete All PPTs', confirmLabel: 'Delete all', tone: 'danger'},
     );
     if (!accepted) return;
     await api('/ppt-jobs/delete-all', 'POST');
-    await refreshDashboardPptJobs();
-    status('All Dashboard PPT jobs and files were deleted.');
+    await refreshDesignPptJobs();
+    status('All Design PPT jobs and files were deleted.');
   });
-  const setDashboardStatus = (id, state, label) => {
+  const setDesignStatus = (id, state, label) => {
     if (!id) return;
-    dashboardStatuses.set(id, {state, label});
-    renderDashboardStatuses();
+    designStatuses.set(id, {state, label});
+    renderDesignStatuses();
   };
-  const refreshDashboardStatuses = async () => {
-    if (dashboardStatusRefreshing) return;
-    dashboardStatusRefreshing = true;
+  const refreshDesignStatuses = async () => {
+    if (designStatusRefreshing) return;
+    designStatusRefreshing = true;
     try {
-      const statusDefinitions = Object.fromEntries(Object.entries(dashboards).map(
-        ([id, item]) => [id, runtimeDashboardDefinition(item, id)],
+      const statusDefinitions = Object.fromEntries(Object.entries(designs).map(
+        ([id, item]) => [id, runtimeDesignDefinition(item, id)],
       ));
-      // The open Dashboard is reported so its universes are pre-cached first.
-      const statusPath = activeId ? `/statuses?active_dashboard_id=${encodeURIComponent(activeId)}` : '/statuses';
+      // The open Design is reported so its universes are pre-cached first.
+      const statusPath = activeId ? `/statuses?active_design_id=${encodeURIComponent(activeId)}` : '/statuses';
       const payload = await api(statusPath, 'POST', statusDefinitions);
       for (const [id, value] of Object.entries(payload || {})) {
-        const activePrepared = id === activeId && Boolean(prepared?.slides?.length) && !dashboardNeedsRefresh();
-        // The open Dashboard's data is prepared; its charts may still be pending.
-        if (activePrepared) dashboardStatuses.set(id, ['ready', 'rendering', 'charts-queued'].includes(value?.state) ? value : {state: 'charts-queued', label: 'Data Cached'});
-        else if (!dashboardPreparationTokens.has(id)) dashboardStatuses.set(id, value);
+        const activePrepared = id === activeId && Boolean(prepared?.slides?.length) && !designNeedsRefresh();
+        // The open Design's data is prepared; its charts may still be pending.
+        if (activePrepared) designStatuses.set(id, ['ready', 'rendering', 'charts-queued'].includes(value?.state) ? value : {state: 'charts-queued', label: 'Data Cached'});
+        else if (!designPreparationTokens.has(id)) designStatuses.set(id, value);
       }
-      for (const id of [...dashboardStatuses.keys()]) if (!dashboards[id]) dashboardStatuses.delete(id);
-      renderDashboardStatuses();
-    } catch (_error) { /* A status refresh must not interrupt Dashboard work. */ }
-    finally { dashboardStatusRefreshing = false; }
+      for (const id of [...designStatuses.keys()]) if (!designs[id]) designStatuses.delete(id);
+      renderDesignStatuses();
+    } catch (_error) { /* A status refresh must not interrupt Design work. */ }
+    finally { designStatusRefreshing = false; }
   };
   function templateOptions(selectedName = '') {
     const select = $('ds-template'), rows = templateRows();
@@ -2010,20 +2010,20 @@
     select.value = selected?.identifier || '';
     return selected;
   }
-  function syncNewDashboardNameFromTemplate() {
+  function syncNewDesignNameFromTemplate() {
     if (definition) return;
     const selected = templateRows().find(row => row.identifier === $('ds-template').value);
     if (selected) $('ds-name').value = selected.name;
   }
   templateOptions();
-  syncNewDashboardNameFromTemplate();
+  syncNewDesignNameFromTemplate();
   function setTemplate(value) {
     const selected = templateRows().find(row => row.identifier === value);
     if (!selected || !definition) return;
     definition.template = selected.name;
   }
   function setNrMode(nrMode, selectedName = '') {
-    $('ds-nr-mode').value = normalizeDashboardNrMode(nrMode);
+    $('ds-nr-mode').value = normalizeDesignNrMode(nrMode);
     return templateOptions(selectedName);
   }
   function selectControl(label, values, selected, change, multiple = false, isUnsaved = () => false) {
@@ -2121,9 +2121,9 @@
     wrapper.append(captionLabel, control, menu); return wrapper;
   }
   // The CDRs of the current selection and the Campaign, Operator, Vendor, Region, Cluster and City lists, asked to the
-  // server at every change of the NR Mode or filters (from the CDR Filter Facets, without preparing the Dashboard),
+  // server at every change of the NR Mode or filters (from the CDR Filter Facets, without preparing the Design),
   // so they follow the selection before it is applied.
-  const liveSelectionKey = value => (value ? JSON.stringify(canonicalize({id: activeId, nr: dashboardNrMode(value), filters: value.filters || {}, sa_campaigns: value.sa_campaigns || []})) : '');
+  const liveSelectionKey = value => (value ? JSON.stringify(canonicalize({id: activeId, nr: designNrMode(value), filters: value.filters || {}, sa_campaigns: value.sa_campaigns || []})) : '');
   const currentLiveSelection = () => (liveSelection && definition && liveSelection.key === liveSelectionKey(definition) ? liveSelection : null);
   // The live list of a filter (Vendor V3 and Vendor_Only are the Vendor list), or null.
   const liveOptionsFor = field => {
@@ -2144,7 +2144,7 @@
     liveSelectionPending = key;
     renderAutoCdrs({loading: true});
     try {
-      const payload = await api('/auto-cdrs', 'POST', canonicalDashboardDefinition(definition), requestController.signal);
+      const payload = await api('/auto-cdrs', 'POST', canonicalDesignDefinition(definition), requestController.signal);
       if (request !== liveSelectionRequest) return;
       liveSelection = {key, options: payload.options || {}, cdrs: payload.cdrs || {}};
       renderAutoCdrs();
@@ -2169,9 +2169,9 @@
     let note = host.querySelector(':scope > .ds-auto-cdrs-pending');
     if (!note) { note = node('p', 'Apply the filters to use these CDRs.', 'form-note ds-auto-cdrs-pending'); host.append(note); }
     note.hidden = !hasUnappliedFilterChanges();
-    // The operators out of scope in the NR Mode of the Dashboard (the NR Modes of the Operator Maps), left out of it.
+    // The operators out of scope in the NR Mode of the Design (the NR Modes of the Operator Maps), left out of it.
     host.querySelector(':scope > .ds-out-of-scope')?.remove();
-    const outOfScope = globalThis.outOfScopePill?.(dashboardNrMode(definition), 'ds-out-of-scope');
+    const outOfScope = globalThis.outOfScopePill?.(designNrMode(definition), 'ds-out-of-scope');
     if (outOfScope) host.prepend(outOfScope);
   }
   // The Scope controls and the Date from / Date to filters; the CDRs used below the Scope.
@@ -2187,7 +2187,7 @@
     updateFilterControlState($('ds-universe-vendor-control'), filterControlState(
       definition.vendor_comparison || 'operator_vendor',
       appliedDefinition().vendor_comparison || 'operator_vendor',
-      savedDashboardDefinition().vendor_comparison || 'operator_vendor',
+      savedDesignDefinition().vendor_comparison || 'operator_vendor',
       (left, right) => left === right,
     ));
     for (const [key, label] of [['date_from', 'Date from'], ['date_to', 'Date to']]) host.append(datePicker(key, label));
@@ -2197,7 +2197,7 @@
   }
   function facets() {
     const defaultHost = $('ds-default-facets'), additionalHost = $('ds-additional-facets'); defaultHost.replaceChildren(); additionalHost.replaceChildren();
-    // No Dashboard is open (it was closed while a request was answered): there are no filters to draw.
+    // No Design is open (it was closed while a request was answered): there are no filters to draw.
     if (!definition) return;
     definition.hidden_filters ||= [];
     const hidden = new Set(definition.hidden_filters.map(identity));
@@ -2209,12 +2209,12 @@
       const hasStoredSelection = Object.prototype.hasOwnProperty.call(definition.filters, field);
       // Preserve saved values in the native select while the asynchronous
       // preparation request is still obtaining its facet catalogue.  Besides
-      // making the stored Dashboard state visible immediately, this prevents
+      // making the stored Design state visible immediately, this prevents
       // the custom multiselect from presenting a misleading "None Selected".
       const selected = Array.isArray(definition.filters[field])
         ? definition.filters[field].map(value => String(value)) : [];
       const custom = definition.custom_fields.includes(field);
-      const bothNrModes = !custom && isCampaignField(field) && dashboardNrMode(definition) === NSA_AND_SA;
+      const bothNrModes = !custom && isCampaignField(field) && designNrMode(definition) === NSA_AND_SA;
       if (bothNrModes) facet.dataset.campaignFacet = 'true';
       const label = bothNrModes ? 'Campaign (NSA)' : ['vendor', 'vendoronly'].includes(identity(field)) ? 'Vendor' : identity(field) === 'operatorvendor' ? 'Operator_Vendor' : identity(field) === 'vendoroperator' ? 'Vendor_Operator' : custom ? field : field === 'technology_primary' ? 'Technology' : field.replaceAll('_',' ').replace(/\b\w/g, letter => letter.toUpperCase());
       const aliases = Object.entries(filterAliases).find(([name]) => identity(name) === identity(field))?.[1] || [];
@@ -2348,7 +2348,7 @@
       facet.append(values);
       (custom ? additionalHost : defaultHost).append(facet);
     }
-    if (dashboardNrMode(definition) === NSA_AND_SA) {
+    if (designNrMode(definition) === NSA_AND_SA) {
       const saFacet = saCampaignFacet(), campaignFacet = defaultHost.querySelector('[data-campaign-facet]');
       if (campaignFacet) campaignFacet.after(saFacet); else defaultHost.prepend(saFacet);
     }
@@ -2372,7 +2372,7 @@
   // SA campaigns; Select All takes every SA campaign.
   function saCampaignFacet() {
     const facet = node('div', undefined, 'ds-facet ds-sa-campaign-facet');
-    const saved = savedDashboardDefinition().sa_campaigns || [], applied = appliedDefinition().sa_campaigns || [];
+    const saved = savedDesignDefinition().sa_campaigns || [], applied = appliedDefinition().sa_campaigns || [];
     updateFilterControlState(facet, filterControlState(definition.sa_campaigns || [], applied, saved));
     const head = node('div', undefined, 'ds-facet-head'); head.append(node('span', 'Campaign (SA)')); facet.append(head);
     const values = document.createElement('select'); values.multiple = true; values.size = 1; values.dataset.multiselectAutoClose = '1000';
@@ -2427,7 +2427,7 @@
       const stored = JSON.parse(sessionStorage.getItem(preparedStorageKey) || 'null');
       const entries = Array.isArray(stored?.entries) ? stored.entries.filter(item => item?.fingerprint !== fingerprint) : [];
       entries.push({fingerprint, token: payload.token});
-      sessionStorage.setItem(preparedStorageKey, JSON.stringify({dashboardId: activeId, entries: entries.slice(-8)}));
+      sessionStorage.setItem(preparedStorageKey, JSON.stringify({designId: activeId, entries: entries.slice(-8)}));
     } catch (_) { /* Session storage is optional. */ }
   };
   const forgetPreparedToken = token => {
@@ -2460,7 +2460,7 @@
     let stored;
     try { stored = JSON.parse(sessionStorage.getItem(preparedStorageKey) || 'null'); }
     catch (_) { return false; }
-    const cachedEntry = stored?.dashboardId === id
+    const cachedEntry = stored?.designId === id
       ? (stored.entries || []).find(item => item?.fingerprint === fingerprint) || (stored.fingerprint === fingerprint ? stored : null)
       : null;
     if (!cachedEntry?.token) return false;
@@ -2497,14 +2497,14 @@
     rows.hidden = !rows.textContent;
   };
   const applyPreparedPayload = payload => {
-    prepared = payload; facetOptions = payload.options; facetFields = config.filter_fields || payload.filter_fields || facetFields; availableFields = payload.available_fields || payload.custom_fields || []; applyDateBounds(payload.date_bounds); facetsLoading = false; facetOptionRequests.clear(); setPreparationProgress(100, 'Dashboard dataset is ready');
+    prepared = payload; facetOptions = payload.options; facetFields = config.filter_fields || payload.filter_fields || facetFields; availableFields = payload.available_fields || payload.custom_fields || []; applyDateBounds(payload.date_bounds); facetsLoading = false; facetOptionRequests.clear(); setPreparationProgress(100, 'Design dataset is ready');
     appliedFilterState = preparationStateFingerprint(definition);
     appliedSelectionState = selectionStateFingerprint(definition);
-    appliedDashboardDefinition = JSON.parse(JSON.stringify(definition));
+    appliedDesignDefinition = JSON.parse(JSON.stringify(definition));
     updateDirtyState();
     sources();
     if (hasOpenFacetMenu()) refreshFacetsAfterMenusClose(); else facets();
-    setDashboardStatus(activeId, 'charts-queued', 'Data Cached');
+    setDesignStatus(activeId, 'charts-queued', 'Data Cached');
     syncViewerScope();
     setViewEnabled(Boolean(payload.slides?.length));
     setPreparationRows(payload);
@@ -2526,7 +2526,7 @@
       applyPreparedPayload(payload);
       return true;
     } catch (error) {
-      // A queued warm-up must never delay opening the visible Dashboard.
+      // A queued warm-up must never delay opening the visible Design.
       // Returning immediately lets its foreground preparation take priority.
       if (error.status === 409) return false;
       return false;
@@ -2538,7 +2538,7 @@
     scheduleLiveSelection();
     status(hasUnappliedFilterChanges()
       ? 'Scope, date and filter changes are ready to apply.'
-      : 'The Dashboard Scope, dates and filters are applied.');
+      : 'The Design Scope, dates and filters are applied.');
   }
   function changed() {
     dismissPreparationStatus(); forgetPrepared();
@@ -2546,19 +2546,19 @@
     setViewEnabled(false);
     setPreparationState('preparing');
     $('ds-rows').textContent = '';
-    if (!$('ds-viewer').hidden) $('ds-charts').replaceChildren(node('div','Updating dashboards…','ds-empty'));
+    if (!$('ds-viewer').hidden) $('ds-charts').replaceChildren(node('div','Updating designs…','ds-empty'));
     const delay = $('ds-filter-overlay').hidden ? 350 : 120;
     clearTimeout(timer); timer = setTimeout(safe(prepare), delay);
   }
   async function prepare() {
     if (!definition) return null;
     const refreshFilterControls = () => { sources(); if (hasOpenFacetMenu()) refreshFacetsAfterMenusClose(); else facets(); };
-    const applying = applyingDashboardDefinition = structuredClone(definition);
+    const applying = applyingDesignDefinition = structuredClone(definition);
     updateDirtyState(); refreshFilterControls();
     try { return await prepareDefinition(); }
     finally {
-      if (applyingDashboardDefinition === applying) {
-        applyingDashboardDefinition = null;
+      if (applyingDesignDefinition === applying) {
+        applyingDesignDefinition = null;
         updateDirtyState();
         if (hasUnappliedFilterChanges()) refreshFilterControls();
       }
@@ -2577,7 +2577,7 @@
     }
     // Start the visible state before checking the shared cache.  Persistent
     // cache validation can take noticeable time after a server restart, and
-    // the user must see that the Dashboard is working during that lookup.
+    // the user must see that the Design is working during that lookup.
     setViewEnabled(false);
     setPreparationState('preparing', needsDataPreparation ? 'data' : 'rendering');
     // This also checks the workspace-shared persistent manifest, so a user
@@ -2586,36 +2586,36 @@
     // manifest and validate its CDR revisions, so expose it immediately in
     // the global task card instead of leaving only the yellow viewer notice.
     const cacheLookupToken = backgroundPreparationToken = `cache-lookup-${++cacheLookupSequence}`;
-    setPreparationProgress(null, 'Checking persistent Dashboard cache');
-    emitPreparationStatus('processing', 'Checking persistent Dashboard cache', cacheLookupToken);
-    const lookupDashboardId = activeId;
+    setPreparationProgress(null, 'Checking persistent Design cache');
+    emitPreparationStatus('processing', 'Checking persistent Design cache', cacheLookupToken);
+    const lookupDesignId = activeId;
     if (await restorePrepared(activeId)) {
       if (backgroundPreparationToken === cacheLookupToken) dismissPreparationStatus();
       status('Restored the previously prepared filters.');
       return prepared;
     }
-    // The Dashboard was closed, or another one opened, during the cache lookup: it is not prepared.
-    if (!definition || activeId !== lookupDashboardId) {
+    // The Design was closed, or another one opened, during the cache lookup: it is not prepared.
+    if (!definition || activeId !== lookupDesignId) {
       if (backgroundPreparationToken === cacheLookupToken) dismissPreparationStatus();
-      throw new DOMException('The Dashboard is no longer open.', 'AbortError');
+      throw new DOMException('The Design is no longer open.', 'AbortError');
     }
     if (backgroundPreparationToken === cacheLookupToken) dismissPreparationStatus();
     let preparationToken = '';
     let requestSequence = 0;
-    const dashboardIdAtStart = activeId;
+    const designIdAtStart = activeId;
     const pending = (async () => {
     clearTimeout(timer); const current = requestSequence = ++sequence; controller?.abort(); controller = new AbortController();
     dismissPreparationStatus(); preparationToken = backgroundPreparationToken = `prepare-${current}`; preparingFilterState = preparationStateFingerprint(definition);
-    dashboardPreparationTokens.set(dashboardIdAtStart, current);
+    designPreparationTokens.set(designIdAtStart, current);
     emitPreparationStatus(
       'queued',
       needsDataPreparation
-        ? 'Submitting the Dashboard dataset preparation request'
-        : 'Submitting the request to render Dashboard charts for the current scope',
+        ? 'Submitting the Design dataset preparation request'
+        : 'Submitting the request to render Design charts for the current scope',
       preparationToken,
     );
-    setDashboardStatus(dashboardIdAtStart, needsDataPreparation ? 'loading-data' : 'rendering', needsDataPreparation ? 'Loading data' : 'Rendering');
-    // Apply and Save stay available while the Dashboard is prepared: a new preparation replaces this one.
+    setDesignStatus(designIdAtStart, needsDataPreparation ? 'loading-data' : 'rendering', needsDataPreparation ? 'Loading data' : 'Rendering');
+    // Apply and Save stay available while the Design is prepared: a new preparation replaces this one.
     preparationRunning = true; updateFilterActionState();
     facetsLoading = true;
     if (!hasOpenFacetMenu()) facets();
@@ -2624,7 +2624,7 @@
     $('ds-rows').textContent = '';
     try {
       const params = new URLSearchParams();
-      if (activeId) params.set('dashboard_id', activeId);
+      if (activeId) params.set('design_id', activeId);
       if (!needsDataPreparation) params.set('rendering_only', '1');
       params.set('preparation_id', preparationToken);
       // The server prepares in the background and answers immediately, so a
@@ -2638,10 +2638,10 @@
       window.dispatchEvent(new Event('drivetest-analyzer:refresh-background-tasks'));
     } catch (error) {
       if (current === sequence && error.name !== 'AbortError' && error.message.includes('interrupted')) {
-        setDashboardStatus(dashboardIdAtStart, 'data-needed', 'Data needed'); facetsLoading = false; facets();
-        setViewEnabled(false); setPreparationState('hidden'); status('Dashboard preparation was interrupted.'); return;
+        setDesignStatus(designIdAtStart, 'data-needed', 'Data needed'); facetsLoading = false; facets();
+        setViewEnabled(false); setPreparationState('hidden'); status('Design preparation was interrupted.'); return;
       }
-      if (current === sequence && error.name !== 'AbortError') { setDashboardStatus(dashboardIdAtStart, 'error', 'Error'); facetsLoading = false; facets(); setViewEnabled(false); setPreparationState('hidden'); $('ds-rows').textContent = error.message; if (!$('ds-viewer').hidden) $('ds-charts').replaceChildren(node('div',error.message,'ds-empty')); } throw error;
+      if (current === sequence && error.name !== 'AbortError') { setDesignStatus(designIdAtStart, 'error', 'Error'); facetsLoading = false; facets(); setViewEnabled(false); setPreparationState('hidden'); $('ds-rows').textContent = error.message; if (!$('ds-viewer').hidden) $('ds-charts').replaceChildren(node('div',error.message,'ds-empty')); } throw error;
     }
     })();
     preparing = pending;
@@ -2649,22 +2649,22 @@
     finally {
       if (backgroundPreparationToken === preparationToken) dismissPreparationStatus();
       if (preparing === pending) { preparing = null; preparingFilterState = ''; }
-      if (dashboardPreparationTokens.get(dashboardIdAtStart) === requestSequence) dashboardPreparationTokens.delete(dashboardIdAtStart);
+      if (designPreparationTokens.get(designIdAtStart) === requestSequence) designPreparationTokens.delete(designIdAtStart);
       preparationRunning = false; updateFilterActionState();
-      syncDashboardPptActions();
-      void refreshDashboardStatuses();
+      syncDesignPptActions();
+      void refreshDesignStatuses();
     }
   }
-  async function openDashboard(id, {showFilters = true} = {}) {
+  async function openDesign(id, {showFilters = true} = {}) {
     clearTimeout(facetsRefreshTimer);
     dismissPreparationStatus();
     clearTimeout(timer); ++sequence; ++backgroundChartPreloadRequest; controller?.abort(); preparing = null;
     stopPresentation();
-    activeId = id; dashboardFiltersOpen = showFilters; rememberFiltersOpen(showFilters); $('ds-viewer-export-ppt').dataset.dashboardPptId = id; definition = runtimeDashboardDefinition(dashboards[id], id); savedDefinition = definitionFingerprint(savedRuntimeDashboardDefinition(dashboards[id])); dirty = false; prepared = null; appliedFilterState = ''; appliedSelectionState = ''; appliedDashboardDefinition = null; applyingDashboardDefinition = null; facetOptions = {}; availableFields = []; facetOptionRequests.clear(); slideIndex = 0; setViewEnabled(false); rememberOpen(id);
-    document.dispatchEvent(new CustomEvent('ds:dashboard-opened', {detail: {id}}));
-    resetViewerForDashboard();
-    $('ds-name').value = definition.name; setNrMode(dashboardNrMode(definition), definition.template);
-    $('ds-filter-panel').hidden = !dashboardFiltersOpen; document.dispatchEvent(new CustomEvent('page-panel-navigation:update')); setActiveDashboardHeading(definition.name); sources(); facets(); library(); status(''); await prepare();
+    activeId = id; designFiltersOpen = showFilters; rememberFiltersOpen(showFilters); $('ds-viewer-export-ppt').dataset.designPptId = id; definition = runtimeDesignDefinition(designs[id], id); savedDefinition = definitionFingerprint(savedRuntimeDesignDefinition(designs[id])); dirty = false; prepared = null; appliedFilterState = ''; appliedSelectionState = ''; appliedDesignDefinition = null; applyingDesignDefinition = null; facetOptions = {}; availableFields = []; facetOptionRequests.clear(); slideIndex = 0; setViewEnabled(false); rememberOpen(id);
+    document.dispatchEvent(new CustomEvent('ds:design-opened', {detail: {id}}));
+    resetViewerForDesign();
+    $('ds-name').value = definition.name; setNrMode(designNrMode(definition), definition.template);
+    $('ds-filter-panel').hidden = !designFiltersOpen; document.dispatchEvent(new CustomEvent('page-panel-navigation:update')); setActiveDesignHeading(definition.name); sources(); facets(); library(); status(''); await prepare();
     updateDirtyState();
     // Date defaults may be derived while the prepared payload is restored. Rebuild
     // the controls so their state agrees with the Apply and Save buttons.
@@ -2678,7 +2678,7 @@
   };
   const discardPart = () => {
     if (!definition) return;
-    copyDefinitionFields(definition, savedDashboardDefinition(), filterDefinitionFields);
+    copyDefinitionFields(definition, savedDesignDefinition(), filterDefinitionFields);
     updateDirtyState(); sources(); facets();
   };
   async function preparePart() {
@@ -2693,30 +2693,30 @@
     if (!activeId || !definition || !hasUnsavedFilterChanges()) return;
     if (!$('ds-filter-overlay').hidden) await closeFilters();
     filterActionBusy = true; updateFilterActionState();
-    const dashboardId = activeId;
+    const designId = activeId;
     try {
       const draft = definition;
-      const item = copyDefinitionFields(canonicalDashboardDefinition(savedDashboardDefinition()), draft, filterDefinitionFields);
-      item.name = $('ds-name').value.trim(); const result = await api(`/${dashboardId}`,'PUT',item);
-      dashboards[dashboardId] = structuredClone(result.definition);
+      const item = copyDefinitionFields(canonicalDesignDefinition(savedDesignDefinition()), draft, filterDefinitionFields);
+      item.name = $('ds-name').value.trim(); const result = await api(`/${designId}`,'PUT',item);
+      designs[designId] = structuredClone(result.definition);
       library();
-      if (dashboardId !== activeId) return;
+      if (designId !== activeId) return;
       savedDefinition = definitionFingerprint(result.definition);
       // The saved values, as the server normalised them, unless they were changed again while saving.
       if (filterStateFingerprint(definition) === filterStateFingerprint(item)) {
-        copyDefinitionFields(definition, canonicalDashboardDefinition(result.definition), filterDefinitionFields);
+        copyDefinitionFields(definition, canonicalDesignDefinition(result.definition), filterDefinitionFields);
       }
       updateDirtyState(); sources(); facets();
     } finally {
       // Only the save itself holds the buttons: filters changed while the saved ones are applied can be saved at once.
       filterActionBusy = false; updateFilterActionState();
     }
-    if (dashboardId !== activeId) return;
+    if (designId !== activeId) return;
     if (hasUnappliedFilterChanges()) await preparePart();
-    if (definition && dashboardId === activeId) status(`Saved and applied the filters of “${definition.name}”.`);
+    if (definition && designId === activeId) status(`Saved and applied the filters of “${definition.name}”.`);
   }
   const save = () => savePart('filters');
-  const confirmDiscard = async (ignoredFields = []) => !hasUnsavedDashboardChanges(ignoredFields) || await window.showConfirmDialog('Discard unsaved Dashboard changes?', {title:'Unsaved changes',confirmLabel:'Discard'});
+  const confirmDiscard = async (ignoredFields = []) => !hasUnsavedDesignChanges(ignoredFields) || await window.showConfirmDialog('Discard unsaved Design changes?', {title:'Unsaved changes',confirmLabel:'Discard'});
   bind('ds-create', async () => {
     if (!await confirmDiscard(['name', 'template', 'nr_mode'])) return;
     const nrMode = $('ds-nr-mode').value;
@@ -2724,9 +2724,9 @@
     if (!selected) throw new Error('Choose a template.');
     const name = $('ds-name').value.trim() || selected.name;
     $('ds-name').value = name;
-    const item = {name,template:selected.name,nr_mode:nrMode,scope:'single',auto_cdrs:true,filters:{Campaign: defaultCampaignFilter('single')},sa_campaigns:normalizeDashboardNrMode(nrMode) === NSA_AND_SA ? defaultCampaignFilter('single') : [],custom_fields:[],date_from:'Oldest',date_to:'Newest'};
+    const item = {name,template:selected.name,nr_mode:nrMode,scope:'single',auto_cdrs:true,filters:{Campaign: defaultCampaignFilter('single')},sa_campaigns:normalizeDesignNrMode(nrMode) === NSA_AND_SA ? defaultCampaignFilter('single') : [],custom_fields:[],date_from:'Oldest',date_to:'Newest'};
     status(`Creating “${item.name}”…`); $('ds-create').disabled = true;
-    try { const id = dashboardId(), result = await api(`/${id}`,'PUT',item); dashboards[id] = result.definition; await openDashboard(id); }
+    try { const id = designId(), result = await api(`/${id}`,'PUT',item); designs[id] = result.definition; await openDesign(id); }
     finally { $('ds-create').disabled = !$('ds-template').options.length; }
   });
   bind('ds-save', save);
@@ -2740,9 +2740,9 @@
   function syncViewerScope() {
     const control = $('ds-viewer-scope');
     if (!control) return;
-    const viewer = appliedDashboardDefinition || definition;
+    const viewer = appliedDesignDefinition || definition;
     control.value = viewer?.scope || 'single';
-    control.disabled = !definition || Boolean(pptDashboardViewer) || filterActionBusy || preparationRunning;
+    control.disabled = !definition || Boolean(pptDesignViewer) || filterActionBusy || preparationRunning;
     const vendorControl = $('ds-viewer-vendor-comparison');
     $('ds-viewer-vendor-control').hidden = control.value !== 'multivendor';
     vendorControl.value = viewer?.vendor_comparison || 'vendor_only';
@@ -2751,12 +2751,12 @@
   $('ds-viewer-scope').onchange = safe(async () => {
     const control = $('ds-viewer-scope');
     const next = control.value;
-    const current = (appliedDashboardDefinition || definition)?.scope || 'single';
+    const current = (appliedDesignDefinition || definition)?.scope || 'single';
     if (!definition || next === current) return;
     const label = next === 'multivendor' ? 'Multivendor Comparison' : 'Operator Comparison';
     const accepted = await window.showConfirmDialog(
-      `Change the Scope to ${label}? Every Dashboard chart will be rendered again with the Dashboard filters.`,
-      {title: 'Change Dashboard Scope', confirmLabel: 'Change Scope', tone: 'warning'},
+      `Change the Scope to ${label}? Every Design chart will be rendered again with the Design filters.`,
+      {title: 'Change Design Scope', confirmLabel: 'Change Scope', tone: 'warning'},
     );
     if (!accepted) { control.value = current; return; }
     $('ds-scope').value = next;
@@ -2766,7 +2766,7 @@
   });
   $('ds-viewer-vendor-comparison').onchange = safe(async () => {
     const control = $('ds-viewer-vendor-comparison');
-    const current = appliedDashboardDefinition || definition;
+    const current = appliedDesignDefinition || definition;
     if (!definition || current?.scope !== 'multivendor' || control.value === current.vendor_comparison) return;
     const previousComparison = definition.vendor_comparison;
     definition.vendor_comparison = control.value;
@@ -2775,46 +2775,46 @@
     try { await preparePart(); }
     finally { syncViewerScope(); }
   });
-  async function duplicateDashboard(sourceId) {
-    const id = dashboardId(), item = runtimeDashboardDefinition(dashboards[sourceId]); item.name = nextName(`${item.name.slice(0,110)} (copy)`);
-    status(`Duplicating “${dashboards[sourceId].name}”…`);
-    const result = await api(`/${id}`,'PUT',item); dashboards[id] = result.definition; await openDashboard(id);
+  async function duplicateDesign(sourceId) {
+    const id = designId(), item = runtimeDesignDefinition(designs[sourceId]); item.name = nextName(`${item.name.slice(0,110)} (copy)`);
+    status(`Duplicating “${designs[sourceId].name}”…`);
+    const result = await api(`/${id}`,'PUT',item); designs[id] = result.definition; await openDesign(id);
   }
-  async function exportDashboard(id, item) {
-    const response = await fetch(`/api/ppt-dashboards/${encodeURIComponent(id)}/export`, {credentials: 'same-origin'});
-    if (!response.ok) throw new Error(await response.text() || 'Unable to export the Dashboard.');
+  async function exportDesign(id, item) {
+    const response = await fetch(`/api/ppt-designer/${encodeURIComponent(id)}/export`, {credentials: 'same-origin'});
+    if (!response.ok) throw new Error(await response.text() || 'Unable to export the Design.');
     const blob = await response.blob(), url = URL.createObjectURL(blob), link = node('a');
-    link.href = url; link.download = `${item.name.replace(/[^a-z0-9_-]/gi, '_')}_dashboard.zip`; link.click();
+    link.href = url; link.download = `${item.name.replace(/[^a-z0-9_-]/gi, '_')}_design.zip`; link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     status(`Exported “${item.name}”.`);
   }
-  async function deleteDashboard(id) {
-    const item = dashboards[id]; if (!item || !await window.showConfirmDialog(`Delete “${item.name}”?`,{title:'Delete Dashboard',confirmLabel:'Delete',tone:'danger'})) return;
+  async function deleteDesign(id) {
+    const item = designs[id]; if (!item || !await window.showConfirmDialog(`Delete “${item.name}”?`,{title:'Delete Design',confirmLabel:'Delete',tone:'danger'})) return;
     if (id === activeId && !await confirmDiscard()) return;
     status(`Deleting “${item.name}”…`);
-    await api(`/${id}`,'DELETE'); delete dashboards[id]; dashboardStatuses.delete(id); if (id === activeId) closeDashboard(); else { library(); status(`Deleted “${item.name}”.`); }
+    await api(`/${id}`,'DELETE'); delete designs[id]; designStatuses.delete(id); if (id === activeId) closeDesign(); else { library(); status(`Deleted “${item.name}”.`); }
   }
   bind('ds-import',() => $('ds-import-file').click());
-  $('ds-import-file').onchange = safe(async () => { const file = $('ds-import-file').files[0]; if (!file) return; const payload = JSON.parse(await file.text()); const format = String(payload.format || '').replace(/^dashboard-analytic-/, 'drivetest-analyzer-'); const legacy = format === 'drivetest-analyzer-dashboard-set' && payload.version === 1; if (!legacy && (format !== 'drivetest-analyzer-dashboard' || payload.version !== 2)) throw new Error('Unsupported Dashboard file.'); if (!await confirmDiscard()) return; payload.definition.name = nextName(payload.definition.name); if (!payload.definition.auto_cdrs) delete payload.definition.datasets; /* CDRs of another workspace: its newest campaigns are used. */ const id = dashboardId(), result = await api(`/${id}`,'PUT',payload.definition); dashboards[id] = result.definition; await openDashboard(id); $('ds-import-file').value = ''; });
-  function closeDashboard() { delete $('ds-viewer-export-ppt').dataset.dashboardPptId; $('ds-viewer-export-ppt').disabled = true; clearTimeout(facetsRefreshTimer); dismissPreparationStatus(); stopPresentation(); rememberOpen(''); rememberFiltersOpen(false); ++sequence; clearTimeout(timer); controller?.abort(); preparing = null; activeId = ''; dashboardFiltersOpen = false; definition = null; savedDefinition = ''; appliedFilterState = ''; appliedSelectionState = ''; appliedDashboardDefinition = null; applyingDashboardDefinition = null; prepared = null; dirty = false; updateUnsavedFiltersBadge(); setViewEnabled(false); setPreparationState('hidden'); $('ds-filter-panel').hidden = true; document.dispatchEvent(new CustomEvent('page-panel-navigation:update')); setActiveDashboardHeading(''); $('ds-name').value = ''; setNrMode('nsa'); syncNewDashboardNameFromTemplate(); library(); status('Dashboard closed.'); document.dispatchEvent(new CustomEvent('ds:dashboard-closed')); }
+  $('ds-import-file').onchange = safe(async () => { const file = $('ds-import-file').files[0]; if (!file) return; const payload = JSON.parse(await file.text()); const format = String(payload.format || '').replace(/^dashboard-analytic-/, 'drivetest-analyzer-').replace(/^drivetest-analyzer-dashboard/, 'drivetest-analyzer-design') /* a file of PPT Dashboards */; const legacy = format === 'drivetest-analyzer-design-set' && payload.version === 1; if (!legacy && (format !== 'drivetest-analyzer-design' || payload.version !== 2)) throw new Error('Unsupported Design file.'); if (!await confirmDiscard()) return; payload.definition.name = nextName(payload.definition.name); if (!payload.definition.auto_cdrs) delete payload.definition.datasets; /* CDRs of another workspace: its newest campaigns are used. */ const id = designId(), result = await api(`/${id}`,'PUT',payload.definition); designs[id] = result.definition; await openDesign(id); $('ds-import-file').value = ''; });
+  function closeDesign() { delete $('ds-viewer-export-ppt').dataset.designPptId; $('ds-viewer-export-ppt').disabled = true; clearTimeout(facetsRefreshTimer); dismissPreparationStatus(); stopPresentation(); rememberOpen(''); rememberFiltersOpen(false); ++sequence; clearTimeout(timer); controller?.abort(); preparing = null; activeId = ''; designFiltersOpen = false; definition = null; savedDefinition = ''; appliedFilterState = ''; appliedSelectionState = ''; appliedDesignDefinition = null; applyingDesignDefinition = null; prepared = null; dirty = false; updateUnsavedFiltersBadge(); setViewEnabled(false); setPreparationState('hidden'); $('ds-filter-panel').hidden = true; document.dispatchEvent(new CustomEvent('page-panel-navigation:update')); setActiveDesignHeading(''); $('ds-name').value = ''; setNrMode('nsa'); syncNewDesignNameFromTemplate(); library(); status('Design closed.'); document.dispatchEvent(new CustomEvent('ds:design-closed')); }
   $('ds-name').oninput = () => { if (definition) { definition.name = $('ds-name').value; updateDirtyState(); } };
-  // The NR Mode chooses the CDRs the open Dashboard reads; its template stays (it serves any NR Mode).
+  // The NR Mode chooses the CDRs the open Design reads; its template stays (it serves any NR Mode).
   $('ds-nr-mode').onchange = () => {
     if (definition) {
-      const previousNrMode = dashboardNrMode(definition);
+      const previousNrMode = designNrMode(definition);
       definition.nr_mode = $('ds-nr-mode').value;
       // The campaigns of an NR Mode it no longer reads do not apply: the newest ones of the new NR Mode do.
-      if (dashboardNrMode(definition) !== previousNrMode) {
-        followNrModeCampaigns(previousNrMode, dashboardNrMode(definition));
+      if (designNrMode(definition) !== previousNrMode) {
+        followNrModeCampaigns(previousNrMode, designNrMode(definition));
         sources(); facets();
       }
       changed();
     }
-    else syncNewDashboardNameFromTemplate();
+    else syncNewDesignNameFromTemplate();
   };
   $('ds-template').onchange = () => {
     if (definition) { setTemplate($('ds-template').value); changed(); }
-    else syncNewDashboardNameFromTemplate();
+    else syncNewDesignNameFromTemplate();
   };
   $('ds-universe-vendor-comparison').onchange = () => {
     if (!definition || definition.scope !== 'multivendor') return;
@@ -2846,19 +2846,19 @@
     const defaultField = facetFields.find(item => identity(item) === identity(field));
     if (defaultField) definition.hidden_filters = definition.hidden_filters.filter(item => identity(item) !== identity(defaultField));
     else definition.custom_fields.push(field);
-    const dashboardIdAtStart = activeId;
+    const designIdAtStart = activeId;
     const requestedState = selectionStateFingerprint(definition);
     const requestId = ++facetOptionRequestSequence;
     facetOptionRequests.set(field, requestId);
     facets(); filterChanged();
     try {
       const payload = await api('/filter-options', 'POST', {definition, field});
-      if (activeId !== dashboardIdAtStart || selectionStateFingerprint(definition) !== requestedState || facetOptionRequests.get(field) !== requestId) return;
+      if (activeId !== designIdAtStart || selectionStateFingerprint(definition) !== requestedState || facetOptionRequests.get(field) !== requestId) return;
       facetOptions[field] = Array.isArray(payload.values) ? payload.values : [];
     } finally {
       if (facetOptionRequests.get(field) === requestId) {
         facetOptionRequests.delete(field);
-        if (activeId === dashboardIdAtStart) facets();
+        if (activeId === designIdAtStart) facets();
       }
     }
   });
@@ -2867,7 +2867,7 @@
   // Reload Saved Filters restores the saved Scope, dates and filters.
   bind('ds-last-saved-filters', () => {
     const current = filterStateFingerprint(definition);
-    copyDefinitionFields(definition, savedDashboardDefinition(), filterDefinitionFields);
+    copyDefinitionFields(definition, savedDesignDefinition(), filterDefinitionFields);
     const restored = filterStateFingerprint(definition);
     if (restored === current) return;
     sources(); facets(); filterChanged();
@@ -2875,8 +2875,8 @@
   bind('ds-viewer-refresh', async () => {
     if (!prepared?.token) return;
     const accepted = await window.showConfirmDialog(
-      'Reload the current Report Template, rebuild its slides and render every chart in this Dashboard again?',
-      {title: 'Refresh Dashboard?', confirmLabel: 'Refresh Dashboard', tone: 'warning'},
+      'Reload the current Report Template, rebuild its slides and render every chart in this Design again?',
+      {title: 'Refresh Design?', confirmLabel: 'Refresh Design', tone: 'warning'},
     );
     if (!accepted) return;
     let token = prepared.token;
@@ -2884,7 +2884,7 @@
     refreshButton.disabled = true;
     setViewEnabled(false);
     setPreparationState('preparing', 'rendering');
-    status('Rendering every Dashboard chart again…');
+    status('Rendering every Design chart again…');
     try {
       forgetPrepared();
       prepared = null;
@@ -2894,15 +2894,15 @@
       renderedChartPayloads.clear();
       await prepare();
       token = prepared?.token || '';
-      if (!token) throw new Error('The Dashboard preview could not be rebuilt. Reopen the Dashboard and try again.');
+      if (!token) throw new Error('The Design preview could not be rebuilt. Reopen the Design and try again.');
       await api(`/charts/${encodeURIComponent(token)}/refresh`, 'POST');
       if (prepared?.token !== token) return;
       chartPayloads.clear();
       renderedChartPayloads.clear();
-      setPreparationProgress(100, 'Dashboard charts are ready');
+      setPreparationProgress(100, 'Design charts are ready');
       renderSlide();
-      status('Every Dashboard chart was rendered again.');
-      void refreshDashboardStatuses();
+      status('Every Design chart was rendered again.');
+      void refreshDesignStatuses();
     } finally {
       if (prepared?.token === token) {
         refreshButton.disabled = false;
@@ -2912,18 +2912,18 @@
     }
   });
   bind('ds-preparing-refresh', async () => {
-    if (dashboardNeedsRefresh()) await prepare();
+    if (designNeedsRefresh()) await prepare();
   });
   bind('ds-viewer-export-ppt', async () => {
-    const item = dashboards[activeId];
-    if (item) await queueDashboardPptExport(activeId, item);
+    const item = designs[activeId];
+    if (item) await queueDesignPptExport(activeId, item);
   });
   bind('ds-generate-ppt', async () => {
-    const item = dashboards[activeId];
-    if (item) await queueDashboardPptExport(activeId, item);
+    const item = designs[activeId];
+    if (item) await queueDesignPptExport(activeId, item);
   });
-  bind('ds-view', openActiveDashboardViewer);
-  const chartPayloadUrl = chart => chart.payload_url || `/api/ppt-dashboards/chart/${prepared.token}/${chart.index}`;
+  bind('ds-view', openActiveDesignViewer);
+  const chartPayloadUrl = chart => chart.payload_url || `/api/ppt-designer/chart/${prepared.token}/${chart.index}`;
   const rememberRenderedChartPayload = (chart, payload) => {
     const url = chartPayloadUrl(chart);
     renderedChartPayloads.set(url, payload);
@@ -2931,18 +2931,18 @@
     while (renderedChartPayloads.size > 160) renderedChartPayloads.delete(renderedChartPayloads.keys().next().value);
     while (chartPayloads.size > 160) chartPayloads.delete(chartPayloads.keys().next().value);
   };
-  // Legend entries hidden in the viewer, per Dashboard: a Dashboard-wide state
+  // Legend entries hidden in the viewer, per Design: a Design-wide state
   // and per-chart states keyed by slide, chart title and occurrence (the keys
   // the PPT export uses too). They last for the browser session.
   const legendVisibilityStates = new Map();
   const legendCharts = new Map();
-  const legendVisibilityStorageKey = id => `drivetest-analyzer:ppt-dashboards:${config.workspace}:legend:${authenticatedSession}:${id}`;
+  const legendVisibilityStorageKey = id => `drivetest-analyzer:ppt-designer:${config.workspace}:legend:${authenticatedSession}:${id}`;
   const legendVisibility = (id = activeId) => {
     if (!legendVisibilityStates.has(id)) {
       let stored = {};
       try { stored = JSON.parse(sessionStorage.getItem(legendVisibilityStorageKey(id)) || '{}') || {}; } catch (_error) { stored = {}; }
       legendVisibilityStates.set(id, {
-        dashboard: new Map(Object.entries(stored.dashboard || {})),
+        design: new Map(Object.entries(stored.design || {})),
         charts: new Map(Object.entries(stored.charts || {}).map(([key, states]) => [key, new Map(Object.entries(states || {}))])),
       });
     }
@@ -2951,7 +2951,7 @@
   const legendVisibilityPayload = (id = activeId) => {
     const state = legendVisibility(id);
     return {
-      dashboard: Object.fromEntries(state.dashboard),
+      design: Object.fromEntries(state.design),
       charts: Object.fromEntries([...state.charts].filter(([, states]) => states.size).map(([key, states]) => [key, Object.fromEntries(states)])),
     };
   };
@@ -2969,24 +2969,24 @@
     return '';
   };
   // Hidden and explicitly shown labels of one chart: its own choices first,
-  // then the Dashboard-wide ones. The renderer hides every series, row or
+  // then the Design-wide ones. The renderer hides every series, row or
   // column with a hidden value at any aggregation level.
   const chartLegendLists = chart => {
     const state = legendVisibility(), states = state.charts.get(chartLegendKey(chart)) || new Map();
     const hidden = [], shown = [];
     states.forEach((value, label) => (value ? hidden : shown).push(label));
-    state.dashboard.forEach((value, label) => { if (!states.has(label)) (value ? hidden : shown).push(label); });
+    state.design.forEach((value, label) => { if (!states.has(label)) (value ? hidden : shown).push(label); });
     return {hidden, shown};
   };
   // The live viewer applies the session's legend state; PPT models carry theirs.
   const withLegendState = (chart, payload) => {
-    if (pptDashboardViewer || !payload) return payload;
+    if (pptDesignViewer || !payload) return payload;
     const {hidden, shown} = chartLegendLists(chart);
     return {...payload, hidden_legend_items: hidden, shown_legend_items: shown};
   };
   const applyChartLegendLists = (canvas, chart) => {
     const {hidden, shown} = chartLegendLists(chart);
-    globalThis.setDashboardChartHiddenLegendItems?.(canvas, hidden, shown);
+    globalThis.setCanvasChartHiddenLegendItems?.(canvas, hidden, shown);
   };
   const refreshLegendCanvases = () => {
     legendCharts.forEach((chart, canvas) => {
@@ -2998,7 +2998,7 @@
   // card) from its slide; empty when the card stays. Mirrors the renderer: a
   // value is hidden by itself or by any of its " · " levels.
   const dynamicCardHiddenBy = chart => {
-    if (pptDashboardViewer || !Array.isArray(chart?.dynamic_values) || !chart.dynamic_values.length) return [];
+    if (pptDesignViewer || !Array.isArray(chart?.dynamic_values) || !chart.dynamic_values.length) return [];
     const {hidden, shown} = chartLegendLists(chart);
     const hiddenLabels = new Set(hidden), shownLabels = new Set(shown);
     return [...new Set(chart.dynamic_values.flat().map(String).filter(value => !shownLabels.has(value))
@@ -3033,18 +3033,18 @@
     return `${slide.number}|${layout}|${cards.map(card => card.chart.index).join(',')}`;
   };
   // Hiding or showing a legend entry or an axis value applies to the whole
-  // Dashboard (every slide, the expanded viewer and its PPT export).
-  const setDashboardLegendStates = states => {
+  // Design (every slide, the expanded viewer and its PPT export).
+  const setDesignLegendStates = states => {
     const state = legendVisibility();
     // Hiding or showing a value also drops the explicit states of the labels
     // that contain it at some level ("O2 · 2026-Q1" for O2), which would
     // otherwise keep those series or columns as they were.
     const containsLevel = (candidate, label) => candidate !== label && candidate.split(' · ').includes(label);
     states.forEach((hidden, label) => {
-      [state.dashboard, ...state.charts.values()].forEach(labels => {
+      [state.design, ...state.charts.values()].forEach(labels => {
         [...labels.keys()].filter(candidate => containsLevel(candidate, label)).forEach(candidate => labels.delete(candidate));
       });
-      state.dashboard.set(label, hidden);
+      state.design.set(label, hidden);
       state.charts.forEach(chartStates => chartStates.delete(label));
     });
     saveLegendVisibility();
@@ -3069,11 +3069,11 @@
       return button;
     };
     const scope = axis ? 'value of this axis level' : 'legend entry';
-    action(menu, 'Keep only', `Show only ${target} in every slide of the Dashboard`, () => setDashboardLegendStates(new Map(labels.map(label => [label, label !== target]))));
-    if (detail.labelHidden) action(menu, 'Show', `Show ${target} in every slide of the Dashboard`, () => setDashboardLegendStates(new Map([[target, false]])));
-    else action(menu, 'Hide', `Hide ${target} in every slide of the Dashboard`, () => setDashboardLegendStates(new Map([[target, true]])));
-    action(menu, 'Hide All', `Hide every ${scope} in every slide of the Dashboard`, () => setDashboardLegendStates(new Map(labels.map(label => [label, true]))));
-    action(menu, 'Show All', `Show every ${scope} in every slide of the Dashboard`, () => setDashboardLegendStates(new Map(labels.map(label => [label, false]))));
+    action(menu, 'Keep only', `Show only ${target} in every slide of the Design`, () => setDesignLegendStates(new Map(labels.map(label => [label, label !== target]))));
+    if (detail.labelHidden) action(menu, 'Show', `Show ${target} in every slide of the Design`, () => setDesignLegendStates(new Map([[target, false]])));
+    else action(menu, 'Hide', `Hide ${target} in every slide of the Design`, () => setDesignLegendStates(new Map([[target, true]])));
+    action(menu, 'Hide All', `Hide every ${scope} in every slide of the Design`, () => setDesignLegendStates(new Map(labels.map(label => [label, true]))));
+    action(menu, 'Show All', `Show every ${scope} in every slide of the Design`, () => setDesignLegendStates(new Map(labels.map(label => [label, false]))));
     // Hidden values no longer appear on the axis: list them with a Show
     // submenu that only opens while the pointer moves over the value (or
     // with ArrowRight, Enter or a click from the keyboard or touch).
@@ -3086,7 +3086,7 @@
         parent.type = 'button'; parent.setAttribute('role', 'menuitem'); parent.setAttribute('aria-haspopup', 'menu'); parent.setAttribute('aria-expanded', 'false');
         const submenu = node('div', undefined, 'ds-legend-menu ds-legend-submenu');
         submenu.setAttribute('role', 'menu');
-        action(submenu, 'Show', `Show ${value} in every slide of the Dashboard`, () => setDashboardLegendStates(new Map([[value, false]])));
+        action(submenu, 'Show', `Show ${value} in every slide of the Design`, () => setDesignLegendStates(new Map([[value, false]])));
         const close = () => { entry.classList.remove('ds-legend-menu-open'); parent.setAttribute('aria-expanded', 'false'); };
         const open = () => {
           if (entry.classList.contains('ds-legend-menu-open')) return;
@@ -3121,16 +3121,16 @@
   document.addEventListener('keydown', event => { if (event.key === 'Escape' && legendMenu) { event.stopPropagation(); closeLegendMenu(); } }, true);
   window.addEventListener('resize', closeLegendMenu);
   function enableLegendActions(canvas, chart) {
-    if (pptDashboardViewer) { legendCharts.delete(canvas); canvas.dataset.legendMenu = 'false'; return; }
+    if (pptDesignViewer) { legendCharts.delete(canvas); canvas.dataset.legendMenu = 'false'; return; }
     legendCharts.set(canvas, chart);
     canvas.dataset.legendMenu = 'true';
     if (canvas.dataset.legendStateReady) return;
     canvas.dataset.legendStateReady = 'true';
-    canvas.addEventListener('dashboardchartlegend', event => {
+    canvas.addEventListener('designchartlegend', event => {
       if (!legendCharts.has(canvas)) return;
-      setDashboardLegendStates(new Map([[event.detail.label, Boolean(event.detail.labelHidden)]]));
+      setDesignLegendStates(new Map([[event.detail.label, Boolean(event.detail.labelHidden)]]));
     });
-    canvas.addEventListener('dashboardchartlegendmenu', event => {
+    canvas.addEventListener('designchartlegendmenu', event => {
       const target = legendCharts.get(canvas); if (target) openLegendMenu(canvas, target, event.detail);
     });
   }
@@ -3178,7 +3178,7 @@
     const request = ++backgroundChartPreloadRequest;
     void (async () => {
       // Chart models are calculated by the chart endpoint and persisted by the
-      // server.  Warm each available model only after the Dashboard dataset is
+      // server.  Warm each available model only after the Design dataset is
       // ready, one at a time during browser idle time, so opening the viewer
       // later can reuse both the server model and this in-memory payload.
       await yieldForSilentPreload();
@@ -3219,7 +3219,7 @@
   }
   function scheduleNearbyExpandedChartPreload(contextKey, chart) {
     const request = ++expandedChartPreloadRequest;
-    if (expandedChartMode !== 'dashboard') return;
+    if (expandedChartMode !== 'design') return;
     const charts = expandedCharts();
     const origin = charts.findIndex(candidate => candidate.index === chart?.index);
     if (origin < 0) return;
@@ -3228,7 +3228,7 @@
       for (const target of proximityIndexes(charts.length, origin)) {
         if (
           request !== expandedChartPreloadRequest
-          || expandedChartMode !== 'dashboard'
+          || expandedChartMode !== 'design'
           || prepared?.token !== contextKey
           || expandedChart?.index !== chart.index
           || $('ds-chart-expanded-overlay').hidden
@@ -3238,7 +3238,7 @@
       }
     })();
   }
-  function dashboardViewerBrand(className = 'ds-structural-brand') {
+  function designViewerBrand(className = 'ds-structural-brand') {
     const brand = node('div', undefined, className);
     const mark = document.createElement('img'); mark.src = config.brand_mark; mark.alt = `${config.app_name || 'DriveTest Analyzer'} logo`; mark.width = 72; mark.height = 72;
     brand.append(node('strong', config.app_name || 'DriveTest Analyzer'), mark);
@@ -3248,7 +3248,7 @@
   let coverGeography = {key: '', campaigns: [], regions: [], cities: [], loading: false};
   let coverCampaignsRetryTimer = 0;
   const coverGeographyKey = () => {
-    const current = appliedDashboardDefinition || definition || {};
+    const current = appliedDesignDefinition || definition || {};
     const filters = current.filters || {};
     const campaignKey = Object.keys(filters).find(item => identity(item) === identity('Campaign'));
     return JSON.stringify([current.datasets || {}, campaignKey ? filters[campaignKey] : null]);
@@ -3257,7 +3257,7 @@
     const key = coverGeographyKey();
     if (coverGeography.key === key || (coverGeography.loading && coverGeography.pending === key)) return;
     coverGeography = {...coverGeography, loading: true, pending: key};
-    api('/geography-options', 'POST', canonicalDashboardDefinition(appliedDashboardDefinition || definition))
+    api('/geography-options', 'POST', canonicalDesignDefinition(appliedDesignDefinition || definition))
       .then(payload => {
         if (coverGeographyKey() !== key) return;
         coverGeography = {key, campaigns: payload.campaigns || [], regions: payload.regions || [], cities: payload.cities || [], loading: false};
@@ -3277,12 +3277,12 @@
           }, 3000);
         }
       })
-      // Without the catalogue the cover falls back to the Dashboard's filter values.
+      // Without the catalogue the cover falls back to the Design's filter values.
       .catch(() => { coverGeography = {key, campaigns: [], regions: [], cities: [], loading: false}; });
   };
   // Matches the PPT cover: "All Regions", "Region: A" or "Regions: A, B".
   const coverGeographyLabel = (field, singular, plural, allLabel) => {
-    const filters = (appliedDashboardDefinition || definition || {}).filters || {};
+    const filters = (appliedDesignDefinition || definition || {}).filters || {};
     const key = Object.keys(filters).find(item => identity(item) === identity(field));
     const loaded = coverGeography.key === coverGeographyKey() ? coverGeography[field === 'Region' ? 'regions' : 'cities'] : [];
     const facetValues = (facetOptions?.[field] || []).map(String).filter(Boolean);
@@ -3306,10 +3306,10 @@
     return campaigns.length ? `${campaigns.length === 1 ? 'Campaign' : 'Campaigns'}: ${campaigns.join(', ')}` : '';
   };
   const viewerGeographyLabels = () => {
-    const snapshotCover = pptDashboardViewer?.cover;
-    if (!pptDashboardViewer) ensureCoverGeography();
+    const snapshotCover = pptDesignViewer?.cover;
+    if (!pptDesignViewer) ensureCoverGeography();
     const scope = snapshotCover?.scope
-      || ((pptDashboardViewer?.definition || appliedDashboardDefinition || definition || {}).scope === 'multivendor'
+      || ((pptDesignViewer?.definition || appliedDesignDefinition || definition || {}).scope === 'multivendor'
         ? 'Multivendor Comparison' : 'Operator Comparison');
     return [
       ['campaigns', snapshotCover ? snapshotCover.campaigns || '' : coverCampaignsLabel()],
@@ -3327,14 +3327,14 @@
         item.title = item.textContent;
         return item;
       }));
-    // The operators out of scope in the NR Mode of the Dashboard (the NR Modes of the Operator Maps), left out of it.
-    const outOfScope = definition ? globalThis.outOfScopePill?.(dashboardNrMode(definition), 'ds-viewer-out-of-scope') : null;
+    // The operators out of scope in the NR Mode of the Design (the NR Modes of the Operator Maps), left out of it.
+    const outOfScope = definition ? globalThis.outOfScopePill?.(designNrMode(definition), 'ds-viewer-out-of-scope') : null;
     if (outOfScope) context.append(outOfScope);
     context.hidden = !context.childElementCount;
   }
-  // The covers and transitions of a Dashboard, as in its PPT: the Vodafone-Three red with the Ericsson mark, the logos
+  // The covers and transitions of a Design, as in its PPT: the Vodafone-Three red with the Ericsson mark, the logos
   // at the top right, the title (two lines of room) and its subtitle; each transition after the cover with its counter
-  // (01, 02…). A Title Slide that opens the Dashboard shows its Campaigns, Scope, Regions and Cities in white.
+  // (01, 02…). A Title Slide that opens the Design shows its Campaigns, Scope, Regions and Cities in white.
   const svgNamespace = 'http://www.w3.org/2000/svg';
   function structuralWatermark() {
     const svg = document.createElementNS(svgNamespace, 'svg');
@@ -3367,24 +3367,24 @@
   };
   const isEndSlide = slide => String(slide?.structural_type || '').toLowerCase() === 'end slide';
   // The name of a slide in the viewer: an End Slide needs no title.
-  const slideName = (slide, fallback = 'Dashboard') => slide.title || (isEndSlide(slide) ? 'End Slide' : fallback);
+  const slideName = (slide, fallback = 'Design') => slide.title || (isEndSlide(slide) ? 'End Slide' : fallback);
   // The End Slide, as the closing slide of the PPT (Black logo end slide): the Ericsson mark and name centred on white.
-  function endDashboard(stage, slide) {
+  function endDesign(stage, slide) {
     const end = node('section', undefined, 'ds-structural-slide ds-structural-end');
-    end.setAttribute('aria-label', `End dashboard: ${slideName(slide)}`);
+    end.setAttribute('aria-label', `End design: ${slideName(slide)}`);
     const mark = structuralWatermark();
     mark.setAttribute('class', 'ds-structural-end-mark');
     end.append(mark, node('p', 'ERICSSON', 'ds-structural-end-name'));
     stage.append(end);
   }
-  function structuralDashboard(stage, slide) {
-    if (isEndSlide(slide)) { endDashboard(stage, slide); return; }
+  function structuralDesign(stage, slide) {
+    if (isEndSlide(slide)) { endDesign(stage, slide); return; }
     const kind = String(slide.structural_type || '').toLowerCase().includes('transition') ? 'transition' : 'title';
     const slides = prepared?.slides || [slide];
     const firstSlideNumber = Math.min(...slides.map(item => Number(item.number)));
     const isCover = kind === 'title' && Number(slide.number) === firstSlideNumber;
     const cover = node('section', undefined, `ds-structural-slide ds-structural-${kind} ${isCover ? 'ds-structural-cover' : 'ds-structural-numbered'}`);
-    cover.setAttribute('aria-label', `${kind === 'transition' ? 'Transition' : 'Title'} dashboard: ${slide.title || 'Untitled'}`);
+    cover.setAttribute('aria-label', `${kind === 'transition' ? 'Transition' : 'Title'} design: ${slide.title || 'Untitled'}`);
     const content = node('div', undefined, 'ds-structural-content');
     if (!isCover) {
       // The counter of the transition: its place among the title and transition slides after the cover.
@@ -3393,7 +3393,7 @@
       const index = transitions.findIndex(item => Number(item.number) === Number(slide.number));
       content.append(node('p', String(Math.max(1, index + 1)).padStart(2, '0'), 'ds-structural-number'));
     }
-    content.append(node('h3', slide.title || 'Dashboard', 'ds-structural-title'));
+    content.append(node('h3', slide.title || 'Design', 'ds-structural-title'));
     if (slide.subtitle) content.append(node('p', slide.subtitle, 'ds-structural-subtitle'));
     // Like the exported PPT, the cover shows the Campaigns right above the decorative line, then the Scope and the
     // selected Regions and Cities below it.
@@ -3425,11 +3425,11 @@
       level.value = `${Math.round(value * 100)}%`; level.textContent = level.value;
       zoomOut.disabled = value <= 1; reset.disabled = value <= 1; zoomIn.disabled = value >= 4;
     };
-    const apply = zoom => { if (globalThis.setDashboardChartZoom) sync(globalThis.setDashboardChartZoom(canvas, zoom)); };
-    zoomOut.onclick = event => { event.stopPropagation(); apply((globalThis.getDashboardChartZoom?.(canvas) || 1) - .25); };
-    zoomIn.onclick = event => { event.stopPropagation(); apply((globalThis.getDashboardChartZoom?.(canvas) || 1) + .25); };
+    const apply = zoom => { if (globalThis.setCanvasChartZoom) sync(globalThis.setCanvasChartZoom(canvas, zoom)); };
+    zoomOut.onclick = event => { event.stopPropagation(); apply((globalThis.getCanvasChartZoom?.(canvas) || 1) - .25); };
+    zoomIn.onclick = event => { event.stopPropagation(); apply((globalThis.getCanvasChartZoom?.(canvas) || 1) + .25); };
     reset.onclick = event => { event.stopPropagation(); apply(1); };
-    canvas.addEventListener('dashboardchartzoom', event => sync(event.detail?.zoom));
+    canvas.addEventListener('designchartzoom', event => sync(event.detail?.zoom));
     controls.reset = () => apply(1);
     sync(1); controls.append(zoomOut, level, zoomIn, reset); return controls;
   }
@@ -3449,7 +3449,7 @@
   };
   const bindChartPanControls = (canvas, buttons) => {
     const sync = () => {
-      const state = globalThis.getDashboardChartPanState?.(canvas) || {zoom: 1};
+      const state = globalThis.getCanvasChartPanState?.(canvas) || {zoom: 1};
       const zoomed = Number(state.zoom) > 1;
       chartPanDirections.forEach(direction => {
         const button = buttons[direction];
@@ -3460,17 +3460,17 @@
     chartPanDirections.forEach(direction => {
       buttons[direction].onclick = event => {
         event.stopPropagation();
-        globalThis.panDashboardChart?.(canvas, direction);
+        globalThis.panCanvasChart?.(canvas, direction);
         sync();
       };
     });
-    canvas.addEventListener('dashboardchartzoom', sync);
-    canvas.addEventListener('dashboardchartpan', sync);
+    canvas.addEventListener('designchartzoom', sync);
+    canvas.addEventListener('designchartpan', sync);
     sync();
     return sync;
   };
   const expandedOverlayHost = $('ds-chart-expanded-overlay');
-  expandedOverlayHost.classList.add('ds-overlay', 'ppt-dashboards');
+  expandedOverlayHost.classList.add('ds-overlay', 'ppt-designer');
   document.body.append(expandedOverlayHost);
   document.body.append($('ds-editor-overlay'));
   document.body.append($('ds-data-overlay'));
@@ -3516,7 +3516,7 @@
     }, 3000);
   });
   let expandedChart = null;
-  let expandedChartMode = 'dashboard';
+  let expandedChartMode = 'design';
   let expandedChartFilterControls = null;
   let expandedChartFilterToken = '';
   let expandedChartFilterIndex = -1;
@@ -3616,7 +3616,7 @@
     const request = ++expandedChartFilterLoadRequest;
     fields.textContent = 'Loading filters…';
     expandedChartFilterContextPath = expandedChartMode === 'ppt'
-      ? `/ppt-jobs/${encodeURIComponent(dashboardPptChartsJobId)}/charts/${chart.index}/filter-context`
+      ? `/ppt-jobs/${encodeURIComponent(designPptChartsJobId)}/charts/${chart.index}/filter-context`
       : `/chart/${encodeURIComponent(prepared.token)}/${chart.index}/filter-context`;
     const context = await api(expandedChartFilterContextPath);
     if (chart !== expandedChart || request !== expandedChartFilterLoadRequest) return;
@@ -3673,7 +3673,7 @@
     }
     resetChartDefinitionSurface();
     expandedChart = chart;
-    expandedChartMode = pptDashboardViewer ? 'ppt' : 'dashboard';
+    expandedChartMode = pptDesignViewer ? 'ppt' : 'design';
     liveChartFilterToggle = toggle;
     liveChartCanvas = canvas;
     liveChartMessage = message;
@@ -3723,7 +3723,7 @@
         expandedZoom.reset();
       }
       canvas.hidden = false;
-      globalThis.renderDashboardChart(canvas, withLegendState(chart, payload));
+      globalThis.renderCanvasChart(canvas, withLegendState(chart, payload));
       if (live) liveChartRender(payload);
       message.hidden = true;
       // Applying a temporary Chart Definition changes the current viewer
@@ -3778,8 +3778,8 @@
     }
   });
   async function openChartDataset(chart) {
-    const pptSnapshotChart = Boolean(pptDashboardViewer && chart.data_url);
-    dataToken = (expandedChartMode === 'ppt' || pptSnapshotChart) ? `ppt:${dashboardPptChartsJobId}` : prepared.token;
+    const pptSnapshotChart = Boolean(pptDesignViewer && chart.data_url);
+    dataToken = (expandedChartMode === 'ppt' || pptSnapshotChart) ? `ppt:${designPptChartsJobId}` : prepared.token;
     dataEndpoint = (expandedChartMode === 'ppt' || pptSnapshotChart)
       ? String(chart.data_url || '') : `/data/${prepared.token}/${chart.index}`;
     if (!dataEndpoint) return;
@@ -3796,7 +3796,7 @@
   }
   $('ds-chart-expanded-data').onclick = safe(async () => { if (expandedChart) await openChartDataset(expandedChart); });
   const expandedCharts = () => expandedChartMode === 'ppt'
-    ? dashboardPptCharts
+    ? designPptCharts
     : prepared?.slides.flatMap(slide => slide.charts)
       .filter(chart => chart.available && (chart.index === expandedChart?.index || !dynamicCardHiddenBy(chart).length)) || [];
   const expandedChartSlide = chart => expandedChartMode === 'ppt'
@@ -3827,21 +3827,21 @@
     const charts = expandedCharts();
     const current = charts.findIndex(chart => chart.index === expandedChart?.index);
     if (current < 0 || target < 0 || target >= charts.length || target === current) return;
-    if (mode === 'ppt') await showDashboardPptChart(target);
+    if (mode === 'ppt') await showDesignPptChart(target);
     else await openExpandedChart(charts[target]);
   };
   $('ds-chart-expanded-first').onclick = safe(async () => navigateExpandedChart(0));
   $('ds-chart-expanded-prev').onclick = safe(async () => navigateExpandedChart(expandedCharts().findIndex(chart => chart.index === expandedChart?.index) - 1));
   $('ds-chart-expanded-next').onclick = safe(async () => navigateExpandedChart(expandedCharts().findIndex(chart => chart.index === expandedChart?.index) + 1));
   $('ds-chart-expanded-last').onclick = safe(async () => navigateExpandedChart(expandedCharts().length - 1));
-  // Opened from the Dashboards table, the dialog keeps the table actions
-  // (Generate PPT, View Dashboard) and closing it closes the Dashboard filters.
+  // Opened from the Designs table, the dialog keeps the table actions
+  // (Generate PPT, View Design) and closing it closes the Design filters.
   const openFloatingFilters = ({fromLibrary = false} = {}) => { libraryFloatingFilters = fromLibrary; const panel = $('ds-filter-panel'); panel.hidden = false; panel.open = true; panel.querySelector('summary').tabIndex = -1; $('ds-filter-float').append(panel); setPreparationState($('ds-preparing').dataset.state || 'hidden'); $('ds-generate-ppt').hidden = !fromLibrary; $('ds-view').hidden = !fromLibrary; $('ds-filter-close-action').hidden = fromLibrary; overlay('ds-filter-overlay', true); };
   const closeFilters = async () => {
     const closedFromLibrary = libraryFloatingFilters;
     libraryFloatingFilters = false;
-    if (closedFromLibrary) { dashboardFiltersOpen = false; rememberFiltersOpen(false); }
-    const panel = $('ds-filter-panel'); panel.querySelector('summary').removeAttribute('tabindex'); $('ds-filter-home').append(panel); panel.hidden = !dashboardFiltersOpen; setPreparationState($('ds-preparing').dataset.state || 'hidden'); $('ds-generate-ppt').hidden = false; $('ds-view').hidden = false; $('ds-filter-close-action').hidden = true; overlay('ds-filter-overlay', false);
+    if (closedFromLibrary) { designFiltersOpen = false; rememberFiltersOpen(false); }
+    const panel = $('ds-filter-panel'); panel.querySelector('summary').removeAttribute('tabindex'); $('ds-filter-home').append(panel); panel.hidden = !designFiltersOpen; setPreparationState($('ds-preparing').dataset.state || 'hidden'); $('ds-generate-ppt').hidden = false; $('ds-view').hidden = false; $('ds-filter-close-action').hidden = true; overlay('ds-filter-overlay', false);
     if (closedFromLibrary) { document.dispatchEvent(new CustomEvent('page-panel-navigation:update')); library(); }
     return true;
   };
@@ -3898,9 +3898,9 @@
     const row = Number($('ds-editor-frame').dataset.editorFocusRow);
     if (Number.isInteger(row) && row >= 0) focusTemplateEditorRow(row);
   });
-  const rebuildDashboardAfterTemplateSave = async () => {
+  const rebuildDesignAfterTemplateSave = async () => {
     if (expandedChartMode === 'ppt') return;
-    const expandedChartIndex = !$('ds-chart-expanded-overlay').hidden && expandedChartMode === 'dashboard'
+    const expandedChartIndex = !$('ds-chart-expanded-overlay').hidden && expandedChartMode === 'design'
       ? expandedChart?.index
       : null;
     forgetPrepared();
@@ -3912,7 +3912,7 @@
     await prepare();
     if (Number.isInteger(expandedChartIndex) && !$('ds-chart-expanded-overlay').hidden) {
       const refreshedChart = expandedCharts().find(chart => chart.index === expandedChartIndex);
-      if (refreshedChart) await openExpandedChart(refreshedChart, null, 'dashboard', {preserveFocus: true});
+      if (refreshedChart) await openExpandedChart(refreshedChart, null, 'design', {preserveFocus: true});
     }
   };
   const closeTemplateEditor = async () => {
@@ -3926,7 +3926,7 @@
     // every reopening parse the template and rebuild the complete table.
     overlay('ds-editor-overlay', false); templateEditorSaved = false;
     if (templateChanged && expandedChartMode !== 'ppt') {
-      await rebuildDashboardAfterTemplateSave();
+      await rebuildDesignAfterTemplateSave();
     }
     return true;
   };
@@ -3954,17 +3954,17 @@
   };
   $('ds-chart-expanded-refresh').onclick = safe(async () => {
     if (expandedChartMode === 'ppt') {
-      const index = dashboardPptCharts.findIndex(chart => chart.index === expandedChart?.index);
+      const index = designPptCharts.findIndex(chart => chart.index === expandedChart?.index);
       if (index < 0) return;
       setExpandedRefreshBusy(true);
-      try { await showDashboardPptChart(index); } finally { setExpandedRefreshBusy(false); }
+      try { await showDesignPptChart(index); } finally { setExpandedRefreshBusy(false); }
       return;
     }
     if (!expandedChart || !prepared?.token) return;
     const chart = expandedChart;
     const token = prepared.token;
     const request = expandedChartRequest;
-    const url = `/api/ppt-dashboards/chart/${token}/${chart.index}`;
+    const url = `/api/ppt-designer/chart/${token}/${chart.index}`;
     setExpandedRefreshBusy(true);
     status(`Rendering ${chart.title || 'chart'} again…`);
     try {
@@ -3982,7 +3982,7 @@
   $('ds-chart-expanded-filters').onclick = openFloatingFilters;
   $('ds-chart-expanded-auto-fields')?.addEventListener('click', () => document.querySelector('.ds-viewer-panel [data-workspace-manage-calculated-dimensions]')?.click());
   $('ds-chart-expanded-edit')?.addEventListener('click', () => {
-    const job = expandedChartMode === 'ppt' ? selectedDashboardPptChartJob() : null;
+    const job = expandedChartMode === 'ppt' ? selectedDesignPptChartJob() : null;
     const sourceDefinition = job ? {template: job.template} : definition;
     openTemplateEditor(expandedChart?.focus_row, sourceDefinition);
   });
@@ -3997,7 +3997,7 @@
       expandedChartRequest += 1;
       expandedChartPreloadRequest += 1;
       expandedChart = null;
-      expandedChartMode = 'dashboard';
+      expandedChartMode = 'design';
       overlay.hidden = true;
       $('ds-chart-expanded-canvas').hidden = true;
       focusReturn.get('ds-chart-expanded-overlay')?.focus();
@@ -4010,11 +4010,11 @@
   $('ds-chart-expanded-overlay').addEventListener('click', event => {
     if (event.target === event.currentTarget) expandedChartOverlay(false);
   });
-  async function openExpandedChart(chart, renderedPayload = null, mode = 'dashboard', {preserveFocus = false} = {}) {
+  async function openExpandedChart(chart, renderedPayload = null, mode = 'design', {preserveFocus = false} = {}) {
     stopPresentation();
     resetChartDefinitionSurface();
     const request = ++expandedChartRequest;
-    const contextKey = mode === 'ppt' ? dashboardPptChartsJobId : prepared?.token;
+    const contextKey = mode === 'ppt' ? designPptChartsJobId : prepared?.token;
     const canvas = $('ds-chart-expanded-canvas');
     const message = $('ds-chart-expanded-message');
     expandedChart = chart;
@@ -4027,7 +4027,7 @@
     $('ds-chart-expanded-auto-fields') && ($('ds-chart-expanded-auto-fields').disabled = false);
     if ($('ds-chart-expanded-edit')) $('ds-chart-expanded-edit').disabled = !Number.isInteger(chart.focus_row);
     $('ds-chart-expanded-data').title = historical && !chart.data_url ? 'Filtered dataset is unavailable for this earlier PowerPoint Job' : 'View dataset';
-    $('ds-chart-expanded-filters').title = 'Dashboard Filters';
+    $('ds-chart-expanded-filters').title = 'Design Filters';
     expandedZoom.reset(); expandedZoom.hidden = true;
     const initialTitle = renderedPayload?.title || chart.title || 'Expanded chart';
     setExpandedChartHeader(chart, initialTitle);
@@ -4043,7 +4043,7 @@
       if (request === expandedChartRequest && !$('ds-chart-expanded-overlay').hidden) message.textContent = error.message || `Unable to load ${chart.title || 'chart'}.`;
       throw error;
     }
-    const currentContextKey = () => expandedChartMode === 'ppt' ? dashboardPptChartsJobId : prepared?.token;
+    const currentContextKey = () => expandedChartMode === 'ppt' ? designPptChartsJobId : prepared?.token;
     if (request !== expandedChartRequest || contextKey !== currentContextKey() || $('ds-chart-expanded-overlay').hidden) return;
     const title = payload?.title || chart.title || 'Expanded chart';
     setExpandedChartHeader(chart, title);
@@ -4055,10 +4055,10 @@
       if (mode === 'ppt') {
         legendCharts.delete(canvas); canvas.dataset.legendMenu = 'false';
         // The canvas is reused: never carry another chart's hidden entries.
-        globalThis.renderDashboardChart(canvas, {...payload, hidden_legend_items: payload?.hidden_legend_items || []});
+        globalThis.renderCanvasChart(canvas, {...payload, hidden_legend_items: payload?.hidden_legend_items || []});
       } else {
         enableLegendActions(canvas, chart);
-        globalThis.renderDashboardChart(canvas, withLegendState(chart, payload));
+        globalThis.renderCanvasChart(canvas, withLegendState(chart, payload));
       }
       expandedZoom.hidden = false;
       message.hidden = true;
@@ -4076,7 +4076,7 @@
     viewer.slide_comments ||= {};
     const key = currentSlideCommentKey();
     const legacyKey = currentSlideLegacyCommentKey();
-    if (!pptDashboardViewer && !viewer.slide_comments[key] && key !== legacyKey && viewer.slide_comments[legacyKey]) {
+    if (!pptDesignViewer && !viewer.slide_comments[key] && key !== legacyKey && viewer.slide_comments[legacyKey]) {
       viewer.slide_comments[key] = viewer.slide_comments[legacyKey];
       delete viewer.slide_comments[legacyKey];
     }
@@ -4087,7 +4087,7 @@
   function renderCommentSuggestions() {
     const box = $('ds-comment-suggestions'), list = $('ds-comments-list');
     if (!box || !list) return;
-    const active = Boolean(commentSuggestions && !pptDashboardViewer && commentSuggestions.key === currentSlideCommentKey());
+    const active = Boolean(commentSuggestions && !pptDesignViewer && commentSuggestions.key === currentSlideCommentKey());
     box.hidden = !active;
     list.hidden = active;
     box.replaceChildren();
@@ -4121,7 +4121,7 @@
   }
   const fitSuggestion = editor => { editor.style.height = 'auto'; editor.style.height = `${editor.scrollHeight}px`; };
   const addSuggestedComments = safe(async () => {
-    if (!commentSuggestions || !definition || pptDashboardViewer) return;
+    if (!commentSuggestions || !definition || pptDesignViewer) return;
     const chosen = [...$('ds-comment-suggestions').querySelectorAll('.ds-comment-suggestion')]
       .filter(row => row.querySelector('input[type="checkbox"]').checked)
       .map(row => row.querySelector('textarea').value.replace(/\s+/g, ' ').trim()).filter(Boolean);
@@ -4153,14 +4153,14 @@
     // Generated comments keep a tag, and say when they were written for another selection (campaigns, filters or CDRs).
     const meta = (viewer.slide_comment_meta || {})[currentSlideCommentKey()] || {};
     const generated = new Set(meta.generated || []);
-    if (generated.size && meta.selection && prepared?.selection_key && meta.selection !== prepared.selection_key && !pptDashboardViewer) {
+    if (generated.size && meta.selection && prepared?.selection_key && meta.selection !== prepared.selection_key && !pptDesignViewer) {
       list.append(node('li', 'The generated comments of this slide were written for another selection (campaigns, filters or CDRs): generate them again to bring them up to date.', 'ds-comments-stale'));
     }
     comments.forEach((comment, index) => {
       const item = node('li', undefined, `ds-comment${generated.has(comment) ? ' is-generated' : ''}`);
       if (generated.has(comment)) item.title = `Generated${meta.generated_at ? ` on ${String(meta.generated_at).slice(0, 10)}` : ''}${meta.engine && meta.engine !== 'rules' ? ` with ${meta.engine}` : ''}`;
       const editor = document.createElement('input'); editor.type = 'text'; editor.value = comment; editor.maxLength = 500; editor.setAttribute('aria-label', `Comment ${index + 1}`);
-      editor.disabled = Boolean(pptDashboardViewer);
+      editor.disabled = Boolean(pptDesignViewer);
       let savedComment = comment;
       const saveEdit = safe(async () => {
         const value = editor.value.trim();
@@ -4173,13 +4173,13 @@
       editor.addEventListener('change', saveEdit);
       editor.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); editor.blur(); } });
       const remove = node('button', '×', 'ds-comment-remove'); remove.type = 'button'; remove.title = 'Remove comment'; remove.setAttribute('aria-label', 'Remove comment');
-      remove.disabled = Boolean(pptDashboardViewer);
+      remove.disabled = Boolean(pptDesignViewer);
       remove.onclick = safe(async () => { viewer.slide_comments[currentSlideCommentKey()].splice(index, 1); await persistComments(); renderComments(); });
       item.append(editor, remove); list.append(item);
     });
   }
   async function persistComments(generated = {}) {
-    if (pptDashboardViewer || !activeId || !definition) return;
+    if (pptDesignViewer || !activeId || !definition) return;
     const id = activeId;
     $('ds-comments-status').textContent = 'Saving…';
     const payload = await api(`/${id}/comments`, 'PATCH', {slide_comments: definition.slide_comments || {}, ...generated});
@@ -4187,7 +4187,7 @@
     definition.slide_comments = payload.slide_comments;
     definition.slide_comment_meta = payload.slide_comment_meta || {};
     updateSavedDefinition({slide_comments: payload.slide_comments, slide_comment_meta: definition.slide_comment_meta});
-    dashboards[id] = {...dashboards[id], slide_comments: structuredClone(payload.slide_comments), slide_comment_meta: structuredClone(definition.slide_comment_meta)};
+    designs[id] = {...designs[id], slide_comments: structuredClone(payload.slide_comments), slide_comment_meta: structuredClone(definition.slide_comment_meta)};
     $('ds-comments-status').textContent = 'Saved';
   }
   function syncPresentationControls() {
@@ -4261,13 +4261,13 @@
     lastRandomPresentationEffect = choices[Math.floor(Math.random() * choices.length)] || 'fade';
     return lastRandomPresentationEffect;
   }
-  function resetViewerForDashboard() {
-    // A new Dashboard can be opened while its server snapshot is still being
-    // restored. Never leave the previous Dashboard's title, slide or comments
+  function resetViewerForDesign() {
+    // A new Design can be opened while its server snapshot is still being
+    // restored. Never leave the previous Design's title, slide or comments
     // visible during that short wait.
     const viewer = viewerDefinition();
-    $('ds-position').textContent = viewer ? `${nrModeLabel(dashboardNrMode(viewer))} · ${viewer.name} · Loading slides` : '';
-    $('ds-title').textContent = 'Loading Dashboard…';
+    $('ds-position').textContent = viewer ? `${nrModeLabel(designNrMode(viewer))} · ${viewer.name} · Loading slides` : '';
+    $('ds-title').textContent = 'Loading Design…';
     $('ds-subtitle').textContent = '';
     $('ds-viewer-context').replaceChildren();
     $('ds-viewer-context').hidden = true;
@@ -4277,7 +4277,7 @@
     $('ds-first').disabled = $('ds-prev').disabled = $('ds-next').disabled = $('ds-last').disabled = true;
     const stage = $('ds-charts');
     stage.classList.remove('ds-positioned', 'ds-structural-stage', 'ds-slide-transition');
-    stage.replaceChildren(node('div', 'Loading available Dashboard charts…', 'ds-empty'));
+    stage.replaceChildren(node('div', 'Loading available Design charts…', 'ds-empty'));
     $('ds-comments-list').replaceChildren();
     commentSuggestions = null;
     renderCommentSuggestions();
@@ -4285,9 +4285,9 @@
     $('ds-slide-thumbnails').replaceChildren();
     thumbnailsToken = null;
   }
-  // The title of the slide in the viewer as on the content slides of the Dashboard PPTs (theme_titles.split_focus): what
+  // The title of the slide in the viewer as on the content slides of the Design PPTs (theme_titles.split_focus): what
   // follows the first " — ", " · " or ": " (or the start of " per ") tells it apart from the next ones and takes the
-  // focus style of the colour theme (dashboard_viewer_tokens); the page of the title stays with it.
+  // focus style of the colour theme (design_viewer_tokens); the page of the title stays with it.
   function setSlideTitle(text) {
     const value = String(text || '');
     const page = value.match(/(\s*·\s*\d+\s*\/\s*\d+|\s*\(\d+ of \d+\))+\s*$/);
@@ -4313,7 +4313,7 @@
       $('ds-title').append(focusPart);
     }
   }
-  // The slides of the Dashboard at the left of the viewer, as in the presentations of the Help: each slide in small, its
+  // The slides of the Design at the left of the viewer, as in the presentations of the Help: each slide in small, its
   // charts drawn once calculated and only when in sight (the covers and transitions as in the viewer), with its number and
   // title; the slide shown is marked and choosing one shows it.
   let thumbnailsToken = null;
@@ -4330,7 +4330,7 @@
   function drawThumbnailFrame(frame, slide) {
     const token = prepared.token;
     frame.replaceChildren();
-    if (!slide.charts.length) { structuralDashboard(frame, slide); return; }
+    if (!slide.charts.length) { structuralDesign(frame, slide); return; }
     const {cards, layout} = slideCards(slide);
     const gridSize = /^Title \+ (\d+) rows \+ (\d+) columns/i.exec(layout);
     const compactTitles = Boolean(gridSize && (Number(gridSize[1]) >= 3 || Number(gridSize[2]) >= 4));
@@ -4349,7 +4349,7 @@
         canvas.setAttribute('aria-hidden', 'true');
         box.append(canvas);
         requestAnimationFrame(() => {
-          try { globalThis.renderDashboardChart(canvas, {...withLegendState(chart, payload), ...(compactTitles ? {hide_title: true} : {})}); }
+          try { globalThis.renderCanvasChart(canvas, {...withLegendState(chart, payload), ...(compactTitles ? {hide_title: true} : {})}); }
           catch (_error) { canvas.remove(); }
         });
       }).catch(() => undefined);
@@ -4358,7 +4358,7 @@
   function renderSlideThumbnails() {
     const nav = $('ds-slide-thumbnails');
     if (!nav) return;
-    // In Design the Designer lists the slides of the Design itself (dashboard_designer.js).
+    // In slide set the Designer lists the slides of the slide set itself (designer.js).
     if ($('ds-viewer').classList.contains('ds-designing')) { thumbnailsToken = null; return; }
     if (!prepared?.slides.length) { nav.replaceChildren(); thumbnailsToken = null; return; }
     if (thumbnailsToken !== prepared.token || nav.childElementCount !== prepared.slides.length) {
@@ -4391,7 +4391,7 @@
       else if (box.bottom > view.bottom) nav.scrollTop += box.bottom - view.bottom;
     }
   }
-  // The content of a text box (Markdown, as the tickets and NQ write it: rich_text.js) or of a picture of a Design.
+  // The content of a text box (Markdown, as the tickets and NQ write it: rich_text.js) or of a picture of a slide set.
   function slideElementContent(chart) {
     const content = chart.content || {};
     if (chart.kind === 'image') {
@@ -4421,10 +4421,10 @@
     const preloadToken = prepared.token;
     const preloadOrigin = slideIndex;
     const visibleLoads = [];
-    setSlideTitle(slideName(slide, `Dashboard ${slide.number}`)); $('ds-subtitle').textContent = slide.subtitle;
+    setSlideTitle(slideName(slide, `Design ${slide.number}`)); $('ds-subtitle').textContent = slide.subtitle;
     renderViewerContext();
     const viewer = viewerDefinition();
-    $('ds-position').textContent = `${nrModeLabel(dashboardNrMode(viewer))} · ${viewer?.name || 'Dashboard'} · Slide ${slideIndex+1} / ${prepared.slides.length}`;
+    $('ds-position').textContent = `${nrModeLabel(designNrMode(viewer))} · ${viewer?.name || 'Design'} · Slide ${slideIndex+1} / ${prepared.slides.length}`;
     $('ds-slide').replaceChildren(...prepared.slides.map((item, index) => {
       const title = slideName(item);
       const subtitle = String(item.subtitle || '').trim();
@@ -4443,13 +4443,13 @@
     const {cards, layout: cardLayout, hiddenBy} = slideCards(slide);
     renderedSlideCards = slideCardsSignature(slide);
     const stage = $('ds-charts'); stage.classList.remove('ds-slide-transition'); stage.replaceChildren(); stage.classList.toggle('ds-positioned',cards.length > 0 && cards.every(card=>card.position)); stage.classList.toggle('ds-structural-stage', !slide.charts.length);
-    if (!slide.charts.length) structuralDashboard(stage, slide);
+    if (!slide.charts.length) structuralDesign(stage, slide);
     else if (!cards.length) {
       // Every dynamic card is hidden: the PPT export leaves this slide out.
       const notice = node('div', undefined, 'ds-hidden-slide-notice');
       notice.append(node('p', `Every chart on this slide is hidden (${hiddenBy.join(', ')}). The PPT export leaves this slide out.`));
       const show = node('button', 'Show hidden values', 'btn ds-hidden-slide-show'); show.type = 'button';
-      show.onclick = () => setDashboardLegendStates(new Map(hiddenBy.map(label => [label, false])));
+      show.onclick = () => setDesignLegendStates(new Map(hiddenBy.map(label => [label, false])));
       notice.append(show); stage.append(notice);
     }
     // Grids with 3+ rows or 4+ columns (manifests prepared earlier carry only the layout name).
@@ -4458,7 +4458,7 @@
     for (const {chart, position} of cards) {
       const card = node('article',undefined,'ds-chart'); card.setAttribute('aria-label',chart.title); card.tabIndex = 0;
       card.dataset.chartIndex = String(chart.index); card.dataset.elementId = chart.element || '';
-      const brand = dashboardViewerBrand('ds-chart-brand'); card.append(brand);
+      const brand = designViewerBrand('ds-chart-brand'); card.append(brand);
       if (compactTitles) {
         // Small grid cells: a readable title above a title-less chart.
         card.classList.add('ds-chart-compact');
@@ -4477,7 +4477,7 @@
         card.style.setProperty('--ds-chart-width', `${width}%`);
         card.style.setProperty('--ds-chart-height', `${height}%`);
       }
-      // A text box or a picture of a Dashboard Design: its content, no chart.
+      // A text box or a picture of a Design slide set: its content, no chart.
       if (chart.kind === 'text' || chart.kind === 'image') {
         card.classList.add('ds-element-card', `ds-element-${chart.kind}`);
         card.replaceChildren(slideElementContent(chart));
@@ -4488,7 +4488,7 @@
       // NSA & SA: a field only the CDRs of one NR Mode have leaves the chart without samples of the other one.
       if (chart.nr_mode_note) { const note = node('div', chart.nr_mode_note, 'ds-chart-nr-mode-note'); note.title = chart.nr_mode_note; card.append(note); }
       const canvas = document.createElement('canvas'); canvas.setAttribute('role', 'img'); canvas.setAttribute('aria-label', chart.title); canvas.hidden = true; card.append(canvas);
-      canvas.addEventListener('dashboardchartlayout', event => {
+      canvas.addEventListener('designchartlayout', event => {
         const top = Number(event.detail?.titleTop);
         const height = Number(event.detail?.titleHeight);
         if (Number.isFinite(top) && Number.isFinite(height)) brand.style.top = `${top + height / 2}px`;
@@ -4510,7 +4510,7 @@
           requestAnimationFrame(() => {
             enableLegendActions(canvas, chart);
             const legendPayload = withLegendState(chart, payload);
-            try { globalThis.renderDashboardChart(canvas, compactTitles ? {...legendPayload, hide_title: true} : legendPayload); zoom.hidden = false; message.remove(); }
+            try { globalThis.renderCanvasChart(canvas, compactTitles ? {...legendPayload, hide_title: true} : legendPayload); zoom.hidden = false; message.remove(); }
             catch (error) { canvas.hidden = true; message.textContent = error.message || `Unable to render ${chart.title || 'chart'}.`; }
           });
         }).catch(error => {
@@ -4519,8 +4519,8 @@
       } else message.textContent = chart.unavailable || (chart.source
         ? `No CDR ${chart.source[0].toUpperCase()}${chart.source.slice(1)} dataset has been selected for this chart.`
         : 'No compatible CDR dataset has been selected for this chart.');
-      const data = node('button','', 'ds-chart-data'); data.type = 'button'; data.title = 'View dataset'; data.setAttribute('aria-label', 'View dataset'); data.disabled = !chart.available || (Boolean(pptDashboardViewer) && !chart.data_url); data.onclick = safe(async () => { await openChartDataset(chart); });
-      const expand = node('button', '', 'ds-chart-expand'); expand.type = 'button'; expand.title = 'Expand chart'; expand.setAttribute('aria-label', 'Expand chart'); expand.disabled = !chart.available; expand.onclick = safe(async event => { event.stopPropagation(); await openExpandedChart(chart, renderedPayload, pptDashboardViewer ? 'ppt' : 'dashboard'); });
+      const data = node('button','', 'ds-chart-data'); data.type = 'button'; data.title = 'View dataset'; data.setAttribute('aria-label', 'View dataset'); data.disabled = !chart.available || (Boolean(pptDesignViewer) && !chart.data_url); data.onclick = safe(async () => { await openChartDataset(chart); });
+      const expand = node('button', '', 'ds-chart-expand'); expand.type = 'button'; expand.title = 'Expand chart'; expand.setAttribute('aria-label', 'Expand chart'); expand.disabled = !chart.available; expand.onclick = safe(async event => { event.stopPropagation(); await openExpandedChart(chart, renderedPayload, pptDesignViewer ? 'ppt' : 'design'); });
       const definitionToggle = node('button', 'Chart Definition', 'ds-chart-definition-toggle');
       definitionToggle.type = 'button';
       definitionToggle.title = 'Chart Definition';
@@ -4537,7 +4537,7 @@
       });
       card.ondblclick = safe(async event => {
         if (!chart.available || event.target.closest('button, a, input, select, label')) return;
-        await openExpandedChart(chart, renderedPayload, pptDashboardViewer ? 'ppt' : 'dashboard');
+        await openExpandedChart(chart, renderedPayload, pptDesignViewer ? 'ppt' : 'design');
       });
       const controls = node('div', undefined, 'ds-chart-controls'); controls.append(data, expand, zoom); card.append(controls, definitionToggle);
       let hideTimer;
@@ -4575,8 +4575,8 @@
     event.preventDefault();
     if (event.ctrlKey || event.metaKey) {
       const canvas = event.target.closest?.('.ds-chart')?.querySelector('canvas:not([hidden])');
-      if (canvas && globalThis.zoomDashboardChartAt) {
-        globalThis.zoomDashboardChartAt(canvas, (globalThis.getDashboardChartZoom?.(canvas) || 1) * Math.exp(-event.deltaY * 0.0015), event.clientX, event.clientY);
+      if (canvas && globalThis.zoomCanvasChartAt) {
+        globalThis.zoomCanvasChartAt(canvas, (globalThis.getCanvasChartZoom?.(canvas) || 1) * Math.exp(-event.deltaY * 0.0015), event.clientX, event.clientY);
       }
       return;
     }
@@ -4602,7 +4602,7 @@
       if (event.pointerType !== 'touch' || !event.isPrimary || blocked()) return;
       if (event.target.closest('button,a,input,select,textarea,summary,[contenteditable="true"],.multiselect-menu,.ds-chart-filter-panel')) return;
       const canvas = event.target.closest('canvas');
-      if (canvas && Number(globalThis.getDashboardChartZoom?.(canvas) || 1) > 1) return;
+      if (canvas && Number(globalThis.getCanvasChartZoom?.(canvas) || 1) > 1) return;
       gesture = {pointerId: event.pointerId, x: event.clientX, y: event.clientY, time: performance.now()};
     });
     host.addEventListener('pointerup', event => {
@@ -4637,7 +4637,7 @@
     next: () => void safe(() => navigateExpandedChart(expandedCharts().findIndex(chart => chart.index === expandedChart?.index) + 1))(),
   });
   $('ds-slide').onchange = () => { stopPresentation(); slideIndex = Number($('ds-slide').value); renderSlide(); };
-  bind('ds-comment-add', async () => { const input = $('ds-comment-input'), comment = input.value.trim(); if (!comment || !definition || pptDashboardViewer) return; const key = currentSlideCommentKey(); definition.slide_comments ||= {}; const comments = definition.slide_comments[key] ||= []; if (comments.length >= 50) throw new Error('A slide can have at most 50 comments.'); comments.push(comment); input.value = ''; await persistComments(); renderComments(); });
+  bind('ds-comment-add', async () => { const input = $('ds-comment-input'), comment = input.value.trim(); if (!comment || !definition || pptDesignViewer) return; const key = currentSlideCommentKey(); definition.slide_comments ||= {}; const comments = definition.slide_comments[key] ||= []; if (comments.length >= 50) throw new Error('A slide can have at most 50 comments.'); comments.push(comment); input.value = ''; await persistComments(); renderComments(); });
   $('ds-comment-input').addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); $('ds-comment-add').click(); } });
   // The writers Super Admin enabled (Rules and Kiro CLI or Claude): the menu of the comment tools offers the choice only
   // when there is one to make, and the tooltips of the generate buttons name the writer.
@@ -4692,14 +4692,14 @@
   // The charts a slide shows (a dynamic grid can hide cards), each with the legend items hidden and shown on it.
   const commentCharts = slide => (slide.charts || []).filter(chart => chart.available && !dynamicCardHiddenBy(chart).length)
     .map(chart => ({index: chart.index, ...chartLegendLists(chart)}));
-  // Comments written on several slides (Generate all slides, Import Kiro comments): the Dashboard takes them and the
+  // Comments written on several slides (Generate all slides, Import Kiro comments): the Design takes them and the
   // user reads what was written.
   const applyWrittenComments = (id, result, total, title) => {
     if (activeId === id && definition) {
       definition.slide_comments = result.slide_comments || {};
       definition.slide_comment_meta = result.slide_comment_meta || {};
       updateSavedDefinition({slide_comments: definition.slide_comments, slide_comment_meta: definition.slide_comment_meta});
-      dashboards[id] = {...dashboards[id], slide_comments: structuredClone(definition.slide_comments), slide_comment_meta: structuredClone(definition.slide_comment_meta)};
+      designs[id] = {...designs[id], slide_comments: structuredClone(definition.slide_comments), slide_comment_meta: structuredClone(definition.slide_comment_meta)};
       commentSuggestions = null;
       renderComments();
     }
@@ -4724,28 +4724,28 @@
   };
   // The Kiro Brief (when Super Admin enables it): the facts of every slide for Kiro IDE, and its comments imported back.
   function syncKiroBriefControls() {
-    const enabled = Boolean(commentEngines.kiro_brief) && !pptDashboardViewer;
+    const enabled = Boolean(commentEngines.kiro_brief) && !pptDesignViewer;
     $('ds-comment-kiro-actions').hidden = !enabled;
     $('ds-comment-menu-toggle').hidden = !enabled && commentEngines.engines.length < 2;
   }
   bind('ds-comment-kiro-brief', async () => {
-    if (!definition || pptDashboardViewer || !activeId || !prepared?.token) return;
+    if (!definition || pptDesignViewer || !activeId || !prepared?.token) return;
     const id = activeId, button = $('ds-comment-kiro-brief');
     closeCommentMenu();
     const slides = (prepared.slides || []).filter(slide => !slide.structural_type).map(slide => ({number: slide.number, charts: commentCharts(slide)}));
     button.disabled = true;
     try {
       const job = await followCommentJob(await api(`/${id}/comments/kiro-brief`, 'POST', {token: prepared.token, slides}), 'Preparing the Kiro brief');
-      window.location.href = `/api/ppt-dashboards/comment-briefs/${job.result.brief_id}.zip`;
+      window.location.href = `/api/ppt-designer/comment-briefs/${job.result.brief_id}.zip`;
     } finally {
-      button.disabled = Boolean(pptDashboardViewer);
+      button.disabled = Boolean(pptDesignViewer);
     }
   });
   bind('ds-comment-kiro-import', () => { closeCommentMenu(); $('ds-comment-kiro-files').click(); });
   $('ds-comment-kiro-files').addEventListener('change', safe(async event => {
     const input = event.target, files = [...input.files];
     input.value = '';
-    if (!files.length || !definition || pptDashboardViewer || !activeId) return;
+    if (!files.length || !definition || pptDesignViewer || !activeId) return;
     const mode = await askCommentMode('Import Kiro comments', 'Write the comments Kiro wrote from the Kiro brief (only those whose figures are in the charts). Which comments should they replace?');
     if (!mode) return;
     const id = activeId, body = new FormData();
@@ -4753,7 +4753,7 @@
     body.append('mode', mode);
     $('ds-comments-status').textContent = 'Importing Kiro comments…';
     try {
-      const response = await fetch(`/api/ppt-dashboards/${encodeURIComponent(id)}/comments/kiro-import`, {method: 'POST', body, credentials: 'same-origin'});
+      const response = await fetch(`/api/ppt-designer/${encodeURIComponent(id)}/comments/kiro-import`, {method: 'POST', body, credentials: 'same-origin'});
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.detail || `Import failed (${response.status}).`);
       applyWrittenComments(id, result, result.slides || 0, 'Import Kiro comments');
@@ -4764,9 +4764,9 @@
   // Writes the comments of every slide in a background job, on the slides without comments, in place of the generated
   // ones or in place of every comment, and follows its progress.
   bind('ds-comment-generate-all', async () => {
-    if (!definition || pptDashboardViewer || !activeId || !prepared?.token) return;
+    if (!definition || pptDesignViewer || !activeId || !prepared?.token) return;
     const mode = await askCommentMode('Generate comments for all slides',
-      'Write the comments of every slide of this Dashboard from the figures of its charts. Which comments should they replace?');
+      'Write the comments of every slide of this Design from the figures of its charts. Which comments should they replace?');
     if (!mode) return;
     const slides = (prepared.slides || []).filter(slide => !slide.structural_type).map(slide => ({number: slide.number, charts: commentCharts(slide)}));
     const id = activeId, button = $('ds-comment-generate-all');
@@ -4776,7 +4776,7 @@
         'Generating comments');
       applyWrittenComments(id, job.result || {}, slides.length, 'Generate comments for all slides');
     } finally {
-      button.disabled = Boolean(pptDashboardViewer);
+      button.disabled = Boolean(pptDesignViewer);
       $('ds-comments-status').textContent = '';
     }
   });
@@ -4784,7 +4784,7 @@
   // until the suggestions are added.
   bind('ds-comment-generate', async () => {
     const slide = prepared?.slides?.[slideIndex];
-    if (!definition || pptDashboardViewer || !activeId || !prepared?.token || !slide) return;
+    if (!definition || pptDesignViewer || !activeId || !prepared?.token || !slide) return;
     const charts = commentCharts(slide);
     if (!charts.length) throw new Error('This slide has no charts to write comments from.');
     const key = currentSlideCommentKey(), id = activeId, button = $('ds-comment-generate'), state = $('ds-comments-status');
@@ -4798,7 +4798,7 @@
       if (panel) panel.open = true;
       renderComments();
     } finally {
-      button.disabled = Boolean(pptDashboardViewer);
+      button.disabled = Boolean(pptDesignViewer);
       if (state.textContent === 'Generating comments…') state.textContent = '';
     }
   });
@@ -4829,7 +4829,7 @@
     });
   };
   closeOnOutsidePointer('ds-filter-overlay', closeFilters);
-  closeOnOutsidePointer('ds-ppt-filter-overlay', closeDashboardPptFilters);
+  closeOnOutsidePointer('ds-ppt-filter-overlay', closeDesignPptFilters);
   closeOnOutsidePointer('ds-editor-overlay', closeTemplateEditor);
   closeOnOutsidePointer('ds-data-overlay', () => overlay('ds-data-overlay', false));
   closeOnOutsidePointer('ds-presentation-overlay', () => overlay('ds-presentation-overlay', false));
@@ -4839,31 +4839,31 @@
     expandedChartPreloadRequest += 1;
     if (!$('ds-chart-expanded-overlay').hidden) expandedChartOverlay(false);
     if (!$('ds-filter-overlay').hidden && !await closeFilters()) return;
-    const closingPptSnapshot = Boolean(pptDashboardViewer);
+    const closingPptSnapshot = Boolean(pptDesignViewer);
     overlay('ds-viewer', false);
-    pptDashboardViewer = null;
+    pptDesignViewer = null;
     if (closingPptSnapshot) { prepared = null; chartPayloads.clear(); renderedChartPayloads.clear(); }
-    syncPptDashboardViewerControls();
+    syncPptDesignViewerControls();
   });
-  const dashboardDataRequest = async (request) => {
+  const designDataRequest = async (request) => {
     const parameters = new URLSearchParams({page: String(request.page || 0)});
     const encodedFilters = JSON.stringify(request.column_filters || {});
     if (encodedFilters !== '{}') parameters.set('column_filters', encodedFilters);
     if (request.filter_column) parameters.set('filter_column', request.filter_column);
     const downloadParameters = new URLSearchParams({download: 'true'});
     if (encodedFilters !== '{}') downloadParameters.set('column_filters', encodedFilters);
-    $('ds-data-download').href = `/api/ppt-dashboards${dataEndpoint}?${downloadParameters}`;
+    $('ds-data-download').href = `/api/ppt-designer${dataEndpoint}?${downloadParameters}`;
     return api(`${dataEndpoint}?${parameters}`);
   };
   async function renderData() {
     const token = dataToken;
     const endpoint = dataEndpoint;
-    const payload = await dashboardDataRequest({page: 0, column_filters: {}});
+    const payload = await designDataRequest({page: 0, column_filters: {}});
     if (token !== dataToken || endpoint !== dataEndpoint) return;
     window.createUnifiedDatasetViewer({
       host: $('ds-data-table'),
       payload,
-      requestPage: dashboardDataRequest,
+      requestPage: designDataRequest,
       exportControl: $('ds-data-download'),
     });
   }
@@ -4943,12 +4943,12 @@
     navigationPromptOpen = true;
     void (async () => {
       try {
-        let resolvedDashboardChanges = false;
+        let resolvedDesignChanges = false;
         if (hasUnsavedFilterChanges()) {
           const choice = await window.showConfirmDialog(
-            'This Dashboard has Scope, date or filter changes that have not been saved. Save them before leaving?',
+            'This Design has Scope, date or filter changes that have not been saved. Save them before leaving?',
             {
-              title: 'Unsaved Dashboard filters',
+              title: 'Unsaved Design filters',
               confirmLabel: 'Save Filters',
               secondaryLabel: 'Discard',
               cancelLabel: 'Cancel',
@@ -4957,11 +4957,11 @@
           if (choice === 'confirm') await save();
           else if (choice === 'secondary') discardPart('filters');
           else return;
-          resolvedDashboardChanges = true;
+          resolvedDesignChanges = true;
         }
-        if (!resolvedDashboardChanges && !await window.showConfirmDialog(
-          'This Dashboard has unsaved changes. Discard them before leaving?',
-          {title: 'Unsaved Dashboard changes', confirmLabel: 'Discard', cancelLabel: 'Cancel'},
+        if (!resolvedDesignChanges && !await window.showConfirmDialog(
+          'This Design has unsaved changes. Discard them before leaving?',
+          {title: 'Unsaved Design changes', confirmLabel: 'Discard', cancelLabel: 'Cancel'},
         )) return;
         dirty = false;
         if (link.classList.contains('topnav-link-logout')) {
@@ -4971,8 +4971,8 @@
         }
         window.location.assign(target.href);
       } catch (error) {
-        window.showInfoDialog(error instanceof Error ? error.message : 'Dashboard changes could not be saved.', {
-          title: 'Save Dashboard filters failed', tone: 'error',
+        window.showInfoDialog(error instanceof Error ? error.message : 'Design changes could not be saved.', {
+          title: 'Save Design filters failed', tone: 'error',
         });
       } finally {
         navigationPromptOpen = false;
@@ -4981,21 +4981,21 @@
   }, true);
   window.addEventListener('beforeunload',event=>{ if (dirty) { event.preventDefault(); event.returnValue = ''; } });
   window.addEventListener('auto-calculated-field-job-status',event=>{ const job = event.detail; if (definition && job?.id && ['ready','completed'].includes(job.status) && !completedFieldJobs.has(job.id)) { completedFieldJobs.add(job.id); changed(); } });
-  // Floating buttons over the slide of the Dashboard viewer and over each of its charts, over the Charts Panel and each of
+  // Floating buttons over the slide of the Design viewer and over each of its charts, over the Charts Panel and each of
   // its thumbnails, and over the larger view of a chart (on touch screens, a tap shows them) download it as a PNG image,
   // as it is shown, or copy it to the clipboard as a screenshot (image_buttons.js); App Events records each one.
   const imageText = id => window.imageHeadingText?.($(id)) || '';
   window.attachImageButtons?.({
     // (The larger view of a chart opens at the end of the page, outside its main part.)
-    root: document.body, module: 'ppt-dashboards', fallbackName: 'Dashboard',
+    root: document.body, module: 'ppt-designer', fallbackName: 'Design',
     targets: '#ds-charts, #ds-charts > .ds-chart, #ds-ppt-charts-panel, #ds-ppt-charts-body > .report-chart-card, .ds-chart-expanded-canvas',
     charts: '#ds-charts > .ds-chart, #ds-ppt-charts-body > .report-chart-card, .ds-chart-expanded-canvas',
     exclude: '.ds-chart-controls, .ds-chart-definition-toggle, .ds-chart-pan-button, .ds-chart-expanded-pan, .ds-chart-filter-panel',
     obstacles: '.ds-chart-controls, .ds-chart-definition-toggle, .ds-chart-brand, summary .summary-inline-actions',
-    // The slide, then its chart; the Charts Panel of its Dashboard, then a thumbnail; the chart of the larger view.
+    // The slide, then its chart; the Charts Panel of its Design, then a thumbnail; the chart of the larger view.
     title: target => {
       if (target.matches('.ds-chart-expanded-canvas')) return imageText('ds-chart-expanded-title');
-      if (target.matches('#ds-ppt-charts-panel')) return ['Charts Panel', imageText('ds-ppt-charts-dashboard')].filter(Boolean).join(' — ');
+      if (target.matches('#ds-ppt-charts-panel')) return ['Charts Panel', imageText('ds-ppt-charts-design')].filter(Boolean).join(' — ');
       if (target.matches('.report-chart-card')) return window.imageHeadingText(target.querySelector('h3'));
       return [...new Set([imageText('ds-title'), target.matches('.ds-chart') ? target.getAttribute('aria-label') : ''].filter(Boolean))].join(' — ');
     },
@@ -5005,15 +5005,15 @@
         return {section: 'Larger view', context: {chart: imageText('ds-chart-expanded-position'), meta: imageText('ds-chart-expanded-meta'), theme}};
       }
       return target.closest('#ds-viewer')
-        ? {section: 'Dashboard viewer', context: {slide: imageText('ds-position'), theme}}
-        : {section: 'Charts Panel', context: {dashboard: imageText('ds-ppt-charts-dashboard'), date: imageText('ds-ppt-charts-date')}};
+        ? {section: 'Design viewer', context: {slide: imageText('ds-position'), theme}}
+        : {section: 'Charts Panel', context: {design: imageText('ds-ppt-charts-design'), date: imageText('ds-ppt-charts-date')}};
     },
   });
-  // The Dashboard Designer (dashboard_designer.js) works on the open Dashboard through these.
-  window.dashboardViewer = {
+  // The Designer (designer.js) works on the open Design through these.
+  window.designViewer = {
     api, safe, status,
-    state: () => ({activeId, definition, prepared, slideIndex, dashboard: dashboards[activeId] || null, config}),
-    // A Design laid out by the Designer (POST /slides/preview): its slides and token replace those shown.
+    state: () => ({activeId, definition, prepared, slideIndex, design: designs[activeId] || null, config}),
+    // A slide set laid out by the Designer (POST /slides/preview): its slides and token replace those shown.
     showSlides(payload, {sourceSlide = ''} = {}) {
       if (!prepared) return;
       prepared = {...prepared, token: payload.token, slides: payload.slides, grid_layouts: payload.grid_layouts || prepared.grid_layouts};
@@ -5025,7 +5025,7 @@
       renderSlide();
     },
     goToSlide(index) { if (!prepared) return; stopPresentation(); slideIndex = index; renderSlide(); },
-    // The first slide laid out from a slide of the Design, drawn in small inside frame (false when none is laid out).
+    // The first slide laid out from a slide of the slide set, drawn in small inside frame (false when none is laid out).
     drawThumbnail(frame, sourceSlide) {
       const slide = prepared?.slides.find(item => item.source_slide === sourceSlide);
       if (!slide) return false;
@@ -5033,41 +5033,41 @@
       return true;
     },
     renderSlide() { if (prepared) renderSlide(); },
-    // The Design saved: the Dashboard keeps it, so its filters saved later do not count it as a change.
+    // The slide set saved: the Design keeps it, so its filters saved later do not count it as a change.
     storeSlides(id, fields) {
-      if (!dashboards[id]) return;
-      dashboards[id] = {...dashboards[id], ...structuredClone(fields)};
+      if (!designs[id]) return;
+      designs[id] = {...designs[id], ...structuredClone(fields)};
       if (id !== activeId || !definition) return;
       Object.assign(definition, structuredClone(fields));
-      savedDefinition = definitionFingerprint(savedRuntimeDashboardDefinition(dashboards[id]));
+      savedDefinition = definitionFingerprint(savedRuntimeDesignDefinition(designs[id]));
       updateDirtyState();
     },
-    // The values of the template parameters, chosen in Dashboard Scope & Filters: applied and saved as the filters.
+    // The values of the template parameters, chosen in Design Scope & Filters: applied and saved as the filters.
     setParameterValues(values) { if (!definition) return; definition.parameter_values = structuredClone(values); filterChanged(); },
-    async reloadLibrary() { dashboards = await api(); library(); },
-    openDashboard: id => openDashboard(id),
+    async reloadLibrary() { designs = await api(); library(); },
+    openDesign: id => openDesign(id),
   };
   safe(async ()=>{
     let last = '';
     try {
-      // Keep the last Dashboard open for the lifetime of this signed-in tab.
+      // Keep the last Design open for the lifetime of this signed-in tab.
       // Explicit Close and logout still clear this key; fresh module entries
-      // and reloads both restore the same saved Dashboard.
+      // and reloads both restore the same saved Design.
       last = sessionStorage.getItem(openStorageKey) || '';
       const cached = JSON.parse(sessionStorage.getItem(libraryStorageKey) || '{}');
-      dashboards = cached && typeof cached === 'object' && !Array.isArray(cached)
+      designs = cached && typeof cached === 'object' && !Array.isArray(cached)
         && Object.values(cached).every(item => item && typeof item === 'object' && typeof item.name === 'string') ? cached : {};
-      if (Object.keys(dashboards).length) library();
-    } catch (_) { dashboards = {}; }
-    dashboards = await api(); library();
+      if (Object.keys(designs).length) library();
+    } catch (_) { designs = {}; }
+    designs = await api(); library();
     if (restorePageState) restoreScroll(); else resetScroll();
-    void refreshDashboardStatuses();
-    void refreshDashboardPptJobs();
-    if (dashboards[last]) await openDashboard(last, {showFilters: rememberedFiltersOpen()});
+    void refreshDesignStatuses();
+    void refreshDesignPptJobs();
+    if (designs[last]) await openDesign(last, {showFilters: rememberedFiltersOpen()});
     if (restorePageState) restoreScroll(); else resetScroll();
   })();
-  window.setInterval(refreshDashboardStatuses, 2000);
-  window.setInterval(refreshDashboardPptJobs, 2000);
-  window.addEventListener('drivetest-analyzer:refresh-background-tasks', () => { void refreshDashboardStatuses(); void refreshDashboardPptJobs(); });
-  window.addEventListener('focus', () => { void refreshDashboardStatuses(); void refreshDashboardPptJobs(); });
+  window.setInterval(refreshDesignStatuses, 2000);
+  window.setInterval(refreshDesignPptJobs, 2000);
+  window.addEventListener('drivetest-analyzer:refresh-background-tasks', () => { void refreshDesignStatuses(); void refreshDesignPptJobs(); });
+  window.addEventListener('focus', () => { void refreshDesignStatuses(); void refreshDesignPptJobs(); });
 })();

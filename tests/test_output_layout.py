@@ -10,7 +10,7 @@ def _workspace(tmp_path: Path) -> tuple[Path, Path]:
     output_dir = tmp_path / 'output'
     database_path = tmp_path / 'workspace.db'
     with sqlite3.connect(database_path) as connection:
-        connection.execute('CREATE TABLE dashboard_ppt_jobs (id INTEGER PRIMARY KEY, output_path TEXT)')
+        connection.execute('CREATE TABLE design_ppt_jobs (id INTEGER PRIMARY KEY, output_path TEXT)')
         connection.execute('CREATE TABLE generated_jobs (id INTEGER PRIMARY KEY, output_path TEXT)')
         connection.execute('CREATE TABLE report_task_runs (id INTEGER PRIMARY KEY, output_dir TEXT)')
     return output_dir, database_path
@@ -24,7 +24,7 @@ def _write(path: Path, content: bytes = b'x') -> Path:
 
 def test_former_output_layout_moves_into_module_folders(tmp_path: Path) -> None:
     output_dir, database_path = _workspace(tmp_path)
-    dashboard = _write(output_dir / 'dashboards' / '20260915_120000 - Dashboard' / 'dashboard.pptx')
+    design = _write(output_dir / 'dashboards' / '20260915_120000 - Design' / 'design.pptx')
     run_dir = output_dir / 'reporting' / '20261006_062102 - All Modules - run 2'
     _write(run_dir / 'artifact.pptx')
     _write(output_dir / 'charts' / '20260907-120000' / 'chart-1.png')
@@ -34,7 +34,7 @@ def test_former_output_layout_moves_into_module_folders(tmp_path: Path) -> None:
     _write(output_dir / 'reports' / '20261006_042512_summary_dataset_analysis.pptx')
     _write(output_dir / 'reports' / 'imported.pptx')
     with sqlite3.connect(database_path) as connection:
-        connection.execute('INSERT INTO dashboard_ppt_jobs (output_path) VALUES (?)', (str(dashboard),))
+        connection.execute('INSERT INTO design_ppt_jobs (output_path) VALUES (?)', (str(design),))
         connection.execute('INSERT INTO generated_jobs (output_path) VALUES (?)', (str(report),))
         connection.execute('INSERT INTO report_task_runs (output_dir) VALUES (?)', (str(run_dir),))
 
@@ -43,7 +43,7 @@ def test_former_output_layout_moves_into_module_folders(tmp_path: Path) -> None:
     reports = output_dir / 'reports'
     assert sorted(path.name for path in output_dir.iterdir()) == ['reports']
     assert sorted(path.name for path in reports.iterdir()) == [
-        'cdr-analysis', 'dashboards', 'network-insights', 'reporting-jobs', 'reports-charts-old', 'reports-old']
+        'cdr-analysis', 'designs', 'network-insights', 'reporting-jobs', 'reports-charts-old', 'reports-old']
     assert (reports / 'reports-charts-old' / '20260907-120000' / 'chart-1.png').is_file()
     assert (reports / 'network-insights' / '20261006_042512_summary_network_insights.pptx').is_file()
     assert sorted(path.name for path in (reports / 'cdr-analysis').iterdir()) == [
@@ -51,9 +51,9 @@ def test_former_output_layout_moves_into_module_folders(tmp_path: Path) -> None:
     assert (reports / 'reports-old' / 'imported.pptx').is_file()
     with sqlite3.connect(database_path) as connection:
         stored = [connection.execute(f'SELECT {column} FROM {table}').fetchone()[0] for table, column in (
-            ('dashboard_ppt_jobs', 'output_path'), ('generated_jobs', 'output_path'), ('report_task_runs', 'output_dir'))]
+            ('design_ppt_jobs', 'output_path'), ('generated_jobs', 'output_path'), ('report_task_runs', 'output_dir'))]
     assert stored == [
-        str(reports / 'dashboards' / '20260915_120000 - Dashboard' / 'dashboard.pptx'),
+        str(reports / 'designs' / '20260915_120000 - Design' / 'design.pptx'),
         str(reports / 'reports-old' / '20260929-050129_NetCheck_CDR_NSA_operator-comparison' / 'report.pptx'),
         str(reports / 'reporting-jobs' / '20261006_062102 - All Modules - run 2'),
     ]
@@ -63,12 +63,28 @@ def test_former_output_layout_moves_into_module_folders(tmp_path: Path) -> None:
 
 def test_migration_merges_folders_without_overwriting_current_files(tmp_path: Path) -> None:
     output_dir, database_path = _workspace(tmp_path)
-    current = _write(output_dir / 'reports' / 'dashboards' / 'job' / 'dashboard.pptx', b'current')
-    _write(output_dir / 'dashboards' / 'job' / 'dashboard.pptx', b'former')
-    _write(output_dir / 'dashboards' / 'other' / 'dashboard.pptx', b'other')
+    current = _write(output_dir / 'reports' / 'designs' / 'job' / 'design.pptx', b'current')
+    _write(output_dir / 'dashboards' / 'job' / 'design.pptx', b'former')
+    _write(output_dir / 'dashboards' / 'other' / 'design.pptx', b'other')
 
     migrate_output_layout(output_dir, database_path)
 
     assert current.read_bytes() == b'current'
-    assert (output_dir / 'reports' / 'dashboards' / 'other' / 'dashboard.pptx').read_bytes() == b'other'
-    assert (output_dir / 'dashboards' / 'job' / 'dashboard.pptx').read_bytes() == b'former'
+    assert (output_dir / 'reports' / 'designs' / 'other' / 'design.pptx').read_bytes() == b'other'
+    assert (output_dir / 'dashboards' / 'job' / 'design.pptx').read_bytes() == b'former'
+
+
+def test_the_ppt_jobs_of_ppt_dashboards_move_to_ppt_designer_with_their_charts(tmp_path: Path) -> None:
+    output_dir, database_path = _workspace(tmp_path)
+    deck = _write(output_dir / 'reports' / 'dashboards' / '20261020_101010 - Weekly' / 'deck.pptx')
+    _write(output_dir / 'reports' / 'dashboards' / '20261020_101010 - Weekly' / 'dashboard-charts' / 'manifest.json', b'{}')
+    with sqlite3.connect(database_path) as connection:
+        connection.execute('INSERT INTO design_ppt_jobs (output_path) VALUES (?)', (str(deck),))
+
+    assert migrate_output_layout(output_dir, database_path) is True
+
+    job = output_dir / 'reports' / 'designs' / '20261020_101010 - Weekly'
+    assert (job / 'deck.pptx').is_file() and (job / 'design-charts' / 'manifest.json').read_bytes() == b'{}'
+    assert not (output_dir / 'reports' / 'dashboards').exists() and not (job / 'dashboard-charts').exists()
+    with sqlite3.connect(database_path) as connection:
+        assert connection.execute('SELECT output_path FROM design_ppt_jobs').fetchone()[0] == str(job / 'deck.pptx')

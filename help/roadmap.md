@@ -29,7 +29,7 @@ roadmap
 - CDR Analysis analysis and exports.
 - Ad-hoc Chart Builder.
 - Ad-hoc Query Builder.
-- Template-driven NSA/SA Dashboards and PPT Reports.
+- Template-driven NSA/SA Designs and PPT Reports.
 - NetCheck City/Road Scoring & GAP Analysis with persistent jobs, aggregation controls and CSV/PPT exports.
 - Shared Interactive Preview and filtered-data viewer.
 - Report Template management and validation.

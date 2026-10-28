@@ -1,7 +1,7 @@
-"""Per-CDR column cache for Dashboard chart reads.
+"""Per-CDR column cache for Design chart reads.
 
 Each combined CDR table is cached per dataset and per SQL expression, in table
-row order. Any Dashboard universe (CDRs, dates and filter values) and either
+row order. Any Design universe (CDRs, dates and filter values) and either
 comparison mode can then be assembled in memory without querying SQLite.
 
 Columns are stored compactly and reassembled with the same type inference as
@@ -87,7 +87,7 @@ class Segment:
 
 @dataclass(frozen=True)
 class SelectionTerms:
-    """Row predicates of a Dashboard universe, evaluated on cached expressions.
+    """Row predicates of a Design universe, evaluated on cached expressions.
 
     ``values`` holds ``(expression, allowed)`` pairs: the expression's text value
     must be one of ``allowed``; a ``None`` expression selects no row. ``date``
@@ -505,7 +505,7 @@ class ColumnCache:
         """Return the parts of physical expressions for one CDR, building missing ones.
 
         ``prefetch`` expressions are built together with missing ones, so a later
-        Dashboard filter change finds them without another SQLite read.
+        Design filter change finds them without another SQLite read.
         """
         wanted = list(dict.fromkeys([ROWID, ORDER_DATE, *expressions]))
         directory = self._segment_dir(segment)

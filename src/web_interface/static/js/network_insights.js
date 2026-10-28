@@ -95,8 +95,8 @@
     const root = $('network-insights');
     root.dataset.niTheme = activeTheme.id || 'netcheck';
     // The CDFs and maps in the font and colours of the theme (dark cards in a dark theme).
-    globalThis.dashboardChartStyle = (config.chart_styles || {})[activeTheme.id] || null;
-    globalThis.redrawDashboardCharts?.();
+    globalThis.canvasChartStyle = (config.chart_styles || {})[activeTheme.id] || null;
+    globalThis.redrawCanvasCharts?.();
     const colours = window.NetworkInsightsFindings?.palette(activeTheme);
     if (!colours) return;
     themeColours = colours;
@@ -546,7 +546,7 @@
       <td class="num">${shareBar(row.high_interference_share, 'high_interference_share')}</td><td>${classBar(row.sinr_classes)}</td></tr>`).join('')}</tbody>`;
   };
 
-  // In-chart zoom controls, as in PPT Dashboards: zoom out/in, level, reset
+  // In-chart zoom controls, as in PPT Designer: zoom out/in, level, reset
   // and pan arrows while zoomed. Dragging a rectangle also zooms.
   const panPaths = {left: 'M15 5 8 12l7 7', right: 'm9 5 7 7-7 7', up: 'M5 15 12 8l7 7', down: 'm5 9 7 7 7-7'};
   // The payload drawn on every canvas, to draw it again larger when it is double-clicked.
@@ -554,7 +554,7 @@
   const renderChart = (canvas, payload) => {
     if (!canvas) return;
     chartPayloads.set(canvas, payload);
-    globalThis.renderDashboardChart(canvas, payload);
+    globalThis.renderCanvasChart(canvas, payload);
     const card = canvas.parentElement;
     if (!card || card.querySelector(':scope > .ni-chart-zoom')) return;
     const button = (text, title, className = '') => {
@@ -573,25 +573,25 @@
     const pans = Object.entries(panPaths).map(([direction, path]) => {
       const pan = button('', `Move view ${direction}`, `ni-chart-pan ni-chart-pan-${direction}`);
       pan.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${path}"/></svg>`;
-      pan.onclick = event => { event.stopPropagation(); globalThis.panDashboardChart?.(canvas, direction); sync(); };
+      pan.onclick = event => { event.stopPropagation(); globalThis.panCanvasChart?.(canvas, direction); sync(); };
       return [direction, pan];
     });
     const sync = () => {
-      const zoom = Math.max(1, Number(globalThis.getDashboardChartZoom?.(canvas)) || 1);
+      const zoom = Math.max(1, Number(globalThis.getCanvasChartZoom?.(canvas)) || 1);
       level.textContent = `${Math.round(zoom * 100)}%`;
       zoomOut.disabled = reset.disabled = zoom <= 1; zoomIn.disabled = zoom >= 4;
-      const state = globalThis.getDashboardChartPanState?.(canvas) || {};
+      const state = globalThis.getCanvasChartPanState?.(canvas) || {};
       for (const [direction, pan] of pans) {
         pan.hidden = zoom <= 1;
         pan.disabled = !state[`canPan${direction[0].toUpperCase()}${direction.slice(1)}`];
       }
     };
-    const apply = zoom => { globalThis.setDashboardChartZoom?.(canvas, Math.max(1, Math.min(4, zoom))); sync(); };
-    zoomOut.onclick = event => { event.stopPropagation(); apply((globalThis.getDashboardChartZoom?.(canvas) || 1) - .25); };
-    zoomIn.onclick = event => { event.stopPropagation(); apply((globalThis.getDashboardChartZoom?.(canvas) || 1) + .25); };
+    const apply = zoom => { globalThis.setCanvasChartZoom?.(canvas, Math.max(1, Math.min(4, zoom))); sync(); };
+    zoomOut.onclick = event => { event.stopPropagation(); apply((globalThis.getCanvasChartZoom?.(canvas) || 1) - .25); };
+    zoomIn.onclick = event => { event.stopPropagation(); apply((globalThis.getCanvasChartZoom?.(canvas) || 1) + .25); };
     reset.onclick = event => { event.stopPropagation(); apply(1); };
-    canvas.addEventListener('dashboardchartzoom', sync);
-    canvas.addEventListener('dashboardchartpan', sync);
+    canvas.addEventListener('designchartzoom', sync);
+    canvas.addEventListener('designchartpan', sync);
     card.append(controls, ...pans.map(([, pan]) => pan));
     sync();
   };
@@ -1174,8 +1174,8 @@
   };
   const distanceLabel = metres => metres < 1000 ? `${integer(Math.round(metres))} m` : `${number(metres / 1000, metres < 10000 ? 2 : 1)} km`;
   const geoMap = (canvas, base, start, {expanded = false} = {}) => {
-    globalThis.renderDashboardChart(canvas, {...mapView(start), geo_navigation: true, point_shape: 'square'});
-    const first = globalThis.getDashboardMapView?.(canvas);
+    globalThis.renderCanvasChart(canvas, {...mapView(start), geo_navigation: true, point_shape: 'square'});
+    const first = globalThis.getCanvasMapView?.(canvas);
     if (!first?.worldBounds) return null;
     canvas.classList.add('ni-geo-canvas');
     canvas.addEventListener('pointermove', rectangleKey);
@@ -1194,7 +1194,7 @@
     const level = document.createElement('output');
     level.className = 'ni-chart-zoom-level';
     const payload = () => {
-      const geometry = globalThis.getDashboardMapView(canvas);
+      const geometry = globalThis.getCanvasMapView(canvas);
       const zoom = Math.max(MIN_TILE_ZOOM, Math.min(MAX_TILE_ZOOM, Math.round(REFERENCE_ZOOM - Math.log2(view.resolution))));
       const factor = 2 ** (REFERENCE_ZOOM - zoom);
       const halfWidth = view.resolution * geometry.width / 2, halfHeight = view.resolution * geometry.height / 2;
@@ -1242,7 +1242,7 @@
       frame = 0;
       if (!canvas.isConnected) return;
       current = payload();
-      globalThis.renderDashboardChart(canvas, current);
+      globalThis.renderCanvasChart(canvas, current);
       chartPayloads.set(canvas, current);
       level.textContent = `Zoom ${current.view.zoom}`;
       loadSites(current.view);
@@ -1256,7 +1256,7 @@
       redraw();
     };
     const pointerOffset = event => {
-      const geometry = globalThis.getDashboardMapView(canvas), bounds = canvas.getBoundingClientRect();
+      const geometry = globalThis.getCanvasMapView(canvas), bounds = canvas.getBoundingClientRect();
       const x = ((event.clientX - bounds.left) / geometry.scaleX - geometry.originX) / geometry.cameraZoom;
       const y = ((event.clientY - bounds.top) / geometry.scaleY - geometry.originY) / geometry.cameraZoom;
       return [x - (geometry.left + geometry.width / 2), y - (geometry.top + geometry.height / 2)];
@@ -1268,7 +1268,7 @@
       return worldToLonLat(view.x + dx * view.resolution, view.y + dy * view.resolution, REFERENCE_ZOOM);
     };
     const screenOf = ([longitude, latitude]) => {
-      const geometry = globalThis.getDashboardMapView(canvas), bounds = canvas.getBoundingClientRect(), card = canvas.parentElement.getBoundingClientRect();
+      const geometry = globalThis.getCanvasMapView(canvas), bounds = canvas.getBoundingClientRect(), card = canvas.parentElement.getBoundingClientRect();
       const world = osmWorld(latitude, longitude, REFERENCE_ZOOM);
       const logicalX = geometry.left + geometry.width / 2 + (world[0] - view.x) / view.resolution;
       const logicalY = geometry.top + geometry.height / 2 + (world[1] - view.y) / view.resolution;
@@ -1328,7 +1328,7 @@
       if (!drag || event.pointerId !== drag.id) return;
       if (drag.measuring) { measure.to = placeAt(event); drawMeasure(); return; }
       if (drag.pan) {
-        const geometry = globalThis.getDashboardMapView(canvas);
+        const geometry = globalThis.getCanvasMapView(canvas);
         view = {...view, x: view.x - (event.clientX - drag.x) / geometry.scaleX / geometry.cameraZoom * view.resolution,
           y: view.y - (event.clientY - drag.y) / geometry.scaleY / geometry.cameraZoom * view.resolution};
         drag.x = event.clientX; drag.y = event.clientY;
@@ -1362,7 +1362,7 @@
       // The dragged rectangle fills the map.
       const [startX, startY] = pointerOffset({clientX: finished.startX, clientY: finished.startY});
       const [endX, endY] = pointerOffset(event);
-      const geometry = globalThis.getDashboardMapView(canvas);
+      const geometry = globalThis.getCanvasMapView(canvas);
       const factor = Math.max(Math.abs(endX - startX) / geometry.width, Math.abs(endY - startY) / geometry.height);
       view = {x: view.x + (startX + endX) / 2 * view.resolution, y: view.y + (startY + endY) / 2 * view.resolution,
         resolution: clampResolution(view.resolution * factor)};
@@ -1390,7 +1390,7 @@
       // Centre the map on a place, showing `span` degrees of latitude above and below it.
       showArea: (longitude, latitude, span) => {
         const top = osmWorld(latitude + span, longitude, REFERENCE_ZOOM), bottom = osmWorld(latitude - span, longitude, REFERENCE_ZOOM);
-        const geometry = globalThis.getDashboardMapView(canvas);
+        const geometry = globalThis.getCanvasMapView(canvas);
         view = {x: top[0], y: (top[1] + bottom[1]) / 2, resolution: clampResolution((bottom[1] - top[1]) / geometry.height)};
         redraw();
       },

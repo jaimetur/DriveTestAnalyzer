@@ -1,5 +1,5 @@
 """Ticket Center (formerly Bugs Report): tickets of a type with screenshots, the reporter's edits, the super-admins'
-attention, the dashboard, access, the former addresses and portability."""
+attention, the design, access, the former addresses and portability."""
 import html
 import io
 import json
@@ -438,7 +438,7 @@ def test_the_addresses_of_bugs_report_lead_to_ticket_center(client):
     assert client.get('/bugs-report', follow_redirects=False).headers['location'] == '/tickets'
 
 
-def test_the_dashboard_counts_tickets_by_type_status_priority_module_and_period():
+def test_the_design_counts_tickets_by_type_status_priority_module_and_period():
     from datetime import date
 
     from src.modules.ticket_center import TREND_PERIODS, recently_resolved, ticket_dashboard

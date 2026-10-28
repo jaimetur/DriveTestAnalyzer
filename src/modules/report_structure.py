@@ -1,7 +1,7 @@
 """The covers and transitions of the PowerPoint reports, alike in every module.
 
 A report starts with its cover; its transitions open each part of it (a module of a Bundle Report Template, a scenario, a
-scoring, an environment, a Dashboard or a transition of its PPT Template). Every cover has one size of title and
+scoring, an environment, a Design or a transition of its PPT Template). Every cover has one size of title and
 subtitle and every transition another, smaller one, whatever the module; the subtitle starts right below the room of
 two title lines, so a long title wraps into it. Each transition shows its counter above the title: 01, 02… for the first
 level and 2.1, 2.1.1… below it.
@@ -140,7 +140,7 @@ class Counter:
         while len(self.counters) < current:
             self.counters.append(0)
         self.counters[current - 1] += 1
-        # A level below one the report does not have (a transition of a Dashboard without its cover) counts from 1.
+        # A level below one the report does not have (a transition of a Design without its cover) counts from 1.
         return label([value or 1 for value in self.counters])
 
 

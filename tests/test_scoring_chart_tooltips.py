@@ -173,7 +173,7 @@ console.log(JSON.stringify([stackedSegmentLabelLayout('540.9', 80, 120), stacked
 
 def test_chart_numbers_keep_decimal_dot_under_spanish_locale():
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
-    dashboard_script = (PROJECT_ROOT / 'src/web_interface/static/js/dashboard_charts.js').read_text(encoding='utf-8')
+    design_script = (PROJECT_ROOT / 'src/web_interface/static/js/canvas_charts.js').read_text(encoding='utf-8')
     node = shutil.which('node')
     if not node:
         pytest.skip('Node.js is required to verify chart number formatting.')
@@ -213,7 +213,7 @@ console.log(JSON.stringify({{
     assert 'formatChartNumber(totalPoints, {minimumFractionDigits: 1, maximumFractionDigits: 1})' in script
     assert 'formatChartNumber(row.value, {maximumFractionDigits: Number.isInteger(row.value) ? 0 : 2})' in script
     assert 'formatChartNumber(total, {minimumFractionDigits: 2, maximumFractionDigits: 2})' in script
-    assert "number.toLocaleString('en-US', {useGrouping: false, maximumFractionDigits: 0})" in dashboard_script
+    assert "number.toLocaleString('en-US', {useGrouping: false, maximumFractionDigits: 0})" in design_script
 
 
 def test_chart_axis_scale_uses_integer_intervals_and_covers_actual_peaks():

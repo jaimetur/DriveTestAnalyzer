@@ -261,7 +261,7 @@
     <div class="loading-panel">
       <div class="loading-spinner" aria-hidden="true"></div>
       <h3 id="loading-title">Processing request</h3>
-      <p id="loading-copy">Please wait while the workspace updates the selected dataset and dashboard.</p>
+      <p id="loading-copy">Please wait while the workspace updates the selected dataset and design.</p>
       <div class="loading-progress-shell">
         <div class="loading-progress-bar"></div>
       </div>
@@ -318,7 +318,7 @@
       <p class="eyebrow">Generated comments</p>
       <h3 id="api-keys-title">API keys</h3>
       <form data-api-keys-form autocomplete="off">
-        <p class="form-note">The LLM writers of the comments of PPT Dashboards use your own key for {{ user_api_key_writers | join(' and ') }} (Super Admin chooses it): what they write is charged to your account (Kiro: app.kiro.dev → API Keys; Claude: console.anthropic.com → API Keys). Keys stay on this server and are never shown again.</p>
+        <p class="form-note">The LLM writers of the comments of PPT Designer use your own key for {{ user_api_key_writers | join(' and ') }} (Super Admin chooses it): what they write is charged to your account (Kiro: app.kiro.dev → API Keys; Claude: console.anthropic.com → API Keys). Keys stay on this server and are never shown again.</p>
         <div class="api-keys-fields" data-api-keys-fields></div>
         <p class="form-note" data-api-keys-error hidden></p>
         <div class="confirm-actions">

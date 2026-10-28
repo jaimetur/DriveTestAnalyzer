@@ -13,8 +13,8 @@ import pytest
 
 import src.DriveTestAnalyzer as core
 from src.modules import comment_writers as writers
-from src.modules import dashboard_comments as comments
-from tests.test_dashboard_comments import prepare_rates_dashboard
+from src.modules import design_comments as comments
+from tests.test_design_comments import prepare_rates_design
 
 FAKE_KIRO = '''#!/bin/sh
 if [ "$1" = "--version" ]; then echo "kiro-cli 2.4.0"; exit 0; fi
@@ -187,7 +187,7 @@ def test_super_admin_sets_the_writers_and_users_their_keys(client):
         'claude_effort': 'medium', 'timeout_seconds': '90', 'claude_api_key': 'sk-ant-secret',
     }, follow_redirects=False)
     assert saved.status_code == 303
-    assert client.get('/api/ppt-dashboards/comment-engines').json() == {
+    assert client.get('/api/ppt-designer/comment-engines').json() == {
         'engines': [{'id': 'rules', 'label': 'Rules'}, {'id': 'kiro_cli', 'label': 'Kiro CLI'}, {'id': 'claude', 'label': 'Claude'}],
         'default': 'kiro_cli', 'kiro_brief': True,
     }
@@ -229,8 +229,8 @@ def test_super_admin_sets_the_writers_and_users_their_keys(client):
 
 
 @pytest.mark.skipif(sys.platform == 'win32', reason='the fake Kiro CLI is a shell script')
-def test_dashboards_write_with_kiro_and_import_a_kiro_brief(client):
-    body = prepare_rates_dashboard(client)
+def test_designs_write_with_kiro_and_import_a_kiro_brief(client):
+    body = prepare_rates_design(client)
     slide = body['slides'][0]
     reply = {'comments': ['A leads the change: median Mean Data Rate up 33% vs 2026-Q2 (41 → 61).']}
     # Install Kiro CLI of Super Admin: a file that is no package is refused with its reason, the package is installed.
@@ -244,22 +244,22 @@ def test_dashboards_write_with_kiro_and_import_a_kiro_brief(client):
     client.post('/super-admin/comment-writers', data={'enabled': ['kiro_cli', 'kiro_brief'], 'default': 'kiro_cli'})
     client.post('/account/api-keys', data={'kiro_cli': 'ksk_mine'})
 
-    generated = client.post('/api/ppt-dashboards/rates/comments/generate', json={'token': body['token'], 'slide': slide['number']})
+    generated = client.post('/api/ppt-designer/rates/comments/generate', json={'token': body['token'], 'slide': slide['number']})
     assert generated.status_code == 200, generated.text
     assert generated.json()['engine'] == 'kiro_cli'
     assert [item['text'] for item in generated.json()['suggestions']] == reply['comments']
-    ruled = client.post('/api/ppt-dashboards/rates/comments/generate', json={'token': body['token'], 'slide': slide['number'], 'engine': 'rules'})
+    ruled = client.post('/api/ppt-designer/rates/comments/generate', json={'token': body['token'], 'slide': slide['number'], 'engine': 'rules'})
     assert ruled.json()['engine'] == 'rules' and len(ruled.json()['suggestions']) > 1
 
-    started = client.post('/api/ppt-dashboards/rates/comments/kiro-brief', json={'token': body['token']})
+    started = client.post('/api/ppt-designer/rates/comments/kiro-brief', json={'token': body['token']})
     assert started.status_code == 202, started.text
-    job = client.get(f"/api/ppt-dashboards/comment-jobs/{started.json()['job_id']}").json()
-    archive = zipfile.ZipFile(io.BytesIO(client.get(f"/api/ppt-dashboards/comment-briefs/{job['result']['brief_id']}.zip").content))
+    job = client.get(f"/api/ppt-designer/comment-jobs/{started.json()['job_id']}").json()
+    archive = zipfile.ZipFile(io.BytesIO(client.get(f"/api/ppt-designer/comment-briefs/{job['result']['brief_id']}.zip").content))
     assert {'README.md', 'brief.md', '.kiro/steering/drivetest-comments.md', 'facts.json', 'comments.json'} <= set(archive.namelist())
     facts = json.loads(archive.read('facts.json'))
     filled = json.loads(archive.read('comments.json'))
     filled['slides'][slide['comment_key']] = ['A median Mean Data Rate rises to 61 vs 2026-Q2.', 'A gains 99 points.']
-    imported = client.post('/api/ppt-dashboards/rates/comments/kiro-import', data={'mode': 'all'}, files=[
+    imported = client.post('/api/ppt-designer/rates/comments/kiro-import', data={'mode': 'all'}, files=[
         ('files', ('comments.json', json.dumps(filled).encode(), 'application/json')),
         ('files', ('facts.json', json.dumps(facts).encode(), 'application/json')),
     ])
@@ -269,5 +269,5 @@ def test_dashboards_write_with_kiro_and_import_a_kiro_brief(client):
     assert result['left_out'] == 1 and result['slide_comment_meta'][slide['comment_key']]['engine'] == 'kiro_brief'
     actions = [row['action'] for row in core.repository.list_logs()]
     assert {'export_kiro_comment_brief', 'import_kiro_comments'} <= set(actions)
-    generated_events = [json.loads(row['details']) for row in core.repository.list_logs() if row['action'] == 'generate_dashboard_comments']
+    generated_events = [json.loads(row['details']) for row in core.repository.list_logs() if row['action'] == 'generate_design_comments']
     assert {event['engine'] for event in generated_events} == {'kiro_cli', 'rules'}

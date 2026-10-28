@@ -522,41 +522,41 @@
   };
 
   // -- artifact entries ---------------------------------------------------
-  // A Dashboard artifact offers the Dashboard's own options: Scope, dates and every Adaptative Filter (the Campaign
+  // A Design artifact offers the Design's own options: Scope, dates and every Adaptative Filter (the Campaign
   // first, which chooses the CDRs), prefilled with its saved definition.
-  function dashboardEntry(entry = null) {
+  function designEntry(entry = null) {
     const card = node('div', undefined, 'rj-entry');
-    // NR Mode comes first: it decides which CDRs are read, in place of the Dashboard's own (any template serves both).
+    // NR Mode comes first: it decides which CDRs are read, in place of the Design's own (any template serves both).
     // NSA & SA reads the CDRs of both NR Modes, the Campaigns choosing those of each one.
     const modeOf = (item) => {
       const mode = String(item?.nr_mode || item?.technology || 'nsa').toUpperCase();
       return ['SA', 'NSA+SA'].includes(mode) ? mode : 'NSA';
     };
-    const initial = options.dashboards.find((item) => item.id === entry?.dashboard_id);
+    const initial = options.designs.find((item) => item.id === entry?.design_id);
     const nrMode = select([['NSA', 'NSA'], ['SA', 'SA'], ['NSA+SA', 'NSA & SA']], entry?.nr_mode ? modeOf(entry) : initial ? modeOf(initial) : 'NSA');
-    const dashboard = node('select');
-    const noDashboards = node('p', '', 'form-note');
-    // A new entry starts with the first Dashboard not added yet.
-    const fillDashboards = (selectedId = '') => {
-      const added = new Set([...$('rj-dashboards').children].filter((other) => other !== card).map((other) => other.getValue?.().dashboard_id));
-      const available = options.dashboards;
+    const design = node('select');
+    const noDesigns = node('p', '', 'form-note');
+    // A new entry starts with the first Design not added yet.
+    const fillDesigns = (selectedId = '') => {
+      const added = new Set([...$('rj-designs').children].filter((other) => other !== card).map((other) => other.getValue?.().design_id));
+      const available = options.designs;
       const chosen = available.find((item) => item.id === selectedId) || available.find((item) => !added.has(item.id)) || available[0];
-      dashboard.replaceChildren(...available.map((item) => {
+      design.replaceChildren(...available.map((item) => {
         const option = node('option', item.name); option.value = item.id; option.selected = item.id === chosen?.id; return option;
       }));
-      dashboard.disabled = !available.length;
-      noDashboards.textContent = available.length ? '' : 'There are no saved Dashboards in this workspace.';
+      design.disabled = !available.length;
+      noDesigns.textContent = available.length ? '' : 'There are no saved Designs in this workspace.';
     };
-    fillDashboards(entry?.dashboard_id);
+    fillDesigns(entry?.design_id);
     const label = node('input'); label.type = 'text'; label.placeholder = 'Optional artifact name'; label.value = entry?.label || '';
-    const remove = node('button', '×', 'danger-button icon-action'); remove.type = 'button'; remove.title = 'Remove this Dashboard';
+    const remove = node('button', '×', 'danger-button icon-action'); remove.type = 'button'; remove.title = 'Remove this Design';
     remove.addEventListener('click', () => card.remove());
     const scope = select([['single', 'Operator Comparison'], ['multivendor', 'Multivendor Comparison']], 'single');
     const comparison = select([['vendor_only', 'Vendor Only (All Operators Combined)'], ['operator_vendor', 'Operator - Vendor']], 'operator_vendor');
     const comparisonField = field('Vendor comparison', comparison);
     const dateFrom = node('input'); dateFrom.type = 'date';
     const dateTo = node('input'); dateTo.type = 'date';
-    // Auto comments: generated comments written into the PPT (the Dashboard keeps its own).
+    // Auto comments: generated comments written into the PPT (the Design keeps its own).
     const autoComments = select([['off', 'Off'], ['empty', 'Slides without comments'], ['generated', 'Replace generated comments'],
       ['all', 'Replace every comment']], entry?.auto_comments || 'off');
     // Their writer: the default of Super Admin, the rules, or an LLM (run with the Kiro API key of the job's owner).
@@ -567,7 +567,7 @@
     const campaignPreviewSlot = node('div', undefined, 'rj-campaign-preview-slot');
     let campaigns = null;
     const head = node('div', undefined, 'rj-grid rj-one-row');
-    head.append(field('NR Mode', nrMode), campaignSlot, field('Dashboard', dashboard), field('Name in the email', label), field('Scope', scope), comparisonField,
+    head.append(field('NR Mode', nrMode), campaignSlot, field('Design', design), field('Name in the email', label), field('Scope', scope), comparisonField,
       field('Date from (empty: oldest)', dateFrom), field('Date to (empty: newest)', dateTo), field('Auto comments', autoComments), field('Comment writer', autoCommentsEngine), remove);
     const filters = node('div', undefined, 'rj-filters');
     const filterNote = node('p', '', 'form-note');
@@ -583,10 +583,10 @@
       ...current.saved, nr_mode: nrMode.value, scope: scope.value, vendor_comparison: comparison.value, auto_cdrs: true,
       filters: chosenFilters(), date_from: dateFrom.value || 'Oldest', date_to: dateTo.value || 'Newest',
     });
-    // City offers Main Cities first, as in the Dashboard: the Main Cities of the workspace at each run.
-    const dashboardCityChoices = (chosen = []) => ((options.main_cities || []).length || (chosen || []).includes('@main-cities')
+    // City offers Main Cities first, as in the Design: the Main Cities of the workspace at each run.
+    const designCityChoices = (chosen = []) => ((options.main_cities || []).length || (chosen || []).includes('@main-cities')
       ? [['@main-cities', 'Main Cities']] : []);
-    // The Campaigns of the Dashboard (or of this entry), beside NR Mode.
+    // The Campaigns of the Design (or of this entry), beside NR Mode.
     const setCampaigns = (saved) => {
       const name = current.fields.find(isCampaign);
       campaigns = name ? campaignPicker(() => nrMode.value, saved || [], {onChange: () => scheduleLoad(), eachNrMode: true}) : null;
@@ -596,17 +596,17 @@
     const renderFilters = (values, selected) => {
       pickers = current.fields.map((name) => [name, isCampaign(name)
         ? campaigns
-        : multiPicker(name, values[name] || [], selected[name] || [], name === 'City' ? {exclusive: dashboardCityChoices(selected[name])}
+        : multiPicker(name, values[name] || [], selected[name] || [], name === 'City' ? {exclusive: designCityChoices(selected[name])}
           : {patterns: name.replace(/[^a-z]/gi, '').toLowerCase() === 'operator'})]).filter(([, picker]) => picker);
       filters.replaceChildren(...pickers.filter(([name]) => !isCampaign(name)).map(([, picker]) => picker));
     };
-    // Filter values are the ones the selected CDRs offer, as in the Dashboard.
+    // Filter values are the ones the selected CDRs offer, as in the Design.
     const loadFilterValues = async () => {
       const request = ++loadRequest;
       const selected = Object.fromEntries(pickers.map(([name, picker]) => [name, picker.getValue()]));
       filterNote.textContent = 'Loading the filter values of the CDRs of this NR Mode…';
       try {
-        const result = await api('/api/ppt-dashboards/filter-options/batch', {
+        const result = await api('/api/ppt-designer/filter-options/batch', {
           method: 'POST', body: JSON.stringify({definition: definitionFor(), fields: current.fields}),
         });
         if (request !== loadRequest) return;
@@ -618,7 +618,7 @@
     };
     const scheduleLoad = () => { clearTimeout(loadTimer); loadTimer = setTimeout(() => { void loadFilterValues(); }, 300); };
     const apply = (config, saved) => {
-      const fields = [...new Set([...options.dashboard_filter_fields, ...(saved.custom_fields || [])])];
+      const fields = [...new Set([...options.design_filter_fields, ...(saved.custom_fields || [])])];
       current = {saved, fields: [...fields.filter(isCampaign), ...fields.filter((name) => !isCampaign(name))]};
       scope.value = config.scope || saved.scope || 'single';
       comparison.value = config.vendor_comparison || saved.vendor_comparison || 'operator_vendor';
@@ -630,27 +630,27 @@
       comparisonField.hidden = scope.value !== 'multivendor';
       scheduleLoad();
     };
-    const savedDashboard = () => options.dashboards.find((item) => item.id === dashboard.value) || {};
+    const savedDesign = () => options.designs.find((item) => item.id === design.value) || {};
     const chosenConfig = () => ({scope: scope.value, vendor_comparison: comparison.value, date_from: dateFrom.value, date_to: dateTo.value});
-    // A Dashboard chosen reads its own NR Mode until another is chosen here.
-    dashboard.addEventListener('change', () => { const saved = savedDashboard(); nrMode.value = modeOf(saved); apply(saved, saved); });
-    // Another NR Mode keeps the Dashboard: the campaigns of the other NR Mode do not apply, its automatic choices
-    // (Latest campaign…) do, or else the newest campaigns of the new NR Mode, as when a Dashboard changes its NR Mode.
+    // A Design chosen reads its own NR Mode until another is chosen here.
+    design.addEventListener('change', () => { const saved = savedDesign(); nrMode.value = modeOf(saved); apply(saved, saved); });
+    // Another NR Mode keeps the Design: the campaigns of the other NR Mode do not apply, its automatic choices
+    // (Latest campaign…) do, or else the newest campaigns of the new NR Mode, as when a Design changes its NR Mode.
     nrMode.addEventListener('change', () => {
-      if (!dashboard.value) return;
+      if (!design.value) return;
       const automatic = (campaigns?.getValue() || []).filter((value) => String(value).startsWith('@'));
       const fallback = scope.value === 'multivendor' && comparison.value === 'operator_vendor' ? '@latest-campaign' : '@latest-2-campaigns';
-      apply({...chosenConfig(), filters: {...chosenFilters(), Campaign: automatic.length ? automatic : [fallback]}}, savedDashboard());
+      apply({...chosenConfig(), filters: {...chosenFilters(), Campaign: automatic.length ? automatic : [fallback]}}, savedDesign());
     });
     scope.addEventListener('change', () => { comparisonField.hidden = scope.value !== 'multivendor'; scheduleLoad(); });
     comparison.addEventListener('change', scheduleLoad);
     // Campaign first: it chooses the CDRs.
     current = {saved: {}, fields: []};
-    card.append(entryHead(card, 'Dashboard', () => [nrMode.value === 'NSA+SA' ? 'NSA & SA' : nrMode.value, dashboard.selectedOptions[0]?.textContent, label.value.trim()].filter(Boolean).join(' · ')),
-      head, campaignPreviewSlot, noDashboards, node('strong', 'Adaptative Filters'), filterNote, filters);
-    if (dashboard.value) apply(entry || savedDashboard(), savedDashboard());
+    card.append(entryHead(card, 'Design', () => [nrMode.value === 'NSA+SA' ? 'NSA & SA' : nrMode.value, design.selectedOptions[0]?.textContent, label.value.trim()].filter(Boolean).join(' · ')),
+      head, campaignPreviewSlot, noDesigns, node('strong', 'Adaptative Filters'), filterNote, filters);
+    if (design.value) apply(entry || savedDesign(), savedDesign());
     card.getValue = () => ({
-      dashboard_id: dashboard.value, nr_mode: nrMode.value, label: label.value.trim(), scope: scope.value, vendor_comparison: comparison.value,
+      design_id: design.value, nr_mode: nrMode.value, label: label.value.trim(), scope: scope.value, vendor_comparison: comparison.value,
       auto_cdrs: true, date_from: dateFrom.value, date_to: dateTo.value, filters: chosenFilters(), auto_comments: autoComments.value, auto_comments_engine: autoCommentsEngine.value,
     });
     return card;
@@ -661,7 +661,7 @@
   // Artifact lists: the module in bold on the first level and, when it has several entries,
   // its entries indented below it. Items are texts or elements (download links).
   const ARTIFACT_MODULE_LABELS = {
-    dataset_analysis: 'CDR Analysis', network_insights: 'Network Insights', dashboards: 'PPT Dashboards',
+    dataset_analysis: 'CDR Analysis', network_insights: 'Network Insights', designs: 'PPT Designer',
     scoring: 'Scoring & GAP Analysis', non_qualified_calls: 'Non-Qualified Calls',
   };
   function artifactEntryTitle(title, module) {
@@ -968,7 +968,7 @@
   let activeArtifact = (() => { try { return localStorage.getItem(ARTIFACT_TAB_KEY) || ''; } catch { return ''; } })();
   const ARTIFACT_TAB_ICONS = {
     dataset_analysis: '.module-tab-datasets-analysis', network_insights: '.module-tab-network-insights',
-    dashboards: '.module-tab-ppt-dashboards', scoring: '.module-tab-scoring', non_qualified_calls: '.module-tab-non-qualified-calls',
+    designs: '.module-tab-ppt-designer', scoring: '.module-tab-scoring', non_qualified_calls: '.module-tab-non-qualified-calls',
   };
   function syncArtifactTabs() {
     const host = $('rj-artifact-tabs');
@@ -1046,14 +1046,14 @@
     // Jobs saved with a single Network Insights selection show it as one entry.
     const networkEntries = Array.isArray(network) ? network : (network.enabled ? [network] : []);
     $('rj-network').replaceChildren(...networkEntries.map(networkEntry));
-    $('rj-dashboards').replaceChildren(...(definition.dashboards || []).map(dashboardEntry));
+    $('rj-designs').replaceChildren(...(definition.designs || []).map(designEntry));
     $('rj-scoring').replaceChildren(...(definition.scoring || []).map(scoringEntry));
     // Each artifact type is included independently.
     $('rj-ni-enabled').checked = networkEntries.length > 0;
-    $('rj-dashboards-enabled').checked = (definition.dashboards || []).length > 0;
+    $('rj-designs-enabled').checked = (definition.designs || []).length > 0;
     $('rj-scoring-enabled').checked = (definition.scoring || []).length > 0;
     // Only the modules the user can use offer artifacts.
-    const labels = {dataset_analysis: 'CDR Analysis', network_insights: 'Network Insights', dashboards: 'PPT Dashboards', scoring: 'Scoring & GAP Analysis'};
+    const labels = {dataset_analysis: 'CDR Analysis', network_insights: 'Network Insights', designs: 'PPT Designer', scoring: 'Scoring & GAP Analysis'};
     const unavailable = Object.entries(options.allowed_modules).filter(([, allowed]) => !allowed).map(([module]) => module);
     document.querySelectorAll('[data-rj-module]').forEach((section) => { section.hidden = unavailable.includes(section.dataset.rjModule); });
     $('rj-modules-note').hidden = !unavailable.length;
@@ -1142,7 +1142,7 @@
     const report = definition.modules?.bundle_report_template || {};
     const chosen = report.options?.filters?.favourites || [];
     const others = Boolean(definition.dataset_analysis?.enabled) || (definition.network_insights || []).length > 0
-      || (definition.dashboards || []).length > 0 || (definition.scoring || []).length > 0
+      || (definition.designs || []).length > 0 || (definition.scoring || []).length > 0
       || Object.entries(definition.modules || {}).some(([key, module]) => key !== 'bundle_report_template' && module?.enabled);
     return report.enabled && chosen.length === 1 && !others ? {id: String(chosen[0]), formats: report.formats || []} : null;
   }
@@ -1217,7 +1217,7 @@
   function favouriteDefinition(base) {
     const favourite = $('rj-favourite')?.value || '';
     return {
-      ...base, dataset_analysis: {...base.dataset_analysis, enabled: false}, network_insights: [], dashboards: [], scoring: [],
+      ...base, dataset_analysis: {...base.dataset_analysis, enabled: false}, network_insights: [], designs: [], scoring: [],
       modules: {
         ...Object.fromEntries(Object.entries(base.modules).map(([key, module]) => [key, {...module, enabled: false}])),
         bundle_report_template: {enabled: true, formats: $('rj-favourite-formats').getValue(), options: {filters: {favourites: favourite ? [favourite] : []}}},
@@ -1238,7 +1238,7 @@
           cdf_grouping: $('rj-da-cdf').getValue?.() || 'operator',
         },
         network_insights: options.allowed_modules.network_insights && $('rj-ni-enabled').checked ? [...$('rj-network').children].map((card) => card.getValue()) : [],
-        dashboards: $('rj-dashboards-enabled').checked ? [...$('rj-dashboards').children].map((card) => card.getValue()) : [],
+        designs: $('rj-designs-enabled').checked ? [...$('rj-designs').children].map((card) => card.getValue()) : [],
         scoring: $('rj-scoring-enabled').checked ? [...$('rj-scoring').children].map((card) => card.getValue()) : [],
         modules: Object.fromEntries([...$('rj-providers').children].map((card) => card.getValue())),
         theme: $('rj-theme').value || options.default_theme || '',
@@ -1486,7 +1486,7 @@
 
   // Below the areas of a job, always on one line: the modules it generates artifacts of, abbreviated in the colours of
   // their artifact panels (see job_modules), and after a separator its NR Modes, outlined.
-  const MODULE_TAGS = {scoring: 'SCO', network_insights: 'NI', non_qualified_calls: 'NQ', dashboards: 'PPT', dataset_analysis: 'CDR'};
+  const MODULE_TAGS = {scoring: 'SCO', network_insights: 'NI', non_qualified_calls: 'NQ', designs: 'PPT', dataset_analysis: 'CDR'};
   function moduleLine(task) {
     const line = node('div', undefined, 'rj-task-modules');
     (task.modules || []).forEach((key) => {
@@ -1837,7 +1837,7 @@
         const base = match ? match[1] : title;
         const extension = String(item.file_name || '').split('.').pop().toLowerCase();
         const format = match ? match[2] : (FILE_FORMATS[extension] || extension.toUpperCase() || 'File');
-        // Same-named entries (two dashboards called alike) stay apart: a format already present starts a new line.
+        // Same-named entries (two designs called alike) stay apart: a format already present starts a new line.
         let key = base;
         for (let copy = 2; entries.has(key) && entries.get(key).formats.some((link) => link.textContent === format); copy += 1) key = `${base}\u0000${copy}`;
         if (!entries.has(key)) entries.set(key, {base, formats: []});
@@ -2191,9 +2191,9 @@
     if (!await confirmDiscard()) return;
     try { await ensureOptions(); fillEditor(null); } catch (error) { status(error.message, 'error'); }
   });
-  $('rj-add-dashboard').addEventListener('click', () => {
-    if (!options.dashboards.length) { status('There are no saved Dashboards in this workspace.', 'error'); return; }
-    $('rj-dashboards').append(dashboardEntry());
+  $('rj-add-design').addEventListener('click', () => {
+    if (!options.designs.length) { status('There are no saved Designs in this workspace.', 'error'); return; }
+    $('rj-designs').append(designEntry());
   });
   $('rj-add-scoring').addEventListener('click', () => $('rj-scoring').append(scoringEntry()));
   document.querySelectorAll('#rj-form .rj-card[data-rj-section]').forEach((card) => {
@@ -2206,7 +2206,7 @@
     if (!toggle.checked || host.children.length) return;
     if (host.id === 'rj-network') host.append(networkEntry());
     else if (host.id === 'rj-scoring') host.append(scoringEntry());
-    else if (options.dashboards.length) host.append(dashboardEntry());
+    else if (options.designs.length) host.append(designEntry());
   }));
   $('rj-cancel').addEventListener('click', async () => { if (await confirmDiscard()) closeEditor(); });
   $('rj-editor-close').addEventListener('click', async () => { if (await confirmDiscard()) closeEditor(); });

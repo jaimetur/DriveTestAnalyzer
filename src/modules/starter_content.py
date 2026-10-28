@@ -9,8 +9,8 @@ New deployments and new workspaces, and existing workspaces once, receive the co
   workspace once too (without its campaigns when they overlap those of one of its methodologies);
 - ``assets/ppt-templates/*.csv``: Report Templates, named after their file, each serving the CDRs of any NR Mode (their
   titles name it with ``{NR Mode}`` and ``{NR Mode Name}``);
-- ``assets/ppt-dashboards/*.json``: PPT Dashboards, which use those templates, each reading the CDRs of its NR Mode
-  (``nr_mode``: NSA, SA or NSA+SA for both, whose SA CDRs follow ``sa_campaigns``); the templates and Dashboards shipped
+- ``assets/ppt-designer/*.json``: PPT Designer, which use those templates, each reading the CDRs of its NR Mode
+  (``nr_mode``: NSA, SA or NSA+SA for both, whose SA CDRs follow ``sa_campaigns``); the templates and Designs shipped
   later (``LATER_EXAMPLES``, such as the NSA & SA comparison FDFS DL (NSA & SA)) reach every existing workspace once;
 - ``assets/autocalculated-fields/default-autocalculated-fields.json``: the Auto-calculated Fields every new
   workspace starts with, which the templates use;
@@ -18,11 +18,11 @@ New deployments and new workspaces, and existing workspaces once, receive the co
   ``configuration``);
 - ``assets/query-builder-queries/*.json``: saved Query Builder queries (``name``, ``description`` and
   ``query_sql`` on the ``selected_data``, ``selected_voice`` and ``selected_speech`` views);
-- ``assets/reporting-jobs/*.json``: Reporting Jobs, which name their Dashboards (``dashboard``: ``name``) and carry the report of each Scoring entry (``report``) or name a shipped Scoring report
+- ``assets/reporting-jobs/*.json``: Reporting Jobs, which name their Designs (``design``: ``name``) and carry the report of each Scoring entry (``report``) or name a shipped Scoring report
   configuration (``report_configuration``) and name the favourite Bundle Report Templates they generate; their CDR
   Analysis, Network Insights and module artifacts are kept as they are, and they keep the order of their ``position``;
 - ``assets/bundle-report-template-favourites/*.json``: favourite Bundle Report Templates (``name`` and
-  ``definition``, as their export carries them), which find the shipped Dashboards by their name;
+  ``definition``, as their export carries them), which find the shipped Designs by their name;
 - ``assets/scoring-favourites-filters/*.json``: Scoring & GAP Favourites Filters (an entry of their export without its
   CDRs), each with a Campaign choice (Latest campaign…) whose CDRs it takes once the workspace has them.
 
@@ -43,7 +43,7 @@ from src.modules.column_names import column_identity
 
 ASSETS = PROJECT_ROOT / 'assets'
 STATE_KEY = 'starter_content_initialized_v2'
-DASHBOARDS_STATE_KEY = 'ppt_dashboards_v2'
+DESIGNS_STATE_KEY = 'ppt_designs_v2'
 SCORING_STATE_KEY = 'scoring_configuration'
 # The shipped methodologies each workspace was given, so a methodology shipped later reaches it once and a
 # methodology it deleted is not given again. Workspaces set up before this record received these.
@@ -51,8 +51,8 @@ METHODOLOGIES_STATE_KEY = 'starter_methodologies_offered'
 METHODOLOGIES_SHIPPED_BEFORE = ('netcheck-2026',)
 # The methodology a new workspace starts with as its active one (the others apply to the campaigns they name).
 BASE_METHODOLOGY = 'netcheck-2026'
-# The Report Templates shipped after workspaces were set up, which reach each of them once with their Dashboards (those
-# of ``assets/ppt-dashboards`` that use them); a workspace that deleted them is not given them again.
+# The Report Templates shipped after workspaces were set up, which reach each of them once with their Designs (those
+# of ``assets/ppt-designer`` that use them); a workspace that deleted them is not given them again.
 LATER_EXAMPLES_STATE_KEY = 'starter_examples_offered'
 LATER_EXAMPLES = ('FDFS DL (NSA & SA)',)
 
@@ -116,53 +116,53 @@ def _seed_templates(repository: Any, username: str) -> int:
     return added
 
 
-def _seed_dashboards(repository: Any) -> int:
-    stored = repository.get_workspace_state(DASHBOARDS_STATE_KEY)
-    dashboards = json.loads(stored) if stored else {}
-    if not isinstance(dashboards, dict):
+def _seed_designs(repository: Any) -> int:
+    stored = repository.get_workspace_state(DESIGNS_STATE_KEY)
+    designs = json.loads(stored) if stored else {}
+    if not isinstance(designs, dict):
         return 0
-    existing = {str(item.get('name') or '').casefold() for item in dashboards.values() if isinstance(item, dict)}
+    existing = {str(item.get('name') or '').casefold() for item in designs.values() if isinstance(item, dict)}
     added = 0
-    for path in _json_files(ASSETS / 'ppt-dashboards'):
+    for path in _json_files(ASSETS / 'ppt-designer'):
         definition = json.loads(path.read_text(encoding='utf-8'))
         key = str(definition.get('name') or '').casefold()
         if not key or key in existing:
             continue
-        dashboards[str(uuid.uuid4())] = definition
+        designs[str(uuid.uuid4())] = definition
         existing.add(key)
         added += 1
     if added:
-        repository.set_workspace_state(DASHBOARDS_STATE_KEY, json.dumps(dashboards))
+        repository.set_workspace_state(DESIGNS_STATE_KEY, json.dumps(designs))
     return added
 
 
 def _seed_later_examples(repository: Any, username: str) -> int:
-    """Add once the templates of ``LATER_EXAMPLES`` (and their Dashboards) a workspace was not given yet."""
+    """Add once the templates of ``LATER_EXAMPLES`` (and their Designs) a workspace was not given yet."""
     stored = repository.get_workspace_state(LATER_EXAMPLES_STATE_KEY)
     offered = set(json.loads(stored or '[]'))
     pending = [name for name in LATER_EXAMPLES if name not in offered]
     if not pending:
         return 0
     templates = {str(row['name']).casefold() for row in repository.list_report_templates()}
-    raw = repository.get_workspace_state(DASHBOARDS_STATE_KEY)
-    dashboards = json.loads(raw) if raw else {}
-    names = {str(item.get('name') or '').casefold() for item in dashboards.values() if isinstance(item, dict)}
+    raw = repository.get_workspace_state(DESIGNS_STATE_KEY)
+    designs = json.loads(raw) if raw else {}
+    names = {str(item.get('name') or '').casefold() for item in designs.values() if isinstance(item, dict)}
     added = 0
     for name in pending:
         path = ASSETS / 'ppt-templates' / f'{name}.csv'
         if path.is_file() and name.casefold() not in templates:
             repository.add_report_template(name, path.read_bytes(), updated_by=username)
             added += 1
-        for dashboard_path in _json_files(ASSETS / 'ppt-dashboards'):
-            definition = json.loads(dashboard_path.read_text(encoding='utf-8'))
+        for design_path in _json_files(ASSETS / 'ppt-designer'):
+            definition = json.loads(design_path.read_text(encoding='utf-8'))
             key = str(definition.get('name') or '').casefold()
-            if definition.get('template') == name and key and key not in names and isinstance(dashboards, dict):
-                dashboards[str(uuid.uuid4())] = definition
+            if definition.get('template') == name and key and key not in names and isinstance(designs, dict):
+                designs[str(uuid.uuid4())] = definition
                 names.add(key)
                 added += 1
         offered.add(name)
-    if isinstance(dashboards, dict) and added:
-        repository.set_workspace_state(DASHBOARDS_STATE_KEY, json.dumps(dashboards))
+    if isinstance(designs, dict) and added:
+        repository.set_workspace_state(DESIGNS_STATE_KEY, json.dumps(designs))
     repository.set_workspace_state(LATER_EXAMPLES_STATE_KEY, json.dumps(sorted(offered)))
     return added
 
@@ -224,10 +224,10 @@ def _seed_reporting_jobs(repository: Any, username: str) -> int:
     from src.modules import report_tasks
     from src.modules.bundle_report_templates import list_favourites
 
-    stored = repository.get_workspace_state(DASHBOARDS_STATE_KEY)
-    dashboards = json.loads(stored) if stored else {}
-    dashboard_ids = {str(item.get('name') or '').casefold(): key
-                     for key, item in (dashboards.items() if isinstance(dashboards, dict) else []) if isinstance(item, dict)}
+    stored = repository.get_workspace_state(DESIGNS_STATE_KEY)
+    designs = json.loads(stored) if stored else {}
+    design_ids = {str(item.get('name') or '').casefold(): key
+                     for key, item in (designs.items() if isinstance(designs, dict) else []) if isinstance(item, dict)}
     configurations = {name.casefold(): configuration for name, configuration in _shipped_report_configurations().items()}
     favourite_ids = {item['name'].casefold(): str(item['id']) for item in list_favourites(repository)}
     existing = {task['name'].casefold() for task in report_tasks.list_tasks(repository)}
@@ -241,12 +241,12 @@ def _seed_reporting_jobs(repository: Any, username: str) -> int:
             continue
         definition = dict(item.get('definition') or {})
         entries = []
-        for entry in definition.get('dashboards') or []:
-            target = entry.get('dashboard') or {}
-            dashboard_id = dashboard_ids.get(str(target.get('name') or '').casefold())
-            if dashboard_id:
-                entries.append({**{key: value for key, value in entry.items() if key != 'dashboard'}, 'dashboard_id': dashboard_id})
-        definition['dashboards'] = entries
+        for entry in definition.get('designs') or []:
+            target = entry.get('design') or {}
+            design_id = design_ids.get(str(target.get('name') or '').casefold())
+            if design_id:
+                entries.append({**{key: value for key, value in entry.items() if key != 'design'}, 'design_id': design_id})
+        definition['designs'] = entries
         scoring = []
         for entry in definition.get('scoring') or []:
             if isinstance(entry.get('report'), dict) and entry['report'].get('scenarios'):
@@ -283,11 +283,11 @@ def _shipped_entries(folder: str, existing: set[str]) -> list[dict[str, Any]]:
 
 
 def _seed_bundle_report_template_favourites(repository: Any, username: str) -> int:
-    from src.modules.bundle_report_templates import import_entries, list_favourites, workspace_dashboards
+    from src.modules.bundle_report_templates import import_entries, list_favourites, workspace_designs
 
     entries = _shipped_entries('bundle-report-template-favourites', {item['name'].casefold() for item in list_favourites(repository)})
-    # Each finds the shipped Dashboards by their name.
-    return import_entries(repository, entries, username, workspace_dashboards(repository)) if entries else 0
+    # Each finds the shipped Designs by their name.
+    return import_entries(repository, entries, username, workspace_designs(repository)) if entries else 0
 
 
 def _seed_favourites_filters(repository: Any) -> int:
@@ -316,17 +316,17 @@ def seed_starter_content(repository: Any, username: str = 'system') -> dict[str,
     added = {
         'methodologies': _seed_methodologies(repository),
         'report_templates': _seed_templates(repository, username),
-        'dashboards': _seed_dashboards(repository),
+        'designs': _seed_designs(repository),
         'auto_calculated_fields': _seed_calculated_dimensions(repository),
         'scoring_report_configurations': _seed_report_configurations(repository),
         'query_builder_queries': _seed_queries(repository, username),
         'favourites_filters': _seed_favourites_filters(repository),
     }
-    # After the Dashboards and the report configurations, which the favourite Bundle Report Templates and the Reporting
+    # After the Designs and the report configurations, which the favourite Bundle Report Templates and the Reporting
     # Jobs name; the Reporting Jobs also name the favourite Bundle Report Templates they generate.
     added['bundle_report_template_favourites'] = _seed_bundle_report_template_favourites(repository, username)
     added['reporting_jobs'] = _seed_reporting_jobs(repository, username)
-    # The later examples came with the templates and Dashboards above.
+    # The later examples came with the templates and Designs above.
     repository.set_workspace_state(LATER_EXAMPLES_STATE_KEY, json.dumps(sorted(LATER_EXAMPLES)))
     repository.set_workspace_state(STATE_KEY, '1')
     if any(added.values()) and hasattr(repository, 'try_add_log'):

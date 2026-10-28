@@ -8,7 +8,7 @@ module.exports = {
       icon: 'TbFileAnalytics', icons: ['TbChartLine', 'TbFilter', 'TbChartBar', 'TbFileTypePpt'],
       lead: 'On-demand KPI analysis of one processed CDR: its distributions, benchmarks and percentiles, filtered and exported in seconds.',
       tags: ['One CDR at a time', 'Data, Voice and Speech', 'PowerPoint and Word'],
-      notes: 'CDR Analysis is the focused investigation of one processed Data, Voice or Speech CDR of the active workspace. For a complete template across several CDRs, PPT Dashboards is the module.' },
+      notes: 'CDR Analysis is the focused investigation of one processed Data, Voice or Speech CDR of the active workspace. For a complete template across several CDRs, PPT Designer is the module.' },
     { id: 'workflow', type: 'steps', section: 'Introduction', footer: 'Analysis workflow', kicker: 'Analysis workflow', title: 'From a CDR to an answer',
       steps: [
         { icon: 'TbFileSpreadsheet', title: 'Select', text: 'A processed Data, Voice or Speech CDR of the workspace.' },
@@ -55,8 +55,8 @@ module.exports = {
         { title: 'Analysis workflow', text: 'the steps of an analysis' }, { title: 'Charts and Scorecards', text: 'how to read them' },
         { title: 'Preview and export', text: 'rows and documents' }, { title: 'Example investigation', text: 'throughput by operator' },
       ],
-      modules: ['Workspace', 'PPT Dashboards', 'Builders', 'Reporting'],
-      note: 'For several CDRs in one template, use PPT Dashboards; for an ad-hoc chart or query, the Builders.',
-      notes: 'CDR Analysis answers questions about one CDR quickly. PPT Dashboards covers complete templates across several CDRs, and the Builders ad-hoc charts and SQL.' },
+      modules: ['Workspace', 'PPT Designer', 'Builders', 'Reporting'],
+      note: 'For several CDRs in one template, use PPT Designer; for an ad-hoc chart or query, the Builders.',
+      notes: 'CDR Analysis answers questions about one CDR quickly. PPT Designer covers complete templates across several CDRs, and the Builders ad-hoc charts and SQL.' },
   ],
 };

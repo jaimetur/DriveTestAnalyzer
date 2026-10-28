@@ -243,7 +243,7 @@
 .report-jobs .rj-card[data-rj-module] { --rj-accent: #1f5f3a; --rj-tint: rgba(31, 95, 58, .07); }
 .report-jobs .rj-card[data-rj-module="dataset_analysis"] { --rj-accent: #0c4c8c; --rj-tint: rgba(12, 76, 140, .07); }
 .report-jobs .rj-card[data-rj-module="network_insights"] { --rj-accent: #4338ca; --rj-tint: rgba(67, 56, 202, .07); }
-.report-jobs .rj-card[data-rj-module="dashboards"] { --rj-accent: #5b3f99; --rj-tint: rgba(91, 63, 153, .07); }
+.report-jobs .rj-card[data-rj-module="designs"] { --rj-accent: #5b3f99; --rj-tint: rgba(91, 63, 153, .07); }
 .report-jobs .rj-card[data-rj-module="scoring"] { --rj-accent: #176e77; --rj-tint: rgba(23, 110, 119, .08); }
 .report-jobs .rj-card[data-rj-module="non_qualified_calls"] { --rj-accent: #a3204c; --rj-tint: rgba(163, 32, 76, .07); }
 .report-jobs .rj-card[data-rj-module] {
@@ -304,7 +304,7 @@
 .report-jobs .rj-artifact-tab.is-included .rj-tab-state::after { content: '✓'; color: #fff; }
 .report-jobs .rj-artifact-tab[data-module="dataset_analysis"] { --rj-accent: #0c4c8c; }
 .report-jobs .rj-artifact-tab[data-module="network_insights"] { --rj-accent: #4338ca; }
-.report-jobs .rj-artifact-tab[data-module="dashboards"] { --rj-accent: #5b3f99; }
+.report-jobs .rj-artifact-tab[data-module="designs"] { --rj-accent: #5b3f99; }
 .report-jobs .rj-artifact-tab[data-module="scoring"] { --rj-accent: #176e77; }
 .report-jobs .rj-artifact-tab[data-module="non_qualified_calls"] { --rj-accent: #a3204c; }
 .report-jobs .rj-card[data-rj-module].is-tab-hidden { display: none !important; }
@@ -365,7 +365,7 @@
 .report-jobs .rj-task-module[data-module="scoring"] { --rj-accent: #176e77; }
 .report-jobs .rj-task-module[data-module="network_insights"] { --rj-accent: #4338ca; }
 .report-jobs .rj-task-module[data-module="non_qualified_calls"] { --rj-accent: #a3204c; }
-.report-jobs .rj-task-module[data-module="dashboards"] { --rj-accent: #5b3f99; }
+.report-jobs .rj-task-module[data-module="designs"] { --rj-accent: #5b3f99; }
 .report-jobs .rj-task-module[data-module="dataset_analysis"] { --rj-accent: #0c4c8c; }
 /* The labels on top of the name of a job (scopeTabs in report_jobs.js), in the colours of those of the Favourites Filters of
    Scoring & GAP Analysis: the area of each artifact in the colour of its field, and the NR Modes outlined. */

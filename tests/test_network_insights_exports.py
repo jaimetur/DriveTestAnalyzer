@@ -34,7 +34,7 @@ def _analysis(comparison=False):
     return analysis
 
 
-def test_network_ppt_preserves_dashboard_template_and_fits_group_cells(tmp_path):
+def test_network_ppt_preserves_design_template_and_fits_group_cells(tmp_path):
     output = tmp_path / 'network.pptx'
     source = _analysis()
     export_network_insights_powerpoint(output, source, {}, {'group_label': 'Operator → City → Technology → Campaign'}, _png, template=TEMPLATE)

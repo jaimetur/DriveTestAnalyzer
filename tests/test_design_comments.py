@@ -7,8 +7,8 @@ import pytest
 
 import src.DriveTestAnalyzer as core
 from src.modules import cdr_reporting
-from src.modules import dashboard_comments as comments
-from src.modules.ppt_dashboards import DashboardDefinition
+from src.modules import design_comments as comments
+from src.modules.ppt_designer import DesignDefinition
 
 OPERATOR_CAMPAIGN = [['Operator'], ['Campaign']]
 
@@ -88,8 +88,8 @@ def test_unsupported_and_outdated_models():
     assert comments.kpi_semantics('Packet Delay Variation Score').direction == 1
 
 
-def prepare_rates_dashboard(client):
-    """A Dashboard of two slides (rates of A and B over two campaigns, then their results), prepared."""
+def prepare_rates_design(client):
+    """A Design of two slides (rates of A and B over two campaigns, then their results), prepared."""
     client.post('/login', data={'username': 'super', 'password': 'super123'})
     rows = ['Operator,Campaign,Mean_Data_Rate,Test_Result,Test_Name,Test_Start_Time']
     for campaign, rates in (('UK_Q2_2026', {'A': 40, 'B': 80}), ('UK_Q3_2026', {'A': 60, 'B': 82})):
@@ -108,20 +108,20 @@ def prepare_rates_dashboard(client):
         '2,Results,,Title and 1 column + Comments,Results,CDR-Data,Test_Result,100% Stacked Vertical Bars,,Operator,Campaign,,Top\n'
     ).encode(), is_default=False)
     core.repository.replace_operator_mapping_group(None, 'A', [], '#E60000', 'focus')
-    definition = DashboardDefinition(name='Rates', template='Comments test', datasets={'data': [1]}).model_dump(mode='json')
-    saved = client.put('/api/ppt-dashboards/rates', json=definition)
+    definition = DesignDefinition(name='Rates', template='Comments test', datasets={'data': [1]}).model_dump(mode='json')
+    saved = client.put('/api/ppt-designer/rates', json=definition)
     assert saved.status_code == 200, saved.text
-    prepared = client.post('/api/ppt-dashboards/prepare', json=definition)
+    prepared = client.post('/api/ppt-designer/prepare', json=definition)
     assert prepared.status_code == 200, prepared.text
     body = prepared.json()
     return body
 
 
 def test_generate_comments_reads_the_open_slide_and_records_app_events(client):
-    body = prepare_rates_dashboard(client)
+    body = prepare_rates_design(client)
     slide = body['slides'][0]
 
-    generated = client.post('/api/ppt-dashboards/rates/comments/generate', json={
+    generated = client.post('/api/ppt-designer/rates/comments/generate', json={
         'token': body['token'], 'slide': slide['number'],
         'charts': [{'index': chart['index'], 'hidden': [], 'shown': []} for chart in slide['charts']],
     })
@@ -133,19 +133,19 @@ def test_generate_comments_reads_the_open_slide_and_records_app_events(client):
     assert written and all(re.search(r'\b[AB]\b', text) for text in written)
     assert any(text.startswith('A median Mean Data Rate improves by') for text in written)
     assert {item['chart_index'] for item in result['suggestions']} == {chart['index'] for chart in slide['charts']}
-    model = client.get(f"/api/ppt-dashboards/chart/{body['token']}/{slide['charts'][0]['index']}").json()
+    model = client.get(f"/api/ppt-designer/chart/{body['token']}/{slide['charts'][0]['index']}").json()
     assert model['dimensions'] == [['Operator'], ['Campaign']]
     assert model['series'][0]['stats']['n'] == 12
 
     results = body['slides'][1]
-    generated_results = client.post('/api/ppt-dashboards/rates/comments/generate', json={'token': body['token'], 'slide': results['number']})
+    generated_results = client.post('/api/ppt-designer/rates/comments/generate', json={'token': body['token'], 'slide': results['number']})
     assert generated_results.status_code == 200, generated_results.text
     # One failure in 12 tests is not significantly different from none.
     assert [item['text'] for item in generated_results.json()['suggestions']] == [
         'A is on par with B in share of Failed (8.3% vs 0%).', 'A share of Failed is stable vs 26-Q2 (8.3%).',
     ]
 
-    added = client.patch('/api/ppt-dashboards/rates/comments', json={
+    added = client.patch('/api/ppt-designer/rates/comments', json={
         'slide_comments': {slide['comment_key']: written[:2]},
         'generated_slide': slide['comment_key'], 'generated_added': 2, 'token': body['token'],
     })
@@ -154,16 +154,16 @@ def test_generate_comments_reads_the_open_slide_and_records_app_events(client):
     meta = added.json()['slide_comment_meta'][slide['comment_key']]
     assert meta['generated'] == written[:2] and meta['engine'] == 'rules' and meta['selection'] == body['selection_key']
     # A generated comment edited by hand is no longer generated.
-    edited = client.patch('/api/ppt-dashboards/rates/comments', json={'slide_comments': {slide['comment_key']: ['Mine', written[1]]}})
+    edited = client.patch('/api/ppt-designer/rates/comments', json={'slide_comments': {slide['comment_key']: ['Mine', written[1]]}})
     assert edited.json()['slide_comment_meta'][slide['comment_key']]['generated'] == [written[1]]
     events = {row['action']: json.loads(row['details']) for row in core.repository.list_logs()}
-    assert events['generate_dashboard_comments']['suggestions'] == len(written)
-    assert events['generate_dashboard_comments']['engine'] == 'rules'
-    assert events['add_generated_dashboard_comments'] == {
+    assert events['generate_design_comments']['suggestions'] == len(written)
+    assert events['generate_design_comments']['engine'] == 'rules'
+    assert events['add_generated_design_comments'] == {
         'id': 'rates', 'name': 'Rates', 'slide': slide['comment_key'], 'added': 2, 'engine': 'rules', 'comments': 2,
     }
 
-    expired = client.post('/api/ppt-dashboards/rates/comments/generate', json={'token': 'missing', 'slide': 1})
+    expired = client.post('/api/ppt-designer/rates/comments/generate', json={'token': 'missing', 'slide': 1})
     assert expired.status_code == 410
 
 
@@ -223,14 +223,14 @@ def test_scatter_series_take_their_rank_correlation_without_scipy():
 
 
 def test_generate_all_slides_writes_every_slide_as_its_mode_says(client):
-    body = prepare_rates_dashboard(client)
+    body = prepare_rates_design(client)
     rates, results = body['slides']
-    client.patch('/api/ppt-dashboards/rates/comments', json={'slide_comments': {results['comment_key']: ['Written by hand']}})
+    client.patch('/api/ppt-designer/rates/comments', json={'slide_comments': {results['comment_key']: ['Written by hand']}})
 
     def generate_all(mode):
-        started = client.post('/api/ppt-dashboards/rates/comments/generate-all', json={'token': body['token'], 'mode': mode})
+        started = client.post('/api/ppt-designer/rates/comments/generate-all', json={'token': body['token'], 'mode': mode})
         assert started.status_code == 202, started.text
-        job = client.get(f"/api/ppt-dashboards/comment-jobs/{started.json()['job_id']}")
+        job = client.get(f"/api/ppt-designer/comment-jobs/{started.json()['job_id']}")
         assert job.status_code == 200, job.text
         assert job.json()['state'] == 'ready'
         return job.json()['result']
@@ -245,48 +245,48 @@ def test_generate_all_slides_writes_every_slide_as_its_mode_says(client):
     assert len(keeping_mine['slide_comments'][results['comment_key']]) > 1
     every = generate_all('all')
     assert 'Written by hand' not in every['slide_comments'][results['comment_key']]
-    saved = client.get('/api/ppt-dashboards').json()['rates']
+    saved = client.get('/api/ppt-designer').json()['rates']
     assert saved['slide_comments'] == every['slide_comments']
-    events = [json.loads(row['details']) for row in core.repository.list_logs() if row['action'] == 'generate_all_dashboard_comments']
+    events = [json.loads(row['details']) for row in core.repository.list_logs() if row['action'] == 'generate_all_design_comments']
     assert [event['mode'] for event in events] == ['all', 'generated', 'empty']
 
 
-def test_auto_comments_fill_the_ppt_without_changing_the_dashboard(client):
+def test_auto_comments_fill_the_ppt_without_changing_the_design(client):
     import time
 
     from pptx import Presentation
 
-    prepare_rates_dashboard(client)
-    stored = client.get('/api/ppt-dashboards').json()['rates']
-    client.patch('/api/ppt-dashboards/rates/comments', json={'slide_comments': {}})
+    prepare_rates_design(client)
+    stored = client.get('/api/ppt-designer').json()['rates']
+    client.patch('/api/ppt-designer/rates/comments', json={'slide_comments': {}})
     payload = {**stored, 'slide_comments': {}}
-    queued = client.post('/api/ppt-dashboards/rates/export-ppt', json={'definition': payload, 'auto_comments': 'empty'})
+    queued = client.post('/api/ppt-designer/rates/export-ppt', json={'definition': payload, 'auto_comments': 'empty'})
     assert queued.status_code == 202, queued.text
     job_id = queued.json()['job_id']
     deadline = time.monotonic() + 60
     while time.monotonic() < deadline:
-        job = next(item for item in client.get('/api/ppt-dashboards/ppt-jobs').json()['jobs'] if item['id'] == job_id)
+        job = next(item for item in client.get('/api/ppt-designer/ppt-jobs').json()['jobs'] if item['id'] == job_id)
         if job['status'] in {'ready', 'failed'}:
             break
         time.sleep(0.1)
     assert job['status'] == 'ready', job
     with core.repository.connection() as connection:
-        row = connection.execute('SELECT output_path, auto_comments FROM dashboard_ppt_jobs WHERE id = ?', (job_id,)).fetchone()
+        row = connection.execute('SELECT output_path, auto_comments FROM design_ppt_jobs WHERE id = ?', (job_id,)).fetchone()
     assert row['auto_comments'] == 'empty'
     commentary = [
         shape.text_frame.text for slide in Presentation(row['output_path']).slides for shape in slide.shapes
         if getattr(shape, 'is_placeholder', False) and shape.placeholder_format.idx == 10 and shape.text_frame.text.strip()
     ]
     assert commentary and any('A median Mean Data Rate improves by' in text for text in commentary)
-    # The Dashboard keeps its own comments.
-    assert client.get('/api/ppt-dashboards').json()['rates']['slide_comments'] == {}
-    assert any(row['action'] == 'auto_dashboard_comments' for row in core.repository.list_logs())
+    # The Design keeps its own comments.
+    assert client.get('/api/ppt-designer').json()['rates']['slide_comments'] == {}
+    assert any(row['action'] == 'auto_design_comments' for row in core.repository.list_logs())
 
 
-def test_reporting_jobs_keep_the_auto_comments_of_each_dashboard():
+def test_reporting_jobs_keep_the_auto_comments_of_each_design():
     from src.modules.report_tasks import normalize_definition
 
-    definition = normalize_definition({'name': 'Weekly', 'dashboards': [
-        {'dashboard_id': 'd1', 'auto_comments': 'generated'}, {'dashboard_id': 'd2'}, {'dashboard_id': 'd3', 'auto_comments': 'every'},
+    definition = normalize_definition({'name': 'Weekly', 'designs': [
+        {'design_id': 'd1', 'auto_comments': 'generated'}, {'design_id': 'd2'}, {'design_id': 'd3', 'auto_comments': 'every'},
     ]})
-    assert [entry['auto_comments'] for entry in definition['dashboards']] == ['generated', 'off', 'off']
+    assert [entry['auto_comments'] for entry in definition['designs']] == ['generated', 'off', 'off']

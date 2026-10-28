@@ -55,7 +55,7 @@
       "image": "slide-08.png",
       "section": "Multi-provider architecture",
       "title": "What Umlaut changes in each module",
-      "notes": "Builders work as soon as the CDR can be loaded. CDR Analysis and Reporting barely change. Scoring, PPT Dashboards and NQ Calls need their Umlaut content. The major changes are in ingestion (the Umlaut reader) and Network Insights, because Umlaut only gives the radio of a call at its start and end and has no identity for NR cells."
+      "notes": "Builders work as soon as the CDR can be loaded. CDR Analysis and Reporting barely change. Scoring, PPT Designer and NQ Calls need their Umlaut content. The major changes are in ingestion (the Umlaut reader) and Network Insights, because Umlaut only gives the radio of a call at its start and end and has no identity for NR cells."
     },
     {
       "id": "rca",
@@ -69,7 +69,7 @@
       "image": "slide-10.png",
       "section": "Multi-provider architecture",
       "title": "From the base to P3, in seven phases",
-      "notes": "Phases 1 and 2 are done in version 0.9.0: the multi-provider base and the Umlaut reader, profile and upload. Phases 3 to 6 bring Umlaut to the priority modules, Scoring, PPT Dashboards and NQ Calls, and to Network Insights. P3 comes last with the same model, as soon as there is a sample."
+      "notes": "Phases 1 and 2 are done in version 0.9.0: the multi-provider base and the Umlaut reader, profile and upload. Phases 3 to 6 bring Umlaut to the priority modules, Scoring, PPT Designer and NQ Calls, and to Network Insights. P3 comes last with the same model, as soon as there is a sample."
     },
     {
       "id": "phase1",

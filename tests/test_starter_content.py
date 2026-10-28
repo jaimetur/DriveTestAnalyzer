@@ -1,4 +1,4 @@
-"""Starter content: every workspace starts with the shipped methodology, Report Templates and Dashboards."""
+"""Starter content: every workspace starts with the shipped methodology, Report Templates and Designs."""
 import csv
 import io
 import json
@@ -30,24 +30,24 @@ def test_the_shipped_content_names_no_operator_or_vendor():
         # workspace chart some Vendors of their own.
         assert rows and not re.search(r'Operator\s+(NOT\s+)?IN\s*\(', path.read_text(encoding='utf-8')), path.name
         assert not any(re.search(r'\bVendor\s+(NOT\s+)?IN\s*\([^)]*_', row.get('Filters') or '', re.I) for row in rows), path.name
-        # Nor a city of the UK workspace (each Dashboard chooses its own Main Cities), nor the UK in its title.
+        # Nor a city of the UK workspace (each Design chooses its own Main Cities), nor the UK in its title.
         assert not re.search(r'G_Level_4\s+(NOT\s+)?IN\s*\(', path.read_text(encoding='utf-8')), path.name
         assert not any(re.search(r'\bUK\b', row.get('Slide Tittle') or '') for row in rows), path.name
         assert path.stem.startswith('Tableau') or not any(VENDOR_FILTER.search(row.get('Filters') or '') for row in rows), path.name
-    dashboards = [json.loads(path.read_text(encoding='utf-8')) for path in (ASSETS / 'ppt-dashboards').glob('*.json')]
-    # The Dashboards of the UK workspace, one per NR Mode, and the NSA & SA comparison.
-    assert {(item['name'], item['template'], item['nr_mode']) for item in dashboards} == {
+    designs = [json.loads(path.read_text(encoding='utf-8')) for path in (ASSETS / 'ppt-designer').glob('*.json')]
+    # The Designs of the UK workspace, one per NR Mode, and the NSA & SA comparison.
+    assert {(item['name'], item['template'], item['nr_mode']) for item in designs} == {
         (f'{nr_mode} - {template}', template, nr_mode) for nr_mode in ('NSA', 'SA') for template in (
             'NetCheck CDR Report', 'NetCheck CDR Report (Main Cities)', 'RF Quality (RSRP & SINR)', 'Tableau Dashboards', 'Tableau Charts')
     } | {('NSA & SA - FDFS DL (NSA & SA)', 'FDFS DL (NSA & SA)', 'NSA+SA')}
-    assert not any({'technology', 'template_technology'} & set(item) for item in dashboards)
-    # The (Main Cities) Dashboards use the Main Cities of each workspace.
-    assert all(item['filters']['City'] == ['@main-cities'] for item in dashboards if item['name'].endswith('(Main Cities)'))
-    for item in dashboards:
+    assert not any({'technology', 'template_technology'} & set(item) for item in designs)
+    # The (Main Cities) Designs use the Main Cities of each workspace.
+    assert all(item['filters']['City'] == ['@main-cities'] for item in designs if item['name'].endswith('(Main Cities)'))
+    for item in designs:
         assert 'datasets' not in item and not any(
             field.replace(' ', '_').casefold() in {'operator', 'vendor', 'operator_vendor', 'vendor_operator'}
             for field in item.get('filters') or {})
-        # Each Dashboard uses a shipped Report Template.
+        # Each Design uses a shipped Report Template.
         assert (ASSETS / 'ppt-templates' / f"{item['template']}.csv").exists()
     methodology = json.loads((ASSETS / 'scoring-methodologies' / 'NetCheck_2026.json').read_text(encoding='utf-8'))
     assert [profile['name'] for profile in methodology['profiles']] == ['NetCheck 2026']
@@ -61,8 +61,8 @@ def test_a_new_workspace_starts_with_the_shipped_content_once(client):
     assert 'NetCheck 2026' in [profile['name'] for profile in repository.get_scoring_profiles()['profiles']]
     templates = {row['name'] for row in repository.list_report_templates()}
     assert {'NetCheck CDR Report', 'NetCheck CDR Report (Main Cities)', 'RF Quality (RSRP & SINR)'} <= templates
-    dashboards = json.loads(repository.get_workspace_state(starter_content.DASHBOARDS_STATE_KEY))
-    names = sorted((item['name'], item['template'], item['nr_mode']) for item in dashboards.values())
+    designs = json.loads(repository.get_workspace_state(starter_content.DESIGNS_STATE_KEY))
+    names = sorted((item['name'], item['template'], item['nr_mode']) for item in designs.values())
     assert ('NSA - NetCheck CDR Report', 'NetCheck CDR Report', 'NSA') in names
     assert ('SA - NetCheck CDR Report', 'NetCheck CDR Report', 'SA') in names
     assert ('NSA - RF Quality (RSRP & SINR)', 'RF Quality (RSRP & SINR)', 'NSA') in names
@@ -107,20 +107,20 @@ def test_the_other_starter_content_fits_any_market(client):
     queries = {row['name']: row for row in repository.list_query_builder_queries()}
     assert len(queries) >= 7 and all(json.loads(row['dataset_ids_json']) == [] for row in queries.values())
     assert all(re.search(r'\bselected_(data|voice|speech)\b', row['query_sql']) for row in queries.values())
-    # The Reporting Jobs of the UK workspace, in its order, with the starter Dashboards.
+    # The Reporting Jobs of the UK workspace, in its order, with the starter Designs.
     shipped = sorted((json.loads(path.read_text(encoding='utf-8')) for path in (ASSETS / 'reporting-jobs').glob('*.json')),
                      key=lambda item: item['position'])
     assert [task['name'] for task in report_tasks.list_tasks(repository)] == [item['name'] for item in shipped]
     assert all(not item['send_email'] and item['recipients'] == [] for item in shipped)
     jobs = {task['name']: task for task in report_tasks.list_tasks(repository)}
-    dashboards = json.loads(repository.get_workspace_state(starter_content.DASHBOARDS_STATE_KEY))
+    designs = json.loads(repository.get_workspace_state(starter_content.DESIGNS_STATE_KEY))
     weekly = jobs['PPT Weekly (@latest campaings)']
     # The weekly job is disabled until it is enabled in the workspace.
     assert weekly['enabled'] is False and weekly['schedule']['mode'] == 'weekly'
-    assert sorted(dashboards[entry['dashboard_id']]['name'] for entry in weekly['definition']['dashboards']) == [
+    assert sorted(designs[entry['design_id']]['name'] for entry in weekly['definition']['designs']) == [
         'NSA - NetCheck CDR Report', 'NSA - RF Quality (RSRP & SINR)', 'SA - NetCheck CDR Report']
     # Every operator (the Operator Maps leave out the excluded ones).
-    assert all(entry['filters'] == {'Campaign': ['@latest-campaign']} for entry in weekly['definition']['dashboards'])
+    assert all(entry['filters'] == {'Campaign': ['@latest-campaign']} for entry in weekly['definition']['designs'])
     # The others each generate a favourite Bundle Report Template of the whole country, by hand.
     assert all(task['enabled'] and task['schedule']['mode'] == 'manual'
                and task['definition']['modules']['bundle_report_template']['enabled']
@@ -247,19 +247,19 @@ def test_a_new_workspace_starts_with_the_favourites_of_the_uk_workspace(client):
     assert _seed_favourites(repository) == (len(shipped('scoring-favourites-filters')),
                                             len(shipped('bundle-report-template-favourites')))
 
-    # The favourite Bundle Report Templates, with the shipped Dashboards of their NR Mode checked as they were.
+    # The favourite Bundle Report Templates, with the shipped Designs of their NR Mode checked as they were.
     favourites = {item['name']: item['definition'] for item in bundle_report_templates.list_favourites(repository)}
     assert {item['name'] for item in shipped('bundle-report-template-favourites')} <= set(favourites)
     # For the whole country and every operator (the Operator Maps leave out the SA tests of Three).
     assert all(not any(definition['filters'][key] for key in ('operators', 'regions', 'clusters', 'cities'))
                for definition in favourites.values())
-    dashboards = json.loads(repository.get_workspace_state(starter_content.DASHBOARDS_STATE_KEY))
+    designs = json.loads(repository.get_workspace_state(starter_content.DESIGNS_STATE_KEY))
     for name, nr_mode in (('SCO+NI+NQ+PPT+CDR (@Latest 2 campaigns) · NSA · Nationwide', 'NSA'),
                           ('SCO+NI+NQ+PPT+CDR (@Latest 2 campaigns) · SA · Nationwide', 'SA')):
-        items = next(section for section in favourites[name]['sections'] if section['key'] == 'dashboards')['items']
-        checked = [dashboards[item['key']] for item in items if item['enabled']]
-        assert checked and all(dashboard['nr_mode'] == nr_mode for dashboard in checked)
-        assert f'{nr_mode} - NetCheck CDR Report (Main Cities)' in [dashboard['name'] for dashboard in checked]
+        items = next(section for section in favourites[name]['sections'] if section['key'] == 'designs')['items']
+        checked = [designs[item['key']] for item in items if item['enabled']]
+        assert checked and all(design['nr_mode'] == nr_mode for design in checked)
+        assert f'{nr_mode} - NetCheck CDR Report (Main Cities)' in [design['name'] for design in checked]
     # The Favourites Filters, in their order, wait for the CDRs of their Campaign choice.
     filters = [item for item in saved_filters.list_saved_filters(repository) if item['pinned']]
     assert [item['name'] for item in filters] == [item['name'] for item in sorted(
@@ -297,13 +297,13 @@ def test_the_nsa_and_sa_example_reaches_an_existing_workspace_once(client):
     repository = app_module.repository
     # A workspace set up before the example was shipped.
     repository.delete_report_template('FDFS DL (NSA & SA)')
-    dashboards = json.loads(repository.get_workspace_state(starter_content.DASHBOARDS_STATE_KEY))
-    repository.set_workspace_state(starter_content.DASHBOARDS_STATE_KEY, json.dumps(
-        {key: item for key, item in dashboards.items() if item['template'] != 'FDFS DL (NSA & SA)'}))
+    designs = json.loads(repository.get_workspace_state(starter_content.DESIGNS_STATE_KEY))
+    repository.set_workspace_state(starter_content.DESIGNS_STATE_KEY, json.dumps(
+        {key: item for key, item in designs.items() if item['template'] != 'FDFS DL (NSA & SA)'}))
     repository.set_workspace_state(starter_content.LATER_EXAMPLES_STATE_KEY, '[]')
     assert starter_content.seed_starter_content(repository) == {'examples': 2}
-    dashboards = json.loads(repository.get_workspace_state(starter_content.DASHBOARDS_STATE_KEY))
-    example = next(item for item in dashboards.values() if item['template'] == 'FDFS DL (NSA & SA)')
+    designs = json.loads(repository.get_workspace_state(starter_content.DESIGNS_STATE_KEY))
+    example = next(item for item in designs.values() if item['template'] == 'FDFS DL (NSA & SA)')
     assert example['nr_mode'] == 'NSA+SA' and example['sa_campaigns'] == ['@latest-campaign']
     assert example['filters']['Campaign'] == ['@latest-3-campaigns']
     # Deleted later, it is not added again.

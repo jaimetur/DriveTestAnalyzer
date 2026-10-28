@@ -69,27 +69,27 @@ def test_definitions_keep_every_module_option_and_need_an_artifact():
     with pytest.raises(ValueError):
         normalize_definition({})
     definition = normalize_definition({
-        'dashboards': [{'dashboard_id': 'd1', 'scope': 'multivendor', 'vendor_comparison': 'vendor_only',
+        'designs': [{'design_id': 'd1', 'scope': 'multivendor', 'vendor_comparison': 'vendor_only',
                         'datasets': {'data': [3, '4']}, 'date_from': '2026-01-01',
                         'filters': {'Operator': ['EE', ''], 'RAT': []}}],
         'scoring': [{'nr_mode': 'sa', 'label': 'Weekly', 'report': default_report_configuration(
             context_filters={'Vendor': ['Huawei']}, aggregation_levels=['Operator', 'Campaign'], main_cities=True)}],
     })
     # An entry saved when CDRs were chosen by hand keeps them until it is migrated (see migrate_auto_cdrs).
-    assert definition['dashboards'] == [{
-        'dashboard_id': 'd1', 'label': '', 'nr_mode': '', 'scope': 'multivendor', 'vendor_comparison': 'vendor_only', 'auto_cdrs': False,
+    assert definition['designs'] == [{
+        'design_id': 'd1', 'label': '', 'nr_mode': '', 'scope': 'multivendor', 'vendor_comparison': 'vendor_only', 'auto_cdrs': False,
         'datasets': {'data': [3, 4]}, 'cdr_selection': '', 'date_from': '2026-01-01', 'date_to': '', 'filters': {'Operator': ['EE']},
         'auto_comments': 'off', 'auto_comments_engine': '',
     }]
     # The entries of the editor choose their CDRs by Campaign: they carry no CDRs.
     automatic = normalize_definition({
-        'dashboards': [{'dashboard_id': 'd1', 'auto_cdrs': True, 'datasets': {'data': [3]}, 'cdr_selection': 'newest',
+        'designs': [{'design_id': 'd1', 'auto_cdrs': True, 'datasets': {'data': [3]}, 'cdr_selection': 'newest',
                         'filters': {'Campaign': ['@latest-2-campaigns']}}],
         'scoring': [{**SCORING_ENTRY, 'auto_cdrs': True, 'campaigns': ['@latest-campaign'], 'dataset_ids': [1]}],
         'network_insights': [{'auto_cdrs': True, 'selection': {'datasets': {'data': [1]}, 'campaigns': ['2026-Q2']}}],
     })
-    assert (automatic['dashboards'][0]['datasets'], automatic['dashboards'][0]['cdr_selection']) == ({}, '')
-    assert automatic['dashboards'][0]['filters'] == {'Campaign': ['@latest-2-campaigns']}
+    assert (automatic['designs'][0]['datasets'], automatic['designs'][0]['cdr_selection']) == ({}, '')
+    assert automatic['designs'][0]['filters'] == {'Campaign': ['@latest-2-campaigns']}
     assert (automatic['scoring'][0]['dataset_ids'], automatic['scoring'][0]['campaigns']) == ([], ['@latest-campaign'])
     assert automatic['network_insights'][0]['selection']['datasets'] == {}
     assert automatic['network_insights'][0]['selection']['campaigns'] == ['2026-Q2']
@@ -110,7 +110,7 @@ def test_modules_profiles_control_the_modules_of_each_user(client):
     # Super-admins see every module, PPT Reporting (old) included, although it is in no profile.
     page = client.get('/workspace').text
     assert 'href="/reporting"' in page and 'href="/non-qualified-calls"' in page and 'href="/ppt-reporting-old"' in page
-    order = [page.index(f'href="{path}"') for path in ('/datasets-analysis', '/ppt-dashboards', '/scoring', '/network-insights', '/non-qualified-calls', '/reporting')]
+    order = [page.index(f'href="{path}"') for path in ('/datasets-analysis', '/ppt-designer', '/scoring', '/network-insights', '/non-qualified-calls', '/reporting')]
     assert order == sorted(order)
     # A user without a profile has the default one: every module but PPT Reporting (old).
     session(client, 'analyst', 'user-viewer')
@@ -168,7 +168,7 @@ def test_help_readme_and_changelog_are_public_except_ppt_reporting_old(client):
     core.repository.save_modules_profile(default['id'], default['name'], default['description'], [*default['modules'], 'ppt-reporting-old'])
     core.invalidate_module_access_cache()
     index = [item['relative_path'] for item in client.get('/api/documents/help-index').json()['documents']]
-    assert index.index('ppt-dashboards.md') < index.index('ppt-reporting-old.md') < index.index('scoring-gap-analysis.md') < index.index('reporting.md')
+    assert index.index('ppt-designer.md') < index.index('ppt-reporting-old.md') < index.index('scoring-gap-analysis.md') < index.index('reporting.md')
     assert client.get('/api/documents/help/ppt-reporting-old.md').status_code == 200
 
 
@@ -609,13 +609,13 @@ def test_every_artifact_with_cdrs_offers_the_two_automatic_choices():
     definition = normalize_definition({
         'dataset_analysis': {'enabled': True, 'cdr_selection': 'newest'},
         'network_insights': [{'cdr_selection': 'all_complete', 'selection': {'nr_mode': 'SA'}}, {'selection': {}}],
-        'dashboards': [{'dashboard_id': 'd1', 'cdr_selection': 'newest'}, {'dashboard_id': 'd2', 'all_datasets': True},
-                       {'dashboard_id': 'd3', 'datasets': {'data': [5]}}],
+        'designs': [{'design_id': 'd1', 'cdr_selection': 'newest'}, {'design_id': 'd2', 'all_datasets': True},
+                       {'design_id': 'd3', 'datasets': {'data': [5]}}],
     })
     assert definition['dataset_analysis']['cdr_selection'] == 'newest'
-    # Jobs saved with every ready CDR use every complete set; a Dashboard without one uses its CDRs.
+    # Jobs saved with every ready CDR use every complete set; a Design without one uses its CDRs.
     assert [entry['cdr_selection'] for entry in definition['network_insights']] == ['all_complete', 'all_complete']
-    assert [entry['cdr_selection'] for entry in definition['dashboards']] == ['newest', 'all_complete', '']
+    assert [entry['cdr_selection'] for entry in definition['designs']] == ['newest', 'all_complete', '']
     assert normalize_definition({'dataset_analysis': {'enabled': True}})['dataset_analysis']['cdr_selection'] == 'all_complete'
 
 
@@ -750,10 +750,10 @@ def test_job_artifacts_are_grouped_by_module_with_their_entries():
         'dataset_analysis': {'enabled': True, 'formats': ['powerpoint', 'word']},
         'network_insights': [{'nr_mode': 'NSA', 'technology': 'lte', 'formats': ['powerpoint']},
                              {'nr_mode': 'SA', 'technology': 'lte_nr', 'formats': ['word']}],
-        'dashboards': [{'dashboard_id': 'd1', 'label': 'Main Cities'}],
+        'designs': [{'design_id': 'd1', 'label': 'Main Cities'}],
         'scoring': [], 'modules': {},
     })
-    assert [group['module'] for group in groups] == ['CDR Analysis', 'Network Insights', 'PPT Dashboards']
+    assert [group['module'] for group in groups] == ['CDR Analysis', 'Network Insights', 'PPT Designer']
     assert groups[0]['items'] == ['(PPT/Word)']
     assert len(groups[1]['items']) == 2 and groups[1]['items'][1].endswith('(Word)')
     assert groups[2]['items'] == ['Main Cities (PPT)']
@@ -827,11 +827,11 @@ def test_jobs_are_labelled_with_the_area_and_nr_modes_of_their_artifacts(client)
     every = report_tasks.job_scope({'modules': {'bundle_report_template': {'enabled': True, 'options': {}}}}, favourites)
     assert [scope['text'] for scope in every['scopes']] == ['London', 'Vendor A, VMO2 North', 'Nationwide']
     assert every['nr_modes'] == ['NSA', 'SA']
-    # Manual artifacts: each Network Insights entry, Dashboard, Scoring scenario (Main Cities a City) and module gives its
+    # Manual artifacts: each Network Insights entry, Design, Scoring scenario (Main Cities a City) and module gives its
     # area once (whatever the case), the operators or vendors it filters after every area, and the NR Modes of the job
     # (NSA vs SA too).
     manual = {'network_insights': [{'selection': {'nr_mode': 'SA', 'cities': ['London']}}],
-              'dashboards': [{'filters': {'Campaign': ['@latest-campaign']}}],
+              'designs': [{'filters': {'Campaign': ['@latest-campaign']}}],
               'scoring': [{'nr_mode': 'NSA+SA', 'report': {'scenarios': [
                   {'context_filters': {}}, {'context_filters': {'City': ['LONDON']}}, {'context_filters': {}, 'main_cities': True},
                   {'context_filters': {'City': ['Leeds'], 'Operator': ['EE']}}]}}],
@@ -863,14 +863,14 @@ def test_jobs_are_labelled_with_the_area_and_nr_modes_of_their_artifacts(client)
 def test_jobs_name_their_modules_abbreviated_and_move_or_delete_several_at_once(client):
     # The modules a job generates artifacts of: its own and the sections of the favourites it generates (every favourite
     # when it chooses none), in the order of the sections, CDR Analysis last.
-    favourites = {'7': ['network_insights', 'scoring'], '8': ['dashboards']}
+    favourites = {'7': ['network_insights', 'scoring'], '8': ['designs']}
     favourite = {'modules': {'bundle_report_template': {'enabled': True, 'options': {'filters': {'favourites': ['7']}}}}}
     assert report_tasks.job_modules(favourite, favourites) == ['scoring', 'network_insights']
     every = {'modules': {'bundle_report_template': {'enabled': True, 'options': {}}}}
-    assert report_tasks.job_modules(every, favourites) == ['scoring', 'network_insights', 'dashboards']
-    manual = {'dataset_analysis': {'enabled': True}, 'dashboards': [{'dashboard_id': 'a'}], 'scoring': [SCORING_ENTRY],
+    assert report_tasks.job_modules(every, favourites) == ['scoring', 'network_insights', 'designs']
+    manual = {'dataset_analysis': {'enabled': True}, 'designs': [{'design_id': 'a'}], 'scoring': [SCORING_ENTRY],
               'modules': {'non_qualified_calls': {'enabled': True}}}
-    assert report_tasks.job_modules(manual) == ['scoring', 'non_qualified_calls', 'dashboards', 'dataset_analysis']
+    assert report_tasks.job_modules(manual) == ['scoring', 'non_qualified_calls', 'designs', 'dataset_analysis']
     login(client)
     client.post('/api/reporting/tasks', json={'name': 'Modules', 'schedule': {'mode': 'manual'},
                                               'definition': {'scoring': [SCORING_ENTRY]}}).raise_for_status()
@@ -880,7 +880,7 @@ def test_jobs_name_their_modules_abbreviated_and_move_or_delete_several_at_once(
     script = (core.PROJECT_ROOT / 'src/web_interface/static/js/report_jobs.js').read_text(encoding='utf-8')
     styles = (core.PROJECT_ROOT / 'src/web_interface/static/css/report_jobs.css').read_text(encoding='utf-8')
     # On the first line of the name, always on one line: the box of the job and its modules abbreviated.
-    assert "const MODULE_TAGS = {scoring: 'SCO', network_insights: 'NI', non_qualified_calls: 'NQ', dashboards: 'PPT', dataset_analysis: 'CDR'};" in script
+    assert "const MODULE_TAGS = {scoring: 'SCO', network_insights: 'NI', non_qualified_calls: 'NQ', designs: 'PPT', dataset_analysis: 'CDR'};" in script
     assert '.report-jobs .rj-task-modules { display: flex; flex-wrap: nowrap;' in styles
     assert '#rj-tasks th:nth-child(1), #rj-tasks td:nth-child(1) { width: 18rem;' in styles
     # The box that selects a job sits on top of the tab on the left of its name, by which it is dragged.
@@ -891,14 +891,14 @@ def test_jobs_name_their_modules_abbreviated_and_move_or_delete_several_at_once(
     # their own: each choice once, after the modules that make it when they choose differently.
     assert 'text-overflow: ellipsis; white-space: nowrap; }' in styles.split('.report-jobs .rj-task-scope, .report-jobs .rj-task-mode {', 1)[1].split('\n', 1)[0]
     campaigns = {'7': [('scoring', ['@latest-2-campaigns']), ('network_insights', ['@latest-campaign']),
-                       ('non_qualified_calls', []), ('dashboards', ['@latest-2-campaigns'])]}
+                       ('non_qualified_calls', []), ('designs', ['@latest-2-campaigns'])]}
     assert report_tasks.job_campaigns(favourite, campaigns) == [
-        {'campaigns': 'Latest 2 campaigns', 'modules': ['scoring', 'dashboards']},
+        {'campaigns': 'Latest 2 campaigns', 'modules': ['scoring', 'designs']},
         {'campaigns': 'Latest campaign', 'modules': ['network_insights']},
         {'campaigns': 'All campaigns', 'modules': ['non_qualified_calls']}]
     assert report_tasks.job_campaigns({'scoring': [{'campaigns': ['@all-campaigns']}, {'campaigns': []}],
-                                       'dashboards': [{'filters': {'Campaign': ['UK_Q2_2026', 'UK_Q3_2026']}}]}) == [
-        {'campaigns': 'All campaigns', 'modules': ['scoring']}, {'campaigns': '26-Q2, 26-Q3', 'modules': ['dashboards']}]
+                                       'designs': [{'filters': {'Campaign': ['UK_Q2_2026', 'UK_Q3_2026']}}]}) == [
+        {'campaigns': 'All campaigns', 'modules': ['scoring']}, {'campaigns': '26-Q2, 26-Q3', 'modules': ['designs']}]
     assert task['campaigns'] == [{'campaigns': 'Latest campaign', 'modules': ['scoring']}]
     assert "const modules = choices.length > 1 ? choice.modules.map((key) => MODULE_TAGS[key] || key.slice(0, 3).toUpperCase()).join(' · ') : '';" in script
     # The actions in a light toolbar of icon buttons (an icon of its own for each, in the colour of its action), and the

@@ -1,4 +1,4 @@
-"""Dashboard Designer (ticket #26): the Design of a template, the overrides of a Dashboard and their API."""
+"""Designer (ticket #26): the Design of a template, the overrides of a Design and their API."""
 import copy
 import csv
 import json
@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 import src.DriveTestAnalyzer as core
-from src.modules import dashboard_design as dd
+from src.modules import design_slides as dd
 from src.modules.cdr_reporting import catalogue_csv, parse_catalog_csv
 from src.modules.report_layouts import csv_with_slide_ids
 
@@ -68,7 +68,7 @@ def netcheck_slide_set():
     return dd.slides_from_entries(dd.with_slide_ids(parse_catalog_csv((TEMPLATES / 'NetCheck CDR Report.csv').read_bytes())))
 
 
-def test_a_dashboard_keeps_only_what_it_changes_and_follows_the_rest_of_its_template():
+def test_a_design_keeps_only_what_it_changes_and_follows_the_rest_of_its_template():
     template = netcheck_slide_set()
     shown, report = dd.resolve_slides(template, None)
     assert report == {'dropped': [], 'template_changed': []}
@@ -95,7 +95,7 @@ def test_a_dashboard_keeps_only_what_it_changes_and_follows_the_rest_of_its_temp
     # The hidden slide is left out of the rows.
     assert len(dd.entries_from_slides(dd.resolve_slides(template, overrides)[0])) == len(dd.entries_from_slides(shown)) - len(content[1]['elements'])
 
-    # A template change reaches the Dashboard unless it changed that same thing: then it is flagged.
+    # A template change reaches the Design unless it changed that same thing: then it is flagged.
     changed = copy.deepcopy(template)
     changed_content = [slide for slide in changed['slides'] if slide['kind'] == 'content']
     changed_content[0]['title'] = 'Completed calls'
@@ -192,9 +192,9 @@ def setup(client, *, created_by='super'):
     })
     assert response.status_code == 200
     core.repository.add_report_template('Design test', TEMPLATE.encode(), updated_by=created_by)
-    definition = {'name': 'Design dashboard', 'template': 'Design test', 'nr_mode': 'NSA', 'datasets': {'data': [1]}}
-    for dashboard_id, name in (('design-a', 'Design dashboard'), ('design-b', 'Design sibling')):
-        saved = client.put(f'/api/ppt-dashboards/{dashboard_id}', json={**definition, 'name': name})
+    definition = {'name': 'Design design', 'template': 'Design test', 'nr_mode': 'NSA', 'datasets': {'data': [1]}}
+    for design_id, name in (('design-a', 'Design design'), ('design-b', 'Design sibling')):
+        saved = client.put(f'/api/ppt-designer/{design_id}', json={**definition, 'name': name})
         assert saved.status_code == 200, saved.text
     return definition
 
@@ -203,91 +203,91 @@ def logged(action):
     return [json.loads(row['details']) for row in core.repository.list_logs() if row['action'] == action]
 
 
-def stored(dashboard_id):
-    return json.loads(core.repository.get_workspace_state('ppt_dashboards_v2'))[dashboard_id]
+def stored(design_id):
+    return json.loads(core.repository.get_workspace_state('ppt_designs_v2'))[design_id]
 
 
-def test_the_designer_reads_saves_and_previews_a_dashboard_design(client):
+def test_the_designer_reads_saves_and_previews_a_design_slides(client):
     definition = setup(client)
-    assert client.get('/api/ppt-dashboards/design-a/slides').status_code == 200
+    assert client.get('/api/ppt-designer/design-a/slides').status_code == 200
     # Reading it alone leaves the template as it is; entering Design gives it ids of its own.
     assert b'Format' not in core.repository.report_template_content('Design test').split(b'\n', 1)[0]
-    read = client.get('/api/ppt-dashboards/design-a/slides?edit=1')
+    read = client.get('/api/ppt-designer/design-a/slides?edit=1')
     assert read.status_code == 200, read.text
     body = read.json()
-    assert body['rights'] == {'dashboard': True, 'template': True}
+    assert body['rights'] == {'design': True, 'template': True}
     assert [slide['title'] for slide in body['slide_set']['slides']] == ['Comparison', 'Next']
-    assert {item['id'] for item in body['template']['dashboards']} >= {'design-a', 'design-b'}
+    assert {item['id'] for item in body['template']['designs']} >= {'design-a', 'design-b'}
     # Reading it gave the template ids of its own (the positional ones it was read with).
     assert b',Format\n' in core.repository.report_template_content('Design test').split(b'\n', 1)[0] + b'\n'
     assert logged('report_template_slide_ids_assigned')[-1]['template'] == 'Design test'
 
-    prepared = client.post('/api/ppt-dashboards/prepare', json=definition)
+    prepared = client.post('/api/ppt-designer/prepare', json=definition)
     assert prepared.status_code == 200, prepared.text
     edited = copy.deepcopy(body['slide_set'])
     edited['slides'][0]['title'] = 'Comparison in London'
     edited['slides'][1]['hidden'] = True
-    preview = client.post('/api/ppt-dashboards/slides/preview', json={
+    preview = client.post('/api/ppt-designer/slides/preview', json={
         'token': prepared.json()['token'], 'slide_set': edited, 'overrides': body['overrides']})
     assert preview.status_code == 200, preview.text
     assert [slide['title'] for slide in preview.json()['slides']] == ['Comparison in London']
     assert preview.json()['summary']['hidden_slides'] == 1
-    chart = client.get(f"/api/ppt-dashboards/chart/{preview.json()['token']}/0")
+    chart = client.get(f"/api/ppt-designer/chart/{preview.json()['token']}/0")
     assert chart.status_code == 200, chart.text
 
-    saved = client.put('/api/ppt-dashboards/design-a/slides', json={'slide_set': edited, 'overrides': body['overrides']})
+    saved = client.put('/api/ppt-designer/design-a/slides', json={'slide_set': edited, 'overrides': body['overrides']})
     assert saved.status_code == 200, saved.text
     assert saved.json()['summary']['slide_properties'] == 1 and saved.json()['summary']['hidden_slides'] == 1
-    assert logged('dashboard_design_saved')[-1]['overrides']['hidden_slides'] == 1
+    assert logged('design_slides_saved')[-1]['overrides']['hidden_slides'] == 1
     # Saving its filters from a viewer opened before keeps its Design; its sibling follows the template as it is.
-    assert client.put('/api/ppt-dashboards/design-a', json={**definition, 'filters': {'City': ['London']}}).status_code == 200
+    assert client.put('/api/ppt-designer/design-a', json={**definition, 'filters': {'City': ['London']}}).status_code == 200
     assert stored('design-a')['slide_overrides']['hidden_slides']
-    mine = client.post('/api/ppt-dashboards/prepare', json={**definition, 'slide_overrides': stored('design-a')['slide_overrides']})
+    mine = client.post('/api/ppt-designer/prepare', json={**definition, 'slide_overrides': stored('design-a')['slide_overrides']})
     assert [slide['title'] for slide in mine.json()['slides']] == ['Comparison in London']
-    sibling = client.post('/api/ppt-dashboards/prepare', json={**definition, 'name': 'Design sibling'})
+    sibling = client.post('/api/ppt-designer/prepare', json={**definition, 'name': 'Design sibling'})
     assert [slide['title'] for slide in sibling.json()['slides']] == ['Comparison', 'Next']
 
     # A template change reaches both, except what design-a changed itself.
     template = copy.deepcopy(saved.json()['template']['slide_set'])
     template['slides'][0]['title'] = 'Comparison of operators'
     template['slides'][1]['subtitle'] = 'From the template'
-    changed = client.put('/api/ppt-dashboards/design-b/slides', json={
+    changed = client.put('/api/ppt-designer/design-b/slides', json={
         'template_slide_set': template, 'template_updated_at': saved.json()['template']['updated_at']})
     assert changed.status_code == 200, changed.text
     assert [slide['title'] for slide in changed.json()['slide_set']['slides']] == ['Comparison of operators', 'Next']
-    again = client.get('/api/ppt-dashboards/design-a/slides').json()
+    again = client.get('/api/ppt-designer/design-a/slides').json()
     assert again['slide_set']['slides'][0]['title'] == 'Comparison in London'
     assert again['report']['template_changed'][0]['property'] == 'title'
     # The template it was read from changed: a stale Designer is refused.
-    stale = client.put('/api/ppt-dashboards/design-b/slides', json={
+    stale = client.put('/api/ppt-designer/design-b/slides', json={
         'template_slide_set': template, 'template_updated_at': saved.json()['template']['updated_at']})
     assert stale.status_code == 409
 
 
-def test_detach_save_as_template_and_deleting_a_template_keep_every_dashboard_working(client):
+def test_detach_save_as_template_and_deleting_a_template_keep_every_design_working(client):
     definition = setup(client)
-    body = client.get('/api/ppt-dashboards/design-a/slides?edit=1').json()
+    body = client.get('/api/ppt-designer/design-a/slides?edit=1').json()
     edited = copy.deepcopy(body['slide_set'])
     edited['slides'][0]['title'] = 'Mine'
-    assert client.put('/api/ppt-dashboards/design-a/slides', json={'slide_set': edited}).status_code == 200
+    assert client.put('/api/ppt-designer/design-a/slides', json={'slide_set': edited}).status_code == 200
 
-    copy_response = client.post('/api/ppt-dashboards/design-a/save-as-template', json={'name': 'Design copy'})
+    copy_response = client.post('/api/ppt-designer/design-a/save-as-template', json={'name': 'Design copy'})
     assert copy_response.status_code == 200, copy_response.text
     copied = core.load_template_catalogue(core.repository.report_template_content('Design copy'))
     assert copied[0].slide_title == 'Mine'
-    assert client.post('/api/ppt-dashboards/design-a/save-as-template', json={'name': 'design copy'}).status_code == 409
+    assert client.post('/api/ppt-designer/design-a/save-as-template', json={'name': 'design copy'}).status_code == 409
 
-    detached = client.post('/api/ppt-dashboards/design-a/detach')
+    detached = client.post('/api/ppt-designer/design-a/detach')
     assert detached.status_code == 200, detached.text
     assert detached.json()['detached'] is True and stored('design-a')['own_slides']['slides'][0]['title'] == 'Mine'
 
-    # Deleting the template detaches the Dashboards still following it.
+    # Deleting the template detaches the Designs still following it.
     assert client.post('/workspace-config/report-templates/Design test/delete', follow_redirects=False).status_code == 303
     assert stored('design-b')['own_slides']['slides'][0]['title'] == 'Comparison'
-    assert logged('delete_report_template')[-1]['detached_dashboards'] == 1
-    for name in ('Design dashboard', 'Design sibling'):
-        dashboard_id = 'design-a' if name == 'Design dashboard' else 'design-b'
-        prepared = client.post('/api/ppt-dashboards/prepare', json={**definition, 'name': name, 'own_slides': stored(dashboard_id)['own_slides']})
+    assert logged('delete_report_template')[-1]['detached_designs'] == 1
+    for name in ('Design design', 'Design sibling'):
+        design_id = 'design-a' if name == 'Design design' else 'design-b'
+        prepared = client.post('/api/ppt-designer/prepare', json={**definition, 'name': name, 'own_slides': stored(design_id)['own_slides']})
         assert prepared.status_code == 200, prepared.text
 
 
@@ -299,15 +299,15 @@ def test_a_user_editor_designs_only_what_they_created(client):
     core.repository.set_users_modules_profile([user_id], profile_id)
     core.invalidate_module_access_cache()
     login(client, 'editor', 'secret123')
-    body = client.get('/api/ppt-dashboards/design-a/slides?edit=1').json()
-    assert body['rights'] == {'dashboard': False, 'template': False}
-    assert client.put('/api/ppt-dashboards/design-a/slides', json={'slide_set': body['slide_set']}).status_code == 403
-    assert client.put('/api/ppt-dashboards/design-a/slides', json={'template_slide_set': body['template']['slide_set']}).status_code == 403
-    # Their own Dashboard: its Design yes, the template of another user no.
-    assert client.put('/api/ppt-dashboards/mine', json={'name': 'Mine', 'template': 'Design test'}).status_code == 200
-    mine = client.get('/api/ppt-dashboards/mine/slides?edit=1').json()
-    assert mine['rights'] == {'dashboard': True, 'template': False}
-    assert client.put('/api/ppt-dashboards/mine/slides', json={'slide_set': mine['slide_set']}).status_code == 200
+    body = client.get('/api/ppt-designer/design-a/slides?edit=1').json()
+    assert body['rights'] == {'design': False, 'template': False}
+    assert client.put('/api/ppt-designer/design-a/slides', json={'slide_set': body['slide_set']}).status_code == 403
+    assert client.put('/api/ppt-designer/design-a/slides', json={'template_slide_set': body['template']['slide_set']}).status_code == 403
+    # Their own Design: its Design yes, the template of another user no.
+    assert client.put('/api/ppt-designer/mine', json={'name': 'Mine', 'template': 'Design test'}).status_code == 200
+    mine = client.get('/api/ppt-designer/mine/slides?edit=1').json()
+    assert mine['rights'] == {'design': True, 'template': False}
+    assert client.put('/api/ppt-designer/mine/slides', json={'slide_set': mine['slide_set']}).status_code == 200
     saved = client.post('/workspace-config/report-templates/Design test/save', data={'catalogue_content': TEMPLATE},
                         headers={'accept': 'application/json'})
     assert saved.status_code == 403
@@ -325,53 +325,53 @@ def test_a_template_slide_missing_from_the_edited_design_is_hidden_not_brought_b
 
 def test_drafts_layouts_and_previews_after_detaching(client):
     definition = setup(client)
-    layouts = client.get('/api/ppt-dashboards/slides/layouts')
+    layouts = client.get('/api/ppt-designer/slides/layouts')
     assert layouts.status_code == 200, layouts.text
     grid = next(layout for layout in layouts.json()['layouts'] if layout['name'] == 'Title + 1 rows + 2 columns + comments down')
     assert grid['grid'] == [1, 2] and len(grid['places']) == 2
-    body = client.get('/api/ppt-dashboards/design-a/slides?edit=1').json()
+    body = client.get('/api/ppt-designer/design-a/slides?edit=1').json()
     # A draft is kept per user until it is saved or discarded (App Events).
-    assert client.get('/api/ppt-dashboards/design-a/slides/draft').json() == {'draft': None}
-    assert client.put('/api/ppt-dashboards/design-a/slides/draft', json={'state': {'slide_set': body['slide_set']}}).status_code == 200
-    assert client.get('/api/ppt-dashboards/design-a/slides/draft').json()['draft']['slide_set'] == body['slide_set']
-    assert client.delete('/api/ppt-dashboards/design-a/slides/draft?discarded=1').json() == {'deleted': True}
-    assert logged('dashboard_design_draft_discarded')[-1] == {'id': 'design-a', 'draft': True}
+    assert client.get('/api/ppt-designer/design-a/slides/draft').json() == {'draft': None}
+    assert client.put('/api/ppt-designer/design-a/slides/draft', json={'state': {'slide_set': body['slide_set']}}).status_code == 200
+    assert client.get('/api/ppt-designer/design-a/slides/draft').json()['draft']['slide_set'] == body['slide_set']
+    assert client.delete('/api/ppt-designer/design-a/slides/draft?discarded=1').json() == {'deleted': True}
+    assert logged('design_draft_discarded')[-1] == {'id': 'design-a', 'draft': True}
     # A preview starts from the Design saved now, even on a selection prepared before it was detached.
-    prepared = client.post('/api/ppt-dashboards/prepare', json=definition).json()
-    assert client.post('/api/ppt-dashboards/design-a/detach').status_code == 200
-    own = client.get('/api/ppt-dashboards/design-a/slides?edit=1').json()['slide_set']
+    prepared = client.post('/api/ppt-designer/prepare', json=definition).json()
+    assert client.post('/api/ppt-designer/design-a/detach').status_code == 200
+    own = client.get('/api/ppt-designer/design-a/slides?edit=1').json()['slide_set']
     own['slides'] = own['slides'][:1]
     own['slides'][0]['title'] = 'Only mine'
-    preview = client.post('/api/ppt-dashboards/slides/preview', json={'token': prepared['token'], 'dashboard_id': 'design-a', 'slide_set': own})
+    preview = client.post('/api/ppt-designer/slides/preview', json={'token': prepared['token'], 'design_id': 'design-a', 'slide_set': own})
     assert preview.status_code == 200, preview.text
     assert [slide['title'] for slide in preview.json()['slides']] == ['Only mine']
-    assert client.put('/api/ppt-dashboards/design-a/slides', json={'slide_set': own}).status_code == 200
+    assert client.put('/api/ppt-designer/design-a/slides', json={'slide_set': own}).status_code == 200
     assert [slide['title'] for slide in stored('design-a')['own_slides']['slides']] == ['Only mine']
-    fields = client.get(f"/api/ppt-dashboards/slides/fields?token={preview.json()['token']}")
+    fields = client.get(f"/api/ppt-designer/slides/fields?token={preview.json()['token']}")
     assert fields.status_code == 200 and 'Mean_Data_Rate' in fields.json()['columns_by_source']['cdr-data']
 
 
-def test_the_chart_builder_reads_fields_and_values_and_adds_a_chart_to_a_dashboard(client):
+def test_the_chart_builder_reads_fields_and_values_and_adds_a_chart_to_a_design(client):
     definition = setup(client)
-    token = client.post('/api/ppt-dashboards/prepare', json=definition).json()['token']
-    fields = client.get(f'/api/ppt-dashboards/slides/fields?token={token}').json()['fields']['cdr-data']
+    token = client.post('/api/ppt-designer/prepare', json=definition).json()['token']
+    fields = client.get(f'/api/ppt-designer/slides/fields?token={token}').json()['fields']['cdr-data']
     assert {'name': 'Operator', 'type': 'text', 'category': 'CDR-Main fields'} in fields or any(item['name'] == 'Operator' for item in fields)
-    values = client.get(f'/api/ppt-dashboards/slides/values?token={token}&source=CDR-Data&field=Operator')
+    values = client.get(f'/api/ppt-designer/slides/values?token={token}&source=CDR-Data&field=Operator')
     assert values.status_code == 200, values.text
     assert values.json()['values'] == [{'value': 'A', 'count': 2}, {'value': 'B', 'count': 1}]
-    targets = client.get('/api/ppt-dashboards/targets').json()['dashboards']
+    targets = client.get('/api/ppt-designer/targets').json()['designs']
     target = next(item for item in targets if item['id'] == 'design-a')
     assert [slide['title'] for slide in target['slides']] == ['Comparison', 'Next'] and target['slides'][0]['free'] == 0
     chart = {'chart_title': 'Rate by city', 'cdr_source': 'CDR-Data', 'kpi': 'Mean_Data_Rate', 'chart_type': 'Average Vertical Bars',
              'rows_split': 'City', 'columns_split': '', 'legend': '', 'filters': 'Operator IN (A)', 'legend_position': 'Top'}
-    full = client.post('/api/ppt-dashboards/design-a/add-chart', json={'element': chart, 'slide_id': target['slides'][0]['id']})
+    full = client.post('/api/ppt-designer/design-a/add-chart', json={'element': chart, 'slide_id': target['slides'][0]['id']})
     assert full.status_code == 409
-    added = client.post('/api/ppt-dashboards/design-a/add-chart', json={'element': chart})
+    added = client.post('/api/ppt-designer/design-a/add-chart', json={'element': chart})
     assert added.status_code == 200, added.text
-    assert added.json() == {'dashboard': 'Design dashboard', 'slide': 'Rate by city'}
+    assert added.json() == {'design': 'Design design', 'slide': 'Rate by city'}
     assert stored('design-a')['slide_overrides']['local_slides'][0]['slide']['elements'][0]['kpi'] == 'Mean_Data_Rate'
-    assert logged('dashboard_chart_added')[-1]['new_slide'] is True
-    prepared = client.post('/api/ppt-dashboards/prepare?dashboard_id=design-a', json=definition)
+    assert logged('design_chart_added')[-1]['new_slide'] is True
+    prepared = client.post('/api/ppt-designer/prepare?design_id=design-a', json=definition)
     assert [slide['title'] for slide in prepared.json()['slides']] == ['Comparison', 'Next', 'Rate by city']
     # Chart Builder reads the same fields and values from the CDRs chosen.
     builder_fields = client.post('/api/chart-builder/fields', json={'dataset_ids': [1]}).json()['fields']
@@ -382,21 +382,21 @@ def test_the_chart_builder_reads_fields_and_values_and_adds_a_chart_to_a_dashboa
 
 def test_the_format_of_a_chart_travels_in_its_row_and_reaches_its_model(client):
     definition = setup(client)
-    body = client.get('/api/ppt-dashboards/design-a/slides?edit=1').json()
+    body = client.get('/api/ppt-designer/design-a/slides?edit=1').json()
     edited = copy.deepcopy(body['slide_set'])
     style = {'series': {'A': {'colour': '#FF0000', 'width': 3, 'dash': 'dashed'}}, 'legend': {'position': 'bottom'},
              'axes': {'x': {'title': 'Rate (Mbit/s)', 'decimals': 0}}}
     edited['slides'][0]['elements'][0]['style'] = style
-    assert client.put('/api/ppt-dashboards/design-a/slides', json={'slide_set': edited}).status_code == 200
+    assert client.put('/api/ppt-designer/design-a/slides', json={'slide_set': edited}).status_code == 200
     assert stored('design-a')['slide_overrides']['elements']['s1e1']['style']['value'] == style
-    prepared = client.post('/api/ppt-dashboards/prepare?dashboard_id=design-a', json=definition).json()
+    prepared = client.post('/api/ppt-designer/prepare?design_id=design-a', json=definition).json()
     chart = next(chart for chart in prepared['slides'][0]['charts'] if chart['element'] == 's1e1')
-    model = client.get(f"/api/ppt-dashboards/chart/{prepared['token']}/{chart['index']}").json()
+    model = client.get(f"/api/ppt-designer/chart/{prepared['token']}/{chart['index']}").json()
     assert model['format_overrides'] == style
     # In Template scope it is written in the Format column of the row.
     template = copy.deepcopy(body['template']['slide_set'])
     template['slides'][0]['elements'][1]['style'] = {'labels': {'colour': '#123456'}}
-    assert client.put('/api/ppt-dashboards/design-b/slides', json={'template_slide_set': template}).status_code == 200
+    assert client.put('/api/ppt-designer/design-b/slides', json={'template_slide_set': template}).status_code == 200
     rows = parse_catalog_csv(core.repository.report_template_content('Design test'))
     assert dd.row_format(rows[1])['style'] == {'labels': {'colour': '#123456'}}
 
@@ -406,7 +406,7 @@ def test_the_format_of_a_chart_travels_in_its_row_and_reaches_its_model(client):
 # --------------------------------------------------------------------------------------------------------------------
 
 def test_kpi_cards_text_boxes_pictures_places_and_repeat_travel_in_the_format_column():
-    from src.modules import ppt_dashboards as dashboards
+    from src.modules import ppt_designer as designs
     slide_set = {'version': 1, 'parameters': [], 'slides': [{
         'id': 's1', 'kind': 'content', 'title': 'Overview', 'subtitle': '', 'layout': 'Title and 2 columns + Comments', 'optional': False,
         'options': {'geometry': [[0, 0, 30, 100], [32, 0, 68, 100]], 'grid': {'rows': [1], 'columns': [0.3, 0.7], 'areas': [[0, 0, 1, 1], [0, 1, 1, 1]]}},
@@ -420,7 +420,7 @@ def test_kpi_cards_text_boxes_pictures_places_and_repeat_travel_in_the_format_co
     # The rows follow the order of the places; each kind keeps what it needs.
     assert [entry.chart_type for entry in entries] == ['KPI Card', 'Text Box', 'Image']
     assert dd.row_format(entries[0])['kpi'] == {'measure': 'median', 'comparison': 'target', 'target': 15}
-    assert dashboards.repeat_field(entries[0]) == 'City'
+    assert designs.repeat_field(entries[0]) == 'City'
     back = dd.slides_from_entries(parse_catalog_csv(catalogue_csv(entries)))
     slide = back['slides'][0]
     assert slide['options']['geometry'] == [[0, 0, 30, 100], [32, 0, 68, 100]]
@@ -428,13 +428,13 @@ def test_kpi_cards_text_boxes_pictures_places_and_repeat_travel_in_the_format_co
         's1e2': ('kpi', 0), 's1e1': ('text', 1), 's1e3': ('image', 2)}
     assert next(element for element in slide['elements'] if element['id'] == 's1e1')['content'] == {'text': '# Notes', 'align': 'center'}
     # The places of a free layout, and which place each row takes (a place can stay empty; repeated places are refused).
-    assert dashboards.slide_geometry(entries) == [[0, 0, 30, 100], [32, 0, 68, 100]]
-    assert dashboards.explicit_places(entries, 3) == [0, 1, 2]
-    assert dashboards.explicit_places(entries, 2) is None
-    assert dashboards.explicit_places([replace(entries[0], format='')], 3) is None
+    assert designs.slide_geometry(entries) == [[0, 0, 30, 100], [32, 0, 68, 100]]
+    assert designs.explicit_places(entries, 3) == [0, 1, 2]
+    assert designs.explicit_places(entries, 2) is None
+    assert designs.explicit_places([replace(entries[0], format='')], 3) is None
     # A rectangle of the chart area as a frame of the slide, and a place divided for the small multiples.
-    assert dashboards.frame_from_rect([50, 0, 50, 50], [(100, 200, 400, 300), (500, 200, 400, 300)]) == (500, 200, 400, 150)
-    cells = dashboards.subdivided([0, 0, 60, 40], 4)
+    assert designs.frame_from_rect([50, 0, 50, 50], [(100, 200, 400, 300), (500, 200, 400, 300)]) == (500, 200, 400, 150)
+    cells = designs.subdivided([0, 0, 60, 40], 4)
     assert len(cells) == 4 and all(cell[2] > 0 and cell[3] > 0 for cell in cells)
     assert max(cell[0] + cell[2] for cell in cells) == pytest.approx(60) and max(cell[1] + cell[3] for cell in cells) == pytest.approx(40)
 
@@ -455,18 +455,18 @@ def png(width=4, height=2):
 def test_free_places_kpi_cards_repeat_text_and_pictures_are_laid_out_on_the_prepared_cdrs(client):
     definition = setup(client)
     picture = png()
-    uploaded = client.post('/api/ppt-dashboards/images', files={'file': ('logo.png', picture, 'image/png')})
+    uploaded = client.post('/api/ppt-designer/images', files={'file': ('logo.png', picture, 'image/png')})
     assert uploaded.status_code == 200, uploaded.text
     image = uploaded.json()
     assert (image['width'], image['height'], image['name']) == (4, 2, 'logo.png')
     served = client.get(image['url'])
     assert served.status_code == 200 and served.content == picture and served.headers['content-type'] == 'image/png'
-    assert logged('dashboard_design_image_uploaded')[-1]['id'] == image['id']
-    refused = client.post('/api/ppt-dashboards/images', files={'file': ('notes.svg', b'<svg/>', 'image/svg+xml')})
+    assert logged('design_image_uploaded')[-1]['id'] == image['id']
+    refused = client.post('/api/ppt-designer/images', files={'file': ('notes.svg', b'<svg/>', 'image/svg+xml')})
     assert refused.status_code == 400
-    assert client.get(f"/api/ppt-dashboards/images/{'0' * 32}").status_code == 404
+    assert client.get(f"/api/ppt-designer/images/{'0' * 32}").status_code == 404
 
-    body = client.get('/api/ppt-dashboards/design-a/slides?edit=1').json()
+    body = client.get('/api/ppt-designer/design-a/slides?edit=1').json()
     edited = copy.deepcopy(body['slide_set'])
     first, second = edited['slides']
     first['options'] = {'geometry': [[0, 0, 30, 100], [32, 0, 68, 100]]}
@@ -478,8 +478,8 @@ def test_free_places_kpi_cards_repeat_text_and_pictures_are_laid_out_on_the_prep
         element(second['elements'][0]['id'], 'text', 0, {'text': '# Summary\n- **Fast** in London\nPlain line', 'size': 'medium', 'align': 'left'}),
         element('s2e9', 'image', 1, {'image': image['id'], 'fit': 'contain'}),
     ]
-    token = client.post('/api/ppt-dashboards/prepare', json=definition).json()['token']
-    preview = client.post('/api/ppt-dashboards/slides/preview', json={'token': token, 'dashboard_id': 'design-a', 'slide_set': edited})
+    token = client.post('/api/ppt-designer/prepare', json=definition).json()['token']
+    preview = client.post('/api/ppt-designer/slides/preview', json={'token': token, 'design_id': 'design-a', 'slide_set': edited})
     assert preview.status_code == 200, preview.text
     overview, summary = preview.json()['slides']
     # The KPI card keeps its place; the chart repeated by City is one chart per city in the other place.
@@ -488,7 +488,7 @@ def test_free_places_kpi_cards_repeat_text_and_pictures_are_laid_out_on_the_prep
     repeated = [item for item in overview['charts'] if item.get('element') == chart['id']]
     assert len(repeated) == 2
     assert all(item['position'][0] >= 32 - 1e-6 and item['position'][0] + item['position'][2] <= 100 + 1e-6 for item in repeated)
-    model = client.get(f"/api/ppt-dashboards/chart/{preview.json()['token']}/{card['index']}").json()
+    model = client.get(f"/api/ppt-designer/chart/{preview.json()['token']}/{card['index']}").json()
     assert model['type'] == 'kpi'
     assert model['cards'][0]['value'] == pytest.approx(20) and model['cards'][0]['n'] == 3
     assert model['cards'][0]['comparison_label'] == 'Target' and model['cards'][0]['improves'] is True
@@ -507,8 +507,8 @@ def test_text_boxes_and_pictures_are_native_shapes_of_the_exported_ppt(client):
     deadline = time.monotonic() + 15
     while time.monotonic() < deadline and core.repository.get_dataset(1)['status'] != 'ready':
         time.sleep(0.05)
-    image = client.post('/api/ppt-dashboards/images', files={'file': ('logo.png', png(8, 2), 'image/png')}).json()
-    body = client.get('/api/ppt-dashboards/design-a/slides?edit=1').json()
+    image = client.post('/api/ppt-designer/images', files={'file': ('logo.png', png(8, 2), 'image/png')}).json()
+    body = client.get('/api/ppt-designer/design-a/slides?edit=1').json()
     edited = copy.deepcopy(body['slide_set'])
     edited['slides'][0]['hidden'] = True
     second = edited['slides'][1]
@@ -517,20 +517,20 @@ def test_text_boxes_and_pictures_are_native_shapes_of_the_exported_ppt(client):
         element(second['elements'][0]['id'], 'text', 0, {'text': '# Summary\n- **Fast** in London\nPlain line', 'size': 'medium', 'align': 'left'}),
         element('s2e9', 'image', 1, {'image': image['id'], 'fit': 'contain'}),
     ]
-    assert client.put('/api/ppt-dashboards/design-a/slides', json={'slide_set': edited}).status_code == 200
+    assert client.put('/api/ppt-designer/design-a/slides', json={'slide_set': edited}).status_code == 200
     payload = {**definition, 'slide_overrides': stored('design-a')['slide_overrides']}
-    queued = client.post('/api/ppt-dashboards/design-a/export-ppt', json={'definition': payload})
+    queued = client.post('/api/ppt-designer/design-a/export-ppt', json={'definition': payload})
     assert queued.status_code == 202, queued.text
     job_id = queued.json()['job_id']
     deadline = time.monotonic() + 30
     while time.monotonic() < deadline:
-        job = next(item for item in client.get('/api/ppt-dashboards/ppt-jobs').json()['jobs'] if item['id'] == job_id)
+        job = next(item for item in client.get('/api/ppt-designer/ppt-jobs').json()['jobs'] if item['id'] == job_id)
         if job['status'] in {'ready', 'failed'}:
             break
         time.sleep(0.05)
     assert job['status'] == 'ready', job
     with core.repository.connection() as connection:
-        output = connection.execute('SELECT output_path FROM dashboard_ppt_jobs WHERE id = ?', (job_id,)).fetchone()['output_path']
+        output = connection.execute('SELECT output_path FROM design_ppt_jobs WHERE id = ?', (job_id,)).fetchone()['output_path']
     slides = list(Presentation(output).slides)
     assert len(slides) == 1
     shapes = slides[0].shapes
@@ -544,34 +544,34 @@ def test_text_boxes_and_pictures_are_native_shapes_of_the_exported_ppt(client):
     assert pictures[0].left > box.left
 
 
-def test_titles_and_text_boxes_name_the_selection_of_the_dashboard(client):
+def test_titles_and_text_boxes_name_the_selection_of_the_design(client):
     import time
     definition = setup(client)
     deadline = time.monotonic() + 15
     while time.monotonic() < deadline and core.repository.get_dataset(1)['status'] != 'ready':
         time.sleep(0.05)
-    body = client.get('/api/ppt-dashboards/design-a/slides?edit=1').json()
+    body = client.get('/api/ppt-designer/design-a/slides?edit=1').json()
     edited = copy.deepcopy(body['slide_set'])
     first, second = edited['slides']
-    first['title'] = '{Dashboard}: {Operators} in {Cities}'
+    first['title'] = '{Design}: {Operators} in {Cities}'
     first['subtitle'] = '{Scope} · {NR Mode}'
     first['elements'][0]['chart_title'] = 'Rate in {Regions}'
     second['elements'] = [element(second['elements'][0]['id'], 'text', 0, {'text': '**{Cities}** · {NR Mode Name} · {Vendors}'})]
-    saved = client.put('/api/ppt-dashboards/design-a/slides', json={'slide_set': edited})
+    saved = client.put('/api/ppt-designer/design-a/slides', json={'slide_set': edited})
     assert saved.status_code == 200, saved.text
     overrides = stored('design-a')['slide_overrides']
 
     def shown(filters):
-        prepared = client.post('/api/ppt-dashboards/prepare?dashboard_id=design-a', json={**definition, 'filters': filters, 'slide_overrides': overrides})
+        prepared = client.post('/api/ppt-designer/prepare?design_id=design-a', json={**definition, 'filters': filters, 'slide_overrides': overrides})
         assert prepared.status_code == 200, prepared.text
         return prepared.json()['slides']
 
     overview, notes = shown({'City': ['London']})
-    assert (overview['title'], overview['subtitle']) == ('Design dashboard: All Operators in London', 'Operator Comparison · NSA')
+    assert (overview['title'], overview['subtitle']) == ('Design design: All Operators in London', 'Operator Comparison · NSA')
     assert overview['charts'][0]['title'] == 'Rate in All Regions'
     assert notes['charts'][0]['content']['text'] == '**London** · Non-Standalone · All Vendors'
     # Every value of the CDRs reads as All, as on the cover.
     overview, _notes = shown({'City': ['London', 'Leeds'], 'Operator': ['B']})
-    assert overview['title'] == 'Design dashboard: B in All Cities'
-    # The Design keeps the tokens: each Dashboard writes its own.
-    assert stored('design-a')['slide_overrides']['slides'][first['id']]['title']['value'] == '{Dashboard}: {Operators} in {Cities}'
+    assert overview['title'] == 'Design design: B in All Cities'
+    # The Design keeps the tokens: each Design writes its own.
+    assert stored('design-a')['slide_overrides']['slides'][first['id']]['title']['value'] == '{Design}: {Operators} in {Cities}'

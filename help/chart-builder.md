@@ -1,6 +1,6 @@
 # Chart Builder
 
-Chart Builder is the ad-hoc chart editor. It uses the PPT Dashboard individual Canvas chart viewer embedded directly in the page and the shelves of the chart builder of [Design](ppt-dashboards.md#design-a-dashboard), while its definition remains temporary: it never changes a stored template or creates a PowerPoint report. **Add to Dashboard…** puts the chart on a slide of a Dashboard you can design.
+Chart Builder is the ad-hoc chart editor. It uses the PPT Designer individual Canvas chart viewer embedded directly in the page and the shelves of the chart builder of the [Designer](ppt-designer.md#designer), while its definition remains temporary: it never changes a stored template or creates a PowerPoint report. **Add to Design…** puts the chart on a slide of a Design you can design.
 
 > [!NOTE]
 > **Temporary exploration.** Changes here create an ad-hoc chart. They do not modify a Report Template or generate a PowerPoint report.
@@ -10,7 +10,7 @@ Chart Builder is the ad-hoc chart editor. It uses the PPT Dashboard individual C
 
 ## Presentation
 
-The presentation **Builders** sums the module up. Ad-hoc exploration of the processed CDRs: Chart Builder draws any chart in the Dashboard viewer and Query Builder runs read-only SQL. Select it to open it in the slide viewer, play it full screen or download its PowerPoint; every presentation is also in [Product Presentations](presentations.md).
+The presentation **Builders** sums the module up. Ad-hoc exploration of the processed CDRs: Chart Builder draws any chart in the Design viewer and Query Builder runs read-only SQL. Select it to open it in the slide viewer, play it full screen or download its PowerPoint; every presentation is also in [Product Presentations](presentations.md).
 
 ```presentations
 builders
@@ -23,7 +23,7 @@ builders
 | Presentation | [Open section](#presentation) |
 | Workflow | [Open section](#workflow) |
 | Interactive Preview | [Open section](#interactive-preview) |
-| Add to Dashboard | [Open section](#add-to-dashboard) |
+| Add to Design | [Open section](#add-to-design) |
 | Example | [Open section](#example) |
 | Filters | [Open section](#filters) |
 | Performance and troubleshooting | [Open section](#performance-and-troubleshooting) |
@@ -53,11 +53,11 @@ The Source Dataset selector is filtered by CDR Type and shows only processed dat
 | Chart Type | The chart types, each drawn; the ones the shelves cannot draw are greyed with what they need (one numeric measure, two for Scatter, a dimension as measure for 100% Stacked Vertical Bars, Latitude and Longitude for a Map). Threshold, Buckets and Bin Size are set beside the type that uses them. |
 | Legend Position | Top, Bottom, Left or Right. |
 
-The embedded viewer provides the same Canvas rendering, semantic hover details, zoom, panning and refresh behaviour as an individual PPT Dashboard chart. Its chart downloads as a PNG image or copies to the clipboard as a screenshot from the floating buttons at the top right corner of its card (see [Images of charts and tables](web-interface.md#images-of-charts-and-tables)); App Events records each one as `export_chart_builder_image`, with the CDR type and CDRs used.
+The embedded viewer provides the same Canvas rendering, semantic hover details, zoom, panning and refresh behaviour as an individual PPT Designer chart. Its chart downloads as a PNG image or copies to the clipboard as a screenshot from the floating buttons at the top right corner of its card (see [Images of charts and tables](web-interface.md#images-of-charts-and-tables)); App Events records each one as `export_chart_builder_image`, with the CDR type and CDRs used.
 
-## Add to Dashboard
+## Add to Design
 
-**Add to Dashboard…** lists the Dashboards you can design (admins and super-admins any, a user-editor those they created) and their slides with their free places: the chart goes to a free place of the slide chosen, or to a new slide at the end of the Dashboard. It becomes part of that Dashboard only (one of its differences from its template, see [Design a Dashboard](ppt-dashboards.md#design-a-dashboard)) and reads the CDRs the Dashboard chooses, not those chosen here. App Events record it as `dashboard_chart_added`.
+**Add to Design…** lists the Designs whose slides you can edit (admins and super-admins any, a user-editor those they created) and their slides with their free places: the chart goes to a free place of the slide chosen, or to a new slide at the end of the Design. It becomes part of that Design only (one of its differences from its template, see [Designer](ppt-designer.md#designer)) and reads the CDRs the Design chooses, not those chosen here. App Events record it as `design_chart_added`.
 
 ## Example
 

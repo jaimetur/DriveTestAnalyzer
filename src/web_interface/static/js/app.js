@@ -1,4 +1,4 @@
-// Who deletes what the users of a workspace share (PPT Dashboards and Templates, Scoring Saved Filters, Methodologies and
+// Who deletes what the users of a workspace share (PPT Designer and Templates, Scoring Saved Filters, Methodologies and
 // report configurations, Reporting Jobs and Bundle Report Template favourites): admins and super-admins everything, the
 // other roles only what they created. The pages lock Delete for the others; the server refuses it too.
 window.canDeleteShared = (createdBy) => {
@@ -32,18 +32,25 @@ window.sharedDeleteRefusal = (label) => `Only admins and super-admins, or the us
     }) : response;
   };
 })();
-// Browser state saved before the rename to DriveTest Analyzer used the "dashboard-analytic:" prefix.
-// Move it once to the current prefix so remembered filters, panels and drafts survive the update.
+// Browser state saved before the rename to DriveTest Analyzer used the "dashboard-analytic:" prefix, and that of PPT
+// Designer the prefixes of PPT Dashboards. Move it once to the current prefixes so remembered filters, panels and drafts
+// survive the update.
 (() => {
-  const legacyPrefix = 'dashboard-analytic:';
+  const prefixes = [
+    ['dashboard-analytic:', 'drivetest-analyzer:'],
+    ['drivetest-analyzer:ppt-dashboards:', 'drivetest-analyzer:ppt-designer:'],
+    ['drivetest-analyzer:panel:ppt-dashboards:', 'drivetest-analyzer:panel:ppt-designer:'],
+  ];
   for (const storageName of ['localStorage', 'sessionStorage']) {
     try {
       const storage = window[storageName];
-      const legacyKeys = Array.from({length: storage.length}, (_value, index) => storage.key(index)).filter(key => key?.startsWith(legacyPrefix));
-      for (const key of legacyKeys) {
-        const currentKey = `drivetest-analyzer:${key.slice(legacyPrefix.length)}`;
-        if (storage.getItem(currentKey) === null) storage.setItem(currentKey, storage.getItem(key));
-        storage.removeItem(key);
+      for (const [legacyPrefix, currentPrefix] of prefixes) {
+        const legacyKeys = Array.from({length: storage.length}, (_value, index) => storage.key(index)).filter(key => key?.startsWith(legacyPrefix));
+        for (const key of legacyKeys) {
+          const currentKey = `${currentPrefix}${key.slice(legacyPrefix.length)}`;
+          if (storage.getItem(currentKey) === null) storage.setItem(currentKey, storage.getItem(key));
+          storage.removeItem(key);
+        }
       }
     } catch (_error) { /* Ignore storage failures. */ }
   }
@@ -1019,7 +1026,7 @@ function limitSeriesCollectionByX(seriesCollection, xMaxOverride) {
   const selector = [
     'table.catalogue-workspace-table',
     'table.report-jobs-table', 'table.workspace-library-table', 'table.recovered-transfer-table',
-    'table.operator-mappings-table', 'table.ds-dashboards-table',
+    'table.operator-mappings-table', 'table.ds-designs-table',
     '.report-charts-grid', '.workspace-calculated-dimensions-list',
   ].join(', ');
   const compactViewport = window.matchMedia('(max-width: 640px)');
@@ -1355,7 +1362,7 @@ function setupChartInteractions(container) {
   svg.addEventListener('mouseleave', hideHover);
   svg.addEventListener('pointerleave', hideHover);
   container.addEventListener('pointerleave', hideHover);
-  // Zoom controls as in PPT Dashboards: −, level, + and reset; the chart scrolls horizontally when zoomed.
+  // Zoom controls as in PPT Designer: −, level, + and reset; the chart scrolls horizontally when zoomed.
   const viewport = document.createElement('div');
   viewport.className = 'chart-zoom-viewport';
   svg.before(viewport); viewport.append(svg);
@@ -1382,7 +1389,7 @@ function setupChartInteractions(container) {
     }
     apply(1);
   });
-  // Box zoom as in PPT Dashboards: drag a rectangle over the chart to zoom into it.
+  // Box zoom as in PPT Designer: drag a rectangle over the chart to zoom into it.
   const toViewBox = (event) => {
     const box = svg.getBoundingClientRect();
     return {
@@ -5493,7 +5500,7 @@ function setupWorkspaceUserPickers() {
 
 // Workspace content exported from the active workspace; its Full Workspace package already contains all of it.
 const workspaceElementExportTargets = new Set([
-  'dashboards', 'ppt-templates', 'main-cities', 'mappings-reference-data', 'scoring-configuration',
+  'designs', 'ppt-templates', 'main-cities', 'mappings-reference-data', 'scoring-configuration',
   'auto-calculated-fields', 'query-builder-queries', 'reporting-jobs', 'nq-call-tracking', 'nq-calls-configuration', 'app-events',
   'network-insights-favourites', 'bundle-report-template-favourites', 'scoring-favourites-filters', 'scoring-report-templates',
   'scoring-export-panels', 'scoring-excluded-calls',
@@ -5566,7 +5573,7 @@ function labelCampaignOptions(select) {
   if (sorted.some((option, index) => option !== options[index])) sorted.forEach((option) => select.appendChild(option));
 }
 
-// The CDRs a module uses, by type (PPT Dashboards, Network Insights, Reporting): Data, Voice and Speech side by
+// The CDRs a module uses, by type (PPT Designer, Network Insights, Reporting): Data, Voice and Speech side by
 // side when there is room (one under the other when narrow), each CDR with its stage and campaigns. `cdrs` maps
 // each type to its CDRs ({id, name, stage, campaigns} or file names); `loading` keeps the CDRs shown, dimmed.
 function renderAutoCdrList(host, cdrs, {loading = false} = {}) {
@@ -6298,7 +6305,7 @@ function setupPagePanelNavigator() {
   const themeClasses = {
     'module-tab-workspace': 'workspace',
     'module-tab-datasets-analysis': 'datasets',
-    'module-tab-ppt-dashboards': 'dashboards',
+    'module-tab-ppt-designer': 'designs',
     'module-tab-reporting': 'reporting',
     'module-tab-chart-builder': 'builder',
     'module-tab-utility': 'utility',
@@ -7377,10 +7384,10 @@ function importWarningDetails(payload) {
       message: 'Choose the destination workspaces next. Templates with matching names will be overwritten only in those workspaces. Importing templates does not rebuild CDR tables.',
     };
   }
-  if (kind === 'dashboards') {
+  if (kind === 'designs') {
     return {
-      title: 'Import Dashboards?',
-      message: 'Choose the destination workspaces next. The original workspace is preselected when it exists. Dashboard definitions and saved filters will be replaced in those workspaces; generated caches are not imported.',
+      title: 'Import Designs?',
+      message: 'Choose the destination workspaces next. The original workspace is preselected when it exists. Design definitions and saved filters will be replaced in those workspaces; generated caches are not imported.',
     };
   }
   if (kind === 'mappings-reference-data') {
@@ -7449,7 +7456,7 @@ function importWarningDetails(payload) {
 function importPackageContents(payload) {
   const labels = {
     config: 'Application Config', workspace: 'Full Workspace', 'full-environment': 'Full Environment',
-    dashboards: 'Dashboards', 'ppt-templates': 'PPT Templates',
+    designs: 'Designs', 'ppt-templates': 'PPT Templates',
     'mappings-reference-data': 'Mappings & Reference Data', 'main-cities': 'Main Cities',
     'scoring-configuration': 'Scoring & GAP Analysis Methodologies',
     'auto-calculated-fields': 'Auto-calculated Fields',
@@ -7462,7 +7469,7 @@ function importPackageContents(payload) {
   };
   const targets = Array.isArray(payload.targets) && payload.targets.length ? payload.targets : [payload.kind];
   const workspaceTargets = new Set([
-    'dashboards', 'ppt-templates', 'main-cities', 'mappings-reference-data',
+    'designs', 'ppt-templates', 'main-cities', 'mappings-reference-data',
     'scoring-configuration', 'auto-calculated-fields',
   ]);
   const workspaceContents = targets.length && targets.every((item) => workspaceTargets.has(String(item)));
@@ -7483,8 +7490,8 @@ function selectAutoCalculatedFieldWorkspaces(workspaces, kind = 'auto-calculated
   const title = document.createElement('h3'); title.textContent = 'Select destination workspaces';
   const copy = document.createElement('p'); copy.textContent = kind === 'ppt-templates'
     ? 'Templates will be imported into every selected workspace. The original workspace is preselected when it exists. Matching template names will be overwritten.'
-    : kind === 'dashboards'
-      ? 'Dashboard definitions and their saved filters will replace the Dashboard list in every selected workspace. The original workspace is preselected when present; generated caches are not imported.'
+    : kind === 'designs'
+      ? 'Design definitions and their saved filters will replace the Design list in every selected workspace. The original workspace is preselected when present; generated caches are not imported.'
       : kind === 'mappings-reference-data'
         ? 'The complete Operator/Vendor mapping and color configuration will replace aliases, order and theme colors in every selected workspace. Stored CDR values will remain unchanged.'
       : kind === 'bundle'
@@ -8015,7 +8022,7 @@ document.querySelectorAll('[data-export-package-form]').forEach((form) => {
         title: `${operation} Workspace`,
         confirmLabel: operation,
         copyHtml: `<p>The workspace database and its definitions are always included. Choose the folders to include in this Workspace ${operation}:</p>`
-          + '<label class="confirm-option"><input type="checkbox" checked data-export-include-outputs><span>Output folder: generated dashboards, reports and chart sets</span></label>'
+          + '<label class="confirm-option"><input type="checkbox" checked data-export-include-outputs><span>Output folder: generated designs, reports and chart sets</span></label>'
           + '<label class="confirm-option"><input type="checkbox" checked data-export-include-input><span>Input folder: original CDR files, needed to reprocess datasets</span></label>',
       },
     );
@@ -8364,7 +8371,7 @@ document.querySelectorAll('[data-export-package-form]').forEach((form) => {
         app_database: 'Application database',
         workspace: 'Full Workspace',
         'full-environment': 'Full Environment',
-        dashboards: 'Dashboards',
+        designs: 'Designs',
         'ppt-templates': 'PPT Templates',
         'mappings-reference-data': 'Mappings & Reference Data',
         'main-cities': 'Main Cities',
@@ -8419,8 +8426,8 @@ document.querySelectorAll('[data-export-package-form]').forEach((form) => {
           ? 'Next, choose the destination workspaces. After reception, matching field names will be updated and their applicable CDR tables will be materialized in the background.'
           : offer.kind === 'ppt-templates'
             ? 'Next, choose the destination workspaces. The original workspace will be preselected when present. Matching templates will be overwritten; CDR tables will not be rebuilt.'
-            : offer.kind === 'dashboards'
-              ? 'Next, choose the destination workspaces. The original workspace will be preselected when present. Dashboard definitions and saved filters will be restored; generated caches are not transferred.'
+            : offer.kind === 'designs'
+              ? 'Next, choose the destination workspaces. The original workspace will be preselected when present. Design definitions and saved filters will be restored; generated caches are not transferred.'
             : offer.kind === 'mappings-reference-data'
               ? 'Next, choose the destination workspaces. Their complete Operator/Vendor aliases, order and theme colors will be replaced without modifying stored CDR values.'
           : 'After the complete package is received, it will be imported automatically and may overwrite matching configuration or workspaces.';
@@ -8442,7 +8449,7 @@ document.querySelectorAll('[data-export-package-form]').forEach((form) => {
         confirmOverlay?.classList.remove('incoming-transfer-confirm', 'incoming-transfer-offer');
       }
       let destinationWorkspaceIds = [];
-      if (accepted && (offer.requires_destination_workspaces || ['auto-calculated-fields', 'ppt-templates', 'dashboards', 'mappings-reference-data'].includes(offer.kind))) {
+      if (accepted && (offer.requires_destination_workspaces || ['auto-calculated-fields', 'ppt-templates', 'designs', 'mappings-reference-data'].includes(offer.kind))) {
         const matchingIds = (payload.destination_workspaces || []).filter((workspace) =>
           (offer.workspaces || []).some((name) => String(name).toLowerCase() === workspace.name.toLowerCase())
         ).map((workspace) => workspace.id);
@@ -9241,7 +9248,7 @@ function showInfoDialog(message, options = {}) {
   });
 })();
 
-// The personal API keys of the user for the LLM writers of the generated comments of PPT Dashboards that Super Admin
+// The personal API keys of the user for the LLM writers of the generated comments of PPT Designer that Super Admin
 // sets to each user's key (Kiro CLI, Claude): one field per writer, each saved, replaced or removed.
 (() => {
   const openButton = document.querySelector('[data-api-keys-open]');
@@ -10516,7 +10523,7 @@ document.addEventListener('click', (event) => {
   });
   bar.prepend(toTop);
 
-  // The colour theme of a themed module (Scoring & GAP Analysis, Network Insights, CDR Analysis, PPT Dashboards) is chosen
+  // The colour theme of a themed module (Scoring & GAP Analysis, Network Insights, CDR Analysis, PPT Designer) is chosen
   // at the start of the bar (always in sight, however many sections follow): a copy of the module's own Theme selector,
   // kept in step with it both ways, that changes the theme exactly as that selector does. The selector of the page
   // stays, hidden, as the one the module reads; a page without the bar keeps it in sight.
@@ -12419,12 +12426,12 @@ if (queueNode) {
         };
         groups.push(group);
       }
-      if (task.dashboard_name && String(task.id).startsWith('prepare-')) {
+      if (task.design_name && String(task.id).startsWith('prepare-')) {
         group.tasks = (group.tasks || []).filter(candidate => (
-          !String(candidate.id || '').startsWith('dashboard-prefetch:')
+          !String(candidate.id || '').startsWith('design-prefetch:')
           ||
-          !candidate.dashboard_name
-          || String(candidate.dashboard_name) !== String(task.dashboard_name)
+          !candidate.design_name
+          || String(candidate.design_name) !== String(task.design_name)
           || String(candidate.id) === String(task.id)
         ));
       }
@@ -12684,7 +12691,7 @@ if (queueNode) {
     const list = document.createElement('div');
     list.className = 'background-task-list';
     tasks.forEach((task) => {
-      const dashboardName = String(task.dashboard_name || '');
+      const designName = String(task.design_name || '');
       const item = document.createElement('div');
       item.className = 'background-task-item';
 
@@ -12692,8 +12699,8 @@ if (queueNode) {
       taskHead.className = 'background-task-head';
       const label = document.createElement('span');
       label.className = 'background-task-label';
-      label.textContent = dashboardName
-        ? `Dashboard “${dashboardName}”: ${String(task.label || 'Background task')}`
+      label.textContent = designName
+        ? `Design “${designName}”: ${String(task.label || 'Background task')}`
         : String(task.label || 'Background task');
       taskHead.append(label);
       if (task.review_transfer_offer_id) {

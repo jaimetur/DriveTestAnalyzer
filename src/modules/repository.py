@@ -31,6 +31,7 @@ from src.modules.nr_mode import NR_MODE_DATASET_KINDS, NR_MODE_FIELD, dataset_nr
 from src.modules.operator_roles import normalize_mapping_role, normalize_nr_modes
 from src.modules.cdr_stage import CDR_STAGE_KINDS, infer_cdr_stage, normalize_cdr_stage, normalize_in_combined
 from src.modules.module_labels import MAIN_MODULES, MODULE_LABELS_STATE_KEY
+from src.modules.ppt_naming import MODULE_KEYS as FORMER_MODULE_KEYS, migrate_application_database as migrate_ppt_designer_application_database
 from src.modules.report_layouts import csv_with_slide_ids, normalize_catalog_layouts, rename_template_vendor_fields
 from src.modules.runtime_config import ignore_event_time_filtering
 
@@ -310,7 +311,7 @@ def local_now_iso() -> str:
     return datetime.now().astimezone().isoformat(timespec='microseconds')
 
 
-# The Report Templates of a workspace: one library, a template serving the CDRs of any NR Mode (the Dashboard chooses it).
+# The Report Templates of a workspace: one library, a template serving the CDRs of any NR Mode (the Design chooses it).
 REPORT_TEMPLATES_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS {table} (
     name TEXT NOT NULL PRIMARY KEY,
@@ -431,7 +432,7 @@ CREATE TABLE IF NOT EXISTS saved_query_builder_queries (
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS dashboard_filter_selections (
+CREATE TABLE IF NOT EXISTS design_filter_selections (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     cache_key TEXT NOT NULL UNIQUE,
     options_json TEXT NOT NULL DEFAULT '{}',
@@ -716,7 +717,7 @@ class UserRecord:
     active: bool
 
 
-# Chart mapping reads are memoised for a moment: one Dashboard chart reads
+# Chart mapping reads are memoised for a moment: one Design chart reads
 # them several times. A mapping change in this process invalidates the memo
 # at once; changes made by another process apply within seconds.
 CHART_MAPPING_MEMO_SECONDS = 2.0
@@ -977,22 +978,22 @@ class Repository:
         conn.execute('DROP TABLE calculated_dimensions')
 
     @staticmethod
-    def _ensure_dashboard_filter_selection_columns(conn: sqlite3.Connection) -> None:
-        columns = {str(row['name']) for row in conn.execute('PRAGMA table_info(dashboard_filter_selections)').fetchall()}
+    def _ensure_design_filter_selection_columns(conn: sqlite3.Connection) -> None:
+        columns = {str(row['name']) for row in conn.execute('PRAGMA table_info(design_filter_selections)').fetchall()}
         if 'options_json' not in columns:
-            conn.execute("ALTER TABLE dashboard_filter_selections ADD COLUMN options_json TEXT NOT NULL DEFAULT '{}'")
+            conn.execute("ALTER TABLE design_filter_selections ADD COLUMN options_json TEXT NOT NULL DEFAULT '{}'")
         if 'row_counts_json' not in columns:
-            conn.execute("ALTER TABLE dashboard_filter_selections ADD COLUMN row_counts_json TEXT NOT NULL DEFAULT '{}'")
+            conn.execute("ALTER TABLE design_filter_selections ADD COLUMN row_counts_json TEXT NOT NULL DEFAULT '{}'")
         if 'universe_row_counts_json' not in columns:
-            conn.execute("ALTER TABLE dashboard_filter_selections ADD COLUMN universe_row_counts_json TEXT NOT NULL DEFAULT '{}'")
+            conn.execute("ALTER TABLE design_filter_selections ADD COLUMN universe_row_counts_json TEXT NOT NULL DEFAULT '{}'")
 
     @staticmethod
-    def _remove_legacy_dashboard_selection_rows(conn: sqlite3.Connection) -> None:
+    def _remove_legacy_design_selection_rows(conn: sqlite3.Connection) -> None:
         """Remove the unused row-key cache retained by older workspaces."""
-        conn.execute('DROP TABLE IF EXISTS dashboard_filter_selection_rows')
-        columns = {str(row['name']) for row in conn.execute('PRAGMA table_info(dashboard_filter_selections)').fetchall()}
+        conn.execute('DROP TABLE IF EXISTS design_filter_selection_rows')
+        columns = {str(row['name']) for row in conn.execute('PRAGMA table_info(design_filter_selections)').fetchall()}
         if 'materialized' in columns:
-            conn.execute('ALTER TABLE dashboard_filter_selections DROP COLUMN materialized')
+            conn.execute('ALTER TABLE design_filter_selections DROP COLUMN materialized')
 
     def initialize(self) -> None:
         self.remove_legacy_global_tables()
@@ -1004,8 +1005,8 @@ class Repository:
             self._ensure_saved_filter_columns(conn)
             self._convert_scoring_jobs(conn)
             self._ensure_chart_mapping_groups(conn)
-            self._ensure_dashboard_filter_selection_columns(conn)
-            self._remove_legacy_dashboard_selection_rows(conn)
+            self._ensure_design_filter_selection_columns(conn)
+            self._remove_legacy_design_selection_rows(conn)
             # Functional indexes are created when reporting rows are imported
             # or refreshed. Building every newly introduced index over all
             # legacy CDR tables here can block application startup for minutes
@@ -1038,6 +1039,8 @@ class Repository:
         with self.global_connection() as conn:
             self._configure_database_journal(conn)
             self._rename_bugs_report_identifiers(conn)
+            # PPT Designer was PPT Dashboards: its module key in the profiles, the tickets and the backup settings.
+            migrate_ppt_designer_application_database(conn)
             conn.executescript(GLOBAL_SCHEMA)
             self._migrate_user_roles(conn)
             self._ensure_user_access_schema(conn)
@@ -1342,7 +1345,6 @@ class Repository:
         a profile with every module of its module groups when it had several, or else a profile with the modules it saw.
         The workspaces granted to a role become grants of its accounts.
         """
-        from src.modules.ppt_naming import MODULE_KEYS as FORMER_MODULE_KEYS
 
         if not conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'user_groups'").fetchone():
             return
@@ -1515,7 +1517,7 @@ class Repository:
             stored = json.loads(str(value or '[]'))
         except (TypeError, ValueError):
             stored = []
-        chosen = {str(item) for item in stored} if isinstance(stored, list) else set()
+        chosen = {FORMER_MODULE_KEYS.get(str(item), str(item)) for item in stored} if isinstance(stored, list) else set()
         return [key for key, _name in MAIN_MODULES if key in chosen]
 
     def list_modules_profiles(self) -> list[dict[str, Any]]:
@@ -2171,7 +2173,7 @@ class Repository:
             # Catalogues, cached selections and analyses are rebuilt from the renamed fields.
             conn.execute(f'DELETE FROM cdr_catalogues WHERE dataset_id IN ({marks})', dataset_ids)
             conn.execute(f'UPDATE dataset_profiles SET updated_at = ? WHERE dataset_id IN ({marks})', [local_now_iso(), *dataset_ids])
-            conn.execute('DELETE FROM dashboard_filter_selections')
+            conn.execute('DELETE FROM design_filter_selections')
         conn.execute('INSERT OR REPLACE INTO workspace_state (key, value) VALUES (?, ?)', (self.VENDOR_FIELDS_MIGRATION_KEY, '1'))
 
     MIXED_VENDOR_LABELS_MIGRATION_KEY = 'vendor_mixed_labels_v3'
@@ -2255,7 +2257,7 @@ class Repository:
         conn.execute("DELETE FROM vendor_mappings WHERE instr(source_value, 'Ericsson_Mixed') > 0 OR instr(canonical_value, 'Ericsson_Mixed') > 0")
         conn.execute("DELETE FROM chart_mapping_groups WHERE instr(canonical_value, 'Ericsson_Mixed') > 0")
         # Cached selections are rebuilt from the renamed values.
-        conn.execute('DELETE FROM dashboard_filter_selections')
+        conn.execute('DELETE FROM design_filter_selections')
         conn.execute('INSERT OR REPLACE INTO workspace_state (key, value) VALUES (?, ?)', (self.MIXED_VENDOR_LABELS_MIGRATION_KEY, '1'))
 
     VENDOR_FILTER_OPTIONS_MIGRATION_KEY = 'dataset_filter_options_vendor_fields_v1'
@@ -2461,7 +2463,7 @@ class Repository:
         """Move the templates kept per NR Mode (NSA and SA libraries) into one library, once per workspace.
 
         Each NSA and SA copy of the same template becomes one template naming the mode with tokens (see
-        report_template_modes); the Dashboards take their NR Mode as part of their selection and follow their template,
+        report_template_modes); the Designs take their NR Mode as part of their selection and follow their template,
         and so do the PPT jobs and Reporting (old) jobs that named it. The workspace keeps how the templates of before are
         known now, for the packages and backups of before.
         """
@@ -2469,7 +2471,7 @@ class Repository:
         if 'technology' not in columns:
             return
         from src.modules.report_template_modes import (
-            TEMPLATE_MODE_MERGE_STATE_KEY, merge_mode_templates, merge_state, migrate_dashboards_state)
+            TEMPLATE_MODE_MERGE_STATE_KEY, merge_mode_templates, merge_state, migrate_designs_state)
 
         rows = [dict(row) for row in conn.execute('SELECT * FROM report_templates').fetchall()]
         merge = merge_mode_templates(rows)
@@ -2496,24 +2498,24 @@ class Repository:
                 pass
         conn.execute('INSERT OR REPLACE INTO workspace_state (key, value) VALUES (?, ?)',
                      (TEMPLATE_MODE_MERGE_STATE_KEY, json.dumps(state, ensure_ascii=False)))
-        dashboards_row = conn.execute("SELECT value FROM workspace_state WHERE key = 'ppt_dashboards_v2'").fetchone()
-        renamed_dashboards = 0
-        if dashboards_row:
+        designs_row = conn.execute("SELECT value FROM workspace_state WHERE key = 'ppt_designs_v2'").fetchone()
+        renamed_designs = 0
+        if designs_row:
             try:
-                dashboards = json.loads(dashboards_row['value'])
+                designs = json.loads(designs_row['value'])
             except (TypeError, ValueError):
-                dashboards = None
-            if isinstance(dashboards, dict):
-                migrated, changed = migrate_dashboards_state(dashboards, merge.renames, merge.uids)
-                renamed_dashboards = sum(1 for key, value in migrated.items() if isinstance(value, dict)
-                                         and isinstance(dashboards.get(key), dict) and value.get('name') != dashboards[key].get('name'))
+                designs = None
+            if isinstance(designs, dict):
+                migrated, changed = migrate_designs_state(designs, merge.renames, merge.uids)
+                renamed_designs = sum(1 for key, value in migrated.items() if isinstance(value, dict)
+                                         and isinstance(designs.get(key), dict) and value.get('name') != designs[key].get('name'))
                 if changed:
-                    conn.execute("UPDATE workspace_state SET value = ? WHERE key = 'ppt_dashboards_v2'",
+                    conn.execute("UPDATE workspace_state SET value = ? WHERE key = 'ppt_designs_v2'",
                                  (json.dumps(migrated, ensure_ascii=False),))
         tables = {str(row[0]) for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
         for (technology, old_name), new_name in merge.renames.items():
-            if 'dashboard_ppt_jobs' in tables:
-                conn.execute('UPDATE dashboard_ppt_jobs SET template_name = ? WHERE template_name = ? AND LOWER(nr_mode) = ?',
+            if 'design_ppt_jobs' in tables:
+                conn.execute('UPDATE design_ppt_jobs SET template_name = ? WHERE template_name = ? AND LOWER(nr_mode) = ?',
                              (new_name, old_name, technology))
             if 'generated_jobs' in tables:
                 conn.execute('UPDATE generated_jobs SET template_name = ? WHERE template_name = ? AND LOWER(technology) = ?',
@@ -2526,7 +2528,7 @@ class Repository:
                     'merged': [{'nsa': nsa, 'sa': sa, 'name': name} for nsa, sa, name in merge.merged],
                     'renamed': {f'{technology.upper()} {old}': new for (technology, old), new in merge.renames.items()
                                 if not any(old in pair[:2] for pair in merge.merged)},
-                    'renamed_dashboards': renamed_dashboards, 'executed_by': 'system',
+                    'renamed_designs': renamed_designs, 'executed_by': 'system',
                 }, ensure_ascii=False), local_now_iso(), current_app_event_origin()),
             )
 
@@ -2545,7 +2547,7 @@ class Repository:
         # Who created each template: only they, admins and super-admins delete it (none for those of before).
         if 'created_by' not in columns:
             conn.execute("ALTER TABLE report_templates ADD COLUMN created_by TEXT NOT NULL DEFAULT ''")
-        # The identity of each template, which never changes: the Dashboards refer to their template by it, and an import
+        # The identity of each template, which never changes: the Designs refer to their template by it, and an import
         # finds it again after a rename (see transfer_identities).
         if 'uid' not in columns:
             conn.execute("ALTER TABLE report_templates ADD COLUMN uid TEXT NOT NULL DEFAULT ''")
@@ -3355,7 +3357,9 @@ class Repository:
                 name = str(profile.get('name') or '').strip() if isinstance(profile, dict) else ''
                 if not name:
                     continue
-                chosen = {str(module) for module in profile.get('modules') or []} if isinstance(profile.get('modules'), list) else set()
+                # A package of before names a module by its former key (PPT Dashboards for PPT Designer).
+                chosen = ({FORMER_MODULE_KEYS.get(str(module), str(module)) for module in profile.get('modules') or []}
+                          if isinstance(profile.get('modules'), list) else set())
                 selected = [key for key, _name in MAIN_MODULES if key in chosen]
                 modules, color = json.dumps(selected), profile_color(profile.get('color'), selected)
                 uid = str(profile.get('uid') or '').strip()
@@ -4413,7 +4417,7 @@ class Repository:
         if event_time_column:
             quoted_column = self._quote_identifier(event_time_column)
             quoted_index = self._quote_identifier(self._index_name(table_name, 'dataset_event_time', 'date'))
-            # Dashboard cache validation obtains the oldest and newest date
+            # Design cache validation obtains the oldest and newest date
             # for a selected Dataset Universe.  Keeping dataset_id first lets
             # SQLite restrict that MIN/MAX query to the selected CDRs.
             conn.execute(
@@ -4910,7 +4914,7 @@ class Repository:
                 # Adding a template field used to delete and recreate every
                 # shared CDR row, including columns that were already ready.
                 # Fill only the newly required or incomplete columns by their
-                # stable source-row id, keeping large dashboard preparations
+                # stable source-row id, keeping large design preparations
                 # proportional to the added data rather than table width.
                 conn.execute('BEGIN IMMEDIATE')
                 for target, source in dict.fromkeys(columns_to_refresh):
@@ -5672,8 +5676,8 @@ class Repository:
                                 (json.dumps(remapped, ensure_ascii=False), int(row['__rowid__'])),
                             )
 
-            if 'dashboard_filter_selections' in table_names:
-                conn.execute('DELETE FROM dashboard_filter_selections')
+            if 'design_filter_selections' in table_names:
+                conn.execute('DELETE FROM design_filter_selections')
             conn.execute("DELETE FROM sqlite_sequence WHERE name = 'datasets'")
             conn.execute("INSERT INTO sqlite_sequence(name, seq) VALUES ('datasets', ?)", (len(current_ids),))
             foreign_key_errors = conn.execute('PRAGMA foreign_key_check').fetchall()

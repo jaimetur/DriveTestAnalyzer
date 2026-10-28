@@ -31,7 +31,7 @@ def test_images_of_every_module_are_recorded_in_app_events(client):
 
     assert client.post('/api/image-export', json=map_image).json() == {'recorded': True}
     assert client.post('/api/image-export', json={
-        'module': 'ppt-dashboards', 'section': 'Dashboard viewer', 'kind': 'chart', 'title': 'CDR-Voice Validation',
+        'module': 'ppt-designer', 'section': 'Design viewer', 'kind': 'chart', 'title': 'CDR-Voice Validation',
         'context': {'slide': 'NSA · NetCheck CDR Report · Slide 3 / 20', 'theme': 'netcheck'}, 'destination': 'clipboard',
         'file_name': 'CDR-Voice Validation.png', 'format': 'png', 'width': 1200, 'height': 300,
     }).status_code == 200
@@ -53,7 +53,7 @@ def test_images_of_every_module_are_recorded_in_app_events(client):
     }
     assert describe_app_event(image['action'], image['details']).startswith(
         'Export network insights image: section Coverage & Interference Maps, kind chart')
-    [copied] = events['export_dashboard_image']
+    [copied] = events['export_design_image']
     assert copied['details']['destination'] == 'clipboard' and copied['details']['slide'] == 'NSA · NetCheck CDR Report · Slide 3 / 20'
     [failure] = events['export_nq_calls_image_failed']
     assert failure['details']['error'] == 'The browser could not draw it.' and failure['details']['kind'] == 'table'
@@ -81,7 +81,7 @@ def test_image_export_requires_login(client):
 @pytest.mark.parametrize('template, script', [
     ('network_insights.html', 'js/network_insights.js'),
     ('non_qualified_calls.html', 'js/non_qualified_calls.js'),
-    ('ppt_dashboards.html', 'js/ppt_dashboards.js'),
+    ('ppt_designer.html', 'js/ppt_designer.js'),
     ('scoring.html', 'js/scoring.js'),
 ])
 def test_module_pages_load_the_image_buttons_before_their_script(template, script):
@@ -93,8 +93,8 @@ def test_module_pages_load_the_image_buttons_before_their_script(template, scrip
 def test_every_module_puts_the_buttons_over_its_panels_charts_and_tables():
     insights = (WEB / 'static/js/network_insights.js').read_text(encoding='utf-8')
     calls = (WEB / 'static/js/non_qualified_calls.js').read_text(encoding='utf-8')
-    dashboards = (WEB / 'static/js/ppt_dashboards.js').read_text(encoding='utf-8')
-    dashboards_page = (WEB / 'templates/ppt_dashboards.html').read_text(encoding='utf-8')
+    designs = (WEB / 'static/js/ppt_designer.js').read_text(encoding='utf-8')
+    designs_page = (WEB / 'templates/ppt_designer.html').read_text(encoding='utf-8')
     builder = (WEB / 'templates/chart_builder.html').read_text(encoding='utf-8')
 
     # Network Insights: each panel, its charts, maps, ladders and tables, and the larger view of one.
@@ -103,14 +103,14 @@ def test_every_module_puts_the_buttons_over_its_panels_charts_and_tables():
     # Non-Qualified Calls: each panel, and its KPIs, charts and tables (a table with its title is one image).
     assert "targets: `details.panel.collapsible-panel, ${imageTables}, ${imageCharts}, .nq-kpis, .nq-rate-overview, .nq-phase-cards, .nq-failure-section`," in calls
     assert "module: 'non-qualified-calls'" in calls
-    # PPT Dashboards: the slide of the viewer and its charts, the Charts Panel and its thumbnails, the larger view of a
+    # PPT Designer: the slide of the viewer and its charts, the Charts Panel and its thumbnails, the larger view of a
     # chart; the viewer and the larger view hold the buttons above them.
-    assert "targets: '#ds-charts, #ds-charts > .ds-chart, #ds-ppt-charts-panel, #ds-ppt-charts-body > .report-chart-card, .ds-chart-expanded-canvas'," in dashboards
-    assert 'id="ds-viewer" data-image-buttons-host' in dashboards_page
-    assert 'id="ds-chart-expanded-overlay" data-image-buttons-host' in dashboards_page
+    assert "targets: '#ds-charts, #ds-charts > .ds-chart, #ds-ppt-charts-panel, #ds-ppt-charts-body > .report-chart-card, .ds-chart-expanded-canvas'," in designs
+    assert 'id="ds-viewer" data-image-buttons-host' in designs_page
+    assert 'id="ds-chart-expanded-overlay" data-image-buttons-host' in designs_page
     # Chart Builder: the card of its chart, once the shared scripts (loaded after its own) are there.
     assert "document.addEventListener('DOMContentLoaded', () => window.attachImageButtons?.({" in builder
-    assert builder.index('js/dashboard_charts.js') < builder.index('js/element_image.js') < builder.index('js/image_buttons.js')
+    assert builder.index('js/canvas_charts.js') < builder.index('js/element_image.js') < builder.index('js/image_buttons.js')
     assert "module: 'builders'" in builder
 
 
@@ -131,7 +131,7 @@ def test_the_buttons_live_in_dialogs_and_overlays_and_keep_clear_of_the_page_but
 
 
 def test_map_tiles_are_asked_for_with_cors_so_maps_can_be_saved_as_images():
-    charts = (WEB / 'static/js/dashboard_charts.js').read_text(encoding='utf-8')
+    charts = (WEB / 'static/js/canvas_charts.js').read_text(encoding='utf-8')
 
     assert "image.crossOrigin = 'anonymous';" in charts
     # A tile server that does not allow it is asked again plainly, so the map still shows.

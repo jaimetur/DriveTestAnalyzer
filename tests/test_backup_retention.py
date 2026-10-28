@@ -34,7 +34,7 @@ def test_backups_record_their_origin_and_level(client):
     # Backup folders must be inside the application data folder.
     tmp_path = core.application_data_dir / 'test-backups'
     workspace = core.active_workspace
-    config = {'components': ['app_database', 'workspace_database', 'dashboards'], 'workspace_ids': [workspace.id],
+    config = {'components': ['app_database', 'workspace_database', 'designs'], 'workspace_ids': [workspace.id],
               'backup_path': str(tmp_path)}
     # Renamed as made: two backups started in the same second would have the same name.
     light = core.create_recurring_database_backup(config, origin='scheduled', level='light')
@@ -44,7 +44,7 @@ def test_backups_record_their_origin_and_level(client):
         manifest = json.loads(archive.read('manifest.json'))
         names = archive.namelist()
     assert (manifest['backup_origin'], manifest['backup_level']) == ('scheduled', 'light')
-    assert 'workspace_database' not in manifest['workspace_components'] and 'dashboards' in manifest['workspace_components']
+    assert 'workspace_database' not in manifest['workspace_components'] and 'designs' in manifest['workspace_components']
     assert not any(name.endswith('/database.sqlite') for name in names)
 
     full = core.create_recurring_database_backup(config)
@@ -91,7 +91,7 @@ def test_light_backups_are_made_between_weekly_full_ones(client, tmp_path):
     # Weekly and monthly schedules, light backups off, or nothing heavy selected: always full.
     assert level(config | {'recurrence': 'weekly'}, datetime(2026, 10, 19, 5, 0)) == 'full'
     assert level(config | {'light_backups': False}, datetime(2026, 10, 19, 5, 0)) == 'full'
-    assert level(config | {'components': ['app_database', 'dashboards']}, datetime(2026, 10, 19, 5, 0)) == 'full'
+    assert level(config | {'components': ['app_database', 'designs']}, datetime(2026, 10, 19, 5, 0)) == 'full'
 
 
 def test_retention_keeps_the_backups_of_the_last_days_weeks_and_months(client, tmp_path):
@@ -215,7 +215,7 @@ def test_scheduled_backup_tiers_are_saved(client):
 def test_backup_now_makes_a_full_or_a_light_backup(client, monkeypatch):
     login_super(client)
     workspace = core.active_workspace
-    form = {'components': ['app_database', f'workspace:{workspace.id}', 'workspace_database', 'dashboards'],
+    form = {'components': ['app_database', f'workspace:{workspace.id}', 'workspace_database', 'designs'],
             'backup_path': 'test-backup-now', 'backup_level': 'light'}
     monkeypatch.setattr(core, 'submit_background_task', lambda callback, *args: callback(*args))
     started = client.post('/admin/database/backups/run', data=form, headers={'X-Requested-With': 'XMLHttpRequest'})
