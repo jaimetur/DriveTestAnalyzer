@@ -2682,11 +2682,26 @@ def _select_dynamic_chart_frame(frame: pd.DataFrame, entry: CatalogEntry) -> pd.
             return frame.iloc[:0].copy()
         values = frame[column].astype(str)
         if _normalise_catalog_name(field) == "operator":
-            values = values.map(lambda value: _normalise_operator_label(value, frame.attrs.get("operator_mappings", {})))
+            values = _map_each_value(values, lambda value: _normalise_operator_label(value, frame.attrs.get("operator_mappings", {})))
         elif _normalise_catalog_name(field) in {"vendor", "operatorvendor"}:
-            values = values.map(lambda value: _normalise_vendor(value, frame.attrs.get("operator_mappings", {}), frame.attrs.get("vendor_mappings", {})))
+            values = _map_each_value(values, lambda value: _normalise_vendor(value, frame.attrs.get("operator_mappings", {}), frame.attrs.get("vendor_mappings", {})))
         frame = frame[values.eq(selected)].copy()
     return frame
+
+def _map_each_value(series: pd.Series, function: Callable[[object], object]) -> pd.Series:
+    """``series.map(function)``, calling ``function`` once for each distinct value (of each type) instead of each row."""
+    known: dict[tuple[type, object], object] = {}
+    mapped = []
+    for value in series.to_numpy(dtype=object):
+        try:
+            key = (type(value), value)
+            result = known[key] if key in known else known.setdefault(key, function(value))
+        except TypeError:
+            # A value that cannot be a key (a list) is mapped on its own.
+            result = function(value)
+        mapped.append(result)
+    return pd.Series(mapped, index=series.index, name=series.name)
+
 
 def _apply_catalog_filters(frame: pd.DataFrame, entry: CatalogEntry, multivendor: bool, metric: str | None) -> pd.DataFrame:
     result = ensure_vendor_group(frame) if any(column_identity(condition.column) in {'vendor', 'operatorvendor'} for condition in parse_catalog_filters(entry.filters)) else frame.copy()
@@ -2721,21 +2736,21 @@ def _apply_catalog_filters(frame: pd.DataFrame, entry: CatalogEntry, multivendor
         if not column:
             raise ValueError(f"Slide {entry.slide}: filter column '{condition.column}' does not exist in {entry.cdr_source}.")
         series = result[column]
-        comparison_series = series.map(lambda value: _vendor_operator(value, operator_mappings)) if multivendor and is_operator_filter else (
+        comparison_series = _map_each_value(series, lambda value: _vendor_operator(value, operator_mappings)) if multivendor and is_operator_filter else (
             series if is_operator_filter else series
         )
         if normalized_condition == 'vendor':
-            comparison_series = series.map(lambda value: vendor_filter_value(value, operators))
+            comparison_series = _map_each_value(series, lambda value: vendor_filter_value(value, operators))
         is_campaign_filter = normalized_condition == 'campaign'
         if is_campaign_filter:
-            comparison_series = series.map(compact_campaign_value)
+            comparison_series = _map_each_value(series, compact_campaign_value)
         def vendor_match(target: str, *, contains: bool = False) -> pd.Series:
             """Match a full Operator_Vendor value or an operator-independent vendor."""
             text = str(target).strip()
             # An underscore explicitly selects one materialised operator/vendor
             # value. A bare name selects that vendor beneath every operator.
             full_value = "_" in text
-            candidates = series.map(lambda value: _normalise_vendor(value, operator_mappings)).astype(str) if full_value else series.map(lambda value: _vendor_label(value, result)).astype(str)
+            candidates = _map_each_value(series, lambda value: _normalise_vendor(value, operator_mappings)).astype(str) if full_value else _map_each_value(series, lambda value: _vendor_label(value, result)).astype(str)
             expected = mapped_vendor(text) if full_value else _vendor_label(text, result)
             if contains:
                 return candidates.str.contains(expected, case=False, na=False, regex=False)
@@ -6784,7 +6799,7 @@ def catalog_chart_payload(
                                     if _normalise_catalog_name(condition.column) == "histogramoperator"), None)
             operator_column = _column(data, ("Operator",))
             if operator_filter and operator_column:
-                data = data[data[operator_column].map(lambda value: _normalise_operator_label(value, data.attrs.get("operator_mappings", {}))).eq(operator_filter)].copy()
+                data = data[_map_each_value(data[operator_column], lambda value: _normalise_operator_label(value, data.attrs.get("operator_mappings", {}))).eq(operator_filter)].copy()
             if data.empty:
                 return empty("No valid samples for this operator and technology")
         model = cdf_model(metric, title, histogram=chart_type != "cdf line") if metric else None

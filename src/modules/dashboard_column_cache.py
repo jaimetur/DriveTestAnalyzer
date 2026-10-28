@@ -760,6 +760,37 @@ def _typed_part(raw: tuple[str, Any], order: np.ndarray) -> tuple:
     return encode_values(np.asarray(values, dtype=object)[order])
 
 
+# The combined row ids of the rows of each CDR and the CDR row each is, by workspace, combined table, CDR and data
+# revision: the latest ones, kept in memory (a few MB each).
+_ROW_MAPS: OrderedDict[tuple, tuple[np.ndarray, np.ndarray]] = OrderedDict()
+_ROW_MAPS_GUARD = threading.Lock()
+ROW_MAPS_KEPT = 64
+
+
+def _row_map(connection: sqlite3.Connection, database_path: str | Path, segment: Segment) -> tuple[np.ndarray, np.ndarray]:
+    """The combined row ids of the rows of one CDR in a combined table, in their order, and the CDR row each is."""
+    source, dataset_id = segment.source, int(segment.dataset_id)
+    key = (str(Path(str(database_path)).resolve()), source.table, dataset_id, segment.version)
+    with _ROW_MAPS_GUARD:
+        if key in _ROW_MAPS:
+            _ROW_MAPS.move_to_end(key)
+            return _ROW_MAPS[key]
+    if source.kind in cdr_store.combined_shadows(connection):
+        # An emptied combined table: the CDR row of each of its rows, in its order (see cdr_store).
+        cursor = connection.execute(f'SELECT row_id, source_row_id FROM {cdr_store.COMBINED_ROWS_TABLE} '
+                                    'WHERE kind = ? AND dataset_id = ? ORDER BY row_id', (source.kind, dataset_id))
+    else:
+        cursor = connection.execute(f'SELECT rowid, "source_row_id" FROM {quote_identifier(source.table)} '
+                                    'WHERE "dataset_id" = ? ORDER BY rowid', (dataset_id,))
+    pairs = np.fromiter((value for row in cursor for value in row), dtype=np.int64).reshape(-1, 2)
+    found = (pairs[:, 0].copy(), pairs[:, 1].copy())
+    with _ROW_MAPS_GUARD:
+        _ROW_MAPS[key] = found
+        while len(_ROW_MAPS) > ROW_MAPS_KEPT:
+            _ROW_MAPS.popitem(last=False)
+    return found
+
+
 def build_from_copies(database_path: str | Path, segment: Segment, expressions: Sequence[str]) -> dict[str, tuple] | None:
     """The parts ``ColumnCache._build`` reads from a combined table for one CDR, from the columnar copy of the CDR: the
     combined row ids of its rows, their event date and each expression. A bare column is read from the copy (the column
@@ -772,16 +803,14 @@ def build_from_copies(database_path: str | Path, segment: Segment, expressions: 
     dataset_id = int(segment.dataset_id)
     database = f'file:{Path(str(database_path)).resolve()}?mode=ro'
     with sqlite3.connect(database, uri=True, timeout=30) as connection:
-        if source.kind in cdr_store.combined_shadows(connection):
-            # An emptied combined table: the CDR row of each of its rows, in its order (see cdr_store).
-            mapping = connection.execute(f'SELECT row_id, source_row_id FROM {cdr_store.COMBINED_ROWS_TABLE} '
-                                         'WHERE kind = ? AND dataset_id = ? ORDER BY row_id', (source.kind, dataset_id)).fetchall()
-        else:
-            mapping = connection.execute(f'SELECT rowid, "source_row_id" FROM {quote_identifier(source.table)} '
-                                         'WHERE "dataset_id" = ? ORDER BY rowid', (dataset_id,)).fetchall()
+        try:
+            combined_rowids, source_rows = _row_map(connection, database_path, segment)
+        except (TypeError, ValueError):
+            # A row without a CDR row (NULL source_row_id) is read from the combined table.
+            return None
         combined = {str(row[1]).casefold() for row in connection.execute(f'PRAGMA table_info({quote_identifier(source.table)})')}
     manifest = cdr_store.read_manifest(cdr_store.manifest_file(cdr_store.store_root(database_path), source.kind, dataset_id))
-    if manifest is None or len(mapping) != int(manifest['rows']):
+    if manifest is None or len(combined_rowids) != int(manifest['rows']):
         return None
     by_identity = {column_identity(column): column for column, _type in manifest['columns']}
 
@@ -816,13 +845,12 @@ def build_from_copies(database_path: str | Path, segment: Segment, expressions: 
     columns = {name: copy_column(name) for name in names}
     raw, _length = cdr_store._raw(database_path, source.kind, dataset_id,
                                   list(dict.fromkeys([cdr_store.ROWID, *(column for column in columns.values() if column)])))
-    copy_rowids = cdr_store._python_values(raw[cdr_store.ROWID])
-    position = {int(rowid): index for index, rowid in enumerate(copy_rowids)}
-    try:
-        order = np.fromiter((position[int(source_row)] for _rowid, source_row in mapping), dtype=np.int64, count=len(mapping))
-    except (KeyError, TypeError, ValueError):
+    # The copy holds the rows of the CDR in row id order: the place of each CDR row of the combined rows.
+    copy_rowids = np.asarray(raw[cdr_store.ROWID][1], dtype=np.int64)
+    order = np.searchsorted(copy_rowids, source_rows)
+    if len(order) and (order.max() >= len(copy_rowids) or not np.array_equal(copy_rowids[order], source_rows)):
         return None
-    length = len(mapping)
+    length = len(combined_rowids)
     missing = ('object', np.full(length, None, dtype=object))
 
     decoded: dict[str, np.ndarray] = {}
@@ -852,7 +880,7 @@ def build_from_copies(database_path: str | Path, segment: Segment, expressions: 
             distinct[name] = (codes, uniques)
         return distinct[name]
 
-    built = {ROWID: encode_values(np.asarray([rowid for rowid, _source_row in mapping], dtype=object))}
+    built = {ROWID: encode_values(combined_rowids.astype(object))}
     results: dict[str, tuple] = {}
     several: list[str] = []
     for expression in wanted_expressions:

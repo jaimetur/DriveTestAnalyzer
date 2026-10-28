@@ -13,7 +13,7 @@
 
 #### 🚀 Enhancements:
 - **Non-Qualified Calls — Indexing, NQ Prioritization and DT Analyzer RCA:** they take about half the time with the same results: the calls of each CDR are worked out column by column, the nearest site of the calls is looked for many calls at once, and the PCI collisions, hotspots, clusters, time-window issues and repetitions are measured with arrays.
-- **PPT Dashboards — Column cache:** the columns of the CDRs the charts read are kept in memory only, read from the columnar copies of the CDRs, and no longer on disk (up to 8 GB in `.dashboard-data-cache/columns`, removed when the workspace opens).
+- **PPT Dashboards — Column cache:** the columns of the CDRs the charts read are kept in memory only, read from the columnar copies of the CDRs, and no longer on disk (up to 8 GB in `.dashboard-data-cache/columns`, removed when the workspace opens); a chart reads the row order of each CDR once, and compares its Operator, Vendor and Campaign filters once per distinct value instead of once per row, with the same results.
 - **Scoring & GAP Analysis — Scoring History:** checking that the CDRs of a calculation are in the Scoring History reads the CDR tables of the workspace once instead of once per CDR, several seconds less per calculation in a workspace with many CDRs.
 - **Workspace — Active?:** the In Combined? choice of the CDR tables of Workspace, which chooses the CDRs the modules use, is called **Active?** everywhere (Help included).
 
