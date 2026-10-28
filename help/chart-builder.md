@@ -1,6 +1,6 @@
 # Chart Builder
 
-Chart Builder is the ad-hoc chart editor. It uses the PPT Dashboard individual Canvas chart viewer embedded directly in the page, while its definition remains temporary: it never changes a stored template or creates a PowerPoint report.
+Chart Builder is the ad-hoc chart editor. It uses the PPT Dashboard individual Canvas chart viewer embedded directly in the page and the shelves of the chart builder of [Design](ppt-dashboards.md#design-a-dashboard), while its definition remains temporary: it never changes a stored template or creates a PowerPoint report. **Add to Dashboard…** puts the chart on a slide of a Dashboard you can design.
 
 > [!NOTE]
 > **Temporary exploration.** Changes here create an ad-hoc chart. They do not modify a Report Template or generate a PowerPoint report.
@@ -23,8 +23,9 @@ builders
 | Presentation | [Open section](#presentation) |
 | Workflow | [Open section](#workflow) |
 | Interactive Preview | [Open section](#interactive-preview) |
+| Add to Dashboard | [Open section](#add-to-dashboard) |
 | Example | [Open section](#example) |
-| Filter Builder | [Open section](#filter-builder) |
+| Filters | [Open section](#filters) |
 | Performance and troubleshooting | [Open section](#performance-and-troubleshooting) |
 
 ## Workflow
@@ -32,11 +33,10 @@ builders
 1. Open **Chart Builder** with a workspace active.
 2. Choose **CDR Type**: Data, Voice or Speech.
 3. Select one or more processed datasets of that type.
-4. Choose a KPI and chart type.
-5. Add filters with Filter Builder.
-6. Select ordered Rows and Columns dimensions.
-7. Choose a Legend and Legend Position when required.
-8. Enter a Chart Title and review the regenerated preview.
+4. Drag a field (or click it) to **Measure**; **Chart Type** marks the types it can draw and chooses one.
+5. Drag fields to **Rows**, **Columns** and **Legend**, in the order they split the chart (`Operator` then `Campaign` gives `Operator × Campaign`).
+6. Drop a field on **Filters** to choose its values (with their samples) or a numeric condition.
+7. Enter a Chart Title and Legend Position and review the regenerated preview.
 
 The Source Dataset selector is filtered by CDR Type and shows only processed datasets of that type. When the chosen datasets are of an NR Mode that leaves operators out of scope (the **NR Modes** of their labels in the [Operator Maps](workspace-config.md#operator-maps), such as Three, which has no SA), the chart header names them (*Out of scope: SA · Three*) and their rows are left out of the chart.
 
@@ -45,17 +45,19 @@ The Source Dataset selector is filtered by CDR Type and shows only processed dat
 | Control | Behaviour |
 | --- | --- |
 | Chart Title | Text displayed above the generated chart. |
-| Chart Type | Bar, CDF, scatter or table renderer. |
-| KPI | Field available in the selected sources. |
-| Filters | Shared Filter Builder; conditions are joined with AND. |
-| Rows | Ordered multi-select for chart categories. |
-| Columns | Ordered multi-select for comparison series. |
-| Legend | Chart dimension or filter field to explain. |
+| Fields | The fields of the chosen CDRs, grouped by the sections of the [CDR Field Dictionary](workspace-config.md) and searchable: dimensions (values, blue `Abc`) and measures (numbers, green `#`). Drag one to a shelf, or click it and choose the shelf. |
+| Measure | The KPI. Its menu chooses the aggregation (Average, Median, Sum, Count, Count distinct, Minimum, Maximum, or the one of the chart type) and its order; Multi KPI CDF Lines, Scatter and the tables take several. |
+| Rows, Columns | Ordered splits of the chart: drag a pill along its shelf, or to another shelf, to change them. |
+| Legend | The fields the legend explains. |
+| Filters | A field dropped here opens its filter: its values in the chosen CDRs with their samples (Include, Exclude) or a text to contain; a numeric field takes a condition such as `< 1.6`. Each filter is a pill: click it to change it, **×** to remove it. |
+| Chart Type | The chart types, each drawn; the ones the shelves cannot draw are greyed with what they need (one numeric measure, two for Scatter, a dimension as measure for 100% Stacked Vertical Bars, Latitude and Longitude for a Map). Threshold, Buckets and Bin Size are set beside the type that uses them. |
 | Legend Position | Top, Bottom, Left or Right. |
 
-Rows and Columns preserve checkbox order. Selecting `Operator` then `Campaign` produces `Operator × Campaign`.
-
 The embedded viewer provides the same Canvas rendering, semantic hover details, zoom, panning and refresh behaviour as an individual PPT Dashboard chart. Its chart downloads as a PNG image or copies to the clipboard as a screenshot from the floating buttons at the top right corner of its card (see [Images of charts and tables](web-interface.md#images-of-charts-and-tables)); App Events records each one as `export_chart_builder_image`, with the CDR type and CDRs used.
+
+## Add to Dashboard
+
+**Add to Dashboard…** lists the Dashboards you can design (admins and super-admins any, a user-editor those they created) and their slides with their free places: the chart goes to a free place of the slide chosen, or to a new slide at the end of the Dashboard. It becomes part of that Dashboard only (one of its differences from its template, see [Design a Dashboard](ppt-dashboards.md#design-a-dashboard)) and reads the CDRs the Dashboard chooses, not those chosen here. App Events record it as `dashboard_chart_added`.
 
 ## Example
 
@@ -71,12 +73,10 @@ Legend: Campaign
 Legend Position: Bottom
 ```
 
-## Filter Builder
+## Filters
 
-- Field and operator selectors are searchable.
-- **Add filter condition** creates another searchable field selector.
-- `IN` and `NOT IN` values may be entered with or without parentheses.
-- The parsed filter appears below the builder, one condition per line.
+- A field dropped on **Filters** (or clicked and sent to Filters) opens its filter: its values in the chosen CDRs, most samples first and searchable, to **Include** or **Exclude**, or a text the values **Contain**; a numeric field takes a condition (`<`, `<=`, `>`, `>=`, `=`, `!=`) and a value.
+- Every filter is a pill on the shelf; filters are joined with AND, and each one is written as the template writes it (`Call_Status IN (Completed, Dropped)`).
 - Empty, null and NaN values are excluded from result-state calculations.
 
 ## Performance and troubleshooting

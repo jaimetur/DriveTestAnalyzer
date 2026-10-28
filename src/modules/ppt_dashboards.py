@@ -63,6 +63,7 @@ from src.modules.cdr_reporting import (
     parse_catalog_grouping,
     prepare_catalog_chart_preview_frame, render_catalog_chart_preview, render_unavailable_source_chart,
     split_calculated_dimension_aliases, chart_title_parts, _select_dynamic_chart_frame, STRUCTURAL_LAYOUT_TYPES,
+    CATALOG_SOURCE_KINDS, CatalogEntry,
 )
 from src.modules.report_layouts import DYNAMIC_LAYOUTS, canonical_layout_name, compact_grid_layout, grid_layout_name
 
@@ -320,6 +321,14 @@ class DashboardDesignSave(BaseModel):
 
 class DashboardDesignTemplate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
+
+
+class DashboardDesignAddChart(BaseModel):
+    """A chart built elsewhere (Chart Builder) added to a Dashboard: on a free place of one of its slides, or on a new
+    slide at its end (``slide_id`` empty)."""
+    element: dict[str, Any]
+    slide_id: str = ''
+    slide_title: str = ''
 
 
 class DashboardDesignDraft(BaseModel):
@@ -3202,22 +3211,96 @@ def install_dashboard_routes(core):
             })
         return {'layouts': layouts}
 
-    @app.get('/api/ppt-dashboards/design/fields')
-    def dashboard_design_fields(token: str, user=Depends(dashboard_user)):
-        """The fields of each source of the CDRs (Data, Voice, Speech and RF All) the Designer offers for an element."""
+    def design_snapshot(token, user):
         workspace = workspace_key()
         with lock:
             snapshot = snapshots.get(token)
         if snapshot is None or snapshot.workspace != workspace or snapshot.owner not in {user.username, '*'}:
             raise HTTPException(410, 'Dashboard preview expired. Refresh the Dashboard.')
-        task_repository = Repository(Path(workspace), core.repository.global_db_path)
+        return snapshot, Repository(Path(workspace), core.repository.global_db_path)
+
+    def field_categories(task_repository) -> dict[str, str]:
+        """The section of the CDR Field Dictionary each CDR column belongs to (its first one), by column identity."""
+        from src.modules import cdr_field_dictionary
+        from src.modules.cdr_field_profiles import workspace_field_profile
+        categories: dict[str, str] = {}
+        try:
+            rows = cdr_field_dictionary.entries(workspace_field_profile(task_repository))
+        except (AttributeError, KeyError, TypeError, ValueError, sqlite3.Error):
+            return categories
+        for row in rows:
+            for column in row.get('defaults') or []:
+                categories.setdefault(identity(column), str(row['section']))
+        return categories
+
+    def stored_column_types(snapshot, kind, task_repository) -> dict[str, str]:
+        """The type of each column of the selected CDRs of a kind, as their columnar copies keep them: number or text."""
+        types: dict[str, str] = {}
+        root = cdr_store.store_root(task_repository.db_path)
+        for row in dashboard_datasets(snapshot.definition, kind, task_repository):
+            manifest = cdr_store.read_manifest(cdr_store.manifest_file(root, kind, int(row['id']))) or {}
+            for column, column_type in manifest.get('columns') or []:
+                kind_of = 'number' if str(column_type).split(':')[0] in {'BIGINT', 'DOUBLE'} else 'text'
+                # A column a CDR keeps as text and another as numbers is text.
+                types[identity(column)] = 'text' if types.get(identity(column)) == 'text' else kind_of
+        return types
+
+    @app.get('/api/ppt-dashboards/design/fields')
+    def dashboard_design_fields(token: str, user=Depends(dashboard_user)):
+        """The fields of each source of the CDRs (Data, Voice, Speech and RF All) the Designer offers for an element:
+        their names (``columns_by_source``) and, for the chart builder, their type (number or text) and the section of
+        the CDR Field Dictionary they belong to (``fields``)."""
+        snapshot, task_repository = design_snapshot(token, user)
         try:
             _database_path, _table_name, columns = reporting_source(snapshot, 'all', task_repository)
         except (HTTPException, ValueError):
             columns = []
         _datasets, columns_by_source = source_columns(task_repository, columns)
         dimensions = core.load_repository_calculated_dimensions(task_repository)
-        return {'columns_by_source': columns_by_source, 'calculated_fields': [dimension.name for dimension in dimensions]}
+        categories = field_categories(task_repository)
+        internal = {identity(name) for name in ('dataset_kind', 'source_file', '__rowid', '__dataset_id')}
+        fields: dict[str, list[dict[str, str]]] = {}
+        all_types: dict[str, str] = {}
+        for kind in KINDS:
+            types = stored_column_types(snapshot, kind, task_repository)
+            all_types.update({key: value for key, value in types.items() if all_types.get(key) != 'text'})
+            fields[f'cdr-{kind}'] = [
+                {'name': column, 'type': types.get(identity(column), 'text'), 'category': categories.get(identity(column), 'Other fields')}
+                for column in columns_by_source.get(f'cdr-{kind}', []) if identity(column) not in internal
+            ]
+        fields['cdr-all'] = [
+            {'name': column, 'type': all_types.get(identity(column), 'number' if identity(column) in {identity(field) for field in RF_CATALOG_FIELDS} else 'text'),
+             'category': categories.get(identity(column), 'Other fields')}
+            for column in columns_by_source.get('cdr-all', []) if identity(column) not in internal
+        ]
+        return {'columns_by_source': columns_by_source, 'fields': fields,
+                'calculated_fields': [dimension.name for dimension in dimensions]}
+
+    @app.get('/api/ppt-dashboards/design/values')
+    def dashboard_design_values(token: str, source: str, field: str, user=Depends(dashboard_user)):
+        """The values of a field in the selection of an open Dashboard, with their number of samples (most first): read
+        as the rows of a chart are (the same filters, maps and excluded operators)."""
+        snapshot, _task_repository = design_snapshot(token, user)
+        if str(source).casefold() not in CATALOG_SOURCE_KINDS:
+            raise HTTPException(400, 'Unsupported source.')
+        entry = CatalogEntry(slide=1, slide_title='Values', slide_subtitle='', layout='Title + 1 rows + 1 columns', chart_title='',
+                             cdr_source=source, kpi=field, chart_type='Table', legend='', filters='', rows_split=field,
+                             columns_split='', calculated_dimensions=snapshot.dimensions)
+        temporary = uuid4().hex
+        with lock:
+            snapshots[temporary] = replace(snapshot, owner=user.username, entries=[entry], chart_frames={}, filtered_frames={},
+                                           chart_payloads={}, cancelled=None)
+        try:
+            _snapshot, _entry, frame = snapshot_chart(temporary, 0, user)
+        finally:
+            with lock:
+                snapshots.pop(temporary, None)
+        column = resolve_filter_column(frame, field) if frame is not None and not frame.empty else None
+        if column is None:
+            return {'field': field, 'values': []}
+        counts = frame[column].dropna().astype(str).str.strip()
+        counts = counts[counts.ne('')].value_counts()
+        return {'field': field, 'values': [{'value': value, 'count': int(count)} for value, count in counts.head(2000).items()]}
 
     @app.get('/api/ppt-dashboards/{dashboard_id}/design')
     def dashboard_design_read(dashboard_id: str, edit: bool = False, user=Depends(dashboard_user)):
@@ -3437,6 +3520,88 @@ def install_dashboard_routes(core):
         return len(detached)
 
     core.ppt_dashboard_detach_template_dashboards = detach_template_dashboards
+
+    layout_capacity_cache: dict[str, int] = {}
+
+    def layout_capacity(layout: str) -> int:
+        """How many charts a layout of the slide master places."""
+        if layout not in layout_capacity_cache:
+            deck = Presentation(core.settings.powerpoint_template)
+            try:
+                layout_capacity_cache[layout] = len(_layout_chart_frames(_named_slide_layout(deck, layout)))
+            except (KeyError, ValueError):
+                layout_capacity_cache[layout] = 0
+        return layout_capacity_cache[layout]
+
+    def free_places(slide) -> list[int]:
+        visible = [element for element in slide.get('elements') or [] if not element.get('hidden')]
+        used = {element.get('place', index) for index, element in enumerate(visible)}
+        return [place for place in range(layout_capacity(slide.get('layout') or '')) if place not in used]
+
+    @app.get('/api/ppt-dashboards/design/targets')
+    def dashboard_design_targets(user=Depends(dashboard_editor_user)):
+        """The Dashboards the user can design, with their content slides and how many free places each one has (Add to
+        Dashboard of Chart Builder)."""
+        workspace_key()
+        task_repository = bound_repository()
+        result = []
+        for dashboard_id, raw in read_dashboards(task_repository).items():
+            if not isinstance(raw, dict) or not can_design_dashboard(user, dashboard_id, task_repository):
+                continue
+            try:
+                _template, resolved, _report = dashboard_design_state(DashboardDefinition.model_validate(raw), task_repository)
+            except HTTPException:
+                continue
+            slides = [{'id': slide['id'], 'title': slide.get('title') or 'Slide', 'free': len(free_places(slide))}
+                      for slide in resolved.get('slides') or []
+                      if (slide.get('kind') or 'content') == 'content' and not slide.get('hidden') and not slide.get('optional_off')]
+            result.append({'id': dashboard_id, 'name': str(raw.get('name') or ''), 'nr_mode': dashboard_nr_mode(raw), 'slides': slides})
+        return {'dashboards': sorted(result, key=lambda item: item['name'].casefold())}
+
+    @app.post('/api/ppt-dashboards/{dashboard_id}/design/add-chart')
+    def add_chart_to_dashboard(dashboard_id: str, payload: DashboardDesignAddChart, user=Depends(dashboard_editor_user)):
+        """Add to Dashboard: the chart becomes part of this Dashboard only (a difference of it from its template)."""
+        workspace_key()
+        task_repository = bound_repository()
+        if not can_design_dashboard(user, dashboard_id, task_repository):
+            raise HTTPException(403, design_refusal('Dashboard'))
+        definition = stored_dashboard(dashboard_id, task_repository)
+        template = None if definition.design else template_with_ids(definition.template, task_repository, user.username)[0]
+        _base, resolved, _report = dashboard_design_state(definition, task_repository, template)
+        element = {field: payload.element.get(field, False if field in {'exclude_null_empty', 'exclude_zero'} else '')
+                   for field in dashboard_design.ELEMENT_FIELDS}
+        element.update(id=dashboard_design.new_id('e'), kind='chart', origin='dashboard')
+        element['legend_position'] = str(element['legend_position'] or '').casefold()
+        if not str(element['kpi']).strip() or not str(element['cdr_source']).strip():
+            raise HTTPException(400, 'The chart needs a source and a KPI.')
+        if payload.slide_id:
+            slide = next((item for item in resolved.get('slides') or [] if item['id'] == payload.slide_id), None)
+            if slide is None or (slide.get('kind') or 'content') != 'content':
+                raise HTTPException(404, 'The slide is no longer in the Dashboard.')
+            places = free_places(slide)
+            if not places:
+                raise HTTPException(409, f'The slide "{slide.get("title") or "Slide"}" has no free place: choose another slide or a new one.')
+            element['place'] = places[0]
+            slide.setdefault('elements', []).append(element)
+            title = slide.get('title') or 'Slide'
+        else:
+            title = payload.slide_title.strip() or element['chart_title'] or 'New slide'
+            element['place'] = 0
+            resolved.setdefault('slides', []).append({
+                'id': dashboard_design.new_id('s'), 'kind': 'content', 'title': title, 'subtitle': '',
+                'layout': 'Title + 1 rows + 1 columns + comments down', 'optional': False, 'elements': [element],
+            })
+        if definition.design:
+            write_dashboard_design(dashboard_id, task_repository, design=checked_design(resolved, 'Dashboard'))
+        else:
+            overrides = dashboard_design.overrides_between(template, resolved, definition.design_overrides)
+            catalogue(definition.model_copy(update={'design_overrides': overrides}, deep=True), task_repository, template=template)
+            write_dashboard_design(dashboard_id, task_repository, design_overrides=overrides)
+        task_repository.add_log(user.username, 'dashboard_chart_added', json.dumps({
+            'id': dashboard_id, 'name': definition.name, 'slide': title, 'new_slide': not payload.slide_id,
+            'chart': element['chart_title'] or element['kpi'], 'chart_type': element['chart_type'], 'source': element['cdr_source'],
+        }))
+        return {'dashboard': definition.name, 'slide': title}
 
     def ensure_design_drafts(task_repository) -> None:
         with task_repository.connection() as connection:

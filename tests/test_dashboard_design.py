@@ -347,3 +347,32 @@ def test_drafts_layouts_and_previews_after_detaching(client):
     assert [slide['title'] for slide in stored('design-a')['design']['slides']] == ['Only mine']
     fields = client.get(f"/api/ppt-dashboards/design/fields?token={preview.json()['token']}")
     assert fields.status_code == 200 and 'Mean_Data_Rate' in fields.json()['columns_by_source']['cdr-data']
+
+
+def test_the_chart_builder_reads_fields_and_values_and_adds_a_chart_to_a_dashboard(client):
+    definition = setup(client)
+    token = client.post('/api/ppt-dashboards/prepare', json=definition).json()['token']
+    fields = client.get(f'/api/ppt-dashboards/design/fields?token={token}').json()['fields']['cdr-data']
+    assert {'name': 'Operator', 'type': 'text', 'category': 'CDR-Main fields'} in fields or any(item['name'] == 'Operator' for item in fields)
+    values = client.get(f'/api/ppt-dashboards/design/values?token={token}&source=CDR-Data&field=Operator')
+    assert values.status_code == 200, values.text
+    assert values.json()['values'] == [{'value': 'A', 'count': 2}, {'value': 'B', 'count': 1}]
+    targets = client.get('/api/ppt-dashboards/design/targets').json()['dashboards']
+    target = next(item for item in targets if item['id'] == 'design-a')
+    assert [slide['title'] for slide in target['slides']] == ['Comparison', 'Next'] and target['slides'][0]['free'] == 0
+    chart = {'chart_title': 'Rate by city', 'cdr_source': 'CDR-Data', 'kpi': 'Mean_Data_Rate', 'chart_type': 'Average Vertical Bars',
+             'rows_split': 'City', 'columns_split': '', 'legend': '', 'filters': 'Operator IN (A)', 'legend_position': 'Top'}
+    full = client.post('/api/ppt-dashboards/design-a/design/add-chart', json={'element': chart, 'slide_id': target['slides'][0]['id']})
+    assert full.status_code == 409
+    added = client.post('/api/ppt-dashboards/design-a/design/add-chart', json={'element': chart})
+    assert added.status_code == 200, added.text
+    assert added.json() == {'dashboard': 'Design dashboard', 'slide': 'Rate by city'}
+    assert stored('design-a')['design_overrides']['local_slides'][0]['slide']['elements'][0]['kpi'] == 'Mean_Data_Rate'
+    assert logged('dashboard_chart_added')[-1]['new_slide'] is True
+    prepared = client.post('/api/ppt-dashboards/prepare?dashboard_id=design-a', json=definition)
+    assert [slide['title'] for slide in prepared.json()['slides']] == ['Comparison', 'Next', 'Rate by city']
+    # Chart Builder reads the same fields and values from the CDRs chosen.
+    builder_fields = client.post('/api/chart-builder/fields', json={'dataset_ids': [1]}).json()['fields']
+    assert any(item['name'] == 'Mean_Data_Rate' for item in builder_fields)
+    builder_values = client.post('/api/chart-builder/values', json={'dataset_ids': [1], 'field': 'City'}).json()['values']
+    assert builder_values == [{'value': 'London', 'count': 2}, {'value': 'Leeds', 'count': 1}]

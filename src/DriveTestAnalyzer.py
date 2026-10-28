@@ -19298,6 +19298,63 @@ def export_saved_query_builder_query(query_id: int, user: SessionUser = Depends(
     )
 
 
+def _chart_builder_field_types(dataset_ids: Iterable[int]) -> dict[str, str]:
+    """The type of each column of the chosen CDRs as their columnar copies keep them (number or text), by identity."""
+    root = cdr_store.store_root(repository.db_path)
+    types: dict[str, str] = {}
+    for dataset in repository.list_datasets():
+        if int(dataset['id']) not in set(dataset_ids) or str(dataset['dataset_kind'] or '') not in CDR_DATASET_KINDS:
+            continue
+        manifest = cdr_store.read_manifest(cdr_store.manifest_file(root, str(dataset['dataset_kind']), int(dataset['id']))) or {}
+        for column, column_type in manifest.get('columns') or []:
+            kind = 'number' if str(column_type).split(':')[0] in {'BIGINT', 'DOUBLE'} else 'text'
+            key = _normalise_catalogue_dimension_name(column)
+            types[key] = 'text' if types.get(key) == 'text' else kind
+    return types
+
+
+@app.post('/api/chart-builder/fields')
+async def chart_builder_fields(request: Request, user: SessionUser = Depends(current_user)) -> JSONResponse:
+    """The fields of the chosen CDRs for the shelves of Chart Builder: name, type (number or text) and the section of the
+    CDR Field Dictionary they belong to."""
+    from src.modules import cdr_field_dictionary
+    from src.modules.cdr_field_profiles import workspace_field_profile
+    payload = await request.json()
+    selected = {int(value) for value in payload.get('dataset_ids', []) if str(value).isdigit()}
+    columns: list[str] = []
+    for dataset in repository.list_datasets():
+        if int(dataset['id']) in selected and dataset['status'] == 'ready':
+            columns.extend(column for column in repository.list_dataset_row_columns(int(dataset['id'])) if column not in columns)
+    types = _chart_builder_field_types(selected)
+    categories: dict[str, str] = {}
+    for row in cdr_field_dictionary.entries(workspace_field_profile(repository)):
+        for column in row.get('defaults') or []:
+            categories.setdefault(_normalise_catalogue_dimension_name(column), str(row['section']))
+    hidden = {'datasetid', 'sourcerowid', 'datasetkind', 'sourcefile'}
+    fields = [{'name': column, 'type': types.get(_normalise_catalogue_dimension_name(column), 'text'),
+               'category': categories.get(_normalise_catalogue_dimension_name(column), 'Other fields')}
+              for column in sorted(columns, key=str.casefold) if _normalise_catalogue_dimension_name(column) not in hidden]
+    dimensions = load_workspace_calculated_dimensions()
+    return JSONResponse({'fields': fields, 'calculated_fields': [dimension.name for dimension in dimensions]})
+
+
+@app.post('/api/chart-builder/values')
+async def chart_builder_values(request: Request, user: SessionUser = Depends(current_user)) -> JSONResponse:
+    """The values of a field in the chosen CDRs with their number of samples (most first), for the filter dialogs."""
+    payload = await request.json()
+    field = str(payload.get('field') or '').strip()
+    if not field:
+        raise HTTPException(status_code=400, detail='Choose a field.')
+    frame, _entry = _chart_builder_context({'dataset_ids': payload.get('dataset_ids', []), 'definition': {
+        'kpi': field, 'rows_split': field, 'chart_type': 'Table', 'cdr_source': payload.get('cdr_source') or 'CDR-Data'}})
+    column = next((name for name in frame.columns if _normalise_catalogue_dimension_name(name) == _normalise_catalogue_dimension_name(field)), None)
+    if column is None:
+        return JSONResponse({'field': field, 'values': []})
+    values = frame[column].dropna().astype(str).str.strip()
+    counts = values[values.ne('')].value_counts()
+    return JSONResponse({'field': field, 'values': [{'value': value, 'count': int(count)} for value, count in counts.head(2000).items()]})
+
+
 @app.post('/api/chart-builder/preview')
 async def chart_builder_preview(request: Request, user: SessionUser = Depends(current_user)) -> Response:
     payload = await request.json()

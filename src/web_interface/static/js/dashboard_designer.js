@@ -924,6 +924,8 @@
     const panel = $('ds-design-panel');
     if (!panel || !state.active) return;
     const focused = panel.contains(document.activeElement) && document.activeElement.id ? document.activeElement : null;
+    const advancedOpen = Boolean(panel.querySelector('.ds-design-advanced')?.open);
+    const dataOpen = new Set([...panel.querySelectorAll('.ds-cb-group')].filter(group => group.open).map(group => group.querySelector('summary')?.firstChild?.textContent));
     const typing = focused && 'value' in focused ? {id: focused.id, value: focused.value, start: focused.selectionStart, end: focused.selectionEnd} : null;
     const slide = shownSlide();
     const element = state.element ? shownElement() : null;
@@ -942,6 +944,8 @@
       onclick: () => { state.folded = !state.folded; renderPanel(); }}, state.folded ? '▴' : '▾');
     panel.classList.toggle('is-folded', state.folded);
     panel.replaceChildren(h('div', {class: 'ds-design-panel-head'}, h('div', {class: 'ds-design-panel-top'}, tabs, fold), h('p', {class: `ds-design-scope-note is-${state.detached ? 'dashboard' : state.scope}`, text: scopeNote})), body);
+    if (advancedOpen) { const advanced = panel.querySelector('.ds-design-advanced'); if (advanced) advanced.open = true; }
+    if (dataOpen.size) panel.querySelectorAll('.ds-cb-group').forEach(group => { group.open = dataOpen.has(group.querySelector('summary')?.firstChild?.textContent); });
     const again = typing && $(typing.id);
     if (again) {
       if (again.value !== typing.value) again.value = typing.value;
@@ -991,6 +995,26 @@
     return nodes;
   }
 
+  // The values of a field in the Dashboard's selection with their samples, for the filter dialogs (one read each).
+  const fieldValueReads = new Map();
+  function fieldValues(source, field) {
+    const token = viewer().state().prepared?.token;
+    const key = `${token}|${source}|${field}`;
+    if (!fieldValueReads.has(key)) {
+      fieldValueReads.set(key, api(`/design/values?token=${encodeURIComponent(token)}&source=${encodeURIComponent(source)}&field=${encodeURIComponent(field)}`)
+        .then(result => result.values || []).catch(() => []));
+    }
+    return fieldValueReads.get(key);
+  }
+  // The filters of the Dashboard apply to every chart: the Filters shelf shows them first, locked.
+  function lockedFilters() {
+    const definition = viewer().state().definition || {};
+    const label = value => String(value).replace(/^@latest-campaign$/, 'Latest campaign').replace(/^@latest-(\d+)-campaigns$/, 'Latest $1 campaigns')
+      .replace(/^@previous-campaign$/, 'Previous campaign').replace(/^@main-cities$/, 'Main Cities');
+    return Object.entries(definition.filters || {}).filter(([, values]) => Array.isArray(values) && values.length)
+      .map(([name, values]) => `${name}: ${values.slice(0, 2).map(label).join(', ')}${values.length > 2 ? ` +${values.length - 2}` : ''}`);
+  }
+
   function elementForm(element) {
     const shown = state.scope === 'template' ? findElement(state.template, element.id)?.element : element;
     if (!shown) {
@@ -1002,28 +1026,36 @@
     const title = textInput(shown.chart_title, set('chart_title'), {id: 'ds-design-chart-title'});
     const datalist = fieldsDatalist(shown);
     const fieldInput = (key, placeholder) => textInput(shown[key], set(key), {id: `ds-design-${key}`, list: 'ds-design-fields', placeholder});
+    const builder = h('div', {class: 'ds-cb'});
+    window.DashboardChartBuilder?.render(builder, {
+      values: shown, fields: state.fields?.fields, calculated: state.fields?.calculated_fields, parameters: parameters(),
+      lockedFilters: lockedFilters(), fieldValues,
+      onChange: changes => guarded(() => setElementValues(element.id, changes))(),
+    });
     return [
       h('h3', {class: 'ds-design-panel-title', text: elementLabel(shown)}),
       originNote(element, 'element'),
       datalist,
       field('Chart title', h('div', {class: 'ds-design-input-row'}, title, tokenMenuButton(title))),
-      h('div', {class: 'ds-design-two'},
-        field('Source', selectInput(SOURCES, shown.cdr_source, set('cdr_source', 0), 'ds-design-source')),
-        field('Chart type', selectInput(CHART_TYPES.map(type => [type, type]), shown.chart_type, set('chart_type', 0), 'ds-design-chart-type'))),
-      field('KPI', fieldInput('kpi', 'A field of the source'), 'Several KPIs (Multi KPI CDF Lines, Table): separate them with commas.'),
-      field('Rows Split', fieldInput('rows_split', 'Operator × Campaign')),
-      field('Columns Split', fieldInput('columns_split', 'Campaign')),
-      field('Legend', fieldInput('legend', 'Operator')),
-      field('Filters', textInput((shown.filters || '').split(/;\s*/).filter(Boolean).join('\n'), debounced(value => setElementValues(element.id, {filters: value.split(/\n+/).map(line => line.trim()).filter(Boolean).join('; ')})), {id: 'ds-design-filters', multiline: true, rows: 4, placeholder: 'Call_Status IN (Completed, Dropped)\nThreshold = 1.6'}), 'One condition per line; a parameter is written {Name}.'),
-      h('div', {class: 'ds-design-two'},
-        field('Legend position', selectInput(LEGEND_POSITIONS, shown.legend_position, set('legend_position', 0), 'ds-design-legend-position')),
-        field('Label position', selectInput(LABEL_POSITIONS, shown.label_position, set('label_position', 0), 'ds-design-label-position'))),
-      h('div', {class: 'ds-design-two'},
-        field('Axis X range', textInput(shown.axis_x_range, set('axis_x_range'), {id: 'ds-design-axis-x', placeholder: '[0,100]'})),
-        field('Axis Y range', textInput(shown.axis_y_range, set('axis_y_range'), {id: 'ds-design-axis-y', placeholder: '[0,]'}))),
-      h('div', {class: 'ds-design-two'},
-        h('label', {class: 'ds-design-check'}, h('input', {type: 'checkbox', checked: Boolean(shown.exclude_null_empty), onchange: event => set('exclude_null_empty', 0)(event.target.checked)}), 'Exclude Null/Empty'),
-        h('label', {class: 'ds-design-check'}, h('input', {type: 'checkbox', checked: Boolean(shown.exclude_zero), onchange: event => set('exclude_zero', 0)(event.target.checked)}), 'Exclude Zero')),
+      builder,
+      h('details', {class: 'ds-design-advanced'}, h('summary', {text: 'Advanced: legend, labels, axes and the text of each column'}),
+        h('div', {class: 'ds-design-two'},
+          field('Source', selectInput(SOURCES, shown.cdr_source, set('cdr_source', 0), 'ds-design-source')),
+          field('Chart type', selectInput(CHART_TYPES.map(type => [type, type]), shown.chart_type, set('chart_type', 0), 'ds-design-chart-type'))),
+        field('KPI', fieldInput('kpi', 'A field of the source'), 'Several KPIs (Multi KPI CDF Lines, Scatter, Table): separate them with |.'),
+        field('Rows Split', fieldInput('rows_split', 'Operator × Campaign')),
+        field('Columns Split', fieldInput('columns_split', 'Campaign')),
+        field('Legend', fieldInput('legend', 'Operator')),
+        field('Filters', textInput((shown.filters || '').split(/;\s*/).filter(Boolean).join('\n'), debounced(value => setElementValues(element.id, {filters: value.split(/\n+/).map(line => line.trim()).filter(Boolean).join('; ')})), {id: 'ds-design-filters', multiline: true, rows: 4, placeholder: 'Call_Status IN (Completed, Dropped)\nThreshold = 1.6'}), 'One condition per line; a parameter is written {Name}.'),
+        h('div', {class: 'ds-design-two'},
+          field('Legend position', selectInput(LEGEND_POSITIONS, shown.legend_position, set('legend_position', 0), 'ds-design-legend-position')),
+          field('Label position', selectInput(LABEL_POSITIONS, shown.label_position, set('label_position', 0), 'ds-design-label-position'))),
+        h('div', {class: 'ds-design-two'},
+          field('Axis X range', textInput(shown.axis_x_range, set('axis_x_range'), {id: 'ds-design-axis-x', placeholder: '[0,100]'})),
+          field('Axis Y range', textInput(shown.axis_y_range, set('axis_y_range'), {id: 'ds-design-axis-y', placeholder: '[0,]'}))),
+        h('div', {class: 'ds-design-two'},
+          h('label', {class: 'ds-design-check'}, h('input', {type: 'checkbox', checked: Boolean(shown.exclude_null_empty), onchange: event => set('exclude_null_empty', 0)(event.target.checked)}), 'Exclude Null/Empty'),
+          h('label', {class: 'ds-design-check'}, h('input', {type: 'checkbox', checked: Boolean(shown.exclude_zero), onchange: event => set('exclude_zero', 0)(event.target.checked)}), 'Exclude Zero'))),
       h('div', {class: 'ds-design-panel-actions'}, elementActions(element.id).map(([label, action, enabled]) => h('button', {type: 'button', class: 'ds-design-action', disabled: enabled !== true, title: typeof enabled === 'string' ? enabled : null, onclick: action}, label))),
     ];
   }
