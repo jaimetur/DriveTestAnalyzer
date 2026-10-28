@@ -1281,20 +1281,34 @@ def test_the_failure_panels_read_the_counts_of_the_indexing(client, tmp_path, mo
         scanned = connection.execute(
             f'SELECT COUNT(*), SUM(is_nq) FROM {nq.NQ_CALL_POPULATION_TABLE} WHERE is_latest = 1').fetchone()
     assert tuple(stored) == tuple(scanned)
-    every_filter = ({}, {'in_scope': True}, {'service': ['voice']}, {'operator': ['EE']})
+    # ...and wrote them to a Parquet copy in the columnar store, which DuckDB adds up for the panels.
+    from src.modules import cdr_store
+    folder = cdr_store.store_root(repository.db_path) / nq.POPULATION_COUNTS_COPY_FOLDER
+    assert len(list(folder.glob('population-counts-*.parquet'))) == 1
+    monkeypatch.setattr(nq, 'MIN_SITE_CALLS', 1)
+    every_filter = ({}, {'in_scope': True}, {'service': ['voice']}, {'operator': ['EE']}, {'nr_mode': ['Unassigned']})
 
     def panels():
         nq._rate_counts_cache.clear()
         return [{key: value for key, value in nq.failure_breakdowns(repository, dict(filters), 'admin').items()
                  if key != 'operator_colors'} for filters in every_filter]
-    from_counts = panels()
-    # The same panels as counting every call of the population.
+    from_copy = panels()
+    assert from_copy[0]['sites']
+    # The same panels as the stored counts and as counting every call of the population.
+    with monkeypatch.context() as patched:
+        patched.setattr(nq, '_population_counts_copy', lambda task_repository, filters: None)
+        assert panels() == from_copy
     with monkeypatch.context() as patched:
         patched.setattr(nq, 'refresh_population_counts', lambda task_repository: False)
-        assert panels() == from_counts
+        assert panels() == from_copy
+    # A removed copy is written again from the stored counts.
+    for path in folder.glob('population-counts-*.parquet'):
+        path.unlink()
+    assert panels() == from_copy
+    assert len(list(folder.glob('population-counts-*.parquet'))) == 1
     # Counts of another indexing are counted again before they are read.
     repository.set_workspace_state(nq.POPULATION_COUNTS_STATE_KEY, 'another indexing')
-    assert panels() == from_counts
+    assert panels() == from_copy
     assert repository.get_workspace_state(nq.POPULATION_COUNTS_STATE_KEY) != 'another indexing'
 
 

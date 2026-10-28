@@ -323,6 +323,8 @@ POPULATION_COUNT_FIELDS = ('environment', 'vendor', 'host_network', 'site_id', '
 # panels never count the whole population (see refresh_population_counts); the indexing they were counted for.
 POPULATION_COUNTS_GROUPS = ('service', 'campaign', 'operator', 'nr_mode', *POPULATION_COUNT_FIELDS, 'region')
 POPULATION_COUNTS_STATE_KEY = 'nq_population_counts'
+# Their Parquet copy in the columnar store of the workspace (.cdr-store/nq), which the panels add up with DuckDB.
+POPULATION_COUNTS_COPY_FOLDER = 'nq'
 # The values a catalog field can read from the call: the indexed fields and the last cell of the Cell ID chain.
 CATALOG_CALL_FIELDS = (*CALL_FIELDS, 'last_cell_id')
 
@@ -5502,6 +5504,11 @@ def refresh_population_counts(task_repository: Any) -> bool:
         with task_repository.connection() as connection:
             signature = _population_counts_signature(connection)
             if task_repository.get_workspace_state(POPULATION_COUNTS_STATE_KEY) == signature:
+                copy = _population_counts_path(task_repository, signature)
+                if not copy.is_file():
+                    # Counted before the copy existed, or the copy was removed: written from the stored counts.
+                    _write_population_counts_copy(copy, connection.execute(
+                        f'SELECT {groups}, total, nq FROM {NQ_POPULATION_COUNTS_TABLE} ORDER BY rowid').fetchall())
                 return True
             rows = connection.execute(
                 f'SELECT {groups}, COUNT(*), SUM(is_nq) FROM {NQ_CALL_POPULATION_TABLE} NOT INDEXED WHERE is_latest = 1 '
@@ -5515,14 +5522,80 @@ def refresh_population_counts(task_repository: Any) -> bool:
                 f"INSERT INTO {NQ_POPULATION_COUNTS_TABLE} ({groups}, total, nq) "
                 f"VALUES ({', '.join('?' for _ in range(len(POPULATION_COUNTS_GROUPS) + 2))})", rows)
         task_repository.set_workspace_state(POPULATION_COUNTS_STATE_KEY, signature)
+        _write_population_counts_copy(_population_counts_path(task_repository, signature), rows)
     return True
 
 
-def _population_counts(task_repository: Any, filters: dict[str, Any], fields: tuple[str, ...]) -> list[dict[str, Any]]:
-    """Calls and Non-Qualified Calls of the latest version of every call per Service, Campaign, Operator, NR Mode and
-    ``fields`` (of POPULATION_FIELDS). As the NQ rates, only the CDRs, Service, Campaign, Operator and NR Mode filters
-    apply; Operators show their Operator Map label and Vendors their Vendor Map label."""
-    scope = _scope(filters)
+def _population_counts_path(task_repository: Any, signature: str) -> Path:
+    """The Parquet copy of the counts of an indexing (its signature) in the columnar store of the workspace."""
+    from src.modules import cdr_store
+
+    digest = hashlib.sha1(signature.encode('utf-8')).hexdigest()[:16]
+    return (cdr_store.store_root(task_repository.db_path) / POPULATION_COUNTS_COPY_FOLDER
+            / f'population-counts-{digest}.parquet')
+
+
+def _parquet(path: Path) -> str:
+    return "read_parquet('" + str(path).replace("'", "''") + "')"
+
+
+def _write_population_counts_copy(path: Path, rows: list[Any]) -> None:
+    """Write the counts to their copy (in full, then renamed) and remove the copies of earlier indexings. Without a copy
+    (no space left, for one) the panels add up the stored counts."""
+    import duckdb
+    import pandas as pd
+
+    names = [*POPULATION_COUNTS_GROUPS, 'total', 'nq']
+    temporary = path.with_name(f'.{path.stem}-{uuid.uuid4().hex}.tmp')
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        frame = pd.DataFrame.from_records([tuple(row) for row in rows], columns=names)
+        with duckdb.connect(config={'memory_limit': '512MB', 'threads': 2}) as duck:
+            duck.execute(f"CREATE TABLE counts ({', '.join(f'{name} VARCHAR' for name in POPULATION_COUNTS_GROUPS)}, "
+                         'total BIGINT, nq BIGINT)')
+            duck.register('rows', frame)
+            duck.execute(f"INSERT INTO counts SELECT {', '.join(names)} FROM rows")
+            duck.execute(f"COPY counts TO '{str(temporary).replace(chr(39), chr(39) * 2)}' (FORMAT parquet)")
+        temporary.replace(path)
+    except Exception:  # noqa: BLE001 - the stored counts are read instead.
+        return
+    finally:
+        temporary.unlink(missing_ok=True)
+    for other in path.parent.glob('population-counts-*.parquet'):
+        if other != path:
+            other.unlink(missing_ok=True)
+
+
+def _population_counts_copy(task_repository: Any, filters: dict[str, Any]) -> Path | None:
+    """The copy of the counts of the latest versions of the calls when the panels can read them: no CDRs filter (the
+    counts are those of every indexed CDR) and counted for the indexed calls; None otherwise."""
+    if _scope(filters) or not refresh_population_counts(task_repository):
+        return None
+    with task_repository.connection() as connection:
+        copy = _population_counts_path(task_repository, _population_counts_signature(connection))
+    return copy if copy.is_file() else None
+
+
+def _copy_counts(copy: Path, columns: list[str], services: list[str]) -> list[tuple[Any, ...]] | None:
+    """The counts of the copy added up by ``columns`` in the order SQLite groups them (the text of every field, as it
+    sorts it), as the stored counts are added up; None when the copy cannot be read."""
+    import duckdb
+
+    names = ', '.join(columns)
+    where = f"WHERE service IN ({', '.join('?' for _ in services)})" if services else ''
+    try:
+        with duckdb.connect(config={'memory_limit': '512MB', 'threads': 2}) as duck:
+            return [tuple(row) for row in duck.execute(
+                f'SELECT {names}, SUM(total), SUM(nq) FROM {_parquet(copy)} {where} GROUP BY {names} ORDER BY {names}',
+                services).fetchall()]
+    except Exception:  # noqa: BLE001 - removed by a newer indexing meanwhile: the stored counts are read.
+        return None
+
+
+def _population_filters(task_repository: Any, filters: dict[str, Any]) -> tuple[list[str], set[str], set[str], ValueMapper,
+                                                                             ValueSet, bool]:
+    """The filters the counts of the population follow: Service, Campaign, NR Mode, Operator (as Operator Map labels)
+    and NQ Calls in Scope Only, with the value mapper of the workspace."""
     services = _strings(filters.get('service'))
     campaigns = set(_strings(filters.get('campaign')))
     nr_modes = {'' if value in {UNASSIGNED, 'Unknown'} else value for value in _strings(filters.get('nr_mode'))}
@@ -5532,79 +5605,179 @@ def _population_counts(task_repository: Any, filters: dict[str, Any], fields: tu
     operators = ValueSet([*(str(mapper.map(field_kind('operator'), value)) for value in _strings(filters.get('operator'))),
                           *(f'-{name}' for name in sorted(mapper.excluded_operators))])
     # NQ Calls in Scope Only: the calls out of scope (also the qualified ones) count nowhere.
-    in_scope = filters.get('in_scope') is True
+    return services, campaigns, nr_modes, mapper, operators, filters.get('in_scope') is True
+
+
+def _copy_failure_sites(task_repository: Any, filters: dict[str, Any], copy: Path,
+                        operator_order: Callable[[set[str]], list[str]]) -> list[dict[str, Any]] | None:
+    """The sites of each operator with the most Non-Qualified Calls (the ``sites`` of failure_breakdowns) worked out by
+    DuckDB on the copy of the counts; None when the copy cannot be read.
+
+    The same as adding up the counts per site in the order SQLite groups them (Service, Campaign, Operator, NR Mode,
+    host network, site, Vendor, City): the sites of an operator with as many Non-Qualified Calls and the same rate keep
+    the order they first come in, and a Vendor or City as common as another is the one that comes first."""
+    import duckdb
+
+    services, campaigns, nr_modes, mapper, operators, in_scope = _population_filters(task_repository, filters)
+    source = _parquet(copy)
+    try:
+        with duckdb.connect(config={'memory_limit': '512MB', 'threads': 2}) as duck:
+            values = {column: [row[0] for row in duck.execute(f'SELECT DISTINCT {column} FROM {source}').fetchall()]
+                      for column in ('operator', 'vendor')}
+            # Each value is mapped (and tested against the filters) once.
+            operator_kind, vendor_kind = field_kind('operator'), field_kind('vendor')
+            operator_labels = [(value, label) for value in values['operator']
+                               for label in (str(mapper.map(operator_kind, value or '') or ''),)
+                               if not operators or label in operators]
+            vendor_labels = [(value, str(mapper.map(vendor_kind, value or '') or '')) for value in values['vendor']]
+            joins, params = [], []
+            for name, pairs in (('operator_labels', operator_labels), ('vendor_labels', vendor_labels)):
+                joins.append(f"{name}(raw, label) AS (VALUES {', '.join('(?, ?)' for _ in pairs)})")
+                params.extend(value for pair in pairs for value in pair)
+            if in_scope:
+                reason = nq_prioritization.scope_of(task_repository, nq_prioritization.load_settings(task_repository))
+                kept = [tuple(row) for row in duck.execute(f'SELECT DISTINCT region, nr_mode, operator FROM {source}').fetchall()
+                        if not reason(*row)[0]]
+                joins.append(f"in_scope(region, nr_mode, operator) AS (VALUES {', '.join('(?, ?, ?)' for _ in kept)})")
+                params.extend(value for row in kept for value in row)
+                if not kept:
+                    return []
+            if not operator_labels or not vendor_labels:
+                return []
+            where = ["c.site_id <> ''"]
+            for column, chosen in (('service', services), ('campaign', sorted(campaigns)), ('nr_mode', sorted(nr_modes))):
+                if chosen:
+                    where.append(f"c.{column} IN ({', '.join('?' for _ in chosen)})")
+                    params.extend(chosen)
+            params.extend([MIN_SITE_CALLS, MAX_FAILURE_SITES])
+            rows = duck.execute(f"""
+                WITH {', '.join(joins)},
+                calls AS (
+                    SELECT o.label AS operator, c.host_network, c.site_id, v.label AS vendor, c.city, c.total, c.nq,
+                           row_number() OVER (ORDER BY c.service, c.campaign, c.operator, c.nr_mode, c.host_network,
+                                                       c.site_id, c.vendor, c.city) AS position
+                    FROM {source} c JOIN operator_labels o ON o.raw = c.operator JOIN vendor_labels v ON v.raw = c.vendor
+                    {'JOIN in_scope s ON s.region = c.region AND s.nr_mode = c.nr_mode AND s.operator = c.operator'
+                     if in_scope else ''}
+                    WHERE {' AND '.join(where)}
+                ),
+                sites AS (
+                    SELECT operator, host_network, site_id, SUM(total) AS calls, SUM(nq) AS nq, MIN(position) AS first
+                    FROM calls GROUP BY operator, host_network, site_id
+                ),
+                listed AS (
+                    SELECT *, row_number() OVER (PARTITION BY operator ORDER BY nq DESC,
+                                                 CAST(nq AS DOUBLE) / CAST(calls AS DOUBLE) DESC, first) AS place
+                    FROM sites WHERE nq > 0 AND calls >= ?
+                ),
+                top AS (SELECT * FROM listed WHERE place <= ?),
+                vendors AS (
+                    SELECT operator, host_network, site_id, vendor AS name, row_number() OVER (
+                        PARTITION BY operator, host_network, site_id ORDER BY SUM(total) DESC, MIN(position)) AS rank
+                    FROM calls JOIN top USING (operator, host_network, site_id) GROUP BY operator, host_network, site_id, vendor
+                ),
+                cities AS (
+                    SELECT operator, host_network, site_id, city AS name, row_number() OVER (
+                        PARTITION BY operator, host_network, site_id ORDER BY SUM(total) DESC, MIN(position)) AS rank
+                    FROM calls JOIN top USING (operator, host_network, site_id) GROUP BY operator, host_network, site_id, city
+                )
+                SELECT t.operator, t.host_network, t.site_id, t.calls, t.nq, v.name, c.name
+                FROM top t JOIN vendors v USING (operator, host_network, site_id)
+                           JOIN cities c USING (operator, host_network, site_id)
+                WHERE v.rank = 1 AND c.rank = 1 ORDER BY t.operator, t.place""", params).fetchall()
+    except Exception:  # noqa: BLE001 - removed by a newer indexing meanwhile: the stored counts are read.
+        return None
+    by_operator: dict[str, list[dict[str, Any]]] = {}
+    for operator, host, site, calls, nq, vendor, city in rows:
+        calls, nq = int(calls), int(nq)
+        by_operator.setdefault(operator, []).append({
+            'host_network': host, 'site_id': site, 'calls': calls, 'nq': nq, 'rate': round(nq * 100 / calls, 2),
+            'vendor': vendor, 'city': city})
+    return [{'operator': operator, 'rows': by_operator[operator]} for operator in operator_order(set(by_operator))]
+
+
+def _population_counts(task_repository: Any, filters: dict[str, Any], fields: tuple[str, ...]) -> list[dict[str, Any]]:
+    """Calls and Non-Qualified Calls of the latest version of every call per Service, Campaign, Operator, NR Mode and
+    ``fields`` (of POPULATION_FIELDS). As the NQ rates, only the CDRs, Service, Campaign, Operator and NR Mode filters
+    apply; Operators show their Operator Map label and Vendors their Vendor Map label."""
+    scope = _scope(filters)
+    services, campaigns, nr_modes, mapper, operators, in_scope = _population_filters(task_repository, filters)
     columns = ['service', 'campaign', 'operator', 'nr_mode', *fields, *(['region'] if in_scope and 'region' not in fields else [])]
-    # The fields of the panels read together: the calls are counted once by all of them (one pass on the population),
-    # then added up by the fields asked for.
-    wide = (['service', 'campaign', 'operator', 'nr_mode', *POPULATION_COUNT_FIELDS, *(['region'] if in_scope else [])]
-            if set(fields) <= set(POPULATION_COUNT_FIELDS) else columns)
-    where, params = [], []
-    stored = False
-    if services:
-        where.append(f"p.service IN ({', '.join('?' for _ in services)})")
-        params.extend(services)
-    if scope:
-        where.append(f"p.dataset_id IN ({', '.join('?' for _ in scope)})")
-        params.extend(scope)
-        source = f"""
-            SELECT {', '.join(wide)}, COUNT(*) AS total, SUM(is_nq) AS nq FROM (
-                SELECT {', '.join(f'p.{column}' for column in wide)}, p.is_nq, ROW_NUMBER() OVER (
-                    PARTITION BY p.call_key ORDER BY s.combined_rank DESC, s.stage_rank DESC, s.data_date DESC,
-                                                     p.dataset_id DESC) AS rn
-                FROM {NQ_CALL_POPULATION_TABLE} p JOIN {NQ_CALL_SOURCES_TABLE} s ON s.dataset_id = p.dataset_id
-                WHERE {' AND '.join(where)}
-            ) WHERE rn = 1 GROUP BY {', '.join(wide)}"""
-    elif list(POPULATION_COUNTS_GROUPS[:len(wide)]) == wide and refresh_population_counts(task_repository):
-        # The latest versions of the calls, from their counts of this indexing, stored in the order SQLite groups them
-        # (Region last): the counts of a group without Region are next to each other (added up below).
-        stored = True
-        source = f"""
-            SELECT {', '.join(f'p.{column}' for column in POPULATION_COUNTS_GROUPS)}, p.total, p.nq
-            FROM {NQ_POPULATION_COUNTS_TABLE} p {f"WHERE {' AND '.join(where)}" if where else ''} ORDER BY p.rowid"""
-    else:
-        where.append('p.is_latest = 1')
-        # Every latest call is read: a scan in table order is faster than through the index.
-        source = f"""
-            SELECT {', '.join(f'p.{column}' for column in wide)}, COUNT(*) AS total, SUM(p.is_nq) AS nq
-            FROM {NQ_CALL_POPULATION_TABLE} p NOT INDEXED WHERE {' AND '.join(where)}
-            GROUP BY {', '.join(f'p.{column}' for column in wide)}"""
-    with task_repository.connection() as connection:
-        # (The rank of each CDR in the combined tables also chooses the latest version of its calls.)
-        sources = tuple(tuple(row) for row in connection.execute(
-            f'SELECT dataset_id, revision, synced_at, combined_rank FROM {NQ_CALL_SOURCES_TABLE} ORDER BY dataset_id').fetchall())
-        key = (str(task_repository.db_path), sources, tuple(sorted(scope or ())), tuple(sorted(services)), tuple(wide),
-               in_scope)
-        with _rate_counts_guard:
-            rows = _rate_counts_cache.get(key)
-        if rows is None:
-            rows = [tuple(row) for row in connection.execute(source, params).fetchall()]
-            if stored and len(wide) < len(POPULATION_COUNTS_GROUPS):
-                # Without Region: the counts of each group, next to each other, are added up.
-                merged: list[tuple] = []
-                width = len(wide)
-                for row in rows:
-                    if merged and merged[-1][:width] == row[:width]:
-                        merged[-1] = (*row[:width], merged[-1][-2] + row[-2], merged[-1][-1] + row[-1])
-                    else:
-                        merged.append((*row[:width], row[-2], row[-1]))
-                rows = merged
+    # Without a CDRs filter, DuckDB adds up the copy of the counts of this indexing (refresh_population_counts).
+    copy = _population_counts_copy(task_repository, filters) if set(columns) <= set(POPULATION_COUNTS_GROUPS) else None
+    rows = _copy_counts(copy, columns, services) if copy is not None else None
+    if rows is None:
+        # The fields of the panels read together: the calls are counted once by all of them (one pass on the population),
+        # then added up by the fields asked for.
+        wide = (['service', 'campaign', 'operator', 'nr_mode', *POPULATION_COUNT_FIELDS, *(['region'] if in_scope else [])]
+                if set(fields) <= set(POPULATION_COUNT_FIELDS) else columns)
+        where, params = [], []
+        stored = False
+        if services:
+            where.append(f"p.service IN ({', '.join('?' for _ in services)})")
+            params.extend(services)
+        if scope:
+            where.append(f"p.dataset_id IN ({', '.join('?' for _ in scope)})")
+            params.extend(scope)
+            source = f"""
+                SELECT {', '.join(wide)}, COUNT(*) AS total, SUM(is_nq) AS nq FROM (
+                    SELECT {', '.join(f'p.{column}' for column in wide)}, p.is_nq, ROW_NUMBER() OVER (
+                        PARTITION BY p.call_key ORDER BY s.combined_rank DESC, s.stage_rank DESC, s.data_date DESC,
+                                                         p.dataset_id DESC) AS rn
+                    FROM {NQ_CALL_POPULATION_TABLE} p JOIN {NQ_CALL_SOURCES_TABLE} s ON s.dataset_id = p.dataset_id
+                    WHERE {' AND '.join(where)}
+                ) WHERE rn = 1 GROUP BY {', '.join(wide)}"""
+        elif list(POPULATION_COUNTS_GROUPS[:len(wide)]) == wide and refresh_population_counts(task_repository):
+            # The latest versions of the calls, from their counts of this indexing, stored in the order SQLite groups them
+            # (Region last): the counts of a group without Region are next to each other (added up below).
+            stored = True
+            source = f"""
+                SELECT {', '.join(f'p.{column}' for column in POPULATION_COUNTS_GROUPS)}, p.total, p.nq
+                FROM {NQ_POPULATION_COUNTS_TABLE} p {f"WHERE {' AND '.join(where)}" if where else ''} ORDER BY p.rowid"""
+        else:
+            where.append('p.is_latest = 1')
+            # Every latest call is read: a scan in table order is faster than through the index.
+            source = f"""
+                SELECT {', '.join(f'p.{column}' for column in wide)}, COUNT(*) AS total, SUM(p.is_nq) AS nq
+                FROM {NQ_CALL_POPULATION_TABLE} p NOT INDEXED WHERE {' AND '.join(where)}
+                GROUP BY {', '.join(f'p.{column}' for column in wide)}"""
+        with task_repository.connection() as connection:
+            # (The rank of each CDR in the combined tables also chooses the latest version of its calls.)
+            sources = tuple(tuple(row) for row in connection.execute(
+                f'SELECT dataset_id, revision, synced_at, combined_rank FROM {NQ_CALL_SOURCES_TABLE} ORDER BY dataset_id').fetchall())
+            key = (str(task_repository.db_path), sources, tuple(sorted(scope or ())), tuple(sorted(services)), tuple(wide),
+                   in_scope)
             with _rate_counts_guard:
-                if len(_rate_counts_cache) >= RATE_COUNTS_CACHE_SIZE:
-                    _rate_counts_cache.pop(next(iter(_rate_counts_cache)))
-                _rate_counts_cache[key] = rows
-    if wide != columns:
-        # Added up by the fields asked for, in the order SQLite groups them (the text of every field, as it sorts it).
-        group_of = itemgetter(*(wide.index(column) for column in columns))
-        added: dict[tuple, list[int]] = {}
-        for row in rows:
-            group = group_of(row)
-            counts = added.get(group)
-            if counts is None:
-                added[group] = [row[-2], row[-1]]
-            else:
-                counts[0] += row[-2]
-                counts[1] += row[-1]
-        rows = [(*group, total, nq) for group, (total, nq) in sorted(added.items())]
+                rows = _rate_counts_cache.get(key)
+            if rows is None:
+                rows = [tuple(row) for row in connection.execute(source, params).fetchall()]
+                if stored and len(wide) < len(POPULATION_COUNTS_GROUPS):
+                    # Without Region: the counts of each group, next to each other, are added up.
+                    merged: list[tuple] = []
+                    width = len(wide)
+                    for row in rows:
+                        if merged and merged[-1][:width] == row[:width]:
+                            merged[-1] = (*row[:width], merged[-1][-2] + row[-2], merged[-1][-1] + row[-1])
+                        else:
+                            merged.append((*row[:width], row[-2], row[-1]))
+                    rows = merged
+                with _rate_counts_guard:
+                    if len(_rate_counts_cache) >= RATE_COUNTS_CACHE_SIZE:
+                        _rate_counts_cache.pop(next(iter(_rate_counts_cache)))
+                    _rate_counts_cache[key] = rows
+        if wide != columns:
+            # Added up by the fields asked for, in the order SQLite groups them (the text of every field, as it sorts it).
+            group_of = itemgetter(*(wide.index(column) for column in columns))
+            added: dict[tuple, list[int]] = {}
+            for row in rows:
+                group = group_of(row)
+                counts = added.get(group)
+                if counts is None:
+                    added[group] = [row[-2], row[-1]]
+                else:
+                    counts[0] += row[-2]
+                    counts[1] += row[-1]
+            rows = [(*group, total, nq) for group, (total, nq) in sorted(added.items())]
     reason = nq_prioritization.scope_of(task_repository, nq_prioritization.load_settings(task_repository)) if in_scope else None
     names = [*columns, 'total', 'nq']
     position = {name: index for index, name in enumerate(names)}
@@ -5729,30 +5902,34 @@ def failure_breakdowns(task_repository: Any, filters: dict[str, Any], username: 
                  'nq_share': round(value[1] * 100 / total_nq, 1) if total_nq else None}
                 for (vendor, host), value in sorted(cells.items(), key=lambda item: -item[1][1])]})
         serving.append({'service': service, 'label': SERVICE_LABELS[service], 'operators': operators})
-    site_counts = _population_counts(task_repository, filters, ('host_network', 'site_id', 'vendor', 'city'))
-    sites_by_operator: dict[str, dict[tuple[str, str], dict[str, Any]]] = {}
-    for entry in site_counts:
-        if not entry['site_id']:
-            continue
-        operator_sites = sites_by_operator.setdefault(entry['operator'], {})
-        site = operator_sites.get((entry['host_network'] or '', entry['site_id']))
-        if site is None:
-            site = operator_sites[entry['host_network'] or '', entry['site_id']] = {
-                'calls': 0, 'nq': 0, 'vendors': Counter(), 'cities': Counter()}
-        site['calls'] += int(entry['total'] or 0)
-        site['nq'] += int(entry['nq'] or 0)
-        site['vendors'][entry['vendor'] or ''] += int(entry['total'] or 0)
-        site['cities'][str(entry['city'] or '')] += int(entry['total'] or 0)
-    sites = []
-    for operator in operator_order(set(sites_by_operator)):
-        listed = [(key, value) for key, value in sites_by_operator[operator].items() if value['nq'] and value['calls'] >= MIN_SITE_CALLS]
-        listed.sort(key=lambda item: (-item[1]['nq'], -item[1]['nq'] / item[1]['calls']))
-        if listed:
-            sites.append({'operator': operator, 'rows': [
-                {'host_network': host, 'site_id': site, 'calls': value['calls'], 'nq': value['nq'],
-                 'rate': round(value['nq'] * 100 / value['calls'], 2),
-                 'vendor': value['vendors'].most_common(1)[0][0], 'city': value['cities'].most_common(1)[0][0]}
-                for (host, site), value in listed[:MAX_FAILURE_SITES]]})
+    # Without a CDRs filter, DuckDB works the sites out on the copy of the counts of this indexing.
+    copy = _population_counts_copy(task_repository, filters)
+    sites = _copy_failure_sites(task_repository, filters, copy, operator_order) if copy is not None else None
+    if sites is None:
+        site_counts = _population_counts(task_repository, filters, ('host_network', 'site_id', 'vendor', 'city'))
+        sites_by_operator: dict[str, dict[tuple[str, str], dict[str, Any]]] = {}
+        for entry in site_counts:
+            if not entry['site_id']:
+                continue
+            operator_sites = sites_by_operator.setdefault(entry['operator'], {})
+            site = operator_sites.get((entry['host_network'] or '', entry['site_id']))
+            if site is None:
+                site = operator_sites[entry['host_network'] or '', entry['site_id']] = {
+                    'calls': 0, 'nq': 0, 'vendors': Counter(), 'cities': Counter()}
+            site['calls'] += int(entry['total'] or 0)
+            site['nq'] += int(entry['nq'] or 0)
+            site['vendors'][entry['vendor'] or ''] += int(entry['total'] or 0)
+            site['cities'][str(entry['city'] or '')] += int(entry['total'] or 0)
+        sites = []
+        for operator in operator_order(set(sites_by_operator)):
+            listed = [(key, value) for key, value in sites_by_operator[operator].items() if value['nq'] and value['calls'] >= MIN_SITE_CALLS]
+            listed.sort(key=lambda item: (-item[1]['nq'], -item[1]['nq'] / item[1]['calls']))
+            if listed:
+                sites.append({'operator': operator, 'rows': [
+                    {'host_network': host, 'site_id': site, 'calls': value['calls'], 'nq': value['nq'],
+                     'rate': round(value['nq'] * 100 / value['calls'], 2),
+                     'vendor': value['vendors'].most_common(1)[0][0], 'city': value['cities'].most_common(1)[0][0]}
+                    for (host, site), value in listed[:MAX_FAILURE_SITES]]})
     return {'types': types, 'technology': technology, 'serving': serving, 'sites': sites, 'operator_colors': colors,
             'min_site_calls': MIN_SITE_CALLS}
 

@@ -51,7 +51,7 @@ Stored below `APP_DATA_DIR/workspaces/<workspace>/`:
 - `output/reports/reports-old/`: PPT Reporting (old) PowerPoint reports and their PNG charts.
 - `output/reports/reports-charts-old/`: PPT Reporting (old) Chart Sets.
 - `output/reports/reporting-jobs/`: Reporting Job runs, one folder per run with its artifacts.
-- `.cdr-store/`: the [columnar copy](workspace-management.md#columnar-copy-of-the-cdrs) of each CDR (Parquet files and a manifest) and the catalogs of views for other tools; it travels with the workspace database in backups, packages and transfers.
+- `.cdr-store/`: the [columnar copy](workspace-management.md#columnar-copy-of-the-cdrs) of each CDR (Parquet files and a manifest) and the catalogs of views for other tools; it travels with the workspace database in backups, packages and transfers. `.cdr-store/nq/` holds a Parquet copy of the NQ Call Population Counts table for the failure panels of Non-Qualified Calls, written again from the table when it is missing.
 
 Workspaces, backups and transfer packages created with the former layout (module folders directly below `output/` and loose documents in `output/reports/`) are moved to these folders the first time the workspace is opened, and the job paths stored in the workspace database follow them.
 
