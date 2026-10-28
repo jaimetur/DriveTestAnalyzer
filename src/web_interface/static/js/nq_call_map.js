@@ -774,7 +774,7 @@
       const {title, rows} = shared.describe(hit.kind, hit.item);
       tooltip.replaceChildren(node('strong', title));
       const filled = rows.filter(([, value]) => value !== '' && value !== null && value !== undefined);
-      for (const [name, value] of [...(hit.stack > 1 ? [['At this point', `${hit.stack} NQ calls`]] : []), ...filled.slice(0, 14)]) {
+      for (const [name, value] of [...(hit.stack > 1 ? [['At this point', `${hit.stack} NQ calls`]] : []), ...filled.slice(0, 16)]) {
         if (value === '' || value === null || value === undefined) continue;
         const line = node('div');
         line.append(node('span', name), node('b', String(value)));
@@ -1187,9 +1187,10 @@
       if (kind === 'call' || kind === 'start') {
         return {title: kind === 'start' ? 'Where the call started' : 'This call', rows: [
           ['Call type', KIND_LABELS[item.kind] || item.service_label], ['JOIN_ID', item.join_id], ['Operator', item.operator], ['Campaign', campaignText(item.campaign, item.nr_mode)],
-          ['Result', item.result], ['Failure', failureText(item)], ['Phase', item.failure_phase], ...cellRows(item.cells),
+          ['Result', item.result], ['Failure', failureText(item)], ['Phase', item.failure_phase],
           ['Technology', item.technology], ['Started', cdrTime(item.start_time)], ['Ended', item.end_time ? cdrTime(item.end_time) : ''],
-          ['Start site', endText(item.ends?.start)], ['End site', endText(item.ends?.end)],
+          // Where it started and ended, then the cells that served it (start, end, handovers).
+          ['Start site', endText(item.ends?.start)], ['End site', endText(item.ends?.end)], ...cellRows(item.cells),
           ['Serving distance', item.serving_distance_km !== null && item.serving_distance_km !== undefined ? distanceText(item.serving_distance_km) : ''],
         ]};
       }
