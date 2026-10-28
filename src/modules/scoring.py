@@ -508,7 +508,7 @@ def calculate_scoring(
                                               [m for m in metrics if m['source_kind'] == kind])
         loss_shares.extend(shares)
         serving_tests.extend(served)
-        geometry.add(frame[valid])
+        geometry.add(frame if bool(valid.all()) else frame[valid])
         global_valid = frame['__matched_environments'].map(bool) & frame['Operator'].notna()
         if campaign_selected:
             global_valid &= frame['Campaign'].notna()
@@ -717,7 +717,8 @@ def _points_loss_entries(kind: str, frame: pd.DataFrame, valid: pd.Series, group
     """
     from pandas.core.sorting import nargsort
 
-    rows = frame[valid]
+    # (Every row valid, as usual: the rows themselves, without a copy.)
+    rows = frame if bool(valid.all()) else frame[valid]
     if rows.empty:
         return [], []
     if not any(points_loss.SHARE_COLUMN.format(field) in rows for field in points_loss.MAP_FIELDS):
@@ -908,7 +909,7 @@ def calculate_points_loss(
                                               [m for m in config['metrics'] if m['source_kind'] == kind], step)
         loss_shares.extend(shares)
         serving_tests.extend(served)
-        geometry.add(frame[valid])
+        geometry.add(frame if bool(valid.all()) else frame[valid])
     return {'version': 3, **geometry.document(), 'map_areas': geometry.map_areas(map_areas), 'shares': loss_shares,
             'serving_tests': serving_tests}
 

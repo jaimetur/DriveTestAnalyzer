@@ -1123,8 +1123,8 @@ def build_from_copies(database_path: str | Path, segment: Segment, expressions: 
         if name not in distinct:
             values = column_values(name)
             column = columns[name]
-            if column is None or raw[column][0] in {'text', 'int'}:
-                # One type (or None): the values themselves tell them apart.
+            if column is None or raw[column][0] in {'text', 'int', 'real'}:
+                # One type (or None): the values themselves tell them apart (real numbers are floats or None).
                 codes, uniques = pd.factorize(values, use_na_sentinel=False)
                 uniques = [None if value is None or value != value else value for value in uniques]
             else:
