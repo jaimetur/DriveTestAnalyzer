@@ -72,7 +72,7 @@ from src.modules.dashboard_column_cache import (
     read_frame,
 )
 from src.modules.rf_catalog_source import RF_CATALOG_FIELDS, rf_source_columns, rf_union_source
-from src.modules.repository import Repository
+from src.modules.repository import Repository, workspace_read_connection
 from src.modules.cdr_report_filenames import build_cdr_report_filename
 from src.modules.runtime_config import ignore_event_time_filtering
 from src.modules.ingestion import apply_operator_mappings
@@ -5247,14 +5247,14 @@ def install_dashboard_routes(core):
 
     def reporting_read_connection(database_path):
         """Read connection with a larger page cache and memory-mapped I/O."""
-        connection = sqlite3.connect(database_path, timeout=120.0)
+        connection = workspace_read_connection(database_path)
         connection.execute(f'PRAGMA cache_size=-{DASHBOARD_READ_CACHE_KIB}')
         connection.execute(f'PRAGMA mmap_size={DASHBOARD_READ_MMAP_BYTES}')
         return connection
 
     def selection_share(database_path, table, where, parameters) -> float:
         """Share of a table's rows matched by the dataset part of a selection."""
-        connection = sqlite3.connect(database_path, timeout=120.0)
+        connection = workspace_read_connection(database_path)
         try:
             dataset_clause = re.match(r'\s*\(?(dataset_id IN \([?, ]+\))', where)
             if not dataset_clause:
@@ -5770,7 +5770,7 @@ def install_dashboard_routes(core):
         quote = lambda column: '"' + str(column).replace('"', '""') + '"'
         identity_columns = f'{quote(dataset_column)}, {quote(source_row_column)}'
         page = max(0, int(page))
-        connection = sqlite3.connect(database_path, timeout=120.0)
+        connection = workspace_read_connection(database_path)
         try:
             chart_total = int(connection.execute(
                 f'SELECT COUNT(*) FROM ('

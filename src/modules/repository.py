@@ -292,6 +292,14 @@ class _CoordinatedConnection(sqlite3.Connection):
             self._release_workspace_lock()
 
 
+def workspace_read_connection(database_path: Path | str, timeout: float = 120.0, **kwargs: Any) -> sqlite3.Connection:
+    """A connection to a workspace database whose SQL is given the rows of its emptied CDR and combined tables (see
+    _CoordinatedConnection), for readers that open their own."""
+    connection = sqlite3.connect(database_path, timeout=timeout, factory=_CoordinatedConnection, **kwargs)
+    connection.configure_workspace_write_coordinator(database_path)
+    return connection
+
+
 def local_now_iso() -> str:
     """Return an offset-aware timestamp in the server's local timezone."""
     return datetime.now().astimezone().isoformat(timespec='microseconds')

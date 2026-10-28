@@ -1886,7 +1886,7 @@ def test_dashboards_lifecycle_and_layout(client, ppt_reporting_old):
     assert 'template_filters_applied=template_filters_applied,' in dashboard_module
     assert 'database_path, table_name, source_columns = reporting_source(' in dashboard_module
     assert 'ATTACH DATABASE' not in dashboard_module
-    assert 'sqlite3.connect(database_path, timeout=120.0)' in dashboard_module
+    assert 'workspace_read_connection(database_path)' in dashboard_module
     assert 'aggregation_columns = chart_aggregation_columns(' in dashboard_module
     assert "thread_name_prefix='ppt-dashboard-data'," not in dashboard_module
     dashboard_css = (Path(__file__).parents[1] / 'src/web_interface/static/css/ppt_dashboards.css').read_text(encoding='utf-8')
