@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Callable
 from uuid import uuid4
 
+from src.modules import cdr_store
+
 
 @dataclass(frozen=True, slots=True)
 class Workspace:
@@ -411,10 +413,20 @@ class WorkspaceRegistry:
             else:
                 duplicate.output_dir.mkdir(parents=True, exist_ok=True)
             duplicate.database_path.parent.mkdir(parents=True, exist_ok=True)
-            with closing(sqlite3.connect(source.database_path)) as source_conn, source_conn, closing(sqlite3.connect(duplicate.database_path)) as duplicate_conn, duplicate_conn:
-                if should_stop and should_stop(duplicate):
-                    raise InterruptedError('Workspace duplication stopped by user.')
-                source_conn.backup(duplicate_conn)
+            # The columnar copies of its CDRs, as they are when its database is copied (see cdr_store.snapshot_copies).
+            with cdr_store.steady_copies(source.database_path):
+                with closing(sqlite3.connect(source.database_path)) as source_conn, source_conn, closing(sqlite3.connect(duplicate.database_path)) as duplicate_conn, duplicate_conn:
+                    if should_stop and should_stop(duplicate):
+                        raise InterruptedError('Workspace duplication stopped by user.')
+                    source_conn.backup(duplicate_conn)
+                duplicate_store = cdr_store.store_root(duplicate.database_path)
+                for copy_file, name in cdr_store.snapshot_copies(duplicate.database_path, source.database_path):
+                    if should_stop and should_stop(duplicate):
+                        raise InterruptedError('Workspace duplication stopped by user.')
+                    target = duplicate_store / name
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(copy_file, target)
+            with closing(sqlite3.connect(duplicate.database_path)) as duplicate_conn, duplicate_conn:
                 if should_stop and should_stop(duplicate):
                     raise InterruptedError('Workspace duplication stopped by user.')
                 duplicate_conn.execute(

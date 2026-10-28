@@ -19,7 +19,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import datetime, timezone
 from pathlib import Path
-from threading import Lock
+from threading import Lock, RLock
 from typing import Any, Callable
 
 import numpy as np
@@ -148,42 +148,58 @@ def filled(database_path: Any, dataset_id: int) -> None:
 
 
 # The emptied tables of each workspace, as this process knows them: a table joins them before it is emptied and
-# leaves them once its rows are back, so the SQL that reads it is always given its rows (see provide_rows).
-_shadow_sets: dict[str, set[int]] = {}
+# leaves them once its rows are back, so the SQL that reads it is always given its rows (see provide_rows). They belong
+# to the database file they were read from: a database put in its place (by a restore or an import) is read again.
+_shadow_sets: dict[str, tuple[Any, set[int]]] = {}
 _shadow_guard = Lock()
 
 
-def shadow_ids(database_path: Any) -> frozenset[int]:
-    key = _workspace_key(database_path)
+def _database_file(database_path: Any) -> Any:
+    try:
+        found = os.stat(database_path)
+    except OSError:
+        return None
+    return found.st_dev, found.st_ino
+
+
+def _known_set(sets: dict[str, tuple[Any, set[Any]]], database_path: Any, read: Callable[[sqlite3.Connection], set[Any]]) -> set[Any]:
+    """The set ``read`` gives of a workspace database, read once for each database file (callers hold no guard)."""
+    key, file = _workspace_key(database_path), _database_file(database_path)
     with _shadow_guard:
-        found = _shadow_sets.get(key)
-    if found is None:
+        known = sets.get(key)
+    if known is None or known[0] != file:
         try:
             with sqlite3.connect(f'file:{Path(str(database_path)).resolve()}?mode=ro', uri=True, timeout=30) as connection:
-                found = shadows(connection)
+                found = read(connection)
         except sqlite3.Error:
             found = set()
         with _shadow_guard:
-            found = _shadow_sets.setdefault(key, set(found))
+            known = sets.get(key)
+            if known is None or known[0] != file:
+                known = sets[key] = (file, set(found))
+    return known[1]
+
+
+def shadow_ids(database_path: Any) -> frozenset[int]:
+    found = _known_set(_shadow_sets, database_path, shadows)
     with _shadow_guard:
         return frozenset(found)
 
 
 def _set_shadow(database_path: Any, dataset_id: int, empty: bool) -> None:
-    shadow_ids(database_path)
+    found = _known_set(_shadow_sets, database_path, shadows)
     with _shadow_guard:
-        found = _shadow_sets[_workspace_key(database_path)]
         (found.add if empty else found.discard)(int(dataset_id))
 
 
 def forget_shadow_sets(database_path: Any = None) -> None:
-    """Read the emptied tables of a workspace (of every one, without one) from its database again, as after it was
-    replaced by a restore or an import."""
+    """Read the emptied tables of a workspace (of every one, without one) from its database again."""
     with _shadow_guard:
-        if database_path is None:
-            _shadow_sets.clear()
-        else:
-            _shadow_sets.pop(_workspace_key(database_path), None)
+        for sets in (_shadow_sets, _combined_shadow_sets):
+            if database_path is None:
+                sets.clear()
+            else:
+                sets.pop(_workspace_key(database_path), None)
 
 
 def provide_rows(connection: sqlite3.Connection, dataset_id: int, columns: Any, name: str) -> None:
@@ -228,7 +244,7 @@ def combined_shadows(connection: sqlite3.Connection) -> set[str]:
     return {str(row[0]) for row in connection.execute(f'SELECT kind FROM {COMBINED_SHADOWS_TABLE}')}
 
 
-_combined_shadow_sets: dict[str, set[str]] = {}
+_combined_shadow_sets: dict[str, tuple[Any, set[str]]] = {}
 # The CDRs the SQL being run reads of the combined tables, when its caller knows them (see combined_scope).
 _combined_scope: ContextVar[frozenset[int] | None] = ContextVar('cdr_store_combined_scope', default=None)
 
@@ -260,25 +276,14 @@ def combined_scope(dataset_ids: Any):
 
 
 def combined_shadow_kinds(database_path: Any) -> frozenset[str]:
-    key = _workspace_key(database_path)
-    with _shadow_guard:
-        found = _combined_shadow_sets.get(key)
-    if found is None:
-        try:
-            with sqlite3.connect(f'file:{Path(str(database_path)).resolve()}?mode=ro', uri=True, timeout=30) as connection:
-                found = combined_shadows(connection)
-        except sqlite3.Error:
-            found = set()
-        with _shadow_guard:
-            found = _combined_shadow_sets.setdefault(key, set(found))
+    found = _known_set(_combined_shadow_sets, database_path, combined_shadows)
     with _shadow_guard:
         return frozenset(found)
 
 
 def _set_combined_shadow(database_path: Any, kind: str, empty: bool) -> None:
-    combined_shadow_kinds(database_path)
+    found = _known_set(_combined_shadow_sets, database_path, combined_shadows)
     with _shadow_guard:
-        found = _combined_shadow_sets[_workspace_key(database_path)]
         (found.add if empty else found.discard)(str(kind))
 
 
@@ -680,6 +685,7 @@ def write_cdr(repository: Any, cdr: dict[str, Any], should_stop: Callable[[], bo
     table = f'dataset_rows_{dataset_id}'
     target = cdr_folder(root, kind, dataset_id)
     temporary = folder / f'.{dataset_id}.{os.getpid()}.tmp'
+    database_file = _database_file(database_path)
     shutil.rmtree(temporary, ignore_errors=True)
     with repository.connection() as writer:
         ensure_versions_table(writer)
@@ -707,27 +713,115 @@ def write_cdr(repository: Any, cdr: dict[str, Any], should_stop: Callable[[], bo
     if rows_written is None:
         shutil.rmtree(temporary, ignore_errors=True)
         return None
-    # The new copy takes the place of the old one at once (readers of the old one keep their open files).
-    previous = folder / f'.{dataset_id}.{os.getpid()}.old'
-    if target.exists():
-        os.replace(target, previous)
-    os.replace(temporary, target)
-    shutil.rmtree(previous, ignore_errors=True)
-    (folder / f'{dataset_id}.parquet').unlink(missing_ok=True)  # The single file of earlier copies.
-    manifest = {
-        'version': STORE_VERSION, 'dataset_id': dataset_id, 'kind': kind, 'file_name': ready['file_name'],
-        'revision': current, 'rows': rows_written, 'columns': [[column, types[column]] for column in columns],
-        'schema': schema, 'written_at': datetime.now(timezone.utc).isoformat(timespec='seconds'),
-    }
-    _write_json(manifest_file(root, kind, dataset_id), manifest)
+    # The new copy takes the place of the old one at once (readers of the old one keep their open files), once no
+    # archive is taking the copies, and not when the database was replaced meanwhile (it is a copy of the one before).
+    lock = copies_lock(root)
+    while not lock.acquire(timeout=1):
+        if should_stop():
+            shutil.rmtree(temporary, ignore_errors=True)
+            return None
+    try:
+        if _database_file(database_path) != database_file:
+            shutil.rmtree(temporary, ignore_errors=True)
+            return None
+        previous = folder / f'.{dataset_id}.{os.getpid()}.old'
+        if target.exists():
+            os.replace(target, previous)
+        os.replace(temporary, target)
+        shutil.rmtree(previous, ignore_errors=True)
+        (folder / f'{dataset_id}.parquet').unlink(missing_ok=True)  # The single file of earlier copies.
+        manifest = {
+            'version': STORE_VERSION, 'dataset_id': dataset_id, 'kind': kind, 'file_name': ready['file_name'],
+            'revision': current, 'rows': rows_written, 'columns': [[column, types[column]] for column in columns],
+            'schema': schema, 'written_at': datetime.now(timezone.utc).isoformat(timespec='seconds'),
+        }
+        _write_json(manifest_file(root, kind, dataset_id), manifest)
+    finally:
+        lock.release()
     return manifest
 
 
-def remove_copy(manifest_path: Path) -> None:
-    """Remove the copy of a CDR that is gone (or now of another type)."""
-    shutil.rmtree(manifest_path.with_suffix(''), ignore_errors=True)
-    manifest_path.with_suffix('.parquet').unlink(missing_ok=True)
-    manifest_path.unlink(missing_ok=True)
+def remove_copy(manifest_path: Path) -> bool:
+    """Remove the copy of a CDR that is gone (or now of another type); returns whether it did (not while an archive is
+    taking the copies)."""
+    lock = copies_lock(manifest_path.parent.parent)
+    if not lock.acquire(blocking=False):
+        return False
+    try:
+        shutil.rmtree(manifest_path.with_suffix(''), ignore_errors=True)
+        manifest_path.with_suffix('.parquet').unlink(missing_ok=True)
+        manifest_path.unlink(missing_ok=True)
+    finally:
+        lock.release()
+    return True
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# The copies in backups, packages and duplicates: they travel with the database of their workspace.
+
+# The folder of the copies in an archive of a workspace, beside its database.sqlite.
+ARCHIVE_FOLDER = 'cdr-store'
+
+# The copies of a workspace (by its store) change one at a time under its lock: a new copy takes the place of the old
+# one, or the copy of a CDR that is gone is removed. An archive of the workspace holds it from the snapshot of the
+# database until it has taken the copies, which then are those of that snapshot.
+_copies_locks: dict[str, RLock] = {}
+
+
+def copies_lock(root: Path) -> RLock:
+    with _shadow_guard:
+        return _copies_locks.setdefault(_workspace_key(root), RLock())
+
+
+@contextmanager
+def steady_copies(database_path: Any):
+    """No copy of the workspace changes meanwhile (see copies_lock)."""
+    with copies_lock(store_root(database_path)):
+        yield
+
+
+def snapshot_copies(snapshot_path: Any, database_path: Any) -> list[tuple[Path, str]]:
+    """The files of the copies a snapshot of a workspace database takes with it, as (file, path in the store) pairs: those
+    of the CDRs whose copy is their only store, and those whose copy holds their table as the snapshot has it (the
+    others are copied again). Taken under steady_copies, from the snapshot made under it."""
+    root = store_root(database_path)
+    if not root.is_dir():
+        return []
+    files: list[tuple[Path, str]] = []
+    with sqlite3.connect(f'file:{Path(str(snapshot_path)).resolve()}?mode=ro', uri=True, timeout=30) as connection:
+        cdrs = _ready_cdrs(connection)
+        versions = _versions(connection)
+        for dataset_id, cdr in sorted(cdrs.items()):
+            manifest_path = manifest_file(root, cdr['kind'], dataset_id)
+            manifest = read_manifest(manifest_path)
+            folder = cdr_folder(root, cdr['kind'], dataset_id)
+            if manifest is None or not folder.is_dir():
+                continue
+            if cdr['table'] and manifest.get('revision') != revision(cdr, _table_columns(connection, dataset_id),
+                                                                     versions.get(dataset_id, 0)):
+                continue
+            files += [(part, part.relative_to(root).as_posix()) for part in sorted(folder.glob('*.parquet'))]
+            files.append((manifest_path, manifest_path.relative_to(root).as_posix()))
+    return files
+
+
+def replace_copies(database_path: Any, source: Path | None = None) -> None:
+    """The copies of a workspace whose database was put in place by a restore or an import: those that came with it
+    (``source``, a folder laid out as the store, moved into place), or none, its CDRs then being copied again from their
+    tables."""
+    root = store_root(database_path)
+    with copies_lock(root):
+        if root.exists():
+            previous = root.with_name(f'{root.name}.{os.getpid()}.{time.time_ns()}.old')
+            os.replace(root, previous)
+            shutil.rmtree(previous, ignore_errors=True)
+        if source is not None and source.is_dir():
+            try:
+                os.replace(source, root)
+            except OSError:
+                # Another volume (a staging folder elsewhere).
+                shutil.copytree(source, root)
+    forget_shadow_sets(database_path)
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -1056,9 +1150,9 @@ def sync_step(repository: Any, included: Callable[[], dict[str, set[int]]], shou
     remain. The catalog follows once every copy is up to date."""
     changes = store_changes(repository.db_path)
     for orphan in changes['orphans']:
-        remove_copy(orphan)
-        with _store_jobs_guard:
-            job['removed'] += 1
+        if remove_copy(orphan):
+            with _store_jobs_guard:
+                job['removed'] += 1
     for dataset_id in changes['tables']:
         drop_copied_table(repository, dataset_id)
     pending = changes['pending']

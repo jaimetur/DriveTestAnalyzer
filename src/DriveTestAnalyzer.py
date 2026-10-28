@@ -74,6 +74,7 @@ from src.config import PROJECT_ROOT, settings
 from src.modules.analytics import build_analysis, shared_frame_attrs
 from src.modules.app_event_details import app_event_origin, app_event_origin_parts, changed_values, describe_app_event
 from src.modules.background_scheduler import BackgroundTaskScheduler
+from src.modules import cdr_store
 from src.modules.auth import SessionUser, verify_password
 from src.modules.workspace_countries import country_options
 from src.modules.operator_roles import (
@@ -6969,27 +6970,34 @@ def _archive_database(
     cancel_callback: Callable[[], None] | None = None,
     exclude_tables: tuple[str, ...] = (),
     snapshot_callback: Callable[[int], None] | None = None,
+    copies_prefix: str | None = None,
 ) -> None:
     """Add a consistent SQLite snapshot, compacting databases with substantial free space. ``snapshot_callback``
     receives the size of the database once its snapshot is made (in one step, which a database written meanwhile does
-    not restart), before the snapshot is archived with ``progress_callback``."""
+    not restart), before the snapshot is archived with ``progress_callback``. With ``copies_prefix`` (a workspace
+    database), the columnar copies of its CDRs that the snapshot takes with it go under that folder, as they were when
+    the snapshot was made."""
     if not database_path.exists():
         return
     with tempfile.TemporaryDirectory(prefix='drivetest-analyzer-export-', dir=scratch_dir) as temporary_dir:
         snapshot = Path(temporary_dir) / 'snapshot.db'
-        with closing(sqlite3.connect(database_path)) as source, source:
-            page_count = int(source.execute('PRAGMA page_count').fetchone()[0])
-            free_pages = int(source.execute('PRAGMA freelist_count').fetchone()[0])
-            # VACUUM INTO creates a consistent, compact copy.  It is much faster
-            # overall for workspace databases whose deleted rows otherwise add
-            # several unused GB to both the snapshot and ZIP operation.
-            if page_count and free_pages / page_count >= 0.10:
-                source.execute('VACUUM INTO ?', (str(snapshot),))
-            else:
-                with closing(sqlite3.connect(snapshot)) as target, target:
-                    source.backup(target)
-        if snapshot_callback:
-            snapshot_callback(_file_size(database_path))
+        with cdr_store.steady_copies(database_path) if copies_prefix else nullcontext():
+            with closing(sqlite3.connect(database_path)) as source, source:
+                page_count = int(source.execute('PRAGMA page_count').fetchone()[0])
+                free_pages = int(source.execute('PRAGMA freelist_count').fetchone()[0])
+                # VACUUM INTO creates a consistent, compact copy.  It is much faster
+                # overall for workspace databases whose deleted rows otherwise add
+                # several unused GB to both the snapshot and ZIP operation.
+                if page_count and free_pages / page_count >= 0.10:
+                    source.execute('VACUUM INTO ?', (str(snapshot),))
+                else:
+                    with closing(sqlite3.connect(snapshot)) as target, target:
+                        source.backup(target)
+            if snapshot_callback:
+                snapshot_callback(_file_size(database_path))
+            if copies_prefix:
+                for path, name in cdr_store.snapshot_copies(snapshot, database_path):
+                    _archive_file(archive, path, f'{copies_prefix}/{name}', progress_callback, cancel_callback)
         if exclude_tables:
             with closing(sqlite3.connect(snapshot)) as target, target:
                 existing = {row[0] for row in target.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
@@ -7367,7 +7375,7 @@ def create_recurring_database_backup(
     total_bytes += sum(len(content) for content in ticket_center_files.values())
     for workspace in workspaces:
         if 'workspace_database' in components:
-            total_bytes += workspace.database_path.stat().st_size
+            total_bytes += workspace.database_path.stat().st_size + _tree_size(cdr_store.store_root(workspace.database_path))
             database_sizes.append(workspace.database_path.stat().st_size)
         if 'report_templates' in components:
             template_repository = Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path)
@@ -7451,7 +7459,8 @@ def create_recurring_database_backup(
                 archive_workspace_root = f'workspaces/{workspace.name}'
                 if 'workspace_database' in components:
                     report_progress(f'Creating workspace database snapshot for {workspace.name}', max(5.0, completed_bytes * 96.0 / max(total_bytes, 1)))
-                    _archive_database(archive, workspace.database_path, f'{archive_workspace_root}/database.sqlite', backup_dir, archived_bytes, cancel_callback=ensure_not_cancelled)
+                    _archive_database(archive, workspace.database_path, f'{archive_workspace_root}/database.sqlite', backup_dir, archived_bytes,
+                                      cancel_callback=ensure_not_cancelled, copies_prefix=f'{archive_workspace_root}/{cdr_store.ARCHIVE_FOLDER}')
                 if 'dashboards' in components:
                     report_progress(f'Exporting Dashboards for {workspace.name}', max(5.0, completed_bytes * 96.0 / max(total_bytes, 1)))
                     _archive_workspace_dashboards(archive, workspace, archive_workspace_root, archived_bytes)
@@ -8260,6 +8269,13 @@ def restore_database_backup(
                     for sidecar in (workspace.database_path, workspace.database_path.with_name(f'{workspace.database_path.name}-wal'), workspace.database_path.with_name(f'{workspace.database_path.name}-shm')):
                         sidecar.unlink(missing_ok=True)
                     shutil.copy2(payload, workspace.database_path)
+                    # The columnar copies of its CDRs come with it (none in backups of earlier versions: they are made again).
+                    copies_member = f'{prefix}{cdr_store.ARCHIVE_FOLDER}'
+                    copies = None
+                    if any(name.startswith(f'{copies_member}/') for name in names):
+                        _safe_extract_archive_prefix(archive, staging / f'{workspace.id}-copies', copies_member)
+                        copies = (staging / f'{workspace.id}-copies').joinpath(*PurePosixPath(copies_member).parts)
+                    cdr_store.replace_copies(workspace.database_path, copies)
                     advance(f'Database restored for {workspace_name}')
             if 'dashboards' in selected:
                 member = f'{prefix}dashboards/dashboards.json'
@@ -9593,7 +9609,7 @@ def _archive_workspace(
     _archive_database(
         archive, workspace.database_path, f'{archive_prefix}/database.sqlite', scratch_dir, progress_callback,
         # The history of generated files travels without them too: the destination keeps it when it holds the files.
-        exclude_tables=(), snapshot_callback=progress_callback,
+        exclude_tables=(), snapshot_callback=progress_callback, copies_prefix=f'{archive_prefix}/{cdr_store.ARCHIVE_FOLDER}',
     )
     phase('adding its settings and saved items')
     _archive_workspace_dashboards(archive, workspace, archive_prefix, progress_callback)
@@ -10185,14 +10201,16 @@ def estimate_export_bytes(
     elif target.startswith('workspace:'):
         workspace = workspace_registry.get(target.removeprefix('workspace:'))
         if workspace:
-            total = 2 * _file_size(workspace.database_path) + _tree_size(workspace.slides_templates_dir)
+            total = (2 * _file_size(workspace.database_path) + _tree_size(cdr_store.store_root(workspace.database_path))
+                     + _tree_size(workspace.slides_templates_dir))
             if include_input_files:
                 total += _tree_size(workspace.input_dir)
             if include_generated_outputs:
                 total += _tree_size(workspace.output_dir)
     if target == 'full-environment':
         total += sum(
-            2 * _file_size(workspace.database_path) + _tree_size(workspace.input_dir) + _tree_size(workspace.slides_templates_dir)
+            2 * _file_size(workspace.database_path) + _tree_size(cdr_store.store_root(workspace.database_path))
+            + _tree_size(workspace.input_dir) + _tree_size(workspace.slides_templates_dir)
             + (_tree_size(workspace.output_dir) if include_generated_outputs else 0)
             for workspace in _selected_export_workspaces(workspace_ids)
         )
@@ -10748,6 +10766,8 @@ def import_workspace_archive(
             if getattr(exc, 'errno', None) != errno.EXDEV:
                 raise
             shutil.copy2(database_snapshot, workspace.database_path)
+        # The columnar copies of its CDRs come with it (none in packages of earlier versions: they are made again).
+        cdr_store.replace_copies(workspace.database_path, payload / cdr_store.ARCHIVE_FOLDER)
         source_input_dir = workspace_info.get('source_input_dir') if workspace_info else None
         source_output_dir = workspace_info.get('source_output_dir') if workspace_info else None
         with closing(sqlite3.connect(workspace.database_path)) as connection, connection:

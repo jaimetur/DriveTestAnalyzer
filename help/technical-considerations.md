@@ -51,6 +51,7 @@ Stored below `APP_DATA_DIR/workspaces/<workspace>/`:
 - `output/reports/reports-old/`: PPT Reporting (old) PowerPoint reports and their PNG charts.
 - `output/reports/reports-charts-old/`: PPT Reporting (old) Chart Sets.
 - `output/reports/reporting-jobs/`: Reporting Job runs, one folder per run with its artifacts.
+- `.cdr-store/`: the [columnar copy](workspace-management.md#columnar-copy-of-the-cdrs) of each CDR (Parquet files and a manifest) and the catalogs of views for other tools; it travels with the workspace database in backups, packages and transfers.
 - `.dashboard-data-cache/`: regenerable PPT Dashboard preview manifests and live Canvas/legacy PIL chart artifacts. Dashboard SQL reads the combined CDR tables in the workspace database directly; this directory is not a user dataset or source of record.
 - `.dashboard-cache-version.json`: signature used to invalidate caches written by older application or cache-format versions.
 
@@ -278,7 +279,7 @@ Both job families continue after leaving the page or signing out. A process rest
 Portable ZIPs can contain Application Config, Dashboard definitions, Report Templates, Auto-calculated Fields, complete workspaces or a selected Full Environment.
 
 - Large packages are built and processed on disk rather than fully in browser memory.
-- Workspace database snapshots use SQLite-safe copy/backup behaviour.
+- Workspace database snapshots use SQLite-safe copy/backup behaviour, and take the columnar copies of the CDRs (`cdr-store/` beside `database.sqlite`) as they were when the snapshot was made; a copy being written meanwhile takes its place once the snapshot has them.
 - Backups write each database snapshot to a temporary `drivetest-analyzer-export-*` folder inside the backup folder and delete it when the snapshot is archived. Every finished backup also deletes snapshot folders left by backups that were killed mid-copy, once they have been unchanged for six hours.
 - Workspace replacement closes the target automatically when required.
 - Old workspace files are removed only after the replacement succeeds.

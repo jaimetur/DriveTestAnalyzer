@@ -647,3 +647,71 @@ def test_the_catalog_gives_the_views_of_the_cdrs_for_postgresql_too(client, tmp_
     copy_everything()
     changed = json.loads((root / cdr_store.POSTGRES_VIEWS_FILE).read_text(encoding='utf-8'))
     assert changed['signature'] != signature and f'/data/{second}/' not in changed['views']['cdr_data']
+
+
+def test_the_copies_travel_with_the_database_of_their_workspace(client, tmp_path):
+    import zipfile
+
+    workspace = core.active_workspace
+    data = add_cdr(tmp_path, 'data.csv', 'data', data_rows())
+    voice = add_cdr(tmp_path, 'voice.csv', 'voice', pd.DataFrame({'Operator': ['EE', 'O2'], 'Call_Status': ['Completed', 'Dropped']}))
+    core.repository.copy_dataset_rows_to_reporting(data, 'data', ['Operator', 'Test_Count', 'NR_Mode'])
+    # A backup of an earlier version: the tables hold the rows, without copies.
+    earlier = core.create_recurring_database_backup({'components': ['workspace_database'], 'backup_path': str(tmp_path / 'earlier'),
+                                                    'workspace_ids': [workspace.id]})
+
+    def rows(database_path):
+        """What the SQL of the application reads of the CDRs and the combined table."""
+        repository = core.Repository(database_path, global_db_path=core.repository.global_db_path)
+        with repository.connection() as connection:
+            return [[tuple(row) for row in connection.execute(f'SELECT rowid, * FROM {table} ORDER BY rowid').fetchall()]
+                    for table in (f'dataset_rows_{data}', f'dataset_rows_{voice}', 'reporting_rows_data')]
+
+    before = rows(workspace.database_path)
+    # The copies are the only store of the Data CDR (its table and the combined table emptied); the Voice CDR changed
+    # since its copy, its table holding its rows.
+    core.repository.set_workspace_state(cdr_store.ONLY_COPIES_STATE_KEY, '1')
+    copy_everything()
+    assert cdr_store.empty_combined_table(core.repository, 'data')
+    with cdr_store.hold(core.repository, voice):
+        with core.repository.connection() as connection:
+            connection.execute(f'UPDATE dataset_rows_{voice} SET "Call_Status" = ? WHERE rowid = 2', ('Completed',))
+    with core.repository.connection() as connection:
+        assert cdr_store.shadows(connection) == {data} and cdr_store.combined_shadows(connection) == {'data'}
+    before = rows(workspace.database_path)
+    assert before[1][1][-1] == 'Completed'
+
+    # A workspace package takes the copies its database needs or can use, not the out of date ones nor the catalog.
+    package = tmp_path / 'workspace.zip'
+    core.build_export_archive_file(f'workspace:{workspace.id}', package)
+    prefix = f'workspaces/{workspace.name}/{cdr_store.ARCHIVE_FOLDER}/'
+    with zipfile.ZipFile(package) as archive:
+        copies = sorted(name[len(prefix):] for name in archive.namelist() if name.startswith(prefix))
+    assert copies[0] == f'data/{data}.json' and copies[1:] and all(name.startswith(f'data/{data}/part-') for name in copies[1:])
+
+    # Imported as another workspace, it reads the same rows.
+    staging = tmp_path / 'staging'
+    with zipfile.ZipFile(package) as archive:
+        core._safe_extract_archive_prefix(archive, staging, f'workspaces/{workspace.name}')
+    imported = core.import_workspace_archive(staging / 'workspaces' / workspace.name, {'name': 'Imported'})
+    assert rows(imported.database_path) == before
+    assert cdr_store.fresh_copies(imported.database_path, [data, voice]) == {data}
+
+    # A duplicate too.
+    duplicate = core.workspace_registry.duplicate(workspace.id)
+    assert rows(duplicate.database_path) == before
+    assert cdr_store.fresh_copies(duplicate.database_path, [data, voice]) == {data}
+
+    # Restored, a backup gives the workspace back its database with its copies...
+    backup = core.create_recurring_database_backup({'components': ['workspace_database'], 'backup_path': str(tmp_path / 'backups'),
+                                                   'workspace_ids': [workspace.id]})
+    core.repository.drop_dataset_rows(data)
+    core.restore_database_backup(backup, ['workspace_database'])
+    assert rows(workspace.database_path) == before
+    # ... and one of an earlier version its tables, their copies made again.
+    core.restore_database_backup(earlier, ['workspace_database'])
+    with core.repository.connection() as connection:
+        assert cdr_store.shadows(connection) == set() and cdr_store.combined_shadows(connection) == set()
+    assert not cdr_store.store_root(workspace.database_path).exists()
+    restored = rows(workspace.database_path)
+    assert restored[0] == before[0] and restored[2] == before[2]
