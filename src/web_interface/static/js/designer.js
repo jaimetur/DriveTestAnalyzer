@@ -644,7 +644,14 @@
     redo: '<path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/>',
     parameters: '<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/>',
     differences: '<path d="M12 3v14M5 10h14M5 21h14"/>',
+    slide: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 9h6M7 13h10"/>',
+    chart: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+    reset: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>',
   };
+  // The names of the properties a Design changes, as Differences shows them.
+  const DIFFERENCE_NAMES = {title: 'Title', subtitle: 'Subtitle', layout: 'Layout', options: 'Places', place: 'Place', style: 'Format', chart_type: 'Chart type',
+    chart_title: 'Title', kind: 'Kind', content: 'Content', kpi_card: 'KPI settings', repeat: 'Repeat by', cdr_source: 'Source', kpi: 'Measure',
+    rows_split: 'Rows', columns_split: 'Columns', legend: 'Legend', legend_position: 'Legend position', axis_x_range: 'X axis range', axis_y_range: 'Y axis range'};
   function icon(name) {
     const holder = document.createElement('span');
     holder.className = 'ds-design-icon';
@@ -1682,20 +1689,37 @@
         rows.push(h('button', {type: 'button', class: 'ds-design-action', onclick: () => { state.keepTemplateChanges = true; state.report = {...state.report, template_changed: []}; renderDesigner(); refresh(); viewer().status('Kept: save to stop flagging them.'); }}, 'Keep mine for all'));
       }
       const overrides = state.overrides || {};
+      // Each difference: what it changes (a slide or a chart, by name), which property, and how to take the template back.
       const entries = [];
-      for (const [id, properties] of Object.entries(overrides.slides || {})) for (const name of Object.keys(properties)) entries.push([`Slide “${slideName(id)}”`, `${name}`, () => resetSlideProperty(id, name)]);
-      for (const [id, properties] of Object.entries(overrides.elements || {})) for (const name of Object.keys(properties)) entries.push([`Chart “${elementName(id)}”`, `${name.replaceAll('_', ' ')}`, () => resetElementProperty(id, name)]);
-      for (const [id, change] of Object.entries(overrides.filters || {})) entries.push([`Chart “${elementName(id)}”`, `filters${change.add?.length ? ` + ${change.add.join('; ')}` : ''}${change.remove?.length ? ` − ${change.remove.join('; ')}` : ''}`, () => resetElementProperty(id, 'filters')]);
-      for (const id of overrides.hidden_slides || []) entries.push([`Slide “${slideName(id)}”`, 'hidden', () => setSlideHidden(id, false)]);
-      for (const id of overrides.shown_optional || []) entries.push([`Slide “${slideName(id)}”`, 'optional slide shown', () => setOptionalShown(id, false)]);
-      for (const id of overrides.hidden_elements || []) entries.push([`Chart “${elementName(id)}”`, 'removed here', () => resetElement(id)]);
-      for (const local of overrides.local_slides || []) entries.push([`Slide “${local.slide?.title || 'New slide'}”`, 'only in this Design', () => deleteSlideHere(local.slide?.id)]);
-      for (const [slideId, elements] of Object.entries(overrides.local_elements || {})) for (const element of elements) entries.push([`Chart “${elementLabel(element)}” on “${slideName(slideId)}”`, 'only in this Design', () => deleteElementHere(element.id)]);
-      rows.push(h('h3', {text: `Differences from the template · ${entries.length}`}));
+      const property = name => DIFFERENCE_NAMES[name] || name.replaceAll('_', ' ').replace(/^./, letter => letter.toUpperCase());
+      for (const [id, properties] of Object.entries(overrides.slides || {})) for (const name of Object.keys(properties)) entries.push(['Slide', slideName(id), property(name), () => resetSlideProperty(id, name)]);
+      for (const [id, properties] of Object.entries(overrides.elements || {})) for (const name of Object.keys(properties)) entries.push(['Chart', elementName(id), property(name), () => resetElementProperty(id, name)]);
+      for (const [id, change] of Object.entries(overrides.filters || {})) entries.push(['Chart', elementName(id), `Filters${change.add?.length ? ` + ${change.add.join('; ')}` : ''}${change.remove?.length ? ` − ${change.remove.join('; ')}` : ''}`, () => resetElementProperty(id, 'filters')]);
+      for (const id of overrides.hidden_slides || []) entries.push(['Slide', slideName(id), 'Hidden here', () => setSlideHidden(id, false)]);
+      for (const id of overrides.shown_optional || []) entries.push(['Slide', slideName(id), 'Optional slide shown', () => setOptionalShown(id, false)]);
+      for (const id of overrides.hidden_elements || []) entries.push(['Chart', elementName(id), 'Removed here', () => resetElement(id)]);
+      for (const local of overrides.local_slides || []) entries.push(['Slide', local.slide?.title || 'New slide', 'Only in this Design', () => deleteSlideHere(local.slide?.id)]);
+      for (const [slideId, elements] of Object.entries(overrides.local_elements || {})) for (const element of elements) entries.push(['Chart', `${elementLabel(element)} · ${slideName(slideId)}`, 'Only in this Design', () => deleteElementHere(element.id)]);
+      rows.push(h('div', {class: 'ds-diff-head'}, h('h3', {text: 'Differences from the template'}), h('span', {class: 'ds-design-count', text: String(entries.length)})));
       if (!entries.length) rows.push(h('p', {class: 'form-note', text: 'This Design shows its template as it is.'}));
-      for (const [what, detail, reset] of entries) {
-        rows.push(h('div', {class: 'ds-design-difference'}, h('span', {}, h('b', {text: what}), ` · ${detail}`),
-          h('button', {type: 'button', class: 'ds-design-action', disabled: !state.rights.design, onclick: guarded(async () => { await reset(); refresh(); })}, 'Reset to template')));
+      // One card per slide or chart, its differences as chips that each take the template back.
+      const groups = new Map();
+      for (const [kind, name, detail, reset] of entries) {
+        const key = `${kind}|${name}`;
+        if (!groups.has(key)) groups.set(key, {kind, name, items: []});
+        groups.get(key).items.push({detail, reset});
+      }
+      const resetting = action => guarded(async () => { await action(); refresh(); });
+      for (const group of groups.values()) {
+        rows.push(h('article', {class: 'ds-diff-card'},
+          h('div', {class: 'ds-diff-title'},
+            h('span', {class: `ds-diff-icon is-${group.kind.toLowerCase()}`}, icon(group.kind === 'Slide' ? 'slide' : 'chart')),
+            h('div', {class: 'ds-diff-name'}, h('span', {class: 'ds-diff-kind', text: group.kind}), h('b', {text: group.name})),
+            group.items.length > 1 ? h('button', {type: 'button', class: 'ds-diff-reset-all', disabled: !state.rights.design, title: 'Take the template back for all of them',
+              onclick: resetting(async () => { for (const item of group.items) await item.reset(); })}, icon('reset'), 'Reset all') : null),
+          h('div', {class: 'ds-diff-chips'}, group.items.map(item => h('span', {class: 'ds-diff-chip'}, h('span', {text: item.detail}),
+            h('button', {type: 'button', class: 'ds-diff-chip-reset', disabled: !state.rights.design, title: 'Reset to template', 'aria-label': `Reset ${item.detail} to template`,
+              onclick: resetting(item.reset)}, icon('reset')))))));
       }
       const dropped = state.report?.dropped || [];
       if (dropped.length) {

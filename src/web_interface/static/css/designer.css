@@ -429,3 +429,24 @@
 .ppt-designer .ds-design-count { display: inline-grid; place-items: center; min-width: 1.25rem; height: 1.25rem; padding: 0 .35rem; border-radius: 999px;
   background: #efe8f8; color: #5b3a92; font-size: .68rem; font-weight: 800; font-variant-numeric: tabular-nums; }
 .ppt-designer .ds-design-count.is-warning { background: #fdecc8; color: #8a5300; }
+/* Differences: one card per slide or chart, each difference a chip that takes the template back. */
+.ppt-designer .ds-diff-head { display: flex; align-items: center; gap: .5rem; margin: .2rem 0 .1rem; }
+.ppt-designer .ds-diff-head h3 { margin: 0; font-size: .95rem; }
+.ppt-designer .ds-diff-card { display: grid; gap: .55rem; padding: .7rem .8rem; border: 1px solid #e7e0f0; border-radius: 12px; background: #fff; box-shadow: 0 1px 2px rgba(36, 22, 61, .05); }
+.ppt-designer .ds-diff-title { display: flex; align-items: center; gap: .6rem; }
+.ppt-designer .ds-diff-icon { display: grid; flex: 0 0 auto; place-items: center; width: 2rem; height: 2rem; border-radius: 9px; background: #efe8f8; color: #5b3a92; }
+.ppt-designer .ds-diff-icon.is-chart { background: #e7f1fb; color: #1f5fbf; }
+.ppt-designer .ds-diff-name { display: grid; flex: 1 1 auto; min-width: 0; line-height: 1.2; }
+.ppt-designer .ds-diff-name b { overflow: hidden; color: #24163d; font-size: .88rem; text-overflow: ellipsis; white-space: nowrap; }
+.ppt-designer .ds-diff-kind { color: #8a7f9b; font-size: .64rem; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
+.ppt-designer .ds-diff-reset-all { display: inline-flex; align-items: center; gap: .3rem; min-height: 1.8rem; padding: .15rem .6rem; border: 1px solid #ddd3ea; border-radius: 999px;
+  background: #fff; box-shadow: none; color: #4b2c82; font: inherit; font-size: .72rem; font-weight: 750; cursor: pointer; }
+.ppt-designer .ds-diff-reset-all .ds-design-icon { width: .85rem; height: .85rem; }
+.ppt-designer .ds-diff-chips { display: flex; flex-wrap: wrap; gap: .35rem; padding-left: 2.6rem; }
+.ppt-designer .ds-diff-chip { display: inline-flex; align-items: center; gap: .25rem; padding: .1rem .15rem .1rem .6rem; border: 1px solid #f0d9a8; border-radius: 999px; background: #fdf4e3;
+  color: #7a4a00; font-size: .74rem; font-weight: 700; }
+.ppt-designer .ds-diff-chip-reset { display: grid; place-items: center; width: 1.45rem; height: 1.45rem; min-height: 0; padding: 0; border: 0; border-radius: 50%; background: transparent;
+  box-shadow: none; color: #8a5300; cursor: pointer; }
+.ppt-designer .ds-diff-chip-reset:hover:not(:disabled) { background: #f8e3b9; }
+.ppt-designer .ds-diff-chip-reset .ds-design-icon { width: .8rem; height: .8rem; }
+.ppt-designer .ds-design-differences { display: grid; gap: .55rem; }
