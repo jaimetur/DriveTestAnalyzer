@@ -3748,6 +3748,21 @@
     groupFilter: () => filteringGroup(),
   });
   refreshCallMap = () => callMap?.refresh();
+  // On a short screen (a laptop) the header, the follow-up fields and the tabs of the call leave the content of its tab too
+  // little room: the whole panel then scrolls as one, its tabs stuck at the top (is-scrolling), as on a phone. It is checked
+  // when the panel opens and whenever the screen, the zoom or those parts change (another call, the Failure Map...).
+  const DRAWER_TAB_ROOM = 320;
+  const fitDrawer = () => {
+    if (!drawer.classList.contains('is-open')) return;
+    const above = ['.nq-drawer-head', '.nq-drawer-tracking', '.nq-drawer-tabs']
+      .reduce((height, selector) => height + (drawer.querySelector(selector)?.offsetHeight || 0), 0);
+    drawer.classList.toggle('is-scrolling', drawer.clientHeight - above < Math.min(DRAWER_TAB_ROOM, drawer.clientHeight / 2));
+  };
+  if (typeof ResizeObserver === 'function') {
+    const parts = new ResizeObserver(() => window.requestAnimationFrame(fitDrawer));
+    [drawer, ...drawer.querySelectorAll('.nq-drawer-head, .nq-drawer-tracking, .nq-drawer-tabs')].forEach((part) => parts.observe(part));
+  }
+  window.addEventListener('resize', fitDrawer);
   const closeDrawer = () => {
     drawer.classList.remove('is-open');
     drawer.setAttribute('aria-hidden', 'true');
@@ -4787,6 +4802,7 @@
     drawer.classList.add('is-open');
     drawer.setAttribute('aria-hidden', 'false');
     backdrop.hidden = false;
+    window.requestAnimationFrame(fitDrawer);
     if (!keepTab) selectTab('general');
     if (state.detail?.call.call_key !== callKey) {
       $('nq-timeline').replaceChildren(node('li', 'Loading…', 'nq-empty-timeline'));
@@ -4796,8 +4812,9 @@
       const body = drawer.querySelector('.nq-drawer-body');
       const scroll = body.scrollTop;
       renderDetail(await api(`/api/non-qualified-calls/calls/${encodeURIComponent(callKey)}`));
-      // The newest activity is at the bottom, next to the comment box.
+      // The newest activity is at the bottom, next to the comment box; a panel that scrolls as one starts at its header.
       body.scrollTop = keepTab ? scroll : body.scrollHeight;
+      if (!keepTab) drawer.scrollTop = 0;
       if (focusComposer && state.user.can_edit) $('nq-comment-body').focus({preventScroll: true});
     } catch (error) {
       toast(error.message, 'error');

@@ -321,6 +321,11 @@
 .nq-drawer .nq-drawer-tabs button { min-height: 0; padding: .5rem .9rem; border: 0; border-bottom: 3px solid transparent; border-radius: 0; background: transparent; color: var(--nq-muted); font-weight: 800; box-shadow: none; }
 .nq-drawer .nq-drawer-tabs button.is-active { border-bottom-color: var(--nq-color); color: var(--nq-dark); }
 .nq-drawer-body { overflow-y: auto; overscroll-behavior: contain; padding: 1rem 1.2rem 1.2rem; }
+/* A short screen (a laptop): when the header, the follow-up fields and the tabs leave the content of the tab too little room,
+   the whole panel scrolls as one, its tabs stuck at the top (non_qualified_calls.js, fitDrawer), as on a phone. */
+.nq-drawer.is-scrolling { display: block; overflow-y: auto; overscroll-behavior: contain; }
+.nq-drawer.is-scrolling .nq-drawer-tabs { position: sticky; top: 0; z-index: 10; }
+.nq-drawer.is-scrolling .nq-drawer-body { overflow: visible; }
 /* While a call is open the page below does not scroll: the wheel scrolls only the call panel. */
 body:has(.nq-drawer.is-open) { overflow: hidden; }
 .nq-timeline { display: grid; gap: .8rem; margin: 0 0 1rem; padding: 0; list-style: none; }
