@@ -1718,7 +1718,7 @@
             h('button', {type: 'button', class: 'ds-design-action', disabled: used.length > 0, title: used.length ? 'Remove its uses first' : null, onclick: guarded(async () => { list.splice(index, 1); await save(list); refresh(); })}, 'Delete')) : null);
       });
       body.replaceChildren(
-        h('p', {class: 'form-note', text: 'Each Design of the template chooses the values of its parameters in Design Scope & Filters. Write {Name} in a chart filter (City IN ({City})), a numeric setting (LQ < {Threshold}) or a title.'}),
+        h('p', {class: 'form-note', text: 'Each Design of the template chooses the values of its parameters in PPT Design Scope & Filters. Write {Name} in a chart filter (City IN ({City})), a numeric setting (LQ < {Threshold}) or a title.'}),
         fieldsDatalist(shownElement()),
         ...rows,
         editable ? h('button', {type: 'button', class: 'ds-design-action', onclick: guarded(async () => {
@@ -1771,7 +1771,7 @@
   }
 
   // ------------------------------------------------------------------
-  // The values of the template parameters, in Design Scope & Filters
+  // The values of the template parameters, in PPT Design Scope & Filters
   // ------------------------------------------------------------------
   const parameterOptions = new Map();
   async function parameterValues(field) {

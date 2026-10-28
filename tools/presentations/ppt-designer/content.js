@@ -73,7 +73,7 @@ module.exports = {
     { id: 'summary', type: 'closing', section: 'Summary', footer: 'Summary', kicker: 'Summary', title: 'Your template, every campaign',
       lead: 'One saved definition prepares the same deck for each new campaign.',
       links: [
-        { title: 'PPT Designs', text: 'create and change them' }, { title: 'Design Scope & Filters', text: 'how the CDRs are chosen' },
+        { title: 'PPT Designs', text: 'create and change them' }, { title: 'PPT Design Scope & Filters', text: 'how the CDRs are chosen' },
         { title: 'View Design', text: 'slides and live charts' }, { title: 'Generate PPT', text: 'the presentation and its files' },
       ],
       modules: ['Workspace', 'Reporting', 'Builders', 'CDR Analysis'],

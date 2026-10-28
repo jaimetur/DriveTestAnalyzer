@@ -173,7 +173,7 @@ PPT Designer keep their preview manifests and Canvas chart models in memory only
 
 ### Generated output
 
-- `output/reports/designs/`: Design PowerPoint jobs and their persistent PNG, tooltip and Canvas-model assets.
+- `output/reports/ppt-designs/`: Design PowerPoint jobs and their persistent PNG, tooltip and Canvas-model assets.
 - `output/reports/cdr-analysis/`: CDR Analysis PowerPoint and Word exports.
 - `output/reports/network-insights/`: Summary Network Insights PowerPoint and Word exports.
 - `output/reports/reports-old/`: PPT Reporting (old) PowerPoint reports and their PNG charts.

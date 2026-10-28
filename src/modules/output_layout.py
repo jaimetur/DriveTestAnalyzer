@@ -14,7 +14,7 @@ from contextlib import closing
 from pathlib import Path
 
 REPORTS_FOLDER = 'reports'
-DESIGNS_FOLDER = 'designs'
+DESIGNS_FOLDER = 'ppt-designs'
 CDR_ANALYSIS_FOLDER = 'cdr-analysis'
 NETWORK_INSIGHTS_FOLDER = 'network-insights'
 REPORTS_OLD_FOLDER = 'reports-old'
@@ -31,6 +31,7 @@ MODULE_FOLDERS = frozenset({
 LEGACY_OUTPUT_FOLDERS = (
     ('dashboards', DESIGNS_FOLDER),
     (f'{REPORTS_FOLDER}/dashboards', DESIGNS_FOLDER),
+    (f'{REPORTS_FOLDER}/designs', DESIGNS_FOLDER),
     ('reporting', REPORTING_JOBS_FOLDER),
     ('charts', REPORTS_CHARTS_OLD_FOLDER),
     ('report-charts', REPORTS_CHARTS_OLD_FOLDER),

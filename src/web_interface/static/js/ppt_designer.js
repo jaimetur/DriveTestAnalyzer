@@ -2538,7 +2538,7 @@
     scheduleLiveSelection();
     status(hasUnappliedFilterChanges()
       ? 'Scope, date and filter changes are ready to apply.'
-      : 'The Design Scope, dates and filters are applied.');
+      : 'The PPT Design Scope, dates and filters are applied.');
   }
   function changed() {
     dismissPreparationStatus(); forgetPrepared();
@@ -2756,7 +2756,7 @@
     const label = next === 'multivendor' ? 'Multivendor Comparison' : 'Operator Comparison';
     const accepted = await window.showConfirmDialog(
       `Change the Scope to ${label}? Every Design chart will be rendered again with the Design filters.`,
-      {title: 'Change Design Scope', confirmLabel: 'Change Scope', tone: 'warning'},
+      {title: 'Change PPT Design Scope', confirmLabel: 'Change Scope', tone: 'warning'},
     );
     if (!accepted) { control.value = current; return; }
     $('ds-scope').value = next;
@@ -5042,7 +5042,7 @@
       savedDefinition = definitionFingerprint(savedRuntimeDesignDefinition(designs[id]));
       updateDirtyState();
     },
-    // The values of the template parameters, chosen in Design Scope & Filters: applied and saved as the filters.
+    // The values of the template parameters, chosen in PPT Design Scope & Filters: applied and saved as the filters.
     setParameterValues(values) { if (!definition) return; definition.parameter_values = structuredClone(values); filterChanged(); },
     async reloadLibrary() { designs = await api(); library(); },
     openDesign: id => openDesign(id),

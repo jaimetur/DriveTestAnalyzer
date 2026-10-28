@@ -3190,7 +3190,7 @@ def test_workspace_export_can_exclude_generated_designs_reports_and_chart_sets(c
     chart = app_module.settings.output_dir / 'reports' / 'reports-charts-old' / '20260907-120000' / 'chart-1.png'
     chart.parent.mkdir(parents=True, exist_ok=True)
     chart.write_bytes(b'chart')
-    design = app_module.settings.output_dir / 'reports' / 'designs' / '20260907_120000 - Design' / 'design.pptx'
+    design = app_module.settings.output_dir / 'reports' / 'ppt-designs' / '20260907_120000 - Design' / 'design.pptx'
     design.parent.mkdir(parents=True, exist_ok=True)
     design.write_bytes(b'design')
 
@@ -3200,7 +3200,7 @@ def test_workspace_export_can_exclude_generated_designs_reports_and_chart_sets(c
         assert json.loads(archive.read('manifest.json'))['includes_generated_outputs'] is True
         assert 'workspaces/Default/output/reports/reports-old/generated.pptx' in archive.namelist()
         assert 'workspaces/Default/output/reports/reports-charts-old/20260907-120000/chart-1.png' in archive.namelist()
-        assert 'workspaces/Default/output/reports/designs/20260907_120000 - Design/design.pptx' in archive.namelist()
+        assert 'workspaces/Default/output/reports/ppt-designs/20260907_120000 - Design/design.pptx' in archive.namelist()
 
     excluded_archive = tmp_path / 'excluded.zip'
     app_module.build_export_archive_file('workspace:default', excluded_archive, include_generated_outputs=False)
@@ -4959,7 +4959,7 @@ def test_workspace_management_isolates_dataset_databases_and_remembers_last_open
     assert app_module.repository.db_path == default_db
     assert len(app_module.repository.list_datasets()) == 1
 
-    design_output = app_module.settings.output_dir / 'reports' / 'designs' / '20260915_120000 - Default Design' / 'design.pptx'
+    design_output = app_module.settings.output_dir / 'reports' / 'ppt-designs' / '20260915_120000 - Default Design' / 'design.pptx'
     design_output.parent.mkdir(parents=True, exist_ok=True)
     design_output.write_bytes(b'design')
     with app_module.repository.connection() as conn:
@@ -4986,7 +4986,7 @@ def test_workspace_management_isolates_dataset_databases_and_remembers_last_open
     assert app_module.repository.user_has_workspace_access('admin', copied_workspace.id)
     with app_module.repository.connection() as conn:
         assert conn.execute('SELECT COUNT(*) FROM datasets').fetchone()[0] == 1
-    copied_design_output = copied_workspace.output_dir / 'reports' / 'designs' / '20260915_120000 - Default Design' / 'design.pptx'
+    copied_design_output = copied_workspace.output_dir / 'reports' / 'ppt-designs' / '20260915_120000 - Default Design' / 'design.pptx'
     assert copied_design_output.read_bytes() == b'design'
     with sqlite3.connect(copied_workspace.database_path) as conn:
         assert conn.execute('SELECT output_path FROM design_ppt_jobs').fetchone()[0] == str(copied_design_output)
@@ -5727,7 +5727,7 @@ def test_design_library_ppt_export_selects_scope_and_campaigns_explicitly() -> N
     assert 'id="ds-ppt-dataset-city"' in template
     assert 'data-multiselect-preset-label="Main Cities"' not in template and 'data-multiselect-preset-values' not in template
     assert "'main_cities': dashboard_main_cities | default([])" in template
-    assert '>Select Design Scope and Filters<' in template
+    assert '>Select PPT Design Scope and Filters<' in template
     assert 'id="ds-ppt-date-from"' in template
     assert 'id="ds-ppt-date-to"' in template
     # The dates are filters: below Campaigns in Main Design Filters, after the Scope.
@@ -6824,7 +6824,7 @@ def test_delete_all_reports_removes_orphaned_output_directories(client, ppt_repo
 
     login_super(client)
     reports_root = Path(app_module.settings.output_dir) / 'reports' / 'reports-old'
-    design_output = Path(app_module.settings.output_dir) / 'reports' / 'designs' / 'kept.pptx'
+    design_output = Path(app_module.settings.output_dir) / 'reports' / 'ppt-designs' / 'kept.pptx'
     design_output.parent.mkdir(parents=True, exist_ok=True)
     design_output.write_bytes(b'design')
     orphaned = reports_root / 'report-without-job' / 'report-charts'

@@ -45,7 +45,7 @@ Stored below `APP_DATA_DIR/workspaces/<workspace>/`:
 
 - `<workspace>.db`: datasets, profiles, audit events, Design definitions and selections, generated jobs, Auto-calculated Fields, complete Report Templates in `report_templates`, and materialised reporting rows.
 - `input/`: uploaded source files.
-- `output/reports/designs/`: Design PowerPoint jobs and their persistent PNG, tooltip and Canvas-model assets.
+- `output/reports/ppt-designs/`: Design PowerPoint jobs and their persistent PNG, tooltip and Canvas-model assets.
 - `output/reports/cdr-analysis/`: CDR Analysis PowerPoint and Word exports.
 - `output/reports/network-insights/`: Summary Network Insights PowerPoint and Word exports.
 - `output/reports/reports-old/`: PPT Reporting (old) PowerPoint reports and their PNG charts.
@@ -262,7 +262,7 @@ output/reports/reports-charts-old/<generation>/
 Design PowerPoint generations use the separate `design_ppt_jobs` table because they preserve a saved Design identity and its exact applied definition. Each job records its CDR selection, dates, NR Mode, scope, adaptive filters, preview fingerprint and progress. Its output contains the PPTX plus persistent PNG, tooltip and Canvas-model assets:
 
 ```text
-output/reports/designs/<timestamp - design-name>/
+output/reports/ppt-designs/<timestamp - design-name>/
 ```
 
 The Design jobs UI supports stop, retry, relaunch and deletion. A completed job can be reopened through Charts Panel without rerendering its charts, and its Filtered Chart Dataset replays the saved selection directly against the combined CDR table used at generation time.

@@ -1257,7 +1257,7 @@ def test_designs_lifecycle_and_layout(client, ppt_reporting_old):
     assert 'id="ds-refresh"' not in page.text
     assert '>Import Design<' in page.text
     assert 'Total Designs: 0' in page.text
-    assert '>Design Scope & Filters<' in page.text
+    assert '>PPT Design Scope & Filters<' in page.text
     assert 'id="ds-active-design-heading">Design Filters<' in page.text
     filter_panel = page.text.split('id="ds-filter-panel"', 1)[1].split('>', 1)[0]
     assert ' open' in filter_panel
@@ -1266,7 +1266,7 @@ def test_designs_lifecycle_and_layout(client, ppt_reporting_old):
     assert 'id="ds-ppt-dataset-overlay"' in page.text
     assert 'id="ds-ppt-dataset-choices"' not in page.text
     assert 'id="ds-ppt-dataset-scope"' in page.text
-    assert '>Select Design Scope and Filters<' in page.text
+    assert '>Select PPT Design Scope and Filters<' in page.text
     # The PPT dialog groups the Scope above the Design Filters: the Campaign (which chooses the CDRs) first, then the
     # dates, which are filters, then the other filters.
     universe_group = page.text.index('class="ds-ppt-group ds-ppt-universe-group"')
@@ -1294,9 +1294,9 @@ def test_designs_lifecycle_and_layout(client, ppt_reporting_old):
     assert '>Dataset Universe<' not in page.text
     assert '>Comparison &amp; CDRs<' in page.text
     assert '>Select Design Filters<' in page.text
-    assert page.text.index('>Comparison &amp; CDRs<') < page.text.index('>Design Scope<')
+    assert page.text.index('>Comparison &amp; CDRs<') < page.text.index('>PPT Design Scope<')
     assert page.text.index('>Select Design Filters<') < page.text.index('>Default Filters<')
-    assert '>Design Scope<' in page.text
+    assert '>PPT Design Scope<' in page.text
     assert '>Select Comparison Scope<' in page.text
     # The Date filters open the Default Filters.
     assert page.text.index('class="ds-scope-control"') < page.text.index('>Default Filters<') < page.text.index('id="ds-sources"') < page.text.index('id="ds-default-facets"')
@@ -1699,7 +1699,7 @@ def test_designs_lifecycle_and_layout(client, ppt_reporting_old):
     assert 'if (next.length === current.length && next.every(value => current.includes(value))) return;' in design_script
     assert 'function filterChanged() {' in design_script
     assert "? 'Scope, date and filter changes are ready to apply.'" in design_script
-    assert ": 'The Design Scope, dates and filters are applied.'" in design_script
+    assert ": 'The PPT Design Scope, dates and filters are applied.'" in design_script
     assert 'if (preparing && cached && currentFilterState !== preparingFilterState)' not in design_script
     assert "status('Restored the previously prepared filters.');" in design_script
     assert "const payload = await api('/filter-options', 'POST', {definition, field});" in design_script
@@ -2204,7 +2204,7 @@ def test_ready_design_exports_ppt_and_persistent_chart_files(client, monkeypatch
         output_path.name,
     )
     assert output_path.parent.name == output_path.stem
-    assert output_path.parent.parent == Path(core.repository.db_path).parent / 'output' / 'reports' / 'designs'
+    assert output_path.parent.parent == Path(core.repository.db_path).parent / 'output' / 'reports' / 'ppt-designs'
     assert len(list(charts_dir.glob('*.png'))) == 3
     assert len(list(charts_dir.glob('*.hover.json'))) == 3
     assert len(list(charts_dir.glob('*.model.json'))) == 3
@@ -3082,7 +3082,7 @@ def test_design_viewer_scope_selector_confirms_before_rerendering():
     script = (root / 'static/js/ppt_designer.js').read_text(encoding='utf-8')
 
     assert template.index('id="ds-viewer-scope"') < template.index('id="ds-floating-filters"')
-    assert "title: 'Change Design Scope', confirmLabel: 'Change Scope', tone: 'warning'" in script
+    assert "title: 'Change PPT Design Scope', confirmLabel: 'Change Scope', tone: 'warning'" in script
     assert "if (!accepted) { control.value = current; return; }" in script
     assert "await preparePart();" in script
     assert "for (const id of ['ds-scope', 'ds-ppt-dataset-scope', 'ds-viewer-scope'])" in script

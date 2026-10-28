@@ -175,7 +175,7 @@ The definition can be opened repeatedly, duplicated, exported or moved with its 
 - Open the definition editor or enter the prepared viewer directly from the Design library.
 - Preserve the last open Design and page position within the browser session.
 
-### Design Scope & Filters
+### PPT Design Scope & Filters
 
 - Choose the **Campaign** (any campaigns, **Latest campaign**, **Latest 2 campaigns**, **Latest 3 campaigns**, **Latest 4 campaigns**, **Previous campaign** or **All available campaigns**): it chooses the Data, Voice and Speech CDRs of the Design's NR Mode that the combined CDR tables include, listed under **CDRs Used**; then compare operators or persisted vendor mappings.
 - Use automatic date bounds and synchronized default filters for Campaign, Operator, Vendor, Market, Region, City, RAT, Session Type and Call Status, each listing the values of every CDR of the NR Mode that the other filters leave.
@@ -201,7 +201,7 @@ Status cards distinguish data loading, queued data, chart rendering, queued char
 
 ### Generate PPT and review results
 
-**Generate PPT** uses the exact applied definition and continues as a background job. Completed jobs retain their CDRs, dates, scope, filter snapshot, comments, PPTX, PNGs, tooltips and Canvas models under `output/reports/designs`. **PPT Generation Jobs** supports download, chart access, stop, retry, relaunch and deletion. **Charts Panel** filters completed jobs and reopens their charts in the same expanded viewer, including the historical chart dataset.
+**Generate PPT** uses the exact applied definition and continues as a background job. Completed jobs retain their CDRs, dates, scope, filter snapshot, comments, PPTX, PNGs, tooltips and Canvas models under `output/reports/ppt-designs`. **PPT Generation Jobs** supports download, chart access, stop, retry, relaunch and deletion. **Charts Panel** filters completed jobs and reopens their charts in the same expanded viewer, including the historical chart dataset.
 
 The operational guide is [PPT Designer](ppt-designer.md). Template creation, columns, structural slides, supported chart types, filters, aggregations, legends, layouts and colours are documented once in [Workspace Config → Report Template reference](workspace-config.md#report-template-reference).
 

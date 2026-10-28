@@ -101,7 +101,7 @@ Select **New Reporting Job** (or ✎ Edit on a job) to unfold the **Job Editor**
 
 Enable **Send the artifacts by email** and enter the recipients separated by commas, semicolons or lines. Without email, a run only keeps its artifacts for download.
 
-The email subject is the job name with the run time. Its body lists every attached file with its content and filters (datasets, Design Scope and filters, Scoring CDRs, Split by levels and filters, Network Insights selection) and every artifact that could not be generated with its reason.
+The email subject is the job name with the run time. Its body lists every attached file with its content and filters (datasets, PPT Design Scope and filters, Scoring CDRs, Split by levels and filters, Network Insights selection) and every artifact that could not be generated with its reason.
 
 Configure the SMTP server in **Config → Application Config → Email Delivery**; see [Application Config](app-config.md#email-delivery). A run whose attachments exceed the configured size limit fails with a clear message.
 
