@@ -605,8 +605,8 @@ def install_cdr_store(core: Any) -> None:
 def _raw(database_path: Any, kind: str, dataset_id: int, columns: list[str], rowids: list[int] | None = None,
          ) -> tuple[dict[str, tuple[str, Any]], int]:
     """The values of some physical columns of one CDR, in row id order, before pandas types them: for each column
-    ('int', Int64 array), ('real', float64 array with NaN for no value) or ('object', array of Python values), and the
-    number of rows."""
+    ('int', Int64 array), ('real', float64 array with NaN for no value), ('text', array of strings and None) or
+    ('object', array of Python values of several types), and the number of rows."""
     import duckdb
 
     root = store_root(database_path)
@@ -656,7 +656,7 @@ def _raw(database_path: Any, kind: str, dataset_id: int, columns: list[str], row
         else:
             text_values = raw[column].astype(object).to_numpy()
             text_values[pd.isna(text_values)] = None
-            values[column] = ('object', text_values)
+            values[column] = ('text', text_values)
     return values, len(raw)
 
 

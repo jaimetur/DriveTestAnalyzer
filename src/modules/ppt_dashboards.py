@@ -66,9 +66,10 @@ from src.modules.cdr_reporting import (
 )
 from src.modules.report_layouts import canonical_layout_name, compact_grid_layout, grid_layout_name
 
+from src.modules import cdr_store
 from src.modules.dashboard_column_cache import (
-    CacheSource, ColumnCache, Segment, SelectionTerms, StaleSegment, count_rows, default_disk_bytes, default_memory_bytes,
-    read_frame,
+    CacheSource, ColumnCache, Segment, SelectionTerms, StaleSegment, build_from_copies, count_rows, default_disk_bytes,
+    default_memory_bytes, read_frame,
 )
 from src.modules.rf_catalog_source import RF_CATALOG_FIELDS, rf_source_columns, rf_union_source
 from src.modules.repository import Repository
@@ -5698,11 +5699,16 @@ def install_dashboard_routes(core):
         prefetch = cache_prefetch_expressions(task_repository, source_columns, snapshot.definition)
         cache = workspace_column_cache(snapshot.workspace)
         connect = lambda: reporting_read_connection(database_path)
+        # The CDRs whose columnar copies hold them as they are give their columns from the copies, in memory only.
+        dataset_ids = {segment.dataset_id for segment in segments}
+        builder = None
+        if dataset_ids and dataset_ids <= cdr_store.fresh_copies(task_repository.db_path, dataset_ids):
+            builder = lambda segment, expressions: build_from_copies(task_repository.db_path, segment, expressions)
         for _attempt in range(2):
             try:
                 return read_frame(
                     cache, connect, segments, [(column, quote(column)) for column in selected_columns],
-                    terms, order, prefetch=lambda _source: prefetch,
+                    terms, order, prefetch=lambda _source: prefetch, builder=builder,
                 )
             except StaleSegment:
                 # Rows changed under an unchanged revision: rebuild the CDRs.

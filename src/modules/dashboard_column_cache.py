@@ -483,6 +483,28 @@ class ColumnCache:
                 raise StaleSegment(f'Cached columns of dataset {segment.dataset_id} are misaligned.')
             return parts
 
+    def built_parts(
+        self, segment: Segment, expressions: Iterable[str],
+        builder: Callable[[Segment, list[str]], dict[str, tuple] | None],
+    ) -> dict[str, tuple] | None:
+        """The parts of physical expressions for one CDR from ``builder`` (the columnar copy of the CDR), kept in memory
+        only; None when the builder cannot give them."""
+        wanted = list(dict.fromkeys([ROWID, ORDER_DATE, *expressions]))
+        prefix = f'copy\0{segment.source.table}\0{segment.dataset_id}\0{segment.version}\0'
+        with self._segment_lock(segment):
+            parts = {expression: part for expression in wanted if (part := self._recall(prefix + expression)) is not None}
+            missing = [expression for expression in wanted if expression not in parts]
+            if missing:
+                built = builder(segment, [expression for expression in missing if expression not in {ROWID, ORDER_DATE}])
+                if built is None:
+                    return None
+                for expression, part in built.items():
+                    self._remember(prefix + expression, part)
+                parts.update({expression: built[expression] for expression in missing})
+            if len({part_length(part) for part in parts.values()}) > 1:
+                raise StaleSegment(f'Columns of dataset {segment.dataset_id} are misaligned.')
+            return parts
+
     def ensure(
         self,
         connect: Callable[[], sqlite3.Connection],
@@ -568,8 +590,12 @@ def read_frame(
     terms: SelectionTerms,
     order: str,
     prefetch: Callable[[CacheSource], Iterable[str]] | None = None,
+    builder: Callable[[Segment, list[str]], dict[str, tuple] | None] | None = None,
 ) -> pd.DataFrame:
     """Assemble the frame SQLite would return for the selection, in ``order``.
+
+    With ``builder`` the parts of each CDR come from its columnar copy (see build_from_copies), and from SQLite only
+    when the builder cannot give them.
 
     ``columns`` holds ``(output name, expression)`` pairs over each source's
     column namespace. ``order`` is ``dataset_rowid`` (CDRs ascending, then table
@@ -586,8 +612,10 @@ def read_frame(
         source = segment.source
         physical_columns = [source.physical(expression) for _name, expression in columns]
         physical_terms = [source.physical(expression) for expression in terms.expressions()]
-        extra = [source.physical(expression) for expression in (prefetch(source) if prefetch else ())]
-        parts = cache.segment_parts(connect, segment, [*physical_columns, *physical_terms], extra)
+        parts = cache.built_parts(segment, [*physical_columns, *physical_terms], builder) if builder else None
+        if parts is None:
+            extra = [source.physical(expression) for expression in (prefetch(source) if prefetch else ())]
+            parts = cache.segment_parts(connect, segment, [*physical_columns, *physical_terms], extra)
         positions = np.flatnonzero(selection_mask(parts, source, terms, segment.dataset_id))
         if order == 'dataset_date_rowid' and len(positions):
             ranks = _date_ranks(parts[ORDER_DATE])[positions]
@@ -668,3 +696,169 @@ def default_memory_bytes() -> int:
 
 def default_disk_bytes() -> int:
     return int(os.environ.get('DRIVETEST_ANALYZER_COLUMN_CACHE_DISK_MB') or 8192) * 1024 ** 2
+
+
+# ---------------------------------------------------------------------------
+# Parts from the columnar copies of the CDRs
+
+
+def _typed_part(raw: tuple[str, Any], order: np.ndarray) -> tuple:
+    """The part ``encode_values`` makes of a column of SQLite values, from a column of a copy (see cdr_store._raw) in the
+    rows of ``order``, without going through each value: reals, integers, or text as codes and categories."""
+    tag, values = raw
+    if tag == 'text':
+        # Strings and None only: their codes and categories, as encode_values gives them.
+        strings = np.asarray(values, dtype=object)[order]
+        if not len(strings) or pd.isna(strings).all():
+            return ('none', len(order))
+        codes, categories = pd.factorize(strings)
+        return ('str', codes.astype(np.int32), np.asarray(categories, dtype=object))
+    if tag == 'real':
+        array = np.asarray(values, dtype=np.float64)[order]
+        missing = np.isnan(array)
+        if missing.all():
+            return ('none', len(order))
+        if not missing.any():
+            return ('float', array)
+        # Reals with a missing value are kept as objects, as encode_values keeps them.
+        objects = array.astype(object)
+        objects[missing] = None
+        return encode_values(objects)
+    if tag == 'int':
+        mask = values.isna().to_numpy()[order]
+        if mask.all():
+            return ('none', len(order))
+        integers = values.fillna(0).astype('int64').to_numpy()[order]
+        return ('intnull', integers, mask) if mask.any() else ('int', integers)
+    return encode_values(np.asarray(values, dtype=object)[order])
+
+
+def build_from_copies(database_path: str | Path, segment: Segment, expressions: Sequence[str]) -> dict[str, tuple] | None:
+    """The parts ``ColumnCache._build`` reads from a combined table for one CDR, from the columnar copy of the CDR: the
+    combined row ids of its rows, their event date and each expression. A bare column is read from the copy (the column
+    of the CDR with the same identity). An expression of one column is evaluated by SQLite once for each value of the
+    column, an expression of several columns on a table in memory with the columns it reads. None when the combined
+    table and the copy do not hold the same rows, or an expression names no column of the combined table."""
+    from src.modules import cdr_store
+    from src.modules.column_names import column_identity
+
+    source = segment.source
+    dataset_id = int(segment.dataset_id)
+    database = f'file:{Path(str(database_path)).resolve()}?mode=ro'
+    with sqlite3.connect(database, uri=True, timeout=30) as connection:
+        mapping = connection.execute(f'SELECT rowid, "source_row_id" FROM {quote_identifier(source.table)} '
+                                     'WHERE "dataset_id" = ? ORDER BY rowid', (dataset_id,)).fetchall()
+        combined = {str(row[1]).casefold() for row in connection.execute(f'PRAGMA table_info({quote_identifier(source.table)})')}
+    manifest = cdr_store.read_manifest(cdr_store.manifest_file(cdr_store.store_root(database_path), source.kind, dataset_id))
+    if manifest is None or len(mapping) != int(manifest['rows']):
+        return None
+    by_identity = {column_identity(column): column for column, _type in manifest['columns']}
+
+    def copy_column(name: str) -> str | None:
+        """The column of the copy a combined column reads (its own values, or what the copy adds)."""
+        identity = column_identity(name)
+        if identity == 'datasetid':
+            return cdr_store.DATASET_ID
+        if identity == 'sourcerowid':
+            return cdr_store.ROWID
+        if identity == 'nrmode' and identity not in by_identity:
+            return cdr_store.NR_MODE
+        return by_identity.get(identity)
+
+    def referenced(expression: str) -> list[str]:
+        return list(dict.fromkeys(match.group(1).replace('""', '"') for match in _TOKEN_PATTERN.finditer(expression)
+                                  if match.group(1) is not None))
+
+    def bare(expression: str, name: str) -> bool:
+        """Whether an expression is the column alone, maybe in parentheses (as the RF union projections give it)."""
+        inner = expression.strip()
+        while inner.startswith('(') and inner.endswith(')'):
+            inner = inner[1:-1].strip()
+        return inner == quote_identifier(name)
+
+    order_date = ORDER_DATE_SQL if source.has_event_time else None
+    wanted_expressions = list(dict.fromkeys([*expressions, *([order_date] if order_date else [])]))
+    names = list(dict.fromkeys(name for expression in wanted_expressions for name in referenced(expression)))
+    # A quoted name that is no column of the combined table is a string for SQLite: such an expression is read there.
+    if any(name.casefold() not in combined for name in names):
+        return None
+    columns = {name: copy_column(name) for name in names}
+    raw, _length = cdr_store._raw(database_path, source.kind, dataset_id,
+                                  list(dict.fromkeys([cdr_store.ROWID, *(column for column in columns.values() if column)])))
+    copy_rowids = cdr_store._python_values(raw[cdr_store.ROWID])
+    position = {int(rowid): index for index, rowid in enumerate(copy_rowids)}
+    try:
+        order = np.fromiter((position[int(source_row)] for _rowid, source_row in mapping), dtype=np.int64, count=len(mapping))
+    except (KeyError, TypeError, ValueError):
+        return None
+    length = len(mapping)
+    missing = ('object', np.full(length, None, dtype=object))
+
+    decoded: dict[str, np.ndarray] = {}
+
+    def column_values(name: str) -> np.ndarray:
+        """The Python values of a combined column for the rows of the CDR, in combined order."""
+        if name not in decoded:
+            column = columns[name]
+            decoded[name] = cdr_store._python_values(raw[column])[order] if column else np.full(length, None, dtype=object)
+        return decoded[name]
+
+    distinct: dict[str, tuple[np.ndarray, list[Any]]] = {}
+
+    def distinct_values(name: str) -> tuple[np.ndarray, list[Any]]:
+        """The code of each row and the distinct values (with their Python types) of a combined column."""
+        if name not in distinct:
+            values = column_values(name)
+            column = columns[name]
+            if column is None or raw[column][0] in {'text', 'int'}:
+                # One type (or None): the values themselves tell them apart.
+                codes, uniques = pd.factorize(values, use_na_sentinel=False)
+                uniques = [None if value is None or value != value else value for value in uniques]
+            else:
+                keys = np.fromiter(((type(value).__name__, value) for value in values), dtype=object, count=length)
+                codes, unique_keys = pd.factorize(keys, use_na_sentinel=False)
+                uniques = [key[1] for key in unique_keys]
+            distinct[name] = (codes, uniques)
+        return distinct[name]
+
+    built = {ROWID: encode_values(np.asarray([rowid for rowid, _source_row in mapping], dtype=object))}
+    results: dict[str, tuple] = {}
+    several: list[str] = []
+    for expression in wanted_expressions:
+        names_of = referenced(expression)
+        if len(names_of) == 1 and bare(expression, names_of[0]):
+            column = columns[names_of[0]]
+            results[expression] = _typed_part(raw[column], order) if column else encode_values(missing[1])
+        elif len(names_of) == 1:
+            # SQLite evaluates the expression once for each distinct value (with its Python type) of the column.
+            codes, uniques = distinct_values(names_of[0])
+            memory = sqlite3.connect(':memory:')
+            try:
+                memory.execute(f'CREATE TABLE {quote_identifier(source.table)} ("__memory_rowid" INTEGER PRIMARY KEY, '
+                               f'{quote_identifier(names_of[0])})')
+                memory.executemany(f'INSERT INTO {quote_identifier(source.table)} VALUES (?, ?)', enumerate(uniques))
+                evaluated = [row[0] for row in memory.execute(
+                    f'SELECT {expression} FROM {quote_identifier(source.table)} ORDER BY "__memory_rowid"').fetchall()]
+            finally:
+                memory.close()
+            results[expression] = encode_values(np.asarray(evaluated, dtype=object)[codes] if length else np.empty(0, dtype=object))
+        else:
+            several.append(expression)
+    if several:
+        several_names = list(dict.fromkeys(name for expression in several for name in referenced(expression)))
+        memory = sqlite3.connect(':memory:')
+        try:
+            memory.execute(f'CREATE TABLE {quote_identifier(source.table)} ("__memory_rowid" INTEGER PRIMARY KEY'
+                           + ''.join(f', {quote_identifier(name)}' for name in several_names) + ')')
+            memory.executemany(f'INSERT INTO {quote_identifier(source.table)} VALUES ({", ".join("?" * (len(several_names) + 1))})',
+                               zip(range(length), *(column_values(name) for name in several_names)))
+            rows = memory.execute(f'SELECT {", ".join(several)} FROM {quote_identifier(source.table)} '
+                                  'ORDER BY "__memory_rowid"').fetchall()
+        finally:
+            memory.close()
+        content = lib.to_object_array_tuples(rows) if rows else np.empty((0, len(several)), dtype=object)
+        for index, expression in enumerate(several):
+            results[expression] = encode_values(np.ascontiguousarray(content[:, index]))
+    built.update({expression: results[expression] for expression in expressions})
+    built[ORDER_DATE] = results[order_date] if order_date else encode_values(np.full(length, None, dtype=object))
+    return built

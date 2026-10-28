@@ -247,3 +247,49 @@ def test_the_rows_of_a_cdr_with_filters_are_the_same_from_its_copy(client, tmp_p
 
     assert reads == [data] and copied_rows['Operator'].tolist() == ['EE', 'Vodafone UK']
     pd.testing.assert_frame_equal(copied_rows, sqlite_rows, check_exact=True)
+
+
+def test_the_dashboard_columns_of_the_copies_are_those_of_the_combined_table(client, tmp_path):
+    import numpy as np
+    import sqlite3
+    from src.modules import dashboard_column_cache as dcc
+
+    first = add_cdr(tmp_path, 'first.csv', 'data', pd.DataFrame({
+        'Operator': ['EE', ' o2 ', 'EE'], 'Call Status': ['Completed', 'Failed', None], 'Mean_Data_Rate': [12.5, None, 3],
+        'event_start_time': ['2026-02-24 10:00:00', '2026-02-23 10:00:00', None]}))
+    second = add_cdr(tmp_path, 'second.csv', 'data', pd.DataFrame({
+        'Operator': ['Vodafone UK'], 'Call_Status': ['Dropped'], 'event_start_time': ['2026-02-22 08:00:00']}), nr_mode='SA')
+    requested = ['Operator', 'Call_Status', 'Mean_Data_Rate', 'event_start_time', 'NR_Mode']
+    for dataset_id in (first, second):
+        core.repository.copy_dataset_rows_to_reporting(dataset_id, 'data', requested)
+    copy_everything()
+    database = core.repository.db_path
+    connect = lambda: sqlite3.connect(database)
+    source = dcc.CacheSource('data', 'reporting_rows_data', (), True)
+    # The combined table names each column as the first CDR that had it ('Call Status' for both CDRs here).
+    status = next(column for column in core.repository.list_reporting_row_columns('data') if column.casefold().startswith('call'))
+    expressions = ['"Operator"', f'"{status}"', '"Mean_Data_Rate"', '"NR_Mode"', '"dataset_id"',
+                   'LOWER(TRIM(CAST("Operator" AS TEXT)))', 'date(CAST("event_start_time" AS TEXT))']
+    cache = dcc.ColumnCache(tmp_path / 'cache', memory_bytes=10 ** 8, disk_bytes=10 ** 8)
+
+    for dataset_id in (first, second):
+        segment = dcc.Segment(source, dataset_id, 'v')
+        sqlite_parts = cache._build(connect, segment, [dcc.ROWID, dcc.ORDER_DATE, *expressions], None)
+        copy_parts = dcc.build_from_copies(database, segment, expressions)
+        for expression, part in sqlite_parts.items():
+            assert copy_parts[expression][0] == part[0], expression
+            assert list(dcc.decode_objects(copy_parts[expression], np.arange(dcc.part_length(part)))) == list(
+                dcc.decode_objects(part, np.arange(dcc.part_length(part)))), expression
+    # The frames a chart reads, with a filter, in every order, are the same.
+    segments = [dcc.Segment(source, dataset_id, 'v') for dataset_id in (first, second)]
+    terms = dcc.SelectionTerms(values=(('LOWER(TRIM(CAST("Operator" AS TEXT)))', frozenset({'ee', 'o2', 'vodafone uk'})),))
+    columns = [(name, f'"{name}"') for name in ('Operator', status, 'Mean_Data_Rate', 'NR_Mode')]
+    for order in dcc.ORDER_MODES:
+        from_sqlite = dcc.read_frame(dcc.ColumnCache(tmp_path / f'sqlite-{order}', memory_bytes=10 ** 8, disk_bytes=10 ** 8),
+                                     connect, segments, columns, terms, order)
+        from_copies = dcc.read_frame(cache, connect, segments, columns, terms, order,
+                                     builder=lambda segment, wanted: dcc.build_from_copies(database, segment, wanted))
+        pd.testing.assert_frame_equal(from_copies, from_sqlite, check_exact=True)
+    assert not (tmp_path / 'cache').exists()
+    # A name that is no column of the combined table is read by SQLite (it reads it as a string there).
+    assert dcc.build_from_copies(database, segments[0], ['"No such column"']) is None
