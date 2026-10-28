@@ -6482,6 +6482,25 @@ def prepare_catalog_chart_preview_frame(
     return _exclude_chart_values(filtered, render_entry, spec, multivendor), render_entry
 
 
+def _value_tests(series: pd.Series) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Whether each value of a measure is populated (not missing, nor blank text), is a number and is zero. Text is
+    tested once per distinct value (each value gives the same answers wherever it is)."""
+    if series.dtype == object and pd.api.types.infer_dtype(series, skipna=True) == "string":
+        codes, uniques = pd.factorize(series)
+        distinct = pd.Series(np.asarray(uniques, dtype=object), dtype=object)
+        numeric = pd.to_numeric(distinct, errors="coerce")
+        # The last place stands for the missing values (code -1).
+        populated = np.append(distinct.astype(str).str.strip().ne("").to_numpy(dtype=bool), False)
+        has_number = np.append(numeric.notna().to_numpy(dtype=bool), False)
+        zero = np.append((numeric.notna() & numeric.eq(0)).to_numpy(dtype=bool), False)
+        return populated[codes], has_number[codes], zero[codes]
+    # A number is never blank text, so numeric columns only need notna().
+    populated = series.notna() if series.dtype.kind in "iufb" else series.notna() & series.astype(str).str.strip().ne("")
+    numeric = pd.to_numeric(series, errors="coerce")
+    return (populated.to_numpy(dtype=bool), numeric.notna().to_numpy(dtype=bool),
+            (numeric.notna() & numeric.eq(0)).to_numpy(dtype=bool))
+
+
 def _exclude_chart_values(
     frame: pd.DataFrame,
     entry: CatalogEntry,
@@ -6502,18 +6521,15 @@ def _exclude_chart_values(
         colour_metric = _column(frame, spec.get("colour_metric", ()))
         if colour_metric:
             columns.append(colour_metric)
-    mask = pd.Series(True, index=frame.index)
+    mask = np.ones(len(frame), dtype=bool)
     for column in dict.fromkeys(columns):
-        series = frame[column]
-        # A number is never blank text, so numeric columns only need notna().
-        populated = series.notna() if series.dtype.kind in "iufb" else series.notna() & series.astype(str).str.strip().ne("")
-        numeric = pd.to_numeric(series, errors="coerce")
+        populated, has_number, zero = _value_tests(frame[column])
         if entry.exclude_null_empty:
             mask &= populated
             if column == _column(frame, spec.get("colour_metric", ())):
-                mask &= numeric.notna()
+                mask &= has_number
         if entry.exclude_zero:
-            mask &= ~(numeric.notna() & numeric.eq(0))
+            mask &= ~zero
     result = frame.loc[mask].copy()
     result.attrs = frame.attrs.copy()
     return result
