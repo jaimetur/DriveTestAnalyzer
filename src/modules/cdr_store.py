@@ -147,6 +147,8 @@ def revision(cdr: dict[str, Any], columns: list[str], version: int) -> str:
 def fresh_copies(database_path: Any, dataset_ids: Any) -> set[int]:
     """The CDRs among ``dataset_ids`` whose copy holds their rows as they are now."""
     root = store_root(database_path)
+    if not root.is_dir():
+        return set()
     with sqlite3.connect(database_path, timeout=30) as connection:
         cdrs = _ready_cdrs(connection)
         versions = _versions(connection)
