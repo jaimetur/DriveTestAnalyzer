@@ -1528,8 +1528,11 @@
     const slide = findSlide(editableSlideSet(), slideId);
     const grid = layoutOf(slide?.layout)?.grid;
     if (!slide || !grid) return;
+    // What each place holds now, named on the board.
+    const labels = [];
+    visibleElements(slide).forEach((element, index) => { labels[placeOf(element, index)] = elementLabel(element); });
     window.PlacesEditor.open({
-      title: slide.title || 'Slide', grid: slide.options?.grid || null, rows: grid[0], columns: grid[1],
+      title: slide.title || 'Slide', grid: slide.options?.grid || null, rows: grid[0], columns: grid[1], labels,
       onSave: guarded(async result => {
         const capacity = result ? result.geometry.length : (layoutOf(slide.layout)?.places || []).length;
         const visible = visibleElements(slide);

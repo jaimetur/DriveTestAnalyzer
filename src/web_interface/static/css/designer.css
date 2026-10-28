@@ -461,3 +461,18 @@
 .ppt-designer label.ds-design-check > input[type="checkbox"]:checked::after { transform: translateX(.95rem); }
 .ppt-designer label.ds-design-check > input[type="checkbox"]:focus-visible { outline: 2px solid rgba(122, 75, 179, .45); outline-offset: 2px; }
 .ppt-designer label.ds-design-check > input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
+/* Adjust places: the board as the chart area of the slide, each place with its number and what it holds, the lines to drag. */
+.ppt-designer .ds-layout-board { background-color: #faf8fd; background-image: linear-gradient(rgba(122, 75, 179, .06) 1px, transparent 1px),
+  linear-gradient(90deg, rgba(122, 75, 179, .06) 1px, transparent 1px); background-size: 24px 24px; }
+.ppt-designer .ds-layout-place { gap: .25rem; padding: .5rem; border: 1.5px solid #d8cdea; border-radius: 10px; background: rgba(255, 255, 255, .92); box-shadow: 0 1px 2px rgba(36, 22, 61, .06);
+  color: #24163d; cursor: pointer; transition: border-color .12s, box-shadow .12s, background .12s; }
+.ppt-designer .ds-layout-place:hover { border-color: #9a7cc8; box-shadow: 0 4px 12px rgba(36, 22, 61, .1); }
+.ppt-designer .ds-layout-number { display: grid; place-items: center; width: 1.6rem; height: 1.6rem; border-radius: 50%; background: #efe8f8; color: #5b3a92; font-size: .8rem; font-weight: 800; }
+.ppt-designer .ds-layout-holds { max-width: 100%; overflow: hidden; font-size: .78rem; font-weight: 700; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
+.ppt-designer .ds-layout-holds.is-free { color: #9a8db0; font-weight: 600; font-style: italic; }
+.ppt-designer .ds-layout-span { padding: .05rem .45rem; border-radius: 999px; background: #f4f0f9; color: #6b6178; font-size: .66rem; font-weight: 750; }
+.ppt-designer .ds-layout-place.is-selected .ds-layout-number { background: #5b35a0; color: #fff; }
+.ppt-designer .ds-layout-divider::after { border-radius: 999px; background: #7a4bb3; opacity: .35; }
+.ppt-designer .ds-layout-divider.is-column::after { top: calc(50% - 1.4rem); bottom: auto; height: 2.8rem; left: 4px; width: 6px; }
+.ppt-designer .ds-layout-divider.is-row::after { left: calc(50% - 1.4rem); right: auto; width: 2.8rem; top: 4px; height: 6px; }
+.ppt-designer .ds-layout-divider:hover::after, .ppt-designer .ds-layout-divider:active::after { opacity: 1; }

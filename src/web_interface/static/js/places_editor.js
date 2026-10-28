@@ -47,7 +47,8 @@
   }
   const covers = (area, row, column) => row >= area[0] && row < area[0] + area[2] && column >= area[1] && column < area[1] + area[3];
 
-  /** Open the editor. options: {title, grid: {rows, columns, areas} or null, rows, columns (of the layout), onSave(result)}
+  /** Open the editor. options: {title, grid: {rows, columns, areas} or null, rows, columns (of the layout), labels (what each
+   *  place holds now, by place), onSave(result)}
    *  where result is {grid, geometry, mapping: old place -> new place (or -1 when merged away)} or null to reset. */
   function open(options) {
     let spec = options.grid && Array.isArray(options.grid.areas) ? structuredClone(options.grid) : gridSpec(options.rows || 1, options.columns || 1);
@@ -116,6 +117,9 @@
       window.addEventListener('pointermove', move);
       window.addEventListener('pointerup', stop);
     }
+    // What a place holds: the elements of the places of before whose top-left cell it covers.
+    const originalAreas = [...original.areas].sort((left, right) => left[0] - right[0] || left[1] - right[1]);
+    const holds = area => originalAreas.flatMap((before, index) => (covers(area, before[0], before[1]) && options.labels?.[index] ? [options.labels[index]] : []));
     function paint() {
       const rects = geometry(spec);
       board.replaceChildren(
@@ -131,7 +135,9 @@
                 selected = new Set(within(bounds).inside);
               } else selected = selected.has(index) && selected.size === 1 ? new Set() : new Set([index]);
               paint();
-            }}, h('span', {text: String(index + 1)}), area[2] > 1 || area[3] > 1 ? h('small', {text: `${area[2]} × ${area[3]}`}) : null);
+            }}, h('span', {class: 'ds-layout-number', text: String(index + 1)}),
+            holds(area).length ? h('span', {class: 'ds-layout-holds', text: holds(area).join(' + ')}) : h('span', {class: 'ds-layout-holds is-free', text: 'Free place'}),
+            area[2] > 1 || area[3] > 1 ? h('small', {class: 'ds-layout-span', text: `${area[2]} × ${area[3]} cells`}) : null);
         }),
         ...spec.columns.slice(0, -1).map((_size, index) => h('span', {class: 'ds-layout-divider is-column', style: {left: `${sum(spec.columns.slice(0, index + 1)) * 100}%`},
           title: 'Drag to resize the columns', onpointerdown: event => startDrag('columns', index, event)})),
