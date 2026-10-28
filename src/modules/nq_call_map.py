@@ -341,11 +341,12 @@ _TIMELINE_ITEM = re.compile(r'([^()>,\[\]]+?)\s*\(\s*(\d+(?:\.\d+)?)\s*\)')
 
 
 def _timeline_band(name: str) -> str:
-    """A band of a RAT timeline (5G_NR_N1, LTE_800, GSM_900) as _cell_band names it; '' for No service and the others."""
+    """A band of a RAT timeline (5G_NR_N1, LTE_800, LTE_TDD_2300, GSM_900) as _cell_band names it; '' for No service and the
+    others."""
     token = re.sub(r'\s+', '_', name.strip().upper())
     if found := re.fullmatch(r'5G_NR_N(\d+)', token):
         return f'NR n{found.group(1)}'
-    if found := re.fullmatch(r'(LTE|GSM|UMTS)_(\d+)', token):
+    if found := re.fullmatch(r'(LTE|GSM|UMTS)_(?:TDD_|FDD_)?(\d+)', token):
         return f'{found.group(1)} {found.group(2)}'
     return ''
 
@@ -362,15 +363,17 @@ def _cell_band(technology: str, band: str) -> str:
     return f'{technology} {number}' if technology in ('GSM', 'UMTS') else ''
 
 
-def handover_points(steps: list[dict[str, Any]], timeline: Any, start: tuple[float, float] | None,
-                    end: tuple[float, float] | None, bands: dict[str, str] | None = None) -> list[dict[str, Any]]:
-    """Where each handover of a call took place along its way from where it started to where it ended, an estimate: the CDR
-    records its cells in order and, in its RAT timeline, how long it stayed on each band, not where it changed cell. Each
-    cell is matched to the band of the timeline it was on (``bands``: the band of each cell identity in the cell trace) and
-    the cells of a band share its time, so that a handover is placed where the call was when it took place, at an even
-    speed; when the timeline does not match the cells, the handovers are spread evenly in their order. Without where the call
-    started and ended (Data tests give only their start) there is no way to place them."""
-    if len(steps) < 2 or not start or not end:
+def handover_points(steps: list[dict[str, Any]], timeline: Any, way: list[tuple[float, float]] | None,
+                    bands: dict[str, str] | None = None) -> list[dict[str, Any]]:
+    """Where each handover of a call took place along its way (``way``: from where it started to where it ended, or the way
+    simulated of a Data test, see simulated_way), an estimate: the CDR records its cells in order and, in its RAT timeline,
+    how long it stayed on each band, not where it changed cell. Each cell is matched to the band of the timeline it was on
+    (``bands``: the band of each cell identity in the cell trace) and the cells of a band share its time, so that a handover
+    is placed where the call was when it took place, at an even speed (``fraction``: the share of its way behind it); when
+    the timeline does not match the cells, the handovers are spread evenly in their order. Without a way there is no way to
+    place them."""
+    way = [point for point in way or [] if point]
+    if len(steps) < 2 or len(way) < 2:
         return []
     segments = [(_timeline_band(name), float(seconds)) for name, seconds in _TIMELINE_ITEM.findall(str(timeline or ''))]
     total = sum(seconds for _band, seconds in segments)
@@ -398,8 +401,19 @@ def handover_points(steps: list[dict[str, Any]], timeline: Any, start: tuple[flo
             fractions, by = [time / total for time in times[1:]], 'time'
     if fractions is None:
         fractions = [index / len(steps) for index in range(1, len(steps))]
-    return [{'order': step['order'], 'latitude': round(start[0] + (end[0] - start[0]) * fraction, 6),
-             'longitude': round(start[1] + (end[1] - start[1]) * fraction, 6), 'by': by}
+    lengths = [0.0]
+    for first, second in zip(way, way[1:]):
+        lengths.append(lengths[-1] + distance_km(first, second))
+
+    def along(fraction: float) -> tuple[float, float]:
+        at = lengths[-1] * fraction
+        index = next((index for index in range(1, len(way)) if lengths[index] >= at), len(way) - 1)
+        share = (at - lengths[index - 1]) / ((lengths[index] - lengths[index - 1]) or 1)
+        first, second = way[index - 1], way[index]
+        return first[0] + (second[0] - first[0]) * share, first[1] + (second[1] - first[1]) * share
+
+    return [{'order': step['order'], 'latitude': round(along(fraction)[0], 6), 'longitude': round(along(fraction)[1], 6), 'by': by,
+             'fraction': round(fraction, 4)}
             for step, fraction in zip(steps[1:], fractions, strict=True)]
 
 
@@ -1526,10 +1540,6 @@ def call_map(repository: Any, call_key: str, *, radius_km: Any = None, tests: st
     _column, trace_text = _first_value(row, columns, fields_profile.rf_field_aliases['cell_trace'].get(service, ()))
     call_cells = labelled_cells(cell_steps(trace_text) or cell_steps(call.get('cell_id')),
                                 {step['cell']: step['inventory']['name'] for step in trace if step.get('inventory') and step['inventory'].get('name')})
-    # Where each handover took place along its way, an estimate by the time on each band of its RAT timeline (Voice).
-    _column, rat_timeline = _first_value(row, columns, ('RAT_Timeline_A', 'RAT_Timeline'))
-    handovers = handover_points(trace, rat_timeline, positions['start'], positions['end'],
-                                {step['cell']: step['band'] for step in cell_steps(trace_text) if step['cell'] and step['band']})
     if leg:
         trace.append(leg)
         if leg.get('inventory'):
@@ -1620,6 +1630,15 @@ def call_map(repository: Any, call_key: str, *, radius_km: Any = None, tests: st
     checks = diagnosis(call, call_radio(service, row, columns, fields_profile), trace, sites, failures, test_points, radius,
                        int(prioritization_settings(repository).get('min_calls') or 2), ran, point, travel)
     drive = drive_context(repository, test_datasets(repository, call, scope), call, point, label, positions['start'])
+    # Its way: from where it started to where it ended, else (a Data test) simulated along the way of its car. Where each
+    # handover took place along it, an estimate by the time on each band of its RAT timeline (that of the A side of a Voice
+    # call, the PCell one of a Data test, which names its bands).
+    way = ({'points': [list(positions['start']), list(positions['end'])], 'by': 'ends'} if positions['start'] and positions['end']
+           else simulated_way(drive.get('route') or [], travelled_m))
+    _column, rat_timeline = _first_value(row, columns, ('RAT_Timeline_A', 'PCell_RAT_Timeline', 'RAT_Timeline'))
+    handovers = handover_points([step for step in trace if step['role'] != 'nr_leg'], rat_timeline,
+                                [tuple(point) for point in way['points']] if way else None,
+                                {step['cell']: step['band'] for step in cell_steps(trace_text) if step['cell'] and step['band']})
     health = site_health(repository, call, serving_site, serving_host, label)
     classes = {
         'rsrp': [{'label': label, 'lower': None if math.isinf(lower) else lower, 'colour': colour} for label, lower, colour in RSRP_CLASSES],
@@ -1642,10 +1661,9 @@ def call_map(repository: Any, call_key: str, *, radius_km: Any = None, tests: st
             # Its serving site (``serving_role``: of the cell that served its end, or its start) and its cells in words.
             'serving_site': serving_site, 'serving_host': serving_host, 'serving_role': serving_role,
             'serving_distance_km': serving_distance, 'cells': call_cells, 'handovers': handovers,
-            # How far a Data test went from where it started (the CDR gives no other place of it), and its way simulated along
-            # the way of its car (else its travelled zone).
-            'travelled_m': travelled_m, 'travelled_s': travel['seconds'],
-            'way': simulated_way(drive.get('route') or [], travelled_m) if not positions['end'] else None,
+            # How far a Data test went from where it started (the CDR gives no other place of it), and its way: from where it
+            # started to where it ended (``by`` ends), else simulated along the way of its car (else its travelled zone).
+            'travelled_m': travelled_m, 'travelled_s': travel['seconds'], 'way': way,
             # The sites where it started and ended (``estimated``: the nearest to it, its cell not in the inventory).
             'ends': {role: {key: end[key] for key in ('site_id', 'network', 'host_network', 'estimated', 'distance_km', 'cell', 'technology')}
                      for role, end in ends.items()},

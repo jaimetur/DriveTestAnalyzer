@@ -191,6 +191,47 @@
     });
   };
 
+  // A winding road (see windingRoad) in the colour of the call: a white edge, a dashed white centre line and an arrow at its
+  // end, or at a share of its length, towards where it went; fainter (``alpha``) for the way of its car before it.
+  const paintRoad = (context, road, {alpha = 1, arrow = 'end'} = {}) => {
+    const trace = () => {
+      context.beginPath();
+      context.moveTo(road[0][0], road[0][1]);
+      for (let index = 1; index < road.length - 1; index += 1) {
+        context.quadraticCurveTo(road[index][0], road[index][1], (road[index][0] + road[index + 1][0]) / 2, (road[index][1] + road[index + 1][1]) / 2);
+      }
+      context.lineTo(road.at(-1)[0], road.at(-1)[1]);
+    };
+    context.save();
+    context.globalAlpha = alpha;
+    context.lineCap = 'round';
+    context.lineJoin = 'round';
+    [[9, '#fff', []], [6.5, COLOURS.path, []], [1.3, '#fff', [5, 6]]].forEach(([width, colour, dash]) => {
+      trace();
+      context.setLineDash(dash);
+      context.lineWidth = width;
+      context.strokeStyle = colour;
+      context.stroke();
+    });
+    context.setLineDash([]);
+    const tip = arrow === 'end' ? road.length - 1 : Math.max(3, Math.round(arrow * (road.length - 1)));
+    const [ex, ey] = road[tip], [bx, by] = road[Math.max(0, tip - 3)];
+    const length = Math.hypot(ex - bx, ey - by) || 1;
+    const [ux, uy] = [(ex - bx) / length, (ey - by) / length];
+    const reach = arrow === 'end' ? 9 : 6;
+    context.beginPath();
+    context.moveTo(ex + ux * reach, ey + uy * reach);
+    context.lineTo(ex - ux * (14 - reach) - uy * 8, ey - uy * (14 - reach) + ux * 8);
+    context.lineTo(ex - ux * (14 - reach) + uy * 8, ey - uy * (14 - reach) - ux * 8);
+    context.closePath();
+    context.fillStyle = COLOURS.path;
+    context.fill();
+    context.lineWidth = 1.5;
+    context.strokeStyle = '#fff';
+    context.stroke();
+    context.restore();
+  };
+
   // One map view of a call (the one in the panel, or the larger one): its canvas, controls, legend and tooltip.
   function createView(card, shared, {expanded = false, onExpand = null, legendHost = null} = {}) {
     card.classList.add('nq-map-card');
@@ -832,52 +873,34 @@
         }
         context.globalAlpha = 1;
       }
-      // Where a Data test went (the CDR gives only where it started and how far it went): its way simulated along the way of
-      // its car, drawn as a winding road with an arrow where it ended; without the way of its car, the zone it can have been in.
-      const way = !call.end && (call.way?.points || []).length > 1 ? windingRoad(call.way.points.map(([latitude, longitude]) => project(latitude, longitude))) : null;
+      // The way of the call as a winding road (its bends a sketch, not its streets): from where it started to where it ended
+      // (a Voice call, an arrow halfway), else, for a Data test (the CDR gives only where it started and how far it went), its
+      // way simulated along the way of its car with an arrow where it ended; before it, fainter, the way of its car from its
+      // test before it. A Data test without the way of its car shows the zone it can have been in instead.
+      const base = (call.way?.points || []).length > 1 ? call.way.points.map(([latitude, longitude]) => project(latitude, longitude)) : null;
+      const way = base ? windingRoad(base) : null;
+      const anchor = route.findIndex((point) => point[2] === 0);
+      if (start && anchor > 0) {
+        const [latitude, longitude, seconds] = route[anchor - 1];
+        const approach = windingRoad([project(latitude, longitude), project(start[0], start[1])]);
+        if (approach.length > 2) {
+          paintRoad(context, approach, {alpha: .4, arrow: .5});
+          const item = {seconds, metres: geodesic([longitude, latitude], [start[1], start[0]]).metres};
+          const [mx, my] = approach[Math.floor(approach.length / 2)];
+          hits.push({x: mx, y: my, r: 9, kind: 'approach', item, priority: 4.6});
+        }
+      }
       if (way) {
-        const trace = () => {
-          context.beginPath();
-          context.moveTo(way[0][0], way[0][1]);
-          for (let index = 1; index < way.length - 1; index += 1) {
-            context.quadraticCurveTo(way[index][0], way[index][1], (way[index][0] + way[index + 1][0]) / 2, (way[index][1] + way[index + 1][1]) / 2);
-          }
-          context.lineTo(way.at(-1)[0], way.at(-1)[1]);
-        };
-        context.lineCap = 'round';
-        context.lineJoin = 'round';
-        trace();
-        context.lineWidth = 9;
-        context.strokeStyle = '#fff';
-        context.stroke();
-        trace();
-        context.lineWidth = 6.5;
-        context.strokeStyle = COLOURS.path;
-        context.stroke();
-        trace();
-        context.setLineDash([5, 6]);
-        context.lineWidth = 1.3;
-        context.strokeStyle = '#fff';
-        context.stroke();
-        context.setLineDash([]);
-        context.lineCap = 'butt';
-        context.lineJoin = 'miter';
-        const [ex, ey] = way.at(-1), [bx, by] = way[Math.max(0, way.length - 4)];
-        const length = Math.hypot(ex - bx, ey - by) || 1;
-        const [ux, uy] = [(ex - bx) / length, (ey - by) / length];
-        context.beginPath();
-        context.moveTo(ex + ux * 9, ey + uy * 9);
-        context.lineTo(ex - ux * 5 - uy * 8, ey - uy * 5 + ux * 8);
-        context.lineTo(ex - ux * 5 + uy * 8, ey - uy * 5 - ux * 8);
-        context.closePath();
-        context.fillStyle = COLOURS.path;
-        context.fill();
-        context.lineWidth = 1.5;
-        context.strokeStyle = '#fff';
-        context.stroke();
-        hits.push({x: ex, y: ey, r: 12, kind: 'way', item: call.way, priority: 4.8});
-        const [mx, my] = way[Math.floor(way.length / 2)];
-        hits.push({x: mx, y: my, r: 8, kind: 'way', item: call.way, priority: 4.7});
+        // Between where it started and ended, the arrow goes where no handover place hides it.
+        const shares = (call.handovers || []).map((point) => point.fraction ?? -1);
+        const [clear] = [.7, .55, .4, .85, .25].reduce((best, share) => {
+          const gap = Math.min(1, ...shares.map((fraction) => Math.abs(fraction - share)));
+          return gap > best[1] ? [share, gap] : best;
+        }, [.7, -1]);
+        paintRoad(context, way, {alpha: 1, arrow: call.way.by === 'ends' ? clear : 'end'});
+        const [ex, ey] = way.at(-1), [mx, my] = way[Math.floor(way.length / 2)];
+        if (call.way.by !== 'ends') hits.push({x: ex, y: ey, r: 12, kind: 'way', item: call.way, priority: 4.8});
+        hits.push({x: mx, y: my, r: 9, kind: 'way', item: call.way, priority: 4.7});
       } else if (start && !call.end && call.travelled_m) {
         const [x, y] = project(start[0], start[1]);
         const reach = call.travelled_m / metresPerPixel;
@@ -893,35 +916,23 @@
           context.setLineDash([]);
         }
       }
-      // The call: from where it started to where it ended (where it failed).
-      if (start) {
+      // Where the call started (when the CDR gives where it ended too).
+      if (start && call.end) {
         const [x1, y1] = project(start[0], start[1]);
-        if (call.end) {
-          const [x2, y2] = project(call.end[0], call.end[1]);
-          context.beginPath();
-          context.moveTo(x1, y1);
-          context.lineTo(x2, y2);
-          context.lineWidth = 5;
-          context.strokeStyle = '#fff';
-          context.stroke();
-          context.lineWidth = 2.6;
-          context.strokeStyle = COLOURS.path;
-          context.stroke();
-          context.beginPath();
-          context.arc(x1, y1, 6, 0, Math.PI * 2);
-          context.fillStyle = COLOURS.start;
-          context.fill();
-          context.lineWidth = 2;
-          context.strokeStyle = '#fff';
-          context.stroke();
-          hits.push({x: x1, y: y1, r: 9, kind: 'start', item: call, priority: 5});
-        }
+        context.beginPath();
+        context.arc(x1, y1, 6, 0, Math.PI * 2);
+        context.fillStyle = COLOURS.start;
+        context.fill();
+        context.lineWidth = 2;
+        context.strokeStyle = '#fff';
+        context.stroke();
+        hits.push({x: x1, y: y1, r: 9, kind: 'start', item: call, priority: 5});
       }
       // Where each handover took place on its way, an estimate (by the time on each band of the call, else evenly in their
-      // order): a ring numbered as its arrow, dashed.
+      // order): a ring numbered as its arrow, dashed, on the road of its way (at the share of its way behind it).
       if (layers.path) {
         for (const point of call.handovers || []) {
-          const [x, y] = project(point.latitude, point.longitude);
+          const [x, y] = way && way !== base && point.fraction !== undefined ? way[Math.round(point.fraction * (way.length - 1))] : project(point.latitude, point.longitude);
           context.beginPath();
           context.arc(x, y, 8, 0, Math.PI * 2);
           context.fillStyle = '#fff';
@@ -1215,10 +1226,13 @@
         }
       }
       group(focusKind() ? `Call and NQ calls · only its ${groupFocus.label} (filtering the list)` : 'Call and NQ calls');
-      item('pin', 'This call (where it failed)', COLOURS.call);
+      // A Data test gives only where it started: its pin marks that place, and its way where it went (and failed).
+      item('pin', data.call.end ? 'This call (where it failed)' : 'This test (where it started; it failed on its way)', COLOURS.call);
       if (data.call.end) item('dot', 'Where it started', COLOURS.start);
-      if (!data.call.end && data.call.way) item('line', `The way of the test, simulated: its ${distanceText(data.call.travelled_m / 1000)} from where it started, towards where its car was heading (arrow: where it ended)`, COLOURS.path);
-      else if (!data.call.end && data.call.travelled_m) item('ring',`Where the test went: within ${distanceText(data.call.travelled_m / 1000)} of where it started (the distance it travelled)`, COLOURS.path, 'is-dashed');
+      if (data.call.way?.by === 'ends') item('road', 'Its way, from where it started to where it ended (arrow: its direction; the bends are a sketch, not its streets)', COLOURS.path);
+      else if (data.call.way) item('road', `Its way, simulated: its ${distanceText(data.call.travelled_m / 1000)} from where it started, towards where its car was heading (arrow: where it ended; the bends are a sketch)`, COLOURS.path);
+      else if (!data.call.end && data.call.travelled_m) item('ring', `Where the test went: within ${distanceText(data.call.travelled_m / 1000)} of where it started (the distance it travelled)`, COLOURS.path, 'is-dashed');
+      if ((data.drive?.route || []).findIndex((point) => point[2] === 0) > 0 && data.call.start) item('road', 'Fainter: the way of its car from its test before it to where it started', COLOURS.path, 'is-faint');
       if ((data.drive?.route || []).length > 1) item('line', `The way of the car: its tests ${data.drive.minutes} minutes before and after (arrows: where it was heading)`, COLOURS.route);
       item('line', `Radius ${distanceText(data.radius_km)}`, COLOURS.radius, 'is-dashed');
       if (settings.layers.failures) {
@@ -1454,10 +1468,22 @@
         ]};
       }
       if (kind === 'way') {
-        return {title: 'The way of the test (simulated)', rows: [
-          ['Travelled', distanceText(data.call.travelled_m / 1000)], ['Lasted', data.call.travelled_s ? `${Math.round(data.call.travelled_s)} s` : ''],
-          ['Direction', item.by === 'after' ? 'Towards the tests its car made after it (where it was heading)' : 'On from the test its car made before it (where it came from)'],
-          ['Shape', 'Simulated: the CDR gives only where it started and how far it went, so its bends are not the streets it took'],
+        const [first, last] = [item.points[0], item.points.at(-1)];
+        return {title: item.by === 'ends' ? 'Its way' : 'Its way (simulated)', rows: [
+          ['Travelled', item.by === 'ends' ? `${distanceText(geodesic([first[1], first[0]], [last[1], last[0]]).metres / 1000)} apart` : distanceText(data.call.travelled_m / 1000)],
+          ['Lasted', data.call.travelled_s ? `${Math.round(data.call.travelled_s)} s` : ''],
+          ['Direction', item.by === 'ends' ? 'From where it started to where it ended' : item.by === 'after'
+            ? 'Towards the tests its car made after it (where it was heading)' : 'On from the test its car made before it (where it came from)'],
+          ['Shape', item.by === 'ends' ? 'The CDR gives where it started and ended, not the streets between them: its bends are a sketch'
+            : 'Simulated: the CDR gives only where it started and how far it went, so its bends are not the streets it took'],
+        ]};
+      }
+      if (kind === 'approach') {
+        const seconds = Math.abs(item.seconds);
+        return {title: 'Its car before it', rows: [
+          ['From', `Its test ${seconds >= 60 ? `${Math.floor(seconds / 60)} min ${seconds % 60} s` : `${seconds} s`} before it`],
+          ['Distance', distanceText(item.metres / 1000)],
+          ['Shape', 'The way of its car to where it started; its bends are a sketch, not the streets it took'],
         ]};
       }
       if (kind === 'handover_point') {
@@ -1465,8 +1491,9 @@
         return {title: `Handover ${item.order}: where it took place`, rows: [
           ['To cell', step ? [step.inventory?.name || step.cell, [step.technology, step.band].filter(Boolean).join(' ')].filter(Boolean).join(' · ') : ''],
           ['To site', step?.site_id ? `${step.site_id}${step.host_network || step.network ? ` (${step.host_network || step.network})` : ''}` : ''],
-          ['Estimate', item.by === 'time' ? 'By the time the call spent on each band (its RAT timeline), at an even speed'
-            : 'Spread evenly along its way, in their order (the CDR gives no time per band that matches its cells)'],
+          ['Estimate', `${item.by === 'time' ? 'By the time the call spent on each band (its RAT timeline), at an even speed'
+            : 'Spread evenly along its way, in their order (the CDR gives no time per band that matches its cells)'}${
+            data.call.way && data.call.way.by !== 'ends' ? ', on its simulated way' : ''}`],
         ]};
       }
       if (kind === 'handover') {

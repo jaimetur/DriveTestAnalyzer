@@ -1933,6 +1933,10 @@ details.nq-priority-info:not([open]) { padding-block: .55rem; }
 .nq-map-mark.is-line { width: 1.1rem; height: 0; border-top: 3px solid var(--mark); }
 .nq-map-mark.is-line.is-dashed { border-top-style: dashed; }
 .nq-map-mark.is-line.is-dotted { border-top-style: dotted; }
+/* The way of the call drawn as a road: its colour with a dashed white centre line; fainter for the way of its car before it. */
+.nq-map-mark.is-road { width: 1.2rem; height: 6px; border-radius: 3px;
+  background: repeating-linear-gradient(90deg, #fff 0 3px, transparent 3px 6px) center / 100% 1.3px no-repeat, var(--mark); }
+.nq-map-mark.is-road.is-faint { opacity: .45; }
 .nq-map-attribution { position: absolute; right: 0; bottom: 0; z-index: 3; padding: .1rem .4rem; border-top-left-radius: 6px; background: rgba(255, 255, 255, .82); color: #495057; font-size: .62rem; }
 .nq-map-tooltip { position: absolute; z-index: 6; display: grid; gap: .18rem; min-width: 11rem; max-width: 18rem; padding: .5rem .65rem; border: 1px solid rgba(125, 18, 56, .2); border-radius: 10px; background: #fff; color: #2d1520; font-size: .76rem; box-shadow: 0 10px 24px rgba(60, 4, 24, .18); pointer-events: none; }
 .nq-map-tooltip[hidden] { display: none !important; }

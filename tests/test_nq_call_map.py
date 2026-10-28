@@ -98,7 +98,9 @@ def test_the_map_places_the_call_its_cells_the_sites_and_the_calls_and_tests_aro
     assert {role: (end['site_id'], end['estimated']) for role, end in call['ends'].items()} == {'start': ('70001', False), 'end': ('70002', False)}
     assert [(cell['role'], cell['label']) for cell in call['cells']] == [('start', '70001-L1 (LTE B3)'), ('end', '70002-L3 (LTE B3)')]
     # Its handover, halfway along its way (the CDR gives no RAT timeline here): an estimate.
-    assert call['handovers'] == [{'order': 2, 'latitude': 51.5094, 'longitude': -0.1247, 'by': 'order'}]
+    assert call['handovers'] == [{'order': 2, 'latitude': 51.5094, 'longitude': -0.1247, 'by': 'order', 'fraction': .5}]
+    # Its way: from where it started to where it ended.
+    assert call['way']['by'] == 'ends' and call['way']['points'][0] == call['start'] and call['way']['points'][-1] == call['end']
     # Its type, as the NQ Prioritization names it (the NQ calls around carry theirs too).
     assert call['kind'] == 'voice' and all(item['kind'] for item in data['failures'])
     # Its radio values: the Min / Avg / Max of a measure together.
@@ -243,8 +245,8 @@ def test_the_diagnosis_the_decisions_the_drive_and_the_serving_site_of_the_call(
     assert rows[1]['lte_rsrp'] == -80.5 and data['drive']['minutes'] == 15
     # The way of the car: from the call (where it started) to its next test.
     assert data['drive']['route'] == [[51.5078, -0.1279, 0], [51.5075, -0.127, 600]]
-    # A Voice call gives where it ended: no travelled zone nor simulated way.
-    assert data['call']['travelled_m'] is None and data['call']['way'] is None
+    # A Voice call gives where it ended: no travelled zone, its way from where it started to where it ended.
+    assert data['call']['travelled_m'] is None and data['call']['way']['by'] == 'ends'
     # Its serving site (where it ended) started no call; the site where its two Vodafone calls (one Non-Qualified) started.
     assert data['site_health']['site_id'] == '70002' and data['site_health']['campaigns'] == []
     mapper = ValueMapper.from_settings(core.repository.chart_mapping_settings())
@@ -437,13 +439,20 @@ def test_where_each_handover_took_place_is_estimated_by_the_time_on_each_band():
     bands = {step['cell']: step['band'] for step in nq_call_map.cell_steps(trace) if step['cell'] and step['band']}
     start, end = (51.0, 0.0), (51.1, 0.0)
     # 20 s on n1 (two cells, 10 s each), 20 s on n3 and 10 s on LTE 800, then 10 s without service: 60 s in all.
-    points = nq_call_map.handover_points(steps, '5G_NR_N1 (20.0)->5G_NR_N3 (20.0)->LTE_800 (10.0)->No service (10.0)', start, end, bands)
+    points = nq_call_map.handover_points(steps, '5G_NR_N1 (20.0)->5G_NR_N3 (20.0)->LTE_800 (10.0)->No service (10.0)', [start, end], bands)
     assert [(point['order'], point['latitude'], point['by']) for point in points] == [
         (2, round(51.0 + .1 * 10 / 60, 6), 'time'), (3, round(51.0 + .1 * 20 / 60, 6), 'time'), (4, round(51.0 + .1 * 40 / 60, 6), 'time')]
+    assert [point['fraction'] for point in points] == [round(10 / 60, 4), round(20 / 60, 4), round(40 / 60, 4)]
     # A timeline that does not match the cells spreads them evenly; without where the call ended there is nothing to place.
-    assert [point['by'] for point in nq_call_map.handover_points(steps, 'LTE_1800 (5.0)', start, end, bands)] == ['order'] * 3
-    assert nq_call_map.handover_points(steps, '', start, end, bands)[0]['latitude'] == 51.025
-    assert nq_call_map.handover_points(steps, '5G_NR_N1 (20.0)', start, None, bands) == []
+    assert [point['by'] for point in nq_call_map.handover_points(steps, 'LTE_1800 (5.0)', [start, end], bands)] == ['order'] * 3
+    assert nq_call_map.handover_points(steps, '', [start, end], bands)[0]['latitude'] == 51.025
+    assert nq_call_map.handover_points(steps, '5G_NR_N1 (20.0)', [start, None], bands) == []
+    assert nq_call_map.handover_points(steps, '5G_NR_N1 (20.0)', None, bands) == []
+    # Along a way that turns (the way simulated of a Data test): halfway is past its corner.
+    turned = nq_call_map.handover_points(steps[:2], '', [(51.0, 0.0), (51.01, 0.0), (51.01, 0.03)], bands)
+    assert turned[0]['fraction'] == .5 and turned[0]['latitude'] == 51.01 and 0 < turned[0]['longitude'] < .03
+    # The PCell timeline of a Data test names its TDD bands so (LTE_TDD_2300: band 40).
+    assert nq_call_map._timeline_band('LTE_TDD_2300') == 'LTE 2300' == nq_call_map._cell_band('LTE', '40')
 
 
 def test_the_way_of_the_car_leaves_out_the_tests_another_car_could_not_reach():
