@@ -1,15 +1,25 @@
 from __future__ import annotations
 
 from pathlib import Path
+import atexit
 import os
 import shutil
 import sqlite3
+import tempfile
 import time
 
 # The tests already run in parallel, one process per CPU: the numerical libraries of each process keep to one thread
 # (set before they are imported), or the processes of a run would contend for the CPUs with dozens of threads.
 for _variable in ('OMP_NUM_THREADS', 'OPENBLAS_NUM_THREADS', 'MKL_NUM_THREADS', 'NUMEXPR_NUM_THREADS', 'VECLIB_MAXIMUM_THREADS'):
     os.environ.setdefault(_variable, '1')
+
+# The tests never reach the data of the application installed on this machine, which storage-paths.conf points at: the
+# environment, which takes precedence, points every test process at storage of its own (set before the application is
+# imported), so a test that does not open a workspace of its own (the client fixture) still writes nowhere real.
+_TEST_STORAGE = Path(tempfile.mkdtemp(prefix='drivetest-analyzer-tests-'))
+os.environ['APP_CONFIG_DIR'] = str(_TEST_STORAGE / 'config')
+os.environ['APP_DATA_DIR'] = str(_TEST_STORAGE / 'data')
+atexit.register(shutil.rmtree, _TEST_STORAGE, True)
 
 import pytest
 from fastapi.testclient import TestClient

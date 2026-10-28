@@ -153,7 +153,7 @@ def test_map_dialog_marks_outdated_vendor_mappings_and_serving_networks_are_save
     assert document['serving_networks']['rows'] == [{'operator': 'O2', 'networks': ['O2', 'Vodafone']}]
 
 
-def test_inventory_snapshots_are_built_once_and_rebuilt_when_their_operator_changes(tmp_path):
+def test_inventory_snapshots_are_built_once_and_rebuilt_when_their_operator_changes(client, tmp_path):
     inventory = _inventory(tmp_path, 'O2_Network_Inventory.csv', [{'ECI': '1001', 'Vendor': 'Ericsson'}], None)
     snapshot = next(item for item in ni.ensure_inventory_cells(core.repository) if item['dataset_id'] == inventory)
     # Without an Operator or a Network column its cells belong to no network: they serve nobody.

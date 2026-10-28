@@ -291,7 +291,7 @@ def test_users_access_exports_and_imports_users_profiles_and_groups(client):
     assert (record.role, record.active) == ('super-admin', True)
 
 
-def test_users_access_never_leaves_no_active_super_admin():
+def test_users_access_never_leaves_no_active_super_admin(client):
     payload = {'modules_profiles': [], 'workspace_groups': [],
                'users': [{'username': 'super', 'password_hash': 'x', 'role': 'user-viewer', 'active': False}]}
     try:
