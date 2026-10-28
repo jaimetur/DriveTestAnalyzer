@@ -349,6 +349,11 @@ def _prepared_frames(frames: dict[str, pd.DataFrame], dimensions: list[str], con
             ), None)
             if resolved:
                 frame[field] = source[resolved]
+        for field in ('Operator', 'Campaign', 'Vendor', *dimensions):
+            if field in frame and isinstance(frame[field].dtype, pd.CategoricalDtype):
+                # The fields the groups are made of hold their values themselves (None for no value), as the rows of a
+                # CDR read row by row give them (see saved_filters._load_source_frames).
+                frame[field] = frame[field].astype(object).where(frame[field].notna(), None)
         if 'Vendor' in frame:
             vendor_operators = [*operator_mappings, *operator_mappings.values()]
             if 'Operator' in frame:
@@ -373,7 +378,7 @@ def _prepared_frames(frames: dict[str, pd.DataFrame], dimensions: list[str], con
                 warnings.append(f'{kind.title()}: no test start time; its rows cannot be split by {time_split.lower()} period.')
                 frame['Campaign'] = None
             else:
-                frame['Campaign'] = period_labels(source[start], time_split)
+                frame['Campaign'] = period_labels(source[start].astype(object), time_split)
                 if NR_MODE_COLUMN in source:
                     # NSA vs SA: the NSA and SA tests of a period stay apart (2026-W07 and 2026-W07 SA).
                     frame['Campaign'] = [campaign_with_nr_mode(period, mode) for period, mode
@@ -559,14 +564,41 @@ def _floats(series: pd.Series) -> np.ndarray:
 
 
 def _filter_mask(frame: pd.DataFrame, filters: dict) -> np.ndarray:
-    """The rows ``_filter`` keeps, as a mask (only the filtered columns are copied)."""
+    """The rows ``_filter`` keeps, as a mask (only the filtered columns are copied; text columns are filtered once per
+    distinct combination of their values, as the filters look at each row alone)."""
     mask = np.zeros(len(frame), dtype=bool)
     if not filters:
         mask[:] = True
         return mask
     narrow = frame[list(dict.fromkeys(field.removesuffix(' contains') for field in filters))].reset_index(drop=True)
+    distinct = points_loss._distinct(narrow) if _all_categorical(narrow) else None
+    if distinct is not None:
+        rows, codes = distinct
+        kept = np.zeros(len(rows), dtype=bool)
+        kept[_filter(rows.reset_index(drop=True), filters).index.to_numpy()] = True
+        return kept[codes]
     mask[_filter(narrow, filters).index.to_numpy()] = True
     return mask
+
+
+_CONDITION_FIELDS = re.compile(r'[A-Za-z_][A-Za-z0-9_]*')
+
+
+def _all_categorical(frame: pd.DataFrame) -> bool:
+    """Whether every column is a Categorical (text read from the columnar copies, few distinct values)."""
+    return all(isinstance(dtype, pd.CategoricalDtype) for dtype in frame.dtypes)
+
+
+def _row_condition(frame: pd.DataFrame, expression: str) -> pd.Series:
+    """``_condition`` of every row, once per distinct combination of the text columns it reads (it looks at each row
+    alone)."""
+    fields = [field for field in dict.fromkeys(_CONDITION_FIELDS.findall(expression)) if field in frame.columns]
+    distinct = points_loss._distinct(frame[fields]) if fields and _all_categorical(frame[fields]) else None
+    if distinct is None:
+        return _condition(frame, expression)
+    rows, codes = distinct
+    result = _condition(rows.reset_index(drop=True), expression)
+    return pd.Series(result.to_numpy()[codes], index=frame.index)
 
 
 def _valued_groups(frame: pd.DataFrame, selected: np.ndarray, codes: np.ndarray, groups: int, formula: str) -> np.ndarray:
@@ -624,7 +656,7 @@ def _loss_weights(frame: pd.DataFrame, selected: np.ndarray, metric: dict, envir
         denominator = ratio.group(5)
         counted = selected & frame[denominator].notna().to_numpy() if denominator in frame else selected
         try:
-            matches = _condition(frame, ratio.group(3).strip()).astype(bool).to_numpy()
+            matches = _row_condition(frame, ratio.group(3).strip()).astype(bool).to_numpy()
         except (KeyError, ValueError):
             weights[counted] = 1.0
             return weights
@@ -708,7 +740,8 @@ def _points_loss_entries(kind: str, frame: pd.DataFrame, valid: pd.Series, group
     # The cells of each area field (a group and an area): their keys, sorted, and the cell of every row.
     field_keys = {}
     for field, (category_codes, names) in categories.items():
-        field_keys[field] = np.unique(codes * len(names) + category_codes, return_inverse=True)
+        unique, _rows, inverse = points_loss.unique_keys(codes * len(names) + category_codes, groups * len(names))
+        field_keys[field] = (unique, inverse)
 
     def field_cells(field: str, lost: np.ndarray, weights: np.ndarray):
         # The weight of each group in each area, added in the order of the rows (as area_shares).
@@ -816,8 +849,15 @@ def _points_loss_entries(kind: str, frame: pd.DataFrame, valid: pd.Series, group
         counts = np.bincount(cell_of, minlength=len(unique))
         bounds = np.searchsorted(unique // len(names), np.arange(groups + 1))
         for group in range(groups):
+            found, found_counts = unique[bounds[group]:bounds[group + 1]] % len(names), counts[bounds[group]:bounds[group + 1]]
+            if len(np.unique(found_counts)) == len(found_counts):
+                # Counts that all differ have one order (by count); ties are ordered as value_counts orders them.
+                order = found[np.argsort(-found_counts, kind='stable')]
+                served[group][field] = {str(names[position]): int(count)
+                                        for position, count in zip(order.tolist(), np.sort(found_counts)[::-1].tolist())}
+                continue
             vector = np.zeros(len(names), dtype=np.int64)
-            vector[unique[bounds[group]:bounds[group + 1]] % len(names)] = counts[bounds[group]:bounds[group + 1]]
+            vector[found] = found_counts
             served[group][field] = {str(names[position]): int(vector[position])
                                     for position in nargsort(vector, kind='quicksort', ascending=False) if vector[position]}
     serving_tests = [{**metadata[group], 'counts': served[group]} for group in range(groups) if served[group]]

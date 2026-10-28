@@ -113,26 +113,88 @@ def _distinct(values: pd.Series | pd.DataFrame) -> tuple[pd.Series | pd.DataFram
     import numpy as np
 
     columns = [values] if isinstance(values, pd.Series) else [values[name] for name in values.columns]
+    if (columns and all(isinstance(column.dtype, pd.CategoricalDtype) for column in columns)
+            and np.prod([float(len(column.cat.categories) + 1) for column in columns]) < 2.0 ** 62):
+        # Read as Categoricals (see cdr_store.read_kind_frame): the combinations of their codes.
+        key = np.zeros(len(values), dtype=np.int64)
+        size = 1
+        for column in columns:
+            key = key * (len(column.cat.categories) + 1) + (column.cat.codes.to_numpy().astype(np.int64) + 1)
+            size *= len(column.cat.categories) + 1
+        _unique, rows, codes = unique_keys(key, size)
+        return values.iloc[rows], codes
     if any(column.dtype == object and pd.api.types.infer_dtype(column, skipna=True) not in ('string', 'empty')
            for column in columns):
         return None
     if isinstance(values, pd.Series):
         codes, _uniques = pd.factorize(values, use_na_sentinel=False)
     else:
-        codes = values.groupby(list(values.columns), dropna=False, sort=False).ngroup().to_numpy()
+        codes = values.groupby(list(values.columns), dropna=False, sort=False, observed=True).ngroup().to_numpy()
     _unique, first = np.unique(codes, return_index=True)
     return values.iloc[first], codes
 
 
+def unique_keys(keys: Any, size: int | None = None) -> tuple[Any, Any, Any]:
+    """The distinct keys (sorted), a row of each and the position of each row's key among them, as ``numpy.unique``
+    (``return_index``, ``return_inverse``) but without sorting the rows when the keys (0 to ``size`` - 1) are few: the
+    row given for each key is one of its rows (not always the first)."""
+    import numpy as np
+
+    keys = np.asarray(keys, dtype=np.int64)
+    if size is None:
+        size = int(keys.max()) + 1 if len(keys) else 0
+    if not len(keys) or size > max(1 << 22, 4 * len(keys)):
+        return np.unique(keys, return_index=True, return_inverse=True)
+    rows = np.full(size, -1, dtype=np.int64)
+    rows[keys] = np.arange(len(keys), dtype=np.int64)
+    unique = np.flatnonzero(rows >= 0)
+    rank = np.zeros(size, dtype=np.int64)
+    rank[unique] = np.arange(len(unique), dtype=np.int64)
+    return unique, rows[unique], rank[keys]
+
+
 def _each_distinct(values: pd.Series, operation: Callable[[pd.Series], Any]) -> Any:
-    """``operation`` (which looks at each value alone) of every value, run once per distinct value."""
+    """``operation`` (which looks at each value alone) of every value, run once per distinct value. Text of a
+    Categorical stays a Categorical (of the same values)."""
     distinct = _distinct(values)
     if distinct is None:
         return operation(values)
     result = operation(distinct[0])
+    if isinstance(values.dtype, pd.CategoricalDtype) and isinstance(result, pd.Series) \
+            and isinstance(result.dtype, pd.StringDtype):
+        return _text_categorical(result, distinct[1], values.index)
     taken = (result.take(distinct[1]) if isinstance(result, pd.Categorical)
              else result.array.take(distinct[1]))
     return taken if isinstance(result, pd.Categorical) else pd.Series(taken, index=values.index, name=result.name)
+
+
+def _text_categorical(result: pd.Series, codes: Any, index: pd.Index) -> pd.Series:
+    """The text of each distinct value (``result``, one per code) for every row, as a Categorical."""
+    import numpy as np
+
+    texts = result.astype(object)
+    present = texts.notna().to_numpy()
+    names = sorted({str(text) for text in texts[present]})
+    position = {name: number for number, name in enumerate(names)}
+    result_codes = np.asarray([position[str(text)] if kept else -1 for text, kept in zip(texts, present)], dtype=np.int64)
+    taken = result_codes[np.asarray(codes)] if len(result_codes) else np.full(len(codes), -1, dtype=np.int64)
+    return pd.Series(pd.Categorical.from_codes(taken, categories=names), index=index, name=result.name)
+
+
+def _area_codes(values: pd.Series) -> tuple[Any, Any]:
+    """``pandas.factorize(values.fillna(NOT_SPECIFIED), sort=True)``, from the codes of a Categorical."""
+    import numpy as np
+
+    if not isinstance(values.dtype, pd.CategoricalDtype):
+        return pd.factorize(values.fillna(NOT_SPECIFIED), sort=True)
+    labels = [*(str(category) for category in values.cat.categories), NOT_SPECIFIED]
+    codes = values.cat.codes.to_numpy().astype(np.int64)
+    codes = np.where(codes < 0, len(labels) - 1, codes)
+    used = np.flatnonzero(np.bincount(codes, minlength=len(labels)))
+    names = sorted({labels[index] for index in used.tolist()})
+    position = {name: number for number, name in enumerate(names)}
+    remap = np.asarray([position.get(label, -1) for label in labels], dtype=np.int64)
+    return remap[codes], np.asarray(names, dtype=object)
 
 
 def _serving_columns(frame: pd.DataFrame, source: pd.DataFrame, resolve) -> None:
@@ -147,8 +209,10 @@ def _serving_columns(frame: pd.DataFrame, source: pd.DataFrame, resolve) -> None
     # The labels of each distinct combination of the serving columns, then of every row.
     labels = pd.DataFrame(index=distinct[0].index)
     _serving_labels(labels, distinct[0], resolved)
+    categorical = all(isinstance(dtype, pd.CategoricalDtype) for dtype in source[columns].dtypes)
     for name in labels.columns:
-        frame[name] = pd.Series(labels[name].array.take(distinct[1]), index=frame.index)
+        frame[name] = (_text_categorical(labels[name], distinct[1], frame.index) if categorical
+                       else pd.Series(labels[name].array.take(distinct[1]), index=frame.index))
 
 
 def _serving_labels(frame: pd.DataFrame, source: pd.DataFrame, resolved: dict[str, str | None]) -> None:
@@ -212,14 +276,25 @@ def _setting_columns(frame: pd.DataFrame, source: pd.DataFrame, resolve) -> None
 
     def column(name: str) -> pd.Series:
         resolved = resolve(source.columns, name)
-        return (source[resolved].astype(object).where(source[resolved].notna(), '') if resolved is not None
-                else pd.Series('', index=source.index, dtype=object))
+        return (source[resolved] if resolved is not None else pd.Series('', index=source.index, dtype=object))
 
-    level_3, level_2, level_1 = column('G_Level_3'), column('G_Level_2'), column('G_Level_1')
-    pairs = pd.Series(list(zip(level_3, level_2)), index=source.index)
-    settings = {pair: setting_of(*pair) for pair in pd.unique(pairs)}
-    frame[SETTING] = pairs.map(settings).replace('', pd.NA).astype('string')
-    frame[MODE] = level_1.map({value: mode_of_test(value) for value in pd.unique(level_1)}).replace('', pd.NA).astype('string')
+    # Each distinct level (or pair of levels) once.
+    levels = pd.DataFrame({'level_3': column('G_Level_3'), 'level_2': column('G_Level_2')}, index=source.index)
+    distinct = _distinct(levels)
+    if distinct is None:
+        pairs = pd.Series(list(zip(*(levels[name].astype(object).where(levels[name].notna(), '') for name in levels))),
+                          index=source.index)
+        settings = {pair: setting_of(*pair) for pair in pd.unique(pairs)}
+        frame[SETTING] = pairs.map(settings).replace('', pd.NA).astype('string')
+    else:
+        rows = distinct[0].astype(object).where(distinct[0].notna(), '')
+        labels = pd.Series([setting_of(level_3, level_2) for level_3, level_2 in zip(rows['level_3'], rows['level_2'])],
+                           dtype=object).replace('', pd.NA).astype('string')
+        frame[SETTING] = (_text_categorical(labels, distinct[1], frame.index)
+                          if all(isinstance(dtype, pd.CategoricalDtype) for dtype in levels.dtypes)
+                          else pd.Series(labels.array.take(distinct[1]), index=frame.index))
+    frame[MODE] = _each_distinct(column('G_Level_1'), lambda values: values.astype(object).where(values.notna(), '').map(
+        mode_of_test).replace('', pd.NA).astype('string'))
 
 
 def attach_location(frame: pd.DataFrame, source: pd.DataFrame, kind: str, resolve, areas=None) -> None:
@@ -239,8 +314,13 @@ def attach_location(frame: pd.DataFrame, source: pd.DataFrame, kind: str, resolv
             # The areas kept in the rows of the CDR when placed with the current Map Areas (empty outside every
             # area); the tests without one are placed here.
             stored = resolve(source.columns, 'Map_Area')
-            names = (source[stored].astype('string') if stored is not None
-                     else pd.Series(pd.NA, index=source.index, dtype='string'))
+            if (stored is not None and isinstance(source[stored].dtype, pd.CategoricalDtype)
+                    and not source[stored].isna().any()):
+                # Every test placed (read as a Categorical): each area name once.
+                names = _each_distinct(source[stored], lambda values: values.astype('string'))
+            else:
+                names = (source[stored].astype('string') if stored is not None
+                         else pd.Series(pd.NA, index=source.index, dtype='string'))
             unplaced = names.isna()
             if areas is None and (unplaced.any() or stored is not None):
                 from src.modules.map_areas import area_index
@@ -253,7 +333,9 @@ def attach_location(frame: pd.DataFrame, source: pd.DataFrame, kind: str, resolv
             if unplaced.any():
                 names = names.copy()
                 names[unplaced] = areas.names_of(frame.loc[unplaced, LATITUDE], frame.loc[unplaced, LONGITUDE])
-            frame[AREA_COLUMN.format(AREA)] = names.replace('', pd.NA)
+            frame[AREA_COLUMN.format(AREA)] = (
+                names.cat.remove_categories([''] if '' in names.cat.categories else [])
+                if isinstance(names.dtype, pd.CategoricalDtype) else names.replace('', pd.NA))
             break
     level_2 = resolve(source.columns, 'G_Level_2')
     # Drive City tests are places; other tests (Connecting Roads) follow a route.
@@ -266,7 +348,7 @@ def attach_location(frame: pd.DataFrame, source: pd.DataFrame, kind: str, resolv
         column = AREA_COLUMN.format(field)
         if column in frame:
             frame[SHARE_COLUMN.format(field)] = _each_distinct(frame[column], lambda values: pd.Categorical(
-                values.fillna(NOT_SPECIFIED).replace('', NOT_SPECIFIED).astype(str)))
+                values.astype(object).fillna(NOT_SPECIFIED).replace('', NOT_SPECIFIED).astype(str)))
 
 
 def _rings(geometry, precision: int) -> list[list[list[float]]]:
@@ -463,7 +545,7 @@ def area_shares(frame: pd.DataFrame, weights: pd.Series) -> dict[str, dict[str, 
         column = AREA_COLUMN.format(field)
         if column not in frame:
             continue
-        by_area = weights.groupby(frame[column].fillna(NOT_SPECIFIED).replace('', NOT_SPECIFIED)).sum()
+        by_area = weights.groupby(frame[column].astype(object).fillna(NOT_SPECIFIED).replace('', NOT_SPECIFIED)).sum()
         field_shares = {str(area): round(float(value) / total, 6) for area, value in by_area.items() if value > 0
                         and not (field == STRETCH and area == NOT_SPECIFIED)}
         if field_shares:
@@ -473,8 +555,8 @@ def area_shares(frame: pd.DataFrame, weights: pd.Series) -> dict[str, dict[str, 
         # Where each City (or route) loses: the share of each City in each map area.
         lost = weights[weights > 0]
         if not lost.empty:
-            pairs = (frame.loc[lost.index, city].fillna(NOT_SPECIFIED).astype(str) + CITY_AREA_SEPARATOR
-                     + frame.loc[lost.index, area].fillna(NOT_SPECIFIED).astype(str))
+            pairs = (frame.loc[lost.index, city].astype(object).fillna(NOT_SPECIFIED).astype(str) + CITY_AREA_SEPARATOR
+                     + frame.loc[lost.index, area].astype(object).fillna(NOT_SPECIFIED).astype(str))
             by_pair = lost.groupby(pairs).sum()
             shares[CITY_AREA] = {str(pair): round(float(value) / total, 6) for pair, value in by_pair.items() if value > 0}
     return shares
@@ -499,7 +581,13 @@ def _most_common(pairs: pd.DataFrame, column: str, label_column: str) -> dict[st
     bounds = np.searchsorted(owners, np.arange(len(name_values) + 1))
     common = {}
     for position, (low, high) in enumerate(zip(bounds[:-1].tolist(), bounds[1:].tolist())):
-        best = low if high - low == 1 else low + int(nargsort(counts[low:high], kind='quicksort', ascending=False)[0])
+        if high - low == 1:
+            best = low
+        else:
+            top = int(np.argmax(counts[low:high]))
+            # A tie for the most frequent is broken as pandas breaks it.
+            best = low + (top if int((counts[low:high] == counts[low + top]).sum()) == 1
+                          else int(nargsort(counts[low:high], kind='quicksort', ascending=False)[0]))
         common[str(name_values[position])] = str(label_values[labels[best]])
     return common
 
@@ -527,8 +615,11 @@ def _value_counts_by(keys: Any, values: pd.Series, count: int) -> list[list[tupl
         if high - low == 1:
             by_key[key] = [(names[labels[low]], int(counts[low]))]
         elif high > low:
-            by_key[key] = [(names[labels[low + index]], int(counts[low + index]))
-                           for index in nargsort(counts[low:high], kind='quicksort', ascending=False)]
+            chunk = counts[low:high]
+            # Counts that all differ have one order; ties are ordered as pandas orders them.
+            order = (np.argsort(-chunk, kind='stable') if len(np.unique(chunk)) == len(chunk)
+                     else nargsort(chunk, kind='quicksort', ascending=False))
+            by_key[key] = [(names[labels[low + index]], int(counts[low + index])) for index in order]
     return by_key
 
 
@@ -568,7 +659,7 @@ class AreaGeometry:
             if column not in located:
                 continue
             # Each area in the order of its name, with its tests together in the order of the rows.
-            codes, names = pd.factorize(located[column].fillna(NOT_SPECIFIED), sort=True)
+            codes, names = _area_codes(located[column])
             order = np.argsort(codes, kind='stable')
             sizes = np.bincount(codes, minlength=len(names))
             ends = np.cumsum(sizes)
@@ -618,16 +709,22 @@ class AreaGeometry:
             if rows.empty:
                 continue
             columns = {LATITUDE: 'sum', LONGITUDE: 'sum'}
-            grouped = rows.groupby(rows[column].astype(str), sort=False)
+            categorical = isinstance(rows[column].dtype, pd.CategoricalDtype)
+            # A Categorical groups by its codes (the same groups, in the same order, as its text).
+            grouped = rows.groupby(rows[column].cat.codes if categorical else rows[column].astype(str), sort=False)
             sums = grouped.agg(columns)
             counts = grouped.size()
             labels = {}
             for label_field in ((VENDOR, 'City', 'Region') if field == SITE else (VENDOR, 'Region')):
                 label_column = AREA_COLUMN.format(label_field)
                 if label_column in rows:
-                    labels[label_field] = _most_common(rows[[column, label_column]].dropna().astype(str), column, label_column)
+                    pairs = rows[[column, label_column]].dropna()
+                    labels[label_field] = _most_common(pairs if categorical and isinstance(
+                        pairs[label_column].dtype, pd.CategoricalDtype) else pairs.astype(str), column, label_column)
             entries = self.places[field]
-            for name, latitude, longitude, tests in zip(sums.index.tolist(), sums[LATITUDE].tolist(),
+            names = ([str(rows[column].cat.categories[code]) for code in sums.index.tolist()] if categorical
+                     else sums.index.tolist())
+            for name, latitude, longitude, tests in zip(names, sums[LATITUDE].tolist(),
                                                         sums[LONGITUDE].tolist(), counts.tolist()):
                 entry = entries.setdefault(name, {'latitude_sum': 0.0, 'longitude_sum': 0.0, 'tests': 0})
                 entry['latitude_sum'] += float(latitude)

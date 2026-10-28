@@ -296,6 +296,38 @@ def test_the_points_lost_map_drawn_apart_is_the_one_drawn_in_the_application(his
     assert apart['shares'] and any(step.startswith('Mapping the Data tests: KPI ') for step in steps)
 
 
+def test_the_points_lost_map_reads_each_cdr_type_from_the_copies_with_the_same_rows_and_map(history_repository):
+    from src.modules import cdr_store
+
+    repository, ids, _configuration = history_repository
+    assert cdr_store.start_store_sync(repository, lambda run: run(), lambda: cdr_store.included_cdrs(repository))['status'] == 'ready'
+    saved_filter, sources, configuration, filters = _points_loss_inputs_of(repository, ids)
+    for source in sources:
+        source['levels'] = list(saved_filter['levels'])
+    by_rows = saved_filters._load_source_frames(repository, [dict(source) for source in sources], lambda *args: None,
+                                                scoring.load_input_columns, filters)
+    by_type = saved_filters._load_source_frames(repository, [dict(source) for source in sources], lambda *args: None,
+                                                scoring.load_input_columns, filters, columnar=True)
+    # The same rows and values, the text as Categoricals.
+    assert set(by_type) == set(by_rows)
+    assert any(isinstance(dtype, pd.CategoricalDtype) for frame in by_type.values() for dtype in frame.dtypes)
+    for kind, frame in by_rows.items():
+        assert list(by_type[kind].columns) == list(frame.columns)
+        for column in frame.columns:
+            expected, actual = frame[column], by_type[kind][column]
+            if isinstance(actual.dtype, pd.CategoricalDtype):
+                actual, expected = actual.astype(object).where(actual.notna(), None), expected.where(expected.notna(), None)
+            pd.testing.assert_series_equal(actual, expected, check_exact=True)
+    options = saved_filters._engine_kwargs(repository, saved_filter, configuration, scoring.calculate_scoring)
+    expected = scoring.calculate_points_loss(by_rows, saved_filter['levels'], configuration=configuration,
+                                             operator_mappings=options.get('operator_mappings'),
+                                             map_areas=options.get('map_areas'))
+    drawn = saved_filters.draw_points_loss(repository, saved_filter, [dict(source) for source in sources], configuration,
+                                           filters, scoring)
+    assert saved_filters._serialize_result_value(drawn) == saved_filters._serialize_result_value(expected)
+    assert drawn['shares']
+
+
 def test_stopping_the_points_lost_map_ends_its_process_at_once(history_repository, monkeypatch):
     import subprocess
 

@@ -945,6 +945,7 @@ The module stores its data in the workspace database, visible in [Super Admin â†
 | NQ Calls | The indexed NQ rows of every CDR (rebuilt automatically), with their `JOIN_ID` and, for Speech samples, their sample identity. |
 | NQ Call Sources | Which CDR revision each indexed CDR comes from, whether it is a Final, Weekly or Daily CDR and the date of its newest call. |
 | NQ Call Population | Every call of every CDR, qualified or not, for the NQ rates (rebuilt automatically). |
+| NQ Call Population Counts | The latest version of the calls counted by Service, Campaign, Operator, NR Mode, environment, Vendor, host network, site, City and Region, read by the panels of how and where the calls fail (rebuilt automatically after the indexing). |
 | NQ Call Versions | Which CDR holds the latest version of each Non-Qualified call and how the CDRs differ (rebuilt automatically). |
 | NQ Call Latest | The latest version of each Non-Qualified call with its mapped Operator and Vendor and its last cell, read by every panel (rebuilt automatically after the indexing or a change of the Operator and Vendor Maps). |
 | NQ Call Tracking | The status (and whether it is automatic or set by hand), team, assignee, root domain, category and cause, and version of each followed-up call and Speech sample. |

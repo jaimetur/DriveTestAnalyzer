@@ -44,6 +44,7 @@ import time
 import uuid
 from collections import Counter
 from datetime import datetime
+from operator import itemgetter
 from pathlib import Path
 from io import BytesIO
 from threading import Lock
@@ -76,6 +77,7 @@ NQ_TEAM_MEMBERS_TABLE = 'nq_team_members'
 NQ_ROOT_CATALOG_TABLE = 'nq_root_catalog'
 NQ_RCA_RESULTS_TABLE = 'nq_rca_results'
 NQ_CALL_POPULATION_TABLE = 'nq_call_population'
+NQ_POPULATION_COUNTS_TABLE = 'nq_call_population_counts'
 NQ_CALL_VERSIONS_TABLE = 'nq_call_versions'
 NQ_CALL_LATEST_TABLE = 'nq_call_latest'
 NQ_FIELDS_TABLE = 'nq_analysis_fields'
@@ -95,6 +97,7 @@ NQ_TABLE_TITLES = {
     NQ_ROOT_CATALOG_TABLE: 'NQ Root Catalog',
     NQ_RCA_RESULTS_TABLE: 'NQ RCA Results',
     NQ_CALL_POPULATION_TABLE: 'NQ Call Population',
+    NQ_POPULATION_COUNTS_TABLE: 'NQ Call Population Counts',
     NQ_CALL_VERSIONS_TABLE: 'NQ Call Versions',
     NQ_CALL_LATEST_TABLE: 'NQ Call Latest',
     NQ_FIELDS_TABLE: 'NQ Analysis Fields',
@@ -292,7 +295,7 @@ V37_FORMER_DESCRIPTIONS = (
 )
 # Set once the tables and columns of this version exist, so the requests check the schema without writing.
 SCHEMA_STATE_KEY = 'nq_calls_schema'
-SCHEMA_VERSION = '2026-10-27.3'
+SCHEMA_VERSION = '2026-10-28.1'
 # Indexed call fields that the suggestion rule can read, with their labels.
 RULE_FIELDS = {
     'failure_classification': 'Failure Classification', 'failure_category': 'Failure Category',
@@ -316,6 +319,10 @@ CALL_FIELDS = tuple(FIELD_SOURCES)
 POPULATION_FIELDS = ('vendor', 'host_network', 'site_id', 'environment', 'session_type', 'city', 'region')
 # The fields the panels of the failures count the calls by (see _population_counts).
 POPULATION_COUNT_FIELDS = ('environment', 'vendor', 'host_network', 'site_id', 'city')
+# The latest versions of the calls counted by them (and by Region, for NQ Calls in Scope Only) once per indexing, so the
+# panels never count the whole population (see refresh_population_counts); the indexing they were counted for.
+POPULATION_COUNTS_GROUPS = ('service', 'campaign', 'operator', 'nr_mode', *POPULATION_COUNT_FIELDS, 'region')
+POPULATION_COUNTS_STATE_KEY = 'nq_population_counts'
 # The values a catalog field can read from the call: the indexed fields and the last cell of the Cell ID chain.
 CATALOG_CALL_FIELDS = (*CALL_FIELDS, 'last_cell_id')
 
@@ -439,6 +446,12 @@ CREATE INDEX IF NOT EXISTS idx_{NQ_CALL_POPULATION_TABLE}_rates
     ON {NQ_CALL_POPULATION_TABLE}(is_latest, service, campaign, operator, nr_mode, is_nq);
 -- The calls served by a site, for the Serving site health of the map of a call (nq_call_map).
 CREATE INDEX IF NOT EXISTS idx_{NQ_CALL_POPULATION_TABLE}_site ON {NQ_CALL_POPULATION_TABLE}(site_id, host_network);
+-- The latest versions of the calls counted by the fields of the failure panels, once per indexing (_population_counts).
+CREATE TABLE IF NOT EXISTS {NQ_POPULATION_COUNTS_TABLE} (
+    {', '.join(f'{column} TEXT NOT NULL' for column in POPULATION_COUNTS_GROUPS)},
+    total INTEGER NOT NULL,
+    nq INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS {NQ_CALL_VERSIONS_TABLE} (
     call_key TEXT PRIMARY KEY,
     latest_dataset_id INTEGER NOT NULL,
@@ -596,6 +609,7 @@ _sync_locks_guard = Lock()
 # The NQ rate counts of each workspace and CDR scope, kept until the indexed CDRs change.
 _rate_counts_cache: dict[tuple[Any, ...], list[tuple[Any, ...]]] = {}
 _rate_counts_guard = Lock()
+_population_counts_lock = Lock()
 RATE_COUNTS_CACHE_SIZE = 32
 
 
@@ -2506,6 +2520,8 @@ def sync_nq_calls(task_repository: Any, *, force: bool = False) -> dict[str, Any
         # background, rather than by the next page.
         refresh_latest_calls(task_repository)
         _refresh_dta_rca(task_repository)
+        # The failure panels read the counts of this indexing.
+        refresh_population_counts(task_repository)
         with task_repository.connection() as connection:
             total = connection.execute(f'SELECT COUNT(DISTINCT call_key) FROM {NQ_CALLS_TABLE}').fetchone()[0]
             synced_at = connection.execute(f'SELECT MAX(synced_at) FROM {NQ_CALL_SOURCES_TABLE}').fetchone()[0]
@@ -5472,6 +5488,36 @@ MIN_SITE_CALLS = 5
 NOT_REPORTED = 'Not reported'
 
 
+def _population_counts_signature(connection: Any) -> str:
+    """The indexing the counts of the population are for: the version and rank of every indexed CDR, and the schema."""
+    return json.dumps([SCHEMA_VERSION, [list(row) for row in connection.execute(
+        f'SELECT dataset_id, revision, synced_at, combined_rank FROM {NQ_CALL_SOURCES_TABLE} ORDER BY dataset_id')]])
+
+
+def refresh_population_counts(task_repository: Any) -> bool:
+    """Count the latest versions of the calls by POPULATION_COUNTS_GROUPS again when the indexed calls changed (once
+    per indexing, after it, or by the first panel that needs them); whether the counts are those of the indexed calls."""
+    groups = ', '.join(POPULATION_COUNTS_GROUPS)
+    with _population_counts_lock:
+        with task_repository.connection() as connection:
+            signature = _population_counts_signature(connection)
+            if task_repository.get_workspace_state(POPULATION_COUNTS_STATE_KEY) == signature:
+                return True
+            rows = connection.execute(
+                f'SELECT {groups}, COUNT(*), SUM(is_nq) FROM {NQ_CALL_POPULATION_TABLE} NOT INDEXED WHERE is_latest = 1 '
+                f'GROUP BY {groups}').fetchall()
+            if _population_counts_signature(connection) != signature:
+                # Indexed meanwhile: counted again next time.
+                return False
+        with task_repository.connection() as connection:
+            connection.execute(f'DELETE FROM {NQ_POPULATION_COUNTS_TABLE}')
+            connection.executemany(
+                f"INSERT INTO {NQ_POPULATION_COUNTS_TABLE} ({groups}, total, nq) "
+                f"VALUES ({', '.join('?' for _ in range(len(POPULATION_COUNTS_GROUPS) + 2))})", rows)
+        task_repository.set_workspace_state(POPULATION_COUNTS_STATE_KEY, signature)
+    return True
+
+
 def _population_counts(task_repository: Any, filters: dict[str, Any], fields: tuple[str, ...]) -> list[dict[str, Any]]:
     """Calls and Non-Qualified Calls of the latest version of every call per Service, Campaign, Operator, NR Mode and
     ``fields`` (of POPULATION_FIELDS). As the NQ rates, only the CDRs, Service, Campaign, Operator and NR Mode filters
@@ -5493,6 +5539,7 @@ def _population_counts(task_repository: Any, filters: dict[str, Any], fields: tu
     wide = (['service', 'campaign', 'operator', 'nr_mode', *POPULATION_COUNT_FIELDS, *(['region'] if in_scope else [])]
             if set(fields) <= set(POPULATION_COUNT_FIELDS) else columns)
     where, params = [], []
+    stored = False
     if services:
         where.append(f"p.service IN ({', '.join('?' for _ in services)})")
         params.extend(services)
@@ -5507,6 +5554,13 @@ def _population_counts(task_repository: Any, filters: dict[str, Any], fields: tu
                 FROM {NQ_CALL_POPULATION_TABLE} p JOIN {NQ_CALL_SOURCES_TABLE} s ON s.dataset_id = p.dataset_id
                 WHERE {' AND '.join(where)}
             ) WHERE rn = 1 GROUP BY {', '.join(wide)}"""
+    elif list(POPULATION_COUNTS_GROUPS[:len(wide)]) == wide and refresh_population_counts(task_repository):
+        # The latest versions of the calls, from their counts of this indexing, stored in the order SQLite groups them
+        # (Region last): the counts of a group without Region are next to each other (added up below).
+        stored = True
+        source = f"""
+            SELECT {', '.join(f'p.{column}' for column in POPULATION_COUNTS_GROUPS)}, p.total, p.nq
+            FROM {NQ_POPULATION_COUNTS_TABLE} p {f"WHERE {' AND '.join(where)}" if where else ''} ORDER BY p.rowid"""
     else:
         where.append('p.is_latest = 1')
         # Every latest call is read: a scan in table order is faster than through the index.
@@ -5515,24 +5569,35 @@ def _population_counts(task_repository: Any, filters: dict[str, Any], fields: tu
             FROM {NQ_CALL_POPULATION_TABLE} p NOT INDEXED WHERE {' AND '.join(where)}
             GROUP BY {', '.join(f'p.{column}' for column in wide)}"""
     with task_repository.connection() as connection:
+        # (The rank of each CDR in the combined tables also chooses the latest version of its calls.)
         sources = tuple(tuple(row) for row in connection.execute(
-            f'SELECT dataset_id, revision, synced_at FROM {NQ_CALL_SOURCES_TABLE} ORDER BY dataset_id').fetchall())
+            f'SELECT dataset_id, revision, synced_at, combined_rank FROM {NQ_CALL_SOURCES_TABLE} ORDER BY dataset_id').fetchall())
         key = (str(task_repository.db_path), sources, tuple(sorted(scope or ())), tuple(sorted(services)), tuple(wide),
                in_scope)
         with _rate_counts_guard:
             rows = _rate_counts_cache.get(key)
         if rows is None:
             rows = [tuple(row) for row in connection.execute(source, params).fetchall()]
+            if stored and len(wide) < len(POPULATION_COUNTS_GROUPS):
+                # Without Region: the counts of each group, next to each other, are added up.
+                merged: list[tuple] = []
+                width = len(wide)
+                for row in rows:
+                    if merged and merged[-1][:width] == row[:width]:
+                        merged[-1] = (*row[:width], merged[-1][-2] + row[-2], merged[-1][-1] + row[-1])
+                    else:
+                        merged.append((*row[:width], row[-2], row[-1]))
+                rows = merged
             with _rate_counts_guard:
                 if len(_rate_counts_cache) >= RATE_COUNTS_CACHE_SIZE:
                     _rate_counts_cache.pop(next(iter(_rate_counts_cache)))
                 _rate_counts_cache[key] = rows
     if wide != columns:
         # Added up by the fields asked for, in the order SQLite groups them (the text of every field, as it sorts it).
-        positions = [wide.index(column) for column in columns]
+        group_of = itemgetter(*(wide.index(column) for column in columns))
         added: dict[tuple, list[int]] = {}
         for row in rows:
-            group = tuple(row[position] for position in positions)
+            group = group_of(row)
             counts = added.get(group)
             if counts is None:
                 added[group] = [row[-2], row[-1]]
@@ -5541,22 +5606,42 @@ def _population_counts(task_repository: Any, filters: dict[str, Any], fields: tu
                 counts[1] += row[-1]
         rows = [(*group, total, nq) for group, (total, nq) in sorted(added.items())]
     reason = nq_prioritization.scope_of(task_repository, nq_prioritization.load_settings(task_repository)) if in_scope else None
+    names = [*columns, 'total', 'nq']
+    position = {name: index for index, name in enumerate(names)}
+    # Each value is mapped (and tested against the filters) once, not once per group.
+    labels: dict[tuple[Any, Any], str] = {}
+    out_of_scope: dict[tuple[Any, Any, Any], bool] = {}
+    listed: dict[str, bool] = {}
+
+    def label(kind: str | None, value: Any) -> str:
+        if (kind, value) not in labels:
+            labels[kind, value] = str(mapper.map(kind, value or '') or '')
+        return labels[kind, value]
+    operator_kind, vendor_kind = field_kind('operator'), field_kind('vendor')
     counts = []
     for row in rows:
-        entry = dict(zip([*columns, 'total', 'nq'], row))
-        if reason is not None and reason(entry['region'], entry['nr_mode'], entry['operator'])[0]:
+        if reason is not None:
+            scope_key = (row[position['region']], row[position['nr_mode']], row[position['operator']])
+            if scope_key not in out_of_scope:
+                out_of_scope[scope_key] = bool(reason(*scope_key)[0])
+            if out_of_scope[scope_key]:
+                continue
+        operator = label(operator_kind, row[position['operator']])
+        if campaigns and str(row[position['campaign']] or '') not in campaigns:
             continue
+        if operators:
+            if operator not in listed:
+                listed[operator] = operator in operators
+            if not listed[operator]:
+                continue
+        if nr_modes and str(row[position['nr_mode']] or '') not in nr_modes:
+            continue
+        entry = dict(zip(names, row))
         if 'region' not in fields:
             entry.pop('region', None)
-        entry['operator'] = str(mapper.map(field_kind('operator'), entry['operator'] or '') or '')
-        if campaigns and str(entry['campaign'] or '') not in campaigns:
-            continue
-        if operators and entry['operator'] not in operators:
-            continue
-        if nr_modes and str(entry['nr_mode'] or '') not in nr_modes:
-            continue
+        entry['operator'] = operator
         if 'vendor' in entry:
-            entry['vendor'] = str(mapper.map(field_kind('vendor'), entry['vendor'] or '') or '')
+            entry['vendor'] = label(vendor_kind, entry['vendor'])
         counts.append(entry)
     return counts
 
@@ -5649,8 +5734,11 @@ def failure_breakdowns(task_repository: Any, filters: dict[str, Any], username: 
     for entry in site_counts:
         if not entry['site_id']:
             continue
-        site = sites_by_operator.setdefault(entry['operator'], {}).setdefault(
-            (entry['host_network'] or '', entry['site_id']), {'calls': 0, 'nq': 0, 'vendors': Counter(), 'cities': Counter()})
+        operator_sites = sites_by_operator.setdefault(entry['operator'], {})
+        site = operator_sites.get((entry['host_network'] or '', entry['site_id']))
+        if site is None:
+            site = operator_sites[entry['host_network'] or '', entry['site_id']] = {
+                'calls': 0, 'nq': 0, 'vendors': Counter(), 'cities': Counter()}
         site['calls'] += int(entry['total'] or 0)
         site['nq'] += int(entry['nq'] or 0)
         site['vendors'][entry['vendor'] or ''] += int(entry['total'] or 0)

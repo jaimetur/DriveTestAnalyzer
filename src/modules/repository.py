@@ -5222,7 +5222,38 @@ class Repository:
         """The rows of a dataset with the filters, without the calls of the Scoring Excluded Calls lists given and, with
         ``in_scope_only`` (an analysis, never a rewrite of the rows), without those of the operators out of scope in its
         NR Mode (see ``operator_roles.out_of_scope_sql``)."""
+        plan = self.dataset_rows_plan(dataset_id, columns, filters, excluded_call_lists=excluded_call_lists,
+                                      in_scope_only=in_scope_only)
+        if plan is None:
+            return pd.DataFrame()
+        selected_columns, where_clauses, params, filter_columns = plan
         table_name = self.dataset_rows_table_name(dataset_id)
+
+        # A CDR whose columnar copy holds its rows as they are now is read from it (the same rows, in the same order).
+        from src.modules import cdr_store
+        if kind := cdr_store.fresh_kind(self.db_path, dataset_id):
+            frame = cdr_store.query_cdr(self.db_path, kind, dataset_id, selected_columns, ' AND '.join(where_clauses),
+                                        params, filter_columns)
+            if frame is not None:
+                return frame
+
+        select_clause = ', '.join(
+            f"{self._quote_identifier(actual_column)} AS {self._quote_identifier(requested_column)}"
+            if actual_column != requested_column else self._quote_identifier(actual_column)
+            for requested_column, actual_column in selected_columns
+        )
+        query = f"SELECT {select_clause} FROM {self._quote_identifier(table_name)}"
+        if where_clauses:
+            query += " WHERE " + " AND ".join(where_clauses)
+
+        with self.connection() as conn:
+            return pd.read_sql_query(query, conn, params=params)
+
+    def dataset_rows_plan(self, dataset_id: int, columns: list[str], filters: dict[str, Any], *,
+                          excluded_call_lists: Iterable[int] = (), in_scope_only: bool = False,
+                          ) -> tuple[list[tuple[str, str]], list[str], list[Any], list[str]] | None:
+        """What load_dataset_rows reads: the columns (requested, resolved), the WHERE clauses and their parameters, and
+        the columns the WHERE reads; None when the dataset has none of the columns."""
         existing_columns = set(self.list_dataset_row_columns(dataset_id))
         selected_columns: list[tuple[str, str]] = []
         for column in columns:
@@ -5230,7 +5261,7 @@ class Repository:
             if resolved:
                 selected_columns.append((column, resolved))
         if not selected_columns:
-            return pd.DataFrame()
+            return None
 
         where_clauses: list[str] = []
         params: list[Any] = []
@@ -5309,26 +5340,7 @@ class Repository:
                 where_clauses.append(clause)
                 params.extend(clause_params)
                 filter_columns.append(resolved_operator)
-
-        # A CDR whose columnar copy holds its rows as they are now is read from it (the same rows, in the same order).
-        from src.modules import cdr_store
-        if kind := cdr_store.fresh_kind(self.db_path, dataset_id):
-            frame = cdr_store.query_cdr(self.db_path, kind, dataset_id, selected_columns, ' AND '.join(where_clauses),
-                                        params, filter_columns)
-            if frame is not None:
-                return frame
-
-        select_clause = ', '.join(
-            f"{self._quote_identifier(actual_column)} AS {self._quote_identifier(requested_column)}"
-            if actual_column != requested_column else self._quote_identifier(actual_column)
-            for requested_column, actual_column in selected_columns
-        )
-        query = f"SELECT {select_clause} FROM {self._quote_identifier(table_name)}"
-        if where_clauses:
-            query += " WHERE " + " AND ".join(where_clauses)
-
-        with self.connection() as conn:
-            return pd.read_sql_query(query, conn, params=params)
+        return selected_columns, where_clauses, params, filter_columns
 
     def list_metrics_with_non_null_data(self, dataset_id: int, metrics: list[str]) -> list[str]:
         """Return the metrics with at least one value in the stored rows of a dataset.

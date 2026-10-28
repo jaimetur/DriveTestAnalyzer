@@ -1839,10 +1839,23 @@ def _filters_key(context_filters: dict[str, list[str]] | None) -> dict[str, list
 
 def _load_source_frames(
     repository: Repository, sources: list[dict[str, Any]], progress_callback, required_columns,
-    context_filters: dict[str, list[str]] | None = None, *, nr_mode_campaigns: bool = False,
+    context_filters: dict[str, list[str]] | None = None, *, nr_mode_campaigns: bool = False, columnar: bool = False,
 ) -> dict[str, pd.DataFrame]:
     """The rows of the CDRs by type, with the context filters. With ``nr_mode_campaigns`` (NSA vs SA) each campaign
-    names the NR Mode of its CDR and each row keeps it (``NR_MODE_COLUMN``), so the NSA and SA tests stay apart."""
+    names the NR Mode of its CDR and each row keeps it (``NR_MODE_COLUMN``), so the NSA and SA tests stay apart.
+
+    With ``columnar``, when the columnar copies of the CDRs hold them, the rows are read from the copies of each CDR
+    type at once (cdr_store.read_kind_frame): the same rows and values, the text columns as Categoricals."""
+    from src.modules import cdr_store
+    if columnar:
+        if all(cdr_store.fresh_kind(repository.db_path, int(source['metadata']['dataset_id'])) for source in sources):
+            try:
+                return _load_source_frames(repository, sources, progress_callback, required_columns, context_filters,
+                                           nr_mode_campaigns=nr_mode_campaigns, columnar=None)
+            except _NotColumnar:
+                pass
+        columnar = False
+    parts_by_kind: dict[str, list[dict[str, Any]]] = {}
     frames_by_kind: dict[str, list[pd.DataFrame]] = {}
     normalized_filters = _normalize_context_filters(context_filters)
     active_filters = {field: values for field, values in normalized_filters.items() if values}
@@ -1893,6 +1906,33 @@ def _load_source_frames(
                 dataset_filters[resolved_filter_column] = values
         # The calls of the Excluded Calls lists switched on for the CDR are left out.
         excluded_call_lists = exclusions.list_ids_for(dataset_id)
+        if columnar is None:
+            # Only the rows to read (cdr_store.read_kind_frame reads them for every CDR of the type at once).
+            plan = None if missing_filter_fields else repository.dataset_rows_plan(
+                dataset_id, list(dict.fromkeys(selected_columns)), dataset_filters,
+                **({'excluded_call_lists': excluded_call_lists} if excluded_call_lists else {}), in_scope_only=True,
+            )
+            kind = str(source['metadata']['kind'])
+            rowids = [] if plan is None else cdr_store.plan_rows(
+                repository.db_path, cdr_store.fresh_kind(repository.db_path, dataset_id), dataset_id, plan[0],
+                ' AND '.join(plan[1]), plan[2], plan[3])
+            if rowids is None:
+                raise _NotColumnar()
+            if not rowids:
+                if not active_filters and not excluded_call_lists:
+                    raise ValueError(f"Dataset '{source['metadata']['name']}' has no rows available for scoring.")
+                progress_callback(10 + round(index * 45 / total), f"Skipped {source['metadata']['name']} with no matching rows")
+                continue
+            part = {'dataset_id': dataset_id, 'selected': plan[0], 'rowids': rowids}
+            if nr_mode_campaigns:
+                mode = str(source['metadata']['nr_mode'])
+                campaign_column = resolve_column_name([requested for requested, _column in plan[0]], 'Campaign')
+                if campaign_column is not None:
+                    part['transforms'] = {campaign_column: partial(campaign_with_nr_mode, nr_mode=mode)}
+                part['constants'] = {NR_MODE_COLUMN: mode}
+            parts_by_kind.setdefault(kind, []).append(part)
+            progress_callback(10 + round(index * 45 / total), f"Loaded {source['metadata']['name']}")
+            continue
         if missing_filter_fields:
             frame = pd.DataFrame()
         else:
@@ -1918,6 +1958,9 @@ def _load_source_frames(
         frames_by_kind.setdefault(kind, []).append(frame)
         progress_callback(10 + round(index * 45 / total), f"Loaded {source['metadata']['name']}")
 
+    if columnar is None:
+        frames = {kind: cdr_store.read_kind_frame(repository.db_path, kind, parts)[0] for kind, parts in parts_by_kind.items()}
+        frames_by_kind = {kind: [frame] for kind, frame in frames.items()}
     # (Filters that only leave values out, such as the operators the Operator Maps exclude, choose no CDR type.)
     if any(ValueSet(values).includes for values in active_filters.values()):
         labels = {'data': 'Data', 'voice': 'Voice', 'speech': 'Speech'}
@@ -1929,9 +1972,13 @@ def _load_source_frames(
                 f'Missing: {missing_labels}.'
             )
     return {
-        kind: pd.concat(frames, ignore_index=True, sort=False)
+        kind: frames[0] if columnar is None else pd.concat(frames, ignore_index=True, sort=False)
         for kind, frames in frames_by_kind.items()
     }
+
+
+class _NotColumnar(Exception):
+    """The columnar copy cannot give the rows of a CDR (see _load_source_frames)."""
 
 
 def _attach_mapping_boundaries(repository: Repository, dataset_ids: list[int], result: dict[str, Any]) -> None:
@@ -2493,6 +2540,8 @@ def _points_loss_of(repository: Repository, saved_filter: dict[str, Any], source
 # The Points Lost Map is drawn in a process of its own (points_loss_worker), unless this is switched off (the tests
 # draw it in theirs).
 POINTS_LOSS_APART = os.environ.get('DTA_POINTS_LOSS_IN_PROCESS') != '1'
+# The maps of the methodologies of a Saved Filter drawn at the same time, at most.
+POINTS_LOSS_PROCESSES = max(1, int(os.environ.get('DTA_POINTS_LOSS_PROCESSES') or 3))
 
 
 def _draw_points_loss_apart(repository: Repository, saved_filter: dict[str, Any], sources: list[dict[str, Any]],
@@ -2577,8 +2626,9 @@ def draw_points_loss(repository: Repository, saved_filter: dict[str, Any], sourc
                  if read < total else 'Mapping the tests')
 
     progress(0, f'Reading the rows of the tests: CDR 1 of {total}')
+    # The map only needs the rows: read from the columnar copies of each CDR type at once.
     frames = _load_source_frames(repository, sources, cdr_read, required_columns, context_filters,
-                                 nr_mode_campaigns=_compares_nr_modes(saved_filter))
+                                 nr_mode_campaigns=_compares_nr_modes(saved_filter), columnar=True)
     calculate = engine.calculate_scoring
     options = _engine_kwargs(repository, saved_filter, configuration, calculate)
     if hasattr(engine, 'calculate_points_loss'):
@@ -2619,24 +2669,35 @@ def _complete_points_loss(repository: Repository, saved_filter: dict[str, Any], 
                           progress: Callable[[float, str], None] = lambda *_args: None, *,
                           cached_only: bool = False) -> bool:
     """Read the rows of the tests and add the Points Lost Map to a result calculated from the Scoring History (By
-    campaign, the map of the campaigns of each methodology with it, each in its share of ``progress``). With
+    campaign, the map of the campaigns of each methodology with it, drawn side by side, ``progress`` their mean). With
     ``cached_only``, it is added only when every map was drawn before (see _points_loss_of); returns whether it was."""
     try:
         if groups and len(groups) > 1:
+            from concurrent.futures import ThreadPoolExecutor
             from src.modules.scoring_methodologies import _merge_points_loss
-            maps = []
-            for index, group in enumerate(groups):
+            # The maps of the methodologies are drawn side by side (each in a process of its own, see _points_loss_of):
+            # the progress is their mean, with the step of the last one that moved.
+            shares = [0.0] * len(groups)
+            shares_guard = threading.Lock()
+
+            def draw(index: int, group: dict[str, Any]) -> Any:
                 name = group.get('profile_name') or 'Methodology'
 
-                def group_progress(value: float, step: str, index: int = index, name: str = name) -> None:
-                    progress((index + value / 100) * 97 / len(groups),
-                             f'Methodology {index + 1} of {len(groups)} ({name}): {step}')
-                maps.append(_points_loss_of(repository, saved_filter, [dict(source) for source in sources],
-                                            validate_scoring_configuration(group['configuration']),
-                                            {**context_filters, 'Campaign': list(group['campaigns'])}, engine,
-                                            group_progress, cached_only=cached_only))
-                if maps[-1] is None:
-                    return False
+                def group_progress(value: float, step: str) -> None:
+                    with shares_guard:
+                        shares[index] = max(shares[index], float(value))
+                        overall = sum(shares) / len(groups) * 0.97
+                    progress(overall, f'Methodology {index + 1} of {len(groups)} ({name}): {step}')
+                return _points_loss_of(repository, saved_filter, [dict(source) for source in sources],
+                                       validate_scoring_configuration(group['configuration']),
+                                       {**context_filters, 'Campaign': list(group['campaigns'])}, engine,
+                                       group_progress, cached_only=cached_only)
+            with ThreadPoolExecutor(max_workers=min(POINTS_LOSS_PROCESSES, len(groups)),
+                                    thread_name_prefix='points-loss-methodology') as pool:
+                futures = [pool.submit(draw, index, group) for index, group in enumerate(groups)]
+                maps = [future.result() for future in futures]
+            if any(item is None for item in maps):
+                return False
             points_loss = _merge_points_loss(maps)
         else:
             points_loss = _points_loss_of(repository, saved_filter, sources, configuration, context_filters, engine,

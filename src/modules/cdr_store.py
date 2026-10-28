@@ -1677,6 +1677,13 @@ def _plan_rowids(database_path: Any, kind: str, dataset_id: int, query: str, whe
     if hint is None or (hint.startswith('INDEXED BY') and not index_sql):
         return None
     filters = list(dict.fromkeys(filter_columns))
+    order_keys = _index_columns(index_sql, table) if index_sql else []
+    if order_keys is not None and not re.search(r'\b(_?_?rowid|oid|_rowid_)\b', str(where), re.IGNORECASE):
+        try:
+            return _plan_rowids_by_combination(source, table, *_filter_combinations(database_path, kind, dataset_id, filters),
+                                               filters, where, params, order_keys)
+        except sqlite3.OperationalError:
+            return None
     values, _length = _raw(database_path, kind, dataset_id, [ROWID, *filters])
     memory = sqlite3.connect('file::memory:', uri=True)
     try:
@@ -1693,6 +1700,100 @@ def _plan_rowids(database_path: Any, kind: str, dataset_id: int, query: str, whe
         return None
     finally:
         memory.close()
+
+
+def _index_columns(index_sql: str, table: str) -> list[str] | None:
+    """The expressions of the columns of ``CREATE INDEX ... ON <table>(<columns>)``, in their order; None for an index
+    whose order they do not tell alone (a partial index, a collation or a descending column)."""
+    match = re.match(rf'\s*CREATE\s+(?:UNIQUE\s+)?INDEX\s+.+?\s+ON\s+(?:"?{re.escape(table)}"?)\s*\((.*)\)\s*$',
+                     str(index_sql), re.IGNORECASE | re.DOTALL)
+    if not match or re.search(r'\b(COLLATE|DESC|WHERE)\b', match.group(1), re.IGNORECASE):
+        return None
+    columns, depth, current, quoted = [], 0, '', None
+    for character in match.group(1):
+        if quoted:
+            quoted = None if character == quoted else quoted
+        elif character in '"\'`[':
+            quoted = ']' if character == '[' else character
+        elif character == '(':
+            depth += 1
+        elif character == ')':
+            depth -= 1
+        elif character == ',' and depth == 0:
+            columns.append(current.strip())
+            current = ''
+            continue
+        current += character
+    columns.append(current.strip())
+    return [re.sub(r'\s+ASC\s*$', '', column, flags=re.IGNORECASE) for column in columns if column]
+
+
+def _filter_combinations(database_path: Any, kind: str, dataset_id: int, columns: list[str]):
+    """The row ids of a CDR in row id order, the combination of values of ``columns`` of each row (0, 1...), and the
+    values of each combination (for each column, its Python values as SQLite gives them), worked out by DuckDB on the
+    copy without making a Python value of every row."""
+    import duckdb
+
+    root = store_root(database_path)
+    manifest = read_manifest(manifest_file(root, kind, dataset_id))
+    if manifest is None or not cdr_folder(root, kind, dataset_id).is_dir():
+        raise LookupError(f'The columnar copy of CDR {dataset_id} is not ready.')
+    types = {**dict(manifest['columns']), ROWID: 'BIGINT', DATASET_ID: 'BIGINT', NR_MODE: 'VARCHAR'}
+    missing = [column for column in columns if column not in types]
+    if missing:
+        raise KeyError(f'The CDR {dataset_id} has no column {missing[0]}.')
+    # A value is the tuple of its parts (a column and its integer and real companions).
+    parts = [quote(part) for part in stored_parts(list(columns), types)]
+    source = _sql_text(cdr_parts(root, kind, dataset_id))
+    duck = duckdb.connect()
+    try:
+        if not parts:
+            rowids = duck.execute(f'SELECT {quote(ROWID)} FROM read_parquet({source}) ORDER BY {quote(ROWID)}').fetchnumpy()[ROWID]
+            return np.asarray(rowids, dtype=np.int64), np.zeros(len(rowids), dtype=np.int64), []
+        listed = ', '.join(parts)
+        duck.execute(f'CREATE TEMP TABLE combinations AS SELECT row_number() OVER () - 1 AS "__combination", * '
+                     f'FROM (SELECT DISTINCT {listed} FROM read_parquet({source}))')
+        distinct = duck.execute(f'SELECT {listed} FROM combinations ORDER BY "__combination"').df()
+        rows = duck.execute(
+            f'SELECT p.{quote(ROWID)} AS rowid, c."__combination" AS combination FROM read_parquet({source}) p '
+            f'JOIN combinations c ON ' + ' AND '.join(f'p.{part} IS NOT DISTINCT FROM c.{part}' for part in parts)
+            + f' ORDER BY p.{quote(ROWID)}').fetchnumpy()
+    finally:
+        duck.close()
+    values = copy_values(distinct, list(columns), types)
+    return (np.asarray(rows['rowid'], dtype=np.int64), np.asarray(rows['combination'], dtype=np.int64),
+            [_python_values(values[column]) for column in columns])
+
+
+def _plan_rowids_by_combination(source: str, table: str, rowids: Any, combination: Any, columns: list[Any],
+                                filters: list[str], where: str, params: Any, order_keys: list[str]) -> list[int]:
+    """_plan_rowids from the distinct combinations of the filter columns (see _filter_combinations): the WHERE of a row
+    (and the key of the index it is read through) only depends on its values of those columns, so SQLite evaluates each
+    combination once instead of each row. The rows are those whose combination it keeps, in row id order, or in the
+    order of the index (its key, then the row id) when the plan reads one."""
+    if not len(rowids):
+        return []
+    count = int(combination.max()) + 1
+    memory = sqlite3.connect('file::memory:', uri=True)
+    try:
+        memory.execute('ATTACH DATABASE ? AS workspace', (source,))
+        memory.execute(f'CREATE TABLE main.{quote(table)} ({quote(ROWID)} INTEGER PRIMARY KEY'
+                       + ''.join(f', {quote(column)}' for column in filters) + ')')
+        memory.executemany(f'INSERT INTO main.{quote(table)} VALUES ({", ".join("?" * (len(filters) + 1))})',
+                           ((index, *(column[index] for column in columns)) for index in range(count)))
+        kept = np.zeros(count, dtype=bool)
+        kept[[row[0] for row in memory.execute(f'SELECT {quote(ROWID)} FROM main.{quote(table)} WHERE {where}',
+                                               list(params)).fetchall()]] = True
+        rank = np.zeros(count, dtype=np.int64)
+        if order_keys:
+            for index, key_rank in memory.execute(
+                    f'SELECT {quote(ROWID)}, DENSE_RANK() OVER (ORDER BY {", ".join(order_keys)}) FROM main.{quote(table)}'):
+                rank[index] = key_rank
+    finally:
+        memory.close()
+    rows = np.flatnonzero(kept[combination])
+    order = np.lexsort((rowids[rows], rank[combination[rows]]))
+    return rowids[rows[order]].tolist()
 
 
 def query_cdr(database_path: Any, kind: str, dataset_id: int, selected: list[tuple[str, str]], where: str = '',
@@ -1724,6 +1825,143 @@ def query_cdr(database_path: Any, kind: str, dataset_id: int, selected: list[tup
     # The rows come back in row id order: put them in the order of the plan.
     position = {rowid: index for index, rowid in enumerate(sorted(rowids))}
     return frame_of(values, length, [position[rowid] for rowid in rowids])
+
+
+def plan_rows(database_path: Any, kind: str, dataset_id: int, selected: list[tuple[str, str]], where: str = '',
+              params: Any = (), filter_columns: Any = ()) -> list[int] | None:
+    """The row ids query_cdr reads, in its order (every row of the CDR without ``where``); None when the copy cannot
+    give them."""
+    if not where:
+        root = store_root(database_path)
+        return _filter_combinations(database_path, kind, dataset_id, [])[0].tolist() if read_manifest(
+            manifest_file(root, kind, dataset_id)) is not None else None
+    table = f'dataset_rows_{int(dataset_id)}'
+    query = f'SELECT {", ".join(f"{quote(column)} AS {quote(requested)}" for requested, column in selected)} FROM {quote(table)} WHERE {where}'
+    return _plan_rowids(database_path, kind, dataset_id, query, where, params, filter_columns)
+
+
+def read_kind_frame(database_path: Any, kind: str, parts: list[dict[str, Any]]) -> tuple[pd.DataFrame, np.ndarray]:
+    """The rows of several CDRs of one type as ``pandas.concat`` (``ignore_index``, ``sort=False``) of their query_cdr
+    frames gives them, each part (``dataset_id``, ``selected`` (requested, physical) columns, ``rowids`` in their
+    order, ``constants`` (column: value added after them) and ``transforms`` (column: function of each value)) in
+    turn, and the part of each row. The text columns (VARCHAR in every CDR) come as Categoricals of the same values,
+    read by DuckDB without making a Python value of every row; the others as query_cdr types them."""
+    import duckdb
+
+    root = store_root(database_path)
+    manifests = []
+    for part in parts:
+        manifest = read_manifest(manifest_file(root, kind, int(part['dataset_id'])))
+        if manifest is None or not cdr_folder(root, kind, int(part['dataset_id'])).is_dir():
+            raise LookupError(f"The columnar copy of CDR {part['dataset_id']} is not ready.")
+        manifests.append({**dict(manifest['columns']), ROWID: 'BIGINT', DATASET_ID: 'BIGINT', NR_MODE: 'VARCHAR'})
+    # The columns of the concatenation, in its order.
+    order: list[str] = []
+    for part in parts:
+        for name in [*(requested for requested, _physical in part['selected']), *part.get('constants', {})]:
+            if name not in order:
+                order.append(name)
+    text = [name for name in order if not any(name in part.get('constants', {}) for part in parts)
+            and all(types.get(physical) == 'VARCHAR' for part, types in zip(parts, manifests)
+                    for requested, physical in part['selected'] if requested == name)]
+    sizes = np.asarray([len(part['rowids']) for part in parts], dtype=np.int64)
+    part_of_row = np.repeat(np.arange(len(parts), dtype=np.int64), sizes)
+    length = int(sizes.sum())
+    columns: dict[str, Any] = {}
+    if text and length:
+        duck = duckdb.connect()
+        try:
+            duck.register('wanted', pd.DataFrame({
+                'part': part_of_row,
+                'position': np.arange(length, dtype=np.int64),
+                'rowid': np.concatenate([np.asarray(part['rowids'], dtype=np.int64) for part in parts]),
+            }))
+            selects = []
+            for index, (part, types) in enumerate(zip(parts, manifests)):
+                physical = {requested: column for requested, column in part['selected']}
+                listed = ''.join(f', {quote(physical[name])} AS {quote(name)}' for name in text if name in physical)
+                selects.append(f'SELECT {index} AS "__part", {quote(ROWID)}{listed} '
+                               f'FROM read_parquet({_sql_text(cdr_parts(root, kind, int(part["dataset_id"])))})')
+            duck.execute(f'CREATE TEMP TABLE kind_rows AS SELECT w.position, u.* FROM ({" UNION ALL BY NAME ".join(selects)}) u '
+                         f'JOIN wanted w ON u."__part" = w.part AND u.{quote(ROWID)} = w.rowid')
+            present = {row[0] for row in duck.execute("SELECT column_name FROM duckdb_columns() WHERE table_name = 'kind_rows'").fetchall()}
+            casts, plain = [], []
+            for index, name in enumerate(text):
+                if name not in present:
+                    continue
+                count = duck.execute(f'SELECT approx_count_distinct({quote(name)}) FROM kind_rows').fetchone()[0]
+                if count > max(1000, length // 20):
+                    # Nearly a value per row (times, identifiers): a Categorical would not save anything.
+                    plain.append(name)
+                    casts.append(quote(name))
+                elif count:
+                    duck.execute(f'CREATE TYPE "__text_{index}" AS ENUM (SELECT DISTINCT {quote(name)} FROM kind_rows '
+                                 f'WHERE {quote(name)} IS NOT NULL ORDER BY 1)')
+                    casts.append(f'CAST({quote(name)} AS "__text_{index}") AS {quote(name)}')
+            read = duck.execute(f'SELECT {", ".join(casts) or "1 AS one"} FROM kind_rows ORDER BY position').df()
+        finally:
+            duck.close()
+        for name in text:
+            if name in plain:
+                # As query_cdr types text: the strings, None for no value.
+                values = read[name].to_numpy(dtype=object)
+                values[pd.isna(values)] = None
+                columns[name] = values
+            elif name in read.columns:
+                columns[name] = pd.Categorical(read[name]).as_unordered()
+            else:
+                columns[name] = pd.Categorical([None] * length, categories=[])
+    elif text:
+        columns.update({name: pd.Categorical([], categories=[]) for name in text})
+    others = [name for name in order if name not in text]
+    if others:
+        frames = []
+        for part in parts:
+            physical = [(requested, column) for requested, column in part['selected'] if requested in others]
+            frame = pd.DataFrame(index=range(len(part['rowids'])))
+            if physical and len(part['rowids']):
+                wanted = list(dict.fromkeys(column for _requested, column in physical))
+                values, count = _raw(database_path, kind, int(part['dataset_id']), wanted, list(part['rowids']))
+                # The rows come back in row id order: put them in the order of the plan.
+                positions = np.searchsorted(np.sort(np.asarray(part['rowids'], dtype=np.int64)),
+                                            np.asarray(part['rowids'], dtype=np.int64))
+                typed = {column: _typed([values[column]], count).take(positions) for column in wanted}
+                frame = pd.DataFrame({requested: typed[column] for requested, column in physical},
+                                     columns=[requested for requested, _column in physical], index=range(len(positions)))
+            elif physical:
+                frame = pd.DataFrame({requested: np.empty(0, dtype=object) for requested, _column in physical})
+            for name, value in part.get('constants', {}).items():
+                frame[name] = value
+            frames.append(frame)
+        combined = pd.concat(frames, ignore_index=True, sort=False)
+        for name in others:
+            columns[name] = combined[name].to_numpy() if name in combined else np.full(length, np.nan)
+    frame = pd.DataFrame({name: columns[name] for name in order}, columns=order, index=range(length))
+    for name in order:
+        transforms = [part.get('transforms', {}).get(name) for part in parts]
+        if not any(transforms):
+            continue
+        if name not in text:
+            values = frame[name].copy()
+            for index, function in enumerate(transforms):
+                rows = (part_of_row == index) & frame[name].notna().to_numpy()
+                if function is not None and rows.any():
+                    values[rows] = frame[name][rows].map(
+                        {value: function(value) for value in frame[name][rows].unique()})
+            frame[name] = values
+            continue
+        # A function of each value of each part: computed once per value and part.
+        values = frame[name].cat
+        keys = part_of_row * (len(values.categories) + 1) + (values.codes.to_numpy().astype(np.int64) + 1)
+        unique, inverse = np.unique(keys, return_inverse=True)
+        mapped = []
+        for key in unique.tolist():
+            part_index, code = divmod(key, len(values.categories) + 1)
+            value = values.categories[code - 1] if code else None
+            function = transforms[part_index]
+            mapped.append(function(value) if function is not None and value is not None else value)
+        frame[name] = pd.Categorical(np.asarray(mapped, dtype=object)[inverse]).as_unordered()
+    return frame, part_of_row
 
 
 def query_cdr_rows(database_path: Any, kind: str, dataset_id: int, query: str, selected: list[tuple[str, str]],

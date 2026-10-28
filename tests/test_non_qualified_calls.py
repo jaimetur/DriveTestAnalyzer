@@ -1268,6 +1268,36 @@ def test_failures_by_type_technology_and_serving_cell(client, tmp_path, monkeypa
     assert any(title.startswith('Failures by Type, Technology & Serving Cell') for title in titles)
 
 
+def test_the_failure_panels_read_the_counts_of_the_indexing(client, tmp_path, monkeypatch):
+    enable_module()
+    add_cdr(tmp_path, 'NetCheck_UK_CDR_Voice_2026_Q1.xlsx', 'voice', serving_voice_rows())
+    login(client)
+    index_cdrs()
+    repository = core.repository
+    # The indexing counted the latest versions of the calls once, by the fields of the failure panels.
+    assert repository.get_workspace_state(nq.POPULATION_COUNTS_STATE_KEY)
+    with repository.connection() as connection:
+        stored = connection.execute(f'SELECT SUM(total), SUM(nq) FROM {nq.NQ_POPULATION_COUNTS_TABLE}').fetchone()
+        scanned = connection.execute(
+            f'SELECT COUNT(*), SUM(is_nq) FROM {nq.NQ_CALL_POPULATION_TABLE} WHERE is_latest = 1').fetchone()
+    assert tuple(stored) == tuple(scanned)
+    every_filter = ({}, {'in_scope': True}, {'service': ['voice']}, {'operator': ['EE']})
+
+    def panels():
+        nq._rate_counts_cache.clear()
+        return [{key: value for key, value in nq.failure_breakdowns(repository, dict(filters), 'admin').items()
+                 if key != 'operator_colors'} for filters in every_filter]
+    from_counts = panels()
+    # The same panels as counting every call of the population.
+    with monkeypatch.context() as patched:
+        patched.setattr(nq, 'refresh_population_counts', lambda task_repository: False)
+        assert panels() == from_counts
+    # Counts of another indexing are counted again before they are read.
+    repository.set_workspace_state(nq.POPULATION_COUNTS_STATE_KEY, 'another indexing')
+    assert panels() == from_counts
+    assert repository.get_workspace_state(nq.POPULATION_COUNTS_STATE_KEY) != 'another indexing'
+
+
 def test_workspaces_indexed_before_get_the_serving_cell_columns(client, tmp_path):
     enable_module()
     add_cdr(tmp_path, 'NetCheck_UK_CDR_Voice_2026_Q1.xlsx', 'voice', serving_voice_rows())
