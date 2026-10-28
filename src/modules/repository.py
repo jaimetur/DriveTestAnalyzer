@@ -4602,17 +4602,39 @@ class Repository:
         quoted_table = self._quote_identifier(table_name)
         where_sql = f" WHERE {' AND '.join(where_clauses)}" if where_clauses else ''
         emptied = self._emptied_cdr_table(table_name)
+        combined = re.fullmatch(r'reporting_rows_(data|voice|speech)', str(table_name))
+        combined = combined.group(1) if combined and self._combined_in_copies(combined.group(1)) else None
         with self.connection() as conn:
-            total = int(conn.execute(
-                f"SELECT COUNT(*) AS count FROM {quoted_table}{where_sql}", params,
-            ).fetchone()['count'] or 0)
+            if combined and not where_sql:
+                # An emptied combined table without filters: its rows are those of its row map.
+                total = self.reporting_row_count(combined)
+            else:
+                total = int(conn.execute(
+                    f"SELECT COUNT(*) AS count FROM {quoted_table}{where_sql}", params,
+                ).fetchone()['count'] or 0)
             select_clause = ', '.join(
                 f"{self._quote_identifier(actual)} AS {self._quote_identifier(requested)}"
                 if actual != requested else self._quote_identifier(actual)
                 for requested, actual in selected_columns
             )
             query_params = [*params, max(1, int(page_size)), max(0, int(page)) * max(1, int(page_size))]
-            if emptied is not None:
+            if combined:
+                from src.modules import cdr_store
+
+                # An emptied combined table: its filtered columns (or its row map) choose the rows of the page, given
+                # alone to the query.
+                rowids = [int(row[0]) for row in (conn.execute(
+                    f"SELECT rowid FROM {quoted_table}{where_sql} ORDER BY rowid LIMIT ? OFFSET ?", query_params) if where_sql else conn.execute(
+                    f'SELECT row_id FROM {cdr_store.COMBINED_ROWS_TABLE} WHERE kind = ? ORDER BY row_id LIMIT ? OFFSET ?',
+                    (combined, *query_params[-2:]))).fetchall()]
+                with cdr_store.combined_rows(rowids):
+                    frame = pd.read_sql_query(
+                        f"SELECT {select_clause} FROM {quoted_table}{where_sql} AND rowid IN ({', '.join('?' for _ in rowids) or 'NULL'}) "
+                        f"ORDER BY rowid LIMIT ? OFFSET 0" if where_sql else
+                        f"SELECT {select_clause} FROM {quoted_table} WHERE rowid IN ({', '.join('?' for _ in rowids) or 'NULL'}) "
+                        f"ORDER BY rowid LIMIT ? OFFSET 0",
+                        conn, params=[*params, *rowids, max(1, int(page_size))])
+            elif emptied is not None:
                 from src.modules import cdr_store
 
                 # The rows of a CDR in its columnar copy: its filtered columns choose the rows of the page, read from
@@ -4766,6 +4788,14 @@ class Repository:
             ).fetchone()
             if not exists:
                 return 0
+            if self._combined_in_copies(dataset_kind):
+                from src.modules import cdr_store
+
+                # An emptied combined table: its rows are those of its row map.
+                return int(conn.execute(
+                    f'SELECT COUNT(*) FROM {cdr_store.COMBINED_ROWS_TABLE} WHERE kind = ?'
+                    + (' AND dataset_id = ?' if dataset_id is not None else ''),
+                    (dataset_kind, *([int(dataset_id)] if dataset_id is not None else ()))).fetchone()[0] or 0)
             if dataset_id is None:
                 row = conn.execute(
                     f"SELECT COUNT(*) AS count FROM {self._quote_identifier(table_name)}"

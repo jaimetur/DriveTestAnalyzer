@@ -233,6 +233,21 @@ _combined_shadow_sets: dict[str, set[str]] = {}
 _combined_scope: ContextVar[frozenset[int] | None] = ContextVar('cdr_store_combined_scope', default=None)
 
 
+# The rows (row ids) the SQL being run reads of a combined table, when its caller knows them (see combined_rows).
+_combined_rows: ContextVar[frozenset[int] | None] = ContextVar('cdr_store_combined_rows', default=None)
+
+
+@contextmanager
+def combined_rows(row_ids: Any):
+    """Run SQL that reads these rows only of the combined tables (its WHERE keeps their row ids): an emptied combined
+    table is given them alone."""
+    token = _combined_rows.set(frozenset(int(item) for item in row_ids))
+    try:
+        yield
+    finally:
+        _combined_rows.reset(token)
+
+
 @contextmanager
 def combined_scope(dataset_ids: Any):
     """Run SQL that reads the rows of these CDRs only from the combined tables (its WHERE keeps their dataset ids): an
@@ -315,11 +330,12 @@ def provide_combined_rows(connection: sqlite3.Connection, kind: str, columns: An
         wanted = {declared[0][0]}
     selected = [(column, column_type) for column, column_type in declared if column in wanted]
     database = next((str(row[2]) for row in connection.execute('PRAGMA database_list') if row[1] == 'main'), '')
-    scope = _combined_scope.get()
+    scope, rows = _combined_scope.get(), _combined_rows.get()
     mapped = connection.execute(
         f'SELECT row_id, dataset_id, source_row_id FROM main.{COMBINED_ROWS_TABLE} WHERE kind = ?'
-        + (f' AND dataset_id IN ({", ".join("?" for _ in scope)})' if scope is not None else '') + ' ORDER BY row_id',
-        (kind, *(sorted(scope) if scope is not None else ()))).fetchall()
+        + (f' AND dataset_id IN ({", ".join("?" for _ in scope)})' if scope is not None else '')
+        + (' AND row_id IN (SELECT value FROM json_each(?))' if rows is not None else '') + ' ORDER BY row_id',
+        (kind, *(sorted(scope) if scope is not None else ()), *([json.dumps(sorted(rows))] if rows is not None else ()))).fetchall()
     length = len(mapped)
     values = {column: np.full(length, None, dtype=object) for column, _type in selected}
     by_dataset: dict[int, list[int]] = {}

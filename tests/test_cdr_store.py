@@ -562,10 +562,21 @@ def test_an_emptied_combined_table_gives_its_sql_the_rows_of_the_copies(client, 
                 for ids in ([second], [first, second]) for scope in (False, True)]
 
     frames = loaded()
+
+    def previews():
+        return [core.repository.load_reporting_preview_page('data', ['Operator', 'Rate', 'NR_Mode'], filters, page, 2, 'Operator')
+                for filters in ({}, {'Operator': ['ee']}) for page in (0, 1)]
+
+    pages = previews()
+    counts = [core.repository.reporting_row_count('data'), core.repository.reporting_row_count('data', second)]
     copy_everything()
     assert cdr_store.empty_combined_table(core.repository, 'data')
     for frame, expected in zip(loaded(), frames, strict=True):
         pd.testing.assert_frame_equal(frame, expected, check_exact=True)
+    for (frame, total, options), (expected, expected_total, expected_options) in zip(previews(), pages, strict=True):
+        pd.testing.assert_frame_equal(frame, expected, check_exact=True)
+        assert (total, options) == (expected_total, expected_options)
+    assert [core.repository.reporting_row_count('data'), core.repository.reporting_row_count('data', second)] == counts == [5, 2]
 
     with core.repository.connection() as connection:
         assert connection.execute('SELECT COUNT(*) FROM main.reporting_rows_data').fetchone()[0] == 0

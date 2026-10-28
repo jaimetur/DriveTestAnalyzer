@@ -6394,9 +6394,7 @@ def workspace_combined_tables(
             if cached_count.get('signature') == count_signature:
                 row_count = int(cached_count.get('count') or 0)
             else:
-                row_count = connection.execute(
-                    f'SELECT COUNT(*) AS count FROM {task_repository._quote_identifier(table_name)}',
-                ).fetchone()['count']
+                row_count = task_repository.reporting_row_count(kind)
                 pending_counts[f'combined_row_count_{kind}'] = json.dumps({'signature': count_signature, 'count': int(row_count or 0)})
             column_count = len(task_repository._table_columns(connection, table_name))
             if not updated_at:

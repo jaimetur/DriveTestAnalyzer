@@ -3899,3 +3899,54 @@ def test_view_dashboard_lists_its_slides_at_the_left_with_the_navigation_below_t
     assert "nav.querySelector('.is-current')?.focus({preventScroll: true});" in script
     charts = (root / 'src/web_interface/static/js/dashboard_charts.js').read_text(encoding='utf-8')
     assert 'function zoomChartAt(canvas, requestedZoom, clientX, clientY) {' in charts and 'globalThis.zoomDashboardChartAt = zoomChartAt;' in charts
+
+
+@pytest.mark.parametrize('changes', [
+    {},
+    {'filters': {'Operator': ['A', 'C']}},
+    {'date_from': '2026-02-01', 'date_to': '2026-04-30'},
+])
+def test_dashboards_give_the_same_results_once_the_copies_are_the_only_store(client, monkeypatch, changes):
+    from src.modules import cdr_store
+
+    payload = {**_compact_read_dashboard(client), **changes}
+    # The keys of the caches (they follow the revisions of the data) and the times.
+    unstable = {'token', 'selection_key', 'prepared_at', 'generated_at', 'elapsed', 'elapsed_ms', 'cached', 'from_cache',
+                'restored', 'timing'}
+
+    def stable(value):
+        if isinstance(value, dict):
+            return {key: stable(item) for key, item in value.items() if key not in unstable}
+        if isinstance(value, list):
+            return [stable(item) for item in value]
+        return value
+
+    def results():
+        prepared = client.post('/api/ppt-dashboards/prepare', json=payload)
+        assert prepared.status_code == 200, prepared.text
+        token = prepared.json()['token']
+        indexes = [chart['index'] for slide in prepared.json()['slides'] for chart in slide['charts']]
+        charts = [client.post(f'/api/ppt-dashboards/chart/{token}/{index}/refresh').json() for index in indexes]
+        pages = [client.get(f'/api/ppt-dashboards/data/{token}/{index}', params={'include_filter_values': True}).json()
+                 for index in indexes]
+        options = client.post('/api/ppt-dashboards/filter-options/batch', json={
+            'definition': payload, 'fields': ['Operator', 'Campaign', 'City']}).json()
+        return stable(prepared.json()), charts, stable(pages), options
+
+    with_tables = results()
+    # The copies become the only store: the CDR and combined tables are emptied, and the Dashboards read again.
+    core.repository.set_workspace_state(cdr_store.ONLY_COPIES_STATE_KEY, '1')
+    repository = core.Repository(core.active_workspace.database_path, global_db_path=core.repository.global_db_path)
+    cdr_store.start_store_sync(repository, lambda run: run(), lambda: cdr_store.included_cdrs(repository))
+    assert cdr_store.empty_combined_table(core.repository, 'data')
+    with core.repository.connection() as connection:
+        assert connection.execute('SELECT COUNT(*) FROM main.reporting_rows_data').fetchone()[0] == 0
+        assert cdr_store.shadows(connection)
+    core.mark_combined_reporting_updated(core.repository, 'data', rows_changed=True)
+
+    prepared, charts, pages, options = results()
+    assert {key: (prepared.get(key), with_tables[0].get(key)) for key in {*prepared, *with_tables[0]}
+            if prepared.get(key) != with_tables[0].get(key)} == {}
+    assert charts == with_tables[1]
+    assert pages == with_tables[2]
+    assert options == with_tables[3]

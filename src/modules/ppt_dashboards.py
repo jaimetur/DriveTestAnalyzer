@@ -2025,10 +2025,11 @@ def install_dashboard_routes(core):
                     if not vendor_column or not family_column:
                         continue
                     quote = task_repository._quote_identifier
-                    rows = connection.execute(
-                        f'SELECT DISTINCT {quote(vendor_column)}, {quote(family_column)} FROM {quote(task_repository.reporting_rows_table_name(kind))} '
-                        f'WHERE dataset_id IN ({", ".join("?" for _ in ids)})', ids,
-                    ).fetchall()
+                    with cdr_store.combined_scope(ids):
+                        rows = connection.execute(
+                            f'SELECT DISTINCT {quote(vendor_column)}, {quote(family_column)} FROM {quote(task_repository.reporting_rows_table_name(kind))} '
+                            f'WHERE dataset_id IN ({", ".join("?" for _ in ids)})', ids,
+                        ).fetchall()
                     for vendor, family in rows:
                         if vendor and family:
                             vendor_families[_normalise_vendor(vendor, mappings, settings['vendor_mappings'])] = str(family)
@@ -3786,10 +3787,11 @@ def install_dashboard_routes(core):
                 placeholders = ', '.join('?' for _ in dataset_ids)
                 table = task_repository._quote_identifier(task_repository.reporting_rows_table_name(kind))
                 column = task_repository._quote_identifier(date_column)
-                row = connection.execute(
-                    f'SELECT MIN(date({column})) AS first_date, MAX(date({column})) AS last_date '
-                    f'FROM {table} WHERE dataset_id IN ({placeholders})', dataset_ids,
-                ).fetchone()
+                with cdr_store.combined_scope(dataset_ids):
+                    row = connection.execute(
+                        f'SELECT MIN(date({column})) AS first_date, MAX(date({column})) AS last_date '
+                        f'FROM {table} WHERE dataset_id IN ({placeholders})', dataset_ids,
+                    ).fetchone()
                 for value, is_lower in ((row['first_date'], True), (row['last_date'], False)):
                     try:
                         parsed = date.fromisoformat(str(value)) if value else None
@@ -3874,7 +3876,8 @@ def install_dashboard_routes(core):
                 f'matched AS (SELECT *, {", ".join(match_columns)} FROM scoped) '
                 f'SELECT {", ".join(aggregates)} FROM matched'
             )
-            row = connection.execute(query, [*base_params, *match_parameters]).fetchone()
+            with cdr_store.combined_scope([int(row['id']) for row in selected]):
+                row = connection.execute(query, [*base_params, *match_parameters]).fetchone()
             for index, field_name in enumerate(field_order):
                 encoded_values = row[f'facet_{index}'] if row else '[]'
                 options[field_name].update(
@@ -4028,12 +4031,13 @@ def install_dashboard_routes(core):
                     task_repository, columns, definition,
                 )
                 table = task_repository._quote_identifier(task_repository.reporting_rows_table_name(kind))
-                counts = connection.execute(
-                    f'''SELECT COUNT(*) AS universe_count,
-                               SUM(CASE WHEN {filtered_where} THEN 1 ELSE 0 END) AS filtered_count
-                        FROM {table} WHERE {universe_where}''',
-                    [*filtered_params, *universe_params],
-                ).fetchone()
+                with cdr_store.combined_scope(dataset_ids):
+                    counts = connection.execute(
+                        f'''SELECT COUNT(*) AS universe_count,
+                                   SUM(CASE WHEN {filtered_where} THEN 1 ELSE 0 END) AS filtered_count
+                            FROM {table} WHERE {universe_where}''',
+                        [*filtered_params, *universe_params],
+                    ).fetchone()
                 universe_row_counts[kind] = int(counts['universe_count'] or 0)
                 row_counts[kind] = int(counts['filtered_count'] or 0)
             # A full, unfiltered CDR selection can use its upload-time profile
@@ -4134,10 +4138,11 @@ def install_dashboard_routes(core):
                     requested_definition, exclude=field_name, columns=columns,
                 )
                 table = task_repository._quote_identifier(task_repository.reporting_rows_table_name(kind))
-                rows = connection.execute(
-                    f'SELECT DISTINCT {value_expression} AS value '
-                    f'FROM {table} WHERE {where}', params,
-                ).fetchall()
+                with cdr_store.combined_scope([int(row['id']) for row in selected]):
+                    rows = connection.execute(
+                        f'SELECT DISTINCT {value_expression} AS value '
+                        f'FROM {table} WHERE {where}', params,
+                    ).fetchall()
                 values.update(str(row['value']) for row in rows)
         if not resolved:
             raise HTTPException(400, f'The selected CDRs do not contain the {field_name} field.')
@@ -5260,9 +5265,10 @@ def install_dashboard_routes(core):
             if not dataset_clause:
                 return 0.0
             count = dataset_clause.group(1).count('?')
-            selected = connection.execute(
-                f'SELECT count(*) FROM "{table}" WHERE {dataset_clause.group(1)}', list(parameters)[:count],
-            ).fetchone()[0]
+            with cdr_store.combined_scope(list(parameters)[:count]):
+                selected = connection.execute(
+                    f'SELECT count(*) FROM "{table}" WHERE {dataset_clause.group(1)}', list(parameters)[:count],
+                ).fetchone()[0]
             total = connection.execute(f'SELECT count(*) FROM "{table}"').fetchone()[0]
             return selected / total if total else 0.0
         except sqlite3.Error:
@@ -5348,6 +5354,14 @@ def install_dashboard_routes(core):
             selected.extend(by_identity.get(identity(name), []))
         return sorted(set(selected), key=lambda column: (identity(column), column))
 
+    def where_scope(where, parameters):
+        """The CDRs a selection WHERE keeps (its leading dataset_id IN clause, see selection_where), as the scope of an
+        emptied combined table (see cdr_store.combined_scope); every CDR without one."""
+        match = re.match(r'\s*\(?\s*dataset_id IN \(([?, ]+)\)', str(where))
+        if not match:
+            return nullcontext()
+        return cdr_store.combined_scope(list(parameters)[:match.group(1).count('?')])
+
     def load_reporting_frame(
         database_path, table_name, source_columns, requested_columns, where, parameters,
         aggregation_columns=None, expand_groups=False, cache_path=None,
@@ -5393,7 +5407,8 @@ def install_dashboard_routes(core):
             query = f'SELECT {select_clause} FROM {source} WHERE {where}{group_by}'
         connection = reporting_read_connection(database_path)
         try:
-            frame = pd.read_sql_query(query, connection, params=parameters)
+            with where_scope(where, parameters):
+                frame = pd.read_sql_query(query, connection, params=parameters)
         finally:
             connection.close()
         write_cached_frame(cache_path, frame)
@@ -5771,6 +5786,9 @@ def install_dashboard_routes(core):
         identity_columns = f'{quote(dataset_column)}, {quote(source_row_column)}'
         page = max(0, int(page))
         connection = workspace_read_connection(database_path)
+        # Every query below reads the rows of the selected CDRs only (an emptied combined table is given them alone).
+        scope = cdr_store.combined_scope([int(row['id']) for row in selected])
+        scope.__enter__()
         try:
             chart_total = int(connection.execute(
                 f'SELECT COUNT(*) FROM ('
@@ -5855,6 +5873,7 @@ def install_dashboard_routes(core):
                 query, connection, params=(*filtered_parameters, page_size, page * 100),
             )
         finally:
+            scope.__exit__(None, None, None)
             connection.close()
         if snapshot.multivendor:
             visible = ensure_vendor_group(visible)

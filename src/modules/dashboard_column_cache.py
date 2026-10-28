@@ -28,6 +28,8 @@ import pandas as pd
 from pandas._libs import lib
 from pandas.core.internals.construction import convert_object_array
 
+from src.modules import cdr_store
+
 CACHE_FORMAT_VERSION = 1
 ROWID = '__cache_rowid'
 ORDER_DATE = '__cache_order_date'
@@ -569,10 +571,11 @@ class ColumnCache:
             for batch_index, batch in enumerate(batches):
                 order_date = ORDER_DATE_SQL if source.has_event_time else 'NULL'
                 select = ['rowid', order_date, *(source.physical(expression) for expression in batch)]
-                rows = connection.execute(
-                    f'SELECT {", ".join(select)} FROM {table} WHERE "dataset_id" = ? ORDER BY rowid',
-                    (int(segment.dataset_id),),
-                ).fetchall()
+                with cdr_store.combined_scope([int(segment.dataset_id)]):
+                    rows = connection.execute(
+                        f'SELECT {", ".join(select)} FROM {table} WHERE "dataset_id" = ? ORDER BY rowid',
+                        (int(segment.dataset_id),),
+                    ).fetchall()
                 content = lib.to_object_array_tuples(rows) if rows else np.empty((0, len(select)), dtype=object)
                 fetched_rowids = encode_values(np.ascontiguousarray(content[:, 0]))
                 reference = rowids or built.get(ROWID)
@@ -763,15 +766,19 @@ def build_from_copies(database_path: str | Path, segment: Segment, expressions: 
     of the CDR with the same identity). An expression of one column is evaluated by SQLite once for each value of the
     column, an expression of several columns on a table in memory with the columns it reads. None when the combined
     table and the copy do not hold the same rows, or an expression names no column of the combined table."""
-    from src.modules import cdr_store
     from src.modules.column_names import column_identity
 
     source = segment.source
     dataset_id = int(segment.dataset_id)
     database = f'file:{Path(str(database_path)).resolve()}?mode=ro'
     with sqlite3.connect(database, uri=True, timeout=30) as connection:
-        mapping = connection.execute(f'SELECT rowid, "source_row_id" FROM {quote_identifier(source.table)} '
-                                     'WHERE "dataset_id" = ? ORDER BY rowid', (dataset_id,)).fetchall()
+        if source.kind in cdr_store.combined_shadows(connection):
+            # An emptied combined table: the CDR row of each of its rows, in its order (see cdr_store).
+            mapping = connection.execute(f'SELECT row_id, source_row_id FROM {cdr_store.COMBINED_ROWS_TABLE} '
+                                         'WHERE kind = ? AND dataset_id = ? ORDER BY row_id', (source.kind, dataset_id)).fetchall()
+        else:
+            mapping = connection.execute(f'SELECT rowid, "source_row_id" FROM {quote_identifier(source.table)} '
+                                         'WHERE "dataset_id" = ? ORDER BY rowid', (dataset_id,)).fetchall()
         combined = {str(row[1]).casefold() for row in connection.execute(f'PRAGMA table_info({quote_identifier(source.table)})')}
     manifest = cdr_store.read_manifest(cdr_store.manifest_file(cdr_store.store_root(database_path), source.kind, dataset_id))
     if manifest is None or len(mapping) != int(manifest['rows']):
