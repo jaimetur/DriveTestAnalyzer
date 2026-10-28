@@ -816,6 +816,19 @@
           if (!state.active || event.target.closest('button, a, input, select, .ds-legend-menu')) return;
           selectElement(card.dataset.elementId);
         });
+        // The series of the chart chosen are listed in its Format once it is drawn.
+        card.querySelector('canvas')?.addEventListener('dashboardchartlayout', () => {
+          if (state.active && card.dataset.elementId === state.element && $('ds-design-panel')?.querySelector('.ds-design-series-list .ds-design-empty')) renderPanel();
+        });
+        // A click on an entry of the legend of the chart chosen formats that series (instead of hiding it).
+        card.addEventListener('click', event => {
+          if (!state.active || card.dataset.elementId !== state.element || event.target.tagName !== 'CANVAS') return;
+          const item = globalThis.getDashboardChartLegendItemAt?.(event.target, event);
+          if (!item) return;
+          event.preventDefault();
+          event.stopPropagation();
+          openSeriesFormat(card, card.dataset.elementId, item.label, event);
+        }, true);
         card.addEventListener('contextmenu', event => {
           if (!state.active) return;
           event.preventDefault();
@@ -1015,6 +1028,106 @@
       .map(([name, values]) => `${name}: ${values.slice(0, 2).map(label).join(', ')}${values.length > 2 ? ` +${values.length - 2}` : ''}`);
   }
 
+  // ------------------------------------------------------------------
+  // Format of a chart (phase 3): series, legend, labels and axes, kept in its style (see formattedPayload in
+  // dashboard_charts.js). The colours of Operator / Vendor Maps stay unless a series is given one; Default gives it back.
+  // ------------------------------------------------------------------
+  const SIZES = [['', 'Default'], ['Small', 'Small'], ['Medium', 'Medium'], ['Large', 'Large']];
+  const DASH_NAMES = [['', 'Default'], ['solid', 'Solid'], ['dashed', 'Dashed'], ['dotted', 'Dotted']];
+  const cardCanvas = elementId => [...($('ds-charts')?.querySelectorAll('.ds-chart') || [])].find(card => card.dataset.elementId === elementId)?.querySelector('canvas');
+  const legendItems = elementId => { const canvas = cardCanvas(elementId); return canvas && globalThis.getDashboardChartLegendItems ? globalThis.getDashboardChartLegendItems(canvas) : []; };
+  const styleOf = element => clone(element?.style && typeof element.style === 'object' ? element.style : {});
+  const cleanStyle = style => {
+    const prune = value => {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+      const result = {};
+      for (const [key, item] of Object.entries(value)) {
+        const cleaned = prune(item);
+        if (cleaned === '' || cleaned === null || cleaned === undefined || (typeof cleaned === 'object' && !Array.isArray(cleaned) && !Object.keys(cleaned).length)) continue;
+        result[key] = cleaned;
+      }
+      return result;
+    };
+    return prune(style) || {};
+  };
+  function setStyle(elementId, change) {
+    const current = findElement(editableDesign(), elementId)?.element;
+    if (!current) { report(new Error('This element is only in this Dashboard: change it in This Dashboard scope, or apply it to the template first.')); return undefined; }
+    const style = styleOf(current);
+    change(style);
+    return setElementValues(elementId, {style: cleanStyle(style)});
+  }
+  const setSeries = (elementId, name, values) => setStyle(elementId, style => {
+    style.series = style.series || {};
+    style.series[name] = {...(style.series[name] || {}), ...values};
+  });
+  function openSeriesFormat(anchor, elementId, name, event) {
+    closeMenus();
+    const element = findElement(editableDesign(), elementId)?.element;
+    const current = styleOf(element).series?.[name] || {};
+    const original = legendItems(elementId).find(item => item.label === name)?.colour || '#4B2C82';
+    const colour = h('input', {type: 'color', value: /^#[0-9a-f]{6}$/i.test(current.colour || '') ? current.colour : (/^#[0-9a-f]{6}$/i.test(original) ? original : '#4B2C82'), 'aria-label': `Colour of ${name}`,
+      onchange: event2 => guarded(() => setSeries(elementId, name, {colour: event2.target.value.toUpperCase()}))()});
+    const width = h('input', {type: 'number', min: '1', max: '10', step: '0.5', value: current.width ?? '', placeholder: 'Default', 'aria-label': 'Line width',
+      onchange: event2 => guarded(() => setSeries(elementId, name, {width: event2.target.value === '' ? '' : Number(event2.target.value)}))()});
+    const dash = selectInput(DASH_NAMES, current.dash || '', value => guarded(() => setSeries(elementId, name, {dash: value}))());
+    const opacity = h('input', {type: 'range', min: '0.2', max: '1', step: '0.05', value: current.opacity ?? 1, 'aria-label': 'Opacity',
+      onchange: event2 => guarded(() => setSeries(elementId, name, {opacity: Number(event2.target.value) >= 1 ? '' : Number(event2.target.value)}))()});
+    const popover = h('div', {class: 'ds-design-popover ds-design-series', role: 'dialog', 'aria-label': `Format of ${name}`},
+      h('h4', {text: name}),
+      h('label', {class: 'ds-design-format-row'}, 'Colour', colour),
+      h('label', {class: 'ds-design-format-row'}, 'Line width', width),
+      h('label', {class: 'ds-design-format-row'}, 'Line', dash),
+      h('label', {class: 'ds-design-format-row'}, 'Opacity', opacity),
+      h('div', {class: 'ds-design-format-actions'},
+        h('button', {type: 'button', title: 'The colour of the Operator / Vendor Maps of the workspace, and the default line', onclick: () => { closeMenus(); guarded(() => setStyle(elementId, style => { if (style.series) delete style.series[name]; }))(); }}, 'Default'),
+        h('button', {type: 'button', onclick: closeMenus}, 'Close')));
+    placePopover(popover, anchor, event);
+  }
+  function formatSection(elementId, element) {
+    const style = styleOf(element);
+    const items = legendItems(elementId);
+    const series = h('div', {class: 'ds-design-series-list'}, items.length
+      ? items.map(item => {
+        const own = style.series?.[item.label] || {};
+        return h('button', {type: 'button', class: `ds-design-series-item${Object.keys(own).length ? ' is-changed' : ''}`, title: 'Colour, line and opacity of this series', onclick: event => openSeriesFormat(event.currentTarget, elementId, item.label)},
+          h('span', {class: 'ds-design-swatch', style: {background: own.colour || item.colour || '#ccc', opacity: own.opacity ?? 1}}), item.label);
+      })
+      : h('p', {class: 'ds-design-empty', text: 'The series of the chart appear here once it is drawn (its legend).'}));
+    const set = (path, value) => guarded(() => setStyle(elementId, target => {
+      const keys = path.split('.');
+      let node = target;
+      keys.slice(0, -1).forEach(key => { node[key] = node[key] && typeof node[key] === 'object' ? node[key] : {}; node = node[key]; });
+      node[keys.at(-1)] = value;
+    }))();
+    const integer = value => (value === '' ? '' : Math.max(0, Math.min(6, Math.round(Number(value)))));
+    return h('details', {class: 'ds-design-format', open: true},
+      h('summary', {}, 'Format', Object.keys(style).length ? h('span', {class: 'ds-design-badge is-changed', text: 'Formatted'}) : null),
+      h('p', {class: 'ds-design-field-note', text: 'Click a series in the legend of the chart, or here, to change its colour, line and opacity.'}),
+      series,
+      h('div', {class: 'ds-design-format-actions'},
+        h('button', {type: 'button', disabled: !style.series || !Object.values(style.series).some(item => item.colour || item.opacity), title: 'The colours of the Operator / Vendor Maps of the workspace for every series',
+          onclick: () => guarded(() => setStyle(elementId, target => { for (const item of Object.values(target.series || {})) { delete item.colour; delete item.opacity; } }))()}, 'Default colours'),
+        h('button', {type: 'button', title: 'Copy the format of this chart', onclick: () => { state.formatClipboard = {style, legend_position: element.legend_position, label_position: element.label_position, label_format: element.label_format, axis_x_range: element.axis_x_range, axis_y_range: element.axis_y_range}; viewer().status('Format copied: paste it on another chart.'); renderPanel(); }}, 'Copy format'),
+        h('button', {type: 'button', disabled: !state.formatClipboard, title: 'Give this chart the format copied', onclick: () => guarded(() => setElementValues(elementId, clone(state.formatClipboard)))()}, 'Paste format')),
+      h('div', {class: 'ds-design-two'},
+        field('Legend', selectInput([['', 'Default'], ['top', 'Top'], ['bottom', 'Bottom'], ['left', 'Left'], ['right', 'Right'], ['none', 'Hidden']], style.legend?.position || '', value => set('legend.position', value))),
+        field('Legend text', selectInput(SIZES, style.legend?.size || '', value => set('legend.size', value)))),
+      h('div', {class: 'ds-design-two'},
+        field('Labels', selectInput(LABEL_POSITIONS, style.labels?.position || '', value => set('labels.position', value))),
+        field('Label text', selectInput(SIZES, style.labels?.size || '', value => set('labels.size', value)))),
+      h('div', {class: 'ds-design-two'},
+        field('Label colour', h('div', {class: 'ds-design-input-row'},
+          h('input', {type: 'color', value: style.labels?.colour || '#263B4A', 'aria-label': 'Label colour', onchange: event => set('labels.colour', event.target.value.toUpperCase())}),
+          h('button', {type: 'button', class: 'ds-design-token', title: 'Default label colour', onclick: () => set('labels.colour', '')}, '↺'))),
+        h('label', {class: 'ds-design-check'}, h('input', {type: 'checkbox', checked: Boolean(style.labels?.bold), onchange: event => set('labels.bold', event.target.checked || '')}), 'Bold labels')),
+      h('div', {class: 'ds-design-two'},
+        field('X axis title', textInput(style.axes?.x?.title, debounced(value => setStyle(elementId, target => { target.axes = target.axes || {}; target.axes.x = {...(target.axes.x || {}), title: value}; })), {id: 'ds-design-axis-x-title', placeholder: 'As the chart names it'})),
+        field('Y axis title', textInput(style.axes?.y?.title, debounced(value => setStyle(elementId, target => { target.axes = target.axes || {}; target.axes.y = {...(target.axes.y || {}), title: value}; })), {id: 'ds-design-axis-y-title', placeholder: 'As the chart names it'}))),
+      field('X axis decimals', h('input', {type: 'number', min: '0', max: '6', step: '1', value: style.axes?.x?.decimals ?? '', placeholder: 'Default',
+        onchange: event => set('axes.x.decimals', integer(event.target.value))}), 'The decimals of the values of the X axis of a CDF.'));
+  }
+
   function elementForm(element) {
     const shown = state.scope === 'template' ? findElement(state.template, element.id)?.element : element;
     if (!shown) {
@@ -1038,7 +1151,8 @@
       datalist,
       field('Chart title', h('div', {class: 'ds-design-input-row'}, title, tokenMenuButton(title))),
       builder,
-      h('details', {class: 'ds-design-advanced'}, h('summary', {text: 'Advanced: legend, labels, axes and the text of each column'}),
+      formatSection(element.id, shown),
+      h('details', {class: 'ds-design-advanced'}, h('summary', {text: 'Advanced: the text of each column, legend and label positions, axis ranges'}),
         h('div', {class: 'ds-design-two'},
           field('Source', selectInput(SOURCES, shown.cdr_source, set('cdr_source', 0), 'ds-design-source')),
           field('Chart type', selectInput(CHART_TYPES.map(type => [type, type]), shown.chart_type, set('chart_type', 0), 'ds-design-chart-type'))),

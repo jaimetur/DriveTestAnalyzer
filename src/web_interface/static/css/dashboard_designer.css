@@ -303,3 +303,22 @@
 .ds-cb-add-dialog .ds-cb-actions button { min-height: 2rem; padding: .2rem .9rem; border: 1px solid #4b2c82; border-radius: 7px; background: #4b2c82; box-shadow: none; color: #fff; font: inherit; font-weight: 750; cursor: pointer; }
 .ds-cb-add-dialog .ds-cb-actions button + button { background: #fff; color: #4b2c82; }
 .ds-cb-add-dialog .form-note { margin: 0; font-size: .74rem; }
+
+/* Format of a chart in Design: its series, legend, labels and axes. */
+.ppt-dashboards .ds-design-format { display: grid; gap: .5rem; padding: .55rem; border: 1px solid var(--ds-border); border-radius: 10px; }
+.ppt-dashboards .ds-design-format summary { display: flex; align-items: center; gap: .45rem; font-size: .8rem; font-weight: 850; color: var(--ds-design-ink); cursor: pointer; }
+.ppt-dashboards .ds-design-format[open] { padding-bottom: .7rem; }
+.ppt-dashboards .ds-design-series-list { display: flex; flex-wrap: wrap; gap: .3rem; }
+.ppt-dashboards .ds-design-series-item { display: inline-flex; align-items: center; gap: .35rem; min-height: 1.7rem; padding: .1rem .55rem .1rem .3rem; border: 1px solid var(--ds-border);
+  border-radius: 999px; background: #fff; box-shadow: none; color: var(--ds-design-ink); font: inherit; font-size: .74rem; font-weight: 700; cursor: pointer; }
+.ppt-dashboards .ds-design-series-item.is-changed { border-color: var(--ds-design-changed); }
+.ds-design-swatch { display: inline-block; width: .95rem; height: .95rem; border: 1px solid rgba(0, 0, 0, .15); border-radius: 4px; }
+.ppt-dashboards .ds-design-format-actions, .ds-design-series .ds-design-format-actions { display: flex; flex-wrap: wrap; gap: .3rem; }
+.ppt-dashboards .ds-design-format-actions button, .ds-design-series .ds-design-format-actions button { min-height: 1.8rem; padding: .15rem .6rem; border: 1px solid #ddd5ea; border-radius: 7px;
+  background: #fff; box-shadow: none; color: #2f2540; font: inherit; font-size: .74rem; font-weight: 750; cursor: pointer; }
+.ppt-dashboards .ds-design-format-actions button:disabled { opacity: .45; cursor: not-allowed; }
+.ppt-dashboards .ds-design-field input[type="color"], .ds-design-series input[type="color"] { width: 2.6rem; min-width: 2.6rem; height: 2rem; padding: .1rem; }
+.ds-design-series { display: grid; gap: .5rem; width: min(17rem, calc(100vw - 16px)); padding: .7rem; }
+.ds-design-series h4 { margin: 0; font-size: .85rem; overflow-wrap: anywhere; }
+.ds-design-format-row { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); align-items: center; gap: .5rem; font-size: .76rem; font-weight: 700; }
+.ds-design-format-row input[type="number"], .ds-design-format-row select { min-height: 1.9rem; padding: .15rem .4rem; border: 1px solid #d9d1e6; border-radius: 7px; font: inherit; }

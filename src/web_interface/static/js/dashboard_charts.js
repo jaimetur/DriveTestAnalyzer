@@ -1080,7 +1080,7 @@
     for (let tick = 0; tick <= 5; tick += 1) {
       const value = xLow + (xHigh - xLow) * tick / 5, x = plot.left + plot.width * tick / 5;
       line(context, x, plot.top + plot.height, x, plot.top + plot.height + 7, '#62727E');
-      context.fillStyle = '#4E6271'; context.textAlign = 'center'; font(context, 16, true); context.fillText(value.toFixed(1), x, plot.top + plot.height + 7);
+      context.fillStyle = '#4E6271'; context.textAlign = 'center'; font(context, 16, true); context.fillText(value.toFixed(Number.isInteger(payload.x_decimals) ? payload.x_decimals : 1), x, plot.top + plot.height + 7);
     }
     context.fillStyle = '#405765'; context.textAlign = 'center'; font(context, 20, true); context.fillText(String(payload.metric || ''), plot.left + plot.width / 2, plot.top + plot.height + 31);
     if (payload.y_label) verticalLabel(context, payload.y_label, Math.max(18, plot.left - 65), plot.top + plot.height / 2, '#405765', 18);
@@ -1520,9 +1520,63 @@
     }
   }
 
+  // A colour as #RRGGBBAA with an opacity (the series of a Design drawn lighter).
+  function withAlpha(colour, opacity) {
+    const value = String(colour || '').trim();
+    const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(value)?.[1];
+    if (!hex) return value;
+    const full = hex.length === 3 ? hex.split('').map(digit => digit + digit).join('') : hex;
+    return `#${full}${Math.round(clamp(opacity, 0, 1) * 255).toString(16).padStart(2, '0')}`.toUpperCase();
+  }
+  const DASHES = {dashed: [10, 6], dotted: [2, 5], solid: []};
+  // The format the Dashboard Designer gives a chart (the style of its template row, see dashboard_design) over its model:
+  // the colour of a series replaced wherever it is drawn (bars, lines, points and legend), its line width and dash, the
+  // place and size of the legend, the place and text of the labels, the axis titles and decimals, and the title. The PPT
+  // export draws the same model with this renderer, so it shows the same format.
+  function formattedPayload(payload) {
+    const format = payload?.format_overrides;
+    if (!format || typeof format !== 'object' || payload?.type === 'empty') return {payload, colours: null};
+    const copy = structuredClone(payload);
+    const colours = {};
+    const items = copy.legend?.items || [];
+    const named = name => (copy.series || []).filter(entry => String(entry.name ?? entry.legend_name ?? '') === name);
+    for (const [name, series] of Object.entries(format.series || {})) {
+      if (!series || typeof series !== 'object') continue;
+      const item = items.find(entry => String(entry.label) === name);
+      const original = item?.colour || named(name)[0]?.colour;
+      let colour = series.colour || original;
+      if (colour && Number.isFinite(Number(series.opacity)) && Number(series.opacity) < 1) colour = withAlpha(colour, Number(series.opacity));
+      if (original && colour && String(colour).toUpperCase() !== String(original).toUpperCase()) colours[String(original).toUpperCase()] = colour;
+      for (const entry of [...named(name), ...(item ? [item] : [])]) {
+        if (Number(series.width) > 0) entry.width = Number(series.width);
+        if (series.dash && DASHES[series.dash]) entry.dash = DASHES[series.dash];
+      }
+    }
+    if (copy.legend && format.legend?.position) copy.legend.position = format.legend.position;
+    if (copy.legend && format.legend?.size) copy.legend.format = {...(copy.legend.format || {}), configured: true, size: format.legend.size};
+    if (format.labels && typeof format.labels === 'object') {
+      if (format.labels.position) copy.label_position = format.labels.position;
+      const label = {...(copy.label_format || {})};
+      if (format.labels.colour) label.color = format.labels.colour;
+      if (format.labels.size) label.size = format.labels.size;
+      if (format.labels.bold !== undefined) label.bold = Boolean(format.labels.bold);
+      if (Object.keys(label).length) copy.label_format = {...label, configured: true};
+    }
+    const xTitle = format.axes?.x?.title, yTitle = format.axes?.y?.title;
+    if (xTitle) { if (['cdf', 'multi_cdf'].includes(copy.type)) copy.metric = xTitle; else copy.x_label = xTitle; }
+    if (yTitle) { if (copy.type === 'mean_bar') copy.metric = yTitle; else copy.y_label = yTitle; }
+    if (Number.isInteger(format.axes?.x?.decimals)) copy.x_decimals = format.axes.x.decimals;
+    if (Number.isInteger(format.axes?.y?.decimals)) copy.y_decimals = format.axes.y.decimals;
+    if (format.title) copy.title = format.title;
+    return {payload: copy, colours: Object.keys(colours).length ? colours : null};
+  }
+
   function draw(canvas, payload) {
     const context = prepareCanvas(canvas), state = {canvas, hits: []};
-    applyStyle(context, payload?.style || globalThis.dashboardChartStyle || null);
+    const formatted = formattedPayload(payload);
+    payload = formatted.payload;
+    const theme = payload?.style || globalThis.dashboardChartStyle || null;
+    applyStyle(context, formatted.colours ? {...(theme || {}), colours: {...(theme?.colours || {}), ...formatted.colours}} : theme);
     renderedCanvases.add(canvas);
     context.fillStyle = '#FFFFFF'; context.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
     const visible = legendHiddenPayload(payload, hiddenLegendItems.get(canvas));
@@ -2008,6 +2062,18 @@
   globalThis.getDashboardChartHiddenLegendItems = hiddenLegendLabels;
   globalThis.setDashboardChartHiddenLegendItems = setHiddenLegendItems;
   globalThis.getDashboardChartLegendLabels = legendLabels;
+  // The entries of the legend of a chart as its model has them (label and colour, before any Design format), and the
+  // entry under a pointer: the Dashboard Designer formats a series from them.
+  globalThis.getDashboardChartLegendItems = canvas => {
+    const model = models.get(canvas) || {};
+    const legend = (model.legend?.items || []).filter(item => item.colour).map(item => ({label: String(item.label), colour: item.colour}));
+    if (legend.length) return legend;
+    // A chart without a legend: its series, by name.
+    const seen = new Set();
+    return (model.series || []).map(item => ({label: String(item.name ?? item.legend_name ?? ''), colour: item.colour || ''}))
+      .filter(item => item.label && item.colour && !seen.has(item.label) && seen.add(item.label));
+  };
+  globalThis.getDashboardChartLegendItemAt = (canvas, event) => legendItemAt(canvas, event);
   globalThis.setDashboardChartZoom = setChartZoom;
   globalThis.getDashboardChartZoom = canvas => cameraFor(canvas).zoom;
   globalThis.zoomDashboardChartAt = zoomChartAt;

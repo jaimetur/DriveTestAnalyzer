@@ -6547,6 +6547,11 @@ def install_dashboard_routes(core):
             payload = catalog_chart_payload(
                 frame, entry, multivendor=snapshot.multivendor, prefiltered=True,
             )
+            # The format the Designer gave the chart (series colours, legend, labels, axes): the renderer applies it, in
+            # the viewer and in the PPT alike.
+            style = dashboard_design.row_format(entry).get('style')
+            if isinstance(style, dict) and style:
+                payload = {**payload, 'format_overrides': style}
             with lock:
                 payload = snapshot.chart_payloads.setdefault(index, payload)
                 if not (callable(snapshot.cancelled) and snapshot.cancelled()):

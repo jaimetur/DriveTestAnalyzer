@@ -428,6 +428,12 @@ A difference of a Dashboard wins over the template. When the template changes th
 ### Charts on the slide
 
 - Click a chart to build it in the **Element** tab, as in Tableau: choose its source (Data, Voice, Speech, RF All) and NR Mode (that of the Dashboard, NSA or SA, kept as the filter `NR Mode IN (SA)`), then drag the fields of the source, grouped by the sections of the CDR Field Dictionary and told apart as dimensions (blue `Abc`) and measures (green `#`), to its shelves: **Measure** (its menu chooses the aggregation), **Rows**, **Columns**, **Legend**, **Filters** and **Repeat by** (with a dynamic layout of the slide). A field dropped on Filters opens its values in the Dashboard's selection with their samples (Include, Exclude, Contains), or a numeric condition, or a parameter of the template (**Use parameter**); the filters of the Dashboard show first on the shelf, locked. **Chart Type** shows every chart type drawn, greys those the shelves cannot draw with what they need, and chooses one when the measure changes; Threshold, Buckets and Bin Size are set beside the type that uses them. The chart is drawn again a moment after each change.
+- **Format** (under the shelves) changes how the chart looks, in the viewer and in the PPT alike (the same renderer draws both):
+  - **Series:** click an entry of its legend on the chart, or the series in the list, to change its colour, line width, line (solid, dashed, dotted) and opacity. The colours of Operator and Vendor Maps stay until a series is given one: **Default** gives one series its colour back, **Default colours** every series.
+  - **Legend:** its place (top, bottom, left, right or hidden) and the size of its text.
+  - **Labels:** their place, colour, size and bold.
+  - **Axes:** the titles of the X and Y axes and the decimals of the X axis of a CDF.
+  - **Copy format** and **Paste format** give another chart the same format (with its legend and label positions and axis ranges).
 - **Advanced** keeps the legend and label positions, the axis ranges, Exclude Null/Empty, Exclude Zero and the text of each column as the template writes it.
 - Drag a chart by its **⠿** handle onto another chart to swap their places, or onto a free place to move it there. A free place of the layout shows **+ Add**: a new chart or one copied before (**Copy** in the menu of a chart).
 - **Delete** removes a chart (in This Dashboard scope, a chart of the template is hidden in this Dashboard).

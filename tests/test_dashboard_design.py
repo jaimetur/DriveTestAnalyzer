@@ -376,3 +376,24 @@ def test_the_chart_builder_reads_fields_and_values_and_adds_a_chart_to_a_dashboa
     assert any(item['name'] == 'Mean_Data_Rate' for item in builder_fields)
     builder_values = client.post('/api/chart-builder/values', json={'dataset_ids': [1], 'field': 'City'}).json()['values']
     assert builder_values == [{'value': 'London', 'count': 2}, {'value': 'Leeds', 'count': 1}]
+
+
+def test_the_format_of_a_chart_travels_in_its_row_and_reaches_its_model(client):
+    definition = setup(client)
+    body = client.get('/api/ppt-dashboards/design-a/design?edit=1').json()
+    edited = copy.deepcopy(body['design'])
+    style = {'series': {'A': {'colour': '#FF0000', 'width': 3, 'dash': 'dashed'}}, 'legend': {'position': 'bottom'},
+             'axes': {'x': {'title': 'Rate (Mbit/s)', 'decimals': 0}}}
+    edited['slides'][0]['elements'][0]['style'] = style
+    assert client.put('/api/ppt-dashboards/design-a/design', json={'design': edited}).status_code == 200
+    assert stored('design-a')['design_overrides']['elements']['s1e1']['style']['value'] == style
+    prepared = client.post('/api/ppt-dashboards/prepare?dashboard_id=design-a', json=definition).json()
+    chart = next(chart for chart in prepared['slides'][0]['charts'] if chart['element'] == 's1e1')
+    model = client.get(f"/api/ppt-dashboards/chart/{prepared['token']}/{chart['index']}").json()
+    assert model['format_overrides'] == style
+    # In Template scope it is written in the Format column of the row.
+    template = copy.deepcopy(body['template']['design'])
+    template['slides'][0]['elements'][1]['style'] = {'labels': {'colour': '#123456'}}
+    assert client.put('/api/ppt-dashboards/design-b/design', json={'template_design': template}).status_code == 200
+    rows = parse_catalog_csv(core.repository.report_template_content('Design test'))
+    assert dd.row_format(rows[1])['style'] == {'labels': {'colour': '#123456'}}
