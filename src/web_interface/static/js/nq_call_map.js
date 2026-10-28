@@ -16,9 +16,9 @@
   const WORLD = 256 * 2 ** REFERENCE_ZOOM;
   const COLOURS = {
     call: '#b0234f', path: '#3d1824', start: '#2e8b57', handover: '#f08a24', end: '#d7263d', both: '#d7263d', nr_leg: '#6d46a8',
-    // The groups of the call: its hotspot (and its zone) orange, a cluster green, a time window blue; the NQ calls at its site
-    // outlined in red, the others grey.
-    hotspot: '#e8590c', cluster: '#2f9e44', run: '#1971c2', site: '#d62828',
+    // The groups of the call: its hotspot (and its zone) orange, a cluster purple (never the green of the site where the call
+    // started), a time window blue; the NQ calls at its site outlined in red, the others grey.
+    hotspot: '#e8590c', cluster: '#ae3ec9', run: '#1971c2', site: '#d62828',
     own: '#6c757d', other: '#adb5bd', samePci: '#d6336c', noValue: '#adb5bd',
     completed: '#2e8b57', failed: '#d7263d', radius: '#7d1238', hotZone: '#e8590c',
     sameType: '#b0234f', otherType: '#1c7ed6', sameCampaign: '#b0234f', otherCampaign: '#6c757d',
@@ -427,7 +427,7 @@
         };
         hotZone = {fill: () => paint(zone, .22), edge: () => paint(edge, .95)};
       }
-      // The shapes of its groups, as the Groups slide draws them: a circle around each cluster in green and an ellipse along
+      // The shapes of its groups, as the Groups slide draws them: a circle around each cluster in purple and an ellipse along
       // each time window in blue of its hotspot (what they make together), those of the call itself bolder, the larger
       // below; the hotspot when one of its calls is in neither. Their tint first, then the hotspot zone, then their lines and
       // the edge of the zone.
@@ -1145,7 +1145,7 @@
       if (settings.failureColour === 'relation') {
         ['hotspot', 'cluster', 'run'].filter((kind) => groups.some((found) => found[0] === kind))
           .forEach((kind) => lines.push([`NQ call of ${names[kind]}`, GROUP_COLOURS[kind]]));
-        [['cluster', 'green'], ['run', 'blue']].filter(([kind]) => groups.some((found) => found.slice(1).includes(kind)))
+        [['cluster', 'purple'], ['run', 'blue']].filter(([kind]) => groups.some((found) => found.slice(1).includes(kind)))
           .forEach(([kind, colour]) => lines.push([`Outlined in ${colour}: also of ${names[kind]}`, GROUP_COLOURS[kind], 'is-outlined']));
       } else {
         lines.push(settings.failureColour === 'type'
