@@ -2107,6 +2107,18 @@ def _sample_radio(connection: Any, datasets: Any, profile: CdrFieldProfile) -> d
     return radio
 
 
+def _cdr_rows(connection: Any, dataset_id: int, kind: str, query: str, selected: list[tuple[str, str]], where: str = '',
+              params: Any = (), filter_columns: Any = (), rowid_alias: str | None = None) -> list[dict[str, Any]] | None:
+    """The rows ``query`` gives on the table of a CDR, read from its columnar copy when the copy holds the CDR as it is
+    (the same values, in the same order); None otherwise (see cdr_store.query_cdr_rows)."""
+    from src.modules import cdr_store
+
+    database = next((str(row[2]) for row in connection.execute('PRAGMA database_list').fetchall() if row[1] == 'main'), '')
+    if not database or int(dataset_id) not in cdr_store.fresh_copies(database, [dataset_id]):
+        return None
+    return cdr_store.query_cdr_rows(database, kind, dataset_id, query, selected, where, params, filter_columns, rowid_alias)
+
+
 def _dataset_calls(connection: Any, dataset: Any, cdr_columns: tuple[str, ...] = (),
                    profile: CdrFieldProfile = NETCHECK_PROFILE,
                    sample_radio: dict[tuple[str, str, str], dict[str, float]] | None = None) -> dict[str, Any]:
@@ -2164,9 +2176,9 @@ def _dataset_calls(connection: Any, dataset: Any, cdr_columns: tuple[str, ...] =
     key_aliases = {column: f'c{index}' for index, column in enumerate(key_selected)}
     population: dict[str, list[Any]] = {}
     data_date = ''
-    for row in connection.execute(
-        f"SELECT {', '.join(f'{_quote(column)} AS {key_aliases[column]}' for column in key_selected)} FROM {_quote(table)}"
-    ):
+    key_query = f"SELECT {', '.join(f'{_quote(column)} AS {key_aliases[column]}' for column in key_selected)} FROM {_quote(table)}"
+    key_rows = _cdr_rows(connection, dataset_id, service, key_query, [(key_aliases[column], column) for column in key_selected])
+    for row in key_rows if key_rows is not None else connection.execute(key_query):
         result = _text(row[key_aliases[result_column]]).casefold()
         if not result:
             continue
@@ -2193,12 +2205,15 @@ def _dataset_calls(connection: Any, dataset: Any, cdr_columns: tuple[str, ...] =
     aliases = {column: f'c{index}' for index, column in enumerate(selected)}
     normalized = f'LOWER(TRIM(CAST({_quote(result_column)} AS TEXT)))'
     # Range conditions use the CDR's normalized status index when it exists.
+    where = f"{normalized} > ? OR ({normalized} < ? AND {normalized} > '')"
     query = (
         f"SELECT rowid AS source_row_id, {', '.join(f'{_quote(column)} AS {aliases[column]}' for column in selected)} "
-        f"FROM {_quote(table)} WHERE {normalized} > ? OR ({normalized} < ? AND {normalized} > '')"
+        f"FROM {_quote(table)} WHERE {where}"
     )
     calls = []
-    for row in connection.execute(query, (qualified, qualified)).fetchall():
+    nq_rows = _cdr_rows(connection, dataset_id, service, query, [(aliases[column], column) for column in selected],
+                        where, (qualified, qualified), [result_column], 'source_row_id')
+    for row in nq_rows if nq_rows is not None else connection.execute(query, (qualified, qualified)).fetchall():
         values: dict[str, Any] = {}
         for field, candidates in resolved.items():
             # The first candidate column with a value wins.

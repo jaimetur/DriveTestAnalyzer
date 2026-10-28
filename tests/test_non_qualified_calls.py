@@ -1291,3 +1291,29 @@ def test_workspaces_indexed_before_get_the_serving_cell_columns(client, tmp_path
     index_cdrs()
     failures = client.post('/api/non-qualified-calls/failures', json={'filters': {}}).json()
     assert any(item['service'] == 'voice' for item in failures['serving'])
+
+
+def test_the_reindex_reads_the_same_calls_from_the_columnar_copies(client, tmp_path, monkeypatch):
+    from src.modules import cdr_store
+
+    datasets = [add_cdr(tmp_path, 'voice.csv', 'voice', voice_rows()), add_cdr(tmp_path, 'data.csv', 'data', data_rows())]
+
+    def calls_of(dataset_id):
+        with core.repository.connection() as connection:
+            return nq._dataset_calls(connection, core.repository.get_dataset(dataset_id), ('City',))
+
+    monkeypatch.setattr(cdr_store, 'fresh_copies', lambda database_path, dataset_ids: set())
+    from_sqlite = {dataset_id: calls_of(dataset_id) for dataset_id in datasets}
+    monkeypatch.undo()
+    monkeypatch.setattr(cdr_store, 'free_space', lambda path: 1024 ** 4)
+    repository = core.Repository(core.active_workspace.database_path, global_db_path=core.repository.global_db_path)
+    cdr_store.start_store_sync(repository, lambda run: run(), lambda: cdr_store.included_cdrs(repository))
+    reads = []
+    query_cdr_rows = cdr_store.query_cdr_rows
+    monkeypatch.setattr(cdr_store, 'query_cdr_rows', lambda *args, **kwargs: reads.append(args[2]) or query_cdr_rows(*args, **kwargs))
+
+    from_copies = {dataset_id: calls_of(dataset_id) for dataset_id in datasets}
+
+    # Both passes of each CDR (every call, then its Non-Qualified rows) read the copy and give the same calls.
+    assert sorted(reads) == sorted(datasets * 2)
+    assert from_copies == from_sqlite and all(result['calls'] for result in from_copies.values())

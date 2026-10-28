@@ -59,7 +59,7 @@ In a workspace of Umlaut CDRs (see [Benchmarking Providers](benchmarking-provide
 
 ### Indexing
 
-Every ready Voice, Speech and Data CDR of the active workspace is indexed as a background task, shown in the floating background tasks card: the first time the page opens, and then, when a CDR is added, reprocessed or deleted, once nobody has used the application for two minutes (the pages refreshing themselves do not count), so the page never waits for the indexing. The top of the **Filters** panel shows how many NQ calls and CDRs are indexed, when they were last indexed, and the CDRs waiting to be indexed or the indexing in progress, after which the page reloads its calls.
+Every ready Voice, Speech and Data CDR of the active workspace is indexed as a background task, shown in the floating background tasks card: the first time the page opens, and then, when a CDR is added, reprocessed or deleted, once nobody has used the application for two minutes (the pages refreshing themselves do not count), so the page never waits for the indexing. Each CDR is read from its [columnar copy](workspace-management.md#columnar-copy-of-the-cdrs) when the copy holds it as it is. The top of the **Filters** panel shows how many NQ calls and CDRs are indexed, when they were last indexed, and the CDRs waiting to be indexed or the indexing in progress, after which the page reloads its calls.
 
 > [!TIP]
 > **Reindex** indexes the calls of every CDR again at once, in the background, even when no CDR has changed. Their follow-up is kept.
