@@ -1,7 +1,7 @@
 """Reporting: scheduled report jobs that collect artifacts and email them.
 
 A Reporting Job (``report_tasks``) selects artifacts — CDR Analysis,
-Network Insights, Design PPTs and Scoring PPTs — plus optional email
+Network Insights, PPT Design PPTs and Scoring PPTs — plus optional email
 recipients and a schedule. Each execution (``report_task_runs``) writes its
 artifacts to its own folder and, when email is enabled, sends them as attachments
 with a body that describes every artifact and its filters.
@@ -72,7 +72,7 @@ INTERRUPTED_RUN_MESSAGE = 'The run was interrupted by an application restart.'
 MAX_RUN_RESUMES = 3
 MODULE_LABELS = {
     'dataset_analysis': 'CDR Analysis', 'network_insights': 'Network Insights',
-    'designs': 'Designs', 'scoring': 'Scoring',
+    'designs': 'PPT Designs', 'scoring': 'Scoring',
 }
 # The feature a user needs to include each kind of artifact in a Reporting Job.
 MODULE_FEATURES = {
@@ -91,7 +91,7 @@ LEGACY_PROVIDER_KEYS = {'complete_report': 'bundle_report_template', 'reporting_
 
 
 def _current_artifact_modules(artifacts: Any) -> Any:
-    """The artifacts of a run, those of the Designs generated before PPT Designer (module dashboards) included."""
+    """The artifacts of a run, those of the PPT Designs generated before PPT Designer (module dashboards) included."""
     if not isinstance(artifacts, list):
         return artifacts
     return [{**item, 'module': 'designs'} if isinstance(item, dict) and item.get('module') == 'dashboards' else item for item in artifacts]
@@ -318,7 +318,7 @@ def _network_thresholds(selection: dict[str, Any]) -> dict[str, float]:
 
 
 def _design_nr_mode(definition: dict[str, Any]) -> str:
-    """The NR Mode of the CDRs a saved Design reads: NSA, SA or NSA+SA (those saved before named it technology)."""
+    """The NR Mode of the CDRs a saved PPT Design reads: NSA, SA or NSA+SA (those saved before named it technology)."""
     return normalize_scoring_nr_mode(definition.get('nr_mode') or definition.get('technology')) or DEFAULT_NR_MODE
 
 
@@ -415,9 +415,9 @@ def normalize_definition(raw: Any) -> dict[str, Any]:
                 formats.insert(0, next(value for value in provider['formats'] if value in {'powerpoint', 'word'}))
             definition['modules'][key] = {'enabled': True, 'formats': formats,
                                           'options': config.get('options') if isinstance(config.get('options'), dict) else {}}
-    # Designs and Scoring entries carry every option of their own module;
+    # PPT Designs and Scoring entries carry every option of their own module;
     # each run generates a new PPT with them.
-    # A job saved before PPT Designer names its Designs as Dashboards (dashboards, dashboard_id).
+    # A job saved before PPT Designer names its PPT Designs as Dashboards (dashboards, dashboard_id).
     for entry in raw.get('designs', raw.get('dashboards')) or []:
         if isinstance(entry, dict) and 'design_id' not in entry and 'dashboard_id' in entry:
             entry = {**entry, 'design_id': entry['dashboard_id']}
@@ -426,12 +426,12 @@ def normalize_definition(raw: Any) -> dict[str, Any]:
         auto_cdrs = bool(entry.get('auto_cdrs'))
         definition['designs'].append({
             'design_id': str(entry['design_id']).strip(), 'label': str(entry.get('label') or '').strip()[:120],
-            # The NR Mode of the CDRs it reads, in place of the Design's (empty: the Design's own, as the entries
+            # The NR Mode of the CDRs it reads, in place of the PPT Design's (empty: the PPT Design's own, as the entries
             # saved before).
             'nr_mode': normalize_scoring_nr_mode(entry.get('nr_mode')) or '',
             'scope': entry.get('scope') if entry.get('scope') in {'single', 'multivendor'} else 'single',
             'vendor_comparison': entry.get('vendor_comparison') if entry.get('vendor_comparison') in {'operator_vendor', 'vendor_only'} else 'operator_vendor',
-            # The CDRs of the Design's NR Mode and of the Campaign filter at each run (auto_cdrs); entries saved
+            # The CDRs of the PPT Design's NR Mode and of the Campaign filter at each run (auto_cdrs); entries saved
             # before chose them by hand or with an automatic choice (see migrate_auto_cdrs).
             'auto_cdrs': auto_cdrs,
             'datasets': {} if auto_cdrs else _datasets_by_kind(entry.get('datasets')),
@@ -441,7 +441,7 @@ def normalize_definition(raw: Any) -> dict[str, Any]:
             'filters': {str(field): _strings(values) for field, values in (entry.get('filters') or {}).items()
                         if str(field).strip() and _strings(values)} if isinstance(entry.get('filters'), dict) else {},
             # Auto comments of the PPT: generated comments on the slides without comments, in place of the generated
-            # ones or in place of every comment; entries saved before keep the comments of the Design (off).
+            # ones or in place of every comment; entries saved before keep the comments of the PPT Design (off).
             'auto_comments': entry.get('auto_comments') if entry.get('auto_comments') in {'off', 'empty', 'generated', 'all'} else 'off',
             # Their writer (empty: the default one of Super Admin), run with the Kiro API key of the job's owner.
             'auto_comments_engine': entry.get('auto_comments_engine') if entry.get('auto_comments_engine') in {'rules', 'kiro_cli', 'claude'} else '',
@@ -754,7 +754,7 @@ def artifact_labels(definition: dict[str, Any], design_names: dict[str, str] | N
     designs = definition.get('designs') or []
     if designs:
         names = ', '.join(entry.get('label') or (design_names or {}).get(entry.get('design_id', ''), entry.get('design_id', '')) for entry in designs)
-        labels.append(f'Designs: {len(designs)} PPT ({names})')
+        labels.append(f'PPT Designs: {len(designs)} PPT ({names})')
     scoring = definition.get('scoring') or []
     if scoring:
         for entry in scoring:
@@ -1219,7 +1219,7 @@ def _remap_favourites(definition: dict[str, Any], source_names: dict[str, str], 
 def imported_jobs(task_repository: Any, document: dict[str, Any]) -> list[tuple[int, dict[str, Any], dict[str, Any], dict[str, Any]]]:
     """The Reporting Jobs of an exported document as this workspace saves them (also for the preview of an import):
     each with its position in the document, its item, its definition pointing at the datasets (by file name),
-    favourite Bundle Report Templates (by name) and Designs of this workspace, and its schedule (a past single
+    favourite Bundle Report Templates (by name) and PPT Designs of this workspace, and its schedule (a past single
     execution becomes manual)."""
     # Datasets are matched by file name, since IDs differ between workspaces.
     source_names = {int(key): str(value) for key, value in (document.get('dataset_names') or {}).items() if str(key).isdigit()}
@@ -1244,7 +1244,7 @@ def imported_jobs(task_repository: Any, document: dict[str, Any]) -> list[tuple[
         _current_provider_keys(definition)  # Jobs exported when Bundle Report Templates had a former name.
         definition = _remap_favourites(_remap_dataset_ids(definition, mapping), favourite_names, favourites_here)
         for entry in definition.get('designs') or []:
-            # A Design an import gave another ID here is found by the ID it had there.
+            # A PPT Design an import gave another ID here is found by the ID it had there.
             if isinstance(entry, dict) and str(entry.get('design_id') or '') in design_aliases_here:
                 entry['design_id'] = design_aliases_here[str(entry['design_id'])]
         jobs.append((index, item, definition, schedule))
@@ -1290,7 +1290,7 @@ def import_tasks_document(
     if summary is not None:
         summary.extend(matcher.summary())
     if document.get('complete_reports'):
-        # Documents that carried the favourite Bundle Report Templates with the Reporting Jobs: their Designs are found here
+        # Documents that carried the favourite Bundle Report Templates with the Reporting Jobs: their PPT Designs are found here
         # by their name.
         from src.modules.bundle_report_templates import import_entries, workspace_designs
         import_entries(task_repository, document['complete_reports'], username, workspace_designs(task_repository))
@@ -1342,7 +1342,7 @@ def artifact_path(folder: Path, stamp: str, module: str, name: str, suffix: str)
     """``<yyyymmdd_hhmmss> - <Module> - <Report name><suffix>``, unique in ``folder``.
 
     The report name drops its own leading timestamps and module name, so a
-    Design or Scoring PPT does not repeat them.
+    PPT Design or Scoring PPT does not repeat them.
     """
     report = str(name or '').strip()
     while _LEADING_STAMP.match(report):
@@ -1527,20 +1527,20 @@ def install_report_task_routes(core: Any) -> None:
         while time.monotonic() < deadline:
             row = tools.job(task_repository, job_id)
             if row is None:
-                raise RuntimeError('The Design PPT job was deleted.')
+                raise RuntimeError('The PPT Designer job was deleted.')
             if str(row['status']) == 'ready':
                 return row
             if str(row['status']) in {'failed', 'stopped'}:
-                raise RuntimeError(str(row['last_error'] or f"The Design PPT job {row['status']}."))
-            update_run(task_repository, run_id, message=f"Waiting for Design PPT job {job_id} ({int(row['progress'] or 0)}%)")
+                raise RuntimeError(str(row['last_error'] or f"The PPT Designer job {row['status']}."))
+            update_run(task_repository, run_id, message=f"Waiting for PPT Designer job {job_id} ({int(row['progress'] or 0)}%)")
             try:
                 check_run_stopped()
             except RunStopped:
-                # (Its Design PPT job stops with it.)
+                # (Its PPT Designer job stops with it.)
                 tools.stop_job(task_repository, job_id)
                 raise
             time.sleep(3)
-        raise RuntimeError('The Design PPT job did not finish within three hours.')
+        raise RuntimeError('The PPT Designer job did not finish within three hours.')
 
     def design_details(serialized: dict[str, Any]) -> list[str]:
         cover = serialized.get('cover') or {}
@@ -1553,12 +1553,12 @@ def install_report_task_routes(core: Any) -> None:
         return lines
 
     def design_definition(stored: dict[str, Any], entry: dict[str, Any], task_repository=None) -> dict[str, Any]:
-        """The saved Design with the artifact's NR Mode, Scope, CDRs, dates and filters."""
+        """The saved PPT Design with the artifact's NR Mode, Scope, CDRs, dates and filters."""
         definition = dict(stored)
         if normalize_scoring_nr_mode(entry.get('nr_mode')):
             definition['nr_mode'] = normalize_scoring_nr_mode(entry['nr_mode'])
         if entry.get('auto_cdrs'):
-            # The CDRs of the Design's NR Mode and of the entry's Campaign filter, chosen when it is generated (with
+            # The CDRs of the PPT Design's NR Mode and of the entry's Campaign filter, chosen when it is generated (with
             # NSA & SA, in each NR Mode).
             definition.pop('datasets', None)
             definition.update({
@@ -1582,17 +1582,17 @@ def install_report_task_routes(core: Any) -> None:
     def generate_design(entry, task_repository, folder, stamp, user, run_id) -> dict[str, Any]:
         tools = core.design_reporting
         stored = tools.list_designs(task_repository).get(entry['design_id'])
-        title = f"Design · {entry.get('label') or (stored or {}).get('name') or entry['design_id']}"
+        title = f"PPT Design · {entry.get('label') or (stored or {}).get('name') or entry['design_id']}"
         try:
             if not isinstance(stored, dict):
-                raise RuntimeError('The Design no longer exists.')
+                raise RuntimeError('The PPT Design no longer exists.')
             update_run(task_repository, run_id, message=f'Generating {title}')
             job_id = tools.queue_export(entry['design_id'], user, design_definition(stored, entry, task_repository),
                                         theme=entry.get('theme') or None, auto_comments=entry.get('auto_comments') or 'off',
                                         auto_comments_engine=entry.get('auto_comments_engine') or '')
             row = wait_for_design_job(task_repository, job_id, run_id)
             source = Path(str(row['output_path']))
-            # Design PPT names start with their own generation time, which is dropped.
+            # PPT Design PPT names start with their own generation time, which is dropped.
             destination = artifact_path(folder, stamp, 'PPT Designer', entry.get('label') or source.stem, source.suffix)
             shutil.copy2(source, destination)
             return ready_artifact('designs', title, destination, design_details(tools.serialize_job(row)))
@@ -1617,7 +1617,7 @@ def install_report_task_routes(core: Any) -> None:
         """A job saved when its CDRs were chosen by hand or by an automatic choice chooses them by Campaign.
 
         The newest complete set becomes Latest campaign, every complete set every campaign, and CDRs chosen by
-        hand the campaigns they hold; a Design that used its own CDRs keeps its Campaign filter. Non-Qualified
+        hand the campaigns they hold; a PPT Design that used its own CDRs keeps its Campaign filter. Non-Qualified
         Calls take the NR Mode and the campaigns of the CDRs of their CDRs filter.
         """
         migrated = json.loads(json.dumps(definition))
@@ -1831,7 +1831,7 @@ def install_report_task_routes(core: Any) -> None:
             for index, entry in enumerate(definition.get('network_insights') or [], start=1):
                 steps.append(('Network Insights', lambda entry=entry, index=index: generate_network_insights(entry, folder, stamp, index, task_repository)))
             for entry in definition.get('designs') or []:
-                steps.append(('Design', lambda entry=entry: [generate_design(entry, task_repository, folder, stamp, user, run_id)]))
+                steps.append(('PPT Design', lambda entry=entry: [generate_design(entry, task_repository, folder, stamp, user, run_id)]))
             for entry in definition.get('scoring') or []:
                 steps.append(('Scoring', lambda entry=entry: generate_scoring(entry, task_repository, folder, stamp, user.username, names, run_id)))
             for key, config in (definition.get('modules') or {}).items():
@@ -2238,7 +2238,7 @@ def install_report_task_routes(core: Any) -> None:
                      else [] if each_nr_mode
                      else resolve_campaign_filter(task_repository, nr_mode, _strings(payload.get('campaigns'))))
         if each_nr_mode:
-            # A Design of NSA & SA: the CDRs of each NR Mode, its Latest choices among the campaigns of that mode.
+            # A PPT Design of NSA & SA: the CDRs of each NR Mode, its Latest choices among the campaigns of that mode.
             chosen, incomplete = {kind: [] for kind in ('data', 'voice', 'speech')}, []
             for mode in ('NSA', 'SA'):
                 mode_campaigns = resolve_campaign_filter(task_repository, mode, _strings(payload.get('campaigns')))

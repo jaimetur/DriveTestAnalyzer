@@ -46,10 +46,10 @@ module.exports = {
     { id: 'scoring', type: 'tiles', section: 'Scoring and reports', footer: 'Scoring and reports', kicker: 'Methodology and templates', title: 'How it scores and how it reports', columns: 3,
       tiles: [
         { mini: 'gauge', title: 'Scoring & GAP Analysis Setup', text: 'Its methodology: environments, KPIs, weights, thresholds and GAP priorities.' },
-        { mini: 'grid', title: 'PPT Templates', text: 'The templates of the Designs, imported or created, and edited in their editor.' },
+        { mini: 'grid', title: 'PPT Templates', text: 'The templates of the PPT Designs, imported or created, and edited in their editor.' },
         { mini: 'dictionary', title: 'CDR Field Dictionary', text: 'The columns of the CDRs each field is read from, changed only when needed.' },
       ],
-      notes: 'The Scoring & GAP Analysis Setup holds the methodology of the workspace, with its environments, KPI definitions, weights, thresholds and GAP priorities, and the Scoring Export Panels. The PPT Templates of the Designs are imported or created and edited there, and the CDR Field Dictionary tells which columns of the CDRs each field is read from.' },
+      notes: 'The Scoring & GAP Analysis Setup holds the methodology of the workspace, with its environments, KPI definitions, weights, thresholds and GAP priorities, and the Scoring Export Panels. The PPT Templates of the PPT Designs are imported or created and edited there, and the CDR Field Dictionary tells which columns of the CDRs each field is read from.' },
     { id: 'summary', type: 'closing', section: 'Summary', footer: 'Summary', kicker: 'Summary', title: 'Set once, every module follows',
       lead: 'Every filter, chart, table and report shows the labels, colours and order of the workspace.',
       links: [

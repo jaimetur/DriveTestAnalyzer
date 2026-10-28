@@ -2147,7 +2147,7 @@
   globalThis.getCanvasChartHiddenLegendItems = hiddenLegendLabels;
   globalThis.setCanvasChartHiddenLegendItems = setHiddenLegendItems;
   globalThis.getCanvasChartLegendLabels = legendLabels;
-  // The entries of the legend of a chart as its model has them (label and colour, before any Design format), and the
+  // The entries of the legend of a chart as its model has them (label and colour, before any format of the Designer), and the
   // entry under a pointer: the Designer formats a series from them.
   globalThis.getCanvasChartLegendItems = canvas => {
     const model = models.get(canvas) || {};

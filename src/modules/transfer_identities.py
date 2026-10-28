@@ -44,7 +44,7 @@ def _store(repository: Any, kind: str, values: dict[str, str]) -> None:
 def portable_identities(repository: Any, kind: str, item_keys: Iterable[Any],
                         default: Callable[[str], str] | None = None) -> dict[str, str]:
     """The uid of each of the given items (by their key as given), giving one to those that have none: ``default`` of
-    their key (a Design ID is already unique) or a new one, kept from then on."""
+    their key (a PPT Design ID is already unique) or a new one, kept from then on."""
     values = identities(repository, kind)
     result: dict[str, str] = {}
     changed = False

@@ -192,8 +192,8 @@ def setup(client, *, created_by='super'):
     })
     assert response.status_code == 200
     core.repository.add_report_template('Design test', TEMPLATE.encode(), updated_by=created_by)
-    definition = {'name': 'Design design', 'template': 'Design test', 'nr_mode': 'NSA', 'datasets': {'data': [1]}}
-    for design_id, name in (('design-a', 'Design design'), ('design-b', 'Design sibling')):
+    definition = {'name': 'Design one', 'template': 'Design test', 'nr_mode': 'NSA', 'datasets': {'data': [1]}}
+    for design_id, name in (('design-a', 'Design one'), ('design-b', 'Design sibling')):
         saved = client.put(f'/api/ppt-designer/{design_id}', json={**definition, 'name': name})
         assert saved.status_code == 200, saved.text
     return definition
@@ -285,8 +285,8 @@ def test_detach_save_as_template_and_deleting_a_template_keep_every_design_worki
     assert client.post('/workspace-config/report-templates/Design test/delete', follow_redirects=False).status_code == 303
     assert stored('design-b')['own_slides']['slides'][0]['title'] == 'Comparison'
     assert logged('delete_report_template')[-1]['detached_designs'] == 1
-    for name in ('Design design', 'Design sibling'):
-        design_id = 'design-a' if name == 'Design design' else 'design-b'
+    for name in ('Design one', 'Design sibling'):
+        design_id = 'design-a' if name == 'Design one' else 'design-b'
         prepared = client.post('/api/ppt-designer/prepare', json={**definition, 'name': name, 'own_slides': stored(design_id)['own_slides']})
         assert prepared.status_code == 200, prepared.text
 
@@ -368,7 +368,7 @@ def test_the_chart_builder_reads_fields_and_values_and_adds_a_chart_to_a_design(
     assert full.status_code == 409
     added = client.post('/api/ppt-designer/design-a/add-chart', json={'element': chart})
     assert added.status_code == 200, added.text
-    assert added.json() == {'design': 'Design design', 'slide': 'Rate by city'}
+    assert added.json() == {'design': 'Design one', 'slide': 'Rate by city'}
     assert stored('design-a')['slide_overrides']['local_slides'][0]['slide']['elements'][0]['kpi'] == 'Mean_Data_Rate'
     assert logged('design_chart_added')[-1]['new_slide'] is True
     prepared = client.post('/api/ppt-designer/prepare?design_id=design-a', json=definition)
@@ -567,11 +567,11 @@ def test_titles_and_text_boxes_name_the_selection_of_the_design(client):
         return prepared.json()['slides']
 
     overview, notes = shown({'City': ['London']})
-    assert (overview['title'], overview['subtitle']) == ('Design design: All Operators in London', 'Operator Comparison · NSA')
+    assert (overview['title'], overview['subtitle']) == ('Design one: All Operators in London', 'Operator Comparison · NSA')
     assert overview['charts'][0]['title'] == 'Rate in All Regions'
     assert notes['charts'][0]['content']['text'] == '**London** · Non-Standalone · All Vendors'
     # Every value of the CDRs reads as All, as on the cover.
     overview, _notes = shown({'City': ['London', 'Leeds'], 'Operator': ['B']})
-    assert overview['title'] == 'Design design: B in All Cities'
+    assert overview['title'] == 'Design one: B in All Cities'
     # The Design keeps the tokens: each Design writes its own.
     assert stored('design-a')['slide_overrides']['slides'][first['id']]['title']['value'] == '{Design}: {Operators} in {Cities}'

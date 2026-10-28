@@ -581,7 +581,7 @@ const VISUALS = {
     out += `<rect x="306" y="104" width="208" height="92" rx="14" fill="${p.accent}"/><g transform="translate(324 124)">${icon('TbFileZip', '#ffffff', 44)}</g><text x="380" y="146" font-size="20" font-weight="800" fill="#ffffff">Package</text><text x="380" y="174" font-size="17" fill="#ffffff">Workspace UK</text>`;
     out += `<text x="410" y="236" text-anchor="middle" font-size="18" fill="#9fb0cc">Super-admins approve it</text>`;
     out += `<rect x="20" y="350" width="780" height="190" rx="18" fill="#16213a" stroke="#2a3a5c" stroke-width="2"/><text x="44" y="388" font-size="20" fill="#9fb0cc">Preview before Import</text>`;
-    [['Designs', '3 added · 2 changed', '#1f9d55'], ['PPT Templates', '1 changed', '#f0a830'], ['NQ Call Tracking', 'unchanged', '#7d8aa3']].forEach(([name, change, colour], index) => {
+    [['PPT Designs', '3 added · 2 changed', '#1f9d55'], ['PPT Templates', '1 changed', '#f0a830'], ['NQ Call Tracking', 'unchanged', '#7d8aa3']].forEach(([name, change, colour], index) => {
       const y = 404 + index * 42;
       out += `<rect x="44" y="${y}" width="732" height="34" rx="10" fill="#22304f"/><circle cx="64" cy="${y + 17}" r="7" fill="${colour}"/><text x="82" y="${y + 23}" font-size="18" font-weight="700" fill="#ffffff">${name}</text><text x="756" y="${y + 23}" text-anchor="end" font-size="17" fill="#c9d4e6">${change}</text>`;
     });
@@ -646,7 +646,7 @@ const VISUALS = {
       + `<ellipse cx="${x + 110}" cy="${y + 58 + tables.length * 36}" rx="110" ry="22" fill="${colour}" opacity=".85"/><text x="${x + 110}" y="${y + 50}" text-anchor="middle" font-size="19" font-weight="800" fill="#ffffff">${title}</text>`
       + tables.map((table, index) => `<rect x="${x + 18}" y="${y + 64 + index * 36}" width="184" height="28" rx="8" fill="#0b1220" opacity=".55"/><text x="${x + 110}" y="${y + 83 + index * 36}" text-anchor="middle" font-size="15" fill="#ffffff">${table}</text>`).join('');
     let out = cylinder(20, 20, 'Application', '#5b6b80', ['Users', 'Modules Profiles', 'Workspace Groups', 'Tickets']);
-    out += cylinder(20, 300, 'Workspace UK', p.deep, ['Datasets', 'Designs', 'NQ Call Tracking', 'Combined CDR rows']);
+    out += cylinder(20, 300, 'Workspace UK', p.deep, ['Datasets', 'PPT Designs', 'NQ Call Tracking', 'Combined CDR rows']);
     out += `<rect x="270" y="20" width="530" height="520" rx="18" fill="#16213a" stroke="#2a3a5c" stroke-width="2"/><text x="294" y="58" font-size="20" font-weight="800" fill="#ffffff">Database Viewer</text>`;
     out += `<rect x="294" y="74" width="300" height="38" rx="10" fill="#22304f"/><text x="310" y="99" font-size="17" fill="#c9d4e6">Table: Operator Mappings</text><rect x="604" y="74" width="172" height="38" rx="19" fill="${p.accent}"/><text x="690" y="99" text-anchor="middle" font-size="16" font-weight="700" fill="#ffffff">Operator = VF</text>`;
     const columns = ['source_value', 'canonical_value'];

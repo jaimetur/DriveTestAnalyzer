@@ -65,7 +65,7 @@ PRE_DYNAMIC_CATALOG_HEADERS = (*VISUAL_CATALOG_HEADERS, "Exclude Null/Empty", "E
 SINGLE_DYNAMIC_CATALOG_HEADERS = (*PRE_DYNAMIC_CATALOG_HEADERS, "Dynamic Field")
 TRAILING_DYNAMIC_CATALOG_HEADERS = (*PRE_DYNAMIC_CATALOG_HEADERS, "Dynamic Rows Field", "Dynamic Columns Field")
 CATALOG_HEADERS = (*PRE_DYNAMIC_CATALOG_HEADERS[:4], "Dynamic Rows Field", "Dynamic Columns Field", *PRE_DYNAMIC_CATALOG_HEADERS[4:])
-# What the columns cannot hold of the Design of a template (stable slide and element ids, formats, parameters: see
+# What the columns cannot hold of the slides of a template (stable slide and element ids, formats, parameters: see
 # design_slides), as a JSON object per row. Optional and last, so every schema of before stays valid.
 FORMAT_HEADER = "Format"
 # Templates created before configurable visual settings remain valid and
@@ -87,7 +87,7 @@ CHART_TYPES = {
     "distribution stacked vertical bars", "threshold stacked vertical bars", "average vertical bars", "median vertical bars", "map", "histogram line", "histogram bars",
     "kpi card",
 }
-# Elements of a Design Design that read no CDR (design_slides): a text box, and a picture. Rows of either have no
+# Elements of the slides of a Design that read no CDR (design_slides): a text box, and a picture. Rows of either have no
 # Source Dataset; PPT Reporting (old) leaves them out.
 ELEMENT_CHART_TYPES = {"text box", "image"}
 BAR_CHART_TYPES = {
@@ -8221,7 +8221,7 @@ def render_cdr_report(destination: Path, template: Path, frames: dict[str, pd.Da
 
         chart_entries = [entry for entry in slide_entries if entry.source_kind]
         if not chart_entries and any(entry.chart_type.casefold() in ELEMENT_CHART_TYPES for entry in slide_entries):
-            # A slide of a Design Design with only text boxes and pictures: its title, as a transition slide.
+            # A slide of a Design with only text boxes and pictures: its title, as a transition slide.
             slide = presentation.slides.add_slide(_named_slide_layout(presentation, "Title Only"))
             _set_structural_slide_text(slide, header.slide_title, header.slide_subtitle)
             continue

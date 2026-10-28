@@ -1043,7 +1043,7 @@ def rename_chart_mapping_design_references(
     new_name: str,
     mapping_settings: dict[str, Any],
 ) -> int:
-    """Rename one canonical Operator/Vendor identity in all saved Designs."""
+    """Rename one canonical Operator/Vendor identity in all saved PPT Designs."""
     renamed_text = chart_mapping_reference_renamer(
         mapping_type, old_name, new_name, mapping_settings,
     )
@@ -1092,7 +1092,7 @@ def rename_chart_mapping_design_references(
 
 
 def rename_calculated_dimension_design_references(renames: dict[str, str], task_repository: Repository | None = None) -> int:
-    """Rename calculated-field references in every saved Design definition (of the active workspace by default)."""
+    """Rename calculated-field references in every saved PPT Design definition (of the active workspace by default)."""
     if not renames:
         return 0
 
@@ -1600,7 +1600,7 @@ def combined_reporting_required_columns(
         *PREVIEW_METADATA_FIELDS,
         *MAIN_CDR_FIELDS,
         # PPT Designer Default Filters are a fixed part of every combined
-        # source. Keep every physical fallback alias so opening a Design
+        # source. Keep every physical fallback alias so opening a PPT Design
         # never has to repair selected CDR rows just to populate its facets.
         'market', 'operator', 'Operator_Vendor', 'Vendor',
         'Region', 'G_Level_2', 'G Level 2',
@@ -1712,10 +1712,10 @@ def materialize_workspace_combined_columns(
 def mark_combined_reporting_updated(task_repository: Repository, kind: str, *, rows_changed: bool) -> None:
     """Record a combined-table change.
 
-    Only row changes alter the data behind prepared Design selections, so
-    only they advance the revision used by Design cache keys. Adding or
+    Only row changes alter the data behind prepared PPT Design selections, so
+    only they advance the revision used by PPT Designer cache keys. Adding or
     filling columns records a separate timestamp and keeps every prepared
-    Design universe valid.
+    PPT Design universe valid.
     """
     key = f'combined_reporting_updated_{kind}' if rows_changed else f'combined_reporting_columns_updated_{kind}'
     task_repository.set_workspace_state(key, now_iso())
@@ -2692,8 +2692,8 @@ def catalogue_editor_payload(catalogue_id: str | None) -> dict[str, Any] | None:
         }
         for entry in entries
     ]
-    # The Format column (the Design of the template beyond the columns: ids, formats, parameters) is shown, and saved
-    # back, once the template has a Design.
+    # The Format column (the slides of the template beyond the columns: ids, formats, parameters) is shown, and saved
+    # back, once the template has ids for its slides.
     headers = CATALOG_HEADERS + ((FORMAT_HEADER,) if any(entry.format for entry in entries) else ())
     if not rows:
         rows = [{header: ('1' if header == 'Slide' else '') for header in CATALOG_HEADERS}]
@@ -2805,7 +2805,7 @@ def activate_workspace(workspace_id: str, *, initialize: bool = True) -> Workspa
             _startup_step('Checking the PPT Templates…')
             synchronize_template_file_names()
             # A new workspace (and every existing one, once) starts with the shipped methodology, Report
-            # Templates, Designs and Auto-calculated Fields it does not have yet.
+            # Templates, PPT Designs and Auto-calculated Fields it does not have yet.
             _startup_step('Checking the starter content and the creators of the shared items…')
             try:
                 from src.modules.starter_content import seed_starter_content
@@ -2938,7 +2938,7 @@ def workspace_disk_usage(workspace: Workspace) -> int:
 
 
 def workspace_cache_disk_usage(workspace: Workspace) -> int:
-    """Return the bytes in derived Design caches for one workspace."""
+    """Return the bytes in derived PPT Design caches for one workspace."""
     root = workspace.database_path.parent
     cache_key = str(root.resolve())
     now = monotonic()
@@ -2968,13 +2968,13 @@ def invalidate_workspace_size_cache(workspace_root: Path | None = None) -> None:
         _workspace_cache_size_cache.pop(cache_key, None)
 
 
-# The format of the Design selections a workspace database keeps (design_filter_selections), as a workspace state.
+# The format of the PPT Design selections a workspace database keeps (design_filter_selections), as a workspace state.
 DESIGN_SELECTION_FORMAT_STATE_KEY = 'design_selection_cache_version'
 
 
 def clear_outdated_workspace_caches(workspace: Workspace) -> bool:
-    """The Designs keep nothing on disk (their charts come from the columnar copies of the CDRs and their
-    preparations stay in memory): the cache folders and files of earlier versions go, and the Design selections of
+    """The PPT Designs keep nothing on disk (their charts come from the columnar copies of the CDRs and their
+    preparations stay in memory): the cache folders and files of earlier versions go, and the PPT Design selections of
     the workspace database when their format changes. Returns whether anything went."""
     workspace_root = workspace.database_path.parent
     removed = False
@@ -6631,9 +6631,9 @@ LEGACY_ARCHIVE_NAMES = {'complete_report_favourites': 'bundle_report_template_fa
                         'reporting-jobs-template-favourites': 'bundle-report-template-favourites',
                         'bundle_reports_template_favourites': 'bundle_report_template_favourites',
                         'bundle-reports-template-favourites': 'bundle-report-template-favourites',
-                        # PPT Designer was PPT Dashboards, whose Designs were Dashboards.
+                        # PPT Designer was PPT Dashboards, whose PPT Designs were Dashboards.
                         'dashboards': 'designs'}
-# Where a package or backup of before PPT Designer keeps the Designs of a workspace (formerly Dashboards).
+# Where a package or backup of before PPT Designer keeps the PPT Designs of a workspace (formerly Dashboards).
 LEGACY_DESIGNS_MEMBER = 'dashboards/dashboards.json'
 
 
@@ -6696,8 +6696,8 @@ WORKSPACE_ELEMENT_MODULES = {
 BACKUP_WORKSPACE_CONTENT: tuple[tuple[str, str, str], ...] = (
     ('workspace_database', 'Workspace Database', ''),
     ('input', 'Input (includes all raw datasets files)', ''),
-    ('output', 'Output (includes all generated reports, chart sets and Design PPT jobs)', ''),
-    ('designs', 'Designs (one JSON file with all Design definitions)', 'designs'),
+    ('output', 'Output (includes all generated reports, chart sets and PPT Designer jobs)', ''),
+    ('designs', 'PPT Designs (one JSON file with all PPT Design definitions)', 'designs'),
     ('report_templates', 'PPT Templates (one CSV file per Report Template)', 'ppt-templates'),
     ('main_cities', 'Main Cities (workspace city selection)', 'main-cities'),
     ('mappings_reference_data', 'Mappings & Reference Data (Operator and Vendor aliases, order and theme colors, Campaign Maps, '
@@ -7430,7 +7430,7 @@ def create_recurring_database_backup(
                     _archive_database(archive, workspace.database_path, f'{archive_workspace_root}/database.sqlite', backup_dir, archived_bytes,
                                       cancel_callback=ensure_not_cancelled, copies_prefix=f'{archive_workspace_root}/{cdr_store.ARCHIVE_FOLDER}')
                 if 'designs' in components:
-                    report_progress(f'Exporting Designs for {workspace.name}', max(5.0, completed_bytes * 96.0 / max(total_bytes, 1)))
+                    report_progress(f'Exporting PPT Designs for {workspace.name}', max(5.0, completed_bytes * 96.0 / max(total_bytes, 1)))
                     _archive_workspace_designs(archive, workspace, archive_workspace_root, archived_bytes)
                 if 'report_templates' in components:
                     report_progress(f'Archiving PPT Templates for {workspace.name}', max(5.0, completed_bytes * 96.0 / max(total_bytes, 1)))
@@ -7563,7 +7563,7 @@ LEFTOVER_CLEANUP_NIGHT_HOURS = (0, 7)
 LEFTOVER_CLEANUP_IDLE_SECONDS = 15 * 60
 LEFTOVER_CLEANUP_OVERDUE = timedelta(days=2)
 LEFTOVER_CLEANUP_STATE_KEY = 'leftover_cleanup_last_run'
-# The temporary folders and files of imports, exports, transfers, restores and Design downloads, in the temporary
+# The temporary folders and files of imports, exports, transfers, restores and PPT Design downloads, in the temporary
 # folder of the system and the transfer packages folder.
 TEMPORARY_LEFTOVER_PATTERNS = (f'{APP_SLUG}-*', f'{LEGACY_APP_SLUG}-*', 'design-export-*.zip', 'design-ppt-charts-*.zip',
                                'dashboard-export-*.zip', 'dashboard-ppt-charts-*.zip')
@@ -8251,9 +8251,9 @@ def restore_database_backup(
                 member = next((name for name in (f'{prefix}designs/designs.json', f'{prefix}{LEGACY_DESIGNS_MEMBER}') if name in names), '')
                 if member:
                     if progress_callback:
-                        progress_callback(f'Restoring Designs for {workspace_name}', completed_steps, total_steps)
+                        progress_callback(f'Restoring PPT Designs for {workspace_name}', completed_steps, total_steps)
                     _import_workspace_designs(workspace, archive.read(member), importing_user)
-                    advance(f'Designs restored for {workspace_name}')
+                    advance(f'PPT Designs restored for {workspace_name}')
             if 'report_templates' in selected:
                 template_members = [name for name in names if name.startswith(f'{prefix}report-templates/')]
                 if template_members:
@@ -9025,7 +9025,7 @@ def _import_workspace_scoring_configuration(
 
 
 def _design_archive_payload(workspace: Workspace) -> bytes:
-    """Serialize saved Design definitions only; generated chart caches are excluded."""
+    """Serialize saved PPT Design definitions only; generated chart caches are excluded."""
     task_repository = Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path)
     raw = task_repository.get_workspace_state(DESIGN_STATE_KEY) or '{}'
     try:
@@ -9046,7 +9046,7 @@ def _design_archive_payload(workspace: Workspace) -> bytes:
     ] if chosen else []
     from src.modules.deletion_rights import PPT_DESIGNER, creators
     from src.modules.transfer_identities import PPT_DESIGNER as DESIGN_IDENTITIES, identities
-    # The identity of each Design (its ID, or that of the package it came from) and its creator.
+    # The identity of each PPT Design (its ID, or that of the package it came from) and its creator.
     uids, known = identities(task_repository, DESIGN_IDENTITIES), creators(task_repository, PPT_DESIGNER)
     return json.dumps({'format': 'drivetest-analyzer-designs', 'version': 1, 'designs': designs, 'cdrs': cdrs,
                        'identities': {key: uids.get(str(key).casefold()) or str(key) for key in designs},
@@ -9055,7 +9055,7 @@ def _design_archive_payload(workspace: Workspace) -> bytes:
 
 
 def _designs_on_destination_cdrs(designs: dict[str, Any], cdrs: Any, task_repository: Repository) -> dict[str, Any]:
-    """Point the chosen CDRs of imported Designs at the CDRs of the destination with the same name and type."""
+    """Point the chosen CDRs of imported PPT Designs at the CDRs of the destination with the same name and type."""
     from src.modules.ppt_designer import existing_dataset_selection
 
     destination = list(task_repository.list_datasets())
@@ -9114,11 +9114,11 @@ def _archive_workspace_designs(archive: zipfile.ZipFile, workspace: Workspace, a
         progress_callback(len(payload))
 
 def _import_workspace_designs(workspace: Workspace, payload: bytes, importing_user: str) -> list[str]:
-    """Replace the Designs of a workspace that a package (or backup) brings and add the others, keeping those only the
-    workspace has, while deliberately retaining generated caches. A Design is found by its identity, then by its name;
-    one renamed on the other server takes its new name here (its references go by ID). The Designs of a package of
+    """Replace the PPT Designs of a workspace that a package (or backup) brings and add the others, keeping those only the
+    workspace has, while deliberately retaining generated caches. A PPT Design is found by its identity, then by its name;
+    one renamed on the other server takes its new name here (its references go by ID). The PPT Designs of a package of
     before, with an NR Mode of their own and of their template, read it as part of their selection and follow their
-    template as the workspace merged it (report_template_modes). Returns the renamed Designs."""
+    template as the workspace merged it (report_template_modes). Returns the renamed PPT Designs."""
     from src.modules.deletion_rights import PPT_DESIGNER, creators, set_creator
     from src.modules.ppt_naming import renamed_design
     from src.modules.report_template_modes import migrate_designs_state
@@ -9131,9 +9131,9 @@ def _import_workspace_designs(workspace: Workspace, payload: bytes, importing_us
         if isinstance(incoming, dict):
             incoming = {key: renamed_design(value) for key, value in incoming.items()}
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ValueError(f'Design definitions for "{workspace.name}" are invalid.') from exc
+        raise ValueError(f'PPT Design definitions for "{workspace.name}" are invalid.') from exc
     if not isinstance(incoming, dict):
-        raise ValueError(f'Design definitions for "{workspace.name}" are invalid.')
+        raise ValueError(f'PPT Design definitions for "{workspace.name}" are invalid.')
     task_repository = Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path)
     incoming = _designs_on_destination_cdrs(incoming, document.get('cdrs'), task_repository)
     incoming, _changed = migrate_designs_state(incoming, *task_repository.report_template_merge_state())
@@ -9290,7 +9290,7 @@ BRT_FAVOURITES_ARCHIVE_NAMES = (BRT_FAVOURITES_ARCHIVE_NAME, 'complete-report-fa
 
 
 def _bundle_report_template_favourites_payload(workspace: Workspace) -> bytes:
-    """Portable favourite Bundle Report Templates of a workspace (their Designs named, to find them elsewhere)."""
+    """Portable favourite Bundle Report Templates of a workspace (their PPT Designs named, to find them elsewhere)."""
     from src.modules.bundle_report_templates import export_favourites_document
 
     task_repository = Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path)
@@ -9787,7 +9787,7 @@ def _build_single_export_archive_file(
             source_workspace_id = next(iter(workspace_ids or ()), active_workspace.id if active_workspace else '')
             source_workspace = workspace_registry.get(source_workspace_id) if source_workspace_id else None
             if not source_workspace:
-                raise ValueError('Open a workspace before exporting Designs.')
+                raise ValueError('Open a workspace before exporting PPT Designs.')
             archive_path = f'workspaces/{source_workspace.name}/designs/designs.json'
             manifest = archive_manifest(
                 'designs', source_workspace={'id': source_workspace.id, 'name': source_workspace.name},
@@ -10928,7 +10928,7 @@ def matching_template_workspaces(manifest: dict[str, Any], workspaces: Iterable[
 
 
 def _design_template_references(task_repository: Repository) -> set[str]:
-    """Find templates required by saved Designs in the destination workspace."""
+    """Find templates required by saved PPT Designs in the destination workspace."""
     try:
         designs = json.loads(task_repository.get_workspace_state(DESIGN_STATE_KEY) or '{}')
     except (TypeError, ValueError):
@@ -10936,7 +10936,7 @@ def _design_template_references(task_repository: Repository) -> set[str]:
     if not isinstance(designs, dict):
         return set()
     from src.modules.ppt_designer import follow_template_identities, template_uids
-    # A Design refers to its template by its identity, also when the template was renamed since it was saved.
+    # A PPT Design refers to its template by its identity, also when the template was renamed since it was saved.
     designs = follow_template_identities(designs, template_uids(task_repository))
     return {
         str(definition.get('template') or '').strip()
@@ -10951,8 +10951,8 @@ def import_slides_templates_archive(
 ) -> int:
     """Import (or restore) the PPT Templates of a package into the destination workspaces: those of the package replace
     the templates of the workspace (found by their identity, then by their name) and the others are added, keeping those
-    only the workspace has. A template used by a Design of the workspace keeps its definition unless the package
-    brings the Designs too. ``summary`` receives the renamed templates.
+    only the workspace has. A template used by a PPT Design of the workspace keeps its definition unless the package
+    brings the PPT Designs too. ``summary`` receives the renamed templates.
     """
     templates_payload = staging_root / 'report-templates'
     if not templates_payload.exists():
@@ -10994,7 +10994,7 @@ def package_report_templates(
 ) -> tuple[dict[str, dict[str, Any]], Any]:
     """The PPT Templates of an extracted package by name (casefolded): name, content, whether it is the default, and
     its identity and creator from the manifest. The templates of a package of before, kept per NR Mode, become those of
-    one library as the workspaces were migrated (report_template_modes); the merge is returned so the Designs of the
+    one library as the workspaces were migrated (report_template_modes); the merge is returned so the PPT Designs of the
     package follow it."""
     from src.modules.report_template_modes import TemplateMerge, merge_mode_templates
 
@@ -11039,7 +11039,7 @@ def _merge_report_templates(
     merge: Any = None,
 ) -> list[str]:
     """Replace the templates of a workspace that a package brings (by identity, then name) and add the others; a
-    renamed template keeps its Designs. The Designs of the workspace that named a template of a package of before
+    renamed template keeps its PPT Designs. The PPT Designs of the workspace that named a template of a package of before
     (kept per NR Mode) follow it as merged (``merge``). Returns the renamed templates."""
     from src.modules.ppt_designer import rename_template_in_designs
     from src.modules.report_template_modes import TEMPLATE_MODE_MERGE_STATE_KEY, migrate_designs_state
@@ -11076,12 +11076,12 @@ def _merge_report_templates(
             if str(target) != name:
                 target_repository.rename_report_template(str(target), name)
                 designs_changed = bool(rename_template_in_designs(designs, str(target), name)) or designs_changed
-            # A template a Design of the workspace uses keeps its definition (unless the Designs come too).
+            # A template a PPT Design of the workspace uses keeps its definition (unless the PPT Designs come too).
             if not any(item.casefold() in {str(target).casefold(), name.casefold()} for item in protected):
                 target_repository.set_report_template_content(name, template['content'])
         previous_uid = local_uids.get(str(target), '') if target is not None else ''
         if incoming_uid and previous_uid and incoming_uid != previous_uid:
-            # It takes the identity of the package: its Designs follow it.
+            # It takes the identity of the package: its PPT Designs follow it.
             for key, definition in designs.items():
                 if isinstance(definition, dict) and definition.get('template_uid') == previous_uid:
                     designs[key] = {**definition, 'template_uid': incoming_uid}
@@ -11315,7 +11315,7 @@ def import_auto_calculated_fields(
 ) -> tuple[int, int]:
     """Replace the fields of each selected workspace that the package brings (found by their identity, then by their
     name) and add the others, keeping those only the workspace has. A field renamed on the other server takes its new
-    name in the PPT Templates and Designs of the workspace too. The CDR tables of each workspace are updated once,
+    name in the PPT Templates and PPT Designs of the workspace too. The CDR tables of each workspace are updated once,
     as a background task, only when its fields change; ``summary`` receives the renamed fields.
 
     The materialization of an import of several packages waits in ``deferred_jobs`` until all of them are imported.
@@ -11640,7 +11640,7 @@ def _preview_element_document(kind: str, manifest: dict[str, Any], archive: zipf
 
 def _predicted_document(kind: str, workspace: Workspace, package: Any) -> Any:
     """The export document of an element package as its import saves it in a workspace (the Reporting Jobs pointing at
-    its datasets, favourites and Designs), for the preview of the import."""
+    its datasets, favourites and PPT Designs), for the preview of the import."""
     if kind != 'reporting-jobs' or not isinstance(package, dict):
         return package
     from src.modules.report_tasks import imported_jobs, normalize_definition, normalize_schedule
@@ -11950,7 +11950,7 @@ def _apply_import_archive(
             bundle_details: list[str] = []
             # Long updates (the materialization of Auto-calculated Fields) start once every package is imported.
             bundle_jobs: list[Callable[[], Any]] = []
-            # The favourite Bundle Report Templates and the Reporting Jobs go last: they find their Designs among those of the
+            # The favourite Bundle Report Templates and the Reporting Jobs go last: they find their PPT Designs among those of the
             # bundle (which come after their PPT Templates).
             packages = sorted(packages, key=lambda entry: isinstance(entry, dict)
                               and entry.get('kind') in {'bundle-report-template-favourites', 'reporting-jobs'})
@@ -11971,7 +11971,7 @@ def _apply_import_archive(
                     raise ValueError('A package in the selected bundle does not match its manifest.')
                 package_progress = None
                 if progress_callback:
-                    # The package by its content (Designs, PPT Templates…), so a long one can be told apart.
+                    # The package by its content (PPT Designs, PPT Templates…), so a long one can be told apart.
                     try:
                         package_label = _transfer_content_label(entry_target) if entry_target else entry_kind
                     except ValueError:
@@ -12080,7 +12080,7 @@ def _apply_import_archive(
         if kind == 'designs':
             member = str(manifest.get('archive_path') or '')
             if member not in archive.namelist() or not re.fullmatch(r'workspaces/[^/]+/(designs/designs|dashboards/dashboards)\.json', member):
-                raise ValueError('The package does not contain valid Design definitions.')
+                raise ValueError('The package does not contain valid PPT Design definitions.')
             destinations = [workspace_registry.get(workspace_id) for workspace_id in destination_workspace_ids]
             destinations = [workspace for workspace in destinations if workspace]
             if not destinations:
@@ -12096,7 +12096,7 @@ def _apply_import_archive(
             for workspace in destinations:
                 changes = _import_workspace_designs(workspace, payload, importing_user)
                 if changes:
-                    renamed.append(summary_section(f'Designs of "{workspace.name}"', changes))
+                    renamed.append(summary_section(f'PPT Designs of "{workspace.name}"', changes))
             message, lines = _element_notice(kind, destinations, _element_changes(kind, destinations, before, _json_document(payload)))
             return told(message, [*renamed, *lines])
         if kind == 'mappings-reference-data':
@@ -12606,7 +12606,7 @@ def _transfer_content_label(target: str | Iterable[str]) -> str:
         'config-with-templates': 'Config + PPT Templates',
         'full-environment': 'Full Environment',
         'auto-calculated-fields': 'Auto-calculated Fields',
-        'designs': 'Designs',
+        'designs': 'PPT Designs',
         'mappings-reference-data': 'Mappings & Reference Data',
         'main-cities': 'Main Cities',
         'scoring-configuration': 'Scoring & GAP Analysis Methodologies',
@@ -13326,7 +13326,7 @@ def render_admin_template(
         selected_catalogue = selected_catalogue.split(':', 1)[1]
     report_catalogues = report_catalogue_options() if active_workspace else []
     # Templates are listed by name. An NR Mode written in the name itself (``Report - NSA``) is ignored for the name
-    # key so the order matches the Designs table.
+    # key so the order matches the PPT Designs table.
     workspace_catalogues = sorted((
         {
             **catalogue,
@@ -13370,8 +13370,8 @@ def render_admin_template(
         'application_state': 'Application state',
         'autocalculated_fields': 'Auto-calculated Fields',
         'audit_logs': 'Audit log',
-        'design_filter_selections': 'Design filter selections',
-        'design_ppt_jobs': 'Design PPT jobs',
+        'design_filter_selections': 'Design Filter Selections',
+        'design_ppt_jobs': 'Design PPT Jobs',
         'design_drafts': 'Design Drafts',
         'design_images': 'Design Images',
         'cdr_catalogues': 'CDR Operator, Operator Vendor, Vendor, Region, Cluster, City, Campaign And Source Level Catalogues',
@@ -13448,7 +13448,7 @@ def render_admin_template(
         {'value': 'config', 'label': 'Application Config', 'tag': 'Whole application database', 'tag_class': 'user-choice-tag-database'},
         {'value': 'users-access', 'label': 'Users & Access'},
         {'value': 'ticket-center', 'label': 'Ticket Center'},
-        {'value': 'designs', 'label': 'Designs (from active workspace)', 'disabled': not active_workspace},
+        {'value': 'designs', 'label': 'PPT Designs (from active workspace)', 'disabled': not active_workspace},
         {'value': 'ppt-templates', 'label': 'PPT Templates (from active workspace)', 'disabled': not active_workspace},
         {'value': 'main-cities', 'label': 'Main Cities (from active workspace)', 'disabled': not active_workspace},
         {'value': 'mappings-reference-data', 'label': 'Mappings & Reference Data (from active workspace)', 'disabled': not active_workspace},
@@ -13465,7 +13465,7 @@ def render_admin_template(
         {'value': 'nq-call-tracking', 'label': 'NQ Call Tracking (from active workspace)', 'disabled': not active_workspace},
         {'value': 'nq-calls-configuration', 'label': 'NQ Calls Configuration (from active workspace)', 'disabled': not active_workspace},
         {'value': 'app-events', 'label': 'App Events (from active workspace)', 'disabled': not active_workspace},
-        {'value': 'full-environment', 'label': 'Full Environment (Application Config + Designs + PPT Templates + Main Cities + Mappings & Reference Data + Scoring & GAP Analysis Methodologies + Auto-calculated Fields + Query Builder Queries + Network Insights Favourites + Bundle Report Template Favourites + Scoring & GAP Favourites Filters + Scoring & GAP Report Templates + Scoring Export Panels + Scoring Excluded Calls + Reporting Jobs + NQ Call Tracking + Selected Workspaces)',
+        {'value': 'full-environment', 'label': 'Full Environment (Application Config + PPT Designs + PPT Templates + Main Cities + Mappings & Reference Data + Scoring & GAP Analysis Methodologies + Auto-calculated Fields + Query Builder Queries + Network Insights Favourites + Bundle Report Template Favourites + Scoring & GAP Favourites Filters + Scoring & GAP Report Templates + Scoring Export Panels + Scoring Excluded Calls + Reporting Jobs + NQ Call Tracking + Selected Workspaces)',
          'tag': 'Whole application and workspace databases', 'tag_class': 'user-choice-tag-database'},
         *[
             {'value': f'workspace:{workspace.id}', 'label': f'Full Workspace: {workspace.name}', 'tag': 'Whole workspace database',
@@ -13656,12 +13656,12 @@ def describe_workspace_log_entry(log: dict[str, Any]) -> str:
             return f"Chart Set job {details.get('job_id')} failed: {details.get('error', 'Unknown generation error')}"
         if log['action'] == 'prewarm_design_cache':
             return (
-                f"Prewarmed {details.get('universes', 0)} standard Design universes "
-                f"for Design {details.get('design_id', '')}."
+                f"Prewarmed {details.get('universes', 0)} standard PPT Designer universes "
+                f"for PPT Design {details.get('design_id', '')}."
             )
         if log['action'] == 'prewarm_design_cache_failed':
             return (
-                f"Design cache prewarm failed for Design {details.get('design_id', '')}: "
+                f"PPT Designer cache prewarm failed for PPT Design {details.get('design_id', '')}: "
                 f"{details.get('error', 'Unknown error')}"
             )
         if log['action'] == 'recover_interrupted_background_jobs':
@@ -15024,8 +15024,8 @@ def _workspace_background_tasks(workspace: Workspace) -> list[dict[str, Any]]:
                         pass
                     tasks.append({
                         'id': f'design-ppt:{workspace.id}:{row["id"]}',
-                        'design_name': str(row['design_name'] or 'Design'),
-                        'label': 'Generating Design PPT',
+                        'design_name': str(row['design_name'] or 'PPT Design'),
+                        'label': 'Generating PPT Design',
                         'detail': 'Completed' if ready else str(row['status'] or 'queued').title(),
                         'status': str(row['status'] or 'queued').casefold(),
                         'progress': max(0, min(100, int(row['progress'] or 0))),
@@ -15390,7 +15390,7 @@ def background_tasks_status(user: SessionUser = Depends(current_user)) -> JSONRe
                 'label': 'Clearing workspace cache' if clearing_cache else 'Deleting workspace',
                 'detail': (
                     'Cache cleared' if job.get('status') == 'ready' else str(
-                        job.get('message') or 'Preparing to clear Design cache'
+                        job.get('message') or 'Preparing to clear PPT Designer cache'
                     )
                 ) if clearing_cache else (
                     'Removing workspace database and files' if job.get('delete_files') else 'Removing workspace database'
@@ -15563,7 +15563,7 @@ def stop_background_task(
         try:
             job_id = int(raw_identifier)
         except ValueError as exc:
-            raise HTTPException(status_code=400, detail='Invalid Design PPT job.') from exc
+            raise HTTPException(status_code=400, detail='Invalid PPT Designer job.') from exc
         with task_repository.connection() as connection:
             tables = {
                 str(row['name'])
@@ -15573,7 +15573,7 @@ def stop_background_task(
                 'SELECT status FROM design_ppt_jobs WHERE id = ?', (job_id,),
             ).fetchone() if 'design_ppt_jobs' in tables else None
             if row is None or str(row['status']) not in {'queued', 'processing'}:
-                raise HTTPException(status_code=409, detail='This Design PPT job can no longer be stopped.')
+                raise HTTPException(status_code=409, detail='This PPT Designer job can no longer be stopped.')
             connection.execute(
                 "UPDATE design_ppt_jobs SET status = 'stopped', finished_at = ? WHERE id = ?",
                 (datetime.now(timezone.utc).isoformat(), job_id),
@@ -15610,7 +15610,7 @@ def stop_background_task(
     elif prefix == 'design-prepare':
         stop_design = getattr(sys.modules[__name__], 'ppt_design_stop_task', None)
         if not callable(stop_design) or not stop_design(workspace.database_path, raw_identifier):
-            raise HTTPException(status_code=409, detail='This Design task can no longer be interrupted.')
+            raise HTTPException(status_code=409, detail='This PPT Designer task can no longer be interrupted.')
         task_repository.try_add_log(
             user.username, 'interrupt_design_preparation', json.dumps({'task_id': raw_identifier}),
         )
@@ -15773,7 +15773,7 @@ def workspace_access_map(user: SessionUser, workspaces: list[Workspace]) -> dict
 
 # The kinds of tables of the Database Viewer, in the order it lists them within each group, with their colour.
 DATABASE_TABLE_TYPES: tuple[tuple[str, str], ...] = (
-    ('Users & Access', '#6B46C1'), ('Application', '#48606F'), ('Datasets', '#1F6FBF'), ('Designs & Templates', '#7751B9'),
+    ('Users & Access', '#6B46C1'), ('Application', '#48606F'), ('Datasets', '#1F6FBF'), ('PPT Designer & Templates', '#7751B9'),
     ('Scoring & GAP Analysis', '#176E77'), ('Non-Qualified Calls', '#B0234F'), ('Reporting', '#2E8C58'),
     ('Mappings & Maps', '#B85B20'), ('Query Builder', '#8A6D0B'), ('Ticket Center', '#DC2626'), ('Workspace', '#5A6773'),
     ('Voice CDRs', '#1F6FBF'), ('Data CDRs', '#2E8C58'), ('Speech CDRs', '#7751B9'), ('Other datasets', '#5A6773'),
@@ -15801,7 +15801,7 @@ def database_table_type(table_name: str, dataset_kind: str = '') -> tuple[str, s
     elif name.startswith('report_task'):
         kind_type = 'Reporting'
     elif name.startswith(('design_', 'report_templates', 'generated_jobs')):
-        kind_type = 'Designs & Templates'
+        kind_type = 'PPT Designer & Templates'
     elif name.startswith(('dataset', 'cdr_', 'autocalculated', 'inventory_')):
         kind_type = 'Datasets'
     elif name in {'chart_mapping_groups', 'operator_mappings', 'vendor_mappings'} or name.startswith('map_area'):
@@ -16263,7 +16263,7 @@ def delete_workspace_cache(
     workspace_id: str = Form(...),
     user: SessionUser = Depends(current_user),
 ) -> Response:
-    """Remove derived Design artifacts without changing workspace data or settings."""
+    """Remove derived PPT Designer artifacts without changing workspace data or settings."""
     require_workspace_admin(user)
     workspace = workspace_registry.get(workspace_id)
     if workspace is None:
@@ -16285,7 +16285,7 @@ def delete_workspace_cache(
         WORKSPACE_LIFECYCLE_JOBS[job_id] = {
             'id': job_id, 'operation': 'cache-clear', 'workspace_id': workspace_id,
             'workspace_name': workspace.name, 'owner': user.username, 'status': 'queued', 'progress': 0,
-            'message': 'Waiting to clear Design cache',
+            'message': 'Waiting to clear PPT Designer cache',
             'created_at': datetime.now(timezone.utc).timestamp(),
         }
 
@@ -16298,11 +16298,11 @@ def delete_workspace_cache(
                     return
                 job.update(
                     status='processing', progress=15,
-                    message='Removing generated Design artifacts',
+                    message='Removing generated PPT Designer artifacts',
                     started_at=datetime.now(timezone.utc).timestamp(),
                 )
         try:
-            # Cancellation invalidates active Design generations before
+            # Cancellation invalidates active PPT Design generations before
             # this thread starts. Writers verify that token before committing
             # cache artifacts, allowing removal to start immediately.
             workspace_root = workspace.database_path.parent
@@ -16349,7 +16349,7 @@ def delete_workspace_cache(
             })
 
     submit_background_task(run_cache_clear)
-    notice = 'Workspace cache clearing started. Design data and chart models will be rebuilt when needed.'
+    notice = 'Workspace cache clearing started. PPT Designer data and chart models will be rebuilt when needed.'
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
         return JSONResponse({
             'job_id': job_id,
@@ -16358,7 +16358,7 @@ def delete_workspace_cache(
             'notice': notice,
         })
     return RedirectResponse(
-        '/workspace?workspace_notice=Workspace+cache+clearing+started.+Design+data+and+chart+models+will+be+rebuilt+when+needed.',
+        '/workspace?workspace_notice=Workspace+cache+clearing+started.+PPT Design+data+and+chart+models+will+be+rebuilt+when+needed.',
         status_code=status.HTTP_303_SEE_OTHER,
     )
 
@@ -17478,7 +17478,7 @@ def _combined_reporting_frame(
 ) -> pd.DataFrame:
     """Load selected campaigns in one query from their shared CDR table.
 
-    Every row keeps the NR Mode of its CDR: the caller chooses the CDRs of the NR Mode it reports, as the Designs do.
+    Every row keeps the NR Mode of its CDR: the caller chooses the CDRs of the NR Mode it reports, as the PPT Designs do.
     """
     task_repository = task_repository or repository
     if len({str(dataset['dataset_kind']) for dataset in datasets}) > 1:
@@ -17522,10 +17522,10 @@ def _clear_chart_preview_caches() -> None:
         CHART_PREVIEW_FRAME_CACHE.clear()
         CHART_PREVIEW_FILTER_CACHE.clear()
         CHART_PREVIEW_DATA_CACHE.clear()
-    # An open Design keeps its rendered Canvas models in an E2E snapshot.
+    # An open PPT Design keeps its rendered Canvas models in an E2E snapshot.
     # Mapping-order changes do not alter the selected CDR universe, but they do
     # alter its hierarchy order. Invalidate only those inexpensive derived
-    # models so the current Design token remains usable and repaints with
+    # models so the current PPT Design token remains usable and repaints with
     # the newly saved Operator/Vendor order.
     invalidate_design_models = globals().get('ppt_design_invalidate_chart_models')
     if active_workspace and callable(invalidate_design_models):
@@ -21135,7 +21135,7 @@ class ImageExportRequest(BaseModel):
     error: str = ''
     # Saved as a file (download), copied to the clipboard (a screenshot of it) or shown to copy from it (copy-dialog).
     destination: str = 'download'
-    # What the page showed with it, such as the Design and slide of a chart or the theme ({name: value}).
+    # What the page showed with it, such as the PPT Design and slide of a chart or the theme ({name: value}).
     context: dict[str, str | int | None] = {}
 
 
@@ -22725,7 +22725,7 @@ def update_dataset_nr_mode(
             repository.update_dataset_profile(dataset_id, nr_mode=nr_mode)
         kind = str(dataset['dataset_kind']).casefold()
         if repository.set_reporting_nr_mode(dataset_id, kind):
-            # Its rows in the combined table change their NR_Mode: the prepared Designs read them again.
+            # Its rows in the combined table change their NR_Mode: the prepared PPT Designs read them again.
             mark_combined_reporting_updated(repository, kind, rows_changed=True)
         repository.add_log(user.username, 'update_dataset_nr_mode', json.dumps({
             'dataset_id': dataset_id, 'file': dataset['file_name'],
@@ -24741,7 +24741,7 @@ async def receive_transfer_offer(request: Request) -> JSONResponse:
                 'database-backup', 'bundle',
     }:
         raise HTTPException(status_code=400, detail='The offered export type is not supported.')
-    # A server of before PPT Designer offers its Designs as Dashboards.
+    # A server of before PPT Designer offers its PPT Designs as Dashboards.
     kind = payload['kind'] = current_archive_name(kind)
     if payload.get('archive_version') != ARCHIVE_VERSION:
         raise HTTPException(status_code=409, detail='The source server uses an incompatible export package version.')
@@ -25930,7 +25930,7 @@ def save_admin_operator_mapping_group(
     }))
     notice = 'Operator Mapping saved.'
     if renamed_templates or renamed_designs or renamed_filters:
-        notice += (f' Updated {renamed_templates} Report Template(s), {renamed_designs} Design(s)'
+        notice += (f' Updated {renamed_templates} Report Template(s), {renamed_designs} PPT Design(s)'
                    f' and {renamed_filters} Reporting Job(s) or saved filter(s).')
     return RedirectResponse(
         f'/workspace-config?{urlencode({"operator_mapping_notice": notice})}',
@@ -26288,7 +26288,7 @@ def save_admin_vendor_mapping_group(
     }))
     notice = 'Vendor Mapping saved.'
     if renamed_templates or renamed_designs or renamed_filters:
-        notice += (f' Updated {renamed_templates} Report Template(s), {renamed_designs} Design(s)'
+        notice += (f' Updated {renamed_templates} Report Template(s), {renamed_designs} PPT Design(s)'
                    f' and {renamed_filters} Reporting Job(s) or saved filter(s).')
     return RedirectResponse(
         f'/workspace-config?{urlencode({"vendor_mapping_notice": notice})}',
@@ -26575,7 +26575,7 @@ def _named_catalogue(catalogue_id: str) -> dict[str, Any] | None:
 
 
 def ensure_report_template_editable(user: SessionUser, template_name: str) -> None:
-    """Admins and super-admins change any PPT Template, a user-editor only those they created (as Designs): raises
+    """Admins and super-admins change any PPT Template, a user-editor only those they created (as PPT Designs): raises
     PermissionError otherwise."""
     from src.modules.deletion_rights import can_delete
     row = next((row for row in repository.list_report_templates() if str(row['name']) == str(template_name)), None)
@@ -26690,7 +26690,7 @@ def delete_report_catalogue(
         return render_workspace_config_template(request, user, error=deletion_refusal('PPT Template'), status_code=403)
     if catalogue['active']:
         return render_workspace_config_template(request, user, error='The default template cannot be deleted.', status_code=400)
-    # The Designs that follow it keep the Design they show as their own (detached): none of them breaks.
+    # The PPT Designs that follow it keep the slides they show as their own (detached): none of them breaks.
     detach_designs = getattr(sys.modules[__name__], 'ppt_design_detach_template_designs', None)
     detached = detach_designs(str(catalogue['name']), user.username) if callable(detach_designs) else 0
     repository.delete_report_template(catalogue_id)
@@ -26730,7 +26730,7 @@ def reconcile_saved_template_comments(
     task_repository: Repository, template_name: str,
     previous_content: bytes, entries: list[CatalogEntry],
 ) -> None:
-    """Update Design slide comments after the template response has returned."""
+    """Update PPT Design slide comments after the template response has returned."""
     reconcile_comments = getattr(sys.modules[__name__], 'ppt_design_reconcile_template_slide_comments', None)
     if not callable(reconcile_comments):
         return
@@ -26863,7 +26863,7 @@ def template_preview_datasets(source_kind: str, nr_mode: object) -> list[dict[st
 
 
 def template_preview_entry(entry: CatalogEntry, nr_mode: object) -> CatalogEntry:
-    """A template chart as a preview of the NR Mode shows it, as a Design of that NR Mode does."""
+    """A template chart as a preview of the NR Mode shows it, as a PPT Design of that NR Mode does."""
     from src.modules.report_template_modes import entry_for_nr_mode
     return entry_for_nr_mode(entry, nr_mode)
 
@@ -27699,7 +27699,7 @@ async def _save_workspace_dimensions(request: Request, user: SessionUser) -> JSO
             return dimensions, affected_sources, renamed_templates, renamed_designs, renamed_queries, job
 
         # Workspace writes may briefly wait for a large CDR transaction. Keep
-        # that wait away from the ASGI event loop so the rest of the Design
+        # that wait away from the ASGI event loop so the rest of the PPT Design
         # API remains responsive instead of surfacing unrelated 504 errors.
         dimensions, affected_sources, renamed_templates, renamed_designs, renamed_queries, job = await run_in_threadpool(save_and_queue)
     except (ValueError, TypeError, json.JSONDecodeError) as exc:
@@ -28071,7 +28071,7 @@ from src.modules.scoring_exclusions import install_scoring_exclusion_routes
 install_scoring_exclusion_routes(sys.modules[__name__])
 
 # Reporting schedules jobs that collect CDR Analysis, Network Insights,
-# Design and Scoring artifacts and email them.
+# PPT Design and Scoring artifacts and email them.
 from src.modules.report_tasks import install_report_task_routes
 install_report_task_routes(sys.modules[__name__])
 from src.modules.bundle_report_templates import install_bundle_report_template_routes

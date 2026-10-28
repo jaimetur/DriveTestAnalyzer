@@ -307,7 +307,7 @@ class DesignSlidesPreview(BaseModel):
     the template slide set as edited (Template scope), the Design slide set as edited in This Design scope (its
     overrides are worked out from it, starting from ``overrides``) and the values of the parameters."""
     token: str = Field(min_length=1)
-    # The Design designed: its slide set as saved now (detached or not, its overrides) is the start of the preview,
+    # The Design being edited: its slide set as saved now (detached or not, its overrides) is the start of the preview,
     # whatever it was when the selection was prepared.
     design_id: str = ''
     template_slide_set: dict[str, Any] | None = None
@@ -3328,12 +3328,12 @@ def install_design_routes(core):
     def template_row_of(template_name, task_repository):
         return next((row for row in task_repository.list_report_templates() if str(row['name']) == str(template_name)), None)
 
-    def can_design_design(user, design_id, task_repository) -> bool:
+    def can_edit_design_slides(user, design_id, task_repository) -> bool:
         """Admins and super-admins edit the slides of any Design, a user-editor only those they created, a user-viewer none."""
         return user.role in {'user-editor', 'admin', 'super-admin'} and can_delete(
             user, creator_of(task_repository, PPT_DESIGNER, design_id))
 
-    def can_design_template(user, template_row) -> bool:
+    def can_edit_template_slides(user, template_row) -> bool:
         """The same rule for a PPT Template, by its creator."""
         return template_row is not None and user.role in {'user-editor', 'admin', 'super-admin'} and can_delete(
             user, template_row['created_by'])
@@ -3411,8 +3411,8 @@ def install_design_routes(core):
             'report': report or {'dropped': [], 'template_changed': []},
             'parameter_values': definition.parameter_values,
             'rights': {
-                'design': can_design_design(user, design_id, task_repository),
-                'template': not definition.own_slides and can_design_template(user, template_row),
+                'design': can_edit_design_slides(user, design_id, task_repository),
+                'template': not definition.own_slides and can_edit_template_slides(user, template_row),
             },
         }
 
@@ -3553,7 +3553,7 @@ def install_design_routes(core):
         template, template_row = (None, None)
         if not definition.own_slides:
             template_row = template_row_of(definition.template, task_repository)
-            if edit and (can_design_design(user, design_id, task_repository) or can_design_template(user, template_row)):
+            if edit and (can_edit_design_slides(user, design_id, task_repository) or can_edit_template_slides(user, template_row)):
                 template, template_row = template_with_ids(definition.template, task_repository, user.username)
                 ensure_design_drafts(task_repository)
             else:
@@ -3638,7 +3638,7 @@ def install_design_routes(core):
         if request.template_slide_set is not None:
             if definition.own_slides:
                 raise HTTPException(400, 'This Design is detached from its template.')
-            if not can_design_template(user, template_row):
+            if not can_edit_template_slides(user, template_row):
                 raise HTTPException(403, designer_refusal('PPT Template'))
             if request.template_updated_at and str(template_row['updated_at'] or '') != request.template_updated_at:
                 raise HTTPException(409, f'The template "{definition.template}" changed since the Designer opened it: '
@@ -3669,7 +3669,7 @@ def install_design_routes(core):
             if template is None:
                 raise HTTPException(400, 'The selected template is no longer available.')
         if request.slide_set is not None or request.overrides is not None or request.keep_template_changes:
-            if not can_design_design(user, design_id, task_repository):
+            if not can_edit_design_slides(user, design_id, task_repository):
                 raise HTTPException(403, designer_refusal('Design'))
             _base, before, _report = design_slides_state(definition, task_repository, template)
             if definition.own_slides:
@@ -3711,7 +3711,7 @@ def install_design_routes(core):
         definition = stored_design(design_id, task_repository)
         if definition.own_slides:
             raise HTTPException(400, 'This Design is already detached from its template.')
-        if not can_design_design(user, design_id, task_repository):
+        if not can_edit_design_slides(user, design_id, task_repository):
             raise HTTPException(403, designer_refusal('Design'))
         _template, resolved, _report = design_slides_state(definition, task_repository)
         own = design_slides.template_slides_of(resolved)
@@ -3796,7 +3796,7 @@ def install_design_routes(core):
         task_repository = bound_repository()
         result = []
         for design_id, raw in read_designs(task_repository).items():
-            if not isinstance(raw, dict) or not can_design_design(user, design_id, task_repository):
+            if not isinstance(raw, dict) or not can_edit_design_slides(user, design_id, task_repository):
                 continue
             try:
                 _template, resolved, _report = design_slides_state(DesignDefinition.model_validate(raw), task_repository)
@@ -3813,7 +3813,7 @@ def install_design_routes(core):
         """Add to Design: the chart becomes part of this Design only (a difference of it from its template)."""
         workspace_key()
         task_repository = bound_repository()
-        if not can_design_design(user, design_id, task_repository):
+        if not can_edit_design_slides(user, design_id, task_repository):
             raise HTTPException(403, designer_refusal('Design'))
         definition = stored_design(design_id, task_repository)
         template = None if definition.own_slides else template_with_ids(definition.template, task_repository, user.username)[0]
@@ -7242,7 +7242,7 @@ def install_design_routes(core):
         ), None)
         if template is None:
             raise HTTPException(404, 'The Report Template used by this chart is no longer available.')
-        if not can_design_template(user, template):
+        if not can_edit_template_slides(user, template):
             raise HTTPException(403, designer_refusal('PPT Template'))
         # The template as written (its titles may name the NR Mode with tokens, which the Design shows resolved).
         try:

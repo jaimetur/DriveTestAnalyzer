@@ -350,7 +350,7 @@ def ticket_items(document: Any) -> list[Item]:
 
 
 def design_items(document: Any) -> list[Item]:
-    """The Designs of a Designs document, found by their identity, then by their name. Those of a document of
+    """The PPT Designs of a PPT Designs document, found by their identity, then by their name. Those of a document of
     before, with an NR Mode of their own and of their template, as an import reads them (report_template_modes)."""
     from src.modules.report_template_modes import migrate_designs_state
 
@@ -499,7 +499,7 @@ ELEMENT_ITEMS = {
 }
 # How the completion message names the items of each element: one, several, and what comes before their count.
 ELEMENT_NAMES = {
-    'designs': ('Design', 'Designs', ''),
+    'designs': ('PPT Design', 'PPT Designs', ''),
     'ppt-templates': ('PPT Template', 'PPT Templates', ''),
     'scoring-configuration': ('Scoring & GAP Analysis Methodology', 'Scoring & GAP Analysis Methodologies', ''),
     'auto-calculated-fields': ('auto-calculated field', 'auto-calculated fields', ''),

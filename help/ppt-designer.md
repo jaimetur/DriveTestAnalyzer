@@ -18,7 +18,7 @@ ppt-designer
 | I want to… | Go to |
 | --- | --- |
 | Watch the presentation of the module | [Presentation](#presentation) |
-| Create or change a Design | [PPT Designs](#ppt-manage-designs) |
+| Create or change a Design | [PPT Designs](#ppt-designs) |
 | Choose the campaigns, dates and comparison scope | [Design Scope & Filters](#design-scope-filters) |
 | Understand Apply versus Save | [Apply, Save, Clear and Reload](#apply-save-clear-and-reload) |
 | Explore slides and chart data | [View Design](#view-design) |
@@ -433,7 +433,7 @@ Slide titles, subtitles, chart titles and text boxes write these fields as each 
 | Field | Writes |
 | --- | --- |
 | `{NR Mode}`, `{NR Mode Name}` | NSA, SA or NSA & SA; Non-Standalone, Standalone or Non-Standalone & Standalone (a chart title, the NR Mode the chart shows) |
-| `{Design}` | The name of the Design |
+| `{Design}` | The name of the Design (`{Dashboard}`, as titles of before PPT Designer wrote it, writes it too) |
 | `{Scope}` | Operator Comparison or Multivendor Comparison |
 | `{Campaigns}` | The Campaigns of the Design (*26-Q2, 26-Q3*) |
 | `{Operators}`, `{Vendors}`, `{Regions}`, `{Clusters}`, `{Cities}` | The values the Design is filtered by (*London, Leeds*), or *All Operators*, *All Cities*… when it is not filtered by them or keeps every value of its CDRs |
@@ -587,6 +587,8 @@ Permitted editors can open the generating template and Auto-Calculated Fields wi
 ## Portability and maintenance
 
 **Export Design** creates a versioned ZIP accepted by Admin Import; imports also accept legacy standalone JSON definitions. A compatible destination template is required.
+
+PPT Designer was called **PPT Dashboards**, and its Designs **Dashboards**. A workspace of before keeps them when it opens: its Designs, their PPT jobs and charts (moved to `output/reports/designs`), drafts, pictures and App Events take the new names, and the Modules Profiles, Interface Settings, tickets and scheduled backups name PPT Designer. Links to `/ppt-dashboards`, to this chapter and to the presentation of PPT Dashboards open those of PPT Designer, and packages, backups, transfers, Reporting Jobs and Bundle Report Templates of before are imported as Designs.
 
 | Included in the definition | Not copied by Design definition export |
 | --- | --- |

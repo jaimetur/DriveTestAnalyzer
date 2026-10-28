@@ -223,7 +223,7 @@ async function modules(pres) {
     ], { x, y: node.y - 0.4, w: 2.25, h: 0.8, align: node.right ? 'left' : 'right', valign: 'middle' });
   }
   slide.addNotes('Eight modules around one workspace, in the order of the tool: CDR Analysis, the template-driven PPT '
-    + 'Designs, the scores and GAPs of Scoring & GAP Analysis, the radio and network view of Network Insights, the '
+    + 'PPT Designs, the scores and GAPs of Scoring & GAP Analysis, the radio and network view of Network Insights, the '
     + 'follow-up of every Non-Qualified Call, Reporting, the Chart and Query Builders and the Ticket Center. They all read '
     + 'the same processed CDRs.');
 }

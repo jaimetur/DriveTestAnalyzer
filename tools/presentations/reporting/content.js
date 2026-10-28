@@ -28,7 +28,7 @@ module.exports = {
       notes: 'The PowerPoint and Word documents are composed for reading: tables are never split, Word has a cover and contents, and sections already generated are reused. Favourites keep every option.' },
     { id: 'jobs', type: 'split', section: 'Reporting Jobs', footer: 'Reporting Jobs', kicker: 'Reporting Jobs', title: 'On demand or on a schedule', visual: 'schedule',
       points: [
-        { icon: 'TbStack2', title: 'Artifacts', text: 'CDR Analysis, Network Insights, Designs, Scoring, Non-Qualified Calls and bundle reports.' },
+        { icon: 'TbStack2', title: 'Artifacts', text: 'CDR Analysis, Network Insights, PPT Designs, Scoring, Non-Qualified Calls and bundle reports.' },
         { icon: 'TbCalendarTime', title: 'Schedules', text: 'In the timezone of the application, as often as needed.' },
         { icon: 'TbMail', title: 'Email delivery', text: 'The artifacts with a clear description of each one and its filters.' },
         { icon: 'TbHistory', title: 'Run history', text: 'Trigger, start, status, duration, email result and size of every run.' },

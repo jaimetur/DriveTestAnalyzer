@@ -10,7 +10,7 @@ New deployments and new workspaces, and existing workspaces once, receive the co
 - ``assets/ppt-templates/*.csv``: Report Templates, named after their file, each serving the CDRs of any NR Mode (their
   titles name it with ``{NR Mode}`` and ``{NR Mode Name}``);
 - ``assets/ppt-designer/*.json``: PPT Designer, which use those templates, each reading the CDRs of its NR Mode
-  (``nr_mode``: NSA, SA or NSA+SA for both, whose SA CDRs follow ``sa_campaigns``); the templates and Designs shipped
+  (``nr_mode``: NSA, SA or NSA+SA for both, whose SA CDRs follow ``sa_campaigns``); the templates and PPT Designs shipped
   later (``LATER_EXAMPLES``, such as the NSA & SA comparison FDFS DL (NSA & SA)) reach every existing workspace once;
 - ``assets/autocalculated-fields/default-autocalculated-fields.json``: the Auto-calculated Fields every new
   workspace starts with, which the templates use;
@@ -18,11 +18,11 @@ New deployments and new workspaces, and existing workspaces once, receive the co
   ``configuration``);
 - ``assets/query-builder-queries/*.json``: saved Query Builder queries (``name``, ``description`` and
   ``query_sql`` on the ``selected_data``, ``selected_voice`` and ``selected_speech`` views);
-- ``assets/reporting-jobs/*.json``: Reporting Jobs, which name their Designs (``design``: ``name``) and carry the report of each Scoring entry (``report``) or name a shipped Scoring report
+- ``assets/reporting-jobs/*.json``: Reporting Jobs, which name their PPT Designs (``design``: ``name``) and carry the report of each Scoring entry (``report``) or name a shipped Scoring report
   configuration (``report_configuration``) and name the favourite Bundle Report Templates they generate; their CDR
   Analysis, Network Insights and module artifacts are kept as they are, and they keep the order of their ``position``;
 - ``assets/bundle-report-template-favourites/*.json``: favourite Bundle Report Templates (``name`` and
-  ``definition``, as their export carries them), which find the shipped Designs by their name;
+  ``definition``, as their export carries them), which find the shipped PPT Designs by their name;
 - ``assets/scoring-favourites-filters/*.json``: Scoring & GAP Favourites Filters (an entry of their export without its
   CDRs), each with a Campaign choice (Latest campaign…) whose CDRs it takes once the workspace has them.
 
@@ -51,7 +51,7 @@ METHODOLOGIES_STATE_KEY = 'starter_methodologies_offered'
 METHODOLOGIES_SHIPPED_BEFORE = ('netcheck-2026',)
 # The methodology a new workspace starts with as its active one (the others apply to the campaigns they name).
 BASE_METHODOLOGY = 'netcheck-2026'
-# The Report Templates shipped after workspaces were set up, which reach each of them once with their Designs (those
+# The Report Templates shipped after workspaces were set up, which reach each of them once with their PPT Designs (those
 # of ``assets/ppt-designer`` that use them); a workspace that deleted them is not given them again.
 LATER_EXAMPLES_STATE_KEY = 'starter_examples_offered'
 LATER_EXAMPLES = ('FDFS DL (NSA & SA)',)
@@ -137,7 +137,7 @@ def _seed_designs(repository: Any) -> int:
 
 
 def _seed_later_examples(repository: Any, username: str) -> int:
-    """Add once the templates of ``LATER_EXAMPLES`` (and their Designs) a workspace was not given yet."""
+    """Add once the templates of ``LATER_EXAMPLES`` (and their PPT Designs) a workspace was not given yet."""
     stored = repository.get_workspace_state(LATER_EXAMPLES_STATE_KEY)
     offered = set(json.loads(stored or '[]'))
     pending = [name for name in LATER_EXAMPLES if name not in offered]
@@ -286,7 +286,7 @@ def _seed_bundle_report_template_favourites(repository: Any, username: str) -> i
     from src.modules.bundle_report_templates import import_entries, list_favourites, workspace_designs
 
     entries = _shipped_entries('bundle-report-template-favourites', {item['name'].casefold() for item in list_favourites(repository)})
-    # Each finds the shipped Designs by their name.
+    # Each finds the shipped PPT Designs by their name.
     return import_entries(repository, entries, username, workspace_designs(repository)) if entries else 0
 
 
@@ -322,11 +322,11 @@ def seed_starter_content(repository: Any, username: str = 'system') -> dict[str,
         'query_builder_queries': _seed_queries(repository, username),
         'favourites_filters': _seed_favourites_filters(repository),
     }
-    # After the Designs and the report configurations, which the favourite Bundle Report Templates and the Reporting
+    # After the PPT Designs and the report configurations, which the favourite Bundle Report Templates and the Reporting
     # Jobs name; the Reporting Jobs also name the favourite Bundle Report Templates they generate.
     added['bundle_report_template_favourites'] = _seed_bundle_report_template_favourites(repository, username)
     added['reporting_jobs'] = _seed_reporting_jobs(repository, username)
-    # The later examples came with the templates and Designs above.
+    # The later examples came with the templates and PPT Designs above.
     repository.set_workspace_state(LATER_EXAMPLES_STATE_KEY, json.dumps(sorted(LATER_EXAMPLES)))
     repository.set_workspace_state(STATE_KEY, '1')
     if any(added.values()) and hasattr(repository, 'try_add_log'):

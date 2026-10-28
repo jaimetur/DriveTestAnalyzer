@@ -46,7 +46,7 @@
         <h2 id="app-reset-title">Reset the whole application?</h2>
         <p class="app-reset-lede">DriveTest Analyzer starts again from zero, as a <strong>new deployment</strong>. Nothing can be recovered afterwards.</p>
         <ul class="app-reset-list">
-          <li><strong>Every workspace</strong> ({{ workspaces|length }}) with its CDRs, datasets, Designs, Reporting Jobs, Scoring jobs, Non-Qualified Calls follow-up and generated reports.</li>
+          <li><strong>Every workspace</strong> ({{ workspaces|length }}) with its CDRs, datasets, PPT Designs, Reporting Jobs, Scoring jobs, Non-Qualified Calls follow-up and generated reports.</li>
           <li><strong>Every database</strong>: the application database with its users, Modules Profiles, Workspace Groups and settings, and each workspace database.</li>
           <li><strong>The whole config and data folders</strong>, scheduled backups and transfer packages included:
             <span class="app-reset-paths">{% for root in app_reset_roots %}<code>{{ root }}</code>{% endfor %}</span>
@@ -889,7 +889,7 @@
       <div class="confirm-icon info-icon" aria-hidden="true">⇩</div>
       <p class="eyebrow">Full Environment export</p>
       <h3 id="full-environment-workspace-title">Select workspaces</h3>
-      <p>Application Config is always included. Each selected workspace includes its database, input files, Design definitions, PPT Templates, Main Cities, Mappings &amp; Reference Data, Scoring &amp; GAP Analysis Methodologies (KPI methodology profiles and GAP KPI priorities), Scoring Export Panels, Scoring Excluded Calls, Auto-calculated Fields, Query Builder Queries, Reporting Jobs and NQ Call Tracking.</p>
+      <p>Application Config is always included. Each selected workspace includes its database, input files, PPT Design definitions, PPT Templates, Main Cities, Mappings &amp; Reference Data, Scoring &amp; GAP Analysis Methodologies (KPI methodology profiles and GAP KPI priorities), Scoring Export Panels, Scoring Excluded Calls, Auto-calculated Fields, Query Builder Queries, Reporting Jobs and NQ Call Tracking.</p>
       <div class="full-environment-workspace-toolbar">
         <button type="button" class="ghost-link" data-full-environment-select-all>Select all</button>
         <button type="button" class="ghost-link" data-full-environment-select-none>Select none</button>
@@ -1091,7 +1091,7 @@
         <button type="button" data-database-last aria-label="Last page" title="Last page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 5v14M6 6l6 6-6 6M12 6l6 6-6 6"/></svg></button>
       </div>
       <div class="database-view-footer">
-      <p class="form-note">Tables are shown 100 rows at a time. Saving or deleting a row clears cached analysis so subsequent Design and Reporting requests use the changed values.</p>
+      <p class="form-note">Tables are shown 100 rows at a time. Saving or deleting a row clears cached analysis so subsequent PPT Design and Reporting requests use the changed values.</p>
       <div class="database-view-actions">
         <button type="button" class="database-clear-filters-button" data-database-clear-filters disabled>Clear filters</button>
         <form action="/admin/database/cleanup" method="post" data-loading-label="Cleaning database" data-loading-copy="Please wait while orphaned dataset and combined CDR rows are removed."><button type="submit" class="database-cleanup-button">Clean orphaned rows</button></form>
@@ -1621,7 +1621,7 @@
       const response = await fetch('/api/admin/backup-files/inspect', {method: 'POST', credentials: 'same-origin', body: new URLSearchParams({backup_path: restorePath.value, backup_file: restoreFile.value})});
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.detail || 'Unable to inspect the backup.');
-      const labels = {app_database: 'Application database', users_access: 'Users & Access', ticket_center: 'Ticket Center', workspace_database: 'Workspace Database', designs: 'Designs', report_templates: 'PPT Templates', main_cities: 'Main Cities', mappings_reference_data: 'Mappings & Reference Data', scoring_configuration: 'Scoring & GAP Analysis Methodologies', auto_calculated_fields: 'Auto-calculated Fields', query_builder_queries: 'Query Builder Queries', network_insights_favourites: 'Network Insights Favourites', bundle_report_template_favourites: 'Bundle Report Template Favourites', scoring_favourites_filters: 'Scoring & GAP Favourites Filters', scoring_report_templates: 'Scoring & GAP Report Templates', scoring_export_panels: 'Scoring Export Panels', scoring_excluded_calls: 'Scoring Excluded Calls', reporting_jobs: 'Reporting Jobs', nq_call_tracking: 'NQ Call Tracking', nq_calls_configuration: 'NQ Calls Configuration', app_events: 'App Events', input: 'Input', output: 'Output'};
+      const labels = {app_database: 'Application database', users_access: 'Users & Access', ticket_center: 'Ticket Center', workspace_database: 'Workspace Database', designs: 'PPT Designs', report_templates: 'PPT Templates', main_cities: 'Main Cities', mappings_reference_data: 'Mappings & Reference Data', scoring_configuration: 'Scoring & GAP Analysis Methodologies', auto_calculated_fields: 'Auto-calculated Fields', query_builder_queries: 'Query Builder Queries', network_insights_favourites: 'Network Insights Favourites', bundle_report_template_favourites: 'Bundle Report Template Favourites', scoring_favourites_filters: 'Scoring & GAP Favourites Filters', scoring_report_templates: 'Scoring & GAP Report Templates', scoring_export_panels: 'Scoring Export Panels', scoring_excluded_calls: 'Scoring Excluded Calls', reporting_jobs: 'Reporting Jobs', nq_call_tracking: 'NQ Call Tracking', nq_calls_configuration: 'NQ Calls Configuration', app_events: 'App Events', input: 'Input', output: 'Output'};
       const componentGroups = [
         ['Configuration Content', ['app_database', 'users_access', 'ticket_center']],
         ['Workspace Content', ['workspace_database', 'designs', 'report_templates', 'main_cities', 'mappings_reference_data', 'scoring_configuration', 'auto_calculated_fields', 'query_builder_queries', 'network_insights_favourites', 'bundle_report_template_favourites', 'scoring_favourites_filters', 'scoring_report_templates', 'scoring_export_panels', 'scoring_excluded_calls', 'reporting_jobs', 'nq_call_tracking', 'nq_calls_configuration', 'app_events', 'output', 'input']],

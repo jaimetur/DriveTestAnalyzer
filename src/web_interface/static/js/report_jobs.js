@@ -522,11 +522,11 @@
   };
 
   // -- artifact entries ---------------------------------------------------
-  // A Design artifact offers the Design's own options: Scope, dates and every Adaptative Filter (the Campaign
+  // A PPT Design artifact offers the PPT Design's own options: Scope, dates and every Adaptative Filter (the Campaign
   // first, which chooses the CDRs), prefilled with its saved definition.
   function designEntry(entry = null) {
     const card = node('div', undefined, 'rj-entry');
-    // NR Mode comes first: it decides which CDRs are read, in place of the Design's own (any template serves both).
+    // NR Mode comes first: it decides which CDRs are read, in place of the PPT Design's own (any template serves both).
     // NSA & SA reads the CDRs of both NR Modes, the Campaigns choosing those of each one.
     const modeOf = (item) => {
       const mode = String(item?.nr_mode || item?.technology || 'nsa').toUpperCase();
@@ -536,7 +536,7 @@
     const nrMode = select([['NSA', 'NSA'], ['SA', 'SA'], ['NSA+SA', 'NSA & SA']], entry?.nr_mode ? modeOf(entry) : initial ? modeOf(initial) : 'NSA');
     const design = node('select');
     const noDesigns = node('p', '', 'form-note');
-    // A new entry starts with the first Design not added yet.
+    // A new entry starts with the first PPT Design not added yet.
     const fillDesigns = (selectedId = '') => {
       const added = new Set([...$('rj-designs').children].filter((other) => other !== card).map((other) => other.getValue?.().design_id));
       const available = options.designs;
@@ -545,18 +545,18 @@
         const option = node('option', item.name); option.value = item.id; option.selected = item.id === chosen?.id; return option;
       }));
       design.disabled = !available.length;
-      noDesigns.textContent = available.length ? '' : 'There are no saved Designs in this workspace.';
+      noDesigns.textContent = available.length ? '' : 'There are no saved PPT Designs in this workspace.';
     };
     fillDesigns(entry?.design_id);
     const label = node('input'); label.type = 'text'; label.placeholder = 'Optional artifact name'; label.value = entry?.label || '';
-    const remove = node('button', '×', 'danger-button icon-action'); remove.type = 'button'; remove.title = 'Remove this Design';
+    const remove = node('button', '×', 'danger-button icon-action'); remove.type = 'button'; remove.title = 'Remove this PPT Design';
     remove.addEventListener('click', () => card.remove());
     const scope = select([['single', 'Operator Comparison'], ['multivendor', 'Multivendor Comparison']], 'single');
     const comparison = select([['vendor_only', 'Vendor Only (All Operators Combined)'], ['operator_vendor', 'Operator - Vendor']], 'operator_vendor');
     const comparisonField = field('Vendor comparison', comparison);
     const dateFrom = node('input'); dateFrom.type = 'date';
     const dateTo = node('input'); dateTo.type = 'date';
-    // Auto comments: generated comments written into the PPT (the Design keeps its own).
+    // Auto comments: generated comments written into the PPT (the PPT Design keeps its own).
     const autoComments = select([['off', 'Off'], ['empty', 'Slides without comments'], ['generated', 'Replace generated comments'],
       ['all', 'Replace every comment']], entry?.auto_comments || 'off');
     // Their writer: the default of Super Admin, the rules, or an LLM (run with the Kiro API key of the job's owner).
@@ -567,7 +567,7 @@
     const campaignPreviewSlot = node('div', undefined, 'rj-campaign-preview-slot');
     let campaigns = null;
     const head = node('div', undefined, 'rj-grid rj-one-row');
-    head.append(field('NR Mode', nrMode), campaignSlot, field('Design', design), field('Name in the email', label), field('Scope', scope), comparisonField,
+    head.append(field('NR Mode', nrMode), campaignSlot, field('PPT Design', design), field('Name in the email', label), field('Scope', scope), comparisonField,
       field('Date from (empty: oldest)', dateFrom), field('Date to (empty: newest)', dateTo), field('Auto comments', autoComments), field('Comment writer', autoCommentsEngine), remove);
     const filters = node('div', undefined, 'rj-filters');
     const filterNote = node('p', '', 'form-note');
@@ -583,10 +583,10 @@
       ...current.saved, nr_mode: nrMode.value, scope: scope.value, vendor_comparison: comparison.value, auto_cdrs: true,
       filters: chosenFilters(), date_from: dateFrom.value || 'Oldest', date_to: dateTo.value || 'Newest',
     });
-    // City offers Main Cities first, as in the Design: the Main Cities of the workspace at each run.
+    // City offers Main Cities first, as in the PPT Design: the Main Cities of the workspace at each run.
     const designCityChoices = (chosen = []) => ((options.main_cities || []).length || (chosen || []).includes('@main-cities')
       ? [['@main-cities', 'Main Cities']] : []);
-    // The Campaigns of the Design (or of this entry), beside NR Mode.
+    // The Campaigns of the PPT Design (or of this entry), beside NR Mode.
     const setCampaigns = (saved) => {
       const name = current.fields.find(isCampaign);
       campaigns = name ? campaignPicker(() => nrMode.value, saved || [], {onChange: () => scheduleLoad(), eachNrMode: true}) : null;
@@ -600,7 +600,7 @@
           : {patterns: name.replace(/[^a-z]/gi, '').toLowerCase() === 'operator'})]).filter(([, picker]) => picker);
       filters.replaceChildren(...pickers.filter(([name]) => !isCampaign(name)).map(([, picker]) => picker));
     };
-    // Filter values are the ones the selected CDRs offer, as in the Design.
+    // Filter values are the ones the selected CDRs offer, as in the PPT Design.
     const loadFilterValues = async () => {
       const request = ++loadRequest;
       const selected = Object.fromEntries(pickers.map(([name, picker]) => [name, picker.getValue()]));
@@ -632,10 +632,10 @@
     };
     const savedDesign = () => options.designs.find((item) => item.id === design.value) || {};
     const chosenConfig = () => ({scope: scope.value, vendor_comparison: comparison.value, date_from: dateFrom.value, date_to: dateTo.value});
-    // A Design chosen reads its own NR Mode until another is chosen here.
+    // A PPT Design chosen reads its own NR Mode until another is chosen here.
     design.addEventListener('change', () => { const saved = savedDesign(); nrMode.value = modeOf(saved); apply(saved, saved); });
-    // Another NR Mode keeps the Design: the campaigns of the other NR Mode do not apply, its automatic choices
-    // (Latest campaign…) do, or else the newest campaigns of the new NR Mode, as when a Design changes its NR Mode.
+    // Another NR Mode keeps the PPT Design: the campaigns of the other NR Mode do not apply, its automatic choices
+    // (Latest campaign…) do, or else the newest campaigns of the new NR Mode, as when a PPT Design changes its NR Mode.
     nrMode.addEventListener('change', () => {
       if (!design.value) return;
       const automatic = (campaigns?.getValue() || []).filter((value) => String(value).startsWith('@'));
@@ -646,7 +646,7 @@
     comparison.addEventListener('change', scheduleLoad);
     // Campaign first: it chooses the CDRs.
     current = {saved: {}, fields: []};
-    card.append(entryHead(card, 'Design', () => [nrMode.value === 'NSA+SA' ? 'NSA & SA' : nrMode.value, design.selectedOptions[0]?.textContent, label.value.trim()].filter(Boolean).join(' · ')),
+    card.append(entryHead(card, 'PPT Design', () => [nrMode.value === 'NSA+SA' ? 'NSA & SA' : nrMode.value, design.selectedOptions[0]?.textContent, label.value.trim()].filter(Boolean).join(' · ')),
       head, campaignPreviewSlot, noDesigns, node('strong', 'Adaptative Filters'), filterNote, filters);
     if (design.value) apply(entry || savedDesign(), savedDesign());
     card.getValue = () => ({
@@ -2192,7 +2192,7 @@
     try { await ensureOptions(); fillEditor(null); } catch (error) { status(error.message, 'error'); }
   });
   $('rj-add-design').addEventListener('click', () => {
-    if (!options.designs.length) { status('There are no saved Designs in this workspace.', 'error'); return; }
+    if (!options.designs.length) { status('There are no saved PPT Designs in this workspace.', 'error'); return; }
     $('rj-designs').append(designEntry());
   });
   $('rj-add-scoring').addEventListener('click', () => $('rj-scoring').append(scoringEntry()));

@@ -7386,8 +7386,8 @@ function importWarningDetails(payload) {
   }
   if (kind === 'designs') {
     return {
-      title: 'Import Designs?',
-      message: 'Choose the destination workspaces next. The original workspace is preselected when it exists. Design definitions and saved filters will be replaced in those workspaces; generated caches are not imported.',
+      title: 'Import PPT Designs?',
+      message: 'Choose the destination workspaces next. The original workspace is preselected when it exists. PPT Design definitions and saved filters will be replaced in those workspaces; generated caches are not imported.',
     };
   }
   if (kind === 'mappings-reference-data') {
@@ -7456,7 +7456,7 @@ function importWarningDetails(payload) {
 function importPackageContents(payload) {
   const labels = {
     config: 'Application Config', workspace: 'Full Workspace', 'full-environment': 'Full Environment',
-    designs: 'Designs', 'ppt-templates': 'PPT Templates',
+    designs: 'PPT Designs', 'ppt-templates': 'PPT Templates',
     'mappings-reference-data': 'Mappings & Reference Data', 'main-cities': 'Main Cities',
     'scoring-configuration': 'Scoring & GAP Analysis Methodologies',
     'auto-calculated-fields': 'Auto-calculated Fields',
@@ -7491,7 +7491,7 @@ function selectAutoCalculatedFieldWorkspaces(workspaces, kind = 'auto-calculated
   const copy = document.createElement('p'); copy.textContent = kind === 'ppt-templates'
     ? 'Templates will be imported into every selected workspace. The original workspace is preselected when it exists. Matching template names will be overwritten.'
     : kind === 'designs'
-      ? 'Design definitions and their saved filters will replace the Design list in every selected workspace. The original workspace is preselected when present; generated caches are not imported.'
+      ? 'PPT Design definitions and their saved filters will replace the PPT Design list in every selected workspace. The original workspace is preselected when present; generated caches are not imported.'
       : kind === 'mappings-reference-data'
         ? 'The complete Operator/Vendor mapping and color configuration will replace aliases, order and theme colors in every selected workspace. Stored CDR values will remain unchanged.'
       : kind === 'bundle'
@@ -8371,7 +8371,7 @@ document.querySelectorAll('[data-export-package-form]').forEach((form) => {
         app_database: 'Application database',
         workspace: 'Full Workspace',
         'full-environment': 'Full Environment',
-        designs: 'Designs',
+        designs: 'PPT Designs',
         'ppt-templates': 'PPT Templates',
         'mappings-reference-data': 'Mappings & Reference Data',
         'main-cities': 'Main Cities',
@@ -8427,7 +8427,7 @@ document.querySelectorAll('[data-export-package-form]').forEach((form) => {
           : offer.kind === 'ppt-templates'
             ? 'Next, choose the destination workspaces. The original workspace will be preselected when present. Matching templates will be overwritten; CDR tables will not be rebuilt.'
             : offer.kind === 'designs'
-              ? 'Next, choose the destination workspaces. The original workspace will be preselected when present. Design definitions and saved filters will be restored; generated caches are not transferred.'
+              ? 'Next, choose the destination workspaces. The original workspace will be preselected when present. PPT Design definitions and saved filters will be restored; generated caches are not transferred.'
             : offer.kind === 'mappings-reference-data'
               ? 'Next, choose the destination workspaces. Their complete Operator/Vendor aliases, order and theme colors will be replaced without modifying stored CDR values.'
           : 'After the complete package is received, it will be imported automatically and may overwrite matching configuration or workspaces.';
@@ -12700,7 +12700,7 @@ if (queueNode) {
       const label = document.createElement('span');
       label.className = 'background-task-label';
       label.textContent = designName
-        ? `Design “${designName}”: ${String(task.label || 'Background task')}`
+        ? `PPT Design “${designName}”: ${String(task.label || 'Background task')}`
         : String(task.label || 'Background task');
       taskHead.append(label);
       if (task.review_transfer_offer_id) {

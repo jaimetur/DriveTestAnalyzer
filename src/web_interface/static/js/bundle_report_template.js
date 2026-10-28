@@ -202,7 +202,7 @@
   function renderFilters() {
     const host = $('brt-filters');
     const filters = definition.filters;
-    // The NR Mode on its own row: it lists the campaigns of every section, and every Design reads its CDRs.
+    // The NR Mode on its own row: it lists the campaigns of every section, and every PPT Design reads its CDRs.
     const mode = selectField('NR Mode', [['NSA', 'NSA (Non-Standalone)'], ['SA', 'SA (Standalone)']], filters.nr_mode || 'NSA');
     mode.input.id = 'brt-nr-mode';
     filterPickers.nr_mode = mode.input;
@@ -488,7 +488,7 @@
     }
     row.collect = () => ({
       key: catalogueItem.key, enabled: enabled.box.checked,
-      // A Design keeps its name and NR Mode, which find it again in another workspace.
+      // A PPT Design keeps its name and NR Mode, which find it again in another workspace.
       ...(sectionKey === 'designs' ? {label: catalogueItem.title, nr_mode: catalogueItem.nr_mode || ''}
         : {components: Object.fromEntries(boxes.map((box) => [box.value, box.checked]))}),
     });
@@ -522,7 +522,7 @@
       ...catalogue.items.map((item) => item.key).filter((key) => !savedItems[key])];
     order.forEach((key) => list.append(itemRow(saved.key, catalogueItems[key], savedItems[key])));
     if (saved.key === 'designs' && !catalogue.items.length) {
-      list.append(node('li', 'There are no saved Designs in this workspace.', 'form-note brt-empty'));
+      list.append(node('li', 'There are no saved PPT Designs in this workspace.', 'form-note brt-empty'));
     }
     sortable(list, '.brt-item', '.brt-item-handle', changed);
     const optionsBox = saved.key === 'scoring' ? scoringOptions(saved.options)
@@ -535,27 +535,27 @@
       scope.refresh(true);
       optionsBox.onNrModeChange = () => { scope.refresh(); changed(); };
     }
-    // Below the Campaigns, the Options of the module and then its sub-modules (or Designs), each in a subpanel.
+    // Below the Campaigns, the Options of the module and then its sub-modules (or PPT Designs), each in a subpanel.
     if (optionsBox) {
       const optionsWrap = node('div', undefined, 'brt-subpanel brt-section-options');
       optionsWrap.append(node('h4', 'Options'), optionsBox);
       body.append(optionsWrap);
     }
     const itemsWrap = node('div', undefined, 'brt-subpanel brt-section-items');
-    itemsWrap.append(node('h4', saved.key === 'designs' ? 'Designs' : 'Sub-modules'), list);
+    itemsWrap.append(node('h4', saved.key === 'designs' ? 'PPT Designs' : 'Sub-modules'), list);
     body.append(itemsWrap);
     card.append(head, body);
     const empty = node('li', '', 'form-note brt-empty');
     const refresh = () => {
       if (saved.key === 'designs') {
-        // Every Design reads the CDRs of the NR Mode of the common filters.
-        empty.textContent = 'There are no saved Designs in this workspace.';
+        // Every PPT Design reads the CDRs of the NR Mode of the common filters.
+        empty.textContent = 'There are no saved PPT Designs in this workspace.';
         if (catalogue.items.length) list.append(empty);
         empty.hidden = [...list.querySelectorAll(':scope > .brt-item')].some((row) => !row.hidden);
       }
       const rows = [...list.querySelectorAll(':scope > .brt-item')].filter((row) => !row.hidden);
       const chosen = rows.filter((row) => !row.classList.contains('is-off')).length;
-      const noun = saved.key === 'designs' ? 'Designs' : 'sub-modules';
+      const noun = saved.key === 'designs' ? 'PPT Designs' : 'sub-modules';
       summary.textContent = `${chosen} of ${rows.length} ${noun}`;
       card.classList.toggle('is-off', !enabled.box.checked);
     };

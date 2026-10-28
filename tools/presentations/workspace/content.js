@@ -32,7 +32,7 @@ module.exports = {
         { icon: 'TbCloudUpload', title: 'Upload', text: 'Admins and super-admins drop their files; the type of each one is detected.' },
         { icon: 'TbClipboardCheck', title: 'Confirm', text: 'The NR Mode (NSA or SA), the Campaign (YYYY-Qn) and the Stage: Final, Weekly or Daily.' },
         { icon: 'TbSettingsAutomation', title: 'Process', text: 'In the background, in a queue: CDR tables, derived fields and the vendor of every row.' },
-        { icon: 'TbChecks', title: 'Ready', text: 'Only processed datasets reach the analyses, Designs, Scoring, Network Insights and Reporting.' },
+        { icon: 'TbChecks', title: 'Ready', text: 'Only processed datasets reach the analyses, PPT Designs, Scoring, Network Insights and Reporting.' },
       ],
       highlight: 3,
       note: 'A detected type and a completed upload do not mean that a dataset is ready: wait for its Processed status before analysing it.',
@@ -61,7 +61,7 @@ module.exports = {
         { icon: 'TbRocket', value: '63×', label: 'NQ call map', before: 349, now: 5.5, beforeText: '349 s', nowText: '5.5 s', text: 'The Failure Map of a call; its details at once.' },
         { icon: 'TbFeather', value: '10×', label: 'Workspace DB', before: 51, now: 5, beforeText: '51 GB', nowText: '5 GB', text: 'Lighter: the rows live in the copies.' },
       ],
-      note: 'Measured on the UK workspace, with identical results: the same rows, values and order, only faster. Designs open in seconds, with nothing prepared in the background.',
+      note: 'Measured on the UK workspace, with identical results: the same rows, values and order, only faster. PPT Designs open in seconds, with nothing prepared in the background.',
       notes: 'The same analyses, much faster: Network Insights 79 times, the Points Lost Map more than 200 times, the map of a Non-Qualified Call 63 times, and a workspace database ten times smaller. Every result is the same as before.' },
     { id: 'inspection', type: 'tiles', section: 'Datasets', footer: 'Inspection and enrichment', kicker: 'Dataset inspection and enrichment', title: 'See every row, enrich every CDR', columns: 3,
       tiles: [

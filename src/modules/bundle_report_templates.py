@@ -1,10 +1,10 @@
 """Bundle Report Template: one PowerPoint or Word report with chosen parts of several modules.
 
 A Bundle Report Template has five sections — PPT Designer, Scoring & GAP Analysis, Network Insights, Non-Qualified
-Calls and CDR Analysis — in the order the user chooses, each with its sub-modules (the Designs, the results tabs of
+Calls and CDR Analysis — in the order the user chooses, each with its sub-modules (the PPT Designs, the results tabs of
 Scoring, the panels of Network Insights and Non-Qualified Calls and the CDR types of CDR Analysis) in its own order, and
 the charts and tables of each sub-module. Common filters (NR Mode, Operators, Vendors and area) apply to every section
-and replace the saved filters of the Designs (the NR Mode lists the Designs); each section has its own Campaigns
+and replace the saved filters of the PPT Designs (the NR Mode lists the PPT Designs); each section has its own Campaigns
 (which choose its CDRs) and its own options (the scorings, environments, methodology and GAP reference of Scoring, the
 technology, Split by and thresholds of Network Insights, the periods of Non-Qualified Calls, the metrics and comparisons
 of CDR Analysis).
@@ -100,7 +100,7 @@ COMBINED_ENVIRONMENT = 'all'
 FILTER_FIELDS = ('operators', 'operator_vendors', 'vendor_operators', 'vendors', 'regions', 'clusters', 'cities')
 FILTER_LABELS = {'operators': 'Operators', 'operator_vendors': 'Operator_Vendor', 'vendor_operators': 'Vendor_Operator',
                  'vendors': 'Vendors', 'regions': 'Regions', 'clusters': 'Clusters', 'cities': 'Cities'}
-# The common filters as each module names them: Scoring context filters, Design Adaptative Filters and
+# The common filters as each module names them: Scoring context filters, PPT Design Adaptative Filters and
 # Non-Qualified Calls filters (Network Insights uses the same names as the Bundle Report Template).
 SCORING_FILTERS = {'operators': 'Operator', 'operator_vendors': 'Operator_Vendor', 'vendor_operators': 'Vendor_Operator',
                    'vendors': 'Vendor', 'regions': 'Region', 'clusters': 'Cluster', 'cities': 'City'}
@@ -283,7 +283,7 @@ def _normalize_items(section: str, raw: Any) -> list[dict[str, Any]]:
             key = str(item.get('key') or '').strip()[:200]
             if key and key not in seen:
                 seen.add(key)
-                # The name and NR Mode of the Design find it again in another workspace.
+                # The name and NR Mode of the PPT Design find it again in another workspace.
                 mode = str(item.get('nr_mode') or '').upper()
                 items.append({'key': key, 'label': str(item.get('label') or '').strip()[:160], 'enabled': bool(item.get('enabled', True)),
                               'nr_mode': mode if mode in {'NSA', 'SA', NSA_VS_SA} else ''})
@@ -327,7 +327,7 @@ def normalize_definition(raw: Any) -> dict[str, Any]:
     """A Bundle Report Template: its title, the common filters and the four sections in order with their sub-modules,
     components and options. Sections, sub-modules and components it lacks are added (checked)."""
     raw = raw if isinstance(raw, dict) else {}
-    # A template saved before PPT Designer names the section of its Designs dashboards.
+    # A template saved before PPT Designer names the section of its PPT Designs dashboards.
     if any(isinstance(item, dict) and item.get('key') == 'dashboards' for item in raw.get('sections') or []):
         raw = {**raw, 'sections': [{**item, 'key': 'designs'} if isinstance(item, dict) and item.get('key') == 'dashboards' else item
                                    for item in raw['sections']]}
@@ -432,7 +432,7 @@ def _option_lines(section: dict[str, Any], design_names: dict[str, str] | None,
     options = section['options']
     if section['key'] == 'designs':
         names = [item.get('label') or (design_names or {}).get(item['key'], item['key']) for item in section['items']]
-        return [f"Designs: {', '.join(names)}"]
+        return [f"PPT Designs: {', '.join(names)}"]
     if section['key'] == 'scoring':
         scorings = ', '.join(label for key, label in SCORINGS if key in options['scorings'])
         environments = ', '.join('All Environments' if name == COMBINED_ENVIRONMENT else name for name in options['environments'])
@@ -553,19 +553,19 @@ def ensure_tables(repository: Any) -> None:
                 _REPORT_THEMES_STORED.add(database)
 
 
-# The workspace setting that marks the favourites as migrated to Designs that read the NR Mode of the report.
+# The workspace setting that marks the favourites as migrated to PPT Designs that read the NR Mode of the report.
 DESIGN_NR_MODES_STATE_KEY = 'bundle_report_template_design_nr_modes_v1'
 
 
 def _design_mode(definition: Any) -> str:
-    """The NR Mode of the CDRs a saved Design reads: NSA, SA or NSA+SA (those saved before named it technology)."""
+    """The NR Mode of the CDRs a saved PPT Design reads: NSA, SA or NSA+SA (those saved before named it technology)."""
     value = str((definition.get('nr_mode') or definition.get('technology') if isinstance(definition, dict) else '') or '').upper()
     return value if value in {'SA', NSA_VS_SA} else 'NSA'
 
 
 def uncheck_other_mode_designs(definition: dict[str, Any], modes: dict[str, str]) -> list[str]:
-    """Uncheck the Designs of a favourite of before whose own NR Mode is not the NR Mode of the report: it listed and
-    generated only those of its NR Mode, and every Design now reads the NR Mode of the report. Returns their keys."""
+    """Uncheck the PPT Designs of a favourite of before whose own NR Mode is not the NR Mode of the report: it listed and
+    generated only those of its NR Mode, and every PPT Design now reads the NR Mode of the report. Returns their keys."""
     report_mode = 'SA' if str((definition.get('filters') or {}).get('nr_mode') or '').upper() == 'SA' else 'NSA'
     unchecked = []
     for section in definition.get('sections') or []:
@@ -582,7 +582,7 @@ def uncheck_other_mode_designs(definition: dict[str, Any], modes: dict[str, str]
 
 
 def _uncheck_other_mode_designs(connection: Any) -> None:
-    """Once per workspace, the favourites of before keep generating the Designs they did (uncheck_other_mode_designs)."""
+    """Once per workspace, the favourites of before keep generating the PPT Designs they did (uncheck_other_mode_designs)."""
     connection.execute('CREATE TABLE IF NOT EXISTS workspace_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
     if connection.execute('SELECT 1 FROM workspace_state WHERE key = ?', (DESIGN_NR_MODES_STATE_KEY,)).fetchone():
         return
@@ -615,7 +615,7 @@ def _uncheck_other_mode_designs(connection: Any) -> None:
 
 def favourite_contents(definition: Any, design_names: dict[str, str] | None = None) -> list[dict[str, Any]]:
     """What a Bundle Report Template includes: its checked sections in order, each with its checked sub-modules (the
-    Designs by name). Sections without any are left out."""
+    PPT Designs by name). Sections without any are left out."""
     titles = {key: {item_key: title for item_key, title, _components in panels} for key, panels in _panels().items()}
     contents = []
     for section in normalize_definition(definition)['sections']:
@@ -698,7 +698,7 @@ LEGACY_FAVOURITES_FORMATS = ('drivetest-analyzer-complete-report-favourites', 'd
 
 
 def export_entries(repository: Any) -> list[dict[str, Any]]:
-    """The favourites as their documents carry them: each Design with its current name and NR Mode, which find it
+    """The favourites as their documents carry them: each PPT Design with its current name and NR Mode, which find it
     in another workspace."""
     from src.modules.transfer_identities import BUNDLE_REPORT_TEMPLATE_FAVOURITES, portable_identities
 
@@ -720,7 +720,7 @@ def export_entries(repository: Any) -> list[dict[str, Any]]:
 
 
 def workspace_designs(repository: Any) -> dict[str, tuple[str, str]]:
-    """The Designs of the workspace: each ID with its name and own NR Mode (NSA or SA)."""
+    """The PPT Designs of the workspace: each ID with its name and own NR Mode (NSA or SA)."""
     from src.modules.ppt_designer import LEGACY_STATE_KEY, STATE_KEY
     try:
         stored = json.loads(repository.get_workspace_state(STATE_KEY) or repository.get_workspace_state(LEGACY_STATE_KEY) or '{}')
@@ -733,7 +733,7 @@ def workspace_designs(repository: Any) -> dict[str, tuple[str, str]]:
 
 
 def design_aliases(repository: Any) -> dict[str, str]:
-    """The Designs of the workspace by the ID of the Design of another server that an import gave them (see
+    """The PPT Designs of the workspace by the ID of the PPT Design of another server that an import gave them (see
     transfer_identities), so what refers to that ID finds them."""
     from src.modules.transfer_identities import PPT_DESIGNER, identities
     keys = {str(key).casefold(): str(key) for key in workspace_designs(repository)}
@@ -741,9 +741,9 @@ def design_aliases(repository: Any) -> dict[str, str]:
 
 
 def match_designs(items: list[dict[str, Any]], designs: dict[str, tuple[str, str]], nr_mode: str) -> None:
-    """Give the Designs of a favourite from another workspace the IDs of those here with their name and NR Mode,
-    never the same one to two of them; a Design of this workspace keeps its ID. Documents of earlier versions do not
-    name the NR Mode: their checked Designs take first those of the NR Mode of the report (``nr_mode``)."""
+    """Give the PPT Designs of a favourite from another workspace the IDs of those here with their name and NR Mode,
+    never the same one to two of them; a PPT Design of this workspace keeps its ID. Documents of earlier versions do not
+    name the NR Mode: their checked PPT Designs take first those of the NR Mode of the report (``nr_mode``)."""
     if not designs:
         return
     used = {item['key'] for item in items if item['key'] in designs}
@@ -766,7 +766,7 @@ def match_designs(items: list[dict[str, Any]], designs: dict[str, tuple[str, str
 def export_favourites_document(repository: Any) -> bytes:
     """The favourite Bundle Report Templates of a workspace as a portable document (the Bundle Report Template Favourites element
     of Import / Export / Transfer, workspace transfers and backups)."""
-    # Version 2: every Design of a favourite reads the NR Mode of the report (see uncheck_other_mode_designs).
+    # Version 2: every PPT Design of a favourite reads the NR Mode of the report (see uncheck_other_mode_designs).
     return json.dumps({'format': FAVOURITES_FORMAT, 'version': 2, 'favourites': export_entries(repository)},
                       ensure_ascii=False, indent=2).encode('utf-8')
 
@@ -787,11 +787,11 @@ def import_entries(repository: Any, entries: Any, username: str,
                    creator: Callable[[Any, str], str] | None = None, summary: list[str] | None = None,
                    designs_of_report_mode: bool = False) -> int:
     """Replace the favourites of a document that the workspace has (found by their identity, then by their name) and
-    add the others. ``designs`` are those of this workspace (see workspace_designs), so a Design of another
+    add the others. ``designs`` are those of this workspace (see workspace_designs), so a PPT Design of another
     workspace is found by its name and NR Mode. ``creator(creator in the document, creator here)`` decides who each
     one belongs to (without it a new one belongs to ``username`` and a replaced one keeps its creator). A renamed
     favourite renames the jobs based on it, as a rename here does; ``summary`` receives the renamed favourites. The
-    favourites of a document of before (``designs_of_report_mode``) keep generating only the Designs of the NR Mode
+    favourites of a document of before (``designs_of_report_mode``) keep generating only the PPT Designs of the NR Mode
     of the report, as they did (uncheck_other_mode_designs)."""
     from src.modules.report_tasks import rename_favourite_jobs
     from src.modules.transfer_identities import BUNDLE_REPORT_TEMPLATE_FAVOURITES, ItemMatcher, identities, set_identities
@@ -1085,7 +1085,7 @@ def _compose_section(composer: compose.DeckComposer, section: SectionDeck, entri
 
 def _nest_transitions(slides: list[Any]) -> None:
     """The transitions of a module inside its section of a Bundle Report Template, one level down; a module whose own cover
-    stays (each Design) has it as a transition of the second level and its transitions one more level down."""
+    stays (each PPT Design) has it as a transition of the second level and its transitions one more level down."""
     depth = 1
     for slide in slides:
         if report_structure.level(slide) is not None:
@@ -1175,7 +1175,7 @@ def compose_word(template: Path, powerpoint: bytes, sections: list[SectionDeck],
                     if current is not None:
                         title, level = f'{counter.next(current + depth)}  {title}', current + depth
                     elif not module:
-                        # The cover a module keeps in its section (each Design), as in _nest_transitions.
+                        # The cover a module keeps in its section (each PPT Design), as in _nest_transitions.
                         title, depth, level = f'{counter.next(2)}  {title}', 2, 2
                     plan.append(('heading2', PackItem('heading2', title or 'Section', [line for line in subtitle.split(' · ') if line][:3],
                                                       level=level, contents=title or 'Section')))
@@ -1346,15 +1346,15 @@ class SectionGenerator:
         for item in section['items']:
             design = stored.get(item['key'])
             if not isinstance(design, dict):
-                deck.lines.append(f"{item.get('label') or item['key']}: the Design no longer exists")
+                deck.lines.append(f"{item.get('label') or item['key']}: the PPT Design no longer exists")
                 continue
-            self.progress(f"Generating the Design {names.get(item['key'])}")
+            self.progress(f"Generating the PPT Design {names.get(item['key'])}")
             definition = dict(design)
             definition.pop('datasets', None)
             filters = {name: values for name, values in (definition.get('filters') or {}).items()
                        if name not in {*DESIGN_FILTERS.values(), 'Campaign'}}
             if section['options']['campaigns']:
-                # The Campaigns of the section choose the CDRs of every Design.
+                # The Campaigns of the section choose the CDRs of every PPT Design.
                 filters['Campaign'] = list(section['options']['campaigns'])
             from src.modules.ppt_designer import MAIN_CITIES
             for field_name, column in DESIGN_FILTERS.items():
@@ -1363,7 +1363,7 @@ class SectionGenerator:
                     values = [MAIN_CITIES, *values]
                 if values:
                     filters[column] = values
-            # Every Design reads the CDRs of the NR Mode of the report (any template serves both); one of NSA & SA
+            # Every PPT Design reads the CDRs of the NR Mode of the report (any template serves both); one of NSA & SA
             # keeps reading both, which its slides compare, the Campaigns choosing the CDRs of each NR Mode.
             nr_mode = NSA_VS_SA if _design_mode(design) == NSA_VS_SA else self.filters['nr_mode']
             definition.update({'filters': filters, 'auto_cdrs': True, 'nr_mode': nr_mode, 'sa_campaigns': []})
@@ -1372,18 +1372,18 @@ class SectionGenerator:
             while True:
                 row = tools.job(self.repository, job_id)
                 if row is None:
-                    raise BundleReportTemplateError('The Design PPT job was deleted.')
+                    raise BundleReportTemplateError('The PPT Designer job was deleted.')
                 if str(row['status']) == 'ready':
                     break
                 if str(row['status']) in {'failed', 'stopped'}:
-                    raise BundleReportTemplateError(str(row['last_error'] or f"The Design PPT job {row['status']}."))
+                    raise BundleReportTemplateError(str(row['last_error'] or f"The PPT Designer job {row['status']}."))
                 if time.monotonic() > deadline:
-                    raise BundleReportTemplateError('The Design PPT job did not finish within three hours.')
-                self.progress(f"Generating the Design {names.get(item['key'])} ({int(row['progress'] or 0)}%)")
+                    raise BundleReportTemplateError('The PPT Designer job did not finish within three hours.')
+                self.progress(f"Generating the PPT Design {names.get(item['key'])} ({int(row['progress'] or 0)}%)")
                 time.sleep(2)
             deck.decks.append((item['key'], Path(str(row['output_path'])).read_bytes()))
         if not deck.decks:
-            raise BundleReportTemplateError('None of the chosen Designs was generated.')
+            raise BundleReportTemplateError('None of the chosen PPT Designs was generated.')
         return deck
 
     def scoring(self, section: dict[str, Any]) -> SectionDeck:
@@ -1620,7 +1620,7 @@ def section_fingerprint(core: Any, repository: Any, definition: dict[str, Any], 
                         generator: 'SectionGenerator') -> str:
     """Identity of a generated section: the version and code of the application, its options and the common filters,
     and every input its module reads (the CDRs, the Operator and Vendor Maps, the Main Cities and, per module, the
-    Designs, the methodologies and the Saved Filters calculated, the inventory of the analysis, the follow-up of the
+    PPT Designs, the methodologies and the Saved Filters calculated, the inventory of the analysis, the follow-up of the
     calls or the CDRs of CDR Analysis). The same identity means the same document; a change of any input, or an update
     of the application, generates it again."""
     inputs: dict[str, Any] = {

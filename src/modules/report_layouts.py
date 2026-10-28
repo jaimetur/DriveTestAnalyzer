@@ -186,7 +186,7 @@ def rename_template_vendor_fields(content: bytes) -> bytes:
         return content
 
 
-# The Design of a template (stable slide and element ids, see design_slides) in its Format column.
+# The slides of a template (stable slide and element ids, see design_slides) in its Format column.
 
 def slide_item_id(prefix: str) -> str:
     return f'{prefix}{uuid4().hex[:10]}'
