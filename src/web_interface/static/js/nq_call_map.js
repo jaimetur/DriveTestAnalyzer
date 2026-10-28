@@ -191,21 +191,16 @@
     });
   };
 
-  // The stretches of the way of the car around the call, drawn as roads that join its road: ``anchor`` is the call in the
-  // route of its car, ``next`` the test of its car after where its way ended (past the tests its simulated way goes by),
-  // ``before`` and ``after`` whether it has a test before it and one after it, ``covered`` whether those roads (or the road of
-  // the call) take the stretch of the route that ends at a test, so that no line runs under them.
+  // The way of the car around the call: ``anchor`` is the call in the route of its car, ``next`` the test of its car after
+  // where its way ended (past the tests its simulated way goes by).
   const carStretches = (data) => {
     const route = data.drive?.route || [], call = data.call;
     const anchor = route.findIndex((point) => point[2] === 0);
     const passed = call.way && call.way.by !== 'before' ? Math.max(0, call.way.points.length - 2) : 0;
-    const next = anchor >= 0 && call.way ? anchor + 1 + passed : -1;
-    const before = Boolean(call.start) && anchor > 0;
-    const covered = (index) => (before && index === anchor) || (next > 0 && index > anchor && index <= next);
-    return {route, anchor, next, before, after: next > 0 && next < route.length, covered};
+    return {route, anchor, next: anchor >= 0 ? anchor + 1 + passed : -1};
   };
-  // A winding road (see windingRoad) in the colour of the call (grey for the way of its car around it): a white edge, a
-  // dashed white centre line and an arrow at its end, or at a share of its length, towards where it went.
+  // A winding road (see windingRoad) in the colour of the call (grey for the way of its car): a white edge, a dashed white
+  // centre line and an arrow at its end, or at a share of its length (none when ``arrow`` is null), towards where it went.
   const paintRoad = (context, road, {colour = COLOURS.path, alpha = 1, arrow = 'end'} = {}) => {
     const trace = () => {
       context.beginPath();
@@ -227,7 +222,11 @@
       context.stroke();
     });
     context.setLineDash([]);
-    const tip = arrow === 'end' ? road.length - 1 : Math.max(3, Math.round(arrow * (road.length - 1)));
+    if (arrow === null) {
+      context.restore();
+      return;
+    }
+    const tip = arrow === 'end' ? road.length - 1 : Math.min(road.length - 1, Math.max(3, Math.round(arrow * (road.length - 1))));
     const [ex, ey] = road[tip], [bx, by] = road[Math.max(0, tip - 3)];
     const length = Math.hypot(ex - bx, ey - by) || 1;
     const [ux, uy] = [(ex - bx) / length, (ey - by) / length];
@@ -861,46 +860,25 @@
         context.fillText(String(number), bx, by + .5);
       }
       // The way of the car through the tests of its drive (15 minutes before and after, those a car could have driven between):
-      // a faint line with an arrow on each stretch towards where it was heading. Around the call its stretches are roads that
-      // join the road of the call: grey from its test before it to where the call started, and from where it ended to its
-      // next test (past the tests its simulated way goes by), so no line runs under them.
-      const {route, anchor, next, before, after, covered} = carStretches(data);
-      if (route.length > 1) {
-        const points = route.map(([latitude, longitude]) => project(latitude, longitude));
-        context.globalAlpha = .7;
-        context.beginPath();
-        for (let index = 1; index < points.length; index += 1) {
-          if (covered(index)) continue;
-          context.moveTo(points[index - 1][0], points[index - 1][1]);
-          context.lineTo(points[index][0], points[index][1]);
-        }
-        context.lineWidth = 2.2;
-        context.strokeStyle = COLOURS.route;
-        context.stroke();
-        for (let index = 1; index < points.length; index += 1) {
-          const [x1, y1] = points[index - 1], [x2, y2] = points[index];
-          const length = Math.hypot(x2 - x1, y2 - y1);
-          if (length < 24 || covered(index)) continue;
-          const [ux, uy] = [(x2 - x1) / length, (y2 - y1) / length], [mx, my] = [(x1 + x2) / 2, (y1 + y2) / 2];
-          context.beginPath();
-          context.moveTo(mx + ux * 8, my + uy * 8);
-          context.lineTo(mx - ux * 6 - uy * 6.5, my - uy * 6 + ux * 6.5);
-          context.lineTo(mx - ux * 6 + uy * 6.5, my - uy * 6 - ux * 6.5);
-          context.closePath();
-          context.fillStyle = COLOURS.route;
-          context.fill();
-        }
-        context.globalAlpha = 1;
-      }
+      // faint grey winding roads from test to test, each with an arrow towards where it was heading, joined to the road of
+      // the call: the one from its test before it ends where the call started, and the one to its next test starts where it
+      // ended (past the tests its simulated way goes by, which the road of the call takes).
+      const {route, anchor, next} = carStretches(data);
       const carRoad = (from, to, item) => {
         const road = windingRoad([project(from[0], from[1]), project(to[0], to[1])]);
         if (road.length < 3) return;
-        paintRoad(context, road, {colour: COLOURS.route, alpha: .85, arrow: .5});
+        const reach = Math.hypot(road.at(-1)[0] - road[0][0], road.at(-1)[1] - road[0][1]);
+        paintRoad(context, road, {colour: COLOURS.route, alpha: .85, arrow: reach >= 30 ? .5 : null});
         const [mx, my] = road[Math.floor(road.length / 2)];
         hits.push({x: mx, y: my, r: 9, kind: 'car_road', item: {...item, metres: geodesic([from[1], from[0]], [to[1], to[0]]).metres}, priority: 4.6});
       };
-      if (before) carRoad(route[anchor - 1], start, {seconds: route[anchor - 1][2]});
-      if (after) carRoad(call.way.points.at(-1), route[next], {seconds: route[next][2]});
+      route.forEach((point, index) => {
+        const last = route[index - 1];
+        if (!index || (index > anchor && index < next)) return;
+        if (anchor >= 0 && index === anchor) carRoad(last, start || point, {from: last[2], to: 'start'});
+        else if (anchor >= 0 && index === next) carRoad(call.way ? call.way.points.at(-1) : route[anchor], point, {from: call.way ? 'end' : 'start', to: point[2]});
+        else carRoad(last, point, {from: last[2], to: point[2]});
+      });
       // The way of the call as a winding road (its bends a sketch, not its streets): from where it started to where it ended
       // (a Voice call), else, for a Data test (the CDR gives only where it started and how far it went), its way simulated
       // along the way of its car with an arrow where it ended. A Data test without the way of its car shows the zone it can
@@ -1277,12 +1255,9 @@
       if (data.call.way?.by === 'ends') item('road', 'Its way, from where it started to where it ended (arrow: its direction; the bends are a sketch, not its streets)', COLOURS.path);
       else if (data.call.way) item('road', `Its way, simulated: its ${distanceText(data.call.travelled_m / 1000)} from where it started, towards where its car was heading (arrow: where it ended; the bends are a sketch)`, COLOURS.path);
       else if (!data.call.end && data.call.travelled_m) item('ring', `Where the test went: within ${distanceText(data.call.travelled_m / 1000)} of where it started (the distance it travelled)`, COLOURS.path, 'is-dashed');
-      const stretches = carStretches(data);
-      if (stretches.before || stretches.after) {
-        item('road', `The way of its car around it: ${[stretches.before ? 'from its test before it to where it started' : '',
-          stretches.after ? 'from where it ended to its next test' : ''].filter(Boolean).join(', and ')}`, COLOURS.route);
+      if (carStretches(data).route.length > 1) {
+        item('road', `The way of its car: its tests ${data.drive.minutes} minutes before and after, joined to where the call started and ended (arrows: where it was heading; the bends are a sketch)`, COLOURS.route);
       }
-      if (stretches.route.some((_point, index) => index && !stretches.covered(index))) item('line', `The way of the car: its tests ${data.drive.minutes} minutes before and after (arrows: where it was heading)`, COLOURS.route);
       item('line', `Radius ${distanceText(data.radius_km)}`, COLOURS.radius, 'is-dashed');
       if (settings.layers.failures) {
         shared.failureLegend().forEach(([text, colour, extra]) => item('diamond', text, colour, extra));
@@ -1528,12 +1503,17 @@
         ]};
       }
       if (kind === 'car_road') {
-        const seconds = Math.abs(item.seconds), when = seconds >= 60 ? `${Math.floor(seconds / 60)} min ${seconds % 60} s` : `${seconds} s`;
-        const after = item.seconds > 0;
-        return {title: after ? 'Its car after it' : 'Its car before it', rows: [
-          [after ? 'To' : 'From', `Its test ${when} ${after ? 'after' : 'before'} it`],
-          ['Distance', distanceText(item.metres / 1000)],
-          ['Shape', `The way of its car ${after ? 'from where the call ended' : 'to where the call started'}; its bends are a sketch, not the streets it took`],
+        // A stretch of the way of its car: between two of its tests, or from one to where the call started or from where it
+        // ended (``from`` and ``to``: seconds from the call, or start and end).
+        const place = (value) => {
+          if (value === 'start') return 'Where the call started';
+          if (value === 'end') return data.call.way?.by && data.call.way.by !== 'ends' ? 'Where the call ended (simulated)' : 'Where the call ended';
+          const seconds = Math.abs(value), when = seconds >= 60 ? `${Math.floor(seconds / 60)} min ${seconds % 60} s` : `${seconds} s`;
+          return `Its test ${when} ${value > 0 ? 'after' : 'before'} it`;
+        };
+        return {title: typeof item.to === 'number' && item.to > 0 ? 'Its car after the call' : 'Its car before the call', rows: [
+          ['From', place(item.from)], ['To', place(item.to)], ['Distance', distanceText(item.metres / 1000)],
+          ['Shape', 'Its bends are a sketch, not the streets it took'],
         ]};
       }
       if (kind === 'handover_point') {
