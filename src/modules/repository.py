@@ -4906,6 +4906,8 @@ class Repository:
 
         where_clauses: list[str] = []
         params: list[Any] = []
+        # The columns the WHERE reads, for a read of the columnar copy of the CDR.
+        filter_columns: list[str] = []
         for key, value in filters.items():
             resolved_key = self._resolve_dataset_row_column_name(existing_columns, vendor_filter_column(key))
             if key in {'aggregation', 'extra_filters', 'date_from', 'date_to'} or value in (None, '') or not resolved_key:
@@ -4926,6 +4928,7 @@ class Repository:
                     placeholders = ', '.join('?' for _ in integer_values)
                     where_clauses.append(f"CAST({self._quote_identifier(resolved_key)} AS INTEGER) IN ({placeholders})")
                     params.extend(integer_values)
+                    filter_columns.append(resolved_key)
                 continue
             normalized_values = [str(item).strip().lower() for item in values if str(item).strip()]
             if not normalized_values:
@@ -4933,6 +4936,7 @@ class Repository:
             clause, clause_params = self._values_condition(resolved_key, normalized_values)
             where_clauses.append(clause)
             params.extend(clause_params)
+            filter_columns.append(resolved_key)
 
         resolved_event_time = self._resolve_dataset_row_column_name(existing_columns, 'event_start_time')
         if resolved_event_time and not ignore_event_time_filtering():
@@ -4944,6 +4948,8 @@ class Repository:
             if date_to:
                 where_clauses.append(f"date(CAST({self._quote_identifier(resolved_event_time)} AS TEXT)) <= date(?)")
                 params.append(str(date_to))
+            if date_from or date_to:
+                filter_columns.append(resolved_event_time)
 
         for key, value in (filters.get('extra_filters') or {}).items():
             resolved_key = self._resolve_dataset_row_column_name(existing_columns, key)
@@ -4956,6 +4962,7 @@ class Repository:
             clause, clause_params = self._values_condition(resolved_key, normalized_values)
             where_clauses.append(clause)
             params.extend(clause_params)
+            filter_columns.append(resolved_key)
 
         excluded_call_lists = list(excluded_call_lists)
         resolved_join_id = self._resolve_dataset_row_column_name(existing_columns, 'JOIN_ID') if excluded_call_lists else None
@@ -4965,6 +4972,7 @@ class Repository:
             clause, clause_params = row_condition(self._quote_identifier(resolved_join_id), excluded_call_lists)
             where_clauses.append(clause)
             params.extend(clause_params)
+            filter_columns.append(resolved_join_id)
 
         resolved_operator = self._resolve_dataset_row_column_name(existing_columns, 'Operator') if in_scope_only else None
         if resolved_operator:
@@ -4972,6 +4980,15 @@ class Repository:
             if clause_params:
                 where_clauses.append(clause)
                 params.extend(clause_params)
+                filter_columns.append(resolved_operator)
+
+        # A CDR whose columnar copy holds its rows as they are now is read from it (the same rows, in the same order).
+        from src.modules import cdr_store
+        if kind := cdr_store.fresh_kind(self.db_path, dataset_id):
+            frame = cdr_store.query_cdr(self.db_path, kind, dataset_id, selected_columns, ' AND '.join(where_clauses),
+                                        params, filter_columns)
+            if frame is not None:
+                return frame
 
         select_clause = ', '.join(
             f"{self._quote_identifier(actual_column)} AS {self._quote_identifier(requested_column)}"

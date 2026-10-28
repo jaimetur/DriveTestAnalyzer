@@ -764,3 +764,83 @@ def read_cdrs(database_path: Any, kind: str, dataset_ids: Any, columns: list[str
         total += length
     return pd.DataFrame({requested: _typed(parts[requested], total) for requested, _physical in selected},
                         columns=[requested for requested, _physical in selected], index=range(total))
+
+
+def fresh_kind(database_path: Any, dataset_id: int) -> str | None:
+    """The type of a CDR whose copy holds its rows as they are now (None when it has no such copy)."""
+    if int(dataset_id) not in fresh_copies(database_path, [dataset_id]):
+        return None
+    with sqlite3.connect(database_path, timeout=30) as connection:
+        row = connection.execute('SELECT dataset_kind FROM dataset_profiles WHERE dataset_id = ?', (int(dataset_id),)).fetchone()
+    return str(row[0]).casefold() if row else None
+
+
+def _plan_hint(connection: sqlite3.Connection, table: str, query: str, params: Any) -> str | None:
+    """How SQLite reads ``table`` for ``query``: 'NOT INDEXED' for a scan in row id order, 'INDEXED BY <index>' for one
+    index (rows in its order), or None for any other plan."""
+    import re
+
+    details = [str(row[3]) for row in connection.execute(f'EXPLAIN QUERY PLAN {query}', list(params)).fetchall()]
+    own = [detail for detail in details if re.search(rf'\b(SCAN|SEARCH) {re.escape(table)}\b', detail)]
+    if len(own) != 1:
+        return None
+    if re.fullmatch(rf'SCAN {re.escape(table)}', own[0]):
+        return 'NOT INDEXED'
+    match = re.fullmatch(rf'SEARCH {re.escape(table)} USING (?:COVERING )?INDEX (\S+) \(.*\)', own[0])
+    return f'INDEXED BY {quote(match.group(1))}' if match else None
+
+
+def query_cdr(database_path: Any, kind: str, dataset_id: int, selected: list[tuple[str, str]], where: str = '',
+              params: Any = (), filter_columns: Any = ()) -> pd.DataFrame | None:
+    """What ``pandas.read_sql_query`` returns for ``SELECT <physical> AS <requested> ... FROM dataset_rows_<id>
+    [WHERE <where>]`` on the workspace database, read from the copy of the CDR: SQLite evaluates the WHERE (its
+    subqueries reading the workspace database) on a table in memory holding only ``filter_columns``, the columns the
+    WHERE reads, and gives the rows in the order its plan on the workspace database gives them. None when that plan is
+    not one index or a scan (the caller reads SQLite then)."""
+    physical = list(dict.fromkeys(column for _requested, column in selected))
+
+    def frame_of(values: dict[str, tuple[str, Any]], length: int, order: Any = None) -> pd.DataFrame:
+        frame = pd.DataFrame({requested: _typed([values[column]], length) for requested, column in selected},
+                             columns=[requested for requested, _column in selected], index=range(length))
+        return frame if order is None else frame.iloc[order].reset_index(drop=True)
+
+    if not where:
+        values, length = _raw(database_path, kind, dataset_id, physical)
+        return frame_of(values, length)
+    table = f'dataset_rows_{int(dataset_id)}'
+    source = f'file:{Path(str(database_path)).resolve()}?mode=ro'
+    query = f'SELECT {", ".join(f"{quote(column)} AS {quote(requested)}" for requested, column in selected)} FROM {quote(table)} WHERE {where}'
+    with sqlite3.connect(source, uri=True, timeout=30) as workspace:
+        hint = _plan_hint(workspace, table, query, params)
+        index_sql = None
+        if hint and hint.startswith('INDEXED BY'):
+            index_sql = workspace.execute("SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?",
+                                          (hint[len('INDEXED BY '):].strip('"').replace('""', '"'),)).fetchone()
+            index_sql = index_sql[0] if index_sql else None
+    if hint is None or (hint.startswith('INDEXED BY') and not index_sql):
+        return None
+    filters = list(dict.fromkeys(filter_columns))
+    values, length = _raw(database_path, kind, dataset_id, [ROWID, *filters])
+    memory = sqlite3.connect('file::memory:', uri=True)
+    try:
+        memory.execute('ATTACH DATABASE ? AS workspace', (source,))
+        memory.execute(f'CREATE TABLE main.{quote(table)} ({quote(ROWID)} INTEGER PRIMARY KEY'
+                       + ''.join(f', {quote(column)}' for column in filters) + ')')
+        memory.executemany(f'INSERT INTO main.{quote(table)} VALUES ({", ".join("?" * (len(filters) + 1))})',
+                           zip(*(_python_values(values[column]) for column in [ROWID, *filters])))
+        if index_sql:
+            memory.execute(index_sql)
+        rowids = [row[0] for row in memory.execute(f'SELECT {quote(ROWID)} FROM main.{quote(table)} {hint} WHERE {where}',
+                                                    list(params)).fetchall()]
+    except sqlite3.OperationalError:
+        # A WHERE reading a column it was not given: SQLite reads the workspace database instead.
+        return None
+    finally:
+        memory.close()
+    if not rowids:
+        values, _length = _raw(database_path, kind, dataset_id, physical, [])
+        return frame_of(values, 0)
+    values, length = _raw(database_path, kind, dataset_id, physical, rowids)
+    # The rows come back in row id order: put them in the order of the plan.
+    position = {rowid: index for index, rowid in enumerate(sorted(rowids))}
+    return frame_of(values, length, [position[rowid] for rowid in rowids])

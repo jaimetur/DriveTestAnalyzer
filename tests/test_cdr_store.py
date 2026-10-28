@@ -185,3 +185,65 @@ def test_several_cdrs_read_from_their_copies_as_their_combined_table_returns_the
     assert frame['Call_Status'].tolist() == ['Completed', 'Failed', 'Dropped']
     assert frame['NR_Mode'].tolist() == ['NSA', 'NSA', 'SA'] and frame['dataset_id'].tolist() == [first, first, second]
     assert cdr_store.fresh_copies(core.repository.db_path, [first, second, 999]) == {first, second}
+
+
+def test_a_filtered_read_of_a_cdr_gives_the_rows_and_order_of_sqlite(client, tmp_path):
+    rows = pd.DataFrame({
+        'Operator': ['EE', ' ee ', 'O2', 'Vodafone UK', 'EE', 'O2'],
+        'status': ['Failed', 'Completed', 'Completed', 'Dropped', 'Completed', 'Failed'],
+        'event_start_time': ['2026-02-24 10:00:00', '2026-02-25 10:00:00', '2026-02-26 11:00:00', None,
+                             '2026-02-23 09:00:00', '2026-02-24 12:00:00'],
+        'JOIN_ID': ['a', 'b', 'c', 'd', 'e', 'f'],
+        'Mean_Data_Rate': [1.5, 2.0, None, 4.0, 5.5, 6.0],
+    })
+    data = add_cdr(tmp_path, 'data.csv', 'data', rows)
+    table = f'dataset_rows_{data}'
+    with core.repository.connection() as connection:
+        # The expression indexes the CDR tables have, and a table a WHERE reads beside the rows (as the Excluded Calls).
+        connection.execute(f'CREATE INDEX IF NOT EXISTS "idx_{table}_status_norm" ON "{table}" (LOWER(TRIM(CAST("status" AS TEXT))))')
+        connection.execute(f'CREATE INDEX IF NOT EXISTS "idx_{table}_operator_norm" ON "{table}" (LOWER(TRIM(CAST("Operator" AS TEXT))))')
+        connection.execute('CREATE TABLE excluded_calls_test (join_id TEXT)')
+        connection.execute("INSERT INTO excluded_calls_test VALUES ('c')")
+    copy_everything()
+    selected = [('Operator', 'Operator'), ('Rate', 'Mean_Data_Rate'), ('JOIN_ID', 'JOIN_ID')]
+    cases = [
+        ('', [], []),
+        ("LOWER(TRIM(CAST(\"status\" AS TEXT))) IN (?, ?)", ['completed', 'failed'], ['status']),
+        ("LOWER(TRIM(CAST(\"Operator\" AS TEXT))) IN (?) AND \"JOIN_ID\" NOT IN (SELECT join_id FROM excluded_calls_test)",
+         ['ee'], ['Operator', 'JOIN_ID']),
+        ("date(CAST(\"event_start_time\" AS TEXT)) >= date(?) AND \"Mean_Data_Rate\" > ?", ['2026-02-24', 1], ['event_start_time', 'Mean_Data_Rate']),
+        ("LOWER(TRIM(CAST(\"status\" AS TEXT))) IN (?)", ['nothing'], ['status']),
+    ]
+    for where, params, filters in cases:
+        query = f'SELECT "Operator" AS "Operator", "Mean_Data_Rate" AS "Rate", "JOIN_ID" AS "JOIN_ID" FROM "{table}"' + (
+            f' WHERE {where}' if where else '')
+        with core.repository.connection() as connection:
+            expected = pd.read_sql_query(query, connection, params=params)
+        frame = cdr_store.query_cdr(core.repository.db_path, 'data', data, selected, where, params, filters)
+        pd.testing.assert_frame_equal(frame, expected, check_exact=True)
+    # The rows of an index come in its order, as SQLite gives them.
+    with core.repository.connection() as connection:
+        assert connection.execute(f'EXPLAIN QUERY PLAN SELECT 1 FROM "{table}" WHERE {cases[1][0]}', cases[1][1]).fetchall()
+    assert cdr_store.query_cdr(core.repository.db_path, 'data', data, selected, cases[1][0], cases[1][1], ['status'])['JOIN_ID'].tolist() == [
+        'b', 'c', 'e', 'a', 'f']
+
+
+def test_the_rows_of_a_cdr_with_filters_are_the_same_from_its_copy(client, tmp_path, monkeypatch):
+    rows = pd.DataFrame({
+        'Operator': ['EE', 'O2', 'EE', 'Vodafone UK'], 'Region': ['North', 'North', 'South', 'North'],
+        'event_start_time': ['2026-02-24 10:00:00', '2026-02-25 10:00:00', '2026-03-01 11:00:00', '2026-02-24 12:00:00'],
+        'Mean_Data_Rate': [1.5, 2, 3.25, None],
+    })
+    data = add_cdr(tmp_path, 'data.csv', 'data', rows)
+    filters = {'Operator': ['EE', 'Vodafone UK'], 'Region': ['north'], 'date_from': '2026-02-24', 'date_to': '2026-02-28'}
+    columns = ['Operator', 'region', 'Mean_Data_Rate', 'Missing column']
+    sqlite_rows = core.repository.load_dataset_rows(data, columns, filters)
+    copy_everything()
+    reads = []
+    query_cdr = cdr_store.query_cdr
+    monkeypatch.setattr(cdr_store, 'query_cdr', lambda *args, **kwargs: reads.append(args[2]) or query_cdr(*args, **kwargs))
+
+    copied_rows = core.repository.load_dataset_rows(data, columns, filters)
+
+    assert reads == [data] and copied_rows['Operator'].tolist() == ['EE', 'Vodafone UK']
+    pd.testing.assert_frame_equal(copied_rows, sqlite_rows, check_exact=True)
