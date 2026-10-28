@@ -329,3 +329,38 @@ def test_the_coalesced_columns_of_a_cdr_are_those_sqlite_gives(client, tmp_path)
         found = cdr_store.coalesced_frame(core.repository.db_path, 'data', data, outputs, required)
         pd.testing.assert_frame_equal(found, expected, check_exact=True)
         assert all(found[column].map(type).tolist() == expected[column].map(type).tolist() for column in expected)
+
+
+def test_a_copy_without_its_table_is_the_store_of_its_cdr(client, tmp_path):
+    data = add_cdr(tmp_path, 'data.csv', 'data', data_rows())
+    with core.repository.connection() as connection:
+        connection.execute(f'CREATE INDEX "idx_dataset_rows_{data}_operator" ON "dataset_rows_{data}" (LOWER(TRIM(CAST("Operator" AS TEXT))))')
+        created = connection.execute("SELECT sql FROM sqlite_master WHERE name = ?", (f'dataset_rows_{data}',)).fetchone()[0]
+        expected = pd.read_sql_query(f'SELECT "Operator", "Test_Count", "NR_DL_SCell3_ARFCN" FROM dataset_rows_{data}', connection)
+    copy_everything()
+    root = cdr_store.store_root(core.repository.db_path)
+    manifest = cdr_store.read_manifest(cdr_store.manifest_file(root, 'data', data))
+    # The copy knows how the table is made, to make it again.
+    assert manifest['schema']['table'] == created
+    assert any('LOWER(TRIM(CAST("Operator" AS TEXT)))' in sql for sql in manifest['schema']['indexes'])
+    assert not any('cdr_store_' in sql for sql in manifest['schema']['indexes'])
+
+    core.repository.drop_dataset_rows(data)
+
+    # The copy is the store of the CDR: up to date, never copied again nor removed, read and in the catalog.
+    changes = cdr_store.store_changes(core.repository.db_path)
+    assert changes['pending'] == [] and changes['orphans'] == [] and changes['cdrs'][data]['table'] is False
+    assert cdr_store.fresh_copies(core.repository.db_path, [data]) == {data}
+    job = copy_everything()
+    assert job['removed'] == 0 and cdr_store.cdr_folder(root, 'data', data).is_dir()
+    pd.testing.assert_frame_equal(
+        cdr_store.read_cdr(core.repository.db_path, 'data', data, ['Operator', 'Test_Count', 'NR_DL_SCell3_ARFCN']), expected,
+        check_exact=True)
+    with duckdb.connect(str(root / cdr_store.CATALOG_FILE), read_only=True) as catalog:
+        assert catalog.execute('SELECT COUNT(*) FROM cdr_data').fetchone() == (3,)
+    # Processed again, the CDR keeps its copy until its table follows.
+    core.repository.update_dataset_profile(data, status='processing')
+    assert copy_everything()['removed'] == 0 and cdr_store.cdr_folder(root, 'data', data).is_dir()
+    # Deleted, its copy goes.
+    core.repository.delete_dataset(data)
+    assert copy_everything()['removed'] == 1 and not cdr_store.cdr_folder(root, 'data', data).exists()

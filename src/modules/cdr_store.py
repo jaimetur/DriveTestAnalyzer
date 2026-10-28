@@ -111,12 +111,23 @@ def _versions(connection: sqlite3.Connection) -> dict[int, int]:
     return {int(row[0]): int(row[1]) for row in connection.execute(f'SELECT dataset_id, version FROM {VERSIONS_TABLE}')}
 
 
+def table_schema(connection: sqlite3.Connection, dataset_id: int) -> dict[str, Any]:
+    """How the table of a CDR is created: its CREATE TABLE and the CREATE INDEX of its indexes (not the triggers of
+    the copy), to make the table again from its copy."""
+    table = f'dataset_rows_{int(dataset_id)}'
+    created = connection.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?", (table,)).fetchone()
+    indexes = [str(row[0]) for row in connection.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'index' AND tbl_name = ? AND sql IS NOT NULL ORDER BY rowid", (table,))]
+    return {'table': str(created[0]) if created else '', 'indexes': indexes}
+
+
 def _table_columns(connection: sqlite3.Connection, dataset_id: int) -> list[str]:
     return [str(row[1]) for row in connection.execute(f'PRAGMA table_info({quote(f"dataset_rows_{int(dataset_id)}")})')]
 
 
 def _ready_cdrs(connection: sqlite3.Connection) -> dict[int, dict[str, Any]]:
-    """The ready Data, Voice and Speech CDRs of the workspace with a table of rows."""
+    """The ready Data, Voice and Speech CDRs of the workspace: those with a table of rows (``table``), which their copy
+    follows, and those whose copy is their only store (without a table)."""
     tables = {str(row[0]) for row in connection.execute(
         "SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'dataset_rows_%'")}
     rows = connection.execute(
@@ -128,10 +139,10 @@ def _ready_cdrs(connection: sqlite3.Connection) -> dict[int, dict[str, Any]]:
     return {
         int(row[0]): {'id': int(row[0]), 'file_name': str(row[1] or ''), 'kind': str(row[3] or '').casefold(),
                       'nr_mode': dataset_nr_mode(row[3], row[4], row[1]) or '', 'processed_at': str(row[5] or ''),
-                      'normalization_version': int(row[6] or 1), 'row_count': int(row[7] or 0)}
+                      'normalization_version': int(row[6] or 1), 'row_count': int(row[7] or 0),
+                      'table': f'dataset_rows_{int(row[0])}' in tables}
         for row in rows
         if str(row[2] or '').casefold() == 'ready' and str(row[3] or '').casefold() in CDR_KINDS
-        and f'dataset_rows_{int(row[0])}' in tables
     }
 
 
@@ -158,26 +169,35 @@ def fresh_copies(database_path: Any, dataset_ids: Any) -> set[int]:
             if cdr is None:
                 continue
             manifest = read_manifest(manifest_file(root, cdr['kind'], dataset_id))
-            if (manifest and cdr_folder(root, cdr['kind'], dataset_id).is_dir() and manifest.get('revision')
-                    == revision(cdr, _table_columns(connection, dataset_id), versions.get(dataset_id, 0))):
+            if not manifest or not cdr_folder(root, cdr['kind'], dataset_id).is_dir():
+                continue
+            # Without a table the copy is the store of the CDR.
+            if not cdr['table'] or manifest.get('revision') == revision(cdr, _table_columns(connection, dataset_id),
+                                                                         versions.get(dataset_id, 0)):
                 fresh.add(dataset_id)
     return fresh
 
 
 def store_changes(database_path: Any) -> dict[str, Any]:
-    """The CDRs whose copy is missing or out of date, and the copies of CDRs that are gone."""
+    """The CDRs whose copy is missing or out of date (of those with a table of rows), and the copies of CDRs that are
+    gone: deleted, or now of another type while their table holds them. The copy of a CDR being processed again, or
+    whose copy is its only store, is kept."""
     root = store_root(database_path)
     with sqlite3.connect(database_path, timeout=30) as connection:
         cdrs = _ready_cdrs(connection)
         versions = _versions(connection)
+        existing = {int(row[0]) for row in connection.execute('SELECT id FROM datasets')}
         pending = []
         for dataset_id, cdr in sorted(cdrs.items()):
+            if not cdr['table']:
+                continue
             manifest = read_manifest(manifest_file(root, cdr['kind'], dataset_id))
             current = revision(cdr, _table_columns(connection, dataset_id), versions.get(dataset_id, 0))
             if manifest is None or manifest.get('revision') != current or not cdr_folder(root, cdr['kind'], dataset_id).is_dir():
                 pending.append(cdr)
     orphans = [path for kind in CDR_KINDS for path in (root / kind).glob('*.json')
-               if not path.stem.isdigit() or int(path.stem) not in cdrs or cdrs[int(path.stem)]['kind'] != kind]
+               if not path.stem.isdigit() or int(path.stem) not in existing
+               or (int(path.stem) in cdrs and cdrs[int(path.stem)]['table'] and cdrs[int(path.stem)]['kind'] != kind)]
     return {'pending': pending, 'orphans': orphans, 'cdrs': cdrs}
 
 
@@ -302,7 +322,7 @@ def write_cdr(repository: Any, cdr: dict[str, Any], should_stop: Callable[[], bo
         connection.execute('BEGIN')
         try:
             ready = _ready_cdrs(connection).get(dataset_id)
-            if ready is None:
+            if ready is None or not ready['table']:
                 return None
             columns = _table_columns(connection, dataset_id)
             current = revision(ready, columns, _versions(connection).get(dataset_id, 0))
@@ -310,6 +330,7 @@ def write_cdr(repository: Any, cdr: dict[str, Any], should_stop: Callable[[], bo
                    for column in columns):
                 raise ValueError(f'The CDR {ready["file_name"]} has a column named like the columns the copy adds.')
             types = _column_types(connection, table, columns)
+            schema = table_schema(connection, dataset_id)
             rows_written = export_rows(connection, dataset_id, ready['nr_mode'], columns, types, temporary, should_stop)
         except BaseException:
             shutil.rmtree(temporary, ignore_errors=True)
@@ -329,7 +350,7 @@ def write_cdr(repository: Any, cdr: dict[str, Any], should_stop: Callable[[], bo
     manifest = {
         'version': STORE_VERSION, 'dataset_id': dataset_id, 'kind': kind, 'file_name': ready['file_name'],
         'revision': current, 'rows': rows_written, 'columns': [[column, types[column]] for column in columns],
-        'written_at': datetime.now(timezone.utc).isoformat(timespec='seconds'),
+        'schema': schema, 'written_at': datetime.now(timezone.utc).isoformat(timespec='seconds'),
     }
     _write_json(manifest_file(root, kind, dataset_id), manifest)
     return manifest
