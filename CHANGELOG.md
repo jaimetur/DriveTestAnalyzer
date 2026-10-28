@@ -14,6 +14,7 @@
 
 #### 🐛 Bug fixes:
 - **Developer — Tests:** the tests no longer write into the local installation of the application (its tickets, users and databases): every test process points the application at storage of its own.
+- **Import / Export / Transfer — Scoring & GAP Favourites Filters:** the import preview and the completion message no longer show as updated (`CDRs: 3 added, 3 removed`) the Favourites Filters with a Campaign choice, such as Latest 2 campaigns, whose campaigns hold other CDRs on the server that sent them: they are compared by their choice, as the import takes the CDRs it stands for in the receiving workspace.
 
 #### 📚 Documentation:
 

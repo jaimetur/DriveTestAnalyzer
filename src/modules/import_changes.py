@@ -396,17 +396,30 @@ def report_configuration_items(document: Any) -> list[Item]:
     return items
 
 
+def _campaign_choice(entry: dict[str, Any]) -> bool:
+    """Whether a Saved Filter has a Campaign choice (Latest 2 campaigns…): it stands for the CDRs of each workspace,
+    so the CDRs its document names (those of the workspace that exported it) are not part of what it selects."""
+    from src.modules.cdr_auto_selection import campaign_presets
+
+    context_filters = entry.get('context_filters')
+    return bool(campaign_presets(context_filters.get('Campaign') if isinstance(context_filters, dict) else None))
+
+
 def _selection_key(entry: dict[str, Any]) -> str:
-    """What a Saved Filter selects (its CDRs by file and its selection), which finds it whatever its name."""
-    cdrs = sorted(str(ref.get('sha256') or '') for ref in entry.get('cdrs') or [] if isinstance(ref, dict))
+    """What a Saved Filter selects (its CDRs by file, unless it has a Campaign choice, and its selection), which finds
+    it whatever its name."""
+    cdrs = [] if _campaign_choice(entry) else sorted(
+        str(ref.get('sha256') or '') for ref in entry.get('cdrs') or [] if isinstance(ref, dict))
     selection = {key: entry.get(key) for key in ('nr_mode', 'levels', 'baseline_operator', 'context_filters',
                                                   'scoring_profile_id', 'area_summary')}
     return hashlib.sha256(_canonical({**selection, 'cdrs': cdrs}).encode('utf-8')).hexdigest()
 
 
 def favourites_filter_items(document: Any) -> list[Item]:
-    """The Favourites Filters of a Saved Filters document, found by what they select, then by their name."""
-    return [Item(name=str(entry.get('name') or ''), values=entry, uid=_selection_key(entry))
+    """The Favourites Filters of a Saved Filters document, found by what they select, then by their name. Those with a
+    Campaign choice are compared without their CDRs, as the import takes those the choice stands for here."""
+    return [Item(name=str(entry.get('name') or ''), uid=_selection_key(entry),
+                 values={key: value for key, value in entry.items() if key != 'cdrs'} if _campaign_choice(entry) else entry)
             for entry in _documents(document, 'saved_filters')]
 
 

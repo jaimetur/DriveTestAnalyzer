@@ -674,6 +674,26 @@ def test_the_nq_calls_configuration_and_the_follow_up_of_the_calls_tell_what_cha
     assert compare(package, element_items('nq-call-tracking', tracking), package).details == [[]]
 
 
+def test_favourites_filters_with_a_campaign_choice_are_compared_without_the_cdrs_of_the_exporting_server():
+    from src.modules.cdr_auto_selection import LATEST_TWO_CAMPAIGNS
+    from src.modules.import_changes import element_items, predict
+
+    def items(cdrs: list[str], campaign: str) -> list:
+        entry = {'name': 'Latest 2 Campaigns - All Regions', 'pinned': True, 'nr_mode': 'NSA', 'levels': ['Region'],
+                 'cdrs': [{'sha256': sha, 'name': f'{sha}.csv', 'kind': 'data'} for sha in cdrs],
+                 'baseline_operator': 'Vodafone', 'context_filters': {'Campaign': [campaign]}, 'scoring_profile_id': '',
+                 'area_summary': None, 'created_by': 'super'}
+        return element_items('scoring-favourites-filters', {'format': 'drivetest-analyzer-saved-filters', 'version': 1,
+                                                            'saved_filters': [entry]})
+
+    # The server that exports it has a newer campaign: Latest 2 campaigns stands for other CDRs there, not another filter.
+    changes = predict(items(['b', 'c', 'd'], LATEST_TWO_CAMPAIGNS), items(['a', 'b', 'c'], LATEST_TWO_CAMPAIGNS))
+    assert (changes.new, changes.updated, changes.unchanged) == ([], [], 1)
+    # With campaigns of its own, its CDRs are what it selects.
+    changes = predict(items(['b', 'c', 'd'], '2026-Q3'), items(['a', 'b', 'c'], '2026-Q3'))
+    assert changes.updated == [('Latest 2 Campaigns - All Regions', ['CDRs: 1 added, 1 removed'])]
+
+
 def test_the_preview_predicts_each_element_as_its_import_saves_it(client, tmp_path, monkeypatch):
     from src.modules import non_qualified_calls
     from src.modules.import_changes import describe_changes, element_items, predict, settings_values
