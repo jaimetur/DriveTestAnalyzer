@@ -151,15 +151,20 @@
   let draftTimer = 0;
   function scheduleDraft() {
     clearTimeout(draftTimer);
-    if (!state.active || !dirty()) return;
+    if (!state.active) return;
     const id = viewer().state().activeId;
+    // Undone back to what is saved: the draft kept meanwhile goes, so opening the Designer again offers nothing.
+    if (!dirty()) {
+      if (state.draftStored) { state.draftStored = false; forgetDraft(id, false); }
+      return;
+    }
     draftTimer = setTimeout(() => {
       if (!state.active || !dirty() || viewer().state().activeId !== id) return;
       api(`/${encodeURIComponent(id)}/slides/draft`, 'PUT', {state: {
         template: state.templateDirty ? state.template : null, slide_set: state.slide_set, overrides: state.overrides,
         templateDirty: state.templateDirty, designDirty: state.designDirty, keepTemplateChanges: state.keepTemplateChanges,
         template_updated_at: state.info?.template?.updated_at || '', scope: state.scope, slide: state.slide,
-      }}).catch(() => undefined);
+      }}).then(() => { state.draftStored = true; }).catch(() => undefined);
     }, 1200);
   }
   const forgetDraft = (id, discarded) => api(`/${encodeURIComponent(id)}/slides/draft${discarded ? '?discarded=1' : ''}`, 'DELETE').catch(() => undefined);
@@ -168,6 +173,7 @@
     try { result = await api(`/${encodeURIComponent(id)}/slides/draft`); } catch (_error) { return false; }
     const draft = result?.draft;
     if (!draft) return false;
+    state.draftStored = true;
     const when = result.updated_at ? new Date(result.updated_at).toLocaleString() : 'before';
     const stale = draft.templateDirty && draft.template_updated_at && draft.template_updated_at !== state.info?.template?.updated_at;
     const choice = await window.showConfirmDialog(
@@ -632,6 +638,20 @@
     const indicator = $('ds-design-busy');
     if (indicator) indicator.hidden = state.busy === 0;
   }
+  // The icons of the bar of the Designer (stroked, as the icons of the viewer).
+  const ICONS = {
+    undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
+    redo: '<path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/>',
+    parameters: '<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/>',
+    differences: '<path d="M12 3v14M5 10h14M5 21h14"/>',
+  };
+  function icon(name) {
+    const holder = document.createElement('span');
+    holder.className = 'ds-design-icon';
+    holder.setAttribute('aria-hidden', 'true');
+    holder.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[name]}</svg>`;
+    return holder;
+  }
   function renderDesigner() {
     if (!state.active) return;
     renderBar();
@@ -659,10 +679,12 @@
             scopeButton('design', 'This Design', 'Changes only this Design: kept as its differences from the template', state.rights.design),
             scopeButton('template', `Template · ${count} Design${count === 1 ? '' : 's'}`, `Changes the template ${state.info?.template?.name || ''}: every Design that follows it`, state.rights.template))),
       h('div', {class: 'ds-design-bar-group'},
-        h('button', {type: 'button', class: 'ds-design-tool', title: 'Undo (Ctrl/Cmd+Z)', 'aria-label': 'Undo', disabled: !state.history.length, onclick: guarded(undo)}, '↶'),
-        h('button', {type: 'button', class: 'ds-design-tool', title: 'Redo (Shift+Ctrl/Cmd+Z)', 'aria-label': 'Redo', disabled: !state.future.length, onclick: guarded(redo)}, '↷'),
-        h('button', {type: 'button', class: 'ds-design-action', onclick: guarded(openParametersDialog), disabled: state.detached ? false : !state.rights.template && !parameters().length, title: 'The parameters of the template'}, `Parameters${parameters().length ? ` · ${parameters().length}` : ''}`),
-        state.detached ? null : h('button', {type: 'button', class: `ds-design-action${changed ? ' has-warning' : ''}`, onclick: guarded(openDifferencesDialog), title: 'What this Design changes of its template'}, `Differences · ${differences}${changed ? ` · ${changed} template changed` : ''}`)),
+        h('button', {type: 'button', class: 'ds-design-tool', title: 'Undo (Ctrl/Cmd+Z)', 'aria-label': 'Undo', disabled: !state.history.length, onclick: guarded(undo)}, icon('undo')),
+        h('button', {type: 'button', class: 'ds-design-tool', title: 'Redo (Shift+Ctrl/Cmd+Z)', 'aria-label': 'Redo', disabled: !state.future.length, onclick: guarded(redo)}, icon('redo')),
+        h('button', {type: 'button', class: 'ds-design-action ds-design-with-icon', onclick: guarded(openParametersDialog), disabled: state.detached ? false : !state.rights.template && !parameters().length, title: 'The parameters of the template'},
+          icon('parameters'), 'Parameters', parameters().length ? h('span', {class: 'ds-design-count', text: String(parameters().length)}) : null),
+        state.detached ? null : h('button', {type: 'button', class: `ds-design-action ds-design-with-icon${changed ? ' has-warning' : ''}`, onclick: guarded(openDifferencesDialog), title: changed ? `What this Design changes of its template; the template changed ${changed} of them` : 'What this Design changes of its template'},
+          icon('differences'), 'Differences', h('span', {class: `ds-design-count${changed ? ' is-warning' : ''}`, text: String(differences)}))),
       h('div', {class: 'ds-design-bar-group ds-design-bar-end'},
         h('span', {class: 'ds-design-busy', id: 'ds-design-busy', hidden: state.busy === 0, text: 'Laying out…'}),
         dirty() ? h('span', {class: 'ds-design-pill ds-design-pill-unsaved', text: state.templateDirty ? 'Unsaved template' : 'Unsaved'}) : null,

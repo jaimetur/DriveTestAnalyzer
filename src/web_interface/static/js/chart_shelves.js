@@ -25,7 +25,7 @@
   const identity = value => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
 
   const SOURCES = [['CDR-Data', 'Data'], ['CDR-Voice', 'Voice'], ['CDR-Speech', 'Speech'], ['CDR-All', 'RF All']];
-  const NR_MODES = [['', 'Design'], ['NSA', 'NSA'], ['SA', 'SA']];
+  const NR_MODES = [['', 'PPT'], ['NSA', 'NSA'], ['SA', 'SA']];
   // The settings a chart type keeps among its Filters, shown with Chart Type instead of as filters.
   const SETTINGS = ['threshold', 'buckets', 'binsize', 'classcolours', 'histogramoperator', 'nrmode'];
   const AGGREGATIONS = [['', 'As the chart type counts it'], ['AVG', 'Average'], ['MEDIAN', 'Median'], ['SUM', 'Sum'], ['COUNT', 'Count'], ['COUNTD', 'Count distinct'], ['MIN', 'Minimum'], ['MAX', 'Maximum']];
@@ -345,7 +345,7 @@
     host.replaceChildren(...[
       options.showSource === false ? null : h('div', {class: 'ds-cb-source'},
         h('div', {class: 'ds-cb-segmented', role: 'group', 'aria-label': 'Source'}, SOURCES.map(([value, label]) => h('button', {type: 'button', class: value === source ? 'is-active' : '', 'aria-pressed': String(value === source), onclick: () => change({cdr_source: value})}, label))),
-        h('div', {class: 'ds-cb-segmented', role: 'group', 'aria-label': 'NR Mode of the chart', title: 'The NR Mode of the CDRs the chart reads (Design: those of the Design)'}, NR_MODES.map(([value, label]) => h('button', {type: 'button', class: value === nrMode ? 'is-active' : '', 'aria-pressed': String(value === nrMode), onclick: () => {
+        h('div', {class: 'ds-cb-segmented', role: 'group', 'aria-label': 'NR Mode of the chart', title: 'The NR Mode of the CDRs the chart reads (PPT: that of the PPT Design)'}, NR_MODES.map(([value, label]) => h('button', {type: 'button', class: value === nrMode ? 'is-active' : '', 'aria-pressed': String(value === nrMode), onclick: () => {
           const kept = settings.filter(item => identity(conditionField(item)) !== 'nrmode');
           if (value) kept.push(`NR Mode IN (${value})`);
           writeFilters(plainFilters, kept);

@@ -36,7 +36,7 @@
         </div>
       </section>
       <section class="report-chart-viewer-sandbox" data-chart-builder-sandbox>
-        <p class="eyebrow">Chart Definition</p><p class="form-note">Drag the fields of the CDRs to the shelves: each change regenerates only this temporary preview. <strong>Add to Design…</strong> puts the chart on a slide of a Design whose slides you can edit.</p>
+        <p class="eyebrow">Chart Definition</p><p class="form-note">Drag the fields of the CDRs to the shelves: each change regenerates only this temporary preview. <strong>Add to PPT Design…</strong> puts the chart on a slide of a Design whose slides you can edit.</p>
         <div class="report-chart-viewer-fields ppt-designer ds-cb-host" data-chart-builder-fields></div>
       </section>
     </div>
@@ -103,7 +103,7 @@
     const legendPosition = element('select', {'aria-label': 'Legend position', onchange: (event) => { chart.legend_position = event.target.value; queue(); }},
       ...[['top', 'Top'], ['bottom', 'Bottom'], ['left', 'Left'], ['right', 'Right']].map(([value, label]) => { const option = element('option', {value}, label); option.selected = value === chart.legend_position; return option; }));
     const shelves = element('div', {class: 'ds-cb'});
-    const add = element('button', {type: 'button', class: 'ds-cb-add', onclick: openAddToDesign}, 'Add to Design…');
+    const add = element('button', {type: 'button', class: 'ds-cb-add', onclick: openAddToDesign}, 'Add to PPT Design…');
     add.disabled = !chart.kpi || !selected().length;
     fields.replaceChildren(element('label', {class: 'ds-cb-title'}, 'Chart title', title), shelves,
       element('div', {class: 'ds-cb-advanced'}, element('label', {}, 'Legend position', legendPosition)), add);
@@ -113,17 +113,17 @@
       onChange: (changes) => { Object.assign(chart, changes); render(); queue(); },
     });
   };
-  // Add to Design: a slide (with a free place) of a Design whose slides the user can edit, or a new slide at its end.
+  // Add to PPT Design: a slide (with a free place) of a Design whose slides the user can edit, or a new slide at its end.
   async function openAddToDesign(event) {
     document.querySelectorAll('.ds-design-popover').forEach((node) => node.remove());
     const anchor = event.currentTarget;
     let targets = [];
     try { targets = (await fetch('/api/ppt-designer/targets', {credentials: 'same-origin'}).then((response) => response.json())).designs || []; } catch (_error) { targets = []; }
-    const dialog = element('div', {class: 'ds-design-popover ds-cb-add-dialog', role: 'dialog', 'aria-label': 'Add to Design'});
+    const dialog = element('div', {class: 'ds-design-popover ds-cb-add-dialog', role: 'dialog', 'aria-label': 'Add to PPT Design'});
     if (!targets.length) {
-      dialog.append(element('h4', {}, 'Add to Design'), element('p', {class: 'form-note'}, 'There is no Design whose slides you can edit: create one in PPT Designer first.'));
+      dialog.append(element('h4', {}, 'Add to PPT Design'), element('p', {class: 'form-note'}, 'There is no Design whose slides you can edit: create one in PPT Designer first.'));
     } else {
-      const design = element('select', {'aria-label': 'Design'}, ...targets.map((item) => element('option', {value: item.id}, `${item.name} · ${item.nr_mode === 'NSA+SA' ? 'NSA & SA' : item.nr_mode}`)));
+      const design = element('select', {'aria-label': 'PPT Design'}, ...targets.map((item) => element('option', {value: item.id}, `${item.name} · ${item.nr_mode === 'NSA+SA' ? 'NSA & SA' : item.nr_mode}`)));
       const slide = element('select', {'aria-label': 'Slide'});
       const fillSlides = () => {
         const target = targets.find((item) => item.id === design.value);
@@ -137,10 +137,10 @@
         try {
           const result = await postJson(`/api/ppt-designer/${encodeURIComponent(design.value)}/add-chart`, {element: definition(), slide_id: slide.value, slide_title: chart.chart_title});
           dialog.remove();
-          (globalThis.showInfoDialog || window.alert)(`The chart is now on the slide “${result.slide}” of the Design “${result.design}”.`, {title: 'Add to Design'});
+          (globalThis.showInfoDialog || window.alert)(`The chart is now on the slide “${result.slide}” of the Design “${result.design}”.`, {title: 'Add to PPT Design'});
         } catch (error) { note.textContent = error.message; keep.disabled = false; }
       }}, 'Add');
-      dialog.append(element('h4', {}, 'Add to Design'), element('label', {}, 'Design', design), element('label', {}, 'Slide', slide), note,
+      dialog.append(element('h4', {}, 'Add to PPT Design'), element('label', {}, 'PPT Design', design), element('label', {}, 'Slide', slide), note,
         element('div', {class: 'ds-cb-actions'}, keep, element('button', {type: 'button', onclick: () => dialog.remove()}, 'Cancel')));
     }
     document.body.append(dialog);
