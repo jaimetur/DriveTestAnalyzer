@@ -356,26 +356,68 @@
 .ppt-designer .ds-design-field .rt-editor, .ppt-designer .ds-design-field textarea#ds-design-text { min-height: 8rem; }
 
 /* The range of an axis (a slider of two thumbs) and the values of a category axis, opened from the chart in Design. */
-.ds-axis-range { display: grid; gap: .55rem; width: min(19rem, calc(100vw - 16px)); padding: .75rem; }
-.ds-axis-range h4 { margin: 0; font-size: .85rem; }
-.ds-axis-slider { position: relative; height: 1.8rem; }
-.ds-axis-slider input[type="range"] { position: absolute; inset: 0; width: 100%; margin: 0; background: none; pointer-events: none; -webkit-appearance: none; appearance: none; }
-.ds-axis-slider input[type="range"]::-webkit-slider-thumb { width: 1.05rem; height: 1.05rem; border: 2px solid #fff; border-radius: 50%; background: #4b2c82;
-  box-shadow: 0 1px 4px rgba(36, 22, 61, .35); pointer-events: auto; cursor: grab; -webkit-appearance: none; appearance: none; }
-.ds-axis-slider input[type="range"]::-moz-range-thumb { width: 1rem; height: 1rem; border: 2px solid #fff; border-radius: 50%; background: #4b2c82; pointer-events: auto; cursor: grab; }
-.ds-axis-track, .ds-axis-track-fill { position: absolute; top: 50%; height: 6px; margin-top: -3px; border-radius: 3px; }
-.ds-axis-track { left: 0; right: 0; background: #e6e0ef; }
-.ds-axis-track-fill { background: #7a4bb3; }
-.ds-axis-scale { display: flex; justify-content: space-between; font-size: .7rem; color: #6b6178; font-variant-numeric: tabular-nums; }
-.ds-axis-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; }
-.ds-axis-inputs label { display: grid; gap: .2rem; font-size: .72rem; font-weight: 750; color: #6b6178; }
-.ds-axis-inputs input { min-height: 1.9rem; padding: .15rem .4rem; border: 1px solid #d9d1e6; border-radius: 7px; font: inherit; font-variant-numeric: tabular-nums; }
-.ds-axis-values { display: grid; max-height: 14rem; overflow-y: auto; border: 1px solid #ece6f3; border-radius: 8px; }
-.ds-axis-value { display: flex; align-items: center; gap: .45rem; padding: .25rem .5rem; border-bottom: 1px solid #f3eff7; font-size: .78rem; cursor: pointer; }
-.ds-axis-value:hover { background: #f6f2fb; }
-.ds-axis-range .ds-design-format-actions { display: flex; flex-wrap: wrap; gap: .3rem; }
-.ds-axis-range .ds-design-format-actions button { min-height: 1.8rem; padding: .15rem .6rem; border: 1px solid #ddd5ea; border-radius: 7px; background: #fff; box-shadow: none; color: #2f2540; font: inherit; font-size: .74rem; font-weight: 750; cursor: pointer; }
-.ds-axis-range .ds-design-format-actions button:disabled { opacity: .45; cursor: not-allowed; }
+/* The card of an axis (range or values), as in Tableau: a head with what the axis holds, the body and the actions. */
+.ds-design-popover.ds-axis-card { display: grid; gap: .7rem; width: min(20rem, calc(100vw - 16px)); padding: .85rem .9rem .8rem; border-radius: 14px; border-color: #e3dbef;
+  box-shadow: 0 18px 44px rgba(36, 22, 61, .24), 0 2px 6px rgba(36, 22, 61, .08); }
+.ds-axis-head { display: flex; align-items: flex-start; justify-content: space-between; gap: .5rem; }
+.ds-axis-heading { display: grid; gap: .15rem; min-width: 0; }
+.ds-axis-kind { justify-self: start; padding: .08rem .45rem; border-radius: 999px; background: #efe8f8; color: #5b3a92; font-size: .64rem; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
+.ds-axis-heading h4 { margin: 0; overflow: hidden; color: #24163d; font-size: 1rem; font-weight: 800; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
+.ds-axis-badge { justify-self: start; color: #7a6f8a; font-size: .7rem; font-weight: 650; }
+.ds-axis-badge.is-set { color: #5b3a92; }
+.ds-axis-card .ds-axis-close { display: grid; flex: 0 0 auto; place-items: center; width: 1.8rem; height: 1.8rem; min-height: 0; padding: 0; border: 0; border-radius: 50%;
+  background: #f4f0f9; box-shadow: none; color: #5b4d6e; font-size: 1.05rem; line-height: 1; cursor: pointer; }
+.ds-axis-card .ds-axis-close:hover { background: #e8def4; color: #24163d; }
+.ds-axis-foot { display: flex; justify-content: flex-end; gap: .4rem; padding-top: .2rem; border-top: 1px solid #f0ebf6; }
+.ds-axis-card .ds-axis-foot button { min-height: 2rem; padding: .25rem .85rem; border-radius: 9px; box-shadow: none; font: inherit; font-size: .78rem; font-weight: 750; cursor: pointer; }
+.ds-axis-card .ds-axis-secondary { margin-right: auto; border: 1px solid #ddd3ea; background: #fff; color: #4b2c82; }
+.ds-axis-card .ds-axis-secondary:hover:not(:disabled) { background: #f6f1fc; }
+.ds-axis-card .ds-axis-secondary:disabled { opacity: .45; cursor: default; }
+.ds-axis-card .ds-axis-primary { border: 1px solid #4b2c82; background: linear-gradient(135deg, #5b35a0, #7a4bb3); color: #fff; }
+/* Range: the bounds typed, the track with its two handles and where the values of the chart lie. */
+.ds-axis-readout { display: grid; grid-template-columns: 1fr auto 1fr; align-items: end; gap: .45rem; }
+.ds-axis-card .ds-axis-bound { display: grid; gap: .2rem; margin: 0; color: #7a6f8a; font-size: .66rem; font-weight: 750; letter-spacing: .04em; text-transform: uppercase; }
+.ds-axis-card .ds-axis-number { box-sizing: border-box; width: 100%; min-height: 2.2rem; padding: .3rem .55rem; border: 1px solid #ddd3ea; border-radius: 10px; background: #fbf9fe;
+  color: #24163d; font: inherit; font-size: .95rem; font-weight: 750; font-variant-numeric: tabular-nums; text-align: center; }
+.ds-axis-card .ds-axis-number:focus { border-color: #7a4bb3; outline: 2px solid rgba(122, 75, 179, .2); outline-offset: 0; background: #fff; }
+.ds-axis-dash { padding-bottom: .5rem; color: #a99cba; font-weight: 800; }
+.ds-axis-slider { position: relative; height: 2rem; margin: 0 .35rem; }
+.ds-axis-rail, .ds-axis-fill, .ds-axis-values-band { position: absolute; top: 50%; height: 8px; margin-top: -4px; border-radius: 999px; }
+.ds-axis-rail { left: 0; right: 0; background: #ece6f4; }
+.ds-axis-values-band { height: 14px; margin-top: -7px; border: 1px dashed #c6b6dc; background: repeating-linear-gradient(135deg, #f3edfa 0 4px, #fff 4px 8px); }
+.ds-axis-fill { background: linear-gradient(90deg, #6d42ad, #9a6bd3); box-shadow: 0 1px 3px rgba(91, 53, 160, .35); }
+.ds-axis-card input.ds-axis-handle { position: absolute; inset: 0; width: 100%; height: 100%; min-height: 0; margin: 0; padding: 0; border: 0; background: none; box-shadow: none;
+  pointer-events: none; -webkit-appearance: none; appearance: none; }
+.ds-axis-card input.ds-axis-handle::-webkit-slider-runnable-track { background: none; }
+.ds-axis-card input.ds-axis-handle::-webkit-slider-thumb { width: 1.25rem; height: 1.25rem; border: 3px solid #fff; border-radius: 50%; background: #5b35a0;
+  box-shadow: 0 2px 6px rgba(36, 22, 61, .35); cursor: grab; pointer-events: auto; -webkit-appearance: none; }
+.ds-axis-card input.ds-axis-handle::-moz-range-thumb { width: 1.05rem; height: 1.05rem; border: 3px solid #fff; border-radius: 50%; background: #5b35a0;
+  box-shadow: 0 2px 6px rgba(36, 22, 61, .35); cursor: grab; pointer-events: auto; }
+.ds-axis-card input.ds-axis-handle:active::-webkit-slider-thumb { cursor: grabbing; transform: scale(1.12); }
+.ds-axis-scale { display: flex; align-items: center; justify-content: space-between; gap: .4rem; color: #7a6f8a; font-size: .7rem; font-weight: 650; font-variant-numeric: tabular-nums; }
+.ds-axis-scale-note { display: inline-flex; align-items: center; gap: .3rem; color: #9a8db0; font-size: .64rem; }
+.ds-axis-scale-note::before { content: ''; width: .9rem; height: .5rem; border: 1px dashed #c6b6dc; border-radius: 3px; background: repeating-linear-gradient(135deg, #f3edfa 0 3px, #fff 3px 6px); }
+/* Values: a search when there are many, how many are shown, and one row per value with its tick and Only. */
+.ds-axis-toolbar { display: grid; gap: .4rem; }
+.ds-axis-toolbar:empty { display: none; }
+.ds-axis-card .ds-axis-search { box-sizing: border-box; width: 100%; min-height: 2rem; padding: .3rem .6rem; border: 1px solid #ddd3ea; border-radius: 9px; background: #fbf9fe; font: inherit; font-size: .8rem; }
+.ds-axis-count { color: #7a6f8a; font-size: .7rem; font-weight: 700; }
+.ds-axis-list { display: grid; gap: 2px; max-height: 15rem; margin: 0; padding: 0; overflow-y: auto; list-style: none; }
+.ds-axis-option { display: flex; align-items: center; gap: .3rem; border-radius: 9px; }
+.ds-axis-option:hover { background: #f6f1fc; }
+.ds-axis-option.is-clicked .ds-axis-label { font-weight: 800; }
+.ds-axis-card .ds-axis-toggle { display: flex; flex: 1 1 auto; align-items: center; gap: .55rem; min-width: 0; min-height: 2.1rem; padding: .25rem .5rem; border: 0; border-radius: 9px;
+  background: transparent; box-shadow: none; color: #2f2540; font: inherit; font-size: .84rem; text-align: left; cursor: pointer; }
+.ds-axis-check { display: grid; flex: 0 0 auto; place-items: center; width: 1.05rem; height: 1.05rem; border: 2px solid #c9bcdb; border-radius: 5px; background: #fff; transition: background .12s, border-color .12s; }
+.ds-axis-option.is-on .ds-axis-check { border-color: #5b35a0; background: #5b35a0; }
+.ds-axis-option.is-on .ds-axis-check::after { content: ''; width: .5rem; height: .28rem; margin-top: -.12rem; border: solid #fff; border-width: 0 0 2px 2px; transform: rotate(-45deg); }
+.ds-axis-option:not(.is-on) .ds-axis-label { color: #9a8db0; text-decoration: line-through; text-decoration-color: rgba(154, 141, 176, .6); }
+.ds-axis-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ds-axis-card .ds-axis-only { flex: 0 0 auto; min-height: 0; margin-right: .3rem; padding: .15rem .5rem; border: 1px solid #ddd3ea; border-radius: 999px; background: #fff; box-shadow: none;
+  color: #5b35a0; font: inherit; font-size: .68rem; font-weight: 800; opacity: 0; cursor: pointer; transition: opacity .12s; }
+.ds-axis-option:hover .ds-axis-only, .ds-axis-option:focus-within .ds-axis-only { opacity: 1; }
+.ds-axis-empty { padding: .6rem .5rem; color: #9a8db0; font-size: .78rem; }
+@media (hover: none) { .ds-axis-card .ds-axis-only { opacity: 1; } }
 
 /* The actions of the viewer that wait for the Designer to close. */
 .ppt-designer .is-design-locked, .ppt-designer .is-design-locked:hover { opacity: .42; cursor: not-allowed; filter: saturate(.35); box-shadow: none; transform: none; }

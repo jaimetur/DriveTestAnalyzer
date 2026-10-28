@@ -1167,23 +1167,40 @@
   }
   // The range of a numeric axis, chosen with a slider of two thumbs (as in Tableau): applied when a thumb is released;
   // Automatic gives the axis its own range back. The Y axis of a CDF is in percent (0–100).
+  // The card of an axis, as in Tableau: what the axis holds (its kind, its field) in the head, the range or the values
+  // in the body, and the actions at its foot; each choice is laid out at once.
+  function axisCard(kind, title, label, body, foot, badge = null) {
+    return h('div', {class: 'ds-design-popover ds-axis-card', role: 'dialog', 'aria-label': label},
+      h('header', {class: 'ds-axis-head'},
+        h('div', {class: 'ds-axis-heading'}, h('span', {class: 'ds-axis-kind', text: kind}), h('h4', {text: title}), badge),
+        h('button', {type: 'button', class: 'ds-axis-close', 'aria-label': 'Close', title: 'Close', onclick: closeMenus}, '×')),
+      ...body,
+      h('footer', {class: 'ds-axis-foot'}, ...foot));
+  }
+  // The range of a numeric axis: two handles on its track (the part of the track where the values of the chart lie is
+  // marked), or its start and end typed; the chart takes it when a handle is released. Automatic gives the range back to
+  // the values of the chart.
   function openAxisRange(anchor, elementId, axis, event) {
     closeMenus();
     const key = axis.axis === 'y' ? 'axis_y_range' : 'axis_x_range';
+    const automatic = !String(findElement(editableSlideSet(), elementId)?.element?.[key] || '').trim();
     const low = Math.min(axis.extent[0], axis.domain[0]), high = Math.max(axis.extent[1], axis.domain[1]);
     const span = high - low || 1;
     const decimals = axis.percent ? 0 : Math.max(0, Math.min(4, 2 - Math.floor(Math.log10(span))));
     const step = Number((span / 200).toFixed(decimals)) || 10 ** -decimals;
     const round = value => Number(Number(value).toFixed(decimals));
+    const unit = axis.percent ? '%' : '';
     let start = round(axis.domain[0]), end = round(axis.domain[1]);
-    const from = h('input', {type: 'range', min: String(round(low)), max: String(round(high)), step: String(step), value: String(start), 'aria-label': 'Start of the axis'});
-    const to = h('input', {type: 'range', min: String(round(low)), max: String(round(high)), step: String(step), value: String(end), 'aria-label': 'End of the axis'});
-    const fromNumber = h('input', {type: 'number', step: String(step), value: String(start), 'aria-label': 'Start'});
-    const toNumber = h('input', {type: 'number', step: String(step), value: String(end), 'aria-label': 'End'});
-    const track = h('span', {class: 'ds-axis-track-fill'});
+    const handle = (value, label) => h('input', {type: 'range', class: 'ds-axis-handle', min: String(round(low)), max: String(round(high)), step: String(step), value: String(value), 'aria-label': label});
+    const from = handle(start, 'Start of the axis'), to = handle(end, 'End of the axis');
+    const number = (value, label) => h('input', {type: 'number', class: 'ds-axis-number', step: String(step), value: String(value), 'aria-label': label});
+    const fromNumber = number(start, 'Start'), toNumber = number(end, 'End');
+    const fill = h('span', {class: 'ds-axis-fill'});
+    const values = h('span', {class: 'ds-axis-values-band', title: `The values of the chart: ${round(axis.extent[0])}${unit} to ${round(axis.extent[1])}${unit}`,
+      style: {left: `${(axis.extent[0] - low) / span * 100}%`, width: `${Math.max(0, axis.extent[1] - axis.extent[0]) / span * 100}%`}});
     const paint = () => {
-      track.style.left = `${(start - low) / span * 100}%`;
-      track.style.width = `${Math.max(0, end - start) / span * 100}%`;
+      fill.style.left = `${(start - low) / span * 100}%`;
+      fill.style.width = `${Math.max(0, end - start) / span * 100}%`;
       fromNumber.value = String(start); toNumber.value = String(end);
     };
     let timer = 0;
@@ -1196,19 +1213,24 @@
     from.addEventListener('change', commit); to.addEventListener('change', commit);
     fromNumber.addEventListener('change', () => { start = Math.min(round(fromNumber.value), end - step); from.value = String(start); paint(); commit(); });
     toNumber.addEventListener('change', () => { end = Math.max(round(toNumber.value), start + step); to.value = String(end); paint(); commit(); });
-    const popover = h('div', {class: 'ds-design-popover ds-axis-range', role: 'dialog', 'aria-label': 'Range of the axis'},
-      h('h4', {text: `${axis.axis === 'y' ? 'Y' : 'X'} axis range${axis.percent ? ' (%)' : ''}`}),
-      h('div', {class: 'ds-axis-slider'}, h('span', {class: 'ds-axis-track'}), track, from, to),
-      h('div', {class: 'ds-axis-scale'}, h('span', {text: String(round(low))}), h('span', {text: String(round(high))})),
-      h('div', {class: 'ds-axis-inputs'}, h('label', {}, 'Start', fromNumber), h('label', {}, 'End', toNumber)),
-      h('div', {class: 'ds-design-format-actions'},
-        h('button', {type: 'button', title: 'The range the chart takes from its values', onclick: () => { closeMenus(); guarded(() => setElementValues(elementId, {[key]: ''}))(); }}, 'Automatic'),
-        h('button', {type: 'button', onclick: closeMenus}, 'Close')));
-    placePopover(popover, anchor, event);
+    const card = axisCard(axis.axis === 'y' ? 'Y axis' : 'X axis', `Range${unit ? ` (${unit})` : ''}`, 'Range of the axis', [
+      h('div', {class: 'ds-axis-readout'},
+        h('label', {class: 'ds-axis-bound'}, h('span', {text: 'From'}), fromNumber),
+        h('span', {class: 'ds-axis-dash', 'aria-hidden': 'true'}, '→'),
+        h('label', {class: 'ds-axis-bound'}, h('span', {text: 'To'}), toNumber)),
+      h('div', {class: 'ds-axis-slider'}, h('span', {class: 'ds-axis-rail'}), values, fill, from, to),
+      h('div', {class: 'ds-axis-scale'}, h('span', {text: `${round(low)}${unit}`}),
+        h('span', {class: 'ds-axis-scale-note', text: 'values of the chart'}), h('span', {text: `${round(high)}${unit}`})),
+    ], [
+      h('button', {type: 'button', class: 'ds-axis-secondary', disabled: automatic, title: 'The range the chart takes from its values',
+        onclick: () => { closeMenus(); guarded(() => setElementValues(elementId, {[key]: ''}))(); }}, 'Automatic'),
+      h('button', {type: 'button', class: 'ds-axis-primary', onclick: closeMenus}, 'Close'),
+    ], automatic ? h('span', {class: 'ds-axis-badge', text: 'Automatic'}) : h('span', {class: 'ds-axis-badge is-set', text: 'Set here'}));
+    placePopover(card, anchor, event);
     paint();
   }
-  // The values of a category axis (a level of its split): unticked ones are left out of the chart (a filter of the
-  // chart on that field, NOT IN), Show all puts them back.
+  // The values of a category axis (a level of its Rows or Columns): unticked ones are left out of the chart (a filter of
+  // the chart on that field, NOT IN), Only keeps one, Show all puts them back; at least one value always stays.
   function openAxisValues(anchor, elementId, axis, event) {
     closeMenus();
     const element = findElement(editableSlideSet(), elementId)?.element;
@@ -1224,18 +1246,37 @@
       if (excluded.size) kept.push(`${field} NOT IN (${[...excluded].join(', ')})`);
       guarded(() => setElementValues(elementId, {filters: kept.join('; ')}))();
     };
-    const list = h('div', {class: 'ds-axis-values'}, values.map(value => h('label', {class: 'ds-axis-value'},
-      h('input', {type: 'checkbox', checked: !excluded.has(value), onchange: event2 => { if (event2.target.checked) excluded.delete(value); else excluded.add(value); write(); }}),
-      h('span', {text: value}))));
-    const popover = h('div', {class: 'ds-design-popover ds-axis-range', role: 'dialog', 'aria-label': `Values of ${field}`},
-      h('h4', {text: `${field} on the axis`}),
-      h('p', {class: 'ds-design-field-note', text: 'Untick the values the chart leaves out.'}),
+    let query = '';
+    const list = h('ul', {class: 'ds-axis-list', role: 'group', 'aria-label': `Values of ${field}`});
+    const count = h('span', {class: 'ds-axis-count'});
+    const showAll = h('button', {type: 'button', class: 'ds-axis-secondary', onclick: () => { excluded.clear(); write(); paint(); }}, 'Show all');
+    const paint = () => {
+      const shown = values.filter(value => value.toLocaleLowerCase().includes(query));
+      list.replaceChildren(...(shown.length ? shown.map(value => {
+        const on = !excluded.has(value);
+        return h('li', {class: `ds-axis-option${on ? ' is-on' : ''}${value === axis.value ? ' is-clicked' : ''}`},
+          h('button', {type: 'button', class: 'ds-axis-toggle', role: 'checkbox', 'aria-checked': String(on), title: on ? `Leave ${value} out of the chart` : `Show ${value}`,
+            onclick: () => {
+              if (on && excluded.size >= values.length - 1) return;
+              if (on) excluded.add(value); else excluded.delete(value);
+              write(); paint();
+            }},
+          h('span', {class: 'ds-axis-check', 'aria-hidden': 'true'}), h('span', {class: 'ds-axis-label', text: value})),
+          h('button', {type: 'button', class: 'ds-axis-only', title: `Show only ${value}`,
+            onclick: () => { excluded.clear(); values.filter(item => item !== value).forEach(item => excluded.add(item)); write(); paint(); }}, 'Only'));
+      }) : [h('li', {class: 'ds-axis-empty', text: 'No value matches.'})]));
+      count.textContent = `${values.length - excluded.size} of ${values.length} shown`;
+      showAll.disabled = !excluded.size;
+    };
+    const search = values.length > 7 ? h('input', {type: 'search', class: 'ds-axis-search', placeholder: 'Search values', 'aria-label': 'Search values',
+      oninput: event2 => { query = event2.target.value.trim().toLocaleLowerCase(); paint(); }}) : null;
+    const kind = ['row', 'table-row'].includes(axis.axis) ? 'Rows' : 'Columns';
+    const card = axisCard(kind, field, `Values of ${field}`, [
+      h('div', {class: 'ds-axis-toolbar'}, search, count),
       list,
-      h('div', {class: 'ds-design-format-actions'},
-        h('button', {type: 'button', onclick: () => { excluded.clear(); values.filter(value => value !== axis.value).forEach(value => excluded.add(value)); closeMenus(); write(); }}, `Only “${axis.value}”`),
-        h('button', {type: 'button', disabled: !excluded.size, onclick: () => { excluded.clear(); closeMenus(); write(); }}, 'Show all'),
-        h('button', {type: 'button', onclick: closeMenus}, 'Close')));
-    placePopover(popover, anchor, event);
+    ], [showAll, h('button', {type: 'button', class: 'ds-axis-primary', onclick: closeMenus}, 'Close')]);
+    paint();
+    placePopover(card, anchor, event);
   }
 
   function formatSection(elementId, element) {
