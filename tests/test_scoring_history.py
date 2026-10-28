@@ -269,11 +269,76 @@ def test_the_points_lost_map_job_reports_its_step_and_progress(history_repositor
     job()
     values = [value for value, _step in reports]
     steps = [step for _value, step in reports]
-    # The CDRs read, then the groups of tests mapped CDR type by CDR type, then the boundaries and the save.
+    # The CDRs read, then the KPIs mapped CDR type by CDR type, then the boundaries and the save.
     assert steps[0] == f'Reading the rows of the tests: CDR 1 of {len(ids)}'
-    assert any(step.startswith('Mapping the Data tests: group 1 of ') for step in steps)
+    assert any(step.startswith('Mapping the Data tests: KPI 1 of ') for step in steps)
     assert steps[-2:] == ['Adding the area boundaries', 'Saving the map']
     assert values == sorted(values) and values[-1] == 99
+
+
+def _points_loss_inputs_of(repository, ids):
+    saved, _cached = saved_filters.save_saved_filter(repository, ids, ['Operator', 'Campaign'], 'NSA')
+    saved_filter = saved_filters.get_saved_filter(repository, saved['id'], include_internal_snapshot=True)
+    sources, _campaigns, _fingerprint = saved_filters._source_snapshot(repository, ids, expected_nr_mode='NSA')
+    configuration = saved_filters.validate_scoring_configuration(saved_filter['configuration'])
+    return saved_filter, sources, configuration, saved_filter.get('context_filters', {})
+
+
+def test_the_points_lost_map_drawn_apart_is_the_one_drawn_in_the_application(history_repository):
+    repository, ids, _configuration = history_repository
+    saved_filter, sources, configuration, filters = _points_loss_inputs_of(repository, ids)
+    steps = []
+    apart = saved_filters._draw_points_loss_apart(repository, saved_filter, [dict(source) for source in sources],
+                                                  configuration, filters, lambda value, step: steps.append(step))
+    here = saved_filters.draw_points_loss(repository, saved_filter, [dict(source) for source in sources], configuration,
+                                          filters, saved_filters._scoring_engine())
+    assert saved_filters._serialize_result_value(apart) == saved_filters._serialize_result_value(here)
+    assert apart['shares'] and any(step.startswith('Mapping the Data tests: KPI ') for step in steps)
+
+
+def test_stopping_the_points_lost_map_ends_its_process_at_once(history_repository, monkeypatch):
+    import subprocess
+
+    repository, ids, _configuration = history_repository
+    saved_filter, sources, configuration, filters = _points_loss_inputs_of(repository, ids)
+    processes = []
+    popen = subprocess.Popen
+
+    def recorded(*args, **kwargs):
+        processes.append(popen(*args, **kwargs))
+        return processes[-1]
+    monkeypatch.setattr(subprocess, 'Popen', recorded)
+
+    def stop(_value, _step):
+        raise saved_filters._MapStopped()
+    with pytest.raises(saved_filters._MapStopped):
+        saved_filters._draw_points_loss_apart(repository, saved_filter, sources, configuration, filters, stop)
+    [process] = processes
+    assert process.poll() is not None
+
+
+def test_a_stopped_points_lost_map_keeps_the_scores_and_is_drawn_again_when_resumed(history_repository):
+    repository, ids, _configuration = history_repository
+    scoring_history.sync_history(repository)
+    saved, _cached = saved_filters.save_saved_filter(repository, ids, ['Operator', 'Campaign'], 'NSA')
+    submitted = []
+    saved_filters.calculate_saved_filter(repository, saved['id'], submitted.append)
+    [job] = submitted
+    # A user stops the map from its card before it is drawn.
+    assert saved_filters.request_points_loss_stop(repository.db_path, saved['id'])
+    job()
+    stopped = saved_filters.get_saved_filter(repository, saved['id'], include_result=True)
+    assert stopped['result']['points_loss'] == {'version': 2, 'error': saved_filters.POINTS_LOSS_STOPPED}
+    assert stopped['result']['scoring'] and saved_filters.stopped_points_loss_ids(repository) == [saved['id']]
+    # Once the application is idle it is drawn again.
+    assert saved_filters.resume_stopped_points_loss(repository, saved['id'])
+    assert saved_filters.stopped_points_loss_ids(repository) == []
+    resumed = []
+    saved_filters.queue_points_loss(repository, saved['id'], resumed.append)
+    [job] = resumed
+    job()
+    drawn = saved_filters.get_saved_filter(repository, saved['id'], include_result=True)
+    assert drawn['result']['points_loss']['shares'] and not saved_filters.resume_stopped_points_loss(repository, saved['id'])
 
 
 def test_the_points_lost_map_task_shows_its_progress_and_the_time_left(monkeypatch):

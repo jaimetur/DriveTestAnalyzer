@@ -120,11 +120,6 @@ APP_DATA_DIR/
 │   ├── workspace-registry.db
 │   └── <workspace>/
 │       ├── <workspace>.db
-│       ├── .dashboard-cache-version.json
-│       ├── .dashboard-data-cache/
-│       │   ├── dashboard-previews/
-│       │   ├── charts-canvas/
-│       │   └── charts-pil/
 │       ├── .network-insights-cache/
 │       ├── input/
 │       └── output/
@@ -174,7 +169,7 @@ Report Templates become CSV files only inside portable export, transfer and back
 
 ### Regenerable Dashboard cache
 
-`.dashboard-cache-version.json` records the application and cache-format signature. Opening a workspace deletes older incompatible cache versions and selection metadata. `.dashboard-data-cache` contains reusable preview manifests, Canvas chart models and legacy PIL artifacts. Dashboard rows remain only in the workspace's combined CDR tables. The cache can be cleared without removing datasets, Dashboard definitions, templates or generated jobs, and clearing it does not trigger an automatic rebuild.
+PPT Dashboards keep their preview manifests and Canvas chart models in memory only; opening a workspace removes the `.dashboard-data-cache` folder and `.dashboard-cache-version.json` earlier versions wrote. Dashboard rows remain only in the columnar copies of the CDRs. The cache can be cleared without removing datasets, Dashboard definitions, templates or generated jobs, and clearing it does not trigger an automatic rebuild.
 
 ### Generated output
 

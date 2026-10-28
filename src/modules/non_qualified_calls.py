@@ -314,6 +314,8 @@ FIELD_SOURCES: dict[str, tuple[str, ...]] = NETCHECK_PROFILE.nq_field_sources
 CALL_FIELDS = tuple(FIELD_SOURCES)
 # The fields of every call (qualified or not) kept for the rates per Vendor, host network, site and environment.
 POPULATION_FIELDS = ('vendor', 'host_network', 'site_id', 'environment', 'session_type', 'city', 'region')
+# The fields the panels of the failures count the calls by (see _population_counts).
+POPULATION_COUNT_FIELDS = ('environment', 'vendor', 'host_network', 'site_id', 'city')
 # The values a catalog field can read from the call: the indexed fields and the last cell of the Cell ID chain.
 CATALOG_CALL_FIELDS = (*CALL_FIELDS, 'last_cell_id')
 
@@ -5486,6 +5488,10 @@ def _population_counts(task_repository: Any, filters: dict[str, Any], fields: tu
     # NQ Calls in Scope Only: the calls out of scope (also the qualified ones) count nowhere.
     in_scope = filters.get('in_scope') is True
     columns = ['service', 'campaign', 'operator', 'nr_mode', *fields, *(['region'] if in_scope and 'region' not in fields else [])]
+    # The fields of the panels read together: the calls are counted once by all of them (one pass on the population),
+    # then added up by the fields asked for.
+    wide = (['service', 'campaign', 'operator', 'nr_mode', *POPULATION_COUNT_FIELDS, *(['region'] if in_scope else [])]
+            if set(fields) <= set(POPULATION_COUNT_FIELDS) else columns)
     where, params = [], []
     if services:
         where.append(f"p.service IN ({', '.join('?' for _ in services)})")
@@ -5494,22 +5500,25 @@ def _population_counts(task_repository: Any, filters: dict[str, Any], fields: tu
         where.append(f"p.dataset_id IN ({', '.join('?' for _ in scope)})")
         params.extend(scope)
         source = f"""
-            SELECT {', '.join(columns)}, COUNT(*) AS total, SUM(is_nq) AS nq FROM (
-                SELECT {', '.join(f'p.{column}' for column in columns)}, p.is_nq, ROW_NUMBER() OVER (
+            SELECT {', '.join(wide)}, COUNT(*) AS total, SUM(is_nq) AS nq FROM (
+                SELECT {', '.join(f'p.{column}' for column in wide)}, p.is_nq, ROW_NUMBER() OVER (
                     PARTITION BY p.call_key ORDER BY s.combined_rank DESC, s.stage_rank DESC, s.data_date DESC,
                                                      p.dataset_id DESC) AS rn
                 FROM {NQ_CALL_POPULATION_TABLE} p JOIN {NQ_CALL_SOURCES_TABLE} s ON s.dataset_id = p.dataset_id
                 WHERE {' AND '.join(where)}
-            ) WHERE rn = 1 GROUP BY {', '.join(columns)}"""
+            ) WHERE rn = 1 GROUP BY {', '.join(wide)}"""
     else:
         where.append('p.is_latest = 1')
+        # Every latest call is read: a scan in table order is faster than through the index.
         source = f"""
-            SELECT {', '.join(f'p.{column}' for column in columns)}, COUNT(*) AS total, SUM(p.is_nq) AS nq
-            FROM {NQ_CALL_POPULATION_TABLE} p WHERE {' AND '.join(where)} GROUP BY {', '.join(f'p.{column}' for column in columns)}"""
+            SELECT {', '.join(f'p.{column}' for column in wide)}, COUNT(*) AS total, SUM(p.is_nq) AS nq
+            FROM {NQ_CALL_POPULATION_TABLE} p NOT INDEXED WHERE {' AND '.join(where)}
+            GROUP BY {', '.join(f'p.{column}' for column in wide)}"""
     with task_repository.connection() as connection:
         sources = tuple(tuple(row) for row in connection.execute(
             f'SELECT dataset_id, revision, synced_at FROM {NQ_CALL_SOURCES_TABLE} ORDER BY dataset_id').fetchall())
-        key = (str(task_repository.db_path), sources, tuple(sorted(scope or ())), tuple(sorted(services)), fields, in_scope)
+        key = (str(task_repository.db_path), sources, tuple(sorted(scope or ())), tuple(sorted(services)), tuple(wide),
+               in_scope)
         with _rate_counts_guard:
             rows = _rate_counts_cache.get(key)
         if rows is None:
@@ -5518,6 +5527,19 @@ def _population_counts(task_repository: Any, filters: dict[str, Any], fields: tu
                 if len(_rate_counts_cache) >= RATE_COUNTS_CACHE_SIZE:
                     _rate_counts_cache.pop(next(iter(_rate_counts_cache)))
                 _rate_counts_cache[key] = rows
+    if wide != columns:
+        # Added up by the fields asked for, in the order SQLite groups them (the text of every field, as it sorts it).
+        positions = [wide.index(column) for column in columns]
+        added: dict[tuple, list[int]] = {}
+        for row in rows:
+            group = tuple(row[position] for position in positions)
+            counts = added.get(group)
+            if counts is None:
+                added[group] = [row[-2], row[-1]]
+            else:
+                counts[0] += row[-2]
+                counts[1] += row[-1]
+        rows = [(*group, total, nq) for group, (total, nq) in sorted(added.items())]
     reason = nq_prioritization.scope_of(task_repository, nq_prioritization.load_settings(task_repository)) if in_scope else None
     counts = []
     for row in rows:
@@ -5673,6 +5695,25 @@ def _call_row(connection: Any, call_key: str, default: str, task_repository: Any
         [*sample_params, call_key]).fetchone()
 
 
+def source_row(connection: Any, database_path: Any, dataset_id: int, row_id: int) -> dict[str, Any] | None:
+    """The row of the CDR a call comes from, as ``SELECT * FROM dataset_rows_<id> WHERE rowid = ?`` gives it (every column,
+    in the order of the table); None when the CDR or the row is gone. When the columnar copy of the CDR holds its rows,
+    the row is read from it alone: that SQL on the emptied table would first be given every row of the CDR."""
+    from src.modules import cdr_store
+
+    table = f'dataset_rows_{int(dataset_id)}'
+    try:
+        columns = [str(row[1]) for row in connection.execute(f'PRAGMA table_info({_quote(table)})').fetchall()]
+        copy = cdr_store.fresh_rows_by_rowid(database_path, int(dataset_id), columns, [int(row_id)]) if columns else None
+        if copy is not None:
+            values = copy.get(int(row_id))
+            return dict(zip(columns, values)) if values is not None else None
+        source = connection.execute(f'SELECT * FROM {_quote(table)} WHERE rowid = ?', (int(row_id),)).fetchone()
+    except Exception:  # noqa: BLE001 - the CDR may have been removed since it was indexed.
+        return None
+    return {key: source[key] for key in source.keys()} if source is not None else None
+
+
 def _call_versions(connection: Any, call_key: str, spellings: dict[str, str] | None = None) -> list[dict[str, Any]]:
     """Every CDR that contains the call: Final, Weekly or Daily, its newest data, and the call's result in it (its
     Failure Classification with the spelling of ``spellings``)."""
@@ -5750,11 +5791,7 @@ def call_detail(task_repository: Any, call_key: str) -> dict[str, Any] | None:
                 f"SELECT * FROM {NQ_CALL_HISTORY_TABLE} WHERE call_key = ? ORDER BY id", (call_key,),
             ).fetchall()
         ]
-        table = f"dataset_rows_{int(call['dataset_id'])}"
-        try:
-            source = connection.execute(f'SELECT * FROM {_quote(table)} WHERE rowid = ?', (int(call['source_row_id']),)).fetchone()
-        except Exception:  # noqa: BLE001 - the CDR may have been removed since it was indexed.
-            source = None
+        source = source_row(connection, task_repository.db_path, call['dataset_id'], call['source_row_id'])
         dataset = connection.execute('SELECT file_name FROM datasets WHERE id = ?', (int(call['dataset_id']),)).fetchone()
     fields = []
     if source is not None:

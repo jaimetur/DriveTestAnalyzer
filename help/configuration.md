@@ -158,5 +158,5 @@ After first login:
 - A file uploaded to `Default` remains after an application or container restart.
 - Workspace Report Templates and Dashboard definitions remain available.
 - The workspace size and cache size reflect the configured data root.
-- Dashboard preparation can create `.dashboard-data-cache` in the workspace.
+- Dashboard preparation writes nothing in the workspace: its caches are kept in memory.
 - `APP_CONFIG_DIR` and `APP_DATA_DIR` are included in infrastructure backups.

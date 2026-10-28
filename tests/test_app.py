@@ -5108,13 +5108,14 @@ def test_workspace_cache_clear_removes_only_derived_dashboard_artifacts(client, 
     )
 
 
-def test_opening_workspace_removes_only_cache_from_previous_versions(client) -> None:
+def test_opening_workspace_removes_the_dashboard_caches_of_earlier_versions(client) -> None:
     import src.DriveTestAnalyzer as app_module
 
     login(client)
     workspace = app_module.workspace_registry.get('default')
     assert workspace is not None
     workspace_root = workspace.database_path.parent
+    # What earlier versions kept on disk for the Dashboards.
     version_file = workspace_root / '.dashboard-cache-version.json'
     stale_model = workspace_root / '.dashboard-data-cache' / 'charts-canvas' / 'stale.json'
     stale_model.parent.mkdir(parents=True, exist_ok=True)
@@ -5123,55 +5124,27 @@ def test_opening_workspace_removes_only_cache_from_previous_versions(client) -> 
     legacy_chart.parent.mkdir(parents=True, exist_ok=True)
     legacy_chart.write_bytes(b'png')
     version_file.write_text('{"application":"0.2.0"}', encoding='utf-8')
+    app_module.repository.set_workspace_state(app_module.DASHBOARD_SELECTION_FORMAT_STATE_KEY, '0')
     with app_module.repository.connection() as connection:
         connection.execute("INSERT INTO dashboard_filter_selections (cache_key) VALUES ('stale-selection')")
 
     app_module.activate_workspace(workspace.id)
 
-    assert not stale_model.exists()
-    assert not legacy_chart.exists()
-    assert json.loads(version_file.read_text(encoding='utf-8')) == app_module.workspace_cache_version_signature()
+    # The Dashboards keep nothing on disk; the selections of another format go.
+    assert not (workspace_root / '.dashboard-data-cache').exists()
+    assert not (workspace_root / '.dashboard-chart-cache').exists()
+    assert not version_file.exists()
     with app_module.repository.connection() as connection:
         assert connection.execute('SELECT COUNT(*) FROM dashboard_filter_selections').fetchone()[0] == 0
+    assert app_module.repository.get_workspace_state(app_module.DASHBOARD_SELECTION_FORMAT_STATE_KEY) == str(
+        app_module.DASHBOARD_SELECTION_CACHE_VERSION)
 
-    current_model = workspace_root / '.dashboard-data-cache' / 'charts-canvas' / 'current.json'
-    current_model.parent.mkdir(parents=True, exist_ok=True)
-    current_model.write_text('{}', encoding='utf-8')
-    app_module.activate_workspace(workspace.id)
-    assert current_model.exists()
-
-    previous_patch_signature = dict(app_module.workspace_cache_version_signature())
-    previous_patch_signature['application'] = '0.3.0'
-    version_file.write_text(json.dumps(previous_patch_signature), encoding='utf-8')
-    app_module.activate_workspace(workspace.id)
-    assert current_model.exists()
-    assert json.loads(version_file.read_text(encoding='utf-8')) == app_module.workspace_cache_version_signature()
-
-    prepared_manifest = workspace_root / '.dashboard-data-cache' / 'dashboard-previews' / 'prepared.json'
-    prepared_manifest.parent.mkdir(parents=True, exist_ok=True)
-    prepared_manifest.write_text('{}', encoding='utf-8')
-    stale_png = workspace_root / '.dashboard-data-cache' / 'charts-pil' / 'stale.png'
-    stale_png.parent.mkdir(parents=True, exist_ok=True)
-    stale_png.write_bytes(b'png')
-    render_only_signature = dict(app_module.workspace_cache_version_signature())
-    render_only_signature['dashboard_render'] = int(render_only_signature['dashboard_render']) - 1
-    version_file.write_text(json.dumps(render_only_signature), encoding='utf-8')
+    # Selections of the current format stay.
     with app_module.repository.connection() as connection:
-        connection.execute("INSERT INTO dashboard_filter_selections (cache_key) VALUES ('prepared-selection')")
-
-    app_module.activate_workspace(workspace.id)
-
-    assert prepared_manifest.exists()
-    assert not stale_png.exists()
+        connection.execute("INSERT INTO dashboard_filter_selections (cache_key) VALUES ('current-selection')")
+    assert not app_module.clear_outdated_workspace_caches(workspace)
     with app_module.repository.connection() as connection:
-        assert connection.execute("SELECT COUNT(*) FROM dashboard_filter_selections WHERE cache_key = 'prepared-selection'").fetchone()[0] == 1
-
-    # The columns of the CDRs kept on disk by earlier versions are removed; the other caches stay.
-    columns = workspace_root / '.dashboard-data-cache' / 'columns' / 'v1' / 'reporting_rows_data' / '1' / 'version' / 'part.pkl'
-    columns.parent.mkdir(parents=True, exist_ok=True)
-    columns.write_bytes(b'columns')
-    app_module.activate_workspace(workspace.id)
-    assert not columns.exists() and prepared_manifest.exists() and current_model.exists()
+        assert connection.execute('SELECT COUNT(*) FROM dashboard_filter_selections').fetchone()[0] == 1
 
 
 def test_workspace_management_reports_every_supported_row_status(client, tmp_path: Path) -> None:
@@ -5828,24 +5801,16 @@ def test_ready_open_dashboard_preloads_chart_models_before_viewer_opens() -> Non
     assert "|| !$('ds-viewer').hidden" in script
 
 
-def test_dashboard_standard_universe_warmup_and_open_state_restoration_are_configured() -> None:
+def test_dashboards_prepare_nothing_in_the_background_and_restore_the_open_one() -> None:
     root = Path(__file__).parents[1] / 'src'
     dashboard_source = (root / 'modules' / 'ppt_dashboards.py').read_text(encoding='utf-8')
     script = (root / 'web_interface' / 'static' / 'js' / 'ppt_dashboards.js').read_text(encoding='utf-8')
 
-    # Every campaign plus the latest 1..4 campaigns of the Dashboard's NR Mode, their CDRs chosen as always.
-    assert "variants = [None, *(latest_campaigns(campaigns, count) for count in range(1, DASHBOARD_WARMUP_LATEST_COUNTS + 1))]" in dashboard_source
-    assert 'DASHBOARD_WARMUP_LATEST_COUNTS = 4' in dashboard_source
-    assert 'campaigns = campaign_values(task_repository, nr_mode)' in dashboard_source
-    assert 'datasets = resolve_cdrs(task_repository, nr_mode, chosen or [], KINDS)' in dashboard_source
-    assert "definition.date_from = 'Oldest'" in dashboard_source
-    assert "definition.date_to = 'Newest'" in dashboard_source
-    assert 'schedule_dashboard_warmup(workspace, dashboard_id, saved_definition, user.username, force=True)' in dashboard_source
-    assert 'state = dashboard_warmup_cancellations.setdefault(key, {' in dashboard_source
-    assert 'cancelled=must_yield,' in dashboard_source
+    # A Dashboard is prepared when it is opened (from the columnar copies of its CDRs): nothing is pre-cached.
+    assert 'schedule_dashboard_warmup' not in dashboard_source
+    assert 'register_idle_dashboard_warmup' not in dashboard_source
     assert "last = sessionStorage.getItem(openStorageKey) || '';" in script
     assert 'const restoreOpenDashboard = restorePageState;' not in script
-
 
 def test_ppt_job_can_open_its_immutable_dashboard_snapshot() -> None:
     root = Path(__file__).parents[1] / 'src'
@@ -6326,6 +6291,28 @@ def test_background_task_stop_endpoint_stops_accessible_workspace_work(client) -
     with app_module.AUTO_CALCULATED_FIELD_JOBS_LOCK:
         assert app_module.AUTO_CALCULATED_FIELD_JOBS['stoppable-auto-fields']['cancel_requested'] is True
         app_module.AUTO_CALCULATED_FIELD_JOBS.pop('stoppable-auto-fields')
+
+
+def test_a_points_lost_map_can_be_stopped_from_its_background_card(client) -> None:
+    import src.DriveTestAnalyzer as app_module
+    from src.modules import saved_filters
+
+    login(client)
+    workspace = app_module.active_workspace
+    key = saved_filters._points_loss_key(workspace.database_path, 41)
+    saved_filters._points_loss_jobs[key] = {'status': 'processing', 'queued_at': 1.0, 'started_at': 1.0, 'progress': 30.0,
+                                            'detail': 'Mapping the Data tests: KPI 3 of 21'}
+    try:
+        [card] = [task for task in app_module._saved_filter_points_loss_tasks(workspace) if task['id'] == 'saved-filter-map:41']
+        assert card['stop_url'] == f'/api/background-tasks/{workspace.id}/stop'
+        response = client.post(card['stop_url'], data={'task_id': card['stop_task_id']})
+        assert response.status_code == 200
+        assert saved_filters._points_loss_jobs[key]['stop'] is True
+        assert any(row['action'] == 'stop_points_loss_map' for row in app_module.repository.list_logs(limit=20))
+    finally:
+        saved_filters._points_loss_jobs.pop(key, None)
+    # Once it ended, it can no longer be stopped.
+    assert client.post(card['stop_url'], data={'task_id': card['stop_task_id']}).status_code == 409
 
 
 def test_orphaned_auto_field_materialization_can_be_stopped_from_background_panel(client, monkeypatch) -> None:

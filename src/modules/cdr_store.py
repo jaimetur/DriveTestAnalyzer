@@ -1405,14 +1405,7 @@ def _raw(database_path: Any, kind: str, dataset_id: int, columns: list[str], row
     if missing:
         raise KeyError(f'The CDR {dataset_id} has no column {missing[0]}.')
     wanted = list(dict.fromkeys(columns))
-    parts = []
-    for column in wanted:
-        parts.append(quote(column))
-        if types[column].startswith('MIXED:'):
-            parts.extend(quote(prefix + column) for prefix, part in ((INT_PREFIX, 'I'), (REAL_PREFIX, 'R'))
-                         if part in types[column])
-        elif types[column] == 'DOUBLE:I':
-            parts.append(quote(INT_PREFIX + column))
+    parts = [quote(column) for column in stored_parts(wanted, types)]
     source = _sql_text(cdr_parts(root, kind, dataset_id))
     duck = duckdb.connect()
     try:
@@ -1426,6 +1419,24 @@ def _raw(database_path: Any, kind: str, dataset_id: int, columns: list[str], row
                            f'ORDER BY {quote(ROWID)}{f" LIMIT {int(first)}" if first is not None else ""}').df()
     finally:
         duck.close()
+    return copy_values(raw, wanted, types), len(raw)
+
+
+def stored_parts(columns: list[str], types: dict[str, str]) -> list[str]:
+    """The columns of a copy that hold ``columns``: each, and its integer and real companions."""
+    parts = []
+    for column in columns:
+        parts.append(column)
+        if types[column].startswith('MIXED:'):
+            parts.extend(prefix + column for prefix, part in ((INT_PREFIX, 'I'), (REAL_PREFIX, 'R')) if part in types[column])
+        elif types[column] == 'DOUBLE:I':
+            parts.append(INT_PREFIX + column)
+    return parts
+
+
+def copy_values(raw: pd.DataFrame, wanted: list[str], types: dict[str, str]) -> dict[str, tuple[str, Any]]:
+    """The values of ``wanted`` columns of a frame DuckDB read from a copy (with their companions, see stored_parts),
+    as _raw gives them."""
     values: dict[str, tuple[str, Any]] = {}
     for column in wanted:
         column_type = types[column]
@@ -1455,7 +1466,7 @@ def _raw(database_path: Any, kind: str, dataset_id: int, columns: list[str], row
             text_values = raw[column].astype(object).to_numpy()
             text_values[pd.isna(text_values)] = None
             values[column] = ('text', text_values)
-    return values, len(raw)
+    return values
 
 
 def _python_values(part: tuple[str, Any]) -> Any:
@@ -1692,9 +1703,14 @@ def query_cdr(database_path: Any, kind: str, dataset_id: int, selected: list[tup
     physical = list(dict.fromkeys(column for _requested, column in selected))
 
     def frame_of(values: dict[str, tuple[str, Any]], length: int, order: Any = None) -> pd.DataFrame:
-        frame = pd.DataFrame({requested: _typed([values[column]], length) for requested, column in selected},
-                             columns=[requested for requested, _column in selected], index=range(length))
-        return frame if order is None else frame.iloc[order].reset_index(drop=True)
+        # Each column is put in ``order`` before the frame is built, so it is built once.
+        typed = {column: _typed([values[column]], length) for column in physical}
+        if order is not None:
+            order = np.asarray(order, dtype=np.intp)
+            typed = {column: array.take(order) for column, array in typed.items()}
+            length = len(order)
+        return pd.DataFrame({requested: typed[column] for requested, column in selected},
+                            columns=[requested for requested, _column in selected], index=range(length))
 
     if not where:
         values, length = _raw(database_path, kind, dataset_id, physical)

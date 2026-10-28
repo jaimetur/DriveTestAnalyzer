@@ -66,8 +66,17 @@ OTHER = 'Other'
 ENTRY_FIELDS = frozenset({'environment', 'kpi_code', 'areas', 'weight', 'tests'})
 LATITUDE, LONGITUDE, PLACE = '__latitude', '__longitude', '__place'
 MAX_AREA_POINTS = 60
+# The columns AreaGeometry reads.
+_PLACE_COLUMNS = frozenset({LATITUDE, LONGITUDE, PLACE, SETTING, MODE,
+                            *(AREA_COLUMN.format(field) for field in (*AREA_FIELDS, AREA, VENDOR, SITE, STRETCH))})
 MAX_BACKGROUND_POINTS = 4000
 _RATIO = re.compile(r'(100 \* )?(SUM|COUNT)\((.+)\) / (SUM|COUNT)\((\w+)\)')
+# The packet loss KPI weighs each test by the packets it lost.
+PACKET_LOSS_FORMULA = '100 * SUM(totalpacketlost) / SUM(Packets_Sent)'
+LOST_PACKET_FIELDS = ('Packets_Lost', 'Packets_Discarded', 'Packets_Corrupted', 'Packets_Not_Sent')
+# The pairs of areas whose losses are kept together: each City (or route) in each map area, each Vendor and each Region
+# in each City or route.
+PAIR_FIELDS = ((CITY_AREA, 'City', AREA), (VENDOR_CITY, VENDOR, 'City'), (REGION_CITY, 'Region', 'City'))
 _AGGREGATE = re.compile(r'(AVG|MEDIAN|PCT90)\((\w+)\)')
 
 
@@ -98,11 +107,54 @@ def site_parts(key: str) -> tuple[str, str]:
     return (network, site) if _separator else ('', network)
 
 
+def _distinct(values: pd.Series | pd.DataFrame) -> tuple[pd.Series | pd.DataFrame, Any] | None:
+    """The distinct values (or rows) of text columns, in the order they first appear, and the position of each row
+    among them, so an operation that looks at each value alone runs once per value; None for other columns."""
+    import numpy as np
+
+    columns = [values] if isinstance(values, pd.Series) else [values[name] for name in values.columns]
+    if any(column.dtype == object and pd.api.types.infer_dtype(column, skipna=True) not in ('string', 'empty')
+           for column in columns):
+        return None
+    if isinstance(values, pd.Series):
+        codes, _uniques = pd.factorize(values, use_na_sentinel=False)
+    else:
+        codes = values.groupby(list(values.columns), dropna=False, sort=False).ngroup().to_numpy()
+    _unique, first = np.unique(codes, return_index=True)
+    return values.iloc[first], codes
+
+
+def _each_distinct(values: pd.Series, operation: Callable[[pd.Series], Any]) -> Any:
+    """``operation`` (which looks at each value alone) of every value, run once per distinct value."""
+    distinct = _distinct(values)
+    if distinct is None:
+        return operation(values)
+    result = operation(distinct[0])
+    taken = (result.take(distinct[1]) if isinstance(result, pd.Categorical)
+             else result.array.take(distinct[1]))
+    return taken if isinstance(result, pd.Categorical) else pd.Series(taken, index=values.index, name=result.name)
+
+
 def _serving_columns(frame: pd.DataFrame, source: pd.DataFrame, resolve) -> None:
     """The Vendor, Site Type and Site of the cell that served each test, when the CDR has them."""
+    resolved = {name: next((found for alias in aliases if (found := resolve(source.columns, alias)) is not None), None)
+                for name, aliases in SERVING_SOURCES.items()}
+    columns = list(dict.fromkeys(column for column in resolved.values() if column is not None))
+    distinct = _distinct(source[columns]) if columns else None
+    if distinct is None:
+        _serving_labels(frame, source, resolved)
+        return
+    # The labels of each distinct combination of the serving columns, then of every row.
+    labels = pd.DataFrame(index=distinct[0].index)
+    _serving_labels(labels, distinct[0], resolved)
+    for name in labels.columns:
+        frame[name] = pd.Series(labels[name].array.take(distinct[1]), index=frame.index)
+
+
+def _serving_labels(frame: pd.DataFrame, source: pd.DataFrame, resolved: dict[str, str | None]) -> None:
     def column(name: str):
-        resolved = next((found for alias in SERVING_SOURCES[name] if (found := resolve(source.columns, alias)) is not None), None)
-        return source[resolved].astype('string').str.strip().replace('', pd.NA) if resolved is not None else None
+        return (source[resolved[name]].astype('string').str.strip().replace('', pd.NA) if resolved[name] is not None
+                else None)
 
     vendor, network, host, site, scenario = (column(name) for name in ('vendor', 'network', 'host', 'site', 'scenario'))
     if vendor is not None:
@@ -178,7 +230,7 @@ def attach_location(frame: pd.DataFrame, source: pd.DataFrame, kind: str, resolv
     for field, aliases in AREA_FIELDS.items():
         column = next((resolved for alias in aliases if (resolved := resolve(source.columns, alias)) is not None), None)
         if column is not None:
-            frame[AREA_COLUMN.format(field)] = source[column].astype('string').str.strip()
+            frame[AREA_COLUMN.format(field)] = _each_distinct(source[column], lambda values: values.astype('string').str.strip())
     for latitude_name, longitude_name in COORDINATE_SOURCES.get(kind, ()):
         latitude, longitude = resolve(source.columns, latitude_name), resolve(source.columns, longitude_name)
         if latitude is not None and longitude is not None:
@@ -205,15 +257,16 @@ def attach_location(frame: pd.DataFrame, source: pd.DataFrame, kind: str, resolv
             break
     level_2 = resolve(source.columns, 'G_Level_2')
     # Drive City tests are places; other tests (Connecting Roads) follow a route.
-    frame[PLACE] = (source[level_2].astype('string').str.casefold() == 'city') if level_2 is not None else True
+    frame[PLACE] = (_each_distinct(source[level_2], lambda values: values.astype('string').str.casefold() == 'city')
+                    if level_2 is not None else True)
     _setting_columns(frame, source, resolve)
     _serving_columns(frame, source, resolve)
     _stretch_column(frame)
     for field in SHARE_FIELDS:
         column = AREA_COLUMN.format(field)
         if column in frame:
-            frame[SHARE_COLUMN.format(field)] = pd.Categorical(
-                frame[column].fillna(NOT_SPECIFIED).replace('', NOT_SPECIFIED).astype(str))
+            frame[SHARE_COLUMN.format(field)] = _each_distinct(frame[column], lambda values: pd.Categorical(
+                values.fillna(NOT_SPECIFIED).replace('', NOT_SPECIFIED).astype(str)))
 
 
 def _rings(geometry, precision: int) -> list[list[list[float]]]:
@@ -291,9 +344,8 @@ def test_weights(frame: pd.DataFrame, metric: dict[str, Any], thresholds: dict[s
     weights = pd.Series(0.0, index=frame.index)
     if selected.empty:
         return weights
-    if formula == '100 * SUM(totalpacketlost) / SUM(Packets_Sent)':
-        lost = sum((_numeric(selected, field).fillna(0) if field in selected else 0)
-                   for field in ('Packets_Lost', 'Packets_Discarded', 'Packets_Corrupted', 'Packets_Not_Sent'))
+    if formula == PACKET_LOSS_FORMULA:
+        lost = sum((_numeric(selected, field).fillna(0) if field in selected else 0) for field in LOST_PACKET_FIELDS)
         weights.loc[selected.index] = pd.Series(lost, index=selected.index).clip(lower=0)
         return weights
     ratio = _RATIO.fullmatch(formula)
@@ -327,7 +379,7 @@ def counts_tests(metric: dict[str, Any]) -> bool:
     """Whether a KPI's test weights count tests (a ratio of tests that miss it), so its total weight is a number of
     tests: failed calls, POLQA below 1.6, transfers below a threshold..."""
     formula = metric['calculation']['formula']
-    return formula != '100 * SUM(totalpacketlost) / SUM(Packets_Sent)' and _RATIO.fullmatch(formula) is not None
+    return formula != PACKET_LOSS_FORMULA and _RATIO.fullmatch(formula) is not None
 
 
 def _category_shares(frame: pd.DataFrame, weights: pd.Series, total: float) -> dict[str, dict[str, float]]:
@@ -354,7 +406,7 @@ def _category_shares(frame: pd.DataFrame, weights: pd.Series, total: float) -> d
         if field_shares:
             shares[field] = field_shares
     lost = values > 0
-    for pair_field, first, second in ((CITY_AREA, 'City', AREA), (VENDOR_CITY, VENDOR, 'City'), (REGION_CITY, 'Region', 'City')):
+    for pair_field, first, second in PAIR_FIELDS:
         if first not in codes or second not in codes or not lost.any():
             continue
         # Where each City (or route) loses, in each map area; where each Vendor loses, in each City or route.
@@ -428,6 +480,58 @@ def area_shares(frame: pd.DataFrame, weights: pd.Series) -> dict[str, dict[str, 
     return shares
 
 
+def _most_common(pairs: pd.DataFrame, column: str, label_column: str) -> dict[str, str]:
+    """The most common label of each value of ``column``, as ``value_counts().index[0]`` of its labels: the most
+    frequent one, ties ordered as pandas orders them."""
+    import numpy as np
+    from pandas.core.sorting import nargsort
+
+    names, name_values = pd.factorize(pairs[column])
+    labels, label_values = pd.factorize(pairs[label_column])
+    if not len(names):
+        return {}
+    unique, first, counts = np.unique(names.astype(np.int64) * len(label_values) + labels, return_index=True,
+                                      return_counts=True)
+    owners = unique // len(label_values)
+    # The labels of each value in the order they first appear, as value_counts lists them before sorting.
+    order = np.lexsort((first, owners))
+    owners, labels, counts = owners[order], (unique % len(label_values))[order], counts[order]
+    bounds = np.searchsorted(owners, np.arange(len(name_values) + 1))
+    common = {}
+    for position, (low, high) in enumerate(zip(bounds[:-1].tolist(), bounds[1:].tolist())):
+        best = low if high - low == 1 else low + int(nargsort(counts[low:high], kind='quicksort', ascending=False)[0])
+        common[str(name_values[position])] = str(label_values[labels[best]])
+    return common
+
+
+def _value_counts_by(keys: Any, values: pd.Series, count: int) -> list[list[tuple[str, int]]]:
+    """For each key (0 to ``count`` - 1), ``values.dropna().value_counts()`` of its rows as (value, count) pairs in the
+    order pandas lists them: the most frequent first, ties ordered as pandas orders them."""
+    import numpy as np
+    from pandas.core.sorting import nargsort
+
+    present = values.notna().to_numpy()
+    labels, label_values = pd.factorize(values[present])
+    by_key: list[list[tuple[str, int]]] = [[] for _key in range(count)]
+    if not len(labels):
+        return by_key
+    unique, first, counts = np.unique(np.asarray(keys)[present].astype(np.int64) * len(label_values) + labels,
+                                      return_index=True, return_counts=True)
+    owners = unique // len(label_values)
+    # The values of each key in the order they first appear, as value_counts lists them before sorting.
+    order = np.lexsort((first, owners))
+    owners, labels, counts = owners[order], (unique % len(label_values))[order], counts[order]
+    bounds = np.searchsorted(owners, np.arange(count + 1))
+    names = [str(value) for value in label_values]
+    for key, (low, high) in enumerate(zip(bounds[:-1].tolist(), bounds[1:].tolist())):
+        if high - low == 1:
+            by_key[key] = [(names[labels[low]], int(counts[low]))]
+        elif high > low:
+            by_key[key] = [(names[labels[low + index]], int(counts[low + index]))
+                           for index in nargsort(counts[low:high], kind='quicksort', ascending=False)]
+    return by_key
+
+
 class AreaGeometry:
     """Centroids, route points and a background sample of the test locations."""
 
@@ -441,8 +545,12 @@ class AreaGeometry:
         self.used_areas: set[str] = set()
 
     def add(self, frame: pd.DataFrame) -> None:
+        import numpy as np
+
         if LATITUDE not in frame or LONGITUDE not in frame:
             return
+        # Only the columns of the places are copied.
+        frame = frame[[column for column in frame.columns if column in _PLACE_COLUMNS]]
         located = frame[frame[LATITUDE].between(-90, 90) & frame[LONGITUDE].between(-180, 180)
                         & ~((frame[LATITUDE] == 0) & (frame[LONGITUDE] == 0))]
         if located.empty:
@@ -459,38 +567,44 @@ class AreaGeometry:
             column = AREA_COLUMN.format(field)
             if column not in located:
                 continue
-            for area, group in located.groupby(located[column].fillna(NOT_SPECIFIED)):
+            # Each area in the order of its name, with its tests together in the order of the rows.
+            codes, names = pd.factorize(located[column].fillna(NOT_SPECIFIED), sort=True)
+            order = np.argsort(codes, kind='stable')
+            sizes = np.bincount(codes, minlength=len(names))
+            ends = np.cumsum(sizes)
+            starts = ends - sizes
+            latitudes = located[LATITUDE].to_numpy(dtype=float)[order]
+            longitudes = located[LONGITUDE].to_numpy(dtype=float)[order]
+            places = (np.bincount(codes[located[PLACE].fillna(True).astype(bool).to_numpy()], minlength=len(names))
+                      if PLACE in located else sizes)
+            counted = {}
+            if field == 'City':
+                # The map areas of the tests of each City or route (to show it alone on the map), the vendors of the
+                # cells that served them, and their Regions (performance owners), settings and modes.
+                for key, source_column in (('area_tests', AREA_COLUMN.format(AREA)), ('vendor_tests', AREA_COLUMN.format(VENDOR)),
+                                           ('region_tests', AREA_COLUMN.format('Region')), ('setting_tests', SETTING),
+                                           ('mode_tests', MODE)):
+                    if source_column in located:
+                        counted[key] = _value_counts_by(codes, located[source_column], len(names))
+            for position, area in enumerate(names):
                 entry = self.areas[field].setdefault(str(area), {
                     'latitude_sum': 0.0, 'longitude_sum': 0.0, 'tests': 0, 'places': 0, 'points': [], 'area_tests': {}})
-                # The map areas of the tests of each City or route, to show it alone on the map.
-                map_area = AREA_COLUMN.format(AREA)
-                if field == 'City' and map_area in group:
-                    for name, count in group[map_area].dropna().value_counts().items():
-                        entry['area_tests'][str(name)] = entry['area_tests'].get(str(name), 0) + int(count)
-                vendor = AREA_COLUMN.format(VENDOR)
-                if field == 'City' and vendor in group:
-                    # The vendors of the cells that served the tests of each City or route.
-                    counts = entry.setdefault('vendor_tests', {})
-                    for name, count in group[vendor].dropna().value_counts().items():
-                        counts[str(name)] = counts.get(str(name), 0) + int(count)
-                if field == 'City':
-                    # The Regions (performance owners), settings and modes of the tests of each City or route.
-                    for key, source_column in (('region_tests', AREA_COLUMN.format('Region')), ('setting_tests', SETTING),
-                                               ('mode_tests', MODE)):
-                        if source_column in group:
-                            counts = entry.setdefault(key, {})
-                            for name, count in group[source_column].dropna().value_counts().items():
-                                if str(name) and str(name) != NOT_SPECIFIED:
-                                    counts[str(name)] = counts.get(str(name), 0) + int(count)
-                entry['latitude_sum'] += float(group[LATITUDE].sum())
-                entry['longitude_sum'] += float(group[LONGITUDE].sum())
-                entry['tests'] += len(group)
-                entry['places'] += int(group[PLACE].fillna(True).astype(bool).sum()) if PLACE in group else len(group)
+                for key, by_area in counted.items():
+                    counts = entry.setdefault(key, {})
+                    for name, count in by_area[position]:
+                        if key in ('area_tests', 'vendor_tests') or (name and name != NOT_SPECIFIED):
+                            counts[name] = counts.get(name, 0) + count
+                low, high = int(starts[position]), int(ends[position])
+                entry['latitude_sum'] += float(latitudes[low:high].sum())
+                entry['longitude_sum'] += float(longitudes[low:high].sum())
+                entry['tests'] += high - low
+                entry['places'] += int(places[position])
                 room = MAX_AREA_POINTS - len(entry['points'])
                 if room > 0:
-                    sample = group[[LATITUDE, LONGITUDE]].iloc[::max(1, len(group) // room)].head(room)
-                    entry['points'].extend([round(float(lat), 4), round(float(lon), 4)]
-                                           for lat, lon in sample.itertuples(index=False))
+                    step = max(1, (high - low) // room)
+                    entry['points'].extend([round(float(lat), 4), round(float(lon), 4)] for lat, lon
+                                           in zip(latitudes[low:high:step][:room].tolist(),
+                                                  longitudes[low:high:step][:room].tolist()))
 
         self._add_places(located)
 
@@ -511,17 +625,17 @@ class AreaGeometry:
             for label_field in ((VENDOR, 'City', 'Region') if field == SITE else (VENDOR, 'Region')):
                 label_column = AREA_COLUMN.format(label_field)
                 if label_column in rows:
-                    labels[label_field] = (rows[[column, label_column]].dropna().astype(str)
-                                           .groupby(column)[label_column].agg(lambda values: values.value_counts().index[0]))
+                    labels[label_field] = _most_common(rows[[column, label_column]].dropna().astype(str), column, label_column)
             entries = self.places[field]
-            for name, row in sums.iterrows():
+            for name, latitude, longitude, tests in zip(sums.index.tolist(), sums[LATITUDE].tolist(),
+                                                        sums[LONGITUDE].tolist(), counts.tolist()):
                 entry = entries.setdefault(name, {'latitude_sum': 0.0, 'longitude_sum': 0.0, 'tests': 0})
-                entry['latitude_sum'] += float(row[LATITUDE])
-                entry['longitude_sum'] += float(row[LONGITUDE])
-                entry['tests'] += int(counts[name])
+                entry['latitude_sum'] += float(latitude)
+                entry['longitude_sum'] += float(longitude)
+                entry['tests'] += int(tests)
                 for label_field, values in labels.items():
-                    if name in values.index and label_field.casefold() not in entry:
-                        entry[label_field.casefold()] = str(values[name])
+                    if name in values and label_field.casefold() not in entry:
+                        entry[label_field.casefold()] = values[name]
 
     def map_areas(self, index) -> dict[str, Any]:
         """The map areas of the tests (see ``map_areas.AreaIndex.document``)."""

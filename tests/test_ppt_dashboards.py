@@ -248,16 +248,13 @@ def test_auto_calculated_field_editor_uses_wide_content_aware_dialog_geometry():
     assert script.count('updateSaveActions();\n        finish();') == 2
 
 
-def test_dashboard_warmup_retries_contention_and_compact_panel_headers_stay_aligned():
+def test_dashboards_prepare_nothing_in_the_background_and_compact_panel_headers_stay_aligned():
     dashboard_module = (Path(__file__).parents[1] / 'src/modules/ppt_dashboards.py').read_text(encoding='utf-8')
     app_stylesheet = (Path(__file__).parents[1] / 'src/web_interface/static/css/app.css').read_text(encoding='utf-8')
     dashboard_stylesheet = (Path(__file__).parents[1] / 'src/web_interface/static/css/ppt_dashboards.css').read_text(encoding='utf-8')
 
-    # Pre-caching runs on its own thread and pauses for foreground work instead
-    # of re-submitting itself to the shared application scheduler.
-    assert 'dashboard_warmup_condition = Condition(lock)' in dashboard_module
-    assert "Thread(target=warmup_worker, name='dashboard-cache-warmup', daemon=True)" in dashboard_module
-    assert 'def foreground_dashboard_work(workspace: str):' in dashboard_module
+    # A Dashboard is prepared when it is opened, from the columnar copies of its CDRs: nothing is pre-cached.
+    assert 'warmup' not in dashboard_module
     assert 'core.submit_background_task(delayed_retry)' not in dashboard_module
     assert 'core.submit_background_task(run)' not in dashboard_module
     assert '.collapsible-summary .collapse-chip {' in app_stylesheet
@@ -464,64 +461,6 @@ def test_dashboard_all_values_expands_when_saved_universe_gains_a_new_value(clie
     assert prepared.status_code == 200, prepared.text
     assert prepared.json()['options']['Test_Name'] == ['HTTP DL', 'HTTP UL']
     assert prepared.json()['rows']['data'] == 4
-
-
-def test_dashboard_background_warmup_prepares_the_five_automatic_date_universes(client):
-    payload = setup_dashboard(client)
-    # Each new CDR is a campaign of its own: the universes are every campaign and the newest one to four.
-    for index in (2, 3, 4, 5):
-        response = client.post('/datasets-analysis/upload', data={'dataset_kinds': 'data'}, files={
-            'dataset_files': (
-                f'sample-{index}.csv',
-                BytesIO(f'Campaign,Operator,City,Mean_Data_Rate,Test_Name,Test_Start_Time\nUK_Q{index - 1}_2026,A,London,{index},HTTP DL,2026-09-0{index}\n'.encode()),
-                'text/csv',
-            ),
-        })
-        assert response.status_code == 200
-    # A CDR of the other NR Mode is never part of an NSA Dashboard universe.
-    response = client.post('/datasets-analysis/upload', data={'dataset_kinds': 'data'}, files={
-        'dataset_files': (
-            'sample_SA.csv',
-            BytesIO(b'Operator,City,Mean_Data_Rate,Test_Name,Test_Start_Time\nA,London,9,HTTP DL,2026-09-09\n'),
-            'text/csv',
-        ),
-    })
-    assert response.status_code == 200
-    assert core.repository.get_dataset(6)['nr_mode'] == 'SA'
-    dashboard_id = 'five-universes'
-    assert client.put(f'/api/ppt-dashboards/{dashboard_id}', json=payload).status_code == 200
-
-    # (The universes are cached in the background: a busy machine, such as parallel tests, needs more time.)
-    deadline = time.monotonic() + 60
-    dashboard_status = {}
-    while time.monotonic() < deadline:
-        dashboard_status = client.get('/api/ppt-dashboards/statuses').json()[dashboard_id]
-        if dashboard_status['state'] != 'loading-data':
-            break
-        assert dashboard_status['label'].startswith('Pre-Caching Universe ')
-        time.sleep(0.05)
-
-    # Every universe is cached; the charts render when viewed or while idle.
-    assert dashboard_status['state'] == 'charts-queued'
-    assert dashboard_status['label'].startswith('Data Cached · Charts')
-    manifests = [
-        json.loads(path.read_text(encoding='utf-8'))
-        for path in (Path(core.repository.db_path).parent / '.dashboard-data-cache' / 'dashboard-previews').glob('*.json')
-    ]
-    definitions = [manifest['definition'] for manifest in manifests if manifest.get('dashboard_id') == dashboard_id]
-    assert {tuple(definition['datasets']['data']) for definition in definitions} == {
-        (5, 4, 3, 2, 1), (5,), (5, 4), (5, 4, 3), (5, 4, 3, 2),
-    }
-    assert {
-        tuple(definition['datasets']['data']): (definition['date_from'], definition['date_to'])
-        for definition in definitions
-    } == {
-        (5, 4, 3, 2, 1): ('2026-09-01', '2026-09-05'),
-        (5,): ('2026-09-05', '2026-09-05'),
-        (5, 4): ('2026-09-04', '2026-09-05'),
-        (5, 4, 3): ('2026-09-03', '2026-09-05'),
-        (5, 4, 3, 2): ('2026-09-02', '2026-09-05'),
-    }
 
 
 def test_dashboard_template_change_preserves_saved_scope_dates_and_filters(client):
@@ -2114,7 +2053,8 @@ def test_dashboards_lifecycle_and_layout(client, ppt_reporting_old):
     assert interactive.json()['type'] == 'cdf'
     assert interactive.json()['renderer'] == 'catalog-v2'
     assert interactive.json()['series']
-    assert list((Path(core.repository.db_path).parent / '.dashboard-data-cache' / 'charts-pil').glob('*.png'))
+    # Charts and their images are kept in memory only.
+    assert not (Path(core.repository.db_path).parent / '.dashboard-data-cache').exists()
     entry = core.load_template_catalogue(next(row['content'] for row in core.repository.list_report_templates() if row['name'] == 'Dashboard test'))[0]
     assert not core.is_empty_catalog_chart(image.content, entry)
     data = client.get(f'/api/ppt-dashboards/data/{token}/0').json()
@@ -2449,10 +2389,8 @@ def test_dashboard_is_prepared_only_when_opened_and_then_reuses_manifest(client)
     response = client.get(f'/api/ppt-dashboards/prefetched/{dashboard_id}')
     assert response.status_code == 200, response.text
     assert response.json()['slides']
-    manifests = list(
-        (Path(core.repository.db_path).parent / '.dashboard-data-cache' / 'dashboard-previews').glob('*.json')
-    )
-    assert manifests
+    # Its preparation is kept in memory only.
+    assert not (Path(core.repository.db_path).parent / '.dashboard-data-cache').exists()
     token = prepared.json()['token']
     for _ in range(130):
         assert client.get('/api/ppt-dashboards/statuses').status_code == 200
@@ -2480,7 +2418,7 @@ def test_closed_dashboard_status_uses_its_remembered_session_universe(client):
     assert session_status['state'] in {'loading-data', 'charts-queued', 'ready'}
 
 
-def test_saving_dashboard_prepares_data_in_background_without_rendering_charts(client, monkeypatch):
+def test_saving_dashboard_prepares_nothing_and_renders_no_chart(client, monkeypatch):
     payload = setup_dashboard(client)
     import src.modules.ppt_dashboards as dashboards_module
     monkeypatch.setattr(
@@ -2491,10 +2429,8 @@ def test_saving_dashboard_prepares_data_in_background_without_rendering_charts(c
     dashboard_id = 'saved-dashboard'
     assert client.put(f'/api/ppt-dashboards/{dashboard_id}', json=payload).status_code == 200
     assert client.get(f'/api/ppt-dashboards/prefetched/{dashboard_id}').status_code == 409
-    saved_status = client.get('/api/ppt-dashboards/statuses').json()[dashboard_id]
-    # Its data is being cached in the background, or already cached with its charts waiting to be rendered.
-    assert saved_status['state'] in {'loading-data', 'charts-queued'}
-    assert saved_status['label'].startswith(('Pre-Caching Universe ', 'Data Cached · Charts'))
+    # It has CDRs to show: it is prepared when opened, nothing in the background.
+    assert client.get('/api/ppt-dashboards/statuses').json()[dashboard_id] == {'state': 'ready', 'label': 'Ready'}
 
 
 def test_direct_dashboard_preparation_separates_queue_and_execution_timestamps(client, monkeypatch):
@@ -2567,14 +2503,7 @@ def test_applying_filters_prepares_only_data_and_renders_charts_on_demand(client
     core.repository.set_workspace_state('ppt_dashboards_v2', json.dumps({'filtered-dashboard': payload}))
     uncached = client.get('/api/ppt-dashboards/statuses')
     assert uncached.status_code == 200
-    assert uncached.json()['filtered-dashboard']['state'] in {'loading-data', 'charts-queued', 'ready'}
-    # That status request queues the background pre-caching of the Dashboard.
-    # Let it finish, so it cannot replace the prepared universe while the
-    # charts below are rendered and counted.
-    deadline = time.monotonic() + 30
-    while client.get('/api/ppt-dashboards/statuses').json()['filtered-dashboard']['state'] == 'loading-data':
-        assert time.monotonic() < deadline, 'The Dashboard pre-caching did not finish.'
-        time.sleep(0.05)
+    assert uncached.json()['filtered-dashboard'] == {'state': 'ready', 'label': 'Ready'}
 
     calls = []
     original = dashboards_module.catalog_chart_payload
@@ -2587,30 +2516,19 @@ def test_applying_filters_prepares_only_data_and_renders_charts_on_demand(client
     response = client.post('/api/ppt-dashboards/prepare?dashboard_id=filtered-dashboard', json=payload)
     assert response.status_code == 200, response.text
 
-    cache_dir = Path(core.repository.db_path).parent / '.dashboard-data-cache' / 'charts-canvas'
-    assert not list(cache_dir.glob('*.json'))
     assert calls == []
-    assert client.get('/api/ppt-dashboards/statuses').json()['filtered-dashboard'] == {
-        'state': 'charts-queued', 'label': 'Data Cached · Charts 0/3',
-        'detail': 'Data cached; charts render when viewed or while the application is idle',
-    }
 
     token = response.json()['token']
     for index in range(3):
         rendered = client.get(f'/api/ppt-dashboards/chart/{token}/{index}')
         assert rendered.status_code == 200, rendered.text
-    first_models = {path.name for path in cache_dir.glob('*.json')}
-    assert len(first_models) == 3
     assert len(calls) == 3
-    # Data and every chart of the default universe are ready.
-    assert client.get('/api/ppt-dashboards/statuses').json()['filtered-dashboard'] == {
-        'state': 'ready', 'label': 'Ready', 'detail': 'Data cached and all 3 charts rendered',
-    }
+    # The chart models are kept in memory only.
+    assert not (Path(core.repository.db_path).parent / '.dashboard-data-cache').exists()
 
     payload['filters'] = {'City': ['London']}
     filtered = client.post('/api/ppt-dashboards/prepare?dashboard_id=filtered-dashboard', json=payload)
     assert filtered.status_code == 200, filtered.text
-    assert {path.name for path in cache_dir.glob('*.json')} == first_models
     assert len(calls) == 3
 
     payload['filters'] = {}
@@ -2618,11 +2536,9 @@ def test_applying_filters_prepares_only_data_and_renders_charts_on_demand(client
     restored = client.post('/api/ppt-dashboards/prefetched/filtered-dashboard', json=payload)
     assert restored.status_code == 200, restored.text
     assert len(calls) == calls_before_restore
-    assert {path.name for path in cache_dir.glob('*.json')} == first_models
 
     core.repository.update_dataset_profile(1, progress=100)
-    refreshed_status = client.get('/api/ppt-dashboards/statuses').json()['filtered-dashboard']
-    assert refreshed_status['state'] in {'loading-data', 'charts-queued', 'ready'}
+    assert client.get('/api/ppt-dashboards/statuses').json()['filtered-dashboard']['state'] == 'ready'
 
 
 def test_adding_a_dataset_builds_a_new_chart_model_with_every_campaign(client):
@@ -2665,8 +2581,7 @@ def test_adding_a_dataset_builds_a_new_chart_model_with_every_campaign(client):
     assert combined_model.status_code == 200, combined_model.text
     assert {bar['key'][-1] for bar in combined_model.json()['bars']} == {'26-Q1', '26-Q2'}
 
-    cache_dir = Path(core.repository.db_path).parent / '.dashboard-data-cache' / 'charts-canvas'
-    assert len(list(cache_dir.glob('*.json'))) >= 2
+    assert not (Path(core.repository.db_path).parent / '.dashboard-data-cache').exists()
 
 
 def test_dashboard_api_session_expires_on_application_process_restart(client):
@@ -3513,10 +3428,6 @@ def test_cached_and_grouped_reads_produce_identical_chart_models(client, monkeyp
     assert not list(dashboards_module.column_cache_dir(core.repository.db_path).rglob('*.pkl'))
     monkeypatch.setattr(dashboards_module, 'DASHBOARD_COLUMN_CACHE', False)
     compact = [client.post(f'/api/ppt-dashboards/chart/{token}/{index}/refresh').json() for index in indexes]
-    # The grouped reads were persisted with their row counts (240 rows -> fewer groups).
-    grouped = [pd.read_pickle(path) for path in dashboards_module.frame_cache_dir(core.repository.db_path).glob('*.pkl')]
-    assert grouped and all('__catalog_rows' in frame.columns for frame in grouped)
-    assert all(len(frame) < frame['__catalog_rows'].sum() == 240 for frame in grouped)
     monkeypatch.setattr(dashboards_module, 'DASHBOARD_COMPACT_READS', False)
     complete = [client.post(f'/api/ppt-dashboards/chart/{token}/{index}/refresh').json() for index in indexes]
     assert all(model['type'] != 'empty' for model in complete)
@@ -3567,96 +3478,6 @@ def _wait_for(condition, timeout=60.0):
             return True
         time.sleep(0.2)
     return condition()
-
-
-def test_idle_chart_precompute_waits_for_quiet_periods_and_persists_models(client, monkeypatch):
-    import src.modules.ppt_dashboards as dashboards_module
-
-    payload = _compact_read_dashboard(client)
-    saved = client.put('/api/ppt-dashboards/idle-precompute', json=payload)
-    assert saved.status_code == 200, saved.text
-    model_dir = dashboards_module.canvas_model_cache_dir(core.repository.db_path)
-    column_dir = dashboards_module.column_cache_dir(core.repository.db_path)
-    shutil.rmtree(model_dir, ignore_errors=True)
-    shutil.rmtree(column_dir, ignore_errors=True)
-
-    # A user request just happened: the chart models must wait.
-    monkeypatch.setattr(core, 'IDLE_DASHBOARD_WARMUP_SECONDS', 3600)
-    core.IDLE_DASHBOARD_WARMUP_CALLBACK()
-    time.sleep(1.5)
-    assert not list(model_dir.glob('*.json'))
-    # One background worker handles every Dashboard.
-    assert [thread.name for thread in threading.enumerate() if thread.name.startswith('dashboard-')] == ['dashboard-cache-warmup']
-
-    # Once the application is quiet the charts are built and persisted; the
-    # columns they read are never written to disk.
-    monkeypatch.setattr(core, 'IDLE_DASHBOARD_WARMUP_SECONDS', 0)
-    assert _wait_for(lambda: len(list(model_dir.glob('*.json'))) >= 5)
-    assert not list(column_dir.rglob('*.pkl'))
-
-
-def test_background_work_builds_one_dashboard_at_a_time_in_creation_order(client, monkeypatch):
-    import src.modules.ppt_dashboards as dashboards_module
-
-    payload = _compact_read_dashboard(client)
-    without_starter_dashboards()
-    monkeypatch.setattr(core, 'IDLE_DASHBOARD_WARMUP_SECONDS', 3600)
-    for name in ('first', 'second', 'third'):
-        assert client.put(f'/api/ppt-dashboards/{name}', json={**payload, 'name': name.title()}).status_code == 200
-    finished = []
-    original_add_log = dashboards_module.Repository.add_log
-
-    def tracked_log(self, user, action, *args, **kwargs):
-        if action == 'precompute_dashboard_charts':
-            finished.append((json.loads(args[0])['dashboard_id'], threading.current_thread().name))
-        return original_add_log(self, user, action, *args, **kwargs)
-
-    monkeypatch.setattr(dashboards_module.Repository, 'add_log', tracked_log)
-    # The newest Dashboard is queued again first, yet the oldest is built first.
-    assert client.put('/api/ppt-dashboards/third', json={**payload, 'name': 'Third'}).status_code == 200
-    core.IDLE_DASHBOARD_WARMUP_CALLBACK()
-    # The call stands for the idle monitor's: the monitor of the server must not queue every Dashboard again while
-    # they are built (it would rebuild the first ones before the third).
-    with core.APPLICATION_ACTIVITY_LOCK:
-        monkeypatch.setattr(core, 'LAST_IDLE_DASHBOARD_WARMUP_ACTIVITY', core.LAST_INTERACTIVE_APPLICATION_ACTIVITY)
-    monkeypatch.setattr(core, 'IDLE_DASHBOARD_WARMUP_SECONDS', 0)
-    assert _wait_for(lambda: len(finished) == 3), finished
-    assert [dashboard_id for dashboard_id, _thread in finished] == ['first', 'second', 'third']
-    assert {thread for _dashboard_id, thread in finished} == {'dashboard-cache-warmup'}
-
-
-def test_chart_models_of_a_closed_workspace_never_hold_back_the_open_one(client, monkeypatch):
-    import src.modules.ppt_dashboards as dashboards_module
-
-    payload = _compact_read_dashboard(client)
-    without_starter_dashboards()
-    monkeypatch.setattr(core, 'IDLE_DASHBOARD_WARMUP_SECONDS', 3600)
-    for name in ('first', 'second', 'third'):
-        assert client.put(f'/api/ppt-dashboards/{name}', json={**payload, 'name': name.title()}).status_code == 200
-    # Their chart models wait for an idle application, and another workspace is opened before it comes.
-    core.IDLE_DASHBOARD_WARMUP_CALLBACK()
-    created = client.post('/workspace/create', data={'name': 'Second workspace'}, follow_redirects=False)
-    assert created.status_code == 303 and core.active_workspace.name == 'Second workspace'
-    payload = _compact_read_dashboard(client)
-    without_starter_dashboards()
-    for name in ('alpha', 'beta', 'gamma'):
-        assert client.put(f'/api/ppt-dashboards/{name}', json={**payload, 'name': name.title()}).status_code == 200
-    finished = []
-    original_add_log = dashboards_module.Repository.add_log
-
-    def tracked_log(self, user, action, *args, **kwargs):
-        if action == 'precompute_dashboard_charts':
-            finished.append(json.loads(args[0])['dashboard_id'])
-        return original_add_log(self, user, action, *args, **kwargs)
-
-    monkeypatch.setattr(dashboards_module.Repository, 'add_log', tracked_log)
-    core.IDLE_DASHBOARD_WARMUP_CALLBACK()
-    with core.APPLICATION_ACTIVITY_LOCK:
-        monkeypatch.setattr(core, 'LAST_IDLE_DASHBOARD_WARMUP_ACTIVITY', core.LAST_INTERACTIVE_APPLICATION_ACTIVITY)
-    monkeypatch.setattr(core, 'IDLE_DASHBOARD_WARMUP_SECONDS', 0)
-    # The chart models of the closed workspace wait until it is opened again: they never come first.
-    assert _wait_for(lambda: len(finished) == 3), finished
-    assert finished == ['alpha', 'beta', 'gamma']
 
 
 def test_preloaded_charts_wait_for_the_visible_slide(client, monkeypatch):

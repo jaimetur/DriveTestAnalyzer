@@ -10,6 +10,7 @@ import importlib
 import inspect
 import json
 import math
+import os
 import threading
 import time
 from datetime import date, datetime
@@ -2304,6 +2305,66 @@ class _MapGivesWay(Exception):
     """A Points Lost Map gives way to work of its workspace waiting before it (see queue_points_loss)."""
 
 
+class _MapStopped(Exception):
+    """A user stopped a Points Lost Map (see request_points_loss_stop)."""
+
+
+POINTS_LOSS_STOPPED = 'Stopped by a user before it was drawn'
+# The message of a Saved Filter whose Points Lost Map a user stopped: it is drawn again once the application is idle.
+POINTS_LOSS_STOPPED_MESSAGE = 'Scoring tables and GAP analysis are ready; the Points Lost Map was stopped'
+
+
+def request_points_loss_stop(database_path: Any, filter_id: int) -> bool:
+    """Stop the Points Lost Map of a Saved Filter: one waiting does not start, one being drawn stops at once (its process
+    is ended); its result keeps its scores, without the map. Returns whether it was waiting or drawn."""
+    with _points_loss_guard:
+        job = _points_loss_jobs.get(_points_loss_key(database_path, filter_id))
+        if job is None:
+            return False
+        job.update(stop=True, detail='Stopping')
+        return True
+
+
+def _points_loss_stopped(repository: Repository, filter_id: int) -> None:
+    """The result of a Saved Filter whose Points Lost Map a user stopped: its scores, and the map stopped."""
+    with repository.connection() as connection:
+        row = connection.execute(f'SELECT status, result_json FROM {SAVED_FILTERS_TABLE} WHERE id = ?', (int(filter_id),)).fetchone()
+    if row is None or row['status'] != 'completed' or not row['result_json']:
+        return
+    result = json.loads(row['result_json'])
+    if not (isinstance(result.get('points_loss'), dict) and result['points_loss'].get('pending')):
+        return
+    result['points_loss'] = {'version': 2, 'error': POINTS_LOSS_STOPPED}
+    _update_saved_filter(repository, filter_id, result_json=json.dumps(result, ensure_ascii=False, separators=(',', ':'),
+                                                                   allow_nan=False),
+                        message=POINTS_LOSS_STOPPED_MESSAGE)
+
+
+def stopped_points_loss_ids(repository: Repository) -> list[int]:
+    """The Saved Filters whose Points Lost Map a user stopped, the oldest first."""
+    with repository.connection() as connection:
+        return [int(row['id']) for row in connection.execute(
+            f"SELECT id FROM {SAVED_FILTERS_TABLE} WHERE status = 'completed' AND message = ? ORDER BY updated_at, id",
+            (POINTS_LOSS_STOPPED_MESSAGE,)).fetchall()]
+
+
+def resume_stopped_points_loss(repository: Repository, filter_id: int) -> bool:
+    """Make the Points Lost Map a user stopped pending again, to be drawn (see queue_points_loss); whether it was."""
+    with repository.connection() as connection:
+        row = connection.execute(f'SELECT status, message, result_json FROM {SAVED_FILTERS_TABLE} WHERE id = ?',
+                                 (int(filter_id),)).fetchone()
+    if row is None or row['status'] != 'completed' or row['message'] != POINTS_LOSS_STOPPED_MESSAGE or not row['result_json']:
+        return False
+    result = json.loads(row['result_json'])
+    if not (isinstance(result.get('points_loss'), dict) and result['points_loss'].get('error') == POINTS_LOSS_STOPPED):
+        return False
+    result['points_loss'] = {'version': 2, 'pending': True}
+    _update_saved_filter(repository, filter_id, result_json=json.dumps(result, ensure_ascii=False, separators=(',', ':'),
+                                                                   allow_nan=False),
+                        message='Scoring tables and GAP analysis are ready; preparing the Points Lost Map')
+    return True
+
+
 def queue_points_loss(repository: Repository, filter_id: int, submit: Callable[[Callable[[], None]], Any],
                       work_waiting: Callable[[], bool] | None = None) -> None:
     """Queue the Points Lost Map of a result calculated from the Scoring History as a job of its own.
@@ -2325,9 +2386,13 @@ def complete_saved_filter_points_loss(repository: Repository, filter_id: int,
     with _points_loss_guard:
         if key in _points_loss_jobs:
             _points_loss_jobs[key].update(status='processing', started_at=time.time(), progress=0,
-                                          detail='Reading the rows of the tests')
+                                          detail='Stopping' if _points_loss_jobs[key].get('stop') else 'Reading the rows of the tests')
 
     def report(progress: float, detail: str) -> None:
+        with _points_loss_guard:
+            stopped = bool(_points_loss_jobs.get(key, {}).get('stop'))
+        if stopped:
+            raise _MapStopped()
         if requeue is not None and work_waiting is not None and progress < 97 and work_waiting():
             raise _MapGivesWay()
         with _points_loss_guard:
@@ -2335,6 +2400,7 @@ def complete_saved_filter_points_loss(repository: Repository, filter_id: int,
                 _points_loss_jobs[key].update(progress=max(0.0, min(99.0, float(progress))), detail=detail)
     gave_way = False
     try:
+        report(0, 'Reading the rows of the tests')
         saved_filter = get_saved_filter(repository, filter_id, include_internal_snapshot=True)
         if saved_filter is None or not saved_filter.get('configuration'):
             return
@@ -2350,6 +2416,9 @@ def complete_saved_filter_points_loss(repository: Repository, filter_id: int,
                               _scoring_engine(), saved_filter.get('methodology_groups') or [], report)
     except _MapGivesWay:
         gave_way = True
+    except _MapStopped:
+        _points_loss_stopped(repository, filter_id)
+        repository.try_add_log('system', 'points_loss_map_stopped', json.dumps({'saved_filter_id': int(filter_id)}))
     finally:
         if not gave_way:
             with _points_loss_guard:
@@ -2411,6 +2480,90 @@ def _points_loss_of(repository: Repository, saved_filter: dict[str, Any], source
         return cached
     if cached_only:
         return None
+    if engine is scoring_engine and POINTS_LOSS_APART:
+        points_loss = _draw_points_loss_apart(repository, saved_filter, sources, configuration, context_filters, progress)
+    else:
+        points_loss = draw_points_loss(repository, saved_filter, sources, configuration, context_filters, engine, progress)
+    if key is not None:
+        points_loss = _serialize_result_value(points_loss)
+        scoring_cache.write(repository, 'points-loss', key, points_loss)
+    return points_loss
+
+
+# The Points Lost Map is drawn in a process of its own (points_loss_worker), unless this is switched off (the tests
+# draw it in theirs).
+POINTS_LOSS_APART = os.environ.get('DTA_POINTS_LOSS_IN_PROCESS') != '1'
+
+
+def _draw_points_loss_apart(repository: Repository, saved_filter: dict[str, Any], sources: list[dict[str, Any]],
+                            configuration: dict[str, Any], context_filters: dict[str, list[str]],
+                            progress: Callable[[float, str], None]) -> Any:
+    """draw_points_loss in a process of its own: ``progress`` follows its steps (and is called every half second, so a
+    stop or the work waiting is noticed at once: the process is ended when it raises)."""
+    import pickle
+    import queue
+    import subprocess
+    import sys
+    import tempfile
+    from src.config import PROJECT_ROOT
+    from src.modules.points_loss_worker import MESSAGE
+
+    with tempfile.TemporaryDirectory(prefix='points-loss-') as folder:
+        result_path = Path(folder) / 'map.pickle'
+        errors_path = Path(folder) / 'errors.txt'
+        registry = repository.workspace_registry_db_path
+        payload = {'db_path': str(Path(repository.db_path).resolve()),
+                   'global_db_path': str(Path(repository.global_db_path).resolve()),
+                   'registry_db_path': str(Path(registry).resolve()) if registry else '',
+                   'saved_filter': saved_filter, 'sources': sources, 'configuration': configuration,
+                   'context_filters': context_filters, 'result_path': str(result_path)}
+        with open(errors_path, 'wb') as errors:
+            process = subprocess.Popen([sys.executable, '-m', 'src.modules.points_loss_worker'], cwd=str(PROJECT_ROOT),
+                                       stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=errors)
+        messages: queue.Queue = queue.Queue()
+
+        def read_messages() -> None:
+            for line in process.stdout:
+                text = line.decode('utf-8', 'replace')
+                if text.startswith(MESSAGE):
+                    messages.put(json.loads(text[len(MESSAGE):]))
+
+        reader = threading.Thread(target=read_messages, name='points-loss-progress', daemon=True)
+        reader.start()
+        state = {'progress': 0.0, 'step': 'Reading the rows of the tests', 'error': None}
+        try:
+            process.stdin.write(pickle.dumps(payload, protocol=pickle.HIGHEST_PROTOCOL))
+            process.stdin.close()
+            while True:
+                try:
+                    message = messages.get(timeout=.5)
+                except queue.Empty:
+                    message = None
+                if message is not None:
+                    if 'error' in message:
+                        state['error'] = message['error']
+                    else:
+                        state.update(progress=message['progress'], step=message['step'])
+                progress(state['progress'], state['step'])
+                if message is None and process.poll() is not None:
+                    break
+        except BaseException:
+            process.kill()
+            raise
+        finally:
+            process.wait()
+            reader.join(timeout=5)
+        if process.returncode != 0 or not result_path.exists():
+            detail = state['error'] or errors_path.read_text(encoding='utf-8', errors='replace').strip()[-500:]
+            raise RuntimeError(detail or f'The Points Lost Map process ended with code {process.returncode}')
+        with open(result_path, 'rb') as handle:
+            return pickle.load(handle)
+
+
+def draw_points_loss(repository: Repository, saved_filter: dict[str, Any], sources: list[dict[str, Any]],
+                     configuration: dict[str, Any], context_filters: dict[str, list[str]], engine: Any,
+                     progress: Callable[[float, str], None] = lambda *_args: None) -> Any:
+    """The Points Lost Map of a Saved Filter with one methodology, from the rows of its tests (see _points_loss_of)."""
     for source in sources:
         source['levels'] = list(saved_filter['levels'])
     required_columns = getattr(engine, 'load_input_columns', None) or getattr(engine, 'required_input_columns')
@@ -2437,9 +2590,6 @@ def _points_loss_of(repository: Repository, saved_filter: dict[str, Any], source
             operator_mappings=options.get('operator_mappings'), map_areas=options.get('map_areas'), **extra)
     else:
         points_loss = calculate(frames, saved_filter['levels'], **options)['points_loss']
-    if key is not None:
-        points_loss = _serialize_result_value(points_loss)
-        scoring_cache.write(repository, 'points-loss', key, points_loss)
     return points_loss
 
 
@@ -2497,7 +2647,7 @@ def _complete_points_loss(repository: Repository, saved_filter: dict[str, Any], 
         document = {'points_loss': points_loss}
         _attach_mapping_boundaries(repository, dataset_ids, document)
         progress(99, 'Saving the map')
-    except _MapGivesWay:
+    except (_MapGivesWay, _MapStopped):
         raise
     except Exception as exc:  # The scores stay; only the map is missing.
         if cached_only:

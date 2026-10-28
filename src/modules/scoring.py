@@ -1,11 +1,13 @@
 """Source-grounded NetCheck 2026Q2 KPI aggregation and ranking points."""
 from __future__ import annotations
 
+import json
 import math
 import re
 from functools import lru_cache
 from typing import Iterable
 
+import numpy as np
 import pandas as pd
 
 from src.modules.column_names import campaign_sort_key, column_identity, resolve_column_name
@@ -357,11 +359,11 @@ def _prepared_frames(frames: dict[str, pd.DataFrame], dimensions: list[str], con
             }
             frame['Vendor'] = frame['Vendor'].map(vendor_labels).fillna('All')
         if operator_mappings and 'Operator' in frame:
-            frame['Operator'] = frame['Operator'].map(
-                lambda value: value if pd.isna(value) else operator_mappings.get(
-                    str(value).strip().casefold(), str(value).strip(),
-                )
-            )
+            operators = frame['Operator']
+            # Each operator name once, not every row.
+            names = {value: operator_mappings.get(str(value).strip().casefold(), str(value).strip())
+                     for value in operators.dropna().unique()}
+            frame['Operator'] = operators.astype(object).map(names).where(operators.notna(), operators.astype(object))
         if not campaign_selected:
             frame['Campaign'] = None
         elif time_split:
@@ -399,10 +401,13 @@ def _prepared_frames(frames: dict[str, pd.DataFrame], dimensions: list[str], con
         environment_match_arrays = [
             mask.fillna(False).to_numpy(dtype=bool) for mask in environment_masks.values()
         ]
-        frame['__matched_environments'] = [
-            tuple(name for name, matched in zip(environment_names, matches) if matched)
-            for matches in zip(*environment_match_arrays)
-        ]
+        # Each combination of environments once, not every row.
+        matched = np.zeros(len(frame), dtype=np.int64)
+        for bit, matches in enumerate(environment_match_arrays):
+            matched |= matches.astype(np.int64) << bit
+        combinations = {int(code): tuple(name for bit, name in enumerate(environment_names) if int(code) >> bit & 1)
+                        for code in np.unique(matched)}
+        frame['__matched_environments'] = pd.Series(matched, index=frame.index).map(combinations)
         valid = frame['environment'].notna() & frame['Operator'].notna()
         if campaign_selected:
             valid &= frame['Campaign'].notna()
@@ -493,19 +498,11 @@ def calculate_scoring(
                              'dataset_type': kind.title(), 'kpi_type': metric.get('kpi_type'),
                              'unit': metric.get('unit'), 'value': value, 'sample_count': count, 'score': None,
                              'weighted_points': None, 'max_points': context['max_points']})
-                if value is not None:
-                    try:
-                        weights = points_loss.test_weights(group, metric, context['thresholds'], _condition, _filter)
-                    except (KeyError, ValueError, TypeError):
-                        weights = None
-                    shares = points_loss.area_shares(group, weights) if weights is not None else {}
-                    if shares:
-                        loss_shares.append({**metadata, 'kpi_code': metric['code'], 'areas': shares,
-                                            'weight': round(float(weights.sum()), 4),
-                                            'tests': points_loss.counts_tests(metric)})
-            served = points_loss.serving_counts(group, areas=kind != 'speech')
-            if served:
-                serving_tests.append({**metadata, 'counts': served})
+        # Where each KPI loses its points, for every group at once.
+        shares, served = _points_loss_entries(kind, frame, valid, group_fields, keys,
+                                              [m for m in metrics if m['source_kind'] == kind])
+        loss_shares.extend(shares)
+        serving_tests.extend(served)
         geometry.add(frame[valid])
         global_valid = frame['__matched_environments'].map(bool) & frame['Operator'].notna()
         if campaign_selected:
@@ -553,6 +550,280 @@ def calculate_scoring(
     return result
 
 
+_RATIO_FORMULA = re.compile(r'(100 \* )?(SUM|COUNT)\((.+)\) / (SUM|COUNT)\((\w+)\)')
+_TERM_FORMULA = re.compile(r'(AVG|MEDIAN|PCT90|SUM|COUNT)\((.+)\)')
+
+
+def _floats(series: pd.Series) -> np.ndarray:
+    return series.to_numpy(dtype=float, na_value=np.nan)
+
+
+def _filter_mask(frame: pd.DataFrame, filters: dict) -> np.ndarray:
+    """The rows ``_filter`` keeps, as a mask (only the filtered columns are copied)."""
+    mask = np.zeros(len(frame), dtype=bool)
+    if not filters:
+        mask[:] = True
+        return mask
+    narrow = frame[list(dict.fromkeys(field.removesuffix(' contains') for field in filters))].reset_index(drop=True)
+    mask[_filter(narrow, filters).index.to_numpy()] = True
+    return mask
+
+
+def _valued_groups(frame: pd.DataFrame, selected: np.ndarray, codes: np.ndarray, groups: int, formula: str) -> np.ndarray:
+    """The scoring groups where a KPI has a value (``_aggregate`` of their rows is not None). A missing column raises
+    KeyError, as in every group."""
+    def with_rows(present: np.ndarray) -> np.ndarray:
+        return np.bincount(codes[selected & present], minlength=groups) > 0
+
+    def sums(values: np.ndarray) -> np.ndarray:
+        present = selected & ~np.isnan(values)
+        return np.bincount(codes[present], weights=values[present], minlength=groups)
+
+    def term(operation: str, expression: str) -> np.ndarray:
+        expression = expression.strip()
+        if _is_condition_expression(expression):
+            _condition(frame.iloc[:0], expression)
+            return np.ones(groups, dtype=bool)
+        if operation == 'COUNT':
+            frame[expression]
+            return np.ones(groups, dtype=bool)
+        return with_rows(_numeric(frame, expression).notna().to_numpy())
+
+    if formula == points_loss.PACKET_LOSS_FORMULA:
+        sent = _floats(_numeric(frame, 'Packets_Sent'))
+        return with_rows(~np.isnan(sent)) & (sums(sent) > 0)
+    ratio = _RATIO_FORMULA.fullmatch(formula)
+    if ratio:
+        _multiplier, numerator_operation, expression, denominator_operation, denominator = ratio.groups()
+        valued = term(numerator_operation, expression)
+        if denominator_operation == 'COUNT':
+            return valued & with_rows(frame[denominator].notna().to_numpy())
+        values = _floats(_numeric(frame, denominator))
+        return valued & with_rows(~np.isnan(values)) & (sums(values) != 0)
+    aggregate = _TERM_FORMULA.fullmatch(formula)
+    if aggregate:
+        return term(*aggregate.groups())
+    raise ValueError(f'Unsupported scoring formula: {formula}')
+
+
+def _loss_weights(frame: pd.DataFrame, selected: np.ndarray, metric: dict, environments: pd.Series) -> np.ndarray:
+    """``points_loss.test_weights`` of every row at once, each with the thresholds of its environment."""
+    formula = metric['calculation']['formula']
+    higher_is_better = metric['direction'] == 'higher_is_better'
+    weights = np.zeros(len(frame))
+    if not selected.any():
+        return weights
+    if formula == points_loss.PACKET_LOSS_FORMULA:
+        lost = sum((points_loss._numeric(frame, field).fillna(0) if field in frame else 0)
+                   for field in points_loss.LOST_PACKET_FIELDS)
+        if isinstance(lost, pd.Series):
+            weights[selected] = _floats(lost.clip(lower=0))[selected]
+        return weights
+    ratio = points_loss._RATIO.fullmatch(formula)
+    if ratio:
+        denominator = ratio.group(5)
+        counted = selected & frame[denominator].notna().to_numpy() if denominator in frame else selected
+        try:
+            matches = _condition(frame, ratio.group(3).strip()).astype(bool).to_numpy()
+        except (KeyError, ValueError):
+            weights[counted] = 1.0
+            return weights
+        # Higher-is-better ratios lose points on the tests that miss the condition, the others on those that meet it.
+        weights[counted] = (~matches if higher_is_better else matches)[counted]
+        return weights
+    aggregate = points_loss._AGGREGATE.fullmatch(formula)
+    if aggregate and aggregate.group(2) in frame:
+        highs = {name: context['thresholds'].get('high') for name, context in metric['contexts'].items()}
+        numeric = {name: float(high) for name, high in highs.items() if isinstance(high, (int, float))}
+        with_target = selected & environments.isin(list(numeric)).to_numpy()
+        targets = _floats(environments.map(numeric))
+        values = _floats(points_loss._numeric(frame, aggregate.group(2)))
+        shortfall = (targets - values) if higher_is_better else (values - targets)
+        shortfall = np.where(np.isnan(shortfall), 0.0, np.maximum(shortfall, 0.0))
+        weights[with_target] = shortfall[with_target]
+        weights[selected & ~with_target] = 1.0
+        return weights
+    weights[selected] = 1.0
+    return weights
+
+
+def _points_loss_entries_by_group(kind: str, rows: pd.DataFrame, group_fields: list[str], keys: list[str],
+                                  metrics: list[dict]) -> tuple[list[dict], list[dict]]:
+    """``_points_loss_entries`` group by group, for the rows without the areas of the map."""
+    loss_shares, serving_tests = [], []
+    for values, group in rows.groupby(group_fields, dropna=False, sort=False):
+        metadata = {key: (None if pd.isna(value) else value) for key, value in zip(keys, values)}
+        for metric in metrics:
+            try:
+                value, _count = _aggregate(group, metric)
+            except KeyError:
+                continue
+            if value is None:
+                continue
+            context = metric['contexts'][metadata['environment']]
+            try:
+                weights = points_loss.test_weights(group, metric, context['thresholds'], _condition, _filter)
+            except (KeyError, ValueError, TypeError):
+                weights = None
+            shares = points_loss.area_shares(group, weights) if weights is not None else {}
+            if shares:
+                loss_shares.append({**metadata, 'kpi_code': metric['code'], 'areas': shares,
+                                    'weight': round(float(weights.sum()), 4), 'tests': points_loss.counts_tests(metric)})
+        served = points_loss.serving_counts(group, areas=kind != 'speech')
+        if served:
+            serving_tests.append({**metadata, 'counts': served})
+    return loss_shares, serving_tests
+
+
+def _points_loss_entries(kind: str, frame: pd.DataFrame, valid: pd.Series, group_fields: list[str], keys: list[str],
+                         metrics: list[dict], progress=None) -> tuple[list[dict], list[dict]]:
+    """Where each scoring group of a CDR type loses the points of each KPI (``points_loss.test_weights`` and
+    ``area_shares``) and who serves its tests (``serving_counts``), for every group at once.
+
+    Each KPI weighs every test once, and the weights of each group and area are summed in the order of its rows, as
+    group by group, so the shares are the same. ``progress(share, step)`` follows the KPIs (share from 0 to 1).
+    """
+    from pandas.core.sorting import nargsort
+
+    rows = frame[valid]
+    if rows.empty:
+        return [], []
+    if not any(points_loss.SHARE_COLUMN.format(field) in rows for field in points_loss.MAP_FIELDS):
+        return _points_loss_entries_by_group(kind, rows, group_fields, keys, metrics)
+    codes = rows.groupby(group_fields, dropna=False, sort=False).ngroup().to_numpy().astype(np.int64)
+    groups = int(codes.max()) + 1
+    order = np.argsort(codes, kind='stable')
+    sizes = np.bincount(codes, minlength=groups)
+    ends = np.cumsum(sizes)
+    starts = ends - sizes
+    metadata = [{key: (None if pd.isna(value) else value) for key, value in zip(keys, values)}
+                for values in rows[group_fields].iloc[order[starts]].itertuples(index=False, name=None)]
+    categories = {}
+    for field in points_loss.SHARE_FIELDS:
+        column = points_loss.SHARE_COLUMN.format(field)
+        if column in rows:
+            category = rows[column].cat
+            categories[field] = (category.codes.to_numpy().astype(np.int64), list(category.categories))
+    environments = rows['environment']
+    # The cells of each area field (a group and an area): their keys, sorted, and the cell of every row.
+    field_keys = {}
+    for field, (category_codes, names) in categories.items():
+        field_keys[field] = np.unique(codes * len(names) + category_codes, return_inverse=True)
+
+    def field_cells(field: str, lost: np.ndarray, weights: np.ndarray):
+        # The weight of each group in each area, added in the order of the rows (as area_shares).
+        unique, cell_of = field_keys[field]
+        size = len(categories[field][1])
+        totals = np.bincount(cell_of[lost], weights=weights, minlength=len(unique))
+        kept = np.flatnonzero(totals)
+        return (unique[kept] % size, totals[kept],
+                np.searchsorted(unique[kept] // size, np.arange(groups + 1)))
+
+    def pair_cells(cell_keys: np.ndarray, weights: np.ndarray, span: int):
+        # The weight of each group in each pair of areas, summed as pandas sums them (as area_shares).
+        by_cell = pd.Series(weights).groupby(cell_keys).sum()
+        unique, totals = by_cell.index.to_numpy(dtype=np.int64), by_cell.to_numpy()
+        return unique % span, totals, np.searchsorted(unique // span, np.arange(groups + 1))
+
+    masks: dict[str, np.ndarray] = {}
+    found: list[dict[int, dict]] = []
+    for index, metric in enumerate(metrics):
+        if progress is not None:
+            progress(index / max(1, len(metrics)), f'Mapping the {kind.title()} tests: KPI {index + 1} of {len(metrics)}')
+        filters = metric['calculation']['filters']
+        try:
+            # Many KPIs share their filters.
+            mask_key = json.dumps(filters, sort_keys=True, default=str)
+            if mask_key not in masks:
+                masks[mask_key] = _filter_mask(rows, filters)
+            selected = masks[mask_key]
+            valued = _valued_groups(rows, selected, codes, groups, metric['calculation']['formula'])
+        except KeyError:
+            found.append({})
+            continue
+        entries: dict[int, dict] = {}
+        found.append(entries)
+        valued_groups = np.flatnonzero(valued).tolist()
+        if not valued_groups:
+            continue
+        thresholds = {group: metric['contexts'][metadata[group]['environment']]['thresholds'] for group in valued_groups}
+        try:
+            weights = _loss_weights(rows, selected, metric, environments)
+        except (KeyError, ValueError, TypeError):
+            # As each group would: its own error, or none for its rows.
+            for group in valued_groups:
+                group_rows = rows.iloc[order[starts[group]:ends[group]]]
+                try:
+                    group_weights = points_loss.test_weights(group_rows, metric, thresholds[group], _condition, _filter)
+                except (KeyError, ValueError, TypeError):
+                    continue
+                shares = points_loss.area_shares(group_rows, group_weights)
+                if shares:
+                    entries[group] = {**metadata[group], 'kpi_code': metric['code'], 'areas': shares,
+                                      'weight': round(float(group_weights.sum()), 4),
+                                      'tests': points_loss.counts_tests(metric)}
+            continue
+        ordered_weights = weights[order]
+        lost = np.flatnonzero(weights > 0)
+        lost_groups, lost_weights = codes[lost], weights[lost]
+        by_field = [(field, names, *field_cells(field, lost, lost_weights)) for field, (_codes, names) in categories.items()]
+        by_pair = []
+        for pair_field, first, second in points_loss.PAIR_FIELDS:
+            if first in categories and second in categories:
+                (first_codes, firsts), (second_codes, seconds) = categories[first], categories[second]
+                span = len(firsts) * len(seconds)
+                pairs = first_codes[lost] * len(seconds) + second_codes[lost]
+                by_pair.append((pair_field, firsts, seconds, *pair_cells(lost_groups * span + pairs, lost_weights, span)))
+        tests = points_loss.counts_tests(metric)
+        for group in valued_groups:
+            total = float(ordered_weights[starts[group]:ends[group]].sum())
+            if total <= 0:
+                continue
+            shares = {}
+            for field, names, positions, totals, bounds in by_field:
+                low, high = bounds[group], bounds[group + 1]
+                field_shares = {str(names[position]): round(value / total, 6) for position, value
+                                in zip(positions[low:high].tolist(), totals[low:high].tolist()) if value > 0}
+                if field == points_loss.STRETCH:
+                    # Tests off the routes have no stretch.
+                    field_shares.pop(points_loss.NOT_SPECIFIED, None)
+                if field in points_loss.SERVING_FIELDS:
+                    field_shares = points_loss._capped_shares(field_shares, field)
+                if field_shares:
+                    shares[field] = field_shares
+            for pair_field, firsts, seconds, positions, totals, bounds in by_pair:
+                low, high = bounds[group], bounds[group + 1]
+                pair_shares = {
+                    f'{firsts[pair // len(seconds)]}{points_loss.CITY_AREA_SEPARATOR}{seconds[pair % len(seconds)]}':
+                        round(value / total, 6)
+                    for pair, value in zip(positions[low:high].tolist(), totals[low:high].tolist()) if value > 0}
+                if pair_field in (points_loss.VENDOR_CITY, points_loss.REGION_CITY):
+                    pair_shares = {pair: share for pair, share in pair_shares.items()
+                                   if not pair.startswith(points_loss.NOT_SPECIFIED + points_loss.CITY_AREA_SEPARATOR)}
+                if pair_shares:
+                    shares[pair_field] = pair_shares
+            if shares:
+                entries[group] = {**metadata[group], 'kpi_code': metric['code'], 'areas': shares,
+                                  'weight': round(total, 4), 'tests': tests}
+    loss_shares = [entry for group in range(groups) for entries in found if (entry := entries.get(group)) is not None]
+    # The tests of each group per Vendor, Site Type and area, ordered as value_counts orders them.
+    served = [{} for _group in range(groups)]
+    for field in (points_loss.VENDOR, points_loss.SITE_TYPE, *(points_loss.AREA_FIELDS if kind != 'speech' else ())):
+        if field not in categories:
+            continue
+        category_codes, names = categories[field]
+        unique, cell_of = field_keys[field]
+        counts = np.bincount(cell_of, minlength=len(unique))
+        bounds = np.searchsorted(unique // len(names), np.arange(groups + 1))
+        for group in range(groups):
+            vector = np.zeros(len(names), dtype=np.int64)
+            vector[unique[bounds[group]:bounds[group + 1]] % len(names)] = counts[bounds[group]:bounds[group + 1]]
+            served[group][field] = {str(names[position]): int(vector[position])
+                                    for position in nargsort(vector, kind='quicksort', ascending=False) if vector[position]}
+    serving_tests = [{**metadata[group], 'counts': served[group]} for group in range(groups) if served[group]]
+    return loss_shares, serving_tests
+
+
 def calculate_points_loss(
     frames: dict[str, pd.DataFrame], levels: Iterable[str] = ('Operator',), configuration: dict | None = None,
     operator_mappings: dict[str, str] | None = None, map_areas=None, time_split: str | None = None,
@@ -562,7 +833,7 @@ def calculate_points_loss(
 
     It reads the same rows but skips what only the scores need (the All Environments KPIs and the scoring of each
     KPI), so a result calculated from the Scoring History gets its map in a fraction of the time.
-    ``progress_callback(share, step)`` follows the groups of tests mapped (share from 0 to 1), CDR type by CDR type.
+    ``progress_callback(share, step)`` follows the KPIs mapped (share from 0 to 1), CDR type by CDR type.
     """
     config = _required_configuration(configuration)
     dimensions = []
@@ -591,35 +862,12 @@ def calculate_points_loss(
     kinds = max(1, len(frames))
     for kind_index, (kind, frame, valid) in enumerate(_prepared_frames(frames, dimensions, config, mappings, map_areas,
                                                                         time_split, campaign_selected, [])):
-        metrics = _prefiltered_metrics(frame, [m for m in config['metrics'] if m['source_kind'] == kind])
-        grouped = frame[valid].groupby(group_fields, dropna=False, sort=False)
-        total = max(1, grouped.ngroups)
-        every = max(1, total // 50)
-        for group_index, (values, group) in enumerate(grouped, start=1):
-            if progress_callback and (group_index == 1 or group_index % every == 0):
-                progress_callback((kind_index + group_index / total) / kinds,
-                                  f'Mapping the {str(kind).title()} tests: group {group_index} of {total}')
-            metadata = {key: (None if pd.isna(value) else value) for key, value in zip(keys, values)}
-            for metric in metrics:
-                try:
-                    value, _count = _aggregate(group, metric)
-                except KeyError:
-                    continue
-                if value is None:
-                    continue
-                context = metric['contexts'][metadata['environment']]
-                try:
-                    weights = points_loss.test_weights(group, metric, context['thresholds'], _condition, _filter)
-                except (KeyError, ValueError, TypeError):
-                    weights = None
-                shares = points_loss.area_shares(group, weights) if weights is not None else {}
-                if shares:
-                    loss_shares.append({**metadata, 'kpi_code': metric['code'], 'areas': shares,
-                                        'weight': round(float(weights.sum()), 4),
-                                        'tests': points_loss.counts_tests(metric)})
-            served = points_loss.serving_counts(group, areas=kind != 'speech')
-            if served:
-                serving_tests.append({**metadata, 'counts': served})
+        step = ((lambda share, detail, kind_index=kind_index: progress_callback((kind_index + share) / kinds, detail))
+                if progress_callback else None)
+        shares, served = _points_loss_entries(kind, frame, valid, group_fields, keys,
+                                              [m for m in config['metrics'] if m['source_kind'] == kind], step)
+        loss_shares.extend(shares)
+        serving_tests.extend(served)
         geometry.add(frame[valid])
     return {'version': 3, **geometry.document(), 'map_areas': geometry.map_areas(map_areas), 'shares': loss_shares,
             'serving_tests': serving_tests}

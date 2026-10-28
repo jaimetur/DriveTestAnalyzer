@@ -92,6 +92,8 @@ OSM_ATTRIBUTION = '© OpenStreetMap contributors'
 _tests_cache: OrderedDict[tuple[str, int, str], dict[str, Any]] = OrderedDict()
 _tests_guard = Lock()
 _tests_locks: dict[tuple[str, int], Lock] = {}
+# The campaign and NR Mode of each CDR by the version of its indexed calls (see _cdr_profiles).
+_profiles_cache: dict[tuple[str, int], tuple[tuple[str, str], dict[str, Any] | None]] = {}
 
 
 def _number(value: Any) -> float | None:
@@ -745,8 +747,9 @@ def _dataset_tests(repository: Any, dataset_id: int) -> dict[str, Any] | None:
         longitudes = pd.to_numeric(frame['longitude'], errors='coerce')
         valid = latitudes.between(-90, 90) & longitudes.between(-180, 180) & ~((latitudes.abs() < 1e-6) & (longitudes.abs() < 1e-6))
         frame = frame.loc[valid]
-        operators, operator_codes = np.unique(frame['operator'].fillna('').astype(str).str.strip().to_numpy(), return_inverse=True)
-        tests, test_codes = np.unique(frame['test'].fillna('').astype(str).str.strip().to_numpy(), return_inverse=True)
+        # The operators and test names of the tests, each once (codes by hashing: their order means nothing).
+        operator_codes, operators = pd.factorize(frame['operator'].fillna('').astype(str).str.strip().to_numpy())
+        test_codes, tests = pd.factorize(frame['test'].fillna('').astype(str).str.strip().to_numpy())
         results = frame['result'].fillna('').astype(str).str.strip().str.casefold()
         metrics = {}
         for name, low, high in (('lte_rsrp', -160, -20), ('nr_rsrp', -160, -20), ('lte_sinr', -30, 50), ('nr_sinr', -30, 50)):
@@ -782,13 +785,44 @@ def test_datasets(repository: Any, call: dict[str, Any], scope: str) -> list[int
     return list(dict.fromkeys([*own, *(int(row[0]) for row in rows)]))
 
 
+def _cdr_profiles(connection: Any, workspace: str, dataset_ids: list[int]) -> dict[int, dict[str, Any]]:
+    """The campaign and NR Mode of each CDR as its calls give them (the most common). Counting its calls reads all of
+    them, so each answer is kept until the calls of the CDR are indexed again (its revision and sync time)."""
+    from src.modules import non_qualified_calls as nq
+
+    placeholders = ', '.join('?' for _ in dataset_ids) or 'NULL'
+    versions = {int(row[0]): (_text(row[1]), _text(row[2])) for row in connection.execute(
+        f'SELECT dataset_id, revision, synced_at FROM {nq.NQ_CALL_SOURCES_TABLE} WHERE dataset_id IN ({placeholders})', dataset_ids)}
+    profiles: dict[int, dict[str, Any]] = {}
+    missing = []
+    with _tests_guard:
+        for dataset_id in dataset_ids:
+            cached = _profiles_cache.get((workspace, dataset_id))
+            if cached is not None and cached[0] == versions.get(dataset_id):
+                if cached[1] is not None:
+                    profiles[dataset_id] = cached[1]
+            else:
+                missing.append(dataset_id)
+    if missing:
+        found: dict[int, dict[str, Any]] = {}
+        for row in connection.execute(
+                f'SELECT dataset_id, campaign, nr_mode, COUNT(*) AS calls FROM {nq.NQ_CALL_POPULATION_TABLE} '
+                f"WHERE dataset_id IN ({', '.join('?' for _ in missing)}) GROUP BY dataset_id, campaign, nr_mode ORDER BY calls DESC",
+                missing):
+            found.setdefault(int(row['dataset_id']), {'campaign': row['campaign'], 'nr_mode': row['nr_mode']})
+        profiles.update(found)
+        with _tests_guard:
+            for dataset_id in missing:
+                if dataset_id in versions:
+                    _profiles_cache[(workspace, dataset_id)] = (versions[dataset_id], found.get(dataset_id))
+    return profiles
+
+
 def nearby_tests(repository: Any, dataset_ids: list[int], centre: tuple[float, float], radius_km: float,
                  operator_label: Callable[[str], str] = str) -> dict[str, Any]:
     """The tests of the CDRs within ``radius_km`` of ``centre`` (the nearest MAX_TESTS), as compact rows: latitude, longitude,
     operator (its label in the Operator Maps), CDR type, failed, LTE RSRP, LTE SINR, NR RSRP, NR SINR, test name, start
     time and CDR (its campaign, NR Mode, type and stage in ``cdrs``)."""
-    from src.modules import non_qualified_calls as nq
-
     operators: list[str] = []
     operator_index: dict[str, int] = {}
     labels: dict[str, str] = {}
@@ -804,12 +838,7 @@ def nearby_tests(repository: Any, dataset_ids: list[int], centre: tuple[float, f
     with repository.connection() as connection:
         stages = {int(row['dataset_id']): _text(row['cdr_stage']) for row in connection.execute(
             f'SELECT dataset_id, cdr_stage FROM dataset_profiles WHERE dataset_id IN ({placeholders})', [int(value) for value in dataset_ids])}
-        profiles: dict[int, Any] = {}
-        for row in connection.execute(
-                f'SELECT dataset_id, campaign, nr_mode, COUNT(*) AS calls FROM {nq.NQ_CALL_POPULATION_TABLE} '
-                f'WHERE dataset_id IN ({placeholders}) GROUP BY dataset_id, campaign, nr_mode ORDER BY calls DESC',
-                [int(value) for value in dataset_ids]):
-            profiles.setdefault(int(row['dataset_id']), row)
+        profiles = _cdr_profiles(connection, str(repository.db_path), [int(value) for value in dataset_ids])
     for dataset_id in dataset_ids:
         entry = _dataset_tests(repository, dataset_id)
         if not entry:
@@ -1354,13 +1383,9 @@ def call_map(repository: Any, call_key: str, *, radius_km: Any = None, tests: st
         if found is None:
             return None
         call = nq._call_payload(found)
-        table = f"dataset_rows_{int(call['dataset_id'])}"
-        try:
-            source = connection.execute(f'SELECT * FROM {nq._quote(table)} WHERE rowid = ?', (int(call['source_row_id']),)).fetchone()
-        except Exception:  # noqa: BLE001 - the CDR may have been removed since it was indexed.
-            source = None
+        source = nq.source_row(connection, repository.db_path, call['dataset_id'], call['source_row_id'])
         dataset = connection.execute('SELECT file_name FROM datasets WHERE id = ?', (int(call['dataset_id']),)).fetchone()
-    row = {key: source[key] for key in source.keys()} if source is not None else {}
+    row = source or {}
     columns = list(row)
     service = _text(call.get('service'))
     fields_profile = workspace_field_profile(repository)

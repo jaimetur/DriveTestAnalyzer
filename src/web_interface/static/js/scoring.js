@@ -8903,6 +8903,23 @@
       return;
     }
     const maps = insightItems(payload, 'points_loss_maps', environment);
+    if (!maps.length && payload.points_loss_error) {
+      // Stopped by a user (drawn again once the application is idle) or failed (calculating the Saved Filter again
+      // draws it): the scores stay.
+      const section = document.createElement('section');
+      section.className = 'scoring-insight-section scoring-result-card scoring-loss-maps-card';
+      const heading = document.createElement('h4');
+      heading.className = 'scoring-table-section-title';
+      heading.textContent = 'Points Lost Map';
+      const notice = document.createElement('p');
+      notice.className = 'scoring-calculating-detail';
+      notice.textContent = payload.points_loss_stopped
+        ? 'The map was stopped by a user before it was drawn: it is drawn once nobody is using the application.'
+        : `The map was not drawn: ${payload.points_loss_error}. Calculate the Saved Filter again to draw it.`;
+      section.append(heading, notice);
+      pane.append(section);
+      return;
+    }
     if (!maps.length) return;
     const seriesKey = item => `${item.operator}|${JSON.stringify(item.context)}`;
     const layers = new Map(maps.filter(item => item.field === 'Area').map(item => [seriesKey(item), item]));

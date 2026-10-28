@@ -108,6 +108,7 @@ from src.modules.scoring_themes import THEMES as SCORING_THEMES, load_user_theme
 from src.modules.scoring_vendors import normalize_scoring_vendor_result, scoring_vendor_name, scoring_vendor_names, scoring_vendor_operators
 from src.modules.cdr_auto_selection import campaign_presets
 from src.modules.saved_filters import (
+    POINTS_LOSS_STOPPED,
     calculate_saved_filter,
     delete_saved_filter,
     duplicate_saved_filter,
@@ -2963,79 +2964,36 @@ def invalidate_workspace_size_cache(workspace_root: Path | None = None) -> None:
         _workspace_cache_size_cache.pop(cache_key, None)
 
 
-def workspace_cache_version_signature() -> dict[str, int | str]:
-    """Describe every persistent Dashboard cache format used by this release."""
-    return {
-        'application': __version__,
-        'workspace_cache': 2,
-        'dashboard_render': DASHBOARD_RENDER_CACHE_VERSION,
-        'dashboard_selection': DASHBOARD_SELECTION_CACHE_VERSION,
-        'dashboard_chart_model': DASHBOARD_CHART_MODEL_CACHE_VERSION,
-        'dashboard_preview_manifest': DASHBOARD_PREVIEW_MANIFEST_VERSION,
-    }
+# The format of the Dashboard selections a workspace database keeps (dashboard_filter_selections), as a workspace state.
+DASHBOARD_SELECTION_FORMAT_STATE_KEY = 'dashboard_selection_cache_version'
 
 
 def clear_outdated_workspace_caches(workspace: Workspace) -> bool:
-    """Remove persistent cache data only when its stored format is incompatible."""
+    """The Dashboards keep nothing on disk (their charts come from the columnar copies of the CDRs and their
+    preparations stay in memory): the cache folders and files of earlier versions go, and the Dashboard selections of
+    the workspace database when their format changes. Returns whether anything went."""
     workspace_root = workspace.database_path.parent
-    cache_root = workspace_root / '.dashboard-data-cache'
+    removed = False
+    for path in (workspace_root / '.dashboard-data-cache', workspace_root / '.dashboard-chart-cache'):
+        if path.exists():
+            shutil.rmtree(path, ignore_errors=True)
+            removed = True
     version_file = workspace_root / '.dashboard-cache-version.json'
-    # The columns of the CDRs are no longer kept on disk: they come from the columnar copies.
-    if (cache_root / 'columns').is_dir():
-        shutil.rmtree(cache_root / 'columns', ignore_errors=True)
+    if version_file.exists():
+        version_file.unlink(missing_ok=True)
+        removed = True
+    task_repository = Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path)
+    if task_repository.get_workspace_state(DASHBOARD_SELECTION_FORMAT_STATE_KEY) != str(DASHBOARD_SELECTION_CACHE_VERSION):
+        cancel_dashboard_tasks = getattr(sys.modules[__name__], 'ppt_dashboard_cancel_workspace_tasks', None)
+        if callable(cancel_dashboard_tasks):
+            cancel_dashboard_tasks(workspace.database_path)
+        with task_repository.connection() as connection:
+            connection.execute('DELETE FROM dashboard_filter_selections')
+        task_repository.set_workspace_state(DASHBOARD_SELECTION_FORMAT_STATE_KEY, str(DASHBOARD_SELECTION_CACHE_VERSION))
+        removed = True
+    if removed:
         invalidate_workspace_size_cache(workspace_root)
-    current_signature = workspace_cache_version_signature()
-    try:
-        stored_signature = json.loads(version_file.read_text(encoding='utf-8'))
-    except (OSError, json.JSONDecodeError):
-        stored_signature = None
-    def write_signature() -> None:
-        temporary = version_file.with_suffix(f'.{uuid4().hex}.tmp')
-        temporary.write_text(json.dumps(current_signature, sort_keys=True), encoding='utf-8')
-        temporary.replace(version_file)
-
-    if isinstance(stored_signature, dict):
-        # The application version is informative.  A patch release can safely
-        # reuse a cache when every cache-format version remains unchanged.
-        stored_formats = {key: value for key, value in stored_signature.items() if key != 'application'}
-        current_formats = {key: value for key, value in current_signature.items() if key != 'application'}
-        if stored_formats == current_formats:
-            if stored_signature != current_signature:
-                write_signature()
-            return False
-
-        # A renderer-only change must not discard reusable prepared Dataset
-        # Universes.  Their manifests and selection rows are independent from
-        # both Canvas models and PIL images, and remain valid across visual
-        # improvements such as bar-label placement.
-        data_formats = ('workspace_cache', 'dashboard_selection', 'dashboard_preview_manifest')
-        data_stale = any(stored_formats.get(key) != current_formats.get(key) for key in data_formats)
-        chart_model_stale = stored_formats.get('dashboard_chart_model') != current_formats.get('dashboard_chart_model')
-        render_stale = stored_formats.get('dashboard_render') != current_formats.get('dashboard_render')
-        known_formats = set(data_formats) | {'dashboard_chart_model', 'dashboard_render'}
-        if not data_stale and not chart_model_stale and not render_stale and set(stored_formats) == known_formats:
-            write_signature()
-            return False
-        if not data_stale:
-            if chart_model_stale:
-                shutil.rmtree(cache_root / 'charts-canvas', ignore_errors=True)
-            if render_stale:
-                shutil.rmtree(cache_root / 'charts-pil', ignore_errors=True)
-                shutil.rmtree(workspace_root / '.dashboard-chart-cache', ignore_errors=True)
-            write_signature()
-            invalidate_workspace_size_cache(workspace_root)
-            return True
-
-    cancel_dashboard_tasks = getattr(sys.modules[__name__], 'ppt_dashboard_cancel_workspace_tasks', None)
-    if callable(cancel_dashboard_tasks):
-        cancel_dashboard_tasks(workspace.database_path)
-    shutil.rmtree(cache_root, ignore_errors=True)
-    shutil.rmtree(workspace_root / '.dashboard-chart-cache', ignore_errors=True)
-    with repository.connection() as connection:
-        connection.execute('DELETE FROM dashboard_filter_selections')
-    write_signature()
-    invalidate_workspace_size_cache(workspace_root)
-    return True
+    return removed
 
 
 def format_workspace_size(size_bytes: int) -> str:
@@ -3055,14 +3013,11 @@ def format_workspace_size(size_bytes: int) -> str:
     return f'{formatted} {unit}'
 
 
-IDLE_DASHBOARD_WARMUP_SECONDS = 2 * 60
-IDLE_DASHBOARD_WARMUP_POLL_SECONDS = 30
+IDLE_TASK_POLL_SECONDS = 30
 APPLICATION_ACTIVITY_LOCK = Lock()
 LAST_INTERACTIVE_APPLICATION_ACTIVITY = monotonic()
-LAST_IDLE_DASHBOARD_WARMUP_ACTIVITY = 0.0
-IDLE_DASHBOARD_WARMUP_CALLBACK: Callable[[], None] | None = None
 # Requests pages repeat on their own, which do not mean someone is using the
-# application: Dashboard charts are prepared after five minutes without others.
+# application (see is_interactive_request).
 PASSIVE_APPLICATION_REQUEST_PATHS = {
     '/api/background-tasks', '/api/workspaces/sizes', '/admin/import-export/transfers/offers', '/api/admin-notices',
     '/api/admin/backup-status', '/api/admin/backup-files',
@@ -3079,7 +3034,7 @@ def is_interactive_request(method: str, path: str, accept: str, background_refre
     """Whether a request means someone is using the application: a page they open, or something they send.
 
     Pages poll the API on their own (job progress, background tasks, transfer offers…) with GET requests, which
-    never count as activity, so the work kept for an idle server (Dashboard warm-up, Non-Qualified Calls indexing)
+    never count as activity, so the work kept for an idle server (the columnar copies, Non-Qualified Calls indexing)
     is not held back by an open page.
     """
     # A refresh a page sends on its own says so with the X-Background-Refresh header.
@@ -3106,21 +3061,11 @@ def application_idle_seconds() -> float:
         return monotonic() - LAST_INTERACTIVE_APPLICATION_ACTIVITY
 
 
-def register_idle_dashboard_warmup(callback: Callable[[], None]) -> None:
-    """Register the Dashboard module's low-priority idle warm-up callback."""
-    global IDLE_DASHBOARD_WARMUP_CALLBACK
-    with APPLICATION_ACTIVITY_LOCK:
-        IDLE_DASHBOARD_WARMUP_CALLBACK = callback
-
-
-def idle_dashboard_warmup_loop(stop_event: Event) -> None:
-    """Warm Dashboard caches after two quiet minutes with no queued work."""
-    global LAST_IDLE_DASHBOARD_WARMUP_ACTIVITY
-    while not stop_event.wait(IDLE_DASHBOARD_WARMUP_POLL_SECONDS):
+def idle_task_loop(stop_event: Event) -> None:
+    """Run the idle tasks (see register_idle_task) every half minute while their quiet time has passed."""
+    while not stop_event.wait(IDLE_TASK_POLL_SECONDS):
         with APPLICATION_ACTIVITY_LOCK:
             activity_at = LAST_INTERACTIVE_APPLICATION_ACTIVITY
-            callback = IDLE_DASHBOARD_WARMUP_CALLBACK
-            already_warmed = LAST_IDLE_DASHBOARD_WARMUP_ACTIVITY >= activity_at
             idle_tasks = list(IDLE_TASK_CALLBACKS)
         schedulers_idle = BACKGROUND_TASK_SCHEDULER.is_idle and EXPORT_TASK_SCHEDULER.is_idle
         for idle_seconds, idle_task in idle_tasks:
@@ -3130,23 +3075,6 @@ def idle_dashboard_warmup_loop(stop_event: Event) -> None:
                 except Exception:
                     # Idle work is optional and must never stop the monitor.
                     pass
-        if (
-            callback is None
-            or already_warmed
-            or monotonic() - activity_at < IDLE_DASHBOARD_WARMUP_SECONDS
-            or not BACKGROUND_TASK_SCHEDULER.is_idle
-            or not EXPORT_TASK_SCHEDULER.is_idle
-        ):
-            continue
-        with APPLICATION_ACTIVITY_LOCK:
-            if LAST_IDLE_DASHBOARD_WARMUP_ACTIVITY >= activity_at:
-                continue
-            LAST_IDLE_DASHBOARD_WARMUP_ACTIVITY = activity_at
-        try:
-            callback()
-        except Exception:
-            # Idle cache work is optional and must never stop the monitor.
-            continue
 
 
 STARTUP_READY = Event()
@@ -3310,12 +3238,12 @@ async def lifespan(_: FastAPI):
         name='recurring-backup-scheduler', daemon=True,
     )
     backup_scheduler_thread.start()
-    idle_dashboard_warmup_stop = Event()
-    idle_dashboard_warmup_thread = Thread(
-        target=idle_dashboard_warmup_loop, args=(idle_dashboard_warmup_stop,),
-        name='idle-dashboard-warmup', daemon=True,
+    idle_task_stop = Event()
+    idle_task_thread = Thread(
+        target=idle_task_loop, args=(idle_task_stop,),
+        name='idle-tasks', daemon=True,
     )
-    idle_dashboard_warmup_thread.start()
+    idle_task_thread.start()
     report_scheduler_stop = Event()
     report_scheduler_thread = Thread(
         target=report_task_scheduler_loop, args=(report_scheduler_stop,),
@@ -3341,10 +3269,10 @@ async def lifespan(_: FastAPI):
         for cancellation in QUERY_BUILDER_EXECUTIONS.values():
             cancellation.set()
     backup_scheduler_stop.set()
-    idle_dashboard_warmup_stop.set()
+    idle_task_stop.set()
     report_scheduler_stop.set()
     backup_scheduler_thread.join(timeout=1)
-    idle_dashboard_warmup_thread.join(timeout=1)
+    idle_task_thread.join(timeout=1)
     BACKGROUND_TASK_SCHEDULER.shutdown(wait=False, cancel_futures=True)
     with ACTIVE_DATASET_WORKERS_LOCK:
         active_workers = list(ACTIVE_DATASET_WORKERS)
@@ -15217,7 +15145,9 @@ BACKGROUND_TASK_PROVIDERS: list[Callable[[Workspace], list[dict[str, Any]]]] = [
 def _saved_filter_points_loss_tasks(workspace: Workspace) -> list[dict[str, Any]]:
     """The Points Lost Maps of the Saved Filters waiting or being drawn."""
     from src.modules.saved_filters import points_loss_tasks
-    return points_loss_tasks(workspace.database_path)
+    # Each can be stopped from the card (see stop_background_task).
+    return [{**task, 'stop_task_id': task['id'], 'stop_url': f'/api/background-tasks/{workspace.id}/stop'}
+            for task in points_loss_tasks(workspace.database_path)]
 
 
 BACKGROUND_TASK_PROVIDERS.append(_saved_filter_points_loss_tasks)
@@ -15568,7 +15498,16 @@ def stop_background_task(
     prefix, _, raw_identifier = str(task_id).partition(':')
     if not raw_identifier:
         raise HTTPException(status_code=400, detail='Invalid background task.')
-    if prefix == 'dataset':
+    if prefix == 'saved-filter-map':
+        from src.modules.saved_filters import request_points_loss_stop
+        try:
+            filter_id = int(raw_identifier)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail='Invalid Points Lost Map task.') from exc
+        if not request_points_loss_stop(workspace.database_path, filter_id):
+            raise HTTPException(status_code=409, detail='This Points Lost Map can no longer be stopped.')
+        task_repository.try_add_log(user.username, 'stop_points_loss_map', json.dumps({'saved_filter_id': filter_id}))
+    elif prefix == 'dataset':
         try:
             dataset_id = int(raw_identifier)
         except ValueError as exc:
@@ -20556,6 +20495,14 @@ def _queue_saved_filter_calculation(task_repository: Repository, filter_id: int)
     """Queue the calculation of a Saved Filter; its Points Lost Map follows as a job of its own, after the calculations
     waiting, and gives way to the work of the workspace queued before it while it is drawn (such as the calculation of
     another Saved Filter), so they do not wait for it."""
+    submit_points_loss, work_waiting = _points_loss_submitters(task_repository, filter_id)
+    _submit_workspace_job(task_repository, calculate_saved_filter, task_repository, filter_id, submit_points_loss,
+                          work_waiting, phase=4)
+
+
+def _points_loss_submitters(task_repository: Repository, filter_id: int):
+    """How the Points Lost Map of a Saved Filter is queued (a workspace job after the calculations), and whether work
+    of the workspace waits before it (it then gives way)."""
     scheduler = _dataset_processing_executor(task_repository)
     workspace_key = str(task_repository.db_path.resolve())
 
@@ -20565,8 +20512,7 @@ def _queue_saved_filter_calculation(task_repository: Repository, filter_id: int)
 
     def work_waiting() -> bool:
         return scheduler.has_waiting_before(workspace_key, scheduler.current_priority() or workspace_dataset_job_priority(5, 0))
-    _submit_workspace_job(task_repository, calculate_saved_filter, task_repository, filter_id, submit_points_loss,
-                          work_waiting, phase=4)
+    return submit_points_loss, work_waiting
 
 
 # While nobody uses the application, the Favourites Filters of the open workspace whose result no longer matches their
@@ -20597,6 +20543,26 @@ def _calculate_favourites_filters_when_idle() -> None:
 
 
 register_idle_task(_calculate_favourites_filters_when_idle, FAVOURITES_FILTERS_IDLE_SECONDS)
+
+
+def _resume_stopped_points_loss_maps_when_idle() -> None:
+    """Draw again, one at a time, the Points Lost Maps of the open workspace a user stopped, once nobody uses the
+    application."""
+    from src.modules.saved_filters import queue_points_loss, resume_stopped_points_loss, stopped_points_loss_ids
+    workspace = active_workspace
+    if not workspace:
+        return
+    task_repository = Repository(workspace.database_path, global_db_path=repository.global_db_path,
+                                 workspace_registry_db_path=workspace_registry.registry_path)
+    for filter_id in stopped_points_loss_ids(task_repository):
+        if resume_stopped_points_loss(task_repository, filter_id):
+            queue_points_loss(task_repository, filter_id, *_points_loss_submitters(task_repository, filter_id))
+            task_repository.try_add_log('system', 'points_loss_map_resumed', json.dumps({'saved_filter_id': filter_id,
+                                                                                         'idle': True}))
+            return
+
+
+register_idle_task(_resume_stopped_points_loss_maps_when_idle, FAVOURITES_FILTERS_IDLE_SECONDS)
 
 
 SELECTED_SAVED_FILTERS: dict[str, int] = {}
@@ -20939,6 +20905,9 @@ def _scoring_result_payload(saved_filter: dict[str, Any], result: dict[str, Any]
             **{key: value for key, value in result.items() if key not in {'points_loss', 'area_summary'}},
             # A result from the Scoring History gets its Points Lost Map once the rows of the tests are read.
             'points_loss_pending': bool(isinstance(points_loss, dict) and points_loss.get('pending')),
+            # Why the map is missing: stopped by a user (it is drawn again once the application is idle), or its error.
+            'points_loss_error': points_loss.get('error') if isinstance(points_loss, dict) else None,
+            'points_loss_stopped': bool(isinstance(points_loss, dict) and points_loss.get('error') == POINTS_LOSS_STOPPED),
             'views': views, 'scorings': scorings}
 
 
@@ -27952,9 +27921,6 @@ templates.env.filters['campaign_label'] = lambda value: compact_campaign_value(v
 
 # Register the template-driven dashboard workspace after the shared reporting helpers.
 from src.modules.ppt_dashboards import (
-    DASHBOARD_CHART_MODEL_CACHE_VERSION,
-    DASHBOARD_PREVIEW_MANIFEST_VERSION,
-    DASHBOARD_RENDER_CACHE_VERSION,
     DASHBOARD_SELECTION_CACHE_VERSION,
     install_dashboard_routes,
 )

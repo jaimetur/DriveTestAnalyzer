@@ -20,6 +20,8 @@ _TEST_STORAGE = Path(tempfile.mkdtemp(prefix='drivetest-analyzer-tests-'))
 os.environ['APP_CONFIG_DIR'] = str(_TEST_STORAGE / 'config')
 os.environ['APP_DATA_DIR'] = str(_TEST_STORAGE / 'data')
 atexit.register(shutil.rmtree, _TEST_STORAGE, True)
+# The tests draw the Points Lost Map in their own process (tests/test_saved_filters.py draws one apart).
+os.environ['DTA_POINTS_LOSS_IN_PROCESS'] = '1'
 
 import pytest
 from fastapi.testclient import TestClient

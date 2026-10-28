@@ -644,8 +644,10 @@ def read_frame(
     order: str,
     prefetch: Callable[[CacheSource], Iterable[str]] | None = None,
     builder: Callable[[Segment, list[str]], dict[str, tuple] | None] | None = None,
+    weighted: bool = False,
 ) -> pd.DataFrame:
-    """Assemble the frame SQLite would return for the selection, in ``order``.
+    """Assemble the frame SQLite would return for the selection, in ``order``; ``weighted``, each distinct row once (where
+    it is first) with the number of its rows in ``WEIGHT_COLUMN`` (see weighted_rows).
 
     With ``builder`` the parts of each CDR come from its columnar copy (see build_from_copies), and from SQLite only
     when the builder cannot give them.
@@ -693,7 +695,220 @@ def read_frame(
             offset += len(rowids)
         permutation = np.concatenate(permutation)
         arrays = [array[permutation] for array in arrays]
+    if weighted:
+        first_rows, weights = weighted_rows(arrays, total)
+        frame = frame_from_columns(names, [array[first_rows] for array in arrays], len(first_rows))
+        frame[WEIGHT_COLUMN] = weights
+        return frame
     return frame_from_columns(names, arrays, total)
+
+
+# The column of a weighted frame (read_frame) with the number of rows each of its rows stands for.
+WEIGHT_COLUMN = '__catalog_weight'
+
+
+def _ordered_positions(segments: Sequence[Segment], selected: Sequence[tuple[np.ndarray, np.ndarray]],
+                       order: str) -> list[np.ndarray]:
+    """The place in the frame read_frame gives of each selected row of each CDR (``selected``: its positions, in the
+    order read_frame takes them, and their combined row ids)."""
+    places = []
+    offset = 0
+    for positions, _rowids in selected:
+        places.append(np.arange(offset, offset + len(positions), dtype=np.int64))
+        offset += len(positions)
+    if order != 'rowid':
+        return places
+    # Table order across the CDRs of each combined table (see read_frame).
+    start = 0
+    current_table = None
+    group: list[int] = []
+    for index, segment in enumerate([*segments, None]):
+        table = segment.source.table if segment is not None else None
+        if group and table != current_table:
+            rowids = np.concatenate([selected[item][1] for item in group])
+            permutation = np.argsort(rowids, kind='stable')
+            place = np.empty(len(rowids), dtype=np.int64)
+            place[permutation] = np.arange(start, start + len(rowids), dtype=np.int64)
+            cursor = 0
+            for item in group:
+                places[item] = place[cursor:cursor + len(selected[item][1])]
+                cursor += len(selected[item][1])
+            start += len(rowids)
+            group = []
+        current_table = table
+        if segment is not None:
+            group.append(index)
+    return places
+
+
+def read_grouped_frame(
+    cache: ColumnCache,
+    database_path: str | Path,
+    segments: Sequence[Segment],
+    columns: Sequence[tuple[str, str]],
+    terms: SelectionTerms,
+    order: str,
+    builder: Callable[[Segment, list[str]], dict[str, tuple] | None],
+    weighted: bool = True,
+) -> pd.DataFrame | None:
+    """The frame ``read_frame`` gives (``weighted``: its weighted frame), read by DuckDB from the columnar copies of the
+    CDRs: the rows the universe selects (its predicates evaluated on the cached parts, as read_frame does), weighted
+    grouped by the columns of each copy and the groups of the CDRs merged. None when a CDR has no copy that holds it as
+    it is, or a column is no plain column of the combined table (read_frame then reads them)."""
+    import duckdb
+    from src.modules.column_names import column_identity
+
+    names = [name for name, _expression in columns]
+    bare = []
+    for _name, expression in columns:
+        inner = expression.strip()
+        if not (inner.startswith('"') and inner.endswith('"')):
+            return None
+        bare.append(inner[1:-1].replace('""', '"'))
+    if not segments:
+        return None
+    root = cdr_store.store_root(database_path)
+    fresh = cdr_store.fresh_copies(database_path, [segment.dataset_id for segment in segments])
+    if any(int(segment.dataset_id) not in fresh for segment in segments):
+        return None
+    database = f'file:{Path(str(database_path)).resolve()}?mode=ro'
+    selected: list[tuple[np.ndarray, np.ndarray]] = []
+    copy_rows: list[np.ndarray] = []
+    with sqlite3.connect(database, uri=True, timeout=30) as connection:
+        combined_columns: dict[str, set[str]] = {}
+        for segment in segments:
+            source = segment.source
+            if source.table not in combined_columns:
+                combined_columns[source.table] = {str(row[1]).casefold() for row in connection.execute(
+                    f'PRAGMA table_info({quote_identifier(source.table)})')}
+            if any(name.casefold() not in combined_columns[source.table] for name in bare):
+                return None
+            physical_terms = [source.physical(expression) for expression in terms.expressions()]
+            parts = cache.built_parts(segment, physical_terms, builder)
+            if parts is None:
+                return None
+            positions = np.flatnonzero(selection_mask(parts, source, terms, segment.dataset_id))
+            if order == 'dataset_date_rowid' and len(positions):
+                ranks = _date_ranks(parts[ORDER_DATE])[positions]
+                positions = positions[np.argsort(ranks, kind='stable')]
+            combined_rowids, source_rows = _row_map(connection, database_path, segment)
+            if parts[ROWID][0] not in {'int', 'intnull'} or len(combined_rowids) != part_length(parts[ROWID]) \
+                    or not np.array_equal(parts[ROWID][1], combined_rowids):
+                return None
+            selected.append((positions, combined_rowids[positions]))
+            copy_rows.append(source_rows[positions])
+    places = _ordered_positions(segments, selected, order)
+    pieces: list[list[tuple[tuple, np.ndarray]]] = [[] for _ in names]
+    weights, firsts = [], []
+    duck = duckdb.connect()
+    try:
+        for segment, rows, place in zip(segments, copy_rows, places):
+            if not len(rows):
+                continue
+            manifest = cdr_store.read_manifest(cdr_store.manifest_file(root, segment.source.kind, int(segment.dataset_id)))
+            types = {**dict(manifest['columns']), cdr_store.ROWID: 'BIGINT', cdr_store.DATASET_ID: 'BIGINT',
+                     cdr_store.NR_MODE: 'VARCHAR'}
+            by_identity = {column_identity(column): column for column, _type in manifest['columns']}
+            copy_columns = []
+            for name in bare:
+                identity = column_identity(name)
+                copy_columns.append(cdr_store.DATASET_ID if identity == 'datasetid' else cdr_store.ROWID if identity == 'sourcerowid'
+                                    else cdr_store.NR_MODE if identity == 'nrmode' and identity not in by_identity
+                                    else by_identity.get(identity))
+            present = list(dict.fromkeys(column for column in copy_columns if column))
+            stored = cdr_store.stored_parts(present, types)
+            duck.register('selected_rows', pd.DataFrame({'rowid': rows.astype(np.int64), 'place': place}))
+            keys = ', '.join(f'p.{cdr_store.quote(column)}' for column in stored)
+            files = cdr_store._sql_text(cdr_store.cdr_parts(root, segment.source.kind, int(segment.dataset_id)))
+            if weighted:
+                grouped = duck.execute(
+                    f'SELECT {keys}{", " if keys else ""}COUNT(*) AS "__weight", MIN(s.place) AS "__first" '
+                    f'FROM read_parquet({files}) p JOIN selected_rows s ON p.{cdr_store.quote(cdr_store.ROWID)} = s.rowid'
+                    f'{" GROUP BY " + keys if keys else ""}').df()
+            else:
+                grouped = duck.execute(
+                    f'SELECT {keys}{", " if keys else ""}1 AS "__weight", s.place AS "__first" '
+                    f'FROM read_parquet({files}) p JOIN selected_rows s ON p.{cdr_store.quote(cdr_store.ROWID)} = s.rowid '
+                    'ORDER BY s.place').df()
+            duck.unregister('selected_rows')
+            values = cdr_store.copy_values(grouped, present, types)
+            length = len(grouped)
+            identity_order = np.arange(length)
+            for index, column in enumerate(copy_columns):
+                pieces[index].append((_typed_part(values[column], identity_order) if column else ('none', length), identity_order))
+            weights.append(grouped['__weight'].to_numpy(dtype=np.int64))
+            firsts.append(grouped['__first'].to_numpy(dtype=np.int64))
+    finally:
+        duck.close()
+    if not weights:
+        frame = frame_from_columns(names, [], 0)
+        if weighted:
+            frame[WEIGHT_COLUMN] = np.empty(0, dtype=np.int64)
+        return frame
+    arrays = [assemble_column(column_pieces) for column_pieces in pieces]
+    weight, first = np.concatenate(weights), np.concatenate(firsts)
+    if not weighted:
+        permutation = np.argsort(first, kind='stable')
+        return frame_from_columns(names, [array[permutation] for array in arrays], len(permutation))
+    # The same distinct row of several CDRs: one row, where it is first, with all its rows.
+    key = np.zeros(len(weight), dtype=np.int64)
+    for array in arrays:
+        codes = _value_codes(array)
+        key = pd.factorize(key * (int(codes.max()) + 1) + codes)[0]
+    by_first = np.argsort(first, kind='stable')
+    _distinct, at, group_of = np.unique(key[by_first], return_index=True, return_inverse=True)
+    representatives = by_first[at]
+    totals = np.bincount(group_of.reshape(-1), weights=weight[by_first], minlength=len(at)).astype(np.int64)
+    shown = np.argsort(first[representatives], kind='stable')
+    frame = frame_from_columns(names, [array[representatives[shown]] for array in arrays], len(shown))
+    frame[WEIGHT_COLUMN] = totals[shown]
+    return frame
+
+
+def expand_weighted_rows(frame: pd.DataFrame) -> pd.DataFrame:
+    """The rows of a weighted frame (read_frame), each as many times as it stands for, without its weight."""
+    weights = frame[WEIGHT_COLUMN].to_numpy(dtype=np.int64)
+    expanded = frame.drop(columns=WEIGHT_COLUMN).take(np.repeat(np.arange(len(frame)), weights))
+    expanded.index = pd.RangeIndex(len(expanded))
+    return expanded
+
+
+def _value_codes(array: np.ndarray) -> np.ndarray:
+    """A code for each value of a column, the same for equal values only: reals by their bits (0.0 and -0.0, and each NaN
+    apart), Python values by their type too (1 and 1.0 and True apart)."""
+    if array.dtype.kind == 'f':
+        return pd.factorize(np.ascontiguousarray(array, dtype=np.float64).view(np.int64))[0]
+    if array.dtype.kind in 'iub':
+        return pd.factorize(array)[0]
+    if lib.infer_dtype(array, skipna=True) in {'string', 'empty'}:
+        # Text hashed in C; each kind of missing value (None, NaN…) apart, by its type.
+        codes = pd.factorize(array)[0]
+        missing = np.flatnonzero(codes < 0)
+        if len(missing):
+            kinds: dict[type, int] = {}
+            codes[missing] = [-1 - kinds.setdefault(type(value), len(kinds)) for value in array[missing]]
+        return codes - int(codes.min())
+    known: dict[tuple, int] = {}
+    codes = np.empty(len(array), dtype=np.int64)
+    for row, value in enumerate(array):
+        key = (type(value), repr(value)) if isinstance(value, float) else (type(value), value)
+        codes[row] = known.setdefault(key, len(known))
+    return codes
+
+
+def weighted_rows(arrays: Sequence[np.ndarray], length: int) -> tuple[np.ndarray, np.ndarray]:
+    """The position of the first row of each distinct row of the columns ``arrays``, in their order, and how many rows
+    each stands for."""
+    if not length:
+        return np.empty(0, dtype=np.int64), np.empty(0, dtype=np.int64)
+    key = np.zeros(length, dtype=np.int64)
+    for array in arrays:
+        codes = _value_codes(array)
+        key = pd.factorize(key * (int(codes.max()) + 1) + codes)[0]
+    _distinct, first_rows, inverse = np.unique(key, return_index=True, return_inverse=True)
+    counts = np.bincount(inverse.reshape(-1), minlength=len(first_rows))
+    order = np.argsort(first_rows, kind='stable')
+    return first_rows[order], counts[order].astype(np.int64)
 
 
 def selection_mask(parts: dict[str, tuple], source: CacheSource, terms: SelectionTerms,

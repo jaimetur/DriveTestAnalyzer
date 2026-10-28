@@ -221,36 +221,23 @@ The Scope and dates are part of the filters, so they follow the same choice.
 
 ### What happens while preparing?
 
-Preparations run in the background and the browser follows progress. A new foreground request replaces the same user's previous request; stale responses are ignored. An equivalent cached selection restores without recalculation.
+Preparations run in the background and the browser follows progress. A new request replaces the same user's previous request; stale responses are ignored. An equivalent selection prepared earlier in the session restores without recalculation.
 
 The viewer opens immediately with a yellow **Preparing Dashboard dataset** card until its requested slides are ready. User-requested tasks appear in the floating task card and can provide **Interrupt task**.
 
 | Status | Meaning |
 | --- | --- |
-| **Checking Cache** | Waiting for the server's cache status |
-| **Pre-Caching Universe n/m** | Preparing reusable universe n of m |
-| **Waiting** | Background pre-caching is queued or paused |
-| **Loading data / Rendering** | Foreground preparation is active |
-| **Data Cached · Charts n/m** | Every reusable universe is prepared; n of the m charts of the default universe are rendered, and the rest render when viewed or while the application is idle |
-| **Rendering Charts n/m** | The background worker is rendering this Dashboard's charts |
-| **Ready** | Every reusable universe is prepared and every chart of the default universe is rendered |
+| **Checking Cache** | Waiting for the server's status of the Dashboard |
+| **Loading data / Rendering** | The Dashboard is being prepared or its charts rendered for a user |
+| **Data Cached** | The open Dashboard is prepared; its charts render as they are viewed |
+| **Ready** | The Dashboard has CDRs to show; it is prepared when it is opened |
+| **Data needed** | No CDR matches the Dashboard's selection |
 
-The chart counts refer to the default universe (the CDRs of the Dashboard's saved Campaign) in the Dashboard's saved comparison mode.
+Open Filters, View Dashboard and PPT export are available at any time.
 
-Open Filters, View Dashboard and PPT export remain available during background pre-caching.
+### Nothing is prepared in the background
 
-### Background pre-caching
-
-The library can prepare up to five universes: every campaign, and the newest one, two, three and four campaigns (their CDRs chosen as always). These use the Dashboard's NR Mode, saved scope/filters/template and automatic dates; duplicate universes are skipped.
-
-One background worker handles one Dashboard at a time, in creation order (oldest first). Foreground preparation and PPT export pause this low-priority work at its next step, so opening a Dashboard never waits for another Dashboard's pre-caching; the work resumes afterward. An incompatible universe is skipped until the workspace data changes.
-
-> [!TIP]
-> You do not need to wait for every background universe to finish. Opening or exporting a Dashboard prepares the requested universe if it is not already reusable.
-
-When nobody has used the application for two minutes, the same worker also builds the charts of each Dashboard's default universe (the CDRs of its saved Campaign) as **Operator Comparison** and as **Multivendor Comparison** with both **Vendor Only** and **Operator - Vendor**, and stores them as ready Canvas models. Modes that are not available, for example without mapped Vendors, are skipped.
-
-Opening a Dashboard or switching its comparison mode then shows the stored charts immediately. Changing the Campaign, dates or filters recalculates the charts from the columns already in memory without reading the CDRs again. This work stops between charts as soon as anyone uses the application, and continues after the next quiet period. The charts of a workspace that is closed wait until it is opened again, so they never delay those of the open workspace.
+Dashboards are not prepared ahead: nothing runs while the application is idle, and nothing is written to disk. Opening, refreshing or exporting a Dashboard prepares it from the [columnar copies](workspace-management.md#columnar-copy-of-the-cdrs) of its CDRs. The charts that aggregate their rows (CDFs, histograms, averages, stacked and grouped bars) are grouped by DuckDB on the copies, each distinct combination of the chart's fields once with its number of rows; maps, scatter plots, tables and chart data views read their rows from the column cache in memory. Changing the Campaign, dates, filters or comparison mode recalculates the charts from the columns already in memory without reading the CDRs again.
 
 ### What Clear cache removes
 
@@ -260,7 +247,7 @@ Dashboard charts read the materialized combined CDR tables through a per-CDR col
 
 Preparing a changed universe also counts its rows from these filter columns, and reuses the distinct filter values of each CDR until that CDR changes, instead of reading the CDRs again. The assembled rows are exactly the rows SQLite returns, with the same values and types. Maps, scatter plots, tables and chart data views also keep SQLite's row order. When SQLite would return them in an order the cache cannot reproduce, for example while filtering a single City, those charts read SQLite directly. Charts reading the same fields share one read, and charts with the same source, filters and measure share one filtering pass.
 
-`.dashboard-data-cache` holds derived preview manifests, Canvas models and legacy image artifacts. Their keys include dataset revisions, selection, scope and renderer version, so other sessions, restarts and PPT exports reuse them until the CDRs change. The column cache is never written to disk: it keeps up to 1 GB in memory by default, removing the least recently used columns first, and `DRIVETEST_ANALYZER_COLUMN_CACHE_MEMORY_MB` changes this limit. Older-version artifacts, and the columns earlier versions kept on disk, are removed when a workspace opens.
+Preview manifests and Canvas models are kept in memory only, keyed by dataset revisions, selection, scope and renderer version, so other sessions and PPT exports reuse them until the CDRs change or the server restarts. The column cache keeps up to 1 GB in memory by default, removing the least recently used columns first, and `DRIVETEST_ANALYZER_COLUMN_CACHE_MEMORY_MB` changes this limit. Nothing is written to disk: the `.dashboard-data-cache` and `.dashboard-chart-cache` folders of earlier versions are removed when a workspace opens.
 
 > [!WARNING]
 > **Workspace Clear cache cancels active user-requested work and removes derived cache only.** It preserves Dashboard definitions, combined CDRs, templates and generated jobs. Nothing rebuilds automatically until requested again.
@@ -430,7 +417,7 @@ Save Filters is enabled when the dialog differs from the saved defaults (the ven
 > [!IMPORTANT]
 > **Export selections take precedence for that job.** You can export applied or dialog-specific filters without saving them as Dashboard defaults. The job's Filters snapshot records what was exported.
 
-If required, the export prepares the CDRs of its campaigns without waiting for library background pre-caching.
+If required, the export prepares the CDRs of its campaigns first.
 
 ### Presentation contents and files
 

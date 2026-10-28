@@ -52,8 +52,6 @@ Stored below `APP_DATA_DIR/workspaces/<workspace>/`:
 - `output/reports/reports-charts-old/`: PPT Reporting (old) Chart Sets.
 - `output/reports/reporting-jobs/`: Reporting Job runs, one folder per run with its artifacts.
 - `.cdr-store/`: the [columnar copy](workspace-management.md#columnar-copy-of-the-cdrs) of each CDR (Parquet files and a manifest) and the catalogs of views for other tools; it travels with the workspace database in backups, packages and transfers.
-- `.dashboard-data-cache/`: regenerable PPT Dashboard preview manifests and live Canvas/legacy PIL chart artifacts. Dashboard SQL reads the combined CDR tables in the workspace database directly; this directory is not a user dataset or source of record.
-- `.dashboard-cache-version.json`: signature used to invalidate caches written by older application or cache-format versions.
 
 Workspaces, backups and transfer packages created with the former layout (module folders directly below `output/` and loose documents in `output/reports/`) are moved to these folders the first time the workspace is opened, and the job paths stored in the workspace database follow them.
 
@@ -217,13 +215,10 @@ Changing only a title should therefore be much faster than changing datasets or 
 PPT Dashboard persistence has additional layers:
 
 - `dashboard_filter_selections` stores a versioned selection key, faceted filter values and row counts; its predicates are reproduced from the saved Dashboard definition.
-- The shared `reporting_rows_data`, `reporting_rows_voice` and `reporting_rows_speech` combined tables supply Dashboard filters, chart datasets and chart rendering directly.
-- `.dashboard-data-cache/charts-canvas` stores compact interactive models; `charts-pil` contains legacy raster artifacts and `dashboard-previews` stores reusable preview manifests.
-- Cache keys include selected datasets and revisions, NR Mode, scope, dates, filters, template definition and renderer/cache versions. Equivalent value and dataset ordering resolves to the same selection.
+- The columnar copies of the CDRs of the shared `reporting_rows_data`, `reporting_rows_voice` and `reporting_rows_speech` combined tables supply Dashboard filters, chart datasets and chart rendering.
+- Compact interactive chart models and reusable preview manifests are kept in memory only (never on disk); their keys include selected datasets and revisions, NR Mode, scope, dates, filters, template definition and renderer/cache versions. Equivalent value and dataset ordering resolves to the same selection.
 
-When a workspace opens, the application compares its saved cache signature with the current application and every Dashboard cache-format version. A mismatch deletes obsolete chart models, manifests and selection metadata, then records the current signature. Current-version artifacts remain available. The Workspace **Clear cache** action performs the same derived-data cleanup on demand without deleting definitions, datasets, combined CDR tables, templates or generated jobs.
-
-Dashboard pre-caching (the automatic warm-up of each Dashboard's standard universes, described in [PPT Dashboards](ppt-dashboards.md#preparation-lifecycle-and-cache)) runs on a dedicated low-priority thread, separate from the shared background scheduler used by datasets and exports. It shares one Dashboard work slot with foreground preparations and exports, always yields to them, and prefers Dashboards open in a browser.
+When a workspace opens, the application removes the Dashboard caches earlier versions wrote on disk (`.dashboard-data-cache`, `.dashboard-chart-cache` and `.dashboard-cache-version.json`) and, when the selection format changed, the saved selection metadata. The Workspace **Clear cache** action clears the derived data on demand without deleting definitions, datasets, combined CDR tables, templates or generated jobs.
 
 Chart models are generated only when the corresponding chart is viewed or included in a requested PPT.
 
