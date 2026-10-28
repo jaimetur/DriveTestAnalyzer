@@ -297,3 +297,35 @@ def test_the_dashboard_columns_of_the_copies_are_those_of_the_combined_table(cli
     assert not (tmp_path / 'cache').exists()
     # A name that is no column of the combined table is read by SQLite (it reads it as a string there).
     assert dcc.build_from_copies(database, segments[0], ['"No such column"']) is None
+
+
+def test_the_coalesced_columns_of_a_cdr_are_those_sqlite_gives(client, tmp_path):
+    rows = pd.DataFrame({
+        'Start_Lat': [51.5, None, '52.1', None, 53.0], 'End_Lat': [None, 50.2, 9, None, 53.1],
+        'Lon': [-0.1, -1.2, -2.0, -3.0, None], 'Operator': ['EE', None, 'O2', 'EE', 'Three'],
+        'Rate': [1, 2.5, None, 4, 5], 'Mixed': [7, 'eight', None, 9.5, '10'],
+    })
+    data = add_cdr(tmp_path, 'coalesced.csv', 'data', rows)
+    copy_everything()
+    table = core.repository.dataset_rows_table_name(data)
+    cases = [
+        ([('latitude', ['Start_Lat', 'End_Lat']), ('longitude', ['Lon']), ('operator', ['Operator']), ('rate', ['Rate']),
+          ('mixed', ['Mixed', 'Rate']), ('missing', [])], ['latitude', 'longitude']),
+        ([('operator', ['Operator']), ('rate', ['Rate'])], []),
+        # A value of no column: no row is kept.
+        ([('latitude', ['End_Lat']), ('longitude', ['Lon']), ('missing', [])], ['latitude', 'missing']),
+    ]
+
+    def sql(columns):
+        quoted = [f'"{column}"' for column in columns]
+        return 'NULL' if not quoted else quoted[0] if len(quoted) == 1 else f"COALESCE({', '.join(quoted)})"
+
+    for outputs, required in cases:
+        expressions = dict(outputs)
+        conditions = ' AND '.join(f'{sql(expressions[alias])} IS NOT NULL' for alias in required) or '1'
+        with core.repository.connection() as connection:
+            expected = pd.read_sql_query(f"SELECT {', '.join(f'{sql(columns)} AS {alias}' for alias, columns in outputs)} "
+                                         f'FROM "{table}" WHERE {conditions}', connection)
+        found = cdr_store.coalesced_frame(core.repository.db_path, 'data', data, outputs, required)
+        pd.testing.assert_frame_equal(found, expected, check_exact=True)
+        assert all(found[column].map(type).tolist() == expected[column].map(type).tolist() for column in expected)

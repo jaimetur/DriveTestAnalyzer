@@ -124,8 +124,7 @@ APP_DATA_DIR/
 │       ├── .dashboard-data-cache/
 │       │   ├── dashboard-previews/
 │       │   ├── charts-canvas/
-│       │   ├── charts-pil/
-│       │   └── columns/
+│       │   └── charts-pil/
 │       ├── .network-insights-cache/
 │       ├── input/
 │       └── output/

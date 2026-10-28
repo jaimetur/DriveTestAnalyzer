@@ -68,8 +68,8 @@ from src.modules.report_layouts import canonical_layout_name, compact_grid_layou
 
 from src.modules import cdr_store
 from src.modules.dashboard_column_cache import (
-    CacheSource, ColumnCache, Segment, SelectionTerms, StaleSegment, build_from_copies, count_rows, default_disk_bytes,
-    default_memory_bytes, read_frame,
+    CacheSource, ColumnCache, Segment, SelectionTerms, StaleSegment, build_from_copies, count_rows, default_memory_bytes,
+    read_frame,
 )
 from src.modules.rf_catalog_source import RF_CATALOG_FIELDS, rf_source_columns, rf_union_source
 from src.modules.repository import Repository
@@ -1802,33 +1802,6 @@ def install_dashboard_routes(core):
             and (not reset_defaults or identity(vendor_filter_column(field)) not in default_keys)
         ]
         return normalized
-
-    def ordered_ready_datasets(task_repository, nr_mode):
-        """Return ready CDRs of one NR Mode per kind, newest first."""
-        # The CDRs of the combined tables: Final CDRs, and Weekly and Daily CDRs until a Final CDR replaces them.
-        included = core.combined_dataset_ids(task_repository)
-        ready = [
-            core.serialize_dataset_row(row) for row in task_repository.list_datasets()
-            if row['status'] == 'ready' and row['dataset_kind'] in KINDS and int(row['id']) in included
-        ]
-
-        def recency(row):
-            for field in ('uploaded_at', 'updated_at', 'processed_at', 'created_at'):
-                try:
-                    return datetime.fromisoformat(str(row.get(field) or '').replace('Z', '+00:00')).timestamp()
-                except ValueError:
-                    continue
-            return float(row.get('id') or 0)
-
-        return {
-            kind: sorted(
-                (
-                    row for row in ready
-                    if row.get('dataset_kind') == kind and dataset_matches_nr_mode(row, nr_mode)
-                ),
-                key=lambda row: (recency(row), int(row.get('id') or 0)), reverse=True,
-            ) for kind in KINDS
-        }
 
     def default_campaign_filter(definition) -> list[str]:
         """The Campaign of a new Dashboard: its newest two campaigns, or the newest one for Operator_Vendor."""
@@ -4893,56 +4866,9 @@ def install_dashboard_routes(core):
                 # preparations interrupted by a user are skipped.
                 if interrupted():
                     return False
-        for snapshot in built:
-            if not warm_dashboard_column_cache(snapshot, task_repository, interrupted):
-                return False
         task_repository.add_log('system', 'precompute_dashboard_charts', json.dumps({
             'dashboard_id': dashboard_id, 'modes': len(built),
         }))
-        return True
-
-    def warm_dashboard_column_cache(snapshot, task_repository, interrupted) -> bool:
-        """Cache a Dashboard's chart columns for every ready CDR of its NR Mode, newest first."""
-        if not DASHBOARD_COLUMN_CACHE:
-            return True
-        workspace = snapshot.workspace
-        ordered = ordered_ready_datasets(task_repository, dashboard_nr_mode(snapshot.definition))
-        everything = snapshot.definition.model_copy(update={
-            'datasets': {kind: [int(row['id']) for row in rows] for kind, rows in ordered.items()},
-        })
-        requested_by_kind: dict[str, set[str]] = defaultdict(set)
-        for chart_entry in snapshot.entries:
-            if chart_entry.source_kind:
-                # Complete reads cover compact charts, data views and both modes.
-                for multivendor in (False, True):
-                    requested_by_kind[chart_entry.source_kind].update(chart_query_columns(chart_entry, multivendor))
-        cache = workspace_column_cache(workspace)
-        quote = task_repository._quote_identifier
-        for kind, requested in requested_by_kind.items():
-            try:
-                database_path, table_name, source_columns = reporting_source(
-                    SimpleNamespace(definition=everything, workspace=workspace), kind, task_repository,
-                )
-            except (HTTPException, ValueError):
-                continue
-            lookup = {identity(column): column for column in source_columns}
-            columns = sorted({lookup[identity(column)] for column in requested if identity(column) in lookup})
-            prefetch = cache_prefetch_expressions(task_repository, source_columns, everything)
-            connect = lambda path=database_path: reporting_read_connection(path)
-            for segment in sorted(column_cache_segments(task_repository, kind, table_name, everything),
-                                  key=lambda item: -item.dataset_id):
-                if interrupted():
-                    return False
-                source = segment.source
-                try:
-                    cache.ensure(
-                        connect, segment, [source.physical(quote(column)) for column in columns],
-                        [source.physical(expression) for expression in prefetch],
-                    )
-                except StaleSegment:
-                    cache.invalidate(segment)
-                except (sqlite3.Error, OSError, ValueError, KeyError):
-                    continue
         return True
 
     def warm_idle_dashboard_caches_and_charts() -> None:
@@ -5490,8 +5416,9 @@ def install_dashboard_routes(core):
             if cache is None:
                 for other in list(column_caches):
                     column_caches.pop(other).forget()
+                # In memory only: the columns of the CDRs come from their columnar copies (see build_from_copies).
                 cache = column_caches[key] = ColumnCache(
-                    column_cache_dir(workspace), memory_bytes=default_memory_bytes(), disk_bytes=default_disk_bytes(),
+                    column_cache_dir(workspace), memory_bytes=default_memory_bytes(), disk_bytes=0, persist=False,
                 )
             return cache
 
@@ -5634,9 +5561,11 @@ def install_dashboard_routes(core):
         prefetch = cache_prefetch_expressions(task_repository, columns, definition)
         cache = workspace_column_cache(database_path)
         connect = lambda: reporting_read_connection(database_path)
+        builder = copies_builder(task_repository, segments)
         for _attempt in range(2):
             try:
-                return count_rows(cache, connect, segments, universe, selection, prefetch=lambda _source: prefetch)
+                return count_rows(cache, connect, segments, universe, selection, prefetch=lambda _source: prefetch,
+                                  builder=builder)
             except StaleSegment:
                 for segment in segments:
                     cache.invalidate(segment)
@@ -5647,41 +5576,32 @@ def install_dashboard_routes(core):
     distinct_value_memo: OrderedDict = OrderedDict()
 
     def dataset_distinct_values(task_repository, dataset, column):
-        """Every distinct value of one CDR column, kept per CDR version.
+        """Every distinct value of one CDR column, kept in memory per CDR version.
 
         The scan of a CDR's own rows only depends on that CDR, so a changed
         Dashboard filter reuses it instead of reading the CDR again.
         """
         version = [dataset.get('id'), dataset.get('updated_at'), dataset.get('processed_at'),
                    dataset.get('normalization_version'), dataset.get('row_count'), column]
-        name = sha256(json.dumps(version, default=str).encode()).hexdigest()
-        path = column_cache_dir(task_repository.db_path) / 'distinct' / f'{name}.json'
-        key = (str(path), name)
+        key = (str(task_repository.db_path), sha256(json.dumps(version, default=str).encode()).hexdigest())
         with lock:
             if key in distinct_value_memo:
                 distinct_value_memo.move_to_end(key)
                 return list(distinct_value_memo[key])
-        values = None
-        try:
-            stored = json.loads(path.read_text(encoding='utf-8'))
-            if stored.get('version') == json.loads(json.dumps(version, default=str)):
-                values = [str(value) for value in stored.get('values', [])]
-        except (OSError, ValueError, TypeError, AttributeError):
-            values = None
-        if values is None:
-            values = task_repository.list_distinct_dataset_row_values(int(dataset['id']), column, limit=None)
-            try:
-                path.parent.mkdir(parents=True, exist_ok=True)
-                temporary = path.with_name(f'{path.name}.{uuid4().hex}.tmp')
-                temporary.write_text(json.dumps({'version': version, 'values': values}, default=str), encoding='utf-8')
-                temporary.replace(path)
-            except OSError:
-                pass
+        values = task_repository.list_distinct_dataset_row_values(int(dataset['id']), column, limit=None)
         with lock:
             distinct_value_memo[key] = list(values)
             while len(distinct_value_memo) > 512:
                 distinct_value_memo.popitem(last=False)
         return list(values)
+
+    def copies_builder(task_repository, segments):
+        """The builder of the columns of ``segments`` from the columnar copies of their CDRs, in memory only, when every
+        copy holds its CDR as it is (see build_from_copies); None otherwise."""
+        dataset_ids = {segment.dataset_id for segment in segments}
+        if not dataset_ids or not dataset_ids <= cdr_store.fresh_copies(task_repository.db_path, dataset_ids):
+            return None
+        return lambda segment, expressions: build_from_copies(task_repository.db_path, segment, expressions)
 
     def column_cache_frame(snapshot, kind, task_repository, database_path, table_name, source_columns,
                            requested_columns, terms, order, rows_by_kind=None):
@@ -5699,11 +5619,7 @@ def install_dashboard_routes(core):
         prefetch = cache_prefetch_expressions(task_repository, source_columns, snapshot.definition)
         cache = workspace_column_cache(snapshot.workspace)
         connect = lambda: reporting_read_connection(database_path)
-        # The CDRs whose columnar copies hold them as they are give their columns from the copies, in memory only.
-        dataset_ids = {segment.dataset_id for segment in segments}
-        builder = None
-        if dataset_ids and dataset_ids <= cdr_store.fresh_copies(task_repository.db_path, dataset_ids):
-            builder = lambda segment, expressions: build_from_copies(task_repository.db_path, segment, expressions)
+        builder = copies_builder(task_repository, segments)
         for _attempt in range(2):
             try:
                 return read_frame(

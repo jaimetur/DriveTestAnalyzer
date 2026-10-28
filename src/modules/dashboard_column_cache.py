@@ -322,11 +322,12 @@ class _Memory:
 
 
 class ColumnCache:
-    """Disk and memory cache of per-CDR expression columns."""
+    """Memory cache of per-CDR expression columns, also kept on disk with ``persist``."""
 
-    def __init__(self, root: Path, *, memory_bytes: int, disk_bytes: int):
+    def __init__(self, root: Path, *, memory_bytes: int, disk_bytes: int, persist: bool = True):
         self.root = Path(root) / f'v{CACHE_FORMAT_VERSION}'
         self.disk_bytes = disk_bytes
+        self.persist = persist
         self._memory = _Memory(memory_bytes)
         self._lock = threading.RLock()
         self._segment_locks: dict[tuple, threading.Lock] = {}
@@ -373,7 +374,7 @@ class ColumnCache:
     def _read_part(self, path: Path, expression: str, *, remember: bool = True) -> tuple | None:
         key = str(path)
         part = self._recall(key)
-        if part is not None:
+        if part is not None or not self.persist:
             return part
         try:
             payload = pickle.loads(path.read_bytes())
@@ -389,8 +390,10 @@ class ColumnCache:
         return part
 
     def _write_part(self, path: Path, expression: str, part: tuple, *, remember: bool = True) -> None:
-        if remember:
+        if remember or not self.persist:
             self._remember(str(path), part)
+        if not self.persist:
+            return
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
             temporary = path.with_name(f'{path.name}.{uuid4().hex}.tmp')
@@ -402,9 +405,16 @@ class ColumnCache:
         if self._writes % 64 == 0:
             self.prune()
 
+    def _stored(self, path: Path) -> bool:
+        """Whether a part is kept (on disk with ``persist``, else in memory)."""
+        if not self.persist:
+            with self._lock:
+                return str(path) in self._memory.parts
+        return path.is_file()
+
     def prune(self) -> None:
         """Keep the cache within its disk budget, removing the oldest CDRs first."""
-        if not self.root.is_dir():
+        if not self.persist or not self.root.is_dir():
             return
         segments = []
         total = 0
@@ -425,6 +435,13 @@ class ColumnCache:
     def _discard_other_versions(self, segment: Segment) -> None:
         current = self._segment_dir(segment)
         parent = current.parent
+        if not self.persist:
+            # The columns of the other versions of the CDR leave memory.
+            prefix, kept = f'{parent}{os.sep}', f'{current}{os.sep}'
+            with self._lock:
+                for key in [key for key in self._memory.parts if key.startswith(prefix) and not key.startswith(kept)]:
+                    self._memory.size -= part_nbytes(self._memory.parts.pop(key))
+            return
         if not parent.is_dir():
             return
         for directory in parent.iterdir():
@@ -437,7 +454,8 @@ class ColumnCache:
         with self._lock:
             for key in [key for key in self._memory.parts if key.startswith(prefix)]:
                 self._memory.size -= part_nbytes(self._memory.parts.pop(key))
-        shutil.rmtree(directory, ignore_errors=True)
+        if self.persist:
+            shutil.rmtree(directory, ignore_errors=True)
 
     # -- segments -----------------------------------------------------------
     def _segment_lock(self, segment: Segment) -> threading.Lock:
@@ -471,7 +489,7 @@ class ColumnCache:
             if missing:
                 extra = [expression for expression in dict.fromkeys(prefetch)
                          if expression not in parts and expression not in missing
-                         and not (directory / self._part_name(expression)).is_file()]
+                         and not self._stored(directory / self._part_name(expression))]
                 if ROWID in missing:
                     self._discard_other_versions(segment)
                 built = self._build(connect, segment, [*missing, *extra], parts.get(ROWID))
@@ -517,6 +535,8 @@ class ColumnCache:
         Background warming uses it, so it never evicts the columns of the
         universes in use from memory.
         """
+        if not self.persist:
+            return False
         directory = self._segment_dir(segment)
         wanted = list(dict.fromkeys([ROWID, ORDER_DATE, *expressions, *prefetch]))
         with self._segment_lock(segment):
@@ -676,14 +696,18 @@ def count_rows(
     universe: SelectionTerms,
     selection: SelectionTerms,
     prefetch: Callable[[CacheSource], Iterable[str]] | None = None,
+    builder: Callable[[Segment, list[str]], dict[str, tuple] | None] | None = None,
 ) -> tuple[int, int]:
-    """Count the universe rows and those that also satisfy the selection."""
+    """Count the universe rows and those that also satisfy the selection (with ``builder``, from the columnar copies of
+    the CDRs, as read_frame)."""
     universe_rows = selected_rows = 0
     for segment in segments:
         source = segment.source
         expressions = [source.physical(expression) for expression in (*universe.expressions(), *selection.expressions())]
-        extra = [source.physical(expression) for expression in (prefetch(source) if prefetch else ())]
-        parts = cache.segment_parts(connect, segment, expressions, extra)
+        parts = cache.built_parts(segment, expressions, builder) if builder else None
+        if parts is None:
+            extra = [source.physical(expression) for expression in (prefetch(source) if prefetch else ())]
+            parts = cache.segment_parts(connect, segment, expressions, extra)
         universe_mask = selection_mask(parts, source, universe, segment.dataset_id)
         universe_rows += int(universe_mask.sum())
         selected_rows += int((universe_mask & selection_mask(parts, source, selection, segment.dataset_id)).sum())

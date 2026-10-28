@@ -2935,6 +2935,10 @@ def clear_outdated_workspace_caches(workspace: Workspace) -> bool:
     workspace_root = workspace.database_path.parent
     cache_root = workspace_root / '.dashboard-data-cache'
     version_file = workspace_root / '.dashboard-cache-version.json'
+    # The columns of the CDRs are no longer kept on disk: they come from the columnar copies.
+    if (cache_root / 'columns').is_dir():
+        shutil.rmtree(cache_root / 'columns', ignore_errors=True)
+        invalidate_workspace_size_cache(workspace_root)
     current_signature = workspace_cache_version_signature()
     try:
         stored_signature = json.loads(version_file.read_text(encoding='utf-8'))

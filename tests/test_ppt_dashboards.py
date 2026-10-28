@@ -3509,7 +3509,8 @@ def test_cached_and_grouped_reads_produce_identical_chart_models(client, monkeyp
     indexes = [chart['index'] for slide in prepared.json()['slides'] for chart in slide['charts']]
     assert len(indexes) == 5
     cached = [client.post(f'/api/ppt-dashboards/chart/{token}/{index}/refresh').json() for index in indexes]
-    assert list(dashboards_module.column_cache_dir(core.repository.db_path).rglob('*.pkl'))
+    # The columns of the CDRs are kept in memory only.
+    assert not list(dashboards_module.column_cache_dir(core.repository.db_path).rglob('*.pkl'))
     monkeypatch.setattr(dashboards_module, 'DASHBOARD_COLUMN_CACHE', False)
     compact = [client.post(f'/api/ppt-dashboards/chart/{token}/{index}/refresh').json() for index in indexes]
     # The grouped reads were persisted with their row counts (240 rows -> fewer groups).
@@ -3587,11 +3588,11 @@ def test_idle_chart_precompute_waits_for_quiet_periods_and_persists_models(clien
     # One background worker handles every Dashboard.
     assert [thread.name for thread in threading.enumerate() if thread.name.startswith('dashboard-')] == ['dashboard-cache-warmup']
 
-    # Once the application is quiet the charts are built and persisted, and
-    # the columns they read are cached for every CDR.
+    # Once the application is quiet the charts are built and persisted; the
+    # columns they read are never written to disk.
     monkeypatch.setattr(core, 'IDLE_DASHBOARD_WARMUP_SECONDS', 0)
     assert _wait_for(lambda: len(list(model_dir.glob('*.json'))) >= 5)
-    assert _wait_for(lambda: list(column_dir.rglob('*.pkl')))
+    assert not list(column_dir.rglob('*.pkl'))
 
 
 def test_background_work_builds_one_dashboard_at_a_time_in_creation_order(client, monkeypatch):

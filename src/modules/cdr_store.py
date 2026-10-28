@@ -711,6 +711,34 @@ def cdr_columns(database_path: Any, kind: str, dataset_id: int, columns: list[st
     return {column: _python_values(values[column]) for column in dict.fromkeys(columns)}
 
 
+def coalesced_frame(database_path: Any, kind: str, dataset_id: int, outputs: list[tuple[str, list[str]]],
+                    required: list[str]) -> pd.DataFrame:
+    """The frame ``pandas.read_sql_query`` gives for ``SELECT COALESCE(<columns>) AS <alias>, ... FROM dataset_rows_<id>
+    WHERE <alias> IS NOT NULL AND ...`` (the ``required`` aliases; an alias of no column is NULL), read from the copy of the
+    CDR: the same rows, in row id order, with the same values and types."""
+    from pandas.io.sql import _wrap_result
+
+    physical = list(dict.fromkeys(column for _alias, columns in outputs for column in columns))
+    if physical:
+        values = cdr_columns(database_path, kind, dataset_id, physical)
+        length = len(values[physical[0]])
+    else:
+        values, length = {}, int((read_manifest(manifest_file(store_root(database_path), kind, dataset_id)) or {}).get('rows') or 0)
+    results: dict[str, np.ndarray] = {}
+    for alias, columns in outputs:
+        merged = np.full(length, None, dtype=object)
+        for column in columns:
+            # The first column with a value, as COALESCE takes it.
+            empty = np.fromiter((value is None for value in merged), dtype=bool, count=length)
+            merged[empty] = np.asarray(values[column], dtype=object)[empty]
+        results[alias] = merged
+    kept = np.ones(length, dtype=bool)
+    for alias in required:
+        kept &= np.fromiter((value is not None for value in results[alias]), dtype=bool, count=length)
+    aliases = [alias for alias, _columns in outputs]
+    return _wrap_result(list(zip(*(results[alias][kept].tolist() for alias in aliases))), aliases)
+
+
 def rows_by_rowid(database_path: Any, kind: str, dataset_id: int, columns: list[str], rowids: Any) -> dict[int, tuple[Any, ...]]:
     """The Python values sqlite3 gives for ``columns`` of the rows ``rowids`` of one CDR, read from its copy, by row id (the
     row ids it does not have are left out)."""

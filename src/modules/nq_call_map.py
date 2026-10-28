@@ -30,6 +30,7 @@ from typing import Any, Callable
 import numpy as np
 import pandas as pd
 
+from src.modules import cdr_store
 from src.modules.cdr_field_profiles import NETCHECK_PROFILE, CdrFieldProfile, workspace_field_profile
 
 # The radii offered. A call opens with the radius that holds every NQ call of its hotspot and its cluster (in tenths of a
@@ -556,26 +557,26 @@ def _dataset_tests(repository: Any, dataset_id: int) -> dict[str, Any] | None:
         fields_profile = workspace_field_profile(repository)
         with repository.connection() as connection:
             columns = [str(row[1]) for row in connection.execute(f'PRAGMA table_info({nq._quote(table)})').fetchall()]
-
-            def pick(candidates: tuple[str, ...]) -> str:
-                found = nq._resolve_columns(columns, candidates)
-                if not found:
-                    return 'NULL'
+        aliases, sources = fields_profile.rf_field_aliases, fields_profile.nq_field_sources
+        # The columns of each value of the tests, the first one with a value taken.
+        picked = {name: nq._resolve_columns(columns, candidates) for name, candidates in (
+            ('latitude', aliases['latitude'].get(kind, ())), ('longitude', aliases['longitude'].get(kind, ())),
+            ('operator', sources['operator']), ('result', fields_profile.nq_qualification_sources), ('test', sources['test_name']),
+            ('start', sources['start_time']), *((name, aliases[name].get(kind, ())) for name in ('lte_rsrp', 'lte_sinr', 'nr_rsrp', 'nr_sinr')))}
+        if not picked['latitude'] or not picked['longitude']:
+            return None
+        if int(dataset_id) in cdr_store.fresh_copies(repository.db_path, [dataset_id]):
+            frame = cdr_store.coalesced_frame(repository.db_path, kind, int(dataset_id), list(picked.items()), ['latitude', 'longitude'])
+        else:
+            def expression(found: list[str]) -> str:
                 quoted = [nq._quote(column) for column in found]
-                return quoted[0] if len(quoted) == 1 else f"COALESCE({', '.join(quoted)})"
+                return 'NULL' if not quoted else quoted[0] if len(quoted) == 1 else f"COALESCE({', '.join(quoted)})"
 
-            aliases, sources = fields_profile.rf_field_aliases, fields_profile.nq_field_sources
-            latitude = pick(aliases['latitude'].get(kind, ()))
-            longitude = pick(aliases['longitude'].get(kind, ()))
-            if latitude == 'NULL' or longitude == 'NULL':
-                return None
-            fields = {'operator': pick(sources['operator']), 'result': pick(fields_profile.nq_qualification_sources),
-                      'test': pick(sources['test_name']), 'start': pick(sources['start_time']),
-                      **{name: pick(aliases[name].get(kind, ())) for name in ('lte_rsrp', 'lte_sinr', 'nr_rsrp', 'nr_sinr')}}
-            frame = pd.read_sql_query(
-                f"SELECT {latitude} AS latitude, {longitude} AS longitude, "
-                f"{', '.join(f'{expression} AS {name}' for name, expression in fields.items())} "
-                f'FROM {nq._quote(table)} WHERE {latitude} IS NOT NULL AND {longitude} IS NOT NULL', connection)
+            latitude, longitude = expression(picked['latitude']), expression(picked['longitude'])
+            with repository.connection() as connection:
+                frame = pd.read_sql_query(
+                    f"SELECT {', '.join(f'{expression(found)} AS {name}' for name, found in picked.items())} "
+                    f'FROM {nq._quote(table)} WHERE {latitude} IS NOT NULL AND {longitude} IS NOT NULL', connection)
         latitudes = pd.to_numeric(frame['latitude'], errors='coerce')
         longitudes = pd.to_numeric(frame['longitude'], errors='coerce')
         valid = latitudes.between(-90, 90) & longitudes.between(-180, 180) & ~((latitudes.abs() < 1e-6) & (longitudes.abs() < 1e-6))

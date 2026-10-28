@@ -5166,6 +5166,13 @@ def test_opening_workspace_removes_only_cache_from_previous_versions(client) -> 
     with app_module.repository.connection() as connection:
         assert connection.execute("SELECT COUNT(*) FROM dashboard_filter_selections WHERE cache_key = 'prepared-selection'").fetchone()[0] == 1
 
+    # The columns of the CDRs kept on disk by earlier versions are removed; the other caches stay.
+    columns = workspace_root / '.dashboard-data-cache' / 'columns' / 'v1' / 'reporting_rows_data' / '1' / 'version' / 'part.pkl'
+    columns.parent.mkdir(parents=True, exist_ok=True)
+    columns.write_bytes(b'columns')
+    app_module.activate_workspace(workspace.id)
+    assert not columns.exists() and prepared_manifest.exists() and current_model.exists()
+
 
 def test_workspace_management_reports_every_supported_row_status(client, tmp_path: Path) -> None:
     import src.DriveTestAnalyzer as app_module
