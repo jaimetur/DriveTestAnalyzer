@@ -126,6 +126,9 @@ def test_the_map_places_the_call_its_cells_the_sites_and_the_calls_and_tests_aro
     # Each with its cells in words, by their inventory name for those of its operator.
     assert [(cell['role'], cell['label']) for cell in failures['V1']['cells']] == [('start', '70001-L1'), ('end', '70002-L3')]
     assert failures['V2']['cells'] == []
+    # And the sites where it started and ended: those of its first and last cells (else for the start, the one the CDR gives).
+    assert {role: site['site_id'] for role, site in failures['V1']['ends'].items()} == {'start': '70001', 'end': '70002'}
+    assert failures['V2']['ends'] == {}
     # Each with its CDR and campaign, so the page shows those of the CDR, the campaign or every campaign chosen.
     assert failures['V2']['dataset_id'] == call['dataset_id'] and failures['V2']['campaign'] == call['campaign']
     assert data['failure_scopes'] == nq_call_map.FAILURE_SCOPES and nq_call_map.DEFAULT_FAILURE_SCOPE == 'every'

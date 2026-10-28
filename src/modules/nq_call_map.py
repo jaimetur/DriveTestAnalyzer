@@ -392,7 +392,8 @@ def name_failure_cells(failures: list[dict[str, Any]], cells: pd.DataFrame, fami
                        max_distance_km: float) -> None:
     """Give every NQ call around its cells (``cells``, see labelled_cells), by their inventory name for the calls of the
     operator of the call: the cell of a network serving it with that identity and technology nearest to the NQ call,
-    within ``max_distance_km`` (cell identities are only unique within an operator)."""
+    within ``max_distance_km`` (cell identities are only unique within an operator); and the sites where it started and
+    ended (``ends``): those of its first and last cells, else for its start the site the CDR gives (its serving site)."""
     steps = {id(failure): cell_steps(failure.get('cell_id')) for failure in failures}
     wanted = {step['cell'] for failure in failures if failure.get('same_operator') for step in steps[id(failure)] if step['cell']}
     index: dict[str, list[Any]] = {}
@@ -402,6 +403,7 @@ def name_failure_cells(failures: list[dict[str, Any]], cells: pd.DataFrame, fami
             index.setdefault(str(cell.cell_identity), []).append(cell)
     for failure in failures:
         names: dict[str, str] = {}
+        sites: dict[str, dict[str, str]] = {}
         position = _position(failure.get('latitude'), failure.get('longitude'))
         for step in steps[id(failure)] if failure.get('same_operator') else []:
             best = None
@@ -413,10 +415,17 @@ def name_failure_cells(failures: list[dict[str, Any]], cells: pd.DataFrame, fami
                 if distance is not None and distance > max_distance_km:
                     continue
                 if best is None or (distance if distance is not None else math.inf) < best[0]:
-                    best = (distance if distance is not None else math.inf, _text(cell.cell_name))
+                    best = (distance if distance is not None else math.inf, _text(cell.cell_name), cell)
             if best and best[1]:
                 names[step['cell']] = best[1]
+            if best:
+                sites[step['cell']] = {'site_id': _text(best[2].site_id), 'network': _text(best[2].host_network) or _text(best[2].network)}
         failure['cells'] = labelled_cells(steps[id(failure)], names)
+        own = steps[id(failure)]
+        ends = {'start': sites.get(own[0]['cell']) if own else None, 'end': sites.get(own[-1]['cell']) if own else None}
+        if not ends['start'] and failure.get('site_id'):
+            ends['start'] = {'site_id': failure['site_id'], 'network': failure.get('host_network') or ''}
+        failure['ends'] = {role: site for role, site in ends.items() if site}
 
 
 def _cell_payload(cell: Any, colours: dict[str, str]) -> dict[str, Any]:

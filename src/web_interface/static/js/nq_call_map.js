@@ -893,7 +893,7 @@
       const {title, rows} = shared.describe(hit.kind, hit.item);
       tooltip.replaceChildren(node('strong', title));
       const filled = rows.filter(([, value]) => value !== '' && value !== null && value !== undefined);
-      for (const [name, value] of [...(hit.stack > 1 ? [['At this point', `${hit.stack} NQ calls`]] : []), ...filled.slice(0, 16)]) {
+      for (const [name, value] of [...(hit.stack > 1 ? [['At this point', `${hit.stack} NQ calls`]] : []), ...filled.slice(0, 18)]) {
         if (value === '' || value === null || value === undefined) continue;
         const line = node('div');
         line.append(node('span', name), node('b', String(value)));
@@ -1325,9 +1325,12 @@
         return {title: `NQ call · ${item.operator}`, rows: [
           ['Call type', kindLabel(item)], ['Operator', item.operator], ['Campaign', campaignText(item.campaign, item.nr_mode)],
           ['Relation', flags], ['JOIN_ID', item.join_id],
-          ['Result', item.result], ['Failure', failureText(item)], ...cellRows(item.cells), ['Test', item.test_name], ['Started', cdrTime(item.start_time)],
+          ['Result', item.result], ['Failure', failureText(item)], ['Test', item.test_name], ['Started', cdrTime(item.start_time)],
           ['Status', item.status], ['Root cause', [item.root_category, item.root_cause].filter(Boolean).join(' · ')],
-          ['Place', item.place_label], ['Distance', distanceText(item.distance_km)],
+          // How far it is, where it started and ended (the place of its repetitions when its last cell is not placed), then its
+          // cells, as the call shows them.
+          ['Distance', distanceText(item.distance_km)], ['Start site', endText(item.ends?.start)],
+          ['End site', endText(item.ends?.end) || String(item.place_label || '').replace(/^Site /, '')], ...cellRows(item.cells),
         ]};
       }
       if (kind === 'handover_point') {
