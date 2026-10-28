@@ -1788,21 +1788,22 @@
         const type = selectInput([['values', 'Field values'], ['number', 'Number'], ['text', 'Text']], parameter.type, value => { update({type: value, default: value === 'values' ? null : value === 'number' ? null : ''}); commit(); });
         type.disabled = !editable;
         const details = [];
+        // Each field is kept as soon as it is left (as the other assistance panels of the Designer: no Apply).
+        const kept = input => { input.addEventListener('change', commit); return input; };
         if (parameter.type === 'values') {
-          details.push(field('Field', textInput(parameter.field, value => update({field: value}), {list: 'ds-design-fields', placeholder: 'City'})));
+          details.push(field('Field', kept(textInput(parameter.field, value => update({field: value}), {list: 'ds-design-fields', placeholder: 'City'}))));
           details.push(h('label', {class: 'ds-design-check'}, h('input', {type: 'checkbox', checked: parameter.multiple !== false, disabled: !editable, onchange: event => { update({multiple: event.target.checked}); commit(); }}), 'Several values'));
-          details.push(field('Default values', textInput((parameter.default || []).join(', '), value => update({default: value.split(',').map(item => item.trim()).filter(Boolean)}), {placeholder: 'All'}), 'Empty: All values (the conditions with it are left out).'));
+          details.push(field('Default values', kept(textInput((parameter.default || []).join(', '), value => update({default: value.split(',').map(item => item.trim()).filter(Boolean)}), {placeholder: 'All'})), 'Empty: All values (the conditions with it are left out).'));
         } else if (parameter.type === 'number') {
-          details.push(h('div', {class: 'ds-design-two'}, ...['default', 'min', 'max', 'step'].map(key => field(key[0].toUpperCase() + key.slice(1), h('input', {type: 'number', step: 'any', value: parameter[key] ?? '', disabled: !editable, oninput: event => update({[key]: event.target.value === '' ? null : Number(event.target.value)})})))));
-        } else details.push(field('Default text', textInput(parameter.default, value => update({default: value}))));
-        details.push(field('Description', textInput(parameter.description, value => update({description: value}))));
+          details.push(h('div', {class: 'ds-design-two'}, ...['default', 'min', 'max', 'step'].map(key => field(key[0].toUpperCase() + key.slice(1), kept(h('input', {type: 'number', step: 'any', value: parameter[key] ?? '', disabled: !editable, oninput: event => update({[key]: event.target.value === '' ? null : Number(event.target.value)})}))))));
+        } else details.push(field('Default text', kept(textInput(parameter.default, value => update({default: value})))));
+        details.push(field('Description', kept(textInput(parameter.description, value => update({description: value})))));
         const used = uses(parameter.name);
         return h('div', {class: 'ds-design-parameter'},
           h('div', {class: 'ds-design-parameter-head'}, field('Name', name), field('Type', type)),
           ...details,
           h('p', {class: 'form-note', text: used.length ? `Used in ${used.length}: ${used.slice(0, 6).join('; ')}${used.length > 6 ? '…' : ''}` : 'Not used yet: write {' + parameter.name + '} in a filter, title or setting.'}),
           editable ? h('div', {class: 'ds-design-panel-actions'},
-            h('button', {type: 'button', class: 'ds-design-action ds-design-primary', onclick: commit}, 'Apply'),
             h('button', {type: 'button', class: 'ds-design-action', disabled: used.length > 0, title: used.length ? 'Remove its uses first' : null, onclick: guarded(async () => { list.splice(index, 1); await save(list); refresh(); })}, 'Delete')) : null);
       });
       body.replaceChildren(

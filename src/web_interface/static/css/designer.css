@@ -450,3 +450,14 @@
 .ppt-designer .ds-diff-chip-reset:hover:not(:disabled) { background: #f8e3b9; }
 .ppt-designer .ds-diff-chip-reset .ds-design-icon { width: .8rem; height: .8rem; }
 .ppt-designer .ds-design-differences { display: grid; gap: .55rem; }
+/* The on/off settings of the Designer as switches, the same in the panel and in its dialogs. */
+.ppt-designer label.ds-design-check { display: inline-flex; grid-template-columns: none; align-items: center; justify-self: start; gap: .55rem; margin: 0; padding: .1rem 0;
+  color: var(--ds-design-ink, #2f2540); font-size: .8rem; font-weight: 650; text-align: left; cursor: pointer; }
+.ppt-designer label.ds-design-check > input[type="checkbox"] { position: relative; flex: 0 0 auto; width: 2.15rem; min-width: 2.15rem; height: 1.2rem; min-height: 0; margin: 0; padding: 0;
+  border: 0; border-radius: 999px; background: #d9d0e6; box-shadow: inset 0 1px 2px rgba(36, 22, 61, .15); cursor: pointer; transition: background .15s; -webkit-appearance: none; appearance: none; }
+.ppt-designer label.ds-design-check > input[type="checkbox"]::after { content: ''; position: absolute; top: 2px; left: 2px; width: calc(1.2rem - 4px); height: calc(1.2rem - 4px);
+  border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(36, 22, 61, .3); transition: transform .15s; }
+.ppt-designer label.ds-design-check > input[type="checkbox"]:checked { background: #5b35a0; }
+.ppt-designer label.ds-design-check > input[type="checkbox"]:checked::after { transform: translateX(.95rem); }
+.ppt-designer label.ds-design-check > input[type="checkbox"]:focus-visible { outline: 2px solid rgba(122, 75, 179, .45); outline-offset: 2px; }
+.ppt-designer label.ds-design-check > input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
