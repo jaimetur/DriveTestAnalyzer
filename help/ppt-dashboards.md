@@ -3,7 +3,7 @@
 Build an interactive Dashboard from processed Data, Voice and Speech CDRs, using a saved Report Template. Apply one dataset selection to its slides, explore the charts, then export the result to PowerPoint.
 
 > [!NOTE]
-> **A Dashboard is a saved definition, not a copy of your data.** It stores its template, Scope, dates, filters and comments; its CDRs are chosen from its NR Mode and Campaign filter each time it is prepared. Source CDRs and generated caches remain separate.
+> **A Dashboard is a saved definition, not a copy of your data.** It stores its template, Scope, dates, filters, the values of the template parameters, comments and what it changes of its template's Design; its CDRs are chosen from its NR Mode and Campaign filter each time it is prepared. Source CDRs and generated caches remain separate.
 
 ## Presentation
 
@@ -22,6 +22,8 @@ ppt-dashboards
 | Choose the campaigns, dates and comparison scope | [Dashboard Scope & Filters](#dashboard-scope-filters) |
 | Understand Apply versus Save | [Apply, Save, Clear and Reload](#apply-save-clear-and-reload) |
 | Explore slides and chart data | [View Dashboard](#view-dashboard) |
+| Change slides, layouts and charts on screen, for this Dashboard or for its template | [Design a Dashboard](#design-a-dashboard) |
+| Choose the city, threshold or other values of a template's parameters | [Template parameters](#template-parameters) |
 | Export a presentation | [Generate PPT](#generate-ppt) |
 | Review exported jobs or charts | [PPT Generation Jobs](#ppt-generation-jobs) / [Charts Panel](#charts-panel) |
 | Resolve empty charts or preparation problems | [Troubleshooting](#troubleshooting) |
@@ -323,7 +325,7 @@ The **Chart Definition** tab uses the same editor in live and expanded view:
 | Action | Scope |
 | --- | --- |
 | **Apply** | Change the current preview |
-| **Update Template** | Save the definition to the Report Template row |
+| **Update Template** | Save the definition to the Report Template row (admins, super-admins and the user-editor who created the template). A Dashboard with a Design of its own changes its charts from [Design](#design-a-dashboard). |
 | **Edit PPT Template** | Focus the exact generating row in the template editor |
 
 Saving the template refreshes the Dashboard. Closing it unchanged preserves the current preparation. Template/calculated-field editing actions require **user-editor**, **admin** or **super-admin**.
@@ -386,6 +388,77 @@ The suggestions replace the list of comments until you decide: untick or edit th
 **Writers.** The rules always read the charts, on the server. When Super Admin enables them in [AI Comment Writers](super-admin.md#ai-comment-writers), the menu of the third icon (**⋯**) picks the writer, which the tooltips of the other two name: **Rules**, **Kiro CLI** (the default LLM) or **Claude**, each with the API key of the server or with your own (user menu → **API keys**), as Super Admin chooses; what it writes is charged to the account of the key. An LLM writer receives the facts of the charts and the rules comments, rewrites them in a more natural way and connects them; every figure it writes must be one of the facts and it must not name a hidden item, otherwise that comment is left out, and when none keeps to the facts, or the writer fails, the rules comments are shown with a note saying why. With the **Kiro Brief** enabled, the same menu offers **Download Kiro brief**, which downloads the facts of every slide for Kiro IDE (a folder with the facts, the style guide, also as a Kiro steering file, and the comments.json Kiro fills in) and **Import Kiro comments** reads back comments.json and facts.json (or the folder zipped again), checks every figure and writes the comments with the same three choices as Generate comments for all slides.
 
 App Events records each generation (slide, writer asked and writer that wrote, model, charts read and skipped, suggestions, comments left out, tokens of Claude and time taken), the comments added from it, Generate comments for all slides, the Kiro briefs exported and the Kiro comments imported.
+
+## Design a Dashboard
+
+**Design**, at the top of the viewer, turns it into a slide editor. The slides at the left become the slides of the Design, the charts of the slide shown can be chosen and moved, and the panel at the right shows the slide or the chart chosen. Every change is drawn at once on the CDRs the Dashboard already prepared; nothing is stored until **Save**.
+
+| From | To | How |
+| --- | --- | --- |
+| PPT Template | Each Dashboard that follows it | Live: the template's slides and charts, plus the differences of each Dashboard |
+| A Dashboard | Its template | **Apply to template** (a slide or chart), or Template scope |
+| A Dashboard | A Design of its own | **Detach from template** |
+
+### Template or This Dashboard
+
+A Dashboard does not copy its template: it follows it live and keeps only **what it changes**. Whatever it does not change comes from the template, so a change of the template reaches every Dashboard that follows it.
+
+| Scope (bar of Design) | What a change does |
+| --- | --- |
+| **This Dashboard** | Changes this Dashboard only, kept as its differences from the template: a slide hidden or added, a title, a layout, the place, type or any setting of a chart, the conditions added to or removed from its Filters |
+| **Template · N Dashboards** | Changes the template: Save asks to confirm and names the other Dashboards that take the change |
+
+A difference of a Dashboard wins over the template. When the template changes the same thing afterwards, the slide or chart shows **Template changed**: **Differences** offers **Take template** or **Keep mine**. Conditions added to or removed from the Filters of a chart are kept one by one, so the other conditions of the template still reach the Dashboard.
+
+| Mark | Meaning |
+| --- | --- |
+| **This Dashboard** (blue) | A slide or chart only this Dashboard has |
+| **Changed here** (amber) | The Dashboard changes something of this slide or chart |
+| **Template changed** (red) | The template changed what the Dashboard had changed |
+| **Hidden here**, **Optional · off** (grey) | A slide of the template this Dashboard leaves out |
+
+**Differences** lists every difference with **Reset to template**; the menu of a slide or chart also has **Reset to template** and **Apply to template** (the template takes it, and every Dashboard of the template with it).
+
+### Slides
+
+- Choose a slide at the left; its **⋯** menu (or a right click) offers **New slide after**, **Duplicate**, **Hide in this Dashboard** / **Show again**, **Delete** (Template scope, or a slide of this Dashboard), **Optional (off by default)** and, for an optional slide, **Show in this Dashboard**. **+ New slide** adds a content, title, transition or end slide.
+- Drag a slide to move it: in Template scope any slide, in This Dashboard scope the slides of this Dashboard (those of the template keep their order).
+- The **Slide** tab changes the title and subtitle (**{ }** inserts `{NR Mode}`, `{NR Mode Name}` or a parameter) and the **layout**: a grid of up to 6 × 6 places, with comments below, to the right or none, and the other layouts of the slide master. A layout with fewer places than the slide has charts removes the last ones, after asking.
+
+### Charts on the slide
+
+- Click a chart to change it in the **Element** tab: source, chart type, KPI, Rows Split, Columns Split, Legend, Filters (one condition per line), legend and label positions, axis ranges, Exclude Null/Empty and Exclude Zero. The chart is drawn again a moment after each change.
+- Drag a chart by its **⠿** handle onto another chart to swap their places, or onto a free place to move it there. A free place of the layout shows **+ Add**: a new chart or one copied before (**Copy** in the menu of a chart).
+- **Delete** removes a chart (in This Dashboard scope, a chart of the template is hidden in this Dashboard).
+- **Ctrl/Cmd+Z** and **Shift+Ctrl/Cmd+Z** undo and redo; **Delete** removes the chart chosen; **Esc** leaves it.
+
+A change the template cannot hold (a chart without a KPI or a split, for example) is refused with the reason and undone.
+
+### Save, drafts and the other actions
+
+- **Save** stores the template (Template scope) and the differences of the Dashboard. If another user saved the template since you opened Design, Save asks you to reload it first.
+- The Design not saved yet is kept on the server, for you only, as a draft (table **Dashboard Design Drafts**): opening Design again offers to restore it or discard it. **Discard** goes back to what is saved. Drafts are not part of exports, transfers or backups.
+- **More** offers **Save as template…** (the Design shown as a new template), **Save as my Dashboard…** (a Dashboard of your own that follows the same template with the changes shown) and **Detach from template…** (the Dashboard keeps the Design it shows as its own and no longer follows its template; choosing a template for it again in PPT Manage Dashboards follows that template as it is).
+- Deleting a template that Dashboards follow detaches them first, so none of them breaks.
+- Generate PPT, Reporting Jobs and Bundle Report Templates use the Design of the Dashboard as saved. The comments of a slide stay with it when its title changes.
+
+### Who can design
+
+| Role | Design of a Dashboard (This Dashboard) | Design of a template (Template scope, parameters) |
+| --- | --- | --- |
+| **admin**, **super-admin** | Any Dashboard | Any template |
+| **user-editor** | The Dashboards they created | The templates they created; **Save as my Dashboard** for a variant of another one |
+| **user-viewer** | — | — |
+
+App Events record `dashboard_design_saved` (what changed: slides and charts of the template, differences of the Dashboard), `report_template_saved_from_designer`, `report_template_design_ids_assigned`, `dashboard_design_detached`, `report_template_saved_from_dashboard` and `dashboard_design_draft_discarded`.
+
+### Template parameters
+
+A template can declare **parameters**, so that Dashboards that differ only in a city, a call family or a threshold share one template with no difference of their own (a *City Report* template and its London, Manchester and Cardiff Dashboards).
+
+- **Parameters** in the bar of Design (Template scope) adds, renames and deletes them: **Field values** (the values of a CDR field such as City, one or several; none chosen means All), **Number** (default, minimum, maximum, step) or **Text**. A parameter in use cannot be deleted, and renaming one renames its uses.
+- Write `{Name}` in a chart filter (`City IN ({City})`; with All the condition is left out), a numeric setting (`LQ < {Threshold}`, `Threshold = {Threshold}`, an axis range) or a title (`Voice quality in {City}`).
+- Each Dashboard chooses the values in **Dashboard Scope & Filters → Parameters**, applied and saved like its filters; until it chooses them, it uses their default values.
 
 ## Generate PPT
 
@@ -486,8 +559,9 @@ Permitted editors can open the generating template and Auto-Calculated Fields wi
 | Included in the definition | Not copied by Dashboard definition export |
 | --- | --- |
 | Name, NR Mode of its CDRs and template association | Source CDRs |
-| Scope, dates, saved filters (Campaign included), hidden/additional fields | Prepared cache files |
+| Scope, dates, saved filters (Campaign included), hidden/additional fields, parameter values | Prepared cache files |
 | Slide comments | Generated presentation assets |
+| Its differences from the template, or its own Design once detached | Unsaved Design drafts |
 
 A Dashboard chooses its CDRs from its NR Mode and Campaign in the workspace where it is opened, so an imported Dashboard uses the CDRs of the destination with the same campaigns (Latest campaign, Latest 2, 3 and 4 campaigns and Previous campaign, among its newest ones). Dashboards exported by earlier versions with CDRs of their own take the campaigns of the CDRs of the destination with the same name and type, or else its newest two campaigns; check the inputs after import. Dashboards exported when templates had an NR Mode of their own read that NR Mode as part of their selection and use their template as the destination knows it now (its NSA and SA copies merged into one); an SA Dashboard named as an NSA one takes " (SA)".
 

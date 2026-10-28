@@ -120,6 +120,9 @@ MAIN_CITIES = '@main-cities'
 # Main Cities becomes the Main Cities choice.
 MAIN_CITIES_MIGRATION_KEY = 'ppt_dashboard_main_cities_reference_v1'
 DASHBOARD_PPT_JOBS_TABLE = 'dashboard_ppt_jobs'
+# The Design a user is changing and has not saved, per Dashboard (Dashboard Designer): it survives a reload and is not
+# part of exports, transfers or backups (it is the user's work in progress, not the Dashboard).
+DASHBOARD_DESIGN_DRAFTS_TABLE = 'dashboard_design_drafts'
 # The colour theme of PPT Dashboards: per user in each workspace, as in the other themed modules.
 DASHBOARD_THEME_MODULE = 'ppt_dashboards'
 
@@ -295,6 +298,9 @@ class DashboardDesignPreview(BaseModel):
     the template Design as edited (Template scope), the Dashboard Design as edited in This Dashboard scope (its
     overrides are worked out from it, starting from ``overrides``) and the values of the parameters."""
     token: str = Field(min_length=1)
+    # The Dashboard designed: its Design as saved now (detached or not, its overrides) is the start of the preview,
+    # whatever it was when the selection was prepared.
+    dashboard_id: str = ''
     template_design: dict[str, Any] | None = None
     design: dict[str, Any] | None = None
     overrides: dict[str, Any] | None = None
@@ -314,6 +320,12 @@ class DashboardDesignSave(BaseModel):
 
 class DashboardDesignTemplate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
+
+
+class DashboardDesignDraft(BaseModel):
+    """The Designer's unsaved work on a Dashboard: the template Design, the Dashboard Design and overrides as edited,
+    what of them changed, and the template version they started from."""
+    state: dict[str, Any]
 
 
 class DashboardTemplateSelection(BaseModel):
@@ -3219,6 +3231,7 @@ def install_dashboard_routes(core):
             template_row = template_row_of(definition.template, task_repository)
             if edit and (can_design_dashboard(user, dashboard_id, task_repository) or can_design_template(user, template_row)):
                 template, template_row = template_with_ids(definition.template, task_repository, user.username)
+                ensure_design_drafts(task_repository)
             else:
                 template, _entries = template_design(definition.template, task_repository)
             if template is None:
@@ -3236,6 +3249,11 @@ def install_dashboard_routes(core):
             raise HTTPException(410, 'Dashboard preview expired. Refresh the Dashboard.')
         task_repository = Repository(Path(workspace), core.repository.global_db_path)
         definition = snapshot.definition.model_copy(deep=True)
+        if request.dashboard_id:
+            stored = read_dashboards(task_repository).get(request.dashboard_id)
+            if isinstance(stored, dict):
+                definition.design = copy.deepcopy(stored.get('design'))
+                definition.design_overrides = copy.deepcopy(stored.get('design_overrides') or {})
         template = None
         if request.template_design is not None and not definition.design:
             template = checked_design(request.template_design)
@@ -3347,6 +3365,11 @@ def install_dashboard_routes(core):
                                               dashboard_ids={dashboard_id})
         if len(details) > 2:
             task_repository.add_log(user.username, 'dashboard_design_saved', json.dumps(details))
+        # Saved: the draft of this user is the Design now.
+        ensure_design_drafts(task_repository)
+        with task_repository.connection() as connection:
+            connection.execute(f'DELETE FROM {DASHBOARD_DESIGN_DRAFTS_TABLE} WHERE dashboard_id = ? AND username = ?',
+                               (dashboard_id, user.username))
         return design_payload(dashboard_id, definition, task_repository, user, template=template, template_row=template_row)
 
     @app.post('/api/ppt-dashboards/{dashboard_id}/design/detach')
@@ -3414,6 +3437,64 @@ def install_dashboard_routes(core):
         return len(detached)
 
     core.ppt_dashboard_detach_template_dashboards = detach_template_dashboards
+
+    def ensure_design_drafts(task_repository) -> None:
+        with task_repository.connection() as connection:
+            connection.execute(
+                f'CREATE TABLE IF NOT EXISTS {DASHBOARD_DESIGN_DRAFTS_TABLE} ('
+                'dashboard_id TEXT NOT NULL, username TEXT NOT NULL, state TEXT NOT NULL, updated_at TEXT NOT NULL, '
+                'PRIMARY KEY (dashboard_id, username))'
+            )
+
+    @app.get('/api/ppt-dashboards/{dashboard_id}/design/draft')
+    def dashboard_design_draft(dashboard_id: str, user=Depends(dashboard_editor_user)):
+        task_repository = bound_repository()
+        ensure_design_drafts(task_repository)
+        with task_repository.connection() as connection:
+            row = connection.execute(
+                f'SELECT state, updated_at FROM {DASHBOARD_DESIGN_DRAFTS_TABLE} WHERE dashboard_id = ? AND username = ?',
+                (dashboard_id, user.username),
+            ).fetchone()
+        if row is None:
+            return {'draft': None}
+        try:
+            state = json.loads(row['state'])
+        except ValueError:
+            state = None
+        return {'draft': state, 'updated_at': str(row['updated_at'])}
+
+    @app.put('/api/ppt-dashboards/{dashboard_id}/design/draft')
+    def save_dashboard_design_draft(dashboard_id: str, payload: DashboardDesignDraft, user=Depends(dashboard_editor_user)):
+        task_repository = bound_repository()
+        stored_dashboard(dashboard_id, task_repository)
+        encoded = json.dumps(payload.state)
+        if len(encoded) > 8_000_000:
+            raise HTTPException(413, 'The Design is too large to keep as a draft.')
+        ensure_design_drafts(task_repository)
+        now = datetime.now(timezone.utc).astimezone().isoformat(timespec='seconds')
+        with task_repository.connection() as connection:
+            connection.execute(
+                f'INSERT INTO {DASHBOARD_DESIGN_DRAFTS_TABLE} (dashboard_id, username, state, updated_at) VALUES (?, ?, ?, ?) '
+                'ON CONFLICT(dashboard_id, username) DO UPDATE SET state = excluded.state, updated_at = excluded.updated_at',
+                (dashboard_id, user.username, encoded, now),
+            )
+        return {'updated_at': now}
+
+    @app.delete('/api/ppt-dashboards/{dashboard_id}/design/draft')
+    def delete_dashboard_design_draft(dashboard_id: str, discarded: bool = False, user=Depends(dashboard_editor_user)):
+        """Forget the draft of a Dashboard (saved, or ``discarded`` by the user: logged in App Events)."""
+        task_repository = bound_repository()
+        ensure_design_drafts(task_repository)
+        with task_repository.connection() as connection:
+            deleted = connection.execute(
+                f'DELETE FROM {DASHBOARD_DESIGN_DRAFTS_TABLE} WHERE dashboard_id = ? AND username = ?',
+                (dashboard_id, user.username),
+            ).rowcount
+        if discarded:
+            task_repository.add_log(user.username, 'dashboard_design_draft_discarded', json.dumps({
+                'id': dashboard_id, 'draft': bool(deleted),
+            }))
+        return {'deleted': bool(deleted)}
 
     @app.patch('/api/ppt-dashboards/{dashboard_id}/comments')
     def save_dashboard_comments(dashboard_id: str, payload: DashboardComments, user=Depends(dashboard_editor_user)):

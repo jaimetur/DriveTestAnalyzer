@@ -309,3 +309,41 @@ def test_a_user_editor_designs_only_what_they_created(client):
     saved = client.post('/workspace-config/report-templates/Design test/save', data={'catalogue_content': TEMPLATE},
                         headers={'accept': 'application/json'})
     assert saved.status_code == 403
+
+
+def test_a_template_slide_missing_from_the_edited_design_is_hidden_not_brought_back():
+    template = netcheck_design()
+    shown, _report = dd.resolve_design(template, None)
+    edited = copy.deepcopy(shown)
+    dropped = edited['slides'].pop(2)
+    overrides = dd.overrides_between(template, edited)
+    assert overrides['hidden_slides'] == [dropped['id']]
+    assert dropped['id'] not in [slide['id'] for slide in dd.resolve_design(template, overrides)[0]['slides'] if not slide.get('hidden')]
+
+
+def test_drafts_layouts_and_previews_after_detaching(client):
+    definition = setup(client)
+    layouts = client.get('/api/ppt-dashboards/design/layouts')
+    assert layouts.status_code == 200, layouts.text
+    grid = next(layout for layout in layouts.json()['layouts'] if layout['name'] == 'Title + 1 rows + 2 columns + comments down')
+    assert grid['grid'] == [1, 2] and len(grid['places']) == 2
+    body = client.get('/api/ppt-dashboards/design-a/design?edit=1').json()
+    # A draft is kept per user until it is saved or discarded (App Events).
+    assert client.get('/api/ppt-dashboards/design-a/design/draft').json() == {'draft': None}
+    assert client.put('/api/ppt-dashboards/design-a/design/draft', json={'state': {'design': body['design']}}).status_code == 200
+    assert client.get('/api/ppt-dashboards/design-a/design/draft').json()['draft']['design'] == body['design']
+    assert client.delete('/api/ppt-dashboards/design-a/design/draft?discarded=1').json() == {'deleted': True}
+    assert logged('dashboard_design_draft_discarded')[-1] == {'id': 'design-a', 'draft': True}
+    # A preview starts from the Design saved now, even on a selection prepared before it was detached.
+    prepared = client.post('/api/ppt-dashboards/prepare', json=definition).json()
+    assert client.post('/api/ppt-dashboards/design-a/design/detach').status_code == 200
+    own = client.get('/api/ppt-dashboards/design-a/design?edit=1').json()['design']
+    own['slides'] = own['slides'][:1]
+    own['slides'][0]['title'] = 'Only mine'
+    preview = client.post('/api/ppt-dashboards/design/preview', json={'token': prepared['token'], 'dashboard_id': 'design-a', 'design': own})
+    assert preview.status_code == 200, preview.text
+    assert [slide['title'] for slide in preview.json()['slides']] == ['Only mine']
+    assert client.put('/api/ppt-dashboards/design-a/design', json={'design': own}).status_code == 200
+    assert [slide['title'] for slide in stored('design-a')['design']['slides']] == ['Only mine']
+    fields = client.get(f"/api/ppt-dashboards/design/fields?token={preview.json()['token']}")
+    assert fields.status_code == 200 and 'Mean_Data_Rate' in fields.json()['columns_by_source']['cdr-data']

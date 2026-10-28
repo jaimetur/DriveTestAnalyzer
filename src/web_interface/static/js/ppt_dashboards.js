@@ -315,6 +315,8 @@
       filters: selection.filters, sa_campaigns: selection.sa_campaigns, custom_fields: selection.custom_fields, hidden_filters: selection.hidden_filters,
       scope: selection.scope || 'single', vendor_comparison: selection.vendor_comparison || 'operator_vendor',
       date_from: selection.date_from || 'Oldest', date_to: selection.date_to || 'Newest',
+      // The values of the template parameters are saved and applied as the filters.
+      parameter_values: selection.parameter_values || {},
     }));
   };
   const preparationStateFingerprint = value => {
@@ -323,6 +325,7 @@
       datasets: selection.datasets, scope: selection.scope || 'single', filters: selection.filters, sa_campaigns: selection.sa_campaigns,
       custom_fields: selection.custom_fields, hidden_filters: selection.hidden_filters,
       date_from: selection.date_from || 'Oldest', date_to: selection.date_to || 'Newest',
+      parameter_values: selection.parameter_values || {},
     }));
   };
   const selectionStateFingerprint = value => {
@@ -2510,6 +2513,7 @@
     chartPayloads.clear(); renderedChartPayloads.clear(); rememberPrepared(payload);
     scheduleBackgroundChartPreload(payload.token);
     if (!$('ds-viewer').hidden) renderSlide();
+    document.dispatchEvent(new CustomEvent('ds:prepared', {detail: {token: payload.token}}));
   };
   async function restorePrepared(id) {
     if (await restoreRememberedPrepared(id)) return true;
@@ -2657,6 +2661,7 @@
     clearTimeout(timer); ++sequence; ++backgroundChartPreloadRequest; controller?.abort(); preparing = null;
     stopPresentation();
     activeId = id; dashboardFiltersOpen = showFilters; rememberFiltersOpen(showFilters); $('ds-viewer-export-ppt').dataset.dashboardPptId = id; definition = runtimeDashboardDefinition(dashboards[id], id); savedDefinition = definitionFingerprint(savedRuntimeDashboardDefinition(dashboards[id])); dirty = false; prepared = null; appliedFilterState = ''; appliedSelectionState = ''; appliedDashboardDefinition = null; applyingDashboardDefinition = null; facetOptions = {}; availableFields = []; facetOptionRequests.clear(); slideIndex = 0; setViewEnabled(false); rememberOpen(id);
+    document.dispatchEvent(new CustomEvent('ds:dashboard-opened', {detail: {id}}));
     resetViewerForDashboard();
     $('ds-name').value = definition.name; setNrMode(dashboardNrMode(definition), definition.template);
     $('ds-filter-panel').hidden = !dashboardFiltersOpen; document.dispatchEvent(new CustomEvent('page-panel-navigation:update')); setActiveDashboardHeading(definition.name); sources(); facets(); library(); status(''); await prepare();
@@ -2791,7 +2796,7 @@
   }
   bind('ds-import',() => $('ds-import-file').click());
   $('ds-import-file').onchange = safe(async () => { const file = $('ds-import-file').files[0]; if (!file) return; const payload = JSON.parse(await file.text()); const format = String(payload.format || '').replace(/^dashboard-analytic-/, 'drivetest-analyzer-'); const legacy = format === 'drivetest-analyzer-dashboard-set' && payload.version === 1; if (!legacy && (format !== 'drivetest-analyzer-dashboard' || payload.version !== 2)) throw new Error('Unsupported Dashboard file.'); if (!await confirmDiscard()) return; payload.definition.name = nextName(payload.definition.name); if (!payload.definition.auto_cdrs) delete payload.definition.datasets; /* CDRs of another workspace: its newest campaigns are used. */ const id = dashboardId(), result = await api(`/${id}`,'PUT',payload.definition); dashboards[id] = result.definition; await openDashboard(id); $('ds-import-file').value = ''; });
-  function closeDashboard() { delete $('ds-viewer-export-ppt').dataset.dashboardPptId; $('ds-viewer-export-ppt').disabled = true; clearTimeout(facetsRefreshTimer); dismissPreparationStatus(); stopPresentation(); rememberOpen(''); rememberFiltersOpen(false); ++sequence; clearTimeout(timer); controller?.abort(); preparing = null; activeId = ''; dashboardFiltersOpen = false; definition = null; savedDefinition = ''; appliedFilterState = ''; appliedSelectionState = ''; appliedDashboardDefinition = null; applyingDashboardDefinition = null; prepared = null; dirty = false; updateUnsavedFiltersBadge(); setViewEnabled(false); setPreparationState('hidden'); $('ds-filter-panel').hidden = true; document.dispatchEvent(new CustomEvent('page-panel-navigation:update')); setActiveDashboardHeading(''); $('ds-name').value = ''; setNrMode('nsa'); syncNewDashboardNameFromTemplate(); library(); status('Dashboard closed.'); }
+  function closeDashboard() { delete $('ds-viewer-export-ppt').dataset.dashboardPptId; $('ds-viewer-export-ppt').disabled = true; clearTimeout(facetsRefreshTimer); dismissPreparationStatus(); stopPresentation(); rememberOpen(''); rememberFiltersOpen(false); ++sequence; clearTimeout(timer); controller?.abort(); preparing = null; activeId = ''; dashboardFiltersOpen = false; definition = null; savedDefinition = ''; appliedFilterState = ''; appliedSelectionState = ''; appliedDashboardDefinition = null; applyingDashboardDefinition = null; prepared = null; dirty = false; updateUnsavedFiltersBadge(); setViewEnabled(false); setPreparationState('hidden'); $('ds-filter-panel').hidden = true; document.dispatchEvent(new CustomEvent('page-panel-navigation:update')); setActiveDashboardHeading(''); $('ds-name').value = ''; setNrMode('nsa'); syncNewDashboardNameFromTemplate(); library(); status('Dashboard closed.'); document.dispatchEvent(new CustomEvent('ds:dashboard-closed')); }
   $('ds-name').oninput = () => { if (definition) { definition.name = $('ds-name').value; updateDirtyState(); } };
   // The NR Mode chooses the CDRs the open Dashboard reads; its template stays (it serves any NR Mode).
   $('ds-nr-mode').onchange = () => {
@@ -4350,6 +4355,8 @@
   function renderSlideThumbnails() {
     const nav = $('ds-slide-thumbnails');
     if (!nav) return;
+    // In Design the Designer lists the slides of the Design itself (dashboard_designer.js).
+    if ($('ds-viewer').classList.contains('ds-designing')) { thumbnailsToken = null; return; }
     if (!prepared?.slides.length) { nav.replaceChildren(); thumbnailsToken = null; return; }
     if (thumbnailsToken !== prepared.token || nav.childElementCount !== prepared.slides.length) {
       thumbnailsToken = prepared.token;
@@ -4425,6 +4432,7 @@
     const compactTitles = (cardLayout === (slide.layout || '') ? slide.compact_titles : undefined) ?? Boolean(gridSize && (Number(gridSize[1]) >= 3 || Number(gridSize[2]) >= 4));
     for (const {chart, position} of cards) {
       const card = node('article',undefined,'ds-chart'); card.setAttribute('aria-label',chart.title); card.tabIndex = 0;
+      card.dataset.chartIndex = String(chart.index); card.dataset.elementId = chart.element || '';
       const brand = dashboardViewerBrand('ds-chart-brand'); card.append(brand);
       if (compactTitles) {
         // Small grid cells: a readable title above a title-less chart.
@@ -4523,6 +4531,7 @@
     renderComments();
     renderSlideThumbnails();
     scheduleNearbySlidePreload(preloadToken, preloadOrigin, visibleLoads);
+    document.dispatchEvent(new CustomEvent('ds:slide-rendered', {detail: {slideIndex, slide, stage}}));
   }
   // As in the presentations of the Help, the wheel over the slide goes through the slides, one per turn of the wheel or
   // swipe of the touchpad; with Ctrl or Cmd (or a pinch of the touchpad, which comes with Ctrl) it zooms the chart under
@@ -4968,6 +4977,37 @@
         : {section: 'Charts Panel', context: {dashboard: imageText('ds-ppt-charts-dashboard'), date: imageText('ds-ppt-charts-date')}};
     },
   });
+  // The Dashboard Designer (dashboard_designer.js) works on the open Dashboard through these.
+  window.dashboardViewer = {
+    api, safe, status,
+    state: () => ({activeId, definition, prepared, slideIndex, dashboard: dashboards[activeId] || null, config}),
+    // A Design laid out by the Designer (POST /design/preview): its slides and token replace those shown.
+    showDesign(payload, {designSlide = ''} = {}) {
+      if (!prepared) return;
+      prepared = {...prepared, token: payload.token, slides: payload.slides, grid_layouts: payload.grid_layouts || prepared.grid_layouts};
+      chartPayloads.clear(); renderedChartPayloads.clear(); thumbnailsToken = null;
+      if (designSlide) {
+        const index = prepared.slides.findIndex(slide => slide.design_slide === designSlide);
+        if (index >= 0) slideIndex = index;
+      }
+      renderSlide();
+    },
+    goToSlide(index) { if (!prepared) return; stopPresentation(); slideIndex = index; renderSlide(); },
+    renderSlide() { if (prepared) renderSlide(); },
+    // The Design saved: the Dashboard keeps it, so its filters saved later do not count it as a change.
+    storeDesign(id, fields) {
+      if (!dashboards[id]) return;
+      dashboards[id] = {...dashboards[id], ...structuredClone(fields)};
+      if (id !== activeId || !definition) return;
+      Object.assign(definition, structuredClone(fields));
+      savedDefinition = definitionFingerprint(savedRuntimeDashboardDefinition(dashboards[id]));
+      updateDirtyState();
+    },
+    // The values of the template parameters, chosen in Dashboard Scope & Filters: applied and saved as the filters.
+    setParameterValues(values) { if (!definition) return; definition.parameter_values = structuredClone(values); filterChanged(); },
+    async reloadLibrary() { dashboards = await api(); library(); },
+    openDashboard: id => openDashboard(id),
+  };
   safe(async ()=>{
     let last = '';
     try {

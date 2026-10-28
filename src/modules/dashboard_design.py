@@ -472,6 +472,10 @@ def overrides_between(template: dict[str, Any], edited: dict[str, Any],
                 local['id'] = new_id('s')
             result['local_slides'].append({'after': previous_id, 'slide': local})
         previous_id = slide_id or previous_id
+    # A template slide the edited Design does not have at all is left out of the Dashboard as a hidden one.
+    edited_ids = {str(slide.get('id') or '') for slide in edited.get('slides') or []}
+    result['hidden_slides'].extend(slide_id for slide_id in template_slides if slide_id not in edited_ids)
+    result['hidden_slides'] = list(dict.fromkeys(result['hidden_slides']))
     result['hidden_elements'] = list(dict.fromkeys(result['hidden_elements']))
     return result
 
