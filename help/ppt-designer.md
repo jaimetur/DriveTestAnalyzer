@@ -414,7 +414,7 @@ A difference of a Design wins over the template. When the template changes the s
 | **Template changed** (red) | The template changed what the Design had changed |
 | **Hidden here**, **Optional · off** (grey) | A slide of the template this Design leaves out |
 
-**Differences** lists every difference with **Reset to template**; the menu of a slide or chart also has **Reset to template** and **Apply to template** (the template takes it, and every Design of the template with it).
+**Differences** shows a card for each slide and chart the Design changes, with a chip for each property it changes (its title, place, format, chart type, hidden…): the arrow of a chip takes the template back for it, **Reset all** for every one of the card; the menu of a slide or chart also has **Reset to template** and **Apply to template** (the template takes it, and every Design of the template with it).
 
 ### Slides
 
