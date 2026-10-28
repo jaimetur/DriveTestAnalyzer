@@ -4,7 +4,7 @@
    the CDR Field Dictionary) are dragged to its shelves — Measure, Rows, Columns, Legend, Filters and Repeat by — and Chart Type
    offers the chart types the shelves can draw, the others greyed with the reason. Each change gives the values of the
    chart as its template row writes them (KPI, Rows Split, Columns Split, Legend, Filters, Chart type, Dynamic Rows/Columns
-   Field), so the same engine and renderer draw it. Used by slide set (designer.js) and by Chart Builder. */
+   Field), so the same engine and renderer draw it. Used by the Designer (designer.js) and by Chart Builder. */
 (() => {
   'use strict';
   const h = (tag, props = {}, ...children) => {

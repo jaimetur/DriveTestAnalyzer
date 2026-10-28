@@ -1379,12 +1379,12 @@
       statusBadge.dataset.designStatusId = id;
       statusBadge.title = designStatus.detail || designStatus.label;
       statusCell.append(statusBadge); row.append(statusCell);
-      const actions = node('div', undefined, 'ds-design-actions');
+      const actions = node('div', undefined, 'ds-library-actions');
       const action = (label, glyph, handler, tone = '') => {
-        const button = node('button', glyph, `icon-action ds-design-action ${tone}`); button.type = 'button'; button.title = label; button.setAttribute('aria-label', label); button.onclick = safe(handler); actions.append(button); return button;
+        const button = node('button', glyph, `icon-action ds-library-action ${tone}`); button.type = 'button'; button.title = label; button.setAttribute('aria-label', label); button.onclick = safe(handler); actions.append(button); return button;
       };
       const primaryActionLabel = (button, firstLine, secondLine) => {
-        const label = node('span', undefined, 'ds-design-action-label');
+        const label = node('span', undefined, 'ds-library-action-label');
         label.append(node('span', firstLine), node('span', secondLine)); button.replaceChildren(label);
       };
       const view = action('View Design', 'View Design', async () => {
@@ -4358,7 +4358,7 @@
   function renderSlideThumbnails() {
     const nav = $('ds-slide-thumbnails');
     if (!nav) return;
-    // In slide set the Designer lists the slides of the slide set itself (designer.js).
+    // While designing, the Designer lists the slides being edited itself (designer.js).
     if ($('ds-viewer').classList.contains('ds-designing')) { thumbnailsToken = null; return; }
     if (!prepared?.slides.length) { nav.replaceChildren(); thumbnailsToken = null; return; }
     if (thumbnailsToken !== prepared.token || nav.childElementCount !== prepared.slides.length) {

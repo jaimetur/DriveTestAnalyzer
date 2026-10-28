@@ -1,6 +1,6 @@
 /* The Designer (ticket #26): the Designer of the PPT Designer viewer.
 
-   In slide set the slides at the left are the slides of the slide set (hidden and optional ones included), the elements of the
+   In the Designer the slides at the left are the slides being edited (hidden and optional ones included), the elements of the
    slide shown can be chosen, moved between the places of its layout and changed in the panel at the right, and every
    change is laid out at once by the server on the CDRs the Design already prepared (POST /slides/preview). Changes go
    to the template (Template scope: every Design that follows it) or to this Design only (This Design scope:
@@ -651,7 +651,7 @@
     const changed = (state.report?.template_changed || []).length;
     bar.replaceChildren(
       h('div', {class: 'ds-design-bar-group'},
-        h('span', {class: 'ds-design-bar-label', text: 'slide set'}),
+        h('span', {class: 'ds-design-bar-label', text: 'Designer'}),
         state.detached
           ? h('span', {class: 'ds-design-pill ds-design-pill-detached', title: `Detached from ${state.info?.template?.name || 'its template'}: it keeps slides of its own`, text: 'Detached'})
           : h('div', {class: 'ds-design-scopes', role: 'group', 'aria-label': 'Change'},
@@ -1837,7 +1837,7 @@
     const rights = state.info?.rights;
     button.hidden = !rights || !(rights.design || rights.template);
     button.classList.toggle('is-active', state.active);
-    button.textContent = state.active ? 'Designing' : 'slide set';
+    button.textContent = state.active ? 'Designing' : 'Designer';
   }
   $('ds-design')?.addEventListener('click', guarded(async () => {
     if (state.active) { await exitDesigner(); syncDesignerButton(); return; }

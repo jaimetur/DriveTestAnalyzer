@@ -3605,7 +3605,7 @@ def install_design_routes(core):
                     options[field_name] = load_filter_options(definition, field_name, task_repository)
                 except HTTPException:
                     options[field_name] = []
-        expanded, slides = design_slides(
+        expanded, slides = laid_out_slides(
             entries, definition, options, task_repository, selected_sources(definition, task_repository), deck)
         payload = {**snapshot.payload, 'slides': slides}
         payload.pop('grid_layouts', None)
@@ -5215,7 +5215,7 @@ def install_design_routes(core):
                                           format=design_slides.format_cell({**data, 'rect': part, 'repeat_value': value})))
         return result
 
-    def design_slides(entries, definition, options, task_repository, selected_by_kind, deck):
+    def laid_out_slides(entries, definition, options, task_repository, selected_by_kind, deck):
         """The rows of a Design with its dynamic layouts expanded, and its slides as the viewer shows them: their
         charts, positions on the layout and whether each chart has CDRs to read."""
         slides = OrderedDict()
@@ -5358,7 +5358,7 @@ def install_design_routes(core):
         )
         report(82, 'Preparing the Design slide structure and chart positions')
         deck = Presentation(core.settings.powerpoint_template)
-        entries, slides = design_slides(entries, definition, options, task_repository, selected_by_kind, deck)
+        entries, slides = laid_out_slides(entries, definition, options, task_repository, selected_by_kind, deck)
         token = uuid4().hex
         payload = {
             'slides': slides,
