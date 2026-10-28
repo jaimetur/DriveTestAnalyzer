@@ -3,7 +3,10 @@ from __future__ import annotations
 
 import csv
 import io
+import json
 import re
+from typing import Any
+from uuid import uuid4
 
 DYNAMIC_LAYOUTS = tuple(
     f"Title + {axes}" + (f" + comments {comments}" if comments else "")
@@ -107,8 +110,10 @@ def normalize_catalog_layouts(content: bytes) -> bytes:
                 row['Dynamic Columns Field'] = legacy if dynamic_columns else ''
             changed = True
         non_dynamic_headers = [header for header in headers if header not in {'Dynamic Rows Field', 'Dynamic Columns Field'}]
-        if set(base_headers).issubset(non_dynamic_headers) and all(header in base_headers + optional_headers for header in headers):
-            complete_headers = base_headers[:4] + ['Dynamic Rows Field', 'Dynamic Columns Field'] + base_headers[4:] + optional_headers[:-2]
+        # The Format column (the Design beyond the columns, see dashboard_design) stays last.
+        if set(base_headers).issubset(non_dynamic_headers) and all(header in base_headers + optional_headers + ['Format'] for header in headers):
+            complete_headers = (base_headers[:4] + ['Dynamic Rows Field', 'Dynamic Columns Field'] + base_headers[4:] + optional_headers[:-2]
+                                + (['Format'] if 'Format' in headers else []))
             if headers != complete_headers:
                 headers = complete_headers
                 for row in rows:
@@ -179,3 +184,72 @@ def rename_template_vendor_fields(content: bytes) -> bytes:
         return output.getvalue().encode('utf-8')
     except (UnicodeDecodeError, csv.Error):
         return content
+
+
+# The Design of a template (stable slide and element ids, see dashboard_design) in its Format column.
+
+def design_id(prefix: str) -> str:
+    return f'{prefix}{uuid4().hex[:10]}'
+
+
+def design_format_cell(data: dict[str, Any]) -> str:
+    cleaned = {key: value for key, value in data.items() if value not in (None, '', [], {})}
+    return json.dumps(cleaned, ensure_ascii=False, sort_keys=True, separators=(',', ':')) if cleaned else ''
+
+
+def csv_with_design_ids(content: bytes) -> bytes:
+    """A template CSV written with a Format column, with every row's ids completed (as ``dashboard_design.with_design_ids``).
+
+    Works on the raw rows, so an incomplete template (the editor can keep one) is never refused here; a CSV without a
+    Format column, or with no slide id in it, is returned as it is.
+    """
+    try:
+        text = content.decode('utf-8-sig')
+        reader = csv.DictReader(io.StringIO(text))
+        headers = list(reader.fieldnames or [])
+        rows = list(reader)
+    except (UnicodeDecodeError, csv.Error):
+        return content
+    if 'Format' not in headers or 'Slide' not in headers or any(None in row for row in rows):
+        return content
+    parsed: list[dict[str, Any]] = []
+    for row in rows:
+        try:
+            data = json.loads(row.get('Format') or '{}') or {}
+        except ValueError:
+            return content
+        parsed.append(data if isinstance(data, dict) else {})
+    if not any(data.get('slide') for data in parsed):
+        return content
+    groups: dict[str, list[int]] = {}
+    for index, row in enumerate(rows):
+        groups.setdefault(str(row.get('Slide') or '').strip(), []).append(index)
+    seen_slides: set[str] = set()
+    seen_elements: set[str] = set()
+    changed = False
+    structural = {'title slide', 'transition slide', 'end slide'}
+    for indexes in groups.values():
+        slide_id = next((str(parsed[index]['slide']) for index in indexes
+                         if parsed[index].get('slide') and str(parsed[index]['slide']) not in seen_slides), '') or design_id('s')
+        seen_slides.add(slide_id)
+        for index in indexes:
+            data = parsed[index]
+            if data.get('slide') != slide_id:
+                data['slide'] = slide_id
+                changed = True
+            if str(rows[index].get('Chart type') or '').strip().casefold() in structural:
+                continue
+            element_id = str(data.get('id') or '')
+            if not element_id or element_id in seen_elements:
+                data['id'] = element_id = design_id('e')
+                changed = True
+            seen_elements.add(element_id)
+    if not changed:
+        return content
+    for row, data in zip(rows, parsed, strict=True):
+        row['Format'] = design_format_cell(data)
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=headers, lineterminator='\n')
+    writer.writeheader()
+    writer.writerows(rows)
+    return output.getvalue().encode('utf-8')

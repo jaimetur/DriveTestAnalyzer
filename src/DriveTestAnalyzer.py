@@ -89,7 +89,7 @@ from src.modules.column_names import DEFAULT_CAMPAIGN_MAP, MAIN_CDR_FIELDS, comp
 from src.modules.mapping_order import swap_operator_vendor
 from src.modules.value_maps import ValueMapper, field_kind
 from src.modules.report_layouts import canonical_layout_name, selectable_layout_name
-from src.modules.cdr_reporting import entry_dynamic_fields, DYNAMIC_LAYOUTS, CATALOG_HEADERS, CHART_TYPES, HOVER_TARGETS_VERSION, STRUCTURAL_SLIDE_TYPES, TEMPLATE_NAMES, CatalogEntry, _legend_dimensions, assign_cdr_vendors, calculated_dimensions_json, catalog_chart_hover_targets, catalog_chart_payload, catalog_kpi_fields, catalogue_csv, convert_catalog_csv, ensure_vendor_group, is_empty_catalog_chart, materialize_calculated_dimensions, normalise_operator_aliases, parse_axis_range, parse_calculated_dimensions, parse_catalog_csv, parse_catalog_filters, parse_catalog_grouping, parse_label_format, parse_label_position, parse_legend_position, parse_template_boolean, prepare_catalog_chart_preview_frame, prepare_multivendor_catalog_entry, preview_catalog_chart_data, render_catalog_chart_preview, render_catalog_chart_preview_with_hover, render_cdr_report, render_unavailable_source_chart, report_chart_renderer_name, reset_dashboard_canvas_renderer, split_calculated_dimension_aliases
+from src.modules.cdr_reporting import entry_dynamic_fields, DYNAMIC_LAYOUTS, CATALOG_HEADERS, FORMAT_HEADER, CHART_TYPES, HOVER_TARGETS_VERSION, STRUCTURAL_SLIDE_TYPES, TEMPLATE_NAMES, CatalogEntry, _legend_dimensions, assign_cdr_vendors, calculated_dimensions_json, catalog_chart_hover_targets, catalog_chart_payload, catalog_kpi_fields, catalogue_csv, convert_catalog_csv, ensure_vendor_group, is_empty_catalog_chart, materialize_calculated_dimensions, normalise_operator_aliases, parse_axis_range, parse_calculated_dimensions, parse_catalog_csv, parse_catalog_filters, parse_catalog_grouping, parse_label_format, parse_label_position, parse_legend_position, parse_template_boolean, prepare_catalog_chart_preview_frame, prepare_multivendor_catalog_entry, preview_catalog_chart_data, render_catalog_chart_preview, render_catalog_chart_preview_with_hover, render_cdr_report, render_unavailable_source_chart, report_chart_renderer_name, reset_dashboard_canvas_renderer, split_calculated_dimension_aliases
 from src.modules.exports import POWERPOINT_EXPORT_VERSION, export_dataset_summary_powerpoint, export_powerpoint_report
 from src.modules.email_delivery import DEFAULT_MAX_ATTACHMENTS_MB, EMAIL_SECURITY_MODES, email_delivery_settings, invalid_recipients, parse_recipients, save_email_delivery_settings, send_email
 from src.modules.network_inventory import INVENTORY_DATASET_KINDS, build_inventory_cells, effective_snapshot_date, normalise_snapshot_date
@@ -2688,9 +2688,13 @@ def catalogue_editor_payload(catalogue_id: str | None) -> dict[str, Any] | None:
             'Exclude Zero': 'Yes' if entry.exclude_zero else '',
             'Dynamic Rows Field': entry_dynamic_fields(entry)[0],
             'Dynamic Columns Field': entry_dynamic_fields(entry)[1],
+            FORMAT_HEADER: entry.format,
         }
         for entry in entries
     ]
+    # The Format column (the Design of the template beyond the columns: ids, formats, parameters) is shown, and saved
+    # back, once the template has a Design.
+    headers = CATALOG_HEADERS + ((FORMAT_HEADER,) if any(entry.format for entry in entries) else ())
     if not rows:
         rows = [{header: ('1' if header == 'Slide' else '') for header in CATALOG_HEADERS}]
     dimensions = load_workspace_calculated_dimensions()
@@ -2698,7 +2702,7 @@ def catalogue_editor_payload(catalogue_id: str | None) -> dict[str, Any] | None:
     return {
         'catalogue': catalogue,
         'rows': rows,
-        'headers': CATALOG_HEADERS,
+        'headers': headers,
         'validation_error': validation_error,
         'calculated_dimensions': calculated_dimensions_json(dimensions),
         'suggestions': {
@@ -26402,6 +26406,7 @@ def _import_report_catalogue(
         identifier = existing_template or identifier
         catalogue_name = identifier
         if existing_template:
+            ensure_report_template_editable(user, existing_template)
             persist_report_template(identifier, content, updated_by=user.username)
             if next(row for row in repository.list_report_templates() if str(row['name']) == identifier)['is_default']:
                 promote_report_template_to_default(identifier, updated_by=user.username)
@@ -26477,6 +26482,15 @@ def _named_catalogue(catalogue_id: str) -> dict[str, Any] | None:
     return next((item for item in report_catalogue_options() if item['identifier'] == catalogue_id), None)
 
 
+def ensure_report_template_editable(user: SessionUser, template_name: str) -> None:
+    """Admins and super-admins change any PPT Template, a user-editor only those they created (as Dashboards): raises
+    PermissionError otherwise."""
+    from src.modules.deletion_rights import can_delete
+    row = next((row for row in repository.list_report_templates() if str(row['name']) == str(template_name)), None)
+    if row is not None and not can_delete(user, row['created_by']):
+        raise PermissionError('Only admins and super-admins, or the user who created it, can change this PPT Template.')
+
+
 @app.post('/workspace-config/report-templates/{catalogue_id}/rename', response_class=HTMLResponse)
 def rename_report_catalogue(
     request: Request,
@@ -26497,6 +26511,7 @@ def rename_report_catalogue(
         new_identifier = catalogue_registry_key(name)
         if catalogue_id not in names:
             raise ValueError('Report Template was not found.')
+        ensure_report_template_editable(user, catalogue_id)
         if new_identifier != catalogue_id and new_identifier in names:
             raise ValueError(f"A template named '{new_identifier}' already exists.")
         if new_identifier != catalogue_id:
@@ -26506,6 +26521,10 @@ def rename_report_catalogue(
             rename_dashboards = getattr(sys.modules[__name__], 'ppt_dashboard_rename_template_references', None)
             if callable(rename_dashboards):
                 rename_dashboards(previous_identifier, new_identifier, user.username)
+    except PermissionError as exc:
+        if 'application/json' in request.headers.get('accept', ''):
+            return JSONResponse({'error': str(exc)}, status_code=403)
+        return render_workspace_config_template(request, user, error=str(exc), status_code=403)
     except ValueError as exc:
         if 'application/json' in request.headers.get('accept', ''):
             return JSONResponse({'error': str(exc)}, status_code=400)
@@ -26579,8 +26598,11 @@ def delete_report_catalogue(
         return render_workspace_config_template(request, user, error=deletion_refusal('PPT Template'), status_code=403)
     if catalogue['active']:
         return render_workspace_config_template(request, user, error='The default template cannot be deleted.', status_code=400)
+    # The Dashboards that follow it keep the Design they show as their own (detached): none of them breaks.
+    detach_dashboards = getattr(sys.modules[__name__], 'ppt_dashboard_detach_template_dashboards', None)
+    detached = detach_dashboards(str(catalogue['name']), user.username) if callable(detach_dashboards) else 0
     repository.delete_report_template(catalogue_id)
-    repository.add_log(user.username, 'delete_report_template', json.dumps({'template': catalogue['name']}))
+    repository.add_log(user.username, 'delete_report_template', json.dumps({'template': catalogue['name'], 'detached_dashboards': detached}))
     if active_workspace:
         background_tasks.add_task(queue_workspace_dimension_materialization, active_workspace)
     return RedirectResponse('/workspace-config', status_code=status.HTTP_303_SEE_OTHER)
@@ -26694,6 +26716,7 @@ def save_report_catalogue(
         if not metadata:
             raise FileNotFoundError('Report Template not found.')
         template_name = str(metadata['name'])
+        ensure_report_template_editable(user, template_name)
         previous_content = bytes(metadata['content'] or b'')
         entries = [entry for _index, entry in sorted(enumerate(parse_catalog_csv(catalogue_content)), key=lambda item: (item[1].slide, item[0]))]
         content = catalogue_csv(entries)
@@ -26704,6 +26727,10 @@ def save_report_catalogue(
                 task_repository, reconcile_saved_template_comments,
                 task_repository, template_name, previous_content, entries, phase=3,
             )
+    except PermissionError as exc:
+        if wants_json:
+            return JSONResponse({'detail': str(exc)}, status_code=status.HTTP_403_FORBIDDEN)
+        return render_workspace_config_template(request, user, error=str(exc), status_code=status.HTTP_403_FORBIDDEN)
     except ValueError as exc:
         if wants_json:
             return JSONResponse({'detail': str(exc)}, status_code=400)
@@ -27841,6 +27868,7 @@ async def copy_report_catalogue_items(
         payload = await request.json()
     except (json.JSONDecodeError, UnicodeDecodeError) as exc:
         raise HTTPException(status_code=400, detail='The copy request is not valid JSON.') from exc
+    from src.modules.dashboard_design import copied_entry
     kind = str(payload.get('kind') or '').strip().lower()
     target_identifier = str(payload.get('target_identifier') or '').strip()
     if kind not in {'slide', 'chart'}:
@@ -27853,6 +27881,10 @@ async def copy_report_catalogue_items(
         if not target:
             raise FileNotFoundError('Destination Report Template not found.')
         try:
+            ensure_report_template_editable(user, target_identifier)
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        try:
             target_entries = load_template_catalogue(target['content'], validate_filters=False)
         except ValueError as exc:
             if str(exc) != 'The report template does not contain any rows.':
@@ -27863,7 +27895,7 @@ async def copy_report_catalogue_items(
         if kind == 'slide':
             source_block = next(block for block in source_blocks if source_entry in block)
             position = max(0, min(int(payload.get('slide_position', len(target_blocks))), len(target_blocks)))
-            target_blocks.insert(position, [replace(entry) for entry in source_block])
+            target_blocks.insert(position, [copied_entry(entry) for entry in source_block])
         else:
             target_slide_index = int(payload.get('target_slide_index'))
             if target_slide_index < 0 or target_slide_index >= len(target_blocks):
@@ -27871,7 +27903,7 @@ async def copy_report_catalogue_items(
             target_block = target_blocks[target_slide_index]
             target_slide = target_block[0]
             copied = replace(
-                source_entry,
+                copied_entry(source_entry),
                 slide=target_slide.slide,
                 slide_title=target_slide.slide_title,
                 slide_subtitle=target_slide.slide_subtitle,

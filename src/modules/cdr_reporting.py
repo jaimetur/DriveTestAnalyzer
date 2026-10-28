@@ -65,6 +65,9 @@ PRE_DYNAMIC_CATALOG_HEADERS = (*VISUAL_CATALOG_HEADERS, "Exclude Null/Empty", "E
 SINGLE_DYNAMIC_CATALOG_HEADERS = (*PRE_DYNAMIC_CATALOG_HEADERS, "Dynamic Field")
 TRAILING_DYNAMIC_CATALOG_HEADERS = (*PRE_DYNAMIC_CATALOG_HEADERS, "Dynamic Rows Field", "Dynamic Columns Field")
 CATALOG_HEADERS = (*PRE_DYNAMIC_CATALOG_HEADERS[:4], "Dynamic Rows Field", "Dynamic Columns Field", *PRE_DYNAMIC_CATALOG_HEADERS[4:])
+# What the columns cannot hold of the Design of a template (stable slide and element ids, formats, parameters: see
+# dashboard_design), as a JSON object per row. Optional and last, so every schema of before stays valid.
+FORMAT_HEADER = "Format"
 # Templates created before configurable visual settings remain valid and
 # acquire empty Label/axis cells the next time they are saved in the editor.
 RANGELESS_CATALOG_HEADERS = VISUAL_CATALOG_HEADERS[:13]
@@ -348,6 +351,7 @@ CATALOG_HEADER_ALIASES = {
     "groupingcolumns": "Columns Split",
     "groupingcolumn": "Columns Split",
     "grouping": "Grouping",
+    "format": FORMAT_HEADER,
 }
 
 
@@ -449,6 +453,8 @@ class CatalogEntry:
     dynamic_value: str | None = None
     template_index: int | None = None
     vendor_comparison: str = "operator_vendor"
+    # The Format cell of the row: a compact JSON object (see dashboard_design), empty for a row without one.
+    format: str = ""
 
     @property
     def source_kind(self) -> str | None:
@@ -1238,7 +1244,7 @@ def parse_catalog_csv(content: bytes | str, *, validate_filters: bool = True) ->
         frozenset(_canonical_catalog_headers(schema))
         for schema in (CATALOG_HEADERS, TRAILING_DYNAMIC_CATALOG_HEADERS, SINGLE_DYNAMIC_CATALOG_HEADERS, PRE_DYNAMIC_CATALOG_HEADERS, PRE_LEGEND_FORMAT_CATALOG_HEADERS, PRE_LABEL_FORMAT_CATALOG_HEADERS, PRE_LABEL_COLOR_CATALOG_HEADERS, PRE_LABEL_COLOR_RANGELESS_CATALOG_HEADERS, VISUAL_CATALOG_HEADERS, RANGELESS_CATALOG_HEADERS, PREVIOUS_CATALOG_HEADERS, OLDER_CATALOG_HEADERS, LEGACY_ROWS_COLUMNS_HEADERS, LEGACY_CATALOG_HEADERS)
     }
-    if frozenset(canonical_headers) not in accepted_schemas:
+    if frozenset(header for header in canonical_headers if header != FORMAT_HEADER) not in accepted_schemas:
         raise ValueError("The report template must use these columns in any order: " + ", ".join(CATALOG_HEADERS))
     entries: list[CatalogEntry] = []
     # Errors name a row as the editor shows it: its slide and its place (chart) among the rows of that slide.
@@ -1366,7 +1372,22 @@ def _catalog_entry_from_row(row: Mapping[str, str | None], slide: int, layout: s
         dynamic_rows_field=(row.get("Dynamic Rows Field") or "").strip(),
         dynamic_columns_field=(row.get("Dynamic Columns Field") or "").strip(),
         dynamic_field=(row.get("Dynamic Field") or "").strip(),
+        format=parse_row_format(row.get(FORMAT_HEADER) or ""),
     )
+
+
+def parse_row_format(value: str) -> str:
+    """The Format cell of a template row as compact JSON (keys sorted); empty stays empty."""
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    try:
+        data = json.loads(text)
+    except ValueError as exc:
+        raise ValueError("Format must be a JSON object.") from exc
+    if not isinstance(data, dict):
+        raise ValueError("Format must be a JSON object.")
+    return json.dumps(data, ensure_ascii=False, sort_keys=True, separators=(",", ":")) if data else ""
 
 
 def convert_catalog_csv(content: bytes | str) -> bytes:
@@ -1444,7 +1465,8 @@ def convert_catalog_csv(content: bytes | str) -> bytes:
         row["Layout"] = row["Layout"].strip() or ("Title Page" if is_title else "Title Only")
 
     output = io.StringIO(newline="")
-    writer = csv.DictWriter(output, fieldnames=CATALOG_HEADERS, lineterminator="\n")
+    writer = csv.DictWriter(output, fieldnames=CATALOG_HEADERS + ((FORMAT_HEADER,) if FORMAT_HEADER in header_map else ()),
+                            lineterminator="\n")
     writer.writeheader()
     writer.writerows(converted_rows)
     converted_content = output.getvalue().encode("utf-8")
@@ -1481,7 +1503,8 @@ def active_catalog_path(catalog_dir: Path, fallback_catalog: Path, technology: s
 def catalogue_csv(entries: list[CatalogEntry]) -> bytes:
     """Serialize the active template using the current editable CSV schema."""
     output = io.StringIO(newline="")
-    writer = csv.DictWriter(output, fieldnames=CATALOG_HEADERS, lineterminator="\n")
+    with_format = any(entry.format for entry in entries)
+    writer = csv.DictWriter(output, fieldnames=CATALOG_HEADERS + ((FORMAT_HEADER,) if with_format else ()), lineterminator="\n")
     writer.writeheader()
     for entry in entries:
         writer.writerow({
@@ -1507,6 +1530,7 @@ def catalogue_csv(entries: list[CatalogEntry]) -> bytes:
             "Exclude Zero": "Yes" if entry.exclude_zero else "",
             "Dynamic Rows Field": entry_dynamic_fields(entry)[0],
             "Dynamic Columns Field": entry_dynamic_fields(entry)[1],
+            **({FORMAT_HEADER: entry.format} if with_format else {}),
         })
     return output.getvalue().encode("utf-8")
 
