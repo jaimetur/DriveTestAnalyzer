@@ -4,6 +4,7 @@ import html
 import io
 import json
 import re
+import time
 import zipfile
 from pathlib import Path
 
@@ -351,9 +352,13 @@ def test_super_admins_correct_the_dates_of_a_ticket_and_its_timeline_follows_the
     assert client.post(manage, data={'resolved_at': '2020-07-13T18:00'}).json()['changes'] == {}
 
 
-def test_corrected_dates_keep_the_timeline_written_between_and_after_them():
+def test_corrected_dates_keep_the_timeline_written_between_and_after_them(monkeypatch):
     from src.modules.ticket_center import add_comment, create_ticket, get_ticket, set_ticket_dates, update_ticket
 
+    # The dates are written in the time of the server: the server of the test is in the time zone of its dates (+01:00
+    # in January), also on a machine in UTC.
+    monkeypatch.setenv('TZ', 'Europe/Madrid')
+    time.tzset()
     repository = core.repository
     repository.initialize()
     ticket_id = create_ticket(repository, title='Slow export', description='', module='', priority='P3', ticket_type='bug',
