@@ -23,7 +23,13 @@ BIG = {'London', 'Birmingham', 'Manchester', 'Glasgow'}
 
 @pytest.fixture(scope='module')
 def owned():
-    """The synthetic CDRs with their performance owners (Region) and settings, a third of London walked, split by City."""
+    """The synthetic CDRs with their performance owners (Region) and settings, a third of London walked, split by City
+    (calculated once per run, see tests.shared_results)."""
+    from tests.shared_results import shared_result
+    return shared_result('where_to_act_owned', _owned)
+
+
+def _owned():
     frames = synthetic_cdr_frames(campaigns=('2026-Q2', '2026-Q3'), repeats=1)
     for kind, frame in frames.items():
         routes = frame['G_Level_2'] != 'City'

@@ -6,6 +6,11 @@ import shutil
 import sqlite3
 import time
 
+# The tests already run in parallel, one process per CPU: the numerical libraries of each process keep to one thread
+# (set before they are imported), or the processes of a run would contend for the CPUs with dozens of threads.
+for _variable in ('OMP_NUM_THREADS', 'OPENBLAS_NUM_THREADS', 'MKL_NUM_THREADS', 'NUMEXPR_NUM_THREADS', 'VECLIB_MAXIMUM_THREADS'):
+    os.environ.setdefault(_variable, '1')
+
 import pytest
 from fastapi.testclient import TestClient
 

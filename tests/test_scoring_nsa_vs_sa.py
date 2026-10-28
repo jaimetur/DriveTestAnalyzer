@@ -469,7 +469,9 @@ def test_the_charts_name_the_operators_out_of_scope_at_their_foot(tmp_path):
     template = Path(__file__).resolve().parents[1] / 'assets/powerpoint-templates/Template_VodafoneThree.pptx'
 
     def chart_notes(job, result):
-        content = export_scoring_powerpoint(job, result, template, groups, nr_layout='interleaved', nr_charts='same')
+        # (All Environments carries the Scoring per Service charts of every environment.)
+        content = export_scoring_powerpoint(job, result, template, groups, nr_layout='interleaved', nr_charts='same',
+                                            environments=['Combined'])
         return [shape.text_frame.text for slide in Presentation(BytesIO(content)).slides
                 if slide.shapes.title is not None and 'Scoring per Service' in slide.shapes.title.text_frame.text
                 for shape in slide.shapes if shape.has_text_frame and 'Out of scope' in shape.text_frame.text]

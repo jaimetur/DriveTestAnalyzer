@@ -491,7 +491,8 @@ def test_dashboard_background_warmup_prepares_the_five_automatic_date_universes(
     dashboard_id = 'five-universes'
     assert client.put(f'/api/ppt-dashboards/{dashboard_id}', json=payload).status_code == 200
 
-    deadline = time.monotonic() + 15
+    # (The universes are cached in the background: a busy machine, such as parallel tests, needs more time.)
+    deadline = time.monotonic() + 60
     dashboard_status = {}
     while time.monotonic() < deadline:
         dashboard_status = client.get('/api/ppt-dashboards/statuses').json()[dashboard_id]

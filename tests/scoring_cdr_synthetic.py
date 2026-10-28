@@ -157,7 +157,14 @@ def netcheck_2026_configuration() -> dict:
 
 
 def synthetic_cdr_result(levels=('Operator', 'City', 'Campaign'), **options) -> tuple[dict, dict]:
-    """A job and its result calculated from the synthetic CDR rows with NetCheck 2026."""
+    """A job and its result calculated from the synthetic CDR rows with NetCheck 2026 (once per run, see
+    tests.shared_results)."""
+    from tests.shared_results import shared_result
+    return shared_result('synthetic_cdr_result', _synthetic_cdr_result, tuple(levels),
+                         **{key: tuple(value) if isinstance(value, list) else value for key, value in options.items()})
+
+
+def _synthetic_cdr_result(levels, **options) -> tuple[dict, dict]:
     from src.modules.scoring import calculate_scoring
     configuration = netcheck_2026_configuration()
     result = calculate_scoring(synthetic_cdr_frames(**options), list(levels), baseline_operator='EE',

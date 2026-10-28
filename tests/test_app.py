@@ -4967,14 +4967,16 @@ def test_workspace_management_isolates_dataset_databases_and_remembers_last_open
     }, follow_redirects=False)
     assert duplicated.status_code == 303
     copied_workspace = None
-    for _attempt in range(100):
+    # The copy is made in the background: give it the time a busy machine (parallel tests) needs.
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
         copied_workspace = next(
             (item for item in app_module.workspace_registry.list() if item.name == 'Default - Copy'),
             None,
         )
         if copied_workspace and copied_workspace.status == 'ready':
             break
-        time.sleep(0.01)
+        time.sleep(0.02)
     assert copied_workspace is not None
     assert copied_workspace.database_path.name == 'Default - Copy.db'
     assert app_module.repository.user_has_workspace_access('admin', copied_workspace.id)
