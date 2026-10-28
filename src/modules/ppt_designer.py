@@ -402,7 +402,7 @@ def rename_template_in_designs(designs: dict, previous_template: str, template: 
 
 
 def design_nr_mode(definition) -> str:
-    """Return the NR Mode (``NSA``, ``SA`` or ``NSA+SA``) of the CDRs a Design definition reads."""
+    """Return the NR Mode (``NSA``, ``SA`` or ``NSA+SA``) of the CDRs a PPT definition reads."""
     if isinstance(definition, dict):
         value = definition.get('nr_mode') or definition.get('technology') or definition.get('template_technology')
     else:
@@ -834,7 +834,7 @@ def install_design_routes(core):
                 connection.execute(
                     f'''UPDATE {DESIGN_PPT_JOBS_TABLE}
                         SET status = 'failed', progress = 100,
-                            last_error = 'Design export was interrupted by an application restart.',
+                            last_error = 'PPT export was interrupted by an application restart.',
                             finished_at = ?
                         WHERE status IN ('queued', 'processing')''',
                     (datetime.now(timezone.utc).isoformat(),),
@@ -1035,7 +1035,7 @@ def install_design_routes(core):
         preview = restore_matching_preview_manifest(workspace, design_id, definition)
         snapshot = snapshots.get(str(preview.get('token') or '')) if preview else None
         if snapshot is None:
-            raise ValueError('The Design dataset is not prepared.')
+            raise ValueError('The PPT dataset is not prepared.')
         return validate_design_export_snapshot(snapshot, task_repository)
 
     def validate_design_export_snapshot(snapshot, task_repository):
@@ -1051,7 +1051,7 @@ def install_design_routes(core):
         return 1600, min(4096, max(240, round(1600 / frame_ratio)))
 
     def design_ppt_scope_label(scope: str) -> str:
-        """Return the human-readable scope used on Design PPT covers."""
+        """Return the human-readable scope used on PPT covers."""
         return 'Multivendor Comparison' if str(scope).casefold() == 'multivendor' else 'Operator Comparison'
 
     def values_present_in_cdrs(values: list[str], available: list[str]) -> list[str]:
@@ -1448,7 +1448,7 @@ def install_design_routes(core):
                         str(Path(task_repository.db_path).resolve()), job_id, user.username,
                     )] = token
                 if snapshot is None:
-                    raise RuntimeError('The refreshed Design snapshot could not be created.')
+                    raise RuntimeError('The refreshed PPT snapshot could not be created.')
                 persist_preview_manifest(
                     str(Path(task_repository.db_path).resolve()), design_id,
                     design_preview_fingerprint(
@@ -1462,7 +1462,7 @@ def install_design_routes(core):
                     token for token, candidate in snapshots.items() if candidate is snapshot
                 ), '')
             if not snapshot_token:
-                raise RuntimeError('The prepared Design snapshot has expired.')
+                raise RuntimeError('The prepared PPT snapshot has expired.')
             indexes = [
                 index for index, entry in enumerate(snapshot.entries)
                 if design_datasets(snapshot.definition, entry.source_kind, task_repository)
@@ -2286,7 +2286,7 @@ def install_design_routes(core):
 
     def validate(definition, task_repository=None):
         if not definition.name.strip():
-            raise HTTPException(400, 'Enter a Design name.')
+            raise HTTPException(400, 'Enter a PPT name.')
         if (
             not ignore_event_time_filtering()
             and isinstance(definition.date_from, date)
@@ -2623,7 +2623,7 @@ def install_design_routes(core):
         return job_id
 
     def stop_reporting_design_job(task_repository, job_id) -> None:
-        """Stop the Design PPT job a Reporting Job run waits for, when the run is stopped."""
+        """Stop the PPT Designer job a Reporting Job run waits for, when the run is stopped."""
         row = design_ppt_job(task_repository, job_id)
         if row is not None and str(row['status']) in {'queued', 'processing'}:
             update_design_ppt_job(task_repository, job_id, status='stopped', finished_at=datetime.now(timezone.utc).isoformat())
@@ -2779,7 +2779,7 @@ def install_design_routes(core):
         row = design_ppt_job(task_repository, job_id)
         path = Path(str(row['output_path'])) if row else None
         if row is None or str(row['status']) != 'ready' or not path.is_file():
-            raise HTTPException(404, 'Design PowerPoint is not available.')
+            raise HTTPException(404, 'PowerPoint is not available.')
         task_repository.try_add_log(user.username, 'download_design_ppt', json.dumps({'job_id': job_id, 'file': path.name}))
         return FileResponse(
             path, filename=path.name,
@@ -2790,19 +2790,19 @@ def install_design_routes(core):
     def open_design_ppt_charts(job_id: int, user=Depends(design_user)):
         row = design_ppt_job(bound_repository(), job_id)
         if row is None:
-            raise HTTPException(404, 'Design charts are not available.')
+            raise HTTPException(404, 'PPT charts are not available.')
         charts_dir = Path(str(row['output_path'])).parent / 'design-charts'
         try:
             manifest = json.loads((charts_dir / 'manifest.json').read_text(encoding='utf-8'))
         except (AttributeError, OSError, json.JSONDecodeError):
-            raise HTTPException(404, 'Design charts are not available.')
+            raise HTTPException(404, 'PPT charts are not available.')
         cards = ''.join(
             f'<article><h2>{html.escape(str(item.get("title") or "Chart"))}</h2>'
             f'<img src="/api/ppt-designer/ppt-jobs/{job_id}/charts/{html.escape(str(item.get("file") or ""))}" alt=""></article>'
             for item in manifest.get('charts', []) if isinstance(item, dict)
         )
         return HTMLResponse(
-            '<!doctype html><html><head><title>Design charts</title><style>'
+            '<!doctype html><html><head><title>PPT charts</title><style>'
             'body{font-family:Arial;margin:24px;background:#f5f2f8}article{margin:0 0 24px;padding:16px;background:white;border-radius:12px}'
             'img{display:block;width:100%;height:auto}h2{font-size:18px}</style></head><body>' + cards + '</body></html>'
         )
@@ -2811,12 +2811,12 @@ def install_design_routes(core):
     def design_ppt_charts_manifest(job_id: int, user=Depends(design_user)):
         row = design_ppt_job(bound_repository(), job_id)
         if row is None:
-            raise HTTPException(404, 'Design charts are not available.')
+            raise HTTPException(404, 'PPT charts are not available.')
         charts_dir = Path(str(row['output_path'])).parent / 'design-charts'
         try:
             manifest = json.loads((charts_dir / 'manifest.json').read_text(encoding='utf-8'))
         except (AttributeError, OSError, json.JSONDecodeError):
-            raise HTTPException(404, 'Design charts are not available.')
+            raise HTTPException(404, 'PPT charts are not available.')
         charts = []
         definition_available = isinstance(manifest.get('definition'), dict)
         fallback_focus_rows = []
@@ -3089,7 +3089,7 @@ def install_design_routes(core):
         row = design_ppt_job(task_repository, job_id)
         charts_dir = Path(str(row['output_path'])).parent / 'design-charts' if row else None
         if charts_dir is None or not (charts_dir / 'manifest.json').is_file():
-            raise HTTPException(404, 'Design charts are not available.')
+            raise HTTPException(404, 'PPT charts are not available.')
         task_repository.try_add_log(user.username, 'download_design_ppt_charts', json.dumps({'job_id': job_id}))
         temporary = tempfile.NamedTemporaryFile(prefix='design-ppt-charts-', suffix='.zip', delete=False)
         temporary.close()
@@ -3107,7 +3107,7 @@ def install_design_routes(core):
         task_repository = bound_repository()
         row = design_ppt_job(task_repository, job_id)
         if row is None or str(row['status']) not in {'queued', 'processing'}:
-            raise HTTPException(409, 'Only queued or processing Design exports can be stopped.')
+            raise HTTPException(409, 'Only queued or processing PPT exports can be stopped.')
         update_design_ppt_job(
             task_repository, job_id, status='stopped',
             finished_at=datetime.now(timezone.utc).isoformat(),
@@ -3120,7 +3120,7 @@ def install_design_routes(core):
         task_repository = bound_repository()
         row = design_ppt_job(task_repository, job_id)
         if row is None or str(row['status']) not in {'ready', 'failed', 'stopped'}:
-            raise HTTPException(409, 'This Design export cannot be relaunched.')
+            raise HTTPException(409, 'This PPT export cannot be relaunched.')
         try:
             saved_selections = json.loads(str(row['selections_json'] or '{}'))
         except (TypeError, json.JSONDecodeError):
@@ -3188,9 +3188,9 @@ def install_design_routes(core):
         task_repository = bound_repository()
         row = design_ppt_job(task_repository, job_id)
         if row is None:
-            raise HTTPException(404, 'Design export job not found.')
+            raise HTTPException(404, 'PPT export job not found.')
         if str(row['status']) in {'queued', 'processing'}:
-            raise HTTPException(409, 'A running Design export cannot be deleted.')
+            raise HTTPException(409, 'A running PPT export cannot be deleted.')
         remove_design_ppt_job_folder(task_repository, row['output_path'])
         with task_repository.connection() as connection:
             connection.execute(f'DELETE FROM {DESIGN_PPT_JOBS_TABLE} WHERE id = ?', (job_id,))
@@ -3200,7 +3200,7 @@ def install_design_routes(core):
         return {'deleted': job_id}
 
     def ensure_unique_design_name(designs, design_id, name) -> None:
-        """Design names are unique in a workspace, whatever the NR Mode each one reads."""
+        """PPT names are unique in a workspace, whatever the NR Mode each one reads."""
         if any(
             key != design_id and isinstance(item, dict)
             and str(item.get('name') or '').strip().casefold() == str(name).strip().casefold()
@@ -3245,7 +3245,7 @@ def install_design_routes(core):
     def rename_design(design_id: str, payload: DesignName, user=Depends(design_editor_user)):
         name = payload.name.strip()
         if not name:
-            raise HTTPException(400, 'Enter a Design name.')
+            raise HTTPException(400, 'Enter a PPT name.')
         with lock:
             task_repository = bound_repository()
             designs = read_designs(task_repository)
@@ -3457,7 +3457,7 @@ def install_design_routes(core):
         with lock:
             snapshot = snapshots.get(token)
         if snapshot is None or snapshot.workspace != workspace or snapshot.owner not in {user.username, '*'}:
-            raise HTTPException(410, 'Design preview expired. Refresh the Design.')
+            raise HTTPException(410, 'PPT preview expired. Refresh the Design.')
         return snapshot, Repository(Path(workspace), core.repository.global_db_path)
 
     def field_categories(task_repository) -> dict[str, str]:
@@ -3570,7 +3570,7 @@ def install_design_routes(core):
         with lock:
             snapshot = snapshots.get(request.token)
         if snapshot is None or snapshot.workspace != workspace or snapshot.owner not in {user.username, '*'}:
-            raise HTTPException(410, 'Design preview expired. Refresh the Design.')
+            raise HTTPException(410, 'PPT preview expired. Refresh the Design.')
         task_repository = Repository(Path(workspace), core.repository.global_db_path)
         definition = snapshot.definition.model_copy(deep=True)
         if request.design_id:
@@ -3968,7 +3968,7 @@ def install_design_routes(core):
         with lock:
             snapshot = snapshots.get(token)
         if snapshot is None or snapshot.workspace != workspace_key() or snapshot.owner not in {user.username, '*'}:
-            raise HTTPException(410, 'Design preview expired. Refresh the Design.')
+            raise HTTPException(410, 'PPT preview expired. Refresh the Design.')
         return snapshot
 
     def slide_comment_charts(token: str, snapshot, slide: dict, requested, user) -> tuple[list[dict], list[str]]:
@@ -4093,7 +4093,7 @@ def install_design_routes(core):
         try:
             snapshot = comment_snapshot(payload.token, user) if workspace == workspace_key() else None
             if snapshot is None:
-                raise HTTPException(410, 'Design preview expired. Refresh the Design.')
+                raise HTTPException(410, 'PPT preview expired. Refresh the Design.')
             requested = {item.number: item for item in payload.slides}
             slides = [slide for slide in snapshot.payload.get('slides', [])
                       if not slide.get('structural_type') and (not requested or slide.get('number') in requested)]
@@ -4184,7 +4184,7 @@ def install_design_routes(core):
         try:
             snapshot = comment_snapshot(payload.token, user) if workspace == workspace_key() else None
             if snapshot is None:
-                raise HTTPException(410, 'Design preview expired. Refresh the Design.')
+                raise HTTPException(410, 'PPT preview expired. Refresh the Design.')
             requested = {item.number: item for item in payload.slides}
             slides = [slide for slide in snapshot.payload.get('slides', [])
                       if not slide.get('structural_type') and (not requested or slide.get('number') in requested)]
@@ -4425,7 +4425,7 @@ def install_design_routes(core):
         return terms
 
     def selection_filter_where(task_repository, columns, definition, exclude=None):
-        """Build only the user-selected Design filter predicates."""
+        """Build only the user-selected PPT filter predicates."""
         clauses, params = [], []
         for normalized_expression, values in selection_filter_terms(task_repository, columns, definition, exclude):
             if normalized_expression is None:
@@ -4886,7 +4886,7 @@ def install_design_routes(core):
         estimated_rows = sum(sum(int(row.get('row_count') or 0) for row in selected) for selected in selected_by_kind.values())
         use_profile_options = use_profile_options or estimated_rows > DESIGN_PROFILE_SELECTION_THRESHOLD
         if callable(progress):
-            progress(55, 'Checking the filtered Design selection cache')
+            progress(55, 'Checking the filtered PPT selection cache')
         # Design preparation is already serialized by design_work_gate.
         # Do not retain the shared task-registry lock while SQLite counts or
         # facet queries run: progress polling needs that lock to report the
@@ -5028,7 +5028,7 @@ def install_design_routes(core):
         return {field: [str(value) for value in options.get(field, [])] for field in fields}
 
     def load_filter_options(definition, field_name, task_repository):
-        """Load one adaptive filter catalogue without preparing Design charts."""
+        """Load one adaptive filter catalogue without preparing PPT charts."""
         field_name = field_name.strip()
         validate(definition, task_repository)
         dimensions = core.load_repository_calculated_dimensions(task_repository)
@@ -5297,7 +5297,7 @@ def install_design_routes(core):
     def build_preview(definition, user, *, workspace: str | None = None, cancelled=None, progress=None):
         def ensure_not_cancelled():
             if callable(cancelled) and cancelled():
-                raise RuntimeError('Design preparation cancelled.')
+                raise RuntimeError('PPT preparation cancelled.')
 
         def report(percent, detail):
             # Every progress step is also a cancellation point.
@@ -5386,7 +5386,7 @@ def install_design_routes(core):
             while len(snapshots) > 128:
                 snapshots.popitem(last=False)
         ensure_not_cancelled()
-        report(90, 'Design selection and slide structure are ready')
+        report(90, 'PPT selection and slide structure are ready')
         return {**payload, 'token': token}
 
     def preview_manifest_key(workspace: str, design_id: str, fingerprint: str) -> str:
@@ -5490,7 +5490,7 @@ def install_design_routes(core):
         return {**payload, 'token': token}
 
     def preview_cache_identity(definition):
-        """Return the parts of a Design definition that affect its prepared data."""
+        """Return the parts of a PPT definition that affect its prepared data."""
         identity_definition = definition.model_dump(mode='json')
         identity_definition.pop('name', None)
         identity_definition.pop('slide_comments', None)
@@ -5546,19 +5546,19 @@ def install_design_routes(core):
         gate_acquired = False
         while not gate_acquired:
             if cancellation['requested']:
-                raise RuntimeError('Design preparation cancelled.')
+                raise RuntimeError('PPT preparation cancelled.')
             gate_acquired = design_work_gate.acquire(timeout=0.2)
         try:
             with lock:
                 task = direct_preparation_tasks.get(preparation_id)
                 if task is not None:
                     if cancellation['requested']:
-                        raise RuntimeError('Design preparation cancelled.')
+                        raise RuntimeError('PPT preparation cancelled.')
                     task.update(
                         status='processing',
                         started_at=datetime.now(timezone.utc).timestamp(),
                         progress=1,
-                        detail='Starting the Design preparation worker',
+                        detail='Starting the PPT preparation worker',
                     )
             preview = build_preview(
                 definition, user, workspace=workspace, cancelled=preparation_cancelled,
@@ -5567,11 +5567,11 @@ def install_design_routes(core):
         finally:
             design_work_gate.release()
         if design_id:
-            update_preparation_progress(94, 'Saving the reusable Design preparation cache')
+            update_preparation_progress(94, 'Saving the reusable PPT preparation cache')
             with lock:
                 prepared_snapshot = snapshots.get(preview['token'])
             if prepared_snapshot is None:
-                raise RuntimeError('The prepared Design snapshot has expired.')
+                raise RuntimeError('The prepared PPT snapshot has expired.')
             persist_preview_manifest(
                 workspace,
                 design_id,
@@ -5580,7 +5580,7 @@ def install_design_routes(core):
                 ),
                 preview['token'],
             )
-        update_preparation_progress(100, 'Design dataset and filters are ready')
+        update_preparation_progress(100, 'PPT dataset and filters are ready')
         return preview
 
     def remember_preparation_result(preparation_id, workspace, username, result) -> None:
@@ -5636,7 +5636,7 @@ def install_design_routes(core):
                 'rendering_only': rendering_only, 'cancellation': cancellation,
                 'status': 'queued', 'queued_at': datetime.now(timezone.utc).timestamp(),
                 'started_at': None,
-                'progress': 0, 'detail': 'Waiting for an available Design preparation slot',
+                'progress': 0, 'detail': 'Waiting for an available PPT preparation slot',
             }
 
         def execute():
@@ -5648,7 +5648,7 @@ def install_design_routes(core):
                 raise HTTPException(400, str(exc)) from exc
             except RuntimeError as exc:
                 if cancellation['requested']:
-                    raise HTTPException(409, 'Design preparation was interrupted.') from exc
+                    raise HTTPException(409, 'PPT preparation was interrupted.') from exc
                 raise
             finally:
                 with lock:
@@ -5664,7 +5664,7 @@ def install_design_routes(core):
             except HTTPException as exc:
                 result = {'status': 'failed', 'code': exc.status_code, 'detail': str(exc.detail)}
             except Exception as exc:
-                result = {'status': 'failed', 'code': 500, 'detail': f'Design preparation failed: {exc}'}
+                result = {'status': 'failed', 'code': 500, 'detail': f'PPT preparation failed: {exc}'}
             remember_preparation_result(preparation_id, workspace, user.username, result)
 
         Thread(target=execute_in_background, name='design-preparation', daemon=True).start()
@@ -5722,7 +5722,7 @@ def install_design_routes(core):
         with lock:
             snapshot = snapshots.get(token)
             if snapshot is None or snapshot.workspace != workspace_key() or snapshot.owner not in {user.username, '*'}:
-                raise HTTPException(410, 'Design preview expired. Refresh the Design.')
+                raise HTTPException(410, 'PPT preview expired. Refresh the Design.')
             return {**snapshot.payload, 'token': token}
 
     @app.get('/api/ppt-designer/preparation-progress/{preparation_id}')
@@ -5739,10 +5739,10 @@ def install_design_routes(core):
                         key: value for key, value in result.items() if key not in {'workspace', 'owner'}
                     } | {'progress': 100 if result.get('status') == 'completed' else 0}
             if task is None or task.get('workspace') != workspace:
-                raise HTTPException(404, 'Design preparation is no longer active.')
+                raise HTTPException(404, 'PPT preparation is no longer active.')
             return {
                 'progress': task.get('progress', 0),
-                'detail': task.get('detail') or 'Preparing Design dataset',
+                'detail': task.get('detail') or 'Preparing PPT dataset',
                 'status': task.get('status', 'processing'),
             }
 
@@ -5751,7 +5751,7 @@ def install_design_routes(core):
         restored = restore_matching_preview_manifest(workspace, design_id, definition)
         if restored is not None:
             return restored
-        raise HTTPException(409, 'Design preparation is required.')
+        raise HTTPException(409, 'PPT preparation is required.')
 
     @app.get('/api/ppt-designer/prefetched/{design_id}')
     def prefetched_design(design_id: str, user=Depends(design_user)):
@@ -6612,7 +6612,7 @@ def install_design_routes(core):
             if snapshot is not None:
                 snapshots.move_to_end(token)
         if snapshot is None or snapshot.workspace != (expected_workspace or workspace_key()) or snapshot.owner not in {user.username, '*'}:
-            raise HTTPException(410, 'Design preview expired. Refresh the Design.')
+            raise HTTPException(410, 'PPT preview expired. Refresh the Design.')
         if index < 0 or index >= len(snapshot.entries):
             raise HTTPException(404, 'Chart not found.')
         entry = snapshot.entries[index]
@@ -6947,12 +6947,12 @@ def install_design_routes(core):
 
     @app.post('/api/ppt-designer/charts/{token}/refresh')
     def refresh_interactive_charts(token: str, user=Depends(design_user)):
-        """Invalidate and rebuild every available Canvas model in a Design snapshot."""
+        """Invalidate and rebuild every available Canvas model in a PPT snapshot."""
         with lock:
             snapshot = snapshots.get(token)
         workspace = workspace_key()
         if snapshot is None or snapshot.workspace != workspace or snapshot.owner not in {user.username, '*'}:
-            raise HTTPException(410, 'Design preview expired. Refresh the Design.')
+            raise HTTPException(410, 'PPT preview expired. Refresh the Design.')
         indexes = list(dict.fromkeys(
             int(chart['index'])
             for slide in snapshot.payload.get('slides', [])
@@ -6976,7 +6976,7 @@ def install_design_routes(core):
 
     @app.get('/api/ppt-designer/chart/{token}/{index}/filter-context')
     def interactive_chart_filter_context(token: str, index: int, user=Depends(design_user)):
-        """Return filter fields available to an expanded Design chart."""
+        """Return filter fields available to an expanded PPT chart."""
         snapshot, entry, _ = snapshot_chart(token, index, user, include_frame=False)
         task_repository = Repository(Path(snapshot.workspace), core.repository.global_db_path)
         _database_path, _table_name, columns = reporting_source(snapshot, entry.source_kind, task_repository)
@@ -7450,7 +7450,7 @@ def install_design_routes(core):
         return design_status_payload(definitions, username=user.username, active_design_id=active_design_id)
 
     def cancel_workspace_design_tasks(workspace: str | Path) -> list:
-        """Cancel explicitly requested Design preparation for a workspace."""
+        """Cancel explicitly requested PPT preparation for a workspace."""
         database_path = str(Path(workspace).resolve())
         with lock:
             for task in direct_preparation_tasks.values():
@@ -7467,7 +7467,7 @@ def install_design_routes(core):
         return []
 
     def invalidate_workspace_chart_models(workspace: str | Path) -> None:
-        """Rebuild open Design charts after a mapping colour/order change."""
+        """Rebuild open PPT charts after a mapping colour/order change."""
         database_path = str(Path(workspace).resolve())
         with lock:
             for snapshot in snapshots.values():
@@ -7495,14 +7495,14 @@ def install_design_routes(core):
                 'id': task['id'],
                 'design_name': task['name'],
                 'label': (
-                    'Waiting to render Design Charts' if task.get('rendering_only') else 'Waiting to prepare Design dataset'
+                    'Waiting to render PPT Charts' if task.get('rendering_only') else 'Waiting to prepare PPT dataset'
                 ) if task.get('status') == 'queued' else (
-                    'Rendering Design Charts' if task.get('rendering_only') else 'Preparing Design dataset'
+                    'Rendering PPT Charts' if task.get('rendering_only') else 'Preparing PPT dataset'
                 ),
                 'detail': (
-                    'Rendering charts with the current Design scope'
+                    'Rendering charts with the current PPT scope'
                     if task.get('rendering_only')
-                    else str(task.get('detail') or 'Building filtered Design selection')
+                    else str(task.get('detail') or 'Building filtered PPT selection')
                 ),
                 'status': task.get('status', 'processing'),
                 'queued_at': task.get('queued_at'),

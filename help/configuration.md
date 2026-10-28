@@ -27,9 +27,9 @@ DriveTest Analyzer separates application settings, storage roots and Docker depl
 | `APP_PORT` | Source launcher port and production host port in Compose. | `7278` |
 | `APP_DEV_PORT` | Development host port mapped to the container service. | `7279` |
 | `APP_SECRET_KEY` | Signs authenticated session cookies. | A long private random value |
-| `DRIVETEST_ANALYZER_REPORT_CHART_RENDERER` | Renderer for Reports, Chart Sets, previews and Design exports. | `canvas`; use `pil` only for the legacy painter |
+| `DRIVETEST_ANALYZER_REPORT_CHART_RENDERER` | Renderer for Reports, Chart Sets, previews and PPT exports. | `canvas`; use `pil` only for the legacy painter |
 | `DRIVETEST_ANALYZER_CHROMIUM` | Optional explicit Chromium-family executable used by the server Canvas renderer. | Auto-detected supported browser |
-| `DRIVETEST_ANALYZER_DESIGN_FRAME_CACHE_SNAPSHOTS` | Number of recently used Design snapshots that keep their chart data frames in memory. Lower it on servers with little RAM. | `3` |
+| `DRIVETEST_ANALYZER_DESIGN_FRAME_CACHE_SNAPSHOTS` | Number of recently used PPT snapshots that keep their chart data frames in memory. Lower it on servers with little RAM. | `3` |
 | `TZ` | IANA timezone used by Docker and displayed/persisted timestamps. | `Europe/Madrid` |
 | `IGNORE_EVENT_TIME_FILTERING` | When true, ignores date and template filters based on Event_Start_Time or Event_End_Time. | `false` |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURITY` | Default SMTP server, port and encryption (`starttls`, `ssl` or `none`) for [Reporting](reporting.md) emails. Application Config → Email Delivery overrides them. | Not set; `587`; `starttls` |
@@ -61,8 +61,8 @@ Always replace `APP_SECRET_KEY` outside local development. Changing it invalidat
 | Variable | Contains |
 | --- | --- |
 | `APP_CONFIG_DIR` | Global `application.db`: users, roles, workspace permissions, application state and transfer offers. |
-| `APP_DATA_DIR` | Workspace registry and directories, uploads, generated output, Design caches, map tiles, backup ZIPs and temporary transfer/export packages. |
-| `APP_ASSETS_DIR` | Bundled PowerPoint masters used by report and Design generation. |
+| `APP_DATA_DIR` | Workspace registry and directories, uploads, generated output, PPT caches, map tiles, backup ZIPs and temporary transfer/export packages. |
+| `APP_ASSETS_DIR` | Bundled PowerPoint masters used by report and PPT generation. |
 
 Only these three variables are accepted in `storage-paths.conf`:
 
@@ -156,7 +156,7 @@ After first login:
 
 - `http://127.0.0.1:7278/healthz` responds locally, or the equivalent published host and port responds remotely.
 - A file uploaded to `Default` remains after an application or container restart.
-- Workspace Report Templates and Design definitions remain available.
+- Workspace Report Templates and PPT definitions remain available.
 - The workspace size and cache size reflect the configured data root.
-- Design preparation writes nothing in the workspace: its caches are kept in memory.
+- PPT preparation writes nothing in the workspace: its caches are kept in memory.
 - `APP_CONFIG_DIR` and `APP_DATA_DIR` are included in infrastructure backups.

@@ -31,7 +31,7 @@ administration
 
 | Role | Available administration |
 | --- | --- |
-| `user-viewer` | Explore the permitted workspace features, datasets and App Logs, and generate jobs (Design PPTs with any filters, Scoring calculations, Network Insights analyses and exports, queries and reports). Cannot change the workspace: no uploading, deleting, reprocessing, stopping, mapping or clearing datasets, editing NR Modes, recreating combined tables, saving, renaming or deleting Designs, saved queries or Scoring jobs, and no access to Application Config or Workspace Config. |
+| `user-viewer` | Explore the permitted workspace features, datasets and App Logs, and generate jobs (PPTs with any filters, Scoring calculations, Network Insights analyses and exports, queries and reports). Cannot change the workspace: no uploading, deleting, reprocessing, stopping, mapping or clearing datasets, editing NR Modes, recreating combined tables, saving, renaming or deleting Designs, saved queries or Scoring jobs, and no access to Application Config or Workspace Config. |
 | `user-editor` | edit Application Config and the active workspace's Workspace Config panels and follow up the Non-Qualified Calls; delete only the [shared items](#deleting-shared-items) they created; cannot upload datasets to a workspace, change their Active?, change the NQ Analysis Configuration or open Admin or Super Admin. |
 | `admin` | edit Application Config and Workspace Config, upload and manage datasets (also their Active?), change the NQ Analysis Configuration and the table layout of the workspace in Non-Qualified Calls, and, in [Admin](administrator-config.md), export and transfer content for accessible workspaces and manage datasets; cannot import packages or open Super Admin. |
 | `super-admin` | everything an admin does, import packages and export Full Environments, approve incoming server transfers and, in Super Admin, manage the users and their access (Modules Profiles and Workspace Groups), Interface Settings and Database Management, and reset the application. |
@@ -158,7 +158,7 @@ In **Back up now**, select in **Backup content** one or more content types and t
 - **Configuration Content: Users & Access** stores one JSON file with the users, Modules Profiles and Workspace Groups; restore merges it like an import of [Users & Access](administrator-config.md#export-targets), so the other users and settings are kept.
 - **Configuration Content: Ticket Center** stores one JSON file with every ticket, its type and its timeline, and each screenshot as a file; restore merges them into the server like an import of Ticket Center, without deleting any.
 - **Workspace Content: Workspace Database** stores the selected workspace SQLite databases.
-- **Workspace Content: Designs** stores one JSON file with every Design definition and its comments for each selected workspace; restore replaces the Designs the workspace has and adds the others, like an import (see [Matching and creators](administrator-config.md#matching-and-creators)).
+- **Workspace Content: Designs** stores one JSON file with every PPT definition and its comments for each selected workspace; restore replaces the Designs the workspace has and adds the others, like an import (see [Matching and creators](administrator-config.md#matching-and-creators)).
 - **Workspace Content: PPT Templates** stores one CSV file for each PPT Template; restore replaces the templates the workspace has and adds the others, like an import.
 - **Workspace Content: Main Cities** stores the workspace city selection.
 - **Workspace Content: Mappings & Reference Data** stores one JSON file containing every canonical Operator and Vendor, alias, row position and thematic colour, and the comments of the Operator names, plus the Spectrum Holdings, Serving Networks and Campaign Maps.
@@ -169,7 +169,7 @@ In **Back up now**, select in **Backup content** one or more content types and t
 - **Workspace Content: NQ Calls Configuration** stores one JSON file with only the configuration of the Non-Qualified Calls Analysis Center (sections, field catalog, statuses, teams, Status Rules, DT Analyzer RCA Rules, Prioritization Rules, root cause catalog and table columns); restore merges it into the workspace like the configuration part of NQ Call Tracking.
 - **Workspace Content: App Events** stores one JSON file with every App Event of the workspace; restore adds the events the workspace does not have (the same user, action, details and time), among its own by date.
 - **Workspace Content: Input** stores raw dataset files when explicitly selected.
-- **Workspace Content: Output** stores generated Reports, Chart Sets and Design PowerPoint jobs when explicitly selected.
+- **Workspace Content: Output** stores generated Reports, Chart Sets and PPT Designer jobs when explicitly selected.
 
 Application database, Workspace Database, Designs, PPT Templates, Main Cities, Mappings & Reference Data, Scoring & GAP Analysis Methodologies and Auto-calculated Fields are selected by default. Main Cities precedes Mappings & Reference Data in Export and Backup/Restore component lists.
 
@@ -193,7 +193,7 @@ Backups stay in the chosen folder of this server: copy them to other storage out
 
 The default storage directory is `APP_DATA_DIR/scheduled-backups`. **Browse** opens a server-side directory picker limited to `APP_DATA_DIR`, so it reflects directories visible to the host or Docker container rather than the browser's computer. It can create a folder before selecting it.
 
-Below the settings, the panel says what **Days to keep**, **Weeks to keep** and **Months to keep** keep as the schedule is set (with **Light backups** on, the full backups are the weekly ones, and it names those among the days kept), the dates a backup made today keeps, and the most light and full backups kept at the same time over the next year, with the space they take from the size of the latest scheduled ones, to tell how much room the backup folder needs. The tiles at the top report the stored backups and their total size, each with how many and how much of them are full and light, and the most recent successful backup and the next scheduled run, each saying whether it is full or light. Scheduled backups use the same chosen content and workspace selection as the Backup panel. Select Input and/or Output when raw datasets, Reports, Chart Sets or Design PPT jobs must be included. Scheduled backups complement infrastructure backups and portable Export packages.
+Below the settings, the panel says what **Days to keep**, **Weeks to keep** and **Months to keep** keep as the schedule is set (with **Light backups** on, the full backups are the weekly ones, and it names those among the days kept), the dates a backup made today keeps, and the most light and full backups kept at the same time over the next year, with the space they take from the size of the latest scheduled ones, to tell how much room the backup folder needs. The tiles at the top report the stored backups and their total size, each with how many and how much of them are full and light, and the most recent successful backup and the next scheduled run, each saying whether it is full or light. Scheduled backups use the same chosen content and workspace selection as the Backup panel. Select Input and/or Output when raw datasets, Reports, Chart Sets or PPT Designer jobs must be included. Scheduled backups complement infrastructure backups and portable Export packages.
 
 What interrupted work leaves behind is removed once a night, between 00:00 and 07:00, after a quarter of an hour without anyone using the application and while no import, export, transfer, backup, restore or CDR processing is running (when two days pass without a cleanup, at the next idle moment): the snapshots and partial ZIPs of backups killed mid-write, the temporary folders of imports, exports, transfers and restores, the uploads of CDRs never finished after a week, and the temporary files of the workspace caches, all untouched for six hours. Each backup also first removes what an interrupted backup left in its folder. What is removed, with the space freed, is recorded in App Events.
 
@@ -204,13 +204,13 @@ What interrupted work leaves behind is removed once a night, between 00:00 and 0
 Tables are grouped by ownership:
 
 - **Config Tables**: global application configuration.
-- **Workspace Tables**: templates, datasets, profiles, logs, workspace state, Design selections, Design selected rows, Design PPT jobs and unified classic generated jobs.
+- **Workspace Tables**: templates, datasets, profiles, logs, workspace state, PPT selections, Design selected rows, PPT Designer jobs and unified classic generated jobs.
 - **Individual dataset rows**: one materialised table per dataset.
 - **Combined CDR rows**: reporting acceleration tables by CDR type.
 
 The **Table** picker lists the tables of each group by kind (Users & Access, Application, Datasets, Designs & Templates, Scoring & GAP Analysis, Non-Qualified Calls, Reporting, Mappings & Maps, Query Builder, Workspace, and the Voice, Data or Speech CDRs of each individual dataset), each kind in its colour, and its search box finds a table by its title or its database name.
 
-The **Generated jobs** table contains Report and Chart Set rows, distinguished by `job_type`. Design PowerPoint history is stored separately in **Design PPT jobs** because each row retains its Design definition and applied filter snapshot.
+The **Generated jobs** table contains Report and Chart Set rows, distinguished by `job_type`. PowerPoint history is stored separately in **PPT Designer jobs** because each row retains its PPT definition and applied filter snapshot.
 
 The **PPT Templates** table is the active workspace's `report_templates` table. It stores each template name, technology, default flag, timestamps and CSV content. Existing CSV templates are migrated automatically when their workspace is opened; compatibility CSV copies are generated only for portable packages.
 

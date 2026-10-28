@@ -86,7 +86,7 @@ See [PPT Designer Help](help/ppt-designer.md) for the operational workflow and [
 
 ### Reporting
 
-Reporting schedules **Reporting Jobs** that collect a Summary CDR Analysis, a Summary Network Insights, Design PPTs and Scoring PPTs, each configured with the options of its own module, run them once or daily, weekly or monthly and email the artifacts with a description of each one and its filters. SMTP delivery is configured in Application Config → Email Delivery. Reporting is available to the users whose Modules Profile includes it (Super Admin → Modules Profiles).
+Reporting schedules **Reporting Jobs** that collect a Summary CDR Analysis, a Summary Network Insights, PPTs and Scoring PPTs, each configured with the options of its own module, run them once or daily, weekly or monthly and email the artifacts with a description of each one and its filters. SMTP delivery is configured in Application Config → Email Delivery. Reporting is available to the users whose Modules Profile includes it (Super Admin → Modules Profiles).
 
 ### PPT Reporting (old)
 
@@ -143,7 +143,7 @@ Report the bugs of the tool, suggest improvements and ask for new features in ti
 ### Application Config and Workspace Config
 
 - **Application Config** stores runtime settings that apply across all workspaces. `user-editor`, `admin` and `super-admin` can use Config → Application Config; `user-viewer` cannot.
-- **`user-viewer`** is read-only for the workspace: it explores datasets and generates jobs (Design PPTs, Scoring, Network Insights, queries and reports) but cannot upload, delete, reprocess, map or clear datasets, or save, rename or delete Designs, saved queries and Scoring jobs.
+- **`user-viewer`** is read-only for the workspace: it explores datasets and generates jobs (PPTs, Scoring, Network Insights, queries and reports) but cannot upload, delete, reprocess, map or clear datasets, or save, rename or delete Designs, saved queries and Scoring jobs.
 - **Workspace Config** is selected from the Config dropdown and groups PPT Templates Management, Operator Mappings, Vendor Mappings, Spectrum Holdings and Serving Networks for the active workspace. Its Help chapter contains the PPT Templates Editor guide and complete Report Template reference. It uses Application Config's teal/navy palette and a Page Sections navigator. `user-editor`, `admin` and `super-admin` can manage these panels when a workspace is open; `user-viewer` cannot.
 - These scopes remain separate: Application Config values are global, while templates and chart mappings stay with their workspace and use the existing portable package formats.
 
@@ -239,7 +239,7 @@ Local storage roots can be set in [`storage-paths.conf`](storage-paths.conf). En
 | `APP_DATA_DIR` | Workspace registry, workspaces, Report Templates and transfer packages. |
 | `APP_ASSETS_DIR` | Bundled assets and PowerPoint masters. |
 | `DRIVETEST_ANALYZER_REPORT_CHART_RENDERER` | Report, Chart Set and preview renderer. Defaults to `canvas`; set `pil` to use the legacy server-side painter. |
-| `DRIVETEST_ANALYZER_DESIGN_FRAME_CACHE_SNAPSHOTS` | Recently used Design snapshots that keep chart data frames in memory. Defaults to `3`; lower it on servers with little RAM. |
+| `DRIVETEST_ANALYZER_DESIGN_FRAME_CACHE_SNAPSHOTS` | Recently used PPT snapshots that keep chart data frames in memory. Defaults to `3`; lower it on servers with little RAM. |
 | `TZ` | Container timezone, for example `Europe/Madrid`. |
 | `HOST_CONFIG_DIR` | Host path mounted as persistent configuration. |
 | `HOST_DATA_DIR` | Host path mounted as persistent data. |

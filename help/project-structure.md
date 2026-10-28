@@ -93,7 +93,7 @@ Runtime `config/` and `data/` directories use project-local defaults but are exc
 - `src/modules/nq_rca.py`: NQ Ericsson RCA results file format and the root cause recommendation merged from the NetCheck RCA, the Ericsson RCA, the DT Analyzer RCA, the comments and previous decisions.
 - `src/modules/nq_dta_rca.py`: DT Analyzer RCA of Non-Qualified Calls: the values it reads, its default rules and their validation, and the evaluation that gives every call its root category, cause, domain and evidence (`non_qualified_calls` stores them in `nq_dta_rca_results`).
 - `src/modules/cdr_reporting.py`: Report Template parsing, filters, aggregations, chart contracts, map tiles and classic report rendering.
-- `src/modules/ppt_designer.py`: Design definitions, direct combined-CDR SQL selections, preview/model caches, live previews, filtered chart data and Design PPT jobs.
+- `src/modules/ppt_designer.py`: PPT definitions, direct combined-CDR SQL selections, preview/model caches, live previews, filtered chart data and PPT Designer jobs.
 - `src/modules/canvas_chart_renderer.mjs`: Node/Chromium-compatible Canvas rendering used for consistent interactive and exported charts.
 - `src/modules/auth.py`: password and authentication helpers.
 - `src/utils/`: chart, filesystem and font utilities shared by modules.
@@ -160,20 +160,20 @@ Each `<workspace>.db` owns:
 - individual materialised dataset-row tables and combined Data/Voice/Speech reporting tables;
 - Auto-calculated Field definitions;
 - complete database-backed Report Templates in `report_templates`;
-- saved Design definitions in workspace state;
-- cached Design selection metadata and bounded row identities;
+- saved PPT definitions in workspace state;
+- cached PPT selection metadata and bounded row identities;
 - classic Report/Chart Set jobs in `generated_jobs`;
-- Design PowerPoint history in `design_ppt_jobs`.
+- PowerPoint history in `design_ppt_jobs`.
 
 Report Templates become CSV files only inside portable export, transfer and backup packages.
 
-### Regenerable Design cache
+### Regenerable PPT cache
 
-PPT Designer keep their preview manifests and Canvas chart models in memory only; opening a workspace removes the `.design-data-cache` folder and `.design-cache-version.json` earlier versions wrote. Design rows remain only in the columnar copies of the CDRs. The cache can be cleared without removing datasets, Design definitions, templates or generated jobs, and clearing it does not trigger an automatic rebuild.
+PPT Designer keep their preview manifests and Canvas chart models in memory only; opening a workspace removes the `.design-data-cache` folder and `.design-cache-version.json` earlier versions wrote. Design rows remain only in the columnar copies of the CDRs. The cache can be cleared without removing datasets, PPT definitions, templates or generated jobs, and clearing it does not trigger an automatic rebuild.
 
 ### Generated output
 
-- `output/reports/ppt-designs/`: Design PowerPoint jobs and their persistent PNG, tooltip and Canvas-model assets.
+- `output/reports/ppt-designs/`: PPT Designer jobs and their persistent PNG, tooltip and Canvas-model assets.
 - `output/reports/cdr-analysis/`: CDR Analysis PowerPoint and Word exports.
 - `output/reports/network-insights/`: Summary Network Insights PowerPoint and Word exports.
 - `output/reports/reports-old/`: PPT Reporting (old) PowerPoint reports and their PNG charts.
@@ -210,7 +210,7 @@ The Help navigation order and labels are curated in `src/DriveTestAnalyzer.py`. 
 ## Tests, tooling and delivery
 
 - `tests/test_app.py`: routes, shared UI, Admin, documentation and integration behaviour.
-- `tests/test_ppt_designer.py`: Design definitions, filtering, caching, rendering and PPT jobs.
+- `tests/test_ppt_designer.py`: PPT definitions, filtering, caching, rendering and PPT jobs.
 - `tests/test_cdr_reporting.py`: template, filter, chart and classic Reporting contracts.
 - Other test modules cover analytics, exports, Query Builder, workspaces and workspace template isolation.
 - `tests/conftest.py`: points every test process at storage of its own before the application is imported (no test reaches the local installation), and the `client` fixture. Each test process prepares a new workspace once (its databases and starter content) and every test opens the application on a copy of it, as it reopens a workspace. Dataset sources are parsed by isolated background workers, so after upload, retry, reprocess and mapping requests the fixture waits for those workers and the combined CDR rebuilds they start; `wait_for_background_dataset_work()` does the same for work queued by other requests.

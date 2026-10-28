@@ -343,6 +343,7 @@
     state.active = false;
     state.element = '';
     $('ds-viewer').classList.remove('ds-designing');
+    lockViewerActions(false);
     $('ds-design-bar').hidden = true;
     $('ds-design-panel').hidden = true;
     $('ds-design-bar').replaceChildren();
@@ -505,7 +506,7 @@
     return edit(slide_set => {
       const found = findElement(slide_set, elementId);
       if (!found) {
-        report(new Error('This element is only in this Design: change it in This Design scope, or apply it to the template first.'));
+        report(new Error('This element is only in this Design: change it in This PPT scope, or apply it to the template first.'));
         return false;
       }
       Object.assign(found.element, values);
@@ -668,7 +669,7 @@
         h('button', {type: 'button', class: 'ds-design-action ds-design-primary', disabled: !dirty(), onclick: guarded(saveSlides)}, 'Save'),
         h('button', {type: 'button', class: 'ds-design-action', disabled: !dirty(), onclick: guarded(() => discardSlides())}, 'Discard'),
         h('button', {type: 'button', class: 'ds-design-action', 'aria-haspopup': 'menu', onclick: event => openMenu(event.currentTarget, moreActions())}, 'More ▾'),
-        h('button', {type: 'button', class: 'ds-design-action', onclick: guarded(() => exitDesigner())}, 'Close Designer')),
+      ),
     );
   }
   const moreActions = () => [
@@ -803,7 +804,7 @@
     ];
     if (template) {
       actions.push([slide.optional ? 'Not optional' : 'Optional (off by default)', guarded(() => setOptional(slide.id, !slide.optional)), Boolean(findSlide(state.template, slide.id))]);
-      actions.push(['Delete', guarded(() => deleteSlide(slide.id)), Boolean(findSlide(state.template, slide.id)) || 'Only in this Design: delete it in This Design scope']);
+      actions.push(['Delete', guarded(() => deleteSlide(slide.id)), Boolean(findSlide(state.template, slide.id)) || 'Only in this Design: delete it in This PPT scope']);
     } else if (fromTemplate) {
       if (slide.optional) actions.push([slide.optional_off ? 'Show in this Design' : 'Leave out of this Design', guarded(() => setOptionalShown(slide.id, Boolean(slide.optional_off))), true]);
       else actions.push([slide.hidden ? 'Show again' : 'Hide in this Design', guarded(() => setSlideHidden(slide.id, !slide.hidden)), true]);
@@ -1054,7 +1055,7 @@
     const editable = state.scope === 'design' || Boolean(findSlide(state.template, slide.id));
     const setSlide = values => edit(slide_set => {
       const target = findSlide(slide_set, slide.id);
-      if (!target) { report(new Error('This slide is only in this Design: change it in This Design scope.')); return false; }
+      if (!target) { report(new Error('This slide is only in this Design: change it in This PPT scope.')); return false; }
       Object.assign(target, values);
     });
     const shownSource = state.scope === 'template' ? findSlide(state.template, slide.id) || slide : slide;
@@ -1132,7 +1133,7 @@
   };
   function setStyle(elementId, change) {
     const current = findElement(editableSlideSet(), elementId)?.element;
-    if (!current) { report(new Error('This element is only in this Design: change it in This Design scope, or apply it to the template first.')); return undefined; }
+    if (!current) { report(new Error('This element is only in this Design: change it in This PPT scope, or apply it to the template first.')); return undefined; }
     const style = styleOf(current);
     change(style);
     return setElementValues(elementId, {style: cleanStyle(style)});
@@ -1373,7 +1374,7 @@
     }
     if (!shown) {
       return [h('h3', {class: 'ds-design-panel-title', text: elementLabel(element)}),
-        h('p', {class: 'ds-design-origin is-local', text: 'This element is only in this Design: change it in This Design scope, or apply it to the template.'}),
+        h('p', {class: 'ds-design-origin is-local', text: 'This element is only in this Design: change it in This PPT scope, or apply it to the template.'}),
         h('div', {class: 'ds-design-panel-actions'}, elementActions(element.id).map(([label, action, enabled]) => h('button', {type: 'button', class: 'ds-design-action', disabled: enabled !== true, onclick: action}, label)))];
     }
     const set = (key, delay) => (delay === 0 ? value => guarded(() => setElementValues(element.id, {[key]: value}))() : debounced(value => setElementValues(element.id, {[key]: value}), delay));
@@ -1422,7 +1423,7 @@
     const heading = $(key === 'title' ? 'ds-title' : 'ds-subtitle');
     if (!state.active || !slide || !heading || heading.querySelector('input')) return;
     const source = state.scope === 'template' ? findSlide(state.template, slide.id) : slide;
-    if (!source) { report(new Error('This slide is only in this Design: change it in This Design scope.')); return; }
+    if (!source) { report(new Error('This slide is only in this Design: change it in This PPT scope.')); return; }
     const input = h('input', {type: 'text', class: `ds-design-heading-input is-${key}`, value: source[key] || '', 'aria-label': key === 'title' ? 'Slide title' : 'Slide subtitle'});
     const shown = [...heading.childNodes];
     heading.replaceChildren(input);
@@ -1718,7 +1719,7 @@
             h('button', {type: 'button', class: 'ds-design-action', disabled: used.length > 0, title: used.length ? 'Remove its uses first' : null, onclick: guarded(async () => { list.splice(index, 1); await save(list); refresh(); })}, 'Delete')) : null);
       });
       body.replaceChildren(
-        h('p', {class: 'form-note', text: 'Each Design of the template chooses the values of its parameters in PPT Design Scope & Filters. Write {Name} in a chart filter (City IN ({City})), a numeric setting (LQ < {Threshold}) or a title.'}),
+        h('p', {class: 'form-note', text: 'Each Design of the template chooses the values of its parameters in PPT Scope & Filters. Write {Name} in a chart filter (City IN ({City})), a numeric setting (LQ < {Threshold}) or a title.'}),
         fieldsDatalist(shownElement()),
         ...rows,
         editable ? h('button', {type: 'button', class: 'ds-design-action', onclick: guarded(async () => {
@@ -1771,7 +1772,7 @@
   }
 
   // ------------------------------------------------------------------
-  // The values of the template parameters, in PPT Design Scope & Filters
+  // The values of the template parameters, in PPT Scope & Filters
   // ------------------------------------------------------------------
   const parameterOptions = new Map();
   async function parameterValues(field) {
@@ -1838,7 +1839,29 @@
     button.hidden = !rights || !(rights.design || rights.template);
     button.classList.toggle('is-active', state.active);
     button.textContent = state.active ? 'Designing' : 'Designer';
+    button.title = state.active ? 'Close the Designer (it asks about the changes not saved)' : 'Edit the slides and charts of this Design and of its template';
+    lockViewerActions(state.active);
   }
+  // While designing, the actions of the viewer that would leave the Designer or bypass what it shows wait for it to close;
+  // the filters, the scope and the theme stay, as they change what the slides are laid out on.
+  const LOCKED_VIEWER_ACTIONS = ['.ds-viewer-top-auto-fields', '#ds-edit', '#ds-viewer-export-ppt', '#ds-viewer-refresh', '#ds-presentation'];
+  function lockViewerActions(active) {
+    document.querySelectorAll(LOCKED_VIEWER_ACTIONS.join(', ')).forEach(button => {
+      button.classList.toggle('is-design-locked', active);
+      if (active) {
+        if (button.dataset.unlockedTitle === undefined) button.dataset.unlockedTitle = button.title || '';
+        button.setAttribute('aria-disabled', 'true');
+        button.title = 'Close the Designer to use it';
+      } else if (button.dataset.unlockedTitle !== undefined) {
+        button.removeAttribute('aria-disabled');
+        button.title = button.dataset.unlockedTitle;
+        delete button.dataset.unlockedTitle;
+      }
+    });
+  }
+  document.addEventListener('click', event => {
+    if (state.active && event.target.closest?.('.is-design-locked')) { event.preventDefault(); event.stopImmediatePropagation(); }
+  }, true);
   $('ds-design')?.addEventListener('click', guarded(async () => {
     if (state.active) { await exitDesigner(); syncDesignerButton(); return; }
     await enterDesigner();

@@ -113,7 +113,7 @@ def test_design_library_can_change_nr_mode_and_template_with_confirmation_contro
     assert ':open:${authenticatedSession}`' in design_script
     assert ':filters-open:${authenticatedSession}`' in design_script
     assert "sessionStorage.setItem(filtersOpenStorageKey, isOpen ? 'open' : 'closed')" in design_script
-    assert 'await openDesign(last, {showFilters: rememberedFiltersOpen()});' in design_script
+    assert 'await openDesign(last);' in design_script
 
 
 def test_template_visual_controls_are_available_for_every_chart_type():
@@ -1253,12 +1253,12 @@ def test_designs_lifecycle_and_layout(client, ppt_reporting_old):
     assert 'id="ds-apply-universe"' not in page.text and 'id="ds-save-universe"' not in page.text
     assert 'id="ds-auto-cdrs"' in page.text and '>CDRs Used<' in page.text
     assert page.text.index('>Apply Filters<') < page.text.index('>Save Filters<')
-    assert 'id="ds-apply-filters" title="Apply the current Design filters without saving them" disabled' in page.text
+    assert 'id="ds-apply-filters" title="Apply the current PPT filters without saving them" disabled' in page.text
     assert 'id="ds-refresh"' not in page.text
     assert '>Import Design<' in page.text
     assert 'Total Designs: 0' in page.text
-    assert '>PPT Design Scope & Filters<' in page.text
-    assert 'id="ds-active-design-heading">Design Filters<' in page.text
+    assert '>PPT Scope & Filters<' in page.text
+    assert 'id="ds-active-design-heading">PPT Filters<' in page.text
     filter_panel = page.text.split('id="ds-filter-panel"', 1)[1].split('>', 1)[0]
     assert ' open' in filter_panel
     assert ' hidden' in filter_panel
@@ -1266,15 +1266,15 @@ def test_designs_lifecycle_and_layout(client, ppt_reporting_old):
     assert 'id="ds-ppt-dataset-overlay"' in page.text
     assert 'id="ds-ppt-dataset-choices"' not in page.text
     assert 'id="ds-ppt-dataset-scope"' in page.text
-    assert '>Select PPT Design Scope and Filters<' in page.text
-    # The PPT dialog groups the Scope above the Design Filters: the Campaign (which chooses the CDRs) first, then the
+    assert '>Select PPT Scope and Filters<' in page.text
+    # The PPT dialog groups the Scope above the PPT Filters: the Campaign (which chooses the CDRs) first, then the
     # dates, which are filters, then the other filters.
     universe_group = page.text.index('class="ds-ppt-group ds-ppt-universe-group"')
     filters_group = page.text.index('class="ds-ppt-group ds-ppt-filters-group"')
     assert universe_group < filters_group < page.text.index('id="ds-ppt-campaign-section"') < page.text.index('id="ds-ppt-dates-section"')
     assert page.text.index('id="ds-ppt-dates-section"') < page.text.index('id="ds-ppt-operator-section"') < page.text.index('id="ds-ppt-city-section"')
-    # Main Design Filters can reveal every other filter, including Additional Filters.
-    assert '>Main Design Filters</h3><button type="button" id="ds-ppt-show-all-filters"' in page.text
+    # Main PPT Filters can reveal every other filter, including Additional Filters.
+    assert '>Main PPT Filters</h3><button type="button" id="ds-ppt-show-all-filters"' in page.text
     # The heading names the Design's NR Mode and the Design.
     assert '<span class="ds-ppt-eyebrow-part" id="ds-ppt-dataset-nr-mode"></span><span class="ds-ppt-eyebrow-part ds-ppt-eyebrow-design" id="ds-ppt-dataset-design"></span><span class="ds-ppt-eyebrow-part">PowerPoint export</span>' in page.text
     assert page.text.index('id="ds-ppt-city-section"') < page.text.index('id="ds-ppt-extra-main-filters"') < page.text.index('id="ds-ppt-additional-group"')
@@ -1293,10 +1293,10 @@ def test_designs_lifecycle_and_layout(client, ppt_reporting_old):
     assert 'id="ds-ppt-date-to"' in page.text
     assert '>Dataset Universe<' not in page.text
     assert '>Comparison &amp; CDRs<' in page.text
-    assert '>Select Design Filters<' in page.text
-    assert page.text.index('>Comparison &amp; CDRs<') < page.text.index('>PPT Design Scope<')
-    assert page.text.index('>Select Design Filters<') < page.text.index('>Default Filters<')
-    assert '>PPT Design Scope<' in page.text
+    assert '>Select PPT Filters<' in page.text
+    assert page.text.index('>Comparison &amp; CDRs<') < page.text.index('>PPT Scope<')
+    assert page.text.index('>Select PPT Filters<') < page.text.index('>Default Filters<')
+    assert '>PPT Scope<' in page.text
     assert '>Select Comparison Scope<' in page.text
     # The Date filters open the Default Filters.
     assert page.text.index('class="ds-scope-control"') < page.text.index('>Default Filters<') < page.text.index('id="ds-sources"') < page.text.index('id="ds-default-facets"')
@@ -1305,7 +1305,7 @@ def test_designs_lifecycle_and_layout(client, ppt_reporting_old):
     assert '>Clear Filters<' in page.text
     assert '>Reload Saved Filters<' in page.text
     assert 'id="ds-design-name"' not in page.text
-    assert 'title="Save and apply the current Design filters"' in page.text
+    assert 'title="Save and apply the current PPT filters"' in page.text
     assert 'title="Remove all filter restrictions"' in page.text
     assert 'title="Restore filters and additional fields from the last saved Design"' in page.text
     assert 'id="ds-preparing-rows"' in page.text
@@ -1316,12 +1316,12 @@ def test_designs_lifecycle_and_layout(client, ppt_reporting_old):
     assert 'id="ds-custom-field" multiple size="1" data-multiselect-single="true"' in page.text
     assert 'hidden_filters' in DesignDefinition.model_fields
     assert 'slide_comments' in DesignDefinition.model_fields
-    assert 'id="ds-view" class="ds-view-design-action" title="Open the Design viewer" disabled' in page.text
+    assert 'id="ds-view" class="ds-view-design-action" title="Open the PPT viewer" disabled' in page.text
     assert 'id="ds-generate-ppt" class="ds-generate-ppt-action" title="Generate a PowerPoint presentation for this Design" disabled' in page.text
     assert page.text.index('id="ds-generate-ppt"') < page.text.index('id="ds-view"')
     assert 'id="ds-preparing"' in page.text
     assert 'id="ds-preparing-title"' in page.text
-    assert '>Preparing Design dataset<' in page.text
+    assert '>Preparing PPT dataset<' in page.text
     assert 'id="ds-preparing-progress"' in page.text
     assert 'id="ds-preparing-progress-bar"' in page.text
     assert 'id="ds-preparing-progress-label">0%</span>' in page.text
@@ -1332,7 +1332,7 @@ def test_designs_lifecycle_and_layout(client, ppt_reporting_old):
     assert 'id="ds-viewer-preparing-detail"' in page.text
     assert '>Auto-Calculated Fields<' in page.text
     assert 'class="ds-viewer-icon-action ds-viewer-refresh-action"' in page.text
-    assert 'class="ds-viewer-tool-actions" role="group" aria-label="Design actions"' in page.text
+    assert 'class="ds-viewer-tool-actions" role="group" aria-label="PPT actions"' in page.text
     assert 'id="ds-viewer-close" class="report-chart-viewer-close" title="Close"' in page.text
     assert page.text.index('id="ds-floating-filters"') < page.text.index('id="ds-viewer-export-ppt"')
     assert page.text.index('id="ds-viewer-export-ppt"') < page.text.index('id="ds-viewer-refresh"')
@@ -1345,7 +1345,7 @@ def test_designs_lifecycle_and_layout(client, ppt_reporting_old):
     assert 'class="ds-viewer-top-action ds-viewer-top-auto-fields" data-workspace-manage-calculated-dimensions' in page.text
     assert 'id="ds-edit" class="ds-viewer-top-action ds-viewer-top-edit"' in page.text
     assert page.text.index('id="ds-presentation"') < page.text.index('id="ds-first"')
-    assert '>Design Filters</button>' in page.text
+    assert '>PPT Filters</button>' in page.text
     assert 'id="ds-prev" class="ds-slide-nav-button" title="Previous slide" aria-label="Previous slide"><svg class="ds-slide-arrow-icon"' in page.text
     assert 'id="ds-next" class="ds-slide-nav-button" title="Next slide" aria-label="Next slide"><svg class="ds-slide-arrow-icon"' in page.text
     assert 'id="ds-first" class="ds-slide-nav-button" title="First slide" aria-label="First slide"><svg class="ds-slide-arrow-icon"' in page.text
@@ -1393,7 +1393,7 @@ def test_designs_lifecycle_and_layout(client, ppt_reporting_old):
     assert "controls.append(data, expand, zoom)" in design_script
     assert "savedDefinition = definitionFingerprint(savedRuntimeDesignDefinition(designs[id])); dirty = false;" in design_script
     assert "await warmDesignModels();" not in design_script
-    assert "Rendering Design Charts" in design_script
+    assert "Rendering PPT Charts" in design_script
     assert "overlay('ds-viewer', true);\n    if (needsPreparation) await prepare();" in design_script
     assert "window.addEventListener('beforeunload', rememberScroll);" in design_script
     assert "document.addEventListener('visibilitychange'" in design_script
@@ -1404,8 +1404,7 @@ def test_designs_lifecycle_and_layout(client, ppt_reporting_old):
     assert "sessionStorage.removeItem(scrollStorageKey);" in design_script
     assert "last = sessionStorage.getItem(openStorageKey) || '';" in design_script
     assert 'const restoreOpenDesign = restorePageState;' not in design_script
-    assert "if (designs[last]) await openDesign(last, {showFilters: rememberedFiltersOpen()});" in design_script
-    assert design_script.index("action('View Design', 'View Design'") < design_script.index("filtersAreOpen ? 'Close Filters' : 'Open Filters'")
+    assert "if (designs[last]) await openDesign(last);" in design_script
     assert "preview_snapshot = replace(" in (Path(__file__).parents[1] / 'src/modules/ppt_designer.py').read_text(encoding='utf-8')
     assert "The template owns these required chart attributes." in (Path(__file__).parents[1] / 'src/modules/ppt_designer.py').read_text(encoding='utf-8')
     app_script = (Path(__file__).parents[1] / 'src/web_interface/static/js/app.js').read_text(encoding='utf-8')
@@ -1424,8 +1423,6 @@ def test_designs_lifecycle_and_layout(client, ppt_reporting_old):
     assert 'id="ds-ppt-charts-panel" open data-panel-state-key="ppt-designer:ppt-charts" hidden' in design_template
     assert "$('ds-ppt-charts-panel').hidden = false;" in design_script
     assert "$('ds-ppt-charts-panel').hidden = true;" in design_script
-    assert "designFiltersOpen = true;" in design_script
-    assert "$('ds-filter-panel').hidden = false;" in design_script
     assert "designFiltersOpen = false;" in design_script
     assert "$('ds-filter-panel').hidden = true;" in design_script
     chart_builder_template = (Path(__file__).parents[1] / 'src/web_interface/templates/chart_builder.html').read_text(encoding='utf-8')
@@ -1674,7 +1671,7 @@ def test_designs_lifecycle_and_layout(client, ppt_reporting_old):
     # Scope, vendor comparison and dates are part of the Design filters.
     assert "scope: selection.scope || 'single', vendor_comparison: selection.vendor_comparison || 'operator_vendor'," in design_script
     assert 'const resolveUnappliedFilterChanges = async () =>' in design_script
-    assert "title: 'Unapplied Design filters'" in design_script
+    assert "title: 'Unapplied PPT filters'" in design_script
     assert "confirmLabel: 'Apply Filters and Continue'" in design_script
     assert "secondaryLabel: 'Discard and Continue'" in design_script
     assert "tertiaryLabel: 'Save and Continue'" in design_script
@@ -1699,7 +1696,7 @@ def test_designs_lifecycle_and_layout(client, ppt_reporting_old):
     assert 'if (next.length === current.length && next.every(value => current.includes(value))) return;' in design_script
     assert 'function filterChanged() {' in design_script
     assert "? 'Scope, date and filter changes are ready to apply.'" in design_script
-    assert ": 'The PPT Design Scope, dates and filters are applied.'" in design_script
+    assert ": 'The PPT Scope, dates and filters are applied.'" in design_script
     assert 'if (preparing && cached && currentFilterState !== preparingFilterState)' not in design_script
     assert "status('Restored the previously prepared filters.');" in design_script
     assert "const payload = await api('/filter-options', 'POST', {definition, field});" in design_script
@@ -1744,19 +1741,19 @@ def test_designs_lifecycle_and_layout(client, ppt_reporting_old):
     design_module = (Path(__file__).parents[1] / 'src/modules/ppt_designer.py').read_text(encoding='utf-8')
     assert 'for saved_id, saved_definition in read_designs(task_repository).items()' not in design_module
     assert "'design_name': task['name']," in design_module
-    assert "'Waiting to prepare Design dataset'" in design_module
+    assert "'Waiting to prepare PPT dataset'" in design_module
     assert "'progress': task.get('progress', 0)," in design_module
     assert "@app.get('/api/ppt-designer/preparation-progress/{preparation_id}')" in design_module
     assert "'Counting reduced and filtered Universe rows in the combined CDR tables'" in design_module
     assert "f'Counting Filtered Universe CDR-{kind.title()} rows in the combined table'" in design_module
     assert "progress(78, 'Restoring cached row counts and filter options')" in design_module
-    assert "update_preparation_progress(94, 'Saving the reusable Design preparation cache')" in design_module
+    assert "update_preparation_progress(94, 'Saving the reusable PPT preparation cache')" in design_module
     assert 'with lock, task_repository.connection() as connection:' not in design_module
     assert "job['progress'] = round(82 + job['completed'] * 18 / max(job['total'], 1))" not in design_module
     assert 'direct_preparation_tasks: dict[str, dict] = {}' in design_module
     assert "preparation_id: str | None = None," in design_module
-    assert "'label': 'Rendering Design Charts' if job['total'] else 'Preparing Design dataset'," not in design_module
-    assert "phase === 'rendering' ? 'Rendering Design Charts' : 'Preparing Design dataset'" in design_script
+    assert "'label': 'Rendering PPT Charts' if job['total'] else 'Preparing PPT dataset'," not in design_module
+    assert "phase === 'rendering' ? 'Rendering PPT Charts' : 'Preparing PPT dataset'" in design_script
     assert "if (preparingFilterState === requestedFilterState) return preparing;" in design_script
     assert "if (backgroundPreparationToken === preparationToken) dismissPreparationStatus();" in design_script
     assert "bind('ds-apply-filters', async () => {" in design_script
@@ -1765,7 +1762,7 @@ def test_designs_lifecycle_and_layout(client, ppt_reporting_old):
     assert "bind('ds-reload-universe'" not in design_script
     assert "await api(`/prepare?${params}`, 'POST', definition, controller.signal);" in design_script
     assert "window.dispatchEvent(new Event('drivetest-analyzer:refresh-background-tasks'));" in design_script
-    assert "title: 'Unsaved Design filters'" in design_script
+    assert "title: 'Unsaved PPT filters'" in design_script
     assert "confirmLabel: 'Save Filters'" in design_script
     assert "title: 'Unsaved Dataset Universe'" not in design_script
     assert "if (link.classList.contains('topnav-link-logout'))" in design_script
@@ -1777,7 +1774,7 @@ def test_designs_lifecycle_and_layout(client, ppt_reporting_old):
     assert 'const designPreparationTokens = new Map();' in design_script
     assert "if (!designPreparationTokens.has(id)) designStatuses.set(id, value);" in design_script
     assert "bind('ds-generate-ppt', async () => {" in design_script
-    assert "heading.replaceChildren(document.createTextNode(name ? 'Design Filters: ' : 'Design Filters'));" in design_script
+    assert "heading.replaceChildren(document.createTextNode(name ? 'PPT Filters: ' : 'PPT Filters'));" in design_script
     assert "heading.append(node('span', name.toUpperCase(), 'ds-active-design-name'))" in design_script
     assert 'setActiveDesignHeading(definition.name);' in design_script
     assert "setActiveDesignHeading('');" in design_script
@@ -3082,7 +3079,7 @@ def test_design_viewer_scope_selector_confirms_before_rerendering():
     script = (root / 'static/js/ppt_designer.js').read_text(encoding='utf-8')
 
     assert template.index('id="ds-viewer-scope"') < template.index('id="ds-floating-filters"')
-    assert "title: 'Change PPT Design Scope', confirmLabel: 'Change Scope', tone: 'warning'" in script
+    assert "title: 'Change PPT Scope', confirmLabel: 'Change Scope', tone: 'warning'" in script
     assert "if (!accepted) { control.value = current; return; }" in script
     assert "await preparePart();" in script
     assert "for (const id of ['ds-scope', 'ds-ppt-dataset-scope', 'ds-viewer-scope'])" in script
@@ -3114,19 +3111,20 @@ def test_report_template_editor_offers_find_and_replace():
     assert 'const setEditorCellValue = (cell, value) => {' in script
 
 
-def test_design_filters_open_as_a_sub_panel_below_their_design_row():
+def test_design_filters_open_in_the_viewer_of_the_design_never_in_the_table():
     root = Path(__file__).parents[1] / 'src/web_interface'
     template = (root / 'templates/ppt_designer.html').read_text(encoding='utf-8')
     script = (root / 'static/js/ppt_designer.js').read_text(encoding='utf-8')
 
     assert '<div id="ds-filter-parking" hidden><div id="ds-filter-home">' in template
-    assert "const parkFilterPanel = () => { $('ds-filter-parking').append($('ds-filter-home')); filterRow.remove(); };" in script
-    assert "filterRowCell.append($('ds-filter-home'));" in script
-    assert script.index("body.append(row);\n      if (filtersAreOpen && !compactLibraryFiltersQuery.matches) {") > 0
-    # Compact screens open the same filters in the viewer's floating dialog.
-    assert "const compactLibraryFiltersQuery = window.matchMedia('(max-width:640px), (orientation:landscape) and (max-height:600px)');" in script
-    assert 'openFloatingFilters({fromLibrary: true});' in script
-    assert "if (closedFromLibrary) { designFiltersOpen = false; rememberFiltersOpen(false); }" in script
+    assert "const parkFilterPanel = () => { $('ds-filter-parking').append($('ds-filter-home')); };" in script
+    # No row of the table holds the filters; a Design opens without them, and one just created, duplicated or imported
+    # opens in its viewer with its PPT Filters.
+    assert 'filterRowCell' not in script and "'Open Filters'" not in script and "'Close Filters'" not in script
+    assert 'async function openDesign(id, {showFilters = false} = {}) {' in script
+    assert "if (!$('ds-viewer').hidden) openFloatingFilters();" in script
+    assert script.count('await openDesignFilters(id)') == 3
+    assert '>PPT Filters</button>' in template
 
 
 def test_cover_geography_falls_back_to_design_filter_values(client):

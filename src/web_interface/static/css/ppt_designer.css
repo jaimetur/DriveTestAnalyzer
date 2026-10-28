@@ -1788,7 +1788,7 @@
 #ds-title, #ds-subtitle { text-transform:uppercase; }
 
 /* The PPT export dialog groups the Design Universe (lavender, like the
-   filter panel's universe column) above the Design Filters (blue, like
+   filter panel's universe column) above the PPT Filters (blue, like
    its default filters). */
 .ppt-designer .ds-multivendor-dialog .ds-ppt-group-title { grid-column:1/-1; margin:0; color:#4c3277; font-size:1rem; font-weight:850; }
 .ppt-designer .ds-multivendor-dialog .ds-ppt-group > .ds-ppt-universe-section { margin:0; background:#fff; }
@@ -1799,7 +1799,7 @@
 .ppt-designer .ds-multivendor-dialog .ds-ppt-filters-group .multiselect-trigger { border-color:#b8d5e9; color:#275f86; }
 .ppt-designer .ds-multivendor-dialog .ds-ppt-filters-group:not(:has(> .ds-ppt-universe-section:not([hidden]))) { display:none; }
 
-/* Main Design Filters heading with Show All Filters, the extra filters it
+/* Main PPT Filters heading with Show All Filters, the extra filters it
    reveals (Additional Filters in pink, as in the filter panel) and the
    dialog's Save Universe / Save Filters actions. */
 .ppt-designer .ds-multivendor-dialog .ds-ppt-group-head { grid-column:1/-1; display:flex; align-items:center; justify-content:space-between; gap:.75rem; }
@@ -1915,7 +1915,7 @@
 @media(max-width:640px){.ds-date-filters{grid-template-columns:1fr}}
 /* Export PPT: Campaigns and the CDRs they choose take the whole width; Operators and Vendors share the row below. */
 .ppt-designer .ds-multivendor-dialog .ds-ppt-filters-group > #ds-ppt-campaign-section { grid-column: 1 / -1; }
-/* The dates are filters: below Campaigns, the whole width of Main Design Filters. */
+/* The dates are filters: below Campaigns, the whole width of Main PPT Filters. */
 .ppt-designer .ds-multivendor-dialog .ds-ppt-filters-group > #ds-ppt-dates-section { grid-column: 1 / -1; }
 
 /* Covers and transitions of a Design, as in its PPT (Template_VodafoneThree): the Vodafone-Three red with the

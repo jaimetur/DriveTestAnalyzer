@@ -40,7 +40,7 @@ To present the tool to an audience, every presentation of DriveTest Analyzer is 
 3. Confirm the detected input type (and, for CDRs, the NR Mode) and wait for processing to finish.
 4. Optionally map Vodafone and Three vendor information.
 5. Create or open a saved **PPT Designer** to analyse a complete template interactively, reuse prepared selections and generate its PowerPoint. Use **CDR Analysis**, **Chart Builder** or **Query Builder** for focused exploration, or **PPT Reporting (old)** for the classic report and Chart Set workflow. Use **Reporting** to schedule jobs that email CDR Analysis, Network Insights, Design, Scoring and Non-Qualified Calls artifacts.
-6. Follow Design preparation and generation in the floating task cards, **PPT Generation Jobs** and **Reports and Charts Jobs**.
+6. Follow PPT preparation and generation in the floating task cards, **PPT Generation Jobs** and **Reports and Charts Jobs**.
 7. Use **Scoring & GAP Analysis** for saved NetCheck scores and GAP reference operator comparisons across selected CDRs and Split by levels; CDR processing also queues default Operator scoring when compatible companion CDRs are available. See [Scoring & GAP Analysis](scoring-gap-analysis.md).
 8. Use **Network Insights** to compare RSRP and SINR, map weak-coverage and high-interference areas and review sites, spectrum and network deployment. See [Network Insights](network-insights.md).
 9. Use **Non-Qualified Calls** to review every call and test that did not complete in the ready CDRs: summarise them, compare the NQ rate of each campaign and operator, find their root causes and follow each one up in the NQ Analysis Center (status, team, assignee, root cause and comments) until it is closed. See [Non-Qualified Calls](non-qualified-calls.md).
@@ -68,7 +68,7 @@ The header is available throughout the authenticated application.
 
 ## Background tasks and floating cards
 
-Long operations continue while the user navigates between modules or signs out. This includes ingestion and mapping, Auto-calculated Field materialization, combined-table recreation, workspace duplication/deletion/cache clearing, Design preparation and model warming, Report and Chart Set generation, Design PowerPoint generation, backup, import, export and server transfer.
+Long operations continue while the user navigates between modules or signs out. This includes ingestion and mapping, Auto-calculated Field materialization, combined-table recreation, workspace duplication/deletion/cache clearing, PPT preparation and model warming, Report and Chart Set generation, PowerPoint generation, backup, import, export and server transfer.
 
 Floating cards group live tasks by execution context and keep their label, detail, percentage, elapsed time and progress bar visible from any application page:
 
@@ -170,12 +170,12 @@ The definition can be opened repeatedly, duplicated, exported or moved with its 
 
 ### PPT Designs
 
-- Create, open, rename, duplicate, export, import, close and delete workspace Design definitions.
+- Create, open, rename, duplicate, export, import, close and delete workspace PPT definitions.
 - Choose NSA or SA before selecting a compatible Report Template.
-- Open the definition editor or enter the prepared viewer directly from the Design library.
+- Open the definition editor or enter the prepared viewer directly from the PPT library.
 - Preserve the last open Design and page position within the browser session.
 
-### PPT Design Scope & Filters
+### PPT Scope & Filters
 
 - Choose the **Campaign** (any campaigns, **Latest campaign**, **Latest 2 campaigns**, **Latest 3 campaigns**, **Latest 4 campaigns**, **Previous campaign** or **All available campaigns**): it chooses the Data, Voice and Speech CDRs of the Design's NR Mode that the combined CDR tables include, listed under **CDRs Used**; then compare operators or persisted vendor mappings.
 - Use automatic date bounds and synchronized default filters for Campaign, Operator, Vendor, Market, Region, City, RAT, Session Type and Call Status, each listing the values of every CDR of the NR Mode that the other filters leave.
@@ -187,7 +187,7 @@ The definition can be opened repeatedly, duplicated, exported or moved with its 
 
 The module prepares a **Filtered Universe** once and reuses it across every template chart. Its selection metadata contains counts, facets and reproducible SQL predicates; chart queries read the columnar copies of its CDRs. Preview manifests and versioned Canvas models kept in memory avoid rebuilding unchanged work when a Design is opened again.
 
-Preparation runs when a user opens, refreshes or exports a Design; nothing is prepared in the background and nothing is written to disk. Chart models are built when viewed or requested for export: DuckDB groups the rows of the aggregated charts on the columnar copies of the CDRs, and a per-CDR column cache in memory lets other CDRs, dates and filters reuse the same reads. One global gate permits only one explicitly requested Design dataset-preparation phase at a time. Opening a workspace removes the Design caches earlier versions wrote on disk.
+Preparation runs when a user opens, refreshes or exports a Design; nothing is prepared in the background and nothing is written to disk. Chart models are built when viewed or requested for export: DuckDB groups the rows of the aggregated charts on the columnar copies of the CDRs, and a per-CDR column cache in memory lets other CDRs, dates and filters reuse the same reads. One global gate permits only one explicitly requested PPT dataset-preparation phase at a time. Opening a workspace removes the PPT caches earlier versions wrote on disk.
 
 Status cards distinguish data loading, queued data, chart rendering, queued charts, Ready, missing charts and failures. The floating background-task card shows the same work while users move between modules.
 
@@ -211,7 +211,7 @@ Non-Qualified Calls follows Scoring & GAP Analysis in the main tabs. It lists ev
 
 ## Reporting
 
-**Reporting** builds bundle reports from **Bundle Report Templates**, one PowerPoint or Word document with the chosen parts of PPT Designer, Scoring & GAP Analysis, Network Insights, Non-Qualified Calls and CDR Analysis, under common filters and with the Campaigns of each section, previewed before the download and saved as favourites, and schedules **Reporting Jobs** that collect a Summary CDR Analysis, a Summary Network Insights, Design PPTs and Scoring PPTs, each with its own filters, run once or on a daily, weekly or monthly schedule and email the artifacts with a description of each one. It is available to every user whose Modules Profile includes it (Super Admin → Modules Profiles), and it can also include the Non-Qualified Calls Executive Summary and Progress Status. See [Reporting](reporting.md).
+**Reporting** builds bundle reports from **Bundle Report Templates**, one PowerPoint or Word document with the chosen parts of PPT Designer, Scoring & GAP Analysis, Network Insights, Non-Qualified Calls and CDR Analysis, under common filters and with the Campaigns of each section, previewed before the download and saved as favourites, and schedules **Reporting Jobs** that collect a Summary CDR Analysis, a Summary Network Insights, PPTs and Scoring PPTs, each with its own filters, run once or on a daily, weekly or monthly schedule and email the artifacts with a description of each one. It is available to every user whose Modules Profile includes it (Super Admin → Modules Profiles), and it can also include the Non-Qualified Calls Executive Summary and Progress Status. See [Reporting](reporting.md).
 
 ## PPT Reporting (old)
 
@@ -353,7 +353,7 @@ The complete authoring specification, examples and supported chart catalogue are
 
 | Role | Typical permissions |
 | --- | --- |
-| `user-viewer` | Explore the permitted workspace features, datasets and App Logs, and generate jobs (Design PPTs with any filters, Scoring calculations, Network Insights analyses and exports, queries and reports). Cannot change the workspace: no uploading, deleting, reprocessing, stopping, mapping or clearing datasets, editing NR Modes, recreating combined tables, saving, renaming or deleting Designs, saved queries or Scoring jobs, and no access to Application Config or Workspace Config. |
+| `user-viewer` | Explore the permitted workspace features, datasets and App Logs, and generate jobs (PPTs with any filters, Scoring calculations, Network Insights analyses and exports, queries and reports). Cannot change the workspace: no uploading, deleting, reprocessing, stopping, mapping or clearing datasets, editing NR Modes, recreating combined tables, saving, renaming or deleting Designs, saved queries or Scoring jobs, and no access to Application Config or Workspace Config. |
 | `user-editor` | Use permitted workspace features and App Logs; edit Application Config and Workspace Config when a workspace is open; delete only the Designs, templates, Saved Filters, methodologies, report configurations, Reporting Jobs and favourites they created (see [Deleting shared items](super-admin.md#deleting-shared-items)). |
 | `admin` | Edit Application Config and Workspace Config, upload datasets, and in Admin export and transfer accessible workspaces and manage datasets (no import, no Super Admin). |
 | `super-admin` | Everything an admin does, import packages, and in Super Admin the users and their access, Interface Settings, databases and backups; full-environment portability and incoming transfer approval. |

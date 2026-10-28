@@ -23,7 +23,7 @@ This article collects rules that affect data interpretation, performance, persis
 | Campaign ordering | [Open section](#campaign-ordering) |
 | Template execution semantics | [Open section](#template-execution-semantics) |
 | Multivendor calculation and remapping | [Open section](#multivendor-calculation-and-remapping) |
-| Interactive previews and Design preparation | [Open section](#interactive-previews-and-design-preparation) |
+| Interactive previews and PPT preparation | [Open section](#interactive-previews-and-design-preparation) |
 | Filtered dataset preview | [Open section](#filtered-dataset-preview) |
 | Background jobs and output | [Open section](#background-jobs-and-output) |
 | Import, export and server transfer | [Open section](#import-export-and-server-transfer) |
@@ -43,9 +43,9 @@ Stored below `APP_CONFIG_DIR`:
 
 Stored below `APP_DATA_DIR/workspaces/<workspace>/`:
 
-- `<workspace>.db`: datasets, profiles, audit events, Design definitions and selections, generated jobs, Auto-calculated Fields, complete Report Templates in `report_templates`, and materialised reporting rows.
+- `<workspace>.db`: datasets, profiles, audit events, PPT definitions and selections, generated jobs, Auto-calculated Fields, complete Report Templates in `report_templates`, and materialised reporting rows.
 - `input/`: uploaded source files.
-- `output/reports/ppt-designs/`: Design PowerPoint jobs and their persistent PNG, tooltip and Canvas-model assets.
+- `output/reports/ppt-designs/`: PPT Designer jobs and their persistent PNG, tooltip and Canvas-model assets.
 - `output/reports/cdr-analysis/`: CDR Analysis PowerPoint and Word exports.
 - `output/reports/network-insights/`: Summary Network Insights PowerPoint and Word exports.
 - `output/reports/reports-old/`: PPT Reporting (old) PowerPoint reports and their PNG charts.
@@ -194,11 +194,11 @@ For Vendor Comparison, the renderer also appends this effective filter without a
 vendor NOT CONTAINS (Mixed, Other);
 ```
 
-## Interactive previews and Design preparation
+## Interactive previews and PPT preparation
 
 PPT Reporting (old), Chart Builder and PPT Templates Editor use the shared Interactive Preview. PPT Designer uses the same chart contracts in its live viewer, expanded viewer and historical Charts Panel, while preparing one synchronized dataset selection for the complete Design.
 
-Live charts draw their Canvas models in the user's browser. Server-side Report, Chart Set and Design exports send those same models through a persistent Node/Chromium renderer, which keeps chart geometry and semantic tooltips aligned with the interactive view. Docker includes these runtime dependencies; source deployments using `canvas` need Node.js, a supported Chromium-family browser and the WebSocket module.
+Live charts draw their Canvas models in the user's browser. Server-side Report, Chart Set and PPT exports send those same models through a persistent Node/Chromium renderer, which keeps chart geometry and semantic tooltips aligned with the interactive view. Docker includes these runtime dependencies; source deployments using `canvas` need Node.js, a supported Chromium-family browser and the WebSocket module.
 
 `DRIVETEST_ANALYZER_CHROMIUM` can select an explicit browser executable, while `DRIVETEST_ANALYZER_REPORT_CHART_RENDERER=pil` selects the legacy painter.
 
@@ -214,17 +214,17 @@ Changing only a title should therefore be much faster than changing datasets or 
 
 PPT Designer persistence has additional layers:
 
-- `design_filter_selections` stores a versioned selection key, faceted filter values and row counts; its predicates are reproduced from the saved Design definition.
-- The columnar copies of the CDRs of the shared `reporting_rows_data`, `reporting_rows_voice` and `reporting_rows_speech` combined tables supply Design filters, chart datasets and chart rendering.
+- `design_filter_selections` stores a versioned selection key, faceted filter values and row counts; its predicates are reproduced from the saved PPT definition.
+- The columnar copies of the CDRs of the shared `reporting_rows_data`, `reporting_rows_voice` and `reporting_rows_speech` combined tables supply PPT filters, chart datasets and chart rendering.
 - Compact interactive chart models and reusable preview manifests are kept in memory only (never on disk); their keys include selected datasets and revisions, NR Mode, scope, dates, filters, template definition and renderer/cache versions. Equivalent value and dataset ordering resolves to the same selection.
 
-When a workspace opens, the application removes the Design caches earlier versions wrote on disk (`.design-data-cache`, `.design-chart-cache` and `.design-cache-version.json`) and, when the selection format changed, the saved selection metadata. The Workspace **Clear cache** action clears the derived data on demand without deleting definitions, datasets, combined CDR tables, templates or generated jobs.
+When a workspace opens, the application removes the PPT caches earlier versions wrote on disk (`.design-data-cache`, `.design-chart-cache` and `.design-cache-version.json`) and, when the selection format changed, the saved selection metadata. The Workspace **Clear cache** action clears the derived data on demand without deleting definitions, datasets, combined CDR tables, templates or generated jobs.
 
 Chart models are generated only when the corresponding chart is viewed or included in a requested PPT.
 
 The combined-table revision in these cache keys advances only when rows are inserted or rebuilt. Adding or filling columns (for example when another Design or template needs a new field) records a separate timestamp and keeps every prepared universe valid.
 
-PPT Designs status checks read each universe manifest directly from its fingerprint-derived path and are reused until datasets, combined rows, auto-calculated fields, mappings, templates or manifests change. Only the most recently used Design snapshots keep their pandas chart frames in memory (3 by default, configurable with `DRIVETEST_ANALYZER_DESIGN_FRAME_CACHE_SNAPSHOTS`); older snapshots rebuild them from the combined tables on demand, which bounds memory use on smaller servers.
+PPT Designs status checks read each universe manifest directly from its fingerprint-derived path and are reused until datasets, combined rows, auto-calculated fields, mappings, templates or manifests change. Only the most recently used PPT snapshots keep their pandas chart frames in memory (3 by default, configurable with `DRIVETEST_ANALYZER_DESIGN_FRAME_CACHE_SNAPSHOTS`); older snapshots rebuild them from the combined tables on demand, which bounds memory use on smaller servers.
 
 ## Filtered dataset preview
 
@@ -259,7 +259,7 @@ output/reports/reports-old/<report-name>/
 output/reports/reports-charts-old/<generation>/
 ```
 
-Design PowerPoint generations use the separate `design_ppt_jobs` table because they preserve a saved Design identity and its exact applied definition. Each job records its CDR selection, dates, NR Mode, scope, adaptive filters, preview fingerprint and progress. Its output contains the PPTX plus persistent PNG, tooltip and Canvas-model assets:
+PowerPoint generations use the separate `design_ppt_jobs` table because they preserve a saved Design identity and its exact applied definition. Each job records its CDR selection, dates, NR Mode, scope, adaptive filters, preview fingerprint and progress. Its output contains the PPTX plus persistent PNG, tooltip and Canvas-model assets:
 
 ```text
 output/reports/ppt-designs/<timestamp - design-name>/
@@ -271,7 +271,7 @@ Both job families continue after leaving the page or signing out. A process rest
 
 ## Import, export and server transfer
 
-Portable ZIPs can contain Application Config, Design definitions, Report Templates, Auto-calculated Fields, complete workspaces or a selected Full Environment.
+Portable ZIPs can contain Application Config, PPT definitions, Report Templates, Auto-calculated Fields, complete workspaces or a selected Full Environment.
 
 - Large packages are built and processed on disk rather than fully in browser memory.
 - Workspace database snapshots use SQLite-safe copy/backup behaviour, and take the columnar copies of the CDRs (`cdr-store/` beside `database.sqlite`) as they were when the snapshot was made; a copy being written meanwhile takes its place once the snapshot has them.

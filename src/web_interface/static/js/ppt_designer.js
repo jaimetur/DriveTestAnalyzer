@@ -75,7 +75,6 @@
   };
   const rememberOpen = id => { try { if (id) sessionStorage.setItem(openStorageKey, id); else sessionStorage.removeItem(openStorageKey); } catch (_) { /* Storage is optional. */ } };
   const rememberFiltersOpen = isOpen => { try { sessionStorage.setItem(filtersOpenStorageKey, isOpen ? 'open' : 'closed'); } catch (_) { /* Storage is optional. */ } };
-  const rememberedFiltersOpen = () => { try { return sessionStorage.getItem(filtersOpenStorageKey) === 'open'; } catch (_) { return false; } };
   const rememberLibrary = () => { try { sessionStorage.setItem(libraryStorageKey, JSON.stringify(designs)); } catch (_) { /* Storage is optional. */ } };
   const rememberScroll = () => { try { sessionStorage.setItem(scrollStorageKey, String(window.scrollY)); } catch (_) { /* Storage is optional. */ } };
   const restoreScroll = () => {
@@ -109,14 +108,14 @@
   const backgroundWorkspaceName = () => document.querySelector('[data-header-active-workspace-name]')?.textContent?.trim() || 'Active workspace';
   const emitPreparationStatus = (statusValue, detail = '', token = backgroundPreparationToken, progress = null) => {
     if (!token || token !== backgroundPreparationToken) return;
-    const rendering = detail.includes('Rendering Design charts') || detail.includes('render Design charts');
+    const rendering = detail.includes('Rendering PPT charts') || detail.includes('render PPT charts');
     const queued = String(statusValue || '').toLowerCase() === 'queued';
     window.dispatchEvent(new CustomEvent('drivetest-analyzer:background-task', {detail: {
       id: token, workspace_id: config.workspace, workspace_name: backgroundWorkspaceName(), is_active: true,
       design_name: definition?.name || 'Design',
       label: queued
-        ? (rendering ? 'Waiting to render Design Charts' : 'Waiting to prepare Design dataset')
-        : (rendering ? 'Rendering Design Charts' : 'Preparing Design dataset'),
+        ? (rendering ? 'Waiting to render PPT Charts' : 'Waiting to prepare PPT dataset')
+        : (rendering ? 'Rendering PPT Charts' : 'Preparing PPT dataset'),
       detail, progress, status: statusValue,
       stop_task_id: `design-prepare:${token}`,
       stop_url: `/api/background-tasks/${encodeURIComponent(config.workspace)}/stop`,
@@ -390,7 +389,7 @@
       if (!payload) {
         const error = new Error([502, 503, 504].includes(response.status)
           ? `The server did not answer in time (${response.status}). It may be busy with background work; please try again in a moment.`
-          : `The Design API returned an unexpected ${response.status} response. Please reload the page and try again.`);
+          : `The PPT API returned an unexpected ${response.status} response. Please reload the page and try again.`);
         error.status = response.status;
         throw error;
       }
@@ -398,7 +397,7 @@
       error.status = response.status;
       throw error;
     }
-    if (!payload) throw new Error('The Design API returned HTML instead of JSON. Please reload the page and try again.');
+    if (!payload) throw new Error('The PPT API returned HTML instead of JSON. Please reload the page and try again.');
     return payload;
   };
   const safe = fn => async (...args) => { try { await fn(...args); } catch (error) { if (error.name !== 'AbortError') { status(error.message); if (window.showInfoDialog) window.showInfoDialog(error.message, {title:'PPT Designer',tone:'error'}); } } };
@@ -408,7 +407,7 @@
   const designCanExport = id => Boolean(id && !['data-needed', 'error'].includes(designStatuses.get(id)?.state));
   const setActiveDesignHeading = name => {
     const heading = $('ds-active-design-heading');
-    heading.replaceChildren(document.createTextNode(name ? 'Design Filters: ' : 'Design Filters'));
+    heading.replaceChildren(document.createTextNode(name ? 'PPT Filters: ' : 'PPT Filters'));
     if (name) heading.append(node('span', name.toUpperCase(), 'ds-active-design-name'));
   };
   const syncDesignPptActions = () => {
@@ -458,14 +457,14 @@
     syncPreparationRefresh();
     if (state === 'hidden') return;
     const floatingFilters = $('ds-filter-panel').parentElement?.id === 'ds-filter-float';
-    $('ds-preparing-title').textContent = ready ? 'Design dataset is ready' : phase === 'rendering' ? 'Rendering Design Charts' : 'Preparing Design dataset';
+    $('ds-preparing-title').textContent = ready ? 'PPT dataset is ready' : phase === 'rendering' ? 'Rendering PPT Charts' : 'Preparing PPT dataset';
     $('ds-preparing-detail').textContent = floatingFilters
       ? (ready
-        ? 'Dataset and filters are ready. The Design dataset is ready to use.'
-        : phase === 'rendering' ? 'Charts are rendering with the current Design scope.' : 'Dataset and filters are still loading. The Design will update when preparation is complete.')
+        ? 'Dataset and filters are ready. The PPT dataset is ready to use.'
+        : phase === 'rendering' ? 'Charts are rendering with the current PPT scope.' : 'Dataset and filters are still loading. The Design will update when preparation is complete.')
       : (ready
         ? "Datasets and filters are ready. You can now open the design using 'View Design' button below."
-        : phase === 'rendering' ? 'Charts are rendering with the current Design scope. View Design will become available when rendering is complete.' : 'Dataset and filters are still loading. View Design will become available when preparation is complete.');
+        : phase === 'rendering' ? 'Charts are rendering with the current PPT scope. View Design will become available when rendering is complete.' : 'Dataset and filters are still loading. View Design will become available when preparation is complete.');
   };
   const setPreparationProgress = (progress, detail = 'Preparing…') => {
     const numeric = Number(progress);
@@ -491,7 +490,7 @@
   const awaitBackgroundPreparation = async (preparationId, signal) => {
     let missingPolls = 0;
     for (;;) {
-      if (signal?.aborted) throw new DOMException('The Design preparation was superseded.', 'AbortError');
+      if (signal?.aborted) throw new DOMException('The PPT preparation was superseded.', 'AbortError');
       let progress = null;
       try {
         progress = await api(`/preparation-progress/${encodeURIComponent(preparationId)}`, 'GET', undefined, signal);
@@ -501,14 +500,14 @@
         // A task can briefly be unregistered between its worker finishing and
         // its result being recorded. Give up only if it stays unknown.
         if (error.status === 404 && ++missingPolls > 40) {
-          throw new Error('Design preparation is no longer active. Please try again.');
+          throw new Error('PPT preparation is no longer active. Please try again.');
         }
       }
       if (progress?.status === 'completed' && progress.token) {
         return api(`/prepared/${encodeURIComponent(progress.token)}`, 'GET', undefined, signal);
       }
       if (progress?.status === 'failed') {
-        const error = new Error(progress.detail || 'Design preparation failed.');
+        const error = new Error(progress.detail || 'PPT preparation failed.');
         error.status = progress.code;
         throw error;
       }
@@ -517,8 +516,8 @@
   };
   const monitorPreparationProgress = token => {
     clearTimeout(preparationProgressTimer);
-    setPreparationProgress(null, 'Waiting for the server to register the Design preparation task');
-    emitPreparationStatus('queued', 'Waiting for the server to register the Design preparation task', token);
+    setPreparationProgress(null, 'Waiting for the server to register the PPT preparation task');
+    emitPreparationStatus('queued', 'Waiting for the server to register the PPT preparation task', token);
     const refresh = async () => {
       if (!token || token !== backgroundPreparationToken) return;
       try {
@@ -558,7 +557,7 @@
     const choice = await window.showConfirmDialog(
       'This Design has filter changes that have not been applied. Apply, save or discard them before continuing?',
       {
-        title: 'Unapplied Design filters',
+        title: 'Unapplied PPT filters',
         confirmLabel: 'Apply Filters and Continue',
         secondaryLabel: 'Discard and Continue',
         tertiaryLabel: 'Save and Continue',
@@ -709,7 +708,7 @@
     const selectionControls = {
       operators: operatorControl, vendors: vendorControl, regions: regionControl, cities: cityControl,
     };
-    // Design Filters start from the values saved in the Design; a field
+    // PPT Filters start from the values saved in the Design; a field
     // it does not filter starts with every value of the selected CDRs.
     const selectionFields = {operators: 'Operator', vendors: 'Vendor', regions: 'Region', cities: 'City'};
     // Save Universe and Save Filters update this saved definition.
@@ -749,7 +748,7 @@
     showAllButton.textContent = 'Show All Filters';
     showAllButton.setAttribute('aria-expanded', 'false');
     showAllButton.disabled = !extraMainFields.length && !additionalFields.length;
-    showAllButton.title = showAllButton.disabled ? 'This Design has no other filters.' : 'Show every Design filter, including Additional Filters';
+    showAllButton.title = showAllButton.disabled ? 'This Design has no other filters.' : 'Show every PPT filter, including Additional Filters';
     const buildExtraFilters = () => {
       if (extraFilters.size) return;
       for (const [fields, host, custom] of [[extraMainFields, extraMainHost, false], [additionalFields, additionalHost, true]]) {
@@ -1222,7 +1221,7 @@
       const writer = commentEngine() ? ` (writer: ${(commentEngines.engines.find(engine => engine.id === autoCommentsEngine) || {}).label || 'Rules'})` : '';
       const decision = await window.showConfirmDialog(
         `Generate a PowerPoint presentation for “${exportDefinition.name}”?`,
-        {title: 'Generate Design PPT', confirmLabel: 'Generate PPT', optionLabel: `Auto comments: write generated comments on the slides without comments${writer}`,
+        {title: 'Generate PPT', confirmLabel: 'Generate PPT', optionLabel: `Auto comments: write generated comments on the slides without comments${writer}`,
           optionChecked: autoComments !== 'off'},
       );
       if (!decision?.accepted) return;
@@ -1241,7 +1240,7 @@
     // Queuing validates the universe and resolves the cover labels on the
     // server, which can take a few seconds on a busy server: show it.
     lastAutoComments = autoComments;
-    window.showLoadingOverlay?.('Queuing Design PPT', `Preparing the PowerPoint export for “${exportDefinition.name}”…`);
+    window.showLoadingOverlay?.('Queuing PPT', `Preparing the PowerPoint export for “${exportDefinition.name}”…`);
     try {
       await api(`/${encodeURIComponent(id)}/export-ppt`, 'POST', {
         definition: exportDefinition,
@@ -1260,7 +1259,7 @@
     } finally {
       window.hideLoadingOverlay?.();
     }
-    status(`Design PPT export queued for “${exportDefinition.name}”.`);
+    status(`PPT export queued for “${exportDefinition.name}”.`);
     await refreshDesignPptJobs();
     window.dispatchEvent(new Event('drivetest-analyzer:refresh-background-tasks'));
   }
@@ -1276,7 +1275,7 @@
     }
     const accepted = await window.showConfirmDialog(
       `Changing the NR Mode or Template for “${item.name}” will invalidate every report and chart created inside this Design. Its Scope, dates and filters are kept (a new NR Mode uses its newest campaigns). Continue?`,
-      {title: 'Update Design definition?', confirmLabel: 'Update Design', cancelLabel: 'Cancel', tone: 'warning'},
+      {title: 'Update PPT definition?', confirmLabel: 'Update Design', cancelLabel: 'Cancel', tone: 'warning'},
     );
     if (!accepted) {
       library();
@@ -1305,10 +1304,7 @@
     if (!$('ds-filter-overlay').hidden || !$('ds-viewer').hidden) return;
     openFloatingFilters({fromLibrary: true});
   };
-  const filterRow = node('tr', undefined, 'ds-filter-row');
-  const filterRowCell = node('td', undefined, 'ds-filter-row-cell'); filterRowCell.colSpan = 5; filterRow.append(filterRowCell);
-  filterRow.id = 'ds-filter-row';
-  const parkFilterPanel = () => { $('ds-filter-parking').append($('ds-filter-home')); filterRow.remove(); };
+  const parkFilterPanel = () => { $('ds-filter-parking').append($('ds-filter-home')); };
   function library() {
     rememberLibrary();
     parkFilterPanel();
@@ -1333,8 +1329,8 @@
       const row = node('tr'); if (id === activeId) row.classList.add('ds-design-active');
       const nameCell = node('td'); nameCell.dataset.label = 'Design';
       const nameEditor = node('div', undefined, 'ds-design-name-editor');
-      const nameInput = document.createElement('input'); nameInput.type = 'text'; nameInput.value = item.name; nameInput.maxLength = 120; nameInput.setAttribute('aria-label', `Design name: ${item.name}`);
-      const nameSave = node('button', '✓', 'ds-design-name-save'); nameSave.type = 'button'; nameSave.title = 'Save Design name'; nameSave.setAttribute('aria-label', 'Save Design name'); nameSave.hidden = true;
+      const nameInput = document.createElement('input'); nameInput.type = 'text'; nameInput.value = item.name; nameInput.maxLength = 120; nameInput.setAttribute('aria-label', `PPT name: ${item.name}`);
+      const nameSave = node('button', '✓', 'ds-design-name-save'); nameSave.type = 'button'; nameSave.title = 'Save PPT name'; nameSave.setAttribute('aria-label', 'Save PPT name'); nameSave.hidden = true;
       const updateNameSave = () => { nameSave.hidden = nameInput.value.trim() === item.name; };
       nameInput.addEventListener('input', updateNameSave);
       nameInput.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); nameSave.click(); } });
@@ -1406,20 +1402,7 @@
       primaryActionLabel(view, 'View', 'Design');
       view.dataset.designViewId = id;
       view.disabled = false;
-      const filtersAreOpen = id === activeId && designFiltersOpen;
-      const open = action(filtersAreOpen ? 'Close Filters' : 'Open Filters', filtersAreOpen ? 'Close Filters' : 'Open Filters', async () => {
-        if (filtersAreOpen) { if (await confirmDiscard()) closeDesign(); }
-        else if (id === activeId) {
-          designFiltersOpen = true;
-          rememberFiltersOpen(true);
-          $('ds-filter-panel').hidden = false;
-          document.dispatchEvent(new CustomEvent('page-panel-navigation:update'));
-          library();
-        } else if (await confirmDiscard()) await openDesign(id);
-      }, filtersAreOpen ? 'ds-design-close' : 'ds-design-open');
-      open.classList.remove('icon-action');
-      primaryActionLabel(open, filtersAreOpen ? 'Close' : 'Open', 'Filters');
-      const ppt = action('Generate Design PPT', '', () => queueDesignPptExport(id, item, {chooseScope: true}), 'ds-design-ppt');
+      const ppt = action('Generate PPT', '', () => queueDesignPptExport(id, item, {chooseScope: true}), 'ds-design-ppt');
       ppt.classList.remove('icon-action');
       primaryActionLabel(ppt, 'Generate', 'PPT');
       ppt.dataset.designPptId = id;
@@ -1437,11 +1420,6 @@
         }
       }
       const cell = node('td'); cell.dataset.label = 'Actions'; cell.append(actions); row.append(cell); body.append(row);
-      if (filtersAreOpen && !compactLibraryFiltersQuery.matches) {
-        filterRowCell.append($('ds-filter-home'));
-        row.classList.add('ds-design-filters-open');
-        body.append(filterRow);
-      }
     }
     syncCompactLibraryFilters();
   }
@@ -1569,7 +1547,7 @@
     if (!chart.payload_url) throw new Error('This earlier PPT Job does not contain an interactive Canvas model. Relaunch it to add interactive chart previews.');
     const response = await fetch(chart.payload_url, {cache: 'no-store', credentials: 'same-origin'});
     const payload = await response.json();
-    if (!response.ok) throw new Error(payload.detail || 'Unable to load the Design chart model.');
+    if (!response.ok) throw new Error(payload.detail || 'Unable to load the PPT chart model.');
     await openExpandedChart(chart, payload, 'ppt');
   };
   const renderDesignPptCharts = (payload, job) => {
@@ -1580,13 +1558,13 @@
     $('ds-ppt-charts-empty').hidden = designPptCharts.length > 0;
     $('ds-ppt-charts-copy').textContent = designPptCharts.length
       ? `Cached charts generated for Design "${job.design_name}". Click any chart to enlarge it.`
-      : 'This PowerPoint job does not contain any Design charts.';
+      : 'This PowerPoint job does not contain any PPT charts.';
     setDesignPptChartBadges(job);
     const thumbnailJobId = designPptChartsJobId;
     const cachedImage = chart => {
       const image = node('img');
       image.src = chart.image_url;
-      image.alt = chart.title || 'Design chart';
+      image.alt = chart.title || 'PPT chart';
       image.loading = 'lazy';
       return image;
     };
@@ -1595,14 +1573,14 @@
       card.tabIndex = 0;
       const head = node('div', undefined, 'report-chart-card-head');
       const heading = node('div');
-      heading.append(node('h3', chart.title || 'Design chart'));
+      heading.append(node('h3', chart.title || 'PPT chart'));
       heading.append(node('p', [chart.slide ? `Slide ${chart.slide}` : '', chart.source || '', chart.chart_type || ''].filter(Boolean).join(' · ')));
       head.append(heading);
       const preview = node('div', undefined, 'ds-ppt-chart-thumbnail');
       if (chart.payload_url && globalThis.renderCanvasChart) {
         const canvas = node('canvas');
         canvas.setAttribute('role', 'img');
-        canvas.setAttribute('aria-label', chart.title || 'Design chart');
+        canvas.setAttribute('aria-label', chart.title || 'PPT chart');
         preview.append(canvas);
         fetch(chart.payload_url, {cache: 'no-store', credentials: 'same-origin'})
           .then(async response => {
@@ -1653,7 +1631,7 @@
       $('ds-ppt-charts-body').replaceChildren();
       $('ds-ppt-charts-count').textContent = '0 charts';
       $('ds-ppt-charts-empty').hidden = false;
-      $('ds-ppt-charts-copy').textContent = error instanceof Error ? error.message : 'Design charts could not be loaded.';
+      $('ds-ppt-charts-copy').textContent = error instanceof Error ? error.message : 'PPT charts could not be loaded.';
     }
   };
   const viewerDefinition = () => pptDesignViewer?.definition || definition;
@@ -1673,7 +1651,7 @@
   async function openDesignPptViewer(job) {
     const payload = await api(`/ppt-jobs/${job.id}/charts.json`);
     if (!payload.viewer_available || !Array.isArray(payload.slides) || !payload.definition) {
-      throw new Error('This PowerPoint job does not contain the saved Design viewer snapshot. Relaunch it to create one.');
+      throw new Error('This PowerPoint job does not contain the saved PPT viewer snapshot. Relaunch it to create one.');
     }
     pptDesignViewer = {
       job, definition: canonicalDesignDefinition(payload.definition), cover: payload.cover || null,
@@ -1739,7 +1717,7 @@
     ['region', job.cover?.regions],
     ['city', job.cover?.cities],
   ].filter(([, label]) => label);
-  const renderDesignPptJobPickerLabel = (container, job, emptyLabel = 'No generated Design PPTs') => {
+  const renderDesignPptJobPickerLabel = (container, job, emptyLabel = 'No generated PPTs') => {
     container.replaceChildren();
     if (!job) { container.textContent = emptyLabel; return; }
     designPptJobLabelParts(job).forEach(([name, label], index) => {
@@ -1772,10 +1750,10 @@
     const available = generated.filter(matchesDesignPptChartFilters);
     select.replaceChildren(...(available.length
       ? available.map(job => option(String(job.id), designPptJobLabelParts(job).map(([, label]) => label).join(' • ')))
-      : [option('', generated.length ? 'No matching Design PPTs' : 'No generated Design PPTs')]));
+      : [option('', generated.length ? 'No matching PPTs' : 'No generated PPTs')]));
     select.disabled = available.length === 0;
     select.value = available.some(job => String(job.id) === previous) ? previous : String(available[0]?.id || '');
-    const emptyLabel = generated.length ? 'No matching Design PPTs' : 'No generated Design PPTs';
+    const emptyLabel = generated.length ? 'No matching PPTs' : 'No generated PPTs';
     rebuildDesignPptJobPicker(available, emptyLabel);
     if (!available.length) {
       ++designPptChartsRequest;
@@ -1784,7 +1762,7 @@
       $('ds-ppt-charts-body').replaceChildren();
       $('ds-ppt-charts-count').textContent = '0 charts';
       $('ds-ppt-charts-empty').hidden = false;
-      $('ds-ppt-charts-copy').textContent = 'Select a completed Design PowerPoint job to inspect its cached charts. Click any chart to enlarge it.';
+      $('ds-ppt-charts-copy').textContent = 'Select a completed PPT Designer job to inspect its cached charts. Click any chart to enlarge it.';
       setDesignPptChartBadges(null);
       $('ds-ppt-charts-panel').hidden = true;
       return;
@@ -1794,7 +1772,7 @@
   $('ds-ppt-chart-job').addEventListener('change', safe(event => {
     rebuildDesignPptJobPicker(
       designPptJobs.filter(job => job.charts_api_url && matchesDesignPptChartFilters(job)),
-      'No matching Design PPTs',
+      'No matching PPTs',
     );
     return loadDesignPptCharts(event.target.value);
   }));
@@ -1866,10 +1844,10 @@
       const durationLabel = Number.isFinite(duration) ? ` · ${duration < 60 ? `${duration < 10 ? duration.toFixed(1) : Math.round(duration)}s` : `${Math.floor(duration / 60)}m ${Math.round(duration % 60)}s`}` : '';
       progressCell.append(progress, node('span', ` ${Number(job.progress) || 0}%${durationLabel}`)); row.append(progressCell);
       const actionsCell = node('td'); const actions = node('div', undefined, 'report-job-actions');
-      if (job.download_url) { const link = node('a', undefined, 'report-job-download-button report-job-report-download-button report-job-download-labeled'); link.append(node('span', 'Download PPT', 'report-job-download-label')); link.href = job.download_url; link.download = ''; link.title = link.ariaLabel = 'Download Design PPT'; actions.append(link); }
-      if (job.charts_api_url) actions.append(jobAction('View Design snapshot', 'report-job-design-button', () => openDesignPptViewer(job), ''));
-      if (job.charts_download_url) { const link = node('a', '', 'report-job-download-button report-job-charts-download-button'); link.href = job.charts_download_url; link.download = ''; link.title = link.ariaLabel = 'Download Design charts as ZIP'; actions.append(link); }
-      if (job.charts_api_url) actions.append(jobAction('Open Design charts', 'report-job-charts-button', () => loadDesignPptCharts(job.id, true), '📈'));
+      if (job.download_url) { const link = node('a', undefined, 'report-job-download-button report-job-report-download-button report-job-download-labeled'); link.append(node('span', 'Download PPT', 'report-job-download-label')); link.href = job.download_url; link.download = ''; link.title = link.ariaLabel = 'Download PPT'; actions.append(link); }
+      if (job.charts_api_url) actions.append(jobAction('View PPT snapshot', 'report-job-design-button', () => openDesignPptViewer(job), ''));
+      if (job.charts_download_url) { const link = node('a', '', 'report-job-download-button report-job-charts-download-button'); link.href = job.charts_download_url; link.download = ''; link.title = link.ariaLabel = 'Download PPT charts as ZIP'; actions.append(link); }
+      if (job.charts_api_url) actions.append(jobAction('Open PPT charts', 'report-job-charts-button', () => loadDesignPptCharts(job.id, true), '📈'));
       if (job.retry_url) {
         const retry = jobAction(job.status === 'ready' ? 'Relaunch Job' : 'Retry export', 'report-job-retry-button', async () => {
           // Relaunching can take a few seconds on a busy server: give
@@ -1892,7 +1870,7 @@
       }
       if (job.stop_url) actions.append(jobAction('Stop export', 'report-job-stop-button', async () => { await api(`/ppt-jobs/${job.id}/stop`, 'POST'); await refreshDesignPptJobs(); }, '■'));
       if (config.can_manage) actions.append(jobAction('Delete export', 'danger-button', async () => {
-        if (!await window.showConfirmDialog(`Delete Design PPT job ${job.id} and all its files?`, {title: 'Delete Design PPT', confirmLabel: 'Delete'})) return;
+        if (!await window.showConfirmDialog(`Delete PPT Designer job ${job.id} and all its files?`, {title: 'Delete PPT', confirmLabel: 'Delete'})) return;
         await api(`/ppt-jobs/${job.id}/delete`, 'POST'); await refreshDesignPptJobs();
       }, '×'));
       actionsCell.append(actions); row.append(actionsCell); body.append(row);
@@ -1969,13 +1947,13 @@
   ) || null;
   if ($('ds-ppt-jobs-delete-all')) bind('ds-ppt-jobs-delete-all', async () => {
     const accepted = await window.showConfirmDialog(
-      'Delete all Design PPT jobs and every generated PPT and chart folder?',
+      'Delete all PPT Designer jobs and every generated PPT and chart folder?',
       {title: 'Delete All PPTs', confirmLabel: 'Delete all', tone: 'danger'},
     );
     if (!accepted) return;
     await api('/ppt-jobs/delete-all', 'POST');
     await refreshDesignPptJobs();
-    status('All Design PPT jobs and files were deleted.');
+    status('All PPT Designer jobs and files were deleted.');
   });
   const setDesignStatus = (id, state, label) => {
     if (!id) return;
@@ -2497,7 +2475,7 @@
     rows.hidden = !rows.textContent;
   };
   const applyPreparedPayload = payload => {
-    prepared = payload; facetOptions = payload.options; facetFields = config.filter_fields || payload.filter_fields || facetFields; availableFields = payload.available_fields || payload.custom_fields || []; applyDateBounds(payload.date_bounds); facetsLoading = false; facetOptionRequests.clear(); setPreparationProgress(100, 'Design dataset is ready');
+    prepared = payload; facetOptions = payload.options; facetFields = config.filter_fields || payload.filter_fields || facetFields; availableFields = payload.available_fields || payload.custom_fields || []; applyDateBounds(payload.date_bounds); facetsLoading = false; facetOptionRequests.clear(); setPreparationProgress(100, 'PPT dataset is ready');
     appliedFilterState = preparationStateFingerprint(definition);
     appliedSelectionState = selectionStateFingerprint(definition);
     appliedDesignDefinition = JSON.parse(JSON.stringify(definition));
@@ -2538,7 +2516,7 @@
     scheduleLiveSelection();
     status(hasUnappliedFilterChanges()
       ? 'Scope, date and filter changes are ready to apply.'
-      : 'The PPT Design Scope, dates and filters are applied.');
+      : 'The PPT Scope, dates and filters are applied.');
   }
   function changed() {
     dismissPreparationStatus(); forgetPrepared();
@@ -2586,8 +2564,8 @@
     // manifest and validate its CDR revisions, so expose it immediately in
     // the global task card instead of leaving only the yellow viewer notice.
     const cacheLookupToken = backgroundPreparationToken = `cache-lookup-${++cacheLookupSequence}`;
-    setPreparationProgress(null, 'Checking persistent Design cache');
-    emitPreparationStatus('processing', 'Checking persistent Design cache', cacheLookupToken);
+    setPreparationProgress(null, 'Checking persistent PPT cache');
+    emitPreparationStatus('processing', 'Checking persistent PPT cache', cacheLookupToken);
     const lookupDesignId = activeId;
     if (await restorePrepared(activeId)) {
       if (backgroundPreparationToken === cacheLookupToken) dismissPreparationStatus();
@@ -2610,8 +2588,8 @@
     emitPreparationStatus(
       'queued',
       needsDataPreparation
-        ? 'Submitting the Design dataset preparation request'
-        : 'Submitting the request to render Design charts for the current scope',
+        ? 'Submitting the PPT dataset preparation request'
+        : 'Submitting the request to render PPT charts for the current scope',
       preparationToken,
     );
     setDesignStatus(designIdAtStart, needsDataPreparation ? 'loading-data' : 'rendering', needsDataPreparation ? 'Loading data' : 'Rendering');
@@ -2639,7 +2617,7 @@
     } catch (error) {
       if (current === sequence && error.name !== 'AbortError' && error.message.includes('interrupted')) {
         setDesignStatus(designIdAtStart, 'data-needed', 'Data needed'); facetsLoading = false; facets();
-        setViewEnabled(false); setPreparationState('hidden'); status('Design preparation was interrupted.'); return;
+        setViewEnabled(false); setPreparationState('hidden'); status('PPT preparation was interrupted.'); return;
       }
       if (current === sequence && error.name !== 'AbortError') { setDesignStatus(designIdAtStart, 'error', 'Error'); facetsLoading = false; facets(); setViewEnabled(false); setPreparationState('hidden'); $('ds-rows').textContent = error.message; if (!$('ds-viewer').hidden) $('ds-charts').replaceChildren(node('div',error.message,'ds-empty')); } throw error;
     }
@@ -2655,7 +2633,8 @@
       void refreshDesignStatuses();
     }
   }
-  async function openDesign(id, {showFilters = true} = {}) {
+  // The filters of a Design open in its viewer (PPT Filters), never in the table of the Designs.
+  async function openDesign(id, {showFilters = false} = {}) {
     clearTimeout(facetsRefreshTimer);
     dismissPreparationStatus();
     clearTimeout(timer); ++sequence; ++backgroundChartPreloadRequest; controller?.abort(); preparing = null;
@@ -2726,7 +2705,7 @@
     $('ds-name').value = name;
     const item = {name,template:selected.name,nr_mode:nrMode,scope:'single',auto_cdrs:true,filters:{Campaign: defaultCampaignFilter('single')},sa_campaigns:normalizeDesignNrMode(nrMode) === NSA_AND_SA ? defaultCampaignFilter('single') : [],custom_fields:[],date_from:'Oldest',date_to:'Newest'};
     status(`Creating “${item.name}”…`); $('ds-create').disabled = true;
-    try { const id = designId(), result = await api(`/${id}`,'PUT',item); designs[id] = result.definition; await openDesign(id); }
+    try { const id = designId(), result = await api(`/${id}`,'PUT',item); designs[id] = result.definition; await openDesignFilters(id); }
     finally { $('ds-create').disabled = !$('ds-template').options.length; }
   });
   bind('ds-save', save);
@@ -2755,8 +2734,8 @@
     if (!definition || next === current) return;
     const label = next === 'multivendor' ? 'Multivendor Comparison' : 'Operator Comparison';
     const accepted = await window.showConfirmDialog(
-      `Change the Scope to ${label}? Every Design chart will be rendered again with the Design filters.`,
-      {title: 'Change PPT Design Scope', confirmLabel: 'Change Scope', tone: 'warning'},
+      `Change the Scope to ${label}? Every PPT chart will be rendered again with the PPT filters.`,
+      {title: 'Change PPT Scope', confirmLabel: 'Change Scope', tone: 'warning'},
     );
     if (!accepted) { control.value = current; return; }
     $('ds-scope').value = next;
@@ -2778,7 +2757,13 @@
   async function duplicateDesign(sourceId) {
     const id = designId(), item = runtimeDesignDefinition(designs[sourceId]); item.name = nextName(`${item.name.slice(0,110)} (copy)`);
     status(`Duplicating “${designs[sourceId].name}”…`);
-    const result = await api(`/${id}`,'PUT',item); designs[id] = result.definition; await openDesign(id);
+    const result = await api(`/${id}`,'PUT',item); designs[id] = result.definition; await openDesignFilters(id);
+  }
+  // A Design just created, duplicated or imported opens in its viewer with its PPT Filters, to choose its CDRs and filters.
+  async function openDesignFilters(id) {
+    await openDesign(id);
+    await openActiveDesignViewer();
+    if (!$('ds-viewer').hidden) openFloatingFilters();
   }
   async function exportDesign(id, item) {
     const response = await fetch(`/api/ppt-designer/${encodeURIComponent(id)}/export`, {credentials: 'same-origin'});
@@ -2795,7 +2780,7 @@
     await api(`/${id}`,'DELETE'); delete designs[id]; designStatuses.delete(id); if (id === activeId) closeDesign(); else { library(); status(`Deleted “${item.name}”.`); }
   }
   bind('ds-import',() => $('ds-import-file').click());
-  $('ds-import-file').onchange = safe(async () => { const file = $('ds-import-file').files[0]; if (!file) return; const payload = JSON.parse(await file.text()); const format = String(payload.format || '').replace(/^dashboard-analytic-/, 'drivetest-analyzer-').replace(/^drivetest-analyzer-dashboard/, 'drivetest-analyzer-design') /* a file of PPT Dashboards */; const legacy = format === 'drivetest-analyzer-design-set' && payload.version === 1; if (!legacy && (format !== 'drivetest-analyzer-design' || payload.version !== 2)) throw new Error('Unsupported Design file.'); if (!await confirmDiscard()) return; payload.definition.name = nextName(payload.definition.name); if (!payload.definition.auto_cdrs) delete payload.definition.datasets; /* CDRs of another workspace: its newest campaigns are used. */ const id = designId(), result = await api(`/${id}`,'PUT',payload.definition); designs[id] = result.definition; await openDesign(id); $('ds-import-file').value = ''; });
+  $('ds-import-file').onchange = safe(async () => { const file = $('ds-import-file').files[0]; if (!file) return; const payload = JSON.parse(await file.text()); const format = String(payload.format || '').replace(/^dashboard-analytic-/, 'drivetest-analyzer-').replace(/^drivetest-analyzer-dashboard/, 'drivetest-analyzer-design') /* a file of PPT Dashboards */; const legacy = format === 'drivetest-analyzer-design-set' && payload.version === 1; if (!legacy && (format !== 'drivetest-analyzer-design' || payload.version !== 2)) throw new Error('Unsupported Design file.'); if (!await confirmDiscard()) return; payload.definition.name = nextName(payload.definition.name); if (!payload.definition.auto_cdrs) delete payload.definition.datasets; /* CDRs of another workspace: its newest campaigns are used. */ const id = designId(), result = await api(`/${id}`,'PUT',payload.definition); designs[id] = result.definition; await openDesignFilters(id); $('ds-import-file').value = ''; });
   function closeDesign() { delete $('ds-viewer-export-ppt').dataset.designPptId; $('ds-viewer-export-ppt').disabled = true; clearTimeout(facetsRefreshTimer); dismissPreparationStatus(); stopPresentation(); rememberOpen(''); rememberFiltersOpen(false); ++sequence; clearTimeout(timer); controller?.abort(); preparing = null; activeId = ''; designFiltersOpen = false; definition = null; savedDefinition = ''; appliedFilterState = ''; appliedSelectionState = ''; appliedDesignDefinition = null; applyingDesignDefinition = null; prepared = null; dirty = false; updateUnsavedFiltersBadge(); setViewEnabled(false); setPreparationState('hidden'); $('ds-filter-panel').hidden = true; document.dispatchEvent(new CustomEvent('page-panel-navigation:update')); setActiveDesignHeading(''); $('ds-name').value = ''; setNrMode('nsa'); syncNewDesignNameFromTemplate(); library(); status('Design closed.'); document.dispatchEvent(new CustomEvent('ds:design-closed')); }
   $('ds-name').oninput = () => { if (definition) { definition.name = $('ds-name').value; updateDirtyState(); } };
   // The NR Mode chooses the CDRs the open Design reads; its template stays (it serves any NR Mode).
@@ -2884,7 +2869,7 @@
     refreshButton.disabled = true;
     setViewEnabled(false);
     setPreparationState('preparing', 'rendering');
-    status('Rendering every Design chart again…');
+    status('Rendering every PPT chart again…');
     try {
       forgetPrepared();
       prepared = null;
@@ -2894,14 +2879,14 @@
       renderedChartPayloads.clear();
       await prepare();
       token = prepared?.token || '';
-      if (!token) throw new Error('The Design preview could not be rebuilt. Reopen the Design and try again.');
+      if (!token) throw new Error('The PPT preview could not be rebuilt. Reopen the Design and try again.');
       await api(`/charts/${encodeURIComponent(token)}/refresh`, 'POST');
       if (prepared?.token !== token) return;
       chartPayloads.clear();
       renderedChartPayloads.clear();
-      setPreparationProgress(100, 'Design charts are ready');
+      setPreparationProgress(100, 'PPT charts are ready');
       renderSlide();
-      status('Every Design chart was rendered again.');
+      status('Every PPT chart was rendered again.');
       void refreshDesignStatuses();
     } finally {
       if (prepared?.token === token) {
@@ -4027,7 +4012,7 @@
     $('ds-chart-expanded-auto-fields') && ($('ds-chart-expanded-auto-fields').disabled = false);
     if ($('ds-chart-expanded-edit')) $('ds-chart-expanded-edit').disabled = !Number.isInteger(chart.focus_row);
     $('ds-chart-expanded-data').title = historical && !chart.data_url ? 'Filtered dataset is unavailable for this earlier PowerPoint Job' : 'View dataset';
-    $('ds-chart-expanded-filters').title = 'Design Filters';
+    $('ds-chart-expanded-filters').title = 'PPT Filters';
     expandedZoom.reset(); expandedZoom.hidden = true;
     const initialTitle = renderedPayload?.title || chart.title || 'Expanded chart';
     setExpandedChartHeader(chart, initialTitle);
@@ -4277,7 +4262,7 @@
     $('ds-first').disabled = $('ds-prev').disabled = $('ds-next').disabled = $('ds-last').disabled = true;
     const stage = $('ds-charts');
     stage.classList.remove('ds-positioned', 'ds-structural-stage', 'ds-slide-transition');
-    stage.replaceChildren(node('div', 'Loading available Design charts…', 'ds-empty'));
+    stage.replaceChildren(node('div', 'Loading available PPT charts…', 'ds-empty'));
     $('ds-comments-list').replaceChildren();
     commentSuggestions = null;
     renderCommentSuggestions();
@@ -4948,7 +4933,7 @@
           const choice = await window.showConfirmDialog(
             'This Design has Scope, date or filter changes that have not been saved. Save them before leaving?',
             {
-              title: 'Unsaved Design filters',
+              title: 'Unsaved PPT filters',
               confirmLabel: 'Save Filters',
               secondaryLabel: 'Discard',
               cancelLabel: 'Cancel',
@@ -4972,7 +4957,7 @@
         window.location.assign(target.href);
       } catch (error) {
         window.showInfoDialog(error instanceof Error ? error.message : 'Design changes could not be saved.', {
-          title: 'Save Design filters failed', tone: 'error',
+          title: 'Save PPT filters failed', tone: 'error',
         });
       } finally {
         navigationPromptOpen = false;
@@ -5005,7 +4990,7 @@
         return {section: 'Larger view', context: {chart: imageText('ds-chart-expanded-position'), meta: imageText('ds-chart-expanded-meta'), theme}};
       }
       return target.closest('#ds-viewer')
-        ? {section: 'Design viewer', context: {slide: imageText('ds-position'), theme}}
+        ? {section: 'PPT viewer', context: {slide: imageText('ds-position'), theme}}
         : {section: 'Charts Panel', context: {design: imageText('ds-ppt-charts-design'), date: imageText('ds-ppt-charts-date')}};
     },
   });
@@ -5042,7 +5027,7 @@
       savedDefinition = definitionFingerprint(savedRuntimeDesignDefinition(designs[id]));
       updateDirtyState();
     },
-    // The values of the template parameters, chosen in PPT Design Scope & Filters: applied and saved as the filters.
+    // The values of the template parameters, chosen in PPT Scope & Filters: applied and saved as the filters.
     setParameterValues(values) { if (!definition) return; definition.parameter_values = structuredClone(values); filterChanged(); },
     async reloadLibrary() { designs = await api(); library(); },
     openDesign: id => openDesign(id),
@@ -5063,7 +5048,7 @@
     if (restorePageState) restoreScroll(); else resetScroll();
     void refreshDesignStatuses();
     void refreshDesignPptJobs();
-    if (designs[last]) await openDesign(last, {showFilters: rememberedFiltersOpen()});
+    if (designs[last]) await openDesign(last);
     if (restorePageState) restoreScroll(); else resetScroll();
   })();
   window.setInterval(refreshDesignStatuses, 2000);

@@ -414,7 +414,7 @@ Fields are applied only to their selected CDR types. The job retains preview-fil
 ## Troubleshooting
 
 - Dataset not offered in Reporting: confirm its assigned type and **Processed** status.
-- Design button missing: only ready Data, Voice and Speech CDRs are eligible.
+- PPT button missing: only ready Data, Voice and Speech CDRs are eligible.
 - Vendor Comparison disabled: every selected CDR must have mapping applied.
 - Expected campaign missing: inspect the resolved `Campaign` field in Preview.
 - Expected city missing: check both the source geographic columns and the normalised field used by the template.

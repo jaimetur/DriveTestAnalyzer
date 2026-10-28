@@ -1092,7 +1092,7 @@ def rename_chart_mapping_design_references(
 
 
 def rename_calculated_dimension_design_references(renames: dict[str, str], task_repository: Repository | None = None) -> int:
-    """Rename calculated-field references in every saved PPT Design definition (of the active workspace by default)."""
+    """Rename calculated-field references in every saved PPT definition (of the active workspace by default)."""
     if not renames:
         return 0
 
@@ -2938,7 +2938,7 @@ def workspace_disk_usage(workspace: Workspace) -> int:
 
 
 def workspace_cache_disk_usage(workspace: Workspace) -> int:
-    """Return the bytes in derived PPT Design caches for one workspace."""
+    """Return the bytes in derived PPT caches for one workspace."""
     root = workspace.database_path.parent
     cache_key = str(root.resolve())
     now = monotonic()
@@ -6697,7 +6697,7 @@ BACKUP_WORKSPACE_CONTENT: tuple[tuple[str, str, str], ...] = (
     ('workspace_database', 'Workspace Database', ''),
     ('input', 'Input (includes all raw datasets files)', ''),
     ('output', 'Output (includes all generated reports, chart sets and PPT Designer jobs)', ''),
-    ('designs', 'PPT Designs (one JSON file with all PPT Design definitions)', 'designs'),
+    ('designs', 'PPT Designs (one JSON file with all PPT definitions)', 'designs'),
     ('report_templates', 'PPT Templates (one CSV file per Report Template)', 'ppt-templates'),
     ('main_cities', 'Main Cities (workspace city selection)', 'main-cities'),
     ('mappings_reference_data', 'Mappings & Reference Data (Operator and Vendor aliases, order and theme colors, Campaign Maps, '
@@ -9025,7 +9025,7 @@ def _import_workspace_scoring_configuration(
 
 
 def _design_archive_payload(workspace: Workspace) -> bytes:
-    """Serialize saved PPT Design definitions only; generated chart caches are excluded."""
+    """Serialize saved PPT definitions only; generated chart caches are excluded."""
     task_repository = Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path)
     raw = task_repository.get_workspace_state(DESIGN_STATE_KEY) or '{}'
     try:
@@ -9131,9 +9131,9 @@ def _import_workspace_designs(workspace: Workspace, payload: bytes, importing_us
         if isinstance(incoming, dict):
             incoming = {key: renamed_design(value) for key, value in incoming.items()}
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ValueError(f'PPT Design definitions for "{workspace.name}" are invalid.') from exc
+        raise ValueError(f'PPT definitions for "{workspace.name}" are invalid.') from exc
     if not isinstance(incoming, dict):
-        raise ValueError(f'PPT Design definitions for "{workspace.name}" are invalid.')
+        raise ValueError(f'PPT definitions for "{workspace.name}" are invalid.')
     task_repository = Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path)
     incoming = _designs_on_destination_cdrs(incoming, document.get('cdrs'), task_repository)
     incoming, _changed = migrate_designs_state(incoming, *task_repository.report_template_merge_state())
@@ -12080,7 +12080,7 @@ def _apply_import_archive(
         if kind == 'designs':
             member = str(manifest.get('archive_path') or '')
             if member not in archive.namelist() or not re.fullmatch(r'workspaces/[^/]+/(designs/designs|dashboards/dashboards)\.json', member):
-                raise ValueError('The package does not contain valid PPT Design definitions.')
+                raise ValueError('The package does not contain valid PPT definitions.')
             destinations = [workspace_registry.get(workspace_id) for workspace_id in destination_workspace_ids]
             destinations = [workspace for workspace in destinations if workspace]
             if not destinations:
@@ -13370,10 +13370,10 @@ def render_admin_template(
         'application_state': 'Application state',
         'autocalculated_fields': 'Auto-calculated Fields',
         'audit_logs': 'Audit log',
-        'design_filter_selections': 'Design Filter Selections',
-        'design_ppt_jobs': 'Design PPT Jobs',
-        'design_drafts': 'Design Drafts',
-        'design_images': 'Design Images',
+        'design_filter_selections': 'PPT Filter Selections',
+        'design_ppt_jobs': 'PPT Designer Jobs',
+        'design_drafts': 'PPT Drafts',
+        'design_images': 'PPT Images',
         'cdr_catalogues': 'CDR Operator, Operator Vendor, Vendor, Region, Cluster, City, Campaign And Source Level Catalogues',
         'cdr_filter_facets': 'CDR Filter Facets',
         'dataset_profiles': 'Dataset profiles',

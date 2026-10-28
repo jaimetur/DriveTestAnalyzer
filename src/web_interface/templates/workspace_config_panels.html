@@ -199,12 +199,12 @@
 
   <details id="main-cities" class="panel collapsible-panel main-cities-panel" open data-panel-state-key="workspace-config:main-cities">
     <summary class="collapsible-summary">
-      <div><p class="eyebrow">Design filters</p><h2>Main Cities</h2></div>
+      <div><p class="eyebrow">PPT filters</p><h2>Main Cities</h2></div>
       <span class="collapse-chip">Collapse</span>
     </summary>
     <div class="collapsible-panel-body">
       {% if active_workspace %}
-      <p class="lede">Choose the cities for the Main Cities preset in Design filters and PowerPoint exports for <strong>"{{ active_workspace.name }}"</strong>.</p>
+      <p class="lede">Choose the cities for the Main Cities preset in PPT filters and PowerPoint exports for <strong>"{{ active_workspace.name }}"</strong>.</p>
       {% if main_cities_notice %}<div class="alert alert-success">{{ main_cities_notice }}</div>{% endif %}
       {% if main_cities_error %}<div class="alert alert-error">{{ main_cities_error }}</div>{% endif %}
       <form class="main-cities-form" action="/workspace-config/main-cities/save" method="post" data-main-cities-form>

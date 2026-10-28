@@ -5693,12 +5693,11 @@ def test_design_library_open_close_and_view_actions_include_labels() -> None:
     styles = (root / 'css' / 'ppt_designer.css').read_text(encoding='utf-8')
 
     assert "action('View Design', 'View Design'" in script
-    assert "filtersAreOpen ? 'Close Filters' : 'Open Filters'" in script
-    assert script.index("action('View Design', 'View Design'") < script.index("filtersAreOpen ? 'Close Filters' : 'Open Filters'")
+    # The filters open in the viewer of the Design (PPT Filters), never in the table of the Designs.
+    assert "'Open Filters'" not in script and "'Close Filters'" not in script
+    assert "if (!$('ds-viewer').hidden) openFloatingFilters();" in script
     assert 'width:fit-content!important;min-width:max-content!important' in styles
-    assert '.ds-library-action.ds-design-close' in styles
     assert "primaryActionLabel(view, 'View', 'Design');" in script
-    assert "primaryActionLabel(open, filtersAreOpen ? 'Close' : 'Open', 'Filters');" in script
     assert 'grid-column:span 2' in styles
     assert '.ds-library-action-label{display:contents}' in styles
     assert 'height:3.35rem!important' in styles
@@ -5727,10 +5726,10 @@ def test_design_library_ppt_export_selects_scope_and_campaigns_explicitly() -> N
     assert 'id="ds-ppt-dataset-city"' in template
     assert 'data-multiselect-preset-label="Main Cities"' not in template and 'data-multiselect-preset-values' not in template
     assert "'main_cities': dashboard_main_cities | default([])" in template
-    assert '>Select PPT Design Scope and Filters<' in template
+    assert '>Select PPT Scope and Filters<' in template
     assert 'id="ds-ppt-date-from"' in template
     assert 'id="ds-ppt-date-to"' in template
-    # The dates are filters: below Campaigns in Main Design Filters, after the Scope.
+    # The dates are filters: below Campaigns in Main PPT Filters, after the Scope.
     assert template.index('id="ds-ppt-scope-title"') < template.index('id="ds-ppt-campaign-section"') < template.index('id="ds-ppt-dates-title"')
     assert template.index('id="ds-ppt-dates-title"') < template.index('id="ds-ppt-operator-section"')
     assert 'ds-ppt-cdr-title' not in template + script
@@ -5780,7 +5779,7 @@ def test_design_filters_panel_defaults_hidden_and_expanded_and_persists_for_the_
     assert "const authenticatedSession = document.body.dataset.authenticatedSession || 'anonymous';" in design_script
     assert ':open:${authenticatedSession}`' in design_script
     assert ':filters-open:${authenticatedSession}`' in design_script
-    assert 'await openDesign(last, {showFilters: rememberedFiltersOpen()});' in design_script
+    assert 'await openDesign(last);' in design_script
 
 
 def test_design_open_hydrates_saved_state_before_preparation_catalogues() -> None:
@@ -5822,7 +5821,7 @@ def test_ppt_job_can_open_its_immutable_design_snapshot() -> None:
     assert "for slide in snapshot.payload.get('slides', []):" in design_source
     assert "'slides': viewer_slides," in design_source
     assert "'viewer_available': bool(slides)" in design_source
-    assert "jobAction('View Design snapshot', 'report-job-design-button'" in script
+    assert "jobAction('View PPT snapshot', 'report-job-design-button'" in script
     assert 'async function openDesignPptViewer(job)' in script
     assert 'pptDesignViewer = {' in script
     assert 'const chartPayloadUrl = chart => chart.payload_url ||' in script

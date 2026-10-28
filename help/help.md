@@ -95,7 +95,7 @@ full-presentation
 
 - [Product Presentations](presentations.md) — every presentation of the tool, of the modules and the Full Presentation, in the slide viewer.
 - [Product Overview](overview.md) — detailed tour of every module and panel.
-- [Technical Considerations](technical-considerations.md) — normalisation, execution semantics, vendor mapping, storage, Design caching and jobs.
+- [Technical Considerations](technical-considerations.md) — normalisation, execution semantics, vendor mapping, storage, PPT caching and jobs.
 - [Deployment Configuration](configuration.md) — runtime/rendering variables, storage roots, Docker settings and initial access.
 - [Docker Deployment](docker-deployment.md) — production, development, persistence and upgrades.
 - [Web Interfaces](web-interface.md) — shared navigation, dialogs, tables and responsive behaviour.
