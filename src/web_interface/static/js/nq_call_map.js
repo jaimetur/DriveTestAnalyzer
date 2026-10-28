@@ -487,26 +487,38 @@
           hits.push({x, y, r: testRadius + 2, kind: 'test', item: row, priority: 1});
         }
       }
-      // The sectors of the sites (once close enough), those of the cells of the call in the colour of their role and the
+      // The sectors of the sites (once close enough; those of the cells of the call always), these in the colour of their role and the
       // cells with the PCI and channel of a cell of the call dashed.
       const pathCells = new Map(data.trace.filter((step) => step.site).map((step) => [`${step.site}|${step.cell}`, step.role]));
       const sectorRadius = clamp(150 / metresPerPixel, 14, 64);
-      const sites = layers.sites ? data.sites : data.sites.filter((site) => layers.path && site.roles.length);
-      if (zoom >= WEDGES_FROM_ZOOM) {
+      const sites = layers.sites ? data.sites : data.sites.filter((site) => (layers.path && site.roles.length) || site.ends?.length);
+      // The cells of the call show at every zoom, the others once close enough.
+      const everyCell = zoom >= WEDGES_FROM_ZOOM;
+      const named = [];
+      {
         for (const site of sites) {
           const [x, y] = project(site.latitude, site.longitude);
           if (x < -80 || y < -80 || x > width + 80 || y > height + 80) continue;
           for (const cell of site.cells) {
             const role = layers.path ? pathCells.get(`${site.key}|${cell.identity}`) : null;
-            if (!layers.sites && !role) continue;
+            if ((!layers.sites || !everyCell) && !role) continue;
             const beam = clamp(Number(cell.beamwidth) || 65, 24, 140);
             const reach = role ? sectorRadius * 1.25 : sectorRadius;
+            const omni = cell.azimuth === null || cell.azimuth === undefined;
+            const from = (cell.azimuth - beam / 2 - 90) * Math.PI / 180, to = (cell.azimuth + beam / 2 - 90) * Math.PI / 180;
             context.beginPath();
-            if (cell.azimuth === null || cell.azimuth === undefined) context.arc(x, y, reach * .45, 0, Math.PI * 2);
+            if (omni) context.arc(x, y, reach * .45, 0, Math.PI * 2);
             else {
               context.moveTo(x, y);
-              context.arc(x, y, reach, (cell.azimuth - beam / 2 - 90) * Math.PI / 180, (cell.azimuth + beam / 2 - 90) * Math.PI / 180);
+              context.arc(x, y, reach, from, to);
               context.closePath();
+            }
+            // Hovering a sector shows its cell (the site keeps its centre; a cell of the call before those it overlaps).
+            hits.push({x, y, r: omni ? reach * .45 : reach, wedge: omni ? null : [from, to], kind: 'cell', item: cell, priority: role ? 2.5 : 2});
+            // The cells that served the start and the end of the call (where it failed) are named at the tip of their sector.
+            if (role === 'start' || role === 'end' || role === 'both') {
+              const angle = omni ? -Math.PI / 2 : cell.azimuth * Math.PI / 180 - Math.PI / 2;
+              named.push([cell.name || cell.identity, x + Math.cos(angle) * (reach + 10), y + Math.sin(angle) * (reach + 10), COLOURS[role]]);
             }
             const colour = role ? COLOURS[role] : cell.colour || '#868e96';
             context.globalAlpha = role ? .38 : .13;
@@ -521,6 +533,7 @@
             context.globalAlpha = 1;
           }
         }
+        for (const [text, lx, ly, colour] of named) label(context, text, lx, ly, colour, 'center');
       }
       // The cells the call went through: a line from where they served it to their site.
       // The cell that served the start from where the call started, the one that served the end (or the whole call) from where
@@ -557,13 +570,18 @@
         const [x, y] = project(site.latitude, site.longitude);
         if (x < -20 || y < -20 || x > width + 20 || y > height + 20) continue;
         const onPath = layers.path && site.roles.length;
-        const size = site.serving || onPath ? 8 : zoom >= 12 ? 6 : 4.5;
-        if (site.serving) {
+        const ends = site.ends || [];
+        const size = site.serving || onPath || ends.length ? 8 : zoom >= 12 ? 6 : 4.5;
+        // Where the call ended (red, where it failed) and where it started (green, outside when both are this site); dashed
+        // when the site is only the nearest to it (its cell is not in the Network Inventory).
+        for (const end of [...ends].sort((a, b) => (a.role === 'end' ? -1 : 1) - (b.role === 'end' ? -1 : 1))) {
           context.beginPath();
-          context.arc(x, y, size + 6, 0, Math.PI * 2);
-          context.strokeStyle = COLOURS.call;
+          context.arc(x, y, size + (end.role === 'start' && ends.length > 1 ? 10 : 6), 0, Math.PI * 2);
+          context.strokeStyle = end.role === 'start' ? COLOURS.start : COLOURS.call;
           context.lineWidth = 2.5;
+          context.setLineDash(end.estimated ? [4, 3] : []);
           context.stroke();
+          context.setLineDash([]);
         }
         triangle(context, x, y, size);
         context.fillStyle = (site.cells.find((cell) => cell.colour) || {}).colour || '#868e96';
@@ -588,7 +606,9 @@
           context.textBaseline = 'middle';
           context.fillText(badge, x + size + 2 + badgeWidth / 2, y - size - 4.5);
         }
-        if (zoom >= LABELS_FROM_ZOOM && (zoom >= LABELS_FROM_ZOOM + 1 || onPath || site.serving)) label(context, site.site_id, x, y + size + 9, '#2d1520', 'center');
+        if (ends.length || (zoom >= LABELS_FROM_ZOOM && (zoom >= LABELS_FROM_ZOOM + 1 || onPath || site.serving))) {
+          label(context, site.site_id, x, y + size + (ends.length > 1 ? 13 : 9), '#2d1520', 'center');
+        }
       }
       // The other Non-Qualified Calls: those of its groups (hotspot, cluster, time-window issue) and of its site,
       // then the others. The calls on one point make one mark with how many they are (the most related gives its colour);
@@ -739,6 +759,11 @@
       for (const hit of hits) {
         const distance = Math.hypot(hit.x - x, hit.y - y);
         if (distance > hit.r + 2) continue;
+        if (hit.wedge) {
+          const turn = Math.PI * 2;
+          const angle = ((Math.atan2(y - hit.y, x - hit.x) - hit.wedge[0]) % turn + turn) % turn;
+          if (angle > ((hit.wedge[1] - hit.wedge[0]) % turn + turn) % turn) continue;
+        }
         if (!best || hit.priority > best.hit.priority || (hit.priority === best.hit.priority && distance < best.distance)) best = {hit, distance};
       }
       return best?.hit || null;
@@ -748,7 +773,8 @@
       canvas.classList.add('is-pointing');
       const {title, rows} = shared.describe(hit.kind, hit.item);
       tooltip.replaceChildren(node('strong', title));
-      for (const [name, value] of [...(hit.stack > 1 ? [['At this point', `${hit.stack} NQ calls`]] : []), ...rows.slice(0, 10)]) {
+      const filled = rows.filter(([, value]) => value !== '' && value !== null && value !== undefined);
+      for (const [name, value] of [...(hit.stack > 1 ? [['At this point', `${hit.stack} NQ calls`]] : []), ...filled.slice(0, 14)]) {
         if (value === '' || value === null || value === undefined) continue;
         const line = node('div');
         line.append(node('span', name), node('b', String(value)));
@@ -976,10 +1002,19 @@
         }
       }
       const located = data.trace.some((step) => step.site);
-      if ((settings.layers.sites && data.sites.length) || (settings.layers.path && located)) {
+      if ((settings.layers.sites && data.sites.length) || (settings.layers.path && located) || data.sites.some((site) => site.ends?.length)) {
         group('Sites and cells');
         item('triangle', 'Site (colour of its vendor)', '#868e96');
-        item('ring', 'Serving site of the call', COLOURS.call);
+        const ends = data.sites.flatMap((site) => site.ends || []);
+        for (const [role, text, colour] of [['start', 'where it started', COLOURS.start], ['end', 'where it ended (failed)', COLOURS.call]]) {
+          if (ends.some((end) => end.role === role && !end.estimated)) item('ring', `Site of the cell that served ${role === 'start' ? 'its start' : 'its end'}: ${text}`, colour);
+          // The nearest site is only an estimate: the call started or ended on a cell (such as a GSM one) the inventory does not hold.
+          const technology = data.call.ends?.[role]?.estimated ? data.call.ends[role].technology : '';
+          if (ends.some((end) => end.role === role && end.estimated)) {
+            item('ring', `Nearest site to ${text}: an estimate, as the call ${role === 'start' ? 'started' : 'ended'} on a ${technology ? `${technology} ` : ''}`
+              + 'cell that is not in the Network Inventory', colour, 'is-dashed');
+          }
+        }
       }
       // Only the roles the cells of the call have on the map (a call served by one cell has neither start nor handovers).
       if (settings.layers.path && located) {
@@ -1131,15 +1166,30 @@
       }
       return lines;
     };
+    // The cells of a call: its start and end cells (its serving cell when one served all of it), its handover cells on a
+    // line of their own and the NR cell of an NSA call.
+    const cellRows = (cells = []) => {
+      const path = cells.filter((cell) => cell.role !== 'nr_leg');
+      const rows = path.length === 1 ? [['Serving cell', path[0].label]]
+        : path.length ? [['Start cell', path[0].label], ['End cell', path[path.length - 1].label]] : [];
+      const handovers = path.slice(1, -1).map((cell) => cell.label);
+      if (handovers.length) rows.push([handovers.length === 1 ? 'Handover cell' : 'Handover cells', handovers.join(' → ')]);
+      const leg = cells.find((cell) => cell.role === 'nr_leg');
+      if (leg) rows.push(['NR cell (NSA)', leg.label]);
+      return rows;
+    };
+    // The site where a call started or ended, and whether it is only the nearest one to it.
+    const endText = (end) => (end ? `${end.site_id} (${end.host_network || end.network})${end.estimated
+      ? ` · nearest, ${distanceText(end.distance_km)} away (an estimate: its ${end.technology ? `${end.technology} ` : ''}cell is not in the Network Inventory)` : ''}` : '');
     const siteName = (site) => `Site ${site.site_id} · ${site.network}${site.host_network && site.host_network !== site.network ? ` on ${site.host_network}` : ''}`;
     shared.describe = (kind, item) => {
       const data = shared.data;
       if (kind === 'call' || kind === 'start') {
         return {title: kind === 'start' ? 'Where the call started' : 'This call', rows: [
           ['Call type', KIND_LABELS[item.kind] || item.service_label], ['JOIN_ID', item.join_id], ['Operator', item.operator], ['Campaign', campaignText(item.campaign, item.nr_mode)],
-          ['Result', item.result], ['Failure', failureText(item)], ['Phase', item.failure_phase],
+          ['Result', item.result], ['Failure', failureText(item)], ['Phase', item.failure_phase], ...cellRows(item.cells),
           ['Technology', item.technology], ['Started', cdrTime(item.start_time)], ['Ended', item.end_time ? cdrTime(item.end_time) : ''],
-          ['Serving site', item.serving_site ? `${item.serving_site}${item.serving_host ? ` (${item.serving_host})` : ''}` : ''],
+          ['Start site', endText(item.ends?.start)], ['End site', endText(item.ends?.end)],
           ['Serving distance', item.serving_distance_km !== null && item.serving_distance_km !== undefined ? distanceText(item.serving_distance_km) : ''],
         ]};
       }
@@ -1154,15 +1204,28 @@
         return {title: `NQ call · ${item.operator}`, rows: [
           ['Call type', kindLabel(item)], ['Operator', item.operator], ['Campaign', campaignText(item.campaign, item.nr_mode)],
           ['Relation', flags], ['JOIN_ID', item.join_id],
-          ['Result', item.result], ['Failure', failureText(item)], ['Test', item.test_name], ['Started', cdrTime(item.start_time)],
+          ['Result', item.result], ['Failure', failureText(item)], ...cellRows(item.cells), ['Test', item.test_name], ['Started', cdrTime(item.start_time)],
           ['Status', item.status], ['Root cause', [item.root_category, item.root_cause].filter(Boolean).join(' · ')],
           ['Place', item.place_label], ['Distance', distanceText(item.distance_km)],
+        ]};
+      }
+      if (kind === 'cell') {
+        const site = data.sites.find((entry) => entry.cells.includes(item));
+        const step = site && data.trace.find((entry) => entry.site === site.key && entry.cell === item.identity);
+        return {title: `Cell ${item.name || item.identity}`, rows: [
+          ['Role', step ? step.role_label : ''], ['Site', site ? siteName(site) : ''], ['Identity', item.identity],
+          ['Technology', [item.technology, item.band].filter(Boolean).join(' ')], ['Channel', item.channel], ['PCI', item.pci],
+          ['Azimuth', item.azimuth === null || item.azimuth === undefined ? 'Omni' : `${item.azimuth}°`],
+          ['Beamwidth', item.beamwidth ? `${item.beamwidth}°` : ''], ['Height', item.height ? `${item.height} m` : ''],
+          ['State', item.state], ['Vendor', item.vendor], ['Same PCI and channel', item.same_pci],
         ]};
       }
       if (kind === 'site') {
         const technologies = [...new Set(item.cells.map((cell) => `${cell.technology} ${cell.band}`.trim()))].join(', ');
         return {title: siteName(item), rows: [
-          ['Role', item.roles.join(', ') || (item.serving ? 'Serving site' : '')], ['Vendor', item.vendors.join(', ')],
+          ['Role', [...item.roles, ...(item.ends || []).filter((end) => end.estimated)
+            .map((end) => `Nearest site to where it ${end.role === 'start' ? 'started' : 'failed'} (estimate)`)].join(', ')
+            || (item.serving ? 'Serving site' : '')], ['Vendor', item.vendors.join(', ')],
           ['Cells', `${item.cells.length} · ${technologies}`], ['Type', item.site_type], ['eMOCN', item.emocn],
           ['Same PCI', item.cells.filter((cell) => cell.same_pci).map((cell) => `${cell.name || cell.identity} (${cell.same_pci})`).join(', ')],
           ['Distance', distanceText(item.distance_km)], ['Rank by distance', item.rank],
@@ -1513,7 +1576,8 @@
       const site = data.sites.find((item) => item.serving);
       siteCard.replaceChildren(cardHead('Serving site health', health ? `Site ${health.site_id}${health.host_network ? ` (${health.host_network})` : ''} · the calls that started on it` : ''));
       if (!health || !health.campaigns.length) {
-        siteCard.append(node('p', health ? 'No call of the indexed CDRs started on its serving site.' : 'The CDR gives no serving site of the call.', 'nq-map-empty'));
+        siteCard.append(node('p', health ? 'No call of the indexed CDRs started on its serving site.'
+          : 'The call has no serving site: its cells are not in the Network Inventory of the networks that serve its operator.', 'nq-map-empty'));
         return;
       }
       const operator = data.call.operator || 'Its operator';

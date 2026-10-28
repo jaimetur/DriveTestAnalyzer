@@ -255,13 +255,100 @@ def trace_cells(trace: Any, pcis: Any, cell_id: Any) -> list[dict[str, str]]:
 
     cells = [cell for cell in parse_cell_trace(trace) if re.fullmatch(r'\d+', cell['cell'])]
     if not cells:
-        for value in _sequence_numbers(cell_id):
-            if value:
-                cells.append({'technology': 'NR' if int(value) > MAX_ECI else 'LTE', 'band': '', 'cell': value, 'channel': ''})
+        # The cells of the call itself: a trace (its technologies known; a cell without identity is left out, never the
+        # number of its band), else plain cell identities.
+        parsed = parse_cell_trace(cell_id)
+        if parsed:
+            cells = [cell for cell in parsed if re.fullmatch(r'\d+', cell['cell'])]
+        else:
+            for value in _sequence_numbers(cell_id):
+                if value:
+                    cells.append({'technology': 'NR' if int(value) > MAX_ECI else 'LTE', 'band': '', 'cell': value, 'channel': ''})
     pci_values = _sequence_numbers(pcis)
     for index, cell in enumerate(cells):
         cell['pci'] = pci_values[index] if len(pci_values) == len(cells) else (pci_values[-1] if index == len(cells) - 1 and pci_values else '')
     return cells
+
+
+_TRACE_HEAD = re.compile(r'(?:5G\s+)?(LTE E-UTRA|NR|UMTS|GSM)\s*n?(\d*)', re.I)
+
+
+def cell_steps(value: Any) -> list[dict[str, str]]:
+    """Every cell of a cell trace (``[GSM 900, LAC, CI, ARFCN]->[LTE E-UTRA 20, TAC, ECI, EARFCN]``) as the map names it:
+    technology, band (``B20``, ``n78``, ``900``), area (TAC / LAC), identity and channel, also those without an identity;
+    plain cell identities (``[37171]``) without their technology."""
+    from src.modules.network_insights import lte_band_for_earfcn, sequence_values
+
+    steps = []
+    for item in sequence_values(value):
+        parts = [part.strip() for part in str(item).split(',')]
+        head = _TRACE_HEAD.match(parts[0])
+        if head and len(parts) >= 4:
+            technology = 'LTE' if head.group(1).upper().startswith('LTE') else head.group(1).upper()
+            band = head.group(2)
+            band = (f'B{band}' if technology == 'LTE' else f'n{band}' if technology == 'NR' else band) if band else ''
+            if technology == 'LTE' and not band and parts[3]:
+                band = lte_band_for_earfcn(parts[3]) or ''
+            steps.append({'technology': technology, 'band': band, 'area': parts[1], 'cell': parts[2], 'channel': parts[3]})
+        elif all(re.fullmatch(r'\d+', part) for part in parts if part):
+            steps.extend({'technology': '', 'band': '', 'area': '', 'cell': part, 'channel': ''} for part in parts if part)
+    return steps
+
+
+def cell_label(step: dict[str, Any], name: str = '') -> str:
+    """A cell of a call in words: its inventory name with its technology and band, else those with its identity
+    (``GSM 900 · LAC 876 · CI 37171``, ``LTE B20 · 30001001``) or its channel when the CDR gives no identity."""
+    kind = ' '.join(part for part in (step.get('technology'), step.get('band')) if part)
+    if name:
+        return f'{name} ({kind})' if kind else name
+    cell, area, channel = step.get('cell') or '', step.get('area') or '', step.get('channel') or ''
+    if cell and step.get('technology') in ('GSM', 'UMTS'):
+        identity = f'LAC {area} · CI {cell}' if area else f'CI {cell}'
+    else:
+        identity = cell or (f'channel {channel}' if channel else '')
+    if not kind and cell:
+        identity = f'Cell {cell}'
+    return ' · '.join(part for part in (kind, identity) if part) or 'Unknown cell'
+
+
+def labelled_cells(steps: list[dict[str, Any]], names: dict[str, str] | None = None) -> list[dict[str, str]]:
+    """The cells of a call in order, each with its role (``both`` alone, else ``start``, ``handover`` and ``end``), its
+    technology and its label, by its inventory name when ``names`` (cell identity → name) has it."""
+    count = len(steps)
+    return [{'role': 'both' if count == 1 else 'start' if index == 0 else 'end' if index == count - 1 else 'handover',
+             'technology': step.get('technology') or '', 'label': cell_label(step, (names or {}).get(step.get('cell') or '', ''))}
+            for index, step in enumerate(steps)]
+
+
+def name_failure_cells(failures: list[dict[str, Any]], cells: pd.DataFrame, families: tuple[str, ...],
+                       max_distance_km: float) -> None:
+    """Give every NQ call around its cells (``cells``, see labelled_cells), by their inventory name for the calls of the
+    operator of the call: the cell of a network serving it with that identity and technology nearest to the NQ call,
+    within ``max_distance_km`` (cell identities are only unique within an operator)."""
+    steps = {id(failure): cell_steps(failure.get('cell_id')) for failure in failures}
+    wanted = {step['cell'] for failure in failures if failure.get('same_operator') for step in steps[id(failure)] if step['cell']}
+    index: dict[str, list[Any]] = {}
+    if wanted and not cells.empty:
+        found = cells.loc[cells['cell_identity'].astype(str).isin(wanted) & cells['network_family'].isin(families)]
+        for cell in found.itertuples(index=False):
+            index.setdefault(str(cell.cell_identity), []).append(cell)
+    for failure in failures:
+        names: dict[str, str] = {}
+        position = _position(failure.get('latitude'), failure.get('longitude'))
+        for step in steps[id(failure)] if failure.get('same_operator') else []:
+            best = None
+            for cell in index.get(step['cell'], []):
+                if step['technology'] and _text(cell.technology) != step['technology']:
+                    continue
+                where = _position(cell.latitude, cell.longitude)
+                distance = distance_km(position, where) if position and where else None
+                if distance is not None and distance > max_distance_km:
+                    continue
+                if best is None or (distance if distance is not None else math.inf) < best[0]:
+                    best = (distance if distance is not None else math.inf, _text(cell.cell_name))
+            if best and best[1]:
+                names[step['cell']] = best[1]
+        failure['cells'] = labelled_cells(steps[id(failure)], names)
 
 
 def _cell_payload(cell: Any, colours: dict[str, str]) -> dict[str, Any]:
@@ -295,7 +382,7 @@ def resolve_trace(trace: list[dict[str, str]], cells: pd.DataFrame, families: tu
         entry = {**step, 'order': index + 1, 'role': role, 'role_label': CELL_ROLES[role], 'site': None}
         if not cells.empty:
             found = cells.loc[(cells['cell_identity'].astype(str) == step['cell']) & cells['network_family'].isin(families)]
-            if step.get('technology') in {'LTE', 'NR'}:
+            if step.get('technology'):
                 found = found.loc[found['technology'] == step['technology']]
             best = None
             for rank, family in enumerate(families):
@@ -1223,23 +1310,74 @@ def call_map(repository: Any, call_key: str, *, radius_km: Any = None, tests: st
     anchor = next((step['site'] for step in reversed(trace) if step.get('site') and step.get('technology') == 'LTE'), '')
     leg = (nr_leg(service, row, columns, cells, families, point, anchor, colours, fields_profile)
            if _text(call.get('nr_mode')).upper() != 'SA' else None)
+    # Every cell of the call in words (also those the inventory does not hold, such as 2G and 3G cells), by its inventory
+    # name when it has one.
+    _column, trace_text = _first_value(row, columns, fields_profile.rf_field_aliases['cell_trace'].get(service, ()))
+    call_cells = labelled_cells(cell_steps(trace_text) or cell_steps(call.get('cell_id')),
+                                {step['cell']: step['inventory']['name'] for step in trace if step.get('inventory') and step['inventory'].get('name')})
     if leg:
         trace.append(leg)
+        if leg.get('inventory'):
+            call_cells.append({'role': 'nr_leg', 'technology': 'NR', 'label': cell_label(leg, leg['inventory'].get('name') or '')})
     keep = {step['site'] for step in trace if step.get('site')}
-    serving_site = _text(row.get('Serving_Site_ID')) or _text(call.get('site_id'))
-    serving_host = (_text(row.get('Serving_Host_Network')) or _text(call.get('host_network'))).casefold()
+    # Its serving site: that of the cell that served its end (where it failed), else of the one that served its start, else
+    # the site the CDR gives (from the cell that served its start).
+    end_step = next((step for step in reversed(trace) if step.get('site') and step['role'] in ('end', 'both')), None)
+    start_step = next((step for step in trace if step.get('site') and step['role'] in ('start', 'both')), None)
+    chosen = end_step or start_step
+    if chosen:
+        serving_key, serving_site = chosen['site'], chosen['site_id']
+        serving_host = chosen.get('host_network') or chosen.get('network') or ''
+        serving_role, serving_distance = ('end' if chosen is end_step else 'start'), chosen.get('distance_km')
+    else:
+        serving_key, serving_site = '', _text(row.get('Serving_Site_ID')) or _text(call.get('site_id'))
+        serving_host = _text(row.get('Serving_Host_Network')) or _text(call.get('host_network'))
+        serving_role, serving_distance = ('start' if serving_site else ''), _number(row.get('Serving_Distance_km'))
+    # Where it started and where it ended: the sites of the cells that served them (the start also the site the CDR gives),
+    # else, for a cell the inventory does not hold (such as a 2G or 3G cell), the nearest site of the networks serving its
+    # operator to where it started and where it failed, an estimate (often a site with that cell too).
+    from src.modules import ran_context
+
+    index = ran_context.ran_index(cells) if not cells.empty else None
+    path = [cell for cell in call_cells if cell['role'] != 'nr_leg']
+    reach = float(config.get('max_distance_km') or 30.0)
+    ends: dict[str, dict[str, Any]] = {}
+    for role, step, where, cell in (('start', start_step, positions['start'] or point, path[0] if path else None),
+                                     ('end', end_step, point, path[-1] if path else None)):
+        site = index.sites.get(step['site']) if index and step else None
+        if role == 'start' and site is None and index and not end_step and serving_site:
+            site = next((index.sites[key] for key in (f'{family}|{serving_site}'.casefold() for family in families) if key in index.sites
+                         and (not serving_host or serving_host.casefold() in {index.sites[key]['host_network'].casefold(),
+                                                                              index.sites[key]['network'].casefold()})), None)
+        estimated = site is None
+        if estimated and index and cell and where:
+            site = index.nearest(where, families)
+            site = site if site and site['distance_km'] <= reach else None
+        if site:
+            ends[role] = {'key': site['key'], 'site_id': site['site_id'], 'network': site['network'], 'host_network': site['host_network'],
+                          'estimated': estimated, 'distance_km': round(distance_km(where, (site['latitude'], site['longitude'])), 3) if where else None,
+                          'cell': cell['label'] if cell else '', 'technology': cell['technology'] if cell else ''}
+            keep.add(site['key'])
     sites = nearby_sites(cells, point, radius, keep, colours)
     for site in sites:
         site['roles'] = [step['role_label'] for step in trace if step.get('site') == site['key']]
-        site['serving'] = bool(serving_site) and site['site_id'].casefold() == serving_site.casefold() and (
-            not serving_host or serving_host in {site['host_network'].casefold(), site['network'].casefold()})
+        site['ends'] = [{'role': role, 'estimated': end['estimated']} for role, end in ends.items() if end['key'] == site['key']]
+        site['serving'] = site['key'] == serving_key if serving_key else bool(serving_site) and site['site_id'].casefold() == serving_site.casefold() and (
+            not serving_host or serving_host.casefold() in {site['host_network'].casefold(), site['network'].casefold()})
     flag_same_pci(sites, trace)
+    end_cell = next((cell for cell in reversed(call_cells) if cell['role'] in ('end', 'both')), None)
     if not snapshots:
         notes.append(f"No Network Inventory lists the cells of the networks that serve {call.get('operator') or 'this operator'}: "
                      'the map shows no sites. Upload one in Workspace to see them.')
-    elif trace and not any(step.get('site') for step in trace):
-        notes.append('The cells of this call are not in the Network Inventory of the networks that serve its operator.')
+    elif call_cells and not any(step.get('site') for step in trace):
+        notes.append(f"The cells of this call ({', '.join(cell['label'] for cell in call_cells)}) are not in the Network Inventory "
+                     'of the networks that serve its operator: its serving site and cell cannot be placed'
+                     + ('; the dashed rings mark the nearest sites to where it started and failed.' if any(end['estimated'] for end in ends.values()) else '.'))
+    elif serving_role == 'start' and end_cell:
+        notes.append(f"The cell that served the end of this call ({end_cell['label']}) is not in the Network Inventory of the "
+                     'networks that serve its operator: the site ringed is the one that served its start.')
     failures, failures_left_out, groups = nearby_failures(repository, call, point, radius)
+    name_failure_cells(failures, cells, families, float(config.get('max_distance_km') or 30.0))
     # The operators of the tests with the labels of the Operator Maps, as the calls show them.
     mapper = ValueMapper.from_settings(repository.chart_mapping_settings())
     test_points = nearby_tests(repository, test_datasets(repository, call, scope), point, radius,
@@ -1251,9 +1389,6 @@ def call_map(repository: Any, call_key: str, *, radius_km: Any = None, tests: st
 
     label = lambda value: mapper.map(field_kind('operator'), value)  # noqa: E731 - the label of an Operator in the Operator Maps.
     # The inter-site distance of the serving site and the nearest site of the networks serving the operator (ran_context).
-    from src.modules import ran_context
-
-    index = ran_context.ran_index(cells) if not cells.empty else None
     serving_step = next((step for step in reversed(trace) if step.get('site') and step['role'] in ('end', 'both')), None)
     nearest = index.nearest(point, families) if index else None
     ran = {'serving_isd': index.isd(serving_step['site']) if index and serving_step else None,
@@ -1261,7 +1396,7 @@ def call_map(repository: Any, call_key: str, *, radius_km: Any = None, tests: st
     checks = diagnosis(call, call_radio(service, row, columns, fields_profile), trace, sites, failures, test_points, radius,
                        int(prioritization_settings(repository).get('min_calls') or 2), ran)
     drive = drive_context(repository, test_datasets(repository, call, scope), call, point, label, positions['start'])
-    health = site_health(repository, call, serving_site, _text(row.get('Serving_Host_Network')) or _text(call.get('host_network')), label)
+    health = site_health(repository, call, serving_site, serving_host, label)
     classes = {
         'rsrp': [{'label': label, 'lower': None if math.isinf(lower) else lower, 'colour': colour} for label, lower, colour in RSRP_CLASSES],
         'sinr': [{'label': label, 'lower': None if math.isinf(lower) else lower, 'colour': colour} for label, lower, colour in SINR_CLASSES],
@@ -1280,8 +1415,12 @@ def call_map(repository: Any, call_key: str, *, radius_km: Any = None, tests: st
             'environment': _text(call.get('environment')), 'dataset_id': int(call['dataset_id']),
             'dataset_name': _text(dataset['file_name']) if dataset else '',
             'start': list(positions['start']) if positions['start'] else None, 'end': list(positions['end']) if positions['end'] else None,
-            'serving_site': serving_site, 'serving_host': _text(row.get('Serving_Host_Network')) or _text(call.get('host_network')),
-            'serving_distance_km': _number(row.get('Serving_Distance_km')),
+            # Its serving site (``serving_role``: of the cell that served its end, or its start) and its cells in words.
+            'serving_site': serving_site, 'serving_host': serving_host, 'serving_role': serving_role,
+            'serving_distance_km': serving_distance, 'cells': call_cells,
+            # The sites where it started and ended (``estimated``: the nearest to it, its cell not in the inventory).
+            'ends': {role: {key: end[key] for key in ('site_id', 'network', 'host_network', 'estimated', 'distance_km', 'cell', 'technology')}
+                     for role, end in ends.items()},
             'radio': radio_values(row, columns),
         },
         'centre': [point[0], point[1]], 'radius_km': radius, 'radii_km': sorted({*RADII_KM, radius}), 'group_radius_km': group,

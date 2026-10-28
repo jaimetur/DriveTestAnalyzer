@@ -9,6 +9,7 @@ import pytest
 import src.DriveTestAnalyzer as core
 from src.modules import network_inventory, nq_call_map, nq_prioritization
 from src.modules import non_qualified_calls as nq
+from src.modules.value_maps import ValueMapper, field_kind
 from tests.test_non_qualified_calls import add_cdr, enable_module, login
 
 LONDON = (51.5074, -0.1278)
@@ -70,13 +71,13 @@ def voice_rows() -> pd.DataFrame:
     })
 
 
-def prepare(client, tmp_path) -> dict[str, dict]:
+def prepare(client, tmp_path, rows: pd.DataFrame | None = None) -> dict[str, dict]:
     enable_module()
     login(client)
     inventory = add_cdr(tmp_path, 'Multivendor_Mapping_VFUK.csv', 'mapping_vodafone', pd.DataFrame(inventory_rows()))
     core.repository.update_dataset_profile(inventory, snapshot_date='2026-09-17')
     network_inventory.ensure_inventory_cells(core.repository)
-    add_cdr(tmp_path, 'UK Voice CDR.xlsx', 'voice', voice_rows())
+    add_cdr(tmp_path, 'UK Voice CDR.xlsx', 'voice', voice_rows() if rows is None else rows)
     nq.sync_nq_calls(core.repository)
     nq_prioritization.calculate(core.repository)
     calls = client.post('/api/non-qualified-calls/calls', json={'filters': {}, 'page_size': 50}).json()['calls']
@@ -91,7 +92,11 @@ def test_the_map_places_the_call_its_cells_the_sites_and_the_calls_and_tests_aro
     call = data['call']
     # Where it failed: where it ended.
     assert call['start'] == [51.5078, -0.1279] and call['end'] == [51.511, -0.1215] and data['centre'] == [51.511, -0.1215]
-    assert call['serving_site'] == '70001' and data['radius_km'] == 2.0
+    # Its serving site: that of the cell that served its end, where it failed (the CDR gives that of its start).
+    assert (call['serving_site'], call['serving_role']) == ('70002', 'end') and data['radius_km'] == 2.0
+    # Where it started and ended, and its cells in words: by their inventory name, start and end.
+    assert {role: (end['site_id'], end['estimated']) for role, end in call['ends'].items()} == {'start': ('70001', False), 'end': ('70002', False)}
+    assert [(cell['role'], cell['label']) for cell in call['cells']] == [('start', '70001-L1 (LTE B3)'), ('end', '70002-L3 (LTE B3)')]
     # Its type, as the NQ Prioritization names it (the NQ calls around carry theirs too).
     assert call['kind'] == 'voice' and all(item['kind'] for item in data['failures'])
     # Its radio values: the Min / Avg / Max of a measure together.
@@ -106,7 +111,8 @@ def test_the_map_places_the_call_its_cells_the_sites_and_the_calls_and_tests_aro
     sites = {site['site_id']: site for site in data['sites']}
     # 70003 is beyond the radius and served nothing of the call.
     assert set(sites) == {'70001', '70002'} and data['sites'][0]['site_id'] == '70002'
-    assert sites['70001']['serving'] and not sites['70002']['serving']
+    assert sites['70002']['serving'] and not sites['70001']['serving']
+    assert sites['70001']['ends'] == [{'role': 'start', 'estimated': False}] and sites['70002']['ends'] == [{'role': 'end', 'estimated': False}]
     assert sites['70001']['roles'] == ['Served the start'] and sites['70002']['roles'] == ['Served the end']
     flagged = [(site['site_id'], cell['name']) for site in data['sites'] for cell in site['cells'] if cell.get('same_pci')]
     assert flagged == [('70002', '70002-L2')]
@@ -115,6 +121,9 @@ def test_the_map_places_the_call_its_cells_the_sites_and_the_calls_and_tests_aro
     failures = {item['join_id']: item for item in data['failures']}
     assert failures['V1']['self'] and set(failures) == {'V1', 'V2'}
     assert not failures['V2']['same_operator'] and failures['V2']['distance_km'] < 2
+    # Each with its cells in words, by their inventory name for those of its operator.
+    assert [(cell['role'], cell['label']) for cell in failures['V1']['cells']] == [('start', '70001-L1'), ('end', '70002-L3')]
+    assert failures['V2']['cells'] == []
     # Each with its CDR and campaign, so the page shows those of the CDR, the campaign or every campaign chosen.
     assert failures['V2']['dataset_id'] == call['dataset_id'] and failures['V2']['campaign'] == call['campaign']
     assert data['failure_scopes'] == nq_call_map.FAILURE_SCOPES and nq_call_map.DEFAULT_FAILURE_SCOPE == 'every'
@@ -227,9 +236,11 @@ def test_the_diagnosis_the_decisions_the_drive_and_the_serving_site_of_the_call(
     rows = data['drive']['rows']
     assert [(row['offset_s'], row['self'], row['failed']) for row in rows] == [(0, True, True), (600, False, False)]
     assert rows[1]['lte_rsrp'] == -80.5 and data['drive']['minutes'] == 15
-    # Its serving site served its two Vodafone calls (one Non-Qualified) and none of EE.
-    [campaign] = data['site_health']['campaigns']
-    assert data['site_health']['site_id'] == '70001'
+    # Its serving site (where it ended) started no call; the site where its two Vodafone calls (one Non-Qualified) started.
+    assert data['site_health']['site_id'] == '70002' and data['site_health']['campaigns'] == []
+    mapper = ValueMapper.from_settings(core.repository.chart_mapping_settings())
+    health = nq_call_map.site_health(core.repository, data['call'], '70001', 'Vodafone', lambda value: mapper.map(field_kind('operator'), value))
+    [campaign] = health['campaigns']
     assert (campaign['calls'], campaign['nq'], campaign['rate'], campaign['all_calls']) == (2, 1, 50.0, 2)
     assert campaign['operator_rate'] == round(2 * 100 / 3, 2)
     [event] = [json.loads(row['details']) for row in core.repository.list_logs() if row['action'] == 'nq_call_map']
@@ -376,3 +387,35 @@ def test_the_shapes_of_the_groups_of_a_call_hold_every_call_of_them(client, tmp_
     assert nq_call_map.group_rings(core.repository, {'call_key': alone}) == []
     payload = client.get(f"/api/non-qualified-calls/calls/{next(iter(hotspots.values()))[0]['call_key']}/map").json()
     assert payload['rings'] and payload['hotspot_join'] == 'or'
+
+
+def test_a_call_on_cells_the_inventory_does_not_hold_shows_the_nearest_sites_to_where_it_started_and_failed(client, tmp_path):
+    rows = voice_rows()
+    # V4 failed on a GSM cell beside the London sites: the Network Inventory holds only LTE and NR cells.
+    rows.loc[3, ['Call_Start_Latitude_A', 'Call_Start_Longitude_A', 'LAC_CID_xARFCN_A', 'Cell_ID_A']] = [51.5079, -0.1277, '[GSM 900, 876, 37171, 2]', '[37171]']
+    calls = prepare(client, tmp_path, rows)
+    data = client.get(f"/api/non-qualified-calls/calls/{calls['V4']['call_key']}/map", params={'radius_km': 2}).json()
+    call = data['call']
+    # Its cell is named as the CDR gives it, never taken for an LTE cell with its number.
+    assert call['cells'] == [{'role': 'both', 'technology': 'GSM', 'label': 'GSM 900 · LAC 876 · CI 37171'}]
+    assert call['ends']['end']['technology'] == 'GSM'
+    assert [step['technology'] for step in data['trace']] == ['GSM'] and not data['trace'][0]['site']
+    assert any('GSM 900 · LAC 876 · CI 37171' in note and 'dashed rings' in note for note in data['notes'])
+    # The nearest site to where it started and failed (both here), an estimate; no serving site.
+    assert {role: (end['site_id'], end['estimated']) for role, end in call['ends'].items()} == {'start': ('70001', True), 'end': ('70001', True)}
+    sites = {site['site_id']: site for site in data['sites']}
+    assert sites['70001']['ends'] == [{'role': 'start', 'estimated': True}, {'role': 'end', 'estimated': True}]
+    assert not any(site['serving'] for site in data['sites']) and call['serving_site'] == ''
+    assert data['site_health'] is None
+
+
+def test_the_cells_of_a_call_in_words():
+    steps = nq_call_map.cell_steps('[LTE E-UTRA 20, 3001, 30001001, 6300]->[LTE E-UTRA Unknown, 3001, 30001002, 1617]->[NR 78, , 1234567890, 632640]')
+    assert [cell['label'] for cell in nq_call_map.labelled_cells(steps, {'30001002': '70002-L3'})] == [
+        'LTE B20 · 30001001', '70002-L3 (LTE B3)', 'NR n78 · 1234567890']
+    assert [cell['role'] for cell in nq_call_map.labelled_cells(steps)] == ['start', 'handover', 'end']
+    assert [cell['label'] for cell in nq_call_map.labelled_cells(nq_call_map.cell_steps('[37171, 37172]'))] == ['Cell 37171', 'Cell 37172']
+    assert nq_call_map.cell_label(nq_call_map.cell_steps('[GSM 900, , , 113]')[0]) == 'GSM 900 · channel 113'
+    # A trace of the call without cell identities gives no cells, never the numbers of its bands.
+    assert nq_call_map.trace_cells('', '', '[GSM 900, , , 113]->[GSM 900, 994, , 21]') == []
+    assert nq_call_map.trace_cells('', '', '[GSM 900, 876, 37171, 2]')[0]['technology'] == 'GSM'

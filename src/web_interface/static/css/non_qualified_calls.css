@@ -1914,6 +1914,7 @@ details.nq-priority-info:not([open]) { padding-block: .55rem; }
 .nq-map-mark.is-count::before { content: '×N'; }
 .nq-map-mark.is-triangle { background: var(--mark); clip-path: polygon(50% 0, 100% 90%, 0 90%); }
 .nq-map-mark.is-ring { border: 2.5px solid var(--mark); border-radius: 50%; }
+.nq-map-mark.is-ring.is-dashed { border-style: dashed; }
 /* The hotspot zone of the map of a call: tinted, with its edge. */
 .nq-map-mark.is-zone { border: 2.5px solid var(--mark); border-radius: 35%; background: color-mix(in srgb, var(--mark) 14%, transparent); }
 .nq-map-mark.is-pin { border-radius: 50% 50% 50% 0; background: var(--mark); transform: rotate(-45deg); }
