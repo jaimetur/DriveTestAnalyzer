@@ -158,6 +158,36 @@ def encode_values(values: np.ndarray) -> tuple:
     return ('object', values)
 
 
+def encode_by_codes(values: Sequence[Any], codes: np.ndarray) -> tuple:
+    """``encode_values`` of ``values`` taken at ``codes`` (each row the code of its value), from the distinct ``values``
+    alone: the same kinds, codes and categories, without going through each row."""
+    if not len(codes) or not np.bincount(codes, minlength=len(values)).all():
+        # Rows that show only some of the values: the kinds follow those they show.
+        return encode_values(np.asarray(values, dtype=object)[codes] if len(codes) else np.empty(0, dtype=object))
+    part = encode_values(np.asarray(values, dtype=object))
+    kind = part[0]
+    if kind == 'none':
+        return ('none', len(codes))
+    if kind in {'float', 'int'}:
+        return (kind, part[1][codes])
+    if kind == 'intnull':
+        return ('intnull', part[1][codes], part[2][codes])
+    if kind == 'str':
+        # The categories in the order the rows show them first, as pd.factorize gives them over the rows (-1: NULL).
+        rows = part[1][codes]
+        present = rows >= 0
+        if not present.any():
+            return ('str', np.full(len(rows), -1, dtype=np.int32), np.asarray([], dtype=object))
+        shown, first_row, inverse = np.unique(rows[present], return_index=True, return_inverse=True)
+        order = np.argsort(first_row, kind='stable')
+        renumbered = np.empty(len(shown), dtype=np.int32)
+        renumbered[order] = np.arange(len(shown), dtype=np.int32)
+        result = np.full(len(rows), -1, dtype=np.int32)
+        result[present] = renumbered[inverse.reshape(-1)]
+        return ('str', result, np.asarray(part[2][shown[order]], dtype=object))
+    return ('object', np.asarray(values, dtype=object)[codes])
+
+
 def part_length(part: tuple) -> int:
     return int(part[1]) if part[0] == 'none' else len(part[1])
 
@@ -777,13 +807,22 @@ def _row_map(connection: sqlite3.Connection, database_path: str | Path, segment:
             return _ROW_MAPS[key]
     if source.kind in cdr_store.combined_shadows(connection):
         # An emptied combined table: the CDR row of each of its rows, in its order (see cdr_store).
-        cursor = connection.execute(f'SELECT row_id, source_row_id FROM {cdr_store.COMBINED_ROWS_TABLE} '
-                                    'WHERE kind = ? AND dataset_id = ? ORDER BY row_id', (source.kind, dataset_id))
+        rows, keys = (f'FROM {cdr_store.COMBINED_ROWS_TABLE} WHERE kind = ? AND dataset_id = ?', (source.kind, dataset_id))
+        combined_id, source_row = 'row_id', 'source_row_id'
     else:
-        cursor = connection.execute(f'SELECT rowid, "source_row_id" FROM {quote_identifier(source.table)} '
-                                    'WHERE "dataset_id" = ? ORDER BY rowid', (dataset_id,))
-    pairs = np.fromiter((value for row in cursor for value in row), dtype=np.int64).reshape(-1, 2)
-    found = (pairs[:, 0].copy(), pairs[:, 1].copy())
+        rows, keys = (f'FROM {quote_identifier(source.table)} WHERE "dataset_id" = ?', (dataset_id,))
+        combined_id, source_row = 'rowid', '"source_row_id"'
+    count, first, last, low, high, nulls = connection.execute(
+        f'SELECT COUNT(*), MIN({combined_id}), MAX({combined_id}), MIN({combined_id} - {source_row}), '
+        f'MAX({combined_id} - {source_row}), COUNT(*) - COUNT({source_row}) {rows}', keys).fetchone()
+    if count and not nulls and last - first + 1 == count and low == high:
+        # Its rows follow each other, each the CDR row a fixed distance before it (as a CDR is usually combined).
+        combined_rowids = np.arange(first, last + 1, dtype=np.int64)
+        found = (combined_rowids, combined_rowids - low)
+    else:
+        cursor = connection.execute(f'SELECT {combined_id}, {source_row} {rows} ORDER BY {combined_id}', keys)
+        pairs = np.fromiter((value for row in cursor for value in row), dtype=np.int64).reshape(-1, 2)
+        found = (pairs[:, 0].copy(), pairs[:, 1].copy())
     with _ROW_MAPS_GUARD:
         _ROW_MAPS[key] = found
         while len(_ROW_MAPS) > ROW_MAPS_KEPT:
@@ -900,7 +939,7 @@ def build_from_copies(database_path: str | Path, segment: Segment, expressions: 
                     f'SELECT {expression} FROM {quote_identifier(source.table)} ORDER BY "__memory_rowid"').fetchall()]
             finally:
                 memory.close()
-            results[expression] = encode_values(np.asarray(evaluated, dtype=object)[codes] if length else np.empty(0, dtype=object))
+            results[expression] = encode_by_codes(evaluated, codes)
         else:
             several.append(expression)
     if several:

@@ -2690,21 +2690,31 @@ def _select_dynamic_chart_frame(frame: pd.DataFrame, entry: CatalogEntry) -> pd.
 
 def _map_each_value(series: pd.Series, function: Callable[[object], object]) -> pd.Series:
     """``series.map(function)``, calling ``function`` once for each distinct value (of each type) instead of each row."""
+    values = series.to_numpy(dtype=object)
+    mapped = np.empty(len(values), dtype=object)
+    if pd.api.types.infer_dtype(values, skipna=True) == 'string':
+        # Text and missing values only: the text is told apart by hashing (in C), each missing value on its own type.
+        codes, uniques = pd.factorize(values)
+        present = codes >= 0
+        mapped[present] = np.asarray([function(value) for value in uniques] or [None], dtype=object)[codes[present]]
+        rows = np.flatnonzero(~present)
+    else:
+        rows = range(len(values))
     known: dict[tuple[type, object], object] = {}
-    mapped = []
-    for value in series.to_numpy(dtype=object):
+    for row in rows:
+        value = values[row]
         try:
             key = (type(value), value)
-            result = known[key] if key in known else known.setdefault(key, function(value))
+            mapped[row] = known[key] if key in known else known.setdefault(key, function(value))
         except TypeError:
             # A value that cannot be a key (a list) is mapped on its own.
-            result = function(value)
-        mapped.append(result)
-    return pd.Series(mapped, index=series.index, name=series.name)
+            mapped[row] = function(value)
+    return pd.Series(mapped.tolist(), index=series.index, name=series.name)
 
 
 def _apply_catalog_filters(frame: pd.DataFrame, entry: CatalogEntry, multivendor: bool, metric: str | None) -> pd.DataFrame:
-    result = ensure_vendor_group(frame) if any(column_identity(condition.column) in {'vendor', 'operatorvendor'} for condition in parse_catalog_filters(entry.filters)) else frame.copy()
+    # The rows are only read until the filtered rows are returned, as a new frame.
+    result = ensure_vendor_group(frame) if any(column_identity(condition.column) in {'vendor', 'operatorvendor'} for condition in parse_catalog_filters(entry.filters)) else frame.copy(deep=False)
     operator_mappings = result.attrs.get('operator_mappings', {})
     def mapped_operator(value: object) -> str:
         return _normalise_operator_label(value, operator_mappings)
@@ -2766,7 +2776,7 @@ def _apply_catalog_filters(frame: pd.DataFrame, entry: CatalogEntry, multivendor
                 comparison = series.astype(str).eq(latest_campaign) if latest_campaign is not None else pd.Series(False, index=series.index)
                 if condition.operator == "!=":
                     comparison = ~comparison
-                result = result.loc[comparison].copy()
+                result = result.loc[comparison]
                 continue
             if is_operator_filter:
                 target = mapped_operator(target)
@@ -2810,8 +2820,8 @@ def _apply_catalog_filters(frame: pd.DataFrame, entry: CatalogEntry, multivendor
                 comparison = comparison_series.astype(str).str.casefold().isin(accepted)
             if condition.operator == "NOT IN":
                 comparison = ~comparison
-        result = result.loc[comparison].copy()
-    return result
+        result = result.loc[comparison]
+    return result.copy()
 
 
 def _catalog_threshold(entry: CatalogEntry) -> float:
@@ -3594,7 +3604,7 @@ def _source_for_spec(frames: dict[str, pd.DataFrame], spec: dict, multivendor: b
     if spec.get("city_scope"):
         city_column = _column(frame, ("city", "City", "G_Level_1", "G_Level_2"))
         mask &= _matches(frame, city_column, (spec["city_scope"],))
-    return frame.loc[mask].copy(), operator_column, _period_column(frame)
+    return (frame.copy() if mask.all() else frame.loc[mask].copy()), operator_column, _period_column(frame)
 
 
 def _metric_column(frame: pd.DataFrame, spec: dict) -> str | None:
