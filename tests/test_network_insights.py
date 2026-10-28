@@ -1358,6 +1358,51 @@ def test_repeated_analysis_reuses_cached_result_until_cdrs_change(client, tmp_pa
     assert third.status_code == 200 and calls
 
 
+
+def test_analysis_reads_the_samples_of_the_columnar_copies_as_the_combined_tables_give_them(client, tmp_path, monkeypatch):
+    from src.modules import cdr_store
+
+    _login(client)
+    cdrs = [_add_ready_dataset(tmp_path, 'first.xlsx', 'data', _data_rows('2026-Q1')),
+            _add_ready_dataset(tmp_path, 'second.xlsx', 'data', _data_rows('2026-Q2', rsrp_offset=5))]
+    selection = {'datasets': {'data': cdrs}, 'technology': 'lte_nr'}
+    frames = []
+    original = ni.normalise_samples
+    monkeypatch.setattr(ni, 'normalise_samples', lambda frame, *args, **kwargs: frames.append(frame.copy()) or original(frame, *args, **kwargs))
+    reads = []
+    read_cdrs = cdr_store.read_cdrs
+    monkeypatch.setattr(cdr_store, 'read_cdrs', lambda *args, **kwargs: reads.append(args[2]) or read_cdrs(*args, **kwargs))
+
+    # Without columnar copies the samples come from the combined table.
+    monkeypatch.setattr(cdr_store, 'fresh_copies', lambda database_path, dataset_ids: set())
+    assert client.post('/api/network-insights/analysis', json=selection).status_code == 200
+    combined = list(frames)
+    frames.clear()
+    # An Operator Map for no operator of the CDRs reads the samples again; this time from the copies.
+    assert client.post('/workspace-config/operator-mappings/save', data={'canonical_value': 'Nobody', 'aliases': 'NB'},
+                       follow_redirects=False).status_code == 303
+    repository = app_module.Repository(app_module.active_workspace.database_path, global_db_path=app_module.repository.global_db_path)
+    monkeypatch.setattr(cdr_store, 'free_space', lambda path: 1024 ** 4)
+    cdr_store.start_store_sync(repository, lambda run: run(), lambda: cdr_store.included_cdrs(repository))
+    monkeypatch.undo()
+    monkeypatch.setattr(ni, 'normalise_samples', lambda frame, *args, **kwargs: frames.append(frame.copy()) or original(frame, *args, **kwargs))
+    monkeypatch.setattr(cdr_store, 'read_cdrs', lambda *args, **kwargs: reads.append(args[2]) or read_cdrs(*args, **kwargs))
+    assert client.post('/api/network-insights/analysis', json=selection).status_code == 200
+
+    # The samples of each CDR (read one CDR at a time, in parallel) are the rows the combined table gave.
+    assert sorted(reads) == [[cdr] for cdr in cdrs] and len(frames) == len(combined) == 2
+
+    def same(left, right):
+        try:
+            pd.testing.assert_frame_equal(left, right, check_exact=True)
+        except AssertionError:
+            return False
+        return True
+
+    assert all(any(same(frame, other) for other in combined) for frame in frames)
+    assert not same(frames[0], frames[1])
+
+
 def test_lte_nr_summary_export_has_separate_technology_sections(client, tmp_path, monkeypatch):
     from docx import Document
     from pptx import Presentation

@@ -4,10 +4,17 @@ import json
 
 import duckdb
 import pandas as pd
+import pytest
 
 import src.DriveTestAnalyzer as core
 from src.modules import cdr_store
 from src.modules.repository import local_now_iso
+
+
+@pytest.fixture(autouse=True)
+def plenty_of_disk_space(monkeypatch):
+    """The copies never wait for the disk of the machine running the tests (the test of the wait sets its own)."""
+    monkeypatch.setattr(cdr_store, 'free_space', lambda path: 1024 ** 4)
 
 
 def login(client):
@@ -50,7 +57,7 @@ def copy_everything():
 
 def copy(dataset_id, kind='data'):
     return duckdb.connect().execute(
-        f"SELECT * FROM read_parquet('{cdr_store.cdr_file(cdr_store.store_root(core.repository.db_path), kind, dataset_id)}') "
+        f"SELECT * FROM read_parquet('{cdr_store.cdr_parts(cdr_store.store_root(core.repository.db_path), kind, dataset_id)}') "
         'ORDER BY __rowid').df()
 
 
@@ -133,7 +140,7 @@ def test_the_views_leave_out_the_cdrs_not_in_combined_and_the_copies_of_deleted_
     core.repository.delete_dataset(first)
     job = copy_everything()
     root = cdr_store.store_root(core.repository.db_path)
-    assert job['removed'] == 1 and not cdr_store.cdr_file(root, 'data', first).exists() and ids() == []
+    assert job['removed'] == 1 and not cdr_store.cdr_folder(root, 'data', first).exists() and ids() == []
 
 
 def test_the_copy_waits_for_free_disk_space_and_says_so_once(client, tmp_path, monkeypatch):
@@ -158,3 +165,23 @@ def test_database_management_names_the_table_of_the_versions(client, tmp_path):
     login(client)
 
     assert 'CDR Store Versions' in client.get('/super-admin').text
+
+
+def test_several_cdrs_read_from_their_copies_as_their_combined_table_returns_them(client, tmp_path):
+    first = add_cdr(tmp_path, 'first.csv', 'data', pd.DataFrame({
+        'Operator': ['EE', 'O2'], 'Call Status': ['Completed', 'Failed'], 'Mean_Data_Rate': [12.5, None]}))
+    second = add_cdr(tmp_path, 'second.csv', 'data', pd.DataFrame({
+        'Operator': ['Vodafone UK'], 'Call_Status': ['Dropped'], 'RSRP': [-95]}), nr_mode='SA')
+    requested = ['Operator', 'Call_Status', 'Mean_Data_Rate', 'RSRP', 'NR_Mode', 'dataset_id', 'source_row_id']
+    for dataset_id in (first, second):
+        core.repository.copy_dataset_rows_to_reporting(dataset_id, 'data', requested)
+    copy_everything()
+
+    combined = core.repository.load_reporting_rows('data', [second, first], requested)
+    frame = cdr_store.read_cdrs(core.repository.db_path, 'data', [second, first], requested,
+                                existing_columns=core.repository.list_reporting_row_columns('data'))
+
+    pd.testing.assert_frame_equal(frame, combined, check_exact=True)
+    assert frame['Call_Status'].tolist() == ['Completed', 'Failed', 'Dropped']
+    assert frame['NR_Mode'].tolist() == ['NSA', 'NSA', 'SA'] and frame['dataset_id'].tolist() == [first, first, second]
+    assert cdr_store.fresh_copies(core.repository.db_path, [first, second, 999]) == {first, second}

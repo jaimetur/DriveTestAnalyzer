@@ -40,6 +40,7 @@ from src.modules.value_patterns import ValueSet, is_pattern
 from src.modules.operator_roles import drop_excluded_operators, drop_out_of_scope_operators, excluded_operators, out_of_scope_pairs
 from src.modules.mapping_order import dimension_order_key, operator_order_key, vendor_order_key
 from src.modules.output_layout import NETWORK_INSIGHTS_FOLDER, module_output_dir
+from src.modules import cdr_store
 from src.modules import inventory_insights as ii
 from src.modules import network_insights_favourites as ni_favourites
 from src.modules.network_insights_findings import findings_payload, mode_of_test
@@ -1669,9 +1670,15 @@ def install_network_insights_routes(core: Any) -> None:
                 source_columns.update(task_repository.list_dataset_row_columns(dataset_id))
             columns = resolve_source_columns(source_columns, kind, profile)
             requested = list(dict.fromkeys(columns.values()))
-            for dataset_id in ids:
-                task_repository.copy_dataset_rows_to_reporting(dataset_id, kind, requested)
-            frame = task_repository.load_reporting_rows(kind, ids, requested)
+            if set(ids) <= cdr_store.fresh_copies(task_repository.db_path, ids):
+                # The columnar copies of the CDRs give the rows of their combined table, without copying the radio
+                # fields into it first.
+                frame = cdr_store.read_cdrs(task_repository.db_path, kind, ids, requested, existing_columns=(
+                    set(task_repository.list_reporting_row_columns(kind)) | source_columns))
+            else:
+                for dataset_id in ids:
+                    task_repository.copy_dataset_rows_to_reporting(dataset_id, kind, requested)
+                frame = task_repository.load_reporting_rows(kind, ids, requested)
             if frame.empty:
                 continue
             if 'source_sheet' in columns and columns['source_sheet'] in frame.columns:

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import sqlite3
 import time
 from datetime import datetime, timezone
@@ -21,7 +22,7 @@ import numpy as np
 import pandas as pd
 
 STORE_FOLDER = '.cdr-store'
-STORE_VERSION = 3
+STORE_VERSION = 4
 CDR_KINDS = ('data', 'voice', 'speech')
 VERSIONS_TABLE = 'cdr_store_versions'
 TABLE_TITLES = {VERSIONS_TABLE: 'CDR Store Versions'}
@@ -33,10 +34,10 @@ ROWID, DATASET_ID, NR_MODE = '__rowid', '__dataset_id', '__nr_mode'
 # with the Python type of each value.
 INT_PREFIX, REAL_PREFIX = '__int__', '__real__'
 READ_BATCH_ROWS = 50_000
-# The copy of a CDR waits while the disk would keep less than this free after it: the Parquet file takes from 130 to
-# 490 bytes per row, and DuckDB may spill as much while it writes.
+# The copy of a CDR waits while the disk would keep less than this free after it (its files take from 130 to 490
+# bytes per row, written batch after batch without holding the CDR in memory).
 FREE_SPACE_MARGIN = 1024 ** 3
-BYTES_PER_ROW_ESTIMATE = 1_000
+BYTES_PER_ROW_ESTIMATE = 600
 SYNC_PRIORITY = (9, 1)
 STORE_IDLE_SECONDS = 2 * 60
 # The application copies the CDRs by itself (the tests copy them when they need it).
@@ -52,8 +53,18 @@ def store_root(database_path: Any) -> Path:
     return Path(str(database_path)).resolve().parent / STORE_FOLDER
 
 
-def cdr_file(root: Path, kind: str, dataset_id: int) -> Path:
-    return root / kind / f'{int(dataset_id)}.parquet'
+def cdr_folder(root: Path, kind: str, dataset_id: int) -> Path:
+    """The folder of the copy of a CDR: one Parquet file per batch of its rows."""
+    return root / kind / str(int(dataset_id))
+
+
+def cdr_parts(root: Path, kind: str, dataset_id: int) -> str:
+    """The files of the copy of a CDR, as DuckDB reads them."""
+    return str(cdr_folder(root, kind, dataset_id) / '*.parquet')
+
+
+def _sql_text(value: str) -> str:
+    return "'" + str(value).replace("'", "''") + "'"
 
 
 def manifest_file(root: Path, kind: str, dataset_id: int) -> Path:
@@ -145,7 +156,7 @@ def fresh_copies(database_path: Any, dataset_ids: Any) -> set[int]:
             if cdr is None:
                 continue
             manifest = read_manifest(manifest_file(root, cdr['kind'], dataset_id))
-            if (manifest and cdr_file(root, cdr['kind'], dataset_id).is_file() and manifest.get('revision')
+            if (manifest and cdr_folder(root, cdr['kind'], dataset_id).is_dir() and manifest.get('revision')
                     == revision(cdr, _table_columns(connection, dataset_id), versions.get(dataset_id, 0))):
                 fresh.add(dataset_id)
     return fresh
@@ -161,7 +172,7 @@ def store_changes(database_path: Any) -> dict[str, Any]:
         for dataset_id, cdr in sorted(cdrs.items()):
             manifest = read_manifest(manifest_file(root, cdr['kind'], dataset_id))
             current = revision(cdr, _table_columns(connection, dataset_id), versions.get(dataset_id, 0))
-            if manifest is None or manifest.get('revision') != current or not cdr_file(root, cdr['kind'], dataset_id).is_file():
+            if manifest is None or manifest.get('revision') != current or not cdr_folder(root, cdr['kind'], dataset_id).is_dir():
                 pending.append(cdr)
     orphans = [path for kind in CDR_KINDS for path in (root / kind).glob('*.json')
                if not path.stem.isdigit() or int(path.stem) not in cdrs or cdrs[int(path.stem)]['kind'] != kind]
@@ -211,10 +222,9 @@ def required_space(row_count: int) -> int:
 
 
 def free_space(path: Path) -> int:
-    from src.modules.disk_space import available_disk_space
-
+    """The space the file system has free: a copy never counts on what macOS may free on demand later."""
     path.mkdir(parents=True, exist_ok=True)
-    return available_disk_space(path)
+    return shutil.disk_usage(path).free
 
 
 class NotEnoughSpace(RuntimeError):
@@ -224,20 +234,23 @@ class NotEnoughSpace(RuntimeError):
 
 
 def export_rows(connection: sqlite3.Connection, dataset_id: int, nr_mode: str, columns: list[str], types: dict[str, str],
-                target: Path, spill: Path, should_stop: Callable[[], bool] = lambda: False) -> int | None:
-    """Write the rows of a CDR table, read in batches through ``connection``, to the Parquet file ``target`` with the
-    given column types; returns how many rows it wrote, or None when it stopped."""
+                target: Path, should_stop: Callable[[], bool] = lambda: False) -> int | None:
+    """Write the rows of a CDR table, read in batches through ``connection``, to the folder ``target``, one Parquet file
+    per batch with the given column types (nothing of the CDR is held in memory or spilled to disk); returns how many
+    rows it wrote, or None when it stopped."""
     import duckdb
 
     table = f'dataset_rows_{int(dataset_id)}'
-    stored = _stored_columns(columns, types)
-    duck = duckdb.connect(config={'memory_limit': '2GB', 'threads': 2, 'temp_directory': str(spill)})
+    stored = [(ROWID, 'rowid', 'BIGINT'), (DATASET_ID, str(int(dataset_id)), 'BIGINT'), (NR_MODE, '', 'VARCHAR'),
+              *_stored_columns(columns, types)]
+    casts = ', '.join(f'CAST({quote(name)} AS {column_type}) AS {quote(name)}' for name, _expression, column_type in stored)
+    target.mkdir(parents=True, exist_ok=True)
+    duck = duckdb.connect(config={'memory_limit': '1GB', 'threads': 2})
+    written = 0
     try:
-        duck.execute(f'CREATE TABLE cdr ({quote(ROWID)} BIGINT, {quote(DATASET_ID)} BIGINT, {quote(NR_MODE)} VARCHAR'
-                     + ''.join(f', {quote(name)} {column_type}' for name, _expression, column_type in stored) + ')')
-        selected = ''.join(f', {expression}' for _name, expression, _column_type in stored)
         last = connection.execute(f'SELECT MAX(rowid) FROM {quote(table)}').fetchone()[0] or 0
-        for low in range(0, int(last), READ_BATCH_ROWS):
+        selected = ''.join(f', {expression}' for _name, expression, _column_type in stored[3:])
+        for part, low in enumerate(range(0, int(last), READ_BATCH_ROWS), start=1):
             if should_stop():
                 return None
             rows = connection.execute(f'SELECT rowid{selected} FROM {quote(table)} WHERE rowid > ? AND rowid <= ? ORDER BY rowid',
@@ -248,17 +261,18 @@ def export_rows(connection: sqlite3.Connection, dataset_id: int, nr_mode: str, c
             frame = pd.DataFrame({
                 ROWID: pd.Series(values[0], dtype='int64'), DATASET_ID: int(dataset_id), NR_MODE: nr_mode or None,
                 **{name: pd.Series(column_values, dtype={'BIGINT': 'Int64', 'DOUBLE': 'float64'}.get(column_type, 'object'))
-                   for (name, _expression, column_type), column_values in zip(stored, values[1:])},
+                   for (name, _expression, column_type), column_values in zip(stored[3:], values[1:])},
             })
             duck.register('chunk', frame)
-            duck.execute('INSERT INTO cdr BY NAME SELECT * FROM chunk')
+            duck.execute(f'COPY (SELECT {casts} FROM chunk) TO {_sql_text(target / f"part-{part:05d}.parquet")} '
+                         '(FORMAT parquet, COMPRESSION zstd)')
             duck.unregister('chunk')
-        literal = str(target).replace("'", "''")
-        duck.execute(f"COPY cdr TO '{literal}' (FORMAT parquet, COMPRESSION zstd)")
-        return int(duck.execute('SELECT COUNT(*) FROM cdr').fetchone()[0])
-    except BaseException:
-        target.unlink(missing_ok=True)
-        raise
+            written += len(frame)
+        if not written:
+            # A CDR without rows keeps the columns of its copy.
+            duck.register('chunk', pd.DataFrame({name: pd.Series([], dtype=object) for name, _expression, _type in stored}))
+            duck.execute(f'COPY (SELECT {casts} FROM chunk) TO {_sql_text(target / "part-00000.parquet")} (FORMAT parquet)')
+        return written
     finally:
         duck.close()
 
@@ -275,10 +289,9 @@ def write_cdr(repository: Any, cdr: dict[str, Any], should_stop: Callable[[], bo
     if free < needed:
         raise NotEnoughSpace(needed, free)
     table = f'dataset_rows_{dataset_id}'
-    target = cdr_file(root, kind, dataset_id)
-    temporary = folder / f'.{dataset_id}.{os.getpid()}.parquet.tmp'
-    spill = root / '.tmp'
-    spill.mkdir(parents=True, exist_ok=True)
+    target = cdr_folder(root, kind, dataset_id)
+    temporary = folder / f'.{dataset_id}.{os.getpid()}.tmp'
+    shutil.rmtree(temporary, ignore_errors=True)
     with repository.connection() as writer:
         ensure_versions_table(writer)
         ensure_change_triggers(writer, dataset_id)
@@ -295,12 +308,22 @@ def write_cdr(repository: Any, cdr: dict[str, Any], should_stop: Callable[[], bo
                    for column in columns):
                 raise ValueError(f'The CDR {ready["file_name"]} has a column named like the columns the copy adds.')
             types = _column_types(connection, table, columns)
-            rows_written = export_rows(connection, dataset_id, ready['nr_mode'], columns, types, temporary, spill, should_stop)
-            if rows_written is None:
-                return None
+            rows_written = export_rows(connection, dataset_id, ready['nr_mode'], columns, types, temporary, should_stop)
+        except BaseException:
+            shutil.rmtree(temporary, ignore_errors=True)
+            raise
         finally:
             connection.rollback()
+    if rows_written is None:
+        shutil.rmtree(temporary, ignore_errors=True)
+        return None
+    # The new copy takes the place of the old one at once (readers of the old one keep their open files).
+    previous = folder / f'.{dataset_id}.{os.getpid()}.old'
+    if target.exists():
+        os.replace(target, previous)
     os.replace(temporary, target)
+    shutil.rmtree(previous, ignore_errors=True)
+    (folder / f'{dataset_id}.parquet').unlink(missing_ok=True)  # The single file of earlier copies.
     manifest = {
         'version': STORE_VERSION, 'dataset_id': dataset_id, 'kind': kind, 'file_name': ready['file_name'],
         'revision': current, 'rows': rows_written, 'columns': [[column, types[column]] for column in columns],
@@ -312,6 +335,7 @@ def write_cdr(repository: Any, cdr: dict[str, Any], should_stop: Callable[[], bo
 
 def remove_copy(manifest_path: Path) -> None:
     """Remove the copy of a CDR that is gone (or now of another type)."""
+    shutil.rmtree(manifest_path.with_suffix(''), ignore_errors=True)
     manifest_path.with_suffix('.parquet').unlink(missing_ok=True)
     manifest_path.unlink(missing_ok=True)
 
@@ -351,7 +375,7 @@ def _view_sql(kind: str, manifests: list[dict[str, Any]], root: Path) -> str:
     # The NR Mode of a row: the CDR's own NR Mode column, or the NR Mode of the CDR.
     selected.append(f'COALESCE(CAST({quote(nr_mode)} AS VARCHAR), {quote(NR_MODE)}) AS "NR_Mode"' if nr_mode
                     else f'{quote(NR_MODE)} AS "NR_Mode"')
-    files = ', '.join("'" + str(cdr_file(root, kind, manifest['dataset_id'])).replace("'", "''") + "'" for manifest in manifests)
+    files = ', '.join(_sql_text(cdr_parts(root, kind, manifest['dataset_id'])) for manifest in manifests)
     return f'CREATE VIEW {view} AS SELECT {", ".join(selected)} FROM read_parquet([{files}], union_by_name = true)'
 
 
@@ -360,7 +384,7 @@ def _catalog_inputs(database_path: Any, included: dict[str, set[int]]) -> tuple[
     root = store_root(database_path)
     manifests = {kind: [manifest for dataset_id in sorted(included.get(kind, ()))
                         if (manifest := read_manifest(manifest_file(root, kind, dataset_id)))
-                        and cdr_file(root, kind, dataset_id).is_file()] for kind in CDR_KINDS}
+                        and cdr_folder(root, kind, dataset_id).is_dir()] for kind in CDR_KINDS}
     signature = {'version': STORE_VERSION, 'root': str(root),
                  'cdrs': {kind: [[manifest['dataset_id'], manifest['revision']] for manifest in items]
                           for kind, items in manifests.items()}}
@@ -587,7 +611,7 @@ def _raw(database_path: Any, kind: str, dataset_id: int, columns: list[str], row
 
     root = store_root(database_path)
     manifest = read_manifest(manifest_file(root, kind, dataset_id))
-    if manifest is None or not cdr_file(root, kind, dataset_id).is_file():
+    if manifest is None or not cdr_folder(root, kind, dataset_id).is_dir():
         raise LookupError(f'The columnar copy of CDR {dataset_id} is not ready.')
     # The columns of the CDR, and those the copy adds.
     types = {**dict(manifest['columns']), ROWID: 'BIGINT', DATASET_ID: 'BIGINT', NR_MODE: 'VARCHAR'}
@@ -601,7 +625,7 @@ def _raw(database_path: Any, kind: str, dataset_id: int, columns: list[str], row
         if types[column].startswith('MIXED:'):
             parts.extend(quote(prefix + column) for prefix, part in ((INT_PREFIX, 'I'), (REAL_PREFIX, 'R'))
                          if part in types[column])
-    source = "'" + str(cdr_file(root, kind, dataset_id)).replace("'", "''") + "'"
+    source = _sql_text(cdr_parts(root, kind, dataset_id))
     duck = duckdb.connect()
     try:
         where = ''
