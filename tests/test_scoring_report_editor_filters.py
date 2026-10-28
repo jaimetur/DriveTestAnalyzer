@@ -126,7 +126,7 @@ def test_reporting_artifacts_choose_their_cdrs_by_campaign():
     # Designs, Scoring and Network Insights choose their Campaigns (Latest campaign, Latest 2 campaigns or chosen ones)
     # in one list right after NR Mode, with the CDRs they choose below that row.
     assert "campaigns = name ? campaignPicker(() => nrMode.value, saved || [], {onChange: () => scheduleLoad(), eachNrMode: true}) : null;" in script
-    assert "head.append(field('NR Mode', nrMode), campaignSlot, field('Design', design)" in script
+    assert "head.append(field('NR Mode', nrMode), campaignSlot, field('PPT Design', design)" in script
     assert "head.append(field('NR Mode', nrMode), campaigns.field, field('GAP reference operator', baseline)" in script
     assert "head.append(field('NR Mode', nrMode), campaigns.field, field('Technology', technology)" in script
     # (Network Insights chooses one Campaign; the other entries several, with the Latest choices first.)

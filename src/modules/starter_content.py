@@ -9,7 +9,7 @@ New deployments and new workspaces, and existing workspaces once, receive the co
   workspace once too (without its campaigns when they overlap those of one of its methodologies);
 - ``assets/ppt-templates/*.csv``: Report Templates, named after their file, each serving the CDRs of any NR Mode (their
   titles name it with ``{NR Mode}`` and ``{NR Mode Name}``);
-- ``assets/ppt-designer/*.json``: PPT Designer, which use those templates, each reading the CDRs of its NR Mode
+- ``assets/ppt-designs/*.json``: PPT Designs, which use those templates, each reading the CDRs of its NR Mode
   (``nr_mode``: NSA, SA or NSA+SA for both, whose SA CDRs follow ``sa_campaigns``); the templates and PPT Designs shipped
   later (``LATER_EXAMPLES``, such as the NSA & SA comparison FDFS DL (NSA & SA)) reach every existing workspace once;
 - ``assets/autocalculated-fields/default-autocalculated-fields.json``: the Auto-calculated Fields every new
@@ -52,7 +52,7 @@ METHODOLOGIES_SHIPPED_BEFORE = ('netcheck-2026',)
 # The methodology a new workspace starts with as its active one (the others apply to the campaigns they name).
 BASE_METHODOLOGY = 'netcheck-2026'
 # The Report Templates shipped after workspaces were set up, which reach each of them once with their PPT Designs (those
-# of ``assets/ppt-designer`` that use them); a workspace that deleted them is not given them again.
+# of ``assets/ppt-designs`` that use them); a workspace that deleted them is not given them again.
 LATER_EXAMPLES_STATE_KEY = 'starter_examples_offered'
 LATER_EXAMPLES = ('FDFS DL (NSA & SA)',)
 
@@ -123,7 +123,7 @@ def _seed_designs(repository: Any) -> int:
         return 0
     existing = {str(item.get('name') or '').casefold() for item in designs.values() if isinstance(item, dict)}
     added = 0
-    for path in _json_files(ASSETS / 'ppt-designer'):
+    for path in _json_files(ASSETS / 'ppt-designs'):
         definition = json.loads(path.read_text(encoding='utf-8'))
         key = str(definition.get('name') or '').casefold()
         if not key or key in existing:
@@ -153,7 +153,7 @@ def _seed_later_examples(repository: Any, username: str) -> int:
         if path.is_file() and name.casefold() not in templates:
             repository.add_report_template(name, path.read_bytes(), updated_by=username)
             added += 1
-        for design_path in _json_files(ASSETS / 'ppt-designer'):
+        for design_path in _json_files(ASSETS / 'ppt-designs'):
             definition = json.loads(design_path.read_text(encoding='utf-8'))
             key = str(definition.get('name') or '').casefold()
             if definition.get('template') == name and key and key not in names and isinstance(designs, dict):

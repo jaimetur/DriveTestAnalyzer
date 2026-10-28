@@ -240,7 +240,7 @@ def test_template_and_design_bundle_replaces_referenced_template(client, tmp_pat
     )
     # The progress names each package being imported, and what each one is doing within its share of the bar.
     assert [phase for phase in phases if phase.startswith('importing package') and ':' not in phase] == [
-        'importing package 1 of 2 (PPT Templates)', 'importing package 2 of 2 (Designs)']
+        'importing package 1 of 2 (PPT Templates)', 'importing package 2 of 2 (PPT Designs)']
     assert 'importing package 1 of 2 (PPT Templates): importing PPT Templates' in phases
     rows = [row for row in destination_repo.list_report_templates() if str(row['name']) == 'Bundle Used']
     assert len(rows) == 1

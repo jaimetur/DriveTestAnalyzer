@@ -2562,7 +2562,7 @@ def test_admin_import_export_packages_detect_configuration_and_workspaces(client
     assert 'Mappings &amp; Reference Data (from active workspace)</option>' in admin_response.text
     assert admin_response.text.index('Main Cities (from active workspace)</option>') < admin_response.text.index('Mappings &amp; Reference Data (from active workspace)</option>')
     assert 'Scoring &amp; GAP Analysis Methodologies (from active workspace)' in admin_response.text
-    assert 'Full Environment (Application Config + Designs + PPT Templates + Main Cities + Mappings &amp; Reference Data + Scoring &amp; GAP Analysis Methodologies + Auto-calculated Fields + Query Builder Queries + Network Insights Favourites + Bundle Report Template Favourites + Scoring &amp; GAP Favourites Filters + Scoring &amp; GAP Report Templates + Scoring Export Panels + Scoring Excluded Calls + Reporting Jobs + NQ Call Tracking + Selected Workspaces)' in admin_response.text
+    assert 'Full Environment (Application Config + PPT Designs + PPT Templates + Main Cities + Mappings &amp; Reference Data + Scoring &amp; GAP Analysis Methodologies + Auto-calculated Fields + Query Builder Queries + Network Insights Favourites + Bundle Report Template Favourites + Scoring &amp; GAP Favourites Filters + Scoring &amp; GAP Report Templates + Scoring Export Panels + Scoring Excluded Calls + Reporting Jobs + NQ Call Tracking + Selected Workspaces)' in admin_response.text
     # The backups, in the Database Management of Super Admin.
     backups_page = client.get('/super-admin').text
     assert backups_page.index('Main Cities (workspace city selection)') < backups_page.index('Mappings &amp; Reference Data (Operator and Vendor aliases, order and theme colors')
@@ -5696,11 +5696,11 @@ def test_design_library_open_close_and_view_actions_include_labels() -> None:
     assert "filtersAreOpen ? 'Close Filters' : 'Open Filters'" in script
     assert script.index("action('View Design', 'View Design'") < script.index("filtersAreOpen ? 'Close Filters' : 'Open Filters'")
     assert 'width:fit-content!important;min-width:max-content!important' in styles
-    assert '.ds-design-action.ds-design-close' in styles
+    assert '.ds-library-action.ds-design-close' in styles
     assert "primaryActionLabel(view, 'View', 'Design');" in script
     assert "primaryActionLabel(open, filtersAreOpen ? 'Close' : 'Open', 'Filters');" in script
     assert 'grid-column:span 2' in styles
-    assert '.ds-design-action-label{display:contents}' in styles
+    assert '.ds-library-action-label{display:contents}' in styles
     assert 'height:3.35rem!important' in styles
     assert 'border-radius:.85rem!important' in styles
 

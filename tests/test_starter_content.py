@@ -34,7 +34,7 @@ def test_the_shipped_content_names_no_operator_or_vendor():
         assert not re.search(r'G_Level_4\s+(NOT\s+)?IN\s*\(', path.read_text(encoding='utf-8')), path.name
         assert not any(re.search(r'\bUK\b', row.get('Slide Tittle') or '') for row in rows), path.name
         assert path.stem.startswith('Tableau') or not any(VENDOR_FILTER.search(row.get('Filters') or '') for row in rows), path.name
-    designs = [json.loads(path.read_text(encoding='utf-8')) for path in (ASSETS / 'ppt-designer').glob('*.json')]
+    designs = [json.loads(path.read_text(encoding='utf-8')) for path in (ASSETS / 'ppt-designs').glob('*.json')]
     # The Designs of the UK workspace, one per NR Mode, and the NSA & SA comparison.
     assert {(item['name'], item['template'], item['nr_mode']) for item in designs} == {
         (f'{nr_mode} - {template}', template, nr_mode) for nr_mode in ('NSA', 'SA') for template in (

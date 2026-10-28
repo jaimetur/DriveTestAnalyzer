@@ -52,7 +52,7 @@
   - labels-campaigns
   - labels-operator
   - labels-vendors
-  - ppt-dashboards
+  - ppt-designs
   - ppt-templates
   - query-builder-queries
   - reporting-jobs

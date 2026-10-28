@@ -388,7 +388,7 @@ DriveTestAnalyzer/
 ├── assets/autocalculated-fields/             # Auto-calculated Fields every new workspace starts with
 ├── assets/scoring-methodologies/             # Scoring methodologies added to every workspace
 ├── assets/ppt-templates/                     # Report Templates added to every workspace
-├── assets/ppt-designer/                    # Designs added to every workspace
+├── assets/ppt-designs/                     # Designs added to every workspace
 ├── assets/scoring-report-configurations/     # Scoring report configurations added to every workspace
 ├── assets/query-builder-queries/             # Query Builder queries added to every workspace
 ├── assets/reporting-jobs/                    # Reporting Jobs added to every workspace

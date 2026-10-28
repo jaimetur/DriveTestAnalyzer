@@ -82,13 +82,13 @@ def test_designs_are_replaced_by_identity_or_name_and_the_others_kept(client, tm
     # Speed replaces the Design of that name, keeping its ID; the Designs only the destination has stay.
     assert set(stored) == {'local', 'x9', 'd1'}
     # The message counts the Designs of the package and tells what changed in the updated ones.
-    assert notice.startswith('Imported 2 Designs into 1 workspace: 1 new and 1 updated.')
+    assert notice.startswith('Imported 2 PPT Designs into 1 workspace: 1 new and 1 updated.')
     [section] = [item for item in core.import_notice_details(notice)['sections']
-                 if item['title'] == f'Updated Designs of "{destination.name}"']
+                 if item['title'] == f'Updated PPT Designs of "{destination.name}"']
     assert section['items'] == [{'name': 'Speed', 'changes': ['Template: Old → T', 'Creator: (empty) → super']}]
     # Imported again, nothing changes and nothing is counted as updated.
     again = _transfer('designs', source, destination, tmp_path)
-    assert again == 'Imported 2 Designs into 1 workspace: 2 unchanged.'
+    assert again == 'Imported 2 PPT Designs into 1 workspace: 2 unchanged.'
     assert core.import_notice_details(again)['sections'] == []
     assert stored['x9']['template'] == 'T' and stored['local']['name'] == 'Local only'
     known = creators(destination_repo, PPT_DESIGNER)
@@ -103,10 +103,10 @@ def test_designs_are_replaced_by_identity_or_name_and_the_others_kept(client, tm
     stored = _designs(destination_repo)
     assert {key: item['name'] for key, item in stored.items()} == {'local': 'Local only', 'x9': 'Speed v2', 'd1': 'Coverage v2'}
     assert '"Coverage" renamed "Coverage v2"' in notice
-    assert notice.startswith('Imported 2 Designs into 1 workspace: 2 updated.')
+    assert notice.startswith('Imported 2 PPT Designs into 1 workspace: 2 updated.')
     # The summary window gets the message in parts: its headline and a table of the renamed items of each element.
     details = core.import_notice_details(notice)
-    [section] = [item for item in details['sections'] if item['title'] == f'Designs of "{destination.name}"']
+    [section] = [item for item in details['sections'] if item['title'] == f'PPT Designs of "{destination.name}"']
     assert {'label': '', 'from': 'Coverage', 'to': 'Coverage v2'} in section['items']
     assert details['headline'] and details['headline'] in notice
 
@@ -450,7 +450,7 @@ def test_an_export_tells_which_part_it_is_archiving(client, tmp_path):
     # A selection of several elements names each one by its position.
     phases = []
     core.build_export_archive_file(['designs', 'ppt-templates'], tmp_path / 'selection.zip', phase_callback=phases.append)
-    assert phases == ['Designs (1 of 2)', 'PPT Templates (2 of 2)']
+    assert phases == ['PPT Designs (1 of 2)', 'PPT Templates (2 of 2)']
 
 
 def test_import_summaries_come_in_parts_for_the_summary_window():

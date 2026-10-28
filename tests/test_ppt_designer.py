@@ -315,7 +315,7 @@ def test_design_end_navigation_controls_use_line_svgs():
 
 
 def without_starter_designs():
-    """Start without the Designs every workspace is given (assets/ppt-designer)."""
+    """Start without the Designs every workspace is given (assets/ppt-designs)."""
     with core.repository.connection() as connection:
         connection.execute("DELETE FROM workspace_state WHERE key = 'ppt_designs_v2'")
 
@@ -1789,7 +1789,7 @@ def test_designs_lifecycle_and_layout(client, ppt_reporting_old):
     assert "const payload = await api(statusPath, 'POST', statusDefinitions);" in design_script
     assert "window.setInterval(refreshDesignStatuses, 2000);" in design_script
     assert "const designName = String(task.design_name || '');" in app_script
-    assert "? `Design “${designName}”: ${String(task.label || 'Background task')}`" in app_script
+    assert "? `PPT Design “${designName}”: ${String(task.label || 'Background task')}`" in app_script
     assert 'completedByWorkspace.forEach((entries) =>' in app_script
     assert 'entry.group.tasks.splice(Math.min(entry.position + offset, entry.group.tasks.length), 0, entry.task);' in app_script
     selection_key_source = design_module[design_module.index('def persistent_selection_key'):design_module.index('def selected_date_bounds')]
@@ -2190,7 +2190,7 @@ def test_ready_design_exports_ppt_and_persistent_chart_files(client, monkeypatch
         if task['id'] == f'design-ppt:{core.active_workspace.id}:{job_id}'
     )
     assert background_task['design_name'] == 'Comparison'
-    assert background_task['label'] == 'Generating Design PPT'
+    assert background_task['label'] == 'Generating PPT Design'
     assert background_task['detail'] == 'Completed'
     assert background_task['duration_seconds'] is not None
 
