@@ -26,9 +26,13 @@ from fastapi.testclient import TestClient
 
 import src.DriveTestAnalyzer as app_module
 from src.config import settings
-from src.modules import presentations
+from src.modules import cdr_store, presentations
 from src.modules.workspace_countries import set_workspace_country
 
+
+# The tests that need the columnar copy of their CDRs make it themselves (tests/test_cdr_store.py): the other tests
+# do not copy every CDR they process.
+cdr_store.AUTOMATIC = False
 
 BACKGROUND_UPLOAD_PATHS = (
     '/datasets-analysis/upload', '/datasets-analysis/retry/', '/workspace/reprocess-datasets',

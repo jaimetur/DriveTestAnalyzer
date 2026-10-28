@@ -98,6 +98,7 @@ from src.modules.geospatial import assign_clusters, assign_regions, polygon_vend
 from src.modules.nr_mode import DEFAULT_NR_MODE, NR_MODE_FIELD, NR_MODES, dataset_nr_mode, infer_nr_mode, normalize_nr_mode, nr_mode_label
 from src.modules.report_template_modes import dashboard_nr_mode_value
 from src.modules.cdr_campaign import campaign_of_rows, catalogued_campaigns, dataset_campaign, normalize_campaign
+from src.modules.disk_space import available_disk_space
 from src.modules.cdr_stage import (
     CDR_STAGE_LABELS, CDR_STAGES, IN_COMBINED_LABELS, IN_COMBINED_VALUES, combined_dataset_ids, combined_inclusion,
     dataset_cdr_stage, infer_cdr_stage, normalize_cdr_stage, normalize_in_combined,
@@ -2756,8 +2757,10 @@ def activate_workspace(workspace_id: str, *, initialize: bool = True) -> Workspa
                     repository.try_add_log('system', 'recover_interrupted_saved_filters', json.dumps({
                         'saved_filters': recovered_scoring_ids,
                     }))
-                # The CDRs the Scoring History does not hold yet are indexed in the background.
+                # The CDRs the Scoring History does not hold yet are indexed in the background, and copied to the
+                # columnar store.
                 queue_scoring_history(repository)
+                queue_cdr_store(repository)
                 try:
                     initialized_inode = database_path.stat().st_ino
                 except OSError:
@@ -3947,6 +3950,15 @@ def queue_scoring_history(task_repository: Repository) -> None:
         pass
 
 
+def queue_cdr_store(task_repository: Repository) -> None:
+    """Copy the new or changed CDRs to the columnar store, after the other background work."""
+    from src.modules.cdr_store import queue_store_sync
+    try:
+        queue_store_sync(task_repository, BACKGROUND_TASK_SCHEDULER, APP_SHUTTING_DOWN.is_set)
+    except RuntimeError:  # The scheduler is shutting down.
+        pass
+
+
 # The tests of the CDRs are placed in the Map Areas while the application is idle (after a minute without use and
 # with no background work queued): a processed CDR, or new Map Areas, never delay other work.
 MAP_AREA_FILL_IDLE_SECONDS = 60
@@ -4301,6 +4313,7 @@ def process_dataset(
                 workspace, combined_kind, username, background=True,
             )
             queue_scoring_history(task_repository)
+            queue_cdr_store(task_repository)
         elif workspace:
             queue_workspace_dimension_materialization(workspace)
     finally:
@@ -4463,6 +4476,7 @@ def enqueue_dataset_processing(
                     ):
                         start_combined_cdr_recreation_job(task_workspace, completed_kind, username)
                         queue_scoring_history(task_repository)
+                        queue_cdr_store(task_repository)
                 except Exception as exc:
                     task_repository.update_dataset_profile(
                         dataset_id, status='failed',
@@ -4635,6 +4649,7 @@ def _resume_dataset_in_worker(
             if completed_kind in CDR_DATASET_KINDS:
                 start_combined_cdr_recreation_job(workspace, completed_kind, username)
                 queue_scoring_history(task_repository)
+                queue_cdr_store(task_repository)
     finally:
         _unregister_dataset_processing(dataset_id, task_repository)
 
@@ -7519,28 +7534,6 @@ def ensure_backup_space(backup_root: Path, largest_database: int, database_bytes
     free = available_disk_space(backup_root)
     if needed > free:
         raise BackupSpaceError(needed, free, backup_root)
-
-
-# Asks macOS for the space available for important writes, which counts what it frees on demand.
-MACOS_IMPORTANT_CAPACITY_SCRIPT = (
-    'function run(argv) { ObjC.import("Foundation"); const value = Ref(); '
-    '$.NSURL.fileURLWithPath(argv[0]).getResourceValueForKeyError(value, $.NSURLVolumeAvailableCapacityForImportantUsageKey, null); '
-    'return String(ObjC.unwrap(value[0])); }'
-)
-
-
-def available_disk_space(path: Path) -> int:
-    """The bytes a backup can use in ``path``: on macOS also what the system frees on demand (local Time Machine
-    snapshots, caches), as its storage settings show it; elsewhere what the file system reports free."""
-    free = shutil.disk_usage(path).free
-    if sys.platform == 'darwin':
-        try:
-            result = subprocess.run(['/usr/bin/osascript', '-l', 'JavaScript', '-e', MACOS_IMPORTANT_CAPACITY_SCRIPT, str(path)],
-                                    capture_output=True, text=True, timeout=15, check=True)
-            return max(free, int(float(result.stdout.strip())))
-        except (OSError, ValueError, subprocess.SubprocessError):
-            pass
-    return free
 
 
 def remove_stale_backup_scratch(backup_root: Path) -> list[tuple[str, int]]:
@@ -13360,6 +13353,7 @@ def render_admin_template(
     database_table_groups: dict[str, list[dict[str, Any]]] = {
         'Config Tables': [], 'Workspace Tables': [], 'Individual Datasets': [], 'Combined CDR rows': [],
     }
+    from src.modules.cdr_store import TABLE_TITLES as CDR_STORE_TABLE_TITLES
     from src.modules.non_qualified_calls import NQ_TABLE_TITLES
     from src.modules.scoring_exclusions import TABLE_TITLES as SCORING_EXCLUSION_TABLE_TITLES
 
@@ -13406,6 +13400,7 @@ def render_admin_template(
         'report_task_runs': 'Report Task Runs',
         **NQ_TABLE_TITLES,
         **SCORING_EXCLUSION_TABLE_TITLES,
+        **CDR_STORE_TABLE_TITLES,
     }
     global_database_tables = (set(repository.list_global_database_tables()) - {'report_templates'}) if active_workspace else set()
     for table_name in repository.list_database_tables() if active_workspace else []:
@@ -27910,6 +27905,10 @@ install_non_qualified_calls_routes(sys.modules[__name__])
 # The Scoring History keeps the KPI components of every CDR, indexed when the server is idle.
 from src.modules.scoring_history import install_scoring_history
 install_scoring_history(sys.modules[__name__])
+
+# The columnar copy of the CDRs (a Parquet file per CDR, read with DuckDB), kept up to date in the background.
+from src.modules.cdr_store import install_cdr_store
+install_cdr_store(sys.modules[__name__])
 # The Excluded Calls of Scoring & GAP Analysis: lists of calls left out of every scoring.
 from src.modules.scoring_exclusions import install_scoring_exclusion_routes
 install_scoring_exclusion_routes(sys.modules[__name__])

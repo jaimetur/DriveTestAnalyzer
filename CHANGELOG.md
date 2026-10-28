@@ -8,10 +8,12 @@
 #### ⚠️ Breaking Changes:
 
 #### 🌟 New Features:
+- **Workspace — Columnar copy of the CDRs:** every ready Data, Voice and Speech CDR is copied in the background to a Parquet file (`.cdr-store` beside the workspace database, read with DuckDB), copied again when any of its rows changes (triggers on its table, counted in the CDR Store Versions table) and removed with the CDR; the copy waits for free disk space, shows among the background tasks and in App Events, and `.cdr-store/catalog.duckdb` gives tools such as Tableau one view per CDR type over the CDRs in combined.
 
 #### 🚀 Enhancements:
 
 #### 🐛 Bug fixes:
+- **Developer — Tests:** the tests no longer write into the local installation of the application (its tickets, users and databases): every test process points the application at storage of its own.
 
 #### 📚 Documentation:
 
