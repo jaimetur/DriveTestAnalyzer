@@ -482,7 +482,7 @@ Pictures are kept in the table **Dashboard Design Images**. Text boxes and pictu
 | **user-editor** | The Dashboards they created | The templates they created; **Save as my Dashboard** for a variant of another one |
 | **user-viewer** | — | — |
 
-App Events record `dashboard_design_saved` (what changed: slides and charts of the template, differences of the Dashboard), `report_template_saved_from_designer`, `report_template_design_ids_assigned`, `dashboard_design_detached`, `report_template_saved_from_dashboard`, `dashboard_design_draft_discarded` and `dashboard_design_image_uploaded`.
+App Events record `dashboard_design_saved` (what changed: slides and charts of the template, differences of the Dashboard), `report_template_saved_from_designer`, `report_template_slide_ids_assigned`, `dashboard_design_detached`, `report_template_saved_from_dashboard`, `dashboard_design_draft_discarded` and `dashboard_design_image_uploaded`.
 
 ### Template parameters
 

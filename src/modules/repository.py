@@ -31,7 +31,7 @@ from src.modules.nr_mode import NR_MODE_DATASET_KINDS, NR_MODE_FIELD, dataset_nr
 from src.modules.operator_roles import normalize_mapping_role, normalize_nr_modes
 from src.modules.cdr_stage import CDR_STAGE_KINDS, infer_cdr_stage, normalize_cdr_stage, normalize_in_combined
 from src.modules.module_labels import MAIN_MODULES, MODULE_LABELS_STATE_KEY
-from src.modules.report_layouts import csv_with_design_ids, normalize_catalog_layouts, rename_template_vendor_fields
+from src.modules.report_layouts import csv_with_slide_ids, normalize_catalog_layouts, rename_template_vendor_fields
 from src.modules.runtime_config import ignore_event_time_filtering
 
 
@@ -2600,14 +2600,14 @@ class Repository:
             now = local_now_iso()
             conn.execute(
                 "INSERT INTO report_templates (name, content, is_default, created_at, updated_at, updated_by, created_by, uid) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (name, sqlite3.Binary(csv_with_design_ids(normalize_catalog_layouts(content))), int(is_default), now, now, updated_by or '', updated_by or '', uuid4().hex),
+                (name, sqlite3.Binary(csv_with_slide_ids(normalize_catalog_layouts(content))), int(is_default), now, now, updated_by or '', updated_by or '', uuid4().hex),
             )
 
     def set_report_template_content(self, name: str, content: bytes, *, updated_by: str | None = None) -> None:
         with self.connection() as conn:
             result = conn.execute(
                 "UPDATE report_templates SET content = ?, updated_at = ?, updated_by = COALESCE(?, updated_by) WHERE name = ?",
-                (sqlite3.Binary(csv_with_design_ids(normalize_catalog_layouts(content))), local_now_iso(), updated_by, name),
+                (sqlite3.Binary(csv_with_slide_ids(normalize_catalog_layouts(content))), local_now_iso(), updated_by, name),
             )
             if not result.rowcount:
                 raise ValueError('Report Template was not found.')

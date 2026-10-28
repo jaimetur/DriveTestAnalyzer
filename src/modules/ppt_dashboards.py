@@ -181,8 +181,8 @@ class DashboardDefinition(BaseModel):
     auto_cdrs: bool = False
     # Its Design (dashboard_design): what it changes of its template, by id; its own Design once detached from its
     # template (``template`` then names the template it came from); the values of the template parameters by id.
-    design_overrides: dict[str, Any] = Field(default_factory=dict)
-    design: dict[str, Any] | None = None
+    slide_overrides: dict[str, Any] = Field(default_factory=dict)
+    own_slides: dict[str, Any] | None = None
     parameter_values: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode='before')
@@ -307,8 +307,8 @@ class DashboardDesignPreview(BaseModel):
     # The Dashboard designed: its Design as saved now (detached or not, its overrides) is the start of the preview,
     # whatever it was when the selection was prepared.
     dashboard_id: str = ''
-    template_design: dict[str, Any] | None = None
-    design: dict[str, Any] | None = None
+    template_slide_set: dict[str, Any] | None = None
+    slide_set: dict[str, Any] | None = None
     overrides: dict[str, Any] | None = None
     parameter_values: dict[str, Any] | None = None
 
@@ -316,9 +316,9 @@ class DashboardDesignPreview(BaseModel):
 class DashboardDesignSave(BaseModel):
     """What the Designer saves: the template Design (Template scope, checked against the template it was read from),
     and the Dashboard Design edited in This Dashboard scope (or its own Design once detached)."""
-    template_design: dict[str, Any] | None = None
+    template_slide_set: dict[str, Any] | None = None
     template_updated_at: str = ''
-    design: dict[str, Any] | None = None
+    slide_set: dict[str, Any] | None = None
     overrides: dict[str, Any] | None = None
     # Keep mine: the overrides flagged Template changed keep their value and stop being flagged.
     keep_template_changes: bool = False
@@ -1013,7 +1013,7 @@ def install_dashboard_routes(core):
             runtime_dashboard_definition(raw_definition, task_repository)
         )
         # A Dashboard detached from its template reads its own Design.
-        template_content = (json.dumps(definition.design, sort_keys=True).encode() if definition.design
+        template_content = (json.dumps(definition.own_slides, sort_keys=True).encode() if definition.own_slides
                             else task_repository.report_template_content(definition.template))
         material = {
             'definition': definition.model_dump(mode='json'),
@@ -1283,7 +1283,7 @@ def install_dashboard_routes(core):
                 'created_at TEXT NOT NULL)'
             )
 
-    @app.post('/api/ppt-dashboards/design/images')
+    @app.post('/api/ppt-dashboards/images')
     async def upload_dashboard_design_image(file: UploadFile = File(...), user=Depends(dashboard_editor_user)):
         """Keep a picture for an Image element of a Design (PNG, JPEG or GIF, up to 8 MB)."""
         task_repository = bound_repository()
@@ -1312,9 +1312,9 @@ def install_dashboard_routes(core):
         task_repository.add_log(user.username, 'dashboard_design_image_uploaded', json.dumps({
             'id': image_id, 'name': name, 'type': content_type, 'width': width, 'height': height, 'bytes': len(data),
         }))
-        return {'id': image_id, 'name': name, 'width': width, 'height': height, 'url': f'/api/ppt-dashboards/design/images/{image_id}'}
+        return {'id': image_id, 'name': name, 'width': width, 'height': height, 'url': f'/api/ppt-dashboards/images/{image_id}'}
 
-    @app.get('/api/ppt-dashboards/design/images/{image_id}')
+    @app.get('/api/ppt-dashboards/images/{image_id}')
     def dashboard_design_image(image_id: str, user=Depends(dashboard_user)):
         found = design_image(bound_repository(), image_id)
         if found is None:
@@ -1935,7 +1935,7 @@ def install_dashboard_routes(core):
         if dashboard_ids is None and {slide: dashboard_slide_comment_key(entries) for slide, entries in old_raw.items()} == {
                 slide: dashboard_slide_comment_key(entries) for slide, entries in new_raw.items()}:
             return 0
-        old_design = new_design = None
+        old_slide_set = new_slide_set = None
 
         def slide_id(entries) -> str:
             return str(dashboard_design.row_format(entries[0]).get('slide') or '') if entries else ''
@@ -1949,16 +1949,16 @@ def install_dashboard_routes(core):
                     if dashboard_id not in dashboard_ids:
                         continue
                     old_rows, new_rows = old_entries, new_entries
-                elif str(raw_definition.get('template') or '') != template_name or raw_definition.get('design'):
+                elif str(raw_definition.get('template') or '') != template_name or raw_definition.get('own_slides'):
                     continue
-                elif dashboard_design.has_overrides(raw_definition.get('design_overrides')):
+                elif dashboard_design.has_overrides(raw_definition.get('slide_overrides')):
                     # Its slides are those of the template with its differences.
-                    if old_design is None:
-                        old_design = dashboard_design.design_from_entries(old_entries)
-                        new_design = dashboard_design.design_from_entries(new_entries)
-                    overrides = raw_definition.get('design_overrides')
-                    old_rows = dashboard_design.entries_from_design(dashboard_design.resolve_design(old_design, overrides)[0])
-                    new_rows = dashboard_design.entries_from_design(dashboard_design.resolve_design(new_design, overrides)[0])
+                    if old_slide_set is None:
+                        old_slide_set = dashboard_design.slides_from_entries(old_entries)
+                        new_slide_set = dashboard_design.slides_from_entries(new_entries)
+                    overrides = raw_definition.get('slide_overrides')
+                    old_rows = dashboard_design.entries_from_slides(dashboard_design.resolve_slides(old_slide_set, overrides)[0])
+                    new_rows = dashboard_design.entries_from_slides(dashboard_design.resolve_slides(new_slide_set, overrides)[0])
                 else:
                     old_rows, new_rows = old_entries, new_entries
                 nr_mode = dashboard_nr_mode(raw_definition)
@@ -2169,28 +2169,28 @@ def install_dashboard_routes(core):
             cascading.update(cascading_options(task_repository, resolved or candidates, filters, others))
         return {**options, **cascading}
 
-    def template_design(template_name, task_repository):
+    def template_slide_set(template_name, task_repository):
         """The Design of a template (dashboard_design) and its rows as written, or (None, None) when it is gone."""
         row = next((row for row in task_repository.list_report_templates() if row['name'] == template_name), None)
         if row is None:
             return None, None
         entries = core.load_template_catalogue(bytes(row['content']), task_repository=task_repository)
-        return dashboard_design.design_from_entries(entries), entries
+        return dashboard_design.slides_from_entries(entries), entries
 
     def dashboard_design_state(definition, task_repository, template=None):
         """The Design a Dashboard shows: (template Design or None when detached, resolved Design, report). ``template``:
         the template Design to read instead of the stored one (the Designer previews one being edited)."""
-        if definition.design:
-            design = copy.deepcopy(definition.design)
-            return None, design, {'dropped': [], 'template_changed': []}
+        if definition.own_slides:
+            slide_set = copy.deepcopy(definition.own_slides)
+            return None, slide_set, {'dropped': [], 'template_changed': []}
         if template is None:
             try:
-                template, _entries = template_design(definition.template, task_repository)
+                template, _entries = template_slide_set(definition.template, task_repository)
             except ValueError as exc:
                 raise HTTPException(400, str(exc)) from exc
         if template is None:
             raise HTTPException(400, 'The selected template is no longer available.')
-        resolved, report = dashboard_design.resolve_design(template, definition.design_overrides)
+        resolved, report = dashboard_design.resolve_slides(template, definition.slide_overrides)
         return template, resolved, report
 
     def catalogue(definition, task_repository=None, template=None):
@@ -2198,7 +2198,7 @@ def install_dashboard_routes(core):
         values of its parameters, their titles naming the NR Mode it reads. ``template``: see dashboard_design_state."""
         task_repository = task_repository or core.repository
         nr_mode = dashboard_nr_mode(definition)
-        if template is None and not definition.design and not dashboard_design.has_overrides(definition.design_overrides):
+        if template is None and not definition.own_slides and not dashboard_design.has_overrides(definition.slide_overrides):
             rows = task_repository.list_report_templates()
             row = next((row for row in rows if row['name'] == definition.template), None)
             if row is None:
@@ -2207,7 +2207,7 @@ def install_dashboard_routes(core):
                 entries = core.load_template_catalogue(bytes(row['content']), task_repository=task_repository)
             except ValueError as exc:
                 raise HTTPException(400, str(exc)) from exc
-            parameters = (dashboard_design.design_from_entries(entries)['parameters']
+            parameters = (dashboard_design.slides_from_entries(entries)['parameters']
                           if any('"parameters"' in entry.format for entry in entries) else [])
         else:
             _template, resolved, _report = dashboard_design_state(definition, task_repository, template)
@@ -2215,7 +2215,7 @@ def install_dashboard_routes(core):
             try:
                 # Checked as a template written by hand would be (a slide of the Dashboard included).
                 entries = core.load_template_catalogue(
-                    core.catalogue_csv(dashboard_design.entries_from_design(resolved)), task_repository=task_repository)
+                    core.catalogue_csv(dashboard_design.entries_from_slides(resolved)), task_repository=task_repository)
             except ValueError as exc:
                 raise HTTPException(400, str(exc)) from exc
         entries = dashboard_design.apply_parameters(entries, parameters, definition.parameter_values)
@@ -2522,7 +2522,7 @@ def install_dashboard_routes(core):
         raw_definition = export_definition.model_dump(mode='json') if export_definition is not None else dict(stored_definition)
         # Its Design is the one saved (the Designer saves it), whatever the viewer sends.
         raw_definition.update({key: copy.deepcopy(stored_definition.get(key, default))
-                               for key, default in (('design_overrides', {}), ('design', None))})
+                               for key, default in (('slide_overrides', {}), ('own_slides', None))})
         if dashboard_nr_mode(raw_definition) != dashboard_nr_mode(stored_definition):
             # The comments of a Dashboard were written for the CDRs of its own NR Mode: generated in another one (by a
             # Reporting Job or a Bundle Report Template), its slides go without them, unless auto comments write them.
@@ -3222,7 +3222,7 @@ def install_dashboard_routes(core):
             if not created:
                 # Its Design changes only from the Designer (save_dashboard_design): the filters saved from a viewer
                 # opened before never take it back.
-                for key, default in (('design_overrides', {}), ('design', None)):
+                for key, default in (('slide_overrides', {}), ('own_slides', None)):
                     saved_definition[key] = copy.deepcopy(dashboards[dashboard_id].get(key, default))
             dashboards[dashboard_id] = saved_definition
             task_repository.set_workspace_state(STATE_KEY, json.dumps(dashboards))
@@ -3277,8 +3277,8 @@ def install_dashboard_routes(core):
             if payload.template != previous_template:
                 # What it changed of its template (by the ids of that template), or its own Design once detached,
                 # does not apply to another template: it follows the chosen one as it is.
-                dropped_overrides = dashboard_design.overrides_summary(current.get('design_overrides'))
-                updated['design_overrides'], updated['design'] = {}, None
+                dropped_overrides = dashboard_design.overrides_summary(current.get('slide_overrides'))
+                updated['slide_overrides'], updated['own_slides'] = {}, None
             if nr_mode_changed:
                 # The campaigns of the other NR Mode do not apply: the newest ones of the new NR Mode do.
                 updated.pop('datasets', None)
@@ -3295,8 +3295,8 @@ def install_dashboard_routes(core):
                 'id': dashboard_id, 'name': definition.name,
                 'nr_mode': payload.nr_mode, 'previous_nr_mode': previous_nr_mode,
                 'template': payload.template, 'previous_template': previous_template,
-                **({'dropped_design': dropped_overrides, 'detached_before': bool(current.get('design'))}
-                   if payload.template != previous_template and (any(dropped_overrides.values()) or current.get('design')) else {}),
+                **({'dropped_slide_overrides': dropped_overrides, 'detached_before': bool(current.get('own_slides'))}
+                   if payload.template != previous_template and (any(dropped_overrides.values()) or current.get('own_slides')) else {}),
             }))
         return {'id': dashboard_id, 'definition': saved_definition, 'invalidated': True}
 
@@ -3323,7 +3323,7 @@ def install_dashboard_routes(core):
         return next((row for row in task_repository.list_report_templates() if str(row['name']) == str(template_name)), None)
 
     def can_design_dashboard(user, dashboard_id, task_repository) -> bool:
-        """Admins and super-admins design any Dashboard, a user-editor only those they created, a user-viewer none."""
+        """Admins and super-admins edit the slides of any Dashboard, a user-editor only those they created, a user-viewer none."""
         return user.role in {'user-editor', 'admin', 'super-admin'} and can_delete(
             user, creator_of(task_repository, PPT_DASHBOARDS, dashboard_id))
 
@@ -3332,32 +3332,32 @@ def install_dashboard_routes(core):
         return template_row is not None and user.role in {'user-editor', 'admin', 'super-admin'} and can_delete(
             user, template_row['created_by'])
 
-    def design_refusal(label: str) -> str:
+    def designer_refusal(label: str) -> str:
         return f'Only admins and super-admins, or the user who created it, can change the Design of this {label}.'
 
-    def checked_design(design, label='template') -> dict:
+    def checked_slide_set(slide_set, label='template') -> dict:
         """A Design sent by the Designer, checked as its template CSV would be (the same messages), with its
         parameters completed."""
-        if not isinstance(design, dict) or not isinstance(design.get('slides'), list):
+        if not isinstance(slide_set, dict) or not isinstance(slide_set.get('slides'), list):
             raise HTTPException(400, f'The {label} Design is not valid.')
-        design = dashboard_design.template_design_of(design)
+        slide_set = dashboard_design.template_slides_of(slide_set)
         try:
-            design['parameters'] = dashboard_design.validate_parameters(design.get('parameters') or [])
+            slide_set['parameters'] = dashboard_design.validate_parameters(slide_set.get('parameters') or [])
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
-        if not design['slides']:
+        if not slide_set['slides']:
             raise HTTPException(400, f'The {label} needs at least one slide.')
-        if empty := dashboard_design.slides_without_elements(design):
+        if empty := dashboard_design.slides_without_elements(slide_set):
             raise HTTPException(400, f'Add an element to the slide "{empty[0]}" or delete it.')
-        slide_ids = [slide.get('id') for slide in design['slides']]
-        element_ids = [element.get('id') for slide in design['slides'] for element in slide.get('elements') or []]
+        slide_ids = [slide.get('id') for slide in slide_set['slides']]
+        element_ids = [element.get('id') for slide in slide_set['slides'] for element in slide.get('elements') or []]
         if not all(slide_ids) or len(set(slide_ids)) != len(slide_ids) or not all(element_ids) or len(set(element_ids)) != len(element_ids):
             raise HTTPException(400, f'Each slide and element of the {label} needs an id of its own.')
         try:
-            core.parse_catalog_csv(dashboard_design.design_csv(design))
+            core.parse_catalog_csv(dashboard_design.slides_csv(slide_set))
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
-        return design
+        return slide_set
 
     def template_with_ids(template_name, task_repository, username='system'):
         """The Design of a template, with ids of its own stored first when it has none yet (the positional ones it was
@@ -3366,47 +3366,47 @@ def install_dashboard_routes(core):
         if row is None:
             return None, None
         entries = core.load_template_catalogue(bytes(row['content']), task_repository=task_repository)
-        if entries and not dashboard_design.has_design_ids(entries):
-            content = core.catalogue_csv(dashboard_design.with_design_ids(entries))
+        if entries and not dashboard_design.has_slide_ids(entries):
+            content = core.catalogue_csv(dashboard_design.with_slide_ids(entries))
             task_repository.set_report_template_content(str(row['name']), content)
-            task_repository.add_log(username, 'report_template_design_ids_assigned', json.dumps({
+            task_repository.add_log(username, 'report_template_slide_ids_assigned', json.dumps({
                 'template': str(row['name']), 'rows': len(entries),
             }))
             row = template_row_of(template_name, task_repository)
             entries = core.load_template_catalogue(bytes(row['content']), task_repository=task_repository)
-        return dashboard_design.design_from_entries(entries), row
+        return dashboard_design.slides_from_entries(entries), row
 
-    def design_payload(dashboard_id, definition, task_repository, user, *, template=None, template_row=None,
+    def slide_set_payload(dashboard_id, definition, task_repository, user, *, template=None, template_row=None,
                        report=None, resolved=None):
         """What the Designer reads: the Design shown, its template's Design, overrides, report, rights."""
         if resolved is None:
             template, resolved, report = dashboard_design_state(definition, task_repository, template)
-        template_row = template_row if template_row is not None else (None if definition.design else template_row_of(definition.template, task_repository))
+        template_row = template_row if template_row is not None else (None if definition.own_slides else template_row_of(definition.template, task_repository))
         dashboards = read_dashboards(task_repository)
         using = [
             {'id': key, 'name': str(item.get('name') or ''), 'nr_mode': dashboard_nr_mode(item)}
             for key, item in dashboards.items()
-            if isinstance(item, dict) and not item.get('design') and str(item.get('template') or '') == definition.template
-        ] if not definition.design else []
+            if isinstance(item, dict) and not item.get('own_slides') and str(item.get('template') or '') == definition.template
+        ] if not definition.own_slides else []
         return {
             'dashboard_id': dashboard_id,
             'name': definition.name,
-            'detached': bool(definition.design),
+            'detached': bool(definition.own_slides),
             'template': {
                 'name': definition.template,
-                'design': template,
+                'slide_set': template,
                 'updated_at': str(template_row['updated_at'] or '') if template_row is not None else '',
                 'created_by': str(template_row['created_by'] or '') if template_row is not None else '',
                 'dashboards': sorted(using, key=lambda item: item['name'].casefold()),
             },
-            'overrides': dashboard_design.normalized_overrides(definition.design_overrides),
-            'summary': dashboard_design.overrides_summary(definition.design_overrides),
-            'design': resolved,
+            'overrides': dashboard_design.normalized_overrides(definition.slide_overrides),
+            'summary': dashboard_design.overrides_summary(definition.slide_overrides),
+            'slide_set': resolved,
             'report': report or {'dropped': [], 'template_changed': []},
             'parameter_values': definition.parameter_values,
             'rights': {
                 'dashboard': can_design_dashboard(user, dashboard_id, task_repository),
-                'template': not definition.design and can_design_template(user, template_row),
+                'template': not definition.own_slides and can_design_template(user, template_row),
             },
         }
 
@@ -3426,7 +3426,7 @@ def install_dashboard_routes(core):
             task_repository.set_workspace_state(STATE_KEY, json.dumps(dashboards))
             return dashboards[dashboard_id]
 
-    @app.get('/api/ppt-dashboards/design/layouts')
+    @app.get('/api/ppt-dashboards/slides/layouts')
     def dashboard_design_layouts(user=Depends(dashboard_user)):
         """The layouts of the slide master the Designer offers: the places of each one (fractions of the slide)."""
         deck = Presentation(core.settings.powerpoint_template)
@@ -3446,7 +3446,7 @@ def install_dashboard_routes(core):
             })
         return {'layouts': layouts}
 
-    def design_snapshot(token, user):
+    def designer_snapshot(token, user):
         workspace = workspace_key()
         with lock:
             snapshot = snapshots.get(token)
@@ -3480,12 +3480,12 @@ def install_dashboard_routes(core):
                 types[identity(column)] = 'text' if types.get(identity(column)) == 'text' else kind_of
         return types
 
-    @app.get('/api/ppt-dashboards/design/fields')
+    @app.get('/api/ppt-dashboards/slides/fields')
     def dashboard_design_fields(token: str, user=Depends(dashboard_user)):
         """The fields of each source of the CDRs (Data, Voice, Speech and RF All) the Designer offers for an element:
         their names (``columns_by_source``) and, for the chart builder, their type (number or text) and the section of
         the CDR Field Dictionary they belong to (``fields``)."""
-        snapshot, task_repository = design_snapshot(token, user)
+        snapshot, task_repository = designer_snapshot(token, user)
         try:
             _database_path, _table_name, columns = reporting_source(snapshot, 'all', task_repository)
         except (HTTPException, ValueError):
@@ -3511,11 +3511,11 @@ def install_dashboard_routes(core):
         return {'columns_by_source': columns_by_source, 'fields': fields,
                 'calculated_fields': [dimension.name for dimension in dimensions]}
 
-    @app.get('/api/ppt-dashboards/design/values')
+    @app.get('/api/ppt-dashboards/slides/values')
     def dashboard_design_values(token: str, source: str, field: str, user=Depends(dashboard_user)):
         """The values of a field in the selection of an open Dashboard, with their number of samples (most first): read
         as the rows of a chart are (the same filters, maps and excluded operators)."""
-        snapshot, _task_repository = design_snapshot(token, user)
+        snapshot, _task_repository = designer_snapshot(token, user)
         if str(source).casefold() not in CATALOG_SOURCE_KINDS:
             raise HTTPException(400, 'Unsupported source.')
         entry = CatalogEntry(slide=1, slide_title='Values', slide_subtitle='', layout='Title + 1 rows + 1 columns', chart_title='',
@@ -3537,7 +3537,7 @@ def install_dashboard_routes(core):
         counts = counts[counts.ne('')].value_counts()
         return {'field': field, 'values': [{'value': value, 'count': int(count)} for value, count in counts.head(2000).items()]}
 
-    @app.get('/api/ppt-dashboards/{dashboard_id}/design')
+    @app.get('/api/ppt-dashboards/{dashboard_id}/slides')
     def dashboard_design_read(dashboard_id: str, edit: bool = False, user=Depends(dashboard_user)):
         """The Design of a Dashboard; ``edit`` (entering Design) first stores ids of its own in its template when it has
         none yet, so what a Dashboard changes is kept by ids that do not move."""
@@ -3545,18 +3545,18 @@ def install_dashboard_routes(core):
         task_repository = bound_repository()
         definition = stored_dashboard(dashboard_id, task_repository)
         template, template_row = (None, None)
-        if not definition.design:
+        if not definition.own_slides:
             template_row = template_row_of(definition.template, task_repository)
             if edit and (can_design_dashboard(user, dashboard_id, task_repository) or can_design_template(user, template_row)):
                 template, template_row = template_with_ids(definition.template, task_repository, user.username)
                 ensure_design_drafts(task_repository)
             else:
-                template, _entries = template_design(definition.template, task_repository)
+                template, _entries = template_slide_set(definition.template, task_repository)
             if template is None:
                 raise HTTPException(400, 'The selected template is no longer available.')
-        return design_payload(dashboard_id, definition, task_repository, user, template=template, template_row=template_row)
+        return slide_set_payload(dashboard_id, definition, task_repository, user, template=template, template_row=template_row)
 
-    @app.post('/api/ppt-dashboards/design/preview')
+    @app.post('/api/ppt-dashboards/slides/preview')
     def dashboard_design_preview(request: DashboardDesignPreview, user=Depends(dashboard_editor_user)):
         """Lay out a Design being edited on the selection of an open Dashboard: a new preview (token) whose charts
         are read from the same prepared CDR rows, at once."""
@@ -3570,25 +3570,25 @@ def install_dashboard_routes(core):
         if request.dashboard_id:
             stored = read_dashboards(task_repository).get(request.dashboard_id)
             if isinstance(stored, dict):
-                definition.design = copy.deepcopy(stored.get('design'))
-                definition.design_overrides = copy.deepcopy(stored.get('design_overrides') or {})
+                definition.own_slides = copy.deepcopy(stored.get('own_slides'))
+                definition.slide_overrides = copy.deepcopy(stored.get('slide_overrides') or {})
         template = None
-        if request.template_design is not None and not definition.design:
-            template = checked_design(request.template_design)
-        elif not definition.design:
-            template, _entries = template_design(definition.template, task_repository)
+        if request.template_slide_set is not None and not definition.own_slides:
+            template = checked_slide_set(request.template_slide_set)
+        elif not definition.own_slides:
+            template, _entries = template_slide_set(definition.template, task_repository)
             if template is None:
                 raise HTTPException(400, 'The selected template is no longer available.')
         if request.parameter_values is not None:
             definition.parameter_values = dict(request.parameter_values)
-        if request.design is not None:
-            if definition.design:
-                definition.design = checked_design(request.design, 'Dashboard')
+        if request.slide_set is not None:
+            if definition.own_slides:
+                definition.own_slides = checked_slide_set(request.slide_set, 'Dashboard')
             else:
-                definition.design_overrides = dashboard_design.overrides_between(
-                    template, request.design, request.overrides if request.overrides is not None else definition.design_overrides)
+                definition.slide_overrides = dashboard_design.overrides_between(
+                    template, request.slide_set, request.overrides if request.overrides is not None else definition.slide_overrides)
         elif request.overrides is not None:
-            definition.design_overrides = dashboard_design.normalized_overrides(request.overrides)
+            definition.slide_overrides = dashboard_design.normalized_overrides(request.overrides)
         entries = catalogue(definition, task_repository, template=template)
         deck = Presentation(core.settings.powerpoint_template)
         options = dict(snapshot.options or snapshot.payload.get('options') or {})
@@ -3615,33 +3615,33 @@ def install_dashboard_routes(core):
                 snapshots.popitem(last=False)
         _template, resolved, report = dashboard_design_state(definition, task_repository, template)
         return {
-            **payload, 'token': token, 'design': resolved, 'report': report,
-            'overrides': dashboard_design.normalized_overrides(definition.design_overrides),
-            'summary': dashboard_design.overrides_summary(definition.design_overrides),
+            **payload, 'token': token, 'slide_set': resolved, 'report': report,
+            'overrides': dashboard_design.normalized_overrides(definition.slide_overrides),
+            'summary': dashboard_design.overrides_summary(definition.slide_overrides),
         }
 
-    @app.put('/api/ppt-dashboards/{dashboard_id}/design')
+    @app.put('/api/ppt-dashboards/{dashboard_id}/slides')
     def save_dashboard_design(dashboard_id: str, request: DashboardDesignSave, user=Depends(dashboard_editor_user)):
         """Save the Design of a Dashboard: its template (Template scope) and its own differences (This Dashboard)."""
         workspace_key()
         task_repository = bound_repository()
         definition = stored_dashboard(dashboard_id, task_repository)
-        template_row = None if definition.design else template_row_of(definition.template, task_repository)
+        template_row = None if definition.own_slides else template_row_of(definition.template, task_repository)
         details: dict[str, Any] = {'id': dashboard_id, 'name': definition.name}
         template = None
-        if request.template_design is not None:
-            if definition.design:
+        if request.template_slide_set is not None:
+            if definition.own_slides:
                 raise HTTPException(400, 'This Dashboard is detached from its template.')
             if not can_design_template(user, template_row):
-                raise HTTPException(403, design_refusal('PPT Template'))
+                raise HTTPException(403, designer_refusal('PPT Template'))
             if request.template_updated_at and str(template_row['updated_at'] or '') != request.template_updated_at:
                 raise HTTPException(409, f'The template "{definition.template}" changed since the Designer opened it: '
                                          'reload the Design and apply your changes again.')
-            template = checked_design(request.template_design)
+            template = checked_slide_set(request.template_slide_set)
             previous_content = bytes(template_row['content'] or b'')
-            previous_design = dashboard_design.design_from_entries(
+            previous_slide_set = dashboard_design.slides_from_entries(
                 core.load_template_catalogue(previous_content, task_repository=task_repository))
-            content = dashboard_design.design_csv(template)
+            content = dashboard_design.slides_csv(template)
             try:
                 core.persist_report_template_for_request(definition.template, content, updated_by=user.username)
             except TimeoutError as exc:
@@ -3651,42 +3651,42 @@ def install_dashboard_routes(core):
                                               new_entries, task_repository)
             invalidate_workspace_chart_models(task_repository.db_path)
             details['template'] = {
-                'name': definition.template, 'before': dashboard_design.design_summary(previous_design),
-                'after': dashboard_design.design_summary(template),
+                'name': definition.template, 'before': dashboard_design.slides_summary(previous_slide_set),
+                'after': dashboard_design.slides_summary(template),
                 'dashboards': sum(1 for item in read_dashboards(task_repository).values()
-                                  if isinstance(item, dict) and not item.get('design') and item.get('template') == definition.template),
+                                  if isinstance(item, dict) and not item.get('own_slides') and item.get('template') == definition.template),
             }
             task_repository.add_log(user.username, 'report_template_saved_from_designer', json.dumps(details['template']))
             template_row = template_row_of(definition.template, task_repository)
-        elif not definition.design:
+        elif not definition.own_slides:
             template, template_row = template_with_ids(definition.template, task_repository, user.username)
             if template is None:
                 raise HTTPException(400, 'The selected template is no longer available.')
-        if request.design is not None or request.overrides is not None or request.keep_template_changes:
+        if request.slide_set is not None or request.overrides is not None or request.keep_template_changes:
             if not can_design_dashboard(user, dashboard_id, task_repository):
-                raise HTTPException(403, design_refusal('Dashboard'))
+                raise HTTPException(403, designer_refusal('Dashboard'))
             _base, before, _report = dashboard_design_state(definition, task_repository, template)
-            if definition.design:
-                own = checked_design(request.design, 'Dashboard') if request.design is not None else definition.design
-                definition = DashboardDefinition.model_validate(write_dashboard_design(dashboard_id, task_repository, design=own))
-                details['design'] = dashboard_design.design_summary(own)
+            if definition.own_slides:
+                own = checked_slide_set(request.slide_set, 'Dashboard') if request.slide_set is not None else definition.own_slides
+                definition = DashboardDefinition.model_validate(write_dashboard_design(dashboard_id, task_repository, own_slides=own))
+                details['slides'] = dashboard_design.slides_summary(own)
             else:
-                previous = request.overrides if request.overrides is not None else definition.design_overrides
-                overrides = (dashboard_design.overrides_between(template, request.design, previous) if request.design is not None
+                previous = request.overrides if request.overrides is not None else definition.slide_overrides
+                overrides = (dashboard_design.overrides_between(template, request.slide_set, previous) if request.slide_set is not None
                              else dashboard_design.normalized_overrides(previous))
                 if request.keep_template_changes:
                     overrides = dashboard_design.keep_overrides(overrides, template)
-                candidate = definition.model_copy(update={'design_overrides': overrides}, deep=True)
+                candidate = definition.model_copy(update={'slide_overrides': overrides}, deep=True)
                 # Refused as a template would be (a slide of the Dashboard with a chart that cannot be drawn).
                 catalogue(candidate, task_repository, template=template)
                 stored = overrides if dashboard_design.has_overrides(overrides) else {}
                 definition = DashboardDefinition.model_validate(
-                    write_dashboard_design(dashboard_id, task_repository, design_overrides=stored))
+                    write_dashboard_design(dashboard_id, task_repository, slide_overrides=stored))
                 details['overrides'] = dashboard_design.overrides_summary(stored)
             _base, after, _report = dashboard_design_state(definition, task_repository, template)
             # Its slides retitled here keep their comments.
-            reconcile_template_slide_comments(definition.template, dashboard_design.entries_from_design(before),
-                                              dashboard_design.entries_from_design(after), task_repository,
+            reconcile_template_slide_comments(definition.template, dashboard_design.entries_from_slides(before),
+                                              dashboard_design.entries_from_slides(after), task_repository,
                                               dashboard_ids={dashboard_id})
         if len(details) > 2:
             task_repository.add_log(user.username, 'dashboard_design_saved', json.dumps(details))
@@ -3695,29 +3695,29 @@ def install_dashboard_routes(core):
         with task_repository.connection() as connection:
             connection.execute(f'DELETE FROM {DASHBOARD_DESIGN_DRAFTS_TABLE} WHERE dashboard_id = ? AND username = ?',
                                (dashboard_id, user.username))
-        return design_payload(dashboard_id, definition, task_repository, user, template=template, template_row=template_row)
+        return slide_set_payload(dashboard_id, definition, task_repository, user, template=template, template_row=template_row)
 
-    @app.post('/api/ppt-dashboards/{dashboard_id}/design/detach')
+    @app.post('/api/ppt-dashboards/{dashboard_id}/detach')
     def detach_dashboard_design(dashboard_id: str, user=Depends(dashboard_editor_user)):
         """Detach: the Dashboard keeps the Design it shows as its own and stops following its template."""
         workspace_key()
         task_repository = bound_repository()
         definition = stored_dashboard(dashboard_id, task_repository)
-        if definition.design:
+        if definition.own_slides:
             raise HTTPException(400, 'This Dashboard is already detached from its template.')
         if not can_design_dashboard(user, dashboard_id, task_repository):
-            raise HTTPException(403, design_refusal('Dashboard'))
+            raise HTTPException(403, designer_refusal('Dashboard'))
         _template, resolved, _report = dashboard_design_state(definition, task_repository)
-        own = dashboard_design.template_design_of(resolved)
+        own = dashboard_design.template_slides_of(resolved)
         definition = DashboardDefinition.model_validate(
-            write_dashboard_design(dashboard_id, task_repository, design=own, design_overrides={}))
+            write_dashboard_design(dashboard_id, task_repository, own_slides=own, slide_overrides={}))
         task_repository.add_log(user.username, 'dashboard_design_detached', json.dumps({
             'id': dashboard_id, 'name': definition.name, 'template': definition.template,
-            'design': dashboard_design.design_summary(own),
+            'slides': dashboard_design.slides_summary(own),
         }))
-        return design_payload(dashboard_id, definition, task_repository, user)
+        return slide_set_payload(dashboard_id, definition, task_repository, user)
 
-    @app.post('/api/ppt-dashboards/{dashboard_id}/design/save-as-template')
+    @app.post('/api/ppt-dashboards/{dashboard_id}/save-as-template')
     def save_dashboard_design_as_template(dashboard_id: str, payload: DashboardDesignTemplate,
                                           user=Depends(dashboard_editor_user)):
         """Save as template: the Design the Dashboard shows (its template with its differences) as a new template."""
@@ -3728,11 +3728,11 @@ def install_dashboard_routes(core):
         if any(str(row['name']).casefold() == name.casefold() for row in task_repository.list_report_templates()):
             raise HTTPException(409, 'A PPT Template with this name already exists.')
         _template, resolved, _report = dashboard_design_state(definition, task_repository)
-        design = checked_design(dashboard_design.template_design_of(resolved))
-        task_repository.add_report_template(name, dashboard_design.design_csv(design), updated_by=user.username)
+        slide_set = checked_slide_set(dashboard_design.template_slides_of(resolved))
+        task_repository.add_report_template(name, dashboard_design.slides_csv(slide_set), updated_by=user.username)
         task_repository.add_log(user.username, 'report_template_saved_from_dashboard', json.dumps({
             'dashboard': dashboard_id, 'name': definition.name, 'template': name,
-            'from_template': '' if definition.design else definition.template, 'design': dashboard_design.design_summary(design),
+            'from_template': '' if definition.own_slides else definition.template, 'slides': dashboard_design.slides_summary(slide_set),
         }))
         return {'template': name}
 
@@ -3745,14 +3745,14 @@ def install_dashboard_routes(core):
             dashboards = read_dashboards(task_repository)
             template = None
             for dashboard_id, raw in dashboards.items():
-                if not isinstance(raw, dict) or raw.get('design') or str(raw.get('template') or '') != template_name:
+                if not isinstance(raw, dict) or raw.get('own_slides') or str(raw.get('template') or '') != template_name:
                     continue
                 if template is None:
-                    template, _entries = template_design(template_name, task_repository)
+                    template, _entries = template_slide_set(template_name, task_repository)
                     if template is None:
                         return 0
-                resolved, _report = dashboard_design.resolve_design(template, raw.get('design_overrides'))
-                dashboards[dashboard_id] = {**raw, 'design': dashboard_design.template_design_of(resolved), 'design_overrides': {}}
+                resolved, _report = dashboard_design.resolve_slides(template, raw.get('slide_overrides'))
+                dashboards[dashboard_id] = {**raw, 'own_slides': dashboard_design.template_slides_of(resolved), 'slide_overrides': {}}
                 detached.append(dashboard_id)
             if detached:
                 task_repository.set_workspace_state(STATE_KEY, json.dumps(dashboards))
@@ -3782,9 +3782,9 @@ def install_dashboard_routes(core):
         capacity = len(geometry) if isinstance(geometry, list) and geometry else layout_capacity(slide.get('layout') or '')
         return [place for place in range(capacity) if place not in used]
 
-    @app.get('/api/ppt-dashboards/design/targets')
+    @app.get('/api/ppt-dashboards/targets')
     def dashboard_design_targets(user=Depends(dashboard_editor_user)):
-        """The Dashboards the user can design, with their content slides and how many free places each one has (Add to
+        """The Dashboards whose slides the user can edit, with their content slides and how many free places each one has (Add to
         Dashboard of Chart Builder)."""
         workspace_key()
         task_repository = bound_repository()
@@ -3802,15 +3802,15 @@ def install_dashboard_routes(core):
             result.append({'id': dashboard_id, 'name': str(raw.get('name') or ''), 'nr_mode': dashboard_nr_mode(raw), 'slides': slides})
         return {'dashboards': sorted(result, key=lambda item: item['name'].casefold())}
 
-    @app.post('/api/ppt-dashboards/{dashboard_id}/design/add-chart')
+    @app.post('/api/ppt-dashboards/{dashboard_id}/add-chart')
     def add_chart_to_dashboard(dashboard_id: str, payload: DashboardDesignAddChart, user=Depends(dashboard_editor_user)):
         """Add to Dashboard: the chart becomes part of this Dashboard only (a difference of it from its template)."""
         workspace_key()
         task_repository = bound_repository()
         if not can_design_dashboard(user, dashboard_id, task_repository):
-            raise HTTPException(403, design_refusal('Dashboard'))
+            raise HTTPException(403, designer_refusal('Dashboard'))
         definition = stored_dashboard(dashboard_id, task_repository)
-        template = None if definition.design else template_with_ids(definition.template, task_repository, user.username)[0]
+        template = None if definition.own_slides else template_with_ids(definition.template, task_repository, user.username)[0]
         _base, resolved, _report = dashboard_design_state(definition, task_repository, template)
         element = {field: payload.element.get(field, False if field in {'exclude_null_empty', 'exclude_zero'} else '')
                    for field in dashboard_design.ELEMENT_FIELDS}
@@ -3835,12 +3835,12 @@ def install_dashboard_routes(core):
                 'id': dashboard_design.new_id('s'), 'kind': 'content', 'title': title, 'subtitle': '',
                 'layout': 'Title + 1 rows + 1 columns + comments down', 'optional': False, 'elements': [element],
             })
-        if definition.design:
-            write_dashboard_design(dashboard_id, task_repository, design=checked_design(resolved, 'Dashboard'))
+        if definition.own_slides:
+            write_dashboard_design(dashboard_id, task_repository, own_slides=checked_slide_set(resolved, 'Dashboard'))
         else:
-            overrides = dashboard_design.overrides_between(template, resolved, definition.design_overrides)
-            catalogue(definition.model_copy(update={'design_overrides': overrides}, deep=True), task_repository, template=template)
-            write_dashboard_design(dashboard_id, task_repository, design_overrides=overrides)
+            overrides = dashboard_design.overrides_between(template, resolved, definition.slide_overrides)
+            catalogue(definition.model_copy(update={'slide_overrides': overrides}, deep=True), task_repository, template=template)
+            write_dashboard_design(dashboard_id, task_repository, slide_overrides=overrides)
         task_repository.add_log(user.username, 'dashboard_chart_added', json.dumps({
             'id': dashboard_id, 'name': definition.name, 'slide': title, 'new_slide': not payload.slide_id,
             'chart': element['chart_title'] or element['kpi'], 'chart_type': element['chart_type'], 'source': element['cdr_source'],
@@ -3855,7 +3855,7 @@ def install_dashboard_routes(core):
                 'PRIMARY KEY (dashboard_id, username))'
             )
 
-    @app.get('/api/ppt-dashboards/{dashboard_id}/design/draft')
+    @app.get('/api/ppt-dashboards/{dashboard_id}/slides/draft')
     def dashboard_design_draft(dashboard_id: str, user=Depends(dashboard_editor_user)):
         task_repository = bound_repository()
         ensure_design_drafts(task_repository)
@@ -3872,7 +3872,7 @@ def install_dashboard_routes(core):
             state = None
         return {'draft': state, 'updated_at': str(row['updated_at'])}
 
-    @app.put('/api/ppt-dashboards/{dashboard_id}/design/draft')
+    @app.put('/api/ppt-dashboards/{dashboard_id}/slides/draft')
     def save_dashboard_design_draft(dashboard_id: str, payload: DashboardDesignDraft, user=Depends(dashboard_editor_user)):
         task_repository = bound_repository()
         stored_dashboard(dashboard_id, task_repository)
@@ -3889,7 +3889,7 @@ def install_dashboard_routes(core):
             )
         return {'updated_at': now}
 
-    @app.delete('/api/ppt-dashboards/{dashboard_id}/design/draft')
+    @app.delete('/api/ppt-dashboards/{dashboard_id}/slides/draft')
     def delete_dashboard_design_draft(dashboard_id: str, discarded: bool = False, user=Depends(dashboard_editor_user)):
         """Forget the draft of a Dashboard (saved, or ``discarded`` by the user: logged in App Events)."""
         task_repository = bound_repository()
@@ -5233,7 +5233,7 @@ def install_dashboard_routes(core):
                 'charts': [],
                 'focus_row': editor_index,
                 # The slide of the Design it shows (a dynamic grid shows one slide of the Design in several pages).
-                'design_slide': str(row.get('slide') or ''),
+                'source_slide': str(row.get('slide') or ''),
             })
             if not entry.structural_type:
                 title_label, title_base = chart_title_parts(entry)
@@ -5252,7 +5252,7 @@ def install_dashboard_routes(core):
                     # Read no CDR: the viewer shows the text or the picture (their content), never a chart model.
                     content = dict(row.get('content') or {}) if isinstance(row.get('content'), dict) else {}
                     if kind == 'image' and content.get('image'):
-                        content['url'] = f"/api/ppt-dashboards/design/images/{content['image']}"
+                        content['url'] = f"/api/ppt-dashboards/images/{content['image']}"
                     chart.update(available=False, content=content)
                 elif unread := chart_nr_mode_unread(entry, definition):
                     # A chart of one NR Mode (NR Mode IN (SA)) in a Dashboard that reads the other one.
@@ -5608,8 +5608,8 @@ def install_dashboard_routes(core):
             stored = read_dashboards(bound_repository()).get(dashboard_id)
             if isinstance(stored, dict):
                 definition = definition.model_copy(update={
-                    'design_overrides': copy.deepcopy(stored.get('design_overrides') or {}),
-                    'design': copy.deepcopy(stored.get('design')),
+                    'slide_overrides': copy.deepcopy(stored.get('slide_overrides') or {}),
+                    'own_slides': copy.deepcopy(stored.get('own_slides')),
                 })
         preparation_id = preparation_id or f'dashboard-preparation:{uuid4().hex}'
         workspace = workspace_key()
@@ -7237,7 +7237,7 @@ def install_dashboard_routes(core):
         if template is None:
             raise HTTPException(404, 'The Report Template used by this chart is no longer available.')
         if not can_design_template(user, template):
-            raise HTTPException(403, design_refusal('PPT Template'))
+            raise HTTPException(403, designer_refusal('PPT Template'))
         # The template as written (its titles may name the NR Mode with tokens, which the Dashboard shows resolved).
         try:
             entries = core.load_template_catalogue(bytes(template['content']), task_repository=task_repository)
@@ -7245,9 +7245,9 @@ def install_dashboard_routes(core):
             raise HTTPException(400, str(exc)) from exc
         source_index = _entry.template_index if _entry.template_index is not None else index
         element_id = dashboard_design.row_format(_entry).get('id')
-        if element_id and (snapshot.definition.design or dashboard_design.has_overrides(snapshot.definition.design_overrides)):
+        if element_id and (snapshot.definition.own_slides or dashboard_design.has_overrides(snapshot.definition.slide_overrides)):
             # A Dashboard with a Design of its own: its rows are not those of the template, the ids are.
-            if snapshot.definition.design:
+            if snapshot.definition.own_slides:
                 raise HTTPException(409, 'This Dashboard is detached from its template: change the chart from Design.')
             source_index = next((position for position, entry in enumerate(entries)
                                  if dashboard_design.row_format(entry).get('id') == element_id), None)

@@ -2,7 +2,7 @@
 
    In Design the slides at the left are the slides of the Design (hidden and optional ones included), the elements of the
    slide shown can be chosen, moved between the places of its layout and changed in the panel at the right, and every
-   change is laid out at once by the server on the CDRs the Dashboard already prepared (POST /design/preview). Changes go
+   change is laid out at once by the server on the CDRs the Dashboard already prepared (POST /slides/preview). Changes go
    to the template (Template scope: every Dashboard that follows it) or to this Dashboard only (This Dashboard scope:
    kept as its differences from the template, see dashboard_design.py). Nothing is stored until Save. */
 (() => {
@@ -50,7 +50,7 @@
 
   const state = {
     dashboardId: '', info: null, active: false, layouts: null, fields: null,
-    template: null, design: null, overrides: null, report: null, summary: null, detached: false,
+    template: null, slide_set: null, overrides: null, report: null, summary: null, detached: false,
     rights: {dashboard: false, template: false}, scope: 'dashboard',
     templateDirty: false, dashboardDirty: false, keepTemplateChanges: false,
     history: [], future: [], slide: '', element: '', tab: 'slide',
@@ -65,18 +65,18 @@
   // The Design of the open Dashboard
   // ------------------------------------------------------------------
   const dirty = () => state.templateDirty || state.dashboardDirty || state.keepTemplateChanges;
-  const designSlides = () => state.design?.slides || [];
+  const editedSlides = () => state.slide_set?.slides || [];
   const templateSlides = () => state.template?.slides || [];
-  const findSlide = (design, id) => (design?.slides || []).find(slide => slide.id === id) || null;
-  const findElement = (design, id) => {
-    for (const slide of design?.slides || []) {
+  const findSlide = (slide_set, id) => (slide_set?.slides || []).find(slide => slide.id === id) || null;
+  const findElement = (slide_set, id) => {
+    for (const slide of slide_set?.slides || []) {
       const element = (slide.elements || []).find(item => item.id === id);
       if (element) return {slide, element};
     }
     return null;
   };
-  const shownSlide = () => findSlide(state.design, state.slide);
-  const shownElement = () => findElement(state.design, state.element)?.element || null;
+  const shownSlide = () => findSlide(state.slide_set, state.slide);
+  const shownElement = () => findElement(state.slide_set, state.element)?.element || null;
   const slideKind = slide => slide?.kind || 'content';
   const isTemplateSlide = slide => Boolean(slide) && slide.origin === 'template' && Boolean(findSlide(state.template, slide.id));
   const isLocalElement = element => element?.origin === 'dashboard';
@@ -86,13 +86,13 @@
   const placeOf = (element, index) => (Number.isInteger(element.place) ? element.place : index);
   const visibleElements = slide => (slide?.elements || []).filter(element => !element.hidden);
   const dashboardCount = () => (state.info?.template?.dashboards || []).length;
-  const editableDesign = () => (state.scope === 'template' ? state.template : state.design);
-  const parameters = () => (state.active ? state.template?.parameters || state.design?.parameters : state.info?.design?.parameters) || [];
+  const editableSlideSet = () => (state.scope === 'template' ? state.template : state.slide_set);
+  const parameters = () => (state.active ? state.template?.parameters || state.slide_set?.parameters : state.info?.slide_set?.parameters) || [];
 
-  function loadDesign(info) {
+  function loadSlideSet(info) {
     state.info = info;
-    state.template = info.template?.design || null;
-    state.design = info.design;
+    state.template = info.template?.slide_set || null;
+    state.slide_set = info.slide_set;
     state.overrides = info.overrides;
     state.report = info.report;
     state.summary = info.summary;
@@ -106,13 +106,13 @@
 
   async function loadInfo(id) {
     try {
-      const info = await api(`/${encodeURIComponent(id)}/design`);
+      const info = await api(`/${encodeURIComponent(id)}/slides`);
       if (state.dashboardId !== id || state.active) return;
       state.info = info;
     } catch (_error) {
       if (state.dashboardId === id) state.info = null;
     }
-    syncDesignButton();
+    syncDesignerButton();
     renderParameterValues();
   }
 
@@ -125,14 +125,14 @@
       if (!token) throw new Error('The Dashboard is not prepared yet.');
       setBusy(1);
       try {
-        const result = await api('/design/preview', 'POST', {token, dashboard_id: viewer().state().activeId, ...body});
-        state.design = result.design;
+        const result = await api('/slides/preview', 'POST', {token, dashboard_id: viewer().state().activeId, ...body});
+        state.slide_set = result.slide_set;
         state.overrides = result.overrides;
         state.report = result.report;
         state.summary = result.summary;
-        if (!findSlide(state.design, state.slide)) state.slide = designSlides()[0]?.id || '';
-        if (state.element && !findElement(state.design, state.element)) state.element = '';
-        viewer().showDesign(result, {designSlide: state.slide});
+        if (!findSlide(state.slide_set, state.slide)) state.slide = editedSlides()[0]?.id || '';
+        if (state.element && !findElement(state.slide_set, state.element)) state.element = '';
+        viewer().showSlides(result, {sourceSlide: state.slide});
         state.syncedToken = viewer().state().prepared?.token;
         renderDesigner();
         scheduleDraft();
@@ -143,7 +143,7 @@
     return state.queue;
   }
   const previewBody = () => ({
-    template_design: state.templateDirty ? state.template : undefined,
+    template_slide_set: state.templateDirty ? state.template : undefined,
     overrides: state.overrides,
   });
 
@@ -155,17 +155,17 @@
     const id = viewer().state().activeId;
     draftTimer = setTimeout(() => {
       if (!state.active || !dirty() || viewer().state().activeId !== id) return;
-      api(`/${encodeURIComponent(id)}/design/draft`, 'PUT', {state: {
-        template: state.templateDirty ? state.template : null, design: state.design, overrides: state.overrides,
+      api(`/${encodeURIComponent(id)}/slides/draft`, 'PUT', {state: {
+        template: state.templateDirty ? state.template : null, slide_set: state.slide_set, overrides: state.overrides,
         templateDirty: state.templateDirty, dashboardDirty: state.dashboardDirty, keepTemplateChanges: state.keepTemplateChanges,
         template_updated_at: state.info?.template?.updated_at || '', scope: state.scope, slide: state.slide,
       }}).catch(() => undefined);
     }, 1200);
   }
-  const forgetDraft = (id, discarded) => api(`/${encodeURIComponent(id)}/design/draft${discarded ? '?discarded=1' : ''}`, 'DELETE').catch(() => undefined);
+  const forgetDraft = (id, discarded) => api(`/${encodeURIComponent(id)}/slides/draft${discarded ? '?discarded=1' : ''}`, 'DELETE').catch(() => undefined);
   async function offerDraft(id) {
     let result;
-    try { result = await api(`/${encodeURIComponent(id)}/design/draft`); } catch (_error) { return false; }
+    try { result = await api(`/${encodeURIComponent(id)}/slides/draft`); } catch (_error) { return false; }
     const draft = result?.draft;
     if (!draft) return false;
     const when = result.updated_at ? new Date(result.updated_at).toLocaleString() : 'before';
@@ -176,23 +176,23 @@
     if (choice !== true && choice !== 'confirm') { await forgetDraft(id, true); return false; }
     state.history.push(snapshotState());
     if (draft.templateDirty && draft.template) { state.template = draft.template; state.templateDirty = true; state.info.template.updated_at = draft.template_updated_at || state.info.template.updated_at; }
-    if (draft.design) state.design = draft.design;
+    if (draft.slide_set) state.slide_set = draft.slide_set;
     if (draft.overrides) state.overrides = draft.overrides;
     state.dashboardDirty = Boolean(draft.dashboardDirty);
     state.keepTemplateChanges = Boolean(draft.keepTemplateChanges);
     if (draft.scope && (draft.scope === 'dashboard' ? state.rights.dashboard : state.rights.template && !state.detached)) state.scope = draft.scope;
-    if (draft.slide && findSlide(state.design, draft.slide)) state.slide = draft.slide;
+    if (draft.slide && findSlide(state.slide_set, draft.slide)) state.slide = draft.slide;
     return true;
   }
 
   const snapshotState = () => ({
-    template: clone(state.template), design: clone(state.design), overrides: clone(state.overrides),
+    template: clone(state.template), slide_set: clone(state.slide_set), overrides: clone(state.overrides),
     templateDirty: state.templateDirty, dashboardDirty: state.dashboardDirty, keepTemplateChanges: state.keepTemplateChanges,
     slide: state.slide, element: state.element,
   });
   function restoreState(saved) {
     Object.assign(state, {
-      template: saved.template, design: saved.design, overrides: saved.overrides, templateDirty: saved.templateDirty,
+      template: saved.template, slide_set: saved.slide_set, overrides: saved.overrides, templateDirty: saved.templateDirty,
       dashboardDirty: saved.dashboardDirty, keepTemplateChanges: saved.keepTemplateChanges, slide: saved.slide, element: saved.element,
     });
   }
@@ -203,10 +203,10 @@
     await state.queue.catch(() => undefined);
     const target = scope || state.scope;
     const before = snapshotState();
-    const design = clone(target === 'template' ? state.template : state.design);
-    if (!design || mutate(design, target) === false) return;
-    if (target === 'template') { state.template = design; state.templateDirty = true; }
-    else { state.design = design; state.dashboardDirty = true; }
+    const slide_set = clone(target === 'template' ? state.template : state.slide_set);
+    if (!slide_set || mutate(slide_set, target) === false) return;
+    if (target === 'template') { state.template = slide_set; state.templateDirty = true; }
+    else { state.slide_set = slide_set; state.dashboardDirty = true; }
     state.history.push(before);
     if (state.history.length > 80) state.history.shift();
     state.future = [];
@@ -214,7 +214,7 @@
     if (element !== undefined) state.element = element;
     renderDesigner();
     try {
-      await preview(target === 'template' ? previewBody() : {...previewBody(), design: state.design});
+      await preview(target === 'template' ? previewBody() : {...previewBody(), slide_set: state.slide_set});
     } catch (_error) {
       // Refused (reported by preview): the Design goes back to what it was.
       state.history.pop();
@@ -243,24 +243,24 @@
   // ------------------------------------------------------------------
   // Entering, saving and leaving Design
   // ------------------------------------------------------------------
-  async function enterDesign() {
+  async function enterDesigner() {
     const {activeId, prepared} = viewer().state();
     if (!activeId) return;
     if (!prepared?.token) throw new Error('Wait until the Dashboard is ready, then open Design.');
     setBusy(1);
     try {
       const [info, layouts] = await Promise.all([
-        api(`/${encodeURIComponent(activeId)}/design?edit=1`),
-        state.layouts ? Promise.resolve({layouts: state.layouts}) : api('/design/layouts'),
+        api(`/${encodeURIComponent(activeId)}/slides?edit=1`),
+        state.layouts ? Promise.resolve({layouts: state.layouts}) : api('/slides/layouts'),
       ]);
       state.layouts = layouts.layouts;
-      loadDesign(info);
+      loadSlideSet(info);
     } finally { setBusy(-1); }
     if (!state.rights.dashboard && !state.rights.template) throw new Error('You cannot change the Design of this Dashboard or of its template.');
     state.active = true;
     state.syncedToken = prepared.token;
     thumbnails.clear();
-    state.slide = prepared.slides?.[viewer().state().slideIndex]?.design_slide || designSlides()[0]?.id || '';
+    state.slide = prepared.slides?.[viewer().state().slideIndex]?.source_slide || editedSlides()[0]?.id || '';
     state.element = '';
     state.tab = 'slide';
     $('ds-viewer').classList.add('ds-designing');
@@ -270,17 +270,17 @@
     loadFields(prepared.token);
     const restored = await offerDraft(activeId);
     // Laid out again with the ids of the Design (and the draft restored), so each element on the slide is known.
-    await preview(restored && state.dashboardDirty ? {...previewBody(), design: state.design} : previewBody());
+    await preview(restored && state.dashboardDirty ? {...previewBody(), slide_set: state.slide_set} : previewBody());
     viewer().status('Design: changes are laid out at once and stored when you save them.');
   }
 
   async function loadFields(token) {
-    try { state.fields = await api(`/design/fields?token=${encodeURIComponent(token)}`); }
+    try { state.fields = await api(`/slides/fields?token=${encodeURIComponent(token)}`); }
     catch (_error) { state.fields = null; }
     if (state.active) renderPanel();
   }
 
-  async function saveDesign() {
+  async function saveSlides() {
     await state.queue.catch(() => undefined);
     if (!dirty()) return;
     clearTimeout(draftTimer);
@@ -293,50 +293,50 @@
       if (!await window.showConfirmDialog(message, {title: 'Save template', confirmLabel: 'Save'})) return;
     }
     const body = {};
-    if (state.templateDirty) Object.assign(body, {template_design: state.template, template_updated_at: state.info.template.updated_at});
-    if (state.detached && state.dashboardDirty) body.design = state.design;
+    if (state.templateDirty) Object.assign(body, {template_slide_set: state.template, template_updated_at: state.info.template.updated_at});
+    if (state.detached && state.dashboardDirty) body.slide_set = state.slide_set;
     else if (state.dashboardDirty) body.overrides = state.overrides;
     if (state.keepTemplateChanges) Object.assign(body, {keep_template_changes: true, overrides: state.overrides});
     setBusy(1);
     let info;
-    try { info = await api(`/${encodeURIComponent(id)}/design`, 'PUT', body); } finally { setBusy(-1); }
+    try { info = await api(`/${encodeURIComponent(id)}/slides`, 'PUT', body); } finally { setBusy(-1); }
     const {slide, element} = state;
-    loadDesign(info);
-    state.slide = findSlide(state.design, slide) ? slide : designSlides()[0]?.id || '';
-    state.element = findElement(state.design, element) ? element : '';
-    viewer().storeDesign(id, storedDesignFields(info));
+    loadSlideSet(info);
+    state.slide = findSlide(state.slide_set, slide) ? slide : editedSlides()[0]?.id || '';
+    state.element = findElement(state.slide_set, element) ? element : '';
+    viewer().storeSlides(id, storedSlideFields(info));
     renderDesigner();
     viewer().status('Design saved.');
   }
   const hasOverrides = overrides => Object.entries(overrides || {}).some(([key, value]) => key !== 'version'
     && (Array.isArray(value) ? value.length : value && typeof value === 'object' && Object.keys(value).length));
-  const storedDesignFields = info => ({
-    design_overrides: hasOverrides(info.overrides) ? info.overrides : {},
-    design: info.detached ? info.design : null,
+  const storedSlideFields = info => ({
+    slide_overrides: hasOverrides(info.overrides) ? info.overrides : {},
+    own_slides: info.detached ? info.slide_set : null,
   });
 
-  async function discardDesign({ask = true} = {}) {
+  async function discardSlides({ask = true} = {}) {
     await state.queue.catch(() => undefined);
     if (ask && dirty() && !await window.showConfirmDialog('Discard the changes of the Design that are not saved?', {title: 'Discard changes', confirmLabel: 'Discard', tone: 'danger'})) return false;
     const id = viewer().state().activeId;
     clearTimeout(draftTimer);
     await forgetDraft(id, true);
-    const info = await api(`/${encodeURIComponent(id)}/design?edit=1`);
-    loadDesign(info);
-    if (!findSlide(state.design, state.slide)) state.slide = designSlides()[0]?.id || '';
+    const info = await api(`/${encodeURIComponent(id)}/slides?edit=1`);
+    loadSlideSet(info);
+    if (!findSlide(state.slide_set, state.slide)) state.slide = editedSlides()[0]?.id || '';
     state.element = '';
     await preview(previewBody());
     return true;
   }
 
-  async function exitDesign({force = false} = {}) {
+  async function exitDesigner({force = false} = {}) {
     if (!state.active) return true;
     if (!force && dirty()) {
       const choice = await window.showConfirmDialog('The Design has changes that are not saved.', {
         title: 'Close Design', confirmLabel: 'Save', secondaryLabel: 'Discard', cancelLabel: 'Keep designing',
       });
-      if (choice === 'confirm' || choice === true) await saveDesign();
-      else if (choice === 'secondary') await discardDesign({ask: false});
+      if (choice === 'confirm' || choice === true) await saveSlides();
+      else if (choice === 'secondary') await discardSlides({ask: false});
       else return false;
       if (dirty()) return false;
     }
@@ -358,8 +358,8 @@
   // ------------------------------------------------------------------
   // Slides
   // ------------------------------------------------------------------
-  const newChartElement = (design, place = 0) => {
-    const model = shownElement() || designSlides().flatMap(slide => slide.elements || []).find(element => (element.kind || 'chart') === 'chart');
+  const newChartElement = (slide_set, place = 0) => {
+    const model = shownElement() || editedSlides().flatMap(slide => slide.elements || []).find(element => (element.kind || 'chart') === 'chart');
     const element = model ? clone(model) : {
       kind: 'chart', cdr_source: 'CDR-Data', kpi: 'Mean_Data_Rate', chart_type: 'Average Vertical Bars',
       filters: '', rows_split: 'Operator', columns_split: 'Campaign', legend: '', legend_position: '',
@@ -369,27 +369,27 @@
     for (const mark of ['origin', 'overridden', 'hidden', 'style']) delete element[mark];
     return {...element, id: randomId('e'), kind: 'chart', place, chart_title: 'New chart'};
   };
-  function newSlide(design, kind) {
+  function newSlide(slide_set, kind) {
     const slide = {
       id: randomId('s'), kind, title: kind === 'end' ? '' : (kind === 'content' ? 'New slide' : 'New section'),
       subtitle: '', layout: kind === 'content' ? DEFAULT_LAYOUT : STRUCTURAL_LAYOUTS[kind], optional: false, elements: [],
     };
     if (kind !== 'content') slide.chart_type = STRUCTURAL[kind];
-    else slide.elements.push(newChartElement(design, 0));
+    else slide.elements.push(newChartElement(slide_set, 0));
     return slide;
   }
-  const insertAfter = (design, slideId, slide) => {
-    const index = design.slides.findIndex(item => item.id === slideId);
-    design.slides.splice(index < 0 ? design.slides.length : index + 1, 0, slide);
+  const insertAfter = (slide_set, slideId, slide) => {
+    const index = slide_set.slides.findIndex(item => item.id === slideId);
+    slide_set.slides.splice(index < 0 ? slide_set.slides.length : index + 1, 0, slide);
   };
-  const addSlide = kind => edit(design => {
-    const slide = newSlide(design, kind);
-    insertAfter(design, state.slide, slide);
+  const addSlide = kind => edit(slide_set => {
+    const slide = newSlide(slide_set, kind);
+    insertAfter(slide_set, state.slide, slide);
     state.slide = slide.id;
     state.element = slide.elements[0]?.id || '';
   });
-  const duplicateSlide = slideId => edit(design => {
-    const source = findSlide(design, slideId) || findSlide(state.design, slideId);
+  const duplicateSlide = slideId => edit(slide_set => {
+    const source = findSlide(slide_set, slideId) || findSlide(state.slide_set, slideId);
     if (!source) return false;
     const copy = clone(source);
     for (const mark of ['origin', 'overridden', 'hidden', 'optional_off']) delete copy[mark];
@@ -400,62 +400,62 @@
       delete item.origin; delete item.overridden;
       return item;
     });
-    insertAfter(design, slideId, copy);
+    insertAfter(slide_set, slideId, copy);
     state.slide = copy.id;
   });
   async function deleteSlide(slideId) {
-    const slide = findSlide(editableDesign(), slideId);
+    const slide = findSlide(editableSlideSet(), slideId);
     if (!slide) return;
     if (state.scope === 'template') {
       const others = dashboardCount();
       if (!await window.showConfirmDialog(`Delete the slide “${slide.title || STRUCTURAL[slideKind(slide)] || 'slide'}” from the template?${others > 1 ? ` The ${others} Dashboards of the template lose it.` : ''}`, {title: 'Delete slide', confirmLabel: 'Delete', tone: 'danger'})) return;
     }
-    await edit(design => {
-      const index = design.slides.findIndex(item => item.id === slideId);
-      if (index < 0 || design.slides.filter(item => !item.hidden && !item.optional_off).length <= 1) {
+    await edit(slide_set => {
+      const index = slide_set.slides.findIndex(item => item.id === slideId);
+      if (index < 0 || slide_set.slides.filter(item => !item.hidden && !item.optional_off).length <= 1) {
         report(new Error('A Dashboard needs at least one slide.'));
         return false;
       }
-      design.slides.splice(index, 1);
-      state.slide = (design.slides[index] || design.slides[index - 1])?.id || '';
+      slide_set.slides.splice(index, 1);
+      state.slide = (slide_set.slides[index] || slide_set.slides[index - 1])?.id || '';
       state.element = '';
     });
   }
-  const setSlideHidden = (slideId, hidden) => edit(design => {
-    const slide = findSlide(design, slideId);
+  const setSlideHidden = (slideId, hidden) => edit(slide_set => {
+    const slide = findSlide(slide_set, slideId);
     if (!slide) return false;
     if (hidden) slide.hidden = true; else delete slide.hidden;
   }, {scope: 'dashboard'});
-  const setOptionalShown = (slideId, shown) => edit(design => {
-    const slide = findSlide(design, slideId);
+  const setOptionalShown = (slideId, shown) => edit(slide_set => {
+    const slide = findSlide(slide_set, slideId);
     if (!slide) return false;
     if (shown) delete slide.optional_off; else slide.optional_off = true;
   }, {scope: 'dashboard'});
-  const setOptional = (slideId, optional) => edit(design => {
-    const slide = findSlide(design, slideId);
+  const setOptional = (slideId, optional) => edit(slide_set => {
+    const slide = findSlide(slide_set, slideId);
     if (!slide) return false;
     slide.optional = optional;
   }, {scope: 'template'});
-  const moveSlide = (slideId, targetId, after) => edit(design => {
-    const index = design.slides.findIndex(item => item.id === slideId);
+  const moveSlide = (slideId, targetId, after) => edit(slide_set => {
+    const index = slide_set.slides.findIndex(item => item.id === slideId);
     if (index < 0 || slideId === targetId) return false;
-    const [slide] = design.slides.splice(index, 1);
-    const target = design.slides.findIndex(item => item.id === targetId);
-    design.slides.splice(target < 0 ? design.slides.length : target + (after ? 1 : 0), 0, slide);
+    const [slide] = slide_set.slides.splice(index, 1);
+    const target = slide_set.slides.findIndex(item => item.id === targetId);
+    slide_set.slides.splice(target < 0 ? slide_set.slides.length : target + (after ? 1 : 0), 0, slide);
   });
   const canMoveSlide = slide => state.scope === 'template' ? true : !isTemplateSlide(slide) || state.detached;
 
   // Reset to template: the slide (or element) as the template has it; Apply to template: the template takes it.
-  const resetSlide = slideId => edit(design => {
+  const resetSlide = slideId => edit(slide_set => {
     const original = findSlide(state.template, slideId);
-    const index = design.slides.findIndex(item => item.id === slideId);
+    const index = slide_set.slides.findIndex(item => item.id === slideId);
     if (!original || index < 0) return false;
-    const local = (design.slides[index].elements || []).filter(isLocalElement);
-    design.slides[index] = {...clone(original), elements: [...clone(original.elements || []), ...local]};
+    const local = (slide_set.slides[index].elements || []).filter(isLocalElement);
+    slide_set.slides[index] = {...clone(original), elements: [...clone(original.elements || []), ...local]};
   }, {scope: 'dashboard'});
-  const resetElement = elementId => edit(design => {
+  const resetElement = elementId => edit(slide_set => {
     const original = findElement(state.template, elementId)?.element;
-    const found = findElement(design, elementId);
+    const found = findElement(slide_set, elementId);
     if (!original || !found) return false;
     found.slide.elements[found.slide.elements.indexOf(found.element)] = clone(original);
   }, {scope: 'dashboard'});
@@ -468,20 +468,20 @@
     const template = clone(state.template);
     const clean = item => { const copy = clone(item); for (const mark of ['origin', 'overridden', 'hidden', 'optional_off']) delete copy[mark]; return copy; };
     if (slideId) {
-      const shown = findSlide(state.design, slideId);
+      const shown = findSlide(state.slide_set, slideId);
       if (!shown) return;
       const cleaned = {...clean(shown), elements: (shown.elements || []).filter(element => !element.hidden).map(clean)};
       const index = template.slides.findIndex(item => item.id === slideId);
       if (index >= 0) template.slides[index] = {...cleaned, optional: template.slides[index].optional};
       else {
         // A slide of this Dashboard: after the slide before it, as here.
-        const order = designSlides().map(item => item.id);
+        const order = editedSlides().map(item => item.id);
         const previous = order.slice(0, order.indexOf(slideId)).reverse().find(id => template.slides.some(item => item.id === id));
         const at = previous ? template.slides.findIndex(item => item.id === previous) + 1 : 0;
         template.slides.splice(at, 0, cleaned);
       }
     } else if (elementId) {
-      const found = findElement(state.design, elementId);
+      const found = findElement(state.slide_set, elementId);
       const target = found && findSlide(template, found.slide.id);
       if (!target) return;
       const index = (target.elements || []).findIndex(item => item.id === elementId);
@@ -494,7 +494,7 @@
     state.template = template;
     state.templateDirty = true;
     state.dashboardDirty = true;
-    await preview({...previewBody(), design: state.design});
+    await preview({...previewBody(), slide_set: state.slide_set});
   }
 
   // ------------------------------------------------------------------
@@ -502,8 +502,8 @@
   // ------------------------------------------------------------------
   const elementLabel = element => element?.chart_title || ({text: 'Text box', image: 'Image', kpi: 'KPI card'}[element?.kind]) || element?.kpi || 'Chart';
   function setElementValues(elementId, values) {
-    return edit(design => {
-      const found = findElement(design, elementId);
+    return edit(slide_set => {
+      const found = findElement(slide_set, elementId);
       if (!found) {
         report(new Error('This element is only in this Dashboard: change it in This Dashboard scope, or apply it to the template first.'));
         return false;
@@ -512,8 +512,8 @@
     });
   }
   // A new element of a kind: a chart (like the one chosen), a KPI card, a text box or a picture.
-  function newElement(design, place, kind) {
-    const chart = newChartElement(design, place);
+  function newElement(slide_set, place, kind) {
+    const chart = newChartElement(slide_set, place);
     const blank = {cdr_source: '', kpi: '', filters: '', rows_split: '', columns_split: '', legend: '', legend_position: '', legend_format: '',
       label_position: '', label_format: '', axis_x_range: '', axis_y_range: '', exclude_null_empty: false, exclude_zero: false,
       dynamic_rows_field: '', dynamic_columns_field: ''};
@@ -525,17 +525,17 @@
     if (kind === 'image') return {...blank, id: chart.id, kind: 'image', place, chart_type: 'Image', chart_title: '', content: {image: '', fit: 'contain'}};
     return chart;
   }
-  const addElement = (slideId, place, kind = 'chart') => edit(design => {
-    const slide = findSlide(design, slideId);
+  const addElement = (slideId, place, kind = 'chart') => edit(slide_set => {
+    const slide = findSlide(slide_set, slideId);
     if (!slide) return false;
-    const element = newElement(design, place, kind);
+    const element = newElement(slide_set, place, kind);
     slide.elements = [...(slide.elements || []), element];
     state.element = element.id;
     state.tab = 'element';
   });
   async function deleteElement(elementId) {
-    await edit(design => {
-      const found = findElement(design, elementId);
+    await edit(slide_set => {
+      const found = findElement(slide_set, elementId);
       if (!found) return false;
       if (visibleElements(found.slide).length <= 1) {
         report(new Error('A slide keeps at least one element: delete the slide instead.'));
@@ -546,8 +546,8 @@
       state.element = '';
     });
   }
-  const duplicateElement = elementId => edit(design => {
-    const found = findElement(design, elementId);
+  const duplicateElement = elementId => edit(slide_set => {
+    const found = findElement(slide_set, elementId);
     if (!found) return false;
     const free = freePlaces(found.slide);
     if (!free.length) {
@@ -559,8 +559,8 @@
     found.slide.elements.push(copy);
     state.element = copy.id;
   });
-  const pasteElement = (slideId, place) => edit(design => {
-    const slide = findSlide(design, slideId);
+  const pasteElement = (slideId, place) => edit(slide_set => {
+    const slide = findSlide(slide_set, slideId);
     if (!slide || !state.clipboard) return false;
     const copy = {...clone(state.clipboard), id: randomId('e'), place};
     slide.elements = [...(slide.elements || []), copy];
@@ -572,8 +572,8 @@
     return [...Array(capacity).keys()].filter(place => !used.has(place));
   }
   // An element dropped on another place of its slide: on a free place it moves there, on another element they swap.
-  const moveElement = (elementId, place) => edit(design => {
-    const found = findElement(design, elementId);
+  const moveElement = (elementId, place) => edit(slide_set => {
+    const found = findElement(slide_set, elementId);
     if (!found) return false;
     const elements = visibleElements(found.slide);
     const from = placeOf(found.element, elements.indexOf(found.element));
@@ -585,7 +585,7 @@
   });
 
   async function setLayout(slideId, name) {
-    const slide = findSlide(editableDesign(), slideId);
+    const slide = findSlide(editableSlideSet(), slideId);
     if (!slide || slide.layout === name) return;
     const capacity = layoutOf(name)?.places?.length || 0;
     const elements = visibleElements(slide);
@@ -593,8 +593,8 @@
       const extra = elements.length - capacity;
       if (!await window.showConfirmDialog(`The layout ${name} has ${capacity} place${capacity === 1 ? '' : 's'}: the last ${extra} element${extra === 1 ? '' : 's'} of the slide will be removed.`, {title: 'Change layout', confirmLabel: 'Change layout', tone: 'danger'})) return;
     }
-    await edit(design => {
-      const target = findSlide(design, slideId);
+    await edit(slide_set => {
+      const target = findSlide(slide_set, slideId);
       if (!target) return false;
       target.layout = name;
       // The places adjusted on the layout of before do not apply to another one.
@@ -665,10 +665,10 @@
       h('div', {class: 'ds-design-bar-group ds-design-bar-end'},
         h('span', {class: 'ds-design-busy', id: 'ds-design-busy', hidden: state.busy === 0, text: 'Laying out…'}),
         dirty() ? h('span', {class: 'ds-design-pill ds-design-pill-unsaved', text: state.templateDirty ? 'Unsaved template' : 'Unsaved'}) : null,
-        h('button', {type: 'button', class: 'ds-design-action ds-design-primary', disabled: !dirty(), onclick: guarded(saveDesign)}, 'Save'),
-        h('button', {type: 'button', class: 'ds-design-action', disabled: !dirty(), onclick: guarded(() => discardDesign())}, 'Discard'),
+        h('button', {type: 'button', class: 'ds-design-action ds-design-primary', disabled: !dirty(), onclick: guarded(saveSlides)}, 'Save'),
+        h('button', {type: 'button', class: 'ds-design-action', disabled: !dirty(), onclick: guarded(() => discardSlides())}, 'Discard'),
         h('button', {type: 'button', class: 'ds-design-action', 'aria-haspopup': 'menu', onclick: event => openMenu(event.currentTarget, moreActions())}, 'More ▾'),
-        h('button', {type: 'button', class: 'ds-design-action', onclick: guarded(() => exitDesign())}, 'Close Design')),
+        h('button', {type: 'button', class: 'ds-design-action', onclick: guarded(() => exitDesigner())}, 'Close Design')),
     );
   }
   const moreActions = () => [
@@ -707,12 +707,12 @@
     drawThumbnail(entry.target);
   }), {rootMargin: '240px 0px'}) : null;
   function thumbnailKey(slide) {
-    const {slides, ...around} = state.design || {};
-    const position = designSlides().findIndex(item => item.id === slide.id);
+    const {slides, ...around} = state.slide_set || {};
+    const position = editedSlides().findIndex(item => item.id === slide.id);
     return JSON.stringify([slide, position, around, state.overrides?.filters || null, state.generation]);
   }
   function drawThumbnail(frame) {
-    const slide = findSlide(state.design, frame.dataset.slideId);
+    const slide = findSlide(state.slide_set, frame.dataset.slideId);
     if (!slide || !frame.isConnected) return;
     if (!viewer().drawThumbnail?.(frame, slide.id)) { frame.replaceChildren(); slideBoxes(frame, slide); return; }
     slideBoxes(frame, slide, false);
@@ -748,7 +748,7 @@
     const nav = $('ds-slide-thumbnails');
     if (!nav) return;
     let number = 0;
-    const items = designSlides().map(slide => {
+    const items = editedSlides().map(slide => {
       const shown = !slide.hidden && !slide.optional_off;
       if (shown) number += 1;
       const movable = canMoveSlide(slide);
@@ -819,8 +819,8 @@
     state.slide = slideId;
     state.element = '';
     state.tab = 'slide';
-    const index = (viewer().state().prepared?.slides || []).findIndex(slide => slide.design_slide === slideId);
-    if (index >= 0 && !(findSlide(state.design, slideId)?.hidden || findSlide(state.design, slideId)?.optional_off)) viewer().goToSlide(index);
+    const index = (viewer().state().prepared?.slides || []).findIndex(slide => slide.source_slide === slideId);
+    if (index >= 0 && !(findSlide(state.slide_set, slideId)?.hidden || findSlide(state.slide_set, slideId)?.optional_off)) viewer().goToSlide(index);
     else showLeftOutSlide();
     renderDesigner();
   }
@@ -845,9 +845,9 @@
     const stage = $('ds-charts');
     const rendered = viewer().state().prepared?.slides?.[viewer().state().slideIndex];
     if (!stage || !rendered) return;
-    if (rendered.design_slide && rendered.design_slide !== state.slide) {
-      const slide = findSlide(state.design, rendered.design_slide);
-      if (slide && !slide.hidden && !slide.optional_off) state.slide = rendered.design_slide;
+    if (rendered.source_slide && rendered.source_slide !== state.slide) {
+      const slide = findSlide(state.slide_set, rendered.source_slide);
+      if (slide && !slide.hidden && !slide.optional_off) state.slide = rendered.source_slide;
     }
     const slide = shownSlide();
     if (slide && (slide.hidden || slide.optional_off)) return;
@@ -858,7 +858,7 @@
       if (!id) return;
       if (dynamic.has(id)) card.dataset.repeated = 'true';
       dynamic.add(id);
-      const found = findElement(state.design, id);
+      const found = findElement(state.slide_set, id);
       card.classList.add('ds-design-card');
       card.classList.toggle('is-selected', id === state.element);
       if (!card.dataset.repeated && !card.querySelector('.ds-design-drag')) {
@@ -906,7 +906,7 @@
           card.classList.remove('is-drop-target');
           if (!state.active || !state.dragElement) return;
           event.preventDefault();
-          const target = findElement(state.design, card.dataset.elementId);
+          const target = findElement(state.slide_set, card.dataset.elementId);
           if (!target) return;
           const index = visibleElements(target.slide).indexOf(target.element);
           guarded(() => moveElement(state.dragElement, placeOf(target.element, index)))();
@@ -944,7 +944,7 @@
     }
   }
   function selectElement(elementId) {
-    if (!findElement(state.design, elementId)) return;
+    if (!findElement(state.slide_set, elementId)) return;
     state.element = elementId;
     state.tab = 'element';
     state.folded = false;
@@ -952,7 +952,7 @@
     $('ds-charts')?.querySelectorAll('.ds-chart').forEach(card => card.classList.toggle('is-selected', card.dataset.elementId === elementId));
   }
   function elementActions(elementId) {
-    const found = findElement(state.design, elementId);
+    const found = findElement(state.slide_set, elementId);
     if (!found) return [];
     const template = state.scope === 'template';
     const actions = [
@@ -1052,8 +1052,8 @@
   function slideForm(slide) {
     const kind = slideKind(slide);
     const editable = state.scope === 'dashboard' || Boolean(findSlide(state.template, slide.id));
-    const setSlide = values => edit(design => {
-      const target = findSlide(design, slide.id);
+    const setSlide = values => edit(slide_set => {
+      const target = findSlide(slide_set, slide.id);
       if (!target) { report(new Error('This slide is only in this Dashboard: change it in This Dashboard scope.')); return false; }
       Object.assign(target, values);
     });
@@ -1094,7 +1094,7 @@
     const token = viewer().state().prepared?.token;
     const key = `${token}|${source}|${field}`;
     if (!fieldValueReads.has(key)) {
-      fieldValueReads.set(key, api(`/design/values?token=${encodeURIComponent(token)}&source=${encodeURIComponent(source)}&field=${encodeURIComponent(field)}`)
+      fieldValueReads.set(key, api(`/slides/values?token=${encodeURIComponent(token)}&source=${encodeURIComponent(source)}&field=${encodeURIComponent(field)}`)
         .then(result => result.values || []).catch(() => []));
     }
     return fieldValueReads.get(key);
@@ -1131,7 +1131,7 @@
     return prune(style) || {};
   };
   function setStyle(elementId, change) {
-    const current = findElement(editableDesign(), elementId)?.element;
+    const current = findElement(editableSlideSet(), elementId)?.element;
     if (!current) { report(new Error('This element is only in this Dashboard: change it in This Dashboard scope, or apply it to the template first.')); return undefined; }
     const style = styleOf(current);
     change(style);
@@ -1143,7 +1143,7 @@
   });
   function openSeriesFormat(anchor, elementId, name, event) {
     closeMenus();
-    const element = findElement(editableDesign(), elementId)?.element;
+    const element = findElement(editableSlideSet(), elementId)?.element;
     const current = styleOf(element).series?.[name] || {};
     const original = legendItems(elementId).find(item => item.label === name)?.colour || '#4B2C82';
     const colour = h('input', {type: 'color', value: /^#[0-9a-f]{6}$/i.test(current.colour || '') ? current.colour : (/^#[0-9a-f]{6}$/i.test(original) ? original : '#4B2C82'), 'aria-label': `Colour of ${name}`,
@@ -1210,7 +1210,7 @@
   // chart on that field, NOT IN), Show all puts them back.
   function openAxisValues(anchor, elementId, axis, event) {
     closeMenus();
-    const element = findElement(editableDesign(), elementId)?.element;
+    const element = findElement(editableSlideSet(), elementId)?.element;
     const field = axis.dimension;
     if (!element || !field) return;
     const pattern = new RegExp(`^${field.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s+NOT\\s+IN\\s*\\((.*)\\)$`, 'i');
@@ -1347,13 +1347,13 @@
       if (!file) return;
       const body = new FormData();
       body.append('file', file);
-      const response = await fetch('/api/ppt-dashboards/design/images', {method: 'POST', body, credentials: 'same-origin'});
+      const response = await fetch('/api/ppt-dashboards/images', {method: 'POST', body, credentials: 'same-origin'});
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(typeof result.detail === 'string' ? result.detail : 'The picture could not be kept.');
       await setElementValues(element.id, {content: {...content, image: result.id, name: result.name}});
     })});
     return [
-      content.image ? h('img', {class: 'ds-design-image-preview', src: `/api/ppt-dashboards/design/images/${content.image}`, alt: content.name || 'Picture'}) : null,
+      content.image ? h('img', {class: 'ds-design-image-preview', src: `/api/ppt-dashboards/images/${content.image}`, alt: content.name || 'Picture'}) : null,
       field(content.image ? 'Change the picture' : 'Picture', input, 'PNG, JPEG or GIF, up to 8 MB (an SVG can be saved as PNG first). It keeps its ratio in its place.'),
       field('Fit', selectInput([['contain', 'Whole picture'], ['cover', 'Fill the place']], content.fit || 'contain', value => guarded(() => setElementValues(element.id, {content: {...content, fit: value}}))())),
     ];
@@ -1434,8 +1434,8 @@
       done = true;
       const value = input.value;
       heading.replaceChildren(...shown);
-      if (keep && value !== (source[key] || '')) guarded(() => edit(design => {
-        const target = findSlide(design, slide.id);
+      if (keep && value !== (source[key] || '')) guarded(() => edit(slide_set => {
+        const target = findSlide(slide_set, slide.id);
         if (!target) return false;
         target[key] = value;
       }))();
@@ -1454,7 +1454,7 @@
   // keeps its place (the place it is merged into, else a free one); an element left without a place is removed after
   // asking, as with a smaller layout.
   function adjustPlaces(slideId) {
-    const slide = findSlide(editableDesign(), slideId);
+    const slide = findSlide(editableSlideSet(), slideId);
     const grid = layoutOf(slide?.layout)?.grid;
     if (!slide || !grid) return;
     window.DashboardLayoutEditor.open({
@@ -1470,8 +1470,8 @@
         const homeless = visible.filter((_element, index) => moved[index] < 0 || moved[index] >= capacity).length;
         const free = capacity - new Set(moved.filter(place => place >= 0 && place < capacity)).size;
         if (homeless > free && !await window.showConfirmDialog(`The places now hold ${capacity} element${capacity === 1 ? '' : 's'}: ${homeless - free} element${homeless - free === 1 ? '' : 's'} of the slide will be removed.`, {title: 'Adjust places', confirmLabel: 'Apply', tone: 'danger'})) return;
-        await edit(design => {
-          const target = findSlide(design, slideId);
+        await edit(slide_set => {
+          const target = findSlide(slide_set, slideId);
           if (!target) return false;
           target.options = {...(target.options || {})};
           if (result) { target.options.grid = result.grid; target.options.geometry = result.geometry; }
@@ -1604,8 +1604,8 @@
     const body = h('div', {class: 'ds-design-differences'});
     const refresh = () => {
       const rows = [];
-      const slideName = id => findSlide(state.design, id)?.title || findSlide(state.template, id)?.title || id;
-      const elementName = id => elementLabel(findElement(state.design, id)?.element || findElement(state.template, id)?.element) || id;
+      const slideName = id => findSlide(state.slide_set, id)?.title || findSlide(state.template, id)?.title || id;
+      const elementName = id => elementLabel(findElement(state.slide_set, id)?.element || findElement(state.template, id)?.element) || id;
       const changed = state.report?.template_changed || [];
       if (changed.length) {
         rows.push(h('h3', {text: 'Changed in the template since'}));
@@ -1643,23 +1643,23 @@
     refresh();
     openDialog('Differences', `${state.info?.name || 'Dashboard'} · template ${state.info?.template?.name || ''}`, body, {wide: true});
   }
-  const resetSlideProperty = (slideId, name) => edit(design => {
-    const slide = findSlide(design, slideId), original = findSlide(state.template, slideId);
+  const resetSlideProperty = (slideId, name) => edit(slide_set => {
+    const slide = findSlide(slide_set, slideId), original = findSlide(state.template, slideId);
     if (!slide || !original) return false;
     slide[name] = clone(original[name]);
   }, {scope: 'dashboard'});
-  const resetElementProperty = (elementId, name) => edit(design => {
-    const found = findElement(design, elementId), original = findElement(state.template, elementId)?.element;
+  const resetElementProperty = (elementId, name) => edit(slide_set => {
+    const found = findElement(slide_set, elementId), original = findElement(state.template, elementId)?.element;
     if (!found || !original) return false;
     found.element[name] = clone(original[name]);
   }, {scope: 'dashboard'});
-  const deleteSlideHere = slideId => edit(design => {
-    const index = design.slides.findIndex(item => item.id === slideId);
+  const deleteSlideHere = slideId => edit(slide_set => {
+    const index = slide_set.slides.findIndex(item => item.id === slideId);
     if (index < 0) return false;
-    design.slides.splice(index, 1);
+    slide_set.slides.splice(index, 1);
   }, {scope: 'dashboard'});
-  const deleteElementHere = elementId => edit(design => {
-    const found = findElement(design, elementId);
+  const deleteElementHere = elementId => edit(slide_set => {
+    const found = findElement(slide_set, elementId);
     if (!found) return false;
     found.slide.elements.splice(found.slide.elements.indexOf(found.element), 1);
   }, {scope: 'dashboard'});
@@ -1667,18 +1667,18 @@
   function openParametersDialog() {
     const editable = state.detached ? state.rights.dashboard : state.rights.template;
     const scope = state.detached ? 'dashboard' : 'template';
-    const design = () => (state.detached ? state.design : state.template);
+    const slide_set = () => (state.detached ? state.slide_set : state.template);
     const body = h('div', {class: 'ds-design-parameters'});
     const uses = name => {
       const pattern = new RegExp(`\\{\\s*${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\}`, 'i');
-      return (design()?.slides || []).flatMap(slide => [
+      return (slide_set()?.slides || []).flatMap(slide => [
         ...['title', 'subtitle'].filter(key => pattern.test(slide[key] || '')).map(key => `${slide.title || 'Slide'} · ${key}`),
         ...(slide.elements || []).flatMap(element => Object.entries(element).filter(([, value]) => typeof value === 'string' && pattern.test(value)).map(([key]) => `${elementLabel(element)} · ${key.replaceAll('_', ' ')}`)),
       ]);
     };
     const save = list => edit(target => { target.parameters = list; }, {scope});
     const refresh = () => {
-      const list = clone(design()?.parameters || []);
+      const list = clone(slide_set()?.parameters || []);
       const rows = list.map((parameter, index) => {
         const update = values => { list[index] = {...list[index], ...values}; };
         const commit = guarded(async () => { await save(list); refresh(); });
@@ -1740,7 +1740,7 @@
     const id = viewer().state().activeId;
     const name = await window.showTextInputDialog('Name of the new template', {title: 'Save as template', value: `${state.info?.name || 'Dashboard'} template`.slice(0, 120), maxLength: 120, confirmLabel: 'Save'});
     if (!name || !String(name).trim()) return;
-    const result = await api(`/${encodeURIComponent(id)}/design/save-as-template`, 'POST', {name: String(name).trim()});
+    const result = await api(`/${encodeURIComponent(id)}/save-as-template`, 'POST', {name: String(name).trim()});
     viewer().status(`Saved the template “${result.template}”: new Dashboards can use it.`);
   }
   async function saveAsMyDashboard() {
@@ -1750,12 +1750,12 @@
     if (!name || !String(name).trim()) return;
     const id = globalThis.crypto?.randomUUID?.() || randomId('dashboard-');
     const definition = {...clone(dashboard), name: String(name).trim(), slide_comments: {}, slide_comment_meta: {},
-      design_overrides: state.detached ? {} : (hasOverrides(state.overrides) ? state.overrides : {}), design: state.detached ? state.design : null};
+      slide_overrides: state.detached ? {} : (hasOverrides(state.overrides) ? state.overrides : {}), own_slides: state.detached ? state.slide_set : null};
     delete definition.datasets;
     await api(`/${encodeURIComponent(id)}`, 'PUT', definition);
     // This Dashboard keeps what it had saved; the new one, with the changes shown, opens.
-    await exitDesign({force: true});
-    syncDesignButton();
+    await exitDesigner({force: true});
+    syncDesignerButton();
     await viewer().reloadLibrary();
     await viewer().openDashboard(id);
     viewer().status(`Saved “${definition.name}”: your own Dashboard, following the same template with these changes.`);
@@ -1763,9 +1763,9 @@
   async function detachDashboard() {
     const id = viewer().state().activeId;
     if (!await window.showConfirmDialog(`Detach this Dashboard from the template “${state.info?.template?.name}”? It keeps the Design it shows as its own and no longer takes the changes of the template.`, {title: 'Detach from template', confirmLabel: 'Detach', tone: 'danger'})) return;
-    const info = await api(`/${encodeURIComponent(id)}/design/detach`, 'POST');
-    loadDesign(info);
-    viewer().storeDesign(id, storedDesignFields(info));
+    const info = await api(`/${encodeURIComponent(id)}/detach`, 'POST');
+    loadSlideSet(info);
+    viewer().storeSlides(id, storedSlideFields(info));
     renderDesigner();
     viewer().status('Detached: this Dashboard keeps a Design of its own.');
   }
@@ -1831,7 +1831,7 @@
   // ------------------------------------------------------------------
   // The Design button and the events of the viewer
   // ------------------------------------------------------------------
-  function syncDesignButton() {
+  function syncDesignerButton() {
     const button = $('ds-design');
     if (!button) return;
     const rights = state.info?.rights;
@@ -1840,24 +1840,24 @@
     button.textContent = state.active ? 'Designing' : 'Design';
   }
   $('ds-design')?.addEventListener('click', guarded(async () => {
-    if (state.active) { await exitDesign(); syncDesignButton(); return; }
-    await enterDesign();
-    syncDesignButton();
+    if (state.active) { await exitDesigner(); syncDesignerButton(); return; }
+    await enterDesigner();
+    syncDesignerButton();
   }));
   document.addEventListener('ds:dashboard-opened', event => {
-    exitDesign({force: true});
+    exitDesigner({force: true});
     state.dashboardId = event.detail.id;
     state.info = null;
     parameterOptions.clear();
-    syncDesignButton();
+    syncDesignerButton();
     renderParameterValues();
     loadInfo(event.detail.id);
   });
   document.addEventListener('ds:dashboard-closed', () => {
-    exitDesign({force: true});
+    exitDesigner({force: true});
     state.dashboardId = '';
     state.info = null;
-    syncDesignButton();
+    syncDesignerButton();
     renderParameterValues();
   });
   // Prepared again (filters applied): the Design not saved yet is laid out on the new selection.
@@ -1866,7 +1866,7 @@
     // New data: every slide of the list is drawn again.
     state.generation = (state.generation || 0) + 1;
     if (!dirty()) state.syncedToken = viewer().state().prepared?.token;
-    if (dirty()) guarded(() => preview(state.dashboardDirty ? {...previewBody(), design: state.design} : previewBody()))();
+    if (dirty()) guarded(() => preview(state.dashboardDirty ? {...previewBody(), slide_set: state.slide_set} : previewBody()))();
     else loadFields(viewer().state().prepared?.token);
   });
   document.addEventListener('ds:slide-rendered', () => {
@@ -1877,9 +1877,9 @@
   });
   // The viewer closed while designing: Design closes with it (asking about the changes not saved).
   $('ds-viewer-close')?.addEventListener('click', event => {
-    if (!state.active || !dirty()) { exitDesign({force: true}); syncDesignButton(); return; }
+    if (!state.active || !dirty()) { exitDesigner({force: true}); syncDesignerButton(); return; }
     event.stopImmediatePropagation();
-    guarded(async () => { if (await exitDesign()) { syncDesignButton(); $('ds-viewer-close').click(); } })();
+    guarded(async () => { if (await exitDesigner()) { syncDesignerButton(); $('ds-viewer-close').click(); } })();
   }, true);
   window.addEventListener('beforeunload', event => { if (state.active && dirty()) { event.preventDefault(); event.returnValue = ''; } });
 })();

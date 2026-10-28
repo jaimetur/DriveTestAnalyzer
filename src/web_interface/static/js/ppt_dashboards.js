@@ -4341,7 +4341,7 @@
       const box = node('span', undefined, 'ds-slide-thumbnail-chart');
       Object.assign(box.style, {left: `${left}%`, top: `${top}%`, width: `${width}%`, height: `${height}%`});
       frame.append(box);
-      if (chart.kind === 'text' || chart.kind === 'image') { box.classList.add('is-element'); box.append(designElementContent(chart)); return; }
+      if (chart.kind === 'text' || chart.kind === 'image') { box.classList.add('is-element'); box.append(slideElementContent(chart)); return; }
       if (!chart.available) return;
       loadChartPayload(chart, 'low').then(payload => {
         if (!box.isConnected || prepared?.token !== token) return;
@@ -4392,7 +4392,7 @@
     }
   }
   // The content of a text box (Markdown, as the tickets and NQ write it: rich_text.js) or of a picture of a Design.
-  function designElementContent(chart) {
+  function slideElementContent(chart) {
     const content = chart.content || {};
     if (chart.kind === 'image') {
       const frame = node('div', undefined, 'ds-element-image');
@@ -4480,7 +4480,7 @@
       // A text box or a picture of a Dashboard Design: its content, no chart.
       if (chart.kind === 'text' || chart.kind === 'image') {
         card.classList.add('ds-element-card', `ds-element-${chart.kind}`);
-        card.replaceChildren(designElementContent(chart));
+        card.replaceChildren(slideElementContent(chart));
         stage.append(card);
         continue;
       }
@@ -5013,28 +5013,28 @@
   window.dashboardViewer = {
     api, safe, status,
     state: () => ({activeId, definition, prepared, slideIndex, dashboard: dashboards[activeId] || null, config}),
-    // A Design laid out by the Designer (POST /design/preview): its slides and token replace those shown.
-    showDesign(payload, {designSlide = ''} = {}) {
+    // A Design laid out by the Designer (POST /slides/preview): its slides and token replace those shown.
+    showSlides(payload, {sourceSlide = ''} = {}) {
       if (!prepared) return;
       prepared = {...prepared, token: payload.token, slides: payload.slides, grid_layouts: payload.grid_layouts || prepared.grid_layouts};
       chartPayloads.clear(); renderedChartPayloads.clear(); thumbnailsToken = null;
-      if (designSlide) {
-        const index = prepared.slides.findIndex(slide => slide.design_slide === designSlide);
+      if (sourceSlide) {
+        const index = prepared.slides.findIndex(slide => slide.source_slide === sourceSlide);
         if (index >= 0) slideIndex = index;
       }
       renderSlide();
     },
     goToSlide(index) { if (!prepared) return; stopPresentation(); slideIndex = index; renderSlide(); },
     // The first slide laid out from a slide of the Design, drawn in small inside frame (false when none is laid out).
-    drawThumbnail(frame, designSlide) {
-      const slide = prepared?.slides.find(item => item.design_slide === designSlide);
+    drawThumbnail(frame, sourceSlide) {
+      const slide = prepared?.slides.find(item => item.source_slide === sourceSlide);
       if (!slide) return false;
       drawThumbnailFrame(frame, slide);
       return true;
     },
     renderSlide() { if (prepared) renderSlide(); },
     // The Design saved: the Dashboard keeps it, so its filters saved later do not count it as a change.
-    storeDesign(id, fields) {
+    storeSlides(id, fields) {
       if (!dashboards[id]) return;
       dashboards[id] = {...dashboards[id], ...structuredClone(fields)};
       if (id !== activeId || !definition) return;
