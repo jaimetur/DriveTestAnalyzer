@@ -364,3 +364,90 @@ def test_a_copy_without_its_table_is_the_store_of_its_cdr(client, tmp_path):
     # Deleted, its copy goes.
     core.repository.delete_dataset(data)
     assert copy_everything()['removed'] == 1 and not cdr_store.cdr_folder(root, 'data', data).exists()
+
+
+def _table_state(dataset_id):
+    """Everything SQLite keeps of the table of a CDR: how it and its indexes are made, and each value with its type."""
+    table = f'dataset_rows_{dataset_id}'
+    with core.repository.connection() as connection:
+        made = connection.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?", (table,)).fetchone()
+        indexes = sorted(row[0] for row in connection.execute(
+            "SELECT sql FROM sqlite_master WHERE type = 'index' AND tbl_name = ? AND sql IS NOT NULL", (table,)))
+        columns = [row[1] for row in connection.execute(f'PRAGMA table_info("{table}")')]
+        values = connection.execute(
+            f'SELECT rowid, {", ".join(f"typeof({cdr_store.quote(column)}), {cdr_store.quote(column)}" for column in columns)} '
+            f'FROM "{table}" ORDER BY rowid').fetchall()
+    return made and made[0], indexes, columns, [tuple(row) for row in values]
+
+
+def test_the_table_of_a_cdr_is_made_again_from_its_copy_as_it_was(client, tmp_path):
+    rows = pd.DataFrame({'Operator': ['EE', 'O2', 'EE', None, 'Three'], 'Rate': [1.0, 2.5, None, 4.0, 5.0],
+                         'Count': [1, 2, 3, None, 5], 'Status': ['ok', 'ko', None, 'ok', 'ok']})
+    data = add_cdr(tmp_path, 'data.csv', 'data', rows)
+    with core.repository.connection() as connection:
+        # Columns without a declared type: text and numbers, integers and reals; rows gone (gaps in the row ids).
+        connection.execute(f'ALTER TABLE dataset_rows_{data} ADD COLUMN "Cell_List"')
+        connection.execute(f'ALTER TABLE dataset_rows_{data} ADD COLUMN "Mixed_Number"')
+        connection.executemany(f'UPDATE dataset_rows_{data} SET "Cell_List" = ?, "Mixed_Number" = ? WHERE rowid = ?',
+                               [(372490, 5, 1), ('[372490]', 5.5, 2), (None, None, 3), (7.25, 9007199254740993, 4)])
+        connection.execute(f'DELETE FROM dataset_rows_{data} WHERE rowid = 3')
+        connection.execute(f'CREATE INDEX "idx_rows_{data}_status" ON "dataset_rows_{data}" (LOWER(TRIM(CAST("Status" AS TEXT))))')
+    copy_everything()
+    root = cdr_store.store_root(core.repository.db_path)
+    manifest = cdr_store.read_manifest(cdr_store.manifest_file(root, 'data', data))
+    assert dict(manifest['columns'])['Mixed_Number'] == 'DOUBLE:I' and dict(manifest['columns'])['Cell_List'] == 'MIXED:IR'
+    before = _table_state(data)
+    # Integers and reals of one column read back with their own types, a big integer exactly.
+    assert cdr_store.read_cdr(core.repository.db_path, 'data', data, ['Mixed_Number'])['Mixed_Number'].tolist()[:2] == [5.0, 5.5]
+    assert cdr_store.rows_by_rowid(core.repository.db_path, 'data', data, ['Mixed_Number'], [1, 4]) == {
+        1: (5,), 4: (9007199254740993,)}
+
+    core.repository.drop_dataset_rows(data)
+    assert cdr_store.restore_table(core.repository, data)
+
+    assert _table_state(data) == before
+    assert not cdr_store.restore_table(core.repository, data)
+    # From its empty table too.
+    core.repository.set_workspace_state(cdr_store.ONLY_COPIES_STATE_KEY, '1')
+    assert cdr_store.drop_copied_table(core.repository, data)
+    assert _table_state(data)[3] == [] and cdr_store.restore_table(core.repository, data)
+    assert _table_state(data) == before
+    # The copy still holds it: nothing to copy again.
+    assert cdr_store.store_changes(core.repository.db_path)['pending'] == []
+
+
+def test_where_the_copies_are_the_only_store_a_changed_table_is_copied_and_goes(client, tmp_path):
+    data = add_cdr(tmp_path, 'data.csv', 'data', data_rows())
+    core.repository.set_workspace_state(cdr_store.ONLY_COPIES_STATE_KEY, '1')
+    before = _table_state(data)[:3]
+
+    def emptied():
+        """Whether the table of the CDR is empty, its copy holding its rows (its columns and indexes kept)."""
+        with core.repository.connection() as connection:
+            rows = connection.execute(f'SELECT COUNT(*) FROM dataset_rows_{data}').fetchone()[0]
+            return data in cdr_store.shadows(connection) and not rows and _table_state(data)[:3] == before
+
+    # Once copied, the table is emptied.
+    copy_everything()
+    assert emptied() and cdr_store.fresh_copies(core.repository.db_path, [data]) == {data}
+    assert cdr_store.store_changes(core.repository.db_path)['pending'] == []
+
+    # A writer holds the CDR: its rows come back from the copy, and stay while it is held.
+    with cdr_store.hold(core.repository, data):
+        assert not emptied()
+        with core.repository.connection() as connection:
+            connection.execute(f'UPDATE dataset_rows_{data} SET "Operator" = ? WHERE rowid = 2', ('Three',))
+        # Its change is copied, but the rows stay while it is held.
+        assert copy_everything()['written'] == ['data.csv'] and not emptied()
+    # Released, the table is emptied again.
+    assert copy_everything()['written'] == [] and emptied()
+    assert cdr_store.read_cdr(core.repository.db_path, 'data', data, ['Operator'])['Operator'].tolist() == ['EE', 'Three', 'EE']
+    # Rows put back without a change are emptied too, without copying the CDR again.
+    with cdr_store.hold(core.repository, data):
+        pass
+    assert not emptied()
+    assert copy_everything()['written'] == [] and emptied()
+    # Processed again, its table holds its rows.
+    core.repository.replace_dataset_rows(data, data_rows())
+    with core.repository.connection() as connection:
+        assert data not in cdr_store.shadows(connection)

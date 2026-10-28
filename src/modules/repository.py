@@ -2781,7 +2781,7 @@ class Repository:
         if not isinstance(updates, dict) or not updates:
             raise ValueError('Enter at least one changed value before saving.')
         quoted_table = self._quote_identifier(table_name)
-        with self._table_connection(table_name)() as conn:
+        with self._holding_cdr_table(table_name), self._table_connection(table_name)() as conn:
             if not self._database_table_has_rowid(conn, table_name):
                 raise ValueError('This internal table is read-only because it does not have SQLite row identifiers.')
             metadata = conn.execute(f"PRAGMA table_info({quoted_table})").fetchall()
@@ -2815,7 +2815,7 @@ class Repository:
         if table_name == WORKSPACE_REGISTRY_TABLE:
             raise ValueError('Use Workspace Management to remove workspace registry records.')
         quoted_table = self._quote_identifier(table_name)
-        with self._table_connection(table_name)() as conn:
+        with self._holding_cdr_table(table_name), self._table_connection(table_name)() as conn:
             if not self._database_table_has_rowid(conn, table_name):
                 raise ValueError('This internal table is read-only because it does not have SQLite row identifiers.')
             result = conn.execute(f"DELETE FROM {quoted_table} WHERE rowid = ?", (int(rowid),))
@@ -3325,7 +3325,7 @@ class Repository:
 
     def rename_dataset_file(self, dataset_id: int, file_name: str, stored_path: str) -> sqlite3.Row:
         """Update a dataset's source metadata and all materialised source-file labels."""
-        with self.connection() as conn:
+        with self._holding_cdr_table(self.dataset_rows_table_name(dataset_id)), self.connection() as conn:
             dataset = conn.execute(
                 "SELECT id, file_name, stored_path FROM datasets WHERE id = ?", (dataset_id,)
             ).fetchone()
@@ -3993,9 +3993,12 @@ class Repository:
             conn.execute(f'DROP TABLE IF EXISTS {self._quote_identifier(table_name)}')
 
     def replace_dataset_rows(self, dataset_id: int, df: pd.DataFrame) -> None:
+        from src.modules import cdr_store
+
         table_name = self.dataset_rows_table_name(dataset_id)
         safe_df = self._sqlite_safe_frame(df)
-        with self.connection() as conn:
+        # The new table stays until its columnar copy holds it (see cdr_store.hold).
+        with cdr_store.hold(self, dataset_id, restore=False), self.connection() as conn:
             # Reserve the writer before dropping the old materialisation.  A
             # background refresh can otherwise create the same table during
             # pandas' replace path between its DROP and CREATE statements.
@@ -4006,6 +4009,21 @@ class Repository:
             # leaving no window for another connection to recreate it first.
             safe_df.to_sql(table_name, conn, if_exists='append', index=False)
             self._create_dataset_row_indexes(conn, table_name, safe_df.columns.tolist())
+            # The table holds the rows of the CDR again.
+            cdr_store.forget_shadow(conn, dataset_id)
+
+    @contextmanager
+    def _holding_cdr_table(self, table_name: str) -> Iterator[None]:
+        """Hold the CDR of a table of rows while it is changed (its table made again from its columnar copy when the
+        copy is its only store, see cdr_store.hold); any other table as it is."""
+        match = re.fullmatch(r'dataset_rows_(\d+)', str(table_name))
+        if not match:
+            yield
+            return
+        from src.modules import cdr_store
+
+        with cdr_store.hold(self, int(match.group(1))):
+            yield
 
     def reporting_rows_table_name(self, dataset_kind: str) -> str:
         if dataset_kind not in {'data', 'voice', 'speech'}:
@@ -4231,7 +4249,7 @@ class Repository:
         operator_column = lookup.get('operator')
         operator_expression = self._quote_identifier(operator_column) if operator_column else "''"
         table = self._quote_identifier(self.dataset_rows_table_name(dataset_id))
-        with self.connection() as connection:
+        with self._holding_cdr_table(self.dataset_rows_table_name(dataset_id)), self.connection() as connection:
             connection.execute('BEGIN IMMEDIATE')
             current_columns = connection.execute(f'PRAGMA table_info({table})').fetchall()
             if any(column_identity(row['name']) == 'vendor' for row in current_columns):
@@ -4767,9 +4785,12 @@ class Repository:
             self._create_dataset_row_indexes(conn, table_name, columns)
 
     def drop_dataset_rows(self, dataset_id: int) -> None:
+        from src.modules import cdr_store
+
         table_name = self.dataset_rows_table_name(dataset_id)
         with self.connection() as conn:
             conn.execute(f"DROP TABLE IF EXISTS {self._quote_identifier(table_name)}")
+            cdr_store.forget_shadow(conn, dataset_id)
 
     def dataset_rows_table_exists(self, dataset_id: int) -> bool:
         table_name = self.dataset_rows_table_name(dataset_id)
@@ -4860,7 +4881,7 @@ class Repository:
         if not updates:
             return False
 
-        with self.connection() as conn:
+        with self._holding_cdr_table(table_name), self.connection() as conn:
             for target_column, sources in updates:
                 coalesce_expression = ', '.join(
                     f"NULLIF(TRIM(CAST({self._quote_identifier(column)} AS TEXT)), '')"

@@ -1347,6 +1347,23 @@ def _incremental_auto_field_table_update(
     checkpoint: Callable[[], None] | None = None,
     row_progress: Callable[[int, int], None] | None = None,
 ) -> bool:
+    """Apply changed fields in bounded transactions without replacing the source table (the table of a CDR held
+    meanwhile, see cdr_store.hold)."""
+    with task_repository._holding_cdr_table(table_name):
+        return _apply_auto_field_table_update(task_repository, table_name, cdr_source, previous, current, renames,
+                                              checkpoint, row_progress)
+
+
+def _apply_auto_field_table_update(
+    task_repository: Repository,
+    table_name: str,
+    cdr_source: str,
+    previous: Iterable[Any],
+    current: Iterable[Any],
+    renames: dict[str, str],
+    checkpoint: Callable[[], None] | None = None,
+    row_progress: Callable[[int, int], None] | None = None,
+) -> bool:
     """Apply changed fields in bounded transactions without replacing the source table."""
     quote = task_repository._quote_identifier
     previous_items = tuple(previous)
@@ -22600,7 +22617,11 @@ def update_dataset_nr_mode(
         raise HTTPException(status_code=422, detail='Choose NSA or SA.')
     previous = dataset_nr_mode(dataset['dataset_kind'], dataset['nr_mode'], dataset['file_name'])
     if previous != nr_mode:
-        repository.update_dataset_profile(dataset_id, nr_mode=nr_mode)
+        from src.modules import cdr_store
+
+        # The columnar copy keeps the NR Mode of its rows: it is made again from the table (see cdr_store.hold).
+        with cdr_store.hold(repository, dataset_id):
+            repository.update_dataset_profile(dataset_id, nr_mode=nr_mode)
         kind = str(dataset['dataset_kind']).casefold()
         if repository.set_reporting_nr_mode(dataset_id, kind):
             # Its rows in the combined table change their NR_Mode: the prepared Dashboards read them again.

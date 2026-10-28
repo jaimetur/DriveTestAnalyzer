@@ -88,7 +88,14 @@ def fill_dataset(repository: Any, dataset_id: int, kind: str, should_stop: Calla
     """Place the tests of a CDR in the current Map Areas and keep their areas in its rows; returns how many.
 
     The areas are written in short transactions; ``should_stop`` (the application stopping) leaves the CDR to be
-    placed again later, and returns -1."""
+    placed again later, and returns -1. The table of the CDR is held meanwhile (see cdr_store.hold)."""
+    from src.modules import cdr_store
+
+    with cdr_store.hold(repository, dataset_id):
+        return _fill_dataset(repository, dataset_id, kind, should_stop)
+
+
+def _fill_dataset(repository: Any, dataset_id: int, kind: str, should_stop: Callable[[], bool]) -> int:
     from src.modules.map_areas import area_index
 
     ensure_table(repository)

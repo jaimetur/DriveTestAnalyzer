@@ -13,6 +13,7 @@ import os
 import shutil
 import sqlite3
 import time
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import Lock
@@ -22,10 +23,12 @@ import numpy as np
 import pandas as pd
 
 STORE_FOLDER = '.cdr-store'
-STORE_VERSION = 4
+STORE_VERSION = 5
 CDR_KINDS = ('data', 'voice', 'speech')
 VERSIONS_TABLE = 'cdr_store_versions'
-TABLE_TITLES = {VERSIONS_TABLE: 'CDR Store Versions'}
+# The CDRs whose table is kept empty (its columns and indexes only) while their copy holds their rows.
+SHADOWS_TABLE = 'cdr_store_shadows'
+TABLE_TITLES = {VERSIONS_TABLE: 'CDR Store Versions', SHADOWS_TABLE: 'CDR Store Shadows'}
 CATALOG_FILE = 'catalog.duckdb'
 CATALOG_STATE_FILE = 'catalog.json'
 # The columns the copy adds to the columns of the CDR.
@@ -105,6 +108,28 @@ def ensure_change_triggers(connection: sqlite3.Connection, dataset_id: int) -> N
             f'BEGIN UPDATE {VERSIONS_TABLE} SET version = version + 1 WHERE dataset_id = {dataset_id}; END')
 
 
+def ensure_shadows_table(connection: sqlite3.Connection) -> None:
+    connection.execute(f'CREATE TABLE IF NOT EXISTS {SHADOWS_TABLE} (dataset_id INTEGER PRIMARY KEY, emptied_at TEXT)')
+
+
+def shadows(connection: sqlite3.Connection) -> set[int]:
+    """The CDRs whose table is empty, their copy holding their rows."""
+    if not connection.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (SHADOWS_TABLE,)).fetchone():
+        return set()
+    return {int(row[0]) for row in connection.execute(f'SELECT dataset_id FROM {SHADOWS_TABLE}')}
+
+
+def forget_shadow(connection: sqlite3.Connection, dataset_id: int) -> None:
+    """The table of a CDR holds its rows again (written again, or removed with the CDR)."""
+    if connection.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (SHADOWS_TABLE,)).fetchone():
+        connection.execute(f'DELETE FROM {SHADOWS_TABLE} WHERE dataset_id = ?', (int(dataset_id),))
+
+
+def drop_change_triggers(connection: sqlite3.Connection, dataset_id: int) -> None:
+    for event in ('insert', 'update', 'delete'):
+        connection.execute(f'DROP TRIGGER IF EXISTS {quote(f"cdr_store_{int(dataset_id)}_{event}")}')
+
+
 def _versions(connection: sqlite3.Connection) -> dict[int, int]:
     if not connection.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (VERSIONS_TABLE,)).fetchone():
         return {}
@@ -127,7 +152,8 @@ def _table_columns(connection: sqlite3.Connection, dataset_id: int) -> list[str]
 
 def _ready_cdrs(connection: sqlite3.Connection) -> dict[int, dict[str, Any]]:
     """The ready Data, Voice and Speech CDRs of the workspace: those with a table of rows (``table``), which their copy
-    follows, and those whose copy is their only store (without a table)."""
+    follows, and those whose copy is their only store (their table empty, or gone)."""
+    empty = shadows(connection)
     tables = {str(row[0]) for row in connection.execute(
         "SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'dataset_rows_%'")}
     rows = connection.execute(
@@ -140,7 +166,7 @@ def _ready_cdrs(connection: sqlite3.Connection) -> dict[int, dict[str, Any]]:
         int(row[0]): {'id': int(row[0]), 'file_name': str(row[1] or ''), 'kind': str(row[3] or '').casefold(),
                       'nr_mode': dataset_nr_mode(row[3], row[4], row[1]) or '', 'processed_at': str(row[5] or ''),
                       'normalization_version': int(row[6] or 1), 'row_count': int(row[7] or 0),
-                      'table': f'dataset_rows_{int(row[0])}' in tables}
+                      'table': f'dataset_rows_{int(row[0])}' in tables and int(row[0]) not in empty}
         for row in rows
         if str(row[2] or '').casefold() == 'ready' and str(row[3] or '').casefold() in CDR_KINDS
     }
@@ -181,13 +207,15 @@ def fresh_copies(database_path: Any, dataset_ids: Any) -> set[int]:
 def store_changes(database_path: Any) -> dict[str, Any]:
     """The CDRs whose copy is missing or out of date (of those with a table of rows), and the copies of CDRs that are
     gone: deleted, or now of another type while their table holds them. The copy of a CDR being processed again, or
-    whose copy is its only store, is kept."""
+    whose copy is its only store, is kept. Where the copies are the only store, ``tables`` are the CDRs whose table can
+    go (their copy holds them as they are)."""
     root = store_root(database_path)
+    only = only_copies(database_path)
     with sqlite3.connect(database_path, timeout=30) as connection:
         cdrs = _ready_cdrs(connection)
         versions = _versions(connection)
         existing = {int(row[0]) for row in connection.execute('SELECT id FROM datasets')}
-        pending = []
+        pending, tables = [], []
         for dataset_id, cdr in sorted(cdrs.items()):
             if not cdr['table']:
                 continue
@@ -195,10 +223,12 @@ def store_changes(database_path: Any) -> dict[str, Any]:
             current = revision(cdr, _table_columns(connection, dataset_id), versions.get(dataset_id, 0))
             if manifest is None or manifest.get('revision') != current or not cdr_folder(root, cdr['kind'], dataset_id).is_dir():
                 pending.append(cdr)
+            elif only and not held(database_path, dataset_id):
+                tables.append(dataset_id)
     orphans = [path for kind in CDR_KINDS for path in (root / kind).glob('*.json')
                if not path.stem.isdigit() or int(path.stem) not in existing
                or (int(path.stem) in cdrs and cdrs[int(path.stem)]['table'] and cdrs[int(path.stem)]['kind'] != kind)]
-    return {'pending': pending, 'orphans': orphans, 'cdrs': cdrs}
+    return {'pending': pending, 'orphans': orphans, 'cdrs': cdrs, 'tables': tables}
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -206,8 +236,8 @@ def store_changes(database_path: Any) -> dict[str, Any]:
 
 def _column_types(connection: sqlite3.Connection, table: str, columns: list[str]) -> dict[str, str]:
     """The type of each column over all its values, in one pass: BIGINT when every value is an integer, DOUBLE when
-    every value is a number, VARCHAR when every value is text (or it has no value), and MIXED:I, MIXED:R or MIXED:IR
-    when it has text and integers, reals or both."""
+    every value is a real, DOUBLE:I when it has integers and reals, VARCHAR when every value is text (or it has no
+    value), and MIXED:I, MIXED:R or MIXED:IR when it has text and integers, reals or both."""
     flags = ', '.join(
         f"MAX(typeof({quote(column)}) IN ('text', 'blob')) * 4 + MAX(typeof({quote(column)}) = 'real') * 2 "
         f"+ MAX(typeof({quote(column)}) = 'integer')" for column in columns)
@@ -218,17 +248,20 @@ def _column_types(connection: sqlite3.Connection, table: str, columns: list[str]
         if flag & 4 and flag & 3:
             types[column] = 'MIXED:' + ('I' if flag & 1 else '') + ('R' if flag & 2 else '')
         else:
-            types[column] = 'VARCHAR' if flag & 4 or not flag else ('DOUBLE' if flag & 2 else 'BIGINT')
+            types[column] = 'VARCHAR' if flag & 4 or not flag else {1: 'BIGINT', 2: 'DOUBLE', 3: 'DOUBLE:I'}[flag]
     return types
 
 
 def _stored_columns(columns: list[str], types: dict[str, str]) -> list[tuple[str, str, str]]:
-    """The columns of the Parquet file of a CDR: (name, SQLite expression, type) for each column, and for a column with
-    text and numbers its text, integers and reals apart."""
+    """The columns of the Parquet file of a CDR: (name, SQLite expression, type) for each column, for a column with
+    text and numbers its text, integers and reals apart, and for a column with integers and reals its integers too."""
     stored = []
     for column in columns:
         source, column_type = quote(column), types[column]
-        if column_type.startswith('MIXED:'):
+        if column_type == 'DOUBLE:I':
+            stored.append((column, source, 'DOUBLE'))
+            stored.append((INT_PREFIX + column, f"CASE WHEN typeof({source}) = 'integer' THEN {source} END", 'BIGINT'))
+        elif column_type.startswith('MIXED:'):
             stored.append((column, f"CASE WHEN typeof({source}) IN ('text', 'blob') THEN CAST({source} AS TEXT) END", 'VARCHAR'))
             if 'I' in column_type:
                 stored.append((INT_PREFIX + column, f"CASE WHEN typeof({source}) = 'integer' THEN {source} END", 'BIGINT'))
@@ -364,6 +397,134 @@ def remove_copy(manifest_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------------------------------------------------
+# The table of a CDR whose copy is its only store, made again from the copy while it is changed.
+
+# Whether the copies are the only store of the CDRs of a workspace (its workspace state, '1'): the table of a CDR then
+# goes once its copy holds it.
+ONLY_COPIES_STATE_KEY = 'cdr_store_only_copies'
+
+_holds: dict[tuple[str, int], int] = {}
+_holds_guard = Lock()
+_restore_locks: dict[tuple[str, int], Lock] = {}
+
+
+def only_copies(database_path: Any) -> bool:
+    with sqlite3.connect(database_path, timeout=30) as connection:
+        if not connection.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'workspace_state'").fetchone():
+            return False
+        row = connection.execute('SELECT value FROM workspace_state WHERE key = ?', (ONLY_COPIES_STATE_KEY,)).fetchone()
+    return bool(row and str(row[0]) == '1')
+
+
+def restore_table(repository: Any, dataset_id: int) -> bool:
+    """Put the rows of a CDR back in its table from its copy, as they were: its row ids and values (with their SQLite
+    types), in its empty table, or in the table made again as it was (its CREATE TABLE and indexes) when it is gone;
+    returns whether it did (not when the table holds the rows or the CDR has no copy)."""
+    import duckdb
+
+    database_path = repository.db_path
+    dataset_id = int(dataset_id)
+    table = f'dataset_rows_{dataset_id}'
+
+    def state(connection: sqlite3.Connection) -> str:
+        exists = connection.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (table,)).fetchone()
+        return 'gone' if not exists else 'empty' if dataset_id in shadows(connection) else 'full'
+
+    with sqlite3.connect(database_path, timeout=30) as connection:
+        if state(connection) == 'full':
+            return False
+        row = connection.execute('SELECT dataset_kind FROM dataset_profiles WHERE dataset_id = ?', (dataset_id,)).fetchone()
+    kind = str(row[0] or '').casefold() if row else ''
+    root = store_root(database_path)
+    manifest = read_manifest(manifest_file(root, kind, dataset_id)) if kind in CDR_KINDS else None
+    if manifest is None or not cdr_folder(root, kind, dataset_id).is_dir():
+        return False
+    schema = manifest.get('schema') or {}
+    columns = [column for column, _type in manifest['columns']]
+    with duckdb.connect() as duck:
+        last = duck.execute(f'SELECT MAX({quote(ROWID)}) FROM read_parquet({_sql_text(cdr_parts(root, kind, dataset_id))})').fetchone()[0]
+    insert = (f'INSERT INTO {quote(table)} (rowid{"".join(", " + quote(column) for column in columns)}) '
+              f'VALUES ({", ".join("?" for _ in range(len(columns) + 1))})')
+    with repository.connection() as connection:
+        connection.execute('BEGIN IMMEDIATE')
+        current = state(connection)
+        if current == 'full':
+            return False
+        if current == 'gone':
+            if not schema.get('table'):
+                raise LookupError(f'The copy of CDR {dataset_id} does not say how its table is made.')
+            connection.execute(schema['table'])
+        # The rows come back without counting as a change of the CDR.
+        drop_change_triggers(connection, dataset_id)
+        for low in range(0, int(last or 0), READ_BATCH_ROWS):
+            values, _length = _raw(database_path, kind, dataset_id, [ROWID, *columns], rowid_range=(low, low + READ_BATCH_ROWS))
+            connection.executemany(insert, zip(*(_python_values(values[column]).tolist() for column in [ROWID, *columns])))
+        if current == 'gone':
+            for sql in schema.get('indexes') or []:
+                connection.execute(sql)
+        forget_shadow(connection, dataset_id)
+        ensure_versions_table(connection)
+        ensure_change_triggers(connection, dataset_id)
+    return True
+
+
+@contextmanager
+def hold(repository: Any, dataset_id: int, *, restore: bool = True):
+    """Keep the table of rows of a CDR while it is changed, made again from its copy first when the copy is its only
+    store (with ``restore``); its copy follows it afterwards in the background, and where the copies are the only store
+    the table then goes (never while it is held)."""
+    key = (_workspace_key(repository.db_path), int(dataset_id))
+    with _holds_guard:
+        _holds[key] = _holds.get(key, 0) + 1
+        lock = _restore_locks.setdefault(key, Lock())
+    try:
+        # A table being removed goes first (see drop_copied_table).
+        with lock:
+            if restore:
+                restore_table(repository, dataset_id)
+        yield
+    finally:
+        with _holds_guard:
+            _holds[key] -= 1
+            if not _holds[key]:
+                del _holds[key]
+
+
+def held(database_path: Any, dataset_id: int) -> bool:
+    with _holds_guard:
+        return (_workspace_key(database_path), int(dataset_id)) in _holds
+
+
+def drop_copied_table(repository: Any, dataset_id: int) -> bool:
+    """Empty the table of a CDR whose copy holds it as it is, where the copies are the only store: it keeps its columns
+    and indexes (how SQLite reads it) without its rows; returns whether it was emptied (not while it is held, nor when the
+    copy is out of date)."""
+    dataset_id = int(dataset_id)
+    key = (_workspace_key(repository.db_path), dataset_id)
+    with _holds_guard:
+        lock = _restore_locks.setdefault(key, Lock())
+    # A writer that holds the CDR from now on waits for the table to go, and makes it again.
+    with lock:
+        with _holds_guard:
+            if key in _holds:
+                return False
+        if dataset_id not in fresh_copies(repository.db_path, [dataset_id]):
+            return False
+        with repository.connection() as connection:
+            connection.execute('BEGIN IMMEDIATE')
+            if not connection.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+                                      (f'dataset_rows_{dataset_id}',)).fetchone():
+                return False
+            # Emptying the table is no change of the CDR.
+            drop_change_triggers(connection, dataset_id)
+            connection.execute(f'DELETE FROM {quote(f"dataset_rows_{dataset_id}")}')
+            ensure_shadows_table(connection)
+            connection.execute(f'INSERT OR REPLACE INTO {SHADOWS_TABLE} (dataset_id, emptied_at) VALUES (?, ?)',
+                               (dataset_id, datetime.now(timezone.utc).isoformat(timespec='seconds')))
+        return True
+
+
+# ---------------------------------------------------------------------------------------------------------------------
 # The catalog: one view per CDR type over the copies of the CDRs the combined tables include.
 
 def _view_sql(kind: str, manifests: list[dict[str, Any]], root: Path) -> str:
@@ -378,7 +539,8 @@ def _view_sql(kind: str, manifests: list[dict[str, Any]], root: Path) -> str:
         for column, column_type in manifest['columns']:
             identity = column.casefold()
             names.setdefault(identity, column)
-            types.setdefault(identity, set()).add('VARCHAR' if column_type.startswith('MIXED:') else column_type)
+            types.setdefault(identity, set()).add('VARCHAR' if column_type.startswith('MIXED:') else
+                                                  'DOUBLE' if column_type == 'DOUBLE:I' else column_type)
             if column_type.startswith('MIXED:'):
                 companions.update(prefix + column for prefix, part in ((INT_PREFIX, 'I'), (REAL_PREFIX, 'R'))
                                   if part in column_type)
@@ -488,6 +650,8 @@ def sync_step(repository: Any, included: Callable[[], dict[str, set[int]]], shou
         remove_copy(orphan)
         with _store_jobs_guard:
             job['removed'] += 1
+    for dataset_id in changes['tables']:
+        drop_copied_table(repository, dataset_id)
     pending = changes['pending']
     with _store_jobs_guard:
         job.update(total=max(job['total'], job['done'] + len(pending)))
@@ -510,6 +674,8 @@ def sync_step(repository: Any, included: Callable[[], dict[str, set[int]]], shou
             return False
         if manifest is None:
             return False
+        if only_copies(repository.db_path):
+            drop_copied_table(repository, cdr['id'])
         with _store_jobs_guard:
             job.update(done=job['done'] + 1, waiting='')
             job['written'].append(cdr['file_name'])
@@ -612,7 +778,8 @@ def install_cdr_store(core: Any) -> None:
         if job and job['status'] in {'queued', 'processing'}:
             return
         changes = store_changes(repository.db_path)
-        if changes['pending'] or changes['orphans'] or catalog_outdated(repository.db_path, included_cdrs(repository)):
+        if (changes['pending'] or changes['orphans'] or changes['tables']
+                or catalog_outdated(repository.db_path, included_cdrs(repository))):
             queue_store_sync(repository, core.BACKGROUND_TASK_SCHEDULER, core.APP_SHUTTING_DOWN.is_set)
 
     def tasks(workspace: Any) -> list[dict[str, Any]]:
@@ -626,7 +793,7 @@ def install_cdr_store(core: Any) -> None:
 # Reading a copy back: the frame pandas.read_sql_query returns from the SQLite table of the CDR.
 
 def _raw(database_path: Any, kind: str, dataset_id: int, columns: list[str], rowids: list[int] | None = None,
-         ) -> tuple[dict[str, tuple[str, Any]], int]:
+         rowid_range: tuple[int, int] | None = None) -> tuple[dict[str, tuple[str, Any]], int]:
     """The values of some physical columns of one CDR, in row id order, before pandas types them: for each column
     ('int', Int64 array), ('real', float64 array with NaN for no value), ('text', array of strings and None) or
     ('object', array of Python values of several types), and the number of rows."""
@@ -648,6 +815,8 @@ def _raw(database_path: Any, kind: str, dataset_id: int, columns: list[str], row
         if types[column].startswith('MIXED:'):
             parts.extend(quote(prefix + column) for prefix, part in ((INT_PREFIX, 'I'), (REAL_PREFIX, 'R'))
                          if part in types[column])
+        elif types[column] == 'DOUBLE:I':
+            parts.append(quote(INT_PREFIX + column))
     source = _sql_text(cdr_parts(root, kind, dataset_id))
     duck = duckdb.connect()
     try:
@@ -655,6 +824,8 @@ def _raw(database_path: Any, kind: str, dataset_id: int, columns: list[str], row
         if rowids is not None:
             duck.register('wanted', pd.DataFrame({'rowid': pd.Series(list(rowids), dtype='int64')}))
             where = f'WHERE {quote(ROWID)} IN (SELECT rowid FROM wanted)'
+        elif rowid_range is not None:
+            where = f'WHERE {quote(ROWID)} > {int(rowid_range[0])} AND {quote(ROWID)} <= {int(rowid_range[1])}'
         raw = duck.execute(f'SELECT {", ".join(parts) or quote(ROWID)} FROM read_parquet({source}) {where} '
                            f'ORDER BY {quote(ROWID)}').df()
     finally:
@@ -666,6 +837,14 @@ def _raw(database_path: Any, kind: str, dataset_id: int, columns: list[str], row
             values[column] = ('int', raw[column].astype('Int64'))
         elif column_type == 'DOUBLE':
             values[column] = ('real', raw[column].astype('float64').to_numpy())
+        elif column_type == 'DOUBLE:I':
+            # The reals, and the integers as integers, in one column of Python values.
+            numbers = raw[column].astype(object).to_numpy()
+            integers = raw[INT_PREFIX + column]
+            present = integers.notna().to_numpy()
+            numbers[present] = [int(number) for number in integers[present]]
+            numbers[pd.isna(numbers)] = None
+            values[column] = ('object', numbers)
         elif column_type.startswith('MIXED:'):
             # The text, integers and reals of the column back in one column of Python values.
             mixed = raw[column].astype(object).to_numpy()
