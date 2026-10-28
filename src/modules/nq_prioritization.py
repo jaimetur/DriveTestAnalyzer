@@ -1305,6 +1305,28 @@ def _text(value: Any) -> str:
     return '' if value is None or (isinstance(value, float) and math.isnan(value)) else str(value).strip()
 
 
+def _rows_of_ids(repository: Any, dataset_id: int, columns: list[str], row_ids: list[int]) -> list[tuple[Any, ...]]:
+    """The row ID and ``columns`` of the rows ``row_ids`` of a CDR, as SQLite gives them for each 500 of them (each one once,
+    in row ID order): from the columnar copy of the CDR when it is up to date (see cdr_store), else from its table."""
+    from src.modules import cdr_store
+
+    copy = cdr_store.fresh_rows_by_rowid(repository.db_path, dataset_id, columns, row_ids)
+    rows: list[tuple[Any, ...]] = []
+    if copy is not None:
+        for start in range(0, len(row_ids), 500):
+            rows.extend((row_id, *copy[row_id]) for row_id in sorted({int(item) for item in row_ids[start:start + 500]})
+                        if row_id in copy)
+        return rows
+    table = repository.dataset_rows_table_name(dataset_id)
+    selected = ', '.join(['rowid', *('"' + column.replace('"', '""') + '"' for column in columns)])
+    with repository.connection() as connection:
+        for start in range(0, len(row_ids), 500):
+            chunk = row_ids[start:start + 500]
+            rows.extend(tuple(row) for row in connection.execute(
+                f'SELECT {selected} FROM "{table}" WHERE rowid IN ({", ".join("?" for _ in chunk)})', chunk))
+    return rows
+
+
 def _nq_frame(repository: Any, dataset_id: int, kind: str, row_ids: list[int]):
     """The rows of some Non-Qualified Calls of a CDR with the scoring columns of its type under their canonical names
     (``__row`` is the row ID of the CDR)."""
@@ -1317,14 +1339,7 @@ def _nq_frame(repository: Any, dataset_id: int, kind: str, row_ids: list[int]):
     fields = required_input_columns(kind)
     resolved = {field: resolve_column_name(available, field) for field in fields}
     selected = list(dict.fromkeys(column for column in resolved.values() if column))
-    table = repository.dataset_rows_table_name(dataset_id)
-    rows: list[Any] = []
-    with repository.connection() as connection:
-        for start in range(0, len(row_ids), 500):
-            chunk = row_ids[start:start + 500]
-            columns = ', '.join(['rowid AS "__row"', *('"' + column.replace('"', '""') + '"' for column in selected)])
-            rows.extend(connection.execute(
-                f'SELECT {columns} FROM "{table}" WHERE rowid IN ({", ".join("?" for _ in chunk)})', chunk).fetchall())
+    rows = _rows_of_ids(repository, dataset_id, selected, row_ids)
     source = pd.DataFrame([tuple(row) for row in rows], columns=['__row', *selected])
     frame = pd.DataFrame({'__row': source['__row']} if len(source) else {'__row': []})
     for field in fields:
@@ -1540,17 +1555,26 @@ def place_of(call: dict[str, Any], node_details: Callable[[dict[str, Any], tuple
 Distance = float | Callable[[dict[str, Any], dict[str, Any]], float]
 
 
-def reach(isd_times: float, city_meters: float, road_meters: float) -> Callable[[dict[str, Any], dict[str, Any]], float]:
+class Reach:
     """The farthest two failures (``isd_km``, ``environment``) can be from each other to be linked: ``isd_times`` the
     inter-site distance (ISD, see ``call_isds``) of the sites nearest to where they started (the larger one, as a road site
     serves farther than an urban one), else ``road_meters`` when either is on a connecting road and ``city_meters`` in a
     city."""
-    def meters(first: dict[str, Any], second: dict[str, Any]) -> float:
+
+    def __init__(self, isd_times: float, city_meters: float, road_meters: float) -> None:
+        self.isd_times, self.city_meters, self.road_meters = isd_times, city_meters, road_meters
+
+    def __call__(self, first: dict[str, Any], second: dict[str, Any]) -> float:
         isd = max(float(first.get('isd_km') or 0), float(second.get('isd_km') or 0))
         if isd:
-            return isd * 1000 * isd_times
-        return road_meters if 'roads' in {call_area(first.get('environment')), call_area(second.get('environment'))} else city_meters
-    return meters
+            return isd * 1000 * self.isd_times
+        return (self.road_meters if 'roads' in {call_area(first.get('environment')), call_area(second.get('environment'))}
+                else self.city_meters)
+
+
+def reach(isd_times: float, city_meters: float, road_meters: float) -> Reach:
+    """The distance of two failures by the ISD of their sites or their area (see ``Reach``)."""
+    return Reach(isd_times, city_meters, road_meters)
 
 
 def _limit(meters: Distance, first: dict[str, Any], second: dict[str, Any]) -> float:
@@ -1562,6 +1586,7 @@ def _near_pairs(calls: list[dict[str, Any]], meters: Distance) -> Iterator[tuple
     ``reach``), found in a grid: each call is compared with the calls of the squares within its own reach (that of the pair
     is never longer than the longer of its two calls)."""
     points: dict[int, tuple[float, float]] = {}
+    positions: dict[int, tuple[float, float]] = {}
     for index, call in enumerate(calls):
         try:
             latitude, longitude = float(call.get('latitude')), float(call.get('longitude'))
@@ -1570,24 +1595,91 @@ def _near_pairs(calls: list[dict[str, Any]], meters: Distance) -> Iterator[tuple
         if not (math.isfinite(latitude) and math.isfinite(longitude)) or (latitude == 0 and longitude == 0):
             continue
         points[index] = (latitude * METERS_PER_DEGREE, longitude * METERS_PER_DEGREE * math.cos(math.radians(latitude)))
+        positions[index] = (latitude, longitude)
     own = {index: _limit(meters, calls[index], calls[index]) for index in points}
     reaches = sorted(value for value in own.values() if value > 0)
     if not reaches:
         return
     size = reaches[len(reaches) // 2]
-    squares: dict[tuple[int, int], list[int]] = {}
-    for index, (y, x) in points.items():
-        squares.setdefault((math.floor(y / size), math.floor(x / size)), []).append(index)
+    squares = {index: (math.floor(y / size), math.floor(x / size), max(1, math.ceil(own[index] / size)))
+               for index, (y, x) in points.items()}
+    if callable(meters) and not isinstance(meters, Reach):
+        yield from _near_pairs_each(calls, squares, meters)
+    else:
+        yield from _near_pairs_together(calls, squares, positions, meters)
+
+
+def _near_pairs_each(calls: list[dict[str, Any]], squares: dict[int, tuple[int, int, int]], meters: Distance) -> Iterator[tuple[int, int]]:
+    """``_near_pairs`` call by call: each with the calls of the squares within its reach (``squares``: the row, column and
+    reach in squares of each call)."""
+    grid: dict[tuple[int, int], list[int]] = {}
+    for index, (row, column, _steps) in squares.items():
+        grid.setdefault((row, column), []).append(index)
     found: set[tuple[int, int]] = set()
-    for index, (y, x) in points.items():
-        row, column, steps = math.floor(y / size), math.floor(x / size), max(1, math.ceil(own[index] / size))
+    for index, (row, column, steps) in squares.items():
         for other_row in range(row - steps, row + steps + 1):
             for other_column in range(column - steps, column + steps + 1):
-                for other in squares.get((other_row, other_column), ()):
+                for other in grid.get((other_row, other_column), ()):
                     pair = (min(index, other), max(index, other))
                     if other != index and pair not in found and _meters(calls[index], calls[other]) <= _limit(meters, calls[index], calls[other]):
                         found.add(pair)
                         yield pair
+
+
+# The calls compared at once with those of the rows of squares within their reach.
+_PAIR_BLOCK = 512
+
+
+def _near_pairs_together(calls: list[dict[str, Any]], squares: dict[int, tuple[int, int, int]],
+                         positions: dict[int, tuple[float, float]], meters: Distance) -> Iterator[tuple[int, int]]:
+    """``_near_pairs`` of a fixed distance or a ``Reach`` with arrays: the calls in the order of their row of squares, a
+    block at a time against the calls of the rows within their reach, measured as ``_meters`` and ``_limit`` do (a distance
+    within a rounding of the limit is measured again as ``_meters`` does)."""
+    import numpy as np
+
+    order = sorted(squares, key=lambda index: squares[index][0])
+    indexes = np.asarray(order, dtype=np.int64)
+    rows = np.asarray([squares[index][0] for index in order], dtype=np.int64)
+    columns = np.asarray([squares[index][1] for index in order], dtype=np.int64)
+    steps = np.asarray([squares[index][2] for index in order], dtype=np.int64)
+    latitudes = np.asarray([positions[index][0] for index in order], dtype=float)
+    longitudes = np.asarray([positions[index][1] for index in order], dtype=float)
+    cosines = np.asarray([math.cos(math.radians(positions[index][0])) for index in order], dtype=float)
+    if isinstance(meters, Reach):
+        isds = np.asarray([float(calls[index].get('isd_km') or 0) for index in order], dtype=float)
+        roads = np.asarray([call_area(calls[index].get('environment')) == 'roads' for index in order], dtype=bool)
+    found: set[tuple[int, int]] = set()
+    for start in range(0, len(order), _PAIR_BLOCK):
+        block = slice(start, min(len(order), start + _PAIR_BLOCK))
+        widest = int(steps[block].max())
+        low = int(np.searchsorted(rows, rows[block].min() - widest, 'left'))
+        high = int(np.searchsorted(rows, rows[block].max() + widest, 'right'))
+        reach_of = steps[block][:, None]
+        inside = ((np.abs(rows[low:high][None, :] - rows[block][:, None]) <= reach_of)
+                  & (np.abs(columns[low:high][None, :] - columns[block][:, None]) <= reach_of))
+        first, second = np.nonzero(inside)
+        first, second = first + start, second + low
+        kept = first != second
+        first, second = first[kept], second[kept]
+        if not len(first):
+            continue
+        # As _meters measures from the first call of the pair.
+        distances = np.hypot((longitudes[second] - longitudes[first]) * METERS_PER_DEGREE * cosines[first],
+                             (latitudes[second] - latitudes[first]) * METERS_PER_DEGREE)
+        if isinstance(meters, Reach):
+            isd = np.maximum(isds[first], isds[second])
+            limits = np.where(isd != 0, isd * 1000 * meters.isd_times,
+                              np.where(roads[first] | roads[second], meters.road_meters, meters.city_meters))
+        else:
+            limits = np.full(len(first), float(meters))
+        near = distances <= limits
+        close = np.flatnonzero(np.abs(distances - limits) <= 1e-9 * np.maximum(np.abs(limits), 1.0))
+        for position in close.tolist():
+            one, other = int(indexes[first[position]]), int(indexes[second[position]])
+            near[position] = _meters(calls[one], calls[other]) <= _limit(meters, calls[one], calls[other])
+        for one, other in zip(indexes[first[near]].tolist(), indexes[second[near]].tolist(), strict=True):
+            found.add((min(one, other), max(one, other)))
+    yield from sorted(found)
 
 
 def _site_key(call: dict[str, Any]) -> str:
@@ -1835,17 +1927,11 @@ def drives_of(repository: Any, calls: list[dict[str, Any]]) -> dict[str, str]:
         column = system or next((name for name in (resolve_column_name(available, column) for column in FILE_COLUMNS) if name), None)
         if not column:
             continue
-        table = repository.dataset_rows_table_name(dataset_id)
         keys = {int(item['source_row_id']): item['call_key'] for item in items}
-        ids = list(keys)
-        with repository.connection() as connection:
-            for start in range(0, len(ids), 500):
-                chunk = ids[start:start + 500]
-                for row in connection.execute(f'SELECT rowid, "{column.replace(chr(34), chr(34) * 2)}" FROM "{table}" '
-                                              f'WHERE rowid IN ({", ".join("?" for _ in chunk)})', chunk):
-                    value = str(row[1] or '').strip()
-                    if value and int(row[0]) in keys:
-                        found[keys[int(row[0])]] = f'system:{value}' if system else f'file:{dataset_id}:{value}'
+        for row in _rows_of_ids(repository, dataset_id, [column], list(keys)):
+            value = str(row[1] or '').strip()
+            if value and int(row[0]) in keys:
+                found[keys[int(row[0])]] = f'system:{value}' if system else f'file:{dataset_id}:{value}'
     return found
 
 
@@ -1865,7 +1951,8 @@ def call_isds(repository: Any, calls: list[dict[str, Any]]) -> dict[str, float]:
     if cells.empty:
         return {}
     index = ran_context.ran_index(cells)
-    found: dict[str, float] = {}
+    # The calls with a position, by the networks of their operator (searched together).
+    placed: dict[tuple[str, ...], list[tuple[str, tuple[float, float]]]] = {}
     for call in calls:
         try:
             point = (float(call['latitude']), float(call['longitude']))
@@ -1873,10 +1960,13 @@ def call_isds(repository: Any, calls: list[dict[str, Any]]) -> dict[str, float]:
             continue
         if not all(math.isfinite(value) for value in point) or point == (0.0, 0.0):
             continue
-        site = index.nearest(point, families[str(call.get('operator') or '')])
-        isd = index.isd(site['key']) if site else None
-        if isd:
-            found[call['call_key']] = isd
+        placed.setdefault(families[str(call.get('operator') or '')], []).append((call['call_key'], point))
+    found: dict[str, float] = {}
+    for networks, items in placed.items():
+        for (key, _point), site in zip(items, index.nearest_each([point for _key, point in items], networks), strict=True):
+            isd = index.isd(site['key']) if site else None
+            if isd:
+                found[key] = isd
     return found
 
 

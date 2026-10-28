@@ -422,10 +422,14 @@ def source_key(repository: Any, row: Any, datasets: dict[int, Any] | None = None
 
 
 def _ready_cdrs(repository: Any) -> dict[int, Any]:
+    # The tables of rows of the workspace, read at once.
+    with repository.connection() as connection:
+        tables = {str(row[0]) for row in connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'dataset_rows_%'")}
     return {
         int(row['id']): row for row in repository.list_datasets()
         if str(row['dataset_kind'] or '').casefold() in CDR_KINDS and str(row['status'] or '').casefold() == 'ready'
-        and repository.dataset_rows_table_exists(int(row['id']))
+        and repository.dataset_rows_table_name(int(row['id'])) in tables
     }
 
 

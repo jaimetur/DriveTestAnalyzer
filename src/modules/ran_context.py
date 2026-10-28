@@ -12,6 +12,7 @@ ISD of the sites around, not on a fixed distance, as a rural or road site serves
 
 from __future__ import annotations
 
+import functools
 import math
 import threading
 from collections import OrderedDict
@@ -44,6 +45,12 @@ _cache_lock = threading.Lock()
 
 def _clean_number(value: Any) -> str:
     return _text(value).removesuffix('.0')
+
+
+@functools.cache
+def _ring(ring: int) -> tuple[tuple[int, int], ...]:
+    """The offsets of the squares ``ring`` squares around a square (the square itself for 0)."""
+    return tuple((dx, dy) for dx in range(-ring, ring + 1) for dy in range(-ring, ring + 1) if max(abs(dx), abs(dy)) == ring)
 
 
 class _Grid:
@@ -83,6 +90,46 @@ class _Grid:
                 break
         return [item for item in found if item[0] <= _SEARCH_KM]
 
+    def nearest_each(self, points: list[tuple[float, float]]) -> list[tuple[float, int] | None]:
+        """The nearest site to each point (distance in km, index), as ``nearest(point, 1)`` finds it, or None: the points of
+        a square are searched together, ring after ring, each one stopping where it alone would."""
+        found: list[tuple[float, int] | None] = [None] * len(points)
+        if not self.keys or not points:
+            return found
+        xs, ys = self._squares([point[0] for point in points], [point[1] for point in points])
+        squares: dict[tuple[int, int], list[int]] = {}
+        for position, square in enumerate(zip(xs.tolist(), ys.tolist(), strict=True)):
+            squares.setdefault(square, []).append(position)
+        for (x, y), members in squares.items():
+            # As _distances measures from each point (its latitude in radians and cosine as math gives them).
+            latitudes = np.asarray([math.radians(points[member][0]) for member in members], dtype=float)[:, None]
+            longitudes = np.asarray([math.radians(points[member][1]) for member in members], dtype=float)[:, None]
+            cosines = np.asarray([math.cos(math.radians(points[member][0])) for member in members], dtype=float)[:, None]
+            best = np.full(len(members), np.inf)
+            best_index = np.full(len(members), -1, dtype=np.int64)
+            active = np.ones(len(members), dtype=bool)
+            for ring in range(int(_SEARCH_KM / _GRID_KM) + 1):
+                indices = sorted(index for dx, dy in _ring(ring) for index in self.squares.get((x + dx, y + dy), ()))
+                rows = np.flatnonzero(active)
+                if indices and len(rows):
+                    chosen = np.asarray(indices)
+                    lat2, lon2 = np.radians(self.latitudes[chosen].astype(float)), np.radians(self.longitudes[chosen].astype(float))
+                    value = (np.sin((lat2 - latitudes[rows]) / 2) ** 2
+                             + cosines[rows] * np.cos(lat2) * np.sin((lon2 - longitudes[rows]) / 2) ** 2)
+                    distances = 6371.0088 * 2 * np.arcsin(np.sqrt(np.clip(value, 0, 1)))
+                    # The nearest of the ring, the lowest index among equals (as sorting the pairs gives it).
+                    closest = distances.argmin(axis=1)
+                    nearest = distances[np.arange(len(rows)), closest]
+                    better = (nearest < best[rows]) | ((nearest == best[rows]) & (chosen[closest] < best_index[rows]))
+                    best[rows[better]], best_index[rows[better]] = nearest[better], chosen[closest][better]
+                active &= ~((best_index >= 0) & (best <= .8 * (ring - 1) * _GRID_KM))
+                if not active.any():
+                    break
+            for member, distance, index in zip(members, best.tolist(), best_index.tolist(), strict=True):
+                if index >= 0 and distance <= _SEARCH_KM:
+                    found[member] = (distance, index)
+        return found
+
 
 class RanIndex:
     """The sites and cells of the inventory cells of ``load_cells`` (see inventory_insights), indexed for the questions
@@ -96,6 +143,7 @@ class RanIndex:
         self._isd: dict[str, float | None] = {}
         self._identities: dict[str, list[tuple[Any, ...]]] = {}
         self._pcis: dict[tuple[str, str, str], list[tuple[str, float, float]]] = {}
+        self._pci_positions: dict[tuple[str, str, str], tuple[np.ndarray, np.ndarray]] = {}
         self._outages: dict[str, int] = {}
         self._frame: pd.DataFrame | None = None
         self._cells_lock = threading.Lock()
@@ -162,17 +210,26 @@ class RanIndex:
         """The nearest site in service of ``families`` to ``point``, with its distance (km)."""
         if point is None:
             return None
-        families = tuple(families)
-        grid = self._joined.get(families)
-        if grid is None:
-            # The sites of every network serving the operator in one grid, built once per set of networks.
-            keys = [key for family in families if family in self._grids for key in self._grids[family].keys]
-            grid = self._joined[families] = _Grid(keys, np.asarray([self.sites[key]['latitude'] for key in keys], dtype=float),
-                                                  np.asarray([self.sites[key]['longitude'] for key in keys], dtype=float))
+        grid = self._joined_grid(tuple(families))
         found = grid.nearest(point, 1)
         if not found:
             return None
         return {**self.sites[grid.keys[found[0][1]]], 'distance_km': round(found[0][0], 3)}
+
+    def nearest_each(self, points: list[tuple[float, float]], families: Iterable[str]) -> list[dict[str, Any] | None]:
+        """``nearest`` for many points of the same networks at once."""
+        grid = self._joined_grid(tuple(families))
+        return [None if found is None else {**self.sites[grid.keys[found[1]]], 'distance_km': round(found[0], 3)}
+                for found in grid.nearest_each(points)]
+
+    def _joined_grid(self, families: tuple[str, ...]) -> _Grid:
+        """The sites of every network serving an operator in one grid, built once per set of networks."""
+        grid = self._joined.get(families)
+        if grid is None:
+            keys = [key for family in families if family in self._grids for key in self._grids[family].keys]
+            grid = self._joined[families] = _Grid(keys, np.asarray([self.sites[key]['latitude'] for key in keys], dtype=float),
+                                                  np.asarray([self.sites[key]['longitude'] for key in keys], dtype=float))
+        return grid
 
     def resolve(self, cell: str, technology: str, families: tuple[str, ...], where: tuple[float, float] | None,
                 max_distance_km: float) -> dict[str, Any] | None:
@@ -212,10 +269,33 @@ class RanIndex:
             pci, channel = _clean_number(step.get('pci')), _clean_number(step.get('channel'))
             if not pci or not channel:
                 continue
-            for identity, latitude, longitude in self._pcis.get((step.get('technology') or '', pci, channel), ()):
-                if identity != str(step.get('cell') or '') and distance_km(point, (latitude, longitude)) <= radius_km:
+            key = (step.get('technology') or '', pci, channel)
+            cells = self._pcis.get(key, ())
+            if not cells:
+                continue
+            for position in self._within(key, cells, point, radius_km):
+                identity, latitude, longitude = cells[position]
+                if identity != str(step.get('cell') or ''):
                     found.add((identity, latitude, longitude))
         return len(found)
+
+    def _within(self, key: tuple[str, str, str], cells: list[tuple[str, float, float]], point: tuple[float, float],
+                radius_km: float) -> list[int]:
+        """The cells of a PCI and channel (their positions in ``cells``) at most ``radius_km`` from ``point``, as distance_km
+        measures them (a distance within a rounding of the radius is measured again with it)."""
+        positions = self._pci_positions.get(key)
+        if positions is None:
+            positions = self._pci_positions[key] = (np.radians(np.asarray([cell[1] for cell in cells], dtype=float)),
+                                                    np.radians(np.asarray([cell[2] for cell in cells], dtype=float)))
+        latitudes, longitudes = positions
+        latitude, longitude = math.radians(point[0]), math.radians(point[1])
+        value = (np.sin((latitudes - latitude) / 2) ** 2
+                 + math.cos(latitude) * np.cos(latitudes) * np.sin((longitudes - longitude) / 2) ** 2)
+        distances = 6371.0088 * 2 * np.arcsin(np.sqrt(np.minimum(1.0, value)))
+        near = distances <= radius_km
+        for position in np.flatnonzero(np.abs(distances - radius_km) <= 1e-9 * max(radius_km, 1.0)).tolist():
+            near[position] = distance_km(point, (cells[position][1], cells[position][2])) <= radius_km
+        return np.flatnonzero(near).tolist()
 
     def out_of_service(self, sites: Iterable[str]) -> int:
         """The cells Locked, Halted or Disabled on ``sites``."""
@@ -251,11 +331,16 @@ def serving_isd_ratio(distance: float | None, isd: float | None) -> float | None
     return round(distance / isd, 2) if distance is not None and isd else None
 
 
+# The nearest site of a call not worked out beforehand.
+_UNKNOWN: Any = object()
+
+
 def call_context(index: RanIndex, families: tuple[str, ...], steps: list[dict[str, Any]], start: tuple[float, float] | None,
-                 end: tuple[float, float] | None, max_distance_km: float) -> dict[str, Any]:
+                 end: tuple[float, float] | None, max_distance_km: float, nearest: Any = _UNKNOWN) -> dict[str, Any]:
     """What the DT Analyzer RCA reads of the network around a call: the serving distance and the ISD of the serving site,
     the nearest site and its ISD, the PCI collisions around, the cells out of service on its sites, and a note naming the
-    serving and nearest sites for the evidence. ``steps`` are the cells of the call (nq_call_map.trace_cells)."""
+    serving and nearest sites for the evidence. ``steps`` are the cells of the call (nq_call_map.trace_cells); ``nearest``
+    its nearest site when it is already known (``RanIndex.nearest`` of its end, else its start)."""
     where = end or start
     resolved = []
     count = len(steps)
@@ -274,7 +359,8 @@ def call_context(index: RanIndex, families: tuple[str, ...], steps: list[dict[st
                        'serving_isd_ratio': serving_isd_ratio(serving['distance_km'], isd)})
         notes.append(f"served from Site {serving['site_id']} ({serving['network']}) at {serving['distance_km']:.2f} km"
                      + (f", {values['serving_isd_ratio']:.1f} × its ISD of {isd:.2f} km" if isd else ''))
-    nearest = index.nearest(where, families)
+    if nearest is _UNKNOWN:
+        nearest = index.nearest(where, families)
     if nearest is not None:
         isd = index.isd(nearest['key'])
         values.update({'nearest_site_distance': nearest['distance_km'],

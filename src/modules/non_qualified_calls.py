@@ -47,7 +47,7 @@ from datetime import datetime
 from pathlib import Path
 from io import BytesIO
 from threading import Lock
-from typing import Any, Callable
+from typing import Any, Callable, Iterator
 
 from src.modules import cdr_field_dictionary
 from src.modules.cdr_field_profiles import NETCHECK_PROFILE, CdrFieldProfile, workspace_field_profile
@@ -2113,10 +2113,43 @@ def _cdr_rows(connection: Any, dataset_id: int, kind: str, query: str, selected:
     (the same values, in the same order); None otherwise (see cdr_store.query_cdr_rows)."""
     from src.modules import cdr_store
 
-    database = next((str(row[2]) for row in connection.execute('PRAGMA database_list').fetchall() if row[1] == 'main'), '')
+    database = _main_database(connection)
     if not database or int(dataset_id) not in cdr_store.fresh_copies(database, [dataset_id]):
         return None
     return cdr_store.query_cdr_rows(database, kind, dataset_id, query, selected, where, params, filter_columns, rowid_alias)
+
+
+def _main_database(connection: Any) -> str:
+    return next((str(row[2]) for row in connection.execute('PRAGMA database_list').fetchall() if row[1] == 'main'), '')
+
+
+# The rows of a CDR read at a time for the population of its calls.
+_COLUMN_CHUNK_ROWS = 50_000
+
+
+def _cdr_column_chunks(connection: Any, dataset_id: int, kind: str, query: str, selected: list[tuple[str, str]],
+                       ) -> Iterator[dict[str, Any]]:
+    """Every row ``query`` (``SELECT <physical> AS <alias> ... FROM dataset_rows_<id>``, without a condition) gives, in the
+    same order, as columns (by alias) of _COLUMN_CHUNK_ROWS rows at a time: read from the columnar copy of the CDR when it
+    holds the CDR as it is (the same values), else from its table."""
+    from src.modules import cdr_store
+
+    database = _main_database(connection)
+    if database and int(dataset_id) in cdr_store.fresh_copies(database, [dataset_id]):
+        values = cdr_store.cdr_columns(database, kind, dataset_id, [column for _alias, column in selected])
+        length = len(values[selected[0][1]]) if selected else 0
+        for start in range(0, length, _COLUMN_CHUNK_ROWS):
+            yield {alias: values[column][start:start + _COLUMN_CHUNK_ROWS] for alias, column in selected}
+        return
+    cursor = connection.execute(query)
+    while rows := cursor.fetchmany(_COLUMN_CHUNK_ROWS):
+        yield {alias: [row[position] for row in rows] for position, (alias, _column) in enumerate(selected)}
+
+
+def _each_value(values: Any, function: Callable[[Any], Any]) -> list[Any]:
+    """``function`` of every value, each distinct value worked out once."""
+    done = {value: function(value) for value in set(values)}
+    return [done[value] for value in values]
 
 
 def _dataset_calls(connection: Any, dataset: Any, cdr_columns: tuple[str, ...] = (),
@@ -2177,24 +2210,35 @@ def _dataset_calls(connection: Any, dataset: Any, cdr_columns: tuple[str, ...] =
     population: dict[str, list[Any]] = {}
     data_date = ''
     key_query = f"SELECT {', '.join(f'{_quote(column)} AS {key_aliases[column]}' for column in key_selected)} FROM {_quote(table)}"
-    key_rows = _cdr_rows(connection, dataset_id, service, key_query, [(key_aliases[column], column) for column in key_selected])
-    for row in key_rows if key_rows is not None else connection.execute(key_query):
-        result = _text(row[key_aliases[result_column]]).casefold()
-        if not result:
-            continue
-        values = {field: next((text for column in resolved[field] if (text := _text(row[key_aliases[column]]))), '')
-                  for field in (*_KEY_FIELDS, *POPULATION_FIELDS)}
-        key, _join_id = identity(row, key_aliases, values)
-        is_nq = int(result != qualified)
-        entry = population.get(key)
-        if entry is None:
-            population[key] = [dataset_id, key, service, values['campaign'], values['operator'], nr_mode, is_nq,
-                               *(values[field] for field in POPULATION_FIELDS)]
-        elif is_nq:
-            entry[6] = 1
-        moment = _time_text(values['start_time'])
-        if moment > data_date:
-            data_date = moment
+    for chunk in _cdr_column_chunks(connection, dataset_id, service, key_query, [(key_aliases[column], column) for column in key_selected]):
+        # The text of each column, then of each field (its first column with a value), as each row would give them.
+        texts = {alias: _each_value(values, _text) for alias, values in chunk.items()}
+        results = _each_value(texts[key_aliases[result_column]], str.casefold)
+        size = len(results)
+        fields: dict[str, list[str]] = {}
+        for field in (*_KEY_FIELDS, *POPULATION_FIELDS):
+            candidates = [texts[key_aliases[column]] for column in resolved[field]]
+            fields[field] = (candidates[0] if len(candidates) == 1 else [''] * size if not candidates
+                             else [next((text for text in items if text), '') for items in zip(*candidates, strict=True)])
+        joins, identifiers, subscribers = (texts[key_aliases[column]] if column else [''] * size
+                                           for column in (join_column, identifier_column, subscriber_column))
+        for position, result in enumerate(results):
+            if not result:
+                continue
+            join_id = joins[position]
+            # The fields of the call identify it only without a JOIN_ID.
+            key = call_key_for(service, {} if join_id else {field: fields[field][position] for field in _KEY_FIELDS},
+                               identifiers[position], subscribers[position], join_id)
+            is_nq = int(result != qualified)
+            entry = population.get(key)
+            if entry is None:
+                population[key] = [dataset_id, key, service, fields['campaign'][position], fields['operator'][position], nr_mode,
+                                   is_nq, *(fields[field][position] for field in POPULATION_FIELDS)]
+            elif is_nq:
+                entry[6] = 1
+            moment = fields['start_time'][position].replace('T', ' ')[:19]
+            if moment > data_date:
+                data_date = moment
 
     selected = list(dict.fromkeys(
         column for column in (*(item for items in resolved.values() for item in items), join_column, identifier_column,
@@ -3890,18 +3934,31 @@ def _dta_context(task_repository: Any, rows: list[Any], network: bool) -> dict[t
         cells, _snapshots = nq_call_map.inventory_cells(task_repository, tuple(dict.fromkeys(item for value in families.values() for item in value)))
         index = ran_context.ran_index(cells) if not cells.empty else None
     max_distance = float(config.get('max_distance_km') or 30.0)
-    context = {}
+    calls = []
     for row in rows:
         try:
             inputs = json.loads(row['rca_inputs_json'] or '{}') or {}
         except (TypeError, ValueError):
             inputs = {}
+        calls.append((row, inputs, nq_call_map._position(row['latitude'], row['longitude']),
+                      nq_call_map._position(inputs.get('end_latitude'), inputs.get('end_longitude'))))
+    # The nearest site to where each call ended (else started), the calls of the same networks searched together.
+    nearest: dict[int, Any] = {}
+    if index is not None:
+        placed: dict[tuple[str, ...], list[tuple[int, tuple[float, float]]]] = {}
+        for position, (row, _inputs, start, end) in enumerate(calls):
+            if end or start:
+                placed.setdefault(families[_text(row['operator'])], []).append((position, end or start))
+        for networks, items in placed.items():
+            nearest.update(zip((position for position, _point in items),
+                               index.nearest_each([point for _position, point in items], networks), strict=True))
+    context = {}
+    for position, (row, inputs, start, end) in enumerate(calls):
         steps = nq_call_map.trace_cells(inputs.get('cell_trace'), inputs.get('cell_pcis'), row['cell_id'])
         values: dict[str, Any] = {'ping_pong': len(ran_context.ping_pongs([step['cell'] for step in steps]))} if steps else {}
         if index is not None:
-            values.update(ran_context.call_context(
-                index, families[_text(row['operator'])], steps, nq_call_map._position(row['latitude'], row['longitude']),
-                nq_call_map._position(inputs.get('end_latitude'), inputs.get('end_longitude')), max_distance))
+            values.update(ran_context.call_context(index, families[_text(row['operator'])], steps, start, end, max_distance,
+                                                   nearest.get(position)))
         if values:
             context[(int(row['dataset_id']), int(row['source_row_id']))] = values
     return context

@@ -1,5 +1,6 @@
 import io
 import json
+import threading
 import time
 import zipfile
 from pathlib import Path
@@ -1304,16 +1305,23 @@ def test_the_reindex_reads_the_same_calls_from_the_columnar_copies(client, tmp_p
 
     monkeypatch.setattr(cdr_store, 'fresh_copies', lambda database_path, dataset_ids: set())
     from_sqlite = {dataset_id: calls_of(dataset_id) for dataset_id in datasets}
+    # Read two rows at a time, the calls are the same.
+    monkeypatch.setattr(nq, '_COLUMN_CHUNK_ROWS', 2)
+    assert {dataset_id: calls_of(dataset_id) for dataset_id in datasets} == from_sqlite
     monkeypatch.undo()
+    monkeypatch.setattr(nq, '_COLUMN_CHUNK_ROWS', 2)
     monkeypatch.setattr(cdr_store, 'free_space', lambda path: 1024 ** 4)
     repository = core.Repository(core.active_workspace.database_path, global_db_path=core.repository.global_db_path)
     cdr_store.start_store_sync(repository, lambda run: run(), lambda: cdr_store.included_cdrs(repository))
     reads = []
-    query_cdr_rows = cdr_store.query_cdr_rows
-    monkeypatch.setattr(cdr_store, 'query_cdr_rows', lambda *args, **kwargs: reads.append(args[2]) or query_cdr_rows(*args, **kwargs))
+    # The reads of this test only (the background tasks of the application read the copies too).
+    reader = threading.get_ident()
+    for name in ('cdr_columns', 'query_cdr_rows'):
+        monkeypatch.setattr(cdr_store, name, lambda *args, _read=getattr(cdr_store, name), _name=name, **kwargs: (
+            threading.get_ident() == reader and reads.append((_name, args[2]))) or _read(*args, **kwargs))
 
     from_copies = {dataset_id: calls_of(dataset_id) for dataset_id in datasets}
 
     # Both passes of each CDR (every call, then its Non-Qualified rows) read the copy and give the same calls.
-    assert sorted(reads) == sorted(datasets * 2)
+    assert sorted(reads) == sorted((name, dataset_id) for dataset_id in datasets for name in ('cdr_columns', 'query_cdr_rows'))
     assert from_copies == from_sqlite and all(result['calls'] for result in from_copies.values())

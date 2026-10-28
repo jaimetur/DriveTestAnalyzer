@@ -704,6 +704,28 @@ def read_cdr(database_path: Any, kind: str, dataset_id: int, columns: list[str],
                         index=range(length))
 
 
+def cdr_columns(database_path: Any, kind: str, dataset_id: int, columns: list[str]) -> dict[str, Any]:
+    """The Python values sqlite3 gives for ``columns`` of every row of one CDR, read from its copy: an array per column, in
+    row id order."""
+    values, _length = _raw(database_path, kind, dataset_id, columns)
+    return {column: _python_values(values[column]) for column in dict.fromkeys(columns)}
+
+
+def rows_by_rowid(database_path: Any, kind: str, dataset_id: int, columns: list[str], rowids: Any) -> dict[int, tuple[Any, ...]]:
+    """The Python values sqlite3 gives for ``columns`` of the rows ``rowids`` of one CDR, read from its copy, by row id (the
+    row ids it does not have are left out)."""
+    wanted = sorted({int(rowid) for rowid in rowids})
+    values, length = _raw(database_path, kind, dataset_id, [ROWID, *columns], wanted)
+    found = [_python_values(values[column]) for column in [ROWID, *columns]]
+    return {int(found[0][index]): tuple(column[index] for column in found[1:]) for index in range(length)}
+
+
+def fresh_rows_by_rowid(database_path: Any, dataset_id: int, columns: list[str], rowids: Any) -> dict[int, tuple[Any, ...]] | None:
+    """``rows_by_rowid`` when the copy of the CDR holds its rows as they are now; None otherwise."""
+    kind = fresh_kind(database_path, dataset_id)
+    return rows_by_rowid(database_path, kind, dataset_id, columns, rowids) if kind else None
+
+
 def resolve_column(existing: Any, requested: str) -> str | None:
     """The column of a table a requested name reads, as the CDR tables resolve it: the same name, else the same name in
     another case, else the same name with other separators (see Repository._resolve_dataset_row_column_name)."""

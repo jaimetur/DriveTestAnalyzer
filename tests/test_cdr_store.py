@@ -1,6 +1,7 @@
 """The columnar copy of the CDRs: a Parquet file per CDR kept up to date by the triggers of its table, the catalog of
 views over the CDRs in combined, and the wait for free disk space."""
 import json
+import threading
 
 import duckdb
 import pandas as pd
@@ -241,7 +242,10 @@ def test_the_rows_of_a_cdr_with_filters_are_the_same_from_its_copy(client, tmp_p
     copy_everything()
     reads = []
     query_cdr = cdr_store.query_cdr
-    monkeypatch.setattr(cdr_store, 'query_cdr', lambda *args, **kwargs: reads.append(args[2]) or query_cdr(*args, **kwargs))
+    # The reads of this test only (the background tasks of the application read the copy too).
+    reader = threading.get_ident()
+    monkeypatch.setattr(cdr_store, 'query_cdr', lambda *args, **kwargs: (
+        threading.get_ident() == reader and reads.append(args[2])) or query_cdr(*args, **kwargs))
 
     copied_rows = core.repository.load_dataset_rows(data, columns, filters)
 
