@@ -304,6 +304,50 @@ const VISUALS = {
     });
     return out;
   },
+  // The columnar store: every CDR a Parquet copy that DuckDB reads for every module and, through PostgreSQL, for Tableau,
+  // and the workspace database kept light.
+  columnar(p) {
+    let out = '';
+    [['Data', '#1f6fbf'], ['Voice', '#2e8b57'], ['Speech', '#7c3aed']].forEach(([name, colour], index) => {
+      const y = 64 + index * 118;
+      out += `<rect x="12" y="${y}" width="146" height="92" rx="16" fill="#16213a" stroke="${colour}" stroke-width="3"/>`;
+      out += `<text x="85" y="${y + 38}" text-anchor="middle" font-size="16" font-weight="700" fill="#9fb0cc" letter-spacing="2">CDR</text>`;
+      out += `<text x="85" y="${y + 68}" text-anchor="middle" font-size="25" font-weight="800" fill="#ffffff">${name}</text>`;
+      out += `<path d="M158 ${y + 46} C 208 ${y + 46}, 206 214, 246 214" fill="none" stroke="#3a4d75" stroke-width="4"/>`;
+    });
+    // The copies: a stack of Parquet files.
+    for (let layer = 2; layer >= 0; layer -= 1) {
+      const top = 128 + layer * 52;
+      out += `<path d="M250 ${top} v40 a100 22 0 0 0 200 0 v-40" fill="${layer ? p.deep : p.accent}" stroke="${p.light}" stroke-width="3"/>`;
+      out += `<ellipse cx="350" cy="${top}" rx="100" ry="22" fill="${layer ? p.accent : p.light}" stroke="${p.light}" stroke-width="3"/>`;
+    }
+    out += `<g transform="translate(330 104)">${icon('TbBolt', '#101a2e', 40)}</g>`;
+    out += `<text x="350" y="322" text-anchor="middle" font-size="25" font-weight="800" fill="#ffffff">Parquet copies</text>`;
+    out += pill(350, 364, 'DuckDB', '#f2c94c', '#101a2e', 21);
+    // The workspace database: the schema and indexes, without the rows.
+    out += `<rect x="236" y="412" width="228" height="118" rx="16" fill="#101a2e" stroke="#55627c" stroke-width="2.5" stroke-dasharray="9 7"/>`;
+    out += `<text x="350" y="446" text-anchor="middle" font-size="19" font-weight="800" fill="#c9d4e6">Workspace DB</text>`;
+    out += `<text x="350" y="474" text-anchor="middle" font-size="15" fill="#9fb0cc">schema · indexes · no rows</text>`;
+    out += `<text x="350" y="510" text-anchor="middle" font-size="22" font-weight="800" fill="${p.light}">51 GB → 5 GB</text>`;
+    // Every module, and Tableau through PostgreSQL.
+    out += `<path d="M452 196 C 492 196, 484 132, 520 132" fill="none" stroke="${p.light}" stroke-width="4"/>`;
+    out += `<path d="M452 236 C 492 236, 484 412, 520 412" fill="none" stroke="${p.light}" stroke-width="4"/>`;
+    out += `<rect x="522" y="14" width="288" height="262" rx="18" fill="#16213a" stroke="${p.accent}" stroke-width="3"/>`;
+    out += `<text x="546" y="50" font-size="17" font-weight="800" fill="${p.light}" letter-spacing="2">EVERY MODULE</text>`;
+    ['PPT Dashboards', 'Scoring & GAP', 'Network Insights', 'Non-Qualified Calls', 'Query Builder'].forEach((name, index) => {
+      out += `<rect x="544" y="${66 + index * 40}" width="244" height="32" rx="10" fill="${p.soft}"/><circle cx="562" cy="${82 + index * 40}" r="6" fill="${p.light}"/>`;
+      out += `<text x="578" y="${89 + index * 40}" font-size="18" font-weight="700" fill="#ffffff">${name}</text>`;
+    });
+    out += `<rect x="522" y="300" width="288" height="230" rx="18" fill="#16213a" stroke="#336791" stroke-width="3"/>`;
+    out += `<text x="546" y="336" font-size="15" font-weight="800" fill="#7fb2dd" letter-spacing="1">POSTGRESQL · PG_DUCKDB</text>`;
+    ['cdr_data', 'cdr_voice', 'cdr_speech'].forEach((name, index) => {
+      out += `<text x="548" y="${370 + index * 30}" font-size="18" fill="#c9d4e6" class="mono">${name}</text>`;
+    });
+    out += `<path d="M700 396 H736" stroke="#7fb2dd" stroke-width="4"/><path d="M734 386 L750 396 L734 406 Z" fill="#7fb2dd"/>`;
+    out += `<g transform="translate(752 370)">${icon('TbChartBar', '#ffffff', 46)}</g>`;
+    out += `<text x="666" y="500" text-anchor="middle" font-size="24" font-weight="800" fill="#ffffff">Tableau, live</text>`;
+    return out;
+  },
   // A donut of shares.
   donut(p, { parts = [['RF', 42, '#3a7fc1'], ['RAN', 23, '#e08a1e'], ['Core', 14, '#7b52c0'], ['Protocol', 12, '#138597'], ['Other', 9, '#7b8790']] } = {}) {
     let angle = -Math.PI / 2; let out = '';
@@ -922,6 +966,21 @@ const TEMPLATES = {
         <h3 style="margin-top:22px">${escape(item.label)}</h3><p>${escape(item.text)}</p></div>`).join('')}</div>
       ${slide.note ? `<p class="note">${escape(slide.note)}</p>` : ''}</div>`;
   },
+  // The figures of a change: each a big multiplier and two bars to scale, before and now.
+  impact(slide, deck, p) {
+    return `${heading(slide)}<div class="content"><div class="grid" style="grid-template-columns:repeat(${slide.items.length},1fr)">${slide.items.map((item) => {
+      const now = Math.max(0.025, item.now / item.before);
+      const bar = (label, share, value, fill, strong) => `<div class="impact-row"><span class="impact-label">${escape(label)}</span>
+        <div class="impact-track"><div class="impact-bar" style="width:${(share * 100).toFixed(1)}%;background:${fill};${strong ? `box-shadow:0 0 26px ${p.glow}` : ''}"></div></div>
+        <span class="impact-value" style="color:${strong ? p.light : 'var(--muted)'}">${escape(value)}</span></div>`;
+      return `<div class="card impact" style="border-top:6px solid ${p.accent}">
+        <div style="display:flex;align-items:center;gap:16px">${badge(item.icon, p.accent, 54, 30)}<h3>${escape(item.label)}</h3></div>
+        <p class="impact-figure" style="background:linear-gradient(120deg, #ffffff, ${p.light});-webkit-background-clip:text;background-clip:text;color:transparent">${escape(item.value)}</p>
+        ${bar('Before', 1, item.beforeText, '#55627c', false)}${bar('Now', now, item.nowText, `linear-gradient(90deg, ${p.accent}, ${p.light})`, true)}
+        <p style="margin-top:22px">${escape(item.text)}</p></div>`;
+    }).join('')}</div>
+      ${slide.note ? `<p class="note">${escape(slide.note)}</p>` : ''}</div>`;
+  },
   closing(slide, deck, p) {
     return `${heading(slide)}<div class="content"><div style="display:flex;gap:44px">
       <div class="card" style="flex:1.2;padding:38px 42px"><p class="kicker" style="font-size:20px;color:${p.light}">In the Help</p>
@@ -994,6 +1053,14 @@ function css(p) {
   .eq-op span { width: 76px; height: 76px; border-radius: 50%; display: grid; place-items: center; font-size: 26px; font-weight: 900; color: #fff; letter-spacing: 1px; }
   .eq-op span.is-symbol { font-size: 40px; }
   .facts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-top: 24px; }
+  .impact { padding: 34px 32px 32px; box-shadow: 0 30px 70px rgba(0, 0, 0, .35); }
+  .impact h3 { font-size: 30px; }
+  .impact .impact-figure { font-size: 112px; font-weight: 900; letter-spacing: -4px; line-height: 1.05; margin: 22px 0 18px; }
+  .impact-row { display: grid; grid-template-columns: 98px 1fr 96px; align-items: center; gap: 12px; margin-top: 14px; }
+  .impact-label { font-size: 18px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); }
+  .impact-track { height: 22px; border-radius: 11px; background: #0f1830; overflow: hidden; }
+  .impact-bar { height: 100%; border-radius: 11px; }
+  .impact-value { font-size: 21px; font-weight: 800; text-align: right; }
   .fact { display: flex; align-items: center; gap: 14px; padding: 12px 20px 12px 16px; border-radius: 20px; background: #131d33; border: 1px solid var(--line); font-size: 20px; line-height: 1.3; color: var(--soft); }
   .fact svg { flex: none; }`;
 }

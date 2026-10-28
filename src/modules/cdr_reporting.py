@@ -4535,6 +4535,18 @@ def _catalogue_display_label(category: object, series: object) -> str:
     return category_text if series_text == "(all)" else f"{category_text} · {series_text}"
 
 
+def _display_labels(frame: pd.DataFrame, group: str, period: str) -> np.ndarray:
+    """``_catalogue_display_label`` of the ``group`` and ``period`` of every row, worked out once per distinct pair."""
+    first, second = (frame[column].fillna("(blank)").astype(str) for column in (group, period))
+    first_codes, firsts = pd.factorize(first)
+    second_codes, seconds = pd.factorize(second)
+    width = max(1, len(seconds))
+    unique, inverse = np.unique(first_codes.astype(np.int64) * width + second_codes, return_inverse=True)
+    labels = np.asarray([_catalogue_display_label(firsts[key // width], seconds[key % width]) for key in unique.tolist()],
+                        dtype=object)
+    return labels[inverse] if len(unique) else np.empty(0, dtype=object)
+
+
 def _hierarchical_unique_keys(frame: pd.DataFrame, columns: list[str]) -> list[tuple[object, ...]]:
     """Keep every child grouping value adjacent to its parent.
 
@@ -6513,18 +6525,32 @@ def _sorted_values_stats(values: list[float], edges: list[float] | None) -> dict
     return stats
 
 
-def _scatter_stats(x: pd.Series, y: pd.Series) -> dict[str, object]:
+def _average_ranks(values: np.ndarray) -> np.ndarray:
+    """``Series.rank()`` of numbers without a missing value: 1 to n, the mean rank for ties."""
+    order = np.argsort(values, kind="stable")
+    ordered = values[order]
+    starts = np.flatnonzero(np.r_[True, ordered[1:] != ordered[:-1]])
+    ends = np.r_[starts[1:], len(ordered)]
+    ranks = np.empty(len(values), dtype=np.float64)
+    ranks[order] = np.repeat((starts + ends + 1) / 2.0, ends - starts)
+    return ranks
+
+
+def _scatter_stats(x: object, y: object) -> dict[str, object]:
     """How one scatter series moves: its rank correlation and the median of the KPI in the lowest and highest quarter
-    of the other measure, for the generated comments."""
+    of the other measure, for the generated comments (as pandas computes them, on the numbers of the series)."""
+    x, y = np.asarray(x, dtype=np.float64), np.asarray(y, dtype=np.float64)
     stats: dict[str, object] = {"n": int(len(x))}
-    if len(x) >= 3 and x.nunique() > 1 and y.nunique() > 1:
-        # Spearman is the Pearson correlation of the ranks (pandas' method="spearman" needs scipy, not installed).
-        rho = x.rank().corr(y.rank())
+    # (The series have no missing value: more than one distinct value is a minimum below the maximum.)
+    if len(x) >= 3 and x.min() < x.max() and y.min() < y.max():
+        # Spearman is the Pearson correlation of the ranks (pandas' method="spearman" needs scipy, not installed), as
+        # Series.corr computes it.
+        rho = np.corrcoef(_average_ranks(x), _average_ranks(y))[0, 1]
         stats["spearman"] = None if pd.isna(rho) else float(rho)
-        low, high = float(x.quantile(.25)), float(x.quantile(.75))
+        low, high = (float(value) for value in np.percentile(x, [25.0, 75.0]))
         stats.update({
             "x_q25": low, "x_q75": high,
-            "y_median_low": float(y[x <= low].median()), "y_median_high": float(y[x >= high].median()),
+            "y_median_low": float(np.median(y[x <= low])), "y_median_high": float(np.median(y[x >= high])),
         })
     return stats
 
@@ -7126,29 +7152,30 @@ def catalog_chart_payload(
         if points.empty:
             return empty("No valid map coordinates are available")
         key_columns = [group, period] if period and group and period != group else [group] if group else []
-        raw_keys = (
-            [tuple(values) for values in points[key_columns].fillna("(blank)").astype(str).to_numpy()]
-            if key_columns else [("All",)] * len(points)
-        )
-        unique_keys = list(dict.fromkeys(raw_keys))
+        # The key of each point (its series), worked out once per distinct key: the keys in the order their points
+        # first come, the series of each point, and its points in their order.
+        if key_columns:
+            key_frame = points[key_columns].fillna("(blank)").astype(str)
+            series_of_point = key_frame.groupby(key_columns, sort=False).ngroup().to_numpy()
+            first_points = np.unique(series_of_point, return_index=True)[1]
+            unique_keys = [tuple(values) for values in key_frame.iloc[first_points].to_numpy()]
+        else:
+            series_of_point = np.zeros(len(points), dtype=np.int64)
+            unique_keys = [("All",)]
         colours = _series_colours(unique_keys, key_columns, points)
-        rows_by_key: dict[tuple[str, ...], list[tuple[float, float]]] = {
-            key: [] for key in unique_keys
-        }
-        for key, longitude_value, latitude_value in zip(
-            raw_keys, points[longitude], points[metric], strict=True,
-        ):
-            rows_by_key[key].append((float(longitude_value), float(latitude_value)))
+        point_order = np.argsort(series_of_point, kind="stable")
+        series_ends = np.cumsum(np.bincount(series_of_point, minlength=len(unique_keys)))
+        longitudes, latitudes = points[longitude].to_numpy(), points[metric].to_numpy()
         series_payload = []
         fallback = []
         for index, key in enumerate(unique_keys):
-            rows = rows_by_key[key]
+            rows = point_order[(series_ends[index - 1] if index else 0):series_ends[index]]
             sampled = _interactive_sample(rows, INTERACTIVE_SCATTER_POINTS_PER_SERIES)
             label = _legend_key_caption(key, key_columns, points, _legend_dimensions(render_entry.legend)) or " · ".join(key)
             colour = colours.get(key, _colour(key, index))
             series_payload.append({
                 "name": label, "colour": colour,
-                "points": [[longitude_value, latitude_value] for _source_index, (longitude_value, latitude_value) in sampled],
+                "points": [[float(longitudes[row]), float(latitudes[row])] for _source_index, row in sampled],
                 "key": list(key), "samples": len(rows),
             })
             fallback.append((label, colour, 2))
@@ -7156,10 +7183,9 @@ def catalog_chart_payload(
         area_column = _column(data, ("City", "Region"))
         areas = None
         if area_column:
-            positions = {key: index for index, key in enumerate(unique_keys)}
             located = pd.DataFrame({
                 "area": data.loc[points.index, area_column].fillna("(blank)").astype(str).to_numpy(),
-                "series": [positions[key] for key in raw_keys],
+                "series": series_of_point,
             })
             table = pd.crosstab(located["area"], located["series"])
             table = table.loc[table.sum(axis=1).sort_values(ascending=False).index[:15]]
@@ -7458,10 +7484,7 @@ def catalog_chart_payload(
         x_metric = _column(data, spec.get("x_metric", ()))
         if not x_metric:
             return empty("No coordinate or comparison field is available")
-        data["__catalog_label"] = [
-            _catalogue_display_label(category, series)
-            for category, series in data[[group, period]].fillna("(blank)").itertuples(index=False, name=None)
-        ]
+        data["__catalog_label"] = _display_labels(data, group, period)
         points = data[["__catalog_label", metric, x_metric]].copy()
         points.attrs = data.attrs.copy()
         points[metric] = pd.to_numeric(points[metric], errors="coerce")
@@ -7478,15 +7501,22 @@ def catalog_chart_payload(
         }
         payload_series = []
         fallback = []
-        for index, (label, subset) in enumerate(points.groupby("__catalog_label", sort=False)):
-            rows = list(subset[[x_metric, metric]].itertuples(index=False, name=None))
-            sampled = _interactive_sample(rows, INTERACTIVE_SCATTER_POINTS_PER_SERIES)
+        # The points of each series in their order, as numbers (as groupby gives them, without a frame per series).
+        series_of_point, series_labels = pd.factorize(points["__catalog_label"].to_numpy())
+        point_order = np.argsort(series_of_point, kind="stable")
+        series_ends = np.cumsum(np.bincount(series_of_point, minlength=len(series_labels)))
+        all_xs, all_ys = points[x_metric].to_numpy(), points[metric].to_numpy()
+        for index, label in enumerate(series_labels):
+            rows = point_order[(series_ends[index - 1] if index else 0):series_ends[index]]
+            xs, ys = all_xs[rows], all_ys[rows]
+            # Only the points shown are made Python numbers.
+            sampled = _interactive_sample(np.arange(len(rows)), INTERACTIVE_SCATTER_POINTS_PER_SERIES)
             colour = colours.get((str(label),), _colour(label, index))
             payload_series.append({
                 "name": str(label), "colour": colour,
-                "points": [[float(x), float(y)] for _source_index, (x, y) in sampled],
+                "points": [[float(xs[row]), float(ys[row])] for _source_index, row in sampled],
                 "key": serialise_key(series_keys.get(str(label), (label, "(all)"))),
-                "stats": _scatter_stats(subset[x_metric], subset[metric]),
+                "stats": _scatter_stats(xs, ys),
             })
             fallback.append((label, colour, 2))
         return {
@@ -7576,10 +7606,7 @@ def _chart_for_catalog_entry(
     # Non-stacked visuals have one visual series per row/column combination. A
     # rows-only chart remains a single category series rather than becoming the
     # misleading ``Operator · Operator`` label used by the earlier renderer.
-    frame["__catalog_label"] = [
-        _catalogue_display_label(category, series)
-        for category, series in frame[[group, period]].fillna("(blank)").itertuples(index=False, name=None)
-    ]
+    frame["__catalog_label"] = _display_labels(frame, group, period)
     if spec["kind"] == "scatter":
         return finish(_render_scatter(chart_title, frame, "__catalog_label", metric, _column(frame, spec.get("x_metric", ())), (), renderer_legend_position))
     if chart_type in {"table", "dynamic table"}:

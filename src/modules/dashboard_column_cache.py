@@ -1159,19 +1159,26 @@ def build_from_copies(database_path: str | Path, segment: Segment, expressions: 
             several.append(expression)
     if several:
         several_names = list(dict.fromkeys(name for expression in several for name in referenced(expression)))
+        # SQLite evaluates the expressions once for each distinct combination of the values (with their Python types)
+        # of the columns they read, as each row only depends on its own values.
+        name_codes = np.column_stack([distinct_values(name)[0] for name in several_names]) if length else None
+        if length:
+            combination = pd.DataFrame(name_codes).groupby(list(range(len(several_names))), sort=False).ngroup().to_numpy()
+            first = np.unique(combination, return_index=True)[1]
+        else:
+            combination, first = np.empty(0, dtype=np.int64), np.empty(0, dtype=np.int64)
         memory = sqlite3.connect(':memory:')
         try:
             memory.execute(f'CREATE TABLE {quote_identifier(source.table)} ("__memory_rowid" INTEGER PRIMARY KEY'
                            + ''.join(f', {quote_identifier(name)}' for name in several_names) + ')')
             memory.executemany(f'INSERT INTO {quote_identifier(source.table)} VALUES ({", ".join("?" * (len(several_names) + 1))})',
-                               zip(range(length), *(column_values(name) for name in several_names)))
+                               zip(range(len(first)), *(column_values(name)[first] for name in several_names)))
             rows = memory.execute(f'SELECT {", ".join(several)} FROM {quote_identifier(source.table)} '
                                   'ORDER BY "__memory_rowid"').fetchall()
         finally:
             memory.close()
-        content = lib.to_object_array_tuples(rows) if rows else np.empty((0, len(several)), dtype=object)
         for index, expression in enumerate(several):
-            results[expression] = encode_values(np.ascontiguousarray(content[:, index]))
+            results[expression] = encode_by_codes([row[index] for row in rows], combination)
     built.update({expression: results[expression] for expression in expressions})
     built[ORDER_DATE] = results[order_date] if order_date else encode_values(np.full(length, None, dtype=object))
     return built
