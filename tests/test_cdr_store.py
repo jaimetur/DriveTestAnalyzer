@@ -609,3 +609,30 @@ def test_the_writers_of_an_emptied_combined_table_keep_its_rows_as_sqlite_would(
     core.repository.update_dataset_profile(second, nr_mode='NSA')
     assert core.repository.set_reporting_nr_mode(second, 'data') is True
     assert rows()[0][-1] == 'NSA'
+
+
+def test_the_catalog_gives_the_views_of_the_cdrs_for_postgresql_too(client, tmp_path):
+    first = add_cdr(tmp_path, 'first.csv', 'data', data_rows())
+    second = add_cdr(tmp_path, 'second.csv', 'data', pd.DataFrame({'Operator': ['O2'], 'RSRP': [-95], 'NR_Mode': ['SA']}))
+    with core.repository.connection() as connection:
+        # A column without a declared type with text and an integer.
+        connection.execute(f'ALTER TABLE dataset_rows_{first} ADD COLUMN "Cell_List"')
+        connection.executemany(f'UPDATE dataset_rows_{first} SET "Cell_List" = ? WHERE rowid = ?', [(372490, 1), ('[372490]', 2)])
+    copy_everything()
+    root = cdr_store.store_root(core.repository.db_path)
+    views = json.loads((root / cdr_store.POSTGRES_VIEWS_FILE).read_text(encoding='utf-8'))
+
+    data = views['views']['cdr_data']
+    # Every column with one type, the text and numbers of a column together, the files of each CDR under {root}.
+    assert data.startswith("SELECT r['__dataset_id']::bigint AS dataset_id, r['__rowid']::bigint AS source_row_id, ")
+    assert "r['Mean_Data_Rate']::double precision AS \"Mean_Data_Rate\"" in data
+    assert "COALESCE(r['Cell_List']::text, r['__int__Cell_List']::text) AS \"Cell_List\"" in data
+    assert "COALESCE(r['NR_Mode']::text, r['__nr_mode']::text) AS \"NR_Mode\"" in data
+    assert f"ARRAY['{{root}}/data/{first}/part-*.parquet', '{{root}}/data/{second}/part-*.parquet'], union_by_name := true" in data
+    assert views['views']['cdr_voice'].endswith('WHERE false')
+    # It changes with the copies.
+    signature = views['signature']
+    core.repository.update_dataset_profile(second, in_combined='no')
+    copy_everything()
+    changed = json.loads((root / cdr_store.POSTGRES_VIEWS_FILE).read_text(encoding='utf-8'))
+    assert changed['signature'] != signature and f'/data/{second}/' not in changed['views']['cdr_data']

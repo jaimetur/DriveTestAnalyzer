@@ -8,6 +8,7 @@ and delete, so no writer has to tell. ``.cdr-store/catalog.duckdb`` holds one vi
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -37,6 +38,9 @@ TABLE_TITLES = {VERSIONS_TABLE: 'CDR Store Versions', SHADOWS_TABLE: 'CDR Store 
                 COMBINED_SHADOWS_TABLE: 'CDR Store Combined Shadows', COMBINED_ROWS_TABLE: 'CDR Store Combined Rows'}
 CATALOG_FILE = 'catalog.duckdb'
 CATALOG_STATE_FILE = 'catalog.json'
+# The same views for PostgreSQL with pg_duckdb (the Tableau server keeps them as materialized views): their SELECT, with
+# {root} for the folder of the copies as the server sees it.
+POSTGRES_VIEWS_FILE = 'postgres-views.json'
 # The columns the copy adds to the columns of the CDR.
 ROWID, DATASET_ID, NR_MODE = '__rowid', '__dataset_id', '__nr_mode'
 # A column with text and numbers keeps its text, and its integers and reals in companion columns, so it is read back
@@ -915,7 +919,8 @@ def catalog_outdated(database_path: Any, included: dict[str, set[int]]) -> bool:
         written = json.loads((root / CATALOG_STATE_FILE).read_text(encoding='utf-8'))
     except (OSError, ValueError):
         written = None
-    return written != _catalog_inputs(database_path, included)[1] or not (root / CATALOG_FILE).is_file()
+    return (written != _catalog_inputs(database_path, included)[1] or not (root / CATALOG_FILE).is_file()
+            or not (root / POSTGRES_VIEWS_FILE).is_file())
 
 
 def write_catalog(database_path: Any, included: dict[str, set[int]]) -> bool:
@@ -940,8 +945,63 @@ def write_catalog(database_path: Any, included: dict[str, set[int]]) -> bool:
     finally:
         catalog.close()
     os.replace(temporary, root / CATALOG_FILE)
+    _write_json(root / POSTGRES_VIEWS_FILE, {
+        'version': 1, 'signature': hashlib.sha256(json.dumps(signature, sort_keys=True).encode()).hexdigest(),
+        'views': {f'cdr_{kind}': _postgres_view_sql(kind, manifests[kind]) for kind in CDR_KINDS},
+    })
     _write_json(state_path, signature)
     return True
+
+
+_POSTGRES_TYPES = {'BIGINT': 'bigint', 'DOUBLE': 'double precision', 'VARCHAR': 'text'}
+
+
+def _postgres_view_sql(kind: str, manifests: list[dict[str, Any]]) -> str:
+    """The SELECT of the view of a CDR type for PostgreSQL with pg_duckdb, as the catalog view (_view_sql) reads the
+    copies: the dataset id and row id of each row, every column of the CDRs with one type (text when the CDRs give it
+    text, or text and numbers), and the NR Mode of each row; the files under {root}."""
+    def name(value: str) -> str:
+        return '"' + value.replace('"', '""') + '"'
+
+    def field(value: str) -> str:
+        return "r['" + value.replace("'", "''") + "']"
+
+    if not manifests:
+        return 'SELECT NULL::bigint AS dataset_id, NULL::bigint AS source_row_id, NULL::text AS "NR_Mode" WHERE false'
+    types: dict[str, set[str]] = {}
+    names: dict[str, str] = {}
+    companions: set[str] = set()
+    for manifest in manifests:
+        for column, column_type in manifest['columns']:
+            identity = column.casefold()
+            names.setdefault(identity, column)
+            types.setdefault(identity, set()).add('VARCHAR' if column_type.startswith('MIXED:') else
+                                                  'DOUBLE' if column_type == 'DOUBLE:I' else column_type)
+            if column_type.startswith('MIXED:'):
+                companions.update(prefix + column for prefix, part in ((INT_PREFIX, 'I'), (REAL_PREFIX, 'R')) if part in column_type)
+    nr_mode = names.pop('nr_mode', None)
+    for identity in ('dataset_id', 'source_row_id'):
+        names.pop(identity, None)
+    selected = [f'{field(DATASET_ID)}::bigint AS dataset_id', f'{field(ROWID)}::bigint AS source_row_id']
+    # PostgreSQL keeps 63 bytes of a name: two columns that start alike keep apart.
+    taken = {'dataset_id', 'source_row_id', 'nr_mode'}
+    for identity, column in names.items():
+        column_types = types[identity]
+        common = column_types.pop() if len(column_types) == 1 else ('DOUBLE' if column_types <= {'BIGINT', 'DOUBLE'} else 'VARCHAR')
+        parts = [f'{field(other)}::text' for other in (INT_PREFIX + column, REAL_PREFIX + column) if other in companions]
+        value = (f'COALESCE({field(column)}::text, {", ".join(parts)})' if parts
+                 else f'{field(column)}::{_POSTGRES_TYPES[common]}')
+        label, suffix = column.encode('utf-8')[:63].decode('utf-8', 'ignore'), 1
+        while label.casefold() in taken:
+            suffix += 1
+            label = column.encode('utf-8')[:60].decode('utf-8', 'ignore') + f'_{suffix}'
+        taken.add(label.casefold())
+        selected.append(f'{value} AS {name(label)}')
+    selected.append(f'COALESCE({field(nr_mode)}::text, {field(NR_MODE)}::text) AS "NR_Mode"' if nr_mode
+                    else f'{field(NR_MODE)}::text AS "NR_Mode"')
+    files = ', '.join("'{root}/" + f"{kind}/{int(manifest['dataset_id'])}/part-*.parquet'" for manifest in manifests)
+    return f'SELECT {", ".join(selected)} FROM read_parquet(ARRAY[{files}], union_by_name := true) r'
+
 
 
 # ---------------------------------------------------------------------------------------------------------------------
