@@ -96,20 +96,160 @@ def workspace_write_lock(db_path: Path | str) -> RLock:
         return _WORKSPACE_WRITE_LOCKS.setdefault(key, RLock())
 
 
+# The table of rows of a CDR, by its dataset id.
+_DATASET_ROWS_TABLE = re.compile(r'dataset_rows_(\d+)')
+# The combined table of a CDR type.
+_COMBINED_TABLE = re.compile(r'reporting_rows_(data|voice|speech)')
+# SQL that reads no rows, run without looking at it first.
+_NOT_LOOKED_AT = re.compile(r'\s*(?:PRAGMA|EXPLAIN|CREATE|DROP|ANALYZE|VACUUM|BEGIN|COMMIT|END|ROLLBACK|SAVEPOINT|RELEASE|ATTACH|DETACH|REINDEX)\b',
+                            re.IGNORECASE)
+
+
+class _CoordinatedCursor(sqlite3.Cursor):
+    """A cursor whose SQL is given the rows of the CDRs whose table is empty (see _CoordinatedConnection)."""
+
+    def execute(self, sql, parameters=()):
+        return self.connection._run_with_cdr_rows(
+            sql, lambda text: super(_CoordinatedCursor, self).execute(text, parameters), parameters)
+
+    def executemany(self, sql, seq_of_parameters):
+        if 'dataset_rows_' in str(sql).casefold():
+            # Read once, to look at the SQL with its first parameters first.
+            seq_of_parameters = list(seq_of_parameters)
+        return self.connection._run_with_cdr_rows(
+            sql, lambda text: super(_CoordinatedCursor, self).executemany(text, seq_of_parameters),
+            seq_of_parameters[0] if isinstance(seq_of_parameters, list) and seq_of_parameters else None)
+
+
 class _CoordinatedConnection(sqlite3.Connection):
-    """Acquire a per-Workspace lock lazily when a connection starts writing."""
+    """Acquire a per-Workspace lock lazily when a connection starts writing.
+
+    Where the columnar copy of a CDR is its only store, its table is empty (see cdr_store): the SQL that reads it is
+    given its rows from the copy (cdr_store.provide_rows), and the SQL that writes it fails unless the CDR is held
+    (cdr_store.hold), which puts its rows back first."""
 
     _workspace_lock: RLock | None = None
     _workspace_key = ''
     _workspace_lock_acquired = False
     _workspace_lock_acquired_at = 0.0
+    _shadow_ids: frozenset[int] | None = None
+    _combined_shadows: frozenset[str] = frozenset()
+    _shadow_reads: dict[Any, set[str]] = {}
+    _shadow_writes: set[int] = set()
+    _given_tables: list[str] = []
+    _giving = False
+    _looking = False
 
     def configure_workspace_write_coordinator(self, db_path: Path | str) -> None:
         self._workspace_key = str(Path(db_path).resolve())
         self._workspace_lock = workspace_write_lock(db_path)
         self.set_authorizer(self._authorize_statement)
 
+    def cursor(self, factory=None):
+        return super().cursor(factory or _CoordinatedCursor)
+
+    def write_cdr_tables(self) -> None:
+        """Let this connection read and write the tables of the CDRs as they are (the columnar store empties and fills
+        them)."""
+        self._shadow_ids = frozenset()
+
+    def execute(self, sql, parameters=()):
+        return self.cursor().execute(sql, parameters)
+
+    def executemany(self, sql, seq_of_parameters):
+        return self.cursor().executemany(sql, seq_of_parameters)
+
+    def _run_with_cdr_rows(self, sql: Any, run: Callable[[str], Any], parameters: Any = ()) -> Any:
+        """Run SQL; when it reads the empty table of a CDR, run it on a TEMP table of its own with the rows of the columns
+        it reads, given from the copy (the empty table itself is never hidden, so no other SQL reads the TEMP table by
+        mistake). The SQL is compiled first, without running (EXPLAIN), to see every column it reads."""
+        text = str(sql).casefold()
+        if (not self._workspace_key or self._shadow_ids is not None or self._giving
+                or ('dataset_rows_' not in text and 'reporting_rows_' not in text) or _NOT_LOOKED_AT.match(str(sql))):
+            return run(sql)
+        from src.modules import cdr_store
+
+        empty = cdr_store.shadow_ids(self._workspace_key)
+        combined = cdr_store.combined_shadow_kinds(self._workspace_key)
+        if not empty and not combined:
+            return run(sql)
+        self._forget_given_tables()
+        self._shadow_ids, self._combined_shadows, self._shadow_reads, self._shadow_writes = empty, combined, {}, set()
+        self._looking = True
+        try:
+            try:
+                super().execute(f'EXPLAIN {sql}', parameters if parameters is not None else ()).fetchall()
+            except (sqlite3.ProgrammingError, sqlite3.OperationalError):
+                # SQL that cannot be looked at so (its parameters are not known) runs as it is.
+                pass
+            reads, writes = self._shadow_reads, self._shadow_writes
+        finally:
+            self._shadow_ids, self._looking = None, False
+        if writes:
+            source = sorted(writes, key=str)[0]
+            raise sqlite3.OperationalError(
+                f'The rows of CDR {source} are in its columnar copy, not in its table: hold the CDR (cdr_store.hold) to '
+                'change them.' if isinstance(source, int) else
+                f'The rows of the combined {source} table are in the columnar copies of its CDRs, not in the table.')
+        if not reads:
+            return run(sql)
+        given = str(sql)
+        self._giving = True
+        try:
+            for source, columns in reads.items():
+                if isinstance(source, int):
+                    name = f'cdr_rows_{source}_{uuid4().hex[:12]}'
+                    cdr_store.provide_rows(self, source, columns, name)
+                    reference = cdr_store.table_reference(source)
+                else:
+                    name = f'combined_rows_{source}_{uuid4().hex[:12]}'
+                    cdr_store.provide_combined_rows(self, source, columns, name)
+                    reference = cdr_store.combined_reference(source)
+                self._given_tables = [*self._given_tables, name]
+                given = reference.sub(f'temp."{name}"', given)
+        finally:
+            self._giving = False
+        return run(given)
+
+    def _forget_given_tables(self) -> None:
+        """Remove the TEMP tables given to earlier SQL (those still read by an open cursor stay until later)."""
+        kept = []
+        for name in self._given_tables:
+            try:
+                super().execute(f'DROP TABLE IF EXISTS temp."{name}"')
+            except sqlite3.OperationalError:
+                kept.append(name)
+        self._given_tables = kept
+
+    def _watch_cdr_tables(self, action: int, argument_1: Any, argument_2: Any, database: Any) -> bool:
+        """Note the columns of the empty CDR tables a statement reads; whether it writes one (then denied). A read of
+        no column (COUNT(*), SELECT 1) names no database."""
+        if database not in ('main', None):
+            return False
+        table = str((argument_2 if action == sqlite3.SQLITE_ALTER_TABLE else argument_1) or '')
+        match = _DATASET_ROWS_TABLE.fullmatch(table)
+        combined = _COMBINED_TABLE.fullmatch(table)
+        if match and int(match.group(1)) in (self._shadow_ids or ()):
+            source: Any = int(match.group(1))
+        elif combined and combined.group(1) in self._combined_shadows:
+            source = combined.group(1)
+        else:
+            return False
+        if action == sqlite3.SQLITE_READ:
+            self._shadow_reads.setdefault(source, set()).add(str(argument_2 or ''))
+            return False
+        # Adding a column to an empty combined table is no change of its rows.
+        if action in {sqlite3.SQLITE_INSERT, sqlite3.SQLITE_UPDATE, sqlite3.SQLITE_DELETE} or (
+                action == sqlite3.SQLITE_ALTER_TABLE and isinstance(source, int)):
+            self._shadow_writes.add(source)
+            return True
+        return False
+
     def _authorize_statement(self, action, _argument_1, _argument_2, _database, _trigger):
+        if self._looking:
+            # Looking at SQL before it runs (see _run_with_cdr_rows): nothing runs.
+            self._watch_cdr_tables(action, _argument_1, _argument_2, _database)
+            return sqlite3.SQLITE_OK
         # Temporary tables live in the connection, not in the workspace file: writing them takes no lock.
         if action in _SQLITE_WRITE_ACTIONS and _database != 'temp' and not self._workspace_lock_acquired:
             wait_started = monotonic()
@@ -2655,6 +2795,25 @@ class Repository:
             clauses.append(f"({' OR '.join(alternatives)})")
         return (' WHERE ' + ' AND '.join(clauses)) if clauses else '', parameters
 
+    def _emptied_cdr_table(self, table_name: str) -> int | None:
+        """The CDR of a table of rows that is empty, its columnar copy holding its rows (see cdr_store)."""
+        from src.modules import cdr_store
+
+        match = re.fullmatch(r'dataset_rows_(\d+)', str(table_name))
+        return int(match.group(1)) if match and int(match.group(1)) in cdr_store.shadow_ids(self.db_path) else None
+
+    def _emptied_cdr_rows(self, conn: sqlite3.Connection, dataset_id: int, columns: list[str], filtered: list[str],
+                          query: str, parameters: Any) -> list[dict[str, Any]]:
+        """The rows ``query`` (``SELECT rowid FROM <table> ...``) chooses in the empty table of a CDR, with ``columns``
+        as SQLite gives them (``__database_rowid__`` their row id): the ``filtered`` columns its conditions read are
+        given from the copy to choose them, and the rows chosen are read from the copy."""
+        from src.modules import cdr_store
+
+        rowids = [int(row[0]) for row in conn.execute(query, parameters).fetchall()]
+        kind = str(conn.execute('SELECT dataset_kind FROM dataset_profiles WHERE dataset_id = ?', (dataset_id,)).fetchone()[0]).casefold()
+        found = cdr_store.rows_by_rowid(self.db_path, kind, dataset_id, columns, rowids)
+        return [{'__database_rowid__': rowid, **dict(zip(columns, found[rowid]))} for rowid in rowids if rowid in found]
+
     def database_table_page(
         self,
         table_name: str,
@@ -2690,7 +2849,18 @@ class Repository:
                 str(row['name']) for row in sorted(column_rows, key=lambda item: int(item['pk']) or 10_000)
                 if int(row['pk']) > 0
             ]
-            if has_rowid:
+            emptied = self._emptied_cdr_table(physical_table_name)
+            if emptied is not None:
+                # The rows of a CDR in its columnar copy: its filtered columns choose the rows of the page, read whole
+                # from the copy (see _emptied_cdr_rows).
+                rows = self._emptied_cdr_rows(
+                    conn, emptied, [str(row['name']) for row in column_rows], list(filters or {}),
+                    f"SELECT rowid FROM {quoted_table}{where_clause} ORDER BY rowid DESC LIMIT ? OFFSET ?",
+                    (*parameters, page_size, page_offset),
+                )
+                rows = [{key: self._database_viewer_value(value) for key, value in row.items()} for row in rows]
+                select_query = None
+            elif has_rowid:
                 select_query = (
                     f"SELECT rowid AS __database_rowid__, * FROM {quoted_table}{where_clause} "
                     "ORDER BY rowid DESC LIMIT ? OFFSET ?"
@@ -2703,13 +2873,14 @@ class Repository:
                 select_query = (
                     f"SELECT * FROM {quoted_table}{where_clause} ORDER BY {order_clause} LIMIT ? OFFSET ?"
                 )
-            rows = [
-                {key: self._database_viewer_value(value) for key, value in dict(row).items()}
-                for row in conn.execute(
-                    select_query,
-                    (*parameters, page_size, page_offset),
-                ).fetchall()
-            ]
+            if select_query is not None:
+                rows = [
+                    {key: self._database_viewer_value(value) for key, value in dict(row).items()}
+                    for row in conn.execute(
+                        select_query,
+                        (*parameters, page_size, page_offset),
+                    ).fetchall()
+                ]
             if not has_rowid:
                 for index, row in enumerate(rows, start=page_offset):
                     row['__database_rowid__'] = f'read-only-{index}'
@@ -3999,6 +4170,8 @@ class Repository:
         safe_df = self._sqlite_safe_frame(df)
         # The new table stays until its columnar copy holds it (see cdr_store.hold).
         with cdr_store.hold(self, dataset_id, restore=False), self.connection() as conn:
+            # The new rows replace the table as it is (an empty table of a CDR whose copy held its rows too).
+            conn.write_cdr_tables()
             # Reserve the writer before dropping the old materialisation.  A
             # background refresh can otherwise create the same table during
             # pandas' replace path between its DROP and CREATE statements.
@@ -4011,6 +4184,7 @@ class Repository:
             self._create_dataset_row_indexes(conn, table_name, safe_df.columns.tolist())
             # The table holds the rows of the CDR again.
             cdr_store.forget_shadow(conn, dataset_id)
+        cdr_store.filled(self.db_path, dataset_id)
 
     @contextmanager
     def _holding_cdr_table(self, table_name: str) -> Iterator[None]:
@@ -4289,6 +4463,11 @@ class Repository:
 
     def dataset_row_count(self, dataset_id: int) -> int:
         table_name = self.dataset_rows_table_name(dataset_id)
+        if self._emptied_cdr_table(table_name) is not None:
+            from src.modules import cdr_store
+
+            # The rows of the CDR are in its columnar copy.
+            return cdr_store.copied_rows(self.db_path, dataset_id)
         with self.connection() as conn:
             exists = conn.execute(
                 "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (table_name,)
@@ -4392,6 +4571,7 @@ class Repository:
 
         quoted_table = self._quote_identifier(table_name)
         where_sql = f" WHERE {' AND '.join(where_clauses)}" if where_clauses else ''
+        emptied = self._emptied_cdr_table(table_name)
         with self.connection() as conn:
             total = int(conn.execute(
                 f"SELECT COUNT(*) AS count FROM {quoted_table}{where_sql}", params,
@@ -4402,11 +4582,25 @@ class Repository:
                 for requested, actual in selected_columns
             )
             query_params = [*params, max(1, int(page_size)), max(0, int(page)) * max(1, int(page_size))]
-            frame = pd.read_sql_query(
-                f"SELECT {select_clause} FROM {quoted_table}{where_sql} ORDER BY rowid LIMIT ? OFFSET ?",
-                conn,
-                params=query_params,
-            )
+            if emptied is not None:
+                from src.modules import cdr_store
+
+                # The rows of a CDR in its columnar copy: its filtered columns choose the rows of the page, read from
+                # the copy as SQLite gives them.
+                rowids = [int(row[0]) for row in conn.execute(
+                    f"SELECT rowid FROM {quoted_table}{where_sql} ORDER BY rowid LIMIT ? OFFSET ?", query_params).fetchall()]
+                kind = str(conn.execute('SELECT dataset_kind FROM dataset_profiles WHERE dataset_id = ?',
+                                        (emptied,)).fetchone()[0]).casefold()
+                read = cdr_store.read_cdr(self.db_path, kind, emptied, list(dict.fromkeys(actual for _requested, actual in selected_columns)),
+                                          rowids=rowids)
+                frame = pd.DataFrame({requested: read[actual] for requested, actual in selected_columns},
+                                     columns=[requested for requested, _actual in selected_columns])
+            else:
+                frame = pd.read_sql_query(
+                    f"SELECT {select_clause} FROM {quoted_table}{where_sql} ORDER BY rowid LIMIT ? OFFSET ?",
+                    conn,
+                    params=query_params,
+                )
             filter_values: list[str] | None = None
             resolved_filter_column = (
                 self._resolve_dataset_row_column_name(existing_columns, vendor_filter_column(filter_column))
@@ -4791,6 +4985,7 @@ class Repository:
         with self.connection() as conn:
             conn.execute(f"DROP TABLE IF EXISTS {self._quote_identifier(table_name)}")
             cdr_store.forget_shadow(conn, dataset_id)
+        cdr_store.filled(self.db_path, dataset_id)
 
     def dataset_rows_table_exists(self, dataset_id: int) -> bool:
         table_name = self.dataset_rows_table_name(dataset_id)

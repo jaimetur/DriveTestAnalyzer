@@ -1,6 +1,7 @@
 """The columnar copy of the CDRs: a Parquet file per CDR kept up to date by the triggers of its table, the catalog of
 views over the CDRs in combined, and the wait for free disk space."""
 import json
+import sqlite3
 import threading
 
 import duckdb
@@ -374,9 +375,10 @@ def _table_state(dataset_id):
         indexes = sorted(row[0] for row in connection.execute(
             "SELECT sql FROM sqlite_master WHERE type = 'index' AND tbl_name = ? AND sql IS NOT NULL", (table,)))
         columns = [row[1] for row in connection.execute(f'PRAGMA table_info("{table}")')]
+        # The table itself (main), not the rows the application gives its SQL when it is empty.
         values = connection.execute(
             f'SELECT rowid, {", ".join(f"typeof({cdr_store.quote(column)}), {cdr_store.quote(column)}" for column in columns)} '
-            f'FROM "{table}" ORDER BY rowid').fetchall()
+            f'FROM main."{table}" ORDER BY rowid').fetchall()
     return made and made[0], indexes, columns, [tuple(row) for row in values]
 
 
@@ -424,7 +426,7 @@ def test_where_the_copies_are_the_only_store_a_changed_table_is_copied_and_goes(
     def emptied():
         """Whether the table of the CDR is empty, its copy holding its rows (its columns and indexes kept)."""
         with core.repository.connection() as connection:
-            rows = connection.execute(f'SELECT COUNT(*) FROM dataset_rows_{data}').fetchone()[0]
+            rows = connection.execute(f'SELECT COUNT(*) FROM main.dataset_rows_{data}').fetchone()[0]
             return data in cdr_store.shadows(connection) and not rows and _table_state(data)[:3] == before
 
     # Once copied, the table is emptied.
@@ -451,3 +453,116 @@ def test_where_the_copies_are_the_only_store_a_changed_table_is_copied_and_goes(
     core.repository.replace_dataset_rows(data, data_rows())
     with core.repository.connection() as connection:
         assert data not in cdr_store.shadows(connection)
+
+
+def test_the_sql_of_the_application_reads_the_rows_of_an_emptied_table_from_its_copy(client, tmp_path):
+    rows = pd.DataFrame({'Operator': ['EE', 'O2', 'EE', 'Three'], 'Status': ['Ok', 'ko', 'OK ', None],
+                         'Rate': [1.5, 2, None, 4], 'event_start_time': ['2026-02-01 10:00', '2026-02-02 10:00',
+                                                                           '2026-02-01 09:00', '2026-02-03 10:00']})
+    data = add_cdr(tmp_path, 'data.csv', 'data', rows)
+    table = f'dataset_rows_{data}'
+    queries = [
+        (f'SELECT rowid, * FROM "{table}"', ()),
+        (f'SELECT "Operator", "Rate" FROM "{table}" WHERE LOWER(TRIM(CAST("Operator" AS TEXT))) = ?', ('ee',)),
+        (f'SELECT COUNT(*), MAX(rowid) FROM "{table}"', ()),
+        (f'SELECT 1 FROM "{table}" LIMIT 1', ()),
+        (f'SELECT "Operator", COUNT(*) FROM "{table}" GROUP BY "Operator" ORDER BY 2 DESC, 1', ()),
+        (f'SELECT "Status" FROM "{table}" WHERE date(CAST(event_start_time AS TEXT)) >= ?', ('2026-02-02',)),
+    ]
+
+    def read():
+        with core.repository.connection() as connection:
+            found = [connection.execute(sql, parameters).fetchall() for sql, parameters in queries]
+            frame = pd.read_sql_query(f'SELECT * FROM "{table}" WHERE "Rate" > ?', connection, params=(1.6,))
+        return [[tuple(row) for row in rows] for rows in found], frame
+
+    before, frame = read()
+    columns = core.repository.list_dataset_row_columns(data)
+    filtered = core.repository.load_dataset_rows(data, ['Operator', 'Rate'], {'Operator': ['EE']})
+    core.repository.set_workspace_state(cdr_store.ONLY_COPIES_STATE_KEY, '1')
+    copy_everything()
+    with core.repository.connection() as connection:
+        assert connection.execute(f'SELECT COUNT(*) FROM main."{table}"').fetchone()[0] == 0
+
+    after, after_frame = read()
+    assert after == before
+    pd.testing.assert_frame_equal(after_frame, frame, check_exact=True)
+    assert core.repository.list_dataset_row_columns(data) == columns
+    pd.testing.assert_frame_equal(core.repository.load_dataset_rows(data, ['Operator', 'Rate'], {'Operator': ['EE']}), filtered,
+                                  check_exact=True)
+    # SQL that writes elsewhere from its rows runs once, on them.
+    with core.repository.connection() as connection:
+        connection.execute('CREATE TABLE copied_rows (source INTEGER, operator TEXT, rate REAL, runs INTEGER DEFAULT 0)')
+        connection.execute(f'INSERT INTO copied_rows (source, operator) SELECT rowid, "Operator" FROM "{table}" WHERE "Rate" > ?', (1,))
+        connection.execute('CREATE TRIGGER copied_rows_runs AFTER UPDATE OF rate ON copied_rows BEGIN '
+                           'UPDATE copied_rows SET runs = runs + 1 WHERE rowid = NEW.rowid; END')
+        connection.execute(f'UPDATE copied_rows SET rate = (SELECT "Rate" FROM "{table}" WHERE "{table}".rowid = copied_rows.source)')
+        assert [tuple(row) for row in connection.execute('SELECT source, operator, rate, runs FROM copied_rows ORDER BY source')] == [
+            (1, 'EE', 1.5, 1), (2, 'O2', 2.0, 1), (4, 'Three', 4.0, 1)]
+    # Writing its rows needs the CDR held, which puts them back first.
+    with pytest.raises(sqlite3.OperationalError, match='columnar copy'):
+        with core.repository.connection() as connection:
+            connection.execute(f'UPDATE "{table}" SET "Operator" = ? WHERE rowid = 1', ('Vodafone UK',))
+    with cdr_store.hold(core.repository, data), core.repository.connection() as connection:
+        connection.execute(f'UPDATE "{table}" SET "Operator" = ? WHERE rowid = 1', ('Vodafone UK',))
+    copy_everything()
+    assert read()[0][0][0][1] == 'Vodafone UK'
+
+
+def test_the_pages_and_counts_of_an_emptied_table_are_those_of_its_rows(client, tmp_path):
+    rows = pd.DataFrame({'Operator': ['EE', 'O2', 'EE', 'Three', 'ee'], 'Region': ['North', 'South', None, 'North', 'North'],
+                         'Rate': [1.5, 2, None, 4, 7]})
+    data = add_cdr(tmp_path, 'data.csv', 'data', rows)
+    table = f'dataset_rows_{data}'
+
+    def pages():
+        return (
+            core.repository.database_table_page(table, limit=2, offset=1),
+            core.repository.database_table_page(table, limit=10, filters={'Operator': ['EE', 'ee']}),
+            core.repository.load_dataset_preview_page(data, ['Operator', 'Rate', 'region'], {'Region': ['north']}, 0, 2, 'Operator'),
+            core.repository.dataset_row_count(data),
+        )
+
+    before = pages()
+    core.repository.set_workspace_state(cdr_store.ONLY_COPIES_STATE_KEY, '1')
+    copy_everything()
+    after = pages()
+
+    assert after[0] == before[0] and after[1] == before[1] and after[3] == before[3] == 5
+    pd.testing.assert_frame_equal(after[2][0], before[2][0], check_exact=True)
+    assert after[2][1:] == before[2][1:]
+
+
+def test_an_emptied_combined_table_gives_its_sql_the_rows_of_the_copies(client, tmp_path):
+    first = add_cdr(tmp_path, 'first.csv', 'data', pd.DataFrame({
+        'Operator': ['EE', 'O2', 'EE'], 'Call Status': ['Completed', 'Failed', None], 'Rate': [12.5, None, 3]}))
+    second = add_cdr(tmp_path, 'second.csv', 'data', pd.DataFrame({
+        'Operator': ['Vodafone UK', 'ee'], 'Call_Status': ['Dropped', 'Completed'], 'RSRP': [-95, -80]}), nr_mode='SA')
+    requested = ['Operator', 'Call_Status', 'Rate', 'RSRP', 'NR_Mode']
+    # The second CDR first, so the combined rows are not in the order of the CDRs.
+    for dataset_id in (second, first):
+        core.repository.copy_dataset_rows_to_reporting(dataset_id, 'data', requested)
+    queries = [
+        ('SELECT rowid, * FROM reporting_rows_data', ()),
+        ('SELECT "Operator", "NR_Mode", dataset_id, source_row_id FROM reporting_rows_data '
+         'WHERE LOWER(TRIM(CAST("Operator" AS TEXT))) = ?', ('ee',)),
+        ('SELECT dataset_id, COUNT(*), SUM("Rate") FROM reporting_rows_data GROUP BY dataset_id ORDER BY dataset_id', ()),
+        ('SELECT rowid, source_row_id FROM reporting_rows_data WHERE dataset_id = ? ORDER BY rowid', (first,)),
+    ]
+
+    def read():
+        with core.repository.connection() as connection:
+            return [[tuple(row) for row in connection.execute(sql, parameters).fetchall()] for sql, parameters in queries]
+
+    before = read()
+    copy_everything()
+    assert cdr_store.empty_combined_table(core.repository, 'data')
+
+    with core.repository.connection() as connection:
+        assert connection.execute('SELECT COUNT(*) FROM main.reporting_rows_data').fetchone()[0] == 0
+        assert connection.execute(f'SELECT COUNT(*) FROM {cdr_store.COMBINED_ROWS_TABLE}').fetchone()[0] == 5
+    assert read() == before
+    # Writing its rows is the work of the copies.
+    with pytest.raises(sqlite3.OperationalError, match='combined data table'):
+        with core.repository.connection() as connection:
+            connection.execute('DELETE FROM reporting_rows_data WHERE dataset_id = ?', (first,))

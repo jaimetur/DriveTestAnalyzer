@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import sqlite3
 import time
@@ -28,7 +29,11 @@ CDR_KINDS = ('data', 'voice', 'speech')
 VERSIONS_TABLE = 'cdr_store_versions'
 # The CDRs whose table is kept empty (its columns and indexes only) while their copy holds their rows.
 SHADOWS_TABLE = 'cdr_store_shadows'
-TABLE_TITLES = {VERSIONS_TABLE: 'CDR Store Versions', SHADOWS_TABLE: 'CDR Store Shadows'}
+# The combined tables kept empty the same way, and the CDR row each of their rows is.
+COMBINED_SHADOWS_TABLE = 'cdr_store_combined_shadows'
+COMBINED_ROWS_TABLE = 'cdr_store_combined_rows'
+TABLE_TITLES = {VERSIONS_TABLE: 'CDR Store Versions', SHADOWS_TABLE: 'CDR Store Shadows',
+                COMBINED_SHADOWS_TABLE: 'CDR Store Combined Shadows', COMBINED_ROWS_TABLE: 'CDR Store Combined Rows'}
 CATALOG_FILE = 'catalog.duckdb'
 CATALOG_STATE_FILE = 'catalog.json'
 # The columns the copy adds to the columns of the CDR.
@@ -120,9 +125,248 @@ def shadows(connection: sqlite3.Connection) -> set[int]:
 
 
 def forget_shadow(connection: sqlite3.Connection, dataset_id: int) -> None:
-    """The table of a CDR holds its rows again (written again, or removed with the CDR)."""
+    """The table of a CDR holds its rows again (written again, or removed with the CDR); once committed, ``filled``
+    tells this process."""
     if connection.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (SHADOWS_TABLE,)).fetchone():
         connection.execute(f'DELETE FROM {SHADOWS_TABLE} WHERE dataset_id = ?', (int(dataset_id),))
+
+
+def _as_it_is(connection: Any) -> None:
+    """The store reads and writes the tables of the CDRs as they are (see Repository's coordinated connection)."""
+    if hasattr(connection, 'write_cdr_tables'):
+        connection.write_cdr_tables()
+
+
+def filled(database_path: Any, dataset_id: int) -> None:
+    """The table of a CDR holds its rows again, committed (see forget_shadow)."""
+    _set_shadow(database_path, dataset_id, False)
+
+
+# The emptied tables of each workspace, as this process knows them: a table joins them before it is emptied and
+# leaves them once its rows are back, so the SQL that reads it is always given its rows (see provide_rows).
+_shadow_sets: dict[str, set[int]] = {}
+_shadow_guard = Lock()
+
+
+def shadow_ids(database_path: Any) -> frozenset[int]:
+    key = _workspace_key(database_path)
+    with _shadow_guard:
+        found = _shadow_sets.get(key)
+    if found is None:
+        try:
+            with sqlite3.connect(f'file:{Path(str(database_path)).resolve()}?mode=ro', uri=True, timeout=30) as connection:
+                found = shadows(connection)
+        except sqlite3.Error:
+            found = set()
+        with _shadow_guard:
+            found = _shadow_sets.setdefault(key, set(found))
+    with _shadow_guard:
+        return frozenset(found)
+
+
+def _set_shadow(database_path: Any, dataset_id: int, empty: bool) -> None:
+    shadow_ids(database_path)
+    with _shadow_guard:
+        found = _shadow_sets[_workspace_key(database_path)]
+        (found.add if empty else found.discard)(int(dataset_id))
+
+
+def forget_shadow_sets(database_path: Any = None) -> None:
+    """Read the emptied tables of a workspace (of every one, without one) from its database again, as after it was
+    replaced by a restore or an import."""
+    with _shadow_guard:
+        if database_path is None:
+            _shadow_sets.clear()
+        else:
+            _shadow_sets.pop(_workspace_key(database_path), None)
+
+
+def provide_rows(connection: sqlite3.Connection, dataset_id: int, columns: Any, name: str) -> None:
+    """Give the SQL of ``connection`` the rows of a CDR whose table is empty: the TEMP table ``name`` with ``columns`` (the
+    first column without any), with their declared types, the row ids and the indexes on those columns, from the copy of
+    the CDR (the SQL then reads it in place of the empty table, see Repository's coordinated connection)."""
+    dataset_id = int(dataset_id)
+    table = f'dataset_rows_{dataset_id}'
+    declared = [(str(row[1]), str(row[2] or '')) for row in connection.execute(f'PRAGMA main.table_info({quote(table)})')]
+    names = {column.casefold(): column for column, _type in declared}
+    wanted = {names[str(column).casefold()] for column in columns if str(column).casefold() in names}
+    if not wanted and declared:
+        wanted = {declared[0][0]}
+    database = next((str(row[2]) for row in connection.execute('PRAGMA database_list') if row[1] == 'main'), '')
+    kind = str(connection.execute('SELECT dataset_kind FROM main.dataset_profiles WHERE dataset_id = ?',
+                                  (dataset_id,)).fetchone()[0]).casefold()
+    selected = [(column, column_type) for column, column_type in declared if column in wanted]
+    values, _length = _raw(database, kind, dataset_id, [ROWID, *(column for column, _type in selected)])
+    connection.execute(f'CREATE TEMP TABLE {quote(name)} ({", ".join(f"{quote(column)} {column_type}".strip() for column, column_type in selected)})')
+    connection.executemany(
+        f'INSERT INTO temp.{quote(name)} (rowid{"".join(", " + quote(column) for column, _type in selected)}) '
+        f'VALUES ({", ".join("?" for _ in range(len(selected) + 1))})',
+        zip(*(_python_values(values[column]).tolist() for column in [ROWID, *(column for column, _type in selected)])))
+    _copy_indexes(connection, table, name, [column for column, _type in selected])
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# The combined tables of a workspace whose copies are the only store: empty, each of their rows a row of a CDR.
+
+def ensure_combined_tables(connection: sqlite3.Connection) -> None:
+    connection.execute(f'CREATE TABLE IF NOT EXISTS {COMBINED_SHADOWS_TABLE} (kind TEXT PRIMARY KEY, emptied_at TEXT)')
+    connection.execute(f'CREATE TABLE IF NOT EXISTS {COMBINED_ROWS_TABLE} (kind TEXT NOT NULL, row_id INTEGER NOT NULL, '
+                       'dataset_id INTEGER NOT NULL, source_row_id INTEGER NOT NULL, PRIMARY KEY (kind, row_id))')
+    connection.execute(f'CREATE INDEX IF NOT EXISTS idx_{COMBINED_ROWS_TABLE}_dataset ON {COMBINED_ROWS_TABLE} (kind, dataset_id)')
+
+
+def combined_shadows(connection: sqlite3.Connection) -> set[str]:
+    """The CDR types whose combined table is empty, the copies of its CDRs holding its rows."""
+    if not connection.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+                              (COMBINED_SHADOWS_TABLE,)).fetchone():
+        return set()
+    return {str(row[0]) for row in connection.execute(f'SELECT kind FROM {COMBINED_SHADOWS_TABLE}')}
+
+
+_combined_shadow_sets: dict[str, set[str]] = {}
+
+
+def combined_shadow_kinds(database_path: Any) -> frozenset[str]:
+    key = _workspace_key(database_path)
+    with _shadow_guard:
+        found = _combined_shadow_sets.get(key)
+    if found is None:
+        try:
+            with sqlite3.connect(f'file:{Path(str(database_path)).resolve()}?mode=ro', uri=True, timeout=30) as connection:
+                found = combined_shadows(connection)
+        except sqlite3.Error:
+            found = set()
+        with _shadow_guard:
+            found = _combined_shadow_sets.setdefault(key, set(found))
+    with _shadow_guard:
+        return frozenset(found)
+
+
+def _set_combined_shadow(database_path: Any, kind: str, empty: bool) -> None:
+    combined_shadow_kinds(database_path)
+    with _shadow_guard:
+        found = _combined_shadow_sets[_workspace_key(database_path)]
+        (found.add if empty else found.discard)(str(kind))
+
+
+def empty_combined_table(repository: Any, kind: str) -> bool:
+    """Empty the combined table of a CDR type once the copy of each of its CDRs holds the CDR as it is: it keeps its
+    columns and indexes (how SQLite reads it), and the CDR row each of its rows is, in CDR Store Combined Rows; returns
+    whether it was emptied."""
+    kind = str(kind).casefold()
+    table = f'reporting_rows_{kind}'
+    with sqlite3.connect(repository.db_path, timeout=30) as connection:
+        if not connection.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (table,)).fetchone():
+            return False
+        if kind in combined_shadows(connection):
+            return False
+        cdrs = {int(row[0]) for row in connection.execute(f'SELECT DISTINCT dataset_id FROM {quote(table)}')}
+    if not cdrs <= fresh_copies(repository.db_path, cdrs):
+        return False
+    _set_combined_shadow(repository.db_path, kind, True)
+    try:
+        with repository.connection() as connection:
+            _as_it_is(connection)
+            connection.execute('BEGIN IMMEDIATE')
+            ensure_combined_tables(connection)
+            connection.execute(f'DELETE FROM {COMBINED_ROWS_TABLE} WHERE kind = ?', (kind,))
+            connection.execute(f'INSERT INTO {COMBINED_ROWS_TABLE} (kind, row_id, dataset_id, source_row_id) '
+                               f'SELECT ?, rowid, dataset_id, source_row_id FROM {quote(table)}', (kind,))
+            connection.execute(f'DELETE FROM {quote(table)}')
+            connection.execute(f'INSERT OR REPLACE INTO {COMBINED_SHADOWS_TABLE} (kind, emptied_at) VALUES (?, ?)',
+                               (kind, datetime.now(timezone.utc).isoformat(timespec='seconds')))
+    except BaseException:
+        _set_combined_shadow(repository.db_path, kind, False)
+        raise
+    return True
+
+
+def provide_combined_rows(connection: sqlite3.Connection, kind: str, columns: Any, name: str) -> None:
+    """Give the SQL of ``connection`` the rows of an empty combined table: the TEMP table ``name`` with ``columns`` (the
+    first column without any), their declared types, the row ids and the indexes on those columns, each row read from the
+    copy of its CDR as the combined table copied it (the last column of the CDR with the identity of the combined
+    column; the dataset id, the row id in the CDR and the NR Mode of the CDR unless the CDR has an NR Mode column)."""
+    from src.modules.column_names import column_identity
+    from src.modules.nr_mode import dataset_nr_mode
+
+    table = f'reporting_rows_{kind}'
+    declared = [(str(row[1]), str(row[2] or '')) for row in connection.execute(f'PRAGMA main.table_info({quote(table)})')]
+    names = {column.casefold(): column for column, _type in declared}
+    wanted = {names[str(column).casefold()] for column in columns if str(column).casefold() in names}
+    if not wanted and declared:
+        wanted = {declared[0][0]}
+    selected = [(column, column_type) for column, column_type in declared if column in wanted]
+    database = next((str(row[2]) for row in connection.execute('PRAGMA database_list') if row[1] == 'main'), '')
+    mapped = connection.execute(f'SELECT row_id, dataset_id, source_row_id FROM main.{COMBINED_ROWS_TABLE} WHERE kind = ? '
+                                'ORDER BY row_id', (kind,)).fetchall()
+    length = len(mapped)
+    values = {column: np.full(length, None, dtype=object) for column, _type in selected}
+    by_dataset: dict[int, list[int]] = {}
+    for position, row in enumerate(mapped):
+        by_dataset.setdefault(int(row[1]), []).append(position)
+    root = store_root(database)
+    for dataset_id, positions in by_dataset.items():
+        source_rows = [int(mapped[position][2]) for position in positions]
+        manifest = read_manifest(manifest_file(root, kind, dataset_id)) or {'columns': []}
+        lookup = {column_identity(column): column for column, _type in manifest['columns']}
+        profile = connection.execute('SELECT d.file_name, p.nr_mode FROM main.datasets d LEFT JOIN main.dataset_profiles p '
+                                     'ON p.dataset_id = d.id WHERE d.id = ?', (dataset_id,)).fetchone()
+        nr_mode = dataset_nr_mode(kind, profile[1], profile[0]) if profile else None
+        physical = {}
+        for column, _type in selected:
+            identity = column_identity(column)
+            physical[column] = ('dataset' if column == 'dataset_id' else 'source' if column == 'source_row_id'
+                                else ('cdr', lookup[identity]) if identity in lookup
+                                else 'nr_mode' if identity == column_identity('NR_Mode') else None)
+        read = sorted({item[1] for item in physical.values() if isinstance(item, tuple)})
+        found = rows_by_rowid(database, kind, dataset_id, read, source_rows) if read else {}
+        at = {column: index for index, column in enumerate(read)}
+        for column, source in physical.items():
+            if source == 'dataset':
+                values[column][positions] = dataset_id
+            elif source == 'source':
+                values[column][positions] = source_rows
+            elif source == 'nr_mode':
+                values[column][positions] = nr_mode
+            elif isinstance(source, tuple):
+                index = at[source[1]]
+                values[column][positions] = [found[row][index] if row in found else None for row in source_rows]
+    connection.execute(f'CREATE TEMP TABLE {quote(name)} ({", ".join(f"{quote(column)} {column_type}".strip() for column, column_type in selected)})')
+    connection.executemany(
+        f'INSERT INTO temp.{quote(name)} (rowid{"".join(", " + quote(column) for column, _type in selected)}) '
+        f'VALUES ({", ".join("?" for _ in range(len(selected) + 1))})',
+        zip([int(row[0]) for row in mapped], *(values[column].tolist() for column, _type in selected)))
+    _copy_indexes(connection, table, name, [column for column, _type in selected])
+
+
+def combined_reference(kind: str) -> re.Pattern[str]:
+    """How SQL names a combined table, quoted or not (not in a schema it names)."""
+    table = f'reporting_rows_{kind}'
+    return re.compile(rf'(?<![.\w"`\[])(?:"{table}"|`{table}`|\[{table}\]|{table}\b)', re.IGNORECASE)
+
+
+def _copy_indexes(connection: sqlite3.Connection, table: str, name: str, columns: list[str]) -> None:
+    """The indexes of ``table`` on ``columns`` on the TEMP table ``name``, so SQLite reads its rows in the same order (an
+    index reads the columns it names quoted, and those of the table it names bare)."""
+    names = {str(row[1]).casefold() for row in connection.execute(f'PRAGMA main.table_info({quote(table)})')}
+    for position, (index_name, sql) in enumerate(connection.execute(
+            "SELECT name, sql FROM main.sqlite_master WHERE type = 'index' AND tbl_name = ? AND sql IS NOT NULL", (table,)).fetchall()):
+        indexed = str(sql)[str(sql).upper().index(' ON ') + 4:]
+        indexed = indexed[indexed.index('('):] if '(' in indexed else ''
+        referenced = {match.group(1).replace('""', '"').casefold() for match in re.finditer(r'"((?:[^"]|"")*)"', indexed)}
+        referenced |= {word.casefold() for word in re.findall(r'(?<!["\w])([A-Za-z_]\w*)(?![\w"])', indexed)
+                       if word.casefold() in names}
+        if referenced <= {column.casefold() for column in columns}:
+            body = str(sql)[str(sql).upper().index(' ON ') + 4:].lstrip()
+            body = re.sub(rf'^(?:"{table}"|{table})', quote(name), body, flags=re.IGNORECASE)
+            connection.execute(f'CREATE INDEX temp.{quote(f"{name}_index_{position}")} ON {body}')
+
+
+def table_reference(dataset_id: int) -> re.Pattern[str]:
+    """How SQL names the table of a CDR, quoted or not (not in a schema it names, as main.dataset_rows_1: the table
+    itself)."""
+    table = f'dataset_rows_{int(dataset_id)}'
+    return re.compile(rf'(?<![.\w"`\[])(?:"{table}"|`{table}`|\[{table}\]|{table}\b)', re.IGNORECASE)
 
 
 def drop_change_triggers(connection: sqlite3.Connection, dataset_id: int) -> None:
@@ -446,6 +690,7 @@ def restore_table(repository: Any, dataset_id: int) -> bool:
     insert = (f'INSERT INTO {quote(table)} (rowid{"".join(", " + quote(column) for column in columns)}) '
               f'VALUES ({", ".join("?" for _ in range(len(columns) + 1))})')
     with repository.connection() as connection:
+        _as_it_is(connection)
         connection.execute('BEGIN IMMEDIATE')
         current = state(connection)
         if current == 'full':
@@ -462,9 +707,12 @@ def restore_table(repository: Any, dataset_id: int) -> bool:
         if current == 'gone':
             for sql in schema.get('indexes') or []:
                 connection.execute(sql)
-        forget_shadow(connection, dataset_id)
+        if connection.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (SHADOWS_TABLE,)).fetchone():
+            connection.execute(f'DELETE FROM {SHADOWS_TABLE} WHERE dataset_id = ?', (dataset_id,))
         ensure_versions_table(connection)
         ensure_change_triggers(connection, dataset_id)
+    # Its rows are in the table again.
+    _set_shadow(database_path, dataset_id, False)
     return True
 
 
@@ -510,18 +758,33 @@ def drop_copied_table(repository: Any, dataset_id: int) -> bool:
                 return False
         if dataset_id not in fresh_copies(repository.db_path, [dataset_id]):
             return False
-        with repository.connection() as connection:
-            connection.execute('BEGIN IMMEDIATE')
-            if not connection.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
-                                      (f'dataset_rows_{dataset_id}',)).fetchone():
-                return False
-            # Emptying the table is no change of the CDR.
-            drop_change_triggers(connection, dataset_id)
-            connection.execute(f'DELETE FROM {quote(f"dataset_rows_{dataset_id}")}')
-            ensure_shadows_table(connection)
-            connection.execute(f'INSERT OR REPLACE INTO {SHADOWS_TABLE} (dataset_id, emptied_at) VALUES (?, ?)',
-                               (dataset_id, datetime.now(timezone.utc).isoformat(timespec='seconds')))
-        return True
+        # From now on the SQL that reads the table is given the rows of the copy (they are the same).
+        _set_shadow(repository.db_path, dataset_id, True)
+        emptied = False
+        try:
+            emptied = _empty_table(repository, dataset_id)
+        finally:
+            if not emptied:
+                _set_shadow(repository.db_path, dataset_id, False)
+        return emptied
+
+
+def _empty_table(repository: Any, dataset_id: int) -> bool:
+    """Empty the table of a CDR and list it among the shadows (whether it was there to empty)."""
+    with repository.connection() as connection:
+        _as_it_is(connection)
+        connection.execute('BEGIN IMMEDIATE')
+        if not connection.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+                                  (f'dataset_rows_{dataset_id}',)).fetchone():
+            return False
+        # Emptying the table is no change of the CDR (and its dropped triggers make SQLite prepare again the
+        # statements that read it).
+        drop_change_triggers(connection, dataset_id)
+        connection.execute(f'DELETE FROM {quote(f"dataset_rows_{dataset_id}")}')
+        ensure_shadows_table(connection)
+        connection.execute(f'INSERT OR REPLACE INTO {SHADOWS_TABLE} (dataset_id, emptied_at) VALUES (?, ?)',
+                           (dataset_id, datetime.now(timezone.utc).isoformat(timespec='seconds')))
+    return True
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -1016,6 +1279,15 @@ def read_cdrs(database_path: Any, kind: str, dataset_ids: Any, columns: list[str
         total += length
     return pd.DataFrame({requested: _typed(parts[requested], total) for requested, _physical in selected},
                         columns=[requested for requested, _physical in selected], index=range(total))
+
+
+def copied_rows(database_path: Any, dataset_id: int) -> int:
+    """How many rows the copy of a CDR holds (0 without a copy)."""
+    with sqlite3.connect(database_path, timeout=30) as connection:
+        row = connection.execute('SELECT dataset_kind FROM dataset_profiles WHERE dataset_id = ?', (int(dataset_id),)).fetchone()
+    kind = str(row[0] or '').casefold() if row else ''
+    manifest = read_manifest(manifest_file(store_root(database_path), kind, int(dataset_id))) if kind in CDR_KINDS else None
+    return int(manifest['rows']) if manifest else 0
 
 
 def fresh_kind(database_path: Any, dataset_id: int) -> str | None:
