@@ -116,8 +116,9 @@ def test_a_change_of_the_rows_of_a_cdr_copies_it_again(client, tmp_path):
     data = add_cdr(tmp_path, 'data.csv', 'data', data_rows())
     copy_everything()
 
-    # Any writer of the rows (an auto-calculated field, the Map Areas, Database Management) raises its version.
-    with core.repository.connection() as connection:
+    # Any writer of the rows (an auto-calculated field, the Map Areas, Database Management) holds the CDR, which puts
+    # its rows back in its table, and raises its version.
+    with cdr_store.hold(core.repository, data), core.repository.connection() as connection:
         connection.execute(f'UPDATE dataset_rows_{data} SET "Operator" = ? WHERE rowid = 2', ('Three',))
 
     assert [cdr['id'] for cdr in cdr_store.store_changes(core.repository.db_path)['pending']] == [data]
@@ -386,6 +387,8 @@ def test_the_table_of_a_cdr_is_made_again_from_its_copy_as_it_was(client, tmp_pa
     rows = pd.DataFrame({'Operator': ['EE', 'O2', 'EE', None, 'Three'], 'Rate': [1.0, 2.5, None, 4.0, 5.0],
                          'Count': [1, 2, 3, None, 5], 'Status': ['ok', 'ko', None, 'ok', 'ok']})
     data = add_cdr(tmp_path, 'data.csv', 'data', rows)
+    # Its table holds its rows after the copy first.
+    core.repository.set_workspace_state(cdr_store.ONLY_COPIES_STATE_KEY, '0')
     with core.repository.connection() as connection:
         # Columns without a declared type: text and numbers, integers and reals; rows gone (gaps in the row ids).
         connection.execute(f'ALTER TABLE dataset_rows_{data} ADD COLUMN "Cell_List"')
@@ -715,3 +718,146 @@ def test_the_copies_travel_with_the_database_of_their_workspace(client, tmp_path
     assert not cdr_store.store_root(workspace.database_path).exists()
     restored = rows(workspace.database_path)
     assert restored[0] == before[0] and restored[2] == before[2]
+
+
+def test_the_query_builder_reads_the_rows_of_an_emptied_table_from_its_copy(client, tmp_path):
+    from src.modules import query_builder
+
+    first = add_cdr(tmp_path, 'first.csv', 'data', data_rows())
+    second = add_cdr(tmp_path, 'second.csv', 'data', pd.DataFrame({'Operator': ['O2', 'EE'], 'RSRP': [-95, -80]}))
+    voice = add_cdr(tmp_path, 'voice.csv', 'voice', pd.DataFrame({'Operator': ['EE', 'O2'], 'Call_Status': ['Completed', 'Dropped']}))
+    datasets = [{'id': first, 'kind': 'data', 'name': 'first.csv'}, {'id': second, 'kind': 'data', 'name': 'second.csv'},
+                {'id': voice, 'kind': 'voice', 'name': 'voice.csv'}]
+    database = core.repository.db_path
+    queries = [
+        'SELECT * FROM selected_data',
+        'SELECT "Operator", COUNT(*) AS tests, SUM("Test_Count") AS total FROM selected_data GROUP BY "Operator" ORDER BY "Operator"',
+        'SELECT COUNT(*) FROM selected_data',
+        'SELECT d.source_row_id, d."RSRP", v."Call_Status" FROM selected_data d JOIN selected_voice v ON v."Operator" = d."Operator" '
+        'ORDER BY 1, 2, 3',
+        f'SELECT rowid, "Operator" FROM dataset_rows_{first} WHERE "Operator" = \'EE\'',
+    ]
+
+    def results():
+        pages = [query_builder.execute_query(database, datasets, query, row_limit=100, include_total=True) for query in queries]
+        export = ''.join(query_builder.iter_query_csv(database, datasets, queries[0], column_filters=[{'index': 3, 'values': ['EE']}]))
+        values = query_builder.query_column_values(database, datasets, queries[0], 3)
+        return pages, export, values
+
+    before = results()
+    assert all(page[1] for page in before[0]) and 'Vodafone UK' not in before[1] and before[1].count('EE') == 3
+    core.repository.set_workspace_state(cdr_store.ONLY_COPIES_STATE_KEY, '1')
+    copy_everything()
+    with core.repository.connection() as connection:
+        assert cdr_store.shadows(connection) == {first, second, voice}
+    assert results() == before
+
+
+def test_the_copies_become_the_only_store_and_the_database_gives_back_the_room(client, tmp_path, monkeypatch):
+    # The workspace of the tests opened as the server started: its copies are the only store of its CDRs.
+    assert cdr_store.only_copies(core.repository.db_path)
+    core.repository.set_workspace_state(cdr_store.ONLY_COPIES_STATE_KEY, '0')
+    data = add_cdr(tmp_path, 'data.csv', 'data', pd.DataFrame({'Operator': ['EE', 'O2'] * 2000, 'Rate': range(4000)}))
+    voice = add_cdr(tmp_path, 'voice.csv', 'voice', pd.DataFrame({'Operator': ['EE', 'O2'], 'Call_Status': ['Completed', 'Dropped']}))
+    core.repository.copy_dataset_rows_to_reporting(data, 'data', ['Operator', 'Rate', 'NR_Mode'])
+    copy_everything()
+    with core.repository.connection() as connection:
+        before = [[tuple(row) for row in connection.execute(f'SELECT rowid, * FROM {table} ORDER BY rowid').fetchall()]
+                  for table in (f'dataset_rows_{data}', f'dataset_rows_{voice}', 'reporting_rows_data')]
+    steps = []
+
+    assert cdr_store.move_rows_to_copies(core.repository, lambda done, total: steps.append((done, total))) == {
+        'cdr_tables': 2, 'combined_tables': 1}
+    assert cdr_store.only_copies(core.repository.db_path) and steps == [(1, 2), (2, 2)]
+    with core.repository.connection() as connection:
+        assert cdr_store.shadows(connection) == {data, voice}
+        assert cdr_store.combined_shadows(connection) == {'data'}
+        assert connection.execute(f'SELECT COUNT(*) FROM main.dataset_rows_{data}').fetchone()[0] == 0
+    # Nothing left to move.
+    assert cdr_store.move_rows_to_copies(core.repository) == {'cdr_tables': 0, 'combined_tables': 0}
+
+    # The room of the rows goes back to the disk once enough of the database is free.
+    assert cdr_store.compact_database(core.repository) is None
+    monkeypatch.setattr(cdr_store, 'COMPACT_FREE_BYTES', 0)
+    monkeypatch.setattr(cdr_store, 'COMPACT_FREE_SHARE', 0.01)
+    started = []
+    compacted = cdr_store.compact_database(core.repository, lambda: started.append(True))
+    assert started and compacted['after'] < compacted['before']
+    with core.repository.connection() as connection:
+        assert [[tuple(row) for row in connection.execute(f'SELECT rowid, * FROM {table} ORDER BY rowid').fetchall()]
+                for table in (f'dataset_rows_{data}', f'dataset_rows_{voice}', 'reporting_rows_data')] == before
+    # Without room on the disk it waits for the next start.
+    monkeypatch.setattr(cdr_store, 'free_space', lambda path: 0)
+    with core.repository.connection() as connection:
+        connection.execute('CREATE TABLE filler (value TEXT)')
+        connection.executemany('INSERT INTO filler VALUES (?)', [('x' * 1000,)] * 2000)
+        connection.execute('DROP TABLE filler')
+    assert cdr_store.compact_database(core.repository)['skipped'] == 1
+
+
+def test_the_query_builder_pages_need_only_the_first_rows_of_the_copies(client, tmp_path, monkeypatch):
+    from src.modules import query_builder
+
+    first = add_cdr(tmp_path, 'first.csv', 'data', pd.DataFrame({
+        'Operator': (['EE', 'O2', 'EE', 'Three', 'EE', 'O2'] * 5)[:28], 'Rate': range(28)}))
+    second = add_cdr(tmp_path, 'second.csv', 'data', pd.DataFrame({
+        'Operator': ['O2', 'EE', 'EE', 'O2', 'EE'] * 4, 'Rate': range(100, 120), 'RSRP': range(-90, -110, -1)}))
+    datasets = [{'id': first, 'kind': 'data', 'name': 'first.csv'}, {'id': second, 'kind': 'data', 'name': 'second.csv'}]
+    database = core.repository.db_path
+    queries = ['SELECT * FROM selected_data', 'SELECT * FROM selected_data WHERE "Operator" = \'EE\'',
+               'SELECT "Rate" FROM selected_data ORDER BY "Rate" DESC', 'SELECT * FROM selected_data LIMIT 3',
+               'SELECT "Operator", SUM("Rate") FROM selected_data GROUP BY 1']
+
+    def pages():
+        return [query_builder.execute_query(database, datasets, query, row_limit=2, offset=offset, include_total=True)
+                for query in queries for offset in (0, 2, 10, 26, 30, 46, 50)]
+
+    before = pages()
+    copy_everything()
+    with core.repository.connection() as connection:
+        assert cdr_store.shadows(connection) == {first, second}
+    given = []
+    provide = cdr_store.provide_rows
+    monkeypatch.setattr(cdr_store, 'provide_rows', lambda *args, **kwargs: (given.append(kwargs.get('in_part')), provide(*args, **kwargs))[1])
+    assert pages() == before
+    # The pages read in one pass get every column only for the rows they give (the first 3 for the first page, the
+    # EE rows it gives for the filtered one), the column that chooses them for every row; the others every column of
+    # every row.
+    parts = [(sorted(columns), rows) for columns, rows in filter(None, given)]
+    assert (['operator'], [1, 2, 3]) in parts and (['operator'], [1, 3, 5]) in parts and None in given
+    # The first rows of the tables first (12 of the 28 rows of the first CDR for its first page), more each time until
+    # a page has its rows.
+    given.clear()
+    monkeypatch.setattr(query_builder, 'FIRST_ROWS_WINDOW', 1)
+    assert pages() == before
+    # Too many rows to note: every column of every row.
+    monkeypatch.setattr(query_builder, 'MAX_SEEN_ROWS', 2)
+    assert pages() == before
+
+
+def test_reading_an_emptied_table_takes_no_write_lock_of_the_workspace(client, tmp_path):
+    from src.modules.repository import workspace_read_connection, workspace_write_lock
+
+    data = add_cdr(tmp_path, 'data.csv', 'data', data_rows())
+    copy_everything()
+    with core.repository.connection() as connection:
+        assert data in cdr_store.shadows(connection)
+    connection = workspace_read_connection(core.repository.db_path)
+    try:
+        assert connection.execute(f'SELECT COUNT(*) FROM dataset_rows_{data}').fetchone()[0] == 3
+        # The rows were given in TEMP tables only: no transaction left open, and writers of other threads go on.
+        assert not connection.in_transaction
+        acquired = []
+
+        def write():
+            lock = workspace_write_lock(core.repository.db_path)
+            acquired.append(lock.acquire(timeout=5))
+            if acquired[-1]:
+                lock.release()
+
+        writer = threading.Thread(target=write)
+        writer.start()
+        writer.join()
+        assert acquired == [True]
+    finally:
+        connection.close()

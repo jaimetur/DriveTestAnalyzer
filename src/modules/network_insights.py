@@ -1544,7 +1544,7 @@ def install_network_insights_routes(core: Any) -> None:
         """The selection with its CDRs: those of its NR Mode and Campaigns (see ``cdr_auto_selection``).
 
         The CDRs the combined CDR tables include (the Final CDR of each campaign, else its newest Weekly or
-        Daily CDRs, or the In Combined? choice of Workspace) of the NR Mode and of the chosen campaigns (every
+        Daily CDRs, or the Active? choice of Workspace) of the NR Mode and of the chosen campaigns (every
         campaign without one). A selection that names its own CDRs keeps them.
         """
         request = with_latest_campaigns(task_repository, request)

@@ -97,7 +97,7 @@ def test_cdrs_follow_nr_mode_campaign_and_combined_tables(workspace):
     assert q3 in resolve_cdrs(repository, 'NSA', [ALL_CAMPAIGNS])['data']
     repository.delete_dataset(q3)
 
-    # The In Combined? choice of Workspace decides: a Daily CDR set to Yes is chosen too.
+    # The Active? choice of Workspace decides: a Daily CDR set to Yes is chosen too.
     repository.update_dataset_profile(q2_daily, in_combined='yes')
     assert q2_daily in resolve_cdrs(repository, 'NSA', ['UK_Q2_2026'])['voice']
 
@@ -270,7 +270,7 @@ def test_nq_calls_show_the_version_of_the_cdr_the_combined_tables_include(worksp
 
     # The Final CDR of the campaign, which the combined tables include, gives the call its version.
     assert latest_dataset() == final
-    # Including the Daily CDR and leaving the Final one out by hand (In Combined?) gives the Daily version, without
+    # Including the Daily CDR and leaving the Final one out by hand (Active?) gives the Daily version, without
     # reading the CDRs again.
     repository.update_dataset_profile(final, in_combined='no')
     repository.update_dataset_profile(daily, in_combined='yes')

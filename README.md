@@ -76,7 +76,7 @@ CDR Analysis analyses one ready Data, Voice or Speech CDR.
 
 Create, save, duplicate, import and export workspace Dashboards from a Report Template, each reading the CDRs of its NR Mode (a template serves both and names the NR Mode in its titles). The editor groups the Scope, dates, default, aliased and custom Auto-calculated Field filters, which are applied, saved (Save Filters also applies them), reloaded or discarded together; the Campaign filter chooses the CDRs.
 
-Each Dashboard uses the CDRs of its NR Mode (NSA or SA, set per CDR at upload and editable in the Workspace Datasets table) and of its Campaign filter that the combined CDR tables include (the Final CDR of a campaign before its Weekly and Daily CDRs, or the In Combined? choice); a new Dashboard follows its newest two campaigns (the newest one for Multivendor Operator_Vendor).
+Each Dashboard uses the CDRs of its NR Mode (NSA or SA, set per CDR at upload and editable in the Workspace Datasets table) and of its Campaign filter that the combined CDR tables include (the Final CDR of a campaign before its Weekly and Daily CDRs, or the Active? choice); a new Dashboard follows its newest two campaigns (the newest one for Multivendor Operator_Vendor).
 
 View Dashboard opens immediately and shows centred preparation progress until its navigable 16:9 slides and live Canvas charts are ready. Generate PPT uses the same prepared definition and waits for pending filter decisions.
 

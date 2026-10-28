@@ -75,6 +75,8 @@ When loading a saved query, SQL that matches the Assistance Mode controls is res
 
 Enter manual SQL in the **SQL Query** editor. Queries may use the temporary views `selected_data`, `selected_voice` and `selected_speech` for the selected source datasets. Each view includes original source columns plus `source_dataset_id`, `source_dataset_name` and `source_row_id`. A query must be a single read-only `SELECT` statement, optionally beginning with `WITH`.
 
+The views read the rows of each CDR from its [columnar copy](workspace-management.md#columnar-copy-of-the-cdrs) (and a query that names the table of a CDR, such as `dataset_rows_12`, reads it from the copy too), with the same values, row ids and order as the CDR tables gave. A query is given only the columns it reads; a page of a query that reads the CDRs in one pass, without sorting, grouping or joining them, reads only the rows that page needs; a query that sorts every column of many rows (`SELECT * … ORDER BY`) takes longer than one that selects the columns it needs.
+
 SQL Mode follows the same 50-row pages, total result count, navigation above and below the table, **Copy** and CSV export behavior. Select at least one ready source dataset before running or saving a query.
 
 Runs and page changes continue in the background while Query Builder checks their status, so a long query does not need to hold one HTTP request open. Use **Cancel** in the running dialog to stop the current query. Only one Query Builder run can be active at a time across the server.

@@ -302,9 +302,9 @@
               </select>
               {% else %}—{% endif %}
             </td>
-            <td data-label="In Combined?" data-queue-combined data-queue-sort-value="{{ '1' if dataset.combined_included else '0' }}" data-queue-sort-cell="combined">
+            <td data-label="Active?" data-queue-combined data-queue-sort-value="{{ '1' if dataset.combined_included else '0' }}" data-queue-sort-cell="combined">
               <div class="queue-combined-cell">
-                <select class="queue-combined-select" data-dataset-combined-select data-dataset-id="{{ dataset.id }}" data-update-url="/workspace/datasets/{{ dataset.id }}/in-combined" aria-label="In Combined? for {{ dataset.file_name }}"{% if user.role in ['admin', 'super-admin'] %} title="Auto: Final CDRs are included, Daily CDRs until a Final CDR of their campaign arrives"{% else %} title="Only admins and super-admins change In Combined: it recalculates the combined tables and indexes the calls again" disabled data-role-locked{% endif %}>
+                <select class="queue-combined-select" data-dataset-combined-select data-dataset-id="{{ dataset.id }}" data-update-url="/workspace/datasets/{{ dataset.id }}/in-combined" aria-label="Active? for {{ dataset.file_name }}"{% if user.role in ['admin', 'super-admin'] %} title="Auto: Final CDRs are included, Daily CDRs until a Final CDR of their campaign arrives"{% else %} title="Only admins and super-admins change Active: it recalculates the combined tables and indexes the calls again" disabled data-role-locked{% endif %}>
                   {% for value, label in in_combined_options %}<option value="{{ value }}"{% if dataset.in_combined == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
                 </select>
                 <span class="queue-combined-state {{ 'is-included' if dataset.combined_included else 'is-excluded' }}" data-combined-state title="{{ dataset.combined_reason }}">{{ 'Yes' if dataset.combined_included else 'No' }}</span>
@@ -492,7 +492,7 @@
             <th><button type="button" class="queue-sort-button" data-queue-sort-key="nr-mode" data-queue-sort-type="text">NR Mode<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
             <th><button type="button" class="queue-sort-button" data-queue-sort-key="kind" data-queue-sort-type="text">CDR<br>Type<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
             <th><button type="button" class="queue-sort-button" data-queue-sort-key="cdr-stage" data-queue-sort-type="text">CDR Stage<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
-            <th><button type="button" class="queue-sort-button" data-queue-sort-key="combined" data-queue-sort-type="text">In Combined?<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
+            <th><button type="button" class="queue-sort-button" data-queue-sort-key="combined" data-queue-sort-type="text">Active?<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
             <th class="queue-sort-pair"><button type="button" class="queue-sort-button" data-queue-sort-key="rows" data-queue-sort-type="number">Rows<span aria-hidden="true" data-queue-sort-indicator>↕</span></button><button type="button" class="queue-sort-button" data-queue-sort-key="columns" data-queue-sort-type="number">Columns<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
             <th><button type="button" class="queue-sort-button" data-queue-sort-key="size" data-queue-sort-type="number">Size<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
             <th><button type="button" class="queue-sort-button" data-queue-sort-key="status" data-queue-sort-type="text">Status<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
@@ -524,7 +524,7 @@
             <th><button type="button" class="queue-sort-button" data-queue-sort-key="nr-mode" data-queue-sort-type="text">NR Mode<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
             <th><button type="button" class="queue-sort-button" data-queue-sort-key="kind" data-queue-sort-type="text">CDR<br>Type<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
             <th><button type="button" class="queue-sort-button" data-queue-sort-key="cdr-stage" data-queue-sort-type="text">CDR Stage<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
-            <th><button type="button" class="queue-sort-button" data-queue-sort-key="combined" data-queue-sort-type="text">In Combined?<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
+            <th><button type="button" class="queue-sort-button" data-queue-sort-key="combined" data-queue-sort-type="text">Active?<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
             <th class="queue-sort-pair"><button type="button" class="queue-sort-button" data-queue-sort-key="rows" data-queue-sort-type="number">Rows<span aria-hidden="true" data-queue-sort-indicator>↕</span></button><button type="button" class="queue-sort-button" data-queue-sort-key="columns" data-queue-sort-type="number">Columns<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
             <th><button type="button" class="queue-sort-button" data-queue-sort-key="size" data-queue-sort-type="number">Size<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
             <th><button type="button" class="queue-sort-button" data-queue-sort-key="status" data-queue-sort-type="text">Status<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
@@ -556,7 +556,7 @@
             <th><button type="button" class="queue-sort-button" data-queue-sort-key="nr-mode" data-queue-sort-type="text">NR Mode<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
             <th><button type="button" class="queue-sort-button" data-queue-sort-key="kind" data-queue-sort-type="text">CDR<br>Type<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
             <th><button type="button" class="queue-sort-button" data-queue-sort-key="cdr-stage" data-queue-sort-type="text">CDR Stage<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
-            <th><button type="button" class="queue-sort-button" data-queue-sort-key="combined" data-queue-sort-type="text">In Combined?<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
+            <th><button type="button" class="queue-sort-button" data-queue-sort-key="combined" data-queue-sort-type="text">Active?<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
             <th class="queue-sort-pair"><button type="button" class="queue-sort-button" data-queue-sort-key="rows" data-queue-sort-type="number">Rows<span aria-hidden="true" data-queue-sort-indicator>↕</span></button><button type="button" class="queue-sort-button" data-queue-sort-key="columns" data-queue-sort-type="number">Columns<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
             <th><button type="button" class="queue-sort-button" data-queue-sort-key="size" data-queue-sort-type="number">Size<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
             <th><button type="button" class="queue-sort-button" data-queue-sort-key="status" data-queue-sort-type="text">Status<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
@@ -694,7 +694,7 @@
         </article>
       </div>
       <div class="auto-calculated-field-progress-footer">
-        <p class="form-note">Each update of the CDR tables has its own progress bar here while it runs: recalculating the Auto-calculated Fields, rebuilding the combined tables and applying In Combined? changes.</p>
+        <p class="form-note">Each update of the CDR tables has its own progress bar here while it runs: recalculating the Auto-calculated Fields, rebuilding the combined tables and applying Active? changes.</p>
       </div>
     </section>
   </details>

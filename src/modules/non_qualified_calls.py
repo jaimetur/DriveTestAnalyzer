@@ -2381,7 +2381,7 @@ def _rebuild_versions(connection: Any, affected: set[str]) -> None:
 
 def _combined_ranks(task_repository: Any) -> dict[int, int]:
     """How each CDR ranks among the versions of a call: the CDRs the combined tables include first (the Final CDR of
-    a campaign, else its newest Weekly or Daily CDRs, or the In Combined? choice of Workspace), then the Final, the
+    a campaign, else its newest Weekly or Daily CDRs, or the Active? choice of Workspace), then the Final, the
     Weekly and the Daily CDRs."""
     try:
         inclusion = combined_inclusion(task_repository)
@@ -2393,7 +2393,7 @@ def _combined_ranks(task_repository: Any) -> dict[int, int]:
 
 
 def _rank_changes(task_repository: Any, ranks: dict[int, int] | None = None) -> dict[int, int]:
-    """The indexed CDRs whose rank changed (another In Combined? choice, or a Final CDR that replaces them)."""
+    """The indexed CDRs whose rank changed (another Active? choice, or a Final CDR that replaces them)."""
     ranks = _combined_ranks(task_repository) if ranks is None else ranks
     with task_repository.connection() as connection:
         stored = {int(row[0]): int(row[1]) for row in connection.execute(

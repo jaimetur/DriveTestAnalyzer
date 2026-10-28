@@ -105,7 +105,7 @@ In the viewer, **Dashboard Filters** opens the same controls in a floating panel
 A Dashboard has no CDR selector: the **Campaign** filter (the first Default Filter) and the Dashboard's NR Mode choose its CDRs (with NSA & SA, Campaign (NSA) and Campaign (SA) choose those of each NR Mode). They are the CDRs of that NR Mode that the combined CDR tables include, for the chosen campaigns (every campaign when the Campaign filter is not restricted):
 
 - the **Final** CDR of a campaign before its **Weekly** and **Daily** CDRs, and a Weekly CDR before the Daily ones it contains;
-- or, when it was changed, the **In Combined?** choice of the CDR in Workspace (see [CDR Stage](workspace-management.md#cdr-stage-final-weekly-and-daily)).
+- or, when it was changed, the **Active?** choice of the CDR in Workspace (see [CDR Stage](workspace-management.md#cdr-stage-final-weekly-and-daily)).
 
 Besides the campaigns, the Campaign filter offers first four choices made again whenever the Dashboard is prepared or exported, so it follows the campaigns that arrive later: **Latest campaign**, **Latest 2 campaigns**, **Latest 3 campaigns**, **Latest 4 campaigns**, **Previous campaign** (the one before the latest) and **All available campaigns** (every campaign of the NR Mode at that moment, also those that arrive after it is saved, unlike every campaign checked by hand). With a single campaign, Previous campaign chooses none. Each one stands alone: checking it clears the other one and the campaigns, checking a campaign clears it, and **Select All / None** checks or clears the campaigns only. A new Dashboard compares its **Latest 2 campaigns** (**Latest campaign** in Multivendor Comparison with Operator_Vendor), as its newest CDRs did before; changing the Scope or vendor comparison updates a Campaign that still has the default of the former one. CDRs without Campaign values are used when no campaign is chosen.
 
@@ -515,7 +515,7 @@ Dashboards have their own Admin export/import/transfer/backup/restore component:
 | --- | --- |
 | View Dashboard or Generate PPT is disabled | Inspect its status badge and explicit preparation task |
 | A filter has no choices | Verify source field/aliases and whether other filters leave matching rows |
-| Chart says no CDR is selected | Choose a Campaign with a CDR of the type that chart needs, or check its In Combined? choice in Workspace |
+| Chart says no CDR is selected | Choose a Campaign with a CDR of the type that chart needs, or check its Active? choice in Workspace |
 | Filtered rows are zero | Check dates and empty value selections; use Clear Filters to remove restrictions |
 | Chart is empty with nonzero rows | Check its source type, template filters, NR Mode and chart Dataset |
 | Multivendor is unavailable | Check at least two Vendors and persist mappings for selected CDRs |

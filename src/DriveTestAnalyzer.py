@@ -2777,6 +2777,7 @@ def activate_workspace(workspace_id: str, *, initialize: bool = True) -> Workspa
                     repository.try_add_log('system', 'recover_interrupted_saved_filters', json.dumps({
                         'saved_filters': recovered_scoring_ids,
                     }))
+                _move_cdr_rows_to_copies(workspace)
                 # The CDRs the Scoring History does not hold yet are indexed in the background, and copied to the
                 # columnar store.
                 queue_scoring_history(repository)
@@ -2834,6 +2835,30 @@ def activate_workspace(workspace_id: str, *, initialize: bool = True) -> Workspa
         if repository.get_workspace_state('calculated_dimensions_need_materialization') in {'1', 'processing'}:
             queue_workspace_dimension_materialization(workspace)
         return workspace
+
+
+def _move_cdr_rows_to_copies(workspace: Workspace) -> None:
+    """The columnar copies are the only store of the CDRs of a workspace: while the server starts, the tables the copies
+    hold are emptied and the database gives back their room (see cdr_store); a workspace opened later empties them in
+    the background, and gives the room back at the next start."""
+    try:
+        if STARTUP_READY.is_set():
+            if not cdr_store.only_copies(repository.db_path):
+                repository.set_workspace_state(cdr_store.ONLY_COPIES_STATE_KEY, '1')
+            return
+        _startup_step(f'Moving the CDR rows of workspace "{workspace.name}" to their columnar copies…')
+        moved = cdr_store.move_rows_to_copies(repository, lambda done, total: _startup_step(
+            f'Emptying the CDR tables of workspace "{workspace.name}" that their columnar copies hold ({done} of {total})…'))
+        if moved['cdr_tables'] or moved['combined_tables']:
+            repository.try_add_log('system', 'cdr_store_tables_emptied', json.dumps(moved))
+        compacted = cdr_store.compact_database(repository, lambda: _startup_step(
+            f'Compacting the database of workspace "{workspace.name}" '
+            f'({format_workspace_size(_file_size(workspace.database_path))}), which can take a few minutes…'))
+        if compacted:
+            repository.try_add_log('system', 'workspace_database_compacted', json.dumps(
+                {key: (format_workspace_size(value) if key != 'skipped' else value) for key, value in compacted.items()}))
+    except Exception as exc:  # noqa: BLE001 - never blocks opening a workspace; the background copy empties the tables
+        repository.try_add_log('system', 'cdr_store_move_failed', json.dumps({'error': str(exc)}))
 
 
 def use_workspace_for_background_job(workspace: Workspace) -> None:
@@ -5812,9 +5837,9 @@ def dataset_upload_user(user: SessionUser = Depends(current_user)) -> SessionUse
 
 
 def combined_choice_user(user: SessionUser = Depends(current_user)) -> SessionUser:
-    """In Combined of a CDR, which recalculates the combined tables and indexes the calls again: admins and super-admins."""
+    """Active of a CDR, which recalculates the combined tables and indexes the calls again: admins and super-admins."""
     if user.role not in {'admin', 'super-admin'}:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Only admins and super-admins can change In Combined: it recalculates the combined tables and indexes the calls again.')
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Only admins and super-admins can change Active: it recalculates the combined tables and indexes the calls again.')
     return user
 
 
@@ -6297,7 +6322,7 @@ def _run_combined_inclusion_job(job_id: str, workspace: Workspace) -> None:
 
 
 def queue_combined_cdr_inclusion_sync(username: str, task_repository: Repository | None = None) -> dict[str, Any] | None:
-    """Bring the combined CDR tables in line with a CDR Stage, NR Mode, In Combined? or deletion change.
+    """Bring the combined CDR tables in line with a CDR Stage, NR Mode, Active? or deletion change.
 
     The change runs in the background and is listed in the CDR Tables Updates card; a job that is
     still queued already reads the latest choices, so further changes join it.
@@ -6358,7 +6383,7 @@ def workspace_combined_tables(
                 and float(job.get('created_at') or 0) > float(previous.get('created_at') or 0)
             ):
                 active_recreations[kind] = dict(job)
-        # While the combined tables follow a CDR Stage, NR Mode, In Combined? or deletion change,
+        # While the combined tables follow a CDR Stage, NR Mode, Active? or deletion change,
         # their rows still differ from the included CDRs: they are Updating, not Missing Rows.
         inclusion_job = max((
             dict(job) for job in AUTO_CALCULATED_FIELD_JOBS.values()

@@ -1,10 +1,13 @@
-"""Columnar copy of the CDR rows: one Parquet file per CDR, read with DuckDB.
+"""Columnar copy of the CDR rows: the Parquet files of each CDR, read with DuckDB, their only store.
 
-SQLite stays the store of the CDR rows. Every ready CDR (Data, Voice or Speech) of a workspace is copied in the
-background to ``.cdr-store/<kind>/<dataset id>.parquet`` beside the workspace database, with its SQLite row id, its
-dataset id and its NR Mode, and copied again when its rows change: triggers on its table count every insert, update
-and delete, so no writer has to tell. ``.cdr-store/catalog.duckdb`` holds one view per CDR type (``cdr_data``,
-``cdr_voice``, ``cdr_speech``) over the CDRs the combined tables include, for tools such as Tableau.
+Every ready CDR (Data, Voice or Speech) of a workspace is copied in the background to ``.cdr-store/<kind>/<dataset
+id>/part-*.parquet`` beside the workspace database, with its SQLite row id, its dataset id and its NR Mode, and copied
+again when its rows change: triggers on its table count every insert, update and delete, so no writer has to tell.
+Once copied, its table is emptied (its columns and indexes kept), and so are the combined tables once the copies hold
+their CDRs: the SQL of the application that reads them is given their rows from the copies (see Repository's
+coordinated connection), and a writer holds the CDR, which puts its rows back in its table first. ``.cdr-store/
+catalog.duckdb`` holds one view per CDR type (``cdr_data``, ``cdr_voice``, ``cdr_speech``) over the CDRs the combined
+tables include, for tools such as Tableau.
 """
 from __future__ import annotations
 
@@ -202,10 +205,13 @@ def forget_shadow_sets(database_path: Any = None) -> None:
                 sets.pop(_workspace_key(database_path), None)
 
 
-def provide_rows(connection: sqlite3.Connection, dataset_id: int, columns: Any, name: str) -> None:
+def provide_rows(connection: sqlite3.Connection, dataset_id: int, columns: Any, name: str, first: int | None = None,
+                 in_part: tuple[Any, Any] | None = None) -> None:
     """Give the SQL of ``connection`` the rows of a CDR whose table is empty: the TEMP table ``name`` with ``columns`` (the
     first column without any), with their declared types, the row ids and the indexes on those columns, from the copy of
-    the CDR (the SQL then reads it in place of the empty table, see Repository's coordinated connection)."""
+    the CDR (the SQL then reads it in place of the empty table, see Repository's coordinated connection); with ``first``,
+    its first rows only (in row id order). With ``in_part`` (some of those columns, and some of those rows by row id),
+    every row has the values of those columns, and only those rows the others."""
     dataset_id = int(dataset_id)
     table = f'dataset_rows_{dataset_id}'
     declared = [(str(row[1]), str(row[2] or '')) for row in connection.execute(f'PRAGMA main.table_info({quote(table)})')]
@@ -217,13 +223,26 @@ def provide_rows(connection: sqlite3.Connection, dataset_id: int, columns: Any, 
     kind = str(connection.execute('SELECT dataset_kind FROM main.dataset_profiles WHERE dataset_id = ?',
                                   (dataset_id,)).fetchone()[0]).casefold()
     selected = [(column, column_type) for column, column_type in declared if column in wanted]
-    values, _length = _raw(database, kind, dataset_id, [ROWID, *(column for column, _type in selected)])
     connection.execute(f'CREATE TEMP TABLE {quote(name)} ({", ".join(f"{quote(column)} {column_type}".strip() for column, column_type in selected)})')
-    connection.executemany(
-        f'INSERT INTO temp.{quote(name)} (rowid{"".join(", " + quote(column) for column, _type in selected)}) '
-        f'VALUES ({", ".join("?" for _ in range(len(selected) + 1))})',
-        zip(*(_python_values(values[column]).tolist() for column in [ROWID, *(column for column, _type in selected)])))
-    _copy_indexes(connection, table, name, [column for column, _type in selected])
+
+    def insert(names: list[str], rowids: Any = None, left_out: Any = None) -> None:
+        values, _length = _raw(database, kind, dataset_id, [ROWID, *names], rowids=rowids, first=None if rowids else first)
+        rows = zip(*(_python_values(values[column]).tolist() for column in [ROWID, *names]))
+        if left_out:
+            rows = (row for row in rows if row[0] not in left_out)
+        connection.executemany(f'INSERT INTO temp.{quote(name)} (rowid{"".join(", " + quote(column) for column in names)}) '
+                               f'VALUES ({", ".join("?" for _ in range(len(names) + 1))})', rows)
+
+    every = [column for column, _type in selected]
+    if in_part is None:
+        insert(every)
+    else:
+        part = {names[str(column).casefold()] for column in in_part[0] if str(column).casefold() in names}
+        full = {int(rowid) for rowid in in_part[1]}
+        insert([column for column in every if column in part], left_out=full)
+        if full:
+            insert(every, rowids=sorted(full))
+    _copy_indexes(connection, table, name, every)
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -440,10 +459,11 @@ def combined_reference(kind: str) -> re.Pattern[str]:
     return re.compile(rf'(?<![.\w"`\[])(?:"{table}"|`{table}`|\[{table}\]|{table}\b)', re.IGNORECASE)
 
 
-def _copy_indexes(connection: sqlite3.Connection, table: str, name: str, columns: list[str]) -> None:
-    """The indexes of ``table`` on ``columns`` on the TEMP table ``name``, so SQLite reads its rows in the same order (an
-    index reads the columns it names quoted, and those of the table it names bare)."""
+def index_columns(connection: sqlite3.Connection, table: str) -> dict[str, tuple[int, str, set[str]]]:
+    """The indexes of ``table``: by name, their position, CREATE INDEX and the columns they read (those they name quoted,
+    and those of the table they name bare, casefolded)."""
     names = {str(row[1]).casefold() for row in connection.execute(f'PRAGMA main.table_info({quote(table)})')}
+    found = {}
     for position, (index_name, sql) in enumerate(connection.execute(
             "SELECT name, sql FROM main.sqlite_master WHERE type = 'index' AND tbl_name = ? AND sql IS NOT NULL", (table,)).fetchall()):
         indexed = str(sql)[str(sql).upper().index(' ON ') + 4:]
@@ -451,6 +471,13 @@ def _copy_indexes(connection: sqlite3.Connection, table: str, name: str, columns
         referenced = {match.group(1).replace('""', '"').casefold() for match in re.finditer(r'"((?:[^"]|"")*)"', indexed)}
         referenced |= {word.casefold() for word in re.findall(r'(?<!["\w])([A-Za-z_]\w*)(?![\w"])', indexed)
                        if word.casefold() in names}
+        found[str(index_name)] = (position, str(sql), referenced)
+    return found
+
+
+def _copy_indexes(connection: sqlite3.Connection, table: str, name: str, columns: list[str]) -> None:
+    """The indexes of ``table`` on ``columns`` on the TEMP table ``name``, so SQLite reads its rows in the same order."""
+    for position, sql, referenced in index_columns(connection, table).values():
         if referenced <= {column.casefold() for column in columns}:
             body = str(sql)[str(sql).upper().index(' ON ') + 4:].lstrip()
             body = re.sub(rf'^(?:"{table}"|{table})', quote(name), body, flags=re.IGNORECASE)
@@ -972,6 +999,62 @@ def _empty_table(repository: Any, dataset_id: int) -> bool:
 
 
 # ---------------------------------------------------------------------------------------------------------------------
+# The copies become the only store of the CDRs of a workspace, and its database gives back the room of the rows.
+
+# The share of free pages, and their size, from which the database of a workspace is compacted.
+COMPACT_FREE_SHARE = 0.25
+COMPACT_FREE_BYTES = 1024 ** 3
+
+
+def move_rows_to_copies(repository: Any, step: Callable[[int, int], None] = lambda done, total: None) -> dict[str, int]:
+    """Make the copies the only store of the CDRs of a workspace: the table of each CDR whose copy holds it as it is is
+    emptied now (``step`` hears each), those of the others once copied in the background, and the combined table of each
+    CDR type once the copies hold all its CDRs (here, or when the server is idle, see install_cdr_store). Returns how many
+    CDR and combined tables it emptied."""
+    if not only_copies(repository.db_path):
+        repository.set_workspace_state(ONLY_COPIES_STATE_KEY, '1')
+    tables = store_changes(repository.db_path)['tables']
+    emptied = 0
+    for position, dataset_id in enumerate(tables, start=1):
+        step(position, len(tables))
+        emptied += bool(drop_copied_table(repository, dataset_id))
+    combined = sum(bool(empty_combined_table(repository, kind)) for kind in CDR_KINDS)
+    return {'cdr_tables': emptied, 'combined_tables': combined}
+
+
+def compact_database(repository: Any, starting: Callable[[], None] = lambda: None) -> dict[str, int] | None:
+    """Give the disk back the room the emptied tables leave in the database of a workspace: VACUUM it when a quarter of
+    it, and at least 1 GB, is free pages, and its disk has room for twice its used pages (VACUUM writes them to a
+    temporary file beside the database, then through its WAL). Returns its size before and after (``skipped`` with the
+    room it needs when the disk has too little), or None when it is not needed; ``starting`` hears it start. Writers of
+    this process wait meanwhile."""
+    from src.modules.repository import workspace_write_lock
+
+    database_path = Path(str(repository.db_path)).resolve()
+    with sqlite3.connect(database_path, timeout=30) as connection:
+        page_size = int(connection.execute('PRAGMA page_size').fetchone()[0])
+        pages = int(connection.execute('PRAGMA page_count').fetchone()[0])
+        free = int(connection.execute('PRAGMA freelist_count').fetchone()[0])
+    if free * page_size < COMPACT_FREE_BYTES or free < pages * COMPACT_FREE_SHARE:
+        return None
+    before, needed = pages * page_size, 2 * (pages - free) * page_size + FREE_SPACE_MARGIN
+    if free_space(database_path.parent) < needed:
+        return {'before': before, 'skipped': 1, 'needed': needed}
+    starting()
+    with workspace_write_lock(database_path):
+        connection = sqlite3.connect(database_path, timeout=600, isolation_level=None)
+        previous = connection.execute('PRAGMA temp_store_directory').fetchone()
+        try:
+            connection.execute(f'PRAGMA temp_store_directory = {_sql_text(str(database_path.parent))}')
+            connection.execute('VACUUM')
+            connection.execute('PRAGMA wal_checkpoint(TRUNCATE)')
+        finally:
+            connection.execute(f'PRAGMA temp_store_directory = {_sql_text(str(previous[0]) if previous else "")}')
+            connection.close()
+    return {'before': before, 'after': database_path.stat().st_size}
+
+
+# ---------------------------------------------------------------------------------------------------------------------
 # The catalog: one view per CDR type over the copies of the CDRs the combined tables include.
 
 def _view_sql(kind: str, manifests: list[dict[str, Any]], root: Path) -> str:
@@ -1134,7 +1217,7 @@ def store_job(database_path: Any) -> dict[str, Any] | None:
 
 
 def included_cdrs(repository: Any) -> dict[str, set[int]]:
-    """The ready CDRs of each type the combined tables include (In Combined), which the views read."""
+    """The ready CDRs of each type the combined tables include (Active), which the views read."""
     from src.modules.cdr_stage import combined_inclusion
 
     included: dict[str, set[int]] = {kind: set() for kind in CDR_KINDS}
@@ -1273,6 +1356,11 @@ def install_cdr_store(core: Any) -> None:
         return core.Repository(workspace.database_path, global_db_path=core.repository.global_db_path,
                                workspace_registry_db_path=core.workspace_registry.registry_path)
 
+    def combined_tables_busy(workspace_id: str) -> bool:
+        with core.AUTO_CALCULATED_FIELD_JOBS_LOCK:
+            return any(job.get('workspace_id') == workspace_id and job.get('status') in {'queued', 'processing'}
+                       for job in core.AUTO_CALCULATED_FIELD_JOBS.values())
+
     def copy_when_idle() -> None:
         repository = active_repository()
         if repository is None or not AUTOMATIC:
@@ -1280,6 +1368,11 @@ def install_cdr_store(core: Any) -> None:
         job = store_job(repository.db_path)
         if job and job['status'] in {'queued', 'processing'}:
             return
+        # The combined tables whose CDRs the copies all hold go, while no update of the combined tables runs.
+        if only_copies(repository.db_path) and not combined_tables_busy(core.active_workspace.id):
+            emptied = [kind for kind in CDR_KINDS if empty_combined_table(repository, kind)]
+            if emptied:
+                repository.try_add_log('system', 'cdr_store_combined_emptied', json.dumps({'kinds': emptied}))
         changes = store_changes(repository.db_path)
         if (changes['pending'] or changes['orphans'] or changes['tables']
                 or catalog_outdated(repository.db_path, included_cdrs(repository))):
@@ -1296,10 +1389,10 @@ def install_cdr_store(core: Any) -> None:
 # Reading a copy back: the frame pandas.read_sql_query returns from the SQLite table of the CDR.
 
 def _raw(database_path: Any, kind: str, dataset_id: int, columns: list[str], rowids: list[int] | None = None,
-         rowid_range: tuple[int, int] | None = None) -> tuple[dict[str, tuple[str, Any]], int]:
-    """The values of some physical columns of one CDR, in row id order, before pandas types them: for each column
-    ('int', Int64 array), ('real', float64 array with NaN for no value), ('text', array of strings and None) or
-    ('object', array of Python values of several types), and the number of rows."""
+         rowid_range: tuple[int, int] | None = None, first: int | None = None) -> tuple[dict[str, tuple[str, Any]], int]:
+    """The values of some physical columns of one CDR (its ``first`` rows, with it), in row id order, before pandas types
+    them: for each column ('int', Int64 array), ('real', float64 array with NaN for no value), ('text', array of strings
+    and None) or ('object', array of Python values of several types), and the number of rows."""
     import duckdb
 
     root = store_root(database_path)
@@ -1330,7 +1423,7 @@ def _raw(database_path: Any, kind: str, dataset_id: int, columns: list[str], row
         elif rowid_range is not None:
             where = f'WHERE {quote(ROWID)} > {int(rowid_range[0])} AND {quote(ROWID)} <= {int(rowid_range[1])}'
         raw = duck.execute(f'SELECT {", ".join(parts) or quote(ROWID)} FROM read_parquet({source}) {where} '
-                           f'ORDER BY {quote(ROWID)}').df()
+                           f'ORDER BY {quote(ROWID)}{f" LIMIT {int(first)}" if first is not None else ""}').df()
     finally:
         duck.close()
     values: dict[str, tuple[str, Any]] = {}

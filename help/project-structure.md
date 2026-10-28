@@ -71,7 +71,7 @@ Runtime `config/` and `data/` directories use project-local defaults but are exc
 - `src/report_worker.py`: worker process that runs a Reporting Job of a workspace that is not open in the server.
 - `src/version.py`: application version and release date shown by the UI.
 - `src/modules/repository.py`: global/workspace SQLite schemas, migrations and persistence methods.
-- `src/modules/cdr_store.py`: the columnar copy of the CDRs (a Parquet file per CDR in `.cdr-store`, kept up to date in the background by the triggers of the CDR tables) and its DuckDB catalog of views; `src/modules/disk_space.py` gives the free space it and the backups can use.
+- `src/modules/cdr_store.py`: the columnar copy of the CDRs, their only store (Parquet files per CDR in `.cdr-store`, kept up to date in the background by the triggers of the CDR tables, which are emptied once copied, as the combined tables), the rows it gives the SQL that reads an emptied table, the compaction of the workspace database and its DuckDB catalog of views; `src/modules/disk_space.py` gives the free space it and the backups can use.
 - `src/modules/workspaces.py`: workspace registry, lifecycle, path migration, duplication and deletion.
 - `src/modules/output_layout.py`: module folders below `output/reports/` and the one-time move of documents written with the former layout.
 - `src/modules/upload_sessions.py`: resumable dataset uploads (chunks kept in `.upload-sessions` of the workspace until the upload ends); `static/js/background_uploads.js` sends and resumes them on every page.

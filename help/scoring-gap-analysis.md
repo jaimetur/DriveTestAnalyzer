@@ -52,7 +52,7 @@ scoring-gap-analysis
 There is no CDR selector: the **NR Mode** and the **Campaign** filter beside it choose the CDRs of the calculation. They are the CDRs of that NR Mode that the combined CDR tables include, for the chosen campaigns:
 
 - the **Final** CDR of a campaign before its **Weekly** and **Daily** CDRs, and a Weekly CDR before the Daily ones it contains;
-- or, when it was changed, the **In Combined?** choice of the CDR in Workspace (see [CDR Stage](workspace-management.md#cdr-stage-final-weekly-and-daily)).
+- or, when it was changed, the **Active?** choice of the CDR in Workspace (see [CDR Stage](workspace-management.md#cdr-stage-final-weekly-and-daily)).
 
 The Campaign filter offers first **Latest campaign**, **Latest 2 campaigns**, **Latest 3 campaigns**, **Latest 4 campaigns**, **Previous campaign** (the one before the latest) and **All available campaigns**: the newest one to four campaigns of the NR Mode with Data, Voice and Speech CDRs, the one before the newest, or every one of them, whenever it is used (also those that arrive later). Each one stands alone (checking it clears the other one and the campaigns, checking a campaign clears it; **Select All / None** checks or clears the campaigns only). The panel keeps the choice, so it follows the newest campaigns the next time it opens, and a calculation or Saved Filter uses the campaigns it stands for then. Without a Campaign (**All complete campaigns**), every campaign with Data, Voice and Speech CDRs is scored; the campaigns that lack a type are named in a note below the CDRs and left out. **CDRs used** lists the CDRs of the calculation by type, newest campaign first, with their stage and campaigns (Weekly and Daily CDRs outlined; four of each type in sight, the rest scrolling), follows every change of the NR Mode or a filter at once, and the badge above the panel counts them.
 
@@ -942,7 +942,7 @@ After a restart, interrupted calculations are kept as failed and can be recalcul
 
 | Symptom | Check or action |
 | --- | --- |
-| No CDRs used | Verify workspace, NR Mode, the Campaign (each campaign needs Data, Voice and Speech CDRs), ready processing status and the In Combined? choice in Workspace |
+| No CDRs used | Verify workspace, NR Mode, the Campaign (each campaign needs Data, Voice and Speech CDRs), ready processing status and the Active? choice in Workspace |
 | Calculate is disabled | Read the yellow notice; complete each campaign's three source types, or wait for the running calculation of the same selection |
 | Expected vendor/city choices are missing | Check mappings, the Campaign and the other filters (each filter lists the values they leave); reprocess older incomplete catalogues |
 | GAP is N/A* | Verify the reference and matching context, including common valid environment coverage |

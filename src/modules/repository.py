@@ -194,6 +194,9 @@ class _CoordinatedConnection(sqlite3.Connection):
         if not reads:
             return run(sql)
         given = str(sql)
+        # Giving the rows writes only TEMP tables of this connection: it takes no write lock of the workspace, and the
+        # transaction it opens (Python opens one before an INSERT) ends with it.
+        in_transaction = self.in_transaction
         self._giving = True
         try:
             for source, columns in reads.items():
@@ -207,6 +210,8 @@ class _CoordinatedConnection(sqlite3.Connection):
                     reference = cdr_store.combined_reference(source)
                 self._given_tables = [*self._given_tables, name]
                 given = reference.sub(f'temp."{name}"', given)
+            if self.in_transaction and not in_transaction:
+                super().commit()
         finally:
             self._giving = False
         return run(given)
@@ -251,7 +256,7 @@ class _CoordinatedConnection(sqlite3.Connection):
             self._watch_cdr_tables(action, _argument_1, _argument_2, _database)
             return sqlite3.SQLITE_OK
         # Temporary tables live in the connection, not in the workspace file: writing them takes no lock.
-        if action in _SQLITE_WRITE_ACTIONS and _database != 'temp' and not self._workspace_lock_acquired:
+        if action in _SQLITE_WRITE_ACTIONS and _database != 'temp' and not self._workspace_lock_acquired and not self._giving:
             wait_started = monotonic()
             assert self._workspace_lock is not None
             self._workspace_lock.acquire()
@@ -1819,7 +1824,7 @@ class Repository:
         if 'in_combined' not in existing_columns:
             conn.execute("ALTER TABLE dataset_profiles ADD COLUMN in_combined TEXT NOT NULL DEFAULT 'auto'")
         if 'combined_mode' in existing_columns:
-            # The choice was first saved as combined_mode (include/exclude); it is now In Combined? (yes/no).
+            # The choice was first saved as combined_mode (include/exclude); it is now Active? (yes/no).
             conn.execute("ALTER TABLE dataset_profiles DROP COLUMN combined_mode")
         if 'polygon_operator' in existing_columns and 'dataset_operator' not in existing_columns:
             # The Operator column first held only the Operator of Vendor polygons.

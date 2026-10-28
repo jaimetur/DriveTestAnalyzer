@@ -99,7 +99,7 @@ def test_workspace_shows_and_changes_the_campaign_of_each_cdr(client, tmp_path):
     final_card = page.split('data-dataset-card="cdr-final"', 1)[1].split('data-dataset-card="cdr-weekly"', 1)[0]
     header = final_card.split('</thead>', 1)[0]
     assert (header.index('>Dataset<') < header.index('>Campaign<') < header.index('>NR Mode<') < header.index('>CDR<br>Type<')
-            < header.index('>CDR Stage<') < header.index('>In Combined?<'))
+            < header.index('>CDR Stage<') < header.index('>Active?<'))
     assert 'Input Type' not in header
     assert 'value="2026-Q2"' in final_card and 'data-dataset-campaign-input' in final_card
     assert '<option value="voice" selected>CDR-Voice</option>' in final_card and '<option value="data" selected>CDR-Data</option>' in final_card

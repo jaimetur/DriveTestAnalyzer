@@ -1855,7 +1855,7 @@ def install_dashboard_routes(core):
         """A Dashboard definition with its CDRs: those of its NR Mode and Campaign filter.
 
         The CDRs are those the combined CDR tables include (the Final CDR of each campaign, else its
-        newest Weekly or Daily CDRs, or the In Combined? choice of Workspace), of the Dashboard's NR
+        newest Weekly or Daily CDRs, or the Active? choice of Workspace), of the Dashboard's NR
         Mode and of the campaigns of its Campaign filter (every campaign without one). Latest campaign
         and Latest 2 campaigns are replaced by the newest campaigns now.
         """

@@ -213,7 +213,7 @@ def resolve_cdrs(repository: Any, nr_mode: object, campaigns: Iterable[object] |
     """The CDRs of each type a module uses for an NR Mode and Campaign filter, newest first.
 
     The combined CDR tables include them (the Final CDR of a campaign before its Weekly and Daily
-    CDRs, or the In Combined? choice); a Campaign filter keeps the CDRs with any of its campaigns.
+    CDRs, or the Active? choice); a Campaign filter keeps the CDRs with any of its campaigns.
     """
     kinds = tuple(kinds)
     rows = candidate_cdrs(repository, nr_mode, kinds)

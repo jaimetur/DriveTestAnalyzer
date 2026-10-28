@@ -10,7 +10,9 @@ import sqlite3
 from collections.abc import Iterable, Iterator
 from pathlib import Path
 from typing import Any, Callable
+from uuid import uuid4
 
+from src.modules import cdr_store
 from src.modules.column_names import column_identity, vendor_filter_column
 
 MAX_PREVIEW_ROWS = 50
@@ -98,12 +100,16 @@ def normalize_query(query: str) -> str:
     return query
 
 
-def _selected_views(connection: sqlite3.Connection, datasets: Iterable[dict[str, Any]]) -> list[str]:
+def _selected_views(connection: sqlite3.Connection, datasets: Iterable[dict[str, Any]],
+                    given: dict[int, tuple[str, set[str]]] | None = None, seen: bool = False) -> list[str]:
     """Create one temporary union view per selected CDR kind.
 
     A view contains every physical source column, with NULL for a heading not
     present in one selected file. This preserves ad-hoc access to CDR fields
-    without widening the persistent combined reporting tables.
+    without widening the persistent combined reporting tables. With ``given``
+    the views are made again, each CDR in it read from its TEMP table (and its
+    columns) instead of its empty table, and with ``seen`` noting the rows of
+    those tables that each view gives (see _execute).
     """
     grouped: dict[str, list[dict[str, Any]]] = {'data': [], 'voice': [], 'speech': []}
     for dataset in datasets:
@@ -114,11 +120,13 @@ def _selected_views(connection: sqlite3.Connection, datasets: Iterable[dict[str,
     for kind, rows in grouped.items():
         if not rows:
             continue
+        if given is not None:
+            connection.execute(f'DROP VIEW IF EXISTS temp.{_quote(f"selected_{kind}")}')
         schemas: dict[int, list[str]] = {}
         all_columns: list[str] = []
         for row in rows:
             table = f"dataset_rows_{int(row['id'])}"
-            cols = [str(item[1]) for item in connection.execute(f'PRAGMA table_info({_quote(table)})')]
+            cols = [str(item[1]) for item in connection.execute(f'PRAGMA main.table_info({_quote(table)})')]
             schemas[int(row['id'])] = cols
             for column in cols:
                 if column not in all_columns:
@@ -126,19 +134,165 @@ def _selected_views(connection: sqlite3.Connection, datasets: Iterable[dict[str,
         selects: list[str] = []
         for row in rows:
             dataset_id = int(row['id'])
-            table = f'dataset_rows_{dataset_id}'
+            table = f'main.{_quote(f"dataset_rows_{dataset_id}")}'
             known = set(schemas[dataset_id])
+            where = ''
+            if given and dataset_id in given:
+                name, provided = given[dataset_id]
+                table = f'temp.{_quote(name)}'
+                known = {column for column in known if column.casefold() in provided}
+                # A correlated subquery is evaluated after the other conditions of the row: it notes only the rows given.
+                where = f' AS given_rows WHERE (SELECT {_SEEN_FUNCTION}({dataset_id}, given_rows.rowid))' if seen else ''
             values = [
                 f'{dataset_id} AS source_dataset_id',
                 f'{_string_literal(str(row["name"]))} AS source_dataset_name',
                 'rowid AS source_row_id',
             ]
             values.extend(_quote(column) if column in known else f'NULL AS {_quote(column)}' for column in all_columns)
-            selects.append(f"SELECT {', '.join(values)} FROM {_quote(table)}")
+            selects.append(f"SELECT {', '.join(values)} FROM {table}{where}")
         view = f'selected_{kind}'
         connection.execute(f'CREATE TEMP VIEW {_quote(view)} AS ' + ' UNION ALL '.join(selects))
         created.append(view)
     return created
+
+
+# A statement that reads the rows of its CDR tables once each, in one pass in row id order: its plan has no other steps.
+_ONE_PASS_PLAN = re.compile(r'CO-ROUTINE .+|COMPOUND QUERY|LEFT-MOST SUBQUERY|UNION ALL|SCAN [^ ]+')
+# Steps that need every row (aggregates, sorts, temporary tables and indexes).
+_EVERY_ROW_OPCODES = frozenset({'AggStep', 'AggStep1', 'AggFinal', 'AggValue', 'AggInverse', 'SorterOpen', 'OpenEphemeral',
+                                'OpenAutoindex'})
+# The function the views call to note the rows they give, and how many rows it notes at most.
+_SEEN_FUNCTION = 'query_builder_seen_row'
+MAX_SEEN_ROWS = 20_000
+# The rows of the CDR tables first given to a statement whose first rows are wanted, times its rows.
+FIRST_ROWS_WINDOW = 5_000
+
+
+def _cdr_reads(connection: sqlite3.Connection, sql: str, parameters: Any) -> tuple[dict[int, set[str]], list[int], bool]:
+    """What SQLite reads of the CDR tables to run ``sql``, from its compiled statement (not run): the columns of each
+    table (by dataset id, casefolded), those it reads on a cursor of the table and those of each of its indexes it
+    opens; the tables in the order it opens them; and whether it reads their rows in one pass in row id order, each
+    once, with no aggregate, sort, temporary table, index or join."""
+    roots = {int(row[0]): (str(row[1]), str(row[2]), str(row[3])) for row in connection.execute(
+        "SELECT rootpage, type, name, tbl_name FROM main.sqlite_master WHERE type IN ('table', 'index') "
+        "AND tbl_name LIKE 'dataset\\_rows\\_%' ESCAPE '\\'") if str(row[3])[13:].isdigit()}
+    names: dict[str, list[str]] = {}
+    cursors: dict[int, tuple[str, str, int]] = {}
+    reads: dict[int, set[str]] = {}
+    order: list[int] = []
+    one_pass = True
+    for _address, opcode, p1, p2, p3, _p4, _p5, _comment in connection.execute(f'EXPLAIN {sql}', parameters).fetchall():
+        if opcode in _EVERY_ROW_OPCODES:
+            one_pass = False
+        elif opcode in {'OpenRead', 'ReopenIdx'} and p3 == 0 and p2 in roots:
+            kind, name, table = roots[p2]
+            dataset_id = int(table[13:])
+            cursors[p1] = (kind, table, dataset_id)
+            reads.setdefault(dataset_id, set())
+            if dataset_id not in order:
+                order.append(dataset_id)
+            if kind == 'index':
+                one_pass = False
+                reads[dataset_id] |= cdr_store.index_columns(connection, table)[name][2]
+        elif opcode == 'Column' and cursors.get(p1, ('',))[0] == 'table':
+            _kind, table, dataset_id = cursors[p1]
+            columns = names.setdefault(table, [str(row[1]) for row in connection.execute(f'PRAGMA main.table_info({_quote(table)})')])
+            if p2 < len(columns):
+                reads[dataset_id].add(columns[p2].casefold())
+    if one_pass and order:
+        plan = connection.execute(f'EXPLAIN QUERY PLAN {sql}', parameters).fetchall()
+        loops = [int(row[1]) for row in plan if str(row[3]).startswith('SCAN ')]
+        one_pass = all(_ONE_PASS_PLAN.fullmatch(str(row[3])) for row in plan) and len(loops) == len(set(loops))
+    return reads, order, one_pass
+
+
+def _give_rows(connection: sqlite3.Connection, datasets: list[dict[str, Any]], sql: str, ids: list[int],
+               columns: dict[int, set[str]], in_part: dict[int, tuple[set[str], Any]] | None = None,
+               seen: bool = False, first: dict[int, int] | None = None) -> str:
+    """The TEMP tables of the CDRs ``ids`` with ``columns`` from their copies (``first`` and ``in_part``: see
+    cdr_store.provide_rows), in place of their empty tables, for the views and for ``sql`` where it names them
+    (returned)."""
+    for (name,) in connection.execute("SELECT name FROM temp.sqlite_master WHERE type = 'table' AND name LIKE 'cdr\\_rows\\_%' ESCAPE '\\'").fetchall():
+        connection.execute(f'DROP TABLE temp.{_quote(name)}')
+    given: dict[int, tuple[str, set[str]]] = {}
+    for dataset_id in ids:
+        name = f'cdr_rows_{dataset_id}_{uuid4().hex[:12]}'
+        cdr_store.provide_rows(connection, dataset_id, columns[dataset_id], name, first=(first or {}).get(dataset_id),
+                               in_part=(in_part or {}).get(dataset_id))
+        given[dataset_id] = (name, {str(row[1]).casefold() for row in connection.execute(f'PRAGMA temp.table_info({_quote(name)})')})
+        sql = cdr_store.table_reference(dataset_id).sub(f'temp.{_quote(name)}', sql)
+    _selected_views(connection, datasets, given, seen=seen)
+    return sql
+
+
+def _execute(connection: sqlite3.Connection, database_path: Path, datasets: list[dict[str, Any]], sql: str,
+             parameters: Any = (), first: int | None = None,
+             choosing: tuple[str, Any] | None = None) -> tuple[sqlite3.Cursor, list[Any] | None]:
+    """Run a statement of a query with the read-only authorizer, and with ``first`` fetch its first rows. Where the
+    columnar copy of a CDR it reads is its only store (its table empty, see cdr_store), it is first given the rows of the
+    columns it reads from the copy, in a TEMP table that the view of its type reads instead (and that the statement
+    reads where it names the table itself).
+
+    A statement whose first rows are wanted, that reads the CDR tables in one pass in row id order, runs twice: first
+    with only the columns that choose its rows (those ``choosing``, the statement that counts them, reads), noting the
+    rows the views give; then with every column it reads for those rows only. Both runs read the first rows of the
+    tables (more each time until the statement gives its first rows, or every row), a prefix of the rows it reads when
+    it reads them all: they give the same rows, in the same order."""
+    emptied = cdr_store.shadow_ids(database_path)
+    connection.set_authorizer(None)
+    order: list[int] = []
+    if emptied:
+        _give_rows(connection, datasets, sql, [], {})
+        try:
+            reads, order, one_pass = _cdr_reads(connection, sql, parameters)
+        except sqlite3.Error:
+            # The statement fails as it is when it runs.
+            order = []
+    given_ids = [dataset_id for dataset_id in order if dataset_id in emptied]
+    text = sql
+    # (Only the views note the rows they give: not a statement that names the table of a CDR itself.)
+    if (given_ids and first is not None and choosing is not None and one_pass
+            and not any(cdr_store.table_reference(dataset_id).search(sql) for dataset_id in given_ids)):
+        chosen, _order, _one_pass = _cdr_reads(connection, *choosing)
+        part = {dataset_id: chosen.get(dataset_id, set()) for dataset_id in given_ids}
+        counts = {dataset_id: cdr_store.copied_rows(database_path, dataset_id) for dataset_id in given_ids}
+        # A prefix of the rows read only when every table it reads gives its rows from a copy.
+        window = max(first * 4, FIRST_ROWS_WINDOW) if given_ids == order else None
+        noted: dict[int, list[int]] = {}
+
+        def note(dataset_id: int, rowid: int) -> int:
+            rows = noted.get(int(dataset_id))
+            if rows is not None and sum(len(items) for items in noted.values()) <= MAX_SEEN_ROWS:
+                rows.append(int(rowid))
+            return 1
+
+        connection.create_function(_SEEN_FUNCTION, 2, note)
+        while True:
+            limits: dict[int, int] = {}
+            left = window
+            for dataset_id in given_ids if window is not None else ():
+                limits[dataset_id] = min(left, counts[dataset_id])
+                left -= limits[dataset_id]
+            noted.clear()
+            noted.update({dataset_id: [] for dataset_id in given_ids})
+            probe = _give_rows(connection, datasets, sql, given_ids, part, seen=True, first=limits)
+            connection.set_authorizer(_read_only_authorizer)
+            probe_cursor = connection.execute(probe, parameters)
+            given_first = len(probe_cursor.fetchmany(first))
+            probe_cursor.close()
+            connection.set_authorizer(None)
+            if window is None or given_first >= first or all(limits[item] == counts[item] for item in given_ids):
+                break
+            window *= 8
+        if sum(len(rows) for rows in noted.values()) <= MAX_SEEN_ROWS:
+            text = _give_rows(connection, datasets, sql, given_ids, reads,
+                              {dataset_id: (part[dataset_id], noted[dataset_id]) for dataset_id in given_ids}, first=limits)
+            given_ids = []
+    if given_ids:
+        text = _give_rows(connection, datasets, sql, given_ids, reads)
+    connection.set_authorizer(_read_only_authorizer)
+    cursor = connection.execute(text, parameters)
+    return cursor, (cursor.fetchmany(first) if first is not None else None)
 
 
 def _read_only_authorizer(action: int, _arg1: str | None, _arg2: str | None, _database: str | None, _source: str | None) -> int:
@@ -271,20 +425,22 @@ def execute_query(
         columns = _result_columns(connection, query) if column_filters is not None else []
         filters = _normalize_column_filters(column_filters, columns) if column_filters is not None else []
         result_query, filter_parameters = _filtered_query(query, columns, filters) if filters else (query, [])
-        cursor = connection.execute(
+        count_query = f'SELECT COUNT(*) FROM ({result_query})' if filters else f'SELECT COUNT(*) FROM ({query})'
+        cursor, rows = _execute(
+            connection, database_path, datasets,
             f'SELECT * FROM ({result_query}) LIMIT ? OFFSET ?' if filters else f'SELECT * FROM ({query}) LIMIT ? OFFSET ?',
-            (*filter_parameters, max(1, int(row_limit)) + 1, offset),
+            (*filter_parameters, max(1, int(row_limit)) + 1, offset), first=max(1, int(row_limit)) + 1,
+            choosing=(count_query, filter_parameters),
         )
-        rows = cursor.fetchmany(max(1, int(row_limit)) + 1)
         columns = [str(item[0]) for item in cursor.description or []]
+        cursor.close()
         truncated = len(rows) > row_limit
         page = (columns, [tuple(row) for row in rows[:row_limit]], truncated, views)
         if include_total:
             if not truncated and (rows or offset == 0):
                 total_rows = offset + len(rows)
             else:
-                count_query = f'SELECT COUNT(*) FROM ({result_query})' if filters else f'SELECT COUNT(*) FROM ({query})'
-                total_rows = int(connection.execute(count_query, filter_parameters).fetchone()[0])
+                total_rows = int(_execute(connection, database_path, datasets, count_query, filter_parameters, first=1)[1][0][0])
             return (*page, total_rows)
         return page
     finally:
@@ -310,9 +466,9 @@ def iter_query_csv(
         filters = _normalize_column_filters(column_filters, columns) if column_filters is not None else []
         if filters:
             result_query, parameters = _filtered_query(query, columns, filters)
-            cursor = connection.execute(result_query, parameters)
+            cursor, _rows = _execute(connection, database_path, datasets, result_query, parameters)
         else:
-            cursor = connection.execute(query)
+            cursor, _rows = _execute(connection, database_path, datasets, query)
         output = io.StringIO(newline='')
         writer = csv.writer(output)
         writer.writerow([str(item[0]) for item in cursor.description or []])
@@ -363,7 +519,8 @@ def query_column_values(
         if search:
             search_clause = f' WHERE instr(casefold(CAST(_query_builder_filter_rows.{selected_column} AS TEXT)), casefold(?)) > 0'
             parameters = [*parameters, search]
-        cursor = connection.execute(
+        cursor, _rows = _execute(
+            connection, database_path, datasets,
             f'SELECT DISTINCT _query_builder_filter_rows.{selected_column} AS _query_builder_filter_value '
             f'FROM ({result_query}) AS _query_builder_filter_rows{search_clause} '
             'ORDER BY _query_builder_filter_value LIMIT ?',
