@@ -97,6 +97,8 @@ def test_the_map_places_the_call_its_cells_the_sites_and_the_calls_and_tests_aro
     # Where it started and ended, and its cells in words: by their inventory name, start and end.
     assert {role: (end['site_id'], end['estimated']) for role, end in call['ends'].items()} == {'start': ('70001', False), 'end': ('70002', False)}
     assert [(cell['role'], cell['label']) for cell in call['cells']] == [('start', '70001-L1 (LTE B3)'), ('end', '70002-L3 (LTE B3)')]
+    # Its handover, halfway along its way (the CDR gives no RAT timeline here): an estimate.
+    assert call['handovers'] == [{'order': 2, 'latitude': 51.5094, 'longitude': -0.1247, 'by': 'order'}]
     # Its type, as the NQ Prioritization names it (the NQ calls around carry theirs too).
     assert call['kind'] == 'voice' and all(item['kind'] for item in data['failures'])
     # Its radio values: the Min / Avg / Max of a measure together.
@@ -419,3 +421,19 @@ def test_the_cells_of_a_call_in_words():
     # A trace of the call without cell identities gives no cells, never the numbers of its bands.
     assert nq_call_map.trace_cells('', '', '[GSM 900, , , 113]->[GSM 900, 994, , 21]') == []
     assert nq_call_map.trace_cells('', '', '[GSM 900, 876, 37171, 2]')[0]['technology'] == 'GSM'
+
+
+def test_where_each_handover_took_place_is_estimated_by_the_time_on_each_band():
+    trace = ('[5G NR n1, 146011, 9803874315, 431070]->[5G NR n1, 146011, 9670885386, 431070]->[5G NR n3, 146011, 9670885389, 372490]'
+             '->[LTE E-UTRA 20, 21890, 7300621, 6225]')
+    steps = [dict(step, order=index + 1) for index, step in enumerate(nq_call_map.trace_cells(trace, '', ''))]
+    bands = {step['cell']: step['band'] for step in nq_call_map.cell_steps(trace) if step['cell'] and step['band']}
+    start, end = (51.0, 0.0), (51.1, 0.0)
+    # 20 s on n1 (two cells, 10 s each), 20 s on n3 and 10 s on LTE 800, then 10 s without service: 60 s in all.
+    points = nq_call_map.handover_points(steps, '5G_NR_N1 (20.0)->5G_NR_N3 (20.0)->LTE_800 (10.0)->No service (10.0)', start, end, bands)
+    assert [(point['order'], point['latitude'], point['by']) for point in points] == [
+        (2, round(51.0 + .1 * 10 / 60, 6), 'time'), (3, round(51.0 + .1 * 20 / 60, 6), 'time'), (4, round(51.0 + .1 * 40 / 60, 6), 'time')]
+    # A timeline that does not match the cells spreads them evenly; without where the call ended there is nothing to place.
+    assert [point['by'] for point in nq_call_map.handover_points(steps, 'LTE_1800 (5.0)', start, end, bands)] == ['order'] * 3
+    assert nq_call_map.handover_points(steps, '', start, end, bands)[0]['latitude'] == 51.025
+    assert nq_call_map.handover_points(steps, '5G_NR_N1 (20.0)', start, None, bands) == []

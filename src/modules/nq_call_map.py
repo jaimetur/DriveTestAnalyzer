@@ -320,6 +320,74 @@ def labelled_cells(steps: list[dict[str, Any]], names: dict[str, str] | None = N
             for index, step in enumerate(steps)]
 
 
+# The frequency of each LTE band, as the RAT timeline of a CDR names it (LTE_800).
+LTE_BAND_MHZ = {'1': '2100', '3': '1800', '7': '2600', '8': '900', '20': '800', '28': '700', '32': '1500', '38': '2600', '40': '2300'}
+_TIMELINE_ITEM = re.compile(r'([^()>,\[\]]+?)\s*\(\s*(\d+(?:\.\d+)?)\s*\)')
+
+
+def _timeline_band(name: str) -> str:
+    """A band of a RAT timeline (5G_NR_N1, LTE_800, GSM_900) as _cell_band names it; '' for No service and the others."""
+    token = re.sub(r'\s+', '_', name.strip().upper())
+    if found := re.fullmatch(r'5G_NR_N(\d+)', token):
+        return f'NR n{found.group(1)}'
+    if found := re.fullmatch(r'(LTE|GSM|UMTS)_(\d+)', token):
+        return f'{found.group(1)} {found.group(2)}'
+    return ''
+
+
+def _cell_band(technology: str, band: str) -> str:
+    """The band of a cell as a RAT timeline names it: an LTE band by its frequency, an NR band by its number."""
+    number = re.sub(r'\D', '', band or '')
+    if not number:
+        return ''
+    if technology == 'LTE':
+        return f"LTE {LTE_BAND_MHZ.get(number, '')}" if number in LTE_BAND_MHZ else ''
+    if technology == 'NR':
+        return f'NR n{number}'
+    return f'{technology} {number}' if technology in ('GSM', 'UMTS') else ''
+
+
+def handover_points(steps: list[dict[str, Any]], timeline: Any, start: tuple[float, float] | None,
+                    end: tuple[float, float] | None, bands: dict[str, str] | None = None) -> list[dict[str, Any]]:
+    """Where each handover of a call took place along its way from where it started to where it ended, an estimate: the CDR
+    records its cells in order and, in its RAT timeline, how long it stayed on each band, not where it changed cell. Each
+    cell is matched to the band of the timeline it was on (``bands``: the band of each cell identity in the cell trace) and
+    the cells of a band share its time, so that a handover is placed where the call was when it took place, at an even
+    speed; when the timeline does not match the cells, the handovers are spread evenly in their order. Without where the call
+    started and ended (Data tests give only their start) there is no way to place them."""
+    if len(steps) < 2 or not start or not end:
+        return []
+    segments = [(_timeline_band(name), float(seconds)) for name, seconds in _TIMELINE_ITEM.findall(str(timeline or ''))]
+    total = sum(seconds for _band, seconds in segments)
+    fractions, by = None, 'order'
+    if segments and total > 0:
+        owners, position = [], 0
+        for step in steps:
+            band = _cell_band(step.get('technology') or '', step.get('band') or (bands or {}).get(step.get('cell') or '', '')
+                              or (step.get('inventory') or {}).get('band', ''))
+            while band and position < len(segments) and segments[position][0] != band:
+                position += 1
+            if not band or position == len(segments):
+                owners = None
+                break
+            owners.append(position)
+        if owners:
+            begins, elapsed = [], 0.0
+            for _band, seconds in segments:
+                begins.append(elapsed)
+                elapsed += seconds
+            counts, seen, times = Counter(owners), Counter(), []
+            for owner in owners:
+                times.append(begins[owner] + segments[owner][1] * seen[owner] / counts[owner])
+                seen[owner] += 1
+            fractions, by = [time / total for time in times[1:]], 'time'
+    if fractions is None:
+        fractions = [index / len(steps) for index in range(1, len(steps))]
+    return [{'order': step['order'], 'latitude': round(start[0] + (end[0] - start[0]) * fraction, 6),
+             'longitude': round(start[1] + (end[1] - start[1]) * fraction, 6), 'by': by}
+            for step, fraction in zip(steps[1:], fractions, strict=True)]
+
+
 def name_failure_cells(failures: list[dict[str, Any]], cells: pd.DataFrame, families: tuple[str, ...],
                        max_distance_km: float) -> None:
     """Give every NQ call around its cells (``cells``, see labelled_cells), by their inventory name for the calls of the
@@ -1315,6 +1383,10 @@ def call_map(repository: Any, call_key: str, *, radius_km: Any = None, tests: st
     _column, trace_text = _first_value(row, columns, fields_profile.rf_field_aliases['cell_trace'].get(service, ()))
     call_cells = labelled_cells(cell_steps(trace_text) or cell_steps(call.get('cell_id')),
                                 {step['cell']: step['inventory']['name'] for step in trace if step.get('inventory') and step['inventory'].get('name')})
+    # Where each handover took place along its way, an estimate by the time on each band of its RAT timeline (Voice).
+    _column, rat_timeline = _first_value(row, columns, ('RAT_Timeline_A', 'RAT_Timeline'))
+    handovers = handover_points(trace, rat_timeline, positions['start'], positions['end'],
+                                {step['cell']: step['band'] for step in cell_steps(trace_text) if step['cell'] and step['band']})
     if leg:
         trace.append(leg)
         if leg.get('inventory'):
@@ -1417,7 +1489,7 @@ def call_map(repository: Any, call_key: str, *, radius_km: Any = None, tests: st
             'start': list(positions['start']) if positions['start'] else None, 'end': list(positions['end']) if positions['end'] else None,
             # Its serving site (``serving_role``: of the cell that served its end, or its start) and its cells in words.
             'serving_site': serving_site, 'serving_host': serving_host, 'serving_role': serving_role,
-            'serving_distance_km': serving_distance, 'cells': call_cells,
+            'serving_distance_km': serving_distance, 'cells': call_cells, 'handovers': handovers,
             # The sites where it started and ended (``estimated``: the nearest to it, its cell not in the inventory).
             'ends': {role: {key: end[key] for key in ('site_id', 'network', 'host_network', 'estimated', 'distance_km', 'cell', 'technology')}
                      for role, end in ends.items()},

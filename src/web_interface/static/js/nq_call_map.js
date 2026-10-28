@@ -15,7 +15,8 @@
   const MIN_RESOLUTION = 2 ** (REFERENCE_ZOOM - MAX_TILE_ZOOM) / 4, MAX_RESOLUTION = 2 ** (REFERENCE_ZOOM - MIN_TILE_ZOOM);
   const WORLD = 256 * 2 ** REFERENCE_ZOOM;
   const COLOURS = {
-    call: '#b0234f', path: '#3d1824', start: '#2e8b57', handover: '#f08a24', end: '#d7263d', both: '#d7263d', nr_leg: '#6d46a8',
+    // (The handovers cyan: never the orange of the hotspot nor the green of the start.)
+    call: '#b0234f', path: '#3d1824', start: '#2e8b57', handover: '#0c8fb0', end: '#d7263d', both: '#d7263d', nr_leg: '#6d46a8',
     // The groups of the call: its hotspot (and its zone) orange, a cluster purple (never the green of the site where the call
     // started), a time window blue; the NQ calls at its site outlined in red, the others grey.
     hotspot: '#e8590c', cluster: '#ae3ec9', run: '#1971c2', site: '#d62828',
@@ -489,7 +490,13 @@
       }
       // The sectors of the sites (once close enough; those of the cells of the call always), these in the colour of their role and the
       // cells with the PCI and channel of a cell of the call dashed.
-      const pathCells = new Map(data.trace.filter((step) => step.site).map((step) => [`${step.site}|${step.cell}`, step.role]));
+      // (A cell met more than once takes its most telling role: the end, then the start, then a handover.)
+      const ROLE_RANK = {both: 4, end: 3, start: 2, nr_leg: 1, handover: 0};
+      const pathCells = new Map();
+      data.trace.filter((step) => step.site).forEach((step) => {
+        const key = `${step.site}|${step.cell}`;
+        if (!pathCells.has(key) || ROLE_RANK[step.role] > ROLE_RANK[pathCells.get(key)]) pathCells.set(key, step.role);
+      });
       const sectorRadius = clamp(150 / metresPerPixel, 14, 64);
       const sites = layers.sites ? data.sites : data.sites.filter((site) => (layers.path && site.roles.length) || site.ends?.length);
       // The cells of the call show at every zoom, the others once close enough.
@@ -535,30 +542,52 @@
         }
         for (const [text, lx, ly, colour] of named) label(context, text, lx, ly, colour, 'center');
       }
-      // The cells the call went through: a line from where they served it to their site.
-      // The cell that served the start from where the call started, the one that served the end (or the whole call) from where
-      // it failed, and each handover cell between them from the point of the call's way (start to end) nearest to its site:
-      // the CDR does not record where each handover took place.
+      // The cells the call went through: the cell of its start joined to where it started, the cell of its end (or of the whole
+      // call) to where it failed and the NR cell of an NSA call to where it failed, each by a dashed line to the cell; each
+      // handover an arrow from the cell before it to the cell after it, numbered with the order of that cell (as the Cells of
+      // the call list and the badges of the sites): the CDR does not record where each handover took place.
       const start = call.start, end = call.end || call.start;
+      const handoverBadges = [];
       if (layers.path) {
+        // Where a cell of the call is: the middle of its sector when the map shows the sectors (Sites on, from zoom 14), else
+        // the side of its site where it points (its site for an omnidirectional cell).
+        const sectorsShown = layers.sites && zoom >= WEDGES_FROM_ZOOM;
+        const siteOf = new Map(data.sites.map((site) => [site.key, site]));
+        const cellPoint = (step) => {
+          const site = siteOf.get(step.site);
+          const [x, y] = site ? project(site.latitude, site.longitude) : project(step.latitude, step.longitude);
+          const cell = site?.cells.find((item) => item.identity === step.cell);
+          if (!cell || cell.azimuth === null || cell.azimuth === undefined) return [x, y];
+          const angle = cell.azimuth * Math.PI / 180 - Math.PI / 2;
+          const reach = sectorsShown ? sectorRadius * 1.25 * .6 : 9;
+          return [x + Math.cos(angle) * reach, y + Math.sin(angle) * reach];
+        };
+        // A line with a white edge, so it shows over the shapes of the groups and the sectors.
+        const edged = (x1, y1, x2, y2, colour, dash) => {
+          for (const [width, style, pattern] of [[5, 'rgba(255,255,255,.9)', []], [2.6, colour, dash]]) {
+            context.beginPath();
+            context.moveTo(x1, y1);
+            context.lineTo(x2, y2);
+            context.setLineDash(pattern);
+            context.lineWidth = width;
+            context.strokeStyle = style;
+            context.stroke();
+          }
+          context.setLineDash([]);
+        };
         const lines = [];
+        const path = data.trace.filter((step) => step.role !== 'nr_leg');
         for (const step of data.trace) {
           if (step.latitude === undefined || step.latitude === null) continue;
-          const [x2, y2] = project(step.latitude, step.longitude);
-          let x1, y1;
-          if (step.role === 'handover' && start && call.end) {
-            const [ax, ay] = project(start[0], start[1]), [bx, by] = project(call.end[0], call.end[1]);
-            const length = (bx - ax) ** 2 + (by - ay) ** 2;
-            const along = length ? clamp(((x2 - ax) * (bx - ax) + (y2 - ay) * (by - ay)) / length, 0, 1) : 0;
-            [x1, y1] = [ax + along * (bx - ax), ay + along * (by - ay)];
-          } else {
-            const from = step.role === 'start' && start ? start : end || failurePoint;
-            [x1, y1] = project(from[0], from[1]);
-          }
+          const first = step === path[0], last = step === path[path.length - 1];
+          if (step.role !== 'nr_leg' && !first && !last) continue;
+          const [x2, y2] = cellPoint(step);
+          const from = first && step.role !== 'both' && start ? start : end || failurePoint;
+          const [x1, y1] = project(from[0], from[1]);
           lines.push({step, x1, y1, x2, y2});
         }
-        // Lines with the same ends (cells of one site that served from the same point, such as a handover and the end of
-        // a call that only says where it failed) go side by side, each in its colour, instead of one over the other.
+        // Lines with the same ends (the cells of the start and the end on one site, served from the same point) go side by
+        // side, each in its colour, instead of one over the other.
         const together = (a, b) => Math.hypot(a.x1 - b.x1, a.y1 - b.y1) < 6 && Math.hypot(a.x2 - b.x2, a.y2 - b.y2) < 6;
         const bundles = [];
         lines.forEach((line) => { (bundles.find((bundle) => together(bundle[0], line)) || bundles[bundles.push([]) - 1]).push(line); });
@@ -567,14 +596,50 @@
             const length = Math.hypot(x2 - x1, y2 - y1) || 1;
             const shift = (index - (bundle.length - 1) / 2) * 4;
             const [dx, dy] = [-(y2 - y1) / length * shift, (x2 - x1) / length * shift];
+            edged(x1 + dx, y1 + dy, x2 + dx, y2 + dy, COLOURS[step.role] || COLOURS.path, step.role === 'nr_leg' ? [3, 4] : [8, 5]);
+          });
+        }
+        // The handovers, from cell to cell; those between the same two cells (back and forth) each in a lane of its own.
+        const moves = [];
+        for (let index = 1; index < path.length; index += 1) {
+          const before = path[index - 1], after = path[index];
+          if (!before.site || !after.site) continue;
+          const [x1, y1] = cellPoint(before), [x2, y2] = cellPoint(after);
+          const pair = [`${Math.round(x1)}|${Math.round(y1)}`, `${Math.round(x2)}|${Math.round(y2)}`].sort().join('>');
+          moves.push({before, after, x1, y1, x2, y2, pair});
+        }
+        const lanes = new Map();
+        moves.forEach((move) => lanes.set(move.pair, [...(lanes.get(move.pair) || []), move]));
+        for (const lane of lanes.values()) {
+          lane.forEach((move, index) => {
+            const {x1, y1, x2, y2} = move;
+            const length = Math.hypot(x2 - x1, y2 - y1);
+            const shift = (index - (lane.length - 1) / 2) * 6;
+            if (length < 3) {
+              // (Two cells drawn at one point: only its number, beside it.)
+              handoverBadges.push({move, x: x2 + 13 + index * 17, y: y2 - 13});
+              return;
+            }
+            // The lanes keep one side whatever the direction of each arrow.
+            const forward = `${Math.round(x1)}|${Math.round(y1)}` <= `${Math.round(x2)}|${Math.round(y2)}` ? 1 : -1;
+            const [ux, uy] = [(x2 - x1) / length, (y2 - y1) / length];
+            const [dx, dy] = [-uy * shift * forward, ux * shift * forward];
+            const [ax, ay, bx, by] = [x1 + dx, y1 + dy, x2 + dx, y2 + dy];
+            const head = Math.min(10, length / 3);
+            edged(ax, ay, bx - ux * head * .6, by - uy * head * .6, COLOURS.handover, []);
             context.beginPath();
-            context.moveTo(x1 + dx, y1 + dy);
-            context.lineTo(x2 + dx, y2 + dy);
-            context.setLineDash(step.role === 'nr_leg' ? [3, 4] : [8, 5]);
-            context.lineWidth = 2.4;
-            context.strokeStyle = COLOURS[step.role] || COLOURS.path;
+            context.moveTo(bx, by);
+            context.lineTo(bx - ux * head - uy * head * .55, by - uy * head + ux * head * .55);
+            context.lineTo(bx - ux * head + uy * head * .55, by - uy * head - ux * head * .55);
+            context.closePath();
+            context.fillStyle = COLOURS.handover;
+            context.fill();
+            context.lineWidth = 1.4;
+            context.strokeStyle = '#fff';
             context.stroke();
-            context.setLineDash([]);
+            // (Its number along its lane, each lane at another height, so the numbers of a bundle never overlap.)
+            const along = lane.length > 1 ? .22 + .56 * index / (lane.length - 1) : .45;
+            handoverBadges.push({move, x: ax + (bx - ax) * along, y: ay + (by - ay) * along});
           });
         }
       }
@@ -623,6 +688,24 @@
         if (ends.length || (zoom >= LABELS_FROM_ZOOM && (zoom >= LABELS_FROM_ZOOM + 1 || onPath || site.serving))) {
           label(context, site.site_id, x, y + size + (ends.length > 1 ? 13 : 9), '#2d1520', 'center');
         }
+      }
+      // The number of each handover, above the sites (hovering it tells the cells and sites it joins).
+      for (const {move, x, y} of handoverBadges) {
+        const text = String(move.after.order);
+        context.font = '800 10px "IBM Plex Sans", system-ui, sans-serif';
+        const radius = Math.max(8, context.measureText(text).width / 2 + 4);
+        context.beginPath();
+        context.arc(x, y, radius, 0, Math.PI * 2);
+        context.fillStyle = COLOURS.handover;
+        context.fill();
+        context.lineWidth = 1.6;
+        context.strokeStyle = '#fff';
+        context.stroke();
+        context.fillStyle = '#fff';
+        context.textAlign = 'center';
+        context.textBaseline = 'middle';
+        context.fillText(text, x, y + .5);
+        hits.push({x, y, r: radius + 2, kind: 'handover', item: move, priority: 4.5});
       }
       // The other Non-Qualified Calls: those of its groups (hotspot, cluster, time-window issue) and of its site,
       // then the others. The calls on one point make one mark with how many they are (the most related gives its colour);
@@ -715,6 +798,28 @@
           context.strokeStyle = '#fff';
           context.stroke();
           hits.push({x: x1, y: y1, r: 9, kind: 'start', item: call, priority: 5});
+        }
+      }
+      // Where each handover took place on its way, an estimate (by the time on each band of the call, else evenly in their
+      // order): a ring numbered as its arrow, dashed.
+      if (layers.path) {
+        for (const point of call.handovers || []) {
+          const [x, y] = project(point.latitude, point.longitude);
+          context.beginPath();
+          context.arc(x, y, 8, 0, Math.PI * 2);
+          context.fillStyle = '#fff';
+          context.fill();
+          context.setLineDash([3, 2]);
+          context.lineWidth = 2.2;
+          context.strokeStyle = COLOURS.handover;
+          context.stroke();
+          context.setLineDash([]);
+          context.font = '800 10px "IBM Plex Sans", system-ui, sans-serif';
+          context.fillStyle = COLOURS.handover;
+          context.textAlign = 'center';
+          context.textBaseline = 'middle';
+          context.fillText(String(point.order), x, y + .5);
+          hits.push({x, y, r: 10, kind: 'handover_point', item: point, priority: 5.5});
         }
       }
       const [px, py] = project(failurePoint[0], failurePoint[1]);
@@ -1035,7 +1140,8 @@
         const roles = new Set(data.trace.filter((step) => step.site).map((step) => step.role));
         if (roles.has('both')) item('line', 'Cell that served the whole call', COLOURS.both);
         if (roles.has('start')) item('line', 'Cell that served the start', COLOURS.start);
-        if (roles.has('handover')) item('line', 'Handover cell (between the start and the end)', COLOURS.handover);
+        if (roles.has('handover')) item('line', 'Handover: an arrow from cell to cell, numbered as the cells of the call', COLOURS.handover);
+        if ((data.call.handovers || []).length) item('ring', 'Where each handover took place on its way (an estimate, numbered as its arrow)', COLOURS.handover, 'is-dashed');
         if (roles.has('end')) item('line', 'Cell that served the end', COLOURS.end);
         if (roles.has('nr_leg')) item('line', 'NR leg (by PCI)', COLOURS.nr_leg, 'is-dotted');
       }
@@ -1222,6 +1328,26 @@
           ['Result', item.result], ['Failure', failureText(item)], ...cellRows(item.cells), ['Test', item.test_name], ['Started', cdrTime(item.start_time)],
           ['Status', item.status], ['Root cause', [item.root_category, item.root_cause].filter(Boolean).join(' · ')],
           ['Place', item.place_label], ['Distance', distanceText(item.distance_km)],
+        ]};
+      }
+      if (kind === 'handover_point') {
+        const step = data.trace.find((entry) => entry.order === item.order && entry.role !== 'nr_leg');
+        return {title: `Handover ${item.order}: where it took place`, rows: [
+          ['To cell', step ? [step.inventory?.name || step.cell, [step.technology, step.band].filter(Boolean).join(' ')].filter(Boolean).join(' · ') : ''],
+          ['To site', step?.site_id ? `${step.site_id}${step.host_network || step.network ? ` (${step.host_network || step.network})` : ''}` : ''],
+          ['Estimate', item.by === 'time' ? 'By the time the call spent on each band (its RAT timeline), at an even speed'
+            : 'Spread evenly along its way, in their order (the CDR gives no time per band that matches its cells)'],
+        ]};
+      }
+      if (kind === 'handover') {
+        // A handover: from the cell before it to the cell after it (numbered with the order of that cell).
+        const cellText = (step) => [step.inventory?.name || step.cell, [step.technology, step.band].filter(Boolean).join(' '), step.pci ? `PCI ${step.pci}` : '']
+          .filter(Boolean).join(' · ');
+        const siteText = (step) => (step.site_id ? `${step.site_id}${step.host_network || step.network ? ` (${step.host_network || step.network})` : ''}` : '');
+        return {title: `Handover ${item.after.order}`, rows: [
+          ['From cell', cellText(item.before)], ['From site', siteText(item.before)], ['To cell', cellText(item.after)], ['To site', siteText(item.after)],
+          ['Sites apart', item.before.site === item.after.site ? 'Same site' : (item.before.latitude !== undefined && item.after.latitude !== undefined
+            ? distanceText(geodesic([item.before.longitude, item.before.latitude], [item.after.longitude, item.after.latitude]).metres / 1000) : '')],
         ]};
       }
       if (kind === 'cell') {
