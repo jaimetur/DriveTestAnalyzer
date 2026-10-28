@@ -555,8 +555,17 @@ def test_an_emptied_combined_table_gives_its_sql_the_rows_of_the_copies(client, 
             return [[tuple(row) for row in connection.execute(sql, parameters).fetchall()] for sql, parameters in queries]
 
     before = read()
+
+    def loaded():
+        return [core.repository.load_reporting_rows('data', ids, ['Operator', 'call status', 'Rate', 'NR_Mode', 'source_row_id'],
+                                                    in_scope_only=scope)
+                for ids in ([second], [first, second]) for scope in (False, True)]
+
+    frames = loaded()
     copy_everything()
     assert cdr_store.empty_combined_table(core.repository, 'data')
+    for frame, expected in zip(loaded(), frames, strict=True):
+        pd.testing.assert_frame_equal(frame, expected, check_exact=True)
 
     with core.repository.connection() as connection:
         assert connection.execute('SELECT COUNT(*) FROM main.reporting_rows_data').fetchone()[0] == 0
@@ -566,3 +575,37 @@ def test_an_emptied_combined_table_gives_its_sql_the_rows_of_the_copies(client, 
     with pytest.raises(sqlite3.OperationalError, match='combined data table'):
         with core.repository.connection() as connection:
             connection.execute('DELETE FROM reporting_rows_data WHERE dataset_id = ?', (first,))
+
+
+def test_the_writers_of_an_emptied_combined_table_keep_its_rows_as_sqlite_would(client, tmp_path):
+    first = add_cdr(tmp_path, 'first.csv', 'data', pd.DataFrame({'Operator': ['EE', 'O2'], 'Rate': [1.5, 2]}))
+    second = add_cdr(tmp_path, 'second.csv', 'data', pd.DataFrame({'Operator': ['Three'], 'Rate': [3]}), nr_mode='SA')
+    for dataset_id in (first, second):
+        core.repository.copy_dataset_rows_to_reporting(dataset_id, 'data', ['Operator', 'Rate'])
+    copy_everything()
+    assert cdr_store.empty_combined_table(core.repository, 'data')
+
+    def rows():
+        with core.repository.connection() as connection:
+            return [tuple(row) for row in connection.execute(
+                'SELECT rowid, dataset_id, source_row_id, "Operator", "Rate", "NR_Mode" FROM reporting_rows_data ORDER BY rowid')]
+
+    assert rows() == [(1, first, 1, 'EE', 1.5, 'NSA'), (2, first, 2, 'O2', 2.0, 'NSA'), (3, second, 1, 'Three', 3.0, 'SA')]
+    # A CDR without its copy yet gives the rows of its table, after the others.
+    third = add_cdr(tmp_path, 'third.csv', 'data', pd.DataFrame({'Operator': ['Vodafone UK'], 'Rate': [4], 'RSRP': [-90]}))
+    assert core.repository.copy_dataset_rows_to_reporting(third, 'data', ['Operator', 'Rate']) == 'rows'
+    assert rows()[-1] == (4, third, 1, 'Vodafone UK', 4.0, 'NSA')
+    assert core.repository.copy_dataset_rows_to_reporting(third, 'data', ['Operator', 'Rate']) is False
+    # A new column is added to it, and its values are those of the CDRs.
+    assert core.repository.copy_dataset_rows_to_reporting(third, 'data', ['RSRP']) == 'columns'
+    with core.repository.connection() as connection:
+        assert [row[0] for row in connection.execute('SELECT "RSRP" FROM reporting_rows_data ORDER BY rowid')] == [None, None, None, -90]
+    # The rows of a CDR leave it, and come back after the last one, as SQLite numbers them.
+    core.repository.drop_reporting_rows(first, 'data')
+    assert core.repository.reporting_dataset_ids('data') == {second, third}
+    core.repository.copy_dataset_rows_to_reporting(first, 'data', ['Operator'])
+    assert [row[:3] for row in rows()] == [(3, second, 1), (4, third, 1), (5, first, 1), (6, first, 2)]
+    # The NR Mode of a CDR is read as it is now.
+    core.repository.update_dataset_profile(second, nr_mode='NSA')
+    assert core.repository.set_reporting_nr_mode(second, 'data') is True
+    assert rows()[0][-1] == 'NSA'

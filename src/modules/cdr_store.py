@@ -15,6 +15,7 @@ import shutil
 import sqlite3
 import time
 from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import Lock
@@ -224,6 +225,19 @@ def combined_shadows(connection: sqlite3.Connection) -> set[str]:
 
 
 _combined_shadow_sets: dict[str, set[str]] = {}
+# The CDRs the SQL being run reads of the combined tables, when its caller knows them (see combined_scope).
+_combined_scope: ContextVar[frozenset[int] | None] = ContextVar('cdr_store_combined_scope', default=None)
+
+
+@contextmanager
+def combined_scope(dataset_ids: Any):
+    """Run SQL that reads the rows of these CDRs only from the combined tables (its WHERE keeps their dataset ids): an
+    emptied combined table is given their rows alone, with their row ids and order."""
+    token = _combined_scope.set(frozenset(int(item) for item in dataset_ids))
+    try:
+        yield
+    finally:
+        _combined_scope.reset(token)
 
 
 def combined_shadow_kinds(database_path: Any) -> frozenset[str]:
@@ -297,18 +311,28 @@ def provide_combined_rows(connection: sqlite3.Connection, kind: str, columns: An
         wanted = {declared[0][0]}
     selected = [(column, column_type) for column, column_type in declared if column in wanted]
     database = next((str(row[2]) for row in connection.execute('PRAGMA database_list') if row[1] == 'main'), '')
-    mapped = connection.execute(f'SELECT row_id, dataset_id, source_row_id FROM main.{COMBINED_ROWS_TABLE} WHERE kind = ? '
-                                'ORDER BY row_id', (kind,)).fetchall()
+    scope = _combined_scope.get()
+    mapped = connection.execute(
+        f'SELECT row_id, dataset_id, source_row_id FROM main.{COMBINED_ROWS_TABLE} WHERE kind = ?'
+        + (f' AND dataset_id IN ({", ".join("?" for _ in scope)})' if scope is not None else '') + ' ORDER BY row_id',
+        (kind, *(sorted(scope) if scope is not None else ()))).fetchall()
     length = len(mapped)
     values = {column: np.full(length, None, dtype=object) for column, _type in selected}
     by_dataset: dict[int, list[int]] = {}
     for position, row in enumerate(mapped):
         by_dataset.setdefault(int(row[1]), []).append(position)
     root = store_root(database)
+    # A CDR whose copy is not up to date yet (just processed) gives the rows of its table.
+    fresh = fresh_copies(database, list(by_dataset))
     for dataset_id, positions in by_dataset.items():
         source_rows = [int(mapped[position][2]) for position in positions]
-        manifest = read_manifest(manifest_file(root, kind, dataset_id)) or {'columns': []}
-        lookup = {column_identity(column): column for column, _type in manifest['columns']}
+        if dataset_id in fresh:
+            manifest = read_manifest(manifest_file(root, kind, dataset_id)) or {'columns': []}
+            cdr_columns_in_order = [column for column, _type in manifest['columns']]
+        else:
+            cdr_columns_in_order = [str(row[1]) for row in connection.execute(
+                f'PRAGMA main.table_info({quote(f"dataset_rows_{dataset_id}")})')]
+        lookup = {column_identity(column): column for column in cdr_columns_in_order}
         profile = connection.execute('SELECT d.file_name, p.nr_mode FROM main.datasets d LEFT JOIN main.dataset_profiles p '
                                      'ON p.dataset_id = d.id WHERE d.id = ?', (dataset_id,)).fetchone()
         nr_mode = dataset_nr_mode(kind, profile[1], profile[0]) if profile else None
@@ -319,7 +343,17 @@ def provide_combined_rows(connection: sqlite3.Connection, kind: str, columns: An
                                 else ('cdr', lookup[identity]) if identity in lookup
                                 else 'nr_mode' if identity == column_identity('NR_Mode') else None)
         read = sorted({item[1] for item in physical.values() if isinstance(item, tuple)})
-        found = rows_by_rowid(database, kind, dataset_id, read, source_rows) if read else {}
+        if not read:
+            found = {}
+        elif dataset_id in fresh:
+            found = rows_by_rowid(database, kind, dataset_id, read, source_rows)
+        else:
+            found = {}
+            for start in range(0, len(source_rows), 500):
+                chunk = source_rows[start:start + 500]
+                found.update({int(row[0]): tuple(row[1:]) for row in connection.execute(
+                    f'SELECT rowid{"".join(", " + quote(column) for column in read)} FROM main.{quote(f"dataset_rows_{dataset_id}")} '
+                    f'WHERE rowid IN ({", ".join("?" for _ in chunk)})', chunk)})
         at = {column: index for index, column in enumerate(read)}
         for column, source in physical.items():
             if source == 'dataset':
@@ -337,6 +371,42 @@ def provide_combined_rows(connection: sqlite3.Connection, kind: str, columns: An
         f'VALUES ({", ".join("?" for _ in range(len(selected) + 1))})',
         zip([int(row[0]) for row in mapped], *(values[column].tolist() for column, _type in selected)))
     _copy_indexes(connection, table, name, [column for column, _type in selected])
+
+
+def map_cdr_rows(connection: sqlite3.Connection, kind: str, dataset_id: int, source_rows: list[int]) -> int:
+    """Put the rows of a CDR in an emptied combined table, after its other rows, with the row ids SQLite would give
+    them (one more than the last row id, in the order of the rows of the CDR)."""
+    connection.execute(f'DELETE FROM {COMBINED_ROWS_TABLE} WHERE kind = ? AND dataset_id = ?', (kind, int(dataset_id)))
+    last = int(connection.execute(f'SELECT MAX(row_id) FROM {COMBINED_ROWS_TABLE} WHERE kind = ?', (kind,)).fetchone()[0] or 0)
+    connection.executemany(f'INSERT INTO {COMBINED_ROWS_TABLE} (kind, row_id, dataset_id, source_row_id) VALUES (?, ?, ?, ?)',
+                           [(kind, last + position, int(dataset_id), int(row)) for position, row in enumerate(source_rows, start=1)])
+    return len(source_rows)
+
+
+def unmap_cdr_rows(connection: sqlite3.Connection, kind: str, dataset_ids: Any = None, *, orphans: bool = False) -> int:
+    """Take the rows of CDRs (or of the CDRs that are gone, ``orphans``) out of an emptied combined table."""
+    if orphans:
+        return connection.execute(f'DELETE FROM {COMBINED_ROWS_TABLE} WHERE kind = ? AND dataset_id NOT IN (SELECT id FROM datasets)',
+                                  (kind,)).rowcount
+    ids = [int(item) for item in dataset_ids or ()]
+    if not ids:
+        return 0
+    return connection.execute(f'DELETE FROM {COMBINED_ROWS_TABLE} WHERE kind = ? AND dataset_id IN ({", ".join("?" for _ in ids)})',
+                              (kind, *ids)).rowcount
+
+
+def mapped_cdrs(connection: sqlite3.Connection, kind: str) -> set[int]:
+    """The CDRs whose rows an emptied combined table holds."""
+    return {int(row[0]) for row in connection.execute(f'SELECT DISTINCT dataset_id FROM {COMBINED_ROWS_TABLE} WHERE kind = ?', (kind,))}
+
+
+def cdr_rowids(connection: sqlite3.Connection, kind: str, dataset_id: int) -> list[int]:
+    """The row ids of a CDR in their order: from its table, or from its copy when the table is empty."""
+    dataset_id = int(dataset_id)
+    if dataset_id in shadows(connection):
+        database = next((str(row[2]) for row in connection.execute('PRAGMA database_list') if row[1] == 'main'), '')
+        return [int(rowid) for rowid in cdr_columns(database, kind, dataset_id, [ROWID])[ROWID]]
+    return [int(row[0]) for row in connection.execute(f'SELECT rowid FROM main.{quote(f"dataset_rows_{dataset_id}")} ORDER BY rowid')]
 
 
 def combined_reference(kind: str) -> re.Pattern[str]:

@@ -1487,10 +1487,12 @@ def _apply_auto_field_table_update(
             updates.append((f'{quote(physical)} = {expression}', values, definition))
     if checkpoint:
         checkpoint()
-    if not updates:
+    combined = re.fullmatch(r'reporting_rows_(data|voice|speech)', str(table_name))
+    if not updates or (combined and task_repository._combined_in_copies(combined.group(1))):
+        # An emptied combined table takes the values of its CDRs, which their own tables are given.
         if row_progress:
             row_progress(1, 1)
-        return bool(removable_keys or renames)
+        return bool(updates or removable_keys or renames)
 
     changed_keys = {
         _normalise_catalogue_dimension_name(definition.name)
@@ -6213,12 +6215,7 @@ def sync_combined_cdr_inclusion(
     for position, kind in enumerate(kinds):
         if progress:
             progress(position, len(kinds), f'Updating the combined CDR-{kind.upper()} table')
-        table_name = task_repository.reporting_rows_table_name(kind)
-        with task_repository.connection() as connection:
-            exists = connection.execute(
-                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (table_name,)).fetchone()
-            present = {int(row[0]) for row in connection.execute(
-                f'SELECT DISTINCT dataset_id FROM {task_repository._quote_identifier(table_name)}')} if exists else set()
+        present = task_repository.reporting_dataset_ids(kind)
         processing = {
             int(row['id']) for row in task_repository.list_datasets()
             if str(row['status'] or '') in {'queued', 'processing'}
@@ -6228,11 +6225,9 @@ def sync_combined_cdr_inclusion(
         stale = sorted(present - included - processing)
         missing = sorted(included - present)
         if stale:
-            with workspace_write_lock(task_repository.db_path), task_repository.connection() as connection:
-                connection.execute(
-                    f"DELETE FROM {task_repository._quote_identifier(table_name)} "
-                    f"WHERE dataset_id IN ({', '.join('?' for _ in stale)})", stale,
-                )
+            with workspace_write_lock(task_repository.db_path):
+                for dataset_id in stale:
+                    task_repository.drop_reporting_rows(dataset_id, kind)
         for dataset_id in missing:
             if dimensions is None:
                 dimensions = load_repository_calculated_dimensions(task_repository)
@@ -22707,12 +22702,16 @@ def update_dataset_cdr_type(
     # Its rows leave the combined table of its former type now; the reprocessing adds them to the new one.
     table_name = repository.reporting_rows_table_name(previous)
     with workspace_write_lock(repository.db_path), repository.connection() as connection:
-        if connection.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (table_name,)).fetchone():
+        if not connection.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (table_name,)).fetchone():
+            removed = 0
+        elif repository._combined_in_copies(previous):
+            from src.modules import cdr_store
+
+            removed = cdr_store.unmap_cdr_rows(connection, previous, [dataset_id])
+        else:
             removed = connection.execute(
                 f'DELETE FROM {repository._quote_identifier(table_name)} WHERE dataset_id = ?', (dataset_id,),
             ).rowcount
-        else:
-            removed = 0
     if removed:
         mark_combined_reporting_updated(repository, previous, rows_changed=True)
     try:

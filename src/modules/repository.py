@@ -2751,6 +2751,11 @@ class Repository:
                 ).fetchone()
                 if not exists:
                     continue
+                if self._combined_in_copies(dataset_kind):
+                    from src.modules import cdr_store
+
+                    deleted_rows += max(0, cdr_store.unmap_cdr_rows(conn, dataset_kind, orphans=True))
+                    continue
                 result = conn.execute(
                     f"DELETE FROM {self._quote_identifier(table_name)} "
                     "WHERE dataset_id IS NULL OR dataset_id NOT IN (SELECT id FROM datasets)"
@@ -4264,6 +4269,11 @@ class Repository:
                            if self._column_identity(column) == self._column_identity(NR_MODE_FIELD)), None)
             if not column:
                 return False
+            if self._combined_in_copies(dataset_kind):
+                from src.modules import cdr_store
+
+                # Its rows read the NR Mode of the CDR as it is now.
+                return int(dataset_id) in cdr_store.mapped_cdrs(conn, dataset_kind)
             nr_mode = self._reporting_nr_mode(conn, dataset_id, dataset_kind)
             changed = conn.execute(
                 f"UPDATE {self._quote_identifier(table_name)} SET {self._quote_identifier(column)} = ? "
@@ -4354,6 +4364,14 @@ class Repository:
             nr_mode_column = None
             if self._column_identity(NR_MODE_FIELD) not in source_lookup:
                 existing, nr_mode_column = self._ensure_reporting_nr_mode_column(conn, table_name, existing)
+            if self._combined_in_copies(dataset_kind):
+                from src.modules import cdr_store
+
+                # An emptied combined table holds the rows of the CDR, numbered as its new table numbers them.
+                self._create_reporting_row_indexes(conn, table_name, existing)
+                cdr_store.ensure_combined_tables(conn)
+                cdr_store.map_cdr_rows(conn, dataset_kind, dataset_id, list(range(1, len(safe_df) + 1)))
+                return
             conn.execute(f"DELETE FROM {quoted_table} WHERE dataset_id = ?", (dataset_id,))
             payload_columns: dict[str, Any] = {'dataset_id': int(dataset_id), 'source_row_id': range(1, len(safe_df) + 1)}
             for target in existing:
@@ -4391,6 +4409,8 @@ class Repository:
             )
 
     def drop_reporting_rows(self, dataset_id: int, dataset_kind: str | None = None) -> None:
+        from src.modules import cdr_store
+
         kinds = [dataset_kind] if dataset_kind in {'data', 'voice', 'speech'} else ['data', 'voice', 'speech']
         with self.connection() as conn:
             for kind in kinds:
@@ -4398,7 +4418,9 @@ class Repository:
                 exists = conn.execute(
                     "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (table_name,)
                 ).fetchone()
-                if exists:
+                if exists and self._combined_in_copies(kind):
+                    cdr_store.unmap_cdr_rows(conn, kind, [dataset_id])
+                elif exists:
                     conn.execute(f"DELETE FROM {self._quote_identifier(table_name)} WHERE dataset_id = ?", (dataset_id,))
 
     def list_reporting_row_columns(self, dataset_kind: str) -> list[str]:
@@ -4758,6 +4780,8 @@ class Repository:
         """
         source_table = self.dataset_rows_table_name(dataset_id)
         target_table = self.reporting_rows_table_name(dataset_kind)
+        if self._combined_in_copies(dataset_kind):
+            return self._map_dataset_rows_to_reporting(dataset_id, dataset_kind, columns)
         with self.connection() as conn:
             # See replace_reporting_rows: the complete schema-and-copy step
             # must be atomic relative to a background combined-table rebuild.
@@ -4883,6 +4907,48 @@ class Repository:
             self._create_reporting_row_indexes(conn, target_table, target_columns)
             return 'rows'
 
+    def _combined_in_copies(self, dataset_kind: str) -> bool:
+        """Whether the combined table of a CDR type is empty, the columnar copies of its CDRs holding its rows."""
+        from src.modules import cdr_store
+
+        return str(dataset_kind) in cdr_store.combined_shadow_kinds(self.db_path)
+
+    def _map_dataset_rows_to_reporting(self, dataset_id: int, dataset_kind: str, columns: list[str] | None) -> Literal['rows', 'columns', False]:
+        """copy_dataset_rows_to_reporting for an emptied combined table: its columns are added as always, and the rows of
+        the CDR are put in it once (their values are those of the CDR, see cdr_store.provide_combined_rows)."""
+        from src.modules import cdr_store
+
+        source_table = self.dataset_rows_table_name(dataset_id)
+        with self.connection() as conn:
+            conn.execute('BEGIN IMMEDIATE')
+            if not conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (source_table,)).fetchone():
+                return False
+            target_table, target_columns = self._ensure_reporting_table(conn, dataset_kind)
+            before = set(target_columns)
+            source_columns = self._table_columns(conn, source_table)
+            desired = list(dict.fromkeys([*self.REPORTING_CORE_COLUMNS, *(columns or [])]))
+            target_columns = self._ensure_reporting_columns(conn, target_table, source_columns, desired)
+            if self._column_identity(NR_MODE_FIELD) not in {self._column_identity(column) for column in source_columns}:
+                target_columns, _nr_mode_column = self._ensure_reporting_nr_mode_column(conn, target_table, target_columns)
+            self._create_reporting_row_indexes(conn, target_table, target_columns)
+            cdr_store.ensure_combined_tables(conn)
+            if int(dataset_id) in cdr_store.mapped_cdrs(conn, dataset_kind):
+                return 'columns' if set(target_columns) != before else False
+            cdr_store.map_cdr_rows(conn, dataset_kind, dataset_id, cdr_store.cdr_rowids(conn, dataset_kind, dataset_id))
+            return 'rows'
+
+    def reporting_dataset_ids(self, dataset_kind: str) -> set[int]:
+        """The CDRs whose rows the combined table of a CDR type holds."""
+        from src.modules import cdr_store
+
+        table_name = self.reporting_rows_table_name(dataset_kind)
+        with self.connection() as conn:
+            if not conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (table_name,)).fetchone():
+                return set()
+            if self._combined_in_copies(dataset_kind):
+                return cdr_store.mapped_cdrs(conn, dataset_kind)
+            return {int(row[0]) for row in conn.execute(f'SELECT DISTINCT dataset_id FROM {self._quote_identifier(table_name)}')}
+
     def load_reporting_rows(self, dataset_kind: str, dataset_ids: list[int], columns: list[str], *,
                             in_scope_only: bool = False) -> pd.DataFrame:
         """The rows of some CDRs of one type from their combined table; with ``in_scope_only`` without those of the
@@ -4912,7 +4978,10 @@ class Repository:
             if clause_params:
                 query += f' AND {clause}'
                 params += clause_params
-        with self.connection() as conn:
+        from src.modules import cdr_store
+
+        # The query reads the rows of these CDRs only (an emptied combined table is given them alone).
+        with cdr_store.combined_scope(dataset_ids), self.connection() as conn:
             return pd.read_sql_query(query, conn, params=params)
 
     def load_filtered_reporting_rows(
