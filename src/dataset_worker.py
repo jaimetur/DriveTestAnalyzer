@@ -13,6 +13,12 @@ from threading import Thread
 from time import sleep
 from pathlib import Path
 
+if __name__ == '__main__':
+    # The worker never serves requests: the application is imported without building its web routes (about 500, half
+    # a second of every dataset it processes).
+    from fastapi import routing
+    routing.APIRouter.add_api_route = lambda self, *args, **kwargs: None
+
 import src.DriveTestAnalyzer as app_module
 from src.DriveTestAnalyzer import (
     _process_dataset,
