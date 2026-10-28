@@ -57,6 +57,12 @@ def copy(dataset_id, kind='data'):
 def test_every_ready_cdr_is_copied_with_the_values_of_sqlite_and_the_catalog_has_a_view_per_type(client, tmp_path):
     data = add_cdr(tmp_path, 'data.csv', 'data', data_rows())
     voice = add_cdr(tmp_path, 'voice.csv', 'voice', pd.DataFrame({'Operator': ['O2'], 'Call_Status': ['Completed']}), nr_mode='SA')
+    # A column without a declared type (as the CDR processing creates them) with an integer among its text values,
+    # as the cell lists of some CDRs have.
+    with core.repository.connection() as connection:
+        connection.execute(f'ALTER TABLE dataset_rows_{data} ADD COLUMN "Cell_List"')
+        connection.executemany(f'UPDATE dataset_rows_{data} SET "Cell_List" = ? WHERE rowid = ?',
+                               [(372490, 1), ('[372490]', 2), (None, 3)])
 
     job = copy_everything()
 
@@ -66,15 +72,31 @@ def test_every_ready_cdr_is_copied_with_the_values_of_sqlite_and_the_catalog_has
         sqlite_rows = connection.execute(f'SELECT rowid, * FROM dataset_rows_{data} ORDER BY rowid').fetchall()
     assert rows['__rowid'].tolist() == [row['rowid'] for row in sqlite_rows]
     assert set(rows['__dataset_id']) == {data} and set(rows['__nr_mode']) == {'NSA'}
-    # Numbers keep their type; a column with text keeps every value as SQLite writes it as text.
     assert rows['Mean_Data_Rate'].tolist()[:2] == [44.6, 7.0] and pd.isna(rows['Mean_Data_Rate'].iloc[2])
-    assert rows['NR_DL_SCell3_ARFCN'].tolist()[:2] == ['372490', '[372490]'] and rows['NR_DL_SCell3_ARFCN'].iloc[2] is None
     manifest = cdr_store.read_manifest(cdr_store.manifest_file(cdr_store.store_root(core.repository.db_path), 'data', data))
     assert dict(manifest['columns'])['Mean_Data_Rate'] == 'DOUBLE' and manifest['rows'] == 3
+    # Read back, the copy gives the frame pandas reads from SQLite: the same values, Python types and dtypes, also for a
+    # column with text and numbers (kept apart in the file).
+    assert dict(manifest['columns'])['Cell_List'] == 'MIXED:I'
+    columns = [*data_rows().columns, 'Cell_List']
+    with core.repository.connection() as connection:
+        expected = pd.read_sql_query(f'SELECT {", ".join(cdr_store.quote(column) for column in columns)} '
+                                     f'FROM dataset_rows_{data} ORDER BY rowid', connection)
+    frame = cdr_store.read_cdr(core.repository.db_path, 'data', data, columns)
+    pd.testing.assert_frame_equal(frame, expected, check_exact=True)
+    assert frame['Cell_List'].tolist() == [372490, '[372490]', None]
+    # Some rows only, typed by the values read (as SQLite would give them).
+    with core.repository.connection() as connection:
+        some = pd.read_sql_query(f'SELECT {", ".join(cdr_store.quote(column) for column in columns)} '
+                                 f'FROM dataset_rows_{data} WHERE rowid IN (1, 3) ORDER BY rowid', connection)
+    pd.testing.assert_frame_equal(cdr_store.read_cdr(core.repository.db_path, 'data', data, columns, rowids=[3, 1]),
+                                  some, check_exact=True)
     # The views of the catalog read the copies, with the dataset, the row id and the NR Mode of each row.
     catalog = duckdb.connect(str(cdr_store.store_root(core.repository.db_path) / cdr_store.CATALOG_FILE), read_only=True)
     assert catalog.execute('SELECT dataset_id, source_row_id, Operator, "NR_Mode" FROM cdr_voice').fetchall() == [(voice, 1, 'O2', 'SA')]
     assert catalog.execute('SELECT COUNT(*), MIN("NR_Mode") FROM cdr_data').fetchone() == (3, 'NSA')
+    assert [row[0] for row in catalog.execute('SELECT Cell_List FROM cdr_data ORDER BY source_row_id').fetchall()] == [
+        '372490', '[372490]', None]
     assert catalog.execute('SELECT COUNT(*) FROM cdr_speech').fetchone() == (0,)
     assert logged('cdr_store_synced')[0]['written'] == ['data.csv', 'voice.csv']
     # A copy that is up to date is not written again.

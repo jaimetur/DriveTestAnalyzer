@@ -20,7 +20,7 @@ from typing import Any, Callable
 import pandas as pd
 
 STORE_FOLDER = '.cdr-store'
-STORE_VERSION = 1
+STORE_VERSION = 2
 CDR_KINDS = ('data', 'voice', 'speech')
 VERSIONS_TABLE = 'cdr_store_versions'
 TABLE_TITLES = {VERSIONS_TABLE: 'CDR Store Versions'}
@@ -28,6 +28,9 @@ CATALOG_FILE = 'catalog.duckdb'
 CATALOG_STATE_FILE = 'catalog.json'
 # The columns the copy adds to the columns of the CDR.
 ROWID, DATASET_ID, NR_MODE = '__rowid', '__dataset_id', '__nr_mode'
+# A column with text and numbers keeps its text, and its integers and reals in companion columns, so it is read back
+# with the Python type of each value.
+INT_PREFIX, REAL_PREFIX = '__int__', '__real__'
 READ_BATCH_ROWS = 50_000
 # The copy of a CDR waits while the disk would keep less than this free after it: the Parquet file takes from 130 to
 # 490 bytes per row, and DuckDB may spill as much while it writes.
@@ -148,7 +151,8 @@ def store_changes(database_path: Any) -> dict[str, Any]:
 
 def _column_types(connection: sqlite3.Connection, table: str, columns: list[str]) -> dict[str, str]:
     """The type of each column over all its values, in one pass: BIGINT when every value is an integer, DOUBLE when
-    every value is a number, VARCHAR when any is text (or when it has no value)."""
+    every value is a number, VARCHAR when every value is text (or it has no value), and MIXED:I, MIXED:R or MIXED:IR
+    when it has text and integers, reals or both."""
     flags = ', '.join(
         f"MAX(typeof({quote(column)}) IN ('text', 'blob')) * 4 + MAX(typeof({quote(column)}) = 'real') * 2 "
         f"+ MAX(typeof({quote(column)}) = 'integer')" for column in columns)
@@ -156,8 +160,28 @@ def _column_types(connection: sqlite3.Connection, table: str, columns: list[str]
     types = {}
     for column, flag in zip(columns, row):
         flag = int(flag or 0)
-        types[column] = 'VARCHAR' if flag & 4 or not flag else ('DOUBLE' if flag & 2 else 'BIGINT')
+        if flag & 4 and flag & 3:
+            types[column] = 'MIXED:' + ('I' if flag & 1 else '') + ('R' if flag & 2 else '')
+        else:
+            types[column] = 'VARCHAR' if flag & 4 or not flag else ('DOUBLE' if flag & 2 else 'BIGINT')
     return types
+
+
+def _stored_columns(columns: list[str], types: dict[str, str]) -> list[tuple[str, str, str]]:
+    """The columns of the Parquet file of a CDR: (name, SQLite expression, type) for each column, and for a column with
+    text and numbers its text, integers and reals apart."""
+    stored = []
+    for column in columns:
+        source, column_type = quote(column), types[column]
+        if column_type.startswith('MIXED:'):
+            stored.append((column, f"CASE WHEN typeof({source}) IN ('text', 'blob') THEN CAST({source} AS TEXT) END", 'VARCHAR'))
+            if 'I' in column_type:
+                stored.append((INT_PREFIX + column, f"CASE WHEN typeof({source}) = 'integer' THEN {source} END", 'BIGINT'))
+            if 'R' in column_type:
+                stored.append((REAL_PREFIX + column, f"CASE WHEN typeof({source}) = 'real' THEN {source} END", 'DOUBLE'))
+        else:
+            stored.append((column, f'CAST({source} AS TEXT)' if column_type == 'VARCHAR' else source, column_type))
+    return stored
 
 
 def required_space(row_count: int) -> int:
@@ -184,12 +208,12 @@ def export_rows(connection: sqlite3.Connection, dataset_id: int, nr_mode: str, c
     import duckdb
 
     table = f'dataset_rows_{int(dataset_id)}'
+    stored = _stored_columns(columns, types)
     duck = duckdb.connect(config={'memory_limit': '2GB', 'threads': 2, 'temp_directory': str(spill)})
     try:
         duck.execute(f'CREATE TABLE cdr ({quote(ROWID)} BIGINT, {quote(DATASET_ID)} BIGINT, {quote(NR_MODE)} VARCHAR'
-                     + ''.join(f', {quote(column)} {types[column]}' for column in columns) + ')')
-        selected = ''.join(f', CAST({quote(column)} AS TEXT)' if types[column] == 'VARCHAR' else f', {quote(column)}'
-                           for column in columns)
+                     + ''.join(f', {quote(name)} {column_type}' for name, _expression, column_type in stored) + ')')
+        selected = ''.join(f', {expression}' for _name, expression, _column_type in stored)
         last = connection.execute(f'SELECT MAX(rowid) FROM {quote(table)}').fetchone()[0] or 0
         for low in range(0, int(last), READ_BATCH_ROWS):
             if should_stop():
@@ -201,8 +225,8 @@ def export_rows(connection: sqlite3.Connection, dataset_id: int, nr_mode: str, c
             values = list(zip(*rows))
             frame = pd.DataFrame({
                 ROWID: pd.Series(values[0], dtype='int64'), DATASET_ID: int(dataset_id), NR_MODE: nr_mode or None,
-                **{column: pd.Series(column_values, dtype={'BIGINT': 'Int64', 'DOUBLE': 'float64'}.get(types[column], 'object'))
-                   for column, column_values in zip(columns, values[1:])},
+                **{name: pd.Series(column_values, dtype={'BIGINT': 'Int64', 'DOUBLE': 'float64'}.get(column_type, 'object'))
+                   for (name, _expression, column_type), column_values in zip(stored, values[1:])},
             })
             duck.register('chunk', frame)
             duck.execute('INSERT INTO cdr BY NAME SELECT * FROM chunk')
@@ -245,8 +269,8 @@ def write_cdr(repository: Any, cdr: dict[str, Any], should_stop: Callable[[], bo
                 return None
             columns = _table_columns(connection, dataset_id)
             current = revision(ready, columns, _versions(connection).get(dataset_id, 0))
-            added = {ROWID, DATASET_ID, NR_MODE}
-            if added & {column.casefold() for column in columns}:
+            if any(column.casefold() in {ROWID, DATASET_ID, NR_MODE} or column.startswith((INT_PREFIX, REAL_PREFIX))
+                   for column in columns):
                 raise ValueError(f'The CDR {ready["file_name"]} has a column named like the columns the copy adds.')
             types = _column_types(connection, table, columns)
             rows_written = export_rows(connection, dataset_id, ready['nr_mode'], columns, types, temporary, spill, should_stop)
@@ -280,11 +304,15 @@ def _view_sql(kind: str, manifests: list[dict[str, Any]], root: Path) -> str:
                 'CAST(NULL AS VARCHAR) AS "NR_Mode" WHERE false')
     types: dict[str, set[str]] = {}
     names: dict[str, str] = {}
+    companions: set[str] = set()
     for manifest in manifests:
         for column, column_type in manifest['columns']:
             identity = column.casefold()
             names.setdefault(identity, column)
-            types.setdefault(identity, set()).add(column_type)
+            types.setdefault(identity, set()).add('VARCHAR' if column_type.startswith('MIXED:') else column_type)
+            if column_type.startswith('MIXED:'):
+                companions.update(prefix + column for prefix, part in ((INT_PREFIX, 'I'), (REAL_PREFIX, 'R'))
+                                  if part in column_type)
     nr_mode = names.pop('nr_mode', None)
     # The view names its own dataset and row id columns.
     for identity in ('dataset_id', 'source_row_id'):
@@ -295,7 +323,9 @@ def _view_sql(kind: str, manifests: list[dict[str, Any]], root: Path) -> str:
     for identity, column in names.items():
         column_types = types[identity]
         common = column_types.pop() if len(column_types) == 1 else ('DOUBLE' if column_types <= {'BIGINT', 'DOUBLE'} else 'VARCHAR')
-        selected.append(f'CAST({quote(column)} AS {common}) AS {quote(column)}')
+        parts = [f'CAST({quote(name)} AS VARCHAR)' for name in (INT_PREFIX + column, REAL_PREFIX + column) if name in companions]
+        value = f'COALESCE({quote(column)}, {", ".join(parts)})' if parts else quote(column)
+        selected.append(f'CAST({value} AS {common}) AS {quote(column)}')
     # The NR Mode of a row: the CDR's own NR Mode column, or the NR Mode of the CDR.
     selected.append(f'COALESCE(CAST({quote(nr_mode)} AS VARCHAR), {quote(NR_MODE)}) AS "NR_Mode"' if nr_mode
                     else f'{quote(NR_MODE)} AS "NR_Mode"')
@@ -521,3 +551,65 @@ def install_cdr_store(core: Any) -> None:
 
     core.register_idle_task(copy_when_idle, STORE_IDLE_SECONDS)
     core.BACKGROUND_TASK_PROVIDERS.append(tasks)
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Reading a copy back: the frame pandas.read_sql_query returns from the SQLite table of the CDR.
+
+def _sqlite_like(values: pd.Series) -> Any:
+    """A column as pandas.read_sql_query types it from SQLite values: no value at all gives objects (None), integers
+    with a missing value give float64."""
+    if values.isna().all():
+        return pd.Series([None] * len(values), dtype=object, index=values.index)
+    if isinstance(values.dtype, pd.Int64Dtype):
+        return values.astype('float64') if values.isna().any() else values.astype('int64')
+    return values
+
+
+def read_cdr(database_path: Any, kind: str, dataset_id: int, columns: list[str], *,
+             rowids: list[int] | None = None) -> pd.DataFrame:
+    """The columns of one CDR as ``pandas.read_sql_query`` returns them from its SQLite table in row id order (only the
+    rows ``rowids`` when given): the same values, with the same Python types and dtypes."""
+    import duckdb
+    from pandas.core.internals.construction import convert_object_array
+
+    root = store_root(database_path)
+    manifest = read_manifest(manifest_file(root, kind, dataset_id))
+    if manifest is None or not cdr_file(root, kind, dataset_id).is_file():
+        raise LookupError(f'The columnar copy of CDR {dataset_id} is not ready.')
+    types = dict(manifest['columns'])
+    missing = [column for column in columns if column not in types]
+    if missing:
+        raise KeyError(f'The CDR {dataset_id} has no column {missing[0]}.')
+    parts = []
+    for column in dict.fromkeys(columns):
+        parts.append(quote(column))
+        if types[column].startswith('MIXED:'):
+            parts.extend(quote(prefix + column) for prefix, part in ((INT_PREFIX, 'I'), (REAL_PREFIX, 'R'))
+                         if part in types[column])
+    source = "'" + str(cdr_file(root, kind, dataset_id)).replace("'", "''") + "'"
+    duck = duckdb.connect()
+    try:
+        where = ''
+        if rowids is not None:
+            duck.register('wanted', pd.DataFrame({'rowid': pd.Series(list(rowids), dtype='int64')}))
+            where = f'WHERE {quote(ROWID)} IN (SELECT rowid FROM wanted)'
+        raw = duck.execute(f'SELECT {", ".join(parts) or "1"} FROM read_parquet({source}) {where} ORDER BY {quote(ROWID)}').df()
+    finally:
+        duck.close()
+    result = {}
+    for column in columns:
+        column_type = types[column]
+        if not column_type.startswith('MIXED:'):
+            result[column] = _sqlite_like(raw[column]).to_numpy()
+            continue
+        # The text, integers and reals of the column back in one column of Python values, typed as pandas does.
+        values = raw[column].astype(object).to_numpy()
+        for prefix, part, cast in ((INT_PREFIX, 'I', int), (REAL_PREFIX, 'R', float)):
+            if part in column_type:
+                numbers = raw[prefix + column]
+                present = numbers.notna().to_numpy()
+                values[present] = [cast(number) for number in numbers[present]]
+        values[pd.isna(values)] = None
+        result[column] = convert_object_array([values], dtype=None, coerce_float=True)[0]
+    return pd.DataFrame(result, columns=list(columns)) if columns else pd.DataFrame(index=range(len(raw)))
