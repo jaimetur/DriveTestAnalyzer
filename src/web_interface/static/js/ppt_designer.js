@@ -4386,7 +4386,7 @@
         image.src = content.url; image.alt = chart.title || 'Picture';
         image.style.objectFit = content.fit === 'cover' ? 'cover' : 'contain';
         frame.append(image);
-      } else frame.append(node('span', 'No picture chosen yet.', 'ds-element-empty'));
+      } else frame.append(node('span', 'Choose its picture in the panel of the Designer.', 'ds-element-empty ds-element-empty-picture'));
       return frame;
     }
     const text = node('div', undefined, 'ds-element-text');

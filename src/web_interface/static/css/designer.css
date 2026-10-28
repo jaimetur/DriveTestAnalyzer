@@ -476,3 +476,15 @@
 .ppt-designer .ds-layout-divider.is-column::after { top: calc(50% - 1.4rem); bottom: auto; height: 2.8rem; left: 4px; width: 6px; }
 .ppt-designer .ds-layout-divider.is-row::after { left: calc(50% - 1.4rem); right: auto; width: 2.8rem; top: 4px; height: 6px; }
 .ppt-designer .ds-layout-divider:hover::after, .ppt-designer .ds-layout-divider:active::after { opacity: 1; }
+/* The picture of an Image element: shown in a place to drop another one, or the button to choose it. */
+.ppt-designer .ds-design-dropzone { display: grid; justify-items: center; gap: .55rem; padding: 1rem .8rem; border: 2px dashed #d6cae6; border-radius: 12px; background: #fbf9fe;
+  color: #8a7f9b; text-align: center; transition: border-color .12s, background .12s; }
+.ppt-designer .ds-design-dropzone.is-over { border-color: #7a4bb3; background: #f3ecfb; }
+.ppt-designer .ds-design-dropzone > .ds-design-icon { width: 2.2rem; height: 2.2rem; color: #a594bf; }
+.ppt-designer .ds-design-dropzone .ds-design-image-preview { max-width: 100%; max-height: 9rem; border-radius: 8px; object-fit: contain; }
+.ppt-designer .ds-design-dropzone .ds-design-field-note { margin: 0; overflow: hidden; max-width: 100%; text-overflow: ellipsis; white-space: nowrap; }
+.ppt-designer .ds-element-image .ds-element-empty-picture { display: grid; place-items: center; gap: .5rem; width: calc(100% - 1.5rem); height: calc(100% - 1.5rem); margin: .75rem;
+  border: 2px dashed #d6cae6; border-radius: 12px; background: #fbf9fe; color: #8a7f9b; font-size: .85rem; font-style: normal; font-weight: 650; }
+.ppt-designer .ds-element-image .ds-element-empty-picture::before { content: ''; width: 2.6rem; height: 2.6rem; background: currentColor; opacity: .6;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='16' rx='2'/%3E%3Ccircle cx='9' cy='10' r='2'/%3E%3Cpath d='m21 16-5-5L5 20'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='16' rx='2'/%3E%3Ccircle cx='9' cy='10' r='2'/%3E%3Cpath d='m21 16-5-5L5 20'/%3E%3C/svg%3E") center / contain no-repeat; }

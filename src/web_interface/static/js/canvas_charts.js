@@ -1497,53 +1497,97 @@
     const decimals = Number.isInteger(payload.decimals) ? payload.decimals : 2;
     const unit = payload.unit ? (payload.share ? '%' : ` ${payload.unit}`) : '';
     const number = value => (known(value) ? Number(value).toFixed(decimals) : '–');
+    // A field name read as words (Mean_Data_Rate: Mean Data Rate).
+    const readable = text => String(text || '').replace(/_+/g, ' ').trim();
     cards.forEach((card, index) => {
       const x = area.left + (index % columns) * (width + gap), y = area.top + Math.floor(index / columns) * (height + gap);
-      const accent = KPI_BANDS[card.band] || '#4B2C82';
+      const accent = KPI_BANDS[card.band] || '#5B35A0';
+      const scale = Math.min(1.25, height / 340, width / 420);
       context.save();
-      roundedRect(context, x, y, width, height, 18);
+      context.shadowColor = 'rgba(36, 22, 61, 0.10)'; context.shadowBlur = 18 * scale; context.shadowOffsetY = 4 * scale;
+      roundedRect(context, x, y, width, height, 22 * scale);
       context.fillStyle = '#FFFFFF'; context.fill();
-      context.strokeStyle = '#DDE3EA'; context.lineWidth = 2; context.stroke();
-      context.clip();
-      context.fillStyle = accent; context.fillRect(x, y, 10, height);
       context.restore();
-      const inner = {left: x + 34, right: x + width - 26};
-      const scale = Math.min(1, height / 360, width / 380);
+      context.save();
+      roundedRect(context, x, y, width, height, 22 * scale);
+      context.strokeStyle = '#E4DDEE'; context.lineWidth = 2; context.stroke();
+      context.restore();
+      // Wide cards keep the figures at the left and the trend at the right; tall ones stack them.
+      const trend = (card.trend || []).map(value => (known(value) ? Number(value) : null));
+      const hasTrend = trend.filter(known).length > 1;
+      const wide = hasTrend && width / height > 1.55;
+      const pad = 34 * scale;
+      const text = {left: x + pad, right: wide ? x + width * .52 : x + width - pad};
+      let line = y + pad;
       context.textAlign = 'left'; context.textBaseline = 'top';
-      context.fillStyle = '#405765'; font(context, Math.max(18, 30 * scale), true);
-      context.fillText(fittedText(context, String(card.label || payload.metric || ''), inner.right - inner.left), inner.left, y + 24 * scale);
+      context.fillStyle = accent; context.beginPath(); context.arc(text.left + 7 * scale, line + 13 * scale, 7 * scale, 0, Math.PI * 2); context.fill();
+      context.fillStyle = '#5E5470'; font(context, Math.max(16, 26 * scale), true);
+      context.fillText(fittedText(context, readable(card.label || payload.metric), text.right - text.left - 24 * scale), text.left + 24 * scale, line);
+      line += 46 * scale;
       const valueText = `${number(card.value)}${known(card.value) ? unit : ''}`;
-      let size = Math.max(40, Math.min(150, height * .34, (inner.right - inner.left) / Math.max(3, valueText.length * .62)));
-      context.fillStyle = card.band ? accent : '#17202A'; font(context, size, true);
-      while (size > 30 && textWidth(context, valueText) > inner.right - inner.left) { size -= 4; font(context, size, true); }
-      const valueTop = y + 24 * scale + 46 * scale;
-      context.fillText(valueText, inner.left, valueTop);
-      pushRectangleHit(state, transform, {x, y, width, height}, {label: card.label || payload.metric, series: card.campaign || '', value: `${valueText} · n = ${card.n}`});
-      let line = valueTop + size + 14 * scale;
-      context.fillStyle = '#6B7785'; font(context, Math.max(15, 21 * scale));
-      context.fillText(`n = ${Number(card.n || 0).toLocaleString()}${card.campaign ? ` · ${card.campaign}` : ''}`, inner.left, line);
-      line += 34 * scale;
+      let size = Math.max(36, Math.min(150 * scale, height * (wide ? .36 : .3), (text.right - text.left) / Math.max(3, valueText.length * .6)));
+      context.fillStyle = card.band ? accent : '#1D1530'; font(context, size, true);
+      while (size > 28 && textWidth(context, valueText) > text.right - text.left) { size -= 4; font(context, size, true); }
+      context.fillText(valueText, text.left, line);
+      pushRectangleHit(state, transform, {x, y, width, height}, {label: readable(card.label || payload.metric), series: card.campaign || '', value: `${valueText} · n = ${card.n}`});
+      line += size + 16 * scale;
       if (known(card.delta)) {
         const up = Number(card.delta) > 0, flat = card.improves === null || card.improves === undefined;
-        context.fillStyle = flat ? '#6B7785' : card.improves ? KPI_BANDS.good : KPI_BANDS.poor;
-        font(context, Math.max(16, 24 * scale), true);
+        const tone = flat ? {fill: '#EEF0F3', ink: '#5B6876'} : card.improves ? {fill: '#E3F3EA', ink: '#1E6B42'} : {fill: '#FBE6E7', ink: '#9E2230'};
         const deltaUnit = payload.share ? ' pp' : unit;
-        context.fillText(`${up ? '▲' : Number(card.delta) < 0 ? '▼' : '='} ${up ? '+' : ''}${Number(card.delta).toFixed(decimals)}${deltaUnit} vs ${card.comparison_label}`, inner.left, line);
-        line += 36 * scale;
+        const deltaText = `${up ? '▲' : Number(card.delta) < 0 ? '▼' : '='} ${up ? '+' : ''}${Number(card.delta).toFixed(decimals)}${deltaUnit}`;
+        const versus = card.comparison_label ? `vs ${card.comparison_label}` : '';
+        font(context, Math.max(15, 22 * scale), true);
+        const pillWidth = textWidth(context, deltaText) + 28 * scale, pillHeight = 36 * scale;
+        roundedRect(context, text.left, line, pillWidth, pillHeight, pillHeight / 2);
+        context.fillStyle = tone.fill; context.fill();
+        context.fillStyle = tone.ink; context.textBaseline = 'middle';
+        context.fillText(deltaText, text.left + 14 * scale, line + pillHeight / 2);
+        if (versus) {
+          context.fillStyle = '#7A6F8A'; font(context, Math.max(14, 20 * scale));
+          context.fillText(fittedText(context, versus, Math.max(0, text.right - text.left - pillWidth - 12 * scale)), text.left + pillWidth + 12 * scale, line + pillHeight / 2);
+        }
+        context.textBaseline = 'top';
+        line += pillHeight + 14 * scale;
       }
-      const trend = (card.trend || []).map(value => (known(value) ? Number(value) : null));
-      if (trend.filter(known).length > 1) {
-        const top = Math.max(line + 8, y + height - 90 * scale), bottom = y + height - 22 * scale;
-        const values = trend.filter(known), low = Math.min(...values), high = Math.max(...values);
-        const points = trend.map((value, position) => (known(value) ? {
-          x: inner.left + position / (trend.length - 1) * (inner.right - inner.left),
-          y: bottom - (high === low ? .5 : (value - low) / (high - low)) * (bottom - top),
-        } : null)).filter(Boolean);
-        context.strokeStyle = accent; context.lineWidth = 3; context.beginPath();
-        points.forEach((point, position) => (position ? context.lineTo(point.x, point.y) : context.moveTo(point.x, point.y)));
-        context.stroke();
-        const last = points.at(-1);
-        context.fillStyle = accent; context.beginPath(); context.arc(last.x, last.y, 6, 0, Math.PI * 2); context.fill();
+      context.fillStyle = '#8A8098'; font(context, Math.max(14, 19 * scale));
+      context.fillText(`n = ${Number(card.n || 0).toLocaleString()}${card.campaign ? ` · ${card.campaign}` : ''}`, text.left, line);
+      line += 30 * scale;
+      if (!hasTrend) return;
+      // The trend over the campaigns: an area under its line, its points and the campaigns at its ends.
+      const box = wide
+        ? {left: x + width * .58, right: x + width - pad, top: y + pad + 30 * scale, bottom: y + height - pad - 26 * scale}
+        : {left: x + pad, right: x + width - pad, top: Math.max(line + 10 * scale, y + height * .62), bottom: y + height - pad - 22 * scale};
+      if (box.bottom - box.top < 24) return;
+      // The scale of the trend spans at least a fifth of its level: a small change looks small.
+      const values = trend.filter(known), middle = (Math.min(...values) + Math.max(...values)) / 2;
+      const span = Math.max(Math.max(...values) - Math.min(...values), Math.abs(middle) * .2, 1e-9);
+      const low = middle - span / 2;
+      const points = trend.map((value, position) => (known(value) ? {
+        x: box.left + position / Math.max(1, trend.length - 1) * (box.right - box.left),
+        y: box.bottom - (value - low) / span * (box.bottom - box.top),
+      } : null)).filter(Boolean);
+      const gradient = context.createLinearGradient(0, box.top, 0, box.bottom);
+      gradient.addColorStop(0, withAlpha(accent, .22)); gradient.addColorStop(1, withAlpha(accent, 0));
+      context.beginPath();
+      points.forEach((point, position) => (position ? context.lineTo(point.x, point.y) : context.moveTo(point.x, point.y)));
+      context.lineTo(points.at(-1).x, box.bottom); context.lineTo(points[0].x, box.bottom); context.closePath();
+      context.fillStyle = gradient; context.fill();
+      context.strokeStyle = accent; context.lineWidth = 4 * Math.max(.75, scale); context.lineJoin = 'round'; context.lineCap = 'round'; context.beginPath();
+      points.forEach((point, position) => (position ? context.lineTo(point.x, point.y) : context.moveTo(point.x, point.y)));
+      context.stroke();
+      points.forEach((point, position) => {
+        const last = position === points.length - 1;
+        context.beginPath(); context.arc(point.x, point.y, (last ? 8 : 4.5) * Math.max(.75, scale), 0, Math.PI * 2);
+        context.fillStyle = last ? accent : '#FFFFFF'; context.fill();
+        context.strokeStyle = accent; context.lineWidth = 2.5; context.stroke();
+      });
+      const labels = card.trend_labels || [];
+      if (labels.length > 1) {
+        context.fillStyle = '#8A8098'; font(context, Math.max(13, 17 * scale)); context.textBaseline = 'top';
+        context.textAlign = 'left'; context.fillText(String(labels[0]), box.left, box.bottom + 8 * scale);
+        context.textAlign = 'right'; context.fillText(String(labels.at(-1)), box.right, box.bottom + 8 * scale);
+        context.textAlign = 'left';
       }
     });
   }

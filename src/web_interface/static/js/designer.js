@@ -647,6 +647,7 @@
     slide: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 9h6M7 13h10"/>',
     chart: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
     reset: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>',
+    image: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5L5 20"/>',
   };
   // The names of the properties a Design changes, as Differences shows them.
   const DIFFERENCE_NAMES = {title: 'Title', subtitle: 'Subtitle', layout: 'Layout', options: 'Places', place: 'Place', style: 'Format', chart_type: 'Chart type',
@@ -1413,8 +1414,7 @@
   }
   function imageForm(element, shown) {
     const content = {...(shown.content || {})};
-    const input = h('input', {type: 'file', accept: 'image/png,image/jpeg,image/gif', 'aria-label': 'Picture', onchange: guarded(async event => {
-      const file = event.target.files?.[0];
+    const upload = guarded(async file => {
       if (!file) return;
       const body = new FormData();
       body.append('file', file);
@@ -1422,10 +1422,17 @@
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(typeof result.detail === 'string' ? result.detail : 'The picture could not be kept.');
       await setElementValues(element.id, {content: {...content, image: result.id, name: result.name}});
-    })});
+    });
+    const input = h('input', {type: 'file', accept: 'image/png,image/jpeg,image/gif', 'aria-label': 'Picture', hidden: true, onchange: event => upload(event.target.files?.[0])});
+    // The picture shown, and a place to drop another one (or choose it).
+    const drop = h('div', {class: `ds-design-dropzone${content.image ? ' has-picture' : ''}`,
+      ondragover: event => { event.preventDefault(); drop.classList.add('is-over'); }, ondragleave: () => drop.classList.remove('is-over'),
+      ondrop: event => { event.preventDefault(); drop.classList.remove('is-over'); upload(event.dataTransfer?.files?.[0]); }},
+      content.image ? h('img', {class: 'ds-design-image-preview', src: `/api/ppt-designer/images/${content.image}`, alt: content.name || 'Picture'}) : icon('image'),
+      h('button', {type: 'button', class: 'ds-design-action ds-design-primary', onclick: () => input.click()}, content.image ? 'Change the picture' : 'Choose a picture'),
+      h('span', {class: 'ds-design-field-note', text: content.image ? (content.name || '') : 'or drop it here'}), input);
     return [
-      content.image ? h('img', {class: 'ds-design-image-preview', src: `/api/ppt-designer/images/${content.image}`, alt: content.name || 'Picture'}) : null,
-      field(content.image ? 'Change the picture' : 'Picture', input, 'PNG, JPEG or GIF, up to 8 MB (an SVG can be saved as PNG first). It keeps its ratio in its place.'),
+      field('Picture', drop, 'PNG, JPEG or GIF, up to 8 MB (an SVG can be saved as PNG first). It keeps its ratio in its place.'),
       field('Fit', selectInput([['contain', 'Whole picture'], ['cover', 'Fill the place']], content.fit || 'contain', value => guarded(() => setElementValues(element.id, {content: {...content, fit: value}}))())),
     ];
   }
