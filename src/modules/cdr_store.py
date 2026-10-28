@@ -17,10 +17,11 @@ from pathlib import Path
 from threading import Lock
 from typing import Any, Callable
 
+import numpy as np
 import pandas as pd
 
 STORE_FOLDER = '.cdr-store'
-STORE_VERSION = 2
+STORE_VERSION = 3
 CDR_KINDS = ('data', 'voice', 'speech')
 VERSIONS_TABLE = 'cdr_store_versions'
 TABLE_TITLES = {VERSIONS_TABLE: 'CDR Store Versions'}
@@ -110,9 +111,12 @@ def _ready_cdrs(connection: sqlite3.Connection) -> dict[int, dict[str, Any]]:
     rows = connection.execute(
         'SELECT d.id, d.file_name, p.status, p.dataset_kind, p.nr_mode, p.processed_at, p.normalization_version, p.row_count '
         'FROM datasets d JOIN dataset_profiles p ON p.dataset_id = d.id').fetchall()
+    from src.modules.nr_mode import dataset_nr_mode
+
+    # The NR Mode of a CDR as its combined rows keep it.
     return {
         int(row[0]): {'id': int(row[0]), 'file_name': str(row[1] or ''), 'kind': str(row[3] or '').casefold(),
-                      'nr_mode': str(row[4] or '').upper(), 'processed_at': str(row[5] or ''),
+                      'nr_mode': dataset_nr_mode(row[3], row[4], row[1]) or '', 'processed_at': str(row[5] or ''),
                       'normalization_version': int(row[6] or 1), 'row_count': int(row[7] or 0)}
         for row in rows
         if str(row[2] or '').casefold() == 'ready' and str(row[3] or '').casefold() in CDR_KINDS
@@ -127,6 +131,24 @@ def revision(cdr: dict[str, Any], columns: list[str], version: int) -> str:
         'normalization_version': cdr['normalization_version'], 'row_count': cdr['row_count'], 'columns': columns,
         'version': version,
     }, sort_keys=True, ensure_ascii=False)
+
+
+def fresh_copies(database_path: Any, dataset_ids: Any) -> set[int]:
+    """The CDRs among ``dataset_ids`` whose copy holds their rows as they are now."""
+    root = store_root(database_path)
+    with sqlite3.connect(database_path, timeout=30) as connection:
+        cdrs = _ready_cdrs(connection)
+        versions = _versions(connection)
+        fresh = set()
+        for dataset_id in {int(item) for item in dataset_ids}:
+            cdr = cdrs.get(dataset_id)
+            if cdr is None:
+                continue
+            manifest = read_manifest(manifest_file(root, cdr['kind'], dataset_id))
+            if (manifest and cdr_file(root, cdr['kind'], dataset_id).is_file() and manifest.get('revision')
+                    == revision(cdr, _table_columns(connection, dataset_id), versions.get(dataset_id, 0))):
+                fresh.add(dataset_id)
+    return fresh
 
 
 def store_changes(database_path: Any) -> dict[str, Any]:
@@ -556,33 +578,25 @@ def install_cdr_store(core: Any) -> None:
 # ---------------------------------------------------------------------------------------------------------------------
 # Reading a copy back: the frame pandas.read_sql_query returns from the SQLite table of the CDR.
 
-def _sqlite_like(values: pd.Series) -> Any:
-    """A column as pandas.read_sql_query types it from SQLite values: no value at all gives objects (None), integers
-    with a missing value give float64."""
-    if values.isna().all():
-        return pd.Series([None] * len(values), dtype=object, index=values.index)
-    if isinstance(values.dtype, pd.Int64Dtype):
-        return values.astype('float64') if values.isna().any() else values.astype('int64')
-    return values
-
-
-def read_cdr(database_path: Any, kind: str, dataset_id: int, columns: list[str], *,
-             rowids: list[int] | None = None) -> pd.DataFrame:
-    """The columns of one CDR as ``pandas.read_sql_query`` returns them from its SQLite table in row id order (only the
-    rows ``rowids`` when given): the same values, with the same Python types and dtypes."""
+def _raw(database_path: Any, kind: str, dataset_id: int, columns: list[str], rowids: list[int] | None = None,
+         ) -> tuple[dict[str, tuple[str, Any]], int]:
+    """The values of some physical columns of one CDR, in row id order, before pandas types them: for each column
+    ('int', Int64 array), ('real', float64 array with NaN for no value) or ('object', array of Python values), and the
+    number of rows."""
     import duckdb
-    from pandas.core.internals.construction import convert_object_array
 
     root = store_root(database_path)
     manifest = read_manifest(manifest_file(root, kind, dataset_id))
     if manifest is None or not cdr_file(root, kind, dataset_id).is_file():
         raise LookupError(f'The columnar copy of CDR {dataset_id} is not ready.')
-    types = dict(manifest['columns'])
+    # The columns of the CDR, and those the copy adds.
+    types = {**dict(manifest['columns']), ROWID: 'BIGINT', DATASET_ID: 'BIGINT', NR_MODE: 'VARCHAR'}
     missing = [column for column in columns if column not in types]
     if missing:
         raise KeyError(f'The CDR {dataset_id} has no column {missing[0]}.')
+    wanted = list(dict.fromkeys(columns))
     parts = []
-    for column in dict.fromkeys(columns):
+    for column in wanted:
         parts.append(quote(column))
         if types[column].startswith('MIXED:'):
             parts.extend(quote(prefix + column) for prefix, part in ((INT_PREFIX, 'I'), (REAL_PREFIX, 'R'))
@@ -594,22 +608,135 @@ def read_cdr(database_path: Any, kind: str, dataset_id: int, columns: list[str],
         if rowids is not None:
             duck.register('wanted', pd.DataFrame({'rowid': pd.Series(list(rowids), dtype='int64')}))
             where = f'WHERE {quote(ROWID)} IN (SELECT rowid FROM wanted)'
-        raw = duck.execute(f'SELECT {", ".join(parts) or "1"} FROM read_parquet({source}) {where} ORDER BY {quote(ROWID)}').df()
+        raw = duck.execute(f'SELECT {", ".join(parts) or quote(ROWID)} FROM read_parquet({source}) {where} '
+                           f'ORDER BY {quote(ROWID)}').df()
     finally:
         duck.close()
-    result = {}
-    for column in columns:
+    values: dict[str, tuple[str, Any]] = {}
+    for column in wanted:
         column_type = types[column]
-        if not column_type.startswith('MIXED:'):
-            result[column] = _sqlite_like(raw[column]).to_numpy()
-            continue
-        # The text, integers and reals of the column back in one column of Python values, typed as pandas does.
-        values = raw[column].astype(object).to_numpy()
-        for prefix, part, cast in ((INT_PREFIX, 'I', int), (REAL_PREFIX, 'R', float)):
-            if part in column_type:
-                numbers = raw[prefix + column]
-                present = numbers.notna().to_numpy()
-                values[present] = [cast(number) for number in numbers[present]]
-        values[pd.isna(values)] = None
-        result[column] = convert_object_array([values], dtype=None, coerce_float=True)[0]
-    return pd.DataFrame(result, columns=list(columns)) if columns else pd.DataFrame(index=range(len(raw)))
+        if column_type == 'BIGINT':
+            values[column] = ('int', raw[column].astype('Int64'))
+        elif column_type == 'DOUBLE':
+            values[column] = ('real', raw[column].astype('float64').to_numpy())
+        elif column_type.startswith('MIXED:'):
+            # The text, integers and reals of the column back in one column of Python values.
+            mixed = raw[column].astype(object).to_numpy()
+            for prefix, part, cast in ((INT_PREFIX, 'I', int), (REAL_PREFIX, 'R', float)):
+                if part in column_type:
+                    numbers = raw[prefix + column]
+                    present = numbers.notna().to_numpy()
+                    mixed[present] = [cast(number) for number in numbers[present]]
+            mixed[pd.isna(mixed)] = None
+            values[column] = ('object', mixed)
+        else:
+            text_values = raw[column].astype(object).to_numpy()
+            text_values[pd.isna(text_values)] = None
+            values[column] = ('object', text_values)
+    return values, len(raw)
+
+
+def _python_values(part: tuple[str, Any]) -> Any:
+    """A raw column as an array of the Python values SQLite gives (None for no value)."""
+    tag, values = part
+    if tag == 'int':
+        return values.to_numpy(dtype=object, na_value=None)
+    if tag == 'real':
+        result = values.astype(object)
+        result[pd.isna(values)] = None
+        return result
+    return values
+
+
+def _typed(parts: list[tuple[str, Any]], length: int) -> Any:
+    """Columns of several CDRs as one column typed as pandas.read_sql_query types the values of all of them: no value at
+    all gives objects (None), integers alone int64 (float64 with a missing value), numbers float64, anything else
+    objects with the Python type of each value."""
+    from pandas.core.internals.construction import convert_object_array
+
+    tags = {tag for tag, _values in parts}
+    if tags <= {'int', 'real'} and parts:
+        numbers = pd.concat([pd.Series(values, dtype='Int64' if tag == 'int' else 'float64') for tag, values in parts],
+                            ignore_index=True)
+        if numbers.isna().all():
+            return np.full(length, None, dtype=object)
+        if tags == {'int'} and not numbers.isna().any():
+            return numbers.astype('int64').to_numpy()
+        return numbers.astype('float64').to_numpy()
+    values = np.concatenate([_python_values(part) for part in parts]) if parts else np.empty(0, dtype=object)
+    if all(value is None for value in values):
+        return np.full(length, None, dtype=object)
+    return convert_object_array([values.astype(object)], dtype=None, coerce_float=True)[0]
+
+
+def read_cdr(database_path: Any, kind: str, dataset_id: int, columns: list[str], *,
+             rowids: list[int] | None = None) -> pd.DataFrame:
+    """The columns of one CDR as ``pandas.read_sql_query`` returns them from its SQLite table in row id order (only the
+    rows ``rowids`` when given): the same values, with the same Python types and dtypes."""
+    values, length = _raw(database_path, kind, dataset_id, columns, rowids)
+    return pd.DataFrame({column: _typed([values[column]], length) for column in columns}, columns=list(columns),
+                        index=range(length))
+
+
+def resolve_column(existing: Any, requested: str) -> str | None:
+    """The column of a table a requested name reads, as the CDR tables resolve it: the same name, else the same name in
+    another case, else the same name with other separators (see Repository._resolve_dataset_row_column_name)."""
+    from src.modules.column_names import column_identity
+
+    existing = set(existing)
+    if requested in existing:
+        return requested
+    lowered = str(requested).strip().lower()
+    case_matches = [column for column in existing if str(column).strip().lower() == lowered]
+    if case_matches:
+        return next((column for column in case_matches if column == lowered), None) or sorted(case_matches)[0]
+    identity = column_identity(requested)
+    matches = [column for column in existing if column_identity(column) == identity]
+    return sorted(matches)[0] if matches else None
+
+
+def read_cdrs(database_path: Any, kind: str, dataset_ids: Any, columns: list[str], *,
+              existing_columns: Any = None) -> pd.DataFrame:
+    """The rows of some CDRs of one type as ``pandas.read_sql_query`` returns them from their combined table with
+    ``SELECT <column> AS <requested> ... WHERE dataset_id IN (...)``: CDR after CDR by dataset id and row, each requested
+    name resolved among ``existing_columns`` (the columns of the combined table; by default those of the CDRs) and read
+    from the column of each CDR with the same identity, ``NR_Mode`` from the CDR when it has no such column,
+    ``dataset_id`` and ``source_row_id`` from the copy, typed over every CDR as one result."""
+    from src.modules.column_names import column_identity
+
+    root = store_root(database_path)
+    ids = sorted({int(item) for item in dataset_ids})
+    manifests = {dataset_id: read_manifest(manifest_file(root, kind, dataset_id)) for dataset_id in ids}
+    if any(manifest is None for manifest in manifests.values()):
+        raise LookupError(f'The columnar copy of a CDR of {sorted(i for i, m in manifests.items() if m is None)} is not ready.')
+    if existing_columns is None:
+        existing_columns = {column for manifest in manifests.values() for column, _type in manifest['columns']}
+    existing_columns = set(existing_columns) | {'dataset_id', 'source_row_id', 'NR_Mode'}
+    selected = [(requested, physical) for requested in columns
+                if (physical := resolve_column(existing_columns, requested)) is not None]
+    parts: dict[str, list[tuple[str, Any]]] = {requested: [] for requested, _physical in selected}
+    total = 0
+    for dataset_id in ids:
+        manifest = manifests[dataset_id]
+        # Each combined column takes its values from the column of the CDR with the same identity (the last one).
+        lookup = {column_identity(column): column for column, _type in manifest['columns']}
+        sources = {requested: lookup.get(column_identity(physical)) for requested, physical in selected}
+        wanted = [source for requested, source in sources.items()
+                  if source and column_identity(requested) not in {'datasetid', 'sourcerowid'}]
+        nr_mode = next((physical for requested, physical in selected if column_identity(physical) == 'nrmode'), None)
+        values, length = _raw(database_path, kind, dataset_id, [*wanted, ROWID, NR_MODE])
+        for requested, physical in selected:
+            identity = column_identity(physical)
+            if identity == 'datasetid':
+                parts[requested].append(('int', pd.Series([dataset_id] * length, dtype='Int64')))
+            elif identity == 'sourcerowid':
+                parts[requested].append(values[ROWID])
+            elif physical == nr_mode and sources[requested] is None:
+                parts[requested].append(values[NR_MODE])
+            elif sources[requested] is not None:
+                parts[requested].append(values[sources[requested]])
+            else:
+                parts[requested].append(('object', np.full(length, None, dtype=object)))
+        total += length
+    return pd.DataFrame({requested: _typed(parts[requested], total) for requested, _physical in selected},
+                        columns=[requested for requested, _physical in selected], index=range(total))
