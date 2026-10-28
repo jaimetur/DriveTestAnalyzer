@@ -3155,7 +3155,14 @@
         if (item.pairs) {
           content.type = 'button';
           content.classList.toggle('is-active', isDrilled(item.pairs));
-          content.addEventListener('click', () => drill(item.pairs));
+          content.addEventListener('click', () => {
+            // A drill that also takes to a panel (``reveal``, the calls of a group) goes there when it applies its filter.
+            const applying = !isDrilled(item.pairs);
+            drill(item.pairs);
+            if (!item.reveal || !applying) return;
+            if (window.location.hash === `#${item.reveal}`) window.openMappingHashTarget?.();
+            else window.location.hash = item.reveal;
+          });
         } else if (item.action) {
           content.type = 'button';
           content.addEventListener('click', item.action);
@@ -3167,6 +3174,10 @@
           td.style.color = ink;
         }
         if (item.title) td.title = item.title;
+        // What the Excel-style column filters of the table read: a value, several (the row matches by any) or a day.
+        if (item.filterValue !== undefined) td.dataset.filterValue = item.filterValue;
+        if (item.filterValues) td.dataset.filterValues = JSON.stringify(item.filterValues);
+        if (item.filterDate) td.dataset.filterDate = item.filterDate;
         td.append(content);
         row.append(td);
       }
@@ -3501,7 +3512,8 @@
     // The day and the month never apart: the time goes below them when the column is narrow.
     const momentCell = (value) => {
       const text = momentText(value).replace(' ', '\u00a0');
-      return text ? {text, title: String(value).slice(0, 16), className: 'nq-group-time'} : {text: '—', className: 'nq-group-time'};
+      return text ? {text, title: String(value).slice(0, 16), className: 'nq-group-time', filterDate: String(value).slice(0, 10)}
+        : {text: '—', className: 'nq-group-time'};
     };
     // What identifies a group beside its ID: its sites (spatial groups), its period (temporal groups) or both (hotspots).
     const groupSites = (item) => `${item.place || 'No site'}${item.places > 1 ? ` +${number(item.places - 1)}` : ''}`;
@@ -3539,14 +3551,23 @@
           const line = node('span', undefined, 'nq-group-id-line');
           line.append(node('strong', item.id), node('span', ` · ${first}`, 'nq-group-id-what'));
           id.append(line, ...more.map((text) => node('span', text, 'nq-group-id-line nq-group-id-what nq-group-id-period')));
-          return [{node: id, pairs: [[filter, item.key]], className: 'nq-failure-name',
+          // A click filters the list by the group and takes the page to its calls.
+          return [{node: id, pairs: [[filter, item.key]], reveal: 'section-non-qualified-calls', className: 'nq-failure-name', filterValue: item.id,
             title: `${number(item.calls)} of the ${number(item.size)} calls of the ${noun}: click to see them`},
-          {text: item.operator || 'Unassigned'}, shares(Object.entries(item.nr_modes || {})), shares(Object.entries(item.campaign_names || {})),
-          {text: groupSites(item), title: item.places > 1 ? `${number(item.places)} sites` : ''},
-          momentCell(item.first), momentCell(item.last), number(item.calls), {node: kindsBar(item), className: 'nq-step-bar-cell'},
+          {text: item.operator || 'Unassigned'},
+          {text: shares(Object.entries(item.nr_modes || {})), filterValues: Object.keys(item.nr_modes || {})},
+          {text: shares(Object.entries(item.campaign_names || {})), filterValues: Object.keys(item.campaign_names || {})},
+          {text: groupSites(item), title: item.places > 1 ? `${number(item.places)} sites` : '', filterValue: item.place || 'No site'},
+          momentCell(item.first), momentCell(item.last), number(item.calls),
+          {node: kindsBar(item), className: 'nq-step-bar-cell', filterValues: HOTSPOT_KINDS.filter((kind) => item.kinds[kind])},
           points(item.points), number(item.open), item.category || '—'];
         }));
       table.classList.add('nq-priority-issues-table', 'nq-priority-group-table');
+      // Excel-style filters on every column, kept in this browser for each table of the workspace.
+      const filters = window.enableExcelColumnFilters?.(table.querySelector('table'), {
+        excludeLastColumn: false, persistKey: `nq-group-filters:${$('nq-table')?.dataset.workspace || ''}:${filter}`,
+      });
+      filters?.apply();
       return table;
     };
     // Each table with its title and what it lists.
@@ -4841,6 +4862,7 @@
         toast(`No Non-Qualified Call has the JOIN_ID ${joinId}.`, 'error');
         return;
       }
+      rememberJoinIds([joinId]);
       if (calls[0].call_key === state.detail?.call.call_key || !(await leaveDetail())) return;
       input.value = '';
       await openDetail(calls[0].call_key, {keepTab: true});
@@ -4992,6 +5014,113 @@
   });
   $('nq-search').addEventListener('input', debounce(() => { state.page = 1; loadCalls(); }, 400));
   root.querySelectorAll('[data-nq-typed-filter]').forEach((input) => input.addEventListener('input', debounce(() => { state.page = 1; loadCalls(); }, 400)));
+  // -- the JOIN_IDs used last: both JOIN_ID searches offer the 10 latest below their field (shared, kept in this browser for
+  // each workspace), narrowed while typing; a click, or the arrow keys and Enter, chooses one -----------------------------
+  const RECENT_JOIN_IDS = `nq-recent-join-ids:${$('nq-table')?.dataset.workspace || ''}`;
+  const RECENT_JOIN_LIMIT = 10;
+  const joinTokens = (text) => String(text || '').split(/[\s,;]+/).map((value) => value.trim()).filter(Boolean);
+  const recentJoinIds = () => {
+    try {
+      const kept = JSON.parse(window.localStorage.getItem(RECENT_JOIN_IDS) || '[]');
+      return Array.isArray(kept) ? kept.filter((value) => typeof value === 'string' && value).slice(0, RECENT_JOIN_LIMIT) : [];
+    } catch (_error) {
+      return [];
+    }
+  };
+  const rememberJoinIds = (values) => {
+    const seen = new Set();
+    const list = [...joinTokens(values.join(' ')), ...recentJoinIds()].filter((value) => {
+      const key = value.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }).slice(0, RECENT_JOIN_LIMIT);
+    try {
+      window.localStorage.setItem(RECENT_JOIN_IDS, JSON.stringify(list));
+    } catch (_error) { /* Storage is optional. */ }
+  };
+  // The list below a JOIN_ID field: with ``multiple`` (several JOIN_IDs in the field) a JOIN_ID chosen takes the place of
+  // the one being typed, else of the whole field; ``onPick`` then searches.
+  const recentJoinMenu = (input, {multiple = false, onPick}) => {
+    const anchor = node('span', undefined, 'nq-recent-joins-anchor');
+    const menu = node('div', undefined, 'nq-recent-joins');
+    menu.hidden = true;
+    menu.setAttribute('role', 'listbox');
+    menu.setAttribute('aria-label', 'Recent JOIN_IDs');
+    input.replaceWith(anchor);
+    anchor.append(input, menu);
+    input.setAttribute('aria-autocomplete', 'list');
+    let active = -1;
+    const typing = () => Boolean(input.value) && !/[\s,;]$/.test(input.value);
+    const typed = () => (multiple ? (typing() ? joinTokens(input.value).pop() || '' : '') : input.value.trim());
+    const options = () => [...menu.querySelectorAll('.nq-recent-join')];
+    const mark = (index) => {
+      active = index;
+      options().forEach((option, position) => option.classList.toggle('is-active', position === index));
+    };
+    const pick = (value) => {
+      if (multiple) {
+        const tokens = joinTokens(input.value);
+        if (typing()) tokens.pop();
+        input.value = [...tokens, value].join(', ');
+      } else input.value = value;
+      menu.hidden = true;
+      onPick(value);
+    };
+    const render = () => {
+      const term = typed().toLowerCase();
+      // (Those already in the field are not offered again.)
+      const chosen = new Set(multiple ? joinTokens(input.value).slice(0, typing() ? -1 : undefined).map((value) => value.toLowerCase()) : []);
+      const shown = recentJoinIds().filter((value) => !chosen.has(value.toLowerCase()) && (!term || value.toLowerCase().includes(term)));
+      menu.replaceChildren(node('p', 'Recent JOIN_IDs', 'nq-recent-joins-title'), ...shown.map((value) => {
+        const option = node('button', value, 'nq-recent-join');
+        option.type = 'button';
+        option.setAttribute('role', 'option');
+        option.addEventListener('click', (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          pick(value);
+        });
+        return option;
+      }));
+      menu.hidden = !shown.length;
+      active = -1;
+    };
+    // (A click in the list keeps the focus in the field.)
+    menu.addEventListener('mousedown', (event) => event.preventDefault());
+    input.addEventListener('focus', render);
+    input.addEventListener('input', render);
+    input.addEventListener('blur', () => { menu.hidden = true; });
+    input.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        menu.hidden = true;
+        return;
+      }
+      if (menu.hidden) {
+        if (event.key === 'ArrowDown') render();
+        return;
+      }
+      const count = options().length;
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        mark(event.key === 'ArrowDown' ? (active + 1) % count : (active <= 0 ? count - 1 : active - 1));
+      } else if (event.key === 'Enter' && active >= 0) {
+        event.preventDefault();
+        pick(options()[active].textContent);
+      }
+    });
+  };
+  const joinFilter = root.querySelector('[data-nq-typed-filter="join_id"]');
+  if (joinFilter) {
+    recentJoinMenu(joinFilter, {multiple: true, onPick: () => {
+      rememberJoinIds(joinTokens(joinFilter.value));
+      state.page = 1;
+      loadCalls();
+    }});
+    // The JOIN_IDs searched (Enter, or leaving the field) are remembered.
+    joinFilter.addEventListener('change', () => rememberJoinIds(joinTokens(joinFilter.value)));
+  }
+  recentJoinMenu($('nq-drawer-find-input'), {onPick: () => $('nq-drawer-find').requestSubmit()});
   // Join ID sits in the title bar of its panel, which folds the panel: using it never folds it.
   root.querySelectorAll('[data-nq-join-search]').forEach((search) => {
     search.addEventListener('click', (event) => {
