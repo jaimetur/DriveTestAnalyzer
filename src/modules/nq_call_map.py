@@ -80,6 +80,11 @@ WORSE_RATIO = 1.5
 WORSE_POINTS = .02
 PLACE_FAILURES = .05
 MANY_HANDOVERS = 4
+# Ping-pong: handovers back to a cell the call had left, within this distance travelled, tell that no cell dominates there.
+PING_PONG_METRES = 500
+# The way of the car: a test of its drive follows the one before it only if a car could have driven between them (a speed of
+# at most about 145 km/h, with a margin for the positions).
+CAR_SPEED_MS, ROUTE_SLACK_M = 40.0, 300.0
 OUTAGE_STATES = ('Locked', 'Halted', 'Disabled')
 PIPELINE_STATES = ('In progress', 'Planned')
 # The drive around the call: the tests of its operator this many minutes before and after it, this close.
@@ -134,6 +139,14 @@ def distance_km(first: tuple[float, float], second: tuple[float, float]) -> floa
     lat1, lon1, lat2, lon2 = map(math.radians, (*first, *second))
     value = math.sin((lat2 - lat1) / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin((lon2 - lon1) / 2) ** 2
     return 6371.0088 * 2 * math.asin(min(1.0, math.sqrt(value)))
+
+
+def _bearing(first: tuple[float, float], second: tuple[float, float]) -> float:
+    """The bearing (degrees from north, clockwise) from ``first`` to ``second``."""
+    lat1, lon1, lat2, lon2 = map(math.radians, (*first, *second))
+    y = math.sin(lon2 - lon1) * math.cos(lat2)
+    x = math.cos(lat1) * math.sin(lat2) - math.sin(lat1) * math.cos(lat2) * math.cos(lon2 - lon1)
+    return (math.degrees(math.atan2(y, x)) + 360) % 360
 
 
 def _distances(latitudes: np.ndarray, longitudes: np.ndarray, centre: tuple[float, float]) -> np.ndarray:
@@ -914,11 +927,14 @@ def _share(part: int, total: int) -> str:
 
 def diagnosis(call: dict[str, Any], radio: dict[str, float | None], trace: list[dict[str, Any]], sites: list[dict[str, Any]],
               failures: list[dict[str, Any]], tests: dict[str, Any], radius_km: float, min_calls: int,
-              ran: dict[str, Any] | None = None) -> list[dict[str, str]]:
+              ran: dict[str, Any] | None = None, point: tuple[float, float] | None = None,
+              travel: dict[str, float | None] | None = None) -> list[dict[str, str]]:
     """What the map suggests about the failure, one finding per check: coverage (a coverage hole too), interference,
-    serving distance, PCI, the state of the cells around, the other operators, repetition and handovers. ``ran`` gives the
-    inter-site distance (ISD) of the serving site and the nearest site of the networks serving the operator, with its ISD
-    (ran_context): the serving distance and the coverage holes are judged by them."""
+    serving distance, overshooting cells, PCI, the state of the cells around, the other operators, repetition and handovers
+    (ping-pong). ``ran`` gives the inter-site distance (ISD) of the serving site and the nearest site of the networks serving
+    the operator, with its ISD, and the ISD of every site of its cells (``isds``, ran_context): the serving distance, the
+    overshooting cells and the coverage holes are judged by them. ``point`` is where the call failed (the overshooting cells
+    point at it) and ``travel`` how far (``metres``) and how long (``seconds``) it went."""
     from src.modules.network_insights import (
         DEFAULT_COVERAGE_THRESHOLD, DEFAULT_INTERFERENCE_THRESHOLD, DEFAULT_NR_COVERAGE_THRESHOLD, DEFAULT_NR_INTERFERENCE_THRESHOLD,
     )
@@ -988,6 +1004,26 @@ def diagnosis(call: dict[str, Any], radio: dict[str, float | None], trace: list[
         else:
             near = f" (nearest site {_km(nearest['distance_km'])})" if nearest and nearest['key'] != end['site'] else ' (the nearest site)'
             checks.append(_check('distance', 'ok', 'Serving distance', f'Served from {name} at {_km(distance)}{spacing}{near}.'))
+    # Cells of the call that served it from far away, pointing at it: at least OVERSHOOT_MIN_KM and OVERSHOOT_ISD times the ISD
+    # of their site (else OVERSHOOT_KM) away, the call within their beam (at least 30° each side).
+    isds = (ran or {}).get('isds') or {}
+    overshooting, seen = [], set()
+    for step in trace:
+        info, distance = step.get('inventory') or {}, step.get('distance_km')
+        if not step.get('site') or distance is None or step['cell'] in seen or point is None or info.get('azimuth') is None:
+            continue
+        seen.add(step['cell'])
+        ratio = serving_isd_ratio(distance, isds.get(step['site']))
+        far = ratio >= OVERSHOOT_ISD and distance >= OVERSHOOT_MIN_KM if ratio is not None else distance >= OVERSHOOT_KM
+        bearing = _bearing((step['latitude'], step['longitude']), point)
+        off = abs((bearing - float(info['azimuth']) + 180) % 360 - 180)
+        if far and off <= max(30.0, float(info.get('beamwidth') or 65) / 2):
+            spacing = f', {ratio:.1f} times the inter-site distance of its site' if ratio is not None else ''
+            overshooting.append(f"{info.get('name') or step['cell']} (Site {step['site_id']}, {step['role_label'].lower()}) from {_km(distance)}"
+                                f"{spacing}, {off:.0f}° off its azimuth")
+    if overshooting:
+        checks.append(_check('overshooting', 'warn', 'Overshooting cell' if len(overshooting) == 1 else 'Overshooting cells',
+                             f"{'; '.join(overshooting[:3])}: it reaches the place of the call with its main beam. Its tilt is worth a look."))
     # Cells around with the PCI and channel of a cell of the call.
     flagged = [(site, cell) for site in sites for cell in site['cells'] if cell.get('same_pci')]
     if flagged:
@@ -1078,8 +1114,17 @@ def diagnosis(call: dict[str, Any], radio: dict[str, float | None], trace: list[
     handovers = max(0, len(cells) - 1)
     pong = next(((cells[index], cells[index + 1]) for index in range(len(cells) - 2)
                  if cells[index] == cells[index + 2] and cells[index] != cells[index + 1]), None)
+    # Handovers back to a cell it had left, and in how much distance and time: many in little distance, no dominant cell.
+    returns = sum(1 for index in range(2, len(cells)) if cells[index] in cells[:index - 1])
+    metres, seconds = (travel or {}).get('metres'), (travel or {}).get('seconds')
+    names = {step['cell']: (step.get('inventory') or {}).get('name') or step['cell'] for step in trace if step.get('cell')}
     if pong:
-        checks.append(_check('handovers', 'warn', 'Ping-pong handovers', f'The call went back and forth between cells {pong[0]} and {pong[1]}.'))
+        went = ' and '.join(part for part in (f'{_km(metres / 1000)}' if metres is not None else '', f'{seconds:.0f} s' if seconds else '') if part)
+        involved = ', '.join(dict.fromkeys(names.get(cell, cell) for cell in cells if cells.count(cell) > 1))
+        level = 'bad' if returns >= 2 and (metres is None or metres <= PING_PONG_METRES) else 'warn'
+        checks.append(_check('handovers', level, 'Ping-pong handovers',
+                             f"{handovers} handovers{f' in {went}' if went else ''}, {returns} of them back to a cell it had left "
+                             f"({involved}): no cell dominates where it was."))
     elif handovers >= MANY_HANDOVERS:
         checks.append(_check('handovers', 'warn', 'Many handovers', f'{handovers} handovers during the call.'))
     elif handovers:
@@ -1157,7 +1202,71 @@ def drive_context(repository: Any, dataset_ids: list[int], call: dict[str, Any],
             })
     found.sort(key=lambda item: (abs(item['offset_s']), not item['self']))
     rows = sorted(found[:MAX_DRIVE_ROWS], key=lambda item: item['offset_s'])
-    return {'rows': rows, 'total': len(found), 'minutes': DRIVE_MINUTES}
+    return {'rows': rows, 'total': len(found), 'minutes': DRIVE_MINUTES, 'route': drive_route(rows, origin)}
+
+
+def drive_route(rows: list[dict[str, Any]], start_point: tuple[float, float] | None) -> list[list[float]]:
+    """The way of the car through the tests of its drive, in their order: from the call (the test that is the call, else
+    where it started) to the tests after it and back to those before it, each one kept only when a car could have driven
+    to it from the one kept before it (CAR_SPEED_MS, ROUTE_SLACK_M), so that the tests of another car of the operator
+    measuring at the same time nearby are left out. Points of [latitude, longitude, seconds from the call]."""
+    own = next((row for row in rows if row.get('self')), None)
+    anchor = (own['latitude'], own['longitude'], 0) if own else (start_point[0], start_point[1], 0) if start_point else None
+    if anchor is None:
+        return []
+
+    def follow(items: list[dict[str, Any]]) -> list[tuple[float, float, float]]:
+        kept, last = [], anchor
+        for item in items:
+            gap = abs(item['offset_s'] - last[2])
+            if gap and distance_km((last[0], last[1]), (item['latitude'], item['longitude'])) * 1000 <= CAR_SPEED_MS * gap + ROUTE_SLACK_M:
+                last = (item['latitude'], item['longitude'], item['offset_s'])
+                kept.append(last)
+        return kept
+
+    after = follow([row for row in rows if row['offset_s'] > 0 and row is not own])
+    before = follow(sorted((row for row in rows if row['offset_s'] < 0 and row is not own), key=lambda row: -row['offset_s']))
+    route = [*reversed(before), anchor, *after]
+    return [[round(latitude, 6), round(longitude, 6), round(seconds)] for latitude, longitude, seconds in route] if len(route) > 1 else []
+
+
+def _destination(point: tuple[float, float], bearing: float, metres: float) -> tuple[float, float]:
+    """The place ``metres`` away from ``point`` on ``bearing`` (degrees from north, clockwise)."""
+    latitude, longitude, heading = math.radians(point[0]), math.radians(point[1]), math.radians(bearing)
+    angle = metres / 6371008.8
+    end = math.asin(math.sin(latitude) * math.cos(angle) + math.cos(latitude) * math.sin(angle) * math.cos(heading))
+    return math.degrees(end), math.degrees(longitude + math.atan2(math.sin(heading) * math.sin(angle) * math.cos(latitude),
+                                                                  math.cos(angle) - math.sin(latitude) * math.sin(end)))
+
+
+def simulated_way(route: list[list[float]], metres: float | None) -> dict[str, Any] | None:
+    """Where a test that gives only where it started (a Data test) can have gone: the distance it travelled, from where it
+    started along the way of its car (towards its tests after it, ``by`` after; else on from the one before it, ``by``
+    before), straight on once that way runs out. None when the way of its car is unknown."""
+    anchor = next((index for index, point in enumerate(route) if point[2] == 0), None)
+    if not metres or metres <= 0 or anchor is None:
+        return None
+    way, left, heading = [(route[anchor][0], route[anchor][1])], float(metres), None
+    for latitude, longitude, _seconds in route[anchor + 1:]:
+        step = distance_km(way[-1], (latitude, longitude)) * 1000
+        if step < 1:
+            continue
+        heading = _bearing(way[-1], (latitude, longitude))
+        if step >= left:
+            way.append(_destination(way[-1], heading, left))
+            left = 0
+            break
+        way.append((latitude, longitude))
+        left -= step
+    by = 'after'
+    if heading is None:
+        behind = next(((point[0], point[1]) for point in reversed(route[:anchor]) if distance_km((point[0], point[1]), way[0]) * 1000 >= 1), None)
+        if behind is None:
+            return None
+        heading, by = _bearing(behind, way[0]), 'before'
+    if left > 0:
+        way.append(_destination(way[-1], heading, left))
+    return {'points': [[round(latitude, 6), round(longitude, 6)] for latitude, longitude in way], 'by': by}
 
 
 def site_health(repository: Any, call: dict[str, Any], site_id: str, host: str, operator_label: Callable[[str], str]) -> dict[str, Any] | None:
@@ -1499,8 +1608,17 @@ def call_map(repository: Any, call_key: str, *, radius_km: Any = None, tests: st
     nearest = index.nearest(point, families) if index else None
     ran = {'serving_isd': index.isd(serving_step['site']) if index and serving_step else None,
            'nearest': {**nearest, 'isd_km': index.isd(nearest['key'])} if nearest else None}
+    # How far and how long it went: the distance a Data test gives (Test_Distance, metres), else from where it started to
+    # where it ended; its duration.
+    _column, travelled = _first_value(row, columns, ('Test_Distance',))
+    travelled_m = _number(travelled)
+    _column, lasted = _first_value(row, columns, ('Test_Duration', 'Call_Duration', 'duration_seconds'))
+    travel = {'metres': travelled_m if travelled_m is not None else (round(distance_km(positions['start'], positions['end']) * 1000)
+                                                                       if positions['start'] and positions['end'] else None),
+              'seconds': _number(lasted)}
+    ran['isds'] = {step['site']: index.isd(step['site']) for step in trace if step.get('site')} if index else {}
     checks = diagnosis(call, call_radio(service, row, columns, fields_profile), trace, sites, failures, test_points, radius,
-                       int(prioritization_settings(repository).get('min_calls') or 2), ran)
+                       int(prioritization_settings(repository).get('min_calls') or 2), ran, point, travel)
     drive = drive_context(repository, test_datasets(repository, call, scope), call, point, label, positions['start'])
     health = site_health(repository, call, serving_site, serving_host, label)
     classes = {
@@ -1524,6 +1642,10 @@ def call_map(repository: Any, call_key: str, *, radius_km: Any = None, tests: st
             # Its serving site (``serving_role``: of the cell that served its end, or its start) and its cells in words.
             'serving_site': serving_site, 'serving_host': serving_host, 'serving_role': serving_role,
             'serving_distance_km': serving_distance, 'cells': call_cells, 'handovers': handovers,
+            # How far a Data test went from where it started (the CDR gives no other place of it), and its way simulated along
+            # the way of its car (else its travelled zone).
+            'travelled_m': travelled_m, 'travelled_s': travel['seconds'],
+            'way': simulated_way(drive.get('route') or [], travelled_m) if not positions['end'] else None,
             # The sites where it started and ended (``estimated``: the nearest to it, its cell not in the inventory).
             'ends': {role: {key: end[key] for key in ('site_id', 'network', 'host_network', 'estimated', 'distance_km', 'cell', 'technology')}
                      for role, end in ends.items()},

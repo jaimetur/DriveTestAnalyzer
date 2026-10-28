@@ -241,6 +241,10 @@ def test_the_diagnosis_the_decisions_the_drive_and_the_serving_site_of_the_call(
     rows = data['drive']['rows']
     assert [(row['offset_s'], row['self'], row['failed']) for row in rows] == [(0, True, True), (600, False, False)]
     assert rows[1]['lte_rsrp'] == -80.5 and data['drive']['minutes'] == 15
+    # The way of the car: from the call (where it started) to its next test.
+    assert data['drive']['route'] == [[51.5078, -0.1279, 0], [51.5075, -0.127, 600]]
+    # A Voice call gives where it ended: no travelled zone nor simulated way.
+    assert data['call']['travelled_m'] is None and data['call']['way'] is None
     # Its serving site (where it ended) started no call; the site where its two Vodafone calls (one Non-Qualified) started.
     assert data['site_health']['site_id'] == '70002' and data['site_health']['campaigns'] == []
     mapper = ValueMapper.from_settings(core.repository.chart_mapping_settings())
@@ -440,3 +444,55 @@ def test_where_each_handover_took_place_is_estimated_by_the_time_on_each_band():
     assert [point['by'] for point in nq_call_map.handover_points(steps, 'LTE_1800 (5.0)', start, end, bands)] == ['order'] * 3
     assert nq_call_map.handover_points(steps, '', start, end, bands)[0]['latitude'] == 51.025
     assert nq_call_map.handover_points(steps, '5G_NR_N1 (20.0)', start, None, bands) == []
+
+
+def test_the_way_of_the_car_leaves_out_the_tests_another_car_could_not_reach():
+    rows = [
+        {'offset_s': -120, 'latitude': 51.4600, 'longitude': -2.6000, 'self': False},
+        {'offset_s': -60, 'latitude': 51.4650, 'longitude': -2.6030, 'self': False},
+        {'offset_s': 0, 'latitude': 51.4702, 'longitude': -2.6052, 'self': True},
+        # Another car of the operator, 20 km away a minute later: no car drives that far.
+        {'offset_s': 60, 'latitude': 51.6500, 'longitude': -2.6050, 'self': False},
+        {'offset_s': 90, 'latitude': 51.4740, 'longitude': -2.6080, 'self': False},
+    ]
+    route = nq_call_map.drive_route(rows, (51.4702, -2.6052))
+    assert [point[2] for point in route] == [-120, -60, 0, 90]
+    assert nq_call_map.drive_route([], (51.47, -2.6)) == [] and nq_call_map.drive_route(rows[:0], None) == []
+
+
+def test_the_way_of_a_data_test_is_simulated_along_the_way_of_its_car():
+    # Its car went on to a test 500 m north of where it started: its 275 m go that way.
+    route = [[51.4650, -2.6052, -60], [51.4702, -2.6052, 0], [51.474697, -2.6052, 90]]
+    way = nq_call_map.simulated_way(route, 275)
+    assert way['by'] == 'after' and len(way['points']) == 2
+    assert nq_call_map.distance_km(tuple(way['points'][0]), tuple(way['points'][1])) * 1000 == pytest.approx(275, abs=1)
+    assert way['points'][1][0] > 51.4702
+    # Past its next test, straight on: 800 m end 300 m beyond it.
+    longer = nq_call_map.simulated_way(route, 800)
+    assert len(longer['points']) == 3 and nq_call_map.distance_km(tuple(longer['points'][1]), tuple(longer['points'][2])) * 1000 == pytest.approx(300, abs=2)
+    # No test after it: on from where it came (the test before it was to the south).
+    back = nq_call_map.simulated_way(route[:2], 275)
+    assert back['by'] == 'before' and back['points'][1][0] > 51.4702
+    # Without the way of its car or the distance it travelled, nothing is simulated.
+    assert nq_call_map.simulated_way([], 275) is None and nq_call_map.simulated_way(route, None) is None
+    assert nq_call_map.simulated_way([[51.4702, -2.6052, 0]], 275) is None
+
+
+def test_the_diagnosis_tells_overshooting_cells_and_ping_pong_handovers():
+    point = (51.470239, -2.605175)
+
+    def step(order, cell, site, latitude, longitude, distance, azimuth, role='handover'):
+        return {'order': order, 'cell': cell, 'role': role, 'role_label': {'start': 'Served the start', 'end': 'Served the end'}.get(role, 'Handover'),
+                'site': f'vodafone|{site}', 'site_id': site, 'network': 'Vodafone', 'latitude': latitude, 'longitude': longitude,
+                'distance_km': distance, 'inventory': {'name': f'ZE{site}-{cell}', 'azimuth': azimuth, 'beamwidth': 65}}
+    # A cell 5 km to the south-east pointing at the call (330°), and cells of two sites near it that take it back and forth.
+    far = step(3, '1664802', '511', 51.4333, -2.5684, 5.02, 330.0)
+    near_a, near_b = step(1, '917282', '1154', 51.4686, -2.5923, 1.0, 210.0, 'start'), step(2, '917272', '3522', 51.4566, -2.6118, 1.6, 60.0)
+    trace = [near_a, near_b, dict(near_a, order=4, role='handover'), far, dict(near_b, order=6, role='end')]
+    checks = {check['key']: check for check in nq_call_map.diagnosis(
+        {'operator': 'VF', 'campaign': 'Q3'}, {}, trace, [], [], {}, 2.0, 2, {'isds': {'vodafone|511': 1.5}}, point,
+        {'metres': 275.0, 'seconds': 30.2})}
+    assert checks['overshooting']['level'] == 'warn' and 'ZE511-1664802' in checks['overshooting']['detail']
+    assert '3.4 times' in checks['overshooting']['detail'] and 'ZE1154' not in checks['overshooting']['detail']
+    assert checks['handovers']['level'] == 'bad' and checks['handovers']['title'] == 'Ping-pong handovers'
+    assert checks['handovers']['detail'].startswith('4 handovers in 275 m and 30 s, 2 of them back to a cell it had left')
