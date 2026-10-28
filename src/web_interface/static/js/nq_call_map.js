@@ -541,6 +541,7 @@
       // the CDR does not record where each handover took place.
       const start = call.start, end = call.end || call.start;
       if (layers.path) {
+        const lines = [];
         for (const step of data.trace) {
           if (step.latitude === undefined || step.latitude === null) continue;
           const [x2, y2] = project(step.latitude, step.longitude);
@@ -554,14 +555,27 @@
             const from = step.role === 'start' && start ? start : end || failurePoint;
             [x1, y1] = project(from[0], from[1]);
           }
-          context.beginPath();
-          context.moveTo(x1, y1);
-          context.lineTo(x2, y2);
-          context.setLineDash(step.role === 'nr_leg' ? [3, 4] : [8, 5]);
-          context.lineWidth = 2.4;
-          context.strokeStyle = COLOURS[step.role] || COLOURS.path;
-          context.stroke();
-          context.setLineDash([]);
+          lines.push({step, x1, y1, x2, y2});
+        }
+        // Lines with the same ends (cells of one site that served from the same point, such as a handover and the end of
+        // a call that only says where it failed) go side by side, each in its colour, instead of one over the other.
+        const together = (a, b) => Math.hypot(a.x1 - b.x1, a.y1 - b.y1) < 6 && Math.hypot(a.x2 - b.x2, a.y2 - b.y2) < 6;
+        const bundles = [];
+        lines.forEach((line) => { (bundles.find((bundle) => together(bundle[0], line)) || bundles[bundles.push([]) - 1]).push(line); });
+        for (const bundle of bundles) {
+          bundle.forEach(({step, x1, y1, x2, y2}, index) => {
+            const length = Math.hypot(x2 - x1, y2 - y1) || 1;
+            const shift = (index - (bundle.length - 1) / 2) * 4;
+            const [dx, dy] = [-(y2 - y1) / length * shift, (x2 - x1) / length * shift];
+            context.beginPath();
+            context.moveTo(x1 + dx, y1 + dy);
+            context.lineTo(x2 + dx, y2 + dy);
+            context.setLineDash(step.role === 'nr_leg' ? [3, 4] : [8, 5]);
+            context.lineWidth = 2.4;
+            context.strokeStyle = COLOURS[step.role] || COLOURS.path;
+            context.stroke();
+            context.setLineDash([]);
+          });
         }
       }
       // The sites: a triangle in the colour of their vendor, the serving site ringed, the order of the cells of the call
