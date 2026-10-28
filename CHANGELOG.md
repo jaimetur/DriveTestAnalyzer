@@ -30,7 +30,7 @@
 - **Scoring & GAP Analysis — Excluded Calls panel:** the panel sits below the Scoring & GAP Results and above the Favourites Filters, and the floating section bar and the sections menus of the module (its tab and the side menu) list it in that place.
 - **Scoring & GAP Analysis, Network Insights, PPT Dashboards and Reporting Jobs — CDRs used:** the CDRs of each type are listed newest campaign first (the order of the Campaign Maps reversed: in a quarter the SA campaign before the NSA one) instead of by upload date; the CDRs of the same campaign keep the newest uploaded first.
 - **Scoring & GAP Analysis — PowerPoint exports:** the Scoring PowerPoint documents are generated about a third faster, with the same slides.
-- **Developer — Tests:** the test suite runs in parallel, one process per CPU (`pytest-xdist`; `-n 0` runs it in one process), and each test opens a copy of a workspace prepared once per process instead of creating and seeding one.
+- **Developer — Tests:** the test suite runs in parallel, one process per CPU (`pytest-xdist`; `-n 0` runs it in one process), the slowest tests first as the last run measured them; each test opens a copy of a workspace prepared once per process instead of creating and seeding one, the synthetic Scoring results are calculated once per run, and the Scoring export tests export only the panels they check.
 
 #### 🐛 Bug fixes:
 - **Super Admin — AI Comment Writers:** **Install Kiro CLI** no longer fails with an HTTP 500 error before reading the package, takes the kiro-cli program of a .deb among its shell completions and icons of the same name, and says when a package is for another system (a Linux package on a Mac, a .dmg on the Linux server).

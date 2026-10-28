@@ -17,7 +17,7 @@ from src.modules.scoring_export_panels import (
     load_export_panels, normalize_export_panels,
 )
 from src.modules.scoring_exports import _ranking_groups, export_scoring_powerpoint
-from tests.scoring_fixtures import scoring_configuration
+from tests.scoring_fixtures import export_panels_only, scoring_configuration
 from tests.test_scoring_exports import TEMPLATE
 from tests.test_scoring_where_to_act import owned  # noqa: F401 (fixture)
 
@@ -61,9 +61,11 @@ def test_the_options_of_a_document_leave_out_the_panels_that_are_not_exportable(
 
 def test_the_export_leaves_out_the_panels_that_are_not_exportable(owned):  # noqa: F811
     job, result, _insights = owned
-    titles = _titles(_deck(job, result))
+    # (The decks have only the panels of the checks.)
+    panels = export_panels_only('summary.route', 'charts.service', 'charts.category')
+    titles = _titles(_deck(job, result, _export_panels=panels))
     assert any(': where the points are — ' in title for title in titles) and any(title.endswith('per Service') for title in titles)
-    panels = normalize_export_panels({'summary': {'route': {'exportable': False}}, 'charts': {'service': {'exportable': False}}})
+    panels['summary']['route']['exportable'] = panels['charts']['service']['exportable'] = False
     titles = _titles(_deck(job, result, _export_panels=panels))
     assert not any(': where the points are — ' in title for title in titles)
     assert not any(title.endswith('per Service') for title in titles) and any(title.endswith('per Category') for title in titles)
@@ -74,11 +76,14 @@ def test_the_focus_operators_panels_show_every_operator_when_asked(owned):  # no
 
     def act(deck):
         return sorted(title.split(' — ', 1)[1] for title in _titles(deck) if title.startswith('Where to act — '))
-    assert act(_deck(job, result)) == ['Three UK']
+    # (The decks have only Where to act.)
+    panels = export_panels_only('summary.act')
+    assert act(_deck(job, result, _export_panels=panels)) == ['Three UK']
     # Every operator (the reference too) with Export All Operators in Focus panels, or when the panel exports them all.
-    every = act(_deck(job, result, _all_operators=True))
+    every = act(_deck(job, result, _export_panels=panels, _all_operators=True))
     assert every == ['EE', 'O2 UK', 'Three UK', 'Vodafone UK']
-    assert act(_deck(job, result, _export_panels=normalize_export_panels({'summary': {'act': {'operators': 'all'}}}))) == every
+    panels['summary']['act']['operators'] = 'all'
+    assert act(_deck(job, result, _export_panels=panels)) == every
 
 
 def test_a_chart_of_the_focus_operators(owned):  # noqa: F811
@@ -98,8 +103,11 @@ def test_a_chart_of_the_focus_operators(owned):  # noqa: F811
         slides = [slide for slide in deck.slides if slide.shapes.title is not None
                   and slide.shapes.title.text_frame.paragraphs[0].text == 'Best Network Scoring per Service']
         return len(slides), ' '.join(text for slide in slides for text in texts(slide.shapes))
-    everyone, everyone_text = service(_deck(job, result))
-    focus, focus_text = service(_deck(job, result, _export_panels=normalize_export_panels({'charts': {'service': {'operators': 'focus'}}})))
+    # (The decks have only the Scoring per Service chart.)
+    panels = export_panels_only('charts.service')
+    everyone, everyone_text = service(_deck(job, result, _export_panels=panels))
+    panels['charts']['service']['operators'] = 'focus'
+    focus, focus_text = service(_deck(job, result, _export_panels=panels))
     assert 0 < focus < everyone
     assert all(name in everyone_text for name in ('EE', 'O2 UK', 'Three UK', 'Vodafone UK'))
     assert 'Three UK' in focus_text and not any(name in focus_text for name in ('O2 UK', 'Vodafone UK'))
@@ -110,9 +118,11 @@ def test_the_points_lost_map_follows_the_operators_of_the_page(owned):  # noqa: 
 
     def maps(deck):
         return {title.rsplit(' — ', 1)[1] for title in _titles(deck) if title.startswith('Points Lost per City — ')}
-    assert maps(_deck(job, result)) == {'Three UK'}
+    # (The decks have only the Points Lost map.)
+    panels = export_panels_only('points.map')
+    assert maps(_deck(job, result, _export_panels=panels)) == {'Three UK'}
     # The operators chosen on the page with those of the KPI GAP Profile.
-    assert maps(_deck(job, result, _operator_choices={'gap-insight-operators': ['Vodafone UK']})) == {'Vodafone UK'}
+    assert maps(_deck(job, result, _export_panels=panels, _operator_choices={'gap-insight-operators': ['Vodafone UK']})) == {'Vodafone UK'}
 
 
 def test_every_level_and_group_of_the_geographical_areas_is_exported():

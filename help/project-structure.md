@@ -231,7 +231,7 @@ Run the complete suite from the repository root:
 python -m pytest -q
 ```
 
-It runs in parallel, one process per CPU (`pytest-xdist`, set in `pyproject.toml`); `-n 0` runs it in one process, for `-s` or a debugger.
+It runs in parallel, one process per CPU (`pytest-xdist`, set in `pyproject.toml`), the slowest tests first as the last run measured them (kept in the pytest cache, see `tests/conftest.py`); `-n 0` runs it in one process, for `-s` or a debugger.
 
 Keep databases, uploaded customer files, generated output, cache files and secrets out of source control.
 

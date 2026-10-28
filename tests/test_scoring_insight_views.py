@@ -16,18 +16,24 @@ from src.modules.scoring_exports import export_scoring_powerpoint
 from src.modules.scoring_insights import MAX_LEVERS, MAX_ROUTE_STRETCHES, MAX_SITES
 from src.modules.scoring_views import build_scoring_views
 from tests.scoring_cdr_synthetic import ROUTES, synthetic_cdr_result
+from tests.scoring_fixtures import export_panels_only
+from tests.shared_results import shared_result
 from tests.test_scoring_exports import TEMPLATE
 
 
-@pytest.fixture(scope='module')
+# (Once per run, see tests.shared_results; the tests of a process run in the order of their durations, see conftest.py.)
+@pytest.fixture(scope='session')
 def national():
-    job, result = synthetic_cdr_result(levels=('Operator', 'Campaign'))
-    return job, result, build_scoring_views(job, result)['insights']
+    return shared_result('insight_views', _insights, ('Operator', 'Campaign'))
 
 
-@pytest.fixture(scope='module')
+@pytest.fixture(scope='session')
 def cities():
-    job, result = synthetic_cdr_result(levels=('Operator', 'City', 'Campaign'), campaigns=('2026-Q2', '2026-Q3'))
+    return shared_result('insight_views', _insights, ('Operator', 'City', 'Campaign'), campaigns=('2026-Q2', '2026-Q3'))
+
+
+def _insights(levels, **options):
+    job, result = synthetic_cdr_result(levels=levels, **options)
     return job, result, build_scoring_views(job, result)['insights']
 
 
@@ -215,7 +221,12 @@ def test_locations_are_ranked_and_compared_with_the_reference(cities):
 
 def test_powerpoint_follows_the_order_of_the_results_tabs(national):
     job, result, _insights = national
-    presentation = Presentation(BytesIO(export_scoring_powerpoint(job, result, TEMPLATE)))
+    # (The deck has the panels of the checks, in All Environments.)
+    job = {**job, '_export_panels': export_panels_only(
+        'summary.scope', 'summary.act', 'summary.standings', 'summary.position', 'summary.levers', 'charts.service',
+        'tables.summary', 'tables.campaign_comparison', 'gap.all_operators', 'gap.parts', 'gap.profile', 'points.stake',
+        'points.kpis', 'points.map', 'points.vendors', 'points.site_types', 'points.sites', 'points.stretches')}
+    presentation = Presentation(BytesIO(export_scoring_powerpoint(job, result, TEMPLATE, environments=['Combined'])))
     titles = [slide.shapes.title.text_frame.text.replace('\n', ' ') for slide in presentation.slides
               if slide.shapes.title is not None]
 
@@ -246,7 +257,9 @@ def test_powerpoint_follows_the_order_of_the_results_tabs(national):
 
 def test_the_campaigns_card_lists_the_other_analysed_campaigns_below_the_reference(national):
     job, result, _insights = national
-    presentation = Presentation(BytesIO(export_scoring_powerpoint(job, result, TEMPLATE)))
+    # (The deck has only How the measurements ran.)
+    job = {**job, '_export_panels': export_panels_only('summary.scope')}
+    presentation = Presentation(BytesIO(export_scoring_powerpoint(job, result, TEMPLATE, environments=['Combined'])))
     slide = next(slide for slide in presentation.slides if any(
         shape.has_text_frame and shape.text_frame.text.replace('\n', ' ').startswith('How the measurements ran')
         for shape in slide.shapes))
@@ -267,6 +280,8 @@ def test_the_campaign_comparison_exports_the_focus_operators(national, monkeypat
     shown = []
     monkeypatch.setattr(exports, 'add_campaign_comparison_slides',
                         lambda _presentation, comparisons, **_options: shown.append(sorted({item['operator'] for item in comparisons})))
+    # (The decks have only the Campaign Comparison.)
+    job = {**job, '_export_panels': export_panels_only('tables.campaign_comparison')}
     groups = [{'canonical': 'Three UK', 'aliases': [], 'position': 0, 'color': '#000000', 'role': 'focus'},
               {'canonical': 'EE', 'aliases': [], 'position': 1, 'color': '#76B7B2', 'role': 'focus'}]
     export_scoring_powerpoint(job, result, TEMPLATE, groups, scorings=['best_network'], environments=['Combined'])
@@ -284,6 +299,8 @@ def test_the_biggest_levers_export_the_focus_operators(national, monkeypatch):
     shown = []
     monkeypatch.setattr(exports, 'add_levers_slides', lambda _presentation, levers, compared, **_options: shown.append(
         sorted({item['operator'] for item in levers if compared(item['operator'], item.get('label'))})))
+    # (The decks have only the Biggest levers.)
+    job = {**job, '_export_panels': export_panels_only('summary.levers')}
     groups = [{'canonical': 'Three UK', 'aliases': [], 'position': 0, 'color': '#000000', 'role': 'focus'}]
     export_scoring_powerpoint(job, result, TEMPLATE, groups, scorings=['best_network'], environments=['Combined'])
     assert shown and all(operators == ['Three UK'] for operators in shown)

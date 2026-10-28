@@ -26,6 +26,10 @@ from src.version import __release_date__, __version__
 
 from conftest import wait_for_background_dataset_work
 
+# The polls of 10 ms that wait for a background job: up to 30 s, the time a busy machine (parallel tests) may need.
+BACKGROUND_POLLS = 3000
+
+
 def login(client) -> None:
     response = client.post("/login", data={"username": "admin", "password": "admin123"}, follow_redirects=False)
     assert response.status_code == 303
@@ -117,7 +121,7 @@ def test_query_builder_background_run_and_cancel(client, monkeypatch) -> None:
     job['session_marker'] = session_marker
     assert client.post('/api/query-builder/run/background-cancel/cancel').json() == {'cancelling': True}
     release.set()
-    for _ in range(100):
+    for _ in range(BACKGROUND_POLLS):
         cancelled = client.get('/api/query-builder/run/background-cancel').json()
         if cancelled['status'] == 'cancelled':
             break
@@ -129,7 +133,7 @@ def test_query_builder_background_run_and_cancel(client, monkeypatch) -> None:
     ))
     response = client.post('/api/query-builder/run', json={**request_payload, 'execution_id': 'background-success'})
     assert response.status_code == 202
-    for _ in range(100):
+    for _ in range(BACKGROUND_POLLS):
         completed = client.get('/api/query-builder/run/background-success').json()
         if completed['status'] == 'completed':
             break
@@ -3119,7 +3123,7 @@ def test_admin_export_job_creates_a_disk_backed_download(client) -> None:
     assert started.status_code == 200
     status_url = started.json()['status_url']
     payload = {}
-    for _ in range(100):
+    for _ in range(BACKGROUND_POLLS):
         status_response = client.get(status_url)
         assert status_response.status_code == 200
         payload = status_response.json()
@@ -3165,7 +3169,7 @@ def test_full_environment_export_job_uses_selected_workspaces(client) -> None:
     )
     assert started.status_code == 200
     payload = {}
-    for _ in range(100):
+    for _ in range(BACKGROUND_POLLS):
         payload = client.get(started.json()['status_url']).json()
         if payload['status'] in {'ready', 'failed'}:
             break
@@ -3256,7 +3260,7 @@ def test_admin_import_job_reuses_the_inspected_disk_upload(client) -> None:
     )
     assert started.status_code == 200
     payload = {}
-    for _ in range(100):
+    for _ in range(BACKGROUND_POLLS):
         payload = client.get(started.json()['status_url']).json()
         if payload['status'] in {'ready', 'failed'}:
             break
@@ -3428,7 +3432,7 @@ def test_incoming_server_transfer_requires_acceptance_and_imports_after_upload(c
     confirmed = client.post(f'/admin/import-export/transfers/offers/{offer_id}/preview/import', json={'packages': [0]})
     assert confirmed.status_code == 200
     payload = {}
-    for _ in range(100):
+    for _ in range(BACKGROUND_POLLS):
         payload = client.get(f'/api/import-export/transfers/offers/{offer_id}', headers=headers).json()
         if payload['status'] in {'ready', 'failed'}:
             break
@@ -3636,7 +3640,7 @@ def test_outgoing_server_transfer_waits_for_acceptance_and_streams_package(clien
     user = app_module.SessionUser(username='super', role='super-admin')
     job = app_module.start_transfer_job('http://destination.example', 8080, 'config', None, user)
     payload = {}
-    for _ in range(100):
+    for _ in range(BACKGROUND_POLLS):
         payload = app_module.transfer_job_payload(job['id'], user)
         if payload['status'] in {'ready', 'failed'}:
             break
@@ -3831,7 +3835,7 @@ def test_admin_pages_during_reception_keep_the_package_being_received(client, mo
         assert Path(app_module.TRANSFER_OFFERS[offer_id]['path']).is_file()
         assert client.post(f'/admin/import-export/transfers/offers/{offer_id}/preview/import', json={'packages': [0]}).status_code == 200
         payload = {}
-        for _ in range(100):
+        for _ in range(BACKGROUND_POLLS):
             payload = client.get(f'/api/import-export/transfers/offers/{offer_id}', headers=headers).json()
             if payload['status'] in {'ready', 'failed'}:
                 break

@@ -223,7 +223,7 @@ Run tests with:
 pytest -q
 ```
 
-The tests run in parallel, one process per CPU (`pytest-xdist`); `pytest -q -n 0` runs them in one process, for `-s` or a debugger.
+The tests run in parallel, one process per CPU (`pytest-xdist`), the slowest first as the last run measured them (kept in the pytest cache); `pytest -q -n 0` runs them in one process, for `-s` or a debugger.
 
 ## Configuration
 

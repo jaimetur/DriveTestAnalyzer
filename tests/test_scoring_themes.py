@@ -13,6 +13,7 @@ from src.modules.scoring_pptx_scorecard import STYLES
 from src.modules.scoring_reports import normalize_report_configuration
 from src.modules.scoring_themes import BASE_THEME, DEFAULT_THEME, THEMES, blend, normalize_theme, themed, themes_payload, use_theme
 from src.modules.scoring_views import THRESHOLD_COLORS, gap_color
+from tests.scoring_fixtures import export_panels_only
 from tests.scoring_synthetic import synthetic_result
 from tests.test_scoring_exports import TEMPLATE
 
@@ -71,6 +72,8 @@ def test_small_gaps_stay_almost_white():
 
 def test_exports_take_the_colours_of_their_theme():
     job, result = synthetic_result(levels=('Operator',))
+    # (The decks have only the Summary table.)
+    job = {**job, '_export_panels': export_panels_only('tables.summary')}
     for name in ('netcheck', 'vodafone'):
         theme = THEMES[name]
         deck = Presentation(BytesIO(export_scoring_powerpoint(job, result, TEMPLATE, theme=name)))

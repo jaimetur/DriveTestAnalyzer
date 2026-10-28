@@ -1,4 +1,4 @@
-"""Self-contained seed scoring configuration used by scoring tests."""
+"""Self-contained seed scoring configuration used by scoring tests, and the panels their exports include."""
 from __future__ import annotations
 
 from copy import deepcopy
@@ -1103,3 +1103,16 @@ def load_initial_scoring_configuration() -> dict:
             sample['thresholds']['ultra'] = ultra['value']
     configuration['validation_examples'] = examples
     return configuration
+
+
+def export_panels_only(*panels: str) -> dict:
+    """The Scoring Export Panels of a job (``_export_panels``) with only ``panels`` ('group.key', for example
+    'summary.act') exportable: a test exports the panels its checks read, as the whole deck takes ten times longer."""
+    from src.modules.scoring_export_panels import default_export_panels
+    settings = default_export_panels()
+    unknown = set(panels) - {f'{group}.{key}' for group, values in settings.items() for key in values}
+    assert not unknown, f'Unknown Scoring Export Panels: {sorted(unknown)}'
+    for group, values in settings.items():
+        for key, setting in values.items():
+            setting['exportable'] = f'{group}.{key}' in panels
+    return settings

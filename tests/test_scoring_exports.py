@@ -21,7 +21,7 @@ from src.modules.scoring_exports import (
 from src.modules.scoring_pptx_scorecard import STYLES
 from src.modules.scoring_themes import THEMES, blend
 from src.modules.scoring_views import THRESHOLD_COLORS, _hierarchy_display_value, build_scoring_views
-from tests.scoring_fixtures import scoring_configuration
+from tests.scoring_fixtures import export_panels_only, scoring_configuration
 
 
 ROOT = Path(__file__).parents[1]
@@ -986,7 +986,9 @@ def test_powerpoint_keeps_many_operators_in_one_comparison_table():
         peer_score=lambda operator, _index, _metric: 0.80 if operator == 'EE' else 0.90,
         warnings=[],
     )
-    presentation = _export(result, operator_mapping_groups=groups)
+    # (The deck has only the Scoring Tables and the charts per Category (Breakdown).)
+    presentation = _export(result, operator_mapping_groups=groups, job_fields={
+        '_export_panels': export_panels_only('tables.summary', 'tables.breakdown', 'charts.breakdown')})
     matrices = _comparison_matrices(presentation)
 
     assert len(matrices) == 2

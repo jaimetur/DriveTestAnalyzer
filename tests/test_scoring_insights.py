@@ -9,6 +9,7 @@ from pptx import Presentation
 from src.modules.column_names import compact_campaign_value
 from src.modules.scoring_exports import export_scoring_powerpoint
 from src.modules.scoring_views import build_scoring_views
+from tests.scoring_fixtures import export_panels_only
 from tests.scoring_synthetic import CITIES, most_reliable_result, synthetic_result
 from tests.test_scoring_exports import TEMPLATE
 
@@ -303,6 +304,9 @@ def test_most_reliable_insights_use_its_points():
 
 def test_powerpoint_adds_the_insight_slides_to_all_environments():
     job, result = synthetic_result()
+    # (The deck has only the panels of the insights, in every environment.)
+    job = {**job, '_export_panels': export_panels_only('geographical_areas.cards', 'trends.trend', 'tables.campaign_comparison',
+                                                       'gap.profile')}
     presentation = Presentation(BytesIO(export_scoring_powerpoint(job, result, TEMPLATE)))
     titles = [slide.shapes.title.text_frame.text if slide.shapes.title is not None else '' for slide in presentation.slides]
     first = [title.split('\n')[0] for title in titles]

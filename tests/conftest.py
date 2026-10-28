@@ -46,6 +46,37 @@ def wait_for_background_dataset_work(timeout: float = 30.0) -> None:
         time.sleep(0.02)
 
 
+# The slowest tests start first, as the last run measured them (kept in the pytest cache): with the small chunks of
+# tests pyproject.toml gives each test process, every process takes a long test at the start and the short ones fill the
+# gaps at the end, instead of a long test starting last while the other processes wait for it.
+TEST_DURATIONS_KEY = 'drivetest-analyzer/test-durations'
+_measured_durations: dict[str, float] = {}
+
+
+@pytest.hookimpl(optionalhook=True)
+def pytest_configure_node(node) -> None:
+    # Every test process orders its tests with the durations the main process read, so all collect the same order.
+    cache = getattr(node.config, 'cache', None)
+    node.workerinput['test_durations'] = cache.get(TEST_DURATIONS_KEY, {}) if cache is not None else {}
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    # (A run in one process, -n 0, keeps the order of the files.)
+    durations = getattr(config, 'workerinput', {}).get('test_durations')
+    if durations:
+        items.sort(key=lambda item: -durations.get(item.nodeid, 0.0))
+
+
+def pytest_runtest_logreport(report: pytest.TestReport) -> None:
+    _measured_durations[report.nodeid] = _measured_durations.get(report.nodeid, 0.0) + report.duration
+
+
+def pytest_sessionfinish(session: pytest.Session) -> None:
+    cache = getattr(session.config, 'cache', None)
+    if cache is not None and not hasattr(session.config, 'workerinput') and _measured_durations:
+        cache.set(TEST_DURATIONS_KEY, {**cache.get(TEST_DURATIONS_KEY, {}), **_measured_durations})
+
+
 @pytest.fixture(autouse=True)
 def restore_environment():
     """A test leaves the environment and the time zone of the process as it found them: the runtime settings of the

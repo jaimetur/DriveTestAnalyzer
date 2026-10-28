@@ -13,7 +13,7 @@ from src.modules.nr_mode import (
 )
 from src.modules.repository import Repository, local_now_iso
 from src.modules.scoring_selection import expand_scoring_campaigns, load_scoring_selection, normalize_scoring_selection, scoring_auto_cdrs
-from tests.scoring_fixtures import load_initial_scoring_configuration
+from tests.scoring_fixtures import export_panels_only, load_initial_scoring_configuration
 from tests.test_scoring_history import _rows
 
 
@@ -414,6 +414,9 @@ def test_documents_show_each_nr_mode_as_the_results_of_the_page(tmp_path):
     assert (report['nr_layout'], report['nr_charts']) == ('interleaved', 'same')
     assert 'nr_layout' not in normalize_report_configuration({'scenarios': [{'name': 'NSA vs SA'}], 'nr_layout': 'other'})
     template = Path(__file__).resolve().parents[1] / 'assets/powerpoint-templates/Template_VodafoneThree.pptx'
+    # (The documents have only the panels of the checks.)
+    calculated = {**calculated, '_export_panels': export_panels_only('summary.scope', 'charts.service', 'tables.summary',
+                                                                     'tables.breakdown')}
     entries = [{'scenario': report['scenarios'][0], 'job': calculated, 'result': calculated['result']}]
     whole = _nr_mode_slides(export_scoring_report(entries, template, []))
     assert not [title for _tag, title in whole if title.startswith(('NSA · ', 'SA · '))]
@@ -469,9 +472,9 @@ def test_the_charts_name_the_operators_out_of_scope_at_their_foot(tmp_path):
     template = Path(__file__).resolve().parents[1] / 'assets/powerpoint-templates/Template_VodafoneThree.pptx'
 
     def chart_notes(job, result):
-        # (All Environments carries the Scoring per Service charts of every environment.)
-        content = export_scoring_powerpoint(job, result, template, groups, nr_layout='interleaved', nr_charts='same',
-                                            environments=['Combined'])
+        # (Only the Scoring per Service charts, in All Environments, which carries those of every environment.)
+        content = export_scoring_powerpoint({**job, '_export_panels': export_panels_only('charts.service')}, result, template,
+                                            groups, nr_layout='interleaved', nr_charts='same', environments=['Combined'])
         return [shape.text_frame.text for slide in Presentation(BytesIO(content)).slides
                 if slide.shapes.title is not None and 'Scoring per Service' in slide.shapes.title.text_frame.text
                 for shape in slide.shapes if shape.has_text_frame and 'Out of scope' in shape.text_frame.text]

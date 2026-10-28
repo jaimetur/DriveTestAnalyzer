@@ -12,7 +12,7 @@ from src.modules.scoring_exports import export_scoring_powerpoint
 from src.modules.scoring_points_loss import setting_of
 from src.modules.scoring_views import build_scoring_views
 from tests.scoring_cdr_synthetic import synthetic_cdr_frames
-from tests.scoring_fixtures import scoring_configuration
+from tests.scoring_fixtures import export_panels_only, scoring_configuration
 from tests.test_scoring_exports import TEMPLATE
 
 OWNERS = {'London': 'Vendor A', 'Bristol': 'Vendor A', 'Cardiff': 'Vendor A', 'London to Birmingham': 'Vendor A',
@@ -21,10 +21,11 @@ OWNERS = {'London': 'Vendor A', 'Bristol': 'Vendor A', 'Cardiff': 'Vendor A', 'L
 BIG = {'London', 'Birmingham', 'Manchester', 'Glasgow'}
 
 
-@pytest.fixture(scope='module')
+@pytest.fixture(scope='session')
 def owned():
     """The synthetic CDRs with their performance owners (Region) and settings, a third of London walked, split by City
-    (calculated once per run, see tests.shared_results)."""
+    (calculated once per run, see tests.shared_results; the tests of a process run in the order of their durations, see
+    conftest.py)."""
     from tests.shared_results import shared_result
     return shared_result('where_to_act_owned', _owned)
 
@@ -108,7 +109,8 @@ def test_the_route_that_loses_most_with_its_owners(owned):
 
 def test_the_summary_slides_of_where_to_act(owned):
     job, result, _insights = owned
-    # All Environments carries every slide of Where to act (each environment repeats them).
+    # The panels of Where to act, in All Environments (each environment repeats them).
+    job = {**job, '_export_panels': export_panels_only('summary.act', 'summary.owners', 'summary.places', 'summary.route')}
     deck = Presentation(BytesIO(export_scoring_powerpoint(job, result, TEMPLATE, theme='umlaut', environments=['Combined'])))
     titles = [slide.shapes.title.text_frame.paragraphs[0].text for slide in deck.slides if slide.shapes.title is not None]
     for operator in ('Vodafone UK', 'Three UK'):

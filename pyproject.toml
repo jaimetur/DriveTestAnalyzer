@@ -37,5 +37,6 @@ dev = [
 [tool.pytest.ini_options]
 pythonpath = [".", "src"]
 testpaths = ["tests"]
-# The tests run in parallel, one process per CPU (-n 0 runs them in this process, for -s or a debugger).
-addopts = "-n auto --dist worksteal"
+# The tests run in parallel, one process per CPU (-n 0 runs them in this process, for -s or a debugger), slowest first
+# as the last run measured them, two at a time per process (see tests/conftest.py).
+addopts = "-n auto --dist load --maxschedchunk 2"

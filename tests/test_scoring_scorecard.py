@@ -19,6 +19,7 @@ import src.modules.pptx_to_docx as pptx_to_docx_module
 from src.modules.scoring_exports import SECTION_TAG_PREFIX, export_scoring_powerpoint
 from src.modules.scoring_pptx_scorecard import STYLES, drop_columns
 from src.modules.scoring_themes import THEMES
+from tests.scoring_fixtures import export_panels_only
 from tests.scoring_synthetic import synthetic_result
 from tests.test_scoring_exports import TEMPLATE
 
@@ -233,6 +234,8 @@ def _slides_titled(deck, prefix):
 
 def test_powerpoint_tables_have_the_scorecard_design_of_the_theme():
     job, result = synthetic_result(levels=('Operator',))
+    # (The decks have only the panels of the checks.)
+    job = {**job, '_export_panels': export_panels_only('tables.breakdown', 'gap.all_operators')}
     for theme in ('netcheck', 'ericsson', 'midnight'):
         deck = Presentation(BytesIO(export_scoring_powerpoint(job, result, TEMPLATE, theme=theme,
                                                               scorings=['best_network'], environments=['Combined'])))
@@ -271,6 +274,9 @@ def test_drop_columns_keeps_a_label_merged_across_them():
 
 def test_exports_keep_the_chosen_scorings_and_environments_and_name_their_sections():
     job, result = synthetic_result(levels=('Operator',))
+    # (The decks have a panel of each section.)
+    job = {**job, '_export_panels': export_panels_only('summary.scope', 'charts.service', 'tables.summary', 'gap.parts',
+                                                       'points.stake')}
     full = Presentation(BytesIO(export_scoring_powerpoint(job, result, TEMPLATE)))
     chosen = Presentation(BytesIO(export_scoring_powerpoint(job, result, TEMPLATE, scorings=['best_network'],
                                                             environments=['Combined'])))
@@ -289,6 +295,8 @@ def test_scoring_exports_are_composed_as_the_bundle_report_template(monkeypatch)
     from src.modules import bundle_report_templates, pptx_compose
 
     job, result = synthetic_result(levels=('Operator',))
+    # (The deck has a few panels.)
+    job = {**job, '_export_panels': export_panels_only('summary.scope', 'charts.service', 'tables.summary')}
     content = export_scoring_powerpoint(job, result, TEMPLATE, scorings=['best_network'], environments=['Combined'])
     # The PowerPoint keeps the covers of the module and composes the rest as the Scoring section of a Bundle Report Template.
     original = Presentation(BytesIO(content))
@@ -348,6 +356,8 @@ def test_operator_rules_reach_every_campaign_and_trend_labels_stand_apart():
     from src.modules.scoring_insight_slides import add_trend_slides
 
     job, result = synthetic_result(levels=('Operator', 'Campaign'))
+    # (The deck has only the Summary table.)
+    job = {**job, '_export_panels': export_panels_only('tables.summary')}
     deck = Presentation(BytesIO(export_scoring_powerpoint(job, result, TEMPLATE, theme='ericsson', scorings=['best_network'],
                                                           environments=['Combined'])))
     summary = next(slide for slide in deck.slides if slide.shapes.title is not None
@@ -423,6 +433,8 @@ def test_exports_show_the_operators_each_section_of_the_page_has_enabled():
         slide = next(slide for slide in deck.slides if title_parts(slide)[0].startswith(title))
         return {shape.text_frame.text for shape in slide.shapes if shape.has_text_frame and shape.text_frame.text in labels}
 
+    # (The decks have only the Position.)
+    job['_export_panels'] = export_panels_only('summary.position')
     deck = Presentation(BytesIO(export_scoring_powerpoint(job, result, TEMPLATE, scorings=['best_network'], environments=['Combined'])))
     labels = {'EE', 'O2 UK', 'Three UK', 'Vodafone UK'}
     # By default the Summary shows every operator, the reference (EE) included, as the page does.
@@ -468,6 +480,8 @@ def test_gap_of_one_operator_follows_its_latest_campaign_and_fills_the_slide():
     from src.modules.pptx_compose import title_parts
 
     job, result = synthetic_result(levels=('Operator', 'Campaign'))
+    # (The deck has only the GAP Analysis.)
+    job = {**job, '_export_panels': export_panels_only('gap.all_operators', 'gap.individual')}
     deck = Presentation(BytesIO(export_scoring_powerpoint(job, result, TEMPLATE, scorings=['best_network'],
                                                           environments=['Combined'])))
     gap_slides = [slide for slide in deck.slides if title_parts(slide)[0].startswith('GAP Analysis')]
@@ -509,6 +523,8 @@ def test_gap_figures_sit_beside_the_zero_line_off_their_bar():
     from src.modules.scoring_exports import _text_points
 
     job, result = synthetic_result(levels=('Operator',))
+    # (The decks have only the GAP Analysis and the KPI GAP Profile.)
+    job = {**job, '_export_panels': export_panels_only('gap.all_operators', 'gap.individual', 'gap.profile')}
     for theme in ('netcheck', 'ericsson'):
         deck = Presentation(BytesIO(export_scoring_powerpoint(job, result, TEMPLATE, theme=theme, scorings=['best_network'],
                                                               environments=['Combined'])))
@@ -576,8 +592,10 @@ def test_the_powerpoint_scorecard_sets_apart_the_groups_below_the_operators():
     levels = ['Operator', 'Region', 'Campaign']
     result = {'aggregation_contract_version': 2, 'aggregation_levels': levels, 'scoring': rows, 'totals': [],
               'configuration': scoring_configuration(), 'warnings': []}
+    # (The deck has only the Scoring Tables.)
     job = {'aggregation_levels': levels, 'aggregation_contract_version': 2, 'nr_mode': 'NSA', 'baseline_operator': 'EE',
-           'campaigns': ['UK_Q2_2026', 'UK_Q3_2026'], 'configuration': scoring_configuration()}
+           'campaigns': ['UK_Q2_2026', 'UK_Q3_2026'], 'configuration': scoring_configuration(),
+           '_export_panels': export_panels_only('tables.summary', 'tables.breakdown')}
     presentation = Presentation(BytesIO(export_scoring_powerpoint(job, result, TEMPLATE, operator_mapping_groups=_mapping_groups(),
                                                                   environment='DriveCity', theme='netcheck')))
     table = next(shape.table for slide in presentation.slides for shape in slide.shapes
