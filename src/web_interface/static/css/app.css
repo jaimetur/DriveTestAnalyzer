@@ -5841,3 +5841,23 @@ body:has(.confirm-overlay:not([hidden]), .ds-overlay:not([hidden]), .dataset-pre
 .page-restore-notice { position: relative; z-index: 2; display: inline-flex; align-items: center; gap: .65rem; box-sizing: border-box; max-width: calc(100vw - 2rem); padding: .8rem 1.15rem; border: 1px solid var(--page-restore-line); border-left: 5px solid var(--page-restore-accent); border-radius: 12px; background: var(--page-restore-soft); color: var(--page-restore-text); font-size: .9rem; font-weight: 750; box-shadow: 0 12px 30px rgba(16, 49, 74, .18); }
 .page-restore-notice::before { content: ''; flex: 0 0 auto; width: 1.1rem; height: 1.1rem; box-sizing: border-box; border: 2.5px solid var(--page-restore-line); border-top-color: var(--page-restore-accent); border-radius: 50%; animation: page-restore-spin .8s linear infinite; }
 @keyframes page-restore-spin { to { transform: rotate(360deg); } }
+
+/* Laptop screens: on a short screen (a 13" to 15" laptop, or a large zoom of the browser), wider than a phone, the header of
+   the application, its tabs and the hero of each page take less height, so the content of the page starts in the first
+   screen: the brand and the tabs smaller, the hero with less padding, its title smaller and its description on two lines,
+   and less space between the panels. Large screens are unchanged. */
+@media (min-width: 641px) and (max-height: 860px) {
+  .shell { padding-top: .6rem; }
+  .topbar { align-items: center; margin-bottom: .55rem; }
+  .topbar .title-block > .eyebrow { display: none; }
+  .topbar .brand-mark { width: 36px; height: 36px; }
+  .topbar .brand-lockup h1 { font-size: 1.45rem; }
+  .topbar .topnav-link { min-height: 0; padding-top: .4rem; padding-bottom: .4rem; }
+  .module-tabs-primary .module-tab, .module-tabs-secondary .module-tab { padding: .45rem .85rem; font-size: .9rem; }
+  .shell main :is(.hero-panel, .module-hero, .scoring-hero, [class*="module-hero-"]) { padding-top: .9rem; padding-bottom: .9rem; }
+  /* (The heroes size their title and description with !important, see Module headers.) */
+  .shell main :is(.hero-panel, .module-hero, .scoring-hero, [class*="module-hero-"]) h2 { margin: .15rem 0 .35rem; font-size: 1.6rem !important; line-height: 1.2; }
+  .shell main :is(.hero-panel, .module-hero, .scoring-hero, [class*="module-hero-"]) .lede {
+    display: -webkit-box; margin: 0; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; font-size: .9rem !important; line-height: 1.4; }
+  .spacious-stack { gap: 1.1rem; }
+}

@@ -23,6 +23,7 @@ The UI uses a shared header, module tabs, panels, dialogs and tables. Read [Prod
 | Floating background-task cards | [Open section](#floating-background-task-cards) |
 | Unassigned values card | [Open section](#unassigned-values-card) |
 | Images of charts and tables | [Open section](#images-of-charts-and-tables) |
+| Laptop screens | [Open section](#laptop-screens) |
 | Small screens | [Open section](#small-screens) |
 | Dashboard navigation and overlays | [Open section](#dashboard-navigation-and-overlays) |
 
@@ -155,7 +156,7 @@ A stopped duplication removes its partial workspace; stopped exports remove temp
 
 ## Unassigned values card
 
-While the ready CDRs of the open workspace have Operators, Vendors or Campaigns that no Operator, Vendor or Campaign Map assigns, a red card at the bottom centre of every page lists them until they are assigned. With task cards on screen it takes the middle of their row, between those of other workspaces and of the open workspace and as wide as them, and stands above the system task cards when there are any; on a phone the row takes the whole width of the screen and the button back to the top rises above it. Editors open the assignment table from its buttons; the user-viewer role is asked to inform an administrator. See [Unassigned values warning](workspace-config.md#unassigned-values-warning).
+While the ready CDRs of the open workspace have Operators, Vendors or Campaigns that no Operator, Vendor or Campaign Map assigns, a red card at the bottom centre of every page lists them until they are assigned. With task cards on screen it takes the middle of their row, between those of other workspaces and of the open workspace and as wide as them, and stands above the system task cards when there are any; on a phone the row takes the whole width of the screen and the button back to the top rises above it. Editors open the assignment table from its buttons; the user-viewer role is asked to inform an administrator. On a [laptop screen](#laptop-screens) it starts minimized to its title line, and **+** opens it. See [Unassigned values warning](workspace-config.md#unassigned-values-warning).
 
 ## Images of charts and tables
 
@@ -167,6 +168,10 @@ The charts, maps and tables of [Scoring & GAP Analysis](scoring-gap-analysis.md#
 | Screenshot (a camera), on the left | Copies the same image to the clipboard, to paste it elsewhere (a presentation, an email or a chat); it turns green a moment once copied. The browser lets a page copy images only at a secure address (https, or the application opened on this computer): elsewhere the image opens in a window, to copy it from its menu (right-click it, or keep it pressed, and choose **Copy Image**) or download it |
 
 The buttons of a whole card (a panel, a slide) are blue and stand on its top edge, at its right; in a card that holds several charts or tables, the one under the pointer shows buttons of its own in light blue, at its own top right corner. They keep clear of the buttons of the page (zoom, Collapse, the controls of a Dashboard chart), stay at the top of their card, chart or table, and show only while it is in sight, below the floating bars. The larger view of a chart, map or table (a double-click) has them in its corner. The file is named after the title of what it shows, and App Events records each download or copy, with `destination: clipboard` for a copy or `copy-dialog` when it opened in the window, or the reason it failed.
+
+## Laptop screens
+
+On a short screen (a 13" to 15" laptop, about 860 px of height or less in the browser, or a large zoom of the browser), wider than a phone, the page gives its content more room: the header of the application loses its line above the brand and takes less height with its tabs, the hero of each module shows its title on one line and its description on two (cut with *…*), the panels are closer to each other, and the notice of the unassigned values of the CDRs starts minimized at the bottom (**+** opens it). In the [Non-Qualified Calls](non-qualified-calls.md#call-details-and-activity) the panel of a call scrolls as a whole there. Larger screens keep the full layout.
 
 ## Small screens
 

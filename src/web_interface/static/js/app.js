@@ -10754,7 +10754,16 @@ document.addEventListener('click', (event) => {
     if (text !== undefined) node.textContent = text;
     return node;
   };
-  const collapsed = () => { try { return window.sessionStorage.getItem(COLLAPSED_KEY) === '1'; } catch (_error) { return false; } };
+  // On a short screen (a laptop, see the Laptop screens of app.css) it starts minimized, so as not to cover the page, until it
+  // is opened.
+  const SHORT_SCREEN = '(min-width: 641px) and (max-height: 860px)';
+  const collapsed = () => {
+    try {
+      const kept = window.sessionStorage.getItem(COLLAPSED_KEY);
+      if (kept !== null) return kept === '1';
+    } catch (_error) { /* Remembered for this page only. */ }
+    return window.matchMedia(SHORT_SCREEN).matches;
+  };
   const render = (unassigned) => {
     const kinds = Object.keys(TARGETS).filter((kind) => Array.isArray(unassigned?.[kind]) && unassigned[kind].length);
     card.hidden = !kinds.length;
