@@ -191,7 +191,7 @@ Preparation runs when a user opens, refreshes or exports a Design; nothing is pr
 
 Status cards distinguish data loading, queued data, chart rendering, queued charts, Ready, missing charts and failures. The floating background-task card shows the same work while users move between modules.
 
-### View Design
+### View PPT
 
 - Convert every template Slide into a navigable 16:9 screen and place charts using its stored Layout geometry.
 - Navigate slides, expand a chart, zoom and pan its Canvas model, refresh it and move between charts without regenerating the complete Design.

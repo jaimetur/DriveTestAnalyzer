@@ -463,8 +463,8 @@
         ? 'Dataset and filters are ready. The PPT dataset is ready to use.'
         : phase === 'rendering' ? 'Charts are rendering with the current PPT scope.' : 'Dataset and filters are still loading. The Design will update when preparation is complete.')
       : (ready
-        ? "Datasets and filters are ready. You can now open the design using 'View Design' button below."
-        : phase === 'rendering' ? 'Charts are rendering with the current PPT scope. View Design will become available when rendering is complete.' : 'Dataset and filters are still loading. View Design will become available when preparation is complete.');
+        ? "Datasets and filters are ready. You can now open the design using 'View PPT' button below."
+        : phase === 'rendering' ? 'Charts are rendering with the current PPT scope. View PPT will become available when rendering is complete.' : 'Dataset and filters are still loading. View Design will become available when preparation is complete.');
   };
   const setPreparationProgress = (progress, detail = 'Preparing…') => {
     const numeric = Number(progress);
@@ -1383,9 +1383,12 @@
         const label = node('span', undefined, 'ds-library-action-label');
         label.append(node('span', firstLine), node('span', secondLine)); button.replaceChildren(label);
       };
-      const view = action('View Design', 'View Design', async () => {
+      // View PPT opens the viewer of the Design; Edit Design opens it in the Designer once the Design is prepared.
+      const openViewer = async ({edit = false} = {}) => {
+        const editing = () => { if (edit) document.dispatchEvent(new CustomEvent('ds:edit-design', {detail: {id}})); };
         if (id !== activeId) {
           if (!await confirmDiscard()) return;
+          editing();
           const loading = openDesign(id, {showFilters: false});
           overlay('ds-viewer', true);
           await loading;
@@ -1396,12 +1399,20 @@
           document.dispatchEvent(new CustomEvent('page-panel-navigation:update'));
           library();
           await openActiveDesignViewer();
+          editing();
         }
-      }, 'ds-design-view');
+      };
+      const view = action('View PPT', 'View PPT', () => openViewer(), 'ds-design-view');
       view.classList.remove('icon-action');
-      primaryActionLabel(view, 'View', 'Design');
+      primaryActionLabel(view, 'View', 'PPT');
       view.dataset.designViewId = id;
       view.disabled = false;
+      if (config.can_manage) {
+        const edit = action('Edit Design', 'Edit Design', () => openViewer({edit: true}), 'ds-design-edit');
+        edit.classList.remove('icon-action');
+        primaryActionLabel(edit, 'Edit', 'Design');
+        edit.title = 'Open this Design in the Designer, to edit its slides and charts';
+      }
       const ppt = action('Generate PPT', '', () => queueDesignPptExport(id, item, {chooseScope: true}), 'ds-design-ppt');
       ppt.classList.remove('icon-action');
       primaryActionLabel(ppt, 'Generate', 'PPT');
@@ -3820,7 +3831,7 @@
   $('ds-chart-expanded-next').onclick = safe(async () => navigateExpandedChart(expandedCharts().findIndex(chart => chart.index === expandedChart?.index) + 1));
   $('ds-chart-expanded-last').onclick = safe(async () => navigateExpandedChart(expandedCharts().length - 1));
   // Opened from the Designs table, the dialog keeps the table actions
-  // (Generate PPT, View Design) and closing it closes the Design filters.
+  // (Generate PPT, View PPT) and closing it closes the Design filters.
   const openFloatingFilters = ({fromLibrary = false} = {}) => { libraryFloatingFilters = fromLibrary; const panel = $('ds-filter-panel'); panel.hidden = false; panel.open = true; panel.querySelector('summary').tabIndex = -1; $('ds-filter-float').append(panel); setPreparationState($('ds-preparing').dataset.state || 'hidden'); $('ds-generate-ppt').hidden = !fromLibrary; $('ds-view').hidden = !fromLibrary; $('ds-filter-close-action').hidden = fromLibrary; overlay('ds-filter-overlay', true); };
   const closeFilters = async () => {
     const closedFromLibrary = libraryFloatingFilters;

@@ -36,8 +36,8 @@ module.exports = {
         { icon: 'TbFileTypePpt', title: 'Generate PPT', text: 'A job that keeps running on the server.' },
       ],
       highlight: 4,
-      notes: 'Create the definition, set its Scope and filters, let it prepare in the background, explore it in View Design and generate the PowerPoint, a job that continues on the server after you leave the page.' },
-    { id: 'charts', type: 'split', section: 'Workflow', footer: 'View Design', kicker: 'View Design', title: 'Live charts you can open',
+      notes: 'Create the definition, set its Scope and filters, let it prepare in the background, explore it in View PPT and generate the PowerPoint, a job that continues on the server after you leave the page.' },
+    { id: 'charts', type: 'split', section: 'Workflow', footer: 'View PPT', kicker: 'View PPT', title: 'Live charts you can open',
       visual: 'slides',
       points: [
         { icon: 'TbChartArcs', title: 'Live and expanded charts', text: 'Dataset, Expand, Refresh, Zoom and Chart Definition on every chart.' },
@@ -74,7 +74,7 @@ module.exports = {
       lead: 'One saved definition prepares the same deck for each new campaign.',
       links: [
         { title: 'PPT Designs', text: 'create and change them' }, { title: 'PPT Scope & Filters', text: 'how the CDRs are chosen' },
-        { title: 'View Design', text: 'slides and live charts' }, { title: 'Generate PPT', text: 'the presentation and its files' },
+        { title: 'View PPT', text: 'slides and live charts' }, { title: 'Generate PPT', text: 'the presentation and its files' },
       ],
       modules: ['Workspace', 'Reporting', 'Builders', 'CDR Analysis'],
       note: 'Reporting includes Designs in its Bundle Report Templates and scheduled jobs; Chart Builder uses the same chart viewer.',

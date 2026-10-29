@@ -1187,8 +1187,8 @@
   }
 
   // Chart Type: a tab on the right edge of the panel, while a chart is chosen, opens the chart types over the panel (as Show
-  // Me in Tableau); choosing one changes the chart at once and the types stay open until the tab, × or
-  // Esc closes them.
+  // Me in Tableau); choosing one changes the chart at once and the types stay open until the tab, ×, Esc or a click
+  // outside them closes them.
   function chartTypePicker(element, shown) {
     if (!shown) return [];
     const toggle = () => { state.typesOpen = !state.typesOpen; renderPanel(); };
@@ -2118,6 +2118,7 @@
     syncDesignerButton();
   }));
   document.addEventListener('ds:design-opened', event => {
+    if (editWhenReady && editWhenReady !== event.detail.id) editWhenReady = '';
     exitDesigner({force: true});
     state.designId = event.detail.id;
     state.info = null;
@@ -2135,17 +2136,34 @@
   });
   // Prepared again (filters applied): the slide set not saved yet is laid out on the new selection.
   document.addEventListener('ds:prepared', () => {
-    if (!state.active) return;
+    if (!state.active) { guarded(enterWhenReady)(); return; }
     // New data: every slide of the list is drawn again.
     state.generation = (state.generation || 0) + 1;
     if (!dirty()) state.syncedToken = viewer().state().prepared?.token;
     if (dirty()) guarded(() => preview(state.designDirty ? {...previewBody(), slide_set: state.slide_set} : previewBody()))();
     else loadFields(viewer().state().prepared?.token);
   });
-  // A click on the slide outside its charts (its background or a free place) leaves the chart chosen: the panel shows the
-  // slide again.
-  $('ds-charts')?.addEventListener('click', event => {
-    if (!state.active || !state.element || event.target.closest('.ds-chart, button, a, input, select, textarea, [contenteditable="true"]')) return;
+  // Edit Design (the table of the Designs) opens the viewer of a Design in the Designer, as soon as the Design is prepared.
+  let editWhenReady = '';
+  async function enterWhenReady() {
+    const {activeId, prepared} = viewer().state();
+    if (!editWhenReady || editWhenReady !== activeId || !prepared?.token || state.active) return;
+    editWhenReady = '';
+    await enterDesigner();
+    syncDesignerButton();
+  }
+  document.addEventListener('ds:edit-design', event => { editWhenReady = event.detail.id; guarded(enterWhenReady)(); });
+  // Chart Type closes on a click outside it (its tab opens and closes it).
+  document.addEventListener('pointerdown', event => {
+    if (!state.typesOpen || !$('ds-design-types') || event.target.closest?.('#ds-design-types, .ds-design-types-tab')) return;
+    state.typesOpen = false;
+    renderPanel();
+  }, true);
+  // A click anywhere in the viewer but on a chart (the slide around its charts, the head of the viewer…) leaves the chart
+  // chosen: the panel shows the slide again. The panel, the bar of the Designer, menus and dialogs act on the chart.
+  const KEEPS_ELEMENT = '.ds-chart, #ds-design-panel, #ds-design-bar, .ds-design-popover, .ds-design-dialog-overlay, .confirm-overlay:not(#ds-viewer)';
+  document.addEventListener('click', event => {
+    if (!state.active || !state.element || !event.target.closest?.('#ds-viewer') || event.target.closest(KEEPS_ELEMENT)) return;
     state.element = '';
     state.tab = 'slide';
     renderDesigner();

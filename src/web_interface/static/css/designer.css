@@ -113,12 +113,12 @@
 .ppt-designer .ds-design-badge.is-scope.is-design { background: var(--ds-soft); color: var(--ds-color); }
 .ppt-designer .ds-design-badge.is-same { background: var(--ds-design-off-soft); color: var(--ds-design-off); }
 .ppt-designer .ds-design-head-title { display: flex; gap: .3rem; min-width: 0; }
-/* The title of the chart is a field like the others, with a pencil that says it is written here. */
-.ppt-designer .ds-design-head-title input { flex: 1 1 auto; min-width: 0; min-height: 2.1rem; padding: .25rem .5rem .25rem 1.85rem; border: 1px solid var(--ds-border); border-radius: 8px;
+/* The titles (of the chart, of the slide and its subtitle) are bold fields with a pencil that says they are written here. */
+.ppt-designer :is(.ds-design-head-title input, #ds-design-chart-title, #ds-design-slide-title, #ds-design-slide-subtitle) { flex: 1 1 auto; min-width: 0; min-height: 2.1rem; padding: .25rem .5rem .25rem 1.85rem; border: 1px solid var(--ds-border); border-radius: 8px;
   background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236b6178' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 20h4L19 9l-4-4L4 16v4Z'/%3E%3Cpath d='m13.5 6.5 4 4'/%3E%3C/svg%3E") .55rem center / .95rem no-repeat; color: var(--ds-design-ink); font: inherit; font-size: .9rem; font-weight: 750; }
-.ppt-designer .ds-design-head-title input::placeholder { color: #a59db2; font-weight: 600; }
-.ppt-designer .ds-design-head-title input:hover { border-color: var(--ds-color); }
-.ppt-designer .ds-design-head-title input:focus-visible { outline: 2px solid var(--ds-color); outline-offset: 0; border-color: var(--ds-color); }
+.ppt-designer :is(.ds-design-head-title input, #ds-design-chart-title, #ds-design-slide-title, #ds-design-slide-subtitle)::placeholder { color: #a59db2; font-weight: 600; }
+.ppt-designer :is(.ds-design-head-title input, #ds-design-chart-title, #ds-design-slide-title, #ds-design-slide-subtitle):hover { border-color: var(--ds-color); }
+.ppt-designer :is(.ds-design-head-title input, #ds-design-chart-title, #ds-design-slide-title, #ds-design-slide-subtitle):focus-visible { outline: 2px solid var(--ds-color); outline-offset: 0; border-color: var(--ds-color); }
 .ppt-designer .ds-design-sections { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 3px; border-radius: 10px; background: #f1edf7; }
 .ppt-designer .ds-design-sections button { display: inline-flex; align-items: center; justify-content: center; gap: .35rem; min-height: 1.7rem; border: 0; border-radius: 7px;
   background: transparent; box-shadow: none; color: var(--ds-design-muted); font: inherit; font-size: .8rem; font-weight: 800; cursor: pointer; }
@@ -157,15 +157,15 @@
 .ppt-designer .ds-design-types-close:hover { border-color: var(--ds-color); color: var(--ds-color); }
 .ppt-designer .ds-design-types-body { display: grid; gap: .45rem; }
 /* Wide enough for two groups side by side, each with its four chart types in a row. */
-.ppt-designer .ds-design-types-body:has(> .ds-cb-type-group) { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .7rem 1rem; }
+.ppt-designer .ds-design-types-body:has(> .ds-cb-type-group) { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .8rem 1.4rem; }
 .ppt-designer .ds-design-types-body > :not(.ds-cb-type-group) { grid-column: 1 / -1; }
 .ppt-designer .ds-cb-type-group { display: grid; gap: .3rem; }
-.ppt-designer .ds-cb-type-group-label { font-size: .66rem; font-weight: 850; letter-spacing: .06em; text-transform: uppercase; color: var(--ds-design-muted); }
+.ppt-designer .ds-cb-type-group-label { font-size: .72rem; font-weight: 850; letter-spacing: .06em; text-transform: uppercase; color: var(--ds-design-muted); }
 .ppt-designer .ds-design-types .ds-cb-types { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 /* In the flyout the chart types are large pictures with their names; the line above them says what the one pointed at
    needs. */
-.ppt-designer .ds-design-types .ds-cb-type-button { min-height: 6.2rem; padding: .45rem .35rem .4rem; gap: .3rem; font-size: .66rem; }
-.ppt-designer .ds-design-types .ds-cb-type-button .ds-cb-picture { max-width: 4.6rem; }
+.ppt-designer .ds-design-types .ds-cb-type-button { min-height: 8.6rem; padding: .6rem .5rem .55rem; gap: .45rem; border-radius: 10px; font-size: .76rem; }
+.ppt-designer .ds-design-types .ds-cb-type-button .ds-cb-picture { max-width: 6.6rem; }
 .ppt-designer .ds-design-types .ds-cb-types-hint { order: -1; }
 .ppt-designer .ds-cb-types-hint { margin: 0; padding: .45rem .55rem; border-radius: 8px; background: #f6f3fb; color: var(--ds-design-muted); font-size: .74rem; line-height: 1.35; }
 .ppt-designer .ds-cb-types-hint strong { color: var(--ds-design-ink); }
@@ -174,7 +174,7 @@
     box-shadow: 3px 3px 10px rgba(36, 22, 61, .12); }
   .ppt-designer .ds-design-types-tab .ds-cb-picture { width: 1.1rem; }
   .ppt-designer .ds-design-types-tab-label { font-size: .64rem; writing-mode: vertical-rl; }
-  .ppt-designer .ds-design-types { top: .4rem; right: 0; width: min(46rem, calc(100vw - 7rem)); max-height: calc(100% - .8rem); border-radius: 12px; }
+  .ppt-designer .ds-design-types { top: .4rem; right: 0; width: min(64rem, calc(100vw - 7rem)); max-height: calc(100% - .8rem); padding: .8rem .9rem; border-radius: 14px; }
 }
 @media (max-width: 900px) {
   .ppt-designer .ds-design-types-tab { bottom: 100%; right: .9rem; grid-auto-flow: column; align-items: center; padding: .3rem .65rem; border-bottom: 0; border-radius: 10px 10px 0 0; box-shadow: 0 -4px 12px rgba(36, 22, 61, .12); }

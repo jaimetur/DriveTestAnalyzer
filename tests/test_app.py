@@ -5692,12 +5692,13 @@ def test_design_library_open_close_and_view_actions_include_labels() -> None:
     script = (root / 'js' / 'ppt_designer.js').read_text(encoding='utf-8')
     styles = (root / 'css' / 'ppt_designer.css').read_text(encoding='utf-8')
 
-    assert "action('View Design', 'View Design'" in script
+    assert "action('View PPT', 'View PPT'" in script
+    assert "action('Edit Design', 'Edit Design'" in script
     # The filters open in the viewer of the Design (PPT Filters), never in the table of the Designs.
     assert "'Open Filters'" not in script and "'Close Filters'" not in script
     assert "if (!$('ds-viewer').hidden) openFloatingFilters();" in script
     assert 'width:fit-content!important;min-width:max-content!important' in styles
-    assert "primaryActionLabel(view, 'View', 'Design');" in script
+    assert "primaryActionLabel(view, 'View', 'PPT');" in script
     assert 'grid-column:span 2' in styles
     assert '.ds-library-action-label{display:contents}' in styles
     assert 'height:3.35rem!important' in styles

@@ -21,7 +21,7 @@ ppt-designer
 | Create or change a Design | [PPT Designs](#ppt-designs) |
 | Choose the campaigns, dates and comparison scope | [PPT Scope & Filters](#ppt-scope-filters) |
 | Understand Apply versus Save | [Apply, Save, Clear and Reload](#apply-save-clear-and-reload) |
-| Explore slides and chart data | [View Design](#view-design) |
+| Explore slides and chart data | [View PPT](#view-ppt) |
 | Change slides, layouts and charts on screen, for this Design or for its template | [Designer](#designer) |
 | Choose the city, threshold or other values of a template's parameters | [Template parameters](#template-parameters) |
 | Export a presentation | [Generate PPT](#generate-ppt) |
@@ -38,7 +38,7 @@ ppt-designer
 Any user with workspace access can manage PPT definitions. **user-editor**, **admin** and **super-admin** can also open **Edit PPT Template** and **Auto-Calculated Fields** from the viewer.
 
 > [!TIP]
-> For a first comparison: create a Design (it compares the newest two campaigns of its NR Mode), choose its Scope, Campaign and other filters, apply them, then open **View Design**. Inspect the charts before generating a PPT.
+> For a first comparison: create a Design (it compares the newest two campaigns of its NR Mode), choose its Scope, Campaign and other filters, apply them, then open **View PPT**. Inspect the charts before generating a PPT.
 
 Designs use the same template schema and renderer as Reporting. Detailed template authoring is covered in [Workspace Config → Report Template reference](workspace-config.md#report-template-reference).
 
@@ -70,7 +70,8 @@ An existing or imported Design **RF Quality (RSRP & SINR)** can use the workspac
 
 | Action | Effect |
 | --- | --- |
-| **View Design** | Open the interactive slide viewer |
+| **View PPT** | Open the interactive slide viewer |
+| **Edit Design** | Open the slide viewer in the [Designer](#designer), once the Design is prepared (users who can change Designs) |
 | **Generate PPT** | Open the export selection dialog |
 | **Duplicate** | Create an independent definition |
 | **Export Design** | Download a versioned ZIP accepted by Admin Import |
@@ -205,7 +206,7 @@ Auto-calculated Fields apply to their declared CDR types. They are materialized 
 > [!NOTE]
 > **Apply is temporary; Save changes the PPT defaults.** You can preview or export an applied selection without saving it. Returning to an equivalent prepared selection reuses its cached charts.
 
-If **View Design** or **Generate PPT** encounters unapplied filter edits, choose:
+If **View PPT** or **Generate PPT** encounters unapplied filter edits, choose:
 
 | Dialog action | Outcome |
 | --- | --- |
@@ -232,7 +233,7 @@ The viewer opens immediately with a yellow **Preparing PPT dataset** card until 
 | **Ready** | The Design has CDRs to show; it is prepared when it is opened |
 | **Data needed** | No CDR matches the Design's selection |
 
-View Design, its PPT Filters and PPT export are available at any time.
+View PPT, its PPT Filters and PPT export are available at any time.
 
 ### Nothing is prepared in the background
 
@@ -253,9 +254,9 @@ Preview manifests and Canvas models are kept in memory only, keyed by dataset re
 
 Canvas models are created when a chart is viewed, refreshed or requested for PPT. The charts of the open slide are calculated first and appear as each one is ready. After they load, nearby slides silently prefetch one chart at a time in the order next, previous, two ahead, two behind. A prefetch waits while the charts of a newly opened slide are calculated, so moving to another slide never queues it behind prefetched charts. Opening an individual chart uses the chart sequence instead. Closing the viewer stops scheduling further work.
 
-## View Design
+## View PPT
 
-Open **View Design** from the library or filter panel. It does not expand the main filters panel automatically; use **PPT Filters** for the floating controls.
+Open **View PPT** from the library or filter panel (**Edit Design** opens it in the Designer). It does not expand the main filters panel automatically; use **PPT Filters** for the floating controls.
 
 ### Read the header
 
@@ -441,7 +442,7 @@ The template keeps the fields, so each Design of it writes its own selection. Pa
 
 ### Charts on the slide
 
-- Click a chart to build it, as in Tableau: its title is written in the head of the panel (**{ }** inserts a field), and its **Data** chooses its **Source** (Data, Voice, Speech or RF All: the CDRs the chart reads) and its **NR Mode**, one button per result: a PPT Design of NSA or SA reads only its CDRs, so its NR Mode is chosen and the other one is greyed until NR Mode NSA & SA is chosen in PPT Filters; one of NSA & SA offers **NSA & SA**, **NSA** or **SA**; in Template scope **PPT Mode** follows the NR Mode of each Design of the template (a chart that keeps **NSA** or **SA** has the filter `NR Mode IN (SA)`), then drag the fields of the source, grouped by the sections of the CDR Field Dictionary and told apart as dimensions (blue `Abc`) and measures (green `#`), to its shelves: **Measure** (its menu chooses the aggregation), **Rows**, **Columns**, **Legend**, **Filters** and **Repeat by** (one chart per value of a field, side by side in the place of this one: small multiples, in the viewer and in the PPT). A field dropped on Filters opens its values in the Design's selection with their samples (Include, Exclude, Contains), or a numeric condition, or a parameter of the template (**Use parameter**); the filters of the Design show first on the shelf, locked. **Chart Type**, the tab on the right edge of the panel while a chart is chosen, opens the chart types over the panel as pictures with their names, grouped by what they show (Distribution, Comparison, Composition, Tables and maps): those the shelves cannot draw are greyed, the line above them says what the one pointed at needs, and a chart type is chosen when the measure changes; Threshold, Buckets and Bin Size are set under the types. It stays open until its tab, **×** or **Esc** closes it. The chart is drawn again a moment after each change.
+- Click a chart to build it, as in Tableau: its title is written in the head of the panel (**{ }** inserts a field), and its **Data** chooses its **Source** (Data, Voice, Speech or RF All: the CDRs the chart reads) and its **NR Mode**, one button per result: a PPT Design of NSA or SA reads only its CDRs, so its NR Mode is chosen and the other one is greyed until NR Mode NSA & SA is chosen in PPT Filters; one of NSA & SA offers **NSA & SA**, **NSA** or **SA**; in Template scope **PPT Mode** follows the NR Mode of each Design of the template (a chart that keeps **NSA** or **SA** has the filter `NR Mode IN (SA)`), then drag the fields of the source, grouped by the sections of the CDR Field Dictionary and told apart as dimensions (blue `Abc`) and measures (green `#`), to its shelves: **Measure** (its menu chooses the aggregation), **Rows**, **Columns**, **Legend**, **Filters** and **Repeat by** (one chart per value of a field, side by side in the place of this one: small multiples, in the viewer and in the PPT). A field dropped on Filters opens its values in the Design's selection with their samples (Include, Exclude, Contains), or a numeric condition, or a parameter of the template (**Use parameter**); the filters of the Design show first on the shelf, locked. **Chart Type**, the tab on the right edge of the panel while a chart is chosen, opens the chart types over the panel as pictures with their names, grouped by what they show (Distribution, Comparison, Composition, Tables and maps): those the shelves cannot draw are greyed, the line above them says what the one pointed at needs, and a chart type is chosen when the measure changes; Threshold, Buckets and Bin Size are set under the types. It stays open until its tab, **×**, **Esc** or a click outside it closes it. The chart is drawn again a moment after each change.
 - **Format** (beside **Data**) changes how the chart looks, in the viewer and in the PPT alike (the same renderer draws both), in four groups, one open at a time (a closed group says what it holds):
   - **Series:** click an entry of its legend on the chart, or the series in the list, to change its colour, line width, line (solid, dashed, dotted) and opacity. The colours of Operator and Vendor Maps stay until a series is given one: **Default** gives one series its colour back, **Default colours** every series.
   - **Legend:** its place (top, bottom, left, right or hidden) and the size of its text.
@@ -451,7 +452,7 @@ The template keeps the fields, so each Design of it writes its own selection. Pa
 - **Columns as written…**, in the **⋯** menu of a chart, keeps the legend and label positions, the axis ranges, Exclude Null/Empty, Exclude Zero and the text of each column as the template writes it.
 - Drag a chart by its **⠿** handle onto another chart to swap their places, or onto a free place to move it there. A free place of the layout shows **+ Add**: a chart, a KPI card, a text box, a picture, or one copied before (**Copy** in the menu of a chart).
 - **Delete** removes a chart (in This Design scope, a chart of the template is hidden in this Design).
-- **Ctrl/Cmd+Z** and **Shift+Ctrl/Cmd+Z** undo and redo; **Delete** removes the chart chosen; **Esc** closes a menu or Chart Type, then leaves the chart chosen (in a field of the panel, it leaves the field), as a click on the slide outside its charts does.
+- **Ctrl/Cmd+Z** and **Shift+Ctrl/Cmd+Z** undo and redo; **Delete** removes the chart chosen; **Esc** closes a menu or Chart Type, then leaves the chart chosen (in a field of the panel, it leaves the field), as a click anywhere in the viewer outside the charts, the panel and the bar of the Designer does.
 
 A change the template cannot hold (a chart without a KPI or a split, for example) is refused with the reason and undone.
 
@@ -573,7 +574,7 @@ The job selector identifies its local date/time, NR Mode, Design, Scope and reco
 
 | View | Selection |
 | --- | --- |
-| **View Design** | Current applied PPT inputs |
+| **View PPT** | Current applied PPT inputs |
 | **Charts Panel** | The generating PPT job's captured template and inputs |
 
 Stored Canvas models repaint with the current renderer. Legacy jobs without models keep their PNG. The expanded viewer and Filtered Chart Dataset remain available.
@@ -607,7 +608,7 @@ Designs have their own Admin export/import/transfer/backup/restore component: an
 
 | Symptom | Check / action |
 | --- | --- |
-| View Design or Generate PPT is disabled | Inspect its status badge and explicit preparation task |
+| View PPT or Generate PPT is disabled | Inspect its status badge and explicit preparation task |
 | A filter has no choices | Verify source field/aliases and whether other filters leave matching rows |
 | Chart says no CDR is selected | Choose a Campaign with a CDR of the type that chart needs, or check its Active? choice in Workspace |
 | Filtered rows are zero | Check dates and empty value selections; use Clear Filters to remove restrictions |
