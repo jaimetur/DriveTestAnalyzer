@@ -1935,6 +1935,8 @@
   };
   async function loadCalls({quiet = false} = {}) {
     const token = ++state.requestToken;
+    // What is in use or being read stays where it is while the panels are drawn again.
+    if (!quiet) keepViewWhileLoading();
     const filters = currentFilters();
     if (state.filtersRestored) saveFilters(filters);
     loadAvailable(filters, quiet);
@@ -5209,6 +5211,128 @@
       rememberScroll();
     }});
   };
+  // -- the view kept in place while the calls reload --------------------------------------------------------------------
+  // A change of the filters (or of the page, order or rows of the list) draws every panel on screen again: the panels above
+  // the one in use grow or shrink, and the page would end up on another section (Safari has no scroll anchoring, and the
+  // element Chrome anchors to is often drawn again). What was in use (where the filters were changed: the Join ID, a chip,
+  // a card, a value of a chart) or else what was being read (a third of the way down the window) stays where it was until
+  // the calls and every panel on screen are drawn, unless the page is scrolled meanwhile; its panel, if it gets shorter,
+  // comes down so that no less of it is seen (a JOIN_ID leaves a few rows in the list).
+  const VIEW_KEPT_MS = 300000;
+  const VIEW_SETTLE_MS = 1200;
+  let lastUse = null;
+  ['pointerdown', 'focusin', 'input', 'change'].forEach((type) => document.addEventListener(type, (event) => {
+    if (event.target instanceof Element && event.target.getClientRects().length) lastUse = {element: event.target, time: Date.now()};
+  }, {capture: true, passive: true}));
+  // The panel of the page that holds an element (none for the call panel, the dialogs and the lists over the page).
+  const pagePanelOf = (element) => {
+    let item = element;
+    while (item && item.parentElement !== root) item = item.parentElement;
+    return item?.matches('.panel') ? item : null;
+  };
+  // The element and its ancestors up to its panel, from the first that moves with the page: nothing stuck at the top of a
+  // table or of the window, nor inside a list that scrolls on its own.
+  const anchorChain = (element, panel) => {
+    const chain = [];
+    for (let item = element; item; item = item.parentElement) {
+      const style = getComputedStyle(item);
+      if (style.position === 'sticky' || style.position === 'fixed') chain.length = 0;
+      else {
+        if (['auto', 'scroll'].includes(style.overflowY) && item.scrollHeight > item.clientHeight + 1) chain.length = 0;
+        chain.push(item);
+      }
+      if (item === panel) break;
+    }
+    return chain;
+  };
+  const viewAnchor = () => {
+    const used = lastUse && Date.now() - lastUse.time < 10000 && lastUse.element.isConnected ? lastUse.element : null;
+    if (used && pagePanelOf(used) && used.getClientRects().length) {
+      const box = used.getBoundingClientRect();
+      if (box.bottom > 0 && box.top < window.innerHeight) return used;
+    }
+    const area = root.getBoundingClientRect();
+    const x = Math.min(Math.max(area.left + area.width / 2, 1), window.innerWidth - 1);
+    const y = window.innerHeight / 3;
+    return document.elementsFromPoint(x, y).find((element) => pagePanelOf(element))
+      || [...root.children].find((element) => element.matches('.panel') && element.getClientRects().length && element.getBoundingClientRect().bottom > y)
+      || null;
+  };
+  let stopKeepingView = null;
+  function keepViewWhileLoading() {
+    stopKeepingView?.();
+    // A reload returning to its position (restoreScroll) and a section chosen in a menu (app.js) are followed instead.
+    if (restoring || (typeof sectionKeptInView === 'function' && sectionKeptInView()) || typeof ResizeObserver !== 'function') return;
+    const element = viewAnchor();
+    const panel = element && pagePanelOf(element);
+    if (!panel) return;
+    const anchors = anchorChain(element, panel).map((item) => ({item, top: item.getBoundingClientRect().top}));
+    if (!anchors.length) return;
+    const dock = root.querySelector(':scope > .nq-view-dock');
+    // How far down the window the panel reaches, up to the middle: a panel that gets shorter is never shown less.
+    const reach = Math.min(window.innerHeight / 2, panel.getBoundingClientRect().bottom);
+    let expected = window.scrollY;
+    let stopped = false;
+    const scrollBy = (top) => {
+      window.scrollBy({left: 0, top, behavior: 'auto'});
+      expected = window.scrollY;
+    };
+    const keep = () => {
+      if (stopped) return;
+      // Scrolled by hand (or to a section chosen meanwhile): the page stays where it is. A page left shorter only goes up to
+      // its end.
+      if (Math.abs(window.scrollY - expected) > 1) {
+        const end = document.documentElement.scrollHeight - window.innerHeight;
+        if (window.scrollY > expected || window.scrollY < end - 1) {
+          stop();
+          return;
+        }
+        expected = window.scrollY;
+      }
+      // The deepest element still on the page holds the view: those drawn again are left out.
+      const index = anchors.findIndex(({item}) => item.isConnected && item.getClientRects().length);
+      if (index < 0) return;
+      const moved = anchors[index].item.getBoundingClientRect().top - anchors[index].top;
+      if (Math.abs(moved) >= 1) scrollBy(moved);
+      // Below the bar of the sections, once it stays at the top of the window.
+      const clear = dock ? Math.min(dock.getBoundingClientRect().bottom, (parseFloat(getComputedStyle(dock).top) || 0) + dock.offsetHeight) : 0;
+      const box = panel.getBoundingClientRect();
+      if (box.top < clear && box.bottom < reach - 1) scrollBy(Math.max(box.top - clear, box.bottom - reach));
+      // Its ancestors keep their place from now on, in case it is drawn again too.
+      anchors.slice(index).forEach((anchor) => { anchor.top = anchor.item.getBoundingClientRect().top; });
+    };
+    // The parts above the element (the panels before its own, and what comes before it in its panel) are followed.
+    const observer = new ResizeObserver(keep);
+    for (let item = anchors[0].item; item && item !== document.body; item = item.parentElement) {
+      observer.observe(item);
+      for (let sibling = item.previousElementSibling; sibling; sibling = sibling.previousElementSibling) observer.observe(sibling);
+    }
+    const onScroll = () => { if (Math.abs(window.scrollY - expected) > 1) keep(); };
+    const started = Date.now();
+    let idleSince = 0;
+    let timer = 0;
+    // Also checked while the page draws no frames (a tab in the background), until it is drawn.
+    const check = () => {
+      keep();
+      if (stopped) return;
+      idleSince = window.pageSectionBusy() ? 0 : idleSince || Date.now();
+      if (Date.now() - started > VIEW_KEPT_MS || (idleSince && Date.now() - idleSince > VIEW_SETTLE_MS)) stop();
+      else timer = window.setTimeout(check, 250);
+    };
+    const stop = () => {
+      stopped = true;
+      observer.disconnect();
+      window.clearTimeout(timer);
+      window.removeEventListener('scroll', onScroll);
+      document.documentElement.style.overflowAnchor = '';
+      if (stopKeepingView === stop) stopKeepingView = null;
+    };
+    stopKeepingView = stop;
+    // The browser's own scroll anchoring would move the page too.
+    document.documentElement.style.overflowAnchor = 'none';
+    window.addEventListener('scroll', onScroll, {passive: true});
+    timer = window.setTimeout(check, 250);
+  }
   $('nq-column-order-reset').addEventListener('click', async () => {
     if (!await saveColumnOrder(defaultColumnOrder())) return;
     applyColumnOrder();

@@ -1454,3 +1454,20 @@ def test_the_reindex_reads_the_same_calls_from_the_columnar_copies(client, tmp_p
     # Both passes of each CDR (every call, then its Non-Qualified rows) read the copy and give the same calls.
     assert sorted(reads) == sorted((name, dataset_id) for dataset_id in datasets for name in ('cdr_columns', 'query_cdr_rows'))
     assert from_copies == from_sqlite and all(result['calls'] for result in from_copies.values())
+
+
+def test_the_view_stays_in_place_while_the_calls_reload():
+    """A change of the filters keeps what was in use (or read) where it was while every panel on screen is drawn again."""
+    script = (Path(__file__).parents[1] / 'src/web_interface/static/js/non_qualified_calls.js').read_text(encoding='utf-8')
+    # Before the chips and the loading bars change the panels, and not for the quiet reloads of the page.
+    load = script.split('async function loadCalls(', 1)[1].split('const filters = currentFilters();', 1)[0]
+    assert 'if (!quiet) keepViewWhileLoading();' in load
+    keeper = script.split('function keepViewWhileLoading() {', 1)[1].split("$('nq-column-order-reset')", 1)[0]
+    # A reload returning to its position and a section chosen in a menu are followed instead.
+    assert "if (restoring || (typeof sectionKeptInView === 'function' && sectionKeptInView())" in keeper
+    # The browser's own anchoring is off meanwhile, back once the calls and the panels are drawn or the page is scrolled.
+    assert "document.documentElement.style.overflowAnchor = 'none';" in keeper
+    assert "document.documentElement.style.overflowAnchor = '';" in keeper and 'window.pageSectionBusy()' in keeper
+    assert 'if (window.scrollY > expected || window.scrollY < end - 1) {' in keeper
+    # Where the filters were changed leads, else what is read a third of the way down the window.
+    assert 'const used = lastUse && Date.now() - lastUse.time < 10000' in script and 'const y = window.innerHeight / 3;' in script
