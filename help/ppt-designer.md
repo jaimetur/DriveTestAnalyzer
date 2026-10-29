@@ -315,24 +315,13 @@ Hiding a value applies to the whole Design. Every series, bar, stacked segment, 
 
 The legend state lasts for the browser session and also applies in the expanded viewer. **Generate PPT** exports the charts as you see them, and the PPT job's viewer shows the same state. Relaunching a PPT job keeps the state it was created with. In Network Insights, clicking a legend entry hides or shows it in that chart only.
 
-The slide of the viewer, each of its charts and the chart of the expanded viewer download as a PNG image or copy to the clipboard as a screenshot from floating buttons: those of the slide at its top right corner, those of each chart (also when it is the only one of its slide) at the left of its controls, on the same row (see [Images of charts and tables](web-interface.md#images-of-charts-and-tables)); so do the Charts Panel and each of its thumbnails. App Events records each one as `export_design_image`, with the slide or the Design and date of the PowerPoint job.
+The slide of the viewer, each of its charts and the chart of the expanded viewer download as a PNG image or copy to the clipboard as a screenshot (see [Images of charts and tables](web-interface.md#images-of-charts-and-tables)): the whole slide from the two blue buttons beside the slide chooser, above the slide, with its comments below it when it has some (as plain text); each chart (also when it is the only one of its slide) from the floating buttons at the left of its controls, on the same row; the chart of the expanded viewer from the buttons above it. So do the Charts Panel and each of its thumbnails. App Events records each one as `export_design_image`, with the slide or the Design and date of the PowerPoint job.
 
-The expanded viewer retains PPT filters, chart navigation and a red Close control. Compact portrait/landscape layouts fit navigation and the chart to the viewport; the Comments drawer stays accessible at the bottom.
+The expanded viewer has the actions of the viewer above the chart (its image, **PPT Filters**, and **Auto-Calculated Fields** and **Edit PPT Template** as icons named by their tooltips), chart navigation and a red Close control. Compact portrait/landscape layouts fit navigation and the chart to the viewport; the Comments drawer stays accessible at the bottom.
 
 ### Edit a chart definition
 
-The **Chart Definition** tab of the expanded viewer edits the chart it shows:
-
-| Action | Scope |
-| --- | --- |
-| **Apply** | Change the current preview |
-| **Update Template** | Save the definition to the Report Template row (admins, super-admins and the user-editor who created the template). A Design with slides of its own changes its charts from the [Designer](#designer). |
-| **Edit PPT Template** | Focus the exact generating row in the template editor |
-
-Saving the template refreshes the Design. Closing it unchanged preserves the current preparation. Template/calculated-field editing actions require **user-editor**, **admin** or **super-admin**.
-
-> [!IMPORTANT]
-> **Updating a Report Template is a saved configuration change.** Use Apply to inspect a temporary preview before committing the chart definition to its template.
+The charts of a PPT Design are changed on screen in the [Designer](#designer) (**Open Designer**), for the Design or for its template; **Edit PPT Template**, the pencil at the top of the viewer and of the expanded viewer, opens its template as a table at the row of the chart. Template and calculated-field editing require **user-editor**, **admin** or **super-admin**.
 
 The [Report Template reference](#report-template-reference) describes supported chart types, filters, aggregations, legends and layouts.
 
@@ -392,7 +381,7 @@ App Events records each generation (slide, writer asked and writer that wrote, m
 
 ## Designer
 
-**Open Designer**, at the top of the viewer, turns it into a slide editor (the button reads **Close Designer**, in amber, while it is open, and closes it; it asks about the changes only when something differs from what is saved, so changes undone or made back by hand leave nothing to save). While it is open, **Auto-Calculated Fields**, **Edit PPT Template**, **Generate PPT**, **Refresh Design** and the presentation wait for it to close, and the tools over the charts (images, dataset, expand, zoom, Chart Definition) are hidden; **PPT Filters**, the Scope and the theme stay, as they change what the slides are laid out on. The slides at the left become the slides being edited, the charts of the slide shown can be chosen and moved, and the panel at the right shows the slide or the chart chosen. Its head says where it is (**Slide 2 › Chart 1**: click the slide to see it again; the chart button, **Charts** while none is chosen, lists the charts of the slide to choose one), what a change reaches (**This Design** or the template) and how the slide or chart differs from the template; its **⋯** menu holds the actions of the slide or chart. Drag the left edge of the panel to widen it, or narrow it again (double-click gives it its usual width); a wide panel shows the fields of a chart beside its shelves. Every change is drawn at once on the CDRs the Design already prepared; nothing is stored until **Save**.
+**Open Designer**, at the top of the viewer, turns it into a slide editor (the button reads **Close Designer**, in amber, while it is open, and closes it; it asks about the changes only when something differs from what is saved, so changes undone or made back by hand leave nothing to save). While it is open, **Auto-Calculated Fields**, **Edit PPT Template**, **Generate PPT**, **Refresh Design** and the presentation wait for it to close, and the tools over the charts (images, expand, zoom) are hidden but View dataset; **PPT Filters**, the Scope and the theme stay, as they change what the slides are laid out on. The slides at the left become the slides being edited, the charts of the slide shown can be chosen and moved, and the panel at the right shows the slide or the chart chosen. Its head says where it is (**Slide 2 › Chart 1**: click the slide to see it again; the chart button, **Charts** while none is chosen, lists the charts of the slide to choose one), what a change reaches (**This Design** or the template) and how the slide or chart differs from the template; its **⋯** menu holds the actions of the slide or chart. Drag the left edge of the panel to widen it, or narrow it again (double-click gives it its usual width); a wide panel shows the fields of a chart beside its shelves. Every change is drawn at once on the CDRs the Design already prepared; nothing is stored until **Save**.
 
 | From | To | How |
 | --- | --- | --- |

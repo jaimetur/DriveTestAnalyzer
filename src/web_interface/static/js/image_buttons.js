@@ -104,11 +104,12 @@
   // of the window the floating bars of the page hide; ``cardOnEdge``: whether those of a card stand on its top edge (else
   // in its corner, as in a dialog); ``singleParts``: the charts or tables that have their buttons also when they are the
   // only one of their card; ``partRow``: the row of buttons of a chart or table that its buttons stand on, at its left
-  // (else in its top right corner). ``title(target, card)``, ``fileName(target, title)`` and
+  // (else in its top right corner); ``hiddenCards``: the cards whose buttons the page gives itself (``exportImage`` of
+  // the object returned), whose charts and tables keep theirs. ``title(target, card)``, ``fileName(target, title)`` and
   // ``details(target)`` name the image and its App Event; ``record(details)`` records it (by default for ``module``).
   function attachImageButtons({
     root, targets, within = '', tables = '', charts = '', exclude = '', obstacles = '', cardOnEdge = true,
-    singleParts = '', partRow = '',
+    singleParts = '', partRow = '', hiddenCards = '',
     topInset = floatingBarsBottom,
     title = null, fileName = null, details = () => ({}), module = '', fallbackName = 'Image',
     record = imageDetails => recordImageExport('/api/image-export', {module, ...imageDetails}),
@@ -256,7 +257,7 @@
     function showAt(node, {hideAfter = 0} = {}) {
       const found = targetsAt(node);
       for (const slot of slots) {
-        if (!found[slot.level]) {
+        if (!found[slot.level] || (slot === cardSlot && hiddenCards && found.card.matches(hiddenCards))) {
           hide(slot);
           continue;
         }
@@ -346,8 +347,8 @@
       } finally {
         button.classList.remove('is-busy');
         button.removeAttribute('aria-busy');
-        // The pointer may have left while the image was drawn.
-        if (!slot.button.matches(':hover') && !slot.copy.matches(':hover') && !target.matches(':hover')) hide(slot);
+        // The pointer may have left while the image was drawn (a button of the page stays).
+        if (!slot.own && !slot.button.matches(':hover') && !slot.copy.matches(':hover') && !target.matches(':hover')) hide(slot);
       }
     }
     for (const slot of slots) {
@@ -359,7 +360,9 @@
         });
       }
     }
-    return {hide: () => slots.forEach(hide), slots};
+    // A button of the page itself downloads (or copies) a target as the floating ones do: named, recorded, in the clipboard.
+    const exportWith = (target, button, copy = false) => exportImage({level: 'card', button, copy: button, target, own: true}, button, copy, null);
+    return {hide: () => slots.forEach(hide), slots, exportImage: exportWith};
   }
 
   window.attachImageButtons = attachImageButtons;

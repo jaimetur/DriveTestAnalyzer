@@ -2992,13 +2992,6 @@
   });
   bind('ds-view', openActiveDesignViewer);
   const chartPayloadUrl = chart => chart.payload_url || `/api/ppt-designer/chart/${prepared.token}/${chart.index}`;
-  const rememberRenderedChartPayload = (chart, payload) => {
-    const url = chartPayloadUrl(chart);
-    renderedChartPayloads.set(url, payload);
-    chartPayloads.set(url, Promise.resolve(payload));
-    while (renderedChartPayloads.size > 160) renderedChartPayloads.delete(renderedChartPayloads.keys().next().value);
-    while (chartPayloads.size > 160) chartPayloads.delete(chartPayloads.keys().next().value);
-  };
   // Legend entries hidden in the viewer, per Design: a Design-wide state
   // and per-chart states keyed by slide, chart title and occurrence (the keys
   // the PPT export uses too). They last for the browser session.
@@ -3579,7 +3572,6 @@
   });
   let expandedControlsTimer;
   let expandedTouchControlsTimer;
-  let expandedFiltersCloseTimer;
   const showExpandedCanvasControls = () => {
     clearTimeout(expandedControlsTimer);
     expandedControlsTimer = null;
@@ -3597,7 +3589,7 @@
   expandedCanvasShell.onfocusin = showExpandedCanvasControls;
   expandedCanvasShell.onfocusout = () => { if (!expandedCanvasShell.contains(document.activeElement)) hideExpandedCanvasControls(); };
   expandedCanvasShell.addEventListener('pointerdown', event => {
-    if (event.pointerType !== 'touch' || event.target.closest('.ds-chart-filter-panel')) return;
+    if (event.pointerType !== 'touch') return;
     clearTimeout(expandedTouchControlsTimer);
     expandedCanvasShell.classList.add('ds-touch-controls-visible');
     expandedTouchControlsTimer = setTimeout(() => {
@@ -3607,224 +3599,6 @@
   });
   let expandedChart = null;
   let expandedChartMode = 'design';
-  let expandedChartFilterControls = null;
-  let expandedChartFilterToken = '';
-  let expandedChartFilterIndex = -1;
-  let expandedChartFilterContextPath = '';
-  let expandedChartFilterLoadRequest = 0;
-  let expandedChartAppliedDefinition = null;
-  const expandedTemplateUpdate = node('button', 'Update Template', 'danger-button');
-  expandedTemplateUpdate.id = 'ds-chart-filter-update';
-  expandedTemplateUpdate.hidden = true;
-  $('ds-chart-filter-apply').before(expandedTemplateUpdate);
-  const setExpandedChartFiltersOpen = open => {
-    clearTimeout(expandedFiltersCloseTimer);
-    expandedFiltersCloseTimer = null;
-    $('ds-chart-filter-panel').classList.toggle('is-open', open);
-    $('ds-chart-filter-toggle').setAttribute('aria-expanded', String(open));
-    if (open) $('ds-chart-filter-fields').querySelector('input,select,button')?.focus();
-  };
-  const scheduleExpandedChartFiltersClose = () => {
-    clearTimeout(expandedFiltersCloseTimer);
-    expandedFiltersCloseTimer = setTimeout(() => {
-      if (!$('ds-chart-filter-panel').matches(':hover')) {
-        setExpandedChartFiltersOpen(false);
-        $('ds-chart-filter-toggle').focus();
-      }
-    }, 10000);
-  };
-  $('ds-chart-filter-panel').addEventListener('pointerenter', () => clearTimeout(expandedFiltersCloseTimer));
-  $('ds-chart-filter-panel').addEventListener('pointerleave', scheduleExpandedChartFiltersClose);
-  $('ds-chart-filter-panel').addEventListener('focusin', () => clearTimeout(expandedFiltersCloseTimer));
-  // Focus can temporarily move from a panel field to one of its searchable
-  // menus. Only leaving with the pointer starts the delayed auto-collapse;
-  // a click outside the panel remains an immediate close below.
-  document.addEventListener('pointerdown', event => {
-    const panel = $('ds-chart-filter-panel');
-    if (!panel.classList.contains('is-open') || panel.contains(event.target)) return;
-    // Searchable selector menus are temporarily mounted in the overlay, not
-    // inside the panel, and must remain interactive until a choice is made.
-    if (event.target.closest('.report-chart-preview-select-menu')) return;
-    setExpandedChartFiltersOpen(false);
-  });
-  const createExpandedChartFilterControls = context => {
-    const sourceKey = source => {
-      const normalized = String(source || '').trim().toLocaleLowerCase();
-      return ({data: 'cdr-data', voice: 'cdr-voice', speech: 'cdr-speech', all: 'cdr-all'})[normalized]
-        || (normalized.startsWith('cdr-') ? normalized : `cdr-${normalized}`);
-    };
-    const columnsBySource = context.columns_by_source || {[sourceKey(context.cdr_source)]: context.columns || []};
-    return globalThis.createInteractiveChartPreviewControls($('ds-chart-filter-fields'), context, {
-      columnsBySource, datasetsBySource: context.datasets_by_source || {},
-      fields: [
-        // Keep this sequence aligned with the editable Report Template columns.
-        ['chart_title', 'Chart Title'], ['cdr_source', 'CDR Type'], ['dataset_ids', 'Datasets'], ['kpi', 'KPI'], ['chart_type', 'Chart Type'],
-        ['dynamic_rows_field', 'Dynamic Rows Field'], ['dynamic_columns_field', 'Dynamic Columns Field'], ['filters', 'Filters'], ['rows_split', 'Rows'], ['columns_split', 'Columns'], ['legend', 'Legend'], ['legend_position', 'Legend Position'],
-        ['legend_format', 'Legend Format'], ['label_position', 'Label Position'], ['label_format', 'Label Format'],
-        ['axis_x_range', 'Axis X Range'], ['axis_y_range', 'Axis Y Range'], ['exclude_null_empty', 'Exclude Null/Empty'], ['exclude_zero', 'Exclude Zero'],
-      ],
-      textFields: {chart_title: true}, editableSplitInputs: true,
-      formatPanelToggleOnFieldClick: true,
-      chartTypes: ['100% Stacked Vertical Bars', 'Count Stacked Horizontal Bars', 'CDF Line', 'Histogram Line', 'Histogram Bars', 'Multi KPI CDF Lines', 'Scatter', 'Table', 'Dynamic Table', 'Distribution Stacked Vertical Bars', 'Threshold Stacked Vertical Bars', 'Average Vertical Bars', 'Median Vertical Bars', 'Map'],
-      legendPositions: ['', 'Top', 'Bottom', 'Left', 'Right'],
-      labelPositions: ['', 'None', 'Top', 'Up', 'Middle', 'Down'],
-      menuContainer: chartFilterPanel.closest('.ds-overlay') || expandedOverlayHost,
-      onSourceChange: next => {
-        const source = sourceKey(next.cdr_source);
-        expandedChartFilterControls = createExpandedChartFilterControls({...context, ...next, columns: columnsBySource[source] || []});
-      },
-    });
-  };
-  const labelFormatPayload = value => {
-    let tokens = [];
-    try { tokens = JSON.parse(String(value || '') || '[]'); } catch (_error) { tokens = []; }
-    if (!Array.isArray(tokens)) tokens = [];
-    const fonts = ['Arial', 'Helvetica', 'Verdana', 'Tahoma', 'Georgia', 'Times New Roman', 'Courier New'];
-    const size = tokens.find((token) => ['Small', 'Medium', 'Large'].includes(token));
-    return {
-      color: tokens.find((token) => /^#[0-9a-f]{6}$/i.test(token)) || '',
-      font: tokens.find((token) => fonts.includes(token)) || 'Arial',
-      bold: tokens.includes('Bold'), italic: tokens.includes('Italic'), underline: tokens.includes('Underline'),
-      size: size || 'Medium', has_size: Boolean(size),
-    };
-  };
-  const isVisualFormatOnlyChange = definition => (
-    Boolean(expandedChartAppliedDefinition)
-    && Object.keys(definition).every((key) => key === 'label_format' || definition[key] === expandedChartAppliedDefinition[key])
-  );
-  const loadExpandedChartFilters = async () => {
-    const fields = $('ds-chart-filter-fields');
-    if ((!prepared?.token && expandedChartMode !== 'ppt') || !expandedChart) return;
-    const chart = expandedChart;
-    const request = ++expandedChartFilterLoadRequest;
-    fields.textContent = 'Loading filters…';
-    expandedChartFilterContextPath = expandedChartMode === 'ppt'
-      ? `/ppt-jobs/${encodeURIComponent(designPptChartsJobId)}/charts/${chart.index}/filter-context`
-      : `/chart/${encodeURIComponent(prepared.token)}/${chart.index}/filter-context`;
-    const context = await api(expandedChartFilterContextPath);
-    if (chart !== expandedChart || request !== expandedChartFilterLoadRequest) return;
-    expandedChartFilterToken = String(context.token || prepared?.token || '');
-    expandedChartFilterIndex = Number.isInteger(context.chart_index) ? context.chart_index : chart.index;
-    expandedChartFilterControls = createExpandedChartFilterControls(context);
-    expandedChartAppliedDefinition = expandedChartFilterControls.definition();
-    expandedTemplateUpdate.hidden = !context.template_available;
-  };
-  $('ds-chart-filter-toggle').onclick = safe(async () => {
-    const open = !$('ds-chart-filter-panel').classList.contains('is-open');
-    setExpandedChartFiltersOpen(open);
-    if (open && !expandedChartFilterControls) await loadExpandedChartFilters();
-  });
-  const discardExpandedChartDefinitionDraft = () => {
-    expandedChartFilterLoadRequest += 1;
-    expandedChartFilterControls = null;
-    expandedChartFilterToken = '';
-    expandedChartFilterIndex = -1;
-    expandedChartFilterContextPath = '';
-    expandedChartAppliedDefinition = null;
-    $('ds-chart-filter-fields').replaceChildren();
-    expandedTemplateUpdate.hidden = true;
-    setExpandedChartFiltersOpen(false);
-    $('ds-chart-filter-toggle').focus();
-  };
-  const resetChartDefinitionSurface = () => {
-    expandedChartFilterLoadRequest += 1;
-    expandedChartFilterControls = null;
-    expandedChartFilterToken = '';
-    expandedChartFilterIndex = -1;
-    expandedChartFilterContextPath = '';
-    expandedChartAppliedDefinition = null;
-    $('ds-chart-filter-fields').replaceChildren();
-    expandedTemplateUpdate.hidden = true;
-    setExpandedChartFiltersOpen(false);
-  };
-  // An explicit Close means discard. Automatic/click-outside collapsing uses
-  // setExpandedChartFiltersOpen(false) directly and retains the draft.
-  $('ds-chart-filter-close').onclick = discardExpandedChartDefinitionDraft;
-  const renderExpandedChartDefinition = async ({closePanel = true} = {}) => {
-    const chart = expandedChart;
-    if (!chart || !expandedChartFilterControls) return null;
-    const canvas = $('ds-chart-expanded-canvas');
-    const message = $('ds-chart-expanded-message');
-    const previewDefinition = expandedChartFilterControls.definition();
-    message.textContent = 'Rendering chart preview…';
-    message.hidden = false;
-    try {
-      if (!expandedChartFilterToken && expandedChartMode === 'ppt') {
-        const preparedContext = await api(`${expandedChartFilterContextPath}?prepare=true`);
-        expandedChartFilterToken = String(preparedContext.token || '');
-        expandedChartFilterIndex = Number(preparedContext.chart_index);
-      }
-      if (!expandedChartFilterToken) throw new Error('The chart dataset could not be restored.');
-      let payload;
-      if (isVisualFormatOnlyChange(previewDefinition)) {
-        // Typography changes only affect Canvas paint. Reuse the existing
-        // data model instead of rebuilding and filtering CDR records.
-        payload = JSON.parse(JSON.stringify(await loadChartPayload(chart)));
-        payload.label_format = labelFormatPayload(previewDefinition.label_format);
-      } else {
-        payload = await api(`/chart/${encodeURIComponent(expandedChartFilterToken)}/${expandedChartFilterIndex}/filter-preview?background=true`, 'POST', previewDefinition);
-        while (payload?.state === 'processing' && payload.job_id) {
-          await new Promise(resolve => window.setTimeout(resolve, 400));
-          payload = await api(`/chart-preview-jobs/${encodeURIComponent(payload.job_id)}`);
-        }
-      }
-      if (chart !== expandedChart || !canvas.isConnected) return null;
-      setExpandedChartHeader({...chart, chart_type: previewDefinition.chart_type, cdr_source: previewDefinition.cdr_source}, payload.title);
-      expandedZoom.reset();
-      canvas.hidden = false;
-      globalThis.renderCanvasChart(canvas, withLegendState(chart, payload));
-      message.hidden = true;
-      // Applying a temporary Chart Definition changes the current viewer
-      // session, not only the enlarged canvas. Reuse that exact payload for
-      // the chart card and repaint its slide behind the overlay so closing the
-      // enlarged view reveals the applied chart immediately.
-      rememberRenderedChartPayload(chart, payload);
-      chart.title = payload.title || previewDefinition.chart_title || chart.title;
-      chart.chart_type = previewDefinition.chart_type || chart.chart_type;
-      chart.cdr_source = previewDefinition.cdr_source || chart.cdr_source;
-      expandedChartAppliedDefinition = {...previewDefinition};
-      if (expandedChartSlide(chart) === prepared?.slides[slideIndex]) renderSlide();
-      if (closePanel) setExpandedChartFiltersOpen(false);
-      return {previewDefinition, payload};
-    } catch (error) {
-      message.hidden = true;
-      throw error;
-    }
-  };
-  expandedTemplateUpdate.onclick = safe(async () => {
-    if (!expandedChart || !expandedChartFilterControls) return;
-    const accepted = await window.showConfirmDialog(
-      'Render the current Chart Definition and update its Report Template row?',
-      {title: 'Update Template?', confirmLabel: 'Update Template', tone: 'warning'},
-    );
-    if (!accepted) return;
-    expandedTemplateUpdate.disabled = true;
-    expandedTemplateUpdate.textContent = 'Rendering…';
-    try {
-      const rendered = await renderExpandedChartDefinition({closePanel: false});
-      if (!rendered) return;
-      expandedTemplateUpdate.textContent = 'Updating…';
-      const updated = await api(`/chart/${encodeURIComponent(expandedChartFilterToken)}/${expandedChartFilterIndex}/update-template`, 'POST', rendered.previewDefinition);
-      refreshEmbeddedTemplateEditor(updated, expandedChart?.focus_row);
-      window.showInfoDialog('The current Chart Definition values were saved to the Report Template.', {title: 'Template updated'});
-    } finally {
-      expandedTemplateUpdate.disabled = false;
-      expandedTemplateUpdate.textContent = 'Update Template';
-    }
-  });
-  $('ds-chart-filter-apply').onclick = safe(async () => {
-    const chart = expandedChart;
-    if (!chart || !expandedChartFilterControls) return;
-    const button = $('ds-chart-filter-apply');
-    button.disabled = true;
-    button.textContent = 'Applying…';
-    try {
-      await renderExpandedChartDefinition({closePanel: false});
-    } finally {
-      button.disabled = false;
-      button.textContent = 'Apply';
-    }
-  });
   async function openChartDataset(chart) {
     const pptSnapshotChart = Boolean(pptDesignViewer && chart.data_url);
     dataToken = (expandedChartMode === 'ppt' || pptSnapshotChart) ? `ppt:${designPptChartsJobId}` : prepared.token;
@@ -3911,17 +3685,6 @@
   const templateEditorBaseUrl = (sourceDefinition = definition) => sourceDefinition
     ? `/workspace-config/report-templates/${encodeURIComponent(sourceDefinition.template)}/editor`
     : '';
-  function refreshEmbeddedTemplateEditor(updatedTemplate, focusRow) {
-    const sourceDefinition = {template: updatedTemplate?.template};
-    const url = templateEditorBaseUrl(sourceDefinition);
-    const frame = $('ds-editor-frame');
-    if (!url || frame.dataset.editorUrl !== url) return;
-    if (Number.isInteger(focusRow)) frame.dataset.editorFocusRow = String(focusRow);
-    const parameters = new URLSearchParams();
-    if (Number.isInteger(focusRow)) parameters.set('focus_row', String(focusRow));
-    if (updatedTemplate?.updated_at) parameters.set('template_revision', String(updatedTemplate.updated_at));
-    frame.src = `${url}${parameters.size ? `?${parameters}` : ''}`;
-  }
   const focusTemplateEditorRow = row => {
     const frame = $('ds-editor-frame');
     frame.dataset.editorFocusRow = String(row);
@@ -4060,7 +3823,6 @@
   });
   async function openExpandedChart(chart, renderedPayload = null, mode = 'design', {preserveFocus = false} = {}) {
     stopPresentation();
-    resetChartDefinitionSurface();
     const request = ++expandedChartRequest;
     const contextKey = mode === 'ppt' ? designPptChartsJobId : prepared?.token;
     const canvas = $('ds-chart-expanded-canvas');
@@ -4649,7 +4411,7 @@
     const reset = () => { gesture = null; };
     host.addEventListener('pointerdown', event => {
       if (event.pointerType !== 'touch' || !event.isPrimary || blocked()) return;
-      if (event.target.closest('button,a,input,select,textarea,summary,[contenteditable="true"],.multiselect-menu,.ds-chart-filter-panel')) return;
+      if (event.target.closest('button,a,input,select,textarea,summary,[contenteditable="true"],.multiselect-menu')) return;
       const canvas = event.target.closest('canvas');
       if (canvas && Number(globalThis.getCanvasChartZoom?.(canvas) || 1) > 1) return;
       gesture = {pointerId: event.pointerId, x: event.clientX, y: event.clientY, time: performance.now()};
@@ -5034,15 +4796,17 @@
   // its thumbnails, and over the larger view of a chart (on touch screens, a tap shows them) download it as a PNG image,
   // as it is shown, or copy it to the clipboard as a screenshot (image_buttons.js); App Events records each one.
   const imageText = id => window.imageHeadingText?.($(id)) || '';
-  window.attachImageButtons?.({
+  const imageButtons = window.attachImageButtons?.({
     // (The larger view of a chart opens at the end of the page, outside its main part.)
     root: document.body, module: 'ppt-designer', fallbackName: 'Design',
     targets: '#ds-charts, #ds-charts > .ds-chart, #ds-ppt-charts-panel, #ds-ppt-charts-body > .report-chart-card, .ds-chart-expanded-canvas',
     charts: '#ds-charts > .ds-chart, #ds-ppt-charts-body > .report-chart-card, .ds-chart-expanded-canvas',
-    exclude: '.ds-chart-controls, .ds-chart-pan-button, .ds-chart-expanded-pan, .ds-chart-filter-panel',
+    exclude: '.ds-chart-controls, .ds-chart-pan-button, .ds-chart-expanded-pan, '
+      + '.ds-capturing-slide :is(#ds-viewer-preparing, .ds-viewer-navigation-footer, .ds-comment-entry, .ds-comment-suggestions, .ds-comments-list, #ds-comments-status, .ds-slide-comments button)',
     obstacles: '.ds-chart-controls, .ds-chart-brand, summary .summary-inline-actions',
-    // Every chart of a slide, also the only one, has its buttons on the row of its own (View dataset, Expand, Zoom).
-    singleParts: '#ds-charts > .ds-chart', partRow: '.ds-chart-controls',
+    // Every chart of a slide, also the only one, has its buttons on the row of its own (View dataset, Expand, Zoom); those
+    // of the whole slide stand beside the slide chooser, above it (never over one of its charts).
+    singleParts: '#ds-charts > .ds-chart', partRow: '.ds-chart-controls', hiddenCards: '#ds-charts, .ds-chart-expanded-canvas',
     // The slide, then its chart; the Charts Panel of its Design, then a thumbnail; the chart of the larger view.
     title: target => {
       if (target.matches('.ds-chart-expanded-canvas')) return imageText('ds-chart-expanded-title');
@@ -5060,6 +4824,40 @@
         : {section: 'Charts Panel', context: {design: imageText('ds-ppt-charts-design'), date: imageText('ds-ppt-charts-date')}};
     },
   });
+  // The image of the slide: the slide and, when it has comments, its comments below it (open for the image, as plain text,
+  // without the field to add one nor the navigation under the slide), then everything as it was.
+  async function exportSlideImage(button, copy) {
+    if (!imageButtons) return;
+    const comments = document.querySelector('#ds-slide-content .ds-slide-comments');
+    const withComments = Boolean(comments?.classList.contains('ds-has-comments'));
+    if (!withComments) { await imageButtons.exportImage($('ds-charts'), button, copy); return; }
+    const wasOpen = comments.open;
+    const plain = node('ol', undefined, 'ds-capture-comments');
+    plain.append(...currentSlideComments(viewerDefinition()).map(text => node('li', text)));
+    $('ds-comments-list').after(plain);
+    // The slide keeps its size: the comments go below it, not in its place.
+    const main = document.querySelector('#ds-slide-content .ds-slide-main');
+    const mainStyle = main?.getAttribute('style');
+    if (main) Object.assign(main.style, {height: `${main.getBoundingClientRect().height}px`, flex: '0 0 auto'});
+    comments.open = true;
+    $('ds-viewer').classList.add('ds-capturing-slide');
+    try { await imageButtons.exportImage($('ds-slide-content'), button, copy); }
+    finally {
+      $('ds-viewer').classList.remove('ds-capturing-slide');
+      comments.open = wasOpen;
+      plain.remove();
+      if (main) { if (mainStyle === null) main.removeAttribute('style'); else main.setAttribute('style', mainStyle); }
+    }
+  }
+  for (const [id, copy] of [['ds-slide-copy', true], ['ds-slide-download', false]]) {
+    $(id).addEventListener('click', event => { void exportSlideImage(event.currentTarget, copy); });
+  }
+  // The image of the chart of the larger view, from the buttons above it.
+  for (const [id, copy] of [['ds-chart-expanded-copy', true], ['ds-chart-expanded-download', false]]) {
+    $(id).addEventListener('click', event => {
+      if (imageButtons) void imageButtons.exportImage(document.querySelector('.ds-chart-expanded-canvas'), event.currentTarget, copy);
+    });
+  }
   // The Designer (designer.js) works on the open Design through these.
   window.designViewer = {
     api, safe, status, refreshTemplatesLibrary,

@@ -1464,9 +1464,9 @@ def test_designs_lifecycle_and_layout(client, ppt_reporting_old):
     assert 'This chart type has no interactive renderer' not in reporting_source
     app_styles = (Path(__file__).parents[1] / 'src/web_interface/static/css/app.css').read_text(encoding='utf-8')
     design_styles = (Path(__file__).parents[1] / 'src/web_interface/static/css/ppt_designer.css').read_text(encoding='utf-8')
-    assert '.ds-chart-expanded-canvas.ds-hover .ds-chart-filter-panel' in design_styles
+    # The charts are changed in the Designer: the expanded viewer has no Chart Definition tab.
+    assert 'ds-chart-filter-panel' not in design_styles
     assert '#ds-data-overlay .ds-data-dialog { position: absolute; inset: 5%;' in design_styles
-    assert '.ds-chart-filter-panel.is-open {' in design_styles
     assert '.ds-chart-expanded-overlay.ds-overlay { position: fixed; z-index: 9000;' in design_styles
     assert '#ds-viewer.ds-overlay{z-index:8800}' in design_styles
     assert '#ds-data-overlay.ds-overlay, #ds-filter-overlay.ds-overlay, #ds-presentation-overlay.ds-overlay { z-index: 9100 !important; }' in design_styles
@@ -1529,33 +1529,18 @@ def test_designs_lifecycle_and_layout(client, ppt_reporting_old):
     assert 'globalThis.panCanvasChart?.(canvas, direction);' in design_script
     assert "visible === 'ds-chart-expanded-overlay' && !editing && event.key === 'ArrowLeft'" in design_script
     assert "visible === 'ds-chart-expanded-overlay' && !editing && event.key === 'ArrowRight'" in design_script
-    assert "ds-chart-filter-panel" in page.text
-    assert "Chart Definition" in page.text
-    assert "/filter-preview" in design_script
-    assert "editableSplitInputs: true" in design_script
-    assert "previewDefinition = expandedChartFilterControls.definition()" in design_script
+    assert "ds-chart-filter-panel" not in page.text
+    assert "/filter-preview" not in design_script
     assert "operation && value ? `${operation}(${value})` : value" in app_script
     assert "operation.dataset.previewKpiAggregation = ''" in app_script
     assert "['COUNTD', 'COUNTD']" in app_script
-    assert "id = 'ds-chart-filter-update'" in design_script
-    assert "/update-template" in design_script
-    assert 'refreshEmbeddedTemplateEditor(updated, expandedChart?.focus_row);' in design_script
-    assert "parameters.set('template_revision', String(updatedTemplate.updated_at));" in design_script
-    assert 'const renderExpandedChartDefinition = async ({closePanel = true} = {}) =>' in design_script
-    assert 'const rendered = await renderExpandedChartDefinition({closePanel: false});' in design_script
-    assert design_script.index('const rendered = await renderExpandedChartDefinition({closePanel: false});') < design_script.index("/update-template`, 'POST', rendered.previewDefinition")
-    assert "const preparedContext = await api(`${expandedChartFilterContextPath}?prepare=true`);" in design_script
-    assert "if (open && !expandedChartFilterControls) await loadExpandedChartFilters();" in design_script
-    assert 'const discardExpandedChartDefinitionDraft = () =>' in design_script
-    assert "$('ds-chart-filter-close').onclick = discardExpandedChartDefinitionDraft;" in design_script
-    assert 'request !== expandedChartFilterLoadRequest' in design_script
+    assert "/update-template" not in design_script
+    assert 'renderExpandedChartDefinition' not in design_script
     assert "expandedCanvasShell.classList.add('ds-hover')" in design_script
-    assert 'const scheduleExpandedChartFiltersClose = () =>' in design_script
-    assert '}, 10000);' in design_script
-    assert "$('ds-chart-filter-panel').addEventListener('pointerleave', scheduleExpandedChartFiltersClose);" in design_script
     assert "addEventListener('focusout', event =>" not in design_script
     assert "document.addEventListener('pointerdown', event => {" in design_script
-    assert "event.target.closest('.report-chart-preview-select-menu')" in design_script
+    # The image of the chart of the larger view, from the buttons above it.
+    assert "['ds-chart-expanded-copy', true], ['ds-chart-expanded-download', false]" in design_script
     assert "`Chart ${index + 1} / ${charts.length}`" in design_script
     assert "if (event.target === event.currentTarget) expandedChartOverlay(false);" in design_script
     assert 'const closeOnOutsidePointer = (id, close) =>' in design_script

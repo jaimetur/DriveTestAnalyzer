@@ -119,6 +119,7 @@ STATE_KEY = 'ppt_designs_v2'
 # the Designs (never listed, exported, transferred or used by another module), whose changes go to its template.
 TEMPLATE_PREVIEWS_STATE_KEY = 'ppt_template_previews_v1'
 TEMPLATE_PREVIEW_PREFIX = 'template-preview-'
+UNAVAILABLE_COMBINED_COLUMNS_STATE_KEY = 'design_unavailable_combined_columns_v1'
 LEGACY_STATE_KEY = 'ppt_design_sets_v1'
 DEFAULT_FILTERS_MIGRATION_KEY = 'ppt_design_default_filters_v6'
 # The Main Cities choice of a City filter: the Main Cities of the workspace whenever the Design is used, so a change
@@ -4675,6 +4676,24 @@ def install_design_routes(core):
                 return True
         return False
 
+    # Per CDR type and revision of its combined table, kept in the workspace (a restart keeps it): the columns the charts
+    # of Designs asked for that none of its CDRs has.
+    def unavailable_combined_columns(task_repository) -> dict:
+        try:
+            stored = json.loads(task_repository.get_workspace_state(UNAVAILABLE_COMBINED_COLUMNS_STATE_KEY) or '{}')
+        except (TypeError, ValueError):
+            stored = {}
+        return stored if isinstance(stored, dict) else {}
+
+    def remember_unavailable_combined_columns(task_repository, key: str, columns: set[str]) -> None:
+        stored = unavailable_combined_columns(task_repository)
+        if set(stored.get(key) or []) == columns:
+            return
+        stored[key] = sorted(columns)
+        # Only the latest revisions matter.
+        stored = dict(list(stored.items())[-24:])
+        task_repository.set_workspace_state(UNAVAILABLE_COMBINED_COLUMNS_STATE_KEY, json.dumps(stored))
+
     def ensure_combined_filter_columns(
         definition, task_repository, dimensions, selected_by_kind, chart_entries=None,
     ):
@@ -4689,7 +4708,11 @@ def install_design_routes(core):
                     kind, chart_entries, definition.scope == 'multivendor',
                 ))
             current = {identity(column) for column in task_repository.list_reporting_row_columns(kind)}
-            if {identity(column) for column in requested}.issubset(current):
+            wanted = {identity(column) for column in requested}
+            # Columns asked for that no CDR of the type has stay missing: until the combined table changes they are not
+            # looked for again in every CDR at each preparation.
+            unavailable_key = f"{kind}:{task_repository.get_workspace_state(f'combined_reporting_updated_{kind}') or ''}"
+            if wanted.issubset(current | set(unavailable_combined_columns(task_repository).get(unavailable_key) or [])):
                 continue
             rows_changed = columns_changed = False
             included = core.combined_dataset_ids(task_repository, kind)
@@ -4708,6 +4731,7 @@ def install_design_routes(core):
                 rows_changed = rows_changed or change == 'rows'
                 columns_changed = columns_changed or change == 'columns'
             current = {identity(column) for column in task_repository.list_reporting_row_columns(kind)}
+            remember_unavailable_combined_columns(task_repository, unavailable_key, wanted - current)
             missing_dimensions = tuple(
                 dimension for dimension in active_dimensions
                 if f'cdr-{kind}' in dimension.sources and identity(dimension.name) not in current
@@ -5408,9 +5432,11 @@ def install_design_routes(core):
         ensure_not_cancelled()
         task_repository = Repository(Path(workspace), core.repository.global_db_path)
         entries = validate(definition, task_repository)
+        report(6, 'Reading the Auto-calculated Fields and the selected CDRs')
         dimensions = core.load_repository_calculated_dimensions(task_repository)
         selected_by_kind = selected_sources(definition, task_repository)
         if any(entry.source_kind == 'all' for entry in entries):
+            report(8, 'Adding the RF fields of the selected CDRs to the combined CDR tables')
             # A virtual source needs the physical RF fields of every selected
             # CDR type, including templates added after CDR ingestion.
             for kind, datasets in selected_by_kind.items():
@@ -5419,7 +5445,9 @@ def install_design_routes(core):
                     requested = [column for column in available if identity(column) in {identity(field) for field in rf_source_columns(kind)}]
                     task_repository.copy_dataset_rows_to_reporting(int(dataset['id']), kind, requested)
         if any(any(entry_dynamic_fields(entry)) or entry_uses_nr_mode(entry) for entry in entries):
+            report(10, 'Checking the fields of the charts in the combined CDR tables')
             ensure_combined_filter_columns(definition, task_repository, dimensions, selected_by_kind, chart_entries=entries)
+        report(12, 'Checking the Design fields in the combined CDR tables')
         selected_source_rows = {
             kind: sum(int(dataset.get('row_count') or 0) for dataset in selected)
             for kind, selected in selected_by_kind.items()

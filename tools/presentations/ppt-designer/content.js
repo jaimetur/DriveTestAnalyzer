@@ -41,7 +41,7 @@ module.exports = {
       visual: 'slides',
       points: [
         { icon: 'TbChartArcs', title: 'Live and expanded charts', text: 'Dataset, Expand, Refresh and Zoom on every chart; only Dataset while designing.' },
-        { icon: 'TbCode', title: 'Chart Definition', text: 'In the expanded view; the Designer changes the charts of the slide.' },
+        { icon: 'TbCode', title: 'Chart changes', text: 'On screen in the Designer; Edit PPT Template opens the template as a table.' },
         { icon: 'TbTable', title: 'Filtered Chart Dataset', text: 'The rows behind a chart, after the filters of the Design and of its template.' },
         { icon: 'TbPalette', title: 'Themes', text: 'Ericsson, NetCheck and the other themes colour the charts and the slide titles.' },
       ],
