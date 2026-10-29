@@ -1858,7 +1858,7 @@ def test_designs_lifecycle_and_layout(client, ppt_reporting_old):
     assert 'const preparedPayloads = new Map();' in design_script
     assert 'const restoreRememberedPrepared = async id =>' in design_script
     assert 'const inMemory = preparedPayloads.get(preparedPayloadKey(id, fingerprint));' in design_script
-    assert 'if (await restorePrepared(activeId))' in design_script
+    assert 'const restoredNow = await restorePrepared(activeId);' in design_script
     assert "const payload = await api(`/prepared/${encodeURIComponent(inMemory.payload.token)}`);" in design_script
     assert 'forgetPreparedToken(inMemory.payload.token);' in design_script
     assert 'forgetPrepared();' in design_script
@@ -3215,8 +3215,8 @@ def test_report_template_changes_record_the_last_editor(client):
     assert response.status_code == 303
     row = next(row for row in core.repository.list_report_templates() if row['name'] == 'Editor audit')
     assert row['updated_by'] == 'super'
-    page = client.get('/workspace-config')
-    # Templates have no NR Mode: the library has no column for it.
+    page = client.get('/ppt-designer')
+    # Templates have no NR Mode: the library (PPT Templates of PPT Designer) has no column for it.
     assert '<th>Template name</th><th>Created</th><th>Last Updated</th><th>Last Updated by</th>' in page.text
 
 

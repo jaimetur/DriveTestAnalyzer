@@ -9717,9 +9717,10 @@ def test_admin_stores_multiple_named_report_catalogues_and_can_activate_one(clie
     assert next(item['identifier'] for item in app_module.report_catalogue_options() if item['active']) == 'Baseline Q4'
     assert app_module.repository.report_template_content('Updated Q4')
 
-    protected_delete = client.post('/workspace-config/report-templates/Baseline%20Q4/delete')
-    assert protected_delete.status_code == 400
-    assert 'The default template cannot be deleted.' in protected_delete.text
+    protected_delete = client.post('/workspace-config/report-templates/Baseline%20Q4/delete', follow_redirects=False)
+    assert protected_delete.status_code == 303
+    assert protected_delete.headers['location'] == '/ppt-designer?ppt_templates=1&catalogue_error=The+default+template+cannot+be+deleted.'
+    assert app_module.repository.report_template_content('Baseline Q4')
 
     reporting_after_activation = client.get('/ppt-reporting-old')
     assert 'value="Baseline Q4" data-catalogue-active="true" selected' in reporting_after_activation.text
@@ -9802,10 +9803,10 @@ def test_report_template_rename_keeps_special_characters_in_action_urls(client) 
 
     assert response.status_code == 200
     assert response.json()['identifier'] == new_name
-    workspace_config = client.get('/workspace-config')
-    assert workspace_config.status_code == 200
-    assert '/workspace-config/report-templates/North%20%231%20%26%20South/rename' in workspace_config.text
-    assert '/workspace-config/report-templates/North%20%231%20%26%20South/editor' in workspace_config.text
+    templates_page = client.get('/ppt-designer')
+    assert templates_page.status_code == 200
+    assert '/workspace-config/report-templates/North%20%231%20%26%20South/rename' in templates_page.text
+    assert 'data-edit-template="North #1 &amp; South"' in templates_page.text
 
 
 def test_admin_renaming_named_catalogue_renames_its_csv_file(client) -> None:

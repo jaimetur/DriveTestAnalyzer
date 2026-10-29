@@ -243,10 +243,12 @@ def test_ppt_templates_are_deleted_by_their_creator_or_an_admin(client):
     delete_url = f"/workspace-config/report-templates/{quote(created['identifier'])}/delete"
 
     login(client, 'bob', 'bob123')
-    page = client.get('/workspace-config').text
+    # PPT Templates are managed from PPT Designer, where the refusal returns with its reason.
+    page = client.get('/ppt-designer').text
     assert 'title="Only admins and super-admins, or the user who created it, can delete this PPT Template"' in page
-    refused = client.post(delete_url)
-    assert refused.status_code == 403
+    refused = client.post(delete_url, follow_redirects=False)
+    assert refused.status_code == 303
+    assert refused.headers['location'].startswith('/ppt-designer?ppt_templates=1&catalogue_error=')
     assert any(item['name'] == 'New Template' for item in core.report_catalogue_options())
 
     login(client, 'alice', 'alice123')
