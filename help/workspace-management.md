@@ -126,7 +126,7 @@ The Final, Weekly and Daily CDR cards show beside their icon how many campaigns 
 A **Flex campaign** is a partial campaign: one whose Campaign values, or their label in [Workspace Config → Campaign Maps](workspace-config.md#campaign-maps), have the word Flex (`UK_Flex_2026`, `26-Q2-Flex`, `2025-Q2-Flex`); a CDR whose rows have no Campaign yet is a Flex one when its Campaign here is. As it measures only part of what a campaign does, it is used only where it is checked by hand:
 
 - **Latest campaign**, **Latest 2, 3 and 4 campaigns**, **Previous campaign** and **All available campaigns** never count it, in Scoring & GAP Analysis, PPT Designer, CDR Analysis, Network Insights, Non-Qualified Calls, Reporting Jobs and Bundle Report Templates (a workspace with only Flex campaigns gets no campaign from them);
-- a Campaign filter without campaigns (every campaign, such as **All complete campaigns** of Scoring) leaves its CDRs out; the list of [Non-Qualified Calls](non-qualified-calls.md) still shows its calls with the others when no campaign is filtered;
+- a Campaign filter without campaigns (every campaign, such as **All complete campaigns** of Scoring) leaves its CDRs out; the list of [Non-Qualified Calls](non-qualified-calls.md) still shows its calls with the others when no campaign is filtered, as they must be analysed too (without a campaign, every campaign available is analysed);
 - the [NQ Prioritization](non-qualified-calls.md#nq-prioritization) never takes it as the campaign whose Final CDR gives the Expected Gain of the calls of other campaigns;
 - checking it in a Campaign filter uses it like any other campaign.
 
