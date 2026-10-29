@@ -1137,8 +1137,8 @@
   const PANEL_WIDTH_KEY = 'drivetest-analyzer:ppt-designer:panel-width';
   try { state.panelWidth = Number(localStorage.getItem(PANEL_WIDTH_KEY)) || 0; } catch (_error) { state.panelWidth = 0; }
   let relayoutTimer = 0;
-  // The narrowest panel keeps each row on one line (18.5rem, as the stylesheet).
-  const PANEL_MIN_WIDTH = 296;
+  // The narrowest panel keeps each row on one line (19rem, as the stylesheet).
+  const PANEL_MIN_WIDTH = 304;
   function setPanelWidth(panel, width, {final = false} = {}) {
     const max = Math.max(PANEL_MIN_WIDTH, Math.min(720, Math.round(window.innerWidth * 0.6)));
     state.panelWidth = width ? Math.round(Math.max(PANEL_MIN_WIDTH, Math.min(max, width))) : 0;

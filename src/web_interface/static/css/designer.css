@@ -54,14 +54,14 @@
 @keyframes ds-design-spin { to { transform: rotate(360deg); } }
 
 /* The panel of the slide or element chosen, at the right of the slide: as wide as it was left (dragged on its left
-   edge), never narrower than its rows need (18.5rem: Source and NR Mode on one line each). */
+   edge), never narrower than its rows need (19rem: Source and NR Mode on one line each). */
 .ppt-designer .ds-design-panel { display: none; }
 #ds-viewer.ds-designing .ds-design-panel:not([hidden]) {
   position: relative; display: flex; flex-direction: column; min-height: 0; overflow: visible; container: ds-panel / inline-size;
   border: 1px solid var(--ds-border); border-radius: 12px; background: var(--ds-design-surface);
 }
 @media (min-width: 901px) {
-  #ds-viewer.ds-designing:not(.ds-presentation-active) .ds-design-panel:not([hidden]) { flex: 0 0 var(--ds-panel-width, clamp(18.5rem, 22vw, 23rem)); }
+  #ds-viewer.ds-designing:not(.ds-presentation-active) .ds-design-panel:not([hidden]) { flex: 0 0 var(--ds-panel-width, clamp(19rem, 22vw, 23rem)); }
 }
 /* Phones and narrow windows: the panel floats at the bottom, over the comments, so the slide keeps its height. */
 @media (max-width: 900px) {
