@@ -377,6 +377,36 @@ def add_data_cdr(tmp_path, name, nr_mode, campaign):
     return dataset_id
 
 
+def test_a_chart_of_one_nr_mode_reads_only_the_cdrs_of_that_nr_mode(client, tmp_path, monkeypatch):
+    import src.modules.ppt_designer as designs_module
+    from src.modules.cdr_facets import fill_missing_facets
+
+    assert client.post('/login', data={'username': 'super', 'password': 'super123'}, follow_redirects=False).status_code == 303
+    nsa = add_data_cdr(tmp_path, 'nsa.csv', 'NSA', '2026-Q2')
+    sa = add_data_cdr(tmp_path, 'sa.csv', 'SA', '2026-Q2-SA')
+    fill_missing_facets(app_module.repository, [nsa, sa])
+    definition = {'name': 'Both', 'template': 'FDFS DL (NSA & SA)', 'nr_mode': 'NSA+SA', 'auto_cdrs': True,
+                  'filters': {'Campaign': ['@latest-campaign']}, 'sa_campaigns': ['@latest-campaign']}
+    read = []
+    for name in ('read_frame', 'read_grouped_frame'):
+        def spy(cache, source, segments, *args, _original=getattr(designs_module, name), **kwargs):
+            read.append({segment.dataset_id for segment in segments})
+            return _original(cache, source, segments, *args, **kwargs)
+        monkeypatch.setattr(designs_module, name, spy)
+    prepared = client.post('/api/ppt-designer/prepare', json=definition)
+    assert prepared.status_code == 200, prepared.text
+    token = prepared.json()['token']
+    charts = next(slide for slide in prepared.json()['slides'] if slide['charts'])['charts']
+    datasets = {}
+    for chart in charts:
+        read.clear()
+        drawn = client.get(f"/api/ppt-designer/chart/{token}/{chart['index']}")
+        assert drawn.status_code == 200, drawn.text
+        datasets[chart['title']] = set().union(*read)
+    # CDF_NSA keeps NR Mode IN (NSA) and CDF_SA NR Mode IN (SA): each reads its own CDR; the chart of both reads both.
+    assert datasets == {'CDF_NSA': {nsa}, 'CDF_SA': {sa}, 'Transfer time FDFS DL': {nsa, sa}}
+
+
 def test_a_design_of_nsa_and_sa_reads_the_cdrs_of_each_nr_mode_by_its_campaigns(client, tmp_path):
     assert client.post('/login', data={'username': 'super', 'password': 'super123'}, follow_redirects=False).status_code == 303
     nsa_q1 = add_data_cdr(tmp_path, 'q1.csv', 'NSA', '2026-Q1')

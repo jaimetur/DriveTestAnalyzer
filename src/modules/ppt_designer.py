@@ -444,6 +444,19 @@ def dataset_matches_nr_mode(dataset, nr_mode) -> bool:
     return mode is None or mode in nr_modes_of(design_nr_mode_value(nr_mode))
 
 
+def chart_nr_mode_rows(entry, definition, rows_by_kind):
+    """The CDRs a chart reads: in a Design of NSA & SA, those of the one NR Mode its filters keep (a CDR of no known NR
+    Mode stays), so a chart of SA reads no NSA CDR; a chart of both NR Modes, or split by NR Mode, reads them all."""
+    if not DESIGN_NR_MODE_READS or design_nr_mode(definition) != NSA_VS_SA:
+        return rows_by_kind
+    modes = [mode for mode in chart_filter_nr_modes(entry) if mode in NR_MODES]
+    if len(modes) != 1:
+        return rows_by_kind
+    narrowed = {kind: [row for row in rows if dataset_matches_nr_mode(row, modes[0])] for kind, rows in rows_by_kind.items()}
+    # (Without a CDR of its NR Mode it reads them all and its filter leaves it empty, as before.)
+    return narrowed if any(narrowed.values()) else rows_by_kind
+
+
 FILTER_COLUMNS = {
     'Market': ('market',), 'Operator': ('operator',), 'Operator_Vendor': ('Operator_Vendor',), 'Vendor': ('Vendor',),
     # Vendor_Operator is Operator_Vendor the other way round: it reads that column (see mapped_filter_options).
@@ -478,6 +491,9 @@ DESIGN_COMPACT_READS = os.environ.get('DRIVETEST_ANALYZER_COMPACT_READS', '1') !
 DESIGN_COLUMN_CACHE = os.environ.get('DRIVETEST_ANALYZER_COLUMN_CACHE', '1') != '0'
 # Order-independent charts filter each distinct row of their columns once, with its number of rows (see read_frame).
 DESIGN_WEIGHTED_READS = os.environ.get('DRIVETEST_ANALYZER_WEIGHTED_READS', '1') != '0'
+# In a Design of NSA & SA, a chart of one NR Mode (NR Mode IN (SA)) reads only the CDRs of that NR Mode; 0 reads both
+# and leaves its filter to drop the rows of the other one (the same chart).
+DESIGN_NR_MODE_READS = os.environ.get('DRIVETEST_ANALYZER_NR_MODE_READS', '1') != '0'
 # Design source reads: larger page cache, memory-mapped I/O and a sequential
 # scan when the selected CDRs hold at least this share of a combined table.
 DESIGN_READ_CACHE_KIB = 262_144
@@ -7083,6 +7099,7 @@ def install_design_routes(core):
                 with lock:
                     snapshot.sources[entry.source_kind] = source
             rows_by_kind, database_path, table_name, source_columns = source
+            rows_by_kind = chart_nr_mode_rows(entry, snapshot.definition, rows_by_kind)
             selected = [row for rows in rows_by_kind.values() for row in rows]
             where, parameters = selection_where(
                 task_repository, entry.source_kind, [int(row['id']) for row in selected], snapshot.definition,
