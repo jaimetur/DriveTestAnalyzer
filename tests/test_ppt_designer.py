@@ -3670,7 +3670,9 @@ def test_design_closed_during_its_cache_lookup_is_not_prepared():
     assert "if (!definition || activeId !== lookupDesignId) {" in prepare
     assert "throw new DOMException('The Design is no longer open.', 'AbortError');" in prepare
     restore = script[script.index('  async function restorePrepared(id) {'):script.index('  function filterChanged() {')]
-    assert 'if (activeId !== id || preparedStateFingerprint(definition) !== fingerprint) return false;\n      applyPreparedPayload(payload);' in restore
+    # The answer of a Design closed or changed meanwhile is never shown (it returns before applying it).
+    assert restore.index('if (activeId !== id || preparedStateFingerprint(definition) !== fingerprint) return false;\n'
+                         '      // (Recorded before the payload is shown') < restore.index('applyPreparedPayload(payload);')
     assert "const host = $('ds-sources'); host.replaceChildren();\n    if (!definition) { renderAutoCdrs(); return; }" in script
     assert 'defaultHost.replaceChildren(); additionalHost.replaceChildren();\n' in script
     facets = script[script.index('  function facets() {'):script.index('    definition.hidden_filters ||= [];')]

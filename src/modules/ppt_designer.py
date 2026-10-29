@@ -1912,6 +1912,21 @@ def install_design_routes(core):
             previews = {}
         return previews if isinstance(previews, dict) else {}
 
+    def design_exists(task_repository, design_id: str) -> bool:
+        """Whether a Design (or a PPT Template open as one) is stored, read as saved: no migration of every Design."""
+        if is_template_preview(design_id):
+            return design_id in read_template_previews(task_repository)
+        for key in (STATE_KEY, LEGACY_STATE_KEY):
+            stored = task_repository.get_workspace_state(key)
+            if stored is None:
+                continue
+            try:
+                designs = json.loads(stored or '{}')
+            except (TypeError, ValueError):
+                return design_id in read_designs(task_repository)
+            return isinstance(designs, dict) and design_id in designs
+        return False
+
     def read_designs_and_previews(task_repository) -> dict:
         """The Designs and the PPT Templates open as one (for what reads or changes an open Design)."""
         return {**read_designs(task_repository), **read_template_previews(task_repository)}
@@ -6018,15 +6033,19 @@ def install_design_routes(core):
         except sqlite3.Error:
             return False
 
-    def prefetched_design_response(design_id: str, definition: DesignDefinition, user, started=None, definition_seconds=0.0):
+    def prefetched_design_response(design_id: str, definition: DesignDefinition, user, started=None, definition_seconds=0.0,
+                                   found_seconds=0.0):
         workspace = workspace_key()
         started = monotonic() if started is None else started
+        restoring = monotonic()
         restored = restore_matching_preview_manifest(workspace, design_id, definition)
-        # How long opening a Design waits for this lookup (Checking persistent PPT cache), in App Events.
+        # How long opening a Design waits for this lookup (Checking persistent PPT cache), in App Events: finding the
+        # Design and its kept preparation, working out its CDRs, then restoring the preparation.
         try:
             bound_repository().add_log(user.username, 'design_cache_checked', json.dumps({
                 'id': design_id, 'name': definition.name, 'restored': restored is not None,
-                'seconds': round(monotonic() - started, 2), 'definition_seconds': round(definition_seconds, 2),
+                'seconds': round(monotonic() - started, 2), 'found_seconds': round(found_seconds, 2),
+                'definition_seconds': round(definition_seconds, 2), 'restore_seconds': round(monotonic() - restoring, 2),
             }))
         except (sqlite3.Error, OSError):
             pass  # The lookup stands; only its App Event is missing.
@@ -6055,15 +6074,16 @@ def install_design_routes(core):
     ):
         started = monotonic()
         task_repository = bound_repository()
-        with lock:
-            if design_id not in read_designs_and_previews(task_repository):
-                raise HTTPException(404, 'Design not found.')
+        if not design_exists(task_repository, design_id):
+            raise HTTPException(404, 'Design not found.')
         # With no preparation of the Design kept there is nothing to look up: it is prepared at once.
         if not has_preview_manifest(design_id):
             raise HTTPException(409, 'PPT preparation is required.')
+        checked = monotonic()
         with cdr_stage.remembered_inclusion():
             definition = (automatic_scope_universe if use_scope_universe else auto_cdr_definition)(definition, task_repository)
-            return prefetched_design_response(design_id, definition, user, started, monotonic() - started)
+            return prefetched_design_response(design_id, definition, user, started, monotonic() - checked,
+                                              found_seconds=checked - started)
 
     @app.post('/api/ppt-designer/opened/{design_id}')
     def design_opened(design_id: str, timeline: dict[str, Any] = Body(default_factory=dict), user=Depends(design_user)):
@@ -6074,7 +6094,7 @@ def install_design_routes(core):
             raw_definition = read_designs_and_previews(task_repository).get(design_id)
         if not isinstance(raw_definition, dict):
             raise HTTPException(404, 'Design not found.')
-        numbers = {key: round(float(timeline[key]), 2) for key in ('lookup_seconds', 'prepared_seconds', 'slide_seconds')
+        numbers = {key: round(float(timeline[key]), 2) for key in ('before_lookup_seconds', 'lookup_seconds', 'prepared_seconds', 'slide_seconds')
                    if isinstance(timeline.get(key), (int, float))}
         task_repository.add_log(user.username, 'design_opened', json.dumps({
             'id': design_id, 'name': raw_definition.get('name', ''), **numbers,
@@ -7743,8 +7763,7 @@ def install_design_routes(core):
                 has_data = cached[1]
             else:
                 try:
-                    definition = auto_cdr_definition(DesignDefinition.model_validate(
-                        runtime_design_definition(raw_definition, task_repository)), task_repository)
+                    definition = DesignDefinition.model_validate(runtime_design_definition(raw_definition, task_repository))
                     has_data = any(definition.datasets.values())
                 except (HTTPException, KeyError, OSError, sqlite3.Error, TypeError, ValueError):
                     has_data = False

@@ -1980,7 +1980,8 @@
     renderDesignStatuses();
   };
   const refreshDesignStatuses = async () => {
-    if (designStatusRefreshing) return;
+    // Not while a Design is being opened or prepared: the states wait, the opening goes first.
+    if (designStatusRefreshing || preparing || (openingTimes?.prepared === undefined && performance.now() - (openingTimes?.started ?? -Infinity) < 30000)) return;
     designStatusRefreshing = true;
     try {
       const statusDefinitions = Object.fromEntries(Object.entries(designs).map(
@@ -2525,6 +2526,10 @@
       // part of the shared persistent preview-cache identity.
       const payload = await api(`/prefetched/${encodeURIComponent(id)}`, 'POST', definition);
       if (activeId !== id || preparedStateFingerprint(definition) !== fingerprint) return false;
+      // (Recorded before the payload is shown, which records the opening.)
+      if (openingTimes?.id === id && openingTimes.lookupStarted !== undefined && openingTimes.lookup === undefined) {
+        Object.assign(openingTimes, {lookup: performance.now() - openingTimes.lookupStarted, restored: true});
+      }
       applyPreparedPayload(payload);
       return true;
     } catch (error) {
@@ -2592,6 +2597,7 @@
     emitPreparationStatus('processing', 'Checking persistent PPT cache', cacheLookupToken);
     const lookupDesignId = activeId;
     const lookupStarted = performance.now();
+    if (openingTimes?.id === lookupDesignId && openingTimes.lookupStarted === undefined) openingTimes.lookupStarted = lookupStarted;
     const restoredNow = await restorePrepared(activeId);
     if (openingTimes?.id === lookupDesignId && openingTimes.lookup === undefined) {
       Object.assign(openingTimes, {lookup: performance.now() - lookupStarted, restored: restoredNow});
@@ -4236,6 +4242,7 @@
     void Promise.allSettled(visibleLoads).then(() => {
       const seconds = value => Number.isFinite(value) ? value / 1000 : null;
       return api(`/opened/${encodeURIComponent(times.id)}`, 'POST', {
+        before_lookup_seconds: seconds(times.lookupStarted === undefined ? undefined : times.lookupStarted - times.started),
         lookup_seconds: seconds(times.lookup), prepared_seconds: seconds(times.prepared),
         slide_seconds: seconds(performance.now() - times.started), restored: Boolean(times.restored), slide, charts: visibleLoads.length,
       });
