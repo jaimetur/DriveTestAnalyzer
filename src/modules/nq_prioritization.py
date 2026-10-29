@@ -113,11 +113,11 @@ QUEUE_ORDER = (VOICE_QUEUE, DATA_QUEUE, UNIQUE_QUEUE)
 CAMPAIGN_LIST, FINAL_LIST = 'campaign', 'final'
 LIST_LABELS = {CAMPAIGN_LIST: 'Campaign', FINAL_LIST: 'Final'}
 # The time of the consecutive failures and the distance of the clusters by default, which the hotspots join: failures of
-# the same operator, NR Mode and campaign (Voice, WhatsApp and Data together), each at most 15 minutes OR half the
+# the same operator, NR Mode and campaign (Voice, WhatsApp and Data together), each at most 6 minutes OR half the
 # inter-site distance (ISD) of the sites nearest to them (or the same site) from another one of them by default. Without
 # an ISD (no Network Inventory, or no site near) the clusters take 250 m in cities and 1 km on connecting roads (see
 # ``reach``).
-CLUSTER_MINUTES = 15
+CLUSTER_MINUTES = 6
 CLUSTER_ISD = 0.5
 CLUSTER_METERS = 250.0
 CLUSTER_ROAD_METERS = 1000
@@ -133,8 +133,13 @@ PLACE_SETTINGS = ('min_calls', 'previous_quarters', 'cluster_isd', 'spot_meters'
 # The farthest two consecutive failures of a drive can be from each other: this many times the inter-site distance (ISD)
 # of the sites nearest to them (the larger one), as a road site serves farther than an urban one; without an ISD (no
 # Network Inventory, or no site near), these distances by the area of the calls (Connecting Roads when either is on one).
-CONSECUTIVE_ISD = 2.0
-CONSECUTIVE_CITY_METERS, CONSECUTIVE_ROAD_METERS = 1000, 5000
+CONSECUTIVE_ISD = 0.8
+CONSECUTIVE_CITY_METERS, CONSECUTIVE_ROAD_METERS = 500, 2000
+# The levels shared by every strategy (the card of the Prioritization Rules), and the defaults of those that changed when
+# the recommended configuration of the NQ team became the default one (see ``migrate_recommended_levels``).
+LEVEL_SETTINGS = ('high_share', 'medium_share', *PLACE_SETTINGS, 'capacity')
+FORMER_DEFAULT_LEVELS = {'previous_quarters': 1, 'consecutive_minutes': 15, 'consecutive_isd': 2.0, 'consecutive_city_meters': 1000,
+                         'consecutive_road_meters': 5000}
 # The drive of a call, so that the failures of the cars that measure at the same time elsewhere never follow one another:
 # the measurement system of its CDR (the car: a data CDR, else the A side of a voice CDR), else the file of its CDR (the
 # device).
@@ -317,7 +322,7 @@ def default_settings(operators: dict[str, list[str]] | None = None, modes: list[
     """The default settings; ``operators`` gives the operators of the steps by NR Mode (``default_step_operators``) and
     ``modes`` the NR Mode and operator pairs out of scope (``default_excluded_modes``)."""
     return {'strategy': DEFAULT_STRATEGY, 'steps': default_steps(operators), 'high_share': 50,
-            'medium_share': 80, 'min_calls': 2, 'previous_quarters': 1, 'cluster_isd': CLUSTER_ISD, 'spot_meters': int(CLUSTER_METERS),
+            'medium_share': 80, 'min_calls': 2, 'previous_quarters': 0, 'cluster_isd': CLUSTER_ISD, 'spot_meters': int(CLUSTER_METERS),
             'cluster_road_meters': CLUSTER_ROAD_METERS,
             'consecutive_minutes': CLUSTER_MINUTES, 'consecutive_isd': CONSECUTIVE_ISD, 'consecutive_city_meters': CONSECUTIVE_CITY_METERS,
             'consecutive_road_meters': CONSECUTIVE_ROAD_METERS, 'hotspot_join': DEFAULT_HOTSPOT_JOIN, 'capacity': 20,
@@ -2599,6 +2604,48 @@ def migrate_excluded_modes(repository: Any) -> dict[str, list[str]]:
     result = move_excluded_modes(repository, pairs)
     repository.set_workspace_state(MODES_MOVED_STATE_KEY, '1')
     return result
+
+
+# Set once the levels shared by every strategy took the recommended configuration.
+RECOMMENDED_LEVELS_STATE_KEY = 'nq_prioritization_recommended_levels'
+
+
+def migrate_recommended_levels(repository: Any) -> list[str]:
+    """Once per workspace: the levels shared by every strategy (Scoring Impact, Clusters, Time-Window Issues and Hotspots)
+    take the configuration the NQ team recommends, the defaults since then, whatever they were (saved, or the former
+    defaults while none were saved). When one changes, the calls already calculated take it at once, as Save does (their
+    places and groups, their levels when a share changes, and the rules), and App Events records each change, such as
+    "Time window (min): 15 → 6"."""
+    if repository.get_workspace_state(RECOMMENDED_LEVELS_STATE_KEY):
+        return []
+    try:
+        stored = json.loads(repository.get_workspace_state(SETTINGS_STATE_KEY) or 'null')
+    except (TypeError, ValueError):
+        stored = None
+    stored = stored if isinstance(stored, dict) else None
+    # A workspace that neither saved its levels nor calculated its calls (a new one) has the recommended ones already.
+    calculated = bool(repository.get_workspace_state(SUMMARY_STATE_KEY))
+    recommended = {name: value for name, value in default_settings().items() if name in LEVEL_SETTINGS}
+    before = {**FORMER_DEFAULT_LEVELS, **(stored or {})}
+    changed = ([name for name in LEVEL_SETTINGS if normalize_settings(before)[name] != recommended[name]]
+               if stored is not None or calculated else [])
+    if changed:
+        if stored is not None:
+            repository.set_workspace_state(SETTINGS_STATE_KEY, json.dumps({**stored, **recommended}, ensure_ascii=False))
+        applied: dict[str, int] = {}
+        # A workspace whose calls were never calculated takes the levels with its first calculation.
+        if calculated:
+            settings = load_settings(repository)
+            refresh_places(repository, settings)
+            if {'high_share', 'medium_share'} & set(changed):
+                refresh_levels(repository, settings)
+            applied = apply_rules(repository, SYSTEM_USER, settings)
+        if hasattr(repository, 'try_add_log'):
+            repository.try_add_log(SYSTEM_USER, 'nq_prioritization_settings', json.dumps({
+                'reason': 'Recommended levels shared by every strategy', 'changed': changed,
+                'levels_changed': settings_changes(before, {**before, **recommended}), **applied}, ensure_ascii=False))
+    repository.set_workspace_state(RECOMMENDED_LEVELS_STATE_KEY, '1')
+    return changed
 
 
 def map_excluded_modes(repository: Any) -> list[dict[str, str]]:

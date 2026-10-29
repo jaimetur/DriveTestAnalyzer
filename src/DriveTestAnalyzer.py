@@ -2826,6 +2826,12 @@ def activate_workspace(workspace_id: str, *, initialize: bool = True) -> Workspa
                     _clear_chart_preview_caches()
             except Exception as exc:  # noqa: BLE001 - never blocks opening a workspace
                 repository.try_add_log('system', 'operator_nr_modes_migration_failed', json.dumps({'error': str(exc)}))
+            # Once: the levels shared by every strategy of the NQ Prioritization take the recommended configuration.
+            try:
+                from src.modules.nq_prioritization import migrate_recommended_levels
+                migrate_recommended_levels(repository)
+            except Exception as exc:  # noqa: BLE001 - never blocks opening a workspace
+                repository.try_add_log('system', 'nq_recommended_levels_migration_failed', json.dumps({'error': str(exc)}))
             # What has no known creator, or was created by the application, belongs to UNKNOWN_CREATOR_OWNER.
             try:
                 from src.modules.deletion_rights import UNKNOWN_CREATOR_OWNER, assign_unknown_creators

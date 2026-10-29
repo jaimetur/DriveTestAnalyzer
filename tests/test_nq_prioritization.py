@@ -72,10 +72,10 @@ def test_settings_are_validated():
                                             'custom': 'Dual Queue (Scoring Based)', 'vodafone_proposal': 'Vodafone Proposal'}
     assert defaults['strategy'] == 'cities_first'
     assert tuple(defaults[key] for key in ('high_share', 'medium_share', 'min_calls', 'previous_quarters', 'spot_meters',
-                                           'consecutive_minutes', 'hotspot_join', 'capacity')) == (50, 80, 2, 1, 250, 15, 'or', 20)
+                                           'consecutive_minutes', 'hotspot_join', 'capacity')) == (50, 80, 2, 0, 250, 6, 'or', 20)
     # The distances in inter-site distances (ISD) of the nearest sites, and in meters by area without an ISD.
     assert tuple(defaults[key] for key in ('cluster_isd', 'cluster_road_meters', 'consecutive_isd', 'consecutive_city_meters',
-                                           'consecutive_road_meters')) == (0.5, 1000, 2.0, 1000, 5000)
+                                           'consecutive_road_meters')) == (0.5, 1000, 0.8, 500, 2000)
     assert nq_prioritization.normalize_settings({'cluster_isd': '0.75', 'consecutive_isd': 3})['cluster_isd'] == 0.75
     assert nq_prioritization.normalize_settings({'hotspot_join': ' AND '})['hotspot_join'] == 'and'
     # The Hotspot time and distance of the first version give way to the Time window and the Cluster distance.
@@ -475,6 +475,11 @@ def test_strategies_give_each_call_its_step_queue_and_priority():
         assert decide(vodafone, call)[:4] == ('Track only', 'Campaign 8 · Tracked', 'P8', '')
 
 
+# The Time window and Time-window distance these tests were written with (15 minutes, 2 ISD, else 1 km in cities and 5 km
+# on connecting roads), given explicitly since the defaults are the recommended ones.
+WINDOW = {'minutes': 15, 'run_meters': nq_prioritization.reach(2.0, 1000, 5000)}
+
+
 def failure(key, minute, latitude, site='', operator='VF', day=1, drive='system:car 1', **values):
     return {'call_key': key, 'operator': operator, 'nr_mode': 'SA', 'campaign': '2026-Q3', 'place_key': f'site:|{site}' if site else '',
             'start_time': f'2026-09-0{day} 10:{minute:02d}:00', 'latitude': latitude, 'longitude': -0.12, 'drive': drive, **values}
@@ -488,23 +493,23 @@ def test_hotspots_link_the_failures_close_in_time_or_distance_whatever_their_cal
         failure('g', 0, 51.5000, operator='EE'), failure('h', 1, 51.5000, day=2),  # another operator, another day
         failure('k', 30, 51.9000), failure('m', 40, 51.9900),  # 10 minutes apart, 10 km apart (44 km after c)
         failure('i', 0, 51.5000, start_time='')]  # no date
-    found = nq_prioritization.hotspots(calls, join='and')
+    found = nq_prioritization.hotspots(calls, join='and', **WINDOW)
     assert found['a'][0] == found['b'][0] == found['c'][0] and found['a'][1] == 3
     assert found['d'][1] == 1 and found['e'][0] == found['f'][0] and found['e'][1] == 2
     assert found['g'][1] == found['h'][1] == found['i'][1] == found['k'][1] == found['m'][1] == 1
     # A failure linked to two others joins them, whichever was first: a chain of links is one hotspot.
-    chain = nq_prioritization.hotspots([failure('x', 0, 51.5000), failure('y', 14, 51.5040), failure('z', 7, 51.5020)], join='and')
+    chain = nq_prioritization.hotspots([failure('x', 0, 51.5000), failure('y', 14, 51.5040), failure('z', 7, 51.5020)], join='and', **WINDOW)
     assert len({key for key, _size in chain.values()}) == 1 and chain['x'] == ('cluster:x', 3)
     # OR (the default): consecutive in the same drive, or close in distance at any time of the campaign.
-    either = nq_prioritization.hotspots(calls)
+    either = nq_prioritization.hotspots(calls, **WINDOW)
     assert either['d'][0] == either['a'][0] and either['a'][1] == 6
     assert either['i'][0] == either['h'][0] == either['a'][0] and either['g'][1] == 1
     # The car drove 44 km and then 10 km between them: too far for consecutive failures, unless the sites are that far apart.
     assert either['k'][1] == either['m'][1] == 1
-    wide = nq_prioritization.hotspots([failure('k', 30, 51.9000, isd_km=6.0), failure('m', 40, 51.9900)])
+    wide = nq_prioritization.hotspots([failure('k', 30, 51.9000, isd_km=6.0), failure('m', 40, 51.9900)], **WINDOW)
     assert wide['k'] == wide['m'] == ('cluster:k', 2)
     # Another car measuring at the same time elsewhere never joins by time.
-    other_car = nq_prioritization.hotspots([failure('p', 0, 51.5000), failure('q', 5, 52.5000, drive='system:car 2')])
+    other_car = nq_prioritization.hotspots([failure('p', 0, 51.5000), failure('q', 5, 52.5000, drive='system:car 2')], **WINDOW)
     assert other_car['p'][1] == other_car['q'][1] == 1
 
 
@@ -512,20 +517,20 @@ def test_consecutive_failures_have_another_failure_of_their_drive_minutes_apart_
     calls = [failure('a', 0, 51.5000), failure('b', 9, 51.5050),  # 9 minutes and 560 m apart in the same car
              failure('c', 40, 51.5000), failure('d', 41, 51.5000, drive='system:car 2'),  # another car at the same time
              failure('e', 41, 51.5000, operator='EE'), failure('f', 30, 51.5000, drive=''), failure('g', 0, 51.5, day=3, start_time='')]
-    found = nq_prioritization.consecutive_failures(calls, 10)
+    found = nq_prioritization.consecutive_failures(calls, 10, WINDOW['run_meters'])
     assert (found['a'], found['b'], found['c'], found['d'], found['e']) == ('Yes', 'Yes', 'No', 'No', 'No')
     assert found['f'] == found['g'] == ''
-    assert nq_prioritization.consecutive_failures(calls, 5)['a'] == 'No'
+    assert nq_prioritization.consecutive_failures(calls, 5, WINDOW['run_meters'])['a'] == 'No'
     # A car that drove from one place to the next breaks the run: two failures follow one another within 2 ISD of the sites
     # nearest to them (the larger one), else within 1 km in cities and 5 km on connecting roads (either failure on one); a
     # failure without a position follows the one before.
     far = [failure('p', 0, 51.5000), failure('q', 5, 51.5300)]  # 3.3 km apart
     consecutive = nq_prioritization.consecutive_failures
-    assert consecutive(far, 10) == {'p': 'No', 'q': 'No'}
-    assert consecutive([far[0], {**far[1], 'environment': 'Connecting Roads'}], 10)['p'] == 'Yes'
-    assert consecutive([far[0], {**far[1], 'isd_km': 2.0}], 10)['p'] == 'Yes'
-    assert consecutive([{**far[0], 'isd_km': 1.0}, {**far[1], 'environment': 'Highway'}], 10)['p'] == 'No'
-    assert consecutive([far[0], {**far[1], 'latitude': None}], 10)['p'] == 'Yes'
+    assert consecutive(far, 10, WINDOW['run_meters']) == {'p': 'No', 'q': 'No'}
+    assert consecutive([far[0], {**far[1], 'environment': 'Connecting Roads'}], 10, WINDOW['run_meters'])['p'] == 'Yes'
+    assert consecutive([far[0], {**far[1], 'isd_km': 2.0}], 10, WINDOW['run_meters'])['p'] == 'Yes'
+    assert consecutive([{**far[0], 'isd_km': 1.0}, {**far[1], 'environment': 'Highway'}], 10, WINDOW['run_meters'])['p'] == 'No'
+    assert consecutive([far[0], {**far[1], 'latitude': None}], 10, WINDOW['run_meters'])['p'] == 'Yes'
     assert consecutive([{**far[0], 'isd_km': 1.2}, far[1]], 10, nq_prioritization.reach(3, 1000, 5000))['p'] == 'Yes'
 
 
@@ -723,6 +728,16 @@ def test_steps_saved_with_consecutive_failures_and_cluster_take_hotspots_once(cl
     assert nq_prioritization.load_settings(core.repository)['steps']['roads_first']['campaign-2']['conditions'] == ['consecutive', 'repeated']
 
 
+def test_a_new_workspace_starts_with_the_recommended_levels_without_a_change(client):
+    enable_module()
+    assert core.repository.get_workspace_state(nq_prioritization.RECOMMENDED_LEVELS_STATE_KEY) == '1'
+    core.repository.set_workspace_state(nq_prioritization.RECOMMENDED_LEVELS_STATE_KEY, '')
+    assert nq_prioritization.migrate_recommended_levels(core.repository) == []
+    assert core.repository.get_workspace_state(nq_prioritization.RECOMMENDED_LEVELS_STATE_KEY) == '1'
+    assert not core.repository.get_workspace_state(nq_prioritization.SETTINGS_STATE_KEY)
+    assert not any(row['action'] == 'nq_prioritization_settings' for row in core.repository.list_logs(limit=20))
+
+
 def test_workspaces_of_the_previous_schema_get_the_runs_of_consecutive_failures(client):
     enable_module()
     nq.ensure_nq_tables(core.repository)
@@ -868,6 +883,39 @@ def priority_rows() -> dict[str, dict]:
             f'SELECT p.*, l.service, l.nr_mode, l.operator, l.join_id, l.latitude, l.longitude, l.campaign, l.start_time, l.test_name, '
             f'l.session_type, l.region, l.environment FROM {nq_prioritization.PRIORITY_TABLE} p '
             f'JOIN {nq.NQ_CALL_LATEST_TABLE} l ON l.call_key = p.call_key')}
+
+
+def test_every_workspace_takes_the_recommended_levels_once_and_its_calls_at_once(prioritized):
+    recommended = {name: nq_prioritization.default_settings()[name] for name in nq_prioritization.LEVEL_SETTINGS}
+    assert {name: recommended[name] for name in nq_prioritization.FORMER_DEFAULT_LEVELS} == {
+        'previous_quarters': 0, 'consecutive_minutes': 6, 'consecutive_isd': 0.8, 'consecutive_city_meters': 500, 'consecutive_road_meters': 2000}
+    pending = lambda: nq_prioritization.refresh_places(core.repository, nq_prioritization.load_settings(core.repository))  # noqa: E731
+    # Never saved, its calls calculated with the former defaults: the calls take the recommended levels, nothing is saved.
+    core.repository.set_workspace_state(nq_prioritization.SETTINGS_STATE_KEY, '')
+    former = nq_prioritization.normalize_settings({**nq_prioritization.default_settings(), **nq_prioritization.FORMER_DEFAULT_LEVELS})
+    assert nq_prioritization.place_values(core.repository, former) != nq_prioritization.place_values(core.repository, nq_prioritization.load_settings(core.repository))
+    nq_prioritization.refresh_places(core.repository, former)
+    core.repository.set_workspace_state(nq_prioritization.RECOMMENDED_LEVELS_STATE_KEY, '')
+    assert nq_prioritization.migrate_recommended_levels(core.repository) == list(nq_prioritization.FORMER_DEFAULT_LEVELS)
+    assert not core.repository.get_workspace_state(nq_prioritization.SETTINGS_STATE_KEY) and pending() == 0
+    # Saved with other levels: every level takes the recommended one, whatever it was, and the rest stays.
+    saved = {**former, 'strategy': nq_prioritization.ROADS_FIRST, 'min_calls': 3, 'consecutive_minutes': 20}
+    core.repository.set_workspace_state(nq_prioritization.SETTINGS_STATE_KEY, json.dumps(saved))
+    nq_prioritization.refresh_places(core.repository, nq_prioritization.normalize_settings(saved))
+    core.repository.set_workspace_state(nq_prioritization.RECOMMENDED_LEVELS_STATE_KEY, '')
+    assert nq_prioritization.migrate_recommended_levels(core.repository) == ['min_calls', *nq_prioritization.FORMER_DEFAULT_LEVELS]
+    settings = nq_prioritization.load_settings(core.repository)
+    assert {name: settings[name] for name in recommended} == recommended and settings['strategy'] == nq_prioritization.ROADS_FIRST
+    assert pending() == 0
+    log = next(row for row in core.repository.list_logs(limit=20) if row['action'] == 'nq_prioritization_settings')
+    details = json.loads(log['details'])
+    assert log['username'] == 'system' and details['prioritized'] + details['tracked'] + details['no_rule'] + details['out_of_scope'] > 0
+    assert {'Cluster size: 3 → 2', 'Cluster period (campaigns): 1 → 0', 'Time window (min): 20 → 6',
+            'Time-window distance (ISD): 2.0 → 0.8'} <= set(details['levels_changed'])
+    # Once: a level changed afterwards stays.
+    core.repository.set_workspace_state(nq_prioritization.SETTINGS_STATE_KEY, json.dumps({**settings, 'min_calls': 4}))
+    assert nq_prioritization.migrate_recommended_levels(core.repository) == []
+    assert nq_prioritization.load_settings(core.repository)['min_calls'] == 4
 
 
 def test_every_call_holds_its_share_of_the_points_its_kpis_lose(prioritized):
