@@ -1994,3 +1994,28 @@
 .ds-slide-thumbnail-caption { display:-webkit-box; overflow:hidden; font-size:.74rem; font-weight:650; line-height:1.25; -webkit-box-orient:vertical; -webkit-line-clamp:2; }
 .ds-slide-thumbnail-caption b { margin-right:.35rem; color:var(--ds-color); font-weight:850; }
 
+/* A compact toolbar on desktop, on one row: the selection and the modes keep their names (PPT Scope, PPT Filters,
+   Designer); the actions are their icons, named by their tooltips (Generate PPT, Refresh Design, Auto-Calculated Fields,
+   Edit PPT Template). While designing, the slide list replaces the slide picker. */
+@media (min-width:901px) {
+  #ds-viewer.ppt-designer:not(.ds-presentation-active) .ds-viewer-panel>.ds-actions { margin-top:.55rem; gap:.5rem; }
+  #ds-viewer.ppt-designer:not(.ds-presentation-active) .ds-viewer-panel>.ds-actions>.ds-viewer-right-actions { flex-wrap:nowrap; align-items:center; gap:.35rem; }
+  #ds-viewer.ppt-designer .ds-viewer-right-actions .ds-viewer-top-action { min-height:2.25rem; height:2.25rem; padding:0 .85rem; font-size:.78rem; box-shadow:none; }
+  #ds-viewer.ppt-designer .ds-viewer-right-actions .ds-viewer-scope-control select { width:12.5rem; min-height:2.25rem; height:2.25rem; padding:0 1.9rem 0 .75rem; font-size:.78rem; }
+  #ds-viewer.ppt-designer .ds-viewer-right-actions .ds-viewer-scope-control { order:1; }
+  #ds-viewer.ppt-designer .ds-viewer-right-actions .ds-viewer-top-filters { order:2; }
+  #ds-viewer.ppt-designer .ds-viewer-right-actions .ds-viewer-top-design { order:3; }
+  #ds-viewer.ppt-designer .ds-viewer-right-actions .ds-viewer-top-ppt { order:4; margin-left:.4rem; }
+  #ds-viewer.ppt-designer .ds-viewer-right-actions .ds-viewer-top-refresh { order:5; }
+  #ds-viewer.ppt-designer .ds-viewer-right-actions .ds-viewer-top-auto-fields { order:6; }
+  #ds-viewer.ppt-designer .ds-viewer-right-actions .ds-viewer-top-edit { order:7; }
+  #ds-viewer.ppt-designer .ds-viewer-right-actions :is(.ds-viewer-top-ppt, .ds-viewer-top-refresh, .ds-viewer-top-auto-fields, .ds-viewer-top-edit) {
+    flex:0 0 2.25rem; width:2.25rem; min-width:2.25rem; padding:0; gap:0; border-radius:50%; font-size:0;
+  }
+  /* A thin line sets the actions apart from the selection and the modes. */
+  #ds-viewer.ppt-designer .ds-viewer-right-actions .ds-viewer-top-ppt { position:relative; }
+  #ds-viewer.ppt-designer .ds-viewer-right-actions .ds-viewer-top-ppt::after { content:''; position:absolute; top:.35rem; bottom:.35rem; left:-.45rem; border-left:1px solid #cfc3de; }
+  #ds-viewer.ppt-designer .ds-viewer-right-actions .ds-viewer-top-refresh { background:rgb(119,81,185); border-color:rgb(119,81,185); }
+  #ds-viewer.ppt-designer .ds-viewer-right-actions .ds-viewer-top-refresh:hover:not(:disabled) { background:#5f3f99; border-color:#5f3f99; }
+  #ds-viewer.ppt-designer.ds-designing .ds-viewer-panel>.ds-actions>.ds-slide-picker { display:none; }
+}

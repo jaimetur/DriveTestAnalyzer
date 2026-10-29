@@ -24,9 +24,10 @@
 
 /* The bar of Design, under the controls of the viewer. */
 .ppt-designer .ds-design-bar {
-  display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; margin-top: .6rem; padding: .55rem .7rem;
+  display: flex; flex-wrap: wrap; align-items: center; gap: .4rem 1rem; margin-top: .45rem; padding: .35rem .6rem;
   border: 1px solid var(--ds-border); border-radius: 12px; background: color-mix(in srgb, var(--ds-soft) 60%, #fff);
 }
+.ppt-designer .ds-design-bar[hidden] { display: none; }
 .ppt-designer .ds-design-bar-group { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; min-width: 0; }
 .ppt-designer .ds-design-bar-end { margin-left: auto; }
 .ppt-designer .ds-design-bar-label { font-size: .72rem; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; color: var(--ds-color); }

@@ -142,7 +142,7 @@
   // The NR Mode of the CDRs a chart reads, kept as the filter NR Mode IN (SA) when the chart keeps one of its own. One button
   // per result: a PPT Design of one NR Mode reads only its CDRs (its NR Mode, the other greyed until NSA & SA is chosen in
   // PPT Filters; a chart that keeps it shows why it is empty), one of NSA & SA both or either; a template (eachPpt) is shared
-  // by Designs of any NR Mode, so its chart follows each one (Each PPT) or keeps one.
+  // by Designs of any NR Mode, so its chart follows the NR Mode of each one (PPT Mode) or keeps one.
   function nrModeRow({nrMode, settings, plainFilters, writeFilters}, pptNrMode = '', eachPpt = false) {
     const pptMode = String(pptNrMode || '').trim();
     const read = pptMode && !eachPpt ? pptMode.split('&').map(mode => mode.trim().toUpperCase()) : ['NSA', 'SA'];
@@ -154,7 +154,7 @@
     };
     const choices = single
       ? NR_MODES.map(([value, text, title]) => (value === read[0] ? ['', text, `The ${text} CDRs: the PPT Design reads only those`] : [value, text, title]))
-      : [['', eachPpt ? 'Each PPT' : pptMode ? 'NSA & SA' : 'PPT', eachPpt ? 'The NR Mode of each PPT Design that follows the template' : 'The CDRs of both NR Modes, as the PPT Design reads them'], ...NR_MODES];
+      : [['', eachPpt ? 'PPT Mode' : pptMode ? 'NSA & SA' : 'PPT', eachPpt ? 'The NR Mode of each PPT Design that follows the template' : 'The CDRs of both NR Modes, as the PPT Design reads them'], ...NR_MODES];
     const isActive = value => value === nrMode || (single && !value && nrMode === read[0]);
     return h('div', {class: 'ds-cb-source-row', title: 'The NR Mode of the CDRs the chart reads'}, h('span', {class: 'ds-cb-shelf-label', text: 'NR Mode'}),
       h('div', {class: 'ds-cb-segmented', role: 'group', 'aria-label': 'NR Mode of the CDRs the chart reads'}, choices.map(([value, text, title]) => {
