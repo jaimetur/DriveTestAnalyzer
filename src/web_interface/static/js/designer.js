@@ -1341,16 +1341,19 @@
       h('label', {class: 'ds-design-format-row'}, 'Line width', width),
       h('label', {class: 'ds-design-format-row'}, 'Line', dash),
       h('label', {class: 'ds-design-format-row'}, 'Opacity', opacity),
-      // The format of a series (its colour, line and opacity) copied to paste on another series, of this chart or another.
+      // The line of a series (its width, dash and opacity, not its colour: the colour tells the series apart) copied to paste
+      // on another series, of this chart or another. It is read once the changes made here are kept.
       h('div', {class: 'ds-design-format-actions'},
-        h('button', {type: 'button', title: 'Copy the colour, line and opacity of this series, to paste them on another series',
-          onclick: () => {
-            state.seriesClipboard = {from: name, values: {colour: current.colour || original, width: current.width ?? '', dash: current.dash || '', opacity: current.opacity ?? ''}};
-            viewer().status(`Format of ${name} copied: open another series and paste it there.`);
+        h('button', {type: 'button', title: 'Copy the line width, line and opacity of this series (not its colour), to paste them on another series',
+          onclick: guarded(async () => {
+            await state.queue.catch(() => undefined);
+            const now = styleOf(findElement(editableSlideSet(), elementId)?.element).series?.[name] || {};
+            state.seriesClipboard = {from: name, values: {width: now.width ?? '', dash: now.dash || '', opacity: now.opacity ?? ''}};
+            viewer().status(`Line of ${name} copied: open another series and paste it there.`);
             closeMenus();
-          }}, 'Copy format of this series'),
-        state.seriesClipboard && state.seriesClipboard.from !== name ? h('button', {type: 'button', title: `Give this series the colour, line and opacity of ${state.seriesClipboard.from}`,
-          onclick: () => { closeMenus(); guarded(() => setSeries(elementId, name, clone(state.seriesClipboard.values)))(); }}, `Paste format of ${state.seriesClipboard.from}`) : null),
+          })}, 'Copy line of this series'),
+        state.seriesClipboard && state.seriesClipboard.from !== name ? h('button', {type: 'button', title: `Give this series the line width, line and opacity of ${state.seriesClipboard.from} (its colour stays)`,
+          onclick: () => { closeMenus(); guarded(() => setSeries(elementId, name, clone(state.seriesClipboard.values)))(); }}, `Paste line of ${state.seriesClipboard.from}`) : null),
       h('div', {class: 'ds-design-format-actions'},
         h('button', {type: 'button', title: 'The colour of the Operator / Vendor Maps of the workspace, and the default line', onclick: () => { closeMenus(); guarded(() => setStyle(elementId, style => { if (style.series) delete style.series[name]; }))(); }}, 'Default'),
         h('button', {type: 'button', onclick: closeMenus}, 'Close')));
