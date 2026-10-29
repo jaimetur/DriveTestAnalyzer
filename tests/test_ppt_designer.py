@@ -2,6 +2,7 @@ import json
 import re
 import shutil
 import subprocess
+import sys
 import threading
 import time
 import zipfile
@@ -2928,6 +2929,97 @@ def test_design_profile_facets_show_values_outside_the_saved_filter(client, monk
     assert preview.status_code == 200, preview.text
     assert preview.json()['rows']['data'] == 2
     assert preview.json()['options']['Operator'] == ['A', 'B']
+
+
+def combined_scans(monkeypatch, caller):
+    """The dataset ids and fields of the combined-table reads ``caller`` (a function of ppt_designer) makes."""
+    import src.modules.cdr_store as cdr_store_module
+
+    scans = []
+    original = cdr_store_module.combined_scope
+
+    def recording_scope(dataset_ids):
+        frame = sys._getframe(1)
+        if frame.f_code.co_name == caller:
+            scans.append((sorted(int(item) for item in dataset_ids), list(frame.f_locals.get('field_order') or [])))
+        return original(dataset_ids)
+
+    monkeypatch.setattr(cdr_store_module, 'combined_scope', recording_scope)
+    return scans
+
+
+def test_design_profile_facets_read_values_missing_from_profiles_from_each_cdr(client, monkeypatch):
+    client.post('/login', data={'username': 'super', 'password': 'super123'})
+    response = client.post('/datasets-analysis/upload', data={'dataset_kinds': 'data'}, files={
+        'dataset_files': ('call-status.csv', BytesIO(
+            b'Operator,City,Call_Status,Mean_Data_Rate,Test_Start_Time\n'
+            b'A,London,Completed,10,2026-09-01\n'
+            b'B,Leeds,Failed,20,2026-09-02\n'
+        ), 'text/csv'),
+    })
+    assert response.status_code == 200
+    core.repository.add_report_template('Design test', (
+        'Slide,Slide tittle,Slide Subtittle,Layout,Chart Tittle,CDR source,KPI,Chart type,Filters,Rows Split,Columns Split,Legend,Legend Position\n'
+        '1,Comparison,,Title and 1 column + Comments,Rate,CDR-Data,Mean_Data_Rate,CDF Line,,Operator,,,Top\n'
+    ).encode(), is_default=False)
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline and core.repository.get_dataset(1)['status'] != 'ready':
+        time.sleep(0.05)
+    import src.modules.ppt_designer as designs_module
+
+    monkeypatch.setattr(designs_module, 'DESIGN_PROFILE_SELECTION_THRESHOLD', 1)
+    # The upload profile lists no Call Status, and the Cluster catalogue of the CDR was read and is empty.
+    with core.repository.connection() as connection:
+        connection.execute(
+            'UPDATE dataset_profiles SET filter_options_json = ? WHERE dataset_id = 1',
+            (json.dumps({'operator': ['A', 'B'], 'city': ['Leeds', 'London']}),),
+        )
+    core.repository.set_cdr_catalogue_clusters(1, [])
+    scans = combined_scans(monkeypatch, 'combined_filter_options')
+
+    preview = client.post('/api/ppt-designer/prepare', json=definition().model_dump(mode='json'))
+
+    assert preview.status_code == 200, preview.text
+    assert preview.json()['options']['Call Status'] == ['Completed', 'Failed']
+    assert preview.json()['options']['Cluster'] == []
+    # Call Status is read from the CDR and Cluster is answered by its catalogue: neither is looked for in the
+    # combined tables.
+    scanned = {field for _ids, fields in scans for field in fields}
+    assert not scanned & {'Call Status', 'Cluster'}, scans
+
+
+def test_design_date_limits_of_each_cdr_are_kept_for_other_selections(client, monkeypatch):
+    client.post('/login', data={'username': 'super', 'password': 'super123'})
+    for index, (campaign, first_day, last_day) in enumerate((
+            ('Spring', '2026-09-01', '2026-09-03'), ('Summer', '2026-08-15', '2026-08-20')), start=1):
+        response = client.post('/datasets-analysis/upload', data={'dataset_kinds': 'data'}, files={
+            'dataset_files': (f'{campaign}.csv', BytesIO((
+                'Campaign,Operator,City,Mean_Data_Rate,Test_Name,Test_Start_Time\n'
+                f'{campaign},A,London,10,HTTP DL,{first_day}\n{campaign},B,Leeds,20,HTTP DL,{last_day}\n'
+            ).encode()), 'text/csv'),
+        })
+        assert response.status_code == 200
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline and core.repository.get_dataset(index)['status'] != 'ready':
+            time.sleep(0.05)
+    core.repository.add_report_template('Design test', (
+        'Slide,Slide tittle,Slide Subtittle,Layout,Chart Tittle,CDR source,KPI,Chart type,Filters,Rows Split,Columns Split,Legend,Legend Position\n'
+        '1,Comparison,,Title and 1 column + Comments,Rate,CDR-Data,Mean_Data_Rate,CDF Line,,Operator,,,Top\n'
+    ).encode(), is_default=False)
+    scans = combined_scans(monkeypatch, 'selected_date_bounds')
+    payload = definition().model_dump(mode='json')
+
+    both = client.post('/api/ppt-designer/prepare', json={**payload, 'filters': {'Campaign': ['Spring', 'Summer']}})
+
+    assert both.status_code == 200, both.text
+    assert both.json()['date_bounds'] == {'min': '2026-08-15', 'max': '2026-09-03'}
+    assert [ids for ids, _fields in scans] == [[1, 2]]
+    # Another selection of the same CDRs takes the limits kept for each of them, without a read.
+    summer = client.post('/api/ppt-designer/prepare', json={**payload, 'filters': {'Campaign': ['Summer']}})
+
+    assert summer.status_code == 200, summer.text
+    assert summer.json()['date_bounds'] == {'min': '2026-08-15', 'max': '2026-08-20'}
+    assert [ids for ids, _fields in scans] == [[1, 2]]
 
 
 def test_design_operator_facets_show_and_filter_the_mapped_operators(client):

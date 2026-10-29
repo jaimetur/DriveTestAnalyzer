@@ -215,7 +215,7 @@ Changing only a title should therefore be much faster than changing datasets or 
 
 PPT Designer persistence has additional layers:
 
-- `design_filter_selections` stores a versioned selection key, faceted filter values and row counts; its predicates are reproduced from the saved PPT definition.
+- `design_filter_selections` stores a versioned selection key, faceted filter values and row counts; its predicates are reproduced from the saved PPT definition. A filter value the upload profile of a CDR does not list (such as Call Status) is read from the columnar copy of that CDR once per CDR version, a filter every CDR answers (an empty Cluster catalogue included) is not looked for in the combined tables, and the first and last day of each CDR are kept in the workspace state, so a new selection of CDRs already read (a campaign more or less, another filter) is prepared without scanning the combined tables.
 - The columnar copies of the CDRs of the shared `reporting_rows_data`, `reporting_rows_voice` and `reporting_rows_speech` combined tables supply PPT filters, chart datasets and chart rendering.
 - Compact interactive chart models and reusable preview manifests are kept in memory and as gzip files in the `.cache/ppt-designer` folder of the workspace (written to a temporary file and renamed, unreadable files deleted, the least recently used removed beyond 1 GB and the unused after 30 days; left out of backups, exports and transfers), so a restart restores them; their keys include selected datasets and revisions, NR Mode, scope, dates, filters, template definition and renderer/cache versions. Equivalent value and dataset ordering resolves to the same selection.
 

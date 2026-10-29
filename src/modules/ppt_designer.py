@@ -4975,31 +4975,56 @@ def install_design_routes(core):
         except (TypeError, ValueError, json.JSONDecodeError):
             cached_bounds = {}
         lower = upper = None
-        if callable(progress):
-            progress(48, 'Reading Dataset Universe date limits from the combined CDR tables')
+        # The limits of each CDR are kept as well: another selection of CDRs already read (a campaign more or less)
+        # reads only the CDRs it adds, its limits being the earliest and the latest of its CDRs.
+        cdr_state_key = f'design_cdr_date_bounds_v{DESIGN_DATE_BOUNDS_CACHE_VERSION}'
+        try:
+            cached_cdr_bounds = json.loads(task_repository.get_workspace_state(cdr_state_key) or '{}')
+            if not isinstance(cached_cdr_bounds, dict):
+                cached_cdr_bounds = {}
+        except (TypeError, ValueError, json.JSONDecodeError):
+            cached_cdr_bounds = {}
+        read_cdr_bounds = False
         with task_repository.connection() as connection:
             for kind, selected in selected_by_kind.items():
                 date_column = sources[kind]['date_column']
                 if not date_column:
                     continue
-                dataset_ids = [int(row['id']) for row in selected]
-                placeholders = ', '.join('?' for _ in dataset_ids)
-                table = task_repository._quote_identifier(task_repository.reporting_rows_table_name(kind))
-                column = task_repository._quote_identifier(date_column)
-                with cdr_store.combined_scope(dataset_ids):
-                    row = connection.execute(
-                        f'SELECT MIN(date({column})) AS first_date, MAX(date({column})) AS last_date '
-                        f'FROM {table} WHERE dataset_id IN ({placeholders})', dataset_ids,
-                    ).fetchone()
-                for value, is_lower in ((row['first_date'], True), (row['last_date'], False)):
-                    try:
-                        parsed = date.fromisoformat(str(value)) if value else None
-                    except ValueError:
-                        parsed = None
-                    if parsed is not None and (lower is None or parsed < lower) and is_lower:
-                        lower = parsed
-                    if parsed is not None and (upper is None or parsed > upper) and not is_lower:
-                        upper = parsed
+                cdr_keys = {int(row['id']): sha256(json.dumps({
+                    'kind': kind, 'date_column': date_column, 'revision': sources[kind]['revision'],
+                    'dataset': (row['id'], row.get('updated_at'), row.get('processed_at'),
+                                row.get('normalization_version'), row.get('row_count')),
+                }, sort_keys=True, default=str).encode()).hexdigest() for row in selected}
+                pending = [dataset_id for dataset_id, key in cdr_keys.items() if key not in cached_cdr_bounds]
+                if pending:
+                    if callable(progress):
+                        progress(48, 'Reading Dataset Universe date limits from the combined CDR tables')
+                    placeholders = ', '.join('?' for _ in pending)
+                    table = task_repository._quote_identifier(task_repository.reporting_rows_table_name(kind))
+                    column = task_repository._quote_identifier(date_column)
+                    with cdr_store.combined_scope(pending):
+                        rows = connection.execute(
+                            f'SELECT dataset_id, MIN(date({column})) AS first_date, MAX(date({column})) AS last_date '
+                            f'FROM {table} WHERE dataset_id IN ({placeholders}) GROUP BY dataset_id', pending,
+                        ).fetchall()
+                    read = {int(row['dataset_id']): [row['first_date'], row['last_date']] for row in rows}
+                    for dataset_id in pending:
+                        cached_cdr_bounds[cdr_keys[dataset_id]] = read.get(dataset_id, [None, None])
+                    read_cdr_bounds = True
+                for key in cdr_keys.values():
+                    for value, is_lower in zip(cached_cdr_bounds[key], (True, False)):
+                        try:
+                            parsed = date.fromisoformat(str(value)) if value else None
+                        except ValueError:
+                            parsed = None
+                        if parsed is not None and (lower is None or parsed < lower) and is_lower:
+                            lower = parsed
+                        if parsed is not None and (upper is None or parsed > upper) and not is_lower:
+                            upper = parsed
+        if read_cdr_bounds:
+            if len(cached_cdr_bounds) > 1024:
+                cached_cdr_bounds = dict(list(cached_cdr_bounds.items())[-1024:])
+            task_repository.set_workspace_state(cdr_state_key, json.dumps(cached_cdr_bounds, separators=(',', ':')))
         bounds = None if lower is None or upper is None else {'min': lower.isoformat(), 'max': upper.isoformat()}
         # This result is immutable while the selected datasets and their
         # combined-table revisions are unchanged.  Persist a small bounded
@@ -5087,6 +5112,9 @@ def install_design_routes(core):
         """
         options = {field_name: set() for field_name in fields}
         incomplete_fields = set()
+        # Fields some CDR has neither a catalogue nor a column for: without any value, the combined tables are read.
+        unanswered_fields = set()
+        dimensions_by_name = {identity(dimension.name): dimension for dimension in dimensions}
         dataset_ids = [int(dataset['id']) for selected in selected_by_kind.values() for dataset in selected]
         vendor_catalogues = task_repository.cdr_catalogues_by_dataset(dataset_ids)
         missing_vendor_catalogues = set(task_repository.missing_cdr_vendor_only_ids(dataset_ids))
@@ -5118,19 +5146,26 @@ def install_design_routes(core):
                         if dataset_columns and (column := task_repository._resolve_dataset_row_column_name(dataset_columns, alias))
                     ), None)
                     if resolved is None:
+                        unanswered_fields.add(field_name)
                         continue
                     lookup_keys = list(dict.fromkeys([
                         identity(resolved), identity(vendor_filter_column(field_name)),
                         *(identity(alias) for alias in aliases),
                     ]))
                     values = next((lookup[key] for key in lookup_keys if isinstance(lookup.get(key), list)), None)
+                    # A long catalogue is kept only in part by the upload profile, and a column the profile does not
+                    # catalogue (Call Status) is read from the CDR too: once per CDR version, from its columnar copy,
+                    # instead of a scan of the combined tables of every selected CDR.
+                    if (len(values) >= 50 if values is not None
+                            else identity(field_name) not in dimensions_by_name):
+                        try:
+                            values = dataset_distinct_values(task_repository, dataset, resolved)
+                        except (sqlite3.Error, OSError, ValueError, KeyError):
+                            values = None
                     if not isinstance(values, list):
                         incomplete_fields.add(field_name)
                         continue
-                    if len(values) >= 50:
-                        values = dataset_distinct_values(task_repository, dataset, resolved)
                     options[field_name].update(str(value) for value in values if value is not None)
-        dimensions_by_name = {identity(dimension.name): dimension for dimension in dimensions}
         for field_name in fields:
             dimension = dimensions_by_name.get(identity(field_name))
             if dimension:
@@ -5140,9 +5175,10 @@ def install_design_routes(core):
                     options[field_name].add(str(dimension.default))
             # Saved filter values are not options by themselves: only values the
             # selected CDRs (or calculated dimensions) provide are offered.
+        # A field every CDR answered (an empty Cluster catalogue included) needs no scan, even without a value.
         missing_fields = [
             field_name for field_name in fields
-            if not options[field_name] or field_name in incomplete_fields
+            if field_name in incomplete_fields or not options[field_name] and field_name in unanswered_fields
         ]
         if missing_fields:
             # Older upload profiles do not contain every Design facet. Read
