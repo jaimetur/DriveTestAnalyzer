@@ -857,19 +857,19 @@
     const template = state.scope === 'template';
     const fromTemplate = isTemplateSlide(slide) && !state.detached;
     const actions = [
-      ['New slide after', guarded(() => { state.slide = slide.id; return addSlide('content'); }), true],
-      ['Duplicate', guarded(() => duplicateSlide(slide.id)), true],
+      ['New Slide after', guarded(() => { state.slide = slide.id; return addSlide('content'); }), true],
+      ['Duplicate Slide', guarded(() => duplicateSlide(slide.id)), true],
     ];
     if (template) {
-      actions.push([slide.optional ? 'Not optional' : 'Optional (off by default)', guarded(() => setOptional(slide.id, !slide.optional)), Boolean(findSlide(state.template, slide.id))]);
-      actions.push(['Delete', guarded(() => deleteSlide(slide.id)), Boolean(findSlide(state.template, slide.id)) || 'Only in this Design: delete it in This Design scope']);
+      actions.push([slide.optional ? 'Make Slide not optional' : 'Make Slide optional (off by default)', guarded(() => setOptional(slide.id, !slide.optional)), Boolean(findSlide(state.template, slide.id))]);
+      actions.push(['Delete Slide', guarded(() => deleteSlide(slide.id)), Boolean(findSlide(state.template, slide.id)) || 'Only in this Design: delete it in This Design scope']);
     } else if (fromTemplate) {
-      if (slide.optional) actions.push([slide.optional_off ? 'Show in this Design' : 'Leave out of this Design', guarded(() => setOptionalShown(slide.id, Boolean(slide.optional_off))), true]);
-      else actions.push([slide.hidden ? 'Show again' : 'Hide in this Design', guarded(() => setSlideHidden(slide.id, !slide.hidden)), true]);
-      if (slide.overridden?.length || (slide.elements || []).some(element => element.overridden?.length || element.hidden)) actions.push(['Reset to template', guarded(() => resetSlide(slide.id)), true]);
-    } else actions.push(['Delete', guarded(() => deleteSlide(slide.id)), true]);
+      if (slide.optional) actions.push([slide.optional_off ? 'Show Slide in this Design' : 'Leave Slide out of this Design', guarded(() => setOptionalShown(slide.id, Boolean(slide.optional_off))), true]);
+      else actions.push([slide.hidden ? 'Show Slide again' : 'Hide Slide in this Design', guarded(() => setSlideHidden(slide.id, !slide.hidden)), true]);
+      if (slide.overridden?.length || (slide.elements || []).some(element => element.overridden?.length || element.hidden)) actions.push(['Reset Slide to template', guarded(() => resetSlide(slide.id)), true]);
+    } else actions.push(['Delete Slide', guarded(() => deleteSlide(slide.id)), true]);
     if (!template && !state.detached && state.rights.template && (slide.origin === 'design' || slide.overridden?.length || (slide.elements || []).some(element => element.overridden?.length || element.hidden || isLocalElement(element)))) {
-      actions.push(['Apply to template', guarded(() => applyToTemplate({slideId: slide.id})), true]);
+      actions.push(['Apply Slide to template', guarded(() => applyToTemplate({slideId: slide.id})), true]);
     }
     return actions;
   }
@@ -1019,12 +1019,12 @@
     if (!found) return [];
     const template = state.scope === 'template';
     const actions = [
-      ['Duplicate', guarded(() => duplicateElement(elementId)), true],
-      ['Copy', () => { state.clipboard = clone(found.element); viewer().status('Element copied: paste it on a free place.'); }, true],
-      ['Delete', guarded(() => deleteElement(elementId)), true],
+      ['Duplicate Element', guarded(() => duplicateElement(elementId)), true],
+      ['Copy Element', () => { state.clipboard = clone(found.element); viewer().status('Element copied: paste it on a free place.'); }, true],
+      ['Delete Element', guarded(() => deleteElement(elementId)), true],
     ];
-    if (!template && !state.detached && !isLocalElement(found.element) && found.element.overridden?.length) actions.push(['Reset to template', guarded(() => resetElement(elementId)), true]);
-    if (!template && !state.detached && state.rights.template && (isLocalElement(found.element) || found.element.overridden?.length)) actions.push(['Apply to template', guarded(() => applyToTemplate({elementId})), true]);
+    if (!template && !state.detached && !isLocalElement(found.element) && found.element.overridden?.length) actions.push(['Reset Element to template', guarded(() => resetElement(elementId)), true]);
+    if (!template && !state.detached && state.rights.template && (isLocalElement(found.element) || found.element.overridden?.length)) actions.push(['Apply Element to template', guarded(() => applyToTemplate({elementId})), true]);
     return actions;
   }
 
@@ -1115,7 +1115,7 @@
       selected ? h('span', {class: 'ds-design-crumb-separator', 'aria-hidden': 'true', text: '›'}) : null,
       selected ? crumb(elementName(selected, slide), Boolean(element), KINDS[selected.kind || 'chart']?.[1] || 'chart', () => { state.tab = 'element'; renderPanel(); }) : null);
     const actions = element ? elementActions(element.id) : slide ? slideActions(slide) : [];
-    if (chart) actions.push(['Columns as written…', () => openColumnsDialog(element.id), true]);
+    if (chart) actions.push(['Advanced settings…', () => openColumnsDialog(element.id), true]);
     const more = h('button', {type: 'button', class: 'ds-design-more', 'aria-haspopup': 'menu', disabled: !actions.length,
       title: element ? 'Actions of this element' : 'Actions of this slide', 'aria-label': element ? 'Actions of this element' : 'Actions of this slide',
       onclick: event => openMenu(event.currentTarget, actions)}, icon('more'));
@@ -1624,7 +1624,8 @@
     return [builder];
   }
 
-  // Columns as written: the values of a chart as its template row writes them, for what the shelves do not show.
+  // Advanced settings: what Data and Format do not show (Exclude Null/Empty and Zero, positions, axis ranges) and the text
+  // of each column of the chart as its template row writes it.
   function openColumnsDialog(elementId) {
     const shown = state.scope === 'template' ? findElement(state.template, elementId)?.element : findElement(state.slide_set, elementId)?.element;
     if (!shown) return;
@@ -1632,7 +1633,7 @@
     const fieldInput = (key, placeholder) => textInput(shown[key], set(key), {id: `ds-design-${key}`, list: 'ds-design-fields', placeholder});
     const content = h('div', {class: 'ds-design-columns'},
       fieldsDatalist(shown),
-      h('p', {class: 'ds-design-field-note', text: 'Each change is laid out at once, as on the shelves.'}),
+      h('p', {class: 'ds-design-field-note', text: 'What Data and Format do not show (Exclude Null/Empty, Exclude Zero, legend and label positions, axis ranges) and the text of each column of the chart as its template row writes it. Each change is laid out at once.'}),
       h('div', {class: 'ds-design-two'},
         field('Source', selectInput(SOURCES, shown.cdr_source, set('cdr_source', 0), 'ds-design-source')),
         field('Chart type', selectInput(CHART_TYPES.map(type => [type, type]), shown.chart_type, set('chart_type', 0), 'ds-design-chart-type'))),
@@ -1651,7 +1652,7 @@
       h('div', {class: 'ds-design-two'},
         h('label', {class: 'ds-design-check'}, h('input', {type: 'checkbox', checked: Boolean(shown.exclude_null_empty), onchange: event => set('exclude_null_empty', 0)(event.target.checked)}), 'Exclude Null/Empty'),
         h('label', {class: 'ds-design-check'}, h('input', {type: 'checkbox', checked: Boolean(shown.exclude_zero), onchange: event => set('exclude_zero', 0)(event.target.checked)}), 'Exclude Zero')));
-    openDialog('Columns as written', elementLabel(shown), content, {wide: true});
+    openDialog('Advanced settings', elementLabel(shown), content, {wide: true});
   }
 
   // The title and subtitle of the slide shown are edited on the slide itself: a click writes them as the slide set has them

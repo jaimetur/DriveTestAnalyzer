@@ -417,12 +417,12 @@ A difference of a Design wins over the template. When the template changes the s
 | **Template changed** (red) | The template changed what the Design had changed |
 | **Hidden here**, **Optional · off** (grey) | A slide of the template this Design leaves out |
 
-**Differences** shows a card for each slide and chart the Design changes, with a chip for each property it changes (its title, place, format, chart type, hidden…): the arrow of a chip takes the template back for it, **Reset all** for every one of the card; the menu of a slide or chart also has **Reset to template** and **Apply to template** (the template takes it, and every Design of the template with it).
+**Differences** shows a card for each slide and chart the Design changes, with a chip for each property it changes (its title, place, format, chart type, hidden…): the arrow of a chip takes the template back for it, **Reset all** for every one of the card; the menu of a slide or chart also has **Reset Slide to template** / **Reset Element to template** and **Apply Slide to template** / **Apply Element to template** (the template takes it, and every Design of the template with it).
 
 ### Slides
 
 - The slides at the left show each slide in small as it is laid out (its charts, KPI cards, text boxes, pictures, or its cover), drawn again when the slide, the other slides or the data change; a slide left out of the Design shows its places only.
-- Choose a slide at the left; its **⋯** menu (or a right click) offers **New slide after**, **Duplicate**, **Hide in this Design** / **Show again**, **Delete** (Template scope, or a slide of this Design), **Optional (off by default)** and, for an optional slide, **Show in this Design**. **+ New slide** adds a content, title, transition or end slide.
+- Choose a slide at the left; its **⋯** menu (or a right click) offers **New Slide after**, **Duplicate Slide**, **Hide Slide in this Design** / **Show Slide again**, **Delete Slide** (Template scope, or a slide of this Design), **Make Slide optional (off by default)** and, for an optional slide, **Show Slide in this Design**. **+ New slide** adds a content, title, transition or end slide.
 - Drag a slide to move it: in Template scope any slide, in This Design scope the slides of this Design (those of the template keep their order).
 - The panel of a slide has three subpanels, **Titles**, **Layout** and **Elements** (its charts, KPI cards, text boxes and pictures, to choose one): it changes its title and subtitle (**{ }** inserts a field or a parameter, see [Fields in titles and text boxes](#fields-in-titles-and-text-boxes)) and the **layout**: a grid of up to 6 × 6 places, with comments below, to the right or none, and the other layouts of the slide master. A layout with fewer places than the slide has charts removes the last ones, after asking. **Adjust places…** resizes its rows and columns by dragging the lines between them and merges neighbouring places into one (a chart over two columns) or splits them again; **Reset places** gives the layout its places back.
 
@@ -449,9 +449,9 @@ The template keeps the fields, so each Design of it writes its own selection. Pa
   - **Labels:** their place, colour, size and bold.
   - **Axes:** the titles of the X and Y axes and the decimals of the X axis of a CDF. Click the labels of an axis on the chart to change it there: a numeric axis opens a slider with two ends for its range (**Automatic** gives it back), a text axis the list of its values to untick those the chart leaves out (kept as a `NOT IN` condition of its Filters), **Only** one of them or **Show all**.
   - **Copy format** and **Paste format** give another chart the same format (with its legend and label positions and axis ranges).
-- **Columns as written…**, in the **⋯** menu of a chart, keeps the legend and label positions, the axis ranges, Exclude Null/Empty, Exclude Zero and the text of each column as the template writes it.
-- Drag a chart by its **⠿** handle onto another chart to swap their places, or onto a free place to move it there. A free place of the layout shows **+ Add**: a chart, a KPI card, a text box, a picture, or one copied before (**Copy** in the menu of a chart).
-- **Delete** removes a chart (in This Design scope, a chart of the template is hidden in this Design).
+- **Advanced settings…**, in the **⋯** menu of a chart (with **Duplicate Element**, **Copy Element** and **Delete Element**), keeps the legend and label positions, the axis ranges, Exclude Null/Empty, Exclude Zero and the text of each column as the template writes it.
+- Drag a chart by its **⠿** handle onto another chart to swap their places, or onto a free place to move it there. A free place of the layout shows **+ Add**: a chart, a KPI card, a text box, a picture, or one copied before (**Copy Element** in the menu of a chart).
+- **Delete Element** removes a chart (in This Design scope, a chart of the template is hidden in this Design).
 - **Ctrl/Cmd+Z** and **Shift+Ctrl/Cmd+Z** undo and redo; **Delete** removes the chart chosen; **Esc** closes a menu or Chart Type, then leaves the chart chosen (in a field of the panel, it leaves the field), as a click anywhere in the viewer outside the charts, the panel and the bar of the Designer does.
 
 A change the template cannot hold (a chart without a KPI or a split, for example) is refused with the reason and undone.
