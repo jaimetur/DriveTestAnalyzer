@@ -720,8 +720,8 @@
     );
   }
   const moreActions = () => [
+    ['Save Design as…', guarded(saveAsMyDesign), !state.templateDirty || 'Save or discard the changes of the template first'],
     ['Save as template…', guarded(saveAsTemplate), !dirty() || 'Save or discard the changes first'],
-    ['Save as my Design…', guarded(saveAsMyDesign), !state.templateDirty || 'Save or discard the changes of the template first'],
     state.detached ? null : ['Detach from template…', guarded(detachDesign), state.rights.design && (!dirty() || 'Save or discard the changes first')],
   ].filter(Boolean);
 
@@ -1938,11 +1938,19 @@
     found.slide.elements.splice(found.slide.elements.indexOf(found.element), 1);
   }, {scope: 'design'});
 
+  // Parameters: the questions a template leaves open, each Design of it answering them in PPT Scope & Filters. The list at
+  // the left, the parameter chosen at the right with how to use it (and where it is used).
+  const PARAMETER_TYPES = {
+    values: ['Field values', 'Values of a field each Design chooses (its Cities, its Operators…): used in a chart filter.'],
+    number: ['Number', 'A number each Design sets (a threshold, a target): used in a setting or a filter.'],
+    text: ['Text', 'A text each Design writes: used in a title or a text box.'],
+  };
   function openParametersDialog() {
     const editable = state.detached ? state.rights.design : state.rights.template;
     const scope = state.detached ? 'design' : 'template';
     const slide_set = () => (state.detached ? state.slide_set : state.template);
     const body = h('div', {class: 'ds-design-parameters'});
+    let chosen = 0;
     const uses = name => {
       const pattern = new RegExp(`\\{\\s*${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\}`, 'i');
       return (slide_set()?.slides || []).flatMap(slide => [
@@ -1950,66 +1958,111 @@
         ...(slide.elements || []).flatMap(element => Object.entries(element).filter(([, value]) => typeof value === 'string' && pattern.test(value)).map(([key]) => `${elementLabel(element)} · ${key.replaceAll('_', ' ')}`)),
       ]);
     };
+    // Every field of the CDRs of the Design (Data, Voice, Speech) and the Auto-calculated Fields, A to Z.
+    const allFields = () => {
+      const names = new Set(state.fields?.calculated_fields || []);
+      for (const items of Object.values(state.fields?.fields || {})) for (const item of items || []) names.add(item.name);
+      return [...names].sort((left, right) => left.localeCompare(right));
+    };
+    const usage = parameter => (parameter.type === 'values' ? `${parameter.field || 'City'} IN ({${parameter.name}})`
+      : parameter.type === 'number' ? `Threshold = {${parameter.name}}` : `{${parameter.name}}`);
     const save = list => edit(target => { target.parameters = list; }, {scope});
+    function parameterForm(list, index) {
+      const parameter = list[index];
+      const update = values => { list[index] = {...list[index], ...values}; };
+      const commit = guarded(async () => { await save(list); refresh(); });
+      const name = h('input', {type: 'text', value: parameter.name, 'aria-label': 'Name', disabled: !editable, onchange: guarded(async event => {
+        const previous = parameter.name, next = event.target.value.trim();
+        if (!next || next === previous) return;
+        update({name: next});
+        // Every use of the parameter takes its new name.
+        await edit(target => {
+          target.parameters = list;
+          const pattern = new RegExp(`\\{\\s*${previous.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\}`, 'gi');
+          for (const slide of target.slides || []) {
+            for (const key of ['title', 'subtitle']) if (typeof slide[key] === 'string') slide[key] = slide[key].replace(pattern, `{${next}}`);
+            for (const element of slide.elements || []) for (const [key, value] of Object.entries(element)) if (typeof value === 'string') element[key] = value.replace(pattern, `{${next}}`);
+          }
+        }, {scope});
+        refresh();
+      })});
+      const type = selectInput(Object.entries(PARAMETER_TYPES).map(([value, [label]]) => [value, label]), parameter.type, value => { update({type: value, default: value === 'text' ? '' : null}); commit(); });
+      type.disabled = !editable;
+      // Each field is kept as soon as it is left (as the other assistance panels of the Designer: no Apply).
+      const kept = input => { input.addEventListener('change', commit); return input; };
+      const details = [];
+      if (parameter.type === 'values') {
+        const fieldSelect = h('select', {'aria-label': 'Field', 'data-searchable-select': '', disabled: !editable,
+          onchange: event => { update({field: event.target.value}); commit(); }},
+        [...new Set([parameter.field, ...allFields()].filter(Boolean))].map(item => h('option', {value: item, text: item, selected: item === parameter.field})));
+        details.push(field('Field', fieldSelect, 'The field whose values each Design chooses.'));
+        details.push(h('label', {class: 'ds-design-check'}, h('input', {type: 'checkbox', checked: parameter.multiple !== false, disabled: !editable, onchange: event => { update({multiple: event.target.checked}); commit(); }}), 'Several values'));
+        details.push(field('Default values', kept(textInput((parameter.default || []).join(', '), value => update({default: value.split(',').map(item => item.trim()).filter(Boolean)}), {placeholder: 'All'})), 'Separated by commas; empty: All values (the conditions with it are left out).'));
+      } else if (parameter.type === 'number') {
+        details.push(h('div', {class: 'ds-design-two'}, ...['default', 'min', 'max', 'step'].map(key => field(key[0].toUpperCase() + key.slice(1), kept(h('input', {type: 'number', step: 'any', value: parameter[key] ?? '', disabled: !editable, oninput: event => update({[key]: event.target.value === '' ? null : Number(event.target.value)})}))))));
+      } else details.push(field('Default text', kept(textInput(parameter.default, value => update({default: value})))));
+      details.push(field('Description', kept(textInput(parameter.description, value => update({description: value}))), 'What Designs read next to it in PPT Scope & Filters.'));
+      const used = uses(parameter.name);
+      const example = usage(parameter);
+      const chart = state.element && shownElement();
+      const canFilterChart = editable && parameter.type === 'values' && chart && (chart.kind || 'chart') === 'chart';
+      return [
+        h('div', {class: 'ds-design-parameter-head'}, field('Name', name), field('Type', type)),
+        h('p', {class: 'form-note', text: PARAMETER_TYPES[parameter.type]?.[1] || ''}),
+        ...details,
+        h('div', {class: 'ds-parameters-howto'},
+          h('span', {class: 'ds-design-field-label', text: 'How to use it'}), h('code', {text: example}),
+          h('button', {type: 'button', class: 'ds-design-action', onclick: () => navigator.clipboard?.writeText(example).then(() => viewer().status('Copied: paste it in a filter, a setting or a title.')).catch(() => undefined)}, 'Copy'),
+          canFilterChart ? h('button', {type: 'button', class: 'ds-design-action', title: `Add ${example} to the filters of ${elementLabel(chart)}`,
+            onclick: guarded(async () => {
+              const filters = String(chart.filters || '').split(/;\s*/).filter(Boolean);
+              if (!filters.some(item => item.replace(/\s+/g, '') === example.replace(/\s+/g, ''))) await setElementValues(state.element, {filters: [...filters, example].join('; ')});
+              refresh();
+            })}, 'Add to the filters of the chosen chart') : null),
+        h('p', {class: 'form-note', text: used.length ? `Used in ${used.length}: ${used.slice(0, 6).join('; ')}${used.length > 6 ? '…' : ''}` : `Not used yet: write {${parameter.name}} in a filter, a setting or a title.`}),
+        editable ? h('div', {class: 'ds-design-panel-actions'},
+          h('button', {type: 'button', class: 'ds-design-action', disabled: used.length > 0, title: used.length ? 'Remove its uses first' : null,
+            onclick: guarded(async () => { list.splice(index, 1); await save(list); refresh(); })}, 'Delete')) : null,
+      ];
+    }
     const refresh = () => {
       const list = clone(slide_set()?.parameters || []);
-      const rows = list.map((parameter, index) => {
-        const update = values => { list[index] = {...list[index], ...values}; };
-        const commit = guarded(async () => { await save(list); refresh(); });
-        const name = h('input', {type: 'text', value: parameter.name, 'aria-label': 'Name', disabled: !editable, onchange: guarded(async event => {
-          const previous = parameter.name, next = event.target.value.trim();
-          if (!next || next === previous) return;
-          update({name: next});
-          // Every use of the parameter takes its new name.
-          await edit(target => {
-            target.parameters = list;
-            const pattern = new RegExp(`\\{\\s*${previous.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\}`, 'gi');
-            for (const slide of target.slides || []) {
-              for (const key of ['title', 'subtitle']) if (typeof slide[key] === 'string') slide[key] = slide[key].replace(pattern, `{${next}}`);
-              for (const element of slide.elements || []) for (const [key, value] of Object.entries(element)) if (typeof value === 'string') element[key] = value.replace(pattern, `{${next}}`);
-            }
-          }, {scope});
-          refresh();
-        })});
-        const type = selectInput([['values', 'Field values'], ['number', 'Number'], ['text', 'Text']], parameter.type, value => { update({type: value, default: value === 'values' ? null : value === 'number' ? null : ''}); commit(); });
-        type.disabled = !editable;
-        const details = [];
-        // Each field is kept as soon as it is left (as the other assistance panels of the Designer: no Apply).
-        const kept = input => { input.addEventListener('change', commit); return input; };
-        if (parameter.type === 'values') {
-          details.push(field('Field', kept(textInput(parameter.field, value => update({field: value}), {list: 'ds-design-fields', placeholder: 'City'}))));
-          details.push(h('label', {class: 'ds-design-check'}, h('input', {type: 'checkbox', checked: parameter.multiple !== false, disabled: !editable, onchange: event => { update({multiple: event.target.checked}); commit(); }}), 'Several values'));
-          details.push(field('Default values', kept(textInput((parameter.default || []).join(', '), value => update({default: value.split(',').map(item => item.trim()).filter(Boolean)}), {placeholder: 'All'})), 'Empty: All values (the conditions with it are left out).'));
-        } else if (parameter.type === 'number') {
-          details.push(h('div', {class: 'ds-design-two'}, ...['default', 'min', 'max', 'step'].map(key => field(key[0].toUpperCase() + key.slice(1), kept(h('input', {type: 'number', step: 'any', value: parameter[key] ?? '', disabled: !editable, oninput: event => update({[key]: event.target.value === '' ? null : Number(event.target.value)})}))))));
-        } else details.push(field('Default text', kept(textInput(parameter.default, value => update({default: value})))));
-        details.push(field('Description', kept(textInput(parameter.description, value => update({description: value})))));
-        const used = uses(parameter.name);
-        return h('div', {class: 'ds-design-parameter'},
-          h('div', {class: 'ds-design-parameter-head'}, field('Name', name), field('Type', type)),
-          ...details,
-          h('p', {class: 'form-note', text: used.length ? `Used in ${used.length}: ${used.slice(0, 6).join('; ')}${used.length > 6 ? '…' : ''}` : 'Not used yet: write {' + parameter.name + '} in a filter, title or setting.'}),
-          editable ? h('div', {class: 'ds-design-panel-actions'},
-            h('button', {type: 'button', class: 'ds-design-action', disabled: used.length > 0, title: used.length ? 'Remove its uses first' : null, onclick: guarded(async () => { list.splice(index, 1); await save(list); refresh(); })}, 'Delete')) : null);
-      });
+      chosen = Math.min(chosen, Math.max(0, list.length - 1));
+      const add = editable ? h('button', {type: 'button', class: 'ds-design-action', onclick: guarded(async () => {
+        let index = list.length + 1, nameValue = `Parameter ${index}`;
+        while (list.some(item => item.name.toLowerCase() === nameValue.toLowerCase())) nameValue = `Parameter ${++index}`;
+        list.push({id: randomId('p'), name: nameValue, type: 'values', field: 'City', multiple: true, default: null, description: ''});
+        chosen = list.length - 1;
+        await save(list);
+        refresh();
+      })}, '+ Add parameter') : null;
       body.replaceChildren(
-        h('p', {class: 'form-note', text: 'Each Design of the template chooses the values of its parameters in PPT Scope & Filters. Write {Name} in a chart filter (City IN ({City})), a numeric setting (LQ < {Threshold}) or a title.'}),
-        fieldsDatalist(shownElement()),
-        ...rows,
-        editable ? h('button', {type: 'button', class: 'ds-design-action', onclick: guarded(async () => {
-          let index = list.length + 1, nameValue = `Parameter ${index}`;
-          while (list.some(item => item.name.toLowerCase() === nameValue.toLowerCase())) nameValue = `Parameter ${++index}`;
-          list.push({id: randomId('p'), name: nameValue, type: 'values', field: 'City', multiple: true, default: null, description: ''});
-          await save(list);
-          refresh();
-        })}, '+ Add parameter') : h('p', {class: 'form-note', text: 'Only the owners of the template change its parameters.'}));
+        h('div', {class: 'ds-parameters-intro'},
+          h('p', {}, h('strong', {text: 'A parameter is a question the template leaves open'}), ', and each PPT Design of the template answers it in PPT Scope & Filters (which Cities, which threshold, which text). Write ',
+            h('code', {text: '{Name}'}), ' in a chart filter, a setting or a title: every Design shows it with its own answer.'),
+          h('p', {class: 'form-note', text: 'Example: a parameter Cities of the field City, and the filter City IN ({Cities}) in the charts: one template gives a PPT of London and another of Leeds.'})),
+        h('div', {class: 'ds-parameters-layout'},
+          h('div', {class: 'ds-parameters-list', role: 'list', 'aria-label': 'Parameters'},
+            list.map((parameter, index) => {
+              const count = uses(parameter.name).length;
+              return h('button', {type: 'button', role: 'listitem', class: `ds-parameters-item${index === chosen ? ' is-active' : ''}`, 'aria-current': index === chosen ? 'true' : null,
+                onclick: () => { chosen = index; refresh(); }},
+              h('strong', {text: parameter.name}), h('span', {class: 'ds-parameters-item-type', text: PARAMETER_TYPES[parameter.type]?.[0] || parameter.type}),
+              h('span', {class: 'ds-parameters-uses', text: count ? `Used in ${count}` : 'Not used yet'}));
+            }),
+            add),
+          h('div', {class: 'ds-parameters-detail'}, ...(list.length ? parameterForm(list, chosen)
+            : [h('p', {class: 'ds-design-empty', text: editable ? 'No parameter yet: add one.' : 'This template has no parameters.'})]))),
+        editable ? null : h('p', {class: 'form-note', text: 'Only the owners of the template change its parameters.'}));
+      window.setupSearchableSingleSelects?.();
     };
     refresh();
     openDialog('Parameters', `Template ${state.info?.template?.name || ''}`, body, {wide: true});
+    window.setupSearchableSingleSelects?.();
   }
 
   // ------------------------------------------------------------------
-  // Save as template, Save as my Design, Detach
+  // Save Design as, Save as template, Detach
   // ------------------------------------------------------------------
   async function saveAsTemplate() {
     const id = viewer().state().activeId;
@@ -2021,7 +2074,7 @@
   async function saveAsMyDesign() {
     const {design} = viewer().state();
     if (state.templateDirty) throw new Error('Save or discard the changes of the template first: your Design takes the changes of this one only.');
-    const name = await window.showTextInputDialog('Name of your Design', {title: 'Save as my Design', value: `${design?.name || 'Design'} (mine)`.slice(0, 120), maxLength: 120, confirmLabel: 'Save'});
+    const name = await window.showTextInputDialog('Name of your Design', {title: 'Save Design as', value: `${design?.name || 'Design'} (mine)`.slice(0, 120), maxLength: 120, confirmLabel: 'Save'});
     if (!name || !String(name).trim()) return;
     const id = globalThis.crypto?.randomUUID?.() || randomId('design-');
     const definition = {...clone(design), name: String(name).trim(), slide_comments: {}, slide_comment_meta: {},

@@ -470,7 +470,7 @@ Pictures are kept in the table **PPT Images**. Text boxes and pictures read no C
 
 - **Save** stores the template (Template scope) and the differences of the Design. If another user saved the template since you opened the Designer, Save asks you to reload it first.
 - What is not saved yet is kept on the server, for you only, as a draft (table **PPT Drafts**): opening the Designer again offers to restore it or discard it. **Discard** goes back to what is saved. Drafts are not part of exports, transfers or backups.
-- **More** offers **Save as template…** (the slides shown as a new template), **Save as my Design…** (a Design of your own that follows the same template with the changes shown) and **Detach from template…** (the Design keeps the slides it shows as its own and no longer follows its template; choosing a template for it again in PPT Designs follows that template as it is).
+- **More** offers **Save Design as…** (a Design of your own that follows the same template with the changes shown), **Save as template…** (the slides shown as a new template) and **Detach from template…** (the Design keeps the slides it shows as its own and no longer follows its template; choosing a template for it again in PPT Designs follows that template as it is).
 - Deleting a template that Designs follow detaches them first, so none of them breaks.
 - Generate PPT, Reporting Jobs and Bundle Report Templates use the slides of the Design as saved. The comments of a slide stay with it when its title changes.
 
@@ -479,7 +479,7 @@ Pictures are kept in the table **PPT Images**. Text boxes and pictures read no C
 | Role | Slides of a Design (This Design) | Slides of a template (Template scope, parameters) |
 | --- | --- | --- |
 | **admin**, **super-admin** | Any Design | Any template |
-| **user-editor** | The Designs they created | The templates they created; **Save as my Design** for a variant of another one |
+| **user-editor** | The Designs they created | The templates they created; **Save Design as** for a variant of another one |
 | **user-viewer** | — | — |
 
 App Events record `design_slides_saved` (what changed: slides and charts of the template, differences of the Design), `report_template_saved_from_designer`, `report_template_slide_ids_assigned`, `design_detached`, `report_template_saved_from_design`, `design_draft_discarded` and `design_image_uploaded`.
@@ -488,7 +488,7 @@ App Events record `design_slides_saved` (what changed: slides and charts of the 
 
 A template can declare **parameters**, so that Designs that differ only in a city, a call family or a threshold share one template with no difference of their own (a *City Report* template and its London, Manchester and Cardiff Designs).
 
-- **Parameters** in the bar of the Designer (Template scope) adds, renames and deletes them: **Field values** (the values of a CDR field such as City, one or several; none chosen means All), **Number** (default, minimum, maximum, step) or **Text**. A parameter in use cannot be deleted, and renaming one renames its uses.
+- **Parameters** in the bar of the Designer (Template scope) lists them at the left, with their type and where they are used, and shows the one chosen at the right, where it is added, renamed and deleted: **Field values** (the values of any field of the CDRs or an Auto-calculated Field, chosen from a list with search; one or several; none chosen means All), **Number** (default, minimum, maximum, step) or **Text**. **How to use it** gives the condition to write (`City IN ({Cities})`), to copy or add to the filters of the chart chosen. A parameter in use cannot be deleted, and renaming one renames its uses.
 - Write `{Name}` in a chart filter (`City IN ({City})`; with All the condition is left out), a numeric setting (`LQ < {Threshold}`, `Threshold = {Threshold}`, an axis range) or a title (`Voice quality in {City}`).
 - Each Design chooses the values in **PPT Scope & Filters → Parameters**, applied and saved like its filters; until it chooses them, it uses their default values.
 

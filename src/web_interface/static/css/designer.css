@@ -318,6 +318,25 @@
 .ppt-designer .ds-design-difference.is-warning { border-color: #f0c2c5; background: #fdf3f3; }
 .ppt-designer .ds-design-parameter { display: grid; gap: .5rem; padding: .7rem; border: 1px solid #e3dcee; border-radius: 10px; }
 .ppt-designer .ds-design-parameter-head { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: .5rem; }
+/* Parameters: what they are, the list at the left and the one chosen at the right, with how to use it. */
+.ppt-designer .ds-parameters-intro { padding: .7rem .8rem; border-radius: 10px; background: var(--ds-soft); color: var(--ds-design-ink); font-size: .86rem; line-height: 1.45; }
+.ppt-designer .ds-parameters-intro p { margin: 0 0 .3rem; }
+.ppt-designer .ds-parameters-intro p:last-child { margin-bottom: 0; }
+.ppt-designer :is(.ds-parameters-intro, .ds-parameters-howto) code { padding: .1rem .35rem; border: 1px solid var(--ds-border); border-radius: 6px; background: #fff;
+  font: 600 .8rem ui-monospace, "SF Mono", Menlo, monospace; }
+.ppt-designer .ds-parameters-layout { display: grid; grid-template-columns: minmax(11rem, 15rem) minmax(0, 1fr); align-items: start; gap: 1rem; }
+.ppt-designer .ds-parameters-list { display: grid; gap: .4rem; }
+.ppt-designer .ds-parameters-item { display: grid; gap: .15rem; padding: .55rem .65rem; border: 1px solid var(--ds-border); border-radius: 10px; background: #fff; box-shadow: none;
+  color: var(--ds-design-ink); font: inherit; text-align: left; cursor: pointer; }
+.ppt-designer .ds-parameters-item:hover { border-color: var(--ds-color); }
+.ppt-designer .ds-parameters-item.is-active { border-color: var(--ds-color); background: var(--ds-soft); box-shadow: inset 3px 0 0 var(--ds-color); }
+.ppt-designer .ds-parameters-item strong { font-size: .88rem; overflow-wrap: anywhere; }
+.ppt-designer .ds-parameters-item-type { font-size: .72rem; font-weight: 750; color: var(--ds-color); }
+.ppt-designer .ds-parameters-uses { font-size: .72rem; color: var(--ds-design-muted); }
+.ppt-designer .ds-parameters-detail { display: grid; gap: .6rem; min-width: 0; padding: .8rem; border: 1px solid var(--ds-border); border-radius: 12px; background: #fff; }
+.ppt-designer .ds-parameters-detail .form-note { margin: 0; }
+.ppt-designer .ds-parameters-howto { display: flex; flex-wrap: wrap; align-items: center; gap: .45rem; padding: .55rem .65rem; border-radius: 9px; background: #f6f3fb; }
+@media (max-width: 700px) { .ppt-designer .ds-parameters-layout { grid-template-columns: minmax(0, 1fr); } }
 
 /* The values of the template parameters in PPT Scope & Filters. */
 .ds-parameters { display: grid; grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr)); gap: .6rem; }
