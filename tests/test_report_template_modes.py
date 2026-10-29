@@ -206,6 +206,32 @@ def test_bundle_report_templates_generate_every_design_with_their_nr_mode(tmp_pa
     assert queued == [('nsa-dash', 'SA')] and deck.decks == [('nsa-dash', b'pptx')]
 
 
+def test_bundle_report_templates_give_the_parameters_of_a_design_the_values_of_their_common_filters(tmp_path):
+    from types import SimpleNamespace
+    from src.modules.bundle_report_templates import SectionGenerator, normalize_definition
+
+    queued = []
+    output = tmp_path / 'deck.pptx'
+    output.write_bytes(b'pptx')
+    stored = {'name': 'City report', 'nr_mode': 'NSA', 'template': 'Cities', 'filters': {}, 'parameter_values': {'p-city': ['London']},
+              'slide_comments': {'s1': [{'text': 'London is fine'}]}}
+    tools = SimpleNamespace(
+        list_designs=lambda _repository: {'city': stored},
+        parameters=lambda _repository, _raw: [{'id': 'p-city', 'name': 'Chosen Cities', 'type': 'values', 'field': 'City'},
+                                              {'id': 'p-note', 'name': 'Note', 'type': 'text'}],
+        queue_export=lambda key, _user, definition, theme=None: queued.append(definition) or 1,
+        job=lambda _repository, _job_id: {'status': 'ready', 'output_path': str(output), 'progress': 100, 'last_error': ''},
+    )
+    for cities, values, comments in ((['Leeds'], {'p-city': ['Leeds']}, {}), ([], {'p-city': ['London']}, stored['slide_comments'])):
+        definition = normalize_definition({'filters': {'nr_mode': 'NSA', 'cities': cities}, 'sections': [
+            {'key': 'designs', 'enabled': True, 'items': [{'key': 'city', 'enabled': True}], 'options': {'campaigns': []}}]})
+        section = next(item for item in definition['sections'] if item['key'] == 'designs')
+        SectionGenerator(SimpleNamespace(design_reporting=tools), SimpleNamespace(list_main_cities=lambda: []), 'super',
+                         definition, tmp_path).designs(section)
+        # The Cities of the report fill its City parameter, and the comments written for London stay out.
+        assert (queued[-1]['parameter_values'], queued[-1]['slide_comments']) == (values, comments)
+
+
 def test_reporting_jobs_keep_the_nr_mode_of_each_design_entry():
     from src.modules.report_tasks import normalize_definition
 

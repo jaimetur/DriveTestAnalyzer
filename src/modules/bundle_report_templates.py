@@ -1367,6 +1367,17 @@ class SectionGenerator:
             # keeps reading both, which its slides compare, the Campaigns choosing the CDRs of each NR Mode.
             nr_mode = NSA_VS_SA if _design_mode(design) == NSA_VS_SA else self.filters['nr_mode']
             definition.update({'filters': filters, 'auto_cdrs': True, 'nr_mode': nr_mode, 'sa_campaigns': []})
+            # The field-values parameters of its template on a field of the common filters take their values (a City
+            # Report template for the cities of the report); its saved comments, written for its own values, then stay out.
+            parameter_values = dict(design.get('parameter_values') or {})
+            for parameter in (tools.parameters(self.repository, design) if hasattr(tools, 'parameters') else []):
+                chosen = next((list(self.filters[field_name]) for field_name, column in DESIGN_FILTERS.items()
+                               if parameter.get('type') == 'values' and str(column).casefold() == str(parameter.get('field') or '').casefold()
+                               and self.filters[field_name]), None)
+                if chosen:
+                    parameter_values[parameter['id']] = chosen
+            if parameter_values != (design.get('parameter_values') or {}):
+                definition.update(parameter_values=parameter_values, slide_comments={}, slide_comment_meta={})
             job_id = tools.queue_export(item['key'], self.user, definition, theme=self.definition.get('theme'))
             deadline = time.monotonic() + DESIGN_TIMEOUT_SECONDS
             while True:
