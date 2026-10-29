@@ -139,24 +139,28 @@
       onclick: () => change({chart_type: item.type}), ...props},
     picture(item.type), h('span', {text: item.type}));
   };
-  // The NR Mode of the CDRs a chart reads: that of the PPT Design (PPT, named with the mode it has now), or only NSA or only
-  // SA, kept as the filter NR Mode IN (SA). A PPT Design of one NR Mode reads only its CDRs: the other NR Mode waits,
-  // greyed, for NSA & SA in PPT Filters (a chart that keeps it shows why it is empty).
-  function nrModeRow({nrMode, settings, plainFilters, writeFilters}, pptNrMode = '') {
+  // The NR Mode of the CDRs a chart reads, kept as the filter NR Mode IN (SA) when the chart keeps one of its own. One button
+  // per result: a PPT Design of one NR Mode reads only its CDRs (its NR Mode, the other greyed until NSA & SA is chosen in
+  // PPT Filters; a chart that keeps it shows why it is empty), one of NSA & SA both or either; a template (eachPpt) is shared
+  // by Designs of any NR Mode, so its chart follows each one (Each PPT) or keeps one.
+  function nrModeRow({nrMode, settings, plainFilters, writeFilters}, pptNrMode = '', eachPpt = false) {
     const pptMode = String(pptNrMode || '').trim();
-    const read = pptMode ? pptMode.split('&').map(mode => mode.trim().toUpperCase()) : ['NSA', 'SA'];
+    const read = pptMode && !eachPpt ? pptMode.split('&').map(mode => mode.trim().toUpperCase()) : ['NSA', 'SA'];
+    const single = read.length === 1;
     const choose = value => {
       const kept = settings.filter(item => identity(conditionField(item)) !== 'nrmode');
       if (value) kept.push(`NR Mode IN (${value})`);
       writeFilters(plainFilters, kept);
     };
-    const label = h('span', {class: 'ds-cb-shelf-label', text: 'NR Mode'});
-    const choices = [['', pptMode ? `PPT (${pptMode})` : 'PPT', `The CDRs of the NR Mode of the PPT Design${pptMode ? ` (${pptMode} now)` : ''}: the chart follows it`], ...NR_MODES];
-    return h('div', {class: 'ds-cb-source-row', title: 'The NR Mode of the CDRs the chart reads'}, label,
+    const choices = single
+      ? NR_MODES.map(([value, text, title]) => (value === read[0] ? ['', text, `The ${text} CDRs: the PPT Design reads only those`] : [value, text, title]))
+      : [['', eachPpt ? 'Each PPT' : pptMode ? 'NSA & SA' : 'PPT', eachPpt ? 'The NR Mode of each PPT Design that follows the template' : 'The CDRs of both NR Modes, as the PPT Design reads them'], ...NR_MODES];
+    const isActive = value => value === nrMode || (single && !value && nrMode === read[0]);
+    return h('div', {class: 'ds-cb-source-row', title: 'The NR Mode of the CDRs the chart reads'}, h('span', {class: 'ds-cb-shelf-label', text: 'NR Mode'}),
       h('div', {class: 'ds-cb-segmented', role: 'group', 'aria-label': 'NR Mode of the CDRs the chart reads'}, choices.map(([value, text, title]) => {
         const unread = Boolean(value) && !read.includes(value);
-        return h('button', {type: 'button', class: `${value === nrMode ? 'is-active' : ''}${unread ? ' is-unread' : ''}`, 'aria-pressed': String(value === nrMode),
-          disabled: unread && value !== nrMode, onclick: () => choose(value),
+        return h('button', {type: 'button', class: `${isActive(value) ? 'is-active' : ''}${unread ? ' is-unread' : ''}`, 'aria-pressed': String(isActive(value)),
+          disabled: unread && !isActive(value), onclick: () => { if (!isActive(value)) choose(value); },
           title: unread ? `The PPT Design reads only the ${pptMode} CDRs: choose NR Mode NSA & SA in PPT Filters to show the ${value} ones` : title}, text);
       })));
   }
@@ -200,7 +204,7 @@
    *  options: {values, fields: {source: [{name, type, category}]}, calculated: [names], parameters: [...],
    *            lockedFilters: [labels], fieldValues: async (source, field) => [{value, count}], onChange(changes),
    *            showSource (false: the source and NR Mode are chosen elsewhere, as in Chart Builder), pptNrMode (the NR Mode
-   *            of the PPT Design: NSA, SA or NSA & SA),
+   *            of the PPT Design: NSA, SA or NSA & SA), eachPpt (a template chart: each PPT Design keeps its NR Mode),
    *            chartTypes (false: Chart Type is drawn apart, with renderTypes)} */
   function render(host, options) {
     const context = analyse(options);
@@ -408,7 +412,7 @@
       options.showSource === false ? null : h('div', {class: 'ds-cb-source'},
         h('div', {class: 'ds-cb-source-row', title: 'The CDRs the chart reads'}, h('span', {class: 'ds-cb-shelf-label', text: 'Source'}),
           h('div', {class: 'ds-cb-segmented', role: 'group', 'aria-label': 'Source: the CDRs the chart reads'}, SOURCES.map(([value, label, title]) => h('button', {type: 'button', class: value === source ? 'is-active' : '', 'aria-pressed': String(value === source), title, onclick: () => change({cdr_source: value})}, label)))),
-        nrModeRow(context, options.pptNrMode)),
+        nrModeRow(context, options.pptNrMode, options.eachPpt)),
       h('div', {class: 'ds-cb-shelves'}, SHELVES.filter(([key]) => key !== 'repeat' || options.showSource !== false).map(shelf)),
       chartTypes ? h('div', {class: 'ds-cb-chart-types'}, h('span', {class: 'ds-cb-shelf-label', text: 'Chart Type'}), chartTypes, settingRow(context)) : null,
       h('div', {class: 'ds-cb-data'}, h('span', {class: 'ds-cb-shelf-label', text: `Fields · ${SOURCES.find(([value]) => value === source)?.[1] || source}`}), search, fieldsHost),
