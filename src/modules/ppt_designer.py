@@ -66,8 +66,9 @@ from src.modules.cdr_reporting import (
     parse_catalog_grouping,
     prepare_catalog_chart_preview_frame, render_catalog_chart_preview, render_unavailable_source_chart,
     split_calculated_dimension_aliases, chart_title_parts, _select_dynamic_chart_frame, STRUCTURAL_LAYOUT_TYPES,
-    CATALOG_SOURCE_KINDS, CatalogEntry, ELEMENT_CHART_TYPES,
+    CATALOG_SOURCE_KINDS, CHART_SETTING_FILTERS, CatalogEntry, ELEMENT_CHART_TYPES,
 )
+from src.modules.chart_types import EXTENDED_CHART_TYPES, date_bin_parts
 from src.modules.report_layouts import DYNAMIC_LAYOUTS, canonical_layout_name, compact_grid_layout, grid_layout_name
 
 from src.modules import cdr_stage, cdr_store
@@ -547,8 +548,6 @@ def column_cache_dir(workspace: str | Path) -> Path:
     return design_cache_dir(workspace) / 'columns'
 
 
-# Template "filters" that configure a chart instead of selecting rows.
-CHART_SETTING_FILTERS = frozenset({'threshold', 'buckets', 'binsize', 'classcolours', 'histogramoperator'})
 # Chart types whose models only depend on the multiset of rows, so SQLite can
 # group identical rows and the loader expands them back before charting.
 COMPACT_READ_CHART_TYPES = frozenset({
@@ -6311,7 +6310,7 @@ def install_design_routes(core):
         quote = lambda value: '"' + str(value).replace('"', '""') + '"'
         for condition in parse_catalog_filters(entry.filters):
             normalized = identity(condition.column)
-            if normalized in {'threshold', 'buckets', 'binsize', 'classcolours', 'histogramoperator'}:
+            if normalized in CHART_SETTING_FILTERS:
                 continue
             if multivendor and normalized in {'operator', 'operatorvendor', 'vendorv3'}:
                 complete = False
@@ -6482,6 +6481,8 @@ def install_design_routes(core):
         named_whole = False
         while referenced:
             name = referenced.pop(0)
+            # A date field grouped by a period (DAY(Test_Start_Time)) reads the date field.
+            name = date_bin_parts(name)[1] if date_bin_parts(name) else name
             seen.append(name)
             key = identity(name)
             if key in CHART_SETTING_FILTERS:
@@ -6513,6 +6514,10 @@ def install_design_routes(core):
         if named_whole and entry.chart_type.casefold() == 'map':
             # Such a map still shows where its series lie by City or Region (as when it read every column).
             for name in ('City', 'Region'):
+                selected.extend(by_identity.get(identity(name), []))
+        if EXTENDED_CHART_TYPES.get(entry.chart_type.casefold()) == 'filled_map':
+            # A Filled Map colours the Map Area of each test, in its country.
+            for name in ('Map_Area', 'Map_Area_Country'):
                 selected.extend(by_identity.get(identity(name), []))
         return sorted(set(selected), key=lambda column: (identity(column), column))
 
@@ -7242,6 +7247,8 @@ def install_design_routes(core):
                         # The operators the Operator Maps exclude are left out of every Design.
                         raw_frame = drop_excluded_operators(raw_frame, excluded_operators(mapping_settings))
                         raw_frame.attrs.update(mapping_settings)
+                        # Where a Filled Map reads the polygons of the Map Areas.
+                        raw_frame.attrs['map_areas'] = task_repository.map_area_source()
                         # NSA & SA: its campaigns that name SA are drawn as SA series (see _sa_series_keys).
                         raw_frame.attrs[BOTH_NR_MODES_ATTR] = design_nr_mode(snapshot.definition) == NSA_VS_SA
                         raw_frame = normalise_operator_aliases(raw_frame)
@@ -7628,6 +7635,7 @@ def install_design_routes(core):
         raw_frame = apply_operator_mappings(raw_frame, operator_mappings)
         raw_frame = drop_excluded_operators(raw_frame, excluded_operators(mapping_settings))
         raw_frame.attrs.update(mapping_settings)
+        raw_frame.attrs['map_areas'] = task_repository.map_area_source()
         raw_frame = normalise_operator_aliases(raw_frame)
         raw_frame.attrs['operator_aliases_normalized'] = True
         try:

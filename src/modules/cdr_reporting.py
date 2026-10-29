@@ -29,6 +29,7 @@ from typing import Callable, Iterable, Mapping
 
 import numpy as np
 import pandas as pd
+from src.modules.chart_types import EXTENDED_CHART_SETTINGS, EXTENDED_CHART_TYPES, date_bin_labels, date_bin_parts, decorate_table, extended_chart_payload
 from src.modules.mapping_order import operator_vendor_order_key, swap_operator_vendor, vendor_operator_order_key, vendor_order_key
 from src.modules.nr_mode import campaign_nr_mode
 from src.modules.report_layouts import DYNAMIC_LAYOUTS, canonical_layout_name, grid_layout_name, dynamic_layout_axes
@@ -85,8 +86,10 @@ CATALOG_SOURCE_KINDS = {"cdr-data": "data", "cdr-voice": "voice", "cdr-speech": 
 CHART_TYPES = {
     "100% stacked vertical bars", "count stacked horizontal bars", "cdf line", "multi kpi cdf lines", "scatter", "table", "dynamic table",
     "distribution stacked vertical bars", "threshold stacked vertical bars", "average vertical bars", "median vertical bars", "map", "histogram line", "histogram bars",
-    "kpi card",
+    "kpi card", *EXTENDED_CHART_TYPES,
 }
+# Filters of a chart row that set the chart up rather than keep rows (Threshold, Buckets, Bin Size, Whiskers…).
+CHART_SETTING_FILTERS = frozenset({"threshold", "buckets", "binsize", "classcolours", "histogramoperator", *EXTENDED_CHART_SETTINGS})
 # Elements of the slides of a Design that read no CDR (design_slides): a text box, and a picture. Rows of either have no
 # Source Dataset; PPT Reporting (old) leaves them out.
 # Rows of a Design slide set that read no CDR: text boxes, pictures and charts still being built (design_slides).
@@ -123,7 +126,7 @@ _DESIGN_CANVAS_RENDERER_LOCK = threading.RLock()
 # The browser worker keeps a copy of canvas_charts.js in memory. Bump this
 # whenever rendering semantics change so a live server does not keep painting
 # previews with an older script after a hot reload.
-DESIGN_CANVAS_RENDERER_VERSION = 14
+DESIGN_CANVAS_RENDERER_VERSION = 15
 
 
 def _node_executable() -> str:
@@ -282,6 +285,22 @@ def _design_hits_to_hover_targets(
             x, y = float(hit.get("x") or 0), float(hit.get("y") or 0)
             targets.append({
                 "kind": "bar", "x": x - 7, "y": y - 7, "width": 14.0, "height": 14.0,
+                "label": label, "legend": legend, "value": str(hit.get("value") or ""),
+            })
+        elif kind in {"circle", "polygon"}:
+            # A bubble, a slice or an area of a map: the PNG viewer reads the box around it.
+            if kind == "circle":
+                radius = float(hit.get("radius") or 0)
+                left, top, right, bottom = (float(hit.get("x") or 0) - radius, float(hit.get("y") or 0) - radius,
+                                            float(hit.get("x") or 0) + radius, float(hit.get("y") or 0) + radius)
+            else:
+                points = [point for point in hit.get("points") or [] if isinstance(point, dict)]
+                if not points:
+                    continue
+                xs, ys = [float(point.get("x") or 0) for point in points], [float(point.get("y") or 0) for point in points]
+                left, top, right, bottom = min(xs), min(ys), max(xs), max(ys)
+            targets.append({
+                "kind": "bar", "x": left, "y": top, "width": right - left, "height": bottom - top,
                 "label": label, "legend": legend, "value": str(hit.get("value") or ""),
             })
         elif kind == "line":
@@ -2445,6 +2464,16 @@ def _catalog_column(
     calculated = _calculated_dimension_column(frame, name, frame.attrs.get("catalogue_calculated_dimensions", ()))
     if calculated:
         return calculated
+    if date_bin := date_bin_parts(name):
+        # A date field grouped by a period (DAY(Test_Start_Time)): the period of each time, as text in time order.
+        unit, field = date_bin
+        source = _column(frame, (field,)) or _catalog_column(frame, field, multivendor)
+        if not source:
+            return None
+        target = f"__catalog_date_{unit}_{_normalise_catalog_name(field)}"
+        if target not in frame:
+            frame[target] = date_bin_labels(frame[source], unit)
+        return target
     if normalized == "operator":
         return _group_column(frame, multivendor) if operator_as_vendor else _column(frame, ("Operator", "operator"))
     if normalized == "operatorvendor":
@@ -2764,7 +2793,7 @@ def _apply_catalog_filters(frame: pd.DataFrame, entry: CatalogEntry, multivendor
     result.attrs["catalogue_calculated_dimensions"] = entry.calculated_dimensions
     result.attrs["catalogue_cdr_source"] = entry.cdr_source
     for condition in parse_catalog_filters(entry.filters):
-        if _normalise_catalog_name(condition.column) in {"threshold", "buckets", "binsize", "classcolours", "histogramoperator"}:
+        if _normalise_catalog_name(condition.column) in CHART_SETTING_FILTERS:
             continue
         # A Vendor Comparison materialises values as Operator_Vendor. Template
         # Operator filters therefore match that value's operator prefix (for
@@ -3238,7 +3267,7 @@ def preview_catalog_chart_data(
     bucket_edges = _catalog_bucket_edges(entry)
     bucket_operator = _catalog_bucket_operator(entry)
     for condition in parse_catalog_filters(entry.filters):
-        if _normalise_catalog_name(condition.column) not in {'threshold', 'buckets', 'binsize', 'classcolours', 'histogramoperator'}:
+        if _normalise_catalog_name(condition.column) not in CHART_SETTING_FILTERS:
             include(_catalog_column(grouped, condition.column, False, metric, bucket_edges, bucket_operator, operator_as_vendor=False), f'Filter · {condition.column}')
     for axis, grouping in (('Rows Split', entry.rows_split), ('Columns Split', entry.columns_split)):
         for dimension in parse_catalog_grouping(grouping).dimensions:
@@ -3322,7 +3351,8 @@ def render_catalog_chart_preview(
         raise ValueError('Only chart rows with a Source Dataset can be previewed.')
     render_entry = prepare_multivendor_catalog_entry(entry) if multivendor else entry
     render_frame = frame if prefiltered else normalise_operator_aliases(frame)
-    if report_chart_renderer_name(renderer) == "canvas":
+    # The chart types of chart_types.py are only drawn by the Canvas renderer.
+    if report_chart_renderer_name(renderer) == "canvas" or render_entry.chart_type.casefold() in EXTENDED_CHART_TYPES:
         payload = catalog_chart_payload(
             render_frame,
             render_entry,
@@ -3348,7 +3378,7 @@ def render_catalog_chart_preview_with_hover(
 ) -> tuple[bytes, list[dict[str, object]]]:
     """Render one PNG and return hit geometry from the selected painter."""
     selected = report_chart_renderer_name(renderer)
-    if selected != "canvas":
+    if selected != "canvas" and entry.chart_type.casefold() not in EXTENDED_CHART_TYPES:
         return (
             render_catalog_chart_preview(
                 frame, entry, multivendor=multivendor, prefiltered=prefiltered, renderer=selected,
@@ -3373,6 +3403,9 @@ def catalog_chart_hover_targets(
 ) -> list[dict[str, object]]:
     """Describe interactive hit areas using the exact coordinate system of preview PNGs."""
     render_entry = prepare_multivendor_catalog_entry(entry) if multivendor else entry
+    if render_entry.chart_type.casefold() in EXTENDED_CHART_TYPES:
+        # Their hit areas come from the Canvas renderer that draws them.
+        return []
     spec = _catalog_spec(render_entry)
     if spec["kind"] == "multi_cdf":
         metric_targets: list[dict[str, object]] = []
@@ -6353,7 +6386,14 @@ def _catalog_spec(entry: CatalogEntry) -> dict:
         "metric": metric_parts[:1] or (entry.kpi,),
         "aggregation": aggregation,
     }
-    if chart_type == "multi kpi cdf lines":
+    if chart_type in EXTENDED_CHART_TYPES:
+        # The chart types of chart_types.py read every measure of their row themselves.
+        spec["kind"] = EXTENDED_CHART_TYPES[chart_type]
+        spec["metrics"] = metric_parts
+        if spec["kind"] == "symbol_map":
+            spec["x_metric"] = metric_parts[1:2] or ("Test_Start_Longitude", "Test Start Longitude")
+            spec["colour_metric"] = metric_parts[2:3]
+    elif chart_type == "multi kpi cdf lines":
         metrics = metric_parts
         spec["kind"] = "multi_cdf"
         spec["metric"] = metrics[:1]
@@ -6529,7 +6569,7 @@ def _exclude_chart_values(
     metric = _metric_column(frame, spec)
     if metric and spec.get("kind") != "multi_cdf":
         columns.append(metric)
-    if spec.get("kind") in {"scatter", "map"}:
+    if spec.get("kind") in {"scatter", "map", "symbol_map"}:
         resolved = _column(frame, spec.get("x_metric", ()))
         if resolved:
             columns.append(resolved)
@@ -6782,6 +6822,8 @@ def catalog_chart_payload(
     )
     row_hierarchy = [column for column in hierarchy_columns if column.startswith("__catalog_row_")]
     column_hierarchy = [column for column in hierarchy_columns if column.startswith("__catalog_column_")]
+    if chart_type in EXTENDED_CHART_TYPES and chart_type not in {"highlight table", "bar table"}:
+        return extended_chart_payload(data, render_entry, metric, row_hierarchy, column_hierarchy, title, multivendor)
 
     def serialise_key(key: tuple[object, ...]) -> list[str]:
         return [_chart_payload_value(value) for value in key]
@@ -7381,10 +7423,12 @@ def catalog_chart_payload(
             "series": series_payload,
         }
 
-    if chart_type in {"table", "dynamic table"} and metric:
+    if chart_type in {"table", "dynamic table", "highlight table", "bar table"} and metric:
         dynamic_table = chart_type == "dynamic table"
+        # Highlight and Bar Table colour or draw each value: they always aggregate it, as a Dynamic Table.
+        coloured_table = chart_type in {"highlight table", "bar table"}
         aggregation = spec.get("aggregation")
-        if dynamic_table and not aggregation:
+        if (dynamic_table or coloured_table) and not aggregation:
             aggregation = "mean" if pd.to_numeric(data[metric], errors="coerce").notna().any() else "count"
         if aggregation:
             labels = data.attrs.get("catalogue_dimension_labels", {})
@@ -7475,15 +7519,20 @@ def catalog_chart_payload(
                 column_names = [column_names[index] for index in column_order]
                 headers = [*[dimension_label(column) for column in visible_rows], *column_names]
                 rows = []
+                # The values of each row as numbers, which Highlight and Bar Table colour or draw.
+                row_numbers: list[list[float | None]] = []
                 for index, values in table.iterrows():
                     index_values = index if isinstance(index, tuple) else (index,)
                     rows.append([*[_chart_payload_value(value) for value in index_values], *[formatted(value) for value in values]])
+                    row_numbers.append([None if pd.isna(value) else float(value) for value in values])
             else:
                 headers = [*[dimension_label(column) for column in visible_rows], f"{aggregation.upper()}({metric})"]
                 rows = []
+                row_numbers = []
                 for index, value in aggregated.items():
                     index_values = index if isinstance(index, tuple) else (index,)
                     rows.append([*[_chart_payload_value(item) for item in index_values], formatted(value)])
+                    row_numbers.append([None if pd.isna(value) else float(value)])
             if dynamic_table:
                 rows.sort(key=lambda row: hierarchy_sort_key(
                     visible_rows, tuple(row[:len(visible_rows)]),
@@ -7491,7 +7540,7 @@ def catalog_chart_payload(
             # Table renderers share the available height among every row, so
             # only very large tables are capped to stay legible.
             rows = rows[:96 if dynamic_table else 60]
-            return {
+            model = {
                 **_chart_payload_base("table", title, render_entry, data, metric),
                 "aggregation": aggregation,
                 "dynamic": dynamic_table,
@@ -7501,6 +7550,9 @@ def catalog_chart_payload(
                 "headers": headers,
                 "rows": rows,
             }
+            if coloured_table:
+                return decorate_table(model, chart_type, row_numbers[:len(rows)], metric, render_entry)
+            return model
         table_data = data[[group, period, metric]].copy() if period else data[[group, metric]].copy()
         numeric_metric = pd.to_numeric(table_data[metric], errors="coerce")
         has_series = bool(period) and not table_data[period].fillna("(all)").astype(str).eq("(all)").all()

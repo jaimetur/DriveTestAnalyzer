@@ -19149,6 +19149,8 @@ def _chart_builder_context(payload: dict[str, Any]) -> tuple[pd.DataFrame, Catal
         # The operators the Operator Maps exclude are left out of every chart.
         result = drop_excluded_operators(result, excluded_operators(mapping_settings))
         result.attrs.update(shared_frame_attrs(mapping_settings))
+        # Where a Filled Map reads the polygons of the Map Areas.
+        result.attrs['map_areas'] = repository.map_area_source()
         return normalise_operator_aliases(result)
     return _bounded_preview_frame(CHART_PREVIEW_FRAME_CACHE, frame_key, load_frame, 4), entry
 

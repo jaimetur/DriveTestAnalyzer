@@ -3839,6 +3839,18 @@ class Repository:
             'campaign_map': load_campaign_map(self),
         }
 
+    def map_area_source(self) -> dict[str, Any]:
+        """Where a Filled Map reads the polygons of the Map Areas of this workspace, and when each country's were saved
+        (``map_areas`` in the attrs of the CDRs of a chart, see chart_types)."""
+        from src.modules.map_areas import TABLE
+
+        try:
+            with self.connection() as connection:
+                rows = connection.execute(f'SELECT country_code, updated_at FROM {TABLE}').fetchall()
+        except sqlite3.Error:
+            rows = []
+        return {'db': str(self.db_path), 'layers': {str(row[0]): str(row[1] or '') for row in rows}}
+
     def replace_operator_mapping_group(
         self, original_canonical: str | None, canonical_value: str, aliases: Iterable[object],
         color: str | None = None, role: str | None = None, nr_modes: Iterable[str] | str | None = None,

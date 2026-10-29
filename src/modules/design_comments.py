@@ -36,7 +36,13 @@ FOCUS_BONUS = 1.5
 # Chart models the rules can read: every chart type of the PPT Templates.
 SUPPORTED_MODEL_TYPES = frozenset({
     'cdf', 'multi_cdf', 'mean_bar', 'status_100', 'distribution', 'failure_count', 'scatter', 'map', 'table',
+    # The chart types after Tableau's Show Me (chart_types.py), read as the ones above: their values by key as bars,
+    # their boxes as a CDF (median and tail percentiles), their slices and areas as stacked shares.
+    'hbar', 'dot', 'bullet', 'heat_map', 'lines', 'box', 'pie', 'areas',
 })
+# How the rules read each of those: the model they have the fields of.
+READ_AS = {'hbar': 'mean_bar', 'dot': 'mean_bar', 'bullet': 'mean_bar', 'heat_map': 'mean_bar', 'lines': 'mean_bar',
+           'box': 'cdf', 'pie': 'status_100', 'areas': 'status_100'}
 # Models that carry the dimensions of their keys (tables are read from their cells).
 DIMENSIONED_MODEL_TYPES = SUPPORTED_MODEL_TYPES - {'multi_cdf', 'table'}
 OPERATOR_DIMENSIONS = frozenset({'operator', 'subscriber'})
@@ -480,7 +486,7 @@ def chart_facts(chart_index: int, title: str, kpi: str, model: dict[str, Any],
                 hidden: Iterable[str] = (), shown: Iterable[str] = ()) -> list[ChartFacts]:
     """The facts of one chart model (a Multi KPI CDF gives one per KPI); none for the charts the rules cannot read."""
     hidden_items, shown_items = {str(item) for item in hidden}, {str(item) for item in shown}
-    kind = model.get('type')
+    kind = READ_AS.get(model.get('type'), model.get('type'))
     title = str(title or model.get('title') or '')
     if kind == 'cdf':
         facts = _stat_facts(chart_index, title, model, hidden_items, shown_items)

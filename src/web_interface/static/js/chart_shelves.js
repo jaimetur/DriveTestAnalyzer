@@ -29,7 +29,7 @@
     ['CDR-Speech', 'Speech', 'The CDRs of the speech quality tests'], ['CDR-All', 'RF All', 'The CDRs of every test (Data, Voice and Speech together), for their radio fields']];
   const NR_MODES = [['NSA', 'NSA', 'Only the CDRs of the NSA campaigns'], ['SA', 'SA', 'Only the CDRs of the SA campaigns']];
   // The settings a chart type keeps among its Filters, shown with Chart Type instead of as filters.
-  const SETTINGS = ['threshold', 'buckets', 'binsize', 'classcolours', 'histogramoperator', 'nrmode'];
+  const SETTINGS = ['threshold', 'buckets', 'binsize', 'classcolours', 'histogramoperator', 'nrmode', 'whiskers', 'target', 'datebin', 'direction', 'sort'];
   const AGGREGATIONS = [['', 'As the chart type counts it'], ['AVG', 'Average'], ['MEDIAN', 'Median'], ['SUM', 'Sum'], ['COUNT', 'Count'], ['COUNTD', 'Count distinct'], ['MIN', 'Minimum'], ['MAX', 'Maximum']];
   // Chart Type: each chart type, a small picture of it (A, B and C are the colours of its series) and what its shelves
   // need.
@@ -56,7 +56,35 @@
       + bar(A, 10, 13, 17, 7) + `<rect x="30" y="14" width="9" height="5" rx="2.5" fill="${B}"/>`
       + `<path d="M10 26l6-2.5 5 1.5 6-3.5 5 1.5 6-3" fill="none" stroke="${C}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>`,
     'Map': `<path d="M5 9l11-4 15 4 12-4v20l-12 4-15-4-11 4z" fill="none" stroke="${G}" stroke-width="1.4"/>` + [[11, 17], [17, 24], [36, 20]].map(([x, y], i) => `<circle cx="${x}" cy="${y}" r="2.4" fill="${[A, B, A][i]}"/>`).join('') + `<path d="M26 24c0-3.5 4.5-6.5 4.5-10.5a4.5 4.5 0 0 0-9 0c0 4 4.5 7 4.5 10.5z" fill="${C}"/><circle cx="26" cy="13.5" r="1.7" fill="#fff"/>`,
+    // The chart types after Tableau's Show Me (ticket #46).
+    'Horizontal Bars': `<path d="M7 3v28" stroke="${G}" stroke-width="1.4"/>` + [[5, 32, A], [12, 24, B], [19, 36, A], [26, 18, B]].map(([y, w, c]) => bar(c, 7, y, w, 5)).join(''),
+    'Dot Plot': [8, 17, 26].map((y, i) => `<path d="M8 ${y}h34" stroke="${G}" stroke-width="1"/><path d="M${14 + i * 4} ${y}h${12 - i * 2}" stroke="${G}" stroke-width="2.2"/><circle cx="${14 + i * 4}" cy="${y}" r="2.6" fill="${A}"/><circle cx="${26 + i * 2}" cy="${y}" r="2.6" fill="${B}"/>`).join(''),
+    'Bullet Graph': [7, 20].map((y, i) => `<rect x="6" y="${y}" width="36" height="8" fill="${G}" opacity=".35"/><rect x="6" y="${y}" width="22" height="8" fill="${G}" opacity=".45"/>` + bar(i ? B : A, 6, y + 2.5, i ? 30 : 25, 3) + `<path d="M${i ? 27 : 31} ${y}v8" stroke="${C}" stroke-width="2"/>`).join(''),
+    'Highlight Table': `<rect x="5" y="5" width="38" height="24" rx="2" fill="none" stroke="${G}" stroke-width="1.4"/>` + bar(G, 5, 5, 38, 6) + [[17, 11, A, .25], [30, 11, B, .35], [17, 17, B, .5], [30, 17, A, .6], [17, 23, A, .4], [30, 23, B, .2]].map(([x, y, c, o]) => `<rect x="${x}" y="${y}" width="13" height="6" fill="${c}" opacity="${o}"/>`).join('') + `<path d="M5 17h38M5 23h38M17 5v24M30 5v24" stroke="${G}" stroke-width="1"/>`,
+    'Bar Table': `<rect x="5" y="5" width="38" height="24" rx="2" fill="none" stroke="${G}" stroke-width="1.4"/>` + bar(G, 5, 5, 38, 6) + [[18, 12, 9], [31, 12, 6], [18, 18, 5], [31, 18, 10], [18, 24, 11], [31, 24, 4]].map(([x, y, w]) => bar(A, x, y, w, 4)).join('') + `<path d="M17 5v24M30 5v24" stroke="${G}" stroke-width="1"/>`,
+    'Heat Map': [[8, 6, 7, A], [20, 6, 5, B], [32, 6, 8, C], [8, 17, 4, B], [20, 17, 8, A], [32, 17, 6, A], [8, 27, 6, C], [20, 27, 3, B], [32, 27, 7, B]].map(([x, y, s, c]) => `<rect x="${x + (9 - s) / 2}" y="${y - 3 + (9 - s) / 2}" width="${s}" height="${s}" fill="${c}"/>`).join(''),
+    'Pie': `<path d="M24 17V4a13 13 0 0 1 12.4 17z" fill="${A}"/><path d="M24 17l12.4 4A13 13 0 0 1 14 25.4z" fill="${B}"/><path d="M24 17L14 25.4A13 13 0 0 1 24 4z" fill="${C}"/>`,
+    'Donut': `<circle cx="24" cy="17" r="10" fill="none" stroke="${A}" stroke-width="6" stroke-dasharray="28 63" transform="rotate(-90 24 17)"/><circle cx="24" cy="17" r="10" fill="none" stroke="${B}" stroke-width="6" stroke-dasharray="20 63" stroke-dashoffset="-28" transform="rotate(-90 24 17)"/><circle cx="24" cy="17" r="10" fill="none" stroke="${C}" stroke-width="6" stroke-dasharray="15 63" stroke-dashoffset="-48" transform="rotate(-90 24 17)"/>`,
+    'Lines': axes + `<path d="M8 22l8-6 8 3 8-9 9 2" fill="none" stroke="${A}" stroke-width="2.2" stroke-linejoin="round"/><path d="M8 27l8-3 8-6 8 2 9-6" fill="none" stroke="${B}" stroke-width="2.2" stroke-linejoin="round"/>` + [[8, 22], [16, 16], [24, 19], [32, 10], [41, 12]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="1.6" fill="${A}"/>`).join(''),
+    'Dual Lines': `<path d="M5 4v26h38V4" fill="none" stroke="${G}" stroke-width="1.4"/><path d="M9 22l8-8 8 4 8-9 7 3" fill="none" stroke="${A}" stroke-width="2.2" stroke-linejoin="round"/><path d="M9 12l8 7 8-2 8 8 7-6" fill="none" stroke="${B}" stroke-width="2.2" stroke-dasharray="3 2"/>`,
+    'Areas': axes + `<path d="M6 30V20l9-4 9 3 9-8 9 2v17z" fill="${A}"/><path d="M6 30v-4l9-2 9 1 9-5 9 1v9z" fill="${B}"/>`,
+    '100% Stacked Areas': axes + `<path d="M6 30V5h36v25z" fill="${C}"/><path d="M6 30V14l9 2 9-4 9 3 9-2v17z" fill="${A}"/><path d="M6 30v-7l9 1 9-3 9 2 9-1v8z" fill="${B}"/>`,
+    'Bars and Line': axes + [[9, 14], [18, 10], [27, 18], [36, 12]].map(([x, y]) => bar(A, x, y, 6, 30 - y)).join('') + `<path d="M12 20l9-12 9 6 9-8" fill="none" stroke="${C}" stroke-width="2.2" stroke-linejoin="round"/>` + [[12, 20], [21, 8], [30, 14], [39, 6]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="1.8" fill="#fff" stroke="${C}" stroke-width="1.4"/>`).join(''),
+    'Box Plot': axes + [[12, 7, 12, 19, 27, A], [24, 5, 9, 15, 22, B], [36, 9, 14, 21, 28, A]].map(([x, top, q3, q1, low, c]) => `<path d="M${x} ${top}v${q3 - top}M${x} ${q1}v${low - q1}M${x - 2} ${top}h4M${x - 2} ${low}h4" stroke="${G}" stroke-width="1.2"/><rect x="${x - 4}" y="${q3}" width="8" height="${q1 - q3}" fill="${c}" opacity=".55" stroke="${c}"/><path d="M${x - 4} ${(q3 + q1) / 2}h8" stroke="${C}" stroke-width="1.6"/>`).join(''),
+    'Symbol Map': `<path d="M5 9l11-4 15 4 12-4v20l-12 4-15-4-11 4z" fill="none" stroke="${G}" stroke-width="1.4"/>` + [[13, 15, 5, A], [27, 20, 3, B], [35, 12, 4, A], [19, 25, 2, B]].map(([x, y, r, c]) => `<circle cx="${x}" cy="${y}" r="${r}" fill="${c}" opacity=".75"/>`).join(''),
+    'Filled Map': `<path d="M6 8l10-3 4 6-3 7-11 2z" fill="${A}"/><path d="M20 11l-4-6 13 1 3 9-9 3z" fill="${B}"/><path d="M17 18l6 0 9-3 10 4-4 9-13 2-9-5z" fill="${C}"/><path d="M6 20l11-2 3 7-12 3z" fill="${A}" opacity=".55"/>`,
+    'Treemap': bar(A, 5, 4, 20, 16) + bar(A, 5, 21, 20, 9) + bar(B, 26, 4, 17, 11) + bar(B, 26, 16, 9, 14) + bar(C, 36, 16, 7, 14),
+    'Packed Bubbles': [[17, 15, 9, A], [31, 12, 6, B], [31, 25, 5, C], [20, 27, 3.5, B], [40, 21, 3, A]].map(([x, y, r, c]) => `<circle cx="${x}" cy="${y}" r="${r}" fill="${c}"/>`).join(''),
+    'Sankey': bar(A, 5, 4, 4, 12) + bar(B, 5, 18, 4, 12) + bar(C, 39, 4, 4, 16) + bar(G, 39, 22, 4, 8) + `<path d="M9 4C24 4 24 4 39 4v10C24 14 24 10 9 10z" fill="${A}" opacity=".45"/><path d="M9 10C24 10 24 22 39 22v8C24 30 24 16 9 16z" fill="${A}" opacity=".3"/><path d="M9 18C24 18 24 14 39 14v6C24 20 24 30 9 30z" fill="${B}" opacity=".4"/>`,
+    'Gantt': `<path d="M5 4v26h38" fill="none" stroke="${G}" stroke-width="1.4"/>` + [[8, 6, 14, A], [24, 6, 12, A], [12, 14, 22, B], [9, 22, 9, C], [22, 22, 18, C]].map(([x, y, w, c]) => bar(c, x, y, w, 5)).join(''),
   };
+  // The settings beside a chart type (kept among its filters as `Name = value`): free text, or one of its choices.
+  const BUCKETS = {name: 'Buckets', placeholder: '4 limits: -110, -100, -90, -80'};
+  const DIRECTION = {name: 'Direction', title: 'Which values the colours show as good', choices: [['', 'From the KPI'], ['Higher is better', 'Higher is better'], ['Lower is better', 'Lower is better'], ['Neutral', 'Neutral (blues)']]};
+  const SORT = {name: 'Sort', title: 'The order of the rows', choices: [['', 'As the Rows'], ['Descending', 'Largest first'], ['Ascending', 'Smallest first']]};
+  const TARGET = {name: 'Target', placeholder: '20, Previous campaign or Best competitor', title: 'The mark each bar is measured against (a second measure gives it too)'};
+  const WHISKERS = {name: 'Whiskers', title: 'Where the whiskers reach', choices: [['', 'P10 – P90'], ['P5-P95', 'P5 – P95'], ['P25-P75', 'P25 – P75'], ['Min-Max', 'Min – Max'], ['1.5 IQR', '1.5 × IQR']]};
+  const DATE_BIN = {name: 'Date Bin', title: 'The periods a bar joins', choices: [['', 'Day'], ['Hour', 'Hour'], ['Week', 'Week'], ['Month', 'Month']]};
   // need: true when the shelves draw it, else what it needs; fits: the measures do not rule it out (more fields can still
   // make it drawable), so a chart type chosen before its fields is kept while they are dropped.
   const TYPES = [
@@ -66,26 +94,49 @@
     {type: 'Median Vertical Bars', need: s => s.numeric >= 1 && s.splits >= 1 || 'A numeric measure and a Rows or Columns split', fits: s => !s.text},
     {type: '100% Stacked Vertical Bars', need: s => s.text === 1 && s.measures === 1 || 'One dimension as the measure (such as Call_Status)', fits: s => !s.numeric && s.text <= 1},
     {type: 'Count Stacked Horizontal Bars', need: s => s.measures === 1 || 'One measure', fits: s => s.measures <= 1},
-    {type: 'Threshold Stacked Vertical Bars', need: s => s.numeric === 1 && s.measures === 1 || 'One numeric measure', setting: 'Threshold', fits: s => !s.text && s.numeric <= 1},
-    {type: 'Distribution Stacked Vertical Bars', need: s => s.numeric === 1 && s.measures === 1 || 'One numeric measure', setting: 'Buckets', fits: s => !s.text && s.numeric <= 1},
-    {type: 'Histogram Bars', need: s => s.numeric === 1 && s.measures === 1 || 'One numeric measure', setting: 'Bin Size', fits: s => !s.text && s.numeric <= 1},
-    {type: 'Histogram Line', need: s => s.numeric === 1 && s.measures === 1 || 'One numeric measure', setting: 'Bin Size', fits: s => !s.text && s.numeric <= 1},
+    {type: 'Threshold Stacked Vertical Bars', need: s => s.numeric === 1 && s.measures === 1 || 'One numeric measure', settings: [{name: 'Threshold', placeholder: '1.6 or {Threshold}'}], fits: s => !s.text && s.numeric <= 1},
+    {type: 'Distribution Stacked Vertical Bars', need: s => s.numeric === 1 && s.measures === 1 || 'One numeric measure', settings: [{name: 'Buckets', placeholder: '1, 5, 10, 20'}], fits: s => !s.text && s.numeric <= 1},
+    {type: 'Histogram Bars', need: s => s.numeric === 1 && s.measures === 1 || 'One numeric measure', settings: [{name: 'Bin Size', placeholder: '1'}], fits: s => !s.text && s.numeric <= 1},
+    {type: 'Histogram Line', need: s => s.numeric === 1 && s.measures === 1 || 'One numeric measure', settings: [{name: 'Bin Size', placeholder: '1'}], fits: s => !s.text && s.numeric <= 1},
     {type: 'Scatter', need: s => s.numeric === 2 && s.measures === 2 || 'Two numeric measures', fits: s => !s.text && s.numeric <= 2},
     {type: 'Table', need: s => s.measures >= 1 || 'A measure', fits: () => true},
     {type: 'Dynamic Table', need: s => s.measures >= 1 || 'A measure', fits: () => true},
     // (A Map reads its latitude and longitude on Measure; a third measure colours its points.)
     {type: 'Map', need: s => s.geo && s.numeric >= 2 && s.measures <= 3 || 'A latitude and a longitude on Measure', fits: s => s.measures <= 3},
     {type: 'KPI Card', need: s => s.measures === 1 || 'One measure: the field of the card', fits: s => s.measures <= 1},
+    {type: 'Horizontal Bars', need: s => s.measures === 1 && s.rows >= 1 || 'A measure and a Rows split (the bars)', fits: s => s.measures <= 1, settings: [SORT]},
+    {type: 'Dot Plot', need: s => s.numeric === 1 && s.measures === 1 && s.rows >= 1 || 'A numeric measure and a Rows split (a dot per Columns value)', fits: s => !s.text && s.numeric <= 1},
+    {type: 'Bullet Graph', need: s => s.numeric >= 1 && s.numeric === s.measures && s.measures <= 2 && s.splits >= 1 || 'A numeric measure (a second one is its target) and a Rows or Columns split', fits: s => !s.text && s.numeric <= 2, settings: [TARGET, BUCKETS, DIRECTION]},
+    {type: 'Highlight Table', need: s => s.measures === 1 && s.splits >= 1 || 'A measure and a Rows or Columns split', fits: s => s.measures <= 1, settings: [DIRECTION, BUCKETS]},
+    {type: 'Bar Table', need: s => s.measures === 1 && s.splits >= 1 || 'A measure and a Rows or Columns split', fits: s => s.measures <= 1},
+    {type: 'Heat Map', need: s => s.numeric >= 1 && s.numeric === s.measures && s.measures <= 2 && s.rows >= 1 && s.columns >= 1 || 'A numeric measure (a second one sizes the squares), a Rows and a Columns split', fits: s => !s.text && s.numeric <= 2, settings: [DIRECTION, BUCKETS]},
+    {type: 'Pie', need: s => s.measures === 1 && (s.text === 1 || s.columns >= 1) || 'A dimension as the measure (its values are the slices), or a measure and a Columns split', fits: s => s.measures <= 1},
+    {type: 'Donut', need: s => s.measures === 1 && (s.text === 1 || s.columns >= 1) || 'A dimension as the measure (its values are the slices), or a measure and a Columns split', fits: s => s.measures <= 1},
+    {type: 'Lines', need: s => s.numeric === 1 && s.measures === 1 && s.columns >= 1 || 'A numeric measure and a Columns split (the horizontal axis: Campaign, or a date by Day…)', fits: s => !s.text && s.numeric <= 1},
+    {type: 'Dual Lines', need: s => s.numeric === 2 && s.measures === 2 && s.columns >= 1 || 'Two numeric measures and a Columns split (the horizontal axis)', fits: s => !s.text && s.numeric <= 2},
+    {type: 'Areas', need: s => s.measures === 1 && s.columns >= 1 || 'A measure and a Columns split (the horizontal axis)', fits: s => s.measures <= 1},
+    {type: '100% Stacked Areas', need: s => s.measures === 1 && s.columns >= 1 || 'A measure and a Columns split (the horizontal axis)', fits: s => s.measures <= 1},
+    {type: 'Bars and Line', need: s => s.measures === 2 && s.columns >= 1 || 'Two measures (the bars, then the line) and a Columns split', fits: s => s.measures <= 2},
+    {type: 'Box Plot', need: s => s.numeric === 1 && s.measures === 1 || 'One numeric measure', fits: s => !s.text && s.numeric <= 1, settings: [WHISKERS]},
+    {type: 'Symbol Map', need: s => s.geo && s.numeric >= 2 && s.measures <= 3 || 'A latitude and a longitude on Measure (a third measure colours the circles)', fits: s => s.measures <= 3, settings: [BUCKETS, DIRECTION]},
+    {type: 'Filled Map', need: s => s.numeric === 1 && s.measures === 1 || 'One numeric measure: the Map Areas of the CDRs are coloured by it', fits: s => !s.text && s.numeric <= 1, settings: [BUCKETS, DIRECTION]},
+    {type: 'Treemap', need: s => s.measures >= 1 && s.measures <= 2 && s.splits >= 1 || 'A measure (a second one colours it) and a Rows or Columns split', fits: s => s.measures <= 2, settings: [BUCKETS, DIRECTION]},
+    {type: 'Packed Bubbles', need: s => s.measures >= 1 && s.measures <= 2 && s.splits >= 1 || 'A measure (a second one colours it) and a Rows or Columns split', fits: s => s.measures <= 2, settings: [BUCKETS, DIRECTION]},
+    {type: 'Sankey', need: s => s.measures === 1 && s.splits >= 2 && s.splits <= 5 || 'A measure and two to five fields on Rows and Columns (its levels)', fits: s => s.measures <= 1},
+    {type: 'Gantt', need: s => s.measures >= 1 && s.measures <= 2 && s.times === s.measures && s.rows >= 1 || 'A time on Measure (a second one is its end) and a Rows split', fits: s => s.measures <= 2, settings: [DATE_BIN]},
   ];
   // What a chart type needs, said for a chart without fields (first letter lower case, the names of fields kept).
-  const requirement = item => String(item.need({measures: 0, numeric: 0, text: 0, splits: 0, geo: false}));
+  const requirement = item => String(item.need({measures: 0, numeric: 0, text: 0, splits: 0, rows: 0, columns: 0, times: 0, geo: false}));
   const lower = text => String(text).charAt(0).toLowerCase() + String(text).slice(1);
   // Chart Type of the Designer: the chart types grouped by what they show.
   const TYPE_GROUPS = [
-    ['Distribution', ['CDF Line', 'Multi KPI CDF Lines', 'Histogram Bars', 'Histogram Line']],
-    ['Comparison', ['Average Vertical Bars', 'Median Vertical Bars', 'Scatter']],
-    ['Composition', ['100% Stacked Vertical Bars', 'Count Stacked Horizontal Bars', 'Threshold Stacked Vertical Bars', 'Distribution Stacked Vertical Bars']],
-    ['Tables and maps', ['Table', 'Dynamic Table', 'Map']],
+    ['Distribution', ['CDF Line', 'Multi KPI CDF Lines', 'Histogram Bars', 'Histogram Line', 'Box Plot', 'Dot Plot']],
+    ['Comparison', ['Average Vertical Bars', 'Median Vertical Bars', 'Horizontal Bars', 'Bullet Graph', 'Scatter']],
+    ['Trends', ['Lines', 'Dual Lines', 'Areas', '100% Stacked Areas', 'Bars and Line', 'Gantt']],
+    ['Composition', ['100% Stacked Vertical Bars', 'Count Stacked Horizontal Bars', 'Threshold Stacked Vertical Bars', 'Distribution Stacked Vertical Bars', 'Pie', 'Donut']],
+    ['Hierarchies and flows', ['Treemap', 'Packed Bubbles', 'Sankey']],
+    ['Tables', ['Table', 'Dynamic Table', 'Highlight Table', 'Bar Table', 'Heat Map']],
+    ['Maps', ['Map', 'Symbol Map', 'Filled Map']],
     ['Scorecards', ['KPI Card']],
   ];
   const SHELVES = [
@@ -120,6 +171,10 @@
   const conditions = value => splitParts(value, /;|\n+/);
   const conditionField = condition => (/^(.+?)\s+(NOT\s+CONTAINS|NOT\s+IN|CONTAINS|IN|>=|<=|!=|=|>|<)\s+/i.exec(condition)?.[1] || condition).trim();
   const isSetting = condition => SETTINGS.includes(identity(conditionField(condition)));
+  // A field of dates and times (Test_Start_Time, Test_End_Time…): Gantt measures it, and Rows and Columns can group it by
+  // a period (DAY(Test_Start_Time)).
+  const isTimeField = name => /(^|_)(time|date|timestamp)$|_time_|_date_/i.test(String(name || '')) && !/duration|_times?_to|time_to|setup_time/i.test(String(name || ''));
+  const DATE_BIN_PATTERN = /^(HOUR|DAY|WEEK|MONTH)\((.+)\)$/i;
 
   // The fields, filters and measures of a chart, as the builder and Chart Type read them.
   function analyse(options) {
@@ -147,6 +202,8 @@
     const shelfState = {
       measures: measures.length, numeric, text: measures.length - numeric,
       splits: splitParts(values.rows_split, '×').length + splitParts(values.columns_split, '×').length,
+      rows: splitParts(values.rows_split, '×').length, columns: splitParts(values.columns_split, '×').length,
+      times: measures.filter(part => isTimeField(kpiField(part))).length,
       // A chart without a measure yet (a new one, even with the Campaign rows a KPI card gives it) takes any chart type: the
       // panel then says what it needs.
       empty: !measures.length,
@@ -211,20 +268,27 @@
           title: unread ? `The PPT Design reads only the ${pptMode} CDRs: choose NR Mode NSA & SA in PPT Filters to show the ${value} ones` : title}, text);
       })));
   }
-  // The setting of the chart type chosen (Threshold, Buckets, Bin Size), kept among the filters of the chart.
+  // The settings of the chart type chosen (Threshold, Buckets, Bin Size, Whiskers, Target, Direction, Sort, Date Bin), kept
+  // among the filters of the chart: an empty value or the first choice leaves the setting out (its default).
   function settingRow({values, settings, plainFilters, writeFilters}) {
     const chosenType = chosenTypeOf(values);
-    if (!chosenType?.setting) return null;
-    const key = identity(chosenType.setting);
-    const current = settings.find(item => identity(conditionField(item)) === key);
-    const value = current ? current.replace(/^.+?\s*=\s*/, '') : '';
-    const input = h('input', {type: 'text', value, placeholder: chosenType.setting === 'Buckets' ? '1, 5, 10, 20' : chosenType.setting === 'Threshold' ? '1.6 or {Threshold}' : '1',
-      'aria-label': chosenType.setting, onchange: event => {
+    if (!chosenType?.settings?.length) return null;
+    const rows = chosenType.settings.map(setting => {
+      const key = identity(setting.name);
+      const current = settings.find(item => identity(conditionField(item)) === key);
+      const value = current ? current.replace(/^.+?\s*=\s*/, '') : '';
+      const write = text => {
         const kept = settings.filter(item => identity(conditionField(item)) !== key);
-        if (event.target.value.trim()) kept.push(`${chosenType.setting} = ${event.target.value.trim()}`);
+        if (String(text || '').trim()) kept.push(`${setting.name} = ${String(text).trim()}`);
         writeFilters(plainFilters, kept);
-      }});
-    return h('label', {class: 'ds-cb-row ds-cb-setting'}, chosenType.setting, input);
+      };
+      const control = setting.choices
+        ? h('select', {'aria-label': setting.name, onchange: event => write(event.target.value)},
+          setting.choices.map(([choice, label]) => h('option', {value: choice, text: label, selected: identity(choice) === identity(value)})))
+        : h('input', {type: 'text', value, placeholder: setting.placeholder || '', 'aria-label': setting.name, onchange: event => write(event.target.value)});
+      return h('label', {class: 'ds-cb-row ds-cb-setting', title: setting.title || null}, setting.name, control);
+    });
+    return rows.length === 1 ? rows[0] : h('div', {class: 'ds-cb-settings'}, rows);
   }
 
   /** Render Chart Type of one chart into ``host``: its chart types grouped by what they show, the ones the shelves cannot
@@ -315,6 +379,8 @@
     function addToShelf(key, field, place = null) {
       if (key === 'filters') { openFilterDialog(field); return; }
       if (key === 'repeat') { change({repeat: {field}}); return; }
+      // A time splits the chart by day (its pill changes the period): each time apart would give a split per sample.
+      if ((key === 'rows_split' || key === 'columns_split') && isTimeField(field) && !DATE_BIN_PATTERN.test(field)) field = `DAY(${field})`;
       const same = item => identity(key === 'kpi' ? kpiField(item) : item) === identity(field);
       const current = shelfItems(key);
       const at = place ? place.index : current.length;
@@ -424,7 +490,7 @@
       const field = isMeasure ? kpiField(item) : key === 'filters' ? conditionField(item) : item;
       const aggregation = isMeasure ? kpiAggregation(item) : '';
       const pill = h('span', {class: `ds-cb-pill is-${key === 'filters' ? 'filter' : typeOf(field)}`, draggable: key === 'filters' || key === 'repeat' ? 'false' : 'true', dataset: {shelf: key, index: String(index)}, tabindex: '0'},
-        h('button', {type: 'button', class: 'ds-cb-pill-label', title: key === 'filters' ? 'Change the filter' : isMeasure ? 'Aggregation and order' : 'Order',
+        h('button', {type: 'button', class: 'ds-cb-pill-label', title: key === 'filters' ? 'Change the filter' : isMeasure ? 'Aggregation and order' : DATE_BIN_PATTERN.test(field) || isTimeField(field) ? 'Period and order' : 'Order',
           onclick: event => {
             if (key === 'filters') { openFilterDialog(field, item, index); return; }
             if (key === 'repeat') return;
@@ -432,6 +498,13 @@
             if (isMeasure) actions.push(...AGGREGATIONS.map(([code, label]) => [`${aggregation === code ? '✓ ' : ''}${label}`, () => {
               const next = [...items]; next[index] = code ? `${code}(${field})` : field; writeShelf('kpi', next);
             }]));
+            if ((key === 'rows_split' || key === 'columns_split') && (isTimeField(field) || DATE_BIN_PATTERN.test(field))) {
+              // A time on Rows or Columns, grouped by a period or as it is.
+              const base = DATE_BIN_PATTERN.exec(field)?.[2] || field, period = (DATE_BIN_PATTERN.exec(field)?.[1] || '').toUpperCase();
+              actions.push(...[['HOUR', 'By hour'], ['DAY', 'By day'], ['WEEK', 'By week'], ['MONTH', 'By month'], ['', 'Exact time']].map(([code, label]) => [`${period === code ? '✓ ' : ''}${label}`, () => {
+                const next = [...items]; next[index] = code ? `${code}(${base})` : base; writeShelf(key, next);
+              }]));
+            }
             if (index > 0) actions.push(['Move before', () => { const next = [...items]; next.splice(index - 1, 0, next.splice(index, 1)[0]); writeShelf(key, next); }]);
             if (index < items.length - 1) actions.push(['Move after', () => { const next = [...items]; next.splice(index + 1, 0, next.splice(index, 1)[0]); writeShelf(key, next); }]);
             if (actions.length) openMenu(event.currentTarget, actions);

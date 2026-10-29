@@ -83,16 +83,14 @@ def chart_filter_nr_modes(entry: Any) -> tuple[str, ...]:
     return tuple(mode for mode in NR_MODES if mode in modes)
 
 
-# Filters of a chart row that set the chart up rather than keep rows (Threshold, Buckets, Bin Size…).
-_CHART_SETTINGS = frozenset({'threshold', 'buckets', 'binsize', 'classcolours', 'histogramoperator'})
-
-
 def chart_fields(entry: Any) -> list[str]:
     """The CDR fields a chart row reads: its KPI, filters, splits, legend and dynamic fields (not NR Mode, which every
     row has)."""
     from src.modules.cdr_reporting import (
-        _legend_dimensions, catalog_kpi_fields, entry_dynamic_fields, parse_catalog_filters, parse_catalog_grouping,
+        CHART_SETTING_FILTERS, _legend_dimensions, catalog_kpi_fields, entry_dynamic_fields, parse_catalog_filters,
+        parse_catalog_grouping,
     )
+    from src.modules.chart_types import date_bin_parts
 
     try:
         fields = [*catalog_kpi_fields(entry.kpi), *parse_catalog_grouping(entry.rows_split).dimensions,
@@ -100,7 +98,9 @@ def chart_fields(entry: Any) -> list[str]:
                   *(condition.column for condition in parse_catalog_filters(entry.filters)), *entry_dynamic_fields(entry)]
     except ValueError:
         return []
-    skipped = {*_CHART_SETTINGS, column_identity(NR_MODE_SPLIT_FIELD)}
+    skipped = {*CHART_SETTING_FILTERS, column_identity(NR_MODE_SPLIT_FIELD)}
+    # A date field grouped by a period (DAY(Test_Start_Time)) reads the date field.
+    fields = [date_bin_parts(field)[1] if date_bin_parts(field) else field for field in fields]
     return list(dict.fromkeys(field for field in fields if str(field).strip() and column_identity(field) not in skipped))
 
 

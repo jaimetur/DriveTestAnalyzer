@@ -59,11 +59,11 @@ module.exports = {
       visual: 'studio',
       points: [
         { icon: 'TbLayoutBoard', title: 'Any layout', text: 'Two above and one wide below, a tall one beside two, places deleted or centred, KPI cards, text and pictures.' },
-        { icon: 'TbChartInfographic', title: 'Chart Type on the chart', text: 'A tab on the chart chosen opens the types in rows; one click changes the chart and closes them.' },
+        { icon: 'TbChartInfographic', title: 'Every Tableau chart type', text: 'Bars, lines, areas, pies, box plots, heat maps, treemaps, Sankey, Gantt and filled maps, from a tab on the chart.' },
         { icon: 'TbHandFinger', title: 'Drag the fields', text: 'Measure, Rows, Columns, Legend and Filters; the panel says what the chart type still needs.' },
         { icon: 'TbBolt', title: 'Drawn at once', text: 'Every change on the CDRs already prepared, with undo, redo and a draft kept on the server.' },
       ],
-      notes: 'The Designer works on the slide itself. The slides are listed at the left and the layout is chosen from ready-made ones or adjusted: places resized, merged, deleted or centred. A chart is chosen on the slide and built in the panel by dragging fields to its shelves; the Chart Type tab on the chart opens the chart types in rows by what they show, and the panel says what the type chosen needs. Every change is drawn at once on the CDRs the Design already prepared.' },
+      notes: 'The Designer works on the slide itself. The slides are listed at the left and the layout is chosen from ready-made ones or adjusted: places resized, merged, deleted or centred. A chart is chosen on the slide and built in the panel by dragging fields to its shelves; the Chart Type tab on the chart opens the chart types in rows by what they show, the ones of Tableau's Show Me among them (horizontal bars, dot plots, bullet graphs, highlight and bar tables, heat maps, pies and donuts, lines over time, areas, bars with a line, box plots, symbol and filled maps, treemaps, packed bubbles, Sankey and Gantt), and the panel says what the type chosen needs. Every change is drawn at once on the CDRs the Design already prepared.' },
     { id: 'inheritance', type: 'split', section: 'Workflow', footer: 'Templates and Designs', kicker: 'Templates, live', title: 'Change the template once, every Design follows',
       visual: 'inheritance',
       points: [

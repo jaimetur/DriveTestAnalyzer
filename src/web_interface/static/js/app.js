@@ -3764,7 +3764,8 @@ document.querySelectorAll('[data-catalogue-editor]').forEach((editor) => {
       ],
       textFields: {chart_title: true},
       // Keep these option sets identical to the persisted Chart Viewer.
-      chartTypes: ['100% Stacked Vertical Bars', 'Count Stacked Horizontal Bars', 'CDF Line', 'Histogram Line', 'Histogram Bars', 'Multi KPI CDF Lines', 'Scatter', 'Table', 'Dynamic Table', 'Distribution Stacked Vertical Bars', 'Threshold Stacked Vertical Bars', 'Average Vertical Bars', 'Median Vertical Bars', 'Map'],
+      chartTypes: ['100% Stacked Vertical Bars', 'Count Stacked Horizontal Bars', 'CDF Line', 'Histogram Line', 'Histogram Bars', 'Multi KPI CDF Lines', 'Scatter', 'Table', 'Dynamic Table', 'Distribution Stacked Vertical Bars', 'Threshold Stacked Vertical Bars', 'Average Vertical Bars', 'Median Vertical Bars', 'Map',
+        'Horizontal Bars', 'Dot Plot', 'Bullet Graph', 'Highlight Table', 'Bar Table', 'Heat Map', 'Pie', 'Donut', 'Lines', 'Dual Lines', 'Areas', '100% Stacked Areas', 'Bars and Line', 'Box Plot', 'Symbol Map', 'Filled Map', 'Treemap', 'Packed Bubbles', 'Sankey', 'Gantt'],
       cdrSources: ['CDR-Data', 'CDR-Voice', 'CDR-Speech', 'CDR-All'],
       legendPositions: ['', 'Top', 'Bottom', 'Left', 'Right'],
       labelPositions: ['', 'None', 'Top', 'Up', 'Middle', 'Down'],

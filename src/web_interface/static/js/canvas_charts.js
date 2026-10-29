@@ -744,6 +744,7 @@
       result.column_keys = pick(payload.column_keys, columns);
       result.cells = rows.map(row => columns.map(column => (cellHidden(row, column) ? Number.NaN : payload.cells[row]?.[column])));
       if (Array.isArray(payload.cell_colours)) result.cell_colours = rows.map(row => pick(payload.cell_colours[row], columns));
+      for (const name of ['cell_samples', 'sizes']) if (Array.isArray(payload[name])) result[name] = rows.map(row => pick(payload[name][row], columns));
     } else if (Array.isArray(payload.categories) && Array.isArray(payload.cells)) {
       const kept = payload.categories.map((_category, index) => index).filter(index => !keyHidden(payload.categories[index]));
       result.categories = pick(payload.categories, kept);
@@ -758,13 +759,41 @@
       const rowDimensions = Math.max(1, Number(payload.row_dimension_count) || 1);
       const headers = payload.headers || [];
       const hiddenColumns = new Set(headers.map((header, index) => index >= rowDimensions && keyHidden(String(header).split(' · ')) ? index : -1).filter(index => index >= 0));
-      result.rows = payload.rows
-        .filter(row => !row.slice(0, rowDimensions).some(value => keyHidden(String(value ?? '').split(' · '))))
+      const keptRows = payload.rows.map((_row, index) => index)
+        .filter(index => !payload.rows[index].slice(0, rowDimensions).some(value => keyHidden(String(value ?? '').split(' · '))));
+      // (The numbers and colours of a Highlight or Bar Table follow their cells.)
+      for (const name of ['cell_numbers', 'cell_colours']) {
+        if (Array.isArray(payload[name])) result[name] = keptRows.map(index => (payload[name][index] || []).filter((_value, column) => !hiddenColumns.has(column + rowDimensions)));
+      }
+      if (Array.isArray(payload.column_extents)) result.column_extents = payload.column_extents.filter((_value, column) => !hiddenColumns.has(column + rowDimensions));
+      result.rows = keptRows.map(index => payload.rows[index])
         .map(row => row.filter((_value, index) => !hiddenColumns.has(index)));
       if (hiddenColumns.size) {
         result.headers = headers.filter((_header, index) => !hiddenColumns.has(index));
         if (Array.isArray(payload.column_keys)) result.column_keys = payload.column_keys.filter((_key, index) => !hiddenColumns.has(index + rowDimensions));
       }
+    }
+    // Pies drop their hidden slices (and the pies of a hidden value), areas, bars with a line, boxes, bullets, bubbles
+    // and Gantt bars their hidden series, maps the places of a hidden class of their colour scale.
+    if (Array.isArray(payload.pies)) {
+      result.pies = payload.pies.filter(pie => !keyHidden(pie.key || [])).map(pie => {
+        const slices = (pie.slices || []).filter(slice => !labelHidden(slice.name)), total = slices.reduce((sum, slice) => sum + Number(slice.value || 0), 0);
+        return {...pie, total, slices: slices.map(slice => ({...slice, share: total ? Number(slice.value || 0) / total : 0}))};
+      }).filter(pie => pie.slices.length);
+    }
+    if (Array.isArray(payload.panes)) result.panes = payload.panes.filter(pane => !keyHidden(pane.key || [])).map(pane => ({...pane, series: (pane.series || []).filter(item => !labelHidden(item.name))}));
+    for (const name of ['bar_series', 'line_series']) if (Array.isArray(payload[name])) result[name] = payload[name].filter(item => !labelHidden(item.name) && !keyHidden(item.key || []));
+    for (const name of ['boxes', 'items', 'bubbles']) if (Array.isArray(payload[name])) result[name] = payload[name].filter(item => !keyHidden(item.key || [item.label]) && !hiddenItems.some(entry => entry.colour === item.colour && payload.type === 'bubbles'));
+    if (Array.isArray(payload.lanes)) result.lanes = payload.lanes.filter(lane => !keyHidden(lane.key || [])).map(lane => ({...lane, segments: lane.segments.filter(segment => !labelHidden(segment.series))})).filter(lane => lane.segments.length);
+    if (['symbol_map', 'filled_map'].includes(payload.type) && Array.isArray(payload.panels)) {
+      const hiddenColours = new Set(hiddenItems.map(item => String(item.colour).toUpperCase()));
+      result.panels = payload.panels.filter(panel => !keyHidden(panel.key || [])).map(panel => ({...panel,
+        symbols: (panel.symbols || []).filter(item => !hiddenColours.has(String(item.colour).toUpperCase()) && !labelHidden(item.label)),
+        areas: (panel.areas || []).filter(item => !hiddenColours.has(String(item.colour).toUpperCase()) && !labelHidden(item.name))}));
+    }
+    if (payload.type === 'sankey' && Array.isArray(payload.nodes)) {
+      const hiddenNames = new Set((payload.nodes[0] || []).filter(node => labelHidden(node.name)).map(node => node.name));
+      if (hiddenNames.size) result.links = (payload.links || []).filter(link => !(link.level === 0 && hiddenNames.has(link.source)));
     }
     // Stacked charts drop the hidden segments of the remaining categories.
     const segments = Array.isArray(payload.states) ? payload.states : (Array.isArray(payload.buckets) ? payload.buckets : null);
@@ -1407,10 +1436,23 @@
         && Array.from({length: column + 1}, (_item, index) => String(rows[rowIndex - 1]?.[index] ?? '') === String(row[index] ?? '')).every(Boolean);
       const displayValue = repeatedHierarchyValue ? '' : value;
       context.fillStyle = rowIndex % 2 ? '#FFFFFF' : '#F4F7F9'; context.fillRect(x, y, columnWidth, rowHeight);
+      // Highlight Table: the value cell in the colour of its value; Bar Table: a bar as long as its share of the largest
+      // value of its column.
+      const valueColumn = column - rowDimensionCount, styled = payload.cell_style && valueColumn >= 0;
+      const number = styled ? payload.cell_numbers?.[rowIndex]?.[valueColumn] : null;
+      if (styled && payload.cell_style === 'highlight' && payload.cell_colours?.[rowIndex]?.[valueColumn]) {
+        context.fillStyle = payload.cell_colours[rowIndex][valueColumn]; context.fillRect(x, y, columnWidth, rowHeight);
+      } else if (styled && payload.cell_style === 'bar' && number !== null && number !== undefined && finite(number)) {
+        const extent = Number(payload.column_extents?.[valueColumn]) || 1, barWidth = Math.abs(Number(number)) / extent * (columnWidth - 12);
+        context.fillStyle = payload.bar_colour || '#7FA7D1'; context.fillRect(x + 6, y + rowHeight * .18, Math.max(1, barWidth), rowHeight * .64);
+      }
       context.strokeStyle = '#D9E1E6'; context.lineWidth = 1; context.strokeRect(x, y, columnWidth, rowHeight);
-      context.fillStyle = '#34495A'; context.textAlign = column >= rowDimensionCount && dynamic ? 'right' : 'left'; font(context, cellFont, dynamic && column < rowDimensionCount);
-      const text = fitText(displayValue, columnWidth - 16); const textX = column >= rowDimensionCount && dynamic ? x + columnWidth - 8 : x + 8;
+      const alignRight = column >= rowDimensionCount && (dynamic || styled);
+      context.fillStyle = '#34495A'; context.textAlign = alignRight ? 'right' : 'left'; font(context, cellFont, (dynamic && column < rowDimensionCount) || (styled && payload.cell_style === 'highlight'));
+      const text = fitText(displayValue, columnWidth - 16); const textX = alignRight ? x + columnWidth - 8 : x + 8;
       context.fillText(text, textX, y + rowHeight / 2);
+      if (styled && number !== null && number !== undefined) pushRectangleHit(state, {x: 0, y: 0, scale: 1}, {x, y, width: columnWidth, height: rowHeight}, {
+        label: [...row.slice(0, rowDimensionCount), headers[column]].filter(Boolean).join(' · '), series: payload.aggregation ? `${payload.aggregation}` : '', value: String(value)});
     }));
     if (dynamic) {
       const tableBottom = top + (rows.length + headerBands) * rowHeight;
@@ -1463,6 +1505,770 @@
     drawLegend(context, payload.legend);
   }
 
+  // The chart types added after Tableau's Show Me (ticket #46): Horizontal Bars, Dot Plot, Bullet Graph, Heat Map, Pie and
+  // Donut, Lines and Dual Lines, Areas, Bars and Line, Box Plot, Symbol and Filled Maps, Treemap, Packed Bubbles, Sankey and
+  // Gantt (their models: chart_types.py). Highlight and Bar Table are drawn by drawTable.
+  const pushPolygonHit = (state, transform, points, details) => {
+    state.hits.push({kind: 'polygon', points: points.map(point => transformPoint(transform, point.x, point.y)), ...details});
+  };
+  const pushCircleHit = (state, transform, x, y, radius, details) => {
+    const centre = transformPoint(transform, x, y);
+    state.hits.push({kind: 'circle', x: centre.x, y: centre.y, radius: radius * transform.scale, ...details});
+  };
+  function insidePolygon(points, x, y) {
+    let inside = false;
+    for (let index = 0, previous = points.length - 1; index < points.length; previous = index, index += 1) {
+      const a = points[index], b = points[previous];
+      if ((a.y > y) !== (b.y > y) && x < (b.x - a.x) * (y - a.y) / ((b.y - a.y) || 1e-9) + a.x) inside = !inside;
+    }
+    return inside;
+  }
+  const valueText = (value, decimals = 2) => {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return '';
+    if (decimals === 0 || Math.abs(number) >= 1000) return Math.round(number).toLocaleString('en-US');
+    return number.toFixed(decimals);
+  };
+  // Dark text on light colours, white on dark ones.
+  const readableOn = colour => {
+    const hex = String(colour || '').replace('#', '').slice(0, 6);
+    if (!/^[0-9a-f]{6}$/i.test(hex)) return '#1D3345';
+    const [red, green, blue] = [0, 2, 4].map(offset => parseInt(hex.slice(offset, offset + 2), 16));
+    return (red * 299 + green * 587 + blue * 114) / 1000 > 150 ? '#1D3345' : '#FFFFFF';
+  };
+  function axisTicks(low, high, count = 5) {
+    if (!(high > low)) return [low];
+    const raw = (high - low) / Math.max(count, 1), power = 10 ** Math.floor(Math.log10(raw)), unit = raw / power;
+    const step = (unit <= 1 ? 1 : unit <= 2 ? 2 : unit <= 2.5 ? 2.5 : unit <= 5 ? 5 : 10) * power;
+    const ticks = [];
+    for (let value = Math.ceil(low / step - 1e-9) * step; value <= high + step * 1e-9; value += step) ticks.push(Math.abs(value) < step * 1e-9 ? 0 : value);
+    return ticks;
+  }
+  const tickText = (value, step) => {
+    if (Math.abs(value) >= 10000) return Math.round(value).toLocaleString('en-US');
+    return value.toFixed(step >= 1 || !Number.isFinite(step) ? 0 : Math.min(3, Math.ceil(-Math.log10(step) - 1e-9)));
+  };
+  // A numeric axis the Designer can give a range (its popover), as the CDF registers its axes.
+  const registerNumericAxis = (state, transform, axis, domain, x, y, width, height, percent = false) => {
+    const start = transformPoint(transform, x, y);
+    (state.numericAxes ||= []).push({
+      axis, domain: percent ? domain.map(value => value * 100) : [...domain], extent: percent ? [0, 100] : [...domain],
+      percent: Boolean(percent), x: start.x, y: start.y, width: width * transform.scale, height: height * transform.scale,
+    });
+  };
+  function drawXValueAxis(context, state, transform, domain, left, right, top, bottom, title, options = {}) {
+    const span = (domain[1] - domain[0]) || 1, toX = value => left + (value - domain[0]) / span * (right - left);
+    const ticks = axisTicks(domain[0], domain[1], options.count || 5), step = ticks.length > 1 ? ticks[1] - ticks[0] : 1;
+    ticks.forEach(value => {
+      if (value < domain[0] - 1e-9 || value > domain[1] + 1e-9) return;
+      const x = toX(value);
+      line(context, x, top, x, bottom, value === 0 ? '#9AAAB5' : '#E4E9ED', value === 0 ? 2 : 1);
+      context.fillStyle = '#4E6271'; context.textAlign = 'center'; context.textBaseline = 'top'; font(context, 17, true);
+      context.fillText(options.percent ? `${Math.round(value * 100)}%` : tickText(value, step), x, bottom + 8);
+    });
+    if (title) { context.fillStyle = '#405765'; context.textAlign = 'center'; context.textBaseline = 'top'; font(context, 20, true); context.fillText(String(title), (left + right) / 2, bottom + 32); }
+    registerNumericAxis(state, transform, 'x', domain, left, bottom, right - left, 60, options.percent);
+    return toX;
+  }
+  function drawYValueAxis(context, state, transform, domain, left, right, top, bottom, title, options = {}) {
+    const span = (domain[1] - domain[0]) || 1, toY = value => bottom - (value - domain[0]) / span * (bottom - top);
+    const ticks = axisTicks(domain[0], domain[1], options.count || 5), step = ticks.length > 1 ? ticks[1] - ticks[0] : 1;
+    const side = options.side || 'left';
+    ticks.forEach(value => {
+      if (value < domain[0] - 1e-9 || value > domain[1] + 1e-9) return;
+      const y = toY(value);
+      if (side === 'left') line(context, left, y, right, y, value === 0 ? '#9AAAB5' : '#E4E9ED', value === 0 ? 2 : 1);
+      context.fillStyle = options.colour || '#4E6271'; context.textAlign = side === 'left' ? 'right' : 'left'; context.textBaseline = 'middle'; font(context, 17, true);
+      context.fillText(options.percent ? `${Math.round(value * 100)}%` : tickText(value, step), side === 'left' ? left - 10 : right + 10, y);
+    });
+    if (title) verticalLabel(context, title, side === 'left' ? Math.max(18, left - 64) : Math.min(LOGICAL_WIDTH - 18, right + 70), (top + bottom) / 2, options.colour || '#405765', 19);
+    if (side === 'left') registerNumericAxis(state, transform, 'y', domain, left - 80, top, 80, bottom - top, options.percent);
+    return toY;
+  }
+  // The labels of the rows of a chart, one column per level, each value once beside the rows it spans.
+  function drawRowLabels(context, keys, left, labelWidth, top, rowHeight, right, format = {}) {
+    const levels = keys[0]?.length || 0;
+    for (let level = 0; level < levels; level += 1) {
+      hierarchySpans(keys, level).forEach(([start, end, value]) => {
+        const spanTop = top + start * rowHeight, spanHeight = (end - start) * rowHeight;
+        const size = Math.max(11, Math.min(aggregationSize(format, level), Math.floor(Math.min(spanHeight, 64) * .6)));
+        context.fillStyle = format.configured && format.color ? format.color : '#405765'; context.textAlign = 'left'; context.textBaseline = 'middle';
+        if (format.configured) labelFont(context, size, format, false, false); else context.font = `800 ${size}px ${FONT_FAMILY}`;
+        context.fillText(fittedText(context, value, labelWidth - 10), left + level * labelWidth + 4, spanTop + spanHeight / 2);
+        pushAxisHit('row', level, value, left + level * labelWidth, spanTop, labelWidth, spanHeight);
+        if (start > 0) {
+          if (level === 0) line(context, left, spanTop, right, spanTop, '#AEBBC4', 2);
+          else dashedHorizontal(context, spanTop, left + level * labelWidth, right);
+        }
+      });
+    }
+  }
+  // The headers of the columns of a grid, one band per level.
+  function columnHeaderPlans(context, keys, width, format = {}) {
+    const levels = keys[0]?.length || 0, itemWidth = width / Math.max(keys.length, 1);
+    return Array.from({length: levels}, (_value, level) => {
+      const plan = axisLevelPlan(context, hierarchySpans(keys, level).map(([start, end, value]) => ({value, width: (end - start) * itemWidth})), 70, format, level);
+      return {plan, height: Math.max(30, plan.height + 8)};
+    });
+  }
+  function drawColumnHeaders(context, keys, plans, left, width, top, format = {}) {
+    const itemWidth = width / Math.max(keys.length, 1);
+    let y = top;
+    plans.forEach(({plan, height}, level) => {
+      hierarchySpans(keys, level).forEach(([start, end, value]) => {
+        const available = (end - start) * itemWidth;
+        drawAxisLabel(context, plan, value, left + (start + end) / 2 * itemWidth, y + Math.max(0, (height - 6 - plan.height) / 2), available, '#405765', format);
+        line(context, left + start * itemWidth + 4, y + height - 4, left + end * itemWidth - 4, y + height - 4, '#CDD7DE', 1);
+        pushAxisHit('column', level, value, left + start * itemWidth, y, available, height);
+      });
+      y += height;
+    });
+    return y - top;
+  }
+  const rowLabelWidth = (keys, layout, share = .32) => {
+    const levels = keys[0]?.length || 0;
+    return levels ? Math.min(230, Math.max(90, (layout.right - layout.left) * share / levels)) : 0;
+  };
+
+  function drawHorizontalBars(context, payload, state, transform) {
+    const layout = legendLayout(payload.legend), rowKeys = payload.row_keys || [], columnKeys = payload.column_keys || [[]];
+    if (!rowKeys.length) return;
+    const format = payload.legend_format || {}, labelWidth = rowLabelWidth(rowKeys, layout), levels = rowKeys[0]?.length || 0;
+    const plotLeft = layout.left + levels * labelWidth + 16, plotRight = layout.right - 84, top = layout.top + 4, bottom = layout.bottom - 58;
+    const domain = expandedDomain(payload.domain?.x), bandHeight = (bottom - top) / rowKeys.length;
+    const toX = drawXValueAxis(context, state, transform, domain, plotLeft, plotRight, top, bottom, `${aggregationName(payload.aggregation)} of ${payload.metric || ''}`);
+    const zeroX = toX(clamp(0, domain[0], domain[1])), slots = Math.max(columnKeys.length, 1);
+    rowKeys.forEach((rowKey, rowIndex) => {
+      const bandTop = top + rowIndex * bandHeight, gap = slots > 1 ? Math.min(4, bandHeight * .04) : 0;
+      const barHeight = Math.max(2, Math.min(60, (bandHeight * .76 - gap * (slots - 1)) / slots));
+      const start = bandTop + (bandHeight - (barHeight * slots + gap * (slots - 1))) / 2;
+      columnKeys.forEach((columnKey, columnIndex) => {
+        const raw = payload.cells?.[rowIndex]?.[columnIndex];
+        if (raw === null || raw === undefined || !finite(raw)) return;
+        const value = Number(raw), x = Math.min(toX(value), zeroX), width = Math.abs(toX(value) - zeroX), y = start + columnIndex * (barHeight + gap);
+        const colour = payload.cell_colours?.[rowIndex]?.[columnIndex] || '#4E79A7';
+        context.fillStyle = colour; context.fillRect(x, y, Math.max(1, width), barHeight);
+        const label = valueText(value, payload.decimals);
+        drawConfiguredBarLabel(context, label, x, y, width, barHeight, colour, Math.min(20, Math.max(11, barHeight * .7)), payload.label_position, 'horizontal', () => {
+          if (barHeight < 11) return;
+          context.fillStyle = payload.label_format?.color || '#34495A'; context.textAlign = value < 0 ? 'right' : 'left'; context.textBaseline = 'middle';
+          labelFont(context, Math.min(20, Math.max(11, barHeight * .7)), payload.label_format);
+          context.fillText(label, value < 0 ? x - 6 : x + width + 6, y + barHeight / 2);
+        }, payload.label_format);
+        pushRectangleHit(state, transform, {x, y, width: Math.max(width, 2), height: barHeight}, {
+          label: displayKey([...rowKey, ...columnKey]), series: aggregationName(payload.aggregation), value: `${label} · ${(payload.cell_samples?.[rowIndex]?.[columnIndex] || 0).toLocaleString('en-US')} samples`});
+      });
+    });
+    drawRowLabels(context, rowKeys, layout.left, labelWidth, top, bandHeight, plotRight, format);
+    drawLegend(context, payload.legend);
+  }
+  const aggregationName = value => ({mean: 'Average', median: 'Median', sum: 'Sum', count: 'Count', countd: 'Count distinct', min: 'Minimum', max: 'Maximum'}[String(value || '')] || 'Value');
+
+  function drawDotPlot(context, payload, state, transform) {
+    const layout = legendLayout(payload.legend), rowKeys = payload.row_keys || [], columnKeys = payload.column_keys || [[]];
+    if (!rowKeys.length) return;
+    const format = payload.legend_format || {}, labelWidth = rowLabelWidth(rowKeys, layout), levels = rowKeys[0]?.length || 0;
+    const plotLeft = layout.left + levels * labelWidth + 24, plotRight = layout.right - 24, top = layout.top + 4, bottom = layout.bottom - 58;
+    const domain = expandedDomain(payload.domain?.x), bandHeight = (bottom - top) / rowKeys.length;
+    const toX = drawXValueAxis(context, state, transform, domain, plotLeft, plotRight, top, bottom, `${aggregationName(payload.aggregation)} of ${payload.metric || ''}`);
+    const radius = Math.max(4, Math.min(16, bandHeight * .3));
+    rowKeys.forEach((rowKey, rowIndex) => {
+      const y = top + (rowIndex + .5) * bandHeight;
+      const values = columnKeys.map((_key, index) => payload.cells?.[rowIndex]?.[index]).filter(value => value !== null && value !== undefined && finite(value)).map(Number);
+      if (values.length > 1) line(context, toX(Math.min(...values)), y, toX(Math.max(...values)), y, '#C3CED6', Math.max(2, radius * .35));
+      else line(context, plotLeft, y, plotRight, y, '#EEF2F5', 1);
+      columnKeys.forEach((columnKey, columnIndex) => {
+        const raw = payload.cells?.[rowIndex]?.[columnIndex];
+        if (raw === null || raw === undefined || !finite(raw)) return;
+        const x = toX(Number(raw)), colour = payload.cell_colours?.[rowIndex]?.[columnIndex] || '#4E79A7', label = valueText(raw, payload.decimals);
+        context.beginPath(); context.arc(x, y, radius, 0, Math.PI * 2); context.fillStyle = colour; context.fill();
+        context.lineWidth = 2; context.strokeStyle = '#FFFFFF'; context.stroke();
+        drawConfiguredPointLabel(context, label, x, y, colour, payload.label_position, 14, payload.label_format);
+        pushCircleHit(state, transform, x, y, radius + 3, {label: displayKey([...rowKey, ...columnKey]), series: aggregationName(payload.aggregation),
+          value: `${label} · ${(payload.cell_samples?.[rowIndex]?.[columnIndex] || 0).toLocaleString('en-US')} samples`});
+      });
+    });
+    drawRowLabels(context, rowKeys, layout.left, labelWidth, top, bandHeight, plotRight, format);
+    drawLegend(context, payload.legend);
+  }
+
+  function drawBullet(context, payload, state, transform) {
+    const layout = legendLayout(payload.legend), items = payload.items || [];
+    if (!items.length) return;
+    const keys = items.map(item => item.key || [item.label]), format = payload.legend_format || {};
+    const labelWidth = rowLabelWidth(keys, layout), levels = keys[0]?.length || 0;
+    const plotLeft = layout.left + levels * labelWidth + 16, plotRight = layout.right - 84, top = layout.top + 4, bottom = layout.bottom - 58;
+    const domain = expandedDomain(payload.domain?.x), bandHeight = (bottom - top) / items.length;
+    const toX = drawXValueAxis(context, state, transform, domain, plotLeft, plotRight, top, bottom, `${aggregationName(payload.aggregation)} of ${payload.metric || ''}`);
+    items.forEach((item, index) => {
+      const centre = top + (index + .5) * bandHeight, backHeight = Math.min(70, bandHeight * .7), barHeight = backHeight * .38;
+      const backTop = centre - backHeight / 2;
+      if ((payload.bands || []).length) payload.bands.forEach(band => {
+        context.fillStyle = band.colour; context.fillRect(toX(band.low), backTop, Math.max(0, toX(band.high) - toX(band.low)), backHeight);
+      });
+      else { context.fillStyle = '#EEF2F5'; context.fillRect(plotLeft, backTop, plotRight - plotLeft, backHeight); }
+      const zeroX = toX(clamp(0, domain[0], domain[1])), valueX = toX(Number(item.value));
+      const x = Math.min(zeroX, valueX), width = Math.abs(valueX - zeroX), colour = item.colour || '#2F4858';
+      context.fillStyle = colour; context.fillRect(x, centre - barHeight / 2, Math.max(1, width), barHeight);
+      const label = valueText(item.value, payload.decimals);
+      if (item.target !== null && item.target !== undefined && finite(item.target)) {
+        const targetX = toX(Number(item.target));
+        line(context, targetX, centre - backHeight * .36, targetX, centre + backHeight * .36, '#1F2D3A', Math.max(3, backHeight * .08));
+        pushRectangleHit(state, transform, {x: targetX - 5, y: centre - backHeight * .36, width: 10, height: backHeight * .72}, {
+          label: item.label, series: payload.target_label || 'Target', value: valueText(item.target, payload.decimals)});
+      }
+      context.fillStyle = payload.label_format?.color || '#34495A'; context.textAlign = 'left'; context.textBaseline = 'middle';
+      labelFont(context, Math.min(20, Math.max(11, barHeight * .9)), payload.label_format);
+      const hasTarget = item.target !== null && item.target !== undefined && finite(item.target);
+      if (String(payload.label_position || '').toLowerCase() !== 'none') context.fillText(label, Math.max(valueX, ...(hasTarget ? [toX(Number(item.target))] : [])) + 10, centre);
+      pushRectangleHit(state, transform, {x, y: centre - barHeight / 2, width: Math.max(width, 2), height: barHeight}, {
+        label: item.label, series: aggregationName(payload.aggregation),
+        value: `${label}${hasTarget ? ` · ${payload.target_label || 'Target'} ${valueText(item.target, payload.decimals)}` : ''} · ${(item.samples || 0).toLocaleString('en-US')} samples`});
+    });
+    drawRowLabels(context, keys, layout.left, labelWidth, top, bandHeight, plotRight, format);
+    drawLegend(context, payload.legend);
+  }
+
+  function drawHeatMap(context, payload, state, transform) {
+    const layout = legendLayout(payload.legend), rowKeys = payload.row_keys || [[]], columnKeys = payload.column_keys || [[]];
+    const format = payload.legend_format || {}, rowLevels = rowKeys[0]?.length || 0, labelWidth = rowLabelWidth(rowKeys, layout, .26);
+    const left = layout.left + rowLevels * labelWidth + 8, right = layout.right - 8;
+    const plans = columnHeaderPlans(context, columnKeys, right - left, format);
+    const headerHeight = drawColumnHeaders(context, columnKeys, plans, left, right - left, layout.top, format);
+    const top = layout.top + headerHeight + 4, bottom = layout.bottom - 10;
+    const cellWidth = (right - left) / Math.max(columnKeys.length, 1), cellHeight = (bottom - top) / Math.max(rowKeys.length, 1);
+    rowKeys.forEach((rowKey, rowIndex) => columnKeys.forEach((columnKey, columnIndex) => {
+      const raw = payload.cells?.[rowIndex]?.[columnIndex], x = left + columnIndex * cellWidth, y = top + rowIndex * cellHeight;
+      context.strokeStyle = '#E4E9ED'; context.lineWidth = 1; context.strokeRect(x, y, cellWidth, cellHeight);
+      if (raw === null || raw === undefined || !finite(raw)) return;
+      const full = Math.min(cellWidth, cellHeight) * .92, side = Math.max(4, full * clamp(Number(payload.sizes?.[rowIndex]?.[columnIndex] ?? 1), .12, 1));
+      const colour = payload.cell_colours?.[rowIndex]?.[columnIndex] || '#4E79A7', squareX = x + (cellWidth - side) / 2, squareY = y + (cellHeight - side) / 2;
+      context.fillStyle = colour; context.fillRect(squareX, squareY, side, side);
+      const label = valueText(raw, payload.decimals), size = Math.min(26, Math.floor(side * .3));
+      if (size >= 10 && String(payload.label_position || '').toLowerCase() !== 'none') {
+        labelFont(context, size, payload.label_format, true, false); context.fillStyle = payload.label_format?.color || readableOn(colour);
+        context.textAlign = 'center'; context.textBaseline = 'middle'; context.fillText(fittedText(context, label, side - 4), x + cellWidth / 2, y + cellHeight / 2);
+      }
+      pushRectangleHit(state, transform, {x: squareX, y: squareY, width: side, height: side}, {
+        label: displayKey([...rowKey, ...columnKey]), series: `${aggregationName(payload.aggregation)} of ${payload.metric || ''}`,
+        value: `${label} · ${(payload.cell_samples?.[rowIndex]?.[columnIndex] || 0).toLocaleString('en-US')} samples`});
+    }));
+    if (rowLevels) drawRowLabels(context, rowKeys, layout.left, labelWidth, top, cellHeight, right, format);
+    drawLegend(context, payload.legend);
+  }
+
+  // The best grid of ``count`` charts in a room: as many columns as keep each chart largest.
+  function chartGrid(count, width, height, aspect = 1) {
+    let best = {columns: 1, rows: count, size: 0};
+    for (let columns = 1; columns <= count; columns += 1) {
+      const rows = Math.ceil(count / columns), size = Math.min(width / columns / aspect, height / rows);
+      if (size > best.size) best = {columns, rows, size};
+    }
+    return best;
+  }
+  function sectorPoints(x, y, inner, outer, start, end) {
+    const steps = Math.max(4, Math.ceil((end - start) / (Math.PI / 24))), points = [];
+    for (let step = 0; step <= steps; step += 1) { const angle = start + (end - start) * step / steps; points.push({x: x + Math.cos(angle) * outer, y: y + Math.sin(angle) * outer}); }
+    for (let step = steps; step >= 0; step -= 1) { const angle = start + (end - start) * step / steps; points.push({x: x + Math.cos(angle) * inner, y: y + Math.sin(angle) * inner}); }
+    return points;
+  }
+
+  function drawPie(context, payload, state, transform) {
+    const layout = legendLayout(payload.legend), pies = payload.pies || [];
+    if (!pies.length) return;
+    const titled = pies.length > 1 || pies[0].label !== '(all)', titleHeight = titled ? 36 : 0;
+    const left = layout.left, top = layout.top, width = layout.right - left, height = layout.bottom - top;
+    const grid = chartGrid(pies.length, width, height - 4);
+    const cellWidth = width / grid.columns, cellHeight = height / grid.rows;
+    pies.forEach((pie, index) => {
+      const column = index % grid.columns, row = Math.floor(index / grid.columns);
+      const cellLeft = left + column * cellWidth, cellTop = top + row * cellHeight;
+      const radius = Math.max(20, Math.min(cellWidth, cellHeight - titleHeight) / 2 * .84);
+      if (!(radius > 0)) return;
+      const x = cellLeft + cellWidth / 2, y = cellTop + titleHeight + (cellHeight - titleHeight) / 2, inner = payload.donut ? radius * .58 : 0;
+      if (titled) {
+        // The name of the pie just above it.
+        const titleTop = Math.max(cellTop + 2, y - radius - titleHeight);
+        context.fillStyle = '#23384A'; context.textAlign = 'center'; context.textBaseline = 'top'; aggregationFont(context, payload.legend_format, 0);
+        context.fillText(fittedText(context, pie.label, cellWidth - 12), x, titleTop);
+        pushAxisHit('row', 0, pie.label, cellLeft, titleTop, cellWidth, titleHeight);
+      }
+      let angle = -Math.PI / 2;
+      (pie.slices || []).forEach(slice => {
+        const sweep = Number(slice.share) * Math.PI * 2, end = angle + sweep;
+        context.beginPath();
+        if (inner) { context.arc(x, y, radius, angle, end); context.arc(x, y, inner, end, angle, true); }
+        else { context.moveTo(x, y); context.arc(x, y, radius, angle, end); }
+        context.closePath(); context.fillStyle = slice.colour; context.fill();
+        context.strokeStyle = '#FFFFFF'; context.lineWidth = 2; context.stroke();
+        const middle = angle + sweep / 2, labelRadius = inner ? (inner + radius) / 2 : radius * .64, share = percent(slice.share);
+        const size = Math.max(11, Math.min(24, radius * .13));
+        if (Number(slice.share) >= .05 && String(payload.label_position || '').toLowerCase() !== 'none') {
+          labelFont(context, size, payload.label_format, true, false); context.fillStyle = payload.label_format?.color || readableOn(slice.colour);
+          context.textAlign = 'center'; context.textBaseline = 'middle';
+          context.fillText(share, x + Math.cos(middle) * labelRadius, y + Math.sin(middle) * labelRadius);
+        }
+        pushPolygonHit(state, transform, sectorPoints(x, y, inner, radius, angle, end), {label: displayKey([...(pie.key || []), slice.name]),
+          series: payload.metric || '', value: `${share} · ${valueText(slice.value, 0)}`});
+        angle = end;
+      });
+      if (inner) {
+        context.fillStyle = '#1D3345'; context.textAlign = 'center'; context.textBaseline = 'middle'; font(context, Math.max(14, Math.min(40, inner * .42)), true);
+        context.fillText(valueText(pie.total, 0), x, y - inner * .08);
+        context.fillStyle = '#62727E'; font(context, Math.max(10, Math.min(20, inner * .2)));
+        context.fillText('samples', x, y + inner * .3);
+      }
+    });
+    drawLegend(context, payload.legend);
+  }
+
+  // The positions of the keys of a horizontal axis: their places along it, and how its labels are drawn (a time axis or
+  // the hierarchy of the keys).
+  function categoryAxis(context, payload, left, right) {
+    const keys = payload.x_keys || [], times = Array.isArray(payload.x_time) && payload.x_time.length === keys.length ? payload.x_time.map(Number) : null;
+    if (times && keys.length > 1) {
+      const low = Math.min(...times), high = Math.max(...times), pad = (right - left) * .03;
+      return {keys, time: true, position: index => left + pad + (times[index] - low) / ((high - low) || 1) * (right - left - pad * 2), slot: (right - left) / Math.max(keys.length, 1)};
+    }
+    const slot = (right - left) / Math.max(keys.length, 1);
+    return {keys, time: false, position: index => left + (index + .5) * slot, slot, axis: hierarchicalAxisPlans(context, keys, right - left, payload.legend_format)};
+  }
+  function drawCategoryAxisLabels(context, axis, left, right, top, bottom, format) {
+    if (axis.time) {
+      const count = axis.keys.length, every = Math.max(1, Math.ceil(count / 8));
+      context.fillStyle = '#4E6271'; context.textAlign = 'center'; context.textBaseline = 'top'; font(context, 16, true);
+      axis.keys.forEach((key, index) => {
+        // Every few periods, and the last one (unless the one before it is drawn too near).
+        if (index === count - 1 ? (count - 1) % every && (count - 1) % every < every / 2 : index % every) return;
+        const x = axis.position(index);
+        line(context, x, bottom, x, bottom + 6, '#62727E'); context.fillText(String(key.at(-1)), x, bottom + 9);
+        pushAxisHit('column', key.length - 1, key.at(-1), x - 40, bottom + 4, 80, 26);
+      });
+      return;
+    }
+    drawHierarchicalAxisLabels(context, axis.keys, left, right - left, top, bottom, format, axis.axis);
+  }
+  function plotFrame(layout, axis, dualAxis = false) {
+    const left = layout.left + 78, right = layout.right - (dualAxis ? 96 : 24);
+    const top = layout.top + (axis.time ? 14 : Math.max(14, axis.axis.headerHeight - 24));
+    const bottom = (layout.position === 'bottom' ? layout.bottom : 884) - (axis.time ? 40 : axis.axis.leafHeight) - 6;
+    return {left, right, top, bottom};
+  }
+  function strokeSeries(context, points, colour, width = 4, dash = []) {
+    context.save(); context.strokeStyle = colour; context.lineWidth = width; context.lineJoin = 'round'; context.lineCap = 'round';
+    lineDash(context, dash, width); context.beginPath();
+    let drawing = false;
+    points.forEach(point => {
+      if (!point) { drawing = false; return; }
+      if (drawing) context.lineTo(point.x, point.y); else { context.moveTo(point.x, point.y); drawing = true; }
+    });
+    context.stroke(); context.restore();
+  }
+
+  function drawLines(context, payload, state, transform) {
+    const layout = legendLayout(payload.legend), series = payload.series || [], dual = Boolean(payload.domain?.y2);
+    const provisional = {left: layout.left + 78, right: layout.right - (dual ? 96 : 24)};
+    const axis = categoryAxis(context, payload, provisional.left, provisional.right), frame = plotFrame(layout, axis, dual);
+    const toY = drawYValueAxis(context, state, transform, expandedDomain(payload.domain?.y), frame.left, frame.right, frame.top, frame.bottom,
+      `${aggregationName(series.find(item => !item.axis)?.aggregation || payload.aggregation)} of ${payload.metric || ''}`);
+    const toY2 = dual ? drawYValueAxis(context, state, transform, expandedDomain(payload.domain.y2), frame.left, frame.right, frame.top, frame.bottom,
+      `${aggregationName(series.find(item => item.axis)?.aggregation)} of ${payload.metric2 || ''}`, {side: 'right'}) : null;
+    series.forEach(item => {
+      const project = item.axis ? toY2 : toY;
+      const points = (item.values || []).map((value, index) => (value === null || value === undefined || !finite(value) ? null : {x: axis.position(index), y: project(Number(value)), value: Number(value), index}));
+      strokeSeries(context, points, item.colour, Number(item.width) || 4, item.dash);
+      points.filter(Boolean).forEach(point => {
+        context.beginPath(); context.arc(point.x, point.y, 5.5, 0, Math.PI * 2); context.fillStyle = item.colour; context.fill();
+        context.lineWidth = 2; context.strokeStyle = '#FFFFFF'; context.stroke();
+        const label = valueText(point.value, item.aggregation === 'count' || item.aggregation === 'countd' ? 0 : 2);
+        drawConfiguredPointLabel(context, label, point.x, point.y, item.colour, payload.label_position, 14, payload.label_format);
+        pushPointHit(state, transform, point.x, point.y, {label: displayKey([...(item.key || []), ...(axis.keys[point.index] || [])]), series: item.name,
+          value: `${label} · ${(item.samples?.[point.index] || 0).toLocaleString('en-US')} samples`});
+      });
+    });
+    line(context, frame.left, frame.bottom, frame.right, frame.bottom, '#9AAAB5', 2);
+    drawCategoryAxisLabels(context, axis, frame.left, frame.right, frame.top, frame.bottom, payload.legend_format);
+    drawLegend(context, payload.legend, {sideX: layout.position === 'right' ? frame.right + (dual ? 110 : 25) : undefined});
+  }
+
+  function drawAreas(context, payload, state, transform) {
+    const layout = legendLayout(payload.legend), panes = payload.panes || [];
+    if (!panes.length) return;
+    const provisional = {left: layout.left + 78, right: layout.right - 24};
+    const axis = categoryAxis(context, payload, provisional.left, provisional.right), frame = plotFrame(layout, axis);
+    const titled = panes.length > 1, paneGap = titled ? 30 : 0, paneHeight = (frame.bottom - frame.top - paneGap * (panes.length - 1)) / panes.length;
+    const domain = expandedDomain(payload.domain?.y);
+    panes.forEach((pane, paneIndex) => {
+      const top = frame.top + paneIndex * (paneHeight + paneGap) + (titled ? 22 : 0), bottom = top + paneHeight - (titled ? 22 : 0);
+      if (titled) {
+        context.fillStyle = '#23384A'; context.textAlign = 'left'; context.textBaseline = 'bottom'; aggregationFont(context, payload.legend_format, 0);
+        context.fillText(pane.label, frame.left, top - 4); pushAxisHit('row', 0, pane.label, frame.left, top - 26, 300, 24);
+      }
+      const toY = drawYValueAxis(context, state, transform, domain, frame.left, frame.right, top, bottom, paneIndex === Math.floor((panes.length - 1) / 2) ? (payload.percent ? `Share of ${payload.metric || ''}` : `${aggregationName(payload.aggregation)} of ${payload.metric || ''}`) : '', {percent: payload.percent, count: Math.max(2, Math.min(5, Math.floor(paneHeight / 60)))});
+      const totals = pane.totals || [], lower = axis.keys.map(() => 0);
+      (pane.series || []).forEach(item => {
+        const upper = axis.keys.map((_key, index) => {
+          const value = Number(item.values?.[index]) || 0;
+          return lower[index] + (payload.percent ? (totals[index] ? value / totals[index] : 0) : value);
+        });
+        context.beginPath();
+        upper.forEach((value, index) => { const x = axis.position(index), y = toY(clamp(value, domain[0], domain[1])); if (index) context.lineTo(x, y); else context.moveTo(x, y); });
+        for (let index = lower.length - 1; index >= 0; index -= 1) context.lineTo(axis.position(index), toY(clamp(lower[index], domain[0], domain[1])));
+        context.closePath(); context.fillStyle = withAlpha(item.colour, .88); context.fill();
+        strokeSeries(context, upper.map((value, index) => ({x: axis.position(index), y: toY(clamp(value, domain[0], domain[1]))})), '#FFFFFF', 1.5);
+        upper.forEach((value, index) => {
+          const share = totals[index] ? (Number(item.values?.[index]) || 0) / totals[index] : 0, middle = (value + lower[index]) / 2;
+          pushPointHit(state, transform, axis.position(index), toY(clamp(middle, domain[0], domain[1])), {label: displayKey([...(pane.key || []), ...(axis.keys[index] || [])]),
+            series: item.name, value: payload.percent ? `${percent(share)} · ${valueText(item.values?.[index], 0)}` : `${valueText(item.values?.[index], payload.decimals)} · ${percent(share)}`});
+          lower[index] = value;
+        });
+      });
+    });
+    line(context, frame.left, frame.bottom, frame.right, frame.bottom, '#9AAAB5', 2);
+    drawCategoryAxisLabels(context, axis, frame.left, frame.right, frame.top, frame.bottom, payload.legend_format);
+    drawLegend(context, payload.legend, {sideX: layout.position === 'right' ? frame.right + 25 : undefined});
+  }
+
+  function drawCombo(context, payload, state, transform) {
+    const layout = legendLayout(payload.legend), bars = payload.bar_series || [], lines = payload.line_series || [];
+    const provisional = {left: layout.left + 78, right: layout.right - 96};
+    const axis = categoryAxis(context, {...payload, x_time: null}, provisional.left, provisional.right), frame = plotFrame(layout, axis, true);
+    const toY = drawYValueAxis(context, state, transform, expandedDomain(payload.domain?.y), frame.left, frame.right, frame.top, frame.bottom, `${aggregationName(payload.aggregation)} of ${payload.metric || ''}`);
+    const toY2 = drawYValueAxis(context, state, transform, expandedDomain(payload.domain?.y2), frame.left, frame.right, frame.top, frame.bottom, `${aggregationName(payload.aggregation2)} of ${payload.metric2 || ''}`, {side: 'right', colour: '#1F2D3A'});
+    const groups = Math.max(bars.length, 1), groupWidth = axis.slot * .72, barWidth = groupWidth / groups, zeroY = toY(clamp(0, ...expandedDomain(payload.domain?.y)));
+    bars.forEach((item, seriesIndex) => (item.values || []).forEach((value, index) => {
+      if (value === null || value === undefined || !finite(value)) return;
+      const x = axis.position(index) - groupWidth / 2 + seriesIndex * barWidth, y = Math.min(toY(Number(value)), zeroY), height = Math.abs(toY(Number(value)) - zeroY);
+      context.fillStyle = item.colour; context.fillRect(x + 1, y, Math.max(1, barWidth - 2), height);
+      const label = valueText(value, payload.decimals);
+      drawConfiguredBarLabel(context, label, x + 1, y, barWidth - 2, height, item.colour, 16, payload.label_position, 'vertical', null, payload.label_format);
+      pushRectangleHit(state, transform, {x, y, width: barWidth, height}, {label: displayKey([...(item.key || []), ...(axis.keys[index] || [])]), series: item.name,
+        value: `${label} · ${(item.samples?.[index] || 0).toLocaleString('en-US')} samples`});
+    }));
+    lines.forEach(item => {
+      const points = (item.values || []).map((value, index) => (value === null || value === undefined || !finite(value) ? null : {x: axis.position(index), y: toY2(Number(value)), value: Number(value), index}));
+      strokeSeries(context, points, item.colour, Number(item.width) || 4);
+      points.filter(Boolean).forEach(point => {
+        context.beginPath(); context.arc(point.x, point.y, 6, 0, Math.PI * 2); context.fillStyle = '#FFFFFF'; context.fill();
+        context.lineWidth = 3; context.strokeStyle = item.colour; context.stroke();
+        const label = valueText(point.value, payload.decimals2);
+        if (payload.label_position) drawConfiguredPointLabel(context, label, point.x, point.y, item.colour, payload.label_position, 14, payload.label_format);
+        pushPointHit(state, transform, point.x, point.y, {label: displayKey([...(item.key || []), ...(axis.keys[point.index] || [])]), series: item.name, value: label});
+      });
+    });
+    line(context, frame.left, frame.bottom, frame.right, frame.bottom, '#9AAAB5', 2);
+    drawCategoryAxisLabels(context, axis, frame.left, frame.right, frame.top, frame.bottom, payload.legend_format);
+    drawLegend(context, payload.legend, {sideX: layout.position === 'right' ? frame.right + 110 : undefined});
+  }
+
+  function drawBox(context, payload, state, transform) {
+    const layout = legendLayout(payload.legend), boxes = payload.boxes || [];
+    if (!boxes.length) return;
+    const keys = boxes.map(box => box.key || [box.label]), provisional = {left: layout.left + 78, right: layout.right - 24};
+    const axis = categoryAxis(context, {x_keys: keys, legend_format: payload.legend_format}, provisional.left, provisional.right), frame = plotFrame(layout, axis);
+    const toY = drawYValueAxis(context, state, transform, expandedDomain(payload.domain?.y), frame.left, frame.right, frame.top, frame.bottom, payload.metric || '');
+    const width = Math.max(10, Math.min(110, axis.slot * .56));
+    boxes.forEach((box, index) => {
+      const x = axis.position(index), colour = box.colour || '#4E79A7';
+      const low = toY(box.low), q1 = toY(box.q1), median = toY(box.median), q3 = toY(box.q3), high = toY(box.high), mean = toY(box.mean);
+      line(context, x, high, x, q3, '#62727E', 2); line(context, x, q1, x, low, '#62727E', 2);
+      line(context, x - width * .3, high, x + width * .3, high, '#62727E', 2); line(context, x - width * .3, low, x + width * .3, low, '#62727E', 2);
+      context.fillStyle = withAlpha(colour, .4); context.fillRect(x - width / 2, q3, width, Math.max(1, q1 - q3));
+      context.strokeStyle = colour; context.lineWidth = 2.5; context.strokeRect(x - width / 2, q3, width, Math.max(1, q1 - q3));
+      line(context, x - width / 2, median, x + width / 2, median, '#1F2D3A', 4);
+      context.beginPath(); context.moveTo(x, mean - 7); context.lineTo(x + 7, mean); context.lineTo(x, mean + 7); context.lineTo(x - 7, mean); context.closePath();
+      context.fillStyle = '#FFFFFF'; context.fill(); context.strokeStyle = '#1F2D3A'; context.lineWidth = 2; context.stroke();
+      if (String(payload.label_position || '').toLowerCase() && String(payload.label_position).toLowerCase() !== 'none') drawConfiguredPointLabel(context, valueText(box.median), x + width / 2, median, '#1F2D3A', 'middle', 14, payload.label_format);
+      pushRectangleHit(state, transform, {x: x - width / 2, y: high, width, height: Math.max(4, low - high)}, {label: box.label, series: `${payload.metric || ''} · whiskers ${payload.whiskers || ''}`,
+        value: `Median ${valueText(box.median)} · Q1–Q3 ${valueText(box.q1)}–${valueText(box.q3)} · whiskers ${valueText(box.low)}–${valueText(box.high)} · mean ${valueText(box.mean)} · ${Number(box.n || 0).toLocaleString('en-US')} samples`});
+    });
+    line(context, frame.left, frame.bottom, frame.right, frame.bottom, '#9AAAB5', 2);
+    drawTopColumnSeparators(context, keys, payload.axis_columns || [], frame.left, frame.right - frame.left, frame.top, frame.bottom, axis.axis);
+    drawCategoryAxisLabels(context, axis, frame.left, frame.right, frame.top, frame.bottom, payload.legend_format);
+    context.fillStyle = '#62727E'; context.textAlign = 'right'; context.textBaseline = 'top'; font(context, 15);
+    context.fillText(`Box Q1–Q3 · line median · ◇ mean · whiskers ${payload.whiskers || 'P10 – P90'}`, frame.right, layout.top - 30);
+    drawLegend(context, payload.legend);
+  }
+
+  // A basemap of OpenStreetMap tiles in a rectangle, keeping the shape of the area it shows; ``project`` turns a longitude
+  // and latitude into a point of the canvas.
+  function drawBasemap(context, payload, state, left, top, width, height) {
+    const basemap = payload.basemap, bounds = Array.isArray(basemap?.world_bounds) ? basemap.world_bounds.map(Number) : null;
+    if (!bounds || bounds.length !== 4) return null;
+    const [worldLeft, worldTop, worldRight, worldBottom] = bounds, sourceWidth = worldRight - worldLeft, sourceHeight = worldBottom - worldTop;
+    const scale = Math.min(width / sourceWidth, height / sourceHeight), drawnWidth = sourceWidth * scale, drawnHeight = sourceHeight * scale;
+    const mapLeft = left + (width - drawnWidth) / 2, mapTop = top + (height - drawnHeight) / 2, tileSize = Number(basemap.tile_size || 256);
+    context.fillStyle = '#EDF4F0'; context.fillRect(mapLeft, mapTop, drawnWidth, drawnHeight);
+    context.save(); context.beginPath(); context.rect(mapLeft, mapTop, drawnWidth, drawnHeight); context.clip();
+    mapTileRecords(state.canvas, payload).filter(record => record.status === 'ready').forEach(record => {
+      context.drawImage(record.image, mapLeft + (record.x * tileSize - worldLeft) * scale, mapTop + (record.y * tileSize - worldTop) * scale, tileSize * scale + .5, tileSize * scale + .5);
+    });
+    context.restore();
+    context.strokeStyle = '#B9CDC4'; context.lineWidth = 2; context.strokeRect(mapLeft, mapTop, drawnWidth, drawnHeight);
+    const project = (longitude, latitude) => {
+      const [x, y] = osmWorldCoordinates(latitude, longitude, basemap.zoom);
+      return {x: mapLeft + (x - worldLeft) * scale, y: mapTop + (y - worldTop) * scale};
+    };
+    return {project, left: mapLeft, top: mapTop, width: drawnWidth, height: drawnHeight};
+  }
+  function mapPanels(context, payload, state, draw) {
+    const layout = legendLayout(payload.legend), panels = payload.panels || [];
+    const titled = panels.length > 1 || Boolean(panels[0]?.label), titleHeight = titled ? 34 : 0;
+    const width = layout.right - layout.left, height = layout.bottom - layout.top - 20;
+    const grid = chartGrid(panels.length, width, height, 1.2), cellWidth = width / grid.columns, cellHeight = height / grid.rows;
+    panels.forEach((panel, index) => {
+      const left = layout.left + index % grid.columns * cellWidth, top = layout.top + Math.floor(index / grid.columns) * cellHeight;
+      const map = drawBasemap(context, payload, state, left + 6, top + titleHeight, cellWidth - 12, cellHeight - titleHeight - 6);
+      if (!map) return;
+      if (titled) {
+        context.fillStyle = '#23384A'; context.textAlign = 'center'; context.textBaseline = 'bottom'; aggregationFont(context, payload.legend_format, 0);
+        context.fillText(fittedText(context, panel.label, cellWidth - 12), left + cellWidth / 2, map.top - 6);
+        pushAxisHit('column', 0, panel.label, left, map.top - titleHeight, cellWidth, titleHeight);
+      }
+      context.save(); context.beginPath(); context.rect(map.left, map.top, map.width, map.height); context.clip();
+      draw(panel, map);
+      context.restore();
+    });
+    if (payload.basemap?.attribution) {
+      context.fillStyle = '#405765'; context.textAlign = 'right'; context.textBaseline = 'bottom'; font(context, 11);
+      context.fillText(String(payload.basemap.attribution), layout.right, layout.bottom + 4);
+    }
+    drawLegend(context, payload.legend);
+  }
+
+  function drawSymbolMap(context, payload, state, transform) {
+    mapPanels(context, payload, state, (panel, map) => {
+      const largest = Math.max(10, Math.min(46, Math.min(map.width, map.height) * .07));
+      [...(panel.symbols || [])].sort((left, right) => right.size - left.size).forEach(symbol => {
+        const point = map.project(Number(symbol.lon), Number(symbol.lat)), radius = Math.max(3, largest * Number(symbol.size || 0));
+        context.beginPath(); context.arc(point.x, point.y, radius, 0, Math.PI * 2); context.fillStyle = withAlpha(symbol.colour || '#2A6BB0', .72); context.fill();
+        context.lineWidth = 1.5; context.strokeStyle = '#FFFFFF'; context.stroke();
+        if (symbol.label && radius >= 16) {
+          context.fillStyle = '#1D3345'; context.textAlign = 'center'; context.textBaseline = 'top'; font(context, 13, true);
+          context.fillText(fittedText(context, symbol.label, 160), point.x, point.y + radius + 2);
+        }
+        pushCircleHit(state, transform, point.x, point.y, Math.max(radius, 6), {label: symbol.label || panel.label || 'Samples',
+          series: payload.colour_metric ? `${aggregationName(payload.aggregation)} of ${payload.colour_metric}` : panel.label,
+          value: `${symbol.value !== null && symbol.value !== undefined ? `${valueText(symbol.value)} · ` : ''}${Number(symbol.n || 0).toLocaleString('en-US')} samples`});
+      });
+    });
+  }
+
+  function drawFilledMap(context, payload, state, transform) {
+    const polygons = payload.polygons || {};
+    mapPanels(context, payload, state, (panel, map) => {
+      (panel.areas || []).forEach(area => {
+        const rings = polygons[area.name] || [];
+        let box = null;
+        rings.forEach(ring => {
+          const points = ring.map(([longitude, latitude]) => map.project(Number(longitude), Number(latitude)));
+          if (points.length < 3) return;
+          context.beginPath(); points.forEach((point, index) => (index ? context.lineTo(point.x, point.y) : context.moveTo(point.x, point.y))); context.closePath();
+          context.fillStyle = withAlpha(area.colour, .78); context.fill(); context.strokeStyle = '#FFFFFF'; context.lineWidth = 1.2; context.stroke();
+          pushPolygonHit(state, transform, points, {label: area.name, series: `${aggregationName(payload.aggregation)} of ${payload.metric || ''}`,
+            value: `${valueText(area.value, payload.decimals)} · ${Number(area.n || 0).toLocaleString('en-US')} samples`});
+          const xs = points.map(point => point.x), ys = points.map(point => point.y);
+          const ringBox = {left: Math.min(...xs), right: Math.max(...xs), top: Math.min(...ys), bottom: Math.max(...ys)};
+          if (!box || (ringBox.right - ringBox.left) * (ringBox.bottom - ringBox.top) > (box.right - box.left) * (box.bottom - box.top)) box = ringBox;
+        });
+        if (box && box.right - box.left > 70 && box.bottom - box.top > 26) {
+          context.fillStyle = readableOn(area.colour); context.textAlign = 'center'; context.textBaseline = 'middle'; font(context, 13, true);
+          context.fillText(fittedText(context, area.name, box.right - box.left - 6), (box.left + box.right) / 2, (box.top + box.bottom) / 2);
+        }
+      });
+    });
+  }
+
+  // Rectangles with the proportions of their values, as close to squares as they can be (squarified treemap).
+  function squarify(items, x, y, width, height) {
+    const total = items.reduce((sum, item) => sum + Math.max(0, Number(item.value) || 0), 0);
+    if (!total || width <= 0 || height <= 0) return [];
+    const area = width * height, queue = items.map(item => ({item, area: Math.max(0, Number(item.value) || 0) / total * area})).filter(entry => entry.area > 0);
+    const result = [];
+    let left = x, top = y, roomWidth = width, roomHeight = height;
+    const worst = (row, side) => {
+      const sum = row.reduce((value, entry) => value + entry.area, 0), largest = Math.max(...row.map(entry => entry.area)), smallest = Math.min(...row.map(entry => entry.area));
+      return Math.max(side * side * largest / (sum * sum), sum * sum / (side * side * smallest));
+    };
+    while (queue.length) {
+      const side = Math.min(roomWidth, roomHeight), row = [queue.shift()];
+      while (queue.length && worst([...row, queue[0]], side) <= worst(row, side)) row.push(queue.shift());
+      const sum = row.reduce((value, entry) => value + entry.area, 0);
+      if (roomWidth >= roomHeight) {
+        const columnWidth = sum / roomHeight; let cursor = top;
+        row.forEach(entry => { const itemHeight = entry.area / columnWidth; result.push({item: entry.item, x: left, y: cursor, width: columnWidth, height: itemHeight}); cursor += itemHeight; });
+        left += columnWidth; roomWidth -= columnWidth;
+      } else {
+        const rowHeight = sum / roomWidth; let cursor = left;
+        row.forEach(entry => { const itemWidth = entry.area / rowHeight; result.push({item: entry.item, x: cursor, y: top, width: itemWidth, height: rowHeight}); cursor += itemWidth; });
+        top += rowHeight; roomHeight -= rowHeight;
+      }
+    }
+    return result;
+  }
+
+  function drawTreemap(context, payload, state, transform) {
+    const layout = legendLayout(payload.legend), levels = payload.levels || [];
+    const paint = (nodes, x, y, width, height, path, depth) => {
+      squarify(nodes, x, y, width, height).forEach(({item, x: left, y: top, width: itemWidth, height: itemHeight}) => {
+        const trail = [...path, item.name];
+        if (Array.isArray(item.children) && item.children.length) {
+          const header = itemHeight > 60 && itemWidth > 60 ? Math.min(30, 22 + 4 * (2 - depth)) : 0;
+          context.fillStyle = '#F4F7F9'; context.fillRect(left, top, itemWidth, itemHeight);
+          paint(item.children, left + 2, top + header + 2, itemWidth - 4, itemHeight - header - 4, trail, depth + 1);
+          context.strokeStyle = '#FFFFFF'; context.lineWidth = depth ? 2 : 4; context.strokeRect(left, top, itemWidth, itemHeight);
+          if (header) {
+            context.fillStyle = '#23384A'; context.textAlign = 'left'; context.textBaseline = 'middle'; font(context, Math.max(12, header - 10), true);
+            context.fillText(fittedText(context, `${item.name} · ${valueText(item.value, payload.decimals)}`, itemWidth - 10), left + 6, top + header / 2 + 2);
+            pushAxisHit('row', depth, item.name, left, top, itemWidth, header);
+          }
+          return;
+        }
+        context.fillStyle = item.colour || '#4E79A7'; context.fillRect(left, top, itemWidth, itemHeight);
+        context.strokeStyle = '#FFFFFF'; context.lineWidth = 1.5; context.strokeRect(left, top, itemWidth, itemHeight);
+        if (itemWidth > 46 && itemHeight > 26) {
+          const size = Math.max(11, Math.min(22, Math.min(itemWidth / 7, itemHeight / 3)));
+          context.fillStyle = readableOn(item.colour); context.textAlign = 'left'; context.textBaseline = 'top'; font(context, size, true);
+          context.fillText(fittedText(context, item.name, itemWidth - 10), left + 5, top + 4);
+          if (itemHeight > size * 2.6) { font(context, Math.max(10, size * .82)); context.fillText(fittedText(context, valueText(item.value, payload.decimals), itemWidth - 10), left + 5, top + 6 + size); }
+        }
+        pushRectangleHit(state, transform, {x: left, y: top, width: itemWidth, height: itemHeight}, {label: trail.join(' · '),
+          series: `${aggregationName(payload.aggregation)} of ${payload.metric || ''}${levels.length ? ` by ${levels.join(' › ')}` : ''}`,
+          value: `${valueText(item.value, payload.decimals)}${item.colour_value !== null && item.colour_value !== undefined ? ` · ${aggregationName(payload.colour_aggregation)} of ${payload.colour_metric}: ${valueText(item.colour_value)}` : ''}`});
+      });
+    };
+    paint(payload.nodes || [], layout.left, layout.top, layout.right - layout.left, Math.max(180, layout.bottom - layout.top), [], 0);
+    drawLegend(context, payload.legend);
+  }
+
+  // Circles packed around the largest one: each new circle touches one already placed, as near the middle as it can.
+  function packCircles(radii) {
+    const placed = [];
+    radii.forEach((radius, index) => {
+      if (!index) { placed.push({x: 0, y: 0, r: radius}); return; }
+      let best = null;
+      for (const anchor of placed) {
+        for (let step = 0; step < 36; step += 1) {
+          const angle = step / 36 * Math.PI * 2, distance = anchor.r + radius + 1;
+          const x = anchor.x + Math.cos(angle) * distance, y = anchor.y + Math.sin(angle) * distance;
+          const cost = Math.hypot(x, y * 1.35);
+          if (best && cost >= best.cost) continue;
+          if (placed.some(other => Math.hypot(other.x - x, other.y - y) < other.r + radius - .5)) continue;
+          best = {x, y, cost};
+        }
+      }
+      placed.push({x: best?.x ?? 0, y: best?.y ?? 0, r: radius});
+    });
+    return placed;
+  }
+
+  function drawBubbles(context, payload, state, transform) {
+    const layout = legendLayout(payload.legend), bubbles = (payload.bubbles || []).slice(0, 150);
+    if (!bubbles.length) return;
+    const largest = Math.max(...bubbles.map(item => Number(item.value) || 0)) || 1;
+    const placed = packCircles(bubbles.map(item => Math.max(1.5, Math.sqrt((Number(item.value) || 0) / largest) * 100)));
+    const minX = Math.min(...placed.map(item => item.x - item.r)), maxX = Math.max(...placed.map(item => item.x + item.r));
+    const minY = Math.min(...placed.map(item => item.y - item.r)), maxY = Math.max(...placed.map(item => item.y + item.r));
+    const width = layout.right - layout.left, height = Math.max(180, layout.bottom - layout.top), scale = Math.min(width / (maxX - minX || 1), height / (maxY - minY || 1)) * .96;
+    const offsetX = layout.left + (width - (maxX - minX) * scale) / 2 - minX * scale, offsetY = layout.top + (height - (maxY - minY) * scale) / 2 - minY * scale;
+    bubbles.forEach((item, index) => {
+      const x = offsetX + placed[index].x * scale, y = offsetY + placed[index].y * scale, radius = Math.max(.5, placed[index].r * scale);
+      context.beginPath(); context.arc(x, y, radius, 0, Math.PI * 2); context.fillStyle = item.colour || '#4E79A7'; context.fill();
+      context.lineWidth = 2; context.strokeStyle = '#FFFFFF'; context.stroke();
+      if (radius > 22) {
+        const size = Math.max(10, Math.min(22, radius / 3.4));
+        context.fillStyle = readableOn(item.colour); context.textAlign = 'center'; context.textBaseline = 'middle'; font(context, size, true);
+        context.fillText(fittedText(context, item.label, radius * 1.8), x, y - (radius > 40 ? size * .55 : 0));
+        if (radius > 40) { font(context, Math.max(9, size * .8)); context.fillText(valueText(item.value, payload.decimals), x, y + size * .6); }
+      }
+      pushCircleHit(state, transform, x, y, radius, {label: item.label, series: `${aggregationName(payload.aggregation)} of ${payload.metric || ''}`,
+        value: `${valueText(item.value, payload.decimals)}${item.colour_value !== null && item.colour_value !== undefined ? ` · ${payload.colour_metric}: ${valueText(item.colour_value)}` : ''}`});
+    });
+    drawLegend(context, payload.legend);
+  }
+
+  function drawSankey(context, payload, state, transform) {
+    const layout = legendLayout(payload.legend), levels = payload.nodes || [], links = payload.links || [];
+    if (levels.length < 2) return;
+    const nodeWidth = 20, padding = 14, labelRoom = 170, top = layout.top + 34, bottom = layout.bottom - 6;
+    const left = layout.left + 10, right = layout.right - labelRoom, step = (right - left - nodeWidth) / (levels.length - 1);
+    const scale = Math.min(...levels.map(nodes => (bottom - top - padding * Math.max(nodes.length - 1, 0)) / Math.max(nodes.reduce((sum, node) => sum + Number(node.value || 0), 0), 1)));
+    const places = levels.map((nodes, level) => {
+      const total = nodes.reduce((sum, node) => sum + Number(node.value || 0), 0) * scale + padding * Math.max(nodes.length - 1, 0);
+      let y = top + (bottom - top - total) / 2;
+      const map = new Map();
+      nodes.forEach(node => { const height = Math.max(1, Number(node.value || 0) * scale); map.set(node.name, {node, x: left + level * step, y, height, out: y, in: y}); y += height + padding; });
+      return map;
+    });
+    (payload.levels || []).forEach((name, level) => {
+      context.fillStyle = '#62727E'; context.textAlign = level === levels.length - 1 ? 'right' : 'left'; context.textBaseline = 'bottom'; font(context, 16, true);
+      context.fillText(String(name), level === levels.length - 1 ? left + level * step + nodeWidth : left + level * step, top - 10);
+    });
+    const ordered = [...links].sort((first, second) => first.level - second.level);
+    ordered.forEach(link => {
+      const source = places[link.level]?.get(link.source), target = places[link.level + 1]?.get(link.target);
+      if (!source || !target) return;
+      const thickness = Number(link.value) * scale, x0 = source.x + nodeWidth, x1 = target.x, y0 = source.out, y1 = target.in, middle = (x0 + x1) / 2;
+      source.out += thickness; target.in += thickness;
+      context.beginPath(); context.moveTo(x0, y0); context.bezierCurveTo(middle, y0, middle, y1, x1, y1);
+      context.lineTo(x1, y1 + thickness); context.bezierCurveTo(middle, y1 + thickness, middle, y0 + thickness, x0, y0 + thickness); context.closePath();
+      context.fillStyle = withAlpha(source.node.colour, .38); context.fill();
+      const samples = [];
+      for (let index = 0; index <= 12; index += 1) {
+        const t = index / 12, u = 1 - t, x = u ** 3 * x0 + 3 * u * u * t * middle + 3 * u * t * t * middle + t ** 3 * x1, y = u ** 3 * y0 + 3 * u * u * t * y0 + 3 * u * t * t * y1 + t ** 3 * y1;
+        samples.push({x, y});
+      }
+      const polygon = [...samples, ...samples.slice().reverse().map(point => ({x: point.x, y: point.y + Math.max(thickness, 3)}))];
+      pushPolygonHit(state, transform, polygon, {label: `${link.source} → ${link.target}`, series: `${aggregationName(payload.aggregation)} of ${payload.metric || ''}`, value: valueText(link.value, payload.decimals)});
+    });
+    places.forEach((map, level) => map.forEach(place => {
+      context.fillStyle = place.node.colour; context.fillRect(place.x, place.y, nodeWidth, place.height);
+      const last = level === places.length - 1, labelX = last ? place.x + nodeWidth + 8 : place.x + nodeWidth + 8;
+      if (place.height >= 12) {
+        context.fillStyle = '#1D3345'; context.textAlign = 'left'; context.textBaseline = 'middle'; font(context, Math.max(11, Math.min(18, place.height * .55)), true);
+        context.fillText(fittedText(context, `${place.node.name} · ${valueText(place.node.value, payload.decimals)}`, last ? labelRoom - 14 : step - nodeWidth - 16), labelX, place.y + place.height / 2);
+      }
+      pushRectangleHit(state, transform, {x: place.x, y: place.y, width: nodeWidth, height: place.height}, {label: place.node.name, series: payload.levels?.[level] || '', value: valueText(place.node.value, payload.decimals)});
+      pushAxisHit('row', level, place.node.name, place.x, place.y, nodeWidth, place.height);
+    }));
+    drawLegend(context, payload.legend);
+  }
+
+  const timeText = (milliseconds, span) => {
+    const text = new Date(Number(milliseconds)).toISOString();
+    if (span < 2 * 86400000) return `${text.slice(5, 10)} ${text.slice(11, 16)}`;
+    if (span < 400 * 86400000) return text.slice(0, 10);
+    return text.slice(0, 7);
+  };
+
+  function drawGantt(context, payload, state, transform) {
+    const layout = legendLayout(payload.legend), lanes = payload.lanes || [];
+    if (!lanes.length) return;
+    const keys = lanes.map(lane => lane.key?.length ? lane.key : [lane.label]), format = payload.legend_format || {};
+    const labelWidth = rowLabelWidth(keys, layout, .24), levels = keys[0]?.length || 0;
+    const left = layout.left + levels * labelWidth + 12, right = layout.right - 20, top = layout.top + 4, bottom = layout.bottom - 44;
+    const domain = expandedDomain(payload.domain?.x), span = domain[1] - domain[0], toX = value => left + (value - domain[0]) / span * (right - left);
+    for (let tick = 0; tick <= 6; tick += 1) {
+      const value = domain[0] + span * tick / 6, x = toX(value);
+      line(context, x, top, x, bottom, '#E4E9ED', 1);
+      context.fillStyle = '#4E6271'; context.textAlign = tick === 0 ? 'left' : tick === 6 ? 'right' : 'center'; context.textBaseline = 'top'; font(context, 15, true);
+      context.fillText(timeText(value, span), x, bottom + 8);
+    }
+    const laneHeight = (bottom - top) / lanes.length, seriesNames = [...new Set(lanes.flatMap(lane => lane.segments.map(segment => segment.series)))];
+    lanes.forEach((lane, index) => {
+      const laneTop = top + index * laneHeight, barHeight = Math.max(3, Math.min(40, laneHeight * .66 / Math.max(seriesNames.length, 1)));
+      const groupTop = laneTop + (laneHeight - barHeight * seriesNames.length) / 2;
+      lane.segments.forEach(segment => {
+        const x = toX(Number(segment.start)), width = Math.max(3, toX(Number(segment.end)) - x), y = groupTop + Math.max(0, seriesNames.indexOf(segment.series)) * barHeight;
+        context.fillStyle = segment.colour || '#4E79A7'; context.fillRect(x, y + 1, width, barHeight - 2);
+        pushRectangleHit(state, transform, {x, y, width, height: barHeight}, {label: [lane.label, segment.series].filter(value => value && value !== '(all)').join(' · '),
+          series: `${timeText(segment.start, 0)} → ${timeText(segment.end, 0)}`, value: `${Number(segment.n || 0).toLocaleString('en-US')} samples`});
+      });
+    });
+    drawRowLabels(context, keys, layout.left, labelWidth, top, laneHeight, right, format);
+    drawLegend(context, payload.legend);
+  }
+
   function drawPayload(context, payload, state, transform) {
     if (payload?.spacer) return;
     const previousLegendTarget = legendHitTarget;
@@ -1487,6 +2293,21 @@
     else if (payload.type === 'map') drawMap(context, payload, state, transform);
     else if (payload.type === 'table') drawTable(context, payload, state);
     else if (payload.type === 'kpi') drawKpi(context, payload, state, transform);
+    else if (payload.type === 'hbar') drawHorizontalBars(context, payload, state, transform);
+    else if (payload.type === 'dot') drawDotPlot(context, payload, state, transform);
+    else if (payload.type === 'bullet') drawBullet(context, payload, state, transform);
+    else if (payload.type === 'heat_map') drawHeatMap(context, payload, state, transform);
+    else if (payload.type === 'pie') drawPie(context, payload, state, transform);
+    else if (payload.type === 'lines') drawLines(context, payload, state, transform);
+    else if (payload.type === 'areas') drawAreas(context, payload, state, transform);
+    else if (payload.type === 'combo') drawCombo(context, payload, state, transform);
+    else if (payload.type === 'box') drawBox(context, payload, state, transform);
+    else if (payload.type === 'symbol_map') drawSymbolMap(context, payload, state, transform);
+    else if (payload.type === 'filled_map') drawFilledMap(context, payload, state, transform);
+    else if (payload.type === 'treemap') drawTreemap(context, payload, state, transform);
+    else if (payload.type === 'bubbles') drawBubbles(context, payload, state, transform);
+    else if (payload.type === 'sankey') drawSankey(context, payload, state, transform);
+    else if (payload.type === 'gantt') drawGantt(context, payload, state, transform);
   }
 
   // KPI cards (Designer): the figure of the latest campaign, its samples, its change against the comparison
@@ -1741,6 +2562,8 @@
     for (const hit of hits) {
       if (hit.kind === 'rectangle') { if (x >= hit.x && x <= hit.x + hit.width && y >= hit.y && y <= hit.y + hit.height) return {...hit, distance: 0}; continue; }
       if (hit.kind === 'point') { const candidate = Math.hypot(x - hit.x, y - hit.y); if (candidate < distance) { closest = hit; distance = candidate; } continue; }
+      if (hit.kind === 'circle') { if (Math.hypot(x - hit.x, y - hit.y) <= hit.radius) return {...hit, distance: 0}; continue; }
+      if (hit.kind === 'polygon') { if (insidePolygon(hit.points, x, y)) return {...hit, distance: 0}; continue; }
       if (hit.kind === 'line') {
         for (const point of hit.points) { const candidate = Math.hypot(x - point.x, y - point.y); if (candidate < distance) { closest = {...hit, point}; distance = candidate; } }
       }

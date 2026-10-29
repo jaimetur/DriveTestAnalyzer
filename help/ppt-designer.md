@@ -371,7 +371,12 @@ For editors, three icons follow the slide navigation, set apart like **Presentat
 | Count Stacked Horizontal Bars | The share of failed and dropped tests among all the tests of each bar; when its filter keeps only the failed and dropped tests (such as `Call_Status IN (Failed, Dropped)` in **Voice failures** and **Voice failures per City**), the counts it draws: the operators from the one with the most in the latest campaign, the change since the previous campaign (a Flex campaign only against another Flex campaign; a change too small for its counts reads *stable*), the CDR type, city or other row with the most and the bar with the largest count, and the operators without any |
 | Scatter | How the KPI follows the other measure (Spearman ρ) and its median in the lowest and highest quarter of it |
 | Map | The share of the samples in the weakest class of its colour measure and, with City or Region in the rows, the area that holds more of it than its share of the samples |
-| Table and Dynamic Table | The highest and lowest rows of its first numeric columns |
+| Table, Dynamic Table, Highlight Table and Bar Table | The highest and lowest rows of its first numeric columns |
+| Horizontal Bars, Dot Plot, Bullet Graph, Heat Map and Lines | The value of each bar, dot, square or point, as Average and Median Vertical Bars (when the measure is averaged or a median) |
+| Box Plot | The median of each box and its tail (P10, or P90 when lower is better), as a CDF |
+| Pie, Donut, Areas and 100% Stacked Areas | The share of failures, or else of the largest slice or area, as 100% Stacked Vertical Bars |
+
+Dual Lines, Bars and Line, Symbol Map, Filled Map, Treemap, Packed Bubbles, Sankey and Gantt get no generated comments: write theirs by hand.
 
 The comments compare the latest campaign of each group with the previous one and every operator with the leader, from the point of view of the **Focus** operators of the [Operator Maps](workspace-config.md#operator-maps) (without Focus operators they follow the leader), compare the vendors of each operator in Multivendor and, in a chart split by NR Mode, each operator in SA with itself in NSA (the newest campaign of each NR Mode), and read the charts of a slide together: an NR KPI against the same LTE KPI for every operator, the KPI of a chart of SA against the same KPI of a chart of NSA (their titles name the NR Mode, such as CDF_NSA and CDF_SA), and the operators of a slide that gives each operator its own chart. Each KPI is read with its unit and its better side (RSRP and SINR in dB, higher LQ, Mean Data Rate and scores are better, lower durations, times, RTT and error ratios are better), a group with fewer than 10 samples is not named, and a difference too small to matter (1 dB for RSRP and SINR, 0.1 for LQ, 5% for the other KPIs, or a share difference that is not statistically significant) reads as *stable* or *on par*. A slide gets up to four comments (three in the **comments right** layouts), the best one of every chart first.
 
@@ -436,7 +441,7 @@ The template keeps the fields, so each Design of it writes its own selection. Pa
 
 ### Charts on the slide
 
-- Click a chart to build it, as in Tableau: its title is written in the head of the panel (**{ }** inserts a field), and its **Data** has three subpanels, **Chart**, **Filters** and **Fields** (the fields to drag to the other two). It chooses its **Source** (Data, Voice, Speech or RF All: the CDRs the chart reads) and its **NR Mode**, one button per result: a PPT Design of NSA or SA reads only its CDRs, so its NR Mode is chosen and the other one is greyed until NR Mode NSA & SA is chosen in PPT Filters; one of NSA & SA offers **NSA & SA**, **NSA** or **SA**; in Template scope **PPT Mode** follows the NR Mode of each Design of the template (a chart that keeps **NSA** or **SA** has the filter `NR Mode IN (SA)`), then drag the fields of the source, grouped by the sections of the CDR Field Dictionary and told apart as dimensions (blue `Abc`) and measures (green `#`), to its shelves: **Measure** (its menu chooses the aggregation), **Rows**, **Columns**, **Legend**, **Filters** and **One chart per** (one chart for each value of a field, side by side in the place of this one: small multiples, in the viewer and in the PPT). A field dropped on the middle of a pill takes its place, and near its edges or between pills it goes there. A field dropped on Filters opens its values in the Design's selection with their samples (Include, Exclude, Contains), or a numeric condition, or a parameter of the template (**Use parameter**); the filters of the Design show first on the shelf, locked. **Chart Type**, the tab in the colour of the theme on the right edge of the chart chosen, inside its place on the slide (it pulses when the chart is chosen; while the chart is not drawn yet, it waits on the edge of the panel), opens the chart types over the slide beside the chart (over the whole slide when there is no room beside it for four types in a row, each picture as large as the room lets it) as pictures with their names, grouped by what they show, a row for each group (Distribution, Comparison, Composition, then Tables and maps with Scorecards beside it: a group of one or two types goes on the row before it): those the shelves cannot draw are greyed and cannot be chosen (a chart without a measure yet, such as a new one, takes any of them), the line above them says what the one pointed at needs (a Map, a latitude and a longitude on Measure, a third measure colouring its points), the **Chart** subpanel (and the form of a KPI card) says what the one chosen needs (ticked in green once it is given), and when the measures rule the chosen type out another one is proposed (a type chosen before its fields is kept while they are dropped); Threshold, Buckets and Bin Size are set under the types. Choosing a chart type closes it, as its tab, **×**, **Esc** or a click outside it do. **KPI Card**, under Scorecards, turns the chart into a [KPI card](#kpi-cards-text-boxes-and-pictures) of its first measure, with its source, title and filters (an average for a number, the share of a value otherwise); a KPI card has Chart Type too, and another chart type turns it back into a chart, its settings kept for a later return. The chart is drawn again a moment after each change.
+- Click a chart to build it, as in Tableau: its title is written in the head of the panel (**{ }** inserts a field), and its **Data** has three subpanels, **Chart**, **Filters** and **Fields** (the fields to drag to the other two). It chooses its **Source** (Data, Voice, Speech or RF All: the CDRs the chart reads) and its **NR Mode**, one button per result: a PPT Design of NSA or SA reads only its CDRs, so its NR Mode is chosen and the other one is greyed until NR Mode NSA & SA is chosen in PPT Filters; one of NSA & SA offers **NSA & SA**, **NSA** or **SA**; in Template scope **PPT Mode** follows the NR Mode of each Design of the template (a chart that keeps **NSA** or **SA** has the filter `NR Mode IN (SA)`), then drag the fields of the source, grouped by the sections of the CDR Field Dictionary and told apart as dimensions (blue `Abc`) and measures (green `#`), to its shelves: **Measure** (its menu chooses the aggregation), **Rows**, **Columns**, **Legend**, **Filters** and **One chart per** (one chart for each value of a field, side by side in the place of this one: small multiples, in the viewer and in the PPT). A field dropped on the middle of a pill takes its place, and near its edges or between pills it goes there. A time (such as `Test_Start_Time`) dropped on Rows or Columns is grouped by day, `DAY(Test_Start_Time)`: its pill chooses **By hour**, **By day**, **By week**, **By month** or **Exact time**, and the chart types along time (Lines, Areas…) draw it as a time axis. A field dropped on Filters opens its values in the Design's selection with their samples (Include, Exclude, Contains), or a numeric condition, or a parameter of the template (**Use parameter**); the filters of the Design show first on the shelf, locked. **Chart Type**, the tab in the colour of the theme on the right edge of the chart chosen, inside its place on the slide (it pulses when the chart is chosen; while the chart is not drawn yet, it waits on the edge of the panel), opens the chart types over the slide beside the chart (over the whole slide when there is no room beside it for six types in a row, each picture as large as the room lets it) as pictures with their names, grouped by what they show, a row for each group (Distribution, Comparison, Trends, Composition, Hierarchies and flows, Tables, then Maps with Scorecards beside it: a group of one or two types goes on the row before it; see [Supported chart types](#supported-chart-types)): those the shelves cannot draw are greyed and cannot be chosen (a chart without a measure yet, such as a new one, takes any of them), the line above them says what the one pointed at needs (a Map, a latitude and a longitude on Measure, a third measure colouring its points), the **Chart** subpanel (and the form of a KPI card) says what the one chosen needs (ticked in green once it is given), and when the measures rule the chosen type out another one is proposed (a type chosen before its fields is kept while they are dropped); the settings of the chosen type are set under the types (Threshold, Buckets, Bin Size, Whiskers, Target, Direction, Sort or Date Bin). Choosing a chart type closes it, as its tab, **×**, **Esc** or a click outside it do. **KPI Card**, under Scorecards, turns the chart into a [KPI card](#kpi-cards-text-boxes-and-pictures) of its first measure, with its source, title and filters (an average for a number, the share of a value otherwise); a KPI card has Chart Type too, and another chart type turns it back into a chart, its settings kept for a later return. The chart is drawn again a moment after each change.
 - **Format** (beside **Data**) changes how the chart looks, in the viewer and in the PPT alike (the same renderer draws both), in four groups, open at first, that close and open on their own (a closed group says what it holds):
   - **Series:** click an entry of its legend on the chart, or the series in the list, to change its colour, line width, line (solid, dashed, dotted: its dashes and round dots grow with the line width) and opacity. The colours of Operator and Vendor Maps stay until a series is given one: **Default** gives one series its colour back, **Default colours** every series. **Copy line of this series** copies its line width, line and opacity (not its colour, which tells the series apart), and **Paste line of** *that series*, on another series of this chart or of another one, gives it the same.
   - **Legend:** its place (top, bottom, left, right or hidden) and the size, colour and bold of its text.
@@ -737,6 +742,13 @@ Automated rows support:
 - `Median Vertical Bars`
 - `Distribution Stacked Vertical Bars`
 - `Threshold Stacked Vertical Bars`
+- `Horizontal Bars`, `Dot Plot`, `Bullet Graph`
+- `Highlight Table`, `Bar Table`, `Heat Map`
+- `Pie`, `Donut`
+- `Lines`, `Dual Lines`, `Areas`, `100% Stacked Areas`, `Bars and Line`
+- `Box Plot`
+- `Symbol Map`, `Filled Map`
+- `Treemap`, `Packed Bubbles`, `Sankey`, `Gantt`
 
 Choose a KPI and at least one Rows or Columns Split dimension. `CDF Line` creates one curve per complete aggregation combination. Count charts retain empty combinations where required so comparisons remain aligned.
 
@@ -757,6 +769,31 @@ For CDF, scatter and map charts the same setting places point or endpoint labels
 `Exclude Null/Empty` and `Exclude Zero` are independent and apply to every chart family. For scatter charts the exclusions are checked on both plotted axes; for CDF and Multi KPI CDF charts they are checked on each plotted metric before the cumulative distribution is calculated.
 
 This allows a CDF to begin at its first non-zero observation instead of merely hiding the zero-valued section with an axis range.
+
+The chart types of Tableau's Show Me that the list above adds after `Threshold Stacked Vertical Bars` read the shelves as follows. Their names carry no aggregation: the aggregation of the measure (`MEDIAN(Mean_Data_Rate)`, `COUNT(Test_ID)`…) chooses it, an average for a number and a count for a dimension when it has none. They draw a legend of what their colours mean (Format → Legend → Hidden hides it), and a time grouped by a period (`DAY(Test_Start_Time)`, `WEEK(…)`, `HOUR(…)`, `MONTH(…)`) on Columns gives Lines, Dual Lines and Areas a time axis.
+
+| Chart type | Measure | Rows | Columns | Settings |
+| --- | --- | --- | --- | --- |
+| `Horizontal Bars` | One measure | The bars, one band per value | A bar per value inside each band, in its colour | `Sort = Descending` or `Ascending` orders the rows by their largest bar |
+| `Dot Plot` | One numeric measure | The rows | A dot per value on each row, joined by a line | — |
+| `Bullet Graph` | One numeric measure; a second one is the target of each bar | With Columns, a bullet per combination | | `Target = 20`, `Target = Previous campaign` (the latest campaign against the one before, Campaign on Rows or Columns) or `Target = Best competitor` (Operator on Rows or Columns); `Buckets` draw grey bands; `Direction` |
+| `Highlight Table` | One measure | Table rows | Table columns | Cells coloured by their value: five ranges of the values, or the five classes of `Buckets` (four limits); `Direction` |
+| `Bar Table` | One measure | Table rows | Table columns | Each cell has a bar as long as its share of the largest value of its column |
+| `Heat Map` | One numeric measure; a second one sizes the squares (else their samples) | The rows of the grid | The columns of the grid | `Buckets`, `Direction` |
+| `Pie`, `Donut` | A dimension (its values are the slices), or a measure counted (or summed with `SUM`) by the values of Columns | One pie per value | The slices of a measure | A Donut writes its samples in the middle |
+| `Lines` | One numeric measure | One line per value | The horizontal axis | — |
+| `Dual Lines` | Two numeric measures: the second one dashed, on the right axis | One line per value and measure | The horizontal axis | — |
+| `Areas`, `100% Stacked Areas` | A dimension (an area per value, one chart per value of Rows) or a measure (an area per value of Rows) | See Measure | The horizontal axis | 100% draws the shares |
+| `Bars and Line` | Two measures: the bars (left axis), then the line (right axis) | The bars side by side and one line per value | The horizontal axis | — |
+| `Box Plot` | One numeric measure | With Columns, a box per combination | | `Whiskers = P10-P90` (default), `P5-P95`, `P25-P75`, `Min-Max` or `1.5 IQR`; the line is the median, ◇ the mean |
+| `Symbol Map` | `Latitude vs Longitude`, and a third measure colouring the circles | A circle per value at the middle of its samples (without Rows, squares of a grid) | One map per value | `Buckets`, `Direction` |
+| `Filled Map` | One numeric measure | | One map per value | The [Map Areas](workspace-config.md#map-areas) of the CDRs coloured by the measure of their tests; `Buckets`, `Direction` |
+| `Treemap` | A measure: the samples size the rectangles (the measure with `SUM` or `COUNT`); a second measure, or an averaged one, colours them | The levels of the rectangles, then Columns | | `Buckets`, `Direction` |
+| `Packed Bubbles` | As Treemap | A bubble per combination of Rows and Columns | | `Buckets`, `Direction` |
+| `Sankey` | A measure: its samples (or `SUM`) are the width of each flow | The first levels | The last levels (two to five levels in all) | — |
+| `Gantt` | A time, and a second one as its end (`Test_Start_Time vs Test_End_Time`) | One lane per value | A bar per value in each lane | `Date Bin = Day` (default), `Hour`, `Week` or `Month`: the periods with samples, joined while they follow one another |
+
+`Direction` says which values the colours show as good: by default the KPI tells (lower is better for durations, latencies, errors and failures; higher for throughput, RSRP, SINR, MOS…), `Higher is better` or `Lower is better` say it, and `Neutral` (or a KPI without a direction, such as a count) uses blues. These settings are kept among the Filters of the row, as `Threshold`, `Buckets` and `Bin Size` are, and are set under the chart types.
 
 ### Chart recipes
 
@@ -914,6 +951,91 @@ Filters: Call_Status = Completed
 Rows Split: City
 Columns Split: Operator × Campaign
 Legend Position: Top
+```
+
+#### Horizontal Bars
+
+A ranking of cities by the median throughput of each operator.
+
+```text
+Source Dataset: CDR-Data
+KPI: MEDIAN(Mean_Data_Rate)
+Chart type: Horizontal Bars
+Filters: Test_Result = Completed; Test_Name = FDTT http DL MT; Sort = Descending
+Rows Split: City
+Columns Split: Operator
+```
+
+#### Bullet Graph
+
+The latest campaign of each operator against the previous one, over grey bands.
+
+```text
+Source Dataset: CDR-Data
+KPI: Mean_Data_Rate
+Chart type: Bullet Graph
+Filters: Test_Result = Completed; Target = Previous campaign; Buckets = 50, 100, 200, 300
+Rows Split: Operator
+Columns Split: Campaign
+```
+
+#### Lines over time
+
+The weekly median throughput of each operator.
+
+```text
+Source Dataset: CDR-Data
+KPI: MEDIAN(Mean_Data_Rate)
+Chart type: Lines
+Filters: Test_Result = Completed
+Rows Split: Operator
+Columns Split: WEEK(Test_Start_Time)
+```
+
+#### Box Plot
+
+```text
+Source Dataset: CDR-Data
+KPI: Mean_Data_Rate
+Chart type: Box Plot
+Filters: Test_Result = Completed; Test_Name = FDTT http DL MT
+Rows Split: Operator
+Columns Split: Campaign
+```
+
+#### Filled Map
+
+```text
+Source Dataset: CDR-All
+KPI: MEDIAN(NR_PCell_RSRP_Avg)
+Chart type: Filled Map
+Filters: Buckets = -110, -100, -90, -80
+Columns Split: Operator
+```
+
+#### Sankey
+
+How the tests of each operator flow through their RAT to their result.
+
+```text
+Source Dataset: CDR-Data
+KPI: COUNT(Test_Result)
+Chart type: Sankey
+Rows Split: Operator × RAT
+Columns Split: Test_Result
+```
+
+#### Gantt
+
+The days each city was measured, by operator.
+
+```text
+Source Dataset: CDR-Data
+KPI: Test_Start_Time vs Test_End_Time
+Chart type: Gantt
+Filters: Date Bin = Day
+Rows Split: City
+Columns Split: Operator
 ```
 
 ### Template filter language

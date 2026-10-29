@@ -8,6 +8,7 @@
 #### ⚠️ Breaking Changes:
 
 #### 🌟 New Features:
+- **PPT Designer and Chart Builder — The chart types of Tableau's Show Me:** Chart Type adds Horizontal Bars, Dot Plot, Bullet Graph, Highlight Table, Bar Table, Heat Map, Pie, Donut, Lines, Dual Lines, Areas, 100% Stacked Areas, Bars and Line, Box Plot, Symbol Map, Filled Map, Treemap, Packed Bubbles, Sankey and Gantt, grouped as Distribution, Comparison, Trends, Composition, Hierarchies and flows, Tables, Maps and Scorecards, and drawn the same in the viewer, Chart Builder and the PPT, with their tooltips, legend and Format. Their names carry no aggregation (the aggregation of the measure chooses it), the order of the measures gives their roles (a target, a second axis, a size or a colour), and their settings (Whiskers, P10–P90 by default; Target, such as the previous campaign or the best competitor; Direction; Sort; Date Bin) are kept among the filters of the row, as Threshold and Buckets. A time dropped on Rows or Columns is grouped by day, `DAY(Test_Start_Time)` (its pill chooses the hour, week, month or exact time), and Lines and Areas draw it as a time axis; Filled Map colours the Map Areas of the CDRs; the generated comments read the bars, dots, bullets, heat maps, tables, pies, lines, areas and box plots.
 
 #### 🚀 Enhancements:
 

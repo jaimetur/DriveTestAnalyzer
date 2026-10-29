@@ -1750,8 +1750,8 @@ def test_catalogue_validation_names_the_slide_and_chart_of_the_row() -> None:
 
     with pytest.raises(ValueError, match=r'^Slide: 3 - Chart: 2 -> KPI and Chart type are required'):
         parse_catalog_csv(f'{header}\n{chart}\n3,Rate,,Title + 1 rows + 2 columns,B,CDR-Data,,CDF Line,,Operator,,\n')
-    with pytest.raises(ValueError, match=r"^Slide: 3 - Chart: 1 -> Chart type 'Pie' is not supported\."):
-        parse_catalog_csv(f"{header}\n{chart.replace('CDF Line', 'Pie')}\n")
+    with pytest.raises(ValueError, match=r"^Slide: 3 - Chart: 1 -> Chart type 'Radar' is not supported\."):
+        parse_catalog_csv(f"{header}\n{chart.replace('CDF Line', 'Radar')}\n")
     with pytest.raises(ValueError, match=r'^Slide: x \(after Slide: 3\) -> The Slide value must be a positive whole number\.'):
         parse_catalog_csv(f'{header}\n{chart}\nx,Rate,,Title Page,,,,Title Slide,,,,,\n')
     with pytest.raises(ValueError, match=r'^Slide: 4 - Chart: 1 -> The row must define a supported CDR chart'):

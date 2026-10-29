@@ -174,7 +174,7 @@ for await (const line of lines) {
     const evaluation = await renderer.devtools.call('Runtime.evaluate', {
       expression, awaitPromise: true, returnByValue: true,
     });
-    if (request.payload?.type === 'map') await delay(600);
+    if (['map', 'symbol_map', 'filled_map'].includes(request.payload?.type)) await delay(600);
     const screenshot = await renderer.devtools.call('Page.captureScreenshot', {
       format: 'png', fromSurface: true, captureBeyondViewport: false,
       clip: {x: 0, y: 0, width, height, scale: 1},
