@@ -89,7 +89,8 @@ CHART_TYPES = {
 }
 # Elements of the slides of a Design that read no CDR (design_slides): a text box, and a picture. Rows of either have no
 # Source Dataset; PPT Reporting (old) leaves them out.
-ELEMENT_CHART_TYPES = {"text box", "image"}
+# Rows of a Design slide set that read no CDR: text boxes, pictures and charts still being built (design_slides).
+ELEMENT_CHART_TYPES = {"text box", "image", "chart in progress"}
 BAR_CHART_TYPES = {
     "100% stacked vertical bars", "count stacked horizontal bars",
     "distribution stacked vertical bars", "threshold stacked vertical bars",

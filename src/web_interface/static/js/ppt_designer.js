@@ -2741,6 +2741,80 @@
   }
   const save = () => savePart('filters');
   const confirmDiscard = async (ignoredFields = []) => !hasUnsavedDesignChanges(ignoredFields) || await window.showConfirmDialog('Discard unsaved Design changes?', {title:'Unsaved changes',confirmLabel:'Discard'});
+  // The gallery of PPT Templates (the button beside PPT Template): each template with its first slides in small, as it lays
+  // them out (the picture of each chart type in its place), and None — blank PPT for a new PPT Design; choosing one chooses
+  // it in PPT Template.
+  const GALLERY_STRUCTURAL = {title: 'Title Slide', transition: 'Transition Slide', end: 'End Slide'};
+  function gallerySlide(slide) {
+    const frame = node('span', undefined, `ds-template-gallery-slide is-${slide.kind}`);
+    if (slide.kind !== 'content') {
+      frame.append(node('span', slide.title || GALLERY_STRUCTURAL[slide.kind] || 'Slide', 'ds-template-gallery-structural'));
+      return frame;
+    }
+    frame.append(node('span', slide.title, 'ds-template-gallery-title'));
+    slide.elements.forEach((element, index) => {
+      const place = slide.places[Number.isInteger(element.place) ? element.place : index];
+      if (!place) return;
+      const [left, top, width, height] = place;
+      const box = node('span', undefined, `ds-template-gallery-box is-${element.kind}`);
+      Object.assign(box.style, {left: `${left}%`, top: `${top}%`, width: `${width}%`, height: `${height}%`});
+      box.title = element.title || element.chart_type || element.kind;
+      const picture = ['chart', 'kpi'].includes(element.kind) ? window.ChartShelves?.picture(element.kind === 'kpi' ? 'KPI Card' : element.chart_type) : null;
+      box.append(picture || node('span', element.kind === 'image' ? 'Image' : 'Text', 'ds-template-gallery-kind'));
+      frame.append(box);
+    });
+    return frame;
+  }
+  function galleryCard({value, name, detail, active, chosen, slides, more}) {
+    const card = node('button', undefined, `ds-template-gallery-card${chosen ? ' is-chosen' : ''}`);
+    card.type = 'button';
+    card.setAttribute('role', 'option');
+    card.setAttribute('aria-selected', String(chosen));
+    card.dataset.value = value;
+    const head = node('span', undefined, 'ds-template-gallery-card-head');
+    head.append(node('strong', name), active ? node('span', 'Default', 'ds-template-gallery-badge') : '', chosen ? node('span', 'Chosen', 'ds-template-gallery-badge is-chosen') : '');
+    const strip = node('span', undefined, 'ds-template-gallery-slides');
+    strip.append(...slides);
+    card.append(head, node('span', detail, 'ds-template-gallery-detail'), strip);
+    if (more) card.append(node('span', `+${more} more slide${more === 1 ? '' : 's'}`, 'ds-template-gallery-more'));
+    card.addEventListener('click', () => chooseFromGallery(value));
+    return card;
+  }
+  function chooseFromGallery(value) {
+    overlay('ds-template-gallery-overlay', false);
+    const select = $('ds-template');
+    if (select.value === value) return;
+    select.value = value;
+    select.dispatchEvent(new Event('change', {bubbles: true}));
+  }
+  async function openTemplateGallery() {
+    const list = $('ds-template-gallery-list');
+    list.replaceChildren(node('p', 'Loading the PPT Templates…', 'form-note'));
+    overlay('ds-template-gallery-overlay', true);
+    let templates = [];
+    try { templates = (await api('/templates-gallery')).templates || []; }
+    catch (error) { list.replaceChildren(node('p', error.message, 'form-note')); return; }
+    const current = $('ds-template').value;
+    const cards = templates.map(template => galleryCard({
+      value: template.identifier, name: template.name, active: template.active, chosen: current === template.identifier,
+      detail: `${template.slides} slide${template.slides === 1 ? '' : 's'} · ${template.charts} chart${template.charts === 1 ? '' : 's'}`,
+      slides: template.preview.map(gallerySlide), more: Math.max(0, template.slides - template.preview.length),
+    }));
+    // A new PPT Design can also start blank, with its cover only.
+    if (!definition) {
+      cards.unshift(galleryCard({value: BLANK_TEMPLATE, name: BLANK_TEMPLATE, chosen: current === BLANK_TEMPLATE,
+        detail: 'Its cover only: its slides are its own and it follows no template',
+        slides: [gallerySlide({kind: 'title', title: 'Cover'}), node('span', '+', 'ds-template-gallery-slide is-new')]}));
+    }
+    list.replaceChildren(...(cards.length ? cards : [node('p', 'This workspace has no PPT Templates yet.', 'form-note')]));
+    (list.querySelector('[aria-selected="true"]') || list.querySelector('button'))?.focus();
+  }
+  bind('ds-template-gallery', openTemplateGallery);
+  bind('ds-template-gallery-close', () => overlay('ds-template-gallery-overlay', false));
+  $('ds-template-gallery-overlay').addEventListener('click', event => { if (event.target === event.currentTarget) overlay('ds-template-gallery-overlay', false); });
+  $('ds-template-gallery-overlay').addEventListener('keydown', event => {
+    if (event.key === 'Escape') { event.stopPropagation(); overlay('ds-template-gallery-overlay', false); }
+  });
   bind('ds-create', async () => {
     if (!await confirmDiscard(['name', 'template', 'nr_mode'])) return;
     const nrMode = $('ds-nr-mode').value;
@@ -4166,7 +4240,7 @@
       const box = node('span', undefined, 'ds-slide-thumbnail-chart');
       Object.assign(box.style, {left: `${left}%`, top: `${top}%`, width: `${width}%`, height: `${height}%`});
       frame.append(box);
-      if (chart.kind === 'text' || chart.kind === 'image') { box.classList.add('is-element'); box.append(slideElementContent(chart)); return; }
+      if (['text', 'image', 'draft'].includes(chart.kind)) { box.classList.add('is-element'); box.append(slideElementContent(chart)); return; }
       if (!chart.available) return;
       loadChartPayload(chart, 'low').then(payload => {
         if (!box.isConnected || prepared?.token !== token) return;
@@ -4219,6 +4293,12 @@
   // The content of a text box (Markdown, as the tickets and NQ write it: rich_text.js) or of a picture of a slide set.
   function slideElementContent(chart) {
     const content = chart.content || {};
+    // A chart still being built (a new chart): its empty place, until its shelves can draw it.
+    if (chart.kind === 'draft') {
+      const frame = node('div', undefined, 'ds-element-draft');
+      frame.append(node('strong', chart.title || 'New chart'), node('span', 'Drop fields on its shelves, or choose its Chart Type.', 'ds-element-empty'));
+      return frame;
+    }
     if (chart.kind === 'image') {
       const frame = node('div', undefined, 'ds-element-image');
       if (content.url) {
@@ -4322,8 +4402,8 @@
         card.style.setProperty('--ds-chart-width', `${width}%`);
         card.style.setProperty('--ds-chart-height', `${height}%`);
       }
-      // A text box or a picture of a Design slide set: its content, no chart.
-      if (chart.kind === 'text' || chart.kind === 'image') {
+      // A text box, a picture or a chart still being built of a Design slide set: its content, no chart.
+      if (['text', 'image', 'draft'].includes(chart.kind)) {
         card.classList.add('ds-element-card', `ds-element-${chart.kind}`);
         card.replaceChildren(slideElementContent(chart));
         stage.append(card);

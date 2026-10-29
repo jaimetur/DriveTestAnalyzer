@@ -371,16 +371,15 @@
   // ------------------------------------------------------------------
   // Slides
   // ------------------------------------------------------------------
+  // A new chart is empty (Duplicate copies one): the source of the chart chosen, no fields and no chart type yet, so any
+  // chart type can be chosen; it reads no CDR until its shelves can draw it.
   const newChartElement = (slide_set, place = 0) => {
     const model = shownElement() || editedSlides().flatMap(slide => slide.elements || []).find(element => (element.kind || 'chart') === 'chart');
-    const element = model ? clone(model) : {
-      kind: 'chart', cdr_source: 'CDR-Data', kpi: 'Mean_Data_Rate', chart_type: 'Average Vertical Bars',
-      filters: '', rows_split: 'Operator', columns_split: 'Campaign', legend: '', legend_position: '',
-      legend_format: '', label_position: '', label_format: '', axis_x_range: '', axis_y_range: '',
-      exclude_null_empty: false, exclude_zero: false, dynamic_rows_field: '', dynamic_columns_field: '',
+    return {
+      id: randomId('e'), kind: 'chart', place, chart_title: 'New chart', cdr_source: model?.cdr_source || 'CDR-Data', kpi: '', chart_type: '',
+      filters: '', rows_split: '', columns_split: '', legend: '', legend_position: '', legend_format: '', label_position: '', label_format: '',
+      axis_x_range: '', axis_y_range: '', exclude_null_empty: false, exclude_zero: false, dynamic_rows_field: '', dynamic_columns_field: '',
     };
-    for (const mark of ['origin', 'overridden', 'hidden', 'style']) delete element[mark];
-    return {...element, id: randomId('e'), kind: 'chart', place, chart_title: 'New chart'};
   };
   function newSlide(slide_set, kind) {
     const slide = {
@@ -559,19 +558,68 @@
       state.element = '';
     });
   }
-  const duplicateElement = elementId => edit(slide_set => {
-    const found = findElement(slide_set, elementId);
-    if (!found) return false;
-    const free = freePlaces(found.slide);
-    if (!free.length) {
-      report(new Error('The layout of this slide has no free place: choose a layout with more places first.'));
-      return false;
+  // A place more on a slide without a free one: a column more on its adjusted places (a place as tall as the grid at the
+  // right), else the layout of its kind (its comments) with the fewest places that leaves one free, of its rows when it
+  // can. {apply(slide), message} or null when none has room.
+  function roomFor(slide) {
+    const grid = slide.options?.grid;
+    if (grid && Array.isArray(grid.areas) && window.PlacesEditor) {
+      const rows = grid.rows.length, columns = grid.columns.length;
+      if (columns >= 12) return null;
+      const added = [0, columns, rows, 1];
+      const areas = [...grid.areas.map(area => [...area]), added].sort((left, right) => left[0] - right[0] || left[1] - right[1]);
+      const next = {rows: [...grid.rows], columns: [...grid.columns.map(size => Math.round(size * columns / (columns + 1) * 10000) / 10000), Math.round(10000 / (columns + 1)) / 10000], areas};
+      const mapping = window.PlacesEditor.cellMapping(grid.areas, areas);
+      return {message: 'A column more on the places of the slide, for the new element.', apply: target => {
+        visibleElements(target).forEach((element, index) => { element.place = mapping[placeOf(element, index)] ?? placeOf(element, index); });
+        target.options = {...(target.options || {}), grid: next, geometry: window.PlacesEditor.geometry(next)};
+      }};
     }
-    const copy = {...clone(found.element), id: randomId('e'), place: free[0]};
-    delete copy.origin; delete copy.overridden; delete copy.hidden;
-    found.slide.elements.push(copy);
-    state.element = copy.id;
-  });
+    const current = layoutOf(slide.layout);
+    const needed = visibleElements(slide).length + 1;
+    const layout = (state.layouts || []).filter(item => item.grid && !item.dynamic && !item.structural && item.places.length >= needed && (item.comments || '') === (current?.comments || ''))
+      .sort((left, right) => left.places.length - right.places.length || Number(right.grid[0] === current?.grid?.[0]) - Number(left.grid[0] === current?.grid?.[0]))[0];
+    if (!layout) return null;
+    return {message: `Layout ${layout.name}, with a place for the new element.`, apply: target => {
+      visibleElements(target).forEach((element, index) => { element.place = placeOf(element, index); });
+      target.layout = layout.name;
+      if (target.options) { delete target.options.geometry; delete target.options.grid; }
+    }};
+  }
+  // An element put on a free place of a slide, which gets a place more when it has none (roomFor): one undo step.
+  async function placeNewElement(slideId, make) {
+    const slide = findSlide(editableSlideSet(), slideId);
+    if (!slide) return;
+    const room = freePlaces(slide).length ? null : roomFor(slide);
+    if (!freePlaces(slide).length && !room) {
+      report(new Error('No layout has room for another element on this slide: adjust its places first.'));
+      return;
+    }
+    await edit(slide_set => {
+      const target = findSlide(slide_set, slideId);
+      if (!target) return false;
+      room?.apply(target);
+      const element = make(slide_set, freePlaces(target)[0]);
+      if (!element) return false;
+      target.elements = [...(target.elements || []), element];
+      state.element = element.id;
+      state.tab = 'element';
+    });
+    if (room) viewer().status(room.message);
+  }
+  // New Chart (the ⋯ menu of an element): a chart of its own on the slide.
+  const addChart = slideId => placeNewElement(slideId, (slide_set, place) => newElement(slide_set, place, 'chart'));
+  const duplicateElement = elementId => {
+    const found = findElement(editableSlideSet(), elementId);
+    if (!found) return undefined;
+    return placeNewElement(found.slide.id, (slide_set, place) => {
+      const source = findElement(slide_set, elementId)?.element;
+      if (!source) return null;
+      const copy = {...clone(source), id: randomId('e'), place};
+      delete copy.origin; delete copy.overridden; delete copy.hidden;
+      return copy;
+    });
+  };
   const pasteElement = (slideId, place) => edit(slide_set => {
     const slide = findSlide(slide_set, slideId);
     if (!slide || !state.clipboard) return false;
@@ -1025,6 +1073,7 @@
     // Each action names what it acts on: a Chart, a KPI card, a Text box or an Image.
     const noun = KINDS[found.element.kind || 'chart']?.[0] || 'Element';
     const actions = [
+      ['New Chart', guarded(() => addChart(found.slide.id)), true],
       [`Duplicate ${noun}`, guarded(() => duplicateElement(elementId)), true],
       [`Copy ${noun}`, () => { state.clipboard = clone(found.element); viewer().status(`${noun} copied: paste it on a free place.`); }, true],
       [`Delete ${noun}`, guarded(() => deleteElement(elementId)), true],

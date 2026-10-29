@@ -2,8 +2,9 @@
 
    A layout starts from one ready to use (two charts above and one as wide as both below, a tall one beside two…) or from
    the grid of the slide, which takes rows and columns more or fewer. The rows and columns of the grid are resized by
-   dragging the lines between them, and neighbouring places are merged into one (a chart over two columns) or split again.
-   The result is the geometry of the places, as fractions of the chart area of the slide's layout (the same coordinates
+   dragging the lines between them, and neighbouring places are merged into one (a chart over two columns) or split again;
+   a place deleted leaves its cells empty (a + puts a place back in one), and Center puts a place midway in the free cells
+   beside it, adding the lines of the grid it needs. The result is the geometry of the places, as fractions of the chart area of the slide's layout (the same coordinates
    the viewer lays charts out with, and the PPT export places them by), kept with the grid it came from so it can be
    adjusted again. */
 (() => {
@@ -99,9 +100,11 @@
     let reference = {spec: original, places: original.areas.map((_area, index) => index)};
     const overlay = h('div', {class: 'confirm-overlay ds-overlay ds-secondary ppt-designer ds-design-dialog-overlay'});
     const board = h('div', {class: 'ds-layout-board', role: 'application', 'aria-label': 'Places of the slide'});
-    const note = h('p', {class: 'form-note', text: 'Start from a layout, or give the grid more or fewer rows and columns. Drag the lines between rows or columns to resize them. Click a place, Shift+click another to select the places between them, then Merge; Split gives a merged place its cells back.'});
+    const note = h('p', {class: 'form-note', text: 'Start from a layout, or give the grid more or fewer rows and columns. Drag the lines between rows or columns to resize them. Click a place, Shift+click another to select the places between them, then Merge; Split gives a merged place its cells back. Delete empties the places chosen (+ puts a place back in an empty cell), and Center puts a place midway in the empty cells beside it.'});
     const mergeButton = h('button', {type: 'button', class: 'ds-design-action', onclick: () => merge()}, 'Merge');
     const splitButton = h('button', {type: 'button', class: 'ds-design-action', onclick: () => split()}, 'Split');
+    const deleteButton = h('button', {type: 'button', class: 'ds-design-action', title: 'Delete the places chosen: their cells stay empty', onclick: () => remove()}, 'Delete');
+    const centerButton = h('button', {type: 'button', class: 'ds-design-action', onclick: () => center()}, 'Center');
     const close = () => overlay.remove();
     const ordered = () => inReadingOrder(spec.areas);
     // A layout to start from, drawn small: the places of the elements of the slide follow in reading order.
@@ -179,6 +182,92 @@
       selected = new Set();
       paint();
     }
+    // Delete: the places chosen go, their cells stay empty (what they hold goes to a free place when applied).
+    function remove() {
+      if (!selected.size || selected.size >= spec.areas.length) return;
+      spec.areas = ordered().filter((_area, index) => !selected.has(index));
+      selected = new Set();
+      paint();
+    }
+    const covered = (row, column) => spec.areas.some(area => covers(area, row, column));
+    // The empty cells beside a place, along rows (columns) or columns (rows), over all of its height or width: [first, end).
+    function freeRun(area, kind) {
+      const [at, span, across, acrossSpan] = kind === 'columns' ? [1, 3, 0, 2] : [0, 2, 1, 3];
+      const empty = index => [...Array(area[acrossSpan]).keys()].every(offset => {
+        const line = area[across] + offset;
+        return kind === 'columns' ? !covered(line, index) : !covered(index, line);
+      });
+      let first = area[at], end = area[at] + area[span];
+      while (first > 0 && empty(first - 1)) first -= 1;
+      while (end < spec[kind].length && empty(end)) end += 1;
+      return [first, end];
+    }
+    // Where a place goes when centred in the empty cells beside it: its start and end on each side it has empty cells on.
+    function centring(area) {
+      const plan = [];
+      for (const kind of ['columns', 'rows']) {
+        const [at, span] = kind === 'columns' ? [1, 3] : [0, 2];
+        const [first, end] = freeRun(area, kind);
+        if (first === area[at] && end === area[at] + area[span]) continue;
+        const start = index => sum(spec[kind].slice(0, index));
+        const size = start(area[at] + area[span]) - start(area[at]);
+        const from = (start(first) + start(end) - size) / 2;
+        if (Math.abs(from - start(area[at])) < 0.0005) continue;
+        plan.push({kind, from, to: from + size});
+      }
+      return plan;
+    }
+    const lineIndex = (kind, position) => {
+      let start = 0;
+      for (let index = 0; index <= spec[kind].length; index += 1) {
+        if (Math.abs(start - position) < 0.0005) return index;
+        start += spec[kind][index] ?? 0;
+      }
+      return -1;
+    };
+    // A line of the grid at ``position`` (a fraction of the board): the row or column it falls in is split in two, and the
+    // places across it take both halves.
+    function addLine(kind, position) {
+      if (lineIndex(kind, position) >= 0) return;
+      const [at, span] = kind === 'columns' ? [1, 3] : [0, 2];
+      let start = 0;
+      for (let index = 0; index < spec[kind].length; index += 1) {
+        const end = start + spec[kind][index];
+        if (position < end) {
+          spec[kind].splice(index, 1, position - start, end - position);
+          for (const area of spec.areas) {
+            if (area[at] > index) area[at] += 1;
+            else if (area[at] + area[span] > index) area[span] += 1;
+          }
+          return;
+        }
+        start = end;
+      }
+    }
+    function center() {
+      const index = [...selected][0];
+      const area = selected.size === 1 ? ordered()[index] : null;
+      const plan = area ? centring(area) : [];
+      if (!plan.length) return;
+      const lines = kind => plan.filter(step => step.kind === kind).flatMap(step => [step.from, step.to]).filter(position => lineIndex(kind, position) < 0).length;
+      if (spec.columns.length + lines('columns') > MAXIMUM_COLUMNS || spec.rows.length + lines('rows') > MAXIMUM_ROWS) {
+        note.textContent = `Centring it needs more than ${MAXIMUM_ROWS} rows or ${MAXIMUM_COLUMNS} columns: give the grid fewer first.`;
+        return;
+      }
+      // The places of before keep following the places they became: the reference is the grid as it is now.
+      const now = mapping(), before = ordered();
+      for (const {kind, from, to} of plan) {
+        addLine(kind, from);
+        addLine(kind, to);
+        const [at, span] = kind === 'columns' ? [1, 3] : [0, 2];
+        area[at] = lineIndex(kind, from);
+        area[span] = lineIndex(kind, to) - area[at];
+      }
+      const after = ordered();
+      reference = {spec: structuredClone(spec), places: now.map(place => (place < 0 ? -1 : after.indexOf(before[place])))};
+      selected = new Set([after.indexOf(area)]);
+      paint();
+    }
     function startDrag(kind, index, event) {
       event.preventDefault();
       const box = board.getBoundingClientRect();
@@ -217,6 +306,13 @@
             holds(index).length ? h('span', {class: 'ds-layout-holds', text: holds(index).join(' + ')}) : h('span', {class: 'ds-layout-holds is-free', text: 'Free place'}),
             area[2] > 1 || area[3] > 1 ? h('small', {class: 'ds-layout-span', text: `${area[2]} × ${area[3]} cells`}) : null);
         }),
+        // The empty cells: a + puts a place back in one.
+        ...spec.rows.flatMap((_row, row) => spec.columns.map((_column, column) => [row, column])).filter(([row, column]) => !covered(row, column)).map(([row, column]) => {
+          const [left, top, width, height] = geometry({...spec, areas: [[row, column, 1, 1]]})[0];
+          return h('button', {type: 'button', class: 'ds-layout-empty', style: {left: `${left}%`, top: `${top}%`, width: `${width}%`, height: `${height}%`},
+            title: 'An empty cell: put a place in it', 'aria-label': `Put a place in the empty cell of row ${row + 1}, column ${column + 1}`,
+            onclick: () => { spec.areas.push([row, column, 1, 1]); selected = new Set(); paint(); }}, '+');
+        }),
         ...spec.columns.slice(0, -1).map((_size, index) => h('span', {class: 'ds-layout-divider is-column', style: {left: `${sum(spec.columns.slice(0, index + 1)) * 100}%`},
           title: 'Drag to resize the columns', onpointerdown: event => startDrag('columns', index, event)})),
         ...spec.rows.slice(0, -1).map((_size, index) => h('span', {class: 'ds-layout-divider is-row', style: {top: `${sum(spec.rows.slice(0, index + 1)) * 100}%`},
@@ -226,6 +322,10 @@
       const coverage = bounds ? within(bounds) : {inside: [], crossing: []};
       mergeButton.disabled = coverage.inside.length < 2 || coverage.crossing.length > 0;
       splitButton.disabled = !ordered().some((area, index) => selected.has(index) && (area[2] > 1 || area[3] > 1));
+      deleteButton.disabled = !selected.size || selected.size >= spec.areas.length;
+      const centred = selected.size === 1 && centring(ordered()[[...selected][0]]).length > 0;
+      centerButton.disabled = !centred;
+      centerButton.title = centred ? 'Center the place chosen in the empty cells beside it' : 'Choose a place with empty cells beside it (Delete empties a place)';
     }
     // Which new place each place of before becomes (-1 when none: merged into another, or gone with its row or column).
     function mapping() {
@@ -237,7 +337,7 @@
       h('div', {class: 'section-head'}, h('div', {}, h('p', {class: 'eyebrow', text: options.title || 'Slide'}), h('h2', {text: 'Adjust places'})), h('button', {type: 'button', class: 'ds-dialog-close', 'aria-label': 'Close', onclick: close}, '×')),
       note, presets, counters, board,
       h('div', {class: 'ds-design-dialog-actions'},
-        mergeButton, splitButton,
+        mergeButton, splitButton, deleteButton, centerButton,
         h('button', {type: 'button', class: 'ds-design-action', title: 'The places of the layout as the slide master has them', onclick: () => { close(); options.onSave(null); }}, 'Reset places'),
         h('button', {type: 'button', class: 'ds-design-action', onclick: close}, 'Cancel'),
         h('button', {type: 'button', class: 'ds-design-action ds-design-primary', onclick: () => {
@@ -246,7 +346,11 @@
           options.onSave(result);
         }}, 'Apply')));
     overlay.append(dialog);
-    overlay.addEventListener('keydown', event => { if (event.key === 'Escape') { event.stopPropagation(); close(); } });
+    overlay.addEventListener('keydown', event => {
+      if (event.key === 'Escape') { event.stopPropagation(); close(); }
+      // Delete or Backspace on the board deletes the places chosen.
+      else if ((event.key === 'Delete' || event.key === 'Backspace') && board.contains(event.target)) { event.preventDefault(); event.stopPropagation(); remove(); }
+    });
     (document.getElementById('ds-viewer') || document.body).append(overlay);
     overlay.hidden = false;
     paint();

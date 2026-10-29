@@ -1930,3 +1930,41 @@
 #ds-chart-expanded-overlay .ds-chart-expanded-actions .ds-slide-image-actions { margin-right: .4rem; }
 #ds-chart-expanded-overlay .ds-chart-expanded-actions .ds-viewer-top-action { min-height: 2.25rem; height: 2.25rem; padding: 0 .85rem !important; border-radius: 999px !important; font-size: .78rem !important; box-shadow: none; }
 #ds-chart-expanded-overlay .ds-chart-expanded-actions :is(.ds-viewer-top-auto-fields, .ds-viewer-top-edit) { flex: 0 0 2.25rem; width: 2.25rem; min-width: 2.25rem; padding: 0 !important; gap: 0; border-radius: 50% !important; font-size: 0 !important; }
+/* PPT Template with the button of its gallery beside it. */
+.ds-template-field .ds-template-control { display: flex; align-items: stretch; gap: .4rem; min-width: 0; }
+.ds-template-field .ds-template-control > :first-child { flex: 1 1 auto; min-width: 0; }
+.ds-template-gallery-open { flex: 0 0 auto; display: grid; place-items: center; width: 2.6rem; min-width: 2.6rem; padding: 0 !important; border-radius: 10px !important;
+  background: linear-gradient(135deg, var(--ds-color), color-mix(in srgb, var(--ds-color) 70%, #fff)) !important; border-color: var(--ds-color) !important; color: #fff !important; }
+.ds-template-gallery-open svg { width: 1.15rem; height: 1.15rem; fill: none; stroke: currentColor; stroke-width: 1.8; }
+.ds-template-gallery-open:hover { filter: brightness(1.08); }
+/* The gallery: a card for each template with its first slides in small, as it lays them out. */
+.ppt-designer .ds-template-gallery-dialog { width: min(1240px, 94vw) !important; max-width: none !important; max-height: 90vh; overflow: auto; padding: 18px 24px 24px !important; }
+.ds-template-gallery-head { margin: 0 3.5rem .9rem 0; }
+.ds-template-gallery-head :is(p, h2) { margin: 0; }
+.ds-template-gallery-head .lede { margin-top: .3rem; font-size: .88rem; }
+.ds-template-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(22rem, 100%), 1fr)); gap: 1rem; }
+.ds-template-gallery-card { display: grid; align-content: start; gap: .45rem; padding: .85rem .9rem .9rem !important; border: 1px solid var(--ds-border) !important; border-radius: 14px !important;
+  background: #fff !important; color: #2f2540 !important; text-align: left; box-shadow: 0 4px 14px rgba(36, 22, 61, .06) !important; cursor: pointer;
+  transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease; }
+.ds-template-gallery-card:hover, .ds-template-gallery-card:focus-visible { border-color: var(--ds-color) !important; box-shadow: 0 10px 26px color-mix(in srgb, var(--ds-color) 22%, transparent) !important; transform: translateY(-2px); outline: none; }
+.ds-template-gallery-card.is-chosen { border: 2px solid var(--ds-color) !important; background: var(--ds-soft) !important; }
+.ds-template-gallery-card-head { display: flex; align-items: center; gap: .45rem; min-width: 0; }
+.ds-template-gallery-card-head strong { flex: 1 1 auto; min-width: 0; overflow: hidden; font-size: 1rem; text-overflow: ellipsis; white-space: nowrap; }
+.ds-template-gallery-badge { flex: none; padding: .12rem .5rem; border-radius: 999px; background: #e7f5ee; color: #1d7a4c; font-size: .7rem; font-weight: 800; }
+.ds-template-gallery-badge.is-chosen { background: var(--ds-color); color: #fff; }
+.ds-template-gallery-detail { color: #6b6178; font-size: .78rem; }
+.ds-template-gallery-slides { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .4rem; }
+.ds-template-gallery-slide { position: relative; display: block; aspect-ratio: 16 / 9; overflow: hidden; border: 1px solid #e3dcef; border-radius: 6px; background: #fff; }
+.ds-template-gallery-slide.is-title, .ds-template-gallery-slide.is-end { background: linear-gradient(135deg, var(--ds-color), color-mix(in srgb, var(--ds-color) 60%, #000)); border-color: transparent; }
+.ds-template-gallery-slide.is-transition { background: linear-gradient(135deg, color-mix(in srgb, var(--ds-color) 22%, #fff), color-mix(in srgb, var(--ds-color) 40%, #fff)); border-color: transparent; }
+.ds-template-gallery-slide.is-new { display: grid; place-items: center; border-style: dashed; color: var(--ds-color); font-size: 1.6rem; font-weight: 300; }
+.ds-template-gallery-structural { position: absolute; inset: 0; display: grid; place-items: center; padding: .3rem; color: #fff; font-size: .62rem; font-weight: 800; line-height: 1.2; text-align: center;
+  overflow: hidden; }
+.ds-template-gallery-slide.is-transition .ds-template-gallery-structural { color: #2f2540; }
+.ds-template-gallery-title { position: absolute; top: 3%; left: 4%; right: 4%; overflow: hidden; color: #2f2540; font-size: .5rem; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+.ds-template-gallery-box { position: absolute; display: grid; place-items: center; box-sizing: border-box; padding: 2px; border: 1px solid #ebe5f4; border-radius: 3px; background: #fbf9fe; overflow: hidden;
+  --ds-cb-a: #6F42C1; --ds-cb-b: #2E8B57; --ds-cb-c: #E8833A; --ds-cb-grid: #B9AFC8; }
+.ds-template-gallery-box .ds-cb-picture { display: block; width: 100%; max-width: 3.4rem; height: 100%; max-height: 100%; }
+.ds-template-gallery-box .ds-cb-picture svg { display: block; width: 100%; height: 100%; }
+.ds-template-gallery-kind { color: #8a7fa0; font-size: .5rem; font-weight: 800; }
+.ds-template-gallery-more { justify-self: end; color: var(--ds-color); font-size: .74rem; font-weight: 800; }

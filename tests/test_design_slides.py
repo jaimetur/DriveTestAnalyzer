@@ -436,6 +436,18 @@ def test_the_chart_builder_adds_a_chart_with_its_format_to_a_ppt_template_and_ev
     assert client.post('/api/ppt-designer/templates/Missing/add-chart', json={'element': chart}).status_code == 404
 
 
+def test_the_gallery_shows_each_template_with_its_first_slides_laid_out(client):
+    setup(client)
+    gallery = client.get('/api/ppt-designer/templates-gallery')
+    assert gallery.status_code == 200, gallery.text
+    template = next(item for item in gallery.json()['templates'] if item['name'] == 'Design test')
+    assert (template['identifier'], template['slides']) == ('Design test', 2) and template['charts'] >= 1
+    first = template['preview'][0]
+    # Each element with its place on the slide (fractions of it) and its chart type, as the Designer lays it out.
+    assert first['kind'] == 'content' and first['title'] == 'Comparison' and first['places']
+    assert all(len(first['places'][element['place']]) == 4 and element['chart_type'] for element in first['elements'])
+
+
 def test_the_format_of_a_chart_travels_in_its_row_and_reaches_its_model(client):
     definition = setup(client)
     body = client.get('/api/ppt-designer/design-a/slides?edit=1').json()
@@ -606,10 +618,13 @@ def test_text_boxes_and_pictures_are_native_shapes_of_the_exported_ppt(client):
     edited = copy.deepcopy(body['slide_set'])
     edited['slides'][0]['hidden'] = True
     second = edited['slides'][1]
-    second['options'] = {'geometry': [[0, 0, 50, 100], [50, 0, 50, 100]]}
+    second['options'] = {'geometry': [[0, 0, 40, 100], [40, 0, 40, 100], [80, 0, 20, 100]]}
     second['elements'] = [
         element(second['elements'][0]['id'], 'text', 0, {'text': '# Summary\n- **Fast** in London\nPlain line', 'size': 'medium', 'align': 'left'}),
         element('s2e9', 'image', 1, {'image': image['id'], 'fit': 'contain'}),
+        # (A new chart still without its measure keeps its place empty in the PPT.)
+        {**dict.fromkeys(dd.ELEMENT_FIELDS, ''), 'exclude_null_empty': False, 'exclude_zero': False, 'id': 's2e10', 'kind': 'chart', 'place': 2,
+         'chart_type': 'Scatter', 'cdr_source': 'CDR-Data', 'chart_title': 'New chart'},
     ]
     assert client.put('/api/ppt-designer/design-a/slides', json={'slide_set': edited}).status_code == 200
     payload = {**definition, 'slide_overrides': stored('design-a')['slide_overrides']}
@@ -636,6 +651,37 @@ def test_text_boxes_and_pictures_are_native_shapes_of_the_exported_ppt(client):
     # Fitted in its place keeping its ratio (4:1), centred on the right half.
     assert pictures[0].width / pictures[0].height == pytest.approx(4, rel=0.01)
     assert pictures[0].left > box.left
+
+
+def test_a_chart_still_being_built_reads_no_cdr_and_keeps_what_it_has():
+    blank = dict.fromkeys(dd.ELEMENT_FIELDS, '') | {'exclude_null_empty': False, 'exclude_zero': False}
+    chart = {**blank, 'id': 'e1', 'kind': 'chart', 'place': 0, 'chart_title': 'Rate', 'cdr_source': 'CDR-Data', 'kpi': 'Mean_Data_Rate',
+             'chart_type': 'CDF Line', 'rows_split': 'Operator'}
+    new = {**blank, 'id': 'e2', 'kind': 'chart', 'place': 1, 'chart_title': 'New chart', 'cdr_source': 'CDR-Voice', 'chart_type': 'Scatter',
+           'filters': 'City IN (London)'}
+    slide_set = {'version': 1, 'parameters': [], 'slides': [{'id': 's1', 'kind': 'content', 'title': 'Two', 'subtitle': '',
+                                                              'layout': 'Title + 1 rows + 2 columns + comments down', 'elements': [chart, new]}]}
+    assert dd.is_draft_chart(new) and not dd.is_draft_chart(chart)
+    # Its row reads no CDR (Chart in progress), so the template stays valid; its Format column keeps what it has.
+    entries = dd.entries_from_slides(slide_set)
+    assert [(entry.chart_type, entry.cdr_source, entry.filters) for entry in entries] == [
+        ('CDF Line', 'CDR-Data', ''), (dd.DRAFT_CHART_TYPE, '', '')]
+    assert [entry.chart_type for entry in parse_catalog_csv(dd.slides_csv(slide_set))] == ['CDF Line', dd.DRAFT_CHART_TYPE]
+    back = dd.slides_from_entries(entries)['slides'][0]['elements'][1]
+    assert {key: back[key] for key in ('id', 'kind', 'chart_title', 'cdr_source', 'kpi', 'chart_type', 'filters')} == {
+        'id': 'e2', 'kind': 'chart', 'chart_title': 'New chart', 'cdr_source': 'CDR-Voice', 'kpi': '', 'chart_type': 'Scatter',
+        'filters': 'City IN (London)'}
+    # Given its measure and a split, it is a chart again.
+    drawn = dd.entries_from_slides({**slide_set, 'slides': [{**slide_set['slides'][0], 'elements': [chart, {**new, 'kpi': 'MOS | LQ', 'rows_split': 'Operator'}]}]})
+    assert drawn[1].chart_type == 'Scatter' and drawn[1].cdr_source == 'CDR-Voice'
+    # A new chart turned into a KPI card is one in progress too until it has its measure.
+    card = {**new, 'kind': 'kpi', 'chart_type': 'KPI Card', 'rows_split': 'Campaign', 'kpi_card': {'measure': 'average'}}
+    kpi_set = {**slide_set, 'slides': [{**slide_set['slides'][0], 'elements': [chart, card]}]}
+    assert dd.is_draft_chart(card) and dd.entries_from_slides(kpi_set)[1].chart_type == dd.DRAFT_CHART_TYPE
+    assert [entry.chart_type for entry in parse_catalog_csv(dd.slides_csv(kpi_set))] == ['CDF Line', dd.DRAFT_CHART_TYPE]
+    back = dd.slides_from_entries(dd.entries_from_slides(kpi_set))['slides'][0]['elements'][1]
+    assert (back['kind'], back['chart_type'], back['rows_split'], back['kpi_card']) == ('kpi', 'KPI Card', 'Campaign', {'measure': 'average'})
+    assert dd.entries_from_slides({**kpi_set, 'slides': [{**kpi_set['slides'][0], 'elements': [chart, {**card, 'kpi': 'MOS'}]}]})[1].chart_type == 'KPI Card'
 
 
 def test_titles_and_text_boxes_name_the_selection_of_the_design(client):

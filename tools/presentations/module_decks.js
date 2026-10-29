@@ -384,6 +384,102 @@ const VISUALS = {
     [190, 280, 150, 330, 240].forEach((h, i) => { out += `<rect x="${470 + i * 64}" y="${480 - h}" width="44" height="${h}" rx="8" fill="${i === 3 ? p.accent : p.series[1]}"/>`; });
     return out + `<rect x="30" y="400" width="370" height="130" rx="18" fill="#16213a" stroke="#2a3a5c" stroke-width="2"/><text x="56" y="444" font-size="22" fill="#9fb0cc">Filters</text><text x="56" y="480" font-size="24" fill="#ffffff" font-weight="700">Operator = A, B</text><text x="56" y="512" font-size="24" fill="#ffffff" font-weight="700">NR Mode = SA</text>`;
   },
+  // The Designer on screen: the slides at the left, a slide of two charts above and one as wide as both below, the chart
+  // chosen with its Chart Type tab and the chart types open, and the panel with the shelves and what the type needs.
+  studio(p) {
+    const card = (x, y, w, h, fill = '#16213a', stroke = '#2a3a5c', radius = 12) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${radius}" fill="${fill}" stroke="${stroke}" stroke-width="2"/>`;
+    const text = (x, y, value, size = 15, fill = '#c9d4e6', weight = 600, anchor = 'start') => `<text x="${x}" y="${y}" font-size="${size}" font-weight="${weight}" fill="${fill}" text-anchor="${anchor}">${escape(value)}</text>`;
+    const green = '#3cb371', orange = '#e8833a';
+    const cdf = (x, y, w, h) => `<path d="M${x + 8} ${y + h - 8} H${x + w - 6} M${x + 8} ${y + 6} V${y + h - 8}" stroke="#3a4d75" stroke-width="2" fill="none"/>`
+      + [[p.accent, 0], [green, 14]].map(([colour, shift]) => `<path d="M${x + 10} ${y + h - 10} C${x + w * 0.3 + shift} ${y + h - 12}, ${x + w * 0.35 + shift} ${y + 14}, ${x + w - 8} ${y + 12 + shift / 2}" stroke="${colour}" stroke-width="4" fill="none" stroke-linecap="round"/>`).join('');
+    const bars = (x, y, w, h, mean = false) => [0.55, 0.8, 0.45, 0.9, 0.65, 0.75].map((share, i) => `<rect x="${x + 12 + i * (w - 24) / 6}" y="${y + h - 8 - share * (h - 22)}" width="${(w - 24) / 6 - 8}" height="${share * (h - 22)}" rx="3" fill="${i % 2 ? green : p.accent}"/>`).join('')
+      + (mean ? `<path d="M${x + 10} ${y + h * 0.42} H${x + w - 10}" stroke="${orange}" stroke-width="3" stroke-dasharray="7 5"/>` : '');
+    const stacked = (x, y, w, h) => [0, 1, 2, 3, 4, 5, 6, 7].map((i) => { const bx = x + 14 + i * (w - 28) / 8, bw = (w - 28) / 8 - 10, top = y + 12, height = h - 22;
+      return `<rect x="${bx}" y="${top}" width="${bw}" height="${height * 0.5}" rx="2" fill="${p.accent}"/><rect x="${bx}" y="${top + height * 0.5}" width="${bw}" height="${height * 0.3}" fill="${green}"/><rect x="${bx}" y="${top + height * 0.8}" width="${bw}" height="${height * 0.2}" rx="2" fill="${orange}"/>`; }).join('');
+    let out = '';
+    // The slides of the Design, in small.
+    [0, 1, 2, 3].forEach((i) => {
+      const y = 20 + i * 92;
+      out += card(16, y, 112, 66, i === 1 ? '#22304f' : '#16213a', i === 1 ? p.accent : '#2a3a5c', 8);
+      if (i === 0) out += `<rect x="18" y="${y + 2}" width="108" height="62" rx="7" fill="${p.deep}"/>` + text(72, y + 38, 'Cover', 13, '#ffffff', 700, 'middle');
+      else out += [[24, 10, 46, 22], [74, 10, 46, 22], [24, 36, 96, 24]].map(([dx, dy, w, h]) => `<rect x="${dx}" y="${y + dy}" width="${w}" height="${h}" rx="3" fill="#2a3a5c"/>`).join('');
+    });
+    out += `<rect x="16" y="390" width="112" height="40" rx="10" fill="none" stroke="#3a4d75" stroke-width="2" stroke-dasharray="6 5"/>` + text(72, 416, '+ New slide', 14, '#9fb0cc', 700, 'middle');
+    // The slide: two charts above and one as wide as both below, the one chosen with the Chart Type tab on its edge.
+    out += card(146, 20, 470, 300, '#ffffff', '#ffffff', 14);
+    out += text(166, 52, 'Throughput by operator', 20, '#1b2234', 800);
+    out += `<rect x="166" y="66" width="208" height="104" rx="8" fill="#f4f1fa"/>${cdf(166, 66, 208, 104)}`;
+    out += `<rect x="388" y="66" width="208" height="104" rx="8" fill="#f4f1fa"/>${stacked(388, 66, 208, 104)}`;
+    out += `<rect x="166" y="184" width="430" height="120" rx="8" fill="#f4f1fa" stroke="${p.accent}" stroke-width="4"/>${bars(166, 184, 400, 120, true)}`;
+    out += `<rect x="568" y="196" width="28" height="96" rx="7" fill="${p.accent}"/><path d="M575 214 v8 M582 210 v12 M589 206 v16" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>`
+      + `<text transform="translate(582 256) rotate(90)" font-size="11" font-weight="800" fill="#ffffff" text-anchor="middle">Chart Type</text>`;
+    // Chart Type open beside it: the types by what they show, those the shelves cannot draw greyed.
+    out += card(146, 336, 470, 204, '#0f1a30', p.accent, 14) + text(166, 364, 'Chart Type', 18, '#ffffff', 800);
+    // (Small pictures of their own: the bars of the slide are drawn for wider places.)
+    const miniBars = (x, y) => [0.5, 0.85, 0.4, 0.95].map((share, i) => `<rect x="${x + 10 + i * 14}" y="${y + 44 - share * 34}" width="10" height="${share * 34}" rx="2" fill="${i % 2 ? green : p.accent}"/>`).join('')
+      + `<path d="M${x + 6} ${y + 24} H${x + 66}" stroke="${orange}" stroke-width="2.5" stroke-dasharray="5 4"/>`;
+    const miniStacked = (x, y) => [0, 1, 2, 3].map((i) => `<rect x="${x + 10 + i * 14}" y="${y + 8}" width="10" height="18" rx="2" fill="${p.accent}"/><rect x="${x + 10 + i * 14}" y="${y + 26}" width="10" height="11" fill="${green}"/><rect x="${x + 10 + i * 14}" y="${y + 37}" width="10" height="7" rx="2" fill="${orange}"/>`).join('');
+    const types = [['CDF', cdf, true], ['Bars', miniBars, true], ['Stacked', miniStacked, true], ['Scatter', null, false], ['Map', null, false]];
+    types.forEach(([name, draw, ready], i) => {
+      const x = 166 + i * 88, y = 378;
+      out += card(x, y, 78, 74, i === 1 ? '#22304f' : '#16213a', i === 1 ? p.light : '#2a3a5c', 10);
+      out += draw ? `<g opacity="${ready ? 1 : 0.35}">${draw(x + 4, y + 4, 70, 48)}</g>`
+        : name === 'Scatter' ? [[18, 40], [30, 30], [40, 34], [52, 20], [62, 16]].map(([dx, dy]) => `<circle cx="${x + dx}" cy="${y + dy}" r="4" fill="#5a6a8a"/>`).join('')
+          : `<path d="M${x + 39} ${y + 46} c0 -10 12 -16 12 -26 a12 12 0 0 0 -24 0 c0 10 12 16 12 26z" fill="#5a6a8a"/>`;
+      out += text(x + 39, y + 68, name, 12, ready ? '#ffffff' : '#6b7a99', 700, 'middle');
+    });
+    out += `<rect x="166" y="466" width="430" height="58" rx="10" fill="#16213a"/>` + text(184, 492, 'Average Vertical Bars · ready with these fields', 15, '#ffffff', 700)
+      + text(184, 512, 'Choosing a type closes the window', 13, '#9fb0cc', 500);
+    // The panel: the shelves of the chart and what its type needs.
+    out += card(632, 20, 172, 520, '#16213a', '#2a3a5c', 14);
+    out += `<rect x="644" y="34" width="72" height="30" rx="8" fill="${p.accent}"/>` + text(680, 54, 'Data', 14, '#ffffff', 800, 'middle') + text(752, 54, 'Format', 14, '#9fb0cc', 700, 'middle');
+    out += `<rect x="644" y="78" width="148" height="44" rx="8" fill="#183b2c"/><circle cx="660" cy="100" r="8" fill="${green}"/><path d="M656 100 l3 3 l6 -6" stroke="#ffffff" stroke-width="2" fill="none"/>`
+      + text(674, 96, 'Average Bars', 12, '#ffffff', 800) + text(674, 112, 'needs a measure + split', 11, '#a8d5b9', 500);
+    [['Measure', 'Data Rate', green], ['Rows', 'Operator', '#2D6FD1'], ['Columns', 'Campaign', '#2D6FD1'], ['Legend', 'Operator', '#2D6FD1']].forEach(([shelf, field, colour], i) => {
+      const y = 140 + i * 64;
+      out += text(646, y + 14, shelf.toUpperCase(), 11, '#9fb0cc', 800) + `<rect x="644" y="${y + 22}" width="148" height="30" rx="15" fill="${colour}"/>` + text(718, y + 42, field, 13, '#ffffff', 700, 'middle');
+    });
+    out += text(646, 412, 'FIELDS', 11, '#9fb0cc', 800);
+    [['# Data Rate', green], ['Abc Operator', '#2D6FD1'], ['Abc City', '#2D6FD1'], ['# RSRP', green]].forEach(([field, colour], i) => {
+      out += `<rect x="644" y="${422 + i * 28}" width="148" height="22" rx="6" fill="#22304f"/><rect x="644" y="${422 + i * 28}" width="5" height="22" rx="2" fill="${colour}"/>` + text(656, 438 + i * 28, field, 12, '#c9d4e6', 600);
+    });
+    return out;
+  },
+  // A PPT Template and the PPT Designs that follow it: each keeps only what it changes, a change of the template reaches
+  // them all, and its parameters give a PPT per value in a Reporting Job.
+  inheritance(p) {
+    const card = (x, y, w, h, fill = '#16213a', stroke = '#2a3a5c', radius = 14) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${radius}" fill="${fill}" stroke="${stroke}" stroke-width="2"/>`;
+    const text = (x, y, value, size = 15, fill = '#c9d4e6', weight = 600, anchor = 'start') => `<text x="${x}" y="${y}" font-size="${size}" font-weight="${weight}" fill="${fill}" text-anchor="${anchor}">${escape(value)}</text>`;
+    const pill = (x, y, label, fill, color = '#ffffff') => { const w = 18 + label.length * 8.2; return `<rect x="${x}" y="${y}" width="${w}" height="26" rx="13" fill="${fill}"/>${text(x + w / 2, y + 18, label, 13, color, 700, 'middle')}`; };
+    const minis = (x, y, count, scale = 1) => [...Array(count).keys()].map((i) => {
+      const sx = x + i * 66 * scale;
+      return `<rect x="${sx}" y="${y}" width="${58 * scale}" height="${34 * scale}" rx="4" fill="${i === 0 ? p.deep : '#ffffff'}"/>`
+        + (i ? [[4, 4, 23, 12], [30, 4, 24, 12], [4, 19, 50, 12]].map(([dx, dy, w, h]) => `<rect x="${sx + dx * scale}" y="${y + dy * scale}" width="${w * scale}" height="${h * scale}" rx="2" fill="${i === 2 ? '#d9cdf0' : '#e8e2f3'}"/>`).join('') : '');
+    }).join('');
+    let out = '';
+    // The template.
+    out += card(230, 16, 360, 150, '#22304f', p.accent, 16) + text(252, 46, 'PPT TEMPLATE', 13, p.light, 800) + text(252, 72, 'NetCheck CDR Report', 22, '#ffffff', 800);
+    out += minis(252, 88, 5) + pill(252, 132, '{City}  parameter', p.deep);
+    out += `<g transform="translate(470 132)">${pill(0, 0, 'Edited once', '#e8833a')}</g>`;
+    // The Designs that follow it.
+    const designs = [['NSA', 'Follows the template', '#1f9d55', []], ['SA', '+1 slide · 1 hidden', '#2D6FD1', ['A filter more']], ['Main Cities', 'City = London, Bristol', '#7b52c0', ['Its own values']]];
+    designs.forEach(([name, change, colour, notes], i) => {
+      const x = 20 + i * 268, y = 236;
+      out += `<path d="M410 166 C410 200, ${x + 120} 200, ${x + 120} ${y}" fill="none" stroke="${p.light}" stroke-width="3" stroke-dasharray="8 6"/><path d="M${x + 112} ${y - 10} l8 10 l8 -10" fill="none" stroke="${p.light}" stroke-width="3"/>`;
+      out += card(x, y, 240, 164) + text(x + 18, y + 30, 'PPT DESIGN', 12, '#9fb0cc', 800) + text(x + 18, y + 56, name, 21, '#ffffff', 800);
+      out += minis(x + 18, y + 70, 3, 0.95) + pill(x + 18, y + 120, change, colour);
+      notes.forEach((label) => { out += text(x + 222, y + 30, label, 12, '#c9d4e6', 600, 'end'); });
+    });
+    // A Reporting Job: One PPT per value of a parameter.
+    out += card(20, 424, 780, 116, '#0f1a30', '#2a3a5c', 16) + text(42, 456, 'REPORTING JOB', 12, '#9fb0cc', 800) + text(42, 482, 'One PPT per City', 20, '#ffffff', 800)
+      + text(42, 506, 'Each value of the parameter, its own PowerPoint', 14, '#9fb0cc', 500);
+    [['London', 0], ['Bristol', 1], ['Cardiff', 2], ['Belfast', 3]].forEach(([city, i]) => {
+      const x = 420 + i * 94;
+      out += `<rect x="${x}" y="446" width="80" height="74" rx="10" fill="#ffffff"/><rect x="${x}" y="496" width="80" height="24" rx="0" fill="#d35230"/>`
+        + `<path d="M${x} 506 v4 a10 10 0 0 0 10 10 h60 a10 10 0 0 0 10 -10 v-4" fill="#d35230"/>` + text(x + 40, 513, 'PPT', 13, '#ffffff', 800, 'middle') + text(x + 40, 478, city, 13, '#1b2234', 800, 'middle');
+    });
+    return out;
+  },
   // Jobs and their status.
   jobs(p) {
     const rows = [['Q3 Voice report', 'Completed', p.accent], ['Q3 Data report', 'Completed', p.accent], ['Chart Set · London', 'Running', '#e0a020'], ['Q2 Speech report', 'Queued', '#3a4d75']];

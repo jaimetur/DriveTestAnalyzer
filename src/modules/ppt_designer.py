@@ -1235,6 +1235,9 @@ def install_design_routes(core):
     def add_design_element(slide, entry, placement, task_repository) -> None:
         """A text box (its Markdown as paragraphs, **bold** kept, lines starting with - or * as bullets) or a picture
         (fitted in its place, keeping its ratio) of a Design slide set."""
+        if entry.chart_type.casefold() == design_slides.DRAFT_CHART_TYPE.casefold():
+            # A chart still being built: its place stays empty.
+            return
         left, top, width, height = placement
         content = design_slides.row_format(entry).get('content')
         content = content if isinstance(content, dict) else {}
@@ -3559,9 +3562,15 @@ def install_design_routes(core):
             store_design_entry(task_repository, design_id, designs[design_id])
             return designs[design_id]
 
-    @app.get('/api/ppt-designer/slides/layouts')
-    def design_slides_layouts(user=Depends(design_user)):
-        """The layouts of the slide master the Designer offers: the places of each one (fractions of the slide)."""
+    layouts_read: dict[tuple[str, float], list[dict[str, Any]]] = {}
+
+    def slide_layouts() -> list[dict[str, Any]]:
+        """The layouts of the slide master the Designer offers: the places of each one (fractions of the slide), read once
+        for each version of the master."""
+        master = Path(core.settings.powerpoint_template)
+        key = (str(master), master.stat().st_mtime if master.exists() else 0.0)
+        if key in layouts_read:
+            return layouts_read[key]
         deck = Presentation(core.settings.powerpoint_template)
         layouts = []
         for name in core.catalogue_layout_names():
@@ -3577,7 +3586,47 @@ def install_design_routes(core):
                 'dynamic': name in DYNAMIC_LAYOUTS,
                 'structural': STRUCTURAL_LAYOUT_TYPES.get(name.casefold(), ''),
             })
-        return {'layouts': layouts}
+        layouts_read.clear()
+        layouts_read[key] = layouts
+        return layouts
+
+    @app.get('/api/ppt-designer/slides/layouts')
+    def design_slides_layouts(user=Depends(design_user)):
+        """The layouts of the slide master the Designer offers: the places of each one (fractions of the slide)."""
+        return {'layouts': slide_layouts()}
+
+    GALLERY_SLIDES = 6
+
+    @app.get('/api/ppt-designer/templates-gallery')
+    def templates_gallery(user=Depends(design_user)):
+        """The PPT Templates a new PPT Design can follow, for the gallery of Create PPT Design: each with its first slides in
+        small (the places of each one and the elements in them) and how many slides and charts it has."""
+        task_repository = bound_repository()
+        places = {layout['name']: layout['places'] for layout in slide_layouts()}
+
+        def small(slide):
+            geometry = (slide.get('options') or {}).get('geometry')
+            return {
+                'kind': slide['kind'], 'title': slide.get('title') or '',
+                'places': geometry if isinstance(geometry, list) and geometry else places.get(slide.get('layout') or '', []),
+                'elements': [{'kind': element.get('kind') or 'chart', 'chart_type': element.get('chart_type') or '',
+                              'place': element.get('place', index), 'title': element.get('chart_title') or ''}
+                             for index, element in enumerate(slide.get('elements') or []) if not element.get('hidden')],
+            }
+
+        gallery = []
+        for option in core.report_catalogue_options():
+            slide_set, _entries = template_slide_set(option['name'], task_repository)
+            if slide_set is None:
+                continue
+            slides = slide_set['slides']
+            gallery.append({
+                'name': option['name'], 'identifier': option['identifier'], 'active': bool(option['active']),
+                'slides': len(slides), 'charts': sum((element.get('kind') or 'chart') in {'chart', 'kpi'}
+                                                     for slide in slides for element in slide.get('elements') or []),
+                'preview': [small(slide) for slide in slides[:GALLERY_SLIDES]],
+            })
+        return {'templates': gallery}
 
     def designer_snapshot(token, user):
         workspace = workspace_key()
@@ -5466,7 +5515,10 @@ def install_design_routes(core):
                              if chart_type.casefold() == entry.chart_type.casefold()), 'chart')
                 if kind != 'chart':
                     chart['kind'] = kind
-                if kind in {'text', 'image'}:
+                if entry.chart_type.casefold() == design_slides.DRAFT_CHART_TYPE.casefold():
+                    # A chart still being built reads no CDR: the viewer shows its empty place.
+                    chart.update(kind='draft', available=False, content={})
+                elif kind in {'text', 'image'}:
                     # Read no CDR: the viewer shows the text or the picture (their content), never a chart model.
                     content = dict(row.get('content') or {}) if isinstance(row.get('content'), dict) else {}
                     if kind == 'image' and content.get('image'):

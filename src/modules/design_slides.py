@@ -55,6 +55,10 @@ STRUCTURAL_CHART_TYPES = {'title': 'Title Slide', 'transition': 'Transition Slid
 ELEMENT_KINDS = ('chart', 'kpi', 'text', 'image')
 # The Chart type of the row of each kind of element other than a chart.
 KIND_CHART_TYPES = {'kpi': 'KPI Card', 'text': 'Text Box', 'image': 'Image'}
+# The Chart type of the row of a chart still being built (a new chart without its measure, its type or a Rows or Columns
+# split yet, or a KPI card without its measure): it reads no CDR until it can be drawn, and its Format column keeps what it
+# has (``draft``).
+DRAFT_CHART_TYPE = 'Chart in progress'
 PARAMETER_TYPES = ('values', 'number', 'text')
 # The fields a Design writes in the titles and text boxes of its slides from its own selection (``{Cities}``: the
 # Cities it is filtered by, or All Cities), as the Designer offers them.
@@ -142,6 +146,18 @@ def with_slide_ids(entries: list[CatalogEntry]) -> list[CatalogEntry]:
 # Template rows <-> slide set
 # ---------------------------------------------------------------------------
 
+def is_draft_chart(element: dict[str, Any]) -> bool:
+    """A chart that cannot be drawn yet (without its measure, its chart type or a Rows or Columns split), or a KPI card
+    without its measure (a new chart turned into one)."""
+    kind = element.get('kind') or 'chart'
+    filled = lambda field: str(element.get(field) or '').strip()
+    if kind == 'kpi':
+        return not filled('kpi')
+    if kind != 'chart':
+        return False
+    return not (filled('kpi') and filled('chart_type') and (filled('rows_split') or filled('columns_split')))
+
+
 def _element_from_entry(entry: CatalogEntry, data: dict[str, Any], element_id: str, place: int) -> dict[str, Any]:
     kind = data.get('kind') or next((key for key, chart_type in KIND_CHART_TYPES.items()
                                      if chart_type.casefold() == entry.chart_type.casefold()), 'chart')
@@ -154,6 +170,12 @@ def _element_from_entry(entry: CatalogEntry, data: dict[str, Any], element_id: s
         element[field] = getattr(entry, field)
     rows_field, columns_field = entry_dynamic_fields(entry)
     element['dynamic_rows_field'], element['dynamic_columns_field'] = rows_field, columns_field
+    if entry.chart_type.casefold() == DRAFT_CHART_TYPE.casefold():
+        # A chart still being built: what it has, from its Format column.
+        draft = data.get('draft') if isinstance(data.get('draft'), dict) else {}
+        for field in ELEMENT_FIELDS:
+            if field != 'chart_title':
+                element[field] = draft.get(field, False if field in {'exclude_null_empty', 'exclude_zero'} else '')
     if data.get('style'):
         element['style'] = data['style']
     if data.get('content') is not None:
@@ -224,6 +246,9 @@ def _entry_format(slide: dict[str, Any], element: dict[str, Any] | None, *, firs
             data['kpi'] = element['kpi_card']
         if element.get('repeat'):
             data['repeat'] = element['repeat']
+        if is_draft_chart(element):
+            data['draft'] = {field: element[field] for field in ELEMENT_FIELDS
+                             if field != 'chart_title' and element.get(field) not in (None, '', False)}
     if first_row:
         options = dict(slide.get('options') or {})
         if slide.get('optional'):
@@ -264,7 +289,12 @@ def entries_from_slides(slide_set: dict[str, Any], *, include_hidden: bool = Fal
             values = {field: element.get(field, '' if field not in {'exclude_null_empty', 'exclude_zero'} else False)
                       for field in ELEMENT_FIELDS}
             values['legend_position'] = values['legend_position'] or ''
-            if (element.get('kind') or 'chart') in KIND_CHART_TYPES:
+            if is_draft_chart(element):
+                # (What it has goes in its Format column: the row reads no CDR.)
+                values = {field: (values[field] if field == 'chart_title' else False if field in {'exclude_null_empty', 'exclude_zero'} else '')
+                          for field in values}
+                values['chart_type'] = DRAFT_CHART_TYPE
+            elif (element.get('kind') or 'chart') in KIND_CHART_TYPES:
                 values['chart_type'] = KIND_CHART_TYPES[element['kind']]
             entries.append(CatalogEntry(
                 **base, **values,
