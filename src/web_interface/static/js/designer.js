@@ -1245,27 +1245,28 @@
     const shownSource = state.scope === 'template' ? findSlide(state.template, slide.id) || slide : slide;
     const title = textInput(shownSource.title, debounced(value => setSlide({title: value})), {id: 'ds-design-slide-title'});
     const subtitle = textInput(shownSource.subtitle, debounced(value => setSlide({subtitle: value})), {id: 'ds-design-slide-subtitle'});
-    const nodes = [
+    // Three subpanels: its titles, its layout and its elements.
+    const subpanel = (kind, heading, ...children) => h('section', {class: `ds-cb-card ds-design-subpanel is-${kind}`, 'aria-label': heading},
+      h('h4', {class: 'ds-cb-card-title', text: heading}), ...children);
+    const nodes = [subpanel('titles', 'Titles',
       field('Title', h('div', {class: 'ds-design-input-row'}, title, tokenMenuButton(title))),
-      field('Subtitle', h('div', {class: 'ds-design-input-row'}, subtitle, tokenMenuButton(subtitle))),
-      field('Layout', h('button', {type: 'button', class: 'ds-design-layout-button', disabled: !editable, onclick: event => openLayoutGallery(event.currentTarget, slide)}, shownSource.layout || 'Choose a layout')),
-    ];
+      field('Subtitle', h('div', {class: 'ds-design-input-row'}, subtitle, tokenMenuButton(subtitle))))];
     const grid = layoutOf(shownSource.layout)?.grid;
-    if (kind === 'content' && grid && window.PlacesEditor) {
-      nodes.push(h('button', {type: 'button', class: 'ds-design-action', disabled: !editable, title: 'Resize the rows and columns of the layout, merge places or split them',
-        onclick: () => adjustPlaces(slide.id)}, shownSource.options?.geometry ? 'Adjust places… (adjusted)' : 'Adjust places…'));
-    }
-    if (state.scope === 'template' && findSlide(state.template, slide.id)) {
-      nodes.push(h('label', {class: 'ds-design-check'}, h('input', {type: 'checkbox', checked: Boolean(findSlide(state.template, slide.id).optional), onchange: event => guarded(() => setOptional(slide.id, event.target.checked))()}), 'Optional: off in each Design until it is shown there'));
-    }
+    nodes.push(subpanel('layout', 'Layout',
+      h('button', {type: 'button', class: 'ds-design-layout-button', disabled: !editable, 'aria-label': 'Layout', onclick: event => openLayoutGallery(event.currentTarget, slide)}, shownSource.layout || 'Choose a layout'),
+      kind === 'content' && grid && window.PlacesEditor ? h('button', {type: 'button', class: 'ds-design-action', disabled: !editable, title: 'Resize the rows and columns of the layout, merge places or split them',
+        onclick: () => adjustPlaces(slide.id)}, shownSource.options?.geometry ? 'Adjust places… (adjusted)' : 'Adjust places…') : null,
+      state.scope === 'template' && findSlide(state.template, slide.id)
+        ? h('label', {class: 'ds-design-check'}, h('input', {type: 'checkbox', checked: Boolean(findSlide(state.template, slide.id).optional), onchange: event => guarded(() => setOptional(slide.id, event.target.checked))()}), 'Optional: off in each Design until it is shown there')
+        : null));
     if (kind === 'content') {
       const elements = visibleElements(slide);
-      nodes.push(h('h4', {class: 'ds-design-subtitle', text: `Elements · ${elements.length} of ${placesOf(slide).length || elements.length} places`}));
-      nodes.push(h('ul', {class: 'ds-design-element-list'}, elements.map((item, index) => h('li', {},
-        h('button', {type: 'button', onclick: () => selectElement(item.id)},
-          h('span', {class: 'ds-design-place', text: String(placeOf(item, index) + 1)}), elementLabel(item),
-          isLocalElement(item) && !state.detached ? h('span', {class: 'ds-design-badge is-local', text: 'This Design'}) : item.overridden?.length ? h('span', {class: 'ds-design-badge is-changed', text: 'Changed'}) : null)))));
-      if (freePlaces(slide).length) nodes.push(h('button', {type: 'button', class: 'ds-design-action', onclick: guarded(() => addElement(slide.id, freePlaces(slide)[0]))}, '+ Add chart'));
+      nodes.push(subpanel('elements', `Elements · ${elements.length} of ${placesOf(slide).length || elements.length} places`,
+        h('ul', {class: 'ds-design-element-list'}, elements.map((item, index) => h('li', {},
+          h('button', {type: 'button', onclick: () => selectElement(item.id)},
+            h('span', {class: 'ds-design-place', text: String(placeOf(item, index) + 1)}), elementLabel(item),
+            isLocalElement(item) && !state.detached ? h('span', {class: 'ds-design-badge is-local', text: 'This Design'}) : item.overridden?.length ? h('span', {class: 'ds-design-badge is-changed', text: 'Changed'}) : null)))),
+        freePlaces(slide).length ? h('button', {type: 'button', class: 'ds-design-action', onclick: guarded(() => addElement(slide.id, freePlaces(slide)[0]))}, '+ Add chart') : null));
     }
     return nodes;
   }
