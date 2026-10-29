@@ -651,15 +651,15 @@
             {% endfor %}
           </select>
         </label>
-        <button type="submit" formaction="/workspace-config/report-templates/export-selected" class="catalogue-export-button">Export</button>
+        <button type="submit" formaction="/ppt-designer/templates/export-selected" class="catalogue-export-button">Export</button>
       </form>
     </section>
     {% if catalogue_editor %}
     <div class="alert alert-warning" role="alert" data-catalogue-validation-alert{% if not catalogue_editor.validation_error %} hidden{% endif %}><strong>This Report Template contains a validation error.</strong> <span data-catalogue-validation-message>{{ catalogue_editor.validation_error or '' }}</span> Correct it before saving.</div>
     <div class="alert alert-info" role="status" data-catalogue-nr-mode-warning hidden><strong>Some charts have no samples in one NR Mode.</strong> <span data-catalogue-nr-mode-warning-message></span></div>
     <p class="lede">Rows are ordered by Slide and alternate by slide block. When a slide contains several charts, its shared slide number, title, subtitle and layout are shown once and apply to the full slide block; saving writes those values back to every chart row in the CSV. Select a cell to edit it manually or use the contextual suggestions on the right.</p>
-    <div class="slides-templates-editor-grid" data-catalogue-editor data-editor-suggestions='{{ catalogue_editor.suggestions | tojson }}' data-calculated-dimensions='{{ catalogue_editor.calculated_dimensions | tojson }}' data-template-identifier="{{ catalogue_editor.catalogue.identifier }}" data-template-options-url="/api/workspace-config/report-templates/copy-options" data-template-copy-url="/workspace-config/report-templates/{{ catalogue_editor.catalogue.identifier }}/copy-items" data-calculated-dimensions-url="/api/workspace/calculated-dimensions" data-calculated-dimension-export-url="/workspace/calculated-dimensions/export" data-chart-preview-url="/workspace-config/report-templates/{{ catalogue_editor.catalogue.identifier }}/chart-preview" data-chart-image-preview-url="/workspace-config/report-templates/{{ catalogue_editor.catalogue.identifier }}/chart-image-preview">
-      <form class="slides-templates-editor-table-wrap" action="/workspace-config/report-templates/{{ catalogue_editor.catalogue.identifier }}/save" method="post" data-catalogue-editor-save>
+    <div class="slides-templates-editor-grid" data-catalogue-editor data-editor-suggestions='{{ catalogue_editor.suggestions | tojson }}' data-calculated-dimensions='{{ catalogue_editor.calculated_dimensions | tojson }}' data-template-identifier="{{ catalogue_editor.catalogue.identifier }}" data-template-options-url="/api/ppt-designer/templates/copy-options" data-template-copy-url="/ppt-designer/templates/{{ catalogue_editor.catalogue.identifier }}/copy-items" data-calculated-dimensions-url="/api/workspace/calculated-dimensions" data-calculated-dimension-export-url="/workspace/calculated-dimensions/export" data-chart-preview-url="/ppt-designer/templates/{{ catalogue_editor.catalogue.identifier }}/chart-preview" data-chart-image-preview-url="/ppt-designer/templates/{{ catalogue_editor.catalogue.identifier }}/chart-image-preview">
+      <form class="slides-templates-editor-table-wrap" action="/ppt-designer/templates/{{ catalogue_editor.catalogue.identifier }}/save" method="post" data-catalogue-editor-save>
         <input type="hidden" name="catalogue_content" value="" data-catalogue-editor-content>
         <div class="catalogue-table-toolbar">
           <button type="button" class="catalogue-find-toggle" data-catalogue-find-toggle aria-expanded="false" title="Find and replace in the whole template (Ctrl/Cmd+F)">Find &amp; Replace</button>

@@ -157,20 +157,46 @@
       parameters: [], showSource: false, repeat: !isKpiCard(), chartTypes: false, fieldValues,
       onChange: (changes) => { Object.assign(chart, typeChanges(changes)); render(); queue(); },
     };
+    chartTypes(options);
     if (section === 'format' && !isKpiCard() && formatEditor()) {
       fields.replaceChildren(element('label', {class: 'ds-cb-title'}, 'Chart title', title), sections, format.formatSection('chart', chart), add);
       return;
     }
     if (section === 'format') section = 'data';
     const shelves = element('div', {class: 'ds-cb'});
-    // Chart Type, as in the Designer: the chart types grouped by what they show, those the shelves cannot draw greyed.
-    const types = element('div', {class: 'ds-cb-types-gallery'});
-    const typesCard = element('section', {class: 'ds-cb-card is-types', 'aria-label': 'Chart Type'}, element('h4', {class: 'ds-cb-card-title'}, 'Chart Type'), types);
-    fields.replaceChildren(element('label', {class: 'ds-cb-title'}, 'Chart title', title), isKpiCard() ? null : sections, shelves, typesCard,
-      isKpiCard() ? kpiCardForm() : null, add);
+    fields.replaceChildren(...[element('label', {class: 'ds-cb-title'}, 'Chart title', title), isKpiCard() ? null : sections, shelves,
+      isKpiCard() ? kpiCardForm() : null, add].filter(Boolean));
     globalThis.ChartShelves?.render(shelves, options);
-    globalThis.ChartShelves?.renderTypes(types, options);
   };
+  // Chart Type, as in the Designer: a tab on the edge of the chart, beside the panel, opens the chart types grouped by what
+  // they show (those the shelves cannot draw greyed) over the chart; choosing one changes the chart at once, and the types
+  // stay open until the tab, ×, Esc or a click outside them closes them.
+  const viewerPanel = document.querySelector('[data-chart-builder-viewer]');
+  let typesOpen = false;
+  function chartTypes(options) {
+    if (!viewerPanel) return;
+    viewerPanel.querySelectorAll(':scope > .ds-design-types-tab, :scope > .ds-design-types').forEach((node) => node.remove());
+    const toggle = () => { typesOpen = !typesOpen; render(); };
+    viewerPanel.append(element('button', {type: 'button', class: `ds-design-types-tab${typesOpen ? ' is-open' : ''}`, 'aria-expanded': String(typesOpen),
+      'aria-controls': 'chart-builder-types', title: typesOpen ? 'Close Chart Type' : `Chart Type: ${chart.chart_type || 'choose one'}`, onclick: toggle},
+    globalThis.ChartShelves?.picture(chart.chart_type) || null, element('span', {class: 'ds-design-types-tab-label'}, 'Chart Type')));
+    if (!typesOpen) return;
+    const types = element('div', {class: 'ds-design-types-body'});
+    viewerPanel.append(element('section', {class: 'ds-design-types', id: 'chart-builder-types', 'aria-label': 'Chart Type'},
+      element('div', {class: 'ds-design-types-head'}, element('strong', {}, 'Chart Type'),
+        element('button', {type: 'button', class: 'ds-design-types-close', 'aria-label': 'Close Chart Type', title: 'Close (Esc)', onclick: toggle}, '×')),
+      types));
+    globalThis.ChartShelves?.renderTypes(types, options);
+  }
+  document.addEventListener('pointerdown', (event) => {
+    if (typesOpen && !event.target.closest?.('#chart-builder-types, .ds-design-types-tab')) { typesOpen = false; render(); }
+  }, true);
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape' || !typesOpen || document.querySelector('.ds-design-popover')) return;
+    typesOpen = false;
+    render();
+    event.preventDefault();
+  });
   function kpiCardForm() {
     const settings = kpiCardSettings();
     const set = (values) => { Object.assign(settings, values); render(); queue(); };

@@ -6530,7 +6530,7 @@ def test_interactive_template_save_fails_fast_while_workspace_writer_is_busy(cli
 
     monkeypatch.setattr(app_module, 'workspace_write_lock', lambda _path: BusyWorkspaceLock())
     response = client.post(
-        f'/workspace-config/report-templates/{quote(template["identifier"], safe="")}/save',
+        f'/ppt-designer/templates/{quote(template["identifier"], safe="")}/save',
         data={'catalogue_content': bytes(template['content']).decode('utf-8')},
         headers={'accept': 'application/json'},
     )
@@ -6546,18 +6546,18 @@ def test_interactive_template_validation_rejects_invalid_content_before_save(cli
     template = app_module.report_catalogue_options()[0]
     original = bytes(template['content'])
     content = original.decode('utf-8')
-    valid = client.post('/api/workspace-config/report-templates/validate', json={'catalogue_content': content})
+    valid = client.post('/api/ppt-designer/templates/validate', json={'catalogue_content': content})
     assert valid.status_code == 200
     assert valid.json()['valid'] is True
 
     malformed = content + '\n1,unexpected,extra,values,that,exceed,the,template,header,' + ','.join(['x'] * 50)
-    invalid = client.post('/api/workspace-config/report-templates/validate', json={'catalogue_content': malformed})
+    invalid = client.post('/api/ppt-designer/templates/validate', json={'catalogue_content': malformed})
     assert invalid.status_code == 200
     assert invalid.json()['valid'] is False
     assert 'more values than the template header' in invalid.json()['detail']
 
     saved = client.post(
-        f'/workspace-config/report-templates/{quote(template["identifier"], safe="")}/save',
+        f'/ppt-designer/templates/{quote(template["identifier"], safe="")}/save',
         data={'catalogue_content': malformed}, headers={'accept': 'application/json'},
     )
     assert saved.status_code == 400
@@ -6598,7 +6598,7 @@ def test_interactive_template_save_schedules_materialization_after_releasing_wor
     scheduled = []
     monkeypatch.setattr(app_module, 'submit_background_task', lambda callback, *args: scheduled.append((callback, args)))
     response = client.post(
-        f'/workspace-config/report-templates/{quote(template["identifier"], safe="")}/save',
+        f'/ppt-designer/templates/{quote(template["identifier"], safe="")}/save',
         data={'catalogue_content': content},
         headers={'accept': 'application/json'},
     )
@@ -6631,7 +6631,7 @@ def test_interactive_template_save_returns_before_design_comment_reconciliation(
         lambda *_args: reconciled.append(True),
     )
     response = client.post(
-        f'/workspace-config/report-templates/{quote(template["identifier"], safe="")}/save',
+        f'/ppt-designer/templates/{quote(template["identifier"], safe="")}/save',
         data={'catalogue_content': content},
         headers={'accept': 'application/json'},
     )
@@ -9439,7 +9439,7 @@ def test_admin_imports_report_catalogue(client) -> None:
     content = legacy_template_csv('8,Completed Call Ratio,Voice quality,Title and 1 column + Comments,Completed call ratio,CDR-Voice,Call_Status,100% Stacked Vertical Bars,Call Family = VoLTE,Operator,Campaign,Completed/Dropped/Failed,,,,,,,,')
 
     response = client.post(
-        '/workspace-config/report-templates',
+        '/ppt-designer/templates',
         data={'catalogue_name': 'Test baseline'},
         files={'catalogue_file': ('nsa-slides-template.csv', BytesIO(content), 'text/csv')},
         follow_redirects=False,
@@ -9448,7 +9448,7 @@ def test_admin_imports_report_catalogue(client) -> None:
     assert response.status_code == 303
     assert app_module.reporting_catalog_content() == content
 
-    exported = client.get('/workspace-config/report-templates/export')
+    exported = client.get('/ppt-designer/templates/export')
     assert exported.status_code == 200
     assert exported.content == content
 
@@ -9477,7 +9477,7 @@ def test_legacy_layout_alias_is_canonicalized_through_template_import_and_export
     original_csv = output.getvalue().encode('utf-8')
 
     imported = client.post(
-        '/workspace-config/report-templates',
+        '/ppt-designer/templates',
         data={'catalogue_name': 'Legacy layout'},
         files={'catalogue_file': ('legacy-layout.csv', BytesIO(original_csv), 'text/csv')},
         follow_redirects=False,
@@ -9486,7 +9486,7 @@ def test_legacy_layout_alias_is_canonicalized_through_template_import_and_export
     assert imported.status_code == 303
     stored = app_module.reporting_catalog_content()
     assert b'Title + 2 rows + 2 columns + comments right' in stored
-    exported = client.get('/workspace-config/report-templates/export')
+    exported = client.get('/ppt-designer/templates/export')
     assert exported.status_code == 200
     assert b'Title + 2 rows + 2 columns + comments right' in exported.content
     assert b'Title and 2 columns and 2 rows + Comments right' not in exported.content
@@ -9499,7 +9499,7 @@ def test_admin_import_preserves_hyphens_in_uploaded_template_name(client) -> Non
     login(client)
     content = legacy_template_csv('1,Imported template,,Title and 1 column + Comments,,,,Title Slide,,,,,')
     response = client.post(
-        '/workspace-config/slides-templates/import', data={'template_type': 'nsa', 'catalogue_name': ''},
+        '/ppt-designer/templates/import', data={'template_type': 'nsa', 'catalogue_name': ''},
         files={'catalogue_file': ('NSA Slide Template - Gabriele.csv', BytesIO(content), 'text/csv')},
         follow_redirects=False,
     )
@@ -9516,13 +9516,13 @@ def test_importing_an_existing_template_requires_explicit_overwrite(client) -> N
     original = legacy_template_csv('1,Original,,Title and 1 column + Comments,,,,Title Slide,,,,,')
     replacement = legacy_template_csv('1,Replacement,,Title and 1 column + Comments,,,,Title Slide,,,,,')
     created = client.post(
-        '/workspace-config/slides-templates/import', data={'template_type': 'nsa', 'catalogue_name': 'Shared Template'},
+        '/ppt-designer/templates/import', data={'template_type': 'nsa', 'catalogue_name': 'Shared Template'},
         files={'catalogue_file': ('Shared Template.csv', BytesIO(original), 'text/csv')}, follow_redirects=False,
     )
     assert created.status_code == 303
 
     blocked = client.post(
-        '/workspace-config/slides-templates/import', data={'template_type': 'nsa', 'catalogue_name': 'shared template'},
+        '/ppt-designer/templates/import', data={'template_type': 'nsa', 'catalogue_name': 'shared template'},
         files={'catalogue_file': ('shared template.csv', BytesIO(replacement), 'text/csv')}, follow_redirects=False,
     )
     assert blocked.status_code == 303
@@ -9530,7 +9530,7 @@ def test_importing_an_existing_template_requires_explicit_overwrite(client) -> N
     assert b'Original' in app_module.repository.report_template_content('Shared Template')
 
     overwritten = client.post(
-        '/workspace-config/slides-templates/import',
+        '/ppt-designer/templates/import',
         data={'template_type': 'nsa', 'catalogue_name': 'shared template', 'overwrite_existing': 'true'},
         files={'catalogue_file': ('shared template.csv', BytesIO(replacement), 'text/csv')}, follow_redirects=False,
     )
@@ -9550,7 +9550,7 @@ def test_admin_import_converts_a_legacy_catalogue_when_requested(client) -> None
     ).encode('utf-8')
 
     response = client.post(
-        '/workspace-config/report-templates',
+        '/ppt-designer/templates',
         data={'catalogue_name': 'Legacy baseline', 'convert_catalogue': '1'},
         files={'catalogue_file': ('legacy.csv', BytesIO(legacy), 'text/csv')},
         follow_redirects=False,
@@ -9572,7 +9572,7 @@ def test_admin_stores_multiple_named_report_catalogues_and_can_activate_one(clie
 
     for name, content in [('Baseline Q4', first), ('Updated Q4', second)]:
         response = client.post(
-            '/workspace-config/report-templates',
+            '/ppt-designer/templates',
             data={'catalogue_name': name},
             files={'catalogue_file': ('nsa.csv', BytesIO(content), 'text/csv')},
             follow_redirects=False,
@@ -9588,7 +9588,7 @@ def test_admin_stores_multiple_named_report_catalogues_and_can_activate_one(clie
     assert 'data-catalogue-editor-table' not in admin.text
     assert '<th>Default</th>' in admin.text
     assert 'catalogue-default-mark is-default' in admin.text
-    assert '/workspace-config/report-templates/Baseline%20Q4/export' in admin.text
+    assert '/ppt-designer/templates/Baseline%20Q4/export' in admin.text
     assert app_module.reporting_catalog_entries('nsa')[0].slide_title == 'Second'
     assert next(item['identifier'] for item in app_module.report_catalogue_options() if item['active']) == 'Updated Q4'
     assert app_module.repository.report_template_content('Baseline Q4') == first
@@ -9603,9 +9603,10 @@ def test_admin_stores_multiple_named_report_catalogues_and_can_activate_one(clie
     editor = client.get('/workspace-config?catalogue_technology=nsa&catalogue_id=Baseline%20Q4')
     assert editor.status_code == 200
     assert 'data-catalogue-editor-table' not in editor.text
-    assert 'data-admin-template-editor' in editor.text
+    # The PPT Templates are managed in PPT Designer: Workspace Config has no editor of its own.
+    assert 'data-admin-template-editor' not in editor.text and 'PPT Templates' not in editor.text.split('<main', 1)[-1].split('</main>', 1)[0]
 
-    embedded_editor = client.get('/workspace-config/report-templates/Baseline%20Q4/editor')
+    embedded_editor = client.get('/ppt-designer/templates/Baseline%20Q4/editor')
     assert embedded_editor.status_code == 200
     assert 'data-embedded-template-editor' in embedded_editor.text
     assert 'data-catalogue-editor-table' in embedded_editor.text
@@ -9650,7 +9651,7 @@ def test_admin_stores_multiple_named_report_catalogues_and_can_activate_one(clie
     assert 'progressJobList.replaceChildren();' not in app_script
     assert 'Math.max(previousPercent, computedPercent)' in app_script
 
-    copy_options = client.get('/api/workspace-config/report-templates/copy-options')
+    copy_options = client.get('/api/ppt-designer/templates/copy-options')
     assert copy_options.status_code == 200
     assert {item['identifier'] for item in copy_options.json()['templates']} >= {'Baseline Q4', 'Updated Q4'}
     dimensions = app_module.calculated_dimensions_json(app_module.load_workspace_calculated_dimensions())
@@ -9659,7 +9660,7 @@ def test_admin_stores_multiple_named_report_catalogues_and_can_activate_one(clie
         'rules': [{'when': 'Test_Result IN (Completed)', 'value': 'Success'}],
     })
     saved_dimensions = client.put(
-        '/api/workspace-config/report-templates/Baseline%20Q4/calculated-dimensions',
+        '/api/ppt-designer/templates/Baseline%20Q4/calculated-dimensions',
         json={'dimensions': dimensions},
     )
     assert saved_dimensions.status_code == 200
@@ -9674,14 +9675,14 @@ def test_admin_stores_multiple_named_report_catalogues_and_can_activate_one(clie
         item.name == 'Network Result'
         for item in app_module.load_workspace_calculated_dimensions()
     )
-    copied_chart = client.post('/workspace-config/report-templates/Baseline%20Q4/copy-items', json={
+    copied_chart = client.post('/ppt-designer/templates/Baseline%20Q4/copy-items', json={
         'kind': 'chart', 'catalogue_content': first.decode(), 'source_row_index': 0,
         'target_technology': 'nsa', 'target_identifier': 'Updated Q4',
         'target_slide_index': 0, 'chart_position': 1,
     })
     assert copied_chart.status_code == 200
     assert len(app_module.load_template_catalogue(app_module.repository.report_template_content('Updated Q4'))) == 2
-    copied_slide = client.post('/workspace-config/report-templates/Baseline%20Q4/copy-items', json={
+    copied_slide = client.post('/ppt-designer/templates/Baseline%20Q4/copy-items', json={
         'kind': 'slide', 'catalogue_content': first.decode(), 'source_row_index': 0,
         'target_technology': 'nsa', 'target_identifier': 'Updated Q4', 'slide_position': 1,
     })
@@ -9694,14 +9695,14 @@ def test_admin_stores_multiple_named_report_catalogues_and_can_activate_one(clie
         '9,Late,,Title and 1 column + Comments,,CDR-Voice,Call_Status,100% Stacked Vertical Bars,,Operator,Campaign,,Right',
         '8,Edited,,Title and 1 column + Comments,,CDR-Voice,Call_Status,100% Stacked Vertical Bars,,Operator,Campaign,,Right',
     ).decode('utf-8')
-    saved = client.post('/workspace-config/report-templates/Baseline%20Q4/save', data={'catalogue_content': edited}, follow_redirects=False)
+    saved = client.post('/ppt-designer/templates/Baseline%20Q4/save', data={'catalogue_content': edited}, follow_redirects=False)
     assert saved.status_code == 303
-    saved_editor = client.get('/workspace-config/report-templates/Baseline%20Q4/editor')
+    saved_editor = client.get('/ppt-designer/templates/Baseline%20Q4/editor')
     assert '>Edited</td>' in saved_editor.text
     assert saved_editor.text.index('>Edited</td>') < saved_editor.text.index('>Late</td>')
 
     saved_in_background = client.post(
-        '/workspace-config/report-templates/Baseline%20Q4/save',
+        '/ppt-designer/templates/Baseline%20Q4/save',
         data={'catalogue_content': edited},
         headers={'accept': 'application/json'},
     )
@@ -9711,13 +9712,13 @@ def test_admin_stores_multiple_named_report_catalogues_and_can_activate_one(clie
         'chart_rows': 2,
     }
 
-    activated = client.post('/workspace-config/report-templates/Baseline%20Q4/activate', follow_redirects=False)
+    activated = client.post('/ppt-designer/templates/Baseline%20Q4/activate', follow_redirects=False)
     assert activated.status_code == 303
     assert app_module.reporting_catalog_entries('nsa')[0].slide_title == 'Edited'
     assert next(item['identifier'] for item in app_module.report_catalogue_options() if item['active']) == 'Baseline Q4'
     assert app_module.repository.report_template_content('Updated Q4')
 
-    protected_delete = client.post('/workspace-config/report-templates/Baseline%20Q4/delete', follow_redirects=False)
+    protected_delete = client.post('/ppt-designer/templates/Baseline%20Q4/delete', follow_redirects=False)
     assert protected_delete.status_code == 303
     assert protected_delete.headers['location'] == '/ppt-designer?ppt_templates=1&catalogue_error=The+default+template+cannot+be+deleted.'
     assert app_module.repository.report_template_content('Baseline Q4')
@@ -9725,12 +9726,12 @@ def test_admin_stores_multiple_named_report_catalogues_and_can_activate_one(clie
     reporting_after_activation = client.get('/ppt-reporting-old')
     assert 'value="Baseline Q4" data-catalogue-active="true" selected' in reporting_after_activation.text
 
-    exported = client.get('/workspace-config/report-templates/Updated%20Q4/export')
+    exported = client.get('/ppt-designer/templates/Updated%20Q4/export')
     assert exported.status_code == 200
     assert b'Second' in exported.content
     assert 'filename="Updated Q4.csv"' in exported.headers['content-disposition']
 
-    selected_export = client.get('/workspace-config/report-templates/export-selected?catalogue_selection=nsa:Updated%20Q4')
+    selected_export = client.get('/ppt-designer/templates/export-selected?catalogue_selection=nsa:Updated%20Q4')
     assert selected_export.status_code == 200
     assert 'filename="Updated Q4.csv"' in selected_export.headers['content-disposition']
 
@@ -9779,7 +9780,7 @@ def test_admin_catalogue_rename_supports_background_json_save(client) -> None:
     login(client)
     default_name = next(item['identifier'] for item in app_module.report_catalogue_options() if item['active'])
     response = client.post(
-        f'/workspace-config/report-templates/{quote(default_name)}/rename',
+        f'/ppt-designer/templates/{quote(default_name)}/rename',
         data={'catalogue_name': 'Renamed default'},
         headers={'accept': 'application/json'},
     )
@@ -9796,7 +9797,7 @@ def test_report_template_rename_keeps_special_characters_in_action_urls(client) 
     template = app_module.report_catalogue_options()[0]
     new_name = 'North #1 & South'
     response = client.post(
-        f'/workspace-config/report-templates/{quote(template["identifier"], safe="")}/rename',
+        f'/ppt-designer/templates/{quote(template["identifier"], safe="")}/rename',
         data={'catalogue_name': new_name},
         headers={'accept': 'application/json'},
     )
@@ -9805,7 +9806,7 @@ def test_report_template_rename_keeps_special_characters_in_action_urls(client) 
     assert response.json()['identifier'] == new_name
     templates_page = client.get('/ppt-designer')
     assert templates_page.status_code == 200
-    assert '/workspace-config/report-templates/North%20%231%20%26%20South/rename' in templates_page.text
+    assert '/ppt-designer/templates/North%20%231%20%26%20South/rename' in templates_page.text
     assert 'data-edit-template="North #1 &amp; South"' in templates_page.text
 
 
@@ -9816,7 +9817,7 @@ def test_admin_renaming_named_catalogue_renames_its_csv_file(client) -> None:
     login(client)
     content = legacy_template_csv('8,First,,Title and 1 column + Comments,,CDR-Voice,Call_Status,100% Stacked Vertical Bars,,Operator,Campaign,,')
     imported = client.post(
-        '/workspace-config/report-templates',
+        '/ppt-designer/templates',
         data={'catalogue_name': 'Original catalogue'},
         files={'catalogue_file': ('nsa.csv', BytesIO(content), 'text/csv')},
         follow_redirects=False,
@@ -9831,7 +9832,7 @@ def test_admin_renaming_named_catalogue_renames_its_csv_file(client) -> None:
     }))
 
     replacement = client.post(
-        '/workspace-config/report-templates',
+        '/ppt-designer/templates',
         data={'catalogue_name': 'Replacement template'},
         files={'catalogue_file': ('replacement.csv', BytesIO(content), 'text/csv')},
         follow_redirects=False,
@@ -9839,7 +9840,7 @@ def test_admin_renaming_named_catalogue_renames_its_csv_file(client) -> None:
     assert replacement.status_code == 303
 
     response = client.post(
-        '/workspace-config/report-templates/Original%20catalogue/rename',
+        '/ppt-designer/templates/Original%20catalogue/rename',
         data={'catalogue_name': 'Renamed catalogue'},
         headers={'accept': 'application/json'},
     )
@@ -9861,14 +9862,14 @@ def test_admin_duplicates_template_using_the_source_template_name(client) -> Non
     login(client)
     content = legacy_template_csv('8,First,,Title and 1 column + Comments,,CDR-Voice,Call_Status,100% Stacked Vertical Bars,,Operator,Campaign,,')
     imported = client.post(
-        '/workspace-config/report-templates',
+        '/ppt-designer/templates',
         data={'catalogue_name': 'Regional NSA Template'},
         files={'catalogue_file': ('nsa.csv', BytesIO(content), 'text/csv')},
         follow_redirects=False,
     )
     assert imported.status_code == 303
 
-    duplicated = client.post('/workspace-config/report-templates/Regional%20NSA%20Template/duplicate', follow_redirects=False)
+    duplicated = client.post('/ppt-designer/templates/Regional%20NSA%20Template/duplicate', follow_redirects=False)
 
     assert duplicated.status_code == 303
     copied = next(item for item in app_module.report_catalogue_options() if item['identifier'] == 'Regional NSA Template - Copy')
@@ -9909,7 +9910,7 @@ def test_admin_importer_imports_every_template_into_one_library(client) -> None:
     content = legacy_template_csv('8,First,,Title and 1 column + Comments,,CDR-Voice,Call_Status,100% Stacked Vertical Bars,,Operator,Campaign,,')
     # A form of before naming an NR Mode imports into the same library.
     imported = client.post(
-        '/workspace-config/slides-templates/import',
+        '/ppt-designer/templates/import',
         data={'template_type': 'sa', 'catalogue_name': 'Imported template'},
         files={'catalogue_file': ('sa.csv', BytesIO(content), 'text/csv')},
         follow_redirects=False,
@@ -9918,7 +9919,7 @@ def test_admin_importer_imports_every_template_into_one_library(client) -> None:
     assert next(item['identifier'] for item in app_module.report_catalogue_options() if item['active']) == 'Imported template'
     for name in ('Second', 'Third'):
         response = client.post(
-            '/workspace-config/report-templates',
+            '/ppt-designer/templates',
             data={'catalogue_name': name},
             files={'catalogue_file': ('nsa.csv', BytesIO(content), 'text/csv')},
             follow_redirects=False,
@@ -9928,7 +9929,7 @@ def test_admin_importer_imports_every_template_into_one_library(client) -> None:
     assert {'Imported template', 'Second', 'Third'} <= set(names)
     assert sum(1 for row in app_module.repository.list_report_templates() if row['is_default']) == 1
     # Templates have no NR Mode to change any more.
-    assert client.post('/workspace-config/report-templates/Second/type', data={'template_type': 'sa'}).status_code == 404
+    assert client.post('/ppt-designer/templates/Second/type', data={'template_type': 'sa'}).status_code == 404
 
 
 def test_docs_routes_expose_readme_changelog_and_help(client) -> None:

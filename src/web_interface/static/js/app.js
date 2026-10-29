@@ -3642,7 +3642,7 @@ document.querySelectorAll('[data-catalogue-editor]').forEach((editor) => {
   let validationRevision = 0;
   const validateCatalogueContent = async (content, revision, showNetworkError = false) => {
     try {
-      const response = await fetch('/api/workspace-config/report-templates/validate', {
+      const response = await fetch('/api/ppt-designer/templates/validate', {
         method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({catalogue_content: content}),
       });
@@ -4459,20 +4459,14 @@ function bindCatalogueAutoRename(input) {
     const row = input.closest('tr');
     if (!row) return;
     const previousName = decodeURIComponent(previousIdentifier);
-    const oldSegment = `/workspace-config/report-templates/${encodeURIComponent(previousName)}/`;
-    const newSegment = `/workspace-config/report-templates/${encodeURIComponent(identifier)}/`;
-    const rawOldSegment = `/workspace-config/report-templates/${previousName}/`;
+    const oldSegment = `/ppt-designer/templates/${encodeURIComponent(previousName)}/`;
+    const newSegment = `/ppt-designer/templates/${encodeURIComponent(identifier)}/`;
+    const rawOldSegment = `/ppt-designer/templates/${previousName}/`;
     row.querySelectorAll('form[action], a[href]').forEach((element) => {
       const attribute = element.tagName === 'A' ? 'href' : 'action';
       const value = element.getAttribute(attribute);
       if (value?.includes(rawOldSegment)) element.setAttribute(attribute, value.replace(rawOldSegment, newSegment));
       else if (value?.includes(oldSegment)) element.setAttribute(attribute, value.replace(oldSegment, newSegment));
-    });
-    row.querySelectorAll('[data-open-template-editor]').forEach((element) => {
-      const value = element.getAttribute('data-open-template-editor');
-      if (value?.includes(rawOldSegment)) element.setAttribute('data-open-template-editor', value.replace(rawOldSegment, newSegment));
-      else if (value?.includes(oldSegment)) element.setAttribute('data-open-template-editor', value.replace(oldSegment, newSegment));
-      element.setAttribute('data-template-name', input.value.trim());
     });
     row.querySelectorAll('[data-edit-template]').forEach((element) => element.setAttribute('data-edit-template', identifier));
     document.querySelectorAll('select[name="catalogue_selection"] option').forEach((option) => {
@@ -4567,34 +4561,7 @@ document.querySelectorAll('.catalogue-editor-picker-form').forEach((form) => {
   form.addEventListener('submit', () => preserveAdminScrollPosition());
 });
 
-const adminTemplateEditor = document.querySelector('[data-admin-template-editor]');
-const adminTemplateEditorFrame = document.querySelector('[data-admin-template-editor-frame]');
-const adminTemplateEditorClose = document.querySelector('[data-admin-template-editor-close]');
-const adminTemplateEditorTitle = document.querySelector('[data-admin-template-editor-title]');
-const closeAdminTemplateEditor = () => {
-  if (adminTemplateEditor) adminTemplateEditor.hidden = true;
-  if (adminTemplateEditorFrame) adminTemplateEditorFrame.removeAttribute('src');
-};
-document.querySelectorAll('[data-open-template-editor]').forEach((button) => {
-  button.addEventListener('click', () => {
-    if (!adminTemplateEditor || !adminTemplateEditorFrame) return;
-    adminTemplateEditorFrame.src = button.dataset.openTemplateEditor || '';
-    if (adminTemplateEditorTitle) adminTemplateEditorTitle.textContent = `Edit PPT Template: "${button.dataset.templateName || 'Selected Template'}"`;
-    adminTemplateEditor.hidden = false;
-    adminTemplateEditorClose?.focus();
-  });
-});
-adminTemplateEditor?.addEventListener('click', (event) => {
-  if (event.target === adminTemplateEditor || event.target.closest('[data-admin-template-editor-close]')) closeAdminTemplateEditor();
-});
-window.addEventListener('message', (event) => {
-  if (event.origin === window.location.origin && event.data?.type === 'drivetest-analyzer:close-template-editor') closeAdminTemplateEditor();
-});
-document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape' && adminTemplateEditor && !adminTemplateEditor.hidden) closeAdminTemplateEditor();
-});
-
-document.querySelectorAll('form[action*="/workspace-config/report-templates/"]').forEach((form) => {
+document.querySelectorAll('form[action*="/ppt-designer/templates/"]').forEach((form) => {
   if (form.classList.contains('catalogue-rename-form')) return;
   form.addEventListener('submit', () => preserveAdminScrollPosition());
 });
@@ -9359,7 +9326,7 @@ function bindConfirmForm(form) {
       if (form.dataset.confirmLoadingLabel) {
         showLoadingOverlay(form.dataset.confirmLoadingLabel, form.dataset.confirmLoadingCopy);
       }
-      if (form.action.includes('/workspace-config/report-templates/')) {
+      if (form.action.includes('/ppt-designer/templates/')) {
         preserveAdminScrollPosition();
       }
       if (isChartMappingForm(form)) await submitChartMappingForm(form);

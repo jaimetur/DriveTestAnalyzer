@@ -1179,7 +1179,7 @@
     const openTemplateEditor = (templateRowIndex = null) => {
       if (!activeChartSetTemplate || !reportTemplateEditor || !reportTemplateEditorFrame) return;
       const editorUrl = new URL(
-        `/workspace-config/report-templates/${encodeURIComponent(activeChartSetTemplate)}/editor`,
+        `/ppt-designer/templates/${encodeURIComponent(activeChartSetTemplate)}/editor`,
         window.location.origin,
       );
       if (Number.isInteger(templateRowIndex) && templateRowIndex >= 0) editorUrl.searchParams.set('focus_row', String(templateRowIndex));

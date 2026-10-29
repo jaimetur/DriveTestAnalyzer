@@ -3698,7 +3698,7 @@
     }
   };
   const templateEditorBaseUrl = (sourceDefinition = definition) => sourceDefinition
-    ? `/workspace-config/report-templates/${encodeURIComponent(sourceDefinition.template)}/editor`
+    ? `/ppt-designer/templates/${encodeURIComponent(sourceDefinition.template)}/editor`
     : '';
   const focusTemplateEditorRow = row => {
     const frame = $('ds-editor-frame');

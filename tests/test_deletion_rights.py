@@ -237,10 +237,10 @@ def test_ppt_templates_are_deleted_by_their_creator_or_an_admin(client):
         columns = {row[1] for row in connection.execute('PRAGMA table_info(report_templates)')}
     assert 'created_by' in columns
     login(client, 'alice', 'alice123')
-    assert client.post('/workspace-config/slides-templates/new', follow_redirects=False).status_code == 303
+    assert client.post('/ppt-designer/templates/new', follow_redirects=False).status_code == 303
     created = next(item for item in core.report_catalogue_options() if item['name'] == 'New Template')
     assert created['created_by'] == 'alice'
-    delete_url = f"/workspace-config/report-templates/{quote(created['identifier'])}/delete"
+    delete_url = f"/ppt-designer/templates/{quote(created['identifier'])}/delete"
 
     login(client, 'bob', 'bob123')
     # PPT Templates are managed from PPT Designer, where the refusal returns with its reason.
@@ -254,6 +254,39 @@ def test_ppt_templates_are_deleted_by_their_creator_or_an_admin(client):
     login(client, 'alice', 'alice123')
     assert client.post(delete_url, follow_redirects=False).status_code in {200, 303}
     assert not any(item['name'] == 'New Template' for item in core.report_catalogue_options())
+
+
+def test_ppt_templates_follow_the_rights_of_ppt_designer(client):
+    team()
+    workspace_user('vera', 'user-viewer')
+    with core.repository.connection() as connection:
+        connection.execute('DELETE FROM audit_logs')
+    login(client, 'alice', 'alice123')
+    assert client.post('/ppt-designer/templates/new', follow_redirects=False).status_code == 303
+    identifier = quote(next(item['identifier'] for item in core.report_catalogue_options() if item['name'] == 'New Template'))
+    # Managed in PPT Designer, not in Config: its App Events run there.
+    assert core.feature_for_path(f'/ppt-designer/templates/{identifier}/save') == 'ppt-designer'
+    assert {row['action']: row['origin'] for row in core.repository.list_logs(limit=None)}['create_report_template'] == 'module:ppt-designer'
+
+    # A user-editor changes only the PPT Templates they created.
+    login(client, 'bob', 'bob123')
+    refused = client.post(f'/ppt-designer/templates/{identifier}/rename', data={'catalogue_name': 'Taken'},
+                          headers={'Accept': 'application/json'})
+    assert refused.status_code == 403 and 'the user who created it' in refused.json()['error']
+    login(client, 'boss', 'boss123')
+    assert client.post(f'/ppt-designer/templates/{identifier}/rename', data={'catalogue_name': 'Renamed'},
+                       headers={'Accept': 'application/json'}).status_code == 200
+
+    # A user-viewer sees and exports them, but creates none.
+    login(client, 'vera', 'vera123')
+    assert client.get('/ppt-designer/templates/Renamed/export').status_code == 200
+    assert client.post('/ppt-designer/templates/new', follow_redirects=False).status_code == 403
+
+    # The former addresses under Workspace Config lead to the new ones.
+    moved = client.post('/workspace-config/slides-templates/new', follow_redirects=False)
+    assert moved.status_code == 307 and moved.headers['location'] == '/ppt-designer/templates/new'
+    moved = client.get('/workspace-config/report-templates/Renamed%20Q4/export?x=1', follow_redirects=False)
+    assert moved.headers['location'] == '/ppt-designer/templates/Renamed%20Q4/export?x=1'
 
 
 def test_items_without_a_known_creator_are_assigned_to_the_default_super_admin(client):

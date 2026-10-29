@@ -5789,6 +5789,22 @@ def config_editor_user(user: SessionUser = Depends(current_user)) -> SessionUser
     return user
 
 
+def ppt_template_user(user: SessionUser = Depends(current_user)) -> SessionUser:
+    """The PPT Templates are managed in PPT Designer and follow its rights: whoever opens the active workspace sees and
+    exports them."""
+    if active_workspace and user.role != 'super-admin' and not repository.user_has_workspace_access(user.username, active_workspace.id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='You do not have access to the active workspace.')
+    return user
+
+
+def ppt_template_editor_user(user: SessionUser = Depends(ppt_template_user)) -> SessionUser:
+    """User-editors, admins and super-admins create PPT Templates; a user-editor changes and deletes only the ones they
+    created (ensure_report_template_editable), as with the PPT Designs."""
+    if user.role not in {'user-editor', 'admin', 'super-admin'}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Editor access required.')
+    return user
+
+
 def super_admin_user(user: SessionUser = Depends(current_user)) -> SessionUser:
     if user.role != 'super-admin':
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Super-admin access required')
@@ -24773,11 +24789,11 @@ def create_backup_directory(
     return JSONResponse({'path': str(created.resolve())})
 
 
-@app.get('/workspace-config/report-templates/{catalogue_id}/editor', response_class=HTMLResponse)
+@app.get('/ppt-designer/templates/{catalogue_id}/editor', response_class=HTMLResponse)
 def embedded_report_template_editor(
     request: Request,
     catalogue_id: str,
-    user: SessionUser = Depends(config_editor_user),
+    user: SessionUser = Depends(ppt_template_editor_user),
 ) -> HTMLResponse:
     """Render only the selected Report Template editor for modal iframes."""
     editor = catalogue_editor_payload(catalogue_id)
@@ -24792,11 +24808,29 @@ def embedded_report_template_editor(
     })
 
 
-@app.get('/workspace-config/report-templates/{technology}/{catalogue_id}/editor', response_class=HTMLResponse)
-def legacy_report_template_editor(technology: str, catalogue_id: str, user: SessionUser = Depends(config_editor_user)) -> Response:
+@app.get('/ppt-designer/templates/{technology}/{catalogue_id}/editor', response_class=HTMLResponse)
+def legacy_report_template_editor(technology: str, catalogue_id: str, user: SessionUser = Depends(ppt_template_editor_user)) -> Response:
     """Links of before named the NR Mode library of the template too: they open its editor."""
     del technology, user
-    return RedirectResponse(f'/workspace-config/report-templates/{quote(catalogue_id, safe="")}/editor',
+    return RedirectResponse(f'/ppt-designer/templates/{quote(catalogue_id, safe="")}/editor',
+                            status_code=status.HTTP_307_TEMPORARY_REDIRECT)
+
+
+# The PPT Templates moved from Workspace Config to PPT Designer: their former addresses lead to the new ones.
+LEGACY_PPT_TEMPLATE_PREFIXES = (('/api/workspace-config/report-templates', '/api/ppt-designer/templates'),
+                                ('/workspace-config/report-templates', '/ppt-designer/templates'),
+                                ('/workspace-config/slides-templates', '/ppt-designer/templates'))
+
+
+@app.api_route('/workspace-config/report-templates', methods=['GET', 'POST'], include_in_schema=False)
+@app.api_route('/workspace-config/report-templates/{rest:path}', methods=['GET', 'POST', 'PUT'], include_in_schema=False)
+@app.api_route('/workspace-config/slides-templates/{rest:path}', methods=['GET', 'POST'], include_in_schema=False)
+@app.api_route('/api/workspace-config/report-templates/{rest:path}', methods=['GET', 'POST', 'PUT'], include_in_schema=False)
+def legacy_ppt_template_address(request: Request) -> RedirectResponse:
+    path = request.url.path
+    old, new = next((old, new) for old, new in LEGACY_PPT_TEMPLATE_PREFIXES if path == old or path.startswith(old + '/'))
+    target = quote(new + path[len(old):], safe='/')
+    return RedirectResponse(f"{target}?{request.url.query}" if request.url.query else target,
                             status_code=status.HTTP_307_TEMPORARY_REDIRECT)
 
 
@@ -26611,37 +26645,37 @@ def _import_report_catalogue(
     return ppt_templates_redirect(catalogue_notice=f"{action} {catalogue_name}.")
 
 
-@app.post('/workspace-config/report-templates', response_class=HTMLResponse)
+@app.post('/ppt-designer/templates', response_class=HTMLResponse)
 def import_report_catalogue(
     request: Request,
     catalogue_file: UploadFile | None = File(default=None),
     catalogue_name: str = Form(''),
     convert_catalogue: bool = Form(False),
     overwrite_existing: bool = Form(False),
-    user: SessionUser = Depends(config_editor_user),
+    user: SessionUser = Depends(ppt_template_editor_user),
 ) -> HTMLResponse:
     """Import one Report Template CSV into the library."""
     return _import_report_catalogue(request, catalogue_file, catalogue_name, convert_catalogue, overwrite_existing, user)
 
 
-@app.post('/workspace-config/slides-templates/import', response_class=HTMLResponse)
+@app.post('/ppt-designer/templates/import', response_class=HTMLResponse)
 def import_slides_template(
     request: Request,
     catalogue_file: UploadFile | None = File(default=None),
     catalogue_name: str = Form(''),
     convert_catalogue: bool = Form(False),
     overwrite_existing: bool = Form(False),
-    user: SessionUser = Depends(config_editor_user),
+    user: SessionUser = Depends(ppt_template_editor_user),
 ) -> HTMLResponse:
     """Import one Report Template from the Import PPT Template row of Workspace Config."""
     return _import_report_catalogue(request, catalogue_file, catalogue_name, convert_catalogue, overwrite_existing, user)
 
 
-@app.post('/workspace-config/report-templates/{catalogue_id}/activate', response_class=HTMLResponse)
+@app.post('/ppt-designer/templates/{catalogue_id}/activate', response_class=HTMLResponse)
 def activate_report_catalogue(
     request: Request,
     catalogue_id: str,
-    user: SessionUser = Depends(config_editor_user),
+    user: SessionUser = Depends(ppt_template_editor_user),
 ) -> HTMLResponse:
     available = {option['identifier']: option for option in report_catalogue_options()}
     if catalogue_id not in available:
@@ -26666,12 +26700,12 @@ def ensure_report_template_editable(user: SessionUser, template_name: str) -> No
         raise PermissionError('Only admins and super-admins, or the user who created it, can change this PPT Template.')
 
 
-@app.post('/workspace-config/report-templates/{catalogue_id}/rename', response_class=HTMLResponse)
+@app.post('/ppt-designer/templates/{catalogue_id}/rename', response_class=HTMLResponse)
 def rename_report_catalogue(
     request: Request,
     catalogue_id: str,
     catalogue_name: str = Form(...),
-    user: SessionUser = Depends(config_editor_user),
+    user: SessionUser = Depends(ppt_template_editor_user),
 ) -> HTMLResponse:
     catalogue = _named_catalogue(catalogue_id)
     if not catalogue:
@@ -26710,11 +26744,11 @@ def rename_report_catalogue(
     return ppt_templates_redirect()
 
 
-@app.post('/workspace-config/report-templates/{catalogue_id}/duplicate', response_class=HTMLResponse)
+@app.post('/ppt-designer/templates/{catalogue_id}/duplicate', response_class=HTMLResponse)
 def duplicate_report_catalogue(
     request: Request,
     catalogue_id: str,
-    user: SessionUser = Depends(config_editor_user),
+    user: SessionUser = Depends(ppt_template_editor_user),
 ) -> HTMLResponse:
     catalogue = _named_catalogue(catalogue_id)
     if not catalogue:
@@ -26737,9 +26771,9 @@ def duplicate_report_catalogue(
     return ppt_templates_redirect()
 
 
-@app.post('/workspace-config/slides-templates/new', response_class=HTMLResponse)
+@app.post('/ppt-designer/templates/new', response_class=HTMLResponse)
 def create_empty_report_catalogue(
-    user: SessionUser = Depends(config_editor_user),
+    user: SessionUser = Depends(ppt_template_editor_user),
 ) -> HTMLResponse:
     """Create a blank template that can immediately be renamed or edited."""
     names = {str(row['name']) for row in repository.list_report_templates()}
@@ -26758,12 +26792,12 @@ def create_empty_report_catalogue(
     return ppt_templates_redirect(edit_template=name)
 
 
-@app.post('/workspace-config/report-templates/{catalogue_id}/delete', response_class=HTMLResponse)
+@app.post('/ppt-designer/templates/{catalogue_id}/delete', response_class=HTMLResponse)
 def delete_report_catalogue(
     request: Request,
     background_tasks: BackgroundTasks,
     catalogue_id: str,
-    user: SessionUser = Depends(config_editor_user),
+    user: SessionUser = Depends(ppt_template_editor_user),
 ) -> HTMLResponse:
     from src.modules.deletion_rights import can_delete, deletion_refusal
     catalogue = _named_catalogue(catalogue_id)
@@ -26826,10 +26860,10 @@ def reconcile_saved_template_comments(
         }))
 
 
-@app.post('/api/workspace-config/report-templates/validate')
+@app.post('/api/ppt-designer/templates/validate')
 async def validate_report_catalogue_content(
     request: Request,
-    user: SessionUser = Depends(config_editor_user),
+    user: SessionUser = Depends(ppt_template_editor_user),
 ) -> JSONResponse:
     """Validate edited CSV without waiting for a Workspace database write."""
     del user
@@ -26878,12 +26912,12 @@ def nr_mode_field_warnings(entries: Iterable[CatalogEntry], task_repository: Rep
     return warnings
 
 
-@app.post('/workspace-config/report-templates/{catalogue_id}/save')
+@app.post('/ppt-designer/templates/{catalogue_id}/save')
 def save_report_catalogue(
     request: Request,
     catalogue_id: str,
     catalogue_content: str = Form(...),
-    user: SessionUser = Depends(config_editor_user),
+    user: SessionUser = Depends(ppt_template_editor_user),
 ) -> Response:
     wants_json = 'application/json' in request.headers.get('accept', '')
     try:
@@ -26951,11 +26985,11 @@ def template_preview_entry(entry: CatalogEntry, nr_mode: object) -> CatalogEntry
     return entry_for_nr_mode(entry, nr_mode)
 
 
-@app.post('/workspace-config/report-templates/{catalogue_id}/chart-preview')
+@app.post('/ppt-designer/templates/{catalogue_id}/chart-preview')
 async def preview_report_template_chart(
     request: Request,
     catalogue_id: str,
-    user: SessionUser = Depends(config_editor_user),
+    user: SessionUser = Depends(ppt_template_editor_user),
 ) -> Response:
     """Preview one unsaved editor chart against the ready CDRs of the NR Mode chosen in the editor."""
     if not active_workspace:
@@ -27066,11 +27100,11 @@ async def preview_report_template_chart(
     })
 
 
-@app.post('/workspace-config/report-templates/{catalogue_id}/chart-image-preview')
+@app.post('/ppt-designer/templates/{catalogue_id}/chart-image-preview')
 async def preview_report_template_chart_image(
     request: Request,
     catalogue_id: str,
-    user: SessionUser = Depends(config_editor_user),
+    user: SessionUser = Depends(ppt_template_editor_user),
 ) -> Response:
     """Render one unsaved editor chart using the regular report renderer, with the CDRs of the NR Mode chosen in the
     editor."""
@@ -27126,8 +27160,8 @@ def _report_catalogue_download(catalogue: dict[str, Any], user: SessionUser) -> 
     )
 
 
-@app.get('/workspace-config/report-templates/export')
-def export_report_catalogue(user: SessionUser = Depends(config_editor_user)) -> Response:
+@app.get('/ppt-designer/templates/export')
+def export_report_catalogue(user: SessionUser = Depends(ppt_template_user)) -> Response:
     """Download the default Report Template."""
     active = next((item for item in report_catalogue_options() if item['active']), None)
     if not active:
@@ -27135,10 +27169,10 @@ def export_report_catalogue(user: SessionUser = Depends(config_editor_user)) -> 
     return _report_catalogue_download(active, user)
 
 
-@app.get('/workspace-config/report-templates/export-selected')
+@app.get('/ppt-designer/templates/export-selected')
 def export_selected_report_catalogue(
     catalogue_selection: str,
-    user: SessionUser = Depends(config_editor_user),
+    user: SessionUser = Depends(ppt_template_user),
 ) -> Response:
     catalogue_id = catalogue_selection.strip()
     # Selections of before named the NR Mode library of the template too (nsa:Name).
@@ -27152,8 +27186,8 @@ def export_selected_report_catalogue(
     return _report_catalogue_download(catalogue, user)
 
 
-@app.get('/workspace-config/report-templates/{catalogue_id}/export')
-def export_named_report_catalogue(catalogue_id: str, user: SessionUser = Depends(config_editor_user)) -> Response:
+@app.get('/ppt-designer/templates/{catalogue_id}/export')
+def export_named_report_catalogue(catalogue_id: str, user: SessionUser = Depends(ppt_template_user)) -> Response:
     catalogue = _named_catalogue(catalogue_id)
     if not catalogue:
         raise HTTPException(status_code=404, detail='Report Template not found')
@@ -27706,8 +27740,8 @@ def _catalogue_slide_blocks(entries: list[CatalogEntry]) -> list[list[CatalogEnt
     return blocks
 
 
-@app.get('/api/workspace-config/report-templates/copy-options')
-def report_catalogue_copy_options(user: SessionUser = Depends(config_editor_user)) -> JSONResponse:
+@app.get('/api/ppt-designer/templates/copy-options')
+def report_catalogue_copy_options(user: SessionUser = Depends(ppt_template_editor_user)) -> JSONResponse:
     templates: list[dict[str, Any]] = []
     for catalogue in report_catalogue_options():
         try:
@@ -27830,10 +27864,10 @@ def get_workspace_calculated_dimensions(
     }, headers={'Cache-Control': 'no-store'})
 
 
-@app.put('/api/workspace-config/report-templates/{catalogue_id}/calculated-dimensions')
+@app.put('/api/ppt-designer/templates/{catalogue_id}/calculated-dimensions')
 async def save_report_template_calculated_dimensions(
     request: Request, catalogue_id: str,
-    user: SessionUser = Depends(config_editor_user),
+    user: SessionUser = Depends(ppt_template_editor_user),
 ) -> JSONResponse:
     """Backward-compatible editor endpoint backed by the active workspace."""
     return await _save_workspace_dimensions(request, user)
@@ -28033,11 +28067,11 @@ async def import_workspace_calculated_dimensions(
     return RedirectResponse(f'/workspace?{query}#calculated-dimensions', status_code=303)
 
 
-@app.post('/workspace-config/report-templates/{catalogue_id}/copy-items')
+@app.post('/ppt-designer/templates/{catalogue_id}/copy-items')
 async def copy_report_catalogue_items(
     request: Request,
     catalogue_id: str,
-    user: SessionUser = Depends(config_editor_user),
+    user: SessionUser = Depends(ppt_template_editor_user),
 ) -> JSONResponse:
     try:
         payload = await request.json()

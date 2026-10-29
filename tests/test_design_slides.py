@@ -282,7 +282,7 @@ def test_detach_save_as_template_and_deleting_a_template_keep_every_design_worki
     assert detached.json()['detached'] is True and stored('design-a')['own_slides']['slides'][0]['title'] == 'Mine'
 
     # Deleting the template detaches the Designs still following it.
-    assert client.post('/workspace-config/report-templates/Design test/delete', follow_redirects=False).status_code == 303
+    assert client.post('/ppt-designer/templates/Design test/delete', follow_redirects=False).status_code == 303
     assert stored('design-b')['own_slides']['slides'][0]['title'] == 'Comparison'
     assert logged('delete_report_template')[-1]['detached_designs'] == 1
     for name in ('Design one', 'Design sibling'):
@@ -308,7 +308,7 @@ def test_a_user_editor_designs_only_what_they_created(client):
     mine = client.get('/api/ppt-designer/mine/slides?edit=1').json()
     assert mine['rights'] == {'design': True, 'template': False}
     assert client.put('/api/ppt-designer/mine/slides', json={'slide_set': mine['slide_set']}).status_code == 200
-    saved = client.post('/workspace-config/report-templates/Design test/save', data={'catalogue_content': TEMPLATE},
+    saved = client.post('/ppt-designer/templates/Design test/save', data={'catalogue_content': TEMPLATE},
                         headers={'accept': 'application/json'})
     assert saved.status_code == 403
 

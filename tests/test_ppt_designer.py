@@ -3194,7 +3194,7 @@ def test_report_template_changes_record_the_last_editor(client):
     writer.writerow(row)
     content = buffer.getvalue().encode()
     response = client.post(
-        '/workspace-config/report-templates', data={'catalogue_name': 'Editor audit'},
+        '/ppt-designer/templates', data={'catalogue_name': 'Editor audit'},
         files={'catalogue_file': ('x.csv', BytesIO(content), 'text/csv')}, follow_redirects=False,
     )
     assert response.status_code == 303

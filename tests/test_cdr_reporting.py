@@ -3919,7 +3919,7 @@ def test_chart_preview_focus_row_matches_the_editors_sorted_row(client, ppt_repo
         + '\n1,First slide,,Title and 1 column + Comments,First chart,CDR-Data,Mean_Data_Rate,Average Vertical Bars,,Operator,,,,,\n'
     ).encode()
     imported = client.post(
-        '/workspace-config/report-templates', data={'catalogue_name': 'Out of order'},
+        '/ppt-designer/templates', data={'catalogue_name': 'Out of order'},
         files={'catalogue_file': ('out-of-order.csv', BytesIO(content), 'text/csv')},
         follow_redirects=False,
     )
@@ -3948,7 +3948,7 @@ def test_template_chart_image_preview_uses_combined_reporting_rows(client, monke
         + '\n1,Preview slide,,Title and 1 column + Comments,Preview chart,CDR-Data,Mean_Data_Rate,Average Vertical Bars,,Operator,Campaign,,Top\n'
     )
     created = client.post(
-        '/workspace-config/report-templates', data={'catalogue_name': 'Combined Preview'},
+        '/ppt-designer/templates', data={'catalogue_name': 'Combined Preview'},
         files={'catalogue_file': ('combined-preview.csv', BytesIO(catalogue_content.encode()), 'text/csv')},
         follow_redirects=False,
     )
@@ -3977,16 +3977,16 @@ def test_template_chart_image_preview_uses_combined_reporting_rows(client, monke
     )
 
     data_preview = client.post(
-        '/workspace-config/report-templates/Combined%20Preview/chart-preview',
+        '/ppt-designer/templates/Combined%20Preview/chart-preview',
         json={'catalogue_content': catalogue_content, 'row_index': 0},
     )
     data_export = client.post(
-        '/workspace-config/report-templates/Combined%20Preview/chart-preview',
+        '/ppt-designer/templates/Combined%20Preview/chart-preview',
         json={'catalogue_content': catalogue_content, 'row_index': 0, 'download': True},
     )
 
     preview = client.post(
-        '/workspace-config/report-templates/Combined%20Preview/chart-image-preview',
+        '/ppt-designer/templates/Combined%20Preview/chart-image-preview',
         json={'catalogue_content': catalogue_content, 'row_index': 0},
     )
 
@@ -4001,7 +4001,7 @@ def test_template_chart_image_preview_uses_combined_reporting_rows(client, monke
     assert observed['multivendor'] is False
     # The previews read the CDRs of the Preview NR Mode of the editor (NSA by default): this CDR is NSA.
     sa_preview = client.post(
-        '/workspace-config/report-templates/Combined%20Preview/chart-image-preview',
+        '/ppt-designer/templates/Combined%20Preview/chart-image-preview',
         json={'catalogue_content': catalogue_content, 'row_index': 0, 'nr_mode': 'SA'},
     )
     assert sa_preview.status_code == 400 and 'No processed SA CDR-Data datasets' in sa_preview.json()['detail']

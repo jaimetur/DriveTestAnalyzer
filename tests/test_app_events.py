@@ -80,7 +80,7 @@ def test_scoring_report_configuration_changes_are_recorded(client) -> None:
 def test_report_template_export_is_recorded(client) -> None:
     login(client)
 
-    exported = client.get('/workspace-config/report-templates/export')
+    exported = client.get('/ppt-designer/templates/export')
 
     assert exported.status_code == 200
     # The default template, which serves any NR Mode.
