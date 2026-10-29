@@ -188,6 +188,8 @@
       types));
     // Choosing a chart type closes them (a setting of the type chosen, under them, does not).
     globalThis.ChartShelves?.renderTypes(types, {...options, onChange: (changes) => { if ('chart_type' in changes) typesOpen = false; options.onChange(changes); }});
+    // Its cells as large as the chart lets them (left of the tab).
+    globalThis.ChartShelves?.fitTypes?.(viewerPanel.querySelector('#chart-builder-types'), viewerPanel.clientWidth - 38);
   }
   document.addEventListener('pointerdown', (event) => {
     if (typesOpen && !event.target.closest?.('#chart-builder-types, .ds-design-types-tab')) { typesOpen = false; render(); }

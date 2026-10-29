@@ -167,6 +167,16 @@
     h('span', {class: 'ds-cb-type-needs-mark', 'aria-hidden': 'true', text: ready ? '✓' : 'i'}),
     h('span', {}, h('strong', {text: item.type}), ` needs ${lower(requirement(item))}`));
   };
+  // Chart Type in a room ``width`` pixels wide: cells as large as fit the widest group (four chart types) on its row, from 80
+  // to 168 pixels.
+  const TYPES_PER_ROW = Math.max(...TYPE_GROUPS.map(([, names]) => names.length));
+  const MINIMUM_TYPE_CELL = 80;
+  const fitTypes = (panel, width) => {
+    const cell = Math.max(MINIMUM_TYPE_CELL, Math.min(168, Math.floor((width - 40 - (TYPES_PER_ROW - 1) * 4) / TYPES_PER_ROW)));
+    panel.style.setProperty('--ds-type-cell', `${cell}px`);
+  };
+  // The narrowest room beside a chart where Chart Type reads well (cells of 112 pixels); narrower, it takes the slide.
+  const typesMinimumWidth = () => TYPES_PER_ROW * 112 + 40 + (TYPES_PER_ROW - 1) * 4;
   const typeButton = (item, {values, shelfState, change}, props = {}) => {
     const verdict = shelfState.empty || item.need(shelfState);
     const active = item.type.toLowerCase() === String(values.chart_type || '').toLowerCase();
@@ -542,5 +552,5 @@
     placePopover(menu, anchor);
   }
 
-  window.ChartShelves = {render, renderTypes, picture, typesIcon, needsNote, kpiParts, kpiField, groupRank};
+  window.ChartShelves = {render, renderTypes, picture, typesIcon, needsNote, fitTypes, typesMinimumWidth, kpiParts, kpiField, groupRank};
 })();

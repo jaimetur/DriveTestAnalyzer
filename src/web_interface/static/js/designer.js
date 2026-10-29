@@ -1287,10 +1287,22 @@
     if (types) {
       stage.append(types);
       const room = stage.getBoundingClientRect(), chart = card.getBoundingClientRect(), width = tab.offsetWidth;
-      // At the left of the tab, or at the right of the chart when there is more room there.
-      if (chart.right - width - room.left >= room.right - chart.right) {
-        Object.assign(types.style, {left: 'auto', right: `${room.right - chart.right + width + 4}px`, maxWidth: `${Math.max(0, chart.right - width - room.left - 8)}px`});
-      } else Object.assign(types.style, {left: `${chart.right - room.left + 4}px`, right: 'auto', maxWidth: `${room.right - chart.right - 8}px`});
+      const left = chart.right - width - room.left - 8, right = room.right - chart.right - 8;
+      // At the left of the tab, or at the right of the chart when there is more room there; over the whole slide when neither
+      // side has room for a row of four chart types that read well. Its cells as large as the room lets them.
+      const minimum = window.ChartShelves?.typesMinimumWidth?.() || 0;
+      let available;
+      if (Math.max(left, right) < minimum) {
+        available = room.width - 13;
+        Object.assign(types.style, {left: '6px', right: 'auto', maxWidth: `${available}px`});
+      } else if (left >= right) {
+        available = left;
+        Object.assign(types.style, {left: 'auto', right: `${room.right - chart.right + width + 4}px`, maxWidth: `${left}px`});
+      } else {
+        available = right;
+        Object.assign(types.style, {left: `${chart.right - room.left + 4}px`, right: 'auto', maxWidth: `${right}px`});
+      }
+      window.ChartShelves?.fitTypes?.(types, available);
     }
     return [];
   }
