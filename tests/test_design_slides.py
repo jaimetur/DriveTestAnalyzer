@@ -555,6 +555,44 @@ def test_free_places_kpi_cards_repeat_text_and_pictures_are_laid_out_on_the_prep
     assert picture_chart['position'] == pytest.approx([50, 0, 50, 100])
 
 
+def test_the_pictures_of_designs_and_templates_travel_with_their_packages(client, tmp_path):
+    import io
+    import zipfile
+    setup(client)
+    image = client.post('/api/ppt-designer/images', files={'file': ('logo.png', png(8, 2), 'image/png')}).json()
+    body = client.get('/api/ppt-designer/design-a/slides?edit=1').json()
+    edited = copy.deepcopy(body['slide_set'])
+    second = edited['slides'][1]
+    second['options'] = {'geometry': [[0, 0, 50, 100], [50, 0, 50, 100]]}
+    second['elements'] = [second['elements'][0], element('s2e9', 'image', 1, {'image': image['id'], 'fit': 'contain'})]
+    # The picture in a slide of the Design (This Design) and of its template (Template scope).
+    assert client.put('/api/ppt-designer/design-a/slides', json={'slide_set': edited}).status_code == 200
+    assert client.put('/api/ppt-designer/design-a/slides', json={'template_slide_set': edited, 'template_updated_at': body['template']['updated_at']}).status_code == 200
+
+    def forget_picture():
+        with core.repository.connection() as connection:
+            connection.execute('DELETE FROM design_images WHERE id = ?', (image['id'],))
+        assert client.get(f"/api/ppt-designer/images/{image['id']}").status_code == 404
+
+    # PPT Designs: the package brings the pictures of their slides, and an import adds them.
+    workspace = core.active_workspace
+    payload = core._design_archive_payload(workspace)
+    assert list(json.loads(payload)['images']) == [image['id']]
+    forget_picture()
+    core._import_workspace_designs(workspace, payload, 'super')
+    assert client.get(f"/api/ppt-designer/images/{image['id']}").status_code == 200
+    # PPT Templates: beside their CSV files.
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, 'w') as archive:
+        core._archive_workspace_report_templates(archive, workspace, 'report-templates')
+    with zipfile.ZipFile(buffer) as archive:
+        assert 'report-templates/design-images.json' in archive.namelist()
+        archive.extractall(tmp_path)
+    forget_picture()
+    core.import_slides_templates_archive(tmp_path, [workspace.id], {}, includes_designs=True)
+    assert client.get(f"/api/ppt-designer/images/{image['id']}").status_code == 200
+
+
 def test_text_boxes_and_pictures_are_native_shapes_of_the_exported_ppt(client):
     import time
     from pptx import Presentation

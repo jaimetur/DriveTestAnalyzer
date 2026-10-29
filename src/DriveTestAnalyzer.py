@@ -9062,9 +9062,12 @@ def _design_archive_payload(workspace: Workspace) -> bytes:
     from src.modules.transfer_identities import PPT_DESIGNER as DESIGN_IDENTITIES, identities
     # The identity of each PPT Design (its ID, or that of the package it came from) and its creator.
     uids, known = identities(task_repository, DESIGN_IDENTITIES), creators(task_repository, PPT_DESIGNER)
+    from src.modules.design_images import portable_images, referenced_images
     return json.dumps({'format': 'drivetest-analyzer-designs', 'version': 1, 'designs': designs, 'cdrs': cdrs,
                        'identities': {key: uids.get(str(key).casefold()) or str(key) for key in designs},
-                       'creators': {key: known[str(key).casefold()] for key in designs if known.get(str(key).casefold())}},
+                       'creators': {key: known[str(key).casefold()] for key in designs if known.get(str(key).casefold())},
+                       # The pictures of the Image elements of their own slides.
+                       'images': portable_images(task_repository, referenced_images(designs))},
                       ensure_ascii=False, indent=2).encode('utf-8')
 
 
@@ -9175,6 +9178,8 @@ def _import_workspace_designs(workspace: Workspace, payload: bytes, importing_us
             package_creators.get(design_id), local_creators.get(str(target).casefold(), ''), importing_user))
     task_repository.set_workspace_state(DESIGN_STATE_KEY, json.dumps(current, ensure_ascii=False))
     set_identities(task_repository, DESIGN_IDENTITIES, imported_uids)
+    from src.modules.design_images import restore_images
+    restore_images(task_repository, document.get('images'))
     return matcher.summary()
 
 
@@ -10895,10 +10900,12 @@ def _archive_workspace_report_templates(
     template, default/<file>."""
     target_repository = Repository(workspace.database_path, global_db_path=repository.global_db_path)
     target_repository.initialize_template_registry()
+    contents = []
     for row in target_repository.list_report_templates():
         content = _template_row_content(row)
         if not content:
             continue
+        contents.append(content)
         archive.writestr(f'{archive_prefix}/library/{template_filename(str(row["name"]))}', content)
         if progress_callback:
             progress_callback(len(content))
@@ -10906,6 +10913,11 @@ def _archive_workspace_report_templates(
             archive.writestr(f'{archive_prefix}/default/{template_filename(str(row["name"]))}', content)
             if progress_callback:
                 progress_callback(len(content))
+    # The pictures of the Image elements of their slides, beside them (an import adds those it does not have).
+    from src.modules.design_images import portable_images, template_images
+    images = portable_images(target_repository, template_images(contents))
+    if images:
+        archive.writestr(f'{archive_prefix}/{TEMPLATE_IMAGES_FILE}', json.dumps({'format': 'drivetest-analyzer-design-images', 'version': 1, 'images': images}))
 
 
 def migrate_ppt_module_names() -> None:
@@ -10985,11 +10997,29 @@ def import_slides_templates_archive(
         target_repository.initialize_template_registry()
         protected = set() if includes_designs else _design_template_references(target_repository)
         renamed = _merge_report_templates(target_repository, incoming, protected, importing_user, merge)
+        _restore_template_images(target_repository, templates_payload)
         if summary is not None and renamed:
             summary.append(summary_section(f'PPT Templates of "{workspace.name}"', renamed))
         shutil.rmtree(workspace.database_path.parent / 'slides-templates', ignore_errors=True)
     _clear_chart_preview_caches()
     return len(destinations)
+
+
+# The pictures of the Image elements of the slides of the PPT Templates of a package, beside their CSV files.
+TEMPLATE_IMAGES_FILE = 'design-images.json'
+
+
+def _restore_template_images(target_repository: Repository, templates_payload: Path) -> None:
+    from src.modules.design_images import restore_images
+
+    path = templates_payload / TEMPLATE_IMAGES_FILE
+    if not path.is_file():
+        return
+    try:
+        document = json.loads(path.read_text(encoding='utf-8'))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return
+    restore_images(target_repository, document.get('images') if isinstance(document, dict) else None)
 
 
 def package_report_template_path(relative: PurePath) -> tuple[str, str | None] | None:

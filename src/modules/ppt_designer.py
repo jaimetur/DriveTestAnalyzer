@@ -86,7 +86,7 @@ from src.modules.operator_roles import (
     drop_excluded_operators, excluded_operators, focus_operators, out_of_scope_operators, out_of_scope_pairs,
 )
 from src.modules import comment_writers, design_comments
-from src.modules import design_slides
+from src.modules import design_images, design_slides
 
 KINDS = ('data', 'voice', 'speech')
 
@@ -1290,12 +1290,7 @@ def install_design_routes(core):
 
     def ensure_design_images(task_repository) -> None:
         with task_repository.connection() as connection:
-            connection.execute(
-                f'CREATE TABLE IF NOT EXISTS {DESIGN_IMAGES_TABLE} ('
-                'id TEXT PRIMARY KEY, name TEXT NOT NULL DEFAULT \'\', content_type TEXT NOT NULL, data BLOB NOT NULL, '
-                'width INTEGER NOT NULL DEFAULT 0, height INTEGER NOT NULL DEFAULT 0, created_by TEXT NOT NULL DEFAULT \'\', '
-                'created_at TEXT NOT NULL)'
-            )
+            design_images.ensure_table(connection)
 
     @app.post('/api/ppt-designer/images')
     async def upload_design_slides_image(file: UploadFile = File(...), user=Depends(design_editor_user)):
@@ -2532,9 +2527,11 @@ def install_design_routes(core):
         workspace = core.active_workspace
         workspace_name = str(workspace.name if workspace else 'Workspace')
         archive_path = f'workspaces/{workspace_name}/designs/designs.json'
+        # (With the pictures of its own slides, which another workspace does not have.)
         payload = json.dumps({
             'format': 'drivetest-analyzer-designs', 'version': 1,
             'designs': {design_id: definition},
+            'images': design_images.portable_images(task_repository, design_images.referenced_images(definition)),
         }, ensure_ascii=False, indent=2).encode('utf-8')
         temporary = tempfile.NamedTemporaryFile(prefix='design-export-', suffix='.zip', delete=False)
         temporary.close()

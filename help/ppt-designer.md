@@ -455,7 +455,7 @@ A change the template cannot hold (a chart without a KPI or a split, for example
 | **Text box** | Text written with the editor of the tickets (bold, lists, headings), its size, alignment and colour, with fields and parameters | A text box of its own, bold, bullets and headings kept |
 | **Image** | A PNG, JPEG or GIF picture of up to 8 MB (an SVG can be saved as PNG first), fitted in its place keeping its ratio | A picture of its own |
 
-Pictures are kept in the table **PPT Images**. Text boxes and pictures read no CDR; PPT Reporting (old) leaves them out (a slide with only them keeps its title).
+Pictures are kept in the table **PPT Images** and travel with the PPT Designs and PPT Templates whose slides use them, in exports, transfers and backups (an import adds those the workspace does not have; the CSV of a template downloaded alone names them only). Text boxes and pictures read no CDR; PPT Reporting (old) leaves them out (a slide with only them keeps its title).
 
 ### Save, drafts and the other actions
 
