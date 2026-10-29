@@ -63,14 +63,23 @@
   }));
   const selected = () => Array.from(sources.selectedOptions).filter((option) => option.dataset.kind === type.value).map((option) => Number(option.value));
   // The chart as its template row would write it, built on the shelves (chart_shelves.js).
-  const chart = {chart_title: 'Ad-hoc chart', chart_type: '100% Stacked Vertical Bars', kpi: '', filters: '', rows_split: '', columns_split: '', legend: '', legend_position: 'top', legend_format: ''};
+  // Its format (style: series, legend, labels, axes) and its One chart per (repeat) are those of a chart of a PPT Design.
+  const chart = {chart_title: 'Ad-hoc chart', chart_type: '100% Stacked Vertical Bars', kpi: '', filters: '', rows_split: '', columns_split: '', legend: '', legend_position: 'top', legend_format: '',
+    label_position: '', label_format: '', axis_x_range: '', axis_y_range: '', style: {}, repeat: null};
+  // The panel shows the Data of the chart (its shelves and Chart Type) or its Format, as in the Designer.
+  let section = 'data';
   let fieldInfo = {fields: [], calculated_fields: []};
   const isKpiCard = () => String(chart.chart_type).toLowerCase() === 'kpi card';
   // (The settings of a KPI Card go with the chart only while it is one.)
   const definition = () => {
-    const {kpi_card: kpiCard, ...values} = chart;
-    return {...values, ...(isKpiCard() && kpiCard ? {kpi_card: kpiCard} : {}), cdr_source: `CDR-${type.value[0].toUpperCase()}${type.value.slice(1)}`};
+    const {kpi_card: kpiCard, repeat, ...values} = chart;
+    const own = isKpiCard() ? (kpiCard ? {kpi_card: kpiCard} : {}) : (repeat?.field ? {repeat} : {});
+    return {...values, ...own, cdr_source: `CDR-${type.value[0].toUpperCase()}${type.value.slice(1)}`};
   };
+  // Chart Type → KPI Card: the card of the latest campaign of its measure, its trend over the campaigns (as a KPI card of the
+  // Designer, its rows are the campaigns).
+  const typeChanges = (changes) => (String(changes.chart_type || '').toLowerCase() === 'kpi card' && !isKpiCard()
+    ? {...changes, rows_split: 'Campaign', columns_split: '', legend: ''} : changes);
   // A KPI Card: the figure of the latest campaign of its field (an average for a number, the share of a value otherwise),
   // compared with the previous campaign, with its trend; as a KPI card of the Designer.
   const KPI_FIGURES = [['average', 'Average'], ['median', 'Median'], ['percentile', 'Percentile'], ['count', 'Count of samples'],
@@ -117,20 +126,50 @@
     node.append(...children.filter((child) => child !== null && child !== undefined));
     return node;
   };
+  // The Format of the Designer (chart_format.js) on the chart of Chart Builder: its series, legend, labels and axes, changed in
+  // the panel or on the chart itself.
+  let format = null;
+  const formatEditor = () => format || (format = globalThis.ChartFormat?.editor({
+    element: () => chart,
+    write: async (_id, values) => { Object.assign(chart, values); render(); queue(); },
+    canvas: () => (canvas.hidden ? canvasShell.querySelector('[data-chart-builder-repeat] canvas') : canvas),
+    status: (text) => { message.hidden = false; message.textContent = text; window.setTimeout(() => { if (!canvas.hidden || repeatGrid().childElementCount) message.hidden = true; }, 2500); },
+    report: (error) => (globalThis.showInfoDialog || window.alert)(error.message, {title: 'Chart Builder', tone: 'error'}),
+    settled: () => Promise.resolve(),
+    label: () => chart.chart_title || 'the chart',
+    refresh: () => render(),
+    debounced: (fn) => { let timer = 0; return (...args) => { window.clearTimeout(timer); timer = window.setTimeout(() => fn(...args), 650); }; },
+  }) || null);
   const render = () => {
     const title = element('input', {type: 'text', value: chart.chart_title, 'aria-label': 'Chart title', oninput: (event) => { chart.chart_title = event.target.value; queue(); }});
-    const legendPosition = element('select', {'aria-label': 'Legend position', onchange: (event) => { chart.legend_position = event.target.value; queue(); }},
-      ...[['top', 'Top'], ['bottom', 'Bottom'], ['left', 'Left'], ['right', 'Right']].map(([value, label]) => { const option = element('option', {value}, label); option.selected = value === chart.legend_position; return option; }));
-    const shelves = element('div', {class: 'ds-cb'});
+    const tab = (key, label, mark) => {
+      const button = element('button', {type: 'button', role: 'tab', 'aria-selected': String(section === key), class: section === key ? 'is-active' : '',
+        onclick: () => { section = key; render(); }}, label, mark);
+      return button;
+    };
+    const formatted = Object.keys(chart.style || {}).length;
+    const sections = element('div', {class: 'ds-design-sections', role: 'tablist', 'aria-label': 'Chart'},
+      tab('data', 'Data'), tab('format', 'Format', formatted ? element('span', {class: 'ds-design-dot', title: 'Formatted'}) : null));
     const add = element('button', {type: 'button', class: 'ds-cb-add', onclick: openAddToDesign}, 'Add to PPT Design…');
     add.disabled = !chart.kpi || !selected().length;
-    fields.replaceChildren(element('label', {class: 'ds-cb-title'}, 'Chart title', title), shelves,
-      isKpiCard() ? kpiCardForm() : element('div', {class: 'ds-cb-advanced'}, element('label', {}, 'Legend position', legendPosition)), add);
-    globalThis.ChartShelves?.render(shelves, {
+    const options = {
       values: definition(), fields: {[definition().cdr_source.toLowerCase()]: fieldInfo.fields || []}, calculated: fieldInfo.calculated_fields || [],
-      parameters: [], showSource: false, fieldValues,
-      onChange: (changes) => { Object.assign(chart, changes); render(); queue(); },
-    });
+      parameters: [], showSource: false, repeat: !isKpiCard(), chartTypes: false, fieldValues,
+      onChange: (changes) => { Object.assign(chart, typeChanges(changes)); render(); queue(); },
+    };
+    if (section === 'format' && !isKpiCard() && formatEditor()) {
+      fields.replaceChildren(element('label', {class: 'ds-cb-title'}, 'Chart title', title), sections, format.formatSection('chart', chart), add);
+      return;
+    }
+    if (section === 'format') section = 'data';
+    const shelves = element('div', {class: 'ds-cb'});
+    // Chart Type, as in the Designer: the chart types grouped by what they show, those the shelves cannot draw greyed.
+    const types = element('div', {class: 'ds-cb-types-gallery'});
+    const typesCard = element('section', {class: 'ds-cb-card is-types', 'aria-label': 'Chart Type'}, element('h4', {class: 'ds-cb-card-title'}, 'Chart Type'), types);
+    fields.replaceChildren(element('label', {class: 'ds-cb-title'}, 'Chart title', title), isKpiCard() ? null : sections, shelves, typesCard,
+      isKpiCard() ? kpiCardForm() : null, add);
+    globalThis.ChartShelves?.render(shelves, options);
+    globalThis.ChartShelves?.renderTypes(types, options);
   };
   function kpiCardForm() {
     const settings = kpiCardSettings();
@@ -144,6 +183,8 @@
       choice('Figure', settings.measure, KPI_FIGURES, (value) => set({measure: value})),
       element('label', {}, label, element('input', {type: 'text', value: settings[key] || '', placeholder, 'aria-label': label, onchange: (event) => set({[key]: event.target.value.trim()})})),
       choice('Compared with', settings.comparison, [['previous', 'Previous campaign'], ['best', 'Best competitor'], ['none', 'Nothing']], (value) => set({comparison: value})),
+      choice('One card per', settings.repeat || '', [['', 'None (one card)'], ['Operator', 'Operator'], ['Vendor', 'Vendor'], ['Region', 'Region'], ['City', 'City']],
+        (value) => { chart.rows_split = value ? `${value} × Campaign` : 'Campaign'; set({repeat: value}); }),
       element('label', {class: 'ds-cb-kpi-trend'}, trend, 'Trend over the campaigns'));
   }
   // Add to PPT Design: a slide (with a free place) of a Design whose slides the user can edit, or a new slide at its end.
@@ -186,13 +227,14 @@
     const requestId = ++previewRequest;
     previewController?.abort();
     previewController = new AbortController();
-    message.hidden = false; message.textContent = 'Rendering chart…'; canvas.hidden = true;
+    message.hidden = false; message.textContent = 'Rendering chart…'; canvas.hidden = true; repeatGrid().replaceChildren(); repeatGrid().hidden = true;
     try {
       const response = await fetch('/api/chart-builder/preview', {method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json'}, signal:previewController.signal, body:JSON.stringify({dataset_ids:selected(), definition:definition()})});
       const body = await response.json();
       if (!response.ok) throw new Error(typeof body.detail === 'string' ? body.detail : 'Unable to render the chart.');
       if (requestId !== previewRequest) return;
       title.textContent = body.title || definition().chart_title || 'Ad-hoc chart';
+      if (body.type === 'repeat') { await showRepeated(body, requestId); return; }
       canvas.setAttribute('aria-label', title.textContent); canvas.hidden = false;
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       if (requestId !== previewRequest) return;
@@ -204,6 +246,43 @@
       }
     }
   };
+  // One chart per: a chart for each value of the field, side by side (as a PPT Design lays them out in the place of one).
+  function repeatGrid() {
+    let grid = canvasShell.querySelector('[data-chart-builder-repeat]');
+    if (!grid) { grid = element('div', {class: 'chart-builder-repeat', 'data-chart-builder-repeat': ''}); grid.hidden = true; canvasShell.append(grid); }
+    return grid;
+  }
+  async function showRepeated(body, requestId) {
+    zoom.hidden = true;
+    if (!body.charts.length) { message.hidden = false; message.textContent = `No value of ${body.field} in the chosen CDRs.`; return; }
+    const canvases = body.charts.map((item) => element('canvas', {role: 'img', 'aria-label': item.model.title || item.value}));
+    const grid = repeatGrid();
+    // The fewest columns whose rows fit in the viewer (each chart 16:10), so the charts are as large as they can be.
+    const box = canvasShell.getBoundingClientRect();
+    const count = body.charts.length;
+    const fits = (columns) => Math.ceil(count / columns) * ((box.width - 12) / columns) * 10 / 16 <= box.height - 12;
+    let columns = 1;
+    while (columns < count && !fits(columns)) columns += 1;
+    grid.style.setProperty('--chart-builder-repeat-columns', String(columns));
+    grid.replaceChildren(...canvases.map((item) => element('div', {class: 'chart-builder-repeat-chart'}, item)));
+    grid.hidden = false;
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    if (requestId !== previewRequest) return;
+    body.charts.forEach((item, index) => globalThis.renderCanvasChart(canvases[index], item.model));
+    message.hidden = true;
+  }
+  // Format on the chart, as in the Designer: an entry of its legend opens the format of that series, an axis its card.
+  canvasShell.addEventListener('click', (event) => {
+    if (event.target.tagName !== 'CANVAS' || isKpiCard() || !formatEditor()) return;
+    const item = globalThis.getCanvasChartLegendItemAt?.(event.target, event);
+    const axis = item ? null : globalThis.getCanvasChartAxisAt?.(event.target, event);
+    if (!item && !axis) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (item) format.openSeriesFormat(canvasShell, 'chart', item.label, event);
+    else if (axis.kind === 'numeric') format.openAxisRange(canvasShell, 'chart', axis, event);
+    else format.openAxisValues(canvasShell, 'chart', axis, event);
+  }, true);
   function queue() { window.clearTimeout(timer); previewController?.abort(); timer = window.setTimeout(preview, 350); }
   const syncNavigation = () => {
     const state = globalThis.getCanvasChartPanState?.(canvas) || {zoom: 1};
@@ -256,6 +335,7 @@
 </script>
 <script defer src="{{ static_path('js/canvas_charts.js') }}?v={{ asset_version('js/canvas_charts.js') }}"></script>
 <script defer src="{{ static_path('js/chart_shelves.js') }}?v={{ asset_version('js/chart_shelves.js') }}"></script>
+<script defer src="{{ static_path('js/chart_format.js') }}?v={{ asset_version('js/chart_format.js') }}"></script>
 <script defer src="{{ static_path('js/element_image.js') }}?v={{ asset_version('js/element_image.js') }}"></script>
 <script defer src="{{ static_path('js/image_buttons.js') }}?v={{ asset_version('js/image_buttons.js') }}"></script>
 {% endblock %}

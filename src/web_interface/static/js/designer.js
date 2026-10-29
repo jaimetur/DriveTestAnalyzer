@@ -35,7 +35,6 @@
   const guarded = fn => async (...args) => { try { return await fn(...args); } catch (error) { report(error); return undefined; } };
 
   const SOURCES = [['CDR-Data', 'Data'], ['CDR-Voice', 'Voice'], ['CDR-Speech', 'Speech'], ['CDR-All', 'RF All']];
-  const LABEL_POSITIONS = [['', 'Default'], ['none', 'None'], ['top', 'Top'], ['up', 'Up'], ['middle', 'Middle'], ['down', 'Down']];
   const STRUCTURAL = {title: 'Title Slide', transition: 'Transition Slide', end: 'End Slide'};
   const STRUCTURAL_LAYOUTS = {title: 'Title Page', transition: 'Transition', end: 'Black logo end slide'};
   // The fields the titles and text boxes can name: the NR Mode and the selection of the Design (design_slides.py).
@@ -1027,6 +1026,8 @@
       [`Copy ${noun}`, () => { state.clipboard = clone(found.element); viewer().status(`${noun} copied: paste it on a free place.`); }, true],
       [`Delete ${noun}`, guarded(() => deleteElement(elementId)), true],
     ];
+    const widened = widenedPlaces(found.slide.id, elementId);
+    if (widened) actions.push([`Fill the free places beside the ${noun.toLowerCase().replace('kpi', 'KPI')}`, guarded(() => applyPlaces(found.slide.id, widened)), true]);
     if (!template && !state.detached && !isLocalElement(found.element) && found.element.overridden?.length) actions.push([`Reset ${noun} to template`, guarded(() => resetElement(elementId)), true]);
     if (!template && !state.detached && state.rights.template && (isLocalElement(found.element) || found.element.overridden?.length)) actions.push([`Apply ${noun} to template`, guarded(() => applyToTemplate({elementId})), true]);
     return actions;
@@ -1316,265 +1317,16 @@
   }
 
   // ------------------------------------------------------------------
-  // Format of a chart (phase 3): series, legend, labels and axes, kept in its style (see formattedPayload in
-  // canvas_charts.js). The colours of Operator / Vendor Maps stay unless a series is given one; Default gives it back.
+  // Format of a chart (phase 3): the Format of chart_format.js (Chart Builder has it too), on the elements of the slides
+  // being edited.
   // ------------------------------------------------------------------
-  const SIZES = [['', 'Default'], ['Small', 'Small'], ['Medium', 'Medium'], ['Large', 'Large']];
-  const DASH_NAMES = [['', 'Default'], ['solid', 'Solid'], ['dashed', 'Dashed'], ['dotted', 'Dotted']];
-  const cardCanvas = elementId => [...($('ds-charts')?.querySelectorAll('.ds-chart') || [])].find(card => card.dataset.elementId === elementId)?.querySelector('canvas');
-  const legendItems = elementId => { const canvas = cardCanvas(elementId); return canvas && globalThis.getCanvasChartLegendItems ? globalThis.getCanvasChartLegendItems(canvas) : []; };
-  const styleOf = element => clone(element?.style && typeof element.style === 'object' ? element.style : {});
-  const cleanStyle = style => {
-    const prune = value => {
-      if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
-      const result = {};
-      for (const [key, item] of Object.entries(value)) {
-        const cleaned = prune(item);
-        if (cleaned === '' || cleaned === null || cleaned === undefined || (typeof cleaned === 'object' && !Array.isArray(cleaned) && !Object.keys(cleaned).length)) continue;
-        result[key] = cleaned;
-      }
-      return result;
-    };
-    return prune(style) || {};
-  };
-  function setStyle(elementId, change) {
-    const current = findElement(editableSlideSet(), elementId)?.element;
-    if (!current) { report(new Error('This element is only in this Design: change it in This Design scope, or apply it to the template first.')); return undefined; }
-    const style = styleOf(current);
-    change(style);
-    return setElementValues(elementId, {style: cleanStyle(style)});
-  }
-  const setSeries = (elementId, name, values) => setStyle(elementId, style => {
-    style.series = style.series || {};
-    style.series[name] = {...(style.series[name] || {}), ...values};
+  const {styleOf, formatSection, openSeriesFormat, openAxisRange, openAxisValues} = window.ChartFormat.editor({
+    element: elementId => findElement(editableSlideSet(), elementId)?.element,
+    write: (elementId, values) => setElementValues(elementId, values),
+    canvas: elementId => [...($('ds-charts')?.querySelectorAll('.ds-chart') || [])].find(card => card.dataset.elementId === elementId)?.querySelector('canvas'),
+    status: text => viewer().status(text), report, settled: () => state.queue.catch(() => undefined),
+    label: element => elementLabel(element), refresh: () => renderPanel(), debounced,
   });
-  function openSeriesFormat(anchor, elementId, name, event) {
-    closeMenus();
-    const element = findElement(editableSlideSet(), elementId)?.element;
-    const current = styleOf(element).series?.[name] || {};
-    const original = legendItems(elementId).find(item => item.label === name)?.colour || '#4B2C82';
-    const colour = h('input', {type: 'color', value: /^#[0-9a-f]{6}$/i.test(current.colour || '') ? current.colour : (/^#[0-9a-f]{6}$/i.test(original) ? original : '#4B2C82'), 'aria-label': `Colour of ${name}`,
-      onchange: event2 => guarded(() => setSeries(elementId, name, {colour: event2.target.value.toUpperCase()}))()});
-    const width = h('input', {type: 'number', min: '1', max: '10', step: '0.5', value: current.width ?? '', placeholder: 'Default', 'aria-label': 'Line width',
-      onchange: event2 => guarded(() => setSeries(elementId, name, {width: event2.target.value === '' ? '' : Number(event2.target.value)}))()});
-    const dash = selectInput(DASH_NAMES, current.dash || '', value => guarded(() => setSeries(elementId, name, {dash: value}))());
-    const opacity = h('input', {type: 'range', min: '0.2', max: '1', step: '0.05', value: current.opacity ?? 1, 'aria-label': 'Opacity',
-      onchange: event2 => guarded(() => setSeries(elementId, name, {opacity: Number(event2.target.value) >= 1 ? '' : Number(event2.target.value)}))()});
-    const popover = h('div', {class: 'ds-design-popover ds-design-series', role: 'dialog', 'aria-label': `Format of ${name}`},
-      h('h4', {text: name}),
-      h('label', {class: 'ds-design-format-row'}, 'Colour', colour),
-      h('label', {class: 'ds-design-format-row'}, 'Line width', width),
-      h('label', {class: 'ds-design-format-row'}, 'Line', dash),
-      h('label', {class: 'ds-design-format-row'}, 'Opacity', opacity),
-      // The line of a series (its width, dash and opacity, not its colour: the colour tells the series apart) copied to paste
-      // on another series, of this chart or another. It is read once the changes made here are kept.
-      h('div', {class: 'ds-design-format-actions'},
-        h('button', {type: 'button', title: 'Copy the line width, line and opacity of this series (not its colour), to paste them on another series',
-          onclick: guarded(async () => {
-            await state.queue.catch(() => undefined);
-            const now = styleOf(findElement(editableSlideSet(), elementId)?.element).series?.[name] || {};
-            state.seriesClipboard = {from: name, values: {width: now.width ?? '', dash: now.dash || '', opacity: now.opacity ?? ''}};
-            viewer().status(`Line of ${name} copied: open another series and paste it there.`);
-            closeMenus();
-          })}, 'Copy line of this series'),
-        state.seriesClipboard && state.seriesClipboard.from !== name ? h('button', {type: 'button', title: `Give this series the line width, line and opacity of ${state.seriesClipboard.from} (its colour stays)`,
-          onclick: () => { closeMenus(); guarded(() => setSeries(elementId, name, clone(state.seriesClipboard.values)))(); }}, `Paste line of ${state.seriesClipboard.from}`) : null),
-      h('div', {class: 'ds-design-format-actions'},
-        h('button', {type: 'button', title: 'The colour of the Operator / Vendor Maps of the workspace, and the default line', onclick: () => { closeMenus(); guarded(() => setStyle(elementId, style => { if (style.series) delete style.series[name]; }))(); }}, 'Default'),
-        h('button', {type: 'button', onclick: closeMenus}, 'Close')));
-    placePopover(popover, anchor, event);
-  }
-  // The range of a numeric axis, chosen with a slider of two thumbs (as in Tableau): applied when a thumb is released;
-  // Automatic gives the axis its own range back. The Y axis of a CDF is in percent (0–100).
-  // The card of an axis, as in Tableau: what the axis holds (its kind, its field) in the head, the range or the values
-  // in the body, and the actions at its foot; each choice is laid out at once.
-  function axisCard(kind, title, label, body, foot, badge = null) {
-    return h('div', {class: 'ds-design-popover ds-axis-card', role: 'dialog', 'aria-label': label},
-      h('header', {class: 'ds-axis-head'},
-        h('div', {class: 'ds-axis-heading'}, h('span', {class: 'ds-axis-kind', text: kind}), h('h4', {text: title}), badge),
-        h('button', {type: 'button', class: 'ds-axis-close', 'aria-label': 'Close', title: 'Close', onclick: closeMenus}, '×')),
-      ...body,
-      h('footer', {class: 'ds-axis-foot'}, ...foot));
-  }
-  // The range of a numeric axis: two handles on its track (the part of the track where the values of the chart lie is
-  // marked), or its start and end typed; the chart takes it when a handle is released. Automatic gives the range back to
-  // the values of the chart.
-  function openAxisRange(anchor, elementId, axis, event) {
-    closeMenus();
-    const key = axis.axis === 'y' ? 'axis_y_range' : 'axis_x_range';
-    const automatic = !String(findElement(editableSlideSet(), elementId)?.element?.[key] || '').trim();
-    const low = Math.min(axis.extent[0], axis.domain[0]), high = Math.max(axis.extent[1], axis.domain[1]);
-    const span = high - low || 1;
-    const decimals = axis.percent ? 0 : Math.max(0, Math.min(4, 2 - Math.floor(Math.log10(span))));
-    const step = Number((span / 200).toFixed(decimals)) || 10 ** -decimals;
-    const round = value => Number(Number(value).toFixed(decimals));
-    const unit = axis.percent ? '%' : '';
-    let start = round(axis.domain[0]), end = round(axis.domain[1]);
-    const handle = (value, label) => h('input', {type: 'range', class: 'ds-axis-handle', min: String(round(low)), max: String(round(high)), step: String(step), value: String(value), 'aria-label': label});
-    const from = handle(start, 'Start of the axis'), to = handle(end, 'End of the axis');
-    const number = (value, label) => h('input', {type: 'number', class: 'ds-axis-number', step: String(step), value: String(value), 'aria-label': label});
-    const fromNumber = number(start, 'Start'), toNumber = number(end, 'End');
-    const fill = h('span', {class: 'ds-axis-fill'});
-    const values = h('span', {class: 'ds-axis-values-band', title: `The values of the chart: ${round(axis.extent[0])}${unit} to ${round(axis.extent[1])}${unit}`,
-      style: {left: `${(axis.extent[0] - low) / span * 100}%`, width: `${Math.max(0, axis.extent[1] - axis.extent[0]) / span * 100}%`}});
-    const paint = () => {
-      fill.style.left = `${(start - low) / span * 100}%`;
-      fill.style.width = `${Math.max(0, end - start) / span * 100}%`;
-      fromNumber.value = String(start); toNumber.value = String(end);
-    };
-    let timer = 0;
-    const commit = () => {
-      clearTimeout(timer);
-      timer = setTimeout(() => guarded(() => setElementValues(elementId, {[key]: `[${start},${end}]`}))(), 150);
-    };
-    from.addEventListener('input', () => { start = Math.min(round(from.value), end - step); from.value = String(start); paint(); });
-    to.addEventListener('input', () => { end = Math.max(round(to.value), start + step); to.value = String(end); paint(); });
-    from.addEventListener('change', commit); to.addEventListener('change', commit);
-    fromNumber.addEventListener('change', () => { start = Math.min(round(fromNumber.value), end - step); from.value = String(start); paint(); commit(); });
-    toNumber.addEventListener('change', () => { end = Math.max(round(toNumber.value), start + step); to.value = String(end); paint(); commit(); });
-    const card = axisCard(axis.axis === 'y' ? 'Y axis' : 'X axis', `Range${unit ? ` (${unit})` : ''}`, 'Range of the axis', [
-      h('div', {class: 'ds-axis-readout'},
-        h('label', {class: 'ds-axis-bound'}, h('span', {text: 'From'}), fromNumber),
-        h('span', {class: 'ds-axis-dash', 'aria-hidden': 'true'}, '→'),
-        h('label', {class: 'ds-axis-bound'}, h('span', {text: 'To'}), toNumber)),
-      h('div', {class: 'ds-axis-slider'}, h('span', {class: 'ds-axis-rail'}), values, fill, from, to),
-      h('div', {class: 'ds-axis-scale'}, h('span', {text: `${round(low)}${unit}`}),
-        h('span', {class: 'ds-axis-scale-note', text: 'values of the chart'}), h('span', {text: `${round(high)}${unit}`})),
-    ], [
-      h('button', {type: 'button', class: 'ds-axis-secondary', disabled: automatic, title: 'The range the chart takes from its values',
-        onclick: () => { closeMenus(); guarded(() => setElementValues(elementId, {[key]: ''}))(); }}, 'Automatic'),
-      h('button', {type: 'button', class: 'ds-axis-primary', onclick: closeMenus}, 'Close'),
-    ], automatic ? h('span', {class: 'ds-axis-badge', text: 'Automatic'}) : h('span', {class: 'ds-axis-badge is-set', text: 'Set here'}));
-    placePopover(card, anchor, event);
-    paint();
-  }
-  // The values of a category axis (a level of its Rows or Columns): unticked ones are left out of the chart (a filter of
-  // the chart on that field, NOT IN), Only keeps one, Show all puts them back; at least one value always stays.
-  function openAxisValues(anchor, elementId, axis, event) {
-    closeMenus();
-    const element = findElement(editableSlideSet(), elementId)?.element;
-    const field = axis.dimension;
-    if (!element || !field) return;
-    const pattern = new RegExp(`^${field.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s+NOT\\s+IN\\s*\\((.*)\\)$`, 'i');
-    const conditions = (element.filters || '').split(/;|\n+/).map(item => item.trim()).filter(Boolean);
-    const current = conditions.find(item => pattern.test(item));
-    const excluded = new Set(current ? pattern.exec(current)[1].split(',').map(item => item.trim()).filter(Boolean) : []);
-    const values = [...new Set([...(axis.values || []), ...excluded])];
-    const write = () => {
-      const kept = conditions.filter(item => !pattern.test(item));
-      if (excluded.size) kept.push(`${field} NOT IN (${[...excluded].join(', ')})`);
-      guarded(() => setElementValues(elementId, {filters: kept.join('; ')}))();
-    };
-    let query = '';
-    const list = h('ul', {class: 'ds-axis-list', role: 'group', 'aria-label': `Values of ${field}`});
-    const count = h('span', {class: 'ds-axis-count'});
-    const showAll = h('button', {type: 'button', class: 'ds-axis-secondary', onclick: () => { excluded.clear(); write(); paint(); }}, 'Show all');
-    const paint = () => {
-      const shown = values.filter(value => value.toLocaleLowerCase().includes(query));
-      list.replaceChildren(...(shown.length ? shown.map(value => {
-        const on = !excluded.has(value);
-        return h('li', {class: `ds-axis-option${on ? ' is-on' : ''}${value === axis.value ? ' is-clicked' : ''}`},
-          h('button', {type: 'button', class: 'ds-axis-toggle', role: 'checkbox', 'aria-checked': String(on), title: on ? `Leave ${value} out of the chart` : `Show ${value}`,
-            onclick: () => {
-              if (on && excluded.size >= values.length - 1) return;
-              if (on) excluded.add(value); else excluded.delete(value);
-              write(); paint();
-            }},
-          h('span', {class: 'ds-axis-check', 'aria-hidden': 'true'}), h('span', {class: 'ds-axis-label', text: value})),
-          h('button', {type: 'button', class: 'ds-axis-only', title: `Show only ${value}`,
-            onclick: () => { excluded.clear(); values.filter(item => item !== value).forEach(item => excluded.add(item)); write(); paint(); }}, 'Only'));
-      }) : [h('li', {class: 'ds-axis-empty', text: 'No value matches.'})]));
-      count.textContent = `${values.length - excluded.size} of ${values.length} shown`;
-      showAll.disabled = !excluded.size;
-    };
-    const search = values.length > 7 ? h('input', {type: 'search', class: 'ds-axis-search', placeholder: 'Search values', 'aria-label': 'Search values',
-      oninput: event2 => { query = event2.target.value.trim().toLocaleLowerCase(); paint(); }}) : null;
-    const kind = ['row', 'table-row'].includes(axis.axis) ? 'Rows' : 'Columns';
-    const card = axisCard(kind, field, `Values of ${field}`, [
-      h('div', {class: 'ds-axis-toolbar'}, search, count),
-      list,
-    ], [showAll, h('button', {type: 'button', class: 'ds-axis-primary', onclick: closeMenus}, 'Close')]);
-    paint();
-    placePopover(card, anchor, event);
-  }
-
-  function formatSection(elementId, element) {
-    const style = styleOf(element);
-    const items = legendItems(elementId);
-    const series = h('div', {class: 'ds-design-series-list'}, items.length
-      ? items.map(item => {
-        const own = style.series?.[item.label] || {};
-        return h('button', {type: 'button', class: `ds-design-series-item${Object.keys(own).length ? ' is-changed' : ''}`, title: 'Colour, line and opacity of this series', onclick: event => openSeriesFormat(event.currentTarget, elementId, item.label)},
-          h('span', {class: 'ds-design-swatch', style: {background: own.colour || item.colour || '#ccc', opacity: own.opacity ?? 1}}), item.label);
-      })
-      : h('p', {class: 'ds-design-empty', text: 'The series of the chart appear here once it is drawn (its legend).'}));
-    const set = (path, value) => guarded(() => setStyle(elementId, target => {
-      const keys = path.split('.');
-      let node = target;
-      keys.slice(0, -1).forEach(key => { node[key] = node[key] && typeof node[key] === 'object' ? node[key] : {}; node = node[key]; });
-      node[keys.at(-1)] = value;
-    }))();
-    const integer = value => (value === '' ? '' : Math.max(0, Math.min(6, Math.round(Number(value)))));
-    // The colour of a text, with a button back to the default one.
-    const textColour = (what, value, write) => field('Text colour', h('div', {class: 'ds-design-input-row'},
-      h('input', {type: 'color', value: value || '#263B4A', 'aria-label': `${what} text colour`, onchange: event => write(event.target.value.toUpperCase())}),
-      h('button', {type: 'button', class: 'ds-design-token', title: `Default ${what.toLowerCase()} text colour`, onclick: () => write('')}, '↺')));
-    // A closed group says what it holds.
-    const named = (list, value) => list.find(([key]) => key === (value || ''))?.[1] || value;
-    const LEGEND_PLACES = [['', 'Default'], ['top', 'Top'], ['bottom', 'Bottom'], ['left', 'Left'], ['right', 'Right'], ['none', 'Hidden']];
-    const changedSeries = Object.values(style.series || {}).filter(item => Object.keys(item || {}).length).length;
-    const summaries = {
-      Series: items.length ? `${items.length} series${changedSeries ? ` · ${changedSeries} changed` : ''}` : '',
-      Legend: [named(LEGEND_PLACES, style.legend?.position), style.legend?.size ? `${style.legend.size} text` : '', style.legend?.colour ? 'Coloured' : '', style.legend?.bold === false ? 'Not bold' : ''].filter(Boolean).join(' · '),
-      Labels: [named(LABEL_POSITIONS, style.labels?.position), style.labels?.size ? `${style.labels.size} text` : '', style.labels?.colour ? 'Coloured' : '', style.labels?.bold ? 'Bold' : ''].filter(Boolean).join(' · '),
-      Axes: [style.axes?.x?.title ? `X: ${style.axes.x.title}` : '', style.axes?.y?.title ? `Y: ${style.axes.y.title}` : '', style.axes?.x?.decimals !== undefined && style.axes?.x?.decimals !== '' ? `${style.axes.x.decimals} decimals` : ''].filter(Boolean).join(' · ') || 'As the chart names them',
-    };
-    // The groups open are kept for the next chart (all of them at first); several can be open at once.
-    state.formatOpen = state.formatOpen || new Set(['Series', 'Legend', 'Labels', 'Axes']);
-    const group = (label, ...children) => {
-      const node = h('details', {class: 'ds-design-format-group', open: state.formatOpen.has(label)},
-        h('summary', {}, h('span', {class: 'ds-design-format-group-name', text: label}), h('span', {class: 'ds-design-format-group-value', text: summaries[label] || ''})), ...children);
-      node.addEventListener('toggle', () => { if (node.open) state.formatOpen.add(label); else state.formatOpen.delete(label); });
-      return node;
-    };
-    return h('div', {class: 'ds-design-format'},
-      // The format of a chart (series colours, legend, labels, axes and their ranges) copied to paste on another chart.
-      h('div', {class: 'ds-design-format-actions'},
-        h('button', {type: 'button', title: 'Copy the series colours, legend, labels, axes and axis ranges of this chart, to paste them on another chart',
-          onclick: () => {
-            state.formatClipboard = {style, legend_position: element.legend_position, label_position: element.label_position, label_format: element.label_format, axis_x_range: element.axis_x_range, axis_y_range: element.axis_y_range};
-            state.formatClipboardFrom = elementLabel(element);
-            viewer().status('Format copied: choose another chart and paste it there.');
-            renderPanel();
-          }}, 'Copy format of this chart'),
-        state.formatClipboard ? h('button', {type: 'button', title: `Give this chart the series colours, legend, labels, axes and axis ranges of ${state.formatClipboardFrom}`,
-          onclick: () => guarded(() => setElementValues(elementId, clone(state.formatClipboard)))()}, `Paste format of ${state.formatClipboardFrom}`) : null),
-      h('p', {class: 'ds-design-field-note', text: 'The format is its series colours, legend, labels, axes and axis ranges.'}),
-      group('Series',
-        h('p', {class: 'ds-design-field-note', text: 'Click a series in the legend of the chart, or here, to change its colour, line and opacity.'}),
-        series,
-        h('div', {class: 'ds-design-format-actions'},
-          h('button', {type: 'button', disabled: !style.series || !Object.values(style.series).some(item => item.colour || item.opacity), title: 'The colours of the Operator / Vendor Maps of the workspace for every series',
-            onclick: () => guarded(() => setStyle(elementId, target => { for (const item of Object.values(target.series || {})) { delete item.colour; delete item.opacity; } }))()}, 'Default colours'))),
-      group('Legend', h('div', {class: 'ds-design-two'},
-        field('Position', selectInput(LEGEND_PLACES, style.legend?.position || '', value => set('legend.position', value))),
-        field('Text size', selectInput(SIZES, style.legend?.size || '', value => set('legend.size', value)))),
-      h('div', {class: 'ds-design-two'},
-        textColour('Legend', style.legend?.colour, value => set('legend.colour', value)),
-        // The legend is bold unless turned off.
-        h('label', {class: 'ds-design-check'}, h('input', {type: 'checkbox', checked: style.legend?.bold !== false, onchange: event => set('legend.bold', event.target.checked ? '' : false)}), 'Bold'))),
-      group('Labels', h('div', {class: 'ds-design-two'},
-        field('Position', selectInput(LABEL_POSITIONS, style.labels?.position || '', value => set('labels.position', value))),
-        field('Text size', selectInput(SIZES, style.labels?.size || '', value => set('labels.size', value)))),
-      h('div', {class: 'ds-design-two'},
-        textColour('Label', style.labels?.colour, value => set('labels.colour', value)),
-        h('label', {class: 'ds-design-check'}, h('input', {type: 'checkbox', checked: Boolean(style.labels?.bold), onchange: event => set('labels.bold', event.target.checked || '')}), 'Bold'))),
-      group('Axes', h('div', {class: 'ds-design-two'},
-        field('X axis title', textInput(style.axes?.x?.title, debounced(value => setStyle(elementId, target => { target.axes = target.axes || {}; target.axes.x = {...(target.axes.x || {}), title: value}; })), {id: 'ds-design-axis-x-title', placeholder: 'As the chart names it'})),
-        field('Y axis title', textInput(style.axes?.y?.title, debounced(value => setStyle(elementId, target => { target.axes = target.axes || {}; target.axes.y = {...(target.axes.y || {}), title: value}; })), {id: 'ds-design-axis-y-title', placeholder: 'As the chart names it'}))),
-      field('X axis decimals', h('input', {type: 'number', min: '0', max: '6', step: '1', value: style.axes?.x?.decimals ?? '', placeholder: 'Default',
-        onchange: event => set('axes.x.decimals', integer(event.target.value))}), 'The decimals of the values of the X axis of a CDF.')));
-  }
 
   // The panel of a KPI card: what it measures, against what, and how it looks.
   function kpiForm(element, shown) {
@@ -1719,45 +1471,90 @@
     visibleElements(slide).forEach((element, index) => { labels[placeOf(element, index)] = elementLabel(element); });
     window.PlacesEditor.open({
       title: slide.title || 'Slide', grid: slide.options?.grid || null, rows: grid[0], columns: grid[1], labels,
-      onSave: guarded(async result => {
-        const capacity = result ? result.geometry.length : (layoutOf(slide.layout)?.places || []).length;
-        const visible = visibleElements(slide);
-        // The editor starts from the places as they are (the grid adjusted before, else the layout's in reading order).
-        const moved = visible.map((element, index) => {
-          const place = placeOf(element, index);
-          return result ? (result.mapping[place] ?? -1) : place;
-        });
-        const homeless = visible.filter((_element, index) => moved[index] < 0 || moved[index] >= capacity).length;
-        const free = capacity - new Set(moved.filter(place => place >= 0 && place < capacity)).size;
-        if (homeless > free && !await window.showConfirmDialog(`The places now hold ${capacity} element${capacity === 1 ? '' : 's'}: ${homeless - free} element${homeless - free === 1 ? '' : 's'} of the slide will be removed.`, {title: 'Adjust places', confirmLabel: 'Apply', tone: 'danger'})) return;
-        await edit(slide_set => {
-          const target = findSlide(slide_set, slideId);
-          if (!target) return false;
-          target.options = {...(target.options || {})};
-          if (result) { target.options.grid = result.grid; target.options.geometry = result.geometry; }
-          else { delete target.options.grid; delete target.options.geometry; }
-          const elements = visibleElements(target);
-          const taken = new Set();
-          const homes = elements.map((element, index) => {
-            const place = moved[index];
-            if (place >= 0 && place < capacity && !taken.has(place)) { taken.add(place); return place; }
-            return null;
-          });
-          elements.forEach((element, index) => {
-            let place = homes[index];
-            if (place === null) place = [...Array(capacity).keys()].find(candidate => !taken.has(candidate));
-            if (place === undefined) {
-              if (state.scope === 'design' && !state.detached && !isLocalElement(element)) element.hidden = true;
-              else target.elements.splice(target.elements.indexOf(element), 1);
-              return;
-            }
-            taken.add(place);
-            element.place = place;
-          });
-          return undefined;
-        });
-      }),
+      onSave: guarded(result => applyPlaces(slideId, result)),
     });
+  }
+  // The places of a slide given (a result of the places editor, or null for those of its layout): each element keeps its
+  // place, else takes a free one, else is removed after asking.
+  async function applyPlaces(slideId, result) {
+    const slide = findSlide(editableSlideSet(), slideId);
+    if (!slide) return;
+    const capacity = result ? result.geometry.length : (layoutOf(slide.layout)?.places || []).length;
+    const visible = visibleElements(slide);
+    // The editor starts from the places as they are (the grid adjusted before, else the layout's in reading order).
+    const moved = visible.map((element, index) => {
+      const place = placeOf(element, index);
+      return result ? (result.mapping[place] ?? -1) : place;
+    });
+    const homeless = visible.filter((_element, index) => moved[index] < 0 || moved[index] >= capacity).length;
+    const free = capacity - new Set(moved.filter(place => place >= 0 && place < capacity)).size;
+    if (homeless > free && !await window.showConfirmDialog(`The places now hold ${capacity} element${capacity === 1 ? '' : 's'}: ${homeless - free} element${homeless - free === 1 ? '' : 's'} of the slide will be removed.`, {title: 'Adjust places', confirmLabel: 'Apply', tone: 'danger'})) return;
+    await edit(slide_set => {
+      const target = findSlide(slide_set, slideId);
+      if (!target) return false;
+      target.options = {...(target.options || {})};
+      if (result) { target.options.grid = result.grid; target.options.geometry = result.geometry; }
+      else { delete target.options.grid; delete target.options.geometry; }
+      const elements = visibleElements(target);
+      const taken = new Set();
+      const homes = elements.map((element, index) => {
+        const place = moved[index];
+        if (place >= 0 && place < capacity && !taken.has(place)) { taken.add(place); return place; }
+        return null;
+      });
+      elements.forEach((element, index) => {
+        let place = homes[index];
+        if (place === null) place = [...Array(capacity).keys()].find(candidate => !taken.has(candidate));
+        if (place === undefined) {
+          if (state.scope === 'design' && !state.detached && !isLocalElement(element)) element.hidden = true;
+          else target.elements.splice(target.elements.indexOf(element), 1);
+          return;
+        }
+        taken.add(place);
+        element.place = place;
+      });
+      return undefined;
+    });
+  }
+  // A chart takes the free places beside it in its row (else above or below it in its column): the bottom chart of a 2 × 2
+  // slide with its neighbour free spans the whole width. The grid of the slide is that of its places, adjusted or not.
+  function widenedPlaces(slideId, elementId) {
+    const slide = findSlide(editableSlideSet(), slideId);
+    const grid = layoutOf(slide?.layout)?.grid;
+    if (!slide || !grid || !window.PlacesEditor) return null;
+    const spec = slide.options?.grid?.areas ? clone(slide.options.grid) : window.PlacesEditor.gridSpec(grid[0], grid[1]);
+    const areas = [...spec.areas].sort((left, right) => left[0] - right[0] || left[1] - right[1]);
+    const elements = visibleElements(slide);
+    const index = elements.findIndex(element => element.id === elementId);
+    const own = areas[placeOf(elements[index], index)];
+    if (index < 0 || !own) return null;
+    const used = new Set(elements.map((element, position) => placeOf(element, position)));
+    const free = areas.filter((_area, place) => !used.has(place));
+    const grow = horizontal => {
+      let [row, column, rows, columns] = own;
+      const taken = [];
+      for (let changed = true; changed;) {
+        changed = false;
+        for (const area of free) {
+          if (taken.includes(area)) continue;
+          const beside = horizontal
+            ? area[0] === row && area[2] === rows && (area[1] + area[3] === column || area[1] === column + columns)
+            : area[1] === column && area[3] === columns && (area[0] + area[2] === row || area[0] === row + rows);
+          if (!beside) continue;
+          if (horizontal) { columns += area[3]; column = Math.min(column, area[1]); } else { rows += area[2]; row = Math.min(row, area[0]); }
+          taken.push(area);
+          changed = true;
+        }
+      }
+      return taken.length ? {merged: [row, column, rows, columns], taken} : null;
+    };
+    const grown = grow(true) || grow(false);
+    if (!grown) return null;
+    const next = {...spec, areas: [...areas.filter(area => area !== own && !grown.taken.includes(area)), grown.merged]};
+    // The element goes to the place it grew into; the other places keep theirs.
+    const after = [...next.areas].sort((left, right) => left[0] - right[0] || left[1] - right[1]);
+    const mapping = areas.map(area => (area === own ? after.indexOf(grown.merged) : grown.taken.includes(area) ? -1 : after.indexOf(area)));
+    return {grid: next, geometry: window.PlacesEditor.geometry(next), mapping};
   }
 
   // ------------------------------------------------------------------

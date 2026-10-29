@@ -74,7 +74,7 @@ from src.config import PROJECT_ROOT, settings
 from src.modules.analytics import build_analysis, shared_frame_attrs
 from src.modules.app_event_details import app_event_origin, app_event_origin_parts, changed_values, describe_app_event
 from src.modules.background_scheduler import BackgroundTaskScheduler
-from src.modules import cdr_store
+from src.modules import cdr_store, design_slides
 from src.modules.auth import SessionUser, verify_password
 from src.modules.workspace_countries import country_options
 from src.modules.operator_roles import (
@@ -19404,17 +19404,37 @@ async def chart_builder_values(request: Request, user: SessionUser = Depends(cur
     return JSONResponse({'field': field, 'values': [{'value': value, 'count': int(count)} for value, count in counts.head(2000).items()]})
 
 
+# One chart per value of a field (One chart per): at most as many as the Designer lays out in the place of one chart.
+CHART_BUILDER_REPEATED_CHARTS = 12
+
+
 @app.post('/api/chart-builder/preview')
 async def chart_builder_preview(request: Request, user: SessionUser = Depends(current_user)) -> Response:
+    """The model of the chart of Chart Builder, with the format given to it (its series, legend, labels and axes), or with One
+    chart per a field one model for each value of the field in the chosen CDRs (``type: repeat``), as a PPT Design lays
+    them out."""
     payload = await request.json()
     frame, entry = _chart_builder_context(payload)
+    definition = payload.get('definition') if isinstance(payload.get('definition'), dict) else {}
+    style = definition.get('style') if isinstance(definition.get('style'), dict) else {}
+    repeat = definition.get('repeat') if isinstance(definition.get('repeat'), dict) else {}
+    source_key = _chart_preview_cache_key('chart-builder-selection', {'dataset_ids': payload.get('dataset_ids', [])})
+
+    def model(chart_entry: CatalogEntry) -> dict[str, Any]:
+        result = catalog_chart_payload(_cached_filtered_chart_frame(source_key, frame, chart_entry, False), chart_entry, prefiltered=True)
+        return {**result, 'format_overrides': style} if style else result
+
     try:
-        source_key = _chart_preview_cache_key('chart-builder-selection', {'dataset_ids': payload.get('dataset_ids', [])})
-        filtered = _cached_filtered_chart_frame(source_key, frame, entry, False)
-        return JSONResponse(
-            catalog_chart_payload(filtered, entry, prefiltered=True),
-            headers={'Cache-Control': 'no-store'},
-        )
+        field = str(repeat.get('field') or '').strip()
+        column = next((name for name in frame.columns if str(name).casefold() == field.casefold()), None) if field else None
+        if column is None:
+            return JSONResponse(model(entry), headers={'Cache-Control': 'no-store'})
+        values = sorted({str(value) for value in frame[column].dropna() if str(value).strip()}, key=str.casefold)[:CHART_BUILDER_REPEATED_CHARTS]
+        charts = [{'value': value, 'model': model(replace(
+            entry, filters=design_slides.join_conditions([*design_slides.filter_conditions(entry.filters), f'{field} IN ({value})']),
+            chart_title=f'{entry.chart_title} – {value}' if entry.chart_title else value,
+        ))} for value in values]
+        return JSONResponse({'type': 'repeat', 'title': entry.chart_title, 'field': field, 'charts': charts}, headers={'Cache-Control': 'no-store'})
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

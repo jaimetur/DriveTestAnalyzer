@@ -4180,3 +4180,17 @@ def test_reporting_concatenates_multiple_campaign_cdrs_per_source(client, ppt_re
     # The shared CDR table and renderer materialise only fields required by
     # the chosen Slides Template; unrelated source metrics stay individual.
     assert not {'Data_Q1', 'Data_Q2'}.intersection(app_module.repository.list_reporting_row_columns('data'))
+
+
+@pytest.mark.parametrize('rows,columns,cells', [
+    ('Operator', '', [[15.0], [35.0]]),
+    ('', 'Operator', [[15.0, 35.0]]),
+    ('Operator', 'Campaign', [[10.0, 20.0], [30.0, 40.0]]),
+])
+def test_average_vertical_bars_have_a_value_in_each_bar_with_rows_columns_or_both(rows, columns, cells) -> None:
+    from src.modules.cdr_reporting import CatalogEntry, catalog_chart_payload
+
+    frame = pd.DataFrame({'Operator': ['EE', 'EE', 'O2', 'O2'], 'Campaign': ['C1', 'C2', 'C1', 'C2'], 'Mean_Data_Rate': [10.0, 20.0, 30.0, 40.0]})
+    entry = CatalogEntry(slide=1, slide_title='Rates', slide_subtitle='', layout='', chart_title='Rate', cdr_source='CDR-Data',
+                         kpi='Mean_Data_Rate', chart_type='Average Vertical Bars', legend='', filters='', rows_split=rows, columns_split=columns)
+    assert catalog_chart_payload(frame, entry)['cells'] == cells

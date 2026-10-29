@@ -485,7 +485,7 @@ DESIGN_READ_MMAP_BYTES = 2 * 1024 ** 3
 DESIGN_SEQUENTIAL_SCAN_SHARE = 0.2
 DESIGN_SELECTION_CACHE_LIMIT = 128
 DESIGN_PROFILE_SELECTION_THRESHOLD = 100_000
-DESIGN_CHART_MODEL_CACHE_VERSION = 20
+DESIGN_CHART_MODEL_CACHE_VERSION = 21
 DESIGN_CHART_MODELS_KEPT = 2000
 DESIGN_PREVIEW_MANIFESTS_KEPT = 256
 # The chart models kept in the workspace database (design_chart_models), in MB of compressed JSON: beyond it the oldest
@@ -3944,11 +3944,15 @@ def install_design_routes(core):
         element = {field: payload.element.get(field, False if field in {'exclude_null_empty', 'exclude_zero'} else '')
                    for field in design_slides.ELEMENT_FIELDS}
         element.update(id=design_slides.new_id('e'), kind='chart', origin='design')
-        # A KPI Card of Chart Builder is a KPI card of the Design, with its settings.
+        # A KPI Card of Chart Builder is a KPI card of the Design, with its settings; a chart keeps its format and its
+        # One chart per.
         if str(element['chart_type']).casefold() == design_slides.KIND_CHART_TYPES['kpi'].casefold():
             element['kind'] = 'kpi'
             if isinstance(payload.element.get('kpi_card'), dict):
                 element['kpi_card'] = payload.element['kpi_card']
+        for name in ('style', 'repeat'):
+            if isinstance(payload.element.get(name), dict) and payload.element[name]:
+                element[name] = payload.element[name]
         element['legend_position'] = str(element['legend_position'] or '').casefold()
         if not str(element['kpi']).strip() or not str(element['cdr_source']).strip():
             raise HTTPException(400, 'The chart needs a source and a KPI.')

@@ -34,9 +34,9 @@ builders
 2. Choose **CDR Type**: Data, Voice or Speech.
 3. Select one or more processed datasets of that type.
 4. Drag a field (or click it) to **Measure**; **Chart Type** marks the types it can draw and chooses one.
-5. Drag fields to **Rows**, **Columns** and **Legend**, in the order they split the chart (`Operator` then `Campaign` gives `Operator × Campaign`).
-6. Drop a field on **Filters** to choose its values (with their samples) or a numeric condition.
-7. Enter a Chart Title and Legend Position and review the regenerated preview.
+5. Drag fields to **Rows**, **Columns** and **Legend**, in the order they split the chart (`Operator` then `Campaign` gives `Operator × Campaign`). A field dropped on the middle of a pill takes its place; dropped near its left or right edge, or between pills, it goes there.
+6. Drop a field on **Filters** to choose its values (with their samples) or a numeric condition, and on **One chart per** for a chart of each of its values.
+7. Enter a Chart Title, give the chart its look in **Format** and review the regenerated preview.
 
 The Source Dataset selector is filtered by CDR Type and shows only processed datasets of that type. When the chosen datasets are of an NR Mode that leaves operators out of scope (the **NR Modes** of their labels in the [Operator Maps](workspace-config.md#operator-maps), such as Three, which has no SA), the chart header names them (*Out of scope: SA · Three*) and their rows are left out of the chart.
 
@@ -50,14 +50,15 @@ The Source Dataset selector is filtered by CDR Type and shows only processed dat
 | Rows, Columns | Ordered splits of the chart: drag a pill along its shelf, or to another shelf, to change them. |
 | Legend | The fields the legend explains. |
 | Filters | A field dropped here opens its filter: its values in the chosen CDRs with their samples (Include, Exclude) or a text to contain; a numeric field takes a condition such as `< 1.6`. Each filter is a pill: click it to change it, **×** to remove it. |
-| Chart Type | The chart types, each drawn; the ones the shelves cannot draw are greyed, cannot be chosen and say what they need (one numeric measure, two for Scatter, a dimension as measure for 100% Stacked Vertical Bars, Latitude and Longitude for a Map). Threshold, Buckets and Bin Size are set beside the type that uses them. **KPI Card** shows one figure of the latest campaign: its **Figure** (Average, Median, Percentile, Count of samples, or a share of a value, below or above a threshold), what it is **Compared with** (the previous campaign, the best competitor or nothing) and its **Trend over the campaigns**, set in the place of Legend Position; added to a PPT Design, it is a KPI card of the Design. |
-| Legend Position | Top, Bottom, Left or Right. |
+| Chart Type | The chart types, each drawn; the ones the shelves cannot draw are greyed, cannot be chosen and say what they need (one numeric measure, two for Scatter, a dimension as measure for 100% Stacked Vertical Bars, Latitude and Longitude for a Map). Threshold, Buckets and Bin Size are set beside the type that uses them. **KPI Card** shows one figure of the latest campaign: its **Figure** (Average, Median, Percentile, Count of samples, or a share of a value, below or above a threshold), what it is **Compared with** (the previous campaign, the best competitor or nothing), **One card per** (Operator, Vendor, Region or City) and its **Trend over the campaigns**, set under Chart Type; added to a PPT Design, it is a KPI card of the Design. |
+| One chart per | A field whose values each get a chart of their own (up to 12), side by side, as a PPT Design lays them out in the place of one chart. |
+| Format | Beside **Data**, as in the [Designer](ppt-designer.md#designer): the colours, lines and opacity of the series, the legend, the labels and the axes, with **Copy format** and **Default colours**. On the chart itself, an entry of its legend opens the format of that series, a numeric axis its range and a category axis its values. |
 
 The embedded viewer provides the same Canvas rendering, semantic hover details, zoom, panning and refresh behaviour as an individual PPT Designer chart. Its chart downloads as a PNG image or copies to the clipboard as a screenshot from the floating buttons at the top right corner of its card (see [Images of charts and tables](web-interface.md#images-of-charts-and-tables)); App Events records each one as `export_chart_builder_image`, with the CDR type and CDRs used.
 
 ## Add to PPT Design
 
-**Add to PPT Design…** lists the Designs whose slides you can edit (admins and super-admins any, a user-editor those they created) and their slides with their free places: the chart goes to a free place of the slide chosen, or to a new slide at the end of the Design. It becomes part of that Design only (one of its differences from its template, see [Designer](ppt-designer.md#designer)) and reads the CDRs the Design chooses, not those chosen here. App Events record it as `design_chart_added`.
+**Add to PPT Design…** lists the Designs whose slides you can edit (admins and super-admins any, a user-editor those they created) and their slides with their free places: the chart goes, with its format and its One chart per (a KPI Card as a KPI card), to a free place of the slide chosen, or to a new slide at the end of the Design. It becomes part of that Design only (one of its differences from its template, see [Designer](ppt-designer.md#designer)) and reads the CDRs the Design chooses, not those chosen here. App Events record it as `design_chart_added`.
 
 ## Example
 
@@ -70,7 +71,7 @@ Filters: Test_Result IN (Completed, Dropped, Failed);
 Rows: Operator
 Columns: Campaign
 Legend: Campaign
-Legend Position: Bottom
+Format · Legend: Bottom
 ```
 
 ## Filters

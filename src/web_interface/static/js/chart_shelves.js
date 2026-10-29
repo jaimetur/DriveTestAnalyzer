@@ -214,7 +214,8 @@
    *            fieldValues: async (source, field) => [{value, count}], onChange(changes),
    *            showSource (false: the source and NR Mode are chosen elsewhere, as in Chart Builder), pptNrMode (the NR Mode
    *            of the PPT Design: NSA, SA or NSA & SA), eachPpt (a template chart: each PPT Design keeps its NR Mode),
-   *            chartTypes (false: Chart Type is drawn apart, with renderTypes)} */
+   *            chartTypes (false: Chart Type is drawn apart, with renderTypes), repeat (One chart per where the source is chosen
+   *            elsewhere, as in Chart Builder)} */
   // The groups of fields in the order they are used most: the main fields first, the fields of no section last.
   const GROUP_ORDER = ['CDR-Main fields', 'Normalised fields', 'Network Insights', 'Non-Qualified Calls', 'DT Analyzer RCA', 'Vendor Mapping', 'Auto-calculated Fields'];
   const groupRank = group => (group === 'Other fields' ? 1000 : GROUP_ORDER.includes(group) ? GROUP_ORDER.indexOf(group) : 500);
@@ -263,11 +264,18 @@
       else if (key === 'legend') change({legend: items.join(', ')});
       else if (key === 'filters') writeFilters(items);
     }
-    function addToShelf(key, field) {
+    // A field goes where it is dropped: on a pill it takes its place, before or after one it goes there, and chosen from the
+    // menu of the field it goes last (a field already on the shelf moves there).
+    function addToShelf(key, field, place = null) {
       if (key === 'filters') { openFilterDialog(field); return; }
       if (key === 'repeat') { change({repeat: {field}}); return; }
-      const items = shelfItems(key).filter(item => identity(key === 'kpi' ? kpiField(item) : item) !== identity(field));
-      const next = key === 'kpi' && !['Multi KPI CDF Lines', 'Scatter', 'Table', 'Dynamic Table'].includes(values.chart_type) ? [field] : [...items, field];
+      const same = item => identity(key === 'kpi' ? kpiField(item) : item) === identity(field);
+      const current = shelfItems(key);
+      const at = place ? place.index : current.length;
+      const next = current.filter((item, index) => !same(item) || (place?.replace && index === at));
+      const position = current.slice(0, at).filter(item => !same(item)).length;
+      if (place?.replace && !same(current[at] ?? '')) next.splice(position, 1, field);
+      else if (!(place?.replace && same(current[at] ?? ''))) next.splice(position, 0, field);
       const changes = {};
       if (key === 'kpi') changes.kpi = next.join(' | ');
       else if (key === 'legend') changes.legend = next.join(', ');
@@ -279,7 +287,9 @@
     function suggestType(state) {
       const current = TYPES.find(item => item.type.toLowerCase() === String(values.chart_type || '').toLowerCase());
       if (current && current.need(state) === true) return {};
-      const best = state.numeric >= 2 ? (state.numeric === 2 ? 'Scatter' : 'Multi KPI CDF Lines')
+      // (Another numeric measure on a CDF gives one line per measure.)
+      const cdf = /cdf/i.test(String(values.chart_type || ''));
+      const best = state.numeric >= 2 ? (state.numeric === 2 && !cdf ? 'Scatter' : 'Multi KPI CDF Lines')
         : state.text >= 1 ? '100% Stacked Vertical Bars'
           : state.splits ? 'Average Vertical Bars' : 'CDF Line';
       return {chart_type: best};
@@ -293,20 +303,45 @@
         items.map((item, index) => shelfPill(key, item, index, items)),
         items.length ? null : h('span', {class: 'ds-cb-drop-hint', text: key === 'filters' ? 'Drop a field to filter'
           : key === 'repeat' ? 'Drop a field: one chart for each of its values' : 'Drop a field here'}));
+      // Where a drop goes: on the middle of a pill a new field takes its place, near its edges it goes before or after it, and
+      // elsewhere before the first pill it is in front of, or last. A moved pill goes before or after the pill.
+      const pills = () => [...zone.querySelectorAll('.ds-cb-pill[data-index]')];
+      const dropPlace = (event, replacing) => {
+        const over = event.target.closest?.('.ds-cb-pill[data-index]');
+        if (over && zone.contains(over)) {
+          const box = over.getBoundingClientRect();
+          const share = (event.clientX - box.left) / Math.max(box.width, 1);
+          if (replacing && share > .25 && share < .75) return {index: Number(over.dataset.index), replace: true};
+          return {index: Number(over.dataset.index) + (share >= .5 ? 1 : 0), replace: false};
+        }
+        const next = pills().find(pill => { const box = pill.getBoundingClientRect(); return event.clientY < box.top || (event.clientY <= box.bottom && event.clientX < box.left + box.width / 2); });
+        return {index: next ? Number(next.dataset.index) : pills().length, replace: false};
+      };
+      const unmark = () => { zone.classList.remove('is-drop'); pills().forEach(pill => pill.classList.remove('is-drop-replace', 'is-drop-before', 'is-drop-after')); };
+      const dragged = event => [...event.dataTransfer.types].some(type => type.startsWith('application/x-ds-'));
       zone.addEventListener('dragover', event => {
-        if ([...event.dataTransfer.types].some(type => type.startsWith('application/x-ds-'))) { event.preventDefault(); zone.classList.add('is-drop'); }
+        if (!dragged(event)) return;
+        event.preventDefault();
+        unmark();
+        zone.classList.add('is-drop');
+        if (key === 'filters' || key === 'repeat') return;
+        const place = dropPlace(event, event.dataTransfer.types.includes('application/x-ds-field'));
+        const all = pills();
+        if (place.replace) all[place.index]?.classList.add('is-drop-replace');
+        else if (place.index < all.length) all[place.index].classList.add('is-drop-before');
+        else all.at(-1)?.classList.add('is-drop-after');
       });
-      zone.addEventListener('dragleave', () => zone.classList.remove('is-drop'));
+      zone.addEventListener('dragleave', event => { if (!zone.contains(event.relatedTarget)) unmark(); });
       zone.addEventListener('drop', event => {
-        zone.classList.remove('is-drop');
         const field = event.dataTransfer.getData('application/x-ds-field');
         const moved = event.dataTransfer.getData('application/x-ds-pill');
+        const place = dropPlace(event, Boolean(field));
+        unmark();
         event.preventDefault();
-        if (field) { addToShelf(key, field); return; }
+        if (field) { addToShelf(key, field, place); return; }
         if (moved) {
           const [fromKey, fromIndex] = JSON.parse(moved);
-          const target = event.target.closest('.ds-cb-pill[data-index]');
-          movePill(fromKey, Number(fromIndex), key, target && target.dataset.shelf === key ? Number(target.dataset.index) : null);
+          movePill(fromKey, Number(fromIndex), key, place.index);
         }
       });
       // The Filters shelf has a subpanel of its own, titled: it needs no label of its own.
@@ -323,7 +358,8 @@
       if (!item) return;
       const field = fromKey === 'kpi' ? kpiField(item) : item;
       if (fromKey === toKey) {
-        source.splice(toIndex ?? source.length, 0, item);
+        // (The place is counted with the pill still in it.)
+        source.splice(toIndex === null ? source.length : toIndex - (fromIndex < toIndex ? 1 : 0), 0, item);
         writeShelf(fromKey, source);
         return;
       }
@@ -434,7 +470,7 @@
           h('div', {class: 'ds-cb-source-row', title: 'The CDRs the chart reads'}, h('span', {class: 'ds-cb-shelf-label', text: 'Source'}),
             h('div', {class: 'ds-cb-segmented', role: 'group', 'aria-label': 'Source: the CDRs the chart reads'}, SOURCES.map(([value, label, title]) => h('button', {type: 'button', class: value === source ? 'is-active' : '', 'aria-pressed': String(value === source), title, onclick: () => change({cdr_source: value})}, label)))),
           nrModeRow(context, options.pptNrMode, options.eachPpt)),
-        h('div', {class: 'ds-cb-shelves'}, SHELVES.filter(([key]) => key !== 'filters' && (key !== 'repeat' || options.showSource !== false)).map(shelf))),
+        h('div', {class: 'ds-cb-shelves'}, SHELVES.filter(([key]) => key !== 'filters' && (key !== 'repeat' || options.showSource !== false || options.repeat)).map(shelf))),
       card('filters', 'Filters', shelf(SHELVES.find(([key]) => key === 'filters')),
         // The rows every measure of the chart leaves out.
         h('div', {class: 'ds-cb-exclusions'}, [['exclude_null_empty', 'Leave out empty values', 'Rows whose measure is empty (Null or blank) are left out'],

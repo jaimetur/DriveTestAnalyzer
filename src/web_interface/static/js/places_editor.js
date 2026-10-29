@@ -1,9 +1,11 @@
 /* Free layouts of the Designer (ticket #26, phase 4): the places of a slide adjusted on a grid.
 
-   The rows and columns of the grid are resized by dragging the lines between them, and neighbouring places are merged
-   into one (a chart over two columns) or split again. The result is the geometry of the places, as fractions of the chart
-   area of the slide's layout (the same coordinates the viewer lays charts out with, and the PPT export places them by),
-   kept with the grid it came from so it can be adjusted again. */
+   A layout starts from one ready to use (two charts above and one as wide as both below, a tall one beside two…) or from
+   the grid of the slide, which takes rows and columns more or fewer. The rows and columns of the grid are resized by
+   dragging the lines between them, and neighbouring places are merged into one (a chart over two columns) or split again.
+   The result is the geometry of the places, as fractions of the chart area of the slide's layout (the same coordinates
+   the viewer lays charts out with, and the PPT export places them by), kept with the grid it came from so it can be
+   adjusted again. */
 (() => {
   'use strict';
   const h = (tag, props = {}, ...children) => {
@@ -46,6 +48,43 @@
     });
   }
   const covers = (area, row, column) => row >= area[0] && row < area[0] + area[2] && column >= area[1] && column < area[1] + area[3];
+  const inReadingOrder = areas => [...areas].sort((left, right) => left[0] - right[0] || left[1] - right[1]);
+  // Which place of ``after`` each place of ``before`` (both grids on the same cells) becomes: the one covering its top-left
+  // cell, or -1 when another place of before took it (places merged into one) or the cell is gone. Of places merged into
+  // one, the first that holds something (``holds(index)``) keeps it, else the first in reading order.
+  function cellMapping(before, after, holds = () => false) {
+    const ordered = inReadingOrder(after);
+    const places = inReadingOrder(before);
+    const result = places.map(() => -1);
+    const taken = new Set();
+    const order = places.map((_area, index) => index).sort((left, right) => Number(holds(right)) - Number(holds(left)) || left - right);
+    for (const index of order) {
+      const target = ordered.findIndex(next => covers(next, places[index][0], places[index][1]));
+      if (target < 0 || taken.has(target)) continue;
+      taken.add(target);
+      result[index] = target;
+    }
+    return result;
+  }
+  // Layouts ready to start from: a grid whose places span its cells ([row, column, rows, columns]).
+  const thirds = [1 / 3, 1 / 3, 1 / 3], sixths = Array(6).fill(1 / 6);
+  const PRESETS = [
+    ['One', gridSpec(1, 1)],
+    ['Two side by side', gridSpec(1, 2)],
+    ['Two stacked', gridSpec(2, 1)],
+    ['Two above, one wide below', {rows: [.5, .5], columns: [.5, .5], areas: [[0, 0, 1, 1], [0, 1, 1, 1], [1, 0, 1, 2]]}],
+    ['One wide above, two below', {rows: [.5, .5], columns: [.5, .5], areas: [[0, 0, 1, 2], [1, 0, 1, 1], [1, 1, 1, 1]]}],
+    ['One tall at the left, two at the right', {rows: [.5, .5], columns: [.6, .4], areas: [[0, 0, 2, 1], [0, 1, 1, 1], [1, 1, 1, 1]]}],
+    ['Two at the left, one tall at the right', {rows: [.5, .5], columns: [.4, .6], areas: [[0, 0, 1, 1], [1, 0, 1, 1], [0, 1, 2, 1]]}],
+    ['Four', gridSpec(2, 2)],
+    ['Three above, one wide below', {rows: [.5, .5], columns: thirds, areas: [[0, 0, 1, 1], [0, 1, 1, 1], [0, 2, 1, 1], [1, 0, 1, 3]]}],
+    ['One wide above, three below', {rows: [.5, .5], columns: thirds, areas: [[0, 0, 1, 3], [1, 0, 1, 1], [1, 1, 1, 1], [1, 2, 1, 1]]}],
+    ['One tall at the left, three at the right', {rows: thirds, columns: [.6, .4], areas: [[0, 0, 3, 1], [0, 1, 1, 1], [1, 1, 1, 1], [2, 1, 1, 1]]}],
+    ['Three above, two below', {rows: [.5, .5], columns: sixths, areas: [[0, 0, 1, 2], [0, 2, 1, 2], [0, 4, 1, 2], [1, 0, 1, 3], [1, 3, 1, 3]]}],
+    ['Two above, three below', {rows: [.5, .5], columns: sixths, areas: [[0, 0, 1, 3], [0, 3, 1, 3], [1, 0, 1, 2], [1, 2, 1, 2], [1, 4, 1, 2]]}],
+    ['Six', gridSpec(2, 3)],
+  ];
+  const MAXIMUM_ROWS = 6, MAXIMUM_COLUMNS = 12;
 
   /** Open the editor. options: {title, grid: {rows, columns, areas} or null, rows, columns (of the layout), labels (what each
    *  place holds now, by place), onSave(result)}
@@ -55,13 +94,52 @@
     spec.rows = normalized(spec.rows); spec.columns = normalized(spec.columns);
     const original = structuredClone(spec);
     let selected = new Set();
+    // The places of before as the grid the places are now compared with knows them: the grid of before, or the layout
+    // last started from, which takes the places of before in reading order.
+    let reference = {spec: original, places: original.areas.map((_area, index) => index)};
     const overlay = h('div', {class: 'confirm-overlay ds-overlay ds-secondary ppt-designer ds-design-dialog-overlay'});
     const board = h('div', {class: 'ds-layout-board', role: 'application', 'aria-label': 'Places of the slide'});
-    const note = h('p', {class: 'form-note', text: 'Drag the lines between rows or columns to resize them. Click a place, Shift+click another to select the places between them, then Merge; Split gives a merged place its cells back.'});
+    const note = h('p', {class: 'form-note', text: 'Start from a layout, or give the grid more or fewer rows and columns. Drag the lines between rows or columns to resize them. Click a place, Shift+click another to select the places between them, then Merge; Split gives a merged place its cells back.'});
     const mergeButton = h('button', {type: 'button', class: 'ds-design-action', onclick: () => merge()}, 'Merge');
     const splitButton = h('button', {type: 'button', class: 'ds-design-action', onclick: () => split()}, 'Split');
     const close = () => overlay.remove();
-    const ordered = () => [...spec.areas].sort((left, right) => left[0] - right[0] || left[1] - right[1]);
+    const ordered = () => inReadingOrder(spec.areas);
+    // A layout to start from, drawn small: the places of the elements of the slide follow in reading order.
+    const presets = h('div', {class: 'ds-layout-presets', role: 'group', 'aria-label': 'Layouts'}, PRESETS.map(([name, preset]) =>
+      h('button', {type: 'button', class: 'ds-layout-preset', title: name, 'aria-label': name, onclick: () => {
+        spec = structuredClone(preset);
+        reference = {spec: structuredClone(preset), places: original.areas.map((_area, index) => (index < preset.areas.length ? index : -1))};
+        selected = new Set();
+        paint();
+      }}, h('span', {class: 'ds-layout-preset-board', 'aria-hidden': 'true'}, geometry(preset).map(([left, top, width, height]) =>
+        h('span', {class: 'ds-layout-preset-place', style: {left: `${left}%`, top: `${top}%`, width: `${width}%`, height: `${height}%`}}))))));
+    // One row or column more at the bottom or right, or the last one less (a place only in it goes away, one across it
+    // narrows).
+    function resize(kind, change) {
+      const count = spec[kind].length;
+      const maximum = kind === 'rows' ? MAXIMUM_ROWS : MAXIMUM_COLUMNS;
+      if (change > 0 && count < maximum) {
+        spec[kind] = normalized([...spec[kind].map(size => size * count / (count + 1)), 1 / (count + 1)]);
+        const other = kind === 'rows' ? spec.columns.length : spec.rows.length;
+        for (let index = 0; index < other; index += 1) spec.areas.push(kind === 'rows' ? [count, index, 1, 1] : [index, count, 1, 1]);
+      } else if (change < 0 && count > 1) {
+        const last = count - 1, start = kind === 'rows' ? 0 : 1, span = kind === 'rows' ? 2 : 3;
+        spec.areas = spec.areas.filter(area => area[start] < last).map(area => {
+          const next = [...area];
+          if (next[start] + next[span] > last) next[span] = last - next[start];
+          return next;
+        });
+        spec[kind] = normalized(spec[kind].slice(0, -1));
+      } else return;
+      selected = new Set();
+      paint();
+    }
+    const counter = (kind, label) => h('span', {class: 'ds-layout-counter', role: 'group', 'aria-label': label},
+      h('span', {class: 'ds-layout-counter-label', text: label}),
+      h('button', {type: 'button', class: 'ds-layout-counter-step', 'aria-label': `One ${label.toLowerCase().replace(/s$/, '')} less`, title: `The last ${label.toLowerCase().replace(/s$/, '')} less`, onclick: () => resize(kind, -1)}, '−'),
+      h('output', {class: 'ds-layout-counter-value', 'data-counter': kind}),
+      h('button', {type: 'button', class: 'ds-layout-counter-step', 'aria-label': `One ${label.toLowerCase().replace(/s$/, '')} more`, title: `One ${label.toLowerCase().replace(/s$/, '')} more`, onclick: () => resize(kind, 1)}, '+'));
+    const counters = h('div', {class: 'ds-layout-counters'}, counter('rows', 'Rows'), counter('columns', 'Columns'));
     function selection() {
       const areas = ordered().filter((_area, index) => selected.has(index));
       if (!areas.length) return null;
@@ -117,11 +195,11 @@
       window.addEventListener('pointermove', move);
       window.addEventListener('pointerup', stop);
     }
-    // What a place holds: the elements of the places of before whose top-left cell it covers.
-    const originalAreas = [...original.areas].sort((left, right) => left[0] - right[0] || left[1] - right[1]);
-    const holds = area => originalAreas.flatMap((before, index) => (covers(area, before[0], before[1]) && options.labels?.[index] ? [options.labels[index]] : []));
+    // What a place holds: the elements of the places of before that become it.
+    const holds = index => mapping().flatMap((place, before) => (place === index && options.labels?.[before] ? [options.labels[before]] : []));
     function paint() {
       const rects = geometry(spec);
+      overlay.querySelectorAll('[data-counter]').forEach(output => { output.textContent = String(spec[output.dataset.counter].length); });
       board.replaceChildren(
         ...ordered().map((area, index) => {
           const [left, top, width, height] = rects[index];
@@ -136,7 +214,7 @@
               } else selected = selected.has(index) && selected.size === 1 ? new Set() : new Set([index]);
               paint();
             }}, h('span', {class: 'ds-layout-number', text: String(index + 1)}),
-            holds(area).length ? h('span', {class: 'ds-layout-holds', text: holds(area).join(' + ')}) : h('span', {class: 'ds-layout-holds is-free', text: 'Free place'}),
+            holds(index).length ? h('span', {class: 'ds-layout-holds', text: holds(index).join(' + ')}) : h('span', {class: 'ds-layout-holds is-free', text: 'Free place'}),
             area[2] > 1 || area[3] > 1 ? h('small', {class: 'ds-layout-span', text: `${area[2]} × ${area[3]} cells`}) : null);
         }),
         ...spec.columns.slice(0, -1).map((_size, index) => h('span', {class: 'ds-layout-divider is-column', style: {left: `${sum(spec.columns.slice(0, index + 1)) * 100}%`},
@@ -149,22 +227,15 @@
       mergeButton.disabled = coverage.inside.length < 2 || coverage.crossing.length > 0;
       splitButton.disabled = !ordered().some((area, index) => selected.has(index) && (area[2] > 1 || area[3] > 1));
     }
-    // Which new place each place of before becomes: the one covering its top-left cell (-1 when another one there now
-    // starts before it, the place merged into another).
+    // Which new place each place of before becomes (-1 when none: merged into another, or gone with its row or column).
     function mapping() {
-      const before = [...original.areas].sort((left, right) => left[0] - right[0] || left[1] - right[1]);
-      const after = ordered();
-      const taken = new Set();
-      return before.map(area => {
-        const index = after.findIndex(next => covers(next, area[0], area[1]));
-        if (index < 0 || taken.has(index)) return -1;
-        taken.add(index);
-        return index;
-      });
+      const held = new Set(reference.places.filter((place, before) => place >= 0 && options.labels?.[before]));
+      const now = cellMapping(reference.spec.areas, spec.areas, place => held.has(place));
+      return reference.places.map(place => (place < 0 ? -1 : now[place] ?? -1));
     }
     const dialog = h('section', {class: 'confirm-panel ds-design-dialog is-wide', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Adjust places', tabindex: '-1'},
       h('div', {class: 'section-head'}, h('div', {}, h('p', {class: 'eyebrow', text: options.title || 'Slide'}), h('h2', {text: 'Adjust places'})), h('button', {type: 'button', class: 'ds-dialog-close', 'aria-label': 'Close', onclick: close}, '×')),
-      note, board,
+      note, presets, counters, board,
       h('div', {class: 'ds-design-dialog-actions'},
         mergeButton, splitButton,
         h('button', {type: 'button', class: 'ds-design-action', title: 'The places of the layout as the slide master has them', onclick: () => { close(); options.onSave(null); }}, 'Reset places'),
@@ -182,5 +253,5 @@
     dialog.focus();
   }
 
-  window.PlacesEditor = {open, geometry, gridSpec};
+  window.PlacesEditor = {open, geometry, gridSpec, cellMapping};
 })();

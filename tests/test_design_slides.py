@@ -395,6 +395,27 @@ def test_a_kpi_card_of_the_chart_builder_previews_with_its_settings_and_joins_a_
     assert (element['kind'], element['chart_type'], element['kpi_card']) == ('kpi', 'KPI Card', settings)
 
 
+def test_the_chart_builder_draws_one_chart_per_value_with_its_format_and_adds_them_to_a_design(client):
+    setup(client)
+    style = {'legend': {'position': 'bottom'}, 'series': {'A': {'colour': '#FF0000'}}}
+    chart = {'chart_title': 'Rate', 'cdr_source': 'CDR-Data', 'kpi': 'Mean_Data_Rate', 'chart_type': 'Average Vertical Bars', 'rows_split': 'Operator',
+             'columns_split': '', 'legend': 'Operator', 'filters': '', 'legend_position': 'top', 'style': style, 'repeat': {'field': 'City'}}
+    preview = client.post('/api/chart-builder/preview', json={'dataset_ids': [1], 'definition': chart})
+    assert preview.status_code == 200, preview.text
+    body = preview.json()
+    assert (body['type'], body['field'], [item['value'] for item in body['charts']]) == ('repeat', 'City', ['Leeds', 'London'])
+    assert [item['model']['title'] for item in body['charts']] == ['Rate – Leeds', 'Rate – London']
+    assert all(item['model']['format_overrides'] == style for item in body['charts'])
+    # London: A twice (10 and 30); Leeds: B once (20).
+    assert [item['model']['cells'] for item in body['charts']] == [[[20.0]], [[20.0]]]
+    single = client.post('/api/chart-builder/preview', json={'dataset_ids': [1], 'definition': {**chart, 'repeat': None}}).json()
+    assert single['type'] == 'mean_bar' and single['format_overrides'] == style
+    added = client.post('/api/ppt-designer/design-a/add-chart', json={'element': chart})
+    assert added.status_code == 200, added.text
+    element = stored('design-a')['slide_overrides']['local_slides'][-1]['slide']['elements'][0]
+    assert (element['style'], element['repeat']) == (style, {'field': 'City'})
+
+
 def test_the_format_of_a_chart_travels_in_its_row_and_reaches_its_model(client):
     definition = setup(client)
     body = client.get('/api/ppt-designer/design-a/slides?edit=1').json()

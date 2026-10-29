@@ -284,6 +284,12 @@ a.topnav-link-logout { background: linear-gradient(135deg, #ffd8d8, #ffc6c6); bo
 .report-out-of-scope[hidden] { display: none; }
 .chart-builder-canvas { position: relative; display: grid; place-items: center; min-height: min(62vh, 760px); overflow: hidden; background: #fff; }
 .chart-builder-canvas canvas { width: 100%; height: 100%; min-height: 0; touch-action: none; }
+/* One chart per: the charts side by side, as a PPT Design lays them out in the place of one. */
+.chart-builder-repeat { display: grid; grid-template-columns: repeat(var(--chart-builder-repeat-columns, 2), minmax(0, 1fr)); gap: .6rem; align-self: start; width: 100%; max-height: 100%; overflow: auto; padding: .6rem; box-sizing: border-box; }
+.chart-builder-repeat[hidden] { display: none; }
+/* (The canvas fills a cell of a fixed ratio: the size it is drawn at never sizes the cell.) */
+.chart-builder-repeat-chart { position: relative; min-width: 0; aspect-ratio: 16 / 10; border: 1px solid rgba(184, 91, 32, 0.14); border-radius: 8px; overflow: hidden; }
+.chart-builder-canvas .chart-builder-repeat-chart canvas { position: absolute; inset: 0; }
 .chart-builder-canvas .ds-chart-controls { position: absolute; right: .75rem; bottom: .75rem; }
 .chart-builder-canvas .ds-chart-zoom { position: static; }
 .chart-builder-canvas p { color: #796252; }

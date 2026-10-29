@@ -7552,15 +7552,14 @@ def catalog_chart_payload(
                 means = _aggregate_metric(values, [*row_hierarchy, *render_columns], metric, aggregation).dropna()
             row_keys = _hierarchical_unique_keys(values, row_hierarchy) if row_hierarchy else [()]
             column_keys = _hierarchical_unique_keys(values, render_columns)
-            lookup = {key if len(axes) > 1 else key[0]: float(value) for key, value in means.items()}
+            # Every mean by the whole key of its bar (its row and column values), whatever the levels it was grouped by.
+            lookup = {key if isinstance(key, tuple) else (key,): float(value) for key, value in means.items()}
             flat_keys = [label if isinstance(label, tuple) else (label,) for label in means.index]
             sample_counts = _aggregate_metric(values, [*row_hierarchy, *render_columns], metric, "count")
             samples = {label if isinstance(label, tuple) else (label,): int(count) for label, count in sample_counts.items()}
             colours = _series_colours(flat_keys, [*row_hierarchy, *render_columns], values)
             def mean_value(row_key: tuple[object, ...], column_key: tuple[object, ...]) -> float | None:
-                key = (*row_key, *column_key)
-                lookup_key = key if len(key) > 1 else key[0]
-                return lookup.get(lookup_key)
+                return lookup.get((*row_key, *column_key))
             def mean_colour(row_key: tuple[object, ...], column_key: tuple[object, ...]) -> str:
                 key = (*row_key, *column_key)
                 return colours.get(key, _colour(key))
