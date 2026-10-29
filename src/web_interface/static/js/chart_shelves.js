@@ -1,7 +1,7 @@
 /* The chart builder of the Designer (ticket #26, phase 2): the data pane, shelves and Chart Type of a chart.
 
    A chart is built Tableau-like: the fields of its source (dimensions and measures told apart, grouped by the sections of
-   the CDR Field Dictionary) are dragged to its shelves — Measure, Rows, Columns, Legend, Filters and Repeat by — and Chart Type
+   the CDR Field Dictionary) are dragged to its shelves — Measure, Rows, Columns, Legend, Filters and One chart per — and Chart Type
    offers the chart types the shelves can draw, the others greyed with the reason. Each change gives the values of the
    chart as its template row writes them (KPI, Rows Split, Columns Split, Legend, Filters, Chart type, Dynamic Rows/Columns
    Field), so the same engine and renderer draw it. Used by the Designer (designer.js) and by Chart Builder. */
@@ -82,7 +82,7 @@
     ['columns_split', 'Columns', 'Series or table columns, in order'],
     ['legend', 'Legend', 'The fields the legend explains'],
     ['filters', 'Filters', 'Conditions on the rows of the chart'],
-    ['repeat', 'Repeat by', 'One chart per value of a field, side by side in the place of this one (small multiples)'],
+    ['repeat', 'One chart per', 'One chart for each value of a field, side by side in the place of this one: drop City for a chart of each city'],
   ];
 
   // An SVG picture (SVG elements need their own namespace, which innerHTML of an <svg> gives them).
@@ -283,7 +283,8 @@
           ? h('button', {type: 'button', class: 'ds-cb-pill is-locked is-editable', title: 'A filter of the PPT: it applies to every chart. Click to change it in PPT Filters', onclick: options.onLockedFilter}, text)
           : h('span', {class: 'ds-cb-pill is-locked', title: 'A filter of the PPT: it applies to every chart', text}))) : null,
         items.map((item, index) => shelfPill(key, item, index, items)),
-        items.length ? null : h('span', {class: 'ds-cb-drop-hint', text: key === 'filters' ? 'Drop a field to filter' : 'Drop a field here'}));
+        items.length ? null : h('span', {class: 'ds-cb-drop-hint', text: key === 'filters' ? 'Drop a field to filter'
+          : key === 'repeat' ? 'Drop a field: one chart for each of its values' : 'Drop a field here'}));
       zone.addEventListener('dragover', event => {
         if ([...event.dataTransfer.types].some(type => type.startsWith('application/x-ds-'))) { event.preventDefault(); zone.classList.add('is-drop'); }
       });
@@ -300,8 +301,13 @@
           movePill(fromKey, Number(fromIndex), key, target && target.dataset.shelf === key ? Number(target.dataset.index) : null);
         }
       });
-      return h('div', {class: `ds-cb-shelf is-${key}`, title}, h('span', {class: 'ds-cb-shelf-label', text: label}), zone);
+      // The Filters shelf has a subpanel of its own, titled: it needs no label of its own.
+      return h('div', {class: `ds-cb-shelf is-${key}${key === 'filters' ? ' is-bare' : ''}`, title},
+        key === 'filters' ? null : h('span', {class: 'ds-cb-shelf-label', text: label}), zone);
     };
+    // A subpanel of the builder: the chart (its source and shelves), its filters, and the fields to drag to them.
+    const card = (kind, title, ...children) => h('section', {class: `ds-cb-card is-${kind}`, 'aria-label': title},
+      h('h4', {class: 'ds-cb-card-title', text: title}), ...children);
     function movePill(fromKey, fromIndex, toKey, toIndex) {
       if (fromKey === 'filters' || toKey === 'filters' || fromKey === 'repeat' || toKey === 'repeat') return;
       const source = shelfItems(fromKey);
@@ -415,13 +421,16 @@
     const chartTypes = options.chartTypes === false ? null : h('div', {class: 'ds-cb-types', role: 'group', 'aria-label': 'Chart Type'}, TYPES.map(item => typeButton(item, context)));
 
     host.replaceChildren(...[
-      options.showSource === false ? null : h('div', {class: 'ds-cb-source'},
-        h('div', {class: 'ds-cb-source-row', title: 'The CDRs the chart reads'}, h('span', {class: 'ds-cb-shelf-label', text: 'Source'}),
-          h('div', {class: 'ds-cb-segmented', role: 'group', 'aria-label': 'Source: the CDRs the chart reads'}, SOURCES.map(([value, label, title]) => h('button', {type: 'button', class: value === source ? 'is-active' : '', 'aria-pressed': String(value === source), title, onclick: () => change({cdr_source: value})}, label)))),
-        nrModeRow(context, options.pptNrMode, options.eachPpt)),
-      h('div', {class: 'ds-cb-shelves'}, SHELVES.filter(([key]) => key !== 'repeat' || options.showSource !== false).map(shelf)),
+      card('chart', 'Chart',
+        options.showSource === false ? null : h('div', {class: 'ds-cb-source'},
+          h('div', {class: 'ds-cb-source-row', title: 'The CDRs the chart reads'}, h('span', {class: 'ds-cb-shelf-label', text: 'Source'}),
+            h('div', {class: 'ds-cb-segmented', role: 'group', 'aria-label': 'Source: the CDRs the chart reads'}, SOURCES.map(([value, label, title]) => h('button', {type: 'button', class: value === source ? 'is-active' : '', 'aria-pressed': String(value === source), title, onclick: () => change({cdr_source: value})}, label)))),
+          nrModeRow(context, options.pptNrMode, options.eachPpt)),
+        h('div', {class: 'ds-cb-shelves'}, SHELVES.filter(([key]) => key !== 'filters' && (key !== 'repeat' || options.showSource !== false)).map(shelf))),
+      card('filters', 'Filters', shelf(SHELVES.find(([key]) => key === 'filters'))),
       chartTypes ? h('div', {class: 'ds-cb-chart-types'}, h('span', {class: 'ds-cb-shelf-label', text: 'Chart Type'}), chartTypes, settingRow(context)) : null,
-      h('div', {class: 'ds-cb-data'}, h('span', {class: 'ds-cb-shelf-label', text: `Fields · ${SOURCES.find(([value]) => value === source)?.[1] || source}`}), search, fieldsHost),
+      h('section', {class: 'ds-cb-card is-fields ds-cb-data', 'aria-label': 'Fields'},
+        h('h4', {class: 'ds-cb-card-title', text: `Fields · ${SOURCES.find(([value]) => value === source)?.[1] || source}`}), search, fieldsHost),
     ].filter(Boolean));
   }
 

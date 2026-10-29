@@ -134,17 +134,23 @@
 .ppt-designer .ds-design-sections button:focus-visible { outline: 2px solid var(--ds-color); outline-offset: 0; }
 .ppt-designer .ds-design-dot { width: .45rem; height: .45rem; border-radius: 50%; background: var(--ds-design-changed); }
 
-/* Data of a chart: the fields fill the height left under the shelves, or stand beside them when the panel is wide. */
+/* Data of a chart: three subpanels, the chart (its source and shelves), its filters and the fields to drag to them; the
+   fields fill the height left, or stand beside the other two when the panel is wide. */
+.ppt-designer .ds-cb-card { display: grid; align-content: start; gap: .45rem; min-width: 0; padding: .55rem .6rem .6rem; border: 1px solid var(--ds-border); border-radius: 10px; background: #fff; }
+.ppt-designer .ds-cb-card-title { margin: 0; font-size: .72rem; font-weight: 850; letter-spacing: .06em; text-transform: uppercase; color: var(--ds-color); }
+.ppt-designer .ds-cb-card.is-filters { border-color: color-mix(in srgb, var(--ds-cb-filter) 35%, var(--ds-border)); background: color-mix(in srgb, var(--ds-cb-filter-soft) 40%, #fff); }
+.ppt-designer .ds-cb-card.is-filters .ds-cb-card-title { color: var(--ds-cb-filter); }
+.ppt-designer .ds-cb-shelf.is-bare { grid-template-columns: minmax(0, 1fr); }
 #ds-design-panel .ds-design-panel-body.is-data { display: flex; flex-direction: column; }
-#ds-design-panel .is-data > .ds-cb { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; }
+#ds-design-panel .is-data > .ds-cb { display: flex; flex: 1 1 auto; flex-direction: column; gap: .6rem; min-height: 0; }
 #ds-design-panel .is-data .ds-cb-data { display: flex; flex: 1 1 auto; flex-direction: column; gap: .35rem; min-height: 12rem; }
 #ds-design-panel .is-data .ds-cb-fields { flex: 1 1 auto; min-height: 0; max-height: none; }
 @container ds-panel (min-width: 30rem) {
   #ds-design-panel .is-data > .ds-cb { display: grid; grid-template-columns: minmax(9.5rem, 38%) minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr);
-    grid-template-areas: "data source" "data shelves"; align-items: start; column-gap: .75rem; }
-  #ds-design-panel .is-data .ds-cb-source { grid-area: source; }
-  #ds-design-panel .is-data .ds-cb-shelves { grid-area: shelves; }
-  #ds-design-panel .is-data .ds-cb-data { grid-area: data; align-self: stretch; min-height: 0; padding-right: .7rem; border-right: 1px solid var(--ds-border); }
+    grid-template-areas: "data chart" "data filters"; align-items: start; gap: .6rem; }
+  #ds-design-panel .is-data .ds-cb-card.is-chart { grid-area: chart; }
+  #ds-design-panel .is-data .ds-cb-card.is-filters { grid-area: filters; }
+  #ds-design-panel .is-data .ds-cb-data { grid-area: data; align-self: stretch; min-height: 0; }
 }
 
 /* Chart Type: a narrow tab on the right edge of the panel, in the margin of the viewer (it takes no room from the slide or the

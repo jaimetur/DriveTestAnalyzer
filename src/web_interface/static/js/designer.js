@@ -668,7 +668,7 @@
   const KINDS = {chart: ['Chart', 'chart'], kpi: ['KPI card', 'kpi'], text: ['Text box', 'text'], image: ['Image', 'image']};
   // The names of the properties a Design changes, as Differences shows them.
   const DIFFERENCE_NAMES = {title: 'Title', subtitle: 'Subtitle', layout: 'Layout', options: 'Places', place: 'Place', style: 'Format', chart_type: 'Chart type',
-    chart_title: 'Title', kind: 'Kind', content: 'Content', kpi_card: 'KPI settings', repeat: 'Repeat by', cdr_source: 'Source', kpi: 'Measure',
+    chart_title: 'Title', kind: 'Kind', content: 'Content', kpi_card: 'KPI settings', repeat: 'One chart per', cdr_source: 'Source', kpi: 'Measure',
     rows_split: 'Rows', columns_split: 'Columns', legend: 'Legend', legend_position: 'Legend position', axis_x_range: 'X axis range', axis_y_range: 'Y axis range'};
   function icon(name) {
     const holder = document.createElement('span');
