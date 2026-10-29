@@ -1341,6 +1341,16 @@
       h('label', {class: 'ds-design-format-row'}, 'Line width', width),
       h('label', {class: 'ds-design-format-row'}, 'Line', dash),
       h('label', {class: 'ds-design-format-row'}, 'Opacity', opacity),
+      // The format of a series (its colour, line and opacity) copied to paste on another series, of this chart or another.
+      h('div', {class: 'ds-design-format-actions'},
+        h('button', {type: 'button', title: 'Copy the colour, line and opacity of this series, to paste them on another series',
+          onclick: () => {
+            state.seriesClipboard = {from: name, values: {colour: current.colour || original, width: current.width ?? '', dash: current.dash || '', opacity: current.opacity ?? ''}};
+            viewer().status(`Format of ${name} copied: open another series and paste it there.`);
+            closeMenus();
+          }}, 'Copy format of this series'),
+        state.seriesClipboard && state.seriesClipboard.from !== name ? h('button', {type: 'button', title: `Give this series the colour, line and opacity of ${state.seriesClipboard.from}`,
+          onclick: () => { closeMenus(); guarded(() => setSeries(elementId, name, clone(state.seriesClipboard.values)))(); }}, `Paste format of ${state.seriesClipboard.from}`) : null),
       h('div', {class: 'ds-design-format-actions'},
         h('button', {type: 'button', title: 'The colour of the Operator / Vendor Maps of the workspace, and the default line', onclick: () => { closeMenus(); guarded(() => setStyle(elementId, style => { if (style.series) delete style.series[name]; }))(); }}, 'Default'),
         h('button', {type: 'button', onclick: closeMenus}, 'Close')));
@@ -1500,9 +1510,18 @@
       return node;
     };
     return h('div', {class: 'ds-design-format'},
+      // The format of a chart (series colours, legend, labels, axes and their ranges) copied to paste on another chart.
       h('div', {class: 'ds-design-format-actions'},
-        h('button', {type: 'button', title: 'Copy the format of this chart', onclick: () => { state.formatClipboard = {style, legend_position: element.legend_position, label_position: element.label_position, label_format: element.label_format, axis_x_range: element.axis_x_range, axis_y_range: element.axis_y_range}; viewer().status('Format copied: paste it on another chart.'); renderPanel(); }}, 'Copy format'),
-        h('button', {type: 'button', disabled: !state.formatClipboard, title: 'Give this chart the format copied', onclick: () => guarded(() => setElementValues(elementId, clone(state.formatClipboard)))()}, 'Paste format')),
+        h('button', {type: 'button', title: 'Copy the series colours, legend, labels, axes and axis ranges of this chart, to paste them on another chart',
+          onclick: () => {
+            state.formatClipboard = {style, legend_position: element.legend_position, label_position: element.label_position, label_format: element.label_format, axis_x_range: element.axis_x_range, axis_y_range: element.axis_y_range};
+            state.formatClipboardFrom = elementLabel(element);
+            viewer().status('Format copied: choose another chart and paste it there.');
+            renderPanel();
+          }}, 'Copy format of this chart'),
+        state.formatClipboard ? h('button', {type: 'button', title: `Give this chart the series colours, legend, labels, axes and axis ranges of ${state.formatClipboardFrom}`,
+          onclick: () => guarded(() => setElementValues(elementId, clone(state.formatClipboard)))()}, `Paste format of ${state.formatClipboardFrom}`) : null),
+      h('p', {class: 'ds-design-field-note', text: 'The format is its series colours, legend, labels, axes and axis ranges.'}),
       group('Series',
         h('p', {class: 'ds-design-field-note', text: 'Click a series in the legend of the chart, or here, to change its colour, line and opacity.'}),
         series,
