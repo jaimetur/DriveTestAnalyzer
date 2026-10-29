@@ -202,7 +202,8 @@
 
   /** Render the builder of one chart into ``host``.
    *  options: {values, fields: {source: [{name, type, category}]}, calculated: [names], parameters: [...],
-   *            lockedFilters: [labels], fieldValues: async (source, field) => [{value, count}], onChange(changes),
+   *            lockedFilters: [labels], onLockedFilter (opens the filters of the PPT, where those change),
+   *            fieldValues: async (source, field) => [{value, count}], onChange(changes),
    *            showSource (false: the source and NR Mode are chosen elsewhere, as in Chart Builder), pptNrMode (the NR Mode
    *            of the PPT Design: NSA, SA or NSA & SA), eachPpt (a template chart: each PPT Design keeps its NR Mode),
    *            chartTypes (false: Chart Type is drawn apart, with renderTypes)} */
@@ -213,6 +214,9 @@
     // Data pane
     let query = '';
     const fieldsHost = h('div', {class: 'ds-cb-fields'});
+    // The groups in the order they are used most: the main fields first, the fields of no section last.
+    const GROUP_ORDER = ['CDR-Main fields', 'Normalised fields', 'Network Insights', 'Non-Qualified Calls', 'DT Analyzer RCA', 'Vendor Mapping', 'Auto-calculated Fields'];
+    const groupRank = group => (group === 'Other fields' ? 1000 : GROUP_ORDER.includes(group) ? GROUP_ORDER.indexOf(group) : 500);
     const paintFields = () => {
       const groups = new Map();
       for (const item of fieldList) {
@@ -221,7 +225,7 @@
         if (!groups.has(group)) groups.set(group, []);
         groups.get(group).push(item);
       }
-      fieldsHost.replaceChildren(...[...groups.entries()].map(([group, items]) => h('details', {class: 'ds-cb-group', open: Boolean(query)},
+      fieldsHost.replaceChildren(...[...groups.entries()].sort(([left], [right]) => groupRank(left) - groupRank(right) || left.localeCompare(right)).map(([group, items]) => h('details', {class: 'ds-cb-group', open: Boolean(query)},
         h('summary', {}, group, h('span', {class: 'ds-cb-count', text: String(items.length)})),
         h('div', {class: 'ds-cb-group-fields'}, items.sort((left, right) => (left.type === right.type ? left.name.localeCompare(right.name) : left.type === 'text' ? -1 : 1)).map(fieldPill)))));
       if (!fieldsHost.childElementCount) fieldsHost.append(h('p', {class: 'ds-cb-empty', text: fieldList.length ? 'No field matches.' : 'The fields appear once the Design is prepared.'}));
@@ -275,7 +279,9 @@
     const shelf = ([key, label, title]) => {
       const items = shelfItems(key);
       const zone = h('div', {class: `ds-cb-shelf-items${items.length ? '' : ' is-empty'}`, 'aria-label': `${label} shelf`},
-        key === 'filters' ? (options.lockedFilters || []).map(text => h('span', {class: 'ds-cb-pill is-locked', title: 'A filter of the Design: it applies to every chart', text})) : null,
+        key === 'filters' ? (options.lockedFilters || []).map(text => (options.onLockedFilter
+          ? h('button', {type: 'button', class: 'ds-cb-pill is-locked is-editable', title: 'A filter of the PPT: it applies to every chart. Click to change it in PPT Filters', onclick: options.onLockedFilter}, text)
+          : h('span', {class: 'ds-cb-pill is-locked', title: 'A filter of the PPT: it applies to every chart', text}))) : null,
         items.map((item, index) => shelfPill(key, item, index, items)),
         items.length ? null : h('span', {class: 'ds-cb-drop-hint', text: key === 'filters' ? 'Drop a field to filter' : 'Drop a field here'}));
       zone.addEventListener('dragover', event => {

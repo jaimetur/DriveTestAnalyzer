@@ -359,6 +359,10 @@
 .ppt-designer .ds-cb-pill.is-number { background: var(--ds-cb-measure); color: #fff; }
 .ppt-designer .ds-cb-pill.is-filter { background: var(--ds-cb-filter-soft); color: var(--ds-cb-filter); box-shadow: inset 0 0 0 1px var(--ds-cb-filter); }
 .ppt-designer .ds-cb-pill.is-locked { align-items: center; padding: 0 .55rem; background: #ece9f1; color: #6b6178; }
+/* A filter of the PPT opens PPT Filters, where it changes: a pencil says so. */
+.ppt-designer .ds-cb-pill.is-locked.is-editable { gap: .35rem; border: 1px solid transparent; box-shadow: none; font: inherit; font-size: .74rem; font-weight: 750; cursor: pointer; }
+.ppt-designer .ds-cb-pill.is-locked.is-editable::after { content: ''; width: .8rem; height: .8rem; background: center/contain no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236b6178' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 20h4L19 9l-4-4L4 16v4Z'/%3E%3Cpath d='m13.5 6.5 4 4'/%3E%3C/svg%3E"); }
+.ppt-designer .ds-cb-pill.is-locked.is-editable:hover { border-color: var(--ds-color); background: var(--ds-soft); color: var(--ds-color); }
 .ppt-designer .ds-cb-pill[draggable="true"] { cursor: grab; }
 .ppt-designer .ds-cb-pill-label, .ppt-designer .ds-cb-pill-remove { min-height: 0; padding: 0 .5rem; border: 0; background: transparent; box-shadow: none; color: inherit;
   font: inherit; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

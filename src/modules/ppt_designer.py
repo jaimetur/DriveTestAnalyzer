@@ -3499,6 +3499,8 @@ def install_design_routes(core):
         _datasets, columns_by_source = source_columns(task_repository, columns)
         dimensions = core.load_repository_calculated_dimensions(task_repository)
         categories = field_categories(task_repository)
+        # The Auto-calculated Fields of the workspace are listed together, also those the CDRs already hold as columns.
+        categories.update({identity(dimension.name): 'Auto-calculated Fields' for dimension in dimensions})
         internal = {identity(name) for name in ('dataset_kind', 'source_file', '__rowid', '__dataset_id')}
         fields: dict[str, list[dict[str, str]]] = {}
         all_types: dict[str, str] = {}

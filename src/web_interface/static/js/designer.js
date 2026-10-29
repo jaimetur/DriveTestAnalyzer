@@ -1230,7 +1230,7 @@
   }
   const shelvesOptions = (element, shown) => ({
     values: shown, fields: state.fields?.fields, calculated: state.fields?.calculated_fields, parameters: parameters(),
-    lockedFilters: lockedFilters(), fieldValues, pptNrMode: String(viewer().state().definition?.nr_mode || '').replace('+', ' & '), eachPpt: state.scope === 'template',
+    lockedFilters: lockedFilters(), onLockedFilter: () => $('ds-floating-filters')?.click(), fieldValues, pptNrMode: String(viewer().state().definition?.nr_mode || '').replace('+', ' & '), eachPpt: state.scope === 'template',
     onChange: changes => guarded(() => setElementValues(element.id, changes))(),
   });
 

@@ -26,7 +26,7 @@ KIND_LABELS = {'data': 'Data', 'voice': 'Voice', 'speech': 'Speech'}
 # The sections of the dictionary: the profile attribute, its title and what its fields are for. An attribute is a
 # list of columns, a field → columns dictionary, or a field → CDR type (Data, Voice, Speech) → columns dictionary.
 SECTIONS: tuple[tuple[str, str, str], ...] = (
-    ('normalised_sources', 'Processing', 'The fields every CDR row gains when it is processed (its result, times, KPIs).'),
+    ('normalised_sources', 'Normalised fields', 'The fields every CDR row gains when it is processed (its result, times, KPIs).'),
     ('fixed_sources', 'CDR-Main fields', 'The main fields added to every CDR (Campaign, Operator, Test Name...).'),
     ('nq_field_sources', 'Non-Qualified Calls', 'The fields of every call of Non-Qualified Calls.'),
     ('nq_qualification_sources', 'Non-Qualified Calls', 'The qualification of a call: it is Non-Qualified when it does not '

@@ -532,7 +532,7 @@ Nothing has to be typed or filled in: the table lists every Operator of the Oper
 
 The CDR Field Dictionary shows, for every field the modules read, the columns of the workspace's CDR files that can hold it, in order of preference: a CDR gives each field the first of its columns it has. The columns come from the field profile of the workspace's [CDR type](#cdr-type), so NetCheck CDRs and Umlaut CDRs keep their own column names. The fields are grouped by what reads them:
 
-- **Processing**: the fields every CDR row gains when it is processed, such as its result, start and end times, setup time, throughput and latency.
+- **Normalised fields**: the fields every CDR row gains when it is processed, with the same name in every CDR type, such as its result, start and end times, setup time, throughput and latency.
 - **CDR-Main fields**: the main fields added to every CDR (Campaign, Operator, Test Name, Technology, Session Type, Call Status...).
 - **Non-Qualified Calls**: the fields of every call, the qualification that makes a call Non-Qualified, the identifier of a call or test (which keeps its follow-up) and the Speech sample inside its call.
 - **DT Analyzer RCA**: the values of every call that the [DT Analyzer RCA](non-qualified-calls.md#dt-analyzer-rca) rules read.
