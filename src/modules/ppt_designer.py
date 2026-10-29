@@ -491,6 +491,11 @@ DESIGN_COMPACT_READS = os.environ.get('DRIVETEST_ANALYZER_COMPACT_READS', '1') !
 DESIGN_COLUMN_CACHE = os.environ.get('DRIVETEST_ANALYZER_COLUMN_CACHE', '1') != '0'
 # Order-independent charts filter each distinct row of their columns once, with its number of rows (see read_frame).
 DESIGN_WEIGHTED_READS = os.environ.get('DRIVETEST_ANALYZER_WEIGHTED_READS', '1') != '0'
+# While nobody uses the application for this long, every PPT Design and PPT Template of the open workspace is prepared
+# and its chart models worked out and kept (the warm-up, see install_design_routes); DRIVETEST_ANALYZER_DESIGN_WARMUP=0
+# turns it off.
+DESIGN_WARMUP = os.environ.get('DRIVETEST_ANALYZER_DESIGN_WARMUP', '1') != '0'
+DESIGN_WARMUP_IDLE_SECONDS = float(os.environ.get('DRIVETEST_ANALYZER_DESIGN_WARMUP_IDLE_SECONDS') or 5 * 60)
 # In a Design of NSA & SA, a chart of one NR Mode (NR Mode IN (SA)) reads only the CDRs of that NR Mode; 0 reads both
 # and leaves its filter to drop the rows of the other one (the same chart).
 DESIGN_NR_MODE_READS = os.environ.get('DRIVETEST_ANALYZER_NR_MODE_READS', '1') != '0'
@@ -8015,6 +8020,254 @@ def install_design_routes(core):
                     'template': template, 'designs': len(changed),
                 }))
         return len(changed)
+
+    # ------------------------------------------------------------------
+    # Warm-up: while nobody uses the application, every PPT Design and PPT Template of the open workspace is prepared
+    # and the models of its charts are worked out and kept (design_preview_manifests, design_chart_models), so after a
+    # restart they open at once. A chart keeps its model while it, its CDR selection and the mappings stay the same (its
+    # key), so a changed Design or template only works out its changed charts, and a changed selection all of them. It
+    # pauses as soon as someone uses the application or other background work starts, stops from its card, and goes on
+    # from where it was the next time the server is idle (what it kept is not worked out again).
+    # ------------------------------------------------------------------
+    warmups: dict[str, dict] = {}
+    warmup_user = SimpleNamespace(username='system', role='super-admin')
+
+    def warmup_signature(task_repository) -> str:
+        """What the warm-up reads: the Designs, the templates and the template previews, the CDRs, the mappings and the
+        chart models version. Unchanged since a finished warm-up, there is nothing to work out."""
+        with task_repository.connection() as connection:
+            datasets = [tuple(row) for row in connection.execute(
+                'SELECT dataset_id, status, updated_at, processed_at, row_count, in_combined FROM dataset_profiles '
+                'ORDER BY dataset_id').fetchall()]
+        templates = [(str(row['name']), sha256(bytes(row['content'] or b'')).hexdigest())
+                     for row in task_repository.list_report_templates()]
+        return sha256(json.dumps([
+            DESIGN_CHART_MODEL_CACHE_VERSION, DESIGN_PREVIEW_MANIFEST_VERSION,
+            task_repository.get_workspace_state(STATE_KEY), task_repository.get_workspace_state(TEMPLATE_PREVIEWS_STATE_KEY),
+            datasets, templates, task_repository.chart_mapping_settings(),
+            [task_repository.get_workspace_state(f'combined_reporting_updated_{kind}') for kind in KINDS],
+        ], sort_keys=True, default=str).encode()).hexdigest()
+
+    def warmup_targets(task_repository) -> list[tuple[str, str | None, dict]]:
+        """(name, design id, definition) of every PPT Design, then of every PPT Template as each user who opened one
+        opens it (their NR Mode and Campaign), or with the defaults of PPT Templates → Edit when nobody has."""
+        targets = [(f"PPT Design {raw.get('name') or design_id}", design_id, raw)
+                   for design_id, raw in sorted(read_designs(task_repository).items(), key=lambda item: str(item[1].get('name') or '').casefold())
+                   if isinstance(raw, dict)]
+        previews = [(design_id, raw) for design_id, raw in read_template_previews(task_repository).items() if isinstance(raw, dict)]
+        default = {'nr_mode': 'NSA', 'scope': 'single', 'auto_cdrs': True, 'filters': {'Campaign': ['@latest-2-campaigns']},
+                   'sa_campaigns': [], 'custom_fields': [], 'hidden_filters': [], 'date_from': 'Oldest', 'date_to': 'Newest'}
+        for row in sorted(task_repository.list_report_templates(), key=lambda row: str(row['name']).casefold()):
+            name = str(row['name'])
+            for design_id, preview in previews or [(None, default)]:
+                definition = {**preview, 'name': name, 'template': name, 'slide_overrides': {}, 'own_slides': None,
+                              'slide_comments': {}, 'slide_comment_meta': {}}
+                targets.append((f'PPT Template {name}', design_id, definition))
+        return targets
+
+    def warmup_task(workspace_path: str) -> dict | None:
+        with lock:
+            job = warmups.get(workspace_path)
+            return dict(job) if job else None
+
+    def warm_up_target(job, workspace, task_repository, design_id, raw, should_pause) -> None:
+        """Prepare one Design or template (or restore its kept preparation) and work out the charts it lacks."""
+        definition = auto_cdr_definition(DesignDefinition.model_validate(raw), task_repository)
+        with lock:
+            known = set(snapshots)
+        preview = restore_matching_preview_manifest(workspace, design_id, definition) if design_id else None
+        if preview is None:
+            while not design_work_gate.acquire(timeout=0.5):
+                if should_pause():
+                    return
+            try:
+                preview = build_preview(definition, warmup_user, workspace=workspace, cancelled=should_pause)
+            finally:
+                design_work_gate.release()
+            if design_id:
+                with lock:
+                    built = snapshots.get(preview['token'])
+                if built is not None:
+                    persist_preview_manifest(workspace, design_id, design_preview_fingerprint(
+                        built.definition.model_dump(mode='json'), task_repository), preview['token'])
+                    with lock:
+                        snapshots.pop(preview['token'], None)
+                    # The charts are worked out on the kept preparation, as a user opening the Design reads it.
+                    preview = restore_matching_preview_manifest(workspace, design_id, definition) or preview
+        token = str(preview['token'])
+        try:
+            with lock:
+                snapshot = snapshots.get(token)
+            if snapshot is None:
+                return
+            indexes = [index for index, entry in enumerate(snapshot.entries)
+                       if entry.source_kind and design_datasets(snapshot.definition, entry.source_kind, task_repository)]
+            with lock:
+                job.update(charts=len(indexes), chart=0)
+            for position, index in enumerate(indexes):
+                if should_pause():
+                    return
+                with lock:
+                    job['chart'] = position + 1
+                if chart_model_ready(snapshot, index):
+                    with lock:
+                        job['reused'] += 1
+                    continue
+                try:
+                    chart_model(token, index, warmup_user, expected_workspace=workspace)
+                    with lock:
+                        job['computed'] += 1
+                except (HTTPException, ValueError, KeyError, OSError, sqlite3.Error):
+                    # A chart its selection cannot draw is left to the viewer, which says why.
+                    with lock:
+                        job['failed'] += 1
+        finally:
+            # The warm-up keeps the models, not the frames: its own preparations leave the memory.
+            if token not in known:
+                with lock:
+                    snapshots.pop(token, None)
+
+    def run_warmup(workspace: str, activity_at: float) -> None:
+        task_repository = Repository(Path(workspace), core.repository.global_db_path)
+        with lock:
+            job = warmups[workspace]
+
+        def should_pause() -> bool:
+            with core.APPLICATION_ACTIVITY_LOCK:
+                used = core.LAST_INTERACTIVE_APPLICATION_ACTIVITY != activity_at
+            active = core.active_workspace and str(Path(core.active_workspace.database_path).resolve()) == workspace
+            reason = ('stopped' if job.get('stop_requested') else 'in use' if used
+                      else 'background work' if not (core.BACKGROUND_TASK_SCHEDULER.is_idle and core.EXPORT_TASK_SCHEDULER.is_idle)
+                      else 'shutdown' if core.APP_SHUTTING_DOWN.is_set() or not active else '')
+            if reason:
+                with lock:
+                    job['pause_reason'] = job.get('pause_reason') or reason
+            return bool(reason)
+
+        started = monotonic()
+        signature = ''
+        try:
+            signature = warmup_signature(task_repository)
+            targets = warmup_targets(task_repository)
+            with lock:
+                job.update(status='processing', started_at=datetime.now(timezone.utc).timestamp(), total=len(targets))
+            for number, (name, design_id, raw) in enumerate(targets, 1):
+                if should_pause():
+                    break
+                with lock:
+                    job.update(done=number - 1, current=name, charts=0, chart=0)
+                try:
+                    warm_up_target(job, workspace, task_repository, design_id, raw, should_pause)
+                except RuntimeError:
+                    break  # Its preparation was cancelled: someone uses the application.
+                except (HTTPException, ValueError, KeyError, TypeError) as exc:
+                    # A Design without CDRs of its selection, or with a template that is gone: the next one.
+                    with lock:
+                        job['skipped'] += 1
+                        job['last_error'] = f'{name}: {getattr(exc, "detail", exc)}'
+            else:
+                with lock:
+                    job.update(done=len(targets), signature=signature)
+            reason = job.get('pause_reason') or ''
+            with lock:
+                job.update(status='stopped' if reason == 'stopped' else 'paused' if reason else 'ready',
+                           finished_at=datetime.now(timezone.utc).timestamp(), current='' if not reason else job['current'])
+        except Exception as exc:  # Warming up is optional: an idle period tries again (see warm_up_when_idle).
+            with lock:
+                job.update(status='failed', last_error=str(exc), finished_at=datetime.now(timezone.utc).timestamp(),
+                           failed_signature=signature)
+        task_repository.try_add_log('system', 'design_warmup_finished', json.dumps({
+            'status': job['status'], 'reason': job.get('pause_reason') or '', 'targets': job.get('total', 0),
+            'done': job.get('done', 0), 'charts_computed': job['computed'], 'charts_kept': job['reused'],
+            'charts_failed': job['failed'], 'skipped': job['skipped'], 'seconds': round(monotonic() - started, 1),
+            **({'last_error': job['last_error']} if job.get('last_error') else {}),
+        }))
+
+    def warm_up_when_idle() -> None:
+        """Start the warm-up of the open workspace while the server is idle, unless it runs, or nothing changed since
+        the last one finished."""
+        workspace_entry = core.active_workspace
+        if not workspace_entry or core.APP_SHUTTING_DOWN.is_set() or not DESIGN_WARMUP:
+            return
+        workspace = str(Path(workspace_entry.database_path).resolve())
+        task_repository = Repository(Path(workspace), core.repository.global_db_path)
+        with lock:
+            previous = warmups.get(workspace) or {}
+        if previous.get('status') in {'queued', 'processing'}:
+            return
+        try:
+            signature = warmup_signature(task_repository)
+        except (sqlite3.Error, OSError):
+            return
+        if previous.get('status') == 'ready' and previous.get('signature') == signature:
+            return
+        # After a failure it waits half an hour before trying again, unless something it reads changed.
+        if (previous.get('status') == 'failed' and previous.get('failed_signature') == signature
+                and datetime.now(timezone.utc).timestamp() - float(previous.get('finished_at') or 0) < 30 * 60):
+            return
+        with core.APPLICATION_ACTIVITY_LOCK:
+            activity_at = core.LAST_INTERACTIVE_APPLICATION_ACTIVITY
+        with lock:
+            warmups[workspace] = {
+                'id': uuid4().hex, 'status': 'queued', 'queued_at': datetime.now(timezone.utc).timestamp(),
+                'started_at': None, 'finished_at': None, 'total': 0, 'done': 0, 'current': '', 'charts': 0, 'chart': 0,
+                'computed': 0, 'reused': 0, 'failed': 0, 'skipped': 0, 'stop_requested': False, 'pause_reason': '',
+                'last_error': '', 'signature': previous.get('signature') if previous.get('status') == 'ready' else '',
+                'resumed': previous.get('status') in {'paused', 'stopped', 'failed'},
+            }
+        task_repository.try_add_log('system', 'design_warmup_started', json.dumps({
+            'resumed': warmups[workspace]['resumed'], 'idle_seconds': round(core.application_idle_seconds()),
+        }))
+        Thread(target=run_warmup, args=(workspace, activity_at), name='design-warmup', daemon=True).start()
+
+    def warmup_task_payloads(workspace) -> list[dict]:
+        """The warm-up in the background tasks card while it runs (with Stop), and a moment after it pauses or ends."""
+        job = warmup_task(str(Path(workspace.database_path).resolve()))
+        if not job:
+            return []
+        running = job['status'] in {'queued', 'processing'}
+        if not running and datetime.now(timezone.utc).timestamp() - float(job.get('finished_at') or 0) > 8:
+            return []
+        if job['status'] == 'queued':
+            detail = 'Waiting to prepare the PPT Designs and PPT Templates'
+        elif running:
+            charts = f": chart {job['chart']} of {job['charts']}" if job.get('charts') else ': preparing its data'
+            detail = f"{job['current']}{charts} ({job['done'] + 1} of {job['total']})"
+        elif job['status'] == 'ready':
+            detail = f"Ready: {job['computed']} charts worked out, {job['reused']} already kept"
+        elif job['status'] == 'failed':
+            detail = f"Failed: {job.get('last_error') or 'unknown error'}; it tries again when the server is idle"
+        else:
+            detail = {'stopped': 'Stopped', 'in use': 'Paused while the application is in use',
+                      'background work': 'Paused while other background work runs',
+                      'shutdown': 'Paused'}.get(job.get('pause_reason') or '', 'Paused') + \
+                ': it goes on from where it was the next time the server is idle'
+        fraction = (job['chart'] / job['charts']) if job.get('charts') else 0
+        # (Finished, it stays a moment with what it did: ready shows as completed once it goes, paused, stopped and
+        # failed do not.)
+        return [{
+            'id': f"design-warmup:{job['id']}", 'label': 'Warming up PPT Designs', 'detail': detail,
+            'status': job['status'] if running or job['status'] in {'paused', 'stopped', 'failed'} else 'processing',
+            'progress': 100 if job['status'] == 'ready' else (
+                round(100 * (job['done'] + fraction) / job['total']) if job.get('total') else None),
+            'queued_at': job.get('queued_at'), 'started_at': job.get('started_at'), 'completed_at': job.get('finished_at'),
+            **({'stop_task_id': f"design-warmup:{job['id']}", 'stop_url': f'/api/background-tasks/{workspace.id}/stop'}
+               if running else {}),
+        }]
+
+    def stop_warmup(workspace_path, job_id: str) -> bool:
+        with lock:
+            job = warmups.get(str(Path(workspace_path).resolve()))
+            if not job or job.get('id') != job_id or job.get('status') not in {'queued', 'processing'}:
+                return False
+            job['stop_requested'] = True
+        return True
+
+    core.register_idle_task(warm_up_when_idle, DESIGN_WARMUP_IDLE_SECONDS)
+    core.BACKGROUND_TASK_PROVIDERS.append(warmup_task_payloads)
+    core.ppt_design_warmup_stop = stop_warmup
+    core.ppt_design_warm_up_now = warm_up_when_idle
+    core.ppt_design_warmup_task = warmup_task
 
     core.ppt_design_tasks = design_task_payloads
     core.ppt_design_cancel_workspace_tasks = cancel_workspace_design_tasks

@@ -248,13 +248,14 @@ def test_auto_calculated_field_editor_uses_wide_content_aware_dialog_geometry():
     assert script.count('updateSaveActions();\n        finish();') == 2
 
 
-def test_designs_prepare_nothing_in_the_background_and_compact_panel_headers_stay_aligned():
+def test_designs_prepare_ahead_only_in_the_idle_warm_up_and_compact_panel_headers_stay_aligned():
     design_module = (Path(__file__).parents[1] / 'src/modules/ppt_designer.py').read_text(encoding='utf-8')
     app_stylesheet = (Path(__file__).parents[1] / 'src/web_interface/static/css/app.css').read_text(encoding='utf-8')
     design_stylesheet = (Path(__file__).parents[1] / 'src/web_interface/static/css/ppt_designer.css').read_text(encoding='utf-8')
 
-    # A Design is prepared when it is opened, from the columnar copies of its CDRs: nothing is pre-cached.
-    assert 'warmup' not in design_module
+    # A Design is prepared when it is opened, or ahead by the warm-up while the server is idle (test_design_warmup):
+    # no change queues its preparation in the background.
+    assert 'core.register_idle_task(warm_up_when_idle, DESIGN_WARMUP_IDLE_SECONDS)' in design_module
     assert 'core.submit_background_task(delayed_retry)' not in design_module
     assert 'core.submit_background_task(run)' not in design_module
     assert '.collapsible-summary .collapse-chip {' in app_stylesheet

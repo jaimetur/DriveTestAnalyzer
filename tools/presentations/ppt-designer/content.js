@@ -82,13 +82,13 @@ module.exports = {
         { icon: 'TbUserCheck', title: 'You decide', text: 'Review, edit and add, on one slide or all of them; Auto comments fill the PowerPoint and Reporting Jobs.' },
       ],
       notes: 'Generate comments writes the analysis of a slide from the exact figures its charts draw: the change since the previous campaign, the gap to the leader, the weak tail, the vendors of each operator and what the charts say together, from the point of view of the Focus operators. The rules run on the server; when Super Admin enables them, Kiro (the default LLM) or Claude write the same facts in a more natural way, and every figure they write is checked against the facts. You review and add the comments, generated ones keep a tag and say when they are out of date, and Auto comments fill the slides of the PowerPoint and of the Reporting Jobs.' },
-    { id: 'cache', type: 'split', section: 'Workflow', footer: 'Preparation', kicker: 'Preparation lifecycle', title: 'Prepared when you open it', visual: 'cache',
+    { id: 'cache', type: 'split', section: 'Workflow', footer: 'Preparation', kicker: 'Preparation lifecycle', title: 'Ready before you open it', visual: 'cache',
       points: [
-        { icon: 'TbBolt', title: 'Nothing ahead', text: 'A Design is prepared when it is opened, from the columnar copies of its CDRs.' },
-        { icon: 'TbClock', title: 'In memory', text: 'Opened again, a Design and the charts already drawn show at once.' },
+        { icon: 'TbBolt', title: 'Warmed up when idle', text: 'Every Design and template is prepared and its charts drawn while nobody uses the server.' },
+        { icon: 'TbClock', title: 'Kept across restarts', text: 'Opened after a restart, a Design shows at once; only what changed is worked out again.' },
         { icon: 'TbPlayerPlay', title: 'Presentation mode', text: 'Plays the slides, with their comments and floating tools.' },
       ],
-      notes: 'Nothing is prepared while the application is idle and nothing is written to disk: opening, refreshing or exporting a Design prepares it from the columnar copies of its CDRs, the charts of the open slide first. What was prepared stays in memory, so a Design opened again shows at once, and App Events record how long each opening took.' },
+      notes: 'While nobody uses the server, the warm-up prepares every PPT Design and PPT Template and works out the models of their charts, kept in the workspace database: after a restart a Design opens at once with its charts drawn. A chart keeps its model while it, its CDRs and filters stay the same, so a changed Design only works out its changed charts. The warm-up shows in the background tasks card, can be stopped there, pauses when someone uses the application and goes on the next time the server is idle.' },
     { id: 'exports', type: 'split', section: 'Results', footer: 'Exports', kicker: 'Generate PPT', title: 'Exports that keep the design', visual: 'exports',
       points: [
         { icon: 'TbFileTypePpt', title: 'PowerPoint', text: 'Its slides, layouts, chart proportions, formats, titles, legends and saved comments.' },

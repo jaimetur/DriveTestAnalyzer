@@ -15735,6 +15735,12 @@ def stop_background_task(
         task_repository.try_set_workspace_state(
             'calculated_dimensions_need_materialization', 'stopped', timeout_seconds=0.1,
         )
+    elif prefix == 'design-warmup':
+        # The warm-up of the PPT Designs stops after the chart it works out, and goes on the next time the server is idle.
+        stop_warmup = getattr(sys.modules[__name__], 'ppt_design_warmup_stop', None)
+        if not callable(stop_warmup) or not stop_warmup(workspace.database_path, raw_identifier):
+            raise HTTPException(status_code=409, detail='The warm-up of the PPT Designs can no longer be stopped.')
+        task_repository.try_add_log(user.username, 'stop_design_warmup', json.dumps({'task_id': raw_identifier}))
     elif prefix == 'design-prepare':
         stop_design = getattr(sys.modules[__name__], 'ppt_design_stop_task', None)
         if not callable(stop_design) or not stop_design(workspace.database_path, raw_identifier):

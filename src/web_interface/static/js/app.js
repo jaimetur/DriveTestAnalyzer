@@ -12443,7 +12443,8 @@ if (queueNode) {
     });
     previousServerTasks.forEach((previous, taskId) => {
       if (nextTasks.has(taskId)) return;
-      if (locallyStoppedTaskIds.delete(taskId)) {
+      // A task last seen paused, stopped or failed (the warm-up of the PPT Designs) did not complete: it just goes.
+      if (locallyStoppedTaskIds.delete(taskId) || ['paused', 'stopped', 'failed'].includes(String(previous.task.status || '').toLowerCase())) {
         completedServerTasks.delete(taskId);
         return;
       }
