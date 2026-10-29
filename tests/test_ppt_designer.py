@@ -1514,7 +1514,8 @@ def test_designs_lifecycle_and_layout(client, ppt_reporting_old):
     assert 'preview.replaceChildren(cachedImage(chart))' in design_script
     assert 'const rememberRenderedChartPayload = (chart, payload) =>' in design_script
     assert 'rememberRenderedChartPayload(chart, payload);' in design_script
-    assert 'if (!live && expandedChartSlide(chart) === prepared?.slides[slideIndex]) renderSlide();' in design_script
+    assert 'if (expandedChartSlide(chart) === prepared?.slides[slideIndex]) renderSlide();' in design_script
+    assert 'ds-chart-definition-toggle' not in design_script
     assert "card.ondblclick = safe(async event =>" in design_script
     assert "const syncExpandedChartNavigation" in design_script
     assert 'const setExpandedChartHeader = (chart, title = \'\') =>' in design_script

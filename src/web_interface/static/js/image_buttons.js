@@ -102,10 +102,13 @@
   // and tables, only those inside ``within``; ``tables`` and ``charts`` tell their kind (else a panel). ``exclude``: what
   // the images leave out; ``obstacles``: the buttons of the page the image buttons keep clear of; ``topInset``: how much
   // of the window the floating bars of the page hide; ``cardOnEdge``: whether those of a card stand on its top edge (else
-  // in its corner, as in a dialog). ``title(target, card)``, ``fileName(target, title)`` and
+  // in its corner, as in a dialog); ``singleParts``: the charts or tables that have their buttons also when they are the
+  // only one of their card; ``partRow``: the row of buttons of a chart or table that its buttons stand on, at its left
+  // (else in its top right corner). ``title(target, card)``, ``fileName(target, title)`` and
   // ``details(target)`` name the image and its App Event; ``record(details)`` records it (by default for ``module``).
   function attachImageButtons({
     root, targets, within = '', tables = '', charts = '', exclude = '', obstacles = '', cardOnEdge = true,
+    singleParts = '', partRow = '',
     topInset = floatingBarsBottom,
     title = null, fileName = null, details = () => ({}), module = '', fallbackName = 'Image',
     record = imageDetails => recordImageExport('/api/image-export', {module, ...imageDetails}),
@@ -141,9 +144,10 @@
       const host = part.closest(HOSTS);
       for (let outer = card.parentElement?.closest(targets); outer && (!host || host.contains(outer));
         outer = outer.parentElement?.closest(targets)) card = outer;
-      // A card that holds a single chart or table has the buttons of the card only.
+      // A card that holds a single chart or table has the buttons of the card only (unless it is one of singleParts).
       const parts = [...card.querySelectorAll(targets)].filter(item => item.parentElement.closest(targets) === card);
-      return {card, part: part === card || parts.length < 2 ? null : part};
+      const alone = parts.length < 2 && !(singleParts && part.matches(singleParts));
+      return {card, part: part === card || alone ? null : part};
     }
 
     function kindOf(target) {
@@ -179,7 +183,14 @@
       const onEdge = card && cardOnEdge && host === root;
       let top = onEdge ? bounds.top - size.height / 2 : bounds.top + 8;
       let right = bounds.right - 8;
-      if (!card && cardSlot.inSight && cardSlot.target?.contains(target)) {
+      const rowElement = !card && partRow ? target.querySelector(partRow) : null;
+      const row = rowElement?.getBoundingClientRect();
+      if (row?.width) {
+        // On the row of buttons of the chart or table, at its left, where it ends while it slides in as it shows.
+        const shift = new DOMMatrixReadOnly(getComputedStyle(rowElement).transform);
+        top = row.top - shift.m42 + (row.height - size.height) / 2;
+        right = row.left - shift.m41 - 6;
+      } else if (!card && cardSlot.inSight && cardSlot.target?.contains(target)) {
         // The buttons of a chart or table at the right side of its card have the right edge of those of the card (below
         // them where they would meet); the others stay in the corner of their chart or table.
         const cardButton = cardSlot.button.getBoundingClientRect();

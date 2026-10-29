@@ -297,7 +297,7 @@ Layouts ending in **comments right** place comments beside the charts; **comment
 
 ### Live and expanded chart controls
 
-Hover or focus a chart for **Dataset**, **Expand**, **Refresh**, **Zoom** and **Chart Definition**. The controls also remain accessible on touch devices.
+Hover or focus a chart for **Dataset**, **Expand**, **Refresh** and **Zoom**; while the [Designer](#designer) is open only **Dataset** shows, and the chart itself is changed from its panel. The controls also remain accessible on touch devices.
 
 | Gesture / action | Result |
 | --- | --- |
@@ -314,13 +314,13 @@ Hiding a value applies to the whole Design. Every series, bar, stacked segment, 
 
 The legend state lasts for the browser session and also applies in the expanded viewer. **Generate PPT** exports the charts as you see them, and the PPT job's viewer shows the same state. Relaunching a PPT job keeps the state it was created with. In Network Insights, clicking a legend entry hides or shows it in that chart only.
 
-The slide of the viewer, each of its charts and the chart of the expanded viewer download as a PNG image or copy to the clipboard as a screenshot from the floating buttons at their top right corner, beside the controls of the chart (see [Images of charts and tables](web-interface.md#images-of-charts-and-tables)); so do the Charts Panel and each of its thumbnails. App Events records each one as `export_design_image`, with the slide or the Design and date of the PowerPoint job.
+The slide of the viewer, each of its charts and the chart of the expanded viewer download as a PNG image or copy to the clipboard as a screenshot from floating buttons: those of the slide at its top right corner, those of each chart (also when it is the only one of its slide) at the left of its controls, on the same row (see [Images of charts and tables](web-interface.md#images-of-charts-and-tables)); so do the Charts Panel and each of its thumbnails. App Events records each one as `export_design_image`, with the slide or the Design and date of the PowerPoint job.
 
 The expanded viewer retains PPT filters, chart navigation and a red Close control. Compact portrait/landscape layouts fit navigation and the chart to the viewport; the Comments drawer stays accessible at the bottom.
 
 ### Edit a chart definition
 
-The **Chart Definition** tab uses the same editor in live and expanded view:
+The **Chart Definition** tab of the expanded viewer edits the chart it shows:
 
 | Action | Scope |
 | --- | --- |

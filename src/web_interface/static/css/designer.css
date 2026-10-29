@@ -25,9 +25,9 @@
   box-shadow: 0 0 0 3px rgba(240, 160, 32, .28); }
 #ds-viewer.ppt-designer .ds-viewer-top-design.is-active:hover:not(:disabled) { background: linear-gradient(135deg, #a86200, #d88a10); border-color: #8a5000; }
 
-/* While designing, the tools of the viewer over the charts (images, dataset, expand, zoom, pan, Chart Definition) give
-   way to the Designer. */
-#ds-viewer.ds-designing :is(.ds-chart-controls, .ds-chart-definition-toggle, .ds-chart-pan-button, .element-image-button) { display: none !important; }
+/* While designing, the tools of the viewer over the charts (images, expand, zoom, pan) give way to the Designer: only
+   View dataset stays. */
+#ds-viewer.ds-designing :is(.ds-chart-controls > :not(.ds-chart-data), .ds-chart-pan-button, .element-image-button) { display: none !important; }
 
 /* The bar of Design, under the controls of the viewer. */
 .ppt-designer .ds-design-bar {

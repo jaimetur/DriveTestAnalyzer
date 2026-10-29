@@ -3519,12 +3519,6 @@
   let expandedChartFilterContextPath = '';
   let expandedChartFilterLoadRequest = 0;
   let expandedChartAppliedDefinition = null;
-  const chartFilterPanel = $('ds-chart-filter-panel');
-  const expandedChartFilterHome = chartFilterPanel.parentElement;
-  let liveChartFilterToggle = null;
-  let liveChartCanvas = null;
-  let liveChartMessage = null;
-  let liveChartRender = null;
   const expandedTemplateUpdate = node('button', 'Update Template', 'danger-button');
   expandedTemplateUpdate.id = 'ds-chart-filter-update';
   expandedTemplateUpdate.hidden = true;
@@ -3534,7 +3528,6 @@
     expandedFiltersCloseTimer = null;
     $('ds-chart-filter-panel').classList.toggle('is-open', open);
     $('ds-chart-filter-toggle').setAttribute('aria-expanded', String(open));
-    liveChartFilterToggle?.setAttribute('aria-expanded', String(open));
     if (open) $('ds-chart-filter-fields').querySelector('input,select,button')?.focus();
   };
   const scheduleExpandedChartFiltersClose = () => {
@@ -3554,7 +3547,7 @@
   // a click outside the panel remains an immediate close below.
   document.addEventListener('pointerdown', event => {
     const panel = $('ds-chart-filter-panel');
-    if (!panel.classList.contains('is-open') || panel.contains(event.target) || event.target === liveChartFilterToggle) return;
+    if (!panel.classList.contains('is-open') || panel.contains(event.target)) return;
     // Searchable selector menus are temporarily mounted in the overlay, not
     // inside the panel, and must remain interactive until a choice is made.
     if (event.target.closest('.report-chart-preview-select-menu')) return;
@@ -3628,12 +3621,6 @@
     if (open && !expandedChartFilterControls) await loadExpandedChartFilters();
   });
   const discardExpandedChartDefinitionDraft = () => {
-    if (liveChartFilterToggle) {
-      const toggle = liveChartFilterToggle;
-      resetChartDefinitionSurface();
-      toggle.focus();
-      return;
-    }
     expandedChartFilterLoadRequest += 1;
     expandedChartFilterControls = null;
     expandedChartFilterToken = '';
@@ -3655,30 +3642,6 @@
     $('ds-chart-filter-fields').replaceChildren();
     expandedTemplateUpdate.hidden = true;
     setExpandedChartFiltersOpen(false);
-    chartFilterPanel.classList.remove('ds-live-chart-filter-panel');
-    expandedChartFilterHome.append(chartFilterPanel);
-    liveChartFilterToggle = null;
-    liveChartCanvas = null;
-    liveChartMessage = null;
-    liveChartRender = null;
-  };
-  const openLiveChartDefinition = async (chart, card, toggle, canvas, message, render) => {
-    if (liveChartFilterToggle === toggle) {
-      setExpandedChartFiltersOpen(!chartFilterPanel.classList.contains('is-open'));
-      return;
-    }
-    resetChartDefinitionSurface();
-    expandedChart = chart;
-    expandedChartMode = pptDesignViewer ? 'ppt' : 'design';
-    liveChartFilterToggle = toggle;
-    liveChartCanvas = canvas;
-    liveChartMessage = message;
-    liveChartRender = render;
-    chartFilterPanel.classList.add('ds-live-chart-filter-panel');
-    $('ds-slide-content').append(chartFilterPanel);
-    setExpandedChartFiltersOpen(true);
-    await loadExpandedChartFilters();
-    if (!card.isConnected) resetChartDefinitionSurface();
   };
   // An explicit Close means discard. Automatic/click-outside collapsing uses
   // setExpandedChartFiltersOpen(false) directly and retains the draft.
@@ -3686,11 +3649,9 @@
   const renderExpandedChartDefinition = async ({closePanel = true} = {}) => {
     const chart = expandedChart;
     if (!chart || !expandedChartFilterControls) return null;
-    const live = Boolean(liveChartCanvas);
-    const canvas = live ? liveChartCanvas : $('ds-chart-expanded-canvas');
-    const message = live ? liveChartMessage : $('ds-chart-expanded-message');
+    const canvas = $('ds-chart-expanded-canvas');
+    const message = $('ds-chart-expanded-message');
     const previewDefinition = expandedChartFilterControls.definition();
-    if (live && !message.isConnected) canvas.before(message);
     message.textContent = 'Rendering chart preview…';
     message.hidden = false;
     try {
@@ -3714,13 +3675,10 @@
         }
       }
       if (chart !== expandedChart || !canvas.isConnected) return null;
-      if (!live) {
-        setExpandedChartHeader({...chart, chart_type: previewDefinition.chart_type, cdr_source: previewDefinition.cdr_source}, payload.title);
-        expandedZoom.reset();
-      }
+      setExpandedChartHeader({...chart, chart_type: previewDefinition.chart_type, cdr_source: previewDefinition.cdr_source}, payload.title);
+      expandedZoom.reset();
       canvas.hidden = false;
       globalThis.renderCanvasChart(canvas, withLegendState(chart, payload));
-      if (live) liveChartRender(payload);
       message.hidden = true;
       // Applying a temporary Chart Definition changes the current viewer
       // session, not only the enlarged canvas. Reuse that exact payload for
@@ -3731,7 +3689,7 @@
       chart.chart_type = previewDefinition.chart_type || chart.chart_type;
       chart.cdr_source = previewDefinition.cdr_source || chart.cdr_source;
       expandedChartAppliedDefinition = {...previewDefinition};
-      if (!live && expandedChartSlide(chart) === prepared?.slides[slideIndex]) renderSlide();
+      if (expandedChartSlide(chart) === prepared?.slides[slideIndex]) renderSlide();
       if (closePanel) setExpandedChartFiltersOpen(false);
       return {previewDefinition, payload};
     } catch (error) {
@@ -4412,7 +4370,6 @@
   function renderSlide() {
     if (!prepared) return; slideIndex = Math.max(0,Math.min(slideIndex,prepared.slides.length-1));
     closeLegendMenu();
-    if (liveChartFilterToggle) resetChartDefinitionSurface();
     const slide = prepared.slides[slideIndex]; if (!slide) return;
     const preloadToken = prepared.token;
     const preloadOrigin = slideIndex;
@@ -4517,25 +4474,11 @@
         : 'No compatible CDR dataset has been selected for this chart.');
       const data = node('button','', 'ds-chart-data'); data.type = 'button'; data.title = 'View dataset'; data.setAttribute('aria-label', 'View dataset'); data.disabled = !chart.available || (Boolean(pptDesignViewer) && !chart.data_url); data.onclick = safe(async () => { await openChartDataset(chart); });
       const expand = node('button', '', 'ds-chart-expand'); expand.type = 'button'; expand.title = 'Expand chart'; expand.setAttribute('aria-label', 'Expand chart'); expand.disabled = !chart.available; expand.onclick = safe(async event => { event.stopPropagation(); await openExpandedChart(chart, renderedPayload, pptDesignViewer ? 'ppt' : 'design'); });
-      const definitionToggle = node('button', 'Chart Definition', 'ds-chart-definition-toggle');
-      definitionToggle.type = 'button';
-      definitionToggle.title = 'Chart Definition';
-      definitionToggle.setAttribute('aria-label', `Chart Definition for ${chart.title || 'chart'}`);
-      definitionToggle.setAttribute('aria-controls', 'ds-chart-filter-panel');
-      definitionToggle.setAttribute('aria-expanded', 'false');
-      definitionToggle.disabled = !chart.available;
-      definitionToggle.onclick = safe(async event => {
-        event.stopPropagation();
-        await openLiveChartDefinition(chart, card, definitionToggle, canvas, message, payload => {
-          renderedPayload = payload;
-          zoom.reset();
-        });
-      });
       card.ondblclick = safe(async event => {
         if (!chart.available || event.target.closest('button, a, input, select, label')) return;
         await openExpandedChart(chart, renderedPayload, pptDesignViewer ? 'ppt' : 'design');
       });
-      const controls = node('div', undefined, 'ds-chart-controls'); controls.append(data, expand, zoom); card.append(controls, definitionToggle);
+      const controls = node('div', undefined, 'ds-chart-controls'); controls.append(data, expand, zoom); card.append(controls);
       let hideTimer;
       let touchControlsTimer;
       const showControls = () => { clearTimeout(hideTimer); hideTimer = null; card.classList.add('ds-hover'); };
@@ -4986,8 +4929,10 @@
     root: document.body, module: 'ppt-designer', fallbackName: 'Design',
     targets: '#ds-charts, #ds-charts > .ds-chart, #ds-ppt-charts-panel, #ds-ppt-charts-body > .report-chart-card, .ds-chart-expanded-canvas',
     charts: '#ds-charts > .ds-chart, #ds-ppt-charts-body > .report-chart-card, .ds-chart-expanded-canvas',
-    exclude: '.ds-chart-controls, .ds-chart-definition-toggle, .ds-chart-pan-button, .ds-chart-expanded-pan, .ds-chart-filter-panel',
-    obstacles: '.ds-chart-controls, .ds-chart-definition-toggle, .ds-chart-brand, summary .summary-inline-actions',
+    exclude: '.ds-chart-controls, .ds-chart-pan-button, .ds-chart-expanded-pan, .ds-chart-filter-panel',
+    obstacles: '.ds-chart-controls, .ds-chart-brand, summary .summary-inline-actions',
+    // Every chart of a slide, also the only one, has its buttons on the row of its own (View dataset, Expand, Zoom).
+    singleParts: '#ds-charts > .ds-chart', partRow: '.ds-chart-controls',
     // The slide, then its chart; the Charts Panel of its Design, then a thumbnail; the chart of the larger view.
     title: target => {
       if (target.matches('.ds-chart-expanded-canvas')) return imageText('ds-chart-expanded-title');

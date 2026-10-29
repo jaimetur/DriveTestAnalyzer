@@ -352,12 +352,6 @@
   transition: transform .22s ease, opacity .18s ease, visibility 0s linear .22s;
   filter: drop-shadow(0 10px 24px rgba(42, 28, 68, .16));
 }
-.ds-chart-filter-panel.ds-live-chart-filter-panel { z-index: 20; top: 0; bottom: 0; }
-.ds-live-chart-filter-panel .ds-chart-filter-toggle { display: none; }
-.ppt-designer .ds-chart-definition-toggle { position: absolute; z-index: 6; right: 0; bottom: 0; width: auto; min-width: 0; height: 1.7rem; min-height: 0; padding: .25rem .55rem!important; border: 1px solid #60408f; border-right: 0; border-bottom: 0; border-radius: .55rem 0 0 0; background: #60408f; color: #fff; font-size: .68rem; font-weight: 750; white-space: nowrap; cursor: pointer; opacity: 0; visibility: hidden; pointer-events: none; }
-.ds-chart.ds-hover .ds-chart-definition-toggle,.ds-chart:focus-within .ds-chart-definition-toggle { opacity: 1; visibility: visible; pointer-events: auto; }
-.ppt-designer .ds-chart-definition-toggle:disabled { display: none; }
-#ds-viewer.ds-presentation-active .ds-chart-definition-toggle { display: none; }
 .ds-chart-expanded-canvas.ds-hover .ds-chart-filter-panel,
 .ds-chart-expanded-canvas:focus-within .ds-chart-filter-panel,
 .ds-chart-filter-panel.is-open {
@@ -1602,7 +1596,7 @@
 }
 
 /* Touch chart actions appear only after tapping the chart. Focus on Dataset or
-   Refresh must not independently reveal the actions or Chart Definition. */
+   Refresh must not independently reveal the actions. */
 @media (hover:none), (pointer:coarse) {
   .ds-chart-expanded-canvas .ds-chart-controls { z-index:7; }
   .ds-chart .ds-chart-controls,
@@ -1619,8 +1613,6 @@
     transform:none!important;
     pointer-events:auto!important;
   }
-  .ds-chart .ds-chart-definition-toggle { opacity:0!important; visibility:hidden!important; pointer-events:none!important; }
-  .ds-chart.ds-touch-controls-visible .ds-chart-definition-toggle { opacity:1!important; visibility:visible!important; pointer-events:auto!important; }
   .ds-chart-expanded-canvas .ds-chart-filter-panel:not(.is-open) {
     opacity:0;
     visibility:hidden;
@@ -1961,6 +1953,9 @@
 .ppt-designer .element-image-button{border-color:#a8cbea;background:#e3f0fc;color:#1f5f9e}
 .ppt-designer .element-image-button:hover{border-color:#7fb0de;background:#cfe4f8;color:#174d82}
 .ppt-designer .element-image-button[data-image-level="card"]{border-color:#1f6fc0;background:#2f86dc;color:#fff}
+/* The buttons of a chart stand on its row of buttons (View dataset, Expand, Zoom), round and of their size. */
+#ds-viewer .element-image-button[data-image-level="part"]{width:2rem;height:2rem;border-radius:999px}
+#ds-viewer .element-image-button[data-image-level="part"] svg{width:1.05rem;height:1.05rem}
 .ppt-designer .element-image-button[data-image-level="card"]:hover{border-color:#175a9e;background:#1f6fc0;color:#fff}
 .ppt-designer .element-image-button.element-image-copy.is-copied{border-color:#23804a;background:#2e9d5a;color:#fff}
 

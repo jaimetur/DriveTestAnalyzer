@@ -87,7 +87,8 @@ def test_scoring_results_place_one_download_button_over_the_chart_or_table_under
     assert "const slots = ['card', 'part'].map(level => {" in buttons
     assert 'outer = outer.parentElement?.closest(targets)) card = outer;' in buttons
     # A card that holds a single chart or table has the buttons of the card only.
-    assert 'return {card, part: part === card || parts.length < 2 ? null : part};' in buttons
+    assert 'const alone = parts.length < 2 && !(singleParts && part.matches(singleParts));' in buttons
+    assert 'return {card, part: part === card || alone ? null : part};' in buttons
     # The buttons of a card stand on its top edge (in a dialog, in its corner); those of a chart or table at the right
     # side of its card have the right edge of those of the card (below them where they would meet), the others stay in
     # their corner, and the button of the card has an icon of its own.

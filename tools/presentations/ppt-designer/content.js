@@ -40,8 +40,8 @@ module.exports = {
     { id: 'charts', type: 'split', section: 'Workflow', footer: 'View PPT', kicker: 'View PPT', title: 'Live charts you can open',
       visual: 'slides',
       points: [
-        { icon: 'TbChartArcs', title: 'Live and expanded charts', text: 'Dataset, Expand, Refresh, Zoom and Chart Definition on every chart.' },
-        { icon: 'TbCode', title: 'Chart Definition', text: 'The same editor in the live and the expanded view.' },
+        { icon: 'TbChartArcs', title: 'Live and expanded charts', text: 'Dataset, Expand, Refresh and Zoom on every chart; only Dataset while designing.' },
+        { icon: 'TbCode', title: 'Chart Definition', text: 'In the expanded view; the Designer changes the charts of the slide.' },
         { icon: 'TbTable', title: 'Filtered Chart Dataset', text: 'The rows behind a chart, after the filters of the Design and of its template.' },
         { icon: 'TbPalette', title: 'Themes', text: 'Ericsson, NetCheck and the other themes colour the charts and the slide titles.' },
       ],
