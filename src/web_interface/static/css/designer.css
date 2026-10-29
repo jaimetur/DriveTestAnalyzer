@@ -106,6 +106,7 @@
 .ppt-designer .ds-design-crumb:hover:not(.is-active) { border-color: var(--ds-color); color: var(--ds-color); background: var(--ds-soft); }
 .ppt-designer .ds-design-crumb.is-active { border-color: var(--ds-color); background: var(--ds-color); color: #fff; box-shadow: 0 2px 6px rgba(36, 22, 61, .18); cursor: default; }
 .ppt-designer .ds-design-crumb:focus-visible { outline: 2px solid var(--ds-color); outline-offset: 2px; }
+.ppt-designer .ds-design-crumb-caret { font-size: .7rem; opacity: .7; }
 .ppt-designer .ds-design-crumb-separator { flex: none; color: #9c92ab; font-size: 1rem; font-weight: 700; }
 .ppt-designer .ds-design-more { display: inline-grid; flex: 0 0 2rem; place-items: center; height: 2rem; padding: 0; border: 1px solid var(--ds-border); border-radius: 8px;
   background: #fff; box-shadow: none; color: var(--ds-design-ink); cursor: pointer; }

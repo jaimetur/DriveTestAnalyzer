@@ -1101,10 +1101,16 @@
     const selected = state.element ? shownElement() : null;
     const crumb = (label, active, iconName, onclick) => h('button', {type: 'button', class: `ds-design-crumb${active ? ' is-active' : ''}`, 'aria-current': active ? 'true' : null, title: label, onclick},
       icon(iconName), h('span', {text: label}));
+    // No element chosen: Charts lists the elements of the slide, to choose one.
+    const onSlide = slide && slideKind(slide) === 'content' ? visibleElements(slide) : [];
+    const chooser = !selected && onSlide.length ? h('button', {type: 'button', class: 'ds-design-crumb', 'aria-haspopup': 'menu', title: 'Choose a chart of this slide',
+      onclick: event => openMenu(event.currentTarget, onSlide.map((item, index) => [placeOf(item, index), item]).sort(([left], [right]) => left - right)
+        .map(([place, item]) => [`${place + 1} · ${elementLabel(item)}`, () => selectElement(item.id), true]))},
+    icon('chart'), h('span', {text: 'Charts'}), h('span', {class: 'ds-design-crumb-caret', 'aria-hidden': 'true', text: '▾'})) : null;
     const crumbs = h('nav', {class: 'ds-design-crumbs', 'aria-label': 'What the panel shows'},
       crumb(slideName, !element, 'slide', () => { state.tab = 'slide'; renderPanel(); }),
-      selected ? h('span', {class: 'ds-design-crumb-separator', 'aria-hidden': 'true', text: '›'}) : null,
-      selected ? crumb(elementName(selected, slide), Boolean(element), KINDS[selected.kind || 'chart']?.[1] || 'chart', () => { state.tab = 'element'; renderPanel(); }) : null);
+      selected || chooser ? h('span', {class: 'ds-design-crumb-separator', 'aria-hidden': 'true', text: '›'}) : null,
+      selected ? crumb(elementName(selected, slide), Boolean(element), KINDS[selected.kind || 'chart']?.[1] || 'chart', () => { state.tab = 'element'; renderPanel(); }) : chooser);
     const actions = element ? elementActions(element.id) : slide ? slideActions(slide) : [];
     const more = h('button', {type: 'button', class: 'ds-design-more', 'aria-haspopup': 'menu', disabled: !actions.length,
       title: element ? 'Actions of this element' : 'Actions of this slide', 'aria-label': element ? 'Actions of this element' : 'Actions of this slide',
