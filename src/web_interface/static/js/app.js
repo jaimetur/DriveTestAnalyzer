@@ -9050,8 +9050,11 @@ function importSummaryContent(details) {
           item.details.forEach((detail) => {
             const entry = element('div', 'import-summary-detail');
             entry.append(element('strong', '', detail.label || ''));
-            const values = element('div', 'import-summary-detail-values');
-            values.append(element('div', `import-summary-detail-before${detail.before ? '' : ' is-empty'}`, detail.before || '(empty)'),
+            // A new or removed entry of a list (a comment) has one value: the one it adds, or the one it removes.
+            const side = / · new$/.test(detail.label || '') ? 'after' : / · removed$/.test(detail.label || '') ? 'before' : '';
+            const values = element('div', `import-summary-detail-values${side ? ' is-single' : ''}`);
+            if (side) values.append(element('div', `import-summary-detail-${side}${detail[side] ? '' : ' is-empty'}`, detail[side] || '(empty)'));
+            else values.append(element('div', `import-summary-detail-before${detail.before ? '' : ' is-empty'}`, detail.before || '(empty)'),
               element('span', 'import-summary-arrow', '→'),
               element('div', `import-summary-detail-after${detail.after ? '' : ' is-empty'}`, detail.after || '(empty)'));
             entry.append(values);

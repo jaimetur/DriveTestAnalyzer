@@ -11778,6 +11778,14 @@ def _preview_package(archive: zipfile.ZipFile, manifest: dict[str, Any], destina
         elif kind in SETTINGS_ELEMENTS:
             changes = {workspace.id: compare_settings('', settings_values(before[workspace.id]), settings_values(
                 _predicted_settings(kind, before[workspace.id], package)), SETTINGS_ELEMENTS[kind][2]) for workspace in destinations}
+        elif kind == 'nq-call-tracking':
+            # The follow-up merges as its import merges it (newer values win, comments are added once, nothing is
+            # removed), and is told as the completion message tells it.
+            from src.modules.non_qualified_calls import predicted_tracking_document
+            changes = {workspace.id: compare(element_items(kind, package), element_items(kind, before[workspace.id]),
+                                             element_items(kind, predicted_tracking_document(before[workspace.id], package)),
+                                             ELEMENT_LABELS.get(kind), detailed=True)
+                       for workspace in destinations}
         else:
             # Each item of the package replaces the one it finds (by its identity, then its name) with the values it
             # carries, as the import saves them in that workspace, or is added.

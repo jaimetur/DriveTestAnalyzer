@@ -8505,7 +8505,8 @@ def import_tracking_document(task_repository: Any, payload: bytes | str) -> int:
     Missing statuses, teams, fields, list values and root cause catalog entries are added, the
     sections and status rules of the document are taken, newer follow-up replaces older follow-up,
     and comments, history entries and RCA results are added once, so importing the same document
-    again changes nothing. The calls with a JOIN_ID take the key this version computes from it (``calls``),
+    again changes nothing (a comment with the text and author of one the call has is that one). Nothing
+    is removed. The calls with a JOIN_ID take the key this version computes from it (``calls``),
     so a document whose keys were computed otherwise still finds them; the others keep their key.
     """
     document = json.loads(payload.decode('utf-8') if isinstance(payload, bytes) else payload)
@@ -8556,10 +8557,16 @@ def import_tracking_document(task_repository: Any, payload: bytes | str) -> int:
             values = (body, _text(item.get('edited_by')), _text(item.get('edited_at')),
                       _text(item.get('deleted_by')), _text(item.get('deleted_at')))
             if existing is None:
+                author = _text(item.get('created_by')) or 'import'
+                # The same comment saved on another server too (the same text by the same author on the call, such as an
+                # analysis imported on both) is the one the call already has.
+                if connection.execute(f'SELECT 1 FROM {NQ_CALL_COMMENTS_TABLE} WHERE call_key = ? AND body = ? AND created_by = ?',
+                                      (call_key, body, author)).fetchone():
+                    continue
                 connection.execute(
                     f'INSERT INTO {NQ_CALL_COMMENTS_TABLE} (uid, call_key, created_by, created_at, body, edited_by, edited_at, '
                     'deleted_by, deleted_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                    (uid, call_key, _text(item.get('created_by')) or 'import', _text(item.get('created_at')), *values),
+                    (uid, call_key, author, _text(item.get('created_at')), *values),
                 )
                 touched.add(call_key)
             elif (values[2], values[4]) > (str(existing['edited_at']), str(existing['deleted_at'])):
@@ -8611,6 +8618,92 @@ def import_tracking_document(task_repository: Any, payload: bytes | str) -> int:
     if touched:
         recompute_statuses(task_repository, 'import', list(touched))
     return len(touched)
+
+
+def predicted_tracking_document(before: Any, package: Any) -> Any:
+    """The tracking document of a workspace (``before``) once a package is imported into it, merged as
+    ``import_tracking_document`` merges it, for the preview of the import: newer follow-up, field values and RCA
+    results replace older ones, comments are added once (one with the text and author of a comment the call has is that
+    one) and take their newer edits, and nothing is removed."""
+    if not isinstance(before, dict) or not isinstance(package, dict):
+        return package
+
+    def records(document: dict[str, Any], name: str) -> list[dict[str, Any]]:
+        items = document.get(name)
+        return [dict(item) for item in items if isinstance(item, dict)] if isinstance(items, list) else []
+
+    rekeyed = _document_call_keys(records(package, 'calls'))
+    key_of = lambda item: (lambda key: rekeyed.get(key, key))(_text(item.get('call_key')))  # noqa: E731
+    fields = records(before, 'fields')
+    known_fields = {str(field.get('key') or '') for field in fields}
+    fields += [field for field in records(package, 'fields') if str(field.get('key') or '') not in known_fields]
+    calls = records(before, 'calls')
+    known_calls = {str(call.get('call_key') or '') for call in calls}
+    for call in records(package, 'calls'):
+        if key_of(call) not in known_calls:
+            calls.append({**call, 'call_key': key_of(call)})
+            known_calls.add(key_of(call))
+
+    tracking = {str(row.get('call_key') or ''): row for row in records(before, 'tracking')}
+    for item in records(package, 'tracking'):
+        call_key, incoming_at = key_of(item), _text(item.get('updated_at'))
+        if not call_key or (call_key in tracking and str(tracking[call_key].get('updated_at')) >= incoming_at):
+            continue
+        mode = 'manual' if _text(item.get('status_mode')) == 'manual' or (
+            'status_mode' not in item and _text(item.get('status')) not in {'', 'Open'}) else 'auto'
+        tracking[call_key] = {
+            'call_key': call_key, 'status': _text(item.get('status')), 'status_mode': mode, 'team': _text(item.get('team')),
+            'assignee': _text(item.get('assignee')), 'root_domain': _text(item.get('root_domain')),
+            'root_category': _text(item.get('root_category')), 'root_cause': _text(item.get('root_cause')),
+            'version': int(item.get('version') or 1), 'updated_by': _text(item.get('updated_by')), 'updated_at': incoming_at,
+        }
+
+    comments = records(before, 'comments')
+    by_uid = {str(row.get('uid') or ''): row for row in comments}
+    same = Counter((str(row.get('call_key') or ''), str(row.get('body') or ''), str(row.get('created_by') or '')) for row in comments)
+    for item in records(package, 'comments'):
+        uid, call_key, body = _text(item.get('uid')), key_of(item), str(item.get('body') or '')
+        if not uid or not call_key or not body:
+            continue
+        values = {'body': body, 'edited_by': _text(item.get('edited_by')), 'edited_at': _text(item.get('edited_at')),
+                  'deleted_by': _text(item.get('deleted_by')), 'deleted_at': _text(item.get('deleted_at'))}
+        existing = by_uid.get(uid)
+        if existing is None:
+            author = _text(item.get('created_by')) or 'import'
+            if same[(call_key, body, author)]:
+                continue
+            row = {'uid': uid, 'call_key': call_key, 'created_by': author, 'created_at': _text(item.get('created_at')), **values}
+            comments.append(row)
+            by_uid[uid] = row
+            same[(call_key, body, author)] += 1
+        elif (values['edited_at'], values['deleted_at']) > (str(existing.get('edited_at')), str(existing.get('deleted_at'))):
+            identity = (str(existing.get('call_key') or ''), str(existing.get('body') or ''), str(existing.get('created_by') or ''))
+            same[identity] -= 1
+            existing.update(values)
+            same[(identity[0], body, identity[2])] += 1
+
+    values = {(str(row.get('call_key') or ''), str(row.get('field_key') or '')): row for row in records(before, 'field_values')}
+    for item in records(package, 'field_values'):
+        call_key, field_key, incoming_at = key_of(item), _text(item.get('field_key')), _text(item.get('updated_at'))
+        if not call_key or not field_key or (
+                (call_key, field_key) in values and str(values[(call_key, field_key)].get('updated_at')) >= incoming_at):
+            continue
+        values[(call_key, field_key)] = {'call_key': call_key, 'field_key': field_key, 'value': str(item.get('value') or ''),
+                                         'updated_by': _text(item.get('updated_by')) or 'import', 'updated_at': incoming_at}
+
+    rca_results = {str(row.get('join_id') or '').casefold(): row for row in records(before, 'rca_results')}
+    for item in records(package, 'rca_results'):
+        join_id, incoming_at = _text(item.get('join_id')), _text(item.get('imported_at'))
+        if not join_id or (join_id.casefold() in rca_results and str(rca_results[join_id.casefold()].get('imported_at')) >= incoming_at):
+            continue
+        result = item.get('values_json')
+        rca_results[join_id.casefold()] = {
+            'join_id': join_id, 'values_json': result if isinstance(result, str) else json.dumps(result or {}, ensure_ascii=False),
+            'source_file': _text(item.get('source_file')), 'imported_by': _text(item.get('imported_by')) or 'import',
+            'imported_at': incoming_at,
+        }
+    return {**before, 'fields': fields, 'calls': calls, 'tracking': list(tracking.values()), 'comments': comments,
+            'field_values': list(values.values()), 'rca_results': list(rca_results.values())}
 
 
 # ---------------------------------------------------------------------------

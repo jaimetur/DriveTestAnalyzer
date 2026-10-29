@@ -2780,7 +2780,7 @@ body[data-embedded-dataset-preview] > .shell > main { width: 100%; max-width: no
 .import-summary-section h4 { display: flex; justify-content: space-between; align-items: baseline; gap: .8rem; margin: 0 0 .45rem; padding-bottom: .3rem; border-bottom: 2px solid rgba(8, 115, 109, .25); color: #10314a; font-size: .95rem; }
 .import-summary-count { color: #5b6b78; font-size: .78rem; font-weight: 700; white-space: nowrap; }
 .import-summary-packages { display: grid; gap: .2rem; margin: 0; padding-left: 1.1rem; color: #33495a; font-size: .88rem; }
-.import-summary-table { width: 100%; border-collapse: collapse; font-size: .86rem; }
+.import-summary-table { width: 100%; min-width: 0; border-collapse: collapse; font-size: .86rem; }
 .import-summary-table th { padding: .3rem .55rem; border-bottom: 1px solid rgba(16, 49, 74, .14); color: #7b8994; font-size: .68rem; letter-spacing: .06em; text-align: left; text-transform: uppercase; }
 .import-summary-table td { padding: .4rem .55rem; border-bottom: 1px solid rgba(16, 49, 74, .07); color: #10314a; overflow-wrap: anywhere; vertical-align: top; }
 .import-summary-table tbody tr:nth-child(even) td { background: rgba(16, 49, 74, .03); }
@@ -2796,6 +2796,7 @@ body[data-embedded-dataset-preview] > .shell > main { width: 100%; max-width: no
 .import-summary-detail { margin-top: .45rem; padding: .4rem .5rem; border: 1px solid rgba(16, 49, 74, .1); border-radius: 8px; background: #fff; }
 .import-summary-detail > strong { display: block; color: #33495a; font-size: .74rem; }
 .import-summary-detail-values { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: .4rem; align-items: start; margin-top: .25rem; }
+.import-summary-detail-values.is-single { grid-template-columns: minmax(0, 1fr); }
 .import-summary-detail-values > div { max-height: 12rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: .8rem; }
 .import-summary-detail-before { color: #8a3b2b; }
 .import-summary-detail-after { color: #1f5f3a; }

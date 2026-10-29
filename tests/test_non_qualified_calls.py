@@ -319,6 +319,58 @@ def test_tracking_travels_with_workspace_packages_and_imports_once(client, tmp_p
     assert len(client.get(f'/api/non-qualified-calls/calls/{key}').json()['comments']) == 1
 
 
+def test_the_preview_of_a_tracking_import_tells_what_its_import_changes(client, tmp_path):
+    import copy
+
+    from src.modules.import_changes import compare, element_items
+
+    enable_module()
+    add_cdr(tmp_path, 'NetCheck_UK_CDR_Voice_2026_Q1.xlsx', 'voice', voice_rows())
+    login(client)
+    first, second = [call['call_key'] for call in query(client)['calls'][:2]]
+    for key in (first, second):
+        client.patch(f'/api/non-qualified-calls/calls/{key}', json={'changes': {'status': 'Closed'}})
+    for body in ('Fixed by the RAN team.', 'Checked again.'):
+        client.post(f'/api/non-qualified-calls/calls/{first}/comments', json={'body': body})
+    here = json.loads(core._nq_call_tracking_payload(core.active_workspace))
+
+    # Another server has an older follow-up of the first call, lacks one of its comments and saved the other again with a
+    # uid of its own (an analysis imported on both); it has a newer follow-up of the second call and a comment of its own.
+    other = copy.deepcopy(here)
+    tracked = {row['call_key']: row for row in other['tracking']}
+    tracked[first].update({'root_domain': 'Operational', 'updated_at': '2020-01-01T00:00:00+00:00'})
+    tracked[second].update({'team': 'RAN Team', 'updated_at': '2999-01-01T00:00:00+00:00'})
+    fixed = next(comment for comment in other['comments'] if comment['body'] == 'Fixed by the RAN team.')
+    other['comments'] = [{**fixed, 'uid': 'saved-elsewhere'}, {**fixed, 'uid': 'only-elsewhere', 'call_key': second, 'body': 'Retest planned.'}]
+    exported = client.get('/admin/import-export/export?export_target=nq-call-tracking')
+    with zipfile.ZipFile(io.BytesIO(exported.content)) as archive:
+        manifest = json.loads(archive.read('manifest.json'))
+    package = io.BytesIO()
+    with zipfile.ZipFile(package, 'w') as archive:
+        archive.writestr('manifest.json', json.dumps(manifest))
+        archive.writestr(manifest['archive_path'], json.dumps(other))
+    with zipfile.ZipFile(package) as archive:
+        message, lines, changed = core._preview_package(archive, manifest, ['default'], tmp_path / 'staging', 'super')
+    # Neither the older follow-up, the comment saved again nor the one the package lacks is a change.
+    assert message == 'Imports the follow-up of 2 Non-Qualified Calls into 1 workspace: 1 updated and 1 unchanged.', message
+    [section] = [line.section for line in lines]
+    [item] = section['items']
+    assert item['changes'] == ['Team: (empty) → RAN Team', 'Comments: 1 new'] and changed
+    assert item['details'][1] == {'label': 'Comments · new', 'before': '', 'after': 'super: Retest planned.'}
+
+    # The import changes what the preview told, and nothing else.
+    items, before = element_items('nq-call-tracking', other), element_items('nq-call-tracking', here)
+    predicted = compare(items, before, element_items('nq-call-tracking', nq.predicted_tracking_document(here, other)), detailed=True)
+    assert core._restore_workspace_nq_call_tracking(core.active_workspace, json.dumps(other)) == 1
+    after = json.loads(core._nq_call_tracking_payload(core.active_workspace))
+    imported = compare(items, before, element_items('nq-call-tracking', after), detailed=True)
+    assert (predicted.new, predicted.updated, predicted.unchanged, predicted.details) == (
+        imported.new, imported.updated, imported.unchanged, imported.details)
+    assert [comment['body'] for comment in client.get(f'/api/non-qualified-calls/calls/{first}').json()['comments']].count(
+        'Fixed by the RAN team.') == 1
+    assert client.get(f'/api/non-qualified-calls/calls/{first}').json()['call']['root_domain'] != 'Operational'
+
+
 def test_configuration_travels_without_the_follow_up(client, tmp_path):
     enable_module()
     add_cdr(tmp_path, 'NetCheck_UK_CDR_Voice_2026_Q1.xlsx', 'voice', voice_rows())
