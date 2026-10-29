@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 
 import src.DriveTestAnalyzer as core
-from src.modules import network_inventory, nq_call_map, nq_prioritization
+from src.modules import network_inventory, nq_call_map, nq_prioritization, ran_context
 from src.modules import non_qualified_calls as nq
 from src.modules.value_maps import ValueMapper, field_kind
 from tests.test_non_qualified_calls import add_cdr, enable_module, login
@@ -430,6 +430,50 @@ def test_the_cells_of_a_call_in_words():
     # A trace of the call without cell identities gives no cells, never the numbers of its bands.
     assert nq_call_map.trace_cells('', '', '[GSM 900, , , 113]->[GSM 900, 994, , 21]') == []
     assert nq_call_map.trace_cells('', '', '[GSM 900, 876, 37171, 2]')[0]['technology'] == 'GSM'
+
+
+def test_a_cell_repeated_in_a_row_is_one_cell_of_the_call():
+    # Ticket #35: a moment on an NR cell without identity between two of the same LTE cell (its TAC left out the second
+    # time) is no handover; the PCI column gives one PCI for each element of the trace.
+    trace = ('[5G NR n78, 141061, 913244263, 641376]->[LTE E-UTRA 7, 41061, 6468370, 2850]->[5G NR Unknown, , , 641376]'
+             '->[LTE E-UTRA 7, , 6468370, 2850]->[LTE E-UTRA 1, 41061, 6468366, 223]')
+    cells = nq_call_map.trace_cells(trace, '[191]->[342]->[244]->[342]->[84]', '[913244263]->[6468370]->[6468366]')
+    assert [(cell['technology'], cell['cell'], cell['pci']) for cell in cells] == [
+        ('NR', '913244263', '191'), ('LTE', '6468370', '342'), ('LTE', '6468366', '84')]
+    assert [(cell['role'], cell['label']) for cell in nq_call_map.labelled_cells(nq_call_map.cell_steps(trace))] == [
+        ('start', 'NR n78 · 913244263'), ('handover', 'LTE B7 · 6468370'), ('end', 'LTE B1 · 6468366')]
+    # A new TAC of the same cell: the PCI column gives its PCI once.
+    tac = '[LTE E-UTRA 1, 1001, 351816, 99]->[LTE E-UTRA 3, 1001, 310529, 1363]->[LTE E-UTRA 3, 1022, 310529, 1363]'
+    assert [(cell['cell'], cell['pci']) for cell in nq_call_map.trace_cells(tac, '[410]->[211]', '')] == [('351816', '410'), ('310529', '211')]
+    # The cell identities of the call and of the NQ calls around, as the cells of a trace.
+    assert [cell['cell'] for cell in nq_call_map.trace_cells('', '', '[6468370]->[6468370]->[6468366]')] == ['6468370', '6468366']
+    assert [cell['cell'] for cell in nq_call_map.cell_steps('[37171]->[37171]->[37172]')] == ['37171', '37172']
+    # The same identity on another channel or with another PCI is another cell (an identity the UE did not read again), and
+    # a cell without identity between two others stays.
+    assert len(nq_call_map.trace_cells('[LTE E-UTRA 7, 1, 5541138, 2850]->[LTE E-UTRA 1, 1, 5541138, 76]', '', '')) == 2
+    assert len(nq_call_map.trace_cells('[LTE E-UTRA 7, 1, 5541138, 2850]->[LTE E-UTRA 7, 1, 5541138, 2850]', '[186]->[414]', '')) == 2
+    assert [cell['label'] for cell in nq_call_map.labelled_cells(nq_call_map.cell_steps(
+        '[LTE E-UTRA 7, 1, 100, 2850]->[GSM 900, , , 113]->[LTE E-UTRA 7, 1, 200, 2850]'))] == [
+        'LTE B7 · 100', 'GSM 900 · channel 113', 'LTE B7 · 200']
+    # A call that went back to a cell it had left, with a repeat between, is a ping-pong for the DT Analyzer RCA.
+    pong = '[LTE E-UTRA 3, 1, 100, 1392]->[LTE E-UTRA 3, 1, 200, 1392]->[LTE E-UTRA 3, 2, 200, 1392]->[LTE E-UTRA 3, 1, 100, 1392]'
+    assert ran_context.ping_pongs([cell['cell'] for cell in nq_call_map.trace_cells(pong, '', '')]) == [('100', '200')]
+
+
+def test_a_cell_repeated_in_a_row_is_no_handover_on_the_map(client, tmp_path):
+    rows = voice_rows()
+    # V1 went for a moment on an NR cell without identity and came back to the cell it started on (ticket #35).
+    first, last = eci(30001, 1), eci(30002, 3)
+    rows.loc[0, ['LAC_CID_xARFCN_A', 'PCI_A']] = [
+        f'[LTE E-UTRA 3, 101, {first}, 1392]->[5G NR Unknown, , , 641376]->[LTE E-UTRA 3, , {first}, 1392]->[LTE E-UTRA 3, 101, {last}, 1392]',
+        '[101]->[244]->[101]->[206]']
+    calls = prepare(client, tmp_path, rows)
+    data = client.get(f"/api/non-qualified-calls/calls/{calls['V1']['call_key']}/map", params={'radius_km': 2}).json()
+    assert [(step['role'], step['cell'], step['pci']) for step in data['trace']] == [('start', str(first), '101'), ('end', str(last), '206')]
+    assert [(cell['role'], cell['label']) for cell in data['call']['cells']] == [('start', '70001-L1 (LTE B3)'), ('end', '70002-L3 (LTE B3)')]
+    assert [point['order'] for point in data['call']['handovers']] == [2]
+    checks = {check['key']: check for check in data['diagnosis']}
+    assert checks['handovers']['detail'].startswith('1 handover:')
 
 
 def test_where_each_handover_took_place_is_estimated_by_the_time_on_each_band():

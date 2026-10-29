@@ -31,7 +31,7 @@ from typing import Any
 
 from src.modules.nq_catalog import keyword_found, keywords, normalized_text
 
-ENGINE_VERSION = 2
+ENGINE_VERSION = 3
 SOURCE_LABEL = 'DT Analyzer RCA'
 RULES_STATE_KEY = 'nq_dta_rca_rules'
 FINGERPRINT_STATE_KEY = 'nq_dta_rca_fingerprint'

@@ -262,16 +262,54 @@ def cell_trace(service: str, row: dict[str, Any], columns: list[str], cell_id: A
     return trace_cells(trace, pcis, cell_id)
 
 
+def _same_cell(first: dict[str, Any], second: dict[str, Any]) -> bool:
+    """Whether two steps of a call are the same cell: the same technology and identity, and neither another channel nor
+    another PCI (its area may change, such as a new TAC)."""
+    return (bool(first.get('cell')) and first.get('cell') == second.get('cell') and first.get('technology') == second.get('technology')
+            and all(not first.get(key) or not second.get(key) or first[key] == second[key] for key in ('channel', 'pci')))
+
+
+def merged_repeats(steps: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The cells of a call with a cell repeated in a row once, as the PCI and Cell ID columns of the CDR give them: neither a
+    new area (TAC / LAC) nor a moment on a cell without identity it came back from
+    (``[LTE E-UTRA 7, 41061, 6468370, 2850]->[5G NR Unknown, , , 641376]->[LTE E-UTRA 7, , 6468370, 2850]``) is a
+    handover. The step kept takes the values its repeats give and it lacks."""
+    known = [index for index, step in enumerate(steps) if step.get('cell')]
+    merged: list[dict[str, Any]] = []
+    for index, step in enumerate(steps):
+        if not step.get('cell'):
+            before = next((steps[other] for other in reversed(known) if other < index), None)
+            after = next((steps[other] for other in known if other > index), None)
+            if before is not None and after is not None and _same_cell(before, after):
+                continue
+        if merged and _same_cell(merged[-1], step):
+            merged[-1].update({key: value for key, value in step.items() if value and not merged[-1].get(key)})
+            continue
+        merged.append(dict(step))
+    return merged
+
+
 def trace_cells(trace: Any, pcis: Any, cell_id: Any) -> list[dict[str, str]]:
     """The cells of a cell trace of the CDR (``[LTE E-UTRA 20, TAC, ECI, EARFCN]->[...]``), else of the cell identities of
-    the call, each with the PCI of the PCI column in the same place (the last one for the last cell)."""
-    from src.modules.network_insights import parse_cell_trace
+    the call, a cell repeated in a row once (merged_repeats), each with the PCI of the PCI column in its place: the column
+    gives one PCI for each element of the trace, for each cell or for each cell once its repeats are merged (else the last
+    one is that of the last cell)."""
+    from src.modules.network_insights import parse_cell_trace, sequence_values
     from src.modules.non_qualified_calls import MAX_ECI
 
-    cells = [cell for cell in parse_cell_trace(trace) if re.fullmatch(r'\d+', cell['cell'])]
+    pci_values = _sequence_numbers(pcis)
+    # Each element of the trace (None for one without a cell it can read), with the PCI in its place when the column gives
+    # one for each, those without identity among them.
+    elements = [cell for item in sequence_values(trace) for cell in (parse_cell_trace(f'[{item}]') or [None])]
+    placed = bool(elements) and len(pci_values) == len(elements)
+    for element, pci in zip(elements, pci_values if placed else []):
+        if element is not None:
+            element['pci'] = pci
+    cells = [cell for cell in elements if cell is not None and re.fullmatch(r'\d+', cell['cell'])]
     if not cells:
         # The cells of the call itself: a trace (its technologies known; a cell without identity is left out, never the
         # number of its band), else plain cell identities.
+        placed = False
         parsed = parse_cell_trace(cell_id)
         if parsed:
             cells = [cell for cell in parsed if re.fullmatch(r'\d+', cell['cell'])]
@@ -279,9 +317,14 @@ def trace_cells(trace: Any, pcis: Any, cell_id: Any) -> list[dict[str, str]]:
             for value in _sequence_numbers(cell_id):
                 if value:
                     cells.append({'technology': 'NR' if int(value) > MAX_ECI else 'LTE', 'band': '', 'cell': value, 'channel': ''})
-    pci_values = _sequence_numbers(pcis)
-    for index, cell in enumerate(cells):
-        cell['pci'] = pci_values[index] if len(pci_values) == len(cells) else (pci_values[-1] if index == len(cells) - 1 and pci_values else '')
+    if not placed and len(pci_values) == len(cells):
+        for cell, pci in zip(cells, pci_values):
+            cell['pci'] = pci
+        placed = True
+    cells = merged_repeats(cells)
+    if not placed:
+        for index, cell in enumerate(cells):
+            cell['pci'] = pci_values[index] if len(pci_values) == len(cells) else (pci_values[-1] if index == len(cells) - 1 and pci_values else '')
     return cells
 
 
@@ -291,7 +334,7 @@ _TRACE_HEAD = re.compile(r'(?:5G\s+)?(LTE E-UTRA|NR|UMTS|GSM)\s*n?(\d*)', re.I)
 def cell_steps(value: Any) -> list[dict[str, str]]:
     """Every cell of a cell trace (``[GSM 900, LAC, CI, ARFCN]->[LTE E-UTRA 20, TAC, ECI, EARFCN]``) as the map names it:
     technology, band (``B20``, ``n78``, ``900``), area (TAC / LAC), identity and channel, also those without an identity;
-    plain cell identities (``[37171]``) without their technology."""
+    plain cell identities (``[37171]``) without their technology. A cell repeated in a row is one (merged_repeats)."""
     from src.modules.network_insights import lte_band_for_earfcn, sequence_values
 
     steps = []
@@ -307,7 +350,7 @@ def cell_steps(value: Any) -> list[dict[str, str]]:
             steps.append({'technology': technology, 'band': band, 'area': parts[1], 'cell': parts[2], 'channel': parts[3]})
         elif all(re.fullmatch(r'\d+', part) for part in parts if part):
             steps.extend({'technology': '', 'band': '', 'area': '', 'cell': part, 'channel': ''} for part in parts if part)
-    return steps
+    return merged_repeats(steps)
 
 
 def cell_label(step: dict[str, Any], name: str = '') -> str:
