@@ -1421,6 +1421,8 @@
     const title = textInput(shown.chart_title, debounced(value => setElementValues(element.id, {chart_title: value})), {id: 'ds-design-chart-title'});
     const measure = settings.measure;
     return [
+      // What a KPI card needs, as for a chart: its field, ticked once chosen.
+      window.ChartShelves?.needsNote('KPI Card', shown.kpi ? true : 'One measure: the field of the card') || null,
       field('Title', h('div', {class: 'ds-design-input-row'}, title, tokenMenuButton(title))),
       h('div', {class: 'ds-design-two'},
         field('Source', selectInput(SOURCES, source, value => guarded(() => setElementValues(element.id, {cdr_source: value}))(), 'ds-design-kpi-source')),
@@ -1496,7 +1498,7 @@
     const shown = state.scope === 'template' ? findElement(state.template, element.id)?.element : element;
     if (!shown) return [h('p', {class: 'ds-design-origin is-local', text: 'This element is only in this Design: change it in This Design scope, or apply it to the template.'})];
     const kind = shown.kind || 'chart';
-    if (kind !== 'chart') return {kpi: kpiForm, text: textForm, image: imageForm}[kind]?.(element, shown) || [];
+    if (kind !== 'chart') return ({kpi: kpiForm, text: textForm, image: imageForm}[kind]?.(element, shown) || []).filter(Boolean);
     if (state.section === 'format') return [formatSection(element.id, shown)];
     const builder = h('div', {class: 'ds-cb'});
     window.ChartShelves?.render(builder, {...shelvesOptions(element, shown), chartTypes: false});

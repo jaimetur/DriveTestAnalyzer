@@ -73,7 +73,8 @@
     {type: 'Scatter', need: s => s.numeric === 2 && s.measures === 2 || 'Two numeric measures', fits: s => !s.text && s.numeric <= 2},
     {type: 'Table', need: s => s.measures >= 1 || 'A measure', fits: () => true},
     {type: 'Dynamic Table', need: s => s.measures >= 1 || 'A measure', fits: () => true},
-    {type: 'Map', need: s => s.geo || 'A latitude and a longitude in the source', fits: s => !s.text && s.numeric <= 2},
+    // (A Map reads its latitude and longitude on Measure; a third measure colours its points.)
+    {type: 'Map', need: s => s.geo && s.numeric >= 2 && s.measures <= 3 || 'A latitude and a longitude on Measure', fits: s => s.measures <= 3},
     {type: 'KPI Card', need: s => s.measures === 1 || 'One measure: the field of the card', fits: s => s.measures <= 1},
   ];
   // What a chart type needs, said for a chart without fields (first letter lower case, the names of fields kept).
@@ -146,15 +147,26 @@
     const shelfState = {
       measures: measures.length, numeric, text: measures.length - numeric,
       splits: splitParts(values.rows_split, '×').length + splitParts(values.columns_split, '×').length,
-      // A chart without a measure or a dimension yet takes any chart type: the panel then says what it needs.
-      empty: !measures.length && !splitParts(values.rows_split, '×').length && !splitParts(values.columns_split, '×').length
-        && !splitParts(values.legend, ',').length,
+      // A chart without a measure yet (a new one, even with the Campaign rows a KPI card gives it) takes any chart type: the
+      // panel then says what it needs.
+      empty: !measures.length,
       // (A latitude and a longitude of any name: Latitude, Test_Start_Latitude…)
       geo: fieldList.some(item => identity(item.name).includes('latitude')) && fieldList.some(item => identity(item.name).includes('longitude')),
     };
     return {values, source, fieldList, typeOf, change, settings, plainFilters, nrMode, writeFilters, measures, shelfState};
   }
   const chosenTypeOf = values => TYPES.find(item => item.type.toLowerCase() === String(values.chart_type || '').toLowerCase()) || null;
+  // What a chart type needs, as a line ticked once it is given (``verdict`` true, else what is missing): the Chart subpanel,
+  // and the form of a KPI card.
+  const needsNote = (type, verdict) => {
+    const item = TYPES.find(candidate => candidate.type.toLowerCase() === String(type || '').toLowerCase());
+    if (!item) return null;
+    const ready = verdict === true;
+    return h('p', {class: `ds-cb-type-needs ${ready ? 'is-ready' : 'is-missing'}`, role: 'note',
+      title: ready ? `${item.type} draws with these fields` : `${item.type} still needs ${lower(verdict)}`},
+    h('span', {class: 'ds-cb-type-needs-mark', 'aria-hidden': 'true', text: ready ? '✓' : 'i'}),
+    h('span', {}, h('strong', {text: item.type}), ` needs ${lower(requirement(item))}`));
+  };
   const typeButton = (item, {values, shelfState, change}, props = {}) => {
     const verdict = shelfState.empty || item.need(shelfState);
     const active = item.type.toLowerCase() === String(values.chart_type || '').toLowerCase();
@@ -490,11 +502,7 @@
 
     // What the chart type chosen needs: ticked once the shelves give it.
     const chosen = chosenTypeOf(values);
-    const ready = chosen && chosen.need(shelfState) === true;
-    const needs = chosen ? h('p', {class: `ds-cb-type-needs ${ready ? 'is-ready' : 'is-missing'}`, role: 'note',
-      title: ready ? `${chosen.type} draws with these fields` : `${chosen.type} still needs ${lower(chosen.need(shelfState))}`},
-    h('span', {class: 'ds-cb-type-needs-mark', 'aria-hidden': 'true', text: ready ? '✓' : 'i'}),
-    h('span', {}, h('strong', {text: chosen.type}), ` needs ${lower(requirement(chosen))}`)) : null;
+    const needs = chosen ? needsNote(chosen.type, chosen.need(shelfState)) : null;
 
     host.replaceChildren(...[
       card('chart', 'Chart', needs,
@@ -534,5 +542,5 @@
     placePopover(menu, anchor);
   }
 
-  window.ChartShelves = {render, renderTypes, picture, typesIcon, kpiParts, kpiField, groupRank};
+  window.ChartShelves = {render, renderTypes, picture, typesIcon, needsNote, kpiParts, kpiField, groupRank};
 })();
