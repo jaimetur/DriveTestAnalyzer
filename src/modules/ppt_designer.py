@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import copy
 import json
+import zlib
 import math
 import html
 import os
@@ -487,6 +488,9 @@ DESIGN_PROFILE_SELECTION_THRESHOLD = 100_000
 DESIGN_CHART_MODEL_CACHE_VERSION = 19
 DESIGN_CHART_MODELS_KEPT = 2000
 DESIGN_PREVIEW_MANIFESTS_KEPT = 256
+# The chart models kept in the workspace database (design_chart_models), in MB of compressed JSON: beyond it the oldest
+# go first. DRIVETEST_ANALYZER_PPT_CHART_CACHE_MB changes it.
+DESIGN_CHART_MODELS_STORED_MB = 256
 DESIGN_CHART_RENDER_WORKERS = max(1, min(2, (os.cpu_count() or 2) - 1))
 DESIGN_PREVIEW_MANIFEST_VERSION = 9
 DESIGN_DATE_BOUNDS_CACHE_VERSION = 1
@@ -5528,6 +5532,97 @@ def install_design_routes(core):
     def preview_manifest_key(workspace: str, design_id: str, fingerprint: str) -> str:
         return sha256(f'{workspace}:{DESIGN_PREVIEW_MANIFEST_VERSION}:{design_id}:{fingerprint}'.encode()).hexdigest()
 
+    # The preparations of the Designs (preview manifests) and the models of their charts are kept in memory and in the
+    # workspace database, so a restart restores them instead of working them out again. Their keys change with what they
+    # were made from (the CDRs and their revisions, the selection, the template and format, the mappings, the renderer).
+    def stored_cache_value(workspace: str, table: str, column: str, key: str) -> Any:
+        try:
+            with Repository(Path(workspace), core.repository.global_db_path).connection() as connection:
+                row = connection.execute(f'SELECT {column} FROM {table} WHERE cache_key = ?', (key,)).fetchone()
+            return json.loads(zlib.decompress(row[column])) if row is not None else None
+        except (sqlite3.Error, OSError, zlib.error, ValueError, TypeError):
+            return None
+
+    def store_cache_value(workspace: str, table: str, column: str, key: str, value: Any, extra: dict | None = None) -> int:
+        """Store one compressed value; returns its size in bytes (0 when it could not be stored)."""
+        try:
+            blob = zlib.compress(json.dumps(value, separators=(',', ':'), default=str).encode(), 6)
+            fields = {'cache_key': key, column: blob, 'size': len(blob), 'created_at': datetime.now(timezone.utc).isoformat(), **(extra or {})}
+            with Repository(Path(workspace), core.repository.global_db_path).connection() as connection:
+                connection.execute(
+                    f'INSERT OR REPLACE INTO {table} ({", ".join(fields)}) VALUES ({", ".join("?" for _ in fields)})',
+                    list(fields.values()),
+                )
+            return len(blob)
+        except (sqlite3.Error, OSError, TypeError, ValueError):
+            return 0
+
+    def stored_preview_manifest(workspace: str, key: str) -> dict | None:
+        """The preparation kept under ``key``, in memory or else in the workspace database (then kept in memory too)."""
+        with lock:
+            manifest = preview_manifests.get(key)
+        if manifest is not None:
+            return manifest
+        manifest = stored_cache_value(workspace, 'design_preview_manifests', 'manifest', key)
+        if not isinstance(manifest, dict):
+            return None
+        with lock:
+            preview_manifests[key] = manifest
+            while len(preview_manifests) > DESIGN_PREVIEW_MANIFESTS_KEPT:
+                preview_manifests.popitem(last=False)
+        return manifest
+
+    def stored_chart_model(workspace: str, model_key: str) -> dict | None:
+        payload = stored_cache_value(workspace, 'design_chart_models', 'model', model_key.rsplit(':', 1)[-1])
+        if not isinstance(payload, dict):
+            return None
+        with lock:
+            canvas_models[model_key] = payload
+            while len(canvas_models) > DESIGN_CHART_MODELS_KEPT:
+                canvas_models.popitem(last=False)
+        return payload
+
+    def store_chart_model(workspace: str, model_key: str, payload: dict) -> None:
+        if not store_cache_value(workspace, 'design_chart_models', 'model', model_key.rsplit(':', 1)[-1], payload):
+            return
+        # The oldest models go first beyond the size kept.
+        try:
+            limit = float(os.environ.get('DRIVETEST_ANALYZER_PPT_CHART_CACHE_MB') or DESIGN_CHART_MODELS_STORED_MB) * 1024 * 1024
+        except ValueError:
+            limit = DESIGN_CHART_MODELS_STORED_MB * 1024 * 1024
+        try:
+            with Repository(Path(workspace), core.repository.global_db_path).connection() as connection:
+                total = int(connection.execute('SELECT COALESCE(SUM(size), 0) FROM design_chart_models').fetchone()[0])
+                if total > limit:
+                    connection.execute(
+                        'DELETE FROM design_chart_models WHERE cache_key IN (SELECT cache_key FROM ('
+                        'SELECT cache_key, SUM(size) OVER (ORDER BY created_at DESC, cache_key) AS kept '
+                        'FROM design_chart_models) WHERE kept > ?)', (limit * .8,),
+                    )
+        except sqlite3.Error:
+            pass
+
+    def forget_stored_chart_model(workspace: str, model_key: str) -> None:
+        try:
+            with Repository(Path(workspace), core.repository.global_db_path).connection() as connection:
+                connection.execute('DELETE FROM design_chart_models WHERE cache_key = ?', (model_key.rsplit(':', 1)[-1],))
+        except sqlite3.Error:
+            pass
+
+    def clear_workspace_design_caches(workspace: str | Path) -> None:
+        """Clear workspace cache: the preparations and chart models of its Designs, in memory and in its database."""
+        database_path = str(Path(workspace).resolve())
+        with lock:
+            for key in [key for key in canvas_models if key.startswith(f'{database_path}:')]:
+                canvas_models.pop(key, None)
+            preview_manifests.clear()
+        try:
+            with Repository(Path(database_path), core.repository.global_db_path).connection() as connection:
+                connection.execute('DELETE FROM design_preview_manifests')
+                connection.execute('DELETE FROM design_chart_models')
+        except sqlite3.Error:
+            pass
+
     def persist_preview_manifest(
         workspace: str,
         design_id: str,
@@ -5547,10 +5642,21 @@ def install_design_routes(core):
                 'selection_key': snapshot.selection_key,
                 'payload': snapshot.payload,
             }
+        key = preview_manifest_key(workspace, design_id, fingerprint)
         with lock:
-            preview_manifests[preview_manifest_key(workspace, design_id, fingerprint)] = manifest
+            preview_manifests[key] = manifest
             while len(preview_manifests) > DESIGN_PREVIEW_MANIFESTS_KEPT:
                 preview_manifests.popitem(last=False)
+        if store_cache_value(workspace, 'design_preview_manifests', 'manifest', key, manifest, {'design_id': design_id}):
+            try:
+                with Repository(Path(workspace), core.repository.global_db_path).connection() as connection:
+                    connection.execute(
+                        'DELETE FROM design_preview_manifests WHERE cache_key NOT IN ('
+                        'SELECT cache_key FROM design_preview_manifests ORDER BY created_at DESC LIMIT ?)',
+                        (DESIGN_PREVIEW_MANIFESTS_KEPT,),
+                    )
+            except sqlite3.Error:
+                pass
 
     def restore_preview_manifest(
         workspace: str,
@@ -5562,8 +5668,7 @@ def install_design_routes(core):
     ) -> dict | None:
         try:
             if manifest is None:
-                with lock:
-                    manifest = preview_manifests.get(preview_manifest_key(workspace, design_id, fingerprint))
+                manifest = stored_preview_manifest(workspace, preview_manifest_key(workspace, design_id, fingerprint))
                 if manifest is None:
                     return None
             if (
@@ -5653,8 +5758,7 @@ def install_design_routes(core):
             )
             requested_identity = preview_cache_identity(requested)
             # Manifests are kept under a key derived from their fingerprint, so the matching one is found directly.
-            with lock:
-                manifest = preview_manifests.get(preview_manifest_key(workspace, design_id, requested_fingerprint))
+            manifest = stored_preview_manifest(workspace, preview_manifest_key(workspace, design_id, requested_fingerprint))
             if manifest is None:
                 return None
             stored_definition = DesignDefinition.model_validate(manifest['definition'])
@@ -5903,9 +6007,16 @@ def install_design_routes(core):
             }
 
     def has_preview_manifest(design_id: str) -> bool:
-        """Whether a preparation of the Design is kept (in memory, so none after a restart)."""
+        """Whether a preparation of the Design is kept, in memory or in the workspace database."""
         with lock:
-            return any(manifest.get('design_id') == design_id for manifest in preview_manifests.values())
+            if any(manifest.get('design_id') == design_id for manifest in preview_manifests.values()):
+                return True
+        try:
+            with bound_repository().connection() as connection:
+                return connection.execute(
+                    'SELECT 1 FROM design_preview_manifests WHERE design_id = ? LIMIT 1', (design_id,)).fetchone() is not None
+        except sqlite3.Error:
+            return False
 
     def prefetched_design_response(design_id: str, definition: DesignDefinition, user, started=None, definition_seconds=0.0):
         workspace = workspace_key()
@@ -5947,11 +6058,12 @@ def install_design_routes(core):
         with lock:
             if design_id not in read_designs_and_previews(task_repository):
                 raise HTTPException(404, 'Design not found.')
-        # With no preparation of the Design kept (after a restart) there is nothing to look up: it is prepared at once.
+        # With no preparation of the Design kept there is nothing to look up: it is prepared at once.
         if not has_preview_manifest(design_id):
             raise HTTPException(409, 'PPT preparation is required.')
-        definition = (automatic_scope_universe if use_scope_universe else auto_cdr_definition)(definition, task_repository)
-        return prefetched_design_response(design_id, definition, user, started, monotonic() - started)
+        with cdr_stage.remembered_inclusion():
+            definition = (automatic_scope_universe if use_scope_universe else auto_cdr_definition)(definition, task_repository)
+            return prefetched_design_response(design_id, definition, user, started, monotonic() - started)
 
     @app.post('/api/ppt-designer/opened/{design_id}')
     def design_opened(design_id: str, timeline: dict[str, Any] = Body(default_factory=dict), user=Depends(design_user)):
@@ -7038,6 +7150,7 @@ def install_design_routes(core):
                     snapshot.filtered_frames.clear()
                     snapshot.frame_locks.clear()
                 canvas_models.pop(model_key, None)
+            forget_stored_chart_model(snapshot.workspace, model_key)
         with lock:
             snapshot.mapping_key = snapshot.mapping_key or mapping_key
             if force:
@@ -7047,6 +7160,8 @@ def install_design_routes(core):
             if payload is None and model_key in canvas_models:
                 canvas_models.move_to_end(model_key)
                 payload = canvas_models[model_key]
+        if payload is None and not force:
+            payload = stored_chart_model(snapshot.workspace, model_key)
         if payload is None:
             snapshot, entry, frame = snapshot_chart(token, index, user, expected_workspace=expected_workspace)
             payload = catalog_chart_payload(
@@ -7057,12 +7172,15 @@ def install_design_routes(core):
             style = design_slides.row_format(entry).get('style')
             if isinstance(style, dict) and style:
                 payload = {**payload, 'format_overrides': style}
+            keep = not (callable(snapshot.cancelled) and snapshot.cancelled())
             with lock:
                 payload = snapshot.chart_payloads.setdefault(index, payload)
-                if not (callable(snapshot.cancelled) and snapshot.cancelled()):
+                if keep:
                     canvas_models[model_key] = payload
                     while len(canvas_models) > DESIGN_CHART_MODELS_KEPT:
                         canvas_models.popitem(last=False)
+            if keep:
+                store_chart_model(snapshot.workspace, model_key, payload)
         with lock:
             snapshot.chart_payloads.setdefault(index, payload)
         return payload
@@ -7094,7 +7212,11 @@ def install_design_routes(core):
                 return False
             key = canvas_model_key(snapshot, snapshot.entries[index])
             with lock:
-                return key in canvas_models
+                if key in canvas_models:
+                    return True
+            with Repository(Path(snapshot.workspace), core.repository.global_db_path).connection() as connection:
+                return connection.execute('SELECT 1 FROM design_chart_models WHERE cache_key = ?',
+                                           (key.rsplit(':', 1)[-1],)).fetchone() is not None
         except (OSError, sqlite3.Error):
             return False
 
@@ -7736,6 +7858,7 @@ def install_design_routes(core):
 
     core.ppt_design_tasks = design_task_payloads
     core.ppt_design_cancel_workspace_tasks = cancel_workspace_design_tasks
+    core.ppt_design_clear_workspace_caches = clear_workspace_design_caches
     core.ppt_design_invalidate_chart_models = invalidate_workspace_chart_models
     core.ppt_design_stop_task = stop_design_task
     core.ppt_design_rename_template_references = rename_template_designs

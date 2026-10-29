@@ -6932,6 +6932,10 @@ def _archive_file(
                 progress_callback(len(chunk))
 
 
+# Tables of a workspace database that only hold caches: left out of backups, exports and transfers.
+WORKSPACE_CACHE_TABLES = ('design_preview_manifests', 'design_chart_models')
+
+
 def _archive_database(
     archive: zipfile.ZipFile,
     database_path: Path,
@@ -6969,8 +6973,12 @@ def _archive_database(
             if copies_prefix:
                 for path, name in cdr_store.snapshot_copies(snapshot, database_path):
                     _archive_file(archive, path, f'{copies_prefix}/{name}', progress_callback, cancel_callback)
+        # The caches of a workspace (the preparations and chart models of its PPT Designs) never travel: emptied in the
+        # snapshot, their pages overwritten with zeros so the archive does not grow with them.
+        exclude_tables = (*exclude_tables, *WORKSPACE_CACHE_TABLES)
         if exclude_tables:
             with closing(sqlite3.connect(snapshot)) as target, target:
+                target.execute('PRAGMA secure_delete = ON')
                 existing = {row[0] for row in target.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
                 for table in exclude_tables:
                     if table in existing:
@@ -13377,6 +13385,8 @@ def render_admin_template(
         'design_ppt_jobs': 'PPT Designer Jobs',
         'design_drafts': 'PPT Drafts',
         'design_images': 'PPT Images',
+        'design_preview_manifests': 'PPT Preparation Cache',
+        'design_chart_models': 'PPT Chart Models Cache',
         'cdr_catalogues': 'CDR Operator, Operator Vendor, Vendor, Region, Cluster, City, Campaign And Source Level Catalogues',
         'cdr_filter_facets': 'CDR Filter Facets',
         'dataset_profiles': 'Dataset profiles',
@@ -16278,6 +16288,10 @@ def delete_workspace_cache(
     cancel_design_tasks = getattr(sys.modules[__name__], 'ppt_design_cancel_workspace_tasks', None)
     if callable(cancel_design_tasks):
         cancel_design_tasks(workspace.database_path)
+    # The preparations and chart models of the PPT Designs, kept in memory and in the workspace database.
+    clear_design_caches = getattr(sys.modules[__name__], 'ppt_design_clear_workspace_caches', None)
+    if callable(clear_design_caches):
+        clear_design_caches(workspace.database_path)
     if active_workspace and active_workspace.id == workspace_id:
         ANALYSIS_CACHE.clear()
         PREPARED_ANALYSIS_FRAME_CACHE.clear()

@@ -216,7 +216,7 @@ PPT Designer persistence has additional layers:
 
 - `design_filter_selections` stores a versioned selection key, faceted filter values and row counts; its predicates are reproduced from the saved PPT definition.
 - The columnar copies of the CDRs of the shared `reporting_rows_data`, `reporting_rows_voice` and `reporting_rows_speech` combined tables supply PPT filters, chart datasets and chart rendering.
-- Compact interactive chart models and reusable preview manifests are kept in memory only (never on disk); their keys include selected datasets and revisions, NR Mode, scope, dates, filters, template definition and renderer/cache versions. Equivalent value and dataset ordering resolves to the same selection.
+- Compact interactive chart models and reusable preview manifests are kept in memory and, compressed, in the workspace database (`design_chart_models`, `design_preview_manifests`, left out of backups, exports and transfers), so a restart restores them; their keys include selected datasets and revisions, NR Mode, scope, dates, filters, template definition and renderer/cache versions. Equivalent value and dataset ordering resolves to the same selection.
 
 When a workspace opens, the application removes the PPT caches earlier versions wrote on disk (`.design-data-cache`, `.design-chart-cache` and `.design-cache-version.json`) and, when the selection format changed, the saved selection metadata. The Workspace **Clear cache** action clears the derived data on demand without deleting definitions, datasets, combined CDR tables, templates or generated jobs.
 
