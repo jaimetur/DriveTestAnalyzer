@@ -221,7 +221,7 @@
         if (!groups.has(group)) groups.set(group, []);
         groups.get(group).push(item);
       }
-      fieldsHost.replaceChildren(...[...groups.entries()].map(([group, items]) => h('details', {class: 'ds-cb-group', open: Boolean(query) || group !== 'Other fields'},
+      fieldsHost.replaceChildren(...[...groups.entries()].map(([group, items]) => h('details', {class: 'ds-cb-group', open: Boolean(query)},
         h('summary', {}, group, h('span', {class: 'ds-cb-count', text: String(items.length)})),
         h('div', {class: 'ds-cb-group-fields'}, items.sort((left, right) => (left.type === right.type ? left.name.localeCompare(right.name) : left.type === 'text' ? -1 : 1)).map(fieldPill)))));
       if (!fieldsHost.childElementCount) fieldsHost.append(h('p', {class: 'ds-cb-empty', text: fieldList.length ? 'No field matches.' : 'The fields appear once the Design is prepared.'}));

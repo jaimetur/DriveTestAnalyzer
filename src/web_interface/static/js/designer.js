@@ -1186,15 +1186,16 @@
     return handle;
   }
 
-  // Chart Type: a tab on the right edge of the panel opens the chart types over the panel, not the slide (as Show Me in
-  // Tableau); choosing one changes the chart at once and the types stay open until the tab, × or Esc closes them. Until a
-  // chart is chosen the tab waits, greyed.
+  // Chart Type: a tab on the right edge of the panel, while a chart is chosen, opens the chart types over the panel (as Show
+  // Me in Tableau); choosing one changes the chart at once and the types stay open until the tab, × or
+  // Esc closes them.
   function chartTypePicker(element, shown) {
+    if (!shown) return [];
     const toggle = () => { state.typesOpen = !state.typesOpen; renderPanel(); };
-    const open = Boolean(shown) && state.typesOpen;
-    const tab = h('button', {type: 'button', class: `ds-design-types-tab${open ? ' is-open' : ''}`, disabled: !shown, 'aria-expanded': String(open), 'aria-controls': 'ds-design-types',
-      title: !shown ? 'Chart Type: choose a chart of the slide' : open ? 'Close Chart Type' : `Chart Type: ${shown.chart_type || 'choose one'}`, onclick: toggle},
-    window.ChartShelves?.picture(shown?.chart_type || 'Average Vertical Bars') || null, h('span', {class: 'ds-design-types-tab-label', text: 'Chart Type'}));
+    const open = state.typesOpen;
+    const tab = h('button', {type: 'button', class: `ds-design-types-tab${open ? ' is-open' : ''}`, 'aria-expanded': String(open), 'aria-controls': 'ds-design-types',
+      title: open ? 'Close Chart Type' : `Chart Type: ${shown.chart_type || 'choose one'}`, onclick: toggle},
+    window.ChartShelves?.picture(shown.chart_type) || null, h('span', {class: 'ds-design-types-tab-label', text: 'Chart Type'}));
     if (!open) return [tab];
     const host = h('div', {class: 'ds-design-types-body'});
     window.ChartShelves?.renderTypes(host, shelvesOptions(element, shown));
@@ -2140,6 +2141,14 @@
     if (!dirty()) state.syncedToken = viewer().state().prepared?.token;
     if (dirty()) guarded(() => preview(state.designDirty ? {...previewBody(), slide_set: state.slide_set} : previewBody()))();
     else loadFields(viewer().state().prepared?.token);
+  });
+  // A click on the slide outside its charts (its background or a free place) leaves the chart chosen: the panel shows the
+  // slide again.
+  $('ds-charts')?.addEventListener('click', event => {
+    if (!state.active || !state.element || event.target.closest('.ds-chart, button, a, input, select, textarea, [contenteditable="true"]')) return;
+    state.element = '';
+    state.tab = 'slide';
+    renderDesigner();
   });
   document.addEventListener('ds:slide-rendered', () => {
     if (!state.active) return;
