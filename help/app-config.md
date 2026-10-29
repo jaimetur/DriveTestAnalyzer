@@ -1,12 +1,12 @@
 # Application Config
 
-Application Config stores application-wide runtime overrides. It is separate from Workspace Config, which groups the Report Templates, Main Cities, Mappings & Reference Data and scoring methodology panels for the active workspace.
+Application Config stores application-wide runtime overrides. It is separate from Workspace Config, which groups the Main Cities, Mappings & Reference Data and scoring methodology panels for the active workspace.
 
 > [!IMPORTANT]
 > **Application-wide settings.** Saved values affect every workspace and take precedence over the corresponding environment defaults.
 
 > [!TIP]
-> **Choose the right configuration page.** Use Workspace Config for templates, Main Cities, chart mappings and scoring methodologies.
+> **Choose the right configuration page.** Use Workspace Config for Main Cities, chart mappings and scoring methodologies; the PPT Templates are managed in [PPT Designer](ppt-designer.md#ppt-templates).
 
 ## Presentation
 

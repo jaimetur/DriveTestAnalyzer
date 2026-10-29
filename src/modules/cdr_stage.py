@@ -19,8 +19,10 @@ from __future__ import annotations
 
 import json
 import re
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 from src.modules.column_names import column_identity
 
@@ -204,8 +206,36 @@ def _contained(repository: Any, older: Any, newer: Any, memo: dict[int, set[str]
     return contained
 
 
+# Within a block of remembered_inclusion (one request that resolves the CDRs of a Design several times), the inclusion of
+# each workspace is worked out once.
+_REMEMBERED_INCLUSION: ContextVar[dict[str, dict[int, dict[str, Any]]] | None] = ContextVar('remembered_inclusion', default=None)
+
+
+@contextmanager
+def remembered_inclusion() -> Iterator[None]:
+    """Work out combined_inclusion once per workspace in the block (nested blocks share the outer one)."""
+    if _REMEMBERED_INCLUSION.get() is not None:
+        yield
+        return
+    token = _REMEMBERED_INCLUSION.set({})
+    try:
+        yield
+    finally:
+        _REMEMBERED_INCLUSION.reset(token)
+
+
 def combined_inclusion(repository: Any) -> dict[int, dict[str, Any]]:
     """For every ready CDR: its stage, its combined mode and whether the combined tables include it, with the reason."""
+    remembered = _REMEMBERED_INCLUSION.get()
+    if remembered is None:
+        return _combined_inclusion(repository)
+    key = str(getattr(repository, 'db_path', ''))
+    if key not in remembered:
+        remembered[key] = _combined_inclusion(repository)
+    return remembered[key]
+
+
+def _combined_inclusion(repository: Any) -> dict[int, dict[str, Any]]:
     datasets = [dataset for dataset in repository.list_datasets()
                 if str(_row(dataset, 'status', '')) == 'ready' and str(_row(dataset, 'dataset_kind', '')).casefold() in CDR_STAGE_KINDS]
     facts = _facts(repository, datasets)

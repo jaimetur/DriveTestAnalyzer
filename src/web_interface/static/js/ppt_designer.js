@@ -489,18 +489,19 @@
     $('ds-viewer-preparing-detail').textContent = detail;
   };
   const awaitBackgroundPreparation = async (preparationId, signal) => {
-    let missingPolls = 0;
+    let missingSince = 0;
+    const started = performance.now();
     for (;;) {
       if (signal?.aborted) throw new DOMException('The PPT preparation was superseded.', 'AbortError');
       let progress = null;
       try {
         progress = await api(`/preparation-progress/${encodeURIComponent(preparationId)}`, 'GET', undefined, signal);
-        missingPolls = 0;
+        missingSince = 0;
       } catch (error) {
         if (error.name === 'AbortError') throw error;
         // A task can briefly be unregistered between its worker finishing and
-        // its result being recorded. Give up only if it stays unknown.
-        if (error.status === 404 && ++missingPolls > 40) {
+        // its result being recorded. Give up only if it stays unknown for 20 s.
+        if (error.status === 404 && (missingSince ||= performance.now()) && performance.now() - missingSince > 20000) {
           throw new Error('PPT preparation is no longer active. Please try again.');
         }
       }
@@ -512,7 +513,9 @@
         error.status = progress.code;
         throw error;
       }
-      await new Promise(resolve => window.setTimeout(resolve, 500));
+      // Most preparations take a second or two: asked often at first, a finished one shows at once.
+      const waited = performance.now() - started;
+      await new Promise(resolve => window.setTimeout(resolve, waited < 2000 ? 120 : waited < 6000 ? 250 : 500));
     }
   };
   const monitorPreparationProgress = token => {

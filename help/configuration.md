@@ -50,7 +50,7 @@ Before version 0.6.0 the application was named Dashboard Analytic. Variables wit
 - **Maximum simultaneous tasks** sets the background concurrency from 1 to 32, which is also how many datasets of a workspace are processed in parallel; the effective limit reserves one logical CPU for interactive requests.
 - **Public address of the server** (`https://name[:port]`) is the address of the links of the presentations and of their previews; empty, they take the address each user opened the application with.
 
-See [Application Config](app-config.md) for the complete in-app workflow. Workspace-owned Report Templates and chart mappings are managed separately in [Workspace Config](workspace-config.md) and require an active workspace.
+See [Application Config](app-config.md) for the complete in-app workflow. Workspace-owned chart mappings are managed separately in [Workspace Config](workspace-config.md), and the PPT Templates in [PPT Designer](ppt-designer.md#ppt-templates); they require an active workspace.
 
 `0.0.0.0` is a server bind address, not a browser destination. When the application binds to it locally, open `http://127.0.0.1:7278` or `http://localhost:7278`. From another computer, use the server's reachable hostname or IP address and the published host port.
 

@@ -55,7 +55,7 @@ module.exports = {
         { icon: 'TbSettings', title: 'Application Config', text: 'Timezone, chart renderer, Chromium, simultaneous tasks and the Email Delivery of the reports.' },
         { icon: 'TbShield', title: 'Admin Config', text: 'Import / Export / Transfer and Datasets Management, for admins and super-admins.' },
         { icon: 'TbShieldLock', title: 'Super Admin Config', text: 'Users & Access, Interface Settings, Presentations and Database Management.' },
-        { icon: 'TbAdjustments', title: 'Workspace Config', text: 'Maps, templates, Main Cities and the methodology of each workspace: its own presentation.' },
+        { icon: 'TbAdjustments', title: 'Workspace Config', text: 'Maps, Main Cities and the methodology of each workspace: its own presentation.' },
       ],
       notes: 'Each level has its page: Application Config for the runtime settings of every workspace and the Email Delivery, Admin Config for the packages, transfers and datasets, Super Admin for the users, the tabs and labels of the modules, the presentations and the databases, and Workspace Config for the settings of each workspace.' },
     { id: 'events', type: 'split', section: 'App Events', footer: 'App Events', kicker: 'App Logs · App Events', title: 'Every action, on record', visual: 'events',

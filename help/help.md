@@ -86,7 +86,8 @@ full-presentation
 | Managing users, their access and the databases | [Super Admin](super-admin.md) |
 | Importing, exporting and transferring packages and managing datasets | [Administrator Config](administrator-config.md) |
 | Changing application-wide runtime settings | [Application Config](app-config.md) |
-| Managing templates and chart mappings for a workspace | [Workspace Config](workspace-config.md) |
+| Managing chart mappings for a workspace | [Workspace Config](workspace-config.md) |
+| Managing the PPT Templates of a workspace | [PPT Designer → PPT Templates](ppt-designer.md#ppt-templates) |
 | Reviewing application and workspace activity | [App Logs](app-logs.md) |
 | Presenting the tool to an audience | [Presentations](#presentations) |
 | Following the adaptation to Umlaut and P3 CDRs | [Benchmarking Providers](benchmarking-providers.md) |

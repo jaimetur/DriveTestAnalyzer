@@ -8,7 +8,7 @@ Workspace Config is a dedicated page for settings owned by the active workspace:
 > [!TIP]
 > **Save versus export.** Save persists edits in the workspace. Export downloads a portable copy; it does not replace the Save action.
 
-Open **Config → Workspace Config** from the main navigation at `/workspace-config`. Template, mapping and Main Cities actions use routes below `/workspace-config/`. The page uses the same teal/navy palette as Application Config, and the **Modules & Sections** tab at the left edge links to its panels.
+Open **Config → Workspace Config** from the main navigation at `/workspace-config`. Mapping and Main Cities actions use routes below `/workspace-config/` (as do the actions of the PPT Templates, which are managed in [PPT Designer](ppt-designer.md#ppt-templates)). The page uses the same teal/navy palette as Application Config, and the **Modules & Sections** tab at the left edge links to its panels.
 
 ## Presentation
 
@@ -241,42 +241,6 @@ The **Scoring Export Panels** panel, after the Scoring & GAP Analysis Setup, lis
 
 **Save Export Panels** saves the table for the workspace and **Restore Defaults** brings back the defaults; both are registered in App Events with the panels that changed. **Export All Operators in Focus panels**, in every export dialog and report editor, shows every operator in the Focus Operators panels of one document. The operators chosen on the page with the operator buttons of a panel still apply to **Export Selected Scoring Report** (see [Scoring & GAP Analysis](scoring-gap-analysis.md#what-is-in-the-powerpoint)). The panels travel as the **Scoring Export Panels** element of Admin's Import / Export / Transfer (importing them replaces those of each destination workspace), with Full Workspace transfers and with backups.
 
-
-### Chart layouts
-
-The editor offers **121 layouts**: every combination of **1–6 rows × 1–6 columns**, each without comments, with comments below, or with comments to the right (108 fixed grids), plus nine dynamic layouts and `Title Page`, `Title Only`, `Transition` and `Black logo end slide`. The physical layouts appear immediately after `Black Title Page` in the same order as the selector, excluding the virtual dynamic options.
-
-Names follow `Title + N rows + M columns`, optionally followed by `+ comments down` or `+ comments right`. The 108 fixed grids and four structural layouts exist physically in the reference PPT. `Source Dataset = CDR-All` exposes the union of Data, Voice and Speech fields, including normalized RF fields and `CDR_Type`, in cell assistance. The nine dynamic options are virtual: the renderer selects a fixed grid from the distinct values of their row and column fields. The widened Layout cell-assistance selector lists Title Page, Title Only, Transition and Black logo end slide first, followed by the nine dynamic grids and then the fixed grids. Long names stay on one line; narrow screens can scroll horizontally. Structural layouts have blue shading, dynamic layouts purple shading and the selected option yellow shading; selection retains its position without a duplicate at the top. Other native layouts remain internal to structural slides. Historic layout names are normalized on import and in stored templates; exports use the canonical names. Grids without comments use the full chart area.
-
-### Dynamic chart grids
-
-CSV imports identify columns by name and accept them in any order; duplicate names or aliases are rejected. The editor and exported CSV place **Dynamic Rows Field** and **Dynamic Columns Field** immediately after **Layout**. Use these fields to choose which source field creates the rows and columns. A dynamic layout requires a non-empty field for each dynamic axis; the parser rejects missing fields. Leave the field for a fixed axis empty. CSV exports include both columns; template import/export, transfers, backup and restore preserve them. Older CSVs with `Dynamic Field` remain importable: its value is assigned to the dynamic axis declared by the layout.
-
-| Layout | Repeated dimension | Commentary |
-|---|---|---|
-| `Title + 2 rows + dynamic columns` | Columns | None |
-| `Title + 2 rows + dynamic columns + comments down` | Columns | Below |
-| `Title + 2 rows + dynamic columns + comments right` | Columns | Right |
-| `Title + dynamic rows + 2 columns` | Rows | None |
-| `Title + dynamic rows + 2 columns + comments down` | Rows | Below |
-| `Title + dynamic rows + 2 columns + comments right` | Rows | Right |
-| `Title + dynamic rows + dynamic columns` | Rows and columns | None |
-| `Title + dynamic rows + dynamic columns + comments down` | Rows and columns | Below |
-| `Title + dynamic rows + dynamic columns + comments right` | Rows and columns | Right |
-
-- **Two fixed rows:** use two chart definitions on the slide with the same Layout and Dynamic Columns Field. The first fills the top row and the second the bottom row.
-- **Two fixed columns:** use two chart definitions with the same Layout and Dynamic Rows Field. The first fills the left column and the second the right column.
-- **Both axes dynamic:** use one chart definition and two different fields, for example `Region` for rows and `Operator` for columns. Each chart includes only samples matching both values.
-
-Distinct values come from the selected, filtered CDR universe; empty values are excluded. Both-axis grids paginate at six rows and six columns. Multivendor grids also paginate at six repeated values, keeping operators of the same vendor together where possible. Larger ordinary single-axis grids can be derived from the native geometry; charts become smaller as the grid grows.
-
-> [!TIP]
-> **Readability:** a 6 × 6 grid fits 36 charts, but gives each chart little space. Prefer fewer charts when labels or distributions need close inspection.
-
-For RF histograms, select **Operator**: the first definition is LTE and the second NR, so each Operator occupies one column. Campaigns remain grouped inside each chart. Changing filters changes the number of columns; LTE and NR keep their corresponding positions even when one technology has no valid samples.
-
-> [!NOTE]
-> **Vendor comparison:** When **Report type** is **Multivendor Comparison**, the **Vendor comparison** selector appears to its right. **Vendor Only (All Operators Combined)** is the first and default option when opening the export dialog; it pools selected operators using the same `Vendor` value. Choose **Operator - Vendor** to keep each operator separate. Campaigns remain separate. The job retains this choice for retries. Dynamic vendor grids use up to six columns per slide and keep operators of the same vendor together where possible.
 
 ### Vendor-only filter labels
 

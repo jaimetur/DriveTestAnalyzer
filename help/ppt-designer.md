@@ -1,6 +1,6 @@
 # PPT Designer
 
-Build an interactive Design from processed Data, Voice and Speech CDRs, using a saved Report Template. Apply one dataset selection to its slides, explore the charts, then export the result to PowerPoint.
+Build an interactive Design (a PPT Design) from processed Data, Voice and Speech CDRs, following a PPT Template of the workspace or starting blank. Apply one dataset selection to its slides, explore the charts, change them on screen in the Designer, then export the result to PowerPoint. The PPT Templates themselves are managed and edited here too.
 
 > [!NOTE]
 > **A Design is a saved definition, not a copy of your data.** It stores its template, Scope, dates, filters, the values of the template parameters, comments and what it changes of its template's slides; its CDRs are chosen from its NR Mode and Campaign filter each time it is prepared. Source CDRs and generated caches remain separate.
@@ -25,6 +25,7 @@ ppt-designer
 | Change slides, layouts and charts on screen, for this Design or for its template | [Designer](#designer) |
 | Choose the city, threshold or other values of a template's parameters | [Template parameters](#template-parameters) |
 | Import, create or edit PPT Templates | [PPT Templates](#ppt-templates) |
+| Write a template by hand: its columns, chart types and layouts | [Report Template reference](#report-template-reference) |
 | Export a presentation | [Generate PPT](#generate-ppt) |
 | Review exported jobs or charts | [PPT Generation Jobs](#ppt-generation-jobs) / [Charts Panel](#charts-panel) |
 | Resolve empty charts or preparation problems | [Troubleshooting](#troubleshooting) |
@@ -82,7 +83,7 @@ An existing or imported Design **RF Quality (RSRP & SINR)** can use the workspac
 
 ### Change name, NR Mode or template
 
-Edit the name in the table and confirm with the green check. NR Mode and Template have their own selectors, independent of each other: the NR Mode chooses the CDRs the Design reads and keeps its template, and any template serves every NR Mode.
+Edit the name in the table (column **PPT Name**) and confirm with the green check. NR Mode and **PPT Template** have their own selectors, independent of each other: the NR Mode chooses the CDRs the Design reads and keeps its template, and any template serves every NR Mode. A Design created blank shows **None — blank PPT**: choosing a template makes it follow that template, and its own slides are replaced by those of the template after a warning.
 
 > [!WARNING]
 > **Changing NR Mode or Template invalidates the prepared charts.** The application rebuilds them. An NR Mode change keeps the campaigns of an NR Mode the Design still reads (NSA to NSA & SA keeps the Campaign as Campaign (NSA)) and sets the others to the newest campaigns of the new mode (the campaigns of the other mode do not apply); the titles of the template name the new NR Mode. A template-only change keeps the Campaign.
@@ -282,7 +283,7 @@ Campaign labels are compact, such as **26-Q2**, **26-Q2-NSA** or **26-Q2-SA** (s
 | **Generate PPT** | Export the selection |
 | **Refresh Design** | Refresh the PPT preparation |
 
-On wide screens these controls share one row above the slide: **Scope**, **PPT Filters** and **Designer** show their names, and **Generate PPT**, **Refresh Design**, **Auto-Calculated Fields** and **Edit PPT Template** their icons (point at one to read its name). While designing, the slides at the left take the place of the slide selector.
+On wide screens these controls share one row above the slide: the slide selector with the two image buttons of the slide beside it, then **Scope**, **PPT Filters** and **Open Designer** with their names, and **Generate PPT**, **Refresh Design**, **Auto-Calculated Fields** and **Edit PPT Template** as icons (point at one to read its name). While designing, the slides at the left take the place of the slide selector.
 
 **Theme**, at the start of the floating section bar of the page, colours the charts and the slide titles of the viewer and of the PPTs with the colour themes of [Scoring & GAP Analysis](scoring-gap-analysis.md) (**Ericsson** by default, **NetCheck**, **Umlaut**, **Vodafone**, **Midnight**, **Paper** and **Heatmap**): the charts take its font and its colours for text, axes, grid lines, table headers and alternate rows (the colours of operators, vendors and thresholds stay as they are), and the slide title and subtitle of the viewer (still in capitals) and the titles and subtitles of the content slides of the PPT take its title style, the part that tells the slide apart in its focus style; **Midnight** paints the charts and the content slides night blue (with the logos in white) and turns their tables, text and comments light on dark. Title and Transition slides keep the template look. Each user keeps one theme per workspace for every themed module (choosing it here chooses it in Scoring & GAP Analysis, Network Insights and CDR Analysis too); changing it restyles the viewer and redraws the charts at once, is kept for the next visit and the PPTs generated afterwards (also from Reporting Jobs), and is recorded in the App Events log.
 
@@ -961,6 +962,42 @@ Top/Bottom produces a compact horizontal legend; Left/Right produces a vertical 
 Rows sharing a `Slide` number create separate charts on one slide. They must share `Slide Tittle`, `Slide Subtittle` and `Layout`, may use different sources, KPIs, filters and chart types, and require at least as many placeholders as chart rows.
 
 Operator and Vendor aliases resolve to the canonical values configured in Workspace Config without changing the source workbook. Their table order controls Operator, Subscriber, Vendor and combined Operator_Vendor chart dimensions. Each canonical row defines its chart theme colour; multiple campaigns or operators using one identity receive contrasting shades derived from that colour.
+
+### Chart layouts
+
+The editor offers **121 layouts**: every combination of **1–6 rows × 1–6 columns**, each without comments, with comments below, or with comments to the right (108 fixed grids), plus nine dynamic layouts and `Title Page`, `Title Only`, `Transition` and `Black logo end slide`. The physical layouts appear immediately after `Black Title Page` in the same order as the selector, excluding the virtual dynamic options.
+
+Names follow `Title + N rows + M columns`, optionally followed by `+ comments down` or `+ comments right`. The 108 fixed grids and four structural layouts exist physically in the reference PPT. `Source Dataset = CDR-All` exposes the union of Data, Voice and Speech fields, including normalized RF fields and `CDR_Type`, in cell assistance. The nine dynamic options are virtual: the renderer selects a fixed grid from the distinct values of their row and column fields. The widened Layout cell-assistance selector lists Title Page, Title Only, Transition and Black logo end slide first, followed by the nine dynamic grids and then the fixed grids. Long names stay on one line; narrow screens can scroll horizontally. Structural layouts have blue shading, dynamic layouts purple shading and the selected option yellow shading; selection retains its position without a duplicate at the top. Other native layouts remain internal to structural slides. Historic layout names are normalized on import and in stored templates; exports use the canonical names. Grids without comments use the full chart area.
+
+### Dynamic chart grids
+
+CSV imports identify columns by name and accept them in any order; duplicate names or aliases are rejected. The editor and exported CSV place **Dynamic Rows Field** and **Dynamic Columns Field** immediately after **Layout**. Use these fields to choose which source field creates the rows and columns. A dynamic layout requires a non-empty field for each dynamic axis; the parser rejects missing fields. Leave the field for a fixed axis empty. CSV exports include both columns; template import/export, transfers, backup and restore preserve them. Older CSVs with `Dynamic Field` remain importable: its value is assigned to the dynamic axis declared by the layout.
+
+| Layout | Repeated dimension | Commentary |
+|---|---|---|
+| `Title + 2 rows + dynamic columns` | Columns | None |
+| `Title + 2 rows + dynamic columns + comments down` | Columns | Below |
+| `Title + 2 rows + dynamic columns + comments right` | Columns | Right |
+| `Title + dynamic rows + 2 columns` | Rows | None |
+| `Title + dynamic rows + 2 columns + comments down` | Rows | Below |
+| `Title + dynamic rows + 2 columns + comments right` | Rows | Right |
+| `Title + dynamic rows + dynamic columns` | Rows and columns | None |
+| `Title + dynamic rows + dynamic columns + comments down` | Rows and columns | Below |
+| `Title + dynamic rows + dynamic columns + comments right` | Rows and columns | Right |
+
+- **Two fixed rows:** use two chart definitions on the slide with the same Layout and Dynamic Columns Field. The first fills the top row and the second the bottom row.
+- **Two fixed columns:** use two chart definitions with the same Layout and Dynamic Rows Field. The first fills the left column and the second the right column.
+- **Both axes dynamic:** use one chart definition and two different fields, for example `Region` for rows and `Operator` for columns. Each chart includes only samples matching both values.
+
+Distinct values come from the selected, filtered CDR universe; empty values are excluded. Both-axis grids paginate at six rows and six columns. Multivendor grids also paginate at six repeated values, keeping operators of the same vendor together where possible. Larger ordinary single-axis grids can be derived from the native geometry; charts become smaller as the grid grows.
+
+> [!TIP]
+> **Readability:** a 6 × 6 grid fits 36 charts, but gives each chart little space. Prefer fewer charts when labels or distributions need close inspection.
+
+For RF histograms, select **Operator**: the first definition is LTE and the second NR, so each Operator occupies one column. Campaigns remain grouped inside each chart. Changing filters changes the number of columns; LTE and NR keep their corresponding positions even when one technology has no valid samples.
+
+> [!NOTE]
+> **Vendor comparison:** When **Report type** is **Multivendor Comparison**, the **Vendor comparison** selector appears to its right. **Vendor Only (All Operators Combined)** is the first and default option when opening the export dialog; it pools selected operators using the same `Vendor` value. Choose **Operator - Vendor** to keep each operator separate. Campaigns remain separate. The job retains this choice for retries. Dynamic vendor grids use up to six columns per slide and keep operators of the same vendor together where possible.
 
 ## Portability and maintenance
 

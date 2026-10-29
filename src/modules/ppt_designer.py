@@ -70,7 +70,7 @@ from src.modules.cdr_reporting import (
 )
 from src.modules.report_layouts import DYNAMIC_LAYOUTS, canonical_layout_name, compact_grid_layout, grid_layout_name
 
-from src.modules import cdr_store
+from src.modules import cdr_stage, cdr_store
 from src.modules.design_column_cache import (
     WEIGHT_COLUMN, CacheSource, ColumnCache, Segment, SelectionTerms, StaleSegment, build_from_copies, count_rows,
     default_memory_bytes, expand_weighted_rows, read_frame, read_grouped_frame,
@@ -2120,6 +2120,11 @@ def install_design_routes(core):
         return migrated
 
     def runtime_design_definition(definition, task_repository):
+        """A Design definition with its CDRs (see _runtime_design_definition), the CDRs included worked out once."""
+        with cdr_stage.remembered_inclusion():
+            return _runtime_design_definition(definition, task_repository)
+
+    def _runtime_design_definition(definition, task_repository):
         """A Design definition with its CDRs: those of its NR Mode and Campaign filter.
 
         The CDRs are those the combined CDR tables include (the Final CDR of each campaign, else its
@@ -5427,6 +5432,11 @@ def install_design_routes(core):
             if callable(progress):
                 progress(percent, detail)
 
+        with cdr_stage.remembered_inclusion():
+            return _build_preview(definition, user, workspace=workspace, cancelled=cancelled, report=report,
+                                  ensure_not_cancelled=ensure_not_cancelled)
+
+    def _build_preview(definition, user, *, workspace, cancelled, report, ensure_not_cancelled):
         workspace = workspace or workspace_key()
         report(5, 'Validating the Design template and selected source datasets')
         ensure_not_cancelled()

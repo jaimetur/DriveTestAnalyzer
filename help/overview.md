@@ -59,7 +59,7 @@ The header is available throughout the authenticated application.
 - **Help** opens this detailed guide.
 - **App Logs** opens operational events for the active workspace.
 - **Config** opens application-wide runtime settings for `user-editor`, `admin` and `super-admin`.
-- **Workspace Config** opens workspace-owned templates and mapping panels for authorised roles.
+- **Workspace Config** opens workspace-owned mapping and methodology panels for authorised roles (the PPT Templates are in PPT Designer).
 - **Admin** opens user, portability, database and dataset administration tools according to the signed-in role.
 
 ## Application and workspace configuration
@@ -308,7 +308,7 @@ The **Super Admin** tab, for the `super-admin` role only, manages the users and 
 
 ### Workspace Config
 
-- Manage workspace Report Templates, Main Cities, Mappings & Reference Data and scoring methodologies on the dedicated Workspace Config page.
+- Manage workspace Main Cities, Mappings & Reference Data and scoring methodologies on the dedicated Workspace Config page, and the PPT Templates in PPT Designer.
 - Use the **Modules & Sections** tab at the edge of the window (left on large screens, right on smaller ones), the **Menu** on small screens or the floating section bar to reach the required configuration panel.
 - Open a workspace to manage its templates and chart mappings.
 

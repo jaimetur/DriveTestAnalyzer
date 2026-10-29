@@ -1456,7 +1456,8 @@ def test_designs_lifecycle_and_layout(client, ppt_reporting_old):
     assert '.preview-column-filter-menu { position: fixed; z-index: 10010;' in app_styles
     assert "\\s*×\\s*|\\s+\\bx\\b\\s+" in app_script
     assert "const configuredValues = multiFields.has(key)" in app_script
-    assert "columns_by_source" in design_script
+    # The CDR columns of a chart definition are offered by Chart Builder; the viewer has no Chart Definition any more.
+    assert "columns_by_source" not in design_script
     assert "control.dataset.previewDisplay = parsed.value.trim();" in app_script
     assert "control.dispatchEvent(new Event('preview-selection-change'));" in app_script
     assert "would erase text the user has just entered but has not completed." in app_script
@@ -1477,10 +1478,10 @@ def test_designs_lifecycle_and_layout(client, ppt_reporting_old):
     assert '.ppt-designer .ds-slide-arrow-icon {' in design_styles
     assert '.ds-viewer-tool-actions { display: flex;' in design_styles
     assert '.ppt-designer .ds-viewer-tool-actions .ds-viewer-icon-action {' in design_styles
-    assert '#ds-viewer.ppt-designer .ds-viewer-top-action::before {' in design_styles
-    assert '#ds-viewer.ppt-designer .ds-viewer-top-filters::before {' in design_styles
-    assert '#ds-viewer.ppt-designer .ds-viewer-top-auto-fields::before {' in design_styles
-    assert '#ds-viewer.ppt-designer .ds-viewer-top-edit::before {' in design_styles
+    assert ':is(#ds-viewer.ppt-designer, #ds-chart-expanded-overlay) .ds-viewer-top-action::before {' in design_styles
+    assert ':is(#ds-viewer.ppt-designer, #ds-chart-expanded-overlay) .ds-viewer-top-filters::before {' in design_styles
+    assert ':is(#ds-viewer.ppt-designer, #ds-chart-expanded-overlay) .ds-viewer-top-auto-fields::before {' in design_styles
+    assert ':is(#ds-viewer.ppt-designer, #ds-chart-expanded-overlay) .ds-viewer-top-edit::before {' in design_styles
     assert 'class="ds-presentation-navigation-separator"' in page.text
     assert '#ds-viewer.ppt-designer:not(.ds-presentation-active) .ds-presentation-navigation-separator {' in design_styles
     assert 'border-right:1px solid #b8a8ca;' in design_styles
@@ -1512,9 +1513,8 @@ def test_designs_lifecycle_and_layout(client, ppt_reporting_old):
     assert "const preview = node('div', undefined, 'ds-ppt-chart-thumbnail');" in design_script
     assert 'globalThis.renderCanvasChart(canvas, model);' in design_script
     assert 'preview.replaceChildren(cachedImage(chart))' in design_script
-    assert 'const rememberRenderedChartPayload = (chart, payload) =>' in design_script
-    assert 'rememberRenderedChartPayload(chart, payload);' in design_script
-    assert 'if (expandedChartSlide(chart) === prepared?.slides[slideIndex]) renderSlide();' in design_script
+    # A chart is changed in the Designer only: the expanded viewer no longer applies a temporary definition.
+    assert 'rememberRenderedChartPayload' not in design_script
     assert 'ds-chart-definition-toggle' not in design_script
     assert "card.ondblclick = safe(async event =>" in design_script
     assert "const syncExpandedChartNavigation" in design_script
