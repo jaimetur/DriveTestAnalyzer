@@ -169,8 +169,8 @@
     globalThis.ChartShelves?.render(shelves, options);
   };
   // Chart Type, as in the Designer: a tab on the edge of the chart, beside the panel, opens the chart types grouped by what
-  // they show (those the shelves cannot draw greyed) over the chart; choosing one changes the chart at once, and the types
-  // stay open until the tab, ×, Esc or a click outside them closes them.
+  // they show (those the shelves cannot draw greyed) over the chart; choosing one changes the chart and closes them, as the
+  // tab, ×, Esc or a click outside them do.
   const viewerPanel = document.querySelector('[data-chart-builder-viewer]');
   let typesOpen = false;
   function chartTypes(options) {
@@ -179,14 +179,15 @@
     const toggle = () => { typesOpen = !typesOpen; render(); };
     viewerPanel.append(element('button', {type: 'button', class: `ds-design-types-tab${typesOpen ? ' is-open' : ''}`, 'aria-expanded': String(typesOpen),
       'aria-controls': 'chart-builder-types', title: typesOpen ? 'Close Chart Type' : `Chart Type: ${chart.chart_type || 'choose one'}`, onclick: toggle},
-    globalThis.ChartShelves?.picture(chart.chart_type) || null, element('span', {class: 'ds-design-types-tab-label'}, 'Chart Type')));
+    globalThis.ChartShelves?.typesIcon() || null, element('span', {class: 'ds-design-types-tab-label'}, 'Chart Type')));
     if (!typesOpen) return;
     const types = element('div', {class: 'ds-design-types-body'});
     viewerPanel.append(element('section', {class: 'ds-design-types', id: 'chart-builder-types', 'aria-label': 'Chart Type'},
       element('div', {class: 'ds-design-types-head'}, element('strong', {}, 'Chart Type'),
         element('button', {type: 'button', class: 'ds-design-types-close', 'aria-label': 'Close Chart Type', title: 'Close (Esc)', onclick: toggle}, '×')),
       types));
-    globalThis.ChartShelves?.renderTypes(types, options);
+    // Choosing a chart type closes them (a setting of the type chosen, under them, does not).
+    globalThis.ChartShelves?.renderTypes(types, {...options, onChange: (changes) => { if ('chart_type' in changes) typesOpen = false; options.onChange(changes); }});
   }
   document.addEventListener('pointerdown', (event) => {
     if (typesOpen && !event.target.closest?.('#chart-builder-types, .ds-design-types-tab')) { typesOpen = false; render(); }

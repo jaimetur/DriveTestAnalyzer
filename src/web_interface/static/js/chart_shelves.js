@@ -57,23 +57,28 @@
       + `<path d="M10 26l6-2.5 5 1.5 6-3.5 5 1.5 6-3" fill="none" stroke="${C}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>`,
     'Map': `<path d="M5 9l11-4 15 4 12-4v20l-12 4-15-4-11 4z" fill="none" stroke="${G}" stroke-width="1.4"/>` + [[11, 17], [17, 24], [36, 20]].map(([x, y], i) => `<circle cx="${x}" cy="${y}" r="2.4" fill="${[A, B, A][i]}"/>`).join('') + `<path d="M26 24c0-3.5 4.5-6.5 4.5-10.5a4.5 4.5 0 0 0-9 0c0 4 4.5 7 4.5 10.5z" fill="${C}"/><circle cx="26" cy="13.5" r="1.7" fill="#fff"/>`,
   };
+  // need: true when the shelves draw it, else what it needs; fits: the measures do not rule it out (more fields can still
+  // make it drawable), so a chart type chosen before its fields is kept while they are dropped.
   const TYPES = [
-    {type: 'CDF Line', need: s => s.numeric === 1 && s.measures === 1 || 'One numeric measure'},
-    {type: 'Multi KPI CDF Lines', need: s => s.numeric >= 2 && s.numeric === s.measures || 'Two numeric measures or more'},
-    {type: 'Average Vertical Bars', need: s => s.numeric >= 1 && s.splits >= 1 || 'A numeric measure and a Rows or Columns split'},
-    {type: 'Median Vertical Bars', need: s => s.numeric >= 1 && s.splits >= 1 || 'A numeric measure and a Rows or Columns split'},
-    {type: '100% Stacked Vertical Bars', need: s => s.text === 1 && s.measures === 1 || 'One dimension as the measure (such as Call_Status)'},
-    {type: 'Count Stacked Horizontal Bars', need: s => s.measures === 1 || 'One measure'},
-    {type: 'Threshold Stacked Vertical Bars', need: s => s.numeric === 1 && s.measures === 1 || 'One numeric measure', setting: 'Threshold'},
-    {type: 'Distribution Stacked Vertical Bars', need: s => s.numeric === 1 && s.measures === 1 || 'One numeric measure', setting: 'Buckets'},
-    {type: 'Histogram Bars', need: s => s.numeric === 1 && s.measures === 1 || 'One numeric measure', setting: 'Bin Size'},
-    {type: 'Histogram Line', need: s => s.numeric === 1 && s.measures === 1 || 'One numeric measure', setting: 'Bin Size'},
-    {type: 'Scatter', need: s => s.numeric === 2 && s.measures === 2 || 'Two numeric measures'},
-    {type: 'Table', need: s => s.measures >= 1 || 'A measure'},
-    {type: 'Dynamic Table', need: s => s.measures >= 1 || 'A measure'},
-    {type: 'Map', need: s => s.geo || 'Latitude and Longitude in the source'},
-    {type: 'KPI Card', need: s => s.measures === 1 || 'One measure: the field of the card'},
+    {type: 'CDF Line', need: s => s.numeric === 1 && s.measures === 1 || 'One numeric measure', fits: s => !s.text && s.numeric <= 1},
+    {type: 'Multi KPI CDF Lines', need: s => s.numeric >= 2 && s.numeric === s.measures || 'Two numeric measures or more', fits: s => !s.text},
+    {type: 'Average Vertical Bars', need: s => s.numeric >= 1 && s.splits >= 1 || 'A numeric measure and a Rows or Columns split', fits: s => !s.text},
+    {type: 'Median Vertical Bars', need: s => s.numeric >= 1 && s.splits >= 1 || 'A numeric measure and a Rows or Columns split', fits: s => !s.text},
+    {type: '100% Stacked Vertical Bars', need: s => s.text === 1 && s.measures === 1 || 'One dimension as the measure (such as Call_Status)', fits: s => !s.numeric && s.text <= 1},
+    {type: 'Count Stacked Horizontal Bars', need: s => s.measures === 1 || 'One measure', fits: s => s.measures <= 1},
+    {type: 'Threshold Stacked Vertical Bars', need: s => s.numeric === 1 && s.measures === 1 || 'One numeric measure', setting: 'Threshold', fits: s => !s.text && s.numeric <= 1},
+    {type: 'Distribution Stacked Vertical Bars', need: s => s.numeric === 1 && s.measures === 1 || 'One numeric measure', setting: 'Buckets', fits: s => !s.text && s.numeric <= 1},
+    {type: 'Histogram Bars', need: s => s.numeric === 1 && s.measures === 1 || 'One numeric measure', setting: 'Bin Size', fits: s => !s.text && s.numeric <= 1},
+    {type: 'Histogram Line', need: s => s.numeric === 1 && s.measures === 1 || 'One numeric measure', setting: 'Bin Size', fits: s => !s.text && s.numeric <= 1},
+    {type: 'Scatter', need: s => s.numeric === 2 && s.measures === 2 || 'Two numeric measures', fits: s => !s.text && s.numeric <= 2},
+    {type: 'Table', need: s => s.measures >= 1 || 'A measure', fits: () => true},
+    {type: 'Dynamic Table', need: s => s.measures >= 1 || 'A measure', fits: () => true},
+    {type: 'Map', need: s => s.geo || 'A latitude and a longitude in the source', fits: s => !s.text && s.numeric <= 2},
+    {type: 'KPI Card', need: s => s.measures === 1 || 'One measure: the field of the card', fits: s => s.measures <= 1},
   ];
+  // What a chart type needs, said for a chart without fields (first letter lower case, the names of fields kept).
+  const requirement = item => String(item.need({measures: 0, numeric: 0, text: 0, splits: 0, geo: false}));
+  const lower = text => String(text).charAt(0).toLowerCase() + String(text).slice(1);
   // Chart Type of the Designer: the chart types grouped by what they show.
   const TYPE_GROUPS = [
     ['Distribution', ['CDF Line', 'Multi KPI CDF Lines', 'Histogram Bars', 'Histogram Line']],
@@ -96,6 +101,15 @@
     const holder = document.createElement('span');
     holder.className = 'ds-cb-picture';
     holder.innerHTML = `<svg viewBox="0 0 48 34" aria-hidden="true">${PICTURES[type] || ''}</svg>`;
+    return holder;
+  };
+  // The icon of the Chart Type tab: bars with a line over them, in the colour of the text of the tab.
+  const typesIcon = () => {
+    const holder = document.createElement('span');
+    holder.className = 'ds-design-types-tab-icon';
+    holder.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+      + '<path d="M3.5 20.5h17" stroke-width="1.8"/><path d="M6.5 20.5v-5M11 20.5v-8M15.5 20.5v-6M20 20.5v-10" stroke-width="2.8"/>'
+      + '<path d="M4.5 10.5l5-4.5 4 3 6.5-5.5" stroke-width="1.8"/></svg>';
     return holder;
   };
   const splitParts = (value, separator) => String(value || '').split(separator).map(part => part.trim()).filter(Boolean);
@@ -132,6 +146,9 @@
     const shelfState = {
       measures: measures.length, numeric, text: measures.length - numeric,
       splits: splitParts(values.rows_split, '×').length + splitParts(values.columns_split, '×').length,
+      // A chart without a measure or a dimension yet takes any chart type: the panel then says what it needs.
+      empty: !measures.length && !splitParts(values.rows_split, '×').length && !splitParts(values.columns_split, '×').length
+        && !splitParts(values.legend, ',').length,
       // (A latitude and a longitude of any name: Latitude, Test_Start_Latitude…)
       geo: fieldList.some(item => identity(item.name).includes('latitude')) && fieldList.some(item => identity(item.name).includes('longitude')),
     };
@@ -139,11 +156,11 @@
   }
   const chosenTypeOf = values => TYPES.find(item => item.type.toLowerCase() === String(values.chart_type || '').toLowerCase()) || null;
   const typeButton = (item, {values, shelfState, change}, props = {}) => {
-    const verdict = item.need(shelfState);
+    const verdict = shelfState.empty || item.need(shelfState);
     const active = item.type.toLowerCase() === String(values.chart_type || '').toLowerCase();
     // A chart type the shelves cannot draw is greyed and cannot be chosen: pointing at it says what it needs.
     return h('button', {type: 'button', class: `ds-cb-type-button${active ? ' is-active' : ''}${verdict === true ? '' : ' is-unavailable'}`,
-      title: verdict === true ? item.type : `${item.type}: needs ${verdict.toLowerCase()}`, 'aria-pressed': String(active), 'aria-disabled': String(verdict !== true),
+      title: verdict === true ? item.type : `${item.type}: needs ${lower(verdict)}`, 'aria-pressed': String(active), 'aria-disabled': String(verdict !== true),
       dataset: {type: item.type}, onclick: () => { if (verdict === true && !active) change({chart_type: item.type}); }, ...props},
     picture(item.type), h('span', {text: item.type}));
   };
@@ -194,16 +211,23 @@
     const context = analyse(options);
     const hint = h('p', {class: 'ds-cb-types-hint', 'aria-live': 'polite'});
     const describe = item => {
-      if (!item) { hint.replaceChildren('Drop fields on the shelves: the chart types they can draw light up.'); return; }
+      if (!item) {
+        hint.replaceChildren(context.shelfState.empty ? 'Choose any chart type: the panel then says what it needs.'
+          : 'Drop fields on the shelves: the chart types they can draw light up.');
+        return;
+      }
       const verdict = item.need(context.shelfState);
-      hint.replaceChildren(h('strong', {text: item.type}), verdict === true ? ' · ready with these fields' : ` · needs ${verdict.toLowerCase()}`);
+      hint.replaceChildren(h('strong', {text: item.type}), verdict === true ? ' · ready with these fields' : ` · needs ${lower(verdict)}`);
     };
     const chosen = chosenTypeOf(context.values);
     const point = item => ({onmouseenter: () => describe(item), onfocus: () => describe(item), onmouseleave: () => describe(chosen), onblur: () => describe(chosen)});
     host.replaceChildren(...[
-      ...TYPE_GROUPS.map(([label, names]) => h('div', {class: 'ds-cb-type-group', role: 'group', 'aria-label': label},
-        h('span', {class: 'ds-cb-type-group-label', text: label}),
-        h('div', {class: 'ds-cb-types'}, names.map(name => TYPES.find(item => item.type === name)).filter(Boolean).map(item => typeButton(item, context, point(item)))))),
+      // A row for each group; a group of one or two chart types goes on the row before it when it fits.
+      ...TYPE_GROUPS.flatMap(([label, names], index) => [
+        index && names.length > 2 ? h('span', {class: 'ds-cb-type-break', 'aria-hidden': 'true'}) : null,
+        h('div', {class: 'ds-cb-type-group', role: 'group', 'aria-label': label},
+          h('span', {class: 'ds-cb-type-group-label', text: label}),
+          h('div', {class: 'ds-cb-types'}, names.map(name => TYPES.find(item => item.type === name)).filter(Boolean).map(item => typeButton(item, context, point(item)))))]),
       settingRow(context), hint].filter(Boolean));
     describe(chosen);
   }
@@ -286,7 +310,7 @@
     // Chart Type proposes the chart type the measures call for when the current one cannot draw them.
     function suggestType(state) {
       const current = TYPES.find(item => item.type.toLowerCase() === String(values.chart_type || '').toLowerCase());
-      if (current && current.need(state) === true) return {};
+      if (current && (current.need(state) === true || current.fits(state))) return {};
       // (Another numeric measure on a CDF gives one line per measure.)
       const cdf = /cdf/i.test(String(values.chart_type || ''));
       const best = state.numeric >= 2 ? (state.numeric === 2 && !cdf ? 'Scatter' : 'Multi KPI CDF Lines')
@@ -464,8 +488,16 @@
     // Chart Type and the setting of the chart type chosen.
     const chartTypes = options.chartTypes === false ? null : h('div', {class: 'ds-cb-types', role: 'group', 'aria-label': 'Chart Type'}, TYPES.map(item => typeButton(item, context)));
 
+    // What the chart type chosen needs: ticked once the shelves give it.
+    const chosen = chosenTypeOf(values);
+    const ready = chosen && chosen.need(shelfState) === true;
+    const needs = chosen ? h('p', {class: `ds-cb-type-needs ${ready ? 'is-ready' : 'is-missing'}`, role: 'note',
+      title: ready ? `${chosen.type} draws with these fields` : `${chosen.type} still needs ${lower(chosen.need(shelfState))}`},
+    h('span', {class: 'ds-cb-type-needs-mark', 'aria-hidden': 'true', text: ready ? '✓' : 'i'}),
+    h('span', {}, h('strong', {text: chosen.type}), ` needs ${lower(requirement(chosen))}`)) : null;
+
     host.replaceChildren(...[
-      card('chart', 'Chart',
+      card('chart', 'Chart', needs,
         options.showSource === false ? null : h('div', {class: 'ds-cb-source'},
           h('div', {class: 'ds-cb-source-row', title: 'The CDRs the chart reads'}, h('span', {class: 'ds-cb-shelf-label', text: 'Source'}),
             h('div', {class: 'ds-cb-segmented', role: 'group', 'aria-label': 'Source: the CDRs the chart reads'}, SOURCES.map(([value, label, title]) => h('button', {type: 'button', class: value === source ? 'is-active' : '', 'aria-pressed': String(value === source), title, onclick: () => change({cdr_source: value})}, label)))),
@@ -502,5 +534,5 @@
     placePopover(menu, anchor);
   }
 
-  window.ChartShelves = {render, renderTypes, picture, kpiParts, kpiField, groupRank};
+  window.ChartShelves = {render, renderTypes, picture, typesIcon, kpiParts, kpiField, groupRank};
 })();

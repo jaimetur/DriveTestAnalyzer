@@ -983,6 +983,9 @@
       if ((state.report?.template_changed || []).some(item => item.element === id)) marks.push(['Template changed', 'is-warning']);
       if (marks.length) card.append(h('span', {class: 'ds-design-mark'}, marks.map(([text, kind]) => h('span', {class: `ds-design-badge ${kind}`, text}))));
     });
+    // Chart Type goes on the chart chosen once it is drawn.
+    const waiting = placeChartTypes();
+    if (waiting.length) $('ds-design-panel')?.append(...waiting);
     // A dynamic layout fills its grid with the cards of one element: it has no free place of its own.
     if (!slide || slideKind(slide) !== 'content' || layoutOf(slide.layout)?.dynamic || !stage.classList.contains('ds-positioned')) return;
     const places = placesOf(slide);
@@ -1095,7 +1098,8 @@
     if (state.panelWidth) panel.style.setProperty('--ds-panel-width', `${Math.max(PANEL_MIN_WIDTH, state.panelWidth)}px`);
     // (A KPI card has Chart Type too: it turns it back into a chart.)
     const typed = chart || (Boolean(shown) && shown.kind === 'kpi');
-    panel.replaceChildren(panelResizer(panel), panelHead(slide, chosen, shown, chart), body, ...chartTypePicker(typed ? chosen : null, typed ? shown : null));
+    chartTypeNodes = chartTypePicker(typed ? chosen : null, typed ? shown : null);
+    panel.replaceChildren(panelResizer(panel), panelHead(slide, chosen, shown, chart), body, ...placeChartTypes());
     if (dataOpen.size) panel.querySelectorAll('.ds-cb-group').forEach(group => { group.open = dataOpen.has(group.querySelector('summary')?.firstChild?.textContent); });
     const again = typing && $(typing.id);
     if (again) {
@@ -1220,19 +1224,45 @@
     return handle;
   }
 
-  // Chart Type: a tab on the right edge of the panel, while a chart is chosen, opens the chart types over the panel (as Show
-  // Me in Tableau); choosing one changes the chart at once and the types stay open until the tab, ×, Esc or a click
-  // outside them closes them.
+  // Chart Type: a tab on the right edge of the chart chosen, inside its place on the slide (as in Chart Builder), opens the
+  // chart types over the slide beside it; choosing one changes the chart and closes them, as the tab, ×, Esc or a click
+  // outside them do. While the chart is not drawn, the tab waits on the edge of the panel.
+  let chartTypeNodes = [];
+  function placeChartTypes() {
+    const stage = $('ds-charts');
+    stage?.querySelectorAll('.ds-chart > .ds-design-types-tab, :scope > .ds-design-types').forEach(node => node.remove());
+    const [tab, types] = chartTypeNodes;
+    const card = tab && stage && [...stage.querySelectorAll('.ds-chart')].find(item => item.dataset.elementId === state.element && !item.dataset.repeated);
+    if (!card) return chartTypeNodes;
+    card.append(tab);
+    if (types) {
+      stage.append(types);
+      const room = stage.getBoundingClientRect(), chart = card.getBoundingClientRect(), width = tab.offsetWidth;
+      // At the left of the tab, or at the right of the chart when there is more room there.
+      if (chart.right - width - room.left >= room.right - chart.right) {
+        Object.assign(types.style, {left: 'auto', right: `${room.right - chart.right + width + 4}px`, maxWidth: `${Math.max(0, chart.right - width - room.left - 8)}px`});
+      } else Object.assign(types.style, {left: `${chart.right - room.left + 4}px`, right: 'auto', maxWidth: `${room.right - chart.right - 8}px`});
+    }
+    return [];
+  }
+  // (The tab calls the eye when a chart is chosen: its pulse goes on where it was when the panel is drawn again.)
+  const TYPES_CALL_MS = 2200;
+  let typesCalled = {id: '', at: 0};
   function chartTypePicker(element, shown) {
-    if (!shown) return [];
+    if (!shown) { typesCalled = {id: '', at: 0}; return []; }
     const toggle = () => { state.typesOpen = !state.typesOpen; renderPanel(); };
     const open = state.typesOpen;
-    const tab = h('button', {type: 'button', class: `ds-design-types-tab${open ? ' is-open' : ''}`, 'aria-expanded': String(open), 'aria-controls': 'ds-design-types',
+    if (typesCalled.id !== element.id) typesCalled = {id: element.id, at: performance.now()};
+    const called = performance.now() - typesCalled.at, calling = !open && called < TYPES_CALL_MS;
+    const tab = h('button', {type: 'button', class: `ds-design-types-tab${open ? ' is-open' : ''}${calling ? ' is-calling' : ''}`, 'aria-expanded': String(open), 'aria-controls': 'ds-design-types',
+      style: calling ? {animationDelay: `-${Math.round(called)}ms`} : null,
       title: open ? 'Close Chart Type' : `Chart Type: ${shown.chart_type || 'choose one'}`, onclick: toggle},
-    window.ChartShelves?.picture(shown.chart_type) || null, h('span', {class: 'ds-design-types-tab-label', text: 'Chart Type'}));
+    window.ChartShelves?.typesIcon() || null, h('span', {class: 'ds-design-types-tab-label', text: 'Chart Type'}));
     if (!open) return [tab];
     const host = h('div', {class: 'ds-design-types-body'});
-    window.ChartShelves?.renderTypes(host, shelvesOptions(element, shown));
+    // Choosing a chart type closes them (a setting of the type chosen, under them, does not).
+    const options = shelvesOptions(element, shown);
+    window.ChartShelves?.renderTypes(host, {...options, onChange: changes => { if ('chart_type' in changes) state.typesOpen = false; options.onChange(changes); }});
     return [tab, h('section', {class: 'ds-design-types', id: 'ds-design-types', 'aria-label': 'Chart Type'},
       h('div', {class: 'ds-design-types-head'}, h('strong', {text: 'Chart Type'}),
         h('button', {type: 'button', class: 'ds-design-types-close', 'aria-label': 'Close Chart Type', title: 'Close (Esc)', onclick: toggle}, '×')),
@@ -2139,8 +2169,8 @@
     renderPanel();
   }, true);
   // A click anywhere in the viewer but on a chart (the slide around its charts, the head of the viewer…) leaves the chart
-  // chosen: the panel shows the slide again. The panel, the bar of the Designer, menus and dialogs act on the chart.
-  const KEEPS_ELEMENT = '.ds-chart, #ds-design-panel, #ds-design-bar, .ds-design-popover, .ds-design-dialog-overlay, .confirm-overlay:not(#ds-viewer)';
+  // chosen: the panel shows the slide again. The panel, Chart Type, the bar of the Designer, menus and dialogs act on the chart.
+  const KEEPS_ELEMENT = '.ds-chart, #ds-design-panel, #ds-design-types, #ds-design-bar, .ds-design-popover, .ds-design-dialog-overlay, .confirm-overlay:not(#ds-viewer)';
   document.addEventListener('click', event => {
     if (!state.active || !state.element || !event.target.closest?.('#ds-viewer') || event.target.closest(KEEPS_ELEMENT)) return;
     state.element = '';
