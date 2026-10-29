@@ -45,7 +45,7 @@ from src.modules.report_template_modes import (
     missing_nr_mode_fields, missing_nr_mode_note,
 )
 from src.modules.output_layout import DESIGNS_FOLDER, module_output_dir
-from fastapi import BackgroundTasks, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi import BackgroundTasks, Body, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel, Field, model_validator
 
@@ -5768,7 +5768,12 @@ def install_design_routes(core):
                 'status': task.get('status', 'processing'),
             }
 
-    def prefetched_design_response(design_id: str, definition: DesignDefinition, user, started=None):
+    def has_preview_manifest(design_id: str) -> bool:
+        """Whether a preparation of the Design is kept (in memory, so none after a restart)."""
+        with lock:
+            return any(manifest.get('design_id') == design_id for manifest in preview_manifests.values())
+
+    def prefetched_design_response(design_id: str, definition: DesignDefinition, user, started=None, definition_seconds=0.0):
         workspace = workspace_key()
         started = monotonic() if started is None else started
         restored = restore_matching_preview_manifest(workspace, design_id, definition)
@@ -5776,7 +5781,7 @@ def install_design_routes(core):
         try:
             bound_repository().add_log(user.username, 'design_cache_checked', json.dumps({
                 'id': design_id, 'name': definition.name, 'restored': restored is not None,
-                'seconds': round(monotonic() - started, 2),
+                'seconds': round(monotonic() - started, 2), 'definition_seconds': round(definition_seconds, 2),
             }))
         except (sqlite3.Error, OSError):
             pass  # The lookup stands; only its App Event is missing.
@@ -5791,7 +5796,9 @@ def install_design_routes(core):
             raw_definition = read_designs(task_repository).get(design_id)
             if not isinstance(raw_definition, dict):
                 raise HTTPException(404, 'Design not found.')
-            definition = DesignDefinition.model_validate(runtime_design_definition(raw_definition, task_repository))
+        if not has_preview_manifest(design_id):
+            raise HTTPException(409, 'PPT preparation is required.')
+        definition = DesignDefinition.model_validate(runtime_design_definition(raw_definition, task_repository))
         return prefetched_design_response(design_id, definition, user)
 
     @app.post('/api/ppt-designer/prefetched/{design_id}')
@@ -5806,8 +5813,29 @@ def install_design_routes(core):
         with lock:
             if design_id not in read_designs(task_repository):
                 raise HTTPException(404, 'Design not found.')
+        # With no preparation of the Design kept (after a restart) there is nothing to look up: it is prepared at once.
+        if not has_preview_manifest(design_id):
+            raise HTTPException(409, 'PPT preparation is required.')
         definition = (automatic_scope_universe if use_scope_universe else auto_cdr_definition)(definition, task_repository)
-        return prefetched_design_response(design_id, definition, user, started)
+        return prefetched_design_response(design_id, definition, user, started, monotonic() - started)
+
+    @app.post('/api/ppt-designer/opened/{design_id}')
+    def design_opened(design_id: str, timeline: dict[str, Any] = Body(default_factory=dict), user=Depends(design_user)):
+        """App Event of a Design opened in the viewer: how long the browser waited for the cache lookup, for the
+        prepared Design and for the charts of the slide it opened on."""
+        task_repository = bound_repository()
+        with lock:
+            raw_definition = read_designs(task_repository).get(design_id)
+        if not isinstance(raw_definition, dict):
+            raise HTTPException(404, 'Design not found.')
+        numbers = {key: round(float(timeline[key]), 2) for key in ('lookup_seconds', 'prepared_seconds', 'slide_seconds')
+                   if isinstance(timeline.get(key), (int, float))}
+        task_repository.add_log(user.username, 'design_opened', json.dumps({
+            'id': design_id, 'name': raw_definition.get('name', ''), **numbers,
+            'restored': bool(timeline.get('restored')), 'slide': int(timeline.get('slide') or 0),
+            'charts': int(timeline.get('charts') or 0),
+        }))
+        return {'recorded': True}
 
     def reporting_source(snapshot, kind, task_repository):
         """Return the shared combined CDR table used directly by Design queries."""

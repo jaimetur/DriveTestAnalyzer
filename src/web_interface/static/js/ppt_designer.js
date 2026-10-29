@@ -20,6 +20,7 @@
   const eventTimeFilteringDisabled = Boolean(config.ignore_event_time_filtering);
   const eventTimeFilteringDisabledReason = 'Date filters are disabled because Ignore event time filtering is enabled in Config.';
   const filterAliases = config.filter_aliases || {};
+  let openingTimes = null;
   let designs = {}, activeId = '', definition = null, savedDefinition = '', appliedFilterState = '', appliedSelectionState = '', appliedDesignDefinition = null, applyingDesignDefinition = null, prepared = null, slideIndex = 0;
   let designFiltersOpen = false;
   let sequence = 0, cacheLookupSequence = 0, timer, controller, preparing = null, preparingFilterState = '', preparationProgressTimer = 0, dirty = false, filterActionBusy = false, preparationRunning = false, dataToken = '', dataEndpoint = '';
@@ -2486,6 +2487,7 @@
     rows.hidden = !rows.textContent;
   };
   const applyPreparedPayload = payload => {
+    if (openingTimes?.id === activeId && openingTimes.prepared === undefined) openingTimes.prepared = performance.now() - openingTimes.started;
     prepared = payload; facetOptions = payload.options; facetFields = config.filter_fields || payload.filter_fields || facetFields; availableFields = payload.available_fields || payload.custom_fields || []; applyDateBounds(payload.date_bounds); facetsLoading = false; facetOptionRequests.clear(); setPreparationProgress(100, 'PPT dataset is ready');
     appliedFilterState = preparationStateFingerprint(definition);
     appliedSelectionState = selectionStateFingerprint(definition);
@@ -2578,7 +2580,12 @@
     setPreparationProgress(null, 'Checking persistent PPT cache');
     emitPreparationStatus('processing', 'Checking persistent PPT cache', cacheLookupToken);
     const lookupDesignId = activeId;
-    if (await restorePrepared(activeId)) {
+    const lookupStarted = performance.now();
+    const restoredNow = await restorePrepared(activeId);
+    if (openingTimes?.id === lookupDesignId && openingTimes.lookup === undefined) {
+      Object.assign(openingTimes, {lookup: performance.now() - lookupStarted, restored: restoredNow});
+    }
+    if (restoredNow) {
       if (backgroundPreparationToken === cacheLookupToken) dismissPreparationStatus();
       status('Restored the previously prepared filters.');
       return prepared;
@@ -2650,6 +2657,7 @@
     dismissPreparationStatus();
     clearTimeout(timer); ++sequence; ++backgroundChartPreloadRequest; controller?.abort(); preparing = null;
     stopPresentation();
+    openingTimes = {id, started: performance.now()};
     activeId = id; designFiltersOpen = showFilters; rememberFiltersOpen(showFilters); $('ds-viewer-export-ppt').dataset.designPptId = id; definition = runtimeDesignDefinition(designs[id], id); savedDefinition = definitionFingerprint(savedRuntimeDesignDefinition(designs[id])); dirty = false; prepared = null; appliedFilterState = ''; appliedSelectionState = ''; appliedDesignDefinition = null; applyingDesignDefinition = null; facetOptions = {}; availableFields = []; facetOptionRequests.clear(); slideIndex = 0; setViewEnabled(false); rememberOpen(id);
     document.dispatchEvent(new CustomEvent('ds:design-opened', {detail: {id}}));
     resetViewerForDesign();
@@ -3130,6 +3138,14 @@
       const target = legendCharts.get(canvas); if (target) openLegendMenu(canvas, target, event.detail);
     });
   }
+  // The charts loaded ahead (thumbnails, nearby slides, the whole Design) go one at a time and wait while the charts in
+  // sight load, so the charts of the slide shown never share the server with them.
+  let visibleChartLoads = 0;
+  let lowChartQueue = Promise.resolve();
+  const visibleChartsLoaded = () => new Promise(resolve => {
+    const check = () => (visibleChartLoads ? window.setTimeout(check, 100) : resolve());
+    check();
+  });
   function loadChartPayload(chart, priority = 'high') {
     const url = chartPayloadUrl(chart);
     const rendered = renderedChartPayloads.get(url);
@@ -3139,7 +3155,18 @@
     // server defers preloads while visible charts are being calculated.
     if (!request || (priority === 'high' && request.chartPriority === 'low')) {
       const requestUrl = priority === 'low' ? `${url}${url.includes('?') ? '&' : '?'}priority=low` : url;
-      request = fetch(requestUrl, {cache: 'no-store', credentials: 'same-origin', priority}).then(async response => {
+      const fetchPayload = () => fetch(requestUrl, {cache: 'no-store', credentials: 'same-origin', priority});
+      let own = null;
+      // In the queue, a visible load of the same chart started meanwhile is used instead of loading it again.
+      const started = priority === 'low'
+        ? lowChartQueue.then(visibleChartsLoaded).then(() => {
+          const replaced = chartPayloads.get(url);
+          return replaced && replaced !== own ? {replaced} : fetchPayload();
+        })
+        : fetchPayload();
+      if (priority !== 'low') visibleChartLoads += 1;
+      request = own = started.then(async response => {
+        if (response?.replaced) return response.replaced;
         const contentType = response.headers.get('content-type') || '';
         if (!contentType.includes('application/json')) {
           if (response.redirected || response.url.includes('/login')) throw new Error('Your session has expired. Please sign in again.');
@@ -3151,6 +3178,9 @@
         while (renderedChartPayloads.size > 160) renderedChartPayloads.delete(renderedChartPayloads.keys().next().value);
         return payload;
       });
+      const settled = request.then(() => undefined, () => undefined);
+      if (priority === 'low') lowChartQueue = settled;
+      else void settled.then(() => { visibleChartLoads -= 1; });
       request.chartPriority = priority;
       chartPayloads.set(url, request);
       while (chartPayloads.size > 160) chartPayloads.delete(chartPayloads.keys().next().value);
@@ -4367,6 +4397,21 @@
     if (!content.text) text.append(node('span', 'Empty text box.', 'ds-element-empty'));
     return text;
   }
+  // How long opening a Design took, recorded once in App Events (design_opened): the cache lookup, until it was
+  // prepared, and until the charts of the slide it opened on were drawn, from the moment it was opened (openingTimes).
+  function recordOpening(visibleLoads) {
+    const times = openingTimes;
+    if (!times || times.id !== activeId || times.prepared === undefined || times.sent) return;
+    times.sent = true;
+    const slide = slideIndex + 1;
+    void Promise.allSettled(visibleLoads).then(() => {
+      const seconds = value => Number.isFinite(value) ? value / 1000 : null;
+      return api(`/opened/${encodeURIComponent(times.id)}`, 'POST', {
+        lookup_seconds: seconds(times.lookup), prepared_seconds: seconds(times.prepared),
+        slide_seconds: seconds(performance.now() - times.started), restored: Boolean(times.restored), slide, charts: visibleLoads.length,
+      });
+    }).catch(() => undefined);
+  }
   function renderSlide() {
     if (!prepared) return; slideIndex = Math.max(0,Math.min(slideIndex,prepared.slides.length-1));
     closeLegendMenu();
@@ -4502,6 +4547,7 @@
     renderComments();
     renderSlideThumbnails();
     scheduleNearbySlidePreload(preloadToken, preloadOrigin, visibleLoads);
+    recordOpening(visibleLoads);
     document.dispatchEvent(new CustomEvent('ds:slide-rendered', {detail: {slideIndex, slide, stage}}));
   }
   // As in the presentations of the Help, the wheel over the slide goes through the slides, one per turn of the wheel or
