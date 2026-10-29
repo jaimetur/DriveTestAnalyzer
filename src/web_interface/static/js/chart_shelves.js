@@ -27,7 +27,7 @@
   // The CDRs a chart reads and the NR Mode of those CDRs, with what each choice means.
   const SOURCES = [['CDR-Data', 'Data', 'The CDRs of the data tests'], ['CDR-Voice', 'Voice', 'The CDRs of the voice calls'],
     ['CDR-Speech', 'Speech', 'The CDRs of the speech quality tests'], ['CDR-All', 'RF All', 'The CDRs of every test (Data, Voice and Speech together), for their radio fields']];
-  const NR_MODES = [['NSA', 'NSA only', 'Only the CDRs of the NSA campaigns'], ['SA', 'SA only', 'Only the CDRs of the SA campaigns']];
+  const NR_MODES = [['NSA', 'NSA', 'Only the CDRs of the NSA campaigns'], ['SA', 'SA', 'Only the CDRs of the SA campaigns']];
   // The settings a chart type keeps among its Filters, shown with Chart Type instead of as filters.
   const SETTINGS = ['threshold', 'buckets', 'binsize', 'classcolours', 'histogramoperator', 'nrmode'];
   const AGGREGATIONS = [['', 'As the chart type counts it'], ['AVG', 'Average'], ['MEDIAN', 'Median'], ['SUM', 'Sum'], ['COUNT', 'Count'], ['COUNTD', 'Count distinct'], ['MIN', 'Minimum'], ['MAX', 'Maximum']];
@@ -139,8 +139,8 @@
       onclick: () => change({chart_type: item.type}), ...props},
     picture(item.type), h('span', {text: item.type}));
   };
-  // The NR Mode of the CDRs a chart reads: that of the PPT Design (named as it is), or only NSA or only SA, kept as the
-  // filter NR Mode IN (SA). A PPT Design of one NR Mode leaves nothing to choose unless the chart keeps one of its own.
+  // The NR Mode of the CDRs a chart reads: that of the PPT Design (PPT, named with the mode it has now), or only NSA or only
+  // SA, kept as the filter NR Mode IN (SA).
   function nrModeRow({nrMode, settings, plainFilters, writeFilters}, pptNrMode = '') {
     const pptMode = String(pptNrMode || '').trim();
     const choose = value => {
@@ -149,10 +149,7 @@
       writeFilters(plainFilters, kept);
     };
     const label = h('span', {class: 'ds-cb-shelf-label', text: 'NR Mode'});
-    if (pptMode && !pptMode.includes('&') && !nrMode) {
-      return h('div', {class: 'ds-cb-source-row'}, label, h('span', {class: 'ds-cb-fixed', title: 'The chart reads the CDRs of the NR Mode of the PPT Design'}, h('strong', {text: pptMode}), ' · from the PPT Design'));
-    }
-    const choices = [['', pptMode || 'PPT Design', `The CDRs of the NR Mode of the PPT Design${pptMode ? ` (${pptMode})` : ''}`], ...NR_MODES];
+    const choices = [['', pptMode ? `PPT (${pptMode})` : 'PPT', `The CDRs of the NR Mode of the PPT Design${pptMode ? ` (${pptMode} now)` : ''}: the chart follows it`], ...NR_MODES];
     return h('div', {class: 'ds-cb-source-row', title: 'The NR Mode of the CDRs the chart reads'}, label,
       h('div', {class: 'ds-cb-segmented', role: 'group', 'aria-label': 'NR Mode of the CDRs the chart reads'}, choices.map(([value, text, title]) => h('button', {type: 'button', class: value === nrMode ? 'is-active' : '',
         'aria-pressed': String(value === nrMode), title, onclick: () => choose(value)}, text))));

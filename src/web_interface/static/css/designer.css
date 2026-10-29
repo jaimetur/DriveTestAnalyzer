@@ -330,8 +330,6 @@
 .ppt-designer .ds-cb-source-row .ds-cb-shelf-label { padding-top: 0; }
 .ppt-designer .ds-cb-source-row .ds-cb-segmented { display: flex; flex-wrap: nowrap; min-width: 0; }
 .ppt-designer .ds-cb-source-row .ds-cb-segmented button { flex: 1 1 auto; padding-inline: .2rem; font-size: .72rem; white-space: nowrap; }
-.ppt-designer .ds-cb-fixed { font-size: .76rem; color: var(--ds-design-muted); }
-.ppt-designer .ds-cb-fixed strong { color: var(--ds-design-ink); }
 .ppt-designer .ds-cb-segmented { display: inline-flex; flex-wrap: wrap; padding: 2px; border: 1px solid var(--ds-border); border-radius: 8px; background: #fff; }
 .ppt-designer .ds-cb-segmented button { min-height: 1.7rem; padding: .15rem .45rem; border: 0; border-radius: 6px; background: transparent; box-shadow: none;
   color: var(--ds-design-muted); font: inherit; font-size: .74rem; font-weight: 750; cursor: pointer; }
