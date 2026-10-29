@@ -660,7 +660,7 @@ def test_final_campaigns_and_the_latest_one_before_a_campaign():
     assert nq_prioritization.previous_final_campaign(finals, {('SA', '2025-q4-sa'): 'UK_Q4_2025_SA'}, 'SA', 'UK_Q1_SA_2026') == 'UK_Q4_2025_SA'
     assert nq_prioritization.previous_final_campaign(finals, {}, 'NSA', 'UK_Q3_NSA_2026') == '2026-q2'
     assert nq_prioritization.previous_final_campaign(finals, {}, 'SA', 'UK_Q4_2025_SA') == ''
-    # A Flex campaign (partial) is never the reference, though it is ordered after the campaign of its quarter.
+    # A Flex campaign (localised in one area) is never the reference, though it is ordered after the campaign of its quarter.
     with_flex = {**finals, ('NSA', '2026-q2-flex'): {'voice'}}
     assert nq_prioritization.previous_final_campaign(with_flex, {('NSA', '2026-q2-flex'): 'UK_Flex_2026'}, 'NSA', 'UK_Q3_NSA_2026') == '2026-q2'
 

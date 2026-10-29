@@ -108,7 +108,7 @@ def test_workspace_lists_the_cdrs_of_flex_campaigns_apart_with_their_notice(clie
     flex_body = page.split('data-dataset-card-body="cdr-final-flex">', 1)[1].split('</tbody>', 1)[0]
     assert f'data-dataset-id="{regular}"' in final_body and f'data-dataset-id="{flex}"' not in final_body
     assert f'data-dataset-id="{flex}"' in flex_body and 'data-flex-campaign="true"' in flex_body
-    assert 'Partial campaigns, used only when checked by hand.' in page
+    assert 'Local campaigns, used only when checked by hand.' in page
     # The Weekly and Daily cards, without Flex CDRs, keep their Flex card hidden.
     assert 'data-dataset-card="cdr-weekly-flex" data-dataset-card-optional hidden' in page
 

@@ -3783,8 +3783,8 @@ def add_row_campaigns(datasets: list[dict[str, Any]], task_repository: Repositor
 
 
 def add_flex_campaigns(datasets: list[dict[str, Any]], task_repository: Repository | None = None) -> None:
-    """Whether each CDR is of a Flex campaign (partial, see ``is_flex_cdr``), which the CDR cards of Workspace list apart:
-    the automatic Campaign choices and a Campaign filter without campaigns leave it out."""
+    """Whether each CDR is of a Flex campaign (a local one, see ``is_flex_cdr``), which the CDR cards of Workspace list
+    apart: the automatic Campaign choices and a Campaign filter without campaigns leave it out."""
     ids = [int(dataset['id']) for dataset in datasets if dataset.get('dataset_kind') in CDR_DATASET_KINDS]
     campaigns = catalogued_campaigns(task_repository or repository, ids) if ids else {}
     for dataset in datasets:

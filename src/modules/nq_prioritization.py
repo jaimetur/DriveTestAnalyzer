@@ -2151,7 +2151,7 @@ def has_final(finals: dict[tuple[str, str], set[str]], nr_mode: str, identity: s
 def previous_final_campaign(finals: dict[tuple[str, str], set[str]], labels: dict[tuple[str, str], str], nr_mode: str,
                             campaign: str) -> str:
     """The latest campaign of an NR Mode before ``campaign`` with its Final CDR ('' when there is none), never a Flex
-    campaign: a partial campaign is no reference for the others."""
+    campaign: one localised in one region, cluster or city is no reference for the others."""
     from src.modules.cdr_auto_selection import campaign_identity, is_flex_campaign
     from src.modules.column_names import campaign_sort_key
 
@@ -2949,7 +2949,7 @@ def step_counts(repository: Any, settings: dict[str, Any]) -> dict[str, Any]:
             f"p.cluster_size, p.consecutive, l.service, l.nr_mode, l.campaign, l.operator, l.region, l.environment, l.test_name, "
             f"l.session_type, l.result FROM {PRIORITY_TABLE} p JOIN {nq.NQ_CALL_LATEST_TABLE} l ON l.call_key = p.call_key "
             "WHERE p.final_list = 1")]
-    # The latest campaign with its Final CDR of each NR Mode (a Flex campaign, partial, never is).
+    # The latest campaign with its Final CDR of each NR Mode (a Flex campaign, localised in one area, never is).
     latest: dict[str, str] = {}
     for row in rows:
         mode, campaign = str(row['nr_mode'] or '').upper(), str(row['campaign'] or '')

@@ -392,14 +392,14 @@
             </td>
           </tr>
     {% endmacro %}
-    {# The CDRs of the Flex campaigns of a CDR card, in a card of their own inside it: partial campaigns that only a Campaign
-       checked by hand uses (see cdr_auto_selection.is_flex_cdr). #}
+    {# The CDRs of the Flex campaigns of a CDR card, in a card of their own inside it: local campaigns (localised in one region, cluster
+       or city) that only a Campaign checked by hand uses (see cdr_auto_selection.is_flex_cdr). #}
     {% macro flex_cdr_subcard(stage, cdrs, table_class='') %}
           <details class="dataset-subcard-flex" data-dataset-card="cdr-{{ stage }}-flex" data-dataset-card-optional{% if cdrs %} open{% else %} hidden{% endif %}>
             <summary class="dataset-subcard-head">
               {% set campaign_count = cdrs | map(attribute='campaign') | select | unique | list | length %}
               <h4><span class="dataset-subcard-flex-tag">Flex</span>Flex CDRs <span class="dataset-card-count">{{ cdrs | length }}</span><span class="dataset-subcard-badges"><span class="dataset-card-campaigns" data-campaign-count title="Campaigns of these CDRs">{{ campaign_count }} campaign{{ '' if campaign_count == 1 else 's' }}</span><span class="dataset-card-campaigns" data-cdr-count title="CDRs of this card">{{ cdrs | length }} CDR{{ '' if cdrs | length == 1 else 's' }}</span>{% set card_mb = (cdrs | sum(attribute='size_bytes')) / (1024 * 1024) %}<span class="dataset-card-campaigns" data-cdr-size title="Size of the source files of these CDRs">{% if card_mb >= 1024 %}{{ '{:,.2f}'.format(card_mb / 1024) }} GB{% else %}{{ '{:,.0f}'.format(card_mb) }} MB{% endif %}</span></span></h4>
-              <p class="dataset-flex-notice" role="note"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2.5 20h19z"/><path d="M12 10v4.5M12 17.3v.2"/></svg><span><strong>Partial campaigns, used only when checked by hand.</strong> A Flex campaign (a campaign or Campaign Maps label with the word Flex, such as 26-Q2-Flex) is never one of Latest campaign, Latest 2, 3 and 4 campaigns, Previous campaign or All available campaigns, a Campaign filter without campaigns leaves its CDRs out, and NQ Prioritization never takes it as the campaign of the Expected Gain of other campaigns.</span></p>
+              <p class="dataset-flex-notice" role="note"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2.5 20h19z"/><path d="M12 10v4.5M12 17.3v.2"/></svg><span><strong>Local campaigns, used only when checked by hand.</strong> A Flex campaign (a campaign or Campaign Maps label with the word Flex, such as 26-Q2-Flex) is a complete campaign localised in one region, cluster or city: it is never one of Latest campaign, Latest 2, 3 and 4 campaigns, Previous campaign or All available campaigns, a Campaign filter without campaigns leaves its CDRs out, and NQ Prioritization never takes it as the campaign of the Expected Gain of other campaigns.</span></p>
             </summary>
             <div class="table-wrap queue-table-wrap">
               <table class="queue-table{{ ' ' ~ table_class if table_class }}" data-queue-sortable-table>
