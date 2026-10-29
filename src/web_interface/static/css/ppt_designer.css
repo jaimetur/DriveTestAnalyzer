@@ -2072,6 +2072,9 @@
 #ds-filter-overlay .ds-custom { gap: 8px; }
 #ds-filter-overlay .ds-custom label { font-size: .82rem; }
 #ds-filter-overlay .ds-filter-actions > button { padding: .45rem .85rem; font-size: .82rem; }
+/* The filters at the top of their column and their actions at its foot, at the right, as the foot of the dialog. */
+#ds-filter-overlay .ds-filter-groups { display: flex; flex-direction: column; }
+#ds-filter-overlay .ds-filter-actions { margin-top: auto; padding-top: 10px; justify-content: flex-end; }
 #ds-filter-overlay .auto-cdr { padding: .35rem .55rem; }
 #ds-filter-overlay .ds-auto-cdrs-note { font-size: .72rem; }
 #ds-filter-float .ds-filter-help { margin: 10px 0 0; font-size: .72rem; }
