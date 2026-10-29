@@ -11560,6 +11560,27 @@ def _package_report_template_rows(templates_root: Path, manifest: dict[str, Any]
     return rows
 
 
+def _kept_report_template_rows(workspace: Workspace, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The PPT Templates of a package as their import saves them in a workspace without the PPT Designs: the one a PPT
+    Design of the workspace uses (found by its identity, then its name) keeps its content (_merge_report_templates)."""
+    task_repository = Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path)
+    task_repository.initialize_template_registry()
+    protected = {name.casefold() for name in _design_template_references(task_repository)}
+    if not protected:
+        return rows
+    _renames, known_uids = task_repository.report_template_merge_state()
+    existing = _report_template_rows(workspace)
+    by_uid = {row['uid']: row for row in existing if row['uid']}
+    by_name = {row['name'].casefold(): row for row in existing}
+    kept = []
+    for row in rows:
+        target = by_uid.get(known_uids.get(row['uid'], row['uid'])) or by_name.get(row['name'].casefold())
+        if target and protected & {target['name'].casefold(), row['name'].casefold()}:
+            row = {**row, 'content': target['content']}
+        kept.append(row)
+    return kept
+
+
 # The export document of each element of a workspace, which an import reads before and after it to tell what it
 # changed (see import_changes).
 ELEMENT_DOCUMENTS: dict[str, Callable[[Workspace], Any]] = {
@@ -11698,9 +11719,12 @@ def _preview_element_document(kind: str, manifest: dict[str, Any], archive: zipf
     return _json_document(archive.read(member)) if member else None
 
 
-def _predicted_document(kind: str, workspace: Workspace, package: Any) -> Any:
+def _predicted_document(kind: str, workspace: Workspace, package: Any, includes_designs: bool = False) -> Any:
     """The export document of an element package as its import saves it in a workspace (the Reporting Jobs pointing at
-    its datasets, favourites and PPT Designs), for the preview of the import."""
+    its datasets, favourites and PPT Designs; the PPT Templates a PPT Design of the workspace uses keeping their content
+    unless the PPT Designs come too), for the preview of the import."""
+    if kind == 'ppt-templates' and not includes_designs and isinstance(package, list):
+        return _kept_report_template_rows(workspace, package)
     if kind != 'reporting-jobs' or not isinstance(package, dict):
         return package
     from src.modules.report_tasks import imported_jobs, normalize_definition, normalize_schedule
@@ -11797,10 +11821,11 @@ def _preview_application_config(archive: zipfile.ZipFile, manifest: dict[str, An
 
 
 def _preview_package(archive: zipfile.ZipFile, manifest: dict[str, Any], destination_workspace_ids: Iterable[str],
-                     staging_root: Path, importing_user: str = 'import') -> tuple[str, list[str], bool]:
+                     staging_root: Path, importing_user: str = 'import', includes_designs: bool = False) -> tuple[str, list[str], bool]:
     """What the import of one package would do, without importing it: its completion message, its lines (the items it
     would add, and those it would update with what would change) and whether it would change anything
-    (``importing_user`` owns the items whose creator is not on this server, as the import gives them)."""
+    (``importing_user`` owns the items whose creator is not on this server, as the import gives them;
+    ``includes_designs``: the PPT Designs come too, so the PPT Templates they use are replaced)."""
     from src.modules.import_changes import (
         DETAILED_ELEMENTS, ELEMENT_LABELS, ELEMENT_NAMES, SETTINGS_ELEMENTS, breakdown, compare, compare_settings, counted,
         element_items, joined, predict, settings_values, ticket_items, users_access_items,
@@ -11842,7 +11867,7 @@ def _preview_package(archive: zipfile.ZipFile, manifest: dict[str, Any], destina
                 if 'created_by' in values:
                     values['created_by'] = imported_creator(values['created_by'], previous.get('created_by'), importing_user, active_user_exists)
                 return values
-            changes = {workspace.id: predict(element_items(kind, _predicted_document(kind, workspace, package)),
+            changes = {workspace.id: predict(element_items(kind, _predicted_document(kind, workspace, package, includes_designs)),
                                              element_items(kind, before[workspace.id]), ELEMENT_LABELS.get(kind), creators,
                                              detailed=kind in DETAILED_ELEMENTS)
                        for workspace in destinations}
@@ -11913,6 +11938,29 @@ def _preview_sections(lines: list[str]) -> list[dict[str, Any]]:
     return [{**section, 'title': _preview_wording(section['title'])} for section in import_notice('', '', lines).details['sections']]
 
 
+def _bundle_designs_unchanged(archive: zipfile.ZipFile, entry: dict[str, Any], destination_workspace_ids: list[str],
+                              staging_root: Path, importing_user: str) -> bool:
+    """Whether the PPT Designs package of a bundle would change nothing in its destination, as its preview tells (which
+    leaves it unchecked); ``False`` when that cannot be told."""
+    member = str(entry.get('archive_path') or '')
+    if not re.fullmatch(r'packages/[^/]+\.zip', member) or member not in archive.namelist():
+        return False
+    nested_path, nested_root = staging_root / 'designs-check.zip', staging_root / 'designs-check'
+    try:
+        with archive.open(member) as source, nested_path.open('wb') as output:
+            shutil.copyfileobj(source, output, length=4 * 1024 * 1024)
+        nested_root.mkdir(exist_ok=True)
+        with zipfile.ZipFile(nested_path) as nested:
+            _message, _lines, changed = _preview_package(nested, read_import_manifest(nested_path), destination_workspace_ids,
+                                                         nested_root, importing_user)
+        return not changed
+    except Exception:  # noqa: BLE001 - untold, the PPT Templates the PPT Designs of the workspace use keep their content
+        return False
+    finally:
+        nested_path.unlink(missing_ok=True)
+        shutil.rmtree(nested_root, ignore_errors=True)
+
+
 def preview_import_archive(package_path: Path, manifest: dict[str, Any], destination_workspace_ids: Iterable[str] = (),
                            importing_user: str = 'import') -> dict[str, Any]:
     """What importing a package would do in each of its packages (one for a package that is not a bundle), without
@@ -11925,6 +11973,9 @@ def preview_import_archive(package_path: Path, manifest: dict[str, Any], destina
         staging_root = Path(temporary_dir)
         packages = manifest.get('packages') if manifest.get('kind') == 'bundle' else None
         listed = [(index, entry) for index, entry in enumerate(packages) if isinstance(entry, dict)] if isinstance(packages, list) else []
+        # With the PPT Designs of the bundle (checked, or unchanged and so left out: see _bundle_designs_unchanged), its
+        # PPT Templates replace those the PPT Designs of the workspace use.
+        includes_designs = any(entry.get('kind') == 'designs' for _index, entry in listed)
         for position, (index, entry) in enumerate(listed):
             target = str(entry.get('target') or '')
             try:
@@ -11943,7 +11994,7 @@ def preview_import_archive(package_path: Path, manifest: dict[str, Any], destina
                 nested_root.mkdir()
                 with zipfile.ZipFile(nested_path) as nested:
                     message, lines, changed = _preview_package(nested, read_import_manifest(nested_path), destination_workspace_ids,
-                                                               nested_root, importing_user)
+                                                               nested_root, importing_user, includes_designs)
                 nested_path.unlink(missing_ok=True)
                 item.update(message=message, sections=_preview_sections(lines), changed=changed)
             except Exception as exc:  # noqa: BLE001 - a preview that fails never keeps a package from being imported
@@ -12006,13 +12057,20 @@ def _apply_import_archive(
                 raise ValueError('The selected bundle has no export packages.')
             # The packages chosen in the preview (by their position in the bundle); the others are left out.
             chosen = None if selected_packages is None else {int(item) for item in selected_packages}
+            left_out = [] if chosen is None else [entry for position, entry in enumerate(packages) if position not in chosen]
             if chosen is not None:
                 packages = [entry for position, entry in enumerate(packages) if position in chosen]
                 if not packages:
                     raise ValueError('Choose at least one package of the transfer to import.')
+            destination_workspace_ids = list(destination_workspace_ids)
+            # The PPT Templates replace those the PPT Designs of the workspace use when the PPT Designs come too: chosen,
+            # or left out because the workspace has them already (their preview leaves them unchecked).
             bundle_includes_designs = any(
                 isinstance(entry, dict) and entry.get('kind') == 'designs'
                 for entry in packages
+            ) or any(
+                _bundle_designs_unchanged(archive, entry, destination_workspace_ids, staging_root, importing_user)
+                for entry in left_out if isinstance(entry, dict) and entry.get('kind') == 'designs'
             )
             notices: list[str] = []
             bundle_details: list[str] = []

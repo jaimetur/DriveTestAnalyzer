@@ -512,6 +512,43 @@ def test_ppt_templates_tell_what_their_import_changed_like_the_other_elements(cl
     assert _transfer('ppt-templates', source, destination, tmp_path) == 'Imported 2 PPT Templates into 1 workspace: 2 unchanged.'
 
 
+def test_a_ppt_template_its_ppt_designs_use_changes_only_with_them_as_the_preview_tells(client, tmp_path):
+    # A bundle carries the PPT Designs and PPT Templates of the active workspace.
+    source, source_repo = core.active_workspace, core.repository
+    destination, destination_repo = _workspace('Templates destination')
+    source_repo.add_report_template('Coverage', b'coverage')
+    source_repo.set_workspace_state(core.DESIGN_STATE_KEY, json.dumps({
+        **_designs(source_repo), 'coverage-design': {'name': 'Coverage NSA', 'template': 'Coverage'}}))
+    count = len(source_repo.list_report_templates())
+    bundle = tmp_path / 'bundle.zip'
+    core.build_export_archive_file(['designs', 'ppt-templates'], bundle)
+    core._apply_import_archive(bundle, core.read_import_manifest(bundle), destination_workspace_ids=[destination.id], importing_user='super')
+    # On the source, the template changes (as when the PPT Designer gives its slides ids of their own).
+    source_repo.set_report_template_content('Coverage', b'coverage with slide ids')
+
+    # Without the PPT Designs, the template the PPT Designs of the destination use keeps its content, as the preview tells.
+    package = tmp_path / 'templates.zip'
+    core.build_export_archive_file('ppt-templates', package, [source.id])
+    [templates] = core.preview_import_archive(package, core.read_import_manifest(package), [destination.id], 'super')['packages']
+    assert (templates['changed'], templates['sections']) == (False, []), templates['sections']
+    assert _transfer('ppt-templates', source, destination, tmp_path) == f'Imported {count} PPT Templates into 1 workspace: {count} unchanged.'
+    assert bytes(destination_repo.report_template_content('Coverage')) == b'coverage'
+
+    # With them, it is replaced, also when the PPT Designs are left unchecked because the destination has them already.
+    core.build_export_archive_file(['designs', 'ppt-templates'], bundle)
+    manifest = core.read_import_manifest(bundle)
+    designs, templates = core.preview_import_archive(bundle, manifest, [destination.id], 'super')['packages']
+    assert (designs['changed'], templates['changed']) == (False, True), (designs, templates)
+    assert templates['sections'][0]['items'] == [{'name': 'Coverage', 'changes': ['Content']}]
+    notice = core._apply_import_archive(bundle, manifest, destination_workspace_ids=[destination.id], importing_user='super',
+                                        selected_packages=[templates['index']])
+    assert core.import_notice_details(notice)['packages'] == [
+        f'Imported {count} PPT Templates into 1 workspace: 1 updated and {count - 1} unchanged.']
+    assert bytes(destination_repo.report_template_content('Coverage')) == b'coverage with slide ids'
+    # The next transfer has nothing to change.
+    assert [item['changed'] for item in core.preview_import_archive(bundle, manifest, [destination.id], 'super')['packages']] == [False, False]
+
+
 def test_importing_the_same_map_areas_and_nq_layouts_again_changes_nothing(client, tmp_path, monkeypatch):
     from src.modules import map_areas, non_qualified_calls
     from src.modules.import_changes import describe_changes
