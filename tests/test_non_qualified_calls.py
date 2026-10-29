@@ -371,6 +371,39 @@ def test_the_preview_of_a_tracking_import_tells_what_its_import_changes(client, 
     assert client.get(f'/api/non-qualified-calls/calls/{first}').json()['call']['root_domain'] != 'Operational'
 
 
+def test_repeated_comments_of_a_call_are_kept_once(client, tmp_path):
+    enable_module()
+    add_cdr(tmp_path, 'NetCheck_UK_CDR_Voice_2026_Q1.xlsx', 'voice', voice_rows())
+    login(client)
+    first, second = [call['call_key'] for call in query(client)['calls'][:2]]
+    # The same analysis imported on two servers and brought together by a transfer: the same comment with two uids.
+    rows = [('a1', first, 'Imported analysis', 'super', '2026-08-05T12:00:00+02:00', ''),
+            ('a2', first, 'Imported analysis', 'super', '2026-08-05T12:10:00+02:00', ''),
+            ('a3', first, 'Imported analysis', 'ana', '2026-08-05T12:00:00+02:00', ''),
+            ('b1', second, 'Retest planned.', 'super', '2026-08-01T09:00:00+02:00', '2026-08-02T09:00:00+02:00'),
+            ('b2', second, 'Retest planned.', 'super', '2026-08-01T09:05:00+02:00', ''),
+            ('b3', second, 'Retest planned.', 'super', '2026-08-01T09:06:00+02:00', '')]
+    with core.repository.connection() as connection:
+        connection.executemany(f'INSERT INTO {nq.NQ_CALL_COMMENTS_TABLE} (uid, call_key, body, created_by, created_at, deleted_at) '
+                               'VALUES (?, ?, ?, ?, ?, ?)', rows)
+    core.repository.set_workspace_state(nq.ANALYSIS_CENTER_V38_STATE_KEY, '')
+    core.repository.set_workspace_state(nq.SCHEMA_STATE_KEY, '2026-10-28.1')
+    nq.ensure_nq_tables(core.repository)
+    with core.repository.connection() as connection:
+        kept = [row[0] for row in connection.execute(f'SELECT uid FROM {nq.NQ_CALL_COMMENTS_TABLE} ORDER BY id')]
+    # The first copy is kept (the first one not deleted), and the same text by another author is another comment.
+    assert kept == ['a1', 'a3', 'b2']
+    event = next(row for row in core.repository.list_logs(limit=50) if row['action'] == 'nq_repeated_comments_removed')
+    assert json.loads(event['details'])['removed'] == {'a2': 'a1', 'b1': 'b2', 'b3': 'b2'}
+    # Once: the comments saved again afterwards are not looked for again.
+    with core.repository.connection() as connection:
+        connection.execute(f'INSERT INTO {nq.NQ_CALL_COMMENTS_TABLE} (uid, call_key, body, created_by, created_at) '
+                           "VALUES ('a4', ?, 'Imported analysis', 'super', '2026-08-06T12:00:00+02:00')", (first,))
+    nq.ensure_nq_tables(core.repository)
+    with core.repository.connection() as connection:
+        assert connection.execute(f"SELECT COUNT(*) FROM {nq.NQ_CALL_COMMENTS_TABLE} WHERE uid = 'a4'").fetchone()[0] == 1
+
+
 def test_configuration_travels_without_the_follow_up(client, tmp_path):
     enable_module()
     add_cdr(tmp_path, 'NetCheck_UK_CDR_Voice_2026_Q1.xlsx', 'voice', voice_rows())
