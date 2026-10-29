@@ -24,8 +24,10 @@
   };
   const identity = value => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
 
-  const SOURCES = [['CDR-Data', 'Data'], ['CDR-Voice', 'Voice'], ['CDR-Speech', 'Speech'], ['CDR-All', 'RF All']];
-  const NR_MODES = [['', 'PPT'], ['NSA', 'NSA'], ['SA', 'SA']];
+  // The CDRs a chart reads and the NR Mode of those CDRs, with what each choice means.
+  const SOURCES = [['CDR-Data', 'Data', 'The CDRs of the data tests'], ['CDR-Voice', 'Voice', 'The CDRs of the voice calls'],
+    ['CDR-Speech', 'Speech', 'The CDRs of the speech quality tests'], ['CDR-All', 'RF All', 'The CDRs of every test (Data, Voice and Speech together), for their radio fields']];
+  const NR_MODES = [['NSA', 'NSA only', 'Only the CDRs of the NSA campaigns'], ['SA', 'SA only', 'Only the CDRs of the SA campaigns']];
   // The settings a chart type keeps among its Filters, shown with Chart Type instead of as filters.
   const SETTINGS = ['threshold', 'buckets', 'binsize', 'classcolours', 'histogramoperator', 'nrmode'];
   const AGGREGATIONS = [['', 'As the chart type counts it'], ['AVG', 'Average'], ['MEDIAN', 'Median'], ['SUM', 'Sum'], ['COUNT', 'Count'], ['COUNTD', 'Count distinct'], ['MIN', 'Minimum'], ['MAX', 'Maximum']];
@@ -67,6 +69,13 @@
     {type: 'Dynamic Table', need: s => s.measures >= 1 || 'A measure'},
     {type: 'Map', need: s => s.geo || 'Latitude and Longitude in the source'},
   ];
+  // Chart Type of the Designer: the chart types grouped by what they show.
+  const TYPE_GROUPS = [
+    ['Distribution', ['CDF Line', 'Multi KPI CDF Lines', 'Histogram Bars', 'Histogram Line']],
+    ['Comparison', ['Average Vertical Bars', 'Median Vertical Bars', 'Scatter']],
+    ['Composition', ['100% Stacked Vertical Bars', 'Count Stacked Horizontal Bars', 'Threshold Stacked Vertical Bars', 'Distribution Stacked Vertical Bars']],
+    ['Tables and maps', ['Table', 'Dynamic Table', 'Map']],
+  ];
   const SHELVES = [
     ['kpi', 'Measure', 'The KPI the chart measures (several for Multi KPI CDF Lines, Scatter or a Table)'],
     ['rows_split', 'Rows', 'Categories or table rows, in order (Operator × Campaign)'],
@@ -91,11 +100,8 @@
   const conditionField = condition => (/^(.+?)\s+(NOT\s+CONTAINS|NOT\s+IN|CONTAINS|IN|>=|<=|!=|=|>|<)\s+/i.exec(condition)?.[1] || condition).trim();
   const isSetting = condition => SETTINGS.includes(identity(conditionField(condition)));
 
-  /** Render the builder of one chart into ``host``.
-   *  options: {values, fields: {source: [{name, type, category}]}, calculated: [names], parameters: [...],
-   *            lockedFilters: [labels], fieldValues: async (source, field) => [{value, count}], onChange(changes),
-   *            showSource (false: the source and NR Mode are chosen elsewhere, as in Chart Builder)} */
-  function render(host, options) {
+  // The fields, filters and measures of a chart, as the builder and Chart Type read them.
+  function analyse(options) {
     const values = {...options.values};
     const source = String(values.cdr_source || 'CDR-Data');
     const sourceKey = source.toLowerCase();
@@ -122,6 +128,80 @@
       splits: splitParts(values.rows_split, '×').length + splitParts(values.columns_split, '×').length,
       geo: fieldList.some(item => identity(item.name) === 'latitude') && fieldList.some(item => identity(item.name) === 'longitude'),
     };
+    return {values, source, fieldList, typeOf, change, settings, plainFilters, nrMode, writeFilters, measures, shelfState};
+  }
+  const chosenTypeOf = values => TYPES.find(item => item.type.toLowerCase() === String(values.chart_type || '').toLowerCase()) || null;
+  const typeButton = (item, {values, shelfState, change}, props = {}) => {
+    const verdict = item.need(shelfState);
+    const active = item.type.toLowerCase() === String(values.chart_type || '').toLowerCase();
+    return h('button', {type: 'button', class: `ds-cb-type-button${active ? ' is-active' : ''}${verdict === true ? '' : ' is-unavailable'}`,
+      title: verdict === true ? item.type : `${item.type}: needs ${verdict.toLowerCase()}`, 'aria-pressed': String(active), dataset: {type: item.type},
+      onclick: () => change({chart_type: item.type}), ...props},
+    picture(item.type), h('span', {text: item.type}));
+  };
+  // The NR Mode of the CDRs a chart reads: that of the PPT Design (named as it is), or only NSA or only SA, kept as the
+  // filter NR Mode IN (SA). A PPT Design of one NR Mode leaves nothing to choose unless the chart keeps one of its own.
+  function nrModeRow({nrMode, settings, plainFilters, writeFilters}, pptNrMode = '') {
+    const pptMode = String(pptNrMode || '').trim();
+    const choose = value => {
+      const kept = settings.filter(item => identity(conditionField(item)) !== 'nrmode');
+      if (value) kept.push(`NR Mode IN (${value})`);
+      writeFilters(plainFilters, kept);
+    };
+    const label = h('span', {class: 'ds-cb-shelf-label', text: 'NR Mode'});
+    if (pptMode && !pptMode.includes('&') && !nrMode) {
+      return h('div', {class: 'ds-cb-source-row'}, label, h('span', {class: 'ds-cb-fixed', title: 'The chart reads the CDRs of the NR Mode of the PPT Design'}, h('strong', {text: pptMode}), ' · from the PPT Design'));
+    }
+    const choices = [['', pptMode || 'PPT Design', `The CDRs of the NR Mode of the PPT Design${pptMode ? ` (${pptMode})` : ''}`], ...NR_MODES];
+    return h('div', {class: 'ds-cb-source-row', title: 'The NR Mode of the CDRs the chart reads'}, label,
+      h('div', {class: 'ds-cb-segmented', role: 'group', 'aria-label': 'NR Mode of the CDRs the chart reads'}, choices.map(([value, text, title]) => h('button', {type: 'button', class: value === nrMode ? 'is-active' : '',
+        'aria-pressed': String(value === nrMode), title, onclick: () => choose(value)}, text))));
+  }
+  // The setting of the chart type chosen (Threshold, Buckets, Bin Size), kept among the filters of the chart.
+  function settingRow({values, settings, plainFilters, writeFilters}) {
+    const chosenType = chosenTypeOf(values);
+    if (!chosenType?.setting) return null;
+    const key = identity(chosenType.setting);
+    const current = settings.find(item => identity(conditionField(item)) === key);
+    const value = current ? current.replace(/^.+?\s*=\s*/, '') : '';
+    const input = h('input', {type: 'text', value, placeholder: chosenType.setting === 'Buckets' ? '1, 5, 10, 20' : chosenType.setting === 'Threshold' ? '1.6 or {Threshold}' : '1',
+      'aria-label': chosenType.setting, onchange: event => {
+        const kept = settings.filter(item => identity(conditionField(item)) !== key);
+        if (event.target.value.trim()) kept.push(`${chosenType.setting} = ${event.target.value.trim()}`);
+        writeFilters(plainFilters, kept);
+      }});
+    return h('label', {class: 'ds-cb-row ds-cb-setting'}, chosenType.setting, input);
+  }
+
+  /** Render Chart Type of one chart into ``host``: its chart types grouped by what they show, the ones the shelves cannot
+   *  draw greyed, the setting of the one chosen and what the one pointed at needs. Same options as render(). */
+  function renderTypes(host, options) {
+    const context = analyse(options);
+    const hint = h('p', {class: 'ds-cb-types-hint', 'aria-live': 'polite'});
+    const describe = item => {
+      if (!item) { hint.replaceChildren('Drop fields on the shelves: the chart types they can draw light up.'); return; }
+      const verdict = item.need(context.shelfState);
+      hint.replaceChildren(h('strong', {text: item.type}), verdict === true ? ' · ready with these fields' : ` · needs ${verdict.toLowerCase()}`);
+    };
+    const chosen = chosenTypeOf(context.values);
+    const point = item => ({onmouseenter: () => describe(item), onfocus: () => describe(item), onmouseleave: () => describe(chosen), onblur: () => describe(chosen)});
+    host.replaceChildren(...[
+      ...TYPE_GROUPS.map(([label, names]) => h('div', {class: 'ds-cb-type-group', role: 'group', 'aria-label': label},
+        h('span', {class: 'ds-cb-type-group-label', text: label}),
+        h('div', {class: 'ds-cb-types'}, names.map(name => TYPES.find(item => item.type === name)).filter(Boolean).map(item => typeButton(item, context, point(item)))))),
+      settingRow(context), hint].filter(Boolean));
+    describe(chosen);
+  }
+
+  /** Render the builder of one chart into ``host``.
+   *  options: {values, fields: {source: [{name, type, category}]}, calculated: [names], parameters: [...],
+   *            lockedFilters: [labels], fieldValues: async (source, field) => [{value, count}], onChange(changes),
+   *            showSource (false: the source and NR Mode are chosen elsewhere, as in Chart Builder), pptNrMode (the NR Mode
+   *            of the PPT Design: NSA, SA or NSA & SA),
+   *            chartTypes (false: Chart Type is drawn apart, with renderTypes)} */
+  function render(host, options) {
+    const context = analyse(options);
+    const {values, source, fieldList, typeOf, change, settings, plainFilters, writeFilters, measures, shelfState} = context;
 
     // Data pane
     let query = '';
@@ -319,39 +399,15 @@
     }
 
     // Chart Type and the setting of the chart type chosen.
-    const chartTypes = h('div', {class: 'ds-cb-types', role: 'group', 'aria-label': 'Chart Type'}, TYPES.map(item => {
-      const verdict = item.need(shelfState);
-      const active = item.type.toLowerCase() === String(values.chart_type || '').toLowerCase();
-      return h('button', {type: 'button', class: `ds-cb-type-button${active ? ' is-active' : ''}${verdict === true ? '' : ' is-unavailable'}`,
-        title: verdict === true ? item.type : `${item.type}: needs ${verdict.toLowerCase()}`, 'aria-pressed': String(active),
-        onclick: () => change({chart_type: item.type})},
-      picture(item.type), h('span', {text: item.type}));
-    }));
-    const chosenType = TYPES.find(item => item.type.toLowerCase() === String(values.chart_type || '').toLowerCase());
-    const settingRow = (() => {
-      if (!chosenType?.setting) return null;
-      const key = identity(chosenType.setting);
-      const current = settings.find(item => identity(conditionField(item)) === key);
-      const value = current ? current.replace(/^.+?\s*=\s*/, '') : '';
-      const input = h('input', {type: 'text', value, placeholder: chosenType.setting === 'Buckets' ? '1, 5, 10, 20' : chosenType.setting === 'Threshold' ? '1.6 or {Threshold}' : '1',
-        'aria-label': chosenType.setting, onchange: event => {
-          const kept = settings.filter(item => identity(conditionField(item)) !== key);
-          if (event.target.value.trim()) kept.push(`${chosenType.setting} = ${event.target.value.trim()}`);
-          writeFilters(plainFilters, kept);
-        }});
-      return h('label', {class: 'ds-cb-row ds-cb-setting'}, chosenType.setting, input);
-    })();
+    const chartTypes = options.chartTypes === false ? null : h('div', {class: 'ds-cb-types', role: 'group', 'aria-label': 'Chart Type'}, TYPES.map(item => typeButton(item, context)));
 
     host.replaceChildren(...[
       options.showSource === false ? null : h('div', {class: 'ds-cb-source'},
-        h('div', {class: 'ds-cb-segmented', role: 'group', 'aria-label': 'Source'}, SOURCES.map(([value, label]) => h('button', {type: 'button', class: value === source ? 'is-active' : '', 'aria-pressed': String(value === source), onclick: () => change({cdr_source: value})}, label))),
-        h('div', {class: 'ds-cb-segmented', role: 'group', 'aria-label': 'NR Mode of the chart', title: 'The NR Mode of the CDRs the chart reads (PPT: that of the PPT Design)'}, NR_MODES.map(([value, label]) => h('button', {type: 'button', class: value === nrMode ? 'is-active' : '', 'aria-pressed': String(value === nrMode), onclick: () => {
-          const kept = settings.filter(item => identity(conditionField(item)) !== 'nrmode');
-          if (value) kept.push(`NR Mode IN (${value})`);
-          writeFilters(plainFilters, kept);
-        }}, label)))),
+        h('div', {class: 'ds-cb-source-row', title: 'The CDRs the chart reads'}, h('span', {class: 'ds-cb-shelf-label', text: 'Source'}),
+          h('div', {class: 'ds-cb-segmented', role: 'group', 'aria-label': 'Source: the CDRs the chart reads'}, SOURCES.map(([value, label, title]) => h('button', {type: 'button', class: value === source ? 'is-active' : '', 'aria-pressed': String(value === source), title, onclick: () => change({cdr_source: value})}, label)))),
+        nrModeRow(context, options.pptNrMode)),
       h('div', {class: 'ds-cb-shelves'}, SHELVES.filter(([key]) => key !== 'repeat' || options.showSource !== false).map(shelf)),
-      h('div', {class: 'ds-cb-chart-types'}, h('span', {class: 'ds-cb-shelf-label', text: 'Chart Type'}), chartTypes, settingRow),
+      chartTypes ? h('div', {class: 'ds-cb-chart-types'}, h('span', {class: 'ds-cb-shelf-label', text: 'Chart Type'}), chartTypes, settingRow(context)) : null,
       h('div', {class: 'ds-cb-data'}, h('span', {class: 'ds-cb-shelf-label', text: `Fields · ${SOURCES.find(([value]) => value === source)?.[1] || source}`}), search, fieldsHost),
     ].filter(Boolean));
   }
@@ -376,5 +432,5 @@
     placePopover(menu, anchor);
   }
 
-  window.ChartShelves = {render, kpiParts, kpiField};
+  window.ChartShelves = {render, renderTypes, picture, kpiParts, kpiField};
 })();

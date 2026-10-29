@@ -41,7 +41,7 @@ def test_the_pages_carry_the_theme_and_put_its_selector_in_the_floating_bar(clie
     assert 'data-cdr-theme-select data-section-bar-theme' in template and 'id="cdr-chart-tokens"' in template
     designs = client.get('/ppt-designer').text
     assert 'data-ds-theme="ericsson"' in designs and 'id="ds-viewer-tokens"' in designs
-    assert 'id="ds-viewer-theme" aria-label="Colour theme of the Design charts and PPTs" data-section-bar-theme' in designs
+    assert 'id="ds-viewer-theme" aria-label="Colour theme of the PPT charts and PPTs" data-section-bar-theme' in designs
 
 
 def test_the_page_variables_follow_each_theme() -> None:

@@ -53,7 +53,7 @@
     template: null, slide_set: null, overrides: null, report: null, summary: null, detached: false,
     rights: {design: false, template: false}, scope: 'design',
     templateDirty: false, designDirty: false, keepTemplateChanges: false,
-    history: [], future: [], slide: '', element: '', tab: 'slide',
+    history: [], future: [], slide: '', element: '', tab: 'slide', section: 'data', typesOpen: false, panelWidth: 0,
     queue: Promise.resolve(), busy: 0, clipboard: null, dragSlide: '', dragElement: '',
     // The token of the slides laid out from the slide set shown, and a count of the data prepared (for the slide list).
     syncedToken: '', generation: 0,
@@ -512,7 +512,7 @@
     return edit(slide_set => {
       const found = findElement(slide_set, elementId);
       if (!found) {
-        report(new Error('This element is only in this Design: change it in This PPT scope, or apply it to the template first.'));
+        report(new Error('This element is only in this Design: change it in This Design scope, or apply it to the template first.'));
         return false;
       }
       Object.assign(found.element, values);
@@ -648,7 +648,11 @@
     chart: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
     reset: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>',
     image: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5L5 20"/>',
+    kpi: '<path d="m3 17 6-6 4 4 8-8"/><path d="M15 7h6v6"/>',
+    text: '<path d="M5 6V4h14v2M12 4v16M9 20h6"/>',
+    more: '<circle cx="5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="19" cy="12" r="1.2"/>',
   };
+  const KINDS = {chart: ['Chart', 'chart'], kpi: ['KPI card', 'kpi'], text: ['Text box', 'text'], image: ['Image', 'image']};
   // The names of the properties a Design changes, as Differences shows them.
   const DIFFERENCE_NAMES = {title: 'Title', subtitle: 'Subtitle', layout: 'Layout', options: 'Places', place: 'Place', style: 'Format', chart_type: 'Chart type',
     chart_title: 'Title', kind: 'Kind', content: 'Content', kpi_card: 'KPI settings', repeat: 'Repeat by', cdr_source: 'Source', kpi: 'Measure',
@@ -834,7 +838,7 @@
     ];
     if (template) {
       actions.push([slide.optional ? 'Not optional' : 'Optional (off by default)', guarded(() => setOptional(slide.id, !slide.optional)), Boolean(findSlide(state.template, slide.id))]);
-      actions.push(['Delete', guarded(() => deleteSlide(slide.id)), Boolean(findSlide(state.template, slide.id)) || 'Only in this Design: delete it in This PPT scope']);
+      actions.push(['Delete', guarded(() => deleteSlide(slide.id)), Boolean(findSlide(state.template, slide.id)) || 'Only in this Design: delete it in This Design scope']);
     } else if (fromTemplate) {
       if (slide.optional) actions.push([slide.optional_off ? 'Show in this Design' : 'Leave out of this Design', guarded(() => setOptionalShown(slide.id, Boolean(slide.optional_off))), true]);
       else actions.push([slide.hidden ? 'Show again' : 'Hide in this Design', guarded(() => setSlideHidden(slide.id, !slide.hidden)), true]);
@@ -878,7 +882,11 @@
     if (!stage || !rendered) return;
     if (rendered.source_slide && rendered.source_slide !== state.slide) {
       const slide = findSlide(state.slide_set, rendered.source_slide);
-      if (slide && !slide.hidden && !slide.optional_off) state.slide = rendered.source_slide;
+      if (slide && !slide.hidden && !slide.optional_off) {
+        state.slide = rendered.source_slide;
+        // The element chosen stays on the slide left: the panel shows the slide now shown.
+        if (state.element && !(slide.elements || []).some(item => item.id === state.element)) { state.element = ''; state.tab = 'slide'; }
+      }
     }
     const slide = shownSlide();
     if (slide && (slide.hidden || slide.optional_off)) return;
@@ -1035,35 +1043,33 @@
     return h('datalist', {id: 'ds-design-fields'}, [...new Set(columns)].map(column => h('option', {value: column})));
   }
 
+  // The panel: a head that says where it is (the slide, the element chosen on it) and what its changes reach, with the
+  // actions in a menu, and below it the form of the slide or element. A chart shows its title, then its Data (source,
+  // shelves and fields) or its Format, and opens Chart Type on the edge of the panel, over the slide.
   function renderPanel() {
     const panel = $('ds-design-panel');
     if (!panel || !state.active) return;
     // While a text is being written in the rich text editor of a text box, its panel stays as it is (the caret too).
-    const panelKey = `${state.tab}|${state.element}|${state.slide}|${state.scope}`;
+    const panelKey = `${state.tab}|${state.section}|${state.element}|${state.slide}|${state.scope}`;
     if (panel.dataset.key === panelKey && document.activeElement?.closest?.('#ds-design-panel [contenteditable="true"]')) return;
     panel.dataset.key = panelKey;
     const focused = panel.contains(document.activeElement) && document.activeElement.id ? document.activeElement : null;
-    const advancedOpen = Boolean(panel.querySelector('.ds-design-advanced')?.open);
     const dataOpen = new Set([...panel.querySelectorAll('.ds-cb-group')].filter(group => group.open).map(group => group.querySelector('summary')?.firstChild?.textContent));
     const typing = focused && 'value' in focused ? {id: focused.id, value: focused.value, start: focused.selectionStart, end: focused.selectionEnd} : null;
+    const pointedType = document.activeElement?.closest?.('#ds-design-types') ? document.activeElement.dataset.type || '' : '';
     const slide = shownSlide();
     const element = state.element ? shownElement() : null;
     if (!element && state.tab === 'element') state.tab = 'slide';
-    const tabs = h('div', {class: 'ds-design-tabs', role: 'tablist'},
-      h('button', {type: 'button', role: 'tab', class: state.tab === 'slide' ? 'is-active' : '', 'aria-selected': String(state.tab === 'slide'), onclick: () => { state.tab = 'slide'; renderPanel(); }}, 'Slide'),
-      h('button', {type: 'button', role: 'tab', class: state.tab === 'element' ? 'is-active' : '', 'aria-selected': String(state.tab === 'element'), disabled: !element, onclick: () => { state.tab = 'element'; renderPanel(); }}, 'Element'));
-    const body = h('div', {class: 'ds-design-panel-body'});
-    if (state.tab === 'element' && element) body.append(...elementForm(element));
+    const chosen = state.tab === 'element' && element ? element : null;
+    const shown = chosen && (state.scope === 'template' ? findElement(state.template, chosen.id)?.element : chosen);
+    const chart = Boolean(shown) && (shown.kind || 'chart') === 'chart';
+    const body = h('div', {class: `ds-design-panel-body${chart ? ` is-${state.section}` : ''}`});
+    if (chosen) body.append(...elementForm(chosen));
     else if (slide) body.append(...slideForm(slide));
     else body.append(h('p', {class: 'ds-design-empty', text: 'Choose a slide.'}));
-    const scopeNote = state.detached ? 'This Design has slides of its own.'
-      : state.scope === 'template' ? `Changes the template: ${designCount()} Design${designCount() === 1 ? '' : 's'} follow it.`
-        : 'Changes only this Design.';
-    const fold = h('button', {type: 'button', class: 'ds-design-fold', 'aria-expanded': String(!state.folded), title: state.folded ? 'Show the panel' : 'Fold the panel',
-      onclick: () => { state.folded = !state.folded; renderPanel(); }}, state.folded ? '▴' : '▾');
     panel.classList.toggle('is-folded', state.folded);
-    panel.replaceChildren(h('div', {class: 'ds-design-panel-head'}, h('div', {class: 'ds-design-panel-top'}, tabs, fold), h('p', {class: `ds-design-scope-note is-${state.detached ? 'design' : state.scope}`, text: scopeNote})), body);
-    if (advancedOpen) { const advanced = panel.querySelector('.ds-design-advanced'); if (advanced) advanced.open = true; }
+    if (state.panelWidth) panel.style.setProperty('--ds-panel-width', `${Math.max(PANEL_MIN_WIDTH, state.panelWidth)}px`);
+    panel.replaceChildren(panelResizer(panel), panelHead(slide, chosen, shown, chart), body, ...chartTypePicker(chart ? chosen : null, chart ? shown : null));
     if (dataOpen.size) panel.querySelectorAll('.ds-cb-group').forEach(group => { group.open = dataOpen.has(group.querySelector('summary')?.firstChild?.textContent); });
     const again = typing && $(typing.id);
     if (again) {
@@ -1071,29 +1077,150 @@
       again.focus({preventScroll: true});
       try { if (typing.start !== null && again.setSelectionRange) again.setSelectionRange(typing.start, typing.end); } catch (_error) { /* not a text field */ }
     }
+    if (pointedType) panel.querySelector(`#ds-design-types [data-type="${CSS.escape(pointedType)}"]`)?.focus({preventScroll: true});
   }
 
-  function originNote(item, kind) {
-    if (state.detached) return null;
-    if (item.origin === 'design') return h('p', {class: 'ds-design-origin is-local', text: `This ${kind} is only in this Design.`});
-    if (item.overridden?.length) return h('p', {class: 'ds-design-origin is-changed', text: `Changed here: ${item.overridden.join(', ').replaceAll('_', ' ')}.`});
-    return h('p', {class: 'ds-design-origin', text: `As the template has it.`});
+  function panelHead(slide, element, shown, chart) {
+    const kind = slideKind(slide);
+    const slideName = !slide ? 'Slide' : kind === 'content' ? `Slide ${editedSlides().findIndex(item => item.id === slide.id) + 1}` : STRUCTURAL[kind];
+    const selected = state.element ? shownElement() : null;
+    const crumb = (label, active, iconName, onclick) => h('button', {type: 'button', class: `ds-design-crumb${active ? ' is-active' : ''}`, 'aria-current': active ? 'true' : null, title: label, onclick},
+      icon(iconName), h('span', {text: label}));
+    const crumbs = h('nav', {class: 'ds-design-crumbs', 'aria-label': 'What the panel shows'},
+      crumb(slideName, !element, 'slide', () => { state.tab = 'slide'; renderPanel(); }),
+      selected ? h('span', {class: 'ds-design-crumb-separator', 'aria-hidden': 'true', text: '›'}) : null,
+      selected ? crumb(elementName(selected, slide), Boolean(element), KINDS[selected.kind || 'chart']?.[1] || 'chart', () => { state.tab = 'element'; renderPanel(); }) : null);
+    const actions = element ? elementActions(element.id) : slide ? slideActions(slide) : [];
+    if (chart) actions.push(['Columns as written…', () => openColumnsDialog(element.id), true]);
+    const more = h('button', {type: 'button', class: 'ds-design-more', 'aria-haspopup': 'menu', disabled: !actions.length,
+      title: element ? 'Actions of this element' : 'Actions of this slide', 'aria-label': element ? 'Actions of this element' : 'Actions of this slide',
+      onclick: event => openMenu(event.currentTarget, actions)}, icon('more'));
+    const fold = h('button', {type: 'button', class: 'ds-design-fold', 'aria-expanded': String(!state.folded), title: state.folded ? 'Show the panel' : 'Fold the panel',
+      onclick: () => { state.folded = !state.folded; renderPanel(); }}, state.folded ? '▴' : '▾');
+    const nodes = [h('div', {class: 'ds-design-panel-top'}, crumbs, more, fold), h('div', {class: 'ds-design-reach'}, scopeBadge(), originBadge(element || slide))];
+    if (chart) {
+      const title = textInput(shown.chart_title, debounced(value => setElementValues(element.id, {chart_title: value})), {id: 'ds-design-chart-title', placeholder: 'Chart title'});
+      title.setAttribute('aria-label', 'Chart title');
+      const section = (key, label, mark) => h('button', {type: 'button', role: 'tab', class: state.section === key ? 'is-active' : '', 'aria-selected': String(state.section === key),
+        onclick: () => { state.section = key; renderPanel(); }}, label, mark);
+      nodes.push(
+        h('div', {class: 'ds-design-head-title'}, title, tokenMenuButton(title)),
+        h('div', {class: 'ds-design-sections', role: 'tablist', 'aria-label': 'Chart'},
+          section('data', 'Data'),
+          section('format', 'Format', Object.keys(styleOf(shown)).length ? h('span', {class: 'ds-design-dot', title: 'Formatted'}) : null)));
+    }
+    return h('div', {class: 'ds-design-panel-head'}, ...nodes);
   }
+  const elementName = (element, slide) => {
+    const index = visibleElements(slide).findIndex(item => item.id === element.id);
+    return `${KINDS[element.kind || 'chart']?.[0] || 'Element'}${index >= 0 ? ` ${placeOf(element, index) + 1}` : ''}`;
+  };
+  // Where the changes go (the scope of the bar) and how the slide or element shown differs from the template.
+  function scopeBadge() {
+    const count = designCount();
+    const [text, title] = state.detached ? ['Own slides', 'This Design has slides of its own.']
+      : state.scope === 'template' ? [`Template · ${count} Design${count === 1 ? '' : 's'}`, `Changes the template: ${count} Design${count === 1 ? '' : 's'} follow it.`]
+        : ['This Design', 'Changes only this Design.'];
+    return h('span', {class: `ds-design-badge is-scope is-${state.detached ? 'design' : state.scope}`, title}, icon(state.scope === 'template' && !state.detached ? 'differences' : 'slide'), text);
+  }
+  function originBadge(item) {
+    if (state.detached || !item) return null;
+    if (item.origin === 'design') return h('span', {class: 'ds-design-badge is-local', text: 'Only in this Design'});
+    if (item.overridden?.length) {
+      const names = [...new Set(item.overridden.map(name => DIFFERENCE_NAMES[name] || name.replaceAll('_', ' ')))];
+      return h('span', {class: 'ds-design-badge is-changed', title: `Changed here: ${names.join(', ')}`, text: `Changed: ${names.join(', ')}`});
+    }
+    return h('span', {class: 'ds-design-badge is-same', text: 'As the template'});
+  }
+
+  // The width of the panel: dragged on its edge (or with the arrow keys there), kept for the next time.
+  const PANEL_WIDTH_KEY = 'drivetest-analyzer:ppt-designer:panel-width';
+  try { state.panelWidth = Number(localStorage.getItem(PANEL_WIDTH_KEY)) || 0; } catch (_error) { state.panelWidth = 0; }
+  let relayoutTimer = 0;
+  // The narrowest panel keeps each row on one line (18.5rem, as the stylesheet).
+  const PANEL_MIN_WIDTH = 296;
+  function setPanelWidth(panel, width, {final = false} = {}) {
+    const max = Math.max(PANEL_MIN_WIDTH, Math.min(720, Math.round(window.innerWidth * 0.6)));
+    state.panelWidth = width ? Math.round(Math.max(PANEL_MIN_WIDTH, Math.min(max, width))) : 0;
+    if (state.panelWidth) panel.style.setProperty('--ds-panel-width', `${state.panelWidth}px`);
+    else panel.style.removeProperty('--ds-panel-width');
+    if (!final) return;
+    try {
+      if (state.panelWidth) localStorage.setItem(PANEL_WIDTH_KEY, String(state.panelWidth));
+      else localStorage.removeItem(PANEL_WIDTH_KEY);
+    } catch (_error) { /* the width is kept for this page only */ }
+    // The charts are drawn again for the width the slide is left.
+    clearTimeout(relayoutTimer);
+    relayoutTimer = setTimeout(() => viewer().renderSlide(), 120);
+  }
+  function panelResizer(panel) {
+    const handle = h('div', {class: 'ds-design-resize', role: 'separator', 'aria-orientation': 'vertical', 'aria-label': 'Width of the panel', tabindex: '0',
+      title: 'Drag to widen or narrow the panel · double-click: its usual width'});
+    handle.addEventListener('pointerdown', event => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      handle.setPointerCapture(event.pointerId);
+      const right = panel.getBoundingClientRect().right;
+      panel.classList.add('is-resizing');
+      const move = moveEvent => setPanelWidth(panel, right - moveEvent.clientX);
+      let ended = false;
+      const end = () => {
+        if (ended) return;
+        ended = true;
+        handle.removeEventListener('pointermove', move);
+        panel.classList.remove('is-resizing');
+        setPanelWidth(panel, state.panelWidth || panel.getBoundingClientRect().width, {final: true});
+      };
+      handle.addEventListener('pointermove', move);
+      handle.addEventListener('pointerup', end);
+      handle.addEventListener('pointercancel', end);
+    });
+    handle.addEventListener('dblclick', () => setPanelWidth(panel, 0, {final: true}));
+    handle.addEventListener('keydown', event => {
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+      // The arrows widen the panel here; they do not go to the other slides.
+      event.preventDefault();
+      event.stopPropagation();
+      setPanelWidth(panel, panel.getBoundingClientRect().width + (event.key === 'ArrowLeft' ? 24 : -24), {final: true});
+    });
+    return handle;
+  }
+
+  // Chart Type: a tab on the right edge of the panel opens the chart types over the panel, not the slide (as Show Me in
+  // Tableau); choosing one changes the chart at once and the types stay open until the tab, × or Esc closes them. Until a
+  // chart is chosen the tab waits, greyed.
+  function chartTypePicker(element, shown) {
+    const toggle = () => { state.typesOpen = !state.typesOpen; renderPanel(); };
+    const open = Boolean(shown) && state.typesOpen;
+    const tab = h('button', {type: 'button', class: `ds-design-types-tab${open ? ' is-open' : ''}`, disabled: !shown, 'aria-expanded': String(open), 'aria-controls': 'ds-design-types',
+      title: !shown ? 'Chart Type: choose a chart of the slide' : open ? 'Close Chart Type' : `Chart Type: ${shown.chart_type || 'choose one'}`, onclick: toggle},
+    window.ChartShelves?.picture(shown?.chart_type || 'Average Vertical Bars') || null, h('span', {class: 'ds-design-types-tab-label', text: 'Chart Type'}));
+    if (!open) return [tab];
+    const host = h('div', {class: 'ds-design-types-body'});
+    window.ChartShelves?.renderTypes(host, shelvesOptions(element, shown));
+    return [tab, h('section', {class: 'ds-design-types', id: 'ds-design-types', 'aria-label': 'Chart Type'},
+      h('div', {class: 'ds-design-types-head'}, h('strong', {text: 'Chart Type'}),
+        h('button', {type: 'button', class: 'ds-design-types-close', 'aria-label': 'Close Chart Type', title: 'Close (Esc)', onclick: toggle}, '×')),
+      host)];
+  }
+  const shelvesOptions = (element, shown) => ({
+    values: shown, fields: state.fields?.fields, calculated: state.fields?.calculated_fields, parameters: parameters(),
+    lockedFilters: lockedFilters(), fieldValues, pptNrMode: String(viewer().state().definition?.nr_mode || '').replace('+', ' & '),
+    onChange: changes => guarded(() => setElementValues(element.id, changes))(),
+  });
 
   function slideForm(slide) {
     const kind = slideKind(slide);
     const editable = state.scope === 'design' || Boolean(findSlide(state.template, slide.id));
     const setSlide = values => edit(slide_set => {
       const target = findSlide(slide_set, slide.id);
-      if (!target) { report(new Error('This slide is only in this Design: change it in This PPT scope.')); return false; }
+      if (!target) { report(new Error('This slide is only in this Design: change it in This Design scope.')); return false; }
       Object.assign(target, values);
     });
     const shownSource = state.scope === 'template' ? findSlide(state.template, slide.id) || slide : slide;
     const title = textInput(shownSource.title, debounced(value => setSlide({title: value})), {id: 'ds-design-slide-title'});
     const subtitle = textInput(shownSource.subtitle, debounced(value => setSlide({subtitle: value})), {id: 'ds-design-slide-subtitle'});
     const nodes = [
-      h('h3', {class: 'ds-design-panel-title', text: kind === 'content' ? 'Slide' : STRUCTURAL[kind]}),
-      originNote(slide, 'slide'),
       field('Title', h('div', {class: 'ds-design-input-row'}, title, tokenMenuButton(title))),
       field('Subtitle', h('div', {class: 'ds-design-input-row'}, subtitle, tokenMenuButton(subtitle))),
       field('Layout', h('button', {type: 'button', class: 'ds-design-layout-button', disabled: !editable, onclick: event => openLayoutGallery(event.currentTarget, slide)}, shownSource.layout || 'Choose a layout')),
@@ -1115,7 +1242,6 @@
           isLocalElement(item) && !state.detached ? h('span', {class: 'ds-design-badge is-local', text: 'This Design'}) : item.overridden?.length ? h('span', {class: 'ds-design-badge is-changed', text: 'Changed'}) : null)))));
       if (freePlaces(slide).length) nodes.push(h('button', {type: 'button', class: 'ds-design-action', onclick: guarded(() => addElement(slide.id, freePlaces(slide)[0]))}, '+ Add chart'));
     }
-    nodes.push(h('div', {class: 'ds-design-panel-actions'}, slideActions(slide).map(([label, action, enabled]) => h('button', {type: 'button', class: 'ds-design-action', disabled: enabled !== true, title: typeof enabled === 'string' ? enabled : null, onclick: action}, label))));
     return nodes;
   }
 
@@ -1163,7 +1289,7 @@
   };
   function setStyle(elementId, change) {
     const current = findElement(editableSlideSet(), elementId)?.element;
-    if (!current) { report(new Error('This element is only in this Design: change it in This PPT scope, or apply it to the template first.')); return undefined; }
+    if (!current) { report(new Error('This element is only in this Design: change it in This Design scope, or apply it to the template first.')); return undefined; }
     const style = styleOf(current);
     change(style);
     return setElementValues(elementId, {style: cleanStyle(style)});
@@ -1326,31 +1452,54 @@
       node[keys.at(-1)] = value;
     }))();
     const integer = value => (value === '' ? '' : Math.max(0, Math.min(6, Math.round(Number(value)))));
-    return h('details', {class: 'ds-design-format', open: true},
-      h('summary', {}, 'Format', Object.keys(style).length ? h('span', {class: 'ds-design-badge is-changed', text: 'Formatted'}) : null),
-      h('p', {class: 'ds-design-field-note', text: 'Click a series in the legend of the chart, or here, to change its colour, line and opacity.'}),
-      series,
+    // One group open at a time; a closed one says what it holds.
+    const named = (list, value) => list.find(([key]) => key === (value || ''))?.[1] || value;
+    const LEGEND_PLACES = [['', 'Default'], ['top', 'Top'], ['bottom', 'Bottom'], ['left', 'Left'], ['right', 'Right'], ['none', 'Hidden']];
+    const changedSeries = Object.values(style.series || {}).filter(item => Object.keys(item || {}).length).length;
+    const summaries = {
+      Series: items.length ? `${items.length} series${changedSeries ? ` · ${changedSeries} changed` : ''}` : '',
+      Legend: [named(LEGEND_PLACES, style.legend?.position), style.legend?.size ? `${style.legend.size} text` : ''].filter(Boolean).join(' · '),
+      Labels: [named(LABEL_POSITIONS, style.labels?.position), style.labels?.size ? `${style.labels.size} text` : '', style.labels?.bold ? 'Bold' : ''].filter(Boolean).join(' · '),
+      Axes: [style.axes?.x?.title ? `X: ${style.axes.x.title}` : '', style.axes?.y?.title ? `Y: ${style.axes.y.title}` : '', style.axes?.x?.decimals !== undefined && style.axes?.x?.decimals !== '' ? `${style.axes.x.decimals} decimals` : ''].filter(Boolean).join(' · ') || 'As the chart names them',
+    };
+    const openGroup = state.formatGroup ?? 'Series';
+    const group = (label, ...children) => {
+      const node = h('details', {class: 'ds-design-format-group', open: openGroup === label},
+        h('summary', {}, h('span', {class: 'ds-design-format-group-name', text: label}), h('span', {class: 'ds-design-format-group-value', text: summaries[label] || ''})), ...children);
+      node.addEventListener('toggle', () => {
+        if (node.open) {
+          state.formatGroup = label;
+          node.parentElement?.querySelectorAll('.ds-design-format-group').forEach(other => { if (other !== node) other.open = false; });
+        } else if (state.formatGroup === label) state.formatGroup = '';
+      });
+      return node;
+    };
+    return h('div', {class: 'ds-design-format'},
       h('div', {class: 'ds-design-format-actions'},
-        h('button', {type: 'button', disabled: !style.series || !Object.values(style.series).some(item => item.colour || item.opacity), title: 'The colours of the Operator / Vendor Maps of the workspace for every series',
-          onclick: () => guarded(() => setStyle(elementId, target => { for (const item of Object.values(target.series || {})) { delete item.colour; delete item.opacity; } }))()}, 'Default colours'),
         h('button', {type: 'button', title: 'Copy the format of this chart', onclick: () => { state.formatClipboard = {style, legend_position: element.legend_position, label_position: element.label_position, label_format: element.label_format, axis_x_range: element.axis_x_range, axis_y_range: element.axis_y_range}; viewer().status('Format copied: paste it on another chart.'); renderPanel(); }}, 'Copy format'),
         h('button', {type: 'button', disabled: !state.formatClipboard, title: 'Give this chart the format copied', onclick: () => guarded(() => setElementValues(elementId, clone(state.formatClipboard)))()}, 'Paste format')),
-      h('div', {class: 'ds-design-two'},
-        field('Legend', selectInput([['', 'Default'], ['top', 'Top'], ['bottom', 'Bottom'], ['left', 'Left'], ['right', 'Right'], ['none', 'Hidden']], style.legend?.position || '', value => set('legend.position', value))),
-        field('Legend text', selectInput(SIZES, style.legend?.size || '', value => set('legend.size', value)))),
-      h('div', {class: 'ds-design-two'},
-        field('Labels', selectInput(LABEL_POSITIONS, style.labels?.position || '', value => set('labels.position', value))),
-        field('Label text', selectInput(SIZES, style.labels?.size || '', value => set('labels.size', value)))),
+      group('Series',
+        h('p', {class: 'ds-design-field-note', text: 'Click a series in the legend of the chart, or here, to change its colour, line and opacity.'}),
+        series,
+        h('div', {class: 'ds-design-format-actions'},
+          h('button', {type: 'button', disabled: !style.series || !Object.values(style.series).some(item => item.colour || item.opacity), title: 'The colours of the Operator / Vendor Maps of the workspace for every series',
+            onclick: () => guarded(() => setStyle(elementId, target => { for (const item of Object.values(target.series || {})) { delete item.colour; delete item.opacity; } }))()}, 'Default colours'))),
+      group('Legend', h('div', {class: 'ds-design-two'},
+        field('Position', selectInput(LEGEND_PLACES, style.legend?.position || '', value => set('legend.position', value))),
+        field('Text', selectInput(SIZES, style.legend?.size || '', value => set('legend.size', value))))),
+      group('Labels', h('div', {class: 'ds-design-two'},
+        field('Position', selectInput(LABEL_POSITIONS, style.labels?.position || '', value => set('labels.position', value))),
+        field('Text', selectInput(SIZES, style.labels?.size || '', value => set('labels.size', value)))),
       h('div', {class: 'ds-design-two'},
         field('Label colour', h('div', {class: 'ds-design-input-row'},
           h('input', {type: 'color', value: style.labels?.colour || '#263B4A', 'aria-label': 'Label colour', onchange: event => set('labels.colour', event.target.value.toUpperCase())}),
           h('button', {type: 'button', class: 'ds-design-token', title: 'Default label colour', onclick: () => set('labels.colour', '')}, '↺'))),
-        h('label', {class: 'ds-design-check'}, h('input', {type: 'checkbox', checked: Boolean(style.labels?.bold), onchange: event => set('labels.bold', event.target.checked || '')}), 'Bold labels')),
-      h('div', {class: 'ds-design-two'},
+        h('label', {class: 'ds-design-check'}, h('input', {type: 'checkbox', checked: Boolean(style.labels?.bold), onchange: event => set('labels.bold', event.target.checked || '')}), 'Bold labels'))),
+      group('Axes', h('div', {class: 'ds-design-two'},
         field('X axis title', textInput(style.axes?.x?.title, debounced(value => setStyle(elementId, target => { target.axes = target.axes || {}; target.axes.x = {...(target.axes.x || {}), title: value}; })), {id: 'ds-design-axis-x-title', placeholder: 'As the chart names it'})),
         field('Y axis title', textInput(style.axes?.y?.title, debounced(value => setStyle(elementId, target => { target.axes = target.axes || {}; target.axes.y = {...(target.axes.y || {}), title: value}; })), {id: 'ds-design-axis-y-title', placeholder: 'As the chart names it'}))),
       field('X axis decimals', h('input', {type: 'number', min: '0', max: '6', step: '1', value: style.axes?.x?.decimals ?? '', placeholder: 'Default',
-        onchange: event => set('axes.x.decimals', integer(event.target.value))}), 'The decimals of the values of the X axis of a CDF.'));
+        onchange: event => set('axes.x.decimals', integer(event.target.value))}), 'The decimals of the values of the X axis of a CDF.')));
   }
 
   // The panel of a KPI card: what it measures, against what, and how it looks.
@@ -1437,60 +1586,46 @@
     ];
   }
 
+  // The body of the panel of an element: the form of a KPI card, text box or image, or the Data or Format of a chart.
   function elementForm(element) {
     const shown = state.scope === 'template' ? findElement(state.template, element.id)?.element : element;
-    const kind = (shown || element).kind || 'chart';
-    if (shown && kind !== 'chart') {
-      const forms = {kpi: kpiForm, text: textForm, image: imageForm};
-      return [
-        h('h3', {class: 'ds-design-panel-title', text: {kpi: 'KPI card', text: 'Text box', image: 'Image'}[kind] + (shown.chart_title ? ` · ${shown.chart_title}` : '')}),
-        originNote(element, 'element'),
-        ...(forms[kind] ? forms[kind](element, shown) : []),
-        h('div', {class: 'ds-design-panel-actions'}, elementActions(element.id).map(([label, action, enabled]) => h('button', {type: 'button', class: 'ds-design-action', disabled: enabled !== true, title: typeof enabled === 'string' ? enabled : null, onclick: action}, label))),
-      ];
-    }
-    if (!shown) {
-      return [h('h3', {class: 'ds-design-panel-title', text: elementLabel(element)}),
-        h('p', {class: 'ds-design-origin is-local', text: 'This element is only in this Design: change it in This PPT scope, or apply it to the template.'}),
-        h('div', {class: 'ds-design-panel-actions'}, elementActions(element.id).map(([label, action, enabled]) => h('button', {type: 'button', class: 'ds-design-action', disabled: enabled !== true, onclick: action}, label)))];
-    }
-    const set = (key, delay) => (delay === 0 ? value => guarded(() => setElementValues(element.id, {[key]: value}))() : debounced(value => setElementValues(element.id, {[key]: value}), delay));
-    const title = textInput(shown.chart_title, set('chart_title'), {id: 'ds-design-chart-title'});
-    const datalist = fieldsDatalist(shown);
-    const fieldInput = (key, placeholder) => textInput(shown[key], set(key), {id: `ds-design-${key}`, list: 'ds-design-fields', placeholder});
+    if (!shown) return [h('p', {class: 'ds-design-origin is-local', text: 'This element is only in this Design: change it in This Design scope, or apply it to the template.'})];
+    const kind = shown.kind || 'chart';
+    if (kind !== 'chart') return {kpi: kpiForm, text: textForm, image: imageForm}[kind]?.(element, shown) || [];
+    if (state.section === 'format') return [formatSection(element.id, shown)];
     const builder = h('div', {class: 'ds-cb'});
-    window.ChartShelves?.render(builder, {
-      values: shown, fields: state.fields?.fields, calculated: state.fields?.calculated_fields, parameters: parameters(),
-      lockedFilters: lockedFilters(), fieldValues,
-      onChange: changes => guarded(() => setElementValues(element.id, changes))(),
-    });
-    return [
-      h('h3', {class: 'ds-design-panel-title', text: elementLabel(shown)}),
-      originNote(element, 'element'),
-      datalist,
-      field('Chart title', h('div', {class: 'ds-design-input-row'}, title, tokenMenuButton(title))),
-      builder,
-      formatSection(element.id, shown),
-      h('details', {class: 'ds-design-advanced'}, h('summary', {text: 'Advanced: the text of each column, legend and label positions, axis ranges'}),
-        h('div', {class: 'ds-design-two'},
-          field('Source', selectInput(SOURCES, shown.cdr_source, set('cdr_source', 0), 'ds-design-source')),
-          field('Chart type', selectInput(CHART_TYPES.map(type => [type, type]), shown.chart_type, set('chart_type', 0), 'ds-design-chart-type'))),
-        field('KPI', fieldInput('kpi', 'A field of the source'), 'Several KPIs (Multi KPI CDF Lines, Scatter, Table): separate them with |.'),
+    window.ChartShelves?.render(builder, {...shelvesOptions(element, shown), chartTypes: false});
+    return [builder];
+  }
+
+  // Columns as written: the values of a chart as its template row writes them, for what the shelves do not show.
+  function openColumnsDialog(elementId) {
+    const shown = state.scope === 'template' ? findElement(state.template, elementId)?.element : findElement(state.slide_set, elementId)?.element;
+    if (!shown) return;
+    const set = (key, delay) => (delay === 0 ? value => guarded(() => setElementValues(elementId, {[key]: value}))() : debounced(value => setElementValues(elementId, {[key]: value}), delay));
+    const fieldInput = (key, placeholder) => textInput(shown[key], set(key), {id: `ds-design-${key}`, list: 'ds-design-fields', placeholder});
+    const content = h('div', {class: 'ds-design-columns'},
+      fieldsDatalist(shown),
+      h('p', {class: 'ds-design-field-note', text: 'Each change is laid out at once, as on the shelves.'}),
+      h('div', {class: 'ds-design-two'},
+        field('Source', selectInput(SOURCES, shown.cdr_source, set('cdr_source', 0), 'ds-design-source')),
+        field('Chart type', selectInput(CHART_TYPES.map(type => [type, type]), shown.chart_type, set('chart_type', 0), 'ds-design-chart-type'))),
+      field('KPI', fieldInput('kpi', 'A field of the source'), 'Several KPIs (Multi KPI CDF Lines, Scatter, Table): separate them with |.'),
+      h('div', {class: 'ds-design-two'},
         field('Rows Split', fieldInput('rows_split', 'Operator × Campaign')),
-        field('Columns Split', fieldInput('columns_split', 'Campaign')),
-        field('Legend', fieldInput('legend', 'Operator')),
-        field('Filters', textInput((shown.filters || '').split(/;\s*/).filter(Boolean).join('\n'), debounced(value => setElementValues(element.id, {filters: value.split(/\n+/).map(line => line.trim()).filter(Boolean).join('; ')})), {id: 'ds-design-filters', multiline: true, rows: 4, placeholder: 'Call_Status IN (Completed, Dropped)\nThreshold = 1.6'}), 'One condition per line; a parameter is written {Name}.'),
-        h('div', {class: 'ds-design-two'},
-          field('Legend position', selectInput(LEGEND_POSITIONS, shown.legend_position, set('legend_position', 0), 'ds-design-legend-position')),
-          field('Label position', selectInput(LABEL_POSITIONS, shown.label_position, set('label_position', 0), 'ds-design-label-position'))),
-        h('div', {class: 'ds-design-two'},
-          field('Axis X range', textInput(shown.axis_x_range, set('axis_x_range'), {id: 'ds-design-axis-x', placeholder: '[0,100]'})),
-          field('Axis Y range', textInput(shown.axis_y_range, set('axis_y_range'), {id: 'ds-design-axis-y', placeholder: '[0,]'}))),
-        h('div', {class: 'ds-design-two'},
-          h('label', {class: 'ds-design-check'}, h('input', {type: 'checkbox', checked: Boolean(shown.exclude_null_empty), onchange: event => set('exclude_null_empty', 0)(event.target.checked)}), 'Exclude Null/Empty'),
-          h('label', {class: 'ds-design-check'}, h('input', {type: 'checkbox', checked: Boolean(shown.exclude_zero), onchange: event => set('exclude_zero', 0)(event.target.checked)}), 'Exclude Zero'))),
-      h('div', {class: 'ds-design-panel-actions'}, elementActions(element.id).map(([label, action, enabled]) => h('button', {type: 'button', class: 'ds-design-action', disabled: enabled !== true, title: typeof enabled === 'string' ? enabled : null, onclick: action}, label))),
-    ];
+        field('Columns Split', fieldInput('columns_split', 'Campaign'))),
+      field('Legend', fieldInput('legend', 'Operator')),
+      field('Filters', textInput((shown.filters || '').split(/;\s*/).filter(Boolean).join('\n'), debounced(value => setElementValues(elementId, {filters: value.split(/\n+/).map(line => line.trim()).filter(Boolean).join('; ')})), {id: 'ds-design-filters', multiline: true, rows: 4, placeholder: 'Call_Status IN (Completed, Dropped)\nThreshold = 1.6'}), 'One condition per line; a parameter is written {Name}.'),
+      h('div', {class: 'ds-design-two'},
+        field('Legend position', selectInput(LEGEND_POSITIONS, shown.legend_position, set('legend_position', 0), 'ds-design-legend-position')),
+        field('Label position', selectInput(LABEL_POSITIONS, shown.label_position, set('label_position', 0), 'ds-design-label-position'))),
+      h('div', {class: 'ds-design-two'},
+        field('Axis X range', textInput(shown.axis_x_range, set('axis_x_range'), {id: 'ds-design-axis-x', placeholder: '[0,100]'})),
+        field('Axis Y range', textInput(shown.axis_y_range, set('axis_y_range'), {id: 'ds-design-axis-y', placeholder: '[0,]'}))),
+      h('div', {class: 'ds-design-two'},
+        h('label', {class: 'ds-design-check'}, h('input', {type: 'checkbox', checked: Boolean(shown.exclude_null_empty), onchange: event => set('exclude_null_empty', 0)(event.target.checked)}), 'Exclude Null/Empty'),
+        h('label', {class: 'ds-design-check'}, h('input', {type: 'checkbox', checked: Boolean(shown.exclude_zero), onchange: event => set('exclude_zero', 0)(event.target.checked)}), 'Exclude Zero')));
+    openDialog('Columns as written', elementLabel(shown), content, {wide: true});
   }
 
   // The title and subtitle of the slide shown are edited on the slide itself: a click writes them as the slide set has them
@@ -1500,7 +1635,7 @@
     const heading = $(key === 'title' ? 'ds-title' : 'ds-subtitle');
     if (!state.active || !slide || !heading || heading.querySelector('input')) return;
     const source = state.scope === 'template' ? findSlide(state.template, slide.id) : slide;
-    if (!source) { report(new Error('This slide is only in this Design: change it in This PPT scope.')); return; }
+    if (!source) { report(new Error('This slide is only in this Design: change it in This Design scope.')); return; }
     const input = h('input', {type: 'text', class: `ds-design-heading-input is-${key}`, value: source[key] || '', 'aria-label': key === 'title' ? 'Slide title' : 'Slide subtitle'});
     const shown = [...heading.childNodes];
     heading.replaceChildren(input);
@@ -1660,8 +1795,24 @@
     if (modifier && event.key.toLowerCase() === 'z') { event.preventDefault(); guarded(event.shiftKey ? redo : undo)(); }
     else if (modifier && event.key.toLowerCase() === 'y') { event.preventDefault(); guarded(redo)(); }
     else if ((event.key === 'Delete' || event.key === 'Backspace') && state.element) { event.preventDefault(); guarded(() => deleteElement(state.element))(); }
-    else if (event.key === 'Escape' && state.element) { state.element = ''; state.tab = 'slide'; renderDesigner(); }
   });
+  // Esc while designing closes a menu, then Chart Type, then leaves the element chosen, before the viewer takes it (to close
+  // itself); in a field of the panel it leaves the field. The dialogs, the panels over the viewer and the other fields keep
+  // their own Esc.
+  const VIEWER_OVERLAYS = ['ds-ppt-filter-overlay', 'ds-chart-expanded-overlay', 'ds-editor-overlay', 'ds-data-overlay', 'ds-filter-overlay'];
+  document.addEventListener('keydown', event => {
+    if (event.key !== 'Escape' || !state.active) return;
+    const field = event.target.closest?.('input, textarea, select, [contenteditable="true"]');
+    if (field && !field.closest('#ds-design-panel')) return;
+    if (document.querySelector('.ds-design-dialog-overlay') || VIEWER_OVERLAYS.some(id => $(id) && !$(id).hidden)) return;
+    if (field) field.blur();
+    else if (document.querySelector('.ds-design-popover')) closeMenus();
+    else if (state.typesOpen && $('ds-design-types')) { state.typesOpen = false; renderPanel(); }
+    else if (state.element) { state.element = ''; state.tab = 'slide'; renderDesigner(); }
+    else return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }, true);
 
   // ------------------------------------------------------------------
   // Dialogs: Differences, Parameters
