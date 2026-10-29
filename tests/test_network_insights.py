@@ -334,6 +334,23 @@ def test_bundled_rf_quality_template_is_valid() -> None:
         assert all(entry.rows_split == 'Operator' and entry.columns_split == 'Campaign' for entry in entries[2:])
 
 
+def test_a_map_reads_its_coordinates_whether_its_measures_are_written_with_vs_or_with_a_bar() -> None:
+    from src.modules.cdr_reporting import CatalogEntry, catalog_chart_payload
+
+    frame = pd.DataFrame({'Latitude': [51.5, 51.51, 51.52], 'Longitude': [-.1, -.11, -.12], 'Operator': ['A', 'B', 'A']})
+    models = []
+    # The shelves of the Designer write the measures moved on Measure with a bar.
+    for kpi in ('Latitude vs Longitude', 'Latitude | Longitude'):
+        entry = CatalogEntry(
+            slide=1, slide_title='Map', slide_subtitle='', layout='Title and 1 column + Comments', chart_title='Tests',
+            cdr_source='CDR-Data', kpi=kpi, chart_type='Map', legend='Operator', filters='', rows_split='Operator', columns_split='',
+        )
+        models.append(catalog_chart_payload(frame, entry))
+    assert [model['type'] for model in models] == ['map', 'map']
+    assert models[0]['series'] == models[1]['series']
+    assert sorted(point[1] for series in models[1]['series'] for point in series['points']) == pytest.approx([51.5, 51.51, 51.52])
+
+
 @pytest.mark.parametrize('field,values,edges', [
     ('RSRP', [-115, -105, -95, -85, -75], '-110,-100,-90,-80'),
     ('SINR', [-1, 0, 5, 13, 20], '0,5,13,20'),

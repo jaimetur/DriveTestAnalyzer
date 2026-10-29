@@ -6305,11 +6305,15 @@ def parse_kpi_expression(value: str) -> tuple[str, str | None]:
     return field.strip(" `"), KPI_AGGREGATION_ALIASES[operation.upper()]
 
 
+# The measures of a KPI: written ``A vs B`` or ``A | B`` (as the shelves of the Designer write them), in either order.
+KPI_PARTS_SEPARATOR = re.compile(r"\s+vs\s+|\s*\|\s*", re.I)
+
+
 def catalog_kpi_fields(value: str) -> tuple[str, ...]:
     """Return the physical CDR fields referenced by a KPI definition."""
     return tuple(
         parse_kpi_expression(part)[0]
-        for part in re.split(r"\s+vs\s+|\s*\|\s*", str(value or ""), flags=re.I)
+        for part in KPI_PARTS_SEPARATOR.split(str(value or ""))
         if part.strip() and parse_kpi_expression(part)[0]
     )
 
@@ -6340,7 +6344,7 @@ def _aggregate_metric(
 
 def _catalog_spec(entry: CatalogEntry) -> dict:
     chart_type = entry.chart_type.casefold()
-    raw_metric_parts = tuple(part for part in re.split(r"\s+vs\s+", entry.kpi, flags=re.I) if part.strip())
+    raw_metric_parts = tuple(part for part in KPI_PARTS_SEPARATOR.split(entry.kpi) if part.strip())
     metric_parts = tuple(parse_kpi_expression(part)[0] for part in raw_metric_parts)
     _field, aggregation = parse_kpi_expression(raw_metric_parts[0] if raw_metric_parts else entry.kpi)
     spec: dict = {
@@ -6349,7 +6353,7 @@ def _catalog_spec(entry: CatalogEntry) -> dict:
         "aggregation": aggregation,
     }
     if chart_type == "multi kpi cdf lines":
-        metrics = tuple(parse_kpi_expression(part)[0] for part in entry.kpi.split("|") if part.strip())
+        metrics = metric_parts
         spec["kind"] = "multi_cdf"
         spec["metric"] = metrics[:1]
         spec["metrics"] = metrics

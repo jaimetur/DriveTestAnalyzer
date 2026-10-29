@@ -132,7 +132,8 @@
     const shelfState = {
       measures: measures.length, numeric, text: measures.length - numeric,
       splits: splitParts(values.rows_split, '×').length + splitParts(values.columns_split, '×').length,
-      geo: fieldList.some(item => identity(item.name) === 'latitude') && fieldList.some(item => identity(item.name) === 'longitude'),
+      // (A latitude and a longitude of any name: Latitude, Test_Start_Latitude…)
+      geo: fieldList.some(item => identity(item.name).includes('latitude')) && fieldList.some(item => identity(item.name).includes('longitude')),
     };
     return {values, source, fieldList, typeOf, change, settings, plainFilters, nrMode, writeFilters, measures, shelfState};
   }
@@ -140,9 +141,10 @@
   const typeButton = (item, {values, shelfState, change}, props = {}) => {
     const verdict = item.need(shelfState);
     const active = item.type.toLowerCase() === String(values.chart_type || '').toLowerCase();
+    // A chart type the shelves cannot draw is greyed and cannot be chosen: pointing at it says what it needs.
     return h('button', {type: 'button', class: `ds-cb-type-button${active ? ' is-active' : ''}${verdict === true ? '' : ' is-unavailable'}`,
-      title: verdict === true ? item.type : `${item.type}: needs ${verdict.toLowerCase()}`, 'aria-pressed': String(active), dataset: {type: item.type},
-      onclick: () => change({chart_type: item.type}), ...props},
+      title: verdict === true ? item.type : `${item.type}: needs ${verdict.toLowerCase()}`, 'aria-pressed': String(active), 'aria-disabled': String(verdict !== true),
+      dataset: {type: item.type}, onclick: () => { if (verdict === true && !active) change({chart_type: item.type}); }, ...props},
     picture(item.type), h('span', {text: item.type}));
   };
   // The NR Mode of the CDRs a chart reads, kept as the filter NR Mode IN (SA) when the chart keeps one of its own. One button
