@@ -5160,9 +5160,30 @@ class Repository:
         if limit is not None:
             query += ' LIMIT ?'
             params = (int(limit),)
+        if self._emptied_cdr_table(table_name) is not None:
+            return self._distinct_copy_values(int(dataset_id), resolved, query.replace(quoted_table, '"distinct_values"', 1), params)
         with self.connection() as conn:
             rows = conn.execute(query, params).fetchall()
         return [str(row['value']).strip() for row in rows if str(row['value']).strip()]
+
+    def _distinct_copy_values(self, dataset_id: int, column: str, query: str, params: tuple[int, ...]) -> list[str]:
+        """``query`` (the SQL of list_distinct_dataset_row_values) on a CDR whose rows are in its columnar copy only: it runs
+        on each distinct value of the column once, kept with its type, instead of on a copy of every row, so SQLite gives
+        the same text, order and limit."""
+        from src.modules import cdr_store
+
+        with self.connection() as conn:
+            kind = str(conn.execute('SELECT dataset_kind FROM dataset_profiles WHERE dataset_id = ?', (dataset_id,)).fetchone()[0]).casefold()
+        values = cdr_store.cdr_columns(self.db_path, kind, dataset_id, [column])[column]
+        # Each value once, in the order of its first row (1 and 1.0 stay apart: SQLite writes them differently).
+        distinct = [value for _type, value in dict.fromkeys(zip(map(type, values), values)) if value is not None]
+        distinct = [value.item() if hasattr(value, 'item') and not isinstance(value, (str, bytes)) else value for value in distinct]
+        with closing(sqlite3.connect(':memory:')) as memory:
+            # A column without a declared type keeps each value as it is (no affinity converts it).
+            memory.execute(f'CREATE TABLE "distinct_values" ({self._quote_identifier(column)})')
+            memory.executemany('INSERT INTO "distinct_values" VALUES (?)', [(value,) for value in distinct])
+            rows = memory.execute(query, params).fetchall()
+        return [str(row[0]).strip() for row in rows if str(row[0]).strip()]
 
     def refresh_dataset_row_normalized_dimensions(self, dataset_id: int) -> bool:
         table_name = self.dataset_rows_table_name(dataset_id)
