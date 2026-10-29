@@ -284,16 +284,50 @@ def _points_loss_inputs_of(repository, ids):
     return saved_filter, sources, configuration, saved_filter.get('context_filters', {})
 
 
-def test_the_points_lost_map_drawn_apart_is_the_one_drawn_in_the_application(history_repository):
+def test_the_points_lost_map_drawn_apart_is_the_one_drawn_in_the_application(history_repository, monkeypatch):
+    import subprocess
+
     repository, ids, _configuration = history_repository
     saved_filter, sources, configuration, filters = _points_loss_inputs_of(repository, ids)
     steps = []
+    processes = []
+    popen = subprocess.Popen
+
+    def recorded(*args, **kwargs):
+        processes.append(popen(*args, **kwargs))
+        return processes[-1]
+    monkeypatch.setattr(subprocess, 'Popen', recorded)
     apart = saved_filters._draw_points_loss_apart(repository, saved_filter, [dict(source) for source in sources],
                                                   configuration, filters, lambda value, step: steps.append(step))
     here = saved_filters.draw_points_loss(repository, saved_filter, [dict(source) for source in sources], configuration,
                                           filters, saved_filters._scoring_engine())
+    # The Data tests in one process, the Voice and Speech tests in another, put together: the same map.
+    assert len(processes) == 2
     assert saved_filters._serialize_result_value(apart) == saved_filters._serialize_result_value(here)
     assert apart['shares'] and any(step.startswith('Mapping the Data tests: KPI ') for step in steps)
+
+
+def test_the_points_lost_map_put_together_by_cdr_type_is_the_one_drawn_at_once(history_repository):
+    from src.modules import scoring_points_loss
+
+    repository, ids, _configuration = history_repository
+    saved_filter, sources, configuration, filters = _points_loss_inputs_of(repository, ids)
+    for source in sources:
+        source['levels'] = list(saved_filter['levels'])
+    frames = saved_filters._load_source_frames(repository, [dict(source) for source in sources], lambda *args: None,
+                                               scoring.load_input_columns, filters)
+    options = saved_filters._engine_kwargs(repository, saved_filter, configuration, scoring.calculate_scoring)
+    arguments = dict(configuration=configuration, operator_mappings=options.get('operator_mappings'),
+                     map_areas=options.get('map_areas'))
+    expected = scoring.calculate_points_loss(frames, saved_filter['levels'], **arguments)
+    # Each CDR type worked out apart (its points sent to another process), put together in their order.
+    parts = [part for kind in frames for part in scoring.points_loss_parts({kind: frames[kind]}, saved_filter['levels'],
+                                                                           **arguments)]
+    for part in parts:
+        scoring_points_loss.compact_contribution(part['places'])
+    assert len(parts) == 3
+    together = scoring.points_loss_document(parts, options.get('map_areas'))
+    assert saved_filters._serialize_result_value(together) == saved_filters._serialize_result_value(expected)
 
 
 def test_the_points_lost_map_reads_each_cdr_type_from_the_copies_with_the_same_rows_and_map(history_repository):
@@ -345,8 +379,8 @@ def test_stopping_the_points_lost_map_ends_its_process_at_once(history_repositor
         raise saved_filters._MapStopped()
     with pytest.raises(saved_filters._MapStopped):
         saved_filters._draw_points_loss_apart(repository, saved_filter, sources, configuration, filters, stop)
-    [process] = processes
-    assert process.poll() is not None
+    # Every process drawing the map (one per group of CDR types) is ended.
+    assert processes and all(process.poll() is not None for process in processes)
 
 
 def test_a_stopped_points_lost_map_keeps_the_scores_and_is_drawn_again_when_resumed(history_repository):

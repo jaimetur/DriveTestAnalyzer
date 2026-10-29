@@ -865,16 +865,14 @@ def _points_loss_entries(kind: str, frame: pd.DataFrame, valid: pd.Series, group
     return loss_shares, serving_tests
 
 
-def calculate_points_loss(
+def points_loss_parts(
     frames: dict[str, pd.DataFrame], levels: Iterable[str] = ('Operator',), configuration: dict | None = None,
     operator_mappings: dict[str, str] | None = None, map_areas=None, time_split: str | None = None,
     progress_callback=None,
-) -> dict:
-    """The Points Lost Map of a scoring, as ``calculate_scoring`` places it, without calculating the scores.
-
-    It reads the same rows but skips what only the scores need (the All Environments KPIs and the scoring of each
-    KPI), so a result calculated from the Scoring History gets its map in a fraction of the time.
-    ``progress_callback(share, step)`` follows the KPIs mapped (share from 0 to 1), CDR type by CDR type.
+) -> list[dict]:
+    """The Points Lost Map of each CDR type of ``frames``, in their order, before points_loss_document puts them
+    together: its loss shares, its serving tests and what its tests give the map (scoring_points_loss.contributions).
+    Each CDR type only depends on its own rows, so CDR types can be worked out apart (see calculate_points_loss).
     """
     config = _required_configuration(configuration)
     dimensions = []
@@ -897,21 +895,62 @@ def calculate_points_loss(
     mappings = {str(alias).strip().casefold(): str(canonical).strip()
                 for alias, canonical in (operator_mappings or {}).items() if str(alias).strip() and str(canonical).strip()}
     time_split = normalize_time_split(time_split) if campaign_selected else None
-    geometry = points_loss.AreaGeometry()
-    loss_shares: list[dict] = []
-    serving_tests: list[dict] = []
+    parts = []
     kinds = max(1, len(frames))
+    # The countries whose Map Areas each CDR type read first (the map draws their areas, see points_loss_document).
+    read = len(map_areas.loaded()) if hasattr(map_areas, 'loaded') else 0
     for kind_index, (kind, frame, valid) in enumerate(_prepared_frames(frames, dimensions, config, mappings, map_areas,
                                                                         time_split, campaign_selected, [])):
         step = ((lambda share, detail, kind_index=kind_index: progress_callback((kind_index + share) / kinds, detail))
                 if progress_callback else None)
         shares, served = _points_loss_entries(kind, frame, valid, group_fields, keys,
                                               [m for m in config['metrics'] if m['source_kind'] == kind], step)
-        loss_shares.extend(shares)
-        serving_tests.extend(served)
-        geometry.add(frame if bool(valid.all()) else frame[valid])
-    return {'version': 3, **geometry.document(), 'map_areas': geometry.map_areas(map_areas), 'shares': loss_shares,
+        loaded = map_areas.loaded() if hasattr(map_areas, 'loaded') else []
+        parts.append({'kind': kind, 'shares': shares, 'serving_tests': served, 'countries': loaded[read:],
+                      'places': points_loss.contributions(frame if bool(valid.all()) else frame[valid])})
+        read = len(loaded)
+    return parts
+
+
+def points_loss_document(parts: Iterable[dict], map_areas=None, *, apart: bool = False) -> dict:
+    """The Points Lost Map of the CDR types of ``parts`` (points_loss_parts), put together in their order: the same map
+    as working them out one after the other, whichever process worked each out. ``apart``: the parts were worked out
+    by processes of their own, and the map draws the countries they read, in their order (with the countries of
+    ``map_areas`` otherwise)."""
+    if map_areas is None:
+        from src.modules.map_areas import area_index
+        map_areas = area_index(None)
+    geometry = points_loss.AreaGeometry()
+    loss_shares: list[dict] = []
+    serving_tests: list[dict] = []
+    countries: dict[str, list[str]] = {}
+    for part in parts:
+        loss_shares.extend(part['shares'])
+        serving_tests.extend(part['serving_tests'])
+        geometry.apply(part['places'])
+        for code, names in part.get('countries', []):
+            countries.setdefault(code, names)
+    areas = map_areas.document_of(countries.items(), geometry.used_areas) if apart else geometry.map_areas(map_areas)
+    return {'version': 3, **geometry.document(), 'map_areas': areas, 'shares': loss_shares,
             'serving_tests': serving_tests}
+
+
+def calculate_points_loss(
+    frames: dict[str, pd.DataFrame], levels: Iterable[str] = ('Operator',), configuration: dict | None = None,
+    operator_mappings: dict[str, str] | None = None, map_areas=None, time_split: str | None = None,
+    progress_callback=None,
+) -> dict:
+    """The Points Lost Map of a scoring, as ``calculate_scoring`` places it, without calculating the scores.
+
+    It reads the same rows but skips what only the scores need (the All Environments KPIs and the scoring of each
+    KPI), so a result calculated from the Scoring History gets its map in a fraction of the time.
+    ``progress_callback(share, step)`` follows the KPIs mapped (share from 0 to 1), CDR type by CDR type.
+    """
+    if map_areas is None:
+        from src.modules.map_areas import area_index
+        map_areas = area_index(None)
+    return points_loss_document(points_loss_parts(frames, levels, configuration, operator_mappings, map_areas, time_split,
+                                                  progress_callback), map_areas)
 
 
 def finish_scoring(

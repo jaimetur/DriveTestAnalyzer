@@ -538,13 +538,23 @@ class AreaIndex:
             place(located & names.isna(), code)
         return pd.DataFrame({'name': names, 'country': owners})
 
+    def loaded(self) -> list[tuple[str, list[str]]]:
+        """The countries whose polygons were read, in that order, with the names of their areas."""
+        with self._lock:
+            return [(code, names) for code, (names, _tree) in self._trees.items()]
+
     def document(self, used: Iterable[str]) -> dict[str, Any]:
         """The countries of the used areas, the polygons of those not shipped with the application, the
         outlines of the countries and the countries without Map Areas (coloured as a whole)."""
+        return self.document_of(self.loaded(), used)
+
+    def document_of(self, loaded: Iterable[tuple[str, list[str]]], used: Iterable[str]) -> dict[str, Any]:
+        """``document`` for the countries ``loaded`` (see loaded): those read by the processes that placed the tests
+        (see saved_filters._draw_points_loss_apart), in the order they read them."""
         used = set(used)
         boundaries: dict[str, list] = {}
         countries = []
-        for code, (names, _tree) in self._trees.items():
+        for code, names in loaded:
             if not used.intersection(names):
                 continue
             label, rings_of, bundled = self.sources[code]

@@ -324,3 +324,43 @@ def test_results_without_the_tests_of_each_place_keep_one_ranking():
     assert 'rate_tests' not in city and 'rate' not in city['areas'][0]
     titles = _titles(export_scoring_powerpoint(job, result, TEMPLATE))
     assert 'Points Lost per City — Vodafone UK' in titles and not any('per 1,000 tests' in title for title in titles)
+
+
+def test_the_map_of_cdr_types_put_together_from_their_contributions_is_the_one_added_at_once():
+    import numpy as np
+
+    rng = np.random.default_rng(5)
+    city, region, site = (points_loss.AREA_COLUMN.format(field) for field in ('City', 'Region', points_loss.SITE))
+
+    def frame(rows: int, cities: list[str]) -> pd.DataFrame:
+        return pd.DataFrame({
+            points_loss.LATITUDE: rng.uniform(50, 56, rows), points_loss.LONGITUDE: rng.uniform(-5, 1, rows),
+            city: rng.choice(cities, rows), region: rng.choice(['North', 'South', None], rows),
+            points_loss.PLACE: rng.choice([True, False], rows),
+            site: rng.choice(['EE\x1eS1', 'EE\x1eS2', None], rows)})
+
+    # London fills part of its 60 points with the first CDR type, the rest from the others; Leeds only shows later.
+    frames = [frame(40, ['London']), frame(3000, ['London', 'Leeds']), frame(7, ['Leeds', 'York'])]
+    added = points_loss.AreaGeometry()
+    for each in frames:
+        added.add(each)
+    applied = points_loss.AreaGeometry()
+    for each in frames:
+        # As a process sends it: only the points some room takes.
+        applied.apply(points_loss.compact_contribution(points_loss.contributions(each)))
+    assert applied.document() == added.document()
+    assert applied.used_areas == added.used_areas
+    assert len(applied.areas['City']['London']['points']) == points_loss.MAX_AREA_POINTS
+
+
+def test_the_points_of_an_area_sent_to_another_process_are_those_of_all_its_tests():
+    import numpy as np
+
+    for count in (1, 7, 59, 60, 61, 119, 120, 121, 1000, 12345):
+        latitudes, longitudes = np.linspace(50, 51, count), np.linspace(-1, 0, count)
+        whole = points_loss._AreaPoints(latitudes, longitudes)
+        compact = points_loss._AreaPoints(latitudes.copy(), longitudes.copy())
+        compact.compact()
+        assert len(compact.latitudes) <= count
+        for room in range(1, points_loss.MAX_AREA_POINTS + 1):
+            assert compact.take(room) == whole.take(room)

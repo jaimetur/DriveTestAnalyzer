@@ -623,6 +623,135 @@ def _value_counts_by(keys: Any, values: pd.Series, count: int) -> list[list[tupl
     return by_key
 
 
+class _AreaPoints:
+    """The positions of the tests of an area in a frame, in the order of its rows, from which the map takes up to the
+    points its area has room for (see AreaGeometry.apply)."""
+
+    __slots__ = ('count', 'positions', 'latitudes', 'longitudes')
+
+    def __init__(self, latitudes: Any, longitudes: Any) -> None:
+        self.count = len(latitudes)
+        self.positions = None
+        self.latitudes = latitudes
+        self.longitudes = longitudes
+
+    def take(self, room: int) -> list[list[float]]:
+        """Up to ``room`` points, evenly spread over the tests."""
+        import numpy as np
+
+        wanted = np.arange(0, self.count, max(1, self.count // room))[:room]
+        if self.positions is not None:
+            wanted = np.searchsorted(self.positions, wanted)
+        return [[round(float(latitude), 4), round(float(longitude), 4)]
+                for latitude, longitude in zip(self.latitudes[wanted].tolist(), self.longitudes[wanted].tolist())]
+
+    def compact(self) -> None:
+        """Keep only the positions some room takes (to send the contribution to another process)."""
+        import numpy as np
+
+        if self.positions is None:
+            self.positions = np.unique(np.concatenate([
+                np.arange(0, self.count, max(1, self.count // room))[:room] for room in range(1, MAX_AREA_POINTS + 1)]))
+            self.latitudes = np.ascontiguousarray(self.latitudes[self.positions])
+            self.longitudes = np.ascontiguousarray(self.longitudes[self.positions])
+
+
+def contributions(frame: pd.DataFrame) -> dict[str, Any] | None:
+    """What the tests of a frame give the map (AreaGeometry.apply adds it): the map areas used, a background sample, the
+    tests, sums of positions and counts of each area, and the serving sites and stretches; None without located tests.
+    It depends on the frame alone, so the frames of several CDR types can be worked out apart (each in its process)."""
+    import numpy as np
+
+    if LATITUDE not in frame or LONGITUDE not in frame:
+        return None
+    # Only the columns of the places are copied.
+    frame = frame[[column for column in frame.columns if column in _PLACE_COLUMNS]]
+    located = frame[frame[LATITUDE].between(-90, 90) & frame[LONGITUDE].between(-180, 180)
+                    & ~((frame[LATITUDE] == 0) & (frame[LONGITUDE] == 0))]
+    if located.empty:
+        return None
+    map_area = AREA_COLUMN.format(AREA)
+    used = [str(name) for name in located[map_area].dropna().unique()] if map_area in located else []
+    step = max(1, len(located) // 1500)
+    sampled = located[[LATITUDE, LONGITUDE]].iloc[::step]
+    background = [[round(float(latitude), 4), round(float(longitude), 4)]
+                  for latitude, longitude in sampled.iloc[:MAX_BACKGROUND_POINTS].itertuples(index=False)]
+    areas = []
+    for field in AREA_FIELDS:
+        column = AREA_COLUMN.format(field)
+        if column not in located:
+            continue
+        # Each area in the order of its name, with its tests together in the order of the rows.
+        codes, names = _area_codes(located[column])
+        order = np.argsort(codes, kind='stable')
+        sizes = np.bincount(codes, minlength=len(names))
+        ends = np.cumsum(sizes)
+        starts = ends - sizes
+        latitudes = located[LATITUDE].to_numpy(dtype=float)[order]
+        longitudes = located[LONGITUDE].to_numpy(dtype=float)[order]
+        places = (np.bincount(codes[located[PLACE].fillna(True).astype(bool).to_numpy()], minlength=len(names))
+                  if PLACE in located else sizes)
+        counted = {}
+        if field == 'City':
+            # The map areas of the tests of each City or route (to show it alone on the map), the vendors of the
+            # cells that served them, and their Regions (performance owners), settings and modes.
+            for key, source_column in (('area_tests', AREA_COLUMN.format(AREA)), ('vendor_tests', AREA_COLUMN.format(VENDOR)),
+                                       ('region_tests', AREA_COLUMN.format('Region')), ('setting_tests', SETTING),
+                                       ('mode_tests', MODE)):
+                if source_column in located:
+                    counted[key] = _value_counts_by(codes, located[source_column], len(names))
+        field_areas = []
+        for position, area in enumerate(names):
+            low, high = int(starts[position]), int(ends[position])
+            field_areas.append({
+                'name': str(area), 'counted': {key: by_area[position] for key, by_area in counted.items()},
+                'latitude_sum': float(latitudes[low:high].sum()), 'longitude_sum': float(longitudes[low:high].sum()),
+                'tests': high - low, 'places': int(places[position]),
+                'points': _AreaPoints(latitudes[low:high], longitudes[low:high])})
+        areas.append((field, field_areas))
+    return {'used_areas': used, 'seen': len(sampled), 'background': background, 'areas': areas,
+            'places': _place_contributions(located)}
+
+
+def compact_contribution(contribution: dict[str, Any] | None) -> dict[str, Any] | None:
+    """A contribution holding only the points the map can take from it (to send it to another process)."""
+    if contribution is not None:
+        for _field, areas in contribution['areas']:
+            for area in areas:
+                area['points'].compact()
+    return contribution
+
+
+def _place_contributions(located: pd.DataFrame) -> list[tuple]:
+    """The position of every serving site and route stretch, with its network, Vendor and City: per field, the names
+    in their order, the sums of their latitudes and longitudes, their tests and their labels."""
+    found = []
+    for field in (SITE, STRETCH):
+        column = AREA_COLUMN.format(field)
+        if column not in located:
+            continue
+        rows = located[located[column].notna()]
+        if rows.empty:
+            continue
+        columns = {LATITUDE: 'sum', LONGITUDE: 'sum'}
+        categorical = isinstance(rows[column].dtype, pd.CategoricalDtype)
+        # A Categorical groups by its codes (the same groups, in the same order, as its text).
+        grouped = rows.groupby(rows[column].cat.codes if categorical else rows[column].astype(str), sort=False)
+        sums = grouped.agg(columns)
+        counts = grouped.size()
+        labels = {}
+        for label_field in ((VENDOR, 'City', 'Region') if field == SITE else (VENDOR, 'Region')):
+            label_column = AREA_COLUMN.format(label_field)
+            if label_column in rows:
+                pairs = rows[[column, label_column]].dropna()
+                labels[label_field] = _most_common(pairs if categorical and isinstance(
+                    pairs[label_column].dtype, pd.CategoricalDtype) else pairs.astype(str), column, label_column)
+        names = ([str(rows[column].cat.categories[code]) for code in sums.index.tolist()] if categorical
+                 else sums.index.tolist())
+        found.append((field, names, sums[LATITUDE].tolist(), sums[LONGITUDE].tolist(), counts.tolist(), labels))
+    return found
+
+
 class AreaGeometry:
     """Centroids, route points and a background sample of the test locations."""
 
@@ -636,100 +765,39 @@ class AreaGeometry:
         self.used_areas: set[str] = set()
 
     def add(self, frame: pd.DataFrame) -> None:
-        import numpy as np
+        self.apply(contributions(frame))
 
-        if LATITUDE not in frame or LONGITUDE not in frame:
+    def apply(self, contribution: dict[str, Any] | None) -> None:
+        """Add what the tests of a frame give the map (see contributions): the contributions of several frames, applied
+        in their order, give what adding the frames in that order gives."""
+        if contribution is None:
             return
-        # Only the columns of the places are copied.
-        frame = frame[[column for column in frame.columns if column in _PLACE_COLUMNS]]
-        located = frame[frame[LATITUDE].between(-90, 90) & frame[LONGITUDE].between(-180, 180)
-                        & ~((frame[LATITUDE] == 0) & (frame[LONGITUDE] == 0))]
-        if located.empty:
-            return
-        map_area = AREA_COLUMN.format(AREA)
-        if map_area in located:
-            self.used_areas.update(str(name) for name in located[map_area].dropna().unique())
-        step = max(1, len(located) // 1500)
-        for latitude, longitude in located[[LATITUDE, LONGITUDE]].iloc[::step].itertuples(index=False):
-            self._seen += 1
-            if len(self.background) < MAX_BACKGROUND_POINTS:
-                self.background.append([round(float(latitude), 4), round(float(longitude), 4)])
-        for field in AREA_FIELDS:
-            column = AREA_COLUMN.format(field)
-            if column not in located:
-                continue
-            # Each area in the order of its name, with its tests together in the order of the rows.
-            codes, names = _area_codes(located[column])
-            order = np.argsort(codes, kind='stable')
-            sizes = np.bincount(codes, minlength=len(names))
-            ends = np.cumsum(sizes)
-            starts = ends - sizes
-            latitudes = located[LATITUDE].to_numpy(dtype=float)[order]
-            longitudes = located[LONGITUDE].to_numpy(dtype=float)[order]
-            places = (np.bincount(codes[located[PLACE].fillna(True).astype(bool).to_numpy()], minlength=len(names))
-                      if PLACE in located else sizes)
-            counted = {}
-            if field == 'City':
-                # The map areas of the tests of each City or route (to show it alone on the map), the vendors of the
-                # cells that served them, and their Regions (performance owners), settings and modes.
-                for key, source_column in (('area_tests', AREA_COLUMN.format(AREA)), ('vendor_tests', AREA_COLUMN.format(VENDOR)),
-                                           ('region_tests', AREA_COLUMN.format('Region')), ('setting_tests', SETTING),
-                                           ('mode_tests', MODE)):
-                    if source_column in located:
-                        counted[key] = _value_counts_by(codes, located[source_column], len(names))
-            for position, area in enumerate(names):
-                entry = self.areas[field].setdefault(str(area), {
+        self.used_areas.update(contribution['used_areas'])
+        self._seen += contribution['seen']
+        self.background.extend(contribution['background'][:max(0, MAX_BACKGROUND_POINTS - len(self.background))])
+        for field, areas in contribution['areas']:
+            for area in areas:
+                entry = self.areas[field].setdefault(area['name'], {
                     'latitude_sum': 0.0, 'longitude_sum': 0.0, 'tests': 0, 'places': 0, 'points': [], 'area_tests': {}})
-                for key, by_area in counted.items():
+                for key, pairs in area['counted'].items():
                     counts = entry.setdefault(key, {})
-                    for name, count in by_area[position]:
+                    for name, count in pairs:
                         if key in ('area_tests', 'vendor_tests') or (name and name != NOT_SPECIFIED):
                             counts[name] = counts.get(name, 0) + count
-                low, high = int(starts[position]), int(ends[position])
-                entry['latitude_sum'] += float(latitudes[low:high].sum())
-                entry['longitude_sum'] += float(longitudes[low:high].sum())
-                entry['tests'] += high - low
-                entry['places'] += int(places[position])
+                entry['latitude_sum'] += area['latitude_sum']
+                entry['longitude_sum'] += area['longitude_sum']
+                entry['tests'] += area['tests']
+                entry['places'] += area['places']
                 room = MAX_AREA_POINTS - len(entry['points'])
                 if room > 0:
-                    step = max(1, (high - low) // room)
-                    entry['points'].extend([round(float(lat), 4), round(float(lon), 4)] for lat, lon
-                                           in zip(latitudes[low:high:step][:room].tolist(),
-                                                  longitudes[low:high:step][:room].tolist()))
-
-        self._add_places(located)
-
-    def _add_places(self, located: pd.DataFrame) -> None:
-        """The position of every serving site and route stretch, with its network, Vendor and City."""
-        for field in (SITE, STRETCH):
-            column = AREA_COLUMN.format(field)
-            if column not in located:
-                continue
-            rows = located[located[column].notna()]
-            if rows.empty:
-                continue
-            columns = {LATITUDE: 'sum', LONGITUDE: 'sum'}
-            categorical = isinstance(rows[column].dtype, pd.CategoricalDtype)
-            # A Categorical groups by its codes (the same groups, in the same order, as its text).
-            grouped = rows.groupby(rows[column].cat.codes if categorical else rows[column].astype(str), sort=False)
-            sums = grouped.agg(columns)
-            counts = grouped.size()
-            labels = {}
-            for label_field in ((VENDOR, 'City', 'Region') if field == SITE else (VENDOR, 'Region')):
-                label_column = AREA_COLUMN.format(label_field)
-                if label_column in rows:
-                    pairs = rows[[column, label_column]].dropna()
-                    labels[label_field] = _most_common(pairs if categorical and isinstance(
-                        pairs[label_column].dtype, pd.CategoricalDtype) else pairs.astype(str), column, label_column)
+                    entry['points'].extend(area['points'].take(room))
+        for field, names, latitudes, longitudes, tests, labels in contribution['places']:
             entries = self.places[field]
-            names = ([str(rows[column].cat.categories[code]) for code in sums.index.tolist()] if categorical
-                     else sums.index.tolist())
-            for name, latitude, longitude, tests in zip(names, sums[LATITUDE].tolist(),
-                                                        sums[LONGITUDE].tolist(), counts.tolist()):
+            for name, latitude, longitude, count in zip(names, latitudes, longitudes, tests):
                 entry = entries.setdefault(name, {'latitude_sum': 0.0, 'longitude_sum': 0.0, 'tests': 0})
                 entry['latitude_sum'] += float(latitude)
                 entry['longitude_sum'] += float(longitude)
-                entry['tests'] += int(tests)
+                entry['tests'] += int(count)
                 for label_field, values in labels.items():
                     if name in values and label_field.casefold() not in entry:
                         entry[label_field.casefold()] = values[name]

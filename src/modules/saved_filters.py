@@ -1840,20 +1840,27 @@ def _filters_key(context_filters: dict[str, list[str]] | None) -> dict[str, list
 def _load_source_frames(
     repository: Repository, sources: list[dict[str, Any]], progress_callback, required_columns,
     context_filters: dict[str, list[str]] | None = None, *, nr_mode_campaigns: bool = False, columnar: bool = False,
+    kinds: Any = None, first_rows: dict[str, int] | None = None,
 ) -> dict[str, pd.DataFrame]:
     """The rows of the CDRs by type, with the context filters. With ``nr_mode_campaigns`` (NSA vs SA) each campaign
     names the NR Mode of its CDR and each row keeps it (``NR_MODE_COLUMN``), so the NSA and SA tests stay apart.
 
     With ``columnar``, when the columnar copies of the CDRs hold them, the rows are read from the copies of each CDR
-    type at once (cdr_store.read_kind_frame): the same rows and values, the text columns as Categoricals."""
+    type at once (cdr_store.read_kind_frame): the same rows and values, the text columns as Categoricals.
+
+    With ``kinds``, only the rows of those CDR types (the map of each type is worked out apart, see
+    _draw_points_loss_apart): every CDR type is not required then, and ``first_rows`` (when given) tells the place in
+    ``sources`` of the first CDR of each type with rows (the order of the types of the rows of every CDR type)."""
     from src.modules import cdr_store
     if columnar:
         if all(cdr_store.fresh_kind(repository.db_path, int(source['metadata']['dataset_id'])) for source in sources):
             try:
                 return _load_source_frames(repository, sources, progress_callback, required_columns, context_filters,
-                                           nr_mode_campaigns=nr_mode_campaigns, columnar=None)
+                                           nr_mode_campaigns=nr_mode_campaigns, columnar=None, kinds=kinds,
+                                           first_rows=first_rows)
             except _NotColumnar:
-                pass
+                if first_rows is not None:
+                    first_rows.clear()
         columnar = False
     parts_by_kind: dict[str, list[dict[str, Any]]] = {}
     frames_by_kind: dict[str, list[pd.DataFrame]] = {}
@@ -1870,6 +1877,8 @@ def _load_source_frames(
     exclusions = load_scope(repository)
     for index, source in enumerate(sources, start=1):
         dataset_id = int(source['metadata']['dataset_id'])
+        if kinds is not None and str(source['metadata']['kind']) not in kinds:
+            continue
         if id(source) not in with_rows:
             progress_callback(10 + round(index * 45 / total), f"Skipped {source['metadata']['name']} of other campaigns")
             continue
@@ -1920,7 +1929,7 @@ def _load_source_frames(
                 raise _NotColumnar()
             if not rowids:
                 if not active_filters and not excluded_call_lists:
-                    raise ValueError(f"Dataset '{source['metadata']['name']}' has no rows available for scoring.")
+                    raise _source_error(f"Dataset '{source['metadata']['name']}' has no rows available for scoring.", index)
                 progress_callback(10 + round(index * 45 / total), f"Skipped {source['metadata']['name']} with no matching rows")
                 continue
             part = {'dataset_id': dataset_id, 'selected': plan[0], 'rowids': rowids}
@@ -1931,6 +1940,8 @@ def _load_source_frames(
                     part['transforms'] = {campaign_column: partial(campaign_with_nr_mode, nr_mode=mode)}
                 part['constants'] = {NR_MODE_COLUMN: mode}
             parts_by_kind.setdefault(kind, []).append(part)
+            if first_rows is not None:
+                first_rows.setdefault(kind, index)
             progress_callback(10 + round(index * 45 / total), f"Loaded {source['metadata']['name']}")
             continue
         if missing_filter_fields:
@@ -1943,7 +1954,7 @@ def _load_source_frames(
             )
         if frame.empty:
             if not active_filters and not excluded_call_lists:
-                raise ValueError(f"Dataset '{source['metadata']['name']}' has no rows available for scoring.")
+                raise _source_error(f"Dataset '{source['metadata']['name']}' has no rows available for scoring.", index)
             progress_callback(10 + round(index * 45 / total), f"Skipped {source['metadata']['name']} with no matching rows")
             continue
         kind = str(source['metadata']['kind'])
@@ -1956,21 +1967,16 @@ def _load_source_frames(
                 ).where(frame[campaign_column].notna(), frame[campaign_column])
             frame[NR_MODE_COLUMN] = mode
         frames_by_kind.setdefault(kind, []).append(frame)
+        if first_rows is not None:
+            first_rows.setdefault(kind, index)
         progress_callback(10 + round(index * 45 / total), f"Loaded {source['metadata']['name']}")
 
     if columnar is None:
         frames = {kind: cdr_store.read_kind_frame(repository.db_path, kind, parts)[0] for kind, parts in parts_by_kind.items()}
         frames_by_kind = {kind: [frame] for kind, frame in frames.items()}
-    # (Filters that only leave values out, such as the operators the Operator Maps exclude, choose no CDR type.)
-    if any(ValueSet(values).includes for values in active_filters.values()):
-        labels = {'data': 'Data', 'voice': 'Voice', 'speech': 'Speech'}
-        missing_kinds = [kind for kind in ('data', 'voice', 'speech') if not frames_by_kind.get(kind)]
-        if missing_kinds:
-            missing_labels = ', '.join(labels[kind] for kind in missing_kinds)
-            raise ValueError(
-                'Scoring context filters leave no matching processed rows for every required CDR type. '
-                f'Missing: {missing_labels}.'
-            )
+    missing = _missing_kinds(context_filters, frames_by_kind) if kinds is None else None
+    if missing:
+        raise ValueError(missing)
     return {
         kind: frames[0] if columnar is None else pd.concat(frames, ignore_index=True, sort=False)
         for kind, frames in frames_by_kind.items()
@@ -1979,6 +1985,27 @@ def _load_source_frames(
 
 class _NotColumnar(Exception):
     """The columnar copy cannot give the rows of a CDR (see _load_source_frames)."""
+
+
+def _source_error(message: str, index: int) -> ValueError:
+    """The error of the CDR at ``index`` (from 1) of the sources read: of several CDR types read apart, the error of the
+    first CDR is the one reading them all at once would give."""
+    error = ValueError(message)
+    error.source_index = index
+    return error
+
+
+def _missing_kinds(context_filters: dict[str, list[str]] | None, frames_by_kind: Any) -> str | None:
+    """Why the context filters leave no rows: every CDR type is required when a filter chooses values (filters that only
+    leave values out, such as the operators the Operator Maps exclude, choose no CDR type); None when nothing is missing."""
+    if not any(ValueSet(values).includes for values in _normalize_context_filters(context_filters).values() if values):
+        return None
+    labels = {'data': 'Data', 'voice': 'Voice', 'speech': 'Speech'}
+    missing_kinds = [kind for kind in ('data', 'voice', 'speech') if not frames_by_kind.get(kind)]
+    if not missing_kinds:
+        return None
+    return ('Scoring context filters leave no matching processed rows for every required CDR type. '
+            f"Missing: {', '.join(labels[kind] for kind in missing_kinds)}.")
 
 
 def _attach_mapping_boundaries(repository: Repository, dataset_ids: list[int], result: dict[str, Any]) -> None:
@@ -2537,76 +2564,220 @@ def _points_loss_of(repository: Repository, saved_filter: dict[str, Any], source
     return points_loss
 
 
-# The Points Lost Map is drawn in a process of its own (points_loss_worker), unless this is switched off (the tests
+# The Points Lost Map is drawn in processes of their own (points_loss_worker), unless this is switched off (the tests
 # draw it in theirs).
 POINTS_LOSS_APART = os.environ.get('DTA_POINTS_LOSS_IN_PROCESS') != '1'
-# The maps of the methodologies of a Saved Filter drawn at the same time, at most.
-POINTS_LOSS_PROCESSES = max(1, int(os.environ.get('DTA_POINTS_LOSS_PROCESSES') or 3))
+# The processes drawing Points Lost Maps at the same time, at most (each methodology of a Saved Filter draws its Data
+# tests in one and its other tests in another).
+POINTS_LOSS_PROCESSES = max(1, int(os.environ.get('DTA_POINTS_LOSS_PROCESSES') or 4))
+
+
+class _ProcessRoom:
+    """Room for the processes drawing Points Lost Maps: at most POINTS_LOSS_PROCESSES at the same time, a free place
+    going to the waiting process with the most tests (so the longest ones start first)."""
+
+    def __init__(self, size: int) -> None:
+        self._free = size
+        self._waiting: dict[int, tuple[int, int]] = {}
+        self._count = 0
+        self._lock = threading.Lock()
+
+    def ticket(self, rows: int) -> int:
+        """A place in the queue for a process drawing ``rows`` tests."""
+        with self._lock:
+            self._count += 1
+            self._waiting[self._count] = (-int(rows), self._count)
+            return self._count
+
+    def take(self, ticket: int) -> bool:
+        """Whether the process of ``ticket`` can start now (it then holds a place until give_back)."""
+        with self._lock:
+            if not self._free or ticket not in self._waiting or min(self._waiting.values()) != self._waiting[ticket]:
+                return False
+            del self._waiting[ticket]
+            self._free -= 1
+            return True
+
+    def give_back(self) -> None:
+        with self._lock:
+            self._free += 1
+
+    def drop(self, tickets: Iterable[int]) -> None:
+        """Leave the queue (a process that will not start)."""
+        with self._lock:
+            for ticket in tickets:
+                self._waiting.pop(ticket, None)
+
+
+_points_loss_room = _ProcessRoom(POINTS_LOSS_PROCESSES)
+# The places in the queue of the groups of CDR types of the methodology a thread draws (see _complete_points_loss).
+_points_loss_tickets = threading.local()
+
+
+def _points_loss_rows(sources: list[dict[str, Any]], context_filters: dict[str, list[str]], kinds: Iterable[str]) -> int:
+    """The tests of the CDRs of ``kinds`` a methodology reads (its campaigns), roughly: the rows of those CDRs."""
+    read = _campaign_sources(sources, _normalize_context_filters(context_filters))
+    return sum(int(source['metadata'].get('row_count') or 0) for source in read if str(source['metadata']['kind']) in kinds)
+
+
+def _points_loss_kind_groups(sources: list[dict[str, Any]]) -> list[list[str]]:
+    """The CDR types of a methodology drawn together in a process: Data (most of the tests) apart from the others."""
+    kinds = list(dict.fromkeys(str(source['metadata']['kind']) for source in sources))
+    if 'data' in kinds and len(kinds) > 1:
+        return [['data'], [kind for kind in kinds if kind != 'data']]
+    return [kinds] if kinds else []
 
 
 def _draw_points_loss_apart(repository: Repository, saved_filter: dict[str, Any], sources: list[dict[str, Any]],
                             configuration: dict[str, Any], context_filters: dict[str, list[str]],
                             progress: Callable[[float, str], None]) -> Any:
-    """draw_points_loss in a process of its own: ``progress`` follows its steps (and is called every half second, so a
-    stop or the work waiting is noticed at once: the process is ended when it raises)."""
+    """draw_points_loss in processes of their own (draw_points_loss_parts: Data in one, the other CDR types in another,
+    see _points_loss_kind_groups), put together in the order of the CDR types: the same map. ``progress`` follows their
+    steps (and is called every half second, so a stop or the work waiting is noticed at once: the processes are ended
+    when it raises)."""
     import pickle
     import queue
     import subprocess
     import sys
     import tempfile
     from src.config import PROJECT_ROOT
+    from src.modules import scoring as scoring_engine
     from src.modules.points_loss_worker import MESSAGE
 
     with tempfile.TemporaryDirectory(prefix='points-loss-') as folder:
-        result_path = Path(folder) / 'map.pickle'
-        errors_path = Path(folder) / 'errors.txt'
         registry = repository.workspace_registry_db_path
         payload = {'db_path': str(Path(repository.db_path).resolve()),
                    'global_db_path': str(Path(repository.global_db_path).resolve()),
                    'registry_db_path': str(Path(registry).resolve()) if registry else '',
                    'saved_filter': saved_filter, 'sources': sources, 'configuration': configuration,
-                   'context_filters': context_filters, 'result_path': str(result_path)}
-        with open(errors_path, 'wb') as errors:
-            process = subprocess.Popen([sys.executable, '-m', 'src.modules.points_loss_worker'], cwd=str(PROJECT_ROOT),
-                                       stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=errors)
+                   'context_filters': context_filters}
+        planned = getattr(_points_loss_tickets, 'tickets', None) or {}
+        tasks = [{'kinds': kinds, 'result': Path(folder) / f'part-{index}.pickle', 'errors': Path(folder) / f'errors-{index}.txt',
+                  'process': None, 'reader': None, 'slot': False, 'done': False, 'progress': 0.0,
+                  'step': 'Reading the rows of the tests', 'error': None, 'at': None,
+                  'ticket': planned.get(tuple(kinds)) or _points_loss_room.ticket(_points_loss_rows(sources, context_filters, kinds))}
+                 for index, kinds in enumerate(_points_loss_kind_groups(sources))]
         messages: queue.Queue = queue.Queue()
 
-        def read_messages() -> None:
-            for line in process.stdout:
-                text = line.decode('utf-8', 'replace')
-                if text.startswith(MESSAGE):
-                    messages.put(json.loads(text[len(MESSAGE):]))
+        def start(index: int) -> None:
+            task = tasks[index]
+            with open(task['errors'], 'wb') as errors:
+                process = subprocess.Popen([sys.executable, '-m', 'src.modules.points_loss_worker'], cwd=str(PROJECT_ROOT),
+                                           stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=errors)
+            task['process'] = process
 
-        reader = threading.Thread(target=read_messages, name='points-loss-progress', daemon=True)
-        reader.start()
-        state = {'progress': 0.0, 'step': 'Reading the rows of the tests', 'error': None}
-        try:
-            process.stdin.write(pickle.dumps(payload, protocol=pickle.HIGHEST_PROTOCOL))
+            def read_messages() -> None:
+                for line in process.stdout:
+                    text = line.decode('utf-8', 'replace')
+                    if text.startswith(MESSAGE):
+                        messages.put((index, json.loads(text[len(MESSAGE):])))
+                # Its output closed: the process ended.
+                messages.put((index, None))
+
+            task['reader'] = threading.Thread(target=read_messages, name='points-loss-progress', daemon=True)
+            task['reader'].start()
+            process.stdin.write(pickle.dumps({**payload, 'kinds': task['kinds'], 'result_path': str(task['result'])},
+                                             protocol=pickle.HIGHEST_PROTOCOL))
             process.stdin.close()
-            while True:
+
+        def start_waiting() -> None:
+            # The processes start as the other maps being drawn leave room.
+            for index, task in enumerate(tasks):
+                if task['process'] is None and _points_loss_room.take(task['ticket']):
+                    task['slot'] = True
+                    start(index)
+
+        options = None
+        try:
+            start_waiting()
+            # (Read while the processes draw: the map areas the parts are put together with.)
+            options = _engine_kwargs(repository, saved_filter, configuration, scoring_engine.calculate_scoring)
+            while not all(task['done'] for task in tasks):
+                start_waiting()
                 try:
-                    message = messages.get(timeout=.5)
+                    index, message = messages.get(timeout=.05 if any(task['process'] is None for task in tasks) else .5)
                 except queue.Empty:
-                    message = None
-                if message is not None:
-                    if 'error' in message:
-                        state['error'] = message['error']
+                    index, message = None, None
+                if index is not None:
+                    task = tasks[index]
+                    if message is None:
+                        task['process'].wait()
+                        task['done'] = True
+                        if task['slot']:
+                            task['slot'] = False
+                            _points_loss_room.give_back()
+                    elif 'error' in message:
+                        task['error'], task['at'] = message['error'], message.get('at')
                     else:
-                        state.update(progress=message['progress'], step=message['step'])
-                progress(state['progress'], state['step'])
-                if message is None and process.poll() is not None:
-                    break
+                        task.update(progress=message['progress'], step=message['step'])
+                running = [task for task in tasks if not task['done']]
+                progress(sum(task['progress'] for task in tasks) / max(1, len(tasks)),
+                         min(running, key=lambda task: task['progress'])['step'] if running else 'Putting the map together')
         except BaseException:
-            process.kill()
+            for task in tasks:
+                if task['process'] is not None and task['process'].poll() is None:
+                    task['process'].kill()
             raise
         finally:
-            process.wait()
-            reader.join(timeout=5)
-        if process.returncode != 0 or not result_path.exists():
-            detail = state['error'] or errors_path.read_text(encoding='utf-8', errors='replace').strip()[-500:]
-            raise RuntimeError(detail or f'The Points Lost Map process ended with code {process.returncode}')
-        with open(result_path, 'rb') as handle:
-            return pickle.load(handle)
+            for task in tasks:
+                if task['process'] is not None:
+                    task['process'].wait()
+                    task['reader'].join(timeout=5)
+                if task['slot']:
+                    task['slot'] = False
+                    _points_loss_room.give_back()
+            _points_loss_room.drop(task['ticket'] for task in tasks if task['process'] is None)
+        failed = [task for task in tasks if task['process'].returncode != 0 or not task['result'].exists()]
+        if failed:
+            # The error of the first CDR read, as reading every CDR type at once gives it.
+            task = min(failed, key=lambda task: task['at'] if task['at'] is not None else float('inf'))
+            detail = task['error'] or task['errors'].read_text(encoding='utf-8', errors='replace').strip()[-500:]
+            raise RuntimeError(detail or f"The Points Lost Map process ended with code {task['process'].returncode}")
+        parts, first_rows = [], {}
+        for task in tasks:
+            with open(task['result'], 'rb') as handle:
+                drawn = pickle.load(handle)
+            parts.extend(drawn['parts'])
+            first_rows.update(drawn['first_rows'])
+    missing = _missing_kinds(context_filters, first_rows)
+    if missing:
+        raise RuntimeError(missing)
+    parts.sort(key=lambda part: first_rows[part['kind']])
+    return scoring_engine.points_loss_document(parts, options.get('map_areas'), apart=True)
+
+
+def draw_points_loss_parts(repository: Repository, saved_filter: dict[str, Any], sources: list[dict[str, Any]],
+                           configuration: dict[str, Any], context_filters: dict[str, list[str]], kinds: list[str],
+                           progress: Callable[[float, str], None] = lambda *_args: None) -> dict[str, Any]:
+    """The Points Lost Map of the CDR types ``kinds`` of a Saved Filter with one methodology, before the parts of every CDR
+    type are put together (scoring.points_loss_document): the part of each type and the place in ``sources`` of the first
+    CDR of each type with rows (the order of the types)."""
+    from src.modules import scoring as scoring_engine
+    from src.modules.scoring_points_loss import compact_contribution
+
+    for source in sources:
+        source['levels'] = list(saved_filter['levels'])
+    total = max(1, sum(str(source['metadata']['kind']) in kinds for source in sources))
+    read = 0
+
+    def cdr_read(*_args: Any) -> None:
+        nonlocal read
+        read += 1
+        progress(read * 45 / total, f'Reading the rows of the tests: CDR {min(read + 1, total)} of {total}'
+                 if read < total else 'Mapping the tests')
+
+    progress(0, f'Reading the rows of the tests: CDR 1 of {total}')
+    first_rows: dict[str, int] = {}
+    frames = _load_source_frames(repository, sources, cdr_read, scoring_engine.load_input_columns, context_filters,
+                                 nr_mode_campaigns=_compares_nr_modes(saved_filter), columnar=True, kinds=set(kinds),
+                                 first_rows=first_rows)
+    options = _engine_kwargs(repository, saved_filter, configuration, scoring_engine.calculate_scoring)
+    parts = scoring_engine.points_loss_parts(
+        frames, saved_filter['levels'], configuration=configuration, operator_mappings=options.get('operator_mappings'),
+        map_areas=options.get('map_areas'), progress_callback=lambda share, step: progress(45 + share * 55, step))
+    for part in parts:
+        compact_contribution(part['places'])
+    return {'parts': parts, 'first_rows': first_rows}
 
 
 def draw_points_loss(repository: Repository, saved_filter: dict[str, Any], sources: list[dict[str, Any]],
@@ -2680,6 +2851,12 @@ def _complete_points_loss(repository: Repository, saved_filter: dict[str, Any], 
             shares = [0.0] * len(groups)
             shares_guard = threading.Lock()
 
+            # Every group of CDR types of every methodology waits in the queue of the processes from the start, so the
+            # ones with the most tests start first (see _draw_points_loss_apart).
+            planned = [{tuple(kinds): _points_loss_room.ticket(_points_loss_rows(
+                sources, {**context_filters, 'Campaign': list(group['campaigns'])}, kinds))
+                for kinds in _points_loss_kind_groups(sources)} for group in groups]
+
             def draw(index: int, group: dict[str, Any]) -> Any:
                 name = group.get('profile_name') or 'Methodology'
 
@@ -2688,14 +2865,22 @@ def _complete_points_loss(repository: Repository, saved_filter: dict[str, Any], 
                         shares[index] = max(shares[index], float(value))
                         overall = sum(shares) / len(groups) * 0.97
                     progress(overall, f'Methodology {index + 1} of {len(groups)} ({name}): {step}')
-                return _points_loss_of(repository, saved_filter, [dict(source) for source in sources],
-                                       validate_scoring_configuration(group['configuration']),
-                                       {**context_filters, 'Campaign': list(group['campaigns'])}, engine,
-                                       group_progress, cached_only=cached_only)
-            with ThreadPoolExecutor(max_workers=min(POINTS_LOSS_PROCESSES, len(groups)),
-                                    thread_name_prefix='points-loss-methodology') as pool:
-                futures = [pool.submit(draw, index, group) for index, group in enumerate(groups)]
-                maps = [future.result() for future in futures]
+                _points_loss_tickets.tickets = planned[index]
+                try:
+                    return _points_loss_of(repository, saved_filter, [dict(source) for source in sources],
+                                           validate_scoring_configuration(group['configuration']),
+                                           {**context_filters, 'Campaign': list(group['campaigns'])}, engine,
+                                           group_progress, cached_only=cached_only)
+                finally:
+                    _points_loss_tickets.tickets = None
+                    _points_loss_room.drop(planned[index].values())
+            try:
+                # (A thread per methodology, waiting for its processes: every place in the queue has its thread.)
+                with ThreadPoolExecutor(max_workers=len(groups), thread_name_prefix='points-loss-methodology') as pool:
+                    futures = [pool.submit(draw, index, group) for index, group in enumerate(groups)]
+                    maps = [future.result() for future in futures]
+            finally:
+                _points_loss_room.drop(ticket for tickets in planned for ticket in tickets.values())
             if any(item is None for item in maps):
                 return False
             points_loss = _merge_points_loss(maps)

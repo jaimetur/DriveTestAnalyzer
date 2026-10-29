@@ -1,4 +1,4 @@
-"""The Points Lost Map of one methodology drawn in a process of its own (see saved_filters._points_loss_of).
+"""The Points Lost Map of one methodology, or of some of its CDR types, drawn in a process of its own (see saved_filters._draw_points_loss_apart).
 
 The application keeps answering while the rows of the tests are read and mapped, a stop ends the process at once, and
 its memory is given back when it ends. The parent sends the inputs pickled on stdin; the process reports its progress
@@ -41,15 +41,21 @@ def main() -> int:
 
         repository = Repository(Path(payload['db_path']), Path(payload['global_db_path']),
                                 Path(payload['registry_db_path']) if payload['registry_db_path'] else None)
-        points_loss = saved_filters.draw_points_loss(
-            repository, payload['saved_filter'], payload['sources'], payload['configuration'],
-            payload['context_filters'], saved_filters._scoring_engine(),
-            lambda value, step: _send({'progress': float(value), 'step': str(step)}))
+        progress = lambda value, step: _send({'progress': float(value), 'step': str(step)})  # noqa: E731
+        if payload.get('kinds') is not None:
+            # The parts of some CDR types, put together by the parent (see saved_filters._draw_points_loss_apart).
+            points_loss = saved_filters.draw_points_loss_parts(
+                repository, payload['saved_filter'], payload['sources'], payload['configuration'],
+                payload['context_filters'], payload['kinds'], progress)
+        else:
+            points_loss = saved_filters.draw_points_loss(
+                repository, payload['saved_filter'], payload['sources'], payload['configuration'],
+                payload['context_filters'], saved_filters._scoring_engine(), progress)
         with open(payload['result_path'], 'wb') as handle:
             pickle.dump(points_loss, handle, protocol=pickle.HIGHEST_PROTOCOL)
-    except Exception as exc:  # The parent shows the error of the map.
+    except Exception as exc:  # The parent shows the error of the map (of the first CDR with one: ``at``).
         traceback.print_exc()
-        _send({'error': str(exc) or type(exc).__name__})
+        _send({'error': str(exc) or type(exc).__name__, 'at': getattr(exc, 'source_index', None)})
         return 1
     return 0
 

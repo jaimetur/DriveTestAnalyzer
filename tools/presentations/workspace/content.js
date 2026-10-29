@@ -57,12 +57,12 @@ module.exports = {
     { id: 'columnar-impact', type: 'impact', section: 'Datasets', footer: 'Columnar store', kicker: 'Columnar store · the impact', title: 'Minutes became seconds',
       items: [
         { icon: 'TbChartDots3', value: '79×', label: 'Network Insights', before: 1031, now: 13, beforeText: '1,031 s', nowText: '13 s', text: 'An analysis of every UK CDR.' },
-        { icon: 'TbMapPin', value: '200×+', label: 'Points Lost Map', before: 3600, now: 16, beforeText: '> 1 h', nowText: '16 s', text: '9 campaigns and 3 methodologies, drawn side by side.' },
+        { icon: 'TbMapPin', value: '300×+', label: 'Points Lost Map', before: 3600, now: 11, beforeText: '> 1 h', nowText: '11 s', text: '9 campaigns and 3 methodologies, each CDR type drawn side by side.' },
         { icon: 'TbRocket', value: '63×', label: 'NQ call map', before: 349, now: 5.5, beforeText: '349 s', nowText: '5.5 s', text: 'The Failure Map of a call; its details at once.' },
         { icon: 'TbFeather', value: '10×', label: 'Workspace DB', before: 51, now: 5, beforeText: '51 GB', nowText: '5 GB', text: 'Lighter: the rows live in the copies.' },
       ],
       note: 'Measured on the UK workspace, with identical results: the same rows, values and order, only faster. PPT Designs open in seconds, with nothing prepared in the background.',
-      notes: 'The same analyses, much faster: Network Insights 79 times, the Points Lost Map more than 200 times, the map of a Non-Qualified Call 63 times, and a workspace database ten times smaller. Every result is the same as before.' },
+      notes: 'The same analyses, much faster: Network Insights 79 times, the Points Lost Map more than 300 times, the map of a Non-Qualified Call 63 times, and a workspace database ten times smaller. Every result is the same as before.' },
     { id: 'inspection', type: 'tiles', section: 'Datasets', footer: 'Inspection and enrichment', kicker: 'Dataset inspection and enrichment', title: 'See every row, enrich every CDR', columns: 3,
       tiles: [
         { mini: 'table', title: 'Dataset Preview', text: 'The persisted rows of a dataset in their own view, page by page.' },
