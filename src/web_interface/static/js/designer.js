@@ -65,6 +65,16 @@
   // The slide set of the open Design
   // ------------------------------------------------------------------
   const dirty = () => state.templateDirty || state.designDirty || state.keepTemplateChanges;
+  // JSON with the keys of every object in order: the same slide set gives the same text however it was edited.
+  const stable = value => JSON.stringify(value ?? null, (_key, item) => (item && typeof item === 'object' && !Array.isArray(item)
+    ? Object.fromEntries(Object.keys(item).sort().map(key => [key, item[key]])) : item));
+  // A change made back to what is saved (by hand, not only by undo) leaves nothing to save.
+  function settleDirty() {
+    if (!state.saved) return;
+    if (state.templateDirty && stable(state.template) === state.saved.template) state.templateDirty = false;
+    if (state.designDirty && !state.templateDirty
+        && (state.detached ? stable(state.slide_set) === state.saved.slide_set : stable(state.overrides) === state.saved.overrides)) state.designDirty = false;
+  }
   const editedSlides = () => state.slide_set?.slides || [];
   const templateSlides = () => state.template?.slides || [];
   const findSlide = (slide_set, id) => (slide_set?.slides || []).find(slide => slide.id === id) || null;
@@ -99,6 +109,8 @@
     state.detached = Boolean(info.detached);
     state.rights = info.rights || {design: false, template: false};
     state.templateDirty = state.designDirty = state.keepTemplateChanges = false;
+    // What is saved, to tell a change undone or made back by hand from one to save (see settleDirty).
+    state.saved = {template: stable(state.template), overrides: stable(state.overrides), slide_set: stable(state.slide_set)};
     state.history = []; state.future = [];
     if (state.detached || !state.rights.template) state.scope = 'design';
     else if (!state.rights.design) state.scope = 'template';
@@ -132,6 +144,7 @@
         state.summary = result.summary;
         if (!findSlide(state.slide_set, state.slide)) state.slide = editedSlides()[0]?.id || '';
         if (state.element && !findElement(state.slide_set, state.element)) state.element = '';
+        settleDirty();
         viewer().showSlides(result, {sourceSlide: state.slide});
         state.syncedToken = viewer().state().prepared?.token;
         renderDesigner();
@@ -2088,7 +2101,7 @@
     const rights = state.info?.rights;
     button.hidden = !rights || !(rights.design || rights.template);
     button.classList.toggle('is-active', state.active);
-    button.textContent = state.active ? 'Designing' : 'Designer';
+    button.textContent = state.active ? 'Close Designer' : 'Designer';
     button.title = state.active ? 'Close the Designer (it asks about the changes not saved)' : 'Edit the slides and charts of this Design and of its template';
     lockViewerActions(state.active);
   }
