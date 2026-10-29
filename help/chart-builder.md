@@ -1,6 +1,6 @@
 # Chart Builder
 
-Chart Builder is the ad-hoc chart editor. It uses the PPT Designer individual Canvas chart viewer embedded directly in the page and the shelves of the chart builder of the [Designer](ppt-designer.md#designer), while its definition remains temporary: it never changes a stored template or creates a PowerPoint report. **Add to PPT Design…** puts the chart on a slide of a Design you can design.
+Chart Builder is the ad-hoc chart editor. It uses the PPT Designer individual Canvas chart viewer embedded directly in the page and the shelves of the chart builder of the [Designer](ppt-designer.md#designer), while its definition remains temporary: it creates no PowerPoint report, and changes a PPT Design or a PPT Template only when **Add to PPT Design or Template…** puts the chart, with its format, on one of their slides.
 
 > [!NOTE]
 > **Temporary exploration.** Changes here create an ad-hoc chart. They do not modify a Report Template or generate a PowerPoint report.
@@ -56,9 +56,9 @@ The Source Dataset selector is filtered by CDR Type and shows only processed dat
 
 The embedded viewer provides the same Canvas rendering, semantic hover details, zoom, panning and refresh behaviour as an individual PPT Designer chart. Its chart downloads as a PNG image or copies to the clipboard as a screenshot from the floating buttons at the top right corner of its card (see [Images of charts and tables](web-interface.md#images-of-charts-and-tables)); App Events records each one as `export_chart_builder_image`, with the CDR type and CDRs used.
 
-## Add to PPT Design
+## Add to PPT Design or Template
 
-**Add to PPT Design…** lists the Designs whose slides you can edit (admins and super-admins any, a user-editor those they created) and their slides with their free places: the chart goes, with its format and its One chart per (a KPI Card as a KPI card), to a free place of the slide chosen, or to a new slide at the end of the Design. It becomes part of that Design only (one of its differences from its template, see [Designer](ppt-designer.md#designer)) and reads the CDRs the Design chooses, not those chosen here. App Events record it as `design_chart_added`.
+**Add to PPT Design or Template…** lists the PPT Designs and the PPT Templates whose slides you can edit (admins and super-admins any, a user-editor those they created) and their slides with their free places: the chart goes, with its format and its One chart per (a KPI Card as a KPI card), to a free place of the slide chosen, or to a new slide at the end. In a **PPT Design** it becomes part of that Design only (one of its differences from its template, see [Designer](ppt-designer.md#designer)); in a **PPT Template** every PPT Design that follows the template shows it. Either way it reads the CDRs each Design chooses, not those chosen here. App Events record it as `design_chart_added` or `template_chart_added`.
 
 ## Example
 

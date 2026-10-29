@@ -49,7 +49,7 @@ module.exports = {
     { id: 'designer', type: 'split', section: 'Workflow', footer: 'Designer', kicker: 'Designer', title: 'Change the slides on screen',
       visual: 'builder',
       points: [
-        { icon: 'TbLayoutGrid', title: 'Slides and layouts', text: 'New, duplicate, hide or optional slides; places resized, merged or split; titles with fields.' },
+        { icon: 'TbLayoutGrid', title: 'Slides and layouts', text: 'Layouts ready to use, not only grids; places resized, merged or split; titles with fields.' },
         { icon: 'TbChartBar', title: 'Charts as in Tableau', text: 'Fields dragged to Measure, Rows, Columns, Legend and Filters; Chart Type at the edge.' },
         { icon: 'TbBrush', title: 'Format on the chart', text: 'Series colours and lines, legend and label text, axis ranges; copy and paste a format.' },
         { icon: 'TbTemplate', title: 'This Design or its template', text: 'Its own differences, or the template for every Design; Save as template.' },
@@ -86,7 +86,7 @@ module.exports = {
         { title: 'Designer', text: 'slides and charts on screen' }, { title: 'Generate PPT', text: 'the presentation and its files' },
       ],
       modules: ['Workspace', 'Reporting', 'Builders', 'CDR Analysis'],
-      note: 'Reporting includes Designs in its Bundle Report Templates and scheduled jobs; Chart Builder uses the same chart viewer and puts its charts on the slides of a Design.',
-      notes: 'A PPT Design turns one template, or a blank start, into the deck of every campaign. Reporting schedules them and Chart Builder shares their chart viewer and adds its charts to their slides.' },
+      note: 'Reporting includes Designs in its Bundle Report Templates and scheduled jobs; Chart Builder uses the same editor and puts its charts, with their format, on the slides of a Design or a template.',
+      notes: 'A PPT Design turns one template, or a blank start, into the deck of every campaign. Reporting schedules them and Chart Builder shares their editor and adds its charts to their slides or to their templates.' },
   ],
 };

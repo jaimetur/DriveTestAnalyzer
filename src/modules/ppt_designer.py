@@ -3929,7 +3929,58 @@ def install_design_routes(core):
                       for slide in resolved.get('slides') or []
                       if (slide.get('kind') or 'content') == 'content' and not slide.get('hidden') and not slide.get('optional_off')]
             result.append({'id': design_id, 'name': str(raw.get('name') or ''), 'nr_mode': design_nr_mode(raw), 'slides': slides})
-        return {'designs': sorted(result, key=lambda item: item['name'].casefold())}
+        # The PPT Templates whose slides the user can edit (a chart added to one reaches every Design that follows it).
+        templates = []
+        for row in task_repository.list_report_templates():
+            if not can_edit_template_slides(user, row):
+                continue
+            try:
+                slide_set = design_slides.slides_from_entries(core.load_template_catalogue(bytes(row['content'] or b''), task_repository=task_repository))
+            except (ValueError, HTTPException):
+                continue
+            templates.append({'name': str(row['name']), 'slides': [
+                {'id': slide['id'], 'title': slide.get('title') or 'Slide', 'free': len(free_places(slide))}
+                for slide in slide_set.get('slides') or [] if (slide.get('kind') or 'content') == 'content']})
+        return {'designs': sorted(result, key=lambda item: item['name'].casefold()),
+                'templates': sorted(templates, key=lambda item: item['name'].casefold())}
+
+    def added_element(payload: DesignSlidesAddChart, **extra) -> dict[str, Any]:
+        """The chart of Chart Builder as an element of slides: its columns, its format and its One chart per, and a KPI Card as
+        a KPI card with its settings."""
+        element = {field: payload.element.get(field, False if field in {'exclude_null_empty', 'exclude_zero'} else '')
+                   for field in design_slides.ELEMENT_FIELDS}
+        element.update(id=design_slides.new_id('e'), kind='chart', **extra)
+        if str(element['chart_type']).casefold() == design_slides.KIND_CHART_TYPES['kpi'].casefold():
+            element['kind'] = 'kpi'
+            if isinstance(payload.element.get('kpi_card'), dict):
+                element['kpi_card'] = payload.element['kpi_card']
+        for name in ('style', 'repeat'):
+            if isinstance(payload.element.get(name), dict) and payload.element[name]:
+                element[name] = payload.element[name]
+        element['legend_position'] = str(element['legend_position'] or '').casefold()
+        if not str(element['kpi']).strip() or not str(element['cdr_source']).strip():
+            raise HTTPException(400, 'The chart needs a source and a KPI.')
+        return element
+
+    def place_added_element(slide_set: dict[str, Any], element: dict[str, Any], payload: DesignSlidesAddChart, label: str) -> str:
+        """The element on the first free place of the slide chosen, or on a new slide at the end; the title of that slide."""
+        if payload.slide_id:
+            slide = next((item for item in slide_set.get('slides') or [] if item['id'] == payload.slide_id), None)
+            if slide is None or (slide.get('kind') or 'content') != 'content':
+                raise HTTPException(404, f'The slide is no longer in the {label}.')
+            places = free_places(slide)
+            if not places:
+                raise HTTPException(409, f'The slide "{slide.get("title") or "Slide"}" has no free place: choose another slide or a new one.')
+            element['place'] = places[0]
+            slide.setdefault('elements', []).append(element)
+            return slide.get('title') or 'Slide'
+        title = payload.slide_title.strip() or element['chart_title'] or 'New slide'
+        element['place'] = 0
+        slide_set.setdefault('slides', []).append({
+            'id': design_slides.new_id('s'), 'kind': 'content', 'title': title, 'subtitle': '',
+            'layout': 'Title + 1 rows + 1 columns + comments down', 'optional': False, 'elements': [element],
+        })
+        return title
 
     @app.post('/api/ppt-designer/{design_id}/add-chart')
     def add_chart_to_design(design_id: str, payload: DesignSlidesAddChart, user=Depends(design_editor_user)):
@@ -3941,38 +3992,8 @@ def install_design_routes(core):
         definition = stored_design(design_id, task_repository)
         template = None if definition.own_slides else template_with_ids(definition.template, task_repository, user.username)[0]
         _base, resolved, _report = design_slides_state(definition, task_repository, template)
-        element = {field: payload.element.get(field, False if field in {'exclude_null_empty', 'exclude_zero'} else '')
-                   for field in design_slides.ELEMENT_FIELDS}
-        element.update(id=design_slides.new_id('e'), kind='chart', origin='design')
-        # A KPI Card of Chart Builder is a KPI card of the Design, with its settings; a chart keeps its format and its
-        # One chart per.
-        if str(element['chart_type']).casefold() == design_slides.KIND_CHART_TYPES['kpi'].casefold():
-            element['kind'] = 'kpi'
-            if isinstance(payload.element.get('kpi_card'), dict):
-                element['kpi_card'] = payload.element['kpi_card']
-        for name in ('style', 'repeat'):
-            if isinstance(payload.element.get(name), dict) and payload.element[name]:
-                element[name] = payload.element[name]
-        element['legend_position'] = str(element['legend_position'] or '').casefold()
-        if not str(element['kpi']).strip() or not str(element['cdr_source']).strip():
-            raise HTTPException(400, 'The chart needs a source and a KPI.')
-        if payload.slide_id:
-            slide = next((item for item in resolved.get('slides') or [] if item['id'] == payload.slide_id), None)
-            if slide is None or (slide.get('kind') or 'content') != 'content':
-                raise HTTPException(404, 'The slide is no longer in the Design.')
-            places = free_places(slide)
-            if not places:
-                raise HTTPException(409, f'The slide "{slide.get("title") or "Slide"}" has no free place: choose another slide or a new one.')
-            element['place'] = places[0]
-            slide.setdefault('elements', []).append(element)
-            title = slide.get('title') or 'Slide'
-        else:
-            title = payload.slide_title.strip() or element['chart_title'] or 'New slide'
-            element['place'] = 0
-            resolved.setdefault('slides', []).append({
-                'id': design_slides.new_id('s'), 'kind': 'content', 'title': title, 'subtitle': '',
-                'layout': 'Title + 1 rows + 1 columns + comments down', 'optional': False, 'elements': [element],
-            })
+        element = added_element(payload, origin='design')
+        title = place_added_element(resolved, element, payload, 'Design')
         if definition.own_slides:
             write_design_slides(design_id, task_repository, own_slides=checked_slide_set(resolved, 'Design'))
         else:
@@ -3984,6 +4005,36 @@ def install_design_routes(core):
             'chart': element['chart_title'] or element['kpi'], 'chart_type': element['chart_type'], 'source': element['cdr_source'],
         }))
         return {'design': definition.name, 'slide': title}
+
+    @app.post('/api/ppt-designer/templates/{template_name}/add-chart')
+    def add_chart_to_template(template_name: str, payload: DesignSlidesAddChart, user=Depends(design_editor_user)):
+        """Add to PPT Template: the chart becomes part of the template, and so of every PPT Design that follows it."""
+        workspace_key()
+        task_repository = bound_repository()
+        template, row = template_with_ids(template_name, task_repository, user.username)
+        if template is None:
+            raise HTTPException(404, f'The PPT Template "{template_name}" is no longer in the workspace.')
+        if not can_edit_template_slides(user, row):
+            raise HTTPException(403, designer_refusal('PPT Template'))
+        slide_set = copy.deepcopy(template)
+        element = added_element(payload)
+        title = place_added_element(slide_set, element, payload, 'PPT Template')
+        content = design_slides.slides_csv(checked_slide_set(slide_set))
+        previous_content = bytes(row['content'] or b'')
+        try:
+            core.persist_report_template_for_request(template_name, content, updated_by=user.username)
+        except TimeoutError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        reconcile_template_slide_comments(template_name, core.parse_catalog_csv(previous_content, validate_filters=False),
+                                          core.parse_catalog_csv(content), task_repository)
+        invalidate_workspace_chart_models(task_repository.db_path)
+        task_repository.add_log(user.username, 'template_chart_added', json.dumps({
+            'template': template_name, 'slide': title, 'new_slide': not payload.slide_id,
+            'designs': sum(1 for item in read_designs(task_repository).values()
+                           if isinstance(item, dict) and not item.get('own_slides') and item.get('template') == template_name),
+            'chart': element['chart_title'] or element['kpi'], 'chart_type': element['chart_type'], 'source': element['cdr_source'],
+        }))
+        return {'template': template_name, 'slide': title}
 
     def ensure_design_drafts(task_repository) -> None:
         with task_repository.connection() as connection:

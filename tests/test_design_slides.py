@@ -416,6 +416,26 @@ def test_the_chart_builder_draws_one_chart_per_value_with_its_format_and_adds_th
     assert (element['style'], element['repeat']) == (style, {'field': 'City'})
 
 
+def test_the_chart_builder_adds_a_chart_with_its_format_to_a_ppt_template_and_every_design_following_it(client):
+    setup(client)
+    targets = client.get('/api/ppt-designer/targets').json()
+    template = next(item for item in targets['templates'] if item['name'] == 'Design test')
+    assert [slide['title'] for slide in template['slides']] == ['Comparison', 'Next']
+    style = {'legend': {'position': 'bottom'}}
+    chart = {'chart_title': 'Rate by city', 'cdr_source': 'CDR-Data', 'kpi': 'Mean_Data_Rate', 'chart_type': 'Average Vertical Bars',
+             'rows_split': 'City', 'columns_split': '', 'legend': '', 'filters': '', 'legend_position': 'Top', 'style': style}
+    added = client.post('/api/ppt-designer/templates/Design test/add-chart', json={'element': chart})
+    assert added.status_code == 200, added.text
+    assert added.json() == {'template': 'Design test', 'slide': 'Rate by city'}
+    for design_id in ('design-a', 'design-b'):
+        slides = client.get(f'/api/ppt-designer/{design_id}/slides').json()['slide_set']['slides']
+        assert [slide['title'] for slide in slides] == ['Comparison', 'Next', 'Rate by city']
+        assert slides[-1]['elements'][0]['style'] == style
+    event = logged('template_chart_added')[-1]
+    assert (event['template'], event['slide'], event['new_slide'], event['designs']) == ('Design test', 'Rate by city', True, 2)
+    assert client.post('/api/ppt-designer/templates/Missing/add-chart', json={'element': chart}).status_code == 404
+
+
 def test_the_format_of_a_chart_travels_in_its_row_and_reaches_its_model(client):
     definition = setup(client)
     body = client.get('/api/ppt-designer/design-a/slides?edit=1').json()

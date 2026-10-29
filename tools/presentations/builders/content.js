@@ -11,12 +11,12 @@ module.exports = {
       notes: 'The Builders explore the processed CDRs of the workspace without changing anything: Chart Builder for ad-hoc charts, Query Builder for read-only SQL.' },
     { id: 'chart', type: 'split', section: 'Chart Builder', footer: 'Chart Builder', kicker: 'Chart Builder', title: 'Any chart, in seconds', visual: 'builder',
       points: [
-        { icon: 'TbChartBar', title: 'Workflow', text: 'A CDR type, its rows, columns and values, and their aggregation.' },
-        { icon: 'TbEye', title: 'Interactive Preview', text: 'The Canvas chart viewer of PPT Designer, in the page.' },
+        { icon: 'TbChartBar', title: 'The editor of the Designer', text: 'Shelves, Chart Type, One chart per and KPI Card, as in PPT Designer.' },
+        { icon: 'TbBrush', title: 'Format on the chart', text: 'Series, legend, labels and axes, from the panel or the chart itself.' },
         { icon: 'TbFilter', title: 'Filter Builder', text: 'Searchable fields and operators for every filter.' },
-        { icon: 'TbLock', title: 'Temporary', text: 'It never changes a stored template nor creates a PowerPoint report.' },
+        { icon: 'TbTemplate', title: 'To a PPT Design or Template', text: 'Temporary, until added with its format to a Design or a template.' },
       ],
-      notes: 'Chart Builder is the ad-hoc chart editor. It uses the chart viewer of PPT Designer while its definition stays temporary: it never changes a template or creates a report.' },
+      notes: 'Chart Builder is the ad-hoc chart editor with the editor of the Designer: shelves, Chart Type, One chart per, KPI Card and the Format of the chart, in its panel or on the chart itself. Its definition stays temporary until Add to PPT Design or Template puts the chart, with its format, on a slide of a Design or of a template, which every Design that follows it shows.' },
     { id: 'query', type: 'split', section: 'Query Builder', footer: 'Query Builder', kicker: 'Query Builder', title: 'Exact numbers with SQL', visual: 'sql',
       points: [
         { icon: 'TbListCheck', title: 'Assistance Mode', text: 'The common queries assembled with form controls.' },
