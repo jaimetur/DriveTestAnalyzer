@@ -19,6 +19,13 @@ def rf_source_columns(kind: str) -> set[str]:
     return {column for logical in RF_CATALOG_FIELDS.values() for column in RF_FIELD_ALIASES[logical][kind]}
 
 
+def rf_number_term(column_sql: str) -> str:
+    """An RF field of one column in the union: its numbers as they are, any other value as text, NULL when blank (see
+    design_column_cache._number_terms). The charts read the numbers without a round trip through text."""
+    return (f"CASE WHEN typeof({column_sql}) IN ('integer', 'real') THEN {column_sql} "
+            f"ELSE NULLIF(TRIM(CAST({column_sql} AS TEXT)), '') END")
+
+
 def pool_rf_frames(frames: dict[str, pd.DataFrame]) -> pd.DataFrame:
     """Keep every observation and normalize radio fields without averaging types."""
     normalized = []
@@ -74,7 +81,7 @@ def rf_union_source(repository, kinds: list[str]) -> tuple[str, list[str]]:
             if target in RF_CATALOG_FIELDS:
                 candidates = [lookup[column_identity(candidate)] for candidate in RF_FIELD_ALIASES[RF_CATALOG_FIELDS[target]][kind]
                               if column_identity(candidate) in lookup]
-                terms = [f"NULLIF(TRIM(CAST({quote(column)} AS TEXT)), '')" for column in candidates]
+                terms = [rf_number_term(quote(column)) for column in candidates]
                 expression = f'COALESCE({", ".join(terms)})' if len(terms) > 1 else (terms[0] if terms else 'NULL')
             elif target == 'CDR_Type':
                 expression = "'" + kind.title() + "'"

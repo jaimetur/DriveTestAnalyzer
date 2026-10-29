@@ -301,48 +301,59 @@ def test_the_design_columns_of_the_copies_are_those_of_the_combined_table(client
     assert dcc.build_from_copies(database, segments[0], ['"No such column"']) is None
 
 
-def test_the_rf_text_and_day_columns_of_the_copies_are_those_sqlite_gives(client, tmp_path, monkeypatch):
+def test_the_rf_number_and_day_columns_of_the_copies_are_those_sqlite_gives(client, tmp_path, monkeypatch):
     import numpy as np
     import sqlite3
     from src.modules import design_column_cache as dcc
+    from src.modules.rf_catalog_source import rf_number_term
 
-    # Numbers SQLite writes as Python does and others it rounds to 15 digits (or writes with an exponent), text with
-    # spaces or blank, and times whose day is (or is not) that of their first 10 characters.
+    # Numbers with up to 17 digits (kept as they are, not written as text), text with spaces or blank, numbers and text
+    # in one column, and times whose day is (or is not) that of their first 10 characters.
     latitudes = [51.5, 51.123456789012344, 0.30000000000000004, 1e-05, 1e15, 100.0, None, -0.5, 0.0001, 123456789012345.0]
     texts = [' a ', '', '  ', 'x', None, 'b ', ' ', 'c', None, '']
-    times = ['2026-02-24 10:00:00', '2026-02-24T23:59:59.999', '2026-02-30 10:00:00', '2026-02-24 24:00:00',
+    mixed = [7, ' -95.5 ', None, 9.5, 'eight', '', 51.123456789012344, None, 'x\x00y', 3]
+    times = ['2026-02-24 10:00:00.052000', '2026-02-24T23:59:59.999', '2026-02-30 10:00:00', '2026-02-24 24:00:00',
              '2026-02-24 10:00:00Z', '2026-02-24', None, '2026-02-24 23:59:59.9999999', 'not a time', '2026-13-01 10:00:00']
     data = add_cdr(tmp_path, 'rf.csv', 'data', pd.DataFrame({
         'Operator': ['EE'] * 10, 'Test_Start_Latitude': latitudes, 'Text_Field': texts, 'Count_Field': list(range(-3, 7)),
         'Local_Time': times, 'event_start_time': ['2026-02-24 10:00:00'] * 10}))
-    requested = ['Operator', 'Test_Start_Latitude', 'Text_Field', 'Count_Field', 'Local_Time', 'event_start_time']
+    with core.repository.connection() as connection:
+        # A column without a declared type: numbers and text.
+        connection.execute(f'ALTER TABLE dataset_rows_{data} ADD COLUMN "Mixed_Field"')
+        connection.executemany(f'UPDATE dataset_rows_{data} SET "Mixed_Field" = ? WHERE rowid = ?',
+                               [(value, row) for row, value in enumerate(mixed, start=1)])
+    requested = ['Operator', 'Test_Start_Latitude', 'Text_Field', 'Count_Field', 'Mixed_Field', 'Local_Time', 'event_start_time']
     core.repository.copy_dataset_rows_to_reporting(data, 'data', requested)
     copy_everything()
     database = core.repository.db_path
     source = dcc.CacheSource('data', 'reporting_rows_data', (), True)
 
-    def text(column: str) -> str:
-        return f"NULLIF(TRIM(CAST(\"{column}\" AS TEXT)), '')"
-    expressions = [f'({text("Test_Start_Latitude")})', text('Text_Field'), f'({text("Count_Field")})',
-                   f'(COALESCE({text("Text_Field")}, {text("Test_Start_Latitude")}))',
-                   f'COALESCE({text("Test_Start_Latitude")}, {text("Text_Field")}, {text("Count_Field")})',
+    def number(column: str) -> str:
+        return rf_number_term(f'"{column}"')
+    expressions = [f'({number("Test_Start_Latitude")})', number('Text_Field'), f'({number("Count_Field")})',
+                   number('Mixed_Field'), f'(COALESCE({number("Text_Field")}, {number("Test_Start_Latitude")}))',
+                   f'COALESCE({number("Test_Start_Latitude")}, {number("Text_Field")}, {number("Count_Field")})',
+                   f'COALESCE({number("Test_Start_Latitude")}, {number("Count_Field")})',
                    'date(CAST(("Local_Time") AS TEXT))', 'date(CAST("Local_Time" AS TEXT))', 'upper(CAST("Local_Time" AS TEXT))']
     cache = dcc.ColumnCache(tmp_path / 'cache', memory_bytes=10 ** 8, disk_bytes=10 ** 8)
     segment = dcc.Segment(source, data, 'v')
     sqlite_parts = cache._build(lambda: sqlite3.connect(database), segment, [dcc.ROWID, dcc.ORDER_DATE, *expressions], None)
-    # The copy holds numbers and text as such, and Python writes the texts it is certain of (SQLite the others).
-    raw, _length = cdr_store._raw(database, 'data', data, ['Test_Start_Latitude', 'Text_Field', 'Local_Time'])
-    assert [raw[column][0] for column in ('Test_Start_Latitude', 'Text_Field', 'Local_Time')] == ['real', 'text', 'text']
+    # The copy holds numbers and text as such, and Python works out the text it is certain of (SQLite the other).
+    columns = ('Test_Start_Latitude', 'Text_Field', 'Count_Field', 'Mixed_Field', 'Local_Time')
+    raw, _length = cdr_store._raw(database, 'data', data, list(columns))
+    assert [raw[column][0] for column in columns] == ['real', 'text', 'int', 'object', 'text']
     answers = []
-    sqlite_text = dcc._sqlite_text
-    monkeypatch.setattr(dcc, '_sqlite_text', lambda value: answers.append(answer := sqlite_text(value)) or answer)
+    term_value = dcc._number_term_value
+    monkeypatch.setattr(dcc, '_number_term_value', lambda value: answers.append(answer := term_value(value)) or answer)
     copy_parts = dcc.build_from_copies(database, segment, expressions)
-    assert dcc._UNKNOWN in answers and '51.5' in answers and 'a' in answers
+    assert dcc._UNKNOWN in answers and 'a' in answers and '-95.5' in answers and 9.5 in answers
     for expression, part in sqlite_parts.items():
         assert copy_parts[expression][0] == part[0], expression
         assert list(dcc.decode_objects(copy_parts[expression], np.arange(dcc.part_length(part)))) == list(
             dcc.decode_objects(part, np.arange(dcc.part_length(part)))), expression
-    assert len(set(list(dcc.decode_objects(copy_parts[f'({text("Test_Start_Latitude")})'], np.arange(10))))) == 10
+    # The reals are read as they are, with all their digits.
+    assert copy_parts[f'({number("Test_Start_Latitude")})'][0] == 'float'
+    assert list(dcc.decode_objects(copy_parts[f'({number("Test_Start_Latitude")})'], np.arange(10))) == latitudes
 
 
 def test_the_coalesced_columns_of_a_cdr_are_those_sqlite_gives(client, tmp_path):

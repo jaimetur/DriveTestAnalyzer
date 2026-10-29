@@ -40,14 +40,17 @@ BUILD_BATCH_SIZE = 24
 ORDER_MODES = ('dataset_rowid', 'dataset_date_rowid', 'rowid')
 
 _TOKEN_PATTERN = re.compile(r"'(?:[^']|'')*'|\"((?:[^\"]|\"\")*)\"")
-# The RF projections of the CDR fields (rf_catalog_source) read a column as text, NULL when blank, or the first of several
-# such columns that has a text: NULLIF(TRIM(CAST("column" AS TEXT)), '') or COALESCE of them (see _text_terms).
-_TEXT_TERM = re.compile(r'NULLIF\(TRIM\(CAST\("((?:[^"]|"")+)" AS TEXT\)\), \'\'\)')
+# The RF projections of the CDR fields (rf_catalog_source.rf_number_term) read the numbers of a column as they are and any
+# other value as text, NULL when blank, or the first of several such columns that has a value: COALESCE of them (see
+# _number_terms).
+_NUMBER_TERM = re.compile(r'CASE WHEN typeof\("((?:[^"]|"")+)"\) IN \(\'integer\', \'real\'\) THEN "\1" '
+                          r'ELSE NULLIF\(TRIM\(CAST\("\1" AS TEXT\)\), \'\'\) END')
 # The day of a time (ORDER_DATE_SQL), its column maybe in parentheses.
 _DATE_OF_TEXT = re.compile(r'date\(CAST\((?:"((?:[^"]|"")+)"|\("((?:[^"]|"")+)"\)) AS TEXT\)\)')
-# A date followed by a valid time of day, to the millisecond: SQLite gives it the day of its first 10 characters.
-_DAY_TIME = re.compile(r'\d{4}-\d{2}-\d{2}[ T](?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,3})?')
-# A value _sqlite_text cannot be certain of: SQLite works it out.
+# A date followed by a valid time of day: SQLite gives it the day of its first 10 characters. (Not the last moments of a
+# day written past the millisecond, which a rounding to the millisecond may take to the next day.)
+_DAY_TIME = re.compile(r'\d{4}-\d{2}-\d{2}[ T](?!23:59:59\.999\d)(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,20})?')
+# A value _number_term_value cannot be certain of: SQLite works it out.
 _UNKNOWN = object()
 
 
@@ -58,19 +61,19 @@ def _unwrapped(expression: str) -> str:
     return inner
 
 
-def _text_terms(expression: str) -> list[str] | None:
-    """The columns an RF text projection reads (one, or those of its COALESCE, in order); None for any other
-    expression."""
+def _number_terms(expression: str) -> list[tuple[str, str]] | None:
+    """The columns an RF projection reads and the term of each (one, or those of its COALESCE, in order); None for any
+    other expression."""
     inner = _unwrapped(expression)
     coalesce = inner.startswith('COALESCE(') and inner.endswith(')')
     body = inner[len('COALESCE('):-1] if coalesce else inner
-    names: list[str] = []
+    names: list[tuple[str, str]] = []
     position = 0
     while True:
-        match = _TEXT_TERM.match(body, position)
+        match = _NUMBER_TERM.match(body, position)
         if match is None:
             return None
-        names.append(match.group(1).replace('""', '"'))
+        names.append((match.group(1).replace('""', '"'), match.group(0)))
         position = match.end()
         if position == len(body):
             break
@@ -87,27 +90,14 @@ def _date_column(expression: str) -> str | None:
     return (match.group(1) or match.group(2)).replace('""', '"') if match else None
 
 
-def _sqlite_text(value: Any) -> Any:
-    """NULLIF(TRIM(CAST(value AS TEXT)), '') as SQLite gives it, where Python can be certain of it; _UNKNOWN otherwise.
-
-    Text loses its spaces at both ends (TRIM removes spaces only); an integer is written in decimal; a real number is
-    certain when Python writes it with at most 15 significant digits and without an exponent (from 1e-4 up to 1e15):
-    SQLite writes it rounded to 15 significant digits, which are those same digits, as Python writes it ('51.5', '100.0').
-    """
+def _number_term_value(value: Any) -> Any:
+    """The RF term of a value (see _number_terms) as SQLite gives it, where Python can be certain of it; _UNKNOWN
+    otherwise: a number as it is, text without its spaces at both ends (TRIM removes spaces only) and NULL when blank."""
     kind = type(value)
-    if kind is float:
-        # (Not zero, NaN or infinite. Up to 16 characters, a decimal point among them, hold at most 15 digits.)
-        if 1e-4 <= abs(value) < 1e15:
-            text = repr(value)
-            if len(text) <= 16 or len(text.replace('-', '').replace('.', '').lstrip('0').rstrip('0')) <= 15:
-                return text
-        return _UNKNOWN
-    if value is None:
-        return None
+    if kind is float or kind is int or value is None:
+        return value
     if kind is str:
         return _UNKNOWN if '\x00' in value else (value.strip(' ') or None)
-    if kind is int:
-        return str(value) if -2 ** 63 <= value < 2 ** 63 else _UNKNOWN
     return _UNKNOWN
 
 
@@ -213,8 +203,9 @@ def encode_values(values: np.ndarray) -> tuple:
     inferred = lib.infer_dtype(values, skipna=True)
     if inferred == 'empty':
         return ('none', length)
-    # (The types of the values are told apart in C: set(map(type, values)), not a generator over them.)
-    if inferred == 'floating' and set(map(type, values)) <= _FLOAT_TYPES:
+    # (The types of the values are told apart in C: set(map(type, values)), not a generator over them. Reals with NULL
+    # are inferred as mixed: their part holds NaN for NULL, as read_sql_query's frame holds them.)
+    if inferred in {'floating', 'mixed-integer-float'} and set(map(type, values)) <= _FLOAT_TYPES:
         return ('float', np.asarray(lib.maybe_convert_objects(values, try_float=True), dtype=np.float64))
     if inferred == 'integer' and set(map(type, values)) <= _INT_TYPES:
         nulls = np.fromiter((value is None for value in values), dtype=bool, count=length)
@@ -1064,12 +1055,8 @@ def _typed_part(raw: tuple[str, Any], order: np.ndarray) -> tuple:
         missing = np.isnan(array)
         if missing.all():
             return ('none', len(order))
-        if not missing.any():
-            return ('float', array)
-        # Reals with a missing value are kept as objects, as encode_values keeps them.
-        objects = array.astype(object)
-        objects[missing] = None
-        return encode_values(objects)
+        # (NaN for no value, as encode_values gives reals with NULL.)
+        return ('float', array)
     if tag == 'int':
         mask = values.isna().to_numpy()[order]
         if mask.all():
@@ -1213,58 +1200,80 @@ def build_from_copies(database_path: str | Path, segment: Segment, expressions: 
             distinct[name] = (codes, uniques)
         return distinct[name]
 
-    # (The combined row ids are integers: their part, as encode_values gives it.)
-    texts: dict[str, list[Any]] = {}
+    def number_rows(name: str, term: str) -> np.ndarray:
+        """The RF term of a column (see _number_terms) in each row: float64 (NaN for NULL) when the column holds reals
+        alone, its Python values otherwise (None for NULL). Text is worked out once per distinct value, in Python where
+        the answer is certain (see _number_term_value), by SQLite for the other values."""
+        column = columns[name]
+        if column is None:
+            return np.full(length, None, dtype=object)
+        if raw[column][0] == 'real':
+            return np.asarray(raw[column][1], dtype=np.float64)[order]
+        if raw[column][0] == 'int':
+            return column_values(name)
+        codes, uniques = distinct_values(name)
+        values = [_number_term_value(value) for value in uniques]
+        unknown = [index for index, value in enumerate(values) if value is _UNKNOWN]
+        if unknown:
+            memory = sqlite3.connect(':memory:')
+            try:
+                memory.execute(f'CREATE TABLE {quote_identifier(source.table)} ("__memory_rowid" INTEGER PRIMARY KEY, '
+                               f'{quote_identifier(name)})')
+                memory.executemany(f'INSERT INTO {quote_identifier(source.table)} VALUES (?, ?)',
+                                   ((index, uniques[index]) for index in unknown))
+                for index, value in memory.execute(f'SELECT "__memory_rowid", {term} FROM {quote_identifier(source.table)}'):
+                    values[index] = value
+            finally:
+                memory.close()
+        return np.asarray(values, dtype=object)[codes]
 
-    def text_values(name: str) -> list[Any]:
-        """NULLIF(TRIM(CAST(<column> AS TEXT)), '') of each distinct value of a column: worked out in Python where the
-        answer is certain (see _sqlite_text), by SQLite for the other values."""
-        if name not in texts:
-            uniques = distinct_values(name)[1]
-            values = [_sqlite_text(value) for value in uniques]
-            unknown = [index for index, value in enumerate(values) if value is _UNKNOWN]
-            if unknown:
-                memory = sqlite3.connect(':memory:')
-                try:
-                    memory.execute(f'CREATE TABLE {quote_identifier(source.table)} ("__memory_rowid" INTEGER PRIMARY KEY, '
-                                   f'{quote_identifier(name)})')
-                    memory.executemany(f'INSERT INTO {quote_identifier(source.table)} VALUES (?, ?)',
-                                       ((index, uniques[index]) for index in unknown))
-                    for index, text in memory.execute(
-                            f"SELECT \"__memory_rowid\", NULLIF(TRIM(CAST({quote_identifier(name)} AS TEXT)), '') "
-                            f'FROM {quote_identifier(source.table)}'):
-                        values[index] = text
-                finally:
-                    memory.close()
-            texts[name] = values
-        return texts[name]
+    def as_objects(rows: np.ndarray) -> np.ndarray:
+        if rows.dtype != np.float64:
+            return rows
+        objects = rows.astype(object)
+        objects[np.isnan(rows)] = None
+        return objects
 
     # (The combined row ids are integers: their part, as encode_values gives it.)
     built = {ROWID: ('int', combined_rowids.astype(np.int64)) if length else encode_values(combined_rowids.astype(object))}
     results: dict[str, tuple] = {}
     several: list[str] = []
-    coalesced: list[tuple[str, list[str]]] = []
+    numbered: list[tuple[str, list[tuple[str, str]]]] = []
     by_column: dict[str, list[str]] = {}
     for expression in wanted_expressions:
         names_of = referenced(expression)
-        terms = _text_terms(expression)
+        terms = _number_terms(expression)
         if len(names_of) == 1 and bare(expression, names_of[0]):
             column = columns[names_of[0]]
             results[expression] = _typed_part(raw[column], order) if column else encode_values(missing[1])
+        elif terms is not None:
+            numbered.append((expression, terms))
         elif len(names_of) == 1:
             by_column.setdefault(names_of[0], []).append(expression)
-        elif terms is not None and set(terms) == set(names_of):
-            coalesced.append((expression, terms))
         else:
             several.append(expression)
+    for expression, terms in numbered:
+        # An RF projection: in each row, the value of the first of its columns that has one (COALESCE).
+        chosen = None
+        for name, term in reversed(terms):
+            rows = number_rows(name, term)
+            if chosen is None:
+                chosen = rows
+            elif rows.dtype == np.float64 and chosen.dtype == np.float64:
+                chosen = np.where(np.isnan(rows), chosen, rows)
+            else:
+                rows = as_objects(rows)
+                chosen = np.where(pd.notna(rows), rows, as_objects(chosen))
+        if chosen.dtype == np.float64:
+            # Reals or NULL: their part, as encode_values gives it.
+            results[expression] = ('none', length) if np.isnan(chosen).all() else ('float', chosen)
+        else:
+            results[expression] = encode_values(chosen)
     for name, single in by_column.items():
         codes, uniques = distinct_values(name)
         evaluated, dated = [], []
         for expression in single:
-            if _text_terms(expression) == [name]:
-                # The column as text, NULL when blank (an RF projection, see _text_terms).
-                results[expression] = encode_by_codes(text_values(name), codes)
-            elif _date_column(expression) == name and (columns[name] is None or raw[columns[name]][0] == 'text'):
+            if _date_column(expression) == name and (columns[name] is None or raw[columns[name]][0] == 'text'):
                 dated.append(expression)
             else:
                 evaluated.append(expression)
@@ -1302,13 +1311,6 @@ def build_from_copies(database_path: str | Path, segment: Segment, expressions: 
             memory.close()
         for index, expression in enumerate(evaluated):
             results[expression] = encode_by_codes([row[index] for row in rows], codes)
-    for expression, terms in coalesced:
-        # COALESCE of columns as text (an RF projection): in each row, the text of the first column that has one.
-        chosen = None
-        for name in reversed(terms):
-            row_texts = np.asarray(text_values(name), dtype=object)[distinct_values(name)[0]]
-            chosen = row_texts if chosen is None else np.where(pd.notna(row_texts), row_texts, chosen)
-        results[expression] = encode_values(chosen)
     if several:
         several_names = list(dict.fromkeys(name for expression in several for name in referenced(expression)))
         # SQLite evaluates the expressions once for each distinct combination of the values (with their Python types)
