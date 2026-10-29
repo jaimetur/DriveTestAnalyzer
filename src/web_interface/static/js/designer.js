@@ -35,12 +35,6 @@
   const guarded = fn => async (...args) => { try { return await fn(...args); } catch (error) { report(error); return undefined; } };
 
   const SOURCES = [['CDR-Data', 'Data'], ['CDR-Voice', 'Voice'], ['CDR-Speech', 'Speech'], ['CDR-All', 'RF All']];
-  const CHART_TYPES = [
-    '100% Stacked Vertical Bars', 'Count Stacked Horizontal Bars', 'Distribution Stacked Vertical Bars',
-    'Threshold Stacked Vertical Bars', 'Average Vertical Bars', 'Median Vertical Bars', 'CDF Line', 'Multi KPI CDF Lines',
-    'Histogram Line', 'Histogram Bars', 'Scatter', 'Table', 'Dynamic Table', 'Map',
-  ];
-  const LEGEND_POSITIONS = [['', 'Default (Top)'], ['top', 'Top'], ['bottom', 'Bottom'], ['left', 'Left'], ['right', 'Right']];
   const LABEL_POSITIONS = [['', 'Default'], ['none', 'None'], ['top', 'Top'], ['up', 'Up'], ['middle', 'Middle'], ['down', 'Down']];
   const STRUCTURAL = {title: 'Title Slide', transition: 'Transition Slide', end: 'End Slide'};
   const STRUCTURAL_LAYOUTS = {title: 'Title Page', transition: 'Transition', end: 'Black logo end slide'};
@@ -1061,11 +1055,6 @@
         input.focus();
       }, true]))}, '{ }');
   }
-  function fieldsDatalist(element) {
-    const source = String(element?.cdr_source || 'CDR-Data').toLocaleLowerCase();
-    const columns = [...(state.fields?.columns_by_source?.[source] || []), ...(state.fields?.calculated_fields || [])];
-    return h('datalist', {id: 'ds-design-fields'}, [...new Set(columns)].map(column => h('option', {value: column})));
-  }
 
   // The panel: a head that says where it is (the slide, the element chosen on it) and what its changes reach, with the
   // actions in a menu, and below it the form of the slide or element. A chart shows its title, then its Data (source,
@@ -1115,7 +1104,6 @@
       selected ? h('span', {class: 'ds-design-crumb-separator', 'aria-hidden': 'true', text: '›'}) : null,
       selected ? crumb(elementName(selected, slide), Boolean(element), KINDS[selected.kind || 'chart']?.[1] || 'chart', () => { state.tab = 'element'; renderPanel(); }) : null);
     const actions = element ? elementActions(element.id) : slide ? slideActions(slide) : [];
-    if (chart) actions.push(['Advanced settings…', () => openColumnsDialog(element.id), true]);
     const more = h('button', {type: 'button', class: 'ds-design-more', 'aria-haspopup': 'menu', disabled: !actions.length,
       title: element ? 'Actions of this element' : 'Actions of this slide', 'aria-label': element ? 'Actions of this element' : 'Actions of this slide',
       onclick: event => openMenu(event.currentTarget, actions)}, icon('more'));
@@ -1622,37 +1610,6 @@
     const builder = h('div', {class: 'ds-cb'});
     window.ChartShelves?.render(builder, {...shelvesOptions(element, shown), chartTypes: false});
     return [builder];
-  }
-
-  // Advanced settings: what Data and Format do not show (Exclude Null/Empty and Zero, positions, axis ranges) and the text
-  // of each column of the chart as its template row writes it.
-  function openColumnsDialog(elementId) {
-    const shown = state.scope === 'template' ? findElement(state.template, elementId)?.element : findElement(state.slide_set, elementId)?.element;
-    if (!shown) return;
-    const set = (key, delay) => (delay === 0 ? value => guarded(() => setElementValues(elementId, {[key]: value}))() : debounced(value => setElementValues(elementId, {[key]: value}), delay));
-    const fieldInput = (key, placeholder) => textInput(shown[key], set(key), {id: `ds-design-${key}`, list: 'ds-design-fields', placeholder});
-    const content = h('div', {class: 'ds-design-columns'},
-      fieldsDatalist(shown),
-      h('p', {class: 'ds-design-field-note', text: 'What Data and Format do not show (Exclude Null/Empty, Exclude Zero, legend and label positions, axis ranges) and the text of each column of the chart as its template row writes it. Each change is laid out at once.'}),
-      h('div', {class: 'ds-design-two'},
-        field('Source', selectInput(SOURCES, shown.cdr_source, set('cdr_source', 0), 'ds-design-source')),
-        field('Chart type', selectInput(CHART_TYPES.map(type => [type, type]), shown.chart_type, set('chart_type', 0), 'ds-design-chart-type'))),
-      field('KPI', fieldInput('kpi', 'A field of the source'), 'Several KPIs (Multi KPI CDF Lines, Scatter, Table): separate them with |.'),
-      h('div', {class: 'ds-design-two'},
-        field('Rows Split', fieldInput('rows_split', 'Operator × Campaign')),
-        field('Columns Split', fieldInput('columns_split', 'Campaign'))),
-      field('Legend', fieldInput('legend', 'Operator')),
-      field('Filters', textInput((shown.filters || '').split(/;\s*/).filter(Boolean).join('\n'), debounced(value => setElementValues(elementId, {filters: value.split(/\n+/).map(line => line.trim()).filter(Boolean).join('; ')})), {id: 'ds-design-filters', multiline: true, rows: 4, placeholder: 'Call_Status IN (Completed, Dropped)\nThreshold = 1.6'}), 'One condition per line; a parameter is written {Name}.'),
-      h('div', {class: 'ds-design-two'},
-        field('Legend position', selectInput(LEGEND_POSITIONS, shown.legend_position, set('legend_position', 0), 'ds-design-legend-position')),
-        field('Label position', selectInput(LABEL_POSITIONS, shown.label_position, set('label_position', 0), 'ds-design-label-position'))),
-      h('div', {class: 'ds-design-two'},
-        field('Axis X range', textInput(shown.axis_x_range, set('axis_x_range'), {id: 'ds-design-axis-x', placeholder: '[0,100]'})),
-        field('Axis Y range', textInput(shown.axis_y_range, set('axis_y_range'), {id: 'ds-design-axis-y', placeholder: '[0,]'}))),
-      h('div', {class: 'ds-design-two'},
-        h('label', {class: 'ds-design-check'}, h('input', {type: 'checkbox', checked: Boolean(shown.exclude_null_empty), onchange: event => set('exclude_null_empty', 0)(event.target.checked)}), 'Exclude Null/Empty'),
-        h('label', {class: 'ds-design-check'}, h('input', {type: 'checkbox', checked: Boolean(shown.exclude_zero), onchange: event => set('exclude_zero', 0)(event.target.checked)}), 'Exclude Zero')));
-    openDialog('Advanced settings', elementLabel(shown), content, {wide: true});
   }
 
   // The title and subtitle of the slide shown are edited on the slide itself: a click writes them as the slide set has them
@@ -2165,11 +2122,13 @@
     const button = $('ds-design');
     if (!button) return;
     const rights = state.info?.rights;
+    // Opening (Edit Design) counts as open: the viewer already looks as the Designer.
+    const open = state.active || opening();
     button.hidden = !rights || !(rights.design || rights.template);
-    button.classList.toggle('is-active', state.active);
-    button.textContent = state.active ? 'Close Designer' : 'Open Designer';
-    button.title = state.active ? 'Close the Designer (it asks about the changes not saved)' : 'Edit the slides and charts of this Design and of its template';
-    lockViewerActions(state.active);
+    button.classList.toggle('is-active', open);
+    button.textContent = open ? 'Close Designer' : 'Open Designer';
+    button.title = open ? 'Close the Designer (it asks about the changes not saved)' : 'Edit the slides and charts of this Design and of its template';
+    lockViewerActions(open);
   }
   // While designing, the actions of the viewer that would leave the Designer or bypass what it shows wait for it to close;
   // the filters, the scope and the theme stay, as they change what the slides are laid out on.
@@ -2189,15 +2148,16 @@
     });
   }
   document.addEventListener('click', event => {
-    if (state.active && event.target.closest?.('.is-design-locked')) { event.preventDefault(); event.stopImmediatePropagation(); }
+    if ((state.active || opening()) && event.target.closest?.('.is-design-locked')) { event.preventDefault(); event.stopImmediatePropagation(); }
   }, true);
   $('ds-design')?.addEventListener('click', guarded(async () => {
+    if (opening() && !state.active) { editWhenReady = ''; clearDesignerOpening(); return; }
     if (state.active) { await exitDesigner(); syncDesignerButton(); return; }
     await enterDesigner();
     syncDesignerButton();
   }));
   document.addEventListener('ds:design-opened', event => {
-    if (editWhenReady && editWhenReady !== event.detail.id) editWhenReady = '';
+    if (editWhenReady && editWhenReady !== event.detail.id) { editWhenReady = ''; clearDesignerOpening(); }
     exitDesigner({force: true});
     state.designId = event.detail.id;
     state.info = null;
@@ -2207,6 +2167,8 @@
     loadInfo(event.detail.id);
   });
   document.addEventListener('ds:design-closed', () => {
+    editWhenReady = '';
+    clearDesignerOpening();
     exitDesigner({force: true});
     state.designId = '';
     state.info = null;
@@ -2223,15 +2185,48 @@
     else loadFields(viewer().state().prepared?.token);
   });
   // Edit Design (the table of the Designs) opens the viewer of a Design in the Designer, as soon as the Design is prepared.
+  // Meanwhile the viewer already looks as the Designer (its bar and panel say it is opening), so it never shows the PPT
+  // first.
   let editWhenReady = '';
+  const opening = () => Boolean($('ds-viewer')?.classList.contains('ds-designer-opening'));
+  function showDesignerOpening() {
+    $('ds-viewer').classList.add('ds-designing', 'ds-designer-opening');
+    $('ds-design-bar').hidden = false;
+    $('ds-design-bar').replaceChildren(h('span', {class: 'ds-design-bar-label', text: 'Designer'}),
+      h('span', {class: 'ds-design-busy', text: 'Opening the Designer as soon as the PPT is prepared…'}));
+    $('ds-design-panel').hidden = false;
+    $('ds-design-panel').replaceChildren(h('div', {class: 'ds-design-panel-body'},
+      h('p', {class: 'ds-design-empty', text: 'The slides and charts of this Design open here as soon as its PPT dataset is prepared.'})));
+    syncDesignerButton();
+  }
+  function clearDesignerOpening() {
+    if (!opening()) return;
+    $('ds-viewer').classList.remove('ds-designer-opening');
+    if (!state.active) {
+      $('ds-viewer').classList.remove('ds-designing');
+      $('ds-design-bar').hidden = true;
+      $('ds-design-bar').replaceChildren();
+      $('ds-design-panel').hidden = true;
+      $('ds-design-panel').replaceChildren();
+    }
+    syncDesignerButton();
+  }
   async function enterWhenReady() {
     const {activeId, prepared} = viewer().state();
     if (!editWhenReady || editWhenReady !== activeId || !prepared?.token || state.active) return;
     editWhenReady = '';
-    await enterDesigner();
+    try {
+      await enterDesigner();
+    } finally {
+      clearDesignerOpening();
+    }
     syncDesignerButton();
   }
-  document.addEventListener('ds:edit-design', event => { editWhenReady = event.detail.id; guarded(enterWhenReady)(); });
+  document.addEventListener('ds:edit-design', event => {
+    editWhenReady = event.detail.id;
+    showDesignerOpening();
+    guarded(enterWhenReady)();
+  });
   // Chart Type closes on a click outside it (its tab opens and closes it).
   document.addEventListener('pointerdown', event => {
     if (!state.typesOpen || !$('ds-design-types') || event.target.closest?.('#ds-design-types, .ds-design-types-tab')) return;

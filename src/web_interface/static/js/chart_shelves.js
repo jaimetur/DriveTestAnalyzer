@@ -427,7 +427,11 @@
             h('div', {class: 'ds-cb-segmented', role: 'group', 'aria-label': 'Source: the CDRs the chart reads'}, SOURCES.map(([value, label, title]) => h('button', {type: 'button', class: value === source ? 'is-active' : '', 'aria-pressed': String(value === source), title, onclick: () => change({cdr_source: value})}, label)))),
           nrModeRow(context, options.pptNrMode, options.eachPpt)),
         h('div', {class: 'ds-cb-shelves'}, SHELVES.filter(([key]) => key !== 'filters' && (key !== 'repeat' || options.showSource !== false)).map(shelf))),
-      card('filters', 'Filters', shelf(SHELVES.find(([key]) => key === 'filters'))),
+      card('filters', 'Filters', shelf(SHELVES.find(([key]) => key === 'filters')),
+        // The rows every measure of the chart leaves out.
+        h('div', {class: 'ds-cb-exclusions'}, [['exclude_null_empty', 'Leave out empty values', 'Rows whose measure is empty (Null or blank) are left out'],
+          ['exclude_zero', 'Leave out zeros', 'Rows whose measure is 0 are left out']].map(([key, label, title]) => h('label', {class: 'ds-design-check', title},
+          h('input', {type: 'checkbox', checked: Boolean(values[key]), onchange: event => change({[key]: event.target.checked})}), label)))),
       chartTypes ? h('div', {class: 'ds-cb-chart-types'}, h('span', {class: 'ds-cb-shelf-label', text: 'Chart Type'}), chartTypes, settingRow(context)) : null,
       h('section', {class: 'ds-cb-card is-fields ds-cb-data', 'aria-label': 'Fields'},
         h('h4', {class: 'ds-cb-card-title', text: `Fields · ${SOURCES.find(([value]) => value === source)?.[1] || source}`}), search, fieldsHost),

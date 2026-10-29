@@ -141,6 +141,7 @@
 .ppt-designer .ds-cb-card.is-filters { border-color: color-mix(in srgb, var(--ds-cb-filter) 35%, var(--ds-border)); background: color-mix(in srgb, var(--ds-cb-filter-soft) 40%, #fff); }
 .ppt-designer .ds-cb-card.is-filters .ds-cb-card-title { color: var(--ds-cb-filter); }
 .ppt-designer .ds-cb-shelf.is-bare { grid-template-columns: minmax(0, 1fr); }
+.ppt-designer .ds-cb-exclusions { display: flex; flex-wrap: wrap; gap: .3rem 1rem; }
 #ds-design-panel .ds-design-panel-body.is-data { display: flex; flex-direction: column; }
 #ds-design-panel .is-data > .ds-cb { display: flex; flex: 1 1 auto; flex-direction: column; gap: .6rem; min-height: 0; }
 #ds-design-panel .is-data .ds-cb-data { display: flex; flex: 1 1 auto; flex-direction: column; gap: .35rem; min-height: 12rem; }
