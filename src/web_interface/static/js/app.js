@@ -11942,7 +11942,8 @@ if (queueNode) {
     queueNode.querySelectorAll('[data-dataset-card]').forEach((card) => {
       card.hidden = (Boolean(selectedKind) && !card.querySelector('[data-dataset-row]:not([hidden])'))
         || (card.hasAttribute('data-dataset-card-optional') && !card.querySelector('[data-dataset-row]'));
-      card.querySelectorAll('[data-dataset-card-empty]').forEach((row) => { row.hidden = Boolean(card.querySelector('[data-dataset-row]')); });
+      // (Each table on its own: a CDR card with only Flex CDRs, in its Flex card, says it has none of its own.)
+      card.querySelectorAll('[data-dataset-card-empty]').forEach((row) => { row.hidden = Boolean(row.closest('tbody')?.querySelector('[data-dataset-row]')); });
     });
     queueNode.querySelectorAll('.dataset-card-cdr .queue-table > tbody').forEach(syncCampaignGroupVisibility);
     queueNode.querySelectorAll('.queue-table').forEach((table) => table.dispatchEvent(new CustomEvent('mobile-card-pagination:refresh', {bubbles: true, detail: {reset: true}})));
@@ -12002,8 +12003,9 @@ if (queueNode) {
     if (document.activeElement !== select && !select.disabled) select.value = mode;
   };
 
-  // A Final, Weekly or Daily CDR lives in the card of its stage.
+  // A Final, Weekly or Daily CDR lives in the card of its stage (in its Flex card when its campaign is a Flex one).
   const syncQueueCdrStageCell = (row, dataset) => {
+    if (dataset.flex_campaign !== undefined) row.dataset.flexCampaign = dataset.flex_campaign ? 'true' : 'false';
     const cell = row.querySelector('[data-queue-cdr-stage]');
     const select = cell?.querySelector('[data-dataset-cdr-stage-select]');
     if (!(select instanceof HTMLSelectElement) || !dataset.cdr_stage) return;
@@ -13236,18 +13238,23 @@ function cdrStageLabel(stage) {
   return {final: 'Final', weekly: 'Weekly', daily: 'Daily'}[stage] || '';
 }
 
-// A CDR marked Final, Weekly or Daily moves to the card of its stage; the Weekly and Daily cards show only with CDRs.
+// A CDR marked Final, Weekly or Daily moves to the card of its stage, and a CDR of a Flex campaign to the Flex card inside
+// it; the Weekly, Daily and Flex cards show only with CDRs.
 function moveQueueRowToStage(row, stage) {
-  const target = document.querySelector(`[data-dataset-card-body="cdr-${cdrStageLabel(stage) ? stage : 'final'}"]`);
+  const flex = row instanceof HTMLTableRowElement && row.dataset.flexCampaign === 'true' ? '-flex' : '';
+  const target = document.querySelector(`[data-dataset-card-body="cdr-${cdrStageLabel(stage) ? stage : 'final'}${flex}"]`);
   if (!(row instanceof HTMLTableRowElement) || !target || row.parentElement === target) return;
   target.append(row);
   document.querySelectorAll('[data-dataset-card]').forEach((card) => {
-    card.querySelectorAll('[data-dataset-card-empty]').forEach((empty) => { empty.hidden = Boolean(card.querySelector('[data-dataset-row]')); });
+    card.querySelectorAll('[data-dataset-card-empty]').forEach((empty) => { empty.hidden = Boolean(empty.closest('tbody')?.querySelector('[data-dataset-row]')); });
     const count = card.querySelector('.dataset-card-count');
     if (count) count.textContent = String(card.querySelectorAll('[data-dataset-row][data-dataset-id]').length);
     if (card.hasAttribute('data-dataset-card-optional')) card.hidden = !card.querySelector('[data-dataset-row]');
   });
-  if (stage !== 'final') target.closest('details')?.setAttribute('open', '');
+  // The cards that hold it open (a Flex card and the Weekly or Daily card around it).
+  for (let details = target.closest('details'); details; details = details.parentElement?.closest('details')) {
+    if (stage !== 'final' || details.matches('.dataset-subcard-flex')) details.setAttribute('open', '');
+  }
   document.dispatchEvent(new CustomEvent('workspace-cdr-rows-changed'));
 }
 

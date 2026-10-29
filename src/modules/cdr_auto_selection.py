@@ -94,6 +94,13 @@ def is_flex_campaign(value: object) -> bool:
     return bool(text) and bool(_FLEX_CAMPAIGN.search(text) or _FLEX_CAMPAIGN.search(str(compact_campaign_value(text) or '')))
 
 
+def is_flex_cdr(campaigns: Iterable[object], dataset_campaign: object = '') -> bool:
+    """Whether a CDR is of a Flex campaign: every Campaign of its rows is a Flex one, or, before its rows give one, the
+    Campaign of Workspace (2025-Q2-Flex). A Campaign filter without campaigns leaves it out."""
+    values = [value for value in campaigns if str(value or '').strip()]
+    return all(is_flex_campaign(value) for value in values) if values else is_flex_campaign(dataset_campaign)
+
+
 def candidate_cdrs(repository: Any, nr_mode: object = None, kinds: Iterable[str] = CDR_KINDS) -> list[dict[str, Any]]:
     """The ready CDRs of the NR Mode (or of every mode) that the combined CDR tables include, newest first."""
     wanted_kinds = {str(kind).casefold() for kind in kinds}
@@ -226,16 +233,19 @@ def resolve_cdrs(repository: Any, nr_mode: object, campaigns: Iterable[object] |
     """The CDRs of each type a module uses for an NR Mode and Campaign filter, newest first.
 
     The combined CDR tables include them (the Final CDR of a campaign before its Weekly and Daily
-    CDRs, or the Active? choice); a Campaign filter keeps the CDRs with any of its campaigns.
+    CDRs, or the Active? choice); a Campaign filter keeps the CDRs with any of its campaigns, and
+    without one every CDR but the Flex CDRs (``is_flex_cdr``), used only when their campaign is checked.
     """
     kinds = tuple(kinds)
     rows = candidate_cdrs(repository, nr_mode, kinds)
     wanted = {campaign_identity(value) for value in resolve_campaign_filter(repository, nr_mode, campaigns, kinds)}
     wanted.discard('')
-    index = cdr_campaigns(repository, [row['id'] for row in rows]) if wanted else {}
+    index = cdr_campaigns(repository, [row['id'] for row in rows])
     chosen: dict[str, list[int]] = {kind: [] for kind in kinds}
     for row in sorted(rows, key=lambda item: (item['uploaded_at'], item['id']), reverse=True):
         if wanted and not ({campaign_identity(value) for value in index.get(row['id'], [])} & wanted):
+            continue
+        if not wanted and is_flex_cdr(index.get(row['id']) or [], row['dataset_campaign']):
             continue
         chosen.setdefault(row['kind'], []).append(row['id'])
     return chosen

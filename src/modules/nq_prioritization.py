@@ -73,7 +73,7 @@ FINGERPRINT_STATE_KEY = 'nq_prioritization_fingerprint'
 FAILED_STATE_KEY = 'nq_prioritization_failed'
 SUMMARY_STATE_KEY = 'nq_prioritization_summary'
 # Bumped when the calculation changes: every value is calculated again.
-IMPACT_VERSION = 20
+IMPACT_VERSION = 21
 # The scoring of every campaign is split by campaign and operator, as the points of the scoring are national.
 LEVELS = ('Campaign', 'Operator')
 SERVICES = ('voice', 'speech', 'data')
@@ -172,7 +172,7 @@ MAX_CONDITIONS = 6
 CONDITION_LABELS = {EVERY_CALL: 'Every call', 'consecutive': 'Time-Window Issues', 'cluster': 'Hotspots', 'drop': 'Drops', 'setup': 'Setup failures', 'high': 'High impact', 'medium': 'Medium impact', 'low': 'Low impact',
                     'repeated': 'Cluster'}
 # Every call type and both lists take every condition (the impact levels by the Expected Gain of the call, see
-# ``expected_levels``: during the campaign from the latest Final CDR of its NR Mode, then its own points).
+# ``expected_levels``: during the campaign from the latest Final CDR of its NR Mode, never a Flex one, then its own points).
 CONDITIONS = {key: CONDITION_LABELS[key] for key in (EVERY_CALL, 'consecutive', 'repeated', 'cluster', 'high', 'medium', 'low',
                                                      'drop', 'setup')}
 # The conditions of the first versions, and those that stand for them (Biggest impact was the High impact of the Expected
@@ -208,7 +208,8 @@ CONDITION_HELP = {
                 'same site in at least Cluster size calls of its campaign and the Cluster period (campaigns) before it, '
                 'whatever the time.',
     'high': 'Within the first High share of the Expected Gain of the calls in scope of its campaign, operator and service: during '
-            'the campaign what its failure lost in the latest Final CDR of its NR Mode, then its own points.',
+            'the campaign what its failure lost in the latest Final CDR of its NR Mode (never that of a Flex campaign), then its '
+            'own points.',
     'medium': 'The next calls by Expected Gain, up to the Medium share.',
     'low': 'The rest by Expected Gain, or no Expected Gain.',
     'drop': 'The call dropped, or the data test was cut off, once established.',
@@ -2149,15 +2150,17 @@ def has_final(finals: dict[tuple[str, str], set[str]], nr_mode: str, identity: s
 
 def previous_final_campaign(finals: dict[tuple[str, str], set[str]], labels: dict[tuple[str, str], str], nr_mode: str,
                             campaign: str) -> str:
-    """The latest campaign of an NR Mode before ``campaign`` with its Final CDR ('' when there is none)."""
-    from src.modules.cdr_auto_selection import campaign_identity
+    """The latest campaign of an NR Mode before ``campaign`` with its Final CDR ('' when there is none), never a Flex
+    campaign: a partial campaign is no reference for the others."""
+    from src.modules.cdr_auto_selection import campaign_identity, is_flex_campaign
     from src.modules.column_names import campaign_sort_key
 
     order = campaign_sort_key(campaign)
     if order[0] <= 0:
         return ''
-    candidates = [labels.get((mode, identity), identity) for mode, identity in finals
-                  if mode in {nr_mode, ''} and identity != campaign_identity(campaign)]
+    candidates = [label for mode, identity in finals
+                  if mode in {nr_mode, ''} and identity != campaign_identity(campaign)
+                  and not is_flex_campaign(label := labels.get((mode, identity), identity))]
     earlier = [label for label in candidates if campaign_sort_key(label)[0] > 0 and campaign_sort_key(label)[:2] < order[:2]]
     return max(earlier, key=campaign_sort_key) if earlier else ''
 
@@ -2809,7 +2812,8 @@ def expected_levels(rows: Iterable[Any], high_share: float, medium_share: float,
                     out_of_scope: Callable[[Any], bool] | None = None) -> dict[str, str]:
     """The impact level the conditions of the strategies read for every call of ``rows`` (call_key, campaign_key, operator,
     service, region, nr_mode, impact_state and expected_points): ``impact_levels`` of the Expected Gain of the calls of its
-    ``level_group``. During a campaign the Expected Gain is what the failure lost in the latest Final CDR of its NR Mode;
+    ``level_group``. During a campaign the Expected Gain is what the failure lost in the latest Final CDR of its NR Mode
+    (never that of a Flex campaign);
     once the Final CDR of its campaign is scored, its own points. The Excluded Calls and the calls without Expected Gain
     have no level."""
     pareto: dict[tuple[str, str, str, bool], dict[str, float]] = {}
@@ -2922,12 +2926,13 @@ _jobs_guard = Lock()
 
 def step_counts(repository: Any, settings: dict[str, Any]) -> dict[str, Any]:
     """How many calls each step of the strategy of ``settings`` takes in the latest campaign with its Final CDR scored of
-    each NR Mode: list 1 as during the campaign, list 2 (when the strategy applies it) as once its Final CDR is scored. The
-    calls outside the queues count apart, as [name, calls] pairs, the most calls first: those out of scope (``scope``: by
+    each NR Mode (never a Flex campaign): list 1 as during the campaign, list 2 (when the strategy applies it) as once its
+    Final CDR is scored. The calls outside the queues count apart, as [name, calls] pairs, the most calls first: those out of scope (``scope``: by
     region, by NR Mode and operator not Focus, SA · EE, and by NR Mode and operator chosen, SA · Three) and, in each list
     (``lists``), the tracked ones
     (by kind, and by operator and NR Mode) and those no step takes (by operator and NR Mode)."""
     from src.modules import non_qualified_calls as nq
+    from src.modules.cdr_auto_selection import is_flex_campaign
     from src.modules.column_names import campaign_sort_key, compact_campaign_value
 
     def pairs(counts: dict[str, int]) -> list[list[Any]]:
@@ -2944,10 +2949,12 @@ def step_counts(repository: Any, settings: dict[str, Any]) -> dict[str, Any]:
             f"p.cluster_size, p.consecutive, l.service, l.nr_mode, l.campaign, l.operator, l.region, l.environment, l.test_name, "
             f"l.session_type, l.result FROM {PRIORITY_TABLE} p JOIN {nq.NQ_CALL_LATEST_TABLE} l ON l.call_key = p.call_key "
             "WHERE p.final_list = 1")]
-    # The latest campaign with its Final CDR of each NR Mode.
+    # The latest campaign with its Final CDR of each NR Mode (a Flex campaign, partial, never is).
     latest: dict[str, str] = {}
     for row in rows:
         mode, campaign = str(row['nr_mode'] or '').upper(), str(row['campaign'] or '')
+        if is_flex_campaign(campaign):
+            continue
         if mode not in latest or campaign_sort_key(campaign) > campaign_sort_key(latest[mode]):
             latest[mode] = campaign
     rows = [row for row in rows if latest.get(str(row['nr_mode'] or '').upper()) == str(row['campaign'] or '')]

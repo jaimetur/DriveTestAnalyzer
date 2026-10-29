@@ -91,6 +91,28 @@ def test_workspace_proposes_the_campaign_of_the_rows_and_keeps_a_written_name(cl
     assert '"previous_campaign": "2025-Q2-Flex"' in logs[0]['details']
 
 
+def test_workspace_lists_the_cdrs_of_flex_campaigns_apart_with_their_notice(client, tmp_path):
+    from src.modules.campaign_maps import save_campaign_map
+
+    login(client)
+    regular = add_cdr(tmp_path, 'NetCheck_UK_CDR_Voice_2026_Q3.xlsx')
+    flex = add_cdr(tmp_path, 'UK_Flex_Data.xlsx', kind='data')
+    core.repository.replace_cdr_catalogue(regular, vendors=[], regions=[], cities=[], campaigns=['UK_Q3_2026'])
+    core.repository.replace_cdr_catalogue(flex, vendors=[], regions=[], cities=[], campaigns=['UK_Flex_2026'])
+    save_campaign_map(core.repository, {'format': '{yy}-Q{quarter}{-mode}',
+                                        'exceptions': [{'label': '26-Q2-Flex', 'sources': ['UK_Flex_2026']}]})
+    status = {item['id']: item for item in client.get('/api/datasets/status').json()['datasets']}
+    assert status[flex]['flex_campaign'] is True and status[regular]['flex_campaign'] is False
+    page = client.get('/workspace').text
+    final_body = page.split('data-dataset-card-body="cdr-final">', 1)[1].split('</tbody>', 1)[0]
+    flex_body = page.split('data-dataset-card-body="cdr-final-flex">', 1)[1].split('</tbody>', 1)[0]
+    assert f'data-dataset-id="{regular}"' in final_body and f'data-dataset-id="{flex}"' not in final_body
+    assert f'data-dataset-id="{flex}"' in flex_body and 'data-flex-campaign="true"' in flex_body
+    assert 'Partial campaigns, used only when checked by hand.' in page
+    # The Weekly and Daily cards, without Flex CDRs, keep their Flex card hidden.
+    assert 'data-dataset-card="cdr-weekly-flex" data-dataset-card-optional hidden' in page
+
+
 def test_workspace_shows_and_changes_the_campaign_of_each_cdr(client, tmp_path):
     login(client)
     named = add_cdr(tmp_path, 'NetCheck_UK_CDR_Voice_2026_Q2_SA.xlsx', nr_mode='SA')

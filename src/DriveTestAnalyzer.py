@@ -106,7 +106,7 @@ from src.modules.cdr_stage import (
 )
 from src.modules.scoring_themes import THEMES as SCORING_THEMES, load_user_theme, normalize_theme, save_user_theme, themes_payload, use_theme
 from src.modules.scoring_vendors import normalize_scoring_vendor_result, scoring_vendor_name, scoring_vendor_names, scoring_vendor_operators
-from src.modules.cdr_auto_selection import campaign_presets
+from src.modules.cdr_auto_selection import campaign_presets, is_flex_cdr
 from src.modules.saved_filters import (
     POINTS_LOSS_STOPPED,
     calculate_saved_filter,
@@ -3782,6 +3782,15 @@ def add_row_campaigns(datasets: list[dict[str, Any]], task_repository: Repositor
         dataset['campaign'] = campaign_of_rows(campaigns.get(int(dataset['id'])) or [])
 
 
+def add_flex_campaigns(datasets: list[dict[str, Any]], task_repository: Repository | None = None) -> None:
+    """Whether each CDR is of a Flex campaign (partial, see ``is_flex_cdr``), which the CDR cards of Workspace list apart:
+    the automatic Campaign choices and a Campaign filter without campaigns leave it out."""
+    ids = [int(dataset['id']) for dataset in datasets if dataset.get('dataset_kind') in CDR_DATASET_KINDS]
+    campaigns = catalogued_campaigns(task_repository or repository, ids) if ids else {}
+    for dataset in datasets:
+        dataset['flex_campaign'] = int(dataset['id']) in campaigns and is_flex_cdr(campaigns[int(dataset['id'])], dataset.get('campaign'))
+
+
 def add_workspace_mapping_capabilities(datasets: list[dict[str, Any]]) -> None:
     """Expose the single Workspace mapping actions for Vendor, Region and Cluster."""
     add_workspace_vendor_capabilities(datasets)
@@ -6181,6 +6190,7 @@ def build_dataset_view_state(
         reverse=True,
     )
     add_row_campaigns(datasets)
+    add_flex_campaigns(datasets)
     ready_datasets = [
         dataset for dataset in datasets
         if dataset['is_ready'] and (allowed_kinds is None or dataset.get('dataset_kind') in allowed_kinds)
@@ -22081,6 +22091,7 @@ def legacy_designer_redirect(request: Request, legacy_path: str = '') -> Redirec
 def dataset_status(user: SessionUser = Depends(current_user)) -> dict[str, Any]:
     datasets = [serialize_dataset_row(row) for row in repository.list_datasets()]
     add_row_campaigns(datasets)
+    add_flex_campaigns(datasets)
     add_workspace_mapping_capabilities(datasets)
     add_combined_inclusion(datasets)
     combined_tables: list[dict[str, Any]] = []

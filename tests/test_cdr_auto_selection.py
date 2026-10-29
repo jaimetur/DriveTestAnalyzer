@@ -10,7 +10,7 @@ from src.modules import cdr_facets
 from src.modules.cdr_auto_selection import (
     ALL_CAMPAIGNS, LATEST_CAMPAIGN, LATEST_FOUR_CAMPAIGNS, LATEST_THREE_CAMPAIGNS, LATEST_TWO_CAMPAIGNS, NO_PREVIOUS_CAMPAIGN,
     PREVIOUS_CAMPAIGN, campaign_values,
-    complete_campaign_cdrs, describe_cdrs, expand_campaign_filter, resolve_campaign_filter, resolve_cdrs,
+    complete_campaign_cdrs, describe_cdrs, expand_campaign_filter, is_flex_cdr, resolve_campaign_filter, resolve_cdrs,
 )
 from src.modules.cdr_facets import cascading_options, fill_missing_facets, stored_facets
 from src.modules.repository import Repository, local_now_iso
@@ -153,6 +153,11 @@ def test_flex_campaigns_are_used_only_when_checked_by_hand(workspace):
         assert resolve_campaign_filter(repository, 'NSA', [PREVIOUS_CAMPAIGN]) == ['UK_Q1_2026']
         assert resolve_campaign_filter(repository, 'NSA', [ALL_CAMPAIGNS]) == ['UK_Q1_2026', 'UK_Q2_2026']
         assert sorted(resolve_cdrs(repository, 'NSA', [LATEST_CAMPAIGN])['data']) == [q2[0]]
+        # A Campaign filter without campaigns takes every CDR but the Flex ones (Scoring's All complete campaigns too).
+        assert not set(flex) & {value for values in resolve_cdrs(repository, 'NSA').values() for value in values}
+        assert sorted(q2) == sorted(set(q2) & set(complete_campaign_cdrs(repository, 'NSA')[0]))
+        assert not set(flex) & set(complete_campaign_cdrs(repository, 'NSA')[0])
+        assert not set(flex) & set(scoring_auto_cdrs(repository, 'NSA', {})['dataset_ids'])
         # Only Flex campaigns: the automatic choices stand for no campaign (no CDR, not every one).
         assert expand_campaign_filter([LATEST_CAMPAIGN], ['UK_Flex_2026']) == [NO_PREVIOUS_CAMPAIGN]
         # Checked by hand, by its value or its label, it is used.
@@ -167,6 +172,8 @@ def test_flex_campaigns_are_used_only_when_checked_by_hand(workspace):
         assert sorted(chosen['dataset_ids']) == sorted(flex)
         assert chosen['campaign_presets'][ALL_CAMPAIGNS] == ['UK_Q1_2026', 'UK_Q2_2026']
         assert sorted(scoring_auto_cdrs(repository, 'SA', {'Campaign': [LATEST_CAMPAIGN]})['dataset_ids']) == sorted(sa)
+    # A CDR whose rows give no campaign yet is a Flex one by the Campaign of Workspace; one without either is used.
+    assert is_flex_cdr([], '2025-Q2-Flex') and not is_flex_cdr([], '') and not is_flex_cdr(['UK_Q2_2026', 'UK_Flex_2026'])
 
 
 def test_filters_cascade_over_every_cdr_of_the_nr_mode_without_reading_rows(workspace, monkeypatch):

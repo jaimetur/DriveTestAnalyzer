@@ -121,6 +121,17 @@ A filename without a quarter or a year takes the campaign of the rows of the CDR
 
 The Final, Weekly and Daily CDR cards show beside their icon how many campaigns their CDRs have, how many CDRs they hold and their size, and their tables are grouped by campaign, the newest first and the CDRs without a campaign last under **No campaign**, each group with its number of CDRs and the MB of their source files (as the Size column); a CDR whose campaign changes moves to its group at once. They open sorted by Campaign, then NR Mode and then CDR Type; any column header sorts the CDRs within each group instead.
 
+#### Flex campaigns
+
+A **Flex campaign** is a partial campaign: one whose Campaign values, or their label in [Workspace Config → Campaign Maps](workspace-config.md#campaign-maps), have the word Flex (`UK_Flex_2026`, `26-Q2-Flex`, `2025-Q2-Flex`); a CDR whose rows have no Campaign yet is a Flex one when its Campaign here is. As it measures only part of what a campaign does, it is used only where it is checked by hand:
+
+- **Latest campaign**, **Latest 2, 3 and 4 campaigns**, **Previous campaign** and **All available campaigns** never count it, in Scoring & GAP Analysis, PPT Designer, CDR Analysis, Network Insights, Non-Qualified Calls, Reporting Jobs and Bundle Report Templates (a workspace with only Flex campaigns gets no campaign from them);
+- a Campaign filter without campaigns (every campaign, such as **All complete campaigns** of Scoring) leaves its CDRs out;
+- the [NQ Prioritization](non-qualified-calls.md#nq-prioritization) never takes it as the campaign whose Final CDR gives the Expected Gain of the calls of other campaigns;
+- checking it in a Campaign filter uses it like any other campaign.
+
+The Final, Weekly and Daily CDR cards list their CDRs of Flex campaigns apart, in a **Flex CDRs** card of their own inside them, dashed in amber, with its count, badges and the notice that says how they are used; it shows only when the stage has such CDRs, and a CDR moves in or out of it at once when its stage changes.
+
 ### CDR Stage: Final, Weekly and Daily
 
 Every CDR is a **Final** CDR, delivered after its measurement campaign, or a **Weekly** or **Daily** CDR, received every week or day while the campaign runs, either incremental (the calls of one week or day) or cumulative (every call so far). During upload the CDR Stage is proposed from the filename and can be changed per file before processing starts:
