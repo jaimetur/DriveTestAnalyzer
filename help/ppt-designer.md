@@ -490,7 +490,7 @@ A template can declare **parameters**, so that Designs that differ only in a cit
 
 - **Parameters** in the bar of the Designer (Template scope) lists them at the left, with their type and where they are used, and shows the one chosen at the right, where it is added, renamed and deleted: **Field values** (the values of any field of the CDRs or an Auto-calculated Field, chosen from a list with search; one or several; none chosen means All), **Number** (default, minimum, maximum, step) or **Text**. **How to use it** gives the condition to write (`City IN ({Cities})`), to copy or add to the filters of the chart chosen. A parameter in use cannot be deleted, and renaming one renames its uses.
 - Write `{Name}` in a chart filter (`City IN ({City})`; with All the condition is left out), a numeric setting (`LQ < {Threshold}`, `Threshold = {Threshold}`, an axis range) or a title (`Voice quality in {City}`).
-- Each Design chooses the values in **PPT Scope & Filters → Parameters**, applied and saved like its filters; until it chooses them, it uses their default values.
+- Each Design chooses the values in **PPT Scope & Filters → Parameters**, applied and saved like its filters; until it chooses them, it uses their default values. The section shows only when the template has parameters: they are added in the Designer, never there.
 
 ## Generate PPT
 

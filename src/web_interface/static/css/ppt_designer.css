@@ -2038,3 +2038,42 @@
   .ppt-designer .ds-library-actions>.ds-library-action.ds-design-edit .ds-library-action-label>span:last-child{grid-column:1 / -1;grid-row:2}
   .ppt-designer .ds-library-actions>.ds-library-action.ds-design-edit .ds-library-action-label>span+span::before{content:none}
 }
+
+/* Template parameters show only when the template has some (the group's own display would show it empty). */
+.ppt-designer .ds-parameters-panel[hidden] { display: none; }
+
+/* PPT Scope & Filters over the viewer fits the window without scrolling: compact groups and fields, the filters in as
+   many columns as fit, no column titles (each group names itself), the preparation card only while it prepares, and
+   no Close at the bottom (the dialog closes from its corner). */
+#ds-filter-overlay .ds-filter-dialog { padding: 14px 20px !important; }
+#ds-filter-float .ds-data-panel > summary { padding-block: 0 .6rem; }
+#ds-filter-float .ds-data-panel > summary h2 { font-size: 1.15rem; }
+#ds-filter-overlay .ds-filter-column-title { display: none; }
+#ds-filter-overlay .ds-filter-columns { grid-template-columns: minmax(255px, .8fr) minmax(0, 3.2fr); gap: 16px; }
+#ds-filter-overlay :is(.ds-source-filters, .ds-filter-groups) { gap: 10px; }
+#ds-filter-overlay .ds-source-filters { padding-right: 16px; }
+#ds-filter-overlay .ds-filter-group { gap: 8px; padding: 10px 12px; border-radius: 12px; }
+#ds-filter-overlay .ds-filter-group-head { gap: 0; }
+#ds-filter-overlay .ds-filter-group-head .eyebrow { font-size: .6rem; }
+#ds-filter-overlay .ds-filter-group-head h3 { font-size: 1rem; white-space: nowrap; }
+#ds-filter-overlay .ds-facets { grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr)); gap: 6px 10px; }
+/* Adding a filter stands at the right of the head of Additional Filters. */
+#ds-filter-overlay .ds-additional-filter-panel { grid-template-columns: minmax(0, 1fr) auto; }
+#ds-filter-overlay .ds-additional-filter-panel > :not(.ds-filter-group-head, .ds-custom) { grid-column: 1 / -1; }
+#ds-filter-overlay .ds-additional-filter-panel > .ds-custom { grid-column: 2; grid-row: 1; display: flex; align-items: end; margin: 0; padding: 0; border: 0; }
+#ds-filter-overlay .ds-additional-filter-panel > .ds-custom label { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+#ds-filter-overlay .ds-additional-filter-panel > .ds-custom label > :not(select) { min-width: 12rem; }
+#ds-filter-overlay .ds-additional-filter-panel > .ds-custom > button { padding: .4rem .8rem; font-size: .82rem; }
+#ds-filter-overlay .ds-facet { gap: 3px; font-size: .82rem; }
+#ds-filter-overlay :is(.ds-facets, .ds-custom, .ds-parameters) .multiselect-trigger { min-height: 0; padding-block: .4rem; font-size: .86rem; }
+#ds-filter-overlay .ds-date-filters { gap: 10px; }
+#ds-filter-overlay .ds-date-picker { gap: 3px; font-size: .82rem; }
+#ds-filter-overlay .ds-date-picker-control > input { padding-block: .45rem; font-size: .86rem; }
+#ds-filter-overlay .ds-custom { gap: 8px; }
+#ds-filter-overlay .ds-custom label { font-size: .82rem; }
+#ds-filter-overlay .ds-filter-actions > button { padding: .45rem .85rem; font-size: .82rem; }
+#ds-filter-overlay .auto-cdr { padding: .35rem .55rem; }
+#ds-filter-overlay .ds-auto-cdrs-note { font-size: .72rem; }
+#ds-filter-float .ds-filter-help { margin: 10px 0 0; font-size: .72rem; }
+#ds-filter-overlay .ds-preparing[data-state="ready"] { display: none; }
+#ds-filter-overlay .ds-design-primary-actions:not(:has(> button:not([hidden]):not(.ds-filter-close-action))) { display: none; }
