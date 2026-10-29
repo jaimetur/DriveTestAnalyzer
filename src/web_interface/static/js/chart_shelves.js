@@ -140,9 +140,11 @@
     picture(item.type), h('span', {text: item.type}));
   };
   // The NR Mode of the CDRs a chart reads: that of the PPT Design (PPT, named with the mode it has now), or only NSA or only
-  // SA, kept as the filter NR Mode IN (SA).
+  // SA, kept as the filter NR Mode IN (SA). A PPT Design of one NR Mode reads only its CDRs: the other NR Mode waits,
+  // greyed, for NSA & SA in PPT Filters (a chart that keeps it shows why it is empty).
   function nrModeRow({nrMode, settings, plainFilters, writeFilters}, pptNrMode = '') {
     const pptMode = String(pptNrMode || '').trim();
+    const read = pptMode ? pptMode.split('&').map(mode => mode.trim().toUpperCase()) : ['NSA', 'SA'];
     const choose = value => {
       const kept = settings.filter(item => identity(conditionField(item)) !== 'nrmode');
       if (value) kept.push(`NR Mode IN (${value})`);
@@ -151,8 +153,12 @@
     const label = h('span', {class: 'ds-cb-shelf-label', text: 'NR Mode'});
     const choices = [['', pptMode ? `PPT (${pptMode})` : 'PPT', `The CDRs of the NR Mode of the PPT Design${pptMode ? ` (${pptMode} now)` : ''}: the chart follows it`], ...NR_MODES];
     return h('div', {class: 'ds-cb-source-row', title: 'The NR Mode of the CDRs the chart reads'}, label,
-      h('div', {class: 'ds-cb-segmented', role: 'group', 'aria-label': 'NR Mode of the CDRs the chart reads'}, choices.map(([value, text, title]) => h('button', {type: 'button', class: value === nrMode ? 'is-active' : '',
-        'aria-pressed': String(value === nrMode), title, onclick: () => choose(value)}, text))));
+      h('div', {class: 'ds-cb-segmented', role: 'group', 'aria-label': 'NR Mode of the CDRs the chart reads'}, choices.map(([value, text, title]) => {
+        const unread = Boolean(value) && !read.includes(value);
+        return h('button', {type: 'button', class: `${value === nrMode ? 'is-active' : ''}${unread ? ' is-unread' : ''}`, 'aria-pressed': String(value === nrMode),
+          disabled: unread && value !== nrMode, onclick: () => choose(value),
+          title: unread ? `The PPT Design reads only the ${pptMode} CDRs: choose NR Mode NSA & SA in PPT Filters to show the ${value} ones` : title}, text);
+      })));
   }
   // The setting of the chart type chosen (Threshold, Buckets, Bin Size), kept among the filters of the chart.
   function settingRow({values, settings, plainFilters, writeFilters}) {
