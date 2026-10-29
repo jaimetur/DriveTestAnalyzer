@@ -30,7 +30,7 @@ CACHE_FOLDER = '.ppt-designer-cache'
 # A folder set aside by Clear workspace cache, deleted in the background (and when the workspace opens, if the
 # deletion was cut short).
 TRASH_PREFIX = f'{CACHE_FOLDER}.removing-'
-MAX_MB = 2048
+MAX_MB = 1024
 UNUSED_DAYS = 30
 # The unused files and the temporary files left by a write cut short are looked for again after this many seconds.
 RESCAN_SECONDS = 24 * 60 * 60
