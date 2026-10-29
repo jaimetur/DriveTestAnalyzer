@@ -22,8 +22,9 @@ ticket-center
 | --- | --- |
 | Presentation | [Open section](#presentation) |
 | Read the dashboard | [Open section](#dashboard) |
+| Statistics | [Open section](#statistics) |
 | Open a ticket | [Open section](#new-ticket) |
-| Find and follow tickets | [Open section](#tickets) |
+| Find and follow tickets | [Open section](#all-tickets) |
 | The page of a ticket | [Open section](#the-page-of-a-ticket) |
 | Types, priorities and statuses | [Open section](#types-priorities-and-statuses) |
 | Who can do what | [Open section](#who-can-do-what) |
@@ -31,17 +32,37 @@ ticket-center
 
 ## Dashboard
 
-The top of the page sums up every ticket; each count, bar and cell lists its tickets in **Tickets** below (clearing the other filters) and tells what it is when the mouse is over it.
+The header of the module sums up every ticket with its tiles, and its tabs choose the view shown below the floating bar of its sections: **New Ticket**, **All Tickets**, the list of tickets, **Dashboard** (by default; New Ticket while there is no ticket) or **Statistics**. Each browser remembers the tab chosen. The sections menu of the tab of Ticket Center and the floating bar list the same views in the same order, and a link to the tickets of a status (such as those of the notices of new tickets) opens All Tickets.
 
-- **Tiles**: the **Open** tickets (New, In Progress and Waiting for Info), each of those three statuses, those **Resolved** or closed in the last 30 days and, signed in, **My open** tickets. A tile pressed again lists the open tickets.
+Each tile, and each count, bar and cell of the **Dashboard** panel, lists its tickets in **All Tickets** (opening that tab and clearing the other filters) and tells what it is when the mouse is over it.
+
+- **Tiles** (in the header): the **Open** tickets (New, In Progress and Waiting for Info), each of those three statuses, those **Resolved** or closed in the last 30 days and, signed in, **My open** tickets. A tile pressed again lists the open tickets.
+- **Created vs resolved**: the tickets opened and those resolved or closed in each period chosen at its top right, the current one last: **Daily** (the last 30 days), **Weekly** (the last 12 weeks from Monday, by default), **Monthly** (the last 12 months), **Quarterly** (the last 8 quarters) or **Yearly** (the last 5 years). The browser remembers the period chosen.
+- **At a glance**: a ring of every ticket, open, resolved or closed, and rejected, with the open ones in its centre (**All clear** when none is open); a part of the ring or its line lists those tickets. Below it, the tickets opened and resolved this week (from Monday), the **age of the oldest open ticket**, with a link to it, and the open tickets nobody attends.
+- **Needs attention**: up to 5 open tickets, the most urgent priority first and then the oldest, with their status, module, assignee and age (green under a week, amber under a month, red after it), and a link to the others; with no open ticket, **All caught up**. Below, the tickets **resolved last**, with the version that fixed them, the time they took and when.
+- **Latest activity**: the 8 newest entries of every ticket (tickets opened, comments and changes, a change of status with the new one), who made them and how long ago.
 - **Tickets by type and status**: a row per type and a column per status, with the totals of each row and column; click a count to list those tickets.
-- **Created vs resolved**: the tickets opened and those resolved or closed in each period chosen at its top right, the current one last: **Daily** (the last 30 days), **Weekly** (the last 12 weeks from Monday, by default), **Monthly** (the last 12 months), **Quarterly** (the last 8 quarters) or **Yearly** (the last 5 years). The browser remembers the period chosen. Below the chart, the **age of the oldest open ticket**, with a link to it.
-- **A card per type**: its open tickets out of all of them, a bar with its tickets by status, and its open tickets by priority (P1 to P5).
-- **Open tickets per module**: the open tickets of each module, the module with most first.
+- **Tickets per module**: every ticket of each module, its open ones in the colour of the module, those with most open tickets first; a module lists all its tickets.
+- **A card per type**: its open tickets out of all of them, a bar with its tickets by status, the median time its tickets took to be resolved and, while it has open tickets, those by priority (P1 to P5).
+
+## Statistics
+
+The **Statistics** tab shows how the tickets are going, with every bar coloured by type (Bug, Improvement, New Feature) and what each part is when the mouse is over it:
+
+- **Resolution rate**: the share of every ticket resolved or closed, as a ring. **Time to resolve · 30 days**: the median time from opened to resolved of the tickets resolved in the last 30 days, and how much faster or slower it is than in the 30 days before. **Opened · 30 days**: the tickets opened in the last 30 days and how many more or fewer than in the 30 days before. **Comments per ticket**, with the screenshots per ticket.
+- **Every ticket**: three donuts of every ticket by type, status and priority, with the count and share of each; a part, or its line in the legend, lists its tickets.
+- **Time to resolve**: the tickets resolved or closed by the time they took (under a day, 1–3 days, 3–7 days, 1–2 weeks, 2–4 weeks, 1–3 months, more), with their median, average and the time 9 in 10 of them took, and the median of each type and priority. **Open** shows instead the age of the open tickets by the same groups.
+- **Backlog over time**: the tickets created, resolved (or closed) and open by the end of each period, with the same choice as **Created vs resolved** (Daily to Yearly, which changes both charts). A ticket is open from the day it was opened to the day it was resolved, closed or rejected.
+- **Tickets fixed in each version**: the tickets resolved or closed in each of the latest 10 versions of the tool, as the Changelog lists them (also those without tickets), by their **Fixed in version**; **Opened with** shows those opened with each version.
+- **Tickets per module**: every ticket of each module, the module with most first; a row lists its tickets.
+- **Tickets per reporter**: the tickets each user opened; **Assignees** shows those of each assignee, open, resolved or closed, and rejected, and how many open tickets nobody attends. A row lists the tickets of that reporter or assignee.
+- **Activity**: a calendar of the last 26 weeks, a column per week from Monday, darker the more tickets were opened, commented and changed that day, with the totals and the busiest day.
+
+Each browser remembers the view chosen in each card.
 
 ## New Ticket
 
-**New Ticket**, at the top of the page or in the menu of the tab, opens the form of a new ticket:
+**New Ticket**, the first tab (also the button of the header, the floating bar and the menu of the tab), shows the form of a new ticket; without signing in it shows dimmed, with a note and a **Sign in** button, and cannot be filled:
 
 - **Type** (required): **Bug** (something does not work as it should), **Improvement** (something that works could work better) or **New Feature** (something the tool cannot do yet). The description shows the guide of the chosen type.
 - **Title**: what it is about, in a few words (required).
@@ -86,11 +107,11 @@ Expected:
 > It only fails with **NSA** campaigns
 ```
 
-## Tickets
+## All Tickets
 
-The **Tickets** table lists every ticket, the latest activity first: its number, type, title, module, reporter, date and version, priority, status (with the version that fixed it), who attends it, its last update and how many comments and screenshots it has. Click a row to open its page.
+The **All Tickets** tab shows the table of every ticket, the latest activity first: its number, type, title, module, reporter, date and version, priority, status (with the version that fixed it), who attends it, its last update and how many comments and screenshots it has. Click a row to open its page.
 
-Below the search, the chips filter the list by **Type**, **Status**, **Priority**, **Module** and **Assignee** (**Unassigned** or a super-admin); press several chips of a group to list any of them, and none to list every value of it. The list starts with the open statuses (New, In Progress and Waiting for Info). Search by title, reporter or number (`#12`), choose a reporter (by name, the default users first) or **Only mine**, the days the tickets were **Created** and last **Updated** (several days at once, the newest first, after **Last Day**: the newest day of creation or of update of the tickets, whatever day it is; while it is chosen, the days are unticked and disabled), and order by latest activity, priority, newest or oldest.
+Below the search, the chips filter the list by **Type**, **Status**, **Priority**, **Module** and **Assignee** (**Unassigned** or a super-admin); press several chips of a group to list any of them, and none to list every value of it: **All**, the first chip of each group, is pressed then, and a click on it unpresses the others. The list starts with the open statuses (New, In Progress and Waiting for Info); **All** of Status lists every ticket. Search by title, reporter or number (`#12`), choose a reporter (by name, the default users first) or **Only mine**, the days the tickets were **Created** and last **Updated** (several days at once, the newest first, after **Last Day**: the newest day of creation or of update of the tickets, whatever day it is; while it is chosen, the days are unticked and disabled), and order by latest activity, priority, newest or oldest.
 
 Every column of the table also filters the tickets as in Excel: the **▾** of its header lists its values (the title of **Ticket**, the priority, the status with the version that fixed it, the comments and screenshots of **Activity**…) with a search, **Select all** and **Clear**, and **Apply** shows only the tickets with a value checked (while searching, only the values found); **Updated** lists its days by year and month. Filtered columns are highlighted, and every filter adds up with the others. **Reset filters** lists the open tickets again, clearing every other filter and the column filters. Each browser remembers the filters and the order.
 

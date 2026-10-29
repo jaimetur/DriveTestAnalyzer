@@ -18730,6 +18730,16 @@ async def read_ticket_screenshots(files: list[UploadFile]) -> list[dict[str, Any
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+def tool_versions() -> list[str]:
+    """The versions of the tool, as the releases of the Changelog name them, the newest first."""
+    try:
+        path = resolve_doc_path('changelog')
+        headings = _document_headings(str(path), path.stat().st_mtime)
+    except (HTTPException, OSError):
+        return []
+    return [match.group(1) for level, text, _ in headings if level == 2 for match in [re.match(r'Release:\s+v(\S+)', text)] if match]
+
+
 def ticket_center_title() -> str:
     """The title of Ticket Center, as Admin → Interface Settings names its tab."""
     return str(load_module_labels(repository)['ticket-center']['title'])
@@ -18740,6 +18750,7 @@ def ticket_center_page(request: Request, user: SessionUser | None = Depends(opti
     from src.modules.ticket_center import (
         DEFAULT_PRIORITY, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_PER_UPLOAD, OPEN_STATUSES, PRIORITIES, STATUSES, TEXT_GUIDE,
         TEXT_GUIDES, TICKET_TYPE_HINTS, TICKET_TYPES, list_tickets, local_today, recently_resolved, ticket_dashboard,
+        ticket_attention, ticket_events, ticket_feed, ticket_statistics,
     )
 
     modules = ticket_modules()
@@ -18747,7 +18758,12 @@ def ticket_center_page(request: Request, user: SessionUser | None = Depends(opti
     by_key = {module['key']: module for module in modules}
     tickets = [serialize_ticket(row, by_key, people) for row in list_tickets(repository)]
     today = local_today()
+    events = ticket_events(repository)
     dashboard = ticket_dashboard(tickets, username=user.username if user else None, today=today)
+    # The open tickets to attend first and the latest activity, on the dashboard too.
+    dashboard['attention'] = ticket_attention(tickets, today)
+    dashboard['feed'] = ticket_feed(tickets, events, names={username: person['name'] for username, person in people.items()})
+    statistics = ticket_statistics(tickets, events, today=today, versions=tool_versions())
     for ticket in tickets:
         ticket['recently_resolved'] = recently_resolved(ticket, today)
     used_modules = {ticket['module'] for ticket in tickets}
@@ -18755,7 +18771,7 @@ def ticket_center_page(request: Request, user: SessionUser | None = Depends(opti
         'user': user, 'tickets': tickets, 'ticket_modules': modules, 'ticket_priorities': PRIORITIES, 'ticket_statuses': STATUSES,
         'ticket_open_statuses': [status for status in STATUSES if status in OPEN_STATUSES],
         'ticket_types': TICKET_TYPES, 'ticket_type_hints': TICKET_TYPE_HINTS, 'ticket_text_guides': TEXT_GUIDES,
-        'ticket_center_title': ticket_center_title(), 'ticket_dashboard': dashboard,
+        'ticket_center_title': ticket_center_title(), 'ticket_dashboard': dashboard, 'ticket_statistics': statistics,
         'ticket_default_priority': DEFAULT_PRIORITY, 'ticket_text_guide': TEXT_GUIDE,
         # Who reported the tickets, by name and the default users first, for the Reporter filter; who attends them and
         # the modules they are about, for the chips of the list.
@@ -25301,7 +25317,7 @@ def list_admin_notices(user: SessionUser = Depends(super_admin_user)) -> JSONRes
             'reported_at': format_local_timestamp(item['created_at'])[:16],
         } for item in notices['tickets']],
         'access_requests_url': '/super-admin?users=access-requests#users',
-        'ticket_center_url': '/tickets?status=new#section-tickets', 'ticket_center_title': ticket_center_title(),
+        'ticket_center_url': '/tickets?status=new#section-all-tickets', 'ticket_center_title': ticket_center_title(),
     }, headers={'Cache-Control': 'no-store'})
 
 

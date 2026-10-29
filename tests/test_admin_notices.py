@@ -130,7 +130,7 @@ def test_each_super_admin_is_told_once_of_new_tickets_of_other_users(client):
     scoring = next(module['title'] for module in core.ticket_modules() if module['key'] == 'scoring')
     assert [(ticket['id'], ticket['title'], ticket['type'], ticket['priority'], ticket['reported_by'], ticket['module']) for ticket in payload['tickets']] == [
         (reported, 'Export fails', 'Improvement', 'P2', 'Ana García', scoring)]
-    assert payload['ticket_center_url'] == '/tickets?status=new#section-tickets' and payload['ticket_center_title'] == 'Ticket Center'
+    assert payload['ticket_center_url'] == '/tickets?status=new#section-all-tickets' and payload['ticket_center_title'] == 'Ticket Center'
     assert acknowledge(client, payload) == {'access_requests': 0, 'tickets': 1}
     assert notices(client)['tickets'] == []
     assert logged('admin_notices_seen')[0] == {'choice': 'Close', 'access_requests': [], 'tickets': [f'#{reported} Export fails']}

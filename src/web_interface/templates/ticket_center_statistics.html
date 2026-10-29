@@ -1,0 +1,248 @@
+{# The Statistics panel of Ticket Center (ticket_center.html), from ticket_center.ticket_statistics. Each part of the
+   donuts and each bar of a module or person lists its tickets in Tickets (data-board-show, ticket_center.js); every
+   part tells what it is over it (data-tip). #}
+{% macro many(count, noun, nouns='') -%}{{ count }} {{ noun if count == 1 else (nouns or noun ~ 's') }}{%- endmacro %}
+{% macro parts(segments) -%}{% for segment in segments %}{{ segment.count }} {{ segment.label }}{% if not loop.last %}, {% endif %}{% endfor %}{%- endmacro %}
+{% set stats = ticket_statistics %}
+{% set health = stats.health %}
+<details class="panel collapsible-panel tickets-stats-panel" id="section-statistics" open data-panel-state-key="ticket-center:statistics" role="tabpanel" aria-labelledby="tickets-tab-statistics" hidden>
+  <summary class="collapsible-summary">
+    <div>
+      <p class="eyebrow">Insights</p>
+      <h2>Statistics</h2>
+      <p class="summary-description">How the tickets are going: how many are resolved and how fast, their mix, the backlog over time, the versions that fixed them, who reports and attends them, the modules they are about and the activity of each day.</p>
+    </div>
+    <span class="collapse-chip">Collapse</span>
+  </summary>
+  <div class="tickets-insights">
+    <div class="tickets-health">
+      <div class="tickets-health-tile" data-tone="rate">
+        <svg class="tickets-ring" viewBox="0 0 42 42" aria-hidden="true"><circle class="tickets-ring-track" cx="21" cy="21" r="15.9155"/>{% if health.rate %}<circle class="tickets-ring-value" cx="21" cy="21" r="15.9155" stroke-dasharray="{{ health.rate }} {{ 100 - health.rate }}" stroke-dashoffset="25"/>{% endif %}</svg>
+        <div class="tickets-health-copy"><span class="tickets-stat-label">Resolution rate</span><strong>{{ health.rate }}%</strong><small>{{ health.done }} of {{ many(health.total, 'ticket') }} resolved or closed</small></div>
+      </div>
+      <div class="tickets-health-tile" data-tone="speed">
+        <span class="tickets-health-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9.5 2.5h5"/></svg></span>
+        <div class="tickets-health-copy"><span class="tickets-stat-label">Time to resolve · {{ health.window }} days</span><strong>{{ health.resolve_time }}</strong>
+          <small>{% if health.resolve_count %}Median of {{ many(health.resolve_count, 'ticket') }}{% if health.resolve_change is not none %} · <span class="tickets-delta" data-tone="{{ 'good' if health.resolve_change < 0 else 'bad' if health.resolve_change > 0 else '' }}">{% if health.resolve_change %}{{ health.resolve_change | abs }}% {{ 'faster' if health.resolve_change < 0 else 'slower' }}{% else %}as fast{% endif %}</span> than the {{ health.window }} days before ({{ health.resolve_previous }}){% endif %}{% else %}No ticket resolved in the last {{ health.window }} days{% endif %}</small></div>
+      </div>
+      <div class="tickets-health-tile" data-tone="opened">
+        <span class="tickets-health-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h15A1.5 1.5 0 0 1 21 7.5V10a2 2 0 0 0 0 4v2.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 16.5V14a2 2 0 0 0 0-4z"/><path d="M12 9v6M9 12h6"/></svg></span>
+        <div class="tickets-health-copy"><span class="tickets-stat-label">Opened · {{ health.window }} days</span><strong>{{ health.created }}</strong>
+          <small><span class="tickets-delta">{{ '+' if health.created_change > 0 else '' }}{{ health.created_change }}</span> than the {{ health.window }} days before</small></div>
+      </div>
+      <div class="tickets-health-tile" data-tone="talk">
+        <span class="tickets-health-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 5h14a1.5 1.5 0 0 1 1.5 1.5v8A1.5 1.5 0 0 1 19 16h-7l-4.5 3.5V16H5a1.5 1.5 0 0 1-1.5-1.5v-8A1.5 1.5 0 0 1 5 5z"/><path d="M8 9.5h8M8 12.5h5"/></svg></span>
+        <div class="tickets-health-copy"><span class="tickets-stat-label">Comments per ticket</span><strong>{{ health.comments }}</strong><small>{{ health.screenshots }} screenshots per ticket</small></div>
+      </div>
+    </div>
+
+    {# The colour of each type in the bars of the cards. #}
+    <ul class="tickets-stack-legend tickets-type-legend" aria-label="Colours of the types">{% for key, label in ticket_types.items() %}<li data-type="{{ key }}">{{ label }}</li>{% endfor %}</ul>
+    <div class="tickets-insights-grid">
+      <section class="tickets-card tickets-mix-card" aria-labelledby="tickets-mix-title">
+        <header class="tickets-card-head"><h3 id="tickets-mix-title">Every ticket</h3><span class="tickets-card-note">Click a part to list its tickets</span></header>
+        <div class="tickets-donuts">
+          {% for donut in stats.mix %}
+          {% set attribute = {'type': 'data-type', 'status': 'data-status', 'priority': 'data-priority'}[donut.key] %}
+          {% set gap = 0.8 if donut.segments | length > 1 else 0 %}
+          <figure class="tickets-donut">
+            <figcaption>{{ donut.title }}</figcaption>
+            <div class="tickets-donut-body">
+              <svg class="tickets-donut-chart" viewBox="0 0 42 42" role="img" aria-label="{{ donut.title }}: {% for segment in donut.segments %}{{ segment.count }} {{ segment.label }}{% if not loop.last %}, {% endif %}{% else %}no ticket{% endfor %}">
+                <circle class="tickets-donut-track" cx="21" cy="21" r="15.9155"/>
+                {% for segment in donut.segments %}
+                {% set length = [segment.share - gap, 0.2] | max %}
+                <circle class="tickets-donut-segment" cx="21" cy="21" r="15.9155" {{ attribute }}="{{ segment.key }}" stroke-dasharray="{{ length | round(3) }} {{ (100 - length) | round(3) }}" stroke-dashoffset="{{ ((125 - segment.start - gap / 2) % 100) | round(3) }}" data-board-show='{{ segment.show | tojson }}' data-tip="{{ many(segment.count, 'ticket') }} {{ segment.label }} ({{ segment.percent }}%)"/>
+                {% endfor %}
+                <text class="tickets-donut-total" x="21" y="21.5">{{ donut.total }}</text>
+                <text class="tickets-donut-caption" x="21" y="27">ticket{{ '' if donut.total == 1 else 's' }}</text>
+              </svg>
+              <ul class="tickets-donut-legend">
+                {% for segment in donut.segments %}
+                <li><button type="button" class="tickets-donut-item" {{ attribute }}="{{ segment.key }}" data-board-show='{{ segment.show | tojson }}' data-tip="List the {{ many(segment.count, 'ticket') }} {{ segment.label }}"><span class="tickets-donut-name">{{ segment.label }}</span><strong>{{ segment.count }}</strong><small>{{ segment.percent }}%</small></button></li>
+                {% else %}<li class="ticket-muted">No ticket yet.</li>{% endfor %}
+              </ul>
+            </div>
+          </figure>
+          {% endfor %}
+        </div>
+      </section>
+
+      {# Resolved: the time from opened to resolved (or closed) of each ticket; Open: the days since each open ticket was opened. #}
+      <section class="tickets-card tickets-duration-card" aria-labelledby="tickets-duration-title" data-tickets-switch="durations">
+        <header class="tickets-card-head">
+          <h3 id="tickets-duration-title" data-switch-title>Time to resolve</h3>
+          <div class="tickets-period-choice" role="group" aria-label="Tickets of the chart">
+            <button type="button" class="tickets-period-option" data-switch-choice="resolved" data-title="Time to resolve" aria-pressed="true">Resolved</button>
+            <button type="button" class="tickets-period-option" data-switch-choice="open" data-title="Age of the open tickets" aria-pressed="false">Open</button>
+          </div>
+        </header>
+        {% for key in ['resolved', 'open'] %}
+        {% set chart = stats.durations[key] %}
+        <div class="tickets-switch-view" data-switch-view="{{ key }}"{% if key != 'resolved' %} hidden{% endif %}>
+          <div class="tickets-figures">
+            <span><strong>{{ chart.median }}</strong>Median</span>
+            <span><strong>{{ chart.average }}</strong>Average</span>
+            <span><strong>{{ chart.p90 }}</strong>9 in 10 within</span>
+            <span><strong>{{ chart.count }}</strong>{{ 'Resolved or closed' if key == 'resolved' else 'Open' }}</span>
+          </div>
+          <div class="tickets-columns" style="--columns: {{ chart.buckets | length }}" role="img" aria-label="{% for bucket in chart.buckets %}{{ bucket.label }}: {{ bucket.total }}{% if not loop.last %}, {% endif %}{% endfor %}">
+            {% for bucket in chart.buckets %}
+            <div class="tickets-column" data-tip="{{ bucket.label }}: {{ many(bucket.total, 'ticket') }}{% if bucket.segments %} ({{ parts(bucket.segments) }}){% endif %}">
+              <div class="tickets-column-bar">{% for segment in bucket.segments %}<span data-type="{{ segment.type }}" style="height: {{ segment.share }}%"></span>{% endfor %}<span class="tickets-column-value">{{ bucket.total or '' }}</span></div>
+              <span class="tickets-column-label">{{ bucket.label }}</span>
+            </div>
+            {% endfor %}
+          </div>
+          {% if chart.by_type %}
+          <div class="tickets-medians"><span class="tickets-subhead">Median by type</span>
+            {% for item in chart.by_type %}<span class="tickets-median" data-type="{{ item.type }}" data-tip="Median of {{ many(item.count, item.label ~ ' ticket') }}">{{ item.label }} <strong>{{ item.median }}</strong></span>{% endfor %}
+          </div>
+          {% endif %}
+          {% if chart.by_priority %}
+          <div class="tickets-medians"><span class="tickets-subhead">Median by priority</span>
+            {% for item in chart.by_priority %}<span class="tickets-median" data-priority="{{ item.priority }}" data-tip="Median of {{ many(item.count, item.priority ~ ' ticket') }}">{{ item.priority }} <strong>{{ item.median }}</strong></span>{% endfor %}
+          </div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </section>
+
+      {# The period follows the one chosen for Created vs resolved, and this browser remembers it (ticket_center.js). #}
+      <section class="tickets-card tickets-backlog-card" aria-labelledby="tickets-backlog-title" data-tickets-trend>
+        <header class="tickets-card-head">
+          <h3 id="tickets-backlog-title">Backlog over time</h3>
+          <div class="tickets-period-choice" role="group" aria-label="Period of the chart">
+            {% for backlog in stats.backlogs %}<button type="button" class="tickets-period-option" data-trend-choice="{{ backlog.period }}" aria-pressed="{{ 'true' if backlog.period == stats.backlog_period else 'false' }}">{{ backlog.choice }}</button>{% endfor %}
+          </div>
+        </header>
+        {% for backlog in stats.backlogs %}
+        <div class="tickets-trend" data-trend-period="{{ backlog.period }}"{% if backlog.period != stats.backlog_period %} hidden{% endif %}>
+          <div class="tickets-trend-head">
+            <ul class="tickets-legend">
+              <li><span class="tickets-swatch" data-series="created" aria-hidden="true"></span>Created <strong>{{ backlog.created }}</strong></li>
+              <li><span class="tickets-swatch" data-series="resolved" aria-hidden="true"></span>Resolved <strong>{{ backlog.resolved }}</strong></li>
+              <li><span class="tickets-swatch" data-series="open" aria-hidden="true"></span>Open <strong>{{ backlog.open }}</strong></li>
+            </ul>
+            <span class="tickets-card-note">{{ backlog.note }} · totals by the end of each</span>
+          </div>
+          <div class="tickets-backlog-chart" style="--trend-periods: {{ backlog.periods | length }}" role="img" aria-label="{{ backlog.created }} tickets created, {{ backlog.resolved }} resolved and {{ backlog.open }} open by today">
+            <span class="tickets-periods-peak" aria-hidden="true">{{ backlog.peak }}</span>
+            <svg class="tickets-backlog-lines" viewBox="0 0 {{ backlog.width }} 100" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+              <path class="tickets-backlog-area" data-series="created" d="{{ backlog.areas.created }}"/>
+              <path class="tickets-backlog-area" data-series="resolved" d="{{ backlog.areas.resolved }}"/>
+              {% for series in ['created', 'resolved', 'open'] %}<polyline class="tickets-backlog-line" data-series="{{ series }}" points="{{ backlog.lines[series] }}"/>{% endfor %}
+            </svg>
+            <div class="tickets-backlog-columns">
+              {% for entry in backlog.periods %}
+              <div class="tickets-backlog-column" data-tip="{{ entry.name }}: {{ entry.created }} created, {{ entry.resolved }} resolved and {{ entry.open }} open by its end"><span class="tickets-period-label">{% if entry.axis %}{{ entry.label }}{% endif %}</span></div>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </section>
+
+      <section class="tickets-card tickets-versions-card" aria-labelledby="tickets-versions-title" data-tickets-switch="versions">
+        <header class="tickets-card-head">
+          <h3 id="tickets-versions-title" data-switch-title>Tickets fixed in each version</h3>
+          <div class="tickets-period-choice" role="group" aria-label="Version of the tickets">
+            <button type="button" class="tickets-period-option" data-switch-choice="fixed" data-title="Tickets fixed in each version" aria-pressed="true">Fixed in</button>
+            <button type="button" class="tickets-period-option" data-switch-choice="opened" data-title="Tickets opened with each version" aria-pressed="false">Opened with</button>
+          </div>
+        </header>
+        {% for key in ['fixed', 'opened'] %}
+        {% set chart = stats.versions[key] %}
+        <div class="tickets-switch-view" data-switch-view="{{ key }}"{% if key != 'fixed' %} hidden{% endif %}>
+          {% if chart.rows %}
+          <div class="tickets-columns" style="--columns: {{ chart.rows | length }}" role="img" aria-label="{% for row in chart.rows %}{{ row.label }}: {{ row.total }}{% if not loop.last %}, {% endif %}{% endfor %}">
+            {% for row in chart.rows %}
+            <div class="tickets-column" data-tip="{{ row.label }}: {{ many(row.total, 'ticket') }} {{ 'fixed' if key == 'fixed' else 'opened' }}{% if row.segments %} ({{ parts(row.segments) }}){% endif %}">
+              <div class="tickets-column-bar">{% for segment in row.segments %}<span data-type="{{ segment.type }}" style="height: {{ segment.share }}%"></span>{% endfor %}<span class="tickets-column-value">{{ row.total }}</span></div>
+              <span class="tickets-column-label">{{ row.label }}</span>
+            </div>
+            {% endfor %}
+          </div>
+          {% else %}<p class="ticket-muted">{{ 'No ticket was resolved in a version yet.' if key == 'fixed' else 'No ticket yet.' }}</p>{% endif %}
+          <p class="tickets-card-note">The latest {{ chart.rows | length }} version{{ '' if chart.rows | length == 1 else 's' }}{% if chart.earlier %} · {{ many(chart.earlier, 'ticket') }} of earlier versions{% endif %}{% if key == 'fixed' and stats.versions.unversioned %} · {{ many(stats.versions.unversioned, 'ticket') }} resolved or closed without a version{% endif %}</p>
+        </div>
+        {% endfor %}
+      </section>
+
+      <section class="tickets-card tickets-ranking-card" aria-labelledby="tickets-modules-all-title">
+        <header class="tickets-card-head"><h3 id="tickets-modules-all-title">Tickets per module</h3><span class="tickets-card-note">Every ticket, by type</span></header>
+        {% if stats.modules %}
+        <ul class="tickets-ranking">
+          {% for module in stats.modules %}
+          <li><button type="button" class="tickets-rank" style="--module-color: {{ module.color }}" data-board-show='{{ {"modules": [module.key], "statuses": []} | tojson }}' data-tip="{{ module.name }}: {{ many(module.total, 'ticket') }} ({{ parts(module.segments) }}), {{ module.open }} open">
+            <span class="tickets-rank-name"><span class="tickets-rank-dot" aria-hidden="true"></span>{{ module.name }}</span>
+            <span class="tickets-rank-bar">{% for segment in module.segments %}<span data-type="{{ segment.type }}" style="width: {{ segment.share }}%"></span>{% endfor %}</span>
+            <strong>{{ module.total }}</strong>
+          </button></li>
+          {% endfor %}
+        </ul>
+        {% if stats.other_modules %}<p class="tickets-card-note">{{ many(stats.other_modules, 'ticket') }} about other modules</p>{% endif %}
+        {% else %}<p class="ticket-muted">No ticket yet.</p>{% endif %}
+      </section>
+
+      {# Reporters: the tickets each one opened, by type; assignees: the tickets each one attends or attended, by status. #}
+      <section class="tickets-card tickets-ranking-card" aria-labelledby="tickets-people-title" data-tickets-switch="people">
+        <header class="tickets-card-head">
+          <h3 id="tickets-people-title" data-switch-title>Tickets per reporter</h3>
+          <div class="tickets-period-choice" role="group" aria-label="People of the chart">
+            <button type="button" class="tickets-period-option" data-switch-choice="reporters" data-title="Tickets per reporter" aria-pressed="true">Reporters</button>
+            <button type="button" class="tickets-period-option" data-switch-choice="assignees" data-title="Tickets per assignee" aria-pressed="false">Assignees</button>
+          </div>
+        </header>
+        {% for key in ['reporters', 'assignees'] %}
+        {% set rows = stats.people[key] %}
+        <div class="tickets-switch-view" data-switch-view="{{ key }}"{% if key != 'reporters' %} hidden{% endif %}>
+          {% if rows %}
+          <ul class="tickets-ranking">
+            {% for person in rows %}
+            {% set show = {'reporter': person.username, 'statuses': []} if key == 'reporters' else {'assignees': [person.username], 'statuses': []} %}
+            <li><button type="button" class="tickets-rank" data-board-show='{{ show | tojson }}' data-tip="{{ person.name }}: {{ many(person.total, 'ticket') }} {{ 'reported' if key == 'reporters' else 'assigned' }} ({{ parts(person.segments) }})">
+              <span class="tickets-rank-name"><span class="tickets-avatar" aria-hidden="true">{{ (person.name.split() | map('first') | join(''))[:2] | upper }}</span>{{ person.name }}</span>
+              <span class="tickets-rank-bar">{% for segment in person.segments %}<span {% if key == 'reporters' %}data-type="{{ segment.type }}"{% else %}data-status="{{ segment.status }}"{% endif %} style="width: {{ segment.share }}%"></span>{% endfor %}</span>
+              <strong>{{ person.total }}</strong>
+            </button></li>
+            {% endfor %}
+          </ul>
+          {% else %}<p class="ticket-muted">{{ 'No ticket yet.' if key == 'reporters' else 'No ticket is assigned yet.' }}</p>{% endif %}
+          {% if key == 'reporters' %}
+          {% if stats.people.other_reporters %}<p class="tickets-card-note">{{ many(stats.people.other_reporters, 'ticket') }} of other reporters</p>{% endif %}
+          {% else %}
+          <ul class="tickets-stack-legend"><li data-status="in_progress">Open</li><li data-status="resolved">Resolved or closed</li><li data-status="rejected">Rejected</li></ul>
+          {% if stats.people.other_assignees or stats.people.unassigned_open %}<p class="tickets-card-note">{% if stats.people.other_assignees %}{{ many(stats.people.other_assignees, 'ticket') }} of other assignees{% endif %}{% if stats.people.other_assignees and stats.people.unassigned_open %} · {% endif %}{% if stats.people.unassigned_open %}{{ many(stats.people.unassigned_open, 'open ticket') }} unassigned{% endif %}</p>{% endif %}
+          {% endif %}
+        </div>
+        {% endfor %}
+      </section>
+
+      {% set activity = stats.activity %}
+      <section class="tickets-card tickets-activity-card" aria-labelledby="tickets-activity-title">
+        <header class="tickets-card-head"><h3 id="tickets-activity-title">Activity</h3><span class="tickets-card-note">Last {{ activity.week_count }} weeks · tickets opened, comments and changes</span></header>
+        <div class="tickets-calendar" style="--weeks: {{ activity.week_count }}">
+          <span class="tickets-calendar-corner" aria-hidden="true"></span>
+          <div class="tickets-calendar-months" aria-hidden="true">{% for week in activity.weeks %}<span>{{ week.month }}</span>{% endfor %}</div>
+          <div class="tickets-calendar-weekdays" aria-hidden="true"><span>Mon</span><span></span><span>Wed</span><span></span><span>Fri</span><span></span><span></span></div>
+          <div class="tickets-calendar-grid" role="img" aria-label="{{ activity.opened }} tickets opened, {{ activity.comments }} comments and {{ activity.changes }} changes in the last {{ activity.week_count }} weeks">
+            {% for week in activity.weeks %}{% for day in week.days %}<span class="tickets-calendar-day" data-level="{{ day.level }}"{% if day.future %} data-future="true"{% else %} data-tip="{{ day.tip }}"{% endif %}></span>{% endfor %}{% endfor %}
+          </div>
+        </div>
+        <div class="tickets-activity-foot">
+          <ul class="tickets-activity-totals">
+            <li><strong>{{ activity.opened }}</strong> opened</li>
+            <li><strong>{{ activity.comments }}</strong> comment{{ '' if activity.comments == 1 else 's' }}</li>
+            <li><strong>{{ activity.changes }}</strong> change{{ '' if activity.changes == 1 else 's' }}</li>
+            <li><strong>{{ activity.resolved }}</strong> resolved</li>
+            <li><strong>{{ activity.active_days }}</strong> active day{{ '' if activity.active_days == 1 else 's' }}</li>
+          </ul>
+          <span class="tickets-calendar-scale" aria-hidden="true">Less{% for level in range(5) %}<span class="tickets-calendar-day" data-level="{{ level }}"></span>{% endfor %}More</span>
+        </div>
+        {% if activity.busiest %}<p class="tickets-card-note">Busiest day: {{ activity.busiest.tip }}</p>{% endif %}
+      </section>
+    </div>
+    <div class="tickets-tip" data-board-tip role="tooltip" hidden></div>
+  </div>
+</details>

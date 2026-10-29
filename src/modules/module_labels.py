@@ -416,7 +416,9 @@ MODULE_SECTIONS: dict[str, list[tuple[Any, ...] | None]] = {
                                 ('analysts-reviewers-to-asignees', 'Analysts / Reviewers → Asignees', 'user-plus')])],
     'reporting': [('Bundle Report Templates', 'Bundle Report Templates', 'presentation'), ('Reporting Jobs', 'Reporting Jobs', 'jobs'),
                   ('Run History', 'Run History', 'log')],
-    'ticket-center': [('New Ticket', 'New Ticket', 'ticket'), ('Tickets', 'Tickets', 'table')],
+    # The tabs of the header of Ticket Center, in their order.
+    'ticket-center': [('New Ticket', 'New Ticket', 'ticket'), ('All Tickets', 'All Tickets', 'table'), ('Dashboard', 'Dashboard', 'summary'),
+                      ('Statistics', 'Statistics', 'chart')],
     'chart-builder': [('Interactive Preview', 'Interactive Preview', 'eye')],
     'query-builder': [('Selected CDR tables', 'Query editor', 'code'), ('Saved queries', 'Saved queries', 'bookmark'),
                       ('Query output', 'Results', 'table')],

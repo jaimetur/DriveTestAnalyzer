@@ -1,8 +1,8 @@
 // Ticket Center: its dashboard, the list of tickets with its filters, the New Ticket form, and the page of each ticket
 // (its edition, comments, screenshots and the super-admin attention).
 (() => {
-  // The sections of Bugs Report, as Ticket Center was called, in the links of before.
-  const formerSections = {'#section-bug-reports': '#section-tickets', '#section-new-bug-report': '#section-new-ticket'};
+  // The sections of Bugs Report, as Ticket Center was called, and Tickets, as All Tickets was called, in the links of before.
+  const formerSections = {'#section-bug-reports': '#section-all-tickets', '#section-new-bug-report': '#section-new-ticket', '#section-tickets': '#section-all-tickets'};
   if (formerSections[window.location.hash]) {
     window.history.replaceState(window.history.state, '', `${window.location.pathname}${window.location.search}${formerSections[window.location.hash]}`);
   }
@@ -84,6 +84,79 @@
     dropzones.set(zone, {reset: () => { files = []; sync(); }, count: () => files.length});
   });
 
+  // Needs attention and Latest activity, side by side, end together: the card whose content goes lower hides the last
+  // entries of its list (the tickets resolved last, the latest activity), whole and keeping its minimum, while its end
+  // is lower than that of the other card by more than about half an entry. Worked out again when the dashboard is
+  // shown and when the window changes size; one below the other (narrow screens), both show every entry.
+  const evenCards = [...document.querySelectorAll('[data-board-even]')];
+  const evenItems = (card) => [...card.querySelectorAll('[data-board-even-item]')];
+  const contentEnd = (card) => Math.max(...[...card.children].filter((child) => !child.hidden && child.getClientRects().length)
+    .map((child) => child.getBoundingClientRect().bottom));
+  const evenBoard = () => {
+    if (evenCards.length !== 2) return;
+    evenCards.forEach((card) => evenItems(card).forEach((item) => { item.hidden = false; }));
+    const [first, second] = evenCards.map((card) => card.getBoundingClientRect());
+    if (!first.height || Math.abs(first.top - second.top) > 1) return;
+    for (let step = 0; step < 40; step += 1) {
+      const ends = evenCards.map(contentEnd);
+      const lower = evenCards[ends[0] > ends[1] ? 0 : 1];
+      const shown = evenItems(lower).filter((item) => !item.hidden);
+      const last = shown.at(-1);
+      if (!last || shown.length <= Number(lower.dataset.boardEvenMin || 0)
+          || Math.abs(ends[0] - ends[1]) < last.getBoundingClientRect().height * 0.6) break;
+      last.hidden = true;
+    }
+  };
+  let evenFrame = 0;
+  const evenSoon = () => { window.cancelAnimationFrame(evenFrame); evenFrame = window.requestAnimationFrame(evenBoard); };
+  window.addEventListener('resize', evenSoon);
+  window.addEventListener('load', evenSoon);
+
+  // The views of the page, chosen from the tabs of its header: the New Ticket form, the list of tickets, the dashboard
+  // (by default; the New Ticket form while there is no ticket) and the Statistics panel, each shown alone (and open)
+  // below the header; this browser remembers the one chosen. A link to a section of a view (the sections menu of the tab, its
+  // floating bar, New Ticket, ?status=new#section-all-tickets of the notices) and a link to the tickets of a status or type
+  // show their view.
+  const tabs = [...document.querySelectorAll('[data-tickets-tab]')];
+  const views = Object.fromEntries(tabs.map((tab) => [tab.dataset.ticketsTab, document.getElementById(tab.getAttribute('aria-controls'))]).filter(([, view]) => view));
+  const viewKey = 'ticket-center:view';
+  const showView = (name, {focus = false} = {}) => {
+    if (!views[name]) return;
+    tabs.forEach((tab) => {
+      const chosen = tab.dataset.ticketsTab === name;
+      tab.setAttribute('aria-selected', String(chosen));
+      tab.tabIndex = chosen ? 0 : -1;
+      if (chosen && focus) tab.focus();
+    });
+    Object.entries(views).forEach(([key, view]) => { view.hidden = key !== name; });
+    if (views[name].tagName === 'DETAILS') views[name].open = true;
+    if (name === 'dashboard') evenSoon();
+    try { window.localStorage.setItem(viewKey, name); } catch (_) { /* Not remembered. */ }
+  };
+  const viewOfHash = (hash) => Object.keys(views).find((key) => `#${views[key].id}` === decodeURIComponent(hash || ''));
+  if (tabs.length) {
+    const linked = new URLSearchParams(window.location.search);
+    let stored = '';
+    try { stored = window.localStorage.getItem(viewKey) || ''; } catch (_) { /* The dashboard. */ }
+    const fallback = views['new-ticket'] && !document.querySelector('[data-ticket-row]') ? 'new-ticket' : 'dashboard';
+    showView(viewOfHash(window.location.hash) || (linked.has('status') || linked.has('type') ? 'tickets' : '') || (views[stored] ? stored : fallback));
+    tabs.forEach((tab) => tab.addEventListener('click', () => showView(tab.dataset.ticketsTab)));
+    tabs.forEach((tab, index) => tab.addEventListener('keydown', (event) => {
+      const step = {ArrowRight: 1, ArrowLeft: -1}[event.key];
+      if (!step) return;
+      event.preventDefault();
+      showView(tabs[(index + step + tabs.length) % tabs.length].dataset.ticketsTab, {focus: true});
+    }));
+    // (Capturing the click, before the page opens the section, which takes it out of the address.)
+    document.addEventListener('click', (event) => {
+      const link = event.target instanceof Element ? event.target.closest('a[href*="#"]') : null;
+      if (!link) return;
+      const url = new URL(link.href, window.location.href);
+      const view = url.pathname === window.location.pathname ? viewOfHash(url.hash) : '';
+      if (view) showView(view);
+    }, true);
+  }
+
   // The list: the chips (type, status, priority, module and assignee), search, reporter, the days of creation and of
   // the last update and order of the tickets, remembered by this browser. No chip pressed in a group lists every value
   // of it, and the groups add up. Each column also filters by its values, as in Excel (app.js), with the other filters.
@@ -97,6 +170,8 @@
     const empty = document.querySelector('[data-tickets-empty]');
     const chips = [...document.querySelectorAll('[data-chip]')];
     const recentChip = document.querySelector('[data-chip-recent]');
+    // The All chip of each group, pressed while none of its chips is: it lists every value of the group again.
+    const allChips = [...document.querySelectorAll('[data-chip-all]')];
     const groups = ['types', 'statuses', 'priorities', 'modules', 'assignees'];
     const openStatuses = ['new', 'in_progress', 'waiting_info'];
     const allowed = Object.fromEntries(groups.map((group) => [group, new Set(chips.filter((chip) => chip.dataset.chip === group).map((chip) => chip.dataset.value))]));
@@ -205,6 +280,7 @@
       }[sort.value];
       body.append(...rows.sort(order));
       chips.forEach((chip) => chip.setAttribute('aria-pressed', String(state[chip.dataset.chip].includes(chip.dataset.value))));
+      allChips.forEach((chip) => chip.setAttribute('aria-pressed', String(!state[chip.dataset.chipAll].length && (chip.dataset.chipAll !== 'statuses' || !state.recent))));
       if (recentChip) recentChip.hidden = !state.recent;
       if (count) count.textContent = `${shown} of ${rows.length} ticket${rows.length === 1 ? '' : 's'}`;
       if (empty && rows.length) empty.hidden = shown > 0;
@@ -224,6 +300,11 @@
       apply();
     }));
     recentChip?.addEventListener('click', () => { state.recent = false; apply(); });
+    allChips.forEach((chip) => chip.addEventListener('click', () => {
+      state[chip.dataset.chipAll] = [];
+      if (chip.dataset.chipAll === 'statuses') state.recent = false;
+      apply();
+    }));
     Object.values(filters).forEach((control) => control.addEventListener(control.type === 'search' ? 'input' : 'change', apply));
     Object.values(dateFilters).forEach((control) => control.addEventListener('change', () => {
       if (syncLastDay(control)) redraw(control);
@@ -236,12 +317,14 @@
       apply();
     });
     // Lists the tickets the dashboard counted (every other filter cleared) and shows the list.
-    const show = ({mine = false, ...chosen}) => {
+    const show = ({mine = false, reporter = '*', ...chosen}) => {
       clear();
       Object.assign(state, {statuses: [...openStatuses]}, chosen);
       if (filters.mine) filters.mine.checked = mine;
+      if ([...filters.reporter.options].some((option) => option.value === reporter)) filters.reporter.value = reporter;
       apply();
-      const panel = document.getElementById('section-tickets');
+      showView('tickets');
+      const panel = document.getElementById('section-all-tickets');
       if (panel) {
         panel.open = true;
         panel.scrollIntoView({behavior: 'smooth', block: 'start'});
@@ -272,7 +355,7 @@
       show(key === pressedStat() ? {} : tileState[key]);
     }));
     // The counts of the matrix and the bars of each type list their tickets: a type and a status (the totals, every
-    // value of the other one); a priority of a type, its open tickets; a module, its open tickets.
+    // value of the other one); a priority of a type, its open tickets; a module, every ticket of it.
     document.querySelectorAll('[data-board-cell]').forEach((cell) => cell.addEventListener('click', () => show({
       types: cell.dataset.type ? [cell.dataset.type] : [], statuses: cell.dataset.status ? [cell.dataset.status] : [],
     })));
@@ -280,8 +363,16 @@
       types: [cell.dataset.type], priorities: [cell.dataset.priority],
     })));
     document.querySelectorAll('[data-board-module]').forEach((cell) => cell.addEventListener('click', () => show({
-      modules: allowed.modules.has(cell.dataset.boardModule) ? [cell.dataset.boardModule] : [],
+      modules: allowed.modules.has(cell.dataset.boardModule) ? [cell.dataset.boardModule] : [], statuses: [],
     })));
+    // The parts of the Statistics panel list the tickets they count (data-board-show: the filters, as the chips name them,
+    // and the reporter); a module or assignee of no chip lists every ticket.
+    document.querySelectorAll('[data-board-show]').forEach((part) => part.addEventListener('click', () => {
+      let chosen = {};
+      try { chosen = JSON.parse(part.dataset.boardShow); } catch (_) { /* Every ticket. */ }
+      groups.forEach((group) => { if (Array.isArray(chosen[group])) chosen[group] = chosen[group].filter((value) => allowed[group].has(value)); });
+      show(chosen);
+    }));
     // A click anywhere on a row opens its ticket.
     table.addEventListener('click', (event) => {
       const row = event.target.closest('[data-ticket-row]');
@@ -291,29 +382,53 @@
     apply();
   }
 
-  // The chart of the tickets created and resolved shows the period chosen, Weekly by default; this browser remembers it.
-  const trend = document.querySelector('[data-tickets-trend]');
-  if (trend) {
-    const choices = [...trend.querySelectorAll('[data-trend-choice]')];
-    const title = trend.querySelector('[data-trend-title]');
+  // The charts over time (Created vs resolved and Backlog over time) show the period chosen in either of them, Weekly by
+  // default; this browser remembers it.
+  const trends = [...document.querySelectorAll('[data-tickets-trend]')];
+  if (trends.length) {
     const trendKey = 'ticket-center:trend-period';
     const choose = (period) => {
-      const chosen = choices.find((button) => button.dataset.trendChoice === period);
-      if (!chosen) return;
-      choices.forEach((button) => button.setAttribute('aria-pressed', String(button === chosen)));
-      trend.querySelectorAll('[data-trend-period]').forEach((chart) => { chart.hidden = chart.dataset.trendPeriod !== period; });
-      title.textContent = chosen.dataset.title;
+      if (!trends.some((trend) => trend.querySelector(`[data-trend-choice="${period}"]`))) return;
+      trends.forEach((trend) => {
+        const choices = [...trend.querySelectorAll('[data-trend-choice]')];
+        const chosen = choices.find((button) => button.dataset.trendChoice === period);
+        if (!chosen) return;
+        choices.forEach((button) => button.setAttribute('aria-pressed', String(button === chosen)));
+        trend.querySelectorAll('[data-trend-period]').forEach((chart) => { chart.hidden = chart.dataset.trendPeriod !== period; });
+        const title = trend.querySelector('[data-trend-title]');
+        if (title && chosen.dataset.title) title.textContent = chosen.dataset.title;
+      });
     };
     try { choose(window.localStorage.getItem(trendKey)); } catch (_) { /* Weekly. */ }
-    choices.forEach((button) => button.addEventListener('click', () => {
+    document.querySelectorAll('[data-trend-choice]').forEach((button) => button.addEventListener('click', () => {
       choose(button.dataset.trendChoice);
       try { window.localStorage.setItem(trendKey, button.dataset.trendChoice); } catch (_) { /* Not remembered. */ }
     }));
   }
 
-  // The dashboard tells what each count, bar and period is, over it (data-tip), with the mouse or the keyboard.
-  const tip = document.querySelector('[data-board-tip]');
-  if (tip) {
+  // The cards of the Statistics panel with two views (Resolved or Open, Fixed in or Opened with, Reporters or Assignees)
+  // show the one chosen, the first by default; this browser remembers it for each card.
+  document.querySelectorAll('[data-tickets-switch]').forEach((card) => {
+    const switchKey = `ticket-center:statistics:${card.dataset.ticketsSwitch}`;
+    const choices = [...card.querySelectorAll('[data-switch-choice]')];
+    const title = card.querySelector('[data-switch-title]');
+    const choose = (view) => {
+      const chosen = choices.find((button) => button.dataset.switchChoice === view);
+      if (!chosen) return;
+      choices.forEach((button) => button.setAttribute('aria-pressed', String(button === chosen)));
+      card.querySelectorAll('[data-switch-view]').forEach((part) => { part.hidden = part.dataset.switchView !== view; });
+      if (title) title.textContent = chosen.dataset.title;
+    };
+    try { choose(window.localStorage.getItem(switchKey)); } catch (_) { /* The first view. */ }
+    choices.forEach((button) => button.addEventListener('click', () => {
+      choose(button.dataset.switchChoice);
+      try { window.localStorage.setItem(switchKey, button.dataset.switchChoice); } catch (_) { /* Not remembered. */ }
+    }));
+  });
+
+  // The dashboard and the Statistics panel tell what each count, bar, part and day is, over it (data-tip), with the mouse
+  // or the keyboard.
+  document.querySelectorAll('[data-board-tip]').forEach((tip) => {
     const board = tip.parentElement;
     const place = (target) => {
       tip.textContent = target.dataset.tip;
@@ -333,7 +448,7 @@
     board.addEventListener('pointerleave', hide);
     board.addEventListener('focusin', (event) => { const target = event.target.closest('[data-tip]'); if (target) place(target); });
     board.addEventListener('focusout', hide);
-  }
+  });
 
   // The New Ticket link opens and shows its panel.
   document.querySelector('[data-tickets-new]')?.addEventListener('click', () => {
@@ -342,6 +457,11 @@
       panel.open = true;
       window.setTimeout(() => panel.querySelector('input[name="ticket_type"]')?.focus(), 50);
     }
+  });
+
+  // Without signing in, the New Ticket form cannot be filled: a click on it says so.
+  document.querySelector('[data-tickets-locked]')?.addEventListener('click', () => {
+    info('Sign in to open a ticket: the form can be filled and sent once you are signed in.', moduleTitle, 'info');
   });
 
   const createForm = document.querySelector('[data-tickets-create-form]');

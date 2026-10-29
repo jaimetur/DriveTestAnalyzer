@@ -11,11 +11,11 @@ module.exports = {
       notes: 'Ticket Center is where users report the bugs they find, suggest improvements and ask for new features, and follow each ticket until it is resolved. Every ticket keeps the version of the tool it was opened with.' },
     { id: 'overview', type: 'split', section: 'Tickets', footer: 'Dashboard and tickets', kicker: 'Dashboard and tickets', title: 'Every ticket at a glance', visual: 'kanban',
       points: [
-        { icon: 'TbLayoutDashboard', title: 'Dashboard', text: 'Counts, bars and cells that each list their tickets.' },
-        { icon: 'TbTable', title: 'Tickets', text: 'The latest activity first: number, type, module, priority, status and who attends it.' },
-        { icon: 'TbFileText', title: 'The page of a ticket', text: 'Its type, status, priority, module and the versions that opened and fixed it.' },
+        { icon: 'TbTable', title: 'All Tickets', text: 'The latest activity first, filtered by chips and columns; each ticket opens its own page.' },
+        { icon: 'TbLayoutDashboard', title: 'Dashboard', text: 'At a glance, what needs attention and the latest activity; every count lists its tickets.' },
+        { icon: 'TbChartDonut', title: 'Statistics', text: 'Time to resolve, backlog over time, versions, people, modules and a calendar of activity.' },
       ],
-      notes: 'The dashboard sums up every ticket; each count lists its tickets below. The Tickets table shows the latest activity first, and each ticket has its own page.' },
+      notes: 'The tabs of the header show New Ticket, All Tickets, the Dashboard and Statistics. All Tickets lists every ticket, the latest activity first, and each ticket has its own page; the Dashboard shows the tickets at a glance, those to attend first and the latest activity, each count listing its tickets; Statistics shows how long tickets take, the backlog over time, the versions, people and modules and the activity of each day.' },
     { id: 'flow', type: 'steps', section: 'Tickets', footer: 'From report to fix', kicker: 'Lifecycle', title: 'From report to fix',
       steps: [
         { icon: 'TbSquarePlus', title: 'New Ticket', text: 'Its type, title, module and description in Markdown, with screenshots.' },

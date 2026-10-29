@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 import src.DriveTestAnalyzer as core
+from src.modules.module_labels import section_links
 from src.version import __version__
 
 PNG = b'\x89PNG\r\n\x1a\n' + b'\x00' * 64
@@ -60,11 +61,18 @@ def test_ticket_center_is_in_every_profile_once_and_opens_without_a_workspace(cl
     core.close_active_workspace()
     page = client.get('/tickets')
     assert page.status_code == 200
-    assert 'id="section-new-ticket"' in page.text and 'id="section-tickets"' in page.text
+    assert 'id="section-new-ticket"' in page.text and 'id="section-all-tickets"' in page.text
     # Each tile of the header lists its tickets, and the list filters them by chips and reporter too.
     assert 'data-tickets-filter="reporter"' in page.text
     assert all(f'data-tickets-stat="{key}"' in page.text for key in ('open', 'new', 'in_progress', 'waiting_info', 'recent', 'mine'))
     assert all(f'data-chip="{group}"' in page.text for group in ('types', 'statuses', 'priorities'))
+    # Each group of chips starts with All, and the header chooses the view: the dashboard, Statistics or the tickets.
+    assert all(f'data-chip-all="{group}"' in page.text for group in ('types', 'statuses', 'priorities'))
+    assert all(f'data-tickets-tab="{view}"' in page.text for view in ('new-ticket', 'dashboard', 'statistics', 'tickets'))
+    assert all(f'id="section-{view}"' in page.text for view in ('new-ticket', 'all-tickets', 'dashboard', 'statistics'))
+    assert 'module-hero-ticket-center' in page.text
+    # The sections menu of the tab lists the views in the order of the tabs.
+    assert [entry[1] for entry in section_links('/tickets', 'ticket-center')] == ['New Ticket', 'All Tickets', 'Dashboard', 'Statistics']
     assert f'Ticket Center · Version {__version__}' in page.text
     # Its tab is a link even without a workspace, unlike the modules that use one.
     assert 'module-tab module-tab-ticket-center' in page.text and 'href="/tickets" title="Open Ticket Center"' in page.text
@@ -268,6 +276,9 @@ def test_anyone_reads_tickets_without_signing_in_but_only_signed_in_users_change
     assert listing.status_code == 200 and 'Export fails' in listing.text
     assert 'href="/login?next=/tickets">Sign in to open a ticket</a>' in listing.text
     assert 'data-tickets-create-form' not in listing.text and 'data-tickets-stat="mine"' not in listing.text
+    # The New Ticket tab shows its form, which cannot be filled without signing in.
+    assert 'data-tickets-tab="new-ticket"' in listing.text and 'data-tickets-locked' in listing.text
+    assert '<form class="tickets-form" inert aria-disabled="true" novalidate>' in listing.text
     page = client.get(f'/tickets/{ticket_id}', follow_redirects=False)
     assert page.status_code == 200 and 'Export fails' in page.text and 'Seen in DE too' in page.text
     assert f'href="/login?next=/tickets/{ticket_id}">Sign in</a> to comment' in page.text
@@ -469,7 +480,14 @@ def test_the_design_counts_tickets_by_type_status_priority_module_and_period():
     assert [status for status, _label in board['statuses']] == ['new', 'in_progress', 'waiting_info', 'rejected', 'closed', 'resolved']
     assert [segment['status'] for segment in rows['bug']['segments']] == ['new', 'in_progress', 'resolved']
     assert board['status_totals'] == {'new': 1, 'in_progress': 1, 'waiting_info': 1, 'resolved': 1, 'closed': 1, 'rejected': 1}
-    assert [(module['key'], module['count']) for module in board['modules']] == [('scoring', 2), ('reporting', 1)]
+    # Every ticket of each module, those with most open tickets first.
+    assert [(module['key'], module['count'], module['total']) for module in board['modules']] == [('scoring', 2, 2), ('reporting', 1, 1), ('', 0, 3)]
+    assert board['max_module'] == 3
+    # At a glance: open, resolved (or closed) and rejected, this week (from today, a Monday) and the open ones unassigned.
+    glance = board['glance']
+    assert [(part['key'], part['count']) for part in glance['ring']['segments']] == [('open', 3), ('done', 2), ('rejected', 1)]
+    assert (glance['week_opened'], glance['week_resolved'], glance['unassigned'], glance['total']) == (1, 0, 3, 6)
+    assert [row['median_resolve'] for row in board['types']] == ['2.0 days', '62 days', '—']
     # A chart per period, Weekly by default: twelve weeks from Monday, the current one last, with what was created and
     # resolved (not rejected) in each and a label every three weeks.
     trends = {trend['period']: trend for trend in board['trends']}
@@ -494,6 +512,132 @@ def test_the_design_counts_tickets_by_type_status_priority_module_and_period():
     assert (trends['year']['title'], trends['year']['note']) == ('Created vs resolved per year', 'Last 5 years')
     assert board['oldest_open'] == {'id': 1, 'title': 'T1', 'ticket_type': 'bug', 'days': 79, 'created_date': '2026-08-01'}
     assert ticket_dashboard([], today=today)['oldest_open'] is None
+
+
+def test_the_dashboard_shows_the_tickets_to_attend_and_the_latest_activity():
+    from datetime import date, datetime, timedelta, timezone
+
+    from src.modules.ticket_center import ticket_attention, ticket_feed
+
+    def ticket(number, status, priority='P3', created='2026-10-05T09:00', resolved='', assigned='', fixed=''):
+        return {'id': number, 'title': f'T{number}', 'ticket_type': 'bug', 'status': status, 'priority': priority, 'module': '',
+                'module_title': 'General', 'module_color': '#123456', 'created_by': 'ANA', 'created_by_name': 'User A',
+                'assigned_to': assigned, 'assigned_to_name': 'User E' if assigned else '', 'fixed_version': fixed,
+                'created_at': f'{created}:00+01:00', 'resolved_at': f'{resolved}:00+01:00' if resolved else ''}
+
+    today = date(2026, 10, 19)
+    now = datetime(2026, 10, 19, 12, 0, tzinfo=timezone(timedelta(hours=1)))
+    tickets = [
+        ticket(1, 'new', 'P2', created='2026-08-01T09:00'),
+        ticket(2, 'in_progress', 'P1', assigned='EJ'),
+        ticket(3, 'resolved', created='2026-10-12T09:00', resolved='2026-10-14T10:00', fixed='v0.10.0'),
+        ticket(4, 'waiting_info', 'P1', created='2026-10-19T09:00'),
+        ticket(5, 'closed', created='2026-07-01T09:00', resolved='2026-09-01T10:00'),
+    ]
+    # The most urgent priority first, then the oldest; the age of each (fresh, aging, old) against the oldest shown.
+    attention = ticket_attention(tickets, today, limit=2, now=now)
+    assert [(row['id'], row['age'], row['tone'], row['share'], row['assignee']) for row in attention['rows']] == [
+        (2, '14 days', 'aging', 100.0, 'User E'), (4, 'Today', 'fresh', 4, '')]
+    assert (attention['open'], attention['more'], attention['unassigned']) == (3, 1, 2)
+    assert [(item['id'], item['fixed_version'], item['took'], item['ago']) for item in attention['resolved']] == [
+        (3, '0.10.0', '2.0 days', '5 days ago'), (5, '', '62 days', '1 Sep')]
+    # The newest entries: a change of status says the new one, another change the fields it changed.
+    events = [
+        {'ticket_id': 3, 'username': 'EJ', 'kind': 'change', 'changes_json': '{"status": ["new", "resolved"]}', 'created_at': '2026-10-14T10:00:00+01:00'},
+        {'ticket_id': 3, 'username': 'BOB', 'kind': 'comment', 'changes_json': '', 'created_at': '2026-10-14T09:59:00+01:00'},
+        {'ticket_id': 4, 'username': 'EJ', 'kind': 'change', 'changes_json': '{"priority": ["P3", "P1"], "assigned_to": ["", "EJ"]}',
+         'created_at': '2026-10-19T11:30:00+01:00'},
+        {'ticket_id': 99, 'username': 'EJ', 'kind': 'comment', 'changes_json': '', 'created_at': '2026-10-19T11:59:00+01:00'},
+    ]
+    feed = ticket_feed(tickets, events, names={'EJ': 'User E', 'BOB': 'User B'}, now=now, limit=4)
+    assert [(entry['kind'], entry['who'], entry['verb'], entry['ticket_id'], entry['status'], entry['fields'], entry['ago']) for entry in feed] == [
+        ('change', 'User E', 'updated', 4, '', 'Priority, Assigned to', '30 min ago'),
+        ('opened', 'User A', 'opened', 4, '', '', '3 h ago'),
+        ('status', 'User E', 'moved to', 3, 'resolved', '', '5 days ago'),
+        ('comment', 'User B', 'commented', 3, '', '', '5 days ago'),
+    ]
+    assert feed[2]['status_label'] == 'Resolved' and feed[0]['when'] == '2026-10-19 11:30'
+
+
+def test_the_statistics_measure_resolution_mix_backlog_versions_people_and_activity():
+    from datetime import date
+
+    from src.modules.ticket_center import ACTIVITY_WEEKS, DURATION_BUCKETS, STATISTICS_VERSIONS, ticket_statistics
+
+    def ticket(number, ticket_type, status, priority='P3', created='2026-10-05T09:00', resolved='', created_by='ANA', assigned='',
+               fixed='', version='0.9.0', module=''):
+        return {'id': number, 'ticket_type': ticket_type, 'status': status, 'priority': priority, 'module': module,
+                'module_title': module.title() or 'General', 'module_color': '#123456', 'created_by': created_by,
+                'created_by_name': created_by.title(), 'assigned_to': assigned, 'assigned_to_name': assigned.title(),
+                'fixed_version': fixed, 'app_version': version, 'comment_count': 2, 'attachment_count': number % 2,
+                'created_at': f'{created}:00+01:00', 'resolved_at': f'{resolved}:00+01:00' if resolved else ''}
+
+    today = date(2026, 10, 19)  # A Monday.
+    tickets = [
+        ticket(1, 'bug', 'new', 'P1', created='2026-08-01T09:00', module='scoring'),
+        ticket(2, 'bug', 'in_progress', 'P1', created_by='BOB', assigned='EJ', module='scoring'),
+        ticket(3, 'bug', 'resolved', created='2026-10-12T09:00', resolved='2026-10-12T15:00', assigned='EJ', fixed='0.10.0'),
+        ticket(4, 'improvement', 'resolved', created='2026-10-01T09:00', resolved='2026-10-11T09:00', fixed='v0.9.1'),
+        ticket(5, 'improvement', 'closed', created='2026-08-20T09:00', resolved='2026-09-01T09:00', fixed='0.9.1'),
+        ticket(6, 'new_feature', 'rejected', resolved='2026-10-06T09:00', assigned='EJ'),
+        ticket(7, 'new_feature', 'resolved', created='2026-10-15T09:00', resolved='2026-10-17T09:00'),
+    ]
+    events = [{'kind': 'comment', 'created_at': '2026-10-12T10:00:00+01:00'}, {'kind': 'change', 'created_at': '2026-10-12T15:00:00+01:00'},
+              {'kind': 'comment', 'created_at': '2026-01-01T10:00:00+01:00'}]
+    stats = ticket_statistics(tickets, events, today=today)
+    # Resolved or closed of every ticket; the median time of those resolved in the last 30 days (6 h, 2 and 10 days)
+    # against the 30 days before (12 days); the tickets opened in each window; comments and screenshots per ticket.
+    assert stats['health'] == {
+        'total': 7, 'done': 4, 'rate': 57, 'resolve_time': '2.0 days', 'resolve_count': 3, 'resolve_previous': '12 days',
+        'resolve_change': -83, 'created': 5, 'created_change': 5, 'window': 30, 'comments': 2.0, 'screenshots': 0.6,
+    }
+    # Donuts of every ticket, each part listing its tickets as the chips name them.
+    mix = {donut['key']: donut for donut in stats['mix']}
+    assert [(part['key'], part['count'], part['percent']) for part in mix['type']['segments']] == [('bug', 3, 43), ('improvement', 2, 29), ('new_feature', 2, 29)]
+    assert mix['type']['segments'][1]['start'] == round(300 / 7, 3) and mix['type']['segments'][0]['show'] == {'types': ['bug'], 'statuses': []}
+    assert [part['key'] for part in mix['status']['segments']] == ['new', 'in_progress', 'rejected', 'closed', 'resolved']
+    assert mix['priority']['segments'][0]['show'] == {'priorities': ['P1'], 'statuses': []} and mix['priority']['total'] == 7
+    # Time to resolve by groups of days (the rejected ticket left out) and the age of the open ones.
+    resolved = stats['durations']['resolved']
+    assert [bucket['total'] for bucket in resolved['buckets']] == [1, 1, 0, 2, 0, 0, 0] and len(resolved['buckets']) == len(DURATION_BUCKETS)
+    assert (resolved['median'], resolved['average'], resolved['p90'], resolved['count']) == ('6.0 days', '6.1 days', '12 days', 4)
+    assert [(item['type'], item['median']) for item in resolved['by_type']] == [('bug', '6 h'), ('improvement', '11 days'), ('new_feature', '2.0 days')]
+    assert [(item['priority'], item['count']) for item in resolved['by_priority']] == [('P3', 4)]
+    opened = stats['durations']['open']
+    assert ([bucket['total'] for bucket in opened['buckets']], opened['median'], opened['p90']) == ([0, 0, 0, 0, 1, 1, 0], '46 days', '79 days')
+    # Backlog: created, resolved (not rejected) and open by the end of each week, today last.
+    week = next(backlog for backlog in stats['backlogs'] if backlog['period'] == 'week')
+    assert [(entry['created'], entry['resolved'], entry['open']) for entry in week['periods'][-3:]] == [(5, 2, 2), (7, 4, 2), (7, 4, 2)]
+    assert (week['created'], week['resolved'], week['open'], week['peak'], week['width']) == (7, 4, 2, 7, 120)
+    assert week['lines']['created'].endswith('115,6.0') and week['areas']['resolved'].startswith('M5,100 L5,100.0')
+    # Fixed in and opened with each version, by version number (v0.9.1 and 0.9.1 are the same).
+    assert [(row['label'], row['total']) for row in stats['versions']['fixed']['rows']] == [('v0.9.1', 2), ('v0.10.0', 1)]
+    assert (stats['versions']['unversioned'], STATISTICS_VERSIONS) == (1, 10)
+    # With the versions of the tool, the latest ten, also those without tickets.
+    releases = [f'0.{minor}.{patch}' for minor in (8, 9, 10) for patch in range(5)]
+    fixed = ticket_statistics(tickets, events, today=today, versions=releases)['versions']['fixed']
+    assert [row['label'] for row in fixed['rows']] == ['v0.9.0', 'v0.9.1', 'v0.9.2', 'v0.9.3', 'v0.9.4', 'v0.10.0', 'v0.10.1', 'v0.10.2',
+                                                       'v0.10.3', 'v0.10.4']
+    assert [row['total'] for row in fixed['rows']][:2] == [0, 2] and fixed['rows'][0]['segments'] == [] and fixed['earlier'] == 0
+    # People and modules, the most tickets first; the assignees by open, resolved and rejected tickets.
+    reporters = stats['people']['reporters']
+    assert [(row['username'], row['name'], row['total'], row['open']) for row in reporters] == [('ana', 'Ana', 6, 1), ('bob', 'Bob', 1, 1)]
+    assert [(part['type'], part['share']) for part in reporters[1]['segments']] == [('bug', round(100 / 6, 2))]
+    assignee = stats['people']['assignees'][0]
+    assert (assignee['username'], assignee['groups']) == ('ej', {'open': 1, 'resolved': 1, 'rejected': 1})
+    assert stats['people']['unassigned_open'] == 1
+    assert [(row['key'], row['total'], row['open']) for row in stats['modules']] == [('', 5, 0), ('scoring', 2, 2)]
+    # Activity of each day of the last 26 weeks, from Monday; the comment of January is older.
+    activity = stats['activity']
+    assert len(activity['weeks']) == ACTIVITY_WEEKS and activity['weeks'][-1]['days'][0]['day'] == '2026-10-19'
+    assert activity['weeks'][-1]['days'][1]['future'] and not activity['weeks'][-1]['days'][0]['future']
+    assert (activity['opened'], activity['comments'], activity['changes'], activity['resolved']) == (7, 1, 1, 4)
+    monday = activity['weeks'][-2]['days'][0]
+    assert (monday['day'], monday['total'], monday['level']) == ('2026-10-12', 3, 4)
+    assert monday['tip'] == 'Mon 12 Oct 2026: 1 opened, 1 comment, 1 change, 1 resolved'
+    assert activity['busiest']['total'] == 3
+    empty = ticket_statistics([], today=today)
+    assert (empty['health']['rate'], empty['mix'][0]['segments'], empty['activity']['busiest']) == (0, [], None)
 
 
 def test_the_type_travels_with_the_tickets(client):
