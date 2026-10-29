@@ -51,6 +51,10 @@
     'Scatter': axes + [[10, 24], [14, 19], [17, 22], [21, 15], [25, 17], [29, 11], [33, 13], [37, 7]].map(([x, y], i) => `<circle cx="${x}" cy="${y}" r="2" fill="${i % 2 ? B : A}"/>`).join(''),
     'Table': `<rect x="5" y="5" width="38" height="24" rx="2" fill="none" stroke="${G}" stroke-width="1.4"/>` + bar(A, 5, 5, 38, 6) + `<path d="M5 17h38M5 23h38M17 5v24M30 5v24" stroke="${G}" stroke-width="1.2"/>`,
     'Dynamic Table': `<rect x="5" y="5" width="38" height="24" rx="2" fill="none" stroke="${G}" stroke-width="1.4"/>` + bar(A, 5, 5, 38, 6) + bar(B, 18, 12, 11, 5) + bar(C, 30, 18, 12, 5) + bar(B, 6, 24, 11, 4) + `<path d="M5 17h38M5 23h38M17 5v24M30 5v24" stroke="${G}" stroke-width="1.2"/>`,
+    // A scorecard: its figure, the change pill beside it and its trend over the campaigns.
+    'KPI Card': `<rect x="5" y="4" width="38" height="26" rx="4" fill="none" stroke="${G}" stroke-width="1.4"/>` + bar(G, 10, 8, 13, 3)
+      + bar(A, 10, 13, 17, 7) + `<rect x="30" y="14" width="9" height="5" rx="2.5" fill="${B}"/>`
+      + `<path d="M10 26l6-2.5 5 1.5 6-3.5 5 1.5 6-3" fill="none" stroke="${C}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>`,
     'Map': `<path d="M5 9l11-4 15 4 12-4v20l-12 4-15-4-11 4z" fill="none" stroke="${G}" stroke-width="1.4"/>` + [[11, 17], [17, 24], [36, 20]].map(([x, y], i) => `<circle cx="${x}" cy="${y}" r="2.4" fill="${[A, B, A][i]}"/>`).join('') + `<path d="M26 24c0-3.5 4.5-6.5 4.5-10.5a4.5 4.5 0 0 0-9 0c0 4 4.5 7 4.5 10.5z" fill="${C}"/><circle cx="26" cy="13.5" r="1.7" fill="#fff"/>`,
   };
   const TYPES = [
@@ -68,6 +72,7 @@
     {type: 'Table', need: s => s.measures >= 1 || 'A measure'},
     {type: 'Dynamic Table', need: s => s.measures >= 1 || 'A measure'},
     {type: 'Map', need: s => s.geo || 'Latitude and Longitude in the source'},
+    {type: 'KPI Card', need: s => s.measures === 1 || 'One measure: the field of the card'},
   ];
   // Chart Type of the Designer: the chart types grouped by what they show.
   const TYPE_GROUPS = [
@@ -75,6 +80,7 @@
     ['Comparison', ['Average Vertical Bars', 'Median Vertical Bars', 'Scatter']],
     ['Composition', ['100% Stacked Vertical Bars', 'Count Stacked Horizontal Bars', 'Threshold Stacked Vertical Bars', 'Distribution Stacked Vertical Bars']],
     ['Tables and maps', ['Table', 'Dynamic Table', 'Map']],
+    ['Scorecards', ['KPI Card']],
   ];
   const SHELVES = [
     ['kpi', 'Measure', 'The KPI the chart measures (several for Multi KPI CDF Lines, Scatter or a Table)'],

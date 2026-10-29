@@ -18973,6 +18973,8 @@ def _chart_builder_context(payload: dict[str, Any]) -> tuple[pd.DataFrame, Catal
         legend_format=parse_label_format(str(definition.get('legend_format') or '')),
         exclude_null_empty=parse_template_boolean(definition.get('exclude_null_empty'), 'Exclude Null/Empty'),
         exclude_zero=parse_template_boolean(definition.get('exclude_zero'), 'Exclude Zero'),
+        # The settings of a KPI Card (its figure, comparison and trend), as a template row keeps them in its Format.
+        format=json.dumps({'kpi': definition['kpi_card']}) if isinstance(definition.get('kpi_card'), dict) else '',
     )
     parse_axis_range(entry.axis_x_range, 'x')
     parse_axis_range(entry.axis_y_range, 'y')

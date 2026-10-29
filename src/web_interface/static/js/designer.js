@@ -1092,7 +1092,9 @@
     else body.append(h('p', {class: 'ds-design-empty', text: 'Choose a slide.'}));
     panel.classList.toggle('is-folded', state.folded);
     if (state.panelWidth) panel.style.setProperty('--ds-panel-width', `${Math.max(PANEL_MIN_WIDTH, state.panelWidth)}px`);
-    panel.replaceChildren(panelResizer(panel), panelHead(slide, chosen, shown, chart), body, ...chartTypePicker(chart ? chosen : null, chart ? shown : null));
+    // (A KPI card has Chart Type too: it turns it back into a chart.)
+    const typed = chart || (Boolean(shown) && shown.kind === 'kpi');
+    panel.replaceChildren(panelResizer(panel), panelHead(slide, chosen, shown, chart), body, ...chartTypePicker(typed ? chosen : null, typed ? shown : null));
     if (dataOpen.size) panel.querySelectorAll('.ds-cb-group').forEach(group => { group.open = dataOpen.has(group.querySelector('summary')?.firstChild?.textContent); });
     const again = typing && $(typing.id);
     if (again) {
@@ -1238,8 +1240,23 @@
   const shelvesOptions = (element, shown) => ({
     values: shown, fields: state.fields?.fields, calculated: state.fields?.calculated_fields, parameters: parameters(),
     lockedFilters: lockedFilters(), onLockedFilter: () => $('ds-floating-filters')?.click(), fieldValues, pptNrMode: String(viewer().state().definition?.nr_mode || '').replace('+', ' & '), eachPpt: state.scope === 'template',
-    onChange: changes => guarded(() => setElementValues(element.id, changes))(),
+    onChange: changes => guarded(() => setElementValues(element.id, typeChanges(shown, changes)))(),
   });
+  // Chart Type → KPI Card turns a chart into a KPI card of its first measure, with its source, title and filters (the
+  // figure an average for a number, the share of a value otherwise), and another chart type turns a KPI card back into a
+  // chart; the settings of the card stay with it for a later return.
+  function typeChanges(shown, changes) {
+    if (!('chart_type' in changes)) return changes;
+    const toKpi = String(changes.chart_type).toLowerCase() === 'kpi card';
+    if (toKpi === (shown.kind === 'kpi')) return changes;
+    if (!toKpi) return {...changes, kind: 'chart'};
+    const part = window.ChartShelves.kpiParts(shown.kpi)[0] || '';
+    const field = window.ChartShelves.kpiField(part);
+    const number = (state.fields?.fields?.[String(shown.cdr_source || 'CDR-Data').toLowerCase()] || []).find(item => item.name === field)?.type === 'number';
+    const measure = !field || number ? (/^MEDIAN\s*\(/i.test(part) ? 'median' : 'average') : 'share_value';
+    return {...changes, kind: 'kpi', kpi: field, rows_split: 'Campaign', columns_split: '', legend: '',
+      kpi_card: {measure, comparison: 'previous', sparkline: true, ...(shown.kpi_card || {})}};
+  }
 
   function slideForm(slide) {
     const kind = slideKind(slide);

@@ -65,7 +65,26 @@
   // The chart as its template row would write it, built on the shelves (chart_shelves.js).
   const chart = {chart_title: 'Ad-hoc chart', chart_type: '100% Stacked Vertical Bars', kpi: '', filters: '', rows_split: '', columns_split: '', legend: '', legend_position: 'top', legend_format: ''};
   let fieldInfo = {fields: [], calculated_fields: []};
-  const definition = () => ({...chart, cdr_source: `CDR-${type.value[0].toUpperCase()}${type.value.slice(1)}`});
+  const isKpiCard = () => String(chart.chart_type).toLowerCase() === 'kpi card';
+  // (The settings of a KPI Card go with the chart only while it is one.)
+  const definition = () => {
+    const {kpi_card: kpiCard, ...values} = chart;
+    return {...values, ...(isKpiCard() && kpiCard ? {kpi_card: kpiCard} : {}), cdr_source: `CDR-${type.value[0].toUpperCase()}${type.value.slice(1)}`};
+  };
+  // A KPI Card: the figure of the latest campaign of its field (an average for a number, the share of a value otherwise),
+  // compared with the previous campaign, with its trend; as a KPI card of the Designer.
+  const KPI_FIGURES = [['average', 'Average'], ['median', 'Median'], ['percentile', 'Percentile'], ['count', 'Count of samples'],
+    ['share_value', 'Share of a value (%)'], ['share_below', 'Share below a threshold (%)'], ['share_above', 'Share above a threshold (%)']];
+  const KPI_NEEDS = {share_value: ['value', 'Value(s)', 'Completed'], percentile: ['percentile', 'Percentile', '90'],
+    share_below: ['threshold', 'Threshold', '1.6'], share_above: ['threshold', 'Threshold', '1.6']};
+  const kpiCardSettings = () => {
+    if (!chart.kpi_card) {
+      const field = globalThis.ChartShelves?.kpiField(globalThis.ChartShelves.kpiParts(chart.kpi)[0] || '') || '';
+      const number = !field || (fieldInfo.fields || []).find((item) => item.name === field)?.type === 'number';
+      chart.kpi_card = {measure: number ? 'average' : 'share_value', comparison: 'previous', sparkline: true};
+    }
+    return chart.kpi_card;
+  };
   const postJson = async (url, body) => {
     const response = await fetch(url, {method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
     const result = await response.json().catch(() => ({}));
@@ -106,13 +125,27 @@
     const add = element('button', {type: 'button', class: 'ds-cb-add', onclick: openAddToDesign}, 'Add to PPT Design…');
     add.disabled = !chart.kpi || !selected().length;
     fields.replaceChildren(element('label', {class: 'ds-cb-title'}, 'Chart title', title), shelves,
-      element('div', {class: 'ds-cb-advanced'}, element('label', {}, 'Legend position', legendPosition)), add);
+      isKpiCard() ? kpiCardForm() : element('div', {class: 'ds-cb-advanced'}, element('label', {}, 'Legend position', legendPosition)), add);
     globalThis.ChartShelves?.render(shelves, {
       values: definition(), fields: {[definition().cdr_source.toLowerCase()]: fieldInfo.fields || []}, calculated: fieldInfo.calculated_fields || [],
       parameters: [], showSource: false, fieldValues,
       onChange: (changes) => { Object.assign(chart, changes); render(); queue(); },
     });
   };
+  function kpiCardForm() {
+    const settings = kpiCardSettings();
+    const set = (values) => { Object.assign(settings, values); render(); queue(); };
+    const choice = (label, value, choices, onchange) => element('label', {}, label, element('select', {'aria-label': label, onchange: (event) => onchange(event.target.value)},
+      ...choices.map(([key, text]) => { const option = element('option', {value: key}, text); option.selected = key === value; return option; })));
+    const [key, label, placeholder] = KPI_NEEDS[settings.measure] || ['unit', 'Unit', 'Mbit/s'];
+    const trend = element('input', {type: 'checkbox', onchange: (event) => set({sparkline: event.target.checked})});
+    trend.checked = Boolean(settings.sparkline);
+    return element('div', {class: 'ds-cb-advanced ds-cb-kpi-card', role: 'group', 'aria-label': 'KPI Card'},
+      choice('Figure', settings.measure, KPI_FIGURES, (value) => set({measure: value})),
+      element('label', {}, label, element('input', {type: 'text', value: settings[key] || '', placeholder, 'aria-label': label, onchange: (event) => set({[key]: event.target.value.trim()})})),
+      choice('Compared with', settings.comparison, [['previous', 'Previous campaign'], ['best', 'Best competitor'], ['none', 'Nothing']], (value) => set({comparison: value})),
+      element('label', {class: 'ds-cb-kpi-trend'}, trend, 'Trend over the campaigns'));
+  }
   // Add to PPT Design: a slide (with a free place) of a Design whose slides the user can edit, or a new slide at its end.
   async function openAddToDesign(event) {
     document.querySelectorAll('.ds-design-popover').forEach((node) => node.remove());

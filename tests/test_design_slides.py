@@ -380,6 +380,21 @@ def test_the_chart_builder_reads_fields_and_values_and_adds_a_chart_to_a_design(
     assert builder_values == [{'value': 'London', 'count': 2}, {'value': 'Leeds', 'count': 1}]
 
 
+def test_a_kpi_card_of_the_chart_builder_previews_with_its_settings_and_joins_a_design_as_a_kpi_card(client):
+    setup(client)
+    settings = {'measure': 'count', 'comparison': 'none', 'sparkline': False}
+    card = {'chart_title': 'Samples', 'cdr_source': 'CDR-Data', 'kpi': 'Mean_Data_Rate', 'chart_type': 'KPI Card', 'rows_split': 'Campaign',
+            'columns_split': '', 'legend': '', 'filters': '', 'legend_position': 'Top', 'kpi_card': settings}
+    preview = client.post('/api/chart-builder/preview', json={'dataset_ids': [1], 'definition': card})
+    assert preview.status_code == 200, preview.text
+    assert preview.json()['type'] == 'kpi'
+    assert [item['value'] for item in preview.json()['cards']] == [3]
+    added = client.post('/api/ppt-designer/design-a/add-chart', json={'element': card})
+    assert added.status_code == 200, added.text
+    element = stored('design-a')['slide_overrides']['local_slides'][-1]['slide']['elements'][0]
+    assert (element['kind'], element['chart_type'], element['kpi_card']) == ('kpi', 'KPI Card', settings)
+
+
 def test_the_format_of_a_chart_travels_in_its_row_and_reaches_its_model(client):
     definition = setup(client)
     body = client.get('/api/ppt-designer/design-a/slides?edit=1').json()

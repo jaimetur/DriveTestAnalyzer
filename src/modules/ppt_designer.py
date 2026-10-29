@@ -3944,6 +3944,11 @@ def install_design_routes(core):
         element = {field: payload.element.get(field, False if field in {'exclude_null_empty', 'exclude_zero'} else '')
                    for field in design_slides.ELEMENT_FIELDS}
         element.update(id=design_slides.new_id('e'), kind='chart', origin='design')
+        # A KPI Card of Chart Builder is a KPI card of the Design, with its settings.
+        if str(element['chart_type']).casefold() == design_slides.KIND_CHART_TYPES['kpi'].casefold():
+            element['kind'] = 'kpi'
+            if isinstance(payload.element.get('kpi_card'), dict):
+                element['kpi_card'] = payload.element['kpi_card']
         element['legend_position'] = str(element['legend_position'] or '').casefold()
         if not str(element['kpi']).strip() or not str(element['cdr_source']).strip():
             raise HTTPException(400, 'The chart needs a source and a KPI.')

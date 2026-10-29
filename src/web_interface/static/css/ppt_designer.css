@@ -1904,8 +1904,12 @@
 .ds-slide-image-action svg { width: 1.15rem; height: 1.15rem; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 #ds-viewer.ds-designing .ds-slide-image-actions, #ds-viewer.ds-presentation-active .ds-slide-image-actions { display: none; }
 /* In the row of the viewer: the slide chooser, the image of the slide beside it, then the actions at the right. */
-.ds-viewer-panel>.ds-actions { grid-template-columns: minmax(12rem, 32rem) auto minmax(0, 1fr); }
-.ds-viewer-panel>.ds-actions>.ds-viewer-right-actions { justify-self: end; }
+@media (min-width: 901px) {
+  .ds-viewer-panel>.ds-actions { grid-template-columns: minmax(12rem, 32rem) auto minmax(0, 1fr); }
+  .ds-viewer-panel>.ds-actions>.ds-viewer-right-actions { grid-column: -2; justify-self: end; }
+  /* While designing, the slide list takes the place of the slide chooser and the image of the slide: the actions have the row. */
+  #ds-viewer.ds-designing .ds-viewer-panel>.ds-actions { grid-template-columns: minmax(0, 1fr); }
+}
 /* While the slide is drawn with its comments: its comments as a list of plain text, in the place of their fields, on a
    light panel as tall as they are. */
 #ds-viewer.ds-capturing-slide #ds-slide-content { align-self: flex-start !important; height: auto !important; min-height: 0 !important; max-height: none !important; overflow: visible !important; }
