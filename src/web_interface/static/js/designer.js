@@ -1484,8 +1484,8 @@
       Labels: [named(LABEL_POSITIONS, style.labels?.position), style.labels?.size ? `${style.labels.size} text` : '', style.labels?.bold ? 'Bold' : ''].filter(Boolean).join(' · '),
       Axes: [style.axes?.x?.title ? `X: ${style.axes.x.title}` : '', style.axes?.y?.title ? `Y: ${style.axes.y.title}` : '', style.axes?.x?.decimals !== undefined && style.axes?.x?.decimals !== '' ? `${style.axes.x.decimals} decimals` : ''].filter(Boolean).join(' · ') || 'As the chart names them',
     };
-    // The groups open are kept for the next chart (Series at first); several can be open at once.
-    state.formatOpen = state.formatOpen || new Set(['Series']);
+    // The groups open are kept for the next chart (all of them at first); several can be open at once.
+    state.formatOpen = state.formatOpen || new Set(['Series', 'Legend', 'Labels', 'Axes']);
     const group = (label, ...children) => {
       const node = h('details', {class: 'ds-design-format-group', open: state.formatOpen.has(label)},
         h('summary', {}, h('span', {class: 'ds-design-format-group-name', text: label}), h('span', {class: 'ds-design-format-group-value', text: summaries[label] || ''})), ...children);
