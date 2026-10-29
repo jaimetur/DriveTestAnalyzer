@@ -6034,16 +6034,18 @@ def install_design_routes(core):
             return False
 
     def prefetched_design_response(design_id: str, definition: DesignDefinition, user, started=None, definition_seconds=0.0,
-                                   found_seconds=0.0):
+                                   found_seconds=0.0, queued_seconds=None):
         workspace = workspace_key()
         started = monotonic() if started is None else started
         restoring = monotonic()
         restored = restore_matching_preview_manifest(workspace, design_id, definition)
-        # How long opening a Design waits for this lookup (Checking persistent PPT cache), in App Events: finding the
-        # Design and its kept preparation, working out its CDRs, then restoring the preparation.
+        # How long opening a Design waits for this lookup (Checking persistent PPT cache), in App Events: how long the
+        # request waited for this handler, finding the Design and its kept preparation, working out its CDRs, then
+        # restoring the preparation.
         try:
             bound_repository().add_log(user.username, 'design_cache_checked', json.dumps({
                 'id': design_id, 'name': definition.name, 'restored': restored is not None,
+                **({} if queued_seconds is None else {'queued_seconds': round(queued_seconds, 2)}),
                 'seconds': round(monotonic() - started, 2), 'found_seconds': round(found_seconds, 2),
                 'definition_seconds': round(definition_seconds, 2), 'restore_seconds': round(monotonic() - restoring, 2),
             }))
@@ -6069,10 +6071,12 @@ def install_design_routes(core):
     def prefetched_design_for_definition(
         design_id: str,
         definition: DesignDefinition,
+        request: Request,
         use_scope_universe: bool = False,
         user=Depends(design_user),
     ):
         started = monotonic()
+        received = request.scope.get('received_at')
         task_repository = bound_repository()
         if not design_exists(task_repository, design_id):
             raise HTTPException(404, 'Design not found.')
@@ -6083,7 +6087,8 @@ def install_design_routes(core):
         with cdr_stage.remembered_inclusion():
             definition = (automatic_scope_universe if use_scope_universe else auto_cdr_definition)(definition, task_repository)
             return prefetched_design_response(design_id, definition, user, started, monotonic() - checked,
-                                              found_seconds=checked - started)
+                                              found_seconds=checked - started,
+                                              queued_seconds=None if received is None else started - received)
 
     @app.post('/api/ppt-designer/opened/{design_id}')
     def design_opened(design_id: str, timeline: dict[str, Any] = Body(default_factory=dict), user=Depends(design_user)):
@@ -6094,7 +6099,8 @@ def install_design_routes(core):
             raw_definition = read_designs_and_previews(task_repository).get(design_id)
         if not isinstance(raw_definition, dict):
             raise HTTPException(404, 'Design not found.')
-        numbers = {key: round(float(timeline[key]), 2) for key in ('before_lookup_seconds', 'lookup_seconds', 'prepared_seconds', 'slide_seconds')
+        numbers = {key: round(float(timeline[key]), 2) for key in ('before_lookup_seconds', 'lookup_seconds', 'lookup_browser_wait_seconds',
+                                                                   'lookup_server_seconds', 'prepared_seconds', 'slide_seconds')
                    if isinstance(timeline.get(key), (int, float))}
         task_repository.add_log(user.username, 'design_opened', json.dumps({
             'id': design_id, 'name': raw_definition.get('name', ''), **numbers,

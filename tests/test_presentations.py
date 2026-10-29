@@ -201,6 +201,24 @@ def test_a_change_of_a_deck_or_of_the_logo_generates_them_again(tmp_path, monkey
         before = presentations.generator_signature()
 
 
+def test_a_generation_removes_what_one_stopped_by_a_restart_left(tmp_path, monkeypatch):
+    root = tmp_path / 'presentations'
+    for name in ('.building-stopped', '.previous-1'):
+        (root / name / 'presentations').mkdir(parents=True)
+    (root / 'current').mkdir()
+    logged = []
+
+    def stopped(*_args, **_kwargs):
+        raise subprocess.CalledProcessError(1, 'node', stderr=b'stopped')
+
+    monkeypatch.setattr(presentations.subprocess, 'run', stopped)
+    monkeypatch.setattr(presentations, 'node_executable', lambda: 'node')
+    generator = presentations.PresentationGenerator(lambda: tmp_path, lambda *args: logged.append(args))
+    generator._generate({'workspaces': []}, 'key', 'system')
+    assert sorted(path.name for path in root.iterdir()) == ['current']
+    assert logged[-1][1] == 'generate_presentations_failed'
+
+
 GENERATOR_FOLDER = Path(__file__).resolve().parents[1] / 'tools/presentations'
 
 

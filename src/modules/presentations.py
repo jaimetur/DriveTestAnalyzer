@@ -367,6 +367,9 @@ class PresentationGenerator:
     def _generate(self, figures: dict[str, Any], key: str, requested_by: str, reason: str = '') -> None:
         started = time.monotonic()
         self.root.mkdir(parents=True, exist_ok=True)
+        # What a generation stopped by a restart left (about 80 MB each): only one generation runs at a time.
+        for leftover in [*self.root.glob('.building-*'), *self.root.glob('.previous-*')]:
+            shutil.rmtree(leftover, ignore_errors=True)
         work = Path(tempfile.mkdtemp(prefix='.building-', dir=self.root))
         try:
             (work / 'figures.json').write_text(json.dumps(figures), encoding='utf-8')

@@ -4826,7 +4826,7 @@ document.querySelectorAll('.collapsible-panel').forEach((panel) => {
   const refreshWorkspaceSizes = async () => {
     if (pollingStopped || document.hidden) return;
     try {
-      const response = await fetch('/api/workspaces/sizes', {credentials: 'same-origin', cache: 'no-store'});
+      const response = await fetch('/api/workspaces/sizes', {credentials: 'same-origin', cache: 'no-store', priority: 'low'});
       if (response.status === 401) {
         stopExpiredSessionPolling();
         return;
@@ -10845,7 +10845,7 @@ document.addEventListener('click', (event) => {
     if (refreshing || document.hidden) return;
     refreshing = true;
     try {
-      const response = await fetch('/api/mapping-assignments/unassigned', {credentials: 'same-origin'});
+      const response = await fetch('/api/mapping-assignments/unassigned', {credentials: 'same-origin', priority: 'low'});
       if (response.ok) render((await response.json()).unassigned || {});
     } catch (_error) {
       // The card keeps its values until the next check.
@@ -12877,7 +12877,7 @@ if (queueNode) {
     polling = true;
     try {
       const response = await fetch('/api/background-tasks', {
-        credentials: 'same-origin', cache: 'no-store', headers: {Accept: 'application/json'},
+        credentials: 'same-origin', cache: 'no-store', headers: {Accept: 'application/json'}, priority: 'low',
       });
       if (response.status === 401) {
         pollingStopped = true;

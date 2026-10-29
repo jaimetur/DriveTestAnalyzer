@@ -3380,6 +3380,9 @@ STARTUP_PAGE = """<!doctype html>
 @app.middleware('http')
 async def wait_for_startup(request: Request, call_next):
     """While the active workspace is opened at startup, answer with a preparing page instead of blocking."""
+    # (When the request reached the application, the first middleware it goes through: App Events of slow requests tell
+    # how long they waited for their handler.)
+    request.scope['received_at'] = monotonic()
     path = request.url.path
     if STARTUP_READY.is_set() or path.startswith('/static/') or path == '/favicon.ico':
         return await call_next(request)

@@ -364,8 +364,12 @@
     $('ds-apply-filters').disabled = !hasUnappliedFilterChanges() || filterActionBusy;
     syncPreparationRefresh();
   };
+  // The browser keeps a few connections to the server: what opens a Design takes the next free one, the states the page
+  // polls on its own the last.
+  const requestPriority = path => /^\/(prefetched\/|prepared\/|prepare\?|preparation-progress\/)/.test(path) ? 'high'
+    : /^\/(statuses|ppt-jobs|comment-engines)(\?|$)/.test(path) ? 'low' : 'auto';
   const api = async (path = '', method = 'GET', body, signal) => {
-    const request = () => fetch(`/api/ppt-designer${path}`, {method, signal, cache: 'no-store', headers: {'Content-Type': 'application/json'}, ...(body ? {body: JSON.stringify(body)} : {})});
+    const request = () => fetch(`/api/ppt-designer${path}`, {method, signal, cache: 'no-store', priority: requestPriority(path), headers: {'Content-Type': 'application/json'}, ...(body ? {body: JSON.stringify(body)} : {})});
     let response = await request();
     // Some reverse proxies can return a transient, non-JSON 501 while the
     // preparation worker route is being refreshed. A single retry is safe:
@@ -2674,6 +2678,8 @@
     dismissPreparationStatus();
     clearTimeout(timer); ++sequence; ++backgroundChartPreloadRequest; controller?.abort(); preparing = null;
     stopPresentation();
+    // (The timings of the requests sent before are dropped, so the polling never fills the browser's buffer of them.)
+    performance.clearResourceTimings?.();
     openingTimes = {id, started: performance.now()};
     $('ds-viewer').classList.toggle('ds-template-preview', Boolean(designs[id]?.template_preview));
     activeId = id; designFiltersOpen = showFilters; rememberFiltersOpen(showFilters); $('ds-viewer-export-ppt').dataset.designPptId = id; definition = runtimeDesignDefinition(designs[id], id); savedDefinition = definitionFingerprint(savedRuntimeDesignDefinition(designs[id])); dirty = false; prepared = null; appliedFilterState = ''; appliedSelectionState = ''; appliedDesignDefinition = null; applyingDesignDefinition = null; facetOptions = {}; availableFields = []; facetOptionRequests.clear(); slideIndex = 0; setViewEnabled(false); rememberOpen(id);
@@ -4234,6 +4240,7 @@
   }
   // How long opening a Design took, recorded once in App Events (design_opened): the cache lookup, until it was
   // prepared, and until the charts of the slide it opened on were drawn, from the moment it was opened (openingTimes).
+  // The lookup request also tells how long it waited in the browser for a free connection, and then for the server.
   function recordOpening(visibleLoads) {
     const times = openingTimes;
     if (!times || times.id !== activeId || times.prepared === undefined || times.sent) return;
@@ -4241,9 +4248,13 @@
     const slide = slideIndex + 1;
     void Promise.allSettled(visibleLoads).then(() => {
       const seconds = value => Number.isFinite(value) ? value / 1000 : null;
+      const lookup = times.lookupStarted === undefined ? undefined : performance.getEntriesByType('resource').findLast(entry =>
+        entry.name.includes(`/api/ppt-designer/prefetched/${encodeURIComponent(times.id)}`) && entry.startTime >= times.lookupStarted - 1);
       return api(`/opened/${encodeURIComponent(times.id)}`, 'POST', {
         before_lookup_seconds: seconds(times.lookupStarted === undefined ? undefined : times.lookupStarted - times.started),
         lookup_seconds: seconds(times.lookup), prepared_seconds: seconds(times.prepared),
+        lookup_browser_wait_seconds: seconds(lookup?.requestStart ? lookup.requestStart - lookup.startTime : undefined),
+        lookup_server_seconds: seconds(lookup?.requestStart ? lookup.responseStart - lookup.requestStart : undefined),
         slide_seconds: seconds(performance.now() - times.started), restored: Boolean(times.restored), slide, charts: visibleLoads.length,
       });
     }).catch(() => undefined);
