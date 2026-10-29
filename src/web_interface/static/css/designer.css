@@ -93,15 +93,16 @@
 /* The head of the panel: where it is, what the changes reach, and for a chart its title and its Data and Format. */
 .ppt-designer .ds-design-panel-head { display: grid; gap: .35rem; padding: .45rem .6rem .5rem; border-bottom: 1px solid var(--ds-border); }
 .ppt-designer .ds-design-panel-top { display: flex; gap: .3rem; align-items: center; min-width: 0; }
-.ppt-designer .ds-design-crumbs { display: flex; flex: 1 1 auto; align-items: center; gap: .1rem; min-width: 0; }
-.ppt-designer .ds-design-crumb { display: inline-flex; align-items: center; gap: .35rem; min-width: 0; min-height: 1.75rem; padding: .1rem .45rem; border: 0; border-radius: 7px;
-  background: transparent; box-shadow: none; color: var(--ds-design-muted); font: inherit; font-size: .8rem; font-weight: 750; cursor: pointer; }
+/* Where the panel is: the slide and the element chosen on it, as buttons; the one shown is filled. */
+.ppt-designer .ds-design-crumbs { display: flex; flex: 1 1 auto; align-items: center; gap: .3rem; min-width: 0; }
+.ppt-designer .ds-design-crumb { display: inline-flex; align-items: center; gap: .35rem; min-width: 0; min-height: 1.95rem; padding: .15rem .65rem; border: 1px solid var(--ds-border);
+  border-radius: 999px; background: #fff; box-shadow: 0 1px 2px rgba(36, 22, 61, .08); color: var(--ds-design-ink); font: inherit; font-size: .8rem; font-weight: 750; cursor: pointer; }
 .ppt-designer .ds-design-crumb span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ppt-designer .ds-design-crumb .ds-design-icon { flex: none; width: .95rem; height: .95rem; }
-.ppt-designer .ds-design-crumb:hover { background: var(--ds-soft); color: var(--ds-design-ink); }
-.ppt-designer .ds-design-crumb.is-active { background: var(--ds-soft); color: var(--ds-design-ink); }
-.ppt-designer .ds-design-crumb:focus-visible { outline: 2px solid var(--ds-color); outline-offset: 1px; }
-.ppt-designer .ds-design-crumb-separator { flex: none; color: #b3aabf; font-weight: 700; }
+.ppt-designer .ds-design-crumb:hover:not(.is-active) { border-color: var(--ds-color); color: var(--ds-color); background: var(--ds-soft); }
+.ppt-designer .ds-design-crumb.is-active { border-color: var(--ds-color); background: var(--ds-color); color: #fff; box-shadow: 0 2px 6px rgba(36, 22, 61, .18); cursor: default; }
+.ppt-designer .ds-design-crumb:focus-visible { outline: 2px solid var(--ds-color); outline-offset: 2px; }
+.ppt-designer .ds-design-crumb-separator { flex: none; color: #9c92ab; font-size: 1rem; font-weight: 700; }
 .ppt-designer .ds-design-more { display: inline-grid; flex: 0 0 2rem; place-items: center; height: 2rem; padding: 0; border: 1px solid var(--ds-border); border-radius: 8px;
   background: #fff; box-shadow: none; color: var(--ds-design-ink); cursor: pointer; }
 .ppt-designer .ds-design-more .ds-design-icon { width: 1.05rem; height: 1.05rem; }
