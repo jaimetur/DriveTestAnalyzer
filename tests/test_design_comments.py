@@ -215,6 +215,63 @@ def test_the_other_chart_types_vendors_and_slides_read_together():
     assert texts(per_operator) == ['Median NR SINR in 26-Q3: EE 12.1, VF 10.2, O2 8 dB.']
 
 
+def failures_only(campaigns=('26-Q2', '26-Q3')):
+    """A Count Stacked Horizontal Bars chart filtered on Call_Status IN (Failed, Dropped): each bar holds as many tests
+    as failures (CDR type and city in rows, operator and campaign in columns, as Voice failures per City)."""
+    previous, latest = campaigns
+    bars = [
+        ('MultiRAB', 'London', 'VF', previous, [0, 1]), ('MultiRAB', 'London', 'VF', latest, [0, 1]),
+        ('VoLTE', 'London', 'VF', previous, [2, 0]), ('VoLTE', 'London', 'VF', latest, [0, 1]),
+        ('VoLTE', 'Cardiff', 'VF', latest, [2, 0]), ('VoLTE', 'London', 'Three', previous, [7, 1]),
+        ('VoLTE', 'London', 'Three', latest, [5, 0]), ('VoLTE', 'Bristol', 'Three', previous, [3, 0]),
+        ('VoLTE', 'London', 'O2', previous, [4, 1]), ('VoLTE', 'London', 'O2', latest, [4, 1]),
+        ('WhatsApp', 'London', 'O2', latest, [2, 1]), ('VoLTE', 'London', 'EE', previous, [2, 0]),
+        ('VoLTE', 'London', 'EE', latest, [0, 0]),
+    ]
+    return {'type': 'failure_count', 'mode': 'hierarchy', 'states': [{'name': 'Failed'}, {'name': 'Dropped'}],
+            'dimensions': [['Call_Family'], ['G Level 4'], ['Operator'], ['Campaign']],
+            'records': [{'key': [family, city, operator, campaign], 'counts': counts, 'tests': sum(counts)}
+                        for family, city, operator, campaign, counts in bars]}
+
+
+def test_failure_charts_of_failed_and_dropped_tests_only_are_commented_by_their_counts():
+    from src.modules.comment_writers import validate_comments
+
+    chart = {'index': 0, 'title': 'Voice failures per City', 'kpi': 'Call_Status', 'model': failures_only()}
+    assert texts([chart], focus_operators=['VF']) == [
+        'VF: failed and dropped calls stable vs 26-Q2 (4 vs 3).',
+        'O2 has the most failed and dropped calls in 26-Q3 (8: 6 failed, 2 dropped), ahead of Three 5, VF 4 and EE 0.',
+        'VF: its largest count in 26-Q3 is in VoLTE · Cardiff (2 of 4).',
+        'Three and O2 in VoLTE · London have the largest count in 26-Q3 (5 each).',
+    ]
+    [facts] = comments.chart_facts(0, chart['title'], chart['kpi'], chart['model'])
+    assert {
+        'EE has no failed or dropped calls in 26-Q3.',
+        'VoLTE has the most failed and dropped calls in 26-Q3 (13 of 17), then WhatsApp (3).',
+        'London has the most failed and dropped calls in 26-Q3 (15 of 17), then Cardiff (2).',
+    } < {finding.text for finding in comments.chart_findings(facts, ['VF'])}
+    # A significant change is named; a local Flex campaign is never compared with one of the whole country.
+    model = failures_only()
+    model['records'] += [{'key': ['VoLTE', 'Leeds', 'VF', '26-Q3'], 'counts': [9, 2], 'tests': 11}]
+    assert texts([{**chart, 'model': model}], focus_operators=['VF'])[0] == (
+        'VF: 15 failed and dropped calls in 26-Q3 vs 3 in 26-Q2 (+12).')
+    flex = failures_only(('26-Q2-Flex', '26-Q3'))
+    assert not any('26-Q2' in text for text in texts([{**chart, 'model': flex}], focus_operators=['VF']))
+    # The legend items hidden in the viewer are left out of the counts and never named.
+    hidden = texts([{**chart, 'hidden': ['Dropped', 'EE']}], focus_operators=['VF'])
+    assert hidden[1] == 'O2 has the most failed calls in 26-Q3 (6), ahead of Three 5 and VF 2.'
+    assert not any('EE' in text or 'dropped' in text for text in hidden)
+    # The LLM writers receive the totals and the bars with a count, and only their figures pass.
+    brief = comments.slide_brief([chart], focus_operators=['VF'])
+    [briefed] = brief['charts']
+    assert briefed['family'] == 'count'
+    assert {'labels': {'Operator': 'O2', 'Campaign': '26-Q3'}, 'value': 8.0, 'samples': None, 'shown': '8',
+            'extra': {'Failed': 6, 'Dropped': 2}} in briefed['records']
+    assert validate_comments(brief['rules_comments'], brief) == (brief['rules_comments'], [])
+    kept, problems = validate_comments(['O2 leads with 9 failed and dropped calls in 26-Q3.'], brief)
+    assert not kept and problems[0].startswith('Figures not in the facts (9)')
+
+
 def test_scatter_series_take_their_rank_correlation_without_scipy():
     # Spearman is the Pearson correlation of the ranks, tied values sharing their mean rank, as scipy calculates it.
     x, y = pd.Series([1, 2, 2, 5, 9]), pd.Series([3, 1, 4, 4, 8])

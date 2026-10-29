@@ -57,8 +57,8 @@ CAMPAIGN = re.compile(r'\b\d{4}-Q[1-4](?:-[A-Za-z]+)?\b')
 
 STYLE_GUIDE = '''You write the analysis comments of one slide of a drive-test benchmark PowerPoint for radio engineers.
 
-You receive the facts read from the charts of the slide (exact medians, means, shares, tails, correlations and
-classes per operator and campaign) and the comments a rules engine wrote from them. Rewrite them as the best comments
+You receive the facts read from the charts of the slide (exact medians, means, shares, tails, correlations,
+classes and failure counts per operator and campaign) and the comments a rules engine wrote from them. Rewrite them as the best comments
 for the slide:
 - English, radio-technical, one sentence per comment, at most 220 characters; no headings, no bullets, no emojis.
 - Lead with the Focus operators when the facts name them; otherwise lead with the leader and the largest change.

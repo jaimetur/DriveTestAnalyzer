@@ -3,7 +3,7 @@
 The comments are written from the models the viewer draws (the same filters, splits, hidden values and Operator Maps),
 never from pixels: a CDF or histogram gives the exact median, tail percentiles and class shares of each series, the
 average and median bars their value and samples, the 100%, threshold and distribution stacked bars and the failure
-counts the share of each class, a scatter the rank correlation of its two measures, a map the share of its weakest class
+counts the share of each class (the failure counts that hold only failed and dropped tests their counts), a scatter the rank correlation of its two measures, a map the share of its weakest class
 and where it gathers, and a table its highest and lowest rows. The findings compare the latest campaign with the
 previous one, each operator with the leader, in Multivendor the vendors of each operator and, with the NR Mode in a
 split, each operator in SA with itself in NSA, from the point of view of the Focus operators of the Operator Maps, and
@@ -18,6 +18,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Iterable
 
+from src.modules.cdr_auto_selection import is_flex_campaign
 from src.modules.cdr_reporting import _outcome_kind, _range_bucket_sort_key
 from src.modules.column_names import campaign_sort_key, column_identity, compact_campaign_value
 from src.modules.network_insights_findings import _join
@@ -52,6 +53,8 @@ TECHNOLOGY_TOKENS = re.compile(r'\b(lte|nr|4g|5g)\b', re.I)
 STRONG_CORRELATION = 0.3
 WEAK_CORRELATION = 0.1
 MIN_RELATION_SAMPLES = 30
+# A failure chart read by its counts names a change of at least this many tests that is also significant.
+MIN_COUNT_CHANGE = 2
 THRESHOLD_STATE = re.compile(r'^\s*(<|≥|>=)\s*(-?\d+(?:\.\d+)?)\s*$')
 
 
@@ -349,10 +352,21 @@ def _failure_facts(chart_index: int, title: str, model: dict[str, Any], hidden: 
     else:
         rows = [(row.get('key') or [], row.get('values') or [], tests)
                 for row, tests in zip(model.get('rows') or [], model.get('tests') or [])]
-    records = []
+    visible = []
     for key, counts, tests in rows:
         labels = _labels(key, dimensions)
-        if not tests or _hidden(labels, hidden, shown):
+        if not _hidden(labels, hidden, shown):
+            visible.append((labels, counts, tests))
+    # A chart that keeps only the failed and dropped tests (Call_Status IN (Failed, Dropped)) has as many tests as
+    # failures in every bar: every share would be 100%, so its counts are read.
+    if any(tests for _labels_, _counts, tests in visible) and all(
+            int(tests or 0) == sum(int(count) for count in counts) for _labels_, counts, tests in visible):
+        return _count_facts(chart_index, title, [states[index] for index in counted],
+                            [(labels, [int(counts[index]) if index < len(counts) else 0 for index in counted])
+                             for labels, counts, _tests in visible])
+    records = []
+    for labels, counts, tests in visible:
+        if not tests:
             continue
         failures = sum(int(counts[index]) for index in counted if index < len(counts))
         records.append(Record(labels, failures / int(tests), int(tests), {'failures': failures}))
@@ -360,6 +374,37 @@ def _failure_facts(chart_index: int, title: str, model: dict[str, Any], hidden: 
         return None
     label = ' + '.join(states[index] for index in counted)
     return ChartFacts(chart_index, title, 'share', KpiSemantics(label, '', -1), label, records, -1)
+
+
+def _count_sums(records: list[Record], keys: list[str]) -> dict[tuple[str, ...], Record]:
+    """The counts of the bars added up by the values of some dimensions (all of them without any), in their order."""
+    sums: dict[tuple[str, ...], Record] = {}
+    for record in records:
+        group = tuple(record.labels.get(key, '') for key in keys)
+        total = sums.setdefault(group, Record(dict(zip(keys, group)), 0.0, None, {}))
+        total.value += record.value
+        for state, count in record.extra.items():
+            total.extra[state] = total.extra.get(state, 0) + count
+    return sums
+
+
+def _count_facts(chart_index: int, title: str, states: list[str],
+                 rows: list[tuple[dict[str, str], list[int]]]) -> ChartFacts | None:
+    """A failure chart of failed and dropped tests only: the count of each bar by state, and their totals by operator,
+    by each other dimension and in all, campaign by campaign (what the LLM writers also receive)."""
+    if not states or not rows:
+        return None
+    records = [Record(labels, float(sum(counts)), None, dict(zip(states, counts))) for labels, counts in rows]
+    operator_key, campaign_key, _vendor, context_keys = _roles(records)
+    period = [campaign_key] if campaign_key else []
+    totals = [total for keys in (period, *([key, *period] for key in (operator_key, *context_keys) if key))
+              for total in _count_sums(records, keys).values()]
+    names = [re.sub(r'\s+(?:calls?|tests?)$', '', state, flags=re.I).casefold() for state in states]
+    noun = f'{_join(names)} calls'
+    none = f'{", ".join(names[:-1])} or {names[-1]}' if len(names) > 1 else names[0]
+    label = ' + '.join(states)
+    return ChartFacts(chart_index, title, 'count', KpiSemantics(noun, '', -1), label, records, -1,
+                      extra={'states': states, 'noun': noun, 'none': f'{none} calls', 'totals': totals})
 
 
 def _relation_facts(chart_index: int, title: str, model: dict[str, Any], hidden: set[str], shown: set[str]) -> ChartFacts | None:
@@ -812,11 +857,145 @@ def _table_findings(facts: ChartFacts) -> list[Finding]:
     return findings
 
 
+def _count(value: float) -> str:
+    return _format(value, 0)
+
+
+def _count_states(facts: ChartFacts, total: Record) -> str:
+    """The count of each state when the chart shows several (9 failed, 5 dropped)."""
+    states = facts.extra['states']
+    return ', '.join(f'{_count(total.extra.get(state, 0))} {state.casefold()}' for state in states) if len(states) > 1 else ''
+
+
+def _count_detail(facts: ChartFacts, total: Record) -> str:
+    """A count with its states when the chart shows several (14: 9 failed, 5 dropped)."""
+    states = _count_states(facts, total)
+    return f'{_count(total.value)}: {states}' if states else _count(total.value)
+
+
+def _count_change(before: float, after: float) -> bool:
+    """Whether two counts differ enough to be named: a few tests, and significant for counts that large."""
+    delta = abs(after - before)
+    return delta >= MIN_COUNT_CHANGE and delta / math.sqrt(after + before) >= 1.96
+
+
+def _count_findings(facts: ChartFacts, focus: set[str]) -> list[Finding]:
+    """A failure chart read by its counts, at the latest campaign: the operators from the one with the most, the change
+    of the Focus operators (or of the one with the most) and the largest other change since the previous campaign of
+    the same kind (Flex or not), where the counts gather (each other dimension, such as the CDR type or the city, and the bar with the most) and the
+    operators without any."""
+    operator_key, campaign_key, _vendor, context_keys = _roles(facts.records)
+    noun = facts.extra['noun']
+    campaigns = sorted({record.labels[campaign_key] for record in facts.records if campaign_key in record.labels},
+                       key=campaign_sort_key) if campaign_key else []
+    latest = campaigns[-1] if campaigns else None
+    previous = campaigns[-2] if len(campaigns) > 1 else None
+    # The counts of a Flex campaign (local, in one region or city) are never compared with those of another kind.
+    if previous and is_flex_campaign(previous) != is_flex_campaign(latest):
+        previous = None
+
+    def of(campaign: str | None) -> list[Record]:
+        return [record for record in facts.records if campaign is None or record.labels.get(campaign_key) == campaign]
+
+    def by(records: list[Record], key: str) -> dict[str, Record]:
+        return {group[0]: total for group, total in _count_sums(records, [key]).items() if group[0]}
+
+    now = of(latest)
+    when = f' in {_campaign(latest)}' if latest else ''
+    total = sum(record.value for record in now)
+    if not total:
+        return [Finding(f'No {facts.extra["none"]}{when}.', 1.5, 'count')]
+    findings: list[Finding] = []
+    subject_key = operator_key or (context_keys[0] if context_keys else None)
+    others = [key for key in context_keys if key != subject_key]
+    if subject_key:
+        current = by(now, subject_key)
+        ranked = sorted(current, key=lambda name: -current[name].value)
+        most = current[ranked[0]].value
+        tops = [name for name in ranked if current[name].value == most]
+        rest = [name for name in ranked if name not in tops]
+        if len(ranked) == 1:
+            states = _count_states(facts, current[ranked[0]])
+            text = f'{ranked[0]} has {_count(most)} {noun}{when}' + (f' ({states})' if states else '')
+        elif len(tops) == 1:
+            text = f'{tops[0]} has the most {noun}{when} ({_count_detail(facts, current[tops[0]])})'
+        else:
+            text = f'{_join(tops)} have the most {noun}{when} ({_count(most)} each)'
+        if rest:
+            text += f', ahead of {_join([f"{name} {_count(current[name].value)}" for name in rest])}'
+        findings.append(Finding(text + '.', 2.6, 'count'))
+        before = by(of(previous), subject_key) if previous else {}
+        subjects = [name for name in ranked if name.casefold() in focus][:MAX_FOCUS_SUBJECTS] if operator_key else []
+        bonus = FOCUS_BONUS if subjects else 0.0
+        subjects = subjects or tops[:1]
+        shown_previous = _campaign(previous) if previous else ''
+
+        def change(name: str, score: float, kind: str) -> Finding:
+            old, new = before[name].value, current[name].value
+            if not _count_change(old, new):
+                return Finding(f'{name}: {noun} stable vs {shown_previous} ({_count(new)} vs {_count(old)}).', 1.2 + bonus, 'stable')
+            sign = '+' if new > old else '−'
+            return Finding(f'{name}: {_count(new)} {noun}{when} vs {_count(old)} in {shown_previous} ({sign}{_count(abs(new - old))}).',
+                           score, kind)
+
+        for name in subjects:
+            if name in before:
+                findings.append(change(name, 3 + min(abs(current[name].value - before[name].value) / 4, 2) + bonus, 'change'))
+        movers = [(abs(current[name].value - before[name].value), name) for name in ranked
+                  if name not in subjects and name in before and _count_change(before[name].value, current[name].value)]
+        if movers:
+            findings.append(change(max(movers)[1], 1.8, 'mover'))
+        if operator_key and most >= MIN_COUNT_CHANGE:
+            spared = [name for name in ranked if not current[name].value]
+            if spared:
+                findings.append(Finding(f'{_join(spared)} {"has" if len(spared) == 1 else "have"} no '
+                                        f'{facts.extra["none"]}{when}.', 1.5, 'count'))
+        if operator_key and others:
+            # Where each Focus operator has most of its counts (the CDR type and city of its largest bar).
+            for name in [name for name in subjects if name.casefold() in focus]:
+                bars = sorted((record for record in now if record.labels.get(operator_key) == name), key=lambda record: -record.value)
+                if len(bars) > 1 and bars[0].value >= MIN_COUNT_CHANGE and bars[0].value > bars[1].value:
+                    where = ' · '.join(bars[0].labels.get(key, '') for key in others if bars[0].labels.get(key))
+                    findings.append(Finding(f'{name}: its largest count{when} is in {where} '
+                                            f'({_count(bars[0].value)} of {_count(current[name].value)}).', 1.0 + bonus, 'count'))
+    for position, key in enumerate(others):
+        current = by(now, key)
+        if len(current) < 2:
+            continue
+        ranked = sorted(current, key=lambda name: -current[name].value)
+        most = current[ranked[0]].value
+        tops = [name for name in ranked if current[name].value == most]
+        if len(tops) == 1:
+            text = f'{tops[0]} has the most {noun}{when} ({_count(most)} of {_count(total)})'
+            following = [name for name in ranked[1:] if current[name].value == current[ranked[1]].value and current[name].value]
+            if following and len(following) <= 2:
+                text += f', then {_join(following)} ({_count(current[following[0]].value)}{" each" if len(following) > 1 else ""})'
+        elif len(tops) <= 3:
+            text = f'{_join(tops)} have the most {noun}{when} ({_count(most)} each of {_count(total)})'
+        else:
+            continue
+        findings.append(Finding(text + '.', 2.2 - 0.1 * position, 'count'))
+    if subject_key and others:
+        bars = sorted(now, key=lambda record: -record.value)
+        largest = [record for record in bars if record.value == bars[0].value]
+        if bars[0].value >= MIN_COUNT_CHANGE and len(largest) <= 2:
+            wheres = [' · '.join(record.labels.get(key, '') for key in others if record.labels.get(key)) for record in largest]
+            names = [record.labels.get(subject_key, '') for record in largest]
+            places = ([f'{_join(names)} in {wheres[0]}'] if len(set(wheres)) == 1
+                      else [f'{name} in {where}' for name, where in zip(names, wheres)])
+            text = (f'{places[0]} has the largest count{when} ({_count_detail(facts, largest[0])})' if len(largest) == 1
+                    else f'{_join(places)} have the largest count{when} ({_count(bars[0].value)} each)')
+            findings.append(Finding(text + '.', 2.3, 'count'))
+    return findings
+
+
 def chart_findings(facts: ChartFacts, focus_operators: Iterable[str] = ()) -> list[Finding]:
     """The findings of one chart, group by group: the change of the Focus operators (or of the leader) since the
     previous campaign, their position against the leader, the weak tail, the largest move of the others, the vendors
     of each operator and the groups with too few samples to be named."""
     focus = {str(name).strip().casefold() for name in focus_operators if str(name or '').strip()}
+    if facts.family == 'count':
+        return _count_findings(facts, focus)
     if facts.family == 'relation':
         return _relation_findings(facts, focus)
     if facts.family == 'map':
@@ -1044,11 +1223,15 @@ def slide_brief(charts: Iterable[dict[str, Any]], *, focus_operators: Iterable[s
         for facts in chart_facts(int(chart['index']), str(chart.get('title') or ''), str(chart.get('kpi') or ''),
                                  chart.get('model') or {}, chart.get('hidden') or (), chart.get('shown') or ()):
             records = []
-            for record in facts.records[:60]:
+            # A chart read by its counts gives its totals, then its bars with a count from the largest.
+            source = ([*facts.extra['totals'], *sorted((record for record in facts.records if record.value), key=lambda record: -record.value)]
+                      if facts.family == 'count' else facts.records)
+            for record in source[:60]:
                 extra = {key: ([_brief_number(item) for item in value] if isinstance(value, list) else _brief_number(value))
                          for key, value in record.extra.items() if isinstance(value, (int, float, list))}
                 shown = (_percent(record.value) if facts.family in {'share', 'map'} else
                          _format(record.value, 2) if facts.family == 'relation' else
+                         _count(record.value) if facts.family == 'count' else
                          '' if facts.family == 'table' else _figure(facts, record.value))
                 records.append({'labels': record.labels, 'value': _brief_number(record.value), 'samples': record.samples,
                                 'shown': shown, 'extra': extra})

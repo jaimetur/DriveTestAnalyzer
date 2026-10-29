@@ -368,7 +368,7 @@ For editors, three icons follow the slide navigation, set apart like **Presentat
 | 100% Stacked Vertical Bars | The share of failures (Failed, Dropped, Cutoff…), or else of the largest class (RAT, CA state…) |
 | Threshold Stacked Vertical Bars | The share reaching the threshold |
 | Distribution Stacked Vertical Bars | The share in the worst bucket |
-| Count Stacked Horizontal Bars | The share of failed and dropped tests among all the tests of each bar |
+| Count Stacked Horizontal Bars | The share of failed and dropped tests among all the tests of each bar; when its filter keeps only the failed and dropped tests (such as `Call_Status IN (Failed, Dropped)` in **Voice failures** and **Voice failures per City**), the counts it draws: the operators from the one with the most in the latest campaign, the change since the previous campaign (a Flex campaign only against another Flex campaign; a change too small for its counts reads *stable*), the CDR type, city or other row with the most and the bar with the largest count, and the operators without any |
 | Scatter | How the KPI follows the other measure (Spearman ρ) and its median in the lowest and highest quarter of it |
 | Map | The share of the samples in the weakest class of its colour measure and, with City or Region in the rows, the area that holds more of it than its share of the samples |
 | Table and Dynamic Table | The highest and lowest rows of its first numeric columns |
