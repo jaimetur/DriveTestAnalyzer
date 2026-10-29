@@ -795,6 +795,9 @@
   function renderSorter() {
     const nav = $('ds-slide-thumbnails');
     if (!nav) return;
+    // The scroll of the list before anything moves: the new items take the thumbnails already drawn out of the old ones,
+    // so the list is shorter (and its scroll cut) until they are in it.
+    const scrolled = nav.scrollTop;
     let number = 0;
     const items = editedSlides().map(slide => {
       const shown = !slide.hidden && !slide.optional_off;
@@ -839,8 +842,16 @@
         ['Transition slide', guarded(() => addSlide('transition')), true],
         ['End slide', guarded(() => addSlide('end')), true],
       ])}, '+ New slide');
+    // The list keeps its scroll when it is drawn again; it moves only to bring the slide shown into sight, by itself (the
+    // panels around it stay where they are).
     nav.replaceChildren(...items, add);
-    nav.querySelector('.is-current')?.scrollIntoView?.({block: 'nearest'});
+    nav.scrollTop = scrolled;
+    const current = nav.querySelector('.is-current');
+    if (current) {
+      const box = current.getBoundingClientRect(), view = nav.getBoundingClientRect();
+      if (box.top < view.top) nav.scrollTop -= view.top - box.top;
+      else if (box.bottom > view.bottom) nav.scrollTop += box.bottom - view.bottom;
+    }
   }
   function slideActions(slide) {
     const template = state.scope === 'template';
@@ -2101,7 +2112,7 @@
     const rights = state.info?.rights;
     button.hidden = !rights || !(rights.design || rights.template);
     button.classList.toggle('is-active', state.active);
-    button.textContent = state.active ? 'Close Designer' : 'Designer';
+    button.textContent = state.active ? 'Close Designer' : 'Open Designer';
     button.title = state.active ? 'Close the Designer (it asks about the changes not saved)' : 'Edit the slides and charts of this Design and of its template';
     lockViewerActions(state.active);
   }
