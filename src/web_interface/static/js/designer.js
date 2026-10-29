@@ -1012,13 +1012,15 @@
     const found = findElement(state.slide_set, elementId);
     if (!found) return [];
     const template = state.scope === 'template';
+    // Each action names what it acts on: a Chart, a KPI card, a Text box or an Image.
+    const noun = KINDS[found.element.kind || 'chart']?.[0] || 'Element';
     const actions = [
-      ['Duplicate Element', guarded(() => duplicateElement(elementId)), true],
-      ['Copy Element', () => { state.clipboard = clone(found.element); viewer().status('Element copied: paste it on a free place.'); }, true],
-      ['Delete Element', guarded(() => deleteElement(elementId)), true],
+      [`Duplicate ${noun}`, guarded(() => duplicateElement(elementId)), true],
+      [`Copy ${noun}`, () => { state.clipboard = clone(found.element); viewer().status(`${noun} copied: paste it on a free place.`); }, true],
+      [`Delete ${noun}`, guarded(() => deleteElement(elementId)), true],
     ];
-    if (!template && !state.detached && !isLocalElement(found.element) && found.element.overridden?.length) actions.push(['Reset Element to template', guarded(() => resetElement(elementId)), true]);
-    if (!template && !state.detached && state.rights.template && (isLocalElement(found.element) || found.element.overridden?.length)) actions.push(['Apply Element to template', guarded(() => applyToTemplate({elementId})), true]);
+    if (!template && !state.detached && !isLocalElement(found.element) && found.element.overridden?.length) actions.push([`Reset ${noun} to template`, guarded(() => resetElement(elementId)), true]);
+    if (!template && !state.detached && state.rights.template && (isLocalElement(found.element) || found.element.overridden?.length)) actions.push([`Apply ${noun} to template`, guarded(() => applyToTemplate({elementId})), true]);
     return actions;
   }
 
@@ -1466,7 +1468,7 @@
       node[keys.at(-1)] = value;
     }))();
     const integer = value => (value === '' ? '' : Math.max(0, Math.min(6, Math.round(Number(value)))));
-    // One group open at a time; a closed one says what it holds.
+    // A closed group says what it holds.
     const named = (list, value) => list.find(([key]) => key === (value || ''))?.[1] || value;
     const LEGEND_PLACES = [['', 'Default'], ['top', 'Top'], ['bottom', 'Bottom'], ['left', 'Left'], ['right', 'Right'], ['none', 'Hidden']];
     const changedSeries = Object.values(style.series || {}).filter(item => Object.keys(item || {}).length).length;
@@ -1476,16 +1478,12 @@
       Labels: [named(LABEL_POSITIONS, style.labels?.position), style.labels?.size ? `${style.labels.size} text` : '', style.labels?.bold ? 'Bold' : ''].filter(Boolean).join(' · '),
       Axes: [style.axes?.x?.title ? `X: ${style.axes.x.title}` : '', style.axes?.y?.title ? `Y: ${style.axes.y.title}` : '', style.axes?.x?.decimals !== undefined && style.axes?.x?.decimals !== '' ? `${style.axes.x.decimals} decimals` : ''].filter(Boolean).join(' · ') || 'As the chart names them',
     };
-    const openGroup = state.formatGroup ?? 'Series';
+    // The groups open are kept for the next chart (Series at first); several can be open at once.
+    state.formatOpen = state.formatOpen || new Set(['Series']);
     const group = (label, ...children) => {
-      const node = h('details', {class: 'ds-design-format-group', open: openGroup === label},
+      const node = h('details', {class: 'ds-design-format-group', open: state.formatOpen.has(label)},
         h('summary', {}, h('span', {class: 'ds-design-format-group-name', text: label}), h('span', {class: 'ds-design-format-group-value', text: summaries[label] || ''})), ...children);
-      node.addEventListener('toggle', () => {
-        if (node.open) {
-          state.formatGroup = label;
-          node.parentElement?.querySelectorAll('.ds-design-format-group').forEach(other => { if (other !== node) other.open = false; });
-        } else if (state.formatGroup === label) state.formatGroup = '';
-      });
+      node.addEventListener('toggle', () => { if (node.open) state.formatOpen.add(label); else state.formatOpen.delete(label); });
       return node;
     };
     return h('div', {class: 'ds-design-format'},
