@@ -133,6 +133,42 @@ def test_scoring_previous_campaign_is_the_complete_campaign_before_the_newest(wo
         == chosen['campaign_presets'][LATEST_TWO_CAMPAIGNS]
 
 
+def test_flex_campaigns_are_used_only_when_checked_by_hand(workspace):
+    from src.modules.column_names import use_campaign_map
+    from src.modules.nr_mode import NSA_VS_SA
+    from src.modules.scoring_selection import expand_scoring_campaigns, scoring_auto_cdrs
+    add = workspace['add']
+    repository = workspace['repository']
+    kinds = ('data', 'voice', 'speech')
+    [add(name=f'UK_Q1_2026_{kind}.csv', kind=kind, campaign='UK_Q1_2026') for kind in kinds]
+    q2 = [add(name=f'UK_Q2_2026_{kind}.csv', kind=kind, campaign='UK_Q2_2026') for kind in kinds]
+    flex = [add(name=f'UK_Flex_2026_{kind}.csv', kind=kind, campaign='UK_Flex_2026') for kind in kinds]
+    sa = [add(name=f'UK_Q3_SA_2026_{kind}.csv', kind=kind, nr_mode='SA', campaign='UK_Q3_SA_2026') for kind in kinds]
+    # The Campaign Maps label the Flex campaign as the newest one of NSA (26-Q3-Flex).
+    with use_campaign_map({'exceptions': [{'label': '26-Q3-Flex', 'sources': ['UK_Flex_2026']}]}):
+        assert campaign_values(repository, 'NSA')[-1] == 'UK_Flex_2026'
+        # Latest, Latest N, Previous and All available campaigns leave it out.
+        assert resolve_campaign_filter(repository, 'NSA', [LATEST_CAMPAIGN]) == ['UK_Q2_2026']
+        assert resolve_campaign_filter(repository, 'NSA', [LATEST_TWO_CAMPAIGNS]) == ['UK_Q1_2026', 'UK_Q2_2026']
+        assert resolve_campaign_filter(repository, 'NSA', [PREVIOUS_CAMPAIGN]) == ['UK_Q1_2026']
+        assert resolve_campaign_filter(repository, 'NSA', [ALL_CAMPAIGNS]) == ['UK_Q1_2026', 'UK_Q2_2026']
+        assert sorted(resolve_cdrs(repository, 'NSA', [LATEST_CAMPAIGN])['data']) == [q2[0]]
+        # Only Flex campaigns: the automatic choices stand for no campaign (no CDR, not every one).
+        assert expand_campaign_filter([LATEST_CAMPAIGN], ['UK_Flex_2026']) == [NO_PREVIOUS_CAMPAIGN]
+        # Checked by hand, by its value or its label, it is used.
+        assert resolve_cdrs(repository, 'NSA', ['UK_Flex_2026'])['data'] == [flex[0]]
+        assert resolve_cdrs(repository, 'NSA', ['26-Q3-Flex'])['voice'] == [flex[1]]
+        assert expand_campaign_filter(['UK_Flex_2026', LATEST_CAMPAIGN], ['UK_Q2_2026', 'UK_Flex_2026']) == [
+            'UK_Flex_2026', 'UK_Q2_2026']
+        # Scoring too, also with NSA vs SA, where the newest quarter keeps its SA campaign without the Flex one.
+        assert expand_scoring_campaigns(repository, 'NSA', [LATEST_CAMPAIGN]) == ['UK_Q2_2026']
+        assert expand_scoring_campaigns(repository, NSA_VS_SA, [LATEST_CAMPAIGN]) == ['UK_Q3_SA_2026']
+        chosen = scoring_auto_cdrs(repository, 'NSA', {'Campaign': ['UK_Flex_2026']})
+        assert sorted(chosen['dataset_ids']) == sorted(flex)
+        assert chosen['campaign_presets'][ALL_CAMPAIGNS] == ['UK_Q1_2026', 'UK_Q2_2026']
+        assert sorted(scoring_auto_cdrs(repository, 'SA', {'Campaign': [LATEST_CAMPAIGN]})['dataset_ids']) == sorted(sa)
+
+
 def test_filters_cascade_over_every_cdr_of_the_nr_mode_without_reading_rows(workspace, monkeypatch):
     add = workspace['add']
     repository = workspace['repository']

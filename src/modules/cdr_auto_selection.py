@@ -11,12 +11,14 @@ The Campaign filter of a saved definition (a Design, a Reporting Job entry) also
 choices made again each time they are used, so they follow the campaigns that arrive later:
 **Latest campaign**, **Latest 2 campaigns**, **Latest 3 campaigns**, **Latest 4 campaigns**, **Previous
 campaign** (the one before the latest) and **All available campaigns**. Network Insights analyses one campaign: only
-Latest campaign, Previous campaign or one campaign (see ``one_campaign``).
+Latest campaign, Previous campaign or one campaign (see ``one_campaign``). These choices leave the Flex campaigns out
+(``is_flex_campaign``): a Flex campaign is used only where it is checked by hand.
 """
 
 from __future__ import annotations
 
 import json
+import re
 from typing import Any, Iterable
 
 from src.modules.cdr_stage import _facts as cdr_stage_facts, combined_inclusion
@@ -47,6 +49,8 @@ SINGLE_CAMPAIGN_PRESETS = (LATEST_CAMPAIGN, PREVIOUS_CAMPAIGN)
 # What a choice stands for when it chooses no campaign although there are some (Previous campaign with only one
 # campaign): no campaign matches it, so no CDR is used (an empty Campaign filter would be every campaign).
 NO_PREVIOUS_CAMPAIGN = '@no-previous-campaign'
+# A Flex campaign has Flex as a word of its value or of its Campaign Maps label (UK_Flex_2026, 26-Q2-Flex).
+_FLEX_CAMPAIGN = re.compile(r'(?<![a-z])flex(?![a-z])', re.IGNORECASE)
 
 
 def _row(dataset: Any, key: str, default: Any = None) -> Any:
@@ -81,6 +85,13 @@ def one_campaign(values: Iterable[object] | None) -> list[str]:
 def campaign_identity(value: object) -> str:
     """One campaign whatever its spelling (UK_Q2_2026 and 2026-Q2 are the same campaign)."""
     return str(compact_campaign_value(value) or '').strip().casefold()
+
+
+def is_flex_campaign(value: object) -> bool:
+    """Whether a campaign is a Flex campaign (UK_Flex_2026, or one the Campaign Maps label as 26-Q2-Flex): the
+    automatic choices (Latest campaign, Latest 2 campaigns, Previous campaign…) leave it out."""
+    text = str(value or '').strip()
+    return bool(text) and bool(_FLEX_CAMPAIGN.search(text) or _FLEX_CAMPAIGN.search(str(compact_campaign_value(text) or '')))
 
 
 def candidate_cdrs(repository: Any, nr_mode: object = None, kinds: Iterable[str] = CDR_KINDS) -> list[dict[str, Any]]:
@@ -167,7 +178,9 @@ def campaign_groups(campaigns: Iterable[object]) -> list[list[str]]:
 
 
 def preset_campaign_groups(groups: list[Any], presets: Iterable[str]) -> list[Any]:
-    """The campaign groups (newest first) that some automatic choices stand for."""
+    """The campaign groups (newest first) that some automatic choices stand for, without the Flex campaigns: they never
+    count among the latest ones (nor as the previous one), so a Flex campaign is used only when it is checked by hand."""
+    groups = [kept for group in groups if (kept := [value for value in group if not is_flex_campaign(value)])]
     chosen: set[int] = set()
     for preset in presets:
         start, stop = CAMPAIGN_PRESETS[preset]

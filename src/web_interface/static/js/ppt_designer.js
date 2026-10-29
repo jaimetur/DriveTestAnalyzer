@@ -1080,8 +1080,8 @@
       campaignControl.disabled = false;
       campaignControl.dataset.multiselectDynamicAll = 'true';
       campaignCopy.textContent = designNrMode(design) === NSA_AND_SA
-        ? 'The NSA and SA CDRs of the chosen campaigns are used: Latest campaign, Latest 2, 3 and 4 campaigns and Previous campaign follow the newest ones of each NR Mode.'
-        : `The CDRs of ${designNrMode(design)} of the chosen campaigns are used: Latest campaign, Latest 2, 3 and 4 campaigns and Previous campaign follow the newest ones.`;
+        ? 'The NSA and SA CDRs of the chosen campaigns are used: Latest campaign, Latest 2, 3 and 4 campaigns and Previous campaign follow the newest ones of each NR Mode (Flex campaigns only when checked).'
+        : `The CDRs of ${designNrMode(design)} of the chosen campaigns are used: Latest campaign, Latest 2, 3 and 4 campaigns and Previous campaign follow the newest ones (Flex campaigns only when checked).`;
       campaignControl.dispatchEvent(new Event('multiselect:options-updated'));
     };
     campaignControl.onchange = () => {
