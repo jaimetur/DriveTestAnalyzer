@@ -5154,6 +5154,32 @@ def test_opening_workspace_removes_the_design_caches_of_earlier_versions(client)
         assert connection.execute('SELECT COUNT(*) FROM design_filter_selections').fetchone()[0] == 1
 
 
+def test_opening_workspace_moves_the_cache_folders_of_earlier_versions_to_its_cache_folder(client, monkeypatch) -> None:
+    import src.DriveTestAnalyzer as app_module
+
+    login(client)
+    workspace = app_module.workspace_registry.get('default')
+    assert workspace is not None
+    workspace_root = workspace.database_path.parent
+    legacy = workspace_root / '.scoring-cache' / 'trends' / 'a.json.gz'
+    legacy.parent.mkdir(parents=True, exist_ok=True)
+    legacy.write_bytes(b'kept')
+    section = workspace.output_dir / 'reports' / 'bundle-reports' / 'cache' / 'section-1' / 'section.json'
+    section.parent.mkdir(parents=True, exist_ok=True)
+    section.write_text('{}', encoding='utf-8')
+    # The first opening of the workspace by this server process.
+    monkeypatch.setattr(app_module, 'INITIALIZED_WORKSPACE_DATABASES', set())
+
+    app_module.activate_workspace(workspace.id)
+
+    assert not (workspace_root / '.scoring-cache').exists() and not section.exists()
+    assert (workspace_root / '.cache' / 'scoring' / 'trends' / 'a.json.gz').read_bytes() == b'kept'
+    assert (workspace_root / '.cache' / 'bundle-reports' / 'section-1' / 'section.json').is_file()
+    moved = next(row for row in app_module.repository.list_logs(limit=50) if row['action'] == 'workspace_cache_folders_moved')
+    assert json.loads(moved['details']) == {'folders': ['.scoring-cache', 'output/reports/bundle-reports/cache'],
+                                            'cache_folder': '.cache'}
+
+
 def test_workspace_management_reports_every_supported_row_status(client, tmp_path: Path) -> None:
     import src.DriveTestAnalyzer as app_module
 

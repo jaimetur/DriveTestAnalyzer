@@ -23,7 +23,7 @@ def test_a_value_is_written_whole_and_read_back_and_an_unreadable_file_is_delete
     assert ppt_design_cache.read(path) is None and not ppt_design_cache.exists(path)
 
     assert ppt_design_cache.write(path, {'series': [1, 2, 3]})
-    assert path.parent == database.parent / '.ppt-designer-cache' / 'charts' / 'ab'
+    assert path.parent == database.parent / '.cache' / 'ppt-designer' / 'charts' / 'ab'
     assert ppt_design_cache.read(path) == {'series': [1, 2, 3]} and ppt_design_cache.exists(path)
     # Written under a temporary name and renamed: nothing else is left in the folder.
     assert [item.name for item in path.parent.iterdir()] == [path.name]
@@ -81,6 +81,7 @@ def test_clear_sets_the_folder_aside_at_once(tmp_path):
 
     trash = ppt_design_cache.clear(database)
     assert trash is not None and trash.exists() and ppt_design_cache.trash_folders(database.parent) == [trash]
+    assert trash.parent == database.parent / '.cache' and trash.name.startswith('ppt-designer.removing-')
     assert not ppt_design_cache.root_of(database).exists()
     assert not ppt_design_cache.has_preparation(database, 'design-a')
     assert ppt_design_cache.usage(database) == (0, 0)

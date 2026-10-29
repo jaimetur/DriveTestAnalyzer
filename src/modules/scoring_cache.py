@@ -1,6 +1,6 @@
-"""Calculations that Saved Filters share, kept in the workspace folder: the National & Geographical Areas Trends and
-the Points Lost Map of each methodology. Another Saved Filter with the same CDRs, methodology and options (or the same
-one calculated again) reads them instead of calculating them again.
+"""Calculations that Saved Filters share, kept in the cache folder of the workspace (``.cache/scoring``): the National &
+Geographical Areas Trends and the Points Lost Map of each methodology. Another Saved Filter with the same CDRs,
+methodology and options (or the same one calculated again) reads them instead of calculating them again.
 
 The key of each one holds everything it depends on (the revision of its CDRs, the methodology, the options, the
 Operator Maps, the Map Areas and the code of the scoring modules), so any change calculates it again. The most
@@ -16,8 +16,9 @@ import threading
 from pathlib import Path
 from typing import Any
 
+from src.modules import workspace_cache
+
 CACHE_VERSION = 1
-CACHE_FOLDER = '.scoring-cache'
 MAX_BYTES = 1024 ** 3
 # The modules whose code calculates what is kept: a change in any of them calculates it again.
 CODE_MODULES = ('saved_filters', 'scoring', 'scoring_area_summary', 'scoring_history', 'scoring_methodologies',
@@ -46,7 +47,7 @@ def key_of(payload: Any) -> str:
 
 def _folder(repository: Any, kind: str) -> Path | None:
     db_path = getattr(repository, 'db_path', None)
-    return Path(db_path).resolve().parent / CACHE_FOLDER / kind if db_path else None
+    return workspace_cache.of_database(db_path, workspace_cache.SCORING) / kind if db_path else None
 
 
 def read(repository: Any, kind: str, key: str) -> Any | None:

@@ -41,6 +41,7 @@ from src.modules.operator_roles import drop_excluded_operators, drop_out_of_scop
 from src.modules.mapping_order import dimension_order_key, operator_order_key, vendor_order_key
 from src.modules.output_layout import NETWORK_INSIGHTS_FOLDER, module_output_dir
 from src.modules import cdr_store
+from src.modules import workspace_cache
 from src.modules import inventory_insights as ii
 from src.modules import network_insights_favourites as ni_favourites
 from src.modules.network_insights_findings import findings_payload, mode_of_test
@@ -1528,7 +1529,7 @@ def install_network_insights_routes(core: Any) -> None:
 
     def cache_directory(task_repository) -> Path:
         """Workspace folder for Network Insights caches that survive restarts."""
-        folder = Path(task_repository.db_path).resolve().parent / '.network-insights-cache'
+        folder = workspace_cache.of_database(task_repository.db_path, workspace_cache.NETWORK_INSIGHTS)
         folder.mkdir(parents=True, exist_ok=True)
         return folder
 

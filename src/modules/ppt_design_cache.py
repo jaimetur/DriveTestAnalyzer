@@ -1,5 +1,5 @@
-"""The preparations of the PPT Designs and the models of their charts, kept in the workspace folder
-(``.ppt-designer-cache``) so a restart restores them instead of working them out again.
+"""The preparations of the PPT Designs and the models of their charts, kept in the cache folder of the workspace
+(``.cache/ppt-designer``) so a restart restores them instead of working them out again.
 
 Each one is a gzip file named after its key, which changes with what it was made from (the CDRs and their revisions,
 the selection, the template and format, the mappings and the renderer), so any change works it out again. A file is
@@ -26,10 +26,14 @@ from pathlib import Path
 from typing import Any, Callable
 from uuid import uuid4
 
-CACHE_FOLDER = '.ppt-designer-cache'
-# A folder set aside by Clear workspace cache, deleted in the background (and when the workspace opens, if the
-# deletion was cut short).
-TRASH_PREFIX = f'{CACHE_FOLDER}.removing-'
+from src.modules import workspace_cache
+
+MODULE_FOLDER = workspace_cache.PPT_DESIGNER
+# The cache folder, relative to the workspace folder.
+CACHE_FOLDER = f'{workspace_cache.CACHE_FOLDER}/{MODULE_FOLDER}'
+# A folder set aside by Clear workspace cache (beside it), deleted in the background (and when the workspace opens, if
+# the deletion was cut short).
+TRASH_PREFIX = f'{MODULE_FOLDER}{workspace_cache.REMOVING_SUFFIX}'
 MAX_MB = 1024
 UNUSED_DAYS = 30
 # The unused files and the temporary files left by a write cut short are looked for again after this many seconds.
@@ -55,7 +59,13 @@ def limit_bytes() -> int:
 
 def root_of(workspace: str | Path) -> Path:
     """The cache folder of a workspace, given its database."""
-    return Path(workspace).resolve().parent / CACHE_FOLDER
+    return workspace_cache.of_database(workspace, MODULE_FOLDER)
+
+
+def _root_of_file(path: Path) -> Path | None:
+    """The cache folder that holds a file."""
+    return next((parent for parent in path.parents
+                 if parent.name == MODULE_FOLDER and parent.parent.name == workspace_cache.CACHE_FOLDER), None)
 
 
 def chart_path(workspace: str | Path, key: str) -> Path:
@@ -104,7 +114,7 @@ def _index(root: Path) -> dict[str, Any]:
 
 def _noted(path: Path, size: int | None) -> None:
     """Note a file written (with its size), used again (``size`` None) or removed (``size`` -1)."""
-    root = next((parent for parent in path.parents if parent.name == CACHE_FOLDER), None)
+    root = _root_of_file(path)
     if root is None:
         return
     with _lock:
@@ -193,7 +203,9 @@ def write(path: Path, value: Any) -> bool:
         except OSError:
             pass
         return False
-    root = next(parent for parent in path.parents if parent.name == CACHE_FOLDER)
+    root = _root_of_file(path)
+    if root is None:
+        return True
     with _lock:
         _index(root)
     _noted(path, size)
@@ -226,7 +238,8 @@ def usage(workspace: str | Path) -> tuple[int, int]:
 
 def trash_folders(workspace_root: Path) -> list[Path]:
     try:
-        return sorted(path for path in workspace_root.glob(f'{TRASH_PREFIX}*') if path.is_dir())
+        root = workspace_cache.cache_root(workspace_root)
+        return sorted(path for path in root.glob(f'{TRASH_PREFIX}*') if path.is_dir())
     except OSError:
         return []
 

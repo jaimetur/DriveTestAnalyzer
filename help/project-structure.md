@@ -75,6 +75,7 @@ Runtime `config/` and `data/` directories use project-local defaults but are exc
 - `src/modules/workspaces.py`: workspace registry, lifecycle, path migration, duplication and deletion.
 - `src/modules/output_layout.py`: module folders below `output/reports/` and the one-time move of documents written with the former layout.
 - `src/modules/upload_sessions.py`: resumable dataset uploads (chunks kept in `.upload-sessions` of the workspace until the upload ends); `static/js/background_uploads.js` sends and resumes them on every page.
+- `src/modules/workspace_cache.py`: the cache folder of a workspace (`.cache` beside its database, one folder per module: `scoring`, `network-insights`, `ppt-designer` and `bundle-reports`), and the move of the cache folders of earlier versions to it when the workspace opens.
 - `src/modules/ingestion.py`: workbook/CSV ingestion, CDR classification helpers and derived input fields.
 - `src/modules/cdr_types.py` and `cdr_field_profiles.py`: the CDR type of each workspace (NetCheck, Umlaut, P3) and the field profile of each type, the CDR columns every module reads; `umlaut_cdr.py` reads the Umlaut service workbooks (their sides and the columns the tool derives) and `cdr_field_dictionary.py` keeps the fields a workspace changes in its CDR Field Dictionary (`static/js/cdr_field_dictionary.js` in Workspace Config).
 - `src/modules/analytics.py`: single-dataset analytical calculations.
@@ -120,8 +121,11 @@ APP_DATA_DIR/
 │   ├── workspace-registry.db
 │   └── <workspace>/
 │       ├── <workspace>.db
-│       ├── .network-insights-cache/
-│       ├── .ppt-designer-cache/
+│       ├── .cache/
+│       │   ├── bundle-reports/
+│       │   ├── network-insights/
+│       │   ├── ppt-designer/
+│       │   └── scoring/
 │       ├── input/
 │       └── output/
 │           └── reports/
@@ -170,7 +174,7 @@ Report Templates become CSV files only inside portable export, transfer and back
 
 ### Regenerable PPT cache
 
-PPT Designer keeps its preview manifests and Canvas chart models in memory and in the `.ppt-designer-cache` folder of the workspace (up to 1 GB, the least recently used removed first); opening a workspace removes the `.design-data-cache` folder and `.design-cache-version.json` earlier versions wrote, and moves there the cache tables earlier versions kept in the workspace database. Design rows remain only in the columnar copies of the CDRs. The cache can be cleared without removing datasets, PPT definitions, templates or generated jobs, and clearing it does not trigger an automatic rebuild.
+PPT Designer keeps its preview manifests and Canvas chart models in memory and in the `.cache/ppt-designer` folder of the workspace (up to 1 GB, the least recently used removed first); opening a workspace removes the `.design-data-cache` folder and `.design-cache-version.json` earlier versions wrote, and moves there the cache tables earlier versions kept in the workspace database. Design rows remain only in the columnar copies of the CDRs. The cache can be cleared without removing datasets, PPT definitions, templates or generated jobs, and clearing it does not trigger an automatic rebuild.
 
 ### Generated output
 

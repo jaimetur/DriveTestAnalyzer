@@ -335,7 +335,7 @@ def test_inventory_cells_and_snapshot_panels_are_kept_on_disk_with_the_network_c
     login(client)
     _dataset(tmp_path, '260917_Cell_Config.zip', 'network_inventory', _inventory_rows())
     payload = client.post('/api/network-insights/snapshot', json={'group': 'vendor'}).json()
-    folder = Path(core.repository.db_path).resolve().parent / '.network-insights-cache'
+    folder = Path(core.repository.db_path).resolve().parent / '.cache' / 'network-insights'
     # The derived cells of the snapshot and the snapshot panels are stored for the next runs, also after a restart.
     assert list(folder.glob('cells-*.pkl')) and list(folder.glob('snapshot-base-*.json')) and len(list(folder.glob('snapshot-*.json'))) >= 2
     from src.modules.network_inventory import ensure_inventory_cells

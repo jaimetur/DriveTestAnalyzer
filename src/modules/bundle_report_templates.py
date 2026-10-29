@@ -31,7 +31,7 @@ from pathlib import Path
 from threading import Lock, Thread
 from typing import Any, Callable
 
-from src.modules import pptx_compose as compose, report_structure
+from src.modules import pptx_compose as compose, report_structure, workspace_cache
 from src.modules.cdr_auto_selection import (
     ALL_CAMPAIGNS, CAMPAIGN_PRESET_LABELS, campaign_presets, complete_campaign_cdrs, one_campaign, resolve_campaign_filter,
     sort_campaigns,
@@ -1562,7 +1562,6 @@ class SectionGenerator:
 # -- generated sections kept for the next exports ------------------------------------------
 SECTION_CACHE_VERSION = 10
 SECTION_CACHE_HOURS = 24
-SECTION_CACHE_FOLDER = 'cache'
 # The composed documents (PowerPoint, the packed Word and their previews), inside the section cache.
 DOCUMENT_CACHE_FOLDER = 'documents'
 DOCUMENT_CACHE_VERSION = 7
@@ -1692,6 +1691,11 @@ def _store_section(root: Path, key: str, deck: SectionDeck) -> None:
                                      'decks': entries, 'generated_at': datetime.now().isoformat(timespec='seconds')}),
                          encoding='utf-8')
     temporary.replace(folder / 'section.json')
+
+
+def section_cache_root(repository: Any) -> Path:
+    """The folder of the generated sections and composed documents kept for the next exports of a workspace."""
+    return workspace_cache.of_database(repository.db_path, workspace_cache.BUNDLE_REPORTS)
 
 
 def forget_old_sections(root: Path) -> None:
@@ -1976,9 +1980,7 @@ def _forget_old_jobs(root: Path, kept: set[str] = frozenset()) -> None:
         limit = time.time() - JOB_FILES_KEPT_HOURS * 3600
         active = {str(job['folder']) for job in _jobs.values()}
         for folder in root.iterdir():
-            if folder.name == SECTION_CACHE_FOLDER:
-                forget_old_sections(folder)
-            elif folder.is_dir() and str(folder) not in active and folder.name not in kept and folder.stat().st_mtime < limit:
+            if folder.is_dir() and str(folder) not in active and folder.name not in kept and folder.stat().st_mtime < limit:
                 shutil.rmtree(folder, ignore_errors=True)
 
 
@@ -2154,7 +2156,7 @@ def install_bundle_report_template_routes(core: Any) -> None:
                 job.update(status='running', progress=2, message='Starting')
             # Both formats and their previews are ready before the preview opens, so switching between them is
             # immediate. The PowerPoint preview is rendered while the Word pages are packed.
-            cache_root = output_root() / SECTION_CACHE_FOLDER
+            cache_root = section_cache_root(repository)
             from concurrent.futures import ThreadPoolExecutor
             from src.modules.pptx_to_docx import document_pdf, pdf_page_images
 
@@ -2237,6 +2239,7 @@ def install_bundle_report_template_routes(core: Any) -> None:
         root = output_root()
         root.mkdir(parents=True, exist_ok=True)
         _forget_old_jobs(root, {str(record['folder']) for record in _last_report_records(repository).values()})
+        forget_old_sections(section_cache_root(repository))
         job_id = uuid.uuid4().hex
         folder = root / f"{datetime.now():%Y%m%d_%H%M%S} - {job_id[:8]}"
         folder.mkdir(parents=True, exist_ok=True)
@@ -2376,7 +2379,7 @@ def _register_reporting_artifact(core: Any) -> None:
 
                 result = build_report(core, repository, user, favourite['definition'], 'word' if 'word' in formats else 'powerpoint',
                                       work, name=favourite['name'], progress=progress,
-                                      cache_root=module_output_dir(core.settings.output_dir, BUNDLE_REPORTS_FOLDER) / SECTION_CACHE_FOLDER)
+                                      cache_root=section_cache_root(repository))
                 for export_format in formats:
                     suffix = '.docx' if export_format == 'word' else '.pptx'
                     destination = artifact_path(folder, stamp, BUNDLE_REPORT_FILE_PREFIX, favourite['name'], suffix)

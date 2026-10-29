@@ -74,7 +74,7 @@ from src.config import PROJECT_ROOT, settings
 from src.modules.analytics import build_analysis, shared_frame_attrs
 from src.modules.app_event_details import app_event_origin, app_event_origin_parts, changed_values, describe_app_event
 from src.modules.background_scheduler import BackgroundTaskScheduler
-from src.modules import cdr_store, design_slides, ppt_design_cache
+from src.modules import cdr_store, design_slides, ppt_design_cache, workspace_cache
 from src.modules.auth import SessionUser, verify_password
 from src.modules.workspace_countries import country_options
 from src.modules.operator_roles import (
@@ -2779,6 +2779,12 @@ def activate_workspace(workspace_id: str, *, initialize: bool = True) -> Workspa
                 repository.initialize()
                 _startup_step(f'Checking the Output folder of workspace "{workspace.name}"…')
                 migrate_output_layout(workspace.output_dir, workspace.database_path)
+                # The cache folders of earlier versions move to the cache folder of the workspace (.cache).
+                moved_cache_folders = workspace_cache.move_legacy_folders(workspace.database_path.parent)
+                if moved_cache_folders:
+                    add_workspace_audit_log(workspace, 'system', 'workspace_cache_folders_moved', {
+                        'folders': moved_cache_folders, 'cache_folder': workspace_cache.CACHE_FOLDER,
+                    })
                 _startup_step('Recovering the Scoring calculations the last run left unfinished…')
                 recovered_scoring_ids = recover_interrupted_saved_filters(repository)
                 if recovered_scoring_ids:

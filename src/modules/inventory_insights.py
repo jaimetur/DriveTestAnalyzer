@@ -24,6 +24,7 @@ from src.modules.network_inventory import (
     INVENTORY_CELLS_TABLE, INVENTORY_CELLS_VERSION, NETWORK_FAMILY_LABELS, dataset_revision, inventory_datasets, list_inventory_snapshots,
 )
 from src.modules.serving_cells import serving_families
+from src.modules import workspace_cache
 
 # Inventory band labels (LTE800, NR3400…) to their 3GPP band and downlink frequency.
 INVENTORY_BANDS: dict[str, tuple[str, int]] = {
@@ -203,7 +204,7 @@ def _derive_cells(cells: pd.DataFrame) -> pd.DataFrame:
 
 
 def _cells_cache_folder(repository: Any) -> Path:
-    folder = Path(repository.db_path).resolve().parent / '.network-insights-cache'
+    folder = workspace_cache.of_database(repository.db_path, workspace_cache.NETWORK_INSIGHTS)
     folder.mkdir(parents=True, exist_ok=True)
     return folder
 

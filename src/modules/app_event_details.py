@@ -330,7 +330,7 @@ _SERVER_ACTIONS = {
     'startup': {'application_started', 'recover_interrupted_background_jobs', 'recover_interrupted_saved_filters',
                 'recover_inconsistent_datasets', 'resume_interrupted_dataset', 'migrate_app_event_users', 'nq_call_keys_upgraded',
                 'assign_unknown_creators', 'assign_unknown_creators_failed', 'resume_reporting_job_run',
-                'stop_interrupted_reporting_job_run', 'fail_interrupted_reporting_job_run'},
+                'stop_interrupted_reporting_job_run', 'fail_interrupted_reporting_job_run', 'workspace_cache_folders_moved'},
     'background': {'process_dataset', 'process_dataset_failed', 'analyze_dataset_failed', 'analyze_dataset_warning',
                    'map_dataset_vendors', 'map_dataset_vendors_failed', 'map_dataset_regions', 'map_dataset_regions_failed',
                    'vendor_mapping_skipped', 'clear_dataset_vendors', 'clear_dataset_vendors_failed', 'chart_set_rendering_completed',
