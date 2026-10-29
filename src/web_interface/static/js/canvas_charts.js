@@ -58,9 +58,25 @@
     if (format.configured) { labelFont(context, size, format, false, false); return; }
     context.font = `800 ${size}px ${FONT_FAMILY}`;
   };
+  // A dash pattern is drawn for a thin line, so a thick line keeps it in proportion: its dashes and gaps grow with the
+  // width, and a pattern of short dashes (dotted) becomes round dots one width apart. A short line, as the sample of a
+  // legend, keeps at least two dashes.
+  const lineDash = (context, dash, width = 1, length = Infinity) => {
+    const pattern = Array.isArray(dash) ? dash.map(Number).filter(value => value > 0) : [];
+    const thickness = Number(width) > 0 ? Number(width) : 1;
+    if (pattern.length < 2) { context.setLineDash([]); return; }
+    if (pattern[0] < pattern[1]) {
+      context.lineCap = 'round';
+      context.setLineDash([Math.max(0.01, 2 - thickness), Math.min(Math.max(5, thickness * 2), Math.max(length / 2, thickness + 2))]);
+      return;
+    }
+    const period = pattern.reduce((sum, value) => sum + value, 0);
+    const scale = Math.max(0.5, Math.min(Math.max(1, thickness / 2.5), length / 2 / period));
+    context.setLineDash(pattern.map(value => value * scale));
+  };
   const line = (context, x1, y1, x2, y2, colour = '#AEBBC4', width = 1, dash = []) => {
     context.save(); context.strokeStyle = colour; context.lineWidth = width;
-    context.setLineDash(Array.isArray(dash) ? dash.map(Number).filter(value => value > 0) : []);
+    lineDash(context, dash, width, Math.hypot(x2 - x1, y2 - y1));
     context.beginPath(); context.moveTo(x1, y1); context.lineTo(x2, y2); context.stroke(); context.restore();
   };
   const textWidth = (context, value) => context.measureText(String(value)).width;
@@ -1058,10 +1074,10 @@
         points.push({x: plot.left + (Number(value) - xLow) / (xHigh - xLow || 1) * plot.width, y: plot.top + plot.height - (cumulative - yLow) / (yHigh - yLow || 1) * plot.height, value: Number(value), cumulative});
       });
       if (points.length) {
-        context.strokeStyle = series.colour; context.lineWidth = Number(series.width || 1); context.beginPath();
-        context.setLineDash(Array.isArray(series.dash) ? series.dash.map(Number).filter(value => value > 0) : []);
+        context.strokeStyle = series.colour; context.lineWidth = Number(series.width || 1); context.lineJoin = 'round'; context.beginPath();
+        lineDash(context, series.dash, context.lineWidth);
         points.forEach((point, index) => index ? context.lineTo(point.x, point.y) : context.moveTo(point.x, point.y)); context.stroke();
-        context.setLineDash([]);
+        context.setLineDash([]); context.lineCap = 'butt'; context.lineJoin = 'miter';
         pushLineHit(state, transform, points, {label: payload.metric, series: series.name || series.legend_name});
         const endpoint = points.at(-1);
         if (!payload.histogram) endpointLabels.push({x: endpoint.x, y: endpoint.y, label: series.name || series.legend_name, colour: series.colour});

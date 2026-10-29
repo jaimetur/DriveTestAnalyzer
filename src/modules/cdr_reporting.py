@@ -122,7 +122,7 @@ _DESIGN_CANVAS_RENDERER_LOCK = threading.RLock()
 # The browser worker keeps a copy of canvas_charts.js in memory. Bump this
 # whenever rendering semantics change so a live server does not keep painting
 # previews with an older script after a hot reload.
-DESIGN_CANVAS_RENDERER_VERSION = 13
+DESIGN_CANVAS_RENDERER_VERSION = 14
 
 
 def _node_executable() -> str:
