@@ -442,26 +442,6 @@ CREATE TABLE IF NOT EXISTS design_filter_selections (
     last_accessed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- The preparations of the PPT Designs and the models of their charts (zlib-compressed JSON), kept so a restart restores
--- them instead of working them out again; their keys change with what they were made from. A cache: left out of backups,
--- exports and transfers, and emptied by Clear workspace cache.
-CREATE TABLE IF NOT EXISTS design_preview_manifests (
-    cache_key TEXT PRIMARY KEY,
-    design_id TEXT NOT NULL,
-    manifest BLOB NOT NULL,
-    size INTEGER NOT NULL,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX IF NOT EXISTS idx_design_preview_manifests_design ON design_preview_manifests(design_id);
-
-CREATE TABLE IF NOT EXISTS design_chart_models (
-    cache_key TEXT PRIMARY KEY,
-    model BLOB NOT NULL,
-    size INTEGER NOT NULL,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
 
 
 CREATE TABLE IF NOT EXISTS autocalculated_fields (

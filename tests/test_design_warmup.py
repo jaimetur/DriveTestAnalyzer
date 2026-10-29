@@ -5,6 +5,7 @@ from pathlib import Path
 
 import src.DriveTestAnalyzer as core
 import src.modules.ppt_designer as designs_module
+from src.modules import ppt_design_cache
 from tests.test_design_slides import logged, setup
 
 
@@ -36,13 +37,8 @@ def ready(client):
 
 
 def stored_models():
-    with core.repository.connection() as connection:
-        return {row['cache_key'] for row in connection.execute('SELECT cache_key FROM design_chart_models')}
-
-
-def stored_manifests():
-    with core.repository.connection() as connection:
-        return {row['design_id'] for row in connection.execute('SELECT design_id FROM design_preview_manifests')}
+    charts = ppt_design_cache.root_of(workspace_path()) / 'charts'
+    return {path.name for path in charts.glob('*/*.json.gz')}
 
 
 def test_the_warm_up_keeps_every_design_and_template_and_works_out_only_what_changed(client, monkeypatch):
@@ -61,7 +57,7 @@ def test_the_warm_up_keeps_every_design_and_template_and_works_out_only_what_cha
     designs = json.loads(core.repository.get_workspace_state('ppt_designs_v2'))
     assert job['total'] == len(designs) + len(core.repository.list_report_templates()) == job['done']
     assert job['computed'] > 0
-    assert {'design-a', 'design-b'} <= stored_manifests()
+    assert all(ppt_design_cache.has_preparation(workspace_path(), design_id) for design_id in ('design-a', 'design-b'))
     kept = stored_models()
     assert len(kept) >= job['computed']
     assert logged('design_warmup_finished')[0]['status'] == 'ready'

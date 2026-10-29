@@ -74,7 +74,7 @@ from src.config import PROJECT_ROOT, settings
 from src.modules.analytics import build_analysis, shared_frame_attrs
 from src.modules.app_event_details import app_event_origin, app_event_origin_parts, changed_values, describe_app_event
 from src.modules.background_scheduler import BackgroundTaskScheduler
-from src.modules import cdr_store, design_slides
+from src.modules import cdr_store, design_slides, ppt_design_cache
 from src.modules.auth import SessionUser, verify_password
 from src.modules.workspace_countries import country_options
 from src.modules.operator_roles import (
@@ -2956,7 +2956,8 @@ def workspace_cache_disk_usage(workspace: Workspace) -> int:
         if cached and now - cached[0] < _WORKSPACE_SIZE_CACHE_SECONDS:
             return cached[1]
     total = sum(_directory_disk_usage(directory) for directory in (
-        root / '.design-data-cache', root / '.design-chart-cache',
+        root / '.design-data-cache', root / '.design-chart-cache', root / ppt_design_cache.CACHE_FOLDER,
+        *ppt_design_cache.trash_folders(root),
     ) if directory.exists())
     with _workspace_size_cache_lock:
         _workspace_cache_size_cache[cache_key] = (now, total)
@@ -2982,14 +2983,30 @@ DESIGN_SELECTION_FORMAT_STATE_KEY = 'design_selection_cache_version'
 
 
 def clear_outdated_workspace_caches(workspace: Workspace) -> bool:
-    """The PPT Designs keep nothing on disk (their charts come from the columnar copies of the CDRs and their
-    preparations stay in memory): the cache folders and files of earlier versions go, and the PPT Design selections of
-    the workspace database when their format changes. Returns whether anything went."""
+    """The PPT Designs keep their preparations and chart models in the cache folder of the workspace
+    (ppt_design_cache): what earlier versions kept in the workspace database moves there, the cache folders and files
+    of earlier versions go, as does a cache folder that Clear workspace cache had not finished deleting, and the PPT
+    Design selections of the workspace database when their format changes. Returns whether anything went."""
     workspace_root = workspace.database_path.parent
     removed = False
+    move_stored_caches = getattr(sys.modules[__name__], 'ppt_design_move_stored_caches', None)
+    if callable(move_stored_caches):
+        try:
+            moved = move_stored_caches(workspace.database_path)
+        except (OSError, sqlite3.Error) as exc:
+            print(f'Unable to move the PPT Designer cache of workspace "{workspace.name}" to its folder: {exc}',
+                  file=sys.stderr, flush=True)
+        else:
+            if moved['charts'] or moved['preparations']:
+                add_workspace_audit_log(workspace, 'system', 'ppt_design_cache_moved_to_folder', {
+                    'charts': moved['charts'], 'preparations': moved['preparations'],
+                    'mb': round(moved['bytes'] / 1024 ** 2, 1), 'folder': ppt_design_cache.CACHE_FOLDER,
+                })
+                removed = True
     # Also those named when PPT Designer was PPT Dashboards.
     for path in (workspace_root / '.design-data-cache', workspace_root / '.design-chart-cache',
-                 workspace_root / '.dashboard-data-cache', workspace_root / '.dashboard-chart-cache'):
+                 workspace_root / '.dashboard-data-cache', workspace_root / '.dashboard-chart-cache',
+                 *ppt_design_cache.trash_folders(workspace_root)):
         if path.exists():
             shutil.rmtree(path, ignore_errors=True)
             removed = True
@@ -6967,8 +6984,9 @@ def _archive_file(
                 progress_callback(len(chunk))
 
 
-# Tables of a workspace database that only hold caches: left out of backups, exports and transfers.
-WORKSPACE_CACHE_TABLES = ('design_preview_manifests', 'design_chart_models')
+# Tables of a workspace database that only held caches in earlier versions (moved to the cache folder of the workspace
+# and dropped when it opens): left out of backups, exports and transfers of a workspace not opened since.
+WORKSPACE_CACHE_TABLES = ppt_design_cache.DATABASE_TABLES
 
 
 def _archive_database(
@@ -13516,8 +13534,6 @@ def render_admin_template(
         'design_ppt_jobs': 'PPT Designer Jobs',
         'design_drafts': 'PPT Drafts',
         'design_images': 'PPT Images',
-        'design_preview_manifests': 'PPT Preparation Cache',
-        'design_chart_models': 'PPT Chart Models Cache',
         'cdr_catalogues': 'CDR Operator, Operator Vendor, Vendor, Region, Cluster, City, Campaign And Source Level Catalogues',
         'cdr_filter_facets': 'CDR Filter Facets',
         'dataset_profiles': 'Dataset profiles',
@@ -16425,7 +16441,8 @@ def delete_workspace_cache(
     cancel_design_tasks = getattr(sys.modules[__name__], 'ppt_design_cancel_workspace_tasks', None)
     if callable(cancel_design_tasks):
         cancel_design_tasks(workspace.database_path)
-    # The preparations and chart models of the PPT Designs, kept in memory and in the workspace database.
+    # The preparations and chart models of the PPT Designs, kept in memory and in the cache folder of the workspace
+    # (set aside at once, deleted by the job below).
     clear_design_caches = getattr(sys.modules[__name__], 'ppt_design_clear_workspace_caches', None)
     if callable(clear_design_caches):
         clear_design_caches(workspace.database_path)
@@ -16463,6 +16480,7 @@ def delete_workspace_cache(
             cache_directories = (
                 workspace_root / '.design-data-cache',
                 workspace_root / '.design-chart-cache',
+                *ppt_design_cache.trash_folders(workspace_root),
             )
             for index, cache_dir in enumerate(cache_directories, start=1):
                 with WORKSPACE_LIFECYCLE_JOBS_LOCK:

@@ -5065,6 +5065,9 @@ def test_workspace_cache_clear_removes_only_derived_design_artifacts(client, mon
     legacy_png = workspace_root / '.design-chart-cache' / 'chart.png'
     legacy_png.parent.mkdir(parents=True, exist_ok=True)
     legacy_png.write_bytes(b'png')
+    from src.modules import ppt_design_cache
+    kept_model = ppt_design_cache.chart_path(workspace.database_path, 'ab' * 32)
+    assert ppt_design_cache.write(kept_model, {'chart': 'kept'})
     before_clear = client.get('/api/workspaces/status').json()
     before_workspace = next(item for item in before_clear['workspaces'] if item['id'] == workspace.id)
     assert before_workspace['cache_size'] != '0 B'
@@ -5091,12 +5094,15 @@ def test_workspace_cache_clear_removes_only_derived_design_artifacts(client, mon
         task['label'] == 'Clearing workspace cache'
         for group in tasks for task in group['tasks']
     )
+    # The cache folder of the PPT Designs is set aside at once and deleted by the job.
+    assert not ppt_design_cache.root_of(workspace.database_path).exists()
     for _attempt in range(100):
-        if not cached_model.exists() and not legacy_png.exists():
+        if not cached_model.exists() and not legacy_png.exists() and not ppt_design_cache.trash_folders(workspace_root):
             break
         time.sleep(0.01)
     assert not cached_model.exists()
     assert not legacy_png.exists()
+    assert not ppt_design_cache.trash_folders(workspace_root)
     assert workspace.database_path.exists()
     status = client.get('/api/workspaces/status').json()
     assert workspace.id in status['cleared_cache_workspace_ids']
@@ -5131,7 +5137,7 @@ def test_opening_workspace_removes_the_design_caches_of_earlier_versions(client)
 
     app_module.activate_workspace(workspace.id)
 
-    # The Designs keep nothing on disk; the selections of another format go.
+    # The cache folders of earlier versions go, and the selections of another format.
     assert not (workspace_root / '.design-data-cache').exists()
     assert not (workspace_root / '.design-chart-cache').exists()
     assert not version_file.exists()

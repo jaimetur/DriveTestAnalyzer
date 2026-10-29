@@ -88,7 +88,7 @@ module.exports = {
         { icon: 'TbClock', title: 'Kept across restarts', text: 'Opened after a restart, a Design shows at once; only what changed is worked out again.' },
         { icon: 'TbPlayerPlay', title: 'Presentation mode', text: 'Plays the slides, with their comments and floating tools.' },
       ],
-      notes: 'While nobody uses the server, the warm-up prepares every PPT Design and PPT Template and works out the models of their charts, kept in the workspace database: after a restart a Design opens at once with its charts drawn. A chart keeps its model while it, its CDRs and filters stay the same, so a changed Design only works out its changed charts. The warm-up shows in the background tasks card, can be stopped there, pauses when someone uses the application and goes on the next time the server is idle.' },
+      notes: 'While nobody uses the server, the warm-up prepares every PPT Design and PPT Template and works out the models of their charts, kept in the cache folder of the workspace: after a restart a Design opens at once with its charts drawn. A chart keeps its model while it, its CDRs and filters stay the same, so a changed Design only works out its changed charts. The warm-up shows in the background tasks card, can be stopped there, pauses when someone uses the application and goes on the next time the server is idle.' },
     { id: 'exports', type: 'split', section: 'Results', footer: 'Exports', kicker: 'Generate PPT', title: 'Exports that keep the design', visual: 'exports',
       points: [
         { icon: 'TbFileTypePpt', title: 'PowerPoint', text: 'Its slides, layouts, chart proportions, formats, titles, legends and saved comments.' },

@@ -121,6 +121,7 @@ APP_DATA_DIR/
 │   └── <workspace>/
 │       ├── <workspace>.db
 │       ├── .network-insights-cache/
+│       ├── .ppt-designer-cache/
 │       ├── input/
 │       └── output/
 │           └── reports/
@@ -169,7 +170,7 @@ Report Templates become CSV files only inside portable export, transfer and back
 
 ### Regenerable PPT cache
 
-PPT Designer keep their preview manifests and Canvas chart models in memory only; opening a workspace removes the `.design-data-cache` folder and `.design-cache-version.json` earlier versions wrote. Design rows remain only in the columnar copies of the CDRs. The cache can be cleared without removing datasets, PPT definitions, templates or generated jobs, and clearing it does not trigger an automatic rebuild.
+PPT Designer keeps its preview manifests and Canvas chart models in memory and in the `.ppt-designer-cache` folder of the workspace (up to 2 GB, the least recently used removed first); opening a workspace removes the `.design-data-cache` folder and `.design-cache-version.json` earlier versions wrote, and moves there the cache tables earlier versions kept in the workspace database. Design rows remain only in the columnar copies of the CDRs. The cache can be cleared without removing datasets, PPT definitions, templates or generated jobs, and clearing it does not trigger an automatic rebuild.
 
 ### Generated output
 
