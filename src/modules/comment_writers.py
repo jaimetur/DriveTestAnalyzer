@@ -795,7 +795,8 @@ def kiro_brief_archive(brief: dict[str, Any]) -> bytes:
     facts = {
         'format': 'drivetest-analyzer-comment-brief', 'version': 1,
         'design': {'id': brief['design_id'], 'name': brief['name']}, 'generated_at': brief['generated_at'],
-        'selection': brief.get('selection', ''), 'slides': brief['slides'],
+        'selection': brief.get('selection', ''), 'selection_signature': brief.get('selection_signature', ''),
+        'slides': brief['slides'],
     }
     comments = {
         'format': 'drivetest-analyzer-comments', 'version': 1, 'design': brief['design_id'],

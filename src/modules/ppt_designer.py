@@ -114,6 +114,31 @@ def _dataset_id(value: Any) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+def comments_selection_signature(definition: Any, cdrs: dict[str, list[dict]], selected_by_kind: dict[str, list]) -> str:
+    """The selection the slides of a prepared Design show (NR Mode, filters, dates and CDRs), as any deployment with the
+    same CDRs names it: each CDR by its type, stage, campaigns and rows (``cdrs`` as ``describe_cdrs`` lists them), never
+    by the id or the processing times it has here.
+
+    Generated comments keep it: the slides open with another one say they are out of date, whereas a Design transferred
+    to a deployment where the same CDRs were uploaded on their own, or a CDR processed again, keeps them up to date.
+    """
+    rows = {int(row['id']): int(row.get('row_count') or 0) for selected in selected_by_kind.values() for row in selected}
+    selection = {
+        'technology': definition.nr_mode.casefold(),
+        'filters': {field: sorted(set(values)) for field, values in definition.filters.items()},
+        'custom_fields': sorted(set(definition.custom_fields), key=str.casefold),
+        'hidden_filters': sorted(set(definition.hidden_filters), key=str.casefold),
+        'date_from': definition.date_from,
+        'date_to': definition.date_to,
+        'cdrs': {
+            kind: sorted([str(cdr.get('stage') or ''), list(cdr.get('campaigns') or []), rows.get(int(cdr['id']), 0)]
+                         for cdr in described)
+            for kind, described in cdrs.items() if described
+        },
+    }
+    return sha256(json.dumps(selection, sort_keys=True, default=str).encode()).hexdigest()
 STATE_KEY = 'ppt_designs_v2'
 # A PPT Template opened in the viewer and the Designer (PPT Templates → Edit): a Design of each user kept apart from
 # the Designs (never listed, exported, transferred or used by another module), whose changes go to its template.
@@ -179,7 +204,8 @@ class DesignDefinition(BaseModel):
     hidden_filters: list[str] = Field(default_factory=list)
     slide_comments: dict[str, list[str]] = Field(default_factory=dict)
     # Per slide, the comments added from Generate comments: {'generated': [their texts], 'engine', 'model',
-    # 'generated_at', 'generated_by', 'selection': the selection (campaigns, filters and CDRs) they were written for}.
+    # 'generated_at', 'generated_by', 'selection_signature': the selection (campaigns, filters and CDRs) they were
+    # written for, see comments_selection_signature}. Those generated before keep the 'selection' of their deployment.
     slide_comment_meta: dict[str, dict[str, Any]] = Field(default_factory=dict)
     date_from: date | Literal['Oldest'] | None = 'Oldest'
     date_to: date | Literal['Newest'] | None = 'Newest'
@@ -4183,6 +4209,7 @@ def install_design_routes(core):
             meta = comment_meta(designs[design_id].get('slide_comment_meta'), saved)
             if payload.generated_added and payload.generated_slide:
                 snapshot = snapshots.get(payload.token) if payload.token else None
+                prepared = snapshot.payload if snapshot is not None and snapshot.workspace == workspace_key() else {}
                 present = set(saved.get(payload.generated_slide, []))
                 added = [text for text in (str(item).strip() for item in payload.generated_texts) if text in present]
                 if not payload.generated_texts:
@@ -4194,7 +4221,7 @@ def install_design_routes(core):
                     'engine': payload.generated_engine or design_comments.ENGINE_RULES,
                     'model': payload.generated_model, 'generated_at': datetime.now(timezone.utc).isoformat(),
                     'generated_by': user.username,
-                    'selection': snapshot.selection_key if snapshot is not None and snapshot.workspace == workspace_key() else '',
+                    'selection_signature': str(prepared.get('selection_signature') or ''),
                 }
             designs[design_id]['slide_comment_meta'] = meta
             store_design_entry(task_repository, design_id, designs[design_id])
@@ -4379,7 +4406,7 @@ def install_design_routes(core):
                 info = {
                     'engine': design_comments.ENGINE_RULES, 'model': '',
                     'generated_at': datetime.now(timezone.utc).isoformat(), 'generated_by': user.username,
-                    'selection': snapshot.selection_key,
+                    'selection_signature': str(snapshot.payload.get('selection_signature') or ''),
                 }
                 counts = apply_generated_comments(designs[design_id], written, payload.mode, legacy, info, writers)
                 task_repository.set_workspace_state(STATE_KEY, json.dumps(designs))
@@ -4461,7 +4488,8 @@ def install_design_routes(core):
             with lock:
                 comment_briefs[brief_id] = {
                     'owner': user.username, 'workspace': workspace, 'design_id': design_id, 'name': name,
-                    'selection': snapshot.selection_key, 'slides': briefed,
+                    'selection': snapshot.selection_key,
+                    'selection_signature': str(snapshot.payload.get('selection_signature') or ''), 'slides': briefed,
                     'generated_at': datetime.now(timezone.utc).isoformat(timespec='seconds'),
                 }
                 while len(comment_briefs) > 16:
@@ -4522,7 +4550,8 @@ def install_design_routes(core):
                 raise HTTPException(404, 'Design not found.')
             legacy = {str(slide.get('comment_key')): str(slide.get('number')) for slide in facts_document.get('slides') or []}
             info = {'engine': comment_writers.ENGINE_KIRO_BRIEF, 'model': '', 'generated_by': user.username,
-                    'generated_at': datetime.now(timezone.utc).isoformat(), 'selection': str(facts_document.get('selection') or '')}
+                    'generated_at': datetime.now(timezone.utc).isoformat(),
+                    'selection_signature': str(facts_document.get('selection_signature') or '')}
             counts = apply_generated_comments(designs[design_id], written, mode, legacy, info)
             task_repository.set_workspace_state(STATE_KEY, json.dumps(designs))
             definition = designs[design_id]
@@ -5687,11 +5716,12 @@ def install_design_routes(core):
         deck = Presentation(core.settings.powerpoint_template)
         entries, slides = laid_out_slides(entries, definition, options, task_repository, selected_by_kind, deck)
         token = uuid4().hex
+        cdrs = describe_cdrs(task_repository, {kind: [int(row['id']) for row in rows] for kind, rows in selected_by_kind.items()})
         payload = {
             'slides': slides,
             'options': cascading_design_options(mapped_filter_options(options, task_repository), definition, task_repository),
             # The CDRs the Design uses, chosen from its NR Mode and Campaign.
-            'cdrs': describe_cdrs(task_repository, {kind: [int(row['id']) for row in rows] for kind, rows in selected_by_kind.items()}),
+            'cdrs': cdrs,
             'filter_fields': list(ADAPTATIVE_FILTER_FIELDS),
             'available_fields': sorted(available_fields, key=str.casefold),
             'rows': row_counts,
@@ -5699,7 +5729,7 @@ def install_design_routes(core):
             'rows_exact': rows_exact,
             'date_bounds': date_bounds,
             # The selection behind the slides: generated comments written for another one are out of date.
-            'selection_key': selection_key,
+            'selection_signature': comments_selection_signature(definition, cdrs, selected_by_kind),
         }
         add_dynamic_grid_metadata(payload, entries, deck)
         with lock:
@@ -5844,6 +5874,9 @@ def install_design_routes(core):
                 # Universes prepared by earlier versions gain the dynamic grid
                 # metadata without being prepared again.
                 add_dynamic_grid_metadata(payload, entries)
+            if 'selection_signature' not in payload:
+                # And the selection their generated comments are checked against.
+                payload['selection_signature'] = comments_selection_signature(definition, payload.get('cdrs') or {}, selected_by_kind)
         except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError, sqlite3.Error):
             return None
         if not materialize:

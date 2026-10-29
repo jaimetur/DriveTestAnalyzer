@@ -88,17 +88,22 @@ def test_unsupported_and_outdated_models():
     assert comments.kpi_semantics('Packet Delay Variation Score').direction == 1
 
 
-def prepare_rates_design(client):
-    """A Design of two slides (rates of A and B over two campaigns, then their results), prepared."""
-    client.post('/login', data={'username': 'super', 'password': 'super123'})
+def rates_cdr() -> bytes:
+    """A Data CDR of the rates of A and B over two campaigns (one failed test of A in each)."""
     rows = ['Operator,Campaign,Mean_Data_Rate,Test_Result,Test_Name,Test_Start_Time']
     for campaign, rates in (('UK_Q2_2026', {'A': 40, 'B': 80}), ('UK_Q3_2026', {'A': 60, 'B': 82})):
         for operator, rate in rates.items():
             for sample in range(12):
                 result = 'Failed' if sample == 0 and operator == 'A' else 'Completed'
                 rows.append(f'{operator},{campaign},{rate + sample % 3},{result},HTTP DL,2026-09-{sample + 1:02d}')
+    return '\n'.join(rows).encode()
+
+
+def prepare_rates_design(client):
+    """A Design of two slides (rates of A and B over two campaigns, then their results), prepared."""
+    client.post('/login', data={'username': 'super', 'password': 'super123'})
     uploaded = client.post('/datasets-analysis/upload', data={'dataset_kinds': 'data'}, files={
-        'dataset_files': ('rates.csv', BytesIO('\n'.join(rows).encode()), 'text/csv'),
+        'dataset_files': ('rates.csv', BytesIO(rates_cdr()), 'text/csv'),
     })
     assert uploaded.status_code == 200, uploaded.text
     core.repository.add_report_template('Comments test', (
@@ -152,7 +157,8 @@ def test_generate_comments_reads_the_open_slide_and_records_app_events(client):
     assert added.status_code == 200, added.text
     assert added.json()['slide_comments'] == {slide['comment_key']: written[:2]}
     meta = added.json()['slide_comment_meta'][slide['comment_key']]
-    assert meta['generated'] == written[:2] and meta['engine'] == 'rules' and meta['selection'] == body['selection_key']
+    assert meta['generated'] == written[:2] and meta['engine'] == 'rules'
+    assert meta['selection_signature'] == body['selection_signature']
     # A generated comment edited by hand is no longer generated.
     edited = client.patch('/api/ppt-designer/rates/comments', json={'slide_comments': {slide['comment_key']: ['Mine', written[1]]}})
     assert edited.json()['slide_comment_meta'][slide['comment_key']]['generated'] == [written[1]]
@@ -165,6 +171,37 @@ def test_generate_comments_reads_the_open_slide_and_records_app_events(client):
 
     expired = client.post('/api/ppt-designer/rates/comments/generate', json={'token': 'missing', 'slide': 1})
     assert expired.status_code == 410
+
+
+def test_generated_comments_name_their_selection_alike_on_every_deployment_with_the_same_cdrs(client):
+    """A Design transferred to a deployment where the same CDRs were uploaded on their own (other ids, upload and
+    processing times) keeps its generated comments up to date; other CDRs, campaigns or filters make them out of date."""
+    body = prepare_rates_design(client)
+    definition = DesignDefinition(name='Rates', template='Comments test').model_dump(mode='json')
+    first = client.post('/api/ppt-designer/prepare', json=definition).json()
+    # The same CDR deleted and uploaded again, as on another deployment.
+    assert client.post(f"/datasets-analysis/delete/{body['cdrs']['data'][0]['id']}", follow_redirects=False).status_code == 303
+    again = client.post('/datasets-analysis/upload', data={'dataset_kinds': 'data'}, files={
+        'dataset_files': ('rates.csv', BytesIO(rates_cdr()), 'text/csv'),
+    })
+    assert again.status_code == 200, again.text
+    second = client.post('/api/ppt-designer/prepare', json=definition)
+    assert second.status_code == 200, second.text
+    assert second.json()['cdrs']['data'][0]['id'] != first['cdrs']['data'][0]['id']
+    assert second.json()['selection_signature'] == first['selection_signature']
+
+    from src.modules.ppt_designer import comments_selection_signature
+    design = DesignDefinition.model_validate(definition)
+    cdrs = {'data': [{'id': 7, 'name': 'rates.csv', 'stage': 'final', 'campaigns': ['26-Q2', '26-Q3']}]}
+    signature = comments_selection_signature(design, cdrs, {'data': [{'id': 7, 'row_count': 48}]})
+    assert signature == comments_selection_signature(
+        design, {'data': [{'id': 31, 'name': 'Rates (copy).csv', 'stage': 'final', 'campaigns': ['26-Q2', '26-Q3']}]},
+        {'data': [{'id': 31, 'row_count': 48, 'processed_at': '2026-10-29T10:00:00'}]})
+    assert signature != comments_selection_signature(design, cdrs, {'data': [{'id': 7, 'row_count': 50}]})
+    assert signature != comments_selection_signature(
+        design, {'data': [{**cdrs['data'][0], 'campaigns': ['26-Q3']}]}, {'data': [{'id': 7, 'row_count': 48}]})
+    filtered = design.model_copy(update={'filters': {'Operator': ['A']}})
+    assert signature != comments_selection_signature(filtered, cdrs, {'data': [{'id': 7, 'row_count': 48}]})
 
 
 def test_the_other_chart_types_vendors_and_slides_read_together():

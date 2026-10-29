@@ -4049,10 +4049,11 @@
     if (panel && presentation.active) panel.open = presentation.showComments && comments.length > 0;
     list.replaceChildren();
     if (!comments.length) { list.append(node('li', 'No comments for this slide.', 'ds-comments-empty')); return; }
-    // Generated comments keep a tag, and say when they were written for another selection (campaigns, filters or CDRs).
+    // Generated comments keep a tag, and say when they were written for another selection (campaigns, filters or CDRs),
+    // named alike on every deployment with the same CDRs.
     const meta = (viewer.slide_comment_meta || {})[currentSlideCommentKey()] || {};
     const generated = new Set(meta.generated || []);
-    if (generated.size && meta.selection && prepared?.selection_key && meta.selection !== prepared.selection_key && !pptDesignViewer) {
+    if (generated.size && meta.selection_signature && prepared?.selection_signature && meta.selection_signature !== prepared.selection_signature && !pptDesignViewer) {
       list.append(node('li', 'The generated comments of this slide were written for another selection (campaigns, filters or CDRs): generate them again to bring them up to date.', 'ds-comments-stale'));
     }
     comments.forEach((comment, index) => {

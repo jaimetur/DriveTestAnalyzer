@@ -267,6 +267,7 @@ def test_designs_write_with_kiro_and_import_a_kiro_brief(client):
     result = imported.json()
     assert result['slide_comments'][slide['comment_key']] == ['A median Mean Data Rate rises to 61 vs 2026-Q2.']
     assert result['left_out'] == 1 and result['slide_comment_meta'][slide['comment_key']]['engine'] == 'kiro_brief'
+    assert result['slide_comment_meta'][slide['comment_key']]['selection_signature'] == body['selection_signature']
     actions = [row['action'] for row in core.repository.list_logs()]
     assert {'export_kiro_comment_brief', 'import_kiro_comments'} <= set(actions)
     generated_events = [json.loads(row['details']) for row in core.repository.list_logs() if row['action'] == 'generate_design_comments']
