@@ -23,10 +23,10 @@ module.exports = {
       points: [
         { icon: 'TbTemplate', title: 'One row per chart', text: 'Each slide with its layout, and each chart with its type, KPI, rows, columns, legend and filters.' },
         { icon: 'TbRecycle', title: 'Reusable', text: 'Any number of Designs of its NR Mode use it, for every campaign; renamed, it stays theirs.' },
-        { icon: 'TbEdit', title: 'PPT Templates Editor', text: 'Assistance for every cell, the Filter Builder, Find & Replace and a preview of each chart and its data.' },
+        { icon: 'TbEdit', title: 'PPT Templates', text: 'Edited in the viewer and its Designer, or as a table with Find & Replace and a preview of each chart.' },
         { icon: 'TbFileImport', title: 'Kept per workspace', text: 'New, Import CSV, Duplicate, a default for NSA and SA, and in every export, transfer and backup.' },
       ],
-      notes: 'Every Design is built from a PPT Template of the workspace: one row per chart that tells the slide, its layout, the chart type, KPI, rows, columns, legend and filters. The same template serves any number of Designs and every campaign, and the PPT Templates Editor of Workspace Config changes it with assistance for every cell, the Filter Builder, Find & Replace and a preview of each chart and its data; saved, every Design that uses it follows.' },
+      notes: 'Every Design is built from a PPT Template of the workspace: one row per chart that tells the slide, its layout, the chart type, KPI, rows, columns, legend and filters. The same template serves any number of Designs and every campaign, and PPT Templates, at the top of the library, imports, creates and edits it: in the viewer and its Designer, or as a table with assistance for every cell, the Filter Builder, Find & Replace and a preview of each chart and its data; saved, every Design that uses it follows.' },
     { id: 'lifecycle', type: 'steps', section: 'Workflow', footer: 'Workflow', kicker: 'Workflow', title: 'From a definition to a deck',
       steps: [
         { icon: 'TbSquarePlus', title: 'Create', text: 'A name, an NR Mode and a Report Template.' },

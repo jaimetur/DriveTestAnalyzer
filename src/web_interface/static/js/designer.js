@@ -693,7 +693,11 @@
       h('div', {class: 'ds-design-bar-group'},
         h('span', {class: 'ds-design-bar-label', text: 'Designer'}),
         state.detached
-          ? h('span', {class: 'ds-design-pill ds-design-pill-detached', title: `Detached from ${state.info?.template?.name || 'its template'}: it keeps slides of its own`, text: 'Detached'})
+          ? (viewer().state().definition?.template === viewer().state().config?.blank_template
+            ? h('span', {class: 'ds-design-pill ds-design-pill-detached', title: 'Created blank: its slides are its own and it follows no template', text: 'Blank PPT'})
+            : h('span', {class: 'ds-design-pill ds-design-pill-detached', title: `Detached from ${state.info?.template?.name || 'its template'}: it keeps slides of its own`, text: 'Detached'}))
+          : templatePreview()
+          ? h('span', {class: 'ds-design-pill ds-design-pill-template', title: `Every change goes to the template ${state.info?.template?.name || ''}: ${count} Design${count === 1 ? '' : 's'} follow it`, text: `PPT Template · ${count} Design${count === 1 ? '' : 's'}`})
           : h('div', {class: 'ds-design-scopes', role: 'group', 'aria-label': 'Change'},
             scopeButton('design', 'This Design', 'Changes only this Design: kept as its differences from the template', state.rights.design),
             scopeButton('template', `Template · ${count} Design${count === 1 ? '' : 's'}`, `Changes the template ${state.info?.template?.name || ''}: every Design that follows it`, state.rights.template))),
@@ -702,7 +706,7 @@
         h('button', {type: 'button', class: 'ds-design-tool', title: 'Redo (Shift+Ctrl/Cmd+Z)', 'aria-label': 'Redo', disabled: !state.future.length, onclick: guarded(redo)}, icon('redo')),
         h('button', {type: 'button', class: 'ds-design-action ds-design-with-icon', onclick: guarded(openParametersDialog), disabled: state.detached ? false : !state.rights.template && !parameters().length, title: 'The parameters of the template'},
           icon('parameters'), 'Parameters', parameters().length ? h('span', {class: 'ds-design-count', text: String(parameters().length)}) : null),
-        state.detached ? null : h('button', {type: 'button', class: `ds-design-action ds-design-with-icon${changed ? ' has-warning' : ''}`, onclick: guarded(openDifferencesDialog), title: changed ? `What this Design changes of its template; the template changed ${changed} of them` : 'What this Design changes of its template'},
+        state.detached || templatePreview() ? null : h('button', {type: 'button', class: `ds-design-action ds-design-with-icon${changed ? ' has-warning' : ''}`, onclick: guarded(openDifferencesDialog), title: changed ? `What this Design changes of its template; the template changed ${changed} of them` : 'What this Design changes of its template'},
           icon('differences'), 'Differences', h('span', {class: `ds-design-count${changed ? ' is-warning' : ''}`, text: String(differences)}))),
       h('div', {class: 'ds-design-bar-group ds-design-bar-end'},
         h('span', {class: 'ds-design-busy', id: 'ds-design-busy', hidden: state.busy === 0, text: 'Laying out…'}),
@@ -713,9 +717,13 @@
       ),
     );
   }
-  const moreActions = () => [
+  // A PPT Template open as a Design (PPT Templates → Edit) is saved only as a template.
+  const templatePreview = () => Boolean(state.info?.template_preview);
+  const moreActions = () => templatePreview() ? [
+    ['Save as template…', guarded(saveAsTemplate), true],
+  ] : [
     ['Save Design as…', guarded(saveAsMyDesign), !state.templateDirty || 'Save or discard the changes of the template first'],
-    ['Save as template…', guarded(saveAsTemplate), !dirty() || 'Save or discard the changes first'],
+    ['Save as template…', guarded(saveAsTemplate), true],
     state.detached ? null : ['Detach from template…', guarded(detachDesign), state.rights.design && (!dirty() || 'Save or discard the changes first')],
   ].filter(Boolean);
 
@@ -1798,6 +1806,47 @@
     Object.assign(popover.style, {left: `${left}px`, top: `${top}px`});
     popover.querySelector('button:not(:disabled)')?.focus({preventScroll: true});
   }
+  // A field of the CDRs of the Design, chosen from its groups (the sections of the CDR Field Dictionary, as in the Fields of
+  // the chart builder) with a search; the chosen field is marked.
+  function fieldPicker(value, onChoose, {disabled = false} = {}) {
+    const button = h('button', {type: 'button', class: 'ds-design-field-picker', 'aria-haspopup': 'listbox', disabled},
+      h('span', {class: 'ds-design-field-picker-value', text: value || 'Choose a field'}), h('span', {class: 'ds-design-field-picker-caret', 'aria-hidden': 'true'}));
+    button.onclick = () => {
+      closeMenus();
+      const groups = new Map(), seen = new Set();
+      const put = (name, group) => {
+        if (!name || seen.has(name.toLowerCase())) return;
+        seen.add(name.toLowerCase());
+        if (!groups.has(group)) groups.set(group, []);
+        groups.get(group).push(name);
+      };
+      for (const items of Object.values(state.fields?.fields || {})) for (const item of items || []) put(item.name, item.category || 'Other fields');
+      for (const name of state.fields?.calculated_fields || []) put(name, 'Auto-calculated Fields');
+      const rank = window.ChartShelves?.groupRank || (() => 0);
+      const ordered = [...groups.entries()].sort(([left], [right]) => rank(left) - rank(right) || left.localeCompare(right));
+      const search = h('input', {type: 'search', class: 'ds-design-field-picker-search', placeholder: 'Search fields', 'aria-label': 'Search fields'});
+      const list = h('div', {class: 'ds-design-field-picker-list', role: 'listbox'});
+      const paint = () => {
+        const query = search.value.trim().toLowerCase();
+        list.replaceChildren(...ordered.map(([group, names]) => {
+          const shown = names.filter(name => !query || name.toLowerCase().includes(query)).sort((left, right) => left.localeCompare(right));
+          return shown.length ? h('div', {class: 'ds-design-field-picker-group'},
+            h('span', {class: 'ds-design-field-picker-group-title'}, group, h('span', {text: String(shown.length)})),
+            ...shown.map(name => h('button', {type: 'button', role: 'option', class: name === value ? 'is-chosen' : null, 'aria-selected': String(name === value),
+              onclick: () => { closeMenus(); onChoose(name); }}, name))) : null;
+        }).filter(Boolean));
+        if (!list.childElementCount) list.append(h('p', {class: 'ds-design-empty', text: groups.size ? 'No field matches.' : 'The fields appear once the Design is prepared.'}));
+      };
+      search.addEventListener('input', paint);
+      paint();
+      const popover = h('div', {class: 'ds-design-popover ds-design-field-picker-popover'}, search, list);
+      popover.style.width = `${Math.max(button.offsetWidth, 300)}px`;
+      placePopover(popover, button);
+      search.focus({preventScroll: true});
+      list.querySelector('.is-chosen')?.scrollIntoView({block: 'center'});
+    };
+    return button;
+  }
   function openMenu(anchor, actions, event) {
     closeMenus();
     const menu = h('div', {class: 'ds-design-popover ds-design-menu', role: 'menu'}, actions.map(([label, action, enabled]) => h('button', {
@@ -1939,6 +1988,7 @@
     number: ['Number', 'A number each Design sets (a threshold, a target): used in a setting or a filter.'],
     text: ['Text', 'A text each Design writes: used in a title or a text box.'],
   };
+  const PARAMETER_NAMES = {values: 'Chosen Cities', number: 'Threshold', text: 'Note'};
   function openParametersDialog() {
     const editable = state.detached ? state.rights.design : state.rights.template;
     const scope = state.detached ? 'design' : 'template';
@@ -1951,12 +2001,6 @@
         ...['title', 'subtitle'].filter(key => pattern.test(slide[key] || '')).map(key => `${slide.title || 'Slide'} · ${key}`),
         ...(slide.elements || []).flatMap(element => Object.entries(element).filter(([, value]) => typeof value === 'string' && pattern.test(value)).map(([key]) => `${elementLabel(element)} · ${key.replaceAll('_', ' ')}`)),
       ]);
-    };
-    // Every field of the CDRs of the Design (Data, Voice, Speech) and the Auto-calculated Fields, A to Z.
-    const allFields = () => {
-      const names = new Set(state.fields?.calculated_fields || []);
-      for (const items of Object.values(state.fields?.fields || {})) for (const item of items || []) names.add(item.name);
-      return [...names].sort((left, right) => left.localeCompare(right));
     };
     const usage = parameter => (parameter.type === 'values' ? `${parameter.field || 'City'} IN ({${parameter.name}})`
       : parameter.type === 'number' ? `Threshold = {${parameter.name}}` : `{${parameter.name}}`);
@@ -1986,10 +2030,8 @@
       const kept = input => { input.addEventListener('change', commit); return input; };
       const details = [];
       if (parameter.type === 'values') {
-        const fieldSelect = h('select', {'aria-label': 'Field', 'data-searchable-select': '', disabled: !editable,
-          onchange: event => { update({field: event.target.value}); commit(); }},
-        [...new Set([parameter.field, ...allFields()].filter(Boolean))].map(item => h('option', {value: item, text: item, selected: item === parameter.field})));
-        details.push(field('Field', fieldSelect, 'The field whose values each Design chooses.'));
+        const fieldChoice = fieldPicker(parameter.field, value => { update({field: value}); commit(); }, {disabled: !editable});
+        details.push(field('Field', fieldChoice, 'The field whose values each Design chooses.'));
         details.push(h('label', {class: 'ds-design-check'}, h('input', {type: 'checkbox', checked: parameter.multiple !== false, disabled: !editable, onchange: event => { update({multiple: event.target.checked}); commit(); }}), 'Several values'));
         details.push(field('Default values', kept(textInput((parameter.default || []).join(', '), value => update({default: value.split(',').map(item => item.trim()).filter(Boolean)}), {placeholder: 'All'})), 'Separated by commas; empty: All values (the conditions with it are left out).'));
       } else if (parameter.type === 'number') {
@@ -2022,20 +2064,28 @@
     const refresh = () => {
       const list = clone(slide_set()?.parameters || []);
       chosen = Math.min(chosen, Math.max(0, list.length - 1));
-      const add = editable ? h('button', {type: 'button', class: 'ds-design-action', onclick: guarded(async () => {
-        let index = list.length + 1, nameValue = `Parameter ${index}`;
-        while (list.some(item => item.name.toLowerCase() === nameValue.toLowerCase())) nameValue = `Parameter ${++index}`;
-        list.push({id: randomId('p'), name: nameValue, type: 'values', field: 'City', multiple: true, default: null, description: ''});
+      const addOf = type => guarded(async () => {
+        // Not one of the built-in tokens ({Cities}, {Operators}…), which the PPT fills itself.
+        const base = PARAMETER_NAMES[type];
+        let index = 1, nameValue = base;
+        while (list.some(item => item.name.toLowerCase() === nameValue.toLowerCase())) nameValue = `${base} ${++index}`;
+        list.push({id: randomId('p'), name: nameValue, type, ...(type === 'values' ? {field: 'City', multiple: true} : {}), default: type === 'text' ? '' : null, description: ''});
         chosen = list.length - 1;
         await save(list);
         refresh();
-      })}, '+ Add parameter') : null;
-      body.replaceChildren(
-        h('div', {class: 'ds-parameters-intro'},
-          h('p', {}, h('strong', {text: 'A parameter is a question the template leaves open'}), ', and each PPT Design of the template answers it in PPT Scope & Filters (which Cities, which threshold, which text). Write ',
-            h('code', {text: '{Name}'}), ' in a chart filter, a setting or a title: every Design shows it with its own answer.'),
-          h('p', {class: 'form-note', text: 'Example: a parameter Cities of the field City, and the filter City IN ({Cities}) in the charts: one template gives a PPT of London and another of Leeds.'})),
-        h('div', {class: 'ds-parameters-layout'},
+      });
+      const add = editable ? h('button', {type: 'button', class: 'ds-parameters-add', 'aria-haspopup': 'menu',
+        onclick: event => openMenu(event.currentTarget, Object.entries(PARAMETER_TYPES).map(([type, [label]]) => [label, addOf(type), true]))}, '+ Add parameter') : null;
+      // Without parameters: what each type is for, each one added from its card.
+      const empty = () => [
+        h('p', {class: 'ds-parameters-empty-title', text: editable ? 'No parameters yet: add the first one' : 'This template has no parameters.'}),
+        editable ? h('div', {class: 'ds-parameters-types'}, Object.entries(PARAMETER_TYPES).map(([type, [label, text]]) => h('button', {type: 'button', class: 'ds-parameters-type', onclick: addOf(type)},
+          h('strong', {text: label}), h('span', {text}), h('code', {text: usage({type, name: PARAMETER_NAMES[type], field: 'City'})})))) : null,
+      ].filter(Boolean);
+      body.replaceChildren(...[
+        h('p', {class: 'ds-parameters-intro'}, 'A question the template leaves open: each PPT answers it in PPT Scope & Filters (which Cities, which threshold, which text). Write ',
+          h('code', {text: '{Name}'}), ' in a chart filter, a setting or a title.'),
+        list.length ? h('div', {class: 'ds-parameters-layout'},
           h('div', {class: 'ds-parameters-list', role: 'list', 'aria-label': 'Parameters'},
             list.map((parameter, index) => {
               const count = uses(parameter.name).length;
@@ -2045,14 +2095,12 @@
               h('span', {class: 'ds-parameters-uses', text: count ? `Used in ${count}` : 'Not used yet'}));
             }),
             add),
-          h('div', {class: 'ds-parameters-detail'}, ...(list.length ? parameterForm(list, chosen)
-            : [h('p', {class: 'ds-design-empty', text: editable ? 'No parameter yet: add one.' : 'This template has no parameters.'})]))),
-        editable ? null : h('p', {class: 'form-note', text: 'Only the owners of the template change its parameters.'}));
-      window.setupSearchableSingleSelects?.();
+          h('div', {class: 'ds-parameters-detail'}, ...parameterForm(list, chosen))) : h('div', {class: 'ds-parameters-empty'}, ...empty()),
+        editable ? null : h('p', {class: 'form-note', text: 'Only the owners of the template change its parameters.'}),
+      ].filter(Boolean));
     };
     refresh();
     openDialog('Parameters', `Template ${state.info?.template?.name || ''}`, body, {wide: true});
-    window.setupSearchableSingleSelects?.();
   }
 
   // ------------------------------------------------------------------
@@ -2060,10 +2108,18 @@
   // ------------------------------------------------------------------
   async function saveAsTemplate() {
     const id = viewer().state().activeId;
+    // The template is made of the saved slides: the changes not saved yet are saved first.
+    await state.queue.catch(() => undefined);
+    if (dirty()) {
+      if (!await window.showConfirmDialog('The new template takes the saved slides: save the changes first?', {title: 'Save as template', confirmLabel: 'Save and continue'})) return;
+      await saveSlides();
+      if (dirty()) return;
+    }
     const name = await window.showTextInputDialog('Name of the new template', {title: 'Save as template', value: `${state.info?.name || 'Design'} template`.slice(0, 120), maxLength: 120, confirmLabel: 'Save'});
     if (!name || !String(name).trim()) return;
     const result = await api(`/${encodeURIComponent(id)}/save-as-template`, 'POST', {name: String(name).trim()});
     viewer().status(`Saved the template “${result.template}”: new Designs can use it.`);
+    await viewer().refreshTemplatesLibrary?.().catch(() => undefined);
   }
   async function saveAsMyDesign() {
     const {design} = viewer().state();

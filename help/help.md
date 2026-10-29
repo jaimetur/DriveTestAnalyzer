@@ -82,7 +82,7 @@ full-presentation
 | Calculating NetCheck scores or comparing operator gaps | [Scoring & GAP Analysis](scoring-gap-analysis.md) |
 | Building ad-hoc SQL queries with guided controls | [Query Builder](query-builder.md) |
 | Reporting a bug, suggesting an improvement or asking for a new feature, and following it | [Ticket Center](ticket-center.md) |
-| Authoring templates | [Workspace Config](workspace-config.md), including the [Report Template reference](workspace-config.md#report-template-reference) |
+| Authoring templates | [PPT Designer → PPT Templates](ppt-designer.md#ppt-templates), including the [Report Template reference](ppt-designer.md#report-template-reference) |
 | Managing users, their access and the databases | [Super Admin](super-admin.md) |
 | Importing, exporting and transferring packages and managing datasets | [Administrator Config](administrator-config.md) |
 | Changing application-wide runtime settings | [Application Config](app-config.md) |

@@ -15,10 +15,10 @@ module.exports = {
         { icon: 'TbCloudUpload', title: 'Upload', text: 'Its CDRs, Network Inventories and Region maps, in Workspace.' },
         { icon: 'TbTags', title: 'Name', text: 'Operators, vendors and campaigns, with their colours and order.' },
         { icon: 'TbMap2', title: 'Place', text: 'Map Areas, Main Cities and the networks that serve each operator.' },
-        { icon: 'TbScale', title: 'Score', text: 'A methodology, PPT Templates and the Scoring Export Panels.' },
+        { icon: 'TbScale', title: 'Score', text: 'A methodology and the Scoring Export Panels.' },
       ],
       highlight: 2,
-      notes: 'A new workspace is created with its country and CDR type and gets its CDRs, inventories and Region maps in Workspace. Then Workspace Config names its operators, vendors and campaigns, places its tests on Map Areas and Main Cities, tells which networks serve each operator and sets its methodology and templates.' },
+      notes: 'A new workspace is created with its country and CDR type and gets its CDRs, inventories and Region maps in Workspace. Then Workspace Config names its operators, vendors and campaigns, places its tests on Map Areas and Main Cities, tells which networks serve each operator and sets its methodology.' },
     { id: 'operators', type: 'split', section: 'Names and colours', footer: 'Operator Maps', kicker: 'Operator Maps', title: 'One name, colour and place per operator', visual: 'labels',
       points: [
         { icon: 'TbTags', title: 'Names found in the CDRs', text: 'Every spelling of the CDRs gets its label; Merges tells when two are added up as one.' },
@@ -43,13 +43,12 @@ module.exports = {
         { mini: 'bands', title: 'Spectrum Holdings', text: 'The bands and MHz of each operator, for the Spectrum of Network Insights.' },
       ],
       notes: 'Map Areas are the administrative areas the Points Lost Map colours: shipped for the main markets, downloaded from geoBoundaries for any other country or imported from a file. Main Cities lead every City filter, Serving Networks tell which networks serve each operator for the vendor mapping and the Non-Qualified Calls, and Spectrum Holdings feed the Spectrum panel of Network Insights.' },
-    { id: 'scoring', type: 'tiles', section: 'Scoring and reports', footer: 'Scoring and reports', kicker: 'Methodology and templates', title: 'How it scores and how it reports', columns: 3,
+    { id: 'scoring', type: 'tiles', section: 'Scoring and reports', footer: 'Scoring and reports', kicker: 'Methodology and fields', title: 'How it scores and reads its CDRs', columns: 2,
       tiles: [
         { mini: 'gauge', title: 'Scoring & GAP Analysis Setup', text: 'Its methodology: environments, KPIs, weights, thresholds and GAP priorities.' },
-        { mini: 'grid', title: 'PPT Templates', text: 'The templates of the PPT Designs, imported or created, and edited in their editor.' },
         { mini: 'dictionary', title: 'CDR Field Dictionary', text: 'The columns of the CDRs each field is read from, changed only when needed.' },
       ],
-      notes: 'The Scoring & GAP Analysis Setup holds the methodology of the workspace, with its environments, KPI definitions, weights, thresholds and GAP priorities, and the Scoring Export Panels. The PPT Templates of the PPT Designs are imported or created and edited there, and the CDR Field Dictionary tells which columns of the CDRs each field is read from.' },
+      notes: 'The Scoring & GAP Analysis Setup holds the methodology of the workspace, with its environments, KPI definitions, weights, thresholds and GAP priorities, and the Scoring Export Panels. The CDR Field Dictionary tells which columns of the CDRs each field is read from.' },
     { id: 'summary', type: 'closing', section: 'Summary', footer: 'Summary', kicker: 'Summary', title: 'Set once, every module follows',
       lead: 'Every filter, chart, table and report shows the labels, colours and order of the workspace.',
       links: [

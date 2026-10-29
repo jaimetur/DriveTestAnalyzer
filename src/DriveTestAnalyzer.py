@@ -89,7 +89,7 @@ from src.modules.column_names import DEFAULT_CAMPAIGN_MAP, MAIN_CDR_FIELDS, comp
 from src.modules.mapping_order import swap_operator_vendor
 from src.modules.value_maps import ValueMapper, field_kind
 from src.modules.report_layouts import canonical_layout_name, selectable_layout_name
-from src.modules.cdr_reporting import entry_dynamic_fields, DYNAMIC_LAYOUTS, CATALOG_HEADERS, FORMAT_HEADER, CHART_TYPES, HOVER_TARGETS_VERSION, STRUCTURAL_SLIDE_TYPES, TEMPLATE_NAMES, CatalogEntry, _legend_dimensions, assign_cdr_vendors, calculated_dimensions_json, catalog_chart_hover_targets, catalog_chart_payload, catalog_kpi_fields, catalogue_csv, convert_catalog_csv, ensure_vendor_group, is_empty_catalog_chart, materialize_calculated_dimensions, normalise_operator_aliases, parse_axis_range, parse_calculated_dimensions, parse_catalog_csv, parse_catalog_filters, parse_catalog_grouping, parse_label_format, parse_label_position, parse_legend_position, parse_template_boolean, prepare_catalog_chart_preview_frame, prepare_multivendor_catalog_entry, preview_catalog_chart_data, render_catalog_chart_preview, render_catalog_chart_preview_with_hover, render_cdr_report, render_unavailable_source_chart, report_chart_renderer_name, reset_canvas_chart_renderer, split_calculated_dimension_aliases
+from src.modules.cdr_reporting import entry_dynamic_fields, DYNAMIC_LAYOUTS, CATALOG_HEADERS, FORMAT_HEADER, CHART_TYPES, HOVER_TARGETS_VERSION, STRUCTURAL_SLIDE_TYPES, TEMPLATE_NAMES, CatalogEntry, _legend_dimensions, assign_cdr_vendors, calculated_dimensions_json, catalog_chart_hover_targets, catalog_chart_payload, catalog_kpi_fields, catalogue_csv, convert_catalog_csv, cover_catalog_entries, ensure_vendor_group, is_empty_catalog_chart, materialize_calculated_dimensions, normalise_operator_aliases, parse_axis_range, parse_calculated_dimensions, parse_catalog_csv, parse_catalog_filters, parse_catalog_grouping, parse_label_format, parse_label_position, parse_legend_position, parse_template_boolean, prepare_catalog_chart_preview_frame, prepare_multivendor_catalog_entry, preview_catalog_chart_data, render_catalog_chart_preview, render_catalog_chart_preview_with_hover, render_cdr_report, render_unavailable_source_chart, report_chart_renderer_name, reset_canvas_chart_renderer, split_calculated_dimension_aliases
 from src.modules.exports import POWERPOINT_EXPORT_VERSION, export_dataset_summary_powerpoint, export_powerpoint_report
 from src.modules.email_delivery import DEFAULT_MAX_ATTACHMENTS_MB, EMAIL_SECURITY_MODES, email_delivery_settings, invalid_recipients, parse_recipients, save_email_delivery_settings, send_email
 from src.modules.network_inventory import INVENTORY_DATASET_KINDS, build_inventory_cells, effective_snapshot_date, normalise_snapshot_date
@@ -715,6 +715,9 @@ def catalogue_registry_key(name: str) -> str:
     """Use the visible template name as the persistent JSON key."""
     name = str(name or '').strip()
     template_filename(name)
+    from src.modules.design_slides import BLANK_PPT_TEMPLATE
+    if name.casefold() == BLANK_PPT_TEMPLATE.casefold():
+        raise ValueError(f"'{name}' names the PPT Designs created blank: choose another template name.")
     return name
 
 
@@ -26460,6 +26463,12 @@ def catalogue_filter_values(
     return JSONResponse({'values': sorted(values, key=str.casefold)[:200]})
 
 
+# PPT Templates live in PPT Designer (the PPT Templates button of its library): their actions go back there, with what
+# was done (catalogue_notice) or what went wrong (catalogue_error), and a new template opens in its Designer.
+def ppt_templates_redirect(**query: str) -> RedirectResponse:
+    return RedirectResponse(f"/ppt-designer?{urlencode({'ppt_templates': '1', **query})}", status_code=status.HTTP_303_SEE_OTHER)
+
+
 def _import_report_catalogue(
     request: Request,
     catalogue_file: UploadFile | None,
@@ -26469,8 +26478,7 @@ def _import_report_catalogue(
     user: SessionUser,
 ) -> HTMLResponse:
     if not catalogue_file or not catalogue_file.filename or Path(catalogue_file.filename).suffix.lower() != '.csv':
-        query = urlencode({'catalogue_error': 'Select a CSV Report Template.'})
-        return RedirectResponse(f'/workspace-config?{query}', status_code=status.HTTP_303_SEE_OTHER)
+        return ppt_templates_redirect(catalogue_error='Select a CSV Report Template.')
     try:
         # Preserve meaningful hyphens in the uploaded filename; only turn
         # underscores into spaces when deriving a display name automatically.
@@ -26516,16 +26524,14 @@ def _import_report_catalogue(
             'file': catalogue_file.filename,
             'error': str(exc),
         }))
-        query = urlencode({'catalogue_error': str(exc)})
-        return RedirectResponse(f'/workspace-config?{query}', status_code=status.HTTP_303_SEE_OTHER)
+        return ppt_templates_redirect(catalogue_error=str(exc))
     repository.add_log(user.username, 'import_report_template', json.dumps({
         'template_name': catalogue_name,
         'file': catalogue_file.filename,
         'chart_rows': sum(1 for entry in entries if entry.source_kind),
     }))
     action = 'Overwrote' if existing_template else 'Imported'
-    query = urlencode({'catalogue_notice': f"{action} {catalogue_name}."})
-    return RedirectResponse(f'/workspace-config?{query}', status_code=status.HTTP_303_SEE_OTHER)
+    return ppt_templates_redirect(catalogue_notice=f"{action} {catalogue_name}.")
 
 
 @app.post('/workspace-config/report-templates', response_class=HTMLResponse)
@@ -26562,12 +26568,12 @@ def activate_report_catalogue(
 ) -> HTMLResponse:
     available = {option['identifier']: option for option in report_catalogue_options()}
     if catalogue_id not in available:
-        return render_workspace_config_template(request, user, error='Report Template not found.', status_code=404)
+        return ppt_templates_redirect(catalogue_error='Report Template not found.')
     promote_report_template_to_default(catalogue_id, updated_by=user.username)
     repository.add_log(user.username, 'activate_report_template', json.dumps({
         'template': available[catalogue_id]['name'],
     }))
-    return RedirectResponse('/workspace-config', status_code=status.HTTP_303_SEE_OTHER)
+    return ppt_templates_redirect()
 
 
 def _named_catalogue(catalogue_id: str) -> dict[str, Any] | None:
@@ -26594,7 +26600,7 @@ def rename_report_catalogue(
     if not catalogue:
         if 'application/json' in request.headers.get('accept', ''):
             return JSONResponse({'error': 'Report Template not found.'}, status_code=404)
-        return render_workspace_config_template(request, user, error='Report Template not found.', status_code=404)
+        return ppt_templates_redirect(catalogue_error='Report Template not found.')
     try:
         name = catalogue_name.strip()
         if not name:
@@ -26616,15 +26622,15 @@ def rename_report_catalogue(
     except PermissionError as exc:
         if 'application/json' in request.headers.get('accept', ''):
             return JSONResponse({'error': str(exc)}, status_code=403)
-        return render_workspace_config_template(request, user, error=str(exc), status_code=403)
+        return ppt_templates_redirect(catalogue_error=str(exc))
     except ValueError as exc:
         if 'application/json' in request.headers.get('accept', ''):
             return JSONResponse({'error': str(exc)}, status_code=400)
-        return render_workspace_config_template(request, user, error=str(exc), status_code=400)
+        return ppt_templates_redirect(catalogue_error=str(exc))
     repository.add_log(user.username, 'rename_report_template', json.dumps({'template': catalogue_id, 'name': name}))
     if 'application/json' in request.headers.get('accept', ''):
         return JSONResponse({'name': name, 'identifier': catalogue_id})
-    return RedirectResponse('/workspace-config', status_code=status.HTTP_303_SEE_OTHER)
+    return ppt_templates_redirect()
 
 
 @app.post('/workspace-config/report-templates/{catalogue_id}/duplicate', response_class=HTMLResponse)
@@ -26635,7 +26641,7 @@ def duplicate_report_catalogue(
 ) -> HTMLResponse:
     catalogue = _named_catalogue(catalogue_id)
     if not catalogue:
-        return render_workspace_config_template(request, user, error='Report Template not found.', status_code=404)
+        return ppt_templates_redirect(catalogue_error='Report Template not found.')
     names = {str(row['name']) for row in repository.list_report_templates()}
     # The physical CSV name is the canonical template name.  Deriving the
     # duplicate label from it prevents a stale/default registry label from
@@ -26651,7 +26657,7 @@ def duplicate_report_catalogue(
         suffix += 1
     repository.add_report_template(identifier, bytes(catalogue['content']), updated_by=user.username)
     repository.add_log(user.username, 'duplicate_report_template', json.dumps({'source': catalogue_id, 'template': name}))
-    return RedirectResponse('/workspace-config', status_code=status.HTTP_303_SEE_OTHER)
+    return ppt_templates_redirect()
 
 
 @app.post('/workspace-config/slides-templates/new', response_class=HTMLResponse)
@@ -26666,13 +26672,13 @@ def create_empty_report_catalogue(
     while name in names:
         name = f'{base_name} {suffix}'
         suffix += 1
-    content = catalogue_csv([])
+    # Its cover, so the new template opens in the viewer and its Designer, where its slides are added.
+    content = catalogue_csv(cover_catalog_entries(name))
     repository.add_report_template(name, content, updated_by=user.username)
     repository.add_log(user.username, 'create_report_template', json.dumps({
         'template': name,
     }))
-    query = urlencode({'catalogue_id': name})
-    return RedirectResponse(f'/workspace-config?{query}#catalogue-editor', status_code=status.HTTP_303_SEE_OTHER)
+    return ppt_templates_redirect(edit_template=name)
 
 
 @app.post('/workspace-config/report-templates/{catalogue_id}/delete', response_class=HTMLResponse)
@@ -26685,11 +26691,11 @@ def delete_report_catalogue(
     from src.modules.deletion_rights import can_delete, deletion_refusal
     catalogue = _named_catalogue(catalogue_id)
     if not catalogue:
-        return render_workspace_config_template(request, user, error='Report Template not found.', status_code=404)
+        return ppt_templates_redirect(catalogue_error='Report Template not found.')
     if not can_delete(user, catalogue.get('created_by')):
-        return render_workspace_config_template(request, user, error=deletion_refusal('PPT Template'), status_code=403)
+        return ppt_templates_redirect(catalogue_error=deletion_refusal('PPT Template'))
     if catalogue['active']:
-        return render_workspace_config_template(request, user, error='The default template cannot be deleted.', status_code=400)
+        return ppt_templates_redirect(catalogue_error='The default template cannot be deleted.')
     # The PPT Designs that follow it keep the slides they show as their own (detached): none of them breaks.
     detach_designs = getattr(sys.modules[__name__], 'ppt_design_detach_template_designs', None)
     detached = detach_designs(str(catalogue['name']), user.username) if callable(detach_designs) else 0
@@ -26697,7 +26703,7 @@ def delete_report_catalogue(
     repository.add_log(user.username, 'delete_report_template', json.dumps({'template': catalogue['name'], 'detached_designs': detached}))
     if active_workspace:
         background_tasks.add_task(queue_workspace_dimension_materialization, active_workspace)
-    return RedirectResponse('/workspace-config', status_code=status.HTTP_303_SEE_OTHER)
+    return ppt_templates_redirect()
 
 
 def finalize_template_save(

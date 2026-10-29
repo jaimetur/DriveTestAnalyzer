@@ -1326,7 +1326,8 @@ def test_configuration_access_matches_editor_and_viewer_roles(client) -> None:
     assert 'href="/application-config"' in workspace_page.text
     assert 'href="/workspace-config"' in workspace_page.text
     assert 'class="module-tab module-tab-config active"' in workspace_page.text
-    assert '<h2>PPT Templates Management</h2>' in workspace_page.text
+    # PPT Templates live in PPT Designer (the PPT Templates button of its library).
+    assert '<h2>PPT Templates Management</h2>' not in workspace_page.text
     assert '<h2>Operator Maps</h2>' in workspace_page.text
     assert '<h2>Vendor Maps</h2>' in workspace_page.text
     assert client.get('/admin').status_code == 403
@@ -6888,7 +6889,7 @@ def test_admin_operator_mapping_panel_groups_and_edits_aliases(client) -> None:
     assert 'data-panel-state-key="admin:operator-mappings"' in page.text
     assert '<h2>Operator Maps</h2>' in page.text
     assert '<h2>Vendor Maps</h2>' in page.text
-    assert page.text.index('<h2>PPT Templates Management</h2>') < page.text.index('<h2>Operator Maps</h2>')
+    assert '<h2>PPT Templates Management</h2>' not in page.text
     assert 'value="VF"' in page.text
     assert 'value="Legacy Carrier"' in page.text
     assert 'Legacy A\nLegacy B' in page.text
@@ -9451,7 +9452,7 @@ def test_admin_imports_report_catalogue(client) -> None:
     assert exported.status_code == 200
     assert exported.content == content
 
-    assert response.headers['location'].startswith('/workspace-config?catalogue_notice=')
+    assert response.headers['location'].startswith('/ppt-designer?ppt_templates=1&catalogue_notice=')
     confirmation = client.get(response.headers['location'])
     assert 'data-catalogue-import-notice' in confirmation.text
     assert 'catalogue-management-notice' not in confirmation.text
@@ -9578,12 +9579,12 @@ def test_admin_stores_multiple_named_report_catalogues_and_can_activate_one(clie
         )
         assert response.status_code == 303
 
-    admin = client.get('/workspace-config')
+    admin = client.get('/ppt-designer')
     assert 'Baseline Q4' in admin.text
     assert 'Updated Q4' in admin.text
     assert 'name="catalogue_selection"' not in admin.text
-    assert 'data-admin-template-editor' in admin.text
-    assert 'data-open-template-editor="/workspace-config/report-templates/Baseline%20Q4/editor"' in admin.text
+    assert 'id="ds-templates-title">PPT Templates</h2>' in admin.text
+    assert 'data-edit-template="Baseline Q4"' in admin.text
     assert 'data-catalogue-editor-table' not in admin.text
     assert '<th>Default</th>' in admin.text
     assert 'catalogue-default-mark is-default' in admin.text

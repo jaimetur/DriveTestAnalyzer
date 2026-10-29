@@ -1506,6 +1506,16 @@ def active_catalog_path(catalog_dir: Path, fallback_catalog: Path, technology: s
     return fallback_catalog
 
 
+def cover_catalog_entries(title: str) -> list[CatalogEntry]:
+    """The rows of a template, or of a PPT Design created blank, that has only its cover: ``title`` and its NR Mode."""
+    output = io.StringIO(newline="")
+    writer = csv.DictWriter(output, fieldnames=CATALOG_HEADERS, lineterminator="\n")
+    writer.writeheader()
+    writer.writerow({"Slide": "1", "Slide Tittle": title, "Slide Subtittle": "{NR Mode Name}", "Layout": "Title Page",
+                     "Chart type": "Title Slide"})
+    return parse_catalog_csv(output.getvalue())
+
+
 def catalogue_csv(entries: list[CatalogEntry]) -> bytes:
     """Serialize the active template using the current editable CSV schema."""
     output = io.StringIO(newline="")

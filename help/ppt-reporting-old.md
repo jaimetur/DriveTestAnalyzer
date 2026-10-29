@@ -42,7 +42,7 @@ Operator Comparison initially selects the two newest CDRs of each type, or the o
 
 Choose a Report Template from the active workspace (any template serves both NR Modes). Each template controls slides, layouts, source datasets, chart types, KPIs, filters, aggregations and legends. Authorised users manage and edit templates in Workspace Config; new workspaces have none until a template is created or imported.
 
-For the complete schema, supported chart types, examples, Filter Builder language, aggregations, legends, multi-chart slides and colour rules, see [Workspace Config → Report Template reference](workspace-config.md#report-template-reference).
+For the complete schema, supported chart types, examples, Filter Builder language, aggregations, legends, multi-chart slides and colour rules, see [PPT Designer → Report Template reference](ppt-designer.md#report-template-reference).
 
 ## Generate PowerPoint Report
 
@@ -96,7 +96,7 @@ Reports, Chart Sets, PPT exports and interactive previews share the PPT Canvas r
 
 - Missing CDR: verify the active workspace, dataset type and Processed status.
 - Multivendor unavailable: persist Vendor mapping for every selected CDR.
-- Empty chart: inspect the filtered dataset and the template row referenced in [Workspace Config → Report Template reference](workspace-config.md#report-template-reference).
+- Empty chart: inspect the filtered dataset and the template row referenced in [PPT Designer → Report Template reference](ppt-designer.md#report-template-reference).
 - Invalid template: use the editor's `Slide: n - Chart: n` validation message.
 - Failed or interrupted job: inspect App Logs, then retry the existing job.
 

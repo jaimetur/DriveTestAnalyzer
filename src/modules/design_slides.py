@@ -58,6 +58,9 @@ KIND_CHART_TYPES = {'kpi': 'KPI Card', 'text': 'Text Box', 'image': 'Image'}
 PARAMETER_TYPES = ('values', 'number', 'text')
 # The fields a Design writes in the titles and text boxes of its slides from its own selection (``{Cities}``: the
 # Cities it is filtered by, or All Cities), as the Designer offers them.
+# What a PPT Design created blank names as its template (PPT Template → None — blank PPT): it has slides of its own from
+# the start and follows no template, as a detached Design; no template takes this name.
+BLANK_PPT_TEMPLATE = 'None — blank PPT'
 SELECTION_TOKENS = ('Design', 'Scope', 'Campaigns', 'Operators', 'Vendors', 'Regions', 'Clusters', 'Cities')
 # Tokens the slides resolve (report_template_modes and the selection): parameters cannot take their names.
 # The field of the name of the Design, as titles wrote it while Designs were Dashboards.

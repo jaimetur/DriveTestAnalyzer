@@ -207,6 +207,9 @@
    *            showSource (false: the source and NR Mode are chosen elsewhere, as in Chart Builder), pptNrMode (the NR Mode
    *            of the PPT Design: NSA, SA or NSA & SA), eachPpt (a template chart: each PPT Design keeps its NR Mode),
    *            chartTypes (false: Chart Type is drawn apart, with renderTypes)} */
+  // The groups of fields in the order they are used most: the main fields first, the fields of no section last.
+  const GROUP_ORDER = ['CDR-Main fields', 'Normalised fields', 'Network Insights', 'Non-Qualified Calls', 'DT Analyzer RCA', 'Vendor Mapping', 'Auto-calculated Fields'];
+  const groupRank = group => (group === 'Other fields' ? 1000 : GROUP_ORDER.includes(group) ? GROUP_ORDER.indexOf(group) : 500);
   function render(host, options) {
     const context = analyse(options);
     const {values, source, fieldList, typeOf, change, settings, plainFilters, writeFilters, measures, shelfState} = context;
@@ -214,9 +217,6 @@
     // Data pane
     let query = '';
     const fieldsHost = h('div', {class: 'ds-cb-fields'});
-    // The groups in the order they are used most: the main fields first, the fields of no section last.
-    const GROUP_ORDER = ['CDR-Main fields', 'Normalised fields', 'Network Insights', 'Non-Qualified Calls', 'DT Analyzer RCA', 'Vendor Mapping', 'Auto-calculated Fields'];
-    const groupRank = group => (group === 'Other fields' ? 1000 : GROUP_ORDER.includes(group) ? GROUP_ORDER.indexOf(group) : 500);
     const paintFields = () => {
       const groups = new Map();
       for (const item of fieldList) {
@@ -458,5 +458,5 @@
     placePopover(menu, anchor);
   }
 
-  window.ChartShelves = {render, renderTypes, picture, kpiParts, kpiField};
+  window.ChartShelves = {render, renderTypes, picture, kpiParts, kpiField, groupRank};
 })();

@@ -64,7 +64,7 @@ The header is available throughout the authenticated application.
 
 ## Application and workspace configuration
 
-**Application Config** controls runtime settings shared by every workspace. The dedicated **Workspace Config** page groups PPT Templates Management, Main Cities, Mappings & Reference Data (Operator, Vendor and Campaign Maps and Spectrum Holdings) and Scoring & GAP Analysis Setup for the active workspace. These are separate scopes: changing a workspace template or chart mapping does not change application runtime settings. See [Application Config](app-config.md) and [Workspace Config](workspace-config.md).
+**Application Config** controls runtime settings shared by every workspace. The dedicated **Workspace Config** page groups Main Cities, Mappings & Reference Data (Operator, Vendor and Campaign Maps and Spectrum Holdings) and Scoring & GAP Analysis Setup for the active workspace. These are separate scopes: changing a workspace template or chart mapping does not change application runtime settings. See [Application Config](app-config.md) and [Workspace Config](workspace-config.md).
 
 ## Background tasks and floating cards
 
@@ -203,7 +203,7 @@ Status cards distinguish data loading, queued data, chart rendering, queued char
 
 **Generate PPT** uses the exact applied definition and continues as a background job. Completed jobs retain their CDRs, dates, scope, filter snapshot, comments, PPTX, PNGs, tooltips and Canvas models under `output/reports/ppt-designs`. **PPT Generation Jobs** supports download, chart access, stop, retry, relaunch and deletion. **Charts Panel** filters completed jobs and reopens their charts in the same expanded viewer, including the historical chart dataset.
 
-The operational guide is [PPT Designer](ppt-designer.md). Template creation, columns, structural slides, supported chart types, filters, aggregations, legends, layouts and colours are documented once in [Workspace Config → Report Template reference](workspace-config.md#report-template-reference).
+The operational guide is [PPT Designer](ppt-designer.md). Template creation, columns, structural slides, supported chart types, filters, aggregations, legends, layouts and colours are documented once in [PPT Designer → Report Template reference](ppt-designer.md#report-template-reference).
 
 ## Non-Qualified Calls
 
@@ -323,7 +323,7 @@ See [Workspace Config](workspace-config.md) for panel operations and portability
 - Apply temporary preview values back to the in-memory row with **Update Template**.
 - Save atomically; saved cells then clear their change highlighting.
 
-The complete authoring specification, examples and supported chart catalogue are in [Workspace Config → Report Template reference](workspace-config.md#report-template-reference).
+The complete authoring specification, examples and supported chart catalogue are in [PPT Designer → Report Template reference](ppt-designer.md#report-template-reference).
 
 ### Import / Export / Transfer
 

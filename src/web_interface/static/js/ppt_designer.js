@@ -1265,7 +1265,8 @@
     window.dispatchEvent(new Event('drivetest-analyzer:refresh-background-tasks'));
   }
   const updateDesignTemplate = async (id, item, nrMode, templateName) => {
-    const selectedTemplate = templateRows().find(row => row.name === templateName);
+    const selectedTemplate = templateName === BLANK_TEMPLATE && item.template === BLANK_TEMPLATE
+      ? {name: BLANK_TEMPLATE} : templateRows().find(row => row.name === templateName);
     if (!selectedTemplate || (designNrMode(item) === nrMode && item.template === selectedTemplate.name)) {
       library();
       return;
@@ -1275,7 +1276,7 @@
       return;
     }
     const accepted = await window.showConfirmDialog(
-      `Changing the NR Mode or Template for “${item.name}” will invalidate every report and chart created inside this Design. Its Scope, dates and filters are kept (a new NR Mode uses its newest campaigns). Continue?`,
+      `Changing the NR Mode or Template for “${item.name}” will invalidate every report and chart created inside this Design. Its Scope, dates and filters are kept (a new NR Mode uses its newest campaigns).${item.own_slides && selectedTemplate.name !== item.template ? ' Its own slides are replaced by those of the template.' : ''} Continue?`,
       {title: 'Update PPT definition?', confirmLabel: 'Update Design', cancelLabel: 'Cancel', tone: 'warning'},
     );
     if (!accepted) {
@@ -1310,7 +1311,9 @@
     rememberLibrary();
     parkFilterPanel();
     $('ds-create').disabled = !$('ds-template').options.length;
-    $('ds-count').textContent = `Total Designs: ${Object.keys(designs).length}`;
+    // A PPT Template open as a Design (PPT Templates → Edit) is never listed.
+    const listed = Object.entries(designs).filter(([, item]) => !item.template_preview);
+    $('ds-count').textContent = `Total Designs: ${listed.length}`;
     const body = $('ds-designs-body'); body.replaceChildren();
     // Sort by NR Mode (NSA before SA), then Design name, with the same
     // rule as the Report Templates table: an NSA/SA marker in the name is
@@ -1320,7 +1323,7 @@
       return (text.replace(/^\s*n?sa\s*[-–—:]\s*|\s*[-–—:]?\s*\(?\bn?sa\)?\s*$/i, '').trim() || text).toLowerCase();
     };
     const compareText = (left, right) => (left < right ? -1 : left > right ? 1 : 0);
-    const rows = Object.entries(designs).sort(([, left], [, right]) => (
+    const rows = listed.sort(([, left], [, right]) => (
       compareText(designNrMode(left), designNrMode(right))
       || compareText(sortName(left.name), sortName(right.name))
       || compareText(String(left.name).toLowerCase(), String(right.name).toLowerCase())
@@ -1328,7 +1331,7 @@
     if (!rows.length) { const row = node('tr'), cell = node('td', 'No Designs have been created yet.', 'form-note'); cell.colSpan = 5; row.append(cell); body.append(row); return; }
     for (const [id, item] of rows) {
       const row = node('tr'); if (id === activeId) row.classList.add('ds-design-active');
-      const nameCell = node('td'); nameCell.dataset.label = 'Design';
+      const nameCell = node('td'); nameCell.dataset.label = 'PPT Name';
       const nameEditor = node('div', undefined, 'ds-design-name-editor');
       const nameInput = document.createElement('input'); nameInput.type = 'text'; nameInput.value = item.name; nameInput.maxLength = 120; nameInput.setAttribute('aria-label', `PPT name: ${item.name}`);
       const nameSave = node('button', '✓', 'ds-design-name-save'); nameSave.type = 'button'; nameSave.title = 'Save PPT name'; nameSave.setAttribute('aria-label', 'Save PPT name'); nameSave.hidden = true;
@@ -1355,12 +1358,13 @@
       technologySelect.setAttribute('aria-label', `NR Mode for ${item.name}`);
       for (const mode of DESIGN_NR_MODES) technologySelect.append(option(mode, nrModeLabel(mode)));
       technologySelect.value = designNrMode(item);
-      const templateCell = node('td'); templateCell.dataset.label = 'Template';
+      const templateCell = node('td'); templateCell.dataset.label = 'PPT Template';
       const templateSelect = document.createElement('select'); templateSelect.className = 'ds-design-definition-select ds-design-template-select';
       templateSelect.setAttribute('aria-label', `Template for ${item.name}`);
       const choices = templateRows();
-      templateSelect.replaceChildren(...choices.map(row => option(row.name, row.name)));
-      templateSelect.value = (choices.find(row => row.name === item.template) || choices[0])?.name || '';
+      const blankDesign = item.template === BLANK_TEMPLATE;
+      templateSelect.replaceChildren(...(blankDesign ? [option(BLANK_TEMPLATE, BLANK_TEMPLATE)] : []), ...choices.map(row => option(row.name, row.name)));
+      templateSelect.value = blankDesign ? BLANK_TEMPLATE : (choices.find(row => row.name === item.template) || choices[0])?.name || '';
       templateSelect.disabled = !choices.length;
       technologySelect.addEventListener('change', () => {
         void safe(() => updateDesignTemplate(id, item, technologySelect.value, templateSelect.value || item.template))();
@@ -1993,17 +1997,21 @@
     } catch (_error) { /* A status refresh must not interrupt Design work. */ }
     finally { designStatusRefreshing = false; }
   };
+  // A PPT Design created blank (None — blank PPT) has slides of its own from the start: it follows no template.
+  const BLANK_TEMPLATE = config.blank_template || 'None — blank PPT';
   function templateOptions(selectedName = '') {
     const select = $('ds-template'), rows = templateRows();
-    select.replaceChildren(...rows.map(row => option(row.identifier, row.name)));
+    select.replaceChildren(option(BLANK_TEMPLATE, BLANK_TEMPLATE), ...rows.map(row => option(row.identifier, row.name)));
+    if (selectedName === BLANK_TEMPLATE) { select.value = BLANK_TEMPLATE; return {name: BLANK_TEMPLATE}; }
     const selected = rows.find(row => row.name === selectedName) || rows.find(row => row.active) || rows[0];
     select.value = selected?.identifier || '';
     return selected;
   }
+  // The name a new PPT Design is offered (the field names the open Design otherwise): one no Design has yet.
+  const NEW_DESIGN_NAME = 'My New PPT Design';
   function syncNewDesignNameFromTemplate() {
-    if (definition) return;
-    const selected = templateRows().find(row => row.identifier === $('ds-template').value);
-    if (selected) $('ds-name').value = selected.name;
+    if (definition && !designs[activeId]?.template_preview) return;
+    $('ds-name').value = nextName(NEW_DESIGN_NAME);
   }
   templateOptions();
   syncNewDesignNameFromTemplate();
@@ -2658,10 +2666,13 @@
     clearTimeout(timer); ++sequence; ++backgroundChartPreloadRequest; controller?.abort(); preparing = null;
     stopPresentation();
     openingTimes = {id, started: performance.now()};
+    $('ds-viewer').classList.toggle('ds-template-preview', Boolean(designs[id]?.template_preview));
     activeId = id; designFiltersOpen = showFilters; rememberFiltersOpen(showFilters); $('ds-viewer-export-ppt').dataset.designPptId = id; definition = runtimeDesignDefinition(designs[id], id); savedDefinition = definitionFingerprint(savedRuntimeDesignDefinition(designs[id])); dirty = false; prepared = null; appliedFilterState = ''; appliedSelectionState = ''; appliedDesignDefinition = null; applyingDesignDefinition = null; facetOptions = {}; availableFields = []; facetOptionRequests.clear(); slideIndex = 0; setViewEnabled(false); rememberOpen(id);
     document.dispatchEvent(new CustomEvent('ds:design-opened', {detail: {id}}));
     resetViewerForDesign();
-    $('ds-name').value = definition.name; setNrMode(designNrMode(definition), definition.template);
+    // A PPT Template open as a Design leaves the name of a new PPT Design in the field.
+    if (designs[id]?.template_preview) syncNewDesignNameFromTemplate(); else $('ds-name').value = definition.name;
+    setNrMode(designNrMode(definition), definition.template);
     $('ds-filter-panel').hidden = !designFiltersOpen; document.dispatchEvent(new CustomEvent('page-panel-navigation:update')); setActiveDesignHeading(definition.name); sources(); facets(); library(); status(''); await prepare();
     updateDirtyState();
     // Date defaults may be derived while the prepared payload is restored. Rebuild
@@ -2718,16 +2729,69 @@
   bind('ds-create', async () => {
     if (!await confirmDiscard(['name', 'template', 'nr_mode'])) return;
     const nrMode = $('ds-nr-mode').value;
-    const selected = templateRows().find(row => row.identifier === $('ds-template').value);
+    const blank = $('ds-template').value === BLANK_TEMPLATE;
+    const selected = blank ? {name: BLANK_TEMPLATE} : templateRows().find(row => row.identifier === $('ds-template').value);
     if (!selected) throw new Error('Choose a template.');
-    const name = $('ds-name').value.trim() || selected.name;
+    const name = $('ds-name').value.trim() || nextName(NEW_DESIGN_NAME);
     $('ds-name').value = name;
     const item = {name,template:selected.name,nr_mode:nrMode,scope:'single',auto_cdrs:true,filters:{Campaign: defaultCampaignFilter('single')},sa_campaigns:normalizeDesignNrMode(nrMode) === NSA_AND_SA ? defaultCampaignFilter('single') : [],custom_fields:[],date_from:'Oldest',date_to:'Newest'};
     status(`Creating “${item.name}”…`); $('ds-create').disabled = true;
-    try { const id = designId(), result = await api(`/${id}`,'PUT',item); designs[id] = result.definition; await openDesignFilters(id); }
+    try {
+      const id = designId(), result = await api(`/${id}`,'PUT',item); designs[id] = result.definition;
+      if (!blank) { await openDesignFilters(id); return; }
+      // Blank, it opens in its Designer, where its slides are added.
+      library();
+      document.dispatchEvent(new CustomEvent('ds:edit-design', {detail: {id}}));
+      const loading = openDesign(id, {showFilters: false});
+      overlay('ds-viewer', true);
+      await loading;
+    }
     finally { $('ds-create').disabled = !$('ds-template').options.length; }
   });
   bind('ds-save', save);
+  // PPT Templates (the button of the library): the templates of the workspace in a dialog. Edit opens one in the viewer
+  // and its Designer as a Design of the user kept apart from the Designs (never listed), whose changes go to the
+  // template; it reads the CDRs of the NR Mode and Campaign it was last opened with (NSA and Latest 2 campaigns first).
+  async function openTemplateDesign(templateName) {
+    if (!templateName || !await confirmDiscard()) return;
+    const previous = Object.values(designs).find(item => item.template_preview) || {};
+    const campaignKey = campaignFilterKey(previous.filters);
+    const item = {
+      name: templateName, template: templateName, nr_mode: previous.nr_mode || 'NSA', scope: 'single', auto_cdrs: true,
+      filters: {Campaign: campaignKey ? previous.filters[campaignKey] : defaultCampaignFilter('single')},
+      sa_campaigns: previous.sa_campaigns || [], custom_fields: [], hidden_filters: [], date_from: 'Oldest', date_to: 'Newest',
+    };
+    const result = await api('/template-preview', 'PUT', item);
+    designs[result.id] = result.definition;
+    if ($('ds-templates-overlay') && !$('ds-templates-overlay').hidden) overlay('ds-templates-overlay', false);
+    document.dispatchEvent(new CustomEvent('ds:edit-design', {detail: {id: result.id}}));
+    const loading = openDesign(result.id, {showFilters: false});
+    overlay('ds-viewer', true);
+    await loading;
+  }
+  // The templates as they are now (one saved from the Designer meanwhile included): the list of PPT Templates and the
+  // PPT Template a new PPT Design chooses.
+  async function refreshTemplatesLibrary() {
+    if (!$('ds-templates-body')) return;
+    const result = await api('/templates-library');
+    const chosen = $('ds-template').value === BLANK_TEMPLATE ? BLANK_TEMPLATE
+      : templateRows().find(row => row.identifier === $('ds-template').value)?.name || '';
+    config.templates = result.templates;
+    templateOptions(definition ? (designs[activeId]?.template || chosen) : chosen);
+    library();
+    const body = $('ds-templates-body');
+    body.innerHTML = result.html;
+    window.bindCatalogueTemplateControls?.(body);
+  }
+  if ($('ds-templates-overlay')) {
+    bind('ds-templates-open', async () => { overlay('ds-templates-overlay', true); await refreshTemplatesLibrary(); });
+    bind('ds-templates-close', () => overlay('ds-templates-overlay', false));
+    $('ds-templates-overlay').addEventListener('click', event => {
+      if (event.target === event.currentTarget) { overlay('ds-templates-overlay', false); return; }
+      const edit = event.target.closest('[data-edit-template]');
+      if (edit) safe(() => openTemplateDesign(edit.dataset.editTemplate))();
+    });
+  }
   bind('ds-apply-filters', async () => {
     if (!hasUnappliedFilterChanges()) return;
     if (!$('ds-filter-overlay').hidden) await closeFilters();
@@ -4998,7 +5062,7 @@
   });
   // The Designer (designer.js) works on the open Design through these.
   window.designViewer = {
-    api, safe, status,
+    api, safe, status, refreshTemplatesLibrary,
     state: () => ({activeId, definition, prepared, slideIndex, design: designs[activeId] || null, config}),
     // A slide set laid out by the Designer (POST /slides/preview): its slides and token replace those shown.
     showSlides(payload, {sourceSlide = ''} = {}) {
@@ -5050,6 +5114,15 @@
     if (restorePageState) restoreScroll(); else resetScroll();
     void refreshDesignStatuses();
     void refreshDesignPptJobs();
+    // Back from an action of PPT Templates: its dialog open again, or the template just created open in its Designer.
+    const pageParams = new URLSearchParams(window.location.search);
+    if (pageParams.has('ppt_templates') || pageParams.has('edit_template')) {
+      const editTemplate = pageParams.get('edit_template');
+      for (const key of ['ppt_templates', 'edit_template']) pageParams.delete(key);
+      window.history.replaceState(window.history.state, '', `${window.location.pathname}${pageParams.size ? `?${pageParams}` : ''}${window.location.hash}`);
+      if (editTemplate) { await openTemplateDesign(editTemplate); return; }
+      if ($('ds-templates-overlay')) overlay('ds-templates-overlay', true);
+    }
     if (designs[last]) await openDesign(last);
     if (restorePageState) restoreScroll(); else resetScroll();
   })();

@@ -42,7 +42,7 @@ PPT Designer, PPT Templates, Scoring Saved Filters, Scoring Methodologies, the s
 
 Only super-admins open Super Admin, so only they manage the accounts. The signed-in account cannot delete itself, and at least one active super-admin must remain.
 
-**Application Config** is the application-wide runtime settings page and is available to `user-editor`, `admin` and `super-admin`. **Workspace Config** is a separate workspace-scoped page with PPT Templates Management, Main Cities, Mappings & Reference Data and Scoring & GAP Analysis Setup. Both require an active session; Workspace Config operations also require an open workspace. See [Application Config](app-config.md) and [Workspace Config](workspace-config.md) for the respective workflows.
+**Application Config** is the application-wide runtime settings page and is available to `user-editor`, `admin` and `super-admin`. **Workspace Config** is a separate workspace-scoped page with Main Cities, Mappings & Reference Data and Scoring & GAP Analysis Setup. Both require an active session; Workspace Config operations also require an open workspace. See [Application Config](app-config.md) and [Workspace Config](workspace-config.md) for the respective workflows.
 
 ## Users
 

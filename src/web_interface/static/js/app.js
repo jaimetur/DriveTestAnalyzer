@@ -4451,7 +4451,7 @@ document.querySelectorAll('[data-catalogue-editor]').forEach((editor) => {
   savedCatalogueContent = serialiseCatalogueContent();
 });
 
-document.querySelectorAll('[data-catalogue-auto-rename]').forEach((input) => {
+function bindCatalogueAutoRename(input) {
   let savedValue = input.value.trim();
   let pendingRename = null;
   const updateCatalogueIdentifier = (previousIdentifier, identifier) => {
@@ -4474,6 +4474,7 @@ document.querySelectorAll('[data-catalogue-auto-rename]').forEach((input) => {
       else if (value?.includes(oldSegment)) element.setAttribute('data-open-template-editor', value.replace(oldSegment, newSegment));
       element.setAttribute('data-template-name', input.value.trim());
     });
+    row.querySelectorAll('[data-edit-template]').forEach((element) => element.setAttribute('data-edit-template', identifier));
     document.querySelectorAll('select[name="catalogue_selection"] option').forEach((option) => {
       if (option.value !== previousName) return;
       option.value = identifier;
@@ -4530,7 +4531,8 @@ document.querySelectorAll('[data-catalogue-auto-rename]').forEach((input) => {
     event.preventDefault();
     void saveCatalogueName();
   });
-});
+}
+document.querySelectorAll('[data-catalogue-auto-rename]').forEach(bindCatalogueAutoRename);
 
 document.querySelectorAll('.catalogue-editor-picker-form').forEach((form) => {
   // The server-selected template is authoritative. Browsers can restore a
@@ -4597,7 +4599,7 @@ document.querySelectorAll('form[action*="/workspace-config/report-templates/"]')
   form.addEventListener('submit', () => preserveAdminScrollPosition());
 });
 
-document.querySelectorAll('[data-catalogue-import-form]').forEach((form) => {
+function bindCatalogueImportForm(form) {
   const name = form.querySelector('[data-catalogue-import-name]');
   const file = form.querySelector('[data-catalogue-import-file]');
   const convert = form.querySelector('[data-catalogue-convert]');
@@ -4666,7 +4668,14 @@ document.querySelectorAll('[data-catalogue-import-form]').forEach((form) => {
     preserveAdminScrollPosition();
     HTMLFormElement.prototype.submit.call(form);
   });
-});
+}
+document.querySelectorAll('[data-catalogue-import-form]').forEach(bindCatalogueImportForm);
+// The controls of a list of templates drawn again (PPT Templates of PPT Designer): rename, import and confirmed deletes.
+window.bindCatalogueTemplateControls = (root) => {
+  root.querySelectorAll('[data-catalogue-auto-rename]').forEach(bindCatalogueAutoRename);
+  root.querySelectorAll('[data-catalogue-import-form]').forEach(bindCatalogueImportForm);
+  root.querySelectorAll('form[data-confirm]').forEach(bindConfirmForm);
+};
 
 function datasetPreviewUrl(url, embedded = false) {
   const target = new URL(url, window.location.origin);

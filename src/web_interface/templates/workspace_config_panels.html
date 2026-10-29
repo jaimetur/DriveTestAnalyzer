@@ -138,65 +138,6 @@
 </details>
 </div>
 {% endmacro %}
-  <details class="panel collapsible-panel report-catalogue-panel" id="ppt-templates-management" open data-panel-state-key="admin:ppt-templates-management">
-    <summary class="collapsible-summary">
-      <div>
-        <p class="eyebrow">PowerPoint reporting</p>
-        <h2>PPT Templates Management</h2>
-      </div>
-      <span class="collapse-chip">Collapse</span>
-    </summary>
-    <div class="collapsible-panel-body">
-    <h3 class="templates-library-heading">Import PPT Template</h3>
-    <p class="lede">Import a Report Template CSV and manage the stored workspace templates below. A template serves the CDRs of any NR Mode: each Design chooses the NR Mode it reads, and the titles name it with {NR Mode} (NSA or SA) and {NR Mode Name} (Non-Standalone or Standalone).</p>
-    {% if catalogue_error %}<span hidden data-catalogue-import-error>{{ catalogue_error }}</span>{% endif %}
-    {% if catalogue_notice %}<span hidden data-catalogue-import-notice>{{ catalogue_notice }}</span>{% endif %}
-    <form class="catalogue-import-row" action="/workspace-config/slides-templates/import" method="post" enctype="multipart/form-data" autocomplete="off" data-catalogue-import-form data-catalogue-template-library='{{ template_names | tojson }}' novalidate>
-      <input type="text" name="catalogue_name" aria-label="Template name" placeholder="Template name (optional)" maxlength="80" autocomplete="off" data-no-persist data-catalogue-import-name>
-      <input type="file" name="catalogue_file" aria-label="Report Template CSV" accept=".csv,text/csv" data-catalogue-import-file>
-      <input type="hidden" name="convert_catalogue" value="0" data-catalogue-convert>
-      <input type="hidden" name="overwrite_existing" value="0" data-catalogue-overwrite>
-      <button type="submit">Import</button>
-    </form>
-    <h3 class="templates-library-heading">PPT Templates Library</h3>
-    <div class="table-wrap catalogue-workspace-table-wrap">
-      <table class="catalogue-workspace-table">
-        <thead><tr><th>Template name</th><th>Created</th><th>Last Updated</th><th>Last Updated by</th><th>Default</th><th>Actions</th></tr></thead>
-        <tbody>
-          {% for catalogue in workspace_catalogues %}
-          <tr>
-            <td>
-              <form class="catalogue-rename-form" action="/workspace-config/report-templates/{{ catalogue.identifier | urlencode }}/rename" method="post" autocomplete="off">
-                <input type="text" name="catalogue_name" value="{{ catalogue.name }}" aria-label="Name for {{ catalogue.name }}" maxlength="80" required autocomplete="off" data-no-persist data-catalogue-auto-rename>
-              </form>
-            </td>
-            {% set created_parts = (catalogue.created_at or '').replace('T', ' ').split() %}
-            {% set updated_parts = (catalogue.updated_at or '').replace('T', ' ').split() %}
-            <td class="catalogue-timestamp"><span>{{ created_parts[0] if created_parts else '-' }}</span>{% if created_parts | length > 1 %}<span>{{ created_parts[1] }}</span>{% endif %}</td>
-            <td class="catalogue-timestamp"><span>{{ updated_parts[0] if updated_parts else '-' }}</span>{% if updated_parts | length > 1 %}<span>{{ updated_parts[1] }}</span>{% endif %}</td>
-            <td class="catalogue-updated-by">{{ catalogue.updated_by or '-' }}</td>
-            <td class="catalogue-default-cell"><span class="catalogue-default-mark {% if catalogue.active %}is-default{% else %}is-not-default{% endif %}" aria-label="{% if catalogue.active %}Default template{% else %}Not the default template{% endif %}" title="{% if catalogue.active %}Default template{% else %}Not the default template{% endif %}">{% if catalogue.active %}✓{% else %}○{% endif %}</span></td>
-            <td>
-              <div class="catalogue-workspace-actions">
-                {% if catalogue.active %}<button type="button" class="catalogue-set-default-button icon-action" aria-label="Set default" title="Set default" disabled>★</button>{% else %}<form action="/workspace-config/report-templates/{{ catalogue.identifier | urlencode }}/activate" method="post"><button type="submit" class="catalogue-set-default-button icon-action" aria-label="Set default" title="Set default">★</button></form>{% endif %}
-                <button type="button" class="catalogue-edit-button icon-action" aria-label="Edit template" data-open-template-editor="/workspace-config/report-templates/{{ catalogue.identifier | urlencode }}/editor" data-template-name="{{ catalogue.name }}" title="Edit template">✎</button>
-                <form action="/workspace-config/report-templates/{{ catalogue.identifier | urlencode }}/duplicate" method="post"><button type="submit" class="catalogue-duplicate-button icon-action" aria-label="Duplicate template" title="Duplicate template">⧉</button></form>
-                {% if catalogue.active %}<button type="button" class="danger-button icon-action" aria-label="Delete template" disabled title="The default template cannot be deleted">×</button>{% elif user.role not in ['admin', 'super-admin'] and (not catalogue.created_by or catalogue.created_by | lower != user.username | lower) %}<button type="button" class="danger-button icon-action" aria-label="Delete template" disabled title="Only admins and super-admins, or the user who created it, can delete this PPT Template">×</button>{% else %}<form action="/workspace-config/report-templates/{{ catalogue.identifier | urlencode }}/delete" method="post" data-confirm="Delete template {{ catalogue.name }}? This cannot be undone."><button type="submit" class="danger-button icon-action" aria-label="Delete template" title="Delete template">×</button></form>{% endif %}
-                <a class="catalogue-export-button icon-action" aria-label="Export template" title="Export template" href="/workspace-config/report-templates/{{ catalogue.identifier | urlencode }}/export">⬇</a>
-              </div>
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    <form class="catalogue-new-template-form" action="/workspace-config/slides-templates/new" method="post">
-      <button type="submit" class="catalogue-new-template-button">New Template</button>
-    </form>
-    <p class="form-note">Required columns: Slide, Slide Tittle, Slide Subtittle, Layout, Chart Tittle, Source Dataset, KPI, Chart type, Filters, Rows Split, Columns Split, Legend, Legend Position, Legend Format, Label Position, Label Format, Axis X Range and Axis Y Range. Label Position may be empty, or use None, Top, Up, Middle or Down. Label Format and Legend Format are optional lists such as [&quot;#1A2B3C&quot;,&quot;Arial&quot;,&quot;Bold&quot;,&quot;Italic&quot;,&quot;Large&quot;]; they can define one hexadecimal colour, one font, styles and one size: Small, Medium or Large. Empty format retains automatic rendering. Numeric axis ranges apply to every chart family: use [min,max], [min,] or [,max]; percentage axes use values from 0 to 100. Each slide number creates a new slide from its named layout. Use Title Slide, Transition Slide or End Slide for structural rows without KPI/chart fields. Rows Split defines chart categories/table rows; Columns Split defines comparison series/table columns. Chart layouts need one image placeholder per CDR row and keep analyst comments blank.</p>
-    </div>
-  </details>
-
   <details id="main-cities" class="panel collapsible-panel main-cities-panel" open data-panel-state-key="workspace-config:main-cities">
     <summary class="collapsible-summary">
       <div><p class="eyebrow">PPT filters</p><h2>Main Cities</h2></div>

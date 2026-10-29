@@ -1255,7 +1255,7 @@ def test_designs_lifecycle_and_layout(client, ppt_reporting_old):
     assert page.text.index('>Apply Filters<') < page.text.index('>Save Filters<')
     assert 'id="ds-apply-filters" title="Apply the current PPT filters without saving them" disabled' in page.text
     assert 'id="ds-refresh"' not in page.text
-    assert '>Import Design<' in page.text
+    assert '>Import PPT Design<' in page.text
     assert 'Total Designs: 0' in page.text
     assert '>PPT Scope & Filters<' in page.text
     assert 'id="ds-active-design-heading">PPT Filters<' in page.text

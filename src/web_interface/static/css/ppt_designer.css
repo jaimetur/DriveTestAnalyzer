@@ -2080,3 +2080,24 @@
 #ds-filter-float .ds-filter-help { margin: 10px 0 0; font-size: .72rem; }
 #ds-filter-overlay .ds-preparing[data-state="ready"] { display: none; }
 #ds-filter-overlay .ds-design-primary-actions:not(:has(> button:not([hidden]):not(.ds-filter-close-action))) { display: none; }
+
+/* PPT Templates, opened from the library: the templates of the workspace in a dialog. */
+.ppt-designer .ds-templates-dialog { width: min(1180px, 94vw) !important; max-width: none !important; max-height: 90vh; overflow: auto; padding: 18px 24px !important; }
+.ds-templates-dialog .ds-templates-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin: 0 3.5rem .4rem 0; }
+.ds-templates-dialog .ds-templates-head :is(p, h2) { margin: 0; }
+.ds-templates-dialog .lede { margin: .3rem 0 .8rem; font-size: .88rem; }
+.ds-templates-dialog .catalogue-new-template-form { margin-top: .8rem; }
+.ds-templates-dialog > .form-note { margin: .5rem 0 0; font-size: .76rem; }
+.ds-templates-dialog .lede code { padding: 0 .3rem; border-radius: 5px; background: #f1ecf8; font-size: .82em; }
+/* An action beside the count of Designs, as tall as it: white, outlined, with its icon (not one more pill). */
+.ppt-designer .ds-templates-open { display: inline-flex; align-items: center; gap: .5rem; min-height: 0; height: 2.55rem; padding: 0 1.1rem;
+  border: 1.5px solid #8d65cf; border-radius: 999px; background: #fff; color: #56349a; font-size: .95rem; font-weight: 800;
+  box-shadow: 0 4px 12px rgba(86, 52, 154, .12); }
+.ppt-designer .ds-templates-open:hover { border-color: #56349a; background: #f3eefb; color: #4b2c87; }
+.ppt-designer .ds-templates-open svg { width: 1.15rem; height: 1.15rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+/* A PPT Template open in the viewer makes no PPT of its own: its Designs do. */
+#ds-viewer.ds-template-preview :is(#ds-viewer-export-ppt, #ds-generate-ppt) { display: none !important; }
+
+/* Create PPT Design and Import PPT Design with their icons. */
+.ppt-designer :is(#ds-create, #ds-import) { display: inline-flex; align-items: center; gap: .5rem; }
+.ppt-designer :is(#ds-create, #ds-import) svg { flex: none; width: 1.15rem; height: 1.15rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }

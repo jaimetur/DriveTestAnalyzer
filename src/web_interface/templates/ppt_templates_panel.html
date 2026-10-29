@@ -1,0 +1,51 @@
+{# PPT Templates of the workspace, opened from the PPT Templates button of the PPT Designs library (ppt_designer.html):
+   import, rename, set the default, duplicate, delete, export, create, and edit one in the viewer and its Designer. #}
+<div class="ds-templates-head">
+  <div><p class="eyebrow">PPT Templates Library</p><h2 id="ds-templates-title">PPT Templates</h2></div>
+  <span class="pill ds-total-badge">Total Templates: {{ workspace_catalogues | length }}</span>
+</div>
+<p class="lede">Import a template CSV or create one. A template serves any NR Mode: its titles name that of each PPT with <code>{NR Mode}</code> and <code>{NR Mode Name}</code>.</p>
+{% if catalogue_error %}<span hidden data-catalogue-import-error>{{ catalogue_error }}</span>{% endif %}
+{% if catalogue_notice %}<span hidden data-catalogue-import-notice>{{ catalogue_notice }}</span>{% endif %}
+<form class="catalogue-import-row" action="/workspace-config/slides-templates/import" method="post" enctype="multipart/form-data" autocomplete="off" data-catalogue-import-form data-catalogue-template-library='{{ template_names | tojson }}' novalidate>
+  <input type="text" name="catalogue_name" aria-label="Template name" placeholder="Template name (optional)" maxlength="80" autocomplete="off" data-no-persist data-catalogue-import-name>
+  <input type="file" name="catalogue_file" aria-label="Report Template CSV" accept=".csv,text/csv" data-catalogue-import-file>
+  <input type="hidden" name="convert_catalogue" value="0" data-catalogue-convert>
+  <input type="hidden" name="overwrite_existing" value="0" data-catalogue-overwrite>
+  <button type="submit">Import</button>
+</form>
+<div class="table-wrap catalogue-workspace-table-wrap">
+  <table class="catalogue-workspace-table">
+    <thead><tr><th>Template name</th><th>Created</th><th>Last Updated</th><th>Last Updated by</th><th>Default</th><th>Actions</th></tr></thead>
+    <tbody>
+      {% for catalogue in workspace_catalogues %}
+      <tr>
+        <td>
+          <form class="catalogue-rename-form" action="/workspace-config/report-templates/{{ catalogue.identifier | urlencode }}/rename" method="post" autocomplete="off">
+            <input type="text" name="catalogue_name" value="{{ catalogue.name }}" aria-label="Name for {{ catalogue.name }}" maxlength="80" required autocomplete="off" data-no-persist data-catalogue-auto-rename>
+          </form>
+        </td>
+        {% set created_parts = (catalogue.created_at or '').replace('T', ' ').split() %}
+        {% set updated_parts = (catalogue.updated_at or '').replace('T', ' ').split() %}
+        <td class="catalogue-timestamp"><span>{{ created_parts[0] if created_parts else '-' }}</span>{% if created_parts | length > 1 %}<span>{{ created_parts[1] }}</span>{% endif %}</td>
+        <td class="catalogue-timestamp"><span>{{ updated_parts[0] if updated_parts else '-' }}</span>{% if updated_parts | length > 1 %}<span>{{ updated_parts[1] }}</span>{% endif %}</td>
+        <td class="catalogue-updated-by">{{ catalogue.updated_by or '-' }}</td>
+        <td class="catalogue-default-cell"><span class="catalogue-default-mark {% if catalogue.active %}is-default{% else %}is-not-default{% endif %}" aria-label="{% if catalogue.active %}Default template{% else %}Not the default template{% endif %}" title="{% if catalogue.active %}Default template{% else %}Not the default template{% endif %}">{% if catalogue.active %}✓{% else %}○{% endif %}</span></td>
+        <td>
+          <div class="catalogue-workspace-actions">
+            {% if catalogue.active %}<button type="button" class="catalogue-set-default-button icon-action" aria-label="Set default" title="Set default" disabled>★</button>{% else %}<form action="/workspace-config/report-templates/{{ catalogue.identifier | urlencode }}/activate" method="post"><button type="submit" class="catalogue-set-default-button icon-action" aria-label="Set default" title="Set default">★</button></form>{% endif %}
+            <button type="button" class="catalogue-edit-button icon-action" aria-label="Edit template {{ catalogue.name }}" data-edit-template="{{ catalogue.name }}" title="Edit template: open it in the viewer and its Designer">✎</button>
+            <form action="/workspace-config/report-templates/{{ catalogue.identifier | urlencode }}/duplicate" method="post"><button type="submit" class="catalogue-duplicate-button icon-action" aria-label="Duplicate template" title="Duplicate template">⧉</button></form>
+            {% if catalogue.active %}<button type="button" class="danger-button icon-action" aria-label="Delete template" disabled title="The default template cannot be deleted">×</button>{% elif user.role not in ['admin', 'super-admin'] and (not catalogue.created_by or catalogue.created_by | lower != user.username | lower) %}<button type="button" class="danger-button icon-action" aria-label="Delete template" disabled title="Only admins and super-admins, or the user who created it, can delete this PPT Template">×</button>{% else %}<form action="/workspace-config/report-templates/{{ catalogue.identifier | urlencode }}/delete" method="post" data-confirm="Delete template {{ catalogue.name }}? This cannot be undone."><button type="submit" class="danger-button icon-action" aria-label="Delete template" title="Delete template">×</button></form>{% endif %}
+            <a class="catalogue-export-button icon-action" aria-label="Export template" title="Export template" href="/workspace-config/report-templates/{{ catalogue.identifier | urlencode }}/export">⬇</a>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<form class="catalogue-new-template-form" action="/workspace-config/slides-templates/new" method="post">
+  <button type="submit" class="catalogue-new-template-button">New Template</button>
+</form>
+<p class="form-note">A template CSV has a row per chart: its slide (number, titles, layout), the chart (title, source, KPI, type, filters, splits, legend) and its look. Every column, layout and chart type: Help → PPT Designer → Report Template reference.</p>

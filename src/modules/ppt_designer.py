@@ -115,6 +115,10 @@ def _dataset_id(value: Any) -> int | None:
     except (TypeError, ValueError):
         return None
 STATE_KEY = 'ppt_designs_v2'
+# A PPT Template opened in the viewer and the Designer (PPT Templates → Edit): a Design of each user kept apart from
+# the Designs (never listed, exported, transferred or used by another module), whose changes go to its template.
+TEMPLATE_PREVIEWS_STATE_KEY = 'ppt_template_previews_v1'
+TEMPLATE_PREVIEW_PREFIX = 'template-preview-'
 LEGACY_STATE_KEY = 'ppt_design_sets_v1'
 DEFAULT_FILTERS_MIGRATION_KEY = 'ppt_design_default_filters_v6'
 # The Main Cities choice of a City filter: the Main Cities of the workspace whenever the Design is used, so a change
@@ -1890,6 +1894,34 @@ def install_design_routes(core):
             task_repository.set_workspace_state(MAIN_CITIES_MIGRATION_KEY, '1')
         return migrated
 
+    def is_template_preview(design_id) -> bool:
+        return str(design_id or '').startswith(TEMPLATE_PREVIEW_PREFIX)
+
+    def template_preview_id(username: str) -> str:
+        return f'{TEMPLATE_PREVIEW_PREFIX}{sha256(str(username).casefold().encode()).hexdigest()[:16]}'
+
+    def read_template_previews(task_repository) -> dict:
+        try:
+            previews = json.loads(task_repository.get_workspace_state(TEMPLATE_PREVIEWS_STATE_KEY) or '{}')
+        except (TypeError, ValueError):
+            previews = {}
+        return previews if isinstance(previews, dict) else {}
+
+    def read_designs_and_previews(task_repository) -> dict:
+        """The Designs and the PPT Templates open as one (for what reads or changes an open Design)."""
+        return {**read_designs(task_repository), **read_template_previews(task_repository)}
+
+    def store_design_entry(task_repository, design_id, definition, designs=None) -> None:
+        """Store one Design, or the PPT Template open as one, in its own store (``designs``: the Designs just read)."""
+        if is_template_preview(design_id):
+            previews = read_template_previews(task_repository)
+            previews[design_id] = definition
+            task_repository.set_workspace_state(TEMPLATE_PREVIEWS_STATE_KEY, json.dumps(previews))
+            return
+        designs = read_designs(task_repository) if designs is None else designs
+        designs[design_id] = definition
+        task_repository.set_workspace_state(STATE_KEY, json.dumps(designs))
+
     def design_slide_comment_key(entries) -> str:
         """Return a position-independent identity for one template slide."""
         signature = [
@@ -2397,7 +2429,35 @@ def install_design_routes(core):
             'design_theme': load_user_theme(bound_repository(), user.username, DESIGN_THEME_MODULE),
             'canvas_chart_styles': {key: canvas_chart_style(key) for key in THEMES},
             'design_viewer_tokens': {key: design_viewer_tokens(key) for key in THEMES},
+            'design_blank_template': design_slides.BLANK_PPT_TEMPLATE,
+            **templates_library_context(),
+            'catalogue_notice': request.query_params.get('catalogue_notice') or None,
+            'catalogue_error': request.query_params.get('catalogue_error') or None,
         })
+
+    def templates_library_context() -> dict:
+        """PPT Templates (the button of the library): the templates of the workspace, by name."""
+        catalogues = core.report_catalogue_options()
+        return {
+            'workspace_catalogues': sorted((
+                {**catalogue, 'created_at': core.format_local_timestamp(catalogue.get('created_at')),
+                 'updated_at': core.format_local_timestamp(catalogue.get('updated_at'))}
+                for catalogue in catalogues
+            ), key=lambda item: (core.nr_mode_free_sort_name(item['name']), str(item['name']).casefold())),
+            'template_names': [str(catalogue['name']) for catalogue in catalogues],
+        }
+
+    @app.get('/api/ppt-designer/templates-library')
+    def templates_library(user=Depends(design_editor_user)):
+        """PPT Templates as they are now (a template saved from the Designer meanwhile included): the list of the dialog
+        and the templates a new PPT Design can choose."""
+        workspace_key()
+        context = {'user': user, **templates_library_context(), 'catalogue_notice': None, 'catalogue_error': None}
+        return {
+            'html': core.templates.get_template('ppt_templates_panel.html').render(context),
+            'templates': [{'name': row['name'], 'identifier': row['identifier'], 'active': row['active']}
+                          for row in core.report_catalogue_options()],
+        }
 
     @app.get('/api/ppt-designer/theme')
     def design_theme(user=Depends(design_user)):
@@ -2423,6 +2483,12 @@ def install_design_routes(core):
             task_repository = bound_repository()
             designs = read_designs(task_repository)
             known = creators(task_repository, PPT_DESIGNER)
+            # The PPT Template the user has open as a Design (PPT Templates → Edit), which the page never lists.
+            preview_id = template_preview_id(user.username)
+            preview = read_template_previews(task_repository).get(preview_id)
+        if isinstance(preview, dict):
+            designs = {**designs, preview_id: {**preview, 'template_preview': True}}
+            known = {**known, preview_id: user.username}
         # Each Design with who created it: only they, admins and super-admins delete it.
         return JSONResponse(
                 {design_id: {**definition, 'created_by': known.get(str(design_id).casefold(), '')}
@@ -3208,14 +3274,42 @@ def install_design_routes(core):
         ):
             raise HTTPException(409, 'A Design with this name already exists.')
 
+    @app.put('/api/ppt-designer/template-preview')
+    def open_template_preview(definition: DesignDefinition, user=Depends(design_editor_user)):
+        """Open a PPT Template in the viewer and the Designer (PPT Templates → Edit) as a Design of the user kept apart
+        from the Designs: the selection sent (NR Mode, Campaign, filters) shows its slides, and what the Designer changes
+        goes to the template."""
+        workspace_key()
+        task_repository = bound_repository()
+        if template_row_of(definition.template, task_repository) is None:
+            raise HTTPException(404, 'PPT Template not found.')
+        design_id = template_preview_id(user.username)
+        stored = {**definition.model_dump(mode='json'), 'name': definition.template, 'slide_overrides': {},
+                  'own_slides': None, 'slide_comments': {}, 'slide_comment_meta': {}}
+        stored.pop('datasets', None)
+        with lock:
+            store_design_entry(task_repository, design_id, stored)
+        task_repository.add_log(user.username, 'open_template_preview', json.dumps({
+            'id': design_id, 'template': definition.template, 'nr_mode': definition.nr_mode,
+        }))
+        return {'id': design_id, 'definition': {**stored, 'template_preview': True, 'created_by': user.username}}
+
     @app.put('/api/ppt-designer/{design_id}')
     def save_design(design_id: str, definition: DesignDefinition, user=Depends(design_editor_user)):
         workspace_key()
+        preview = is_template_preview(design_id)
+        if preview and design_id != template_preview_id(user.username):
+            raise HTTPException(403, 'This PPT Template is open by another user.')
+        if definition.template == design_slides.BLANK_PPT_TEMPLATE and not definition.own_slides:
+            # A PPT Design created blank: its cover, as slides of its own from the start (it follows no template).
+            definition = definition.model_copy(update={
+                'own_slides': design_slides.slides_from_entries(core.cover_catalog_entries(definition.name.strip()))})
         with lock:
             task_repository = bound_repository()
             validate(definition, task_repository)
-            designs = read_designs(task_repository)
-            ensure_unique_design_name(designs, design_id, definition.name)
+            designs = read_template_previews(task_repository) if preview else read_designs(task_repository)
+            if not preview:
+                ensure_unique_design_name(designs, design_id, definition.name)
             created = design_id not in designs
             definition.name = definition.name.strip()
             saved_definition = migrate_auto_cdrs(normalize_design_filters(definition.model_dump(mode='json')), task_repository)
@@ -3230,12 +3324,11 @@ def install_design_routes(core):
                 # opened before never take it back.
                 for key, default in (('slide_overrides', {}), ('own_slides', None)):
                     saved_definition[key] = copy.deepcopy(designs[design_id].get(key, default))
-            designs[design_id] = saved_definition
-            task_repository.set_workspace_state(STATE_KEY, json.dumps(designs))
-            if created:
+            store_design_entry(task_repository, design_id, saved_definition, designs)
+            if created and not preview:
                 record_creator(task_repository, PPT_DESIGNER, design_id, user.username)
-            creator = creator_of(task_repository, PPT_DESIGNER, design_id)
-            task_repository.add_log(user.username, 'save_design', json.dumps({
+            creator = user.username if preview else creator_of(task_repository, PPT_DESIGNER, design_id)
+            task_repository.add_log(user.username, 'save_template_preview' if preview else 'save_design', json.dumps({
                 'id': design_id, 'name': definition.name, 'nr_mode': definition.nr_mode, 'template': definition.template,
             }))
         # As the list gives it, with who created it: the page compares it with the Design it has open.
@@ -3397,6 +3490,8 @@ def install_design_routes(core):
         return {
             'design_id': design_id,
             'name': definition.name,
+            # A PPT Template open as a Design (PPT Templates → Edit): the Designer changes only its template.
+            'template_preview': is_template_preview(design_id),
             'detached': bool(definition.own_slides),
             'template': {
                 'name': definition.template,
@@ -3411,13 +3506,14 @@ def install_design_routes(core):
             'report': report or {'dropped': [], 'template_changed': []},
             'parameter_values': definition.parameter_values,
             'rights': {
-                'design': can_edit_design_slides(user, design_id, task_repository),
+                # A PPT Template open as a Design changes only its template.
+                'design': not is_template_preview(design_id) and can_edit_design_slides(user, design_id, task_repository),
                 'template': not definition.own_slides and can_edit_template_slides(user, template_row),
             },
         }
 
     def stored_design(design_id, task_repository):
-        designs = read_designs(task_repository)
+        designs = read_designs_and_previews(task_repository)
         if design_id not in designs:
             raise HTTPException(404, 'Design not found.')
         return DesignDefinition.model_validate(designs[design_id])
@@ -3425,11 +3521,11 @@ def install_design_routes(core):
     def write_design_slides(design_id, task_repository, **changes) -> dict:
         """Store slide set fields of one Design (re-read under the lock: its filters and comments saved meanwhile stay)."""
         with lock:
-            designs = read_designs(task_repository)
+            designs = read_designs_and_previews(task_repository)
             if design_id not in designs:
                 raise HTTPException(404, 'Design not found.')
             designs[design_id] = {**designs[design_id], **copy.deepcopy(changes)}
-            task_repository.set_workspace_state(STATE_KEY, json.dumps(designs))
+            store_design_entry(task_repository, design_id, designs[design_id])
             return designs[design_id]
 
     @app.get('/api/ppt-designer/slides/layouts')
@@ -3917,7 +4013,7 @@ def install_design_routes(core):
     def save_design_comments(design_id: str, payload: DesignComments, user=Depends(design_editor_user)):
         with lock:
             task_repository = bound_repository()
-            designs = read_designs(task_repository)
+            designs = read_designs_and_previews(task_repository)
             if design_id not in designs:
                 raise HTTPException(404, 'Design not found.')
             comments = {
@@ -3943,7 +4039,7 @@ def install_design_routes(core):
                     'selection': snapshot.selection_key if snapshot is not None and snapshot.workspace == workspace_key() else '',
                 }
             designs[design_id]['slide_comment_meta'] = meta
-            task_repository.set_workspace_state(STATE_KEY, json.dumps(designs))
+            store_design_entry(task_repository, design_id, designs[design_id])
             task_repository.add_log(user.username, 'save_design_comments', json.dumps({'id': design_id}))
             if payload.generated_added and payload.generated_slide:
                 task_repository.add_log(user.username, 'add_generated_design_comments', json.dumps({
@@ -5633,7 +5729,7 @@ def install_design_routes(core):
         if design_id:
             # The slide set of a saved Design is the one stored (the Designer saves it): a viewer opened before does
             # not send it back older.
-            stored = read_designs(bound_repository()).get(design_id)
+            stored = read_designs_and_previews(bound_repository()).get(design_id)
             if isinstance(stored, dict):
                 definition = definition.model_copy(update={
                     'slide_overrides': copy.deepcopy(stored.get('slide_overrides') or {}),
@@ -5793,7 +5889,7 @@ def install_design_routes(core):
     def prefetched_design(design_id: str, user=Depends(design_user)):
         task_repository = bound_repository()
         with lock:
-            raw_definition = read_designs(task_repository).get(design_id)
+            raw_definition = read_designs_and_previews(task_repository).get(design_id)
             if not isinstance(raw_definition, dict):
                 raise HTTPException(404, 'Design not found.')
         if not has_preview_manifest(design_id):
@@ -5811,7 +5907,7 @@ def install_design_routes(core):
         started = monotonic()
         task_repository = bound_repository()
         with lock:
-            if design_id not in read_designs(task_repository):
+            if design_id not in read_designs_and_previews(task_repository):
                 raise HTTPException(404, 'Design not found.')
         # With no preparation of the Design kept (after a restart) there is nothing to look up: it is prepared at once.
         if not has_preview_manifest(design_id):
@@ -5825,7 +5921,7 @@ def install_design_routes(core):
         prepared Design and for the charts of the slide it opened on."""
         task_repository = bound_repository()
         with lock:
-            raw_definition = read_designs(task_repository).get(design_id)
+            raw_definition = read_designs_and_previews(task_repository).get(design_id)
         if not isinstance(raw_definition, dict):
             raise HTTPException(404, 'Design not found.')
         numbers = {key: round(float(timeline[key]), 2) for key in ('lookup_seconds', 'prepared_seconds', 'slide_seconds')

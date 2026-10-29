@@ -193,7 +193,7 @@ Workspaces, backups and transfer packages created with the former layout (module
 - `assets/labels-vendors/default-vendor-maps.json` holds the Vendor Maps (labels, colours and CDR spellings) a new workspace starts with.
 - `assets/labels-campaigns/default-campaign-map.json` holds the default Campaign Maps (label format, order of the radio modes and exceptions) of the workspaces without their own.
 - `assets/map-areas/` holds the Map Areas shipped with the application (one `<ISO3>.json.gz` per country, such as the UK ITL3 areas, listed in `manifest.json`) and the world country polygons that find the country of each test (see its README).
-- Workspace Report Templates supply slide/chart definitions and are documented in [Workspace Config → Report Template reference](workspace-config.md#report-template-reference).
+- Workspace Report Templates supply slide/chart definitions and are documented in [PPT Designer → Report Template reference](ppt-designer.md#report-template-reference).
 
 ## Documentation
 

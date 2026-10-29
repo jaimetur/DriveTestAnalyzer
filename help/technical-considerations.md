@@ -136,7 +136,7 @@ Example:
 
 Template filters are parsed as ordered, semicolon-terminated conditions joined with logical AND. Rows and Columns are ordered dimensions, so reversing their selection changes the grouping hierarchy. Legends derive their content from the chosen dimension, filter, threshold or bucket rule, and side legends reserve plot space.
 
-These contracts are shared by PPT Designer, PPT Reporting (old), Chart Builder and Template Editor so a saved definition has the same meaning in previews and generated output. The authoring syntax, operators, examples, aggregation behaviour and legend rules are centralized in [Workspace Config → Report Template reference](workspace-config.md#report-template-reference).
+These contracts are shared by PPT Designer, PPT Reporting (old), Chart Builder and Template Editor so a saved definition has the same meaning in previews and generated output. The authoring syntax, operators, examples, aggregation behaviour and legend rules are centralized in [PPT Designer → Report Template reference](ppt-designer.md#report-template-reference).
 
 ## Multivendor calculation and remapping
 

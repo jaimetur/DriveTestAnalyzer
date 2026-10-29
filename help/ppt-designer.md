@@ -24,6 +24,7 @@ ppt-designer
 | Explore slides and chart data | [View PPT](#view-ppt) |
 | Change slides, layouts and charts on screen, for this Design or for its template | [Designer](#designer) |
 | Choose the city, threshold or other values of a template's parameters | [Template parameters](#template-parameters) |
+| Import, create or edit PPT Templates | [PPT Templates](#ppt-templates) |
 | Export a presentation | [Generate PPT](#generate-ppt) |
 | Review exported jobs or charts | [PPT Generation Jobs](#ppt-generation-jobs) / [Charts Panel](#charts-panel) |
 | Resolve empty charts or preparation problems | [Troubleshooting](#troubleshooting) |
@@ -31,7 +32,7 @@ ppt-designer
 ## Before creating a Design
 
 1. Open the correct workspace and process the required CDR types.
-2. Create or import a **Report Template** in Workspace Config. A template serves the CDRs of any NR Mode.
+2. Create or import a **Report Template** in **PPT Templates**, at the top of the PPT Designs library. A template serves the CDRs of any NR Mode.
 3. For Multivendor Comparison, persist Vendor mappings first.
 4. Open **PPT Designer**.
 
@@ -40,15 +41,15 @@ Any user with workspace access can manage PPT definitions. **user-editor**, **ad
 > [!TIP]
 > For a first comparison: create a Design (it compares the newest two campaigns of its NR Mode), choose its Scope, Campaign and other filters, apply them, then open **View PPT**. Inspect the charts before generating a PPT.
 
-Designs use the same template schema and renderer as Reporting. Detailed template authoring is covered in [Workspace Config → Report Template reference](workspace-config.md#report-template-reference).
+Designs use the same template schema and renderer as Reporting. Detailed template authoring is covered in [Report Template reference](#report-template-reference).
 
 ## PPT Designs
 
 ### Create a definition
 
-1. Enter **PPT name**.
-2. Select the **NR Mode** of the CDRs it reads (**NSA**, **SA** or **NSA & SA** for both, see [NSA & SA in one Design](#nsa--sa-in-one-design)) and a **Template**. When the NR Mode leaves operators out of scope (the **NR Modes** of their labels in the [Operator Maps](workspace-config.md#operator-maps), such as Three, which has no SA), their tests are left out of the Design, and its CDRs used and the viewer, beside its Campaign and Scope, name them (*Out of scope: SA · Three*). Any template serves every NR Mode: its titles name the NR Mode of the Design where they write `{NR Mode}` (NSA, SA or NSA & SA) or `{NR Mode Name}` (Non-Standalone, Standalone or Non-Standalone & Standalone).
-3. Click **Create Design**. The saved definition opens in PPT Scope & Filters.
+1. Enter its **PPT Name** (**My New PPT Design** is offered).
+2. Select the **NR Mode** of the CDRs it reads (**NSA**, **SA** or **NSA & SA** for both, see [NSA & SA in one Design](#nsa--sa-in-one-design)) and a **PPT Template**. When the NR Mode leaves operators out of scope (the **NR Modes** of their labels in the [Operator Maps](workspace-config.md#operator-maps), such as Three, which has no SA), their tests are left out of the Design, and its CDRs used and the viewer, beside its Campaign and Scope, name them (*Out of scope: SA · Three*). Any template serves every NR Mode: its titles name the NR Mode of the Design where they write `{NR Mode}` (NSA, SA or NSA & SA) or `{NR Mode Name}` (Non-Standalone, Standalone or Non-Standalone & Standalone).
+3. Click **Create PPT Design**. The saved definition opens in PPT Scope & Filters; with **None — blank PPT** as its PPT Template, it opens in its [Designer](#designer) instead, with only its cover, where its slides are added (it follows no template; **More → Save as template…** makes one of it). **Import PPT Design** imports a PPT Design exported before.
 
 Names are unique in the workspace, whatever the NR Mode each Design reads: an NSA and an SA Design of the same template need names of their own (for example **NSA - NetCheck CDR Report** and **SA - NetCheck CDR Report**). The library sorts NSA first, then by name.
 
@@ -333,7 +334,7 @@ Saving the template refreshes the Design. Closing it unchanged preserves the cur
 > [!IMPORTANT]
 > **Updating a Report Template is a saved configuration change.** Use Apply to inspect a temporary preview before committing the chart definition to its template.
 
-The [Report Template reference](workspace-config.md#report-template-reference) describes supported chart types, filters, aggregations, legends and layouts.
+The [Report Template reference](#report-template-reference) describes supported chart types, filters, aggregations, legends and layouts.
 
 ### Filtered Chart Dataset
 
@@ -488,7 +489,7 @@ App Events record `design_slides_saved` (what changed: slides and charts of the 
 
 A template can declare **parameters**, so that Designs that differ only in a city, a call family or a threshold share one template with no difference of their own (a *City Report* template and its London, Manchester and Cardiff Designs).
 
-- **Parameters** in the bar of the Designer (Template scope) lists them at the left, with their type and where they are used, and shows the one chosen at the right, where it is added, renamed and deleted: **Field values** (the values of any field of the CDRs or an Auto-calculated Field, chosen from a list with search; one or several; none chosen means All), **Number** (default, minimum, maximum, step) or **Text**. **How to use it** gives the condition to write (`City IN ({Cities})`), to copy or add to the filters of the chart chosen. A parameter in use cannot be deleted, and renaming one renames its uses.
+- **Parameters** in the bar of the Designer (Template scope) lists them at the left, with their type and where they are used, and shows the one chosen at the right, where it is renamed and deleted; a template without parameters shows a card per type, which adds one, and **+ Add parameter** under the list asks for its type: **Field values** (the values of any field of the CDRs or an Auto-calculated Field, chosen from the groups of fields as in the chart builder, with a search; one or several; none chosen means All), **Number** (default, minimum, maximum, step) or **Text**. A parameter cannot take the name of a built-in token (`{Cities}`, `{Operators}`…): the first ones are named Chosen Cities, Threshold and Note. **How to use it** gives the condition to write (`City IN ({Chosen Cities})`), to copy or add to the filters of the chart chosen. A parameter in use cannot be deleted, and renaming one renames its uses.
 - Write `{Name}` in a chart filter (`City IN ({City})`; with All the condition is left out), a numeric setting (`LQ < {Threshold}`, `Threshold = {Threshold}`, an axis range) or a title (`Voice quality in {City}`).
 - Each Design chooses the values in **PPT Scope & Filters → Parameters**, applied and saved like its filters; until it chooses them, it uses their default values. The section shows only when the template has parameters: they are added in the Designer, never there.
 
@@ -535,7 +536,7 @@ Generated PPTs, chart PNGs, tooltips and Canvas assets are stored under **output
 | Filename part | Contents |
 | --- | --- |
 | Prefix | `yyyymmdd_HHMMSS` |
-| Definition | NR Mode, PPT name and Scope |
+| Definition | NR Mode, PPT Name and Scope |
 | Geography | Selected Regions joined by ` + `, or All Regions |
 | Multiple campaigns | Campaigns joined by `_vs_` at the end |
 
@@ -583,6 +584,394 @@ Stored Canvas models repaint with the current renderer. Legacy jobs without mode
 > **Completed exports are immutable snapshots.** PPT Filters are hidden in Charts Panel. View Filters shows the exported selection; changing a live Design does not rewrite that job.
 
 Permitted editors can open the generating template and Auto-Calculated Fields without changing the saved snapshot.
+
+## PPT Templates
+
+**PPT Templates**, at the top of the PPT Designs library (for `user-editor`, `admin` and `super-admin`), opens the **PPT Templates Library** of the workspace in a dialog: import, create, rename, duplicate, set the default, export, delete and edit its templates.
+
+Templates belong to the active workspace and are stored in that workspace database's `report_templates` table. Import, export, backup and transfer packages serialize them as portable CSV files, but those files are package artifacts rather than the live source of record. Obsolete `slides-templates` directories are removed by the current migration and portability flows.
+
+The library keeps the templates of the workspace, one of them the default. A template has no NR Mode of its own: it serves the CDRs of any NR Mode, and each Design (or Reporting job) chooses the NR Mode it reads. Its slide titles, subtitles and chart titles name that NR Mode where they write `{NR Mode}` (NSA, SA or NSA & SA) or `{NR Mode Name}` (Non-Standalone, Standalone or Non-Standalone & Standalone), so one template gives the NSA, the SA and the [NSA & SA](#nsa--sa-in-one-design) decks. PPT Designer also write the selection of each Design where they name it (`{Campaigns}`, `{Operators}`, `{Cities}`…, see [Fields in titles and text boxes](#fields-in-titles-and-text-boxes)). Every row has the **NR Mode** field (that of its CDR): a chart keeps one NR Mode with the filter `NR Mode IN (SA)` (its title's `{NR Mode}` then names that one), and NR Mode can split or label its series in Rows Split, Columns Split, Legend and the Dynamic Rows/Columns Field. Template names are unique in the workspace.
+
+Admins and super-admins change any template; a user-editor changes (saves, renames, overwrites on import, receives copied slides or charts into) only the templates they created, as with Designs, and customizes the others from the [Designer](#designer) of their own Designs. The slides of a template (with their charts, and its parameters) are edited from any Design that follows it, and kept in the template's CSV (its `Format` column).
+
+The library is sorted by name (an NR Mode written in a name, such as `NSA - Report`, is ignored for the order); its columns show the creation and last update times and **Last Updated by**, the user who last imported, edited, renamed, duplicated or promoted the template.
+
+Workspaces of earlier versions kept an NSA and an SA library: when they open, each pair of templates that only differed in the titles naming the mode (for example **NSA - NetCheck CDR Report** with *Non-Standalone* and **SA - NetCheck CDR Report** with *Standalone*) becomes one template named without the mode (**NetCheck CDR Report**) whose titles use the tokens, and the Designs, PPT jobs and Reporting (old) jobs that used either copy use it. A title only one copy named (such as *SA RF Quality Analysis* beside *RF Quality Analysis*) takes `{NR Mode}` in both. The other templates keep their names, an SA one named as an NSA one taking " (SA)". The App Events record it (`report_templates_nr_mode_merged`). Packages and backups of earlier versions are imported the same way.
+
+Available actions:
+
+- New
+- Import CSV
+- Edit
+- Rename
+- Duplicate
+- Set Default
+- Export
+- Delete
+
+**Edit** opens the template in the viewer and its [Designer](#designer) as a PPT of its own, never listed among the PPT Designs: it reads the CDRs of the NR Mode and Campaign it was last opened with (NSA and Latest 2 campaigns the first time; PPT Scope & Filters changes them), every change of the Designer goes to the template (its bar reads **PPT Template** with the number of Designs that follow it), **More** offers only **Save as template…**, and it makes no PPT of its own (its Designs do). **Edit PPT Template**, the pencil at the top of the viewer, shows the template as a table (see [Table view](#table-view-template-editor)), for Find & Replace for example.
+
+**New Template** creates a template with its cover and opens it in its Designer, where its slides are added. Import accepts a CSV name or derives it from the filename, can convert a legacy catalogue when prompted and requires explicit overwrite confirmation for a case-insensitive name collision.
+
+Renaming saves when you leave the name field or press Enter; the field keeps its previous name and shows an error if the save fails. Each template has an identity that never changes, and each Design refers to its template by it, so a renamed template stays the template of its Designs (whose names, when they repeat the template name, follow it too); a duplicate gets its own identity. Duplicate creates `- Copy`.
+
+One template is the default within a workspace. Reporting initially selects that default but does not change it when a user chooses another template for one job. A default template cannot be deleted until another template becomes default. Only admins, super-admins and the user who created a template (with New Template, Import CSV or Duplicate; one brought by Admin Import / Transfer belongs to its creator on the source server when that user is active here, otherwise to whoever imports it) delete it; for the other users **Delete** is disabled and its tooltip says why. New workspaces start without templates.
+
+The row Export action downloads that individual CSV; portable ZIP export is available under Import / Export / Transfer.
+
+### Table view (Template Editor)
+
+**Edit PPT Template**, the pencil at the top of the viewer, opens the template of the PPT as a table in a large dialog. The surrounding page controls are omitted from the embedded editor.
+
+#### Grid behaviour
+
+- The table scrolls vertically and horizontally inside its viewport.
+- The bottom action bar remains visible.
+- Shared slide cells are visually merged across charts on the same slide.
+- Row controls add, remove, reorder and preview chart definitions.
+- **Re-Enumerate Slides** rewrites slide numbers into their current visual order.
+- Edited cells use a light pastel-yellow background.
+- Newly inserted text is highlighted more strongly.
+- A successful save resets all change highlighting.
+- **Find & Replace** (or Ctrl/Cmd+F inside the editor) searches every editable cell of the template. Matching cells are outlined and the current one is highlighted; Enter and Shift+Enter (or Next and Previous) move between them. **Replace** changes every occurrence in the current cell and **Replace All** changes every occurrence in the template after a confirmation. Replacements are ordinary unsaved edits until **Save Template**; **Match case** restricts matching to the exact capitalization.
+
+#### Validation
+
+- Manual cell edits are validated after a short pause and when leaving the cell. Save revalidates the complete grid and stops if a row or filter is malformed.
+- Every row error names the row as the editor shows it: `Slide: n - Chart: n` (the chart is the place of the row among the rows of its slide), or `Slide: n` for a Title, Transition or End Slide, followed by what to correct.
+- Fixing the invalid cell clears the error message.
+- Filter conditions render on separate lines with visual bullets; bullets are not stored in the cell.
+- CSV filter cells retain one condition per line.
+
+#### Assistance and previews
+
+- Searchable single-select assistance for layouts, chart types, fields and positions.
+- Ordered multi-select assistance for Rows, Columns and Legend.
+- Cell Assistance writes a value to the cell as soon as it is chosen (and the KPI operation as soon as it is picked); the values of Rows, Columns and Legend follow what is ticked. **Close**, at its bottom, closes it.
+- Shared Filter Builder with parsed-expression display. Its conditions reach the Filters cell when **Apply filter** is pressed, once the filter is complete.
+- Chart Data Preview opens the full filtered dataset directly.
+- Chart Preview reuses the shared Interactive Preview.
+- **Preview NR Mode** (NSA by default, SA or NSA & SA), in the toolbar, chooses the CDRs the previews read: the ready CDRs of that NR Mode (of both for NSA & SA, as a Design of NSA & SA shows them), every Data, Voice and Speech test of them, and the titles of the preview name it (`{NR Mode}`, `{NR Mode Name}`).
+- A note above the rows names the charts that use a KPI, filter or split field only the CDRs of one NR Mode have (they show no samples of the other one).
+- **Update Template** applies preview values to the in-memory row; it does not save to disk.
+- **Auto-calculated Fields** opens the shared active-workspace field manager.
+
+**Save Template** validates and persists the complete grid atomically. Design comment reconciliation runs separately when slide identity changes; any required combined CDR update also runs after the save response. The PPT viewer refreshes the saved template when the editor closes. A combined CDR update is queued only when a template adds a source field missing from that CDR table.
+
+Removing the last template reference leaves the existing column available for future reuse. Close, Escape and backdrop actions preserve the editor when unsaved changes still require a decision.
+
+## Report Template reference
+
+This is the canonical authoring reference for templates used by both [PPT Designer](ppt-designer.md) and [PPT Reporting (old)](ppt-reporting-old.md). The common `assets/powerpoint-templates/Template_VodafoneThree.pptx` supplies the masters, named layouts and placeholders. Each distinct `Slide` value creates one slide; chart rows sharing that value fill its chart placeholders in row order.
+
+### Template columns
+
+| Column | Purpose |
+| --- | --- |
+| `Slide` | Positive slide number. Rows are sorted by this value; rows with the same number form one slide. |
+| `Slide Tittle` | Shared slide title. The historical `Tittle` spelling is part of the CSV schema. |
+| `Slide Subtittle` | Optional shared slide subtitle. |
+| `Layout` | Select `Title Page`, `Title Only`, or a grid named `Title + N rows + M columns`, optionally followed by `+ comments down` or `+ comments right`. Dynamic grids also appear in the selector. |
+| `Chart Tittle` | Optional title drawn inside the chart. |
+| `Source Dataset` | `CDR-Data`, `CDR-Voice`, `CDR-Speech` or `CDR-All`; leave blank for structural slides. `CDR-All` pools selected RF observations using `LTE_RSRP`, `NR_RSRP`, `LTE_SINR`, `NR_SINR`, `Latitude` and `Longitude`, retaining Operator/Campaign context. |
+| `KPI` | Processed CDR field or metric expression to render. |
+| `Chart type` | Automated chart type or structural slide type. |
+| `Filters` | Conditions applied before aggregation, one per line and terminated with `;`. |
+| `Rows Split` | Category/table-row hierarchy. Separate dimensions with `×`. |
+| `Columns Split` | Comparison-series/table-column hierarchy. Separate dimensions with `×`. |
+| `Legend` | Optional field whose plotted or filtered values should be explained. Blank means no legend. |
+| `Legend Position` | `Top`, `Bottom`, `Left` or `Right`; blank defaults to `Top`. |
+| `Legend Format` | Optional list defining legend colour, font, styles and relative size. Blank retains automatic formatting. |
+| `Label Position` | Optional value placement: `None`, `Top`, `Up`, `Middle` or `Down`. Blank retains automatic placement. |
+| `Label Format` | Optional list defining label colour, font, styles and relative size. Blank retains automatic formatting. |
+| `Axis X Range` | Optional CDF limits in KPI units: `[min,max]`, `[min,]` or `[,max]`. Blank keeps the automatic domain. |
+| `Axis Y Range` | Optional CDF cumulative-percentage limits from 0 to 100, using the same syntax. Blank keeps 0–100%. |
+| `Exclude Null/Empty` | `Yes` removes rows whose plotted value is null or empty before chart calculations. Blank keeps them. |
+| `Exclude Zero` | `Yes` removes rows whose plotted numeric value is exactly zero before chart calculations. Blank keeps them. |
+| `Format` | Optional, last. What the slides of the template ([Designer](#designer)) needs beyond the columns, as a JSON object per row: the ids of the slide and of the chart (`slide`, `id`), the place of the chart on its layout (`place`), its format (`style`: series colours, lines and opacity, legend, labels and axis titles), the kind of an element other than a chart (`kind`: `kpi`, `text` or `image`, whose Chart type is KPI Card, Text Box or Image) with the settings of a KPI card (`kpi`) or the text or picture of a text box or image (`content`), the field a chart is repeated by (`repeat`), the options of the slide (`slide_options`, such as `{"optional": true}` or the places adjusted on its layout, `geometry`) and, on the first row, the template parameters (`parameters`). A template gets it the first time someone opens Design on one of its Designs. Keep it when editing the CSV in Excel: Designs keep what they change of the template by these ids. A row copied, or added without it, gets ids of its own when saved. |
+
+For multi-chart slides, the editor visually groups `Slide`, `Slide Tittle`, `Slide Subtittle` and `Layout`; the CSV still stores them on every row.
+
+### Structural slides
+
+Use one row without `Source Dataset` or KPI fields. A structural row cannot share its slide number with chart rows.
+
+- `Title Slide` normally uses `Title Page` and fills title/subtitle placeholders.
+- `Transition Slide` normally uses `Title Only` and creates a section divider.
+- `End Slide` uses `Black logo end slide` and adds the closing slide of the template as it is, without title, subtitle or counter; its `Slide Tittle` is optional and only names the slide in the PPT Designer viewer.
+- A row without `Source Dataset` or `Chart type` takes the structural type of its layout: `Title Page` is a Title Slide, `Transition` and `Title Only` a Transition Slide and `Black logo end slide` an End Slide. A row on `Black logo end slide` is an End Slide also when it still says `Title Slide` or `Transition Slide` (for example a transition moved to the closing layout). Saving the template writes that `Chart type` in the row.
+- Title and Transition subtitles use the template's yellow accent (theme accent 4) in exported presentations, whatever layout hosts them.
+- Every Title or Transition slide after the cover is a transition with its counter (01, 02…) above its title, with the sizes and places of every transition of the reports.
+- In PPT Designer, a Title Slide that opens the Design also lists the Scope, Regions and Cities below its subtitle and decorative line, in the viewer and in the exported PPT.
+
+```text
+Slide: 1
+Slide Tittle: NetCheck 5G Executive Design
+Slide Subtittle: 2026-Q2 · Operator Comparison
+Layout: Title Page
+Chart type: Title Slide
+```
+
+```text
+Slide: 6
+Slide Tittle: Voice service analysis
+Layout: Title Only
+Chart type: Transition Slide
+```
+
+```text
+Slide: 18
+Layout: Black logo end slide
+Chart type: End Slide
+```
+
+### Supported chart types
+
+Automated rows support:
+
+- `100% Stacked Vertical Bars`
+- `Count Stacked Horizontal Bars`
+- `CDF Line`
+- `Histogram Line`
+- `Histogram Bars`
+- `Multi KPI CDF Lines`
+- `Scatter`
+- `Map`
+- `Table`
+- `Average Vertical Bars`
+- `Median Vertical Bars`
+- `Distribution Stacked Vertical Bars`
+- `Threshold Stacked Vertical Bars`
+
+Choose a KPI and at least one Rows or Columns Split dimension. `CDF Line` creates one curve per complete aggregation combination. Count charts retain empty combinations where required so comparisons remain aligned.
+
+The RF Quality template includes combined Data/Voice/Speech slides before each chart family. Its `CDR-All` source is virtual: it uses the selected physical datasets and creates no duplicate CDR dataset or database table. Templates containing this source are retained by JSON/CSV import/export, workspace transfers and backup/restore.
+
+`Histogram Bars` uses the same bins as `Histogram Line`, with side-by-side Campaign bars and lighter shades for older Campaigns. Paired LTE/NR rows can use a dynamic layout with `Dynamic Columns Field = Operator` to show all selected Operators on one slide.
+
+`Histogram Line` draws an unfilled step contour for each aggregation combination. Set `Bin Size = 5` in Filters for 5-unit bins, or `Bin Size = 1` for 1-unit bins. The vertical axis shows the percentage of valid samples in each bin, normalized independently per series; series models retain sample counts. Histograms reuse CDF colours, progressive campaign widths and multivendor operator line patterns. Add four `Buckets = ...` thresholds for five red-to-green quality background bands. Add `Class Colours = Quality` to matching distribution charts to use those same five class colours. The existing template/JSON export, import and backup workflows preserve these chart settings.
+
+Axis ranges are visual settings, not data filters, and are available to every chart family with a numeric axis. For example, `Axis X Range: [0.01,]` starts the horizontal axis at `0.01` while retaining its automatically calculated maximum; `[,30]` retains the automatic minimum and fixes the maximum at `30`. Empty range cells preserve the existing automatic behaviour.
+
+Percentage axes continue to use values from 0 to 100, while count, KPI, coordinate and scatter axes use their native units. Category axes and tables have no numeric domain to constrain.
+
+`Label` is available to every chart family. For bars, `None` hides values, `Top` places them outside the bar, and `Up`, `Middle` and `Down` place them inside near the leading edge, centre or origin edge; horizontal bars map those directions to outside-right, inside-right, centre and inside-left.
+
+For CDF, scatter and map charts the same setting places point or endpoint labels around the plotted mark. An empty cell preserves each renderer's existing automatic behaviour.
+
+`Exclude Null/Empty` and `Exclude Zero` are independent and apply to every chart family. For scatter charts the exclusions are checked on both plotted axes; for CDF and Multi KPI CDF charts they are checked on each plotted metric before the cumulative distribution is calculated.
+
+This allows a CDF to begin at its first non-zero observation instead of merely hiding the zero-valued section with an axis range.
+
+### Chart recipes
+
+The examples show chart-specific cells. Add the shared `Slide`, titles and `Layout` appropriate to the target layout.
+
+#### 100% Stacked Vertical Bars
+
+Use for proportions, success ratios and categorical quality splits. KPI categories become stack segments.
+
+```text
+Source Dataset: CDR-Voice
+KPI: Call_Status
+Chart type: 100% Stacked Vertical Bars
+Filters: Call Family IN (VoLTE, MultiRAB); Operator IN (Vodafone, 3, EE)
+Rows Split: Call Family
+Columns Split: Operator × Campaign
+Legend Position: Right
+```
+
+#### Count Stacked Horizontal Bars
+
+Use for event or failure counts. Rows form horizontal categories and the KPI normally supplies statuses or causes.
+Column hierarchy headers keep complete aggregation values in both the Design canvas and exported PowerPoint chart. Each successive level uses a smaller font, which can shrink further to fit narrow columns; the final header row has its own space above the data.
+
+```text
+Source Dataset: CDR-Data
+KPI: Test_Result
+Chart type: Count Stacked Horizontal Bars
+Filters: Test Family IN (FDFS, FDTT); Test_Result IN (Failed, Dropped)
+Rows Split: Test Family × City
+Columns Split: Operator × Campaign
+Legend Position: Bottom
+```
+
+#### CDF Line
+
+Use for continuous metrics such as throughput, duration, latency or MOS.
+
+```text
+Source Dataset: CDR-Data
+KPI: Mean_Data_Rate
+Chart type: CDF Line
+Filters: Test_Result = Completed; Test_Name CONTAINS FDFS; Direction = DL
+Rows Split: Operator
+Columns Split: Campaign
+Legend Position: Bottom
+```
+
+With two operators and two campaigns this produces four curves. With multiple campaigns, the latest campaign is emphasised within each comparison family.
+
+#### Multi KPI CDF Lines
+
+Separate continuous KPI names with `|`. The renderer keeps the shared filters, Rows Split, Columns Split and legend and places one CDF panel per measure.
+
+```text
+Source Dataset: CDR-Data
+KPI: NR_PCell_SINR_Avg | LTE_PCell_SINR_Avg
+Chart type: Multi KPI CDF Lines
+Filters: Test_Result = Completed; Test_Name = FDTT http DL MT
+Rows Split: Operator
+Columns Split: Campaign
+Legend Position: Right
+```
+
+#### Average Vertical Bars and Median Vertical Bars
+
+Use Average for mean values or Median when outliers should have less influence.
+
+```text
+Source Dataset: CDR-Speech
+KPI: LQ
+Chart type: Average Vertical Bars
+Filters: Call_Status = Completed; Call Family = WhatsApp
+Rows Split: Operator
+Columns Split: Campaign
+Legend Position: Top
+```
+
+Change only `Chart type` to `Median Vertical Bars` for the median.
+
+#### Distribution Stacked Vertical Bars
+
+Use explicit numeric ranges with `Buckets = ...`, or ordered upper bounds with `Buckets < ...` / `Buckets <= ...`. Upper-bound mode generates `belowN` categories plus `Above`; use `Rate Bucket` as the final column aggregation.
+
+```text
+Source Dataset: CDR-Data
+KPI: Mean_Data_Rate
+Chart type: Distribution Stacked Vertical Bars
+Filters: Test_Result = Completed; Test_Name = FDTT http DL MT; Buckets < 2,5,20,100
+Rows Split: Operator
+Columns Split: Campaign × Rate Bucket
+Legend Position: Right
+```
+
+With upper-bound mode, `Buckets < 2,5,20,100` evaluates each value against the limits in order and produces `below2`, `below5`, `below20`, `below100` or `Above`. Use `Buckets < 1,3,10,20` for the corresponding FDTT UDP UL distribution. `<=` is also accepted when boundary values must remain inside their named bucket.
+
+Explicit ranges such as `Buckets = 1,5,20` produce `<1`, `1-5`, `5-20` and `20+`. Negative limits use `to`, so `Buckets = -110,-100,-90,-80` produces `< -110`, `-110 to -100`, `-100 to -90`, `-90 to -80` and `-80+` for RSRP. Stacked segments and legend entries always follow ascending numeric order, regardless of the order in which values appear in the CDR rows.
+
+#### Threshold Stacked Vertical Bars
+
+Use for a below/above distribution around one threshold.
+
+```text
+Source Dataset: CDR-Speech
+KPI: LQ
+Chart type: Threshold Stacked Vertical Bars
+Filters: Call_Status = Completed; Call Family = VoLTE; Threshold = 1.6
+Rows Split: Operator
+Columns Split: Campaign
+Legend Position: Right
+```
+
+The legend shows the configured threshold, for example `< 1.6` and `≥ 1.6`; `Threshold = -110` produces `< -110` and `≥ -110`.
+
+#### Scatter
+
+Use `Metric vs Dimension` to compare a KPI with a radio or quality dimension.
+
+```text
+Source Dataset: CDR-Speech
+KPI: LQ vs Playing_RSRP_NR_Avg
+Chart type: Scatter
+Filters: Call_Status = Completed; Call Family = WhatsApp
+Rows Split: Operator
+Columns Split: Campaign
+Legend Position: Bottom
+```
+
+#### Map
+
+Use latitude and longitude in `Latitude vs Longitude` order. Rows Split, Columns Split and Legend determine point grouping and colour.
+
+To colour a radio-quality map by a measured value, use `Latitude vs Longitude vs Measure`, set **Rows Split** and **Legend** to `Value Bucket`, and define four ascending thresholds with `Buckets = ...`. For example, RSRP uses `Buckets = -110,-100,-90,-80`, and SINR uses `Buckets = 0,5,13,20`. These five ranges use red, orange, yellow, light green and green. Missing measurements are excluded when **Exclude Null/Empty** is enabled. Two-field maps retain their existing grouping colours.
+
+```text
+Source Dataset: CDR-Data
+KPI: Test_Start_Latitude vs Test_Start_Longitude
+Chart type: Map
+Filters: G_Level_4 = London
+Rows Split: Operator
+Columns Split: Campaign
+Legend: Test_Result
+Legend Position: Right
+```
+
+#### Table
+
+Use when exact values are more useful than a chart. Rows and columns form the axes; KPI supplies the aggregated cell value.
+
+```text
+Source Dataset: CDR-Voice
+KPI: Call_Setup_Time
+Chart type: Table
+Filters: Call_Status = Completed
+Rows Split: City
+Columns Split: Operator × Campaign
+Legend Position: Top
+```
+
+### Template filter language
+
+Conditions are joined with logical AND and separated by `;`. Column matching is case-insensitive.
+
+```text
+Call Family IN (VoLTE, MultiRAB); Direction = DL; Vendor NOT CONTAINS (Mixed, Other)
+```
+
+| Operator | Example |
+| --- | --- |
+| Equals / not equal | `Call_Status = Completed`, `Operator != EE` |
+| List inclusion / exclusion | `Operator IN (VF, O2, 3, EE)`, `Campaign NOT IN (2025-Q4)` |
+| Contains / not contains | `Test_Name CONTAINS FDFS`, `Vendor NOT CONTAINS (Mixed, Other)` |
+| Numeric comparison | `LQ < 1.6`, `Mean_Data_Rate >= 20` |
+
+`Vendor` filters the vendor alone and `Operator_Vendor` the `<Operator>_<Vendor>` identity. Import accepts the former `Vendor_Only` and `Vendor V3` (as `Vendor`) and `OP_Vendor` (as `Operator_Vendor`) filter names, and templates written for earlier versions are converted once: their `Vendor` groupings and legends become `Operator_Vendor` and their `Vendor_Only` filters become `Vendor`, so their charts stay identical. Operator-prefixed filter values are resolved using workspace operator aliases when the report runs. This alias handling applies to filter fields, while aggregation fields keep their selected comparison semantics.
+
+`IN`, `NOT IN`, `CONTAINS` and `NOT CONTAINS` accept comma-separated values. Parentheses are optional in Filter Builder input. A comma separates values within one condition; use `;` between independent conditions. `Threshold = 1.6` configures threshold charts and `Buckets = 1,5,20,100` configures distribution ranges.
+
+### Rows Split, Columns Split and legends
+
+Selection order defines the hierarchy:
+
+```text
+Rows Split: Call Family × G Level 4
+Columns Split: Operator × Campaign
+```
+
+- Rows supplies chart categories or table rows.
+- Column supplies comparison series or table columns.
+- Blank Columns Split creates one `(all)` comparison.
+- `Campaign` is ordered chronologically from oldest to newest.
+- In Multivendor scope, `Operator` aggregation resolves to the mapped comparison field; an Operator filter still applies to the physical CDR Operator field.
+
+Legend behaviour:
+
+- Blank draws no legend.
+- A KPI or aggregation dimension shows plotted values.
+- A field used only by Filters shows its applied values as contextual text.
+- CDF handles reproduce series colour and relative line width.
+- Threshold legends show below/above colours and the configured value.
+- Bucket legends show readable ranges derived from `Buckets`.
+
+Top/Bottom produces a compact horizontal legend; Left/Right produces a vertical legend and reserves plot space.
+
+### Multi-chart slides, operators and colours
+
+Rows sharing a `Slide` number create separate charts on one slide. They must share `Slide Tittle`, `Slide Subtittle` and `Layout`, may use different sources, KPIs, filters and chart types, and require at least as many placeholders as chart rows.
+
+Operator and Vendor aliases resolve to the canonical values configured in Workspace Config without changing the source workbook. Their table order controls Operator, Subscriber, Vendor and combined Operator_Vendor chart dimensions. Each canonical row defines its chart theme colour; multiple campaigns or operators using one identity receive contrasting shades derived from that colour.
 
 ## Portability and maintenance
 

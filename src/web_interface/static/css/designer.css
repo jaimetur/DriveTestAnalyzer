@@ -654,3 +654,33 @@
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='16' rx='2'/%3E%3Ccircle cx='9' cy='10' r='2'/%3E%3Cpath d='m21 16-5-5L5 20'/%3E%3C/svg%3E") center / contain no-repeat; }
 /* On a phone the viewer actions that wait for the Designer to close leave their room to the slide. */
 @media (max-width: 900px) { #ds-viewer.ds-designing .is-design-locked { display: none !important; } }
+.ppt-designer .ds-design-pill-template { background: var(--ds-soft); color: var(--ds-design-ink); }
+
+/* Parameters: one line of help, a card per type to add the first one, a dashed Add under the list, and the field picker. */
+.ppt-designer .ds-parameters-intro { margin: 0 0 .75rem; padding: .5rem .75rem; font-size: .82rem; line-height: 1.4; }
+.ppt-designer .ds-parameters-empty { display: grid; gap: .7rem; padding: .9rem; border: 1px dashed var(--ds-border); border-radius: 12px; background: #fff; }
+.ppt-designer .ds-parameters-empty-title { margin: 0; color: var(--ds-design-ink); font-size: .92rem; font-weight: 800; }
+.ppt-designer .ds-parameters-types { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: .6rem; }
+.ppt-designer .ds-parameters-type { display: grid; align-content: start; gap: .35rem; min-height: 0; padding: .75rem .8rem; border: 1px solid var(--ds-border);
+  border-radius: 12px; background: #fff; box-shadow: none; color: var(--ds-design-ink); font-weight: 500; text-align: left; cursor: pointer; }
+.ppt-designer .ds-parameters-type:hover { border-color: var(--ds-color); background: var(--ds-soft); }
+.ppt-designer .ds-parameters-type strong { color: var(--ds-color); font-size: .92rem; }
+.ppt-designer .ds-parameters-type span { color: var(--ds-design-muted); font-size: .78rem; line-height: 1.35; }
+.ppt-designer .ds-parameters-type code { justify-self: start; padding: .1rem .35rem; border: 1px solid var(--ds-border); border-radius: 6px; background: #faf8fd; font-size: .74rem; }
+.ppt-designer .ds-parameters-add { min-height: 0; padding: .5rem; border: 1px dashed var(--ds-color); border-radius: 10px; background: #fff; box-shadow: none;
+  color: var(--ds-color); font-size: .84rem; font-weight: 800; cursor: pointer; }
+.ppt-designer .ds-parameters-add:hover { background: var(--ds-soft); }
+.ppt-designer .ds-design-field-picker { display: flex; align-items: center; justify-content: space-between; gap: .5rem; width: 100%; min-height: 0; padding: .45rem .7rem;
+  border: 1px solid var(--ds-border); border-radius: 9px; background: #fff; box-shadow: none; color: var(--ds-design-ink); font-size: .86rem; font-weight: 700; text-align: left; cursor: pointer; }
+.ppt-designer .ds-design-field-picker:hover:not(:disabled) { border-color: var(--ds-color); }
+.ds-design-field-picker-caret { width: .45rem; height: .45rem; margin-top: -.2rem; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(45deg); opacity: .6; }
+.ds-design-popover.ds-design-field-picker-popover { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: .45rem; max-width: min(30rem, calc(100vw - 16px)); padding: .5rem; overflow: hidden; }
+.ds-design-field-picker-search { box-sizing: border-box; width: 100%; padding: .4rem .6rem; border: 1px solid #d9d1e6; border-radius: 8px; font: inherit; }
+.ds-design-field-picker-list { max-height: min(21rem, calc(100vh - 8rem)); overflow-y: auto; }
+.ds-design-field-picker-group-title { position: sticky; top: 0; z-index: 1; display: flex; justify-content: space-between; padding: .35rem .5rem; background: #f6f3fb;
+  color: #4b2c82; font-size: .68rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.ds-design-field-picker-group-title span { color: #6b6178; }
+.ds-design-field-picker-group button { display: block; width: 100%; min-height: 0; padding: .32rem .6rem; border: 0; border-radius: 6px; background: transparent; box-shadow: none;
+  color: #2f2540; font: inherit; font-weight: 600; text-align: left; cursor: pointer; }
+.ds-design-field-picker-group button:hover, .ds-design-field-picker-group button:focus-visible { background: #f1ecf8; outline: none; }
+.ds-design-field-picker-group button.is-chosen { background: #4b2c82; color: #fff; }
