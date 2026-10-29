@@ -79,7 +79,7 @@ def test_definitions_keep_every_module_option_and_need_an_artifact():
     assert definition['designs'] == [{
         'design_id': 'd1', 'label': '', 'nr_mode': '', 'scope': 'multivendor', 'vendor_comparison': 'vendor_only', 'auto_cdrs': False,
         'datasets': {'data': [3, 4]}, 'cdr_selection': '', 'date_from': '2026-01-01', 'date_to': '', 'filters': {'Operator': ['EE']},
-        'auto_comments': 'off', 'auto_comments_engine': '',
+        'auto_comments': 'off', 'auto_comments_engine': '', 'parameter_values': {}, 'each_value': '',
     }]
     # The entries of the editor choose their CDRs by Campaign: they carry no CDRs.
     automatic = normalize_definition({
@@ -436,6 +436,49 @@ def test_reporting_job_runs_emails_and_travels_with_exports(client, monkeypatch,
     finally:
         report_tasks.ARTIFACT_PROVIDERS.pop('fake', None)
 
+
+
+def test_ppt_design_entries_give_the_parameters_their_values_and_make_a_ppt_for_each_value(client, monkeypatch, tmp_path):
+    from types import SimpleNamespace
+
+    login(client)
+    stored = {'name': 'Cities report', 'template': 'Cities', 'nr_mode': 'NSA', 'parameter_values': {'p-city': ['London']},
+              'slide_comments': {'s1': [{'text': 'Saved comment'}]}}
+    parameters = [{'id': 'p-city', 'name': 'Chosen Cities', 'type': 'values', 'field': 'City', 'default': None},
+                  {'id': 'p-limit', 'name': 'Threshold', 'type': 'number', 'default': 2}]
+    queued = []
+
+    def queue_export(design_id, user, definition=None, **_options):
+        queued.append(definition)
+        path = tmp_path / f'job-{len(queued)}.pptx'
+        path.write_bytes(b'ppt')
+        return len(queued)
+
+    monkeypatch.setattr(core, 'design_reporting', SimpleNamespace(
+        list_designs=lambda _repository: {'d1': stored}, parameters=lambda _repository, _raw: parameters,
+        queue_export=queue_export, stop_job=lambda *_args: None, serialize_job=lambda _row: {'template': 'Cities'},
+        job=lambda _repository, job_id: {'status': 'ready', 'output_path': str(tmp_path / f'job-{job_id}.pptx'), 'progress': 100, 'last_error': ''},
+    ))
+    entry = {'design_id': 'd1', 'auto_cdrs': True, 'filters': {'Campaign': ['@latest-campaign']}, 'label': 'Cities',
+             'parameter_values': {'p-city': ['Leeds', 'Cardiff'], 'p-limit': 3}, 'each_value': 'p-city'}
+    created = client.post('/api/reporting/tasks', json={'name': 'Each city', 'definition': {'designs': [entry]}, 'enabled': False,
+                                                         'schedule': {'mode': 'weekly', 'time': '08:00', 'weekdays': [0]}})
+    assert created.status_code == 200, created.text
+    task = created.json()['task']
+    assert task['definition']['designs'][0]['parameter_values'] == {'p-city': ['Leeds', 'Cardiff'], 'p-limit': 3}
+    run = wait_for_run(client, client.post(f"/api/reporting/tasks/{task['id']}/run").json()['run_id'])
+    # One PPT for each city, named after it, with the other values of the entry and without the comments of London.
+    assert [item['parameter_values'] for item in queued] == [{'p-city': ['Leeds'], 'p-limit': 3}, {'p-city': ['Cardiff'], 'p-limit': 3}]
+    assert all(item['slide_comments'] == {} for item in queued)
+    assert [artifact['title'] for artifact in run['artifacts']] == ['PPT Design · Cities – Leeds', 'PPT Design · Cities – Cardiff']
+    # Without values of its own the entry generates the PPT Design with its own values and comments.
+    queued.clear()
+    plain = client.post('/api/reporting/tasks', json={'name': 'Plain', 'definition': {'designs': [{**entry, 'parameter_values': {}, 'each_value': ''}]},
+                                                       'enabled': False, 'schedule': {'mode': 'weekly', 'time': '08:00', 'weekdays': [0]}}).json()['task']
+    wait_for_run(client, client.post(f"/api/reporting/tasks/{plain['id']}/run").json()['run_id'])
+    assert queued[0]['parameter_values'] == {'p-city': ['London']} and queued[0]['slide_comments'] == stored['slide_comments']
+    options = client.get('/api/reporting/options').json()
+    assert next(item for item in options['designs'] if item['id'] == 'd1')['parameters'] == parameters
 
 
 def test_reporting_jobs_travel_with_every_field_of_their_scoring_artifacts(client):

@@ -317,6 +317,24 @@ def _network_thresholds(selection: dict[str, Any]) -> dict[str, float]:
     }
 
 
+def _parameter_values(raw: Any) -> dict[str, Any]:
+    """The parameter values of a PPT Design entry: lists of texts, numbers or texts, by parameter id."""
+    if not isinstance(raw, dict):
+        return {}
+    values: dict[str, Any] = {}
+    for key, value in raw.items():
+        key = str(key).strip()[:60]
+        if not key:
+            continue
+        if isinstance(value, list):
+            values[key] = _strings(value)
+        elif isinstance(value, (int, float)) and not isinstance(value, bool):
+            values[key] = value
+        elif isinstance(value, str) and value.strip():
+            values[key] = value.strip()[:200]
+    return values
+
+
 def _design_nr_mode(definition: dict[str, Any]) -> str:
     """The NR Mode of the CDRs a saved PPT Design reads: NSA, SA or NSA+SA (those saved before named it technology)."""
     return normalize_scoring_nr_mode(definition.get('nr_mode') or definition.get('technology')) or DEFAULT_NR_MODE
@@ -445,6 +463,10 @@ def normalize_definition(raw: Any) -> dict[str, Any]:
             'auto_comments': entry.get('auto_comments') if entry.get('auto_comments') in {'off', 'empty', 'generated', 'all'} else 'off',
             # Their writer (empty: the default one of Super Admin), run with the Kiro API key of the job's owner.
             'auto_comments_engine': entry.get('auto_comments_engine') if entry.get('auto_comments_engine') in {'rules', 'kiro_cli', 'claude'} else '',
+            # The values of the parameters of its template, by parameter id, in place of the PPT Design's (a list of values,
+            # a number or a text), and Each value: one PPT for each value of a field-values parameter.
+            'parameter_values': _parameter_values(entry.get('parameter_values')),
+            'each_value': str(entry.get('each_value') or '').strip()[:60],
         })
     for entry in raw.get('scoring') or []:
         if not isinstance(entry, dict):
@@ -1579,6 +1601,32 @@ def install_report_task_routes(core: Any) -> None:
             definition['datasets'] = entry['datasets']
         return definition
 
+    def with_parameters(definition: dict[str, Any], stored: dict[str, Any], values: dict[str, Any]) -> dict[str, Any]:
+        """The PPT Design with the parameter values of the entry over its own. Its saved comments were written for its own
+        values: with others its slides go without them (unless auto comments write them), as in another NR Mode."""
+        merged = {**(stored.get('parameter_values') or {}), **values}
+        result = {**definition, 'parameter_values': merged}
+        if merged != (stored.get('parameter_values') or {}):
+            result.update(slide_comments={}, slide_comment_meta={})
+        return result
+
+    def generate_designs(entry, task_repository, folder, stamp, user, run_id) -> list[dict[str, Any]]:
+        """The PPT of a PPT Design entry, or with Each value one PPT for each value of that parameter, named after it."""
+        tools = core.design_reporting
+        stored = tools.list_designs(task_repository).get(entry['design_id'])
+        values = dict(entry.get('parameter_values') or {})
+        if not entry.get('each_value') or not isinstance(stored, dict):
+            return [generate_design({**entry, 'parameter_values': values}, task_repository, folder, stamp, user, run_id)]
+        parameter = next((item for item in tools.parameters(task_repository, stored) if item['id'] == entry['each_value']), None)
+        name = entry.get('label') or stored.get('name') or entry['design_id']
+        if parameter is None or parameter.get('type') != 'values':
+            return [failed_artifact('designs', f'PPT Design · {name}', 'Each value needs a parameter of field values of its template.')]
+        chosen = values.get(parameter['id'], (stored.get('parameter_values') or {}).get(parameter['id'], parameter.get('default')))
+        if not isinstance(chosen, list) or not chosen:
+            return [failed_artifact('designs', f'PPT Design · {name}', f"Each value of {parameter['name']}: choose its values.")]
+        return [generate_design({**entry, 'label': f'{name} – {value}', 'parameter_values': {**values, parameter['id']: [value]}},
+                                task_repository, folder, stamp, user, run_id) for value in chosen]
+
     def generate_design(entry, task_repository, folder, stamp, user, run_id) -> dict[str, Any]:
         tools = core.design_reporting
         stored = tools.list_designs(task_repository).get(entry['design_id'])
@@ -1587,7 +1635,8 @@ def install_report_task_routes(core: Any) -> None:
             if not isinstance(stored, dict):
                 raise RuntimeError('The PPT Design no longer exists.')
             update_run(task_repository, run_id, message=f'Generating {title}')
-            job_id = tools.queue_export(entry['design_id'], user, design_definition(stored, entry, task_repository),
+            job_id = tools.queue_export(entry['design_id'], user,
+                                        with_parameters(design_definition(stored, entry, task_repository), stored, entry.get('parameter_values') or {}),
                                         theme=entry.get('theme') or None, auto_comments=entry.get('auto_comments') or 'off',
                                         auto_comments_engine=entry.get('auto_comments_engine') or '')
             row = wait_for_design_job(task_repository, job_id, run_id)
@@ -1831,7 +1880,7 @@ def install_report_task_routes(core: Any) -> None:
             for index, entry in enumerate(definition.get('network_insights') or [], start=1):
                 steps.append(('Network Insights', lambda entry=entry, index=index: generate_network_insights(entry, folder, stamp, index, task_repository)))
             for entry in definition.get('designs') or []:
-                steps.append(('PPT Design', lambda entry=entry: [generate_design(entry, task_repository, folder, stamp, user, run_id)]))
+                steps.append(('PPT Design', lambda entry=entry: generate_designs(entry, task_repository, folder, stamp, user, run_id)))
             for entry in definition.get('scoring') or []:
                 steps.append(('Scoring', lambda entry=entry: generate_scoring(entry, task_repository, folder, stamp, user.username, names, run_id)))
             for key, config in (definition.get('modules') or {}).items():
@@ -2078,6 +2127,8 @@ def install_report_task_routes(core: Any) -> None:
                     'nr_mode': _design_nr_mode(stored), 'datasets': stored.get('datasets') or {},
                     'filters': stored.get('filters') or {}, 'custom_fields': stored.get('custom_fields') or [],
                     'date_from': str(stored.get('date_from') or ''), 'date_to': str(stored.get('date_to') or ''),
+                    # The parameters of its template and the values it gives them, for the values of each entry.
+                    'parameters': tools.parameters(task_repository, stored), 'parameter_values': stored.get('parameter_values') or {},
                 })
         designs.sort(key=lambda item: item['name'].casefold())
         try:

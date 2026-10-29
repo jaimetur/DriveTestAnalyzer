@@ -2719,6 +2719,14 @@ def install_design_routes(core):
         if row is not None and str(row['status']) in {'queued', 'processing'}:
             update_design_ppt_job(task_repository, job_id, status='stopped', finished_at=datetime.now(timezone.utc).isoformat())
 
+    def design_parameters(raw_definition, task_repository) -> list[dict[str, Any]]:
+        """The parameters of the slides of a Design (those of its template, or its own when detached)."""
+        try:
+            _template, resolved, _report = design_slides_state(DesignDefinition.model_validate(raw_definition), task_repository)
+        except (HTTPException, ValueError):
+            return []
+        return [dict(item) for item in resolved.get('parameters') or []]
+
     # Reporting Jobs and Bundle Report Templates generate Design PPTs through the PPT jobs.
     core.design_reporting = SimpleNamespace(
         definition_model=DesignDefinition,
@@ -2730,6 +2738,7 @@ def install_design_routes(core):
         job=design_ppt_job,
         serialize_job=lambda row: serialize_design_ppt_job(row),
         stop_job=stop_reporting_design_job,
+        parameters=lambda task_repository, raw_definition: design_parameters(raw_definition, task_repository),
     )
 
     def prepare_and_render_design_ppt_job(

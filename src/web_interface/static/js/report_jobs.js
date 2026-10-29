@@ -577,6 +577,42 @@
     let loadRequest = 0;
     const isCampaign = (name) => String(name).toLowerCase() === 'campaign';
     const chosenFilters = () => Object.fromEntries(pickers.map(([name, picker]) => [name, picker.getValue()]).filter(([, values]) => values.length));
+    // The parameters of the template of the PPT Design: the values of this entry in place of its own (those not changed
+    // here stay its own), and One PPT per a field-values parameter, a PPT for each of its values.
+    let parameterValues = {...(entry?.parameter_values || {})};
+    const parameterBlock = node('div', undefined, 'rj-filters');
+    const eachValue = node('select');
+    let eachValueChosen = entry?.each_value || '';
+    eachValue.addEventListener('change', () => { eachValueChosen = eachValue.value; });
+    const parameterSection = node('div', undefined, 'rj-parameter-section');
+    parameterSection.append(node('strong', 'Template parameters'),
+      node('p', 'The values of this PPT, in place of those of the PPT Design. One PPT per a parameter generates a PPT for each value chosen for it, named after the value.', 'form-note'),
+      field('PPTs', eachValue), parameterBlock);
+    parameterSection.hidden = true;
+    const designParameters = () => savedDesign().parameters || [];
+    const parameterValue = (parameter) => (parameter.id in parameterValues ? parameterValues[parameter.id]
+      : (savedDesign().parameter_values || {})[parameter.id] ?? parameter.default ?? (parameter.type === 'values' ? [] : ''));
+    const renderParameters = (fieldOptions = {}) => {
+      const parameters = designParameters();
+      eachValue.replaceChildren(...[['', 'One PPT'], ...parameters.filter((item) => item.type === 'values').map((item) => [item.id, `One PPT per ${item.name}`])]
+        .map(([value, text]) => { const option = node('option', text); option.value = value; option.selected = value === eachValueChosen; return option; }));
+      parameterBlock.replaceChildren(...parameters.map((parameter) => {
+        const value = parameterValue(parameter);
+        if (parameter.type === 'values') {
+          const picker = multiPicker(parameter.name, fieldOptions[parameter.field] || [], Array.isArray(value) ? value : [],
+            {onChange: () => { parameterValues[parameter.id] = picker.getValue(); }});
+          return picker;
+        }
+        const input = node('input'); input.type = parameter.type === 'number' ? 'number' : 'text'; input.value = value ?? '';
+        input.addEventListener('change', () => {
+          parameterValues[parameter.id] = parameter.type === 'number' && input.value !== '' ? Number(input.value) : input.value;
+        });
+        return field(parameter.name, input);
+      }));
+      parameterSection.hidden = !parameters.length;
+    };
+    const chosenParameters = () => Object.fromEntries(designParameters().filter((parameter) => parameter.id in parameterValues)
+      .map((parameter) => [parameter.id, parameterValues[parameter.id]]));
 
     // The Campaign chooses the CDRs; every filter lists the values of every CDR of the NR Mode that the others leave.
     const definitionFor = () => ({
@@ -606,11 +642,14 @@
       const selected = Object.fromEntries(pickers.map(([name, picker]) => [name, picker.getValue()]));
       filterNote.textContent = 'Loading the filter values of the CDRs of this NR Mode…';
       try {
+        // (The fields of the parameters of its template too, for their values.)
+        const parameterFields = designParameters().filter((parameter) => parameter.type === 'values').map((parameter) => parameter.field);
         const result = await api('/api/ppt-designer/filter-options/batch', {
-          method: 'POST', body: JSON.stringify({definition: definitionFor(), fields: current.fields}),
+          method: 'POST', body: JSON.stringify({definition: definitionFor(), fields: [...new Set([...current.fields, ...parameterFields])]}),
         });
         if (request !== loadRequest) return;
         renderFilters(result.options || {}, selected);
+        renderParameters(result.options || {});
         filterNote.textContent = 'Empty filters include every value. The Campaign chooses the CDRs.';
       } catch (error) {
         if (request === loadRequest) filterNote.textContent = `Filter values are unavailable: ${error.message}`;
@@ -627,13 +666,15 @@
       const savedFilters = config.filters || {};
       setCampaigns(savedFilters[Object.keys(savedFilters).find(isCampaign)] || []);
       renderFilters({}, savedFilters);
+      renderParameters();
       comparisonField.hidden = scope.value !== 'multivendor';
       scheduleLoad();
     };
     const savedDesign = () => options.designs.find((item) => item.id === design.value) || {};
     const chosenConfig = () => ({scope: scope.value, vendor_comparison: comparison.value, date_from: dateFrom.value, date_to: dateTo.value});
     // A PPT Design chosen reads its own NR Mode until another is chosen here.
-    design.addEventListener('change', () => { const saved = savedDesign(); nrMode.value = modeOf(saved); apply(saved, saved); });
+    // (Another PPT Design has the parameters of its own template.)
+    design.addEventListener('change', () => { const saved = savedDesign(); nrMode.value = modeOf(saved); parameterValues = {}; eachValueChosen = ''; apply(saved, saved); });
     // Another NR Mode keeps the PPT Design: the campaigns of the other NR Mode do not apply, its automatic choices
     // (Latest campaign…) do, or else the newest campaigns of the new NR Mode, as when a PPT Design changes its NR Mode.
     nrMode.addEventListener('change', () => {
@@ -647,11 +688,12 @@
     // Campaign first: it chooses the CDRs.
     current = {saved: {}, fields: []};
     card.append(entryHead(card, 'PPT Design', () => [nrMode.value === 'NSA+SA' ? 'NSA & SA' : nrMode.value, design.selectedOptions[0]?.textContent, label.value.trim()].filter(Boolean).join(' · ')),
-      head, campaignPreviewSlot, noDesigns, node('strong', 'Adaptative Filters'), filterNote, filters);
+      head, campaignPreviewSlot, noDesigns, node('strong', 'Adaptative Filters'), filterNote, filters, parameterSection);
     if (design.value) apply(entry || savedDesign(), savedDesign());
     card.getValue = () => ({
       design_id: design.value, nr_mode: nrMode.value, label: label.value.trim(), scope: scope.value, vendor_comparison: comparison.value,
       auto_cdrs: true, date_from: dateFrom.value, date_to: dateTo.value, filters: chosenFilters(), auto_comments: autoComments.value, auto_comments_engine: autoCommentsEngine.value,
+      parameter_values: chosenParameters(), each_value: designParameters().some((parameter) => parameter.id === eachValueChosen) ? eachValueChosen : '',
     });
     return card;
   }
