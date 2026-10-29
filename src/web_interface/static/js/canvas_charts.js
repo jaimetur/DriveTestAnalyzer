@@ -1682,7 +1682,11 @@
       }
     }
     if (copy.legend && format.legend?.position) copy.legend.position = format.legend.position;
-    if (copy.legend && format.legend?.size) copy.legend.format = {...(copy.legend.format || {}), configured: true, size: format.legend.size};
+    // The text of the legend: its size and colour, bold as it is drawn by default unless turned off.
+    if (copy.legend && format.legend && (format.legend.size || format.legend.colour || format.legend.bold === false)) {
+      copy.legend.format = {...(copy.legend.format || {}), configured: true, bold: format.legend.bold !== false,
+        ...(format.legend.size ? {size: format.legend.size} : {}), ...(format.legend.colour ? {color: format.legend.colour} : {})};
+    }
     if (format.labels && typeof format.labels === 'object') {
       if (format.labels.position) copy.label_position = format.labels.position;
       const label = {...(copy.label_format || {})};

@@ -1101,16 +1101,19 @@
     const selected = state.element ? shownElement() : null;
     const crumb = (label, active, iconName, onclick) => h('button', {type: 'button', class: `ds-design-crumb${active ? ' is-active' : ''}`, 'aria-current': active ? 'true' : null, title: label, onclick},
       icon(iconName), h('span', {text: label}));
-    // No element chosen: Charts lists the elements of the slide, to choose one.
+    // The element button lists the elements of the slide to choose one (the one chosen marked); with none chosen it reads
+    // Charts.
     const onSlide = slide && slideKind(slide) === 'content' ? visibleElements(slide) : [];
-    const chooser = !selected && onSlide.length ? h('button', {type: 'button', class: 'ds-design-crumb', 'aria-haspopup': 'menu', title: 'Choose a chart of this slide',
-      onclick: event => openMenu(event.currentTarget, onSlide.map((item, index) => [placeOf(item, index), item]).sort(([left], [right]) => left - right)
-        .map(([place, item]) => [`${place + 1} · ${elementLabel(item)}`, () => selectElement(item.id), true]))},
-    icon('chart'), h('span', {text: 'Charts'}), h('span', {class: 'ds-design-crumb-caret', 'aria-hidden': 'true', text: '▾'})) : null;
+    const chooseElement = event => openMenu(event.currentTarget, onSlide.map((item, index) => [placeOf(item, index), item]).sort(([left], [right]) => left - right)
+      .map(([place, item]) => [`${item.id === selected?.id ? '✓ ' : ''}${place + 1} · ${elementLabel(item)}`, () => selectElement(item.id), true]));
+    const chooser = onSlide.length || selected ? h('button', {type: 'button', class: `ds-design-crumb${element ? ' is-active' : ''}`, 'aria-haspopup': 'menu',
+      'aria-current': element ? 'true' : null, title: 'Choose a chart of this slide', onclick: chooseElement},
+    icon(selected ? KINDS[selected.kind || 'chart']?.[1] || 'chart' : 'chart'), h('span', {text: selected ? elementName(selected, slide) : 'Charts'}),
+    h('span', {class: 'ds-design-crumb-caret', 'aria-hidden': 'true', text: '▾'})) : null;
     const crumbs = h('nav', {class: 'ds-design-crumbs', 'aria-label': 'What the panel shows'},
       crumb(slideName, !element, 'slide', () => { state.tab = 'slide'; renderPanel(); }),
-      selected || chooser ? h('span', {class: 'ds-design-crumb-separator', 'aria-hidden': 'true', text: '›'}) : null,
-      selected ? crumb(elementName(selected, slide), Boolean(element), KINDS[selected.kind || 'chart']?.[1] || 'chart', () => { state.tab = 'element'; renderPanel(); }) : chooser);
+      chooser ? h('span', {class: 'ds-design-crumb-separator', 'aria-hidden': 'true', text: '›'}) : null,
+      chooser);
     const actions = element ? elementActions(element.id) : slide ? slideActions(slide) : [];
     const more = h('button', {type: 'button', class: 'ds-design-more', 'aria-haspopup': 'menu', disabled: !actions.length,
       title: element ? 'Actions of this element' : 'Actions of this slide', 'aria-label': element ? 'Actions of this element' : 'Actions of this slide',
@@ -1474,14 +1477,18 @@
       node[keys.at(-1)] = value;
     }))();
     const integer = value => (value === '' ? '' : Math.max(0, Math.min(6, Math.round(Number(value)))));
+    // The colour of a text, with a button back to the default one.
+    const textColour = (what, value, write) => field('Text colour', h('div', {class: 'ds-design-input-row'},
+      h('input', {type: 'color', value: value || '#263B4A', 'aria-label': `${what} text colour`, onchange: event => write(event.target.value.toUpperCase())}),
+      h('button', {type: 'button', class: 'ds-design-token', title: `Default ${what.toLowerCase()} text colour`, onclick: () => write('')}, '↺')));
     // A closed group says what it holds.
     const named = (list, value) => list.find(([key]) => key === (value || ''))?.[1] || value;
     const LEGEND_PLACES = [['', 'Default'], ['top', 'Top'], ['bottom', 'Bottom'], ['left', 'Left'], ['right', 'Right'], ['none', 'Hidden']];
     const changedSeries = Object.values(style.series || {}).filter(item => Object.keys(item || {}).length).length;
     const summaries = {
       Series: items.length ? `${items.length} series${changedSeries ? ` · ${changedSeries} changed` : ''}` : '',
-      Legend: [named(LEGEND_PLACES, style.legend?.position), style.legend?.size ? `${style.legend.size} text` : ''].filter(Boolean).join(' · '),
-      Labels: [named(LABEL_POSITIONS, style.labels?.position), style.labels?.size ? `${style.labels.size} text` : '', style.labels?.bold ? 'Bold' : ''].filter(Boolean).join(' · '),
+      Legend: [named(LEGEND_PLACES, style.legend?.position), style.legend?.size ? `${style.legend.size} text` : '', style.legend?.colour ? 'Coloured' : '', style.legend?.bold === false ? 'Not bold' : ''].filter(Boolean).join(' · '),
+      Labels: [named(LABEL_POSITIONS, style.labels?.position), style.labels?.size ? `${style.labels.size} text` : '', style.labels?.colour ? 'Coloured' : '', style.labels?.bold ? 'Bold' : ''].filter(Boolean).join(' · '),
       Axes: [style.axes?.x?.title ? `X: ${style.axes.x.title}` : '', style.axes?.y?.title ? `Y: ${style.axes.y.title}` : '', style.axes?.x?.decimals !== undefined && style.axes?.x?.decimals !== '' ? `${style.axes.x.decimals} decimals` : ''].filter(Boolean).join(' · ') || 'As the chart names them',
     };
     // The groups open are kept for the next chart (all of them at first); several can be open at once.
@@ -1504,15 +1511,17 @@
             onclick: () => guarded(() => setStyle(elementId, target => { for (const item of Object.values(target.series || {})) { delete item.colour; delete item.opacity; } }))()}, 'Default colours'))),
       group('Legend', h('div', {class: 'ds-design-two'},
         field('Position', selectInput(LEGEND_PLACES, style.legend?.position || '', value => set('legend.position', value))),
-        field('Text', selectInput(SIZES, style.legend?.size || '', value => set('legend.size', value))))),
+        field('Text size', selectInput(SIZES, style.legend?.size || '', value => set('legend.size', value)))),
+      h('div', {class: 'ds-design-two'},
+        textColour('Legend', style.legend?.colour, value => set('legend.colour', value)),
+        // The legend is bold unless turned off.
+        h('label', {class: 'ds-design-check'}, h('input', {type: 'checkbox', checked: style.legend?.bold !== false, onchange: event => set('legend.bold', event.target.checked ? '' : false)}), 'Bold'))),
       group('Labels', h('div', {class: 'ds-design-two'},
         field('Position', selectInput(LABEL_POSITIONS, style.labels?.position || '', value => set('labels.position', value))),
-        field('Text', selectInput(SIZES, style.labels?.size || '', value => set('labels.size', value)))),
+        field('Text size', selectInput(SIZES, style.labels?.size || '', value => set('labels.size', value)))),
       h('div', {class: 'ds-design-two'},
-        field('Label colour', h('div', {class: 'ds-design-input-row'},
-          h('input', {type: 'color', value: style.labels?.colour || '#263B4A', 'aria-label': 'Label colour', onchange: event => set('labels.colour', event.target.value.toUpperCase())}),
-          h('button', {type: 'button', class: 'ds-design-token', title: 'Default label colour', onclick: () => set('labels.colour', '')}, '↺'))),
-        h('label', {class: 'ds-design-check'}, h('input', {type: 'checkbox', checked: Boolean(style.labels?.bold), onchange: event => set('labels.bold', event.target.checked || '')}), 'Bold labels'))),
+        textColour('Label', style.labels?.colour, value => set('labels.colour', value)),
+        h('label', {class: 'ds-design-check'}, h('input', {type: 'checkbox', checked: Boolean(style.labels?.bold), onchange: event => set('labels.bold', event.target.checked || '')}), 'Bold'))),
       group('Axes', h('div', {class: 'ds-design-two'},
         field('X axis title', textInput(style.axes?.x?.title, debounced(value => setStyle(elementId, target => { target.axes = target.axes || {}; target.axes.x = {...(target.axes.x || {}), title: value}; })), {id: 'ds-design-axis-x-title', placeholder: 'As the chart names it'})),
         field('Y axis title', textInput(style.axes?.y?.title, debounced(value => setStyle(elementId, target => { target.axes = target.axes || {}; target.axes.y = {...(target.axes.y || {}), title: value}; })), {id: 'ds-design-axis-y-title', placeholder: 'As the chart names it'}))),
