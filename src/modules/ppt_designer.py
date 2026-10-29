@@ -5537,7 +5537,12 @@ def install_design_routes(core):
         def preparation_cancelled():
             return bool(cancellation['requested'])
 
+        # How long each phase of the preparation takes, recorded in App Events with the whole duration.
+        phase_times = [('Waiting for an available PPT preparation slot', monotonic())]
+
         def update_preparation_progress(percent, detail):
+            if detail and detail != phase_times[-1][0]:
+                phase_times.append((detail, monotonic()))
             with lock:
                 task = direct_preparation_tasks.get(preparation_id)
                 if task is not None:
@@ -5581,7 +5586,22 @@ def install_design_routes(core):
                 preview['token'],
             )
         update_preparation_progress(100, 'PPT dataset and filters are ready')
+        record_preparation_times(task_repository, user, design_id, definition, phase_times)
         return preview
+
+    def record_preparation_times(task_repository, user, design_id, definition, phase_times) -> None:
+        """App Event of a finished preparation: how long it took and its phases of 0.1 s or more, slowest first."""
+        try:
+            ended = monotonic()
+            spans = [(detail, (phase_times[index + 1][1] if index + 1 < len(phase_times) else ended) - started)
+                     for index, (detail, started) in enumerate(phase_times)]
+            slow = sorted((span for span in spans if span[1] >= 0.1), key=lambda span: -span[1])
+            task_repository.add_log(getattr(user, 'username', 'system'), 'design_prepared', json.dumps({
+                'id': design_id, 'name': definition.name, 'seconds': round(ended - phase_times[0][1], 2),
+                'phases': '; '.join(f'{detail} {seconds:.1f} s' for detail, seconds in slow),
+            }))
+        except (sqlite3.Error, OSError):
+            pass  # The preparation stands; only its App Event is missing.
 
     def remember_preparation_result(preparation_id, workspace, username, result) -> None:
         with lock:
@@ -5746,9 +5766,18 @@ def install_design_routes(core):
                 'status': task.get('status', 'processing'),
             }
 
-    def prefetched_design_response(design_id: str, definition: DesignDefinition, user):
+    def prefetched_design_response(design_id: str, definition: DesignDefinition, user, started=None):
         workspace = workspace_key()
+        started = monotonic() if started is None else started
         restored = restore_matching_preview_manifest(workspace, design_id, definition)
+        # How long opening a Design waits for this lookup (Checking persistent PPT cache), in App Events.
+        try:
+            bound_repository().add_log(user.username, 'design_cache_checked', json.dumps({
+                'id': design_id, 'name': definition.name, 'restored': restored is not None,
+                'seconds': round(monotonic() - started, 2),
+            }))
+        except (sqlite3.Error, OSError):
+            pass  # The lookup stands; only its App Event is missing.
         if restored is not None:
             return restored
         raise HTTPException(409, 'PPT preparation is required.')
@@ -5770,12 +5799,13 @@ def install_design_routes(core):
         use_scope_universe: bool = False,
         user=Depends(design_user),
     ):
+        started = monotonic()
         task_repository = bound_repository()
         with lock:
             if design_id not in read_designs(task_repository):
                 raise HTTPException(404, 'Design not found.')
         definition = (automatic_scope_universe if use_scope_universe else auto_cdr_definition)(definition, task_repository)
-        return prefetched_design_response(design_id, definition, user)
+        return prefetched_design_response(design_id, definition, user, started)
 
     def reporting_source(snapshot, kind, task_repository):
         """Return the shared combined CDR table used directly by Design queries."""
