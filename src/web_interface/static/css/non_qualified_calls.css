@@ -1890,11 +1890,11 @@ details.nq-priority-info:not([open]) { padding-block: .55rem; }
 .nq-drawer .nq-map-zoom-button, .nq-l3-maps-panel .nq-map-zoom-button { display: grid; place-items: center; width: 1.65rem; min-width: 1.65rem; height: 1.65rem; min-height: 1.65rem; padding: 0; border: 0; border-radius: 999px; background: var(--nq-color); color: #fff; font: 800 1rem/1 inherit; cursor: pointer; box-shadow: none; }
 .nq-drawer .nq-map-zoom-reset, .nq-l3-maps-panel .nq-map-zoom-reset { font-size: .62rem; }
 .nq-map-zoom-level { min-width: 2.8rem; color: var(--nq-dark); font-size: .68rem; font-weight: 800; text-align: center; }
-/* The cards over the top left of a map, one below the other: the RSRP / SINR samples of the CDRs (in the colour of NQ
-   Calls) above the layers of the Layer 3 - DT Logs (l3_layers.js), as glass panels with a switch in their header. */
-.nq-map-panels { position: absolute; z-index: 5; top: 8px; left: 8px; display: flex; flex-direction: column; align-items: flex-start; gap: .4rem;
-  width: max-content; max-width: calc(100% - 1.2rem); max-height: calc(100% - 1.4rem); pointer-events: none; }
-.nq-map-panels > .nq-l3-panel { position: relative; top: auto; left: auto; flex: 0 1 auto; width: 19.5rem; max-width: 100%; min-height: 0; max-height: none; pointer-events: auto; }
+/* The cards over the top left of a map, side by side (one below the other on a narrow map): From CDR (in the colour of NQ
+   Calls) and From Layer 3 Logs (l3_layers.js), as glass panels with a switch in their header. */
+.nq-map-panels { position: absolute; z-index: 5; top: 8px; left: 8px; display: flex; flex-wrap: wrap; align-items: flex-start; align-content: flex-start; gap: .4rem;
+  width: max-content; max-width: calc(100% - 1.2rem); height: calc(100% - 1.4rem); pointer-events: none; }
+.nq-map-panels > .nq-l3-panel { position: relative; top: auto; left: auto; flex: 0 1 auto; width: 19.5rem; max-width: 100%; min-height: 0; max-height: 100%; pointer-events: auto; }
 .nq-map-panels > .nq-l3-panel.is-collapsed { width: auto; }
 /* Unfolded, the layers of the Layer 3 - DT Logs take two columns (Route beside Signalling, LTE beside NR), one on a narrow map. */
 .nq-map-panels > .nq-l3-panel:not(.nq-map-samples-panel):not(.is-collapsed) { width: 40rem; }

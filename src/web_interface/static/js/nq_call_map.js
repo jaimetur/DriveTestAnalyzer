@@ -803,6 +803,44 @@
       // The tests around, in the colour of their level.
       const operators = data.tests.operators;
       const testRadius = zoom >= 16 ? 5 : zoom >= 13 ? 4 : 3;
+      // NQ Maps, as roads (narrower far out): first, below everything, the drive of each CDR between its tests in time order
+      // (from the CDR, when its route is on), thin and faint: a gap of more than 10 minutes or 5 km between two tests, or a
+      // way a car could not have driven (above about 145 km/h, those of another car measuring nearby), cuts it.
+      const roadScale = zoom >= 15 ? 1 : zoom >= 13 ? .8 : zoom >= 11 ? .6 : .45;
+      const paintPieces = (pieces, colour, kind, item, priority, {scale = roadScale, alpha = .9} = {}) => {
+        for (const piece of pieces.filter((points) => points.length > 1)) {
+          const xs = piece.map(([x]) => x), ys = piece.map(([, y]) => y);
+          if (Math.max(...xs) < -10 || Math.max(...ys) < -10 || Math.min(...xs) > width + 10 || Math.min(...ys) > height + 10) continue;
+          const reach = Math.hypot(piece.at(-1)[0] - piece[0][0], piece.at(-1)[1] - piece[0][1]);
+          paintRoad(context, piece, {colour, alpha, arrow: reach >= 40 ? 'end' : null, scale});
+          const [mx, my] = piece[Math.floor(piece.length / 2)];
+          hits.push({x: mx, y: my, r: 8, kind, item: typeof item === 'function' ? item(piece) : item, priority});
+        }
+      };
+      if (data.area && routeShown && data.tests.rows.length) {
+        const drives = new Map();
+        for (const row of data.tests.rows) {
+          if (!shared.operatorShown(operators[row[COLUMN.operator]])) continue;
+          const key = row[COLUMN.cdr];
+          if (!drives.has(key)) drives.set(key, []);
+          drives.get(key).push(row);
+        }
+        for (const [cdr, rows] of drives) {
+          rows.sort((first, second) => String(first[COLUMN.start]).localeCompare(String(second[COLUMN.start])));
+          const pieces = [[]];
+          rows.forEach((row, index) => {
+            const last = rows[index - 1];
+            if (last) {
+              const seconds = Math.abs(Date.parse(String(row[COLUMN.start]).replace(' ', 'T')) - Date.parse(String(last[COLUMN.start]).replace(' ', 'T'))) / 1000;
+              const metres = geodesic([last[COLUMN.longitude], last[COLUMN.latitude]], [row[COLUMN.longitude], row[COLUMN.latitude]]).metres;
+              if (!(seconds <= 600) || metres > 5000 || metres > Math.max(150, seconds * 40)) pieces.push([]);
+            }
+            pieces.at(-1).push(project(row[COLUMN.latitude], row[COLUMN.longitude]));
+          });
+          paintPieces(pieces, COLOURS.route, 'cdr_route', {cdr: data.tests.cdrs?.[cdr], tests: rows.length, from: rows[0][COLUMN.start], to: rows.at(-1)[COLUMN.start],
+            operator: operators[rows[0][COLUMN.operator]]}, 1.5, {scale: roadScale * .6, alpha: .55});
+        }
+      }
       // Each measure on in its shape, side by side at each test when there are several (those without a value then left out).
       const measures = shownMeasures(settings);
       if (measures.length) {
@@ -1038,77 +1076,6 @@
         context.fillText(text, x, y + .5);
         hits.push({x, y, r: radius + 2, kind: 'handover', item: move, priority: 4.5});
       }
-      // The other Non-Qualified Calls: those of its groups (hotspot, cluster, time-window issue) and of its site,
-      // then the others. The calls on one point make one mark with how many they are (the most related gives its colour);
-      // coloured by relation, a call of its groups at its site too is ringed in the colour of the site; coloured by call type
-      // or campaign, those of its groups are ringed in red and those of its site in violet.
-      if (layers.failures) {
-        const stacks = new Map();
-        for (const failure of data.failures) {
-          if (failure.self || failure.latitude === null || !shared.showsFailure(failure)) continue;
-          const [x, y] = project(failure.latitude, failure.longitude);
-          if (x < -10 || y < -10 || x > width + 10 || y > height + 10) continue;
-          const key = `${Math.round(x / 4)}:${Math.round(y / 4)}`;
-          if (!stacks.has(key)) stacks.set(key, {x, y, items: []});
-          stacks.get(key).items.push(failure);
-        }
-        const rank = (failure) => (inGroup(failure) ? 0 : failure.same_place ? 1 : failure.same_operator ? 2 : 3);
-        for (const {x, y, items} of stacks.values()) {
-          items.sort((first, second) => rank(first) - rank(second));
-          const [failure] = items;
-          const size = inGroup(failure) || failure.same_place ? 7 : 5.5;
-          // On NQ Maps those without Layer 3 - DT Logs are hollow, in their colour.
-          const hollow = data.area && !items.some((item) => item.l3_log);
-          diamond(context, x, y, size);
-          context.fillStyle = hollow ? '#fff' : shared.failureColour(failure);
-          context.fill();
-          context.lineWidth = hollow ? 2.2 : 1.6;
-          context.strokeStyle = hollow ? shared.failureColour(failure) : '#fff';
-          context.stroke();
-          // Its other groups as outlines in their colour (all of them when the colour tells the call type or the campaign),
-          // then red when one of the calls on the point is at its site.
-          const groups = groupsOf(failure);
-          const rings = [...(settings.failureColour === 'relation' ? groups.slice(1) : groups).map((kind) => GROUP_COLOURS[kind]),
-            ...(items.some((item) => item.same_place) ? [COLOURS.site] : [])];
-          rings.forEach((ring, index) => {
-            diamond(context, x, y, size + 3 + index * 3);
-            context.lineWidth = 2.2;
-            context.strokeStyle = ring;
-            context.stroke();
-          });
-          if (items.length > 1) {
-            const badge = `×${items.length}`;
-            context.font = '800 10px "IBM Plex Sans", system-ui, sans-serif';
-            const badgeWidth = Math.max(16, context.measureText(badge).width + 8);
-            context.beginPath();
-            context.roundRect?.(x + size - 1, y - size - 13, badgeWidth, 14, 7);
-            if (!context.roundRect) context.rect(x + size - 1, y - size - 13, badgeWidth, 14);
-            context.fillStyle = '#2d1520';
-            context.fill();
-            context.fillStyle = '#fff';
-            context.textAlign = 'center';
-            context.textBaseline = 'middle';
-            context.fillText(badge, x + size - 1 + badgeWidth / 2, y - size - 6);
-          }
-          hits.push({x, y, r: size + 3, kind: 'failure', item: failure, priority: 4, stack: items.length});
-        }
-      }
-      // The order of the failures of each time window, in a blue badge at the top left of each.
-      context.font = '800 10px "IBM Plex Sans", system-ui, sans-serif';
-      context.textAlign = 'center';
-      context.textBaseline = 'middle';
-      for (const [px, py, number] of pathNumbers) {
-        const [bx, by] = [px - 11, py - 11];
-        context.beginPath();
-        context.arc(bx, by, 7.5, 0, Math.PI * 2);
-        context.fillStyle = COLOURS.run;
-        context.fill();
-        context.lineWidth = 1.5;
-        context.strokeStyle = '#fff';
-        context.stroke();
-        context.fillStyle = '#fff';
-        context.fillText(String(number), bx, by + .5);
-      }
       // The way of the car through the tests of its drive (15 minutes before and after, those a car could have driven between):
       // faint grey winding roads from test to test, each with an arrow towards where it was heading, joined to the road of
       // the call: the one from its test before it ends where the call started, and the one to its next test starts where it
@@ -1170,41 +1137,8 @@
           context.setLineDash([]);
         }
       }
-      // NQ Maps, as roads (narrower far out): the drive of each CDR between its tests in time order (from the CDR, when
-      // its route is on), then the route of each session of the Layer 3 - DT Logs in time order (its switch in their card).
-      // A gap in time (10 minutes between tests, 20 s in a log) or of more than 5 km between tests cuts them.
-      const roadScale = zoom >= 15 ? 1 : zoom >= 13 ? .8 : zoom >= 11 ? .6 : .45;
-      const paintPieces = (pieces, colour, kind, item, priority) => {
-        for (const piece of pieces.filter((points) => points.length > 1)) {
-          const xs = piece.map(([x]) => x), ys = piece.map(([, y]) => y);
-          if (Math.max(...xs) < -10 || Math.max(...ys) < -10 || Math.min(...xs) > width + 10 || Math.min(...ys) > height + 10) continue;
-          const reach = Math.hypot(piece.at(-1)[0] - piece[0][0], piece.at(-1)[1] - piece[0][1]);
-          paintRoad(context, piece, {colour, alpha: .9, arrow: reach >= 40 ? 'end' : null, scale: roadScale});
-          const [mx, my] = piece[Math.floor(piece.length / 2)];
-          hits.push({x: mx, y: my, r: 8, kind, item: typeof item === 'function' ? item(piece) : item, priority});
-        }
-      };
-      if (data.area && routeShown && data.tests.rows.length) {
-        const drives = new Map();
-        for (const row of data.tests.rows) {
-          if (!shared.operatorShown(operators[row[COLUMN.operator]])) continue;
-          const key = row[COLUMN.cdr];
-          if (!drives.has(key)) drives.set(key, []);
-          drives.get(key).push(row);
-        }
-        for (const [cdr, rows] of drives) {
-          rows.sort((first, second) => String(first[COLUMN.start]).localeCompare(String(second[COLUMN.start])));
-          const pieces = [[]];
-          rows.forEach((row, index) => {
-            const last = rows[index - 1];
-            if (last && (Math.abs(Date.parse(String(row[COLUMN.start]).replace(' ', 'T')) - Date.parse(String(last[COLUMN.start]).replace(' ', 'T'))) > 600000
-              || geodesic([last[COLUMN.longitude], last[COLUMN.latitude]], [row[COLUMN.longitude], row[COLUMN.latitude]]).metres > 5000)) pieces.push([]);
-            pieces.at(-1).push(project(row[COLUMN.latitude], row[COLUMN.longitude]));
-          });
-          paintPieces(pieces, COLOURS.route, 'cdr_route', {cdr: data.tests.cdrs?.[cdr], tests: rows.length, from: rows[0][COLUMN.start], to: rows.at(-1)[COLUMN.start],
-            operator: operators[rows[0][COLUMN.operator]]}, 1.5);
-        }
-      }
+      // NQ Maps: the route of each session of the Layer 3 - DT Logs in time order (its switch in their card), a gap of more
+      // than 20 s cutting it.
       if (data.area) {
         for (const route of window.L3Layers?.routesOf(shared.l3) || []) {
           const pieces = [[]];
@@ -1221,6 +1155,85 @@
       window.L3Layers?.drawHighlight(context, shared.l3Hover, project);
       // The moment of the cursor of the signalling timeline: where each UE was and its signalling just before.
       window.L3Layers?.drawCursor(context, shared.l3Focus || shared.l3, project);
+      // The other Non-Qualified Calls, over the routes and the layers of the logs: those of its groups (hotspot, cluster,
+      // time-window issue) and of its site,
+      // then the others. The calls on one point make one mark with how many they are (the most related gives its colour);
+      // coloured by relation, a call of its groups at its site too is ringed in the colour of the site; coloured by call type
+      // or campaign, those of its groups are ringed in red and those of its site in violet.
+      if (layers.failures) {
+        const stacks = new Map();
+        for (const failure of data.failures) {
+          if (failure.self || failure.latitude === null || !shared.showsFailure(failure)) continue;
+          const [x, y] = project(failure.latitude, failure.longitude);
+          if (x < -10 || y < -10 || x > width + 10 || y > height + 10) continue;
+          const key = `${Math.round(x / 4)}:${Math.round(y / 4)}`;
+          if (!stacks.has(key)) stacks.set(key, {x, y, items: []});
+          stacks.get(key).items.push(failure);
+        }
+        const rank = (failure) => (inGroup(failure) ? 0 : failure.same_place ? 1 : failure.same_operator ? 2 : 3);
+        for (const {x, y, items} of stacks.values()) {
+          items.sort((first, second) => rank(first) - rank(second));
+          const [failure] = items;
+          // Larger than the points of the layers, with a shadow, so that they stand out (larger still close in).
+          const size = (inGroup(failure) || failure.same_place ? 9.5 : 8) + (zoom >= 15 ? 1.5 : 0);
+          // On NQ Maps those without Layer 3 - DT Logs are hollow, in their colour.
+          const hollow = data.area && !items.some((item) => item.l3_log);
+          context.save();
+          context.shadowColor = 'rgba(30, 10, 20, .45)';
+          context.shadowBlur = 5;
+          context.shadowOffsetY = 1;
+          diamond(context, x, y, size);
+          context.fillStyle = hollow ? '#fff' : shared.failureColour(failure);
+          context.fill();
+          context.restore();
+          diamond(context, x, y, size);
+          context.lineWidth = hollow ? 2.6 : 2;
+          context.strokeStyle = hollow ? shared.failureColour(failure) : '#fff';
+          context.stroke();
+          // Its other groups as outlines in their colour (all of them when the colour tells the call type or the campaign),
+          // then red when one of the calls on the point is at its site.
+          const groups = groupsOf(failure);
+          const rings = [...(settings.failureColour === 'relation' ? groups.slice(1) : groups).map((kind) => GROUP_COLOURS[kind]),
+            ...(items.some((item) => item.same_place) ? [COLOURS.site] : [])];
+          rings.forEach((ring, index) => {
+            diamond(context, x, y, size + 3 + index * 3);
+            context.lineWidth = 2.2;
+            context.strokeStyle = ring;
+            context.stroke();
+          });
+          if (items.length > 1) {
+            const badge = `×${items.length}`;
+            context.font = '800 10px "IBM Plex Sans", system-ui, sans-serif';
+            const badgeWidth = Math.max(16, context.measureText(badge).width + 8);
+            context.beginPath();
+            context.roundRect?.(x + size - 1, y - size - 13, badgeWidth, 14, 7);
+            if (!context.roundRect) context.rect(x + size - 1, y - size - 13, badgeWidth, 14);
+            context.fillStyle = '#2d1520';
+            context.fill();
+            context.fillStyle = '#fff';
+            context.textAlign = 'center';
+            context.textBaseline = 'middle';
+            context.fillText(badge, x + size - 1 + badgeWidth / 2, y - size - 6);
+          }
+          hits.push({x, y, r: size + 3, kind: 'failure', item: failure, priority: 4, stack: items.length});
+        }
+      }
+      // The order of the failures of each time window, in a blue badge at the top left of each.
+      context.font = '800 10px "IBM Plex Sans", system-ui, sans-serif';
+      context.textAlign = 'center';
+      context.textBaseline = 'middle';
+      for (const [px, py, number] of pathNumbers) {
+        const [bx, by] = [px - 11, py - 11];
+        context.beginPath();
+        context.arc(bx, by, 7.5, 0, Math.PI * 2);
+        context.fillStyle = COLOURS.run;
+        context.fill();
+        context.lineWidth = 1.5;
+        context.strokeStyle = '#fff';
+        context.stroke();
+        context.fillStyle = '#fff';
+        context.fillText(String(number), bx, by + .5);
+      }
       // Where the call started (when the CDR gives where it ended too).
       if (start && call.end && !realWay) {
         const [x1, y1] = project(start[0], start[1]);
@@ -2789,6 +2802,8 @@
   // points, as on the map of a call (the server sends these zoom levels). ``filters`` gives the filters of the page; a
   // click on an NQ call opens it; a double-click opens the map larger, in ``expandDialog``.
   const AREA_SETTINGS_KEY = 'nq-l3-maps-settings';
+  // Where the map of NQ Maps was left (its centre and zoom), shown again when the page opens.
+  const AREA_VIEW_KEY = 'nq-maps-view';
   function mountArea({panel, expandDialog = null, api, toast, openCall, filters = () => ({}), campaignLabel = (value) => value,
     cdrTime = (value) => String(value || '').replace('T', ' ').slice(0, 19), number = (value) => Number(value).toLocaleString('en-GB')}) {
     let stored = {};
@@ -3092,7 +3107,14 @@
         shared.l3 = window.L3Layers.prepare(payload);
         status.textContent = statusText(payload);
         if (expandDialog?.open) expandDialog.querySelector('[data-nq-map-expand-meta]').textContent = [status.textContent, HINT].join(' · ');
-        if (!fitted && shared.l3?.extent) { fitted = true; view.fit(); }
+        if (!fitted) {
+          // The place the map was left, else the whole extent of the logs.
+          let kept = null;
+          try { kept = JSON.parse(localStorage.getItem(AREA_VIEW_KEY) || 'null'); } catch (_error) { kept = null; }
+          fitted = Boolean(kept || shared.l3?.extent);
+          if (kept && [kept.x, kept.y, kept.resolution].every(Number.isFinite)) view.setView(kept);
+          else if (shared.l3?.extent) view.fit();
+        }
         window.L3Layers.refresh();
         redrawAll();
       } catch (error) {
@@ -3107,7 +3129,12 @@
     const viewChanged = (info) => {
       lastView = info;
       clearTimeout(pending);
-      pending = setTimeout(() => { if (shared.data) load(info); }, 350);
+      pending = setTimeout(() => {
+        if (!shared.data) return;
+        load(info);
+        if (!fitted) return;
+        try { localStorage.setItem(AREA_VIEW_KEY, JSON.stringify((expandedView || view).view())); } catch (_error) { /* A private window keeps it for the page. */ }
+      }, 350);
     };
 
     // -- the larger map (a double-click on the map): the whole width of the window but 2 % on each side ---------------
