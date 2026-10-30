@@ -1074,7 +1074,7 @@ def test_the_calls_show_and_export_the_ids_of_their_groups(prioritized):
     place = keys.index(fields['place_label']['key'])
     assert keys[place + 1:place + 4] == [fields[ref]['key'] for ref in refs]
     assert all(fields[ref]['in_export'] and not fields[ref]['in_table'] for ref in refs)
-    # Each call takes the IDs of the groups of its header, those of the Hotspots, Time-Window & Clustered Issues panel.
+    # Each call takes the IDs of the groups of its header, those of the NQ Hotspots, Time-Window & Clustered Issues panel.
     listed = client.post('/api/non-qualified-calls/calls', json={'filters': {}, 'page_size': 100, 'breakdowns': False}).json()['calls']
     assert listed and all({ref: call['values'][fields[ref]['key']] for ref in refs} == group_ids_of(rows[call['call_key']]) for call in listed)
     assert any(call['values'][fields['hotspot_id']['key']] for call in listed)

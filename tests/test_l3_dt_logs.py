@@ -438,16 +438,59 @@ def test_layer_3_maps_gives_a_grid_zoomed_out_and_the_points_of_the_area_zoomed_
         assert response.status_code == 200, response.text
         return response.json()
 
-    country = maps(filters={}, zoom=6, layers=['lte_pcell:rsrp'], grid='lte_pcell:rsrp')
-    assert country['mode'] == 'grid' and [call['join_id'] for call in country['calls']] == ['0xBB22']
+    country = maps(filters={}, zoom=6, layers=['lte_pcell:rsrp', 'event'], grid='lte_pcell:rsrp')
+    # Every NQ call of the filters (those without Layer 3 - DT Logs too), with what colours them on the map.
+    assert country['mode'] == 'grid' and sorted(call['join_id'] for call in country['calls']) == ['0xBB22', '0xCC33']
+    assert country['calls_count'] == 2 and country['calls_with_log'] == 1 and all(call['kind'] for call in country['calls'])
     assert country['sessions'] == 1 and country['grid']['metric'] == 'rsrp' and country['grid']['cells']
     assert sum(cell[3] for cell in country['grid']['cells']) == 12 and country['extent'][0] == 52.4
-    street = maps(filters={}, zoom=16, bbox=[52.39, -0.2, 52.42, 0.0], layers=['lte_pcell:rsrp', 'event'])
+    # Below the zoom of the events, the grid alone; no sites or samples without an area.
+    assert country['ues'] == {} and country['routes'] == [] and country['sites'] is None and country['tests'] is None
+    assert country['zooms'] == {'grid': 13, 'events': 10, 'sites': 11, 'tests': 13} and country['classes']['rsrp']
+    assert 'focus_operators' in country and 'focus_labels' in country
+    # From the zoom of the events, those of the area over the grid; the NQ calls only when asked for.
+    town = maps(filters={}, zoom=11, bbox=[52.3, -0.4, 52.5, 0.2], layers=['lte_pcell:rsrp', 'event'], with_calls=False)
+    assert town['mode'] == 'grid' and town['calls'] is None and town['calls_count'] == 2
+    assert {point[town['columns'].index('kind')] for point in town['ues']['0xBB22|Data']['points']} == {'event'}
+    street = maps(filters={}, zoom=16, bbox=[52.39, -0.2, 52.42, 0.0], layers=['lte_pcell:rsrp', 'event'], route=True, sites=True, tests=True)
     assert street['mode'] == 'points' and list(street['ues']) == ['0xBB22|Data']
     kinds = {point[street['columns'].index('kind')] for point in street['ues']['0xBB22|Data']['points']}
     assert kinds == {'lte_pcell', 'event'}
+    # The route of each session in time order, and the sites and RSRP / SINR samples of the area.
+    [route] = street['routes']
+    assert route['key'] == '0xBB22|Data' and route['session']['join_id'] == '0xBB22' and len(route['points']) > 1
+    assert [point[0] for point in route['points']] == sorted(point[0] for point in route['points'])
+    assert street['sites']['sites'] == [] and isinstance(street['tests']['rows'], list)
     elsewhere = maps(filters={}, zoom=16, bbox=[40.0, 10.0, 40.1, 10.1], layers=['lte_pcell:rsrp'])
     assert elsewhere['ues'] == {} and elsewhere['sessions'] == 1
     around = maps(join_ids=['0xbb22', '0xcc33'], exclude='0xCC33', zoom=18, layers=['event'])
     assert around['calls'] == [] and list(around['ues']) == ['0xBB22|Data']
     assert any(row['action'] == 'nq_l3_maps' for row in app_module.repository.list_logs())
+
+
+def test_layer_3_maps_reads_the_samples_of_the_area_from_a_copy_of_each_cdr(client, monkeypatch) -> None:
+    import numpy as np
+
+    from src.modules import non_qualified_calls as nq
+    from src.modules import nq_call_map
+
+    nq.sync_nq_calls(app_module.repository)
+    entry = {'kind': 'data', 'latitude': np.array([52.40, 52.41, 53.0]), 'longitude': np.array([-0.10, -0.11, 1.0]),
+             'operators': ['Vodafone UK'], 'operator': np.zeros(3, dtype=np.int32), 'tests': ['HTTP DL'], 'test': np.zeros(3, dtype=np.int32),
+             'failed': np.array([True, False, False]),
+             'start': np.array(['2026-09-03 09:00:00', '2026-09-03 09:01:00', '2026-09-03 09:02:00'], dtype=object),
+             'lte_rsrp': np.array([-101.0, -95.0, np.nan], dtype=np.float32), 'lte_sinr': np.array([2.0, 8.0, 1.0], dtype=np.float32),
+             'nr_rsrp': np.full(3, np.nan, dtype=np.float32), 'nr_sinr': np.full(3, np.nan, dtype=np.float32)}
+    reads = []
+    monkeypatch.setattr(nq_call_map, '_dataset_tests', lambda repository, dataset_id: reads.append(dataset_id) or entry)
+    repository = app_module.repository
+    area = nq_call_map.area_tests(repository, [7], [52.3, -0.3, 52.5, 0.0], lambda value: 'VFUK')
+    # The tests of the area only, as the map of a call has them (the CDR read once, then from its copy in the cache).
+    assert area['total'] == 2 and area['operators'] == ['VFUK'] and area['kinds'] == ['data'] and not area['truncated']
+    assert sorted(row[5] for row in area['rows']) == [-101.0, -95.0] and {row[4] for row in area['rows']} == {0, 1}
+    assert area['cdrs'][0]['dataset_id'] == 7 and area['test_names'] == ['HTTP DL']
+    assert nq_call_map.area_tests(repository, [7], [52.0, -2.0, 54.0, 2.0])['total'] == 3 and reads == [7]
+    # More tests than the map shows: an even sample of them.
+    monkeypatch.setattr(nq_call_map, 'MAX_AREA_TESTS', 1)
+    sampled = nq_call_map.area_tests(repository, [7], [52.0, -2.0, 54.0, 2.0])
+    assert sampled['total'] == 3 and len(sampled['rows']) == 1 and sampled['truncated']

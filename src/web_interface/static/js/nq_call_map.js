@@ -5,9 +5,11 @@
 
    It navigates like the maps of Network Insights: dragging moves it, Ctrl/Cmd+wheel (or a pinch) zooms towards the
    pointer (in the larger map the wheel alone too; in the call panel the wheel alone scrolls the panel), Ctrl/Cmd+drag
-   draws a rectangle to zoom into, Alt/Opt+drag measures a distance and its bearing, the − / + / Fit buttons zoom, a
+   draws a rectangle to zoom into, Alt/Opt+drag measures a distance and its bearing (with the elevation profile of the
+   ground between its ends, from the Terrain Tiles of AWS Open Data), the − / + / Fit buttons zoom, a
    double-click opens it larger (where a double-click zooms in) and the image buttons download it as a PNG image or copy
-   it as a screenshot (image_buttons.js). The RSRP / SINR samples show only when their button of the map is on. */
+   it as a screenshot (image_buttons.js). The RSRP / SINR samples of the CDRs show only when the switch of their card on
+   the map is on, and the route only when Route is on. */
 (() => {
   'use strict';
 
@@ -74,14 +76,83 @@
     nr_rsrp: {label: 'NR RSRP', unit: 'dBm', classes: 'rsrp'}, nr_sinr: {label: 'NR SINR', unit: 'dB', classes: 'sinr'},
     result: {label: 'Result (completed or failed)', unit: ''},
   };
+  // The measures of the RSRP / SINR samples, each a layer of their card, in the shapes of the layers of the KMZ files
+  // (l3_layers.js): RSRP a circle, SINR an inverted triangle, the result a square; NR with a black dot in the middle.
+  const SAMPLE_SHAPES = {lte_rsrp: 'circle', lte_sinr: 'triangle-down', nr_rsrp: 'circle', nr_sinr: 'triangle-down', result: 'square'};
+  const SAMPLE_MARKS = {circle: 'dot', 'triangle-down': 'triangle-down', square: 'square'};
+  const SAMPLE_ICON_COLOURS = {lte_rsrp: '#1c5dbf', lte_sinr: '#1c5dbf', nr_rsrp: '#6b3fb5', nr_sinr: '#6b3fb5', result: '#2e8b57'};
+  const drawSample = (context, key, x, y, size, colour) => {
+    if (window.L3Layers?.drawMarker) {
+      window.L3Layers.drawMarker(context, SAMPLE_SHAPES[key], x, y, size, colour, {nr: key.startsWith('nr_'), outline: 'rgba(255, 255, 255, .85)'});
+      return;
+    }
+    context.beginPath();
+    context.arc(x, y, size, 0, Math.PI * 2);
+    context.fillStyle = colour;
+    context.fill();
+  };
+  // What the card From CDR switches (``cdr`` the whole of it): the layers of the map from the CDRs and the Non-Qualified
+  // Calls, and the measures of the samples; while it is off none of them is drawn.
+  const CDR_LAYER_LABELS = {failures: 'NQ calls', sites: 'Sites', path: 'Cell path', paths: 'Time-window paths', route: 'Route'};
+  const shownLayers = (settings) => (settings.layers.cdr === false
+    ? {...settings.layers, ...Object.fromEntries(Object.keys(CDR_LAYER_LABELS).map((key) => [key, false]))} : settings.layers);
+  const shownMeasures = (settings) => (settings.layers.cdr === false ? [] : Object.keys(METRICS).filter((key) => settings.measures.includes(key)));
+  // The measures of the samples kept in the browser: those of the colour of the samples before the card From CDR (none while
+  // they were hidden).
+  const storedMeasures = (stored, fallback = []) => {
+    const old = stored.layers && 'tests' in stored.layers;
+    const measures = Array.isArray(stored.measures) ? stored.measures.filter((key) => METRICS[key]) : METRICS[stored.colour] ? [stored.colour] : fallback;
+    return old && stored.layers.tests !== true ? [] : measures;
+  };
   const KIND_LABELS = {voice: 'Voice', whatsapp: 'WhatsApp', data: 'Data', ping: 'Ping', speech: 'Speech'};
   const SERVICE_LABELS = {voice: 'Voice', speech: 'Speech', data: 'Data'};
-  // The layers chosen above the map; the RSRP / SINR samples have their own button on the map.
-  const LAYERS = {failures: 'NQ calls', sites: 'Sites', path: 'Cell path'};
   const FAILURE_SCOPES = {cdr: 'This CDR', campaign: 'Its campaign', every: 'Every campaign'};
   // What the colour of the NQ calls tells (their size always marks those of its groups and of its site).
-  const FAILURE_COLOURS = {relation: 'Relation', type: 'Call type', campaign: 'Campaign'};
+  const FAILURE_COLOURS = {relation: 'Relation', type: 'Call type', campaign: 'Campaign', domain: 'Root cause domain'};
+  // NQ Maps (no call of its own): its NQ calls by the domain of their root cause (decided, else that of the DT
+  // Analyzer RCA), their call type, campaign or operator.
+  const AREA_FAILURE_COLOURS = {domain: 'Root cause domain', type: 'Call type', campaign: 'Campaign', operator: 'Operator'};
+  const KIND_COLOURS = {voice: '#b0234f', speech: '#7048e8', whatsapp: '#2b8a3e', data: '#1c7ed6', ping: '#f08c00'};
+  const DOMAIN_COLOURS = () => window.L3Layers?.DOMAIN_COLOURS || {};
+  const failureDomain = (failure) => failure.root_domain || failure.dta_domain || '';
+  const domainColour = (failure) => DOMAIN_COLOURS()[failureDomain(failure)] || '#adb5bd';
+  // The NQ calls of a map coloured by their root cause domain: a line of the legend for each domain shown.
+  const domainLegend = (failures) => [...new Set(failures.map((failure) => failureDomain(failure) || 'No root cause'))].sort()
+    .map((domain) => [domain === 'No root cause' ? 'No root cause yet' : domain, DOMAIN_COLOURS()[domain] || '#adb5bd']);
   const SETTINGS_KEY = 'nq-call-map-settings';
+  // The maps under the layers, chosen on each map (the same one on every map of the page), from tile servers that need no
+  // key: OpenStreetMap in grey by default (its streets under a white veil, so that the samples, events and calls stand out),
+  // Plain and Dark without symbols or labels (up to zoom 16, enlarged beyond).
+  const BASEMAPS = {
+    streets: {label: 'OpenStreetMap (original)', url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', max: 19, attribution: '© OpenStreetMap contributors'},
+    light: {label: 'OpenStreetMap in grey (light)', url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', max: 19, grey: true, veil: .5,
+      attribution: '© OpenStreetMap contributors'},
+    plain: {label: 'Plain (no labels)', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+      max: 16, attribution: 'Tiles © Esri — Esri, HERE, Garmin, OpenStreetMap contributors'},
+    terrain: {label: 'Terrain (elevation)', url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', subdomains: 'abc', max: 17,
+      attribution: '© OpenStreetMap contributors, SRTM · © OpenTopoMap (CC-BY-SA)'},
+    topographic: {label: 'Topographic', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', max: 19,
+      attribution: 'Tiles © Esri — Esri, HERE, Garmin, USGS, NGA, OpenStreetMap contributors'},
+    satellite: {label: 'Satellite', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', max: 19,
+      attribution: 'Tiles © Esri — Esri, Maxar, Earthstar Geographics, GIS User Community'},
+    dark: {label: 'Dark', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+      max: 16, attribution: 'Tiles © Esri — Esri, HERE, Garmin, OpenStreetMap contributors'},
+  };
+  const BASEMAP_KEY = 'nq-map-basemap';
+  const basemapViews = new Set();
+  const basemap = {key: 'light'};
+  try { if (BASEMAPS[localStorage.getItem(BASEMAP_KEY)]) basemap.key = localStorage.getItem(BASEMAP_KEY); } catch (_error) { /* Light. */ }
+  const setBasemap = (key) => {
+    if (!BASEMAPS[key]) return;
+    basemap.key = key;
+    try { localStorage.setItem(BASEMAP_KEY, key); } catch (_error) { /* A private window keeps it for the page. */ }
+    basemapViews.forEach((view) => view());
+  };
+  const tileUrl = (zoom, x, y) => {
+    const map = BASEMAPS[basemap.key];
+    const subdomains = map.subdomains || '';
+    return map.url.replace('{s}', subdomains ? subdomains[(x + y) % subdomains.length] : '').replace('{z}', zoom).replace('{x}', x).replace('{y}', y);
+  };
   const HINT = 'Drag to move · wheel or Ctrl/Cmd+wheel to zoom · Ctrl/Cmd+drag a rectangle to zoom into it · Alt/Opt+drag to measure · double-click to zoom in';
   const PANEL_HINT = 'Drag to move · Ctrl/Cmd+wheel to zoom · Ctrl/Cmd+drag a rectangle to zoom into it · Alt/Opt+drag to measure · double-click to enlarge';
 
@@ -92,6 +163,17 @@
     return element;
   };
   const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
+  // A switch as those of the layers of the Layer 3 - DT Logs (l3_layers.js).
+  const switchControl = (checked, label, onChange) => {
+    const wrap = node('label', undefined, 'nq-l3-switch');
+    const box = node('input');
+    box.type = 'checkbox';
+    box.checked = checked;
+    box.setAttribute('aria-label', label);
+    box.addEventListener('change', () => onChange(box.checked));
+    wrap.append(box, node('span', undefined, 'nq-l3-switch-track'));
+    return wrap;
+  };
   const toWorld = (latitude, longitude) => {
     const radians = clamp(Number(latitude), -85.05112878, 85.05112878) * Math.PI / 180;
     return [(Number(longitude) + 180) / 360 * WORLD, (1 - Math.asinh(Math.tan(radians)) / Math.PI) / 2 * WORLD];
@@ -141,6 +223,62 @@
     }
     if (record.status === 'loading') record.waiting.add(redraw);
     return record;
+  };
+
+  // -- the elevation of the ground: the Terrain Tiles of AWS Open Data (Terrarium PNG tiles: metres = R × 256 + G + B / 256
+  // − 32768), read in the browser, for the elevation profile of the distance tool ---------------------------------------
+  const TERRAIN_URL = 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png';
+  const TERRAIN_ATTRIBUTION = 'Elevation: Terrain Tiles (AWS Open Data · Mapzen, SRTM, Copernicus and others)';
+  const PROFILE_SAMPLES = 200;
+  const terrainTiles = new Map();
+  const terrainTile = (zoom, x, y) => {
+    const key = `${zoom}/${x}/${y}`;
+    if (!terrainTiles.has(key)) {
+      terrainTiles.set(key, new Promise((resolve) => {
+        const image = new Image();
+        image.crossOrigin = 'anonymous';
+        image.addEventListener('load', () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = canvas.height = 256;
+          const context = canvas.getContext('2d', {willReadFrequently: true});
+          context.drawImage(image, 0, 0);
+          try { resolve(context.getImageData(0, 0, 256, 256).data); } catch (_error) { resolve(null); }
+        });
+        image.addEventListener('error', () => { terrainTiles.delete(key); resolve(null); });
+        image.src = TERRAIN_URL.replace('{z}', zoom).replace('{x}', x).replace('{y}', y);
+      }));
+    }
+    return terrainTiles.get(key);
+  };
+  // The elevation (m) of a place at a zoom of the terrain tiles, between its four nearest pixels; null where it is unknown.
+  const elevationAt = async (latitude, longitude, zoom) => {
+    const size = 256 * 2 ** zoom;
+    const radians = clamp(latitude, -85.05, 85.05) * Math.PI / 180;
+    const px = (longitude + 180) / 360 * size - .5, py = (1 - Math.asinh(Math.tan(radians)) / Math.PI) / 2 * size - .5;
+    const x0 = Math.floor(px), y0 = Math.floor(py);
+    const value = async (x, y) => {
+      const wrapped = ((x % size) + size) % size, row = clamp(y, 0, size - 1);
+      const data = await terrainTile(zoom, Math.floor(wrapped / 256), Math.floor(row / 256));
+      if (!data) return null;
+      const index = ((row % 256) * 256 + (wrapped % 256)) * 4;
+      return data[index] * 256 + data[index + 1] + data[index + 2] / 256 - 32768;
+    };
+    const [a, b, c, d] = await Promise.all([value(x0, y0), value(x0 + 1, y0), value(x0, y0 + 1), value(x0 + 1, y0 + 1)]);
+    if ([a, b, c, d].some((item) => item === null)) return a;
+    const fx = px - x0, fy = py - y0;
+    return (a * (1 - fx) + b * fx) * (1 - fy) + (c * (1 - fx) + d * fx) * fy;
+  };
+  // The ground between two places ([longitude, latitude]): PROFILE_SAMPLES + 1 points evenly along the straight line between
+  // them, at the zoom of the terrain tiles that suits its length.
+  const elevationProfile = async (from, to) => {
+    const {metres} = geodesic(from, to);
+    const zoom = metres > 80000 ? 10 : metres > 30000 ? 11 : metres > 10000 ? 12 : metres > 3000 ? 13 : metres > 800 ? 14 : 15;
+    const points = await Promise.all(Array.from({length: PROFILE_SAMPLES + 1}, async (_item, index) => {
+      const share = index / PROFILE_SAMPLES;
+      const longitude = from[0] + (to[0] - from[0]) * share, latitude = from[1] + (to[1] - from[1]) * share;
+      return {share, metres: metres * share, longitude, latitude, elevation: await elevationAt(latitude, longitude, zoom)};
+    }));
+    return {metres, zoom, points};
   };
 
   // Holding Ctrl/Cmd turns the hand over the maps into the crosshair of the zoom rectangle, and Alt/Opt into the ruler.
@@ -201,7 +339,8 @@
   };
   // A winding road (see windingRoad) in the colour of the call (grey for the way of its car): a white edge, a dashed white
   // centre line and an arrow at its end, or at a share of its length (none when ``arrow`` is null), towards where it went.
-  const paintRoad = (context, road, {colour = COLOURS.path, alpha = 1, arrow = 'end'} = {}) => {
+  // ``scale`` narrows it (the many routes of NQ Maps far out).
+  const paintRoad = (context, road, {colour = COLOURS.path, alpha = 1, arrow = 'end', scale = 1} = {}) => {
     const trace = () => {
       context.beginPath();
       context.moveTo(road[0][0], road[0][1]);
@@ -216,8 +355,8 @@
     context.lineJoin = 'round';
     [[9, '#fff', []], [6.5, colour, []], [1.3, '#fff', [5, 6]]].forEach(([width, stroke, dash]) => {
       trace();
-      context.setLineDash(dash);
-      context.lineWidth = width;
+      context.setLineDash(dash.map((value) => value * scale));
+      context.lineWidth = width * scale;
       context.strokeStyle = stroke;
       context.stroke();
     });
@@ -230,11 +369,11 @@
     const [ex, ey] = road[tip], [bx, by] = road[Math.max(0, tip - 3)];
     const length = Math.hypot(ex - bx, ey - by) || 1;
     const [ux, uy] = [(ex - bx) / length, (ey - by) / length];
-    const reach = arrow === 'end' ? 9 : 6;
+    const reach = (arrow === 'end' ? 9 : 6) * scale, back = 14 * scale - reach, side = 8 * scale;
     context.beginPath();
     context.moveTo(ex + ux * reach, ey + uy * reach);
-    context.lineTo(ex - ux * (14 - reach) - uy * 8, ey - uy * (14 - reach) + ux * 8);
-    context.lineTo(ex - ux * (14 - reach) + uy * 8, ey - uy * (14 - reach) - ux * 8);
+    context.lineTo(ex - ux * back - uy * side, ey - uy * back + ux * side);
+    context.lineTo(ex - ux * back + uy * side, ey - uy * back - ux * side);
     context.closePath();
     context.fillStyle = colour;
     context.fill();
@@ -258,31 +397,117 @@
     const ruler = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     ruler.setAttribute('class', 'nq-map-measure');
     ruler.setAttribute('aria-hidden', 'true');
+    // The elevation profile of the distance measured, at the bottom of the map (in its images too), as Google Earth shows it.
+    const profileBox = node('section', undefined, 'nq-map-profile');
+    profileBox.hidden = true;
+    ['wheel', 'pointerdown', 'dblclick'].forEach((type) => profileBox.addEventListener(type, (event) => event.stopPropagation(), {passive: true}));
     const legend = node('div', undefined, 'nq-map-legend');
-    const attribution = node('div', '© OpenStreetMap contributors', 'nq-map-attribution');
-    // The RSRP / SINR samples: shown or hidden with their own button, and the measure that colours them.
-    const samples = node('div', undefined, 'nq-map-samples');
-    const samplesToggle = node('button', undefined, 'nq-map-samples-toggle');
-    samplesToggle.type = 'button';
-    samplesToggle.append(node('span', undefined, 'nq-map-samples-dot'), node('span', 'RSRP / SINR samples'));
-    samplesToggle.addEventListener('click', (event) => { event.stopPropagation(); shared.setSamples(!shared.settings.layers.tests); });
-    const samplesMeasure = node('select', undefined, 'nq-map-samples-measure');
-    samplesMeasure.setAttribute('aria-label', 'Colour the samples by');
-    samplesMeasure.title = 'Colour the samples by';
-    for (const [key, metric] of Object.entries(METRICS)) {
-      const option = node('option', metric.label);
+    const attribution = node('div', BASEMAPS[basemap.key].attribution, 'nq-map-attribution');
+    // The map under the layers (BASEMAPS), the same on every map of the page.
+    const basemapChoice = node('label', undefined, 'nq-map-basemap');
+    basemapChoice.title = 'The map under the layers: Light and Plain show little of their own so that the samples and events stand out';
+    const basemapSelect = node('select');
+    basemapSelect.setAttribute('aria-label', 'Map type');
+    for (const [key, map] of Object.entries(BASEMAPS)) {
+      const option = node('option', map.label);
       option.value = key;
-      samplesMeasure.append(option);
+      basemapSelect.append(option);
     }
-    samplesMeasure.addEventListener('change', () => shared.setColour(samplesMeasure.value));
-    // The lines that join the failures of each time window in their order, and their numbers: shown or hidden with their own
-    // button.
-    const pathsToggle = node('button', undefined, 'nq-map-samples-toggle nq-map-paths-toggle');
-    pathsToggle.type = 'button';
-    pathsToggle.append(node('span', undefined, 'nq-map-paths-mark'), node('span', 'Time-window paths'));
-    pathsToggle.addEventListener('click', (event) => { event.stopPropagation(); shared.setPaths(shared.settings.layers.paths === false); });
-    samples.append(samplesToggle, samplesMeasure, pathsToggle);
+    basemapSelect.value = basemap.key;
+    basemapSelect.addEventListener('change', () => setBasemap(basemapSelect.value));
+    basemapChoice.append(node('span', 'Map'), basemapSelect);
+    ['wheel', 'pointerdown', 'dblclick'].forEach((type) => basemapChoice.addEventListener(type, (event) => event.stopPropagation(), {passive: true}));
+    const basemapChanged = () => {
+      basemapSelect.value = basemap.key;
+      attribution.textContent = BASEMAPS[basemap.key].attribution;
+      redraw();
+    };
+    basemapViews.add(basemapChanged);
+    // The cards over the top left of the map: the RSRP / SINR samples of the CDRs (shown or hidden with its switch, the
+    // measure that colours them and, on the map of a call, the CDRs they come from), above the layers of the Layer 3 - DT
+    // Logs (l3_layers.js).
+    const panels = node('div', undefined, 'nq-map-panels');
+    const samples = node('section', undefined, 'nq-l3-panel nq-map-samples-panel');
     samples.hidden = true;
+    ['wheel', 'pointerdown', 'dblclick'].forEach((type) => samples.addEventListener(type, (event) => event.stopPropagation(), {passive: true}));
+    panels.append(samples);
+    // From CDR: what the map shows from the CDRs and their Non-Qualified Calls, as the card From Layer 3 Logs shows what comes
+    // from the logs (l3_layers.js): the measures of the RSRP / SINR samples, each a layer with its switch, its marker and how
+    // many samples have it (several at once: side by side at each test), with the CDRs they come from on the map of a call;
+    // then the NQ calls, the sites, the cell path and time-window paths of a call and the route (``shared.cdrLayers``). Its
+    // switch shows or hides all of it. It opens folded on every map (collapseCards folds it again for another call).
+    let samplesOpen = false;
+    const renderSamples = () => {
+      const data = shared.data, settings = shared.settings;
+      samples.hidden = !data;
+      if (!data) return;
+      const on = settings.layers.cdr !== false;
+      samples.classList.toggle('is-collapsed', !samplesOpen);
+      const head = node('header', undefined, 'nq-l3-head');
+      const title = node('button', undefined, 'nq-l3-title');
+      title.type = 'button';
+      title.setAttribute('aria-expanded', String(samplesOpen));
+      title.title = samplesOpen ? 'Fold the layers from the CDR' : 'Show the layers from the CDR';
+      title.append(node('span', 'From CDR', 'nq-l3-title-text'), node('span', samplesOpen ? '▾' : '▸', 'nq-l3-chevron'));
+      // A click anywhere on its header but its switch folds or unfolds it (its title is the button for the keyboard).
+      head.addEventListener('click', (event) => {
+        event.stopPropagation();
+        if (event.target.closest('.nq-l3-switch')) return;
+        samplesOpen = !samplesOpen;
+        renderSamples();
+      });
+      head.append(title, switchControl(on, 'Show what comes from the CDR', (checked) => shared.setLayer('cdr', checked)));
+      samples.replaceChildren(head);
+      if (!samplesOpen) return;
+      const body = node('div', undefined, `nq-l3-body${on ? '' : ' is-off'}`);
+      const row = (checked, label, icon, text, count, onChange) => {
+        const layer = node('div', undefined, 'nq-l3-layer');
+        const line = node('div', undefined, 'nq-l3-line');
+        line.append(switchControl(checked, label, onChange));
+        if (icon && window.L3Layers?.markerIcon) line.append(window.L3Layers.markerIcon(...icon));
+        line.append(node('span', text, 'nq-l3-name'));
+        if (count !== null) line.append(node('span', count.toLocaleString('en-GB'), 'nq-l3-count'));
+        layer.append(line);
+        body.append(layer);
+      };
+      body.append(node('p', 'RSRP / SINR (from CDR samples)', 'nq-l3-block'));
+      if (shared.samplesScope) {
+        const scopes = node('div', undefined, 'nq-l3-ues');
+        scopes.setAttribute('role', 'radiogroup');
+        scopes.setAttribute('aria-label', 'CDRs of the samples');
+        scopes.title = shared.samplesScope.title;
+        for (const [value, text] of shared.samplesScope.options()) {
+          const chosen = value === shared.samplesScope.value();
+          const button = node('button', text, `nq-l3-ue${chosen ? ' is-on' : ''}`);
+          button.type = 'button';
+          button.setAttribute('role', 'radio');
+          button.setAttribute('aria-checked', String(chosen));
+          button.addEventListener('click', (event) => { event.stopPropagation(); if (!chosen) shared.samplesScope.set(value); });
+          scopes.append(button);
+        }
+        body.append(scopes);
+      }
+      const rows = data.tests?.rows || [];
+      for (const [key, metric] of Object.entries(METRICS)) {
+        const count = key === 'result' ? rows.length : rows.filter((item) => item[COLUMN[key]] !== null && item[COLUMN[key]] !== undefined).length;
+        row(settings.measures.includes(key), `Show the ${metric.label} of the samples`, [SAMPLE_SHAPES[key], SAMPLE_ICON_COLOURS[key], {nr: key.startsWith('nr_')}],
+          metric.label, count, (checked) => shared.setMeasure(key, checked));
+      }
+      const note = shared.samplesNote?.();
+      if (note) body.append(node('p', note, 'nq-l3-area-note'));
+      body.append(node('p', 'Calls, sites and routes', 'nq-l3-block'));
+      const icons = {failures: ['diamond', COLOURS.call], sites: ['triangle', '#868e96'], path: ['arrow', COLOURS.handover], paths: ['road', COLOURS.run],
+        route: ['road', data.area ? COLOURS.route : COLOURS.path]};
+      const paths = visibleRings(data).some((ring) => ring.path && ring.path.length > 1);
+      for (const key of shared.cdrLayers || []) {
+        if (key === 'paths' && !paths) continue;
+        const count = key === 'failures' ? data.failures.filter((failure) => !failure.self && failure.latitude !== null && shared.showsFailure(failure)).length
+          : key === 'sites' ? data.sites.length : null;
+        const text = key === 'route' ? (data.area ? 'Route (the drive of each CDR between its tests)' : 'Route (its way and that of its car)') : CDR_LAYER_LABELS[key];
+        row(settings.layers[key] !== false, `Show the ${CDR_LAYER_LABELS[key]}`, icons[key], text, count, (checked) => shared.setLayer(key, checked));
+      }
+      samples.append(body);
+    };
     // In the call panel the wheel alone scrolls the panel: a moment's note says how to zoom.
     const wheelHint = node('div', 'Ctrl/Cmd + wheel to zoom the map', 'nq-map-wheel-hint');
     wheelHint.hidden = true;
@@ -337,13 +562,17 @@
       size = canvas.clientWidth && canvas.clientHeight ? {width, height} : null;
       redraw();
     };
-    controls.append(button('−', 'Zoom out', () => zoomBy(2)), level, button('+', 'Zoom in', () => zoomBy(.5)),
-      button('Fit', 'Show the whole area of the radius and every NQ call of the hotspot, cluster, time window and site of the call', fit, 'nq-map-zoom-reset'));
-    card.replaceChildren(canvas, ruler, selectionBox, samples, controls, attribution, wheelHint, tooltip);
+    const FIT_TITLE = 'Show the whole area of the radius and every NQ call of the hotspot, cluster, time window and site of the call';
+    const fitButton = button('Fit', FIT_TITLE, fit, 'nq-map-zoom-reset');
+    controls.append(button('−', 'Zoom out', () => zoomBy(2)), level, button('+', 'Zoom in', () => zoomBy(.5)), fitButton);
+    // The panels over the bottom of the map: the elevation profile, and over the larger map the signalling timeline.
+    const bottomStack = node('div', undefined, 'nq-map-bottom');
+    bottomStack.append(profileBox);
+    card.replaceChildren(canvas, ruler, selectionBox, panels, controls, basemapChoice, bottomStack, attribution, wheelHint, tooltip);
     // The legend goes below the map (in its images too), so it hides none of it.
     (legendHost || card).replaceChildren(legend);
     // The layers of the Layer 3 - DT Logs of the call (l3_layers.js), over the map so that its images show them.
-    const l3Tree = window.L3Layers ? window.L3Layers.createTree(card, () => shared.l3, () => { renderLegend(); redraw(); }) : null;
+    const l3Tree = window.L3Layers ? window.L3Layers.createTree(panels, () => shared.l3, () => { renderLegend(); redraw(); }) : null;
 
     const project = (latitude, longitude) => {
       const [x, y] = toWorld(latitude, longitude);
@@ -424,24 +653,34 @@
       context.setTransform(ratio, 0, 0, ratio, 0, 0);
       context.fillStyle = '#e8edef';
       context.fillRect(0, 0, width, height);
-      // The tiles of the zoom level closest to the view, scaled to it.
+      // The tiles of the zoom level closest to the view (at most the last one of the map chosen), scaled to it.
       const zoom = clamp(Math.round(REFERENCE_ZOOM - Math.log2(view.resolution)), MIN_TILE_ZOOM, MAX_TILE_ZOOM);
-      const factor = 2 ** (REFERENCE_ZOOM - zoom), scale = factor / view.resolution, count = 2 ** zoom;
+      const tileZoom = Math.min(zoom, BASEMAPS[basemap.key].max || MAX_TILE_ZOOM);
+      const factor = 2 ** (REFERENCE_ZOOM - tileZoom), scale = factor / view.resolution, count = 2 ** tileZoom;
       const left = view.x / factor - width / 2 / scale, top = view.y / factor - height / 2 / scale;
+      const map = BASEMAPS[basemap.key];
+      if (map.grey) context.filter = 'grayscale(1)';
       for (let ty = Math.max(0, Math.floor(top / 256)); ty <= Math.min(count - 1, Math.floor((top + height / scale) / 256)); ty += 1) {
         for (let tx = Math.floor(left / 256); tx <= Math.floor((left + width / scale) / 256); tx += 1) {
           const wrapped = ((tx % count) + count) % count;
-          const url = String(data.basemap.url_template).replace('{z}', zoom).replace('{x}', wrapped).replace('{y}', ty);
+          const url = tileUrl(tileZoom, wrapped, ty);
           const record = tile(url, redraw);
           if (record.status === 'ready') {
             context.drawImage(record.image, (tx * 256 - left) * scale, (ty * 256 - top) * scale, 256 * scale + .5, 256 * scale + .5);
           }
         }
       }
+      context.filter = 'none';
+      if (map.veil) {
+        context.fillStyle = `rgba(255, 255, 255, ${map.veil})`;
+        context.fillRect(0, 0, width, height);
+      }
       level.textContent = `Zoom ${zoom}`;
       hits = [];
       const settings = shared.settings;
-      const layers = settings.layers;
+      const layers = shownLayers(settings);
+      // The route from the CDR: the way of the call and of its car (on NQ Maps the drive of each CDR), with its START and END.
+      const routeShown = layers.route !== false;
       const call = data.call;
       const failurePoint = data.centre;
       const metresPerPixel = metresPerWorldPixel(failurePoint[0]) * view.resolution;
@@ -544,7 +783,7 @@
       // Each time window as its failures follow one another (each within the Time window of the one before).
       // Their order is numbered beside each failure, above the NQ calls (see below).
       const pathNumbers = [];
-      for (const ring of settings.layers.paths === false ? [] : visible.filter((item) => item.path && item.path.length > 1)) {
+      for (const ring of layers.paths === false ? [] : visible.filter((item) => item.path && item.path.length > 1)) {
         context.beginPath();
         ring.path.forEach(([latitude, longitude], index) => {
           const [px, py] = project(latitude, longitude);
@@ -564,19 +803,20 @@
       // The tests around, in the colour of their level.
       const operators = data.tests.operators;
       const testRadius = zoom >= 16 ? 5 : zoom >= 13 ? 4 : 3;
-      if (layers.tests) {
+      // Each measure on in its shape, side by side at each test when there are several (those without a value then left out).
+      const measures = shownMeasures(settings);
+      if (measures.length) {
+        const spread = measures.length > 1 ? testRadius * 1.8 : 0;
         for (const row of data.tests.rows) {
           if (!shared.operatorShown(operators[row[COLUMN.operator]])) continue;
           const [x, y] = project(row[COLUMN.latitude], row[COLUMN.longitude]);
           if (x < -10 || y < -10 || x > width + 10 || y > height + 10) continue;
-          context.beginPath();
-          context.arc(x, y, testRadius, 0, Math.PI * 2);
-          context.fillStyle = testColour(row, settings.colour, data.classes);
-          context.fill();
-          context.lineWidth = .8;
-          context.strokeStyle = 'rgba(255,255,255,.85)';
-          context.stroke();
-          hits.push({x, y, r: testRadius + 2, kind: 'test', item: row, priority: 1});
+          measures.forEach((key, index) => {
+            if (measures.length > 1 && key !== 'result' && (row[COLUMN[key]] === null || row[COLUMN[key]] === undefined)) return;
+            const sx = x + (index - (measures.length - 1) / 2) * spread;
+            drawSample(context, key, sx, y, testRadius, testColour(row, key, data.classes));
+            hits.push({x: sx, y, r: testRadius + 2, kind: 'test', item: row, priority: 1});
+          });
         }
       }
       // The sectors of the sites (once close enough; those of the cells of the call always), these in the colour of their role and the
@@ -817,11 +1057,13 @@
           items.sort((first, second) => rank(first) - rank(second));
           const [failure] = items;
           const size = inGroup(failure) || failure.same_place ? 7 : 5.5;
+          // On NQ Maps those without Layer 3 - DT Logs are hollow, in their colour.
+          const hollow = data.area && !items.some((item) => item.l3_log);
           diamond(context, x, y, size);
-          context.fillStyle = shared.failureColour(failure);
+          context.fillStyle = hollow ? '#fff' : shared.failureColour(failure);
           context.fill();
-          context.lineWidth = 1.6;
-          context.strokeStyle = '#fff';
+          context.lineWidth = hollow ? 2.2 : 1.6;
+          context.strokeStyle = hollow ? shared.failureColour(failure) : '#fff';
           context.stroke();
           // Its other groups as outlines in their colour (all of them when the colour tells the call type or the campaign),
           // then red when one of the calls on the point is at its site.
@@ -882,7 +1124,7 @@
       };
       route.forEach((point, index) => {
         const last = route[index - 1];
-        if (!index || (index > anchor && index < next)) return;
+        if (!routeShown || !index || (index > anchor && index < next)) return;
         if (anchor >= 0 && index === anchor) carRoad(last, start || point, {from: last[2], to: 'start'});
         else if (anchor >= 0 && index === next) carRoad(call.way ? call.way.points.at(-1) : route[anchor], point, {from: call.way ? 'end' : 'start', to: point[2]});
         else carRoad(last, point, {from: last[2], to: point[2]});
@@ -896,8 +1138,10 @@
       const base = realWay ? realWay.map(([latitude, longitude]) => project(latitude, longitude))
         : (call.way?.points || []).length > 1 ? call.way.points.map(([latitude, longitude]) => project(latitude, longitude)) : null;
       const way = base ? (realWay ? base : windingRoad(base)) : null;
-      if (way && realWay) {
-        paintRoad(context, way, {arrow: 'end'});
+      if (!routeShown) {
+        // Route off in the layers: no way drawn.
+      } else if (way && realWay) {
+        paintRoad(context, way, {arrow: 'end', colour: window.L3Layers.ROUTE_COLOUR});
         const [mx, my] = way[Math.floor(way.length / 2)];
         hits.push({x: mx, y: my, r: 9, kind: 'l3_way', item: {points: realWay.length}, priority: 4.7});
       } else if (way) {
@@ -926,10 +1170,57 @@
           context.setLineDash([]);
         }
       }
+      // NQ Maps, as roads (narrower far out): the drive of each CDR between its tests in time order (from the CDR, when
+      // its route is on), then the route of each session of the Layer 3 - DT Logs in time order (its switch in their card).
+      // A gap in time (10 minutes between tests, 20 s in a log) or of more than 5 km between tests cuts them.
+      const roadScale = zoom >= 15 ? 1 : zoom >= 13 ? .8 : zoom >= 11 ? .6 : .45;
+      const paintPieces = (pieces, colour, kind, item, priority) => {
+        for (const piece of pieces.filter((points) => points.length > 1)) {
+          const xs = piece.map(([x]) => x), ys = piece.map(([, y]) => y);
+          if (Math.max(...xs) < -10 || Math.max(...ys) < -10 || Math.min(...xs) > width + 10 || Math.min(...ys) > height + 10) continue;
+          const reach = Math.hypot(piece.at(-1)[0] - piece[0][0], piece.at(-1)[1] - piece[0][1]);
+          paintRoad(context, piece, {colour, alpha: .9, arrow: reach >= 40 ? 'end' : null, scale: roadScale});
+          const [mx, my] = piece[Math.floor(piece.length / 2)];
+          hits.push({x: mx, y: my, r: 8, kind, item: typeof item === 'function' ? item(piece) : item, priority});
+        }
+      };
+      if (data.area && routeShown && data.tests.rows.length) {
+        const drives = new Map();
+        for (const row of data.tests.rows) {
+          if (!shared.operatorShown(operators[row[COLUMN.operator]])) continue;
+          const key = row[COLUMN.cdr];
+          if (!drives.has(key)) drives.set(key, []);
+          drives.get(key).push(row);
+        }
+        for (const [cdr, rows] of drives) {
+          rows.sort((first, second) => String(first[COLUMN.start]).localeCompare(String(second[COLUMN.start])));
+          const pieces = [[]];
+          rows.forEach((row, index) => {
+            const last = rows[index - 1];
+            if (last && (Math.abs(Date.parse(String(row[COLUMN.start]).replace(' ', 'T')) - Date.parse(String(last[COLUMN.start]).replace(' ', 'T'))) > 600000
+              || geodesic([last[COLUMN.longitude], last[COLUMN.latitude]], [row[COLUMN.longitude], row[COLUMN.latitude]]).metres > 5000)) pieces.push([]);
+            pieces.at(-1).push(project(row[COLUMN.latitude], row[COLUMN.longitude]));
+          });
+          paintPieces(pieces, COLOURS.route, 'cdr_route', {cdr: data.tests.cdrs?.[cdr], tests: rows.length, from: rows[0][COLUMN.start], to: rows.at(-1)[COLUMN.start],
+            operator: operators[rows[0][COLUMN.operator]]}, 1.5);
+        }
+      }
+      if (data.area) {
+        for (const route of window.L3Layers?.routesOf(shared.l3) || []) {
+          const pieces = [[]];
+          route.points.forEach((point, index) => {
+            if (index && point[0] - route.points[index - 1][0] > 20000) pieces.push([]);
+            pieces.at(-1).push(project(point[1], point[2]));
+          });
+          paintPieces(pieces, window.L3Layers.ROUTE_COLOUR, 'l3_route', route, 2);
+        }
+      }
       // The points of the layers of its Layer 3 - DT Logs that are on.
       if (window.L3Layers?.state.around) window.L3Layers.draw(context, shared.l3Around, {project, hits, zoom, width, height, faded: true});
       window.L3Layers?.draw(context, shared.l3, {project, hits, zoom, width, height});
       window.L3Layers?.drawHighlight(context, shared.l3Hover, project);
+      // The moment of the cursor of the signalling timeline: where each UE was and its signalling just before.
+      window.L3Layers?.drawCursor(context, shared.l3Focus || shared.l3, project);
       // Where the call started (when the CDR gives where it ended too).
       if (start && call.end && !realWay) {
         const [x1, y1] = project(start[0], start[1]);
@@ -994,7 +1285,9 @@
         return length ? [(to[0] - from[0]) / length, (to[1] - from[1]) / length] : [1, 0];
       };
       const [sx, sy] = way ? heading(way[0], way[Math.min(3, way.length - 1)]) : [-1, 0];
-      if (realWay) {
+      if (!routeShown) {
+        // Route off: neither START nor END.
+      } else if (realWay) {
         // Where the log of the UE starts and ends.
         tag('START', COLOURS.start, way[0], [-sx, -sy], false, 10);
         tag('END', COLOURS.end, way.at(-1), heading(way[Math.max(0, way.length - 4)], way.at(-1)), false, 14);
@@ -1049,8 +1342,115 @@
       text.setAttribute('class', 'nq-map-measure-label');
       text.textContent = `${metresText(metres)} · ${Math.round(bearing)}°`;
       ruler.replaceChildren(halo, line, first, last, text);
+      // The point of the elevation profile under the pointer.
+      if (measure.hover) {
+        const [hx, hy] = project(measure.hover.latitude, measure.hover.longitude);
+        const mark = svg('circle');
+        mark.setAttribute('cx', hx); mark.setAttribute('cy', hy); mark.setAttribute('r', 6); mark.setAttribute('class', 'nq-map-measure-hover');
+        ruler.append(mark);
+      }
     };
-    const clearMeasure = () => { if (measure) { measure = null; drawMeasure(); } };
+    // The elevation profile of the distance measured: read once it is drawn (a new one replaces it), folded with the ×.
+    let profileToken = 0;
+    const renderProfile = (profile) => {
+      profileBox.replaceChildren();
+      profileBox.hidden = !measure;
+      if (!measure) return;
+      const head = node('header', undefined, 'nq-map-profile-head');
+      const close = node('button', '×', 'nq-map-info-close');
+      close.type = 'button';
+      close.title = 'Clear the distance and its elevation profile';
+      close.setAttribute('aria-label', 'Clear the distance and its elevation profile');
+      close.addEventListener('click', (event) => { event.stopPropagation(); clearMeasure(); });
+      const {metres, bearing} = geodesic(measure.from, measure.to);
+      head.append(node('strong', 'Elevation profile'), node('span', `${metresText(metres)} · ${Math.round(bearing)}°`, 'nq-map-profile-span'));
+      profileBox.append(head);
+      if (!profile) {
+        head.append(close);
+        profileBox.append(node('p', 'Reading the elevation of the ground…', 'nq-map-profile-note'));
+        return;
+      }
+      const known = profile.points.filter((point) => point.elevation !== null && Number.isFinite(point.elevation));
+      if (known.length < 2) {
+        head.append(close);
+        profileBox.append(node('p', 'The elevation of the ground could not be read here.', 'nq-map-profile-note'));
+        return;
+      }
+      const values = known.map((point) => point.elevation);
+      const low = Math.min(...values), high = Math.max(...values);
+      let gain = 0, loss = 0, slope = 0;
+      known.forEach((point, index) => {
+        if (!index) return;
+        const rise = point.elevation - known[index - 1].elevation, run = point.metres - known[index - 1].metres;
+        if (rise > 0) gain += rise; else loss -= rise;
+        if (run > 0) slope = Math.max(slope, Math.abs(rise) / run);
+      });
+      const stats = node('div', undefined, 'nq-map-profile-stats');
+      for (const [name, value] of [['Start', known[0].elevation], ['End', known.at(-1).elevation], ['Min', low], ['Max', high]]) {
+        stats.append(node('span', `${name} ${Math.round(value)} m`));
+      }
+      stats.append(node('span', `↑ ${Math.round(gain)} m`), node('span', `↓ ${Math.round(loss)} m`), node('span', `Max slope ${(slope * 100).toFixed(1)} %`));
+      head.append(stats, close);
+      // The ground as an area over the distance, with its scale; under the pointer, its point (also on the map).
+      const width = Math.max(320, Math.round(profileBox.clientWidth || card.clientWidth || 600) - 24), height = 118;
+      const left = 44, right = 10, top = 8, bottom = 20;
+      const span = Math.max(1, high - low), floor = low - span * .08, ceiling = high + span * .12;
+      const x = (share) => left + share * (width - left - right);
+      const y = (value) => top + (1 - (value - floor) / (ceiling - floor)) * (height - top - bottom);
+      const svgNode = (tag, attributes = {}) => {
+        const element = document.createElementNS('http://www.w3.org/2000/svg', tag);
+        for (const [name, value] of Object.entries(attributes)) element.setAttribute(name, String(value));
+        return element;
+      };
+      const chart = svgNode('svg', {viewBox: `0 0 ${width} ${height}`, width, height, class: 'nq-map-profile-chart', role: 'img',
+        'aria-label': `Elevation profile: from ${Math.round(known[0].elevation)} m to ${Math.round(known.at(-1).elevation)} m, between ${Math.round(low)} and ${Math.round(high)} m`});
+      const line = known.map((point) => `${x(point.share).toFixed(1)},${y(point.elevation).toFixed(1)}`).join(' ');
+      chart.append(svgNode('polygon', {points: `${x(known[0].share).toFixed(1)},${height - bottom} ${line} ${x(known.at(-1).share).toFixed(1)},${height - bottom}`,
+        class: 'nq-map-profile-area'}), svgNode('polyline', {points: line, class: 'nq-map-profile-line'}));
+      for (const value of [low, high]) {
+        chart.append(svgNode('line', {x1: left, x2: width - right, y1: y(value), y2: y(value), class: 'nq-map-profile-grid'}));
+        const label = svgNode('text', {x: left - 5, y: y(value) + 3, class: 'nq-map-profile-axis', 'text-anchor': 'end'});
+        label.textContent = `${Math.round(value)} m`;
+        chart.append(label);
+      }
+      for (const share of [0, .25, .5, .75, 1]) {
+        const label = svgNode('text', {x: x(share), y: height - 6, class: 'nq-map-profile-axis', 'text-anchor': share === 0 ? 'start' : share === 1 ? 'end' : 'middle'});
+        label.textContent = metresText(metres * share);
+        chart.append(label);
+      }
+      const cursor = svgNode('line', {y1: top, y2: height - bottom, class: 'nq-map-profile-cursor'});
+      const dot = svgNode('circle', {r: 4, class: 'nq-map-profile-dot'});
+      const readout = node('span', '', 'nq-map-profile-readout');
+      cursor.style.display = dot.style.display = 'none';
+      chart.append(cursor, dot);
+      chart.addEventListener('pointermove', (event) => {
+        const bounds = chart.getBoundingClientRect();
+        const share = clamp(((event.clientX - bounds.left) * width / bounds.width - left) / (width - left - right), 0, 1);
+        const point = known.reduce((best, item) => (Math.abs(item.share - share) < Math.abs(best.share - share) ? item : best), known[0]);
+        const index = known.indexOf(point), before = known[Math.max(0, index - 1)], after = known[Math.min(known.length - 1, index + 1)];
+        const grade = after.metres > before.metres ? (after.elevation - before.elevation) / (after.metres - before.metres) * 100 : 0;
+        cursor.setAttribute('x1', x(point.share)); cursor.setAttribute('x2', x(point.share));
+        dot.setAttribute('cx', x(point.share)); dot.setAttribute('cy', y(point.elevation));
+        cursor.style.display = dot.style.display = '';
+        readout.textContent = `${metresText(point.metres)} · ${Math.round(point.elevation)} m · slope ${grade.toFixed(1)} %`;
+        measure.hover = point;
+        drawMeasure();
+      });
+      chart.addEventListener('pointerleave', () => {
+        cursor.style.display = dot.style.display = 'none';
+        readout.textContent = '';
+        if (measure) { measure.hover = null; drawMeasure(); }
+      });
+      profileBox.append(chart, node('p', undefined, 'nq-map-profile-note'));
+      profileBox.lastChild.append(readout, node('span', TERRAIN_ATTRIBUTION, 'nq-map-profile-source'));
+    };
+    const readProfile = async () => {
+      const token = ++profileToken;
+      renderProfile(null);
+      const profile = await elevationProfile(measure.from, measure.to);
+      if (token === profileToken && measure) renderProfile(profile);
+    };
+    const clearMeasure = () => { if (measure) { measure = null; profileToken += 1; drawMeasure(); renderProfile(null); } };
     const onKey = (event) => { if (event.key === 'Escape') clearMeasure(); };
     document.addEventListener('keydown', onKey);
 
@@ -1166,7 +1566,13 @@
       try { canvas.setPointerCapture?.(event.pointerId); } catch (_error) { /* A pointer that is gone already. */ }
       canvas.classList.add(measuring ? 'is-measuring' : pan ? 'is-panning' : 'is-selecting');
       tooltip.hidden = true;
-      if (measuring) { measure = {from: placeAt(event), to: placeAt(event)}; drawMeasure(); }
+      if (measuring) {
+        // A new distance: the profile of the last one goes until this one is drawn.
+        profileToken += 1;
+        profileBox.hidden = true;
+        measure = {from: placeAt(event), to: placeAt(event)};
+        drawMeasure();
+      }
       event.preventDefault();
     });
     canvas.addEventListener('pointermove', (event) => {
@@ -1206,6 +1612,7 @@
       const moved = Math.hypot(event.clientX - finished.startX, event.clientY - finished.startY) >= 4;
       if (finished.measuring) {
         if (!moved) clearMeasure();
+        else readProfile();
         return;
       }
       if (finished.pan && !moved && event.type === 'pointerup') {
@@ -1234,26 +1641,27 @@
     const renderLegend = () => {
       const data = shared.data, settings = shared.settings;
       legend.replaceChildren();
-      samples.hidden = !data || Boolean(data.area);
-      samplesToggle.classList.toggle('is-on', Boolean(settings.layers.tests));
-      samplesToggle.setAttribute('aria-pressed', String(Boolean(settings.layers.tests)));
-      samplesToggle.title = settings.layers.tests ? 'Hide the RSRP / SINR samples of the tests around'
-        : 'Show the RSRP / SINR samples of the tests around, coloured by the measure chosen beside';
-      samplesMeasure.hidden = !settings.layers.tests;
-      samplesMeasure.value = settings.colour;
+      renderSamples();
       if (!data) return;
+      fitButton.title = data.area ? 'Show every NQ call of the filters with Layer 3 - DT Logs' : FIT_TITLE;
+      fitButton.setAttribute('aria-label', fitButton.title);
       const paths = visibleRings(data).some((ring) => ring.path && ring.path.length > 1);
-      const pathsShown = settings.layers.paths !== false;
-      pathsToggle.hidden = !paths;
-      pathsToggle.classList.toggle('is-on', pathsShown);
-      pathsToggle.setAttribute('aria-pressed', String(pathsShown));
-      pathsToggle.title = pathsShown ? 'Hide the lines that join the failures of each time window in their order, and their numbers'
-        : 'Show the lines that join the failures of each time window in their order, and their numbers';
+      const layers = shownLayers(settings);
+      const pathsShown = layers.paths !== false;
+      const routeShown = layers.route !== false;
+      // Two boxes, as the cards on the map: From CDR (its groups below) and From Layer 3 Logs (l3_layers.js legend).
+      const cdrBox = node('div', undefined, 'nq-map-legend-box');
+      cdrBox.append(node('p', 'From CDR', 'nq-map-legend-box-title'));
+      const finish = (l3Route = '') => {
+        if (cdrBox.children.length > 1) legend.append(cdrBox);
+        const l3Legend = window.L3Layers?.legend(shared.l3, {route: l3Route});
+        if (l3Legend) legend.append(l3Legend);
+      };
       let list = null;
       const group = (title) => {
         list = node('ul');
         list.append(node('li', title, 'nq-map-legend-title'));
-        legend.append(list);
+        cdrBox.append(list);
       };
       const item = (mark, text, colour, extra = '') => {
         const entry = node('li');
@@ -1262,43 +1670,55 @@
         entry.append(swatch, node('span', text));
         list.append(entry);
       };
-      // The levels of the samples stay in the legend while they are hidden (dimmed), so showing them changes neither the
-      // legend nor the size of the map.
-      const metric = METRICS[settings.colour];
-      if (metric) {
-        group(`RSRP / SINR samples · ${metric.label}${settings.layers.tests ? '' : ' (hidden)'}`);
-        list.classList.toggle('is-off', !settings.layers.tests);
-        if (settings.colour === 'result') {
-          item('dot', 'Completed', COLOURS.completed);
-          item('dot', 'Not completed', COLOURS.failed);
+      // The levels of each measure of the samples shown.
+      for (const key of shownMeasures(settings)) {
+        const metric = METRICS[key];
+        const mark = SAMPLE_MARKS[SAMPLE_SHAPES[key]], extra = key.startsWith('nr_') ? 'is-nr' : '';
+        group(`RSRP / SINR (from CDR samples) · ${metric.label}`);
+        if (key === 'result') {
+          item(mark, 'Completed', COLOURS.completed);
+          item(mark, 'Not completed', COLOURS.failed);
         } else {
           const levels = data.classes[metric.classes] || [];
           levels.forEach((levelItem, index) => {
             const upper = index ? levels[index - 1].lower : null;
             const range = levelItem.lower === null ? `< ${upper}` : upper === null ? `≥ ${levelItem.lower}` : `${levelItem.lower} to ${upper}`;
-            item('dot', `${levelItem.label} (${range} ${metric.unit})`, levelItem.colour);
+            item(mark, `${levelItem.label} (${range} ${metric.unit})`, levelItem.colour, extra);
           });
-          item('dot', 'No value', COLOURS.noValue);
+          item(mark, 'No value', COLOURS.noValue, extra);
         }
       }
       if (data.area) {
+        // NQ Maps: its NQ calls as on the map of a call (without its groups), the route of each session and the sites
+        // of the area shown.
+        if (layers.failures) {
+          group('NQ calls');
+          shared.failureLegend().forEach(([text, colour, extra]) => item('diamond', text, colour, extra));
+          if (data.failures.some((failure) => !failure.l3_log)) item('diamond', 'Hollow: without Layer 3 - DT Logs', '#495057', 'is-outlined');
+          item('count', 'NQ calls at one point (how many)', '#2d1520');
+        }
+        const routes = (window.L3Layers?.routesOf(shared.l3) || []).length, sites = layers.sites !== false && data.sites.length;
+        const drives = routeShown && data.tests.rows.length;
+        if (sites || drives) group('Routes and sites');
+        if (drives) item('road', 'Route: the drive of each CDR between its tests (in time order)', COLOURS.route);
+        if (sites) item('triangle', 'Site (colour of its vendor), with its cells once close enough', '#868e96');
         l3Tree?.render();
-        const areaLegend = window.L3Layers?.legend(shared.l3);
-        if (areaLegend) legend.append(areaLegend);
+        finish(routes ? 'The GPS of each session' : '');
         return;
       }
       group(focusKind() ? `Call and NQ calls · only its ${groupFocus.label} (filtering the list)` : 'Call and NQ calls');
       // A Data test gives only where it started: its pin marks that place, and its way where it went (and failed).
       item('pin', data.call.end ? 'This call (where it failed)' : 'This test (where it started; it failed on its way)', COLOURS.call);
       if (data.call.end) item('dot', 'Where it started', COLOURS.start);
-      if (data.call.way?.by === 'ends') item('road', 'Its way, from where it started to where it ended (arrow: its direction; the bends are a sketch, not its streets)', COLOURS.path);
+      if (!routeShown || window.L3Layers?.wayOf(shared.l3)) { /* Its route hidden, or the real way of its log (below). */ }
+      else if (data.call.way?.by === 'ends') item('road', 'Its way, from where it started to where it ended (arrow: its direction; the bends are a sketch, not its streets)', COLOURS.path);
       else if (data.call.way) item('road', `Its way, simulated: its ${distanceText(data.call.travelled_m / 1000)} from where it started, towards where its car was heading (arrow: where it ended; the bends are a sketch)`, COLOURS.path);
       else if (!data.call.end && data.call.travelled_m) item('ring', `Where the test went: within ${distanceText(data.call.travelled_m / 1000)} of where it started (the distance it travelled)`, COLOURS.path, 'is-dashed');
-      if (carStretches(data).route.length > 1) {
+      if (routeShown && carStretches(data).route.length > 1) {
         item('road', `The way of its car: its tests ${data.drive.minutes} minutes before and after, joined to where the call started and ended (arrows: where it was heading; the bends are a sketch)`, COLOURS.route);
       }
       item('line', `Radius ${distanceText(data.radius_km)}`, COLOURS.radius, 'is-dashed');
-      if (settings.layers.failures) {
+      if (layers.failures) {
         shared.failureLegend().forEach(([text, colour, extra]) => item('diamond', text, colour, extra));
         item('count', 'NQ calls at one point (how many)', '#2d1520');
       }
@@ -1318,7 +1738,7 @@
         }
       }
       const located = data.trace.some((step) => step.site);
-      if ((settings.layers.sites && data.sites.length) || (settings.layers.path && located) || data.sites.some((site) => site.ends?.length)) {
+      if ((layers.sites && data.sites.length) || (layers.path && located) || data.sites.some((site) => site.ends?.length)) {
         group('Sites and cells');
         item('triangle', 'Site (colour of its vendor)', '#868e96');
         const ends = data.sites.flatMap((site) => site.ends || []);
@@ -1333,7 +1753,7 @@
         }
       }
       // Only the roles the cells of the call have on the map (a call served by one cell has neither start nor handovers).
-      if (settings.layers.path && located) {
+      if (layers.path && located) {
         const roles = new Set(data.trace.filter((step) => step.site).map((step) => step.role));
         if (roles.has('both')) item('line', 'Cell that served the whole call', COLOURS.both);
         if (roles.has('start')) item('line', 'Cell that served the start', COLOURS.start);
@@ -1342,16 +1762,11 @@
         if (roles.has('end')) item('line', 'Cell that served the end', COLOURS.end);
         if (roles.has('nr_leg')) item('line', 'NR leg (by PCI)', COLOURS.nr_leg, 'is-dotted');
       }
-      if (settings.layers.sites && data.sites.some((site) => site.cells.some((cell) => cell.same_pci))) {
+      if (layers.sites && data.sites.some((site) => site.cells.some((cell) => cell.same_pci))) {
         item('line', 'Same PCI and channel as a cell of the call', COLOURS.samePci, 'is-dashed');
       }
-      if (window.L3Layers?.wayOf(shared.l3)) {
-        group('Layer 3 - DT Logs');
-        item('line', 'Real way of the UE (GPS of its log), from START to END', COLOURS.path);
-      }
       l3Tree?.render();
-      const l3Legend = window.L3Layers?.legend(shared.l3);
-      if (l3Legend) legend.append(l3Legend);
+      finish(window.L3Layers?.wayOf(shared.l3) ? 'The real way of the UE (GPS of its log), from START to END' : '');
     };
 
     return {
@@ -1364,7 +1779,20 @@
         view = {...view, resolution: Math.min(view.resolution, 2 ** (REFERENCE_ZOOM - 16))};
         redraw();
       },
-      destroy: () => { resizer.disconnect(); document.removeEventListener('keydown', onKey); l3Tree?.destroy(); },
+      // Its cards folded again (the map shows another call).
+      collapseCards: () => { samplesOpen = false; renderSamples(); l3Tree?.collapse(); },
+      // A panel over the bottom of the map, below the elevation profile (the signalling timeline of the larger map).
+      overlay: (element) => bottomStack.append(element),
+      // Moved (not zoomed) so that a place stays on the map: centred on it once it leaves the middle 80 % of the map.
+      keepInView: (latitude, longitude) => {
+        const width = canvas.clientWidth, height = canvas.clientHeight;
+        if (!view || !width || !height) return;
+        const [x, y] = project(latitude, longitude);
+        if (x >= width * .1 && x <= width * .9 && y >= height * .1 && y <= height * .9) return;
+        [view.x, view.y] = toWorld(latitude, longitude);
+        redraw();
+      },
+      destroy: () => { resizer.disconnect(); document.removeEventListener('keydown', onKey); basemapViews.delete(basemapChanged); l3Tree?.destroy(); },
     };
   }
 
@@ -1376,15 +1804,19 @@
     const settings = {
       // Each call opens with the radius of its hotspot and cluster (or 1 km); the radius chosen holds while it stays open.
       radius_km: 1, tests: stored.tests === 'campaign' ? 'campaign' : 'cdr',
-      colour: METRICS[stored.colour] ? stored.colour : '', operators: ['all', 'focus'].includes(stored.operators) ? stored.operators : 'own',
+      // The measures of the samples shown (none until some are switched on, so the map shows the call, its cells and the
+      // sites first).
+      measures: storedMeasures(stored),
+      operators: ['all', 'focus'].includes(stored.operators) ? stored.operators : 'own',
       // The Non-Qualified Calls around drawn: those of every campaign until another choice.
       failures: FAILURE_SCOPES[stored.failures] ? stored.failures : 'every',
       failureColour: FAILURE_COLOURS[stored.failureColour] ? stored.failureColour : 'relation',
-      // The RSRP / SINR samples start hidden, so the map shows the call, its cells and the sites first.
-      layers: {tests: false, failures: true, sites: true, path: true, paths: true, ...(stored.layers || {})},
+      // The layers of From CDR (``cdr`` the whole card).
+      layers: {cdr: true, failures: true, sites: true, path: true, route: true, paths: true, ...(stored.layers || {})},
     };
-    const save = () => storeSettings({tests: settings.tests, colour: settings.colour,
-      operators: settings.operators, failures: settings.failures, failureColour: settings.failureColour, layers: settings.layers});
+    delete settings.layers.tests;
+    const save = () => storeSettings({tests: settings.tests, measures: settings.measures, operators: settings.operators, failures: settings.failures,
+      failureColour: settings.failureColour, layers: settings.layers});
     let callKey = '', loadedKey = '', controller = null, expandedView = null, expandedTimeline = null;
     const toolbar = node('div', undefined, 'nq-map-toolbar');
     const status = node('p', '', 'nq-map-status');
@@ -1435,9 +1867,26 @@
     };
     const views = () => [panelView, expandedView].filter(Boolean);
     const redrawAll = () => views().forEach((view) => { view.renderLegend(); view.redraw(); });
-    shared.setSamples = (shown) => { settings.layers.tests = shown; save(); redrawAll(); };
-    shared.setPaths = (shown) => { settings.layers.paths = shown; save(); redrawAll(); };
-    shared.setColour = (colour) => { settings.colour = colour; settings.layers.tests = true; save(); redrawAll(); };
+    // A layer of From CDR (or the whole card) and a measure of its samples switched on or off.
+    shared.cdrLayers = ['failures', 'sites', 'path', 'paths', 'route'];
+    shared.setLayer = (key, on) => { settings.layers[key] = on; save(); redrawAll(); renderFailures(); };
+    shared.setMeasure = (key, on) => {
+      settings.measures = Object.keys(METRICS).filter((name) => (name === key ? on : settings.measures.includes(name)));
+      save();
+      redrawAll();
+    };
+    // The CDRs of the samples, chosen in their card on the map: that of the call (its type named), or every CDR of its
+    // campaign and NR Mode.
+    shared.samplesScope = {
+      options: () => {
+        const cdrType = SERVICE_LABELS[shared.data?.call.service] || '';
+        return Object.entries(shared.data?.tests_scopes || {cdr: 'This CDR', campaign: 'Every CDR of its campaign'})
+          .map(([value, text]) => [value, value === 'cdr' && cdrType ? `${text} (${cdrType})` : text]);
+      },
+      value: () => settings.tests,
+      set: (value) => { settings.tests = value; save(); load(); },
+      title: 'The tests whose RSRP / SINR the samples and the Radio around the call show: the CDR of the call, or every CDR of its campaign and NR Mode (Voice, Speech and Data together)',
+    };
     shared.select = (choice) => {
       shared.selection = choice;
       renderSelected();
@@ -1456,6 +1905,7 @@
     const sameCampaign = (failure, call) => failure.campaign === call.campaign && failure.nr_mode === call.nr_mode;
     shared.failureColour = (failure) => {
       const call = shared.data?.call || {};
+      if (settings.failureColour === 'domain') return domainColour(failure);
       if (settings.failureColour === 'type') return failure.kind === call.kind ? COLOURS.sameType : COLOURS.otherType;
       if (settings.failureColour === 'campaign') return sameCampaign(failure, call) ? COLOURS.sameCampaign : COLOURS.otherCampaign;
       const [group] = groupsOf(failure);
@@ -1474,6 +1924,10 @@
           .forEach((kind) => lines.push([`NQ call of ${names[kind]}`, GROUP_COLOURS[kind]]));
         [['cluster', 'purple'], ['run', 'blue']].filter(([kind]) => groups.some((found) => found.slice(1).includes(kind)))
           .forEach(([kind, colour]) => lines.push([`Outlined in ${colour}: also of ${names[kind]}`, GROUP_COLOURS[kind], 'is-outlined']));
+      } else if (settings.failureColour === 'domain') {
+        lines.push(...domainLegend(shown));
+        ['hotspot', 'cluster', 'run'].filter((kind) => groups.some((found) => found.includes(kind)))
+          .forEach((kind) => lines.push([`Outlined: of ${names[kind]}`, GROUP_COLOURS[kind], 'is-outlined']));
       } else {
         lines.push(settings.failureColour === 'type'
           ? [`NQ calls of its call type (${KIND_LABELS[call.kind] || call.service_label || 'its type'})`, COLOURS.sameType]
@@ -2069,26 +2523,12 @@
       const cdrType = SERVICE_LABELS[data?.call.service] || '';
       const scopes = (entries) => Object.entries(entries).map(([value, text]) => [value, value === 'cdr' && cdrType ? `${text} (${cdrType})` : text]);
       const radii = data?.radii_km || [0.5, 1, 2, 5, 10];
-      const layers = node('div', undefined, 'nq-map-layers');
-      layers.setAttribute('role', 'group');
-      layers.setAttribute('aria-label', 'Layers of the map');
-      for (const [key, text] of Object.entries(LAYERS)) {
-        const toggle = node('label', undefined, 'nq-map-layer');
-        const box = node('input');
-        box.type = 'checkbox';
-        box.checked = settings.layers[key] !== false;
-        box.addEventListener('change', () => { settings.layers[key] = box.checked; save(); redrawAll(); renderFailures(); });
-        toggle.append(box, node('span', text));
-        layers.append(toggle);
-      }
+      // The layers of the map are switched in its cards (From CDR, From Layer 3 Logs).
       toolbar.replaceChildren(
         select('Radius', 'radius', radii.map((value) => [String(value), `${distanceText(value)}${value === data?.group_radius_km ? ' (groups)' : ''}`]),
           String(settings.radius_km), (value) => {
             settings.radius_km = Number(value); load();
           }, 'The area around where the call failed: its sites, Non-Qualified Calls and tests. A call opens with the radius that holds every NQ call of its hotspot and cluster, else with 1 km'),
-        select('RSRP / SINR samples from', 'tests', scopes(data?.tests_scopes || {cdr: 'This CDR', campaign: 'Every CDR of its campaign'}), settings.tests, (value) => {
-          settings.tests = value; save(); load();
-        }, 'The tests whose RSRP / SINR the samples and the Radio around the call show: the CDR of the call, or every CDR of its campaign and NR Mode (Voice, Speech and Data together)'),
         select('NQ calls from', 'failures', scopes(data?.failure_scopes || FAILURE_SCOPES), settings.failures, (value) => {
           settings.failures = value; save(); redrawAll(); renderFailures();
         }, 'The Non-Qualified Calls around that the map and its list show: those of the CDR of the call (of its type only: the Voice CDR of a Voice call), of every CDR of its campaign and NR Mode, or of every campaign (the Diagnosis hints and the Decisions at its place count those of every campaign)'),
@@ -2099,14 +2539,13 @@
           ...(focusNames.size ? [['focus', 'Focus operators only']] : []), ['all', 'Every operator']], shared.operatorChoice(), (value) => {
           settings.operators = value; save(); redrawAll(); renderFailures();
         }, 'The samples and Non-Qualified Calls of the operator of the call, of the Focus operators of the Operator Maps'
-          + `${data?.focus_labels?.length ? ` (${data.focus_labels.join(', ')})` : ''} or of every operator (its repetitions and hotspot always show)`),
-        layers);
+          + `${data?.focus_labels?.length ? ` (${data.focus_labels.join(', ')})` : ''} or of every operator (its repetitions and hotspot always show)`));
     };
 
     // -- loading the map of a call -------------------------------------------------------------------------------
     let request = null, l3Request = null, l3Key = '';
     // The logs of the NQ calls around the call (its groups and its area), when asked for in its layer panel: the same layers
-    // as Layer 3 - Maps, faded below those of the call.
+    // as NQ Maps, faded below those of the call.
     let aroundRequest = null, aroundKey = '';
     const loadAround = async (key) => {
       if (!window.L3Layers?.state.around || !shared.l3 || aroundKey === key) return;
@@ -2187,7 +2626,6 @@
         focusNames = new Set((data.focus_operators || []).map((name) => String(name).trim().toLowerCase()).filter(Boolean));
         settings.radius_km = data.radius_km;
         // The samples are coloured by the RSRP of the radio of the call (NR in SA) until another measure is chosen.
-        if (!METRICS[settings.colour]) settings.colour = data.call.nr_mode === 'SA' ? 'nr_rsrp' : 'lte_rsrp';
         loadedKey = key;
         if (!sameCall) shared.selection = null;
         else if (shared.selection) {
@@ -2243,10 +2681,12 @@
       floating.hidden = true;
       // The element chosen floats over the map, inside what its images show.
       const timeline = node('div', undefined, 'nq-l3-timeline-host');
-      wrap.append(large, legendHost, timeline, floating);
+      wrap.append(large, legendHost, floating);
       expandContent.replaceChildren(wrap);
       if (!expandDialog.open) expandDialog.showModal();
       expandedView = createView(large, shared, {expanded: true, legendHost});
+      // Its signalling timeline over the bottom of the map, as the elevation profile.
+      expandedView.overlay(timeline);
       expandedTimeline?.destroy();
       expandedTimeline = window.L3Layers?.createTimeline(timeline, () => shared.l3, timelineEvents) || null;
       expandedView.setView(panelView.view());
@@ -2270,6 +2710,11 @@
     // centres them on it and shows its values.
     const timelineEvents = {
       onHover: (point) => { shared.l3Hover = point; views().forEach((view) => view.redraw()); },
+      // Its cursor dragged: the maps follow where the UE was (moved when it leaves them) and its signalling of that moment.
+      onCursor: (moment) => views().forEach((view) => {
+        if (moment?.cars.length) view.keepInView(moment.cars[0].lat, moment.cars[0].lon);
+        view.redraw();
+      }),
       onPick: (item) => {
         shared.select({kind: 'l3', item});
         if (item.point.lat !== null && item.point.lat !== undefined) views().forEach((view) => view.centreOn(item.point.lat, item.point.lon));
@@ -2284,6 +2729,7 @@
       if (!key) return;
       callKey = key;
       if (loadedKey !== key || !shared.data) {
+        panelView.collapseCards();
         expandDialog.querySelector('[data-nq-map-expand-title]').textContent = 'Call Area Map';
         expandDialog.querySelector('[data-nq-map-expand-meta]').textContent = HINT;
         const waitingLarge = node('div', undefined, 'nq-map-waiting');
@@ -2307,6 +2753,8 @@
         if (!key) return;
         callKey = key;
         if (loadedKey === key && shared.data) { redrawAll(); return; }
+        // Another call: the cards over its map open folded.
+        panelView.collapseCards();
         load();
       },
       hide() {
@@ -2329,42 +2777,132 @@
       },
       details: () => ({section: 'Call Area Map', context: {call_key: shared.data?.call.call_key || '', join_id: shared.data?.call.join_id || '',
         radius_km: String(shared.data?.radius_km ?? ''), tests: settings.tests, failures: settings.failures, failure_colour: settings.failureColour,
-        colour: settings.colour}}),
+        measures: settings.measures.join(', ')}}),
     };
     return controller;
   }
 
-  // -- Layer 3 - Maps: the Layer 3 - DT Logs of every NQ call of the filters, on the same map as that of a call ----------------
-  // From the whole country (a grid of the average of the metric chosen, and the NQ calls by the domain of their root cause)
-  // down to a single site or call (the points of the layers on in the area shown, as on the map of a call). ``filters`` gives
-  // the filters of the page; a click on an NQ call opens it.
-  function mountArea({panel, api, toast, openCall, filters = () => ({}), number = (value) => Number(value).toLocaleString('en-GB')}) {
-    const settings = {layers: {tests: false, failures: false, sites: false, path: false, paths: false}, colour: '', radius_km: 0,
-      failures: 'every', failureColour: 'relation', operators: 'all'};
-    const shared = {data: null, settings, selection: null, l3: null};
-    shared.showsFailure = () => false;
-    shared.operatorChoice = () => 'all';
-    shared.operatorShown = () => true;
-    shared.failureLegend = () => [];
-    shared.describe = (kind, item) => (['l3', 'l3_cell', 'l3_call'].includes(kind) ? window.L3Layers.describe(item, shared.l3) : {title: '', rows: []});
+  // -- NQ Maps: the Layer 3 - DT Logs of every NQ call of the filters, on the same map as that of a call ----------------
+  // From the whole country (a grid of the average of the metric chosen, the NQ calls by the domain of their root cause and
+  // the route of each session) down to a single site or call: the events from the zoom of EVENT_ZOOM, the sites from that of
+  // the sites, and the points of the layers on and the RSRP / SINR samples of the CDRs in the area shown from that of the
+  // points, as on the map of a call (the server sends these zoom levels). ``filters`` gives the filters of the page; a
+  // click on an NQ call opens it; a double-click opens the map larger, in ``expandDialog``.
+  const AREA_SETTINGS_KEY = 'nq-l3-maps-settings';
+  function mountArea({panel, expandDialog = null, api, toast, openCall, filters = () => ({}), campaignLabel = (value) => value,
+    cdrTime = (value) => String(value || '').replace('T', ' ').slice(0, 19), number = (value) => Number(value).toLocaleString('en-GB')}) {
+    let stored = {};
+    try { stored = JSON.parse(localStorage.getItem(AREA_SETTINGS_KEY) || '{}') || {}; } catch (_error) { stored = {}; }
+    // Besides the Layer 3 - DT Logs, as on the map of a call (without its groups): the NQ calls, the sites and the route of
+    // each session (shown until switched off), the RSRP / SINR samples of the CDRs (hidden until switched on), what colours
+    // the NQ calls and the operators shown.
+    const settings = {layers: {cdr: stored.layers?.cdr !== false, failures: stored.layers?.failures !== false, sites: stored.layers?.sites !== false,
+      path: false, paths: false, route: stored.layers?.route !== false},
+    measures: storedMeasures(stored),
+    failureColour: AREA_FAILURE_COLOURS[stored.failureColour] ? stored.failureColour : 'domain',
+    operators: stored.operators === 'focus' ? 'focus' : 'all', radius_km: 0, failures: 'every'};
+    const save = () => {
+      try {
+        localStorage.setItem(AREA_SETTINGS_KEY, JSON.stringify({layers: {cdr: settings.layers.cdr, failures: settings.layers.failures,
+          sites: settings.layers.sites, route: settings.layers.route}, measures: settings.measures, failureColour: settings.failureColour,
+        operators: settings.operators}));
+      } catch (_error) { /* A private window keeps them for the page. */ }
+    };
+    // ``calls``: the NQ calls of the filters, read again only when the filters change.
+    const shared = {data: null, settings, selection: null, l3: null, calls: null, zoom: 6};
+    // The operators shown: every one, or the Focus operators of the Operator Maps (every one while the workspace has none).
+    let focusNames = new Set(), focusLabels = [];
+    shared.operatorChoice = () => (settings.operators === 'focus' && focusNames.size ? 'focus' : 'all');
+    shared.operatorShown = (name) => shared.operatorChoice() === 'all' || focusNames.has(String(name || '').trim().toLowerCase());
+    shared.showsFailure = (failure) => shared.operatorShown(failure.operator);
+    // The colour of an NQ call (AREA_FAILURE_COLOURS) and the lines of the legend that explain it: only what they show.
+    const categoryColour = (value) => window.L3Layers?.categoryColour?.(value) || '#495057';
+    shared.failureColour = (failure) => (settings.failureColour === 'type' ? KIND_COLOURS[failure.kind] || '#495057'
+      : settings.failureColour === 'campaign' ? categoryColour(`campaign:${failure.campaign}|${failure.nr_mode}`)
+        : settings.failureColour === 'operator' ? categoryColour(`operator:${failure.operator}`) : domainColour(failure));
+    shared.failureLegend = () => {
+      const shown = (shared.data?.failures || []).filter((failure) => failure.latitude !== null && shared.showsFailure(failure));
+      if (settings.failureColour === 'domain') return domainLegend(shown);
+      const lines = new Map();
+      for (const failure of shown) {
+        const text = settings.failureColour === 'type' ? KIND_LABELS[failure.kind] || failure.service_label || 'Other'
+          : settings.failureColour === 'campaign' ? campaignText(failure.campaign, failure.nr_mode) || 'No campaign' : failure.operator || 'No operator';
+        if (!lines.has(text)) lines.set(text, shared.failureColour(failure));
+      }
+      return [...lines].sort((first, second) => first[0].localeCompare(second[0]));
+    };
     const status = node('p', '', 'nq-map-status nq-l3-maps-status');
     status.setAttribute('role', 'status');
+    const toolbar = node('div', undefined, 'nq-map-toolbar nq-l3-maps-toolbar');
     const card = node('div', undefined, 'nq-l3-maps-card');
     const legendHost = node('div', undefined, 'nq-map-legend-host');
     const selected = node('section', undefined, 'nq-map-info nq-map-selected');
     selected.hidden = true;
+    // The signalling timeline of the NQ call chosen on the map (its Layer 3 - DT Logs), as on the map of a call.
+    const timelineHost = node('div', undefined, 'nq-l3-timeline-host');
     const wrap = node('div', undefined, 'nq-map-wrap');
-    wrap.append(card, legendHost, selected);
-    panel.replaceChildren(status, wrap, node('p', HINT, 'form-note nq-map-hint'));
+    wrap.append(card, legendHost, timelineHost, selected);
+    panel.replaceChildren(toolbar, status, wrap, node('p', expandDialog ? PANEL_HINT : HINT, 'form-note nq-map-hint'));
+    const zooms = () => shared.l3?.zooms || {};
+    let expandedView = null, expandedTimeline = null, floating = null;
+    const views = () => [view, expandedView].filter(Boolean);
+    const redrawAll = () => views().forEach((item) => { item.renderLegend(); item.redraw(); });
+
+    // -- what the map says of each element ------------------------------------------------------------------------
+    const siteName = (site) => `Site ${site.site_id} · ${site.network}${site.host_network && site.host_network !== site.network ? ` on ${site.host_network}` : ''}`;
+    const campaignText = (campaign, mode) => {
+      const text = campaignLabel(campaign);
+      return mode && !new RegExp(`(^|[^A-Z])${mode}([^A-Z]|$)`, 'i').test(text) ? [text, mode].filter(Boolean).join(' · ') : text;
+    };
+    shared.describe = (kind, item) => {
+      const data = shared.data;
+      if (kind === 'failure') {
+        return {title: `NQ call · ${item.operator}`, rows: [['Call type', KIND_LABELS[item.kind] || item.service_label], ['Operator', item.operator],
+          ['Campaign', campaignText(item.campaign, item.nr_mode)], ['JOIN_ID', item.join_id], ['Result', item.result],
+          ['Failure', [item.failure_classification, item.failure_category, item.failure_subcategory].filter(Boolean).join(' · ')],
+          ['Test', item.test_name], ['Started', cdrTime(item.start_time)], ['Status', item.status],
+          ['Root cause', [item.root_domain, item.root_category, item.root_cause].filter(Boolean).join(' · ')],
+          ['DT Analyzer RCA', [item.dta_domain, item.dta_category, item.dta_cause].filter(Boolean).join(' · ')],
+          ['Layer 3 - DT Logs', item.l3_log || 'None']]};
+      }
+      if (['l3', 'l3_cell'].includes(kind)) return window.L3Layers.describe(item, shared.l3);
+      if (kind === 'l3_focus') return window.L3Layers.describe(item, shared.l3Focus);
+      if (kind === 'l3_route') return window.L3Layers.describe({route: item}, shared.l3);
+      if (kind === 'cell') {
+        const site = data.sites.find((entry) => entry.cells.includes(item));
+        return {title: `Cell ${item.name || item.identity}`, rows: [['Site', site ? siteName(site) : ''], ['Identity', item.identity],
+          ['Technology', [item.technology, item.band].filter(Boolean).join(' ')], ['Channel', item.channel], ['PCI', item.pci],
+          ['Azimuth', item.azimuth === null || item.azimuth === undefined ? 'Omni' : `${item.azimuth}°`],
+          ['Beamwidth', item.beamwidth ? `${item.beamwidth}°` : ''], ['Height', item.height ? `${item.height} m` : ''], ['State', item.state], ['Vendor', item.vendor]]};
+      }
+      if (kind === 'site') {
+        const technologies = [...new Set(item.cells.map((cell) => `${cell.technology} ${cell.band}`.trim()))].join(', ');
+        return {title: siteName(item), rows: [['Vendor', item.vendors.join(', ')], ['Cells', `${item.cells.length} · ${technologies}`],
+          ['Type', item.site_type], ['eMOCN', item.emocn], ['City', item.city]]};
+      }
+      if (kind === 'test') {
+        const operator = data.tests.operators[item[COLUMN.operator]] || '';
+        const cdr = data.tests.cdrs?.[item[COLUMN.cdr]];
+        return {title: `${SERVICE_LABELS[data.tests.kinds[item[COLUMN.kind]]] || 'Test'} test · ${operator}`, rows: [
+          ['Campaign', cdr ? campaignText(cdr.campaign, cdr.nr_mode) : ''],
+          ['CDR', cdr ? [SERVICE_LABELS[cdr.kind] || cdr.kind, cdr.stage ? cdr.stage[0].toUpperCase() + cdr.stage.slice(1) : ''].filter(Boolean).join(' · ') : ''],
+          ['Test', data.tests.test_names[item[COLUMN.test]]], ['Started', cdrTime(item[COLUMN.start])], ['Result', item[COLUMN.failed] ? 'Not completed' : 'Completed'],
+          ['LTE RSRP', dbText(item[COLUMN.lte_rsrp], 'dBm')], ['LTE SINR', dbText(item[COLUMN.lte_sinr], 'dB')],
+          ['NR RSRP', dbText(item[COLUMN.nr_rsrp], 'dBm')], ['NR SINR', dbText(item[COLUMN.nr_sinr], 'dB')]]};
+      }
+      return {title: '', rows: []};
+    };
     const facts = (rows) => {
       const list = node('dl', undefined, 'nq-map-facts');
       rows.filter(([, value]) => value !== '' && value !== null && value !== undefined).forEach(([name, value]) => list.append(node('dt', name), node('dd', String(value))));
       return list;
     };
+    // The element chosen: below the map, or floating over the larger map while it is open.
     const renderSelected = () => {
       const choice = shared.selection;
-      selected.hidden = !choice;
-      if (!choice) { selected.replaceChildren(); return; }
+      const target = expandDialog?.open && floating ? floating : selected;
+      [selected, floating].filter(Boolean).forEach((box) => { box.hidden = true; box.replaceChildren(); });
+      if (!choice) return;
       const {title, rows} = shared.describe(choice.kind, choice.item);
       const content = node('div', undefined, 'nq-map-selected-content');
       const head = node('header');
@@ -2375,27 +2913,144 @@
       close.addEventListener('click', () => shared.select(null));
       head.append(node('h4', title), close);
       content.append(head, facts(rows));
-      const callKey = choice.kind === 'l3_call' ? choice.item.call_key
-        : choice.kind === 'l3' ? (shared.l3?.calls || []).find((call) => String(call.join_id).toLowerCase()
-          === String(shared.l3?.sessions?.[choice.item.point.ue]?.join_id || '').toLowerCase())?.call_key : '';
+      const sameJoin = (joinId) => (shared.calls || []).find((call) => String(call.join_id).toLowerCase() === String(joinId || '').toLowerCase())?.call_key;
+      const callKey = choice.kind === 'failure' ? choice.item.call_key
+        : choice.kind === 'l3' ? sameJoin(shared.l3?.sessions?.[choice.item.point.ue]?.join_id)
+          : choice.kind === 'l3_route' ? sameJoin(choice.item.session?.join_id) : '';
       if (callKey) {
         const open = node('button', 'Open this call', 'nq-secondary-action');
         open.type = 'button';
-        open.addEventListener('click', () => openCall(callKey));
+        open.addEventListener('click', () => { if (expandDialog?.open) expandDialog.close(); openCall(callKey); });
         content.append(open);
       }
-      selected.replaceChildren(content);
+      target.replaceChildren(content);
+      target.hidden = false;
     };
-    shared.select = (choice) => { shared.selection = choice; renderSelected(); view.redraw(); };
+    // The NQ call of the element chosen (an NQ call, a point or the route of its log): its Layer 3 - DT Logs read for its
+    // signalling timeline below the map.
+    let focusKey = '', focusRequest = null, focusCall = null;
+    const callOf = (choice) => {
+      if (!choice) return null;
+      const byJoin = (joinId) => (shared.calls || []).find((call) => String(call.join_id).toLowerCase() === String(joinId || '').toLowerCase());
+      if (choice.kind === 'failure') return choice.item;
+      if (choice.kind === 'l3') return byJoin(shared.l3?.sessions?.[choice.item.point.ue]?.join_id);
+      if (choice.kind === 'l3_route') return byJoin(choice.item.session?.join_id);
+      return null;
+    };
+    const loadFocus = async (call) => {
+      if (!call?.l3_log || call.call_key === focusKey) return;
+      focusKey = call.call_key;
+      focusRequest?.abort();
+      const controllerAbort = new AbortController();
+      focusRequest = controllerAbort;
+      try {
+        const payload = await api(`/api/non-qualified-calls/calls/${encodeURIComponent(call.call_key)}/l3`, {signal: controllerAbort.signal});
+        if (focusRequest !== controllerAbort) return;
+        focusCall = call;
+        shared.l3Focus = window.L3Layers.prepare(payload);
+        window.L3Layers.refresh();
+        views().forEach((item) => item.redraw());
+      } catch (error) {
+        if (error.name === 'AbortError') return;
+        focusKey = '';
+        toast(error.message, 'error');
+      }
+    };
+    shared.select = (choice) => {
+      shared.selection = choice;
+      renderSelected();
+      loadFocus(callOf(choice));
+      // The timeline says what it needs while no call with a log is chosen.
+      if (!shared.l3Focus) window.L3Layers?.refresh();
+      views().forEach((item) => item.redraw());
+    };
+    const timelineEvents = {
+      onHover: (point) => { shared.l3Hover = point; views().forEach((item) => item.redraw()); },
+      onCursor: (moment) => views().forEach((item) => {
+        if (moment?.cars.length) item.keepInView(moment.cars[0].lat, moment.cars[0].lon);
+        item.redraw();
+      }),
+      onPick: (item) => {
+        shared.selection = {kind: 'l3_focus', item};
+        renderSelected();
+        if (item.point.lat !== null && item.point.lat !== undefined) views().forEach((entry) => entry.centreOn(item.point.lat, item.point.lon));
+      },
+      caption: () => (focusCall ? [KIND_LABELS[focusCall.kind] || focusCall.service_label, focusCall.operator, focusCall.join_id].filter(Boolean).join(' · ') : ''),
+      // Until a call with a log is chosen: how to choose one.
+      empty: () => (callOf(shared.selection) && !callOf(shared.selection).l3_log
+        ? 'The NQ call chosen has no Layer 3 - DT Logs (a hollow diamond): choose one with a log to see its signalling timeline here.'
+        : 'Choose an NQ call with Layer 3 - DT Logs (a click on it, on a point of its log or on its route) to see its signalling timeline here.'),
+    };
+    window.L3Layers?.createTimeline(timelineHost, () => shared.l3Focus || null, timelineEvents);
+
+    // -- the RSRP / SINR samples of the CDRs and the layers above the map -----------------------------------------------
+    // A layer of From CDR (or the whole card) and a measure of its samples switched on or off: the area is read again when
+    // it needs its sites or tests.
+    shared.cdrLayers = ['failures', 'sites', 'route'];
+    const needs = () => JSON.stringify([shownLayers(settings).sites !== false, shownMeasures(settings).length > 0 || shownLayers(settings).route !== false]);
+    shared.setLayer = (key, on) => {
+      const before = needs();
+      settings.layers[key] = on;
+      save();
+      redrawAll();
+      if (needs() !== before) reload();
+    };
+    shared.setMeasure = (key, on) => {
+      const before = needs();
+      settings.measures = Object.keys(METRICS).filter((name) => (name === key ? on : settings.measures.includes(name)));
+      save();
+      redrawAll();
+      if (needs() !== before) reload();
+    };
+    shared.samplesNote = () => {
+      const tests = shared.data?.tests;
+      if (shared.zoom < (zooms().tests || 13)) return `From zoom ${zooms().tests || 13}: the tests of the CDRs of the campaigns of the filters in the area shown.`;
+      if (!shownMeasures(settings).length || !tests) return 'The tests of the CDRs of the campaigns of the filters in the area shown.';
+      return tests.truncated ? `An even sample of ${number(tests.rows.length)} of the ${number(tests.total)} tests of the area shown.`
+        : `${number(tests.rows.length)} tests of the CDRs of the campaigns of the filters in the area shown.`;
+    };
+    const select = (labelText, options, value, onChange, title) => {
+      const wrapper = node('label', undefined, 'nq-map-control');
+      wrapper.append(node('span', labelText));
+      const element = node('select');
+      for (const [optionValue, optionText] of options) {
+        const option = node('option', optionText);
+        option.value = optionValue;
+        element.append(option);
+      }
+      element.value = value;
+      wrapper.title = title;
+      element.addEventListener('change', () => onChange(element.value));
+      wrapper.append(element);
+      return wrapper;
+    };
+    // The layers of the map are switched in its cards (From CDR, From Layer 3 Logs), as on the map of a call.
+    const renderToolbar = () => {
+      toolbar.replaceChildren(
+        select('Colour NQ calls by', Object.entries(AREA_FAILURE_COLOURS), settings.failureColour, (value) => {
+          settings.failureColour = value; save(); redrawAll();
+        }, 'What the colour of the NQ calls tells: the domain of their root cause (the one decided, else that of the DT Analyzer RCA), their call type, campaign or operator'),
+        select('Operators', [...(focusNames.size ? [['focus', 'Focus operators only']] : []), ['all', 'Every operator']], shared.operatorChoice(), (value) => {
+          settings.operators = value; save(); redrawAll();
+        }, `The NQ calls and RSRP / SINR samples of every operator, or of the Focus operators of the Operator Maps${focusLabels.length ? ` (${focusLabels.join(', ')})` : ''}`));
+    };
+
+    // -- reading the area shown -------------------------------------------------------------------------------------
     let request = null, loadedKey = '', pending = 0, lastView = null, fitted = false;
     const keyOf = (info) => {
       if (!info) return '';
-      const zoom = Math.floor(info.zoom);
-      const grid = info.zoom < 13;
-      // In the grid, its zoom level; with the points, the area shown (in steps of a fifth of it) and the layers on.
-      const step = (info.bbox[2] - info.bbox[0]) / 5 || 1;
-      const area = grid ? '' : info.bbox.map((value) => Math.round(value / step)).join(',');
-      return JSON.stringify([grid ? zoom : 'points', area, grid ? window.L3Layers.state.grid : [...window.L3Layers.state.on].sort()]);
+      // Its zoom level, the area shown (in steps of a quarter of it) and what it shows.
+      const step = Math.max(info.bbox[2] - info.bbox[0], info.bbox[3] - info.bbox[1]) / 4 || 1;
+      return JSON.stringify([Math.floor(info.zoom), info.bbox.map((value) => Math.round(value / step)).join(','), window.L3Layers.state.grid,
+        [...window.L3Layers.state.on].sort(), window.L3Layers.state.master, needs()]);
+    };
+    const statusText = (payload) => {
+      if (!payload.calls_count) return 'No NQ call matches the filters.';
+      const text = `${number(payload.calls_count)} NQ calls of the filters · ${number(payload.calls_with_log)} with Layer 3 - DT Logs (${number(payload.sessions)} sessions)`;
+      if (!payload.calls_with_log) return `${text} · Import them in Workspace (Layer 3 - DT Logs).`;
+      const sites = payload.sites ? ` · ${number(payload.sites.sites.length)} sites${payload.sites.truncated ? ' (the nearest to the centre)' : ''}` : '';
+      return text + sites + (payload.mode === 'grid' ? ` · zoom in: events from zoom ${payload.zooms.events}, sites from ${payload.zooms.sites}, `
+        + `points and RSRP / SINR samples from ${payload.zooms.grid}` : '');
     };
     const load = async (info, {force = false} = {}) => {
       const key = keyOf(info);
@@ -2407,21 +3062,39 @@
       status.textContent = 'Reading the Layer 3 - DT Logs of the NQ calls…';
       try {
         const body = {filters: filters(), zoom: info ? info.zoom : 6, layers: [...window.L3Layers.state.on], grid: window.L3Layers.state.grid,
-          ...(info ? {bbox: info.bbox} : {})};
+          // The routes of the logs (their layer Route), the sites and the tests (for the samples and the route from the CDR).
+          route: window.L3Layers.state.master && window.L3Layers.state.on.has('way'), sites: shownLayers(settings).sites !== false,
+          tests: shownMeasures(settings).length > 0 || shownLayers(settings).route !== false,
+          with_calls: !shared.calls, ...(info ? {bbox: info.bbox} : {})};
         const payload = await api('/api/non-qualified-calls/l3-maps', {method: 'POST', body: JSON.stringify(body), signal: controllerAbort.signal});
         if (request !== controllerAbort) return;
+        if (payload.calls) shared.calls = payload.calls;
+        payload.calls = shared.calls || [];
         if (!shared.data) {
           shared.data = {area: true, centre: [54.5, -2.5], radius_km: 0, basemap: payload.basemap, call: {}, groups: {},
             tests: {operators: [], rows: [], total: 0}, trace: [], sites: [], failures: [], rings: [], drive: {route: []}, classes: {}, notes: [],
             diagnosis: []};
         }
+        shared.zoom = body.zoom;
+        if (payload.calls !== shared.data.calls) {
+          shared.data.calls = payload.calls;
+          shared.data.failures = payload.calls.map((call) => ({...call, self: false, same_operator: false, same_place: false}));
+        }
+        const focus = new Set((payload.focus_operators || []).map((name) => String(name).trim().toLowerCase()).filter(Boolean));
+        if (focus.size !== focusNames.size || [...focus].some((name) => !focusNames.has(name))) {
+          focusNames = focus;
+          focusLabels = payload.focus_labels || [];
+          renderToolbar();
+        }
+        shared.data.sites = payload.sites?.sites || [];
+        shared.data.tests = payload.tests || {operators: [], kinds: [], test_names: [], cdrs: [], rows: [], total: 0};
+        shared.data.classes = payload.classes || {};
         shared.l3 = window.L3Layers.prepare(payload);
-        status.textContent = payload.sessions ? `${number(payload.calls.length)} NQ calls of the filters with Layer 3 - DT Logs · ${number(payload.sessions)} sessions`
-          + (payload.mode === 'grid' ? ' · zoom in to see the points of the layers' : '') : 'No NQ call of the filters has Layer 3 - DT Logs. Import them in Workspace (Layer 3 - DT Logs).';
+        status.textContent = statusText(payload);
+        if (expandDialog?.open) expandDialog.querySelector('[data-nq-map-expand-meta]').textContent = [status.textContent, HINT].join(' · ');
         if (!fitted && shared.l3?.extent) { fitted = true; view.fit(); }
         window.L3Layers.refresh();
-        view.renderLegend();
-        view.redraw();
+        redrawAll();
       } catch (error) {
         if (error.name === 'AbortError') return;
         loadedKey = '';
@@ -2429,15 +3102,62 @@
         toast(error.message, 'error');
       }
     };
-    const view = createView(card, shared, {legendHost, onViewChange: (info) => {
+    const reload = () => { if (shared.data && lastView) load(lastView, {force: true}); };
+    // The view that reads the area: the larger one while it is open.
+    const viewChanged = (info) => {
       lastView = info;
       clearTimeout(pending);
       pending = setTimeout(() => { if (shared.data) load(info); }, 350);
-    }});
+    };
+
+    // -- the larger map (a double-click on the map): the whole width of the window but 2 % on each side ---------------
+    const expandContent = expandDialog?.querySelector('[data-nq-map-expand-content]');
+    const openExpanded = () => {
+      if (!expandDialog || !shared.data) return;
+      expandDialog.querySelector('[data-nq-map-expand-title]').textContent = 'NQ Maps';
+      expandDialog.querySelector('[data-nq-map-expand-meta]').textContent = [status.textContent, HINT].filter(Boolean).join(' · ');
+      expandedView?.destroy();
+      const large = node('div', undefined, 'nq-map-expand-card');
+      const largeLegend = node('div', undefined, 'nq-map-legend-host');
+      floating = node('aside', undefined, 'nq-map-info nq-map-selected nq-map-selected-float');
+      floating.hidden = true;
+      const largeTimeline = node('div', undefined, 'nq-l3-timeline-host');
+      const largeWrap = node('div', undefined, 'nq-map-expand-wrap');
+      largeWrap.append(large, largeLegend, floating);
+      expandContent.replaceChildren(largeWrap);
+      if (!expandDialog.open) expandDialog.showModal();
+      expandedView = createView(large, shared, {expanded: true, legendHost: largeLegend, onViewChange: viewChanged});
+      expandedView.overlay(largeTimeline);
+      expandedTimeline?.destroy();
+      expandedTimeline = window.L3Layers?.createTimeline(largeTimeline, () => shared.l3Focus || null, timelineEvents) || null;
+      expandedView.setView(view.view());
+      expandedView.renderLegend();
+      renderSelected();
+    };
+    if (expandDialog) {
+      expandDialog.querySelector('[data-nq-map-expand-close]').addEventListener('click', () => expandDialog.close());
+      expandDialog.addEventListener('click', (event) => { if (event.target === expandDialog) expandDialog.close(); });
+      expandDialog.addEventListener('close', () => {
+        if (expandDialog.open) return;
+        // The map in the page goes where the larger one was left.
+        const where = expandedView?.view();
+        expandedView?.destroy();
+        expandedView = null;
+        expandedTimeline?.destroy();
+        expandedTimeline = null;
+        floating = null;
+        expandContent.replaceChildren();
+        if (where) view.setView(where); else view.redraw();
+        renderSelected();
+      });
+    }
+    const view = createView(card, shared, {legendHost, onExpand: expandDialog ? openExpanded : null,
+      onViewChange: (info) => { if (!expandedView) viewChanged(info); }});
     window.L3Layers?.onChange(() => { if (shared.data && lastView) load(lastView); });
+    renderToolbar();
     return {
       // The NQ calls of the filters read again (a change of the filters): the map keeps its area.
-      load: () => { loadedKey = ''; load(lastView, {force: true}); },
+      load: () => { loadedKey = ''; shared.calls = null; load(lastView, {force: true}); },
     };
   }
 

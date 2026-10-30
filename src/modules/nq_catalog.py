@@ -248,15 +248,15 @@ DEFAULT_FIELDS = (
            description='The site where the repeated issues list the call: the site of the cell where the call ended, the site '
                        'that served its start, its eNB / gNB or the spot where it started.'),
     _field('hotspot_id', 'Hotspot ID', 'general', 'text', 'priority', 'hotspot_id',
-           description='The ID of the hotspot of the call (H-...) in the Hotspots, Time-Window & Clustered Issues panel: the '
+           description='The ID of the hotspot of the call (H-...) in the NQ Hotspots, Time-Window & Clustered Issues panel: the '
                        'failures of its operator, NR Mode and campaign linked to each other in time or distance (empty when it '
                        'is in none of 2 calls or more).'),
     _field('consecutive_id', 'Time-Window ID', 'general', 'text', 'priority', 'consecutive_id',
-           description='The ID of the time-window issue of the call (T-...) in the Hotspots, Time-Window & Clustered Issues '
+           description='The ID of the time-window issue of the call (T-...) in the NQ Hotspots, Time-Window & Clustered Issues '
                        'panel: the failures of its operator, NR Mode, campaign and drive one after another, each within the Time '
                        'window of the one before (empty when it is in none of 2 calls or more).'),
     _field('cluster_id', 'Cluster ID', 'general', 'text', 'priority', 'cluster_id',
-           description='The ID of the cluster of the call (C-...) in the Hotspots, Time-Window & Clustered Issues panel: the '
+           description='The ID of the cluster of the call (C-...) in the NQ Hotspots, Time-Window & Clustered Issues panel: the '
                        'calls of its operator and NR Mode failed close to each other or at the same site, in its campaign and '
                        'those of the Cluster period (empty when it is in none of 2 calls or more).'),
     _field('team_responsible', 'Team Responsible', 'general', 'list', 'tracking', 'team', in_table=True),

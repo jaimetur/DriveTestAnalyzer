@@ -281,7 +281,7 @@ REPORT_PANELS: tuple[tuple[str, str, tuple[tuple[str, str], ...]], ...] = (
     ('summary', 'Summary', (('executive', 'Executive Summary'),)),
     ('prioritization', 'NQ Prioritization & Queues', (('queue', 'Next to analyse'), ('rules', 'Prioritization Rules'),
                                                       ('kpis', 'Scoring points lost by KPI'))),
-    ('clusters', 'Hotspots, Time-Window & Clustered Issues', (('hotspots', 'Hotspots'), ('consecutive', 'Time-Window Issues'),
+    ('clusters', 'NQ Hotspots, Time-Window & Clustered Issues', (('hotspots', 'Hotspots'), ('consecutive', 'Time-Window Issues'),
                                                               ('issues', 'Clustered Issues'))),
     ('rates', 'NQ Rate by Campaign and Operator', (('rates', 'NQ rate of each campaign and operator'),)),
     ('failures', 'Failures by Type, Technology & Serving Cell', (
@@ -384,7 +384,7 @@ def report_panels(summary: dict[str, Any], breakdowns: list[dict[str, Any]], pro
 
 FAILURES_TITLE = 'Failures by Type, Technology & Serving Cell'
 PRIORITIZATION_TITLE = 'NQ Prioritization & Queues'
-CLUSTERS_TITLE = 'Hotspots, Time-Window & Clustered Issues'
+CLUSTERS_TITLE = 'NQ Hotspots, Time-Window & Clustered Issues'
 # The tables of the hotspots, the time-window issues and the clusters, a panel of their own.
 CLUSTER_COMPONENTS = ('hotspots', 'consecutive', 'issues')
 # The slides keep the hotspots and the sites with a repeated issue with the most calls (the page lists every one).

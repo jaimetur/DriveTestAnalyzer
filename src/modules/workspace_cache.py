@@ -1,5 +1,5 @@
 """The cache folder of a workspace: ``.cache`` beside its database, with one folder per module for what it works out
-to use again (``scoring``, ``network-insights``, ``ppt-designer`` and ``bundle-reports``).
+to use again (``scoring``, ``network-insights``, ``ppt-designer``, ``bundle-reports`` and ``nq-calls``).
 
 What it holds is worked out again when it is missing: it is left out of backups, exports and transfers, moved with its
 workspace when it is renamed and deleted with it. The cache folders of earlier versions (``.scoring-cache``,
@@ -18,6 +18,7 @@ SCORING = 'scoring'
 NETWORK_INSIGHTS = 'network-insights'
 PPT_DESIGNER = 'ppt-designer'
 BUNDLE_REPORTS = 'bundle-reports'
+NQ_CALLS = 'nq-calls'
 # The cache folders of earlier versions, relative to the workspace folder, and the module folder that replaces each one.
 LEGACY_FOLDERS = (
     ('.scoring-cache', SCORING),

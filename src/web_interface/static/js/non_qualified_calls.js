@@ -3121,14 +3121,14 @@
   // The NQ rate depends only on these filters and on the indexed CDRs: other filter changes keep it.
   const RATE_FILTER_KEYS = ['datasets', 'service', 'campaign', 'operator', 'nr_mode'];
   let rateKey = '';
-  // Layer 3 - Maps: the Layer 3 - DT Logs of the filtered calls (nq_call_map.js mountArea), mounted when first shown and read
+  // NQ Maps: the Layer 3 - DT Logs of the filtered calls (nq_call_map.js mountArea), mounted when first shown and read
   // again when the filters or the calls change.
   let l3Maps = null, l3MapsKey = '';
   async function loadL3Maps() {
     const host = $('nq-l3-maps');
     if (!host || !window.NqCallMap?.mountArea) return;
-    l3Maps = l3Maps || window.NqCallMap.mountArea({panel: host, api, toast, number, filters: () => currentFilters(),
-      openCall: async (callKey) => { if (await leaveDetail()) openDetail(callKey, {keepTab: false}); }});
+    l3Maps = l3Maps || window.NqCallMap.mountArea({panel: host, expandDialog: $('nq-l3-maps-expand'), api, toast, number, campaignLabel, cdrTime,
+      filters: () => currentFilters(), openCall: async (callKey) => { if (await leaveDetail()) openDetail(callKey, {keepTab: false}); }});
     const key = JSON.stringify([currentFilters(), state.result?.sync?.synced_at || '']);
     if (key === l3MapsKey) return;
     l3MapsKey = key;
@@ -4723,7 +4723,7 @@
     $('nq-drawer-unique').hidden = !uniqueField;
     $('nq-drawer-l3-ues').textContent = call.l3_log || '';
     $('nq-drawer-l3').hidden = !call.l3_log;
-    // Its groups of 2 calls or more, each with what it is, its NR Mode, its ID in the Hotspots, Time-Window & Clustered Issues
+    // Its groups of 2 calls or more, each with what it is, its NR Mode, its ID in the NQ Hotspots, Time-Window & Clustered Issues
     // panel and its calls, and what it holds: its sites (spatial groups: clusters), its period (temporal groups: runs) or both
     // (hotspots). Its hotspot and its time-window issue keep to its NR Mode and campaign, its cluster to its NR Mode
     // (with the calls of its cluster of every NR Mode together when that holds more, as the panel shows the clusters without
@@ -4738,7 +4738,7 @@
     const TITLES = {
       hotspot: 'Failures of its operator, NR Mode and campaign linked to each other in time or distance',
       cluster: 'Calls of its operator and NR Mode failed close to each other or at the same site, in its campaign and those of the Cluster period',
-      cluster_all: 'Its cluster with the calls of every NR Mode together, as the Hotspots, Time-Window & Clustered Issues panel shows the clusters without one NR Mode filtered',
+      cluster_all: 'Its cluster with the calls of every NR Mode together, as the NQ Hotspots, Time-Window & Clustered Issues panel shows the clusters without one NR Mode filtered',
       run: 'Failures of its operator, NR Mode, campaign and drive one after another',
     };
     const chips = [];
@@ -8722,10 +8722,13 @@
   // A table with its title (a failure card, a progress section) is one image; the tables without one are on their own.
   const imageTables = '.nq-failure-card, .nq-progress-section:has(.nq-table-wrap), .nq-table-wrap:not(.nq-failure-card *, .nq-progress-section *)';
   const imageCharts = '.nq-pie, .nq-root-donut-group, .nq-progress-section';
+  const l3MapImages = '.nq-l3-maps .nq-map-wrap, .nq-l3-maps-panel .nq-map-expand-wrap';
   window.attachImageButtons?.({
     root: $('non-qualified-calls'), fallbackName: 'Non-Qualified Calls', module: 'non-qualified-calls',
-    targets: `details.panel.collapsible-panel, ${imageTables}, ${imageCharts}, .nq-kpis, .nq-rate-overview, .nq-phase-cards, .nq-failure-section`,
-    tables: imageTables, charts: imageCharts, exclude: '.nq-chart-tooltip', obstacles: 'summary .summary-inline-actions',
+    // NQ Maps as the map of a call: in the page and larger, without its buttons.
+    targets: `details.panel.collapsible-panel, ${imageTables}, ${imageCharts}, .nq-kpis, .nq-rate-overview, .nq-phase-cards, .nq-failure-section, ${l3MapImages}`,
+    tables: imageTables, charts: `${imageCharts}, ${l3MapImages}`, obstacles: 'summary .summary-inline-actions, .nq-map-zoom',
+    exclude: '.nq-chart-tooltip, .nq-map-zoom, .nq-map-basemap, .nq-map-wheel-hint, .nq-map-tooltip, .nq-map-info-close, .nq-map-selected-content > button',
     // The title of its panel, then its own: that of its section (with the operator of a failure card) or its heading.
     title: target => {
       const text = element => window.imageHeadingText(element);
@@ -8745,7 +8748,7 @@
     window.attachImageButtons?.({
       root: drawer, targets: '.nq-map-wrap, .nq-map-expand-wrap', charts: '.nq-map-wrap, .nq-map-expand-wrap',
       // The open panels (the element chosen) show in the images; the buttons of the map and of the panels do not.
-      exclude: '.nq-map-zoom, .nq-map-samples, .nq-map-wheel-hint, .nq-map-tooltip, .nq-map-waiting, .nq-map-info-close, .nq-map-selected-content > button',
+      exclude: '.nq-map-zoom, .nq-map-basemap, .nq-map-wheel-hint, .nq-map-tooltip, .nq-map-waiting, .nq-map-info-close, .nq-map-selected-content > button',
       obstacles: '.nq-map-zoom', cardOnEdge: false,
       // Below the header and the tabs of the call panel, which its body scrolls under.
       topInset: () => drawer.querySelector('.nq-drawer-body').getBoundingClientRect().top,

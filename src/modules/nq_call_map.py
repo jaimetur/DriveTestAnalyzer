@@ -21,6 +21,7 @@ The tests of a CDR are read once and kept in memory for the next calls of the sa
 """
 from __future__ import annotations
 
+import hashlib
 import math
 import re
 from collections import Counter, OrderedDict
@@ -30,7 +31,7 @@ from typing import Any, Callable
 import numpy as np
 import pandas as pd
 
-from src.modules import cdr_store
+from src.modules import cdr_store, workspace_cache
 from src.modules.cdr_field_profiles import NETCHECK_PROFILE, CdrFieldProfile, workspace_field_profile
 
 # The radii offered. A call opens with the radius that holds every NQ call of its hotspot and its cluster (in tenths of a
@@ -1536,7 +1537,6 @@ def call_map(repository: Any, call_key: str, *, radius_km: Any = None, tests: st
     one."""
     from src.modules import non_qualified_calls as nq
     from src.modules.inventory_insights import configured_vendor_colours
-    from src.modules.network_insights import RSRP_CLASSES, SINR_CLASSES
     from src.modules.nq_prioritization import call_kind
     from src.modules.operator_roles import FOCUS, focus_operators, labels_with_role
     from src.modules.serving_cells import load_serving_networks, serving_families
@@ -1699,10 +1699,6 @@ def call_map(repository: Any, call_key: str, *, radius_km: Any = None, tests: st
                                 [tuple(point) for point in way['points']] if way else None,
                                 {step['cell']: step['band'] for step in cell_steps(trace_text) if step['cell'] and step['band']})
     health = site_health(repository, call, serving_site, serving_host, label)
-    classes = {
-        'rsrp': [{'label': label, 'lower': None if math.isinf(lower) else lower, 'colour': colour} for label, lower, colour in RSRP_CLASSES],
-        'sinr': [{'label': label, 'lower': None if math.isinf(lower) else lower, 'colour': colour} for label, lower, colour in SINR_CLASSES],
-    }
     return {
         'call': {
             'call_key': call['call_key'], 'parent_key': _text(call.get('parent_key')), 'join_id': _text(call.get('join_id')),
@@ -1735,9 +1731,164 @@ def call_map(repository: Any, call_key: str, *, radius_km: Any = None, tests: st
         # The Focus operators of the Operator Maps: their labels, and with every name of the CDRs they stand for.
         'focus_labels': labels_with_role(repository, FOCUS), 'focus_operators': focus_operators(repository),
         'families': list(families), 'snapshots': snapshots, 'trace': trace, 'sites': sites, 'failures': failures,
-        'tests': test_points, 'classes': classes, 'notes': notes,
+        'tests': test_points, 'classes': sample_classes(), 'notes': notes,
         'failures_left_out': failures_left_out, 'failures_max': MAX_FAILURES, 'groups': groups, 'rings': group_rings(repository, call, point),
         'hotspot_join': str(prioritization_settings(repository).get('hotspot_join') or 'or'),
         'diagnosis': checks, 'decisions': site_decisions(failures), 'drive': drive, 'site_health': health,
         'basemap': {'url_template': OSM_TILES, 'attribution': OSM_ATTRIBUTION},
     }
+
+
+def sample_classes() -> dict[str, list[dict[str, Any]]]:
+    """The levels of the RSRP and SINR of the samples, as Network Insights colours them."""
+    from src.modules.network_insights import RSRP_CLASSES, SINR_CLASSES
+
+    return {
+        'rsrp': [{'label': label, 'lower': None if math.isinf(lower) else lower, 'colour': colour} for label, lower, colour in RSRP_CLASSES],
+        'sinr': [{'label': label, 'lower': None if math.isinf(lower) else lower, 'colour': colour} for label, lower, colour in SINR_CLASSES],
+    }
+
+
+# ---------------------------------------------------------------------------
+# NQ Maps: the sites and the RSRP / SINR samples of the area shown
+# ---------------------------------------------------------------------------
+# The sites show from this zoom level of the map, the samples of the CDRs from this one.
+AREA_SITES_ZOOM = 11
+AREA_TESTS_ZOOM = 13
+MAX_AREA_TESTS = 20000
+# The located tests of a CDR for the maps of an area, kept in the cache of the workspace (one small Parquet file per CDR,
+# until its calls are indexed again): moving the map reads only the tests of the area shown.
+AREA_TESTS_VERSION = 1
+AREA_TEST_COLUMNS = ('dataset_id', 'kind', 'lat', 'lon', 'operator', 'failed', 'lte_rsrp', 'lte_sinr', 'nr_rsrp', 'nr_sinr', 'test', 'start')
+
+
+def area_centre(bbox: Any) -> tuple[tuple[float, float], float]:
+    """The centre of an area (south, west, north, east) and the radius in km of the circle around it."""
+    south, west, north, east = (float(value) for value in bbox)
+    centre = ((south + north) / 2, (west + east) / 2)
+    return centre, max(.05, distance_km(centre, (north, east)))
+
+
+def area_sites(repository: Any, operators: Any, bbox: Any) -> dict[str, Any]:
+    """The inventory sites (with their cells) of the networks that serve ``operators`` in the area, nearest to its centre
+    first (MAX_SITES at most), as the map of a call draws them."""
+    from src.modules.inventory_insights import configured_vendor_colours
+    from src.modules.serving_cells import load_serving_networks, serving_families
+
+    config = load_serving_networks(repository)
+    families = tuple(dict.fromkeys(family for operator in sorted({_text(value) for value in operators} - {''})
+                                   for family in serving_families(operator, config)))
+    cells, snapshots = inventory_cells(repository, families)
+    centre, radius = area_centre(bbox)
+    sites = nearby_sites(cells, centre, radius, set(), configured_vendor_colours(repository.list_vendor_mapping_groups()))
+    for site in sites:
+        site.update(roles=[], ends=[], serving=False)
+    return {'sites': sites, 'families': list(families), 'snapshots': snapshots, 'truncated': len(sites) >= MAX_SITES}
+
+
+def area_test_datasets(repository: Any, calls: list[dict[str, Any]]) -> list[int]:
+    """The CDRs whose tests an area shows: every CDR with the latest calls of the campaigns and NR Modes of ``calls``."""
+    from src.modules import non_qualified_calls as nq
+
+    pairs = sorted({(_text(call.get('campaign')), _text(call.get('nr_mode'))) for call in calls if _text(call.get('campaign'))})
+    if not pairs:
+        return []
+    condition = ' OR '.join('(campaign = ? AND nr_mode = ?)' for _pair in pairs)
+    with repository.connection() as connection:
+        rows = connection.execute(
+            f"SELECT DISTINCT dataset_id FROM {nq.NQ_CALL_POPULATION_TABLE} WHERE is_latest = 1 AND service IN ('voice', 'speech', 'data') "
+            f'AND ({condition}) ORDER BY dataset_id', [value for pair in pairs for value in pair]).fetchall()
+    return [int(row[0]) for row in rows]
+
+
+def _area_tests_file(repository: Any, dataset_id: int) -> Any:
+    """The file of the located tests of a CDR for the maps of an area (AREA_TEST_COLUMNS), written from its tests the
+    first time; None for a CDR without located tests."""
+    import duckdb
+
+    from src.modules import non_qualified_calls as nq
+
+    with repository.connection() as connection:
+        source = connection.execute(f'SELECT revision FROM {nq.NQ_CALL_SOURCES_TABLE} WHERE dataset_id = ?', (int(dataset_id),)).fetchone()
+    revision = hashlib.sha1(f"{_text(source['revision']) if source else ''}|{AREA_TESTS_VERSION}".encode()).hexdigest()[:12]
+    folder = workspace_cache.of_database(repository.db_path, workspace_cache.NQ_CALLS)
+    target = folder / f'tests-{int(dataset_id)}-{revision}.parquet'
+    empty = target.with_suffix('.none')
+    if target.exists():
+        return target
+    if empty.exists():
+        return None
+    entry = _dataset_tests(repository, int(dataset_id))
+    folder.mkdir(parents=True, exist_ok=True)
+    for stale in folder.glob(f'tests-{int(dataset_id)}-*'):
+        if stale.name not in {target.name, empty.name}:
+            stale.unlink(missing_ok=True)
+    if not entry or not len(entry['latitude']):
+        empty.touch()
+        return None
+    frame = pd.DataFrame({
+        'dataset_id': np.full(len(entry['latitude']), int(dataset_id), dtype=np.int64), 'kind': entry['kind'],
+        'lat': entry['latitude'], 'lon': entry['longitude'], 'operator': np.asarray(entry['operators'], dtype=object)[entry['operator']],
+        'failed': entry['failed'], **{name: entry[name] for name in ('lte_rsrp', 'lte_sinr', 'nr_rsrp', 'nr_sinr')},
+        'test': np.asarray(entry['tests'], dtype=object)[entry['test']], 'start': entry['start'],
+    })
+    partial = target.with_suffix('.partial')
+    with duckdb.connect() as duck:
+        duck.register('tests', frame)
+        duck.execute(f"COPY (SELECT * FROM tests) TO '{str(partial).replace(chr(39), chr(39) * 2)}' (FORMAT parquet)")
+    partial.replace(target)
+    return target
+
+
+def area_tests(repository: Any, dataset_ids: list[int], bbox: Any, operator_label: Callable[[str], str] = str) -> dict[str, Any]:
+    """The tests of the CDRs in the area (south, west, north, east), MAX_AREA_TESTS at most (an even sample of them when
+    there are more), as compact rows in the form of nearby_tests."""
+    import duckdb
+
+    south, west, north, east = (float(value) for value in bbox)
+    files = [str(path) for dataset_id in dataset_ids if (path := _area_tests_file(repository, int(dataset_id)))]
+    result: dict[str, Any] = {'operators': [], 'kinds': [], 'test_names': [], 'cdrs': [], 'rows': [], 'total': 0, 'truncated': False,
+                              'columns': ['latitude', 'longitude', 'operator', 'kind', 'failed', 'lte_rsrp', 'lte_sinr', 'nr_rsrp', 'nr_sinr', 'test', 'start', 'cdr']}
+    if not files:
+        return result
+    source = f"read_parquet([{', '.join(chr(39) + file.replace(chr(39), chr(39) * 2) + chr(39) for file in files)}], union_by_name = true)"
+    inside = 'lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?'
+    with duckdb.connect() as duck:
+        total = int(duck.execute(f'SELECT COUNT(*) FROM {source} WHERE {inside}', [south, north, west, east]).fetchone()[0])
+        query = f"SELECT {', '.join(AREA_TEST_COLUMNS)} FROM {source} WHERE {inside}"
+        if total > MAX_AREA_TESTS:
+            query = f'SELECT * FROM ({query}) USING SAMPLE reservoir({MAX_AREA_TESTS} ROWS) REPEATABLE (7)'
+        rows = duck.execute(query, [south, north, west, east]).fetchall()
+    ids = sorted({int(row[0]) for row in rows})
+    placeholders = ', '.join('?' for _ in ids) or 'NULL'
+    with repository.connection() as connection:
+        stages = {int(row['dataset_id']): _text(row['cdr_stage']) for row in connection.execute(
+            f'SELECT dataset_id, cdr_stage FROM dataset_profiles WHERE dataset_id IN ({placeholders})', ids)}
+        profiles = _cdr_profiles(connection, str(repository.db_path), ids)
+    operators: dict[str, int] = {}
+    labels: dict[str, str] = {}
+    names: dict[str, int] = {}
+    cdrs: dict[int, int] = {}
+    kinds: dict[str, int] = {}
+
+    def rounded(value: Any, digits: int = 1) -> float | None:
+        return None if value is None or not math.isfinite(float(value)) else round(float(value), digits)
+
+    for dataset_id, kind, lat, lon, operator, failed, lte_rsrp, lte_sinr, nr_rsrp, nr_sinr, test, start in rows:
+        source_name = _text(operator)
+        if source_name not in labels:
+            labels[source_name] = str(operator_label(source_name) or source_name)
+        label = labels[source_name]
+        kinds.setdefault(kind, len(kinds))
+        operators.setdefault(label, len(operators))
+        names.setdefault(_text(test), len(names))
+        if int(dataset_id) not in cdrs:
+            profile = profiles.get(int(dataset_id))
+            cdrs[int(dataset_id)] = len(result['cdrs'])
+            result['cdrs'].append({'dataset_id': int(dataset_id), 'kind': kind, 'campaign': _text(profile['campaign']) if profile else '',
+                                   'nr_mode': _text(profile['nr_mode']) if profile else '', 'stage': stages.get(int(dataset_id), '')})
+        result['rows'].append([round(float(lat), 6), round(float(lon), 6), operators[label], kinds[kind], int(bool(failed)),
+                               rounded(lte_rsrp), rounded(lte_sinr), rounded(nr_rsrp), rounded(nr_sinr), names[_text(test)],
+                               _text(start), cdrs[int(dataset_id)]])
+    result.update(operators=list(operators), kinds=list(kinds), test_names=list(names), total=total, truncated=total > len(rows))
+    return result

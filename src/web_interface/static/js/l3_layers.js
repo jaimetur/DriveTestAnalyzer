@@ -28,7 +28,9 @@
   const CATEGORY_COLOURS = ['#1c7ed6', '#e8590c', '#2b8a3e', '#ae3ec9', '#f08c00', '#0b7285', '#c2255c', '#5c940d', '#5f3dc4', '#a61e4d',
     '#1098ad', '#d9480f', '#364fc7', '#087f5b', '#862e9c', '#e67700'];
   const SHAPE_OF = {earfcn: 'square', nrarfcn: 'square', pci: 'diamond', rsrp: 'circle', rsrq: 'triangle', sinr: 'triangle-down',
-    tx: 'pentagon', ran: 'square', event: 'hexagon', l3: 'diamond', direction: 'arrow'};
+    tx: 'pentagon', ran: 'square', event: 'hexagon', l3: 'diamond', direction: 'arrow', way: 'road'};
+  // The colour of the routes of the Layer 3 - DT Logs drawn as roads (that of a call keeps the colour of the call).
+  const ROUTE_COLOUR = '#0b6e8a';
   const METRIC_LABELS = {earfcn: 'EARFCN', nrarfcn: 'NRARFCN', pci: 'PCI', rsrp: 'RSRP', rsrq: 'RSRQ', sinr: 'SINR', tx: 'UE Tx Power'};
   const EVENT_GROUPS = ['4G', '5G EN-DC', '5G NR', 'Other'];
   const L3_GROUPS = ['LTE-NAS', 'LTE-RRC', 'NR-NAS', 'NR-RRC', 'SIP', 'Other'];
@@ -37,9 +39,9 @@
   const cellLayers = (prefix, kind, metrics) => metrics.map((metric) => ({key: `${kind}:${metric}`, kind, metric,
     name: `${prefix}_${metric === 'tx' ? 'UE_Tx_Power' : METRIC_LABELS[metric]}`, label: METRIC_LABELS[metric]}));
   const SECTIONS = [
-    {key: 'route', label: 'Route', note: 'The way of the UE and its RAN', layers: [
-      {key: 'direction', name: 'Direction', label: 'Direction of travel'},
-      {key: 'ran', name: 'RAN_Configuration', label: 'RAN Configuration', groups: RAN_GROUPS}]},
+    {key: 'route', label: 'Route', note: 'The way of the UE', layers: [
+      {key: 'way', name: 'Route', label: 'Route (GPS of the log)'},
+      {key: 'direction', name: 'Direction', label: 'Direction of travel'}]},
     {key: 'signalling', label: 'Signalling', note: 'Events and L3 messages', layers: [
       {key: 'event', name: 'Event', label: 'Events', groups: EVENT_GROUPS},
       {key: 'l3', name: 'L3_Signaling', label: 'L3 Signaling', groups: L3_GROUPS}]},
@@ -54,14 +56,20 @@
       {label: 'SCell', layers: cellLayers('NR_SCell', 'nr_scell', ['nrarfcn', 'pci', 'rsrp', 'rsrq', 'sinr'])},
       {label: 'NCell', layers: cellLayers('NR_NCell', 'nr_ncell', ['nrarfcn', 'pci', 'rsrp', 'rsrq'])},
       {label: 'LTE NCell', layers: cellLayers('NR_LNCell', 'nr_lncell', ['earfcn', 'pci', 'rsrp', 'rsrq'])}]},
+    // Last, so that LTE and NR stay side by side in the card unfolded.
+    {key: 'ran', label: 'RAN', note: 'The RAN Configuration of each serving point', layers: [
+      {key: 'ran', name: 'RAN_Configuration', label: 'RAN Configuration', groups: RAN_GROUPS}]},
   ];
   const LAYERS = SECTIONS.flatMap((section) => (section.layers
     || section.blocks.flatMap((block) => block.layers.map((layer) => ({...layer, block: block.label})))).map((layer) => ({section: section.key, ...layer})));
   const LAYER = Object.fromEntries(LAYERS.map((layer) => [layer.key, layer]));
   const SERVING = new Set(['lte_pcell', 'lte_scell', 'lte_tx', 'nr_pcell', 'nr_scell', 'nr_tx', 'gsm', 'wcdma']);
   const NR_KINDS = new Set(['nr_pcell', 'nr_scell', 'nr_ncell', 'nr_tx']);
-  // The layers of a new map: the PCell RSRP of LTE and NR, as the KMZ files open.
-  const DEFAULT_ON = ['lte_pcell:rsrp', 'nr_pcell:rsrp'];
+  // The layers of a new map: the route of the UE, the PCell RSRP of LTE and NR, as the KMZ files open, and the events.
+  const DEFAULT_ON = ['way', 'lte_pcell:rsrp', 'nr_pcell:rsrp', 'event'];
+  // The version of the layers kept in the browser: the layers kept before version 2 get the events once, those kept before
+  // version 3 the route.
+  const STATE_VERSION = 3;
 
   const node = (tag, text, className) => {
     const element = document.createElement(tag);
@@ -114,6 +122,22 @@
     else context.arc(x, y, size, 0, Math.PI * 2);
   };
   const drawMarker = (context, shape, x, y, size, colour, {nr = false, outline = '#fff', heading = null} = {}) => {
+    if (shape === 'road') {
+      // A piece of road (the icon of a route): its white edges, its colour and its dashed centre line.
+      context.save();
+      context.lineCap = 'round';
+      [[size * 2.4, '#fff', []], [size * 1.7, colour, []], [Math.max(1, size * .35), '#fff', [size * .9, size * .9]]].forEach(([width, stroke, dash]) => {
+        context.beginPath();
+        context.moveTo(x - size * 2.2, y);
+        context.lineTo(x + size * 2.2, y);
+        context.setLineDash(dash);
+        context.lineWidth = width;
+        context.strokeStyle = stroke;
+        context.stroke();
+      });
+      context.restore();
+      return;
+    }
     if (shape === 'arrow') {
       context.save();
       context.translate(x, y);
@@ -166,22 +190,23 @@
   const stored = readState();
   const state = {
     master: stored.master !== false,
-    on: new Set(Array.isArray(stored.on) ? stored.on.filter((key) => LAYER[key]) : DEFAULT_ON),
+    on: new Set(Array.isArray(stored.on) ? [...stored.on.filter((key) => LAYER[key]), ...((stored.v || 1) < 2 ? ['event'] : []),
+      ...((stored.v || 1) < 3 ? ['way'] : [])] : DEFAULT_ON),
     // Channels (layer|channel) and PCIs (layer|channel|pci) switched off inside a layer that is on.
     off: new Set(Array.isArray(stored.off) ? stored.off : []),
     open: new Set(Array.isArray(stored.open) ? stored.open : ['lte', 'nr']),
     ue: stored.ue || 'all',
-    panel: stored.panel !== false,
-    // Layer 3 - Maps: the metric layer its grid averages, and whether its NQ calls show.
+    // NQ Maps: the metric layer its grid averages.
     grid: LAYER[stored.grid] ? stored.grid : 'lte_pcell:rsrp',
-    calls: stored.calls !== false,
     // The map of a call: the logs of the NQ calls around it too.
     around: stored.around === true,
+    // The signalling timeline of the call (below the map, over the larger map).
+    timeline: stored.timeline !== false,
   };
   const saveState = () => {
     try {
-      localStorage.setItem(STATE_KEY, JSON.stringify({master: state.master, on: [...state.on], off: [...state.off].slice(0, 400),
-        open: [...state.open], ue: state.ue, panel: state.panel, grid: state.grid, calls: state.calls, around: state.around}));
+      localStorage.setItem(STATE_KEY, JSON.stringify({v: STATE_VERSION, master: state.master, on: [...state.on], off: [...state.off].slice(0, 400),
+        open: [...state.open], ue: state.ue, grid: state.grid, around: state.around, timeline: state.timeline}));
     } catch (_error) { /* A private window keeps them for the page. */ }
   };
   const listeners = new Set();
@@ -231,11 +256,16 @@
     }
     const trackPoints = Object.values(tracks).flat();
     if (trackPoints.length > 1) layers.direction = {count: trackPoints.length, groups: new Map()};
+    // The route: the way of each UE of a call, of each session of an area.
+    const ways = area ? (payload.routes || []).length : Object.values(tracks).filter((track) => track.length > 1).length;
+    if (ways) layers.way = {count: ways, groups: new Map()};
     const sessions = Object.fromEntries(ues.map((ue) => [ue, payload.ues[ue].session]));
-    // An area (Layer 3 - Maps): its sessions are keyed by JoinID and UE, with a grid of averages below GRID_ZOOM, its NQ calls
+    // An area (NQ Maps): its sessions are keyed by JoinID and UE, with a grid of averages below GRID_ZOOM, its NQ calls
     // and the extent of them all.
+    // ``routes``: the way of each session of an area, its positions in time order ([ms, lat, lon]).
     return {points, layers, tracks, ues, sessions, joinId: payload.join_id, area, mode: payload.mode || 'points', grid: payload.grid || null,
       calls: payload.calls || [], ends: payload.ends || [], extent: payload.extent || null, truncated: Boolean(payload.truncated),
+      eventsTruncated: Boolean(payload.events_truncated), routes: payload.routes || [], zooms: payload.zooms || {},
       count: payload.sessions || ues.length};
   };
 
@@ -269,10 +299,9 @@
     const index = DRAW_ORDER.indexOf(kind);
     return index < 0 ? DRAW_ORDER.length : index;
   };
-  // The colour of an NQ call of Layer 3 - Maps: the domain of its root cause (decided, else that of the DT Analyzer RCA).
+  // The colours of the domains of the root causes (the NQ calls of the maps coloured by them).
   const DOMAIN_COLOURS = {RF: '#e8590c', RAN: '#1c7ed6', Core: '#7048e8', 'Core EPSFB': '#9c36b5', 'IMS/E2E': '#c2255c', AAA: '#2b8a3e',
     Protocol: '#0b7285', Device: '#5c636a', Operational: '#868e96'};
-  const callDomain = (call) => call.root_domain || call.dta_domain || '';
   const drawArea = (context, data, {project, hits, width, height}) => {
     const grid = data.grid;
     if (grid && state.master) {
@@ -286,25 +315,6 @@
         context.globalAlpha = 1;
         hits.push({x: (x1 + x2) / 2, y: (y1 + y2) / 2, r: Math.max(4, (x2 - x1) / 2), kind: 'l3_cell', item: {grid, value, count, low, lat, lon}, priority: 1});
       }
-    }
-    if (state.calls === false) return;
-    for (const call of data.calls) {
-      if (call.latitude === null || call.latitude === undefined) continue;
-      const [x, y] = project(call.latitude, call.longitude);
-      if (x < -10 || y < -10 || x > width + 10 || y > height + 10) continue;
-      const colour = DOMAIN_COLOURS[callDomain(call)] || '#495057';
-      context.beginPath();
-      context.moveTo(x, y - 6);
-      context.lineTo(x + 5, y);
-      context.lineTo(x, y + 6);
-      context.lineTo(x - 5, y);
-      context.closePath();
-      context.fillStyle = colour;
-      context.fill();
-      context.lineWidth = 1.4;
-      context.strokeStyle = '#fff';
-      context.stroke();
-      hits.push({x, y, r: 8, kind: 'l3_call', item: call, priority: 5});
     }
   };
   const draw = (context, data, {project, hits, zoom = 15, width = Infinity, height = Infinity, faded = false}) => {
@@ -331,7 +341,7 @@
       }
     }
     for (const layerKey of layersOn) {
-      if (layerKey === 'direction') continue;
+      if (layerKey === 'direction' || layerKey === 'way') continue;
       const layer = LAYER[layerKey];
       const shape = layer.metric ? SHAPE_OF[layer.metric] : SHAPE_OF[layerKey];
       for (const point of data.points) {
@@ -350,10 +360,11 @@
     }
     context.globalAlpha = 1;
   };
-  // The way of the UE shown (A, else the first UE) for the road of the call, its start and its end.
+  // The way of the UE shown (A, else the first UE) for the road of the call, its start and its end; none while the Layer 3 -
+  // DT Logs are switched off.
   const wayOf = (data) => {
-    // An area (Layer 3 - Maps) has no call of its own: no way, start or end.
-    if (!data || data.area) return null;
+    // An area (NQ Maps) has no call of its own: no way, start or end.
+    if (!data || data.area || !state.master || !state.on.has('way')) return null;
     const ue = state.ue !== 'all' && data.tracks[state.ue] ? state.ue : data.ues.includes('A') ? 'A' : data.ues[0];
     const track = data.tracks[ue] || [];
     return track.length > 1 ? track.map((point) => [point.lat, point.lon]) : null;
@@ -379,11 +390,13 @@
         rows: [['Points', item.count], ['Lowest', `${number(item.low)} ${unit}`], ['Where', `${item.lat.toFixed(3)}, ${item.lon.toFixed(3)}`],
           ['Zoom in', 'to see the points of the layers on']]};
     }
-    if (item.call_key) {
-      return {title: [item.service_label, item.result].filter(Boolean).join(' · ') || 'NQ call', rows: [['JOIN_ID', item.join_id],
-        ['Operator', item.operator], ['Campaign', item.campaign], ['NR Mode', item.nr_mode], ['Started', String(item.start_time || '').replace('T', ' ').slice(0, 19)],
-        ['Root cause', [item.root_category, item.root_cause].filter(Boolean).join(' · ')],
-        ['DT Analyzer RCA', [item.dta_category, item.dta_cause].filter(Boolean).join(' · ')], ['Layer 3 - DT Logs', item.l3_log]]};
+    if (item.route) {
+      const {session, points} = item.route;
+      const seconds = points.length > 1 ? (points.at(-1)[0] - points[0][0]) / 1000 : 0;
+      return {title: `Route of ${session.ue === 'Data' ? 'the Data session' : `UE ${session.ue}`}`, rows: [['JoinID', session.join_id],
+        ['Campaign', session.campaign], ['Operator', session.operator], ['Service', session.service], ['Status', session.call_status],
+        ['Started', String(session.start_time || '').slice(0, 19)], ['Lasted', seconds ? `${Math.round(seconds)} s` : ''],
+        ['Shape', 'The GPS positions of its log, one every few pixels at this zoom']]};
     }
     data = item.data || data;
     const {layer: layerKey, point} = item;
@@ -431,32 +444,45 @@
     return wrap;
   };
   const count = (value) => node('span', Number(value).toLocaleString('en-GB'), 'nq-l3-count');
-  const layerColour = (layer) => (layer.key === 'ran' ? RAN_COLOURS.LTE : layer.key === 'event' ? EVENT_COLOURS['4G']
+  const layerColour = (layer) => (layer.key === 'way' ? ROUTE_COLOUR : layer.key === 'ran' ? RAN_COLOURS.LTE : layer.key === 'event' ? EVENT_COLOURS['4G']
     : layer.key === 'l3' ? L3_COLOURS.SIP : layer.key === 'direction' ? '#212529' : layer.metric === 'earfcn' || layer.metric === 'nrarfcn'
       ? '#1c7ed6' : layer.metric === 'pci' ? '#ae3ec9' : layer.metric === 'tx' ? RANGE_COLOURS[2] : RANGE_COLOURS[5]);
   const groupColour = (layer, group) => (layer.key === 'ran' ? RAN_COLOURS[group] : layer.key === 'event' ? EVENT_COLOURS[group]
     : layer.key === 'l3' ? L3_COLOURS[group] : categoryColour(group));
 
-  // The tree of the layers of a map, in ``host``; ``redraw`` paints the map again after a change.
+  // The tree of the layers of a map, in ``host``; ``redraw`` paints the map again after a change. It opens folded on every
+  // map (``collapse`` folds it again when the map shows another call).
   const createTree = (host, getData, redraw) => {
     const panel = node('section', undefined, 'nq-l3-panel');
+    let open = false;
     const render = () => {
       const data = getData();
       panel.hidden = !data;
       if (!data) { panel.replaceChildren(); return; }
-      panel.classList.toggle('is-collapsed', !state.panel);
+      panel.classList.toggle('is-collapsed', !open);
       const head = node('header', undefined, 'nq-l3-head');
       const title = node('button', undefined, 'nq-l3-title');
       title.type = 'button';
-      title.setAttribute('aria-expanded', String(state.panel));
-      title.title = state.panel ? 'Fold the layers' : 'Show the layers of the Layer 3 - DT Logs';
-      title.append(node('span', 'Layer 3 - DT Logs', 'nq-l3-title-text'), node('span', state.panel ? '▾' : '▸', 'nq-l3-chevron'));
-      title.addEventListener('click', (event) => { event.stopPropagation(); state.panel = !state.panel; changed(); });
+      title.setAttribute('aria-expanded', String(open));
+      title.title = open ? 'Fold the layers' : 'Show the layers of the Layer 3 - DT Logs';
+      title.append(node('span', 'From Layer 3 Logs', 'nq-l3-title-text'), node('span', open ? '▾' : '▸', 'nq-l3-chevron'));
+      // A click anywhere on its header but its switch folds or unfolds it (its title is the button for the keyboard).
+      head.addEventListener('click', (event) => {
+        event.stopPropagation();
+        if (event.target.closest('.nq-l3-switch')) return;
+        open = !open;
+        render();
+      });
       head.append(title, toggle(state.master, 'Show the Layer 3 - DT Logs', (checked) => { state.master = checked; changed(); }));
       panel.replaceChildren(head);
-      if (!state.panel) return;
+      if (!open) return;
       const body = node('div', undefined, 'nq-l3-body');
       if (!state.master) body.classList.add('is-off');
+      // The signalling timeline: of the call (on NQ Maps, of the NQ call chosen), below the map and over the larger map.
+      const timelineLine = node('label', undefined, 'nq-l3-line nq-l3-timeline-switch');
+      timelineLine.append(toggle(state.timeline, 'Show the signalling timeline', (checked) => { state.timeline = checked; changed(); }),
+        node('span', data.area ? 'Signalling timeline (of the NQ call chosen)' : 'Signalling timeline', 'nq-l3-name'));
+      body.append(timelineLine);
       // The two ends of a voice call: one of them or both.
       if (!data.area && data.ues.length > 1) {
         const ues = node('div', undefined, 'nq-l3-ues');
@@ -559,7 +585,7 @@
         body.append(card);
       }
       if (data.area) {
-        // Layer 3 - Maps: what the grid averages below its zoom, and its NQ calls.
+        // NQ Maps: what the grid averages below its zoom, and its NQ calls.
         const area = node('div', undefined, 'nq-l3-area');
         const choice = node('label', undefined, 'nq-l3-grid');
         choice.append(node('span', data.mode === 'grid' ? 'Grid of' : 'Zoomed out, a grid of'));
@@ -572,12 +598,11 @@
         });
         select.addEventListener('change', () => { state.grid = select.value; changed(); });
         choice.append(select);
-        area.append(choice, node('p', data.mode === 'grid' ? `The average of each cell of ${Number(data.count).toLocaleString('en-GB')} sessions: zoom in to see the points of the layers on.`
+        const zooms = data.zooms || {};
+        area.append(choice, node('p', data.mode === 'grid' ? `The average of each cell of ${Number(data.count).toLocaleString('en-GB')} sessions; `
+          + `zoom in for the events (from zoom ${zooms.events || 10}) and the points of the layers on (from zoom ${zooms.grid || 13}).`
           : `The points of the layers on in the area shown${data.truncated ? ' (the first 80,000)' : ''}.`, 'nq-l3-area-note'));
-        const calls = node('label', undefined, 'nq-l3-line');
-        calls.append(toggle(state.calls !== false, 'Show the NQ calls', (checked) => { state.calls = checked; changed(); }),
-          node('span', `NQ calls (${Number(data.calls.length).toLocaleString('en-GB')}) by the domain of their root cause`, 'nq-l3-name'));
-        area.append(calls);
+        if (data.eventsTruncated) area.append(node('p', 'The area has more events than the map shows (the first 30,000): zoom in to see them all.', 'nq-l3-area-note'));
         body.prepend(area);
       }
       if (!data.area && data.aroundCount !== undefined) {
@@ -591,9 +616,9 @@
       const none = node('button', 'Hide all', 'nq-l3-link');
       none.type = 'button';
       none.addEventListener('click', (event) => { event.stopPropagation(); state.on.clear(); changed(); });
-      const reset = node('button', 'PCell RSRP', 'nq-l3-link');
+      const reset = node('button', 'Default layers', 'nq-l3-link');
       reset.type = 'button';
-      reset.title = 'Show only the PCell RSRP of LTE and NR, as the map opens';
+      reset.title = 'Show only the layers of a new map: the PCell RSRP of LTE and NR and the Events';
       reset.addEventListener('click', (event) => { event.stopPropagation(); state.on = new Set(DEFAULT_ON); state.off.clear(); changed(); });
       footer.append(none, reset);
       body.append(footer);
@@ -605,29 +630,26 @@
     const listener = () => { render(); redraw(); };
     listeners.add(listener);
     render();
-    return {render, destroy: () => { listeners.delete(listener); panel.remove(); }};
+    return {render, collapse: () => { open = false; render(); }, destroy: () => { listeners.delete(listener); panel.remove(); }};
   };
 
   // -- the legend of the layers on (below the map, in its images too) ------------------------------------------------
-  const legend = (data) => {
+  // ``route``: what the route drawn by the map shows (the real way of the UE of a call, the GPS of each session of an area).
+  const legend = (data, {route = ''} = {}) => {
     if (!data || !state.master) return null;
-    const layersOn = [...state.on].filter((key) => data.layers[key]);
-    if (!layersOn.length && !data.area) return null;
+    const layersOn = [...state.on].filter((key) => data.layers[key] && key !== 'way');
+    if (!layersOn.length && !data.area && !route) return null;
     const box = node('div', undefined, 'nq-l3-legend');
-    box.append(node('p', 'Layer 3 - DT Logs', 'nq-l3-legend-title'));
-    const metricsShown = new Map();
-    if (data.area && data.grid) metricsShown.set(data.grid.metric, {layers: [], nr: false, grid: true});
-    if (data.area && state.calls !== false && data.calls.length) {
+    box.append(node('p', 'From Layer 3 Logs', 'nq-l3-legend-title'));
+    if (route) {
       const row = node('div', undefined, 'nq-l3-legend-row');
-      row.append(node('span', 'NQ calls by root domain', 'nq-l3-legend-name'));
-      const domains = [...new Set(data.calls.map((call) => callDomain(call) || 'No root cause'))].sort();
-      for (const domain of domains) {
-        const item = node('span', undefined, 'nq-l3-legend-item');
-        item.append(markerIcon('diamond', DOMAIN_COLOURS[domain] || '#495057'), node('span', domain));
-        row.append(item);
-      }
+      const item = node('span', undefined, 'nq-l3-legend-item');
+      item.append(markerIcon('road', ROUTE_COLOUR, {size: 18}), node('span', route));
+      row.append(node('span', 'Route', 'nq-l3-legend-name'), item);
       box.append(row);
     }
+    const metricsShown = new Map();
+    if (data.area && data.grid) metricsShown.set(data.grid.metric, {layers: [], nr: false, grid: true});
     for (const key of layersOn) {
       const layer = LAYER[key];
       if (['rsrp', 'rsrq', 'sinr', 'tx'].includes(layer.metric)) {
@@ -700,15 +722,148 @@
     || (point.kind === 'l3' && (FAILURE_WORDS.test(point.name || '') || sipCode(point) >= 400));
   const signalColour = (point) => (point.kind === 'event' ? EVENT_COLOURS[point.grp] || EVENT_COLOURS.Other : L3_COLOURS[point.grp] || L3_COLOURS.Other);
   const clock = (ms) => (Number.isFinite(ms) ? new Date(ms).toISOString().slice(11, 23) : '');
-  const createTimeline = (host, getData, {onHover = () => {}, onPick = () => {}} = {}) => {
+
+  // -- the cursor of the timelines: a moment of the session, where each UE was then and its signalling just before ----------
+  const CURSOR_WINDOW_MS = 3000;
+  const cursor = {data: null, ms: null};
+  const cursorListeners = new Set();
+  // The way a UE was heading from a position of its way (the next position elsewhere), in degrees from the north.
+  const headingOf = (track, index) => {
+    const from = track[Math.max(0, index)];
+    const to = track.slice(index + 1).find((point) => point.lat !== from.lat || point.lon !== from.lon)
+      || [...track.slice(0, Math.max(0, index))].reverse().find((point) => point.lat !== from.lat || point.lon !== from.lon);
+    if (!to) return 0;
+    const [a, b] = to.ms >= from.ms ? [from, to] : [to, from];
+    return (Math.atan2((b.lon - a.lon) * Math.cos(a.lat * Math.PI / 180), b.lat - a.lat) * 180 / Math.PI + 360) % 360;
+  };
+  // Where a UE was at a moment: between the two positions of its way around it (the first or the last one outside it).
+  const positionAt = (data, ue, ms) => {
+    const track = (data.tracks[ue] || []).filter((point) => Number.isFinite(point.ms));
+    if (!track.length) return null;
+    const last = track.length - 1;
+    if (ms <= track[0].ms) return {lat: track[0].lat, lon: track[0].lon, heading: headingOf(track, 0)};
+    if (ms >= track[last].ms) return {lat: track[last].lat, lon: track[last].lon, heading: headingOf(track, Math.max(0, last - 1))};
+    let low = 0, high = last;
+    while (high - low > 1) {
+      const middle = (low + high) >> 1;
+      if (track[middle].ms <= ms) low = middle; else high = middle;
+    }
+    const share = (ms - track[low].ms) / Math.max(1, track[high].ms - track[low].ms);
+    return {lat: track[low].lat + (track[high].lat - track[low].lat) * share, lon: track[low].lon + (track[high].lon - track[low].lon) * share,
+      heading: headingOf(track, low)};
+  };
+  // At a moment: the place of each UE shown, its events and L3 messages of the last CURSOR_WINDOW_MS (the latest first)
+  // and the last RSRP of its LTE and NR PCell.
+  const cursorAt = (data, ms) => {
+    const ues = data.ues.filter((ue) => ueShown(data, ue));
+    const cars = ues.map((ue) => {
+      const place = positionAt(data, ue, ms);
+      return place && {ue, ...place};
+    }).filter(Boolean);
+    const signals = [];
+    const radio = Object.fromEntries(ues.map((ue) => [ue, {}]));
+    for (const point of data.points) {
+      if (!radio[point.ue] || !Number.isFinite(point.ms) || point.ms > ms) continue;
+      if ((point.kind === 'event' || point.kind === 'l3') && point.ms > ms - CURSOR_WINDOW_MS) signals.push(point);
+      if ((point.kind === 'lte_pcell' || point.kind === 'nr_pcell') && point.rsrp !== null && point.rsrp !== undefined
+        && (!radio[point.ue][point.kind] || radio[point.ue][point.kind].ms <= point.ms)) radio[point.ue][point.kind] = point;
+    }
+    signals.sort((first, second) => second.ms - first.ms);
+    return {ms, cars, signals, radio};
+  };
+  const setCursor = (data, ms) => {
+    cursor.data = Number.isFinite(ms) ? data : null;
+    cursor.ms = Number.isFinite(ms) ? ms : null;
+    cursorListeners.forEach((listener) => listener());
+  };
+  const cursorOf = (data) => (data && cursor.data === data && Number.isFinite(cursor.ms) ? cursorAt(data, cursor.ms) : null);
+  // The routes of the sessions of an area (NQ Maps), while the Layer 3 - DT Logs are switched on.
+  const routesOf = (data) => (state.master && state.on.has('way') ? data?.routes || [] : []);
+  // The moment of the cursor on a map: its signalling of the last seconds ringed where it happened (the latest named),
+  // and each UE where it was then, heading where it went.
+  const halo = (context, text, x, y, colour) => {
+    context.font = '700 11px "IBM Plex Sans", system-ui, sans-serif';
+    context.textAlign = 'left';
+    context.textBaseline = 'middle';
+    context.lineWidth = 3;
+    context.strokeStyle = 'rgba(255, 255, 255, .95)';
+    context.strokeText(text, x, y);
+    context.fillStyle = colour;
+    context.fillText(text, x, y);
+  };
+  const drawCursor = (context, data, project) => {
+    const moment = state.master ? cursorOf(data) : null;
+    if (!moment) return;
+    context.save();
+    moment.signals.slice(0, 40).forEach((point, index) => {
+      if (point.lat === null || point.lat === undefined) return;
+      const [x, y] = project(point.lat, point.lon);
+      const colour = isAlarm(point) ? '#d7263d' : signalColour(point);
+      context.globalAlpha = 1 - (moment.ms - point.ms) / CURSOR_WINDOW_MS * .6;
+      context.beginPath();
+      context.arc(x, y, 10, 0, Math.PI * 2);
+      context.lineWidth = 4.5;
+      context.strokeStyle = 'rgba(255, 255, 255, .95)';
+      context.stroke();
+      context.lineWidth = 2.4;
+      context.strokeStyle = colour;
+      context.stroke();
+      if (index < 4) halo(context, `${point.name || 'Event'} · −${((moment.ms - point.ms) / 1000).toFixed(1)} s`, x + 14, y - 12 - index * 14, colour);
+    });
+    context.globalAlpha = 1;
+    for (const car of moment.cars) {
+      const [x, y] = project(car.lat, car.lon);
+      context.beginPath();
+      context.arc(x, y, 15, 0, Math.PI * 2);
+      context.fillStyle = 'rgba(11, 110, 138, .2)';
+      context.fill();
+      context.beginPath();
+      context.arc(x, y, 9.5, 0, Math.PI * 2);
+      context.fillStyle = '#0b6e8a';
+      context.fill();
+      context.lineWidth = 2.6;
+      context.strokeStyle = '#fff';
+      context.stroke();
+      context.save();
+      context.translate(x, y);
+      context.rotate(car.heading * Math.PI / 180);
+      context.beginPath();
+      context.moveTo(0, -6);
+      context.lineTo(4.5, 4);
+      context.lineTo(0, 1.8);
+      context.lineTo(-4.5, 4);
+      context.closePath();
+      context.fillStyle = '#fff';
+      context.fill();
+      context.restore();
+      if (moment.cars.length > 1) halo(context, car.ue === 'Data' ? 'Data' : `UE ${car.ue}`, x + 13, y + 12, '#0b6e8a');
+    }
+    context.restore();
+  };
+
+  // ``caption``: what the timeline is of, beside its title (on NQ Maps, the NQ call chosen); ``empty``: what it says while it
+  // has no session to show (on NQ Maps, how to choose a call).
+  const createTimeline = (host, getData, {onHover = () => {}, onPick = () => {}, onCursor = () => {}, caption = () => '', empty = () => ''} = {}) => {
     const box = node('section', undefined, 'nq-l3-timeline');
     const tip = node('div', undefined, 'nq-l3-timeline-tip');
     tip.hidden = true;
     let shown = true;
+    // Places the cursor of the timeline drawn (see render).
+    let placeCursor = () => {};
     const render = () => {
-      const data = getData();
-      box.hidden = !data;
-      if (!data) { box.replaceChildren(); return; }
+      placeCursor = () => {};
+      const data = state.timeline ? getData() : null;
+      const note = state.timeline && !data ? empty() : '';
+      box.hidden = !data && !note;
+      if (!data) {
+        box.replaceChildren();
+        if (note) {
+          const head = node('header', undefined, 'nq-l3-timeline-head');
+          head.append(node('span', 'Signalling timeline', 'nq-l3-timeline-name'));
+          box.append(head, node('p', note, 'nq-l3-timeline-empty'));
+        }
+        return;
+      }
       const ues = data.ues.filter((ue) => ueShown(data, ue));
       const points = data.points.filter((point) => ues.includes(point.ue) && Number.isFinite(point.ms));
       if (!points.length) { box.hidden = true; return; }
@@ -718,7 +873,7 @@
       const title = node('button', undefined, 'nq-l3-timeline-title');
       title.type = 'button';
       title.setAttribute('aria-expanded', String(shown));
-      title.append(node('span', 'Signalling timeline', 'nq-l3-timeline-name'),
+      title.append(node('span', ['Signalling timeline', caption()].filter(Boolean).join(' · '), 'nq-l3-timeline-name'),
         node('span', `${ues.map((ue) => (ue === 'Data' ? 'Data' : `UE ${ue}`)).join(' & ')} · ${clock(start)} – ${clock(end)} · ${(span / 1000).toFixed(1)} s`, 'nq-l3-timeline-span'),
         node('span', shown ? '▾' : '▸', 'nq-l3-chevron'));
       title.addEventListener('click', () => { shown = !shown; render(); });
@@ -815,22 +970,106 @@
         tip.style.left = `${Math.min(bounds.width - 260, Math.max(4, event.clientX - bounds.left + 12))}px`;
         tip.style.top = `${Math.max(4, event.clientY - bounds.top - 10)}px`;
       };
+      // The cursor: a moment of the session, dragged along the timeline (or moved with the arrow keys), that the maps follow
+      // with where each UE was then and its signalling of the last seconds.
+      const setMoment = (ms) => {
+        const moment = Number.isFinite(ms) ? Math.max(start, Math.min(end, ms)) : null;
+        setCursor(data, moment);
+        onCursor(cursorOf(data));
+      };
       for (const marker of markers) {
         marker.element.addEventListener('pointerenter', (event) => { showTip(marker, event); onHover(marker.point); });
         marker.element.addEventListener('pointerleave', () => { tip.hidden = true; onHover(null); });
-        marker.element.addEventListener('click', () => onPick({layer: marker.layer, point: marker.point}));
+        marker.element.addEventListener('click', () => { setMoment(marker.point.ms); onPick({layer: marker.layer, point: marker.point}); });
       }
+      const cursorGroup = svg('g', {class: 'nq-l3-timeline-cursor'});
+      cursorGroup.append(svg('line', {x1: 0, x2: 0, y1: 0, y2: height - 18}), svg('path', {d: 'M -6 0 L 6 0 L 0 8 Z'}));
+      chart.append(cursorGroup);
+      chart.setAttribute('tabindex', '0');
+      chart.setAttribute('aria-label', 'Signalling timeline of the call: drag along it, or use the arrow keys, to follow the UE on the map');
+      const readout = node('div', undefined, 'nq-l3-timeline-readout');
+      const elements = new Set(markers.map((marker) => marker.element));
+      const msAt = (clientX) => {
+        const bounds = chart.getBoundingClientRect();
+        return start + ((clientX - bounds.left) * width / Math.max(1, bounds.width) - left) / (width - left - right) * span;
+      };
+      let dragging = false;
+      chart.addEventListener('pointerdown', (event) => {
+        if (event.button !== 0 || elements.has(event.target)) return;
+        dragging = true;
+        tip.hidden = true;
+        try { chart.setPointerCapture(event.pointerId); } catch (_error) { /* A pointer that is gone already. */ }
+        event.preventDefault();
+        chart.focus({preventScroll: true});
+        setMoment(msAt(event.clientX));
+      });
+      chart.addEventListener('pointermove', (event) => { if (dragging) setMoment(msAt(event.clientX)); });
+      // Released, the cursor stays where the pointer left it.
+      const stopDragging = (event) => {
+        if (!dragging) return;
+        dragging = false;
+        if (event.type === 'pointerup') setMoment(msAt(event.clientX));
+        if (chart.hasPointerCapture?.(event.pointerId)) chart.releasePointerCapture(event.pointerId);
+      };
+      chart.addEventListener('pointerup', stopDragging);
+      chart.addEventListener('pointercancel', stopDragging);
+      chart.addEventListener('keydown', (event) => {
+        const now = cursor.data === data && Number.isFinite(cursor.ms) ? cursor.ms : null;
+        const step = event.shiftKey ? 5000 : 500;
+        const next = {ArrowLeft: (now ?? start) - step, ArrowRight: now === null ? start : now + step, Home: start, End: end}[event.key];
+        if (event.key === 'Escape' && now !== null) setMoment(null);
+        else if (next === undefined) return;
+        else setMoment(next);
+        event.preventDefault();
+        event.stopPropagation();
+      });
+      placeCursor = () => {
+        const moment = cursorOf(data);
+        cursorGroup.style.display = moment ? '' : 'none';
+        if (moment) cursorGroup.setAttribute('transform', `translate(${x(moment.ms).toFixed(1)} 0)`);
+        readout.replaceChildren();
+        if (!moment) {
+          readout.append(node('span', 'Drag along the timeline (or use the arrow keys) to follow the UE on the map, with its events and messages of each moment.', 'nq-l3-timeline-hint'));
+          return;
+        }
+        readout.append(node('b', `${clock(moment.ms)} · ${((moment.ms - start) / 1000).toFixed(1)} s`, 'nq-l3-timeline-now'));
+        for (const ue of ues) {
+          const radio = moment.radio[ue] || {};
+          const values = [['LTE', radio.lte_pcell], ['NR', radio.nr_pcell]].filter(([, point]) => point)
+            .map(([tech, point]) => `${tech} ${number(point.rsrp)} dBm`).join(' · ');
+          readout.append(node('span', `${ue === 'Data' ? 'Data' : `UE ${ue}`}: ${values || 'no RSRP yet'}`, 'nq-l3-timeline-radio'));
+        }
+        const latest = moment.signals.slice(0, 3);
+        if (latest.length) {
+          const list = node('span', undefined, 'nq-l3-timeline-signals');
+          for (const point of latest) {
+            const item = node('span', `${point.name || 'Event'} −${((moment.ms - point.ms) / 1000).toFixed(1)} s`, `nq-l3-timeline-chip${isAlarm(point) ? ' is-alarm' : ''}`);
+            item.style.setProperty('--mark', signalColour(point));
+            list.append(item);
+          }
+          readout.append(list);
+        }
+        const clear = node('button', '×', 'nq-l3-timeline-clear');
+        clear.type = 'button';
+        clear.title = 'Remove the cursor';
+        clear.setAttribute('aria-label', 'Remove the cursor');
+        clear.addEventListener('click', () => setMoment(null));
+        readout.append(clear);
+      };
+      placeCursor();
       const scroll = node('div', undefined, 'nq-l3-timeline-scroll');
       scroll.append(chart);
-      box.append(scroll, tip);
+      box.append(readout, scroll, tip);
     };
     host.append(box);
     const listener = () => render();
     listeners.add(listener);
+    const cursorListener = () => placeCursor();
+    cursorListeners.add(cursorListener);
     const resizer = new ResizeObserver(() => { if (shown) render(); });
     resizer.observe(host);
     render();
-    return {render, destroy: () => { listeners.delete(listener); resizer.disconnect(); box.remove(); }};
+    return {render, destroy: () => { listeners.delete(listener); cursorListeners.delete(cursorListener); resizer.disconnect(); box.remove(); }};
   };
   // The point hovered in a timeline, ringed on the maps.
   const drawHighlight = (context, point, project) => {
@@ -848,7 +1087,7 @@
 
   // Every tree and timeline drawn again (a map with the data of another call).
   const refresh = () => listeners.forEach((listener) => listener());
-  window.L3Layers = {prepare, draw, describe, createTree, createTimeline, drawHighlight, legend, wayOf, bounds, state, refresh, changed,
-    DOMAIN_COLOURS,
+  window.L3Layers = {prepare, draw, describe, createTree, createTimeline, drawHighlight, drawCursor, cursorOf, setCursor, legend, wayOf,
+    bounds, state, refresh, changed, DOMAIN_COLOURS, drawMarker, markerIcon, toggle, categoryColour, routesOf, ROUTE_COLOUR,
     onChange: (listener) => listeners.add(listener), LAYERS, SECTIONS, rangeColour, rangeIndex};
 })();

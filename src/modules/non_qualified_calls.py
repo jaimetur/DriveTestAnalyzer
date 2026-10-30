@@ -57,7 +57,7 @@ from src.modules.cell_identity import nr_cell_bits
 from src.modules.column_names import campaign_sort_key, column_identity
 from src.modules.value_maps import ValueMapper, field_kind
 from src.modules.value_patterns import ValueSet, is_pattern, sql_condition
-from src.modules.operator_roles import FOCUS, excluded_operators, labels_with_role
+from src.modules.operator_roles import FOCUS, excluded_operators, focus_operators, labels_with_role
 from src.modules.mapping_order import dimension_order_key, mapping_group
 from src.modules import nq_catalog
 from src.modules.nq_catalog import (
@@ -289,7 +289,7 @@ V36_FORMER_DESCRIPTIONS = (
 # once: its description where it is still the former default (as stored: at most 300 characters).
 ANALYSIS_CENTER_V37_STATE_KEY = 'nq_analysis_center_v37'
 V37_FORMER_DESCRIPTIONS = (
-    ('cluster_id', 'The ID of the cluster of the call (C-...) in the Hotspots, Time-Window & Clustered Issues panel: the '
+    ('cluster_id', 'The ID of the cluster of the call (C-...) in the NQ Hotspots, Time-Window & Clustered Issues panel: the '
                    'calls of its operator and NR Mode failed close to each other or at the same site, in its campaign and '
                    'those of the Cluster period; followed by that of its cluster with the calls of every NR Mode toge'),
 )
@@ -4713,8 +4713,8 @@ def _call_payload(row: Any) -> dict[str, Any]:
 
 
 def l3_map_calls(task_repository: Any, filters: dict[str, Any], username: str, limit: int = 20000) -> list[dict[str, Any]]:
-    """The NQ calls of the filters with a session in the Layer 3 - DT Logs, for Layer 3 - Maps: where they failed, their
-    operator, campaign, service, result and root cause (the one decided, else that of the DT Analyzer RCA)."""
+    """The NQ calls of the filters for NQ Maps: where they failed, their operator, campaign, service, result, root
+    cause (the one decided, else that of the DT Analyzer RCA) and the UEs of their session in the Layer 3 - DT Logs."""
     options = list_options(task_repository)
     definitions = list_fields(task_repository)
     filters = _resolve_key_filters(task_repository, filters if isinstance(filters, dict) else {})
@@ -4724,16 +4724,20 @@ def l3_map_calls(task_repository: Any, filters: dict[str, Any], username: str, l
     with task_repository.connection() as connection:
         base, base_params = _materialized(connection, base, base_params, bool(_scope(filters)))
         rows = connection.execute(
-            f"SELECT * FROM (WITH calls AS ({base}) SELECT * FROM calls{where}) WHERE l3_log <> '' ORDER BY start_time DESC LIMIT ?",
+            f"SELECT * FROM (WITH calls AS ({base}) SELECT * FROM calls{where}) ORDER BY start_time DESC LIMIT ?",
             [*base_params, *params, int(limit)]).fetchall()
+    from src.modules.nq_prioritization import call_kind
+
     calls = []
     for row in rows:
         call = _call_payload(row)
         dta = call.get('dta') or {}
-        calls.append({key: call.get(key) for key in ('call_key', 'join_id', 'operator', 'campaign', 'nr_mode', 'service', 'service_label',
-                                                       'result', 'start_time', 'latitude', 'longitude', 'l3_log', 'root_domain',
-                                                       'root_category', 'root_cause')}
-                     | {'dta_domain': dta.get('dta_domain', ''), 'dta_category': dta.get('dta_category', ''), 'dta_cause': dta.get('dta_cause', ''),
+        calls.append({key: call.get(key) for key in ('call_key', 'dataset_id', 'join_id', 'operator', 'campaign', 'nr_mode', 'service',
+                                                       'service_label', 'test_name', 'result', 'failure_classification', 'failure_category',
+                                                       'failure_subcategory', 'failure_phase', 'technology', 'status', 'start_time',
+                                                       'latitude', 'longitude', 'l3_log', 'root_domain', 'root_category', 'root_cause')}
+                     | {'kind': call_kind(call.get('service'), call.get('test_name'), call.get('session_type')),
+                        'dta_domain': dta.get('dta_domain', ''), 'dta_category': dta.get('dta_category', ''), 'dta_cause': dta.get('dta_cause', ''),
                         'dta_rule': dta.get('dta_rule', '')})
     return calls
 
@@ -9723,31 +9727,57 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         grid: str = ''
         join_ids: list[str] | None = None
         exclude: str = ''
+        # NQ Maps: the route of each session, the sites and the RSRP / SINR samples of the CDRs in the area, and the
+        # NQ calls of the filters (sent again only when the filters change).
+        route: bool = False
+        sites: bool = False
+        tests: bool = False
+        with_calls: bool = True
 
     @core.app.post('/api/non-qualified-calls/l3-maps')
     def nq_l3_maps_route(payload: L3MapsPayload, user=Depends(core.current_user)) -> JSONResponse:
-        """Layer 3 - Maps: the Layer 3 - DT Logs of the NQ calls of the filters (or of the calls ``join_ids``, those around a
+        """NQ Maps: the Layer 3 - DT Logs of the NQ calls of the filters (or of the calls ``join_ids``, those around a
         call) in the area of the map: a grid of the averages of a layer below l3_dt_logs.GRID_ZOOM, the points of its layers
-        on above it (see l3_dt_logs.area_layers). App Events records each map read."""
+        on above it, the events from l3_dt_logs.EVENT_ZOOM and the route of each session (see l3_dt_logs.area_layers); for
+        the filters, also every NQ call of them, and in the area the inventory sites from nq_call_map.AREA_SITES_ZOOM and the
+        RSRP / SINR samples of the CDRs of their campaigns from nq_call_map.AREA_TESTS_ZOOM. App Events records each map
+        read."""
         repository = workspace_repository(user)
         started = time.monotonic()
+        area_box = payload.bbox if payload.bbox and len(payload.bbox) == 4 else None
         try:
             calls = [] if payload.join_ids is not None else l3_map_calls(repository, payload.filters, user.username)
-            join_ids = payload.join_ids if payload.join_ids is not None else [call['join_id'] for call in calls]
+            join_ids = payload.join_ids if payload.join_ids is not None else [call['join_id'] for call in calls if call.get('l3_log')]
             join_ids = [value for value in join_ids if value and str(value).casefold() != payload.exclude.casefold()][:20000]
             area = l3_dt_logs.area_layers(repository, join_ids, bbox=payload.bbox, zoom=payload.zoom, layers=payload.layers,
-                                          grid=payload.grid)
+                                          grid=payload.grid, route=payload.route)
+            area['sites'] = area['tests'] = None
+            if payload.join_ids is None and area_box and payload.sites and payload.zoom >= nq_call_map.AREA_SITES_ZOOM:
+                area['sites'] = nq_call_map.area_sites(repository, [call.get('operator') for call in calls], area_box)
+            if payload.join_ids is None and area_box and payload.tests and payload.zoom >= nq_call_map.AREA_TESTS_ZOOM:
+                mapper = ValueMapper.from_settings(repository.chart_mapping_settings())
+                area['tests'] = nq_call_map.area_tests(repository, nq_call_map.area_test_datasets(repository, calls), area_box,
+                                                       lambda value: mapper.map(field_kind('operator'), value))
         except Exception as error:  # noqa: BLE001 - App Events keeps what failed for its troubleshooting.
             log_action(repository, user, 'nq_l3_maps_failed', {'zoom': payload.zoom, 'error': f'{type(error).__name__}: {error}'[:500]})
-            raise HTTPException(500, 'Layer 3 - Maps could not be read. App Events keeps the error.') from error
-        area['calls'] = calls
+            raise HTTPException(500, 'NQ Maps could not be read. App Events keeps the error.') from error
+        area['calls'] = calls if payload.with_calls else None
+        area['calls_count'] = len(calls)
+        area['calls_with_log'] = sum(1 for call in calls if call.get('l3_log'))
+        area['classes'] = nq_call_map.sample_classes()
+        # The Focus operators of the Operator Maps, for the choice of Operators (as on the map of a call).
+        area['focus_labels'] = labels_with_role(repository, FOCUS)
+        area['focus_operators'] = focus_operators(repository)
+        area['zooms'] = {'grid': l3_dt_logs.GRID_ZOOM, 'events': l3_dt_logs.EVENT_ZOOM, 'sites': nq_call_map.AREA_SITES_ZOOM,
+                         'tests': nq_call_map.AREA_TESTS_ZOOM}
         area['basemap'] = {'url_template': nq_call_map.OSM_TILES, 'attribution': nq_call_map.OSM_ATTRIBUTION}
         log_action(repository, user, 'nq_l3_maps', {
             'scope': 'calls around a call' if payload.join_ids is not None else 'filters of NQ Calls', 'calls': len(calls),
             'sessions': area['sessions'], 'mode': area['mode'], 'zoom': round(float(payload.zoom), 1), 'layers': payload.layers[:20],
             'grid': (area.get('grid') or {}).get('layer', ''), 'points': sum(len(item['points']) for item in area['ues'].values()),
             'cells': len((area.get('grid') or {}).get('cells') or []), 'truncated': area['truncated'],
-            'seconds': round(time.monotonic() - started, 2)})
+            'routes': len(area['routes']), 'sites': len((area['sites'] or {}).get('sites') or []),
+            'tests': len((area['tests'] or {}).get('rows') or []), 'seconds': round(time.monotonic() - started, 2)})
         return JSONResponse(area)
 
     @core.app.get('/api/non-qualified-calls/calls/{call_key}/l3/record')

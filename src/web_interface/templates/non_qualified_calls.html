@@ -40,8 +40,8 @@
   <nav class="nq-view-switch" id="nq-view-switch" aria-label="Non-Qualified Calls sections" data-section-bar>
     <a href="#section-filters" title="The filters of the calls"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16l-6 7.5V19l-4 1.5v-8z"/></svg>Filters</a>
     <a href="#section-nq-prioritization-queues" title="NQ Prioritization &amp; Queues: the calls to analyse next in the Voice and Data queues, the steps of the strategy, the scoring impact and the repeated issues"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h4v4H3zM9 5h4v4H9zM3 15h4v4H3zM9 15h4v4H9z"/><path d="M15 7h6m-2-2 2 2-2 2M15 17h6m-2-2 2 2-2 2"/></svg>NQ Queues</a>
-    <a href="#section-hotspots-time-window-clustered-issues" title="Hotspots, Time-Window &amp; Clustered Issues: the failures that repeat close in time, in distance or both"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="9" r="2"/><circle cx="15.5" cy="8" r="2"/><circle cx="12" cy="15" r="2"/><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z" stroke-dasharray="3 2.5"/></svg>Hotspots</a>
-    <a href="#section-layer-3-maps" title="Layer 3 - Maps: the Layer 3 - DT Logs of the filtered calls on one map"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/></svg>Layer 3 - Maps</a>
+    <a href="#section-nq-hotspots-time-window-clustered-issues" title="NQ Hotspots, Time-Window &amp; Clustered Issues: the failures that repeat close in time, in distance or both"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="9" r="2"/><circle cx="15.5" cy="8" r="2"/><circle cx="12" cy="15" r="2"/><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z" stroke-dasharray="3 2.5"/></svg>NQ Hotspots</a>
+    <a href="#section-nq-maps" title="NQ Maps: the filtered NQ calls, their CDRs and their Layer 3 - DT Logs on one map"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/></svg>NQ Maps</a>
     <a href="#section-non-qualified-calls" title="The calls that match the filters"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>NQ Calls <span class="nq-view-count" id="nq-view-count"></span></a>
     <a href="#section-summary" title="The Executive Summary of the filtered calls"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>Summary</a>
     <a href="#section-nq-rate-by-campaign-and-operator" title="NQ Rate by Campaign and Operator"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 5 5 19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>NQ Rate</a>
@@ -164,21 +164,29 @@
   {# The hotspots, the time-window issues and the clusters of the filtered calls, from the data of the NQ
      Prioritization (shown when either panel is unfolded). #}
   <details class="panel collapsible-panel nq-clusters-panel" data-nq-view-panel="clusters" data-nq-loader="clusters" open data-panel-state-key="non-qualified-calls:clusters">
-    <summary class="collapsible-summary"><div><p class="eyebrow">Repeated failures</p><h2>Hotspots, Time-Window &amp; Clustered Issues</h2></div><span class="collapse-chip">Collapse</span></summary>
+    <summary class="collapsible-summary"><div><p class="eyebrow">Repeated failures</p><h2>NQ Hotspots, Time-Window &amp; Clustered Issues</h2></div><span class="collapse-chip">Collapse</span></summary>
     <div class="collapsible-panel-body">
       <div class="nq-active-filters" data-nq-active-filters hidden></div>
       <div class="nq-priority nq-clusters" id="nq-clusters"></div>
     </div>
   </details>
 
-  {# Layer 3 - Maps: the Layer 3 - DT Logs of every NQ call of the filters on one map, from the whole country down to a
+  {# NQ Maps: every NQ call of the filters with its CDR and its Layer 3 - DT Logs on one map, from the whole country down to a
      single site or call (nq_call_map.js mountArea, l3_layers.js). #}
   <details class="panel collapsible-panel nq-l3-maps-panel" data-nq-view-panel="l3maps" data-nq-loader="l3maps" open data-panel-state-key="non-qualified-calls:l3-maps">
-    <summary class="collapsible-summary"><div><p class="eyebrow">Drivetest</p><h2>Layer 3 - Maps</h2></div><span class="collapse-chip">Collapse</span></summary>
+    <summary class="collapsible-summary"><div><p class="eyebrow">Drivetest</p><h2>NQ Maps</h2></div><span class="collapse-chip">Collapse</span></summary>
     <div class="collapsible-panel-body">
       <div class="nq-active-filters" data-nq-active-filters hidden></div>
-      <p class="form-note">Every layer of the Layer 3 - DT Logs of the NQ calls of the filters that have one: zoomed out, a grid of the average of the metric chosen and the NQ calls by the domain of their root cause; zoomed in, the points of the layers on, as on the map of a call. A click on an NQ call opens it.</p>
+      <p class="form-note">Every NQ call of the filters and every layer of their Layer 3 - DT Logs: zoomed out, a grid of the average of the metric chosen, the NQ calls by the domain of their root cause and the route of each session; zooming in, the events, the sites and then the points of the layers on and the RSRP / SINR samples of the CDRs, as on the map of a call. A click on an NQ call opens it; a double-click opens the map larger.</p>
       <div class="nq-l3-maps" id="nq-l3-maps"></div>
+      {# NQ Maps larger (a double-click on it): the whole width of the window but 2 % on each side. #}
+      <dialog class="nq-map-expand is-wide" id="nq-l3-maps-expand" aria-labelledby="nq-l3-maps-expand-title">
+        <header class="nq-map-expand-header">
+          <div><p class="eyebrow">Map</p><h3 id="nq-l3-maps-expand-title" data-nq-map-expand-title></h3><p class="form-note" data-nq-map-expand-meta></p></div>
+          <button type="button" class="nq-map-expand-close" data-nq-map-expand-close aria-label="Close the enlarged map" title="Close">&times;</button>
+        </header>
+        <div class="nq-map-expand-content" data-nq-map-expand-content></div>
+      </dialog>
     </div>
   </details>
 
@@ -390,7 +398,7 @@
       <form class="nq-drawer-find" id="nq-drawer-find" role="search"{% if provider and not provider.join_id %} hidden{% endif %}><input type="search" id="nq-drawer-find-input" placeholder="Go to a JOIN_ID…" autocomplete="off" aria-label="Go to the call of a JOIN_ID" title="Paste a JOIN_ID and press Enter to open its call"></form>
       <button type="button" class="nq-drawer-close" id="nq-drawer-close" aria-label="Close the call details">&times;</button>
     </div>
-    {# Its hotspot, time-window issue and clusters, by the IDs of the Hotspots, Time-Window & Clustered Issues panel,
+    {# Its hotspot, time-window issue and clusters, by the IDs of the NQ Hotspots, Time-Window & Clustered Issues panel,
        across the whole header so that the four fit on one row. #}
     <div class="nq-drawer-join nq-drawer-groups" id="nq-drawer-groups" hidden><span>Groups</span><div class="nq-drawer-group-list" id="nq-drawer-groups-list"></div></div>
   </header>

@@ -75,7 +75,7 @@ Runtime `config/` and `data/` directories use project-local defaults but are exc
 - `src/modules/workspaces.py`: workspace registry, lifecycle, path migration, duplication and deletion.
 - `src/modules/output_layout.py`: module folders below `output/reports/` and the one-time move of documents written with the former layout.
 - `src/modules/upload_sessions.py`: resumable dataset uploads (chunks kept in `.upload-sessions` of the workspace until the upload ends); `static/js/background_uploads.js` sends and resumes them on every page.
-- `src/modules/workspace_cache.py`: the cache folder of a workspace (`.cache` beside its database, one folder per module: `scoring`, `network-insights`, `ppt-designer` and `bundle-reports`), and the move of the cache folders of earlier versions to it when the workspace opens.
+- `src/modules/workspace_cache.py`: the cache folder of a workspace (`.cache` beside its database, one folder per module: `scoring`, `network-insights`, `ppt-designer`, `bundle-reports` and `nq-calls`), and the move of the cache folders of earlier versions to it when the workspace opens.
 - `src/modules/ingestion.py`: workbook/CSV ingestion, CDR classification helpers and derived input fields.
 - `src/modules/cdr_types.py` and `cdr_field_profiles.py`: the CDR type of each workspace (NetCheck, Umlaut, P3) and the field profile of each type, the CDR columns every module reads; `umlaut_cdr.py` reads the Umlaut service workbooks (their sides and the columns the tool derives) and `cdr_field_dictionary.py` keeps the fields a workspace changes in its CDR Field Dictionary (`static/js/cdr_field_dictionary.js` in Workspace Config).
 - `src/modules/analytics.py`: single-dataset analytical calculations.
