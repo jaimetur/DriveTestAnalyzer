@@ -391,7 +391,7 @@ MODULE_SECTIONS: dict[str, list[tuple[Any, ...] | None]] = {
     'non-qualified-calls': [('Filters', 'Filters', 'filter'), ('NQ Prioritization & Queues', 'NQ Prioritization & Queues', 'queues'),
                             ('NQ Hotspots, Time-Window & Clustered Issues', 'NQ Hotspots, Time-Window & Clustered Issues', 'hotspots'),
                             ('NQ Maps', 'NQ Maps', 'map'),
-                            ('Non-Qualified Calls', 'Non-Qualified Calls', 'phone'), ('Summary', 'Summary', 'summary'),
+                            ('NQ Calls', 'NQ Calls', 'phone'), ('Summary', 'Summary', 'summary'),
                             ('NQ Rate by Campaign and Operator', 'NQ Rate by Campaign and Operator', 'chart'),
                             ('Failures by Type, Technology & Serving Cell', 'Failures by Type, Technology & Serving Cell', 'antenna'),
                             ('Root Cause Sources', 'Root Cause Sources', 'database'),

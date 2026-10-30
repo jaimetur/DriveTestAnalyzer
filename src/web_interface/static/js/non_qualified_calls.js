@@ -3575,7 +3575,7 @@
           line.append(node('strong', item.id), node('span', ` · ${first}`, 'nq-group-id-what'));
           id.append(line, ...more.map((text) => node('span', text, 'nq-group-id-line nq-group-id-what nq-group-id-period')));
           // A click filters the list by the group and takes the page to its calls.
-          return [{node: id, pairs: [[filter, item.key]], reveal: 'section-non-qualified-calls', className: 'nq-failure-name', filterValue: item.id,
+          return [{node: id, pairs: [[filter, item.key]], reveal: 'section-nq-calls', className: 'nq-failure-name', filterValue: item.id,
             title: `${number(item.calls)} of the ${number(item.size)} calls of the ${noun}: click to see them`},
           {text: item.operator || 'Unassigned'},
           {text: shares(Object.entries(item.nr_modes || {})), filterValues: Object.keys(item.nr_modes || {})},
@@ -8736,7 +8736,7 @@
     root: $('non-qualified-calls'), fallbackName: 'Non-Qualified Calls', module: 'non-qualified-calls',
     // NQ Maps as the map of a call: in the page and larger, without its buttons.
     targets: `details.panel.collapsible-panel, ${imageTables}, ${imageCharts}, .nq-kpis, .nq-rate-overview, .nq-phase-cards, .nq-failure-section, ${l3MapImages}`,
-    tables: imageTables, charts: `${imageCharts}, ${l3MapImages}`, obstacles: 'summary .summary-inline-actions, .nq-map-zoom',
+    tables: imageTables, charts: `${imageCharts}, ${l3MapImages}`, obstacles: 'summary .summary-inline-actions, .nq-map-zoom, .nq-map-info-close',
     exclude: '.nq-chart-tooltip, .nq-map-zoom, .nq-map-basemap, .nq-map-expand-toolbar, .nq-map-wheel-hint, .nq-map-tooltip, .nq-map-info-close, .nq-map-selected-content > button',
     // The title of its panel, then its own: that of its section (with the operator of a failure card) or its heading.
     title: target => {
@@ -8758,7 +8758,8 @@
       root: drawer, targets: '.nq-map-wrap, .nq-map-expand-wrap', charts: '.nq-map-wrap, .nq-map-expand-wrap',
       // The open panels (the element chosen) show in the images; the buttons of the map and of the panels do not.
       exclude: '.nq-map-zoom, .nq-map-basemap, .nq-map-expand-toolbar, .nq-map-wheel-hint, .nq-map-tooltip, .nq-map-waiting, .nq-map-info-close, .nq-map-selected-content > button',
-      obstacles: '.nq-map-zoom', cardOnEdge: false,
+      // (Clear of the zoom buttons and of the × of the element chosen.)
+      obstacles: '.nq-map-zoom, .nq-map-info-close', cardOnEdge: false,
       // Below the header and the tabs of the call panel, which its body scrolls under.
       topInset: () => drawer.querySelector('.nq-drawer-body').getBoundingClientRect().top,
       module: 'non-qualified-calls', fallbackName: 'Call Area Map', title: () => callMap.title(), details: () => callMap.details(),

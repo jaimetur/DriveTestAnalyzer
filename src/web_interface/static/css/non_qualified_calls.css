@@ -1881,7 +1881,7 @@ details.nq-priority-info:not([open]) { padding-block: .55rem; }
 .nq-map-control.nq-map-check { display: inline-flex; align-items: center; gap: .45rem; min-height: 2.1rem; color: var(--nq-text); cursor: pointer; }
 .nq-map-control.nq-map-check[hidden] { display: none; }
 .nq-map-check .nq-l3-switch input:checked + .nq-l3-switch-track { background: var(--nq-color); }
-.nq-map-expand-toolbar { margin-bottom: .6rem; }
+.nq-map-expand-toolbar { flex: none; margin-bottom: .6rem; }
 .nq-map-layers { display: flex; flex-wrap: wrap; gap: .35rem; }
 .nq-map-layer { display: inline-flex; align-items: center; gap: .3rem; min-height: 2.1rem; padding: 0 .65rem; border: 1px solid var(--nq-border); border-radius: 999px; background: var(--nq-softer); color: var(--nq-dark); font-size: .78rem; font-weight: 800; cursor: pointer; }
 .nq-map-layer input { margin: 0; accent-color: var(--nq-color); }
@@ -2093,10 +2093,12 @@ details.nq-priority-info:not([open]) { padding-block: .55rem; }
 .nq-map-expand-header h3 { margin: .15rem 0 0; color: var(--nq-dark); font-size: 1.15rem; }
 .nq-map-expand-header .form-note { margin: .2rem 0 0; }
 .nq-drawer .nq-map-expand-close, .nq-l3-maps-panel .nq-map-expand-close { display: grid; place-items: center; width: 2.3rem; min-width: 2.3rem; height: 2.3rem; min-height: 2.3rem; padding: 0; border: 1px solid var(--nq-border); border-radius: 999px; background: #fff; color: var(--nq-dark); font-size: 1.4rem; line-height: 1; box-shadow: none; }
-.nq-map-expand-content { position: relative; flex: 1 1 auto; min-height: 0; padding: .8rem 1rem 1rem; overflow-y: auto; }
-/* The larger map fills the dialog, at least 60 % of the window high: its legend and timeline scroll below it. */
-.nq-map-expand-wrap { position: relative; display: flex; flex-direction: column; min-height: 100%; background: #fff; }
+.nq-map-expand-content { position: relative; display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; padding: .8rem 1rem 1rem; overflow-y: auto; }
+/* The larger map fills the dialog below its controls, at least 60 % of the window high: its legend scrolls below it. Its
+   canvas takes the whole card (its height is not set, so a canvas in the flow would keep the height of its drawing). */
+.nq-map-expand-wrap { position: relative; display: flex; flex-direction: column; flex: 1 0 auto; background: #fff; }
 .nq-map-expand .nq-map-card { flex: 1 0 auto; height: auto; min-height: 60vh; }
+.nq-map-expand .nq-map-canvas { position: absolute; inset: 0; }
 .nq-map-selected-float { position: absolute; top: .7rem; left: .7rem; z-index: 8; width: min(25rem, 42%); max-height: calc(100% - 9rem); overflow: auto; box-shadow: 0 10px 28px rgba(60, 4, 24, .22); }
 body:has(dialog.nq-map-expand[open]) { overflow: hidden; }
 @media (hover: none), (pointer: coarse) { .nq-map-zoom, .nq-map-basemap { opacity: 1; visibility: visible; } }
@@ -2116,7 +2118,9 @@ body:has(dialog.nq-map-expand[open]) { overflow: hidden; }
   .nq-map-expand-header { padding: .6rem .8rem .5rem; }
   .nq-map-expand-header .form-note { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; font-size: .74rem; }
   .nq-map-bottom .nq-l3-timeline { max-height: 26vh; }
-  .nq-map-selected-float { top: .5rem; left: .5rem; width: calc(100% - 1rem); max-height: 40%; }
+  /* The element chosen floats below the image buttons (at the top right of the map), so its × stays free. */
+  .nq-map-selected-float { top: 3.6rem; left: .5rem; width: calc(100% - 1rem); max-height: 50dvh; }
+  .nq-map-expand-toolbar { gap: .35rem .6rem; }
 }
 
 /* Layer 3 - DT Logs on the maps (l3_layers.js): a glass panel over the top left of the map with the layers of the KMZ files

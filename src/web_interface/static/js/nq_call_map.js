@@ -2804,8 +2804,9 @@
       const timeline = node('div', undefined, 'nq-l3-timeline-host');
       // The controls of the map above it too.
       expandedToolbar = node('div', undefined, 'nq-map-toolbar nq-map-expand-toolbar');
-      wrap.append(expandedToolbar, large, legendHost, floating);
-      expandContent.replaceChildren(wrap);
+      wrap.append(large, legendHost, floating);
+      // (Outside what its images take, so that their buttons stand over the map.)
+      expandContent.replaceChildren(expandedToolbar, wrap);
       renderToolbar();
       if (!expandDialog.open) expandDialog.showModal();
       expandedView = createView(large, shared, {expanded: true, legendHost});
@@ -3258,8 +3259,9 @@
       const largeTimeline = node('div', undefined, 'nq-l3-timeline-host');
       const largeWrap = node('div', undefined, 'nq-map-expand-wrap');
       expandedToolbar = node('div', undefined, 'nq-map-toolbar nq-map-expand-toolbar');
-      largeWrap.append(expandedToolbar, large, largeLegend, floating);
-      expandContent.replaceChildren(largeWrap);
+      largeWrap.append(large, largeLegend, floating);
+      // (Outside what its images take, so that their buttons stand over the map.)
+      expandContent.replaceChildren(expandedToolbar, largeWrap);
       renderToolbar();
       if (!expandDialog.open) expandDialog.showModal();
       expandedView = createView(large, shared, {expanded: true, legendHost: largeLegend, onViewChange: viewChanged});
