@@ -2011,8 +2011,9 @@ def test_designs_lifecycle_and_layout(client):
     assert saved.json()['definition']['slide_comments'] == {}
     listed = client.get('/api/ppt-designer')
     assert listed.json()['test']['name'] == 'Comparison'
-    # The saved Design comes back as the list gives it, so the page does not take it for an unsaved change.
-    assert saved.json()['definition'] == listed.json()['test']
+    # The saved Design comes back as the list gives it, so the page does not take it for an unsaved change (its place in
+    # the library comes with the list only, and the page keeps it apart from the definition).
+    assert saved.json()['definition'] == {key: value for key, value in listed.json()['test'].items() if key != 'position'}
     assert "const appliedDefinition = () => applyingDesignDefinition || appliedDesignDefinition || savedDesignDefinition();" in design_script
     # A running preparation does not hold Apply and Save Filters: a new preparation replaces it.
     preparation = design_script[design_script.index('  async function prepareDefinition() {'):design_script.index('  async function openDesign(')]
@@ -2635,8 +2636,10 @@ def test_design_state_migrates_from_legacy_storage(client):
     result = client.get('/api/ppt-designer')
     assert result.status_code == 200
     assert result.json()['legacy']['name'] == 'Comparison'
-    # Listed with who created it (nobody known here): only admins and super-admins delete it.
-    listed = {key: {**definition, 'created_by': ''} for key, definition in json.loads(core.repository.get_workspace_state('ppt_designs_v2')).items()}
+    # Listed with who created it (nobody known here: only admins and super-admins delete it) and its place in the
+    # library (none until its editors order it).
+    listed = {key: {**definition, 'created_by': '', 'position': None}
+              for key, definition in json.loads(core.repository.get_workspace_state('ppt_designs_v2')).items()}
     assert listed == result.json()
 
 
@@ -2662,7 +2665,7 @@ def test_design_migrates_all_saved_definitions_to_current_default_filters(client
     }
     assert 'datasets' not in migrated and migrated['auto_cdrs'] is True
     assert core.repository.get_workspace_state('ppt_design_default_filters_v6') == '1'
-    assert {**json.loads(core.repository.get_workspace_state('ppt_designs_v2'))['legacy'], 'created_by': ''} == migrated
+    assert {**json.loads(core.repository.get_workspace_state('ppt_designs_v2'))['legacy'], 'created_by': '', 'position': None} == migrated
 
 
 def test_design_custom_fields_and_snapshot_filters(client):
