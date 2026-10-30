@@ -324,22 +324,6 @@
     if (faded) context.globalAlpha = .55;
     const size = zoom >= 17 ? 5.2 : zoom >= 15 ? 4.4 : zoom >= 13 ? 3.6 : 3;
     const layersOn = [...state.on].filter((key) => data.layers[key]).sort((a, b) => drawOrder(a) - drawOrder(b));
-    if (layersOn.includes('direction')) {
-      for (const ue of data.ues) {
-        if (!ueShown(data, ue)) continue;
-        const track = data.tracks[ue] || [];
-        let last = null;
-        for (let index = 0; index < track.length - 1; index += 1) {
-          const [x1, y1] = project(track[index].lat, track[index].lon), [x2, y2] = project(track[index + 1].lat, track[index + 1].lon);
-          if (Math.hypot(x2 - x1, y2 - y1) < .5) continue;
-          if (last && Math.hypot(x1 - last[0], y1 - last[1]) < 34) continue;
-          const heading = Math.atan2(x2 - x1, -(y2 - y1)) * 180 / Math.PI;
-          drawMarker(context, 'arrow', x1, y1, size * 1.25, ue === 'B' ? '#495057' : '#212529', {heading});
-          hits.push({x: x1, y: y1, r: size + 4, kind: 'l3', item: {layer: 'direction', point: {...track[index], ue, heading: (heading + 360) % 360}}, priority: 3.9});
-          last = [x1, y1];
-        }
-      }
-    }
     for (const layerKey of layersOn) {
       if (layerKey === 'direction' || layerKey === 'way') continue;
       const layer = LAYER[layerKey];
@@ -356,6 +340,26 @@
         const pointSize = neighbour ? size * .82 : layerKey === 'event' || layerKey === 'l3' ? size * 1.08 : size;
         drawMarker(context, shape, x, y, pointSize, colourOf(layerKey, point), {nr: NR_KINDS.has(point.kind)});
         hits.push({x, y, r: pointSize + 3, kind: 'l3', item: {layer: layerKey, point, data}, priority: layerKey === 'event' || layerKey === 'l3' ? 4.2 : 4.1});
+      }
+    }
+    // The direction of travel over the points, beside the way (to the right of where the UE went) so that neither hides
+    // the other.
+    if (layersOn.includes('direction')) {
+      for (const ue of data.ues) {
+        if (!ueShown(data, ue)) continue;
+        const track = data.tracks[ue] || [];
+        let last = null;
+        for (let index = 0; index < track.length - 1; index += 1) {
+          const [x1, y1] = project(track[index].lat, track[index].lon), [x2, y2] = project(track[index + 1].lat, track[index + 1].lon);
+          const length = Math.hypot(x2 - x1, y2 - y1);
+          if (length < .5) continue;
+          if (last && Math.hypot(x1 - last[0], y1 - last[1]) < 34) continue;
+          const heading = Math.atan2(x2 - x1, -(y2 - y1)) * 180 / Math.PI;
+          const side = size * 2.3, ax = x1 - (y2 - y1) / length * side, ay = y1 + (x2 - x1) / length * side;
+          drawMarker(context, 'arrow', ax, ay, size * 1.25, ue === 'B' ? '#495057' : '#212529', {heading});
+          hits.push({x: ax, y: ay, r: size + 4, kind: 'l3', item: {layer: 'direction', point: {...track[index], ue, heading: (heading + 360) % 360}}, priority: 4.3});
+          last = [x1, y1];
+        }
       }
     }
     context.globalAlpha = 1;
