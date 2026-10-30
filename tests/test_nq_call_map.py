@@ -169,7 +169,7 @@ def test_the_map_places_the_call_its_cells_the_sites_and_the_calls_and_tests_aro
     far = next(item for item in data['failures'] if item['join_id'] == 'V4')
     assert far['same_cluster'] and far['same_run'] and not far['same_hotspot'] and far['distance_km'] > 2
     # With the keys of its groups, so that the page paints the group that filters the list of calls.
-    assert (far['repeat_key'], far['consecutive_key'], far['same_cluster_all']) == ('group:g', 'run:r', False)
+    assert (far['repeat_key'], far['consecutive_key'], 'same_cluster_all' in far) == ('group:g', 'run:r', False)
     # Opened without a radius, the call takes the one that holds every NQ call of its hotspot and cluster (in tenths of a km),
     # up to the largest radius offered (V4 is 160 km away).
     data = client.get(f"/api/non-qualified-calls/calls/{calls['V1']['call_key']}/map").json()

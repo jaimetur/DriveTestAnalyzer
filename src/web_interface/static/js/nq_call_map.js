@@ -43,7 +43,7 @@
   // call or of its hotspot).
   const memberships = (failure) => [
     ...(failure.same_hotspot ? ['hotspot'] : []),
-    ...(failure.same_cluster || failure.same_cluster_all || (Boolean(failure.repeat_key) && ringKeys.cluster.has(failure.repeat_key)) ? ['cluster'] : []),
+    ...(failure.same_cluster || (Boolean(failure.repeat_key) && ringKeys.cluster.has(failure.repeat_key)) ? ['cluster'] : []),
     ...(failure.same_run || (Boolean(failure.consecutive_key) && ringKeys.run.has(failure.consecutive_key)) ? ['run'] : []),
   ];
   // Those the map shows: with a cluster or a time window filtering the list, that one alone.
@@ -56,13 +56,14 @@
   // Whether the map draws the hotspot zone of the call: a hotspot of 2 calls or more, unless one of its groups filters the list.
   const hotspotShown = (data) => (data?.groups?.hotspot || 0) >= 2 && !focusKind();
   // The shapes the map draws: every one, or with a cluster or a time window filtering the list, its own (one around its
-  // calls when the call has none of it, such as its cluster of every NR Mode).
+  // calls of the NR Mode of the call when the call has none of it, such as its cluster of every NR Mode).
   const visibleRings = (data) => {
     const kind = focusKind();
     if (!data || !kind) return data?.rings || [];
     const found = (data.rings || []).filter((ring) => ring.kind === kind && ring.key === groupFocus.key);
     if (found.length) return found;
-    const calls = data.failures.filter((failure) => failure.latitude !== null && (failure.self || inFocus(failure)));
+    const calls = data.failures.filter((failure) => failure.latitude !== null
+      && (failure.self || (inFocus(failure) && failure.nr_mode === data.call.nr_mode)));
     if (calls.length < 2) return [];
     const centre = [calls.reduce((sum, item) => sum + item.latitude, 0) / calls.length, calls.reduce((sum, item) => sum + item.longitude, 0) / calls.length];
     const metres = Math.max(...calls.map((item) => geodesic([centre[1], centre[0]], [item.longitude, item.latitude]).metres)) * 1.04 + 40;
@@ -2748,12 +2749,8 @@
       status.textContent = '';
       try {
         const query = new URLSearchParams({tests: settings.tests});
-        // Selected campaigns: the campaigns and NR Modes of the filters of the page.
-        if (settings.tests === 'selected') {
-          const chosen = filters() || {};
-          (chosen.campaign || []).forEach((value) => query.append('campaigns', value));
-          (chosen.nr_mode || []).forEach((value) => query.append('nr_modes', value));
-        }
+        // Selected campaigns: the campaigns of the filters of the page (the CDRs of the NR Mode of the call).
+        if (settings.tests === 'selected') (filters()?.campaign || []).forEach((value) => query.append('campaigns', value));
         if (loadedKey === key) query.set('radius_km', String(settings.radius_km));
         const data = await api(`/api/non-qualified-calls/calls/${encodeURIComponent(key)}/map?${query}`, {signal: controllerAbort.signal});
         if (request !== controllerAbort || key !== callKey) return false;

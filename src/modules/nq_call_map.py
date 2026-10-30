@@ -697,8 +697,6 @@ def nearby_failures(repository: Any, call: dict[str, Any], centre: tuple[float, 
                                  f'consecutive_size FROM {PRIORITY_TABLE} WHERE call_key = ?', (call.get('parent_key') or call['call_key'],)).fetchone()
         place, hotspot, cluster, run = ((_text(own['place_key']), _text(own['cluster_key']), _text(own['repeat_key']), _text(own['consecutive_key']))
                                         if own else ('', '', '', ''))
-        # Its cluster of every NR Mode together too, as the panel shows the clusters without one NR Mode filtered.
-        cluster_all = _text(own['repeat_all_key']) if own else ''
         rows = connection.execute(f"""
             WITH calls AS ({base})
             SELECT c.call_key, c.dataset_id, c.join_id, c.service, c.test_name, c.session_type, c.operator, c.campaign, c.nr_mode, c.result,
@@ -711,8 +709,8 @@ def nearby_failures(repository: Any, call: dict[str, Any], centre: tuple[float, 
             FROM calls c LEFT JOIN {PRIORITY_TABLE} q ON q.call_key = c.call_key
             WHERE (c.latitude BETWEEN ? AND ? AND c.longitude BETWEEN ? AND ?)
                OR (? <> '' AND q.place_key = ?) OR (? <> '' AND q.cluster_key = ?) OR (? <> '' AND q.repeat_key = ?)
-               OR (? <> '' AND q.repeat_all_key = ?) OR (? <> '' AND q.consecutive_key = ?)
-        """, [*params, south, north, west, east, place, place, hotspot, hotspot, cluster, cluster, cluster_all, cluster_all, run, run]).fetchall()
+               OR (? <> '' AND q.consecutive_key = ?)
+        """, [*params, south, north, west, east, place, place, hotspot, hotspot, cluster, cluster, run, run]).fetchall()
     own_key = call.get('parent_key') or call['call_key']
     operator = _text(call.get('operator')).casefold()
     failures = []
@@ -722,11 +720,10 @@ def nearby_failures(repository: Any, call: dict[str, Any], centre: tuple[float, 
         same_operator = _text(row['operator']).casefold() == operator
         same_place = bool(place) and row['place_key'] == place and same_operator
         same_hotspot = bool(hotspot) and row['cluster_key'] == hotspot
-        same_cluster_all = bool(cluster_all) and row['repeat_all_key'] == cluster_all
         same_cluster = bool(cluster) and row['repeat_key'] == cluster
         same_run = bool(run) and row['consecutive_key'] == run
         is_self = row['call_key'] == own_key
-        if not is_self and not (same_place or same_hotspot or same_cluster or same_cluster_all or same_run) and (distance is None or distance > radius_km):
+        if not is_self and not (same_place or same_hotspot or same_cluster or same_run) and (distance is None or distance > radius_km):
             continue
         kind = call_kind(row['service'], row['test_name'], row['session_type'])
         failures.append({
@@ -744,7 +741,6 @@ def nearby_failures(repository: Any, call: dict[str, Any], centre: tuple[float, 
             'distance_km': None if distance is None else round(distance, 3),
             'self': is_self, 'same_operator': same_operator, 'same_place': same_place and not is_self,
             'same_hotspot': same_hotspot and not is_self, 'same_cluster': same_cluster and not is_self, 'same_run': same_run and not is_self,
-            'same_cluster_all': same_cluster_all and not is_self,
             # The keys of its groups, so that the page can tell those of the group that filters the list of calls.
             'cluster_key': _text(row['cluster_key']), 'repeat_key': _text(row['repeat_key']), 'repeat_all_key': _text(row['repeat_all_key']),
             'consecutive_key': _text(row['consecutive_key']),
@@ -754,7 +750,7 @@ def nearby_failures(repository: Any, call: dict[str, Any], centre: tuple[float, 
                 math.inf if item['distance_km'] is None else item['distance_km'])
 
     def kept(item: dict[str, Any]) -> bool:
-        return (item['self'] or item['same_hotspot'] or item['same_cluster'] or item['same_cluster_all'] or item['same_run']
+        return (item['self'] or item['same_hotspot'] or item['same_cluster'] or item['same_run']
                 or item['same_place'] or (item['campaign'] == _text(call.get('campaign')) and item['nr_mode'] == _text(call.get('nr_mode'))))
     failures.sort(key=order)
     others = [item for item in failures if not kept(item)]
@@ -840,10 +836,10 @@ def _dataset_tests(repository: Any, dataset_id: int) -> dict[str, Any] | None:
         return entry
 
 
-def test_datasets(repository: Any, call: dict[str, Any], scope: str, campaigns: Any = (), nr_modes: Any = ()) -> list[int]:
-    """The CDRs whose tests the map shows, that of the call first: every CDR with the latest calls of the ``campaigns`` and
-    ``nr_modes`` chosen in the filters of the page (of every campaign while none is chosen), or of the campaign and NR Mode
-    of the call (``scope`` ``campaign``)."""
+def test_datasets(repository: Any, call: dict[str, Any], scope: str, campaigns: Any = ()) -> list[int]:
+    """The CDRs whose tests the map shows, that of the call first, always of the NR Mode of the call (NSA and SA fail along
+    different paths): every CDR with the latest calls of the ``campaigns`` chosen in the filters of the page (of every
+    campaign while none is chosen), or of the campaign of the call (``scope`` ``campaign``)."""
     from src.modules import non_qualified_calls as nq
 
     own = [int(call['dataset_id'])]
@@ -853,12 +849,9 @@ def test_datasets(repository: Any, call: dict[str, Any], scope: str, campaigns: 
         conditions, params = ['campaign = ?', 'nr_mode = ?'], [call['campaign'], _text(call.get('nr_mode'))]
     else:
         chosen = [_text(value) for value in campaigns or () if _text(value)]
-        modes = [_text(value) for value in nr_modes or () if _text(value)]
-        conditions, params = [], [*chosen, *modes]
+        conditions, params = ['nr_mode = ?'], [_text(call.get('nr_mode')), *chosen]
         if chosen:
             conditions.append(f"campaign IN ({', '.join('?' for _ in chosen)})")
-        if modes:
-            conditions.append(f"nr_mode IN ({', '.join('?' for _ in modes)})")
     where = ''.join(f' AND {condition}' for condition in conditions)
     with repository.connection() as connection:
         rows = connection.execute(
@@ -1542,11 +1535,11 @@ def group_rings(repository: Any, call: dict[str, Any], failed_at: tuple[float, f
     return rings
 
 
-def call_map(repository: Any, call_key: str, *, radius_km: Any = None, tests: str = DEFAULT_TEST_SCOPE, campaigns: Any = (),
-             nr_modes: Any = ()) -> dict[str, Any] | None:
+def call_map(repository: Any, call_key: str, *, radius_km: Any = None, tests: str = DEFAULT_TEST_SCOPE, campaigns: Any = ()
+             ) -> dict[str, Any] | None:
     """Everything the map of a call shows around where it failed (see the module); None for an unknown call. Without
     ``radius_km`` the radius holds the NQ calls of its hotspot and its cluster (``group_radius``), else it is the default
-    one. ``campaigns`` and ``nr_modes``: those chosen in the filters of the page, for the samples of Selected campaigns."""
+    one. ``campaigns``: those chosen in the filters of the page, for the samples of Selected campaigns."""
     from src.modules import non_qualified_calls as nq
     from src.modules.inventory_insights import configured_vendor_colours
     from src.modules.nq_prioritization import call_kind
@@ -1669,7 +1662,7 @@ def call_map(repository: Any, call_key: str, *, radius_km: Any = None, tests: st
     name_failure_cells(failures, cells, families, float(config.get('max_distance_km') or 30.0))
     # The operators of the tests with the labels of the Operator Maps, as the calls show them.
     mapper = ValueMapper.from_settings(repository.chart_mapping_settings())
-    datasets = test_datasets(repository, call, scope, campaigns, nr_modes)
+    datasets = test_datasets(repository, call, scope, campaigns)
     test_points = nearby_tests(repository, datasets, point, radius,
                                lambda value: mapper.map(field_kind('operator'), value))
     if test_points['truncated']:
