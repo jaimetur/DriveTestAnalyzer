@@ -1989,8 +1989,8 @@
     shared.showsFailure = (failure) => {
       const call = shared.data?.call;
       if (!call || failure.self) return true;
-      // Not the Ping tests.
-      if (failure.kind === 'ping') return false;
+      // Not the Ping tests, nor those of another NR Mode (NSA and SA fail along different paths).
+      if (failure.kind === 'ping' || failure.nr_mode !== call.nr_mode) return false;
       // Those of the campaigns chosen in From CDR, as everything else from the CDRs.
       if (settings.tests === 'campaign' && (failure.campaign !== call.campaign || failure.nr_mode !== call.nr_mode)) return false;
       if (settings.tests === 'selected' && !selectedCampaign(failure)) return false;
