@@ -265,3 +265,64 @@ def test_fields_saved_while_the_tables_are_updated_stay_pending(tmp_path: Path) 
     repository.replace_calculated_dimensions(calculated_dimensions_json(parse_calculated_dimensions([{**NR_MODE_FROM_RAT, 'default': 'Other RAT'}])))
     core.materialize_workspace_auto_fields_incrementally((), worked_out, {}, repository, {'cdr-voice'})
     assert repository.get_workspace_state('calculated_dimensions_need_materialization') == '1'
+
+
+def _only_copy(tmp_path: Path, name: str, kind: str, rows: pd.DataFrame) -> int:
+    """A CDR whose columnar copy is its only store (its table emptied), as the CDRs of a workspace are once copied."""
+    from src.modules import cdr_store
+
+    dataset_id = add_cdr(tmp_path, name, kind, rows)
+    core.repository.set_workspace_state(cdr_store.ONLY_COPIES_STATE_KEY, '1')
+    repository = core.Repository(core.active_workspace.database_path, global_db_path=core.repository.global_db_path)
+    cdr_store.start_store_sync(repository, lambda run: run(), lambda: cdr_store.included_cdrs(repository))
+    with core.repository.connection() as connection:
+        assert dataset_id in cdr_store.shadows(connection)
+    return dataset_id
+
+
+def test_fields_of_a_cdr_whose_copy_is_its_only_store_are_worked_out_on_the_copy(client, tmp_path, monkeypatch) -> None:
+    from src.modules import cdr_store
+
+    login(client)
+    monkeypatch.setattr(cdr_store, 'free_space', lambda path: 1024 ** 4)
+    rows = pd.DataFrame({'Operator': ['EE'] * len(RATS), 'RAT': RATS, 'Call_Status': ['Completed', 'Dropped'] * 5 + ['Failed'],
+                         'Call_Setup_Time': [1.5, 2, None, 4, 5, 6, 7, 8, 9, 10, 11]})
+    voice = _only_copy(tmp_path, 'voice.csv', 'voice', rows)
+    reference = add_cdr(tmp_path, 'reference.csv', 'voice', rows)  # The same rows in a table: the former path.
+    shipped = json.loads((Path(core.PROJECT_ROOT) / 'assets' / 'autocalculated-fields' / 'default-autocalculated-fields.json').read_text())
+    current = parse_calculated_dimensions(shipped)
+    previous = parse_calculated_dimensions([item for item in shipped if item['name'] in ('Call_Family', 'Test_Family')])
+    names = ['Test_Result_Group', 'RAT_Group', 'NR_Mode_from_RAT']
+    restored = []
+    monkeypatch.setattr(cdr_store, 'restore_table', lambda repository, dataset_id: restored.append(dataset_id))
+
+    assert core._incremental_auto_field_table_update(core.repository, f'dataset_rows_{voice}', 'cdr-voice', previous, current, {})
+    assert core._incremental_auto_field_table_update(core.repository, f'dataset_rows_{reference}', 'cdr-voice', previous, current, {})
+
+    # Never put back in its table: its copy holds the fields, and the SQL of the application reads them from it.
+    assert voice not in restored
+    with core.repository.connection() as connection:
+        assert voice in cdr_store.shadows(connection)
+        assert connection.execute(f'SELECT COUNT(*) FROM main.dataset_rows_{voice}').fetchone()[0] == 0
+    on_copy = cdr_store.read_cdr(core.repository.db_path, 'voice', voice, names)
+    in_table = core.repository.load_dataset_rows(reference, names, {})
+    assert on_copy[names].astype(object).where(on_copy[names].notna(), None).values.tolist() == \
+        in_table[names].astype(object).where(in_table[names].notna(), None).values.tolist()
+    assert on_copy['NR_Mode_from_RAT'].tolist() == EXPECTED
+    assert core.repository.load_dataset_rows(voice, ['RAT_Group', 'Call_Setup_Time'], {})['RAT_Group'].tolist()[:3] == ['EN-DC', 'NR SA Mixed', 'NR SA Mixed']
+    # The other columns of the copy are as they were, and the copy is still the store of the CDR.
+    assert cdr_store.read_cdr(core.repository.db_path, 'voice', voice, ['Call_Setup_Time'])['Call_Setup_Time'].tolist()[:2] == [1.5, 2.0]
+    assert cdr_store.fresh_copies(core.repository.db_path, [voice]) == {voice}
+
+    # A field that leaves takes its column out of the copy and of the table.
+    without = parse_calculated_dimensions([item for item in shipped if item['name'] != 'RAT_Group'])
+    assert core._incremental_auto_field_table_update(core.repository, f'dataset_rows_{voice}', 'cdr-voice', current, without, {})
+    assert 'RAT_Group' not in core.repository.list_dataset_row_columns(voice)
+    manifest = cdr_store.read_manifest(cdr_store.manifest_file(cdr_store.store_root(core.repository.db_path), 'voice', voice))
+    assert 'RAT_Group' not in dict(manifest['columns']) and dict(manifest['columns'])['NR_Mode_from_RAT'] == 'VARCHAR'
+    assert voice not in restored
+    # Put back in its table, the CDR has the fields as its copy keeps them.
+    monkeypatch.undo()
+    monkeypatch.setattr(cdr_store, 'free_space', lambda path: 1024 ** 4)
+    assert cdr_store.restore_table(core.repository, voice)
+    assert core.repository.load_dataset_rows(voice, ['NR_Mode_from_RAT'], {})['NR_Mode_from_RAT'].tolist() == EXPECTED

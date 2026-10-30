@@ -980,6 +980,130 @@ def drop_copied_table(repository: Any, dataset_id: int) -> bool:
         return emptied
 
 
+def change_copy_columns(repository: Any, dataset_id: int, values: pd.DataFrame | None = None, drop: Any = (),
+                        should_stop: Callable[[], bool] = lambda: False) -> bool:
+    """Change some columns of a CDR whose copy is its only store in the copy itself, never putting its rows back in its
+    table: ``drop`` columns, and set the text columns of ``values`` (ROWID and one column per field, a row for every
+    row of the CDR; a row it lacks gets no value), added or in place of the columns of those names. Its empty table
+    follows (ALTER TABLE) and its manifest says the new columns, so the copy stays its store. Returns whether it did: not
+    for a CDR whose table holds its rows or that a writer holds (its table is then changed instead), nor when it
+    stopped."""
+    import duckdb
+
+    dataset_id = int(dataset_id)
+    database_path = repository.db_path
+    table = f'dataset_rows_{dataset_id}'
+    key = (_workspace_key(database_path), dataset_id)
+    with _holds_guard:
+        lock = _restore_locks.setdefault(key, Lock())
+    # No writer puts the rows back meanwhile (see hold), nor is the table emptied again.
+    with lock:
+        with _holds_guard:
+            if key in _holds:
+                return False
+        with sqlite3.connect(database_path, timeout=30) as connection:
+            if dataset_id not in shadows(connection) or not connection.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (table,)).fetchone():
+                return False
+            cdr = _ready_cdrs(connection).get(dataset_id)
+        root = store_root(database_path)
+        manifest = read_manifest(manifest_file(root, cdr['kind'], dataset_id)) if cdr else None
+        target = cdr_folder(root, cdr['kind'], dataset_id) if cdr else None
+        if manifest is None or not target.is_dir():
+            return False
+        types = dict(manifest['columns'])
+        written = [] if values is None else [str(column) for column in values.columns if column != ROWID]
+        if any(column in {ROWID, DATASET_ID, NR_MODE} or column.startswith((INT_PREFIX, REAL_PREFIX)) for column in written):
+            raise ValueError(f'The CDR {cdr["file_name"]} cannot have a column named like the columns the copy adds.')
+        dropped = {str(column) for column in drop} - set(written)
+        # A column written keeps its place among the columns of the copy; a new one goes last.
+        columns = [column for column, _type in manifest['columns'] if column not in dropped]
+        columns += [column for column in written if column not in types]
+        new_types = {column: 'VARCHAR' if column in written else types[column] for column in columns}
+        needed, free = required_space(int(manifest.get('rows') or cdr['row_count'])), free_space(target.parent)
+        if free < needed:
+            raise NotEnoughSpace(needed, free)
+        temporary = target.parent / f'.{dataset_id}.{os.getpid()}.columns.tmp'
+        previous = target.parent / f'.{dataset_id}.{os.getpid()}.columns.old'
+        shutil.rmtree(temporary, ignore_errors=True)
+        temporary.mkdir(parents=True)
+        selected = [f'p.{quote(part)}' for part in (ROWID, DATASET_ID, NR_MODE)]
+        for column in columns:
+            selected += ([f'CAST(v.{quote(column)} AS VARCHAR) AS {quote(column)}'] if column in written
+                         else [f'p.{quote(part)}' for part in stored_parts([column], types)])
+        duck = duckdb.connect(config={'memory_limit': '1GB', 'threads': 2})
+        try:
+            joined = ''
+            if written:
+                frame = values[[ROWID, *written]].copy()
+                frame[ROWID] = frame[ROWID].astype('int64')
+                for column in written:
+                    frame[column] = frame[column].astype('string')
+                duck.register('field_values', frame)
+                joined = f' LEFT JOIN field_values v ON v.{quote(ROWID)} = p.{quote(ROWID)}'
+            # Part by part (each a range of row ids, see export_rows), so a CDR of any size is never held whole.
+            for part in sorted(target.glob('*.parquet')):
+                if should_stop():
+                    shutil.rmtree(temporary, ignore_errors=True)
+                    return False
+                duck.execute(f'COPY (SELECT {", ".join(selected)} FROM read_parquet({_sql_text(part)}) p{joined} '
+                             f'ORDER BY p.{quote(ROWID)}) TO {_sql_text(temporary / part.name)} (FORMAT parquet, COMPRESSION zstd)')
+            rows = int(duck.execute(f'SELECT COUNT(*) FROM read_parquet({_sql_text(temporary / "*.parquet")})').fetchone()[0])
+        except BaseException:
+            shutil.rmtree(temporary, ignore_errors=True)
+            raise
+        finally:
+            duck.close()
+        if rows != int(manifest.get('rows', rows)) or should_stop():
+            shutil.rmtree(temporary, ignore_errors=True)
+            return False
+        copies = copies_lock(root)
+        while not copies.acquire(timeout=1):
+            if should_stop():
+                shutil.rmtree(temporary, ignore_errors=True)
+                return False
+        swapped = False
+        try:
+            with repository.connection() as connection:
+                _as_it_is(connection)
+                connection.execute('BEGIN IMMEDIATE')
+                present = {column.casefold(): column for column in _table_columns(connection, dataset_id)}
+                for column in sorted(dropped):
+                    if column.casefold() in present:
+                        connection.execute(f'ALTER TABLE {quote(table)} DROP COLUMN {quote(present.pop(column.casefold()))}')
+                for column in written:
+                    if column.casefold() not in present:
+                        connection.execute(f'ALTER TABLE {quote(table)} ADD COLUMN {quote(column)} TEXT')
+                table_columns = _table_columns(connection, dataset_id)
+                if sorted(table_columns) != sorted(columns):
+                    raise RuntimeError(f'The table of CDR {dataset_id} and its changed copy do not have the same columns.')
+                schema = table_schema(connection, dataset_id)
+                current = revision(cdr, table_columns, _versions(connection).get(dataset_id, 0))
+                # The new copy takes the place of the old one as the table changes (readers of the old one keep their
+                # open files).
+                shutil.rmtree(previous, ignore_errors=True)
+                os.replace(target, previous)
+                os.replace(temporary, target)
+                swapped = True
+                _write_json(manifest_file(root, cdr['kind'], dataset_id), {
+                    **manifest, 'revision': current, 'rows': rows, 'schema': schema,
+                    'columns': [[column, new_types[column]] for column in table_columns],
+                    'written_at': datetime.now(timezone.utc).isoformat(timespec='seconds'),
+                })
+        except BaseException:
+            if swapped:
+                # The table did not change: the copy goes back as it was.
+                shutil.rmtree(target, ignore_errors=True)
+                os.replace(previous, target)
+                _write_json(manifest_file(root, cdr['kind'], dataset_id), manifest)
+            shutil.rmtree(temporary, ignore_errors=True)
+            raise
+        finally:
+            copies.release()
+        shutil.rmtree(previous, ignore_errors=True)
+    return True
+
+
 def _empty_table(repository: Any, dataset_id: int) -> bool:
     """Empty the table of a CDR and list it among the shadows (whether it was there to empty)."""
     with repository.connection() as connection:

@@ -1364,6 +1364,62 @@ def _auto_field_table_needs_update(
     )
 
 
+def _columnar_auto_field_update(
+    task_repository: Repository, table_name: str, cdr_source: str, previous: tuple[Any, ...], current: tuple[Any, ...],
+    renames: dict[str, str], checkpoint: Callable[[], None] | None = None,
+    row_progress: Callable[[int, int], None] | None = None,
+) -> bool:
+    """Update the fields of a CDR whose columnar copy is its only store on the copy (cdr_store.change_copy_columns):
+    the columns the changed fields read are read from it, the fields worked out as a CDR being processed works them out
+    (materialize_calculated_dimensions), and only their columns written, so the CDR never goes back to its table. Returns
+    whether it did; else the table of the CDR is changed (_apply_auto_field_table_update)."""
+    from src.modules import cdr_store
+
+    match = re.fullmatch(r'dataset_rows_(\d+)', str(table_name))
+    if not match or int(match.group(1)) not in cdr_store.shadow_ids(task_repository.db_path):
+        return False
+    dataset_id = int(match.group(1))
+    normalize = _normalise_catalogue_dimension_name
+    source = cdr_source.casefold()
+    with task_repository.connection() as connection:
+        columns = task_repository._table_columns(connection, table_name)
+    column_lookup = {normalize(column): column for column in columns}
+    applicable = [item for item in current if source in item.sources]
+    kept = {normalize(item.name) for item in applicable}
+    changed = calculated_dimension_changes(previous, current)
+    # Worked out again: the fields that changed or read a changed one, and those the copy lacks or spells otherwise.
+    worked_out = [item for item in applicable if normalize(item.name) in changed or column_lookup.get(normalize(item.name)) != item.name]
+    stale = ({normalize(item.name) for item in previous if source in item.sources} | {normalize(name) for name in renames}
+             | {normalize(item.name) for item in current if source not in item.sources}) - kept
+    drop = [column_lookup[key] for key in stale if key in column_lookup]
+    drop += [column_lookup[normalize(item.name)] for item in worked_out
+             if column_lookup.get(normalize(item.name)) not in (None, item.name)]
+    if checkpoint:
+        checkpoint()
+    if row_progress:
+        row_progress(0, 2)
+    values = None
+    if worked_out:
+        computed = {normalize(item.name) for item in worked_out}
+        reads = {normalize(field) for item in worked_out for field in calculated_dimension_reads(item)} - computed
+        read = [column for column in columns if normalize(column) in reads]
+        frame = cdr_store.query_cdr(task_repository.db_path, source.removeprefix('cdr-'), dataset_id,
+                                    [(cdr_store.ROWID, cdr_store.ROWID), *((column, column) for column in read)])
+        if frame is None:
+            return False
+        result = materialize_calculated_dimensions(frame, worked_out, cdr_source)
+        values = result[[cdr_store.ROWID, *(item.name for item in worked_out)]]
+    if checkpoint:
+        checkpoint()
+    if row_progress:
+        row_progress(1, 2)
+    if not cdr_store.change_copy_columns(task_repository, dataset_id, values, drop):
+        return False
+    if row_progress:
+        row_progress(2, 2)
+    return True
+
+
 def _incremental_auto_field_table_update(
     task_repository: Repository,
     table_name: str,
@@ -1381,6 +1437,8 @@ def _incremental_auto_field_table_update(
         if row_progress:
             row_progress(1, 1)
         return False
+    if _columnar_auto_field_update(task_repository, table_name, cdr_source, previous, current, renames, checkpoint, row_progress):
+        return True
     with task_repository._holding_cdr_table(table_name):
         return _apply_auto_field_table_update(task_repository, table_name, cdr_source, previous, current, renames,
                                               checkpoint, row_progress)
@@ -1863,6 +1921,8 @@ def materialize_workspace_auto_fields_incrementally(
     ANALYSIS_CACHE.clear()
     PREPARED_ANALYSIS_FRAME_CACHE.clear()
     CHART_PREVIEW_DATA_CACHE.clear()
+    # Chart Builder keeps the columns of the copies in memory, which the fields may have changed in place.
+    _clear_chart_preview_caches()
     if selected_sources >= {'data', 'voice', 'speech'} or not affected_calculated_dimension_sources(
         materialized_calculated_dimensions(task_repository, previous), current,
     ) - {f'cdr-{source}' for source in selected_sources}:
