@@ -15,6 +15,7 @@
 - **Non-Qualified Calls — NQ Hotspots:** the panel Hotspots, Time-Window & Clustered Issues is named **NQ Hotspots, Time-Window & Clustered Issues** (**NQ Hotspots** in the sections bar), in the page, its exports and the Help, as **NQ Maps** beside it.
 
 #### 🐛 Bug fixes:
+- **Import / Export / Transfer — PPT Designs:** a PPT Design whose PPT Template was added apart on each server (with an identity of its own on each) no longer shows as updated (`Template Uid: … → …`) in the import preview and the completion message of every transfer back and forth: exports, imports and the preview refer to the template by the identity it has in each workspace, as the PPT Designer does.
 
 #### 📚 Documentation:
 

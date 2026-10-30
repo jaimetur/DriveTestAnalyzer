@@ -331,6 +331,33 @@ def test_designs_follow_their_ppt_template_by_its_identity(client):
     assert listed['dash-1']['nr_mode'] == 'NSA' and 'technology' not in listed['dash-1']
 
 
+def test_designs_transferred_back_and_forth_keep_the_identity_of_their_template_in_each_workspace(client, tmp_path):
+    # The same PPT Template added apart in two workspaces has an identity of its own in each.
+    first, first_repo = _workspace('Designs first')
+    second, second_repo = _workspace('Designs second')
+    for repo in (first_repo, second_repo):
+        repo.add_report_template('Coverage', b'coverage')
+    first_uid, second_uid = first_repo.report_template_uids()['Coverage'], second_repo.report_template_uids()['Coverage']
+    assert first_uid != second_uid
+    first_repo.set_workspace_state(core.DESIGN_STATE_KEY, json.dumps({
+        'd1': {'name': 'Coverage NSA', 'template': 'Coverage', 'template_uid': first_uid}}))
+    set_creator(first_repo, PPT_DESIGNER, 'd1', 'super')
+    _transfer('designs', first, second, tmp_path)
+    # The imported Design takes the identity of the template in its new workspace, not that of the other one.
+    assert _designs(second_repo)['d1']['template_uid'] == second_uid
+
+    # A Design saved by an import of before with the identity of the other workspace is not told as changed.
+    second_repo.set_workspace_state(core.DESIGN_STATE_KEY, json.dumps({
+        'd1': {**_designs(second_repo)['d1'], 'template_uid': first_uid}}))
+    for source, destination in ((first, second), (second, first), (first, second)):
+        package = tmp_path / 'designs.zip'
+        core.build_export_archive_file('designs', package, [source.id])
+        [designs] = core.preview_import_archive(package, core.read_import_manifest(package), [destination.id], 'super')['packages']
+        assert (designs['changed'], designs['sections']) == (False, []), designs['sections']
+        assert _transfer('designs', source, destination, tmp_path) == 'Imported 1 PPT Design into 1 workspace: 1 unchanged.'
+    assert _designs(first_repo)['d1']['template_uid'] == first_uid and _designs(second_repo)['d1']['template_uid'] == second_uid
+
+
 def test_reporting_jobs_and_excluded_calls_follow_their_renames(client, tmp_path):
     from src.modules import scoring_exclusions
     from src.modules.report_tasks import list_tasks, save_task

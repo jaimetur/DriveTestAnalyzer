@@ -9352,6 +9352,7 @@ def _design_archive_payload(workspace: Workspace) -> bytes:
         designs = {}
     if not isinstance(designs, dict):
         designs = {}
+    designs = _designs_on_workspace_templates(designs, task_repository)
     # The chosen CDRs travel by name and type: their ids only mean something in this workspace.
     chosen = {
         int(value) for definition in designs.values() if isinstance(definition, dict)
@@ -9403,6 +9404,18 @@ def _designs_on_destination_cdrs(designs: dict[str, Any], cdrs: Any, task_reposi
             moved[design_id] = definition
         designs = moved
     return {design_id: existing_dataset_selection(definition, kinds) for design_id, definition in designs.items()}
+
+
+def _designs_on_workspace_templates(designs: dict[str, Any], task_repository: Repository) -> dict[str, Any]:
+    """The PPT Designs referring to the PPT Templates of a workspace by the identity those have there, as the PPT
+    Designer keeps them (follow_template_identities): a template added apart on each server has an identity of its own
+    on each, and the identity of the other server would be taken back at once, so every transfer would tell it changed."""
+    from src.modules.ppt_designer import follow_template_identities, template_uids
+
+    try:
+        return follow_template_identities(designs, template_uids(task_repository))
+    except sqlite3.Error:  # A workspace without PPT Templates yet: the Designs keep the identity they have.
+        return designs
 
 
 def _exported_calculated_dimensions(workspace: Workspace) -> list[dict[str, object]]:
@@ -9461,6 +9474,7 @@ def _import_workspace_designs(workspace: Workspace, payload: bytes, importing_us
     task_repository = Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path)
     incoming = _designs_on_destination_cdrs(incoming, document.get('cdrs'), task_repository)
     incoming, _changed = migrate_designs_state(incoming, *task_repository.report_template_merge_state())
+    incoming = _designs_on_workspace_templates(incoming, task_repository)
     package_uids = document.get('identities') if isinstance(document.get('identities'), dict) else {}
     package_creators = document.get('creators') if isinstance(document.get('creators'), dict) else {}
     try:
@@ -12028,9 +12042,19 @@ def _preview_element_document(kind: str, manifest: dict[str, Any], archive: zipf
 def _predicted_document(kind: str, workspace: Workspace, package: Any, includes_designs: bool = False) -> Any:
     """The export document of an element package as its import saves it in a workspace (the Reporting Jobs pointing at
     its datasets, favourites and PPT Designs; the PPT Templates a PPT Design of the workspace uses keeping their content
-    unless the PPT Designs come too), for the preview of the import."""
+    unless the PPT Designs come too; the PPT Designs referring to the PPT Templates of the workspace by the identity they
+    have there), for the preview of the import."""
     if kind == 'ppt-templates' and not includes_designs and isinstance(package, list):
         return _kept_report_template_rows(workspace, package)
+    if kind == 'designs' and isinstance(package, dict) and isinstance(package.get('designs', package.get('dashboards')), dict):
+        from src.modules.ppt_naming import renamed_design
+        from src.modules.report_template_modes import migrate_designs_state
+
+        task_repository = Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path)
+        designs, _changed = migrate_designs_state(
+            {key: renamed_design(value) for key, value in package.get('designs', package.get('dashboards')).items()},
+            *task_repository.report_template_merge_state())
+        return {**package, 'designs': _designs_on_workspace_templates(designs, task_repository)}
     if kind != 'reporting-jobs' or not isinstance(package, dict):
         return package
     from src.modules.report_tasks import imported_jobs, normalize_definition, normalize_schedule
