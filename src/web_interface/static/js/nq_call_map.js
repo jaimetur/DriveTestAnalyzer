@@ -1913,7 +1913,7 @@
     const stored = readSettings();
     const settings = {
       // Each call opens with the radius of its hotspot and cluster (or 1 km); the radius chosen holds while it stays open.
-      radius_km: 1, tests: stored.tests === 'campaign' ? 'campaign' : 'cdr',
+      radius_km: 1, tests: stored.tests === 'campaign' ? 'campaign' : 'selected',
       // The measures of the samples shown (none until some are switched on, so the map shows the call, its cells and the
       // sites first).
       measures: storedMeasures(stored),
@@ -1997,17 +1997,13 @@
       save();
       redrawAll();
     };
-    // The CDRs of the samples, chosen in their card on the map: that of the call (its type named), or every CDR of its
-    // campaign and NR Mode.
+    // The CDRs of the tests around the call (its samples, Radio around the call, Diagnosis hints and drive), chosen in the
+    // card From CDR as NQ calls from chooses those of the NQ calls: the campaigns chosen in the filters, or that of the call.
     shared.samplesScope = {
-      options: () => {
-        const cdrType = SERVICE_LABELS[shared.data?.call.service] || '';
-        return Object.entries(shared.data?.tests_scopes || {cdr: 'This CDR', campaign: 'Every CDR of its campaign'})
-          .map(([value, text]) => [value, value === 'cdr' && cdrType ? `${text} (${cdrType})` : text]);
-      },
+      options: () => Object.entries(shared.data?.tests_scopes || {selected: 'Selected campaigns', campaign: 'Call campaign'}),
       value: () => settings.tests,
       set: (value) => { settings.tests = value; save(); load(); },
-      title: 'The tests whose RSRP / SINR the samples and the Radio around the call show: the CDR of the call, or every CDR of its campaign and NR Mode (Voice, Speech and Data together)',
+      title: 'The CDRs of the tests around the call (its RSRP / SINR samples, the Radio around the call, the Diagnosis hints and its drive): every CDR of the campaigns and NR Modes chosen in the filters of the page (of every campaign while none is chosen), or every CDR of the campaign and NR Mode of the call (Voice, Speech and Data together)',
     };
     shared.select = (choice) => {
       shared.selection = choice;
@@ -2528,7 +2524,7 @@
       const scope = data.tests_scopes[data.tests_scope] || '';
       driveCard.replaceChildren(cardHead('Its drive', `${number(drive.total || 0)} tests of ${data.call.operator || 'its operator'} within ±${drive.minutes} min · ${scope}`));
       if (!drive.rows.length) {
-        driveCard.append(node('p', 'No test of its operator in the minutes around the call (the CDR may give no time, or choose every CDR of its campaign).', 'nq-map-empty'));
+        driveCard.append(node('p', 'No test of its operator in the minutes around the call (the CDRs chosen may give no time).', 'nq-map-empty'));
         return;
       }
       const table = node('table', undefined, 'nq-map-table nq-map-drive-table');
@@ -2735,6 +2731,12 @@
       status.textContent = '';
       try {
         const query = new URLSearchParams({tests: settings.tests});
+        // Selected campaigns: the campaigns and NR Modes of the filters of the page.
+        if (settings.tests === 'selected') {
+          const chosen = filters() || {};
+          (chosen.campaign || []).forEach((value) => query.append('campaigns', value));
+          (chosen.nr_mode || []).forEach((value) => query.append('nr_modes', value));
+        }
         if (loadedKey === key) query.set('radius_km', String(settings.radius_km));
         const data = await api(`/api/non-qualified-calls/calls/${encodeURIComponent(key)}/map?${query}`, {signal: controllerAbort.signal});
         if (request !== controllerAbort || key !== callKey) return false;

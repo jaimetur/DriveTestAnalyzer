@@ -37,8 +37,10 @@ from src.modules.cdr_field_profiles import NETCHECK_PROFILE, CdrFieldProfile, wo
 # km, see ``group_radius``), else with the default one.
 RADII_KM = (0.5, 1.0, 2.0, 5.0, 10.0)
 DEFAULT_RADIUS_KM = 1.0
-TEST_SCOPES = {'cdr': 'This CDR', 'campaign': 'Every CDR of its campaign'}
-DEFAULT_TEST_SCOPE = 'cdr'
+# The CDRs of the RSRP / SINR samples and of the drive around a call, as for its NQ calls: those of the campaigns chosen in
+# the filters of the page (every campaign while none is chosen), or of the campaign of the call.
+TEST_SCOPES = {'selected': 'Selected campaigns', 'campaign': 'Call campaign'}
+DEFAULT_TEST_SCOPE = 'selected'
 # The Non-Qualified Calls around that the map draws (the page chooses; the diagnosis and the decisions count them all).
 FAILURE_SCOPES = {'selected': 'Selected campaigns', 'campaign': 'Call campaign'}
 DEFAULT_FAILURE_SCOPE = 'selected'
@@ -841,17 +843,30 @@ def _dataset_tests(repository: Any, dataset_id: int) -> dict[str, Any] | None:
         return entry
 
 
-def test_datasets(repository: Any, call: dict[str, Any], scope: str) -> list[int]:
-    """The CDRs whose tests the map shows: that of the call, or every CDR with the latest calls of its campaign and NR Mode."""
+def test_datasets(repository: Any, call: dict[str, Any], scope: str, campaigns: Any = (), nr_modes: Any = ()) -> list[int]:
+    """The CDRs whose tests the map shows, that of the call first: every CDR with the latest calls of the ``campaigns`` and
+    ``nr_modes`` chosen in the filters of the page (of every campaign while none is chosen), or of the campaign and NR Mode
+    of the call (``scope`` ``campaign``)."""
     from src.modules import non_qualified_calls as nq
 
     own = [int(call['dataset_id'])]
-    if scope != 'campaign' or not _text(call.get('campaign')):
-        return own
+    if scope == 'campaign':
+        if not _text(call.get('campaign')):
+            return own
+        conditions, params = ['campaign = ?', 'nr_mode = ?'], [call['campaign'], _text(call.get('nr_mode'))]
+    else:
+        chosen = [_text(value) for value in campaigns or () if _text(value)]
+        modes = [_text(value) for value in nr_modes or () if _text(value)]
+        conditions, params = [], [*chosen, *modes]
+        if chosen:
+            conditions.append(f"campaign IN ({', '.join('?' for _ in chosen)})")
+        if modes:
+            conditions.append(f"nr_mode IN ({', '.join('?' for _ in modes)})")
+    where = ''.join(f' AND {condition}' for condition in conditions)
     with repository.connection() as connection:
         rows = connection.execute(
-            f"SELECT DISTINCT dataset_id FROM {nq.NQ_CALL_POPULATION_TABLE} WHERE is_latest = 1 AND service IN ('voice', 'speech', 'data') "
-            'AND campaign = ? AND nr_mode = ?', (call['campaign'], _text(call.get('nr_mode')))).fetchall()
+            f"SELECT DISTINCT dataset_id FROM {nq.NQ_CALL_POPULATION_TABLE} WHERE is_latest = 1 AND service IN ('voice', 'speech', 'data')"
+            f'{where} ORDER BY dataset_id', params).fetchall()
     return list(dict.fromkeys([*own, *(int(row[0]) for row in rows)]))
 
 
@@ -1530,10 +1545,11 @@ def group_rings(repository: Any, call: dict[str, Any], failed_at: tuple[float, f
     return rings
 
 
-def call_map(repository: Any, call_key: str, *, radius_km: Any = None, tests: str = DEFAULT_TEST_SCOPE) -> dict[str, Any] | None:
+def call_map(repository: Any, call_key: str, *, radius_km: Any = None, tests: str = DEFAULT_TEST_SCOPE, campaigns: Any = (),
+             nr_modes: Any = ()) -> dict[str, Any] | None:
     """Everything the map of a call shows around where it failed (see the module); None for an unknown call. Without
     ``radius_km`` the radius holds the NQ calls of its hotspot and its cluster (``group_radius``), else it is the default
-    one."""
+    one. ``campaigns`` and ``nr_modes``: those chosen in the filters of the page, for the samples of Selected campaigns."""
     from src.modules import non_qualified_calls as nq
     from src.modules.inventory_insights import configured_vendor_colours
     from src.modules.nq_prioritization import call_kind
@@ -1656,7 +1672,8 @@ def call_map(repository: Any, call_key: str, *, radius_km: Any = None, tests: st
     name_failure_cells(failures, cells, families, float(config.get('max_distance_km') or 30.0))
     # The operators of the tests with the labels of the Operator Maps, as the calls show them.
     mapper = ValueMapper.from_settings(repository.chart_mapping_settings())
-    test_points = nearby_tests(repository, test_datasets(repository, call, scope), point, radius,
+    datasets = test_datasets(repository, call, scope, campaigns, nr_modes)
+    test_points = nearby_tests(repository, datasets, point, radius,
                                lambda value: mapper.map(field_kind('operator'), value))
     if test_points['truncated']:
         notes.append(f"The area has {test_points['total']:,} tests: the map shows the {len(test_points['rows']):,} nearest "
@@ -1687,7 +1704,7 @@ def call_map(repository: Any, call_key: str, *, radius_km: Any = None, tests: st
         l3_dt_logs.ensure_evidence(repository)
         sessions = l3_dt_logs.sessions_of_join_ids(repository, [call['join_id']], evidence=True).get(_text(call['join_id']).casefold(), [])
         checks += l3_dt_logs.map_checks(sessions)
-    drive = drive_context(repository, test_datasets(repository, call, scope), call, point, label, positions['start'])
+    drive = drive_context(repository, datasets, call, point, label, positions['start'])
     # Its way: from where it started to where it ended, else (a Data test) simulated along the way of its car. Where each
     # handover took place along it, an estimate by the time on each band of its RAT timeline (that of the A side of a Voice
     # call, the PCell one of a Data test, which names its bands).

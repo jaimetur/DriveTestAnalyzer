@@ -187,6 +187,10 @@ def test_the_radius_the_samples_and_the_unknown_calls(client, tmp_path):
     assert nq_call_map.DEFAULT_RADIUS_KM == 1.0 and nq_call_map.normalise_radius(2.34) == 2.4
     data = client.get(f'/api/non-qualified-calls/calls/{key}/map', params={'radius_km': 30, 'tests': 'campaign'}).json()
     assert data['radius_km'] == nq_call_map.DEFAULT_RADIUS_KM and data['tests_scope'] == 'campaign'
+    # By default those of the campaigns chosen in the filters (every campaign while none is chosen), the CDR of the call too.
+    assert nq_call_map.DEFAULT_TEST_SCOPE == 'selected' and set(nq_call_map.TEST_SCOPES) == {'selected', 'campaign'}
+    chosen = client.get(f'/api/non-qualified-calls/calls/{key}/map', params={'campaigns': ['No such campaign']}).json()
+    assert chosen['tests_scope'] == 'selected' and chosen['tests']['total'] == 1
     # Far from every inventory site: no site, and a cell trace it does not have.
     assert data['sites'] == [] and data['trace'] == [] and data['tests']['total'] == 1
     # The Focus operators of the Operator Maps, for the Operators choice of the page: none until a label has the role.

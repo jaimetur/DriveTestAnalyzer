@@ -8812,7 +8812,7 @@ def predicted_tracking_document(before: Any, package: Any) -> Any:
 # Routes
 # ---------------------------------------------------------------------------
 def install_non_qualified_calls_routes(core: Any) -> None:
-    from fastapi import Depends, HTTPException, Request
+    from fastapi import Depends, HTTPException, Query, Request
 
     def index_when_idle() -> None:
         """Index the new, changed or removed CDRs of the active workspace once nobody has used the server for a while,
@@ -9662,6 +9662,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
 
     @core.app.get('/api/non-qualified-calls/calls/{call_key}/map')
     def nq_call_map_route(call_key: str, radius_km: float | None = None, tests: str = nq_call_map.DEFAULT_TEST_SCOPE,
+                          campaigns: list[str] = Query(default=[]), nr_modes: list[str] = Query(default=[]),
                           user=Depends(core.current_user)) -> JSONResponse:
         """The map of the area where a call failed: its cells and sites, the sites around, the other Non-Qualified Calls
         and the radio levels of the tests around it (see nq_call_map; without a radius, that of the groups of the call or
@@ -9669,9 +9670,9 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         repository = workspace_repository(user)
         started = time.monotonic()
         details = {'call_key': call_key, 'radius_km': 'groups or default' if radius_km is None else nq_call_map.normalise_radius(radius_km),
-                   'tests': tests}
+                   'tests': tests, 'selected_campaigns': campaigns or 'every campaign', 'selected_nr_modes': nr_modes or 'every NR Mode'}
         try:
-            payload = nq_call_map.call_map(repository, call_key, radius_km=radius_km, tests=tests)
+            payload = nq_call_map.call_map(repository, call_key, radius_km=radius_km, tests=tests, campaigns=campaigns, nr_modes=nr_modes)
         except ValueError as error:
             log_action(repository, user, 'nq_call_map_failed', {**details, 'error': str(error)})
             raise HTTPException(422, str(error)) from error
