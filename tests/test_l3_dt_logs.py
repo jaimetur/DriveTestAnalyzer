@@ -419,3 +419,35 @@ def test_the_map_of_a_call_gives_the_hints_of_its_layer_3_dt_logs(client, tmp_pa
     assert 'LTE RSRP -117 dBm in the last 5 s of the log' in hints['l3_lte_coverage']['detail']
     event = json.loads(next(row['details'] for row in app_module.repository.list_logs() if row['action'] == 'nq_call_map'))
     assert 'l3_scg' in event['to_check']
+
+
+def test_layer_3_maps_gives_a_grid_zoomed_out_and_the_points_of_the_area_zoomed_in(client, tmp_path, monkeypatch) -> None:
+    from src.modules import non_qualified_calls as nq
+
+    monkeypatch.setattr(app_module, 'submit_background_task', lambda callback, *args: callback(*args))
+    client.post('/login', data={'username': 'super', 'password': 'super123'}, follow_redirects=False)
+    add_data_cdr(tmp_path, ['0xBB22', '0xCC33'])
+    rows = weak_coverage_rows()
+    header = sorted({key for row in rows for key in row})
+    client.post('/datasets-analysis/upload', files={'dataset_files': ('logs.csv', io.BytesIO(csv_bytes(rows, header)), 'text/csv')},
+                data={'dataset_kinds': 'l3_dt_logs'}, follow_redirects=False)
+    nq.sync_nq_calls(app_module.repository)
+
+    def maps(**payload):
+        response = client.post('/api/non-qualified-calls/l3-maps', json=payload)
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    country = maps(filters={}, zoom=6, layers=['lte_pcell:rsrp'], grid='lte_pcell:rsrp')
+    assert country['mode'] == 'grid' and [call['join_id'] for call in country['calls']] == ['0xBB22']
+    assert country['sessions'] == 1 and country['grid']['metric'] == 'rsrp' and country['grid']['cells']
+    assert sum(cell[3] for cell in country['grid']['cells']) == 12 and country['extent'][0] == 52.4
+    street = maps(filters={}, zoom=16, bbox=[52.39, -0.2, 52.42, 0.0], layers=['lte_pcell:rsrp', 'event'])
+    assert street['mode'] == 'points' and list(street['ues']) == ['0xBB22|Data']
+    kinds = {point[street['columns'].index('kind')] for point in street['ues']['0xBB22|Data']['points']}
+    assert kinds == {'lte_pcell', 'event'}
+    elsewhere = maps(filters={}, zoom=16, bbox=[40.0, 10.0, 40.1, 10.1], layers=['lte_pcell:rsrp'])
+    assert elsewhere['ues'] == {} and elsewhere['sessions'] == 1
+    around = maps(join_ids=['0xbb22', '0xcc33'], exclude='0xCC33', zoom=18, layers=['event'])
+    assert around['calls'] == [] and list(around['ues']) == ['0xBB22|Data']
+    assert any(row['action'] == 'nq_l3_maps' for row in app_module.repository.list_logs())

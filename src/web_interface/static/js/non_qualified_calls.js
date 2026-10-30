@@ -1868,7 +1868,7 @@
   };
   // The hotspots, time-window and clustered issues come with the NQ Prioritization: either panel unfolded reads both.
   const PANEL_LOADERS = Object.fromEntries(Object.entries({prioritization: loadPrioritization, clusters: loadPrioritization, rates: loadRates, failures: loadFailures,
-    progress: loadProgress, lifecycle: loadLifecycle, root: loadRootCauses, sources: loadSources})
+    progress: loadProgress, lifecycle: loadLifecycle, root: loadRootCauses, sources: loadSources, l3maps: loadL3Maps})
     .map(([name, load]) => [name, withLoadingBar(name, load)]));
   const panelShown = (name) => {
     const panel = panelOf(name);
@@ -3121,6 +3121,20 @@
   // The NQ rate depends only on these filters and on the indexed CDRs: other filter changes keep it.
   const RATE_FILTER_KEYS = ['datasets', 'service', 'campaign', 'operator', 'nr_mode'];
   let rateKey = '';
+  // Layer 3 - Maps: the Layer 3 - DT Logs of the filtered calls (nq_call_map.js mountArea), mounted when first shown and read
+  // again when the filters or the calls change.
+  let l3Maps = null, l3MapsKey = '';
+  async function loadL3Maps() {
+    const host = $('nq-l3-maps');
+    if (!host || !window.NqCallMap?.mountArea) return;
+    l3Maps = l3Maps || window.NqCallMap.mountArea({panel: host, api, toast, number, filters: () => currentFilters(),
+      openCall: async (callKey) => { if (await leaveDetail()) openDetail(callKey, {keepTab: false}); }});
+    const key = JSON.stringify([currentFilters(), state.result?.sync?.synced_at || '']);
+    if (key === l3MapsKey) return;
+    l3MapsKey = key;
+    l3Maps.load();
+  }
+
   async function loadRates() {
     const filters = currentFilters();
     const rateFilters = Object.fromEntries(RATE_FILTER_KEYS.filter((key) => key in filters).map((key) => [key, filters[key]]));

@@ -245,7 +245,7 @@
   };
 
   // One map view of a call (the one in the panel, or the larger one): its canvas, controls, legend and tooltip.
-  function createView(card, shared, {expanded = false, onExpand = null, legendHost = null} = {}) {
+  function createView(card, shared, {expanded = false, onExpand = null, legendHost = null, onViewChange = null} = {}) {
     card.classList.add('nq-map-card');
     const canvas = node('canvas', undefined, 'nq-map-canvas');
     canvas.setAttribute('role', 'img');
@@ -927,6 +927,7 @@
         }
       }
       // The points of the layers of its Layer 3 - DT Logs that are on.
+      if (window.L3Layers?.state.around) window.L3Layers.draw(context, shared.l3Around, {project, hits, zoom, width, height, faded: true});
       window.L3Layers?.draw(context, shared.l3, {project, hits, zoom, width, height});
       window.L3Layers?.drawHighlight(context, shared.l3Hover, project);
       // Where the call started (when the CDR gives where it ended too).
@@ -963,9 +964,11 @@
           hits.push({x, y, r: 10, kind: 'handover_point', item: point, priority: 5.5});
         }
       }
-      const [px, py] = project(failurePoint[0], failurePoint[1]);
-      pin(context, px, py, 10, COLOURS.call);
-      hits.push({x: px, y: py - 15, r: 13, kind: 'call', item: call, priority: 6});
+      if (!data.area) {
+        const [px, py] = project(failurePoint[0], failurePoint[1]);
+        pin(context, px, py, 10, COLOURS.call);
+        hits.push({x: px, y: py - 15, r: 13, kind: 'call', item: call, priority: 6});
+      }
       // START and END where the call started and ended (where its simulated way ended, for a Data test): beside them on the
       // side away from its road, beside the head of the pin where the pin stands.
       const tag = (text, colour, [x, y], [ux, uy], pinned, clearance) => {
@@ -1014,6 +1017,12 @@
         context.stroke();
       }
       drawMeasure();
+      // The area shown (south, west, north, east) and its zoom, for a map that reads what it draws by area.
+      if (onViewChange) {
+        const [west, north] = toLonLat(view.x - width / 2 * view.resolution, view.y - height / 2 * view.resolution);
+        const [east, south] = toLonLat(view.x + width / 2 * view.resolution, view.y + height / 2 * view.resolution);
+        onViewChange({bbox: [south, west, north, east], zoom: REFERENCE_ZOOM - Math.log2(view.resolution)});
+      }
     };
     const redraw = () => { if (!frame) frame = requestAnimationFrame(draw); };
 
@@ -1225,7 +1234,7 @@
     const renderLegend = () => {
       const data = shared.data, settings = shared.settings;
       legend.replaceChildren();
-      samples.hidden = !data;
+      samples.hidden = !data || Boolean(data.area);
       samplesToggle.classList.toggle('is-on', Boolean(settings.layers.tests));
       samplesToggle.setAttribute('aria-pressed', String(Boolean(settings.layers.tests)));
       samplesToggle.title = settings.layers.tests ? 'Hide the RSRP / SINR samples of the tests around'
@@ -1271,6 +1280,12 @@
           });
           item('dot', 'No value', COLOURS.noValue);
         }
+      }
+      if (data.area) {
+        l3Tree?.render();
+        const areaLegend = window.L3Layers?.legend(shared.l3);
+        if (areaLegend) legend.append(areaLegend);
+        return;
       }
       group(focusKind() ? `Call and NQ calls · only its ${groupFocus.label} (filtering the list)` : 'Call and NQ calls');
       // A Data test gives only where it started: its pin marks that place, and its way where it went (and failed).
@@ -2090,13 +2105,43 @@
 
     // -- loading the map of a call -------------------------------------------------------------------------------
     let request = null, l3Request = null, l3Key = '';
+    // The logs of the NQ calls around the call (its groups and its area), when asked for in its layer panel: the same layers
+    // as Layer 3 - Maps, faded below those of the call.
+    let aroundRequest = null, aroundKey = '';
+    const loadAround = async (key) => {
+      if (!window.L3Layers?.state.around || !shared.l3 || aroundKey === key) return;
+      const joinIds = [...new Set((shared.data?.failures || []).filter((failure) => failure.join_id && !failure.self).map((failure) => failure.join_id))];
+      aroundRequest?.abort();
+      shared.l3Around = null;
+      if (!joinIds.length) { aroundKey = key; return; }
+      const controllerAbort = new AbortController();
+      aroundRequest = controllerAbort;
+      try {
+        const payload = await api('/api/non-qualified-calls/l3-maps', {method: 'POST', signal: controllerAbort.signal, body: JSON.stringify({
+          join_ids: joinIds, exclude: shared.data.call.join_id || '', zoom: 18, layers: [...window.L3Layers.state.on]})});
+        if (aroundRequest !== controllerAbort || key !== callKey) return;
+        shared.l3Around = window.L3Layers.prepare(payload);
+        aroundKey = key;
+        redrawAll();
+      } catch (error) {
+        if (error.name !== 'AbortError') toast(error.message, 'error');
+      }
+    };
+    window.L3Layers?.onChange(() => {
+      if (!window.L3Layers.state.around) return;
+      // A layer switched on needs its points: they are read again.
+      aroundKey = '';
+      if (callKey && shared.l3) loadAround(callKey);
+    });
     // The Layer 3 - DT Logs of the call, when the workspace has a session of it (after its map, without delaying it).
     const loadL3 = async (key) => {
       if (!window.L3Layers || l3Key === key) return;
       l3Request?.abort();
       shared.l3 = null;
       shared.l3Hover = null;
+      shared.l3Around = null;
       l3Key = '';
+      aroundKey = '';
       window.L3Layers.refresh();
       if (!shared.data?.call?.l3_log) { redrawAll(); return; }
       const controllerAbort = new AbortController();
@@ -2107,10 +2152,12 @@
         shared.l3 = window.L3Layers.prepare(payload);
         shared.l3Hover = null;
         l3Key = key;
+        if (shared.l3) shared.l3.aroundCount = (shared.data?.failures || []).filter((failure) => failure.join_id && !failure.self).length;
         panelView.fit();
         expandedView?.fit();
         window.L3Layers.refresh();
         redrawAll();
+        loadAround(key);
       } catch (error) {
         if (error.name !== 'AbortError') toast(error.message, 'error');
       }
@@ -2287,5 +2334,112 @@
     return controller;
   }
 
-  window.NqCallMap = {mount};
+  // -- Layer 3 - Maps: the Layer 3 - DT Logs of every NQ call of the filters, on the same map as that of a call ----------------
+  // From the whole country (a grid of the average of the metric chosen, and the NQ calls by the domain of their root cause)
+  // down to a single site or call (the points of the layers on in the area shown, as on the map of a call). ``filters`` gives
+  // the filters of the page; a click on an NQ call opens it.
+  function mountArea({panel, api, toast, openCall, filters = () => ({}), number = (value) => Number(value).toLocaleString('en-GB')}) {
+    const settings = {layers: {tests: false, failures: false, sites: false, path: false, paths: false}, colour: '', radius_km: 0,
+      failures: 'every', failureColour: 'relation', operators: 'all'};
+    const shared = {data: null, settings, selection: null, l3: null};
+    shared.showsFailure = () => false;
+    shared.operatorChoice = () => 'all';
+    shared.operatorShown = () => true;
+    shared.failureLegend = () => [];
+    shared.describe = (kind, item) => (['l3', 'l3_cell', 'l3_call'].includes(kind) ? window.L3Layers.describe(item, shared.l3) : {title: '', rows: []});
+    const status = node('p', '', 'nq-map-status nq-l3-maps-status');
+    status.setAttribute('role', 'status');
+    const card = node('div', undefined, 'nq-l3-maps-card');
+    const legendHost = node('div', undefined, 'nq-map-legend-host');
+    const selected = node('section', undefined, 'nq-map-info nq-map-selected');
+    selected.hidden = true;
+    const wrap = node('div', undefined, 'nq-map-wrap');
+    wrap.append(card, legendHost, selected);
+    panel.replaceChildren(status, wrap, node('p', HINT, 'form-note nq-map-hint'));
+    const facts = (rows) => {
+      const list = node('dl', undefined, 'nq-map-facts');
+      rows.filter(([, value]) => value !== '' && value !== null && value !== undefined).forEach(([name, value]) => list.append(node('dt', name), node('dd', String(value))));
+      return list;
+    };
+    const renderSelected = () => {
+      const choice = shared.selection;
+      selected.hidden = !choice;
+      if (!choice) { selected.replaceChildren(); return; }
+      const {title, rows} = shared.describe(choice.kind, choice.item);
+      const content = node('div', undefined, 'nq-map-selected-content');
+      const head = node('header');
+      const close = node('button', '×', 'nq-map-info-close');
+      close.type = 'button';
+      close.title = 'Clear the selection';
+      close.setAttribute('aria-label', 'Clear the selection');
+      close.addEventListener('click', () => shared.select(null));
+      head.append(node('h4', title), close);
+      content.append(head, facts(rows));
+      const callKey = choice.kind === 'l3_call' ? choice.item.call_key
+        : choice.kind === 'l3' ? (shared.l3?.calls || []).find((call) => String(call.join_id).toLowerCase()
+          === String(shared.l3?.sessions?.[choice.item.point.ue]?.join_id || '').toLowerCase())?.call_key : '';
+      if (callKey) {
+        const open = node('button', 'Open this call', 'nq-secondary-action');
+        open.type = 'button';
+        open.addEventListener('click', () => openCall(callKey));
+        content.append(open);
+      }
+      selected.replaceChildren(content);
+    };
+    shared.select = (choice) => { shared.selection = choice; renderSelected(); view.redraw(); };
+    let request = null, loadedKey = '', pending = 0, lastView = null, fitted = false;
+    const keyOf = (info) => {
+      if (!info) return '';
+      const zoom = Math.floor(info.zoom);
+      const grid = info.zoom < 13;
+      // In the grid, its zoom level; with the points, the area shown (in steps of a fifth of it) and the layers on.
+      const step = (info.bbox[2] - info.bbox[0]) / 5 || 1;
+      const area = grid ? '' : info.bbox.map((value) => Math.round(value / step)).join(',');
+      return JSON.stringify([grid ? zoom : 'points', area, grid ? window.L3Layers.state.grid : [...window.L3Layers.state.on].sort()]);
+    };
+    const load = async (info, {force = false} = {}) => {
+      const key = keyOf(info);
+      if (!force && key === loadedKey) return;
+      loadedKey = key;
+      request?.abort();
+      const controllerAbort = new AbortController();
+      request = controllerAbort;
+      status.textContent = 'Reading the Layer 3 - DT Logs of the NQ calls…';
+      try {
+        const body = {filters: filters(), zoom: info ? info.zoom : 6, layers: [...window.L3Layers.state.on], grid: window.L3Layers.state.grid,
+          ...(info ? {bbox: info.bbox} : {})};
+        const payload = await api('/api/non-qualified-calls/l3-maps', {method: 'POST', body: JSON.stringify(body), signal: controllerAbort.signal});
+        if (request !== controllerAbort) return;
+        if (!shared.data) {
+          shared.data = {area: true, centre: [54.5, -2.5], radius_km: 0, basemap: payload.basemap, call: {}, groups: {},
+            tests: {operators: [], rows: [], total: 0}, trace: [], sites: [], failures: [], rings: [], drive: {route: []}, classes: {}, notes: [],
+            diagnosis: []};
+        }
+        shared.l3 = window.L3Layers.prepare(payload);
+        status.textContent = payload.sessions ? `${number(payload.calls.length)} NQ calls of the filters with Layer 3 - DT Logs · ${number(payload.sessions)} sessions`
+          + (payload.mode === 'grid' ? ' · zoom in to see the points of the layers' : '') : 'No NQ call of the filters has Layer 3 - DT Logs. Import them in Workspace (Layer 3 - DT Logs).';
+        if (!fitted && shared.l3?.extent) { fitted = true; view.fit(); }
+        window.L3Layers.refresh();
+        view.renderLegend();
+        view.redraw();
+      } catch (error) {
+        if (error.name === 'AbortError') return;
+        loadedKey = '';
+        status.textContent = error.message;
+        toast(error.message, 'error');
+      }
+    };
+    const view = createView(card, shared, {legendHost, onViewChange: (info) => {
+      lastView = info;
+      clearTimeout(pending);
+      pending = setTimeout(() => { if (shared.data) load(info); }, 350);
+    }});
+    window.L3Layers?.onChange(() => { if (shared.data && lastView) load(lastView); });
+    return {
+      // The NQ calls of the filters read again (a change of the filters): the map keeps its area.
+      load: () => { loadedKey = ''; load(lastView, {force: true}); },
+    };
+  }
+
+  window.NqCallMap = {mount, mountArea};
 })();

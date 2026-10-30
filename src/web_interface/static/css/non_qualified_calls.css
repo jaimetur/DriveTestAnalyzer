@@ -2156,3 +2156,11 @@ body:has(dialog.nq-map-expand[open]) { overflow: hidden; }
 
 /* The Diagnosis hints of the Layer 3 - DT Logs: a teal edge, beside those of the CDR. */
 .nq-map-checks li.is-l3 { box-shadow: inset 3px 0 0 #0b6e8a; }
+
+/* Layer 3 - Maps: the map of the Layer 3 - DT Logs of the filtered calls, as tall as the screen allows. */
+.nq-l3-maps-panel .nq-map-card { height: clamp(420px, calc(100vh - 16rem), 900px); }
+.nq-l3-maps-status { margin: 0 0 .5rem; color: #4f6b75; font-size: .8rem; font-weight: 700; }
+.nq-l3-area { display: flex; flex-direction: column; gap: .35rem; padding: .45rem .55rem; border: 1px solid #d7e8ed; border-radius: 10px; background: #f6fbfc; }
+.nq-l3-grid { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; font-weight: 700; }
+.nq-l3-grid select { flex: 1; min-width: 9rem; padding: .2rem .35rem; border: 1px solid #c9dade; border-radius: 6px; background: #fff; font: inherit; }
+.nq-l3-area-note { margin: 0; color: #6b8189; font-size: .7rem; }

@@ -172,11 +172,16 @@
     open: new Set(Array.isArray(stored.open) ? stored.open : ['lte', 'nr']),
     ue: stored.ue || 'all',
     panel: stored.panel !== false,
+    // Layer 3 - Maps: the metric layer its grid averages, and whether its NQ calls show.
+    grid: LAYER[stored.grid] ? stored.grid : 'lte_pcell:rsrp',
+    calls: stored.calls !== false,
+    // The map of a call: the logs of the NQ calls around it too.
+    around: stored.around === true,
   };
   const saveState = () => {
     try {
       localStorage.setItem(STATE_KEY, JSON.stringify({master: state.master, on: [...state.on], off: [...state.off].slice(0, 400),
-        open: [...state.open], ue: state.ue, panel: state.panel}));
+        open: [...state.open], ue: state.ue, panel: state.panel, grid: state.grid, calls: state.calls, around: state.around}));
     } catch (_error) { /* A private window keeps them for the page. */ }
   };
   const listeners = new Set();
@@ -186,7 +191,8 @@
   const channelKey = (kind, freq) => `${NR_KINDS.has(kind) ? 'NR' : 'LTE'}:${freq}`;
   // The points of the layers of the payload of call_layers: by layer, each with its channel and PCI groups.
   const prepare = (payload) => {
-    if (!payload || !payload.ues || !Object.keys(payload.ues).length) return null;
+    const area = Boolean(payload && payload.mode);
+    if (!payload || !payload.ues || (!area && !Object.keys(payload.ues).length)) return null;
     const columns = payload.columns;
     const at = Object.fromEntries(columns.map((name, index) => [name, index]));
     const channels = payload.channels || {};
@@ -226,10 +232,14 @@
     const trackPoints = Object.values(tracks).flat();
     if (trackPoints.length > 1) layers.direction = {count: trackPoints.length, groups: new Map()};
     const sessions = Object.fromEntries(ues.map((ue) => [ue, payload.ues[ue].session]));
-    return {points, layers, tracks, ues, sessions, joinId: payload.join_id};
+    // An area (Layer 3 - Maps): its sessions are keyed by JoinID and UE, with a grid of averages below GRID_ZOOM, its NQ calls
+    // and the extent of them all.
+    return {points, layers, tracks, ues, sessions, joinId: payload.join_id, area, mode: payload.mode || 'points', grid: payload.grid || null,
+      calls: payload.calls || [], ends: payload.ends || [], extent: payload.extent || null, truncated: Boolean(payload.truncated),
+      count: payload.sessions || ues.length};
   };
 
-  const ueShown = (data, ue) => state.ue === 'all' || !data.ues.includes(state.ue) || ue === state.ue;
+  const ueShown = (data, ue) => data.area || state.ue === 'all' || !data.ues.includes(state.ue) || ue === state.ue;
   // Whether a point is drawn by a layer: the layer, its channel (or group) and its PCI on.
   const pointLayerShown = (layerKey, point) => {
     if (!state.master || !state.on.has(layerKey)) return false;
@@ -259,8 +269,49 @@
     const index = DRAW_ORDER.indexOf(kind);
     return index < 0 ? DRAW_ORDER.length : index;
   };
-  const draw = (context, data, {project, hits, zoom = 15, width = Infinity, height = Infinity}) => {
-    if (!data || !state.master) return;
+  // The colour of an NQ call of Layer 3 - Maps: the domain of its root cause (decided, else that of the DT Analyzer RCA).
+  const DOMAIN_COLOURS = {RF: '#e8590c', RAN: '#1c7ed6', Core: '#7048e8', 'Core EPSFB': '#9c36b5', 'IMS/E2E': '#c2255c', AAA: '#2b8a3e',
+    Protocol: '#0b7285', Device: '#5c636a', Operational: '#868e96'};
+  const callDomain = (call) => call.root_domain || call.dta_domain || '';
+  const drawArea = (context, data, {project, hits, width, height}) => {
+    const grid = data.grid;
+    if (grid && state.master) {
+      for (const [lat, lon, value, count, low] of grid.cells) {
+        const half = grid.size / 2;
+        const [x1, y1] = project(lat + half, lon - half), [x2, y2] = project(lat - half, lon + half);
+        if (x2 < 0 || y2 < 0 || x1 > width || y1 > height) continue;
+        context.fillStyle = rangeColour(grid.metric, value);
+        context.globalAlpha = .78;
+        context.fillRect(x1, y1, Math.max(2, x2 - x1), Math.max(2, y2 - y1));
+        context.globalAlpha = 1;
+        hits.push({x: (x1 + x2) / 2, y: (y1 + y2) / 2, r: Math.max(4, (x2 - x1) / 2), kind: 'l3_cell', item: {grid, value, count, low, lat, lon}, priority: 1});
+      }
+    }
+    if (state.calls === false) return;
+    for (const call of data.calls) {
+      if (call.latitude === null || call.latitude === undefined) continue;
+      const [x, y] = project(call.latitude, call.longitude);
+      if (x < -10 || y < -10 || x > width + 10 || y > height + 10) continue;
+      const colour = DOMAIN_COLOURS[callDomain(call)] || '#495057';
+      context.beginPath();
+      context.moveTo(x, y - 6);
+      context.lineTo(x + 5, y);
+      context.lineTo(x, y + 6);
+      context.lineTo(x - 5, y);
+      context.closePath();
+      context.fillStyle = colour;
+      context.fill();
+      context.lineWidth = 1.4;
+      context.strokeStyle = '#fff';
+      context.stroke();
+      hits.push({x, y, r: 8, kind: 'l3_call', item: call, priority: 5});
+    }
+  };
+  const draw = (context, data, {project, hits, zoom = 15, width = Infinity, height = Infinity, faded = false}) => {
+    if (!data) return;
+    if (data.area && !faded) drawArea(context, data, {project, hits, width, height});
+    if (!state.master) return;
+    if (faded) context.globalAlpha = .55;
     const size = zoom >= 17 ? 5.2 : zoom >= 15 ? 4.4 : zoom >= 13 ? 3.6 : 3;
     const layersOn = [...state.on].filter((key) => data.layers[key]).sort((a, b) => drawOrder(a) - drawOrder(b));
     if (layersOn.includes('direction')) {
@@ -294,18 +345,24 @@
         const neighbour = /ncell/.test(point.kind);
         const pointSize = neighbour ? size * .82 : layerKey === 'event' || layerKey === 'l3' ? size * 1.08 : size;
         drawMarker(context, shape, x, y, pointSize, colourOf(layerKey, point), {nr: NR_KINDS.has(point.kind)});
-        hits.push({x, y, r: pointSize + 3, kind: 'l3', item: {layer: layerKey, point}, priority: layerKey === 'event' || layerKey === 'l3' ? 4.2 : 4.1});
+        hits.push({x, y, r: pointSize + 3, kind: 'l3', item: {layer: layerKey, point, data}, priority: layerKey === 'event' || layerKey === 'l3' ? 4.2 : 4.1});
       }
     }
+    context.globalAlpha = 1;
   };
   // The way of the UE shown (A, else the first UE) for the road of the call, its start and its end.
   const wayOf = (data) => {
-    if (!data) return null;
+    // An area (Layer 3 - Maps) has no call of its own: no way, start or end.
+    if (!data || data.area) return null;
     const ue = state.ue !== 'all' && data.tracks[state.ue] ? state.ue : data.ues.includes('A') ? 'A' : data.ues[0];
     const track = data.tracks[ue] || [];
     return track.length > 1 ? track.map((point) => [point.lat, point.lon]) : null;
   };
   const bounds = (data) => {
+    if (data?.area && data.extent) {
+      const [south, west, north, east] = data.extent;
+      return {north, south, east, west};
+    }
     const points = Object.values(data?.tracks || {}).flat();
     if (!points.length) return null;
     return {north: Math.max(...points.map((point) => point.lat)), south: Math.min(...points.map((point) => point.lat)),
@@ -315,10 +372,26 @@
   // -- what a point says (the tooltip and the selection) ----------------------------------------------------------------
   const time = (point) => String(point.ts || '').replace(/^\d{4}-\d{2}-\d{2} /, '');
   const describe = (item, data) => {
+    if (item.grid) {
+      const metric = item.grid.metric;
+      const unit = metric === 'tx' ? 'dBm' : SCALES[metric]?.unit || '';
+      return {title: `${LAYER[item.grid.layer]?.section === 'nr' ? 'NR' : 'LTE'} ${LAYER[item.grid.layer]?.block || ''} ${METRIC_LABELS[metric]}: ${number(item.value)} ${unit} on average`.replace(/\s+/g, ' '),
+        rows: [['Points', item.count], ['Lowest', `${number(item.low)} ${unit}`], ['Where', `${item.lat.toFixed(3)}, ${item.lon.toFixed(3)}`],
+          ['Zoom in', 'to see the points of the layers on']]};
+    }
+    if (item.call_key) {
+      return {title: [item.service_label, item.result].filter(Boolean).join(' · ') || 'NQ call', rows: [['JOIN_ID', item.join_id],
+        ['Operator', item.operator], ['Campaign', item.campaign], ['NR Mode', item.nr_mode], ['Started', String(item.start_time || '').replace('T', ' ').slice(0, 19)],
+        ['Root cause', [item.root_category, item.root_cause].filter(Boolean).join(' · ')],
+        ['DT Analyzer RCA', [item.dta_category, item.dta_cause].filter(Boolean).join(' · ')], ['Layer 3 - DT Logs', item.l3_log]]};
+    }
+    data = item.data || data;
     const {layer: layerKey, point} = item;
     const layer = LAYER[layerKey];
     const session = data?.sessions?.[point.ue] || {};
-    const common = [['Time', point.ts || ''], ['UE', point.ue === 'Data' ? 'Data' : `UE ${point.ue}`], ['RAN Configuration', point.ran || '']];
+    const ueName = data?.area ? String(point.ue).split('|')[1] || '' : point.ue;
+    const common = [['Time', point.ts || ''], ['UE', ueName === 'Data' ? 'Data' : `UE ${ueName}`], ...(data?.area ? [['JoinID', session.join_id || '']] : []),
+      ['RAN Configuration', point.ran || '']];
     if (layerKey === 'direction') {
       return {title: 'Direction of travel', rows: [['Time', point.ms ? new Date(point.ms).toISOString().replace('T', ' ').slice(0, 23) : ''],
         ['UE', point.ue], ['Heading', `${Math.round(point.heading)}°`]]};
@@ -385,7 +458,7 @@
       const body = node('div', undefined, 'nq-l3-body');
       if (!state.master) body.classList.add('is-off');
       // The two ends of a voice call: one of them or both.
-      if (data.ues.length > 1) {
+      if (!data.area && data.ues.length > 1) {
         const ues = node('div', undefined, 'nq-l3-ues');
         ues.setAttribute('role', 'radiogroup');
         ues.setAttribute('aria-label', 'UE shown');
@@ -400,7 +473,7 @@
         body.append(ues);
       }
       const layerRow = (layer) => {
-        const info = data.layers[layer.key];
+        const info = data.layers[layer.key] || (data.area ? {count: null, groups: new Map()} : null);
         if (!info) return null;
         const row = node('div', undefined, 'nq-l3-layer');
         const line = node('div', undefined, 'nq-l3-line');
@@ -412,7 +485,7 @@
           markerIcon(layer.metric ? SHAPE_OF[layer.metric] : SHAPE_OF[layer.key], layerColour(layer), {nr}));
         const name = node('span', layer.label, 'nq-l3-name');
         name.title = layer.name;
-        line.append(name, count(info.count));
+        line.append(name, ...(info.count === null ? [] : [count(info.count)]));
         if (expandable) {
           const more = node('button', state.open.has(openKey) ? '−' : '+', 'nq-l3-more');
           more.type = 'button';
@@ -458,7 +531,7 @@
       };
       for (const section of SECTIONS) {
         const layers = section.layers ? section.layers : section.blocks.flatMap((block) => block.layers);
-        const shown = layers.filter((layer) => data.layers[layer.key]);
+        const shown = layers.filter((layer) => data.layers[layer.key] || data.area);
         if (!shown.length) continue;
         const card = node('section', undefined, `nq-l3-section is-${section.key}`);
         const opened = state.open.has(section.key);
@@ -475,7 +548,7 @@
           if (section.layers) shown.forEach((layer) => list.append(layerRow(layer)));
           else {
             for (const block of section.blocks) {
-              const rows = block.layers.filter((layer) => data.layers[layer.key]);
+              const rows = block.layers.filter((layer) => data.layers[layer.key] || data.area);
               if (!rows.length) continue;
               list.append(node('p', block.label, 'nq-l3-block'));
               rows.forEach((layer) => list.append(layerRow(layer)));
@@ -484,6 +557,35 @@
           card.append(list);
         }
         body.append(card);
+      }
+      if (data.area) {
+        // Layer 3 - Maps: what the grid averages below its zoom, and its NQ calls.
+        const area = node('div', undefined, 'nq-l3-area');
+        const choice = node('label', undefined, 'nq-l3-grid');
+        choice.append(node('span', data.mode === 'grid' ? 'Grid of' : 'Zoomed out, a grid of'));
+        const select = node('select');
+        LAYERS.filter((layer) => ['rsrp', 'rsrq', 'sinr', 'tx'].includes(layer.metric)).forEach((layer) => {
+          const option = node('option', `${layer.section === 'nr' ? 'NR' : 'LTE'} ${layer.block} ${layer.label}`, undefined);
+          option.value = layer.key;
+          option.selected = layer.key === state.grid;
+          select.append(option);
+        });
+        select.addEventListener('change', () => { state.grid = select.value; changed(); });
+        choice.append(select);
+        area.append(choice, node('p', data.mode === 'grid' ? `The average of each cell of ${Number(data.count).toLocaleString('en-GB')} sessions: zoom in to see the points of the layers on.`
+          : `The points of the layers on in the area shown${data.truncated ? ' (the first 80,000)' : ''}.`, 'nq-l3-area-note'));
+        const calls = node('label', undefined, 'nq-l3-line');
+        calls.append(toggle(state.calls !== false, 'Show the NQ calls', (checked) => { state.calls = checked; changed(); }),
+          node('span', `NQ calls (${Number(data.calls.length).toLocaleString('en-GB')}) by the domain of their root cause`, 'nq-l3-name'));
+        area.append(calls);
+        body.prepend(area);
+      }
+      if (!data.area && data.aroundCount !== undefined) {
+        // The map of a call: the logs of the NQ calls around it too (those of its groups and its area), faded below its own.
+        const around = node('label', undefined, 'nq-l3-line nq-l3-around');
+        around.append(toggle(state.around, 'Show the logs of the NQ calls around', (checked) => { state.around = checked; changed(); }),
+          node('span', `Logs of the NQ calls around${data.aroundCount ? ` (${data.aroundCount})` : ''}`, 'nq-l3-name'));
+        body.append(around);
       }
       const footer = node('div', undefined, 'nq-l3-footer');
       const none = node('button', 'Hide all', 'nq-l3-link');
@@ -510,10 +612,22 @@
   const legend = (data) => {
     if (!data || !state.master) return null;
     const layersOn = [...state.on].filter((key) => data.layers[key]);
-    if (!layersOn.length) return null;
+    if (!layersOn.length && !data.area) return null;
     const box = node('div', undefined, 'nq-l3-legend');
     box.append(node('p', 'Layer 3 - DT Logs', 'nq-l3-legend-title'));
     const metricsShown = new Map();
+    if (data.area && data.grid) metricsShown.set(data.grid.metric, {layers: [], nr: false, grid: true});
+    if (data.area && state.calls !== false && data.calls.length) {
+      const row = node('div', undefined, 'nq-l3-legend-row');
+      row.append(node('span', 'NQ calls by root domain', 'nq-l3-legend-name'));
+      const domains = [...new Set(data.calls.map((call) => callDomain(call) || 'No root cause'))].sort();
+      for (const domain of domains) {
+        const item = node('span', undefined, 'nq-l3-legend-item');
+        item.append(markerIcon('diamond', DOMAIN_COLOURS[domain] || '#495057'), node('span', domain));
+        row.append(item);
+      }
+      box.append(row);
+    }
     for (const key of layersOn) {
       const layer = LAYER[key];
       if (['rsrp', 'rsrq', 'sinr', 'tx'].includes(layer.metric)) {
@@ -525,7 +639,7 @@
     }
     for (const [metric, entry] of metricsShown) {
       const row = node('div', undefined, 'nq-l3-legend-row');
-      row.append(node('span', `${METRIC_LABELS[metric]} (${metric === 'tx' ? 'dBm' : SCALES[metric].unit})`, 'nq-l3-legend-name'));
+      row.append(node('span', `${entry.grid ? 'Grid: ' : ''}${METRIC_LABELS[metric]} (${metric === 'tx' ? 'dBm' : SCALES[metric].unit})`, 'nq-l3-legend-name'));
       for (const [text, colour] of rangeLabels(metric)) {
         const item = node('span', undefined, 'nq-l3-legend-item');
         item.append(markerIcon(SHAPE_OF[metric], colour), node('span', text));
@@ -734,6 +848,7 @@
 
   // Every tree and timeline drawn again (a map with the data of another call).
   const refresh = () => listeners.forEach((listener) => listener());
-  window.L3Layers = {prepare, draw, describe, createTree, createTimeline, drawHighlight, legend, wayOf, bounds, state, refresh,
+  window.L3Layers = {prepare, draw, describe, createTree, createTimeline, drawHighlight, legend, wayOf, bounds, state, refresh, changed,
+    DOMAIN_COLOURS,
     onChange: (listener) => listeners.add(listener), LAYERS, SECTIONS, rangeColour, rangeIndex};
 })();

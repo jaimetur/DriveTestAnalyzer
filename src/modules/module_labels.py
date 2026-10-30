@@ -390,6 +390,7 @@ MODULE_SECTIONS: dict[str, list[tuple[Any, ...] | None]] = {
                              ('section-cluster-sites-density', 'Cluster Sites Density', 'pin'), ('section-spectrum', 'Spectrum', 'spectrum')])],
     'non-qualified-calls': [('Filters', 'Filters', 'filter'), ('NQ Prioritization & Queues', 'NQ Prioritization & Queues', 'queues'),
                             ('Hotspots, Time-Window & Clustered Issues', 'Hotspots, Time-Window & Clustered Issues', 'hotspots'),
+                            ('Layer 3 - Maps', 'Layer 3 - Maps', 'map'),
                             ('Non-Qualified Calls', 'Non-Qualified Calls', 'phone'), ('Summary', 'Summary', 'summary'),
                             ('NQ Rate by Campaign and Operator', 'NQ Rate by Campaign and Operator', 'chart'),
                             ('Failures by Type, Technology & Serving Cell', 'Failures by Type, Technology & Serving Cell', 'antenna'),

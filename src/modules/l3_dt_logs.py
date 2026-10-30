@@ -1120,3 +1120,102 @@ def map_checks(sessions: list[dict[str, Any]]) -> list[dict[str, Any]]:
     if sessions and not checks:
         add('l3_fine', 'ok', 'Layer 3 - DT Logs', 'Its log shows no failure, weak radio or rejection in the seconds before the end.')
     return checks
+
+
+# --------------------------------------------------------------------------------------------------------------
+# Layer 3 - Maps: the logs of many calls (every NQ call of the filters of NQ Calls, or those around a call)
+
+# Below this zoom level of the map, the points of a layer are drawn as a grid of the average of each cell.
+GRID_ZOOM = 13
+GRID_CELL_PIXELS = 10
+MAX_GRID_CELLS = 25000
+MAX_AREA_POINTS = 80000
+# The kinds of point a layer of the maps needs.
+LAYER_KINDS = {'ran': SERVING_KINDS, 'direction': ('lte_pcell', 'nr_pcell'), 'event': ('event',), 'l3': ('l3',)}
+GRID_METRICS = ('rsrp', 'rsrq', 'sinr', 'tx')
+
+
+def _layer_kinds(layers: Iterable[str]) -> list[str]:
+    kinds: set[str] = set()
+    for layer in layers:
+        layer = str(layer)
+        if layer in LAYER_KINDS:
+            kinds.update(LAYER_KINDS[layer])
+        elif ':' in layer and layer.split(':', 1)[0] in POINT_KINDS:
+            kinds.add(layer.split(':', 1)[0])
+    return sorted(kinds)
+
+
+def area_layers(repository: Any, join_ids: Iterable[object], *, bbox: Iterable[float] | None = None, zoom: float = 6,
+                layers: Iterable[str] = (), grid: str = '') -> dict[str, Any]:
+    """The Layer 3 - DT Logs of many calls for a map of an area: from GRID_ZOOM the points of the layers on within ``bbox``
+    (south, west, north, east) by session, in the form of call_layers; below it, the grid of the layer ``grid`` (a metric
+    layer such as ``lte_pcell:rsrp``: the average of each cell of the map); always where each session ended and the extent
+    of them all."""
+    sessions = [session for items in sessions_of_join_ids(repository, join_ids).values() for session in items]
+    extent = None
+    ends = []
+    for session in sessions:
+        if session.get('last_latitude') is not None and session.get('last_longitude') is not None:
+            ends.append([session['join_id'], session['ue'], session['last_latitude'], session['last_longitude'],
+                         session.get('service') or '', session.get('call_status') or '', session.get('operator') or '', session.get('campaign') or ''])
+        if session.get('min_latitude') is not None:
+            box = (session['min_latitude'], session['min_longitude'], session['max_latitude'], session['max_longitude'])
+            extent = box if extent is None else (min(extent[0], box[0]), min(extent[1], box[1]), max(extent[2], box[2]), max(extent[3], box[3]))
+    result: dict[str, Any] = {'sessions': len(sessions), 'ends': ends, 'extent': list(extent) if extent else None,
+                              'columns': list(CLIENT_COLUMNS), 'ues': {}, 'channels': {}, 'grid': None, 'mode': 'points',
+                              'kinds': {key: {'label': value['label'], 'tech': value['tech'], 'metrics': list(value['metrics'])}
+                                        for key, value in POINT_KINDS.items()}, 'truncated': False}
+    files = sorted({str(path) for session in sessions
+                    if (path := ensure_points(repository.db_path, int(session['dataset_id']), session.get('source')))})
+    if not files or not sessions:
+        return result
+    keys = sorted({str(session['join_id']).casefold() for session in sessions})
+    box = [float(value) for value in bbox] if bbox else None
+    where = 'list_contains(?, lower(join_id))'
+    params: list[Any] = [keys]
+    if box and len(box) == 4:
+        where += ' AND lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?'
+        params += [box[0], box[2], box[1], box[3]]
+    source = f"read_parquet([{', '.join(sql_text(file) for file in files)}])"
+    with duckdb.connect(config={'memory_limit': '1GB', 'threads': 4}) as duck:
+        if float(zoom) < GRID_ZOOM:
+            layer_kind, _, metric = str(grid or 'lte_pcell:rsrp').partition(':')
+            if layer_kind not in POINT_KINDS or metric not in GRID_METRICS:
+                layer_kind, metric = 'lte_pcell', 'rsrp'
+            # A cell of GRID_CELL_PIXELS pixels at this zoom (the map is 256 × 2^zoom pixels around the world).
+            size = 360.0 / (256 * 2 ** float(zoom)) * GRID_CELL_PIXELS
+            rows = duck.execute(
+                f"SELECT FLOOR(lat / {size}) AS y, FLOOR(lon / {size}) AS x, AVG({metric}), COUNT(*), MIN({metric}) FROM {source} "
+                f"WHERE {where} AND kind = ? AND {metric} IS NOT NULL GROUP BY 1, 2 LIMIT {MAX_GRID_CELLS + 1}",
+                [*params, layer_kind]).fetchall()
+            result['mode'] = 'grid'
+            result['grid'] = {'layer': f'{layer_kind}:{metric}', 'metric': metric, 'size': size,
+                              'cells': [[(y + .5) * size, (x + .5) * size, round(value, 2), count, round(low, 2)]
+                                        for y, x, value, count, low in rows[:MAX_GRID_CELLS]]}
+            result['truncated'] = len(rows) > MAX_GRID_CELLS
+            return result
+        kinds = _layer_kinds(layers) or ['lte_pcell', 'nr_pcell']
+        names = ', '.join(CLIENT_COLUMNS)
+        rows = duck.execute(f"SELECT join_id, ue, {names} FROM {source} WHERE {where} AND list_contains(?, kind) "
+                            f"ORDER BY join_id, ue, ms LIMIT {MAX_AREA_POINTS + 1}", [*params, kinds]).fetchall()
+    result['truncated'] = len(rows) > MAX_AREA_POINTS
+    by_session = {(str(session['join_id']).casefold(), str(session['ue'])): session for session in sessions}
+    index = {name: position for position, name in enumerate(CLIENT_COLUMNS)}
+    for row in rows[:MAX_AREA_POINTS]:
+        join_id, ue, point = row[0], row[1], list(row[2:])
+        key = f'{join_id}|{ue}'
+        entry = result['ues'].get(key)
+        if entry is None:
+            session = by_session.get((str(join_id).casefold(), str(ue)), {})
+            entry = result['ues'][key] = {'session': {name: session.get(name) for name in (
+                'dataset_id', 'dataset_name', 'join_id', 'ue', 'campaign', 'operator', 'service', 'call_status', 'start_time', 'end_time')},
+                'points': [], 'track': []}
+        entry['points'].append(point)
+        kind, freq = point[index['kind']], point[index['freq']]
+        if freq is not None and kind in POINT_KINDS and POINT_KINDS[kind]['tech'] in {'LTE', 'NR'}:
+            tech = POINT_KINDS[kind]['tech']
+            result['channels'].setdefault(f'{tech}:{freq}', frequency_label(freq, tech))
+    for entry in result['ues'].values():
+        entry['track'] = _track(entry['points'], index['ms'], index['lat'], index['lon'])
+    return result
