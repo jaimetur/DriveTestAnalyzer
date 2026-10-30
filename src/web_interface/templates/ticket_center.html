@@ -3,7 +3,7 @@
 {% block content %}
 <link rel="stylesheet" href="{{ static_path('css/ticket_center.css') }}?v={{ asset_version('css/ticket_center.css') }}">
 <link rel="stylesheet" href="{{ static_path('css/rich_text.css') }}?v={{ asset_version('css/rich_text.css') }}">
-{% set board = ticket_dashboard %}
+{% set overview = ticket_dashboard %}
 <section class="dashboard-stack spacious-stack ticket-center" data-ticket-center data-ticket-center-title="{{ ticket_center_title }}">
   <article class="panel hero-panel module-hero-ticket-center">
     <div class="section-head tight-head">
@@ -16,12 +16,12 @@
     <p class="lede">Open a ticket of its type with what happened or what you need and its screenshots: it keeps the version of the tool and the date. Follow it with comments; its reporter edits it and sets its priority, and the super-admins attend it until it is resolved.</p>
     {# Each tile lists its tickets in Tickets; pressed again, the list shows the open ones (ticket_center.js). #}
     <div class="tickets-stats" role="group" aria-label="List the tickets of a count">
-      <button type="button" class="tickets-stat" data-status="open" data-tickets-stat="open" aria-pressed="false" title="List the open tickets"><span class="tickets-stat-label">Open</span><strong>{{ board.kpis.open }}</strong></button>
+      <button type="button" class="tickets-stat" data-status="open" data-tickets-stat="open" aria-pressed="false" title="List the open tickets"><span class="tickets-stat-label">Open</span><strong>{{ overview.kpis.open }}</strong></button>
       {% for status in ['new', 'in_progress', 'waiting_info'] %}
-      <button type="button" class="tickets-stat" data-status="{{ status }}" data-tickets-stat="{{ status }}" aria-pressed="false" title="List the {{ ticket_statuses[status] }} tickets"><span class="tickets-stat-label">{{ ticket_statuses[status] }}</span><strong>{{ board.kpis[status] }}</strong></button>
+      <button type="button" class="tickets-stat" data-status="{{ status }}" data-tickets-stat="{{ status }}" aria-pressed="false" title="List the {{ ticket_statuses[status] }} tickets"><span class="tickets-stat-label">{{ ticket_statuses[status] }}</span><strong>{{ overview.kpis[status] }}</strong></button>
       {% endfor %}
-      <button type="button" class="tickets-stat" data-status="resolved" data-tickets-stat="recent" aria-pressed="false" title="List the tickets resolved or closed in the last 30 days"><span class="tickets-stat-label">Resolved · 30 days</span><strong>{{ board.kpis.resolved_recent }}</strong></button>
-      {% if user %}<button type="button" class="tickets-stat" data-status="mine" data-tickets-stat="mine" aria-pressed="false" title="List my open tickets"><span class="tickets-stat-label">My open</span><strong>{{ board.kpis.mine_open }}</strong></button>{% endif %}
+      <button type="button" class="tickets-stat" data-status="resolved" data-tickets-stat="recent" aria-pressed="false" title="List the tickets resolved or closed in the last 30 days"><span class="tickets-stat-label">Resolved · 30 days</span><strong>{{ overview.kpis.resolved_recent }}</strong></button>
+      {% if user %}<button type="button" class="tickets-stat" data-status="mine" data-tickets-stat="mine" aria-pressed="false" title="List my open tickets"><span class="tickets-stat-label">My open</span><strong>{{ overview.kpis.mine_open }}</strong></button>{% endif %}
     </div>
 
     {# The views of the page, each shown alone below the header: the New Ticket form, the list of tickets, the
@@ -41,195 +41,199 @@
       <div>
         <p class="eyebrow">Overview</p>
         <h2>Dashboard</h2>
-        <p class="summary-description">How the tickets are going at a glance: created and resolved over time, the open tickets to attend first, the latest activity, every ticket by type, status and module. Click a count to list its tickets.</p>
+        <p class="summary-description">How the tickets of the period chosen are going at a glance: created and resolved over it, the open tickets to attend first, the latest activity, the tickets by type, status and module. Click a count to list its tickets.</p>
       </div>
       <span class="collapse-chip">Collapse</span>
     </summary>
-    <div class="tickets-dashboard">
-      <div class="tickets-board">
-        {# A chart per period; the choice shows one of them, Weekly by default (ticket_center.js). #}
-        <section class="tickets-card tickets-trend-card" aria-labelledby="tickets-trend-title" data-tickets-trend>
-          <header class="tickets-card-head">
-            <h3 id="tickets-trend-title" data-trend-title>{{ (board.trends | selectattr('period', 'equalto', board.trend_period) | first).title }}</h3>
-            <div class="tickets-period-choice" role="group" aria-label="Period of the chart">
-              {% for trend in board.trends %}<button type="button" class="tickets-period-option" data-trend-choice="{{ trend.period }}" data-title="{{ trend.title }}" aria-pressed="{{ 'true' if trend.period == board.trend_period else 'false' }}">{{ trend.choice }}</button>{% endfor %}
-            </div>
-          </header>
-          {% for trend in board.trends %}
-          <div class="tickets-trend" data-trend-period="{{ trend.period }}"{% if trend.period != board.trend_period %} hidden{% endif %}>
-            <div class="tickets-trend-head">
-              <ul class="tickets-legend">
-                <li><span class="tickets-swatch" data-series="created" aria-hidden="true"></span>Created <strong>{{ trend.created }}</strong></li>
-                <li><span class="tickets-swatch" data-series="resolved" aria-hidden="true"></span>Resolved <strong>{{ trend.resolved }}</strong></li>
-              </ul>
-              <span class="tickets-card-note">{{ trend.note }}</span>
-            </div>
-            <div class="tickets-periods" style="--trend-periods: {{ trend.periods | length }}" role="img" aria-label="{{ trend.created }} tickets created and {{ trend.resolved }} resolved in the {{ trend.note | lower }}">
-              <span class="tickets-periods-peak" aria-hidden="true">{{ trend.peak }}</span>
-              {% for entry in trend.periods %}
-              <div class="tickets-period"{% if entry.weekend %} data-weekend="true"{% endif %} data-tip="{{ entry.name }}: {{ entry.created }} created, {{ entry.resolved }} resolved">
-                <div class="tickets-period-bars"><span class="tickets-bar" data-series="created" style="height: {{ entry.created_height }}%"></span><span class="tickets-bar" data-series="resolved" style="height: {{ entry.resolved_height }}%"></span></div>
-                <span class="tickets-period-label">{% if entry.axis %}{{ entry.label }}{% endif %}</span>
-              </div>
-              {% endfor %}
-            </div>
-          </div>
-          {% endfor %}
-        </section>
-
-        {# Every ticket at a glance: open, resolved (or closed) and rejected, with this week, the oldest open and the unassigned ones. #}
-        {% set glance = board.glance %}
-        <section class="tickets-card tickets-glance-card" aria-labelledby="tickets-glance-title">
-          <header class="tickets-card-head"><h3 id="tickets-glance-title">At a glance</h3><span class="tickets-card-note">{{ glance.total }} ticket{{ '' if glance.total == 1 else 's' }}</span></header>
-          <div class="tickets-glance">
-            {% set gap = 0.8 if glance.ring.segments | length > 1 else 0 %}
-            <svg class="tickets-glance-ring" viewBox="0 0 42 42" role="img" aria-label="{% for segment in glance.ring.segments %}{{ segment.count }} {{ segment.label }}{% if not loop.last %}, {% endif %}{% else %}No ticket{% endfor %}">
-              <circle class="tickets-glance-track" cx="21" cy="21" r="15.9155"/>
-              {% for segment in glance.ring.segments %}
-              {% set length = [segment.share - gap, 0.2] | max %}
-              <circle class="tickets-glance-part" data-part="{{ segment.key }}" cx="21" cy="21" r="15.9155" stroke-dasharray="{{ length | round(3) }} {{ (100 - length) | round(3) }}" stroke-dashoffset="{{ ((125 - segment.start - gap / 2) % 100) | round(3) }}" data-board-show='{{ segment.show | tojson }}' data-tip="{{ segment.count }} {{ segment.label }} ({{ segment.percent }}%)"/>
-              {% endfor %}
-              {% if glance.open %}
-              <text class="tickets-glance-number" x="21" y="22">{{ glance.open }}</text>
-              <text class="tickets-glance-caption" x="21" y="27.5">open</text>
-              {% else %}
-              <path class="tickets-glance-check" d="M15.5 18.6l3.8 3.8 7.4-7.8"/>
-              <text class="tickets-glance-caption" x="21" y="28.2">all clear</text>
-              {% endif %}
-            </svg>
-            <ul class="tickets-glance-legend">
-              {% for segment in glance.ring.segments %}
-              <li><button type="button" class="tickets-glance-item" data-part="{{ segment.key }}" data-board-show='{{ segment.show | tojson }}' data-tip="List the {{ segment.count }} {{ segment.label | lower }} ticket{{ '' if segment.count == 1 else 's' }}"><span>{{ segment.label }}</span><strong>{{ segment.count }}</strong><small>{{ segment.percent }}%</small></button></li>
-              {% else %}<li class="ticket-muted">No ticket yet.</li>{% endfor %}
-            </ul>
-          </div>
-          <div class="tickets-glance-facts">
-            <span><strong>{{ '+' if glance.week_opened else '' }}{{ glance.week_opened }}</strong>opened this week</span>
-            <span><strong>{{ glance.week_resolved }}</strong>resolved this week</span>
-            {% if board.oldest_open %}<a href="/tickets/{{ board.oldest_open.id }}" title="#{{ board.oldest_open.id }} {{ board.oldest_open.title }}, opened {{ board.oldest_open.created_date }}"><strong>{{ board.oldest_open.days }} day{{ '' if board.oldest_open.days == 1 else 's' }}</strong>oldest open ticket</a>{% else %}<span><strong>—</strong>oldest open ticket</span>{% endif %}
-            <span><strong>{{ glance.unassigned }}</strong>open unassigned</span>
-          </div>
-        </section>
-
-        {# The open tickets to attend first (the most urgent, then the oldest) and those resolved last; the latest entries of every ticket. #}
-        {% set attention = board.attention %}
-        {# Both cards end together: the longer of their lists shows the entries that fit (ticket_center.js). #}
-        <section class="tickets-card tickets-attention-card" aria-labelledby="tickets-attention-title" data-board-even data-board-even-min="1">
-          <header class="tickets-card-head"><h3 id="tickets-attention-title">Needs attention</h3><span class="tickets-card-note">{{ attention.open }} open · the most urgent and oldest first{% if attention.unassigned %} · {{ attention.unassigned }} unassigned{% endif %}</span></header>
-          {% if attention.rows %}
-          <ol class="tickets-attention">
-            {% for row in attention.rows %}
-            <li><a class="tickets-attention-row" href="/tickets/{{ row.id }}" data-tone="{{ row.tone }}">
-              {{ priority_pill(row.priority, row.priority_label) }}
-              <span class="tickets-attention-main">
-                <span class="tickets-attention-title"><span class="tickets-attention-type" data-type="{{ row.ticket_type }}" title="{{ row.type_label }}">{{ type_icon(row.ticket_type) }}</span><strong>#{{ row.id }}</strong> {{ row.title }}</span>
-                <span class="tickets-attention-meta">{{ status_pill(row.status, row.status_label) }}{{ module_chip(row.module_title, row.module_color) }}</span>
-              </span>
-              <span class="tickets-attention-who" title="Assigned to {{ row.assignee or 'nobody' }}"><span class="tickets-avatar{% if not row.assignee %} is-empty{% endif %}" aria-hidden="true">{{ (row.assignee.split() | map('first') | join(''))[:2] | upper if row.assignee else '?' }}</span>{{ row.assignee or 'Unassigned' }}</span>
-              <span class="tickets-attention-age" title="Opened {{ row.days }} day{{ '' if row.days == 1 else 's' }} ago"><strong>{{ row.age }}</strong><span class="tickets-age-bar"><span style="width: {{ row.share }}%"></span></span></span>
-            </a></li>
-            {% endfor %}
-          </ol>
-          {% if attention.more %}<button type="button" class="tickets-more" data-board-show='{}'>{{ attention.more }} more open ticket{{ '' if attention.more == 1 else 's' }} →</button>{% endif %}
-          {% else %}
-          <div class="tickets-calm"><span class="tickets-calm-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m6 12.5 4 4 8-9"/></svg></span><span><strong>All caught up</strong><small>No ticket is open{% if glance.week_resolved %}: {{ glance.week_resolved }} resolved this week{% endif %}.</small></span></div>
-          {% endif %}
-          {% if attention.resolved %}
-          {# The columns of the list: the ticket, the version that fixed it, the time from opened to resolved, and when. #}
-          <div class="tickets-resolved-head"><span>Resolved last</span><span title="The version that fixed the ticket">Fixed in</span><span title="The time from opened to resolved or closed">Took</span><span title="When it was resolved or closed">Resolved</span></div>
-          <ul class="tickets-resolved">
-            {% for item in attention.resolved %}
-            <li data-board-even-item><a class="tickets-resolved-row" href="/tickets/{{ item.id }}">
-              <span class="tickets-attention-type" data-type="{{ item.ticket_type }}" aria-hidden="true">{{ type_icon(item.ticket_type) }}</span>
-              <span class="tickets-resolved-title"><strong>#{{ item.id }}</strong> {{ item.title }}</span>
-              {% if item.fixed_version %}<span class="tickets-version" title="Fixed in v{{ item.fixed_version }}">v{{ item.fixed_version }}</span>{% elif item.status == 'closed' %}<span class="tickets-version is-closed" title="Closed without a version">Closed</span>{% else %}<span class="tickets-version is-empty"></span>{% endif %}
-              <span class="tickets-took" title="Time from opened to {{ item.status_label | lower }}">{{ item.took }}</span>
-              <time>{{ item.ago }}</time>
-            </a></li>
-            {% endfor %}
-          </ul>
-          {% endif %}
-        </section>
-
-        <section class="tickets-card tickets-feed-card" aria-labelledby="tickets-feed-title" data-board-even data-board-even-min="3">
-          <header class="tickets-card-head"><h3 id="tickets-feed-title">Latest activity</h3><span class="tickets-card-note">The newest first</span></header>
-          {% if board.feed %}
-          <ol class="tickets-feed">
-            {% for entry in board.feed %}
-            <li class="tickets-feed-entry" data-kind="{{ entry.kind }}"{% if entry.status %} data-status="{{ entry.status }}"{% endif %} data-board-even-item>
-              <span class="tickets-feed-dot" aria-hidden="true"><svg viewBox="0 0 24 24">{% if entry.kind == 'opened' %}<path d="M12 6v12M6 12h12"/>{% elif entry.kind == 'comment' %}<path d="M5 6h14v9H11l-4 3v-3H5z"/>{% elif entry.kind == 'status' %}<path d="m6 12.5 4 4 8-9"/>{% else %}<path d="m5 19 1-4L15.5 5.5l3 3L9 18z"/>{% endif %}</svg></span>
-              <span class="tickets-feed-body">
-                <span class="tickets-feed-line"><strong>{{ entry.who }}</strong> {{ entry.verb }}{% if entry.status %} {{ status_pill(entry.status, entry.status_label) }}{% elif entry.fields %} <small>{{ entry.fields }}</small>{% endif %}</span>
-                <a class="tickets-feed-ticket" href="/tickets/{{ entry.ticket_id }}" title="#{{ entry.ticket_id }} {{ entry.title }}">#{{ entry.ticket_id }} {{ entry.title }}</a>
-              </span>
-              <time title="{{ entry.when }}">{{ entry.ago }}</time>
-            </li>
-            {% endfor %}
-          </ol>
-          {% else %}<p class="ticket-muted">No activity yet.</p>{% endif %}
-        </section>
-
-        <section class="tickets-card tickets-matrix-card" aria-labelledby="tickets-matrix-title">
-          <header class="tickets-card-head"><h3 id="tickets-matrix-title">Tickets by type and status</h3><span class="tickets-card-note">Click a count to list its tickets</span></header>
-          <div class="tickets-matrix-wrap">
-            <table class="tickets-matrix">
-              <thead><tr><th scope="col">Type</th>{% for key, label in board.statuses %}<th scope="col" data-status="{{ key }}">{{ label }}</th>{% endfor %}<th scope="col">Total</th></tr></thead>
-              <tbody>
-                {% for row in board.types %}
-                <tr>
-                  <th scope="row">{{ type_badge(row.type, row.label) }}</th>
-                  {% for key, label in board.statuses %}
-                  <td><button type="button" class="tickets-cell{% if not row.counts[key] %} is-empty{% endif %}" data-board-cell data-type="{{ row.type }}" data-status="{{ key }}" data-tip="{{ row.counts[key] }} {{ row.label }} ticket{{ '' if row.counts[key] == 1 else 's' }} {{ label }}">{{ row.counts[key] }}</button></td>
-                  {% endfor %}
-                  <td><button type="button" class="tickets-cell tickets-cell-total" data-board-cell data-type="{{ row.type }}" data-status="" data-tip="{{ row.total }} {{ row.label }} ticket{{ '' if row.total == 1 else 's' }} in every status">{{ row.total }}</button></td>
-                </tr>
-                {% endfor %}
-              </tbody>
-              <tfoot><tr><th scope="row">Total</th>{% for key, label in board.statuses %}<td><button type="button" class="tickets-cell tickets-cell-total" data-board-cell data-type="" data-status="{{ key }}" data-tip="{{ board.status_totals[key] }} ticket{{ '' if board.status_totals[key] == 1 else 's' }} {{ label }}">{{ board.status_totals[key] }}</button></td>{% endfor %}<td><button type="button" class="tickets-cell tickets-cell-total" data-board-cell data-type="" data-status="" data-tip="Every ticket">{{ board.total }}</button></td></tr></tfoot>
-            </table>
-          </div>
-        </section>
-
-        {# Every ticket of each module, its open ones in its colour; a module lists its tickets. #}
-        <section class="tickets-card tickets-modules-card" aria-labelledby="tickets-modules-title">
-          <header class="tickets-card-head"><h3 id="tickets-modules-title">Tickets per module</h3><span class="tickets-card-note">Open of every ticket</span></header>
-          {% if board.modules %}
-          <ul class="tickets-modules">
-            {% for module in board.modules[:8] %}
-            <li><button type="button" class="tickets-module{% if not module.count %} is-calm{% endif %}" data-board-module="{{ module.key }}" style="--module-color: {{ module.color }}" data-tip="{{ module.title }}: {{ module.count }} open of {{ module.total }} ticket{{ '' if module.total == 1 else 's' }}">
-              <span class="tickets-module-name"><span class="tickets-rank-dot" aria-hidden="true"></span>{{ module.title }}</span>
-              <span class="tickets-module-bar"><span class="tickets-module-total" style="width: {{ (100 * module.total / board.max_module) | round(2) }}%"><span class="tickets-module-open" style="width: {{ (100 * module.count / module.total) | round(2) }}%"></span></span></span>
-              <strong>{{ module.count }}<small>/{{ module.total }}</small></strong>
-            </button></li>
-            {% endfor %}
-          </ul>
-          {% else %}<p class="ticket-muted">No ticket yet.</p>{% endif %}
-        </section>
-
-        <div class="tickets-type-cards">
-          {% for row in board.types %}
-          <section class="tickets-card tickets-type-card" data-type="{{ row.type }}" aria-label="{{ row.label }} tickets">
-            <header class="tickets-card-head">{{ type_badge(row.type, row.label) }}<span class="tickets-type-count"><strong>{{ row.open }}</strong> open of {{ row.total }}</span></header>
-            <div class="tickets-stack" role="img" aria-label="{% for segment in row.segments %}{{ segment.count }} {{ segment.label }}{% if not loop.last %}, {% endif %}{% else %}No ticket{% endfor %}">
-              {% for segment in row.segments %}<button type="button" class="tickets-stack-segment" data-board-cell data-type="{{ row.type }}" data-status="{{ segment.status }}" style="flex-grow: {{ segment.count }}" data-tip="{{ segment.count }} {{ segment.label }} ({{ '%.0f' | format(segment.share) }}%)" aria-label="{{ segment.count }} {{ segment.label }}"></button>{% endfor %}
-            </div>
-            {% if row.segments %}<ul class="tickets-stack-legend">{% for segment in row.segments %}<li data-status="{{ segment.status }}">{{ segment.label }} <strong>{{ segment.count }}</strong></li>{% endfor %}</ul>{% endif %}
-            <p class="tickets-type-median">Median time to resolve <strong>{{ row.median_resolve }}</strong></p>
-            {% if row.open %}
-            <p class="tickets-subhead">Open by priority</p>
-            <div class="tickets-priorities">
-              {% for item in row.priorities %}
-              <button type="button" class="tickets-priority{% if not item.count %} is-empty{% endif %}" data-board-priority data-type="{{ row.type }}" data-priority="{{ item.priority }}" data-tip="{{ item.count }} open {{ row.label }} ticket{{ '' if item.count == 1 else 's' }} {{ item.priority }} · {{ item.label }}">
-                <span class="tickets-priority-bar"><span style="height: {{ (100 * item.count / row.max_priority) | round(2) if row.max_priority else 0 }}%"></span></span>
-                <strong>{{ item.count }}</strong><small>{{ item.priority }}</small>
-              </button>
-              {% endfor %}
-            </div>
-            {% else %}<p class="tickets-type-calm"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 12.5 4 4 8-9"/></svg>No open {{ row.label }} tickets</p>{% endif %}
-          </section>
-          {% endfor %}
+    <div class="tickets-dashboard" data-tickets-switch="scope">
+      <div class="tickets-scope-bar">
+        <span class="tickets-scope-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg></span>
+        <span class="tickets-scope-label">Period</span>
+        <div class="tickets-period-choice" role="group" aria-label="Period of the tickets">
+          {% for scope in ticket_board.scopes %}<button type="button" class="tickets-period-option" data-switch-choice="{{ scope.key }}" aria-pressed="{{ 'true' if scope.key == ticket_board.scope else 'false' }}">{{ scope.choice }}</button>{% endfor %}
         </div>
       </div>
+      {% for board in ticket_board.scopes %}
+      <div class="tickets-switch-view tickets-scope-view" data-switch-view="{{ board.key }}"{% if board.key != ticket_board.scope %} hidden{% endif %}>
+        <p class="tickets-scope-range">{% if board.key == 'all' %}Every ticket, since <strong>{{ board.range }}</strong>{% else %}Tickets opened in <strong>{{ board.range }}</strong> · those resolved or closed and the activity, in it{% endif %}</p>
+          <div class="tickets-board">
+            {# The tickets created and resolved in each day, week or month of the period. #}
+            {% set trend = board.trend %}
+            <section class="tickets-card tickets-trend-card" aria-labelledby="tickets-trend-title-{{ board.key }}">
+              <header class="tickets-card-head"><h3 id="tickets-trend-title-{{ board.key }}">{{ trend.title }}</h3><span class="tickets-card-note">Tickets opened and resolved or closed in each</span></header>
+              <div class="tickets-trend">
+                <ul class="tickets-legend">
+                  <li><span class="tickets-swatch" data-series="created" aria-hidden="true"></span>Created <strong>{{ trend.created }}</strong></li>
+                  <li><span class="tickets-swatch" data-series="resolved" aria-hidden="true"></span>Resolved <strong>{{ trend.resolved }}</strong></li>
+                </ul>
+                <div class="tickets-periods" style="--trend-periods: {{ trend.periods | length }}" role="img" aria-label="{{ trend.created }} tickets created and {{ trend.resolved }} resolved">
+                  <span class="tickets-periods-peak" aria-hidden="true">{{ trend.peak }}</span>
+                  {% for entry in trend.periods %}
+                  <div class="tickets-period"{% if entry.weekend %} data-weekend="true"{% endif %}{% if not entry.future %} data-tip="{{ entry.name }}: {{ entry.created }} created, {{ entry.resolved }} resolved"{% endif %}>
+                    <div class="tickets-period-bars"><span class="tickets-bar" data-series="created" style="height: {{ entry.created_height }}%"></span><span class="tickets-bar" data-series="resolved" style="height: {{ entry.resolved_height }}%"></span></div>
+                    <span class="tickets-period-label">{% if entry.axis %}{{ entry.label }}{% endif %}</span>
+                  </div>
+                  {% endfor %}
+                </div>
+              </div>
+            </section>
+
+            {# The tickets opened in the period at a glance: open, resolved (or closed) and rejected, with those opened and resolved in
+               it, the oldest open one and the unassigned ones. #}
+            {% set glance = board.glance %}
+            <section class="tickets-card tickets-glance-card" aria-labelledby="tickets-glance-title-{{ board.key }}">
+              <header class="tickets-card-head"><h3 id="tickets-glance-title-{{ board.key }}">At a glance</h3><span class="tickets-card-note">{{ glance.total }} ticket{{ '' if glance.total == 1 else 's' }}</span></header>
+              <div class="tickets-glance">
+                {% set gap = 0.8 if glance.ring.segments | length > 1 else 0 %}
+                <svg class="tickets-glance-ring" viewBox="0 0 42 42" role="img" aria-label="{% for segment in glance.ring.segments %}{{ segment.count }} {{ segment.label }}{% if not loop.last %}, {% endif %}{% else %}No ticket{% endfor %}">
+                  <circle class="tickets-glance-track" cx="21" cy="21" r="15.9155"/>
+                  {% for segment in glance.ring.segments %}
+                  {% set length = [segment.share - gap, 0.2] | max %}
+                  <circle class="tickets-glance-part" data-part="{{ segment.key }}" cx="21" cy="21" r="15.9155" stroke-dasharray="{{ length | round(3) }} {{ (100 - length) | round(3) }}" stroke-dashoffset="{{ ((125 - segment.start - gap / 2) % 100) | round(3) }}" data-board-show='{{ segment.show | tojson }}' data-tip="{{ segment.count }} {{ segment.label }} ({{ segment.percent }}%)"/>
+                  {% endfor %}
+                  {% if glance.open %}
+                  <text class="tickets-glance-number" x="21" y="22">{{ glance.open }}</text>
+                  <text class="tickets-glance-caption" x="21" y="27.5">open</text>
+                  {% else %}
+                  <path class="tickets-glance-check" d="M15.5 18.6l3.8 3.8 7.4-7.8"/>
+                  <text class="tickets-glance-caption" x="21" y="28.2">all clear</text>
+                  {% endif %}
+                </svg>
+                <ul class="tickets-glance-legend">
+                  {% for segment in glance.ring.segments %}
+                  <li><button type="button" class="tickets-glance-item" data-part="{{ segment.key }}" data-board-show='{{ segment.show | tojson }}' data-tip="List the {{ segment.count }} {{ segment.label | lower }} ticket{{ '' if segment.count == 1 else 's' }}"><span>{{ segment.label }}</span><strong>{{ segment.count }}</strong><small>{{ segment.percent }}%</small></button></li>
+                  {% else %}<li class="ticket-muted">No ticket yet.</li>{% endfor %}
+                </ul>
+              </div>
+              <div class="tickets-glance-facts">
+                <span><strong>{{ glance.opened }}</strong>tickets opened</span>
+                <span><strong>{{ glance.resolved }}</strong>tickets resolved or closed</span>
+                {% if board.oldest_open %}<a href="/tickets/{{ board.oldest_open.id }}" title="#{{ board.oldest_open.id }} {{ board.oldest_open.title }}, opened {{ board.oldest_open.created_date }}"><strong>{{ board.oldest_open.days }} day{{ '' if board.oldest_open.days == 1 else 's' }}</strong>oldest open ticket</a>{% else %}<span><strong>—</strong>oldest open ticket</span>{% endif %}
+                <span><strong>{{ glance.unassigned }}</strong>open unassigned</span>
+              </div>
+            </section>
+
+            {# The open tickets to attend first (the most urgent, then the oldest) and those resolved last; the latest entries of every ticket. #}
+            {% set attention = board.attention %}
+            {# Both cards end together: the longer of their lists shows the entries that fit (ticket_center.js). #}
+            <section class="tickets-card tickets-attention-card" aria-labelledby="tickets-attention-title-{{ board.key }}" data-board-even data-board-even-min="1">
+              <header class="tickets-card-head"><h3 id="tickets-attention-title-{{ board.key }}">Needs attention</h3><span class="tickets-card-note">{{ attention.open }} open · the most urgent and oldest first{% if attention.unassigned %} · {{ attention.unassigned }} unassigned{% endif %}</span></header>
+              {% if attention.rows %}
+              <ol class="tickets-attention">
+                {% for row in attention.rows %}
+                <li><a class="tickets-attention-row" href="/tickets/{{ row.id }}" data-tone="{{ row.tone }}">
+                  {{ priority_pill(row.priority, row.priority_label) }}
+                  <span class="tickets-attention-main">
+                    <span class="tickets-attention-title-{{ board.key }}"><span class="tickets-attention-type" data-type="{{ row.ticket_type }}" title="{{ row.type_label }}">{{ type_icon(row.ticket_type) }}</span><strong>#{{ row.id }}</strong> {{ row.title }}</span>
+                    <span class="tickets-attention-meta">{{ status_pill(row.status, row.status_label) }}{{ module_chip(row.module_title, row.module_color) }}</span>
+                  </span>
+                  <span class="tickets-attention-who" title="Assigned to {{ row.assignee or 'nobody' }}"><span class="tickets-avatar{% if not row.assignee %} is-empty{% endif %}" aria-hidden="true">{{ (row.assignee.split() | map('first') | join(''))[:2] | upper if row.assignee else '?' }}</span>{{ row.assignee or 'Unassigned' }}</span>
+                  <span class="tickets-attention-age" title="Opened {{ row.days }} day{{ '' if row.days == 1 else 's' }} ago"><strong>{{ row.age }}</strong><span class="tickets-age-bar"><span style="width: {{ row.share }}%"></span></span></span>
+                </a></li>
+                {% endfor %}
+              </ol>
+              {% if attention.more %}<button type="button" class="tickets-more" data-board-show='{}'>{{ attention.more }} more open ticket{{ '' if attention.more == 1 else 's' }} →</button>{% endif %}
+              {% else %}
+              <div class="tickets-calm"><span class="tickets-calm-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m6 12.5 4 4 8-9"/></svg></span><span><strong>All caught up</strong><small>No ticket opened in the period is open{% if glance.resolved %}: {{ glance.resolved }} resolved or closed in it{% endif %}.</small></span></div>
+              {% endif %}
+              {% if attention.resolved %}
+              {# The columns of the list: the ticket, the version that fixed it, the time from opened to resolved, and when. #}
+              <div class="tickets-resolved-head"><span>Resolved last</span><span title="The version that fixed the ticket">Fixed in</span><span title="The time from opened to resolved or closed">Took</span><span title="When it was resolved or closed">Resolved</span></div>
+              <ul class="tickets-resolved">
+                {% for item in attention.resolved %}
+                <li data-board-even-item><a class="tickets-resolved-row" href="/tickets/{{ item.id }}">
+                  <span class="tickets-attention-type" data-type="{{ item.ticket_type }}" aria-hidden="true">{{ type_icon(item.ticket_type) }}</span>
+                  <span class="tickets-resolved-title"><strong>#{{ item.id }}</strong> {{ item.title }}</span>
+                  {% if item.fixed_version %}<span class="tickets-version" title="Fixed in v{{ item.fixed_version }}">v{{ item.fixed_version }}</span>{% elif item.status == 'closed' %}<span class="tickets-version is-closed" title="Closed without a version">Closed</span>{% else %}<span class="tickets-version is-empty"></span>{% endif %}
+                  <span class="tickets-took" title="Time from opened to {{ item.status_label | lower }}">{{ item.took }}</span>
+                  <time>{{ item.ago }}</time>
+                </a></li>
+                {% endfor %}
+              </ul>
+              {% endif %}
+            </section>
+
+            <section class="tickets-card tickets-feed-card" aria-labelledby="tickets-feed-title-{{ board.key }}" data-board-even data-board-even-min="3">
+              <header class="tickets-card-head"><h3 id="tickets-feed-title-{{ board.key }}">Latest activity</h3><span class="tickets-card-note">The newest first</span></header>
+              {% if board.feed %}
+              <ol class="tickets-feed">
+                {% for entry in board.feed %}
+                <li class="tickets-feed-entry" data-kind="{{ entry.kind }}"{% if entry.status %} data-status="{{ entry.status }}"{% endif %} data-board-even-item>
+                  <span class="tickets-feed-dot" aria-hidden="true"><svg viewBox="0 0 24 24">{% if entry.kind == 'opened' %}<path d="M12 6v12M6 12h12"/>{% elif entry.kind == 'comment' %}<path d="M5 6h14v9H11l-4 3v-3H5z"/>{% elif entry.kind == 'status' %}<path d="m6 12.5 4 4 8-9"/>{% else %}<path d="m5 19 1-4L15.5 5.5l3 3L9 18z"/>{% endif %}</svg></span>
+                  <span class="tickets-feed-body">
+                    <span class="tickets-feed-line"><strong>{{ entry.who }}</strong> {{ entry.verb }}{% if entry.status %} {{ status_pill(entry.status, entry.status_label) }}{% elif entry.fields %} <small>{{ entry.fields }}</small>{% endif %}</span>
+                    <a class="tickets-feed-ticket" href="/tickets/{{ entry.ticket_id }}" title="#{{ entry.ticket_id }} {{ entry.title }}">#{{ entry.ticket_id }} {{ entry.title }}</a>
+                  </span>
+                  <time title="{{ entry.when }}">{{ entry.ago }}</time>
+                </li>
+                {% endfor %}
+              </ol>
+              {% else %}<p class="ticket-muted">No activity yet.</p>{% endif %}
+            </section>
+
+            <section class="tickets-card tickets-matrix-card" aria-labelledby="tickets-matrix-title-{{ board.key }}">
+              <header class="tickets-card-head"><h3 id="tickets-matrix-title-{{ board.key }}">Tickets by type and status</h3><span class="tickets-card-note">Click a count to list its tickets</span></header>
+              <div class="tickets-matrix-wrap">
+                <table class="tickets-matrix">
+                  <thead><tr><th scope="col">Type</th>{% for key, label in board.statuses %}<th scope="col" data-status="{{ key }}">{{ label }}</th>{% endfor %}<th scope="col">Total</th></tr></thead>
+                  <tbody>
+                    {% for row in board.types %}
+                    <tr>
+                      <th scope="row">{{ type_badge(row.type, row.label) }}</th>
+                      {% for key, label in board.statuses %}
+                      <td><button type="button" class="tickets-cell{% if not row.counts[key] %} is-empty{% endif %}" data-board-cell data-type="{{ row.type }}" data-status="{{ key }}" data-tip="{{ row.counts[key] }} {{ row.label }} ticket{{ '' if row.counts[key] == 1 else 's' }} {{ label }}">{{ row.counts[key] }}</button></td>
+                      {% endfor %}
+                      <td><button type="button" class="tickets-cell tickets-cell-total" data-board-cell data-type="{{ row.type }}" data-status="" data-tip="{{ row.total }} {{ row.label }} ticket{{ '' if row.total == 1 else 's' }} in every status">{{ row.total }}</button></td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                  <tfoot><tr><th scope="row">Total</th>{% for key, label in board.statuses %}<td><button type="button" class="tickets-cell tickets-cell-total" data-board-cell data-type="" data-status="{{ key }}" data-tip="{{ board.status_totals[key] }} ticket{{ '' if board.status_totals[key] == 1 else 's' }} {{ label }}">{{ board.status_totals[key] }}</button></td>{% endfor %}<td><button type="button" class="tickets-cell tickets-cell-total" data-board-cell data-type="" data-status="" data-tip="Every ticket">{{ board.total }}</button></td></tr></tfoot>
+                </table>
+              </div>
+            </section>
+
+            {# Every ticket of each module, its open ones in its colour; a module lists its tickets. #}
+            <section class="tickets-card tickets-modules-card" aria-labelledby="tickets-modules-title-{{ board.key }}">
+              <header class="tickets-card-head"><h3 id="tickets-modules-title-{{ board.key }}">Tickets per module</h3><span class="tickets-card-note">Open of every ticket</span></header>
+              {% if board.modules %}
+              <ul class="tickets-modules">
+                {% for module in board.modules[:8] %}
+                <li><button type="button" class="tickets-module{% if not module.count %} is-calm{% endif %}" data-board-module="{{ module.key }}" style="--module-color: {{ module.color }}" data-tip="{{ module.title }}: {{ module.count }} open of {{ module.total }} ticket{{ '' if module.total == 1 else 's' }}">
+                  <span class="tickets-module-name"><span class="tickets-rank-dot" aria-hidden="true"></span>{{ module.title }}</span>
+                  <span class="tickets-module-bar"><span class="tickets-module-total" style="width: {{ (100 * module.total / board.max_module) | round(2) }}%"><span class="tickets-module-open" style="width: {{ (100 * module.count / module.total) | round(2) }}%"></span></span></span>
+                  <strong>{{ module.count }}<small>/{{ module.total }}</small></strong>
+                </button></li>
+                {% endfor %}
+              </ul>
+              {% else %}<p class="ticket-muted">No ticket yet.</p>{% endif %}
+            </section>
+
+            <div class="tickets-type-cards">
+              {% for row in board.types %}
+              <section class="tickets-card tickets-type-card" data-type="{{ row.type }}" aria-label="{{ row.label }} tickets">
+                <header class="tickets-card-head">{{ type_badge(row.type, row.label) }}<span class="tickets-type-count"><strong>{{ row.open }}</strong> open of {{ row.total }}</span></header>
+                <div class="tickets-stack" role="img" aria-label="{% for segment in row.segments %}{{ segment.count }} {{ segment.label }}{% if not loop.last %}, {% endif %}{% else %}No ticket{% endfor %}">
+                  {% for segment in row.segments %}<button type="button" class="tickets-stack-segment" data-board-cell data-type="{{ row.type }}" data-status="{{ segment.status }}" style="flex-grow: {{ segment.count }}" data-tip="{{ segment.count }} {{ segment.label }} ({{ '%.0f' | format(segment.share) }}%)" aria-label="{{ segment.count }} {{ segment.label }}"></button>{% endfor %}
+                </div>
+                {% if row.segments %}<ul class="tickets-stack-legend">{% for segment in row.segments %}<li data-status="{{ segment.status }}">{{ segment.label }} <strong>{{ segment.count }}</strong></li>{% endfor %}</ul>{% endif %}
+                <p class="tickets-type-median">Median time to resolve <strong>{{ row.median_resolve }}</strong></p>
+                {% if row.open %}
+                <p class="tickets-subhead">Open by priority</p>
+                <div class="tickets-priorities">
+                  {% for item in row.priorities %}
+                  <button type="button" class="tickets-priority{% if not item.count %} is-empty{% endif %}" data-board-priority data-type="{{ row.type }}" data-priority="{{ item.priority }}" data-tip="{{ item.count }} open {{ row.label }} ticket{{ '' if item.count == 1 else 's' }} {{ item.priority }} · {{ item.label }}">
+                    <span class="tickets-priority-bar"><span style="height: {{ (100 * item.count / row.max_priority) | round(2) if row.max_priority else 0 }}%"></span></span>
+                    <strong>{{ item.count }}</strong><small>{{ item.priority }}</small>
+                  </button>
+                  {% endfor %}
+                </div>
+                {% else %}<p class="tickets-type-calm"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 12.5 4 4 8-9"/></svg>No open {{ row.label }} tickets</p>{% endif %}
+              </section>
+              {% endfor %}
+            </div>
+          </div>
+      </div>
+      {% endfor %}
       <div class="tickets-tip" data-board-tip role="tooltip" hidden></div>
     </div>
   </details>

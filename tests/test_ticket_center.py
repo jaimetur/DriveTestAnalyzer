@@ -452,7 +452,7 @@ def test_the_addresses_of_bugs_report_lead_to_ticket_center(client):
 def test_the_design_counts_tickets_by_type_status_priority_module_and_period():
     from datetime import date
 
-    from src.modules.ticket_center import TREND_PERIODS, recently_resolved, ticket_dashboard
+    from src.modules.ticket_center import TREND_PERIODS, recently_resolved, ticket_board, ticket_dashboard, ticket_trend
 
     def ticket(number, ticket_type, status, priority='P3', module='', created='2026-10-05', resolved='', created_by='ana'):
         return {'id': number, 'title': f'T{number}', 'ticket_type': ticket_type, 'status': status, 'priority': priority, 'module': module,
@@ -483,15 +483,15 @@ def test_the_design_counts_tickets_by_type_status_priority_module_and_period():
     # Every ticket of each module, those with most open tickets first.
     assert [(module['key'], module['count'], module['total']) for module in board['modules']] == [('scoring', 2, 2), ('reporting', 1, 1), ('', 0, 3)]
     assert board['max_module'] == 3
-    # At a glance: open, resolved (or closed) and rejected, this week (from today, a Monday) and the open ones unassigned.
+    # At a glance: open, resolved (or closed) and rejected, and the open ones unassigned.
     glance = board['glance']
     assert [(part['key'], part['count']) for part in glance['ring']['segments']] == [('open', 3), ('done', 2), ('rejected', 1)]
-    assert (glance['week_opened'], glance['week_resolved'], glance['unassigned'], glance['total']) == (1, 0, 3, 6)
+    assert (glance['unassigned'], glance['total']) == (3, 6)
     assert [row['median_resolve'] for row in board['types']] == ['2d 1h', '62d 1h', '—']
-    # A chart per period, Weekly by default: twelve weeks from Monday, the current one last, with what was created and
-    # resolved (not rejected) in each and a label every three weeks.
-    trends = {trend['period']: trend for trend in board['trends']}
-    assert list(trends) == list(TREND_PERIODS) and board['trend_period'] == 'week'
+    # Created vs resolved by period, Weekly by default: twelve weeks from Monday, the current one last, with what was
+    # created and resolved (not rejected) in each and a label every three weeks.
+    trends = {period: ticket_trend(tickets, today, period) for period in TREND_PERIODS}
+    assert ticket_trend(tickets, today)['period'] == 'week'
     weeks = trends['week']['periods']
     assert len(weeks) == 12 and weeks[0]['start'] == date(2026, 8, 3) and weeks[-1]['start'] == today
     assert [(week['created'], week['resolved']) for week in weeks[-3:]] == [(2, 0), (1, 1), (1, 0)]
@@ -512,6 +512,17 @@ def test_the_design_counts_tickets_by_type_status_priority_module_and_period():
     assert (trends['year']['title'], trends['year']['note']) == ('Created vs resolved per year', 'Last 5 years')
     assert board['oldest_open'] == {'id': 1, 'title': 'T1', 'ticket_type': 'bug', 'days': 79, 'created_date': '2026-08-01'}
     assert ticket_dashboard([], today=today)['oldest_open'] is None
+    # The Dashboard of each period, All time first shown, as Statistics counts it: in October, the 4 tickets opened in it
+    # and the 1 resolved in it (the rejected one left out), per day of October.
+    boards = {scope['key']: scope for scope in ticket_board(tickets, [], today=today)['scopes']}
+    assert list(boards) == ['all', 'week', 'month', 'quarter', 'year'] and boards['all']['total'] == 6
+    october = boards['month']
+    assert (october['range'], october['total'], october['glance']['opened'], october['glance']['resolved']) == ('October 2026', 4, 4, 1)
+    assert (october['trend']['unit'], len(october['trend']['periods']), october['trend']['created'], october['trend']['resolved']) == ('day', 31, 4, 1)
+    assert october['trend']['periods'][19]['future'] and october['trend']['periods'][2]['weekend']
+    assert [row['median_resolve'] for row in october['types']] == ['2d 1h', '—', '—']
+    assert [row['id'] for row in october['attention']['rows']] == [2, 4] and [item['id'] for item in october['attention']['resolved']] == [3]
+    assert {entry['ticket_id'] for entry in october['feed']} == {2, 3, 4, 6}
 
 
 def test_times_are_written_in_calendar_days_hours_and_minutes():

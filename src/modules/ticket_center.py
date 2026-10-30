@@ -267,29 +267,36 @@ def _period_names(period: str, start: date) -> tuple[str, str]:
     return str(start.year), str(start.year)
 
 
-def ticket_trend(tickets: list[dict[str, Any]], today: date, period: str = DEFAULT_TREND_PERIOD) -> dict[str, Any]:
+def ticket_trend(tickets: list[dict[str, Any]], today: date, period: str = DEFAULT_TREND_PERIOD,
+                 first: int | None = None, last: int | None = None) -> dict[str, Any]:
     """The tickets created and those resolved (or closed) in each of the last periods of ``period`` (a key of
-    ``TREND_PERIODS``), the current one last, with the height of their bars and which of them the axis labels."""
+    ``TREND_PERIODS``), or in those numbered ``first`` to ``last`` (by ``_period_index``), the current one up to today,
+    with the height of their bars and which of them the axis labels."""
     choice, unit, count, step = TREND_PERIODS[period]
-    last = _period_index(period, today)
+    if first is None or last is None:
+        last = _period_index(period, today)
+        first, note = last - count + 1, f'Last {count} {unit}s'
+    else:
+        count, note = last - first + 1, ''
+        step = max(1, math.ceil(count / 8))
     periods = []
-    for index in range(last - count + 1, last + 1):
+    for index in range(first, last + 1):
         start = _period_start(period, index)
         label, name = _period_names(period, start)
         periods.append({'start': start, 'label': label, 'name': name, 'axis': (last - index) % step == 0, 'created': 0, 'resolved': 0,
-                        'weekend': period == 'day' and start.weekday() >= 5})
+                        'weekend': period == 'day' and start.weekday() >= 5, 'future': start > today})
     for ticket in tickets:
         for key, day in (('created', _day(ticket.get('created_at'))),
                          ('resolved', _day(ticket.get('resolved_at')) if ticket['status'] in DONE_STATUSES else None)):
-            position = _period_index(period, day) - last + count - 1 if day is not None and day <= today else -1
-            if position >= 0:
+            position = _period_index(period, day) - first if day is not None and day <= today else -1
+            if 0 <= position < count:
                 periods[position][key] += 1
     peak = max([1, *(max(entry['created'], entry['resolved']) for entry in periods)])
     for entry in periods:
         entry['created_height'] = round(100 * entry['created'] / peak, 2)
         entry['resolved_height'] = round(100 * entry['resolved'] / peak, 2)
     return {
-        'period': period, 'choice': choice, 'title': f'Created vs resolved per {unit}', 'note': f'Last {count} {unit}s',
+        'period': period, 'choice': choice, 'unit': unit, 'title': f'Created vs resolved per {unit}', 'note': note,
         'periods': periods, 'peak': peak,
         'created': sum(entry['created'] for entry in periods), 'resolved': sum(entry['resolved'] for entry in periods),
     }
@@ -299,9 +306,8 @@ def ticket_dashboard(tickets: list[dict[str, Any]], *, username: str | None = No
     """What the dashboard of Ticket Center counts from the tickets of the list (with their ``module_title`` and
     ``module_color``): the open ones by status, those resolved lately and those of ``username``; every ticket by type
     and status; the open ones of each type by priority, and the median time its tickets took to be resolved; every
-    ticket of each module with its open ones; the tickets created and resolved in each of the last days, weeks (from
-    Monday), months, quarters and years; the open, resolved (or closed) and rejected tickets at a glance, with those
-    opened and resolved this week and the open ones nobody attends; and the oldest open ticket."""
+    ticket of each module with its open ones; the open, resolved (or closed) and rejected tickets at a glance, with the
+    open ones nobody attends; and the oldest open ticket. ``ticket_board`` gives it for each period."""
     today = today or local_today()
     open_tickets = [ticket for ticket in tickets if ticket['status'] in OPEN_STATUSES]
     mine = (username or '').casefold()
@@ -340,13 +346,10 @@ def ticket_dashboard(tickets: list[dict[str, Any]], *, username: str | None = No
     module_rows = sorted(modules.values(), key=lambda entry: (-entry['count'], -entry['total'], str(entry['title']).casefold()))
     done = [ticket for ticket in tickets if ticket['status'] in DONE_STATUSES]
     rejected = sum(1 for ticket in tickets if ticket['status'] == 'rejected')
-    monday = today - timedelta(days=today.weekday())
     glance = {
         'open': len(open_tickets), 'done': len(done), 'rejected': rejected, 'total': len(tickets),
         'ring': _donut([('open', 'Open', len(open_tickets), {}), ('done', 'Resolved or closed', len(done), {'statuses': sorted(DONE_STATUSES)}),
                         ('rejected', 'Rejected', rejected, {'statuses': ['rejected']})]),
-        'week_opened': sum(1 for ticket in tickets if (day := _day(ticket.get('created_at'))) is not None and monday <= day <= today),
-        'week_resolved': sum(1 for ticket in done if (day := _day(ticket.get('resolved_at'))) is not None and monday <= day <= today),
         'unassigned': sum(1 for ticket in open_tickets if not ticket.get('assigned_to')),
     }
     oldest =min(open_tickets, key=lambda ticket: (str(ticket['created_at']), int(ticket['id'])), default=None)
@@ -356,11 +359,40 @@ def ticket_dashboard(tickets: list[dict[str, Any]], *, username: str | None = No
         'statuses': [(status, STATUSES[status]) for status in DASHBOARD_STATUSES],
         'status_totals': {status: sum(entry['counts'][status] for entry in types) for status in DASHBOARD_STATUSES},
         'total': len(tickets), 'modules': module_rows, 'max_module': max([1, *(entry['total'] for entry in module_rows)]), 'glance': glance,
-        'trends': [ticket_trend(tickets, today, period) for period in TREND_PERIODS], 'trend_period': DEFAULT_TREND_PERIOD,
         'oldest_open': {'id': oldest['id'], 'title': oldest['title'], 'ticket_type': oldest.get('ticket_type') or DEFAULT_TICKET_TYPE,
                         'days': (today - oldest_day).days if oldest_day else 0,
                         'created_date': str(oldest['created_at'])[:10]} if oldest else None,
     }
+
+
+def ticket_board(tickets: list[dict[str, Any]], events: Iterable[dict[str, Any]] = (), *, username: str | None = None,
+                 names: dict[str, str] | None = None, today: date | None = None, now: datetime | None = None) -> dict[str, Any]:
+    """What the Dashboard view of Ticket Center shows for each period of ``TICKET_SCOPES`` (All time first shown), as
+    Statistics counts it: of the tickets opened in the period, the dashboard (``ticket_dashboard``: at a glance, by type
+    and status, by module, each type with its open ones by priority, the oldest open one) and those to attend first; of
+    those resolved or closed in it, the median time of each type and those resolved last; the tickets created and
+    resolved in each day, week or month of the period; and its latest activity."""
+    today = today or local_today()
+    events = list(events)
+    first_day = min((day for ticket in tickets if (day := _day(ticket.get('created_at')))), default=today)
+    scopes = []
+    for key in TICKET_SCOPES:
+        scope = _all_time(ticket_scope(key, today), first_day, today)
+        opened = [ticket for ticket in tickets if _in_scope(_day(ticket.get('created_at')), scope)]
+        resolved = [ticket for ticket in tickets if ticket['status'] in DONE_STATUSES and _in_scope(_day(ticket.get('resolved_at')), scope)]
+        board = ticket_dashboard(opened, username=username, today=today)
+        for row in board['types']:
+            took = [days for ticket in resolved if str(ticket.get('ticket_type') or DEFAULT_TICKET_TYPE) == row['type']
+                    and (days := _days_between(ticket.get('created_at'), ticket.get('resolved_at'))) is not None]
+            row['median_resolve'] = _duration_text(median(took) if took else None)
+        board['glance'].update(opened=len(opened), resolved=len(resolved))
+        first, last = _scope_indexes(scope, first_day, today)
+        attention = ticket_attention(opened, today, now=now)
+        attention['resolved'] = ticket_attention(resolved, today, now=now)['resolved']
+        scopes.append({**{name: scope[name] for name in ('key', 'choice', 'range', 'unit')}, **board,
+                       'trend': ticket_trend(tickets, today, scope['unit'], first, last), 'attention': attention,
+                       'feed': ticket_feed(tickets, events, names=names, now=now, window=(scope['start'], scope['end']) if scope['start'] else None)})
+    return {'scopes': scopes, 'scope': DEFAULT_TICKET_SCOPE}
 
 
 def _ago(moment: datetime | None, now: datetime) -> str:
@@ -416,10 +448,10 @@ def ticket_attention(tickets: list[dict[str, Any]], today: date, limit: int = AT
 
 
 def ticket_feed(tickets: list[dict[str, Any]], events: Iterable[dict[str, Any]], *, names: dict[str, str] | None = None,
-                now: datetime | None = None, limit: int = FEED_ENTRIES) -> list[dict[str, Any]]:
-    """The latest entries of every ticket, the newest first, up to ``limit``: each ticket opened, each comment and each
-    change of its timeline (a change of status with the new one, another change with the fields it changed), with who
-    made it (by the name of ``names``) and how long ago."""
+                now: datetime | None = None, limit: int = FEED_ENTRIES, window: tuple[date, date] | None = None) -> list[dict[str, Any]]:
+    """The latest entries of every ticket, the newest first, up to ``limit`` (of the days of ``window`` only, when
+    given): each ticket opened, each comment and each change of its timeline (a change of status with the new one,
+    another change with the fields it changed), with who made it (by the name of ``names``) and how long ago."""
     now = now or datetime.now().astimezone()
     names = names or {}
     by_id = {int(ticket['id']): ticket for ticket in tickets}
@@ -434,6 +466,8 @@ def ticket_feed(tickets: list[dict[str, Any]], events: Iterable[dict[str, Any]],
             changes = {}
         entries.append((_moment(event.get('created_at')), 'comment' if event.get('kind') == 'comment' else 'change', ticket,
                         str(event.get('username') or ''), changes if isinstance(changes, dict) else {}))
+    if window:
+        entries = [entry for entry in entries if entry[0] and window[0] <= entry[0].date() <= window[1]]
     entries.sort(key=lambda entry: (entry[0].timestamp() if entry[0] else 0, entry[1] != 'opened'), reverse=True)
     rows = []
     for moment, kind, ticket, username, changes in entries[:limit]:

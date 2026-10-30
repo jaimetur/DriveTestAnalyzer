@@ -84,29 +84,30 @@
     dropzones.set(zone, {reset: () => { files = []; sync(); }, count: () => files.length});
   });
 
-  // Needs attention and Latest activity, side by side, end together: the card whose content goes lower hides the last
-  // entries of its list (the tickets resolved last, the latest activity), whole and keeping its minimum, while its end
-  // is lower than that of the other card by more than about half an entry. Worked out again when the dashboard is
-  // shown and when the window changes size; one below the other (narrow screens), both show every entry.
-  const evenCards = [...document.querySelectorAll('[data-board-even]')];
+  // Needs attention and Latest activity, side by side in the dashboard of each period, end together: the card whose
+  // content goes lower hides the last entries of its list (the tickets resolved last, the latest activity), whole and
+  // keeping its minimum, while its end is lower than that of the other card by more than about half an entry. Worked
+  // out again when the dashboard or another period is shown and when the window changes size; one below the other
+  // (narrow screens), both show every entry.
   const evenItems = (card) => [...card.querySelectorAll('[data-board-even-item]')];
   const contentEnd = (card) => Math.max(...[...card.children].filter((child) => !child.hidden && child.getClientRects().length)
     .map((child) => child.getBoundingClientRect().bottom));
-  const evenBoard = () => {
-    if (evenCards.length !== 2) return;
-    evenCards.forEach((card) => evenItems(card).forEach((item) => { item.hidden = false; }));
-    const [first, second] = evenCards.map((card) => card.getBoundingClientRect());
+  const evenBoard = () => document.querySelectorAll('.tickets-board').forEach((board) => {
+    const cards = [...board.querySelectorAll('[data-board-even]')];
+    if (cards.length !== 2) return;
+    cards.forEach((card) => evenItems(card).forEach((item) => { item.hidden = false; }));
+    const [first, second] = cards.map((card) => card.getBoundingClientRect());
     if (!first.height || Math.abs(first.top - second.top) > 1) return;
     for (let step = 0; step < 40; step += 1) {
-      const ends = evenCards.map(contentEnd);
-      const lower = evenCards[ends[0] > ends[1] ? 0 : 1];
+      const ends = cards.map(contentEnd);
+      const lower = cards[ends[0] > ends[1] ? 0 : 1];
       const shown = evenItems(lower).filter((item) => !item.hidden);
       const last = shown.at(-1);
       if (!last || shown.length <= Number(lower.dataset.boardEvenMin || 0)
           || Math.abs(ends[0] - ends[1]) < last.getBoundingClientRect().height * 0.6) break;
       last.hidden = true;
     }
-  };
+  });
   let evenFrame = 0;
   const evenSoon = () => { window.cancelAnimationFrame(evenFrame); evenFrame = window.requestAnimationFrame(evenBoard); };
   window.addEventListener('resize', evenSoon);
@@ -382,31 +383,8 @@
     apply();
   }
 
-  // The chart of the tickets created and resolved of the dashboard shows the period chosen, Weekly by default; this
-  // browser remembers it.
-  const trends = [...document.querySelectorAll('[data-tickets-trend]')];
-  if (trends.length) {
-    const trendKey = 'ticket-center:trend-period';
-    const choose = (period) => {
-      if (!trends.some((trend) => trend.querySelector(`[data-trend-choice="${period}"]`))) return;
-      trends.forEach((trend) => {
-        const choices = [...trend.querySelectorAll('[data-trend-choice]')];
-        const chosen = choices.find((button) => button.dataset.trendChoice === period);
-        if (!chosen) return;
-        choices.forEach((button) => button.setAttribute('aria-pressed', String(button === chosen)));
-        trend.querySelectorAll('[data-trend-period]').forEach((chart) => { chart.hidden = chart.dataset.trendPeriod !== period; });
-        const title = trend.querySelector('[data-trend-title]');
-        if (title && chosen.dataset.title) title.textContent = chosen.dataset.title;
-      });
-    };
-    try { choose(window.localStorage.getItem(trendKey)); } catch (_) { /* Weekly. */ }
-    document.querySelectorAll('[data-trend-choice]').forEach((button) => button.addEventListener('click', () => {
-      choose(button.dataset.trendChoice);
-      try { window.localStorage.setItem(trendKey, button.dataset.trendChoice); } catch (_) { /* Not remembered. */ }
-    }));
-  }
-
-  // The views chosen in Statistics and Time Spent: the period (All time by default, the same in both) and, in each card
+  // The views chosen in the Dashboard, Statistics and Time Spent: the period (All time by default, the same in the three)
+  // and, in each card
   // with two views, Resolved or Open, Fixed in or Opened with, Reporters or Assignees (the first by default). Every switch
   // of a name shows the same view, and this browser remembers it; a switch owns the choices and views not inside
   // another one.
@@ -420,6 +398,7 @@
     owned(card, '[data-switch-view]').forEach((part) => { part.hidden = part.dataset.switchView !== view; });
     const title = owned(card, '[data-switch-title]')[0];
     if (title && chosen.dataset.title) title.textContent = chosen.dataset.title;
+    if (name === 'scope') evenSoon();
   });
   new Set(switches.map((card) => card.dataset.ticketsSwitch)).forEach((name) => {
     try { chooseView(name, window.localStorage.getItem(`ticket-center:statistics:${name}`)); } catch (_) { /* The default view. */ }

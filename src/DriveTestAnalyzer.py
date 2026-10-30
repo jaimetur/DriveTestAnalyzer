@@ -17739,7 +17739,7 @@ def ticket_center_page(request: Request, user: SessionUser | None = Depends(opti
     from src.modules.ticket_center import (
         DEFAULT_PRIORITY, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_PER_UPLOAD, OPEN_STATUSES, PRIORITIES, STATUSES, TEXT_GUIDE,
         TEXT_GUIDES, TICKET_TYPE_HINTS, TICKET_TYPES, list_tickets, local_today, recently_resolved, ticket_dashboard,
-        ticket_attention, ticket_events, ticket_feed, ticket_statistics, ticket_time_spent,
+        ticket_board, ticket_events, ticket_statistics, ticket_time_spent,
     )
 
     modules = ticket_modules()
@@ -17749,9 +17749,9 @@ def ticket_center_page(request: Request, user: SessionUser | None = Depends(opti
     today = local_today()
     events = ticket_events(repository)
     dashboard = ticket_dashboard(tickets, username=user.username if user else None, today=today)
-    # The open tickets to attend first and the latest activity, on the dashboard too.
-    dashboard['attention'] = ticket_attention(tickets, today)
-    dashboard['feed'] = ticket_feed(tickets, events, names={username: person['name'] for username, person in people.items()})
+    # The Dashboard view, for each period as Statistics counts it.
+    board = ticket_board(tickets, events, username=user.username if user else None,
+                         names={username: person['name'] for username, person in people.items()}, today=today)
     statistics = ticket_statistics(tickets, events, today=today, versions=tool_versions())
     time_spent = ticket_time_spent(tickets, events, today=today)
     for ticket in tickets:
@@ -17762,7 +17762,7 @@ def ticket_center_page(request: Request, user: SessionUser | None = Depends(opti
         'ticket_open_statuses': [status for status in STATUSES if status in OPEN_STATUSES],
         'ticket_types': TICKET_TYPES, 'ticket_type_hints': TICKET_TYPE_HINTS, 'ticket_text_guides': TEXT_GUIDES,
         'ticket_center_title': ticket_center_title(), 'ticket_dashboard': dashboard, 'ticket_statistics': statistics,
-        'ticket_time_spent': time_spent,
+        'ticket_time_spent': time_spent, 'ticket_board': board,
         'ticket_default_priority': DEFAULT_PRIORITY, 'ticket_text_guide': TEXT_GUIDE,
         # Who reported the tickets, by name and the default users first, for the Reporter filter; who attends them and
         # the modules they are about, for the chips of the list.
