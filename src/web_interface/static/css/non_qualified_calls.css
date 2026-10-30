@@ -1969,10 +1969,11 @@ details.nq-priority-info:not([open]) { padding-block: .55rem; }
 .nq-map-legend:empty { display: none; }
 .nq-map-legend ul { display: flex; flex-wrap: wrap; align-items: center; gap: .2rem .8rem; margin: 0; padding: 0; list-style: none; }
 .nq-map-legend li { display: inline-flex; align-items: center; gap: .35rem; line-height: 1.25; }
-.nq-map-legend .nq-map-legend-title { color: var(--nq-dark); font-weight: 850; }
+/* Each group of the legend under its title, its items aligned below it. */
+.nq-map-legend .nq-map-legend-title { flex: 0 0 100%; color: var(--nq-dark); font-weight: 850; }
 .nq-map-legend ul.is-off { opacity: .45; }
 /* The legend in two boxes, as the cards on the map: From CDR (in the colour of NQ Calls) and From Logs (.nq-l3-legend). */
-.nq-map-legend-box { display: flex; flex-direction: column; gap: .3rem; flex: 1 0 100%; padding: .45rem .6rem; border: 1px solid #ecd3dc; border-radius: 10px; background: #fdf6f8; }
+.nq-map-legend-box { display: flex; flex-direction: column; gap: .45rem; flex: 1 0 100%; padding: .45rem .6rem; border: 1px solid #ecd3dc; border-radius: 10px; background: #fdf6f8; }
 .nq-map-legend-box-title { margin: 0; color: #7d1238; font-size: .72rem; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
 .nq-map-mark { flex: 0 0 auto; display: inline-block; box-sizing: border-box; width: .8rem; height: .8rem; }
 .nq-map-mark.is-dot { border: 1px solid #fff; border-radius: 50%; background: var(--mark); }
@@ -2181,10 +2182,10 @@ body:has(dialog.nq-map-expand[open]) { overflow: hidden; }
 .nq-l3-switch input:focus-visible + .nq-l3-switch-track { outline: 2px solid #0b6e8a; outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { .nq-l3-switch-track, .nq-l3-switch-track::after { transition: none; } }
 /* The legend of the layers on, below the map. */
-.nq-l3-legend { display: flex; flex-direction: column; gap: .3rem; flex: 1 0 100%; padding: .45rem .6rem; border: 1px solid #d7e8ed; border-radius: 10px; background: #f6fbfc; }
+.nq-l3-legend { display: flex; flex-direction: column; gap: .45rem; flex: 1 0 100%; padding: .45rem .6rem; border: 1px solid #d7e8ed; border-radius: 10px; background: #f6fbfc; }
 .nq-l3-legend-title { margin: 0; color: #0b6e8a; font-size: .72rem; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
 .nq-l3-legend-row { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem .7rem; font-size: .72rem; }
-.nq-l3-legend-name { min-width: 7.5rem; font-weight: 800; }
+.nq-l3-legend-name { flex: 0 0 100%; font-weight: 800; }
 .nq-l3-legend-item { display: inline-flex; align-items: center; gap: .25rem; }
 .nq-l3-legend-note { margin: 0; color: #6b8189; font-size: .68rem; }
 .nq-l3-record { max-height: 18rem; overflow-y: auto; }
