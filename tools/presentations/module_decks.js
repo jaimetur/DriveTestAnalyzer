@@ -66,6 +66,80 @@ function badge(name, fill, size = 64, iconSize = 36) {
 const chip = (label, fill, color = '#ffffff') => `<span class="chip" style="background:${fill};color:${color}">${escape(label)}</span>`;
 const moduleChip = (name) => chip(name, MODULES[name] || '#475569');
 
+// -- the views of Ticket Center as the tool draws them: light cards on a warm page, in the colours of its types,
+// statuses and priorities (ticket_center.css) ------------------------------------------------------------------------
+const TC = {
+  page: '#f7f4f0', card: '#ffffff', line: '#e7e1d9', ink: '#10314a', muted: '#607585', track: '#eef1f4', red: '#dc2626', wine: '#b91c1c',
+  type: { bug: '#dc2626', improvement: '#0d9488', feature: '#c026d3' },
+  status: { open: '#10314a', new: '#1e61a3', progress: '#7c3aed', waiting: '#b7791f', resolved: '#1f8a5b', closed: '#a3adb5', rejected: '#9f1239' },
+  priority: { P1: '#b42318', P2: '#dc6803', P3: '#b7791f', P4: '#1e61a3', P5: '#6b7a86' },
+};
+// The tickets opened and resolved (or closed) each week since the first ticket, and the rejected ones: the same figures
+// in every view, as the tool would count them.
+const TC_WEEKS = {
+  labels: [[0, '1 Jun'], [4, '29 Jun'], [8, '27 Jul'], [12, '24 Aug'], [16, '21 Sep'], [20, '19 Oct']],
+  created: [1, 0, 2, 1, 0, 1, 1, 1, 2, 1, 1, 2, 2, 2, 3, 2, 3, 4, 3, 6, 9, 13],
+  resolved: [0, 0, 1, 1, 0, 0, 1, 1, 1, 1, 0, 1, 1, 1, 2, 1, 2, 2, 2, 3, 5, 7],
+  rejected: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 1, 0, 1],
+};
+const tcText = (x, y, value, size = 14, fill = TC.ink, weight = 600, anchor = 'start', extra = '') =>
+  `<text x="${x}" y="${y}" font-size="${size}" font-weight="${weight}" fill="${fill}" text-anchor="${anchor}"${extra}>${escape(value)}</text>`;
+// Lines of text, one below the other (a \n starts another).
+const tcLines = (x, y, value, size, fill, weight = 500, lineHeight = size * 1.35) => value.split('\n')
+  .map((line, index) => tcText(x, (y + index * lineHeight).toFixed(1), line, size, fill, weight)).join('');
+const tcIcon = (name, x, y, colour, size) => `<g transform="translate(${x} ${y})">${icon(name, colour, size)}</g>`;
+const tcCard = (x, y, w, h, title = '', note = '', size = 16) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="14" fill="${TC.card}" stroke="${TC.line}" stroke-width="1.5"/>`
+  + (title ? tcText(x + 18, y + 30, title, size, TC.ink, 800) : '') + (note ? tcText(x + w - 18, y + 30, note, 12, TC.muted, 600, 'end') : '');
+// A pill about as wide as its label, from x; its width comes back too, to put another one after it.
+const tcPill = (x, y, label, fill, color = '#ffffff', size = 12) => {
+  const width = Math.round(label.length * size * 0.6 + size * 1.6); const height = Math.round(size * 1.8);
+  return { width, svg: `<rect x="${x}" y="${y}" width="${width}" height="${height}" rx="${height / 2}" fill="${fill}"/>${tcText(x + width / 2, (y + height / 2 + size * 0.36).toFixed(1), label, size, color, 800, 'middle')}` };
+};
+// A bar of a list: its track and the part filled.
+const tcBar = (x, y, w, share, fill, h = 8) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${h / 2}" fill="${TC.track}"/>`
+  + `<rect x="${x}" y="${y}" width="${Math.max(h, w * share).toFixed(1)}" height="${h}" rx="${h / 2}" fill="${fill}"/>`;
+// A donut of parts [value, colour], from the top and clockwise.
+const tcDonut = (cx, cy, r, width, parts) => {
+  const total = parts.reduce((sum, [value]) => sum + value, 0); const round = 2 * Math.PI * r; let offset = 0;
+  return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${TC.track}" stroke-width="${width}"/>` + parts.map(([value, colour]) => {
+    const length = round * value / total;
+    const svg = `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${colour}" stroke-width="${width}" stroke-dasharray="${Math.max(0, length - 2).toFixed(1)} ${(round - length + 2).toFixed(1)}" stroke-dashoffset="${(-offset).toFixed(1)}" transform="rotate(-90 ${cx} ${cy})"/>`;
+    offset += length;
+    return svg;
+  }).join('');
+};
+// The page of the tool in a browser window with its address: what goes on the page starts below the bar (44 px).
+const tcWindow = (width, height, address) => `<rect x="0" y="0" width="${width}" height="${height}" rx="18" fill="${TC.page}"/>`
+  + `<path d="M0 18 a18 18 0 0 1 18 -18 H${width - 18} a18 18 0 0 1 18 18 V44 H0 Z" fill="#e4e0da"/>`
+  + ['#ff5f57', '#febc2e', '#28c840'].map((colour, index) => `<circle cx="${26 + index * 22}" cy="22" r="7" fill="${colour}"/>`).join('')
+  + `<rect x="${width / 2 - 280}" y="10" width="560" height="24" rx="12" fill="#f7f5f2"/>${tcIcon('TbLock', width / 2 - 266, 15, TC.muted, 14)}`
+  + tcText(width / 2, 27, address, 13, TC.muted, 600, 'middle');
+// A figure of a view: a label, its value and a line, beside an icon (or a ring) in its colour.
+const tcTile = (x, y, w, h, { label, value, line, colour, iconName, ring }) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="14" fill="${TC.card}" stroke="${TC.line}" stroke-width="1.5"/>`
+  + `<rect x="${x + 1}" y="${y + 12}" width="4" height="${h - 24}" rx="2" fill="${colour}"/>`
+  + (ring === undefined ? `<circle cx="${x + 38}" cy="${y + h / 2}" r="21" fill="${mix(colour, '#ffffff', 0.86)}"/>${tcIcon(iconName, x + 27, y + h / 2 - 11, colour, 22)}`
+    : tcDonut(x + 38, y + h / 2, 17, 7, [[ring, colour], [100 - ring, TC.track]]))
+  + tcText(x + 72, y + 24, label.toUpperCase(), 11, TC.muted, 800, 'start', ' letter-spacing="1"')
+  + tcText(x + 72, y + 50, value, 24, TC.ink, 800) + tcText(x + 72, y + h - 10, line, 12, TC.muted, 500);
+const TC_PERIODS = ['All time', 'This week', 'This month', 'This quarter', 'This year'];
+// The Period bar at the top of Dashboard, Statistics and Time Spent.
+const tcPeriodBar = (x, y, w, chosen, range) => {
+  let out = `<rect x="${x}" y="${y}" width="${w}" height="44" rx="14" fill="${TC.card}" stroke="#f2c4c4" stroke-width="1.5"/>`
+    + `<rect x="${x + 10}" y="${y + 8}" width="28" height="28" rx="8" fill="${TC.red}"/>${tcIcon('TbCalendar', x + 15, y + 13, '#ffffff', 18)}`
+    + tcText(x + 50, y + 27, 'Period', 15, TC.wine, 800);
+  const widths = TC_PERIODS.map((label) => label.length * 7.6 + 26);
+  out += `<rect x="${x + 112}" y="${y + 7}" width="${widths.reduce((sum, value) => sum + value + 4, 2)}" height="30" rx="15" fill="#f4f1ee"/>`;
+  let left = x + 115;
+  TC_PERIODS.forEach((label, index) => {
+    if (label === chosen) out += `<rect x="${left}" y="${y + 10}" width="${widths[index]}" height="24" rx="12" fill="${TC.red}"/>`;
+    out += tcText((left + widths[index] / 2).toFixed(1), y + 27, label, 13, label === chosen ? '#ffffff' : TC.ink, 700, 'middle');
+    left += widths[index] + 4;
+  });
+  return out + (range ? tcText(x + w - 16, y + 27, range, 13, TC.muted, 600, 'end') : '');
+};
+// A time in days of 24 hours, hours and minutes, as Ticket Center writes it.
+const tcDuration = (days) => (days >= 1 ? `${Math.floor(days)}d ${Math.round((days % 1) * 24)}h` : `${Math.floor(days * 24)}h ${Math.round(((days * 24) % 1) * 60)}m`);
+
 // -- visuals (820 × 560, in the colours of the module) ---------------------------------------------------------------
 const VISUALS = {
   // Grouped bars of three operators.
@@ -818,6 +892,381 @@ const VISUALS = {
     });
     return out;
   },
+  // The header of Ticket Center (1656 × 560): its tiles and the tabs of its views, each joined to a card that tells what
+  // it shows (views: [{ icon, title, text }], a \n in the text starting its second line).
+  ticketHeader(p, { views = [] } = {}) {
+    let out = `<defs><linearGradient id="ticket-hero" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7f1d1d"/><stop offset="1" stop-color="#ef4444"/></linearGradient></defs>`
+      + `<rect x="0" y="0" width="1656" height="318" rx="24" fill="url(#ticket-hero)"/>`;
+    // The ticket drawn faint at its right, as in the tool.
+    out += `<g opacity=".2" transform="translate(1250 92)"><path d="M0 14 a14 14 0 0 1 14 -14 H306 a14 14 0 0 1 14 14 V46 a20 20 0 0 0 0 40 V118 a14 14 0 0 1 -14 14 H14 a14 14 0 0 1 -14 -14 V86 a20 20 0 0 0 0 -40 Z" fill="none" stroke="#ffffff" stroke-width="5"/>`
+      + `<path d="M64 42 H230 M64 68 H256 M64 94 H190" stroke="#ffffff" stroke-width="8" stroke-linecap="round"/></g>`;
+    out += tcText(40, 48, 'TICKET CENTER', 14, '#ffe9e9', 700, 'start', ' letter-spacing="3"')
+      + tcText(40, 100, 'Report bugs, suggest improvements and ask for new features', 38, '#ffffff', 800)
+      + tcText(40, 136, 'Open a ticket of its type with what happened or what you need and its screenshots, and follow it until it is resolved.', 18, '#ffe9e9', 500);
+    out += `<rect x="1430" y="26" width="190" height="46" rx="23" fill="#ffffff"/>${tcIcon('TbTicket', 1454, 38, TC.wine, 22)}` + tcText(1486, 56, 'New Ticket', 17, TC.wine, 800);
+    [['Open', '22', TC.status.open], ['New', '8', TC.status.new], ['In Progress', '13', TC.status.progress], ['Waiting for Info', '1', TC.status.waiting],
+      ['Resolved · 30 days', '21', TC.status.resolved]].forEach(([label, value, colour], index) => {
+      const x = 40 + index * 318;
+      out += `<rect x="${x}" y="158" width="302" height="74" rx="14" fill="#ffffff"/><rect x="${x}" y="168" width="4" height="54" rx="2" fill="${colour}"/>`
+        + tcText(x + 22, 186, label.toUpperCase(), 12, TC.muted, 800, 'start', ' letter-spacing="1.2"') + tcText(x + 22, 218, value, 28, TC.ink, 800);
+    });
+    // The tabs, Dashboard chosen.
+    const tabs = [['TbTicket', 'New Ticket', 158], ['TbTable', 'All Tickets', 178, '60'], ['TbLayoutDashboard', 'Dashboard', 156], ['TbChartBar', 'Statistics', 146], ['TbClock', 'Time Spent', 156]];
+    out += `<rect x="40" y="252" width="${tabs.reduce((sum, tab) => sum + tab[2] + 4, 8)}" height="46" rx="14" fill="#ffffff" fill-opacity=".14" stroke="#ffffff" stroke-opacity=".3"/>`;
+    const centres = [];
+    let left = 46;
+    tabs.forEach(([name, label, width, count], index) => {
+      const colour = index === 2 ? TC.wine : '#ffffff';
+      if (index === 2) out += `<rect x="${left}" y="258" width="${width}" height="34" rx="10" fill="#ffffff"/>`;
+      out += tcIcon(name, left + 14, 266, colour, 18) + tcText(left + 40, 281, label, 15, colour, 700);
+      if (count) out += `<rect x="${left + width - 40}" y="265" width="30" height="20" rx="10" fill="#ffffff" fill-opacity=".25"/>` + tcText(left + width - 25, 279, count, 12, '#ffffff', 800, 'middle');
+      centres.push(left + width / 2);
+      left += width + 4;
+    });
+    views.forEach((_view, index) => {
+      const centre = index * 336 + 156;
+      out += `<path d="M${centres[index]} 298 C${centres[index]} 344, ${centre} 326, ${centre} 372" fill="none" stroke="${p.light}" stroke-width="3" stroke-dasharray="8 7" opacity=".85"/>`;
+    });
+    views.forEach((view, index) => {
+      const x = index * 336;
+      out += `<rect x="${x}" y="372" width="312" height="188" rx="18" fill="#16213a" stroke="${index === 2 ? p.accent : '#2a3a5c'}" stroke-width="2"/>`
+        + `<rect x="${x + 22}" y="394" width="52" height="52" rx="14" fill="${p.accent}"/>${tcIcon(view.icon, x + 34, 406, '#ffffff', 28)}`
+        + `<text x="${x + 90}" y="428" font-size="22" font-weight="700" fill="${p.light}" class="mono">${String(index + 1).padStart(2, '0')}</text>`
+        + tcText(x + 22, 482, view.title, 24, '#ffffff', 800) + tcLines(x + 22, 512, view.text, 17, '#c9d4e6', 500, 23)
+        + `<circle cx="${x + 156}" cy="372" r="7" fill="${p.accent}" stroke="#ffffff" stroke-width="3"/><circle cx="${centres[index]}" cy="298" r="5" fill="#ffffff"/>`;
+    });
+    return out;
+  },
+  // The form of a new ticket while signed out (820 × 560): dimmed, with its note and Sign in.
+  ticketForm() {
+    let out = `<rect x="0" y="0" width="820" height="560" rx="16" fill="${TC.page}"/>`;
+    const label = (x, y, value) => tcText(x, y, value.toUpperCase(), 11, TC.muted, 800, 'start', ' letter-spacing="1"');
+    out += label(16, 104, 'Type') + tcText(62, 104, 'required', 11, TC.red, 700);
+    [['TbBug', 'Bug', 'Something does not work as it should', TC.type.bug], ['TbTrendingUp', 'Improvement', 'Something that works could work better', TC.type.improvement],
+      ['TbSparkles', 'New Feature', 'Something the tool cannot do yet', TC.type.feature]].forEach(([name, title, text, colour], index) => {
+      const x = 16 + index * 268;
+      out += `<rect x="${x}" y="112" width="252" height="54" rx="12" fill="${index ? TC.card : mix(colour, '#ffffff', 0.92)}" stroke="${index ? TC.line : colour}" stroke-width="${index ? 1.5 : 2}"/>`
+        + tcIcon(name, x + 14, 129, colour, 20) + tcText(x + 44, 136, title, 15, colour, 800) + tcText(x + 44, 154, text, 10.5, TC.muted, 500);
+    });
+    out += label(16, 190, 'Title') + label(552, 190, 'Module');
+    out += `<rect x="16" y="198" width="520" height="36" rx="9" fill="${TC.card}" stroke="${TC.line}" stroke-width="1.5"/>` + tcText(30, 221, 'Map export stops on large CDRs', 14, TC.ink, 500)
+      + `<rect x="552" y="198" width="252" height="36" rx="9" fill="${TC.card}" stroke="${TC.line}" stroke-width="1.5"/>` + tcText(566, 221, 'Network Insights', 14, TC.ink, 500)
+      + tcIcon('TbChevronDown', 776, 207, TC.muted, 18);
+    out += label(16, 258, 'Priority');
+    [['P1', 'Critical'], ['P2', 'High'], ['P3', 'Medium'], ['P4', 'Low'], ['P5', 'Trivial']].forEach(([priority, name], index) => {
+      const x = 16 + index * 82; const colour = TC.priority[priority]; const chosen = priority === 'P3';
+      out += `<rect x="${x}" y="266" width="74" height="42" rx="10" fill="${chosen ? colour : TC.card}" stroke="${chosen ? colour : TC.line}" stroke-width="1.5"/>`
+        + tcText(x + 37, 286, priority, 15, chosen ? '#ffffff' : colour, 800, 'middle') + tcText(x + 37, 301, name, 10, chosen ? '#ffffff' : colour, 600, 'middle');
+    });
+    out += label(16, 332, 'Description');
+    out += `<rect x="16" y="340" width="788" height="132" rx="10" fill="${TC.card}" stroke="${TC.line}" stroke-width="1.5"/><path d="M17 370 H803" stroke="${TC.line}" stroke-width="1.5"/>`;
+    ['H1', 'H2', 'H3', '|', 'B', 'I', 'S', '<>', '|', '•', '1.', '☐', '|', '#7'].forEach((glyph, index) => {
+      out += glyph === '|' ? `<path d="M${36 + index * 34} 348 V362" stroke="${TC.line}" stroke-width="1.5"/>` : tcText(36 + index * 34, 360, glyph, 13, TC.muted, 800, 'middle');
+    });
+    out += tcText(32, 396, 'Problem:', 14, TC.status.new, 800) + tcText(44, 418, '• Exporting the map of a 2 GB CDR stops at 80%', 13, TC.ink, 500)
+      + tcText(32, 442, 'Expected:', 14, TC.status.new, 800) + tcText(44, 462, '• The whole map is exported, as with smaller CDRs', 13, TC.ink, 500);
+    out += label(16, 494, 'Screenshots');
+    out += `<rect x="16" y="502" width="788" height="46" rx="10" fill="${TC.card}" stroke="#c9c2b8" stroke-width="1.5" stroke-dasharray="6 5"/>`
+      + tcIcon('TbPhoto', 32, 514, TC.muted, 22) + tcText(64, 530, 'Paste them with Ctrl+V, drop them here or click to choose them', 13, TC.muted, 500);
+    [690, 744].forEach((x, index) => {
+      out += `<rect x="${x}" y="509" width="46" height="32" rx="5" fill="#e9eef4" stroke="${TC.line}"/>`
+        + [0.5, 0.8, 0.35, 0.65].map((share, bar) => `<rect x="${x + 7 + bar * 9}" y="${535 - share * 20}" width="6" height="${share * 20}" rx="1" fill="${index ? TC.type.improvement : TC.status.new}"/>`).join('');
+    });
+    // Dimmed while signed out, under its note.
+    out += `<rect x="0" y="86" width="820" height="474" rx="16" fill="${TC.page}" opacity=".38"/>`;
+    out += `<rect x="16" y="16" width="788" height="58" rx="12" fill="#fdeeee" stroke="#f5c6c6" stroke-width="1.5"/><circle cx="46" cy="45" r="15" fill="${TC.wine}"/>${tcIcon('TbLock', 37, 36, '#ffffff', 18)}`
+      + tcText(72, 41, 'Sign in to open a ticket', 16, '#7f1d1d', 800) + tcText(72, 61, 'The form can be filled and sent once you are signed in.', 13, '#9b4a4a', 500)
+      + `<rect x="694" y="30" width="96" height="30" rx="15" fill="${TC.wine}"/>` + tcText(742, 50, 'Sign in', 14, '#ffffff', 800, 'middle');
+    return out;
+  },
+  // The Dashboard of Ticket Center (1656 × 560) in a browser window: the period, Created vs resolved, At a glance, the
+  // tickets per module, Needs attention and the latest activity.
+  ticketDashboard() {
+    const { created, resolved } = TC_WEEKS;
+    let out = tcWindow(1656, 560, 'drivetest-analyzer / tickets  ·  Dashboard') + tcPeriodBar(18, 56, 1620, 'All time', 'Every ticket, since 3 Jun 2026');
+    // Created vs resolved per week, the count over each bar.
+    out += tcCard(18, 114, 1042, 210, 'Created vs resolved per week', 'Tickets opened and resolved or closed in each');
+    [['Created', TC.status.new, created], ['Resolved', TC.status.resolved, resolved]].forEach(([name, colour, values], index) => {
+      out += `<rect x="${36 + index * 120}" y="153" width="12" height="12" rx="3" fill="${colour}"/>` + tcText(54 + index * 120, 164, `${name} ${values.reduce((sum, value) => sum + value, 0)}`, 13, TC.ink, 700);
+    });
+    const slot = 1000 / created.length; const scale = 104 / Math.max(...created);
+    created.forEach((value, index) => {
+      const x = 40 + index * slot + (slot - 31) / 2;
+      [[value, TC.status.new, 0], [resolved[index], TC.status.resolved, 17]].forEach(([count, colour, shift]) => {
+        if (!count) return;
+        out += `<rect x="${(x + shift).toFixed(1)}" y="${(296 - count * scale).toFixed(1)}" width="14" height="${(count * scale).toFixed(1)}" rx="3" fill="${colour}"/>`
+          + tcText((x + shift + 7).toFixed(1), (290 - count * scale).toFixed(1), String(count), 11, colour, 800, 'middle');
+      });
+    });
+    out += `<path d="M36 296.5 H1042" stroke="${TC.line}" stroke-width="1.5"/>`;
+    TC_WEEKS.labels.forEach(([index, name]) => { out += tcText((40 + index * slot + slot / 2).toFixed(1), 314, name, 11, TC.muted, 600, 'middle'); });
+    // At a glance.
+    out += tcCard(1076, 114, 562, 210, 'At a glance', '60 tickets');
+    out += tcDonut(1166, 232, 58, 20, [[22, TC.status.progress], [33, TC.status.resolved], [5, TC.status.rejected]])
+      + tcText(1166, 238, '22', 30, TC.ink, 800, 'middle') + tcText(1166, 256, 'OPEN', 11, TC.muted, 800, 'middle', ' letter-spacing="1"');
+    [['Open', 22, '37%', TC.status.progress], ['Resolved or closed', 33, '55%', TC.status.resolved], ['Rejected', 5, '8%', TC.status.rejected]].forEach(([name, count, share, colour], index) => {
+      const y = 176 + index * 26;
+      out += `<circle cx="1268" cy="${y - 4}" r="5" fill="${colour}"/>` + tcText(1282, y, name, 14, TC.ink, 700) + tcText(1570, y, String(count), 14, TC.ink, 800, 'end') + tcText(1618, y, share, 12, TC.muted, 600, 'end');
+    });
+    [['149 days', 'oldest open ticket', 1262], ['5', 'open unassigned', 1446]].forEach(([value, name, x]) => {
+      out += `<rect x="${x}" y="256" width="174" height="54" rx="10" fill="#f5f7f9"/>` + tcText(x + 14, 280, value, 18, TC.ink, 800) + tcText(x + 14, 299, name, 12, TC.muted, 600);
+    });
+    // Tickets per module: its open ones out of every ticket.
+    out += tcCard(18, 338, 462, 208, 'Tickets per module', 'Open of every ticket');
+    [['Network Insights', '#4F46E5', 6, 11], ['General', '#5b6b7b', 4, 8], ['Scoring & GAP Analysis', '#176E77', 3, 10], ['PPT Designer', '#7751B9', 3, 7],
+      ['Non-Qualified Calls', '#B0234F', 2, 9], ['Reporting', '#2E8C58', 1, 5]].forEach(([name, colour, open, total], index) => {
+      const y = 396 + index * 25;
+      out += `<circle cx="38" cy="${y - 4}" r="5" fill="${colour}"/>` + tcText(50, y, name, 13, TC.ink, 700)
+        + `<rect x="226" y="${y - 9}" width="180" height="8" rx="4" fill="${TC.track}"/><rect x="226" y="${y - 9}" width="${180 * total / 11}" height="8" rx="4" fill="${mix(colour, '#ffffff', 0.7)}"/>`
+        + `<rect x="226" y="${y - 9}" width="${180 * open / 11}" height="8" rx="4" fill="${colour}"/>` + tcText(462, y, `${open}/${total}`, 13, TC.ink, 800, 'end');
+    });
+    // Needs attention: the most urgent open tickets, then the oldest.
+    out += tcCard(496, 338, 684, 208, 'Needs attention', '22 open · the most urgent and oldest first');
+    [['P1', 'Critical', 'TbBug', TC.type.bug, '#54 Map export stops on large CDRs', 'New', TC.status.new, '', 'Unassigned', '149 days', TC.priority.P1, 1],
+      ['P1', 'Critical', 'TbBug', TC.type.bug, '#25 Statistics slow on All time', 'In Progress', TC.status.progress, 'UA', 'User A', '76 days', TC.priority.P1, 0.55],
+      ['P2', 'High', 'TbTrendingUp', TC.type.improvement, '#34 Filter the calls by cluster', 'In Progress', TC.status.progress, 'UB', 'User B', '30 days', TC.status.waiting, 0.3],
+      ['P2', 'High', 'TbSparkles', TC.type.feature, '#41 Export the timeline to Excel', 'New', TC.status.new, '', 'Unassigned', '6 days', TC.status.resolved, 0.1],
+    ].forEach(([priority, name, typeIcon, typeColour, title, status, statusColour, initials, assignee, age, ageColour, share], index) => {
+      const y = 384 + index * 40;
+      out += `<rect x="508" y="${y}" width="660" height="34" rx="9" fill="#fbf9f7" stroke="#efe9e2"/>`
+        + `<rect x="516" y="${y + 7}" width="86" height="20" rx="6" fill="${TC.priority[priority]}"/>` + tcText(559, y + 21, `${priority} ${name}`, 11, '#ffffff', 800, 'middle')
+        + tcIcon(typeIcon, 612, y + 9, typeColour, 16) + tcText(634, y + 22, title, 13, TC.ink, 700)
+        + `<rect x="892" y="${y + 8}" width="80" height="18" rx="9" fill="${mix(statusColour, '#ffffff', 0.88)}"/>` + tcText(932, y + 21, status, 11, statusColour, 800, 'middle')
+        + `<circle cx="992" cy="${y + 17}" r="10" fill="#e6ecf2"/>` + tcText(992, y + 21, initials || '?', 9, TC.muted, 800, 'middle')
+        + tcText(1008, y + 21, assignee, 12, initials ? TC.ink : TC.muted, 600)
+        + tcText(1158, y + 16, age, 12, ageColour, 800, 'end') + tcBar(1098, y + 22, 60, share, ageColour, 4);
+    });
+    // Latest activity.
+    out += tcCard(1196, 338, 442, 208, 'Latest activity', 'The newest first') + `<path d="M1222 384 V510" stroke="${TC.line}" stroke-width="2"/>`;
+    [['User A', 'moved to', 'Resolved', TC.status.resolved, '#59', '6 h ago', 'TbCheck'], ['User B', 'commented', '', TC.status.waiting, '#57', '7 h ago', 'TbMessage'],
+      ['User A', 'moved to', 'In Progress', TC.status.progress, '#55', '1 d ago', 'TbProgress'], ['User C', 'opened', '', TC.status.new, '#60', '1 d ago', 'TbPlus'],
+      ['User D', 'commented', '', TC.status.waiting, '#54', '2 d ago', 'TbMessage']].forEach(([who, verb, status, colour, ticket, ago, kind], index) => {
+      const y = 386 + index * 31;
+      out += `<circle cx="1222" cy="${y}" r="11" fill="${colour}"/>${tcIcon(kind, 1215, y - 7, '#ffffff', 14)}` + tcText(1242, y + 5, who, 13, TC.ink, 800)
+        + tcText(1292, y + 5, verb, 13, TC.muted, 500);
+      let left = 1292 + verb.length * 7.6 + 8;
+      if (status) {
+        const pill = tcPill(left, y - 8, status, mix(colour, '#ffffff', 0.86), colour, 11);
+        out += pill.svg;
+        left += pill.width + 6;
+      }
+      out += tcText(left.toFixed(1), y + 5, ticket, 13, TC.ink, 800) + tcText(1620, y + 5, ago, 12, TC.muted, 600, 'end');
+    });
+    return out;
+  },
+  // The periods of Ticket Center (1656 × 560): how each one draws its charts and calendar of activity, and which
+  // tickets each part of the views counts.
+  ticketPeriods(p) {
+    const level = (seed) => Math.floor(Math.abs(Math.sin(seed * 12.9898) * 43758.5453) % 1 * 5);
+    const shades = ['#1d2a45', '#1e3a66', '#2a5aa0', '#3f7fd6', '#7fb2f0'];
+    // A small calendar of a month: its first weekday (Monday 0), its days, the last day with activity and the first one.
+    const month = (x, y, cell, first, days, { until = days, from = 1, seed = 0, quiet = false } = {}) => {
+      let out = '';
+      for (let day = 1; day <= days; day += 1) {
+        const position = first + day - 1; const cx = x + (position % 7) * cell; const cy = y + Math.floor(position / 7) * cell;
+        const future = day > until; const weekend = position % 7 >= 5;
+        const shade = quiet || day < from ? shades[0] : shades[Math.max(0, level(seed + day) - (weekend ? 2 : 0))];
+        out += `<rect x="${cx.toFixed(1)}" y="${cy.toFixed(1)}" width="${(cell * 0.82).toFixed(1)}" height="${(cell * 0.82).toFixed(1)}" rx="${(cell * 0.2).toFixed(1)}" fill="${future ? 'none' : shade}"${future ? ' stroke="#2a3a5c" stroke-width="1"' : ''}/>`;
+      }
+      return out;
+    };
+    const periods = [
+      { name: 'All time', unit: 'Since the first ticket · by week', compare: 'No period before', bars: [2, 1, 3, 2, 4, 3, 2, 5, 4, 6, 5, 9, 12, 14], labels: [[0, 'Jun'], [4, 'Jul'], [9, 'Sep'], [13, 'Oct']],
+        calendar: (x, y) => ['Jun', 'Jul', 'Aug', 'Sep', 'Oct'].map((name, index) => tcText(x + index * 56, y + 8, name, 11, '#9fb0cc', 700)
+          + month(x + index * 56, y + 16, 7.2, [0, 2, 5, 1, 3][index], [30, 31, 31, 30, 31][index], { until: index === 4 ? 30 : 31, from: index ? 1 : 3, seed: index * 40 })).join('') },
+      { name: 'This week', unit: 'From Monday · by day', compare: 'vs last week', bars: [5, 7, 4, 8, 6, 1, 0], weekend: (index) => index >= 5, labels: 'MTWTFSS'.split('').map((day, index) => [index, day]),
+        calendar: (x, y) => [26, 27, 28, 29, 30, 31, 1].map((day, index) => `<rect x="${x + index * 38}" y="${y + 6}" width="32" height="32" rx="7" fill="${index > 4 ? 'none' : shades[[2, 3, 2, 4, 3][index]]}"${index > 4 ? ' stroke="#2a3a5c"' : ''}/>`
+          + tcText(x + index * 38 + 16, y + 27, String(day), 13, index > 4 ? '#55627c' : '#ffffff', 700, 'middle') + (index >= 5 ? `<rect x="${x + index * 38 + 4}" y="${y + 43}" width="24" height="3" rx="1.5" fill="#9fb0cc"/>` : '')).join('') },
+      { name: 'This month', unit: 'By day', compare: 'vs last month', bars: [3, 5, 2, 0, 1, 6, 4, 7, 5, 3, 0, 1, 5, 8, 6, 4, 9, 1, 0, 7, 6, 10, 8, 5, 2, 1, 9, 12, 7, 11, 0],
+        weekend: (index) => (3 + index) % 7 >= 5, future: (index) => index >= 30, labels: [[0, '1'], [7, '8'], [14, '15'], [21, '22'], [28, '29']],
+        calendar: (x, y) => month(x, y + 2, 13, 3, 31, { until: 30, seed: 160 }) + tcText(x + 112, y + 34, 'A box per day,', 13, '#9fb0cc', 600) + tcText(x + 112, y + 52, 'darker the busier', 13, '#9fb0cc', 600) },
+      { name: 'This quarter', unit: 'By week', compare: 'vs last quarter', bars: [6, 9, 7, 11, 13, 0, 0, 0, 0, 0, 0, 0, 0], future: (index) => index >= 5, labels: [[0, 'Oct'], [5, 'Nov'], [9, 'Dec']],
+        calendar: (x, y) => ['Oct', 'Nov', 'Dec'].map((name, index) => `<rect x="${x + index * 92 - 4}" y="${y - 4}" width="84" height="72" rx="8" fill="#16213a" stroke="#2a3a5c"/>`
+          + tcText(x + index * 92 + 2, y + 10, name, 11, '#9fb0cc', 700) + month(x + index * 92 + 6, y + 16, 8.6, [3, 6, 1][index], [31, 30, 31][index], { until: index ? 0 : 30, seed: 160 })).join('') },
+      { name: 'This year', unit: 'By month', compare: 'vs last year', bars: [0, 0, 0, 0, 0, 4, 6, 9, 13, 28, 0, 0], future: (index) => index >= 10, labels: 'JFMAMJJASOND'.split('').map((name, index) => [index, name]),
+        calendar: (x, y) => [3, 6, 6, 2, 4, 0, 2, 5, 1, 3, 6, 1].map((first, index) => `<rect x="${x + (index % 6) * 46 - 3}" y="${y + Math.floor(index / 6) * 36 - 2}" width="42" height="33" rx="5" fill="#16213a" stroke="#2a3a5c"/>`
+          + month(x + (index % 6) * 46, y + Math.floor(index / 6) * 36, 5.4, first, [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][index], { until: index > 9 ? 0 : index === 9 ? 30 : 31, quiet: index < 5, from: index === 5 ? 3 : 1, seed: index * 31 })).join('') },
+    ];
+    let out = '';
+    periods.forEach((period, column) => {
+      const x = column * 336; const chosen = column === 0;
+      out += `<rect x="${x}" y="0" width="312" height="326" rx="20" fill="#131d33" stroke="${chosen ? p.accent : '#2a3a5c'}" stroke-width="${chosen ? 2.5 : 2}"/>`;
+      const width = period.name.length * 10.4 + 36;
+      out += `<rect x="${x + 20}" y="20" width="${width}" height="38" rx="19" fill="${chosen ? p.accent : '#22304f'}"/>` + tcText(x + 20 + width / 2, 45, period.name, 18, '#ffffff', 800, 'middle');
+      if (chosen) out += tcText(x + 292, 44, 'DEFAULT', 13, p.light, 800, 'end', ' letter-spacing="2"');
+      out += tcText(x + 20, 86, period.unit, 15, '#c9d4e6', 600) + tcText(x + 20, 108, period.compare, 14, chosen ? '#9fb0cc' : p.light, 700);
+      // The chart, a bar per day, week or month: the weekends shaded, the time still to come faint.
+      const slot = 272 / period.bars.length; const width2 = Math.min(26, slot * 0.66); const top = Math.max(...period.bars);
+      period.bars.forEach((value, index) => {
+        const bx = x + 20 + index * slot;
+        if (period.weekend && period.weekend(index)) out += `<rect x="${bx.toFixed(1)}" y="122" width="${slot.toFixed(1)}" height="86" fill="#ffffff" opacity=".06"/>`;
+        if (period.future && period.future(index)) out += `<rect x="${(bx + (slot - width2) / 2).toFixed(1)}" y="203" width="${width2.toFixed(1)}" height="4" rx="2" fill="#2a3a5c"/>`;
+        else if (value) out += `<rect x="${(bx + (slot - width2) / 2).toFixed(1)}" y="${(207 - value / top * 80).toFixed(1)}" width="${width2.toFixed(1)}" height="${(value / top * 80).toFixed(1)}" rx="${Math.min(4, width2 / 3).toFixed(1)}" fill="${period.weekend && period.weekend(index) ? '#7d8aa3' : p.accent}"/>`;
+      });
+      out += `<path d="M${x + 20} 207.5 H${x + 292}" stroke="#2a3a5c" stroke-width="2"/>`;
+      period.labels.forEach(([index, name]) => { out += tcText((x + 20 + index * slot + slot / 2).toFixed(1), 226, name, 12, period.weekend && period.weekend(index) ? '#7d8aa3' : '#9fb0cc', 600, 'middle'); });
+      out += `<path d="M${x + 20} 240 H${x + 292}" stroke="#22304f" stroke-width="1.5" stroke-dasharray="4 5"/>` + period.calendar(x + 22, 252);
+    });
+    // Which tickets each part counts.
+    [{ icon: 'TbTicket', colour: TC.status.new, title: 'Opened in the period', text: 'What came in', chips: ['At a glance', 'Type & status', 'Tickets per module', 'Every ticket', 'People', 'Needs attention'] },
+      { icon: 'TbChecks', colour: TC.status.resolved, title: 'Resolved or closed in it', text: 'What went out', chips: ['Time to resolve', 'Fixed in version', 'Time Spent', 'Resolved last'] },
+      { icon: 'TbArrowsDiff', colour: p.accent, title: 'Against the one before', text: 'Last week, month, quarter or year', chips: [['18% faster', TC.status.resolved], ['+12 tickets', TC.status.new], ['All time: none', '#55627c']] },
+    ].forEach((lane, index) => {
+      const x = index * 560;
+      out += `<rect x="${x}" y="350" width="536" height="210" rx="20" fill="#131d33" stroke="#2a3a5c" stroke-width="2"/>`
+        + `<rect x="${x + 24}" y="374" width="56" height="56" rx="16" fill="${lane.colour}"/>${tcIcon(lane.icon, x + 37, 387, '#ffffff', 30)}`
+        + tcText(x + 96, 400, lane.title, 24, '#ffffff', 800) + tcText(x + 96, 424, lane.text, 16, '#9fb0cc', 500);
+      let left = x + 24; let top = 452;
+      lane.chips.forEach((chip) => {
+        const [name, colour] = Array.isArray(chip) ? chip : [chip, mix(lane.colour, '#131d33', 0.45)];
+        const width = Math.round(name.length * 15 * 0.58 + 28);
+        if (left + width > x + 512) { left = x + 24; top += 44; }
+        out += `<rect x="${left}" y="${top}" width="${width}" height="34" rx="17" fill="${colour}"/>` + tcText(left + width / 2, top + 22, name, 15, '#ffffff', 700, 'middle');
+        left += width + 10;
+      });
+    });
+    return out;
+  },
+  // The Statistics of Ticket Center (1656 × 560) in a browser window: its figures, every ticket by type, status and
+  // priority, the backlog, the time to resolve, the versions and the activity.
+  ticketStatistics() {
+    const { created, resolved, rejected } = TC_WEEKS;
+    let out = tcWindow(1656, 560, 'drivetest-analyzer / tickets  ·  Statistics');
+    [{ label: 'Resolution rate', value: '55%', line: '33 of the 60 tickets opened resolved or closed', colour: TC.status.resolved, ring: 55 },
+      { label: 'Time to resolve', value: '6d 6h', line: 'Median of 33 tickets resolved or closed', colour: TC.status.progress, iconName: 'TbClockHour4' },
+      { label: 'Tickets opened', value: '60', line: 'Since the first ticket', colour: TC.status.new, iconName: 'TbTicket' },
+      { label: 'Comments per ticket', value: '1.9', line: '0.4 screenshots per ticket', colour: TC.status.waiting, iconName: 'TbMessages' }].forEach((tile, index) => {
+      out += tcTile(18 + index * 409, 56, 393, 74, tile);
+    });
+    // Every ticket: a donut by type, status and priority.
+    out += tcCard(18, 144, 682, 196, 'Every ticket', 'By type, status and priority');
+    [['By type', [['Bug', 30, TC.type.bug], ['Improvement', 18, TC.type.improvement], ['New Feature', 12, TC.type.feature]]],
+      ['By status', [['New', 8, TC.status.new], ['In Progress', 13, TC.status.progress], ['Waiting', 1, TC.status.waiting], ['Rejected', 5, TC.status.rejected], ['Closed', 3, TC.status.closed], ['Resolved', 30, TC.status.resolved]]],
+      ['By priority', [['P1 · Critical', 5, TC.priority.P1], ['P2 · High', 12, TC.priority.P2], ['P3 · Medium', 28, TC.priority.P3], ['P4 · Low', 12, TC.priority.P4], ['P5 · Trivial', 3, TC.priority.P5]]],
+    ].forEach(([name, parts], index) => {
+      const x = 34 + index * 222; const cy = 246;
+      out += tcDonut(x + 54, cy, 42, 16, parts.map(([, count, colour]) => [count, colour])) + tcText(x + 54, cy + 4, '60', 20, TC.ink, 800, 'middle')
+        + tcText(x + 54, cy + 18, 'TICKETS', 9, TC.muted, 800, 'middle') + tcText(x + 54, 324, name, 13, TC.muted, 700, 'middle');
+      parts.forEach(([label, count, colour], row) => {
+        const y = cy - (parts.length - 1) * 9.5 + row * 19 + 4;
+        out += `<circle cx="${x + 116}" cy="${y - 4}" r="4.5" fill="${colour}"/>` + tcText(x + 126, y, label, 11, TC.ink, 600) + tcText(x + 218, y, String(count), 11, TC.ink, 800, 'end');
+      });
+    });
+    // The backlog by the end of each week.
+    out += tcCard(716, 144, 922, 196, 'Backlog per week', 'Totals by the end of each');
+    [['Created 60', TC.status.new], ['Resolved 33', TC.status.resolved], ['Open 22', TC.status.progress]].forEach(([name, colour], index) => {
+      out += `<rect x="${734 + index * 124}" y="183" width="12" height="12" rx="3" fill="${colour}"/>` + tcText(752 + index * 124, 194, name, 13, TC.ink, 700);
+    });
+    const sums = (values) => values.reduce((all, value) => [...all, (all.at(-1) || 0) + value], []);
+    const [totalCreated, totalResolved, totalRejected] = [sums(created), sums(resolved), sums(rejected)];
+    const point = (values) => values.map((value, index) => `${(740 + index * 874 / 21).toFixed(1)},${(310 - value * 1.5).toFixed(1)}`).join(' ');
+    out += `<polygon points="740,310 ${point(totalCreated)} 1614,310" fill="rgba(30,97,163,.12)"/><polygon points="740,310 ${point(totalResolved)} 1614,310" fill="rgba(31,138,91,.18)"/>`
+      + `<polyline points="${point(totalCreated)}" fill="none" stroke="${TC.status.new}" stroke-width="3"/><polyline points="${point(totalResolved)}" fill="none" stroke="${TC.status.resolved}" stroke-width="3"/>`
+      + `<polyline points="${point(totalCreated.map((value, index) => value - totalResolved[index] - totalRejected[index]))}" fill="none" stroke="${TC.status.progress}" stroke-width="3" stroke-dasharray="7 5"/>`
+      + `<path d="M736 310.5 H1618" stroke="${TC.line}" stroke-width="1.5"/>`;
+    TC_WEEKS.labels.forEach(([index, name]) => { out += tcText((740 + index * 874 / 21).toFixed(1), 328, name, 11, TC.muted, 600, 'middle'); });
+    // Two views of a card, the first one chosen.
+    const toggle = (x, y, first, second) => {
+      const [a, b] = [first.length * 7 + 22, second.length * 7 + 22];
+      return `<rect x="${x - a - b - 6}" y="${y}" width="${a + b + 6}" height="26" rx="13" fill="#f1f3f5"/><rect x="${x - a - b - 3}" y="${y + 3}" width="${a}" height="20" rx="10" fill="#ffffff" stroke="${TC.line}"/>`
+        + tcText(x - b - 3 - a / 2, y + 17, first, 12, TC.ink, 800, 'middle') + tcText(x - 3 - b / 2, y + 17, second, 12, TC.muted, 700, 'middle');
+    };
+    // Bars stacked by type, the count over each one.
+    const stacked = (x0, width, base, height, groups, labels, size = 12) => {
+      const slot = width / groups.length; const top = Math.max(...groups.map((group) => group.reduce((sum, value) => sum + value, 0)));
+      let svg = '';
+      groups.forEach((group, index) => {
+        let y = base; const bx = x0 + index * slot + (slot - 30) / 2;
+        group.forEach((value, part) => {
+          if (!value) return;
+          const h = value / top * height;
+          svg += `<rect x="${bx.toFixed(1)}" y="${(y - h).toFixed(1)}" width="30" height="${h.toFixed(1)}" fill="${[TC.type.bug, TC.type.improvement, TC.type.feature][part]}"/>`;
+          y -= h;
+        });
+        svg += tcText((bx + 15).toFixed(1), (y - 5).toFixed(1), String(group.reduce((sum, value) => sum + value, 0)), 12, TC.ink, 800, 'middle')
+          + tcText((bx + 15).toFixed(1), base + 18, labels[index], size, TC.muted, 600, 'middle');
+      });
+      return `${svg}<path d="M${x0} ${base + 0.5} H${x0 + width}" stroke="${TC.line}" stroke-width="1.5"/>`;
+    };
+    out += tcCard(18, 354, 522, 192, 'Time to resolve') + toggle(522, 364, 'Resolved', 'Open')
+      + stacked(30, 498, 512, 92, [[2, 1, 0], [5, 2, 1], [4, 2, 2], [4, 2, 1], [3, 1, 1], [1, 1, 0], [0, 0, 0]], ['< 1 day', '1–3 d', '3–7 d', '1–2 w', '2–4 w', '1–3 m', '> 3 m']);
+    out += tcCard(556, 354, 544, 192, 'Tickets fixed in each version') + toggle(1082, 364, 'Fixed in', 'Opened with')
+      + stacked(566, 524, 512, 92, [[1, 0, 0], [0, 0, 0], [0, 0, 0], [1, 1, 1], [1, 0, 0], [0, 0, 0], [2, 1, 0], [1, 1, 1], [3, 1, 1], [8, 5, 4]],
+        ['v0.8.0', 'v0.8.1', 'v0.8.2', 'v0.9.0', 'v0.9.1', 'v0.9.2', 'v0.9.3', 'v0.9.4', 'v0.10.0', 'v0.10.1'], 10.5);
+    // The activity: a small calendar of each month, darker the busier, the weekends underlined.
+    out += tcCard(1116, 354, 522, 192, 'Activity', 'Opened, comments and changes');
+    const blues = ['#eef2f6', '#c9d9ec', '#94b4da', '#5a86bf', '#2f5fa0'];
+    ['Jun', 'Jul', 'Aug', 'Sep', 'Oct'].forEach((name, index) => {
+      const x = 1132 + index * 100; const first = [0, 2, 5, 1, 3][index]; const days = [30, 31, 31, 30, 31][index];
+      out += `<rect x="${x}" y="392" width="92" height="112" rx="9" fill="#fbfcfd" stroke="${TC.line}"/>` + tcText(x + 8, 408, `${name} 2026`, 11, TC.ink, 800);
+      'MTWTFSS'.split('').forEach((day, column) => { out += tcText(x + 11 + column * 11.4, 421, day, 7.5, column >= 5 ? TC.ink : TC.muted, 700, 'middle'); });
+      for (let day = 1; day <= days; day += 1) {
+        const position = first + day - 1; const column = position % 7;
+        const busy = (index === 0 && day < 3) || (index === 4 && day > 30) ? -1 : Math.min(4, Math.floor(Math.abs(Math.sin((index * 31 + day) * 3.7)) * (2.2 + index * 0.6)) - (column >= 5 ? 1 : 0));
+        out += `<rect x="${x + 6 + column * 11.4}" y="${426 + Math.floor(position / 7) * 11.4}" width="9.6" height="9.6" rx="2" fill="${busy < 0 ? '#ffffff' : blues[Math.max(0, busy)]}"${busy < 0 ? ` stroke="${TC.line}"` : ''}/>`;
+      }
+    });
+    out += tcText(1134, 530, '60 opened  ·  112 comments  ·  55 changes  ·  33 resolved', 12, TC.ink, 700);
+    return out;
+  },
+  // The Time Spent of Ticket Center (1656 × 560) in a browser window: how it is measured, its figures, where the time
+  // goes, the time per week and by module, type, priority, assignee, reporter and version.
+  ticketTime() {
+    let out = `<defs><linearGradient id="ticket-time-bar" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ef4444"/><stop offset="1" stop-color="#991b1b"/></linearGradient>`
+      + `<clipPath id="ticket-where"><rect x="36" y="242" width="586" height="22" rx="7"/></clipPath></defs>` + tcWindow(1656, 560, 'drivetest-analyzer / tickets  ·  Time Spent');
+    out += `<rect x="18" y="56" width="1620" height="40" rx="12" fill="#eef5fc" stroke="#cfe0f2" stroke-width="1.5"/><circle cx="40" cy="76" r="11" fill="${TC.status.new}"/>`
+      + tcText(40, 81, 'i', 14, '#ffffff', 800, 'middle') + tcText(62, 81, 'How it is measured', 14, TC.ink, 800)
+      + tcText(206, 81, 'Calendar time from opened to resolved or closed, 24 hours a day  ·  only the tickets resolved or closed in the period  ·  d = days of 24 h, h = hours, m = minutes', 14, TC.ink, 500);
+    [{ label: 'Time spent in all', value: '313d 17h', line: 'All tickets, added up', colour: TC.status.progress, iconName: 'TbClockHour4' },
+      { label: 'Tickets resolved', value: '33', line: 'Or closed, in the period', colour: TC.status.resolved, iconName: 'TbTicket' },
+      { label: 'Average per ticket', value: '9d 12h', line: 'Time in all ÷ tickets', colour: TC.status.new, iconName: 'TbGauge' },
+      { label: 'Median per ticket', value: '6d 15h', line: 'Half of them took less', colour: TC.status.waiting, iconName: 'TbChartBar' },
+      { label: 'The longest', value: '37d 17h', line: '#22 Statistics slow on All time', colour: TC.priority.P1, iconName: 'TbHourglass' }].forEach((tile, index) => {
+      out += tcTile(18 + index * 327, 108, 311, 74, tile);
+    });
+    // Where the time goes: the time of those tickets in each open status.
+    const where = [['New', '128d 13h', 41, '3d 21h', TC.status.new], ['In Progress', '144d 7h', 46, '4d 9h', TC.status.progress], ['Waiting for Info', '40d 21h', 13, '1d 6h', TC.status.waiting]];
+    out += tcCard(18, 196, 622, 158, 'Where the time goes', 'By status, until resolved') + `<g clip-path="url(#ticket-where)">`;
+    let left = 36;
+    where.forEach(([, , share, , colour]) => {
+      out += `<rect x="${left.toFixed(1)}" y="242" width="${(586 * share / 100 - 2).toFixed(1)}" height="22" fill="${colour}"/>`;
+      left += 586 * share / 100;
+    });
+    out += '</g>';
+    where.forEach(([name, total, share, average, colour], index) => {
+      const x = 36 + index * 200;
+      out += `<circle cx="${x + 5}" cy="${291}" r="5" fill="${colour}"/>` + tcText(x + 16, 296, name, 13, TC.ink, 800) + tcText(x, 322, total, 20, TC.ink, 800)
+        + tcText(x, 342, `${share}% · ${average} per ticket`, 12, TC.muted, 600);
+    });
+    // The time of the tickets resolved in each week, over its column.
+    const weeks = [0, 0, 1.2, 3.5, 0, 0, 0.9, 2.1, 4.2, 6.4, 0, 1.5, 0.4, 7.8, 12.3, 5.1, 9.6, 20.2, 14.4, 31.5, 77.3, 115.3];
+    out += tcCard(656, 196, 982, 158, 'Time spent per week', 'The tickets resolved or closed in each');
+    const slot = 946 / weeks.length;
+    weeks.forEach((days, index) => {
+      if (!days) return;
+      const x = 674 + index * slot + (slot - 26) / 2; const h = Math.max(3, days / 115.3 * 72);
+      out += `<rect x="${x.toFixed(1)}" y="${(328 - h).toFixed(1)}" width="26" height="${h.toFixed(1)}" rx="3" fill="url(#ticket-time-bar)"/>`
+        + tcText((x + 13).toFixed(1), (322 - h).toFixed(1), tcDuration(days), 10, '#991b1b', 800, 'middle');
+    });
+    out += `<path d="M670 328.5 H1624" stroke="${TC.line}" stroke-width="1.5"/>`;
+    TC_WEEKS.labels.forEach(([index, name]) => { out += tcText((674 + index * slot + slot / 2).toFixed(1), 346, name, 11, TC.muted, 600, 'middle'); });
+    // By module, type and priority, then by assignee, reporter and the version that fixed them.
+    [['By module', [['Non-Qualified Calls', 60.9, '#B0234F'], ['Workspace', 48.04, '#08736D'], ['Network Insights', 47.5, '#4F46E5'], ['General', 45.2, '#5b6b7b']]],
+      ['By type', [['Bug', 134.5, TC.type.bug], ['Improvement', 156.7, TC.type.improvement], ['New Feature', 22.5, TC.type.feature]]],
+      ['By priority', [['P1 · Critical', 34.25, TC.priority.P1], ['P2 · High', 104.6, TC.priority.P2], ['P3 · Medium', 110.8, TC.priority.P3], ['P4 · Low', 59.3, TC.priority.P4]]],
+      ['By assignee', [['User A', 213.3, TC.status.new], ['User B', 75.04, TC.status.new], ['User C', 25.3, TC.status.new]]],
+      ['By reporter', [['User C', 125.25, TC.status.new], ['User A', 105.3, TC.status.new], ['User B', 61.96, TC.status.new], ['User D', 19.9, TC.status.new]]],
+      ['By version that fixed them', [['v0.10.1', 117.04, TC.priority.P1], ['v0.10.0', 60.6, TC.priority.P1], ['v0.9.1', 50.95, TC.priority.P1], ['v0.9.0', 33.2, TC.priority.P1]]],
+    ].forEach(([title, rows], index) => {
+      const x = 18 + index * 272; const most = Math.max(...rows.map(([, days]) => days));
+      out += tcCard(x, 368, 258, 178, title, '', 14);
+      rows.forEach(([name, days, colour], row) => {
+        const y = 424 + row * 30;
+        out += tcText(x + 16, y, name, 12, TC.ink, 700) + tcText(x + 242, y, tcDuration(days), 12, TC.ink, 800, 'end') + tcBar(x + 16, y + 7, 226, days / most, colour, 6);
+      });
+    });
+    return out;
+  },
 };
 
 // Small pictures of the tiles (360 × 150), one per idea, in the colours of the deck.
@@ -1016,6 +1465,13 @@ const TEMPLATES = {
           <div><h3 style="font-size:30px">${escape(point.title)}</h3><p style="font-size:23px;color:var(--soft);line-height:1.4;margin-top:6px">${escape(point.text)}</p></div></div>`).join('')}</div>
       <div class="card" style="width:860px;flex:none;padding:20px"><svg width="820" height="560" viewBox="0 0 820 560" font-family="Helvetica Neue, Arial, sans-serif">${visual}</svg></div></div></div>`;
   },
+  // A visual as wide as the slide (1656 × 560), such as a view of the tool as it looks, framed (bare: on the slide
+  // itself), with the facts it shows below it.
+  showcase(slide, deck, p) {
+    const svg = `<svg width="1656" height="560" viewBox="0 0 1656 560" font-family="Helvetica Neue, Arial, sans-serif">${VISUALS[slide.visual](p, slide.options || {})}</svg>`;
+    return `${heading(slide)}<div class="content">${slide.bare ? `<div class="showcase is-bare">${svg}</div>` : `<div class="card showcase" style="box-shadow:0 36px 110px ${p.glow}">${svg}</div>`}
+      ${slide.facts ? `<div class="facts" style="grid-template-columns:repeat(${slide.facts.length},1fr)">${slide.facts.map((fact) => `<span class="fact">${icon(fact.icon, p.light, 26)}${escape(fact.text)}</span>`).join('')}</div>` : ''}</div>`;
+  },
   // One idea in the middle and its parts around it, joined to it.
   hub(slide, deck, p) {
     const half = Math.ceil(slide.items.length / 2);
@@ -1158,7 +1614,10 @@ function css(p) {
   .impact-bar { height: 100%; border-radius: 11px; }
   .impact-value { font-size: 21px; font-weight: 800; text-align: right; }
   .fact { display: flex; align-items: center; gap: 14px; padding: 12px 20px 12px 16px; border-radius: 20px; background: #131d33; border: 1px solid var(--line); font-size: 20px; line-height: 1.3; color: var(--soft); }
-  .fact svg { flex: none; }`;
+  .fact svg { flex: none; }
+  .showcase { flex: none; padding: 18px; }
+  .showcase.is-bare { padding: 0 20px; }
+  .showcase svg { display: block; }`;
 }
 
 function html(deck) {

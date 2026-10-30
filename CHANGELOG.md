@@ -34,6 +34,7 @@
 - **PPT Designer — PPT Templates updated in place:** setting the default, duplicating, deleting, creating and importing a template update the PPT Templates dialog at once, without reloading PPT Designer (which closed and opened the dialog again and opened the last Design under it), and a renamed template reaches the Template of a new PPT Design and the PPT Designs without reloading the page.
 
 #### 📚 Documentation:
+- **Help — Ticket Center presentation:** new slides show the module as it looks now, in its colours: the header with its tiles and the tabs of its five views, the New Ticket form (dimmed while signed out), the Dashboard, the periods (how each one draws its charts and its calendar of activity, and which tickets each part counts), Statistics and Time Spent; the Ticket Center slide of the Overview names the Dashboard by period, Statistics and Time Spent.
 
 ---
 

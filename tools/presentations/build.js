@@ -822,7 +822,7 @@ async function ticketCenter(pres) {
     shape(slide, pres.shapes.ROUNDED_RECTANGLE, { x: 7.03, y, w: 5.45 * share, h: 0.3, rectRadius: 0.08, fill: { color }, line: { color, width: 0 } });
     text(slide, label, { x: 7.15, y, w: 2.2, h: 0.3, fontSize: 11, bold: true, color: color === 'FAD22D' ? K.ink : K.white, valign: 'middle' });
   }
-  const chips = [['TbLayoutGrid', 'Open, resolved & mine tiles'], ['TbCalendarStats', 'Created vs resolved per period'], ['TbChartDonut', 'Statistics: time to resolve, backlog & activity'],
+  const chips = [['TbLayoutDashboard', 'Dashboard of the period chosen'], ['TbChartDonut', 'Statistics: times, backlog & activity'], ['TbClock', 'Time spent by module, type & person'],
     ['TbHistory', 'Timeline of comments & changes'], ['TbPhoto', 'Screenshots in every ticket'], ['TbTag', 'Version it was opened with']];
   for (const [index, [name, label]] of chips.entries()) {
     const x = 0.6 + (index % 3) * 4.09; const y = 5.6 + Math.floor(index / 3) * 0.6;
@@ -832,9 +832,9 @@ async function ticketCenter(pres) {
   }
   slide.addNotes('The Ticket Center collects the bugs, improvements and new features of the users, with their screenshots and '
     + 'the version they were opened with, from New to Resolved, Closed or Rejected, each with its priority from P1 to P5 and a '
-    + 'timeline of comments and changes; its dashboard counts the open tickets, those created and resolved every day, week, month, quarter or year and the '
-    + 'age of the oldest one, and its Statistics show the resolution rate, the time to resolve, the backlog over time, the versions, people and modules '
-    + 'of the tickets and the activity of each day.');
+    + 'timeline of comments and changes. Its Dashboard, Statistics and Time Spent show the period chosen, all time, this week, month, quarter or year: '
+    + 'the tickets created and resolved, those that need attention and the latest activity; the resolution rate, the time to resolve, the backlog, '
+    + 'the versions, people and modules of the tickets and the activity of each day; and the time spent resolving them by module, type, priority and person.');
 }
 
 async function enterprise(pres) {
