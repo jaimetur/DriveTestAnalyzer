@@ -341,7 +341,8 @@ div.tickets-spent-row { cursor: default; }
 .tickets-figures > a:hover { background: #fff1f1; }
 .tickets-figures strong { color: #10314a; font-size: 1rem; letter-spacing: 0; text-transform: none; white-space: nowrap; }
 .tickets-columns { display: grid; grid-template-columns: repeat(var(--columns, 7), minmax(0, 1fr)); gap: 0 .35rem; border-top: 1px dashed rgba(16, 49, 74, .14); }
-.tickets-column { display: grid; gap: .25rem; min-width: 0; }
+/* One track as wide as the column, so a date of the axis wider than it never widens its bar. */
+.tickets-column { display: grid; grid-template-columns: minmax(0, 1fr); gap: .25rem; min-width: 0; }
 .tickets-column-bar { display: flex; flex-direction: column-reverse; align-items: center; height: 6.5rem; margin-top: 1.1rem; border-bottom: 1px solid rgba(16, 49, 74, .18); }
 .tickets-column:hover .tickets-column-bar { background: rgba(16, 49, 74, .04); }
 .tickets-column-bar > span[data-type] { flex: none; width: min(100%, 2.4rem); background: var(--part-color); }
