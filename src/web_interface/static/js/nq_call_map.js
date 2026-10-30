@@ -515,6 +515,8 @@
         renderSamples();
       });
       head.append(title, switchControl(on, 'Show what comes from the CDR', (checked) => shared.setLayer('cdr', checked)));
+      // (Drawn again after each switch: its body keeps where it was scrolled.)
+      const scrolled = samples.querySelector('.nq-l3-body')?.scrollTop || 0;
       samples.replaceChildren(head);
       if (!samplesOpen) return;
       const body = node('div', undefined, `nq-l3-body${on ? '' : ' is-off'}`);
@@ -568,6 +570,7 @@
         row(settings.layers[key] !== false, `Show the ${CDR_LAYER_LABELS[key]}`, icons[key], text, count, (checked) => shared.setLayer(key, checked));
       }
       samples.append(body);
+      body.scrollTop = scrolled;
     };
     // In the call panel the wheel alone scrolls the panel: a moment's note says how to zoom.
     const wheelHint = node('div', 'Ctrl/Cmd + wheel to zoom the map', 'nq-map-wheel-hint');

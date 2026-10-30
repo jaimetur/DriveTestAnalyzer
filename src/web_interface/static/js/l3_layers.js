@@ -504,6 +504,8 @@
         render();
       });
       head.append(title, toggle(state.master, 'Show the Layer 3 - DT Logs', (checked) => { state.master = checked; changed(); }));
+      // (Drawn again after each switch: its body keeps where it was scrolled.)
+      const scrolled = panel.querySelector('.nq-l3-body')?.scrollTop || 0;
       panel.replaceChildren(head);
       if (!open) return;
       const body = node('div', undefined, 'nq-l3-body');
@@ -653,6 +655,7 @@
       footer.append(none, reset);
       body.append(footer);
       panel.append(body);
+      body.scrollTop = scrolled;
     };
     // The wheel and the clicks of the tree stay in it (they never move the map).
     ['wheel', 'pointerdown', 'dblclick'].forEach((type) => panel.addEventListener(type, (event) => event.stopPropagation(), {passive: true}));
