@@ -224,13 +224,33 @@
     h('span', {class: 'ds-cb-type-needs-mark', 'aria-hidden': 'true', text: ready ? '✓' : 'i'}),
     h('span', {}, h('strong', {text: item.type}), ` needs ${lower(requirement(item))}`));
   };
-  // Chart Type in a room ``width`` pixels wide: cells as large as fit the widest group (four chart types) on its row, from 80
-  // to 168 pixels.
+  // Chart Type in a room ``width`` pixels wide: the largest cells, from 60 to 120 pixels, that show every chart type without
+  // scrolling (as far as the height of the panel lets them), the groups side by side on a row while they fit. The chart types
+  // are then as wide as their widest row, so the panel leaves no room at their right.
   const TYPES_PER_ROW = Math.max(...TYPE_GROUPS.map(([, names]) => names.length));
-  const MINIMUM_TYPE_CELL = 80;
+  const MINIMUM_TYPE_CELL = 60, MAXIMUM_TYPE_CELL = 120;
   const fitTypes = (panel, width) => {
-    const cell = Math.max(MINIMUM_TYPE_CELL, Math.min(168, Math.floor((width - 40 - (TYPES_PER_ROW - 1) * 4) / TYPES_PER_ROW)));
+    const body = panel.querySelector('.ds-design-types-body'), types = body?.querySelector('.ds-cb-types');
+    const gap = types ? parseFloat(getComputedStyle(types).columnGap) || 0 : 4;
+    // (The card of a group adds its padding and border around its chart types.)
+    const card = types ? getComputedStyle(types.parentElement) : null;
+    const frame = card ? ['paddingLeft', 'paddingRight', 'borderLeftWidth', 'borderRightWidth'].reduce((sum, key) => sum + (parseFloat(card[key]) || 0), 0) : 0;
+    const room = width - 40;
+    let cell = Math.max(MINIMUM_TYPE_CELL, Math.min(MAXIMUM_TYPE_CELL, Math.floor((room - frame - (TYPES_PER_ROW - 1) * gap) / TYPES_PER_ROW)));
     panel.style.setProperty('--ds-type-cell', `${cell}px`);
+    if (!types) return;
+    const groups = [...body.querySelectorAll(':scope > .ds-cb-type-group')];
+    const layout = size => {
+      panel.style.setProperty('--ds-type-cell', `${size}px`);
+      body.style.width = `${Math.max(room, TYPES_PER_ROW * size + (TYPES_PER_ROW - 1) * gap + frame)}px`;
+      const left = body.getBoundingClientRect().left;
+      body.style.width = `${Math.ceil(Math.max(...groups.map(group => group.getBoundingClientRect().right)) - left)}px`;
+    };
+    const overflowing = () => panel.scrollHeight > panel.clientHeight + 1 || panel.scrollWidth > panel.clientWidth + 1;
+    layout(cell);
+    // (Smaller cells fit more groups on a row too: the first guess follows the area they need.)
+    if (overflowing()) layout(cell = Math.max(MINIMUM_TYPE_CELL, Math.floor(cell * Math.sqrt(panel.clientHeight / panel.scrollHeight))));
+    while (cell > MINIMUM_TYPE_CELL && overflowing()) layout(cell -= 2);
   };
   // The narrowest room beside a chart where Chart Type reads well (cells of 112 pixels); narrower, it takes the slide.
   const typesMinimumWidth = () => TYPES_PER_ROW * 112 + 40 + (TYPES_PER_ROW - 1) * 4;
@@ -308,12 +328,10 @@
     const chosen = chosenTypeOf(context.values);
     const point = item => ({onmouseenter: () => describe(item), onfocus: () => describe(item), onmouseleave: () => describe(chosen), onblur: () => describe(chosen)});
     host.replaceChildren(...[
-      // A row for each group; a group of one or two chart types goes on the row before it when it fits.
-      ...TYPE_GROUPS.flatMap(([label, names], index) => [
-        index && names.length > 2 ? h('span', {class: 'ds-cb-type-break', 'aria-hidden': 'true'}) : null,
-        h('div', {class: 'ds-cb-type-group', role: 'group', 'aria-label': label},
-          h('span', {class: 'ds-cb-type-group-label', text: label}),
-          h('div', {class: 'ds-cb-types'}, names.map(name => TYPES.find(item => item.type === name)).filter(Boolean).map(item => typeButton(item, context, point(item)))))]),
+      // The groups one after another, as many on a row as fit (fitTypes sizes them).
+      ...TYPE_GROUPS.map(([label, names]) => h('div', {class: 'ds-cb-type-group', role: 'group', 'aria-label': label},
+        h('span', {class: 'ds-cb-type-group-label', text: label}),
+        h('div', {class: 'ds-cb-types'}, names.map(name => TYPES.find(item => item.type === name)).filter(Boolean).map(item => typeButton(item, context, point(item)))))),
       settingRow(context), hint].filter(Boolean));
     describe(chosen);
   }

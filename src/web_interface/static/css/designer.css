@@ -173,30 +173,37 @@
   100% { box-shadow: 0 0 0 12px color-mix(in srgb, var(--ds-color) 0%, transparent); } }
 @media (prefers-reduced-motion: reduce) { .ppt-designer .ds-design-types-tab.is-calling { animation: none; } }
 .ppt-designer .ds-design-types-tab:focus-visible { outline: 2px solid var(--ds-color); outline-offset: 1px; }
+/* Lilac and framed in purple, so the open panel stands apart from the white panel and slide under it; its chart types stay
+   white on it. */
 .ppt-designer .ds-design-types { position: absolute; z-index: 5; display: grid; align-content: start; gap: .45rem; padding: .6rem .65rem; overflow-y: auto; overscroll-behavior: contain;
-  border: 1px solid var(--ds-border); background: var(--ds-design-surface); box-shadow: -10px 10px 28px rgba(36, 22, 61, .18); }
+  border: 1px solid #b69de0; background: linear-gradient(180deg, #f3ebff, #e9ddfc); box-shadow: -12px 12px 32px rgba(36, 22, 61, .28); }
 .ppt-designer .ds-design-types-head { display: flex; align-items: center; gap: .5rem; }
-.ppt-designer .ds-design-types-head strong { flex: 1 1 auto; font-size: 1.1rem; color: var(--ds-design-ink); }
+.ppt-designer .ds-design-types-head strong { flex: 1 1 auto; font-size: 1.02rem; color: var(--ds-design-ink); }
 .ppt-designer .ds-design-types-close { flex: 0 0 1.8rem; height: 1.8rem; padding: 0; border: 1px solid var(--ds-border); border-radius: 7px; background: #fff; box-shadow: none;
   color: var(--ds-design-muted); font: inherit; font-size: 1.05rem; line-height: 1; cursor: pointer; }
 .ppt-designer .ds-design-types-close:hover { border-color: var(--ds-color); color: var(--ds-color); }
 .ppt-designer .ds-design-types-body { display: grid; gap: .45rem; }
-/* A row for each group, as wide as its chart types (cells of one size that grows with the screen); a group of one or two
-   chart types goes on the row before it when it fits. The lines above and below them take a row of their own. */
-.ppt-designer .ds-design-types { --ds-type-cell: clamp(7.5rem, 10vw, 12rem); }
-.ppt-designer .ds-design-types-body:has(> .ds-cb-type-group) { display: flex; flex-wrap: wrap; align-items: start; gap: 0 1.6rem; }
-.ppt-designer .ds-design-types-body > .ds-cb-type-group { margin-bottom: .9rem; }
+/* The groups one after another, each as wide as its chart types (cells of one size, set by fitTypes), as many on a row as
+   fit. The lines above and below them take a row of their own. */
+.ppt-designer .ds-design-types { --ds-type-cell: clamp(6.5rem, 8.5vw, 8.75rem); }
+.ppt-designer .ds-design-types-body:has(> .ds-cb-type-group) { display: flex; flex-wrap: wrap; align-items: stretch; gap: .55rem; }
+/* Each group a card of its own, its name at the top and its chart types inside; the cards of a row stretch to its end and
+   are as tall as its tallest one, their chart types too. */
+.ppt-designer .ds-design-types-body > .ds-cb-type-group { flex: 1 0 auto; grid-template-rows: auto 1fr; padding: .45rem .5rem .5rem; border: 1px solid #d4c4f1; border-radius: 12px; background: rgba(255, 255, 255, .5);
+  box-shadow: 0 2px 6px rgba(75, 44, 130, .08); }
 .ppt-designer .ds-design-types-body > :not(.ds-cb-type-group) { flex: 1 1 100%; width: 0; min-width: 100%; }
-.ppt-designer .ds-design-types-body > .ds-cb-types-hint { margin-bottom: .55rem; }
-.ppt-designer .ds-cb-type-break { display: block; height: 0; }
-.ppt-designer .ds-cb-type-group { display: grid; gap: .3rem; }
-.ppt-designer .ds-cb-type-group-label { font-size: .78rem; font-weight: 850; letter-spacing: .06em; text-transform: uppercase; color: var(--ds-design-muted); }
+.ppt-designer .ds-design-types-body > .ds-cb-types-hint { margin-bottom: 0; }
+.ppt-designer .ds-cb-type-group { display: grid; gap: .35rem; }
+/* The name of each group in the colour of the theme, marked by a bar at its left. */
+.ppt-designer .ds-cb-type-group-label { padding-left: .45rem; border-left: 3px solid var(--ds-color); font-size: .82rem; font-weight: 900; line-height: 1.2; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--ds-color); }
 .ppt-designer .ds-design-types .ds-cb-types { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: var(--ds-type-cell); }
 /* In the flyout the chart types are large pictures with their names; the line above them says what the one pointed at
    needs. */
-.ppt-designer .ds-design-types .ds-cb-type-button { min-height: 0; padding: .75rem .6rem .65rem; gap: .55rem; border-radius: 12px; font-size: .86rem; }
+.ppt-designer .ds-design-types .ds-cb-type-button { min-height: 0; padding: .45rem .4rem .4rem; gap: .35rem; border-radius: 10px;
+  font-size: clamp(.68rem, calc(var(--ds-type-cell) / 10 + 2px), .8rem); }
 .ppt-designer .ds-design-types .ds-cb-type-button .ds-cb-picture { width: 100%; max-width: none; }
-.ppt-designer .ds-design-types .ds-cb-types-hint { order: -1; }
+.ppt-designer .ds-design-types .ds-cb-types-hint { order: -1; background: #fff; }
 /* What the chart type chosen needs, at the top of the Chart subpanel: ticked in green once the shelves give it. */
 .ppt-designer .ds-cb-type-needs { display: flex; align-items: flex-start; gap: .45rem; margin: 0; padding: .4rem .55rem; border-radius: 8px; background: #fff4e5;
   color: var(--ds-design-ink); font-size: .74rem; line-height: 1.35; }
@@ -211,7 +218,7 @@
     box-shadow: 3px 3px 10px rgba(36, 22, 61, .12); }
   .ppt-designer .ds-design-types-tab-icon { width: 1.2rem; height: 1.2rem; }
   .ppt-designer .ds-design-types-tab-label { font-size: .64rem; writing-mode: vertical-rl; }
-  .ppt-designer .ds-design-types { top: .4rem; right: 0; width: max-content; max-width: calc(100vw - 6rem); max-height: calc(100% - .8rem); padding: .9rem 1rem; border-radius: 14px; }
+  .ppt-designer .ds-design-types { top: .4rem; right: 0; width: max-content; max-width: calc(100vw - 6rem); max-height: calc(100% - .8rem); padding: .75rem .85rem; border-radius: 14px; }
 }
 @media (max-width: 900px) {
   .ppt-designer .ds-design-types-tab { bottom: 100%; right: .9rem; grid-auto-flow: column; align-items: center; padding: .3rem .65rem; border-bottom: 0; border-radius: 10px 10px 0 0; box-shadow: 0 -4px 12px rgba(36, 22, 61, .12); }
@@ -502,8 +509,8 @@
 #ds-viewer .ds-chart > .ds-design-types-tab { top: 50%; transform: translateY(-50%); }
 :is(.chart-builder-layout .chart-builder-viewer, #ds-viewer .ds-chart) > .ds-design-types-tab .ds-design-types-tab-icon { width: 1.3rem; height: 1.3rem; }
 :is(.chart-builder-layout .chart-builder-viewer, #ds-viewer .ds-chart) > .ds-design-types-tab .ds-design-types-tab-label { font-size: .74rem; writing-mode: vertical-rl; }
-.chart-builder-layout .chart-builder-viewer > .ds-design-types, #ds-viewer .ds-chart-stage > .ds-design-types { --ds-type-cell: clamp(6.5rem, 8vw, 10.5rem); top: .4rem;
-  bottom: auto; width: max-content; max-height: calc(100% - .8rem); padding: .9rem 1rem; border-radius: 14px; }
+.chart-builder-layout .chart-builder-viewer > .ds-design-types, #ds-viewer .ds-chart-stage > .ds-design-types { --ds-type-cell: clamp(6rem, 7vw, 8.75rem); top: .4rem;
+  bottom: auto; width: max-content; max-height: calc(100% - .8rem); padding: .75rem .85rem; border-radius: 14px; }
 /* (In the Designer the side and width are set beside the chart chosen.) */
 .chart-builder-layout .chart-builder-viewer > .ds-design-types { right: 1.9rem; left: auto; max-width: calc(100% - 2.4rem); }
 /* Refresh chart, at the right of the head of Chart Builder's chart: the round icon of the viewer of PPT Designer. */

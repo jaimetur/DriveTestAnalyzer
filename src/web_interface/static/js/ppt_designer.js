@@ -4560,6 +4560,8 @@
   let wheelTravel = 0;
   let wheelTurnedAt = 0;
   $('ds-charts').addEventListener('wheel', event => {
+    // Over Chart Type, open on the slide, the wheel scrolls its chart types.
+    if (event.target.closest?.('.ds-design-types')) { if (event.ctrlKey || event.metaKey) event.preventDefault(); return; }
     if (!prepared?.slides.length) return;
     event.preventDefault();
     if (event.ctrlKey || event.metaKey) {
