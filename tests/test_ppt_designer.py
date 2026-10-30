@@ -388,6 +388,42 @@ def test_design_export_uses_the_admin_import_archive_format(client):
     assert document['designs'][design_id]['auto_cdrs'] is True
 
 
+def test_design_library_order_is_saved_listed_and_carried_by_packages(client):
+    from src.modules.ppt_designer import read_design_order
+
+    payload = setup_design(client)
+    for design_id, name in (('design-b', 'Bravo'), ('design-a', 'Alpha'), ('design-c', 'Charlie')):
+        assert client.put(f'/api/ppt-designer/{design_id}', json={**payload, 'name': name}).status_code == 200
+    places = lambda: {key: value['position'] for key, value in client.get('/api/ppt-designer').json().items()
+                      if key in {'design-a', 'design-b', 'design-c'}}
+    # Until its editors order it, no Design has a place (the page sorts them by NR Mode and name).
+    assert places() == {'design-a': None, 'design-b': None, 'design-c': None}
+
+    # Ids it does not know are left out; the Designs it does not name keep following them.
+    response = client.post('/api/ppt-designer/order', json={'ids': ['design-c', 'missing', 'design-a']})
+    assert response.status_code == 200 and response.json() == {'order': ['design-c', 'design-a']}
+    assert places() == {'design-c': 1, 'design-a': 2, 'design-b': None}
+    [event] = [row for row in core.repository.list_logs(limit=20) if row['action'] == 'reorder_designs']
+    assert json.loads(event['details']) == {'previous_order': [], 'order': ['Charlie', 'Alpha']}
+    # A new order changes no Design, and saving a Design keeps its place.
+    assert client.put('/api/ppt-designer/design-a', json={**payload, 'name': 'Alpha 2'}).status_code == 200
+    assert places() == {'design-c': 1, 'design-a': 2, 'design-b': None}
+    assert 'position' not in json.loads(core.repository.get_workspace_state('ppt_designs_v2'))['design-a']
+
+    # Packages carry the order: their Designs keep it, before those only the workspace has.
+    workspace = core.active_workspace
+    package = core._design_archive_payload(workspace)
+    assert json.loads(package)['order'] == ['design-c', 'design-a']
+    client.post('/api/ppt-designer/order', json={'ids': ['design-b']})
+    assert read_design_order(core.repository) == ['design-b', 'design-c', 'design-a']
+    core._import_workspace_designs(workspace, package, 'super')
+    assert read_design_order(core.repository) == ['design-c', 'design-a', 'design-b']
+
+    # A deleted Design leaves its place.
+    assert client.delete('/api/ppt-designer/design-a').status_code == 200
+    assert places() == {'design-c': 1, 'design-b': 2}
+
+
 def test_design_saves_scope_and_dates_and_chooses_its_cdrs(client):
     payload = setup_design(client)
     payload['date_from'], payload['date_to'] = 'Oldest', 'Newest'

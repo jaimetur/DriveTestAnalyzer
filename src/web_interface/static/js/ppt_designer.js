@@ -23,6 +23,9 @@
   let openingTimes = null;
   let designs = {}, activeId = '', definition = null, savedDefinition = '', appliedFilterState = '', appliedSelectionState = '', appliedDesignDefinition = null, applyingDesignDefinition = null, prepared = null, slideIndex = 0;
   let designFiltersOpen = false;
+  // The ids of the Designs in the order of the library its editors dragged them to (the others follow by NR Mode and
+  // name), kept apart from their definitions.
+  let designOrder = [];
   let sequence = 0, cacheLookupSequence = 0, timer, controller, preparing = null, preparingFilterState = '', preparationProgressTimer = 0, dirty = false, filterActionBusy = false, preparationRunning = false, dataToken = '', dataEndpoint = '';
   let presentationTimer = 0;
   const presentation = {active: false, running: false, delay: 5000, transitionDuration: 1, effect: 'flip', showComments: true};
@@ -53,6 +56,7 @@
   const openStorageKey = `drivetest-analyzer:ppt-designer:${config.workspace}:open:${authenticatedSession}`;
   const filtersOpenStorageKey = `drivetest-analyzer:ppt-designer:${config.workspace}:filters-open:${authenticatedSession}`;
   const libraryStorageKey = `drivetest-analyzer:ppt-designer:${config.workspace}:library`;
+  const libraryOrderStorageKey = `drivetest-analyzer:ppt-designer:${config.workspace}:library-order`;
   const scrollStorageKey = `drivetest-analyzer:ppt-designer:${config.workspace}:scroll`;
   const preparedStorageKey = `drivetest-analyzer:ppt-designer:${config.workspace}:prepared`;
   const universeStorageKey = `drivetest-analyzer:ppt-designer:${config.workspace}:universes`;
@@ -76,7 +80,14 @@
   };
   const rememberOpen = id => { try { if (id) sessionStorage.setItem(openStorageKey, id); else sessionStorage.removeItem(openStorageKey); } catch (_) { /* Storage is optional. */ } };
   const rememberFiltersOpen = isOpen => { try { sessionStorage.setItem(filtersOpenStorageKey, isOpen ? 'open' : 'closed'); } catch (_) { /* Storage is optional. */ } };
-  const rememberLibrary = () => { try { sessionStorage.setItem(libraryStorageKey, JSON.stringify(designs)); } catch (_) { /* Storage is optional. */ } };
+  const rememberLibrary = () => { try { sessionStorage.setItem(libraryStorageKey, JSON.stringify(designs)); sessionStorage.setItem(libraryOrderStorageKey, JSON.stringify(designOrder)); } catch (_) { /* Storage is optional. */ } };
+  // The Designs of the library as listed: their place in it is taken apart from their definitions.
+  const loadDesigns = loaded => {
+    designOrder = Object.entries(loaded).filter(([, item]) => Number.isInteger(item?.position))
+      .sort(([, left], [, right]) => left.position - right.position).map(([id]) => id);
+    for (const item of Object.values(loaded)) if (item && typeof item === 'object') delete item.position;
+    designs = loaded;
+  };
   const rememberScroll = () => { try { sessionStorage.setItem(scrollStorageKey, String(window.scrollY)); } catch (_) { /* Storage is optional. */ } };
   const restoreScroll = () => {
     try {
@@ -1322,23 +1333,33 @@
     const listed = Object.entries(designs).filter(([, item]) => !item.template_preview);
     $('ds-count').textContent = `Total Designs: ${listed.length}`;
     const body = $('ds-designs-body'); body.replaceChildren();
-    // Sort by NR Mode (NSA before SA), then Design name, with the same
-    // rule as the Report Templates table: an NSA/SA marker in the name is
-    // ignored and names compare case-insensitively by character code.
+    // In the order its editors dragged them to; the others after them by NR Mode (NSA before SA), then Design name,
+    // with the same rule as the Report Templates table: an NSA/SA marker in the name is ignored and names compare
+    // case-insensitively by character code.
     const sortName = value => {
       const text = String(value || '').trim();
       return (text.replace(/^\s*n?sa\s*[-–—:]\s*|\s*[-–—:]?\s*\(?\bn?sa\)?\s*$/i, '').trim() || text).toLowerCase();
     };
     const compareText = (left, right) => (left < right ? -1 : left > right ? 1 : 0);
-    const rows = listed.sort(([, left], [, right]) => (
-      compareText(designNrMode(left), designNrMode(right))
+    const place = id => { const index = designOrder.indexOf(id); return index < 0 ? Infinity : index; };
+    const rows = listed.sort(([leftId, left], [rightId, right]) => (
+      (place(leftId) - place(rightId))
+      || compareText(designNrMode(left), designNrMode(right))
       || compareText(sortName(left.name), sortName(right.name))
       || compareText(String(left.name).toLowerCase(), String(right.name).toLowerCase())
     ));
     if (!rows.length) { const row = node('tr'), cell = node('td', 'No Designs have been created yet.', 'form-note'); cell.colSpan = 5; row.append(cell); body.append(row); return; }
     for (const [id, item] of rows) {
       const row = node('tr'); if (id === activeId) row.classList.add('ds-design-active');
+      row.dataset.designId = id;
       const nameCell = node('td'); nameCell.dataset.label = 'PPT Name';
+      // Editors order the library by the tab on the left of each name (dragged, or the up and down arrow keys).
+      if (config.can_manage) {
+        const handle = node('button', '⠿', 'ds-design-drag-handle'); handle.type = 'button';
+        handle.title = 'Drag to order the PPT Designs (or press the up and down arrow keys)';
+        handle.setAttribute('aria-label', `Move Design ${item.name}`);
+        nameCell.classList.add('ds-design-name-cell'); nameCell.append(handle);
+      }
       const nameEditor = node('div', undefined, 'ds-design-name-editor');
       const nameInput = document.createElement('input'); nameInput.type = 'text'; nameInput.value = item.name; nameInput.maxLength = 120; nameInput.setAttribute('aria-label', `PPT name: ${item.name}`);
       const nameSave = node('button', '✓', 'ds-design-name-save'); nameSave.type = 'button'; nameSave.title = 'Save PPT name'; nameSave.setAttribute('aria-label', 'Save PPT name'); nameSave.hidden = true;
@@ -1444,6 +1465,10 @@
       }
       const cell = node('td'); cell.dataset.label = 'Actions'; cell.append(actions); row.append(cell); body.append(row);
     }
+    if (config.can_manage) window.bindRowOrdering?.(body, {
+      key: 'designId', handle: '.ds-design-drag-handle', title: 'Design Order Not Saved',
+      save: async ids => { designOrder = (await api('/order', 'POST', {ids})).order; rememberLibrary(); },
+    });
     syncCompactLibraryFilters();
   }
   const renderDesignStatuses = () => {
@@ -5004,7 +5029,7 @@
     },
     // The values of the template parameters, chosen in PPT Scope & Filters: applied and saved as the filters.
     setParameterValues(values) { if (!definition) return; definition.parameter_values = structuredClone(values); filterChanged(); },
-    async reloadLibrary() { designs = await api(); library(); },
+    async reloadLibrary() { loadDesigns(await api()); library(); },
     openDesign: id => openDesign(id),
   };
   safe(async ()=>{
@@ -5017,9 +5042,11 @@
       const cached = JSON.parse(sessionStorage.getItem(libraryStorageKey) || '{}');
       designs = cached && typeof cached === 'object' && !Array.isArray(cached)
         && Object.values(cached).every(item => item && typeof item === 'object' && typeof item.name === 'string') ? cached : {};
+      const cachedOrder = JSON.parse(sessionStorage.getItem(libraryOrderStorageKey) || '[]');
+      designOrder = Array.isArray(cachedOrder) ? cachedOrder.map(String) : [];
       if (Object.keys(designs).length) library();
     } catch (_) { designs = {}; }
-    designs = await api(); library();
+    loadDesigns(await api()); library();
     if (restorePageState) restoreScroll(); else resetScroll();
     void refreshDesignStatuses();
     void refreshDesignPptJobs();

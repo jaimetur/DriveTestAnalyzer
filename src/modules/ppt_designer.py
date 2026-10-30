@@ -141,6 +141,8 @@ def comments_selection_signature(definition: Any, cdrs: dict[str, list[dict]], s
     }
     return sha256(json.dumps(selection, sort_keys=True, default=str).encode()).hexdigest()
 STATE_KEY = 'ppt_designs_v2'
+# The ids of the Designs in the order of the library, kept apart from their definitions (a new order changes no Design).
+DESIGN_ORDER_STATE_KEY = 'ppt_designs_order_v1'
 # A PPT Template opened in the viewer and the Designer (PPT Templates → Edit): a Design of each user kept apart from
 # the Designs (never listed, exported, transferred or used by another module), whose changes go to its template.
 TEMPLATE_PREVIEWS_STATE_KEY = 'ppt_template_previews_v1'
@@ -229,6 +231,29 @@ class DesignDefinition(BaseModel):
             if isinstance(value, dict) and value.get('nr_mode') is not None:
                 value = {**value, 'nr_mode': design_nr_mode_value(value['nr_mode'])}
         return value
+
+
+class DesignOrder(BaseModel):
+    ids: list[str]
+
+
+def read_design_order(task_repository) -> list[str]:
+    """The ids of the PPT Designs in the order its editors dragged them to in the library (none: by NR Mode and name)."""
+    try:
+        order = json.loads(task_repository.get_workspace_state(DESIGN_ORDER_STATE_KEY) or '[]')
+    except (TypeError, ValueError):
+        return []
+    return [str(item) for item in order] if isinstance(order, list) else []
+
+
+def save_design_order(task_repository, design_ids, existing) -> list[str]:
+    """Put the PPT Designs of ``design_ids`` first, in that order, and then those the order kept so far names; Designs
+    named nowhere follow them in the library. Only the ids of ``existing`` stay. Returns the order kept."""
+    existing = {str(item) for item in existing}
+    chosen = [item for item in dict.fromkeys(str(value) for value in design_ids) if item in existing]
+    order = chosen + [item for item in read_design_order(task_repository) if item in existing and item not in chosen]
+    task_repository.set_workspace_state(DESIGN_ORDER_STATE_KEY, json.dumps(order))
+    return order
 
 
 class DesignThemeRequest(BaseModel):
@@ -2671,15 +2696,19 @@ def install_design_routes(core):
             task_repository = bound_repository()
             designs = read_designs(task_repository)
             known = creators(task_repository, PPT_DESIGNER)
+            positions = {item: index for index, item in enumerate(
+                (item for item in read_design_order(task_repository) if item in designs), start=1)}
             # The PPT Template the user has open as a Design (PPT Templates → Edit), which the page never lists.
             preview_id = template_preview_id(user.username)
             preview = read_template_previews(task_repository).get(preview_id)
         if isinstance(preview, dict):
             designs = {**designs, preview_id: {**preview, 'template_preview': True}}
             known = {**known, preview_id: user.username}
-        # Each Design with who created it: only they, admins and super-admins delete it.
+        # Each Design with who created it (only they, admins and super-admins delete it) and its place in the library
+        # (none until its editors order it).
         return JSONResponse(
-                {design_id: {**definition, 'created_by': known.get(str(design_id).casefold(), '')}
+                {design_id: {**definition, 'created_by': known.get(str(design_id).casefold(), ''),
+                             'position': positions.get(design_id)}
                  if isinstance(definition, dict) else definition for design_id, definition in designs.items()},
             headers={'Cache-Control': 'no-store, max-age=0, must-revalidate'},
         )
@@ -3612,6 +3641,21 @@ def install_design_routes(core):
             forget_creator(task_repository, PPT_DESIGNER, design_id)
             task_repository.add_log(user.username, 'delete_design', json.dumps({'id': design_id}))
         return {'deleted': True}
+
+    @app.post('/api/ppt-designer/order')
+    def save_designs_order(payload: DesignOrder, user=Depends(design_editor_user)):
+        """Keep the PPT Designs in the order they were dragged to in the library, for every user of the workspace."""
+        with lock:
+            task_repository = bound_repository()
+            designs = read_designs(task_repository)
+            previous = [item for item in read_design_order(task_repository) if item in designs]
+            order = save_design_order(task_repository, payload.ids, designs)
+            if order != previous:
+                names = lambda ids: [str(designs[item].get('name') or item) for item in ids]
+                task_repository.add_log(user.username, 'reorder_designs', json.dumps({
+                    'previous_order': names(previous), 'order': names(order),
+                }, ensure_ascii=False))
+        return {'order': order}
 
     # ------------------------------------------------------------------
     # Designer (ticket #26): the slide set of a Design and of its template

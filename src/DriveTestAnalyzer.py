@@ -9315,9 +9315,12 @@ def _design_archive_payload(workspace: Workspace) -> bytes:
     # The identity of each PPT Design (its ID, or that of the package it came from) and its creator.
     uids, known = identities(task_repository, DESIGN_IDENTITIES), creators(task_repository, PPT_DESIGNER)
     from src.modules.design_images import portable_images, referenced_images
+    from src.modules.ppt_designer import read_design_order
     return json.dumps({'format': 'drivetest-analyzer-designs', 'version': 1, 'designs': designs, 'cdrs': cdrs,
                        'identities': {key: uids.get(str(key).casefold()) or str(key) for key in designs},
                        'creators': {key: known[str(key).casefold()] for key in designs if known.get(str(key).casefold())},
+                       # The order of the library (empty while it is sorted by NR Mode and name).
+                       'order': [key for key in read_design_order(task_repository) if key in designs],
                        # The pictures of the Image elements of their own slides.
                        'images': portable_images(task_repository, referenced_images(designs))},
                       ensure_ascii=False, indent=2).encode('utf-8')
@@ -9417,6 +9420,7 @@ def _import_workspace_designs(workspace: Workspace, payload: bytes, importing_us
     matcher = ItemMatcher([(key, str(item.get('name') or ''), local_uids.get(str(key).casefold()) or str(key))
                            for key, item in current.items() if isinstance(item, dict)])
     imported_uids: dict[str, str] = {}
+    targets: dict[str, str] = {}
     for design_id, definition in incoming.items():
         if not isinstance(definition, dict):
             continue
@@ -9426,10 +9430,18 @@ def _import_workspace_designs(workspace: Workspace, payload: bytes, importing_us
             target = design_id if design_id not in current else str(uuid4())
         current[target] = {**definition, 'name': name} if definition.get('name') else definition
         imported_uids[target] = uid
+        targets[str(design_id)] = str(target)
         set_creator(task_repository, PPT_DESIGNER, target, transfer_creator(
             package_creators.get(design_id), local_creators.get(str(target).casefold(), ''), importing_user))
     task_repository.set_workspace_state(DESIGN_STATE_KEY, json.dumps(current, ensure_ascii=False))
     set_identities(task_repository, DESIGN_IDENTITIES, imported_uids)
+    order = document.get('order') if isinstance(document.get('order'), list) else []
+    package_order = [targets[str(key)] for key in order if str(key) in targets]
+    if package_order:
+        # The PPT Designs keep the order they had in their workspace, before the Designs only this one has (packages
+        # made before the order, or of a library sorted by NR Mode and name, leave new Designs at the end).
+        from src.modules.ppt_designer import save_design_order
+        save_design_order(task_repository, package_order, current)
     from src.modules.design_images import restore_images
     restore_images(task_repository, document.get('images'))
     return matcher.summary()

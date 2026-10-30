@@ -3807,55 +3807,53 @@ function bindCatalogueAutoRename(input) {
 }
 document.querySelectorAll('[data-catalogue-auto-rename]').forEach(bindCatalogueAutoRename);
 
-// PPT Templates ordered by the tab on the left of their names, as the Reporting Jobs: dragged (mouse, pen or touch) or
-// moved with the up and down arrow keys, each move saves the order of the workspace at once.
-function bindCatalogueTemplateOrder(body) {
-  if (body.dataset.catalogueOrderBound) return;
-  body.dataset.catalogueOrderBound = '1';
+// Rows ordered by the tab on the left of their names (PPT Templates, PPT Designs), as the Reporting Jobs: dragged (mouse,
+// pen or touch) or moved with the up and down arrow keys. ``key`` is the data attribute naming each row, ``handle``
+// selects its tab and ``save`` receives the names of the rows in their new order after each move; when it fails, the
+// rows go back where they were.
+window.bindRowOrdering = (body, {key, handle: handleSelector, save, title = 'Order Not Saved'}) => {
+  if (body.dataset.rowOrderingBound) return;
+  body.dataset.rowOrderingBound = '1';
+  const ordered = () => Array.from(body.rows).filter((row) => row.dataset[key] !== undefined);
+  const keys = () => ordered().map((row) => row.dataset[key]);
   // Only the rows shown (a phone shows one card a page).
-  const rows = () => Array.from(body.rows).filter((row) => row.dataset.templateName !== undefined && row.getClientRects().length);
-  const currentOrder = () => Array.from(body.rows).map((row) => row.dataset.templateName).filter((name) => name !== undefined);
-  let savedOrder = currentOrder();
-  const saveOrder = async () => {
-    const names = currentOrder();
-    if (JSON.stringify(names) === JSON.stringify(savedOrder)) return;
+  const shownRows = () => ordered().filter((row) => row.getClientRects().length);
+  const commit = async (before) => {
+    if (JSON.stringify(keys()) === JSON.stringify(before)) return;
     try {
-      const response = await fetch(body.dataset.catalogueOrderUrl, {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: {'Content-Type': 'application/json', Accept: 'application/json'},
-        body: JSON.stringify({names}),
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(typeof payload.detail === 'string' ? payload.detail : 'The order of the PPT Templates could not be saved.');
-      savedOrder = Array.isArray(payload.order) ? payload.order : names;
-      document.dispatchEvent(new CustomEvent('catalogue:templates-ordered', {detail: {order: savedOrder}}));
+      await save(keys());
     } catch (error) {
-      // The rows go back to the order saved.
-      savedOrder.forEach((name) => {
-        const row = Array.from(body.rows).find((element) => element.dataset.templateName === name);
+      before.forEach((value) => {
+        const row = ordered().find((element) => element.dataset[key] === value);
         if (row) body.append(row);
       });
-      showInfoDialog(error instanceof Error ? error.message : 'The order of the PPT Templates could not be saved.', {
-        title: 'Template Order Not Saved', tone: 'error',
-      });
+      showInfoDialog(error instanceof Error ? error.message : 'The new order could not be saved.', {title, tone: 'error'});
     }
   };
+  // The dialog or the page scrolls while the pointer is near its top or bottom.
+  const scrollerOf = (element) => {
+    for (let parent = element.parentElement; parent && parent !== document.body; parent = parent.parentElement) {
+      const overflow = getComputedStyle(parent).overflowY;
+      if ((overflow === 'auto' || overflow === 'scroll') && parent.scrollHeight > parent.clientHeight) return parent;
+    }
+    return document.scrollingElement;
+  };
   body.addEventListener('pointerdown', (event) => {
-    const handle = event.target.closest('[data-catalogue-drag-handle]');
-    const row = handle?.closest('tr[data-template-name]');
-    if (!row || event.button !== 0) return;
+    const handle = event.target.closest(handleSelector);
+    const row = handle?.closest('tr');
+    if (!row || row.dataset[key] === undefined || event.button !== 0) return;
     event.preventDefault();
     try { handle.setPointerCapture?.(event.pointerId); } catch {}
     handle.focus({preventScroll: true});
+    const before = keys();
     row.classList.add('is-dragging');
-    // The dialog scrolls while the pointer is near its top or bottom.
-    const scroller = row.closest('.ds-templates-dialog') || document.scrollingElement;
+    const scroller = scrollerOf(row);
     const move = (moveEvent) => {
+      if (!row.isConnected) return;
       const frame = scroller === document.scrollingElement ? {top: 0, bottom: window.innerHeight} : scroller.getBoundingClientRect();
       if (moveEvent.clientY < frame.top + 50) scroller.scrollTop -= 14;
       else if (moveEvent.clientY > frame.bottom - 50) scroller.scrollTop += 14;
-      const others = rows().filter((element) => element !== row);
+      const others = shownRows().filter((element) => element !== row);
       const next = others.find((element) => {
         const box = element.getBoundingClientRect();
         return moveEvent.clientY < box.top + box.height / 2;
@@ -3869,24 +3867,43 @@ function bindCatalogueTemplateOrder(body) {
       window.removeEventListener('pointerup', stop);
       window.removeEventListener('pointercancel', stop);
       row.classList.remove('is-dragging');
-      void saveOrder();
+      if (row.isConnected) void commit(before);
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', stop);
     window.addEventListener('pointercancel', stop);
   });
   body.addEventListener('keydown', (event) => {
-    const handle = event.target.closest('[data-catalogue-drag-handle]');
-    const row = handle?.closest('tr[data-template-name]');
-    if (!row || !['ArrowUp', 'ArrowDown'].includes(event.key)) return;
+    const handle = event.target.closest(handleSelector);
+    const row = handle?.closest('tr');
+    if (!row || row.dataset[key] === undefined || !['ArrowUp', 'ArrowDown'].includes(event.key)) return;
     event.preventDefault();
-    const shown = rows();
+    const shown = shownRows();
     const target = shown[shown.indexOf(row) + (event.key === 'ArrowUp' ? -1 : 1)];
     if (!target) return;
+    const before = keys();
     if (event.key === 'ArrowUp') target.before(row); else target.after(row);
     row.scrollIntoView({block: 'nearest'});
     handle.focus();
-    void saveOrder();
+    void commit(before);
+  });
+};
+
+// PPT Templates ordered by the tab on the left of their names: each move saves the order of the workspace at once.
+function bindCatalogueTemplateOrder(body) {
+  window.bindRowOrdering(body, {
+    key: 'templateName', handle: '[data-catalogue-drag-handle]', title: 'Template Order Not Saved',
+    save: async (names) => {
+      const response = await fetch(body.dataset.catalogueOrderUrl, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {'Content-Type': 'application/json', Accept: 'application/json'},
+        body: JSON.stringify({names}),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(typeof payload.detail === 'string' ? payload.detail : 'The order of the PPT Templates could not be saved.');
+      document.dispatchEvent(new CustomEvent('catalogue:templates-ordered', {detail: {order: Array.isArray(payload.order) ? payload.order : names}}));
+    },
   });
 }
 document.querySelectorAll('tbody[data-catalogue-order-url]').forEach(bindCatalogueTemplateOrder);

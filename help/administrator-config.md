@@ -63,6 +63,8 @@ Importing or transferring Auto-calculated Fields stores them at once and updates
 
 Importing or transferring PPT Templates replaces the templates the destination has and adds the others, keeping those only the destination has; the destination keeps its default template, and the default of the package becomes the default only where the destination has none. A template used by a Design of the destination keeps its local definition, unless the same package also includes the Designs: checked in the preview, or left unchecked because the destination has those Designs already (the templates then replace those they use as when the Designs are imported). The templates of the package keep the order they had in the PPT Templates of their workspace, ahead of those only the destination has; a package of a library still sorted by name, or made by an earlier version, adds its new templates at the end.
 
+The Designs of an imported or transferred package likewise keep the order they had in the PPT Designs library of their workspace, ahead of those only the destination has; a package of a library still sorted by NR Mode and name, or made by an earlier version, adds its new Designs at the end.
+
 A backup restore of PPT Templates, Designs or Auto-calculated Fields works the same way: it replaces those the workspace has and adds the others, keeping those the backup does not have.
 
 #### Matching and creators

@@ -82,6 +82,8 @@ An existing or imported Design **RF Quality (RSRP & SINR)** can use the workspac
 
 **Close** leaves the active definition without deleting it. Deleting a Design does not delete its CDRs, template or generated PPT jobs.
 
+The library lists the Designs in the order of the workspace. Users who can change Designs drag a Design by the tab on the left of its name (or press the up and down arrow keys on the tab) to move it, and the new order is saved at once for every user of the workspace, without changing any Design. Until a Design is first moved the library is sorted by NR Mode (NSA, NSA & SA, SA) and then by name (an NR Mode written in a name, such as `NSA - Report`, is ignored for the order); Designs created, duplicated or imported later go to the end. App Events record each new order (`reorder_designs`, with the names in the order before and after), and exports, transfers and backups of the Designs carry it (see [Import / Export / Transfer](administrator-config.md)).
+
 ### Change name, NR Mode or template
 
 Edit the name in the table (column **PPT Name**) and confirm with the green check. NR Mode and **PPT Template** have their own selectors, independent of each other: the NR Mode chooses the CDRs the Design reads and keeps its template, and any template serves every NR Mode. A Design created blank shows **None — blank PPT**: choosing a template makes it follow that template, and its own slides are replaced by those of the template after a warning.
