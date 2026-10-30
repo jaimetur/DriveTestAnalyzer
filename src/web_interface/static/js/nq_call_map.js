@@ -110,9 +110,6 @@
   };
   const KIND_LABELS = {voice: 'Voice', whatsapp: 'WhatsApp', data: 'Data', ping: 'Ping', speech: 'Speech'};
   const SERVICE_LABELS = {voice: 'Voice', speech: 'Speech', data: 'Data'};
-  // The Non-Qualified Calls around a call: those of the campaigns chosen in the filters of the page (every campaign while
-  // none is chosen), or those of the campaign of the call.
-  const FAILURE_SCOPES = {selected: 'Selected campaigns', campaign: 'Call campaign'};
   // What the colour of the NQ calls tells, the same on both maps: the site of their CDR, their call type, the domain of their
   // root cause (decided, else that of the DT Analyzer RCA), their campaign or their operator. The map of a call opens by
   // site, NQ Maps by call type; on the map of a call, Per Group rings the NQ calls of its groups besides.
@@ -530,11 +527,12 @@
         layer.append(line);
         body.append(layer);
       };
-      body.append(node('p', 'RSRP / SINR (from CDR samples)', 'nq-l3-block'));
+      // On the map of a call, the campaigns of the CDRs of everything the card shows (its samples, NQ calls, route…).
       if (shared.samplesScope) {
+        body.append(node('p', 'Campaigns', 'nq-l3-block'));
         const scopes = node('div', undefined, 'nq-l3-ues');
         scopes.setAttribute('role', 'radiogroup');
-        scopes.setAttribute('aria-label', 'CDRs of the samples');
+        scopes.setAttribute('aria-label', 'Campaigns of the CDRs');
         scopes.title = shared.samplesScope.title;
         for (const [value, text] of shared.samplesScope.options()) {
           const chosen = value === shared.samplesScope.value();
@@ -547,6 +545,7 @@
         }
         body.append(scopes);
       }
+      body.append(node('p', 'RSRP / SINR (from CDR samples)', 'nq-l3-block'));
       const rows = data.tests?.rows || [];
       for (const [key, metric] of Object.entries(METRICS)) {
         const count = key === 'result' ? rows.length : rows.filter((item) => item[COLUMN[key]] !== null && item[COLUMN[key]] !== undefined).length;
@@ -1918,8 +1917,6 @@
       // sites first).
       measures: storedMeasures(stored),
       operators: ['all', 'focus'].includes(stored.operators) ? stored.operators : 'own',
-      // The Non-Qualified Calls around drawn: those of the campaigns chosen in the filters until another choice.
-      failures: FAILURE_SCOPES[stored.failures] ? stored.failures : 'selected',
       failureColour: FAILURE_COLOURS[stored.failureColour] ? stored.failureColour : 'site',
       // Per Group: a circle around each NQ call of the groups of the call, in the colour of each group.
       perGroup: stored.perGroup !== false,
@@ -1927,7 +1924,7 @@
       layers: {cdr: true, failures: true, cluster: true, run: true, hotspot: true, sites: true, path: true, route: true, paths: true, ...(stored.layers || {})},
     };
     delete settings.layers.tests;
-    const save = () => storeSettings({tests: settings.tests, measures: settings.measures, operators: settings.operators, failures: settings.failures,
+    const save = () => storeSettings({tests: settings.tests, measures: settings.measures, operators: settings.operators,
       failureColour: settings.failureColour, perGroup: settings.perGroup, layers: settings.layers});
     let callKey = '', loadedKey = '', controller = null, expandedView = null, expandedTimeline = null, expandedToolbar = null;
     const toolbar = node('div', undefined, 'nq-map-toolbar');
@@ -1972,8 +1969,9 @@
     shared.showsFailure = (failure) => {
       const call = shared.data?.call;
       if (!call || failure.self) return true;
-      if (settings.failures === 'campaign' && (failure.campaign !== call.campaign || failure.nr_mode !== call.nr_mode)) return false;
-      if (settings.failures === 'selected' && !selectedCampaign(failure)) return false;
+      // Those of the campaigns chosen in From CDR, as everything else from the CDRs.
+      if (settings.tests === 'campaign' && (failure.campaign !== call.campaign || failure.nr_mode !== call.nr_mode)) return false;
+      if (settings.tests === 'selected' && !selectedCampaign(failure)) return false;
       if (hiddenByFocus(failure)) return false;
       return inGroup(failure) || failure.same_place || (shared.operatorChoice() === 'own' ? failure.same_operator : shared.operatorShown(failure.operator));
     };
@@ -1997,13 +1995,13 @@
       save();
       redrawAll();
     };
-    // The CDRs of the tests around the call (its samples, Radio around the call, Diagnosis hints and drive), chosen in the
-    // card From CDR as NQ calls from chooses those of the NQ calls: the campaigns chosen in the filters, or that of the call.
+    // The campaigns of the CDRs of everything the map draws from them (its NQ calls, samples, Radio around the call, Diagnosis
+    // hints and drive), chosen at the top of the card From CDR: those chosen in the filters, or that of the call.
     shared.samplesScope = {
       options: () => Object.entries(shared.data?.tests_scopes || {selected: 'Selected campaigns', campaign: 'Call campaign'}),
       value: () => settings.tests,
       set: (value) => { settings.tests = value; save(); load(); },
-      title: 'The CDRs of the tests around the call (its RSRP / SINR samples, the Radio around the call, the Diagnosis hints and its drive): every CDR of the campaigns and NR Modes chosen in the filters of the page (of every campaign while none is chosen), or every CDR of the campaign and NR Mode of the call (Voice, Speech and Data together)',
+      title: 'The campaigns of everything the map draws from the CDRs (its NQ calls, RSRP / SINR samples, Radio around the call, Diagnosis hints and drive): those (and the NR Modes) chosen in the filters of the page, every campaign while none is chosen, or the campaign and NR Mode of the call (Voice, Speech and Data CDRs together)',
     };
     shared.select = (choice) => {
       shared.selection = choice;
@@ -2384,14 +2382,14 @@
       const others = data.failures.filter((item) => !item.self);
       const shown = others.filter(shared.showsFailure);
       const campaignsChosen = Boolean(filters()?.campaign?.length || filters()?.nr_mode?.length);
-      const scope = settings.failures === 'campaign' ? ' · of its campaign' : campaignsChosen ? ' · of the selected campaigns' : '';
+      const scope = settings.tests === 'campaign' ? ' · of its campaign' : campaignsChosen ? ' · of the selected campaigns' : '';
       // Each count takes the call itself too: in its hotspot, cluster or run (of 2 calls or more), at its site, within the radius.
       const own = data.failures.find((item) => item.self);
       const groups = data.groups || {};
       const count = (test, itself) => number(shown.filter(test).length + (itself ? 1 : 0));
       const within = (item) => item.distance_km !== null && item.distance_km <= data.radius_km;
       // Every NQ call of its campaign comes, and the nearest ones of the other campaigns up to a maximum.
-      const cut = settings.failures === 'selected' && data.failures_left_out
+      const cut = settings.tests === 'selected' && data.failures_left_out
         ? ` · of the other campaigns, the ${number(data.failures_max)} nearest (${number(data.failures_left_out)} more left out)` : '';
       failuresCard.replaceChildren(cardHead('Non-Qualified Calls around',
         `${count((item) => item.same_hotspot, groups.hotspot >= 2)} in its hotspot · ${count((item) => item.same_cluster, groups.cluster >= 2)} in its cluster · `
@@ -2643,9 +2641,6 @@
           String(settings.radius_km), (value) => {
             settings.radius_km = Number(value); load();
           }, 'The area around where the call failed: its sites, Non-Qualified Calls and tests. A call opens with the radius that holds every NQ call of its hotspot and cluster, else with 1 km'),
-        select('NQ calls from', 'failures', Object.entries(data?.failure_scopes || FAILURE_SCOPES), settings.failures, (value) => {
-          settings.failures = value; save(); redrawAll(); renderFailures();
-        }, 'The Non-Qualified Calls around that the map and its list show: those of the campaigns (and NR Modes) chosen in the filters of the page, every campaign while none is chosen, or those of the campaign and NR Mode of the call (the Diagnosis hints and the Decisions at its place count those of every campaign)'),
         select('Colour NQ calls by', 'failure-colour', Object.entries(FAILURE_COLOURS), settings.failureColour, (value) => {
           settings.failureColour = value; save(); redrawAll(); renderFailures();
         }, 'What the colour of the Non-Qualified Calls around tells, as on NQ Maps: the site of their CDR, their call type, the domain of their root cause (the one decided, else that of the DT Analyzer RCA), their campaign or their operator'),
@@ -2904,7 +2899,7 @@
         return call ? ['Call Area Map', call.operator, call.join_id].filter(Boolean).join(' · ') : 'Call Area Map';
       },
       details: () => ({section: 'Call Area Map', context: {call_key: shared.data?.call.call_key || '', join_id: shared.data?.call.join_id || '',
-        radius_km: String(shared.data?.radius_km ?? ''), tests: settings.tests, failures: settings.failures, failure_colour: settings.failureColour,
+        radius_km: String(shared.data?.radius_km ?? ''), campaigns: settings.tests, failure_colour: settings.failureColour,
         measures: settings.measures.join(', ')}}),
     };
     return controller;

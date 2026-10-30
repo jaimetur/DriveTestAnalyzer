@@ -133,7 +133,7 @@ def test_the_map_places_the_call_its_cells_the_sites_and_the_calls_and_tests_aro
     assert failures['V2']['ends'] == {}
     # Each with its CDR and campaign, so the page shows those of the campaigns selected or of the campaign of the call.
     assert failures['V2']['dataset_id'] == call['dataset_id'] and failures['V2']['campaign'] == call['campaign']
-    assert data['failure_scopes'] == nq_call_map.FAILURE_SCOPES and nq_call_map.DEFAULT_FAILURE_SCOPE == 'selected'
+    assert data['tests_scopes'] == nq_call_map.TEST_SCOPES and 'failure_scopes' not in data
     assert data['failures_left_out'] == 0 and data['failures_max'] == nq_call_map.MAX_FAILURES
     # Alone in its hotspot (of 1 call: the page counts no hotspot), in no cluster and no run.
     assert {key: data['groups'][key] for key in ('hotspot', 'cluster', 'run')} == {'hotspot': 1, 'cluster': 0, 'run': 0}
