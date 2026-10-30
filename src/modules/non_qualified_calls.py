@@ -50,7 +50,7 @@ from io import BytesIO
 from threading import Lock
 from typing import Any, Callable, Iterator
 
-from src.modules import cdr_field_dictionary
+from src.modules import cdr_field_dictionary, l3_dt_logs
 from src.modules.cdr_field_profiles import NETCHECK_PROFILE, CdrFieldProfile, workspace_field_profile
 from src.modules.cdr_stage import CDR_STAGE_LABELS, combined_inclusion, dataset_cdr_stage
 from src.modules.cell_identity import nr_cell_bits
@@ -384,7 +384,7 @@ SORT_COLUMNS = {
     'comments': 'comment_count',
     'updated_at': 'updated_at', 'join_id': 'join_id', 'region': 'region', 'cluster': 'cluster', 'nr_mode': 'nr_mode',
     'cell_id': 'cell_id', 'direction': 'direction', 'session_type': 'session_type', 'end_time': 'end_time', 'cdr': 'dataset_id',
-    'version': 'version_state',
+    'version': 'version_state', 'l3_log': 'l3_log',
 }
 # The breakdowns of the Summary, in the order of the page and of the one-slide Executive Summary.
 BREAKDOWNS = (
@@ -405,6 +405,10 @@ VERSION_LABELS = {
     'current': 'Latest version', 'changed': 'Changed between CDRs', 'newer': 'Newer version in another CDR',
     'not_in_final': 'Not in the Final CDR', 'qualified': 'Completed in a newer CDR',
 }
+
+# The UEs (A, B or Data) of the Layer 3 - DT Logs sessions of a call, by its JOIN_ID (see l3_dt_logs).
+L3_LOG_SQL = (f"COALESCE((SELECT j.ues FROM {l3_dt_logs.JOIN_IDS_TABLE} j "
+              "WHERE {alias}.join_id <> '' AND j.join_key = lower({alias}.join_id)), '')")
 
 SCHEMA = f"""
 CREATE TABLE IF NOT EXISTS {NQ_CALLS_TABLE} (
@@ -1770,6 +1774,7 @@ TABLE_COLUMNS_STATE_KEY = 'nq_calls_table_columns'
 OPTIONAL_COLUMNS = {
     'join_id': 'JOIN_ID', 'nr_mode': 'NR Mode', 'cell_id': 'Cell ID',
     'direction': 'Direction', 'session_type': 'Session Type (CDR)', 'end_time': 'End Time', 'cdr': 'CDR',
+    'l3_log': 'Layer 3 - DT Logs',
 }
 MAX_CDR_COLUMNS = 12
 # CDR columns exported to Excel besides those of the table.
@@ -1777,7 +1782,7 @@ MAX_EXPORT_CDR_COLUMNS = 100
 # The optional columns filtered by their own values; CDR uses the CDRs filter.
 COLUMN_FILTER_SQL = {
     'join_id': 'join_id', 'nr_mode': 'nr_mode', 'cell_id': 'cell_id', 'direction': 'direction', 'session_type': 'session_type',
-    'end_time': 'end_time',
+    'end_time': 'end_time', 'l3_log': 'l3_log',
 }
 MAX_COLUMN_FILTER_VALUES = 5000
 
@@ -4223,6 +4228,7 @@ def _base_sql(default: str, task_repository: Any, dataset_ids: list[int] | None 
                 WHERE f.call_key = s.call_key AND f.value <> '') AS field_values_json,
                COALESCE((SELECT r.values_json FROM {NQ_RCA_RESULTS_TABLE} r
                          WHERE s.join_id <> '' AND r.join_id = lower(s.join_id)), '{{}}') AS rca_json,
+               {L3_LOG_SQL.format(alias='s')} AS l3_log,
                {DTA_JSON_SQL} AS dta_json,
                {PRIORITY_COLUMNS_SQL}
         FROM {source} s
@@ -4257,6 +4263,7 @@ def _sample_sql(default: str, task_repository: Any) -> tuple[str, list[Any]]:
                 WHERE f.call_key = c.sample_key AND f.value <> '') AS field_values_json,
                COALESCE((SELECT r.values_json FROM {NQ_RCA_RESULTS_TABLE} r
                          WHERE c.join_id <> '' AND r.join_id = lower(c.join_id)), '{{}}') AS rca_json,
+               {L3_LOG_SQL.format(alias='c')} AS l3_log,
                {DTA_JSON_SQL.replace('s.dataset_id', 'c.dataset_id').replace('s.source_row_id', 'c.source_row_id')} AS dta_json,
                {PRIORITY_COLUMNS_SQL}
         FROM {NQ_CALLS_TABLE} c

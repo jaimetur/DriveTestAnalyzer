@@ -258,6 +258,9 @@
 .nq-drawer-ids { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 0 1.4rem; }
 /* Its title level with that of the JOIN_ID and its value in a row as tall as the copy button, level with the JOIN_ID. */
 .nq-drawer-unique { grid-template-columns: minmax(0, max-content); grid-template-rows: auto 1.85rem; }
+/* The UEs of the call with a session in the Layer 3 - DT Logs, level with the JOIN_ID. */
+.nq-drawer-l3 { grid-template-columns: minmax(0, max-content); grid-template-rows: auto 1.85rem; }
+.nq-drawer-join.nq-drawer-l3 code { min-height: 1.85rem; display: inline-flex; align-items: center; background: #e0f4f8; color: #0b5368; }
 /* Its groups, white cards in the colour of their group on the map of the call. */
 /* Its groups on a row of their own across the header: up to four columns of the same width, the text of each card wrapping. */
 .nq-drawer-groups { flex: 1 0 100%; grid-template-columns: minmax(0, 1fr); margin: 0; }

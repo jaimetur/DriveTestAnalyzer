@@ -161,3 +161,57 @@ def test_campaign_profile_and_identifiers() -> None:
     assert [l3_dt_logs.normalise_ue(value) for value in ('a', 'B', 'Data', 'D', '')] == ['A', 'B', 'Data', 'Data', 'Data']
     assert l3_dt_logs.campaign_source_name('Consolidated_Dataset_3 - UK_Q3_SA_2026', 'UK_Q3_SA_2026') == (
         'Consolidated_Dataset_3 - UK_Q3_SA_2026.parquet')
+
+
+def add_data_cdr(tmp_path: Path, join_ids: list[str]) -> int:
+    """A Data CDR whose tests failed, one per JOIN_ID."""
+    import pandas as pd
+    from src.modules.repository import local_now_iso
+
+    rows = pd.DataFrame({
+        'Operator': ['Vodafone UK'] * len(join_ids), 'Campaign': ['UK_Q3_SA_2026'] * len(join_ids),
+        'City': ['Leeds'] * len(join_ids), 'Test_ID': list(range(5001, 5001 + len(join_ids))),
+        'Test_Name': ['HTTP DL'] * len(join_ids), 'Test_Result': ['Cutoff'] * len(join_ids),
+        'status': ['Cutoff'] * len(join_ids), 'JOIN_ID': join_ids,
+        'event_start_time': ['2026-09-03 09:00:00'] * len(join_ids),
+        'Failure_Classification': ['RF Problems'] * len(join_ids),
+    })
+    source = tmp_path / 'data.csv'
+    source.write_text('test source', encoding='utf-8')
+    repository = app_module.repository
+    dataset_id, _created = repository.add_dataset('data.csv', str(source), 'super')
+    repository.replace_dataset_rows(dataset_id, rows)
+    repository.update_dataset_profile(dataset_id, status='ready', progress=100, dataset_kind='data', nr_mode='SA',
+                                      row_count=len(rows), column_count=len(rows.columns), processed_at=local_now_iso())
+    return int(dataset_id)
+
+
+def test_nq_calls_list_filter_and_show_the_ues_of_their_layer_3_sessions(client, tmp_path, monkeypatch) -> None:
+    from src.modules import non_qualified_calls as nq
+
+    monkeypatch.setattr(app_module, 'submit_background_task', lambda callback, *args: callback(*args))
+    client.post('/login', data={'username': 'super', 'password': 'super123'}, follow_redirects=False)
+    add_data_cdr(tmp_path, ['0xBB22', '0xcc33'])
+    upload(client, 'Consolidated_Dataset_3.zip', zip_bytes(log_rows()))
+    nq.sync_nq_calls(app_module.repository)
+
+    def calls(**payload):
+        response = client.post('/api/non-qualified-calls/calls', json=payload)
+        assert response.status_code == 200, response.text
+        return {call['join_id']: call for call in response.json()['calls']}
+
+    listed = calls()
+    assert {join_id: call['l3_log'] for join_id, call in listed.items()} == {'0xBB22': 'Data', '0xcc33': ''}
+    assert list(calls(filters={'columns': {'l3_log': ['Data']}})) == ['0xBB22']
+    assert list(calls(filters={'columns': {'l3_log': [nq.UNASSIGNED]}})) == ['0xcc33']
+    assert list(calls(sort='l3_log', direction='desc'))[0] == '0xBB22'
+    assert 'l3_log' in nq.OPTIONAL_COLUMNS
+    detail = client.get(f"/api/non-qualified-calls/calls/{listed['0xBB22']['call_key']}").json()
+    assert detail['call']['l3_log'] == 'Data'
+
+    datasets = l3_datasets()
+    app_module.add_l3_nq_calls(datasets)
+    assert {item['l3']['nr_mode']: item['l3_nq_calls'] for item in datasets} == {'NSA': 0, 'SA': 1}
+    sessions_of = l3_dt_logs.sessions_of_join_ids(app_module.repository, ['0xbb22', '0xAA11'])
+    assert [session['ue'] for session in sessions_of['0xbb22']] == ['Data']
+    assert [session['ue'] for session in sessions_of['0xaa11']] == ['A', 'B']

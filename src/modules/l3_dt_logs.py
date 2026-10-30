@@ -32,7 +32,11 @@ LABEL = 'Layer 3 - DT Logs'
 # The reserved input type it replaced: its datasets are read as Layer 3 - DT Logs.
 LEGACY_KINDS = ('smart_orchestrator_logs',)
 SESSIONS_TABLE = 'l3_dt_log_sessions'
-TABLE_TITLES = {SESSIONS_TABLE: 'Layer 3 DT Log Sessions'}
+# The UEs with a session of every JoinID (any spelling of its case), for the NQ calls that have a log.
+JOIN_IDS_TABLE = 'l3_dt_log_join_ids'
+TABLE_TITLES = {SESSIONS_TABLE: 'Layer 3 DT Log Sessions', JOIN_IDS_TABLE: 'Layer 3 DT Log JoinIDs'}
+# The UEs of the sessions of an NQ call (A, B or Data), as SQL over the NQ calls (their join_id column).
+CALL_LOG_SQL = f"COALESCE((SELECT ues FROM {JOIN_IDS_TABLE} WHERE join_key = lower(join_id)), '')"
 STORE_FOLDER = '.l3-store'
 SOURCE_SUFFIX = '.parquet'
 # Raise when the sessions summary changes, so every dataset is summarised again from its source.
@@ -107,6 +111,19 @@ def ensure_schema(connection: sqlite3.Connection) -> None:
         if name not in existing:
             connection.execute(f'ALTER TABLE {SESSIONS_TABLE} ADD COLUMN {name} {kind.replace(" NOT NULL", "")}')
     connection.execute(f'CREATE INDEX IF NOT EXISTS idx_{SESSIONS_TABLE}_join ON {SESSIONS_TABLE} (join_id, ue)')
+    connection.execute(f'CREATE INDEX IF NOT EXISTS idx_{SESSIONS_TABLE}_join_key ON {SESSIONS_TABLE} (lower(join_id))')
+    connection.execute(f'CREATE TABLE IF NOT EXISTS {JOIN_IDS_TABLE} (join_key TEXT PRIMARY KEY, ues TEXT NOT NULL, '
+                       'sessions INTEGER NOT NULL DEFAULT 0, dataset_ids TEXT NOT NULL DEFAULT \'\')')
+
+
+def refresh_join_ids(connection: sqlite3.Connection) -> None:
+    """The JoinIDs of every session of the workspace with their UEs (A, B or Data) and datasets."""
+    connection.execute(f'DELETE FROM {JOIN_IDS_TABLE}')
+    connection.execute(
+        f"INSERT INTO {JOIN_IDS_TABLE} (join_key, ues, sessions, dataset_ids) "
+        f"SELECT join_key, group_concat(ue, ', '), COUNT(*), group_concat(datasets, ',') FROM ("
+        f"  SELECT lower(join_id) AS join_key, ue, group_concat(dataset_id, ',') AS datasets FROM {SESSIONS_TABLE} "
+        f"  GROUP BY lower(join_id), ue ORDER BY lower(join_id), ue) GROUP BY join_key")
 
 
 def normalise_join_id(value: object) -> str:
@@ -274,6 +291,7 @@ def _write_sessions(repository: Any, dataset_id: int, sessions: list[tuple], raw
         ensure_schema(connection)
         connection.execute(f'DELETE FROM {SESSIONS_TABLE} WHERE dataset_id = ?', (int(dataset_id),))
         connection.executemany(f'INSERT INTO {SESSIONS_TABLE} ({names}) VALUES ({placeholders})', rows)
+        refresh_join_ids(connection)
 
 
 def _rename_dataset(repository: Any, dataset_id: int, file_name: str, stored_path: Path) -> None:
@@ -409,6 +427,8 @@ def forget_datasets(repository: Any, dataset_ids: Iterable[int] | None = None) -
                      {int(row[0]) for row in connection.execute(f'SELECT DISTINCT dataset_id FROM {SESSIONS_TABLE}')} - alive)
             if stale:
                 connection.executemany(f'DELETE FROM {SESSIONS_TABLE} WHERE dataset_id = ?', [(value,) for value in stale])
+                ensure_schema(connection)
+                refresh_join_ids(connection)
     root = store_root(repository.db_path)
     if root.is_dir():
         for folder in root.iterdir():
@@ -475,3 +495,49 @@ def preview_frame(source: Any, columns: Iterable[str], limit: int) -> Any:
         return duck.execute(
             f'SELECT {", ".join(quote(column) for column in wanted)} FROM read_parquet({sql_text(path)}) LIMIT {int(limit)}'
         ).fetchdf()
+
+
+def _session_dict(row: Any) -> dict[str, Any]:
+    item = dict(row)
+    item.pop('evidence_json', None)
+    return item
+
+
+def sessions_of_join_ids(repository: Any, join_ids: Iterable[object]) -> dict[str, list[dict[str, Any]]]:
+    """The sessions of each JoinID (any spelling of its case), one per UE read from the newest dataset that has it."""
+    keys = sorted({str(value or '').strip().casefold() for value in join_ids if str(value or '').strip()})
+    found: dict[str, list[dict[str, Any]]] = {key: [] for key in keys}
+    if not keys:
+        return found
+    with repository.connection() as connection:
+        if not connection.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (SESSIONS_TABLE,)).fetchone():
+            return found
+        order = {int(row['id']): (str(row['uploaded_at'] or ''), int(row['id']))
+                 for row in connection.execute('SELECT id, uploaded_at FROM datasets')}
+        for start in range(0, len(keys), 500):
+            chunk = keys[start:start + 500]
+            rows = connection.execute(
+                f"SELECT s.*, d.file_name AS dataset_name, d.stored_path AS source FROM {SESSIONS_TABLE} s "
+                f"JOIN datasets d ON d.id = s.dataset_id WHERE lower(s.join_id) IN ({', '.join('?' for _ in chunk)})",
+                chunk).fetchall()
+            newest: dict[tuple[str, str], Any] = {}
+            for row in rows:
+                key = (str(row['join_id']).casefold(), str(row['ue']))
+                if key not in newest or order.get(int(row['dataset_id']), ('', 0)) > order.get(int(newest[key]['dataset_id']), ('', 0)):
+                    newest[key] = row
+            for (join_key, _ue), row in sorted(newest.items()):
+                found[join_key].append(_session_dict(row))
+    return found
+
+
+def nq_calls_by_dataset(repository: Any) -> dict[int, int]:
+    """How many NQ calls of the workspace have a session in each Layer 3 - DT Logs dataset."""
+    with repository.connection() as connection:
+        tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+        if SESSIONS_TABLE not in tables or 'nq_calls' not in tables:
+            return {}
+        rows = connection.execute(
+            f"SELECT s.dataset_id, COUNT(DISTINCT n.call_key) FROM nq_calls n "
+            f"JOIN {SESSIONS_TABLE} s ON lower(s.join_id) = lower(n.join_id) WHERE n.join_id <> '' GROUP BY s.dataset_id"
+        ).fetchall()
+    return {int(row[0]): int(row[1]) for row in rows}

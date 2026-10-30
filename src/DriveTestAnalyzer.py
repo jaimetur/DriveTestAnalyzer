@@ -4005,6 +4005,21 @@ def add_combined_inclusion(datasets: list[dict[str, Any]], task_repository: Repo
             'Included when the CDR is ready' if dataset.get('dataset_kind') in CDR_DATASET_KINDS else '')
 
 
+def add_l3_nq_calls(datasets: list[dict[str, Any]], task_repository: Repository | None = None) -> None:
+    """How many NQ calls of the workspace have a session in each Layer 3 - DT Logs dataset, for its Datasets card."""
+    if not any(dataset.get('dataset_kind') == L3_DT_LOGS_KIND for dataset in datasets):
+        return
+    from src.modules.l3_dt_logs import nq_calls_by_dataset
+
+    try:
+        counts = nq_calls_by_dataset(task_repository or repository)
+    except sqlite3.Error:
+        return
+    for dataset in datasets:
+        if dataset.get('dataset_kind') == L3_DT_LOGS_KIND and dataset.get('is_ready'):
+            dataset['l3_nq_calls'] = counts.get(int(dataset['id']), 0)
+
+
 def add_row_campaigns(datasets: list[dict[str, Any]], task_repository: Repository | None = None) -> None:
     """A CDR without a chosen Campaign nor one in its file name takes the campaign of its rows (2025-Q2-Flex)."""
     pending = [dataset for dataset in datasets if dataset.get('campaign') == '' and not dataset.get('campaign_chosen')]
@@ -15042,6 +15057,7 @@ def workspace(
     ]
     add_workspace_mapping_capabilities(datasets)
     add_combined_inclusion(datasets)
+    add_l3_nq_calls(datasets)
     mappable_cdr_datasets = [dataset for dataset in datasets if dataset.get('can_map_mappings')]
     current_vendor_signature = vendor_mapping_signature(repository) if mappable_cdr_datasets else ''
     for dataset in mappable_cdr_datasets:

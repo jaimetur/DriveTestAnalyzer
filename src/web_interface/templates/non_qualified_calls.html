@@ -362,6 +362,8 @@
         <p class="nq-drawer-join" id="nq-drawer-join" hidden><span>JOIN_ID</span><code id="nq-drawer-join-id"></code><button type="button" class="nq-copy-button" id="nq-drawer-join-copy" title="Copy the JOIN_ID" aria-label="Copy the JOIN_ID"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button></p>
         {# The identifier of the analysis in the workbooks of the previous tool (Previous NQ Analyses), when the call has one. #}
         <p class="nq-drawer-join nq-drawer-unique" id="nq-drawer-unique" title="The identifier of the analysis in the workbooks of the previous tool" hidden><span id="nq-drawer-unique-label">Unique ID</span><code id="nq-drawer-unique-id"></code></p>
+        {# The UEs of the call with a session in the Layer 3 - DT Logs of the workspace (A and B of a voice call, Data). #}
+        <p class="nq-drawer-join nq-drawer-l3" id="nq-drawer-l3" title="Sessions of this call in the Layer 3 - DT Logs (the parsed drivetest logs) of the workspace" hidden><span>Layer 3 - DT Logs</span><code id="nq-drawer-l3-ues"></code></p>
       </div>
     </div>
     {# The calls of the list one after another, and any call found by its JOIN_ID. #}

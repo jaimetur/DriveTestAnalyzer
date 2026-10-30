@@ -4707,6 +4707,8 @@
     $('nq-drawer-unique-label').textContent = uniqueField?.label || 'Unique ID';
     $('nq-drawer-unique-id').textContent = uniqueId || '—';
     $('nq-drawer-unique').hidden = !uniqueField;
+    $('nq-drawer-l3-ues').textContent = call.l3_log || '';
+    $('nq-drawer-l3').hidden = !call.l3_log;
     // Its groups of 2 calls or more, each with what it is, its NR Mode, its ID in the Hotspots, Time-Window & Clustered Issues
     // panel and its calls, and what it holds: its sites (spatial groups: clusters), its period (temporal groups: runs) or both
     // (hotspots). Its hotspot and its time-window issue keep to its NR Mode and campaign, its cluster to its NR Mode
