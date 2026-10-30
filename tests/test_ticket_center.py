@@ -566,7 +566,7 @@ def test_the_statistics_measure_resolution_mix_backlog_versions_people_and_activ
 
     def ticket(number, ticket_type, status, priority='P3', created='2026-10-05T09:00', resolved='', created_by='ANA', assigned='',
                fixed='', version='0.9.0', module=''):
-        return {'id': number, 'ticket_type': ticket_type, 'status': status, 'priority': priority, 'module': module,
+        return {'id': number, 'title': f'T{number}', 'ticket_type': ticket_type, 'status': status, 'priority': priority, 'module': module,
                 'module_title': module.title() or 'General', 'module_color': '#123456', 'created_by': created_by,
                 'created_by_name': created_by.title(), 'assigned_to': assigned, 'assigned_to_name': assigned.title(),
                 'fixed_version': fixed, 'app_version': version, 'comment_count': 2, 'attachment_count': number % 2,
@@ -603,6 +603,15 @@ def test_the_statistics_measure_resolution_mix_backlog_versions_people_and_activ
     assert (resolved['median'], resolved['average'], resolved['p90'], resolved['count']) == ('6.0 days', '6.1 days', '12 days', 4)
     assert [(item['type'], item['median']) for item in resolved['by_type']] == [('bug', '6 h'), ('improvement', '11 days'), ('new_feature', '2.0 days')]
     assert [(item['priority'], item['count']) for item in resolved['by_priority']] == [('P3', 4)]
+    # That time added up: in all, on average and the longest; by module and assignee (the most first), type and priority.
+    spent = stats['time_spent']
+    assert (spent['total'], spent['count'], spent['average'], spent['longest']) == ('24 days', 4, '6.1 days', {'id': 5, 'title': 'T5', 'took': '12 days'})
+    groups = {group['key']: group['rows'] for group in spent['groups']}
+    assert [(row['key'], row['total'], row['count'], row['share']) for row in groups['module']] == [('', '24 days', 4, 100.0)]
+    assert [(row['key'], row['total'], row['average']) for row in groups['type']] == [
+        ('bug', '6 h', '6 h'), ('improvement', '22 days', '11 days'), ('new_feature', '2.0 days', '2.0 days')]
+    assert [row['key'] for row in groups['priority']] == ['P3'] and groups['type'][0]['show'] == {'types': ['bug'], 'statuses': ['closed', 'resolved']}
+    assert [(row['key'], row['label'], row['count']) for row in groups['assignee']] == [('', 'Unassigned', 3), ('ej', 'Ej', 1)]
     opened = stats['durations']['open']
     assert ([bucket['total'] for bucket in opened['buckets']], opened['median'], opened['p90']) == ([0, 0, 0, 0, 1, 1, 0], '46 days', '79 days')
     # Backlog: created, resolved (not rejected) and open by the end of each week, today last.

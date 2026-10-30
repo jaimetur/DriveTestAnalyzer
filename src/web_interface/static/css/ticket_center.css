@@ -262,7 +262,15 @@
 .tickets-delta[data-tone="bad"] { color: #b42318; }
 .tickets-type-legend { justify-content: flex-end; }
 .tickets-insights-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .8rem; }
-.tickets-mix-card { grid-column: 1 / -1; }
+.tickets-mix-card, .tickets-spent-card { grid-column: 1 / -1; }
+/* Time spent resolving: its figures, then a ranking per module, type, priority and assignee side by side. */
+.tickets-spent-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: .8rem 1.4rem; }
+.tickets-spent-group { display: grid; align-content: start; gap: .35rem; min-width: 0; }
+.tickets-spent-group .tickets-subhead { margin: 0; }
+.ticket-center .tickets-spent-row { grid-template-columns: minmax(5rem, 9rem) minmax(0, 1fr) 4.4rem; }
+.tickets-spent-row[data-spent="module"] { --part-color: var(--module-color); }
+.tickets-spent-row[data-spent="assignee"] { --part-color: #1e61a3; }
+.tickets-spent-row strong { white-space: nowrap; }
 .tickets-switch-view { display: grid; align-content: start; gap: .65rem; }
 /* Donuts: a part per type, status or priority, with a legend of buttons that list their tickets. */
 .tickets-donuts { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: .8rem 1.4rem; }
@@ -285,7 +293,9 @@
 .tickets-donut-item small { color: #7b8994; font-size: .7rem; font-variant-numeric: tabular-nums; text-align: right; }
 /* Column charts (time to resolve, age, versions): a column per group, its types stacked, its count on top. */
 .tickets-figures { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .4rem; }
-.tickets-figures span { display: grid; gap: .05rem; min-width: 0; padding: .4rem .6rem; border-radius: 10px; background: #f4f7f9; color: #7b8994; font-size: .64rem; font-weight: 800; letter-spacing: .03em; text-transform: uppercase; }
+.tickets-figures > :is(span, a) { display: grid; gap: .05rem; min-width: 0; padding: .4rem .6rem; border-radius: 10px; background: #f4f7f9; color: #7b8994; font-size: .64rem; font-weight: 800; letter-spacing: .03em; text-transform: uppercase; }
+.tickets-figures > a { text-decoration: none; }
+.tickets-figures > a:hover { background: #fff1f1; }
 .tickets-figures strong { color: #10314a; font-size: 1rem; letter-spacing: 0; text-transform: none; white-space: nowrap; }
 .tickets-columns { display: grid; grid-template-columns: repeat(var(--columns, 7), minmax(0, 1fr)); gap: 0 .35rem; border-top: 1px dashed rgba(16, 49, 74, .14); }
 .tickets-column { display: grid; gap: .25rem; min-width: 0; }
