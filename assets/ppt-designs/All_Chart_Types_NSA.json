@@ -1,0 +1,16 @@
+{
+  "name": "NSA - All Chart Types",
+  "template": "All Chart Types",
+  "nr_mode": "NSA",
+  "scope": "single",
+  "vendor_comparison": "operator_vendor",
+  "custom_fields": [],
+  "hidden_filters": [],
+  "auto_cdrs": true,
+  "filters": {
+    "Campaign": [
+      "@latest-3-campaigns"
+    ]
+  },
+  "slide_comments": {}
+}

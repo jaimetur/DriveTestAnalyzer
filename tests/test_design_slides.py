@@ -380,6 +380,41 @@ def test_the_chart_builder_reads_fields_and_values_and_adds_a_chart_to_a_design(
     assert builder_values == [{'value': 'London', 'count': 2}, {'value': 'Leeds', 'count': 1}]
 
 
+def test_the_chart_builder_reads_only_the_columns_of_its_chart_once_and_leaves_out_of_scope_operators_out(client, monkeypatch):
+    setup(client)
+    reads = []
+    original = core.repository.load_dataset_rows
+
+    def load_dataset_rows(dataset_id, columns, filters, **kwargs):
+        reads.append(sorted(columns))
+        return original(dataset_id, columns, filters, **kwargs)
+
+    # (The CDRs of the tests have no columnar copy: their columns are read from their tables.)
+    monkeypatch.setattr(core.repository, 'load_dataset_rows', load_dataset_rows)
+    chart = {'chart_title': 'Rate', 'cdr_source': 'CDR-Data', 'kpi': 'MEDIAN(Mean_Data_Rate)', 'chart_type': 'Average Vertical Bars',
+             'rows_split': 'Operator', 'columns_split': '', 'legend': '', 'filters': '', 'legend_position': 'Top'}
+    core._clear_chart_preview_caches()
+    first = client.post('/api/chart-builder/preview', json={'dataset_ids': [1], 'definition': chart})
+    assert first.status_code == 200, first.text
+    assert [bar['value'] for bar in first.json()['bars']] == [20.0, 20.0]
+    # Its measure and splits (with the Operator and Campaign fields every chart consults), never the other columns of the CDR.
+    assert len(reads) == 1 and {'Mean_Data_Rate', 'Operator'} <= set(reads[0])
+    assert not set(reads[0]) & {'City', 'Test_Name', 'Test_Start_Time'}
+    # A field dropped on a shelf reads only its own column; a chart drawn before reads nothing.
+    second = client.post('/api/chart-builder/preview', json={'dataset_ids': [1], 'definition': {**chart, 'columns_split': 'City'}})
+    assert second.status_code == 200, second.text
+    assert reads[1:] == [['City']]
+    again = client.post('/api/chart-builder/preview', json={'dataset_ids': [1], 'definition': chart})
+    assert again.json() == first.json() and len(reads) == 2
+    # The operators out of scope in the NR Mode of the CDR (the NR Modes of the Operator Maps) are left out: B has a
+    # network only in SA, and the CDR is of NSA.
+    core.repository.replace_operator_mapping_group(None, 'B', ['B'], nr_modes=['SA'])
+    core._clear_chart_preview_caches()
+    scoped = client.post('/api/chart-builder/preview', json={'dataset_ids': [1], 'definition': chart})
+    assert scoped.status_code == 200, scoped.text
+    assert [bar['key'] for bar in scoped.json()['bars']] == [['A', '(all)']]
+
+
 def test_a_kpi_card_of_the_chart_builder_previews_with_its_settings_and_joins_a_design_as_a_kpi_card(client):
     setup(client)
     settings = {'measure': 'count', 'comparison': 'none', 'sparkline': False}

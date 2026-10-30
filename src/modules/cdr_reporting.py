@@ -2778,8 +2778,14 @@ def _map_each_value(series: pd.Series, function: Callable[[object], object]) -> 
     return pd.Series(mapped.tolist(), index=series.index, name=series.name)
 
 
+def _each_value_mask(series: pd.Series, predicate: Callable[[object], bool]) -> pd.Series:
+    """``series.map(predicate)`` as booleans, with ``predicate`` called once per distinct value (see _map_each_value)."""
+    return pd.Series(_map_each_value(series, predicate).to_numpy(dtype=bool), index=series.index)
+
+
 def _apply_catalog_filters(frame: pd.DataFrame, entry: CatalogEntry, multivendor: bool, metric: str | None) -> pd.DataFrame:
-    # The rows are only read until the filtered rows are returned, as a new frame.
+    # The rows are only read until the filtered rows are returned, as a new frame. Text is compared as
+    # ``astype(str).str.casefold()`` (or ``str.contains(case=False, regex=False)``) compares it, once per distinct value.
     result = ensure_vendor_group(frame) if any(column_identity(condition.column) in {'vendor', 'operatorvendor'} for condition in parse_catalog_filters(entry.filters)) else frame.copy(deep=False)
     operator_mappings = result.attrs.get('operator_mappings', {})
     def mapped_operator(value: object) -> str:
@@ -2848,17 +2854,22 @@ def _apply_catalog_filters(frame: pd.DataFrame, entry: CatalogEntry, multivendor
                 target = mapped_operator(target)
             elif is_campaign_filter:
                 target = compact_campaign_value(target)
-            numeric = pd.to_numeric(series, errors="coerce")
             target_number = pd.to_numeric(pd.Series([target]), errors="coerce").iloc[0]
             if pd.notna(target_number) and normalized_condition != 'vendor':
+                numeric = pd.to_numeric(series, errors="coerce")
                 comparison = {">": numeric > target_number, ">=": numeric >= target_number, "<": numeric < target_number, "<=": numeric <= target_number, "=": numeric == target_number, "!=": numeric != target_number}[condition.operator]
             else:
                 if is_vendor_filter:
                     comparison = vendor_match(target)
                     if condition.operator == "!=":
                         comparison = ~comparison
+                elif condition.operator in {"=", "!="}:
+                    expected = target.casefold()
+                    comparison = _each_value_mask(comparison_series, lambda value: str(value).casefold() == expected)
+                    if condition.operator == "!=":
+                        comparison = ~comparison
                 else:
-                    comparison = {"=": comparison_series.astype(str).str.casefold() == target.casefold(), "!=": comparison_series.astype(str).str.casefold() != target.casefold()}.get(condition.operator)
+                    comparison = None
                 if comparison is None:
                     raise ValueError(f"Slide {entry.slide}: '{condition.operator}' requires a numeric value for '{condition.column}'.")
         elif condition.operator in {"CONTAINS", "NOT CONTAINS"}:
@@ -2869,7 +2880,11 @@ def _apply_catalog_filters(frame: pd.DataFrame, entry: CatalogEntry, multivendor
             )
             comparison = pd.Series(False, index=series.index)
             for target in targets:
-                comparison |= vendor_match(target, contains=True) if is_vendor_filter else comparison_series.astype(str).str.contains(target, case=False, na=False, regex=False)
+                if is_vendor_filter:
+                    comparison |= vendor_match(target, contains=True)
+                else:
+                    wanted = str(target).upper()
+                    comparison |= _each_value_mask(comparison_series, lambda value, wanted=wanted: wanted in str(value).upper())
             if condition.operator == "NOT CONTAINS":
                 comparison = ~comparison
         else:  # IN / NOT IN
@@ -2883,7 +2898,7 @@ def _apply_catalog_filters(frame: pd.DataFrame, entry: CatalogEntry, multivendor
                      compact_campaign_value(item) if is_campaign_filter else item).casefold()
                     for item in condition.values
                 }
-                comparison = comparison_series.astype(str).str.casefold().isin(accepted)
+                comparison = _each_value_mask(comparison_series, lambda value: str(value).casefold() in accepted)
             if condition.operator == "NOT IN":
                 comparison = ~comparison
         result = result.loc[comparison]

@@ -750,6 +750,8 @@ Automated rows support:
 - `Symbol Map`, `Filled Map`
 - `Treemap`, `Packed Bubbles`, `Sankey`, `Gantt`
 
+Every workspace receives once the example template **All Chart Types** and its Design **NSA - All Chart Types** (Latest 3 campaigns): after its title slide, nine slides draw every chart type above on the CDRs of the workspace, four per slide (three on the last) grouped by family, each with the measure and shelves it suits (the DL throughput of the FDTT tests, RSRP and SINR, the call setup time and status, the start and end of the tests…). Open its Designer to see how each chart is built; deleted, it is not added again.
+
 Choose a KPI and at least one Rows or Columns Split dimension. `CDF Line` creates one curve per complete aggregation combination. Count charts retain empty combinations where required so comparisons remain aligned.
 
 The RF Quality template includes combined Data/Voice/Speech slides before each chart family. Its `CDR-All` source is virtual: it uses the selected physical datasets and creates no duplicate CDR dataset or database table. Templates containing this source are retained by JSON/CSV import/export, workspace transfers and backup/restore.

@@ -82,9 +82,10 @@ Format · Legend: Bottom
 
 ## Performance and troubleshooting
 
-- Title, legend-position and aggregation changes reuse unchanged data where possible.
-- Dataset or filter changes invalidate the relevant cache stage.
-- Superseded browser preview requests are cancelled.
+- Chart Builder reads only the columns each chart reads (its measures, Rows, Columns, Legend, Filters and One chart per) from the columnar copies of the chosen CDRs, and keeps the columns it read in memory (up to about 1.5 GB, the CDRs used least recently given up first): a field dropped on a shelf reads only its own column. The common fields (Operator, Campaign, City, Test Name, Test Result…) are read in the background once the CDRs are chosen, and the values of a filter read only the column of its field.
+- A chart drawn before (undo, another chart type and back) is shown again at once; title, legend-position, format and aggregation changes reuse the rows already read and filtered.
+- While the next chart is worked out, the chart shown stays, dimmed under **Updating**; quick changes of the shelves are grouped, and superseded preview requests are cancelled.
+- Dataset changes, and changes of the Operator Maps, read the CDRs again.
 - If no source appears, process a dataset and select its matching CDR Type.
 - If a chart is empty, inspect filtered data and verify KPI, technology and filter values.
 

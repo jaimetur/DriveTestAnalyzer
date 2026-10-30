@@ -773,6 +773,99 @@ class Snapshot:
     options: dict[str, list] = field(default_factory=dict)
 
 
+# The columns a chart of a template row reads (shared by the Designer and Chart Builder).
+def calculated_dimension_fields(dimension) -> set[str]:
+    """The fields an Auto-calculated Field reads, row by row: its sources, the fields of its default and of the
+    conditions of its rules and expression (each alias)."""
+    fields = {dimension.name}
+    for value in (*dimension.sources, *dimension.default_from):
+        fields.update(split_calculated_dimension_aliases(value))
+    conditions = [condition for rule in dimension.rules for condition in rule.conditions]
+    expressions = [dimension.expression] if dimension.expression is not None else []
+    while expressions:
+        expression = expressions.pop()
+        for branch in expression.branches:
+            conditions.extend(condition for group in branch.conditions for condition in group)
+            if not isinstance(branch.result, str) and branch.result is not None:
+                expressions.append(branch.result)
+        if not isinstance(expression.otherwise, str) and expression.otherwise is not None:
+            expressions.append(expression.otherwise)
+    for condition in conditions:
+        fields.update(split_calculated_dimension_aliases(condition.column))
+    return {field.strip() for field in fields if field and field.strip()}
+
+def compact_chart_columns(entry, source_columns, multivendor):
+    """Return the only physical columns a chart reads, or None when unknown.
+
+    An Auto-calculated Field reads the columns of its conditions (row by
+    row): those of the source that it names are read instead. Charts
+    referencing other semantic fields keep the complete read.
+    Order-independent chart types read these columns grouped; the others
+    read them ungrouped, in the same row order as the complete read.
+    Vendor Comparisons also read the Operator and Vendor identities their
+    comparison groups are built from.
+    """
+    by_identity = defaultdict(list)
+    for column in source_columns:
+        by_identity[identity(column)].append(column)
+    calculated = {identity(dimension.name): dimension for dimension in entry.calculated_dimensions}
+    referenced = [
+        *catalog_kpi_fields(entry.kpi),
+        *(field for field in entry_dynamic_fields(entry) if field),
+        *_legend_dimensions(entry.legend),
+        *parse_catalog_grouping(entry.rows_split).dimensions,
+        *parse_catalog_grouping(entry.columns_split).dimensions,
+        *(condition.column for condition in parse_catalog_filters(entry.filters)
+          if identity(condition.column) not in CHART_SETTING_FILTERS),
+    ]
+    selected = []
+    expanded: set[str] = set()
+    seen: list[str] = []
+    # Whether the chart names an Auto-calculated Field or a chart setting, which it once read with every column.
+    named_whole = False
+    while referenced:
+        name = referenced.pop(0)
+        # A date field grouped by a period (DAY(Test_Start_Time)) reads the date field.
+        name = date_bin_parts(name)[1] if date_bin_parts(name) else name
+        seen.append(name)
+        key = identity(name)
+        if key in CHART_SETTING_FILTERS:
+            # A chart setting named as a legend (Buckets, Threshold) is no column of any read.
+            named_whole = True
+            continue
+        if key in calculated:
+            named_whole = True
+            if key not in expanded:
+                expanded.add(key)
+                # Its fields that the source has (an alias it lacks is not read either way), and the other
+                # Auto-calculated Fields it reads.
+                fields = calculated_dimension_fields(calculated[key])
+                selected.extend(column for field in fields for column in by_identity.get(identity(field), []))
+                referenced.extend(field for field in fields if identity(field) in calculated)
+            continue
+        if key in by_identity:
+            selected.extend(by_identity[key])
+        elif key not in COMPACT_READ_DERIVED_FIELDS:
+            return None
+    if multivendor or any(identity(name) in COMPACT_READ_VENDOR_FIELDS for name in seen):
+        for key in COMPACT_READ_VENDOR_FIELDS:
+            selected.extend(by_identity.get(key, []))
+    if multivendor:
+        for key in ('operator', 'subscriber'):
+            selected.extend(by_identity.get(key, []))
+    for name in COMPACT_READ_IMPLICIT_FIELDS:
+        selected.extend(by_identity.get(identity(name), []))
+    if named_whole and entry.chart_type.casefold() == 'map':
+        # Such a map still shows where its series lie by City or Region (as when it read every column).
+        for name in ('City', 'Region'):
+            selected.extend(by_identity.get(identity(name), []))
+    if EXTENDED_CHART_TYPES.get(entry.chart_type.casefold()) == 'filled_map':
+        # A Filled Map colours the Map Area of each test, in its country.
+        for name in ('Map_Area', 'Map_Area_Country'):
+            selected.extend(by_identity.get(identity(name), []))
+    return sorted(set(selected), key=lambda column: (identity(column), column))
+
+
 def install_design_routes(core):
     app = core.app
     lock = RLock()
@@ -6429,97 +6522,6 @@ def install_design_routes(core):
         if selection_share(database_path, table_name, where, parameters) >= DESIGN_SEQUENTIAL_SCAN_SHARE:
             return '"' + str(table_name).replace('"', '""') + '" NOT INDEXED'
         return table_name
-
-    def calculated_dimension_fields(dimension) -> set[str]:
-        """The fields an Auto-calculated Field reads, row by row: its sources, the fields of its default and of the
-        conditions of its rules and expression (each alias)."""
-        fields = {dimension.name}
-        for value in (*dimension.sources, *dimension.default_from):
-            fields.update(split_calculated_dimension_aliases(value))
-        conditions = [condition for rule in dimension.rules for condition in rule.conditions]
-        expressions = [dimension.expression] if dimension.expression is not None else []
-        while expressions:
-            expression = expressions.pop()
-            for branch in expression.branches:
-                conditions.extend(condition for group in branch.conditions for condition in group)
-                if not isinstance(branch.result, str) and branch.result is not None:
-                    expressions.append(branch.result)
-            if not isinstance(expression.otherwise, str) and expression.otherwise is not None:
-                expressions.append(expression.otherwise)
-        for condition in conditions:
-            fields.update(split_calculated_dimension_aliases(condition.column))
-        return {field.strip() for field in fields if field and field.strip()}
-
-    def compact_chart_columns(entry, source_columns, multivendor):
-        """Return the only physical columns a chart reads, or None when unknown.
-
-        An Auto-calculated Field reads the columns of its conditions (row by
-        row): those of the source that it names are read instead. Charts
-        referencing other semantic fields keep the complete read.
-        Order-independent chart types read these columns grouped; the others
-        read them ungrouped, in the same row order as the complete read.
-        Vendor Comparisons also read the Operator and Vendor identities their
-        comparison groups are built from.
-        """
-        by_identity = defaultdict(list)
-        for column in source_columns:
-            by_identity[identity(column)].append(column)
-        calculated = {identity(dimension.name): dimension for dimension in entry.calculated_dimensions}
-        referenced = [
-            *catalog_kpi_fields(entry.kpi),
-            *(field for field in entry_dynamic_fields(entry) if field),
-            *_legend_dimensions(entry.legend),
-            *parse_catalog_grouping(entry.rows_split).dimensions,
-            *parse_catalog_grouping(entry.columns_split).dimensions,
-            *(condition.column for condition in parse_catalog_filters(entry.filters)
-              if identity(condition.column) not in CHART_SETTING_FILTERS),
-        ]
-        selected = []
-        expanded: set[str] = set()
-        seen: list[str] = []
-        # Whether the chart names an Auto-calculated Field or a chart setting, which it once read with every column.
-        named_whole = False
-        while referenced:
-            name = referenced.pop(0)
-            # A date field grouped by a period (DAY(Test_Start_Time)) reads the date field.
-            name = date_bin_parts(name)[1] if date_bin_parts(name) else name
-            seen.append(name)
-            key = identity(name)
-            if key in CHART_SETTING_FILTERS:
-                # A chart setting named as a legend (Buckets, Threshold) is no column of any read.
-                named_whole = True
-                continue
-            if key in calculated:
-                named_whole = True
-                if key not in expanded:
-                    expanded.add(key)
-                    # Its fields that the source has (an alias it lacks is not read either way), and the other
-                    # Auto-calculated Fields it reads.
-                    fields = calculated_dimension_fields(calculated[key])
-                    selected.extend(column for field in fields for column in by_identity.get(identity(field), []))
-                    referenced.extend(field for field in fields if identity(field) in calculated)
-                continue
-            if key in by_identity:
-                selected.extend(by_identity[key])
-            elif key not in COMPACT_READ_DERIVED_FIELDS:
-                return None
-        if multivendor or any(identity(name) in COMPACT_READ_VENDOR_FIELDS for name in seen):
-            for key in COMPACT_READ_VENDOR_FIELDS:
-                selected.extend(by_identity.get(key, []))
-        if multivendor:
-            for key in ('operator', 'subscriber'):
-                selected.extend(by_identity.get(key, []))
-        for name in COMPACT_READ_IMPLICIT_FIELDS:
-            selected.extend(by_identity.get(identity(name), []))
-        if named_whole and entry.chart_type.casefold() == 'map':
-            # Such a map still shows where its series lie by City or Region (as when it read every column).
-            for name in ('City', 'Region'):
-                selected.extend(by_identity.get(identity(name), []))
-        if EXTENDED_CHART_TYPES.get(entry.chart_type.casefold()) == 'filled_map':
-            # A Filled Map colours the Map Area of each test, in its country.
-            for name in ('Map_Area', 'Map_Area_Country'):
-                selected.extend(by_identity.get(identity(name), []))
-        return sorted(set(selected), key=lambda column: (identity(column), column))
 
     def where_scope(where, parameters):
         """The CDRs a selection WHERE keeps (its leading dataset_id IN clause, see selection_where), as the scope of an

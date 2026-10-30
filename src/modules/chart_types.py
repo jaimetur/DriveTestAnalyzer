@@ -68,7 +68,8 @@ MAX_GANTT_LANES = 40
 
 
 def _reporting():
-    # cdr_reporting imports this module: its helpers are read when a model is built.
+    # cdr_reporting imports this module: its helpers are read when a model is built. (Its _map_each_value turns each
+    # distinct value of a column into its display value once, as Series.map would row by row.)
     from src.modules import cdr_reporting
 
     return cdr_reporting
@@ -197,7 +198,7 @@ class _Chart:
         frame = self.data[[*columns, column]].copy()
         frame.attrs = self.data.attrs.copy()
         for item in columns:
-            frame[item] = frame[item].map(reporting._chart_payload_value)
+            frame[item] = reporting._map_each_value(frame[item], reporting._chart_payload_value)
         values = reporting._aggregate_metric(frame, columns, column, aggregation)
         counts = reporting._aggregate_metric(frame, columns, column, "count")
         as_key = lambda key: (key if isinstance(key, tuple) else (key,)) if columns else ()
@@ -324,8 +325,9 @@ def colour_scale(values: list[float], direction: int, edges: list[float], *, lig
 def _matrix(chart: _Chart, measure: Measure, aggregation: str) -> dict[str, object]:
     rows, columns = chart.rows, chart.columns
     values, samples = chart.aggregate(measure.column, [*rows, *columns], aggregation)
-    row_keys = [key for key in chart.keys(rows) if any((*key, *column) in values for column in chart.keys(columns))]
-    column_keys = [key for key in chart.keys(columns) if any((*row, *key) in values for row in row_keys)]
+    all_columns = chart.keys(columns)
+    row_keys = [key for key in chart.keys(rows) if any((*key, *column) in values for column in all_columns)]
+    column_keys = [key for key in all_columns if any((*row, *key) in values for row in row_keys)]
     return {"values": values, "samples": samples, "row_keys": row_keys[:MAX_CATEGORIES], "column_keys": column_keys[:MAX_CATEGORIES]}
 
 
@@ -561,7 +563,7 @@ def _pie(chart: _Chart) -> dict[str, object]:
         if state_data.empty:
             return chart.empty()
         for column in rows:
-            state_data[column] = state_data[column].map(reporting._chart_payload_value)
+            state_data[column] = reporting._map_each_value(state_data[column], reporting._chart_payload_value)
         counts = state_data.groupby([*rows, "state"], sort=False, dropna=False).size() if rows else state_data.groupby("state").size()
         colour_of = dict(zip(states, colours))
         slices = [(state, colour_of[state]) for state in states]
@@ -674,7 +676,7 @@ def _areas(chart: _Chart) -> dict[str, object]:
         if state_data.empty:
             return chart.empty()
         for column in [*chart.rows, *chart.columns]:
-            state_data[column] = state_data[column].map(reporting._chart_payload_value)
+            state_data[column] = reporting._map_each_value(state_data[column], reporting._chart_payload_value)
         group = [*chart.rows, *chart.columns, "state"]
         counts = state_data.groupby(group, sort=False, dropna=False).size()
         legend_items = list(zip(states, colours))
@@ -790,7 +792,7 @@ def _box_plot(chart: _Chart) -> dict[str, object]:
     if frame.empty:
         return chart.empty()
     for column in axes:
-        frame[column] = frame[column].map(reporting._chart_payload_value)
+        frame[column] = reporting._map_each_value(frame[column], reporting._chart_payload_value)
     whisker_text = re.sub(r"\s+", " ", chart.setting("whiskers").casefold().replace("–", "-").replace("×", "")).strip()
     whisker_key = next((key for key in WHISKERS if key.replace(" ", "") == whisker_text.replace(" ", "")), "p10-p90")
     keys = [key for key in chart.keys(axes)]
@@ -861,7 +863,7 @@ def _symbol_map(chart: _Chart) -> dict[str, object]:
     if frame.empty:
         return chart.empty("No valid map coordinates are available")
     for column in [*chart.rows, *chart.columns]:
-        frame[column] = frame[column].map(reporting._chart_payload_value)
+        frame[column] = reporting._map_each_value(frame[column], reporting._chart_payload_value)
     place_columns = list(chart.rows)
     if not place_columns:
         # Without places, squares of a grid of about 30 by 30 over the samples.
@@ -956,7 +958,7 @@ def _filled_map(chart: _Chart) -> dict[str, object]:
     if frame.empty:
         return chart.empty("The CDRs have no Map Areas yet: they are placed in the background")
     for column in chart.columns:
-        frame[column] = frame[column].map(reporting._chart_payload_value)
+        frame[column] = reporting._map_each_value(frame[column], reporting._chart_payload_value)
     frame.attrs = chart.data.attrs.copy()
     values = reporting._aggregate_metric(frame, [*chart.columns, area_column], measure.column, aggregation).dropna()
     samples = reporting._aggregate_metric(frame, [*chart.columns, area_column], measure.column, "count")
@@ -1127,7 +1129,7 @@ def _sankey(chart: _Chart) -> dict[str, object]:
     aggregation = measure.aggregation if measure.aggregation in {"sum", "count", "countd"} else "count"
     frame = chart.data[[*levels, measure.column]].copy()
     for column in levels:
-        frame[column] = frame[column].map(reporting._chart_payload_value)
+        frame[column] = reporting._map_each_value(frame[column], reporting._chart_payload_value)
     frame.attrs = chart.data.attrs.copy()
     nodes: list[list[dict[str, object]]] = []
     kept: list[set[str]] = []
@@ -1186,7 +1188,7 @@ def _gantt(chart: _Chart) -> dict[str, object]:
     if frame.empty:
         return chart.empty("No valid times on the measure of this Gantt")
     for column in [*chart.rows, *chart.columns]:
-        frame[column] = frame[column].map(reporting._chart_payload_value)
+        frame[column] = reporting._map_each_value(frame[column], reporting._chart_payload_value)
     frame["__period"] = date_bin_labels(frame["__start"], unit)
     lanes_keys = chart.keys(chart.rows)[:MAX_GANTT_LANES]
     series_keys = chart.keys(chart.columns)

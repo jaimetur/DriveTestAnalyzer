@@ -27,6 +27,7 @@
         </header>
         <div class="chart-builder-canvas ds-chart-expanded-canvas" data-chart-builder-canvas>
           <div class="ds-chart-message" data-chart-builder-message>Select Source Datasets and configure the Interactive Preview.</div>
+          <div class="chart-builder-updating" aria-live="polite"><span aria-hidden="true"></span>Updating</div>
           <canvas data-chart-builder-chart role="img" aria-label="Ad-hoc chart" hidden></canvas>
           <button type="button" class="ds-chart-expanded-pan ds-chart-expanded-pan-left" data-chart-builder-pan="left" title="Move view left" aria-label="Move view left" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5 8 12l7 7"/></svg></button>
           <button type="button" class="ds-chart-expanded-pan ds-chart-expanded-pan-right" data-chart-builder-pan="right" title="Move view right" aria-label="Move view right" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></button>
@@ -280,21 +281,27 @@
     const requestId = ++previewRequest;
     previewController?.abort();
     previewController = new AbortController();
-    message.hidden = false; message.textContent = 'Rendering chart…'; canvas.hidden = true; repeatGrid().replaceChildren(); repeatGrid().hidden = true;
+    // The chart shown stays, dimmed under a quiet Updating, until the next one is drawn; without one, the message says so.
+    const showing = !canvas.hidden || !repeatGrid().hidden;
+    canvasShell.classList.toggle('is-updating', showing);
+    if (!showing) { message.hidden = false; message.textContent = 'Rendering chart…'; }
     try {
       const response = await fetch('/api/chart-builder/preview', {method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json'}, signal:previewController.signal, body:JSON.stringify({dataset_ids:selected(), definition:definition()})});
       const body = await response.json();
       if (!response.ok) throw new Error(typeof body.detail === 'string' ? body.detail : 'Unable to render the chart.');
       if (requestId !== previewRequest) return;
       title.textContent = body.title || definition().chart_title || 'Ad-hoc chart';
-      if (body.type === 'repeat') { await showRepeated(body, requestId); return; }
+      canvasShell.classList.remove('is-updating');
+      if (body.type === 'repeat') { canvas.hidden = true; await showRepeated(body, requestId); return; }
+      repeatGrid().replaceChildren(); repeatGrid().hidden = true;
       canvas.setAttribute('aria-label', title.textContent); canvas.hidden = false;
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       if (requestId !== previewRequest) return;
       globalThis.renderCanvasChart(canvas, body); resetZoom(); zoom.hidden = false; message.hidden = true;
     } catch (error) {
       if (error.name !== 'AbortError' && requestId === previewRequest) {
-        canvas.hidden = true; zoom.hidden = true; message.hidden = false;
+        canvasShell.classList.remove('is-updating');
+        canvas.hidden = true; repeatGrid().replaceChildren(); repeatGrid().hidden = true; zoom.hidden = true; message.hidden = false;
         message.textContent = error.message || 'Choose a valid KPI and aggregation to generate the chart.';
       }
     }
@@ -310,6 +317,7 @@
     if (!body.charts.length) { message.hidden = false; message.textContent = `No value of ${body.field} in the chosen CDRs.`; return; }
     const canvases = body.charts.map((item) => element('canvas', {role: 'img', 'aria-label': item.model.title || item.value}));
     const grid = repeatGrid();
+    zoom.hidden = true;
     // The fewest columns whose rows fit in the viewer (each chart 16:10), so the charts are as large as they can be.
     const box = canvasShell.getBoundingClientRect();
     const count = body.charts.length;
@@ -336,7 +344,7 @@
     else if (axis.kind === 'numeric') format.openAxisRange(canvasShell, 'chart', axis, event);
     else format.openAxisValues(canvasShell, 'chart', axis, event);
   }, true);
-  function queue() { window.clearTimeout(timer); previewController?.abort(); timer = window.setTimeout(preview, 350); }
+  function queue() { window.clearTimeout(timer); previewController?.abort(); timer = window.setTimeout(preview, 200); }
   const syncNavigation = () => {
     const state = globalThis.getCanvasChartPanState?.(canvas) || {zoom: 1};
     document.querySelectorAll('[data-chart-builder-pan]').forEach((button) => {

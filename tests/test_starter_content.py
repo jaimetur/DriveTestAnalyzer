@@ -23,7 +23,7 @@ def test_the_shipped_content_names_no_operator_or_vendor():
     assert not list((ASSETS / 'ppt-templates').glob('*/*.csv'))
     assert {path.stem for path in templates} == {'NetCheck CDR Report', 'NetCheck CDR Report (Main Cities)', 'RF Quality (RSRP & SINR)',
                                                  'Tableau Dashboards', 'Tableau Charts', 'Tableau Charts - Only Maps',
-                                                 'FDFS DL (NSA & SA)'}
+                                                 'FDFS DL (NSA & SA)', 'All Chart Types'}
     for path in templates:
         rows = list(csv.DictReader(io.StringIO(path.read_text(encoding='utf-8'))))
         # No template filters an Operator, nor Vendors by their operator (3_Ericsson); the Tableau templates of the UK
@@ -35,11 +35,11 @@ def test_the_shipped_content_names_no_operator_or_vendor():
         assert not any(re.search(r'\bUK\b', row.get('Slide Tittle') or '') for row in rows), path.name
         assert path.stem.startswith('Tableau') or not any(VENDOR_FILTER.search(row.get('Filters') or '') for row in rows), path.name
     designs = [json.loads(path.read_text(encoding='utf-8')) for path in (ASSETS / 'ppt-designs').glob('*.json')]
-    # The Designs of the UK workspace, one per NR Mode, and the NSA & SA comparison.
+    # The Designs of the UK workspace, one per NR Mode, the NSA & SA comparison and the example of every chart type.
     assert {(item['name'], item['template'], item['nr_mode']) for item in designs} == {
         (f'{nr_mode} - {template}', template, nr_mode) for nr_mode in ('NSA', 'SA') for template in (
             'NetCheck CDR Report', 'NetCheck CDR Report (Main Cities)', 'RF Quality (RSRP & SINR)', 'Tableau Dashboards', 'Tableau Charts')
-    } | {('NSA & SA - FDFS DL (NSA & SA)', 'FDFS DL (NSA & SA)', 'NSA+SA')}
+    } | {('NSA & SA - FDFS DL (NSA & SA)', 'FDFS DL (NSA & SA)', 'NSA+SA'), ('NSA - All Chart Types', 'All Chart Types', 'NSA')}
     assert not any({'technology', 'template_technology'} & set(item) for item in designs)
     # The (Main Cities) Designs use the Main Cities of each workspace.
     assert all(item['filters']['City'] == ['@main-cities'] for item in designs if item['name'].endswith('(Main Cities)'))
@@ -308,4 +308,25 @@ def test_the_nsa_and_sa_example_reaches_an_existing_workspace_once(client):
     assert example['filters']['Campaign'] == ['@latest-3-campaigns']
     # Deleted later, it is not added again.
     repository.delete_report_template('FDFS DL (NSA & SA)')
+    assert starter_content.seed_starter_content(repository) is None
+
+
+def test_the_all_chart_types_example_draws_every_supported_chart_type_and_reaches_an_existing_workspace_once(client):
+    import src.DriveTestAnalyzer as app_module
+    from src.modules.cdr_reporting import CHART_TYPES, parse_catalog_csv
+
+    entries = [entry for entry in parse_catalog_csv((ASSETS / 'ppt-templates' / 'All Chart Types.csv').read_text(encoding='utf-8'))
+               if entry.source_kind]
+    assert sorted(entry.chart_type.casefold() for entry in entries) == sorted(CHART_TYPES)
+    repository = app_module.repository
+    # A workspace set up before the example was shipped.
+    repository.delete_report_template('All Chart Types')
+    designs = json.loads(repository.get_workspace_state(starter_content.DESIGNS_STATE_KEY))
+    repository.set_workspace_state(starter_content.DESIGNS_STATE_KEY, json.dumps(
+        {key: item for key, item in designs.items() if item['template'] != 'All Chart Types'}))
+    repository.set_workspace_state(starter_content.LATER_EXAMPLES_STATE_KEY, json.dumps(['FDFS DL (NSA & SA)']))
+    assert starter_content.seed_starter_content(repository) == {'examples': 2}
+    designs = json.loads(repository.get_workspace_state(starter_content.DESIGNS_STATE_KEY))
+    assert [item['name'] for item in designs.values() if item['template'] == 'All Chart Types'] == ['NSA - All Chart Types']
+    repository.delete_report_template('All Chart Types')
     assert starter_content.seed_starter_content(repository) is None

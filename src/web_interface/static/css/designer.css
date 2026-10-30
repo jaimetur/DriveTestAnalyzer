@@ -429,6 +429,14 @@
 .ppt-designer .ds-cb-type-button.is-unavailable { opacity: .42; cursor: not-allowed; }
 .ppt-designer .ds-cb-row { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; font-size: .76rem; font-weight: 700; color: var(--ds-design-ink); }
 .ppt-designer .ds-cb-row input, .ppt-designer .ds-cb-row select { flex: 1 1 6rem; min-width: 0; min-height: 1.9rem; padding: .2rem .45rem; border: 1px solid var(--ds-border); border-radius: 7px; font: inherit; font-weight: 500; }
+/* Chart Builder: while the next chart is worked out, the chart shown stays, dimmed, under a quiet Updating. */
+.chart-builder-canvas .chart-builder-updating { position: absolute; top: .6rem; left: 50%; z-index: 3; display: none; align-items: center; gap: .4rem;
+  padding: .25rem .7rem; border-radius: 999px; background: rgba(36, 22, 61, .82); color: #fff; font-size: .74rem; font-weight: 700; transform: translateX(-50%); pointer-events: none; }
+.chart-builder-canvas .chart-builder-updating span { width: .7rem; height: .7rem; border: 2px solid rgba(255, 255, 255, .35); border-top-color: #fff; border-radius: 50%; animation: chart-builder-updating .8s linear infinite; }
+.chart-builder-canvas.is-updating .chart-builder-updating { display: inline-flex; }
+.chart-builder-canvas.is-updating > canvas, .chart-builder-canvas.is-updating .chart-builder-repeat { opacity: .55; transition: opacity .15s; }
+@keyframes chart-builder-updating { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .chart-builder-canvas .chart-builder-updating span { animation: none; } }
 /* The settings of a chart type with more than one (Target, Buckets, Direction…), side by side while they fit. */
 .ppt-designer .ds-cb-settings { display: flex; flex-wrap: wrap; gap: .45rem 1rem; }
 .ppt-designer .ds-cb-settings > .ds-cb-row { flex: 1 1 12rem; min-width: 0; }

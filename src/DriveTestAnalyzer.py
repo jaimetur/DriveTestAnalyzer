@@ -17495,6 +17495,12 @@ def _clear_chart_preview_caches() -> None:
         CHART_PREVIEW_FRAME_CACHE.clear()
         CHART_PREVIEW_FILTER_CACHE.clear()
         CHART_PREVIEW_DATA_CACHE.clear()
+        CHART_BUILDER_MODELS.clear()
+    with CHART_BUILDER_COLUMNS_LOCK:
+        CHART_BUILDER_COLUMNS.clear()
+        CHART_BUILDER_COLUMN_SIZES.clear()
+        CHART_BUILDER_COLUMN_NAMES.clear()
+        CHART_BUILDER_SCOPES.clear()
     # An open PPT Design keeps its rendered Canvas models in an E2E snapshot.
     # Mapping-order changes do not alter the selected CDR universe, but they do
     # alter its hierarchy order. Invalidate only those inexpensive derived
@@ -18097,9 +18103,132 @@ def redirect_bugs_report_api(request: Request, rest: str = '') -> RedirectRespon
     return RedirectResponse(_bugs_report_redirect(request, '/api/tickets', rest), status_code=status.HTTP_307_TEMPORARY_REDIRECT)
 
 
-def _chart_builder_context(payload: dict[str, Any]) -> tuple[pd.DataFrame, CatalogEntry]:
-    """Build an ad-hoc chart from explicitly selected ready CDRs."""
-    selected_ids = {int(value) for value in payload.get('dataset_ids', [])}
+# Chart Builder reads only the columns each chart reads (as the Designer chooses them, ppt_designer.compact_chart_columns)
+# from the columnar copies of its CDRs and keeps the columns it read of each CDR in memory, up to CHART_BUILDER_COLUMN_BYTES
+# (the CDRs used least recently given up first): a field dropped on a shelf reads only its own column. Each column is read
+# with every row of its CDR, in their order, so the columns read at different times go together row by row.
+CHART_BUILDER_COLUMN_BYTES = 1_500_000_000
+CHART_BUILDER_COLUMNS: OrderedDict[tuple[Any, ...], dict[str, pd.Series | None]] = OrderedDict()
+CHART_BUILDER_COLUMN_SIZES: dict[tuple[Any, ...], dict[str, int]] = {}
+CHART_BUILDER_COLUMNS_LOCK = Lock()
+CHART_BUILDER_COLUMN_LOADS: dict[tuple[Any, ...], Lock] = {}
+# The columns of each CDR (by its version), which every request of Chart Builder needs.
+CHART_BUILDER_COLUMN_NAMES: OrderedDict[tuple[Any, ...], list[str]] = OrderedDict()
+# The models of the charts already drawn, so going back to one (undo, a chart type and back, its format) is instant.
+CHART_BUILDER_MODELS: OrderedDict[str, Any] = OrderedDict()
+CHART_BUILDER_MODELS_KEPT = 64
+# The fields read ahead once the CDRs are chosen: those most charts split or filter by.
+CHART_BUILDER_COMMON_FIELDS = (
+    'Operator', 'Campaign', 'City', 'G_Level_4', 'Test_Name', 'Test_Result', 'Direction', 'Call_Family', 'Call_Status',
+)
+
+
+def _chart_builder_column_size(series: pd.Series | None) -> int:
+    """About the memory of a column: its array, and for text the size of a sample of its values (a deep count of every value
+    takes longer than reading the column)."""
+    if series is None:
+        return 0
+    size = int(series.memory_usage(index=False, deep=False))
+    if series.dtype == object and len(series):
+        sample = series.iloc[::max(1, len(series) // 200)]
+        size += int(len(series) * sum(sys.getsizeof(value) for value in sample) / len(sample))
+    return size
+
+
+def _chart_builder_dataset_columns(dataset_id: int, version: tuple[Any, ...], columns: list[str]) -> pd.DataFrame:
+    """The ``columns`` of one CDR (every row, in its order), each read from its columnar copy only the first time it is asked
+    for; a column the CDR does not have is left out."""
+    key = (str(repository.db_path), int(dataset_id), version)
+    with CHART_BUILDER_COLUMNS_LOCK:
+        load_lock = CHART_BUILDER_COLUMN_LOADS.setdefault(key, Lock())
+    with load_lock:
+        with CHART_BUILDER_COLUMNS_LOCK:
+            kept = CHART_BUILDER_COLUMNS.get(key)
+            missing = [column for column in dict.fromkeys(columns) if kept is None or column not in kept]
+        if missing:
+            # From the columnar copy of the CDR when it holds its rows as they are (columns named as the CDR names them).
+            kind = cdr_store.fresh_kind(repository.db_path, int(dataset_id))
+            read = cdr_store.query_cdr(repository.db_path, kind, int(dataset_id), [(column, column) for column in missing]) if kind else None
+            if read is None:
+                read = repository.load_dataset_rows(int(dataset_id), missing, {})
+            with CHART_BUILDER_COLUMNS_LOCK:
+                kept = CHART_BUILDER_COLUMNS.setdefault(key, {})
+                sizes = CHART_BUILDER_COLUMN_SIZES.setdefault(key, {})
+                for column in missing:
+                    series = read[column].reset_index(drop=True) if column in read.columns else None
+                    kept[column] = series
+                    sizes[column] = _chart_builder_column_size(series)
+                CHART_BUILDER_COLUMNS.move_to_end(key)
+                # The CDRs used least recently give their columns up first (never the one being read).
+                while sum(sum(item.values()) for item in CHART_BUILDER_COLUMN_SIZES.values()) > CHART_BUILDER_COLUMN_BYTES:
+                    oldest = next(iter(CHART_BUILDER_COLUMNS))
+                    if oldest == key:
+                        break
+                    CHART_BUILDER_COLUMNS.pop(oldest, None)
+                    CHART_BUILDER_COLUMN_SIZES.pop(oldest, None)
+        with CHART_BUILDER_COLUMNS_LOCK:
+            if key in CHART_BUILDER_COLUMNS:
+                CHART_BUILDER_COLUMNS.move_to_end(key)
+            kept = dict(CHART_BUILDER_COLUMNS.get(key) or {})
+    present = {column: kept[column] for column in dict.fromkeys(columns) if kept.get(column) is not None}
+    return pd.DataFrame(present)
+
+
+# The Operator fields of a CDR, which the Operator Maps map and whose values leave rows out of the charts.
+CHART_BUILDER_OPERATOR_FIELDS = frozenset({'operator', 'subscriber', 'vendor', 'vendoronly', 'operatorvendor'})
+# The rows each CDR keeps and its Operator fields as the charts read them, by CDR version and Operator Maps.
+CHART_BUILDER_SCOPES: OrderedDict[tuple[Any, ...], tuple[Any, pd.DataFrame]] = OrderedDict()
+
+
+def _chart_builder_dataset_frame(item: dict[str, Any], columns: list[str], mapping_settings: dict[str, Any], mapping_key: str) -> pd.DataFrame:
+    """The ``columns`` of one CDR as its charts read them: without the rows of the operators out of scope in its NR Mode
+    (``load_dataset_rows(..., in_scope_only=True)``) nor those of the operators the Operator Maps exclude, with its Operator
+    fields mapped by the Operator and Vendor Maps (``apply_operator_mappings``, ``normalise_operator_aliases``). The rows
+    kept and the mapped Operator fields are worked out once per CDR, so a new column only reads that column."""
+    from src.modules.operator_roles import out_of_scope_operators
+
+    dataset_id = int(item['id'])
+    version = _chart_builder_version(item)
+    raw = _chart_builder_dataset_columns(dataset_id, version, columns)
+    operator_columns = [column for column in raw.columns if _normalise_catalogue_dimension_name(column) in CHART_BUILDER_OPERATOR_FIELDS]
+    if not operator_columns:
+        return raw
+    key = (str(repository.db_path), version, mapping_key, tuple(operator_columns))
+    with CHART_BUILDER_COLUMNS_LOCK:
+        scoped = CHART_BUILDER_SCOPES.get(key)
+        if scoped is not None:
+            CHART_BUILDER_SCOPES.move_to_end(key)
+    if scoped is None:
+        operators = raw[operator_columns].copy()
+        keep = pd.Series(True, index=operators.index)
+        operator = next((column for column in operator_columns if _normalise_catalogue_dimension_name(column) == 'operator'), None)
+        names = {name.casefold() for name in out_of_scope_operators(mapping_settings.get('operator_mapping_groups') or [], item.get('nr_mode'))}
+        if operator is not None and names:
+            # Each distinct Operator is compared once (a missing one is in scope, as COALESCE(Operator, '') is in SQL).
+            out = [value for value in pd.unique(operators[operator].dropna()) if str(value).strip().casefold() in names]
+            keep &= ~operators[operator].isin(out)
+        mapped = apply_operator_mappings(operators.loc[keep], mapping_settings['operator_mappings'])
+        # The operators the Operator Maps exclude are left out of every chart.
+        kept = drop_excluded_operators(mapped, excluded_operators(mapping_settings))
+        keep &= operators.index.isin(kept.index)
+        kept = kept.copy()
+        kept.attrs.update(shared_frame_attrs(mapping_settings))
+        scoped = (keep.to_numpy(), normalise_operator_aliases(kept).reset_index(drop=True))
+        with CHART_BUILDER_COLUMNS_LOCK:
+            CHART_BUILDER_SCOPES[key] = scoped
+            while len(CHART_BUILDER_SCOPES) > 64:
+                CHART_BUILDER_SCOPES.popitem(last=False)
+    keep, mapped = scoped
+    frame = raw.loc[keep, [column for column in raw.columns if column not in operator_columns]].reset_index(drop=True)
+    for column in mapped.columns:
+        frame[column] = mapped[column].to_numpy()
+    # In the order of the columns of the CDR, the fields the Operator Maps derive (Vendor_Operator) last.
+    return frame[[*raw.columns, *(column for column in mapped.columns if column not in raw.columns)]]
+
+
+def _chart_builder_selection(payload: dict[str, Any]) -> tuple[list[dict[str, Any]], dict[int, list[str]]]:
+    """The ready CDRs chosen in Chart Builder and the columns of each one."""
+    selected_ids = {int(value) for value in payload.get('dataset_ids', []) if str(value).strip().lstrip('-').isdigit()}
     if not selected_ids:
         raise HTTPException(status_code=400, detail='Select at least one processed Source Dataset.')
     selected_datasets: list[dict[str, Any]] = []
@@ -18109,9 +18238,31 @@ def _chart_builder_context(payload: dict[str, Any]) -> tuple[pd.DataFrame, Catal
             continue
         item = serialize_dataset_row(dataset)
         selected_datasets.append(item)
-        dataset_columns[int(dataset['id'])] = repository.list_dataset_row_columns(int(dataset['id']))
+        key = (str(repository.db_path), _chart_builder_version(item))
+        with CHART_BUILDER_COLUMNS_LOCK:
+            columns = CHART_BUILDER_COLUMN_NAMES.get(key)
+        if columns is None:
+            columns = repository.list_dataset_row_columns(int(dataset['id']))
+            with CHART_BUILDER_COLUMNS_LOCK:
+                CHART_BUILDER_COLUMN_NAMES[key] = columns
+                while len(CHART_BUILDER_COLUMN_NAMES) > 256:
+                    CHART_BUILDER_COLUMN_NAMES.popitem(last=False)
+        dataset_columns[int(dataset['id'])] = columns
     if not selected_datasets:
         raise HTTPException(status_code=400, detail='The selected Source Datasets are not ready.')
+    return selected_datasets, dataset_columns
+
+
+def _chart_builder_version(item: dict[str, Any]) -> tuple[Any, ...]:
+    return (item['id'], item.get('updated_at'), item.get('processed_at'), item.get('normalization_version'), item.get('row_count'))
+
+
+def _chart_builder_context(payload: dict[str, Any]) -> tuple[pd.DataFrame, CatalogEntry, str]:
+    """Build an ad-hoc chart from explicitly selected ready CDRs: the rows of the columns it reads (with the key they are
+    kept by) and its template row."""
+    from src.modules.ppt_designer import compact_chart_columns
+
+    selected_datasets, dataset_columns = _chart_builder_selection(payload)
     definition = payload.get('definition') if isinstance(payload.get('definition'), dict) else {}
     entry = CatalogEntry(
         slide=1, slide_title='Chart Builder', slide_subtitle='', layout='',
@@ -18135,31 +18286,56 @@ def _chart_builder_context(payload: dict[str, Any]) -> tuple[pd.DataFrame, Catal
     )
     parse_axis_range(entry.axis_x_range, 'x')
     parse_axis_range(entry.axis_y_range, 'y')
+    # The columns the chart reads (every column when they cannot be told, as a chart naming a field no CDR has), with the
+    # field of One chart per.
+    source_columns = list(dict.fromkeys(column for columns in dataset_columns.values() for column in columns))
+    wanted = compact_chart_columns(entry, source_columns, False)
+    repeat = definition.get('repeat') if isinstance(definition.get('repeat'), dict) else {}
+    if wanted is not None and str(repeat.get('field') or '').strip():
+        field = _normalise_catalogue_dimension_name(str(repeat['field']))
+        wanted = [*wanted, *(column for column in source_columns if _normalise_catalogue_dimension_name(column) == field)]
+    wanted = sorted(set(wanted if wanted is not None else source_columns), key=str.casefold)
+    mapping_settings = repository.chart_mapping_settings()
+    mapping_key = hashlib.sha256(json.dumps(mapping_settings, sort_keys=True, default=str).encode()).hexdigest()
     frame_key = _chart_preview_cache_key('chart-builder-source-frame', {
-        'dataset_ids': sorted(selected_ids),
-        'dataset_versions': [(item['id'], item.get('updated_at'), item.get('processed_at'), item.get('normalization_version')) for item in selected_datasets],
-        'columns': dataset_columns,
+        'dataset_versions': [_chart_builder_version(item) for item in selected_datasets],
+        'columns': wanted,
+        'mappings': mapping_key,
     })
+
     def load_frame() -> pd.DataFrame:
-        # Without the rows of the operators out of scope in the NR Mode of each CDR (the NR Modes of the Operator Maps).
-        frames = [
-            repository.load_dataset_rows(dataset_id, columns, {}, in_scope_only=True)
-            for dataset_id, columns in dataset_columns.items() if columns
-        ]
+        frames = []
+        for item in selected_datasets:
+            own = [column for column in wanted if column in set(dataset_columns.get(int(item['id'])) or [])]
+            if own:
+                frames.append(_chart_builder_dataset_frame(item, own, mapping_settings, mapping_key))
         if not frames:
             raise HTTPException(status_code=400, detail='The selected Source Datasets are not ready.')
-        mapping_settings = repository.chart_mapping_settings()
-        operator_mappings = mapping_settings['operator_mappings']
-        result = apply_operator_mappings(
-            pd.concat(frames, ignore_index=True, sort=False), operator_mappings,
-        )
-        # The operators the Operator Maps exclude are left out of every chart.
-        result = drop_excluded_operators(result, excluded_operators(mapping_settings))
+        result = pd.concat(frames, ignore_index=True, sort=False)
         result.attrs.update(shared_frame_attrs(mapping_settings))
         # Where a Filled Map reads the polygons of the Map Areas.
         result.attrs['map_areas'] = repository.map_area_source()
-        return normalise_operator_aliases(result)
-    return _bounded_preview_frame(CHART_PREVIEW_FRAME_CACHE, frame_key, load_frame, 4), entry
+        result.attrs['operator_aliases_normalized'] = True
+        return result
+    return _bounded_preview_frame(CHART_PREVIEW_FRAME_CACHE, frame_key, load_frame, 4), entry, frame_key
+
+
+def _chart_builder_read_ahead(dataset_ids: Iterable[int]) -> None:
+    """Read the common fields of the chosen CDRs (Operator, Campaign, City…) in the background, so their first chart only reads
+    its measure."""
+    def read() -> None:
+        try:
+            selected_datasets, dataset_columns = _chart_builder_selection({'dataset_ids': list(dataset_ids)})
+            for item in selected_datasets:
+                columns = dataset_columns.get(int(item['id'])) or []
+                wanted = [column for column in columns if _normalise_catalogue_dimension_name(column) in {
+                    _normalise_catalogue_dimension_name(field) for field in CHART_BUILDER_COMMON_FIELDS}]
+                # One column at a time, so a chart asked for meanwhile reads its own columns between them.
+                for column in wanted:
+                    _chart_builder_dataset_columns(int(item['id']), _chart_builder_version(item), [column])
+        except Exception:  # noqa: BLE001 - reading ahead never gets in the way of the page: the chart reads them itself
+            pass
+    Thread(target=read, name='chart-builder-read-ahead', daemon=True).start()
 
 
 @app.get('/chart-builder', response_class=HTMLResponse)
@@ -18543,6 +18719,8 @@ async def chart_builder_fields(request: Request, user: SessionUser = Depends(cur
                'category': categories.get(_normalise_catalogue_dimension_name(column), 'Other fields')}
               for column in sorted(columns, key=str.casefold) if _normalise_catalogue_dimension_name(column) not in hidden]
     dimensions = load_workspace_calculated_dimensions()
+    # The fields most charts split or filter by are read while the first field is chosen.
+    _chart_builder_read_ahead(selected)
     return JSONResponse({'fields': fields, 'calculated_fields': [dimension.name for dimension in dimensions]})
 
 
@@ -18553,7 +18731,8 @@ async def chart_builder_values(request: Request, user: SessionUser = Depends(cur
     field = str(payload.get('field') or '').strip()
     if not field:
         raise HTTPException(status_code=400, detail='Choose a field.')
-    frame, _entry = _chart_builder_context({'dataset_ids': payload.get('dataset_ids', []), 'definition': {
+    # Only the column of the field is read (and kept for the charts).
+    frame, _entry, _key = _chart_builder_context({'dataset_ids': payload.get('dataset_ids', []), 'definition': {
         'kpi': field, 'rows_split': field, 'chart_type': 'Table', 'cdr_source': payload.get('cdr_source') or 'CDR-Data'}})
     column = next((name for name in frame.columns if _normalise_catalogue_dimension_name(name) == _normalise_catalogue_dimension_name(field)), None)
     if column is None:
@@ -18573,14 +18752,24 @@ async def chart_builder_preview(request: Request, user: SessionUser = Depends(cu
     chart per a field one model for each value of the field in the chosen CDRs (``type: repeat``), as a PPT Design lays
     them out."""
     payload = await request.json()
-    frame, entry = _chart_builder_context(payload)
+    frame, entry, source_key = _chart_builder_context(payload)
     definition = payload.get('definition') if isinstance(payload.get('definition'), dict) else {}
     style = definition.get('style') if isinstance(definition.get('style'), dict) else {}
     repeat = definition.get('repeat') if isinstance(definition.get('repeat'), dict) else {}
-    source_key = _chart_preview_cache_key('chart-builder-selection', {'dataset_ids': payload.get('dataset_ids', [])})
 
     def model(chart_entry: CatalogEntry) -> dict[str, Any]:
-        result = catalog_chart_payload(_cached_filtered_chart_frame(source_key, frame, chart_entry, False), chart_entry, prefiltered=True)
+        # A chart drawn before (the same rows and template row) is not worked out again; its format is applied each time.
+        key = _chart_preview_cache_key('chart-builder-model', {'source': source_key, 'entry': repr(chart_entry)})
+        with CHART_PREVIEW_CACHE_LOCK:
+            result = CHART_BUILDER_MODELS.get(key)
+            if result is not None:
+                CHART_BUILDER_MODELS.move_to_end(key)
+        if result is None:
+            result = catalog_chart_payload(_cached_filtered_chart_frame(source_key, frame, chart_entry, False), chart_entry, prefiltered=True)
+            with CHART_PREVIEW_CACHE_LOCK:
+                CHART_BUILDER_MODELS[key] = result
+                while len(CHART_BUILDER_MODELS) > CHART_BUILDER_MODELS_KEPT:
+                    CHART_BUILDER_MODELS.popitem(last=False)
         return {**result, 'format_overrides': style} if style else result
 
     try:

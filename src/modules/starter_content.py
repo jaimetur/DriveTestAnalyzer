@@ -11,7 +11,8 @@ New deployments and new workspaces, and existing workspaces once, receive the co
   titles name it with ``{NR Mode}`` and ``{NR Mode Name}``);
 - ``assets/ppt-designs/*.json``: PPT Designs, which use those templates, each reading the CDRs of its NR Mode
   (``nr_mode``: NSA, SA or NSA+SA for both, whose SA CDRs follow ``sa_campaigns``); the templates and PPT Designs shipped
-  later (``LATER_EXAMPLES``, such as the NSA & SA comparison FDFS DL (NSA & SA)) reach every existing workspace once;
+  later (``LATER_EXAMPLES``: the NSA & SA comparison FDFS DL (NSA & SA) and All Chart Types, an example of every chart
+  type drawn on the CDRs of the workspace) reach every existing workspace once;
 - ``assets/autocalculated-fields/default-autocalculated-fields.json``: the Auto-calculated Fields every new
   workspace starts with, which the templates use;
 - ``assets/scoring-report-configurations/*.json``: saved Scoring report configurations (``name`` and
@@ -54,7 +55,7 @@ BASE_METHODOLOGY = 'netcheck-2026'
 # The Report Templates shipped after workspaces were set up, which reach each of them once with their PPT Designs (those
 # of ``assets/ppt-designs`` that use them); a workspace that deleted them is not given them again.
 LATER_EXAMPLES_STATE_KEY = 'starter_examples_offered'
-LATER_EXAMPLES = ('FDFS DL (NSA & SA)',)
+LATER_EXAMPLES = ('FDFS DL (NSA & SA)', 'All Chart Types')
 
 
 def _json_files(folder: Path) -> list[Path]:
