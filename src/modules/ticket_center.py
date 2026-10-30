@@ -70,14 +70,14 @@ TREND_PERIODS: dict[str, tuple[str, str, int, int]] = {
     'quarter': ('Quarterly', 'quarter', 8, 2), 'year': ('Yearly', 'year', 5, 1),
 }
 DEFAULT_TREND_PERIOD = 'week'
-# The periods the Statistics and Time Spent views are filtered by: the current week (from Monday), month, quarter or
-# year, or every ticket (This month by default); the name of each choice, what the period before it is called and the
-# unit of its charts over time.
+# The periods the Statistics and Time Spent views are filtered by, in their order: every ticket (by default), or the
+# current week (from Monday), month, quarter or year; the name of each choice, what the period before it is called and
+# the unit of its charts over time (every ticket's follows how long it covers, ``_all_time``).
 TICKET_SCOPES: dict[str, tuple[str, str, str]] = {
-    'week': ('This week', 'last week', 'day'), 'month': ('This month', 'last month', 'day'),
-    'quarter': ('This quarter', 'last quarter', 'week'), 'year': ('This year', 'last year', 'month'), 'all': ('All time', '', 'month'),
+    'all': ('All time', '', 'month'), 'week': ('This week', 'last week', 'day'), 'month': ('This month', 'last month', 'day'),
+    'quarter': ('This quarter', 'last quarter', 'week'), 'year': ('This year', 'last year', 'month'),
 }
-DEFAULT_TICKET_SCOPE = 'month'
+DEFAULT_TICKET_SCOPE = 'all'
 # The Statistics panel: how long the tickets took to be resolved and how old the open ones are, in these groups of
 # days (each up to its limit); the latest versions, the people and the modules with most tickets it shows; and the
 # weeks of its activity calendar.
@@ -674,7 +674,7 @@ def _status_time(tickets: list[dict[str, Any]], events: Iterable[dict[str, Any]]
 
 def ticket_time_spent(tickets: list[dict[str, Any]], events: Iterable[dict[str, Any]] = (), *,
                       today: date | None = None) -> dict[str, Any]:
-    """What the Time Spent view of Ticket Center shows for each period of ``TICKET_SCOPES`` (This month first shown): the
+    """What the Time Spent view of Ticket Center shows for each period of ``TICKET_SCOPES`` (All time first shown): the
     time from opened to resolved (or closed) of the tickets resolved or closed in it, added up (``_time_measure``), and
     that time per day, week or month of the period (the tickets resolved in each)."""
     today = today or local_today()
@@ -848,7 +848,7 @@ def ticket_activity(tickets: list[dict[str, Any]], events: Iterable[dict[str, An
 
 def ticket_statistics(tickets: list[dict[str, Any]], events: Iterable[dict[str, Any]] = (), *,
                       today: date | None = None, versions: Iterable[str] = ()) -> dict[str, Any]:
-    """What the Statistics panel of Ticket Center shows for each period of ``TICKET_SCOPES`` (This month first shown),
+    """What the Statistics panel of Ticket Center shows for each period of ``TICKET_SCOPES`` (All time first shown),
     from the tickets of the list (with the names of their reporters and assignees, the titles and colours of their
     modules and their numbers of comments and screenshots) and the entries of their timelines (``ticket_events``)."""
     today = today or local_today()

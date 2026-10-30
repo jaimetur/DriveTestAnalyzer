@@ -1,5 +1,5 @@
 {# The Time Spent view of Ticket Center (ticket_center.html), from ticket_center.ticket_time_spent: the time from opened to
-   resolved (or closed) of the tickets resolved or closed in the period chosen (This month by default; the same choice
+   resolved (or closed) of the tickets resolved or closed in the period chosen (All time by default; the same choice
    as Statistics), added up. Each row lists its tickets in All Tickets (data-board-show, ticket_center.js); every part
    tells what it is over it (data-tip). #}
 {% macro many(count, noun, nouns='') -%}{{ count }} {{ noun if count == 1 else (nouns or noun ~ 's') }}{%- endmacro %}

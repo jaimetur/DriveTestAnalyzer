@@ -1,5 +1,5 @@
 {# The Statistics panel of Ticket Center (ticket_center.html), from ticket_center.ticket_statistics: a view of each
-   period, chosen at its top (This month by default; the same choice as Time Spent). Each part of the donuts and each bar
+   period, chosen at its top (All time by default; the same choice as Time Spent). Each part of the donuts and each bar
    of a module or person lists its tickets in All Tickets (data-board-show, ticket_center.js); every part tells what it
    is over it (data-tip). #}
 {% macro many(count, noun, nouns='') -%}{{ count }} {{ noun if count == 1 else (nouns or noun ~ 's') }}{%- endmacro %}

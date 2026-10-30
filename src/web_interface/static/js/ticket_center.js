@@ -406,7 +406,7 @@
     }));
   }
 
-  // The views chosen in Statistics and Time Spent: the period (This month by default, the same in both) and, in each card
+  // The views chosen in Statistics and Time Spent: the period (All time by default, the same in both) and, in each card
   // with two views, Resolved or Open, Fixed in or Opened with, Reporters or Assignees (the first by default). Every switch
   // of a name shows the same view, and this browser remembers it; a switch owns the choices and views not inside
   // another one.

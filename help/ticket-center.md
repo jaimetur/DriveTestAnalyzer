@@ -48,7 +48,7 @@ Each tile, and each count, bar and cell of the **Dashboard** panel, lists its ti
 
 ## Statistics
 
-The **Statistics** tab shows how the tickets of a period are going, with every bar coloured by type (Bug, Improvement, New Feature) and what each part is when the mouse is over it. **Period**, at its top, chooses **This week** (from Monday), **This month** (by default), **This quarter**, **This year** or **All time**; Time Spent follows the same choice, and the browser remembers it. Each view counts the tickets opened in the period, and those resolved or closed in it for the times to resolve and the versions that fixed them; the comparisons are with the period before (last week, last month…), and All time has none: it covers every ticket since the first one, drawn over time by months when it spans 8 months or more, else by weeks (by days under 4 weeks). A part that lists its tickets lists all those of its value, of any period.
+The **Statistics** tab shows how the tickets of a period are going, with every bar coloured by type (Bug, Improvement, New Feature) and what each part is when the mouse is over it. **Period**, at its top, chooses **All time** (by default), **This week** (from Monday), **This month**, **This quarter** or **This year**; Time Spent follows the same choice, and the browser remembers it. Each view counts the tickets opened in the period, and those resolved or closed in it for the times to resolve and the versions that fixed them; the comparisons are with the period before (last week, last month…), and All time has none: it covers every ticket since the first one, drawn over time by months when it spans 8 months or more, else by weeks (by days under 4 weeks). A part that lists its tickets lists all those of its value, of any period.
 
 - **Resolution rate**: the share of the tickets opened in the period already resolved or closed, as a ring. **Time to resolve**: the median time from opened to resolved of the tickets resolved in the period, and how much faster or slower it is than in the period before. **Tickets opened**: those opened in the period and how many more or fewer than in the period before. **Comments per ticket**, with the screenshots per ticket.
 - **Every ticket**: three donuts of the tickets opened in the period by type, status and priority, with the count and share of each; a part, or its line in the legend, lists its tickets.
@@ -63,7 +63,7 @@ Each browser remembers the view chosen in each card.
 
 ## Time Spent
 
-The **Time Spent** tab adds up the time from opened to resolved or closed of the tickets resolved or closed in the period chosen at its top (**This week**, **This month** by default, **This quarter**, **This year** or **All time**, the same choice as Statistics). A note at its top says how it is measured:
+The **Time Spent** tab adds up the time from opened to resolved or closed of the tickets resolved or closed in the period chosen at its top (**All time** by default, **This week**, **This month**, **This quarter** or **This year**, the same choice as Statistics). A note at its top says how it is measured:
 
 - The time of a ticket is the **calendar time** from the moment it was opened to the moment it was resolved or closed, 24 hours a day (nights and weekends included): the tool does not record working hours.
 - Only the tickets resolved or closed in the period count; the open and rejected ones are left out. The totals add up the time of those tickets; the average and the median are per ticket.
