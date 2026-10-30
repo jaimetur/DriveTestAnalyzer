@@ -79,7 +79,7 @@
         {% if series.unit == 'day' %}<ul class="tickets-legend tickets-weekend-legend"><li><span class="tickets-swatch" data-series="weekday" aria-hidden="true"></span>Weekdays</li><li><span class="tickets-swatch" data-series="weekend" aria-hidden="true"></span>Weekend</li></ul>{% endif %}
           <div class="tickets-columns tickets-time-columns{% if series.spans | length > 12 %} is-dense{% endif %}" style="--columns: {{ series.spans | length }}">
             {% for span in series.spans %}
-            <div class="tickets-column"{% if span.weekend %} data-weekend="true"{% endif %}{% if not span.future %} data-tip="{{ span.name }}: {{ span.total }} in {{ many(span.count, 'ticket') }} resolved"{% endif %}>
+            <div class="tickets-column"{% if span.weekend %} data-weekend="true"{% endif %}{% if span.future %} data-future="true"{% else %} data-tip="{{ span.name }}: {{ span.total }} in {{ many(span.count, 'ticket') }} resolved"{% endif %}>
               <div class="tickets-column-bar"><span class="tickets-time-bar" style="height: {{ span.share }}%"></span><span class="tickets-column-value">{{ span.total if span.count else '' }}</span></div>
               <span class="tickets-column-label">{% if span.axis %}{{ span.label }}{% endif %}</span>
             </div>

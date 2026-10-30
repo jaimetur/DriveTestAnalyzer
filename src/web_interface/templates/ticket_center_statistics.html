@@ -138,7 +138,7 @@
               </svg>
               <div class="tickets-backlog-columns">
                 {% for entry in backlog.periods %}
-                <div class="tickets-backlog-column"{% if entry.weekend %} data-weekend="true"{% endif %}{% if not entry.future %} data-tip="{{ entry.name }}: {{ entry.created }} created, {{ entry.resolved }} resolved and {{ entry.open }} open by its end"{% endif %}><span class="tickets-period-label">{% if entry.axis %}{{ entry.label }}{% endif %}</span></div>
+                <div class="tickets-backlog-column"{% if entry.weekend and not entry.future %} data-weekend="true"{% endif %}{% if not entry.future %} data-tip="{{ entry.name }}: {{ entry.created }} created, {{ entry.resolved }} resolved and {{ entry.open }} open by its end"{% endif %}><span class="tickets-period-label">{% if entry.axis %}{{ entry.label }}{% endif %}</span></div>
                 {% endfor %}
               </div>
             </div>

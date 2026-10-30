@@ -66,11 +66,11 @@
                   <li><span class="tickets-swatch" data-series="created" aria-hidden="true"></span>Created <strong>{{ trend.created }}</strong></li>
                   <li><span class="tickets-swatch" data-series="resolved" aria-hidden="true"></span>Resolved <strong>{{ trend.resolved }}</strong></li>
                 </ul>
-                <div class="tickets-periods" style="--trend-periods: {{ trend.periods | length }}" role="img" aria-label="{{ trend.created }} tickets created and {{ trend.resolved }} resolved">
+                <div class="tickets-periods{% if trend.periods | length > 24 %} is-dense{% endif %}" style="--trend-periods: {{ trend.periods | length }}" role="img" aria-label="{{ trend.created }} tickets created and {{ trend.resolved }} resolved">
                   <span class="tickets-periods-peak" aria-hidden="true">{{ trend.peak }}</span>
                   {% for entry in trend.periods %}
-                  <div class="tickets-period"{% if entry.weekend %} data-weekend="true"{% endif %}{% if not entry.future %} data-tip="{{ entry.name }}: {{ entry.created }} created, {{ entry.resolved }} resolved"{% endif %}>
-                    <div class="tickets-period-bars"><span class="tickets-bar" data-series="created" style="height: {{ entry.created_height }}%"></span><span class="tickets-bar" data-series="resolved" style="height: {{ entry.resolved_height }}%"></span></div>
+                  <div class="tickets-period"{% if entry.weekend %} data-weekend="true"{% endif %}{% if entry.future %} data-future="true"{% else %} data-tip="{{ entry.name }}: {{ entry.created }} created, {{ entry.resolved }} resolved"{% endif %}>
+                    <div class="tickets-period-bars"><span class="tickets-bar" data-series="created" style="height: {{ entry.created_height }}%">{% if entry.created %}<b>{{ entry.created }}</b>{% endif %}</span><span class="tickets-bar" data-series="resolved" style="height: {{ entry.resolved_height }}%">{% if entry.resolved %}<b>{{ entry.resolved }}</b>{% endif %}</span></div>
                     <span class="tickets-period-label">{% if entry.axis %}{{ entry.label }}{% endif %}</span>
                   </div>
                   {% endfor %}
@@ -112,6 +112,68 @@
                 <span><strong>{{ glance.unassigned }}</strong>open unassigned</span>
               </div>
             </section>
+
+            <section class="tickets-card tickets-matrix-card" aria-labelledby="tickets-matrix-title-{{ board.key }}">
+              <header class="tickets-card-head"><h3 id="tickets-matrix-title-{{ board.key }}">Tickets by type and status</h3><span class="tickets-card-note">Click a count to list its tickets</span></header>
+              <div class="tickets-matrix-wrap">
+                <table class="tickets-matrix">
+                  <thead><tr><th scope="col">Type</th>{% for key, label in board.statuses %}<th scope="col" data-status="{{ key }}">{{ label }}</th>{% endfor %}<th scope="col">Total</th></tr></thead>
+                  <tbody>
+                    {% for row in board.types %}
+                    <tr>
+                      <th scope="row">{{ type_badge(row.type, row.label) }}</th>
+                      {% for key, label in board.statuses %}
+                      <td><button type="button" class="tickets-cell{% if not row.counts[key] %} is-empty{% endif %}" data-board-cell data-type="{{ row.type }}" data-status="{{ key }}" data-tip="{{ row.counts[key] }} {{ row.label }} ticket{{ '' if row.counts[key] == 1 else 's' }} {{ label }}">{{ row.counts[key] }}</button></td>
+                      {% endfor %}
+                      <td><button type="button" class="tickets-cell tickets-cell-total" data-board-cell data-type="{{ row.type }}" data-status="" data-tip="{{ row.total }} {{ row.label }} ticket{{ '' if row.total == 1 else 's' }} in every status">{{ row.total }}</button></td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                  <tfoot><tr><th scope="row">Total</th>{% for key, label in board.statuses %}<td><button type="button" class="tickets-cell tickets-cell-total" data-board-cell data-type="" data-status="{{ key }}" data-tip="{{ board.status_totals[key] }} ticket{{ '' if board.status_totals[key] == 1 else 's' }} {{ label }}">{{ board.status_totals[key] }}</button></td>{% endfor %}<td><button type="button" class="tickets-cell tickets-cell-total" data-board-cell data-type="" data-status="" data-tip="Every ticket">{{ board.total }}</button></td></tr></tfoot>
+                </table>
+              </div>
+            </section>
+
+            {# Every ticket of each module, its open ones in its colour; a module lists its tickets. #}
+            <section class="tickets-card tickets-modules-card" aria-labelledby="tickets-modules-title-{{ board.key }}">
+              <header class="tickets-card-head"><h3 id="tickets-modules-title-{{ board.key }}">Tickets per module</h3><span class="tickets-card-note">Open of every ticket</span></header>
+              {% if board.modules %}
+              <ul class="tickets-modules">
+                {% for module in board.modules[:8] %}
+                <li><button type="button" class="tickets-module{% if not module.count %} is-calm{% endif %}" data-board-module="{{ module.key }}" style="--module-color: {{ module.color }}" data-tip="{{ module.title }}: {{ module.count }} open of {{ module.total }} ticket{{ '' if module.total == 1 else 's' }}">
+                  <span class="tickets-module-name"><span class="tickets-rank-dot" aria-hidden="true"></span>{{ module.title }}</span>
+                  <span class="tickets-module-bar"><span class="tickets-module-total" style="width: {{ (100 * module.total / board.max_module) | round(2) }}%"><span class="tickets-module-open" style="width: {{ (100 * module.count / module.total) | round(2) }}%"></span></span></span>
+                  <strong>{{ module.count }}<small>/{{ module.total }}</small></strong>
+                </button></li>
+                {% endfor %}
+              </ul>
+              {% else %}<p class="ticket-muted">No ticket yet.</p>{% endif %}
+            </section>
+
+            <div class="tickets-type-cards">
+              {% for row in board.types %}
+              <section class="tickets-card tickets-type-card" data-type="{{ row.type }}" aria-label="{{ row.label }} tickets">
+                <header class="tickets-card-head">{{ type_badge(row.type, row.label) }}<span class="tickets-type-count"><strong>{{ row.open }}</strong> open of {{ row.total }}</span></header>
+                <div class="tickets-stack" role="img" aria-label="{% for segment in row.segments %}{{ segment.count }} {{ segment.label }}{% if not loop.last %}, {% endif %}{% else %}No ticket{% endfor %}">
+                  {% for segment in row.segments %}<button type="button" class="tickets-stack-segment" data-board-cell data-type="{{ row.type }}" data-status="{{ segment.status }}" style="flex-grow: {{ segment.count }}" data-tip="{{ segment.count }} {{ segment.label }} ({{ '%.0f' | format(segment.share) }}%)" aria-label="{{ segment.count }} {{ segment.label }}"></button>{% endfor %}
+                </div>
+
+                {% if row.segments %}<ul class="tickets-stack-legend">{% for segment in row.segments %}<li data-status="{{ segment.status }}">{{ segment.label }} <strong>{{ segment.count }}</strong></li>{% endfor %}</ul>{% endif %}
+                <p class="tickets-type-median">Median time to resolve <strong>{{ row.median_resolve }}</strong></p>
+                {% if row.open %}
+                <p class="tickets-subhead">Open by priority</p>
+                <div class="tickets-priorities">
+                  {% for item in row.priorities %}
+                  <button type="button" class="tickets-priority{% if not item.count %} is-empty{% endif %}" data-board-priority data-type="{{ row.type }}" data-priority="{{ item.priority }}" data-tip="{{ item.count }} open {{ row.label }} ticket{{ '' if item.count == 1 else 's' }} {{ item.priority }} · {{ item.label }}">
+                    <span class="tickets-priority-bar"><span style="height: {{ (100 * item.count / row.max_priority) | round(2) if row.max_priority else 0 }}%"></span></span>
+                    <strong>{{ item.count }}</strong><small>{{ item.priority }}</small>
+                  </button>
+                  {% endfor %}
+                </div>
+                {% else %}<p class="tickets-type-calm"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 12.5 4 4 8-9"/></svg>No open {{ row.label }} tickets</p>{% endif %}
+              </section>
+              {% endfor %}
+            </div>
 
             {# The open tickets to attend first (the most urgent, then the oldest) and those resolved last; the latest entries of every ticket. #}
             {% set attention = board.attention %}
@@ -170,67 +232,6 @@
               </ol>
               {% else %}<p class="ticket-muted">No activity yet.</p>{% endif %}
             </section>
-
-            <section class="tickets-card tickets-matrix-card" aria-labelledby="tickets-matrix-title-{{ board.key }}">
-              <header class="tickets-card-head"><h3 id="tickets-matrix-title-{{ board.key }}">Tickets by type and status</h3><span class="tickets-card-note">Click a count to list its tickets</span></header>
-              <div class="tickets-matrix-wrap">
-                <table class="tickets-matrix">
-                  <thead><tr><th scope="col">Type</th>{% for key, label in board.statuses %}<th scope="col" data-status="{{ key }}">{{ label }}</th>{% endfor %}<th scope="col">Total</th></tr></thead>
-                  <tbody>
-                    {% for row in board.types %}
-                    <tr>
-                      <th scope="row">{{ type_badge(row.type, row.label) }}</th>
-                      {% for key, label in board.statuses %}
-                      <td><button type="button" class="tickets-cell{% if not row.counts[key] %} is-empty{% endif %}" data-board-cell data-type="{{ row.type }}" data-status="{{ key }}" data-tip="{{ row.counts[key] }} {{ row.label }} ticket{{ '' if row.counts[key] == 1 else 's' }} {{ label }}">{{ row.counts[key] }}</button></td>
-                      {% endfor %}
-                      <td><button type="button" class="tickets-cell tickets-cell-total" data-board-cell data-type="{{ row.type }}" data-status="" data-tip="{{ row.total }} {{ row.label }} ticket{{ '' if row.total == 1 else 's' }} in every status">{{ row.total }}</button></td>
-                    </tr>
-                    {% endfor %}
-                  </tbody>
-                  <tfoot><tr><th scope="row">Total</th>{% for key, label in board.statuses %}<td><button type="button" class="tickets-cell tickets-cell-total" data-board-cell data-type="" data-status="{{ key }}" data-tip="{{ board.status_totals[key] }} ticket{{ '' if board.status_totals[key] == 1 else 's' }} {{ label }}">{{ board.status_totals[key] }}</button></td>{% endfor %}<td><button type="button" class="tickets-cell tickets-cell-total" data-board-cell data-type="" data-status="" data-tip="Every ticket">{{ board.total }}</button></td></tr></tfoot>
-                </table>
-              </div>
-            </section>
-
-            {# Every ticket of each module, its open ones in its colour; a module lists its tickets. #}
-            <section class="tickets-card tickets-modules-card" aria-labelledby="tickets-modules-title-{{ board.key }}">
-              <header class="tickets-card-head"><h3 id="tickets-modules-title-{{ board.key }}">Tickets per module</h3><span class="tickets-card-note">Open of every ticket</span></header>
-              {% if board.modules %}
-              <ul class="tickets-modules">
-                {% for module in board.modules[:8] %}
-                <li><button type="button" class="tickets-module{% if not module.count %} is-calm{% endif %}" data-board-module="{{ module.key }}" style="--module-color: {{ module.color }}" data-tip="{{ module.title }}: {{ module.count }} open of {{ module.total }} ticket{{ '' if module.total == 1 else 's' }}">
-                  <span class="tickets-module-name"><span class="tickets-rank-dot" aria-hidden="true"></span>{{ module.title }}</span>
-                  <span class="tickets-module-bar"><span class="tickets-module-total" style="width: {{ (100 * module.total / board.max_module) | round(2) }}%"><span class="tickets-module-open" style="width: {{ (100 * module.count / module.total) | round(2) }}%"></span></span></span>
-                  <strong>{{ module.count }}<small>/{{ module.total }}</small></strong>
-                </button></li>
-                {% endfor %}
-              </ul>
-              {% else %}<p class="ticket-muted">No ticket yet.</p>{% endif %}
-            </section>
-
-            <div class="tickets-type-cards">
-              {% for row in board.types %}
-              <section class="tickets-card tickets-type-card" data-type="{{ row.type }}" aria-label="{{ row.label }} tickets">
-                <header class="tickets-card-head">{{ type_badge(row.type, row.label) }}<span class="tickets-type-count"><strong>{{ row.open }}</strong> open of {{ row.total }}</span></header>
-                <div class="tickets-stack" role="img" aria-label="{% for segment in row.segments %}{{ segment.count }} {{ segment.label }}{% if not loop.last %}, {% endif %}{% else %}No ticket{% endfor %}">
-                  {% for segment in row.segments %}<button type="button" class="tickets-stack-segment" data-board-cell data-type="{{ row.type }}" data-status="{{ segment.status }}" style="flex-grow: {{ segment.count }}" data-tip="{{ segment.count }} {{ segment.label }} ({{ '%.0f' | format(segment.share) }}%)" aria-label="{{ segment.count }} {{ segment.label }}"></button>{% endfor %}
-                </div>
-                {% if row.segments %}<ul class="tickets-stack-legend">{% for segment in row.segments %}<li data-status="{{ segment.status }}">{{ segment.label }} <strong>{{ segment.count }}</strong></li>{% endfor %}</ul>{% endif %}
-                <p class="tickets-type-median">Median time to resolve <strong>{{ row.median_resolve }}</strong></p>
-                {% if row.open %}
-                <p class="tickets-subhead">Open by priority</p>
-                <div class="tickets-priorities">
-                  {% for item in row.priorities %}
-                  <button type="button" class="tickets-priority{% if not item.count %} is-empty{% endif %}" data-board-priority data-type="{{ row.type }}" data-priority="{{ item.priority }}" data-tip="{{ item.count }} open {{ row.label }} ticket{{ '' if item.count == 1 else 's' }} {{ item.priority }} · {{ item.label }}">
-                    <span class="tickets-priority-bar"><span style="height: {{ (100 * item.count / row.max_priority) | round(2) if row.max_priority else 0 }}%"></span></span>
-                    <strong>{{ item.count }}</strong><small>{{ item.priority }}</small>
-                  </button>
-                  {% endfor %}
-                </div>
-                {% else %}<p class="tickets-type-calm"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 12.5 4 4 8-9"/></svg>No open {{ row.label }} tickets</p>{% endif %}
-              </section>
-              {% endfor %}
-            </div>
           </div>
       </div>
       {% endfor %}
@@ -240,7 +241,6 @@
 
   {% include 'ticket_center_statistics.html' %}
   {% include 'ticket_center_time_spent.html' %}
-
 
   <details class="panel collapsible-panel tickets-list-panel" id="section-all-tickets" open data-panel-state-key="ticket-center:list" role="tabpanel" aria-labelledby="tickets-tab-tickets" hidden>
     <summary class="collapsible-summary">

@@ -99,11 +99,27 @@
 .tickets-period-bars { display: flex; align-items: flex-end; justify-content: center; gap: 2px; height: 5.5rem; border-bottom: 1px solid rgba(16, 49, 74, .18); }
 .tickets-period:hover .tickets-period-bars { background: rgba(16, 49, 74, .04); }
 .tickets-bar { flex: 0 1 .55rem; min-height: 0; border-radius: 4px 4px 0 0; }
+/* The count over each bar of Created vs resolved, in the colour of its series, a little apart from it; upright when the
+   periods are many (more than 24, as the days of a month). */
+.tickets-bar { position: relative; }
+.tickets-bar b { position: absolute; bottom: 100%; left: 50%; padding-bottom: 5px; font-size: .62rem; font-variant-numeric: tabular-nums; font-weight: 800; line-height: 1; transform: translateX(-50%); white-space: nowrap; }
+.tickets-bar[data-series="created"] b { color: #1e61a3; }
+.tickets-bar[data-series="resolved"] b { color: #1f8a5b; }
+.tickets-periods.is-dense { padding-top: 1.4rem; }
+.tickets-periods.is-dense .tickets-bar b { padding-top: 5px; padding-bottom: 0; transform: translateX(-50%) rotate(180deg); writing-mode: vertical-rl; }
 /* Centred under its period also when wider than it (the narrow days of Daily). */
 .tickets-period-label { display: flex; justify-content: center; min-height: .9rem; overflow: visible; color: #7b8994; font-size: .64rem; font-weight: 600; text-align: center; white-space: nowrap; }
 /* The dashboard: a front page of rows of two cards (over time and at a glance; to attend and the latest activity; by
    type and status and by module), then a card per type. Its chart over time is taller than the others. */
-.tickets-dashboard .tickets-period-bars { height: 8.5rem; }
+/* Created vs resolved fills the height of its card (beside At a glance), with bars as wide as their period allows and the
+   count over each (no scale). */
+.tickets-dashboard .tickets-trend-card { display: flex; flex-direction: column; }
+.tickets-dashboard .tickets-trend-card > .tickets-trend { display: flex; flex: 1 1 auto; flex-direction: column; }
+.tickets-dashboard .tickets-periods { flex: 1 1 auto; grid-template-rows: minmax(8.5rem, 1fr); }
+.tickets-dashboard .tickets-period { grid-template-rows: minmax(0, 1fr) auto; }
+.tickets-dashboard .tickets-period-bars { height: auto; gap: 3px; }
+.tickets-dashboard .tickets-bar { flex: 0 1 1.6rem; max-width: 42%; border-radius: 5px 5px 0 0; }
+.tickets-dashboard .tickets-periods-peak { display: none; }
 /* At a glance: a ring of the open, resolved (or closed) and rejected tickets, with its legend and four facts. */
 .tickets-glance { display: flex; align-items: center; gap: 1rem; }
 .tickets-glance-ring { flex: 0 0 8.5rem; width: 8.5rem; height: 8.5rem; overflow: visible; }
@@ -302,9 +318,11 @@ a.tickets-health-tile:hover { border-color: color-mix(in srgb, var(--tone) 40%, 
 .tickets-columns.is-dense .tickets-column-value { height: auto; padding-bottom: .25rem; line-height: 1; transform: rotate(180deg); writing-mode: vertical-rl; }
 .tickets-columns.is-dense .tickets-column-label { display: flex; justify-content: center; overflow: visible; white-space: nowrap; }
 .tickets-time-bar { flex: none; width: min(100%, 2.2rem); border-radius: 4px 4px 0 0; background: linear-gradient(180deg, #ef4444, #991b1b); }
-/* Weekends: a shaded column and a slate axis in every chart per day, and their bars of time spent in slate. */
-.tickets-column[data-weekend] .tickets-column-bar, .tickets-period[data-weekend] .tickets-period-bars { border-bottom: 3px solid #64748b; background: rgba(71, 85, 105, .09); }
-.tickets-backlog-column[data-weekend] { background: linear-gradient(to bottom, rgba(71, 85, 105, .09) 0 6.5rem, #64748b 6.5rem 6.7rem, transparent 6.7rem); }
+/* Weekends: a lightly shaded column and a slate axis in every chart per day, and their bars of time spent in slate; the
+   days still to come, no shade and a dashed axis. */
+.tickets-column[data-weekend] .tickets-column-bar, .tickets-period[data-weekend] .tickets-period-bars { border-bottom: 3px solid #64748b; background: rgba(100, 116, 139, .06); }
+.tickets-backlog-column[data-weekend] { background: linear-gradient(to bottom, rgba(100, 116, 139, .06) 0 6.5rem, #64748b 6.5rem 6.7rem, transparent 6.7rem); }
+.tickets-column[data-future] .tickets-column-bar, .tickets-period[data-future] .tickets-period-bars { border-bottom: 1px dashed #cbd5e1; background: none; }
 .tickets-column[data-weekend] .tickets-time-bar { background: linear-gradient(180deg, #8193a8, #475569); }
 .tickets-weekend-legend { margin-top: -.3rem; }
 .tickets-swatch[data-series="weekday"] { background: linear-gradient(180deg, #ef4444, #991b1b); }
