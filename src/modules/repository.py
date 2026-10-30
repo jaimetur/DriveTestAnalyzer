@@ -8,7 +8,7 @@ import re
 import csv
 import io
 from datetime import datetime
-from contextlib import closing, contextmanager
+from contextlib import closing, contextmanager, nullcontext
 from contextvars import ContextVar
 from dataclasses import dataclass
 import hashlib
@@ -4159,6 +4159,16 @@ class Repository:
 
         table_name = self.dataset_rows_table_name(dataset_id)
         safe_df = self._sqlite_safe_frame(df)
+
+        def make_table(connection: sqlite3.Connection, table: str, frame: pd.DataFrame) -> None:
+            # The table, and its indexes, writing the rows makes.
+            connection.execute(pd.io.sql.get_schema(frame, table, con=connection))
+            self._create_dataset_row_indexes(connection, table, frame.columns.tolist())
+
+        # A CDR whose columnar copy is its only store given its rows again with some columns changed (a mapping): only
+        # those columns are rewritten in the copy, never the whole CDR through its table (see cdr_store).
+        if cdr_store.replace_copy_rows(self, dataset_id, safe_df, make_table):
+            return
         # The new table stays until its columnar copy holds it (see cdr_store.hold).
         with cdr_store.hold(self, dataset_id), self.connection() as conn:
             # The new rows replace the table as it is (an empty table of a CDR whose copy held its rows too).
@@ -4624,10 +4634,15 @@ class Repository:
         emptied = self._emptied_cdr_table(table_name)
         combined = re.fullmatch(r'reporting_rows_(data|voice|speech)', str(table_name))
         combined = combined.group(1) if combined and self._combined_in_copies(combined.group(1)) else None
+        matching: list[int] | None = None
         with self.connection() as conn:
             if combined and not where_sql:
                 # An emptied combined table without filters: its rows are those of its row map.
                 total = self.reporting_row_count(combined)
+            elif combined:
+                # An emptied combined table with filters: its filtered columns are given once, for the count and the page.
+                matching = [int(row[0]) for row in conn.execute(f"SELECT rowid FROM {quoted_table}{where_sql} ORDER BY rowid", params)]
+                total = len(matching)
             else:
                 total = int(conn.execute(
                     f"SELECT COUNT(*) AS count FROM {quoted_table}{where_sql}", params,
@@ -4643,10 +4658,10 @@ class Repository:
 
                 # An emptied combined table: its filtered columns (or its row map) choose the rows of the page, given
                 # alone to the query.
-                rowids = [int(row[0]) for row in (conn.execute(
-                    f"SELECT rowid FROM {quoted_table}{where_sql} ORDER BY rowid LIMIT ? OFFSET ?", query_params) if where_sql else conn.execute(
+                first = query_params[-1]
+                rowids = matching[first:first + query_params[-2]] if matching is not None else [int(row[0]) for row in conn.execute(
                     f'SELECT row_id FROM {cdr_store.COMBINED_ROWS_TABLE} WHERE kind = ? ORDER BY row_id LIMIT ? OFFSET ?',
-                    (combined, *query_params[-2:]))).fetchall()]
+                    (combined, *query_params[-2:])).fetchall()]
                 with cdr_store.combined_rows(rowids):
                     frame = pd.read_sql_query(
                         f"SELECT {select_clause} FROM {quoted_table}{where_sql} AND rowid IN ({', '.join('?' for _ in rowids) or 'NULL'}) "
@@ -4699,11 +4714,15 @@ class Repository:
                     )
                     facet_params.extend(values)
                 facet_where = f" WHERE {' AND '.join(facet_clauses)}" if facet_clauses else ''
-                rows = conn.execute(
-                    f"SELECT DISTINCT COALESCE(TRIM(CAST({quoted_column} AS TEXT)), '') AS value "
-                    f"FROM {quoted_table}{facet_where} ORDER BY value COLLATE NOCASE",
-                    facet_params,
-                ).fetchall()
+                from src.modules import cdr_store
+
+                # Each distinct row of an emptied combined table once (see cdr_store.distinct_rows).
+                with cdr_store.distinct_rows() if combined else nullcontext():
+                    rows = conn.execute(
+                        f"SELECT DISTINCT COALESCE(TRIM(CAST({quoted_column} AS TEXT)), '') AS value "
+                        f"FROM {quoted_table}{facet_where} ORDER BY value COLLATE NOCASE",
+                        facet_params,
+                    ).fetchall()
                 filter_values = [str(row['value'] or '') for row in rows]
             elif filter_column:
                 filter_values = []

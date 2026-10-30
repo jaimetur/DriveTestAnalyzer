@@ -965,3 +965,100 @@ def test_a_cdr_whose_copy_is_its_only_store_is_changed_in_its_copy_never_put_bac
     with pytest.raises(ValueError, match='read-only'):
         core.repository.delete_database_table_row(f'dataset_rows_{data}', 1)
     assert in_copy_only() and core.repository.database_table_page(f'dataset_rows_{reference}')['editable']
+
+
+def test_sql_on_distinct_rows_of_an_emptied_combined_table_gives_what_every_row_gives(client, tmp_path, monkeypatch):
+    first = add_cdr(tmp_path, 'first.csv', 'data', pd.DataFrame({
+        'Operator': ['EE', 'O2', 'EE', 'EE', None], 'Call Status': ['Completed', 'Failed', None, 'Completed', 'Dropped'],
+        'Rate': [12.5, None, 3, 12.5, 7], 'event_start_time': ['2026-02-01 10:00', '2026-02-03 08:00', None, '2026-01-30 23:59',
+                                                               '2026-02-02 10:00']}))
+    second = add_cdr(tmp_path, 'second.csv', 'data', pd.DataFrame({
+        'Operator': ['Vodafone UK', 'ee', 'ee'], 'Call_Status': ['Dropped', 'Completed', 'Completed'], 'RSRP': [-95, -80, -80],
+        'event_start_time': ['2026-03-01 10:00', '2026-03-05 10:00', '2026-03-05 10:00']}), nr_mode='SA')
+    requested = ['Operator', 'Call_Status', 'Rate', 'RSRP', 'NR_Mode', 'event_start_time']
+    for dataset_id in (second, first):
+        core.repository.copy_dataset_rows_to_reporting(dataset_id, 'data', requested)
+    ids = [first, second]
+    marks = ', '.join('?' for _ in ids)
+    # What PPT Designer asks: its vendor families, date limits, facets and filter values.
+    queries = [
+        (f'SELECT DISTINCT "Operator", "Call_Status" FROM reporting_rows_data WHERE dataset_id IN ({marks})', ids),
+        (f'SELECT dataset_id, MIN(date("event_start_time")), MAX(date("event_start_time")) FROM reporting_rows_data '
+         f'WHERE dataset_id IN ({marks}) GROUP BY dataset_id', ids),
+        ('SELECT json_group_array(DISTINCT LOWER(TRIM(CAST("Operator" AS TEXT)))) FILTER (WHERE "Rate" > ? OR "RSRP" > ?), '
+         'json_group_array(DISTINCT "NR_Mode") FILTER (WHERE 1) FROM reporting_rows_data WHERE dataset_id IN (?)', [5, -90, second]),
+        (f'SELECT DISTINCT CAST("RSRP" AS TEXT) AS value FROM reporting_rows_data WHERE dataset_id IN ({marks}) AND "Operator" IS NOT NULL', ids),
+    ]
+
+    def read(distinct):
+        with core.repository.connection() as connection, cdr_store.combined_scope(ids), \
+                (cdr_store.distinct_rows() if distinct else contextlib.nullcontext()):
+            found = []
+            for sql, parameters in queries:
+                rows = [tuple(sorted(json.loads(value)) if isinstance(value, str) and value.startswith('[') else value for value in row)
+                        for row in connection.execute(sql, parameters).fetchall()]
+                found.append(sorted(rows, key=repr))
+            return found
+
+    before = read(False)
+    copy_everything()
+    assert cdr_store.empty_combined_table(core.repository, 'data')
+    given = []
+    distinct = cdr_store._provide_distinct_combined_rows
+    monkeypatch.setattr(cdr_store, '_provide_distinct_combined_rows', lambda *args: given.append(args[-1]) or distinct(*args))
+    # Each distinct row once gives what every row gave, the table holding them or not.
+    assert read(True) == before and len(given) == len(queries)
+    assert read(False) == before and len(given) == len(queries)
+    assert before[1] == [(first, '2026-01-30', '2026-02-03'), (second, '2026-03-01', '2026-03-05')]
+
+
+def test_a_mapping_of_a_cdr_whose_copy_is_its_only_store_rewrites_only_its_changed_columns(client, tmp_path, monkeypatch):
+    rows = pd.DataFrame({'Operator': ['EE', 'O2', 'EE', None], 'Rate': [1.5, None, 3.0, 4.0], 'Count': [1, 2, 3, 4],
+                         'Status': ['ok', 'ko', None, 'ok'], 'Cell_List': [372490, '[372490]', None, 5.5],
+                         'event_start_time': ['2026-02-01 10:00', '2026-02-02 10:00', None, '2026-02-03 10:00']})
+    in_copy = add_cdr(tmp_path, 'in_copy.csv', 'data', rows)
+    core.repository.set_workspace_state(cdr_store.ONLY_COPIES_STATE_KEY, '1')
+    copy_everything()
+    # The same rows in a table, as a CDR not copied yet: the former path, written to its table and copied again.
+    in_table = add_cdr(tmp_path, 'in_table.csv', 'data', rows)
+
+    def mapped(dataset_id):
+        """What a mapping gives: the rows of the CDR with a column changed, two added and one left out."""
+        frame = core.repository.load_dataset_rows(dataset_id, core.repository.list_dataset_row_columns(dataset_id), {})
+        frame['Operator'] = frame['Operator'].replace({'EE': 'EE UK'})
+        frame['Vendor'] = ['Ericsson', 'Nokia', None, 'Ericsson']
+        frame['Score'] = [1, None, 2.5, 4]
+        return frame.drop(columns=['Status'])
+
+    written = []
+    write_cdr = cdr_store.write_cdr
+    monkeypatch.setattr(cdr_store, 'write_cdr', lambda repository, cdr, *args: written.append(cdr['id']) or write_cdr(repository, cdr, *args))
+    for dataset_id in (in_copy, in_table):
+        core.repository.replace_dataset_rows(dataset_id, mapped(dataset_id))
+    with core.repository.connection() as connection:
+        # Never back in its table: its copy is rewritten and stays its store.
+        assert in_copy in cdr_store.shadows(connection) and in_table not in cdr_store.shadows(connection)
+        assert connection.execute(f'SELECT COUNT(*) FROM main.dataset_rows_{in_copy}').fetchone()[0] == 0
+    copy_everything()
+    assert written == [in_table]
+
+    def state(dataset_id):
+        """The table as SQLite makes it, its copy (its columns and types) and each value the SQL of the application reads."""
+        made, indexes, columns, _values = _table_state(dataset_id)
+        manifest = cdr_store.read_manifest(cdr_store.manifest_file(cdr_store.store_root(core.repository.db_path), 'data', dataset_id))
+        typed = ', '.join(f'typeof({cdr_store.quote(column)}), {cdr_store.quote(column)}' for column in columns)
+        with core.repository.connection() as connection:
+            values = [tuple(row) for row in connection.execute(f'SELECT rowid, {typed} FROM dataset_rows_{dataset_id} ORDER BY rowid')]
+        name = f'dataset_rows_{dataset_id}'
+        return (made.replace(name, 'T'), [index.replace(name, 'T') for index in indexes], columns, manifest['columns'], values,
+                copy(dataset_id).drop(columns=[cdr_store.DATASET_ID]))
+
+    mine, former = state(in_copy), state(in_table)
+    assert mine[:5] == former[:5]
+    pd.testing.assert_frame_equal(mine[5], former[5], check_exact=True)
+    assert mine[2] == ['Operator', 'Rate', 'Count', 'Cell_List', 'event_start_time', 'Vendor', 'Score']
+    assert [row[1:3] for row in mine[4]] == [('text', 'EE UK'), ('text', 'O2'), ('text', 'EE UK'), ('null', None)]
+    # Other rows (another number of them) go through its table, as before.
+    core.repository.replace_dataset_rows(in_copy, rows.head(2))
+    with core.repository.connection() as connection:
+        assert in_copy not in cdr_store.shadows(connection)

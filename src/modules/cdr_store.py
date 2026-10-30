@@ -9,8 +9,10 @@ coordinated connection). ``.cdr-store/catalog.duckdb`` holds one view per CDR ty
 ``cdr_speech``) over the CDRs the combined tables include, for tools such as Tableau.
 
 The rows of a copy never go back to a table. A CDR is changed where its rows are (change_cdr): in its copy, only the
-columns that change rewritten with DuckDB (change_copy_columns, seconds per CDR), or in its table with SQL while the table
-still holds them (hold). Putting every row of a CDR back in SQLite to change it there and copying it again took minutes
+columns that change rewritten with DuckDB (change_copy_columns, seconds per CDR; replace_copy_rows for the same rows given
+again with some columns changed, as a mapping gives them), or in its table with SQL while the table still holds them
+(hold). SQL whose result depends only on which values the rows hold reads each distinct row of an emptied combined table
+once (distinct_rows). Putting every row of a CDR back in SQLite to change it there and copying it again took minutes
 per CDR and kept the workspace locked, hours for a whole workspace: SQL cannot write an emptied table (Repository's
 coordinated connection refuses it), and a change no copy function covers gets one here, never a round trip through
 SQLite. See "Changing CDRs whose rows are in their columnar copy" in AGENTS.md.
@@ -300,6 +302,22 @@ def combined_scope(dataset_ids: Any):
         _combined_scope.reset(token)
 
 
+# The SQL being run gives the same result on each distinct row of the columns it reads (see distinct_rows).
+_combined_distinct: ContextVar[bool] = ContextVar('cdr_store_combined_distinct', default=False)
+
+
+@contextmanager
+def distinct_rows():
+    """Run SQL whose result depends only on which rows the combined tables hold, not on how many nor on their row ids
+    (SELECT DISTINCT, MIN, MAX, json_group_array(DISTINCT ...), GROUP BY without counts): an emptied combined table is
+    given each distinct row of the columns it reads, grouped by DuckDB on the copy of each CDR, instead of every row."""
+    token = _combined_distinct.set(True)
+    try:
+        yield
+    finally:
+        _combined_distinct.reset(token)
+
+
 def combined_shadow_kinds(database_path: Any) -> frozenset[str]:
     found = _known_set(_combined_shadow_sets, database_path, combined_shadows)
     with _shadow_guard:
@@ -348,10 +366,8 @@ def provide_combined_rows(connection: sqlite3.Connection, kind: str, columns: An
     """Give the SQL of ``connection`` the rows of an empty combined table: the TEMP table ``name`` with ``columns`` (the
     first column without any), their declared types, the row ids and the indexes on those columns, each row read from the
     copy of its CDR as the combined table copied it (the last column of the CDR with the identity of the combined
-    column; the dataset id, the row id in the CDR and the NR Mode of the CDR unless the CDR has an NR Mode column)."""
-    from src.modules.column_names import column_identity
-    from src.modules.nr_mode import dataset_nr_mode
-
+    column; the dataset id, the row id in the CDR and the NR Mode of the CDR unless the CDR has an NR Mode column), or
+    under distinct_rows each distinct row once."""
     table = f'reporting_rows_{kind}'
     declared = [(str(row[1]), str(row[2] or '')) for row in connection.execute(f'PRAGMA main.table_info({quote(table)})')]
     names = {column.casefold(): column for column, _type in declared}
@@ -361,6 +377,9 @@ def provide_combined_rows(connection: sqlite3.Connection, kind: str, columns: An
     selected = [(column, column_type) for column, column_type in declared if column in wanted]
     database = next((str(row[2]) for row in connection.execute('PRAGMA database_list') if row[1] == 'main'), '')
     scope, rows = _combined_scope.get(), _combined_rows.get()
+    if _combined_distinct.get() and rows is None and 'source_row_id' not in wanted:
+        _provide_distinct_combined_rows(connection, kind, selected, database, scope, name)
+        return
     mapped = connection.execute(
         f'SELECT row_id, dataset_id, source_row_id FROM main.{COMBINED_ROWS_TABLE} WHERE kind = ?'
         + (f' AND dataset_id IN ({", ".join("?" for _ in scope)})' if scope is not None else '')
@@ -376,23 +395,7 @@ def provide_combined_rows(connection: sqlite3.Connection, kind: str, columns: An
     fresh = fresh_copies(database, list(by_dataset))
     for dataset_id, positions in by_dataset.items():
         source_rows = [int(mapped[position][2]) for position in positions]
-        if dataset_id in fresh:
-            manifest = read_manifest(manifest_file(root, kind, dataset_id)) or {'columns': []}
-            cdr_columns_in_order = [column for column, _type in manifest['columns']]
-        else:
-            cdr_columns_in_order = [str(row[1]) for row in connection.execute(
-                f'PRAGMA main.table_info({quote(f"dataset_rows_{dataset_id}")})')]
-        lookup = {column_identity(column): column for column in cdr_columns_in_order}
-        profile = connection.execute('SELECT d.file_name, p.nr_mode FROM main.datasets d LEFT JOIN main.dataset_profiles p '
-                                     'ON p.dataset_id = d.id WHERE d.id = ?', (dataset_id,)).fetchone()
-        nr_mode = dataset_nr_mode(kind, profile[1], profile[0]) if profile else None
-        physical = {}
-        for column, _type in selected:
-            identity = column_identity(column)
-            physical[column] = ('dataset' if column == 'dataset_id' else 'source' if column == 'source_row_id'
-                                else ('cdr', lookup[identity]) if identity in lookup
-                                else 'nr_mode' if identity == column_identity('NR_Mode') else None)
-        read = sorted({item[1] for item in physical.values() if isinstance(item, tuple)})
+        physical, read, nr_mode = _combined_sources(connection, kind, dataset_id, selected, dataset_id in fresh, root)
         if not read:
             found = {}
         elif dataset_id in fresh:
@@ -420,6 +423,96 @@ def provide_combined_rows(connection: sqlite3.Connection, kind: str, columns: An
         f'INSERT INTO temp.{quote(name)} (rowid{"".join(", " + quote(column) for column, _type in selected)}) '
         f'VALUES ({", ".join("?" for _ in range(len(selected) + 1))})',
         zip([int(row[0]) for row in mapped], *(values[column].tolist() for column, _type in selected)))
+    _copy_indexes(connection, table, name, [column for column, _type in selected])
+
+
+def _combined_sources(connection: sqlite3.Connection, kind: str, dataset_id: int, selected: list[tuple[str, str]],
+                      fresh: bool, root: Path) -> tuple[dict[str, Any], list[str], str | None]:
+    """Where each combined column of the rows of a CDR comes from (see provide_combined_rows): the CDR columns to read
+    (from its copy when ``fresh``, else from its table) and the NR Mode of the CDR."""
+    from src.modules.column_names import column_identity
+    from src.modules.nr_mode import dataset_nr_mode
+
+    if fresh:
+        manifest = read_manifest(manifest_file(root, kind, dataset_id)) or {'columns': []}
+        cdr_columns_in_order = [column for column, _type in manifest['columns']]
+    else:
+        cdr_columns_in_order = [str(row[1]) for row in connection.execute(
+            f'PRAGMA main.table_info({quote(f"dataset_rows_{dataset_id}")})')]
+    lookup = {column_identity(column): column for column in cdr_columns_in_order}
+    profile = connection.execute('SELECT d.file_name, p.nr_mode FROM main.datasets d LEFT JOIN main.dataset_profiles p '
+                                 'ON p.dataset_id = d.id WHERE d.id = ?', (dataset_id,)).fetchone()
+    nr_mode = dataset_nr_mode(kind, profile[1], profile[0]) if profile else None
+    physical = {}
+    for column, _type in selected:
+        identity = column_identity(column)
+        physical[column] = ('dataset' if column == 'dataset_id' else 'source' if column == 'source_row_id'
+                            else ('cdr', lookup[identity]) if identity in lookup
+                            else 'nr_mode' if identity == column_identity('NR_Mode') else None)
+    read = sorted({item[1] for item in physical.values() if isinstance(item, tuple)})
+    return physical, read, nr_mode
+
+
+def _provide_distinct_combined_rows(connection: sqlite3.Connection, kind: str, selected: list[tuple[str, str]],
+                                    database: str, scope: frozenset[int] | None, name: str) -> None:
+    """provide_combined_rows under distinct_rows: the distinct rows of the CDR columns read, grouped by DuckDB on the
+    copy of each CDR (its rows in the combined table only), each with the combined columns it gives, in the order they
+    first come in the combined table (so values ORDER BY ranks alike keep their order); no row ids."""
+    import duckdb
+
+    table = f'reporting_rows_{kind}'
+    # The CDRs in the order of their rows in the combined table.
+    counts = {int(row[0]): int(row[1]) for row in connection.execute(
+        f'SELECT dataset_id, COUNT(*), MIN(row_id) FROM main.{COMBINED_ROWS_TABLE} WHERE kind = ?'
+        + (f' AND dataset_id IN ({", ".join("?" for _ in scope)})' if scope is not None else '') + ' GROUP BY dataset_id ORDER BY 3',
+        (kind, *(sorted(scope) if scope is not None else ()))).fetchall()}
+    root = store_root(database)
+    # A CDR whose copy is not up to date yet (just processed) gives the rows of its table.
+    fresh = fresh_copies(database, list(counts))
+    output: list[tuple[Any, ...]] = []
+    duck = duckdb.connect()
+    try:
+        for dataset_id, count in counts.items():
+            physical, read, nr_mode = _combined_sources(connection, kind, dataset_id, selected, dataset_id in fresh, root)
+            source_rows = None
+            manifest = read_manifest(manifest_file(root, kind, dataset_id)) if dataset_id in fresh else None
+            if manifest is None or int(count) != int(manifest.get('rows') or 0):
+                # Only some rows of the CDR are in the combined table.
+                source_rows = [int(row[0]) for row in connection.execute(
+                    f'SELECT source_row_id FROM main.{COMBINED_ROWS_TABLE} WHERE kind = ? AND dataset_id = ?', (kind, dataset_id))]
+            if manifest is not None:
+                types = {**dict(manifest['columns']), ROWID: 'BIGINT'}
+                where = ''
+                if source_rows is not None:
+                    duck.register('combined_source_rows', pd.DataFrame({'rowid': pd.Series(source_rows, dtype='int64')}))
+                    where = f' WHERE {quote(ROWID)} IN (SELECT rowid FROM combined_source_rows)'
+                grouped = ', '.join(quote(part) for part in stored_parts(read, types)) or '1'
+                raw = duck.execute(f'SELECT {grouped}, MIN({quote(ROWID)}) AS first_row FROM read_parquet({_sql_text(cdr_parts(root, kind, dataset_id))})'
+                                   f'{where} GROUP BY {grouped} ORDER BY first_row').df()
+                if source_rows is not None:
+                    duck.unregister('combined_source_rows')
+                combos = (list(zip(*(_python_values(part) for part in copy_values(raw, read, types).values()))) if read
+                          else [()] * min(len(raw), 1))
+            else:
+                combos = []
+                for start in range(0, len(source_rows), 500):
+                    chunk = source_rows[start:start + 500]
+                    grouped = ', '.join(quote(column) for column in read) or '1'
+                    combos += [tuple(row)[:-1] for row in connection.execute(
+                        f'SELECT {grouped}, MIN(rowid) AS first_row FROM main.{quote(f"dataset_rows_{dataset_id}")} '
+                        f'WHERE rowid IN ({", ".join("?" for _ in chunk)}) GROUP BY {grouped} ORDER BY first_row', chunk)]
+                combos = combos if read else [()] * min(len(combos), 1)
+            at = {column: index for index, column in enumerate(read)}
+            sources = [physical[column] for column, _type in selected]
+            output += [tuple(dataset_id if source == 'dataset' else nr_mode if source == 'nr_mode'
+                             else combo[at[source[1]]] if isinstance(source, tuple) else None for source in sources)
+                       for combo in combos]
+    finally:
+        duck.close()
+    connection.execute(f'CREATE TEMP TABLE {quote(name)} ({", ".join(f"{quote(column)} {column_type}".strip() for column, column_type in selected)})')
+    connection.executemany(
+        f'INSERT INTO temp.{quote(name)} ({", ".join(quote(column) for column, _type in selected)}) '
+        f'VALUES ({", ".join("?" for _ in selected)})', output)
     _copy_indexes(connection, table, name, [column for column, _type in selected])
 
 
@@ -1079,6 +1172,150 @@ def change_copy_columns(repository: Any, dataset_id: int, values: pd.DataFrame |
                 _write_json(manifest_file(root, cdr['kind'], dataset_id), {
                     **manifest, 'file_name': cdr['file_name'], 'revision': current, 'rows': rows, 'schema': schema,
                     'columns': [[column, new_types[column]] for column in table_columns],
+                    'written_at': datetime.now(timezone.utc).isoformat(timespec='seconds'),
+                })
+        except BaseException:
+            if swapped:
+                # The table did not change: the copy goes back as it was.
+                shutil.rmtree(target, ignore_errors=True)
+                os.replace(previous, target)
+                _write_json(manifest_file(root, cdr['kind'], dataset_id), manifest)
+            shutil.rmtree(temporary, ignore_errors=True)
+            raise
+        finally:
+            copies.release()
+        shutil.rmtree(previous, ignore_errors=True)
+    return True
+
+
+def replace_copy_rows(repository: Any, dataset_id: int, frame: pd.DataFrame,
+                      make_table: Callable[[sqlite3.Connection, str, pd.DataFrame], None],
+                      should_stop: Callable[[], bool] = lambda: False) -> bool:
+    """Replace the rows of a CDR whose copy is its only store by ``frame`` in the copy itself, never through its table,
+    when ``frame`` holds the same rows in the same order (as a mapping gives them: the rows of the CDR with some columns
+    changed, added or left out). The columns whose values changed are typed as SQLite types them (written alone to a
+    database in memory) and rewritten in the copy, the others kept as they are, in the order of ``frame``; its empty
+    table is made again as writing ``frame`` makes it (``make_table(connection, table, frame)``: its CREATE TABLE and
+    indexes) and its version goes up. Returns whether it did: not for a CDR whose table holds its rows or that a writer
+    holds, nor for other rows (another number of them, or a copy whose row ids are not 1 to that number), nor when it
+    stopped."""
+    import duckdb
+    from contextlib import closing
+
+    dataset_id = int(dataset_id)
+    database_path = repository.db_path
+    table = f'dataset_rows_{dataset_id}'
+    key = (_workspace_key(database_path), dataset_id)
+    with _holds_guard:
+        lock = _table_locks.setdefault(key, Lock())
+    with lock:
+        with _holds_guard:
+            if key in _holds:
+                return False
+        with sqlite3.connect(database_path, timeout=30) as connection:
+            if dataset_id not in shadows(connection):
+                return False
+            cdr = _ready_cdrs(connection, ready_only=False).get(dataset_id)
+        root = store_root(database_path)
+        manifest = read_manifest(manifest_file(root, cdr['kind'], dataset_id)) if cdr else None
+        target = cdr_folder(root, cdr['kind'], dataset_id) if cdr else None
+        if manifest is None or not target.is_dir() or int(manifest.get('rows') or 0) != len(frame) or not len(frame):
+            return False
+        with duckdb.connect() as duck:
+            if tuple(duck.execute(f'SELECT MIN({quote(ROWID)}), MAX({quote(ROWID)}) FROM read_parquet('
+                                  f'{_sql_text(cdr_parts(root, cdr["kind"], dataset_id))})').fetchone()) != (1, len(frame)):
+                return False
+        columns = [str(column) for column in frame.columns]
+        if any(column.casefold() in {ROWID, DATASET_ID, NR_MODE} or column.startswith((INT_PREFIX, REAL_PREFIX)) for column in columns):
+            raise ValueError(f'The CDR {cdr["file_name"]} has a column named like the columns the copy adds.')
+        types = dict(manifest['columns'])
+        rows = frame.reset_index(drop=True)
+        kept = [column for column in columns if column in types]
+        before = read_cdr(database_path, cdr['kind'], dataset_id, kept) if kept else pd.DataFrame(index=range(len(rows)))
+        changed = [column for column in columns if column not in types or not rows[column].equals(before[column])]
+        del before
+        if should_stop():
+            return False
+        # The changed columns as SQLite stores them when the rows are written: their types and their stored parts.
+        changed_types: dict[str, str] = {}
+        parts_frame = pd.DataFrame({ROWID: pd.Series(dtype='int64')})
+        stored: list[tuple[str, str, str]] = []
+        if changed:
+            with closing(sqlite3.connect(':memory:')) as memory:
+                rows[changed].to_sql('changed_rows', memory, index=False)
+                changed_types = _column_types(memory, 'changed_rows', changed)
+                stored = _stored_columns(changed, changed_types)
+                values = list(zip(*memory.execute(f'SELECT rowid{"".join(", " + expression for _name, expression, _type in stored)} '
+                                                  'FROM changed_rows ORDER BY rowid').fetchall()))
+            parts_frame = pd.DataFrame({
+                ROWID: pd.Series(values[0], dtype='int64'),
+                **{name: pd.Series(column_values, dtype={'BIGINT': 'Int64', 'DOUBLE': 'float64'}.get(column_type, 'object'))
+                   for (name, _expression, column_type), column_values in zip(stored, values[1:])},
+            })
+            del values
+        new_types = {column: changed_types[column] if column in changed_types else types[column] for column in columns}
+        needed, free = required_space(len(rows)), free_space(target.parent)
+        if free < needed:
+            raise NotEnoughSpace(needed, free)
+        temporary = target.parent / f'.{dataset_id}.{os.getpid()}.rows.tmp'
+        previous = target.parent / f'.{dataset_id}.{os.getpid()}.rows.old'
+        shutil.rmtree(temporary, ignore_errors=True)
+        temporary.mkdir(parents=True)
+        selected = [f'p.{quote(part)}' for part in (ROWID, DATASET_ID, NR_MODE)]
+        for column in columns:
+            if column in changed_types:
+                selected += [f'CAST(v.{quote(name)} AS {column_type}) AS {quote(name)}'
+                             for name, _expression, column_type in stored if name == column or name in (INT_PREFIX + column, REAL_PREFIX + column)]
+            else:
+                selected += [f'p.{quote(part)}' for part in stored_parts([column], types)]
+        duck = duckdb.connect(config={'memory_limit': '1GB', 'threads': 2})
+        try:
+            duck.register('changed_parts', parts_frame)
+            # Part by part (each a range of row ids, see export_rows), so a CDR of any size is never held whole.
+            for part in sorted(target.glob('*.parquet')):
+                if should_stop():
+                    shutil.rmtree(temporary, ignore_errors=True)
+                    return False
+                duck.execute(f'COPY (SELECT {", ".join(selected)} FROM read_parquet({_sql_text(part)}) p LEFT JOIN changed_parts v '
+                             f'ON v.{quote(ROWID)} = p.{quote(ROWID)} ORDER BY p.{quote(ROWID)}) TO {_sql_text(temporary / part.name)} '
+                             '(FORMAT parquet, COMPRESSION zstd)')
+            written = int(duck.execute(f'SELECT COUNT(*) FROM read_parquet({_sql_text(temporary / "*.parquet")})').fetchone()[0])
+        except BaseException:
+            shutil.rmtree(temporary, ignore_errors=True)
+            raise
+        finally:
+            duck.close()
+        if written != len(rows):
+            shutil.rmtree(temporary, ignore_errors=True)
+            raise RuntimeError(f'The new copy of CDR {dataset_id} does not have the rows of its copy.')
+        copies = copies_lock(root)
+        while not copies.acquire(timeout=1):
+            if should_stop():
+                shutil.rmtree(temporary, ignore_errors=True)
+                return False
+        swapped = False
+        try:
+            with repository.connection() as connection:
+                _as_it_is(connection)
+                connection.execute('BEGIN IMMEDIATE')
+                # The table is empty: it is made again with the columns and declared types of the new rows.
+                connection.execute(f'DROP TABLE IF EXISTS {quote(table)}')
+                make_table(connection, table, frame)
+                if _table_columns(connection, dataset_id) != columns:
+                    raise RuntimeError(f'The table of CDR {dataset_id} and its new copy do not have the same columns.')
+                ensure_versions_table(connection)
+                connection.execute(f'INSERT INTO {VERSIONS_TABLE} (dataset_id, version) VALUES (?, 1) '
+                                   'ON CONFLICT(dataset_id) DO UPDATE SET version = version + 1', (dataset_id,))
+                schema = table_schema(connection, dataset_id)
+                cdr = _ready_cdrs(connection, ready_only=False).get(dataset_id) or cdr
+                current = revision(cdr, columns, _versions(connection).get(dataset_id, 0))
+                shutil.rmtree(previous, ignore_errors=True)
+                os.replace(target, previous)
+                os.replace(temporary, target)
+                swapped = True
+                _write_json(manifest_file(root, cdr['kind'], dataset_id), {
+                    **manifest, 'file_name': cdr['file_name'], 'revision': current, 'rows': written, 'schema': schema,
+                    'columns': [[column, new_types[column]] for column in columns],
                     'written_at': datetime.now(timezone.utc).isoformat(timespec='seconds'),
                 })
         except BaseException:

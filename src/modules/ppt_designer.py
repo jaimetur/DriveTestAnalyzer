@@ -2602,7 +2602,7 @@ def install_design_routes(core):
                     if not vendor_column or not family_column:
                         continue
                     quote = task_repository._quote_identifier
-                    with cdr_store.combined_scope(ids):
+                    with cdr_store.combined_scope(ids), cdr_store.distinct_rows():
                         rows = connection.execute(
                             f'SELECT DISTINCT {quote(vendor_column)}, {quote(family_column)} FROM {quote(task_repository.reporting_rows_table_name(kind))} '
                             f'WHERE dataset_id IN ({", ".join("?" for _ in ids)})', ids,
@@ -5198,7 +5198,7 @@ def install_design_routes(core):
                     placeholders = ', '.join('?' for _ in pending)
                     table = task_repository._quote_identifier(task_repository.reporting_rows_table_name(kind))
                     column = task_repository._quote_identifier(date_column)
-                    with cdr_store.combined_scope(pending):
+                    with cdr_store.combined_scope(pending), cdr_store.distinct_rows():
                         rows = connection.execute(
                             f'SELECT dataset_id, MIN(date({column})) AS first_date, MAX(date({column})) AS last_date '
                             f'FROM {table} WHERE dataset_id IN ({placeholders}) GROUP BY dataset_id', pending,
@@ -5288,10 +5288,10 @@ def install_design_routes(core):
                 )
                 aggregate_parameters.extend(predicate_params)
                 field_order.append(field_name)
-            # One scan reading only the columns of the facets and filters (the rows of an emptied combined table are
-            # given from the columnar copies, column by column).
+            # One scan reading only the columns of the facets and filters (an emptied combined table is given each
+            # distinct row of those columns once, grouped on the columnar copies).
             query = f'SELECT {", ".join(aggregates)} FROM {table} WHERE {base_where}'
-            with cdr_store.combined_scope([int(row['id']) for row in selected]):
+            with cdr_store.combined_scope([int(row['id']) for row in selected]), cdr_store.distinct_rows():
                 row = connection.execute(query, [*aggregate_parameters, *base_params]).fetchone()
             for index, field_name in enumerate(field_order):
                 encoded_values = row[f'facet_{index}'] if row else '[]'
@@ -5564,7 +5564,7 @@ def install_design_routes(core):
                     requested_definition, exclude=field_name, columns=columns,
                 )
                 table = task_repository._quote_identifier(task_repository.reporting_rows_table_name(kind))
-                with cdr_store.combined_scope([int(row['id']) for row in selected]):
+                with cdr_store.combined_scope([int(row['id']) for row in selected]), cdr_store.distinct_rows():
                     rows = connection.execute(
                         f'SELECT DISTINCT {value_expression} AS value '
                         f'FROM {table} WHERE {where}', params,

@@ -69,7 +69,8 @@
 - Read the values a change needs from the copy (`cdr_store.read_cdr`, `cdr_columns`, `query_cdr`), never by putting the rows back in a table.
 - SQL cannot write an emptied table: Repository's coordinated connection refuses it. When a change is not covered by `change_copy_columns`, extend the copy functions in `cdr_store.py` (rewriting only the affected columns or parts) instead of going through SQLite.
 - CDRs stay as they were imported: Database Management shows the rows of a CDR in its copy, and of an emptied combined table, read-only.
-- Mapping a CDR again (Vendor, Region, Cluster) and processing it again still write all its new rows to its table, which is then copied again in the background: never use that path for a change of some columns.
+- A CDR given its rows again with the same rows and some columns changed (a Vendor, Region or Cluster mapping) is rewritten in its copy by `Repository.replace_dataset_rows` (`cdr_store.replace_copy_rows`): only the changed columns are typed by SQLite in memory and rewritten. Only other rows (a reprocessing with another number of rows) are written to its table and copied again in the background.
+- SQL on an emptied combined table whose result depends only on which values the rows hold (DISTINCT, MIN, MAX, `json_group_array(DISTINCT …)`) runs under `cdr_store.distinct_rows()`, which gives it each distinct row once instead of every row.
 
 ## Database Management
 - When any new table is created, it has to be visible in the Database Management selector and the tittle should have the same format than the others (Uppercase the First Letter of each Word).
