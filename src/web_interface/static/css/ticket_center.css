@@ -99,14 +99,25 @@
 .tickets-period-bars { display: flex; align-items: flex-end; justify-content: center; gap: 2px; height: 5.5rem; border-bottom: 1px solid rgba(16, 49, 74, .18); }
 .tickets-period:hover .tickets-period-bars { background: rgba(16, 49, 74, .04); }
 .tickets-bar { flex: 0 1 .55rem; min-height: 0; border-radius: 4px 4px 0 0; }
-/* The count over each bar of Created vs resolved, in the colour of its series, a little apart from it; upright when the
-   periods are many (more than 24, as the days of a month). */
+/* The count over each bar of Created vs resolved, in the colour of its series, a little apart from it. */
 .tickets-bar { position: relative; }
 .tickets-bar b { position: absolute; bottom: 100%; left: 50%; padding-bottom: 5px; font-size: .62rem; font-variant-numeric: tabular-nums; font-weight: 800; line-height: 1; transform: translateX(-50%); white-space: nowrap; }
-.tickets-bar[data-series="created"] b { color: #1e61a3; }
-.tickets-bar[data-series="resolved"] b { color: #1f8a5b; }
-.tickets-periods.is-dense { padding-top: 1.4rem; }
-.tickets-periods.is-dense .tickets-bar b { padding-top: 5px; padding-bottom: 0; transform: translateX(-50%) rotate(180deg); writing-mode: vertical-rl; }
+.tickets-bar[data-series="created"] b, .tickets-period-counts [data-series="created"] { color: #1e61a3; }
+.tickets-bar[data-series="resolved"] b, .tickets-period-counts [data-series="resolved"] { color: #1f8a5b; }
+/* Many periods (more than 24, as the days of a month): one bar per period, the resolved one narrow and solid inside the
+   created one, wide and light under a line of its colour; both counts over the taller, created first; and the number of
+   each day under it, with its month under the first day and the 1st (only those of the axis when the chart is narrow). */
+.tickets-periods.is-dense { padding-top: 1.9rem; container-type: inline-size; }
+.tickets-periods.is-dense .tickets-period-bars { position: relative; display: block; }
+.tickets-periods.is-dense .tickets-bar { position: absolute; bottom: 0; left: 50%; max-width: none; transform: translateX(-50%); }
+.tickets-periods.is-dense .tickets-bar[data-series="created"] { width: min(72%, 1.6rem); border-radius: 4px 4px 0 0; background: color-mix(in srgb, #1e61a3 22%, #fff); box-shadow: inset 0 3px 0 #1e61a3; }
+.tickets-legend.is-dense .tickets-swatch[data-series="created"] { background: color-mix(in srgb, #1e61a3 22%, #fff); box-shadow: inset 0 2px 0 #1e61a3; }
+.tickets-periods.is-dense .tickets-bar[data-series="resolved"] { width: min(30%, .6rem); border-radius: 3px 3px 0 0; }
+.tickets-period-counts { position: absolute; left: 50%; display: grid; justify-items: center; gap: 2px; padding-bottom: 4px; font-size: .62rem; font-variant-numeric: tabular-nums; font-weight: 800; line-height: 1; transform: translateX(-50%); pointer-events: none; }
+.tickets-periods.is-dense .tickets-period-label { flex-direction: column; align-items: center; min-height: 1.55rem; line-height: 1.15; }
+.tickets-period-label small { color: #9aa7b1; font-size: .6rem; font-weight: 700; }
+.tickets-period[data-future] .tickets-period-label { color: #c3ccd3; }
+@container (max-width: 34rem) { .tickets-periods.is-dense .tickets-period-label[data-minor] { visibility: hidden; } }
 /* Centred under its period also when wider than it (the narrow days of Daily). */
 .tickets-period-label { display: flex; justify-content: center; min-height: .9rem; overflow: visible; color: #7b8994; font-size: .64rem; font-weight: 600; text-align: center; white-space: nowrap; }
 /* The dashboard: a front page of rows of two cards (over time and at a glance; to attend and the latest activity; by

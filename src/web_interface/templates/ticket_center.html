@@ -57,21 +57,29 @@
       <div class="tickets-switch-view tickets-scope-view" data-switch-view="{{ board.key }}"{% if board.key != ticket_board.scope %} hidden{% endif %}>
         <p class="tickets-scope-range">{% if board.key == 'all' %}Every ticket, since <strong>{{ board.range }}</strong>{% else %}Tickets opened in <strong>{{ board.range }}</strong> · those resolved or closed and the activity, in it{% endif %}</p>
           <div class="tickets-board">
-            {# The tickets created and resolved in each day, week or month of the period. #}
+            {# The tickets created and resolved in each day, week or month of the period: a bar of each beside the other, or,
+               with many periods (more than 24, as the days of a month), the resolved one inside the created one with both
+               counts over them and the number of each day under them. #}
             {% set trend = board.trend %}
+            {% set dense = trend.periods | length > 24 %}
             <section class="tickets-card tickets-trend-card" aria-labelledby="tickets-trend-title-{{ board.key }}">
               <header class="tickets-card-head"><h3 id="tickets-trend-title-{{ board.key }}">{{ trend.title }}</h3><span class="tickets-card-note">Tickets opened and resolved or closed in each</span></header>
               <div class="tickets-trend">
-                <ul class="tickets-legend">
+                <ul class="tickets-legend{% if dense %} is-dense{% endif %}">
                   <li><span class="tickets-swatch" data-series="created" aria-hidden="true"></span>Created <strong>{{ trend.created }}</strong></li>
                   <li><span class="tickets-swatch" data-series="resolved" aria-hidden="true"></span>Resolved <strong>{{ trend.resolved }}</strong></li>
                 </ul>
-                <div class="tickets-periods{% if trend.periods | length > 24 %} is-dense{% endif %}" style="--trend-periods: {{ trend.periods | length }}" role="img" aria-label="{{ trend.created }} tickets created and {{ trend.resolved }} resolved">
+                <div class="tickets-periods{% if dense %} is-dense{% endif %}" style="--trend-periods: {{ trend.periods | length }}" role="img" aria-label="{{ trend.created }} tickets created and {{ trend.resolved }} resolved">
                   <span class="tickets-periods-peak" aria-hidden="true">{{ trend.peak }}</span>
                   {% for entry in trend.periods %}
                   <div class="tickets-period"{% if entry.weekend %} data-weekend="true"{% endif %}{% if entry.future %} data-future="true"{% else %} data-tip="{{ entry.name }}: {{ entry.created }} created, {{ entry.resolved }} resolved"{% endif %}>
-                    <div class="tickets-period-bars"><span class="tickets-bar" data-series="created" style="height: {{ entry.created_height }}%">{% if entry.created %}<b>{{ entry.created }}</b>{% endif %}</span><span class="tickets-bar" data-series="resolved" style="height: {{ entry.resolved_height }}%">{% if entry.resolved %}<b>{{ entry.resolved }}</b>{% endif %}</span></div>
+                    <div class="tickets-period-bars"><span class="tickets-bar" data-series="created" style="height: {{ entry.created_height }}%">{% if entry.created and not dense %}<b>{{ entry.created }}</b>{% endif %}</span><span class="tickets-bar" data-series="resolved" style="height: {{ entry.resolved_height }}%">{% if entry.resolved and not dense %}<b>{{ entry.resolved }}</b>{% endif %}</span>{% if dense and (entry.created or entry.resolved) %}<span class="tickets-period-counts" style="bottom: {{ [entry.created_height, entry.resolved_height] | max }}%"><b data-series="created">{{ entry.created }}</b><b data-series="resolved">{{ entry.resolved }}</b></span>{% endif %}</div>
+                    {% if dense and trend.unit == 'day' %}
+                    {% set month = loop.first or entry.start.day == 1 %}
+                    <span class="tickets-period-label"{% if not (entry.axis or month) %} data-minor="true"{% endif %}>{{ entry.start.day }}{% if month %}<small>{{ entry.start.strftime('%b') }}</small>{% endif %}</span>
+                    {% else %}
                     <span class="tickets-period-label">{% if entry.axis %}{{ entry.label }}{% endif %}</span>
+                    {% endif %}
                   </div>
                   {% endfor %}
                 </div>

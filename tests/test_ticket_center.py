@@ -525,6 +525,20 @@ def test_the_design_counts_tickets_by_type_status_priority_module_and_period():
     assert {entry['ticket_id'] for entry in october['feed']} == {2, 3, 4, 6}
 
 
+def test_the_dashboard_draws_the_days_of_a_month_as_one_bar_each(client):
+    login(client)
+    open_ticket(client)
+    page = client.get('/tickets').text
+    views = dict(re.findall(r'aria-labelledby="tickets-trend-title-(\w+)">(.*?)</section>', page, re.S))
+    # This month: one bar per day, the resolved one inside the created one, both counts over them and the day under them.
+    month = views['month']
+    assert 'tickets-periods is-dense' in month and 'tickets-legend is-dense' in month
+    assert '<span class="tickets-period-counts"' in month and '<b data-series="created">1</b><b data-series="resolved">0</b>' in month
+    assert '"><b>' not in month and '>1<small>' in month and 'data-minor="true"' in month
+    # This week keeps a bar of each beside the other, with its count over it.
+    assert 'is-dense' not in views['week'] and 'tickets-period-counts' not in views['week'] and '%"><b>1</b></span>' in views['week']
+
+
 def test_times_are_written_in_calendar_days_hours_and_minutes():
     from src.modules.ticket_center import _duration_text
 
