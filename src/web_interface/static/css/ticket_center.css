@@ -262,14 +262,37 @@
 .tickets-delta[data-tone="bad"] { color: #b42318; }
 .tickets-type-legend { justify-content: flex-end; }
 .tickets-insights-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .8rem; }
-.tickets-mix-card, .tickets-spent-card { grid-column: 1 / -1; }
-/* Time spent resolving: its figures, then a ranking per module, type, priority and assignee side by side. */
-.tickets-spent-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: .8rem 1.4rem; }
-.tickets-spent-group { display: grid; align-content: start; gap: .35rem; min-width: 0; }
-.tickets-spent-group .tickets-subhead { margin: 0; }
-.ticket-center .tickets-spent-row { grid-template-columns: minmax(5rem, 9rem) minmax(0, 1fr) 4.4rem; }
+.tickets-mix-card { grid-column: 1 / -1; }
+/* Time Spent: its figures, where the time goes, the time over time, and a ranking per module, type, priority, assignee,
+   reporter and version (time, tickets and average). */
+.tickets-measure-note { display: flex; align-items: flex-start; gap: .75rem; padding: .7rem .9rem; border: 1px solid #d6e4f0; border-radius: 12px; background: #f4f8fc; color: #34495a; font-size: .78rem; }
+.tickets-measure-icon { display: inline-grid; flex: 0 0 1.8rem; place-items: center; width: 1.8rem; height: 1.8rem; border-radius: 50%; background: #1e61a3; color: #fff; }
+.tickets-measure-icon svg { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; }
+.tickets-measure-note strong { color: #10314a; font-size: .84rem; }
+.tickets-measure-note ul { margin: .25rem 0 0; padding-left: 1.1rem; line-height: 1.45; }
+.tickets-measure-note code { padding: 0 .3rem; border-radius: 4px; background: #e3edf6; font-size: .74rem; }
+.tickets-figures.tickets-time-figures { grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); }
+.tickets-where-bar { display: flex; gap: 3px; height: 1.6rem; overflow: hidden; border-radius: 8px; background: #eef2f5; }
+.tickets-where-bar span { flex: 1 1 0; min-width: 4px; background: var(--status-fill); cursor: default; }
+.tickets-where { display: grid; gap: .3rem; margin: 0; padding: 0; list-style: none; }
+.tickets-where li { display: grid; grid-template-columns: .65rem minmax(0, 1fr) auto; align-items: center; gap: .1rem .55rem; padding: .4rem .55rem; border-radius: 10px; background: #f6f8fa; }
+.tickets-where li::before { content: ''; grid-row: span 2; width: .65rem; height: .65rem; border-radius: 50%; background: var(--status-fill); }
+.tickets-where-name { color: #34495a; font-size: .8rem; font-weight: 700; }
+.tickets-where strong { color: #10314a; font-size: .95rem; text-align: right; }
+.tickets-where small { grid-column: 2 / -1; color: #7b8994; font-size: .7rem; font-weight: 600; }
+.tickets-time-columns .tickets-column-value { font-size: .64rem; white-space: nowrap; }
+.tickets-time-bar { flex: none; width: min(100%, 2.2rem); border-radius: 4px 4px 0 0; background: linear-gradient(180deg, #ef4444, #991b1b); }
+.tickets-time-groups { display: grid; grid-column: 1 / -1; grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr)); gap: .8rem; }
+.ticket-center .tickets-spent-row { grid-template-columns: minmax(8rem, 13rem) minmax(0, 1fr) 4.8rem; }
+.tickets-spent-name { display: flex; align-items: center; gap: .45rem; min-width: 0; }
+.tickets-spent-name > :is(.tickets-rank-dot, .tickets-avatar) { flex: 0 0 auto; margin-right: 0; }
+.tickets-spent-name > span:last-child { display: grid; min-width: 0; }
+.tickets-spent-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tickets-spent-name small { overflow: hidden; color: #7b8994; font-size: .66rem; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+div.tickets-spent-row { cursor: default; }
 .tickets-spent-row[data-spent="module"] { --part-color: var(--module-color); }
-.tickets-spent-row[data-spent="assignee"] { --part-color: #1e61a3; }
+.tickets-spent-row:is([data-spent="assignee"], [data-spent="reporter"]) { --part-color: #1e61a3; }
+.tickets-spent-row[data-spent="version"] { --part-color: #b91c1c; }
 .tickets-spent-row strong { white-space: nowrap; }
 .tickets-switch-view { display: grid; align-content: start; gap: .65rem; }
 /* Donuts: a part per type, status or priority, with a legend of buttons that list their tickets. */

@@ -418,7 +418,7 @@ MODULE_SECTIONS: dict[str, list[tuple[Any, ...] | None]] = {
                   ('Run History', 'Run History', 'log')],
     # The tabs of the header of Ticket Center, in their order.
     'ticket-center': [('New Ticket', 'New Ticket', 'ticket'), ('All Tickets', 'All Tickets', 'table'), ('Dashboard', 'Dashboard', 'summary'),
-                      ('Statistics', 'Statistics', 'chart')],
+                      ('Statistics', 'Statistics', 'chart'), ('Time Spent', 'Time Spent', 'gauge')],
     'chart-builder': [('Interactive Preview', 'Interactive Preview', 'eye')],
     'query-builder': [('Selected CDR tables', 'Query editor', 'code'), ('Saved queries', 'Saved queries', 'bookmark'),
                       ('Query output', 'Results', 'table')],

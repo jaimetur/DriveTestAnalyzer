@@ -451,13 +451,18 @@ def _days_between(start: object, end: object) -> float | None:
 
 
 def _duration_text(days: float | None) -> str:
-    """A time in days as the Statistics panel writes it: hours under a day, days with a decimal under ten."""
+    """A time in days (of 24 hours) as Ticket Center writes it, in calendar days, hours and minutes: ``13d 4h``,
+    ``7h 12m``, ``42m`` (``< 1m`` under a minute)."""
     if days is None:
         return '—'
-    if days < 1:
-        hours = round(days * 24)
-        return f'{hours} h' if hours else '< 1 h'
-    return f'{days:.1f} days' if days < 10 else f'{round(days)} days'
+    minutes = round(days * 1440)
+    whole_days, minutes = divmod(minutes, 1440)
+    hours, minutes = divmod(minutes, 60)
+    if whole_days:
+        return f'{whole_days}d {hours}h' if hours else f'{whole_days}d'
+    if hours:
+        return f'{hours}h {minutes}m' if minutes else f'{hours}h'
+    return f'{minutes}m' if minutes else '< 1m'
 
 
 def _age_text(days: float | None) -> str:
@@ -580,51 +585,128 @@ def _ranked(entries: dict[str, dict[str, Any]], limit: int) -> tuple[list[dict[s
     return ordered[:limit], sum(entry['total'] for entry in ordered[limit:])
 
 
-def ticket_time_spent(done: list[dict[str, Any]], took: dict[int, float]) -> dict[str, Any]:
-    """The time the tickets resolved or closed took to be resolved (``took``: the days of each, by ``id`` of the ticket),
-    added up: in all, on average and the longest, and by module and assignee (the most time first), type and priority
-    (in their order), each with what its click lists, its tickets and the length of its bar against the longest of its
-    group."""
+def _status_time(tickets: list[dict[str, Any]], events: Iterable[dict[str, Any]]) -> dict[str, float]:
+    """The days each ticket of ``tickets`` (resolved or closed) spent in each open status from opened to resolved, added
+    up, by the changes of status of its timeline (a ticket starts New)."""
+    changes: dict[int, list[tuple[datetime, str]]] = {}
+    for event in events:
+        if event.get('kind') != 'change':
+            continue
+        try:
+            changed = json.loads(event.get('changes_json') or '{}')
+        except (TypeError, ValueError):
+            continue
+        status = changed.get('status') if isinstance(changed, dict) else None
+        moment = _moment(event.get('created_at'))
+        if isinstance(status, list) and len(status) == 2 and moment is not None:
+            changes.setdefault(int(event.get('ticket_id') or 0), []).append((moment, str(status[1])))
+    spent = dict.fromkeys(('new', 'in_progress', 'waiting_info'), 0.0)
+    for ticket in tickets:
+        opened, resolved = _moment(ticket.get('created_at')), _moment(ticket.get('resolved_at'))
+        if opened is None or resolved is None:
+            continue
+        current, since = 'new', opened
+        for moment, status in sorted(changes.get(int(ticket['id']), [])) + [(resolved, '')]:
+            moment = min(max(moment, since), resolved)
+            if current in spent:
+                spent[current] += (moment - since).total_seconds() / 86400
+            current, since = status, moment
+            if moment >= resolved:
+                break
+    return spent
+
+
+def ticket_time_spent(tickets: list[dict[str, Any]], events: Iterable[dict[str, Any]] = (), *,
+                      today: date | None = None) -> dict[str, Any]:
+    """What the Time Spent view of Ticket Center shows: the time from opened to resolved (or closed) of every ticket
+    resolved or closed, added up: in all, on average, its median and the longest; the time those tickets spent New, In
+    Progress and Waiting for Info (by the changes of status of their timelines, ``events``); the time of the tickets
+    resolved in each of the last weeks and months; and that time by module, type, priority, assignee, reporter and the
+    version that fixed them, each row with its total, average and tickets, what its click lists and the length of its
+    bar against the longest of its group."""
+    today = today or local_today()
+    done = [ticket for ticket in tickets if ticket['status'] in DONE_STATUSES]
+    took = {id(ticket): days for ticket in done if (days := _days_between(ticket.get('created_at'), ticket.get('resolved_at'))) is not None}
     timed = [ticket for ticket in done if id(ticket) in took]
     finished = sorted(DONE_STATUSES)
 
-    def group(entries: dict[str, dict[str, Any]], ranked: bool) -> list[dict[str, Any]]:
-        rows = [entry for entry in entries.values() if entry['days']]
-        if ranked:
-            rows.sort(key=lambda entry: (-sum(entry['days']), str(entry['label']).casefold()))
-        peak = max([0.0, *(sum(entry['days']) for entry in rows)])
-        return [{**{key: value for key, value in entry.items() if key != 'days'}, 'count': len(entry['days']),
-                 'total': _duration_text(sum(entry['days'])), 'average': _duration_text(sum(entry['days']) / len(entry['days'])),
-                 'share': round(max(100 * sum(entry['days']) / peak, 2), 2) if peak else 0} for entry in rows]
+    def row(key: str, label: str, days: list[float], show: dict[str, Any] | None, **extra: Any) -> dict[str, Any]:
+        return {'key': key, 'label': label, 'days': sum(days), 'count': len(days), 'total': _duration_text(sum(days)),
+                'average': _duration_text(sum(days) / len(days) if days else None), 'show': show, **extra}
 
-    modules: dict[str, dict[str, Any]] = {}
-    types = {key: {'key': key, 'label': label, 'days': [], 'show': {'types': [key], 'statuses': finished}} for key, label in TICKET_TYPES.items()}
-    priorities = {key: {'key': key, 'label': f'{key} · {label}', 'days': [], 'show': {'priorities': [key], 'statuses': finished}}
-                  for key, label in PRIORITIES.items()}
-    assignees: dict[str, dict[str, Any]] = {}
-    for ticket in timed:
-        days = took[id(ticket)]
-        module = str(ticket.get('module') or '')
-        modules.setdefault(module, {'key': module, 'label': ticket.get('module_title') or 'General', 'color': ticket.get('module_color') or '#5A6773',
-                                    'days': [], 'show': {'modules': [module], 'statuses': finished}})['days'].append(days)
-        ticket_type = str(ticket.get('ticket_type') or DEFAULT_TICKET_TYPE)
-        if ticket_type in types:
-            types[ticket_type]['days'].append(days)
-        if ticket['priority'] in priorities:
-            priorities[ticket['priority']]['days'].append(days)
-        assignee = str(ticket.get('assigned_to') or '').lower()
-        assignees.setdefault(assignee, {'key': assignee, 'label': ticket.get('assigned_to_name') or 'Unassigned', 'days': [],
-                                        'show': {'assignees': [assignee], 'statuses': finished}})['days'].append(days)
+    def group(rows: list[dict[str, Any]], ranked: bool, limit: int | None = None) -> list[dict[str, Any]]:
+        rows = [entry for entry in rows if entry['count']]
+        if ranked:
+            rows.sort(key=lambda entry: (-entry['days'], str(entry['label']).casefold()))
+        rows = rows[:limit] if limit else rows
+        peak = max([0.0, *(entry['days'] for entry in rows)])
+        for entry in rows:
+            entry['share'] = round(max(100 * entry['days'] / peak, 2), 2) if peak else 0
+        return rows
+
+    def gather(key_of: Any) -> dict[str, list[dict[str, Any]]]:
+        buckets: dict[str, list[dict[str, Any]]] = {}
+        for ticket in timed:
+            buckets.setdefault(key_of(ticket), []).append(ticket)
+        return buckets
+
+    def days_of(items: list[dict[str, Any]]) -> list[float]:
+        return [took[id(ticket)] for ticket in items]
+
+    modules = [row(key, items[0].get('module_title') or 'General', days_of(items), {'modules': [key], 'statuses': finished},
+                   color=items[0].get('module_color') or '#5A6773')
+               for key, items in gather(lambda ticket: str(ticket.get('module') or '')).items()]
+    by_type = gather(lambda ticket: str(ticket.get('ticket_type') or DEFAULT_TICKET_TYPE))
+    types = [row(key, label, days_of(by_type.get(key, [])), {'types': [key], 'statuses': finished}) for key, label in TICKET_TYPES.items()]
+    by_priority = gather(lambda ticket: str(ticket['priority']))
+    priorities = [row(key, f'{key} · {label}', days_of(by_priority.get(key, [])), {'priorities': [key], 'statuses': finished})
+                  for key, label in PRIORITIES.items()]
+    assignees = [row(key, items[0].get('assigned_to_name') or 'Unassigned', days_of(items), {'assignees': [key], 'statuses': finished})
+                 for key, items in gather(lambda ticket: str(ticket.get('assigned_to') or '').lower()).items()]
+    reporters = [row(key, items[0].get('created_by_name') or key, days_of(items), {'reporter': key, 'statuses': finished})
+                 for key, items in gather(lambda ticket: str(ticket.get('created_by') or '').lower()).items()]
+    by_version = gather(lambda ticket: str(ticket.get('fixed_version') or '').strip().lstrip('vV'))
+    versions = [row(key, f'v{key}' if key else 'No version', days_of(by_version[key]), None)
+                for key in sorted(by_version, key=lambda key: (bool(key), _version_key(key)), reverse=True)]
+
+    statuses = _status_time(timed, events)
+    status_total = sum(statuses.values())
+    where = [{'status': status, 'label': STATUSES[status], 'total': _duration_text(days), 'percent': round(100 * days / status_total) if status_total else 0,
+              'average': _duration_text(days / len(timed)) if timed else '—', 'share': round(100 * days / status_total, 2) if status_total else 0}
+             for status, days in statuses.items()]
+
+    def over_time(period: str) -> dict[str, Any]:
+        choice, unit, count, step = TREND_PERIODS[period]
+        last = _period_index(period, today)
+        spans = [{'start': _period_start(period, index), 'axis': (last - index) % step == 0, 'days': 0.0, 'count': 0}
+                 for index in range(last - count + 1, last + 1)]
+        for ticket in timed:
+            day = _day(ticket.get('resolved_at'))
+            position = _period_index(period, day) - last + count - 1 if day is not None and day <= today else -1
+            if position >= 0:
+                spans[position]['days'] += took[id(ticket)]
+                spans[position]['count'] += 1
+        peak = max([0.0, *(span['days'] for span in spans)])
+        for span in spans:
+            span['label'], span['name'] = _period_names(period, span.pop('start'))
+            span['total'] = _duration_text(span['days']) if span['count'] else '—'
+            span['share'] = round(100 * span['days'] / peak, 2) if peak else 0
+        return {'period': period, 'choice': choice, 'note': f'Last {count} {unit}s', 'spans': spans}
+
     longest = max(timed, key=lambda ticket: took[id(ticket)], default=None)
-    total = sum(took[id(ticket)] for ticket in timed)
+    total = sum(took.values())
     return {
         'total': _duration_text(total if timed else None), 'count': len(timed), 'average': _duration_text(total / len(timed) if timed else None),
+        'median': _duration_text(median(took.values()) if timed else None),
         'longest': {'id': longest['id'], 'title': longest['title'], 'took': _duration_text(took[id(longest)])} if longest else None,
+        'where': where, 'periods': [over_time('week'), over_time('month')],
         'groups': [
-            {'key': 'module', 'title': 'By module', 'rows': group(modules, True)[:STATISTICS_MODULES]},
+            {'key': 'module', 'title': 'By module', 'rows': group(modules, True, STATISTICS_MODULES)},
             {'key': 'type', 'title': 'By type', 'rows': group(types, False)},
             {'key': 'priority', 'title': 'By priority', 'rows': group(priorities, False)},
-            {'key': 'assignee', 'title': 'By assignee', 'rows': group(assignees, True)[:STATISTICS_PEOPLE]},
+            {'key': 'assignee', 'title': 'By assignee', 'rows': group(assignees, True, STATISTICS_PEOPLE)},
+            {'key': 'reporter', 'title': 'By reporter', 'rows': group(reporters, True, STATISTICS_PEOPLE)},
+            {'key': 'version', 'title': 'By version that fixed them', 'rows': group(versions, False, STATISTICS_VERSIONS)},
         ],
     }
 
@@ -682,8 +764,7 @@ def ticket_statistics(tickets: list[dict[str, Any]], events: Iterable[dict[str, 
     and assignees, the titles and colours of their modules and their numbers of comments and screenshots) and the entries
     of their timelines (``ticket_events``): the share of tickets resolved, how long they took lately, the tickets opened
     lately and the comments and screenshots per ticket; every ticket by type, status and priority; the time each ticket
-    took to be resolved and the age of the open ones; that time added up, in all and by module, type, priority and
-    assignee; the tickets created, resolved and open over time; the tickets fixed
+    took to be resolved and the age of the open ones; the tickets created, resolved and open over time; the tickets fixed
     in and opened with each of the latest versions (of the tickets and of the tool, ``versions``, also without tickets);
     the tickets of each reporter, assignee and module; and the activity of each day."""
     today = today or local_today()
@@ -780,7 +861,7 @@ def ticket_statistics(tickets: list[dict[str, Any]], events: Iterable[dict[str, 
         row['segments'] = [{'status': group_labels[group][0], 'label': group_labels[group][1], 'count': count,
                             'share': round(100 * count / peak, 2)} for group, count in row['groups'].items() if count]
     return {
-        'health': health, 'mix': mix, 'durations': durations, 'time_spent': ticket_time_spent(done, took),
+        'health': health, 'mix': mix, 'durations': durations,
         'backlogs': [ticket_backlog(tickets, today, period) for period in TREND_PERIODS], 'backlog_period': DEFAULT_TREND_PERIOD,
         'versions': version_charts,
         'people': {'reporters': reporter_rows, 'other_reporters': other_reporters, 'assignees': assignee_rows,

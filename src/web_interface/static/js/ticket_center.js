@@ -113,8 +113,8 @@
   window.addEventListener('load', evenSoon);
 
   // The views of the page, chosen from the tabs of its header: the New Ticket form, the list of tickets, the dashboard
-  // (by default; the New Ticket form while there is no ticket) and the Statistics panel, each shown alone (and open)
-  // below the header; this browser remembers the one chosen. A link to a section of a view (the sections menu of the tab, its
+  // (by default; the New Ticket form while there is no ticket), the Statistics panel and the time spent, each shown
+  // alone (and open) below the header; this browser remembers the one chosen. A link to a section of a view (the sections menu of the tab, its
   // floating bar, New Ticket, ?status=new#section-all-tickets of the notices) and a link to the tickets of a status or type
   // show their view.
   const tabs = [...document.querySelectorAll('[data-tickets-tab]')];

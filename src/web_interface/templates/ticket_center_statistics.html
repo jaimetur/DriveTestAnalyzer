@@ -68,36 +68,6 @@
         </div>
       </section>
 
-      {# The time from opened to resolved (or closed) of every ticket, added up: in all and by module, type, priority and assignee. #}
-      {% set spent = stats.time_spent %}
-      <section class="tickets-card tickets-spent-card" aria-labelledby="tickets-spent-title">
-        <header class="tickets-card-head"><h3 id="tickets-spent-title">Time spent resolving</h3><span class="tickets-card-note">From opened to resolved or closed, added up · a row lists its tickets</span></header>
-        <div class="tickets-figures">
-          <span><strong>{{ spent.total }}</strong>In all</span>
-          <span><strong>{{ spent.count }}</strong>Resolved or closed</span>
-          <span><strong>{{ spent.average }}</strong>Per ticket on average</span>
-          {% if spent.longest %}<a href="/tickets/{{ spent.longest.id }}" title="#{{ spent.longest.id }} {{ spent.longest.title }}"><strong>{{ spent.longest.took }}</strong>The longest · #{{ spent.longest.id }}</a>{% else %}<span><strong>—</strong>The longest</span>{% endif %}
-        </div>
-        <div class="tickets-spent-groups">
-          {% for group in spent.groups %}
-          <div class="tickets-spent-group">
-            <p class="tickets-subhead">{{ group.title }}</p>
-            {% if group.rows %}
-            <ul class="tickets-ranking">
-              {% for row in group.rows %}
-              <li><button type="button" class="tickets-rank tickets-spent-row" data-spent="{{ group.key }}"{% if group.key == 'module' %} style="--module-color: {{ row.color }}"{% elif group.key == 'type' %} data-type="{{ row.key }}"{% elif group.key == 'priority' %} data-priority="{{ row.key }}"{% endif %} data-board-show='{{ row.show | tojson }}' data-tip="{{ row.label }}: {{ row.total }} in {{ many(row.count, 'ticket') }} resolved or closed, {{ row.average }} each on average">
-                <span class="tickets-rank-name">{% if group.key == 'module' %}<span class="tickets-rank-dot" aria-hidden="true"></span>{% elif group.key == 'assignee' %}<span class="tickets-avatar{% if not row.key %} is-empty{% endif %}" aria-hidden="true">{{ (row.label.split() | map('first') | join(''))[:2] | upper if row.key else '?' }}</span>{% endif %}{{ row.label }}</span>
-                <span class="tickets-rank-bar"><span style="width: {{ row.share }}%"></span></span>
-                <strong>{{ row.total }}</strong>
-              </button></li>
-              {% endfor %}
-            </ul>
-            {% else %}<p class="ticket-muted">No ticket resolved yet.</p>{% endif %}
-          </div>
-          {% endfor %}
-        </div>
-      </section>
-
       {# Resolved: the time from opened to resolved (or closed) of each ticket; Open: the days since each open ticket was opened. #}
       <section class="tickets-card tickets-duration-card" aria-labelledby="tickets-duration-title" data-tickets-switch="durations">
         <header class="tickets-card-head">

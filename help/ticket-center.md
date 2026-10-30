@@ -23,6 +23,7 @@ ticket-center
 | Presentation | [Open section](#presentation) |
 | Read the dashboard | [Open section](#dashboard) |
 | Statistics | [Open section](#statistics) |
+| Time Spent | [Open section](#time-spent) |
 | Open a ticket | [Open section](#new-ticket) |
 | Find and follow tickets | [Open section](#all-tickets) |
 | The page of a ticket | [Open section](#the-page-of-a-ticket) |
@@ -32,7 +33,7 @@ ticket-center
 
 ## Dashboard
 
-The header of the module sums up every ticket with its tiles, and its tabs choose the view shown below the floating bar of its sections: **New Ticket**, **All Tickets**, the list of tickets, **Dashboard** (by default; New Ticket while there is no ticket) or **Statistics**. Each browser remembers the tab chosen. The sections menu of the tab of Ticket Center and the floating bar list the same views in the same order, and a link to the tickets of a status (such as those of the notices of new tickets) opens All Tickets.
+The header of the module sums up every ticket with its tiles, and its tabs choose the view shown below the floating bar of its sections: **New Ticket**, **All Tickets**, the list of tickets, **Dashboard** (by default; New Ticket while there is no ticket), **Statistics** or **Time Spent**. Each browser remembers the tab chosen. The sections menu of the tab of Ticket Center and the floating bar list the same views in the same order, and a link to the tickets of a status (such as those of the notices of new tickets) opens All Tickets.
 
 Each tile, and each count, bar and cell of the **Dashboard** panel, lists its tickets in **All Tickets** (opening that tab and clearing the other filters) and tells what it is when the mouse is over it.
 
@@ -51,7 +52,6 @@ The **Statistics** tab shows how the tickets are going, with every bar coloured 
 
 - **Resolution rate**: the share of every ticket resolved or closed, as a ring. **Time to resolve · 30 days**: the median time from opened to resolved of the tickets resolved in the last 30 days, and how much faster or slower it is than in the 30 days before. **Opened · 30 days**: the tickets opened in the last 30 days and how many more or fewer than in the 30 days before. **Comments per ticket**, with the screenshots per ticket.
 - **Every ticket**: three donuts of every ticket by type, status and priority, with the count and share of each; a part, or its line in the legend, lists its tickets.
-- **Time spent resolving**: the time from opened to resolved or closed of every ticket resolved or closed, added up: in all, how many, the average per ticket and the longest one (a link to it); and added up by module and by assignee (the most time first), by type and by priority, each row listing its tickets.
 - **Time to resolve**: the tickets resolved or closed by the time they took (under a day, 1–3 days, 3–7 days, 1–2 weeks, 2–4 weeks, 1–3 months, more), with their median, average and the time 9 in 10 of them took, and the median of each type and priority. **Open** shows instead the age of the open tickets by the same groups.
 - **Backlog over time**: the tickets created, resolved (or closed) and open by the end of each period, with the same choice as **Created vs resolved** (Daily to Yearly, which changes both charts). A ticket is open from the day it was opened to the day it was resolved, closed or rejected.
 - **Tickets fixed in each version**: the tickets resolved or closed in each of the latest 10 versions of the tool, as the Changelog lists them (also those without tickets), by their **Fixed in version**; **Opened with** shows those opened with each version.
@@ -60,6 +60,21 @@ The **Statistics** tab shows how the tickets are going, with every bar coloured 
 - **Activity**: a calendar of the last 26 weeks, a column per week from Monday, darker the more tickets were opened, commented and changed that day, with the totals and the busiest day.
 
 Each browser remembers the view chosen in each card.
+
+## Time Spent
+
+The **Time Spent** tab adds up the time from opened to resolved or closed of every ticket resolved or closed. A note at its top says how it is measured:
+
+- The time of a ticket is the **calendar time** from the moment it was opened to the moment it was resolved or closed, 24 hours a day (nights and weekends included): the tool does not record working hours.
+- Only the tickets resolved or closed count; the open and rejected ones are left out. The totals add up the time of those tickets; the average and the median are per ticket.
+- Times are written in days of 24 hours, hours and minutes (`13d 4h`, `7h 12m`, `42m`), as everywhere in Ticket Center.
+
+It shows:
+
+- **Figures**: the time spent in all, the tickets resolved or closed, the average and the median per ticket, and the longest one, with a link to it.
+- **Where the time goes**: the time those tickets spent **New**, **In Progress** and **Waiting for Info** until resolved, by the changes of status of their timelines (a ticket starts New), with its share and its average per ticket.
+- **Time spent per week** (the last 12 weeks) or **per month** (the last 12 months): the time of the tickets resolved in each.
+- **By module**, **By type**, **By priority**, **By assignee**, **By reporter** and **By version that fixed them**: the time of each in all, with its tickets and its average per ticket under its name, the most time first (types and priorities in their order, versions the latest first); a row lists its tickets.
 
 ## New Ticket
 

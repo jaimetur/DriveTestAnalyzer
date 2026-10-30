@@ -68,11 +68,11 @@ def test_ticket_center_is_in_every_profile_once_and_opens_without_a_workspace(cl
     assert all(f'data-chip="{group}"' in page.text for group in ('types', 'statuses', 'priorities'))
     # Each group of chips starts with All, and the header chooses the view: the dashboard, Statistics or the tickets.
     assert all(f'data-chip-all="{group}"' in page.text for group in ('types', 'statuses', 'priorities'))
-    assert all(f'data-tickets-tab="{view}"' in page.text for view in ('new-ticket', 'dashboard', 'statistics', 'tickets'))
-    assert all(f'id="section-{view}"' in page.text for view in ('new-ticket', 'all-tickets', 'dashboard', 'statistics'))
+    assert all(f'data-tickets-tab="{view}"' in page.text for view in ('new-ticket', 'tickets', 'dashboard', 'statistics', 'time-spent'))
+    assert all(f'id="section-{view}"' in page.text for view in ('new-ticket', 'all-tickets', 'dashboard', 'statistics', 'time-spent'))
     assert 'module-hero-ticket-center' in page.text
     # The sections menu of the tab lists the views in the order of the tabs.
-    assert [entry[1] for entry in section_links('/tickets', 'ticket-center')] == ['New Ticket', 'All Tickets', 'Dashboard', 'Statistics']
+    assert [entry[1] for entry in section_links('/tickets', 'ticket-center')] == ['New Ticket', 'All Tickets', 'Dashboard', 'Statistics', 'Time Spent']
     assert f'Ticket Center · Version {__version__}' in page.text
     # Its tab is a link even without a workspace, unlike the modules that use one.
     assert 'module-tab module-tab-ticket-center' in page.text and 'href="/tickets" title="Open Ticket Center"' in page.text
@@ -487,7 +487,7 @@ def test_the_design_counts_tickets_by_type_status_priority_module_and_period():
     glance = board['glance']
     assert [(part['key'], part['count']) for part in glance['ring']['segments']] == [('open', 3), ('done', 2), ('rejected', 1)]
     assert (glance['week_opened'], glance['week_resolved'], glance['unassigned'], glance['total']) == (1, 0, 3, 6)
-    assert [row['median_resolve'] for row in board['types']] == ['2.0 days', '62 days', '—']
+    assert [row['median_resolve'] for row in board['types']] == ['2d 1h', '62d 1h', '—']
     # A chart per period, Weekly by default: twelve weeks from Monday, the current one last, with what was created and
     # resolved (not rejected) in each and a label every three weeks.
     trends = {trend['period']: trend for trend in board['trends']}
@@ -512,6 +512,13 @@ def test_the_design_counts_tickets_by_type_status_priority_module_and_period():
     assert (trends['year']['title'], trends['year']['note']) == ('Created vs resolved per year', 'Last 5 years')
     assert board['oldest_open'] == {'id': 1, 'title': 'T1', 'ticket_type': 'bug', 'days': 79, 'created_date': '2026-08-01'}
     assert ticket_dashboard([], today=today)['oldest_open'] is None
+
+
+def test_times_are_written_in_calendar_days_hours_and_minutes():
+    from src.modules.ticket_center import _duration_text
+
+    assert [_duration_text(days) for days in (None, 0, 0.03, 0.25, 0.3, 1, 2.0417, 13.2)] == [
+        '—', '< 1m', '43m', '6h', '7h 12m', '1d', '2d 1h', '13d 4h']
 
 
 def test_the_dashboard_shows_the_tickets_to_attend_and_the_latest_activity():
@@ -540,7 +547,7 @@ def test_the_dashboard_shows_the_tickets_to_attend_and_the_latest_activity():
         (2, '14 days', 'aging', 100.0, 'User E'), (4, 'Today', 'fresh', 4, '')]
     assert (attention['open'], attention['more'], attention['unassigned']) == (3, 1, 2)
     assert [(item['id'], item['fixed_version'], item['took'], item['ago']) for item in attention['resolved']] == [
-        (3, '0.10.0', '2.0 days', '5 days ago'), (5, '', '62 days', '1 Sep')]
+        (3, '0.10.0', '2d 1h', '5 days ago'), (5, '', '62d 1h', '1 Sep')]
     # The newest entries: a change of status says the new one, another change the fields it changed.
     events = [
         {'ticket_id': 3, 'username': 'EJ', 'kind': 'change', 'changes_json': '{"status": ["new", "resolved"]}', 'created_at': '2026-10-14T10:00:00+01:00'},
@@ -562,7 +569,7 @@ def test_the_dashboard_shows_the_tickets_to_attend_and_the_latest_activity():
 def test_the_statistics_measure_resolution_mix_backlog_versions_people_and_activity():
     from datetime import date
 
-    from src.modules.ticket_center import ACTIVITY_WEEKS, DURATION_BUCKETS, STATISTICS_VERSIONS, ticket_statistics
+    from src.modules.ticket_center import ACTIVITY_WEEKS, DURATION_BUCKETS, STATISTICS_VERSIONS, ticket_statistics, ticket_time_spent
 
     def ticket(number, ticket_type, status, priority='P3', created='2026-10-05T09:00', resolved='', created_by='ANA', assigned='',
                fixed='', version='0.9.0', module=''):
@@ -588,7 +595,7 @@ def test_the_statistics_measure_resolution_mix_backlog_versions_people_and_activ
     # Resolved or closed of every ticket; the median time of those resolved in the last 30 days (6 h, 2 and 10 days)
     # against the 30 days before (12 days); the tickets opened in each window; comments and screenshots per ticket.
     assert stats['health'] == {
-        'total': 7, 'done': 4, 'rate': 57, 'resolve_time': '2.0 days', 'resolve_count': 3, 'resolve_previous': '12 days',
+        'total': 7, 'done': 4, 'rate': 57, 'resolve_time': '2d', 'resolve_count': 3, 'resolve_previous': '12d',
         'resolve_change': -83, 'created': 5, 'created_change': 5, 'window': 30, 'comments': 2.0, 'screenshots': 0.6,
     }
     # Donuts of every ticket, each part listing its tickets as the chips name them.
@@ -600,18 +607,33 @@ def test_the_statistics_measure_resolution_mix_backlog_versions_people_and_activ
     # Time to resolve by groups of days (the rejected ticket left out) and the age of the open ones.
     resolved = stats['durations']['resolved']
     assert [bucket['total'] for bucket in resolved['buckets']] == [1, 1, 0, 2, 0, 0, 0] and len(resolved['buckets']) == len(DURATION_BUCKETS)
-    assert (resolved['median'], resolved['average'], resolved['p90'], resolved['count']) == ('6.0 days', '6.1 days', '12 days', 4)
-    assert [(item['type'], item['median']) for item in resolved['by_type']] == [('bug', '6 h'), ('improvement', '11 days'), ('new_feature', '2.0 days')]
+    assert (resolved['median'], resolved['average'], resolved['p90'], resolved['count']) == ('6d', '6d 1h', '12d', 4)
+    assert [(item['type'], item['median']) for item in resolved['by_type']] == [('bug', '6h'), ('improvement', '11d'), ('new_feature', '2d')]
     assert [(item['priority'], item['count']) for item in resolved['by_priority']] == [('P3', 4)]
-    # That time added up: in all, on average and the longest; by module and assignee (the most first), type and priority.
-    spent = stats['time_spent']
-    assert (spent['total'], spent['count'], spent['average'], spent['longest']) == ('24 days', 4, '6.1 days', {'id': 5, 'title': 'T5', 'took': '12 days'})
+    # Time Spent: that time added up, in all, on average, its median and the longest; where it goes; per week; and by
+    # module, assignee and reporter (the most first), type and priority (in their order) and version (the latest first).
+    spent = ticket_time_spent(tickets, events, today=today)
+    assert (spent['total'], spent['count'], spent['average'], spent['median'], spent['longest']) == (
+        '24d 6h', 4, '6d 1h', '6d', {'id': 5, 'title': 'T5', 'took': '12d'})
+    assert [(part['status'], part['percent']) for part in spent['where']] == [('new', 100), ('in_progress', 0), ('waiting_info', 0)]
+    weeks = spent['periods'][0]['spans']
+    assert (len(weeks), weeks[-2]['count'], weeks[-1]['count'], weeks[-1]['total']) == (12, 2, 0, '—')
     groups = {group['key']: group['rows'] for group in spent['groups']}
-    assert [(row['key'], row['total'], row['count'], row['share']) for row in groups['module']] == [('', '24 days', 4, 100.0)]
+    assert [(row['key'], row['total'], row['count'], row['share']) for row in groups['module']] == [('', '24d 6h', 4, 100.0)]
     assert [(row['key'], row['total'], row['average']) for row in groups['type']] == [
-        ('bug', '6 h', '6 h'), ('improvement', '22 days', '11 days'), ('new_feature', '2.0 days', '2.0 days')]
+        ('bug', '6h', '6h'), ('improvement', '22d', '11d'), ('new_feature', '2d', '2d')]
     assert [row['key'] for row in groups['priority']] == ['P3'] and groups['type'][0]['show'] == {'types': ['bug'], 'statuses': ['closed', 'resolved']}
     assert [(row['key'], row['label'], row['count']) for row in groups['assignee']] == [('', 'Unassigned', 3), ('ej', 'Ej', 1)]
+    assert [(row['key'], row['count'], row['show']) for row in groups['reporter']] == [('ana', 4, {'reporter': 'ana', 'statuses': ['closed', 'resolved']})]
+    assert [(row['label'], row['total'], row['show']) for row in groups['version']] == [
+        ('v0.10.0', '6h', None), ('v0.9.1', '22d', None), ('No version', '2d', None)]
+    # The time in each status follows the changes of status of the timeline of each ticket.
+    timed = [{**tickets[0], 'id': 9, 'status': 'resolved', 'created_at': '2026-10-20T09:00:00+01:00', 'resolved_at': '2026-10-21T09:00:00+01:00'}]
+    changes = [{'ticket_id': 9, 'kind': 'change', 'changes_json': '{"status": ["new", "in_progress"]}', 'created_at': '2026-10-20T15:00:00+01:00'},
+               {'ticket_id': 9, 'kind': 'change', 'changes_json': '{"status": ["in_progress", "waiting_info"]}', 'created_at': '2026-10-20T21:00:00+01:00'},
+               {'ticket_id': 9, 'kind': 'change', 'changes_json': '{"status": ["waiting_info", "resolved"]}', 'created_at': '2026-10-21T09:00:00+01:00'}]
+    assert [(part['status'], part['total'], part['percent']) for part in ticket_time_spent(timed, changes, today=today)['where']] == [
+        ('new', '6h', 25), ('in_progress', '6h', 25), ('waiting_info', '12h', 50)]
     opened = stats['durations']['open']
     assert ([bucket['total'] for bucket in opened['buckets']], opened['median'], opened['p90']) == ([0, 0, 0, 0, 1, 1, 0], '46 days', '79 days')
     # Backlog: created, resolved (not rejected) and open by the end of each week, today last.

@@ -1,0 +1,93 @@
+{# The Time Spent view of Ticket Center (ticket_center.html), from ticket_center.ticket_time_spent: the time from opened to
+   resolved (or closed) of every ticket resolved or closed, added up. Each row lists its tickets in All Tickets
+   (data-board-show, ticket_center.js); every part tells what it is over it (data-tip). #}
+{% macro many(count, noun, nouns='') -%}{{ count }} {{ noun if count == 1 else (nouns or noun ~ 's') }}{%- endmacro %}
+{% set spent = ticket_time_spent %}
+<details class="panel collapsible-panel tickets-time-panel" id="section-time-spent" open data-panel-state-key="ticket-center:time-spent" role="tabpanel" aria-labelledby="tickets-tab-time-spent" hidden>
+  <summary class="collapsible-summary">
+    <div>
+      <p class="eyebrow">Effort</p>
+      <h2>Time Spent</h2>
+      <p class="summary-description">The calendar time from opened to resolved or closed of every ticket resolved or closed, added up: in all, where it goes, over time and by module, type, priority, assignee, reporter and version. A row lists its tickets.</p>
+    </div>
+    <span class="collapse-chip">Collapse</span>
+  </summary>
+  <div class="tickets-insights">
+    <div class="tickets-measure-note" role="note">
+      <span class="tickets-measure-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></svg></span>
+      <div><strong>How it is measured</strong>
+        <ul>
+          <li>The time of a ticket is the <b>calendar time</b> from the moment it was <b>opened</b> to the moment it was <b>resolved or closed</b>, 24 hours a day (nights and weekends included): the tool does not record working hours.</li>
+          <li>Only the tickets <b>resolved or closed</b> count; the open and rejected ones are left out. The totals add up the time of those tickets, and the average and median are per ticket.</li>
+          <li><b>Where the time goes</b> splits that time by the status the ticket had, from the changes of status of its timeline (a ticket starts New).</li>
+          <li>Units: <b>d</b> days of 24 hours, <b>h</b> hours, <b>m</b> minutes (<code>13d 4h</code>, <code>7h 12m</code>).</li>
+        </ul>
+      </div>
+    </div>
+    <div class="tickets-figures tickets-time-figures">
+      <span><strong>{{ spent.total }}</strong>Time spent in all</span>
+      <span><strong>{{ spent.count }}</strong>Tickets resolved or closed</span>
+      <span><strong>{{ spent.average }}</strong>Per ticket on average</span>
+      <span><strong>{{ spent.median }}</strong>Median per ticket</span>
+      {% if spent.longest %}<a href="/tickets/{{ spent.longest.id }}" title="#{{ spent.longest.id }} {{ spent.longest.title }}"><strong>{{ spent.longest.took }}</strong>The longest · #{{ spent.longest.id }}</a>{% else %}<span><strong>—</strong>The longest</span>{% endif %}
+    </div>
+
+    <div class="tickets-insights-grid">
+      {# The time of those tickets in each open status, by the changes of status of their timelines (a ticket starts New). #}
+      <section class="tickets-card" aria-labelledby="tickets-where-title">
+        <header class="tickets-card-head"><h3 id="tickets-where-title">Where the time goes</h3><span class="tickets-card-note">By the status of the tickets until resolved</span></header>
+        <div class="tickets-where-bar" role="img" aria-label="{% for part in spent.where %}{{ part.label }} {{ part.percent }}%{% if not loop.last %}, {% endif %}{% endfor %}">
+          {% for part in spent.where %}{% if part.share %}<span data-status="{{ part.status }}" style="flex-grow: {{ part.share }}" data-tip="{{ part.label }}: {{ part.total }} ({{ part.percent }}%), {{ part.average }} per ticket on average"></span>{% endif %}{% endfor %}
+        </div>
+        <ul class="tickets-where">
+          {% for part in spent.where %}
+          <li data-status="{{ part.status }}"><span class="tickets-where-name">{{ part.label }}</span><strong>{{ part.total }}</strong><small>{{ part.percent }}% · {{ part.average }} per ticket</small></li>
+          {% endfor %}
+        </ul>
+      </section>
+
+      <section class="tickets-card" aria-labelledby="tickets-spent-time-title" data-tickets-switch="time-spent">
+        <header class="tickets-card-head">
+          <h3 id="tickets-spent-time-title" data-switch-title>Time spent per week</h3>
+          <div class="tickets-period-choice" role="group" aria-label="Period of the chart">
+            {% for chart in spent.periods %}<button type="button" class="tickets-period-option" data-switch-choice="{{ chart.period }}" data-title="Time spent per {{ 'week' if chart.period == 'week' else 'month' }}" aria-pressed="{{ 'true' if loop.first else 'false' }}">{{ chart.choice }}</button>{% endfor %}
+          </div>
+        </header>
+        {% for chart in spent.periods %}
+        <div class="tickets-switch-view" data-switch-view="{{ chart.period }}"{% if not loop.first %} hidden{% endif %}>
+          <span class="tickets-card-note">{{ chart.note }} · the tickets resolved in each</span>
+          <div class="tickets-columns tickets-time-columns" style="--columns: {{ chart.spans | length }}">
+            {% for span in chart.spans %}
+            <div class="tickets-column" data-tip="{{ span.name }}: {{ span.total }} in {{ many(span.count, 'ticket') }} resolved">
+              <div class="tickets-column-bar"><span class="tickets-time-bar" style="height: {{ span.share }}%"></span><span class="tickets-column-value">{{ span.total if span.count else '' }}</span></div>
+              <span class="tickets-column-label">{% if span.axis %}{{ span.label }}{% endif %}</span>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        {% endfor %}
+      </section>
+
+      <div class="tickets-time-groups">
+        {% for group in spent.groups %}
+        <section class="tickets-card tickets-time-card" aria-label="Time spent {{ group.title | lower }}">
+          <header class="tickets-card-head"><h3>{{ group.title }}</h3><span class="tickets-card-note">Time in all · tickets · average per ticket</span></header>
+          {% if group.rows %}
+          <ul class="tickets-ranking">
+            {% for row in group.rows %}
+            {% set attributes %}data-spent="{{ group.key }}"{% if group.key == 'module' %} style="--module-color: {{ row.color }}"{% elif group.key == 'type' %} data-type="{{ row.key }}"{% elif group.key == 'priority' %} data-priority="{{ row.key }}"{% endif %} data-tip="{{ row.label }}: {{ row.total }} in {{ many(row.count, 'ticket') }} resolved or closed, {{ row.average }} each on average"{% endset %}
+            <li>{% if row.show %}<button type="button" class="tickets-rank tickets-spent-row" {{ attributes }} data-board-show='{{ row.show | tojson }}'>{% else %}<div class="tickets-rank tickets-spent-row" {{ attributes }}>{% endif %}
+              <span class="tickets-spent-name">{% if group.key == 'module' %}<span class="tickets-rank-dot" aria-hidden="true"></span>{% elif group.key in ['assignee', 'reporter'] %}<span class="tickets-avatar{% if not row.key %} is-empty{% endif %}" aria-hidden="true">{{ (row.label.split() | map('first') | join(''))[:2] | upper if row.key else '?' }}</span>{% endif %}<span><span class="tickets-spent-label">{{ row.label }}</span><small>{{ many(row.count, 'ticket') }} · avg {{ row.average }}</small></span></span>
+              <span class="tickets-rank-bar"><span style="width: {{ row.share }}%"></span></span>
+              <strong>{{ row.total }}</strong>
+            {% if row.show %}</button>{% else %}</div>{% endif %}</li>
+            {% endfor %}
+          </ul>
+          {% else %}<p class="ticket-muted">No ticket resolved yet.</p>{% endif %}
+        </section>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="tickets-tip" data-board-tip role="tooltip" hidden></div>
+  </div>
+</details>
