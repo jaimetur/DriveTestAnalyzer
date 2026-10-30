@@ -38,6 +38,10 @@ from src.modules.runtime_config import ignore_event_time_filtering
 
 DATABASE_BLANK_FILTER = '__database_blank__'
 WORKSPACE_REGISTRY_TABLE = '__workspace_registry__'
+# Database Management shows the rows of a CDR whose columnar copy is its only store, and of a combined table kept in
+# the copies, without changing them: CDRs stay as they were imported (see cdr_store).
+CDR_ROWS_IN_COPY_MESSAGE = ('These CDR rows are kept in the columnar copy of their CDR and are read-only: CDRs stay as '
+                            'they were imported.')
 MAIN_CITIES_STATE_KEY = 'dashboard_main_cities'
 SCORING_CONFIGURATION_STATE_KEY = 'scoring_configuration'
 # How many of the newest App Events the App Events table shows (every event is kept, exported and backed up).
@@ -126,8 +130,8 @@ class _CoordinatedConnection(sqlite3.Connection):
     """Acquire a per-Workspace lock lazily when a connection starts writing.
 
     Where the columnar copy of a CDR is its only store, its table is empty (see cdr_store): the SQL that reads it is
-    given its rows from the copy (cdr_store.provide_rows), and the SQL that writes it fails unless the CDR is held
-    (cdr_store.hold), which puts its rows back first."""
+    given its rows from the copy (cdr_store.provide_rows), and the SQL that writes it fails: the change goes to the copy
+    (cdr_store.change_cdr), its rows never back in the table."""
 
     _workspace_lock: RLock | None = None
     _workspace_key = ''
@@ -189,8 +193,8 @@ class _CoordinatedConnection(sqlite3.Connection):
         if writes:
             source = sorted(writes, key=str)[0]
             raise sqlite3.OperationalError(
-                f'The rows of CDR {source} are in its columnar copy, not in its table: hold the CDR (cdr_store.hold) to '
-                'change them.' if isinstance(source, int) else
+                f'The rows of CDR {source} are in its columnar copy, not in its table: change them in the copy '
+                '(cdr_store.change_cdr, change_copy_columns).' if isinstance(source, int) else
                 f'The rows of the combined {source} table are in the columnar copies of its CDRs, not in the table.')
         if not reads:
             return run(sql)
@@ -2738,6 +2742,12 @@ class Repository:
         match = re.fullmatch(r'dataset_rows_(\d+)', str(table_name))
         return int(match.group(1)) if match and int(match.group(1)) in cdr_store.shadow_ids(self.db_path) else None
 
+    def _rows_in_copies(self, table_name: str) -> bool:
+        """Whether the rows of a table are in the columnar copies of the CDRs: the emptied table of a CDR, or an emptied
+        combined table (Database Management shows them read-only)."""
+        combined = re.fullmatch(r'reporting_rows_(data|voice|speech)', str(table_name))
+        return self._emptied_cdr_table(table_name) is not None or bool(combined and self._combined_in_copies(combined.group(1)))
+
     def _emptied_cdr_rows(self, conn: sqlite3.Connection, dataset_id: int, columns: list[str], filtered: list[str],
                           query: str, parameters: Any) -> list[dict[str, Any]]:
         """The rows ``query`` (``SELECT rowid FROM <table> ...``) chooses in the empty table of a CDR, with ``columns``
@@ -2765,6 +2775,7 @@ class Repository:
         page_offset = max(0, int(offset))
         physical_table_name = self._physical_database_table_name(table_name)
         quoted_table = self._quote_identifier(physical_table_name)
+        rows_in_copies = self._rows_in_copies(physical_table_name)
         with self._table_connection(table_name)() as conn:
             column_rows = self._database_table_metadata(conn, physical_table_name)
             has_rowid = self._database_table_has_rowid(conn, physical_table_name)
@@ -2831,7 +2842,8 @@ class Repository:
             'all_rows': all_rows,
             'limit': page_size,
             'offset': page_offset,
-            'editable': has_rowid and table_name != WORKSPACE_REGISTRY_TABLE,
+            'editable': has_rowid and table_name != WORKSPACE_REGISTRY_TABLE and not rows_in_copies,
+            'read_only_reason': CDR_ROWS_IN_COPY_MESSAGE if rows_in_copies else '',
         }
 
     def database_table_distinct_values(
@@ -2887,6 +2899,8 @@ class Repository:
             raise ValueError('Use Workspace Management to change workspace registry records.')
         if not isinstance(updates, dict) or not updates:
             raise ValueError('Enter at least one changed value before saving.')
+        if self._rows_in_copies(table_name):
+            raise ValueError(CDR_ROWS_IN_COPY_MESSAGE)
         quoted_table = self._quote_identifier(table_name)
         with self._holding_cdr_table(table_name), self._table_connection(table_name)() as conn:
             if not self._database_table_has_rowid(conn, table_name):
@@ -2921,6 +2935,8 @@ class Repository:
             raise ValueError('The selected table does not exist in the active workspace database.')
         if table_name == WORKSPACE_REGISTRY_TABLE:
             raise ValueError('Use Workspace Management to remove workspace registry records.')
+        if self._rows_in_copies(table_name):
+            raise ValueError(CDR_ROWS_IN_COPY_MESSAGE)
         quoted_table = self._quote_identifier(table_name)
         with self._holding_cdr_table(table_name), self._table_connection(table_name)() as conn:
             if not self._database_table_has_rowid(conn, table_name):
@@ -3433,8 +3449,13 @@ class Repository:
             return dataset_id, True
 
     def rename_dataset_file(self, dataset_id: int, file_name: str, stored_path: str) -> sqlite3.Row:
-        """Update a dataset's source metadata and all materialised source-file labels."""
-        with self._holding_cdr_table(self.dataset_rows_table_name(dataset_id)), self.connection() as conn:
+        """Update a dataset's source metadata and all materialised source-file labels: those of the rows of a CDR whose
+        columnar copy is its only store in the copy (its ``source_file`` column alone rewritten, see cdr_store.change_cdr),
+        and none of an emptied combined table, whose rows read them from the copies."""
+        from src.modules import cdr_store
+
+        table_name = self.dataset_rows_table_name(dataset_id)
+        with self.connection() as conn:
             dataset = conn.execute(
                 "SELECT id, file_name, stored_path FROM datasets WHERE id = ?", (dataset_id,)
             ).fetchone()
@@ -3446,33 +3467,53 @@ class Repository:
             if duplicate:
                 raise ValueError('Another dataset already uses that file path.')
 
+        def source_column(columns: Iterable[str]) -> str | None:
+            return next((column for column in columns if column.casefold() == 'source_file'), None)
+
+        def update_source_file(conn: sqlite3.Connection, table: str, *, scoped_to_dataset: bool) -> None:
+            exists = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (table,)
+            ).fetchone()
+            if not exists:
+                return
+            column = source_column(self._table_columns(conn, table))
+            if not column:
+                return
+            where_clause = ' WHERE dataset_id = ?' if scoped_to_dataset else ''
+            parameters: tuple[Any, ...] = (file_name, dataset_id) if scoped_to_dataset else (file_name,)
             conn.execute(
-                "UPDATE datasets SET file_name = ?, stored_path = ? WHERE id = ?",
-                (file_name, stored_path, dataset_id),
+                f"UPDATE {self._quote_identifier(table)} "
+                f"SET {self._quote_identifier(column)} = ?{where_clause}",
+                parameters,
             )
 
-            def update_source_file(table_name: str, *, scoped_to_dataset: bool) -> None:
-                exists = conn.execute(
-                    "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (table_name,)
-                ).fetchone()
-                if not exists:
-                    return
-                columns = self._table_columns(conn, table_name)
-                source_column = next((column for column in columns if column.casefold() == 'source_file'), None)
-                if not source_column:
-                    return
-                where_clause = ' WHERE dataset_id = ?' if scoped_to_dataset else ''
-                parameters: tuple[Any, ...] = (file_name, dataset_id) if scoped_to_dataset else (file_name,)
+        def rename(*, rows_in_table: bool) -> None:
+            with self.connection() as conn:
                 conn.execute(
-                    f"UPDATE {self._quote_identifier(table_name)} "
-                    f"SET {self._quote_identifier(source_column)} = ?{where_clause}",
-                    parameters,
+                    "UPDATE datasets SET file_name = ?, stored_path = ? WHERE id = ?",
+                    (file_name, stored_path, dataset_id),
                 )
+                if rows_in_table:
+                    update_source_file(conn, table_name, scoped_to_dataset=False)
+                for dataset_kind in ('data', 'voice', 'speech'):
+                    if not self._combined_in_copies(dataset_kind):
+                        update_source_file(conn, self.reporting_rows_table_name(dataset_kind), scoped_to_dataset=True)
 
-            update_source_file(self.dataset_rows_table_name(dataset_id), scoped_to_dataset=False)
-            for dataset_kind in ('data', 'voice', 'speech'):
-                update_source_file(self.reporting_rows_table_name(dataset_kind), scoped_to_dataset=True)
-            return dataset
+        def in_copy() -> bool | None:
+            if int(dataset_id) not in cdr_store.shadow_ids(self.db_path):
+                return None
+            column = source_column(self.list_dataset_row_columns(dataset_id))
+            if column and not cdr_store.change_copy_columns(self, dataset_id, constants={column: file_name}):
+                return None
+            rename(rows_in_table=False)
+            return True
+
+        def in_table() -> bool:
+            rename(rows_in_table=True)
+            return True
+
+        cdr_store.change_cdr(self, dataset_id, in_copy, in_table)
+        return dataset
 
     def get_workspace_state(self, key: str) -> str | None:
         with self.connection() as conn:
@@ -4119,7 +4160,7 @@ class Repository:
         table_name = self.dataset_rows_table_name(dataset_id)
         safe_df = self._sqlite_safe_frame(df)
         # The new table stays until its columnar copy holds it (see cdr_store.hold).
-        with cdr_store.hold(self, dataset_id, restore=False), self.connection() as conn:
+        with cdr_store.hold(self, dataset_id), self.connection() as conn:
             # The new rows replace the table as it is (an empty table of a CDR whose copy held its rows too).
             conn.write_cdr_tables()
             # Reserve the writer before dropping the old materialisation.  A
@@ -4138,15 +4179,18 @@ class Repository:
 
     @contextmanager
     def _holding_cdr_table(self, table_name: str) -> Iterator[None]:
-        """Hold the CDR of a table of rows while it is changed (its table made again from its columnar copy when the
-        copy is its only store, see cdr_store.hold); any other table as it is."""
+        """Hold the CDR of a table of rows while SQL changes its table (see cdr_store.hold); any other table as it is.
+        Where the columnar copy of the CDR is its only store its rows are not in the table: ValueError (they are changed
+        in the copy, see cdr_store.change_cdr)."""
         match = re.fullmatch(r'dataset_rows_(\d+)', str(table_name))
         if not match:
             yield
             return
         from src.modules import cdr_store
 
-        with cdr_store.hold(self, int(match.group(1))):
+        with cdr_store.hold(self, int(match.group(1))) as table_holds_rows:
+            if not table_holds_rows:
+                raise ValueError(CDR_ROWS_IN_COPY_MESSAGE)
             yield
 
     def reporting_rows_table_name(self, dataset_kind: str) -> str:
@@ -4377,7 +4421,10 @@ class Repository:
             return self._table_columns(conn, table_name) if exists else []
 
     def ensure_vendor_column(self, dataset_id: int) -> None:
-        """Materialize a missing Vendor (the vendor alone) for CDRs and vendor inventories."""
+        """Materialize a missing Vendor (the vendor alone) for CDRs and vendor inventories (in the columnar copy of a CDR
+        that is its only store, see cdr_store.change_cdr)."""
+        from src.modules import cdr_store
+
         columns = self.list_dataset_row_columns(dataset_id)
         lookup = {column_identity(column): column for column in columns}
         if 'vendor' in lookup:
@@ -4387,20 +4434,45 @@ class Repository:
             return
         operators = [value for group in self.list_operator_mapping_groups()
                      for value in [group.get('canonical'), *(group.get('aliases') or [])] if value]
+        operator_names = {str(name).casefold() for name in operators}
         operator_column = lookup.get('operator')
         operator_expression = self._quote_identifier(operator_column) if operator_column else "''"
         table = self._quote_identifier(self.dataset_rows_table_name(dataset_id))
-        with self._holding_cdr_table(self.dataset_rows_table_name(dataset_id)), self.connection() as connection:
-            connection.execute('BEGIN IMMEDIATE')
-            current_columns = connection.execute(f'PRAGMA table_info({table})').fetchall()
-            if any(column_identity(row['name']) == 'vendor' for row in current_columns):
-                return
-            connection.create_function('vendor_filter_identity', 2,
-                lambda value, operator: mapped_vendor_only_value(vendor_filter_value(value, [*operators, operator]), operator or (str(value).strip() if str(value).strip().casefold() in {str(name).casefold() for name in operators} else '')))
-            connection.execute(f'ALTER TABLE {table} ADD COLUMN "{VENDOR_FIELD}" TEXT')
-            connection.execute(f'UPDATE {table} SET "{VENDOR_FIELD}" = vendor_filter_identity({self._quote_identifier(source)}, {operator_expression})')
+
+        def vendor_identity(value: Any, operator: Any) -> Any:
+            return mapped_vendor_only_value(vendor_filter_value(value, [*operators, operator]), operator or (
+                str(value).strip() if str(value).strip().casefold() in operator_names else ''))
+
+        def count_columns(connection: sqlite3.Connection) -> None:
             connection.execute('UPDATE dataset_profiles SET column_count = ?, updated_at = ? WHERE dataset_id = ?',
                                (len(columns) + 1, local_now_iso(), int(dataset_id)))
+
+        def in_copy() -> bool | None:
+            if int(dataset_id) not in cdr_store.shadow_ids(self.db_path):
+                return None
+            kind = str(self.get_dataset(dataset_id)['dataset_kind'] or '').casefold()
+            values = cdr_store.cdr_columns(self.db_path, kind, dataset_id, [cdr_store.ROWID, source, *filter(None, [operator_column])])
+            operator_values = values[operator_column] if operator_column else [''] * len(values[source])
+            vendors = pd.DataFrame({cdr_store.ROWID: values[cdr_store.ROWID],
+                                    VENDOR_FIELD: [vendor_identity(value, operator) for value, operator in zip(values[source], operator_values)]})
+            if not cdr_store.change_copy_columns(self, dataset_id, vendors):
+                return None
+            with self.connection() as connection:
+                count_columns(connection)
+            return True
+
+        def in_table() -> None:
+            with self.connection() as connection:
+                connection.execute('BEGIN IMMEDIATE')
+                current_columns = connection.execute(f'PRAGMA table_info({table})').fetchall()
+                if any(column_identity(row['name']) == 'vendor' for row in current_columns):
+                    return
+                connection.create_function('vendor_filter_identity', 2, vendor_identity)
+                connection.execute(f'ALTER TABLE {table} ADD COLUMN "{VENDOR_FIELD}" TEXT')
+                connection.execute(f'UPDATE {table} SET "{VENDOR_FIELD}" = vendor_filter_identity({self._quote_identifier(source)}, {operator_expression})')
+                count_columns(connection)
+
+        cdr_store.change_cdr(self, dataset_id, in_copy, in_table)
 
     def profile_row_count(self, row: Any) -> int:
         """The materialized rows of a dataset (a row of list_datasets), counted once per profile of the dataset: they

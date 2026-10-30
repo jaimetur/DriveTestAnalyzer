@@ -1437,11 +1437,19 @@ def _incremental_auto_field_table_update(
         if row_progress:
             row_progress(1, 1)
         return False
-    if _columnar_auto_field_update(task_repository, table_name, cdr_source, previous, current, renames, checkpoint, row_progress):
-        return True
-    with task_repository._holding_cdr_table(table_name):
+    match = re.fullmatch(r'dataset_rows_(\d+)', str(table_name))
+    if not match:
         return _apply_auto_field_table_update(task_repository, table_name, cdr_source, previous, current, renames,
                                               checkpoint, row_progress)
+    from src.modules import cdr_store
+
+    # The fields go where the rows of the CDR are, never moved between its table and its copy.
+    return cdr_store.change_cdr(
+        task_repository, int(match.group(1)),
+        lambda: _columnar_auto_field_update(task_repository, table_name, cdr_source, previous, current, renames,
+                                            checkpoint, row_progress) or None,
+        lambda: _apply_auto_field_table_update(task_repository, table_name, cdr_source, previous, current, renames,
+                                               checkpoint, row_progress))
 
 
 def _apply_auto_field_table_update(
@@ -21392,9 +21400,11 @@ def update_dataset_nr_mode(
     if previous != nr_mode:
         from src.modules import cdr_store
 
-        # The columnar copy keeps the NR Mode of its rows: it is made again from the table (see cdr_store.hold).
-        with cdr_store.hold(repository, dataset_id):
-            repository.update_dataset_profile(dataset_id, nr_mode=nr_mode)
+        repository.update_dataset_profile(dataset_id, nr_mode=nr_mode)
+        # The columnar copy keeps the NR Mode of its rows: where it is the only store of the CDR, its NR Mode column is
+        # rewritten (a table that holds the rows is copied again, see cdr_store.change_cdr).
+        cdr_store.change_cdr(repository, dataset_id, lambda: cdr_store.change_copy_columns(repository, dataset_id, nr_mode=True) or None,
+                             lambda: True)
         kind = str(dataset['dataset_kind']).casefold()
         if repository.set_reporting_nr_mode(dataset_id, kind):
             # Its rows in the combined table change their NR_Mode: the prepared PPT Designs read them again.

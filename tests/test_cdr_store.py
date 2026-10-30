@@ -1,5 +1,6 @@
 """The columnar copy of the CDRs: a Parquet file per CDR kept up to date by the triggers of its table, the catalog of
 views over the CDRs in combined, and the wait for free disk space."""
+import contextlib
 import json
 import sqlite3
 import threading
@@ -10,7 +11,7 @@ import pytest
 
 import src.DriveTestAnalyzer as core
 from src.modules import cdr_store
-from src.modules.repository import local_now_iso
+from src.modules.repository import CDR_ROWS_IN_COPY_MESSAGE, local_now_iso
 
 
 @pytest.fixture(autouse=True)
@@ -114,10 +115,12 @@ def test_every_ready_cdr_is_copied_with_the_values_of_sqlite_and_the_catalog_has
 
 def test_a_change_of_the_rows_of_a_cdr_copies_it_again(client, tmp_path):
     data = add_cdr(tmp_path, 'data.csv', 'data', data_rows())
+    # Its table holds its rows after the copy.
+    core.repository.set_workspace_state(cdr_store.ONLY_COPIES_STATE_KEY, '0')
     copy_everything()
 
-    # Any writer of the rows (an auto-calculated field, the Map Areas, Database Management) holds the CDR, which puts
-    # its rows back in its table, and raises its version.
+    # A writer of the rows of a CDR whose table holds them holds the CDR (its table is not emptied meanwhile), and its
+    # change raises its version.
     with cdr_store.hold(core.repository, data), core.repository.connection() as connection:
         connection.execute(f'UPDATE dataset_rows_{data} SET "Operator" = ? WHERE rowid = 2', ('Three',))
 
@@ -438,7 +441,7 @@ def _table_state(dataset_id):
     return made and made[0], indexes, columns, [tuple(row) for row in values]
 
 
-def test_the_table_of_a_cdr_is_made_again_from_its_copy_as_it_was(client, tmp_path):
+def test_the_copy_of_a_cdr_keeps_the_sqlite_type_of_every_value(client, tmp_path):
     rows = pd.DataFrame({'Operator': ['EE', 'O2', 'EE', None, 'Three'], 'Rate': [1.0, 2.5, None, 4.0, 5.0],
                          'Count': [1, 2, 3, None, 5], 'Status': ['ok', 'ko', None, 'ok', 'ok']})
     data = add_cdr(tmp_path, 'data.csv', 'data', rows)
@@ -462,18 +465,13 @@ def test_the_table_of_a_cdr_is_made_again_from_its_copy_as_it_was(client, tmp_pa
     assert cdr_store.rows_by_rowid(core.repository.db_path, 'data', data, ['Mixed_Number'], [1, 4]) == {
         1: (5,), 4: (9007199254740993,)}
 
-    core.repository.drop_dataset_rows(data)
-    assert cdr_store.restore_table(core.repository, data)
-
-    assert _table_state(data) == before
-    assert not cdr_store.restore_table(core.repository, data)
-    # From its empty table too.
+    # Its table emptied, the SQL of the application reads the same rows, row ids and types from the copy.
     core.repository.set_workspace_state(cdr_store.ONLY_COPIES_STATE_KEY, '1')
     assert cdr_store.drop_copied_table(core.repository, data)
-    assert _table_state(data)[3] == [] and cdr_store.restore_table(core.repository, data)
-    assert _table_state(data) == before
-    # The copy still holds it: nothing to copy again.
-    assert cdr_store.store_changes(core.repository.db_path)['pending'] == []
+    assert _table_state(data)[:3] == before[:3]
+    typed = ', '.join(f'typeof({cdr_store.quote(column)}), {cdr_store.quote(column)}' for column in before[2])
+    with core.repository.connection() as connection:
+        assert [tuple(row) for row in connection.execute(f'SELECT rowid, {typed} FROM dataset_rows_{data} ORDER BY rowid')] == before[3]
 
 
 def test_where_the_copies_are_the_only_store_a_changed_table_is_copied_and_goes(client, tmp_path):
@@ -492,21 +490,16 @@ def test_where_the_copies_are_the_only_store_a_changed_table_is_copied_and_goes(
     assert emptied() and cdr_store.fresh_copies(core.repository.db_path, [data]) == {data}
     assert cdr_store.store_changes(core.repository.db_path)['pending'] == []
 
-    # A writer holds the CDR: its rows come back from the copy, and stay while it is held.
-    with cdr_store.hold(core.repository, data):
-        assert not emptied()
-        with core.repository.connection() as connection:
-            connection.execute(f'UPDATE dataset_rows_{data} SET "Operator" = ? WHERE rowid = 2', ('Three',))
-        # Its change is copied, but the rows stay while it is held.
-        assert copy_everything()['written'] == ['data.csv'] and not emptied()
-    # Released, the table is emptied again.
+    # Its rows never go back to its table: held, the table stays empty and SQL cannot write it.
+    with cdr_store.hold(core.repository, data) as table_holds_rows:
+        assert not table_holds_rows and emptied()
+        with pytest.raises(sqlite3.OperationalError, match='columnar copy'):
+            with core.repository.connection() as connection:
+                connection.execute(f'UPDATE dataset_rows_{data} SET "Operator" = ? WHERE rowid = 2', ('Three',))
+    # The change goes to the copy, which stays the store of the CDR: nothing to copy again.
+    assert cdr_store.change_copy_columns(core.repository, data, pd.DataFrame({cdr_store.ROWID: [1, 2, 3], 'Operator': ['EE', 'Three', 'EE']}))
     assert copy_everything()['written'] == [] and emptied()
     assert cdr_store.read_cdr(core.repository.db_path, 'data', data, ['Operator'])['Operator'].tolist() == ['EE', 'Three', 'EE']
-    # Rows put back without a change are emptied too, without copying the CDR again.
-    with cdr_store.hold(core.repository, data):
-        pass
-    assert not emptied()
-    assert copy_everything()['written'] == [] and emptied()
     # Processed again, its table holds its rows.
     core.repository.replace_dataset_rows(data, data_rows())
     with core.repository.connection() as connection:
@@ -557,13 +550,13 @@ def test_the_sql_of_the_application_reads_the_rows_of_an_emptied_table_from_its_
         connection.execute(f'UPDATE copied_rows SET rate = (SELECT "Rate" FROM "{table}" WHERE "{table}".rowid = copied_rows.source)')
         assert [tuple(row) for row in connection.execute('SELECT source, operator, rate, runs FROM copied_rows ORDER BY source')] == [
             (1, 'EE', 1.5, 1), (2, 'O2', 2.0, 1), (4, 'Three', 4.0, 1)]
-    # Writing its rows needs the CDR held, which puts them back first.
-    with pytest.raises(sqlite3.OperationalError, match='columnar copy'):
-        with core.repository.connection() as connection:
-            connection.execute(f'UPDATE "{table}" SET "Operator" = ? WHERE rowid = 1', ('Vodafone UK',))
-    with cdr_store.hold(core.repository, data), core.repository.connection() as connection:
-        connection.execute(f'UPDATE "{table}" SET "Operator" = ? WHERE rowid = 1', ('Vodafone UK',))
-    copy_everything()
+    # SQL cannot write its rows, held or not: they are changed in the copy.
+    for held in (False, True):
+        with pytest.raises(sqlite3.OperationalError, match='columnar copy'):
+            with cdr_store.hold(core.repository, data) if held else contextlib.nullcontext(), core.repository.connection() as connection:
+                connection.execute(f'UPDATE "{table}" SET "Operator" = ? WHERE rowid = 1', ('Vodafone UK',))
+    assert cdr_store.change_copy_columns(core.repository, data, pd.DataFrame({
+        cdr_store.ROWID: [1, 2, 3, 4], 'Operator': ['Vodafone UK', 'O2', 'EE', 'Three']}))
     assert read()[0][0][0][1] == 'Vodafone UK'
 
 
@@ -586,6 +579,11 @@ def test_the_pages_and_counts_of_an_emptied_table_are_those_of_its_rows(client, 
     copy_everything()
     after = pages()
 
+    # The same pages, read-only once the copy is the store of the CDR.
+    for page in (*after[:2], *before[:2]):
+        page['read_only'] = (page.pop('editable'), page.pop('read_only_reason'))
+    assert [page.pop('read_only') for page in after[:2]] == [(False, CDR_ROWS_IN_COPY_MESSAGE)] * 2
+    assert [page.pop('read_only') for page in before[:2]] == [(True, '')] * 2
     assert after[0] == before[0] and after[1] == before[1] and after[3] == before[3] == 5
     pd.testing.assert_frame_equal(after[2][0], before[2][0], check_exact=True)
     assert after[2][1:] == before[2][1:]
@@ -731,9 +729,8 @@ def test_the_copies_travel_with_the_database_of_their_workspace(client, tmp_path
     core.repository.set_workspace_state(cdr_store.ONLY_COPIES_STATE_KEY, '1')
     copy_everything()
     assert cdr_store.empty_combined_table(core.repository, 'data')
-    with cdr_store.hold(core.repository, voice):
-        with core.repository.connection() as connection:
-            connection.execute(f'UPDATE dataset_rows_{voice} SET "Call_Status" = ? WHERE rowid = 2', ('Completed',))
+    core.repository.replace_dataset_rows(voice, pd.DataFrame({'Operator': ['EE', 'O2'], 'Call_Status': ['Completed', 'Completed']}))
+    core.repository.update_dataset_profile(voice, processed_at=local_now_iso())
     with core.repository.connection() as connection:
         assert cdr_store.shadows(connection) == {data} and cdr_store.combined_shadows(connection) == {'data'}
     before = rows(workspace.database_path)
@@ -916,3 +913,55 @@ def test_reading_an_emptied_table_takes_no_write_lock_of_the_workspace(client, t
         assert acquired == [True]
     finally:
         connection.close()
+
+
+def test_a_cdr_whose_copy_is_its_only_store_is_changed_in_its_copy_never_put_back_in_its_table(client, tmp_path):
+    login(client)
+    rows = pd.DataFrame({'Operator': ['EE', 'Vodafone UK', 'EE'], 'Operator_Vendor': ['EE Ericsson', 'Vodafone UK Nokia', None],
+                         'source_file': ['data.csv'] * 3, 'Mean_Data_Rate': [44.6, 7.0, None]})
+    data = add_cdr(tmp_path, 'data.csv', 'data', rows)
+    core.repository.copy_dataset_rows_to_reporting(data, 'data', ['Operator', 'source_file', 'NR_Mode'])
+    core.repository.set_workspace_state(cdr_store.ONLY_COPIES_STATE_KEY, '1')
+    copy_everything()
+    assert cdr_store.empty_combined_table(core.repository, 'data')
+    # The same rows in a table, as a CDR not copied yet: what the former path gives.
+    reference = add_cdr(tmp_path, 'reference.csv', 'data', rows)
+    manifest_file = cdr_store.manifest_file(cdr_store.store_root(core.repository.db_path), 'data', data)
+    copied_rows = cdr_store.read_manifest(manifest_file)['rows']
+
+    def in_copy_only():
+        """Whether the rows of the CDR are still in its copy alone (its table empty), as many as before."""
+        with core.repository.connection() as connection:
+            empty = not connection.execute(f'SELECT COUNT(*) FROM main.dataset_rows_{data}').fetchone()[0]
+            return empty and data in cdr_store.shadows(connection) and cdr_store.read_manifest(manifest_file)['rows'] == copied_rows
+
+    # Renamed: its source_file column alone is rewritten in its copy, and the emptied combined table reads it from there.
+    core.repository.rename_dataset_file(data, 'renamed.csv', str(tmp_path / 'renamed.csv'))
+    assert in_copy_only() and core.repository.get_dataset(data)['file_name'] == 'renamed.csv'
+    assert copy(data)['source_file'].tolist() == ['renamed.csv'] * 3
+    with core.repository.connection() as connection:
+        assert [tuple(row) for row in connection.execute('SELECT DISTINCT source_file FROM reporting_rows_data WHERE dataset_id = ?',
+                                                         (data,))] == [('renamed.csv',)]
+    assert cdr_store.combined_shadow_kinds(core.repository.db_path) == {'data'}
+
+    # Its NR Mode: the NR Mode column of its copy.
+    assert client.post(f'/workspace/datasets/{data}/nr-mode', json={'nr_mode': 'SA'}).status_code == 200
+    assert in_copy_only() and copy(data)['__nr_mode'].tolist() == ['SA'] * 3
+    assert cdr_store.read_cdrs(core.repository.db_path, 'data', [data], ['NR_Mode'])['NR_Mode'].tolist() == ['SA'] * 3
+
+    # Its missing Vendor: worked out from the columns it reads, as in its table.
+    core.repository.ensure_vendor_column(data)
+    core.repository.ensure_vendor_column(reference)
+    assert in_copy_only()
+    assert cdr_store.read_cdr(core.repository.db_path, 'data', data, ['Vendor'])['Vendor'].tolist() == \
+        core.repository.load_dataset_rows(reference, ['Vendor'], {})['Vendor'].tolist()
+
+    # Database Management shows its rows, and those of the emptied combined table, read-only.
+    page = core.repository.database_table_page(f'dataset_rows_{data}')
+    assert len(page['rows']) == 3 and not page['editable'] and page['read_only_reason'] == CDR_ROWS_IN_COPY_MESSAGE
+    assert not core.repository.database_table_page('reporting_rows_data')['editable']
+    with pytest.raises(ValueError, match='read-only'):
+        core.repository.update_database_table_row(f'dataset_rows_{data}', 1, {'Operator': 'Three'})
+    with pytest.raises(ValueError, match='read-only'):
+        core.repository.delete_database_table_row(f'dataset_rows_{data}', 1)
+    assert in_copy_only() and core.repository.database_table_page(f'dataset_rows_{reference}')['editable']

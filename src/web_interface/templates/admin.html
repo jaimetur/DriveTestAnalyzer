@@ -1872,6 +1872,7 @@
     columns = payload.columns || [];
     const rows = payload.rows || [];
     const editable = payload.editable !== false;
+    const readOnlyTitle = payload.read_only_reason || 'This internal table is read-only';
     totalRows = Number(payload.total_rows || 0);
     allRows = Number(payload.all_rows ?? totalRows);
     snapshot = new Map(rows.map((row) => [String(row.__database_rowid__), row]));
@@ -1885,12 +1886,12 @@
         const columnName = escapeHtml(column.name);
         const filtered = Boolean(filters[column.name]?.length);
         const protectedCell = column.primary_key || !editable;
-        const protectedTitle = column.primary_key ? 'Primary-key values are protected' : 'This internal table is read-only';
+        const protectedTitle = column.primary_key ? 'Primary-key values are protected' : readOnlyTitle;
         return `<td data-label="${columnName}"><div class="database-card-field-heading"><span>${columnName}${column.primary_key ? ' · key' : ''}</span><button type="button" class="database-column-filter ${filtered ? 'is-filtered' : ''}" data-database-column-filter="${columnName}" aria-label="Filter ${columnName}" title="Filter ${columnName}">⌄${filtered ? ` ${filters[column.name].length}` : ''}</button></div><input class="database-editor-cell" data-database-column="${columnName}" value="${escapeHtml(text(row[column.name]))}" ${protectedCell ? `disabled title="${protectedTitle}"` : ''}></td>`;
       }).join('');
       const actions = editable
         ? `<td class="database-editor-actions" data-label="Actions"><button type="button" class="icon-action" aria-label="Save row" title="Save row" data-database-save-row>✓</button><button type="button" class="database-editor-delete icon-action" aria-label="Delete row" title="Delete row" data-database-delete-row>×</button></td>`
-        : '<td class="database-editor-actions" data-label="Actions"><span title="This internal table is read-only">View only</span></td>';
+        : `<td class="database-editor-actions" data-label="Actions"><span title="${escapeHtml(readOnlyTitle)}">View only</span></td>`;
       return `<tr data-database-rowid="${escapeHtml(row.__database_rowid__)}">${actions}${cells}</tr>`;
     }).join('') : `<tr class="database-empty-row"><td colspan="${columns.length + 1}">No rows in this table.</td></tr>`;
     table.innerHTML = `<thead><tr><th class="database-editor-actions database-editor-actions-heading">Actions</th>${headers}</tr></thead><tbody>${body}</tbody>`;

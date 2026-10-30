@@ -120,3 +120,23 @@ def test_placing_stops_with_the_application_and_starts_again_later(repository, m
     assert queued == [] and map_area_columns.fill_tasks(repository.db_path) == []
     assert map_area_columns.fill_dataset(repository, dataset_id, 'voice') == 60
     assert map_area_columns.stale_datasets(repository) == []
+
+
+def test_a_cdr_whose_copy_is_its_only_store_keeps_its_areas_in_its_copy(repository, monkeypatch):
+    from src.modules import cdr_store
+
+    monkeypatch.setattr(cdr_store, 'free_space', lambda path: 1024 ** 4)
+    dataset_id = add_voice_cdr(repository)
+    repository.set_workspace_state(cdr_store.ONLY_COPIES_STATE_KEY, '1')
+    cdr_store.start_store_sync(repository, lambda run: run(), lambda: cdr_store.included_cdrs(repository))
+
+    assert map_area_columns.fill_dataset(repository, dataset_id, 'voice') == 60
+    # Only its two columns are written in its copy: its rows never go back to its table.
+    with repository.connection() as connection:
+        assert dataset_id in cdr_store.shadows(connection)
+        assert connection.execute(f'SELECT COUNT(*) FROM main.dataset_rows_{dataset_id}').fetchone()[0] == 0
+    stored = repository.load_dataset_rows(dataset_id, ['City', 'Map_Area', 'Map_Area_Country'], {})
+    by_city = stored.drop_duplicates('City').set_index('City')
+    assert by_city.loc['Madrid'].tolist() == ['Madrid', 'ESP'] and by_city.loc['Bilbao'].tolist() == ['', '']
+    assert map_area_columns.current_datasets(repository, [dataset_id]) == {dataset_id}
+    assert cdr_store.store_changes(repository.db_path)['pending'] == []

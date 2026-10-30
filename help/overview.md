@@ -304,7 +304,7 @@ The complete authoring specification, examples and supported chart catalogue are
 - Use **Backup Protection** for on-demand or scheduled ZIP backups. It offers independent Application database, Workspace Database, Designs, PPT Templates, Operator/Vendor Mappings & Colors, Auto-calculated Fields, Input and Output selections, then restores detected granular components after an overwrite confirmation.
 - Use **Database Viewer** to browse grouped application-configuration, active-workspace and combined-CDR tables.
 - Filter complete tables with Excel-style column menus.
-- Edit or delete individual rows.
+- Edit or delete individual rows (the CDR rows kept in their columnar copies are read-only).
 - Clean orphaned materialised dataset rows.
 
 ### Datasets Management

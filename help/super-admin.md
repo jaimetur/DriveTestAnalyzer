@@ -242,6 +242,8 @@ Capabilities:
 
 Saving or deleting a row clears analysis caches so later Design and Reporting requests use the new value. Database edits affect the active workspace immediately. Use Export first when changing production data manually.
 
+The rows of a CDR kept in its [columnar copy](workspace-management.md#columnar-copy-of-the-cdrs), and those of a combined CDR table kept in the copies, are shown read-only (**View only**): CDRs stay as they were imported, and are changed by processing or mapping them again.
+
 ## Reset Application
 
 > [!CAUTION]

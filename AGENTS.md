@@ -62,6 +62,15 @@
 - Skip those templates created by other users rather tan me (EJAITUR) or system.
 - Skip, rename or adapt those very workspace-specific templates, for instance if one template contains references to operators of the current workspace, don't include it by default or adapt it to remove the workspace-specific values.
 
+## Changing CDRs whose rows are in their columnar copy
+- The Parquet copies in `.cdr-store` are the only store of the CDR rows: once copied, the CDR tables (`dataset_rows_N`) and the combined tables (`reporting_rows_<kind>`) are kept empty (see `src/modules/cdr_store.py`).
+- Never put the rows of a CDR back in SQLite to change them there and copy them again (Parquet → SQLite → Parquet). That round trip takes minutes per CDR, holds the workspace write lock and, over a whole workspace, left the tool unusable for hours; it was removed in v0.10.1 and must not be proposed again by any module.
+- Change a CDR where its rows are with `cdr_store.change_cdr`: in its copy with `cdr_store.change_copy_columns` (only the columns that change are rewritten with DuckDB: values per row, one value for every row, columns dropped, the NR Mode of the CDR), or with SQL in its table only while the table still holds its rows (just processed, not copied yet).
+- Read the values a change needs from the copy (`cdr_store.read_cdr`, `cdr_columns`, `query_cdr`), never by putting the rows back in a table.
+- SQL cannot write an emptied table: Repository's coordinated connection refuses it. When a change is not covered by `change_copy_columns`, extend the copy functions in `cdr_store.py` (rewriting only the affected columns or parts) instead of going through SQLite.
+- CDRs stay as they were imported: Database Management shows the rows of a CDR in its copy, and of an emptied combined table, read-only.
+- Mapping a CDR again (Vendor, Region, Cluster) and processing it again still write all its new rows to its table, which is then copied again in the background: never use that path for a change of some columns.
+
 ## Database Management
 - When any new table is created, it has to be visible in the Database Management selector and the tittle should have the same format than the others (Uppercase the First Letter of each Word).
 

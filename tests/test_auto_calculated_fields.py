@@ -293,14 +293,11 @@ def test_fields_of_a_cdr_whose_copy_is_its_only_store_are_worked_out_on_the_copy
     current = parse_calculated_dimensions(shipped)
     previous = parse_calculated_dimensions([item for item in shipped if item['name'] in ('Call_Family', 'Test_Family')])
     names = ['Test_Result_Group', 'RAT_Group', 'NR_Mode_from_RAT']
-    restored = []
-    monkeypatch.setattr(cdr_store, 'restore_table', lambda repository, dataset_id: restored.append(dataset_id))
 
     assert core._incremental_auto_field_table_update(core.repository, f'dataset_rows_{voice}', 'cdr-voice', previous, current, {})
     assert core._incremental_auto_field_table_update(core.repository, f'dataset_rows_{reference}', 'cdr-voice', previous, current, {})
 
     # Never put back in its table: its copy holds the fields, and the SQL of the application reads them from it.
-    assert voice not in restored
     with core.repository.connection() as connection:
         assert voice in cdr_store.shadows(connection)
         assert connection.execute(f'SELECT COUNT(*) FROM main.dataset_rows_{voice}').fetchone()[0] == 0
@@ -320,11 +317,8 @@ def test_fields_of_a_cdr_whose_copy_is_its_only_store_are_worked_out_on_the_copy
     assert 'RAT_Group' not in core.repository.list_dataset_row_columns(voice)
     manifest = cdr_store.read_manifest(cdr_store.manifest_file(cdr_store.store_root(core.repository.db_path), 'voice', voice))
     assert 'RAT_Group' not in dict(manifest['columns']) and dict(manifest['columns'])['NR_Mode_from_RAT'] == 'VARCHAR'
-    assert voice not in restored
-    # Put back in its table, the CDR has the fields as its copy keeps them.
-    monkeypatch.undo()
-    monkeypatch.setattr(cdr_store, 'free_space', lambda path: 1024 ** 4)
-    assert cdr_store.restore_table(core.repository, voice)
+    with core.repository.connection() as connection:
+        assert connection.execute(f'SELECT COUNT(*) FROM main.dataset_rows_{voice}').fetchone()[0] == 0
     assert core.repository.load_dataset_rows(voice, ['NR_Mode_from_RAT'], {})['NR_Mode_from_RAT'].tolist() == EXPECTED
 
 

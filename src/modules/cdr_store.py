@@ -5,9 +5,15 @@ id>/part-*.parquet`` beside the workspace database, with its SQLite row id, its 
 again when its rows change: triggers on its table count every insert, update and delete, so no writer has to tell.
 Once copied, its table is emptied (its columns and indexes kept), and so are the combined tables once the copies hold
 their CDRs: the SQL of the application that reads them is given their rows from the copies (see Repository's
-coordinated connection), and a writer holds the CDR, which puts its rows back in its table first. ``.cdr-store/
-catalog.duckdb`` holds one view per CDR type (``cdr_data``, ``cdr_voice``, ``cdr_speech``) over the CDRs the combined
-tables include, for tools such as Tableau.
+coordinated connection). ``.cdr-store/catalog.duckdb`` holds one view per CDR type (``cdr_data``, ``cdr_voice``,
+``cdr_speech``) over the CDRs the combined tables include, for tools such as Tableau.
+
+The rows of a copy never go back to a table. A CDR is changed where its rows are (change_cdr): in its copy, only the
+columns that change rewritten with DuckDB (change_copy_columns, seconds per CDR), or in its table with SQL while the table
+still holds them (hold). Putting every row of a CDR back in SQLite to change it there and copying it again took minutes
+per CDR and kept the workspace locked, hours for a whole workspace: SQL cannot write an emptied table (Repository's
+coordinated connection refuses it), and a change no copy function covers gets one here, never a round trip through
+SQLite. See "Changing CDRs whose rows are in their columnar copy" in AGENTS.md.
 """
 from __future__ import annotations
 
@@ -516,9 +522,10 @@ def _table_columns(connection: sqlite3.Connection, dataset_id: int) -> list[str]
     return [str(row[1]) for row in connection.execute(f'PRAGMA table_info({quote(f"dataset_rows_{int(dataset_id)}")})')]
 
 
-def _ready_cdrs(connection: sqlite3.Connection) -> dict[int, dict[str, Any]]:
-    """The ready Data, Voice and Speech CDRs of the workspace: those with a table of rows (``table``), which their copy
-    follows, and those whose copy is their only store (their table empty, or gone)."""
+def _ready_cdrs(connection: sqlite3.Connection, *, ready_only: bool = True) -> dict[int, dict[str, Any]]:
+    """The ready Data, Voice and Speech CDRs of the workspace (any of them, being processed too, without
+    ``ready_only``): those with a table of rows (``table``), which their copy follows, and those whose copy is their
+    only store (their table empty, or gone)."""
     empty = shadows(connection)
     tables = {str(row[0]) for row in connection.execute(
         "SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'dataset_rows_%'")}
@@ -534,7 +541,7 @@ def _ready_cdrs(connection: sqlite3.Connection) -> dict[int, dict[str, Any]]:
                       'normalization_version': int(row[6] or 1), 'row_count': int(row[7] or 0),
                       'table': f'dataset_rows_{int(row[0])}' in tables and int(row[0]) not in empty}
         for row in rows
-        if str(row[2] or '').casefold() == 'ready' and str(row[3] or '').casefold() in CDR_KINDS
+        if (str(row[2] or '').casefold() == 'ready' or not ready_only) and str(row[3] or '').casefold() in CDR_KINDS
     }
 
 
@@ -860,7 +867,7 @@ ONLY_COPIES_STATE_KEY = 'cdr_store_only_copies'
 
 _holds: dict[tuple[str, int], int] = {}
 _holds_guard = Lock()
-_restore_locks: dict[tuple[str, int], Lock] = {}
+_table_locks: dict[tuple[str, int], Lock] = {}
 
 
 def only_copies(database_path: Any) -> bool:
@@ -871,82 +878,45 @@ def only_copies(database_path: Any) -> bool:
     return bool(row and str(row[0]) == '1')
 
 
-def restore_table(repository: Any, dataset_id: int) -> bool:
-    """Put the rows of a CDR back in its table from its copy, as they were: its row ids and values (with their SQLite
-    types), in its empty table, or in the table made again as it was (its CREATE TABLE and indexes) when it is gone;
-    returns whether it did (not when the table holds the rows or the CDR has no copy)."""
-    import duckdb
-
-    database_path = repository.db_path
-    dataset_id = int(dataset_id)
-    table = f'dataset_rows_{dataset_id}'
-
-    def state(connection: sqlite3.Connection) -> str:
-        exists = connection.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (table,)).fetchone()
-        return 'gone' if not exists else 'empty' if dataset_id in shadows(connection) else 'full'
-
-    with sqlite3.connect(database_path, timeout=30) as connection:
-        if state(connection) == 'full':
-            return False
-        row = connection.execute('SELECT dataset_kind FROM dataset_profiles WHERE dataset_id = ?', (dataset_id,)).fetchone()
-    kind = str(row[0] or '').casefold() if row else ''
-    root = store_root(database_path)
-    manifest = read_manifest(manifest_file(root, kind, dataset_id)) if kind in CDR_KINDS else None
-    if manifest is None or not cdr_folder(root, kind, dataset_id).is_dir():
-        return False
-    schema = manifest.get('schema') or {}
-    columns = [column for column, _type in manifest['columns']]
-    with duckdb.connect() as duck:
-        last = duck.execute(f'SELECT MAX({quote(ROWID)}) FROM read_parquet({_sql_text(cdr_parts(root, kind, dataset_id))})').fetchone()[0]
-    insert = (f'INSERT INTO {quote(table)} (rowid{"".join(", " + quote(column) for column in columns)}) '
-              f'VALUES ({", ".join("?" for _ in range(len(columns) + 1))})')
-    with repository.connection() as connection:
-        _as_it_is(connection)
-        connection.execute('BEGIN IMMEDIATE')
-        current = state(connection)
-        if current == 'full':
-            return False
-        if current == 'gone':
-            if not schema.get('table'):
-                raise LookupError(f'The copy of CDR {dataset_id} does not say how its table is made.')
-            connection.execute(schema['table'])
-        # The rows come back without counting as a change of the CDR.
-        drop_change_triggers(connection, dataset_id)
-        for low in range(0, int(last or 0), READ_BATCH_ROWS):
-            values, _length = _raw(database_path, kind, dataset_id, [ROWID, *columns], rowid_range=(low, low + READ_BATCH_ROWS))
-            connection.executemany(insert, zip(*(_python_values(values[column]).tolist() for column in [ROWID, *columns])))
-        if current == 'gone':
-            for sql in schema.get('indexes') or []:
-                connection.execute(sql)
-        if connection.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (SHADOWS_TABLE,)).fetchone():
-            connection.execute(f'DELETE FROM {SHADOWS_TABLE} WHERE dataset_id = ?', (dataset_id,))
-        ensure_versions_table(connection)
-        ensure_change_triggers(connection, dataset_id)
-    # Its rows are in the table again.
-    _set_shadow(database_path, dataset_id, False)
-    return True
-
-
 @contextmanager
-def hold(repository: Any, dataset_id: int, *, restore: bool = True):
-    """Keep the table of rows of a CDR while it is changed, made again from its copy first when the copy is its only
-    store (with ``restore``); its copy follows it afterwards in the background, and where the copies are the only store
-    the table then goes (never while it is held)."""
+def hold(repository: Any, dataset_id: int):
+    """Keep the table of rows of a CDR as it is while SQL changes it: it is not emptied meanwhile, and its copy follows
+    it afterwards in the background (where the copies are the only store, the table then goes, never while it is held).
+    Yields whether the table holds the rows of the CDR: where its copy is its only store (False) the table stays empty
+    and SQL cannot write it, the change goes to the copy (change_cdr, change_copy_columns)."""
     key = (_workspace_key(repository.db_path), int(dataset_id))
     with _holds_guard:
         _holds[key] = _holds.get(key, 0) + 1
-        lock = _restore_locks.setdefault(key, Lock())
+        lock = _table_locks.setdefault(key, Lock())
     try:
-        # A table being removed goes first (see drop_copied_table).
+        # A table being emptied goes first (see drop_copied_table).
         with lock:
-            if restore:
-                restore_table(repository, dataset_id)
-        yield
+            with sqlite3.connect(repository.db_path, timeout=30) as connection:
+                table_holds_rows = int(dataset_id) not in shadows(connection)
+        yield table_holds_rows
     finally:
         with _holds_guard:
             _holds[key] -= 1
             if not _holds[key]:
                 del _holds[key]
+
+
+def change_cdr(repository: Any, dataset_id: int, in_copy: Callable[[], Any], in_table: Callable[[], Any],
+               should_stop: Callable[[], bool] = lambda: False) -> Any:
+    """Change the rows of a CDR where they are, never moving them between its table and its columnar copy: ``in_copy``
+    changes the copy (change_copy_columns) and returns None when the copy is not the store of the CDR (its table holds
+    its rows) or a writer holds it; ``in_table`` changes the table with SQL, the CDR held meanwhile so that its table is
+    not emptied. Returns what either returned, or None when ``should_stop``."""
+    while not should_stop():
+        result = in_copy()
+        if result is not None:
+            return result
+        with hold(repository, dataset_id) as table_holds_rows:
+            if table_holds_rows:
+                return in_table()
+        # Emptied meanwhile, or a writer held it: its copy holds its rows.
+        time.sleep(0.05)
+    return None
 
 
 def held(database_path: Any, dataset_id: int) -> bool:
@@ -961,7 +931,7 @@ def drop_copied_table(repository: Any, dataset_id: int) -> bool:
     dataset_id = int(dataset_id)
     key = (_workspace_key(repository.db_path), dataset_id)
     with _holds_guard:
-        lock = _restore_locks.setdefault(key, Lock())
+        lock = _table_locks.setdefault(key, Lock())
     # A writer that holds the CDR from now on waits for the table to go, and makes it again.
     with lock:
         with _holds_guard:
@@ -981,13 +951,15 @@ def drop_copied_table(repository: Any, dataset_id: int) -> bool:
 
 
 def change_copy_columns(repository: Any, dataset_id: int, values: pd.DataFrame | None = None, drop: Any = (),
-                        should_stop: Callable[[], bool] = lambda: False) -> bool:
+                        should_stop: Callable[[], bool] = lambda: False, *, constants: dict[str, str | None] | None = None,
+                        nr_mode: bool = False) -> bool:
     """Change some columns of a CDR whose copy is its only store in the copy itself, never putting its rows back in its
     table: ``drop`` columns, and set the text columns of ``values`` (ROWID and one column per field, a row for every
-    row of the CDR; a row it lacks gets no value), added or in place of the columns of those names. Its empty table
-    follows (ALTER TABLE) and its manifest says the new columns, so the copy stays its store. Returns whether it did: not
-    for a CDR whose table holds its rows or that a writer holds (its table is then changed instead), nor when it
-    stopped."""
+    row of the CDR; a row it lacks gets no value) and of ``constants`` (one value for every row), added or in place of
+    the columns of those names; with ``nr_mode`` its rows take the NR Mode the CDR has now. Its empty table follows
+    (ALTER TABLE), its manifest says the new columns and its version goes up (as a change of its rows), so the copy
+    stays its store. Returns whether it did: not for a CDR whose table holds its rows or that a writer holds (its table
+    is then changed instead, see change_cdr), nor when it stopped."""
     import duckdb
 
     dataset_id = int(dataset_id)
@@ -995,8 +967,8 @@ def change_copy_columns(repository: Any, dataset_id: int, values: pd.DataFrame |
     table = f'dataset_rows_{dataset_id}'
     key = (_workspace_key(database_path), dataset_id)
     with _holds_guard:
-        lock = _restore_locks.setdefault(key, Lock())
-    # No writer puts the rows back meanwhile (see hold), nor is the table emptied again.
+        lock = _table_locks.setdefault(key, Lock())
+    # No writer changes its table meanwhile (see hold), nor is the table emptied again.
     with lock:
         with _holds_guard:
             if key in _holds:
@@ -1005,14 +977,17 @@ def change_copy_columns(repository: Any, dataset_id: int, values: pd.DataFrame |
             if dataset_id not in shadows(connection) or not connection.execute(
                     "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (table,)).fetchone():
                 return False
-            cdr = _ready_cdrs(connection).get(dataset_id)
+            # A CDR being processed again keeps its copy until its new rows replace it.
+            cdr = _ready_cdrs(connection, ready_only=False).get(dataset_id)
         root = store_root(database_path)
         manifest = read_manifest(manifest_file(root, cdr['kind'], dataset_id)) if cdr else None
         target = cdr_folder(root, cdr['kind'], dataset_id) if cdr else None
         if manifest is None or not target.is_dir():
-            return False
+            raise LookupError(f'The table of CDR {dataset_id} is empty and its columnar copy is missing.')
         types = dict(manifest['columns'])
+        constants = {str(column): value for column, value in (constants or {}).items()}
         written = [] if values is None else [str(column) for column in values.columns if column != ROWID]
+        written += [column for column in constants if column not in written]
         if any(column in {ROWID, DATASET_ID, NR_MODE} or column.startswith((INT_PREFIX, REAL_PREFIX)) for column in written):
             raise ValueError(f'The CDR {cdr["file_name"]} cannot have a column named like the columns the copy adds.')
         dropped = {str(column) for column in drop} - set(written)
@@ -1027,17 +1002,25 @@ def change_copy_columns(repository: Any, dataset_id: int, values: pd.DataFrame |
         previous = target.parent / f'.{dataset_id}.{os.getpid()}.columns.old'
         shutil.rmtree(temporary, ignore_errors=True)
         temporary.mkdir(parents=True)
-        selected = [f'p.{quote(part)}' for part in (ROWID, DATASET_ID, NR_MODE)]
+        selected = [f'p.{quote(ROWID)}', f'p.{quote(DATASET_ID)}',
+                    f'CAST({_sql_text(cdr["nr_mode"]) if cdr["nr_mode"] else "NULL"} AS VARCHAR) AS {quote(NR_MODE)}'
+                    if nr_mode else f'p.{quote(NR_MODE)}']
         for column in columns:
-            selected += ([f'CAST(v.{quote(column)} AS VARCHAR) AS {quote(column)}'] if column in written
-                         else [f'p.{quote(part)}' for part in stored_parts([column], types)])
+            if column in constants:
+                value = constants[column]
+                selected.append(f'CAST({"NULL" if value is None else _sql_text(str(value))} AS VARCHAR) AS {quote(column)}')
+            elif column in written:
+                selected.append(f'CAST(v.{quote(column)} AS VARCHAR) AS {quote(column)}')
+            else:
+                selected += [f'p.{quote(part)}' for part in stored_parts([column], types)]
         duck = duckdb.connect(config={'memory_limit': '1GB', 'threads': 2})
         try:
             joined = ''
-            if written:
-                frame = values[[ROWID, *written]].copy()
+            from_values = [column for column in written if column not in constants]
+            if from_values:
+                frame = values[[ROWID, *from_values]].copy()
                 frame[ROWID] = frame[ROWID].astype('int64')
-                for column in written:
+                for column in from_values:
                     frame[column] = frame[column].astype('string')
                 duck.register('field_values', frame)
                 joined = f' LEFT JOIN field_values v ON v.{quote(ROWID)} = p.{quote(ROWID)}'
@@ -1054,7 +1037,10 @@ def change_copy_columns(repository: Any, dataset_id: int, values: pd.DataFrame |
             raise
         finally:
             duck.close()
-        if rows != int(manifest.get('rows', rows)) or should_stop():
+        if rows != int(manifest.get('rows', rows)):
+            shutil.rmtree(temporary, ignore_errors=True)
+            raise RuntimeError(f'The changed copy of CDR {dataset_id} does not have the rows of its copy.')
+        if should_stop():
             shutil.rmtree(temporary, ignore_errors=True)
             return False
         copies = copies_lock(root)
@@ -1078,6 +1064,11 @@ def change_copy_columns(repository: Any, dataset_id: int, values: pd.DataFrame |
                 if sorted(table_columns) != sorted(columns):
                     raise RuntimeError(f'The table of CDR {dataset_id} and its changed copy do not have the same columns.')
                 schema = table_schema(connection, dataset_id)
+                # Its rows changed: what reads the copies (the catalog, the views of the Tableau server) reads it again.
+                ensure_versions_table(connection)
+                connection.execute(f'INSERT INTO {VERSIONS_TABLE} (dataset_id, version) VALUES (?, 1) '
+                                   'ON CONFLICT(dataset_id) DO UPDATE SET version = version + 1', (dataset_id,))
+                cdr = _ready_cdrs(connection, ready_only=False).get(dataset_id) or cdr
                 current = revision(cdr, table_columns, _versions(connection).get(dataset_id, 0))
                 # The new copy takes the place of the old one as the table changes (readers of the old one keep their
                 # open files).
@@ -1086,7 +1077,7 @@ def change_copy_columns(repository: Any, dataset_id: int, values: pd.DataFrame |
                 os.replace(temporary, target)
                 swapped = True
                 _write_json(manifest_file(root, cdr['kind'], dataset_id), {
-                    **manifest, 'revision': current, 'rows': rows, 'schema': schema,
+                    **manifest, 'file_name': cdr['file_name'], 'revision': current, 'rows': rows, 'schema': schema,
                     'columns': [[column, new_types[column]] for column in table_columns],
                     'written_at': datetime.now(timezone.utc).isoformat(timespec='seconds'),
                 })

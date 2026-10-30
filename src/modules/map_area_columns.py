@@ -87,19 +87,62 @@ FILL_BATCH_ROWS = 10_000
 def fill_dataset(repository: Any, dataset_id: int, kind: str, should_stop: Callable[[], bool] = lambda: False) -> int:
     """Place the tests of a CDR in the current Map Areas and keep their areas in its rows; returns how many.
 
-    The areas are written in short transactions; ``should_stop`` (the application stopping) leaves the CDR to be
-    placed again later, and returns -1. The table of the CDR is held meanwhile (see cdr_store.hold)."""
+    The areas go where the rows of the CDR are: in its columnar copy, only their two columns rewritten (see
+    cdr_store.change_cdr), or in its table, in short transactions. ``should_stop`` (the application stopping) leaves the
+    CDR to be placed again later, and returns -1."""
     from src.modules import cdr_store
-
-    with cdr_store.hold(repository, dataset_id):
-        return _fill_dataset(repository, dataset_id, kind, should_stop)
-
-
-def _fill_dataset(repository: Any, dataset_id: int, kind: str, should_stop: Callable[[], bool]) -> int:
-    from src.modules.map_areas import area_index
 
     ensure_table(repository)
     version = areas_version(repository)
+    placed = cdr_store.change_cdr(repository, dataset_id, lambda: _fill_copy(repository, dataset_id, kind, should_stop),
+                                  lambda: _fill_table(repository, dataset_id, kind, should_stop), should_stop)
+    if placed is None or placed < 0:
+        return -1
+    if not repository.dataset_rows_table_exists(dataset_id):
+        return 0  # The CDR was deleted meanwhile.
+    with repository.connection() as connection:
+        connection.execute(
+            f'INSERT INTO {FILLS_TABLE} (dataset_id, version, filled_at) VALUES (?, ?, ?) '
+            'ON CONFLICT(dataset_id) DO UPDATE SET version = excluded.version, filled_at = excluded.filled_at',
+            (int(dataset_id), version, pd.Timestamp.now().isoformat(timespec='seconds')))
+    return placed
+
+
+def _place(repository: Any, frame: pd.DataFrame) -> pd.DataFrame:
+    """The area and country of each test of ``frame`` (its latitude and longitude); empty outside every area."""
+    from src.modules.map_areas import area_index
+
+    places = area_index(repository).places_of(pd.to_numeric(frame['latitude'], errors='coerce'),
+                                              pd.to_numeric(frame['longitude'], errors='coerce'))
+    frame['area'] = places['name'].fillna('').astype(str).to_numpy()
+    frame['country'] = places['country'].fillna('').astype(str).to_numpy()
+    return frame
+
+
+def _fill_copy(repository: Any, dataset_id: int, kind: str, should_stop: Callable[[], bool]) -> int | None:
+    """Place the tests of a CDR whose columnar copy is its only store, read from the copy and written to it (None when
+    the copy is not its store)."""
+    from src.modules import cdr_store
+
+    if int(dataset_id) not in cdr_store.shadow_ids(repository.db_path):
+        return None
+    coordinates = _coordinate_columns(repository.list_dataset_row_columns(dataset_id), kind, workspace_field_profile(repository))
+    frame = None if coordinates is None else cdr_store.read_cdr(repository.db_path, kind, dataset_id, [cdr_store.ROWID, *coordinates])
+    if frame is None or frame.empty:
+        # Tests without coordinates lie in no area.
+        changed = cdr_store.change_copy_columns(repository, dataset_id, constants={MAP_AREA_COLUMN: '', MAP_AREA_COUNTRY_COLUMN: ''},
+                                                should_stop=should_stop)
+        return 0 if changed else None
+    frame.columns = [cdr_store.ROWID, 'latitude', 'longitude']
+    frame = _place(repository, frame)
+    values = pd.DataFrame({cdr_store.ROWID: frame[cdr_store.ROWID], MAP_AREA_COLUMN: frame['area'],
+                           MAP_AREA_COUNTRY_COLUMN: frame['country']})
+    if should_stop() or not cdr_store.change_copy_columns(repository, dataset_id, values, should_stop=should_stop):
+        return None
+    return len(frame)
+
+
+def _fill_table(repository: Any, dataset_id: int, kind: str, should_stop: Callable[[], bool]) -> int:
     table = repository.dataset_rows_table_name(dataset_id)
     quoted = repository._quote_identifier(table)
     available = repository.list_dataset_row_columns(dataset_id)
@@ -112,10 +155,7 @@ def _fill_dataset(repository: Any, dataset_id: int, kind: str, should_stop: Call
             frame = pd.read_sql_query(f'SELECT rowid AS rid, {latitude} AS latitude, {longitude} AS longitude FROM {quoted}',
                                       connection)
     if coordinates is not None and not frame.empty:
-        places = area_index(repository).places_of(pd.to_numeric(frame['latitude'], errors='coerce'),
-                                                  pd.to_numeric(frame['longitude'], errors='coerce'))
-        frame['area'] = places['name'].fillna('').astype(str).to_numpy()
-        frame['country'] = places['country'].fillna('').astype(str).to_numpy()
+        frame = _place(repository, frame)
     area, country = (repository._quote_identifier(name) for name in (MAP_AREA_COLUMN, MAP_AREA_COUNTRY_COLUMN))
     with repository.connection() as connection:
         columns = {row['name'] for row in connection.execute(f'PRAGMA table_info({quoted})').fetchall()}
@@ -136,11 +176,6 @@ def _fill_dataset(repository: Any, dataset_id: int, kind: str, should_stop: Call
             with repository.connection() as connection:
                 connection.executemany(f'UPDATE {quoted} SET {area} = ?, {country} = ? WHERE rowid = ?',
                                        rows[start:start + FILL_BATCH_ROWS])
-    with repository.connection() as connection:
-        connection.execute(
-            f'INSERT INTO {FILLS_TABLE} (dataset_id, version, filled_at) VALUES (?, ?, ?) '
-            'ON CONFLICT(dataset_id) DO UPDATE SET version = excluded.version, filled_at = excluded.filled_at',
-            (int(dataset_id), version, pd.Timestamp.now().isoformat(timespec='seconds')))
     return len(frame)
 
 
