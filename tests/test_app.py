@@ -9585,6 +9585,44 @@ def test_admin_catalogue_rename_supports_background_json_save(client) -> None:
     assert next(item for item in app_module.report_catalogue_options() if item['identifier'] == 'Renamed default')['name'] == 'Renamed default'
 
 
+def test_ppt_templates_actions_answer_the_dialog_in_place(client) -> None:
+    """The PPT Templates dialog sends its actions with Accept: application/json and draws itself again: each answers
+    what was done or went wrong (and the template to edit) instead of reloading the PPT Designer page."""
+    import src.DriveTestAnalyzer as app_module
+
+    login(client)
+    json_headers = {'accept': 'application/json'}
+    content = legacy_template_csv('8,First,,Title and 1 column + Comments,,CDR-Voice,Call_Status,100% Stacked Vertical Bars,,Operator,Campaign,,')
+    imported = client.post('/ppt-designer/templates/import', data={'catalogue_name': 'In Place'},
+                           files={'catalogue_file': ('in_place.csv', BytesIO(content), 'text/csv')}, headers=json_headers)
+    assert imported.status_code == 200
+    assert imported.json() == {'notice': 'Imported In Place.', 'error': None, 'edit_template': None}
+    missing_file = client.post('/ppt-designer/templates/import', data={'catalogue_name': 'Nothing'}, headers=json_headers)
+    assert missing_file.status_code == 400
+    assert missing_file.json()['error'] == 'Select a CSV Report Template.'
+
+    duplicated = client.post('/ppt-designer/templates/In%20Place/duplicate', headers=json_headers)
+    assert duplicated.status_code == 200 and duplicated.json()['error'] is None
+    activated = client.post('/ppt-designer/templates/In%20Place%20-%20Copy/activate', headers=json_headers)
+    assert activated.status_code == 200
+    assert next(item['identifier'] for item in app_module.report_catalogue_options() if item['active']) == 'In Place - Copy'
+    protected = client.post('/ppt-designer/templates/In%20Place%20-%20Copy/delete', headers=json_headers)
+    assert protected.status_code == 400
+    assert protected.json()['error'] == 'The default template cannot be deleted.'
+    deleted = client.post('/ppt-designer/templates/In%20Place/delete', headers=json_headers)
+    assert deleted.status_code == 200
+    assert 'In Place' not in {item['identifier'] for item in app_module.report_catalogue_options()}
+
+    created = client.post('/ppt-designer/templates/new', headers=json_headers)
+    assert created.status_code == 200
+    assert created.json()['edit_template'] == 'New Template'
+    # A form sent the classic way still goes back to the PPT Designer page with the dialog open.
+    classic = client.post('/ppt-designer/templates/new', follow_redirects=False)
+    assert classic.status_code == 303
+    assert classic.headers['location'] == '/ppt-designer?ppt_templates=1&edit_template=New+Template+2'
+    assert 'data-submit-in-place' in client.get('/ppt-designer').text
+
+
 def test_report_template_rename_keeps_special_characters_in_action_urls(client) -> None:
     import src.DriveTestAnalyzer as app_module
 

@@ -3787,6 +3787,7 @@ function bindCatalogueAutoRename(input) {
         input.setAttribute('aria-label', `Name for ${savedValue}`);
         const previousIdentifier = input.form.action.match(/\/(?:ppt-designer\/templates|workspace-config\/report-templates)\/([^/]+)\/rename$/)?.[1];
         updateCatalogueIdentifier(previousIdentifier, payload.identifier);
+        document.dispatchEvent(new CustomEvent('catalogue:template-renamed', {detail: {name: savedValue}}));
       } catch (error) {
         input.value = savedValue;
         showInfoDialog(error instanceof Error ? error.message : 'The template name could not be saved.', {
@@ -3946,6 +3947,15 @@ document.querySelectorAll('form[action*="/ppt-designer/templates/"]').forEach((f
   form.addEventListener('submit', () => preserveAdminScrollPosition());
 });
 
+// A form of a list that draws itself again (PPT Templates of PPT Designer, marked data-submit-in-place) is sent by that
+// list without leaving the page: true then, and the caller does not submit it.
+function submitFormInPlace(form) {
+  const host = form.closest('[data-submit-in-place]');
+  if (typeof host?.submitInPlace !== 'function') return false;
+  void host.submitInPlace(form);
+  return true;
+}
+
 function bindCatalogueImportForm(form) {
   const name = form.querySelector('[data-catalogue-import-name]');
   const file = form.querySelector('[data-catalogue-import-file]');
@@ -3979,6 +3989,7 @@ function bindCatalogueImportForm(form) {
     event.preventDefault();
     const selected = file?.files?.[0];
     if (!selected) {
+      if (submitFormInPlace(form)) return;
       preserveAdminScrollPosition();
       form.dataset.catalogueSubmitting = '1';
       HTMLFormElement.prototype.submit.call(form);
@@ -4010,8 +4021,9 @@ function bindCatalogueImportForm(form) {
     }
     if (convert) convert.value = shouldConvert ? '1' : '0';
     if (overwrite) overwrite.value = existing ? '1' : '0';
-    form.dataset.catalogueSubmitting = '1';
     showLoadingOverlay('Importing PPT Templates', 'Validating and storing the selected template in the workspace.');
+    if (submitFormInPlace(form)) return;
+    form.dataset.catalogueSubmitting = '1';
     preserveAdminScrollPosition();
     HTMLFormElement.prototype.submit.call(form);
   });
@@ -8711,7 +8723,7 @@ function bindConfirmForm(form) {
         preserveAdminScrollPosition();
       }
       if (isChartMappingForm(form)) await submitChartMappingForm(form);
-      else form.submit();
+      else if (!submitFormInPlace(form)) form.submit();
     }
   });
 }

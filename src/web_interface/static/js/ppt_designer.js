@@ -2891,14 +2891,44 @@
     config.templates = templates;
     templateOptions(definition ? (designs[activeId]?.template || chosen) : chosen);
   }
-  async function refreshTemplatesLibrary() {
+  async function refreshTemplatesLibrary({redraw = true} = {}) {
     if (!$('ds-templates-body')) return;
     const result = await api('/templates-library');
     setTemplates(result.templates);
     library();
+    if (!redraw) return;
     const body = $('ds-templates-body');
     body.innerHTML = result.html;
     window.bindCatalogueTemplateControls?.(body);
+  }
+  // The actions of PPT Templates (set default, duplicate, delete, new template, import) are sent in place: the dialog
+  // stays open and draws itself again, without reloading the page, and a new template opens in its Designer. The PPT
+  // Designs are read again too, as those of a deleted template keep its slides as their own.
+  let templateActionRunning = false;
+  async function submitTemplateForm(form) {
+    if (templateActionRunning) { window.hideLoadingOverlay?.(); return; }
+    templateActionRunning = true;
+    const body = $('ds-templates-body');
+    body.setAttribute('aria-busy', 'true');
+    let payload;
+    try {
+      const response = await fetch(form.action, {method: 'POST', body: new FormData(form), credentials: 'same-origin', headers: {Accept: 'application/json'}});
+      const json = String(response.headers.get('content-type') || '').includes('application/json');
+      payload = json ? await response.json() : {error: response.url.includes('/login') ? 'Your session has expired. Please sign in again.'
+        : `The PPT Templates could not be updated (${response.status}). Please reload the page and try again.`};
+      if (!response.ok && !payload.error) payload.error = typeof payload.detail === 'string' ? payload.detail : 'The PPT Templates could not be updated.';
+      await Promise.all([refreshTemplatesLibrary(), api().then(loaded => { loadDesigns(loaded); library(); })]);
+    } finally {
+      window.hideLoadingOverlay?.();
+      body.removeAttribute('aria-busy');
+      templateActionRunning = false;
+    }
+    if (!$('ds-templates-overlay').hidden && !$('ds-templates-overlay').contains(document.activeElement)) {
+      $('ds-templates-overlay').querySelector('[role=dialog]').focus({preventScroll: true});
+    }
+    if (payload.error) window.showInfoDialog?.(payload.error, {title: 'PPT Templates', tone: 'error'});
+    else if (payload.notice) window.showInfoDialog?.(payload.notice, {title: 'PPT Templates Imported'});
+    if (payload.edit_template) await openTemplateDesign(payload.edit_template);
   }
   if ($('ds-templates-overlay')) {
     bind('ds-templates-open', async () => { overlay('ds-templates-overlay', true); await refreshTemplatesLibrary(); });
@@ -2908,6 +2938,18 @@
       const edit = event.target.closest('[data-edit-template]');
       if (edit) safe(() => openTemplateDesign(edit.dataset.editTemplate))();
     });
+    // Forms the page sends after a confirmation (delete, import) come through submitInPlace; the others, here.
+    $('ds-templates-body').submitInPlace = form => safe(() => submitTemplateForm(form))();
+    $('ds-templates-body').addEventListener('submit', event => {
+      if (event.defaultPrevented || !(event.target instanceof HTMLFormElement)) return;
+      event.preventDefault();
+      void $('ds-templates-body').submitInPlace(event.target);
+    });
+    // A template renamed in the dialog (saved in place): the Template of a new PPT Design and the PPT Designs that
+    // follow it take its new name.
+    document.addEventListener('catalogue:template-renamed', () => safe(async () => {
+      await Promise.all([refreshTemplatesLibrary({redraw: false}), api().then(loaded => { loadDesigns(loaded); library(); })]);
+    })());
     // Templates dragged to another place: the Template of a new PPT Design lists them in that order.
     document.addEventListener('catalogue:templates-ordered', event => {
       const order = event.detail?.order || [];

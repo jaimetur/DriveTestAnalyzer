@@ -588,7 +588,7 @@ Permitted editors can open the generating template and Auto-Calculated Fields wi
 
 ## PPT Templates
 
-**PPT Templates**, at the top of the PPT Designs library (for `user-editor`, `admin` and `super-admin`), opens the **PPT Templates Library** of the workspace in a dialog: order, import, create, rename, duplicate, set the default, export, delete and edit its templates.
+**PPT Templates**, at the top of the PPT Designs library (for `user-editor`, `admin` and `super-admin`), opens the **PPT Templates Library** of the workspace in a dialog: order, import, create, rename, duplicate, set the default, export, delete and edit its templates. Each action is saved without leaving the dialog, which shows the list updated at once (its message, such as an import done or refused, in a window over it); **New Template** opens the new template in its [Designer](#designer).
 
 Templates belong to the active workspace and are stored in that workspace database's `report_templates` table. Import, export, backup and transfer packages serialize them as portable CSV files, but those files are package artifacts rather than the live source of record. Obsolete `slides-templates` directories are removed by the current migration and portability flows.
 

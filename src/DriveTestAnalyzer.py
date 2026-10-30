@@ -25149,8 +25149,14 @@ def catalogue_filter_values(
 
 
 # PPT Templates live in PPT Designer (the PPT Templates button of its library): their actions go back there, with what
-# was done (catalogue_notice) or what went wrong (catalogue_error), and a new template opens in its Designer.
-def ppt_templates_redirect(**query: str) -> RedirectResponse:
+# was done (catalogue_notice) or what went wrong (catalogue_error), and a new template opens in its Designer. Its dialog
+# sends them in place (Accept: application/json) and gets the same answer as JSON, so it draws itself again without
+# reloading the page.
+def ppt_templates_redirect(request: Request, **query: str) -> Response:
+    if 'application/json' in request.headers.get('accept', ''):
+        error = query.get('catalogue_error')
+        return JSONResponse({'notice': query.get('catalogue_notice'), 'error': error, 'edit_template': query.get('edit_template')},
+                            status_code=400 if error else 200)
     return RedirectResponse(f"/ppt-designer?{urlencode({'ppt_templates': '1', **query})}", status_code=status.HTTP_303_SEE_OTHER)
 
 
@@ -25163,7 +25169,7 @@ def _import_report_catalogue(
     user: SessionUser,
 ) -> HTMLResponse:
     if not catalogue_file or not catalogue_file.filename or Path(catalogue_file.filename).suffix.lower() != '.csv':
-        return ppt_templates_redirect(catalogue_error='Select a CSV Report Template.')
+        return ppt_templates_redirect(request, catalogue_error='Select a CSV Report Template.')
     try:
         # Preserve meaningful hyphens in the uploaded filename; only turn
         # underscores into spaces when deriving a display name automatically.
@@ -25209,14 +25215,14 @@ def _import_report_catalogue(
             'file': catalogue_file.filename,
             'error': str(exc),
         }))
-        return ppt_templates_redirect(catalogue_error=str(exc))
+        return ppt_templates_redirect(request, catalogue_error=str(exc))
     repository.add_log(user.username, 'import_report_template', json.dumps({
         'template_name': catalogue_name,
         'file': catalogue_file.filename,
         'chart_rows': sum(1 for entry in entries if entry.source_kind),
     }))
     action = 'Overwrote' if existing_template else 'Imported'
-    return ppt_templates_redirect(catalogue_notice=f"{action} {catalogue_name}.")
+    return ppt_templates_redirect(request, catalogue_notice=f"{action} {catalogue_name}.")
 
 
 @app.post('/ppt-designer/templates', response_class=HTMLResponse)
@@ -25253,12 +25259,12 @@ def activate_report_catalogue(
 ) -> HTMLResponse:
     available = {option['identifier']: option for option in report_catalogue_options()}
     if catalogue_id not in available:
-        return ppt_templates_redirect(catalogue_error='Report Template not found.')
+        return ppt_templates_redirect(request, catalogue_error='Report Template not found.')
     promote_report_template_to_default(catalogue_id, updated_by=user.username)
     repository.add_log(user.username, 'activate_report_template', json.dumps({
         'template': available[catalogue_id]['name'],
     }))
-    return ppt_templates_redirect()
+    return ppt_templates_redirect(request)
 
 
 class ReportTemplateOrder(BaseModel):
@@ -25302,7 +25308,7 @@ def rename_report_catalogue(
     if not catalogue:
         if 'application/json' in request.headers.get('accept', ''):
             return JSONResponse({'error': 'Report Template not found.'}, status_code=404)
-        return ppt_templates_redirect(catalogue_error='Report Template not found.')
+        return ppt_templates_redirect(request, catalogue_error='Report Template not found.')
     try:
         name = catalogue_name.strip()
         if not name:
@@ -25324,15 +25330,15 @@ def rename_report_catalogue(
     except PermissionError as exc:
         if 'application/json' in request.headers.get('accept', ''):
             return JSONResponse({'error': str(exc)}, status_code=403)
-        return ppt_templates_redirect(catalogue_error=str(exc))
+        return ppt_templates_redirect(request, catalogue_error=str(exc))
     except ValueError as exc:
         if 'application/json' in request.headers.get('accept', ''):
             return JSONResponse({'error': str(exc)}, status_code=400)
-        return ppt_templates_redirect(catalogue_error=str(exc))
+        return ppt_templates_redirect(request, catalogue_error=str(exc))
     repository.add_log(user.username, 'rename_report_template', json.dumps({'template': catalogue_id, 'name': name}))
     if 'application/json' in request.headers.get('accept', ''):
         return JSONResponse({'name': name, 'identifier': catalogue_id})
-    return ppt_templates_redirect()
+    return ppt_templates_redirect(request)
 
 
 @app.post('/ppt-designer/templates/{catalogue_id}/duplicate', response_class=HTMLResponse)
@@ -25343,7 +25349,7 @@ def duplicate_report_catalogue(
 ) -> HTMLResponse:
     catalogue = _named_catalogue(catalogue_id)
     if not catalogue:
-        return ppt_templates_redirect(catalogue_error='Report Template not found.')
+        return ppt_templates_redirect(request, catalogue_error='Report Template not found.')
     names = {str(row['name']) for row in repository.list_report_templates()}
     # The physical CSV name is the canonical template name.  Deriving the
     # duplicate label from it prevents a stale/default registry label from
@@ -25359,11 +25365,12 @@ def duplicate_report_catalogue(
         suffix += 1
     repository.add_report_template(identifier, bytes(catalogue['content']), updated_by=user.username)
     repository.add_log(user.username, 'duplicate_report_template', json.dumps({'source': catalogue_id, 'template': name}))
-    return ppt_templates_redirect()
+    return ppt_templates_redirect(request)
 
 
 @app.post('/ppt-designer/templates/new', response_class=HTMLResponse)
 def create_empty_report_catalogue(
+    request: Request,
     user: SessionUser = Depends(ppt_template_editor_user),
 ) -> HTMLResponse:
     """Create a blank template that can immediately be renamed or edited."""
@@ -25380,7 +25387,7 @@ def create_empty_report_catalogue(
     repository.add_log(user.username, 'create_report_template', json.dumps({
         'template': name,
     }))
-    return ppt_templates_redirect(edit_template=name)
+    return ppt_templates_redirect(request, edit_template=name)
 
 
 @app.post('/ppt-designer/templates/{catalogue_id}/delete', response_class=HTMLResponse)
@@ -25393,11 +25400,11 @@ def delete_report_catalogue(
     from src.modules.deletion_rights import can_delete, deletion_refusal
     catalogue = _named_catalogue(catalogue_id)
     if not catalogue:
-        return ppt_templates_redirect(catalogue_error='Report Template not found.')
+        return ppt_templates_redirect(request, catalogue_error='Report Template not found.')
     if not can_delete(user, catalogue.get('created_by')):
-        return ppt_templates_redirect(catalogue_error=deletion_refusal('PPT Template'))
+        return ppt_templates_redirect(request, catalogue_error=deletion_refusal('PPT Template'))
     if catalogue['active']:
-        return ppt_templates_redirect(catalogue_error='The default template cannot be deleted.')
+        return ppt_templates_redirect(request, catalogue_error='The default template cannot be deleted.')
     # The PPT Designs that follow it keep the slides they show as their own (detached): none of them breaks.
     detach_designs = getattr(sys.modules[__name__], 'ppt_design_detach_template_designs', None)
     detached = detach_designs(str(catalogue['name']), user.username) if callable(detach_designs) else 0
@@ -25405,7 +25412,7 @@ def delete_report_catalogue(
     repository.add_log(user.username, 'delete_report_template', json.dumps({'template': catalogue['name'], 'detached_designs': detached}))
     if active_workspace:
         background_tasks.add_task(queue_workspace_dimension_materialization, active_workspace)
-    return ppt_templates_redirect()
+    return ppt_templates_redirect(request)
 
 
 def finalize_template_save(
