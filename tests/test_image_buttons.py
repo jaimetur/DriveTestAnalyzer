@@ -100,8 +100,10 @@ def test_every_module_puts_the_buttons_over_its_panels_charts_and_tables():
     # Network Insights: each panel, its charts, maps, ladders and tables, and the larger view of one.
     assert "targets: `details.ni-panel, ${imageTables}, ${imageCharts}, .ni-expand-content`," in insights
     assert "module: 'network-insights'" in insights and "exclude: '.ni-chart-zoom, .ni-column-filter'" in insights
-    # Non-Qualified Calls: each panel, and its KPIs, charts and tables (a table with its title is one image).
-    assert "targets: `details.panel.collapsible-panel, ${imageTables}, ${imageCharts}, .nq-kpis, .nq-rate-overview, .nq-phase-cards, .nq-failure-section`," in calls
+    # Non-Qualified Calls: each panel, and its KPIs, charts and tables (a table with its title is one image), and the map of
+    # NQ Maps in the page and larger, without its buttons.
+    assert "targets: `details.panel.collapsible-panel, ${imageTables}, ${imageCharts}, .nq-kpis, .nq-rate-overview, .nq-phase-cards, .nq-failure-section, ${l3MapImages}`," in calls
+    assert "const l3MapImages = '.nq-l3-maps .nq-map-wrap, .nq-l3-maps-panel .nq-map-expand-wrap';" in calls
     assert "module: 'non-qualified-calls'" in calls
     # PPT Designer: the slide of the viewer and its charts, the Charts Panel and its thumbnails, the larger view of a
     # chart; the viewer and the larger view hold the buttons above them.
