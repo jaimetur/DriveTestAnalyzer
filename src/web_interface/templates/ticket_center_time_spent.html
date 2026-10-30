@@ -26,7 +26,8 @@
       </div>
     </div>
     <div class="tickets-scope-bar">
-      <span class="tickets-subhead">Period</span>
+      <span class="tickets-scope-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg></span>
+      <span class="tickets-scope-label">Period</span>
       <div class="tickets-period-choice" role="group" aria-label="Period of the tickets">
         {% for scope in spent.scopes %}<button type="button" class="tickets-period-option" data-switch-choice="{{ scope.key }}" aria-pressed="{{ 'true' if scope.key == spent.scope else 'false' }}">{{ scope.choice }}</button>{% endfor %}
       </div>
@@ -34,12 +35,27 @@
     {% for scope in spent.scopes %}
     <div class="tickets-switch-view tickets-scope-view" data-switch-view="{{ scope.key }}"{% if scope.key != spent.scope %} hidden{% endif %}>
       <p class="tickets-scope-range">{% if scope.key == 'all' %}<strong>Every ticket resolved or closed</strong>{% else %}Tickets resolved or closed in <strong>{{ scope.range }}</strong>{% endif %}</p>
-      <div class="tickets-figures tickets-time-figures">
-        <span><strong>{{ scope.total }}</strong>Time spent in all</span>
-        <span><strong>{{ scope.count }}</strong>Tickets resolved or closed</span>
-        <span><strong>{{ scope.average }}</strong>Per ticket on average</span>
-        <span><strong>{{ scope.median }}</strong>Median per ticket</span>
-        {% if scope.longest %}<a href="/tickets/{{ scope.longest.id }}" title="#{{ scope.longest.id }} {{ scope.longest.title }}"><strong>{{ scope.longest.took }}</strong>The longest · #{{ scope.longest.id }}</a>{% else %}<span><strong>—</strong>The longest</span>{% endif %}
+      <div class="tickets-health tickets-time-figures">
+        <div class="tickets-health-tile" data-tone="speed">
+          <span class="tickets-health-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9.5 2.5h5"/></svg></span>
+          <div class="tickets-health-copy"><span class="tickets-stat-label">Time spent in all</span><strong>{{ scope.total }}</strong><small>All tickets, added up</small></div>
+        </div>
+        <div class="tickets-health-tile" data-tone="rate">
+          <span class="tickets-health-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h15A1.5 1.5 0 0 1 21 7.5V10a2 2 0 0 0 0 4v2.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 16.5V14a2 2 0 0 0 0-4z"/><path d="m9 12 2 2 4-4"/></svg></span>
+          <div class="tickets-health-copy"><span class="tickets-stat-label">Tickets resolved</span><strong>{{ scope.count }}</strong><small>Or closed, in the period</small></div>
+        </div>
+        <div class="tickets-health-tile" data-tone="opened">
+          <span class="tickets-health-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 18a8 8 0 1 1 16 0"/><path d="m12 18 4-5"/></svg></span>
+          <div class="tickets-health-copy"><span class="tickets-stat-label">Average per ticket</span><strong>{{ scope.average }}</strong><small>Time in all ÷ tickets</small></div>
+        </div>
+        <div class="tickets-health-tile" data-tone="talk">
+          <span class="tickets-health-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 20V10M9 20V4M14 20v-8M19 20v-5"/><path d="M3 12.5h18" stroke-dasharray="2 2"/></svg></span>
+          <div class="tickets-health-copy"><span class="tickets-stat-label">Median per ticket</span><strong>{{ scope.median }}</strong><small>Half of them took less</small></div>
+        </div>
+        {% if scope.longest %}<a class="tickets-health-tile" data-tone="longest" href="/tickets/{{ scope.longest.id }}" title="#{{ scope.longest.id }} {{ scope.longest.title }}">{% else %}<div class="tickets-health-tile" data-tone="longest">{% endif %}
+          <span class="tickets-health-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 3h10M7 21h10M8 3c0 5 8 5 8 9s-8 4-8 9M16 3c0 5-8 5-8 9s8 4 8 9"/></svg></span>
+          <div class="tickets-health-copy"><span class="tickets-stat-label">The longest</span><strong>{{ scope.longest.took if scope.longest else '—' }}</strong><small>{% if scope.longest %}#{{ scope.longest.id }} {{ scope.longest.title }}{% else %}No ticket resolved{% endif %}</small></div>
+        {% if scope.longest %}</a>{% else %}</div>{% endif %}
       </div>
 
       <div class="tickets-insights-grid">
@@ -60,7 +76,7 @@
         {% set series = scope.series %}
         <section class="tickets-card" aria-labelledby="tickets-spent-time-title-{{ scope.key }}">
           <header class="tickets-card-head"><h3 id="tickets-spent-time-title-{{ scope.key }}">{{ series.title }}</h3><span class="tickets-card-note">The tickets resolved or closed in each</span></header>
-          <div class="tickets-columns tickets-time-columns" style="--columns: {{ series.spans | length }}">
+          <div class="tickets-columns tickets-time-columns{% if series.spans | length > 12 %} is-dense{% endif %}" style="--columns: {{ series.spans | length }}">
             {% for span in series.spans %}
             <div class="tickets-column"{% if not span.future %} data-tip="{{ span.name }}: {{ span.total }} in {{ many(span.count, 'ticket') }} resolved"{% endif %}>
               <div class="tickets-column-bar"><span class="tickets-time-bar" style="height: {{ span.share }}%"></span><span class="tickets-column-value">{{ span.total if span.count else '' }}</span></div>

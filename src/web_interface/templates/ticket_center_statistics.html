@@ -15,7 +15,8 @@
   </summary>
   <div class="tickets-insights" data-tickets-switch="scope">
     <div class="tickets-scope-bar">
-      <span class="tickets-subhead">Period</span>
+      <span class="tickets-scope-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg></span>
+      <span class="tickets-scope-label">Period</span>
       <div class="tickets-period-choice" role="group" aria-label="Period of the tickets">
         {% for scope in ticket_statistics.scopes %}<button type="button" class="tickets-period-option" data-switch-choice="{{ scope.key }}" aria-pressed="{{ 'true' if scope.key == ticket_statistics.scope else 'false' }}">{{ scope.choice }}</button>{% endfor %}
       </div>

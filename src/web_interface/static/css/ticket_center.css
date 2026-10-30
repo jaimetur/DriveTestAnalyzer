@@ -248,6 +248,10 @@
 .tickets-health-tile[data-tone="speed"] { --tone: #7c3aed; }
 .tickets-health-tile[data-tone="opened"] { --tone: #1e61a3; }
 .tickets-health-tile[data-tone="talk"] { --tone: #b7791f; }
+.tickets-health-tile[data-tone="longest"] { --tone: #b42318; }
+a.tickets-health-tile { color: inherit; text-decoration: none; }
+a.tickets-health-tile:hover { border-color: color-mix(in srgb, var(--tone) 40%, #fff); }
+.tickets-health-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tickets-ring { flex: 0 0 3.3rem; width: 3.3rem; height: 3.3rem; }
 .tickets-ring circle { fill: none; stroke-width: 5; }
 .tickets-ring-track { stroke: color-mix(in srgb, var(--tone) 12%, #fff); }
@@ -262,9 +266,13 @@
 .tickets-delta[data-tone="bad"] { color: #b42318; }
 .tickets-type-legend { justify-content: flex-end; }
 /* The period of Statistics and Time Spent, chosen at their top, and the view of each. */
-.tickets-scope-bar { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .7rem; }
-.tickets-scope-bar .tickets-subhead { margin: 0; }
-.tickets-scope-bar .tickets-period-option { padding: .32rem .85rem; font-size: .8rem; }
+.tickets-scope-bar { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .9rem; padding: .65rem .9rem; border: 1px solid rgba(220, 38, 38, .24); border-radius: 14px; background: linear-gradient(90deg, #fff0f0, #fffafa 60%, #fff); box-shadow: 0 6px 16px rgba(127, 29, 29, .08); }
+.tickets-scope-icon { display: inline-grid; flex: 0 0 2.1rem; place-items: center; width: 2.1rem; height: 2.1rem; border-radius: 10px; background: var(--ticket-gradient); box-shadow: 0 6px 14px rgba(220, 38, 38, .28); color: #fff; }
+.tickets-scope-icon svg { width: 1.1rem; height: 1.1rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.tickets-scope-label { color: #7f1d1d; font-size: .92rem; font-weight: 800; }
+.tickets-scope-bar .tickets-period-choice { border-color: rgba(220, 38, 38, .2); background: #fff; }
+.ticket-center .tickets-scope-bar .tickets-period-option { padding: .42rem 1.05rem; font-size: .85rem; }
+.ticket-center .tickets-scope-bar .tickets-period-option[aria-pressed="true"] { background: var(--ticket-gradient); box-shadow: 0 4px 12px rgba(220, 38, 38, .3); color: #fff; }
 .tickets-switch-view.tickets-scope-view { gap: .8rem; }
 .tickets-scope-range { margin: 0; color: #607585; font-size: .8rem; font-weight: 600; }
 .tickets-scope-range strong { color: #10314a; }
@@ -278,7 +286,7 @@
 .tickets-measure-note strong { color: #10314a; font-size: .84rem; }
 .tickets-measure-note ul { margin: .25rem 0 0; padding-left: 1.1rem; line-height: 1.45; }
 .tickets-measure-note code { padding: 0 .3rem; border-radius: 4px; background: #e3edf6; font-size: .74rem; }
-.tickets-figures.tickets-time-figures { grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); }
+.tickets-health.tickets-time-figures { grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); }
 .tickets-where-bar { display: flex; gap: 3px; height: 1.6rem; overflow: hidden; border-radius: 8px; background: #eef2f5; }
 .tickets-where-bar span { flex: 1 1 0; min-width: 4px; background: var(--status-fill); cursor: default; }
 .tickets-where { display: grid; gap: .3rem; margin: 0; padding: 0; list-style: none; }
@@ -288,6 +296,11 @@
 .tickets-where strong { color: #10314a; font-size: .95rem; text-align: right; }
 .tickets-where small { grid-column: 2 / -1; color: #7b8994; font-size: .7rem; font-weight: 600; }
 .tickets-time-columns .tickets-column-value { font-size: .64rem; white-space: nowrap; }
+/* Many columns (the days of a month): each value stands upright over its bar and the dates of the axis keep one line, so
+   no label overlaps another. */
+.tickets-columns.is-dense .tickets-column-bar { margin-top: 3.6rem; }
+.tickets-columns.is-dense .tickets-column-value { height: auto; padding-bottom: .25rem; line-height: 1; transform: rotate(180deg); writing-mode: vertical-rl; }
+.tickets-columns.is-dense .tickets-column-label { display: flex; justify-content: center; overflow: visible; white-space: nowrap; }
 .tickets-time-bar { flex: none; width: min(100%, 2.2rem); border-radius: 4px 4px 0 0; background: linear-gradient(180deg, #ef4444, #991b1b); }
 .tickets-time-groups { display: grid; grid-column: 1 / -1; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .8rem; }
 .ticket-center .tickets-spent-row { grid-template-columns: minmax(8rem, 13rem) minmax(0, 1fr) 4.8rem; }
