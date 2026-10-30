@@ -405,15 +405,6 @@ div.tickets-spent-row { cursor: default; }
 .tickets-rank-bar > span:last-child { border-radius: 0 4px 4px 0; }
 .tickets-rank-bar > span:only-child { border-radius: 4px; }
 .tickets-rank strong { color: #10314a; font-variant-numeric: tabular-nums; text-align: right; }
-/* Cards of rows with bars (Time Spent, Tickets per module, reporter and assignee) fill their height: the rows share it,
-   each at least its own height, and their bars thicken with them up to 1.5 rem. */
-:is(.tickets-time-card, .tickets-ranking-card, .tickets-modules-card) { display: flex; flex-direction: column; }
-.tickets-ranking-card > .tickets-switch-view { display: flex; flex: 1 1 auto; flex-direction: column; }
-:is(.tickets-time-card, .tickets-ranking-card, .tickets-ranking-card > .tickets-switch-view) > .tickets-ranking,
-.tickets-modules-card > .tickets-modules { flex: 1 1 auto; grid-auto-rows: minmax(2.2rem, 1fr); }
-:is(.tickets-ranking, .tickets-modules) > li { display: grid; }
-.ticket-center :is(.tickets-ranking, .tickets-modules) > li > :is(.tickets-rank, .tickets-module) { height: 100%; }
-:is(.tickets-time-card, .tickets-ranking-card) .tickets-rank-bar, .tickets-modules-card .tickets-module-bar { height: clamp(.7rem, 34%, 1.5rem); }
 /* Activity: a calendar of the last weeks, a column per week from Monday, darker the busier the day. */
 .tickets-calendar { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: .25rem .45rem; max-width: 46rem; }
 .tickets-calendar-months { display: grid; grid-template-columns: repeat(var(--weeks, 26), minmax(0, 2rem)); gap: 3px; color: #7b8994; font-size: .64rem; font-weight: 700; }
