@@ -500,8 +500,10 @@ def test_where_the_copies_are_the_only_store_a_changed_table_is_copied_and_goes(
     assert cdr_store.change_copy_columns(core.repository, data, pd.DataFrame({cdr_store.ROWID: [1, 2, 3], 'Operator': ['EE', 'Three', 'EE']}))
     assert copy_everything()['written'] == [] and emptied()
     assert cdr_store.read_cdr(core.repository.db_path, 'data', data, ['Operator'])['Operator'].tolist() == ['EE', 'Three', 'EE']
-    # Processed again, its table holds its rows.
+    # Processed again with the same rows, its copy is rewritten and stays its store; with other rows its table holds them.
     core.repository.replace_dataset_rows(data, data_rows())
+    assert emptied() and copy(data)['Operator'].tolist() == ['EE', 'Vodafone UK', 'EE']
+    core.repository.replace_dataset_rows(data, data_rows().head(2))
     with core.repository.connection() as connection:
         assert data not in cdr_store.shadows(connection)
 
@@ -729,7 +731,8 @@ def test_the_copies_travel_with_the_database_of_their_workspace(client, tmp_path
     core.repository.set_workspace_state(cdr_store.ONLY_COPIES_STATE_KEY, '1')
     copy_everything()
     assert cdr_store.empty_combined_table(core.repository, 'data')
-    core.repository.replace_dataset_rows(voice, pd.DataFrame({'Operator': ['EE', 'O2'], 'Call_Status': ['Completed', 'Completed']}))
+    core.repository.replace_dataset_rows(voice, pd.DataFrame({'Operator': ['EE', 'O2', 'Three'],
+                                                              'Call_Status': ['Completed', 'Completed', 'Dropped']}))
     core.repository.update_dataset_profile(voice, processed_at=local_now_iso())
     with core.repository.connection() as connection:
         assert cdr_store.shadows(connection) == {data} and cdr_store.combined_shadows(connection) == {'data'}
