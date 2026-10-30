@@ -623,13 +623,37 @@
       return copy;
     });
   };
+  // The element copied or cut (Copy, Cut or Ctrl/Cmd+C, X), pasted on a slide as an element of its own: without the marks
+  // of where it came from (the template, what this Design changed of it).
+  const pastedCopy = place => {
+    const copy = {...clone(state.clipboard), id: randomId('e'), place};
+    delete copy.origin; delete copy.overridden; delete copy.hidden;
+    return copy;
+  };
+  const clipboardNoun = () => KINDS[state.clipboard?.kind || 'chart']?.[0] || 'Element';
   const pasteElement = (slideId, place) => edit(slide_set => {
     const slide = findSlide(slide_set, slideId);
     if (!slide || !state.clipboard) return false;
-    const copy = {...clone(state.clipboard), id: randomId('e'), place};
+    const copy = pastedCopy(place);
     slide.elements = [...(slide.elements || []), copy];
     state.element = copy.id;
+    state.tab = 'element';
   });
+  // Pasted on the first free place of a slide, or on a place more when it has none (as New Chart).
+  const pasteOnSlide = slideId => (state.clipboard ? placeNewElement(slideId, (_slide_set, place) => pastedCopy(place)) : undefined);
+  // Copy keeps the element where it is; Cut takes it off its slide, to paste it on another one.
+  async function copyElement(elementId, {cut = false} = {}) {
+    const found = findElement(state.slide_set, elementId);
+    if (!found) return;
+    const noun = KINDS[found.element.kind || 'chart']?.[0] || 'Element';
+    if (cut && visibleElements(found.slide).length <= 1) {
+      report(new Error(`A slide keeps at least one element: copy the ${noun.toLowerCase().replace('kpi', 'KPI')} instead, or delete the slide after pasting it.`));
+      return;
+    }
+    state.clipboard = clone(found.element);
+    if (cut) await deleteElement(elementId);
+    viewer().status(`${noun} ${cut ? 'cut' : 'copied'}: paste it on a slide with Paste (in the ⋯ menu of the slide, of an element or + Add on a free place) or Ctrl/Cmd+V.`);
+  }
   function freePlaces(slide) {
     const capacity = placesOf(slide).length;
     const used = new Set(visibleElements(slide).map(placeOf));
@@ -912,6 +936,7 @@
       ['New Slide after', guarded(() => { state.slide = slide.id; return addSlide('content'); }), true],
       ['Duplicate Slide', guarded(() => duplicateSlide(slide.id)), true],
     ];
+    if (slideKind(slide) === 'content') actions.push([`Paste ${clipboardNoun()}`, guarded(() => pasteOnSlide(slide.id)), Boolean(state.clipboard) || 'Copy or cut an element first']);
     if (template) {
       actions.push([slide.optional ? 'Make Slide not optional' : 'Make Slide optional (off by default)', guarded(() => setOptional(slide.id, !slide.optional)), Boolean(findSlide(state.template, slide.id))]);
       actions.push(['Delete Slide', guarded(() => deleteSlide(slide.id)), Boolean(findSlide(state.template, slide.id)) || 'Only in this Design: delete it in This Design scope']);
@@ -1048,7 +1073,7 @@
           ['KPI card', guarded(() => addElement(slide.id, place, 'kpi')), true],
           ['Text box', guarded(() => addElement(slide.id, place, 'text')), true],
           ['Image', guarded(() => addElement(slide.id, place, 'image')), true],
-          ['Paste', guarded(() => pasteElement(slide.id, place)), Boolean(state.clipboard) || 'Copy an element first'],
+          [state.clipboard ? `Paste ${clipboardNoun()}` : 'Paste', guarded(() => pasteElement(slide.id, place)), Boolean(state.clipboard) || 'Copy or cut an element first'],
         ])}, '+ Add'));
       free.addEventListener('dragover', event => { if (state.dragElement) { event.preventDefault(); free.classList.add('is-drop-target'); } });
       free.addEventListener('dragleave', () => free.classList.remove('is-drop-target'));
@@ -1078,7 +1103,9 @@
     const actions = [
       ['New Chart', guarded(() => addChart(found.slide.id)), true],
       [`Duplicate ${noun}`, guarded(() => duplicateElement(elementId)), true],
-      [`Copy ${noun}`, () => { state.clipboard = clone(found.element); viewer().status(`${noun} copied: paste it on a free place.`); }, true],
+      [`Copy ${noun}`, guarded(() => copyElement(elementId)), true],
+      [`Cut ${noun}`, guarded(() => copyElement(elementId, {cut: true})), visibleElements(found.slide).length > 1 || 'A slide keeps at least one element'],
+      [`Paste ${clipboardNoun()} on this slide`, guarded(() => pasteOnSlide(found.slide.id)), Boolean(state.clipboard) || 'Copy or cut an element first'],
       [`Delete ${noun}`, guarded(() => deleteElement(elementId)), true],
     ];
     const widened = widenedPlaces(found.slide.id, elementId);
@@ -1773,6 +1800,13 @@
     if (modifier && event.key.toLowerCase() === 'z') { event.preventDefault(); guarded(event.shiftKey ? redo : undo)(); }
     else if (modifier && event.key.toLowerCase() === 'y') { event.preventDefault(); guarded(redo)(); }
     else if ((event.key === 'Delete' || event.key === 'Backspace') && state.element) { event.preventDefault(); guarded(() => deleteElement(state.element))(); }
+    // Copy, cut and paste an element (also on another slide), unless some text of the page is selected.
+    else if (modifier && ['c', 'x'].includes(event.key.toLowerCase()) && state.element && !String(window.getSelection?.() || '')) {
+      event.preventDefault(); guarded(() => copyElement(state.element, {cut: event.key.toLowerCase() === 'x'}))();
+    } else if (modifier && event.key.toLowerCase() === 'v' && state.clipboard && state.slide) {
+      const slide = findSlide(editableSlideSet(), state.slide);
+      if (slide && slideKind(slide) === 'content') { event.preventDefault(); guarded(() => pasteOnSlide(state.slide))(); }
+    }
   });
   // Esc while designing closes a menu, then Chart Type, then leaves the element chosen, before the viewer takes it (to close
   // itself); in a field of the panel it leaves the field. The dialogs, the panels over the viewer and the other fields keep
