@@ -8,6 +8,7 @@
 #### ⚠️ Breaking Changes:
 
 #### 🌟 New Features:
+- **Workspace — Layer 3 - DT Logs:** the parsed drivetest logs of each campaign (the CSV files of the parser, or their ZIP) are a new dataset type, Layer 3 - DT Logs, which replaces the reserved Smart Orchestrator Logs type. A delivery is split into one dataset per campaign and NR Mode, whose rows are written to a Parquet source without going through the workspace database (the UK Q3 2026 delivery, 1.86 million rows and 370 columns, in about a minute), and every session (JoinID and UE) is summarised in the Layer 3 DT Log Sessions table; a card of its own in Datasets lists them with their campaign, NR Mode, operators and sessions, and Preview reads their rows from the Parquet source (ticket #64).
 
 #### 🚀 Enhancements:
 

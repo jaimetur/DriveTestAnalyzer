@@ -1677,7 +1677,8 @@ body[data-embedded-template-editor] .slides-templates-editor-table-wrap .form-ac
 .upload-type-item[data-kind="mapping_three"] { --kind: #1f2229; --kind-soft: rgba(31, 34, 41, 0.1); }
 .upload-type-item[data-kind="network_inventory"] { --kind: #7650b5; --kind-soft: rgba(118, 80, 181, 0.13); }
 .upload-type-item:is([data-kind="regions"], [data-kind="clusters"], [data-kind="vendors"]) { --kind: #2e8b57; --kind-soft: rgba(46, 139, 87, 0.13); }
-.upload-type-item:is([data-kind="smart_orchestrator_logs"], [data-kind="generic"]) { --kind: #b85b20; --kind-soft: rgba(184, 91, 32, 0.12); }
+.upload-type-item[data-kind="generic"] { --kind: #b85b20; --kind-soft: rgba(184, 91, 32, 0.12); }
+.upload-type-item[data-kind="l3_dt_logs"] { --kind: #0b6e8a; --kind-soft: rgba(11, 110, 138, 0.12); }
 .upload-type-item[data-kind="unknown"] { --kind: #c0392b; --kind-soft: rgba(192, 57, 43, 0.1); }
 .upload-type-badge { grid-area: badge; align-self: start; display: grid; justify-items: center; gap: 0.3rem; padding: 0.65rem 0.3rem 0.55rem; border-radius: 16px; background: var(--kind-soft); color: var(--kind); font-size: 0.66rem; font-weight: 800; text-align: center; line-height: 1.15; }
 .upload-type-badge svg { width: 1.9rem; height: 1.9rem; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
@@ -4533,6 +4534,20 @@ body:has(dialog.vendor-mapping-dialog[open]) { overflow: hidden; }
 .dataset-card-geospatial .dataset-card-count { background: #2e8b57; }
 .dataset-card-other .dataset-card-count { background: #7b8790; }
 .dataset-card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 34rem), 1fr)); gap: 1.1rem; }
+/* Layer 3 - DT Logs: one dataset per campaign and NR Mode, with its operators and sessions. */
+.dataset-card-icon-l3-dt-logs { --dataset-card-colour: #0b6e8a; }
+.dataset-card-l3-dt-logs { border-top: 5px solid #0b6e8a; }
+.dataset-card-l3-dt-logs .dataset-card-head { padding-right: 22rem; }
+.dataset-card-l3-dt-logs .dataset-card-count { background: #0b6e8a; }
+.dataset-card-l3-dt-logs .dataset-card-campaigns { --dataset-card-colour: #0b6e8a; }
+@media (max-width: 640px) { .dataset-card-l3-dt-logs .dataset-card-head { padding-right: 4.2rem; } .dataset-card-l3-dt-logs .dataset-card-head h3 { flex-wrap: wrap; } }
+.queue-table-l3 { min-width: 1180px; width: 100%; }
+.l3-campaign { display: block; font-weight: 750; }
+.l3-campaign-label { display: block; color: var(--muted); font-size: 0.78rem; }
+.l3-nr-mode { display: inline-block; padding: 0.12rem 0.55rem; border-radius: 999px; font-size: 0.75rem; font-weight: 800; background: #e3edf9; color: #1d4f8f; }
+.l3-nr-mode-sa { background: #efe7fb; color: #6b3fb5; }
+.l3-operators { display: flex; flex-wrap: wrap; gap: 0.25rem; }
+.l3-operator { padding: 0.1rem 0.5rem; border-radius: 6px; background: #e7f3f6; color: #0b5368; font-size: 0.76rem; font-weight: 700; white-space: nowrap; }
 /* CDR cards add the Campaign after the Dataset and the CDR Type, CDR Stage and Active? columns after NR Mode, and stack Rows
    over Columns and Uploaded over Updated. Every value uses one font size and only the second value of a stacked cell is
    smaller; the CDR Type is a badge, Campaign a small field, NR Mode, CDR Stage and the Combined choice are small pills

@@ -87,6 +87,8 @@ from src.modules.cdr_reporting import entry_dynamic_fields, DYNAMIC_LAYOUTS, CAT
 from src.modules.exports import POWERPOINT_EXPORT_VERSION, export_dataset_summary_powerpoint, export_powerpoint_report
 from src.modules.email_delivery import DEFAULT_MAX_ATTACHMENTS_MB, EMAIL_SECURITY_MODES, email_delivery_settings, invalid_recipients, parse_recipients, save_email_delivery_settings, send_email
 from src.modules.network_inventory import INVENTORY_DATASET_KINDS, build_inventory_cells, effective_snapshot_date, normalise_snapshot_date
+from src.modules.l3_dt_logs import KIND as L3_DT_LOGS_KIND, dataset_summary as l3_dataset_summary, forget_datasets as l3_forget_datasets
+from src.modules.l3_dt_logs import preview_frame as l3_preview_frame, source_columns as l3_source_columns
 from src.modules.serving_cells import vendor_mapping_signature
 from src.modules.ingestion import CDR_IGNORED_SHEET_KEYS, add_three_gcid_column, add_vfuk_gcid_column, apply_operator_mappings, ensure_fixed_cdr_fields, get_dataset_source_columns, get_excel_sheet_columns, infer_dataset_kind, load_dataset, summarise_dataset
 from src.modules.geospatial import assign_clusters, assign_regions, polygon_vendor_endpoints, validate_cluster_mapping, validate_region_mapping, validate_vendor_polygons, vendor_polygon_operators
@@ -409,10 +411,10 @@ INPUT_KIND_LABELS = {
     'regions': 'Regions — Geospatial',
     'clusters': 'Clusters — Geospatial',
     'vendors': 'Vendors — Geospatial',
-    'smart_orchestrator_logs': 'Smart Orchestrator Logs',
+    'l3_dt_logs': 'Layer 3 - DT Logs',
     'generic': 'Other',
 }
-UPLOAD_DATASET_KINDS = frozenset({'data', 'voice', 'speech', 'mapping_vodafone', 'mapping_three', 'network_inventory', 'regions', 'clusters', 'vendors', 'smart_orchestrator_logs', 'generic'})
+UPLOAD_DATASET_KINDS = frozenset({'data', 'voice', 'speech', 'mapping_vodafone', 'mapping_three', 'network_inventory', 'regions', 'clusters', 'vendors', 'l3_dt_logs', 'generic'})
 CDR_DATASET_KINDS = frozenset({'data', 'voice', 'speech'})
 CDR_PREVIEW_FILTER_DEFINITIONS = (
     ('cdr_operator', 'Operator', ('operator', 'Operator')),
@@ -3916,6 +3918,14 @@ def serialize_dataset_row(row) -> dict[str, Any]:
     item['campaign_chosen'] = item.get('campaign') is not None
     item['campaign'] = dataset_campaign(item.get('dataset_kind'), item.get('campaign'), item.get('file_name'))
     item['in_combined'] = normalize_in_combined(item.get('in_combined')) or 'auto'
+    if item.get('dataset_kind') == L3_DT_LOGS_KIND:
+        # The campaign (2026-Q3), NR Mode, operators and sessions of the drivetest logs of one campaign.
+        item['l3'] = l3_dataset_summary(item)
+        item['campaign'] = item['l3'].get('campaign') or ''
+        item['nr_mode_label'] = item['l3'].get('nr_mode') or '—'
+        item['campaign_key'] = ' '.join(filter(None, (item['campaign'], item['l3'].get('nr_mode'))))
+        # The NQ calls of the workspace that have a session in it (see add_l3_nq_calls).
+        item['l3_nq_calls'] = None
     if item.get('dataset_kind') in INVENTORY_DATASET_KINDS:
         # The date of the network the inventory describes: chosen, else in its file name, else its upload date.
         item['snapshot_date'] = str(item.get('snapshot_date') or '')[:10]
@@ -5063,6 +5073,22 @@ def rebuild_dataset_artifacts(
     cluster_mapping_dataset_id: int | None = None,
 ) -> dict[str, Any]:
     task_repository = task_repository or repository
+    if forced_dataset_kind == L3_DT_LOGS_KIND:
+        # A Layer 3 - DT Logs delivery never goes through SQLite: its rows are written as one Parquet source per
+        # campaign, each the source of a dataset (see l3_dt_logs).
+        from src.modules import l3_dt_logs
+
+        task_repository.update_dataset_profile(dataset_id, processing_step='Reading the drivetest logs')
+        delivery = l3_dt_logs.process_delivery(
+            task_repository, dataset_id, dataset_path, progress=progress_callback,
+            normalization_version=DATASET_NORMALIZATION_VERSION)
+        task_repository.add_log(str(task_repository.get_dataset(dataset_id)['uploaded_by'] or ''), 'l3_dt_logs_processed',
+                                json.dumps({'dataset_id': dataset_id, 'source': dataset_path.name, **delivery}, ensure_ascii=False))
+        return {
+            'df': None, 'summary': None, 'analysis': None, 'filter_options': {}, 'vendor_mapping_error': None,
+            'region_mapping_error': None, 'vendor_values_complete': False, 'dataset_kind': L3_DT_LOGS_KIND,
+            'l3_dt_logs': delivery,
+        }
     field_profile = workspace_field_profile(task_repository)
     if cluster_mapping_dataset_id is None:
         # Cluster polygons are chosen with the CDR's other mappings and kept in
@@ -13753,6 +13779,7 @@ def render_admin_template(
     from src.modules.cdr_store import TABLE_TITLES as CDR_STORE_TABLE_TITLES
     from src.modules.non_qualified_calls import NQ_TABLE_TITLES
     from src.modules.scoring_exclusions import TABLE_TITLES as SCORING_EXCLUSION_TABLE_TITLES
+    from src.modules.l3_dt_logs import TABLE_TITLES as L3_DT_LOGS_TABLE_TITLES
 
     friendly_tables = {
         WORKSPACE_REGISTRY_TABLE: 'Workspace registry',
@@ -13799,6 +13826,7 @@ def render_admin_template(
         **NQ_TABLE_TITLES,
         **SCORING_EXCLUSION_TABLE_TITLES,
         **CDR_STORE_TABLE_TITLES,
+        **L3_DT_LOGS_TABLE_TITLES,
     }
     global_database_tables = (set(repository.list_global_database_tables()) - {'report_templates'}) if active_workspace else set()
     for table_name in repository.list_database_tables() if active_workspace else []:
@@ -17112,13 +17140,16 @@ def preview_dataset(
         })
     dataset = refresh_selected_dataset_if_stale(dataset) or dataset
     dataset = ensure_mapping_gcid(dataset)
-    available_columns = repository.list_dataset_row_columns(dataset_id)
+    # A Layer 3 - DT Logs dataset is read, read-only, from its Parquet source: its rows are never in SQLite.
+    l3_preview = dataset['dataset_kind'] == L3_DT_LOGS_KIND
+    available_columns = l3_source_columns(dataset['stored_path']) if l3_preview else repository.list_dataset_row_columns(dataset_id)
     if dataset['dataset_kind'] in {'mapping_vodafone', 'mapping_three'}:
         available_columns = [column for column in available_columns if not str(column).casefold().startswith('unnamed')]
     available_identities = {column_identity(column) for column in available_columns}
-    available_columns.extend(
-        field for field in (*PREVIEW_METADATA_FIELDS, *MAIN_DISPLAY_FIELDS) if column_identity(field) not in available_identities
-    )
+    if not l3_preview:
+        available_columns.extend(
+            field for field in (*PREVIEW_METADATA_FIELDS, *MAIN_DISPLAY_FIELDS) if column_identity(field) not in available_identities
+        )
     if dataset['dataset_kind'] in {'mapping_vodafone', 'mapping_three'}:
         repository.ensure_vendor_column(dataset_id)
         available_columns = list(dict.fromkeys([*available_columns, *repository.list_dataset_row_columns(dataset_id)]))
@@ -17178,7 +17209,9 @@ def preview_dataset(
             dataset_id, preview_columns, {}, 0, 100,
         )
     else:
-        preview_frame = repository.load_dataset_rows(dataset_id, preview_columns, preview_filters)
+        preview_frame = (
+            l3_preview_frame(dataset['stored_path'], preview_columns, row_limit) if l3_preview
+            else repository.load_dataset_rows(dataset_id, preview_columns, preview_filters))
         if dataset['dataset_kind'] in {'mapping_vodafone', 'mapping_three'}:
             _initial_labels, initial_kinds, _initial_rules = _preview_column_metadata(
                 preview_columns, [dataset['stored_path']], derived_preview_columns,
@@ -22332,6 +22365,8 @@ def delete_workspace_datasets(
 
     repository.remove_orphaned_dataset_row_tables()
     repository.remove_orphaned_reporting_rows()
+    # The sessions and derived files of deleted Layer 3 - DT Logs datasets.
+    l3_forget_datasets(repository)
     queue_combined_cdr_inclusion_sync(user.username)
     invalidate_workspace_size_cache()
     resolved_paths = {str(path.resolve()) for path in deleted_paths}
@@ -22370,6 +22405,8 @@ def delete_dataset(dataset_id: int, return_to: str = Form(''), user: SessionUser
     # imposing a full-table cleanup on every Admin page load.
     repository.remove_orphaned_dataset_row_tables()
     repository.remove_orphaned_reporting_rows()
+    # The sessions and derived files of deleted Layer 3 - DT Logs datasets.
+    l3_forget_datasets(repository)
     if str(dataset_payload.get('dataset_kind') or '').casefold() in CDR_DATASET_KINDS:
         # Deleting a Final CDR brings back the Daily CDRs it replaced.
         queue_combined_cdr_inclusion_sync(user.username)

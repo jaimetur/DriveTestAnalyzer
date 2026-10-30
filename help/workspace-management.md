@@ -38,7 +38,7 @@ workspace-config
 > [!IMPORTANT]
 > **Only admins and super-admins upload datasets.** The other roles see a card in **Data Ingestion** that says so instead of the upload area, and the server rejects their uploads; `user-editor` accounts still manage the datasets of the workspace (see the read-only note of [Combined CDR Tables](#combined-cdr-tables) for `user-viewer`).
 
-Workspace accepts `CSV`, `XLS`, `XLSX` and `XLSM` for tabular datasets, `KMZ` and `KML` files (alone or in a `ZIP` package) for Cell Configuration inventories, and `GeoJSON`, `JSON` or zipped shapefiles for Regions, Clusters and Vendors. Only successfully processed datasets can be used by Design, Chart Builder or Reporting.
+Workspace accepts `CSV`, `XLS`, `XLSX` and `XLSM` for tabular datasets, `CSV` files or their `ZIP` for Layer 3 - DT Logs, `KMZ` and `KML` files (alone or in a `ZIP` package) for Cell Configuration inventories, and `GeoJSON`, `JSON` or zipped shapefiles for Regions, Clusters and Vendors. Only successfully processed datasets can be used by Design, Chart Builder or Reporting.
 
 ### Supported Input Types
 
@@ -51,7 +51,7 @@ Workspace accepts `CSV`, `XLS`, `XLSX` and `XLSM` for tabular datasets, `KMZ` an
 - Regions — Geospatial
 - Clusters — Geospatial
 - Vendors — Geospatial
-- Smart Orchestrator Logs — listed for forward compatibility; ingestion and analysis are not yet implemented.
+- Layer 3 - DT Logs — the parsed drivetest logs of the tests of each campaign; see [Layer 3 - DT Logs](#layer-3-dt-logs).
 - Other supported dataset — offered on upload, and as **Other Datasets** in the Dataset Type filter, only while the workspace has such datasets.
 
 ### Upload Workflow
@@ -204,7 +204,8 @@ The **Datasets** panel shows in its header, before Collapse, how many campaigns 
 
 - **Final CDRs**, **Weekly CDRs** and **Daily CDRs** (the last two fold and are shown only when there are CDRs of their type), at full width, grouped by campaign, with the Campaign, NR Mode, CDR Type, CDR Stage and Active? columns; Rows sit above Columns and Uploaded above Updated in one column each, and each of them keeps its own sort button in the header.
 - **Network Inventory & Vendor Mappings** (the network inventory of each operator: every cell with its vendor, site and configuration, with the **Operator** of Network Inventories and the **Snapshot** date of every inventory) and **Geographic Datasets** (Region, Cluster and Vendor polygons, with their **Type**), side by side with compact tables: dataset and type, rows, status with progress, last update and actions. Reference datasets have no analysis or mappings to apply, so their actions are **Preview**, **Reprocess** and **Delete**.
-- **Other Datasets** (Smart Orchestrator logs and other supported datasets), when there are any.
+- **Layer 3 - DT Logs**, at full width: one dataset per campaign and NR Mode, with its Campaign (and the Campaign of its rows), NR Mode, Operators, Sessions (over its JoinIDs), Rows, Size, status, last update and actions; the header counts their campaigns and sessions and gives their size.
+- **Other Datasets** (other supported datasets), when there are any.
 - **Combined CDR tables**, the generated read-only query sources, with their Rows over Columns, status (**Ready**, **Updating**, **Recalculating**, **Queued**, **Missing Rows** or **Recalc Needed**), progress and last update; they mix NR Modes and come from no file, so they have no NR Mode, Size or Uploaded columns.
 
 The **Dataset Type** filter and the bulk actions above the cards apply to every card; a filter hides the cards without datasets of that type.
@@ -398,12 +399,18 @@ Preview opens persisted rows in a separate view. Regions, Clusters and Vendors d
 - Use **Filter Labels** to select one or more labels and show only their columns. **All Labels** restores every column category; this column display filter does not change the dataset rows.
 - Mapping previews highlight `GCID` and vendor fields. Their vendor selector uses the vendor alone; inventories keep their source columns and derive it from mapped Vendor values and workspace operator aliases. Preview column filters offer **Operator_Vendor** and **Vendor**. Vendor choices list real vendors first, then Mixed, Other and All groups, then operator-only identities labelled **Operator - All**. The derived column is included with dataset rows in applicable workspace transfers and backups.
 
-### Smart Orchestrator Logs
+### Layer 3 - DT Logs
 
-> [!NOTE]
-> **Reserved input type.** Smart Orchestrator Logs is listed for future compatibility; parsing and analysis are not yet supported.
+The **Layer 3 - DT Logs** are the parsed drivetest logs of the tests of each campaign, as a parser of the drivetest logs delivers them: one or more CSV files (`Consolidated_Dataset_1.csv`, `Consolidated_Dataset_2.csv`…) or their ZIP, with one row per record of the log of every test. The records are the radio samples of the LTE and NR serving, secondary and neighbour cells, the events, the RRC, NAS and SIP messages (L3), the RRC states, the PDSCH and PUSCH statistics and the call session. Each session is identified by its **JoinID**, the `JOIN_ID` of the CDRs, and its **UE**: `A` and `B` are the two ends of a voice call, `Data` a data test.
 
-Smart Orchestrator Logs is reserved in the input-type catalogue so existing workspaces and future imports can identify it. Its parsing, normalized schema, Preview rules and analysis workflows are not yet supported; do not use it as a production ingestion type until that processor is implemented.
+- Upload the files or the ZIP as they come and choose **Layer 3 - DT Logs** as their type; a file whose name says what it is (`Consolidated_Dataset`, `DT Log`, `Layer 3`, `L3`) is proposed with that type.
+- The delivery needs at least the `Campaign`, `JoinID`, `UE`, `EventFullDate`, `Latitude`, `Longitude` and `SourceTable` columns; any other column is kept with the name the parser gave it.
+- A delivery of several campaigns is split while it is processed: every value of its `Campaign` column is a dataset of its own, as each CDR is, named after the delivery and its campaign (`Consolidated_Dataset_3 - UK_Q3_SA_2026`). Its **Campaign** is read as the CDRs read theirs (`UK_Q3_SA_2026` is `2026-Q3`) and its NR Mode comes from the same value (`SA`).
+- The rows never go through the workspace database: each campaign is written, in the order of the delivery, to a Parquet file in the input folder, which is the source of its dataset, and the file of the delivery is removed once its campaigns are written. The UK Q3 2026 delivery (a 48 MB ZIP of 1.5 GB of CSV, 1.86 million rows and 370 columns) takes about a minute and keeps 45 MB.
+- Every session (JoinID and UE) is summarised in the **Layer 3 DT Log Sessions** table: its operator, service, status, start, end and duration, records, positions, area and RAN Configurations.
+- Uploading a delivery again under the same name replaces its campaigns. A delivery with another name adds its datasets, and a session that appears in several of them is read from the newest.
+- **Preview** shows the rows of a dataset, read-only, from its Parquet source; **Reprocess** reads that source again and **Delete** removes the dataset, its source and its sessions.
+- Layer 3 - DT Logs travel like the CDRs: in full backups, full workspace packages and transfers of the workspace database and its input files, not in light backups.
 
 ### Auto-calculated Fields
 

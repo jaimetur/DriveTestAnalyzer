@@ -8728,7 +8728,7 @@ def test_workspace_queue_type_filter_lists_all_supported_types_in_order(client) 
         'Multivendor Mapping — Vodafone UK (VFUK)',
         'Regions — Geospatial',
         'Clusters — Geospatial',
-        'Smart Orchestrator Logs',
+        'Layer 3 - DT Logs',
     ]
     positions = [filter_html.index(label) for label in labels]
     assert positions == sorted(positions)

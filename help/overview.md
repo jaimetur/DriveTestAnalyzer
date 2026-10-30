@@ -98,7 +98,7 @@ Workspace is the entry point for data and storage management.
 
 - Upload `CSV`, `XLS`, `XLSX` and `XLSM` files.
 - Review the proposed type for every file in a batch.
-- Import CDR-Data, CDR-Voice, CDR-Speech, VFUK mappings, 3UK mappings or generic datasets. Smart Orchestrator Logs is reserved for future support.
+- Import CDR-Data, CDR-Voice, CDR-Speech, Layer 3 - DT Logs (the parsed drivetest logs of each campaign), VFUK mappings, 3UK mappings or generic datasets.
 - Optionally apply ready VFUK/3UK mappings while a CDR is processed.
 
 ### Queue and Status
