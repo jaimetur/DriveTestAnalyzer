@@ -129,14 +129,19 @@
   // The site of an NQ call, as its CDR gives it (with the network that hosts it), and its name in the legend.
   const siteOf = (failure) => (failure?.site_id ? {key: `${failure.host_network || ''}|${failure.site_id}`,
     name: `Site ${failure.site_id}${failure.host_network ? ` (${failure.host_network})` : ''}`} : null);
-  // The sites the legend names (those with most NQ calls first); the others keep a colour of their own.
+  // The sites the legend names (those with most NQ calls first); the others keep a colour of their own. On the map of a
+  // call, those of its own site (``ownSite``) are burgundy.
   const MAX_SITE_LINES = 12;
+  const OWN_SITE_COLOUR = '#800020';
   // The colour of an NQ call by ``choice`` (FAILURE_COLOURS).
-  const failureColourBy = (choice, failure) => {
+  const failureColourBy = (choice, failure, ownSite = '') => {
     if (choice === 'type') return KIND_COLOURS[failure.kind] || '#495057';
     if (choice === 'campaign') return categoryColour(`campaign:${failure.campaign}|${failure.nr_mode}`);
     if (choice === 'operator') return categoryColour(`operator:${failure.operator}`);
-    if (choice === 'site') return siteOf(failure) ? categoryColour(`site:${siteOf(failure).key}`) : '#adb5bd';
+    if (choice === 'site') {
+      const site = siteOf(failure);
+      return !site ? '#adb5bd' : ownSite && site.key === ownSite ? OWN_SITE_COLOUR : categoryColour(`site:${site.key}`);
+    }
     return domainColour(failure);
   };
   // The lines of the legend of the NQ calls shown, coloured by ``choice``: one for each value they have (by site, with how
@@ -149,7 +154,7 @@
       const text = choice === 'type' ? KIND_LABELS[failure.kind] || failure.service_label || 'Other'
         : choice === 'campaign' ? campaignText(failure.campaign, failure.nr_mode) || 'No campaign'
           : choice === 'operator' ? failure.operator || 'No operator' : site ? site.name : 'No site';
-      const line = lines.get(text) || {text, colour: failureColourBy(choice, failure), count: 0, own: Boolean(site && site.key === ownSite)};
+      const line = lines.get(text) || {text, colour: failureColourBy(choice, failure, ownSite), count: 0, own: Boolean(site && site.key === ownSite)};
       line.count += 1;
       lines.set(text, line);
     }
@@ -2017,7 +2022,16 @@
     const failureText = (item) => [item.failure_classification, item.failure_category, item.failure_subcategory].filter(Boolean).join(' · ');
     // The colour of an NQ call by the choice of Colour NQ calls by, and the lines of the legend that explain it: one for each
     // value shown, then, with Per Group, the outline of each group of the call.
-    shared.failureColour = (failure) => failureColourBy(settings.failureColour, failure);
+    // The site of the call (that of its CDR), found once for each call: its NQ calls burgundy when coloured by site.
+    let ownSiteData = null, ownSiteKey = '';
+    const ownSite = () => {
+      if (ownSiteData !== shared.data) {
+        ownSiteData = shared.data;
+        ownSiteKey = siteOf(shared.data?.failures.find((failure) => failure.self))?.key || '';
+      }
+      return ownSiteKey;
+    };
+    shared.failureColour = (failure) => failureColourBy(settings.failureColour, failure, ownSite());
     // The groups of the call an NQ call is of, as Per Group outlines it (those switched on in From CDR): its cluster
     // innermost, then its time window and its hotspot.
     shared.failureGroups = (failure) => (settings.perGroup ? ['cluster', 'run', 'hotspot']
@@ -2025,7 +2039,7 @@
     shared.failureLegend = () => {
       const data = shared.data;
       const shown = data.failures.filter((failure) => !failure.self && failure.latitude !== null && shared.showsFailure(failure));
-      const lines = failureLegendBy(settings.failureColour, shown, {campaignText, ownSite: siteOf(data.failures.find((failure) => failure.self))?.key || ''});
+      const lines = failureLegendBy(settings.failureColour, shown, {campaignText, ownSite: ownSite()});
       const names = {cluster: 'Outlined: of a cluster of the call', run: 'Outlined: of a time window of the call', hotspot: 'Outlined: of its hotspot'};
       ['cluster', 'run', 'hotspot'].filter((kind) => shown.some((failure) => shared.failureGroups(failure).includes(kind)))
         .forEach((kind) => lines.push([names[kind], GROUP_COLOURS[kind], 'is-outlined']));
