@@ -1877,6 +1877,10 @@ details.nq-priority-info:not([open]) { padding-block: .55rem; }
 .nq-map-toolbar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: .5rem .75rem; }
 .nq-map-control { display: grid; gap: .2rem; color: var(--nq-muted); font-size: .7rem; font-weight: 850; letter-spacing: .04em; text-transform: uppercase; }
 .nq-map-control select { min-height: 2.1rem; padding: .3rem 1.9rem .3rem .65rem; border: 1px solid var(--nq-border); border-radius: 10px; background-color: #fff; color: var(--nq-text); font: inherit; font-size: .82rem; font-weight: 700; letter-spacing: 0; text-transform: none; }
+/* Per Group, a check beside Colour NQ calls by. */
+.nq-map-control.nq-map-check { display: inline-flex; align-items: center; gap: .4rem; min-height: 2.1rem; color: var(--nq-text); cursor: pointer; }
+.nq-map-control.nq-map-check[hidden] { display: none; }
+.nq-map-check input { width: 1.05rem; height: 1.05rem; margin: 0; accent-color: var(--nq-color); }
 .nq-map-layers { display: flex; flex-wrap: wrap; gap: .35rem; }
 .nq-map-layer { display: inline-flex; align-items: center; gap: .3rem; min-height: 2.1rem; padding: 0 .65rem; border: 1px solid var(--nq-border); border-radius: 999px; background: var(--nq-softer); color: var(--nq-dark); font-size: .78rem; font-weight: 800; cursor: pointer; }
 .nq-map-layer input { margin: 0; accent-color: var(--nq-color); }

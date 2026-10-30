@@ -4714,7 +4714,8 @@ def _call_payload(row: Any) -> dict[str, Any]:
 
 def l3_map_calls(task_repository: Any, filters: dict[str, Any], username: str, limit: int = 20000) -> list[dict[str, Any]]:
     """The NQ calls of the filters for NQ Maps: where they failed, their operator, campaign, service, result, root
-    cause (the one decided, else that of the DT Analyzer RCA) and the UEs of their session in the Layer 3 - DT Logs."""
+    cause (the one decided, else that of the DT Analyzer RCA), the site of their CDR and the UEs of their session in the
+    Layer 3 - DT Logs."""
     options = list_options(task_repository)
     definitions = list_fields(task_repository)
     filters = _resolve_key_filters(task_repository, filters if isinstance(filters, dict) else {})
@@ -4735,7 +4736,8 @@ def l3_map_calls(task_repository: Any, filters: dict[str, Any], username: str, l
         calls.append({key: call.get(key) for key in ('call_key', 'dataset_id', 'join_id', 'operator', 'campaign', 'nr_mode', 'service',
                                                        'service_label', 'test_name', 'result', 'failure_classification', 'failure_category',
                                                        'failure_subcategory', 'failure_phase', 'technology', 'status', 'start_time',
-                                                       'latitude', 'longitude', 'l3_log', 'root_domain', 'root_category', 'root_cause')}
+                                                       'latitude', 'longitude', 'l3_log', 'root_domain', 'root_category', 'root_cause',
+                                                       'site_id', 'host_network')}
                      | {'kind': call_kind(call.get('service'), call.get('test_name'), call.get('session_type')),
                         'dta_domain': dta.get('dta_domain', ''), 'dta_category': dta.get('dta_category', ''), 'dta_cause': dta.get('dta_cause', ''),
                         'dta_rule': dta.get('dta_rule', '')})

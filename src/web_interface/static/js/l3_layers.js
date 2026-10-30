@@ -82,6 +82,19 @@
   const categoryColour = (value) => CATEGORY_COLOURS[hash(value) % CATEGORY_COLOURS.length];
 
   // -- the colour and the shape of a point of a layer ------------------------------------------------------------------
+  // RSRP and SINR take the levels of the RSRP / SINR samples of the CDRs (names, colours and ranges, with Extremely poor
+  // below −120 dBm), which the maps give with their data (setClasses): one legend for both sources. RSRQ and UE Tx Power
+  // keep the ranges of the KMZ files.
+  let sampleClasses = null;
+  const setClasses = (classes) => { if (classes?.rsrp?.length && classes?.sinr?.length) sampleClasses = classes; };
+  const classesOf = (metric) => ((metric === 'rsrp' || metric === 'sinr') && sampleClasses ? sampleClasses[metric] : null);
+  const classOf = (levels, value) => levels.find((level) => level.lower === null || value >= level.lower);
+  // ``Excellent (≥ -80 dBm)``, as the legend of the samples of the CDRs writes a level.
+  const classText = (levels, index, unit) => {
+    const level = levels[index], upper = index ? levels[index - 1].lower : null;
+    const range = level.lower === null ? `< ${upper}` : upper === null ? `≥ ${level.lower}` : `${level.lower} to ${upper}`;
+    return `${level.label} (${range} ${unit})`;
+  };
   const rangeIndex = (metric, value) => {
     if (value === null || value === undefined) return -1;
     if (metric === 'tx') return TX_RANGES.findIndex(([low]) => (low === -Infinity ? true : low === -10 ? value >= low : value > low));
@@ -91,11 +104,15 @@
     return index;
   };
   const rangeColour = (metric, value) => {
+    const levels = classesOf(metric);
+    if (levels) return value === null || value === undefined ? '#adb5bd' : classOf(levels, value).colour;
     const index = rangeIndex(metric, value);
     if (index < 0) return '#adb5bd';
     return metric === 'tx' ? RANGE_COLOURS[RANGE_COLOURS.length - 1 - index] : RANGE_COLOURS[index];
   };
   const rangeLabels = (metric) => {
+    const levels = classesOf(metric);
+    if (levels) return levels.map((level, index) => [classText(levels, index, SCALES[metric].unit), level.colour]);
     if (metric === 'tx') return TX_RANGES.map(([, text], index) => [text, RANGE_COLOURS[RANGE_COLOURS.length - 1 - index]]);
     const bounds = SCALES[metric].bounds;
     return RANGE_COLOURS.map((colour, index) => [index === 0 ? `< ${bounds[0]}` : index === bounds.length ? `≥ ${bounds.at(-1)}`
@@ -665,7 +682,8 @@
     }
     for (const [metric, entry] of metricsShown) {
       const row = node('div', undefined, 'nq-l3-legend-row');
-      row.append(node('span', `${entry.grid ? 'Grid: ' : ''}${METRIC_LABELS[metric]} (${metric === 'tx' ? 'dBm' : SCALES[metric].unit})`, 'nq-l3-legend-name'));
+      // (The levels of RSRP and SINR name their unit, as those of the samples of the CDRs.)
+      row.append(node('span', `${entry.grid ? 'Grid: ' : ''}${METRIC_LABELS[metric]}${classesOf(metric) ? '' : ` (${metric === 'tx' ? 'dBm' : SCALES[metric].unit})`}`, 'nq-l3-legend-name'));
       for (const [text, colour] of rangeLabels(metric)) {
         const item = node('span', undefined, 'nq-l3-legend-item');
         item.append(markerIcon(SHAPE_OF[metric], colour), node('span', text));
@@ -905,12 +923,14 @@
         const top = index * ueHeight;
         const own = points.filter((point) => point.ue === ue);
         chart.append(withText(svg('text', {x: 4, y: top + 12, class: 'nq-l3-timeline-ue'}), ue === 'Data' ? 'Data' : `UE ${ue}`));
-        // The RSRP of the PCell, from −130 to −50 dBm, with the bands of the legend behind it.
+        // The RSRP of the PCell, from −130 to −50 dBm, with the levels of the legend behind it.
         const y = (value) => top + 4 + (1 - (Math.max(-130, Math.min(-50, value)) + 130) / 80) * (laneRadio - 8);
-        const bands = [[-130, -120], [-120, -107], [-107, -100], [-100, -90], [-90, -80], [-80, -70], [-70, -50]];
-        bands.forEach(([low, high], band) => chart.append(svg('rect', {x: left, y: y(high), width: width - left - right,
-          height: Math.max(0, y(low) - y(high)), fill: RANGE_COLOURS[band], opacity: .07})));
-        chart.append(withText(svg('text', {x: left - 6, y: y(-70) + 3, class: 'nq-l3-timeline-axis', 'text-anchor': 'end'}), '−70'));
+        const levels = classesOf('rsrp');
+        const bands = levels ? levels.map((level, index) => [level.lower ?? -130, index ? levels[index - 1].lower : -50, level.colour])
+          : [[-130, -120], [-120, -107], [-107, -100], [-100, -90], [-90, -80], [-80, -70], [-70, -50]].map(([low, high], band) => [low, high, RANGE_COLOURS[band]]);
+        bands.forEach(([low, high, fill]) => chart.append(svg('rect', {x: left, y: y(high), width: width - left - right,
+          height: Math.max(0, y(low) - y(high)), fill, opacity: .07})));
+        chart.append(withText(svg('text', {x: left - 6, y: y(levels ? -80 : -70) + 3, class: 'nq-l3-timeline-axis', 'text-anchor': 'end'}), levels ? '−80' : '−70'));
         chart.append(withText(svg('text', {x: left - 6, y: y(-120) + 3, class: 'nq-l3-timeline-axis', 'text-anchor': 'end'}), '−120'));
         for (const [kind, colour] of [['lte_pcell', '#1c5dbf'], ['nr_pcell', '#6b3fb5']]) {
           const series = own.filter((point) => point.kind === kind && point.rsrp !== null && point.rsrp !== undefined);
@@ -1093,5 +1113,5 @@
   const refresh = () => listeners.forEach((listener) => listener());
   window.L3Layers = {prepare, draw, describe, createTree, createTimeline, drawHighlight, drawCursor, cursorOf, setCursor, legend, wayOf,
     bounds, state, refresh, changed, DOMAIN_COLOURS, drawMarker, markerIcon, toggle, categoryColour, routesOf, ROUTE_COLOUR,
-    onChange: (listener) => listeners.add(listener), LAYERS, SECTIONS, rangeColour, rangeIndex};
+    onChange: (listener) => listeners.add(listener), LAYERS, SECTIONS, rangeColour, rangeIndex, setClasses};
 })();

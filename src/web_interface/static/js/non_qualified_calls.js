@@ -3761,6 +3761,8 @@
   // The map of the area where the call failed, shown instead of the tabs with the Map button of the header.
   const callMap = window.NqCallMap?.mount({
     panel: $('nq-map-panel'), expandDialog: $('nq-map-expand'), api, toast, campaignLabel, cdrTime, number,
+    // NQ calls from Selected campaigns: those of the campaigns chosen in the filters.
+    filters: () => currentFilters(),
     openCall: async (callKey) => { if (callKey !== state.detail?.call.call_key && await leaveDetail()) openDetail(callKey, {keepTab: true}); },
     // Decisions at its place: the Root Category and Cause of other calls there, given to this one.
     canEdit: () => Boolean(state.user?.can_edit),

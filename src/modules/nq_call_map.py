@@ -8,9 +8,8 @@ Around the place where the call failed (where it ended, else where it started) t
   beamwidth, band, channel, PCI and state); the cells with the PCI and channel of a cell of the call are flagged;
 - the other Non-Qualified Calls around it, of every operator and campaign: those of its operator at the same place (its
   repetitions) and those of its hotspot, cluster and time-window issue are marked, with the shapes of its groups and the
-  hotspot zone they make (``group_rings``); the map shows those of its
-  CDR, its campaign or every campaign
-  (``FAILURE_SCOPES``, chosen in the page);
+  hotspot zone they make (``group_rings``); the map shows those of the campaigns chosen in the filters of the page
+  (every campaign while none is chosen) or of the campaign of the call (``FAILURE_SCOPES``, chosen in the page);
 - the tests of its CDR (or of every CDR of its campaign) around it, completed or not, with their LTE and NR RSRP and SINR
   and the campaign of their CDR: the radio conditions of the area;
 - what it all suggests (``diagnosis``: coverage, interference, serving distance, PCI, cell states, the other operators,
@@ -41,8 +40,8 @@ DEFAULT_RADIUS_KM = 1.0
 TEST_SCOPES = {'cdr': 'This CDR', 'campaign': 'Every CDR of its campaign'}
 DEFAULT_TEST_SCOPE = 'cdr'
 # The Non-Qualified Calls around that the map draws (the page chooses; the diagnosis and the decisions count them all).
-FAILURE_SCOPES = {'cdr': 'This CDR', 'campaign': 'Its campaign', 'every': 'Every campaign'}
-DEFAULT_FAILURE_SCOPE = 'every'
+FAILURE_SCOPES = {'selected': 'Selected campaigns', 'campaign': 'Call campaign'}
+DEFAULT_FAILURE_SCOPE = 'selected'
 # What one map draws at most: the nearest first. Every NQ call of the campaign of the call within the radius (and of its
 # groups and its site) is drawn, and at most MAX_FAILURES of the other campaigns.
 MAX_TESTS = 6000
@@ -1739,12 +1738,20 @@ def call_map(repository: Any, call_key: str, *, radius_km: Any = None, tests: st
     }
 
 
+# Below the Very poor RSRP of Network Insights, the level the Layer 3 - DT Logs draw too (their legend starts at −120 dBm).
+RSRP_FLOOR_CLASS = ('Extremely poor', -120.0, '#8B0A1A')
+
+
 def sample_classes() -> dict[str, list[dict[str, Any]]]:
-    """The levels of the RSRP and SINR of the samples, as Network Insights colours them."""
+    """The levels of the RSRP and SINR of the samples, as Network Insights colours them, with Extremely poor below
+    −120 dBm: the same on both maps for the samples of the CDRs and the points of the Layer 3 - DT Logs."""
     from src.modules.network_insights import RSRP_CLASSES, SINR_CLASSES
 
+    floor_label, floor, floor_colour = RSRP_FLOOR_CLASS
+    rsrp = [(label, floor if math.isinf(lower) else lower, colour) for label, lower, colour in RSRP_CLASSES]
+    rsrp.append((floor_label, float('-inf'), floor_colour))
     return {
-        'rsrp': [{'label': label, 'lower': None if math.isinf(lower) else lower, 'colour': colour} for label, lower, colour in RSRP_CLASSES],
+        'rsrp': [{'label': label, 'lower': None if math.isinf(lower) else lower, 'colour': colour} for label, lower, colour in rsrp],
         'sinr': [{'label': label, 'lower': None if math.isinf(lower) else lower, 'colour': colour} for label, lower, colour in SINR_CLASSES],
     }
 
