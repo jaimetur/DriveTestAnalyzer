@@ -928,6 +928,7 @@
       }
       // The points of the layers of its Layer 3 - DT Logs that are on.
       window.L3Layers?.draw(context, shared.l3, {project, hits, zoom, width, height});
+      window.L3Layers?.drawHighlight(context, shared.l3Hover, project);
       // Where the call started (when the CDR gives where it ended too).
       if (start && call.end && !realWay) {
         const [x1, y1] = project(start[0], start[1]);
@@ -1369,7 +1370,7 @@
     };
     const save = () => storeSettings({tests: settings.tests, colour: settings.colour,
       operators: settings.operators, failures: settings.failures, failureColour: settings.failureColour, layers: settings.layers});
-    let callKey = '', loadedKey = '', controller = null, expandedView = null;
+    let callKey = '', loadedKey = '', controller = null, expandedView = null, expandedTimeline = null;
     const toolbar = node('div', undefined, 'nq-map-toolbar');
     const status = node('p', '', 'nq-map-status');
     status.setAttribute('role', 'status');
@@ -1391,6 +1392,8 @@
     const mapLegend = node('div', undefined, 'nq-map-legend-host');
     // The element chosen goes right below the map and its legend, so its images (download and screenshot) show it too.
     mapWrap.append(card, waiting, mapLegend, selected);
+    const timelineHost = node('div', undefined, 'nq-l3-timeline-host');
+    mapWrap.insertBefore(timelineHost, selected);
     panel.replaceChildren(toolbar, status, mapWrap, node('p', PANEL_HINT, 'form-note nq-map-hint'), cards);
 
     // ``l3``: the Layer 3 - DT Logs of the call shown, ready to draw (l3_layers.js), or null.
@@ -2072,7 +2075,9 @@
       if (!window.L3Layers || l3Key === key) return;
       l3Request?.abort();
       shared.l3 = null;
+      shared.l3Hover = null;
       l3Key = '';
+      window.L3Layers.refresh();
       if (!shared.data?.call?.l3_log) { redrawAll(); return; }
       const controllerAbort = new AbortController();
       l3Request = controllerAbort;
@@ -2080,9 +2085,11 @@
         const payload = await api(`/api/non-qualified-calls/calls/${encodeURIComponent(key)}/l3`, {signal: controllerAbort.signal});
         if (l3Request !== controllerAbort || key !== callKey) return;
         shared.l3 = window.L3Layers.prepare(payload);
+        shared.l3Hover = null;
         l3Key = key;
         panelView.fit();
         expandedView?.fit();
+        window.L3Layers.refresh();
         redrawAll();
       } catch (error) {
         if (error.name !== 'AbortError') toast(error.message, 'error');
@@ -2168,10 +2175,13 @@
       const floating = node('aside', undefined, 'nq-map-info nq-map-selected nq-map-selected-float');
       floating.hidden = true;
       // The element chosen floats over the map, inside what its images show.
-      wrap.append(large, legendHost, floating);
+      const timeline = node('div', undefined, 'nq-l3-timeline-host');
+      wrap.append(large, legendHost, timeline, floating);
       expandContent.replaceChildren(wrap);
       if (!expandDialog.open) expandDialog.showModal();
       expandedView = createView(large, shared, {expanded: true, legendHost});
+      expandedTimeline?.destroy();
+      expandedTimeline = window.L3Layers?.createTimeline(timeline, () => shared.l3, timelineEvents) || null;
       expandedView.setView(panelView.view());
       expandedView.renderLegend();
       renderSelected();
@@ -2182,11 +2192,23 @@
       if (expandDialog.open) return;
       expandedView?.destroy();
       expandedView = null;
+      expandedTimeline?.destroy();
+      expandedTimeline = null;
       expandContent.replaceChildren();
       panelView.redraw();
     });
 
     const panelView = createView(card, shared, {onExpand: openExpanded, legendHost: mapLegend});
+    // The signalling timeline of the Layer 3 - DT Logs of the call: hovering a message rings its point on the maps, a click
+    // centres them on it and shows its values.
+    const timelineEvents = {
+      onHover: (point) => { shared.l3Hover = point; views().forEach((view) => view.redraw()); },
+      onPick: (item) => {
+        shared.select({kind: 'l3', item});
+        if (item.point.lat !== null && item.point.lat !== undefined) views().forEach((view) => view.centreOn(item.point.lat, item.point.lon));
+      },
+    };
+    window.L3Layers?.createTimeline(timelineHost, () => shared.l3, timelineEvents);
     renderToolbar();
     setWaiting('');
 

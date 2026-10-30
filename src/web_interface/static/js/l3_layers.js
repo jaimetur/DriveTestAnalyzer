@@ -563,6 +563,177 @@
     return box;
   };
 
-  window.L3Layers = {prepare, draw, describe, createTree, legend, wayOf, bounds, state, onChange: (listener) => listeners.add(listener),
-    LAYERS, SECTIONS, rangeColour, rangeIndex};
+  // -- the signalling timeline of a call (below its map) ------------------------------------------------------------------
+  // For each UE shown: the RSRP of its LTE and NR PCell over the time of its session, and its events, RRC and NAS messages
+  // and SIP messages one after another (the SIP errors and the failures larger and ringed). Hovering one marks its point on
+  // the map; a click centres the map on it and shows its values.
+  const SVG = 'http://www.w3.org/2000/svg';
+  const svg = (tag, attributes = {}) => {
+    const element = document.createElementNS(SVG, tag);
+    for (const [name, value] of Object.entries(attributes)) element.setAttribute(name, String(value));
+    return element;
+  };
+  const withText = (element, text) => { element.textContent = text; return element; };
+  const SIGNAL_ROWS = [
+    {key: 'event', label: 'Events', test: (point) => point.kind === 'event'},
+    {key: 'rrc', label: 'RRC', test: (point) => point.kind === 'l3' && /RRC/.test(point.grp || '')},
+    {key: 'nas', label: 'NAS', test: (point) => point.kind === 'l3' && /NAS/.test(point.grp || '')},
+    {key: 'sip', label: 'SIP', test: (point) => point.kind === 'l3' && point.grp === 'SIP'},
+  ];
+  const FAILURE_WORDS = /fail|reestablish|reject|drop|release|timeout|lost|abort|forced/i;
+  const sipCode = (point) => Number((String(point.detail || point.name || '').match(/\b([1-6]\d\d)\b/) || [])[1] || 0);
+  const isAlarm = (point) => (point.kind === 'event' && FAILURE_WORDS.test(point.name || ''))
+    || (point.kind === 'l3' && (FAILURE_WORDS.test(point.name || '') || sipCode(point) >= 400));
+  const signalColour = (point) => (point.kind === 'event' ? EVENT_COLOURS[point.grp] || EVENT_COLOURS.Other : L3_COLOURS[point.grp] || L3_COLOURS.Other);
+  const clock = (ms) => (Number.isFinite(ms) ? new Date(ms).toISOString().slice(11, 23) : '');
+  const createTimeline = (host, getData, {onHover = () => {}, onPick = () => {}} = {}) => {
+    const box = node('section', undefined, 'nq-l3-timeline');
+    const tip = node('div', undefined, 'nq-l3-timeline-tip');
+    tip.hidden = true;
+    let shown = true;
+    const render = () => {
+      const data = getData();
+      box.hidden = !data;
+      if (!data) { box.replaceChildren(); return; }
+      const ues = data.ues.filter((ue) => ueShown(data, ue));
+      const points = data.points.filter((point) => ues.includes(point.ue) && Number.isFinite(point.ms));
+      if (!points.length) { box.hidden = true; return; }
+      const start = Math.min(...points.map((point) => point.ms)), end = Math.max(...points.map((point) => point.ms));
+      const span = Math.max(1, end - start);
+      const head = node('header', undefined, 'nq-l3-timeline-head');
+      const title = node('button', undefined, 'nq-l3-timeline-title');
+      title.type = 'button';
+      title.setAttribute('aria-expanded', String(shown));
+      title.append(node('span', 'Signalling timeline', 'nq-l3-timeline-name'),
+        node('span', `${ues.map((ue) => (ue === 'Data' ? 'Data' : `UE ${ue}`)).join(' & ')} · ${clock(start)} – ${clock(end)} · ${(span / 1000).toFixed(1)} s`, 'nq-l3-timeline-span'),
+        node('span', shown ? '▾' : '▸', 'nq-l3-chevron'));
+      title.addEventListener('click', () => { shown = !shown; render(); });
+      const keys = node('div', undefined, 'nq-l3-timeline-keys');
+      for (const [text, colour, shape] of [['LTE PCell RSRP', '#1c5dbf', 'line'], ['NR PCell RSRP', '#6b3fb5', 'line'], ['Event', EVENT_COLOURS['4G'], 'hexagon'],
+        ['RRC', L3_COLOURS['LTE-RRC'], 'diamond'], ['NAS', L3_COLOURS['LTE-NAS'], 'diamond'], ['SIP', L3_COLOURS.SIP, 'diamond'], ['Failure or SIP error', '#d7263d', 'ring']]) {
+        const key = node('span', undefined, 'nq-l3-timeline-key');
+        const mark = node('span', undefined, `nq-l3-timeline-mark is-${shape}`);
+        mark.style.setProperty('--mark', colour);
+        key.append(mark, node('span', text));
+        keys.append(key);
+      }
+      head.append(title, keys);
+      box.replaceChildren(head);
+      if (!shown) return;
+      const width = Math.max(320, Math.round(box.clientWidth || host.clientWidth || 800) - 2);
+      const left = 74, right = 14, laneRadio = 46, laneSignal = 18 * SIGNAL_ROWS.length + 6, gap = 10;
+      const ueHeight = laneRadio + laneSignal + gap;
+      const height = ues.length * ueHeight + 24;
+      const x = (ms) => left + (ms - start) / span * (width - left - right);
+      const chart = svg('svg', {viewBox: `0 0 ${width} ${height}`, width, height, class: 'nq-l3-timeline-chart', role: 'img',
+        'aria-label': 'Signalling timeline of the call'});
+      const markers = [];
+      ues.forEach((ue, index) => {
+        const top = index * ueHeight;
+        const own = points.filter((point) => point.ue === ue);
+        chart.append(withText(svg('text', {x: 4, y: top + 12, class: 'nq-l3-timeline-ue'}), ue === 'Data' ? 'Data' : `UE ${ue}`));
+        // The RSRP of the PCell, from −130 to −50 dBm, with the bands of the legend behind it.
+        const y = (value) => top + 4 + (1 - (Math.max(-130, Math.min(-50, value)) + 130) / 80) * (laneRadio - 8);
+        const bands = [[-130, -120], [-120, -107], [-107, -100], [-100, -90], [-90, -80], [-80, -70], [-70, -50]];
+        bands.forEach(([low, high], band) => chart.append(svg('rect', {x: left, y: y(high), width: width - left - right,
+          height: Math.max(0, y(low) - y(high)), fill: RANGE_COLOURS[band], opacity: .07})));
+        chart.append(withText(svg('text', {x: left - 6, y: y(-70) + 3, class: 'nq-l3-timeline-axis', 'text-anchor': 'end'}), '−70'));
+        chart.append(withText(svg('text', {x: left - 6, y: y(-120) + 3, class: 'nq-l3-timeline-axis', 'text-anchor': 'end'}), '−120'));
+        for (const [kind, colour] of [['lte_pcell', '#1c5dbf'], ['nr_pcell', '#6b3fb5']]) {
+          const series = own.filter((point) => point.kind === kind && point.rsrp !== null && point.rsrp !== undefined);
+          if (series.length > 1) {
+            chart.append(svg('polyline', {points: series.map((point) => `${x(point.ms).toFixed(1)},${y(point.rsrp).toFixed(1)}`).join(' '),
+              fill: 'none', stroke: colour, 'stroke-width': 1.6, 'stroke-dasharray': kind === 'nr_pcell' ? '4 2' : '', 'stroke-linejoin': 'round'}));
+          }
+          for (const point of series) {
+            const dot = svg('circle', {cx: x(point.ms), cy: y(point.rsrp), r: 2.4, fill: rangeColour('rsrp', point.rsrp), stroke: colour, 'stroke-width': .8});
+            chart.append(dot);
+            markers.push({element: dot, point, layer: `${kind}:rsrp`});
+          }
+        }
+        // The signalling rows.
+        SIGNAL_ROWS.forEach((row, rowIndex) => {
+          const rowY = top + laneRadio + 9 + rowIndex * 18;
+          chart.append(svg('line', {x1: left, x2: width - right, y1: rowY, y2: rowY, class: 'nq-l3-timeline-row'}));
+          chart.append(withText(svg('text', {x: left - 6, y: rowY + 3, class: 'nq-l3-timeline-axis', 'text-anchor': 'end'}), row.label));
+          for (const point of own.filter(row.test)) {
+            const alarm = isAlarm(point);
+            const size = alarm ? 5.2 : 3.6;
+            const cx = x(point.ms);
+            const shape = point.kind === 'event'
+              ? svg('polygon', {points: Array.from({length: 6}, (_, side) => `${(cx + Math.cos(side * Math.PI / 3) * size).toFixed(1)},${(rowY + Math.sin(side * Math.PI / 3) * size).toFixed(1)}`).join(' ')})
+              : svg('polygon', {points: `${cx},${rowY - size} ${cx + size},${rowY} ${cx},${rowY + size} ${cx - size},${rowY}`});
+            shape.setAttribute('fill', signalColour(point));
+            shape.setAttribute('stroke', alarm ? '#d7263d' : '#fff');
+            shape.setAttribute('stroke-width', alarm ? 1.8 : .8);
+            shape.setAttribute('class', `nq-l3-timeline-signal${alarm ? ' is-alarm' : ''}`);
+            chart.append(shape);
+            markers.push({element: shape, point, layer: point.kind === 'event' ? 'event' : 'l3'});
+          }
+        });
+        // The end of the session: where the call failed, dropped or was cut off.
+        const session = data.sessions[ue] || {};
+        const endMs = Date.parse(String(session.end_time || '').replace(' ', 'T') + 'Z');
+        if (Number.isFinite(endMs) && endMs >= start && endMs <= end + 1000) {
+          const ex = Math.min(width - right, x(endMs));
+          chart.append(svg('line', {x1: ex, x2: ex, y1: top + 2, y2: top + laneRadio + laneSignal, class: 'nq-l3-timeline-end'}));
+          chart.append(withText(svg('text', {x: ex - 3, y: top + 11, class: 'nq-l3-timeline-end-label', 'text-anchor': 'end'}), session.call_status || 'End'));
+        }
+      });
+      // The time axis, in seconds from the first record.
+      const axisY = height - 8;
+      const step = [1, 2, 5, 10, 15, 30, 60, 120].find((seconds) => span / 1000 / seconds <= 10) || 300;
+      for (let seconds = 0; seconds * 1000 <= span; seconds += step) {
+        const tx = x(start + seconds * 1000);
+        chart.append(svg('line', {x1: tx, x2: tx, y1: 0, y2: height - 18, class: 'nq-l3-timeline-grid'}));
+        chart.append(withText(svg('text', {x: tx, y: axisY, class: 'nq-l3-timeline-axis', 'text-anchor': 'middle'}), `${seconds} s`));
+      }
+      const showTip = (marker, event) => {
+        const {title, rows} = describe({layer: marker.layer, point: marker.point}, data);
+        tip.replaceChildren(node('strong', title));
+        rows.filter(([, value]) => value !== '' && value !== null && value !== undefined).slice(0, 7).forEach(([name, value]) => {
+          const line = node('div');
+          line.append(node('span', name), node('b', String(value)));
+          tip.append(line);
+        });
+        tip.hidden = false;
+        const bounds = box.getBoundingClientRect();
+        tip.style.left = `${Math.min(bounds.width - 260, Math.max(4, event.clientX - bounds.left + 12))}px`;
+        tip.style.top = `${Math.max(4, event.clientY - bounds.top - 10)}px`;
+      };
+      for (const marker of markers) {
+        marker.element.addEventListener('pointerenter', (event) => { showTip(marker, event); onHover(marker.point); });
+        marker.element.addEventListener('pointerleave', () => { tip.hidden = true; onHover(null); });
+        marker.element.addEventListener('click', () => onPick({layer: marker.layer, point: marker.point}));
+      }
+      const scroll = node('div', undefined, 'nq-l3-timeline-scroll');
+      scroll.append(chart);
+      box.append(scroll, tip);
+    };
+    host.append(box);
+    const listener = () => render();
+    listeners.add(listener);
+    const resizer = new ResizeObserver(() => { if (shown) render(); });
+    resizer.observe(host);
+    render();
+    return {render, destroy: () => { listeners.delete(listener); resizer.disconnect(); box.remove(); }};
+  };
+  // The point hovered in a timeline, ringed on the maps.
+  const drawHighlight = (context, point, project) => {
+    if (!point || point.lat === null || point.lat === undefined) return;
+    const [x, y] = project(point.lat, point.lon);
+    context.beginPath();
+    context.arc(x, y, 11, 0, Math.PI * 2);
+    context.lineWidth = 5;
+    context.strokeStyle = 'rgba(255, 255, 255, .95)';
+    context.stroke();
+    context.lineWidth = 2.6;
+    context.strokeStyle = '#0b6e8a';
+    context.stroke();
+  };
+
+  // Every tree and timeline drawn again (a map with the data of another call).
+  const refresh = () => listeners.forEach((listener) => listener());
+  window.L3Layers = {prepare, draw, describe, createTree, createTimeline, drawHighlight, legend, wayOf, bounds, state, refresh,
+    onChange: (listener) => listeners.add(listener), LAYERS, SECTIONS, rangeColour, rangeIndex};
 })();

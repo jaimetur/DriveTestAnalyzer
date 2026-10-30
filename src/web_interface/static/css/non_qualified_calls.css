@@ -2119,3 +2119,37 @@ body:has(dialog.nq-map-expand[open]) { overflow: hidden; }
 .nq-l3-legend-note { margin: 0; color: #6b8189; font-size: .68rem; }
 .nq-l3-record { max-height: 18rem; overflow-y: auto; }
 @media (max-width: 640px) { .nq-l3-panel { width: calc(100% - 1.2rem); max-height: 55%; } }
+
+/* The signalling timeline of the Layer 3 - DT Logs, below the map and its legend (in its images too). */
+.nq-l3-timeline-host:empty { display: none; }
+.nq-l3-timeline { position: relative; margin-top: .6rem; border: 1px solid #d7e8ed; border-radius: 12px; background: #fff; }
+.nq-l3-timeline[hidden] { display: none; }
+.nq-l3-timeline-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .4rem .8rem; padding: .45rem .7rem;
+  border-bottom: 1px solid #e8f0f2; }
+.nq-l3-timeline-title { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: .5rem; padding: 0; border: 0; background: none; color: #17323c;
+  font: inherit; cursor: pointer; }
+.nq-l3-timeline-name { color: #0b6e8a; font-size: .78rem; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
+.nq-l3-timeline-span { color: #4f6b75; font-size: .74rem; font-variant-numeric: tabular-nums; }
+.nq-l3-timeline-keys { display: flex; flex-wrap: wrap; gap: .2rem .7rem; font-size: .7rem; color: #4f6b75; }
+.nq-l3-timeline-key { display: inline-flex; align-items: center; gap: .25rem; }
+.nq-l3-timeline-mark { display: inline-block; width: .6rem; height: .6rem; background: var(--mark); }
+.nq-l3-timeline-mark.is-line { width: .9rem; height: 2px; }
+.nq-l3-timeline-mark.is-diamond { transform: rotate(45deg) scale(.8); }
+.nq-l3-timeline-mark.is-hexagon { clip-path: polygon(25% 5%, 75% 5%, 100% 50%, 75% 95%, 25% 95%, 0 50%); }
+.nq-l3-timeline-mark.is-ring { border: 2px solid var(--mark); border-radius: 50%; background: none; }
+.nq-l3-timeline-scroll { overflow-x: auto; padding: .3rem .2rem .2rem; }
+.nq-l3-timeline-chart { display: block; font-family: "IBM Plex Sans", system-ui, sans-serif; }
+.nq-l3-timeline-ue { fill: #17323c; font-size: 11px; font-weight: 800; }
+.nq-l3-timeline-axis { fill: #6b8189; font-size: 9.5px; font-variant-numeric: tabular-nums; }
+.nq-l3-timeline-row { stroke: #e6eef1; stroke-width: 1; }
+.nq-l3-timeline-grid { stroke: #f0f4f5; stroke-width: 1; }
+.nq-l3-timeline-end { stroke: #d7263d; stroke-width: 1.6; stroke-dasharray: 4 3; }
+.nq-l3-timeline-end-label { fill: #d7263d; font-size: 10px; font-weight: 800; }
+.nq-l3-timeline-signal, .nq-l3-timeline-chart circle { cursor: pointer; }
+.nq-l3-timeline-signal:hover, .nq-l3-timeline-chart circle:hover { stroke: #0b6e8a; stroke-width: 2.2; }
+.nq-l3-timeline-tip { position: absolute; z-index: 6; min-width: 12rem; max-width: 16rem; padding: .4rem .55rem; border: 1px solid #cfe0e5; border-radius: 8px;
+  background: rgba(255, 255, 255, .97); box-shadow: 0 6px 18px rgba(15, 35, 45, .16); font-size: .72rem; pointer-events: none; }
+.nq-l3-timeline-tip[hidden] { display: none; }
+.nq-l3-timeline-tip strong { display: block; margin-bottom: .2rem; color: #0b5368; }
+.nq-l3-timeline-tip div { display: flex; justify-content: space-between; gap: .6rem; }
+.nq-l3-timeline-tip span { color: #6b8189; }
