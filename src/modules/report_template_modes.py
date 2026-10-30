@@ -33,6 +33,8 @@ NR_MODE_TOKEN_VALUES = {
 # The NR Mode a Design reads, as its selectors and file names show it.
 DESIGN_NR_MODE_LABELS = {'NSA': 'NSA', 'SA': 'SA', NSA_VS_SA: 'NSA & SA'}
 NR_MODE_SPLIT_FIELD = 'NR Mode'
+# The chart types whose Columns are the horizontal axis of their lines or areas.
+LINE_AXIS_CHART_TYPES = frozenset({'lines', 'dual lines', 'areas', '100% stacked areas', 'bars and line'})
 _TOKEN_PATTERN = re.compile(r'\{\s*NR\s*Mode(\s+Name)?\s*\}', re.IGNORECASE)
 # The workspace setting that keeps how the templates of each NR Mode are known since they were merged, so a Design
 # or a package of before still finds its template: {"renames": {"nsa|NSA - X": "X"}, "uids": {old uid: new uid}}.
@@ -136,8 +138,9 @@ def entry_for_nr_mode(entry: Any, nr_mode: object) -> Any:
 
     Its slide titles name the NR Mode of the Design and its chart title the NR Modes the chart shows (those its
     filters keep, NR Mode IN (SA)). A chart that shows both NR Modes and tells them apart neither by NR Mode nor by
-    Campaign (whose SA campaigns name the mode) gets the NR Mode as the last level of the split that holds its legend,
-    and of its legend: the NSA and SA tests of an operator are never added together.
+    Campaign (whose SA campaigns name the mode) gets the NR Mode as the last level of the split that holds its legend
+    (of Rows for lines and areas, whose Columns are their axis), and of its legend: the NSA and SA tests of an operator
+    are never added together.
     """
     from dataclasses import replace
 
@@ -162,6 +165,9 @@ def entry_for_nr_mode(entry: Any, nr_mode: object) -> Any:
         axis = next((name for name, dimensions in (('columns_split', columns), ('rows_split', rows))
                      if legend_keys & {column_identity(value) for value in dimensions}), None)
         axis = axis or ('columns_split' if columns else 'rows_split' if rows else None)
+        # The Columns of a line or an area are its horizontal axis: the NR Mode gives them their series instead.
+        if axis and entry.chart_type.strip().casefold() in LINE_AXIS_CHART_TYPES:
+            axis = 'rows_split'
         if not told_apart and axis:
             changes[axis] = ' × '.join([*(columns if axis == 'columns_split' else rows), NR_MODE_SPLIT_FIELD])
             if legend:

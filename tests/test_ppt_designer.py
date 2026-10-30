@@ -1782,7 +1782,7 @@ def test_designs_lifecycle_and_layout(client):
     assert 'use_profile_options=False, known_full_row_counts=None, progress=None,' in design_module
     assert 'use_profile_options=use_profile_options,' in design_module
     assert 'DESIGN_CHART_RENDER_WORKERS = max(1, min(2, (os.cpu_count() or 2) - 1))' in design_module
-    assert 'DESIGN_PREVIEW_MANIFEST_VERSION = 9' in design_module
+    assert 'DESIGN_PREVIEW_MANIFEST_VERSION = 10' in design_module
     assert "thread_name_prefix='ppt-designer-chart'," not in design_module
     assert 'def schedule_next_prefetch() -> None:' not in design_module
     assert 'def enqueue_prefetch(' not in design_module

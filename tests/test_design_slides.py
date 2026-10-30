@@ -31,7 +31,11 @@ def visible(slide_set):
 def test_every_starter_template_reads_back_the_same_through_its_design(path):
     entries = parse_catalog_csv(path.read_bytes())
     slide_set = dd.slides_from_entries(entries)
-    assert catalogue_csv([replace(entry, format='') for entry in dd.entries_from_slides(slide_set)]) == catalogue_csv(entries)
+    read = dd.entries_from_slides(slide_set)
+    assert catalogue_csv([replace(entry, format='') for entry in read]) == catalogue_csv([replace(entry, format='') for entry in entries])
+    # What a row keeps in its Format (a KPI card) reads back too, beside the ids of its slide and place.
+    for entry, back in zip(entries, read, strict=True):
+        assert json.loads(entry.format or '{}').items() <= json.loads(back.format or '{}').items()
     # Ids stored once are the positional ones the template was read with, and read back the same.
     stored = parse_catalog_csv(catalogue_csv(dd.with_slide_ids(entries)))
     assert dd.slides_from_entries(stored) == slide_set

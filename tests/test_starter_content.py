@@ -1,5 +1,6 @@
 """Starter content: every workspace starts with the shipped methodology, Report Templates and Designs."""
 import csv
+import hashlib
 import io
 import json
 import re
@@ -23,7 +24,7 @@ def test_the_shipped_content_names_no_operator_or_vendor():
     assert not list((ASSETS / 'ppt-templates').glob('*/*.csv'))
     assert {path.stem for path in templates} == {'NetCheck CDR Report', 'NetCheck CDR Report (Main Cities)', 'RF Quality (RSRP & SINR)',
                                                  'Tableau Dashboards', 'Tableau Charts', 'Tableau Charts - Only Maps',
-                                                 'FDFS DL (NSA & SA)', 'All Chart Types'}
+                                                 'FDFS DL (NSA & SA)', 'DT Analyzer - All Chart Types'}
     for path in templates:
         rows = list(csv.DictReader(io.StringIO(path.read_text(encoding='utf-8'))))
         # No template filters an Operator, nor Vendors by their operator (3_Ericsson); the Tableau templates of the UK
@@ -39,7 +40,7 @@ def test_the_shipped_content_names_no_operator_or_vendor():
     assert {(item['name'], item['template'], item['nr_mode']) for item in designs} == {
         (f'{nr_mode} - {template}', template, nr_mode) for nr_mode in ('NSA', 'SA') for template in (
             'NetCheck CDR Report', 'NetCheck CDR Report (Main Cities)', 'RF Quality (RSRP & SINR)', 'Tableau Dashboards', 'Tableau Charts')
-    } | {('NSA & SA - FDFS DL (NSA & SA)', 'FDFS DL (NSA & SA)', 'NSA+SA'), ('NSA - All Chart Types', 'All Chart Types', 'NSA')}
+    } | {('NSA & SA - FDFS DL (NSA & SA)', 'FDFS DL (NSA & SA)', 'NSA+SA'), ('DT Analyzer - All Chart Types', 'DT Analyzer - All Chart Types', 'NSA+SA')}
     assert not any({'technology', 'template_technology'} & set(item) for item in designs)
     # The (Main Cities) Designs use the Main Cities of each workspace.
     assert all(item['filters']['City'] == ['@main-cities'] for item in designs if item['name'].endswith('(Main Cities)'))
@@ -315,18 +316,76 @@ def test_the_all_chart_types_example_draws_every_supported_chart_type_and_reache
     import src.DriveTestAnalyzer as app_module
     from src.modules.cdr_reporting import CHART_TYPES, parse_catalog_csv
 
-    entries = [entry for entry in parse_catalog_csv((ASSETS / 'ppt-templates' / 'All Chart Types.csv').read_text(encoding='utf-8'))
+    name = 'DT Analyzer - All Chart Types'
+    entries = [entry for entry in parse_catalog_csv((ASSETS / 'ppt-templates' / f'{name}.csv').read_text(encoding='utf-8'))
                if entry.source_kind]
     assert sorted(entry.chart_type.casefold() for entry in entries) == sorted(CHART_TYPES)
+    # At most two columns a slide: wider frames would stretch the charts.
+    assert all(re.search(r'\+ [12] columns', entry.layout) for entry in entries)
     repository = app_module.repository
     # A workspace set up before the example was shipped.
-    repository.delete_report_template('All Chart Types')
+    repository.delete_report_template(name)
     designs = json.loads(repository.get_workspace_state(starter_content.DESIGNS_STATE_KEY))
     repository.set_workspace_state(starter_content.DESIGNS_STATE_KEY, json.dumps(
-        {key: item for key, item in designs.items() if item['template'] != 'All Chart Types'}))
+        {key: item for key, item in designs.items() if item['template'] != name}))
     repository.set_workspace_state(starter_content.LATER_EXAMPLES_STATE_KEY, json.dumps(['FDFS DL (NSA & SA)']))
     assert starter_content.seed_starter_content(repository) == {'examples': 2}
     designs = json.loads(repository.get_workspace_state(starter_content.DESIGNS_STATE_KEY))
-    assert [item['name'] for item in designs.values() if item['template'] == 'All Chart Types'] == ['NSA - All Chart Types']
+    example = next(item for item in designs.values() if item['template'] == name)
+    assert example['name'] == name and example['nr_mode'] == 'NSA+SA'
+    assert example['filters']['Campaign'] == ['@latest-2-campaigns'] and example['sa_campaigns'] == ['@latest-2-campaigns']
+    repository.delete_report_template(name)
+    assert starter_content.seed_starter_content(repository) is None
+
+
+def _offer_the_superseded_example(repository, monkeypatch, content=b'Slide,Layout\n1,Title Page\n', design_changes=None):
+    """A workspace given the example All Chart Types before it was replaced, as it was shipped (or changed)."""
+    name = 'DT Analyzer - All Chart Types'
+    repository.delete_report_template(name)
+    repository.delete_report_template('All Chart Types')
+    repository.add_report_template('All Chart Types', content, updated_by='system')
+    superseded = starter_content.SUPERSEDED_EXAMPLES['All Chart Types']
+    shipped = hashlib.sha256(repository.report_template_content('All Chart Types')).hexdigest()
+    monkeypatch.setitem(starter_content.SUPERSEDED_EXAMPLES, 'All Chart Types', {**superseded, 'template_sha256': shipped})
+    designs = {key: item for key, item in json.loads(repository.get_workspace_state(starter_content.DESIGNS_STATE_KEY)).items()
+               if item['template'] != name}
+    designs['old-example'] = {**superseded['designs'][0], 'template_uid': 'uid-of-before', **(design_changes or {})}
+    repository.set_workspace_state(starter_content.DESIGNS_STATE_KEY, json.dumps(designs))
+    repository.set_workspace_state(starter_content.LATER_EXAMPLES_STATE_KEY, json.dumps(['All Chart Types', 'FDFS DL (NSA & SA)']))
+
+
+def test_the_superseded_all_chart_types_example_is_replaced_in_place_when_it_is_as_it_was_shipped(client, monkeypatch):
+    import src.DriveTestAnalyzer as app_module
+
+    repository = app_module.repository
+    _offer_the_superseded_example(repository, monkeypatch)
+    uid = repository.report_template_uids()['All Chart Types']
+    assert starter_content.seed_starter_content(repository) == {'examples_replaced': 1}
+    name = 'DT Analyzer - All Chart Types'
+    # The same template and Design, renamed, with the content shipped now.
+    assert repository.report_template_uids().get(name) == uid and 'All Chart Types' not in repository.report_template_uids()
+    assert repository.report_template_content(name).count(b'\n') > 30
+    designs = json.loads(repository.get_workspace_state(starter_content.DESIGNS_STATE_KEY))
+    assert designs['old-example']['name'] == name and designs['old-example']['nr_mode'] == 'NSA+SA'
+    assert designs['old-example']['template_uid'] == 'uid-of-before'
+    assert [item['name'] for item in designs.values() if item['template'] == name] == [name]
+    with repository.connection() as connection:
+        logged = connection.execute("SELECT details FROM audit_logs WHERE action = 'starter_examples_replaced'").fetchall()
+    assert json.loads(logged[-1]['details'])[0]['replaced_by'] == name
+    assert starter_content.seed_starter_content(repository) is None
+
+
+def test_a_changed_all_chart_types_example_stays_beside_the_new_one_and_a_deleted_one_is_not_given_again(client, monkeypatch):
+    import src.DriveTestAnalyzer as app_module
+
+    repository = app_module.repository
+    name = 'DT Analyzer - All Chart Types'
+    _offer_the_superseded_example(repository, monkeypatch, design_changes={'filters': {'Campaign': ['@latest-campaign']}})
+    assert starter_content.seed_starter_content(repository) == {'examples': 2}
+    designs = json.loads(repository.get_workspace_state(starter_content.DESIGNS_STATE_KEY))
+    assert designs['old-example']['name'] == 'NSA - All Chart Types'
+    assert {'All Chart Types', name} <= set(repository.report_template_uids())
+    _offer_the_superseded_example(repository, monkeypatch)
     repository.delete_report_template('All Chart Types')
     assert starter_content.seed_starter_content(repository) is None
+    assert name not in repository.report_template_uids()

@@ -1766,11 +1766,19 @@
     }
     return best;
   }
-  function sectorPoints(x, y, inner, outer, start, end) {
+  function sectorPoints(x, y, inner, outer, start, end, round = {x: 1, y: 1}) {
     const steps = Math.max(4, Math.ceil((end - start) / (Math.PI / 24))), points = [];
-    for (let step = 0; step <= steps; step += 1) { const angle = start + (end - start) * step / steps; points.push({x: x + Math.cos(angle) * outer, y: y + Math.sin(angle) * outer}); }
-    for (let step = steps; step >= 0; step -= 1) { const angle = start + (end - start) * step / steps; points.push({x: x + Math.cos(angle) * inner, y: y + Math.sin(angle) * inner}); }
+    for (let step = 0; step <= steps; step += 1) { const angle = start + (end - start) * step / steps; points.push({x: x + Math.cos(angle) * outer * round.x, y: y + Math.sin(angle) * outer * round.y}); }
+    for (let step = steps; step >= 0; step -= 1) { const angle = start + (end - start) * step / steps; points.push({x: x + Math.cos(angle) * inner * round.x, y: y + Math.sin(angle) * inner * round.y}); }
     return points;
+  }
+
+  // The logical space of a chart is stretched to its frame: a length r drawn as r * x logical units across and r * y
+  // down keeps a shape round in a frame of any proportions (both 1 in a 16:9 frame).
+  function roundness(context) {
+    const view = views.get(context.canvas) || {scaleX: 1, scaleY: 1};
+    const unit = Math.min(view.scaleX, view.scaleY) || 1;
+    return {x: unit / (view.scaleX || 1), y: unit / (view.scaleY || 1), unit};
   }
 
   function drawPie(context, payload, state, transform) {
@@ -1780,15 +1788,17 @@
     const left = layout.left, top = layout.top, width = layout.right - left, height = layout.bottom - top;
     const grid = chartGrid(pies.length, width, height - 4);
     const cellWidth = width / grid.columns, cellHeight = height / grid.rows;
+    // The pies stay round in a frame of any proportions: their radius is measured in units as wide as they are tall.
+    const round = roundness(context);
     pies.forEach((pie, index) => {
       const column = index % grid.columns, row = Math.floor(index / grid.columns);
       const cellLeft = left + column * cellWidth, cellTop = top + row * cellHeight;
-      const radius = Math.max(20, Math.min(cellWidth, cellHeight - titleHeight) / 2 * .84);
+      const radius = Math.max(20, Math.min(cellWidth / round.x, (cellHeight - titleHeight) / round.y) / 2 * .84);
       if (!(radius > 0)) return;
       const x = cellLeft + cellWidth / 2, y = cellTop + titleHeight + (cellHeight - titleHeight) / 2, inner = payload.donut ? radius * .58 : 0;
       if (titled) {
         // The name of the pie just above it.
-        const titleTop = Math.max(cellTop + 2, y - radius - titleHeight);
+        const titleTop = Math.max(cellTop + 2, y - radius * round.y - titleHeight);
         context.fillStyle = '#23384A'; context.textAlign = 'center'; context.textBaseline = 'top'; aggregationFont(context, payload.legend_format, 0);
         context.fillText(fittedText(context, pie.label, cellWidth - 12), x, titleTop);
         pushAxisHit('row', 0, pie.label, cellLeft, titleTop, cellWidth, titleHeight);
@@ -1797,8 +1807,8 @@
       (pie.slices || []).forEach(slice => {
         const sweep = Number(slice.share) * Math.PI * 2, end = angle + sweep;
         context.beginPath();
-        if (inner) { context.arc(x, y, radius, angle, end); context.arc(x, y, inner, end, angle, true); }
-        else { context.moveTo(x, y); context.arc(x, y, radius, angle, end); }
+        if (inner) { context.ellipse(x, y, radius * round.x, radius * round.y, 0, angle, end); context.ellipse(x, y, inner * round.x, inner * round.y, 0, end, angle, true); }
+        else { context.moveTo(x, y); context.ellipse(x, y, radius * round.x, radius * round.y, 0, angle, end); }
         context.closePath(); context.fillStyle = slice.colour; context.fill();
         context.strokeStyle = '#FFFFFF'; context.lineWidth = 2; context.stroke();
         const middle = angle + sweep / 2, labelRadius = inner ? (inner + radius) / 2 : radius * .64, share = percent(slice.share);
@@ -1806,17 +1816,17 @@
         if (Number(slice.share) >= .05 && String(payload.label_position || '').toLowerCase() !== 'none') {
           labelFont(context, size, payload.label_format, true, false); context.fillStyle = payload.label_format?.color || readableOn(slice.colour);
           context.textAlign = 'center'; context.textBaseline = 'middle';
-          context.fillText(share, x + Math.cos(middle) * labelRadius, y + Math.sin(middle) * labelRadius);
+          context.fillText(share, x + Math.cos(middle) * labelRadius * round.x, y + Math.sin(middle) * labelRadius * round.y);
         }
-        pushPolygonHit(state, transform, sectorPoints(x, y, inner, radius, angle, end), {label: displayKey([...(pie.key || []), slice.name]),
+        pushPolygonHit(state, transform, sectorPoints(x, y, inner, radius, angle, end, round), {label: displayKey([...(pie.key || []), slice.name]),
           series: payload.metric || '', value: `${share} · ${valueText(slice.value, 0)}`});
         angle = end;
       });
       if (inner) {
         context.fillStyle = '#1D3345'; context.textAlign = 'center'; context.textBaseline = 'middle'; font(context, Math.max(14, Math.min(40, inner * .42)), true);
-        context.fillText(valueText(pie.total, 0), x, y - inner * .08);
+        context.fillText(valueText(pie.total, 0), x, y - inner * .08 * round.y);
         context.fillStyle = '#62727E'; font(context, Math.max(10, Math.min(20, inner * .2)));
-        context.fillText('samples', x, y + inner * .3);
+        context.fillText('samples', x, y + inner * .3 * round.y);
       }
     });
     drawLegend(context, payload.legend);
@@ -2037,17 +2047,19 @@
   }
 
   function drawSymbolMap(context, payload, state, transform) {
+    // The circles stay round in a frame of any proportions (see roundness).
+    const round = roundness(context);
     mapPanels(context, payload, state, (panel, map) => {
-      const largest = Math.max(10, Math.min(46, Math.min(map.width, map.height) * .07));
+      const largest = Math.max(10, Math.min(46, Math.min(map.width / round.x, map.height / round.y) * .07));
       [...(panel.symbols || [])].sort((left, right) => right.size - left.size).forEach(symbol => {
         const point = map.project(Number(symbol.lon), Number(symbol.lat)), radius = Math.max(3, largest * Number(symbol.size || 0));
-        context.beginPath(); context.arc(point.x, point.y, radius, 0, Math.PI * 2); context.fillStyle = withAlpha(symbol.colour || '#2A6BB0', .72); context.fill();
+        context.beginPath(); context.ellipse(point.x, point.y, radius * round.x, radius * round.y, 0, 0, Math.PI * 2); context.fillStyle = withAlpha(symbol.colour || '#2A6BB0', .72); context.fill();
         context.lineWidth = 1.5; context.strokeStyle = '#FFFFFF'; context.stroke();
         if (symbol.label && radius >= 16) {
           context.fillStyle = '#1D3345'; context.textAlign = 'center'; context.textBaseline = 'top'; font(context, 13, true);
-          context.fillText(fittedText(context, symbol.label, 160), point.x, point.y + radius + 2);
+          context.fillText(fittedText(context, symbol.label, 160), point.x, point.y + radius * round.y + 2);
         }
-        pushCircleHit(state, transform, point.x, point.y, Math.max(radius, 6), {label: symbol.label || panel.label || 'Samples',
+        pushPolygonHit(state, transform, sectorPoints(point.x, point.y, 0, Math.max(radius, 6), 0, Math.PI * 2, round), {label: symbol.label || panel.label || 'Samples',
           series: payload.colour_metric ? `${aggregationName(payload.aggregation)} of ${payload.colour_metric}` : panel.label,
           value: `${symbol.value !== null && symbol.value !== undefined ? `${valueText(symbol.value)} · ` : ''}${Number(symbol.n || 0).toLocaleString('en-US')} samples`});
       });
@@ -2169,19 +2181,23 @@
     const placed = packCircles(bubbles.map(item => Math.max(1.5, Math.sqrt((Number(item.value) || 0) / largest) * 100)));
     const minX = Math.min(...placed.map(item => item.x - item.r)), maxX = Math.max(...placed.map(item => item.x + item.r));
     const minY = Math.min(...placed.map(item => item.y - item.r)), maxY = Math.max(...placed.map(item => item.y + item.r));
-    const width = layout.right - layout.left, height = Math.max(180, layout.bottom - layout.top), scale = Math.min(width / (maxX - minX || 1), height / (maxY - minY || 1)) * .96;
-    const offsetX = layout.left + (width - (maxX - minX) * scale) / 2 - minX * scale, offsetY = layout.top + (height - (maxY - minY) * scale) / 2 - minY * scale;
+    // The bubbles stay round in a frame of any proportions (see roundness).
+    const round = roundness(context);
+    const width = layout.right - layout.left, height = Math.max(180, layout.bottom - layout.top);
+    const scale = Math.min(width / round.x / (maxX - minX || 1), height / round.y / (maxY - minY || 1)) * .96;
+    const offsetX = layout.left + (width - (maxX - minX) * scale * round.x) / 2 - minX * scale * round.x;
+    const offsetY = layout.top + (height - (maxY - minY) * scale * round.y) / 2 - minY * scale * round.y;
     bubbles.forEach((item, index) => {
-      const x = offsetX + placed[index].x * scale, y = offsetY + placed[index].y * scale, radius = Math.max(.5, placed[index].r * scale);
-      context.beginPath(); context.arc(x, y, radius, 0, Math.PI * 2); context.fillStyle = item.colour || '#4E79A7'; context.fill();
+      const x = offsetX + placed[index].x * scale * round.x, y = offsetY + placed[index].y * scale * round.y, radius = Math.max(.5, placed[index].r * scale);
+      context.beginPath(); context.ellipse(x, y, radius * round.x, radius * round.y, 0, 0, Math.PI * 2); context.fillStyle = item.colour || '#4E79A7'; context.fill();
       context.lineWidth = 2; context.strokeStyle = '#FFFFFF'; context.stroke();
       if (radius > 22) {
         const size = Math.max(10, Math.min(22, radius / 3.4));
         context.fillStyle = readableOn(item.colour); context.textAlign = 'center'; context.textBaseline = 'middle'; font(context, size, true);
-        context.fillText(fittedText(context, item.label, radius * 1.8), x, y - (radius > 40 ? size * .55 : 0));
-        if (radius > 40) { font(context, Math.max(9, size * .8)); context.fillText(valueText(item.value, payload.decimals), x, y + size * .6); }
+        context.fillText(fittedText(context, item.label, radius * 1.8), x, y - (radius > 40 ? size * .55 * round.y : 0));
+        if (radius > 40) { font(context, Math.max(9, size * .8)); context.fillText(valueText(item.value, payload.decimals), x, y + size * .6 * round.y); }
       }
-      pushCircleHit(state, transform, x, y, radius, {label: item.label, series: `${aggregationName(payload.aggregation)} of ${payload.metric || ''}`,
+      pushPolygonHit(state, transform, sectorPoints(x, y, 0, radius, 0, Math.PI * 2, round), {label: item.label, series: `${aggregationName(payload.aggregation)} of ${payload.metric || ''}`,
         value: `${valueText(item.value, payload.decimals)}${item.colour_value !== null && item.colour_value !== undefined ? ` · ${payload.colour_metric}: ${valueText(item.colour_value)}` : ''}`});
     });
     drawLegend(context, payload.legend);
@@ -2325,48 +2341,72 @@
     // A missing figure (null) is not a zero.
     const known = value => value !== null && value !== undefined && value !== '' && finite(value);
     if (!cards.length) return;
-    const columns = cards.length <= 4 ? cards.length : cards.length <= 6 ? 3 : 4;
-    const rows = Math.ceil(cards.length / columns);
-    const area = {left: 40, top: payload.hide_title ? 30 : 95, right: 1560, bottom: 875};
+    // The logical space of a chart is stretched to its frame: the cards are laid out in a space whose units are as wide
+    // as they are tall, so they keep their shape in a frame of any proportions (the title stays where drawTitle puts it).
+    const {x: stretchX, y: stretchY, unit: unitSize} = roundness(context);
+    context.save();
+    context.scale(stretchX, stretchY);
+    const area = {
+      left: 40, top: payload.hide_title ? 30 : 20 / unitSize + 75,
+      right: LOGICAL_WIDTH / stretchX - 40, bottom: LOGICAL_HEIGHT / stretchY - 25,
+    };
     const gap = 26;
-    const width = (area.right - area.left - gap * (columns - 1)) / columns;
-    const height = (area.bottom - area.top - gap * (rows - 1)) / rows;
+    const grid = columns => {
+      const rows = Math.ceil(cards.length / columns);
+      const width = (area.right - area.left - gap * (columns - 1)) / columns;
+      const height = (area.bottom - area.top - gap * (rows - 1)) / rows;
+      return {columns, rows, width, height, size: Math.min(width / 420, height / 340)};
+    };
+    // A landscape frame keeps one row of up to four cards; any other takes the columns that give the largest cards.
+    const landscape = (area.right - area.left) / Math.max(1, area.bottom - area.top) >= 1.6;
+    const {columns, width, height} = landscape
+      ? grid(cards.length <= 4 ? cards.length : cards.length <= 6 ? 3 : 4)
+      : Array.from({length: cards.length}, (_, index) => grid(index + 1)).reduce((best, item) => (item.size > best.size ? item : best));
+    const logical = rect => ({x: rect.x * stretchX, y: rect.y * stretchY, width: rect.width * stretchX, height: rect.height * stretchY});
     const decimals = Number.isInteger(payload.decimals) ? payload.decimals : 2;
     const unit = payload.unit ? (payload.share ? '%' : ` ${payload.unit}`) : '';
     const number = value => (known(value) ? Number(value).toFixed(decimals) : '–');
     // A field name read as words (Mean_Data_Rate: Mean Data Rate).
     const readable = text => String(text || '').replace(/_+/g, ' ').trim();
     cards.forEach((card, index) => {
-      const x = area.left + (index % columns) * (width + gap), y = area.top + Math.floor(index / columns) * (height + gap);
+      const x = area.left + (index % columns) * (width + gap), slotTop = area.top + Math.floor(index / columns) * (height + gap);
       const accent = KPI_BANDS[card.band] || '#5B35A0';
       const scale = Math.min(1.25, height / 340, width / 420);
-      context.save();
-      context.shadowColor = 'rgba(36, 22, 61, 0.10)'; context.shadowBlur = 18 * scale; context.shadowOffsetY = 4 * scale;
-      roundedRect(context, x, y, width, height, 22 * scale);
-      context.fillStyle = '#FFFFFF'; context.fill();
-      context.restore();
-      context.save();
-      roundedRect(context, x, y, width, height, 22 * scale);
-      context.strokeStyle = '#E4DDEE'; context.lineWidth = 2; context.stroke();
-      context.restore();
       // Wide cards keep the figures at the left and the trend at the right; tall ones stack them.
       const trend = (card.trend || []).map(value => (known(value) ? Number(value) : null));
       const hasTrend = trend.filter(known).length > 1;
       const wide = hasTrend && width / height > 1.55;
       const pad = 34 * scale;
       const text = {left: x + pad, right: wide ? x + width * .52 : x + width - pad};
+      const valueText = `${number(card.value)}${known(card.value) ? unit : ''}`;
+      let size = Math.max(36, Math.min(150 * scale, height * (wide ? .36 : .3), (text.right - text.left) / Math.max(3, valueText.length * .6)));
+      font(context, size, true);
+      while (size > 28 && textWidth(context, valueText) > text.right - text.left) { size -= 4; font(context, size, true); }
+      // Outside a landscape row a stacked card is as tall as its figures and its trend (at most 45% as tall as it is
+      // wide), in the middle of its place.
+      const figures = 46 * scale + size + 16 * scale + (known(card.delta) ? 50 * scale : 0) + 30 * scale;
+      const stackedTrend = Math.min((width - 2 * pad) * .45, height - 2 * pad - figures - 32 * scale);
+      const cardHeight = landscape || wide ? height
+        : Math.min(height, 2 * pad + figures + (hasTrend && stackedTrend >= 24 ? 32 * scale + stackedTrend : 0));
+      const y = slotTop + (height - cardHeight) / 2;
+      context.save();
+      context.shadowColor = 'rgba(36, 22, 61, 0.10)'; context.shadowBlur = 18 * scale; context.shadowOffsetY = 4 * scale;
+      roundedRect(context, x, y, width, cardHeight, 22 * scale);
+      context.fillStyle = '#FFFFFF'; context.fill();
+      context.restore();
+      context.save();
+      roundedRect(context, x, y, width, cardHeight, 22 * scale);
+      context.strokeStyle = '#E4DDEE'; context.lineWidth = 2; context.stroke();
+      context.restore();
       let line = y + pad;
       context.textAlign = 'left'; context.textBaseline = 'top';
       context.fillStyle = accent; context.beginPath(); context.arc(text.left + 7 * scale, line + 13 * scale, 7 * scale, 0, Math.PI * 2); context.fill();
       context.fillStyle = '#5E5470'; font(context, Math.max(16, 26 * scale), true);
       context.fillText(fittedText(context, readable(card.label || payload.metric), text.right - text.left - 24 * scale), text.left + 24 * scale, line);
       line += 46 * scale;
-      const valueText = `${number(card.value)}${known(card.value) ? unit : ''}`;
-      let size = Math.max(36, Math.min(150 * scale, height * (wide ? .36 : .3), (text.right - text.left) / Math.max(3, valueText.length * .6)));
       context.fillStyle = card.band ? accent : '#1D1530'; font(context, size, true);
-      while (size > 28 && textWidth(context, valueText) > text.right - text.left) { size -= 4; font(context, size, true); }
       context.fillText(valueText, text.left, line);
-      pushRectangleHit(state, transform, {x, y, width, height}, {label: readable(card.label || payload.metric), series: card.campaign || '', value: `${valueText} · n = ${card.n}`});
+      pushRectangleHit(state, transform, logical({x, y, width, height: cardHeight}), {label: readable(card.label || payload.metric), series: card.campaign || '', value: `${valueText} · n = ${card.n}`});
       line += size + 16 * scale;
       if (known(card.delta)) {
         const up = Number(card.delta) > 0, flat = card.improves === null || card.improves === undefined;
@@ -2393,8 +2433,10 @@
       if (!hasTrend) return;
       // The trend over the campaigns: an area under its line, its points and the campaigns at its ends.
       const box = wide
-        ? {left: x + width * .58, right: x + width - pad, top: y + pad + 30 * scale, bottom: y + height - pad - 26 * scale}
-        : {left: x + pad, right: x + width - pad, top: Math.max(line + 10 * scale, y + height * .62), bottom: y + height - pad - 22 * scale};
+        ? {left: x + width * .58, right: x + width - pad, top: y + pad + 30 * scale, bottom: y + cardHeight - pad - 26 * scale}
+        : landscape
+          ? {left: x + pad, right: x + width - pad, top: Math.max(line + 10 * scale, y + cardHeight * .62), bottom: y + cardHeight - pad - 22 * scale}
+          : {left: x + pad, right: x + width - pad, top: line + 10 * scale, bottom: line + 10 * scale + stackedTrend};
       if (box.bottom - box.top < 24) return;
       // The scale of the trend spans at least a fifth of its level: a small change looks small.
       const values = trend.filter(known), middle = (Math.min(...values) + Math.max(...values)) / 2;
@@ -2427,6 +2469,7 @@
         context.textAlign = 'left';
       }
     });
+    context.restore();
   }
 
   // The colour theme of a chart (its model's style, or the page's: scoring_themes.canvas_chart_style): its font and

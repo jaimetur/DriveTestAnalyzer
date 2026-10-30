@@ -122,7 +122,7 @@ _DESIGN_CANVAS_RENDERER_LOCK = threading.RLock()
 # The browser worker keeps a copy of canvas_charts.js in memory. Bump this
 # whenever rendering semantics change so a live server does not keep painting
 # previews with an older script after a hot reload.
-DESIGN_CANVAS_RENDERER_VERSION = 15
+DESIGN_CANVAS_RENDERER_VERSION = 16
 
 
 def _node_executable() -> str:
@@ -2785,7 +2785,8 @@ def _each_value_mask(series: pd.Series, predicate: Callable[[object], bool]) -> 
 
 def _apply_catalog_filters(frame: pd.DataFrame, entry: CatalogEntry, multivendor: bool, metric: str | None) -> pd.DataFrame:
     # The rows are only read until the filtered rows are returned, as a new frame. Text is compared as
-    # ``astype(str).str.casefold()`` (or ``str.contains(case=False, regex=False)``) compares it, once per distinct value.
+    # ``astype(str).str.casefold()`` (or ``str.contains(case=False, regex=False)``) compares it, once per distinct value;
+    # = and IN read a missing value as (blank), as the charts show it.
     result = ensure_vendor_group(frame) if any(column_identity(condition.column) in {'vendor', 'operatorvendor'} for condition in parse_catalog_filters(entry.filters)) else frame.copy(deep=False)
     operator_mappings = result.attrs.get('operator_mappings', {})
     def mapped_operator(value: object) -> str:
@@ -2864,8 +2865,9 @@ def _apply_catalog_filters(frame: pd.DataFrame, entry: CatalogEntry, multivendor
                     if condition.operator == "!=":
                         comparison = ~comparison
                 elif condition.operator in {"=", "!="}:
+                    # A missing value reads as the charts show it, (blank).
                     expected = target.casefold()
-                    comparison = _each_value_mask(comparison_series, lambda value: str(value).casefold() == expected)
+                    comparison = _each_value_mask(comparison_series, lambda value: _chart_payload_value(value).casefold() == expected)
                     if condition.operator == "!=":
                         comparison = ~comparison
                 else:
@@ -2898,7 +2900,7 @@ def _apply_catalog_filters(frame: pd.DataFrame, entry: CatalogEntry, multivendor
                      compact_campaign_value(item) if is_campaign_filter else item).casefold()
                     for item in condition.values
                 }
-                comparison = _each_value_mask(comparison_series, lambda value: str(value).casefold() in accepted)
+                comparison = _each_value_mask(comparison_series, lambda value: _chart_payload_value(value).casefold() in accepted)
             if condition.operator == "NOT IN":
                 comparison = ~comparison
         result = result.loc[comparison]
@@ -7585,7 +7587,10 @@ def catalog_chart_payload(
             columns = [period, metric] if has_series else [metric]
             table = pd.crosstab(categorical[group], [categorical[column] for column in columns], normalize="index") * 100
             suffix = "%"
-        headers = [str(table.index.name or "Category"), *[str(value) for value in table.columns]]
+        # The rows are headed by their fields (Region), not by the internal column that combines them.
+        dimensions = data.attrs.get("catalogue_dimension_labels", {}).get(group)
+        heading = " · ".join(map(str, dimensions)) if isinstance(dimensions, (list, tuple)) else str(dimensions or "")
+        headers = [heading or str(table.index.name or "Category"), *[str(value) for value in table.columns]]
         rows = [
             [str(index), *["" if pd.isna(value) else f"{float(value):.2f}{suffix}" for value in values]]
             for index, values in table.head(60).iterrows()

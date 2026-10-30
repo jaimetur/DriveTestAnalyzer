@@ -1,7 +1,10 @@
 {
-  "name": "NSA - All Chart Types",
-  "template": "All Chart Types",
-  "nr_mode": "NSA",
+  "name": "DT Analyzer - All Chart Types",
+  "template": "DT Analyzer - All Chart Types",
+  "nr_mode": "NSA+SA",
+  "sa_campaigns": [
+    "@latest-2-campaigns"
+  ],
   "scope": "single",
   "vendor_comparison": "operator_vendor",
   "custom_fields": [],
@@ -9,7 +12,7 @@
   "auto_cdrs": true,
   "filters": {
     "Campaign": [
-      "@latest-3-campaigns"
+      "@latest-2-campaigns"
     ]
   },
   "slide_comments": {}

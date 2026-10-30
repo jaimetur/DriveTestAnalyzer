@@ -227,3 +227,37 @@ def test_generated_comments_read_the_new_chart_types() -> None:
         model = catalog_chart_payload(frame, chart(chart_type, kpi, rows, columns), prefiltered=True)
         comments = slide_comments([{'index': 0, 'title': chart_type, 'kpi': kpi, 'model': model}], focus_operators=['EE'])
         assert comments, chart_type
+
+
+def test_a_numeric_axis_of_lines_keeps_its_numeric_order() -> None:
+    frame = cdrs()
+    frame['Hour'] = np.arange(len(frame)) % 11 + 8
+    model = catalog_chart_payload(frame, chart('Lines', 'MEDIAN(Mean_Data_Rate)', 'Operator', 'Hour'))
+    assert [key[0] for key in model['x_keys']] == [str(hour) for hour in range(8, 19)]
+
+
+def test_filters_read_a_missing_value_as_blank_and_tables_head_their_rows_with_their_fields() -> None:
+    frame = cdrs()
+    frame.loc[frame.index[:300], 'City'] = None
+    model = catalog_chart_payload(frame, chart('Table', 'Mean_Data_Rate', 'City', 'Operator', 'City != (blank)'))
+    assert model['headers'][0] == 'City'
+    assert sorted(row[0] for row in model['rows']) == ['Cardiff', 'Glasgow City', 'Leeds', 'London']
+    blank = catalog_chart_payload(frame, chart('Table', 'Mean_Data_Rate', 'City', 'Operator', 'City = (blank)'))
+    assert [row[0] for row in blank['rows']] == ['(blank)']
+
+
+def test_kpi_cards_keep_their_shape_in_a_frame_of_any_proportions() -> None:
+    cards = [{'label': operator, 'value': 100 + index, 'delta': 1, 'improves': True, 'n': 10, 'campaign': 'Q3',
+              'trend': [90, 95, 100 + index], 'trend_labels': ['Q1', 'Q3']} for index, operator in enumerate(['EE', 'O2', 'Three', 'VF'])]
+    model = {'type': 'kpi', 'title': 'KPI', 'metric': 'Rate', 'cards': cards}
+    # A landscape frame keeps one row of four cards; a tall one stacks them, as wide as the frame.
+    _png, wide = render_catalog_chart_preview_hits(model, 1600, 900)
+    assert len({hit['y'] for hit in wide}) == 1 and len({hit['x'] for hit in wide}) == 4
+    _png, tall = render_catalog_chart_preview_hits(model, 1600, 3333)
+    assert len({hit['x'] for hit in tall}) == 1 and len({hit['y'] for hit in tall}) == 4
+    assert all(hit['width'] > 1400 for hit in tall)
+
+
+def render_catalog_chart_preview_hits(model: dict, width: int, height: int) -> tuple[bytes, list[dict]]:
+    from src.modules.cdr_reporting import _render_canvas_payload
+    return _render_canvas_payload(model, width=width, height=height)

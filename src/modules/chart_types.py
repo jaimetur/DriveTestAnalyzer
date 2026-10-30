@@ -192,6 +192,29 @@ class _Chart:
         return [tuple(reporting._chart_payload_value(value) for value in key)
                 for key in reporting._hierarchical_unique_keys(frame, columns)]
 
+    def axis_keys(self, columns: list[str]) -> list[tuple[str, ...]]:
+        """The keys of a horizontal axis: a level of numbers in numeric order (8 before 10), the others as they come."""
+        keys = self.keys(columns)
+        if not columns or not keys:
+            return keys
+
+        def number(value: str) -> float | None:
+            try:
+                result = float(value)
+            except (TypeError, ValueError):
+                return None
+            return result if math.isfinite(result) else None
+
+        numeric = [all(number(key[level]) is not None for key in keys) for level in range(len(columns))]
+        if not any(numeric):
+            return keys
+        seen: list[dict[str, int]] = [{} for _ in columns]
+        for key in keys:
+            for level, value in enumerate(key):
+                seen[level].setdefault(value, len(seen[level]))
+        return sorted(keys, key=lambda key: tuple(
+            number(value) if numeric[level] else seen[level][value] for level, value in enumerate(key)))
+
     def aggregate(self, column: str, columns: list[str], aggregation: str) -> tuple[dict[tuple[str, ...], float], dict[tuple[str, ...], int]]:
         """The aggregated value and the samples of each key of ``columns``."""
         reporting = _reporting()
@@ -620,7 +643,7 @@ def _lines(chart: _Chart) -> dict[str, object]:
         return chart.empty()
     dual = chart.chart_type == "dual lines" and len(measures) > 1
     used = measures[:2] if dual else measures[:1]
-    x_keys = chart.keys(chart.columns)
+    x_keys = chart.axis_keys(chart.columns)
     row_keys = chart.keys(chart.rows)
     colours = chart.colours(row_keys, chart.rows, line_chart=True)
     series = []
@@ -666,7 +689,7 @@ def _areas(chart: _Chart) -> dict[str, object]:
     reporting = _reporting()
     measure = chart.measures()[0]
     percent = chart.chart_type == "100% stacked areas"
-    x_keys = chart.keys(chart.columns)
+    x_keys = chart.axis_keys(chart.columns)
     panes = []
     legend_items: list[tuple[str, str]] = []
     if not measure.numeric:
@@ -730,7 +753,7 @@ def _bars_and_line(chart: _Chart) -> dict[str, object]:
     measures = [item for item in chart.measures() if item.column]
     if len(measures) < 2:
         return chart.empty("Bars and Line needs two measures: the bars, then the line")
-    x_keys = chart.keys(chart.columns)
+    x_keys = chart.axis_keys(chart.columns)
     row_keys = chart.keys(chart.rows)
     colours = chart.colours(row_keys, chart.rows)
     axes = [*chart.rows, *chart.columns]

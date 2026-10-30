@@ -436,3 +436,14 @@ def test_a_design_of_nsa_and_sa_reads_the_cdrs_of_each_nr_mode_by_its_campaigns(
     prepared = client.post('/api/ppt-designer/prepare', json={**definition, 'nr_mode': 'NSA', 'sa_campaigns': []})
     charts = next(slide for slide in prepared.json()['slides'] if slide['charts'])['charts']
     assert charts[1]['available'] is False and 'shows the SA CDRs' in charts[1]['unavailable']
+
+
+def test_lines_and_areas_of_both_nr_modes_draw_them_as_series_not_on_their_axis():
+    from src.modules.report_template_modes import entry_for_nr_mode
+
+    for chart_type in ('Lines', 'Dual Lines', 'Areas', '100% Stacked Areas', 'Bars and Line'):
+        lines = entry_for_nr_mode(entry_of(chart_type=chart_type, rows_split='', columns_split='Hour', legend=''), 'NSA+SA')
+        assert (lines.rows_split, lines.columns_split) == ('NR Mode', 'Hour'), chart_type
+    # The other charts keep it in the split of their legend, or their Columns without one.
+    bars = entry_for_nr_mode(entry_of(chart_type='Average Vertical Bars', rows_split='', columns_split='Hour', legend=''), 'NSA+SA')
+    assert (bars.rows_split, bars.columns_split) == ('', 'Hour × NR Mode')

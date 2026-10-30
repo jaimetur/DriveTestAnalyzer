@@ -11,8 +11,10 @@ New deployments and new workspaces, and existing workspaces once, receive the co
   titles name it with ``{NR Mode}`` and ``{NR Mode Name}``);
 - ``assets/ppt-designs/*.json``: PPT Designs, which use those templates, each reading the CDRs of its NR Mode
   (``nr_mode``: NSA, SA or NSA+SA for both, whose SA CDRs follow ``sa_campaigns``); the templates and PPT Designs shipped
-  later (``LATER_EXAMPLES``: the NSA & SA comparison FDFS DL (NSA & SA) and All Chart Types, an example of every chart
-  type drawn on the CDRs of the workspace) reach every existing workspace once;
+  later (``LATER_EXAMPLES``: the NSA & SA comparison FDFS DL (NSA & SA) and DT Analyzer - All Chart Types, an example of
+  every chart type drawn on the NSA and SA CDRs of the workspace) reach every existing workspace once, and an example
+  shipped before that a workspace keeps as it was shipped is replaced in place by the one that followed it
+  (``SUPERSEDED_EXAMPLES``);
 - ``assets/autocalculated-fields/default-autocalculated-fields.json``: the Auto-calculated Fields every new
   workspace starts with, which the templates use;
 - ``assets/scoring-report-configurations/*.json``: saved Scoring report configurations (``name`` and
@@ -34,6 +36,7 @@ operators), the comments of the slides, CDRs, email recipients or users; its GAP
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import uuid
 from pathlib import Path
@@ -55,7 +58,25 @@ BASE_METHODOLOGY = 'netcheck-2026'
 # The Report Templates shipped after workspaces were set up, which reach each of them once with their PPT Designs (those
 # of ``assets/ppt-designs`` that use them); a workspace that deleted them is not given them again.
 LATER_EXAMPLES_STATE_KEY = 'starter_examples_offered'
-LATER_EXAMPLES = ('FDFS DL (NSA & SA)', 'All Chart Types')
+LATER_EXAMPLES = ('FDFS DL (NSA & SA)', 'DT Analyzer - All Chart Types')
+# Starter examples shipped before under another name or with another content, with the SHA-256 of their template and
+# their PPT Designs as they were shipped. A workspace that still has one as it was shipped (template and PPT Designs
+# unchanged) has it replaced in place by the example that followed it, keeping their identities so whatever names them
+# follows; one it changed stays as it is, beside the example that followed it; one it deleted is not given again.
+SUPERSEDED_EXAMPLES: dict[str, dict[str, Any]] = {
+    # v0.10.1: an NSA Design on the latest 3 campaigns, with slides of three columns.
+    'All Chart Types': {
+        'successor': 'DT Analyzer - All Chart Types',
+        'template_sha256': '1b9f19150f87a13680ddd1acdac1b9afcc91c178132e8259667b56951d7eec0c',
+        'designs': [{
+            'name': 'NSA - All Chart Types', 'template': 'All Chart Types', 'nr_mode': 'NSA', 'scope': 'single',
+            'vendor_comparison': 'operator_vendor', 'custom_fields': [], 'hidden_filters': [], 'auto_cdrs': True,
+            'filters': {'Campaign': ['@latest-3-campaigns']}, 'slide_comments': {},
+        }],
+    },
+}
+# What the application adds to a stored PPT Design without the user changing it.
+DESIGN_KEYS_ADDED_BY_THE_APP = frozenset({'template_uid'})
 
 
 def _json_files(folder: Path) -> list[Path]:
@@ -166,6 +187,46 @@ def _seed_later_examples(repository: Any, username: str) -> int:
         repository.set_workspace_state(DESIGNS_STATE_KEY, json.dumps(designs))
     repository.set_workspace_state(LATER_EXAMPLES_STATE_KEY, json.dumps(sorted(offered)))
     return added
+
+
+def _replace_superseded_examples(repository: Any, username: str) -> list[dict[str, Any]]:
+    """Replace in place the superseded examples (``SUPERSEDED_EXAMPLES``) a workspace keeps as they were shipped; returns
+    what was replaced."""
+    offered = set(json.loads(repository.get_workspace_state(LATER_EXAMPLES_STATE_KEY) or '[]'))
+    pending = {name: item for name, item in SUPERSEDED_EXAMPLES.items() if name in offered and item['successor'] not in offered}
+    if not pending:
+        return []
+    templates = {str(row['name']) for row in repository.list_report_templates()}
+    raw = repository.get_workspace_state(DESIGNS_STATE_KEY)
+    designs = json.loads(raw) if raw else {}
+    designs = designs if isinstance(designs, dict) else {}
+    replaced = []
+    for name, superseded in pending.items():
+        successor = superseded['successor']
+        if name not in templates:
+            # Deleted: the example that followed it is not given either.
+            offered.add(successor)
+            continue
+        uses = {key: item for key, item in designs.items() if isinstance(item, dict) and item.get('template') == name}
+        as_shipped = [{key: value for key, value in item.items() if key not in DESIGN_KEYS_ADDED_BY_THE_APP} for item in uses.values()]
+        if (successor in templates
+                or hashlib.sha256(repository.report_template_content(name)).hexdigest() != superseded['template_sha256']
+                or any(item not in superseded['designs'] for item in as_shipped)):
+            # Changed: it stays, and the example that followed it is added beside it (_seed_later_examples).
+            continue
+        repository.rename_report_template(name, successor, updated_by=username)
+        repository.set_report_template_content(successor, (ASSETS / 'ppt-templates' / f'{successor}.csv').read_bytes(), updated_by=username)
+        followers = [definition for definition in (json.loads(path.read_text(encoding='utf-8')) for path in _json_files(ASSETS / 'ppt-designs'))
+                     if definition.get('template') == successor]
+        for (key, item), definition in zip(uses.items(), followers):
+            designs[key] = {**definition, **{field: item[field] for field in DESIGN_KEYS_ADDED_BY_THE_APP if field in item}}
+        replaced.append({'template': name, 'replaced_by': successor, 'designs': [item.get('name') for item in uses.values()],
+                         'designs_replaced_by': [item.get('name') for item in followers[:len(uses)]]})
+        offered.add(successor)
+    if replaced:
+        repository.set_workspace_state(DESIGNS_STATE_KEY, json.dumps(designs))
+    repository.set_workspace_state(LATER_EXAMPLES_STATE_KEY, json.dumps(sorted(offered)))
+    return replaced
 
 
 def _seed_calculated_dimensions(repository: Any) -> int:
@@ -307,7 +368,11 @@ def seed_starter_content(repository: Any, username: str = 'system') -> dict[str,
     Methodologies shipped after the workspace was set up are added to it once too.
     """
     if repository.get_workspace_state(STATE_KEY) == '1':
-        added = {'methodologies': _seed_methodologies(repository), 'examples': _seed_later_examples(repository, username)}
+        replaced = _replace_superseded_examples(repository, username)
+        if replaced and hasattr(repository, 'try_add_log'):
+            repository.try_add_log(username, 'starter_examples_replaced', json.dumps(replaced))
+        added = {'methodologies': _seed_methodologies(repository), 'examples_replaced': len(replaced),
+                 'examples': _seed_later_examples(repository, username)}
         added = {key: value for key, value in added.items() if value}
         if not added:
             return None
